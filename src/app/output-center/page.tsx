@@ -324,6 +324,40 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
     },
   };
   const issueMessages = issueCodes.map((code) => issueMessageMap[code]?.[locale]).filter(Boolean) as string[];
+  const needsQuoteFix = issueCodes.some((code) =>
+    [
+      "missing_listing_price",
+      "missing_summary",
+      "missing_estimate_breakdown",
+      "missing_down_payment",
+      "missing_loan_amount",
+      "missing_monthly_payment",
+      "missing_interest_rate",
+      "missing_loan_years",
+    ].includes(code)
+  );
+  const quickFixLinks: Array<{ id: string; href: string; label: string }> = [];
+  if (needsQuoteFix && selectedQuote?.id) {
+    quickFixLinks.push({
+      id: "quote",
+      href: "/quotes/" + selectedQuote.id,
+      label: locale === "zh" ? "前往提案编辑" : locale === "ko" ? "제안 편집으로 이동" : "提案を編集",
+    });
+  }
+  if (issueCodes.includes("missing_target_property")) {
+    quickFixLinks.push({
+      id: "property",
+      href: "/properties",
+      label: locale === "zh" ? "前往物件台账" : locale === "ko" ? "매물 대장으로 이동" : "物件台帳へ",
+    });
+  }
+  if (issueCodes.includes("missing_target_party")) {
+    quickFixLinks.push({
+      id: "party",
+      href: "/parties",
+      label: locale === "zh" ? "前往主体台账" : locale === "ko" ? "관계자 대장으로 이동" : "関係者台帳へ",
+    });
+  }
   const flashMap = {
     output_generated: {
       ja: "帳票を生成しました。",
@@ -375,6 +409,20 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
               <li key={msg}>{msg}</li>
             ))}
           </ul>
+          {quickFixLinks.length > 0 ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {quickFixLinks.map((link) => (
+                <Link
+                  key={link.id}
+                  href={link.href}
+                  className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100"
+                >
+                  <span className="material-symbols-outlined text-[14px]">build</span>
+                  {link.label}
+                </Link>
+              ))}
+            </div>
+          ) : null}
         </section>
       ) : null}
 

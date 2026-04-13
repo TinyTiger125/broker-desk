@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { batchUpdateContractStatusAction, updateClientStage } from "@/app/actions";
+import { batchUpdateContractStatusAction, undoContractBatchStatusAction, updateClientStage } from "@/app/actions";
 import { PageFlashBanner } from "@/components/page-flash-banner";
 import { formatDate } from "@/lib/format";
 import { listHubContracts, type HubContractItem } from "@/lib/hub";
@@ -67,6 +67,8 @@ const contractsCopy = {
     statusToPending: "保留（提案）",
     statusToClosed: "完了後フォロー",
     batchNone: "対象契約がありません。",
+    undoHint: "直前の一括更新を取り消す場合は、今すぐ実行してください。",
+    undoButton: "取り消す",
   },
   zh: {
     subtitle: "运营台账与续约流程",
@@ -118,6 +120,8 @@ const contractsCopy = {
     statusToPending: "待处理（提案）",
     statusToClosed: "完成后跟进",
     batchNone: "暂无可操作合同。",
+    undoHint: "如需撤销刚才的批量更新，请立即执行。",
+    undoButton: "撤销",
   },
   ko: {
     subtitle: "운영 원장 및 갱신 파이프라인",
@@ -169,11 +173,20 @@ const contractsCopy = {
     statusToPending: "대기(제안)",
     statusToClosed: "완료 후 팔로업",
     batchNone: "처리할 계약이 없습니다.",
+    undoHint: "방금 일괄 업데이트를 되돌리려면 지금 실행해 주세요.",
+    undoButton: "되돌리기",
   },
 } as const;
 
 type ContractsPageProps = {
-  searchParams?: Promise<{ filter?: string; page?: string; focus?: string; flash?: string }>;
+  searchParams?: Promise<{
+    filter?: string;
+    page?: string;
+    focus?: string;
+    flash?: string;
+    undoClientIds?: string;
+    undoStages?: string;
+  }>;
 };
 
 export default async function ContractsPage({ searchParams }: ContractsPageProps) {
@@ -187,9 +200,16 @@ export default async function ContractsPage({ searchParams }: ContractsPageProps
       zh: "合同状态已批量更新。",
       ko: "계약 상태를 일괄 업데이트했습니다.",
     },
+    contract_batch_undone: {
+      ja: "契約状態の一括更新を取り消しました。",
+      zh: "已撤销合同状态批量更新。",
+      ko: "계약 상태 일괄 업데이트를 되돌렸습니다.",
+    },
   } as const;
   const flashKey = String(params?.flash ?? "").trim() as keyof typeof flashMap;
   const flashMessage = flashMap[flashKey]?.[locale];
+  const undoClientIds = String(params?.undoClientIds ?? "").trim();
+  const undoStages = String(params?.undoStages ?? "").trim();
   const page = Math.max(1, Number(params?.page ?? "1") || 1);
   const copy = contractsCopy[locale];
   const contracts = await listHubContracts(locale);
@@ -229,6 +249,19 @@ export default async function ContractsPage({ searchParams }: ContractsPageProps
   return (
     <div className="space-y-8">
       <PageFlashBanner message={flashMessage} />
+      {undoClientIds && undoStages ? (
+        <section className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+          <form action={undoContractBatchStatusAction} className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-slate-700">{copy.undoHint}</p>
+            <input type="hidden" name="clientIds" value={undoClientIds} />
+            <input type="hidden" name="stages" value={undoStages} />
+            <input type="hidden" name="returnTo" value={`/contracts?filter=${filter}&page=${currentPage}`} />
+            <button className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+              {copy.undoButton}
+            </button>
+          </form>
+        </section>
+      ) : null}
       <section className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
           <h1 className="text-4xl font-light tracking-tight text-slate-900">{t(locale, "contracts.title")}</h1>

@@ -608,6 +608,8 @@ export async function batchUpdateContractStatusAction(formData: FormData) {
   }
 
   const contracts = await listHubContracts(locale);
+  const clients = await listClients(user.id, { sort: "follow_up" });
+  const clientStageMap = new Map(clients.map((client) => [client.id, client.stage]));
   const uniqueClientIds = [
     ...new Set(
       contractIds
@@ -624,6 +626,15 @@ export async function batchUpdateContractStatusAction(formData: FormData) {
       })
     );
   }
+
+  const undoPairs = uniqueClientIds
+    .map((clientId) => {
+      const previousStage = clientStageMap.get(clientId);
+      if (!previousStage || !isClientStage(previousStage)) return null;
+      return { clientId, previousStage };
+    })
+    .filter(Boolean) as Array<{ clientId: string; previousStage: string }>;
+
   await Promise.all(
     uniqueClientIds.map(async (clientId) => {
       const client = await ensureClientOwnership(clientId, user.id);
@@ -645,7 +656,75 @@ export async function batchUpdateContractStatusAction(formData: FormData) {
   revalidatePath("/");
   revalidatePath("/contracts");
   revalidatePath("/clients");
-  redirect(withFlash(returnTo, "contract_batch_updated"));
+  let destination = withFlash(returnTo, "contract_batch_updated");
+  if (undoPairs.length > 0) {
+    destination = appendQuery(destination, "undoClientIds", undoPairs.map((pair) => pair.clientId).join(","));
+    destination = appendQuery(destination, "undoStages", undoPairs.map((pair) => pair.previousStage).join(","));
+  }
+  redirect(destination);
+}
+
+export async function undoContractBatchStatusAction(formData: FormData) {
+  const user = await getDefaultUser();
+  if (!user) {
+    throw new Error("担当ユーザーが見つかりません。");
+  }
+  const locale = await getLocale();
+  const returnTo = safeReturnTo(formData.get("returnTo"), "/contracts");
+  const clientIds = parseCommaList(String(formData.get("clientIds") ?? ""));
+  const stagesRaw = parseCommaList(String(formData.get("stages") ?? ""));
+
+  if (clientIds.length === 0 || stagesRaw.length === 0 || clientIds.length !== stagesRaw.length) {
+    throw new Error(
+      tr(locale, {
+        ja: "取り消しに必要な情報が不足しています。",
+        zh: "撤销所需参数不完整。",
+        ko: "되돌리기에 필요한 정보가 부족합니다.",
+      })
+    );
+  }
+
+  const validPairs = clientIds
+    .map((clientId, index) => {
+      const stage = stagesRaw[index];
+      if (!isClientStage(stage)) return null;
+      return { clientId, stage };
+    })
+    .filter(Boolean) as Array<{ clientId: string; stage: string }>;
+
+  if (validPairs.length === 0) {
+    throw new Error(
+      tr(locale, {
+        ja: "取り消し可能な更新履歴が見つかりません。",
+        zh: "未找到可撤销的更新记录。",
+        ko: "되돌릴 수 있는 변경 이력이 없습니다.",
+      })
+    );
+  }
+
+  await Promise.all(
+    validPairs.map(async ({ clientId, stage }) => {
+      const client = await ensureClientOwnership(clientId, user.id);
+      await setClientStage(client.id, stage);
+    })
+  );
+
+  await addAuditLog({
+    userId: user.id,
+    action: "contract_batch_status_undone",
+    targetType: "client",
+    targetId: validPairs[0].clientId,
+    message: tr(locale, {
+      ja: `契約一括更新を取り消しました: ${validPairs.length}件`,
+      zh: `已撤销合同批量更新：${validPairs.length}条`,
+      ko: `계약 일괄 업데이트를 되돌렸습니다: ${validPairs.length}건`,
+    }),
+  });
+
+  revalidatePath("/");
+  revalidatePath("/contracts");
+  revalidatePath("/clients");
+  redirect(withFlash(returnTo, "contract_batch_undone"));
 }
 
 export async function rescheduleTaskAction(formData: FormData) {
