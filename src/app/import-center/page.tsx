@@ -618,16 +618,16 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
               <table className="min-w-full text-xs">
                 <thead className="bg-blue-100">
                   <tr>
-                    {xlsxPayload.headers.map((h) => (
-                      <th key={h} className="px-3 py-2 text-left font-semibold text-blue-800">{h}</th>
+                    {xlsxPayload.headers.map((h, hIndex) => (
+                      <th key={`preview-head-${hIndex}-${h}`} className="px-3 py-2 text-left font-semibold text-blue-800">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {xlsxPayload.rows.slice(0, 3).map((row, i) => (
-                    <tr key={i} className="border-t border-blue-100">
-                      {xlsxPayload!.headers.map((h) => (
-                        <td key={h} className="px-3 py-1.5 text-slate-700">{String(row[h] ?? "")}</td>
+                    <tr key={`preview-row-${i}`} className="border-t border-blue-100">
+                      {xlsxPayload!.headers.map((h, hIndex) => (
+                        <td key={`preview-cell-${i}-${hIndex}-${h}`} className="px-3 py-1.5 text-slate-700">{String(row[h] ?? "")}</td>
                       ))}
                     </tr>
                   ))}
@@ -647,8 +647,8 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                 {locale === "zh" ? "列名映射（* 为必填）" : locale === "ko" ? "열 이름 매핑 (* 필수)" : "列名マッピング（* は必須）"}
               </p>
               <div className="space-y-2">
-                {xlsxPayload.headers.map((header) => (
-                  <div key={header} className="flex items-center gap-3">
+                {xlsxPayload.headers.map((header, headerIndex) => (
+                  <div key={`mapping-${headerIndex}-${header}`} className="flex items-center gap-3">
                     <span className="w-36 truncate rounded bg-blue-100 px-2 py-1 text-xs font-mono text-blue-900">{header}</span>
                     <span className="text-xs text-slate-400">→</span>
                     <input type="hidden" name="sourceCol" value={header} />
@@ -689,8 +689,8 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
             </div>
             {xlsxResult.skipped.length > 0 && (
               <ul className="space-y-1 rounded-lg border border-amber-200 bg-amber-50 p-3">
-                {xlsxResult.skipped.map((s) => (
-                  <li key={s.row} className="text-xs text-amber-800">
+                {xlsxResult.skipped.map((s, index) => (
+                  <li key={`skip-${s.row}-${index}`} className="text-xs text-amber-800">
                     {locale === "zh" ? `第 ${s.row} 行` : locale === "ko" ? `${s.row}행` : `${s.row} 行目`}: {s.reason}
                   </li>
                 ))}

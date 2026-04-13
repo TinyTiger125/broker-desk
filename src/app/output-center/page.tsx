@@ -405,8 +405,8 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                 : "以下の項目を先に補完してください:"}
           </p>
           <ul className="mt-1 list-disc pl-5">
-            {issueMessages.map((msg) => (
-              <li key={msg}>{msg}</li>
+            {issueMessages.map((msg, index) => (
+              <li key={`issue-${index}-${msg}`}>{msg}</li>
             ))}
           </ul>
           {quickFixLinks.length > 0 ? (

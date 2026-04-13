@@ -217,7 +217,7 @@ export default async function DashboardPage() {
             </div>
             <div className="divide-y divide-slate-200/40 bg-[#edf2fd]/40">
               {(pendingImports.length ? pendingImports.slice(0, 5) : []).map((item, index) => (
-                  <div key={"task_" + index} className="flex items-center gap-4 px-6 py-4">
+                  <div key={`task_${item.id}`} className="flex items-center gap-4 px-6 py-4">
                     <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-white text-[#d8885c]">
                       <span className="material-symbols-outlined text-[18px]">{index % 3 === 0 ? "warning" : index % 3 === 1 ? "folder" : "construction"}</span>
                     </span>
