@@ -24,6 +24,7 @@ import {
   type LoanPreApprovalStatus,
   type Purpose,
   type Temperature,
+  type ClientStage,
 } from "@/lib/domain";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -684,13 +685,12 @@ export async function undoContractBatchStatusAction(formData: FormData) {
     );
   }
 
-  const validPairs = clientIds
-    .map((clientId, index) => {
-      const stage = stagesRaw[index];
-      if (!isClientStage(stage)) return null;
-      return { clientId, stage };
-    })
-    .filter(Boolean) as Array<{ clientId: string; stage: string }>;
+  const validPairs: Array<{ clientId: string; stage: ClientStage }> = [];
+  clientIds.forEach((clientId, index) => {
+    const stage = stagesRaw[index];
+    if (!isClientStage(stage)) return;
+    validPairs.push({ clientId, stage });
+  });
 
   if (validPairs.length === 0) {
     throw new Error(

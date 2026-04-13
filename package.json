@@ -6,7 +6,7 @@
     "dev": "next dev --webpack",
     "build": "next build --webpack",
     "start": "next start",
-    "lint": "eslint",
+    "lint": "eslint src next.config.ts eslint.config.mjs",
     "test:regression": "bash scripts/regression.sh",
     "test:ja-terms": "bash scripts/check-ja-terms.sh"
   },

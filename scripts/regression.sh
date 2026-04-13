@@ -51,9 +51,9 @@ echo "$settings_html" | grep '出力テンプレート調整センター' >/dev/
 echo "$settings_html" | grep '日本標準テンプレートを再適用' >/dev/null || fail "template center missing reset action"
 
 echo "[STEP] board stage API (forward + rollback)"
-forward_json="$(curl -fsS -X PATCH "${BASE_URL}/api/clients/client_lin/stage" -H 'content-type: application/json' -d '{"stage":"contacted","reason":"回帰テスト"}')" || fail "board stage update failed"
+forward_json="$(curl -fsS -X PATCH "${BASE_URL}/api/clients/client_yamada/stage" -H 'content-type: application/json' -d '{"stage":"contacted","reason":"回帰テスト"}')" || fail "board stage update failed"
 echo "$forward_json" | grep '"ok":true' >/dev/null || fail "board stage forward not ok"
-rollback_json="$(curl -fsS -X PATCH "${BASE_URL}/api/clients/client_lin/stage" -H 'content-type: application/json' -d '{"stage":"quoted","reason":"回帰テスト戻し"}')" || fail "board stage rollback failed"
+rollback_json="$(curl -fsS -X PATCH "${BASE_URL}/api/clients/client_yamada/stage" -H 'content-type: application/json' -d '{"stage":"lead","reason":"回帰テスト戻し"}')" || fail "board stage rollback failed"
 echo "$rollback_json" | grep '"ok":true' >/dev/null || fail "board stage rollback not ok"
 
 echo "[PASS] regression checks passed"
