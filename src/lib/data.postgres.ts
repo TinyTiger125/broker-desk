@@ -26,6 +26,7 @@ import type {
   Attachment,
   AttachmentTargetType,
   Client,
+  AuditLogFilter,
   ClientListFilter,
   ClientListSort,
   DashboardQuoteItem,
@@ -190,13 +191,19 @@ function mapTask(row: Record<string, unknown>): Task {
 }
 
 function mapAuditLog(row: Record<string, unknown>): AuditLog {
+  const actorId = row.actor_id ? String(row.actor_id) : String(row.user_id);
   return {
     id: String(row.id),
-    userId: String(row.user_id),
+    actorId,
+    userId: actorId,
     action: String(row.action),
     targetType: String(row.target_type) as AuditLog["targetType"],
     targetId: row.target_id ? String(row.target_id) : undefined,
     message: String(row.message),
+    context:
+      row.context_json && typeof row.context_json === "object"
+        ? (row.context_json as Record<string, unknown>)
+        : undefined,
     createdAt: toDate(row.created_at) ?? new Date(),
   };
 }
@@ -287,9 +294,13 @@ function mapAttachment(row: Record<string, unknown>): Attachment {
 }
 
 function mapGeneratedOutput(row: Record<string, unknown>): GeneratedOutput {
+  const actorId = row.actor_id ? String(row.actor_id) : String(row.user_id);
+  const sourceQuoteId = row.source_quote_id ? String(row.source_quote_id) : String(row.quote_id);
   return {
     id: String(row.id),
-    userId: String(row.user_id),
+    actorId,
+    userId: actorId,
+    sourceQuoteId,
     quoteId: String(row.quote_id),
     propertyId: row.property_id ? String(row.property_id) : undefined,
     partyId: row.party_id ? String(row.party_id) : undefined,
@@ -297,6 +308,7 @@ function mapGeneratedOutput(row: Record<string, unknown>): GeneratedOutput {
     outputFormat: String(row.output_format) as GeneratedOutput["outputFormat"],
     language: String(row.language) as Locale,
     title: String(row.title),
+    documentNumber: String(row.document_number ?? ""),
     templateVersionId: row.template_version_id ? String(row.template_version_id) : undefined,
     generatedAt: toDate(row.generated_at) ?? new Date(),
   };
@@ -421,10 +433,12 @@ async function ensureSchema() {
     CREATE TABLE IF NOT EXISTS audit_logs (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL REFERENCES users(id),
+      actor_id TEXT REFERENCES users(id),
       action TEXT NOT NULL,
       target_type TEXT NOT NULL,
       target_id TEXT,
       message TEXT NOT NULL,
+      context_json JSONB,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
@@ -492,13 +506,17 @@ async function ensureSchema() {
     CREATE TABLE IF NOT EXISTS generated_outputs (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL REFERENCES users(id),
+      actor_id TEXT REFERENCES users(id),
       quote_id TEXT NOT NULL REFERENCES quotations(id),
+      source_quote_id TEXT,
       property_id TEXT,
       party_id TEXT,
       output_type TEXT NOT NULL,
       output_format TEXT NOT NULL DEFAULT 'pdf',
       language TEXT NOT NULL DEFAULT 'ja',
       title TEXT NOT NULL,
+      document_number TEXT,
+      template_version_id TEXT,
       generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
@@ -508,12 +526,14 @@ async function ensureSchema() {
     CREATE INDEX IF NOT EXISTS idx_followups_client_created ON follow_ups(client_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_tasks_client_status_due ON tasks(client_id, status, due_at);
     CREATE INDEX IF NOT EXISTS idx_audit_logs_user_created ON audit_logs(user_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_audit_logs_actor_created ON audit_logs(actor_id, created_at DESC);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_output_template_user ON output_template_settings(user_id);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_output_template_version_user_number ON output_template_versions(user_id, version_number);
     CREATE INDEX IF NOT EXISTS idx_output_template_version_user_created ON output_template_versions(user_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_import_jobs_user_created ON import_jobs(user_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_attachments_user_target ON attachments(user_id, target_type, target_id);
     CREATE INDEX IF NOT EXISTS idx_generated_outputs_user_created ON generated_outputs(user_id, generated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_generated_outputs_actor_created ON generated_outputs(actor_id, generated_at DESC);
     CREATE INDEX IF NOT EXISTS idx_generated_outputs_quote ON generated_outputs(quote_id, generated_at DESC);
 
     ALTER TABLE clients ADD COLUMN IF NOT EXISTS budget_type TEXT NOT NULL DEFAULT 'total_price';
@@ -567,20 +587,51 @@ async function ensureSchema() {
 
     ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS output_format TEXT NOT NULL DEFAULT 'pdf';
     ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS language TEXT NOT NULL DEFAULT 'ja';
+    ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS actor_id TEXT;
     ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS property_id TEXT;
     ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS party_id TEXT;
+    ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS source_quote_id TEXT;
+    ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS document_number TEXT;
     ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
     ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS template_version_id TEXT;
+
+    ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS actor_id TEXT;
+    ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS context_json JSONB;
+
+    UPDATE generated_outputs SET source_quote_id = quote_id WHERE source_quote_id IS NULL;
+    UPDATE generated_outputs SET actor_id = user_id WHERE actor_id IS NULL;
+    UPDATE generated_outputs SET document_number = id WHERE document_number IS NULL;
+    UPDATE audit_logs SET actor_id = user_id WHERE actor_id IS NULL;
+    UPDATE audit_logs SET context_json = '{}'::jsonb WHERE context_json IS NULL;
   `);
 
   const userCount = await db.query("SELECT COUNT(*)::int AS count FROM users");
   const count = Number(userCount.rows[0]?.count ?? 0);
   if (count === 0) {
     await db.query(
-      "INSERT INTO users (id, name, email, password_hash) VALUES ($1, $2, $3, $4)",
-      ["user_demo", "デモ担当者", "demo@brokerdesk.local", "demo_password_hash"]
+      `INSERT INTO users (id, name, email, password_hash)
+       VALUES
+        ($1, $2, $3, $4),
+        ($5, $6, $7, $8)`,
+      [
+        "user_demo",
+        "デモ担当者",
+        "demo@brokerdesk.local",
+        "demo_password_hash",
+        "user_ops",
+        "運用担当 佐伯",
+        "ops@brokerdesk.local",
+        "ops_demo_password_hash",
+      ]
     );
   }
+
+  await db.query(
+    `INSERT INTO users (id, name, email, password_hash)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (id) DO NOTHING`,
+    ["user_ops", "運用担当 佐伯", "ops@brokerdesk.local", "ops_demo_password_hash"]
+  );
 
   const templateCount = await db.query(
     "SELECT COUNT(*)::int AS count FROM output_template_settings WHERE user_id = $1",
@@ -765,8 +816,32 @@ async function withTransaction<T>(fn: (client: PoolClient) => Promise<T>) {
   }
 }
 
-export async function getDefaultUser() {
+function isValidImportStatusTransition(from: ImportJobStatus, to: ImportJobStatus, allowRetry: boolean): boolean {
+  if (from === to) return true;
+  if (allowRetry && to === "queued") return true;
+  if (from === "queued" && to === "mapped") return true;
+  if (from === "mapped" && (to === "queued" || to === "completed")) return true;
+  return false;
+}
+
+export async function listUsers(limit = 50): Promise<User[]> {
   await ensureSchema();
+  const result = await getPool().query("SELECT * FROM users ORDER BY created_at ASC LIMIT $1", [limit]);
+  return result.rows.map(mapUser);
+}
+
+export async function getUserById(userId: string): Promise<User | null> {
+  await ensureSchema();
+  const result = await getPool().query("SELECT * FROM users WHERE id = $1 LIMIT 1", [userId]);
+  return result.rows[0] ? mapUser(result.rows[0]) : null;
+}
+
+export async function getDefaultUser(preferredUserId?: string) {
+  await ensureSchema();
+  if (preferredUserId) {
+    const found = await getUserById(preferredUserId);
+    if (found) return found;
+  }
   const result = await getPool().query("SELECT * FROM users ORDER BY created_at ASC LIMIT 1");
   const row = result.rows[0];
   return row ? mapUser(row) : null;
@@ -1083,8 +1158,20 @@ export async function updateImportJobMapping(input: {
   validationMessage?: string;
   notes?: string;
   status?: ImportJobStatus;
+  allowRetry?: boolean;
 }): Promise<ImportJob | null> {
   await ensureSchema();
+
+  const currentRes = await getPool().query(
+    "SELECT status FROM import_jobs WHERE id = $1 AND user_id = $2 LIMIT 1",
+    [input.jobId, input.userId]
+  );
+  if (!currentRes.rows[0]) return null;
+  const currentStatus = String(currentRes.rows[0].status) as ImportJobStatus;
+  if (input.status && !isValidImportStatusTransition(currentStatus, input.status, Boolean(input.allowRetry))) {
+    throw new Error(`取込ジョブ状態遷移が不正です: ${currentStatus} -> ${input.status}`);
+  }
+
   const result = await getPool().query(
     `UPDATE import_jobs
      SET
@@ -1211,6 +1298,8 @@ export async function getGeneratedOutputById(input: {
 
 export async function addGeneratedOutput(input: {
   userId: string;
+  actorId?: string;
+  sourceQuoteId?: string;
   quoteId: string;
   propertyId?: string;
   partyId?: string;
@@ -1218,24 +1307,30 @@ export async function addGeneratedOutput(input: {
   outputFormat: GeneratedOutput["outputFormat"];
   language: Locale;
   title: string;
+  documentNumber: string;
   templateVersionId?: string;
 }): Promise<GeneratedOutput> {
   await ensureSchema();
+  const actorId = input.actorId ?? input.userId;
+  const sourceQuoteId = input.sourceQuoteId ?? input.quoteId;
   const result = await getPool().query(
     `INSERT INTO generated_outputs (
-      id, user_id, quote_id, property_id, party_id, output_type, output_format, language, title, template_version_id, generated_at
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW())
+      id, user_id, actor_id, quote_id, source_quote_id, property_id, party_id, output_type, output_format, language, title, document_number, template_version_id, generated_at
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW())
     RETURNING *`,
     [
       genId("out"),
       input.userId,
+      actorId,
       input.quoteId,
+      sourceQuoteId,
       input.propertyId ?? null,
       input.partyId ?? null,
       input.outputType,
       input.outputFormat,
       input.language,
       input.title.trim(),
+      input.documentNumber.trim(),
       input.templateVersionId ?? null,
     ]
   );
@@ -1355,7 +1450,7 @@ export async function getDashboardData(userId: string) {
     )
     .slice(0, 6);
   const auditRes = await getPool().query(
-    "SELECT * FROM audit_logs WHERE user_id = $1 ORDER BY created_at DESC LIMIT 8",
+    "SELECT * FROM audit_logs WHERE actor_id = $1 OR user_id = $1 ORDER BY created_at DESC LIMIT 8",
     [userId]
   );
   const recentAuditLogs = auditRes.rows.map(mapAuditLog);
@@ -1376,6 +1471,57 @@ export async function getDashboardData(userId: string) {
     staleClients,
     newUnquoted,
   };
+}
+
+export async function listAuditLogs(userId: string, filter: AuditLogFilter = {}): Promise<AuditLog[]> {
+  await ensureSchema();
+  const values: Array<string | number> = [userId];
+  const where: string[] = ["(actor_id = $1 OR user_id = $1)"];
+  let index = 2;
+
+  if (filter.actorId) {
+    where.push(`actor_id = $${index}`);
+    values.push(filter.actorId);
+    index += 1;
+  }
+  if (filter.action) {
+    where.push(`action = $${index}`);
+    values.push(filter.action);
+    index += 1;
+  }
+  if (filter.targetType && filter.targetType !== "all") {
+    where.push(`target_type = $${index}`);
+    values.push(filter.targetType);
+    index += 1;
+  }
+  if (filter.from) {
+    where.push(`created_at >= $${index}`);
+    values.push(filter.from.toISOString());
+    index += 1;
+  }
+  if (filter.to) {
+    where.push(`created_at <= $${index}`);
+    values.push(filter.to.toISOString());
+    index += 1;
+  }
+  if (filter.query?.trim()) {
+    where.push(`(message ILIKE $${index} OR action ILIKE $${index} OR target_type ILIKE $${index} OR COALESCE(target_id, '') ILIKE $${index})`);
+    values.push(`%${filter.query.trim()}%`);
+    index += 1;
+  }
+
+  const limit = filter.limit ?? 200;
+  values.push(limit);
+  const limitIndex = index;
+
+  const result = await getPool().query(
+    `SELECT * FROM audit_logs
+     WHERE ${where.join(" AND ")}
+     ORDER BY created_at DESC
+     LIMIT $${limitIndex}`,
+    values
+  );
+  return result.rows.map(mapAuditLog);
 }
 
 export async function listClients(userId: string, filter: ClientListFilter = {}) {
@@ -1888,15 +2034,17 @@ export async function createComplianceTaskFromAlert(input: {
     await client.query("UPDATE clients SET updated_at = NOW() WHERE id = $1", [input.clientId]);
     await client.query(
       `INSERT INTO audit_logs (
-        id, user_id, action, target_type, target_id, message
-      ) VALUES ($1,$2,$3,$4,$5,$6)`,
+        id, user_id, actor_id, action, target_type, target_id, message, context_json
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)`,
       [
         genId("audit"),
+        createdById,
         createdById,
         "compliance_task_created",
         "task",
         String(taskRes.rows[0].id),
         `法定対応タスクを作成しました: ${input.alertTitle}`,
+        JSON.stringify({ clientId: input.clientId, alertType: input.alertType }),
       ]
     );
 
@@ -1930,19 +2078,34 @@ export async function addTask(input: {
 }
 
 export async function addAuditLog(input: {
-  userId: string;
+  userId?: string;
+  actorId?: string;
   action: string;
   targetType: AuditLog["targetType"];
   targetId?: string;
   message: string;
+  context?: Record<string, unknown>;
 }) {
   await ensureSchema();
+  const actorId = input.actorId ?? input.userId;
+  if (!actorId) {
+    throw new Error("監査ログに必要な actorId が不足しています。");
+  }
   const result = await getPool().query(
     `INSERT INTO audit_logs (
-      id, user_id, action, target_type, target_id, message
-    ) VALUES ($1,$2,$3,$4,$5,$6)
+      id, user_id, actor_id, action, target_type, target_id, message, context_json
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)
     RETURNING *`,
-    [genId("audit"), input.userId, input.action, input.targetType, input.targetId ?? null, input.message]
+    [
+      genId("audit"),
+      actorId,
+      actorId,
+      input.action,
+      input.targetType,
+      input.targetId ?? null,
+      input.message,
+      JSON.stringify(input.context ?? {}),
+    ]
   );
   return mapAuditLog(result.rows[0]);
 }
@@ -2010,9 +2173,18 @@ export async function resolveComplianceAlert(input: {
     );
     await client.query(
       `INSERT INTO audit_logs (
-        id, user_id, action, target_type, target_id, message
-      ) VALUES ($1,$2,$3,$4,$5,$6)`,
-      [genId("audit"), input.resolvedById, "compliance_resolved", "compliance", input.clientId, content]
+        id, user_id, actor_id, action, target_type, target_id, message, context_json
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)`,
+      [
+        genId("audit"),
+        input.resolvedById,
+        input.resolvedById,
+        "compliance_resolved",
+        "compliance",
+        input.clientId,
+        content,
+        JSON.stringify({ alertType: input.alertType }),
+      ]
     );
 
     return updateRes.rows[0] ? mapClient(updateRes.rows[0]) : null;
@@ -2053,15 +2225,17 @@ export async function updateTaskStatus(input: {
     }
     await client.query(
       `INSERT INTO audit_logs (
-        id, user_id, action, target_type, target_id, message
-      ) VALUES ($1,$2,$3,$4,$5,$6)`,
+        id, user_id, actor_id, action, target_type, target_id, message, context_json
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)`,
       [
         genId("audit"),
+        input.updatedById,
         input.updatedById,
         "task_status_updated",
         "task",
         input.taskId,
         `${task.title} を ${statusLabel} に更新しました。`,
+        JSON.stringify({ status: input.status }),
       ]
     );
 
@@ -2103,15 +2277,17 @@ export async function rescheduleTask(input: {
     }
     await client.query(
       `INSERT INTO audit_logs (
-        id, user_id, action, target_type, target_id, message
-      ) VALUES ($1,$2,$3,$4,$5,$6)`,
+        id, user_id, actor_id, action, target_type, target_id, message, context_json
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)`,
       [
         genId("audit"),
+        input.updatedById,
         input.updatedById,
         "task_rescheduled",
         "task",
         input.taskId,
         `${task.title} の期限を ${input.dueAt.toLocaleDateString("ja-JP")} に変更しました。`,
+        JSON.stringify({ dueAt: input.dueAt.toISOString() }),
       ]
     );
 

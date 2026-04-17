@@ -1,0 +1,44 @@
+# Coding Workflow Rule
+
+## Source Of Truth
+- If this file conflicts with [CLAUDE.md](../../CLAUDE.md), **CLAUDE.md wins**.
+
+## Required Process
+1. Plan first for non-trivial changes.
+2. Keep module boundaries clear (import/core/output/template/ai-future).
+3. Implement in order: schema/data -> service/action -> UI.
+4. Keep i18n alignment (JA/ZH/KO same IA and interaction model).
+
+## Mandatory Checks (Before Close)
+- `npm run lint`
+- `CI=1 npm run build`
+- `npm run test:ja-terms`
+- `npm run test:regression` (with local service running)
+
+## Consistency Rule
+When adding/changing fields, sync all:
+- data model / schema
+- validation rules
+- API contract / server actions
+- UI form and display
+- seed or mock data (if needed)
+
+## Documentation Rule
+After each task package:
+- update [CLAUDE.md](../../CLAUDE.md) with:
+  - completed items
+  - verification results
+  - residual risks
+  - next step
+
+## User Shortcut Prompts (Do Not Forget)
+When user sends one of these, treat it as a strong routing hint:
+1. `用后台布局规则做这页` -> `workspace-admin-ui`
+2. `用导入页规则改这块` -> `import-center-ui`
+3. `用输出预览规则改这块` -> `output-preview-ui`
+4. `用模板编辑规则改这块` -> `template-editor-ui`
+5. `用详情页统一规则改这块` -> `entity-detail-pattern`
+6. `按桌面优先响应式规则收口` -> `responsive-business-layout`
+
+Global shortcut:
+- `先按 Broker Desk 规则做 feature planning，再用对应前端 skill 实施。`

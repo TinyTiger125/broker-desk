@@ -1,0 +1,30 @@
+# UI/UX Constraints (Business Workspace)
+
+## Source Of Truth
+- If this file conflicts with [CLAUDE.md](../../CLAUDE.md), **CLAUDE.md wins**.
+
+## Product UI Intent
+- This is a business workspace, not a marketing site.
+- Desktop-first layout is primary.
+- Mobile/tablet are assistive experiences, not full-density replacements.
+
+## Frontend Guardrails
+1. Prioritize operational clarity over visual novelty.
+2. Keep information density suitable for real backoffice usage.
+3. Prefer stable table/detail/timeline/preview structures.
+4. Avoid decorative dashboard bloat and animation-heavy interactions.
+5. Keep one shared IA/interaction model across JA/ZH/KO.
+
+## Page-Level Priorities
+- Import Center: task flow, mapping, validation, fix path.
+- Output Center: quality gate, traceability, preview and history.
+- Entity pages: predictable detail layout + linked records.
+
+## Responsive Policy
+- Do not sacrifice desktop productivity for mobile aesthetics.
+- Ensure key tasks remain usable on tablet/mobile:
+  - view details
+  - add records
+  - inspect reminders
+  - preview outputs
+

@@ -124,11 +124,24 @@ export type Task = {
 
 export type AuditLog = {
   id: string;
+  actorId: string;
+  // Legacy alias kept for backward compatibility.
   userId: string;
   action: string;
-  targetType: "client" | "task" | "quote" | "compliance";
+  targetType:
+    | "client"
+    | "task"
+    | "quote"
+    | "compliance"
+    | "output"
+    | "import_job"
+    | "property"
+    | "party"
+    | "contract"
+    | "service_request";
   targetId?: string;
   message: string;
+  context?: Record<string, unknown>;
   createdAt: Date;
 };
 
@@ -166,7 +179,9 @@ export type Attachment = {
 
 export type GeneratedOutput = {
   id: string;
+  actorId: string;
   userId: string;
+  sourceQuoteId: string;
   quoteId: string;
   propertyId?: string;
   partyId?: string;
@@ -174,6 +189,7 @@ export type GeneratedOutput = {
   outputFormat: "pdf" | "docx";
   language: Locale;
   title: string;
+  documentNumber: string;
   templateVersionId?: string;
   generatedAt: Date;
 };
@@ -253,6 +269,13 @@ const _freshDb: DB = {
       email: "lijieming@cherry-investment.co.jp",
       passwordHash: "demo_password_hash",
       createdAt: new Date(now - 60 * 24 * 60 * 60 * 1000),
+    },
+    {
+      id: "user_ops",
+      name: "運用担当 佐伯",
+      email: "ops@brokerdesk.local",
+      passwordHash: "ops_demo_password_hash",
+      createdAt: new Date(now - 45 * 24 * 60 * 60 * 1000),
     },
   ],
   properties: [
@@ -543,11 +566,11 @@ const _freshDb: DB = {
     { id: "task_wang_contract", clientId: "client_wang_haoran", title: "王様 一般媒介契約の更新可否を確認（期限10日前）", dueAt: new Date(now + 2 * 24 * 60 * 60 * 1000), status: "pending", createdById: "user_demo", createdAt: new Date(now - 1 * 24 * 60 * 60 * 1000) },
   ],
   auditLogs: [
-    { id: "log_1", userId: "user_demo", action: "client_created", targetType: "client", targetId: "client_yamada", message: "山田 健太 様 を新規登録しました", createdAt: new Date(now - 18 * 24 * 60 * 60 * 1000) },
-    { id: "log_2", userId: "user_demo", action: "quote_created", targetType: "quote", targetId: "quote_yamada_a", message: "山田様 港区グランドタワー プランA を作成しました", createdAt: new Date(now - 14 * 24 * 60 * 60 * 1000) },
-    { id: "log_3", userId: "user_demo", action: "stage_changed", targetType: "client", targetId: "client_li_meiling", message: "李 美玲 様 のステージを「内見済み」に更新しました", createdAt: new Date(now - 1 * 24 * 60 * 60 * 1000) },
-    { id: "log_4", userId: "user_demo", action: "quote_sent", targetType: "quote", targetId: "quote_tamura_a", message: "田村様 世田谷ガーデンテラス プランA を送付済みに更新しました", createdAt: new Date(now - 6 * 24 * 60 * 60 * 1000) },
-    { id: "log_5", userId: "user_demo", action: "client_won", targetType: "client", targetId: "client_nakamura", message: "中村 恵子 様 が成約しました。文京区ソレイユ", createdAt: new Date(now - 8 * 24 * 60 * 60 * 1000) },
+    { id: "log_1", actorId: "user_demo", userId: "user_demo", action: "client_created", targetType: "client", targetId: "client_yamada", message: "山田 健太 様 を新規登録しました", createdAt: new Date(now - 18 * 24 * 60 * 60 * 1000), context: { source: "seed" } },
+    { id: "log_2", actorId: "user_demo", userId: "user_demo", action: "quote_created", targetType: "quote", targetId: "quote_yamada_a", message: "山田様 港区グランドタワー プランA を作成しました", createdAt: new Date(now - 14 * 24 * 60 * 60 * 1000), context: { source: "seed" } },
+    { id: "log_3", actorId: "user_demo", userId: "user_demo", action: "stage_changed", targetType: "client", targetId: "client_li_meiling", message: "李 美玲 様 のステージを「内見済み」に更新しました", createdAt: new Date(now - 1 * 24 * 60 * 60 * 1000), context: { source: "seed" } },
+    { id: "log_4", actorId: "user_demo", userId: "user_demo", action: "quote_sent", targetType: "quote", targetId: "quote_tamura_a", message: "田村様 世田谷ガーデンテラス プランA を送付済みに更新しました", createdAt: new Date(now - 6 * 24 * 60 * 60 * 1000), context: { source: "seed" } },
+    { id: "log_5", actorId: "user_demo", userId: "user_demo", action: "client_won", targetType: "client", targetId: "client_nakamura", message: "中村 恵子 様 が成約しました。文京区ソレイユ", createdAt: new Date(now - 8 * 24 * 60 * 60 * 1000), context: { source: "seed" } },
   ],
   outputTemplateSettings: [cherryOutputTemplate],
   outputTemplateVersions: [
@@ -617,7 +640,32 @@ export type DashboardQuoteItem = Quotation & {
   property?: Property;
 };
 
-export async function getDefaultUser() {
+function isValidImportStatusTransition(from: ImportJobStatus, to: ImportJobStatus, allowRetry: boolean): boolean {
+  if (from === to) return true;
+  if (allowRetry && to === "queued") return true;
+  if (from === "queued" && to === "mapped") return true;
+  if (from === "mapped" && (to === "queued" || to === "completed")) return true;
+  return false;
+}
+
+export async function listUsers(limit = 50): Promise<User[]> {
+  return db.users
+    .slice()
+    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+    .slice(0, limit)
+    .map((item) => ({ ...item }));
+}
+
+export async function getUserById(userId: string): Promise<User | null> {
+  const found = db.users.find((item) => item.id === userId);
+  return found ? { ...found } : null;
+}
+
+export async function getDefaultUser(preferredUserId?: string) {
+  if (preferredUserId) {
+    const found = db.users.find((item) => item.id === preferredUserId);
+    if (found) return found;
+  }
   return db.users[0] ?? null;
 }
 
@@ -767,6 +815,7 @@ export async function updateImportJobMapping(input: {
   validationMessage?: string;
   notes?: string;
   status?: ImportJobStatus;
+  allowRetry?: boolean;
 }): Promise<ImportJob | null> {
   const job = db.importJobs.find((item) => item.userId === input.userId && item.id === input.jobId);
   if (!job) return null;
@@ -777,6 +826,9 @@ export async function updateImportJobMapping(input: {
     job.notes = input.notes.trim() || undefined;
   }
   if (input.status) {
+    if (!isValidImportStatusTransition(job.status, input.status, Boolean(input.allowRetry))) {
+      throw new Error(`取込ジョブ状態遷移が不正です: ${job.status} -> ${input.status}`);
+    }
     job.status = input.status;
   }
   job.updatedAt = new Date();
@@ -847,6 +899,8 @@ export async function getGeneratedOutputById(input: {
 
 export async function addGeneratedOutput(input: {
   userId: string;
+  actorId?: string;
+  sourceQuoteId?: string;
   quoteId: string;
   propertyId?: string;
   partyId?: string;
@@ -854,11 +908,14 @@ export async function addGeneratedOutput(input: {
   outputFormat: GeneratedOutput["outputFormat"];
   language: Locale;
   title: string;
+  documentNumber: string;
   templateVersionId?: string;
 }): Promise<GeneratedOutput> {
   const output: GeneratedOutput = {
     id: makeId("out"),
+    actorId: input.actorId ?? input.userId,
     userId: input.userId,
+    sourceQuoteId: input.sourceQuoteId ?? input.quoteId,
     quoteId: input.quoteId,
     propertyId: input.propertyId,
     partyId: input.partyId,
@@ -866,6 +923,7 @@ export async function addGeneratedOutput(input: {
     outputFormat: input.outputFormat,
     language: input.language,
     title: input.title.trim(),
+    documentNumber: input.documentNumber.trim(),
     templateVersionId: input.templateVersionId,
     generatedAt: new Date(),
   };
@@ -971,7 +1029,7 @@ export async function getDashboardData(userId: string) {
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
     .slice(0, 6);
   const recentAuditLogs = db.auditLogs
-    .filter((item) => item.userId === userId)
+    .filter((item) => item.actorId === userId || item.userId === userId)
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
     .slice(0, 8);
 
@@ -994,6 +1052,47 @@ export async function getDashboardData(userId: string) {
 }
 
 export type ClientListSort = "follow_up" | "recent_contact" | "recent_created";
+
+export type AuditLogFilter = {
+  actorId?: string;
+  action?: string;
+  targetType?: AuditLog["targetType"] | "all";
+  query?: string;
+  from?: Date;
+  to?: Date;
+  limit?: number;
+};
+
+export async function listAuditLogs(userId: string, filter: AuditLogFilter = {}): Promise<AuditLog[]> {
+  const query = filter.query?.trim().toLowerCase() ?? "";
+  const fromTime = filter.from?.getTime();
+  const toTime = filter.to?.getTime();
+  const limit = filter.limit ?? 200;
+
+  return db.auditLogs
+    .filter((item) => item.actorId === userId || item.userId === userId)
+    .filter((item) => (filter.actorId ? item.actorId === filter.actorId : true))
+    .filter((item) => (filter.action ? item.action === filter.action : true))
+    .filter((item) => (filter.targetType && filter.targetType !== "all" ? item.targetType === filter.targetType : true))
+    .filter((item) => {
+      const timestamp = item.createdAt.getTime();
+      if (typeof fromTime === "number" && timestamp < fromTime) return false;
+      if (typeof toTime === "number" && timestamp > toTime) return false;
+      return true;
+    })
+    .filter((item) => {
+      if (!query) return true;
+      return (
+        item.message.toLowerCase().includes(query) ||
+        item.action.toLowerCase().includes(query) ||
+        item.targetType.toLowerCase().includes(query) ||
+        (item.targetId ?? "").toLowerCase().includes(query)
+      );
+    })
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+    .slice(0, limit)
+    .map((item) => ({ ...item }));
+}
 
 export type ClientListFilter = {
   query?: string;
@@ -1325,19 +1424,27 @@ export async function appendFollowUp(input: {
 }
 
 export async function addAuditLog(input: {
-  userId: string;
+  userId?: string;
+  actorId?: string;
   action: string;
   targetType: AuditLog["targetType"];
   targetId?: string;
   message: string;
+  context?: Record<string, unknown>;
 }) {
+  const actorId = input.actorId ?? input.userId;
+  if (!actorId) {
+    throw new Error("監査ログに必要な actorId が不足しています。");
+  }
   const log: AuditLog = {
     id: makeId("audit"),
-    userId: input.userId,
+    actorId,
+    userId: actorId,
     action: input.action,
     targetType: input.targetType,
     targetId: input.targetId,
     message: input.message,
+    context: input.context,
     createdAt: new Date(),
   };
   db.auditLogs.unshift(log);

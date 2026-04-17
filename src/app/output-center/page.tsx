@@ -41,12 +41,21 @@ const outputCenterCopy = {
     language: "言語",
     generateDocument: "帳票を生成",
     recentOutputs: "出力履歴",
+    templateHitTitle: "テンプレート命中率",
+    templateHitDesc: "現在の履歴フィルタ条件に対する版管理適用状況",
+    withTemplateVersion: "版あり",
+    withoutTemplateVersion: "版未設定",
+    topTemplateVersions: "上位テンプレート版",
     viewAll: "すべて表示",
     allType: "すべての種別",
     allLang: "すべての言語",
     allFormat: "すべての形式",
+    allTemplate: "すべての版",
+    templateUnbound: "版未設定",
+    templateVersion: "テンプレート版",
     filterApply: "適用",
     filterReset: "リセット",
+    exportHitRate: "命中率CSV",
     emptyFilteredOutputs: "現在のフィルタ条件に一致する出力履歴がありません。",
     previewMode: "プレビュー",
     download: "ダウンロード",
@@ -96,12 +105,21 @@ const outputCenterCopy = {
     language: "语言",
     generateDocument: "生成文书",
     recentOutputs: "输出历史",
+    templateHitTitle: "模板命中率",
+    templateHitDesc: "基于当前历史筛选条件的版本管理覆盖率",
+    withTemplateVersion: "有版本绑定",
+    withoutTemplateVersion: "未绑定版本",
+    topTemplateVersions: "模板版本 Top",
     viewAll: "查看全部",
     allType: "全部类型",
     allLang: "全部语言",
     allFormat: "全部格式",
+    allTemplate: "全部版本",
+    templateUnbound: "未绑定版本",
+    templateVersion: "模板版本",
     filterApply: "应用",
     filterReset: "重置",
+    exportHitRate: "命中率 CSV",
     emptyFilteredOutputs: "当前筛选条件下暂无输出记录。",
     previewMode: "预览模式",
     download: "下载",
@@ -151,12 +169,21 @@ const outputCenterCopy = {
     language: "언어",
     generateDocument: "문서 생성",
     recentOutputs: "출력 이력",
+    templateHitTitle: "템플릿 적중률",
+    templateHitDesc: "현재 이력 필터 기준 버전 관리 적용률",
+    withTemplateVersion: "버전 연결",
+    withoutTemplateVersion: "버전 미설정",
+    topTemplateVersions: "상위 템플릿 버전",
     viewAll: "전체 보기",
     allType: "전체 유형",
     allLang: "전체 언어",
     allFormat: "전체 형식",
+    allTemplate: "전체 버전",
+    templateUnbound: "버전 미설정",
+    templateVersion: "템플릿 버전",
     filterApply: "적용",
     filterReset: "초기화",
+    exportHitRate: "적중률 CSV",
     emptyFilteredOutputs: "현재 필터 조건에 맞는 출력 이력이 없습니다.",
     previewMode: "미리보기",
     download: "다운로드",
@@ -204,6 +231,7 @@ type OutputCenterPageProps = {
     historyType?: string;
     historyLang?: string;
     historyFormat?: string;
+    historyTemplate?: string;
     flash?: string;
     issues?: string;
     generatedOutputId?: string;
@@ -227,12 +255,49 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
       ? params.historyLang
       : "all";
   const historyFormat = params?.historyFormat === "docx" || params?.historyFormat === "pdf" ? params.historyFormat : "all";
+  const historyTemplate = String(params?.historyTemplate ?? "all").trim() || "all";
+  const templateFilterOptions = (() => {
+    const map = new Map<string, string>();
+    outputs.forEach((item) => {
+      if (!item.templateVersionId) return;
+      if (!map.has(item.templateVersionId)) {
+        map.set(item.templateVersionId, item.templateVersionLabel ?? item.templateVersionId);
+      }
+    });
+    return [...map.entries()]
+      .map(([id, label]) => ({ id, label }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  })();
   const filteredOutputs = outputs.filter(
     (item) =>
       (historyType === "all" ? true : item.outputType === historyType) &&
       (historyLang === "all" ? true : item.language === historyLang) &&
-      (historyFormat === "all" ? true : item.outputFormat === historyFormat)
+      (historyFormat === "all" ? true : item.outputFormat === historyFormat) &&
+      (historyTemplate === "all"
+        ? true
+        : historyTemplate === "unbound"
+          ? !item.templateVersionId
+          : item.templateVersionId === historyTemplate)
   );
+  const templateBoundCount = filteredOutputs.filter((item) => Boolean(item.templateVersionId)).length;
+  const templateHitRate = filteredOutputs.length > 0 ? Math.round((templateBoundCount / filteredOutputs.length) * 100) : 0;
+  const unboundCount = Math.max(0, filteredOutputs.length - templateBoundCount);
+  const templateVersionStats = filteredOutputs
+    .filter((item) => Boolean(item.templateVersionId))
+    .reduce<Map<string, { id: string; label: string; count: number }>>((acc, item) => {
+      const key = item.templateVersionId as string;
+      const existing = acc.get(key) ?? {
+        id: key,
+        label: item.templateVersionLabel ?? key,
+        count: 0,
+      };
+      existing.count += 1;
+      acc.set(key, existing);
+      return acc;
+    }, new Map());
+  const topTemplateVersions = [...templateVersionStats.values()]
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 3);
   const latestOutputs = filteredOutputs.slice(0, 3);
   const requestedType = String(params?.type ?? "").trim();
   const selectedType: OutputDocType = isOutputDocType(requestedType) ? requestedType : "assumption_memo";
@@ -263,7 +328,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
     locale === "zh" ? "zh-CN" : locale === "ko" ? "ko-KR" : "ja-JP"
   );
   const previewDocId = `BD-${selectedType.toUpperCase()}-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}`;
-  const returnToCurrent = `/output-center?type=${selectedType}&format=${selectedFormat}&lang=${selectedLanguage}&quoteId=${selectedQuote?.id ?? ""}&historyType=${historyType}&historyLang=${historyLang}&historyFormat=${historyFormat}`;
+  const returnToCurrent = `/output-center?type=${selectedType}&format=${selectedFormat}&lang=${selectedLanguage}&quoteId=${selectedQuote?.id ?? ""}&historyType=${historyType}&historyLang=${historyLang}&historyFormat=${historyFormat}&historyTemplate=${historyTemplate}`;
   const highlightOutputId = String(params?.generatedOutputId ?? "").trim();
   const highlightedOutput = highlightOutputId ? outputs.find((o) => o.id === highlightOutputId) : undefined;
   const isHighlightFiltered = highlightedOutput ? !filteredOutputs.some((o) => o.id === highlightOutputId) : false;
@@ -372,6 +437,9 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
   } as const;
   const flashKey = String(params?.flash ?? "").trim() as keyof typeof flashMap;
   const flashMessage = flashMap[flashKey]?.[locale];
+  const templateVersionQuery = historyTemplate !== "all" ? `&templateVersion=${encodeURIComponent(historyTemplate)}` : "";
+  const outputsExportHref = `/api/hub/export?scope=outputs&locale=${locale}${historyType !== "all" ? `&type=${historyType}` : ""}${historyLang !== "all" ? `&lang=${historyLang}` : ""}${historyFormat !== "all" ? `&format=${historyFormat}` : ""}${templateVersionQuery}`;
+  const outputsHitRateExportHref = `/api/hub/export?scope=outputs_hitrate&locale=${locale}${historyType !== "all" ? `&type=${historyType}` : ""}${historyLang !== "all" ? `&lang=${historyLang}` : ""}${historyFormat !== "all" ? `&format=${historyFormat}` : ""}${templateVersionQuery}`;
 
   return (
     <div className="space-y-8">
@@ -382,7 +450,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
         </div>
         <div className="flex gap-3">
           <Link
-            href={`/api/hub/export?scope=outputs&locale=${locale}${historyType !== "all" ? `&type=${historyType}` : ""}${historyLang !== "all" ? `&lang=${historyLang}` : ""}${historyFormat !== "all" ? `&format=${historyFormat}` : ""}`}
+            href={outputsExportHref}
             className="inline-flex items-center gap-2 rounded-lg bg-[#e9effc] px-4 py-2 text-sm font-semibold text-slate-800"
           >
             <span className="material-symbols-outlined text-[18px]">history</span>
@@ -426,6 +494,54 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
         </section>
       ) : null}
 
+      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-bold text-slate-900">{copy.templateHitTitle}</h2>
+            <p className="mt-0.5 text-xs text-slate-500">{copy.templateHitDesc}</p>
+          </div>
+          <p className="text-3xl font-black tabular-nums text-[#001e40]">{templateHitRate}%</p>
+        </div>
+        <div className="mt-2 flex justify-end">
+          <Link href={outputsHitRateExportHref} className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50">
+            {copy.exportHitRate}
+          </Link>
+        </div>
+        <div className="mt-3 grid gap-3 md:grid-cols-3">
+          <div className="rounded-lg bg-[#edf2fd] px-3 py-2">
+            <p className="text-[11px] text-slate-500">{copy.withTemplateVersion}</p>
+            <p className="text-xl font-black tabular-nums text-[#001e40]">{templateBoundCount}</p>
+          </div>
+          <div className="rounded-lg bg-slate-50 px-3 py-2">
+            <p className="text-[11px] text-slate-500">{copy.withoutTemplateVersion}</p>
+            <p className="text-xl font-black tabular-nums text-slate-700">{unboundCount}</p>
+          </div>
+          <div className="rounded-lg bg-slate-50 px-3 py-2">
+            <p className="text-[11px] text-slate-500">{copy.recentOutputs}</p>
+            <p className="text-xl font-black tabular-nums text-slate-700">{filteredOutputs.length}</p>
+          </div>
+        </div>
+        <div className="mt-3">
+          <p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-slate-500">{copy.topTemplateVersions}</p>
+          {topTemplateVersions.length === 0 ? (
+            <p className="text-xs text-slate-500">{copy.emptyFilteredOutputs}</p>
+          ) : (
+            <div className="space-y-2">
+              {topTemplateVersions.map((version) => (
+                <div key={`tpl-hit-${version.id}`} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="truncate text-xs font-semibold text-slate-800">{version.label}</p>
+                    <p className="text-xs font-bold tabular-nums text-[#001e40]">
+                      {version.count} / {filteredOutputs.length}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
       <section className="grid gap-5 xl:grid-cols-12">
         {outputTypes.map((type) => {
           const selected = type === selectedType;
@@ -451,7 +567,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                   {copy.selected}
                 </div>
               ) : (
-                <Link href={`/output-center?type=${type}&format=${selectedFormat}&lang=${selectedLanguage}&quoteId=${selectedQuote?.id ?? ""}&historyType=${historyType}&historyLang=${historyLang}&historyFormat=${historyFormat}`} className="mt-5 inline-flex w-full items-center justify-center rounded-lg bg-[#edf2fd] py-2 text-xs font-bold text-slate-700 transition hover:bg-[#e1eafc]">
+                <Link href={`/output-center?type=${type}&format=${selectedFormat}&lang=${selectedLanguage}&quoteId=${selectedQuote?.id ?? ""}&historyType=${historyType}&historyLang=${historyLang}&historyFormat=${historyFormat}&historyTemplate=${historyTemplate}`} className="mt-5 inline-flex w-full items-center justify-center rounded-lg bg-[#edf2fd] py-2 text-xs font-bold text-slate-700 transition hover:bg-[#e1eafc]">
                   {copy.selectTemplate}
                 </Link>
               )}
@@ -586,13 +702,13 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
             <div className="mb-5 flex items-center justify-between">
               <h2 className="text-xs font-black uppercase tracking-widest text-slate-700">{copy.recentOutputs}</h2>
               <Link
-                href={`/api/hub/export?scope=outputs&locale=${locale}${historyType !== "all" ? `&type=${historyType}` : ""}${historyLang !== "all" ? `&lang=${historyLang}` : ""}${historyFormat !== "all" ? `&format=${historyFormat}` : ""}`}
+                href={outputsExportHref}
                 className="text-[11px] font-bold text-[#001e40] hover:underline"
               >
                 {copy.viewAll}
               </Link>
             </div>
-            <form action="/output-center" method="get" className="mb-4 grid grid-cols-1 gap-2 md:grid-cols-5">
+            <form action="/output-center" method="get" className="mb-4 grid grid-cols-1 gap-2 md:grid-cols-6">
               <input type="hidden" name="type" value={selectedType} />
               <input type="hidden" name="format" value={selectedFormat} />
               <input type="hidden" name="lang" value={selectedLanguage} />
@@ -628,6 +744,19 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                 <option value="pdf">PDF</option>
                 <option value="docx">DOCX</option>
               </select>
+              <select
+                name="historyTemplate"
+                defaultValue={historyTemplate}
+                className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-700"
+              >
+                <option value="all">{copy.allTemplate}</option>
+                <option value="unbound">{copy.templateUnbound}</option>
+                {templateFilterOptions.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
               <button type="submit" className="rounded-lg border border-[#001e40] px-2 py-1.5 text-[11px] font-bold text-[#001e40] hover:bg-[#edf2fd]">
                 {copy.filterApply}
               </button>
@@ -653,6 +782,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                       <p className="text-[11px] tabular-nums text-slate-400">
                         {formatDate(highlightedOutput.generatedAt, locale)} • {highlightedOutput.outputFormat.toUpperCase()} • {highlightedOutput.language.toUpperCase()}
                       </p>
+                      <p className="truncate text-[10px] font-medium text-slate-500">{copy.docIdLabel}: {highlightedOutput.documentNumber}</p>
                       <p className="truncate text-[10px] text-slate-500">
                         {highlightedOutput.relatedProperty ?? "-"} / {highlightedOutput.relatedParty ?? "-"}
                       </p>
@@ -673,6 +803,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                     <p className="text-[11px] tabular-nums text-slate-400">
                       {formatDate(output.generatedAt, locale)} • {output.outputFormat.toUpperCase()} • {output.language.toUpperCase()}
                     </p>
+                    <p className="truncate text-[10px] font-medium text-slate-500">{copy.docIdLabel}: {output.documentNumber}</p>
                     {output.templateVersionLabel ? (
                       <span className="inline-flex items-center gap-0.5 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">
                         <span className="material-symbols-outlined text-[11px]">layers</span>
@@ -705,11 +836,11 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                   <span className="text-xs font-bold uppercase tracking-widest text-slate-400">{copy.previewMode}</span>
                   <div className="h-4 w-px bg-slate-200" />
                   <div className="flex items-center gap-2">
-                    <Link href={`/output-center?type=${selectedType}&format=${selectedFormat}&lang=${selectedLanguage}&quoteId=${selectedQuote?.id ?? ""}&historyType=${historyType}&historyLang=${historyLang}&historyFormat=${historyFormat}&zoom=75`} className="rounded p-1 text-slate-500 hover:bg-slate-100">
+                    <Link href={`/output-center?type=${selectedType}&format=${selectedFormat}&lang=${selectedLanguage}&quoteId=${selectedQuote?.id ?? ""}&historyType=${historyType}&historyLang=${historyLang}&historyFormat=${historyFormat}&historyTemplate=${historyTemplate}&zoom=75`} className="rounded p-1 text-slate-500 hover:bg-slate-100">
                       <span className="material-symbols-outlined text-[18px]">zoom_out</span>
                     </Link>
                     <span className="text-[11px] font-bold tabular-nums">{selectedZoom}%</span>
-                    <Link href={`/output-center?type=${selectedType}&format=${selectedFormat}&lang=${selectedLanguage}&quoteId=${selectedQuote?.id ?? ""}&historyType=${historyType}&historyLang=${historyLang}&historyFormat=${historyFormat}&zoom=100`} className="rounded p-1 text-slate-500 hover:bg-slate-100">
+                    <Link href={`/output-center?type=${selectedType}&format=${selectedFormat}&lang=${selectedLanguage}&quoteId=${selectedQuote?.id ?? ""}&historyType=${historyType}&historyLang=${historyLang}&historyFormat=${historyFormat}&historyTemplate=${historyTemplate}&zoom=100`} className="rounded p-1 text-slate-500 hover:bg-slate-100">
                       <span className="material-symbols-outlined text-[18px]">zoom_in</span>
                     </Link>
                   </div>

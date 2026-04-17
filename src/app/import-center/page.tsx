@@ -4,6 +4,7 @@ import {
   createImportJobAction,
   executePropertyImportAction,
   registerAttachmentAction,
+  retryImportJobAction,
   resolveImportValidationAction,
   updateImportJobMappingAction,
   uploadAndParseExcelAction,
@@ -12,6 +13,11 @@ import { FormDraftAssist } from "@/components/form-draft-assist";
 import { PageFlashBanner } from "@/components/page-flash-banner";
 import { formatDate } from "@/lib/format";
 import { t } from "@/lib/i18n";
+import {
+  parseImportValidationPayload,
+  type ImportValidationIssueAction,
+  type ImportValidationIssueLevel,
+} from "@/lib/import-mapping";
 import { getLocale, type Locale } from "@/lib/locale";
 import { listHubAttachments, listHubImportJobs, type HubImportJobItem } from "@/lib/hub";
 
@@ -107,6 +113,10 @@ function getCopy(locale: Locale) {
       recentImportHistory: "最近の取込履歴",
       viewArchive: "アーカイブ表示",
       readinessTitle: "取込準備度",
+      issueStatsTitle: "問題コード集計",
+      issueStatsDesc: "直近ジョブの検証結果をコード単位で集計",
+      issueTrendTitle: "問題コード推移（7日）",
+      issueTrendDesc: "日別の検証件数（Critical / Warning / Info）",
       mapped: "マッピング済",
       alerts: "アラート",
       validationLog: "検証ログ",
@@ -211,6 +221,10 @@ function getCopy(locale: Locale) {
       recentImportHistory: "最近导入历史",
       viewArchive: "查看归档",
       readinessTitle: "导入就绪度",
+      issueStatsTitle: "问题码聚合",
+      issueStatsDesc: "按问题码统计最近任务的校验结果",
+      issueTrendTitle: "问题码趋势（7天）",
+      issueTrendDesc: "按天统计校验条目（Critical / Warning / Info）",
       mapped: "已映射",
       alerts: "告警",
       validationLog: "校验日志",
@@ -314,6 +328,10 @@ function getCopy(locale: Locale) {
       recentImportHistory: "최근 가져오기 이력",
       viewArchive: "보관 이력 보기",
       readinessTitle: "가져오기 준비도",
+      issueStatsTitle: "문제 코드 집계",
+      issueStatsDesc: "최근 작업의 검증 결과를 코드별로 집계",
+      issueTrendTitle: "문제 코드 추이 (7일)",
+      issueTrendDesc: "일자별 검증 건수 (Critical / Warning / Info)",
       mapped: "매핑 완료",
       alerts: "알림",
       validationLog: "검증 로그",
@@ -459,28 +477,141 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
     target: previewTargetFields[index],
   }));
   const previewValues = previewRows.map((row) => (row.target ? `${row.source} -> ${row.target}` : t(locale, "common.notSet")));
-  const validationItems = jobs
+  const actionLabelByOperation: Record<ImportValidationIssueAction, string> = {
+    resolve_now: copy.actionResolveNow,
+    auto_fix: copy.actionAutoFix,
+    apply_mapping: copy.actionApplyMapping,
+    retry: locale === "zh" ? "重试任务" : locale === "ko" ? "재시도" : "再試行",
+  };
+  const codeTitleMap: Record<string, string> = {
+    missing_required_mapping: copy.validationUnmappedRequired,
+    unknown_target_fields: copy.validationFormatMismatch,
+    mapping_ready: copy.validationSchemaSuggestion,
+    import_zero_success: locale === "zh" ? "导入结果为 0" : locale === "ko" ? "가져오기 성공 0건" : "取込成功 0 件",
+    import_row_missing_name:
+      locale === "zh" ? "存在空名称行" : locale === "ko" ? "매물명 누락 행 있음" : "物件名未入力行あり",
+    import_row_invalid_listing_price:
+      locale === "zh" ? "价格格式异常" : locale === "ko" ? "가격 형식 오류" : "価格フィールド異常",
+    import_row_unknown_error:
+      locale === "zh" ? "导入处理异常" : locale === "ko" ? "가져오기 처리 오류" : "取込処理エラー",
+    import_partial_completed:
+      locale === "zh" ? "已部分完成导入" : locale === "ko" ? "부분 가져오기 완료" : "一部取込完了",
+    import_completed:
+      locale === "zh" ? "导入完成" : locale === "ko" ? "가져오기 완료" : "取込完了",
+    validation_resolved:
+      locale === "zh" ? "校验已处理" : locale === "ko" ? "검증 조치 완료" : "検証対応済み",
+    retry_queued:
+      locale === "zh" ? "已进入重试队列" : locale === "ko" ? "재시도 대기열 등록" : "再試行キュー登録済み",
+  };
+  const validationItems: Array<{
+    id: string;
+    jobId: string;
+    level: ImportValidationIssueLevel;
+    title: string;
+    message: string;
+    operation: ImportValidationIssueAction;
+    actionLabel: string;
+  }> = jobs
     .filter((job) => Boolean(job.validationMessage) || job.status !== "completed")
-    .slice(0, 4)
-    .map((job, index) => ({
-      id: job.id,
-      level: index === 0 ? "critical" : index === 1 ? "warning" : "info",
-      title:
-        index === 0
-          ? copy.validationUnmappedRequired
-          : index === 1
-            ? copy.validationFormatMismatch
-            : copy.validationSchemaSuggestion,
-      message:
-        job.validationMessage ??
-        (index === 0
-          ? copy.validationUnmappedMsg
-          : index === 1
-            ? copy.validationFormatMsg
-            : copy.validationSchemaMsg),
-      action:
-        index === 0 ? copy.actionResolveNow : index === 1 ? copy.actionAutoFix : copy.actionApplyMapping,
-    }));
+    .flatMap((job) => {
+      const payload = parseImportValidationPayload(job.validationMessage);
+      if (!payload || payload.issues.length === 0) {
+        return [
+          {
+            id: `${job.id}-fallback`,
+            jobId: job.id,
+            level: job.status === "queued" ? ("critical" as const) : ("warning" as const),
+            title: job.status === "queued" ? copy.validationUnmappedRequired : copy.validationFormatMismatch,
+            message: job.validationMessage ?? copy.validationSchemaMsg,
+            operation: (job.status === "queued" ? "resolve_now" : "auto_fix") as ImportValidationIssueAction,
+            actionLabel: job.status === "queued" ? copy.actionResolveNow : copy.actionAutoFix,
+          },
+        ];
+      }
+      return payload.issues.map((issue, issueIndex) => {
+        const suffix = typeof issue.count === "number" ? ` (${issue.count})` : "";
+        return {
+          id: `${job.id}-${issue.code}-${issueIndex}`,
+          jobId: job.id,
+          level: issue.level,
+          title: `${codeTitleMap[issue.code] ?? copy.validationSchemaSuggestion}${suffix}`,
+          message: issue.message || payload.summary,
+          operation: issue.action,
+          actionLabel: actionLabelByOperation[issue.action] ?? copy.actionResolveNow,
+        };
+      });
+    })
+    .slice(0, 8);
+  const issueCodeStats = (() => {
+    const map = new Map<string, { code: string; label: string; total: number; critical: number; warning: number; info: number }>();
+    jobs.forEach((job) => {
+      const payload = parseImportValidationPayload(job.validationMessage);
+      if (!payload) return;
+      payload.issues.forEach((issue) => {
+        const existing = map.get(issue.code) ?? {
+          code: issue.code,
+          label: codeTitleMap[issue.code] ?? issue.code,
+          total: 0,
+          critical: 0,
+          warning: 0,
+          info: 0,
+        };
+        const count = typeof issue.count === "number" && issue.count > 0 ? issue.count : 1;
+        existing.total += count;
+        if (issue.level === "critical") existing.critical += count;
+        if (issue.level === "warning") existing.warning += count;
+        if (issue.level === "info") existing.info += count;
+        map.set(issue.code, existing);
+      });
+    });
+    return [...map.values()]
+      .sort((a, b) => {
+        const scoreA = a.critical * 10000 + a.warning * 100 + a.total;
+        const scoreB = b.critical * 10000 + b.warning * 100 + b.total;
+        return scoreB - scoreA;
+      })
+      .slice(0, 5);
+  })();
+  const issueTrendDays = (() => {
+    const today = new Date();
+    const dayList = Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(today);
+      date.setHours(0, 0, 0, 0);
+      date.setDate(date.getDate() - (6 - index));
+      const key = date.toISOString().slice(0, 10);
+      return {
+        key,
+        label: new Intl.DateTimeFormat(
+          locale === "zh" ? "zh-CN" : locale === "ko" ? "ko-KR" : "ja-JP",
+          { month: "numeric", day: "numeric" }
+        ).format(date),
+        critical: 0,
+        warning: 0,
+        info: 0,
+        total: 0,
+      };
+    });
+    const byDay = new Map(dayList.map((item) => [item.key, item]));
+    jobs.forEach((job) => {
+      const payload = parseImportValidationPayload(job.validationMessage);
+      if (!payload) return;
+      const rawDate = payload.updatedAt || job.createdAt.toISOString();
+      const date = new Date(rawDate);
+      if (Number.isNaN(date.getTime())) return;
+      const key = date.toISOString().slice(0, 10);
+      const bucket = byDay.get(key);
+      if (!bucket) return;
+      payload.issues.forEach((issue) => {
+        const count = typeof issue.count === "number" && issue.count > 0 ? issue.count : 1;
+        bucket.total += count;
+        if (issue.level === "critical") bucket.critical += count;
+        if (issue.level === "warning") bucket.warning += count;
+        if (issue.level === "info") bucket.info += count;
+      });
+    });
+    return dayList;
+  })();
+  const maxIssueTrendTotal = Math.max(1, ...issueTrendDays.map((item) => item.total));
   const flashMap = {
     excel_imported: {
       ja: "物件を取り込みました。",
@@ -507,6 +638,11 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
       zh: "校验日志已更新。",
       ko: "검증 로그를 업데이트했습니다.",
     },
+    import_job_retried: {
+      ja: "取込ジョブを再試行キューへ戻しました。",
+      zh: "导入任务已退回重试队列。",
+      ko: "가져오기 작업을 재시도 큐로 되돌렸습니다.",
+    },
     attachment_registered: {
       ja: "添付を登録しました。",
       zh: "附件已登记。",
@@ -532,7 +668,19 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
   }
   if (xlsxJob?.status === "completed" && xlsxJob.validationMessage) {
     try {
-      xlsxResult = JSON.parse(xlsxJob.validationMessage) as ExcelImportResult;
+      const payload = parseImportValidationPayload(xlsxJob.validationMessage);
+      if (payload) {
+        const successCount = Number(payload.metrics?.successCount ?? 0);
+        const skippedRows = Array.isArray(payload.details?.skippedRows)
+          ? (payload.details?.skippedRows as Array<{ row: number; reason: string }>)
+          : [];
+        xlsxResult = {
+          successCount,
+          skipped: skippedRows,
+        };
+      } else {
+        xlsxResult = JSON.parse(xlsxJob.validationMessage) as ExcelImportResult;
+      }
     } catch {
       xlsxResult = null;
     }
@@ -961,6 +1109,52 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
             <div className="absolute -bottom-12 -right-12 h-40 w-40 rounded-full bg-white/5 blur-3xl" />
           </article>
 
+          <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <h3 className="text-xs font-black uppercase tracking-widest text-[#1f477b]">{copy.issueStatsTitle}</h3>
+            <p className="mt-1 text-[11px] text-slate-500">{copy.issueStatsDesc}</p>
+            <div className="mt-3 space-y-2">
+              {issueCodeStats.length === 0 ? <p className="text-xs text-slate-500">{copy.noFurtherAlerts}</p> : null}
+              {issueCodeStats.map((item) => (
+                <div key={`issue-stat-${item.code}`} className="rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="truncate text-xs font-semibold text-slate-800">{item.label}</p>
+                    <span className="rounded bg-white px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-slate-700">
+                      {item.total}
+                    </span>
+                  </div>
+                  <div className="mt-1.5 flex gap-1.5 text-[10px]">
+                    <span className="rounded bg-red-50 px-1.5 py-0.5 font-semibold text-red-600">C {item.critical}</span>
+                    <span className="rounded bg-amber-50 px-1.5 py-0.5 font-semibold text-amber-700">W {item.warning}</span>
+                    <span className="rounded bg-blue-50 px-1.5 py-0.5 font-semibold text-blue-700">I {item.info}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </article>
+
+          <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <h3 className="text-xs font-black uppercase tracking-widest text-[#1f477b]">{copy.issueTrendTitle}</h3>
+            <p className="mt-1 text-[11px] text-slate-500">{copy.issueTrendDesc}</p>
+            <div className="mt-3 space-y-2">
+              {issueTrendDays.map((day) => (
+                <div key={`issue-trend-${day.key}`} className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2">
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <p className="text-[11px] font-semibold text-slate-700">{day.label}</p>
+                    <p className="text-[11px] font-bold tabular-nums text-slate-800">{day.total}</p>
+                  </div>
+                  <div className="h-1.5 overflow-hidden rounded-full bg-slate-200">
+                    <div className="h-full bg-blue-500" style={{ width: `${Math.round((day.total / maxIssueTrendTotal) * 100)}%` }} />
+                  </div>
+                  <div className="mt-1.5 flex gap-1.5 text-[10px]">
+                    <span className="rounded bg-red-50 px-1.5 py-0.5 font-semibold text-red-600">C {day.critical}</span>
+                    <span className="rounded bg-amber-50 px-1.5 py-0.5 font-semibold text-amber-700">W {day.warning}</span>
+                    <span className="rounded bg-blue-50 px-1.5 py-0.5 font-semibold text-blue-700">I {day.info}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </article>
+
           <article className="flex flex-col overflow-hidden rounded-xl bg-[#e6eeff]">
             <div className="flex items-center justify-between border-b border-slate-200/50 px-5 py-4">
               <h3 className="text-xs font-black uppercase tracking-widest text-[#1f477b]">{copy.validationLog}</h3>
@@ -978,26 +1172,32 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                 >
                   <p className="text-xs font-bold text-slate-900">{item.title}</p>
                   <p className="mt-1 text-[11px] leading-relaxed text-slate-500">{item.message}</p>
-                  <form action={resolveImportValidationAction}>
-                    <input type="hidden" name="jobId" value={item.id} />
-                    <input
-                      type="hidden"
-                      name="operation"
-                      value={item.level === "critical" ? "resolve_now" : item.level === "warning" ? "auto_fix" : "apply_mapping"}
-                    />
-                    <button
-                      className={
-                        "mt-3 rounded-md px-3 py-1.5 text-[10px] font-bold " +
-                        (item.level === "critical"
-                          ? "bg-red-600 text-white"
-                          : item.level === "warning"
-                            ? "bg-[#592300] text-white"
-                            : "text-[#001e40] hover:underline")
-                      }
-                    >
-                      {item.action}
-                    </button>
-                  </form>
+                  {item.operation !== "retry" ? (
+                    <form action={resolveImportValidationAction}>
+                      <input type="hidden" name="jobId" value={item.jobId} />
+                      <input type="hidden" name="operation" value={item.operation} />
+                      <button
+                        className={
+                          "mt-3 rounded-md px-3 py-1.5 text-[10px] font-bold " +
+                          (item.level === "critical"
+                            ? "bg-red-600 text-white"
+                            : item.level === "warning"
+                              ? "bg-[#592300] text-white"
+                              : "text-[#001e40] hover:underline")
+                        }
+                      >
+                        {item.actionLabel}
+                      </button>
+                    </form>
+                  ) : null}
+                  {item.operation === "retry" || item.level === "critical" ? (
+                    <form action={retryImportJobAction} className="mt-2">
+                      <input type="hidden" name="jobId" value={item.jobId} />
+                      <button className="rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5 text-[10px] font-bold text-slate-700 hover:bg-slate-100">
+                        {locale === "zh" ? "重试任务" : locale === "ko" ? "재시도" : "再試行"}
+                      </button>
+                    </form>
+                  ) : null}
                 </div>
               ))}
             </div>

@@ -1,0 +1,25 @@
+# Import Center Rule
+
+## Source Of Truth
+- If this file conflicts with [CLAUDE.md](../../CLAUDE.md), **CLAUDE.md wins**.
+
+## Workflow Priority
+1. Excel import
+2. Manual entry
+3. PDF/scan attachment registration
+4. Legacy contract data registration
+
+## Required Flow
+`job created -> mapped -> validated -> fix -> completed`
+
+## Required Artifacts
+- Original source file record (or source metadata)
+- Mapping state
+- Validation issues
+- Fix path (direct action/route)
+- Job history/audit trail
+
+## Current Strategy
+- Support "upload + manual mapping + correction" first.
+- Do not block delivery on full automation/OCR.
+

@@ -1,0 +1,26 @@
+# Scope Boundaries (MVP Guardrails)
+
+## Source Of Truth
+- If this file conflicts with [CLAUDE.md](../../CLAUDE.md), **CLAUDE.md wins**.
+
+## In Scope (Now)
+- Import Center hardening
+- Core entity consistency
+- Output Center quality gate + traceability
+- Template/version binding
+- Basic identity + auditability
+- Postgres-backed persistence
+
+## Out Of Scope (Now)
+- Generic AI chat page
+- Autonomous multi-step agent write-back
+- Full OCR automation pipeline
+- Heavy BI analytics suite
+- Complex org/permission matrix
+- Native mobile app
+- Large third-party integration expansion
+
+## Rule
+- For out-of-scope requests, create extensibility points only.
+- Do not implement heavy features in current sprint unless explicitly approved by user.
+

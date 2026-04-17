@@ -1,5 +1,6 @@
 import * as memory from "@/lib/data.memory";
 import * as postgres from "@/lib/data.postgres";
+import { getActorIdFromCookie } from "@/lib/actor";
 
 const usePostgres =
   process.env.DATA_DRIVER?.toLowerCase() === "postgres" &&
@@ -9,8 +10,14 @@ const repo: typeof memory = usePostgres
   ? (postgres as unknown as typeof memory)
   : memory;
 
-export const getDefaultUser: typeof memory.getDefaultUser = (...args) =>
-  repo.getDefaultUser(...args);
+export async function getDefaultUser(preferredUserId?: string) {
+  const actorId = preferredUserId ?? (await getActorIdFromCookie());
+  return repo.getDefaultUser(actorId);
+}
+export const listUsers: typeof memory.listUsers = (...args) =>
+  repo.listUsers(...args);
+export const getUserById: typeof memory.getUserById = (...args) =>
+  repo.getUserById(...args);
 export const getOutputTemplateSettings: typeof memory.getOutputTemplateSettings = (...args) =>
   repo.getOutputTemplateSettings(...args);
 export const updateOutputTemplateSettings: typeof memory.updateOutputTemplateSettings = (...args) =>
@@ -48,6 +55,8 @@ export const appendFollowUp: typeof memory.appendFollowUp = (...args) =>
   repo.appendFollowUp(...args);
 export const addAuditLog: typeof memory.addAuditLog = (...args) =>
   repo.addAuditLog(...args);
+export const listAuditLogs: typeof memory.listAuditLogs = (...args) =>
+  repo.listAuditLogs(...args);
 export const createComplianceTaskFromAlert: typeof memory.createComplianceTaskFromAlert = (...args) =>
   repo.createComplianceTaskFromAlert(...args);
 export const addTask: typeof memory.addTask = (...args) =>
@@ -107,6 +116,7 @@ export type {
   DashboardQuoteItem,
   FollowUp,
   AuditLog,
+  AuditLogFilter,
   Attachment,
   AttachmentTargetType,
   GeneratedOutput,

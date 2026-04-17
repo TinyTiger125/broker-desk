@@ -1,7 +1,9 @@
 import Link from "next/link";
+import { ActorSwitcher } from "@/components/actor-switcher";
 import { GlobalSearchBox } from "@/components/global-search-box";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { MainNavLinks } from "@/components/main-nav-links";
+import { listUsers, getDefaultUser } from "@/lib/data";
 import { t } from "@/lib/i18n";
 import { getLocale, type Locale } from "@/lib/locale";
 
@@ -20,8 +22,11 @@ function getLinks(locale: Locale) {
 
 export async function AppNav() {
   const locale = await getLocale();
+  const [users, currentActor] = await Promise.all([listUsers(20), getDefaultUser()]);
   const links = getLinks(locale);
   const appTitle = t(locale, "app.title");
+  const actorLabel = locale === "zh" ? "执行账号" : locale === "ko" ? "작업 계정" : "実行担当";
+  const actorOptions = users.map((item) => ({ id: item.id, name: item.name }));
   const searchLabels = {
     loading:
       locale === "zh"
@@ -54,6 +59,7 @@ export async function AppNav() {
             </Link>
 
             <div className="flex items-center gap-2">
+              <ActorSwitcher currentActorId={currentActor?.id} options={actorOptions} label={actorLabel} />
               <LanguageSwitcher
                 locale={locale}
                 label={t(locale, "locale.label")}
@@ -104,6 +110,7 @@ export async function AppNav() {
         </div>
 
         <div className="mt-3 flex items-center gap-2">
+          <ActorSwitcher currentActorId={currentActor?.id} options={actorOptions} label={actorLabel} />
           <LanguageSwitcher
             locale={locale}
             label={t(locale, "locale.label")}

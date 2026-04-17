@@ -66,7 +66,17 @@ import {
   persistAttachmentToLocalPublic,
 } from "@/lib/attachment-storage";
 import { type ComplianceAlertType } from "@/lib/compliance-alerts";
-import { buildMappingFromLists, parseCommaList, suggestImportMapping, validateImportMapping } from "@/lib/import-mapping";
+import {
+  buildMappingFromLists,
+  parseCommaList,
+  stringifyImportValidationPayload,
+  suggestImportMapping,
+  validateImportMapping,
+  type ImportValidationIssue,
+  type ImportValidationIssueAction,
+  type ImportValidationIssueCode,
+  type ImportValidationIssueLevel,
+} from "@/lib/import-mapping";
 import { listHubContracts } from "@/lib/hub";
 import { getLocale, type Locale } from "@/lib/locale";
 import { createDocumentNumber, getDefaultOutputTemplateSettings, getOutputDocLabel, isOutputDocType } from "@/lib/output-doc";
@@ -137,6 +147,47 @@ function withFlash(path: string, flash: string): string {
 function appendQuery(path: string, key: string, value: string): string {
   const separator = path.includes("?") ? "&" : "?";
   return `${path}${separator}${encodeURIComponent(key)}=${encodeURIComponent(value)}`;
+}
+
+type ImportValidationSource = "mapping" | "auto_mapping" | "import_execution" | "manual_resolution" | "retry";
+
+function createImportValidationIssue(input: {
+  code: ImportValidationIssueCode;
+  level: ImportValidationIssueLevel;
+  action: ImportValidationIssueAction;
+  message: string;
+  count?: number;
+}): ImportValidationIssue {
+  return {
+    code: input.code,
+    level: input.level,
+    action: input.action,
+    message: input.message,
+    count: input.count,
+  };
+}
+
+function buildImportValidationMessage(input: {
+  source: ImportValidationSource;
+  summary: string;
+  issues: ImportValidationIssue[];
+  metrics?: {
+    requiredCount?: number;
+    coveredRequiredCount?: number;
+    successCount?: number;
+    skippedCount?: number;
+  };
+  details?: Record<string, unknown>;
+}): string {
+  return stringifyImportValidationPayload({
+    version: 1,
+    source: input.source,
+    summary: input.summary,
+    issues: input.issues,
+    updatedAt: new Date().toISOString(),
+    metrics: input.metrics,
+    details: input.details,
+  });
 }
 
 function safeReturnTo(value: FormDataEntryValue | null, fallback: string): string {
@@ -856,16 +907,63 @@ export async function updateImportJobMappingAction(formData: FormData) {
 
   const validation = validateImportMapping(targetEntity, mappingJson, locale);
   const status = validation.missingRequired.length === 0 ? "mapped" : "queued";
-  const unknownPrefix = tr(locale, {
-    ja: "未知項目",
-    zh: "未知字段",
-    ko: "알 수 없는 필드",
+  const issues: ImportValidationIssue[] = [];
+  if (validation.missingRequired.length > 0) {
+    issues.push(
+      createImportValidationIssue({
+        code: "missing_required_mapping",
+        level: "critical",
+        action: "resolve_now",
+        message:
+          locale === "zh"
+            ? `必填字段未完成映射（${validation.missingRequired.length} 项）`
+            : locale === "ko"
+              ? `필수 필드 매핑 누락 (${validation.missingRequired.length}개)`
+              : `必須フィールドのマッピング不足（${validation.missingRequired.length}件）`,
+        count: validation.missingRequired.length,
+      })
+    );
+  }
+  if (validation.unknownTargets.length > 0) {
+    issues.push(
+      createImportValidationIssue({
+        code: "unknown_target_fields",
+        level: "warning",
+        action: "auto_fix",
+        message:
+          locale === "zh"
+            ? `检测到未知目标字段（${validation.unknownTargets.length} 项）`
+            : locale === "ko"
+              ? `알 수 없는 대상 필드 감지 (${validation.unknownTargets.length}개)`
+              : `未知ターゲット項目を検出（${validation.unknownTargets.length}件）`,
+        count: validation.unknownTargets.length,
+      })
+    );
+  }
+  if (issues.length === 0) {
+    issues.push(
+      createImportValidationIssue({
+        code: "mapping_ready",
+        level: "info",
+        action: "apply_mapping",
+        message:
+          locale === "zh"
+            ? "映射已满足导入要求。"
+            : locale === "ko"
+              ? "매핑이 가져오기 요건을 충족했습니다."
+              : "マッピングは取込要件を満たしています。",
+      })
+    );
+  }
+  const message = buildImportValidationMessage({
+    source: "mapping",
+    summary: validation.summary,
+    issues,
+    metrics: {
+      coveredRequiredCount: validation.coveredRequiredCount,
+      requiredCount: validation.requiredCount,
+    },
   });
-  const unknownDelimiter = locale === "ko" ? ", " : "、";
-  const message =
-    validation.unknownTargets.length > 0
-      ? `${validation.summary} (${unknownPrefix}: ${validation.unknownTargets.join(unknownDelimiter)})`
-      : validation.summary;
 
   const updated = await updateImportJobMapping({
     userId: user.id,
@@ -923,21 +1021,68 @@ export async function autoMapImportJobAction(formData: FormData) {
 
   const validation = validateImportMapping(targetEntity, mappingJson, locale);
   const status = validation.missingRequired.length === 0 ? "mapped" : "queued";
-  const autoPrefix = tr(locale, {
+  const issues: ImportValidationIssue[] = [];
+  if (validation.missingRequired.length > 0) {
+    issues.push(
+      createImportValidationIssue({
+        code: "missing_required_mapping",
+        level: "critical",
+        action: "resolve_now",
+        message:
+          locale === "zh"
+            ? `自动映射后仍缺少必填字段（${validation.missingRequired.length} 项）`
+            : locale === "ko"
+              ? `자동 매핑 후에도 필수 필드 누락 (${validation.missingRequired.length}개)`
+              : `自動マッピング後も必須項目が不足（${validation.missingRequired.length}件）`,
+        count: validation.missingRequired.length,
+      })
+    );
+  }
+  if (validation.unknownTargets.length > 0) {
+    issues.push(
+      createImportValidationIssue({
+        code: "unknown_target_fields",
+        level: "warning",
+        action: "auto_fix",
+        message:
+          locale === "zh"
+            ? `自动映射包含未知字段（${validation.unknownTargets.length} 项）`
+            : locale === "ko"
+              ? `자동 매핑에 알 수 없는 필드 포함 (${validation.unknownTargets.length}개)`
+              : `自動マッピングに未知項目を含む（${validation.unknownTargets.length}件）`,
+        count: validation.unknownTargets.length,
+      })
+    );
+  }
+  if (issues.length === 0) {
+    issues.push(
+      createImportValidationIssue({
+        code: "mapping_ready",
+        level: "info",
+        action: "apply_mapping",
+        message:
+          locale === "zh"
+            ? "自动映射已满足导入要求。"
+            : locale === "ko"
+              ? "자동 매핑이 가져오기 요건을 충족했습니다."
+              : "自動マッピングは取込要件を満たしています。",
+      })
+    );
+  }
+  const autoSummaryPrefix = tr(locale, {
     ja: "自動候補",
     zh: "自动候选",
     ko: "자동 후보",
   });
-  const unknownPrefix = tr(locale, {
-    ja: "未知項目",
-    zh: "未知字段",
-    ko: "알 수 없는 필드",
+  const message = buildImportValidationMessage({
+    source: "auto_mapping",
+    summary: `${autoSummaryPrefix}: ${validation.summary}`,
+    issues,
+    metrics: {
+      coveredRequiredCount: validation.coveredRequiredCount,
+      requiredCount: validation.requiredCount,
+    },
   });
-  const unknownDelimiter = locale === "ko" ? ", " : "、";
-  const message =
-    validation.unknownTargets.length > 0
-      ? `${autoPrefix}: ${validation.summary} (${unknownPrefix}: ${validation.unknownTargets.join(unknownDelimiter)})`
-      : `${autoPrefix}: ${validation.summary}`;
 
   const updated = await updateImportJobMapping({
     userId: user.id,
@@ -990,10 +1135,25 @@ export async function resolveImportValidationAction(formData: FormData) {
   });
 
   const nextStatus = operation === "apply_mapping" ? "mapped" : "queued";
-  const nextMessage = tr(locale, {
-    ja: `検証対応済み: ${operationLabel}`,
-    zh: `校验已处理：${operationLabel}`,
-    ko: `검증 조치 완료: ${operationLabel}`,
+  const nextMessage = buildImportValidationMessage({
+    source: "manual_resolution",
+    summary: tr(locale, {
+      ja: `検証対応済み: ${operationLabel}`,
+      zh: `校验已处理：${operationLabel}`,
+      ko: `검증 조치 완료: ${operationLabel}`,
+    }),
+    issues: [
+      createImportValidationIssue({
+        code: "validation_resolved",
+        level: "info",
+        action: "apply_mapping",
+        message: tr(locale, {
+          ja: `${operationLabel} を実行しました。`,
+          zh: `已执行：${operationLabel}`,
+          ko: `${operationLabel} 작업을 실행했습니다.`,
+        }),
+      }),
+    ],
   });
   const nextNotes = [job.notes, `${new Date().toISOString()} ${operationLabel}`].filter(Boolean).join("\n");
 
@@ -1017,6 +1177,86 @@ export async function resolveImportValidationAction(formData: FormData) {
   revalidatePath("/");
   revalidatePath("/import-center");
   redirect(withFlash(`/import-center?job=${job.id}`, "import_validation_resolved"));
+}
+
+export async function retryImportJobAction(formData: FormData) {
+  const user = await getDefaultUser();
+  if (!user) {
+    throw new Error("担当ユーザーが見つかりません。");
+  }
+  const locale = await getLocale();
+
+  const jobId = String(formData.get("jobId") ?? "").trim();
+  if (!jobId) {
+    throw new Error("ジョブIDは必須です。");
+  }
+
+  const jobs = await listImportJobs(user.id, 200);
+  const job = jobs.find((item) => item.id === jobId);
+  if (!job) {
+    throw new Error("取込ジョブが見つかりません。");
+  }
+
+  const retryAt = new Date().toISOString();
+  const retryMemo = tr(locale, {
+    ja: `再試行予約: ${retryAt}`,
+    zh: `重试时间：${retryAt}`,
+    ko: `재시도 예약: ${retryAt}`,
+  });
+  const nextNotes = [job.notes, retryMemo].filter(Boolean).join("\n");
+  const preservedValidation = buildImportValidationMessage({
+    source: "retry",
+    summary: tr(locale, {
+      ja: "再試行キューへ戻しました",
+      zh: "已退回重试队列",
+      ko: "재시도 대기열로 되돌렸습니다",
+    }),
+    issues: [
+      createImportValidationIssue({
+        code: "retry_queued",
+        level: "info",
+        action: "retry",
+        message: tr(locale, {
+          ja: "前回の検証情報を保持したまま再試行します。",
+          zh: "已保留上次校验信息并进入重试。",
+          ko: "이전 검증 정보를 유지한 채 재시도합니다.",
+        }),
+      }),
+    ],
+  });
+
+  const retried = await updateImportJobMapping({
+    userId: user.id,
+    jobId,
+    mappingJson: job.mappingJson ?? {},
+    validationMessage: preservedValidation,
+    notes: nextNotes,
+    status: "queued",
+    allowRetry: true,
+  });
+  if (!retried) {
+    throw new Error("取込ジョブの再試行に失敗しました。");
+  }
+
+  await addAuditLog({
+    userId: user.id,
+    action: "import_job_retried",
+    targetType: "import_job",
+    targetId: jobId,
+    message: tr(locale, {
+      ja: `取込ジョブを再試行キューへ戻しました: ${retried.title}`,
+      zh: `已将导入任务退回重试队列：${retried.title}`,
+      ko: `가져오기 작업을 재시도 대기열로 되돌렸습니다: ${retried.title}`,
+    }),
+    context: {
+      previousStatus: job.status,
+      nextStatus: "queued",
+    },
+  });
+
+  revalidatePath("/");
+  revalidatePath("/import-center");
+  redirect(withFlash(`/import-center?job=${jobId}`, "import_job_retried"));
 }
 
 export async function registerAttachmentAction(formData: FormData) {
@@ -1337,6 +1577,8 @@ export async function generateOutputDocumentAction(formData: FormData) {
 
   const generated = await addGeneratedOutput({
     userId: user.id,
+    actorId: user.id,
+    sourceQuoteId: quote.id,
     quoteId: quote.id,
     propertyId: targetProperty || undefined,
     partyId: targetParty || undefined,
@@ -1344,6 +1586,7 @@ export async function generateOutputDocumentAction(formData: FormData) {
     outputFormat: safeFormat,
     language: safeLanguage,
     title,
+    documentNumber,
     templateVersionId: activeTemplateVersion?.id,
   });
 
@@ -1587,8 +1830,12 @@ export async function applyOutputTemplateVersionAction(formData: FormData) {
     throw new Error("担当ユーザーが見つかりません。");
   }
   const versionId = String(formData.get("versionId") ?? "").trim();
+  const confirmApply = parseCheckbox(formData.get("confirmApply"));
   if (!versionId) {
     throw new Error("適用対象バージョンが未指定です。");
+  }
+  if (!confirmApply) {
+    throw new Error("版適用前の確認チェックが未完了です。");
   }
 
   const applied = await applyOutputTemplateVersion({
@@ -1709,6 +1956,7 @@ export async function uploadAndParseExcelAction(formData: FormData) {
 export async function executePropertyImportAction(formData: FormData) {
   const user = await getDefaultUser();
   if (!user) throw new Error("担当ユーザーが見つかりません。");
+  const locale = await getLocale();
 
   const jobId = String(formData.get("jobId") ?? "").trim();
   if (!jobId) throw new Error("ジョブIDが不正です。");
@@ -1731,8 +1979,20 @@ export async function executePropertyImportAction(formData: FormData) {
     if (targetFields[i] && targetFields[i] !== "") mapping[src] = targetFields[i];
   });
 
+  await updateImportJobMapping({
+    userId: user.id,
+    jobId: job.id,
+    mappingJson: mapping,
+    validationMessage: tr(locale, {
+      ja: "マッピング適用済み。取込処理を開始します。",
+      zh: "映射已应用，开始执行导入。",
+      ko: "매핑을 적용했고 가져오기를 시작합니다.",
+    }),
+    status: "mapped",
+  });
+
   let successCount = 0;
-  const skipped: { row: number; reason: string }[] = [];
+  const skipped: { row: number; code: "import_row_missing_name" | "import_row_invalid_listing_price" | "import_row_unknown_error"; reason: string }[] = [];
 
   for (let i = 0; i < payload.rows.length; i++) {
     const row = payload.rows[i];
@@ -1743,13 +2003,17 @@ export async function executePropertyImportAction(formData: FormData) {
 
     const name = String(mapped["name"] ?? "").trim();
     if (!name) {
-      skipped.push({ row: i + 2, reason: "name（物件名）が空です" });
+      skipped.push({ row: i + 2, code: "import_row_missing_name", reason: "name（物件名）が空です" });
       continue;
     }
 
     const listingPrice = parsePrice(mapped["listing_price"]);
     if (listingPrice <= 0) {
-      skipped.push({ row: i + 2, reason: `listing_price を数値に変換できません: "${String(mapped["listing_price"] ?? "")}"` });
+      skipped.push({
+        row: i + 2,
+        code: "import_row_invalid_listing_price",
+        reason: `listing_price を数値に変換できません: "${String(mapped["listing_price"] ?? "")}"`,
+      });
       continue;
     }
 
@@ -1768,24 +2032,157 @@ export async function executePropertyImportAction(formData: FormData) {
       });
       successCount++;
     } catch (e) {
-      skipped.push({ row: i + 2, reason: `エラー: ${e instanceof Error ? e.message : "不明"}` });
+      skipped.push({
+        row: i + 2,
+        code: "import_row_unknown_error",
+        reason: `エラー: ${e instanceof Error ? e.message : "不明"}`,
+      });
     }
   }
 
+  const nextStatus = successCount > 0 ? "completed" : "mapped";
+  const skippedByCode = skipped.reduce<Record<string, number>>((acc, item) => {
+    acc[item.code] = (acc[item.code] ?? 0) + 1;
+    return acc;
+  }, {});
+  const executionIssues: ImportValidationIssue[] = [];
+  if (successCount === 0) {
+    executionIssues.push(
+      createImportValidationIssue({
+        code: "import_zero_success",
+        level: "critical",
+        action: "retry",
+        message:
+          locale === "zh"
+            ? "导入成功数为 0，请修复映射或源数据后重试。"
+            : locale === "ko"
+              ? "가져오기 성공 건수가 0건입니다. 매핑 또는 원본 데이터를 수정 후 재시도하세요."
+              : "取込成功件数が 0 件です。マッピングまたは元データを修正して再試行してください。",
+      })
+    );
+  }
+  if ((skippedByCode.import_row_missing_name ?? 0) > 0) {
+    executionIssues.push(
+      createImportValidationIssue({
+        code: "import_row_missing_name",
+        level: "warning",
+        action: "resolve_now",
+        message:
+          locale === "zh"
+            ? "存在物件名为空的行。"
+            : locale === "ko"
+              ? "매물명이 비어 있는 행이 있습니다."
+              : "物件名が空の行があります。",
+        count: skippedByCode.import_row_missing_name,
+      })
+    );
+  }
+  if ((skippedByCode.import_row_invalid_listing_price ?? 0) > 0) {
+    executionIssues.push(
+      createImportValidationIssue({
+        code: "import_row_invalid_listing_price",
+        level: "warning",
+        action: "auto_fix",
+        message:
+          locale === "zh"
+            ? "存在价格字段无法转换为数字的行。"
+            : locale === "ko"
+              ? "가격 필드를 숫자로 변환할 수 없는 행이 있습니다."
+              : "価格フィールドを数値化できない行があります。",
+        count: skippedByCode.import_row_invalid_listing_price,
+      })
+    );
+  }
+  if ((skippedByCode.import_row_unknown_error ?? 0) > 0) {
+    executionIssues.push(
+      createImportValidationIssue({
+        code: "import_row_unknown_error",
+        level: "warning",
+        action: "resolve_now",
+        message:
+          locale === "zh"
+            ? "部分行导入失败，请查看错误详情。"
+            : locale === "ko"
+              ? "일부 행 가져오기에 실패했습니다. 상세 오류를 확인해 주세요."
+              : "一部行の取込に失敗しました。詳細エラーを確認してください。",
+        count: skippedByCode.import_row_unknown_error,
+      })
+    );
+  }
+  if (successCount > 0 && skipped.length > 0) {
+    executionIssues.push(
+      createImportValidationIssue({
+        code: "import_partial_completed",
+        level: "info",
+        action: "apply_mapping",
+        message:
+          locale === "zh"
+            ? "导入已完成，但有部分行被跳过。"
+            : locale === "ko"
+              ? "가져오기는 완료되었지만 일부 행이 건너뛰어졌습니다."
+              : "取込は完了しましたが、一部行はスキップされました。",
+      })
+    );
+  }
+  if (successCount > 0 && skipped.length === 0) {
+    executionIssues.push(
+      createImportValidationIssue({
+        code: "import_completed",
+        level: "info",
+        action: "apply_mapping",
+        message:
+          locale === "zh"
+            ? "导入已完成，全部记录通过。"
+            : locale === "ko"
+              ? "가져오기가 완료되었고 모든 레코드가 정상 반영되었습니다."
+              : "取込が完了し、全レコードが正常反映されました。",
+      })
+    );
+  }
+  const validationMessage = buildImportValidationMessage({
+    source: "import_execution",
+    summary:
+      locale === "zh"
+        ? `导入完成：成功 ${successCount} 条，跳过 ${skipped.length} 条`
+        : locale === "ko"
+          ? `가져오기 완료: 성공 ${successCount}건, 건너뜀 ${skipped.length}건`
+          : `取込完了: 成功 ${successCount} 件、スキップ ${skipped.length} 件`,
+    issues: executionIssues,
+    metrics: {
+      successCount,
+      skippedCount: skipped.length,
+    },
+    details: {
+      skippedRows: skipped,
+    },
+  });
   await updateImportJobMapping({
     userId: user.id,
     jobId: job.id,
     mappingJson: mapping,
-    validationMessage: JSON.stringify({ successCount, skipped }),
-    status: "completed",
+    validationMessage,
+    notes:
+      successCount > 0
+        ? undefined
+        : tr(locale, {
+            ja: "取込件数が0件のため、再試行が必要です。",
+            zh: "成功导入为0，请修复后重试。",
+            ko: "가져오기 성공 건수가 0건이므로 수정 후 재시도해야 합니다.",
+          }),
+    status: nextStatus,
   });
 
   await addAuditLog({
     userId: user.id,
-    action: "import_job_created",
-    targetType: "task",
+    action: successCount > 0 ? "import_job_completed" : "import_job_requires_retry",
+    targetType: "import_job",
     targetId: job.id,
-    message: `Excel 物件取込完了: ${successCount} 件登録、${skipped.length} 件スキップ`,
+    message: `Excel 物件取込: ${successCount} 件登録、${skipped.length} 件スキップ`,
+    context: {
+      successCount,
+      skippedCount: skipped.length,
+      status: nextStatus,
+    },
   });
 
   revalidatePath("/properties");

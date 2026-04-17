@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getDefaultUser, listAuditLogs } from "@/lib/data";
 import {
   getHubOverview,
   listHubContracts,
@@ -25,6 +26,13 @@ function toCsv(rows: Array<Record<string, string | number | null | undefined>>) 
 function normalizeLocale(value: string | null): Locale {
   if (value === "zh" || value === "ko") return value;
   return "ja";
+}
+
+function parseDateFilter(raw: string | null, endOfDay = false): Date | undefined {
+  if (!raw) return undefined;
+  const date = new Date(`${raw}T${endOfDay ? "23:59:59.999" : "00:00:00.000"}`);
+  if (Number.isNaN(date.getTime())) return undefined;
+  return date;
 }
 
 export async function GET(request: NextRequest) {
@@ -151,10 +159,16 @@ export async function GET(request: NextRequest) {
     const outputTypeFilter = request.nextUrl.searchParams.get("type");
     const outputLangFilter = request.nextUrl.searchParams.get("lang");
     const outputFormatFilter = request.nextUrl.searchParams.get("format");
+    const outputTemplateFilter = request.nextUrl.searchParams.get("templateVersion");
     const items = (await listHubGeneratedOutputs(locale)).filter((item) =>
       (outputTypeFilter ? item.outputType === outputTypeFilter : true) &&
       (outputLangFilter ? item.language === outputLangFilter : true) &&
-      (outputFormatFilter ? item.outputFormat === outputFormatFilter : true)
+      (outputFormatFilter ? item.outputFormat === outputFormatFilter : true) &&
+      (outputTemplateFilter
+        ? outputTemplateFilter === "unbound"
+          ? !item.templateVersionId
+          : item.templateVersionId === outputTemplateFilter
+        : true)
     );
     const csv = toCsv(
       items.map((item) => ({
@@ -166,7 +180,11 @@ export async function GET(request: NextRequest) {
         related_property: item.relatedProperty ?? "",
         related_party: item.relatedParty ?? "",
         related_contract_hint: item.relatedContractHint,
+        document_number: item.documentNumber,
         source_quote_id: item.sourceQuoteId,
+        actor_id: item.actorId,
+        template_version_id: item.templateVersionId ?? "",
+        template_version_label: item.templateVersionLabel ?? "",
         generated_at: item.generatedAt.toISOString(),
       }))
     );
@@ -174,6 +192,68 @@ export async function GET(request: NextRequest) {
       headers: {
         "content-type": "text/csv; charset=utf-8",
         "content-disposition": `attachment; filename="outputs-${stamp}.csv"`,
+      },
+    });
+  }
+
+  if (scope === "outputs_hitrate") {
+    const outputTypeFilter = request.nextUrl.searchParams.get("type");
+    const outputLangFilter = request.nextUrl.searchParams.get("lang");
+    const outputFormatFilter = request.nextUrl.searchParams.get("format");
+    const outputTemplateFilter = request.nextUrl.searchParams.get("templateVersion");
+    const items = (await listHubGeneratedOutputs(locale)).filter((item) =>
+      (outputTypeFilter ? item.outputType === outputTypeFilter : true) &&
+      (outputLangFilter ? item.language === outputLangFilter : true) &&
+      (outputFormatFilter ? item.outputFormat === outputFormatFilter : true) &&
+      (outputTemplateFilter
+        ? outputTemplateFilter === "unbound"
+          ? !item.templateVersionId
+          : item.templateVersionId === outputTemplateFilter
+        : true)
+    );
+    const boundCount = items.filter((item) => Boolean(item.templateVersionId)).length;
+    const unboundCount = Math.max(0, items.length - boundCount);
+    const hitRate = items.length > 0 ? Math.round((boundCount / items.length) * 100) : 0;
+    const versionStats = items
+      .filter((item) => Boolean(item.templateVersionId))
+      .reduce<Map<string, { id: string; label: string; count: number }>>((acc, item) => {
+        const key = item.templateVersionId as string;
+        const current = acc.get(key) ?? {
+          id: key,
+          label: item.templateVersionLabel ?? key,
+          count: 0,
+        };
+        current.count += 1;
+        acc.set(key, current);
+        return acc;
+      }, new Map());
+    const topVersions = [...versionStats.values()].sort((a, b) => b.count - a.count);
+    const csvRows: Array<Record<string, string | number>> = [
+      {
+        row_type: "summary",
+        total_outputs: items.length,
+        bound_outputs: boundCount,
+        unbound_outputs: unboundCount,
+        template_hit_rate_percent: hitRate,
+        output_type_filter: outputTypeFilter ?? "all",
+        language_filter: outputLangFilter ?? "all",
+        format_filter: outputFormatFilter ?? "all",
+        template_filter: outputTemplateFilter ?? "all",
+      },
+      ...topVersions.map((version, index) => ({
+        row_type: "template_version",
+        rank: index + 1,
+        template_version_id: version.id,
+        template_version_label: version.label,
+        hit_count: version.count,
+        hit_share_percent: items.length > 0 ? Math.round((version.count / items.length) * 100) : 0,
+      })),
+    ];
+    const csv = toCsv(csvRows);
+    return new NextResponse(csv, {
+      headers: {
+        "content-type": "text/csv; charset=utf-8",
+        "content-disposition": `attachment; filename="outputs-hitrate-${stamp}.csv"`,
       },
     });
   }
@@ -200,11 +280,95 @@ export async function GET(request: NextRequest) {
     });
   }
 
+  if (scope === "audit_logs") {
+    const presetRaw = request.nextUrl.searchParams.get("preset");
+    const preset = presetRaw === "last_7_days" || presetRaw === "key_writes" ? presetRaw : "all";
+    const actor = request.nextUrl.searchParams.get("actor");
+    const action = request.nextUrl.searchParams.get("action");
+    const target = request.nextUrl.searchParams.get("target");
+    const query = request.nextUrl.searchParams.get("q");
+    const fromInput = parseDateFilter(request.nextUrl.searchParams.get("from"));
+    const toInput = parseDateFilter(request.nextUrl.searchParams.get("to"), true);
+    const now = new Date();
+    const defaultFrom = new Date(now);
+    defaultFrom.setDate(defaultFrom.getDate() - 6);
+    defaultFrom.setHours(0, 0, 0, 0);
+    const defaultTo = new Date(now);
+    defaultTo.setHours(23, 59, 59, 999);
+    const from = preset === "last_7_days" ? fromInput ?? defaultFrom : fromInput;
+    const to = preset === "last_7_days" ? toInput ?? defaultTo : toInput;
+    const auditTargetTypes = [
+      "client",
+      "task",
+      "quote",
+      "compliance",
+      "output",
+      "import_job",
+      "property",
+      "party",
+      "contract",
+      "service_request",
+    ] as const;
+    type AuditTargetType = (typeof auditTargetTypes)[number];
+    const targetType: AuditTargetType | "all" =
+      target && target !== "all" && auditTargetTypes.some((item) => item === target)
+        ? (target as AuditTargetType)
+        : "all";
+    const keyWriteActions = new Set([
+      "import_job_created",
+      "import_mapping_updated",
+      "import_validation_resolved",
+      "import_job_retried",
+      "attachment_registered",
+      "property_created",
+      "party_created",
+      "service_request_created",
+      "contract_batch_status_updated",
+      "contract_batch_status_undone",
+      "output_generated",
+      "output_template_updated",
+      "output_template_version_applied",
+    ]);
+
+    const user = await getDefaultUser();
+    if (!user) {
+      return NextResponse.json({ ok: false, error: "user_not_found" }, { status: 404 });
+    }
+    const queriedLogs = await listAuditLogs(user.id, {
+      actorId: actor && actor !== "all" ? actor : undefined,
+      action: action && action !== "all" ? action : undefined,
+      targetType,
+      query: query?.trim() ? query : undefined,
+      from,
+      to,
+      limit: 1000,
+    });
+    const logs = preset === "key_writes" ? queriedLogs.filter((item) => keyWriteActions.has(item.action)) : queriedLogs;
+    const csv = toCsv(
+      logs.map((item) => ({
+        id: item.id,
+        created_at: item.createdAt.toISOString(),
+        actor_id: item.actorId,
+        action: item.action,
+        target_type: item.targetType,
+        target_id: item.targetId ?? "",
+        message: item.message,
+        context_json: item.context ? JSON.stringify(item.context) : "",
+      }))
+    );
+    return new NextResponse(csv, {
+      headers: {
+        "content-type": "text/csv; charset=utf-8",
+        "content-disposition": `attachment; filename="audit-logs-${stamp}.csv"`,
+      },
+    });
+  }
+
   return NextResponse.json(
     {
       ok: false,
       error: "unsupported_scope",
-      supported_scopes: ["dashboard", "properties", "parties", "contracts", "service_requests", "outputs", "import_jobs"],
+      supported_scopes: ["dashboard", "properties", "parties", "contracts", "service_requests", "outputs", "outputs_hitrate", "import_jobs", "audit_logs"],
     },
     { status: 400 }
   );

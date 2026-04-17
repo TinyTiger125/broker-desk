@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { applyOutputTemplateVersionAction, updateOutputTemplateSettingsAction } from "@/app/actions";
 import { getDefaultUser, getOutputTemplateSettings, listOutputTemplateVersions, listQuotations } from "@/lib/data";
+import { listHubGeneratedOutputs } from "@/lib/hub";
 import { getLocale, type Locale } from "@/lib/locale";
 import { getOutputDocLabel, type OutputDocType, type OutputTemplateSettingsInput } from "@/lib/output-doc";
 
@@ -46,6 +47,8 @@ function getCopy(locale: Locale) {
       activeVersion: "現在適用中",
       checkDiff: "差分を確認",
       applyVersion: "この版を適用",
+      confirmApply: "差分確認済み。適用を確定する",
+      usedCountPrefix: "出力利用",
       diffPreviewTitle: "差分プレビュー",
       diffPreviewDesc: "現在適用中テンプレートとの差分を表示しています。",
       closeDiff: "差分表示を閉じる",
@@ -87,6 +90,8 @@ function getCopy(locale: Locale) {
       activeVersion: "当前生效中",
       checkDiff: "查看差异",
       applyVersion: "应用此版本",
+      confirmApply: "已确认差异，执行应用",
+      usedCountPrefix: "输出使用",
       diffPreviewTitle: "差异预览",
       diffPreviewDesc: "显示与当前生效模板的差异。",
       closeDiff: "关闭差异",
@@ -128,6 +133,8 @@ function getCopy(locale: Locale) {
       activeVersion: "현재 적용 중",
       checkDiff: "차이 확인",
       applyVersion: "이 버전 적용",
+      confirmApply: "차이를 확인했고 적용을 확정합니다",
+      usedCountPrefix: "출력 사용",
       diffPreviewTitle: "차이 미리보기",
       diffPreviewDesc: "현재 적용 템플릿과의 차이를 표시합니다.",
       closeDiff: "차이 보기 닫기",
@@ -250,9 +257,19 @@ export default async function OutputTemplateSettingsPage({ searchParams }: Outpu
   if (!user) {
     notFound();
   }
-  const settings = await getOutputTemplateSettings(user.id);
-  const versions = await listOutputTemplateVersions(user.id, 20);
-  const latestQuote = (await listQuotations(1))[0];
+  const [settings, versions, latestQuoteList, generatedOutputs] = await Promise.all([
+    getOutputTemplateSettings(user.id),
+    listOutputTemplateVersions(user.id, 20),
+    listQuotations(1),
+    listHubGeneratedOutputs(locale),
+  ]);
+  const latestQuote = latestQuoteList[0];
+  const versionOutputCountMap = generatedOutputs.reduce<Map<string, number>>((acc, output) => {
+    if (output.templateVersionId) {
+      acc.set(output.templateVersionId, (acc.get(output.templateVersionId) ?? 0) + 1);
+    }
+    return acc;
+  }, new Map());
   const currentSnapshot = toSnapshot(settings);
   const diffTarget = diffVersionId ? versions.find((version) => version.id === diffVersionId) : undefined;
   const diffRows = diffTarget
@@ -424,16 +441,23 @@ export default async function OutputTemplateSettingsPage({ searchParams }: Outpu
                     {formatDateTime(version.createdAt, locale)}
                     {version.changeNote ? ` · ${version.changeNote}` : ""}
                   </p>
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    {copy.usedCountPrefix}: {versionOutputCountMap.get(version.id) ?? 0}
+                  </p>
                 </div>
                 {version.isActive ? (
                   <span className="ui-tag-stable rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs text-emerald-700">{copy.activeVersion}</span>
                 ) : (
-                  <div className="flex items-center gap-2">
+                  <div className="space-y-2">
                     <Link href={`/settings/output-templates?diffVersionId=${version.id}`} className="ui-button-stable rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100">
                       {copy.checkDiff}
                     </Link>
-                    <form action={applyOutputTemplateVersionAction}>
+                    <form action={applyOutputTemplateVersionAction} className="space-y-1">
                       <input type="hidden" name="versionId" value={version.id} />
+                      <label className="flex items-start gap-2 text-[11px] text-slate-600">
+                        <input type="checkbox" name="confirmApply" value="1" required className="mt-0.5" />
+                        <span>{copy.confirmApply}</span>
+                      </label>
                       <button type="submit" className="ui-button-stable rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100">
                         {copy.applyVersion}
                       </button>

@@ -1,0 +1,24 @@
+# Broker Desk Product Positioning
+
+## Purpose
+Keep all implementation aligned to the current product stage.
+
+## Source Of Truth
+- If this file conflicts with [CLAUDE.md](../../CLAUDE.md), **CLAUDE.md wins**.
+
+## Positioning (Current Phase)
+- Broker Desk is **not** a generic CRM.
+- Broker Desk is **not** a heavy ERP.
+- Broker Desk is a lightweight business-data workspace for Japanese small/micro real-estate operators.
+
+## Core Value (Current Phase)
+1. Import legacy data at low migration cost.
+2. Structure and store core entities consistently.
+3. Generate professional standardized outputs with traceability.
+
+## Build Filter
+Any new work must clearly improve at least one:
+- Import-to-usable speed
+- Repeated manual input reduction
+- Output quality / traceability
+

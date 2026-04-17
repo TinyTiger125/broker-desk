@@ -7,6 +7,44 @@ export type ImportFieldOption = {
   required: boolean;
 };
 
+export type ImportValidationIssueLevel = "critical" | "warning" | "info";
+export type ImportValidationIssueAction = "resolve_now" | "auto_fix" | "apply_mapping" | "retry";
+export type ImportValidationIssueCode =
+  | "missing_required_mapping"
+  | "unknown_target_fields"
+  | "mapping_ready"
+  | "import_zero_success"
+  | "import_row_missing_name"
+  | "import_row_invalid_listing_price"
+  | "import_row_unknown_error"
+  | "import_partial_completed"
+  | "import_completed"
+  | "validation_resolved"
+  | "retry_queued";
+
+export type ImportValidationIssue = {
+  code: ImportValidationIssueCode;
+  level: ImportValidationIssueLevel;
+  action: ImportValidationIssueAction;
+  message: string;
+  count?: number;
+};
+
+export type ImportValidationPayload = {
+  version: 1;
+  source: "mapping" | "auto_mapping" | "import_execution" | "manual_resolution" | "retry";
+  summary: string;
+  issues: ImportValidationIssue[];
+  updatedAt: string;
+  metrics?: {
+    requiredCount?: number;
+    coveredRequiredCount?: number;
+    successCount?: number;
+    skippedCount?: number;
+  };
+  details?: Record<string, unknown>;
+};
+
 const jaImportFieldOptions: Record<ImportTargetEntity, ImportFieldOption[]> = {
   properties: [
     { key: "name", label: "物件名", required: true },
@@ -193,6 +231,23 @@ export function validateImportMapping(target: ImportTargetEntity, mapping: Recor
     coveredRequiredCount,
     requiredCount: requiredTargets.length,
   };
+}
+
+export function stringifyImportValidationPayload(payload: ImportValidationPayload): string {
+  return JSON.stringify(payload);
+}
+
+export function parseImportValidationPayload(raw: string | undefined): ImportValidationPayload | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<ImportValidationPayload>;
+    if (parsed.version !== 1) return null;
+    if (!Array.isArray(parsed.issues)) return null;
+    if (!parsed.source || !parsed.summary || !parsed.updatedAt) return null;
+    return parsed as ImportValidationPayload;
+  } catch {
+    return null;
+  }
 }
 
 type AliasDictionary = Record<ImportTargetEntity, Record<string, string[]>>;

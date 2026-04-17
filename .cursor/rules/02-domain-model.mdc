@@ -1,0 +1,27 @@
+# Domain Model Guardrail
+
+## Source Of Truth
+- If this file conflicts with [CLAUDE.md](../../CLAUDE.md), **CLAUDE.md wins**.
+
+## Canonical Entities
+- `Property`
+- `Party`
+- `Contract`
+- `ServiceRequest`
+- `Attachment`
+- `OutputTemplate`
+- `GeneratedOutput`
+- `ImportJob`
+
+## Critical Definitions
+- `Party` is broader than "customer". It represents all contract-related actors.
+- Contract types are fixed: `rent | sell | pm | agent`.
+- `PM` means property management, not a pipeline stage.
+- `ServiceRequest` is a repair/maintenance work item and must be traceable.
+
+## Implementation Rule
+- Before adding a new field:
+  1. Identify owning entity.
+  2. Explain why not another entity.
+  3. Update schema + validation + API contract + UI.
+

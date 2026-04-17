@@ -171,3 +171,38 @@ ALTER TABLE output_template_settings ADD COLUMN IF NOT EXISTS show_approval_sect
 ALTER TABLE output_template_settings ADD COLUMN IF NOT EXISTS show_legal_status_digest BOOLEAN NOT NULL DEFAULT TRUE;
 ALTER TABLE output_template_settings ADD COLUMN IF NOT EXISTS show_outstanding_balance_table BOOLEAN NOT NULL DEFAULT TRUE;
 ALTER TABLE output_template_settings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+-- 2026-04 sprint P0 additions: actor audit + output traceability
+ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS actor_id TEXT;
+ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS context_json JSONB;
+CREATE INDEX IF NOT EXISTS idx_audit_logs_actor_created ON audit_logs(actor_id, created_at DESC);
+UPDATE audit_logs SET actor_id = user_id WHERE actor_id IS NULL;
+UPDATE audit_logs SET context_json = '{}'::jsonb WHERE context_json IS NULL;
+
+CREATE TABLE IF NOT EXISTS generated_outputs (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  actor_id TEXT REFERENCES users(id),
+  quote_id TEXT NOT NULL REFERENCES quotations(id),
+  source_quote_id TEXT,
+  property_id TEXT,
+  party_id TEXT,
+  output_type TEXT NOT NULL,
+  output_format TEXT NOT NULL DEFAULT 'pdf',
+  language TEXT NOT NULL DEFAULT 'ja',
+  title TEXT NOT NULL,
+  document_number TEXT,
+  template_version_id TEXT,
+  generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_generated_outputs_user_created ON generated_outputs(user_id, generated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_generated_outputs_actor_created ON generated_outputs(actor_id, generated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_generated_outputs_quote ON generated_outputs(quote_id, generated_at DESC);
+
+ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS actor_id TEXT;
+ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS source_quote_id TEXT;
+ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS document_number TEXT;
+ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS template_version_id TEXT;
+UPDATE generated_outputs SET source_quote_id = quote_id WHERE source_quote_id IS NULL;
+UPDATE generated_outputs SET actor_id = user_id WHERE actor_id IS NULL;
+UPDATE generated_outputs SET document_number = id WHERE document_number IS NULL;

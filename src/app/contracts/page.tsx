@@ -523,7 +523,7 @@ export default async function ContractsPage({ searchParams }: ContractsPageProps
 
       <footer className="mt-8 flex justify-center">
         <div className="inline-flex rounded-xl border border-slate-200/60 bg-white/70 p-1.5 shadow-lg backdrop-blur">
-          <Link href="/clients" className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold text-slate-800 hover:bg-white">
+          <Link href="/audit-log" className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold text-slate-800 hover:bg-white">
             <span className="material-symbols-outlined text-[18px]">history</span>
             {copy.auditLog}
           </Link>

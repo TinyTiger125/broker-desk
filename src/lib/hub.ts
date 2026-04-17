@@ -85,10 +85,12 @@ export type HubImportJobItem = {
 
 export type HubGeneratedOutputItem = {
   id: string;
+  actorId: string;
   outputType: OutputDocType;
   outputFormat: "pdf" | "docx";
   language: Locale;
   title: string;
+  documentNumber: string;
   relatedProperty?: string;
   relatedParty?: string;
   relatedContractHint: string;
@@ -300,14 +302,16 @@ export async function listHubGeneratedOutputs(locale: Locale = "ja"): Promise<Hu
         const quote = quoteMap.get(item.quoteId);
         return {
           id: item.id,
+          actorId: item.actorId,
           outputType: item.outputType as OutputDocType,
           outputFormat: item.outputFormat,
           language: item.language,
           title: item.title || `${getOutputDocLabel(locale, item.outputType as OutputDocType)} - ${quote?.client.name ?? "N/A"}`,
+          documentNumber: item.documentNumber,
           relatedProperty: item.propertyId ? propertyMap.get(item.propertyId) : quote?.property?.name,
           relatedParty: item.partyId ? partyMap.get(item.partyId) : quote?.client?.name,
-          relatedContractHint: `${contractPrefix}-${item.quoteId.toUpperCase()}`,
-          sourceQuoteId: item.quoteId,
+          relatedContractHint: `${contractPrefix}-${item.sourceQuoteId.toUpperCase()}`,
+          sourceQuoteId: item.sourceQuoteId,
           generatedAt: item.generatedAt,
           templateVersionId: item.templateVersionId,
           templateVersionLabel: item.templateVersionId ? versionLabelMap.get(item.templateVersionId) : undefined,
@@ -323,10 +327,12 @@ export async function listHubGeneratedOutputs(locale: Locale = "ja"): Promise<Hu
     types.forEach((type) => {
       fallback.push({
         id: `output_${type}_${quote.id}`,
+        actorId: "user_demo",
         outputType: type,
         outputFormat: "pdf",
         language: locale,
         title: `${getOutputDocLabel(locale, type)} - ${quote.client.name}`,
+        documentNumber: `DRAFT-${quote.id}-${type}`,
         relatedProperty: quote.property?.name,
         relatedParty: quote.client.name,
         relatedContractHint: `${contractPrefix}-${quote.id.toUpperCase()}`,

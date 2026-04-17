@@ -694,610 +694,128 @@
 - `npx eslint src/app/contracts/page.tsx` ✅
 - 页面刷新后不再出现重复 key 警告。
 
----
-
-## 18. 产品经理约束圣经（2026-04-13 新增，最高优先级约束）
-
-> 来源：与产品经理的收敛讨论结论。  
-> 适用范围：后续所有产品讨论、技术设计、开发排期与功能准入。  
-> 约束级别：高于“灵感型提案”和“功能完备型冲动”，低于法律合规与数据安全硬约束。
-
-### 18.1 文档目的
-这不是灵感备忘录，也不是功能脑暴清单。  
-这是一份用于约束后续设计、开发、讨论和取舍的产品规则文档。目标只有一个：
-
-**防止 Broker Desk 在看起来越来越完整的过程中，逐渐失去真正的商业价值与执行聚焦。**
-
-从现在开始，所有新功能、新页面、新增强层、新 AI 想法，都必须先经过本节判断，再决定是否进入设计或开发。
-
-### 18.2 当前阶段真实判断
-Broker Desk 当前最接近的形态是：
-
-**面向日本小微不动产业者，围绕“资料整理、信息归档、文书生成、输出追溯”主线构建的轻量工作台。**
-
-当前最有价值的不是“模块数量、架构完整、AI 叙事”，而是：
-
-**能否把分散资料更快整理成可追溯、可输出、可对客展示的专业业务文书。**
-
-### 18.3 主叙事收敛（替换旧叙事）
-不再作为主叙事：
-- 轻量业务资料中枢
-- 不动产一体化工作平台
-- 日本地产 SaaS 基础设施
-- AI 驱动的不动产业务系统
-- 面向全流程的智能业务中台
-
-允许使用的主叙事：
-
-**Broker Desk 帮助日本小微不动产业者，把分散资料快速整理成可追溯、可标准输出的专业业务文书。**
-
-短句版本：
-
-**让小微不动产从“资料散、输出慢、文书乱”变成“整理快、输出稳、可追溯”。**
-
-### 18.4 当前仅承认的两条主线
-#### A. 资料导入与整理
-目标：不是“导入成功”，而是 **导入 -> 映射 -> 校验 -> 变成可用资料**。
-
-判断标准：
-- 能否快速导入 Excel / 手工资料 / 附件
-- 错误是否可见
-- 是否可立即修复
-- 修复后是否能继续流程而非卡住
-
-#### B. 文书输出与追溯
-目标：不是“能下载文件”，而是 **生成专业、稳定、可回查来源的输出物**。
-
-判断标准：
-- 输出前是否有质量闸门
-- 输出后是否可追溯
-- 模板版本是否可见
-- 谁在何时基于何资料生成是否可审计
-- 文书是否达到“可对客展示”的专业度
-
-### 18.5 北极星指标（唯一评估口径）
-后续不再用“功能数/页面数”衡量进展，仅看：
-1. 首份合格输出物生成时长是否下降
-2. 人工重复填写字段数量是否下降
-3. 输出物退回/修改率是否下降
-
-任何需求评估必须回答：
-**它改善这三个指标中的哪一个？**
-
-### 18.6 核心价值判断：不是“全”，而是“顺”
-当前优先投资：
-- 导入映射可见化
-- 错误可修复化
-- 跨页面字段复用
-- 输出前校验
-- 模板版本绑定
-- 输出历史与追溯
-- 真实 PDF/DOCX 专业化
-
-当前不优先：
-- 聊天入口
-- 通用 Agent
-- 炫技式 AI 解释
-- 重 BI 看板
-- 重权限体系
-- 低频边缘模块
-
-### 18.7 三大风险
-1. 叙事过宽 -> 开发扩张 -> 模块多但价值分散
-2. 工程成熟快于商业卖点成熟 -> “系统好但购买理由弱”
-3. AI 诱惑过强 -> 看起来高级但不提升成交与留存
-
-结论：AI 不能抢主叙事，不能脱离主线独立扩张。
-
-### 18.8 近期唯一允许持续强化的能力区
-1. 导入闭环能力（创建、映射、校验、修复、附件关联）
-2. 表单与资料复用能力（自动带出、草稿恢复、跨页复用）
-3. 输出专业化能力（质量闸门、版本绑定、追溯、PDF/DOCX）
-4. 错误修复路径能力（明确原因、修复入口、上下文回流、撤销）
-
-### 18.9 近期默认不做（未经准入复审）
-- 通用聊天页
-- 通用 AI 助手页
-- 全自动 Agent 跨模块写库
-- 法务核心条款自动改写
-- 重型 BI
-- 原生移动端
-- 大规模第三方集成
-- 大而全权限体系
-- 为“完整感”补低频页面
-- 炫技型 AI 功能
-
-### 18.10 Contracts 战略二选一（禁止长期中间态）
-路线 A：合同升格为独立核心实体（生命周期、续签、变更、预警、强关系）。  
-路线 B：合同保持配角，服务于输出与追溯，不再承诺全流程业务系统。
-
-当前阶段默认保持：
-- **以输出与追溯为中心**（未进入合同全面实体化改造前，不扩展重生命周期承诺）。
-
-### 18.11 输出物优先级上调（冲突时优先）
-当优先级冲突时，优先回答：
-
-**该事项是否直接提升输出物的专业度、可靠性或可追溯性？**
-
-若是，优先级上升。
-
-### 18.12 AI 的唯一正确位置（本阶段）
-只允许：
-1. 导入阶段建议模式（字段识别、映射建议、缺失提示、可疑提醒）
-2. 填写阶段建议模式（补全建议、说明建议、冲突提醒）
-
-AI 护栏：
-- 默认不自动写库
-- 先建议后确认
-- 显示依据来源
-- 可回滚
-- 可审计
-- 高风险内容不交由 AI 决策
-
-禁止方向：
-- 聊天即入口
-- AI 自主决定做什么
-- 一次执行多步写库
-- 改写关键法务条款
-- 代替模板系统
-
-AI 当前价值定义：
-
-**减少人工整理与填写成本。**
-
-### 18.13 技术现实约束（执行层）
-1. Memory driver 仅可内部联调；对外稳定试用必须 Postgres。
-2. 无真实身份无法支撑完整审计；需规划最小身份体系。
-3. 无业务单测会放大增强层风险；质量闸门/输出规则需逐步补单测。
-
-### 18.14 功能准入规则（强制）
-五问筛选：
-1. 是否属于导入整理或输出追溯主线
-2. 是否改善三项北极星之一
-3. 是否高频动作
-4. 是否无需重构全系统
-5. 是否沉淀可复用规则/模板/数据资产
-
-准入标准：
-- 满足 >=3 条，才进入近期范围
-- 满足 1-2 条，默认归档
-- 无法回答主线价值，直接否决
-
-额外否决条件：
-- 价值主要来自“看起来高级”
-- 难在 2 周内验证
-- 明显诱发边界扩张
-
-### 18.15 当前推荐路线（1-2 版本）
-近期重点：
-1. 稳定导入闭环
-2. 强化字段复用与错误修复
-3. 升级输出物专业度
-4. 强化模板/版本/历史追溯链路
-5. 切换稳定持久化与最小身份能力
-
-暂不追求：
-- 大而全覆盖
-- AI 炫技
-- 平台化叙事
-- 全自动代理
-- 重生态整合
-
-### 18.16 开发硬规则（执行前自检）
-1. 不为“完整感”新增低频页面
-2. 不为“智能感”加入无验证 AI
-3. 不为“技术洁癖”拖延商业关键项（输出物/持久化/身份/追溯）
-4. 未证明主线价值前，不横向扩张
-5. 每次改动必须回答：
-
-**这次改动是否让“资料 -> 专业输出物”链路更短、更稳？**
-
-若回答不清楚，暂不开发。
-
-### 18.17 最终判断（作为阶段共识）
-Broker Desk 值得继续做，但不会靠“功能越来越多”或“AI 越来越强”获胜。  
-唯一胜法：
-
-**把日本小微不动产业者最繁琐、最易出错的资料整理与文书输出，做得更快、更稳、更专业。**
-
-从现在开始，所有开发都必须服从这个目标。
-
-
----
-
-## 19. 协作策略升级：持续需求访谈机制（2026-04-13 生效）
-
-> 目标：Codex 不仅执行开发，还在每个阶段主动进行“需求访谈 + 反证提问”，持续校准方向，确保和产品初衷同频。
-
-### 19.1 角色升级（执行 + 访谈双角色）
-从本节生效后，Codex 的职责包含两部分：
-1. **开发执行者**：落地需求、修复问题、验证结果。
-2. **需求访谈者**：持续提问、质疑假设、暴露风险、推动共识收敛。
-
-### 19.2 每轮交互默认流程（强制）
-每一次进入新任务时，按以下顺序执行：
-1. **复述目标**：一句话确认本轮要解决的业务目标。
-2. **访谈提问**：提出 2-5 个关键问题（含至少 1 个反证问题）。
-3. **收敛结论**：把答案转成明确的开发约束（做什么/不做什么）。
-4. **执行开发**：按收敛结果落地实现。
-5. **回报验证**：输出结果 + 未决风险 + 下一轮访谈问题。
-
-### 19.3 问题类型配比（避免“只问不做”）
-每轮提问应覆盖以下类型：
-- 价值问题：这件事改善哪一个北极星指标？
-- 边界问题：这是否诱发边界扩张？
-- 反证问题：如果不做这个，会损失什么？
-- 证据问题：是否有用户行为/流程证据支持？
-- 风险问题：失败模式是什么，如何可回滚？
-
-### 19.4 提问原则（防止空转）
-- 不为了提问而提问：问题必须服务于“更快收敛、更稳执行”。
-- 不做开放式发散：优先提出可决策的问题。
-- 不阻塞开发：无法立即回答的问题，先做可逆实现并标记假设。
-- 不脱离主线：所有问题必须围绕“导入整理 + 输出追溯”。
-
-### 19.5 与当前产品约束的一致性
-该机制必须服从 §18 的所有约束，尤其是：
-- 功能准入五问（§18.14）
-- AI 护栏（§18.12）
-- 输出物优先级（§18.11）
-
-### 19.6 本机制的衡量方式
-若机制有效，应出现以下结果：
-1. 需求返工次数下降
-2. 偏离主线的提案进入率下降
-3. 单次迭代“结论清晰度”提升
-4. 北极星指标关联说明更加明确
-
-### 19.7 执行口令
-从现在开始，若用户未特别说明“只执行不提问”，则默认启用本机制。
-
-
-## 20. 执行记录（2026-04-13 / 访谈驱动开发：Contracts Undo + Output 修复入口）
-
-### 本轮访谈决策输入
-- 用户确认决策：`1D 2D 3D 4A 5A`
-  - 指标优先：A+B（首份合格输出时长 + 重复填写减少）
-  - 验收产物：输出链路可演示 + 合同侧 Undo 补齐
-  - 硬禁区：不做视觉大改
-  - 节奏：可逆快迭代
-  - 合同策略：保持配角，服务输出与追溯
-
-### 已完成改动
-1. **Contracts 批量状态更新新增可撤销（Undo）闭环**
-   - `batchUpdateContractStatusAction`：在批量更新前记录每个 client 原 stage，更新后通过 URL 回传 `undoClientIds/undoStages`
-   - 新增 `undoContractBatchStatusAction`：支持按 client 列表恢复原 stage，并记录审计日志
-   - Contracts 页面接入 Undo 提示条与回滚按钮（JA/ZH/KO）
-   - 新增 flash：`contract_batch_undone`
-
-2. **Output Center 输出前问题新增“直达修复入口”**
-   - 在缺失项提示区新增 `quickFixLinks`
-   - 典型修复路径：
-     - 提案字段缺失 -> 跳转提案编辑页
-     - 目标物件缺失 -> 跳转物件台账
-     - 目标主体缺失 -> 跳转关系者台账
-   - 目标：缩短“发现问题 -> 修复 -> 再生成”链路
-
-### 变更文件
-- `src/app/actions.ts`
-- `src/app/contracts/page.tsx`
-- `src/app/output-center/page.tsx`
-
-### 验证说明
-- 由于本机当前存在长期的 dev/build 命令无回显问题（`next dev` 进程存在但端口未就绪），本轮暂未完成完整自动化验证回执。
-- 已完成人工静态检查与关键路径代码复核；待环境恢复后优先补跑：
-  1. `npm run lint`
-  2. `CI=1 npm run build`
-  3. `npm run test:regression`
-
-### 与 §18 收敛原则一致性
-- 本轮改动均属于主线：
-  - 输出链路修复效率（错误可修复化）
-  - 关键状态操作可撤销（降低操作风险）
-- 无新增低频页面，无视觉重构，无 AI 扩张。
-
-
-## 21. 执行记录（2026-04-13 / Git 链路修复 + Key 稳定性收口）
-
-### 21.1 Git 链路修复（已完成）
-- 背景：本地仓库曾出现元数据异常与远端历史不连续，`push` 受阻。
-- 处理策略：
-  1. 旧 `.git` 做外部备份（避免不可逆风险）
-  2. 远端 `main` 作为基线对齐
-  3. 将本地有效改动精确迁移为单独提交
-  4. 重新 `push -u origin main`
-- 结果：
-  - 远端仓库已成功同步（`origin/main`）
-  - 当前分支跟踪关系已建立
-  - 后续可按常规 `commit + push` 持续迭代
-
-### 21.2 前端小 Bug 收口（本轮）
-- 目标：降低 React 列表渲染的重复 key 风险，减少运行期告警噪声。
-- 改动点：
-  1. Dashboard 导入任务列表：`key` 从 index 改为稳定实体 id
-  2. Output Center 问题清单：`key` 改为 `index + msg` 组合
-  3. Import Center Excel 预览与映射：
-     - 表头 key 增加 index 前缀
-     - 单元格 key 增加行列坐标
-     - 映射行 key 增加 index 前缀
-     - 跳过列表 key 增加 index 后缀
-- 变更文件：
-  - `src/app/page.tsx`
-  - `src/app/output-center/page.tsx`
+## 18. 执行记录（2026-04-16 / 主线收口补强：导入问题码聚合 + 输出模板命中率 + 审计CSV）
+
+### 18.1 本轮目标
+- 仅做主线内增强，不扩边界：
+  1. Import Center 问题码聚合可视化
+  2. Output Center 模板版本命中率可视化
+  3. Audit Log 可筛选 CSV 导出
+
+### 18.2 完成项
+
+1. **Import Center：问题码聚合卡**
+- 已基于结构化校验 payload（`parseImportValidationPayload`）增加“问题代码聚合”卡片。
+- 统计口径：
+  - 按 `issue.code` 聚合
+  - 分级计数 `critical / warning / info`
+  - 总计排序后展示 Top 5
+- 页面新增文案键：
+  - `issueStatsTitle`
+  - `issueStatsDesc`
+- 文件：
   - `src/app/import-center/page.tsx`
 
-### 21.3 验证与环境说明
-- 当前 CLI 环境存在长期进程锁/无回执问题（`next dev` / `eslint` / `tsc` 在本地工具链中易出现假启动或长时间挂起）。
-- 已完成：
-  - 静态代码审阅与关键路径比对
-  - 运行进程与 lock 问题定位（`.next/dev/lock` 冲突）
-- 待补（在稳定终端环境优先执行）：
-  1. `npm run lint`
-  2. `CI=1 npm run build`
-  3. `npm run test:regression`
-
-### 21.4 与收敛规则一致性
-- 本轮不新增页面、不扩展边界、不引入 AI 能力。
-- 仅做“稳定性 + 可维护性”修补，服务于主线：
-  - 降低调试噪声
-  - 保证协作链路（Git）可靠
-
-### 21.5 构建根目录修正（next.config）
-- 问题：Next 16 在本机检测到多个 lockfile 时，曾将 workspace root 误判到用户主目录。
-- 处理：在 `next.config.ts` 中使用 `import.meta.url` 明确计算项目根目录，并设置：
-  - `outputFileTracingRoot`
-  - `turbopack.root`
-- 目的：避免错误的根目录推断导致过宽扫描与不稳定行为。
-
-## 22. 执行记录（2026-04-13 / 查漏补缺专项收口）
-
-### 22.1 本轮目标
-- 不扩展新功能，只补稳定性与回归断点。
-- 保障明日继续开发前，基础链路可复现、可验证、可提交。
-
-### 22.2 已完成修复
-1. **回归脚本修复（核心）**
-   - 问题：`scripts/regression.sh` 使用不存在的客户 ID `client_lin`，导致 stage API 回归必然 404。
-   - 修复：统一改为现有 seed 客户 `client_yamada`，并将回滚目标设为 `lead`（与当前阶段机可逆路径一致）。
-   - 文件：`scripts/regression.sh`
-
-2. **lint 命令稳定化**
-   - 问题：`npm run lint` 使用默认 `eslint` 扫描范围，存在长时间无回执风险；并在 ESLint 9 下对 shell 目录参数会报 ignored 错误。
-   - 修复：将 lint 脚本收敛为仅扫描实际受 ESLint 管理的目标：
-     - `eslint src next.config.ts eslint.config.mjs`
-   - 文件：`package.json`
-
-3. **TypeScript 构建错误修复（Undo 批量回滚）**
-   - 问题：`undoContractBatchStatusAction` 中 `stage` 被推断为 `string`，传入 `setClientStage` 时与 `ClientStage` 类型不匹配，导致 build 失败。
-   - 修复：
-     - 引入 `ClientStage` 类型
-     - 将 `validPairs` 改为显式类型数组，基于 `isClientStage` 通过后再 push
-   - 文件：`src/app/actions.ts`
-
-### 22.3 本轮验证结果
-- `npm run lint` ✅
-- `CI=1 npm run build` ✅
-- `npm run test:ja-terms` ✅
-- `npm run test:regression` ✅
-
-### 22.4 环境观察
-- `next dev` 在清理残留进程与 `.next` 后可正常 `Ready`。
-- 旧问题的主要触发条件是历史残留进程/锁与过宽 lint 扫描范围，不是业务页面逻辑错误。
-
-### 22.5 与收敛规则一致性
-- 本轮未新增页面、未扩展边界、未引入 AI 能力。
-- 仅修复“可验证性、可回归性、可构建性”断点，符合当前基础层优先策略。
-
-## 26. 本次更新记录（2026-04-13，P0 冲刺落地：身份/审计/输出追溯/导入重试）
-
-### 26.1 完成项（按任务包）
-- **最小身份体系（P0）**
-  - 新增 actor cookie 机制：`brokerdesk_actor_id`
-  - 新增 actor 切换 API：`POST /api/actor`
-  - 导航增加执行账号切换控件（多用户可切换）
-  - `getDefaultUser()` 升级为“优先读取 actor cookie，回退默认用户”
-- **数据层用户能力补齐**
-  - 新增 `listUsers()` / `getUserById()`（memory + postgres）
-  - Postgres seed 补 `user_ops`，并兼容已有库的幂等插入
-- **审计链升级（P0）**
-  - `audit_logs` 增加 `actor_id`、`context_json`
-  - 审计模型升级为 `actor_id/action/target_type/target_id/timestamp/context`
-  - `addAuditLog` 支持 context，关键写操作可带上下文
-  - Postgres 事务内直接写审计的语句全部补齐 `actor_id/context_json`
-- **输出追溯升级（P0）**
-  - `generated_outputs` 增加并落库：
-    - `document_number`
-    - `source_quote_id`
-    - `actor_id`
-    - `template_version_id`（保持）
-  - 输出生成动作 `generateOutputDocumentAction` 强制写入上述字段
-  - Output Center 与导出 CSV 增加文控字段展示/导出（含 document number、template version、actor）
-  - 下载接口 `/api/outputs/[id]/download` 增补追溯头信息
-- **导入闭环收口（P0）**
-  - `import_jobs` 状态迁移加入后端校验（默认路径：`queued -> mapped -> completed`）
-  - 新增 `retryImportJobAction`：失败可重试，保留错误上下文
-  - Import Center 验证卡片增加“再試行/重试”按钮
-  - Excel 执行导入流程改为先 `mapped` 再按结果进入 `completed` 或保留 `mapped` 待修复
-
-### 26.2 变更文件
-- 新增：
-  - `src/lib/actor.ts`
-  - `src/components/actor-switcher.tsx`
-  - `src/app/api/actor/route.ts`
-- 修改：
-  - `src/lib/data.ts`
-  - `src/lib/data.memory.ts`
-  - `src/lib/data.postgres.ts`
-  - `src/lib/hub.ts`
-  - `src/app/actions.ts`
-  - `src/components/app-nav.tsx`
-  - `src/app/import-center/page.tsx`
+2. **Output Center：模板命中率与版本分布**
+- 已新增模板应用覆盖统计（跟随当前历史筛选条件）：
+  - 模板命中率 `templateHitRate`
+  - 绑定版数 `withTemplateVersion`
+  - 未绑定版数 `withoutTemplateVersion`
+  - 模板版本 Top 分布（按命中次数）
+- 页面新增文案键：
+  - `templateHitTitle`
+  - `templateHitDesc`
+  - `withTemplateVersion`
+  - `withoutTemplateVersion`
+  - `topTemplateVersions`
+- 文件：
   - `src/app/output-center/page.tsx`
+
+3. **Audit Log：CSV 导出**
+- `/api/hub/export` 新增 `scope=audit_logs`：
+  - 支持筛选参数：`actor / action / target / q / from / to`
+  - 导出字段：`id, created_at, actor_id, action, target_type, target_id, message, context_json`
+  - 文件名：`audit-logs-*.csv`
+- `/audit-log` 页面新增“CSV 导出”按钮，并携带当前筛选条件导出。
+- 文件：
   - `src/app/api/hub/export/route.ts`
-  - `src/app/api/outputs/[id]/download/route.ts`
-  - `docs/postgres_schema.sql`
-
-### 26.3 验证结果
-- `npm run lint` ✅
-- `CI=1 npm run build` ✅
-- `npm run test:ja-terms` ✅
-- `npm run test:regression` ✅（需本地服务在 3000 端口运行）
-
-### 26.4 残留风险
-- 目前最小身份仍为“执行账号切换 + actor 审计”，尚未引入真实登录/会话过期策略。
-- `generated_outputs.quote_id` 与 `source_quote_id` 现阶段等值写入，后续若引入跨源输出需进一步细化。
-- Import Center 的“失败定义”仍以业务规则近似（成功数为0视为需重试），后续可补充更细致错误码分层。
-
-### 26.5 下一步（主线内）
-1. 为输出链补“模板版本比对 + 回滚确认”快速入口（仍在 Output/Template 主线内）。
-2. 导入映射错误码与修复链接做稳定字典化（前后端同一枚举）。
-3. 将关键审计事件做筛选页（按 actor / action / target / time）用于 PM 验收复盘。
-
-## 27. 本次更新记录（2026-04-13，P0 收口补齐：模板回滚确认 / 导入错误码字典化 / 审计筛选）
-
-### 27.1 完成项（对应 26.5 的三条）
-1. **输出链：模板版本比对 + 回滚确认**
-   - `applyOutputTemplateVersionAction` 增加确认闸门：必须提交 `confirmApply=1` 才允许应用旧版本。
-   - `settings/output-templates` 的版本列表增加：
-     - 每个版本的输出使用次数（来自 `generated_outputs.template_version_id`）
-     - “先看差分，再勾选确认，最后应用”的交互路径
-   - 目的：降低误回滚风险，满足“输出链路可控可追溯”。
-
-2. **导入链：错误码字典化（前后端统一）**
-   - 新增导入校验协议：
-     - `ImportValidationIssueCode`
-     - `ImportValidationPayload`
-     - `parse/stringifyImportValidationPayload`
-   - `actions` 中导入相关流程改为写入结构化校验消息（JSON payload）：
-     - 映射保存/自动映射
-     - Excel 执行导入
-     - 校验处理
-     - 重试入队
-   - Import Center 告警区改为基于 `issue code + level + action` 渲染，不再按索引猜测严重级别。
-   - 目的：保证问题码稳定、修复动作稳定、后续统计可持续。
-
-3. **审计链：筛选页落地**
-   - 新增页面：`/audit-log`
-   - 新增数据能力：`listAuditLogs(userId, filter)`
-     - 支持按 actor / action / target / 日期区间 / 关键词过滤
-   - 合同页底部“監査ログ/审计日志/감사 로그”入口改为跳转该页。
-   - 目的：支持 PM 验收“谁在何时对什么做了什么”。
-
-### 27.2 关键变更文件
-- 新增：
   - `src/app/audit-log/page.tsx`
-- 修改：
-  - `src/app/actions.ts`
-  - `src/app/import-center/page.tsx`
-  - `src/app/contracts/page.tsx`
-  - `src/app/settings/output-templates/page.tsx`
-  - `src/lib/import-mapping.ts`
-  - `src/lib/data.memory.ts`
-  - `src/lib/data.postgres.ts`
-  - `src/lib/data.ts`
 
-### 27.3 验证结果
+### 18.3 本轮验证结果
 - `npm run lint` ✅
 - `CI=1 npm run build` ✅
 - `npm run test:ja-terms` ✅
 - `BASE_URL=http://127.0.0.1:3000 npm run test:regression` ✅
+- 回归完成后确认：3000 端口无残留监听进程 ✅
 
-### 27.4 残留风险
-- Import Center 仍混合“新结构化校验 payload + 旧文本回退”，后续可逐步迁移历史数据以完全统一。
-- 审计筛选页当前按“当前 actor 可见范围”查询；如需门店级审计视图，后续需补组织维度。
-- 模板回滚确认目前为前端勾选 + server 校验；若未来接审批流，需要叠加审批节点。
+### 18.4 风险与后续
+- Import Center 目前仍兼容旧版 `validationMessage` 文本回退；后续建议逐步迁移历史数据为结构化 payload。
+- Output Center 命中率统计当前按“筛选后集合”计算，若 PM 需要全局基线，后续可追加“全量口径”切换。
+- 审计 CSV 当前基于当前 actor 可见范围导出，若进入多用户门店试用需引入组织维度过滤。
 
-### 27.5 下一步（继续主线）
-1. 在 Import Center 增加“问题码统计卡”（按 code 聚合），直接服务 PM 的缺陷复盘。
-2. 在 Output Center 增加“模板版本过滤器 + 版本命中率统计”。
-3. 为审计筛选页补导出能力（CSV），用于周会复盘与留档。
+## 19. 执行记录（2026-04-16 / Week2 收口补充：问题趋势 + 模板过滤 + 审计预设）
 
-## 28. 本次更新记录（2026-04-17，Agent 配置落地：Rules + Skills）
+### 19.1 本轮目标
+- 在不扩边界前提下，补全 Week2 可视化与可导出口径：
+  1. Import Center 增加“近7日问题趋势”
+  2. Output Center 增加“模板版本过滤 + 命中率导出”
+  3. Audit Log 增加“预设筛选（最近7天 / 关键写入）”并与 CSV 口径一致
 
-### 28.1 目标
-- 将产品经理建议固化为本地工程配置，避免后续对话与开发方向漂移。
-- 建立“单一真源 + 分层规则”体系。
+### 19.2 完成项
 
-### 28.2 新增文件
-- `.cursor/README.md`
-- `.cursor/rules/00-product-positioning.mdc`
-- `.cursor/rules/01-scope-boundaries.mdc`
-- `.cursor/rules/02-domain-model.mdc`
-- `.cursor/rules/03-import-center.mdc`
-- `.cursor/rules/04-output-center.mdc`
-- `.cursor/rules/07-coding-workflow.mdc`
-- `.cursor/skills/feature-planner/SKILL.md`
-- `.cursor/skills/import-mapper/SKILL.md`
-- `.cursor/skills/domain-model-guardian/SKILL.md`
-- `.cursor/skills/output-template-builder/SKILL.md`
-- `.cursor/skills/service-request-traceability/SKILL.md`
-- `.cursor/skills/migration-safe-refactor/SKILL.md`
+1. **Import Center：近7日问题趋势卡**
+- 在问题码聚合基础上新增按天趋势统计（近 7 天）：
+  - 每日 `total / critical / warning / info`
+  - 条形比例按当周最大值缩放
+- 统计数据来源：结构化校验 payload，时间回退使用 `job.createdAt`
+- 新增三语文案：
+  - `issueTrendTitle`
+  - `issueTrendDesc`
+- 文件：
+  - `src/app/import-center/page.tsx`
 
-### 28.3 规则优先级（已写入）
-1. `CLAUDE.md`（项目最高真源）
-2. `.cursor/rules/*.mdc`
-3. `.cursor/skills/*/SKILL.md`
+2. **Output Center：模板版本过滤 + 命中率 CSV**
+- 历史筛选新增模板版本维度：
+  - `all`
+  - `unbound`
+  - 指定 `templateVersionId`
+- 过滤状态贯穿：
+  - 历史列表
+  - 类型切换链接
+  - 缩放链接
+  - 导出链接
+- 新增“命中率 CSV”导出按钮：
+  - `/api/hub/export?scope=outputs_hitrate`
+- `scope=outputs` 同步支持 `templateVersion` 过滤参数
+- 新增三语文案：
+  - `allTemplate`
+  - `templateUnbound`
+  - `templateVersion`
+  - `exportHitRate`
+- 文件：
+  - `src/app/output-center/page.tsx`
+  - `src/app/api/hub/export/route.ts`
 
-冲突处理：下层若与上层冲突，一律以上层为准。
+3. **Audit Log：预设筛选 + 导出口径对齐**
+- `audit-log` 页面新增预设筛选：
+  - `all`
+  - `last_7_days`
+  - `key_writes`
+- `last_7_days`：自动给出默认起止日期并参与查询
+- `key_writes`：限定核心写操作集合（导入/台账/输出相关）
+- CSV 导出新增 `preset` 参数，并在导出 API 端保持与页面同口径
+- 文件：
+  - `src/app/audit-log/page.tsx`
+  - `src/app/api/hub/export/route.ts`
 
-### 28.4 已固化的执行约束
-- 非 trivial 需求先走 feature planning，再实施。
-- 需求归类优先：`import / core_data / output / template / ai_future`。
-- 当前阶段 AI 仅允许增强层扩展点，不进入主流程自动化。
-- 任务收口必须跑完：
-  - `npm run lint`
-  - `CI=1 npm run build`
-  - `npm run test:ja-terms`
-  - `npm run test:regression`
+### 19.3 本轮验证结果
+- `npm run lint` ✅
+- `CI=1 npm run build` ✅
+- `npm run test:ja-terms` ✅
+- `npm run test:regression` ✅（服务启动在 `127.0.0.1:3000` 后通过）
 
-## 29. 本次更新记录（2026-04-17，前端策略补强：UI 规则 + 前端 Skills）
-
-### 29.1 目标
-- 将前端补充建议落地为项目内可执行规则，避免“只改样式不改业务可用性”。
-- 强化“桌面优先业务系统”而非通用 SaaS 模板化输出。
-
-### 29.2 新增/更新文件
-- 新增规则：
-  - `.cursor/rules/08-ui-ux-constraints.mdc`
-- 新增前端专用 Skills：
-  - `.cursor/skills/workspace-admin-ui/SKILL.md`
-  - `.cursor/skills/import-center-ui/SKILL.md`
-  - `.cursor/skills/output-preview-ui/SKILL.md`
-  - `.cursor/skills/template-editor-ui/SKILL.md`
-  - `.cursor/skills/entity-detail-pattern/SKILL.md`
-  - `.cursor/skills/responsive-business-layout/SKILL.md`
-- 更新：
-  - `.cursor/README.md`（新增规则/skills清单 + 外部插件手动安装建议）
-
-### 29.3 前端执行原则（已固化）
-- UI 改动必须服务业务链路：导入可用、输出可追溯、详情可操作。
-- 页面形态优先：表格/详情/时间线/文书预览，不追求营销化视觉。
-- 响应式策略：桌面主工作台不降级，移动端保证关键辅助动作可用。
-
-### 29.4 外部工具建议（手动安装，不在仓库自动执行）
-1. Figma plugin
-2. frontend-design skill/plugin
-3. Playwright/browser automation MCP（用于截图与回归巡检）
-
-## 30. 固定口令（防遗忘，直接复制可用）
-
-> 目的：不要求用户记住技能名，只用短句触发对应规则。
-
-### 30.1 前端快捷口令（建议直接复制）
-1. `用后台布局规则做这页`
-2. `用导入页规则改这块`
-3. `用输出预览规则改这块`
-4. `用模板编辑规则改这块`
-5. `用详情页统一规则改这块`
-6. `按桌面优先响应式规则收口`
-
-### 30.2 万能口令
-`先按 Broker Desk 规则做 feature planning，再用对应前端 skill 实施。`
-
-### 30.3 执行映射（内部约定）
-- 后台布局 -> `workspace-admin-ui`
-- 导入页 -> `import-center-ui`
-- 输出预览 -> `output-preview-ui`
-- 模板编辑 -> `template-editor-ui`
-- 详情页统一 -> `entity-detail-pattern`
-- 响应式收口 -> `responsive-business-layout`
+### 19.4 本轮修正说明
+- 修复了 Import Center 趋势统计中的类型问题：
+  - `HubImportJobItem` 无 `updatedAt`，改为 `createdAt` 作为时间回退字段
+- 文件：
+  - `src/app/import-center/page.tsx`
