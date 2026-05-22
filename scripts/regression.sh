@@ -2,6 +2,10 @@
 set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://127.0.0.1:3000}"
+QA_CURL_HEADERS=()
+if [ -n "${BROKER_DESK_QA_TOKEN:-}" ]; then
+  QA_CURL_HEADERS=(-H "x-broker-desk-qa-token: ${BROKER_DESK_QA_TOKEN}")
+fi
 
 fail() {
   echo "[FAIL] $1"
@@ -196,7 +200,7 @@ if [ -f "/Users/laineyzhu/Desktop/房产专家资料库/５ふれんず保証.pd
   grep '"friends_guarantee_required_fields_missing"' "$incomplete_case_body" >/dev/null || fail "friends guarantee incomplete-case response missing required-fields error"
   grep '"previewUrl"' "$incomplete_case_body" >/dev/null || fail "friends guarantee incomplete-case response missing previewUrl"
 
-  complete_fixture_json="$(curl -fsS -X POST "${BASE_URL}/api/qa/friends-guarantee/complete" -H 'content-type: application/json' -d "{\"caseId\":\"${friends_fixture_case_id}\"}")" || fail "friends guarantee fixture QA completion failed"
+  complete_fixture_json="$(curl -fsS -X POST "${BASE_URL}/api/qa/friends-guarantee/complete" "${QA_CURL_HEADERS[@]}" -H 'content-type: application/json' -d "{\"caseId\":\"${friends_fixture_case_id}\"}")" || fail "friends guarantee fixture QA completion failed"
   echo "$complete_fixture_json" | grep '"draftStatus":"ready"' >/dev/null || fail "friends guarantee fixture QA completion did not make draft ready"
 
   BASE_URL="$BASE_URL" CASE_ID="$friends_fixture_case_id" OUTPUT_PDF="$friends_pdf" node scripts/friends-guarantee-pdf-fidelity.mjs >/tmp/broker-desk-friends-guarantee-fidelity.json || fail "friends guarantee fixture PDF fidelity check failed"

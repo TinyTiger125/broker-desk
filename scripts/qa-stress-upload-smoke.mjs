@@ -6,6 +6,11 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const sampleDir = join(root, "tmp/qa_stress_samples");
 const manifest = JSON.parse(readFileSync(join(sampleDir, "manifest.json"), "utf8"));
 const baseUrl = process.env.BASE_URL ?? "http://127.0.0.1:3002";
+const qaToken = process.env.BROKER_DESK_QA_TOKEN?.trim();
+
+function qaHeaders(extra = {}) {
+  return qaToken ? { ...extra, "x-broker-desk-qa-token": qaToken } : extra;
+}
 
 async function upload(path) {
   const bytes = readFileSync(path);
@@ -28,7 +33,10 @@ async function upload(path) {
   };
 }
 
-const resetResponse = await fetch(`${baseUrl}/api/qa/reset-business-data`, { method: "POST" });
+const resetResponse = await fetch(`${baseUrl}/api/qa/reset-business-data`, {
+  method: "POST",
+  headers: qaHeaders(),
+});
 const resetBody = await resetResponse.json().catch(() => ({}));
 
 const results = [];

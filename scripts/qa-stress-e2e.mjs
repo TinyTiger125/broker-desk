@@ -9,6 +9,11 @@ mkdirSync(artifactDir, { recursive: true });
 
 const manifest = JSON.parse(readFileSync(join(sampleDir, "manifest.json"), "utf8"));
 const baseUrl = process.env.BASE_URL ?? "http://127.0.0.1:3002";
+const qaToken = process.env.BROKER_DESK_QA_TOKEN?.trim();
+
+function qaHeaders(extra = {}) {
+  return qaToken ? { ...extra, "x-broker-desk-qa-token": qaToken } : extra;
+}
 
 async function readJson(response) {
   const body = await response.text();
@@ -43,7 +48,7 @@ async function upload(path) {
 async function accept(jobId, options = {}) {
   const response = await fetch(`${baseUrl}/api/qa/extraction-review/accept`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: qaHeaders({ "content-type": "application/json" }),
     body: JSON.stringify({ jobId, ...options }),
   });
   const body = await readJson(response);
@@ -57,7 +62,7 @@ async function accept(jobId, options = {}) {
 async function completeFriendsGuarantee(caseId) {
   const response = await fetch(`${baseUrl}/api/qa/friends-guarantee/complete`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: qaHeaders({ "content-type": "application/json" }),
     body: JSON.stringify({ caseId }),
   });
   const body = await readJson(response);
@@ -84,7 +89,10 @@ async function downloadPdf(caseId, outputPath) {
   };
 }
 
-const resetResponse = await fetch(`${baseUrl}/api/qa/reset-business-data`, { method: "POST" });
+const resetResponse = await fetch(`${baseUrl}/api/qa/reset-business-data`, {
+  method: "POST",
+  headers: qaHeaders(),
+});
 const resetBody = await readJson(resetResponse);
 const mergeExpectedVariants = new Set(["merge_candidate", "duplicate_upload", "long_text", "short_text"]);
 const rejectMergeExpectedVariants = new Set(["should_not_merge", "low_quality"]);

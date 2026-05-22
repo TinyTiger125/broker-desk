@@ -22,6 +22,7 @@ import {
 } from "@/lib/case-merge";
 import { canonicalizeCaseFieldKey } from "@/lib/case-field-normalization";
 import { materializeExtractionReviewValue } from "@/lib/extraction-review-materialization";
+import { isQaApiRequestAllowed, rejectQaApiRequest } from "@/lib/qa-api";
 import type { InputFileExtractionResult } from "@/lib/input-file-extractor";
 
 export const dynamic = "force-dynamic";
@@ -100,6 +101,8 @@ function materializeAcceptedExtraction(input: {
 }
 
 export async function POST(request: Request) {
+  if (!isQaApiRequestAllowed(request)) return rejectQaApiRequest();
+
   if (activeDataDriver !== "memory") {
     return NextResponse.json(
       { ok: false, error: "qa_accept_only_supports_memory_driver" },

@@ -14,6 +14,7 @@ import {
   getGuaranteeDraftFieldDefinitions,
   guaranteeCompanyTemplates,
 } from "@/lib/guarantee-application";
+import { isQaApiRequestAllowed, rejectQaApiRequest } from "@/lib/qa-api";
 
 export const dynamic = "force-dynamic";
 
@@ -128,6 +129,8 @@ const COMPLETE_DRAFT_DEFAULTS: Record<string, string> = {
 };
 
 export async function POST(request: Request) {
+  if (!isQaApiRequestAllowed(request)) return rejectQaApiRequest();
+
   if (activeDataDriver !== "memory") {
     return NextResponse.json(
       { ok: false, error: "qa_complete_only_supports_memory_driver" },
@@ -212,6 +215,11 @@ export async function POST(request: Request) {
     drafts.push({ draft, readiness });
   }
   const primaryDraft = drafts[0];
+  const primaryTemplate =
+    activeGuaranteeTemplates.find((template) => template.id === "friends_guarantee_individual_v1") ??
+    activeGuaranteeTemplates[0];
+  const primaryDraftResult =
+    drafts.find((result) => result.draft.templateId === primaryTemplate?.id) ?? primaryDraft;
 
   await addAuditLog({
     userId: user.id,
@@ -221,9 +229,9 @@ export async function POST(request: Request) {
     message: `QA 保証会社申込書の必須項目を補完しました: ${updatedCase.caseTitle}`,
     context: {
       caseId,
-      draftId: primaryDraft?.draft.id,
-      templateId: primaryDraft?.draft.templateId,
-      draftStatus: primaryDraft?.draft.status,
+      draftId: primaryDraftResult?.draft.id,
+      templateId: primaryDraftResult?.draft.templateId,
+      draftStatus: primaryDraftResult?.draft.status,
       savedDraftCount: drafts.length,
     },
   });
@@ -236,11 +244,12 @@ export async function POST(request: Request) {
   return NextResponse.json({
     ok: true,
     caseId,
-    draftStatus: primaryDraft?.draft.status,
-    draftReadyCount: primaryDraft?.readiness.readyCount ?? 0,
-    draftMissingCount: primaryDraft?.readiness.missingCount ?? 0,
+    templateId: primaryTemplate?.id,
+    draftStatus: primaryDraftResult?.draft.status,
+    draftReadyCount: primaryDraftResult?.readiness.readyCount ?? 0,
+    draftMissingCount: primaryDraftResult?.readiness.missingCount ?? 0,
     savedDraftCount: drafts.length,
-    previewUrl: `/guarantee-applications/${activeGuaranteeTemplates[0]?.id ?? "friends_guarantee_individual_v1"}/preview?caseId=${encodeURIComponent(caseId)}`,
-    downloadUrl: `/api/guarantee-applications/${activeGuaranteeTemplates[0]?.id ?? "friends_guarantee_individual_v1"}/download?caseId=${encodeURIComponent(caseId)}`,
+    previewUrl: `/guarantee-applications/${primaryTemplate?.id ?? "friends_guarantee_individual_v1"}/preview?caseId=${encodeURIComponent(caseId)}`,
+    downloadUrl: `/api/guarantee-applications/${primaryTemplate?.id ?? "friends_guarantee_individual_v1"}/download?caseId=${encodeURIComponent(caseId)}`,
   });
 }

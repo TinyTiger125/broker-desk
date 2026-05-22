@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import XLSX from "xlsx";
@@ -7,8 +7,29 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const outputDir = join(root, "tmp/qa_stress_samples");
 mkdirSync(outputDir, { recursive: true });
 
-const importantTemplate = join(root, "tmp/qa_filled_14_a-03_important_matters.xlsx");
-const contractTemplate = join(root, "tmp/qa_filled_5_ippan_kubun_sale_contract.xlsx");
+function resolveTemplatePath(label, candidates) {
+  const resolved = candidates.filter(Boolean).find((candidate) => existsSync(candidate));
+  if (resolved) return resolved;
+
+  throw new Error(
+    [
+      `${label} template was not found.`,
+      "Set the matching BROKER_DESK_QA_*_TEMPLATE_PATH env var, or keep the source workbook in /Users/laineyzhu/Desktop/房产专家资料库.",
+      `Checked: ${candidates.filter(Boolean).join(", ")}`,
+    ].join(" "),
+  );
+}
+
+const importantTemplate = resolveTemplatePath("Important matters", [
+  process.env.BROKER_DESK_QA_IMPORTANT_TEMPLATE_PATH,
+  join(root, "tmp/qa_filled_14_a-03_important_matters.xlsx"),
+  "/Users/laineyzhu/Desktop/房产专家资料库/14_a-03.xlsx",
+]);
+const contractTemplate = resolveTemplatePath("Sale contract", [
+  process.env.BROKER_DESK_QA_CONTRACT_TEMPLATE_PATH,
+  join(root, "tmp/qa_filled_5_ippan_kubun_sale_contract.xlsx"),
+  "/Users/laineyzhu/Desktop/房产专家资料库/5_ippan_kubun.xlsx",
+]);
 
 const propertyNames = [
   "港区グランドタワー",
