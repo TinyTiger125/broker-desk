@@ -1,5 +1,19 @@
 # Claude.md
 
+## Agent skills
+
+### Issue tracker
+
+Issues, PRDs, and agent-ready work items are tracked in GitHub Issues for this repository. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the default Matt Pocock skill triage vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, and `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This is a single-context repo. Engineering skills should read root `CONTEXT.md`, relevant product docs under `docs/`, and ADRs under `docs/adr/` when they exist. See `docs/agents/domain.md`.
+
 ## 1. 项目当前定位（已落地）
 - 产品名：`Broker Desk`
 - 当前版本定位：日本小微不动产业者的轻量业务资料中枢（Web SaaS）
