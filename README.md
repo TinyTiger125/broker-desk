@@ -1,15 +1,23 @@
 # Broker Desk (MVP)
 
-房产经纪报价 + 客户跟进工作台。
+日本小型不动产经纪人的 Excel-migration business document automation workspace。
 
 ## 项目目标
-用一个轻量 Web 工作台替代 `Excel + 聊天记录 + 手工计算`，聚焦三件事：
-- 客户管理
-- 报价生成
-- 跟进推进
+用一个轻量 Web 工作台替代 `Excel + Word + 手工 PDF`，聚焦 V1 主链路：
+- Excel import or quick entry
+- field mapping and confirmation
+- structured property / party / business data
+- template selection and pre-output adjustment
+- PDF preview and generation
+- output history
 
 ## 已实现页面
 - `/` Dashboard（今日待跟进、最近报价、风险提醒）
+- `/import-center` Excel 物件导入、字段映射、导入结果与下一步引导
+- `/properties` 结构化物件数据台账
+- `/parties` 相关主体台账
+- `/output-center` PDF 输出中心（模板选择、输出前检查、预览、生成、历史）
+- `/settings/output-templates` 出力模板调整中心（全模板标题/公司信息/注意文/显示开关）
 - `/clients` 客户列表（搜索、阶段/用途/热度筛选、排序、快速操作）
 - `/clients/new` 新建客户（30 秒建档）
 - `/clients/[id]` 客户详情（左主内容 + 右摘要侧栏）
@@ -19,7 +27,6 @@
 - `/quotes/[id]` 报价详情（状态、版本复制、摘要复制、打印入口）
 - `/quotes/[id]/print` 打印页
 - `/board` 跟进看板（Kanban 拖拽改阶段，自动写入阶段变更跟进记录）
-- `/settings/output-templates` 出力模板调整中心（全模板标题/公司信息/注意文/显示开关）
 
 ## 已实现产品钩子
 - 报价页自动生成客户可读摘要（简洁版/正式版）并支持一键复制

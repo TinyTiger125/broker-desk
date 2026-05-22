@@ -1,8 +1,9 @@
 import type { Locale } from "@/lib/locale";
 
-export type OutputDocType = "proposal" | "estimate_sheet" | "funding_plan" | "assumption_memo";
+export type OutputDocType = "property_overview" | "proposal" | "estimate_sheet" | "funding_plan" | "assumption_memo";
 
 export const outputDocLabel: Record<OutputDocType, string> = {
+  property_overview: "物件概要書",
   proposal: "購入提案書",
   estimate_sheet: "費用見積明細書",
   funding_plan: "資金計画書（ローン試算）",
@@ -10,6 +11,7 @@ export const outputDocLabel: Record<OutputDocType, string> = {
 };
 
 export const outputDocDescription: Record<OutputDocType, string> = {
+  property_overview: "物件情報を1枚に整理する概要版",
   proposal: "顧客説明用の総合提案版",
   estimate_sheet: "費用内訳に特化した明細版",
   funding_plan: "返済条件と推移確認版",
@@ -19,12 +21,14 @@ export const outputDocDescription: Record<OutputDocType, string> = {
 const outputDocLabelByLocale: Record<Locale, Record<OutputDocType, string>> = {
   ja: outputDocLabel,
   zh: {
+    property_overview: "物件概要书",
     proposal: "购买提案书",
     estimate_sheet: "费用估算明细书",
     funding_plan: "资金计划书（贷款试算）",
     assumption_memo: "试算前提条件说明书",
   },
   ko: {
+    property_overview: "매물 개요서",
     proposal: "구매 제안서",
     estimate_sheet: "비용 견적 명세서",
     funding_plan: "자금 계획서(대출 시뮬레이션)",
@@ -35,12 +39,14 @@ const outputDocLabelByLocale: Record<Locale, Record<OutputDocType, string>> = {
 const outputDocDescriptionByLocale: Record<Locale, Record<OutputDocType, string>> = {
   ja: outputDocDescription,
   zh: {
+    property_overview: "将物件信息整理成一页的概要版",
     proposal: "面向客户说明的综合提案版",
     estimate_sheet: "专注费用构成的明细版",
     funding_plan: "还款条件与趋势确认版",
     assumption_memo: "试算条件与免责事项确认版",
   },
   ko: {
+    property_overview: "매물 정보를 한 장으로 정리하는 개요 버전",
     proposal: "고객 설명용 종합 제안 버전",
     estimate_sheet: "비용 내역 중심의 명세 버전",
     funding_plan: "상환 조건/추이 확인 버전",
@@ -57,7 +63,13 @@ export function getOutputDocDescription(locale: Locale, type: OutputDocType): st
 }
 
 export function isOutputDocType(value: string): value is OutputDocType {
-  return value === "proposal" || value === "estimate_sheet" || value === "funding_plan" || value === "assumption_memo";
+  return (
+    value === "property_overview" ||
+    value === "proposal" ||
+    value === "estimate_sheet" ||
+    value === "funding_plan" ||
+    value === "assumption_memo"
+  );
 }
 
 export type OutputTemplateSettings = {
@@ -167,6 +179,7 @@ export function getDefaultOutputTemplateSettings(userId: string): OutputTemplate
 }
 
 export function getOutputTitle(settings: OutputTemplateSettings, type: OutputDocType): string {
+  if (type === "property_overview") return "物件概要書";
   if (type === "proposal") return settings.proposalTitle;
   if (type === "estimate_sheet") return settings.estimateSheetTitle;
   if (type === "funding_plan") return settings.fundingPlanTitle;

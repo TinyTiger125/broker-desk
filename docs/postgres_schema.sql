@@ -183,7 +183,7 @@ CREATE TABLE IF NOT EXISTS generated_outputs (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id),
   actor_id TEXT REFERENCES users(id),
-  quote_id TEXT NOT NULL REFERENCES quotations(id),
+  quote_id TEXT REFERENCES quotations(id),
   source_quote_id TEXT,
   property_id TEXT,
   party_id TEXT,
@@ -203,6 +203,80 @@ ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS actor_id TEXT;
 ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS source_quote_id TEXT;
 ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS document_number TEXT;
 ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS template_version_id TEXT;
+ALTER TABLE generated_outputs ALTER COLUMN quote_id DROP NOT NULL;
 UPDATE generated_outputs SET source_quote_id = quote_id WHERE source_quote_id IS NULL;
 UPDATE generated_outputs SET actor_id = user_id WHERE actor_id IS NULL;
 UPDATE generated_outputs SET document_number = id WHERE document_number IS NULL;
+
+-- V1 input review save: source job -> field-level review -> lightweight case data.
+CREATE TABLE IF NOT EXISTS import_jobs (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  source_type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  target_entity TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'queued',
+  notes TEXT,
+  mapping_json JSONB,
+  validation_message TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_import_jobs_user_created ON import_jobs(user_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS brokerage_cases (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  case_type TEXT NOT NULL DEFAULT 'unit_sale',
+  case_title TEXT NOT NULL,
+  primary_property_id TEXT,
+  status TEXT NOT NULL DEFAULT 'reviewed',
+  confirmed_data_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  source_import_job_ids TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS extraction_review_items (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  case_id TEXT NOT NULL REFERENCES brokerage_cases(id) ON DELETE CASCADE,
+  import_job_id TEXT NOT NULL REFERENCES import_jobs(id),
+  field_key TEXT NOT NULL,
+  label TEXT NOT NULL,
+  extracted_value TEXT NOT NULL DEFAULT '',
+  normalized_value TEXT NOT NULL DEFAULT '',
+  edited_value TEXT,
+  final_value TEXT,
+  source_sheet TEXT NOT NULL DEFAULT '',
+  source_cell TEXT,
+  source_range TEXT,
+  method TEXT NOT NULL DEFAULT '',
+  confidence DOUBLE PRECISION NOT NULL DEFAULT 0,
+  review_status TEXT NOT NULL,
+  source_file_hash TEXT NOT NULL DEFAULT '',
+  template_version TEXT NOT NULL DEFAULT '',
+  reviewed_by_id TEXT,
+  reviewed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS guarantee_application_drafts (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  case_id TEXT NOT NULL REFERENCES brokerage_cases(id) ON DELETE CASCADE,
+  template_id TEXT NOT NULL,
+  company_code TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'draft',
+  field_values_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  field_statuses_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  last_reviewed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(user_id, case_id, template_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_brokerage_cases_user_updated ON brokerage_cases(user_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_extraction_review_case ON extraction_review_items(case_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_extraction_review_import_job ON extraction_review_items(import_job_id);
+CREATE INDEX IF NOT EXISTS idx_guarantee_drafts_case_template ON guarantee_application_drafts(user_id, case_id, template_id);

@@ -11,6 +11,10 @@
 :root {
   --background: #f8f9ff;
   --foreground: #0d1c2e;
+  --font-jakarta: "Avenir Next", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-noto-jp: "Hiragino Sans", "Yu Gothic UI", "Yu Gothic", "Meiryo", sans-serif;
+  --font-noto-sc: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Source Han Sans SC", sans-serif;
+  --font-noto-kr: "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", "Source Han Sans K", sans-serif;
 }
 
 @theme inline {

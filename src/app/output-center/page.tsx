@@ -2,17 +2,26 @@ import Link from "next/link";
 import { generateOutputDocumentAction } from "@/app/actions";
 import { FormDraftAssist } from "@/components/form-draft-assist";
 import { PageFlashBanner } from "@/components/page-flash-banner";
-import { listQuoteFormData, listQuotations } from "@/lib/data";
+import { getDefaultUser, getGuaranteeApplicationDraft, listBrokerageCases, listQuoteFormData, listQuotations } from "@/lib/data";
 import { formatCurrency, formatDate } from "@/lib/format";
+import {
+  buildGuaranteeApplicationReadiness,
+  buildGuaranteeDraftReadiness,
+  getGuaranteeCompanyTemplate,
+  guaranteeCompanyTemplates,
+  type GuaranteeReadinessStatus,
+  type GuaranteeTemplateQualityStatus,
+} from "@/lib/guarantee-application";
 import { listHubGeneratedOutputs, listHubParties } from "@/lib/hub";
 import { t } from "@/lib/i18n";
-import { getLocale } from "@/lib/locale";
+import { getLocale, type Locale } from "@/lib/locale";
 import { getOutputDocDescription, getOutputDocLabel, isOutputDocType, type OutputDocType } from "@/lib/output-doc";
 
 export const dynamic = "force-dynamic";
 
-const outputTypes: OutputDocType[] = ["proposal", "estimate_sheet", "funding_plan", "assumption_memo"];
+const outputTypes: OutputDocType[] = ["property_overview", "proposal", "estimate_sheet", "funding_plan", "assumption_memo"];
 const iconByType: Record<OutputDocType, string> = {
+  property_overview: "home_work",
   proposal: "description",
   estimate_sheet: "receipt_long",
   funding_plan: "payments",
@@ -20,6 +29,7 @@ const iconByType: Record<OutputDocType, string> = {
 };
 
 const iconColorByType: Record<OutputDocType, string> = {
+  property_overview: "bg-sky-50 text-sky-700",
   proposal: "bg-blue-50 text-blue-600",
   estimate_sheet: "bg-emerald-50 text-emerald-600",
   funding_plan: "bg-amber-50 text-amber-600",
@@ -28,13 +38,13 @@ const iconColorByType: Record<OutputDocType, string> = {
 
 const outputCenterCopy = {
   ja: {
-    subtitle: "帳票種別を選択し、対外向け資料を標準フォーマットで出力します。",
+    subtitle: "現在の案件で足りない項目を確認し、保証会社申込書を出します。",
     recentActivity: "最近の更新",
-    newBatchOutput: "一括出力を作成",
+    newBatchOutput: "提案データを作成",
     selected: "選択中",
     selectTemplate: "テンプレート選択",
-    generationSettings: "出力設定",
-    targetQuote: "対象提案",
+    generationSettings: "出力前チェック",
+    targetQuote: "対象提案（見積・資金計画用）",
     targetProperty: "対象物件",
     targetParty: "対象関係者",
     outputFormat: "出力形式",
@@ -57,7 +67,7 @@ const outputCenterCopy = {
     filterReset: "リセット",
     exportHitRate: "命中率CSV",
     emptyFilteredOutputs: "現在のフィルタ条件に一致する出力履歴がありません。",
-    previewMode: "プレビュー",
+    previewMode: "PDFプレビュー",
     download: "ダウンロード",
     preparedFor: "提出先",
     dateIssued: "発行日",
@@ -90,15 +100,51 @@ const outputCenterCopy = {
     sellerSign: "売主 署名",
     buyerSign: "買主 署名",
     docIdLabel: "文書ID",
+    guaranteePrimaryEyebrow: "申込書作成",
+    guaranteePrimaryTitle: "保証会社申込書",
+    guaranteePrimaryDesc: "現在の案件を確認し、足りない項目だけ補って、選択した保証会社の申込書を出します。",
+    guaranteeNextAction: "次にやること",
+    guaranteeChecklist: "残りの確認項目",
+    guaranteeDetailToggle: "詳細を表示",
+    guaranteeBackstageToggle: "補助機能を表示",
+    guaranteeCase: "対象案件",
+    guaranteeNoCase: "確認済み案件がまだありません",
+    guaranteeTemplate: "保証会社",
+    guaranteeReadiness: "申込データ準備",
+    guaranteeDraftReadiness: "申込書ドラフト準備",
+    guaranteeDraftEdit: "申込書ドラフトを編集",
+    guaranteeDraftReady: "ドラフト準備済み",
+    guaranteeDraftMissing: "ドラフト未入力",
+    guaranteeFillInWorkbench: "案件ワークベンチで入力",
+    guaranteeFillInDraft: "申込書ドラフトで入力",
+    guaranteeReviewMissing: "不足項目を確認",
+    guaranteeSelectCaseFirst: "先に対象案件を選択",
+    guaranteeReady: "準備済み",
+    guaranteeMissing: "未入力",
+    guaranteeNeedsConfirmation: "要確認",
+    guaranteeRequiredMissing: "必須項目が未完了",
+    guaranteeExportBlocked: "この保証会社の申込書出力は次の対応予定です。まずは不足項目の確認までできます。",
+    guaranteePdfPendingButton: "申込書出力は準備中",
+    guaranteePreviewReady: "まずPDFをプレビューし、印字位置と入力内容を確認してからダウンロードします。",
+    guaranteePreviewAction: "{company}申込書をプレビュー",
+    guaranteePreviewNeedsCase: "案件を選択すると、確認済みデータを使って申込書を出せます。",
+    guaranteeSourceConfirmed: "確認済み案件データ",
+    guaranteeSourceDraft: "申込書ドラフト",
+    guaranteeSourceCandidate: "候補値（確認が必要）",
+    guaranteeSourceMissing: "未入力",
+    guaranteeCaseLink: "案件を確認",
+    guaranteeImportLink: "入力ファイルを取り込む",
+    guaranteeLegacyTitle: "既存の出力",
+    guaranteeLegacyDesc: "物件概要書や提案関連の既存出力は補助機能として残しています。",
   },
   zh: {
-    subtitle: "选择文书类型，按标准格式生成对外业务资料。",
+    subtitle: "确认当前案件缺失项，并输出保证会社申请书。",
     recentActivity: "最近动态",
-    newBatchOutput: "新建批量输出",
+    newBatchOutput: "创建提案数据",
     selected: "已选择",
     selectTemplate: "选择模板",
-    generationSettings: "生成设置",
-    targetQuote: "目标提案",
+    generationSettings: "输出前检查",
+    targetQuote: "目标提案（用于费用/资金计划）",
     targetProperty: "目标物件",
     targetParty: "目标主体",
     outputFormat: "输出格式",
@@ -121,7 +167,7 @@ const outputCenterCopy = {
     filterReset: "重置",
     exportHitRate: "命中率 CSV",
     emptyFilteredOutputs: "当前筛选条件下暂无输出记录。",
-    previewMode: "预览模式",
+    previewMode: "PDF 预览",
     download: "下载",
     preparedFor: "面向对象",
     dateIssued: "签发日期",
@@ -154,15 +200,51 @@ const outputCenterCopy = {
     sellerSign: "卖方签署",
     buyerSign: "买方签署",
     docIdLabel: "文档ID",
+    guaranteePrimaryEyebrow: "申请书创建",
+    guaranteePrimaryTitle: "保证会社申请书",
+    guaranteePrimaryDesc: "确认当前案件，只补齐缺失项，然后输出所选保证会社申请书。",
+    guaranteeNextAction: "下一步",
+    guaranteeChecklist: "剩余确认项",
+    guaranteeDetailToggle: "显示详情",
+    guaranteeBackstageToggle: "显示辅助功能",
+    guaranteeCase: "目标案件",
+    guaranteeNoCase: "暂无已确认案件",
+    guaranteeTemplate: "保证会社",
+    guaranteeReadiness: "申请数据准备度",
+    guaranteeDraftReadiness: "申请书草稿准备度",
+    guaranteeDraftEdit: "编辑申请书草稿",
+    guaranteeDraftReady: "草稿已准备",
+    guaranteeDraftMissing: "草稿未填写",
+    guaranteeFillInWorkbench: "到案件工作台填写",
+    guaranteeFillInDraft: "到申请书草稿填写",
+    guaranteeReviewMissing: "查看缺失项",
+    guaranteeSelectCaseFirst: "请先选择目标案件",
+    guaranteeReady: "已就绪",
+    guaranteeMissing: "未填写",
+    guaranteeNeedsConfirmation: "需确认",
+    guaranteeRequiredMissing: "必填项未完成",
+    guaranteeExportBlocked: "该保证会社的申请书输出将在下一阶段支持。当前可先确认缺失项。",
+    guaranteePdfPendingButton: "申请书输出准备中",
+    guaranteePreviewReady: "先预览 PDF，确认印字位置和填写内容后再下载。",
+    guaranteePreviewAction: "预览{company}申请书",
+    guaranteePreviewNeedsCase: "选择案件后，可使用已确认数据输出申请书。",
+    guaranteeSourceConfirmed: "已确认案件数据",
+    guaranteeSourceDraft: "申请书草稿",
+    guaranteeSourceCandidate: "候选值（需确认）",
+    guaranteeSourceMissing: "未填写",
+    guaranteeCaseLink: "查看案件",
+    guaranteeImportLink: "导入输入文件",
+    guaranteeLegacyTitle: "既有输出",
+    guaranteeLegacyDesc: "物件概要书与提案相关既有输出保留为辅助功能。",
   },
   ko: {
-    subtitle: "문서 유형을 선택해 표준 형식의 대외 문서를 생성합니다.",
+    subtitle: "현재 안건의 부족 항목을 확인하고 보증회사 신청서를 출력합니다.",
     recentActivity: "최근 활동",
-    newBatchOutput: "일괄 출력 생성",
+    newBatchOutput: "제안 데이터 생성",
     selected: "선택됨",
     selectTemplate: "템플릿 선택",
-    generationSettings: "생성 설정",
-    targetQuote: "대상 제안",
+    generationSettings: "출력 전 점검",
+    targetQuote: "대상 제안(비용/자금계획용)",
     targetProperty: "대상 매물",
     targetParty: "대상 관계자",
     outputFormat: "출력 형식",
@@ -185,7 +267,7 @@ const outputCenterCopy = {
     filterReset: "초기화",
     exportHitRate: "적중률 CSV",
     emptyFilteredOutputs: "현재 필터 조건에 맞는 출력 이력이 없습니다.",
-    previewMode: "미리보기",
+    previewMode: "PDF 미리보기",
     download: "다운로드",
     preparedFor: "제출 대상",
     dateIssued: "발행일",
@@ -218,6 +300,42 @@ const outputCenterCopy = {
     sellerSign: "매도인 서명",
     buyerSign: "매수인 서명",
     docIdLabel: "문서ID",
+    guaranteePrimaryEyebrow: "신청서 작성",
+    guaranteePrimaryTitle: "보증회사 신청서",
+    guaranteePrimaryDesc: "현재 안건을 확인하고 부족한 항목만 보완한 뒤 선택한 보증회사 신청서를 출력합니다.",
+    guaranteeNextAction: "다음 작업",
+    guaranteeChecklist: "남은 확인 항목",
+    guaranteeDetailToggle: "상세 표시",
+    guaranteeBackstageToggle: "보조 기능 표시",
+    guaranteeCase: "대상 안건",
+    guaranteeNoCase: "확인된 안건이 아직 없습니다",
+    guaranteeTemplate: "보증회사",
+    guaranteeReadiness: "신청 데이터 준비도",
+    guaranteeDraftReadiness: "신청서 초안 준비도",
+    guaranteeDraftEdit: "신청서 초안 편집",
+    guaranteeDraftReady: "초안 준비됨",
+    guaranteeDraftMissing: "초안 미입력",
+    guaranteeFillInWorkbench: "안건 워크벤치에서 입력",
+    guaranteeFillInDraft: "신청서 초안에서 입력",
+    guaranteeReviewMissing: "부족 항목 확인",
+    guaranteeSelectCaseFirst: "먼저 대상 안건 선택",
+    guaranteeReady: "준비됨",
+    guaranteeMissing: "미입력",
+    guaranteeNeedsConfirmation: "확인 필요",
+    guaranteeRequiredMissing: "필수 항목 미완료",
+    guaranteeExportBlocked: "이 보증회사의 신청서 출력은 다음 단계에서 지원합니다. 지금은 부족 항목 확인까지 가능합니다.",
+    guaranteePdfPendingButton: "신청서 출력 준비 중",
+    guaranteePreviewReady: "먼저 PDF를 미리 보고 인쇄 위치와 입력 내용을 확인한 뒤 다운로드합니다.",
+    guaranteePreviewAction: "{company} 신청서 미리보기",
+    guaranteePreviewNeedsCase: "안건을 선택하면 확인된 데이터로 신청서를 출력할 수 있습니다.",
+    guaranteeSourceConfirmed: "확인된 안건 데이터",
+    guaranteeSourceDraft: "신청서 초안",
+    guaranteeSourceCandidate: "후보값(확인 필요)",
+    guaranteeSourceMissing: "미입력",
+    guaranteeCaseLink: "안건 확인",
+    guaranteeImportLink: "입력 파일 가져오기",
+    guaranteeLegacyTitle: "기존 출력",
+    guaranteeLegacyDesc: "매물 개요서와 제안 관련 기존 출력은 보조 기능으로 유지합니다.",
   },
 } as const;
 
@@ -235,19 +353,120 @@ type OutputCenterPageProps = {
     flash?: string;
     issues?: string;
     generatedOutputId?: string;
+    targetProperty?: string;
+    targetParty?: string;
+    caseId?: string;
+    guaranteeTemplate?: string;
   }>;
 };
+
+function readinessClass(status: GuaranteeReadinessStatus) {
+  if (status === "available") return "bg-emerald-100 text-emerald-800";
+  if (status === "needs_confirmation") return "bg-amber-100 text-amber-800";
+  return "bg-rose-100 text-rose-800";
+}
+
+function templateQualityLabel(locale: Locale, status: GuaranteeTemplateQualityStatus) {
+  const labels: Record<GuaranteeTemplateQualityStatus, Record<Locale, string>> = {
+    verified: { ja: "出荷可", zh: "出厂可用", ko: "출고 가능" },
+    needs_calibration: { ja: "要精校", zh: "需要精校", ko: "정밀 보정 필요" },
+    source_quality_blocked: { ja: "原本差替え", zh: "源文件待换", ko: "원본 교체 필요" },
+  };
+  return labels[status][locale];
+}
+
+function templateQualityClass(status: GuaranteeTemplateQualityStatus) {
+  if (status === "verified") return "bg-emerald-100 text-emerald-800";
+  if (status === "source_quality_blocked") return "bg-rose-100 text-rose-800";
+  return "bg-amber-100 text-amber-800";
+}
+
+function workbenchAnchorForGuaranteeField(fieldKey: string) {
+  if (fieldKey.startsWith("company_option.")) return "guarantee-template-drafts";
+  if (fieldKey.startsWith("property.") || fieldKey.startsWith("lease.")) return "workbench-property_lease";
+  if (fieldKey.startsWith("applicant.employer") || fieldKey === "applicant.occupation" || fieldKey === "applicant.employmentType" || fieldKey === "applicant.annualIncome" || fieldKey === "applicant.yearsEmployed") {
+    return "workbench-employment_income";
+  }
+  if (fieldKey.startsWith("applicant.")) return "workbench-applicant";
+  if (fieldKey.startsWith("emergencyContact.")) return "workbench-contact_guarantor";
+  if (fieldKey.startsWith("coOccupants.")) return "workbench-co_occupants";
+  if (fieldKey.startsWith("broker.") || fieldKey.startsWith("management.")) return "workbench-broker_management";
+  if (fieldKey.startsWith("guarantee.")) return "workbench-guarantee_options";
+  return "workbench-unresolved";
+}
+
+function isDraftSpecificGuaranteeField(fieldKey: string) {
+  return fieldKey.startsWith("company_option.");
+}
 
 export default async function OutputCenterPage({ searchParams }: OutputCenterPageProps) {
   const locale = await getLocale();
   const params = searchParams ? await searchParams : undefined;
   const copy = outputCenterCopy[locale];
-  const [{ properties }, quotes, parties] = await Promise.all([
-    listQuoteFormData(),
-    listQuotations(100),
-    listHubParties(locale),
+  const userPromise = getDefaultUser();
+  const quoteDataPromise = listQuoteFormData();
+  const quotesPromise = listQuotations(100);
+  const partiesPromise = listHubParties(locale);
+  const outputsPromise = listHubGeneratedOutputs(locale);
+  const [user, { properties }, quotes, parties, outputs] = await Promise.all([
+    userPromise,
+    quoteDataPromise,
+    quotesPromise,
+    partiesPromise,
+    outputsPromise,
   ]);
-  const outputs = await listHubGeneratedOutputs(locale);
+  const cases = user ? await listBrokerageCases(user.id, 50) : [];
+  const selectedCaseId = String(params?.caseId ?? "").trim();
+  const selectedCase = selectedCaseId
+    ? cases.find((item) => item.id === selectedCaseId)
+    : cases.find((item) => item.id === "case_fixture_friends_guarantee_pdf") ?? cases.find((item) => item.status === "reviewed") ?? cases[0];
+  const activeGuaranteeTemplates = guaranteeCompanyTemplates.filter((template) => template.outputStatus === "active");
+  const defaultGuaranteeTemplateId = activeGuaranteeTemplates[0]?.id ?? "friends_guarantee_individual_v1";
+  const requestedGuaranteeTemplate = String(params?.guaranteeTemplate ?? "").trim() || defaultGuaranteeTemplateId;
+  const selectedGuaranteeTemplate = getGuaranteeCompanyTemplate(requestedGuaranteeTemplate);
+  const selectedGuaranteeTemplateNeedsCalibration = selectedGuaranteeTemplate.qualityStatus !== "verified";
+  const selectedGuaranteeDraft =
+    user && selectedCase
+      ? await getGuaranteeApplicationDraft({
+          userId: user.id,
+          caseId: selectedCase.id,
+          templateId: selectedGuaranteeTemplate.id,
+        })
+      : null;
+  const selectedGuaranteeDraftReadiness = buildGuaranteeDraftReadiness(selectedGuaranteeDraft, selectedGuaranteeTemplate.id);
+  const selectedPropertyForCandidate = properties[0];
+  const selectedPartyForCandidate = parties[0];
+  const guaranteeCandidateData: Record<string, unknown> = {
+    "property.name": selectedPropertyForCandidate?.name,
+    "lease.rent": selectedPropertyForCandidate?.listingPrice,
+    "lease.commonFee": selectedPropertyForCandidate?.managementFee,
+    "applicant.name": selectedPartyForCandidate?.name,
+    "applicant.phone": selectedPartyForCandidate?.phone,
+  };
+  const guaranteeReadinessGroups = buildGuaranteeApplicationReadiness({
+    brokerageCase: selectedCase,
+    template: selectedGuaranteeTemplate,
+    candidateData: guaranteeCandidateData,
+    draft: selectedGuaranteeDraft,
+  });
+  const guaranteeReadinessFields = guaranteeReadinessGroups
+    .filter((group) => group.id !== "unresolved")
+    .flatMap((group) => group.fields);
+  const guaranteeReadyCount = guaranteeReadinessFields.filter((field) => field.status === "available").length;
+  const guaranteeNeedsConfirmationCount = guaranteeReadinessFields.filter((field) => field.status === "needs_confirmation").length;
+  const guaranteeBlockingCount = guaranteeReadinessGroups.find((group) => group.id === "unresolved")?.fields.length ?? 0;
+  const guaranteeBlockingFields = guaranteeReadinessGroups.find((group) => group.id === "unresolved")?.fields ?? [];
+  const selectedGuaranteePreviewHref = selectedCase
+    ? `/guarantee-applications/${encodeURIComponent(selectedGuaranteeTemplate.id)}/preview?caseId=${encodeURIComponent(selectedCase.id)}`
+    : "#guarantee-case-selector";
+  const primaryNextActionHref = selectedCase
+    ? selectedGuaranteePreviewHref
+    : "#guarantee-case-selector";
+  const guaranteePreviewLabel = copy.guaranteePreviewAction.replace("{company}", selectedGuaranteeTemplate.companyDisplayName);
+  const primaryNextActionLabel = selectedCase
+    ? guaranteePreviewLabel
+    : copy.guaranteeSelectCaseFirst;
+  const legacySectionId = "existing-outputs";
   const historyType =
     params?.historyType && isOutputDocType(params.historyType) ? params.historyType : "all";
   const historyLang =
@@ -300,35 +519,49 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
     .slice(0, 3);
   const latestOutputs = filteredOutputs.slice(0, 3);
   const requestedType = String(params?.type ?? "").trim();
-  const selectedType: OutputDocType = isOutputDocType(requestedType) ? requestedType : "assumption_memo";
+  const requestedPropertyId = String(params?.targetProperty ?? "").trim();
+  const requestedPartyId = String(params?.targetParty ?? "").trim();
+  const selectedType: OutputDocType = isOutputDocType(requestedType)
+    ? requestedType
+    : requestedPropertyId
+      ? "property_overview"
+      : "assumption_memo";
+  const isPropertyOverview = selectedType === "property_overview";
   const selectedFormat = params?.format === "docx" ? "docx" : "pdf";
   const selectedLanguage = params?.lang === "zh" || params?.lang === "ko" || params?.lang === "ja" ? params.lang : locale;
   const selectedZoom = params?.zoom === "75" || params?.zoom === "85" || params?.zoom === "100" ? params.zoom : "85";
   const requestedQuoteId = String(params?.quoteId ?? "").trim();
-  const defaultQuoteId = requestedQuoteId || latestOutputs[0]?.sourceQuoteId || quotes[0]?.id || "";
-  const selectedQuote = quotes.find((quote) => quote.id === defaultQuoteId) ?? quotes[0];
+  const defaultQuoteId = isPropertyOverview ? requestedQuoteId : requestedQuoteId || latestOutputs[0]?.sourceQuoteId || quotes[0]?.id || "";
+  const selectedQuote = isPropertyOverview ? undefined : quotes.find((quote) => quote.id === defaultQuoteId) ?? quotes[0];
   const previewQuoteId = selectedQuote?.id;
-  const selectedPropertyId = selectedQuote?.propertyId ?? properties[0]?.id ?? "";
-  const selectedProperty = properties.find((property) => property.id === selectedPropertyId) ?? properties[0];
-  const selectedPartyId = selectedQuote?.clientId ?? parties[0]?.id ?? "";
-  const selectedParty = parties.find((party) => party.id === selectedPartyId) ?? parties[0];
+  const selectedProperty = isPropertyOverview
+    ? properties.find((property) => property.id === requestedPropertyId)
+    : properties.find((property) => property.id === requestedPropertyId) ??
+      properties.find((property) => property.id === selectedQuote?.propertyId) ??
+      properties[0];
+  const selectedPropertyId = selectedProperty?.id ?? "";
+  const needsPropertySelection = isPropertyOverview && !selectedPropertyId;
+  const selectedParty =
+    parties.find((party) => party.id === requestedPartyId) ??
+    (isPropertyOverview ? undefined : parties.find((party) => party.id === selectedQuote?.clientId)) ??
+    (isPropertyOverview ? undefined : parties[0]);
+  const selectedPartyId = selectedParty?.id ?? "";
   const selectedGeneratedOutput = outputs.find(
-    (item) =>
-      item.sourceQuoteId === previewQuoteId &&
-      item.outputType === selectedType &&
-      item.outputFormat === selectedFormat &&
-      item.language === selectedLanguage
+    (item) => {
+      const matchesTarget = isPropertyOverview ? item.propertyId === selectedPropertyId : item.sourceQuoteId === previewQuoteId;
+      return matchesTarget && item.outputType === selectedType && item.outputFormat === selectedFormat && item.language === selectedLanguage;
+    }
   );
   const selectedDownloadHref = selectedGeneratedOutput
     ? `/api/outputs/${selectedGeneratedOutput.id}/download?locale=${locale}`
-    : previewQuoteId
+    : previewQuoteId && !isPropertyOverview
       ? `/quotes/${previewQuoteId}/print?type=${selectedType}`
-      : "/quotes";
+      : "#";
   const issuedDateValue = new Date().toLocaleDateString(
     locale === "zh" ? "zh-CN" : locale === "ko" ? "ko-KR" : "ja-JP"
   );
   const previewDocId = `BD-${selectedType.toUpperCase()}-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}`;
-  const returnToCurrent = `/output-center?type=${selectedType}&format=${selectedFormat}&lang=${selectedLanguage}&quoteId=${selectedQuote?.id ?? ""}&historyType=${historyType}&historyLang=${historyLang}&historyFormat=${historyFormat}&historyTemplate=${historyTemplate}`;
+  const returnToCurrent = `/output-center?type=${selectedType}&format=${selectedFormat}&lang=${selectedLanguage}&quoteId=${isPropertyOverview ? "" : selectedQuote?.id ?? ""}&targetProperty=${selectedPropertyId}&targetParty=${selectedPartyId}&historyType=${historyType}&historyLang=${historyLang}&historyFormat=${historyFormat}&historyTemplate=${historyTemplate}`;
   const highlightOutputId = String(params?.generatedOutputId ?? "").trim();
   const highlightedOutput = highlightOutputId ? outputs.find((o) => o.id === highlightOutputId) : undefined;
   const isHighlightFiltered = highlightedOutput ? !filteredOutputs.some((o) => o.id === highlightOutputId) : false;
@@ -445,20 +678,17 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
     <div className="space-y-8">
       <header className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
-          <h1 className="text-4xl font-bold tracking-tight text-slate-900">{t(locale, "output.title")}</h1>
+          <h1 className="text-4xl font-bold tracking-tight text-slate-900">{copy.guaranteePrimaryTitle}</h1>
           <p className="mt-1 text-sm font-medium text-slate-600">{copy.subtitle}</p>
         </div>
         <div className="flex gap-3">
-          <Link
-            href={outputsExportHref}
-            className="inline-flex items-center gap-2 rounded-lg bg-[#e9effc] px-4 py-2 text-sm font-semibold text-slate-800"
-          >
-            <span className="material-symbols-outlined text-[18px]">history</span>
-            {copy.recentActivity}
+          <Link href={selectedCase ? `/cases/${selectedCase.id}#workbench-unresolved` : "#guarantee-case-selector"} className="inline-flex items-center gap-2 rounded-lg bg-slate-950 px-5 py-2 text-sm font-semibold text-white">
+            <span className="material-symbols-outlined text-[18px]">rule</span>
+            {copy.guaranteeReviewMissing}
           </Link>
-          <Link href="/quotes/new" className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-br from-[#001e40] to-[#003366] px-5 py-2 text-sm font-semibold text-white shadow-[0_8px_20px_-10px_rgba(0,30,64,0.8)]">
-            <span className="material-symbols-outlined text-[18px]">add</span>
-            {copy.newBatchOutput}
+          <Link href="/import-center" className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50">
+            <span className="material-symbols-outlined text-[18px]">upload_file</span>
+            {copy.guaranteeImportLink}
           </Link>
         </div>
       </header>
@@ -493,6 +723,352 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
           ) : null}
         </section>
       ) : null}
+
+      <section className="rounded-2xl border border-emerald-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="max-w-3xl">
+            <p className="text-xs font-bold text-emerald-700">{copy.guaranteePrimaryEyebrow}</p>
+            <h2 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">{copy.guaranteePrimaryTitle}</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">{copy.guaranteePrimaryDesc}</p>
+          </div>
+          <div className="grid min-w-[260px] grid-cols-3 gap-2 text-center">
+            <div className="rounded-lg bg-emerald-50 p-3">
+              <p className="text-[11px] font-semibold text-emerald-700">{copy.guaranteeReady}</p>
+              <p className="mt-1 text-2xl font-black tabular-nums text-emerald-900">{guaranteeReadyCount}</p>
+            </div>
+            <div className="rounded-lg bg-amber-50 p-3">
+              <p className="text-[11px] font-semibold text-amber-700">{copy.guaranteeNeedsConfirmation}</p>
+              <p className="mt-1 text-2xl font-black tabular-nums text-amber-900">{guaranteeNeedsConfirmationCount}</p>
+            </div>
+            <div className="rounded-lg bg-rose-50 p-3">
+              <p className="text-[11px] font-semibold text-rose-700">{copy.guaranteeMissing}</p>
+              <p className="mt-1 text-2xl font-black tabular-nums text-rose-900">{guaranteeBlockingCount}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-xs font-bold text-slate-500">{copy.guaranteeNextAction}</p>
+            <h3 className="mt-1 text-xl font-bold text-slate-950">
+              {selectedCase
+                ? primaryNextActionLabel
+                : copy.guaranteeSelectCaseFirst}
+            </h3>
+            <p className="mt-2 text-sm text-slate-600">
+              {selectedCase
+                ? `${copy.guaranteeCase}: ${selectedCase.caseTitle} / ${copy.guaranteeTemplate}: ${selectedGuaranteeTemplate.companyDisplayName}`
+                : copy.guaranteeNoCase}
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {selectedCase ? (
+                <Link href={primaryNextActionHref} className="inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-800">
+                  <span className="material-symbols-outlined text-[18px]">preview</span>
+                  {primaryNextActionLabel}
+                </Link>
+              ) : (
+                <Link href={primaryNextActionHref} className="inline-flex items-center gap-2 rounded-lg bg-slate-950 px-4 py-2 text-sm font-bold text-white hover:bg-slate-800">
+                  <span className="material-symbols-outlined text-[18px]">fact_check</span>
+                  {primaryNextActionLabel}
+                </Link>
+              )}
+              <Link href="/import-center" className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50">
+                <span className="material-symbols-outlined text-[18px]">upload_file</span>
+                {copy.guaranteeImportLink}
+              </Link>
+            </div>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-white p-4">
+            <p className="text-xs font-bold text-slate-500">{copy.guaranteeChecklist}</p>
+            <div className="mt-3 space-y-2">
+              {guaranteeBlockingFields.length > 0 ? (
+                guaranteeBlockingFields.slice(0, 5).map((field) => (
+                  <Link
+                    key={`primary-missing-${field.fieldKey}`}
+                    href={
+                      selectedCase
+                        ? `${selectedGuaranteePreviewHref}#field-${field.fieldKey.replaceAll(".", "-")}`
+                        : "#guarantee-case-selector"
+                    }
+                    className="flex items-center justify-between gap-2 rounded-lg bg-rose-50 px-3 py-2 text-xs font-bold text-rose-800 hover:bg-rose-100"
+                  >
+                    <span className="truncate">{field.label}</span>
+                    <span className="material-symbols-outlined text-[14px]">chevron_right</span>
+                  </Link>
+                ))
+              ) : (
+                <p className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800">{copy.guaranteeReady}</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <details className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <summary className="cursor-pointer text-sm font-bold text-slate-900">{copy.guaranteeDetailToggle}</summary>
+        <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,360px)_1fr]">
+          <aside className="space-y-4">
+            <div id="guarantee-case-selector" className="scroll-mt-24 rounded-xl bg-indigo-50 p-4">
+              <p className="text-xs font-bold text-indigo-900">{copy.guaranteeCase}</p>
+              {cases.length > 0 ? (
+                <div className="mt-2 space-y-2">
+                  {cases.slice(0, 5).map((caseItem) => {
+                    const selected = caseItem.id === selectedCase?.id;
+                    return (
+                      <Link
+                        key={caseItem.id}
+                        href={`/output-center?caseId=${encodeURIComponent(caseItem.id)}&guaranteeTemplate=${encodeURIComponent(selectedGuaranteeTemplate.id)}`}
+                        className={
+                          "block rounded-lg border px-3 py-2 text-sm transition " +
+                          (selected ? "border-indigo-300 bg-white text-indigo-950 shadow-sm" : "border-transparent bg-indigo-100/60 text-slate-700 hover:bg-white")
+                        }
+                      >
+                        <span className="block truncate font-bold">{caseItem.caseTitle}</span>
+                        <span className="mt-0.5 block text-[11px] text-slate-500">{formatDate(caseItem.updatedAt, locale)}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="mt-2 rounded-lg border border-dashed border-indigo-200 bg-white p-3 text-sm text-slate-600">
+                  <p>{copy.guaranteeNoCase}</p>
+                  <Link href="/import-center" className="mt-2 inline-flex font-bold text-indigo-700 hover:underline">
+                    {copy.guaranteeImportLink}
+                  </Link>
+                </div>
+              )}
+              {selectedCase ? (
+                <Link href={`/cases/${selectedCase.id}`} className="mt-3 inline-flex text-xs font-bold text-indigo-700 hover:underline">
+                  {copy.guaranteeCaseLink}
+                </Link>
+              ) : null}
+            </div>
+
+            <div className="rounded-xl bg-slate-50 p-4">
+              <p className="text-xs font-bold text-slate-900">{copy.guaranteeTemplate}</p>
+              <div className="mt-2 grid gap-2">
+                {activeGuaranteeTemplates.map((template) => {
+                  const selected = template.id === selectedGuaranteeTemplate.id;
+                  return (
+                    <Link
+                      key={template.id}
+                      href={`/output-center?caseId=${encodeURIComponent(selectedCase?.id ?? "")}&guaranteeTemplate=${encodeURIComponent(template.id)}`}
+                      className={
+                        "rounded-lg border bg-white p-3 transition " +
+                        (selected ? "border-[#001e40] ring-2 ring-[#001e40]/10" : "border-slate-200 hover:border-slate-300")
+                      }
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="font-bold text-slate-950">{template.companyLegalName}</p>
+                        {selected ? <span className="material-symbols-outlined text-[18px] text-emerald-600">check_circle</span> : null}
+                      </div>
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        {template.templateDisplayName}
+                      </p>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${templateQualityClass(template.qualityStatus)}`}>
+                          {templateQualityLabel(locale, template.qualityStatus)}
+                        </span>
+                        {!template.allowDirectDownload ? (
+                          <span className="text-[11px] font-semibold text-amber-700">
+                            {locale === "zh" ? "需预览校准后保存" : locale === "ko" ? "미리보기 보정 후 저장" : "プレビュー校正後に保存"}
+                          </span>
+                        ) : null}
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className={`rounded-xl border p-4 text-sm ${selectedGuaranteeTemplateNeedsCalibration ? "border-amber-200 bg-amber-50 text-amber-950" : "border-emerald-200 bg-emerald-50 text-emerald-950"}`}>
+                <p className="font-bold">{guaranteePreviewLabel}</p>
+                <p className="mt-1 text-xs leading-5">
+                  {selectedGuaranteeTemplateNeedsCalibration
+                    ? locale === "zh"
+                      ? "这张模板目前不能直接当成成品下载。请先进入可编辑预览，确认印字位置、文本长度和格子拆分后再保存。"
+                      : locale === "ko"
+                        ? "이 템플릿은 아직 바로 완성본 다운로드로 취급하지 않습니다. 편집 가능한 미리보기에서 위치, 긴/짧은 텍스트, 칸 분리를 확인한 뒤 저장하세요."
+                        : "このテンプレートはまだ直ダウンロード対象ではありません。編集可能プレビューで印字位置、長短テキスト、分割マスを確認してから保存します。"
+                    : copy.guaranteePreviewReady}
+                </p>
+                {!selectedCase ? (
+                  <div className="mt-3 rounded-lg border border-emerald-200 bg-white p-3 text-xs text-emerald-900">
+                    {copy.guaranteePreviewNeedsCase}
+                  </div>
+                ) : null}
+                {selectedCase ? (
+                  <Link
+                    href={selectedGuaranteePreviewHref}
+                    className={`mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-xs font-bold text-white ${selectedGuaranteeTemplateNeedsCalibration ? "bg-slate-950 hover:bg-slate-800" : "bg-emerald-700 hover:bg-emerald-800"}`}
+                  >
+                    <span className="material-symbols-outlined text-[16px]">preview</span>
+                    {guaranteePreviewLabel}
+                  </Link>
+                ) : (
+                  <button disabled className="mt-3 inline-flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-lg bg-slate-400 px-4 py-2 text-xs font-bold text-white">
+                    <span className="material-symbols-outlined text-[16px]">preview</span>
+                    {guaranteePreviewLabel}
+                  </button>
+                )}
+                {selectedCase ? (
+                  <Link href={`/cases/${selectedCase.id}`} className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-emerald-300 bg-white px-4 py-2 text-xs font-bold text-emerald-800 hover:bg-emerald-50">
+                    <span className="material-symbols-outlined text-[16px]">edit_note</span>
+                    {copy.guaranteeDraftEdit}
+                  </Link>
+                ) : null}
+              </div>
+          </aside>
+
+          <div className="space-y-4">
+            {selectedGuaranteeDraftReadiness.fields.length > 0 ? (
+              <section className="rounded-xl border border-emerald-200 bg-white">
+                <div className="border-b border-emerald-100 px-4 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="text-sm font-bold text-emerald-950">{copy.guaranteeDraftReadiness}</h3>
+                    <div className="flex items-center gap-2">
+                      {selectedCase ? (
+                        <Link
+                          href={selectedGuaranteePreviewHref}
+                          className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-white px-2 py-1 text-[11px] font-bold text-emerald-800 hover:bg-emerald-50"
+                        >
+                          <span className="material-symbols-outlined text-[14px]">edit_note</span>
+                          {copy.guaranteeFillInDraft}
+                        </Link>
+                      ) : null}
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${selectedGuaranteeDraftReadiness.status === "ready" ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"}`}>
+                        {selectedGuaranteeDraftReadiness.status === "ready" ? copy.guaranteeDraftReady : copy.guaranteeDraftMissing}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div className="grid gap-2 p-4 md:grid-cols-2">
+                  {selectedGuaranteeDraftReadiness.fields.map((field) => (
+                    <div key={`draft-${field.fieldKey}`} className={`rounded-lg border p-3 ${field.status === "available" ? "border-slate-100 bg-slate-50" : "border-emerald-200 bg-emerald-50/40"}`}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-900">
+                            {field.label}
+                            {field.required ? <span className="ml-1 text-rose-600">*</span> : null}
+                          </p>
+                          <p className="mt-0.5 text-[11px] text-slate-500">{field.source === "draft" ? copy.guaranteeSourceDraft : copy.guaranteeSourceMissing}</p>
+                        </div>
+                        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${readinessClass(field.status)}`}>
+                          {field.status === "available" ? copy.guaranteeReady : copy.guaranteeMissing}
+                        </span>
+                      </div>
+                      <p className="mt-2 min-h-5 whitespace-pre-wrap text-xs font-medium text-slate-700">{field.value || "-"}</p>
+                      {field.status !== "available" ? (
+                        <Link
+                          href={selectedCase ? selectedGuaranteePreviewHref : "#guarantee-case-selector"}
+                          className="mt-3 inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-white px-2 py-1 text-[11px] font-bold text-emerald-800 hover:bg-emerald-50"
+                        >
+                          <span className="material-symbols-outlined text-[14px]">edit_note</span>
+                          {selectedCase ? copy.guaranteeFillInDraft : copy.guaranteeSelectCaseFirst}
+                        </Link>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ) : null}
+
+            <section className="rounded-xl border border-slate-200 bg-white">
+            <div className="border-b border-slate-100 px-4 py-3">
+              <h3 className="text-sm font-bold text-slate-950">{copy.guaranteeReadiness}</h3>
+            </div>
+            <div className="divide-y divide-slate-100">
+              {guaranteeReadinessGroups.map((group) => (
+                <section key={group.id} className={group.id === "unresolved" ? "bg-rose-50/50 px-4 py-4" : "px-4 py-4"}>
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <h4 className="text-sm font-bold text-slate-900">{group.label}</h4>
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                      {group.fields.filter((field) => field.status === "available").length} / {group.fields.length}
+                    </span>
+                  </div>
+                  {group.fields.length > 0 ? (
+                    <div className="grid gap-2 md:grid-cols-2">
+                      {group.fields.map((field) => {
+                        const statusLabel =
+                          field.status === "available"
+                            ? copy.guaranteeReady
+                            : field.status === "needs_confirmation"
+                              ? copy.guaranteeNeedsConfirmation
+                              : copy.guaranteeMissing;
+                        const sourceLabel =
+                          field.source === "confirmed_case"
+                            ? copy.guaranteeSourceConfirmed
+                            : field.source === "draft"
+                              ? copy.guaranteeSourceDraft
+                              : field.source === "candidate"
+                              ? copy.guaranteeSourceCandidate
+                              : copy.guaranteeSourceMissing;
+                        return (
+                          <div
+                            key={`${group.id}-${field.fieldKey}`}
+                            className={`rounded-lg border p-3 ${field.status === "available" ? "border-slate-100 bg-slate-50" : "border-indigo-200 bg-indigo-50/40"}`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <p className="text-sm font-semibold text-slate-900">{field.label}</p>
+                                <p className="mt-0.5 text-[11px] text-slate-500">{sourceLabel}</p>
+                              </div>
+                              <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${readinessClass(field.status)}`}>
+                                {statusLabel}
+                              </span>
+                            </div>
+                            <p className="mt-2 min-h-5 whitespace-pre-wrap text-xs font-medium text-slate-700">
+                              {field.value || "-"}
+                            </p>
+                            {field.status !== "available" ? (
+                              <Link
+                                href={
+                                  selectedCase
+                                    ? isDraftSpecificGuaranteeField(field.fieldKey)
+                                      ? selectedGuaranteePreviewHref
+                                      : `/cases/${selectedCase.id}#${workbenchAnchorForGuaranteeField(field.fieldKey)}`
+                                    : "#guarantee-case-selector"
+                                }
+                                className="mt-3 inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-white px-2 py-1 text-[11px] font-bold text-indigo-800 hover:bg-indigo-50"
+                              >
+                                <span className="material-symbols-outlined text-[14px]">
+                                  {isDraftSpecificGuaranteeField(field.fieldKey) ? "edit_note" : "fact_check"}
+                                </span>
+                                {selectedCase
+                                  ? isDraftSpecificGuaranteeField(field.fieldKey)
+                                    ? copy.guaranteeFillInDraft
+                                    : copy.guaranteeFillInWorkbench
+                                  : copy.guaranteeSelectCaseFirst}
+                              </Link>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="rounded-lg bg-white p-3 text-xs text-slate-500">-</p>
+                  )}
+                </section>
+              ))}
+            </div>
+            </section>
+          </div>
+        </div>
+        </details>
+      </section>
+
+      <details id={legacySectionId} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <summary className="cursor-pointer text-sm font-bold text-slate-900">{copy.guaranteeBackstageToggle}</summary>
+        <div className="mt-4">
+        <div className="flex flex-col justify-between gap-2 md:flex-row md:items-end">
+          <div>
+            <h2 className="text-lg font-bold text-slate-950">{copy.guaranteeLegacyTitle}</h2>
+            <p className="mt-1 text-sm text-slate-600">{copy.guaranteeLegacyDesc}</p>
+          </div>
+          <Link href={`#${legacySectionId}`} className="text-xs font-bold text-slate-600">
+            {copy.viewAll}
+          </Link>
+        </div>
+        </div>
 
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-end justify-between gap-3">
@@ -567,7 +1143,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                   {copy.selected}
                 </div>
               ) : (
-                <Link href={`/output-center?type=${type}&format=${selectedFormat}&lang=${selectedLanguage}&quoteId=${selectedQuote?.id ?? ""}&historyType=${historyType}&historyLang=${historyLang}&historyFormat=${historyFormat}&historyTemplate=${historyTemplate}`} className="mt-5 inline-flex w-full items-center justify-center rounded-lg bg-[#edf2fd] py-2 text-xs font-bold text-slate-700 transition hover:bg-[#e1eafc]">
+                <Link href={`/output-center?type=${type}&format=${selectedFormat}&lang=${selectedLanguage}&quoteId=${type === "property_overview" ? "" : selectedQuote?.id ?? quotes[0]?.id ?? ""}&targetProperty=${selectedPropertyId}&targetParty=${selectedPartyId}&historyType=${historyType}&historyLang=${historyLang}&historyFormat=${historyFormat}&historyTemplate=${historyTemplate}`} className="mt-5 inline-flex w-full items-center justify-center rounded-lg bg-[#edf2fd] py-2 text-xs font-bold text-slate-700 transition hover:bg-[#e1eafc]">
                   {copy.selectTemplate}
                 </Link>
               )}
@@ -583,23 +1159,27 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
             <form id="output-generate-form" action={generateOutputDocumentAction} className="space-y-5">
               <input type="hidden" name="type" value={selectedType} />
               <input type="hidden" name="returnTo" value={returnToCurrent} />
-              <label className="block space-y-2">
-                <span className="text-xs font-bold text-slate-500">{copy.targetQuote}</span>
-                <div className="relative">
-                  <span className="material-symbols-outlined pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[16px] text-slate-400">description</span>
-                  <select
-                    className="w-full rounded-lg border-none bg-white py-3 pl-10 pr-3 text-sm font-medium"
-                    name="quoteId"
-                    defaultValue={selectedQuote?.id ?? ""}
-                  >
-                    {quotes.map((quote) => (
-                      <option key={quote.id} value={quote.id}>
-                        {quote.quoteTitle} - {quote.client.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </label>
+              {isPropertyOverview ? (
+                <input type="hidden" name="quoteId" value="" />
+              ) : (
+                <label className="block space-y-2">
+                  <span className="text-xs font-bold text-slate-500">{copy.targetQuote}</span>
+                  <div className="relative">
+                    <span className="material-symbols-outlined pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[16px] text-slate-400">description</span>
+                    <select
+                      className="w-full rounded-lg border-none bg-white py-3 pl-10 pr-3 text-sm font-medium"
+                      name="quoteId"
+                      defaultValue={selectedQuote?.id ?? ""}
+                    >
+                      {quotes.map((quote) => (
+                        <option key={quote.id} value={quote.id}>
+                          {quote.quoteTitle} - {quote.client.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </label>
+              )}
               <label className="block space-y-2">
                 <span className="text-xs font-bold text-slate-500">{copy.targetProperty}</span>
                 <div className="relative">
@@ -609,6 +1189,11 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                     name="targetProperty"
                     defaultValue={selectedPropertyId}
                   >
+                    {isPropertyOverview ? (
+                      <option value="">
+                        {locale === "zh" ? "请从物件台账选择" : locale === "ko" ? "매물 대장에서 선택" : "物件台帳から選択"}
+                      </option>
+                    ) : null}
                     {properties.map((property) => (
                       <option key={property.id} value={property.id}>
                         {property.name}
@@ -617,6 +1202,23 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                   </select>
                 </div>
               </label>
+              {needsPropertySelection ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                  <p className="font-bold">
+                    {locale === "zh" ? "尚未选择目标物件" : locale === "ko" ? "대상 매물이 선택되지 않았습니다" : "対象物件が未選択です"}
+                  </p>
+                  <p className="mt-1">
+                    {locale === "zh"
+                      ? "请从物件台账的 PDF 入口进入，以确保生成记录绑定正确物件。"
+                      : locale === "ko"
+                        ? "생성 기록이 올바른 매물에 연결되도록 매물 대장의 PDF 입구에서 이동하세요."
+                        : "生成記録を正しい物件に紐づけるため、物件台帳の PDF 入口から遷移してください。"}
+                  </p>
+                  <Link href="/properties" className="mt-2 inline-flex font-bold text-amber-900 underline">
+                    {locale === "zh" ? "前往物件台账" : locale === "ko" ? "매물 대장으로 이동" : "物件台帳へ"}
+                  </Link>
+                </div>
+              ) : null}
 
               <label className="block space-y-2">
                 <span className="text-xs font-bold text-slate-500">{copy.targetParty}</span>
@@ -627,6 +1229,11 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                     name="targetParty"
                     defaultValue={selectedPartyId}
                   >
+                    {isPropertyOverview ? (
+                      <option value="">
+                        {locale === "zh" ? "不指定主体" : locale === "ko" ? "관계자 미지정" : "関係者を指定しない"}
+                      </option>
+                    ) : null}
                     {parties.map((party) => (
                       <option key={party.id} value={party.id}>
                         {party.name}
@@ -670,7 +1277,33 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                 </label>
               </div>
 
-              {previewQuoteId ? (
+              <div className="rounded-lg border border-blue-100 bg-white p-3 text-xs text-slate-600">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-bold text-slate-800">
+                    {locale === "zh" ? "生成前确认" : locale === "ko" ? "생성 전 확인" : "生成前確認"}
+                  </p>
+                  <Link href="/settings/output-templates" className="font-semibold text-[#001e40] hover:underline">
+                    {locale === "zh" ? "调整模板" : locale === "ko" ? "템플릿 조정" : "テンプレート調整"}
+                  </Link>
+                </div>
+                <div className="mt-2 grid gap-1.5">
+                  {[
+                    selectedProperty ? selectedProperty.name : t(locale, "common.notSet"),
+                    ...(isPropertyOverview
+                      ? []
+                      : [selectedParty ? selectedParty.name : t(locale, "common.notSet")]),
+                    getOutputDocLabel(locale, selectedType),
+                    selectedFormat.toUpperCase(),
+                  ].map((item, index) => (
+                    <div key={`preflight-${index}-${item}`} className="flex items-center gap-2">
+                      <span className="material-symbols-outlined text-[14px] text-emerald-600">check_circle</span>
+                      <span className="truncate">{item}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {previewQuoteId || (isPropertyOverview && selectedPropertyId) ? (
                 <button
                   type="submit"
                   className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#001e40] py-4 text-sm font-black uppercase tracking-widest text-white shadow-[0_14px_24px_-14px_rgba(0,30,64,0.95)]"
@@ -712,7 +1345,9 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
               <input type="hidden" name="type" value={selectedType} />
               <input type="hidden" name="format" value={selectedFormat} />
               <input type="hidden" name="lang" value={selectedLanguage} />
-              <input type="hidden" name="quoteId" value={selectedQuote?.id ?? ""} />
+              <input type="hidden" name="quoteId" value={isPropertyOverview ? "" : selectedQuote?.id ?? ""} />
+              <input type="hidden" name="targetProperty" value={selectedPropertyId} />
+              <input type="hidden" name="targetParty" value={selectedPartyId} />
               <select
                 name="historyType"
                 defaultValue={historyType}
@@ -761,7 +1396,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                 {copy.filterApply}
               </button>
               <Link
-                href={`/output-center?type=${selectedType}&format=${selectedFormat}&lang=${selectedLanguage}&quoteId=${selectedQuote?.id ?? ""}`}
+                href={`/output-center?type=${selectedType}&format=${selectedFormat}&lang=${selectedLanguage}&quoteId=${isPropertyOverview ? "" : selectedQuote?.id ?? ""}&targetProperty=${selectedPropertyId}&targetParty=${selectedPartyId}`}
                 className="inline-flex items-center justify-center rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] font-bold text-slate-600 hover:bg-slate-50"
               >
                 {copy.filterReset}
@@ -836,23 +1471,23 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                   <span className="text-xs font-bold uppercase tracking-widest text-slate-400">{copy.previewMode}</span>
                   <div className="h-4 w-px bg-slate-200" />
                   <div className="flex items-center gap-2">
-                    <Link href={`/output-center?type=${selectedType}&format=${selectedFormat}&lang=${selectedLanguage}&quoteId=${selectedQuote?.id ?? ""}&historyType=${historyType}&historyLang=${historyLang}&historyFormat=${historyFormat}&historyTemplate=${historyTemplate}&zoom=75`} className="rounded p-1 text-slate-500 hover:bg-slate-100">
+                    <Link href={`/output-center?type=${selectedType}&format=${selectedFormat}&lang=${selectedLanguage}&quoteId=${isPropertyOverview ? "" : selectedQuote?.id ?? ""}&targetProperty=${selectedPropertyId}&targetParty=${selectedPartyId}&historyType=${historyType}&historyLang=${historyLang}&historyFormat=${historyFormat}&historyTemplate=${historyTemplate}&zoom=75`} className="rounded p-1 text-slate-500 hover:bg-slate-100">
                       <span className="material-symbols-outlined text-[18px]">zoom_out</span>
                     </Link>
                     <span className="text-[11px] font-bold tabular-nums">{selectedZoom}%</span>
-                    <Link href={`/output-center?type=${selectedType}&format=${selectedFormat}&lang=${selectedLanguage}&quoteId=${selectedQuote?.id ?? ""}&historyType=${historyType}&historyLang=${historyLang}&historyFormat=${historyFormat}&historyTemplate=${historyTemplate}&zoom=100`} className="rounded p-1 text-slate-500 hover:bg-slate-100">
+                    <Link href={`/output-center?type=${selectedType}&format=${selectedFormat}&lang=${selectedLanguage}&quoteId=${isPropertyOverview ? "" : selectedQuote?.id ?? ""}&targetProperty=${selectedPropertyId}&targetParty=${selectedPartyId}&historyType=${historyType}&historyLang=${historyLang}&historyFormat=${historyFormat}&historyTemplate=${historyTemplate}&zoom=100`} className="rounded p-1 text-slate-500 hover:bg-slate-100">
                       <span className="material-symbols-outlined text-[18px]">zoom_in</span>
                     </Link>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Link href={previewQuoteId ? `/quotes/${previewQuoteId}/print?type=${selectedType}` : "/quotes"} className="rounded-full p-2 text-slate-500 hover:bg-slate-100">
+                  <Link href={previewQuoteId && !isPropertyOverview ? `/quotes/${previewQuoteId}/print?type=${selectedType}` : `/output-center?type=${selectedType}&targetProperty=${selectedPropertyId}`} className="rounded-full p-2 text-slate-500 hover:bg-slate-100">
                     <span className="material-symbols-outlined text-[18px]">print</span>
                   </Link>
-                  <Link href={previewQuoteId ? `/quotes/${previewQuoteId}` : "/quotes"} className="rounded-full p-2 text-slate-500 hover:bg-slate-100">
+                  <Link href={previewQuoteId && !isPropertyOverview ? `/quotes/${previewQuoteId}` : `/properties?focus=${selectedPropertyId}`} className="rounded-full p-2 text-slate-500 hover:bg-slate-100">
                     <span className="material-symbols-outlined text-[18px]">share</span>
                   </Link>
-                  {previewQuoteId ? (
+                  {selectedGeneratedOutput || (previewQuoteId && !isPropertyOverview) ? (
                     <Link href={selectedDownloadHref} className="ml-1 rounded-lg bg-slate-900 px-4 py-1.5 text-xs font-bold text-white">
                       {copy.download}
                     </Link>
@@ -874,7 +1509,9 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                   <div className="mb-10 grid grid-cols-2 gap-8">
                     <div>
                       <p className="text-[9px] font-bold uppercase text-slate-400">{copy.preparedFor}</p>
-                      <p className="text-sm font-bold text-slate-900">{selectedParty?.name ?? copy.preparedForValue}</p>
+                      <p className="text-sm font-bold text-slate-900">
+                        {isPropertyOverview ? selectedProperty?.name ?? "-" : selectedParty?.name ?? copy.preparedForValue}
+                      </p>
                     </div>
                     <div className="text-right">
                       <p className="text-[9px] font-bold uppercase text-slate-400">{copy.dateIssued}</p>
@@ -930,6 +1567,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
           </article>
         </div>
       </section>
+      </details>
     </div>
   );
 }

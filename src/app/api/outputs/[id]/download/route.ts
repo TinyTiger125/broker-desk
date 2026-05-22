@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getDefaultUser, getGeneratedOutputById, getQuotationById } from "@/lib/data";
+import { getDefaultUser, getGeneratedOutputById, getQuotationById, listQuoteFormData } from "@/lib/data";
 import { getOutputDocLabel, isOutputDocType } from "@/lib/output-doc";
 import type { Locale } from "@/lib/locale";
 
@@ -28,7 +28,9 @@ export async function GET(request: Request, context: RouteContext) {
     return NextResponse.json({ error: "output_not_found" }, { status: 404 });
   }
 
-  const quote = await getQuotationById(output.quoteId);
+  const quote = output.quoteId ? await getQuotationById(output.quoteId) : undefined;
+  const { properties } = await listQuoteFormData();
+  const property = output.propertyId ? properties.find((item) => item.id === output.propertyId) : quote?.property;
   const locale = normalizeLocale(new URL(request.url).searchParams.get("locale"));
   const outputType = isOutputDocType(output.outputType) ? output.outputType : "proposal";
   const title = output.title || getOutputDocLabel(locale, outputType);
@@ -39,16 +41,17 @@ export async function GET(request: Request, context: RouteContext) {
     `Output ID: ${output.id}`,
     `Document Number: ${output.documentNumber || "-"}`,
     `Actor ID: ${output.actorId || "-"}`,
-    `Quote ID: ${output.quoteId}`,
-    `Source Quote ID: ${output.sourceQuoteId || output.quoteId}`,
+    `Quote ID: ${output.quoteId ?? "-"}`,
+    `Source Quote ID: ${output.sourceQuoteId || output.quoteId || "-"}`,
+    `Property ID: ${output.propertyId ?? "-"}`,
     `Format: ${output.outputFormat.toUpperCase()}`,
     `Language: ${output.language.toUpperCase()}`,
     `Template Version ID: ${output.templateVersionId ?? "-"}`,
     `Generated At: ${generatedAt}`,
     "",
     `Client: ${quote?.client?.name ?? "-"}`,
-    `Property: ${quote?.property?.name ?? "-"}`,
-    `Listing Price: ${quote?.listingPrice ?? 0}`,
+    `Property: ${property?.name ?? "-"}`,
+    `Listing Price: ${quote?.listingPrice ?? property?.listingPrice ?? 0}`,
     `Down Payment: ${quote?.downPayment ?? 0}`,
     `Monthly Payment: ${quote?.monthlyPaymentEstimate ?? 0}`,
     "",

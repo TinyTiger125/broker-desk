@@ -36,6 +36,13 @@ import type {
   ImportJobStatus,
   ImportSourceType,
   ImportTargetEntity,
+  BrokerageCase,
+  BrokerageCaseStatus,
+  BrokerageCaseType,
+  ExtractionReviewItem,
+  ExtractionReviewStatus,
+  GuaranteeApplicationDraft,
+  GuaranteeApplicationDraftStatus,
   Property,
   Quotation,
   Task,
@@ -279,6 +286,74 @@ function mapImportJob(row: Record<string, unknown>): ImportJob {
   };
 }
 
+function mapBrokerageCase(row: Record<string, unknown>): BrokerageCase {
+  return {
+    id: String(row.id),
+    userId: String(row.user_id),
+    caseType: String(row.case_type) as BrokerageCaseType,
+    caseTitle: String(row.case_title),
+    primaryPropertyId: row.primary_property_id ? String(row.primary_property_id) : undefined,
+    status: String(row.status ?? "reviewed") as BrokerageCaseStatus,
+    confirmedDataJson:
+      row.confirmed_data_json && typeof row.confirmed_data_json === "object"
+        ? (row.confirmed_data_json as Record<string, unknown>)
+        : {},
+    sourceImportJobIds: Array.isArray(row.source_import_job_ids)
+      ? (row.source_import_job_ids as unknown[]).map(String)
+      : [],
+    createdAt: toDate(row.created_at) ?? new Date(),
+    updatedAt: toDate(row.updated_at) ?? new Date(),
+  };
+}
+
+function mapExtractionReviewItem(row: Record<string, unknown>): ExtractionReviewItem {
+  return {
+    id: String(row.id),
+    userId: String(row.user_id),
+    caseId: String(row.case_id),
+    importJobId: String(row.import_job_id),
+    fieldKey: String(row.field_key),
+    label: String(row.label),
+    extractedValue: String(row.extracted_value ?? ""),
+    normalizedValue: String(row.normalized_value ?? ""),
+    editedValue: row.edited_value ? String(row.edited_value) : undefined,
+    finalValue: row.final_value ? String(row.final_value) : undefined,
+    sourceSheet: String(row.source_sheet ?? ""),
+    sourceCell: row.source_cell ? String(row.source_cell) : undefined,
+    sourceRange: row.source_range ? String(row.source_range) : undefined,
+    method: String(row.method ?? ""),
+    confidence: Number(row.confidence ?? 0),
+    reviewStatus: String(row.review_status ?? "suggested") as ExtractionReviewStatus,
+    sourceFileHash: String(row.source_file_hash ?? ""),
+    templateVersion: String(row.template_version ?? ""),
+    reviewedById: row.reviewed_by_id ? String(row.reviewed_by_id) : undefined,
+    reviewedAt: toDate(row.reviewed_at) ?? new Date(),
+    createdAt: toDate(row.created_at) ?? new Date(),
+  };
+}
+
+function mapGuaranteeApplicationDraft(row: Record<string, unknown>): GuaranteeApplicationDraft {
+  return {
+    id: String(row.id),
+    userId: String(row.user_id),
+    caseId: String(row.case_id),
+    templateId: String(row.template_id),
+    companyCode: String(row.company_code ?? "friends_guarantee") as GuaranteeApplicationDraft["companyCode"],
+    status: String(row.status ?? "draft") as GuaranteeApplicationDraftStatus,
+    fieldValuesJson:
+      row.field_values_json && typeof row.field_values_json === "object"
+        ? (row.field_values_json as Record<string, unknown>)
+        : {},
+    fieldStatusesJson:
+      row.field_statuses_json && typeof row.field_statuses_json === "object"
+        ? (row.field_statuses_json as Record<string, string>)
+        : {},
+    lastReviewedAt: toDate(row.last_reviewed_at),
+    createdAt: toDate(row.created_at) ?? new Date(),
+    updatedAt: toDate(row.updated_at) ?? new Date(),
+  };
+}
+
 function mapAttachment(row: Record<string, unknown>): Attachment {
   return {
     id: String(row.id),
@@ -295,13 +370,14 @@ function mapAttachment(row: Record<string, unknown>): Attachment {
 
 function mapGeneratedOutput(row: Record<string, unknown>): GeneratedOutput {
   const actorId = row.actor_id ? String(row.actor_id) : String(row.user_id);
-  const sourceQuoteId = row.source_quote_id ? String(row.source_quote_id) : String(row.quote_id);
+  const quoteId = row.quote_id ? String(row.quote_id) : undefined;
+  const sourceQuoteId = row.source_quote_id ? String(row.source_quote_id) : quoteId;
   return {
     id: String(row.id),
     actorId,
     userId: actorId,
     sourceQuoteId,
-    quoteId: String(row.quote_id),
+    quoteId,
     propertyId: row.property_id ? String(row.property_id) : undefined,
     partyId: row.party_id ? String(row.party_id) : undefined,
     outputType: String(row.output_type) as GeneratedOutput["outputType"],
@@ -491,6 +567,58 @@ async function ensureSchema() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    CREATE TABLE IF NOT EXISTS brokerage_cases (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id),
+      case_type TEXT NOT NULL DEFAULT 'unit_sale',
+      case_title TEXT NOT NULL,
+      primary_property_id TEXT,
+      status TEXT NOT NULL DEFAULT 'reviewed',
+      confirmed_data_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+      source_import_job_ids TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS extraction_review_items (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id),
+      case_id TEXT NOT NULL REFERENCES brokerage_cases(id) ON DELETE CASCADE,
+      import_job_id TEXT NOT NULL REFERENCES import_jobs(id),
+      field_key TEXT NOT NULL,
+      label TEXT NOT NULL,
+      extracted_value TEXT NOT NULL DEFAULT '',
+      normalized_value TEXT NOT NULL DEFAULT '',
+      edited_value TEXT,
+      final_value TEXT,
+      source_sheet TEXT NOT NULL DEFAULT '',
+      source_cell TEXT,
+      source_range TEXT,
+      method TEXT NOT NULL DEFAULT '',
+      confidence DOUBLE PRECISION NOT NULL DEFAULT 0,
+      review_status TEXT NOT NULL,
+      source_file_hash TEXT NOT NULL DEFAULT '',
+      template_version TEXT NOT NULL DEFAULT '',
+      reviewed_by_id TEXT,
+      reviewed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS guarantee_application_drafts (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id),
+      case_id TEXT NOT NULL REFERENCES brokerage_cases(id) ON DELETE CASCADE,
+      template_id TEXT NOT NULL,
+      company_code TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'draft',
+      field_values_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+      field_statuses_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+      last_reviewed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(user_id, case_id, template_id)
+    );
+
     CREATE TABLE IF NOT EXISTS attachments (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL REFERENCES users(id),
@@ -507,7 +635,7 @@ async function ensureSchema() {
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL REFERENCES users(id),
       actor_id TEXT REFERENCES users(id),
-      quote_id TEXT NOT NULL REFERENCES quotations(id),
+      quote_id TEXT REFERENCES quotations(id),
       source_quote_id TEXT,
       property_id TEXT,
       party_id TEXT,
@@ -531,6 +659,10 @@ async function ensureSchema() {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_output_template_version_user_number ON output_template_versions(user_id, version_number);
     CREATE INDEX IF NOT EXISTS idx_output_template_version_user_created ON output_template_versions(user_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_import_jobs_user_created ON import_jobs(user_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_brokerage_cases_user_updated ON brokerage_cases(user_id, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_extraction_review_case ON extraction_review_items(case_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_extraction_review_import_job ON extraction_review_items(import_job_id);
+    CREATE INDEX IF NOT EXISTS idx_guarantee_drafts_case_template ON guarantee_application_drafts(user_id, case_id, template_id);
     CREATE INDEX IF NOT EXISTS idx_attachments_user_target ON attachments(user_id, target_type, target_id);
     CREATE INDEX IF NOT EXISTS idx_generated_outputs_user_created ON generated_outputs(user_id, generated_at DESC);
     CREATE INDEX IF NOT EXISTS idx_generated_outputs_actor_created ON generated_outputs(actor_id, generated_at DESC);
@@ -594,6 +726,7 @@ async function ensureSchema() {
     ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS document_number TEXT;
     ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
     ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS template_version_id TEXT;
+    ALTER TABLE generated_outputs ALTER COLUMN quote_id DROP NOT NULL;
 
     ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS actor_id TEXT;
     ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS context_json JSONB;
@@ -1194,6 +1327,403 @@ export async function updateImportJobMapping(input: {
   return result.rows[0] ? mapImportJob(result.rows[0]) : null;
 }
 
+export async function listBrokerageCases(userId: string, limit = 50): Promise<BrokerageCase[]> {
+  await ensureSchema();
+  const result = await getPool().query(
+    `SELECT * FROM brokerage_cases
+     WHERE user_id = $1
+     ORDER BY updated_at DESC
+     LIMIT $2`,
+    [userId, limit]
+  );
+  return result.rows.map(mapBrokerageCase);
+}
+
+export async function getBrokerageCaseById(input: {
+  userId: string;
+  caseId: string;
+}): Promise<BrokerageCase | null> {
+  await ensureSchema();
+  const result = await getPool().query(
+    "SELECT * FROM brokerage_cases WHERE id = $1 AND user_id = $2 LIMIT 1",
+    [input.caseId, input.userId]
+  );
+  return result.rows[0] ? mapBrokerageCase(result.rows[0]) : null;
+}
+
+export async function getBrokerageCaseByImportJobId(input: {
+  userId: string;
+  importJobId: string;
+}): Promise<BrokerageCase | null> {
+  await ensureSchema();
+  const result = await getPool().query(
+    `SELECT * FROM brokerage_cases
+     WHERE user_id = $1 AND $2 = ANY(source_import_job_ids)
+     ORDER BY updated_at DESC
+     LIMIT 1`,
+    [input.userId, input.importJobId]
+  );
+  return result.rows[0] ? mapBrokerageCase(result.rows[0]) : null;
+}
+
+export async function updateBrokerageCaseConfirmedData(input: {
+  userId: string;
+  caseId: string;
+  confirmedDataJson: Record<string, unknown>;
+}): Promise<BrokerageCase | null> {
+  await ensureSchema();
+  const result = await getPool().query(
+    `UPDATE brokerage_cases
+     SET confirmed_data_json = $3, updated_at = NOW()
+     WHERE id = $1 AND user_id = $2
+     RETURNING *`,
+    [input.caseId, input.userId, JSON.stringify(input.confirmedDataJson)],
+  );
+  return result.rows[0] ? mapBrokerageCase(result.rows[0]) : null;
+}
+
+export async function saveBrokerageCaseExtractionReview(input: {
+  userId: string;
+  caseId?: string;
+  caseType: BrokerageCaseType;
+  caseTitle: string;
+  primaryPropertyId?: string;
+  status?: BrokerageCaseStatus;
+  confirmedDataJson: Record<string, unknown>;
+  sourceImportJobIds: string[];
+  reviewItems: Array<Omit<ExtractionReviewItem, "id" | "userId" | "caseId" | "createdAt">>;
+}): Promise<BrokerageCase> {
+  await ensureSchema();
+  const nowIso = new Date().toISOString();
+  const caseId = input.caseId ?? genId("case");
+  const sourceImportJobIds = [...new Set(input.sourceImportJobIds)];
+  const caseResult = await withTransaction(async (client) => {
+    const existing = input.caseId
+      ? await client.query("SELECT id FROM brokerage_cases WHERE id = $1 AND user_id = $2 LIMIT 1", [input.caseId, input.userId])
+      : { rows: [] };
+    const result =
+      existing.rows.length > 0
+        ? await client.query(
+            `UPDATE brokerage_cases
+             SET case_type = $3, case_title = $4, primary_property_id = $5, status = $6,
+                 confirmed_data_json = $7, source_import_job_ids = $8, updated_at = NOW()
+             WHERE id = $1 AND user_id = $2
+             RETURNING *`,
+            [
+              caseId,
+              input.userId,
+              input.caseType,
+              input.caseTitle.trim() || "抽出確認案件",
+              input.primaryPropertyId ?? null,
+              input.status ?? "reviewed",
+              JSON.stringify(input.confirmedDataJson),
+              sourceImportJobIds,
+            ]
+          )
+        : await client.query(
+            `INSERT INTO brokerage_cases (
+              id, user_id, case_type, case_title, primary_property_id, status,
+              confirmed_data_json, source_import_job_ids, created_at, updated_at
+             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW(),NOW())
+             RETURNING *`,
+            [
+              caseId,
+              input.userId,
+              input.caseType,
+              input.caseTitle.trim() || "抽出確認案件",
+              input.primaryPropertyId ?? null,
+              input.status ?? "reviewed",
+              JSON.stringify(input.confirmedDataJson),
+              sourceImportJobIds,
+            ]
+          );
+
+    await client.query("DELETE FROM extraction_review_items WHERE case_id = $1", [caseId]);
+    for (const item of input.reviewItems) {
+      await client.query(
+        `INSERT INTO extraction_review_items (
+          id, user_id, case_id, import_job_id, field_key, label,
+          extracted_value, normalized_value, edited_value, final_value,
+          source_sheet, source_cell, source_range, method, confidence, review_status,
+          source_file_hash, template_version, reviewed_by_id, reviewed_at, created_at
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
+        [
+          genId("review"),
+          input.userId,
+          caseId,
+          item.importJobId,
+          item.fieldKey,
+          item.label,
+          item.extractedValue,
+          item.normalizedValue,
+          item.editedValue ?? null,
+          item.finalValue ?? null,
+          item.sourceSheet,
+          item.sourceCell ?? null,
+          item.sourceRange ?? null,
+          item.method,
+          item.confidence,
+          item.reviewStatus,
+          item.sourceFileHash,
+          item.templateVersion,
+          item.reviewedById ?? null,
+          item.reviewedAt,
+          nowIso,
+        ]
+      );
+    }
+
+    return result.rows[0];
+  });
+  return mapBrokerageCase(caseResult);
+}
+
+export async function mergeBrokerageCaseExtractionReview(input: {
+  userId: string;
+  caseId: string;
+  confirmedDataJson: Record<string, unknown>;
+  sourceImportJobIds: string[];
+  replaceImportJobIds: string[];
+  reviewItems: Array<Omit<ExtractionReviewItem, "id" | "userId" | "caseId" | "createdAt">>;
+}): Promise<BrokerageCase | null> {
+  await ensureSchema();
+  const nowIso = new Date().toISOString();
+  const sourceImportJobIds = [...new Set(input.sourceImportJobIds)];
+  const replaceImportJobIds = [...new Set(input.replaceImportJobIds)];
+  const caseResult = await withTransaction(async (client) => {
+    const result = await client.query(
+      `UPDATE brokerage_cases
+       SET confirmed_data_json = $3, source_import_job_ids = $4, updated_at = NOW()
+       WHERE id = $1 AND user_id = $2
+       RETURNING *`,
+      [input.caseId, input.userId, JSON.stringify(input.confirmedDataJson), sourceImportJobIds],
+    );
+    if (!result.rows[0]) return null;
+
+    if (replaceImportJobIds.length > 0) {
+      await client.query(
+        `DELETE FROM extraction_review_items
+         WHERE case_id = $1 AND user_id = $2 AND import_job_id = ANY($3)`,
+        [input.caseId, input.userId, replaceImportJobIds],
+      );
+    }
+
+    for (const item of input.reviewItems) {
+      await client.query(
+        `INSERT INTO extraction_review_items (
+          id, user_id, case_id, import_job_id, field_key, label,
+          extracted_value, normalized_value, edited_value, final_value,
+          source_sheet, source_cell, source_range, method, confidence, review_status,
+          source_file_hash, template_version, reviewed_by_id, reviewed_at, created_at
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
+        [
+          genId("review"),
+          input.userId,
+          input.caseId,
+          item.importJobId,
+          item.fieldKey,
+          item.label,
+          item.extractedValue,
+          item.normalizedValue,
+          item.editedValue ?? null,
+          item.finalValue ?? null,
+          item.sourceSheet,
+          item.sourceCell ?? null,
+          item.sourceRange ?? null,
+          item.method,
+          item.confidence,
+          item.reviewStatus,
+          item.sourceFileHash,
+          item.templateVersion,
+          item.reviewedById ?? null,
+          item.reviewedAt,
+          nowIso,
+        ],
+      );
+    }
+
+    return result.rows[0];
+  });
+  return caseResult ? mapBrokerageCase(caseResult) : null;
+}
+
+export async function rollbackBrokerageCaseMerge(input: {
+  userId: string;
+  caseId: string;
+  restoredConfirmedDataJson: Record<string, unknown>;
+  restoredSourceImportJobIds: string[];
+  splitCaseTitle: string;
+  splitCaseId?: string;
+  splitConfirmedDataJson: Record<string, unknown>;
+  splitSourceImportJobIds: string[];
+  splitReviewItems: Array<Omit<ExtractionReviewItem, "id" | "userId" | "caseId" | "createdAt">>;
+  removeImportJobIds: string[];
+}): Promise<{ restoredCase: BrokerageCase; splitCase: BrokerageCase } | null> {
+  await ensureSchema();
+  const nowIso = new Date().toISOString();
+  const splitCaseId = input.splitCaseId ?? genId("case");
+  const removeImportJobIds = [...new Set(input.removeImportJobIds)];
+  const result = await withTransaction(async (client) => {
+    const restoredResult = await client.query(
+      `UPDATE brokerage_cases
+       SET confirmed_data_json = $3, source_import_job_ids = $4, updated_at = NOW()
+       WHERE id = $1 AND user_id = $2
+       RETURNING *`,
+      [
+        input.caseId,
+        input.userId,
+        JSON.stringify(input.restoredConfirmedDataJson),
+        [...new Set(input.restoredSourceImportJobIds)],
+      ],
+    );
+    if (!restoredResult.rows[0]) return null;
+
+    if (removeImportJobIds.length > 0) {
+      await client.query(
+        `DELETE FROM extraction_review_items
+         WHERE case_id = $1 AND user_id = $2 AND import_job_id = ANY($3)`,
+        [input.caseId, input.userId, removeImportJobIds],
+      );
+    }
+
+    const splitResult = await client.query(
+      `INSERT INTO brokerage_cases (
+        id, user_id, case_type, case_title, primary_property_id, status,
+        confirmed_data_json, source_import_job_ids, created_at, updated_at
+       )
+       SELECT $1, user_id, case_type, $4, primary_property_id, 'reviewed',
+              $5, $6, NOW(), NOW()
+       FROM brokerage_cases
+       WHERE id = $2 AND user_id = $3
+       RETURNING *`,
+      [
+        splitCaseId,
+        input.caseId,
+        input.userId,
+        input.splitCaseTitle.trim() || "分離した抽出確認案件",
+        JSON.stringify(input.splitConfirmedDataJson),
+        [...new Set(input.splitSourceImportJobIds)],
+      ],
+    );
+
+    for (const item of input.splitReviewItems) {
+      await client.query(
+        `INSERT INTO extraction_review_items (
+          id, user_id, case_id, import_job_id, field_key, label,
+          extracted_value, normalized_value, edited_value, final_value,
+          source_sheet, source_cell, source_range, method, confidence, review_status,
+          source_file_hash, template_version, reviewed_by_id, reviewed_at, created_at
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
+        [
+          genId("review"),
+          input.userId,
+          splitCaseId,
+          item.importJobId,
+          item.fieldKey,
+          item.label,
+          item.extractedValue,
+          item.normalizedValue,
+          item.editedValue ?? null,
+          item.finalValue ?? null,
+          item.sourceSheet,
+          item.sourceCell ?? null,
+          item.sourceRange ?? null,
+          item.method,
+          item.confidence,
+          item.reviewStatus,
+          item.sourceFileHash,
+          item.templateVersion,
+          item.reviewedById ?? null,
+          item.reviewedAt,
+          nowIso,
+        ],
+      );
+    }
+
+    return {
+      restoredCase: restoredResult.rows[0],
+      splitCase: splitResult.rows[0],
+    };
+  });
+  return result
+    ? {
+        restoredCase: mapBrokerageCase(result.restoredCase),
+        splitCase: mapBrokerageCase(result.splitCase),
+      }
+    : null;
+}
+
+export async function listExtractionReviewItems(input: {
+  userId: string;
+  caseId: string;
+}): Promise<ExtractionReviewItem[]> {
+  await ensureSchema();
+  const result = await getPool().query(
+    `SELECT * FROM extraction_review_items
+     WHERE user_id = $1 AND case_id = $2
+     ORDER BY created_at ASC`,
+    [input.userId, input.caseId]
+  );
+  return result.rows.map(mapExtractionReviewItem);
+}
+
+export async function getGuaranteeApplicationDraft(input: {
+  userId: string;
+  caseId: string;
+  templateId: string;
+}): Promise<GuaranteeApplicationDraft | null> {
+  await ensureSchema();
+  const result = await getPool().query(
+    `SELECT * FROM guarantee_application_drafts
+     WHERE user_id = $1 AND case_id = $2 AND template_id = $3
+     LIMIT 1`,
+    [input.userId, input.caseId, input.templateId],
+  );
+  return result.rows[0] ? mapGuaranteeApplicationDraft(result.rows[0]) : null;
+}
+
+export async function saveGuaranteeApplicationDraft(input: {
+  userId: string;
+  caseId: string;
+  templateId: string;
+  companyCode: GuaranteeApplicationDraft["companyCode"];
+  status: GuaranteeApplicationDraftStatus;
+  fieldValuesJson: Record<string, unknown>;
+  fieldStatusesJson?: Record<string, string>;
+  lastReviewedAt?: Date;
+}): Promise<GuaranteeApplicationDraft> {
+  await ensureSchema();
+  const id = `draft_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  const result = await getPool().query(
+    `INSERT INTO guarantee_application_drafts (
+       id, user_id, case_id, template_id, company_code, status,
+       field_values_json, field_statuses_json, last_reviewed_at, created_at, updated_at
+     )
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+     ON CONFLICT (user_id, case_id, template_id)
+     DO UPDATE SET
+       company_code = EXCLUDED.company_code,
+       status = EXCLUDED.status,
+       field_values_json = EXCLUDED.field_values_json,
+       field_statuses_json = EXCLUDED.field_statuses_json,
+       last_reviewed_at = EXCLUDED.last_reviewed_at,
+       updated_at = NOW()
+     RETURNING *`,
+    [
+      id,
+      input.userId,
+      input.caseId,
+      input.templateId,
+      input.companyCode,
+      input.status,
+      JSON.stringify(input.fieldValuesJson),
+      JSON.stringify(input.fieldStatusesJson ?? {}),
+      input.lastReviewedAt ?? null,
+    ],
+  );
+  return mapGuaranteeApplicationDraft(result.rows[0]);
+}
+
 export async function listAttachments(input: {
   userId: string;
   targetType?: AttachmentTargetType;
@@ -1300,7 +1830,7 @@ export async function addGeneratedOutput(input: {
   userId: string;
   actorId?: string;
   sourceQuoteId?: string;
-  quoteId: string;
+  quoteId?: string;
   propertyId?: string;
   partyId?: string;
   outputType: GeneratedOutput["outputType"];
@@ -2610,6 +3140,11 @@ export type {
   ImportJobStatus,
   ImportSourceType,
   ImportTargetEntity,
+  BrokerageCase,
+  BrokerageCaseStatus,
+  BrokerageCaseType,
+  ExtractionReviewItem,
+  ExtractionReviewStatus,
   OutputTemplateVersion,
   Task,
   User,

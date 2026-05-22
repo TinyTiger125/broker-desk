@@ -163,6 +163,63 @@ export type ImportJob = {
   updatedAt: Date;
 };
 
+export type BrokerageCaseStatus = "draft" | "reviewed";
+export type BrokerageCaseType = "unit_sale";
+export type ExtractionReviewStatus = "suggested" | "accepted" | "edited" | "unknown" | "rejected";
+export type GuaranteeApplicationDraftStatus = "draft" | "ready";
+export type GuaranteeApplicationDraftCompanyCode = "zenhoren" | "nihon_safety" | "j_lease" | "insure" | "friends_guarantee";
+
+export type BrokerageCase = {
+  id: string;
+  userId: string;
+  caseType: BrokerageCaseType;
+  caseTitle: string;
+  primaryPropertyId?: string;
+  status: BrokerageCaseStatus;
+  confirmedDataJson: Record<string, unknown>;
+  sourceImportJobIds: string[];
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type ExtractionReviewItem = {
+  id: string;
+  userId: string;
+  caseId: string;
+  importJobId: string;
+  fieldKey: string;
+  label: string;
+  extractedValue: string;
+  normalizedValue: string;
+  editedValue?: string;
+  finalValue?: string;
+  sourceSheet: string;
+  sourceCell?: string;
+  sourceRange?: string;
+  method: string;
+  confidence: number;
+  reviewStatus: ExtractionReviewStatus;
+  sourceFileHash: string;
+  templateVersion: string;
+  reviewedById?: string;
+  reviewedAt: Date;
+  createdAt: Date;
+};
+
+export type GuaranteeApplicationDraft = {
+  id: string;
+  userId: string;
+  caseId: string;
+  templateId: string;
+  companyCode: GuaranteeApplicationDraftCompanyCode;
+  status: GuaranteeApplicationDraftStatus;
+  fieldValuesJson: Record<string, unknown>;
+  fieldStatusesJson: Record<string, string>;
+  lastReviewedAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 export type AttachmentTargetType = "property" | "party" | "contract" | "service_request" | "import_job" | "quote";
 
 export type Attachment = {
@@ -181,11 +238,11 @@ export type GeneratedOutput = {
   id: string;
   actorId: string;
   userId: string;
-  sourceQuoteId: string;
-  quoteId: string;
+  sourceQuoteId?: string;
+  quoteId?: string;
   propertyId?: string;
   partyId?: string;
-  outputType: "proposal" | "estimate_sheet" | "funding_plan" | "assumption_memo";
+  outputType: "property_overview" | "proposal" | "estimate_sheet" | "funding_plan" | "assumption_memo";
   outputFormat: "pdf" | "docx";
   language: Locale;
   title: string;
@@ -216,6 +273,9 @@ type DB = {
   outputTemplateSettings: OutputTemplateSettings[];
   outputTemplateVersions: OutputTemplateVersion[];
   importJobs: ImportJob[];
+  brokerageCases: BrokerageCase[];
+  extractionReviewItems: ExtractionReviewItem[];
+  guaranteeApplicationDrafts: GuaranteeApplicationDraft[];
   attachments: Attachment[];
   generatedOutputs: GeneratedOutput[];
 };
@@ -579,6 +639,140 @@ const _freshDb: DB = {
   importJobs: [
     { id: "import_001", userId: "user_demo", sourceType: "excel", title: "物件台帳_2026Q1.xlsx", targetEntity: "properties", status: "completed", notes: "物件5件を取込", mappingJson: { 物件名: "name", 所在地: "address", エリア: "area", 売出価格: "listing_price" }, validationMessage: "必須項目を充足（4/4）", createdAt: new Date(now - 4 * 24 * 60 * 60 * 1000), updatedAt: new Date(now - 4 * 24 * 60 * 60 * 1000) },
     { id: "import_002", userId: "user_demo", sourceType: "pdf", title: "旧契約書一括取込（3件）", targetEntity: "contracts", status: "mapped", notes: "契約種別の確認待ち", mappingJson: { 契約番号: "contract_number", 契約種別: "contract_type", 物件ID: "property_id" }, validationMessage: "必須項目が不足（署名日）", createdAt: new Date(now - 2 * 24 * 60 * 60 * 1000), updatedAt: new Date(now - 2 * 24 * 60 * 60 * 1000) },
+    { id: "import_003", userId: "user_demo", sourceType: "excel", title: "港区グランドタワー_申込資料.xlsx", targetEntity: "properties", status: "mapped", notes: "申込書作成前の確認待ち", validationMessage: "物件名・部屋番号・取扱店情報を確認", createdAt: new Date(now - 1 * 24 * 60 * 60 * 1000), updatedAt: new Date(now - 1 * 24 * 60 * 60 * 1000) },
+  ],
+  brokerageCases: [
+    {
+      id: "case_fixture_friends_guarantee_pdf",
+      userId: "user_demo",
+      caseType: "unit_sale",
+      caseTitle: "港区グランドタワー 8F 保証会社申込書",
+      primaryPropertyId: "prop_minato_tower",
+      status: "reviewed",
+      confirmedDataJson: {
+        "property.name": "港区グランドタワー",
+        "property.roomNumber": "8F",
+        "property.address": "東京都港区芝公園1-2-3",
+        "lease.moveInDate": "2026年6月1日",
+        "lease.rent": "120000",
+        "lease.commonFee": "8000",
+        "lease.parkingFee": "15000",
+        "lease.monthlyRentTotal": "143000",
+        "applicant.name": "山田 太郎",
+        "applicant.furigana": "ヤマダ タロウ",
+        "applicant.phone": "090-1234-5678",
+        "applicant.currentAddress": "東京都品川区大崎4-5-6",
+        "applicant.employerName": "山田商事株式会社",
+        "emergencyContact.name": "山田 花子",
+        "emergencyContact.phone": "080-1234-5678",
+        "broker.companyName": "Cherry Investment株式会社",
+        "broker.phone": "03-6234-5678",
+      },
+      sourceImportJobIds: [],
+      createdAt: new Date(now - 1 * 24 * 60 * 60 * 1000),
+      updatedAt: new Date(now - 1 * 24 * 60 * 60 * 1000),
+    },
+    {
+      id: "case_fixture_extractor_keys_workbench",
+      userId: "user_demo",
+      caseType: "unit_sale",
+      caseTitle: "港区グランドタワー 8F 抽出確認案件",
+      primaryPropertyId: "prop_minato_tower",
+      status: "reviewed",
+      confirmedDataJson: {
+        property_name: "港区グランドタワー",
+        room_number: "202",
+        residential_address: "東京都港区芝公園1-2-3",
+        move_in_date: "2026年7月1日",
+        rent: "150000",
+        management_fee: "9000",
+        parking_fee: "12000",
+        rent_total: "171000",
+        buyer_name: "佐藤 健一",
+        buyer_furigana: "サトウ ケンイチ",
+        buyer_phone: "090-1111-2222",
+        buyer_address: "東京都目黒区中目黒4-5-6",
+        workplace_name: "さくら貿易株式会社",
+        guarantor_name: "佐藤 直子",
+        guarantor_phone: "080-1111-2222",
+        broker_a_company_name: "Cherry Investment株式会社",
+        broker_a_phone: "03-1111-2222",
+      },
+      sourceImportJobIds: ["import_003"],
+      createdAt: new Date(now - 1 * 24 * 60 * 60 * 1000),
+      updatedAt: new Date(now - 1 * 24 * 60 * 60 * 1000),
+    },
+  ],
+  extractionReviewItems: [
+    {
+      id: "review_fixture_extractor_property_name",
+      userId: "user_demo",
+      caseId: "case_fixture_extractor_keys_workbench",
+      importJobId: "import_003",
+      fieldKey: "property_name",
+      label: "不動産名称",
+      extractedValue: "港区グランドタワー",
+      normalizedValue: "港区グランドタワー",
+      finalValue: "港区グランドタワー",
+      sourceSheet: "申込資料",
+      sourceCell: "G40",
+      method: "rule",
+      confidence: 0.88,
+      reviewStatus: "accepted",
+      sourceFileHash: "sample-minato-application",
+      templateVersion: "sample:minato-application",
+      reviewedById: "user_demo",
+      reviewedAt: new Date(now - 1 * 24 * 60 * 60 * 1000),
+      createdAt: new Date(now - 1 * 24 * 60 * 60 * 1000),
+    },
+    {
+      id: "review_fixture_extractor_broker",
+      userId: "user_demo",
+      caseId: "case_fixture_extractor_keys_workbench",
+      importJobId: "import_003",
+      fieldKey: "broker_a_company_name",
+      label: "宅地建物取引業者A 商号又は名称",
+      extractedValue: "Cherry Investment株式会社",
+      normalizedValue: "Cherry Investment株式会社",
+      finalValue: "Cherry Investment株式会社",
+      sourceSheet: "申込資料",
+      sourceRange: "G14:AE14",
+      method: "rule",
+      confidence: 0.82,
+      reviewStatus: "accepted",
+      sourceFileHash: "sample-minato-application",
+      templateVersion: "sample:minato-application",
+      reviewedById: "user_demo",
+      reviewedAt: new Date(now - 1 * 24 * 60 * 60 * 1000),
+      createdAt: new Date(now - 1 * 24 * 60 * 60 * 1000),
+    },
+  ],
+  guaranteeApplicationDrafts: [
+    {
+      id: "draft_fixture_friends_guarantee_pdf",
+      userId: "user_demo",
+      caseId: "case_fixture_friends_guarantee_pdf",
+      templateId: "friends_guarantee_individual_v1",
+      companyCode: "friends_guarantee",
+      status: "ready",
+      fieldValuesJson: {
+        "company_option.friends_plan_type": "住居用標準プラン",
+        "company_option.friends_consent": "確認済み",
+        "company_option.friends_collection_agency": "利用する",
+        "company_option.friends_single_rider": "なし",
+        "company_option.friends_notes": "管理会社確認後に提出予定",
+      },
+      fieldStatusesJson: {
+        "company_option.friends_plan_type": "confirmed",
+        "company_option.friends_consent": "confirmed",
+        "company_option.friends_collection_agency": "confirmed",
+        "company_option.friends_single_rider": "confirmed",
+        "company_option.friends_notes": "confirmed",
+      },
+      lastReviewedAt: new Date(now - 1 * 24 * 60 * 60 * 1000),
+      createdAt: new Date(now - 1 * 24 * 60 * 60 * 1000),
+      updatedAt: new Date(now - 1 * 24 * 60 * 60 * 1000),
+    },
   ],
   attachments: [
     { id: "att_prop_minato_floor", userId: "user_demo", targetType: "property", targetId: "prop_minato_tower", fileName: "港区グランドタワー_間取り図.pdf", fileType: "application/pdf", fileSizeBytes: 924800, storagePath: "demo/property/prop_minato_tower/floorplan.pdf", uploadedAt: new Date(now - 3 * 24 * 60 * 60 * 1000) },
@@ -589,6 +783,60 @@ const _freshDb: DB = {
 
 if (!_g.__brokerDb) _g.__brokerDb = _freshDb;
 const db: DB = _g.__brokerDb;
+if (!db.guaranteeApplicationDrafts) db.guaranteeApplicationDrafts = [..._freshDb.guaranteeApplicationDrafts];
+
+export function resetBusinessDataForQa(): Record<keyof Omit<DB, "users" | "outputTemplateSettings" | "outputTemplateVersions">, number> {
+  const templateSettings = getDefaultOutputTemplateSettings("user_demo");
+  templateSettings.companyName = cherryOutputTemplate.companyName;
+  templateSettings.department = cherryOutputTemplate.department;
+  templateSettings.representative = cherryOutputTemplate.representative;
+  templateSettings.licenseNumber = cherryOutputTemplate.licenseNumber;
+  templateSettings.postalAddress = cherryOutputTemplate.postalAddress;
+  templateSettings.phone = cherryOutputTemplate.phone;
+  templateSettings.email = cherryOutputTemplate.email;
+
+  db.users = _freshDb.users.map((user) => ({ ...user }));
+  db.clients = [];
+  db.properties = [];
+  db.quotations = [];
+  db.followUps = [];
+  db.tasks = [];
+  db.auditLogs = [];
+  db.outputTemplateSettings = [templateSettings];
+  db.outputTemplateVersions = [
+    {
+      id: "tplver_user_demo_qa_blank",
+      userId: "user_demo",
+      versionNumber: 1,
+      versionLabel: "標準版 v1",
+      changeNote: "QA blank reset",
+      settingsSnapshot: toTemplateSettingsInput(templateSettings),
+      isActive: true,
+      createdAt: new Date(),
+    },
+  ];
+  db.importJobs = [];
+  db.brokerageCases = [];
+  db.extractionReviewItems = [];
+  db.guaranteeApplicationDrafts = [];
+  db.attachments = [];
+  db.generatedOutputs = [];
+
+  return {
+    clients: db.clients.length,
+    properties: db.properties.length,
+    quotations: db.quotations.length,
+    followUps: db.followUps.length,
+    tasks: db.tasks.length,
+    auditLogs: db.auditLogs.length,
+    importJobs: db.importJobs.length,
+    brokerageCases: db.brokerageCases.length,
+    extractionReviewItems: db.extractionReviewItems.length,
+    guaranteeApplicationDrafts: db.guaranteeApplicationDrafts.length,
+    attachments: db.attachments.length,
+    generatedOutputs: db.generatedOutputs.length,
+  };
+}
 
 const seedQuoteYamadaA = (() => {
   const data = { listingPrice: 135000000, brokerageFee: 4180000, taxFee: 1450000, managementFee: 44000, repairFee: 18000, otherFee: 850000, downPayment: 35000000, interestRate: 1.65, loanYears: 30 };
@@ -835,6 +1083,261 @@ export async function updateImportJobMapping(input: {
   return { ...job };
 }
 
+function cloneBrokerageCase(item: BrokerageCase): BrokerageCase {
+  return {
+    ...item,
+    confirmedDataJson: { ...item.confirmedDataJson },
+    sourceImportJobIds: [...item.sourceImportJobIds],
+  };
+}
+
+export async function listBrokerageCases(userId: string, limit = 50): Promise<BrokerageCase[]> {
+  return db.brokerageCases
+    .filter((item) => item.userId === userId)
+    .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+    .slice(0, limit)
+    .map(cloneBrokerageCase);
+}
+
+export async function getBrokerageCaseById(input: {
+  userId: string;
+  caseId: string;
+}): Promise<BrokerageCase | null> {
+  const item = db.brokerageCases.find((caseItem) => caseItem.userId === input.userId && caseItem.id === input.caseId);
+  return item ? cloneBrokerageCase(item) : null;
+}
+
+export async function getBrokerageCaseByImportJobId(input: {
+  userId: string;
+  importJobId: string;
+}): Promise<BrokerageCase | null> {
+  const item = db.brokerageCases.find(
+    (caseItem) => caseItem.userId === input.userId && caseItem.sourceImportJobIds.includes(input.importJobId),
+  );
+  return item ? cloneBrokerageCase(item) : null;
+}
+
+export async function updateBrokerageCaseConfirmedData(input: {
+  userId: string;
+  caseId: string;
+  confirmedDataJson: Record<string, unknown>;
+}): Promise<BrokerageCase | null> {
+  const item = db.brokerageCases.find((caseItem) => caseItem.userId === input.userId && caseItem.id === input.caseId);
+  if (!item) return null;
+
+  item.confirmedDataJson = { ...input.confirmedDataJson };
+  item.updatedAt = new Date();
+  return cloneBrokerageCase(item);
+}
+
+export async function saveBrokerageCaseExtractionReview(input: {
+  userId: string;
+  caseId?: string;
+  caseType: BrokerageCaseType;
+  caseTitle: string;
+  primaryPropertyId?: string;
+  status?: BrokerageCaseStatus;
+  confirmedDataJson: Record<string, unknown>;
+  sourceImportJobIds: string[];
+  reviewItems: Array<Omit<ExtractionReviewItem, "id" | "userId" | "caseId" | "createdAt">>;
+}): Promise<BrokerageCase> {
+  const nowDate = new Date();
+  let item = input.caseId
+    ? db.brokerageCases.find((caseItem) => caseItem.userId === input.userId && caseItem.id === input.caseId)
+    : undefined;
+
+  if (!item) {
+    item = {
+      id: makeId("case"),
+      userId: input.userId,
+      caseType: input.caseType,
+      caseTitle: input.caseTitle.trim() || "抽出確認案件",
+      primaryPropertyId: input.primaryPropertyId,
+      status: input.status ?? "reviewed",
+      confirmedDataJson: { ...input.confirmedDataJson },
+      sourceImportJobIds: [...new Set(input.sourceImportJobIds)],
+      createdAt: nowDate,
+      updatedAt: nowDate,
+    };
+    db.brokerageCases.unshift(item);
+  } else {
+    item.caseTitle = input.caseTitle.trim() || item.caseTitle;
+    item.caseType = input.caseType;
+    item.primaryPropertyId = input.primaryPropertyId;
+    item.status = input.status ?? "reviewed";
+    item.confirmedDataJson = { ...input.confirmedDataJson };
+    item.sourceImportJobIds = [...new Set(input.sourceImportJobIds)];
+    item.updatedAt = nowDate;
+  }
+
+  db.extractionReviewItems = db.extractionReviewItems.filter((reviewItem) => reviewItem.caseId !== item.id);
+  input.reviewItems.forEach((reviewItem) => {
+    db.extractionReviewItems.push({
+      ...reviewItem,
+      id: makeId("review"),
+      userId: input.userId,
+      caseId: item.id,
+      createdAt: nowDate,
+    });
+  });
+
+  return cloneBrokerageCase(item);
+}
+
+export async function mergeBrokerageCaseExtractionReview(input: {
+  userId: string;
+  caseId: string;
+  confirmedDataJson: Record<string, unknown>;
+  sourceImportJobIds: string[];
+  replaceImportJobIds: string[];
+  reviewItems: Array<Omit<ExtractionReviewItem, "id" | "userId" | "caseId" | "createdAt">>;
+}): Promise<BrokerageCase | null> {
+  const item = db.brokerageCases.find((caseItem) => caseItem.userId === input.userId && caseItem.id === input.caseId);
+  if (!item) return null;
+
+  const nowDate = new Date();
+  const replaceImportJobIds = new Set(input.replaceImportJobIds);
+  item.confirmedDataJson = { ...input.confirmedDataJson };
+  item.sourceImportJobIds = [...new Set(input.sourceImportJobIds)];
+  item.updatedAt = nowDate;
+
+  db.extractionReviewItems = db.extractionReviewItems.filter(
+    (reviewItem) => reviewItem.caseId !== item.id || !replaceImportJobIds.has(reviewItem.importJobId),
+  );
+  input.reviewItems.forEach((reviewItem) => {
+    db.extractionReviewItems.push({
+      ...reviewItem,
+      id: makeId("review"),
+      userId: input.userId,
+      caseId: item.id,
+      createdAt: nowDate,
+    });
+  });
+
+  return cloneBrokerageCase(item);
+}
+
+export async function rollbackBrokerageCaseMerge(input: {
+  userId: string;
+  caseId: string;
+  restoredConfirmedDataJson: Record<string, unknown>;
+  restoredSourceImportJobIds: string[];
+  splitCaseTitle: string;
+  splitCaseId?: string;
+  splitConfirmedDataJson: Record<string, unknown>;
+  splitSourceImportJobIds: string[];
+  splitReviewItems: Array<Omit<ExtractionReviewItem, "id" | "userId" | "caseId" | "createdAt">>;
+  removeImportJobIds: string[];
+}): Promise<{ restoredCase: BrokerageCase; splitCase: BrokerageCase } | null> {
+  const item = db.brokerageCases.find((caseItem) => caseItem.userId === input.userId && caseItem.id === input.caseId);
+  if (!item) return null;
+
+  const nowDate = new Date();
+  const removeImportJobIds = new Set(input.removeImportJobIds);
+  item.confirmedDataJson = { ...input.restoredConfirmedDataJson };
+  item.sourceImportJobIds = [...new Set(input.restoredSourceImportJobIds)];
+  item.updatedAt = nowDate;
+
+  db.extractionReviewItems = db.extractionReviewItems.filter(
+    (reviewItem) => reviewItem.caseId !== item.id || !removeImportJobIds.has(reviewItem.importJobId),
+  );
+
+  const splitCase: BrokerageCase = {
+    id: input.splitCaseId ?? makeId("case"),
+    userId: input.userId,
+    caseType: item.caseType,
+    caseTitle: input.splitCaseTitle.trim() || "分離した抽出確認案件",
+    status: "reviewed",
+    confirmedDataJson: { ...input.splitConfirmedDataJson },
+    sourceImportJobIds: [...new Set(input.splitSourceImportJobIds)],
+    createdAt: nowDate,
+    updatedAt: nowDate,
+  };
+  db.brokerageCases.unshift(splitCase);
+  input.splitReviewItems.forEach((reviewItem) => {
+    db.extractionReviewItems.push({
+      ...reviewItem,
+      id: makeId("review"),
+      userId: input.userId,
+      caseId: splitCase.id,
+      createdAt: nowDate,
+    });
+  });
+
+  return { restoredCase: cloneBrokerageCase(item), splitCase: cloneBrokerageCase(splitCase) };
+}
+
+export async function listExtractionReviewItems(input: {
+  userId: string;
+  caseId: string;
+}): Promise<ExtractionReviewItem[]> {
+  return db.extractionReviewItems
+    .filter((item) => item.userId === input.userId && item.caseId === input.caseId)
+    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+    .map((item) => ({ ...item }));
+}
+
+function cloneGuaranteeApplicationDraft(item: GuaranteeApplicationDraft): GuaranteeApplicationDraft {
+  return {
+    ...item,
+    fieldValuesJson: { ...item.fieldValuesJson },
+    fieldStatusesJson: { ...item.fieldStatusesJson },
+  };
+}
+
+export async function getGuaranteeApplicationDraft(input: {
+  userId: string;
+  caseId: string;
+  templateId: string;
+}): Promise<GuaranteeApplicationDraft | null> {
+  const item = db.guaranteeApplicationDrafts.find(
+    (draft) => draft.userId === input.userId && draft.caseId === input.caseId && draft.templateId === input.templateId,
+  );
+  return item ? cloneGuaranteeApplicationDraft(item) : null;
+}
+
+export async function saveGuaranteeApplicationDraft(input: {
+  userId: string;
+  caseId: string;
+  templateId: string;
+  companyCode: GuaranteeApplicationDraftCompanyCode;
+  status: GuaranteeApplicationDraftStatus;
+  fieldValuesJson: Record<string, unknown>;
+  fieldStatusesJson?: Record<string, string>;
+  lastReviewedAt?: Date;
+}): Promise<GuaranteeApplicationDraft> {
+  const nowDate = new Date();
+  let item = db.guaranteeApplicationDrafts.find(
+    (draft) => draft.userId === input.userId && draft.caseId === input.caseId && draft.templateId === input.templateId,
+  );
+
+  if (!item) {
+    item = {
+      id: makeId("draft"),
+      userId: input.userId,
+      caseId: input.caseId,
+      templateId: input.templateId,
+      companyCode: input.companyCode,
+      status: input.status,
+      fieldValuesJson: { ...input.fieldValuesJson },
+      fieldStatusesJson: { ...(input.fieldStatusesJson ?? {}) },
+      lastReviewedAt: input.lastReviewedAt,
+      createdAt: nowDate,
+      updatedAt: nowDate,
+    };
+    db.guaranteeApplicationDrafts.unshift(item);
+  } else {
+    item.companyCode = input.companyCode;
+    item.status = input.status;
+    item.fieldValuesJson = { ...input.fieldValuesJson };
+    item.fieldStatusesJson = { ...(input.fieldStatusesJson ?? {}) };
+    item.lastReviewedAt = input.lastReviewedAt;
+    item.updatedAt = nowDate;
+  }
+
+  return cloneGuaranteeApplicationDraft(item);
+}
+
 export async function listAttachments(input: {
   userId: string;
   targetType?: AttachmentTargetType;
@@ -901,7 +1404,7 @@ export async function addGeneratedOutput(input: {
   userId: string;
   actorId?: string;
   sourceQuoteId?: string;
-  quoteId: string;
+  quoteId?: string;
   propertyId?: string;
   partyId?: string;
   outputType: GeneratedOutput["outputType"];

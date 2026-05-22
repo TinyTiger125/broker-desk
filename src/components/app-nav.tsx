@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { ActorSwitcher } from "@/components/actor-switcher";
-import { GlobalSearchBox } from "@/components/global-search-box";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { MainNavLinks } from "@/components/main-nav-links";
 import { listUsers, getDefaultUser } from "@/lib/data";
@@ -11,11 +10,18 @@ function getLinks(locale: Locale) {
   return [
     { href: "/", label: t(locale, "nav.link.dashboard") },
     { href: "/import-center", label: t(locale, "nav.link.importCenter") },
+    { href: "/output-center", label: t(locale, "nav.link.outputCenter") },
+  ];
+}
+
+function getSupportLinks(locale: Locale) {
+  return [
     { href: "/properties", label: t(locale, "nav.link.properties") },
     { href: "/parties", label: t(locale, "nav.link.parties") },
+    { href: "/clients", label: t(locale, "nav.link.clients") },
+    { href: "/quotes", label: t(locale, "nav.link.quotes") },
     { href: "/contracts", label: t(locale, "nav.link.contracts") },
     { href: "/service-requests", label: t(locale, "nav.link.serviceRequests") },
-    { href: "/output-center", label: t(locale, "nav.link.outputCenter") },
     { href: "/templates", label: t(locale, "nav.link.templates") },
   ];
 }
@@ -24,30 +30,16 @@ export async function AppNav() {
   const locale = await getLocale();
   const [users, currentActor] = await Promise.all([listUsers(20), getDefaultUser()]);
   const links = getLinks(locale);
+  const supportLinks = getSupportLinks(locale);
   const appTitle = t(locale, "app.title");
   const actorLabel = locale === "zh" ? "执行账号" : locale === "ko" ? "작업 계정" : "実行担当";
   const actorOptions = users.map((item) => ({ id: item.id, name: item.name }));
-  const searchLabels = {
-    loading:
-      locale === "zh"
-        ? "正在搜索..."
-        : locale === "ko"
-          ? "검색 중..."
-          : "検索中...",
-    empty:
-      locale === "zh"
-        ? "未找到匹配结果"
-        : locale === "ko"
-          ? "검색 결과가 없습니다"
-          : "一致する結果がありません",
-    entities: {
-      property: locale === "zh" ? "物件" : locale === "ko" ? "매물" : "物件",
-      party: locale === "zh" ? "主体" : locale === "ko" ? "관계자" : "関係者",
-      contract: locale === "zh" ? "合同" : locale === "ko" ? "계약" : "契約",
-      service_request: locale === "zh" ? "服务请求" : locale === "ko" ? "서비스 요청" : "対応依頼",
-      output: locale === "zh" ? "输出物" : locale === "ko" ? "출력물" : "出力物",
-    },
-  } as const;
+  const flowLabel =
+    locale === "zh"
+      ? "1 上传资料 / 2 补齐缺失 / 3 输出申请书"
+      : locale === "ko"
+        ? "1 자료 입력 / 2 부족 항목 확인 / 3 신청서 출력"
+        : "1 資料を入れる / 2 足りない項目だけ確認 / 3 申込書を出す";
 
   return (
     <>
@@ -87,6 +79,14 @@ export async function AppNav() {
           <div className="mt-3 overflow-x-auto">
             <MainNavLinks links={links} />
           </div>
+          <details className="mt-2 border-t border-slate-200 pt-2">
+            <summary className="cursor-pointer px-1 text-xs font-bold text-slate-500">
+              {locale === "zh" ? "其他功能" : locale === "ko" ? "기타 기능" : "その他の機能"}
+            </summary>
+            <div className="mt-2 overflow-x-auto">
+              <MainNavLinks links={supportLinks} />
+            </div>
+          </details>
         </div>
       </header>
 
@@ -98,6 +98,14 @@ export async function AppNav() {
 
         <div className="mt-5 flex-1 overflow-y-auto pr-1">
           <MainNavLinks links={links} orientation="column" />
+          <details className="mt-4 border-t border-slate-200 pt-4">
+            <summary className="cursor-pointer px-3 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              {locale === "zh" ? "辅助业务" : locale === "ko" ? "보조 업무" : "補助業務"}
+            </summary>
+            <div className="mt-2">
+              <MainNavLinks links={supportLinks} orientation="column" />
+            </div>
+          </details>
         </div>
 
         <div className="mt-4 space-y-2 border-t border-slate-200/80 pt-4">
@@ -127,17 +135,17 @@ export async function AppNav() {
       </aside>
 
       <header className="fixed left-64 right-0 top-0 z-30 hidden h-16 items-center justify-between border-b border-slate-200/20 bg-slate-50/90 px-8 shadow-sm backdrop-blur lg:flex">
-        <GlobalSearchBox locale={locale} placeholder={t(locale, "nav.searchPlaceholder")} labels={searchLabels} />
+        <div className="flex items-center gap-3 text-sm font-semibold text-slate-700">
+          <span className="material-symbols-outlined text-[18px] text-emerald-700">task_alt</span>
+          <span>{flowLabel}</span>
+        </div>
 
         <div className="ml-6 flex items-center gap-3">
-          <Link href="/service-requests?status=open" className="rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700">
-            <span className="material-symbols-outlined text-[20px]">notifications</span>
+          <Link href="/import-center" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">
+            {t(locale, "nav.importButton")}
           </Link>
-          <Link href="/templates" className="rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700">
-            <span className="material-symbols-outlined text-[20px]">help</span>
-          </Link>
-          <Link href="/settings/output-templates" className="rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700">
-            <span className="material-symbols-outlined text-[20px]">settings</span>
+          <Link href="/output-center" className="rounded-lg bg-slate-950 px-3 py-2 text-xs font-bold text-white hover:bg-slate-800">
+            {t(locale, "nav.outputButton")}
           </Link>
           <span className="inline-flex h-8 min-w-8 items-center justify-center rounded-full bg-slate-900 px-2 text-xs font-semibold text-white">
             {t(locale, "nav.ownerBadge")}

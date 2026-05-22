@@ -1,5 +1,6 @@
 "use server";
 
+import { createHash, randomUUID } from "crypto";
 import * as XLSX from "xlsx";
 import {
   AML_CHECK_STATUSES,
@@ -42,23 +43,34 @@ import {
   appendFollowUp,
   createComplianceTaskFromAlert,
   duplicateQuotation,
+  getBrokerageCaseById,
+  getBrokerageCaseByImportJobId,
   getClientById,
   getClientDetail,
   getDefaultUser,
   getOutputTemplateSettings,
   getQuotationById,
+  listQuoteFormData,
   listClients,
+  listExtractionReviewItems,
   listImportJobs,
   listOutputTemplateVersions,
+  mergeBrokerageCaseExtractionReview,
+  rollbackBrokerageCaseMerge,
   rescheduleTask,
   resolveComplianceAlert,
+  saveBrokerageCaseExtractionReview,
+  saveGuaranteeApplicationDraft,
   setClientStageWithLog,
   setClientStage,
   updateImportJobMapping,
   updateOutputTemplateSettings,
   updateTaskStatus,
   updateClient,
+  updateBrokerageCaseConfirmedData,
   updateQuotationStatus,
+  type ExtractionReviewItem,
+  type ExtractionReviewStatus,
 } from "@/lib/data";
 import {
   getAttachmentStorageMode,
@@ -77,6 +89,35 @@ import {
   type ImportValidationIssueCode,
   type ImportValidationIssueLevel,
 } from "@/lib/import-mapping";
+import { materializeExtractionReviewValue } from "@/lib/extraction-review-materialization";
+import { extractInputFileFromWorkbook, type InputFileExtractionResult } from "@/lib/input-file-extractor";
+import { extractIdentityDocumentFromBuffer } from "@/lib/identity-document-extractor";
+import { canonicalizeCaseFieldKey, clearCaseFieldValueAliases, getCaseFieldValue } from "@/lib/case-field-normalization";
+import {
+  buildGuaranteeDraftReadiness,
+  getGuaranteeDraftFieldDefinitions,
+  getGuaranteeCompanyTemplate,
+} from "@/lib/guarantee-application";
+import {
+  FRIENDS_GUARANTEE_LAYOUT_OVERRIDES_KEY,
+  FRIENDS_GUARANTEE_CUSTOM_FIELDS_KEY,
+  FRIENDS_GUARANTEE_DEFAULT_TEMPLATE_ID,
+  hasFriendsGuaranteeLayoutOverrides,
+  saveFriendsGuaranteeTemplateLayoutOverrides,
+  saveFriendsGuaranteeTemplateCustomOverlayFields,
+  sanitizeFriendsGuaranteeCustomOverlayFields,
+  sanitizeFriendsGuaranteeLayoutOverrides,
+} from "@/lib/friends-guarantee-pdf";
+import {
+  CASE_MERGE_MIN_CONFIDENCE,
+  createCaseMergeHistoryItem,
+  evaluateCaseMergeCandidates,
+  getCaseMergeHistory,
+  getLatestActiveCaseMerge,
+  markCaseMergeRolledBack,
+  mergeConfirmedCaseData,
+  setCaseMergeHistory,
+} from "@/lib/case-merge";
 import { listHubContracts } from "@/lib/hub";
 import { getLocale, type Locale } from "@/lib/locale";
 import { createDocumentNumber, getDefaultOutputTemplateSettings, getOutputDocLabel, isOutputDocType } from "@/lib/output-doc";
@@ -1505,9 +1546,6 @@ export async function generateOutputDocumentAction(formData: FormData) {
 
   const quoteId = String(formData.get("quoteId") ?? "").trim();
   const typeRaw = String(formData.get("type") ?? "").trim();
-  if (!quoteId) {
-    throw new Error("提案IDは必須です。");
-  }
   if (!isOutputDocType(typeRaw)) {
     throw new Error("帳票種別が不正です。");
   }
@@ -1516,24 +1554,72 @@ export async function generateOutputDocumentAction(formData: FormData) {
   const language = String(formData.get("language") ?? locale).trim().toLowerCase();
   const targetProperty = String(formData.get("targetProperty") ?? "").trim();
   const targetParty = String(formData.get("targetParty") ?? "").trim();
+  const safeLanguage: Locale = language === "zh" || language === "ko" || language === "ja" ? language : locale;
+  const safeFormat = outputFormat === "docx" ? "docx" : "pdf";
   const returnTo = safeReturnTo(
     formData.get("returnTo"),
-    `/output-center?type=${encodeURIComponent(typeRaw)}&format=${encodeURIComponent(outputFormat)}&lang=${encodeURIComponent(language)}&quoteId=${encodeURIComponent(quoteId)}&historyType=all&historyLang=all&historyFormat=all`
+    `/output-center?type=${encodeURIComponent(typeRaw)}&format=${encodeURIComponent(safeFormat)}&lang=${encodeURIComponent(safeLanguage)}&quoteId=${encodeURIComponent(quoteId)}&targetProperty=${encodeURIComponent(targetProperty)}&targetParty=${encodeURIComponent(targetParty)}&historyType=all&historyLang=all&historyFormat=all`
   );
-  const quote = await getQuotationById(quoteId);
-  if (!quote) {
-    throw new Error("提案データが見つかりません。");
-  }
   const [templateSettings, templateVersions] = await Promise.all([
     getOutputTemplateSettings(user.id),
     listOutputTemplateVersions(user.id, 20),
   ]);
   const activeTemplateVersion = templateVersions.find((item) => item.isActive) ?? templateVersions[0];
   const issuedAt = new Date();
-  const documentNumber = createDocumentNumber(quote.id, typeRaw, issuedAt);
 
-  const safeLanguage: Locale = language === "zh" || language === "ko" || language === "ja" ? language : locale;
-  const safeFormat = outputFormat === "docx" ? "docx" : "pdf";
+  if (typeRaw === "property_overview") {
+    if (!targetProperty) {
+      const withValidationFlash = withFlash(returnTo, "output_validation_failed");
+      redirect(appendQuery(withValidationFlash, "issues", "missing_target_property"));
+    }
+
+    const { properties } = await listQuoteFormData();
+    const property = properties.find((item) => item.id === targetProperty);
+    if (!property) {
+      throw new Error("対象物件が見つかりません。");
+    }
+
+    const documentNumber = createDocumentNumber(property.id, typeRaw, issuedAt);
+    const title = `${getOutputDocLabel(safeLanguage, typeRaw)} - ${property.name}`;
+    const generated = await addGeneratedOutput({
+      userId: user.id,
+      actorId: user.id,
+      propertyId: property.id,
+      partyId: targetParty || undefined,
+      outputType: typeRaw,
+      outputFormat: safeFormat,
+      language: safeLanguage,
+      title,
+      documentNumber,
+      templateVersionId: activeTemplateVersion?.id,
+    });
+
+    await addAuditLog({
+      userId: user.id,
+      action: "output_generated",
+      targetType: "property",
+      targetId: property.id,
+      message: tr(locale, {
+        ja: `物件概要PDFを生成しました: ${property.name} (${safeFormat}/${safeLanguage}) / doc=${documentNumber} / tpl=${activeTemplateVersion?.versionNumber ?? "n/a"} / class=${templateSettings.documentClassification}`,
+        zh: `已生成物件概要PDF：${property.name} (${safeFormat}/${safeLanguage}) / doc=${documentNumber} / tpl=${activeTemplateVersion?.versionNumber ?? "n/a"} / class=${templateSettings.documentClassification}`,
+        ko: `매물 개요 PDF를 생성했습니다: ${property.name} (${safeFormat}/${safeLanguage}) / doc=${documentNumber} / tpl=${activeTemplateVersion?.versionNumber ?? "n/a"} / class=${templateSettings.documentClassification}`,
+      }),
+    });
+
+    revalidatePath("/");
+    revalidatePath("/output-center");
+    const withSuccessFlash = withFlash(returnTo, "output_generated");
+    redirect(appendQuery(withSuccessFlash, "generatedOutputId", generated.id));
+  }
+
+  if (!quoteId) {
+    throw new Error("提案IDは必須です。");
+  }
+  const quote = await getQuotationById(quoteId);
+  if (!quote) {
+    throw new Error("提案データが見つかりません。");
+  }
+  const documentNumber = createDocumentNumber(quote.id, typeRaw, issuedAt);
 
   const validationIssues: string[] = [];
   if (!quote.listingPrice || quote.listingPrice <= 0) validationIssues.push("missing_listing_price");
@@ -1865,12 +1951,479 @@ export async function applyOutputTemplateVersionAction(formData: FormData) {
 // ─── Excel 物件一括取込 ────────────────────────────────────────────
 
 type ExcelImportPayload = {
+  kind?: "property_row_import" | "input_file_extraction";
   headers: string[];
   autoMapping: Record<string, string>;
   rows: Record<string, unknown>[];
   originalFilename: string;
   totalRows: number;
+  inputExtraction?: InputFileExtractionResult;
 };
+
+type ExtractionReviewDecision = {
+  fieldId: string;
+  reviewStatus: ExtractionReviewStatus;
+  editedValue?: string;
+};
+
+const WORKBENCH_FIELD_STATUS_KEY = "__workbenchFieldStatuses";
+const CASE_WORKBENCH_FIELD_KEYS = [
+  "property.name",
+  "property.roomNumber",
+  "property.address",
+  "lease.moveInDate",
+  "lease.rent",
+  "lease.commonFee",
+  "lease.parkingFee",
+  "lease.monthlyRentTotal",
+  "lease.deposit",
+  "lease.keyMoney",
+  "lease.insuranceFee",
+  "lease.keyExchangeFee",
+  "applicant.name",
+  "applicant.furigana",
+  "applicant.gender",
+  "applicant.spouse",
+  "applicant.birthDate",
+  "applicant.phone",
+  "applicant.email",
+  "applicant.currentAddress",
+  "applicant.nationality",
+  "applicant.identityDocumentType",
+  "applicant.residenceStatus",
+  "applicant.residencePeriod",
+  "applicant.residenceCardExpiry",
+  "applicant.residenceCardNumber",
+  "applicant.workRestriction",
+  "applicant.driverLicenseNumber",
+  "applicant.driverLicenseExpiry",
+  "applicant.driverLicenseConditions",
+  "applicant.residenceYears",
+  "applicant.housingType",
+  "applicant.currentRent",
+  "applicant.employerName",
+  "applicant.employerFurigana",
+  "applicant.employerPhone",
+  "applicant.employerAddress",
+  "applicant.occupation",
+  "applicant.jobType",
+  "applicant.employmentType",
+  "applicant.annualIncome",
+  "applicant.yearsEmployed",
+  "applicant.payday",
+  "applicant.moveReason",
+  "guarantor.furigana",
+  "guarantor.name",
+  "guarantor.gender",
+  "guarantor.spouse",
+  "guarantor.relationship",
+  "guarantor.birthDate",
+  "guarantor.address",
+  "guarantor.residenceYears",
+  "guarantor.housingType",
+  "guarantor.phone",
+  "guarantor.employerFurigana",
+  "guarantor.employerName",
+  "guarantor.employerAddress",
+  "guarantor.occupation",
+  "guarantor.jobType",
+  "guarantor.employmentType",
+  "guarantor.annualIncome",
+  "guarantor.payday",
+  "emergencyContact.name",
+  "emergencyContact.furigana",
+  "emergencyContact.gender",
+  "emergencyContact.spouse",
+  "emergencyContact.relationship",
+  "emergencyContact.birthDate",
+  "emergencyContact.phone",
+  "emergencyContact.address",
+  "emergencyContact.residenceYears",
+  "emergencyContact.housingType",
+  "emergencyContact.employerName",
+  "emergencyContact.employerFurigana",
+  "emergencyContact.employerAddress",
+  "emergencyContact.occupation",
+  "emergencyContact.jobType",
+  "emergencyContact.employmentType",
+  "emergencyContact.annualIncome",
+  "emergencyContact.payday",
+  "coOccupants.0.furigana",
+  "coOccupants.0.name",
+  "coOccupants.0.relationship",
+  "coOccupants.0.birthDate",
+  "coOccupants.0.phone",
+  "coOccupants.0.employerName",
+  "coOccupants.1.furigana",
+  "coOccupants.1.name",
+  "coOccupants.1.relationship",
+  "coOccupants.1.birthDate",
+  "coOccupants.1.phone",
+  "coOccupants.1.employerName",
+  "coOccupants.2.furigana",
+  "coOccupants.2.name",
+  "coOccupants.2.relationship",
+  "coOccupants.2.birthDate",
+  "coOccupants.2.phone",
+  "coOccupants.2.employerName",
+  "broker.companyName",
+  "broker.staffName",
+  "broker.phone",
+  "broker.address",
+  "management.companyName",
+  "management.phone",
+  "management.address",
+  "management.staffName",
+  "guarantee.plan",
+  "guarantee.initialFee",
+  "guarantee.monthlyFee",
+  "guarantee.renewalFee",
+] as const;
+
+function getCaseWorkbenchFieldKeysFromForm(formData: FormData): typeof CASE_WORKBENCH_FIELD_KEYS[number][] {
+  const requestedFields = String(formData.get("presentFieldKeysJson") ?? "").trim();
+  if (!requestedFields) return [...CASE_WORKBENCH_FIELD_KEYS];
+
+  try {
+    const parsed = JSON.parse(requestedFields);
+    if (!Array.isArray(parsed)) return [...CASE_WORKBENCH_FIELD_KEYS];
+    const allowed = new Set<string>(CASE_WORKBENCH_FIELD_KEYS);
+    const fieldKeys = parsed
+      .map((value) => String(value).trim())
+      .filter((value): value is typeof CASE_WORKBENCH_FIELD_KEYS[number] => allowed.has(value));
+    return fieldKeys.length > 0 ? [...new Set(fieldKeys)] : [...CASE_WORKBENCH_FIELD_KEYS];
+  } catch {
+    return [...CASE_WORKBENCH_FIELD_KEYS];
+  }
+}
+
+function safeHashAnchor(value: FormDataEntryValue | null): string {
+  const anchor = String(value ?? "").trim();
+  return /^[a-zA-Z0-9_-]+$/.test(anchor) ? anchor : "";
+}
+
+const GUARANTEE_APPLICATION_PREVIEW_CASE_FIELD_KEYS = [
+  "property.name",
+  "property.roomNumber",
+  "property.address",
+  "lease.moveInDate",
+  "lease.rent",
+  "lease.commonFee",
+  "lease.parkingFee",
+  "lease.monthlyRentTotal",
+  "lease.deposit",
+  "lease.keyMoney",
+  "lease.insuranceFee",
+  "lease.keyExchangeFee",
+  "applicant.name",
+  "applicant.furigana",
+  "applicant.gender",
+  "applicant.spouse",
+  "applicant.birthDate",
+  "applicant.phone",
+  "applicant.currentAddress",
+  "applicant.nationality",
+  "applicant.identityDocumentType",
+  "applicant.residenceStatus",
+  "applicant.residencePeriod",
+  "applicant.residenceCardExpiry",
+  "applicant.residenceCardNumber",
+  "applicant.workRestriction",
+  "applicant.driverLicenseNumber",
+  "applicant.driverLicenseExpiry",
+  "applicant.driverLicenseConditions",
+  "applicant.residenceYears",
+  "applicant.housingType",
+  "applicant.currentRent",
+  "applicant.employerFurigana",
+  "applicant.employerName",
+  "applicant.employerPhone",
+  "applicant.employerAddress",
+  "applicant.occupation",
+  "applicant.jobType",
+  "applicant.employmentType",
+  "applicant.annualIncome",
+  "applicant.payday",
+  "applicant.moveReason",
+  "guarantor.furigana",
+  "guarantor.name",
+  "guarantor.gender",
+  "guarantor.spouse",
+  "guarantor.relationship",
+  "guarantor.birthDate",
+  "guarantor.address",
+  "guarantor.residenceYears",
+  "guarantor.housingType",
+  "guarantor.phone",
+  "guarantor.employerFurigana",
+  "guarantor.employerName",
+  "guarantor.employerAddress",
+  "guarantor.occupation",
+  "guarantor.jobType",
+  "guarantor.employmentType",
+  "guarantor.annualIncome",
+  "guarantor.payday",
+  "emergencyContact.furigana",
+  "emergencyContact.name",
+  "emergencyContact.gender",
+  "emergencyContact.spouse",
+  "emergencyContact.relationship",
+  "emergencyContact.birthDate",
+  "emergencyContact.address",
+  "emergencyContact.residenceYears",
+  "emergencyContact.housingType",
+  "emergencyContact.phone",
+  "emergencyContact.employerFurigana",
+  "emergencyContact.employerName",
+  "emergencyContact.employerAddress",
+  "emergencyContact.occupation",
+  "emergencyContact.jobType",
+  "emergencyContact.employmentType",
+  "emergencyContact.annualIncome",
+  "emergencyContact.payday",
+  "coOccupants.0.furigana",
+  "coOccupants.0.name",
+  "coOccupants.0.relationship",
+  "coOccupants.0.birthDate",
+  "coOccupants.0.phone",
+  "coOccupants.0.employerName",
+  "coOccupants.1.furigana",
+  "coOccupants.1.name",
+  "coOccupants.1.relationship",
+  "coOccupants.1.birthDate",
+  "coOccupants.1.phone",
+  "coOccupants.1.employerName",
+  "coOccupants.2.furigana",
+  "coOccupants.2.name",
+  "coOccupants.2.relationship",
+  "coOccupants.2.birthDate",
+  "coOccupants.2.phone",
+  "coOccupants.2.employerName",
+  "broker.companyName",
+  "broker.address",
+  "broker.phone",
+  "broker.staffName",
+  "management.companyName",
+  "management.address",
+  "management.phone",
+  "management.staffName",
+] as const;
+
+function isExtractionReviewStatus(value: string): value is ExtractionReviewStatus {
+  return (
+    value === "suggested" ||
+    value === "accepted" ||
+    value === "edited" ||
+    value === "unknown" ||
+    value === "rejected"
+  );
+}
+
+function getExtractionFieldId(field: InputFileExtractionResult["fields"][number]) {
+  return `${field.fieldKey}:${field.sourceCell ?? field.sourceRange ?? field.sourceSheet}`;
+}
+
+function buildCaseTitle(extraction: InputFileExtractionResult, fallbackTitle: string) {
+  const propertyName = extraction.fields.find((field) => field.fieldKey === "property_name" || field.fieldKey === "property.name")?.normalizedValue;
+  const applicantName = extraction.fields.find((field) => field.fieldKey === "applicant.name")?.normalizedValue;
+  return [propertyName || applicantName, extraction.documentTypeLabel, extraction.sourceFilename || fallbackTitle]
+    .map((part) => String(part ?? "").trim())
+    .filter(Boolean)
+    .slice(0, 2)
+    .join(" / ");
+}
+
+export async function saveCaseWorkbenchAction(formData: FormData) {
+  const user = await getDefaultUser();
+  if (!user) throw new Error("担当ユーザーが見つかりません。");
+
+  const caseId = String(formData.get("caseId") ?? "").trim();
+  if (!caseId) throw new Error("案件IDが不正です。");
+  const brokerageCase = await getBrokerageCaseById({ userId: user.id, caseId });
+  if (!brokerageCase) throw new Error("案件が見つかりません。");
+
+  const nextConfirmedData: Record<string, unknown> = { ...brokerageCase.confirmedDataJson };
+  const existingStatusMap =
+    nextConfirmedData[WORKBENCH_FIELD_STATUS_KEY] && typeof nextConfirmedData[WORKBENCH_FIELD_STATUS_KEY] === "object"
+      ? { ...(nextConfirmedData[WORKBENCH_FIELD_STATUS_KEY] as Record<string, string>) }
+      : {};
+
+  const fieldKeysToSave = getCaseWorkbenchFieldKeysFromForm(formData);
+  fieldKeysToSave.forEach((fieldKey) => {
+    const previousValue = getCaseFieldValue(brokerageCase.confirmedDataJson, fieldKey);
+    const nextValue = String(formData.get(`field:${fieldKey}`) ?? "").trim();
+    if (nextValue) {
+      nextConfirmedData[fieldKey] = nextValue;
+      if (nextValue !== previousValue) {
+        existingStatusMap[fieldKey] = previousValue ? "edited" : "confirmed";
+      }
+    } else {
+      clearCaseFieldValueAliases(nextConfirmedData, fieldKey);
+      delete existingStatusMap[fieldKey];
+    }
+  });
+
+  nextConfirmedData[WORKBENCH_FIELD_STATUS_KEY] = existingStatusMap;
+  const updatedCase = await updateBrokerageCaseConfirmedData({
+    userId: user.id,
+    caseId,
+    confirmedDataJson: nextConfirmedData,
+  });
+  if (!updatedCase) throw new Error("案件の保存に失敗しました。");
+
+  await addAuditLog({
+    userId: user.id,
+    action: "case_workbench_saved",
+    targetType: "import_job",
+    targetId: caseId,
+    message: `案件ワークベンチを保存しました: ${updatedCase.caseTitle}`,
+    context: {
+      caseId,
+      confirmedFieldCount: Object.keys(nextConfirmedData).filter((key) => key !== WORKBENCH_FIELD_STATUS_KEY).length,
+    },
+  });
+
+  revalidatePath(`/cases/${caseId}`);
+  revalidatePath("/output-center");
+  const returnAnchor = safeHashAnchor(formData.get("returnAnchor"));
+  redirect(`/cases/${caseId}?flash=case_workbench_saved${returnAnchor ? `#${returnAnchor}` : ""}`);
+}
+
+export async function saveGuaranteeApplicationPreviewAction(formData: FormData) {
+  const user = await getDefaultUser();
+  if (!user) throw new Error("担当ユーザーが見つかりません。");
+
+  const caseId = String(formData.get("caseId") ?? "").trim();
+  if (!caseId) throw new Error("案件IDが不正です。");
+  const templateId = String(formData.get("templateId") ?? FRIENDS_GUARANTEE_DEFAULT_TEMPLATE_ID).trim() || FRIENDS_GUARANTEE_DEFAULT_TEMPLATE_ID;
+  const template = getGuaranteeCompanyTemplate(templateId);
+
+  const brokerageCase = await getBrokerageCaseById({ userId: user.id, caseId });
+  if (!brokerageCase) throw new Error("案件が見つかりません。");
+
+  const nextConfirmedData: Record<string, unknown> = { ...brokerageCase.confirmedDataJson };
+  const existingStatusMap =
+    nextConfirmedData[WORKBENCH_FIELD_STATUS_KEY] && typeof nextConfirmedData[WORKBENCH_FIELD_STATUS_KEY] === "object"
+      ? { ...(nextConfirmedData[WORKBENCH_FIELD_STATUS_KEY] as Record<string, string>) }
+      : {};
+
+  GUARANTEE_APPLICATION_PREVIEW_CASE_FIELD_KEYS.forEach((fieldKey) => {
+    const previousValue = getCaseFieldValue(brokerageCase.confirmedDataJson, fieldKey);
+    const nextValue = String(formData.get(`field:${fieldKey}`) ?? "").trim();
+    if (nextValue) {
+      nextConfirmedData[fieldKey] = nextValue;
+      if (nextValue !== previousValue) {
+        existingStatusMap[fieldKey] = previousValue ? "edited" : "confirmed";
+      }
+    } else {
+      clearCaseFieldValueAliases(nextConfirmedData, fieldKey);
+      delete existingStatusMap[fieldKey];
+    }
+  });
+  nextConfirmedData[WORKBENCH_FIELD_STATUS_KEY] = existingStatusMap;
+
+  const layoutOverridesInput = formData.get("layoutOverrides");
+  const layoutOverrides =
+    typeof layoutOverridesInput === "string"
+      ? sanitizeFriendsGuaranteeLayoutOverrides(layoutOverridesInput)
+      : {};
+  const customFieldsInput = formData.get("customOverlayFields");
+  const customOverlayFields = sanitizeFriendsGuaranteeCustomOverlayFields(customFieldsInput).map((field) => {
+    const nextValue = String(formData.get(`field:${field.fieldKey}`) ?? field.value ?? "").trim();
+    const override = layoutOverrides[field.fieldKey]?.box;
+    return {
+      ...field,
+      value: nextValue,
+      box: override ?? field.box,
+      maxWidth: Math.max(8, (override ?? field.box).width - 6),
+    };
+  });
+  if (customOverlayFields.length > 0) {
+    nextConfirmedData[FRIENDS_GUARANTEE_CUSTOM_FIELDS_KEY] = customOverlayFields;
+  } else {
+    delete nextConfirmedData[FRIENDS_GUARANTEE_CUSTOM_FIELDS_KEY];
+  }
+
+  const layoutSaveScope = formData.get("layoutSaveScope") === "template" ? "template" : "case";
+  const layoutDirty = formData.get("layoutDirty") === "true";
+  const layoutOverrideCount = Object.keys(layoutOverrides).length;
+  if (typeof layoutOverridesInput === "string" && (layoutSaveScope === "template" || layoutDirty)) {
+    if (layoutSaveScope === "template") {
+      saveFriendsGuaranteeTemplateLayoutOverrides(layoutOverrides, template.id);
+      saveFriendsGuaranteeTemplateCustomOverlayFields(customOverlayFields, template.id);
+      delete nextConfirmedData[FRIENDS_GUARANTEE_LAYOUT_OVERRIDES_KEY];
+    } else if (hasFriendsGuaranteeLayoutOverrides(layoutOverrides)) {
+      nextConfirmedData[FRIENDS_GUARANTEE_LAYOUT_OVERRIDES_KEY] = layoutOverrides;
+    } else {
+      delete nextConfirmedData[FRIENDS_GUARANTEE_LAYOUT_OVERRIDES_KEY];
+    }
+  }
+
+  await updateBrokerageCaseConfirmedData({
+    userId: user.id,
+    caseId,
+    confirmedDataJson: nextConfirmedData,
+  });
+
+  const fieldValuesJson: Record<string, unknown> = {};
+  const fieldStatusesJson: Record<string, string> = {};
+  getGuaranteeDraftFieldDefinitions(template.id).forEach((definition) => {
+    const value = String(formData.get(`draft:${definition.fieldKey}`) ?? "").trim();
+    if (!value || value === "未確認" || value === "未定") return;
+    fieldValuesJson[definition.fieldKey] = value;
+    fieldStatusesJson[definition.fieldKey] = "confirmed";
+  });
+
+  const draftReadiness = buildGuaranteeDraftReadiness({
+    id: "preview",
+    userId: user.id,
+    caseId,
+    templateId: template.id,
+    companyCode: template.companyCode,
+    status: "draft",
+    fieldValuesJson,
+    fieldStatusesJson,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  }, template.id);
+  const draft = await saveGuaranteeApplicationDraft({
+    userId: user.id,
+    caseId,
+    templateId: template.id,
+    companyCode: template.companyCode,
+    status: draftReadiness.status,
+    fieldValuesJson,
+    fieldStatusesJson,
+    lastReviewedAt: new Date(),
+  });
+
+  await addAuditLog({
+    userId: user.id,
+    action: "guarantee_application_preview_saved",
+    targetType: "import_job",
+    targetId: caseId,
+    message: `${template.companyDisplayName}申込書プレビューを更新しました: ${brokerageCase.caseTitle}`,
+    context: {
+      caseId,
+      draftId: draft.id,
+      templateId: draft.templateId,
+      completedDraftFieldCount: Object.keys(fieldValuesJson).length,
+      editedPreviewFieldCount: GUARANTEE_APPLICATION_PREVIEW_CASE_FIELD_KEYS.length,
+      layoutOverrideCount,
+      layoutSaveScope,
+      customOverlayFieldCount: customOverlayFields.length,
+    },
+  });
+
+  revalidatePath(`/cases/${caseId}`);
+  revalidatePath("/output-center");
+  revalidatePath(`/guarantee-applications/${template.id}/preview`);
+  redirect(
+    `/guarantee-applications/${encodeURIComponent(template.id)}/preview?caseId=${encodeURIComponent(caseId)}&flash=${
+      layoutSaveScope === "template" ? "template_layout_saved" : "preview_saved"
+    }`,
+  );
+}
 
 function parsePrice(val: unknown): number {
   if (typeof val === "number") return Math.round(val);
@@ -1902,6 +2455,44 @@ export async function uploadAndParseExcelAction(formData: FormData) {
     throw new Error("ファイルの読み込みに失敗しました。正しい .xlsx ファイルか確認してください。");
   }
 
+  const sourceFileHash = createHash("sha256").update(Buffer.from(buffer)).digest("hex");
+  const inputExtraction = extractInputFileFromWorkbook(workbook, file.name, sourceFileHash);
+  if (inputExtraction.extractionStatus === "recognized") {
+    const payload: ExcelImportPayload = {
+      kind: "input_file_extraction",
+      headers: [],
+      autoMapping: {},
+      rows: [],
+      originalFilename: file.name,
+      totalRows: 0,
+      inputExtraction,
+    };
+
+    const job = await addImportJob({
+      userId: user.id,
+      sourceType: "excel",
+      targetEntity: "contracts",
+      title: file.name,
+      notes: JSON.stringify(payload),
+      status: "mapped",
+    });
+
+    await addAuditLog({
+      userId: user.id,
+      action: "input_file_extraction_created",
+      targetType: "import_job",
+      targetId: job.id,
+      message: `Excel 業務ファイル抽出プレビュー作成: ${file.name} (${inputExtraction.documentType})`,
+      context: {
+        documentType: inputExtraction.documentType,
+        fieldCount: inputExtraction.fields.length,
+      },
+    });
+
+    revalidatePath("/import-center");
+    redirect(`/import-center?xlsxJob=${job.id}&flash=input_extraction_ready`);
+  }
+
   const sheetName = workbook.SheetNames[0];
   if (!sheetName) throw new Error("シートが見つかりません。");
 
@@ -1910,7 +2501,38 @@ export async function uploadAndParseExcelAction(formData: FormData) {
   if (rawRows.length === 0) throw new Error("ファイルにデータがありません。");
 
   const headers = (rawRows[0] as unknown[]).map(String).filter((h) => h.trim() !== "");
-  if (headers.length === 0) throw new Error("表頭行が空です。A1 から列名が入力されているか確認してください。");
+  if (headers.length === 0) {
+    const payload: ExcelImportPayload = {
+      kind: "input_file_extraction",
+      headers: [],
+      autoMapping: {},
+      rows: [],
+      originalFilename: file.name,
+      totalRows: 0,
+      inputExtraction,
+    };
+
+    const job = await addImportJob({
+      userId: user.id,
+      sourceType: "excel",
+      targetEntity: "properties",
+      title: file.name,
+      notes: JSON.stringify(payload),
+      status: "mapped",
+    });
+
+    await addAuditLog({
+      userId: user.id,
+      action: "input_file_extraction_unknown",
+      targetType: "import_job",
+      targetId: job.id,
+      message: `Excel 業務ファイル識別結果 unknown: ${file.name}`,
+      context: { documentType: inputExtraction.documentType },
+    });
+
+    revalidatePath("/import-center");
+    redirect(`/import-center?xlsxJob=${job.id}&flash=input_extraction_ready`);
+  }
 
   const dataRows = (rawRows.slice(1) as unknown[][]).filter((row) =>
     row.some((cell) => String(cell).trim() !== ""),
@@ -1926,11 +2548,13 @@ export async function uploadAndParseExcelAction(formData: FormData) {
   const autoMapping = suggestImportMapping("properties", headers);
 
   const payload: ExcelImportPayload = {
+    kind: "property_row_import",
     headers,
     autoMapping,
     rows: rowObjects,
     originalFilename: file.name,
     totalRows: rowObjects.length,
+    inputExtraction,
   };
 
   const job = await addImportJob({
@@ -1953,6 +2577,365 @@ export async function uploadAndParseExcelAction(formData: FormData) {
   redirect(`/import-center?xlsxJob=${job.id}`);
 }
 
+export async function uploadAndParseIdentityDocumentAction(formData: FormData) {
+  const user = await getDefaultUser();
+  if (!user) throw new Error("担当ユーザーが見つかりません。");
+
+  const file = formData.get("identityDocumentFile");
+  if (!(file instanceof File) || file.size === 0) {
+    throw new Error("本人確認資料ファイルが選択されていません。");
+  }
+
+  const lowerName = file.name.toLowerCase();
+  const allowed =
+    lowerName.endsWith(".pdf") ||
+    lowerName.endsWith(".png") ||
+    lowerName.endsWith(".jpg") ||
+    lowerName.endsWith(".jpeg") ||
+    file.type === "application/pdf" ||
+    file.type.startsWith("image/");
+  if (!allowed) {
+    throw new Error("在留カード・運転免許証のPDFまたは画像ファイルを選択してください。");
+  }
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const inputExtraction = await extractIdentityDocumentFromBuffer({
+    buffer,
+    filename: file.name,
+  });
+  const payload: ExcelImportPayload = {
+    kind: "input_file_extraction",
+    headers: [],
+    autoMapping: {},
+    rows: [],
+    originalFilename: file.name,
+    totalRows: 0,
+    inputExtraction,
+  };
+
+  const job = await addImportJob({
+    userId: user.id,
+    sourceType: "scan",
+    targetEntity: "parties",
+    title: file.name,
+    notes: JSON.stringify(payload),
+    status: "mapped",
+  });
+
+  await addAuditLog({
+    userId: user.id,
+    action: "identity_document_extraction_created",
+    targetType: "import_job",
+    targetId: job.id,
+    message: `本人確認資料の抽出プレビュー作成: ${file.name} (${inputExtraction.documentType})`,
+    context: {
+      documentType: inputExtraction.documentType,
+      fieldCount: inputExtraction.fields.length,
+      extractionStatus: inputExtraction.extractionStatus,
+    },
+  });
+
+  revalidatePath("/import-center");
+  redirect(`/import-center?xlsxJob=${job.id}&flash=identity_extraction_ready`);
+}
+
+export async function saveExtractionReviewAction(formData: FormData) {
+  const user = await getDefaultUser();
+  if (!user) throw new Error("担当ユーザーが見つかりません。");
+
+  const jobId = String(formData.get("jobId") ?? "").trim();
+  if (!jobId) throw new Error("ジョブIDが不正です。");
+
+  const jobs = await listImportJobs(user.id, 200);
+  const job = jobs.find((item) => item.id === jobId);
+  if (!job?.notes) {
+    throw new Error("抽出元ジョブが見つかりません。再度アップロードしてください。");
+  }
+
+  let payload: ExcelImportPayload;
+  try {
+    payload = JSON.parse(job.notes) as ExcelImportPayload;
+  } catch {
+    throw new Error("抽出元データの読み込みに失敗しました。再度アップロードしてください。");
+  }
+
+  if (payload.kind !== "input_file_extraction" || !payload.inputExtraction) {
+    throw new Error("このジョブは業務ファイル抽出レビューとして保存できません。");
+  }
+
+  const rawDecisions = String(formData.get("reviewDecisionsJson") ?? "[]");
+  let decisions: ExtractionReviewDecision[];
+  try {
+    const parsed = JSON.parse(rawDecisions) as ExtractionReviewDecision[];
+    decisions = Array.isArray(parsed) ? parsed : [];
+  } catch {
+    throw new Error("確認状態の読み込みに失敗しました。もう一度保存してください。");
+  }
+
+  const decisionByFieldId = new Map(
+    decisions
+      .filter((decision) => decision.fieldId && isExtractionReviewStatus(String(decision.reviewStatus)))
+      .map((decision) => [decision.fieldId, decision]),
+  );
+  const confirmedDataJson: Record<string, unknown> = {};
+  const reviewedAt = new Date();
+
+  const reviewItems = payload.inputExtraction.fields.map((field) => {
+    const decision = decisionByFieldId.get(getExtractionFieldId(field));
+    const reviewStatus = decision?.reviewStatus ?? field.reviewStatus;
+    const baseValue = field.normalizedValue || field.value;
+    const materialized = materializeExtractionReviewValue({
+      reviewStatus,
+      editedValue: decision?.editedValue,
+      baseValue,
+    });
+    if (materialized.shouldConfirm && materialized.finalValue) {
+      confirmedDataJson[field.fieldKey] = materialized.finalValue;
+      const canonicalFieldKey = canonicalizeCaseFieldKey(field.fieldKey);
+      if (canonicalFieldKey !== field.fieldKey && !confirmedDataJson[canonicalFieldKey]) {
+        confirmedDataJson[canonicalFieldKey] = materialized.finalValue;
+      }
+    }
+
+    return {
+      importJobId: job.id,
+      fieldKey: field.fieldKey,
+      label: field.label,
+      extractedValue: field.value,
+      normalizedValue: field.normalizedValue,
+      editedValue: reviewStatus === "edited" ? materialized.editedValue : undefined,
+      finalValue: materialized.finalValue,
+      sourceSheet: field.sourceSheet,
+      sourceCell: field.sourceCell,
+      sourceRange: field.sourceRange,
+      method: field.method,
+      confidence: field.confidence,
+      reviewStatus,
+      sourceFileHash: field.sourceFileHash,
+      templateVersion: field.templateVersion,
+      reviewedById: user.id,
+      reviewedAt,
+    };
+  });
+
+  const mergeTargetCaseId = String(formData.get("mergeTargetCaseId") ?? "").trim();
+  const mergeConfirmed = parseCheckbox(formData.get("mergeConfirm"));
+  const existingCase = await getBrokerageCaseByImportJobId({
+    userId: user.id,
+    importJobId: job.id,
+  });
+
+  if (mergeTargetCaseId) {
+    if (!mergeConfirmed) {
+      throw new Error("案件に追加する前に、合併確認にチェックしてください。");
+    }
+    const targetCase = await getBrokerageCaseById({ userId: user.id, caseId: mergeTargetCaseId });
+    if (!targetCase) throw new Error("合併先の案件が見つかりません。");
+    if (targetCase.sourceImportJobIds.includes(job.id)) {
+      throw new Error("この資料はすでに選択した案件に含まれています。");
+    }
+
+    const [candidate] = evaluateCaseMergeCandidates({
+      incomingData: confirmedDataJson,
+      cases: [targetCase],
+      currentImportJobId: job.id,
+    });
+    if (!candidate || candidate.confidenceScore < CASE_MERGE_MIN_CONFIDENCE) {
+      throw new Error("照合の確度が不足しているため、この案件へは合併できません。新規案件として保存してください。");
+    }
+
+    const mergedData = mergeConfirmedCaseData({
+      existingData: targetCase.confirmedDataJson,
+      incomingData: confirmedDataJson,
+    });
+    const historyItem = createCaseMergeHistoryItem({
+      sourceImportJobId: job.id,
+      sourceImportJobTitle: job.title,
+      mergedById: user.id,
+      confidenceScore: candidate.confidenceScore,
+      matchReasons: candidate.matchReasons,
+      conflictFields: mergedData.conflictFields,
+      conflictDetails: mergedData.conflictDetails,
+      addedFields: mergedData.addedFields,
+      preservedFields: mergedData.preservedFields,
+      beforeConfirmedDataJson: targetCase.confirmedDataJson,
+      beforeSourceImportJobIds: targetCase.sourceImportJobIds,
+      incomingConfirmedDataJson: confirmedDataJson,
+    });
+    const nextConfirmedDataJson = setCaseMergeHistory(mergedData.nextData, [
+      ...getCaseMergeHistory(targetCase.confirmedDataJson),
+      historyItem,
+    ]);
+    const brokerageCase = await mergeBrokerageCaseExtractionReview({
+      userId: user.id,
+      caseId: targetCase.id,
+      confirmedDataJson: nextConfirmedDataJson,
+      sourceImportJobIds: [...targetCase.sourceImportJobIds, job.id],
+      replaceImportJobIds: [job.id],
+      reviewItems,
+    });
+    if (!brokerageCase) throw new Error("案件の合併保存に失敗しました。");
+
+    await addAuditLog({
+      userId: user.id,
+      action: "case_source_merged",
+      targetType: "import_job",
+      targetId: job.id,
+      message: `抽出レビューを既存案件へ追加しました: ${brokerageCase.caseTitle}`,
+      context: {
+        caseId: brokerageCase.id,
+        mergeId: historyItem.id,
+        confidenceScore: candidate.confidenceScore,
+        addedFieldCount: mergedData.addedFields.length,
+        conflictFieldCount: mergedData.conflictFields.length,
+      },
+    });
+
+    revalidatePath("/import-center");
+    revalidatePath("/cases");
+    revalidatePath(`/cases/${brokerageCase.id}`);
+    redirect(`/cases/${brokerageCase.id}?flash=case_source_merged`);
+  }
+
+  let brokerageCase;
+  if (existingCase && existingCase.sourceImportJobIds.length > 1) {
+    const mergedData = mergeConfirmedCaseData({
+      existingData: existingCase.confirmedDataJson,
+      incomingData: confirmedDataJson,
+    });
+    const nextConfirmedDataJson = setCaseMergeHistory(
+      mergedData.nextData,
+      getCaseMergeHistory(existingCase.confirmedDataJson),
+    );
+    brokerageCase = await mergeBrokerageCaseExtractionReview({
+      userId: user.id,
+      caseId: existingCase.id,
+      confirmedDataJson: nextConfirmedDataJson,
+      sourceImportJobIds: existingCase.sourceImportJobIds,
+      replaceImportJobIds: [job.id],
+      reviewItems,
+    });
+    if (!brokerageCase) throw new Error("案件の保存に失敗しました。");
+  } else {
+    brokerageCase = await saveBrokerageCaseExtractionReview({
+      userId: user.id,
+      caseId: existingCase?.id,
+      caseType: "unit_sale",
+      caseTitle: buildCaseTitle(payload.inputExtraction, job.title),
+      status: "reviewed",
+      confirmedDataJson,
+      sourceImportJobIds: [job.id],
+      reviewItems,
+    });
+  }
+
+  await addAuditLog({
+    userId: user.id,
+    action: "extraction_review_saved",
+    targetType: "import_job",
+    targetId: job.id,
+    message: `抽出レビューを案件へ保存しました: ${brokerageCase.caseTitle}`,
+    context: {
+      caseId: brokerageCase.id,
+      confirmedFieldCount: Object.keys(confirmedDataJson).length,
+      reviewItemCount: reviewItems.length,
+    },
+  });
+
+  revalidatePath("/import-center");
+  revalidatePath("/cases");
+  revalidatePath(`/cases/${brokerageCase.id}`);
+  redirect(`/cases/${brokerageCase.id}?flash=extraction_review_saved`);
+}
+
+function toReviewInput(item: ExtractionReviewItem): Omit<ExtractionReviewItem, "id" | "userId" | "caseId" | "createdAt"> {
+  return {
+    importJobId: item.importJobId,
+    fieldKey: item.fieldKey,
+    label: item.label,
+    extractedValue: item.extractedValue,
+    normalizedValue: item.normalizedValue,
+    editedValue: item.editedValue,
+    finalValue: item.finalValue,
+    sourceSheet: item.sourceSheet,
+    sourceCell: item.sourceCell,
+    sourceRange: item.sourceRange,
+    method: item.method,
+    confidence: item.confidence,
+    reviewStatus: item.reviewStatus,
+    sourceFileHash: item.sourceFileHash,
+    templateVersion: item.templateVersion,
+    reviewedById: item.reviewedById,
+    reviewedAt: item.reviewedAt,
+  };
+}
+
+export async function rollbackCaseMergeAction(formData: FormData) {
+  const user = await getDefaultUser();
+  if (!user) throw new Error("担当ユーザーが見つかりません。");
+
+  const caseId = String(formData.get("caseId") ?? "").trim();
+  const mergeId = String(formData.get("mergeId") ?? "").trim();
+  if (!caseId || !mergeId) throw new Error("分離対象の案件が不正です。");
+  if (!parseCheckbox(formData.get("rollbackConfirm"))) {
+    throw new Error("分離して戻す前に確認チェックを入れてください。");
+  }
+
+  const brokerageCase = await getBrokerageCaseById({ userId: user.id, caseId });
+  if (!brokerageCase) throw new Error("案件が見つかりません。");
+
+  const latestMerge = getLatestActiveCaseMerge(brokerageCase.confirmedDataJson);
+  if (!latestMerge || latestMerge.id !== mergeId) {
+    throw new Error("安全のため、分離できるのは最新の有効な合併だけです。");
+  }
+
+  const splitCaseId = `case_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+  const restoredConfirmedDataJson = markCaseMergeRolledBack({
+    baseData: setCaseMergeHistory(
+      latestMerge.beforeConfirmedDataJson,
+      getCaseMergeHistory(brokerageCase.confirmedDataJson),
+    ),
+    mergeId: latestMerge.id,
+    splitCaseId,
+  });
+  const reviewItems = await listExtractionReviewItems({ userId: user.id, caseId: brokerageCase.id });
+  const splitReviewItems = reviewItems
+    .filter((item) => item.importJobId === latestMerge.sourceImportJobId)
+    .map(toReviewInput);
+
+  const result = await rollbackBrokerageCaseMerge({
+    userId: user.id,
+    caseId: brokerageCase.id,
+    restoredConfirmedDataJson,
+    restoredSourceImportJobIds: latestMerge.beforeSourceImportJobIds,
+    splitCaseId,
+    splitCaseTitle: `${latestMerge.sourceImportJobTitle} / 分離案件`,
+    splitConfirmedDataJson: latestMerge.incomingConfirmedDataJson,
+    splitSourceImportJobIds: [latestMerge.sourceImportJobId],
+    splitReviewItems,
+    removeImportJobIds: [latestMerge.sourceImportJobId],
+  });
+  if (!result) throw new Error("案件の分離に失敗しました。");
+
+  await addAuditLog({
+    userId: user.id,
+    action: "case_merge_rolled_back",
+    targetType: "import_job",
+    targetId: latestMerge.sourceImportJobId,
+    message: `案件合併を分離して戻しました: ${result.restoredCase.caseTitle}`,
+    context: {
+      caseId: result.restoredCase.id,
+      splitCaseId: result.splitCase.id,
+      mergeId: latestMerge.id,
+    },
+  });
+
+  revalidatePath("/import-center");
+  revalidatePath(`/cases/${result.restoredCase.id}`);
+  revalidatePath(`/cases/${result.splitCase.id}`);
+  redirect(`/cases/${result.restoredCase.id}?flash=case_merge_rolled_back`);
+}
+
 export async function executePropertyImportAction(formData: FormData) {
   const user = await getDefaultUser();
   if (!user) throw new Error("担当ユーザーが見つかりません。");
@@ -1970,6 +2953,9 @@ export async function executePropertyImportAction(formData: FormData) {
     payload = JSON.parse(job.notes) as ExcelImportPayload;
   } catch {
     throw new Error("取込データの読み込みに失敗しました。再度アップロードしてください。");
+  }
+  if (payload.kind === "input_file_extraction") {
+    throw new Error("このジョブは業務ファイル抽出プレビューです。物件台帳への一括取込は実行できません。");
   }
 
   const sourceCols = formData.getAll("sourceCol") as string[];

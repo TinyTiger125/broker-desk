@@ -45,4 +45,8 @@ next-env.d.ts
 # local agent workspace
 .claude/
 Claude 2.md
+CLAUDE [0-9]*.md
+
+# local QA and PDF calibration artifacts
+tmp/
 .git.backup-*/

@@ -23,9 +23,11 @@ export function MainNavLinks({ links, orientation = "row" }: MainNavLinksProps) 
   const isRow = orientation === "row";
   const iconByHref: Record<string, string> = {
     "/": "dashboard",
+    "/clients": "person_search",
     "/import-center": "upload_file",
     "/properties": "domain",
     "/parties": "group",
+    "/quotes": "request_quote",
     "/contracts": "description",
     "/service-requests": "support_agent",
     "/output-center": "print",

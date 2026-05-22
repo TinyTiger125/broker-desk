@@ -91,10 +91,12 @@ export type HubGeneratedOutputItem = {
   language: Locale;
   title: string;
   documentNumber: string;
+  propertyId?: string;
+  partyId?: string;
   relatedProperty?: string;
   relatedParty?: string;
   relatedContractHint: string;
-  sourceQuoteId: string;
+  sourceQuoteId?: string;
   generatedAt: Date;
   templateVersionId?: string;
   templateVersionLabel?: string;
@@ -299,18 +301,28 @@ export async function listHubGeneratedOutputs(locale: Locale = "ja"): Promise<Hu
   if (generated.length > 0) {
     return generated
       .map((item) => {
-        const quote = quoteMap.get(item.quoteId);
+        const quote = item.quoteId ? quoteMap.get(item.quoteId) : undefined;
+        const isPropertyOverview = item.outputType === "property_overview";
+        const relatedProperty = item.propertyId ? propertyMap.get(item.propertyId) : quote?.property?.name;
+        const relatedParty = item.partyId ? partyMap.get(item.partyId) : isPropertyOverview ? undefined : quote?.client?.name;
+        const title =
+          item.title ||
+          (isPropertyOverview
+            ? `${getOutputDocLabel(locale, item.outputType as OutputDocType)} - ${relatedProperty ?? "N/A"}`
+            : `${getOutputDocLabel(locale, item.outputType as OutputDocType)} - ${quote?.client.name ?? "N/A"}`);
         return {
           id: item.id,
           actorId: item.actorId,
           outputType: item.outputType as OutputDocType,
           outputFormat: item.outputFormat,
           language: item.language,
-          title: item.title || `${getOutputDocLabel(locale, item.outputType as OutputDocType)} - ${quote?.client.name ?? "N/A"}`,
+          title,
           documentNumber: item.documentNumber,
-          relatedProperty: item.propertyId ? propertyMap.get(item.propertyId) : quote?.property?.name,
-          relatedParty: item.partyId ? partyMap.get(item.partyId) : quote?.client?.name,
-          relatedContractHint: `${contractPrefix}-${item.sourceQuoteId.toUpperCase()}`,
+          propertyId: item.propertyId,
+          partyId: item.partyId,
+          relatedProperty,
+          relatedParty,
+          relatedContractHint: item.sourceQuoteId ? `${contractPrefix}-${item.sourceQuoteId.toUpperCase()}` : "-",
           sourceQuoteId: item.sourceQuoteId,
           generatedAt: item.generatedAt,
           templateVersionId: item.templateVersionId,
@@ -445,7 +457,9 @@ export async function searchHubItems(locale: Locale = "ja", query = "", limitPer
       entity: "output",
       title: item.title,
       subtitle: [item.relatedProperty, item.relatedParty].filter(Boolean).join(" / "),
-      href: `/output-center?quoteId=${item.sourceQuoteId}&type=${item.outputType}`,
+      href: item.sourceQuoteId
+        ? `/output-center?quoteId=${item.sourceQuoteId}&type=${item.outputType}`
+        : `/output-center?type=${item.outputType}&targetProperty=${item.propertyId ?? ""}`,
     }));
 
   return [...propertyItems, ...partyItems, ...contractItems, ...requestItems, ...outputItems];

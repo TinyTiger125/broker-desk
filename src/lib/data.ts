@@ -83,6 +83,26 @@ export const addImportJob: typeof memory.addImportJob = (...args) =>
   repo.addImportJob(...args);
 export const updateImportJobMapping: typeof memory.updateImportJobMapping = (...args) =>
   repo.updateImportJobMapping(...args);
+export const listBrokerageCases: typeof memory.listBrokerageCases = (...args) =>
+  repo.listBrokerageCases(...args);
+export const getBrokerageCaseById: typeof memory.getBrokerageCaseById = (...args) =>
+  repo.getBrokerageCaseById(...args);
+export const getBrokerageCaseByImportJobId: typeof memory.getBrokerageCaseByImportJobId = (...args) =>
+  repo.getBrokerageCaseByImportJobId(...args);
+export const updateBrokerageCaseConfirmedData: typeof memory.updateBrokerageCaseConfirmedData = (...args) =>
+  repo.updateBrokerageCaseConfirmedData(...args);
+export const saveBrokerageCaseExtractionReview: typeof memory.saveBrokerageCaseExtractionReview = (...args) =>
+  repo.saveBrokerageCaseExtractionReview(...args);
+export const mergeBrokerageCaseExtractionReview: typeof memory.mergeBrokerageCaseExtractionReview = (...args) =>
+  repo.mergeBrokerageCaseExtractionReview(...args);
+export const rollbackBrokerageCaseMerge: typeof memory.rollbackBrokerageCaseMerge = (...args) =>
+  repo.rollbackBrokerageCaseMerge(...args);
+export const listExtractionReviewItems: typeof memory.listExtractionReviewItems = (...args) =>
+  repo.listExtractionReviewItems(...args);
+export const getGuaranteeApplicationDraft: typeof memory.getGuaranteeApplicationDraft = (...args) =>
+  repo.getGuaranteeApplicationDraft(...args);
+export const saveGuaranteeApplicationDraft: typeof memory.saveGuaranteeApplicationDraft = (...args) =>
+  repo.saveGuaranteeApplicationDraft(...args);
 export const listAttachments: typeof memory.listAttachments = (...args) =>
   repo.listAttachments(...args);
 export const addAttachment: typeof memory.addAttachment = (...args) =>
@@ -95,6 +115,8 @@ export const addGeneratedOutput: typeof memory.addGeneratedOutput = (...args) =>
   repo.addGeneratedOutput(...args);
 
 export const activeDataDriver = usePostgres ? "postgres" : "memory";
+export const resetBusinessDataForQa =
+  activeDataDriver === "memory" ? memory.resetBusinessDataForQa : undefined;
 export type DataDriver = typeof activeDataDriver;
 
 export async function healthCheckDataDriver() {
@@ -126,6 +148,13 @@ export type {
   ImportJobStatus,
   ImportSourceType,
   ImportTargetEntity,
+  BrokerageCase,
+  BrokerageCaseStatus,
+  BrokerageCaseType,
+  ExtractionReviewItem,
+  ExtractionReviewStatus,
+  GuaranteeApplicationDraft,
+  GuaranteeApplicationDraftStatus,
   OutputTemplateVersion,
   Task,
   User,
