@@ -1,441 +1,433 @@
+import Image from "next/image";
 import Link from "next/link";
-import { getDefaultUser, listOutputTemplateVersions } from "@/lib/data";
-import { listHubGeneratedOutputs } from "@/lib/hub";
-import { t } from "@/lib/i18n";
-import { getLocale } from "@/lib/locale";
+import { getDefaultUser, listBrokerageCases, listOutputTemplateVersions } from "@/lib/data";
+import { formatDate } from "@/lib/format";
+import {
+  guaranteeCompanyTemplates,
+  type GuaranteeCompanyTemplate,
+  type GuaranteeFieldCompletionMode,
+  type GuaranteeTemplateQualityStatus,
+} from "@/lib/guarantee-application";
+import { getLocale, type Locale } from "@/lib/locale";
 
 export const dynamic = "force-dynamic";
+
 type TemplatesPageProps = {
   searchParams?: Promise<{
     template?: string;
-    q?: string;
   }>;
 };
 
-const templatesCopy = {
+type TemplateVisual = {
+  src: string;
+  width: number;
+  height: number;
+};
+
+const templateVisuals: Record<string, TemplateVisual> = {
+  zenhoren_individual_v1: { src: "/guarantee-templates/zenhoren-v1-hd.png", width: 2400, height: 1697 },
+  nihon_safety_individual_v1: { src: "/guarantee-templates/nihon-safety-v1-hd.png", width: 2400, height: 1696 },
+  j_lease_individual_v1: { src: "/guarantee-templates/j-lease-v1-hd.png", width: 1697, height: 2400 },
+  insure_individual_v1: { src: "/guarantee-templates/insure-v1-hd.png", width: 2400, height: 1658 },
+  friends_guarantee_individual_v1: { src: "/guarantee-templates/friends-guarantee-v1.png", width: 1600, height: 1131 },
+};
+
+const copyByLocale = {
   ja: {
-    subtitle: "台帳構造とドキュメント自動化を管理します。",
-    importSchema: "スキーマ取込",
-    createTemplate: "テンプレート作成",
-    library: "ライブラリ",
-    modified2h: "2時間前に更新",
-    modified1d: "1日前に更新",
-    modified3d: "3日前に更新",
+    title: "申込書テンプレート管理",
+    subtitle:
+      "保証会社の公式申込書を、底版・入力位置・品質状態ごとに管理します。通常作業では触らず、位置調整や版更新の時だけ開きます。",
+    eyebrow: "補助業務",
+    primaryFlow: "通常の流れ",
+    flow1: "資料を入れる",
+    flow2: "案件ワークベンチで足りない項目だけ確認",
+    flow3: "会社別申込書を確認して出す",
+    openOutput: "申込書を出す",
+    openPreview: "この申込書を確認",
+    openSettings: "入力位置を調整",
+    officialBase: "公式底版",
+    sourcePdf: "元PDF",
+    pageCount: "ページ数",
+    quality: "品質状態",
+    inputPosition: "入力位置",
+    saved: "保存済み",
+    needsCheck: "要確認",
+    activeTemplates: "利用中テンプレート",
+    activeTemplatesDesc: "MVPで選択できる保証会社申込書です。",
+    selectedTemplate: "選択中の申込書",
+    outputPolicy: "出力方針",
+    outputPolicyDesc: "公式PDFの線や枠は変更せず、入力欄の上に値だけ印字します。",
+    safeAuto: "安全自動入力",
+    assisted: "候補入力",
+    manual: "電子手入力",
+    required: "必須項目",
+    optional: "任意項目",
+    companyOnly: "会社別項目",
     versionHistory: "版履歴",
-    updatedFieldMapping: "フィールドマッピング更新",
-    allChangesSaved: "変更を保存済み",
-    fieldMapping: "フィールドマッピング",
-    searchFields: "フィールド検索...",
-    validationResults: "検証結果",
-    dataIntegrityPassed: "データ整合性OK",
-    integrityDesc: "14個の変数が有効なデータソースに正常マッピングされました。",
-    draftState: "下書き状態",
-    draftDesc: "このテンプレートは下書きのため本番出力には使用できません。",
-    publishTemplate: "テンプレート公開",
-    testPrint: "テスト印刷",
-    distribute: "配布",
-    diffCompare: "差分比較: 現在版 vs 前版",
-    viewFullComparison: "比較をすべて表示",
-    removed: "削除",
-    added: "追加",
-    libLeaseAgreement: "賃貸借契約 v4",
-    libPortfolioSummary: "ポートフォリオ概要",
-    libBrokerageDisclosure: "媒介重要事項説明",
-    editorTemplateName: "賃貸借契約 v4",
-    editorDocTitle: "居住用賃貸借契約書",
-    editorDocId: "文書ID: TEM-492-AXL",
-    editorBody1:
-      "本賃貸借契約は、[[contract_date]] をもって、[[landlord_name]] と [[tenant_name]] の間で締結されます。",
-    editorSec1: "1. 物件所在地",
-    editorSec2: "2. 契約期間",
-    editorBody2:
-      "本契約の期間は [[lease_duration_months]] か月とし、[[lease_start_date]] より開始します。",
-    editorNote: "注記: 青色の項目は台帳データから自動差し込みされます。",
-    diffRemovedText: "借主は植栽管理費を全額負担するものとする。",
-    diffAddedText: "植栽管理費は貸主・借主で 50% ずつ負担するものとする。",
-    sourceContractSignDate: "契約 > 署名日",
-    sourcePartyEntity: "関係者 > 主体名",
-    sourcePartyTenant: "関係者 > 主借主",
-    sourcePropertyAddress: "物件 > 住所1",
-    sourceContractDuration: "契約 > 期間",
-    noFieldMatched: "該当するフィールドがありません。",
+    noVersions: "版履歴はまだありません。",
+    qualityNotes: "品質メモ",
+    noQualityNotes: "品質メモはありません。",
+    advancedTitle: "詳細なテンプレート管理",
+    advancedDesc: "通常の申込書作成では開く必要はありません。版更新、出力設定、入力位置の見直しに使います。",
+    statusActive: "利用中",
+    statusDraft: "下書き",
+    statusDeprecated: "停止",
+    verified: "検証済み",
+    needsCalibration: "位置確認中",
+    sourceBlocked: "元資料要改善",
+    directDownload: "直接PDF可",
+    previewRequired: "プレビュー確認",
+    noCase: "案件がないため、先に資料を入れてください。",
   },
   zh: {
-    subtitle: "管理业务台账结构与文档自动化模板。",
-    importSchema: "导入结构",
-    createTemplate: "创建模板",
-    library: "模板库",
-    modified2h: "2小时前更新",
-    modified1d: "1天前更新",
-    modified3d: "3天前更新",
+    title: "申请书模板管理",
+    subtitle: "管理保证会社官方申请书的底版、填写位置和质量状态。日常作业不需要打开，只在位置调整或版本更新时使用。",
+    eyebrow: "辅助业务",
+    primaryFlow: "普通使用流程",
+    flow1: "上传资料",
+    flow2: "在案件工作台只确认缺失项",
+    flow3: "确认公司别申请书并输出",
+    openOutput: "输出申请书",
+    openPreview: "确认这份申请书",
+    openSettings: "调整填写位置",
+    officialBase: "官方底版",
+    sourcePdf: "源 PDF",
+    pageCount: "页数",
+    quality: "质量状态",
+    inputPosition: "填写位置",
+    saved: "已保存",
+    needsCheck: "需确认",
+    activeTemplates: "可用模板",
+    activeTemplatesDesc: "MVP 当前可选择的保证会社申请书。",
+    selectedTemplate: "当前申请书",
+    outputPolicy: "输出原则",
+    outputPolicyDesc: "不修改官方 PDF 的任何线条和框体，只在输入栏上方印字。",
+    safeAuto: "安全自动填入",
+    assisted: "候选填入",
+    manual: "电子手填",
+    required: "必填项",
+    optional: "可选项",
+    companyOnly: "公司别项目",
     versionHistory: "版本历史",
-    updatedFieldMapping: "已更新字段映射",
-    allChangesSaved: "所有更改已保存",
-    fieldMapping: "字段映射",
-    searchFields: "搜索字段...",
-    validationResults: "校验结果",
-    dataIntegrityPassed: "数据完整性通过",
-    integrityDesc: "14个变量均已成功映射到有效数据源。",
-    draftState: "草稿状态",
-    draftDesc: "当前模板为草稿状态，暂不可用于正式输出。",
-    publishTemplate: "发布模板",
-    testPrint: "测试打印",
-    distribute: "分发",
-    diffCompare: "差异对比：当前版 vs 上一版",
-    viewFullComparison: "查看完整对比",
-    removed: "删除",
-    added: "新增",
-    libLeaseAgreement: "租赁合同 v4",
-    libPortfolioSummary: "资产组合摘要",
-    libBrokerageDisclosure: "中介披露说明",
-    editorTemplateName: "租赁合同 v4",
-    editorDocTitle: "住宅租赁合同",
-    editorDocId: "文档ID: TEM-492-AXL",
-    editorBody1: "本租赁合同于 [[contract_date]] 由 [[landlord_name]] 与 [[tenant_name]] 签署。",
-    editorSec1: "1. 物件地址",
-    editorSec2: "2. 租期",
-    editorBody2: "本合同租期为 [[lease_duration_months]] 个月，自 [[lease_start_date]] 起生效。",
-    editorNote: "注：蓝色字段将从业务台账自动映射。",
-    diffRemovedText: "租客需承担全部绿化维护费用。",
-    diffAddedText: "绿化维护费用由房东与租客各承担 50%。",
-    sourceContractSignDate: "合同 > 签署日",
-    sourcePartyEntity: "主体 > 名称",
-    sourcePartyTenant: "主体 > 主承租人",
-    sourcePropertyAddress: "物件 > 地址1",
-    sourceContractDuration: "合同 > 期限",
-    noFieldMatched: "没有匹配的字段。",
+    noVersions: "暂无版本历史。",
+    qualityNotes: "质量记录",
+    noQualityNotes: "暂无质量记录。",
+    advancedTitle: "详细模板管理",
+    advancedDesc: "普通申请书制作不需要打开。仅用于版本更新、输出设置和填写位置复核。",
+    statusActive: "使用中",
+    statusDraft: "草稿",
+    statusDeprecated: "停用",
+    verified: "已校验",
+    needsCalibration: "位置确认中",
+    sourceBlocked: "源文件需改善",
+    directDownload: "可直接 PDF",
+    previewRequired: "需要预览确认",
+    noCase: "还没有案件，请先上传资料。",
   },
   ko: {
-    subtitle: "원장 구조와 문서 자동화 템플릿을 관리합니다.",
-    importSchema: "스키마 가져오기",
-    createTemplate: "템플릿 생성",
-    library: "라이브러리",
-    modified2h: "2시간 전 수정",
-    modified1d: "1일 전 수정",
-    modified3d: "3일 전 수정",
+    title: "신청서 템플릿 관리",
+    subtitle:
+      "보증회사 공식 신청서의 원본 양식, 입력 위치, 품질 상태를 관리합니다. 일반 작업에서는 건드리지 않고 위치 조정이나 버전 갱신 때만 엽니다.",
+    eyebrow: "보조 업무",
+    primaryFlow: "일반 작업 흐름",
+    flow1: "자료 입력",
+    flow2: "안건 워크벤치에서 부족 항목만 확인",
+    flow3: "회사별 신청서를 확인하고 출력",
+    openOutput: "신청서 출력",
+    openPreview: "이 신청서 확인",
+    openSettings: "입력 위치 조정",
+    officialBase: "공식 원본",
+    sourcePdf: "원본 PDF",
+    pageCount: "페이지 수",
+    quality: "품질 상태",
+    inputPosition: "입력 위치",
+    saved: "저장됨",
+    needsCheck: "확인 필요",
+    activeTemplates: "사용 템플릿",
+    activeTemplatesDesc: "MVP에서 선택 가능한 보증회사 신청서입니다.",
+    selectedTemplate: "선택한 신청서",
+    outputPolicy: "출력 원칙",
+    outputPolicyDesc: "공식 PDF의 선과 표는 바꾸지 않고 입력란 위에 값만 인쇄합니다.",
+    safeAuto: "안전 자동 입력",
+    assisted: "후보 입력",
+    manual: "전자 수동 입력",
+    required: "필수 항목",
+    optional: "선택 항목",
+    companyOnly: "회사별 항목",
     versionHistory: "버전 이력",
-    updatedFieldMapping: "필드 매핑 업데이트",
-    allChangesSaved: "모든 변경 저장됨",
-    fieldMapping: "필드 매핑",
-    searchFields: "필드 검색...",
-    validationResults: "검증 결과",
-    dataIntegrityPassed: "데이터 무결성 통과",
-    integrityDesc: "14개 변수가 유효한 데이터 소스에 성공적으로 매핑되었습니다.",
-    draftState: "초안 상태",
-    draftDesc: "현재 템플릿은 초안 상태로 운영 출력에 사용할 수 없습니다.",
-    publishTemplate: "템플릿 게시",
-    testPrint: "테스트 인쇄",
-    distribute: "배포",
-    diffCompare: "비교: 현재 버전 vs 이전 버전",
-    viewFullComparison: "전체 비교 보기",
-    removed: "삭제",
-    added: "추가",
-    libLeaseAgreement: "임대차 계약 v4",
-    libPortfolioSummary: "포트폴리오 요약",
-    libBrokerageDisclosure: "중개 중요사항 설명",
-    editorTemplateName: "임대차 계약 v4",
-    editorDocTitle: "주거용 임대차 계약서",
-    editorDocId: "문서 ID: TEM-492-AXL",
-    editorBody1:
-      "본 임대차 계약은 [[contract_date]]에 [[landlord_name]]와 [[tenant_name]] 사이에서 체결됩니다.",
-    editorSec1: "1. 매물 주소",
-    editorSec2: "2. 계약 기간",
-    editorBody2: "본 계약 기간은 [[lease_duration_months]]개월이며 [[lease_start_date]]부터 시작됩니다.",
-    editorNote: "참고: 파란색 필드는 원장 데이터에서 자동 매핑됩니다.",
-    diffRemovedText: "임차인은 조경 유지비를 전액 부담한다.",
-    diffAddedText: "조경 유지비는 임대인과 임차인이 50%씩 부담한다.",
-    sourceContractSignDate: "계약 > 서명일",
-    sourcePartyEntity: "관계자 > 주체명",
-    sourcePartyTenant: "관계자 > 주 임차인",
-    sourcePropertyAddress: "매물 > 주소1",
-    sourceContractDuration: "계약 > 기간",
-    noFieldMatched: "일치하는 필드가 없습니다.",
+    noVersions: "버전 이력이 아직 없습니다.",
+    qualityNotes: "품질 메모",
+    noQualityNotes: "품질 메모가 없습니다.",
+    advancedTitle: "상세 템플릿 관리",
+    advancedDesc: "일반 신청서 작성에는 열 필요가 없습니다. 버전 갱신, 출력 설정, 입력 위치 검토에 사용합니다.",
+    statusActive: "사용 중",
+    statusDraft: "초안",
+    statusDeprecated: "중지",
+    verified: "검증됨",
+    needsCalibration: "위치 확인 중",
+    sourceBlocked: "원본 개선 필요",
+    directDownload: "직접 PDF 가능",
+    previewRequired: "미리보기 확인",
+    noCase: "안건이 없으므로 먼저 자료를 넣어주세요.",
   },
 } as const;
 
+function statusLabel(locale: Locale, status: GuaranteeCompanyTemplate["outputStatus"]) {
+  const copy = copyByLocale[locale];
+  if (status === "active") return copy.statusActive;
+  if (status === "deprecated") return copy.statusDeprecated;
+  return copy.statusDraft;
+}
+
+function qualityLabel(locale: Locale, quality: GuaranteeTemplateQualityStatus) {
+  const copy = copyByLocale[locale];
+  if (quality === "verified") return copy.verified;
+  if (quality === "source_quality_blocked") return copy.sourceBlocked;
+  return copy.needsCalibration;
+}
+
+function qualityClass(quality: GuaranteeTemplateQualityStatus) {
+  if (quality === "verified") return "bg-emerald-100 text-emerald-800";
+  if (quality === "source_quality_blocked") return "bg-rose-100 text-rose-800";
+  return "bg-amber-100 text-amber-800";
+}
+
+function countCompletionModes(template: GuaranteeCompanyTemplate) {
+  return Object.values(template.fieldCompletionModes).reduce<Record<GuaranteeFieldCompletionMode, number>>(
+    (acc, mode) => {
+      acc[mode] += 1;
+      return acc;
+    },
+    { certified_auto: 0, assisted_candidate: 0, manual_electronic: 0 },
+  );
+}
+
 export default async function TemplatesPage({ searchParams }: TemplatesPageProps) {
   const locale = await getLocale();
-  const copy = templatesCopy[locale];
+  const copy = copyByLocale[locale];
   const params = searchParams ? await searchParams : undefined;
-  const selectedTemplate = params?.template ?? "lease_agreement_v4";
-  const query = String(params?.q ?? "").trim().toLowerCase();
+  const selectedTemplateId = params?.template ?? "friends_guarantee_individual_v1";
+  const templates = guaranteeCompanyTemplates.filter((template) => template.outputStatus === "active");
+  const selectedTemplate = templates.find((template) => template.id === selectedTemplateId) ?? templates[0];
+  const selectedVisual = templateVisuals[selectedTemplate.id] ?? templateVisuals.friends_guarantee_individual_v1;
   const user = await getDefaultUser();
-  const [versions, allOutputs] = await Promise.all([
+  const [versions, cases] = await Promise.all([
     user ? listOutputTemplateVersions(user.id, 6) : Promise.resolve([]),
-    user ? listHubGeneratedOutputs(locale) : Promise.resolve([]),
+    user ? listBrokerageCases(user.id, 20) : Promise.resolve([]),
   ]);
-  const versionOutputCountMap = new Map<string, number>();
-  allOutputs.forEach((o) => {
-    if (o.templateVersionId) {
-      versionOutputCountMap.set(o.templateVersionId, (versionOutputCountMap.get(o.templateVersionId) ?? 0) + 1);
-    }
-  });
-  const diffVersionId = versions[1]?.id ?? versions[0]?.id ?? "";
-  const localeTag = locale === "zh" ? "zh-CN" : locale === "ko" ? "ko-KR" : "ja-JP";
-  const mappingFields = [
-    ["[[contract_date]]", copy.sourceContractSignDate],
-    ["[[landlord_name]]", copy.sourcePartyEntity],
-    ["[[tenant_name]]", copy.sourcePartyTenant],
-    ["[[property_street_address]]", copy.sourcePropertyAddress],
-    ["[[lease_duration_months]]", copy.sourceContractDuration],
-  ] as const;
-  const filteredMappingFields = mappingFields.filter(([field, source]) =>
-    query ? field.toLowerCase().includes(query) || source.toLowerCase().includes(query) : true
-  );
-  const templateToOutputType = {
-    lease_agreement_v4: "proposal",
-    portfolio_summary: "funding_plan",
-    brokerage_disclosure: "assumption_memo",
-  } as const;
-  const selectedOutputType = templateToOutputType[selectedTemplate as keyof typeof templateToOutputType] ?? "proposal";
+  const currentCase =
+    cases.find((item) => item.id === "case_fixture_friends_guarantee_pdf") ??
+    cases.find((item) => item.status === "reviewed") ??
+    cases[0];
+  const modeCounts = countCompletionModes(selectedTemplate);
+  const previewHref = currentCase
+    ? `/guarantee-applications/${encodeURIComponent(selectedTemplate.id)}/preview?caseId=${encodeURIComponent(currentCase.id)}`
+    : "/import-center";
+  const outputHref = currentCase
+    ? `/output-center?caseId=${encodeURIComponent(currentCase.id)}&guaranteeTemplate=${encodeURIComponent(selectedTemplate.id)}`
+    : "/import-center";
 
   return (
-    <div className="space-y-8">
-      <header className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
+    <div className="space-y-5">
+      <header className="flex flex-col justify-between gap-4 border-b border-slate-950 pb-4 lg:flex-row lg:items-end">
         <div>
-          <h1 className="text-4xl font-light tracking-tight text-slate-900">{t(locale, "templates.title")}</h1>
-          <p className="mt-1 text-sm font-medium text-slate-600">{copy.subtitle}</p>
+          <p className="text-[11px] font-black uppercase tracking-[0.05em] text-slate-500">{copy.eyebrow}</p>
+          <h1 className="mt-1 text-3xl font-black leading-tight text-slate-950">{copy.title}</h1>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{copy.subtitle}</p>
         </div>
-        <div className="flex gap-3">
-          <Link href="/import-center" className="rounded-lg bg-[#e9effc] px-4 py-2 text-sm font-semibold text-slate-800">
-            {copy.importSchema}
+        <div className="flex flex-wrap gap-2">
+          <Link href={outputHref} className="inline-flex items-center gap-2 rounded bg-slate-950 px-4 py-2 text-sm font-black text-white hover:bg-slate-800">
+            <span className="material-symbols-outlined text-[18px]">draft</span>
+            {copy.openOutput}
           </Link>
-          <Link href="/settings/output-templates" className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-br from-[#001e40] to-[#003366] px-4 py-2 text-sm font-semibold text-white shadow-sm">
-            <span className="material-symbols-outlined text-[16px]">add</span>
-            {copy.createTemplate}
+          <Link href="/settings/output-templates" className="inline-flex items-center gap-2 rounded border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50">
+            <span className="material-symbols-outlined text-[18px]">tune</span>
+            {copy.openSettings}
           </Link>
         </div>
       </header>
 
-      <section className="grid gap-6 xl:grid-cols-12">
-        <div className="space-y-4 xl:col-span-3">
-          <article className="rounded-xl bg-[#edf2fd] p-4">
-            <h2 className="mb-4 text-xs font-bold uppercase tracking-widest text-slate-700">{copy.library}</h2>
-            <div className="space-y-2">
-              <Link
-                href="/templates?template=lease_agreement_v4"
-                className={
-                  "flex w-full items-center gap-3 rounded-lg p-3 text-left " +
-                  (selectedTemplate === "lease_agreement_v4" ? "bg-white shadow-sm" : "transition hover:bg-white/70")
-                }
-              >
-                <span className="flex h-10 w-10 items-center justify-center rounded bg-blue-50 text-blue-600">
-                  <span className="material-symbols-outlined">description</span>
-                </span>
-                <span className="overflow-hidden">
-                  <span className="block truncate text-sm font-bold text-[#001e40]">{copy.libLeaseAgreement}</span>
-                  <span className="block text-[11px] text-slate-500">{copy.modified2h}</span>
-                </span>
-              </Link>
-              <Link
-                href="/templates?template=portfolio_summary"
-                className={
-                  "flex w-full items-center gap-3 rounded-lg p-3 text-left " +
-                  (selectedTemplate === "portfolio_summary" ? "bg-white shadow-sm" : "transition hover:bg-white/70")
-                }
-              >
-                <span className="flex h-10 w-10 items-center justify-center rounded bg-slate-100 text-slate-500">
-                  <span className="material-symbols-outlined">analytics</span>
-                </span>
-                <span className="overflow-hidden">
-                  <span className="block truncate text-sm font-medium text-slate-800">{copy.libPortfolioSummary}</span>
-                  <span className="block text-[11px] text-slate-500">{copy.modified1d}</span>
-                </span>
-              </Link>
-              <Link
-                href="/templates?template=brokerage_disclosure"
-                className={
-                  "flex w-full items-center gap-3 rounded-lg p-3 text-left " +
-                  (selectedTemplate === "brokerage_disclosure" ? "bg-white shadow-sm" : "transition hover:bg-white/70")
-                }
-              >
-                <span className="flex h-10 w-10 items-center justify-center rounded bg-slate-100 text-slate-500">
-                  <span className="material-symbols-outlined">contract</span>
-                </span>
-                <span className="overflow-hidden">
-                  <span className="block truncate text-sm font-medium text-slate-800">{copy.libBrokerageDisclosure}</span>
-                  <span className="block text-[11px] text-slate-500">{copy.modified3d}</span>
-                </span>
-              </Link>
+      <section className="rounded-xl border border-blue-100 bg-[#edf2fd] p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-xs font-black text-[#1960a3]">{copy.primaryFlow}</p>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-sm font-bold text-slate-900">
+              <span>{copy.flow1}</span>
+              <span className="material-symbols-outlined text-[16px] text-slate-400">arrow_forward</span>
+              <span>{copy.flow2}</span>
+              <span className="material-symbols-outlined text-[16px] text-slate-400">arrow_forward</span>
+              <span>{copy.flow3}</span>
             </div>
-          </article>
-
-          <article className="rounded-xl bg-[#edf2fd] p-4">
-            <h2 className="mb-4 text-xs font-bold uppercase tracking-widest text-slate-700">{copy.versionHistory}</h2>
-            <div className="space-y-4 border-l-2 border-[#001e40]/10 pl-5">
-              {versions.slice(0, 3).map((version, index) => {
-                const usedCount = versionOutputCountMap.get(version.id) ?? 0;
-                return (
-                  <Link key={version.id} href={`/settings/output-templates?diffVersionId=${version.id}`} className="relative block rounded-md px-1 py-0.5 hover:bg-white/60">
-                    <span
-                      className={
-                        "absolute -left-[26px] top-1 h-2.5 w-2.5 rounded-full border-4 border-[#edf2fd] " +
-                        (index === 0 ? "bg-[#001e40]" : "bg-slate-300")
-                      }
-                    />
-                    <p className="text-[13px] font-bold text-slate-900">
-                      {index === 0 ? copy.updatedFieldMapping : version.versionLabel}
-                    </p>
-                    <p className="text-[11px] text-slate-500">{version.createdAt.toLocaleString(localeTag)}</p>
-                    {usedCount > 0 ? (
-                      <p className="mt-0.5 text-[10px] font-medium text-[#001e40]">
-                        {locale === "zh" ? `已使用 ${usedCount} 次` : locale === "ko" ? `${usedCount}회 사용됨` : `${usedCount}回使用済`}
-                      </p>
-                    ) : null}
-                  </Link>
-                );
-              })}
-            </div>
-          </article>
-        </div>
-
-        <div className="space-y-6 xl:col-span-6">
-          <article className="overflow-hidden rounded-xl border border-slate-200/50 bg-white shadow-sm">
-            <div className="flex items-center justify-between border-b border-slate-200/60 bg-[#edf2fd] px-6 py-3">
-              <div className="flex items-center gap-4">
-                <h2 className="text-sm font-bold text-slate-900">{copy.editorTemplateName}</h2>
-                <div className="h-4 w-px bg-slate-300" />
-                <div className="flex items-center gap-1 text-slate-500">
-                  <Link href={diffVersionId ? `/settings/output-templates?diffVersionId=${diffVersionId}` : "/settings/output-templates"} className="rounded p-1 transition hover:bg-white">
-                    <span className="material-symbols-outlined text-[18px]">undo</span>
-                  </Link>
-                  <Link href="/settings/output-templates" className="rounded p-1 transition hover:bg-white">
-                    <span className="material-symbols-outlined text-[18px]">redo</span>
-                  </Link>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="rounded bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-600">{copy.allChangesSaved}</span>
-                <Link href="/settings/output-templates" className="rounded-lg p-1.5 text-slate-500 hover:bg-white">
-                  <span className="material-symbols-outlined text-[18px]">fullscreen</span>
-                </Link>
-              </div>
-            </div>
-
-            <div className="min-h-[620px] bg-slate-50/60 p-10">
-              <div className="mx-auto max-w-2xl rounded-sm border border-slate-100 bg-white p-12 shadow-xl shadow-slate-200/50">
-                <div className="mb-8 text-center">
-                  <h3 className="text-2xl font-bold uppercase tracking-widest text-[#001e40]">{copy.editorDocTitle}</h3>
-                  <p className="text-xs text-slate-500">{copy.editorDocId}</p>
-                </div>
-                <div className="space-y-6 text-sm leading-relaxed text-slate-700">
-                  <p>{copy.editorBody1}</p>
-                  <div>
-                    <h4 className="mb-2 text-xs font-bold uppercase tracking-wider">{copy.editorSec1}</h4>
-                    <div className="rounded-lg border border-[#001e40]/5 bg-[#edf2fd] p-4">
-                      <p className="tabular-nums">[[property_street_address]]</p>
-                      <p className="tabular-nums">[[property_city]], [[property_state]] [[property_zip]]</p>
-                    </div>
-                  </div>
-                  <div>
-                    <h4 className="mb-2 text-xs font-bold uppercase tracking-wider">{copy.editorSec2}</h4>
-                    <p>{copy.editorBody2}</p>
-                  </div>
-                  <p className="border-t border-slate-100 pt-6 text-xs italic text-slate-500">* {copy.editorNote}</p>
-                </div>
-              </div>
-            </div>
-          </article>
-
-          <article className="rounded-xl bg-[#edf2fd] p-6">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-xs font-bold uppercase tracking-widest text-slate-700">{copy.diffCompare}</h2>
-              <Link href={diffVersionId ? `/settings/output-templates?diffVersionId=${diffVersionId}` : "/settings/output-templates"} className="text-[11px] font-bold text-[#001e40] hover:underline">
-                {copy.viewFullComparison}
-              </Link>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="rounded-lg border border-red-200/60 bg-red-50 p-3">
-                <p className="mb-1 text-[11px] font-bold uppercase text-red-600">{copy.removed}</p>
-                <p className="text-xs text-slate-500 line-through">{copy.diffRemovedText}</p>
-              </div>
-              <div className="rounded-lg border border-emerald-200/60 bg-emerald-50 p-3">
-                <p className="mb-1 text-[11px] font-bold uppercase text-emerald-600">{copy.added}</p>
-                <p className="text-xs text-slate-700">{copy.diffAddedText}</p>
-              </div>
-            </div>
-          </article>
-        </div>
-
-        <div className="space-y-5 xl:col-span-3">
-          <article className="rounded-xl bg-[#edf2fd] p-5">
-            <h2 className="mb-4 text-xs font-bold uppercase tracking-widest text-slate-700">{copy.fieldMapping}</h2>
-            <form className="relative mb-4" method="get" action="/templates">
-              <input type="hidden" name="template" value={selectedTemplate} />
-              <span className="material-symbols-outlined pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[14px] text-slate-400">search</span>
-              <input
-                name="q"
-                defaultValue={params?.q ?? ""}
-                className="w-full rounded-lg border-none bg-white py-1.5 pl-8 pr-3 text-xs"
-                placeholder={copy.searchFields}
-              />
-              <button type="submit" className="sr-only">
-                search
-              </button>
-            </form>
-            <div className="max-h-[400px] space-y-1 overflow-y-auto pr-1">
-              {filteredMappingFields.map(([field, source], index) => (
-                <div
-                  key={field}
-                  className={
-                    "rounded-lg border p-2 transition " +
-                    (index === 2 ? "border-slate-200 bg-white shadow-sm" : "border-transparent hover:border-slate-200 hover:bg-white")
-                  }
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-[#001e40]">{field}</span>
-                    <span className={"material-symbols-outlined text-[14px] " + (index === 2 ? "text-[#001e40]" : "text-slate-300")}>link</span>
-                  </div>
-                  <p className="text-[10px] text-slate-500">{source}</p>
-                </div>
-              ))}
-              {filteredMappingFields.length === 0 ? (
-                <div className="rounded-lg border border-dashed border-slate-200 bg-white p-3 text-[11px] text-slate-500">
-                  {copy.noFieldMatched}
-                </div>
-              ) : null}
-            </div>
-          </article>
-
-          <article className="rounded-xl border-l-4 border-[#001e40] bg-[#e6eeff] p-5">
-            <h2 className="mb-3 text-xs font-bold uppercase tracking-widest text-[#001e40]">{copy.validationResults}</h2>
-            <div className="space-y-3">
-              <div className="flex items-start gap-3">
-                <span className="material-symbols-outlined text-emerald-600">check_circle</span>
-                <div>
-                  <p className="text-[12px] font-bold text-slate-900">{copy.dataIntegrityPassed}</p>
-                  <p className="text-[11px] text-slate-600">{copy.integrityDesc}</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <span className="material-symbols-outlined text-[#d8885c]">info</span>
-                <div>
-                  <p className="text-[12px] font-bold text-slate-900">{copy.draftState}</p>
-                  <p className="text-[11px] text-slate-600">{copy.draftDesc}</p>
-                </div>
-              </div>
-            </div>
-            <Link href="/settings/output-templates" className="mt-4 inline-flex w-full items-center justify-center rounded-lg bg-[#001e40] py-2 text-xs font-bold text-white">
-              {copy.publishTemplate}
-            </Link>
-          </article>
-
-          <div className="grid grid-cols-2 gap-3">
-            <Link href={`/output-center?type=${selectedOutputType}`} className="flex flex-col items-center justify-center rounded-xl bg-[#edf2fd] p-4 text-slate-600 transition hover:bg-[#e3ecff]">
-              <span className="material-symbols-outlined mb-2">print</span>
-              <span className="text-[10px] font-bold uppercase">{copy.testPrint}</span>
-            </Link>
-            <Link href={`/output-center?type=${selectedOutputType}`} className="flex flex-col items-center justify-center rounded-xl bg-[#edf2fd] p-4 text-slate-600 transition hover:bg-[#e3ecff]">
-              <span className="material-symbols-outlined mb-2">share</span>
-              <span className="text-[10px] font-bold uppercase">{copy.distribute}</span>
-            </Link>
           </div>
-
-          <Link href="/settings/output-templates" className="inline-flex w-full items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-            {t(locale, "templates.sheet.edit")}
-          </Link>
+          {!currentCase ? <p className="text-xs font-bold text-amber-800">{copy.noCase}</p> : null}
         </div>
       </section>
+
+      <section className="grid gap-5 xl:grid-cols-[320px_minmax(0,1fr)]">
+        <aside className="self-start rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="mb-4">
+            <h2 className="text-sm font-black text-slate-950">{copy.activeTemplates}</h2>
+            <p className="mt-1 text-xs leading-5 text-slate-500">{copy.activeTemplatesDesc}</p>
+          </div>
+          <div className="space-y-2">
+            {templates.map((template) => {
+              const active = template.id === selectedTemplate.id;
+              return (
+                <Link
+                  key={template.id}
+                  href={`/templates?template=${encodeURIComponent(template.id)}`}
+                  className={`block rounded-lg border p-3 transition ${
+                    active ? "border-[#1960a3] bg-[#eff4ff]" : "border-slate-200 bg-slate-50 hover:bg-white"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-black text-slate-950">{template.companyDisplayName}</p>
+                      <p className="mt-0.5 truncate text-xs font-semibold text-slate-500">{template.templateDisplayName}</p>
+                    </div>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${qualityClass(template.qualityStatus)}`}>
+                      {qualityLabel(locale, template.qualityStatus)}
+                    </span>
+                  </div>
+                  <div className="mt-3 flex items-center gap-2 text-[11px] font-bold text-slate-500">
+                    <span>{statusLabel(locale, template.outputStatus)}</span>
+                    <span>/</span>
+                    <span>{template.allowDirectDownload ? copy.directDownload : copy.previewRequired}</span>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </aside>
+
+        <div className="space-y-4">
+          <article className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex flex-col justify-between gap-3 border-b border-slate-200 bg-[#edf2fd] px-5 py-4 lg:flex-row lg:items-center">
+              <div>
+                <p className="text-xs font-black text-[#1960a3]">{copy.selectedTemplate}</p>
+                <h2 className="mt-1 text-xl font-black text-slate-950">{selectedTemplate.companyDisplayName}</h2>
+                <p className="text-sm font-semibold text-slate-600">{selectedTemplate.templateDisplayName}</p>
+              </div>
+              <Link href={previewHref} className="inline-flex items-center justify-center gap-2 rounded bg-slate-950 px-4 py-2 text-sm font-black text-white hover:bg-slate-800">
+                <span className="material-symbols-outlined text-[18px]">edit_note</span>
+                {copy.openPreview}
+              </Link>
+            </div>
+
+            <div className="bg-slate-100 p-5">
+              <div className="mx-auto max-h-[720px] max-w-5xl overflow-auto rounded border border-slate-300 bg-white shadow-sm">
+                <Image
+                  src={selectedVisual.src}
+                  alt={`${selectedTemplate.companyDisplayName} ${selectedTemplate.templateDisplayName}`}
+                  width={selectedVisual.width}
+                  height={selectedVisual.height}
+                  className="h-auto w-full object-contain"
+                  priority
+                />
+              </div>
+            </div>
+          </article>
+
+          <div className="grid gap-4 lg:grid-cols-3">
+            <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <h2 className="text-sm font-black text-slate-950">{copy.outputPolicy}</h2>
+              <p className="mt-2 text-xs leading-5 text-slate-600">{copy.outputPolicyDesc}</p>
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <div className="rounded-lg bg-[#edf2fd] p-3">
+                  <p className="text-[10px] font-bold text-slate-500">{copy.officialBase}</p>
+                  <p className="mt-1 whitespace-nowrap text-xs font-black text-slate-950">{copy.saved}</p>
+                </div>
+                <div className="rounded-lg bg-[#edf2fd] p-3">
+                  <p className="text-[10px] font-bold text-slate-500">{copy.inputPosition}</p>
+                  <p className="mt-1 whitespace-nowrap text-xs font-black text-slate-950">
+                    {selectedTemplate.qualityStatus === "verified" ? copy.saved : copy.needsCheck}
+                  </p>
+                </div>
+                <div className="rounded-lg bg-[#edf2fd] p-3">
+                  <p className="text-[10px] font-bold text-slate-500">{copy.pageCount}</p>
+                  <p className="mt-1 whitespace-nowrap text-xs font-black text-slate-950">{selectedTemplate.pageCount}</p>
+                </div>
+                <div className="rounded-lg bg-[#edf2fd] p-3">
+                  <p className="text-[10px] font-bold text-slate-500">{copy.quality}</p>
+                  <p className="mt-1 whitespace-nowrap text-xs font-black text-slate-950">{qualityLabel(locale, selectedTemplate.qualityStatus)}</p>
+                </div>
+              </div>
+            </article>
+
+            <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <h2 className="text-sm font-black text-slate-950">{copy.sourcePdf}</h2>
+              <p className="mt-2 break-words text-sm font-semibold text-slate-700">{selectedTemplate.sourcePdfFileName}</p>
+              <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
+                  <p className="text-lg font-black text-slate-950">{selectedTemplate.requiredFieldKeys.length}</p>
+                  <p className="text-[10px] font-bold text-slate-500">{copy.required}</p>
+                </div>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
+                  <p className="text-lg font-black text-slate-950">{selectedTemplate.optionalFieldKeys.length}</p>
+                  <p className="text-[10px] font-bold text-slate-500">{copy.optional}</p>
+                </div>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
+                  <p className="text-lg font-black text-slate-950">{selectedTemplate.companySpecificOptionKeys.length}</p>
+                  <p className="text-[10px] font-bold text-slate-500">{copy.companyOnly}</p>
+                </div>
+              </div>
+            </article>
+
+            <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <h2 className="text-sm font-black text-slate-950">{copy.quality}</h2>
+              <div className="mt-3 space-y-2">
+                <div className="flex items-center justify-between rounded-lg bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800">
+                  <span>{copy.safeAuto}</span>
+                  <span>{modeCounts.certified_auto}</span>
+                </div>
+                <div className="flex items-center justify-between rounded-lg bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">
+                  <span>{copy.assisted}</span>
+                  <span>{modeCounts.assisted_candidate}</span>
+                </div>
+                <div className="flex items-center justify-between rounded-lg bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700">
+                  <span>{copy.manual}</span>
+                  <span>{modeCounts.manual_electronic}</span>
+                </div>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <details className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <summary className="cursor-pointer text-sm font-black text-slate-950">{copy.advancedTitle}</summary>
+        <p className="mt-2 text-sm leading-6 text-slate-600">{copy.advancedDesc}</p>
+        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+          <article className="rounded-lg bg-[#edf2fd] p-4">
+            <h2 className="text-sm font-black text-slate-950">{copy.versionHistory}</h2>
+            <div className="mt-3 space-y-2">
+              {versions.length === 0 ? <p className="text-sm text-slate-500">{copy.noVersions}</p> : null}
+              {versions.slice(0, 5).map((version) => (
+                <Link
+                  key={version.id}
+                  href={`/settings/output-templates?diffVersionId=${version.id}`}
+                  className="flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2 text-sm hover:bg-slate-50"
+                >
+                  <span className="font-bold text-slate-900">{version.versionLabel}</span>
+                  <span className="text-xs font-semibold text-slate-500">{formatDate(version.createdAt, locale)}</span>
+                </Link>
+              ))}
+            </div>
+          </article>
+
+          <article className="rounded-lg bg-[#edf2fd] p-4">
+            <h2 className="text-sm font-black text-slate-950">{copy.qualityNotes}</h2>
+            <div className="mt-3 space-y-2">
+              {selectedTemplate.qualityNotes.length === 0 ? <p className="text-sm text-slate-500">{copy.noQualityNotes}</p> : null}
+              {selectedTemplate.qualityNotes.map((note) => (
+                <p key={note} className="rounded-lg bg-white p-3 text-xs leading-5 text-slate-600">
+                  {note}
+                </p>
+              ))}
+            </div>
+          </article>
+        </div>
+      </details>
     </div>
   );
 }

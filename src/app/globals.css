@@ -4,7 +4,7 @@
   font-family: "Material Symbols Outlined";
   font-style: normal;
   font-weight: 100 700;
-  font-display: swap;
+  font-display: block;
   src: url("/fonts/material-symbols-outlined.woff2") format("woff2");
 }
 
@@ -101,7 +101,7 @@ textarea {
 
 .material-symbols-outlined {
   font-family: "Material Symbols Outlined";
-  font-weight: 400;
+  font-weight: normal;
   font-style: normal;
   font-size: 20px;
   letter-spacing: normal;
@@ -110,15 +110,15 @@ textarea {
   word-wrap: normal;
   direction: ltr;
   display: inline-block;
+  width: 1em;
+  min-width: 1em;
+  overflow: hidden;
+  flex-shrink: 0;
+  text-align: center;
   font-feature-settings: "liga";
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-  font-variation-settings:
-    "FILL" 0,
-    "wght" 400,
-    "GRAD" 0,
-    "opsz" 24;
   line-height: 1;
 }
 

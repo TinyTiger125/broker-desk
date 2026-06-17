@@ -6,12 +6,17 @@ Before using engineering skills such as `diagnose`, `tdd`, `to-prd`, `to-issues`
 
 ## Primary Domain Files
 
+- `docs/PROJECT_MEMORY.md`: fixed project-memory entrypoint, current status, active risks, and next-step index. Read this first.
+- `docs/README.md`: documentation map, current directories, and archive rules.
 - `CONTEXT.md` at the repo root: canonical domain glossary and product boundaries.
-- `docs/PRODUCT_TOPOLOGY.md`: product value topology and V1 product center.
-- `docs/V1_INPUT_FILE_MODEL.md`: input-side source file model and extraction-review principles.
-- `docs/V1_CASE_WORKBENCH.md`: case workbench model, trust states, and required sections.
-- `docs/V1_GUARANTEE_APPLICATION_OUTPUT.md`: guarantee company application output scope and template constraints.
-- `docs/PM_CONTROL.md`: PM-led multi-agent operating mode and role boundaries.
+- `docs/product/PRODUCT_TOPOLOGY.md`: product value topology and V1 product center.
+- `docs/product/V1_INPUT_FILE_MODEL.md`: input-side source file model and extraction-review principles.
+- `docs/product/V1_CASE_WORKBENCH.md`: case workbench model, trust states, and required sections.
+- `docs/product/V1_GUARANTEE_APPLICATION_OUTPUT.md`: guarantee company application output scope and template constraints.
+- `docs/product/V1_AI_CORRECTION_LEARNING.md`: implicit AI correction learning loop from user-confirmed review/save/export actions.
+- `docs/product/V1_AI_MODEL_SELECTION.md`: OpenAI model routing, Responses API surface, and AI runtime guardrails.
+- `docs/product/MULTI_TENANT_PERMISSION_MODEL.md`: tenant, membership, lifecycle-wide permissions, template governance, AI gates, and audit release gates.
+- `docs/operations/PM_CONTROL.md`: PM-led multi-agent operating mode and role boundaries.
 
 ## ADRs
 

@@ -1,0 +1,78 @@
+# Broker Desk Documentation Map
+
+This directory is organized by decision status and operating purpose.
+
+## Read Order
+
+For normal product, engineering, QA, or agent work, read in this order:
+
+1. `docs/PROJECT_MEMORY.md`
+2. `CONTEXT.md`
+3. The task-specific document listed below
+
+`docs/PROJECT_MEMORY.md` is the current routing layer. If it conflicts with another document, treat `PROJECT_MEMORY` as current and update the stale document.
+
+## Current Product Sources
+
+Files in `docs/product/` describe current product direction and product-owned models.
+
+| File | Purpose |
+| --- | --- |
+| `docs/product/PRODUCT_TOPOLOGY.md` | Product position, value topology, and priority rule. |
+| `docs/product/V1_INPUT_FILE_MODEL.md` | Source-file import, extraction, review, and trust model. |
+| `docs/product/V1_CASE_WORKBENCH.md` | Case workbench behavior, trust states, and review workflow. |
+| `docs/product/V1_GUARANTEE_APPLICATION_OUTPUT.md` | Guarantee-company application output model. |
+| `docs/product/CANONICAL_FIELD_CATALOG.md` | Standard case field catalog and aliases. |
+| `docs/product/PDF_TEMPLATE_AUTHORING_EXPERIENCE.md` | Internal PDF template authoring and calibration workflow. |
+| `docs/product/V1_AI_CORRECTION_LEARNING.md` | Correction-event and AI experience learning loop. |
+| `docs/product/V1_AI_MODEL_SELECTION.md` | OpenAI model routing and AI runtime boundary. |
+| `docs/product/MULTI_TENANT_PERMISSION_MODEL.md` | Tenant, membership, lifecycle-wide permissions, template governance, and release gates. |
+
+## Engineering Sources
+
+Files in `docs/engineering/` describe runtime, persistence, and operational architecture.
+
+| File | Purpose |
+| --- | --- |
+| `docs/engineering/RUNTIME_STABILITY_AND_ARCHITECTURE.md` | Dev/runtime stability rules and release-like verification guidance. |
+| `docs/engineering/POSTGRES_SETUP.md` | Postgres/Supabase setup and driver switching. |
+| `docs/engineering/postgres_schema.sql` | Manual SQL schema reference. |
+
+## Operations Sources
+
+Files in `docs/operations/` describe PM control, terminology, and market constraints.
+
+| File | Purpose |
+| --- | --- |
+| `docs/operations/PM_CONTROL.md` | Historical PM task board and multi-agent operating model. |
+| `docs/operations/JP_COMPLIANCE_CHECKLIST.md` | Japan real-estate compliance mapping checklist. |
+| `docs/operations/JA_TERMINOLOGY_STYLE_GUIDE.md` | Japanese terminology style guide. |
+
+## QA And Evidence
+
+| Directory | Purpose |
+| --- | --- |
+| `docs/acceptance/` | Formal acceptance reports and screenshots. |
+| `docs/design-audit/` | Visual audit evidence and screenshot comparisons. |
+| `docs/agents/` | Agent task briefs and domain read instructions. |
+
+## Archive
+
+`docs/archive/` contains historical documents that may explain earlier decisions but are not current source-of-truth documents.
+
+Before using archived material, check whether `docs/PROJECT_MEMORY.md`, `CONTEXT.md`, or a current `docs/product/` file supersedes it.
+
+## New Document Rule
+
+Do not add a new root-level document by default.
+
+Use this placement rule:
+
+- Product direction or domain model: `docs/product/`
+- Runtime, database, architecture, or deployment: `docs/engineering/`
+- PM process, compliance, terminology, or operating model: `docs/operations/`
+- Acceptance output or screenshots: `docs/acceptance/`
+- Agent prompt or reusable task brief: `docs/agents/`
+- Historical or superseded material: `docs/archive/`
+
+If a new document becomes durable product truth, add it to `docs/PROJECT_MEMORY.md` and this map.

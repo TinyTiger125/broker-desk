@@ -1,10 +1,8 @@
 import { NextResponse } from "next/server";
 import { getBrokerageCaseById, getDefaultUser, getGuaranteeApplicationDraft } from "@/lib/data";
 import { renderFriendsGuaranteePdf } from "@/lib/friends-guarantee-pdf";
-import {
-  buildGuaranteeApplicationReadiness,
-  getGuaranteeCompanyTemplate,
-} from "@/lib/guarantee-application";
+import { getGuaranteeCompanyTemplate } from "@/lib/guarantee-application";
+import { evaluateGuaranteeDownloadGate } from "@/lib/guarantee-download-gate";
 
 function safePdfFileName(value: string): string {
   return (value.replace(/[^\p{L}\p{N}_-]+/gu, "_").slice(0, 80) || "friends_guarantee_application") + ".pdf";
@@ -32,24 +30,28 @@ export async function GET(request: Request) {
     caseId,
     templateId: "friends_guarantee_individual_v1",
   });
-  const readinessGroups = buildGuaranteeApplicationReadiness({
+  const template = getGuaranteeCompanyTemplate("friends_guarantee_individual_v1");
+  const downloadGate = evaluateGuaranteeDownloadGate({
     brokerageCase,
-    template: getGuaranteeCompanyTemplate("friends_guarantee_individual_v1"),
+    template,
     draft,
   });
-  const unresolvedGroup = readinessGroups.find((group) => group.id === "unresolved");
-  const blockingMissingFields = unresolvedGroup?.fields.filter((field) => field.required) ?? [];
-  if (mode !== "preview" && blockingMissingFields.length > 0) {
+  if (mode !== "preview" && !downloadGate.canDownload) {
     return NextResponse.json(
       {
         error: "friends_guarantee_required_fields_missing",
-        missingCount: blockingMissingFields.length,
-        missingFields: blockingMissingFields.map((field) => ({
+        missingCount: downloadGate.missingFields.length,
+        missingFields: downloadGate.missingFields.map((field) => ({
           fieldKey: field.fieldKey,
           label: field.label,
           status: field.status,
+          actionUrl: field.actionUrl,
+          destination: field.destination,
         })),
-        previewUrl: `/guarantee-applications/friends-guarantee/preview?caseId=${encodeURIComponent(caseId)}`,
+        blockedReasons: downloadGate.blockedReasons,
+        previewUrl: "/guarantee-applications/friends-guarantee/preview?caseId=" + encodeURIComponent(caseId),
+        workbenchUrl: downloadGate.workbenchUrl,
+        draftUrl: downloadGate.draftUrl,
       },
       { status: 422 },
     );

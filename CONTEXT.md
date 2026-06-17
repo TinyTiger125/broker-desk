@@ -16,13 +16,39 @@ Broker Desk is not primarily:
 
 AI may assist extraction, uncertainty marking, and review guidance, but confirmed business facts must remain reviewable, editable, and attributable.
 
+AI improvement must be product-owned. Broker Desk should not depend on a model's private memory. User confirmations, edits, output adjustments, and review decisions should become durable correction evidence, scoped experience updates, and regression samples that can be retrieved for later AI tasks.
+
+Multi-tenant permissions must protect the complete document-work lifecycle, not only official PDF output. Tenant authority should be resolved through membership before a user can read, edit, extract, output, publish templates, call AI, or view audit records.
+
 ## Core Workflow
 
 The V1 workflow is:
 
 Source files -> input extraction -> extraction review -> case workbench -> confirmed case data -> guarantee application draft -> official PDF preview -> flattened PDF export or print.
 
+The backstage AI learning workflow is:
+
+AI extraction/output snapshot -> user review/edit/save -> confirmed snapshot -> correction event -> scoped experience update -> retrieval context for the next relevant AI task.
+
 ## Glossary
+
+### Tenant
+
+A real-estate company, branch office, or workspace that owns Broker Desk business data.
+
+A tenant owns cases, source files, extraction reviews, confirmed case data, output drafts, generated outputs, tenant templates, correction events, and audit logs.
+
+### User
+
+A login identity. A user may belong to multiple tenants.
+
+User identity alone does not grant business access. Access comes from membership in a tenant.
+
+### Membership
+
+The relationship between a user and a tenant, including role and status.
+
+Membership is the authority boundary for tenant-scoped data and actions.
 
 ### Source File
 
@@ -53,6 +79,22 @@ The case workbench is the product center. Input and output are convenience layer
 ### Confirmed Case Data
 
 Structured case data that can be used by outputs. Confirmed data may come from accepted extraction, user edits, or direct manual entry.
+
+### Canonical Field Catalog
+
+The product-owned dictionary of standard brokerage facts that Broker Desk knows how to collect, review, reuse, and output.
+
+The canonical field catalog is the logical wide table for the product. Individual inputs and outputs should map to it instead of inventing isolated field names.
+
+### Render Fragment
+
+A formatted or split piece of a canonical field used only for output layout, such as a birth-year cell, phone-number segment, postal-code digit, name family/given part, or address prefecture/rest part.
+
+Render fragments should not become broker-maintained case facts unless the business meaning is independently useful outside that output position.
+
+### Template-Specific Option
+
+A value or choice that belongs to one guarantee company template, such as a company plan checkbox, collection agency option, or special rider. Template-specific options may later become canonical fields only after multiple workflows need the same meaning.
 
 ### Trust State
 
@@ -87,6 +129,12 @@ A source form provided by a guarantee company. Its original lines, layout, and f
 
 Template-specific values and options prepared before final PDF output. Output drafts should consume confirmed case data and explicitly saved draft values, not raw extraction candidates.
 
+### Output Artifact
+
+A generated business output, such as a guarantee-company application, customer summary, lease package, owner notice, or report.
+
+An output artifact should keep the case id, tenant id, template version, input data snapshot, draft value snapshot, generated-by user, and audit trail needed to explain what was produced.
+
 ### Editable PDF Preview
 
 The preview surface where a broker can inspect, edit, add, move, resize, and align output fields before saving/exporting a flattened PDF.
@@ -98,6 +146,18 @@ The exported PDF where filled values are printed into the official template and 
 ### Template Calibration
 
 Internal work for aligning field boxes to official template positions. Users may perform light drag-and-drop adjustments, but the shipped template should be accurate enough that only minor corrections are needed.
+
+### Correction Event
+
+A structured record created when user-confirmed data differs from an AI/rule candidate or when the user adjusts an output preview. Correction events distinguish extraction errors, normalization errors, missing-source completions, conflict resolutions, template position errors, template format errors, and user/team preferences.
+
+### Experience Update
+
+A scoped, reviewable lesson generated from one or more correction events. It may guide later AI calls, template rules, or regression tests, but should not silently overwrite confirmed facts or become a global rule without a promotion gate.
+
+### AI Context Assembly
+
+The internal step that gathers current case data, source evidence, relevant correction history, template rules, and user/team preferences before an AI task. This is how Broker Desk gives a stateless model durable product memory.
 
 ### Merge Candidate
 

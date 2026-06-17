@@ -5,6 +5,9 @@ import type { InputFileExtractionResult } from "@/lib/input-file-extractor";
 
 export const dynamic = "force-dynamic";
 
+const MAX_IDENTITY_UPLOAD_BYTES = 25 * 1024 * 1024;
+const MAX_MULTIPART_OVERHEAD_BYTES = 1024 * 1024;
+
 type IdentityImportPayload = {
   kind: "input_file_extraction";
   headers: string[];
@@ -20,11 +23,18 @@ export async function POST(request: Request) {
   if (!user) {
     return NextResponse.json({ ok: false, error: "user_not_found" }, { status: 401 });
   }
+  const contentLength = Number(request.headers.get("content-length") ?? 0);
+  if (Number.isFinite(contentLength) && contentLength > MAX_IDENTITY_UPLOAD_BYTES + MAX_MULTIPART_OVERHEAD_BYTES) {
+    return NextResponse.json({ ok: false, error: "file_too_large", maxBytes: MAX_IDENTITY_UPLOAD_BYTES }, { status: 413 });
+  }
 
   const formData = await request.formData();
   const file = formData.get("identityDocumentFile");
   if (!(file instanceof File) || file.size === 0) {
     return NextResponse.json({ ok: false, error: "file_required" }, { status: 400 });
+  }
+  if (file.size > MAX_IDENTITY_UPLOAD_BYTES) {
+    return NextResponse.json({ ok: false, error: "file_too_large", maxBytes: MAX_IDENTITY_UPLOAD_BYTES }, { status: 413 });
   }
 
   const lowerName = file.name.toLowerCase();

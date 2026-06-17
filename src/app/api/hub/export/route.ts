@@ -15,7 +15,8 @@ function toCsv(rows: Array<Record<string, string | number | null | undefined>>) 
   if (rows.length === 0) return "";
   const headers = Object.keys(rows[0]);
   const escapeCell = (value: string | number | null | undefined) => {
-    const text = value == null ? "" : String(value);
+    const rawText = value == null ? "" : String(value);
+    const text = /^[=+\-@]/.test(rawText.trimStart()) ? `'${rawText}` : rawText;
     if (!/[",\n]/.test(text)) return text;
     return `"${text.replace(/"/g, "\"\"")}"`;
   };

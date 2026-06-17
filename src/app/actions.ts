@@ -31,6 +31,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
   addAttachment,
+  addCorrectionEvents,
   addAuditLog,
   addClient,
   addGeneratedOutput,
@@ -48,6 +49,7 @@ import {
   getClientById,
   getClientDetail,
   getDefaultUser,
+  getGuaranteeApplicationDraft,
   getOutputTemplateSettings,
   getQuotationById,
   listQuoteFormData,
@@ -64,6 +66,7 @@ import {
   setClientStageWithLog,
   setClientStage,
   updateImportJobMapping,
+  updateAiExperienceDraftStatus,
   updateOutputTemplateSettings,
   updateTaskStatus,
   updateClient,
@@ -71,6 +74,7 @@ import {
   updateQuotationStatus,
   type ExtractionReviewItem,
   type ExtractionReviewStatus,
+  type AiExperienceDraftStatus,
 } from "@/lib/data";
 import {
   getAttachmentStorageMode,
@@ -92,20 +96,41 @@ import {
 import { materializeExtractionReviewValue } from "@/lib/extraction-review-materialization";
 import { extractInputFileFromWorkbook, type InputFileExtractionResult } from "@/lib/input-file-extractor";
 import { extractIdentityDocumentFromBuffer } from "@/lib/identity-document-extractor";
+import { CASE_FIELD_KEYS, isKnownCaseFieldKey } from "@/lib/case-field-catalog";
 import { canonicalizeCaseFieldKey, clearCaseFieldValueAliases, getCaseFieldValue } from "@/lib/case-field-normalization";
+import { applyJapanesePostalCodeAddressCompletions } from "@/lib/japan-postal-code";
 import {
+  buildExtractionReviewCorrectionEvents,
+  buildGuaranteeDraftCorrectionEvents,
+  buildPdfPreviewCorrectionEvents,
+  buildWorkbenchCorrectionEvents,
+} from "@/lib/correction-event-builder";
+import {
+  buildGuaranteeApplicationReadiness,
   buildGuaranteeDraftReadiness,
+  findGuaranteeCompanyTemplate,
   getGuaranteeDraftFieldDefinitions,
-  getGuaranteeCompanyTemplate,
 } from "@/lib/guarantee-application";
 import {
+  FRIENDS_GUARANTEE_DELETED_OVERLAY_FIELDS_KEY,
   FRIENDS_GUARANTEE_LAYOUT_OVERRIDES_KEY,
+  FRIENDS_GUARANTEE_LAYOUT_OVERRIDE_VERSIONS_KEY,
   FRIENDS_GUARANTEE_CUSTOM_FIELDS_KEY,
+  GUARANTEE_CONFIRMED_OVERLAY_FIELDS_KEY,
   FRIENDS_GUARANTEE_DEFAULT_TEMPLATE_ID,
+  getFriendsGuaranteeCustomOverlayFields,
+  getFriendsGuaranteeEffectiveLayoutOverrides,
+  getGuaranteePdfTemplateConfig,
   hasFriendsGuaranteeLayoutOverrides,
   saveFriendsGuaranteeTemplateLayoutOverrides,
+  saveFriendsGuaranteeTemplateDeletedOverlayFieldKeys,
   saveFriendsGuaranteeTemplateCustomOverlayFields,
+  setFriendsGuaranteeCaseDeletedOverlayFieldKeys,
+  setFriendsGuaranteeCaseCustomOverlayFields,
+  setFriendsGuaranteeCaseLayoutOverrideVersion,
+  setGuaranteeConfirmedOverlayFieldKeys,
   sanitizeFriendsGuaranteeCustomOverlayFields,
+  sanitizeFriendsGuaranteeDeletedOverlayFieldKeys,
   sanitizeFriendsGuaranteeLayoutOverrides,
 } from "@/lib/friends-guarantee-pdf";
 import {
@@ -119,6 +144,7 @@ import {
   setCaseMergeHistory,
 } from "@/lib/case-merge";
 import { listHubContracts } from "@/lib/hub";
+import { draftAiExperiencesFromRecentCorrections } from "@/lib/ai-experience-job";
 import { getLocale, type Locale } from "@/lib/locale";
 import { createDocumentNumber, getDefaultOutputTemplateSettings, getOutputDocLabel, isOutputDocType } from "@/lib/output-doc";
 
@@ -233,7 +259,7 @@ function buildImportValidationMessage(input: {
 
 function safeReturnTo(value: FormDataEntryValue | null, fallback: string): string {
   const path = String(value ?? "").trim();
-  if (!path.startsWith("/")) return fallback;
+  if (!path.startsWith("/") || path.startsWith("//") || path.startsWith("/\\")) return fallback;
   return path;
 }
 
@@ -1948,6 +1974,79 @@ export async function applyOutputTemplateVersionAction(formData: FormData) {
   });
 }
 
+function isAiExperienceDraftStatus(value: string): value is AiExperienceDraftStatus {
+  return value === "draft" || value === "approved" || value === "rejected";
+}
+
+export async function draftAiExperiencesAction() {
+  const user = await getDefaultUser();
+  if (!user) {
+    throw new Error("担当ユーザーが見つかりません。");
+  }
+
+  const result = await draftAiExperiencesFromRecentCorrections({
+    userId: user.id,
+    limit: 200,
+    minEventsPerDraft: 2,
+  });
+
+  await addAuditLog({
+    userId: user.id,
+    action: "ai_experience_drafts_generated",
+    targetType: "ai_experience",
+    message: `AI経験草稿を生成しました: ${result.createdDrafts.length}件`,
+    context: {
+      createdDraftCount: result.createdDrafts.length,
+      skippedDuplicateCount: result.skippedDuplicateCount,
+      sourceEventCount: result.sourceEventCount,
+      draftIds: result.createdDrafts.map((draft) => draft.id),
+    },
+  });
+
+  revalidatePath("/settings/ai-experience");
+  redirect(`/settings/ai-experience?flash=experience_drafted&created=${result.createdDrafts.length}`);
+}
+
+export async function reviewAiExperienceDraftAction(formData: FormData) {
+  const user = await getDefaultUser();
+  if (!user) {
+    throw new Error("担当ユーザーが見つかりません。");
+  }
+
+  const draftId = String(formData.get("draftId") ?? "").trim();
+  const status = String(formData.get("status") ?? "").trim();
+  if (!draftId) throw new Error("AI経験草稿IDが不正です。");
+  if (!isAiExperienceDraftStatus(status) || status === "draft") {
+    throw new Error("AI経験草稿の審査ステータスが不正です。");
+  }
+
+  const updated = await updateAiExperienceDraftStatus({
+    userId: user.id,
+    draftId,
+    status,
+  });
+  if (!updated) throw new Error("AI経験草稿が見つかりません。");
+
+  await addAuditLog({
+    userId: user.id,
+    action: "ai_experience_draft_reviewed",
+    targetType: "ai_experience",
+    targetId: updated.id,
+    message: `AI経験草稿を${status === "approved" ? "承認" : "却下"}しました: ${updated.title}`,
+    context: {
+      draftId: updated.id,
+      status,
+      eventIds: updated.eventIds,
+      scopeCandidate: updated.scopeCandidate,
+      fieldKey: updated.fieldKey,
+      templateId: updated.templateId,
+    },
+  });
+
+  revalidatePath("/settings/ai-experience");
+  redirect(`/settings/ai-experience?flash=experience_reviewed&status=${status}`);
+}
+
 // ─── Excel 物件一括取込 ────────────────────────────────────────────
 
 type ExcelImportPayload = {
@@ -1970,6 +2069,7 @@ const WORKBENCH_FIELD_STATUS_KEY = "__workbenchFieldStatuses";
 const CASE_WORKBENCH_FIELD_KEYS = [
   "property.name",
   "property.roomNumber",
+  "property.postalCode",
   "property.address",
   "lease.moveInDate",
   "lease.rent",
@@ -1987,6 +2087,7 @@ const CASE_WORKBENCH_FIELD_KEYS = [
   "applicant.birthDate",
   "applicant.phone",
   "applicant.email",
+  "applicant.currentPostalCode",
   "applicant.currentAddress",
   "applicant.nationality",
   "applicant.identityDocumentType",
@@ -2004,6 +2105,7 @@ const CASE_WORKBENCH_FIELD_KEYS = [
   "applicant.employerName",
   "applicant.employerFurigana",
   "applicant.employerPhone",
+  "applicant.employerPostalCode",
   "applicant.employerAddress",
   "applicant.occupation",
   "applicant.jobType",
@@ -2018,7 +2120,9 @@ const CASE_WORKBENCH_FIELD_KEYS = [
   "guarantor.spouse",
   "guarantor.relationship",
   "guarantor.birthDate",
+  "guarantor.postalCode",
   "guarantor.address",
+  "guarantor.driverLicenseNumber",
   "guarantor.residenceYears",
   "guarantor.housingType",
   "guarantor.phone",
@@ -2037,7 +2141,9 @@ const CASE_WORKBENCH_FIELD_KEYS = [
   "emergencyContact.relationship",
   "emergencyContact.birthDate",
   "emergencyContact.phone",
+  "emergencyContact.postalCode",
   "emergencyContact.address",
+  "emergencyContact.driverLicenseNumber",
   "emergencyContact.residenceYears",
   "emergencyContact.housingType",
   "emergencyContact.employerName",
@@ -2080,21 +2186,27 @@ const CASE_WORKBENCH_FIELD_KEYS = [
   "guarantee.renewalFee",
 ] as const;
 
-function getCaseWorkbenchFieldKeysFromForm(formData: FormData): typeof CASE_WORKBENCH_FIELD_KEYS[number][] {
+function getCaseWorkbenchFieldKeysFromForm(formData: FormData): string[] {
   const requestedFields = String(formData.get("presentFieldKeysJson") ?? "").trim();
   if (!requestedFields) return [...CASE_WORKBENCH_FIELD_KEYS];
 
   try {
     const parsed = JSON.parse(requestedFields);
     if (!Array.isArray(parsed)) return [...CASE_WORKBENCH_FIELD_KEYS];
-    const allowed = new Set<string>(CASE_WORKBENCH_FIELD_KEYS);
+    const allowed = new Set<string>([...CASE_WORKBENCH_FIELD_KEYS, ...CASE_FIELD_KEYS]);
     const fieldKeys = parsed
       .map((value) => String(value).trim())
-      .filter((value): value is typeof CASE_WORKBENCH_FIELD_KEYS[number] => allowed.has(value));
+      .filter((value) => allowed.has(value));
     return fieldKeys.length > 0 ? [...new Set(fieldKeys)] : [...CASE_WORKBENCH_FIELD_KEYS];
   } catch {
     return [...CASE_WORKBENCH_FIELD_KEYS];
   }
+}
+
+function getCaseWorkbenchFieldDecision(formData: FormData, fieldKey: string): "confirmed" | "unknown" | "rejected" {
+  const decision = String(formData.get(`status:${fieldKey}`) ?? "confirmed").trim();
+  if (decision === "unknown" || decision === "rejected") return decision;
+  return "confirmed";
 }
 
 function safeHashAnchor(value: FormDataEntryValue | null): string {
@@ -2102,9 +2214,15 @@ function safeHashAnchor(value: FormDataEntryValue | null): string {
   return /^[a-zA-Z0-9_-]+$/.test(anchor) ? anchor : "";
 }
 
+function safeQueryToken(value: FormDataEntryValue | null): string {
+  const token = String(value ?? "").trim();
+  return /^[a-zA-Z0-9_-]+$/.test(token) ? token : "";
+}
+
 const GUARANTEE_APPLICATION_PREVIEW_CASE_FIELD_KEYS = [
   "property.name",
   "property.roomNumber",
+  "property.postalCode",
   "property.address",
   "lease.moveInDate",
   "lease.rent",
@@ -2121,6 +2239,7 @@ const GUARANTEE_APPLICATION_PREVIEW_CASE_FIELD_KEYS = [
   "applicant.spouse",
   "applicant.birthDate",
   "applicant.phone",
+  "applicant.currentPostalCode",
   "applicant.currentAddress",
   "applicant.nationality",
   "applicant.identityDocumentType",
@@ -2138,6 +2257,7 @@ const GUARANTEE_APPLICATION_PREVIEW_CASE_FIELD_KEYS = [
   "applicant.employerFurigana",
   "applicant.employerName",
   "applicant.employerPhone",
+  "applicant.employerPostalCode",
   "applicant.employerAddress",
   "applicant.occupation",
   "applicant.jobType",
@@ -2151,7 +2271,9 @@ const GUARANTEE_APPLICATION_PREVIEW_CASE_FIELD_KEYS = [
   "guarantor.spouse",
   "guarantor.relationship",
   "guarantor.birthDate",
+  "guarantor.postalCode",
   "guarantor.address",
+  "guarantor.driverLicenseNumber",
   "guarantor.residenceYears",
   "guarantor.housingType",
   "guarantor.phone",
@@ -2169,7 +2291,9 @@ const GUARANTEE_APPLICATION_PREVIEW_CASE_FIELD_KEYS = [
   "emergencyContact.spouse",
   "emergencyContact.relationship",
   "emergencyContact.birthDate",
+  "emergencyContact.postalCode",
   "emergencyContact.address",
+  "emergencyContact.driverLicenseNumber",
   "emergencyContact.residenceYears",
   "emergencyContact.housingType",
   "emergencyContact.phone",
@@ -2209,6 +2333,18 @@ const GUARANTEE_APPLICATION_PREVIEW_CASE_FIELD_KEYS = [
   "management.staffName",
 ] as const;
 
+const LEGACY_GUARANTEE_APPLICATION_PREVIEW_CASE_FIELD_KEYS = new Set<string>(GUARANTEE_APPLICATION_PREVIEW_CASE_FIELD_KEYS);
+
+function getSubmittedGuaranteePreviewCaseFieldKeys(formData: FormData): string[] {
+  const fieldKeys = new Set<string>();
+  for (const key of formData.keys()) {
+    if (!key.startsWith("field:")) continue;
+    const fieldKey = key.slice("field:".length).trim();
+    if (isKnownCaseFieldKey(fieldKey) || LEGACY_GUARANTEE_APPLICATION_PREVIEW_CASE_FIELD_KEYS.has(fieldKey)) fieldKeys.add(fieldKey);
+  }
+  return [...fieldKeys];
+}
+
 function isExtractionReviewStatus(value: string): value is ExtractionReviewStatus {
   return (
     value === "suggested" ||
@@ -2241,6 +2377,7 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
   if (!caseId) throw new Error("案件IDが不正です。");
   const brokerageCase = await getBrokerageCaseById({ userId: user.id, caseId });
   if (!brokerageCase) throw new Error("案件が見つかりません。");
+  const reviewItems = await listExtractionReviewItems({ userId: user.id, caseId });
 
   const nextConfirmedData: Record<string, unknown> = { ...brokerageCase.confirmedDataJson };
   const existingStatusMap =
@@ -2249,13 +2386,32 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
       : {};
 
   const fieldKeysToSave = getCaseWorkbenchFieldKeysFromForm(formData);
+  const useCandidateFieldKey = String(formData.get("useCandidateField") ?? "").trim();
+  const saveMode = String(formData.get("saveMode") ?? "").trim();
+  const shouldBatchUseCandidates = saveMode === "confirm_visible_candidates" || saveMode === "confirm_trusted_candidates";
   fieldKeysToSave.forEach((fieldKey) => {
     const previousValue = getCaseFieldValue(brokerageCase.confirmedDataJson, fieldKey);
-    const nextValue = String(formData.get(`field:${fieldKey}`) ?? "").trim();
+    let nextValue = String(formData.get(`field:${fieldKey}`) ?? "").trim();
+    let decision = getCaseWorkbenchFieldDecision(formData, fieldKey);
+    if (fieldKey === useCandidateFieldKey || shouldBatchUseCandidates) {
+      const candidateValue = String(formData.get(`candidate:${fieldKey}`) ?? "").trim();
+      if (candidateValue) {
+        nextValue = candidateValue;
+        decision = "confirmed";
+      }
+    }
+    if (decision === "unknown" || decision === "rejected") {
+      clearCaseFieldValueAliases(nextConfirmedData, fieldKey);
+      existingStatusMap[fieldKey] = decision;
+      return;
+    }
+
     if (nextValue) {
       nextConfirmedData[fieldKey] = nextValue;
       if (nextValue !== previousValue) {
         existingStatusMap[fieldKey] = previousValue ? "edited" : "confirmed";
+      } else if (existingStatusMap[fieldKey] === "unknown" || existingStatusMap[fieldKey] === "rejected" || !existingStatusMap[fieldKey]) {
+        existingStatusMap[fieldKey] = "confirmed";
       }
     } else {
       clearCaseFieldValueAliases(nextConfirmedData, fieldKey);
@@ -2263,13 +2419,35 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
     }
   });
 
+  const postalCompletionResult = applyJapanesePostalCodeAddressCompletions({
+    confirmedData: nextConfirmedData,
+    statusMap: existingStatusMap,
+  });
+
   nextConfirmedData[WORKBENCH_FIELD_STATUS_KEY] = existingStatusMap;
+  const eventFieldKeys = [...new Set([...fieldKeysToSave, ...postalCompletionResult.completedFieldKeys])];
+  const labelsByFieldKey = Object.fromEntries(eventFieldKeys.map((fieldKey) => [fieldKey, fieldKey]));
+  const correctionEventDrafts = buildWorkbenchCorrectionEvents({
+    caseId,
+    trigger: "case_workbench_save",
+    fieldKeys: eventFieldKeys,
+    labelsByFieldKey,
+    beforeData: brokerageCase.confirmedDataJson,
+    afterData: nextConfirmedData,
+    reviewItems,
+  });
+
   const updatedCase = await updateBrokerageCaseConfirmedData({
     userId: user.id,
     caseId,
     confirmedDataJson: nextConfirmedData,
   });
   if (!updatedCase) throw new Error("案件の保存に失敗しました。");
+
+  const correctionEvents = await addCorrectionEvents({
+    userId: user.id,
+    events: correctionEventDrafts,
+  });
 
   await addAuditLog({
     userId: user.id,
@@ -2280,13 +2458,117 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
     context: {
       caseId,
       confirmedFieldCount: Object.keys(nextConfirmedData).filter((key) => key !== WORKBENCH_FIELD_STATUS_KEY).length,
+      postalCodeLookupCount: postalCompletionResult.lookupCount,
+      postalCodeConflictCount: postalCompletionResult.conflictCount,
+      correctionEventCount: correctionEvents.length,
+      correctionEventIds: correctionEvents.map((event) => event.id),
     },
   });
 
   revalidatePath(`/cases/${caseId}`);
   revalidatePath("/output-center");
   const returnAnchor = safeHashAnchor(formData.get("returnAnchor"));
-  redirect(`/cases/${caseId}?flash=case_workbench_saved${returnAnchor ? `#${returnAnchor}` : ""}`);
+  const guaranteeTemplate = safeQueryToken(formData.get("guaranteeTemplate"));
+  const redirectParams = new URLSearchParams();
+  if (guaranteeTemplate) redirectParams.set("guaranteeTemplate", guaranteeTemplate);
+  redirectParams.set("flash", "case_workbench_saved");
+  redirect(`/cases/${caseId}?${redirectParams.toString()}${returnAnchor ? `#${returnAnchor}` : ""}`);
+}
+
+export async function saveGuaranteeApplicationDraftAction(formData: FormData) {
+  const user = await getDefaultUser();
+  if (!user) throw new Error("担当ユーザーが見つかりません。");
+
+  const caseId = String(formData.get("caseId") ?? "").trim();
+  if (!caseId) throw new Error("案件IDが不正です。");
+  const templateId = String(formData.get("templateId") ?? FRIENDS_GUARANTEE_DEFAULT_TEMPLATE_ID).trim() || FRIENDS_GUARANTEE_DEFAULT_TEMPLATE_ID;
+  const template = findGuaranteeCompanyTemplate(templateId);
+  if (!template) throw new Error("保証会社テンプレートが見つかりません。");
+
+  const brokerageCase = await getBrokerageCaseById({ userId: user.id, caseId });
+  if (!brokerageCase) throw new Error("案件が見つかりません。");
+
+  const draftDefinitions = getGuaranteeDraftFieldDefinitions(template.id);
+  const fieldValuesJson: Record<string, unknown> = {};
+  const fieldStatusesJson: Record<string, string> = {};
+  draftDefinitions.forEach((definition) => {
+    const value = String(formData.get(`draft:${definition.fieldKey}`) ?? "").trim();
+    if (!value || value === "未確認" || value === "未定") return;
+    fieldValuesJson[definition.fieldKey] = value;
+    fieldStatusesJson[definition.fieldKey] = "confirmed";
+  });
+
+  const draftReadiness = buildGuaranteeDraftReadiness({
+    id: "case-workbench",
+    userId: user.id,
+    caseId,
+    templateId: template.id,
+    companyCode: template.companyCode,
+    status: "draft",
+    fieldValuesJson,
+    fieldStatusesJson,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  }, template.id);
+
+  const previousDraft = await getGuaranteeApplicationDraft({ userId: user.id, caseId, templateId: template.id });
+  const draft = await saveGuaranteeApplicationDraft({
+    userId: user.id,
+    caseId,
+    templateId: template.id,
+    companyCode: template.companyCode,
+    status: draftReadiness.status,
+    fieldValuesJson,
+    fieldStatusesJson,
+    lastReviewedAt: new Date(),
+  });
+  const draftCorrectionEvents = await addCorrectionEvents({
+    userId: user.id,
+    events: buildGuaranteeDraftCorrectionEvents({
+      caseId,
+      templateId: template.id,
+      fieldKeys: draftDefinitions.map((definition) => definition.fieldKey),
+      labelsByFieldKey: Object.fromEntries(draftDefinitions.map((definition) => [definition.fieldKey, definition.label])),
+      beforeData: previousDraft?.fieldValuesJson ?? {},
+      afterData: fieldValuesJson,
+    }),
+  });
+
+  await addAuditLog({
+    userId: user.id,
+    action: "guarantee_application_draft_saved",
+    targetType: "import_job",
+    targetId: caseId,
+    message: `${template.companyDisplayName}会社別草稿を保存しました: ${brokerageCase.caseTitle}`,
+    context: {
+      caseId,
+      draftId: draft.id,
+      templateId: draft.templateId,
+      companyCode: draft.companyCode,
+      status: draft.status,
+      savedFieldCount: Object.keys(fieldValuesJson).length,
+      requiredMissingCount: draftReadiness.requiredMissingCount,
+      correctionEventCount: draftCorrectionEvents.length,
+      correctionEventIds: draftCorrectionEvents.map((event) => event.id),
+    },
+  });
+
+  revalidatePath(`/cases/${caseId}`);
+  revalidatePath("/output-center");
+  revalidatePath(`/guarantee-applications/${template.id}/preview`);
+  redirect(
+    `/cases/${encodeURIComponent(caseId)}?guaranteeTemplate=${encodeURIComponent(template.id)}&flash=guarantee_draft_saved#guarantee-template-drafts`,
+  );
+}
+
+function countSubmittedCustomOverlayFieldItems(value: FormDataEntryValue | null): number | null {
+  if (typeof value !== "string") return null;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed) ? parsed.length : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function saveGuaranteeApplicationPreviewAction(formData: FormData) {
@@ -2296,10 +2578,20 @@ export async function saveGuaranteeApplicationPreviewAction(formData: FormData) 
   const caseId = String(formData.get("caseId") ?? "").trim();
   if (!caseId) throw new Error("案件IDが不正です。");
   const templateId = String(formData.get("templateId") ?? FRIENDS_GUARANTEE_DEFAULT_TEMPLATE_ID).trim() || FRIENDS_GUARANTEE_DEFAULT_TEMPLATE_ID;
-  const template = getGuaranteeCompanyTemplate(templateId);
+  const template = findGuaranteeCompanyTemplate(templateId);
+  if (!template) throw new Error("保証会社テンプレートが見つかりません。");
 
   const brokerageCase = await getBrokerageCaseById({ userId: user.id, caseId });
   if (!brokerageCase) throw new Error("案件が見つかりません。");
+  const previousDraft = await getGuaranteeApplicationDraft({ userId: user.id, caseId, templateId: template.id });
+  const previousLayoutOverrides = getFriendsGuaranteeEffectiveLayoutOverrides({
+    templateId: template.id,
+    confirmedDataJson: brokerageCase.confirmedDataJson,
+  });
+  const previousCustomOverlayFields = getFriendsGuaranteeCustomOverlayFields({
+    templateId: template.id,
+    confirmedDataJson: brokerageCase.confirmedDataJson,
+  });
 
   const nextConfirmedData: Record<string, unknown> = { ...brokerageCase.confirmedDataJson };
   const existingStatusMap =
@@ -2307,7 +2599,8 @@ export async function saveGuaranteeApplicationPreviewAction(formData: FormData) 
       ? { ...(nextConfirmedData[WORKBENCH_FIELD_STATUS_KEY] as Record<string, string>) }
       : {};
 
-  GUARANTEE_APPLICATION_PREVIEW_CASE_FIELD_KEYS.forEach((fieldKey) => {
+  const submittedPreviewCaseFieldKeys = getSubmittedGuaranteePreviewCaseFieldKeys(formData);
+  submittedPreviewCaseFieldKeys.forEach((fieldKey) => {
     const previousValue = getCaseFieldValue(brokerageCase.confirmedDataJson, fieldKey);
     const nextValue = String(formData.get(`field:${fieldKey}`) ?? "").trim();
     if (nextValue) {
@@ -2320,42 +2613,141 @@ export async function saveGuaranteeApplicationPreviewAction(formData: FormData) 
       delete existingStatusMap[fieldKey];
     }
   });
+  const postalCompletionResult = applyJapanesePostalCodeAddressCompletions({
+    confirmedData: nextConfirmedData,
+    statusMap: existingStatusMap,
+  });
   nextConfirmedData[WORKBENCH_FIELD_STATUS_KEY] = existingStatusMap;
 
   const layoutOverridesInput = formData.get("layoutOverrides");
   const layoutOverrides =
     typeof layoutOverridesInput === "string"
-      ? sanitizeFriendsGuaranteeLayoutOverrides(layoutOverridesInput)
+      ? sanitizeFriendsGuaranteeLayoutOverrides(layoutOverridesInput, template.id)
       : {};
+  const deletedOverlayFieldsInput = formData.get("deletedOverlayFields");
+  const deletedOverlayFieldKeys =
+    typeof deletedOverlayFieldsInput === "string"
+      ? sanitizeFriendsGuaranteeDeletedOverlayFieldKeys(deletedOverlayFieldsInput, template.id)
+      : [];
+  const layoutSaveScope = formData.get("layoutSaveScope") === "template" ? "template" : "case";
   const customFieldsInput = formData.get("customOverlayFields");
-  const customOverlayFields = sanitizeFriendsGuaranteeCustomOverlayFields(customFieldsInput).map((field) => {
+  const customFieldsSubmitted = typeof customFieldsInput === "string";
+  const submittedCustomFieldCount = countSubmittedCustomOverlayFieldItems(customFieldsInput);
+  const customOverlayFields = sanitizeFriendsGuaranteeCustomOverlayFields(customFieldsInput, template.id).map((field) => {
     const nextValue = String(formData.get(`field:${field.fieldKey}`) ?? field.value ?? "").trim();
     const override = layoutOverrides[field.fieldKey]?.box;
     return {
       ...field,
-      value: nextValue,
+      value: field.sourceFieldKey ? "" : nextValue,
       box: override ?? field.box,
       maxWidth: Math.max(8, (override ?? field.box).width - 6),
     };
   });
-  if (customOverlayFields.length > 0) {
-    nextConfirmedData[FRIENDS_GUARANTEE_CUSTOM_FIELDS_KEY] = customOverlayFields;
+  if (customFieldsSubmitted && submittedCustomFieldCount === null) {
+    throw new Error("追加欄の保存データを読み取れませんでした。テンプレートは保存していません。");
+  }
+  if (
+    customFieldsSubmitted &&
+    typeof submittedCustomFieldCount === "number" &&
+    customOverlayFields.length < submittedCustomFieldCount
+  ) {
+    throw new Error(
+      `追加欄の一部が保存前の検証で失敗しました。テンプレートは保存していません。送信${submittedCustomFieldCount}件 / 保存可能${customOverlayFields.length}件。`,
+    );
+  }
+
+  const nextCaseCustomOverlayFields = setFriendsGuaranteeCaseCustomOverlayFields({
+    currentValue: nextConfirmedData[FRIENDS_GUARANTEE_CUSTOM_FIELDS_KEY],
+    templateId: template.id,
+    fields: layoutSaveScope === "template" ? [] : customOverlayFields,
+  });
+  if (Object.keys(nextCaseCustomOverlayFields).length > 0) {
+    nextConfirmedData[FRIENDS_GUARANTEE_CUSTOM_FIELDS_KEY] = nextCaseCustomOverlayFields;
   } else {
     delete nextConfirmedData[FRIENDS_GUARANTEE_CUSTOM_FIELDS_KEY];
   }
 
-  const layoutSaveScope = formData.get("layoutSaveScope") === "template" ? "template" : "case";
+  const pdfTemplateConfig = getGuaranteePdfTemplateConfig(template.id);
+  const confirmedOverlayFieldKeys = new Set<string>();
+  [...pdfTemplateConfig.overlayFields, ...customOverlayFields]
+    .filter((field) => !deletedOverlayFieldKeys.includes(field.fieldKey))
+    .forEach((field) => {
+      const value = String(formData.get(`field:${field.fieldKey}`) ?? "").trim();
+      if (!value) return;
+      confirmedOverlayFieldKeys.add(field.fieldKey);
+      if (field.sourceFieldKey) confirmedOverlayFieldKeys.add(field.sourceFieldKey);
+    });
+  const confirmedOverlayFieldsByTemplate = setGuaranteeConfirmedOverlayFieldKeys({
+    currentValue: nextConfirmedData[GUARANTEE_CONFIRMED_OVERLAY_FIELDS_KEY],
+    templateId: template.id,
+    fieldKeys: confirmedOverlayFieldKeys,
+  });
+  if (Object.keys(confirmedOverlayFieldsByTemplate).length > 0) {
+    nextConfirmedData[GUARANTEE_CONFIRMED_OVERLAY_FIELDS_KEY] = confirmedOverlayFieldsByTemplate;
+  } else {
+    delete nextConfirmedData[GUARANTEE_CONFIRMED_OVERLAY_FIELDS_KEY];
+  }
+
   const layoutDirty = formData.get("layoutDirty") === "true";
   const layoutOverrideCount = Object.keys(layoutOverrides).length;
   if (typeof layoutOverridesInput === "string" && (layoutSaveScope === "template" || layoutDirty)) {
     if (layoutSaveScope === "template") {
       saveFriendsGuaranteeTemplateLayoutOverrides(layoutOverrides, template.id);
-      saveFriendsGuaranteeTemplateCustomOverlayFields(customOverlayFields, template.id);
+      saveFriendsGuaranteeTemplateDeletedOverlayFieldKeys(deletedOverlayFieldKeys, template.id);
+      if (customFieldsSubmitted) {
+        saveFriendsGuaranteeTemplateCustomOverlayFields(customOverlayFields, template.id);
+      }
       delete nextConfirmedData[FRIENDS_GUARANTEE_LAYOUT_OVERRIDES_KEY];
+      delete nextConfirmedData[FRIENDS_GUARANTEE_DELETED_OVERLAY_FIELDS_KEY];
+      const nextLayoutVersions = setFriendsGuaranteeCaseLayoutOverrideVersion({
+        currentValue: nextConfirmedData[FRIENDS_GUARANTEE_LAYOUT_OVERRIDE_VERSIONS_KEY],
+        templateId: template.id,
+        enabled: false,
+      });
+      if (Object.keys(nextLayoutVersions).length > 0) nextConfirmedData[FRIENDS_GUARANTEE_LAYOUT_OVERRIDE_VERSIONS_KEY] = nextLayoutVersions;
+      else delete nextConfirmedData[FRIENDS_GUARANTEE_LAYOUT_OVERRIDE_VERSIONS_KEY];
     } else if (hasFriendsGuaranteeLayoutOverrides(layoutOverrides)) {
       nextConfirmedData[FRIENDS_GUARANTEE_LAYOUT_OVERRIDES_KEY] = layoutOverrides;
+      const nextDeletedFields = setFriendsGuaranteeCaseDeletedOverlayFieldKeys({
+        currentValue: nextConfirmedData[FRIENDS_GUARANTEE_DELETED_OVERLAY_FIELDS_KEY],
+        templateId: template.id,
+        fieldKeys: deletedOverlayFieldKeys,
+      });
+      if (Object.keys(nextDeletedFields).length > 0) nextConfirmedData[FRIENDS_GUARANTEE_DELETED_OVERLAY_FIELDS_KEY] = nextDeletedFields;
+      else delete nextConfirmedData[FRIENDS_GUARANTEE_DELETED_OVERLAY_FIELDS_KEY];
+      nextConfirmedData[FRIENDS_GUARANTEE_LAYOUT_OVERRIDE_VERSIONS_KEY] = setFriendsGuaranteeCaseLayoutOverrideVersion({
+        currentValue: nextConfirmedData[FRIENDS_GUARANTEE_LAYOUT_OVERRIDE_VERSIONS_KEY],
+        templateId: template.id,
+        enabled: true,
+      });
+    } else if (deletedOverlayFieldKeys.length > 0) {
+      delete nextConfirmedData[FRIENDS_GUARANTEE_LAYOUT_OVERRIDES_KEY];
+      nextConfirmedData[FRIENDS_GUARANTEE_DELETED_OVERLAY_FIELDS_KEY] = setFriendsGuaranteeCaseDeletedOverlayFieldKeys({
+        currentValue: nextConfirmedData[FRIENDS_GUARANTEE_DELETED_OVERLAY_FIELDS_KEY],
+        templateId: template.id,
+        fieldKeys: deletedOverlayFieldKeys,
+      });
+      nextConfirmedData[FRIENDS_GUARANTEE_LAYOUT_OVERRIDE_VERSIONS_KEY] = setFriendsGuaranteeCaseLayoutOverrideVersion({
+        currentValue: nextConfirmedData[FRIENDS_GUARANTEE_LAYOUT_OVERRIDE_VERSIONS_KEY],
+        templateId: template.id,
+        enabled: true,
+      });
     } else {
       delete nextConfirmedData[FRIENDS_GUARANTEE_LAYOUT_OVERRIDES_KEY];
+      const nextDeletedFields = setFriendsGuaranteeCaseDeletedOverlayFieldKeys({
+        currentValue: nextConfirmedData[FRIENDS_GUARANTEE_DELETED_OVERLAY_FIELDS_KEY],
+        templateId: template.id,
+        fieldKeys: [],
+      });
+      if (Object.keys(nextDeletedFields).length > 0) nextConfirmedData[FRIENDS_GUARANTEE_DELETED_OVERLAY_FIELDS_KEY] = nextDeletedFields;
+      else delete nextConfirmedData[FRIENDS_GUARANTEE_DELETED_OVERLAY_FIELDS_KEY];
+      const nextLayoutVersions = setFriendsGuaranteeCaseLayoutOverrideVersion({
+        currentValue: nextConfirmedData[FRIENDS_GUARANTEE_LAYOUT_OVERRIDE_VERSIONS_KEY],
+        templateId: template.id,
+        enabled: false,
+      });
+      if (Object.keys(nextLayoutVersions).length > 0) nextConfirmedData[FRIENDS_GUARANTEE_LAYOUT_OVERRIDE_VERSIONS_KEY] = nextLayoutVersions;
+      else delete nextConfirmedData[FRIENDS_GUARANTEE_LAYOUT_OVERRIDE_VERSIONS_KEY];
     }
   }
 
@@ -2367,7 +2759,8 @@ export async function saveGuaranteeApplicationPreviewAction(formData: FormData) 
 
   const fieldValuesJson: Record<string, unknown> = {};
   const fieldStatusesJson: Record<string, string> = {};
-  getGuaranteeDraftFieldDefinitions(template.id).forEach((definition) => {
+  const draftDefinitions = getGuaranteeDraftFieldDefinitions(template.id);
+  draftDefinitions.forEach((definition) => {
     const value = String(formData.get(`draft:${definition.fieldKey}`) ?? "").trim();
     if (!value || value === "未確認" || value === "未定") return;
     fieldValuesJson[definition.fieldKey] = value;
@@ -2396,6 +2789,45 @@ export async function saveGuaranteeApplicationPreviewAction(formData: FormData) 
     fieldStatusesJson,
     lastReviewedAt: new Date(),
   });
+  const readinessLabels = Object.fromEntries(
+    buildGuaranteeApplicationReadiness({ brokerageCase, template, draft: previousDraft })
+      .flatMap((group) => group.fields)
+      .map((field) => [field.fieldKey, field.label]),
+  );
+  const overlayLabels = Object.fromEntries(
+    [...pdfTemplateConfig.overlayFields, ...previousCustomOverlayFields, ...customOverlayFields].flatMap((field) => [
+      [field.fieldKey, field.label],
+      field.sourceFieldKey ? [field.sourceFieldKey, field.label] : [],
+    ]).filter((entry): entry is [string, string] => entry.length === 2),
+  );
+  const draftLabels = Object.fromEntries(draftDefinitions.map((definition) => [definition.fieldKey, definition.label]));
+  const previewCorrectionEvents = await addCorrectionEvents({
+    userId: user.id,
+    events: buildPdfPreviewCorrectionEvents({
+      caseId,
+      templateId: template.id,
+      fieldKeys: [...submittedPreviewCaseFieldKeys, ...draftDefinitions.map((definition) => definition.fieldKey)],
+      labelsByFieldKey: {
+        ...readinessLabels,
+        ...overlayLabels,
+        ...draftLabels,
+      },
+      beforeData: {
+        ...brokerageCase.confirmedDataJson,
+        ...(previousDraft?.fieldValuesJson ?? {}),
+      },
+      afterData: {
+        ...nextConfirmedData,
+        ...fieldValuesJson,
+      },
+      layoutDirty,
+      layoutSaveScope,
+      previousLayoutOverrides,
+      nextLayoutOverrides: layoutOverrides,
+      previousCustomOverlayFields,
+      nextCustomOverlayFields: customOverlayFields,
+    }),
+  });
 
   await addAuditLog({
     userId: user.id,
@@ -2408,10 +2840,15 @@ export async function saveGuaranteeApplicationPreviewAction(formData: FormData) 
       draftId: draft.id,
       templateId: draft.templateId,
       completedDraftFieldCount: Object.keys(fieldValuesJson).length,
-      editedPreviewFieldCount: GUARANTEE_APPLICATION_PREVIEW_CASE_FIELD_KEYS.length,
+      editedPreviewFieldCount: submittedPreviewCaseFieldKeys.length,
       layoutOverrideCount,
+      deletedOverlayFieldCount: deletedOverlayFieldKeys.length,
       layoutSaveScope,
       customOverlayFieldCount: customOverlayFields.length,
+      postalCodeLookupCount: postalCompletionResult.lookupCount,
+      postalCodeConflictCount: postalCompletionResult.conflictCount,
+      correctionEventCount: previewCorrectionEvents.length,
+      correctionEventIds: previewCorrectionEvents.map((event) => event.id),
     },
   });
 
@@ -2717,6 +3154,9 @@ export async function saveExtractionReviewAction(formData: FormData) {
       reviewedAt,
     };
   });
+  const postalCompletionResult = applyJapanesePostalCodeAddressCompletions({
+    confirmedData: confirmedDataJson,
+  });
 
   const mergeTargetCaseId = String(formData.get("mergeTargetCaseId") ?? "").trim();
   const mergeConfirmed = parseCheckbox(formData.get("mergeConfirm"));
@@ -2775,6 +3215,13 @@ export async function saveExtractionReviewAction(formData: FormData) {
       reviewItems,
     });
     if (!brokerageCase) throw new Error("案件の合併保存に失敗しました。");
+    const correctionEvents = await addCorrectionEvents({
+      userId: user.id,
+      events: buildExtractionReviewCorrectionEvents({
+        caseId: brokerageCase.id,
+        reviewItems,
+      }),
+    });
 
     await addAuditLog({
       userId: user.id,
@@ -2788,6 +3235,8 @@ export async function saveExtractionReviewAction(formData: FormData) {
         confidenceScore: candidate.confidenceScore,
         addedFieldCount: mergedData.addedFields.length,
         conflictFieldCount: mergedData.conflictFields.length,
+        correctionEventCount: correctionEvents.length,
+        correctionEventIds: correctionEvents.map((event) => event.id),
       },
     });
 
@@ -2828,6 +3277,13 @@ export async function saveExtractionReviewAction(formData: FormData) {
       reviewItems,
     });
   }
+  const correctionEvents = await addCorrectionEvents({
+    userId: user.id,
+    events: buildExtractionReviewCorrectionEvents({
+      caseId: brokerageCase.id,
+      reviewItems,
+    }),
+  });
 
   await addAuditLog({
     userId: user.id,
@@ -2839,6 +3295,10 @@ export async function saveExtractionReviewAction(formData: FormData) {
       caseId: brokerageCase.id,
       confirmedFieldCount: Object.keys(confirmedDataJson).length,
       reviewItemCount: reviewItems.length,
+      correctionEventCount: correctionEvents.length,
+      correctionEventIds: correctionEvents.map((event) => event.id),
+      postalCodeLookupCount: postalCompletionResult.lookupCount,
+      postalCodeConflictCount: postalCompletionResult.conflictCount,
     },
   });
 

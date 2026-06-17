@@ -264,8 +264,10 @@ export function PdfmeOfficialTemplateDesigner({
                   setLayoutSaveScope(scope);
                   setDirty(true);
                 }}
-                className={`rounded-md px-2.5 py-1.5 text-xs font-black ${
-                  layoutSaveScope === scope ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-slate-100"
+                className={`rounded-md border px-2.5 py-1.5 text-xs font-black transition ${
+                  layoutSaveScope === scope
+                    ? "border-[#001e40] bg-[#e8f0ff] text-[#001e40] shadow-sm"
+                    : "border-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-950"
                 }`}
               >
                 {label}

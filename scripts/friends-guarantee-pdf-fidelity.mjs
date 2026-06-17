@@ -2,9 +2,20 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { PDFDocument } from "pdf-lib";
 
+const templateId = process.env.TEMPLATE_ID ?? "friends_guarantee_individual_v1";
+const sourcePdfByTemplate = {
+  zenhoren_individual_v1: "/Users/laineyzhu/Desktop/房产专家资料库/１全保連.pdf",
+  nihon_safety_individual_v1: "/Users/laineyzhu/Desktop/房产专家资料库/日本セーフティー(1).pdf",
+  j_lease_individual_v1: "/Users/laineyzhu/Desktop/房产专家资料库/３Jリース.pdf",
+  insure_individual_v1: "/Users/laineyzhu/Desktop/房产专家资料库/４インシュア.pdf",
+  friends_guarantee_individual_v1: "/Users/laineyzhu/Desktop/房产专家资料库/５ふれんず保証.pdf",
+};
 const sourcePath =
-  process.env.FRIENDS_GUARANTEE_TEMPLATE_PATH ?? "/Users/laineyzhu/Desktop/房产专家资料库/５ふれんず保証.pdf";
-const outputPath = process.env.OUTPUT_PDF ?? "/tmp/broker-desk-friends-guarantee-smoke.pdf";
+  process.env.SOURCE_PDF ??
+  process.env.FRIENDS_GUARANTEE_TEMPLATE_PATH ??
+  sourcePdfByTemplate[templateId] ??
+  sourcePdfByTemplate.friends_guarantee_individual_v1;
+const outputPath = process.env.OUTPUT_PDF ?? `/tmp/broker-desk-${templateId}-smoke.pdf`;
 const baseUrl = process.env.BASE_URL?.replace(/\/$/, "");
 const caseId = process.env.CASE_ID ?? "case_fixture_friends_guarantee_pdf";
 const mode = process.env.PDF_MODE;
@@ -24,7 +35,7 @@ if (!existsSync(sourcePath)) {
 }
 
 if (baseUrl) {
-  const url = `${baseUrl}/api/guarantee-applications/friends-guarantee/download?caseId=${encodeURIComponent(caseId)}${mode ? `&mode=${encodeURIComponent(mode)}` : ""}`;
+  const url = `${baseUrl}/api/guarantee-applications/${encodeURIComponent(templateId)}/download?caseId=${encodeURIComponent(caseId)}${mode ? `&mode=${encodeURIComponent(mode)}` : ""}`;
   const response = await fetch(url);
   assert(response.ok, `download failed with HTTP ${response.status}`);
   const contentType = response.headers.get("content-type") ?? "";
@@ -40,8 +51,8 @@ const outputHeader = readFileSync(outputPath, { encoding: "utf8", flag: "r" }).s
 assert(outputHeader === "%PDF", "output file does not start with %PDF");
 
 const [sourcePdf, outputPdf] = await Promise.all([
-  PDFDocument.load(readFileSync(sourcePath)),
-  PDFDocument.load(readFileSync(outputPath)),
+  PDFDocument.load(readFileSync(sourcePath), { ignoreEncryption: true }),
+  PDFDocument.load(readFileSync(outputPath), { ignoreEncryption: true }),
 ]);
 
 assert(outputPdf.getPageCount() === sourcePdf.getPageCount(), `page count changed: source=${sourcePdf.getPageCount()} output=${outputPdf.getPageCount()}`);
@@ -63,6 +74,7 @@ console.log(
   JSON.stringify(
     {
       ok: true,
+      templateId,
       sourcePath,
       outputPath,
       pageCount: outputPdf.getPageCount(),

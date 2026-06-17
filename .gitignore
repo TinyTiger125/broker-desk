@@ -15,6 +15,7 @@
 
 # next.js
 /.next/
+/.next.bad-*/
 /out/
 
 # production
@@ -50,3 +51,5 @@ CLAUDE [0-9]*.md
 # local QA and PDF calibration artifacts
 tmp/
 .git.backup-*/
+.broker-desk/*
+!.broker-desk/friends-guarantee-layouts.json

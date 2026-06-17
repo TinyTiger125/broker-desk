@@ -6,6 +6,9 @@ import { extractInputFileFromWorkbook, type InputFileExtractionResult } from "@/
 
 export const dynamic = "force-dynamic";
 
+const MAX_EXCEL_UPLOAD_BYTES = 20 * 1024 * 1024;
+const MAX_MULTIPART_OVERHEAD_BYTES = 1024 * 1024;
+
 type ExcelImportPayload = {
   kind: "input_file_extraction";
   headers: string[];
@@ -21,11 +24,18 @@ export async function POST(request: Request) {
   if (!user) {
     return NextResponse.json({ ok: false, error: "user_not_found" }, { status: 401 });
   }
+  const contentLength = Number(request.headers.get("content-length") ?? 0);
+  if (Number.isFinite(contentLength) && contentLength > MAX_EXCEL_UPLOAD_BYTES + MAX_MULTIPART_OVERHEAD_BYTES) {
+    return NextResponse.json({ ok: false, error: "file_too_large", maxBytes: MAX_EXCEL_UPLOAD_BYTES }, { status: 413 });
+  }
 
   const formData = await request.formData();
   const file = formData.get("excelFile");
   if (!(file instanceof File) || file.size === 0) {
     return NextResponse.json({ ok: false, error: "file_required" }, { status: 400 });
+  }
+  if (file.size > MAX_EXCEL_UPLOAD_BYTES) {
+    return NextResponse.json({ ok: false, error: "file_too_large", maxBytes: MAX_EXCEL_UPLOAD_BYTES }, { status: 413 });
   }
   if (!file.name.toLowerCase().endsWith(".xlsx")) {
     return NextResponse.json({ ok: false, error: "xlsx_required" }, { status: 400 });

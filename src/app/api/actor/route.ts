@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { ACTOR_COOKIE_NAME } from "@/lib/actor";
+import { ACTOR_COOKIE_NAME, isActorSwitchingEnabled } from "@/lib/actor";
 import { getUserById } from "@/lib/data";
 
 type ActorPayload = {
@@ -7,6 +7,10 @@ type ActorPayload = {
 };
 
 export async function POST(request: Request) {
+  if (!isActorSwitchingEnabled()) {
+    return NextResponse.json({ ok: false, error: "actor_switching_disabled" }, { status: 403 });
+  }
+
   let payload: ActorPayload = {};
   try {
     payload = (await request.json()) as ActorPayload;

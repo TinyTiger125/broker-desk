@@ -99,6 +99,16 @@ export const rollbackBrokerageCaseMerge: typeof memory.rollbackBrokerageCaseMerg
   repo.rollbackBrokerageCaseMerge(...args);
 export const listExtractionReviewItems: typeof memory.listExtractionReviewItems = (...args) =>
   repo.listExtractionReviewItems(...args);
+export const addCorrectionEvents: typeof memory.addCorrectionEvents = (...args) =>
+  repo.addCorrectionEvents(...args);
+export const listCorrectionEvents: typeof memory.listCorrectionEvents = (...args) =>
+  repo.listCorrectionEvents(...args);
+export const addAiExperienceDrafts: typeof memory.addAiExperienceDrafts = (...args) =>
+  repo.addAiExperienceDrafts(...args);
+export const listAiExperienceDrafts: typeof memory.listAiExperienceDrafts = (...args) =>
+  repo.listAiExperienceDrafts(...args);
+export const updateAiExperienceDraftStatus: typeof memory.updateAiExperienceDraftStatus = (...args) =>
+  repo.updateAiExperienceDraftStatus(...args);
 export const getGuaranteeApplicationDraft: typeof memory.getGuaranteeApplicationDraft = (...args) =>
   repo.getGuaranteeApplicationDraft(...args);
 export const saveGuaranteeApplicationDraft: typeof memory.saveGuaranteeApplicationDraft = (...args) =>
@@ -151,6 +161,12 @@ export type {
   BrokerageCase,
   BrokerageCaseStatus,
   BrokerageCaseType,
+  AiExperienceDraft,
+  AiExperienceDraftStatus,
+  CorrectionEvent,
+  CorrectionEventChangeType,
+  CorrectionEventScopeCandidate,
+  CorrectionEventTrigger,
   ExtractionReviewItem,
   ExtractionReviewStatus,
   GuaranteeApplicationDraft,

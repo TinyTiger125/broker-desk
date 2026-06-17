@@ -14,24 +14,26 @@ type MainNavLinksProps = {
 };
 
 function isActive(pathname: string, href: string) {
-  if (href === "/") return pathname === "/";
-  return pathname === href || pathname.startsWith(`${href}/`);
+  const hrefPath = href.split(/[?#]/)[0] || "/";
+  if (hrefPath === "/") return pathname === "/";
+  return pathname === hrefPath || pathname.startsWith(`${hrefPath}/`);
 }
 
 export function MainNavLinks({ links, orientation = "row" }: MainNavLinksProps) {
   const pathname = usePathname() ?? "/";
   const isRow = orientation === "row";
   const iconByHref: Record<string, string> = {
-    "/": "dashboard",
+    "/": "space_dashboard",
     "/clients": "person_search",
-    "/import-center": "upload_file",
+    "/import-center": "cloud_upload",
     "/properties": "domain",
     "/parties": "group",
     "/quotes": "request_quote",
     "/contracts": "description",
     "/service-requests": "support_agent",
     "/output-center": "print",
-    "/templates": "fluid_med",
+    "/templates": "view_module",
+    "/settings/ai-experience": "psychology",
   };
 
   return (
@@ -40,11 +42,16 @@ export function MainNavLinks({ links, orientation = "row" }: MainNavLinksProps) 
         const active = isActive(pathname, link.href);
         const base = isRow
           ? "ui-nav-stable rounded-lg px-3 py-2 text-sm font-medium transition"
-          : "rounded-lg px-3 py-2.5 text-sm font-medium transition";
+          : "rounded px-3 py-3 text-sm font-bold transition";
         const tone = active
-          ? "bg-white text-blue-900 shadow-sm"
-          : "text-slate-600 hover:bg-slate-200/50 hover:text-slate-900";
-        const icon = iconByHref[link.href] ?? "circle";
+          ? isRow
+            ? "bg-white text-[#001e40] shadow-sm"
+            : "bg-[#1960a3] text-white"
+          : isRow
+            ? "text-slate-600 hover:bg-slate-200/50 hover:text-slate-900"
+            : "text-slate-500 hover:bg-slate-900 hover:text-white";
+        const hrefPath = link.href.split(/[?#]/)[0] || "/";
+        const icon = iconByHref[hrefPath] ?? (hrefPath.startsWith("/cases/") ? "fact_check" : "circle");
 
         return (
           <Link key={link.href} href={link.href} className={`${base} ${tone} ${isRow ? "justify-center" : "flex items-center gap-3"}`}>

@@ -9,8 +9,23 @@ export function getAttachmentStorageMode(): AttachmentStorageMode {
   return raw === "external_reference" ? "external_reference" : "local_public";
 }
 
+const ACTIVE_WEB_EXTENSIONS = new Set([
+  ".css",
+  ".htm",
+  ".html",
+  ".js",
+  ".json",
+  ".mjs",
+  ".svg",
+  ".wasm",
+  ".xhtml",
+  ".xml",
+]);
+
 function sanitizeFileName(name: string): string {
-  return name.replace(/[^\p{L}\p{N}._-]+/gu, "_").replace(/_+/g, "_").slice(0, 120) || "upload.bin";
+  const safeName = name.replace(/[^\p{L}\p{N}._-]+/gu, "_").replace(/_+/g, "_").slice(0, 120) || "upload.bin";
+  const ext = path.extname(safeName).toLowerCase();
+  return ACTIVE_WEB_EXTENSIONS.has(ext) ? `${safeName}.bin` : safeName;
 }
 
 function isHttpUrl(value: string): boolean {
@@ -18,7 +33,7 @@ function isHttpUrl(value: string): boolean {
 }
 
 function isPublicPath(value: string): boolean {
-  return value.startsWith("/");
+  return value.startsWith("/") && !value.startsWith("//") && !value.startsWith("/\\");
 }
 
 export function isValidStoragePath(value: string): boolean {

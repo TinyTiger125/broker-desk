@@ -39,6 +39,12 @@ import type {
   BrokerageCase,
   BrokerageCaseStatus,
   BrokerageCaseType,
+  CorrectionEvent,
+  CorrectionEventChangeType,
+  CorrectionEventScopeCandidate,
+  CorrectionEventTrigger,
+  AiExperienceDraft,
+  AiExperienceDraftStatus,
   ExtractionReviewItem,
   ExtractionReviewStatus,
   GuaranteeApplicationDraft,
@@ -332,6 +338,52 @@ function mapExtractionReviewItem(row: Record<string, unknown>): ExtractionReview
   };
 }
 
+function mapCorrectionEvent(row: Record<string, unknown>): CorrectionEvent {
+  return {
+    id: String(row.id),
+    userId: String(row.user_id),
+    caseId: String(row.case_id),
+    trigger: String(row.trigger) as CorrectionEventTrigger,
+    fieldKey: String(row.field_key),
+    fieldLabel: String(row.field_label),
+    aiValue: row.ai_value ? String(row.ai_value) : undefined,
+    confirmedValue: row.confirmed_value ? String(row.confirmed_value) : undefined,
+    changeType: String(row.change_type) as CorrectionEventChangeType,
+    sourceImportJobId: row.source_import_job_id ? String(row.source_import_job_id) : undefined,
+    sourceLocation: row.source_location ? String(row.source_location) : undefined,
+    extractionMethod: row.extraction_method ? String(row.extraction_method) : undefined,
+    confidenceBefore: row.confidence_before === null || row.confidence_before === undefined ? undefined : Number(row.confidence_before),
+    templateId: row.template_id ? String(row.template_id) : undefined,
+    scopeCandidate: String(row.scope_candidate ?? "case_only") as CorrectionEventScopeCandidate,
+    sourceEvidenceJson:
+      row.source_evidence_json && typeof row.source_evidence_json === "object"
+        ? (row.source_evidence_json as Record<string, unknown>)
+        : undefined,
+    createdAt: toDate(row.created_at) ?? new Date(),
+  };
+}
+
+function mapAiExperienceDraft(row: Record<string, unknown>): AiExperienceDraft {
+  return {
+    id: String(row.id),
+    userId: String(row.user_id),
+    status: String(row.status ?? "draft") as AiExperienceDraftStatus,
+    title: String(row.title ?? ""),
+    bodyMarkdown: String(row.body_markdown ?? ""),
+    eventIds: Array.isArray(row.event_ids) ? (row.event_ids as unknown[]).map(String) : [],
+    fieldKey: row.field_key ? String(row.field_key) : undefined,
+    templateId: row.template_id ? String(row.template_id) : undefined,
+    changeType: String(row.change_type) as CorrectionEventChangeType,
+    scopeCandidate: String(row.scope_candidate ?? "case_only") as CorrectionEventScopeCandidate,
+    evidenceSummaryJson:
+      row.evidence_summary_json && typeof row.evidence_summary_json === "object"
+        ? (row.evidence_summary_json as Record<string, unknown>)
+        : undefined,
+    createdAt: toDate(row.created_at) ?? new Date(),
+    updatedAt: toDate(row.updated_at) ?? new Date(),
+  };
+}
+
 function mapGuaranteeApplicationDraft(row: Record<string, unknown>): GuaranteeApplicationDraft {
   return {
     id: String(row.id),
@@ -619,6 +671,42 @@ async function ensureSchema() {
       UNIQUE(user_id, case_id, template_id)
     );
 
+    CREATE TABLE IF NOT EXISTS correction_events (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id),
+      case_id TEXT NOT NULL REFERENCES brokerage_cases(id) ON DELETE CASCADE,
+      trigger TEXT NOT NULL,
+      field_key TEXT NOT NULL,
+      field_label TEXT NOT NULL,
+      ai_value TEXT,
+      confirmed_value TEXT,
+      change_type TEXT NOT NULL,
+      source_import_job_id TEXT,
+      source_location TEXT,
+      extraction_method TEXT,
+      confidence_before DOUBLE PRECISION,
+      template_id TEXT,
+      scope_candidate TEXT NOT NULL DEFAULT 'case_only',
+      source_evidence_json JSONB,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS ai_experience_drafts (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id),
+      status TEXT NOT NULL DEFAULT 'draft',
+      title TEXT NOT NULL,
+      body_markdown TEXT NOT NULL,
+      event_ids TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+      field_key TEXT,
+      template_id TEXT,
+      change_type TEXT NOT NULL,
+      scope_candidate TEXT NOT NULL DEFAULT 'case_only',
+      evidence_summary_json JSONB,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
     CREATE TABLE IF NOT EXISTS attachments (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL REFERENCES users(id),
@@ -663,6 +751,10 @@ async function ensureSchema() {
     CREATE INDEX IF NOT EXISTS idx_extraction_review_case ON extraction_review_items(case_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_extraction_review_import_job ON extraction_review_items(import_job_id);
     CREATE INDEX IF NOT EXISTS idx_guarantee_drafts_case_template ON guarantee_application_drafts(user_id, case_id, template_id);
+    CREATE INDEX IF NOT EXISTS idx_correction_events_case_created ON correction_events(user_id, case_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_correction_events_change_type ON correction_events(change_type, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_ai_experience_drafts_user_status_created ON ai_experience_drafts(user_id, status, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_ai_experience_drafts_scope ON ai_experience_drafts(scope_candidate, template_id, field_key);
     CREATE INDEX IF NOT EXISTS idx_attachments_user_target ON attachments(user_id, target_type, target_id);
     CREATE INDEX IF NOT EXISTS idx_generated_outputs_user_created ON generated_outputs(user_id, generated_at DESC);
     CREATE INDEX IF NOT EXISTS idx_generated_outputs_actor_created ON generated_outputs(actor_id, generated_at DESC);
@@ -1665,6 +1757,154 @@ export async function listExtractionReviewItems(input: {
     [input.userId, input.caseId]
   );
   return result.rows.map(mapExtractionReviewItem);
+}
+
+export async function addCorrectionEvents(input: {
+  userId: string;
+  events: Array<Omit<CorrectionEvent, "id" | "userId" | "createdAt">>;
+}): Promise<CorrectionEvent[]> {
+  await ensureSchema();
+  if (input.events.length === 0) return [];
+
+  const result = await withTransaction(async (client) => {
+    const rows: Record<string, unknown>[] = [];
+    for (const event of input.events) {
+      const insertResult = await client.query(
+        `INSERT INTO correction_events (
+          id, user_id, case_id, trigger, field_key, field_label,
+          ai_value, confirmed_value, change_type, source_import_job_id, source_location,
+          extraction_method, confidence_before, template_id, scope_candidate, source_evidence_json
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb)
+        RETURNING *`,
+        [
+          genId("correction"),
+          input.userId,
+          event.caseId,
+          event.trigger,
+          event.fieldKey,
+          event.fieldLabel,
+          event.aiValue ?? null,
+          event.confirmedValue ?? null,
+          event.changeType,
+          event.sourceImportJobId ?? null,
+          event.sourceLocation ?? null,
+          event.extractionMethod ?? null,
+          event.confidenceBefore ?? null,
+          event.templateId ?? null,
+          event.scopeCandidate,
+          event.sourceEvidenceJson ? JSON.stringify(event.sourceEvidenceJson) : null,
+        ],
+      );
+      rows.push(insertResult.rows[0]);
+    }
+    return rows;
+  });
+
+  return result.map(mapCorrectionEvent);
+}
+
+export async function listCorrectionEvents(input: {
+  userId: string;
+  caseId?: string;
+  limit?: number;
+}): Promise<CorrectionEvent[]> {
+  await ensureSchema();
+  const limit = Math.max(1, Math.min(input.limit ?? 50, 200));
+  const result = input.caseId
+    ? await getPool().query(
+        `SELECT * FROM correction_events
+         WHERE user_id = $1 AND case_id = $2
+         ORDER BY created_at DESC
+         LIMIT $3`,
+        [input.userId, input.caseId, limit],
+      )
+    : await getPool().query(
+        `SELECT * FROM correction_events
+         WHERE user_id = $1
+         ORDER BY created_at DESC
+         LIMIT $2`,
+        [input.userId, limit],
+      );
+  return result.rows.map(mapCorrectionEvent);
+}
+
+export async function addAiExperienceDrafts(input: {
+  userId: string;
+  drafts: Array<Omit<AiExperienceDraft, "id" | "userId" | "status" | "createdAt" | "updatedAt"> & { status?: AiExperienceDraftStatus }>;
+}): Promise<AiExperienceDraft[]> {
+  await ensureSchema();
+  if (input.drafts.length === 0) return [];
+
+  const result = await withTransaction(async (client) => {
+    const rows: Record<string, unknown>[] = [];
+    for (const draft of input.drafts) {
+      const insertResult = await client.query(
+        `INSERT INTO ai_experience_drafts (
+          id, user_id, status, title, body_markdown, event_ids,
+          field_key, template_id, change_type, scope_candidate, evidence_summary_json
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)
+        RETURNING *`,
+        [
+          genId("experience"),
+          input.userId,
+          draft.status ?? "draft",
+          draft.title,
+          draft.bodyMarkdown,
+          draft.eventIds,
+          draft.fieldKey ?? null,
+          draft.templateId ?? null,
+          draft.changeType,
+          draft.scopeCandidate,
+          draft.evidenceSummaryJson ? JSON.stringify(draft.evidenceSummaryJson) : null,
+        ],
+      );
+      rows.push(insertResult.rows[0]);
+    }
+    return rows;
+  });
+
+  return result.map(mapAiExperienceDraft);
+}
+
+export async function listAiExperienceDrafts(input: {
+  userId: string;
+  status?: AiExperienceDraftStatus;
+  limit?: number;
+}): Promise<AiExperienceDraft[]> {
+  await ensureSchema();
+  const limit = Math.max(1, Math.min(input.limit ?? 50, 200));
+  const result = input.status
+    ? await getPool().query(
+        `SELECT * FROM ai_experience_drafts
+         WHERE user_id = $1 AND status = $2
+         ORDER BY created_at DESC
+         LIMIT $3`,
+        [input.userId, input.status, limit],
+      )
+    : await getPool().query(
+        `SELECT * FROM ai_experience_drafts
+         WHERE user_id = $1
+         ORDER BY created_at DESC
+         LIMIT $2`,
+        [input.userId, limit],
+      );
+  return result.rows.map(mapAiExperienceDraft);
+}
+
+export async function updateAiExperienceDraftStatus(input: {
+  userId: string;
+  draftId: string;
+  status: AiExperienceDraftStatus;
+}): Promise<AiExperienceDraft | null> {
+  await ensureSchema();
+  const result = await getPool().query(
+    `UPDATE ai_experience_drafts
+     SET status = $3, updated_at = NOW()
+     WHERE user_id = $1 AND id = $2
+     RETURNING *`,
+    [input.userId, input.draftId, input.status],
+  );
+  return result.rows[0] ? mapAiExperienceDraft(result.rows[0]) : null;
 }
 
 export async function getGuaranteeApplicationDraft(input: {

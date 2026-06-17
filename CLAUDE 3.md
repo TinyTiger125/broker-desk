@@ -325,7 +325,7 @@
 3. 输出物退回/修改率（持续下降）
 
 ### 15.5 任务清单文档
-- 任务级清单：`docs/foundation-ux-tasklist.md`
+- 任务级清单：`docs/archive/ux/foundation-ux-tasklist.md`
 
 ### 15.6 最近执行记录（2026-03-31）
 > 本节用于持续追加“基础体验优化”的实际落地记录，避免讨论与实现脱节。

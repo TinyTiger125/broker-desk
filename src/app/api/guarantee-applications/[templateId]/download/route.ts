@@ -1,10 +1,8 @@
 import { NextResponse } from "next/server";
 import { getBrokerageCaseById, getDefaultUser, getGuaranteeApplicationDraft } from "@/lib/data";
 import { renderFriendsGuaranteePdf } from "@/lib/friends-guarantee-pdf";
-import {
-  buildGuaranteeApplicationReadiness,
-  getGuaranteeCompanyTemplate,
-} from "@/lib/guarantee-application";
+import { findGuaranteeCompanyTemplate } from "@/lib/guarantee-application";
+import { evaluateGuaranteeDownloadGate } from "@/lib/guarantee-download-gate";
 
 type GuaranteeTemplateDownloadRouteProps = {
   params: Promise<{
@@ -23,7 +21,10 @@ export async function GET(request: Request, { params }: GuaranteeTemplateDownloa
   }
 
   const routeParams = await params;
-  const template = getGuaranteeCompanyTemplate(routeParams.templateId);
+  const template = findGuaranteeCompanyTemplate(routeParams.templateId);
+  if (!template) {
+    return NextResponse.json({ error: "template_not_found" }, { status: 404 });
+  }
   const url = new URL(request.url);
   const caseId = String(url.searchParams.get("caseId") ?? "").trim();
   const mode = String(url.searchParams.get("mode") ?? "").trim();
@@ -40,24 +41,27 @@ export async function GET(request: Request, { params }: GuaranteeTemplateDownloa
     caseId,
     templateId: template.id,
   });
-  const readinessGroups = buildGuaranteeApplicationReadiness({
+  const downloadGate = evaluateGuaranteeDownloadGate({
     brokerageCase,
     template,
     draft,
   });
-  const unresolvedGroup = readinessGroups.find((group) => group.id === "unresolved");
-  const blockingMissingFields = unresolvedGroup?.fields.filter((field) => field.required) ?? [];
-  if (mode !== "preview" && blockingMissingFields.length > 0) {
+  if (mode !== "preview" && !downloadGate.canDownload) {
     return NextResponse.json(
       {
         error: "guarantee_required_fields_missing",
-        missingCount: blockingMissingFields.length,
-        missingFields: blockingMissingFields.map((field) => ({
+        missingCount: downloadGate.missingFields.length,
+        missingFields: downloadGate.missingFields.map((field) => ({
           fieldKey: field.fieldKey,
           label: field.label,
           status: field.status,
+          actionUrl: field.actionUrl,
+          destination: field.destination,
         })),
-        previewUrl: `/guarantee-applications/${encodeURIComponent(template.id)}/preview?caseId=${encodeURIComponent(caseId)}`,
+        blockedReasons: downloadGate.blockedReasons,
+        previewUrl: downloadGate.previewUrl,
+        workbenchUrl: downloadGate.workbenchUrl,
+        draftUrl: downloadGate.draftUrl,
       },
       { status: 422 },
     );

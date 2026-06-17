@@ -1,5 +1,11 @@
 # Claude.md
 
+Current project-memory entrypoint: `docs/PROJECT_MEMORY.md`.
+
+Read `docs/PROJECT_MEMORY.md` first for current status, active direction, risks, and next steps. This file contains historical notes and may be stale where it conflicts with `docs/PROJECT_MEMORY.md`.
+
+Current documentation map and archive rules: `docs/README.md`.
+
 ## Agent skills
 
 ### Issue tracker
@@ -339,7 +345,7 @@ This is a single-context repo. Engineering skills should read root `CONTEXT.md`,
 3. 输出物退回/修改率（持续下降）
 
 ### 15.5 任务清单文档
-- 任务级清单：`docs/foundation-ux-tasklist.md`
+- 任务级清单：`docs/archive/ux/foundation-ux-tasklist.md`
 
 ### 15.6 最近执行记录（2026-03-31）
 > 本节用于持续追加“基础体验优化”的实际落地记录，避免讨论与实现脱节。
@@ -1149,7 +1155,7 @@ Broker Desk 值得继续做，但不会靠“功能越来越多”或“AI 越�
   - `src/app/output-center/page.tsx`
   - `src/app/api/hub/export/route.ts`
   - `src/app/api/outputs/[id]/download/route.ts`
-  - `docs/postgres_schema.sql`
+  - `docs/engineering/postgres_schema.sql`
 
 ### 26.3 验证结果
 - `npm run lint` ✅

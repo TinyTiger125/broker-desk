@@ -21,6 +21,7 @@ import {
   type OutputTemplateSettings,
   type OutputTemplateSettingsInput,
 } from "@/lib/output-doc";
+import { COMPLETE_CASE_FIELD_DEFAULTS, COMPLETE_DRAFT_DEFAULTS } from "@/lib/guarantee-application-fixtures";
 
 export type { OutputTemplateSettingsInput } from "@/lib/output-doc";
 
@@ -138,7 +139,8 @@ export type AuditLog = {
     | "property"
     | "party"
     | "contract"
-    | "service_request";
+    | "service_request"
+    | "ai_experience";
   targetId?: string;
   message: string;
   context?: Record<string, unknown>;
@@ -220,6 +222,64 @@ export type GuaranteeApplicationDraft = {
   updatedAt: Date;
 };
 
+export type CorrectionEventTrigger = "extraction_review_save" | "case_workbench_save" | "guarantee_draft_save" | "pdf_preview_save";
+export type CorrectionEventChangeType =
+  | "ai_extraction_error"
+  | "normalization_error"
+  | "source_absent_user_completed"
+  | "missing_detected_by_user"
+  | "conflict_resolved_by_user"
+  | "template_output_position_error"
+  | "template_output_format_error"
+  | "user_or_team_preference"
+  | "one_off_case_override";
+export type CorrectionEventScopeCandidate =
+  | "case_only"
+  | "user_or_team"
+  | "source_template"
+  | "output_template"
+  | "field_dictionary"
+  | "global_rule_candidate"
+  | "regression_case";
+
+export type CorrectionEvent = {
+  id: string;
+  userId: string;
+  caseId: string;
+  trigger: CorrectionEventTrigger;
+  fieldKey: string;
+  fieldLabel: string;
+  aiValue?: string;
+  confirmedValue?: string;
+  changeType: CorrectionEventChangeType;
+  sourceImportJobId?: string;
+  sourceLocation?: string;
+  extractionMethod?: string;
+  confidenceBefore?: number;
+  templateId?: string;
+  scopeCandidate: CorrectionEventScopeCandidate;
+  sourceEvidenceJson?: Record<string, unknown>;
+  createdAt: Date;
+};
+
+export type AiExperienceDraftStatus = "draft" | "approved" | "rejected";
+
+export type AiExperienceDraft = {
+  id: string;
+  userId: string;
+  status: AiExperienceDraftStatus;
+  title: string;
+  bodyMarkdown: string;
+  eventIds: string[];
+  fieldKey?: string;
+  templateId?: string;
+  changeType: CorrectionEventChangeType;
+  scopeCandidate: CorrectionEventScopeCandidate;
+  evidenceSummaryJson?: Record<string, unknown>;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 export type AttachmentTargetType = "property" | "party" | "contract" | "service_request" | "import_job" | "quote";
 
 export type Attachment = {
@@ -276,6 +336,8 @@ type DB = {
   brokerageCases: BrokerageCase[];
   extractionReviewItems: ExtractionReviewItem[];
   guaranteeApplicationDrafts: GuaranteeApplicationDraft[];
+  correctionEvents: CorrectionEvent[];
+  aiExperienceDrafts: AiExperienceDraft[];
   attachments: Attachment[];
   generatedOutputs: GeneratedOutput[];
 };
@@ -649,25 +711,7 @@ const _freshDb: DB = {
       caseTitle: "港区グランドタワー 8F 保証会社申込書",
       primaryPropertyId: "prop_minato_tower",
       status: "reviewed",
-      confirmedDataJson: {
-        "property.name": "港区グランドタワー",
-        "property.roomNumber": "8F",
-        "property.address": "東京都港区芝公園1-2-3",
-        "lease.moveInDate": "2026年6月1日",
-        "lease.rent": "120000",
-        "lease.commonFee": "8000",
-        "lease.parkingFee": "15000",
-        "lease.monthlyRentTotal": "143000",
-        "applicant.name": "山田 太郎",
-        "applicant.furigana": "ヤマダ タロウ",
-        "applicant.phone": "090-1234-5678",
-        "applicant.currentAddress": "東京都品川区大崎4-5-6",
-        "applicant.employerName": "山田商事株式会社",
-        "emergencyContact.name": "山田 花子",
-        "emergencyContact.phone": "080-1234-5678",
-        "broker.companyName": "Cherry Investment株式会社",
-        "broker.phone": "03-6234-5678",
-      },
+      confirmedDataJson: { ...COMPLETE_CASE_FIELD_DEFAULTS },
       sourceImportJobIds: [],
       createdAt: new Date(now - 1 * 24 * 60 * 60 * 1000),
       updatedAt: new Date(now - 1 * 24 * 60 * 60 * 1000),
@@ -756,11 +800,11 @@ const _freshDb: DB = {
       companyCode: "friends_guarantee",
       status: "ready",
       fieldValuesJson: {
-        "company_option.friends_plan_type": "住居用標準プラン",
-        "company_option.friends_consent": "確認済み",
-        "company_option.friends_collection_agency": "利用する",
-        "company_option.friends_single_rider": "なし",
-        "company_option.friends_notes": "管理会社確認後に提出予定",
+        "company_option.friends_plan_type": COMPLETE_DRAFT_DEFAULTS["company_option.friends_plan_type"],
+        "company_option.friends_consent": COMPLETE_DRAFT_DEFAULTS["company_option.friends_consent"],
+        "company_option.friends_collection_agency": COMPLETE_DRAFT_DEFAULTS["company_option.friends_collection_agency"],
+        "company_option.friends_single_rider": COMPLETE_DRAFT_DEFAULTS["company_option.friends_single_rider"],
+        "company_option.friends_notes": COMPLETE_DRAFT_DEFAULTS["company_option.friends_notes"],
       },
       fieldStatusesJson: {
         "company_option.friends_plan_type": "confirmed",
@@ -774,6 +818,8 @@ const _freshDb: DB = {
       updatedAt: new Date(now - 1 * 24 * 60 * 60 * 1000),
     },
   ],
+  correctionEvents: [],
+  aiExperienceDrafts: [],
   attachments: [
     { id: "att_prop_minato_floor", userId: "user_demo", targetType: "property", targetId: "prop_minato_tower", fileName: "港区グランドタワー_間取り図.pdf", fileType: "application/pdf", fileSizeBytes: 924800, storagePath: "demo/property/prop_minato_tower/floorplan.pdf", uploadedAt: new Date(now - 3 * 24 * 60 * 60 * 1000) },
     { id: "att_contract_yamada", userId: "user_demo", targetType: "contract", targetId: "quote_yamada_b", fileName: "売買契約書ドラフト_山田様.pdf", fileType: "application/pdf", fileSizeBytes: 1105920, storagePath: "demo/contracts/quote_yamada_b/draft.pdf", uploadedAt: new Date(now - 2 * 24 * 60 * 60 * 1000) },
@@ -784,6 +830,8 @@ const _freshDb: DB = {
 if (!_g.__brokerDb) _g.__brokerDb = _freshDb;
 const db: DB = _g.__brokerDb;
 if (!db.guaranteeApplicationDrafts) db.guaranteeApplicationDrafts = [..._freshDb.guaranteeApplicationDrafts];
+if (!db.correctionEvents) db.correctionEvents = [];
+if (!db.aiExperienceDrafts) db.aiExperienceDrafts = [];
 
 export function resetBusinessDataForQa(): Record<keyof Omit<DB, "users" | "outputTemplateSettings" | "outputTemplateVersions">, number> {
   const templateSettings = getDefaultOutputTemplateSettings("user_demo");
@@ -819,6 +867,8 @@ export function resetBusinessDataForQa(): Record<keyof Omit<DB, "users" | "outpu
   db.brokerageCases = [];
   db.extractionReviewItems = [];
   db.guaranteeApplicationDrafts = [];
+  db.correctionEvents = [];
+  db.aiExperienceDrafts = [];
   db.attachments = [];
   db.generatedOutputs = [];
 
@@ -833,6 +883,8 @@ export function resetBusinessDataForQa(): Record<keyof Omit<DB, "users" | "outpu
     brokerageCases: db.brokerageCases.length,
     extractionReviewItems: db.extractionReviewItems.length,
     guaranteeApplicationDrafts: db.guaranteeApplicationDrafts.length,
+    correctionEvents: db.correctionEvents.length,
+    aiExperienceDrafts: db.aiExperienceDrafts.length,
     attachments: db.attachments.length,
     generatedOutputs: db.generatedOutputs.length,
   };
@@ -1275,6 +1327,88 @@ export async function listExtractionReviewItems(input: {
     .filter((item) => item.userId === input.userId && item.caseId === input.caseId)
     .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
     .map((item) => ({ ...item }));
+}
+
+export async function addCorrectionEvents(input: {
+  userId: string;
+  events: Array<Omit<CorrectionEvent, "id" | "userId" | "createdAt">>;
+}): Promise<CorrectionEvent[]> {
+  const nowDate = new Date();
+  const events = input.events.map((event) => ({
+    ...event,
+    id: makeId("correction"),
+    userId: input.userId,
+    createdAt: nowDate,
+  }));
+  db.correctionEvents.unshift(...events);
+  return events.map((event) => ({ ...event, createdAt: new Date(event.createdAt) }));
+}
+
+export async function listCorrectionEvents(input: {
+  userId: string;
+  caseId?: string;
+  limit?: number;
+}): Promise<CorrectionEvent[]> {
+  const limit = input.limit ?? 50;
+  return db.correctionEvents
+    .filter((item) => item.userId === input.userId && (!input.caseId || item.caseId === input.caseId))
+    .slice()
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+    .slice(0, limit)
+    .map((item) => ({ ...item, createdAt: new Date(item.createdAt) }));
+}
+
+function cloneAiExperienceDraft(item: AiExperienceDraft): AiExperienceDraft {
+  return {
+    ...item,
+    eventIds: [...item.eventIds],
+    evidenceSummaryJson: item.evidenceSummaryJson ? { ...item.evidenceSummaryJson } : undefined,
+    createdAt: new Date(item.createdAt),
+    updatedAt: new Date(item.updatedAt),
+  };
+}
+
+export async function addAiExperienceDrafts(input: {
+  userId: string;
+  drafts: Array<Omit<AiExperienceDraft, "id" | "userId" | "status" | "createdAt" | "updatedAt"> & { status?: AiExperienceDraftStatus }>;
+}): Promise<AiExperienceDraft[]> {
+  const nowDate = new Date();
+  const drafts = input.drafts.map((draft) => ({
+    ...draft,
+    id: makeId("experience"),
+    userId: input.userId,
+    status: draft.status ?? "draft",
+    createdAt: nowDate,
+    updatedAt: nowDate,
+  }));
+  db.aiExperienceDrafts.unshift(...drafts);
+  return drafts.map(cloneAiExperienceDraft);
+}
+
+export async function listAiExperienceDrafts(input: {
+  userId: string;
+  status?: AiExperienceDraftStatus;
+  limit?: number;
+}): Promise<AiExperienceDraft[]> {
+  const limit = input.limit ?? 50;
+  return db.aiExperienceDrafts
+    .filter((item) => item.userId === input.userId && (!input.status || item.status === input.status))
+    .slice()
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+    .slice(0, limit)
+    .map(cloneAiExperienceDraft);
+}
+
+export async function updateAiExperienceDraftStatus(input: {
+  userId: string;
+  draftId: string;
+  status: AiExperienceDraftStatus;
+}): Promise<AiExperienceDraft | null> {
+  const draft = db.aiExperienceDrafts.find((item) => item.userId === input.userId && item.id === input.draftId);
+  if (!draft) return null;
+  draft.status = input.status;
+  draft.updatedAt = new Date();
+  return cloneAiExperienceDraft(draft);
 }
 
 function cloneGuaranteeApplicationDraft(item: GuaranteeApplicationDraft): GuaranteeApplicationDraft {

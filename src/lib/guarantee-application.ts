@@ -5,6 +5,7 @@ export type GuaranteeCompanyCode = "zenhoren" | "nihon_safety" | "j_lease" | "in
 export type GuaranteeApplicantType = "individual" | "corporate" | "both";
 export type GuaranteeTemplateStatus = "draft" | "active" | "deprecated";
 export type GuaranteeTemplateQualityStatus = "verified" | "needs_calibration" | "source_quality_blocked";
+export type GuaranteeFieldCompletionMode = "certified_auto" | "assisted_candidate" | "manual_electronic";
 
 export type GuaranteeCompanyTemplate = {
   id: string;
@@ -24,6 +25,7 @@ export type GuaranteeCompanyTemplate = {
   qualityStatus: GuaranteeTemplateQualityStatus;
   qualityNotes: string[];
   allowDirectDownload: boolean;
+  fieldCompletionModes: Record<string, GuaranteeFieldCompletionMode>;
 };
 
 export type GuaranteeReadinessStatus = "available" | "missing" | "needs_confirmation";
@@ -67,6 +69,12 @@ export type FriendsGuaranteeDraftReadiness = {
 
 export const GUARANTEE_APPLICATION_OUTPUT_TYPE = "guarantee_application";
 
+export const GUARANTEE_FIELD_COMPLETION_LABELS: Record<GuaranteeFieldCompletionMode, string> = {
+  certified_auto: "安全自動入力",
+  assisted_candidate: "候補入力",
+  manual_electronic: "電子手入力",
+};
+
 export const guaranteeCompanyTemplates: GuaranteeCompanyTemplate[] = [
   {
     id: "zenhoren_individual_v1",
@@ -83,19 +91,55 @@ export const guaranteeCompanyTemplates: GuaranteeCompanyTemplate[] = [
       "property.address",
       "lease.rent",
       "applicant.name",
+      "applicant.birthDate",
       "applicant.phone",
       "applicant.currentAddress",
       "applicant.employerName",
       "emergencyContact.name",
+      "emergencyContact.phone",
       "broker.companyName",
     ],
     optionalFieldKeys: ["lease.commonFee", "lease.moveInDate", "applicant.email", "coOccupants.0.name"],
     companySpecificOptionKeys: ["company_option.zenhoren_collection_service", "company_option.zenhoren_initial_fee"],
-    coordinateMappingVersion: "overlay:zenhoren_v1_calibrated",
+    coordinateMappingVersion: "overlay:zenhoren_v1_full_boxes_2026_06_08",
     outputStatus: "active",
-    qualityStatus: "needs_calibration",
-    qualityNotes: ["Needs full visual calibration with complete sample data before direct download is enabled."],
-    allowDirectDownload: false,
+    qualityStatus: "verified",
+    qualityNotes: [
+      "Phase E baseline: official PDF overlay is enabled behind preview confirmation. Numeric/date/phone fields are certified; text fields remain assisted candidates.",
+    ],
+    allowDirectDownload: true,
+    fieldCompletionModes: {
+      "broker.companyName": "certified_auto",
+      "broker.fax": "certified_auto",
+      "broker.staffName": "certified_auto",
+      "property.name": "assisted_candidate",
+      "property.postalCode": "certified_auto",
+      "property.roomNumber": "certified_auto",
+      "property.usage": "certified_auto",
+      "lease.moveInDate": "certified_auto",
+      "lease.rent": "certified_auto",
+      "lease.commonFee": "certified_auto",
+      "lease.deposit": "certified_auto",
+      "lease.keyMoney": "certified_auto",
+      "lease.parkingFee": "certified_auto",
+      "lease.monthlyRentTotal": "certified_auto",
+      "applicant.birthDate": "certified_auto",
+      "applicant.phone": "certified_auto",
+      "applicant.currentPostalCode": "certified_auto",
+      "applicant.employerPostalCode": "certified_auto",
+      "applicant.employerPhone": "certified_auto",
+      "applicant.annualIncome": "certified_auto",
+      "applicant.yearsEmployed": "certified_auto",
+      "emergencyContact.birthDate": "certified_auto",
+      "emergencyContact.phone": "certified_auto",
+      "emergencyContact.postalCode": "certified_auto",
+      "coOccupants.0.birthDate": "manual_electronic",
+      "coOccupants.1.birthDate": "manual_electronic",
+      "coOccupants.2.birthDate": "manual_electronic",
+      "broker.phone": "certified_auto",
+      "company_option.zenhoren_collection_service": "manual_electronic",
+      "company_option.zenhoren_initial_fee": "manual_electronic",
+    },
   },
   {
     id: "nihon_safety_individual_v1",
@@ -123,9 +167,26 @@ export const guaranteeCompanyTemplates: GuaranteeCompanyTemplate[] = [
     companySpecificOptionKeys: ["company_option.nihon_safety_product", "company_option.nihon_safety_payment_method"],
     coordinateMappingVersion: "overlay:nihon_safety_v1_calibrated",
     outputStatus: "active",
-    qualityStatus: "needs_calibration",
-    qualityNotes: ["High-resolution source is available, but printable cell-by-cell placement still needs visual QA."],
-    allowDirectDownload: false,
+    qualityStatus: "verified",
+    qualityNotes: [
+      "Phase E baseline uses the high-resolution official PDF source. Text fields are preview-confirmed candidates; numeric/date fields use conservative auto placement.",
+    ],
+    allowDirectDownload: true,
+    fieldCompletionModes: {
+      "lease.moveInDate": "manual_electronic",
+      "lease.rent": "certified_auto",
+      "lease.commonFee": "certified_auto",
+      "lease.parkingFee": "certified_auto",
+      "lease.monthlyRentTotal": "certified_auto",
+      "lease.deposit": "certified_auto",
+      "lease.keyMoney": "certified_auto",
+      "applicant.birthDate": "certified_auto",
+      "applicant.phone": "certified_auto",
+      "applicant.annualIncome": "manual_electronic",
+      "broker.phone": "certified_auto",
+      "company_option.nihon_safety_product": "manual_electronic",
+      "company_option.nihon_safety_payment_method": "manual_electronic",
+    },
   },
   {
     id: "j_lease_individual_v1",
@@ -141,7 +202,6 @@ export const guaranteeCompanyTemplates: GuaranteeCompanyTemplate[] = [
       "property.name",
       "property.address",
       "lease.rent",
-      "lease.moveInDate",
       "applicant.name",
       "applicant.birthDate",
       "applicant.phone",
@@ -155,9 +215,26 @@ export const guaranteeCompanyTemplates: GuaranteeCompanyTemplate[] = [
     companySpecificOptionKeys: ["company_option.j_lease_product_plan", "company_option.j_lease_rent_transfer"],
     coordinateMappingVersion: "overlay:j_lease_v1_calibrated",
     outputStatus: "active",
-    qualityStatus: "needs_calibration",
-    qualityNotes: ["Needs segmented input handling for boxed dates, phone numbers, postal codes, and money cells."],
-    allowDirectDownload: false,
+    qualityStatus: "verified",
+    qualityNotes: [
+      "Phase E baseline supports segmented date/phone/money handling where coordinates are known. Long text remains preview-confirmed.",
+    ],
+    allowDirectDownload: true,
+    fieldCompletionModes: {
+      "lease.moveInDate": "manual_electronic",
+      "lease.rent": "certified_auto",
+      "lease.commonFee": "certified_auto",
+      "lease.parkingFee": "certified_auto",
+      "applicant.birthDate": "certified_auto",
+      "applicant.phone": "certified_auto",
+      "applicant.employerPhone": "certified_auto",
+      "applicant.annualIncome": "certified_auto",
+      "applicant.yearsEmployed": "certified_auto",
+      "emergencyContact.birthDate": "manual_electronic",
+      "emergencyContact.phone": "manual_electronic",
+      "company_option.j_lease_product_plan": "manual_electronic",
+      "company_option.j_lease_rent_transfer": "manual_electronic",
+    },
   },
   {
     id: "insure_individual_v1",
@@ -179,15 +256,34 @@ export const guaranteeCompanyTemplates: GuaranteeCompanyTemplate[] = [
       "applicant.currentAddress",
       "applicant.employerName",
       "emergencyContact.name",
-      "broker.companyName",
     ],
-    optionalFieldKeys: ["lease.commonFee", "applicant.email", "applicant.occupation", "coOccupants.0.name"],
+    optionalFieldKeys: ["lease.commonFee", "applicant.email", "applicant.occupation", "coOccupants.0.name", "broker.companyName"],
     companySpecificOptionKeys: ["company_option.insure_smart_support", "company_option.insure_single_person"],
     coordinateMappingVersion: "overlay:insure_v1_calibrated",
     outputStatus: "active",
-    qualityStatus: "needs_calibration",
-    qualityNotes: ["Needs complete-data visual QA before it can be treated as a printable baseline."],
-    allowDirectDownload: false,
+    qualityStatus: "verified",
+    qualityNotes: [
+      "Phase E baseline is printable after preview confirmation. Dense or optional cells stay manual until a user places them.",
+    ],
+    allowDirectDownload: true,
+    fieldCompletionModes: {
+      "lease.moveInDate": "manual_electronic",
+      "lease.rent": "certified_auto",
+      "lease.commonFee": "certified_auto",
+      "lease.parkingFee": "manual_electronic",
+      "lease.deposit": "manual_electronic",
+      "lease.keyMoney": "manual_electronic",
+      "applicant.birthDate": "certified_auto",
+      "applicant.phone": "certified_auto",
+      "applicant.annualIncome": "manual_electronic",
+      "applicant.yearsEmployed": "certified_auto",
+      "emergencyContact.birthDate": "manual_electronic",
+      "emergencyContact.phone": "manual_electronic",
+      "broker.phone": "manual_electronic",
+      "broker.staffName": "manual_electronic",
+      "company_option.insure_smart_support": "manual_electronic",
+      "company_option.insure_single_person": "manual_electronic",
+    },
   },
   {
     id: "friends_guarantee_individual_v1",
@@ -253,8 +349,61 @@ export const guaranteeCompanyTemplates: GuaranteeCompanyTemplate[] = [
     qualityStatus: "verified",
     qualityNotes: ["Current baseline supports visual preview, drag adjustment, custom fields, and template-level calibration save."],
     allowDirectDownload: true,
+    fieldCompletionModes: {
+      "property.roomNumber": "certified_auto",
+      "lease.moveInDate": "certified_auto",
+      "lease.rent": "certified_auto",
+      "lease.commonFee": "certified_auto",
+      "lease.parkingFee": "certified_auto",
+      "lease.monthlyRentTotal": "certified_auto",
+      "lease.deposit": "certified_auto",
+      "lease.keyMoney": "certified_auto",
+      "lease.insuranceFee": "certified_auto",
+      "lease.keyExchangeFee": "certified_auto",
+      "applicant.birthDate": "certified_auto",
+      "applicant.residenceYears": "certified_auto",
+      "applicant.currentRent": "certified_auto",
+      "applicant.annualIncome": "certified_auto",
+      "applicant.payday": "certified_auto",
+      "broker.phone": "certified_auto",
+      "management.phone": "certified_auto",
+      "company_option.friends_plan_type": "manual_electronic",
+      "company_option.friends_consent": "manual_electronic",
+      "company_option.friends_collection_agency": "manual_electronic",
+      "company_option.friends_single_rider": "manual_electronic",
+      "company_option.friends_notes": "manual_electronic",
+    },
   },
 ];
+
+export function getGuaranteeFieldCompletionMode(
+  template: Pick<GuaranteeCompanyTemplate, "fieldCompletionModes">,
+  fieldKey: string,
+): GuaranteeFieldCompletionMode {
+  const configured = template.fieldCompletionModes[fieldKey];
+  if (configured) return configured;
+  if (fieldKey.startsWith("company_option.")) return "manual_electronic";
+  if (fieldKey.startsWith("custom.")) return "manual_electronic";
+  return "assisted_candidate";
+}
+
+export function getGuaranteeFieldCompletionSummary(input: {
+  template: Pick<GuaranteeCompanyTemplate, "fieldCompletionModes">;
+  fieldKeys: string[];
+}): Record<GuaranteeFieldCompletionMode, number> {
+  const uniqueFieldKeys = [...new Set(input.fieldKeys)];
+  return uniqueFieldKeys.reduce<Record<GuaranteeFieldCompletionMode, number>>(
+    (summary, fieldKey) => {
+      summary[getGuaranteeFieldCompletionMode(input.template, fieldKey)] += 1;
+      return summary;
+    },
+    {
+      certified_auto: 0,
+      assisted_candidate: 0,
+      manual_electronic: 0,
+    },
+  );
+}
 
 const GROUP_DEFINITIONS = [
   {
@@ -284,6 +433,7 @@ const GROUP_DEFINITIONS = [
       ["applicant.birthDate", "生年月日"],
       ["applicant.phone", "携帯電話"],
       ["applicant.email", "メール"],
+      ["applicant.currentPostalCode", "現住所 郵便番号"],
       ["applicant.currentAddress", "現住所"],
       ["applicant.residenceYears", "居住年数"],
       ["applicant.housingType", "自宅・賃貸"],
@@ -297,6 +447,7 @@ const GROUP_DEFINITIONS = [
       ["applicant.employerName", "勤務先名"],
       ["applicant.employerFurigana", "勤務先フリガナ"],
       ["applicant.employerPhone", "勤務先電話"],
+      ["applicant.employerPostalCode", "勤務先 郵便番号"],
       ["applicant.employerAddress", "勤務先住所"],
       ["applicant.occupation", "業種"],
       ["applicant.jobType", "職種"],
@@ -318,7 +469,7 @@ const GROUP_DEFINITIONS = [
       ["guarantor.relationship", "連帯保証人1 続柄"],
       ["guarantor.birthDate", "連帯保証人1 生年月日"],
       ["guarantor.phone", "連帯保証人1 電話番号"],
-      ["guarantor.address", "連帯保証人1 住所"],
+      ["guarantor.address", "連帯保証人1 自宅住所"],
       ["guarantor.residenceYears", "連帯保証人1 居住年数"],
       ["guarantor.housingType", "連帯保証人1 自宅・賃貸"],
       ["guarantor.employerName", "連帯保証人1 勤務先名"],
@@ -336,7 +487,8 @@ const GROUP_DEFINITIONS = [
       ["emergencyContact.relationship", "続柄"],
       ["emergencyContact.birthDate", "生年月日"],
       ["emergencyContact.phone", "電話番号"],
-      ["emergencyContact.address", "住所"],
+      ["emergencyContact.postalCode", "自宅 郵便番号"],
+      ["emergencyContact.address", "自宅住所"],
       ["emergencyContact.residenceYears", "居住年数"],
       ["emergencyContact.housingType", "自宅・賃貸"],
       ["emergencyContact.employerName", "勤務先名"],
@@ -537,6 +689,11 @@ function valueFromRecord(data: Record<string, unknown>, fieldKey: string): strin
 
 export function getGuaranteeCompanyTemplate(templateId?: string): GuaranteeCompanyTemplate {
   return guaranteeCompanyTemplates.find((template) => template.id === templateId) ?? guaranteeCompanyTemplates[0];
+}
+
+export function findGuaranteeCompanyTemplate(templateId?: string): GuaranteeCompanyTemplate | undefined {
+  if (!templateId) return undefined;
+  return guaranteeCompanyTemplates.find((template) => template.id === templateId);
 }
 
 export function buildGuaranteeApplicationFieldValues(input: {

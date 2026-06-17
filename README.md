@@ -71,13 +71,13 @@ DATABASE_URL=postgresql://...
 - 取込センター的“添付登録”已支持两种方式：直接上传 or 外部保存先 URL。
 - 附件历史中会自动提供可访问链接（`/` 或 `http(s)`）。
 
-## 交接文档
-- `docs/IMPLEMENTATION_HANDOFF.md`（信息架构、跳转、组件清单、可直接贴 Cursor 的 Prompt）
-- `docs/POSTGRES_SETUP.md`（Postgres/Supabase 切换指南）
-- `docs/postgres_schema.sql`（可手动执行的初始化 SQL）
-- `docs/JP_COMPLIANCE_CHECKLIST.md`（日本市场权威映射清单与字段落地说明）
-- `docs/OUTPUT_PACKAGE_STANDARD_JP.md`（产出物标准设计）
-- `docs/OUTPUT_AUDIT_JP_2026-03-27.md`（产出物专业度审计）
+## 文档入口
+- `docs/PROJECT_MEMORY.md`（固定项目记忆入口：当前定位、进度、风险、下一步）
+- `docs/README.md`（文档地图：当前文档、工程文档、运营文档、归档规则）
+- `docs/product/`（当前产品方向、输入/工作台/输出/AI/多租户权限模型）
+- `docs/engineering/`（Postgres、运行稳定性、schema）
+- `docs/operations/`（PM 控制、合规、日语术语）
+- `docs/archive/`（历史交接、早期 MVP、Stitch 设计过程、旧输出审计）
 
 ## 本地运行
 ```bash
