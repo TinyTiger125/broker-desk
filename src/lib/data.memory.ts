@@ -22,6 +22,7 @@ import {
   type OutputTemplateSettingsInput,
 } from "@/lib/output-doc";
 import { COMPLETE_CASE_FIELD_DEFAULTS, COMPLETE_DRAFT_DEFAULTS } from "@/lib/guarantee-application-fixtures";
+import type { TenantRole } from "@/lib/tenant-permissions";
 
 export type { OutputTemplateSettingsInput } from "@/lib/output-doc";
 
@@ -31,6 +32,28 @@ export type User = {
   email: string;
   passwordHash: string;
   createdAt: Date;
+};
+
+export type TenantStatus = "active" | "suspended";
+export type TenantMembershipStatus = "active" | "invited" | "suspended";
+
+export type Tenant = {
+  id: string;
+  name: string;
+  slug: string;
+  status: TenantStatus;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type TenantMembership = {
+  id: string;
+  tenantId: string;
+  userId: string;
+  role: TenantRole;
+  status: TenantMembershipStatus;
+  createdAt: Date;
+  updatedAt: Date;
 };
 
 export type Client = {
@@ -324,6 +347,8 @@ export type OutputTemplateVersion = {
 
 type DB = {
   users: User[];
+  tenants: Tenant[];
+  tenantMemberships: TenantMembership[];
   clients: Client[];
   properties: Property[];
   quotations: Quotation[];
@@ -398,6 +423,36 @@ const _freshDb: DB = {
       email: "ops@brokerdesk.local",
       passwordHash: "ops_demo_password_hash",
       createdAt: new Date(now - 45 * 24 * 60 * 60 * 1000),
+    },
+  ],
+  tenants: [
+    {
+      id: "tenant_cherry",
+      name: "Cherry Investment株式会社",
+      slug: "cherry-investment",
+      status: "active",
+      createdAt: new Date(now - 90 * 24 * 60 * 60 * 1000),
+      updatedAt: new Date(now - 5 * 24 * 60 * 60 * 1000),
+    },
+  ],
+  tenantMemberships: [
+    {
+      id: "membership_cherry_owner",
+      tenantId: "tenant_cherry",
+      userId: "user_demo",
+      role: "tenant_owner",
+      status: "active",
+      createdAt: new Date(now - 90 * 24 * 60 * 60 * 1000),
+      updatedAt: new Date(now - 5 * 24 * 60 * 60 * 1000),
+    },
+    {
+      id: "membership_cherry_admin",
+      tenantId: "tenant_cherry",
+      userId: "user_ops",
+      role: "tenant_admin",
+      status: "active",
+      createdAt: new Date(now - 45 * 24 * 60 * 60 * 1000),
+      updatedAt: new Date(now - 5 * 24 * 60 * 60 * 1000),
     },
   ],
   properties: [
@@ -829,6 +884,8 @@ const _freshDb: DB = {
 
 if (!_g.__brokerDb) _g.__brokerDb = _freshDb;
 const db: DB = _g.__brokerDb;
+if (!db.tenants) db.tenants = [..._freshDb.tenants];
+if (!db.tenantMemberships) db.tenantMemberships = [..._freshDb.tenantMemberships];
 if (!db.guaranteeApplicationDrafts) db.guaranteeApplicationDrafts = [..._freshDb.guaranteeApplicationDrafts];
 if (!db.correctionEvents) db.correctionEvents = [];
 if (!db.aiExperienceDrafts) db.aiExperienceDrafts = [];
@@ -844,6 +901,8 @@ export function resetBusinessDataForQa(): Record<keyof Omit<DB, "users" | "outpu
   templateSettings.email = cherryOutputTemplate.email;
 
   db.users = _freshDb.users.map((user) => ({ ...user }));
+  db.tenants = _freshDb.tenants.map((tenant) => ({ ...tenant }));
+  db.tenantMemberships = _freshDb.tenantMemberships.map((membership) => ({ ...membership }));
   db.clients = [];
   db.properties = [];
   db.quotations = [];
@@ -873,6 +932,8 @@ export function resetBusinessDataForQa(): Record<keyof Omit<DB, "users" | "outpu
   db.generatedOutputs = [];
 
   return {
+    tenants: db.tenants.length,
+    tenantMemberships: db.tenantMemberships.length,
     clients: db.clients.length,
     properties: db.properties.length,
     quotations: db.quotations.length,
@@ -967,6 +1028,34 @@ export async function getDefaultUser(preferredUserId?: string) {
     if (found) return found;
   }
   return db.users[0] ?? null;
+}
+
+export async function getTenantById(tenantId: string): Promise<Tenant | null> {
+  const found = db.tenants.find((item) => item.id === tenantId);
+  return found ? { ...found } : null;
+}
+
+export async function listTenantMemberships(userId: string): Promise<TenantMembership[]> {
+  return db.tenantMemberships
+    .filter((item) => item.userId === userId)
+    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+    .map((item) => ({ ...item }));
+}
+
+export async function getTenantMembership(input: { userId: string; tenantId: string }): Promise<TenantMembership | null> {
+  const found = db.tenantMemberships.find(
+    (item) => item.userId === input.userId && item.tenantId === input.tenantId,
+  );
+  return found ? { ...found } : null;
+}
+
+export async function listTenantsForUser(userId: string): Promise<Tenant[]> {
+  const memberships = await listTenantMemberships(userId);
+  const tenantIds = new Set(memberships.filter((item) => item.status === "active").map((item) => item.tenantId));
+  return db.tenants
+    .filter((item) => item.status === "active" && tenantIds.has(item.id))
+    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+    .map((item) => ({ ...item }));
 }
 
 export async function getOutputTemplateSettings(userId: string): Promise<OutputTemplateSettings> {

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { ACTOR_COOKIE_NAME, isActorSwitchingEnabled } from "@/lib/actor";
-import { getUserById } from "@/lib/data";
+import { getUserById, listTenantMemberships } from "@/lib/data";
+import { ACTIVE_TENANT_COOKIE_NAME } from "@/lib/tenant-permissions";
 
 type ActorPayload = {
   actorId?: string;
@@ -28,11 +29,32 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "invalid_actor_id" }, { status: 404 });
   }
 
-  const response = NextResponse.json({ ok: true, actorId: user.id });
+  const memberships = await listTenantMemberships(user.id);
+  const activeMembership = memberships.find((membership) => membership.status === "active");
+
+  const response = NextResponse.json({
+    ok: true,
+    actorId: user.id,
+    tenantId: activeMembership?.tenantId,
+    role: activeMembership?.role,
+  });
   response.cookies.set(ACTOR_COOKIE_NAME, user.id, {
     path: "/",
     maxAge: 60 * 60 * 24 * 365,
     sameSite: "lax",
   });
+  if (activeMembership) {
+    response.cookies.set(ACTIVE_TENANT_COOKIE_NAME, activeMembership.tenantId, {
+      path: "/",
+      maxAge: 60 * 60 * 24 * 365,
+      sameSite: "lax",
+    });
+  } else {
+    response.cookies.set(ACTIVE_TENANT_COOKIE_NAME, "", {
+      path: "/",
+      maxAge: 0,
+      sameSite: "lax",
+    });
+  }
   return response;
 }

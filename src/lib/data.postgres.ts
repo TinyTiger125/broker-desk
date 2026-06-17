@@ -52,6 +52,10 @@ import type {
   Property,
   Quotation,
   Task,
+  Tenant,
+  TenantMembership,
+  TenantMembershipStatus,
+  TenantStatus,
   User,
   AuditLog,
   OutputTemplateVersion,
@@ -100,6 +104,29 @@ function mapUser(row: Record<string, unknown>): User {
     email: String(row.email),
     passwordHash: String(row.password_hash),
     createdAt: toDate(row.created_at) ?? new Date(),
+  };
+}
+
+function mapTenant(row: Record<string, unknown>): Tenant {
+  return {
+    id: String(row.id),
+    name: String(row.name),
+    slug: String(row.slug),
+    status: String(row.status ?? "active") as TenantStatus,
+    createdAt: toDate(row.created_at) ?? new Date(),
+    updatedAt: toDate(row.updated_at) ?? new Date(),
+  };
+}
+
+function mapTenantMembership(row: Record<string, unknown>): TenantMembership {
+  return {
+    id: String(row.id),
+    tenantId: String(row.tenant_id),
+    userId: String(row.user_id),
+    role: String(row.role) as TenantMembership["role"],
+    status: String(row.status ?? "active") as TenantMembershipStatus,
+    createdAt: toDate(row.created_at) ?? new Date(),
+    updatedAt: toDate(row.updated_at) ?? new Date(),
   };
 }
 
@@ -468,6 +495,26 @@ async function ensureSchema() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    CREATE TABLE IF NOT EXISTS tenants (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      slug TEXT UNIQUE NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS tenant_memberships (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL REFERENCES tenants(id),
+      user_id TEXT NOT NULL REFERENCES users(id),
+      role TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (tenant_id, user_id)
+    );
+
     CREATE TABLE IF NOT EXISTS clients (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -736,6 +783,8 @@ async function ensureSchema() {
       generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    CREATE INDEX IF NOT EXISTS idx_tenant_memberships_user_status ON tenant_memberships(user_id, status);
+    CREATE INDEX IF NOT EXISTS idx_tenant_memberships_tenant_role ON tenant_memberships(tenant_id, role);
     CREATE INDEX IF NOT EXISTS idx_clients_owner_stage ON clients(owner_user_id, stage);
     CREATE INDEX IF NOT EXISTS idx_clients_next_followup ON clients(next_follow_up_at);
     CREATE INDEX IF NOT EXISTS idx_quotes_client_created ON quotations(client_id, created_at DESC);
@@ -856,6 +905,39 @@ async function ensureSchema() {
      VALUES ($1, $2, $3, $4)
      ON CONFLICT (id) DO NOTHING`,
     ["user_ops", "運用担当 佐伯", "ops@brokerdesk.local", "ops_demo_password_hash"]
+  );
+
+  await db.query(
+    `INSERT INTO tenants (id, name, slug, status)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (id) DO UPDATE SET
+      name = EXCLUDED.name,
+      slug = EXCLUDED.slug,
+      status = EXCLUDED.status,
+      updated_at = NOW()`,
+    ["tenant_cherry", "Cherry Investment株式会社", "cherry-investment", "active"]
+  );
+  await db.query(
+    `INSERT INTO tenant_memberships (id, tenant_id, user_id, role, status)
+     VALUES
+      ($1, $2, $3, $4, $5),
+      ($6, $7, $8, $9, $10)
+     ON CONFLICT (tenant_id, user_id) DO UPDATE SET
+      role = EXCLUDED.role,
+      status = EXCLUDED.status,
+      updated_at = NOW()`,
+    [
+      "membership_cherry_owner",
+      "tenant_cherry",
+      "user_demo",
+      "tenant_owner",
+      "active",
+      "membership_cherry_admin",
+      "tenant_cherry",
+      "user_ops",
+      "tenant_admin",
+      "active",
+    ]
   );
 
   const templateCount = await db.query(
@@ -1070,6 +1152,45 @@ export async function getDefaultUser(preferredUserId?: string) {
   const result = await getPool().query("SELECT * FROM users ORDER BY created_at ASC LIMIT 1");
   const row = result.rows[0];
   return row ? mapUser(row) : null;
+}
+
+export async function getTenantById(tenantId: string): Promise<Tenant | null> {
+  await ensureSchema();
+  const result = await getPool().query("SELECT * FROM tenants WHERE id = $1 LIMIT 1", [tenantId]);
+  return result.rows[0] ? mapTenant(result.rows[0]) : null;
+}
+
+export async function listTenantMemberships(userId: string): Promise<TenantMembership[]> {
+  await ensureSchema();
+  const result = await getPool().query(
+    "SELECT * FROM tenant_memberships WHERE user_id = $1 ORDER BY created_at ASC",
+    [userId],
+  );
+  return result.rows.map(mapTenantMembership);
+}
+
+export async function getTenantMembership(input: { userId: string; tenantId: string }): Promise<TenantMembership | null> {
+  await ensureSchema();
+  const result = await getPool().query(
+    "SELECT * FROM tenant_memberships WHERE user_id = $1 AND tenant_id = $2 LIMIT 1",
+    [input.userId, input.tenantId],
+  );
+  return result.rows[0] ? mapTenantMembership(result.rows[0]) : null;
+}
+
+export async function listTenantsForUser(userId: string): Promise<Tenant[]> {
+  await ensureSchema();
+  const result = await getPool().query(
+    `SELECT tenants.*
+     FROM tenants
+     JOIN tenant_memberships ON tenant_memberships.tenant_id = tenants.id
+     WHERE tenant_memberships.user_id = $1
+       AND tenant_memberships.status = 'active'
+       AND tenants.status = 'active'
+     ORDER BY tenants.created_at ASC`,
+    [userId],
+  );
+  return result.rows.map(mapTenant);
 }
 
 export async function getOutputTemplateSettings(userId: string): Promise<OutputTemplateSettings> {

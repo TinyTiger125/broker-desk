@@ -172,6 +172,11 @@ Implemented or materially present:
   - 4 インシュア
   - 5 ふれんず保証
 - Standard field catalog.
+- Phase 1 tenant/session foundation:
+  - `tenants` and `tenant_memberships` exist in memory/Postgres data layers.
+  - active tenant can resolve from membership/cookie/default membership.
+  - initial role/action permission matrix exists for tenant, case, source, extraction, record, review, output, template, AI, and audit actions.
+  - `/api/tenant/session` exposes the resolved user, tenant, membership, and role for diagnostics.
 - AI correction-event and approved-experience skeleton.
 - Stitch-based visual direction has been partially integrated.
 
@@ -181,8 +186,9 @@ Not yet release-ready:
 - Five guarantee-company templates are not all at the same quality level.
 - Company-specific checkbox/plan option output is incomplete on some templates.
 - Some UI still mixes broker workflow and admin/template-factory controls.
-- Postgres/auth/role separation are not yet production-ready.
-- Multi-tenant and permission architecture is documented, but not yet implemented across auth, repositories, routes, template governance, AI calls, or audit.
+- Auth is still local/demo-session based; production identity provider login is not implemented.
+- Phase 2 tenant-scoped business data access is not implemented: existing cases, source files, confirmed records, outputs, templates, AI jobs, and audit data are not yet fully protected by `tenant_id` repository boundaries.
+- Permission architecture is not yet enforced across all routes, server actions, template governance, AI calls, or audit.
 
 ## Guarantee Template Status
 
@@ -340,17 +346,18 @@ Architecture lesson:
 
 Immediate:
 
-1. Finish 3 Jリース company-option checkbox/plan output.
-2. Run full-data visual QA for Jリース after company options print.
-3. Preserve the current 1/2/3 template coordinate state and avoid accidental overwrite.
-4. Move or gate template factory controls behind admin/backstage semantics.
+1. Start Phase 2 tenant-scoped data access: add `tenant_id` to business tables and seed/local memory records.
+2. Change repository reads/writes from raw ids to tenant-scoped helpers.
+3. Add denial tests proving tenant A cannot access tenant B cases, source files, records, outputs, templates, AI jobs, or audit rows.
+4. Then wire `requireTenantSession` and action permissions into frontstage API routes/server actions.
+5. Preserve the current 1/2/3/4/5 template coordinate state and avoid accidental overwrite.
 
 Near term:
 
-1. Repeat full-data tests across 1/2/3/4/5.
-2. Record per-template acceptance status: ready, conditional, blocked, or calibration-needed.
-3. Add regression checks for split fields: postal, phone, birth date, license number, money cells.
-4. Align workbench field groups with `src/lib/case-field-catalog.ts`.
+1. Move or gate template factory controls behind admin/backstage semantics.
+2. Finish remaining company-option output gaps such as Jリース checkbox/plan output.
+3. Repeat full-data tests across 1/2/3/4/5.
+4. Record per-template acceptance status: ready, conditional, blocked, or calibration-needed.
 5. Keep ordinary broker flow strictly 1-2-3.
 
 Before closed pilot:
@@ -372,6 +379,7 @@ npm run test:case-field-catalog
 npm run test:guarantee-download-gate
 npm run test:guarantee-autofill-policy
 npm run test:guarantee-print-fit
+npm run test:tenant-session
 ```
 
 Template visual smoke:
@@ -400,3 +408,9 @@ http://localhost:3002/api/guarantee-applications/j_lease_individual_v1/download?
 - Recorded current product position, template-factory boundary, standard-field direction, active Jリース status, and next-step priorities.
 - Added an explicit rule that future durable decisions and acceptance results must be appended here.
 - Added Japanese postal-code lookup as deterministic master data: input postal code can auto-complete prefecture, municipality, and town area from a local Japan Post index. AI must not be used for this step. Postal-derived address prefixes are allowed to assist address entry and output fragments, but prefix-only completion must remain reviewable so it does not hide missing street/building details.
+
+### 2026-06-18
+
+- Cleaned and reorganized project documentation into product, engineering, operations, and archive buckets; `.broker-desk/friends-guarantee-layouts.json` is tracked as the current template calibration asset.
+- Added Phase 1 tenant/session foundation: tenant and membership data models, active tenant resolution, conservative role/action permission matrix, diagnostic tenant session API, and regression coverage.
+- Explicit boundary: Phase 1 does not yet prove production multi-tenant safety. Phase 2 must add `tenant_id` business data scoping and cross-tenant denial tests before closed pilot risk is materially reduced.

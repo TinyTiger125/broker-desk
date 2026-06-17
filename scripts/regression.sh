@@ -94,9 +94,18 @@ assert(unknown.finalValue === undefined, "unknown must not confirm");
 assert(unknown.shouldConfirm === false, "unknown must not materialize");
 NODE
 
+echo "[STEP] tenant session foundation"
+node scripts/check-tenant-session.mjs || fail "tenant session foundation failed"
+
 echo "[STEP] health check"
 health_json="$(curl -fsS "${BASE_URL}/api/health/data")" || fail "health endpoint unreachable"
 echo "$health_json" | grep '"ok":true' >/dev/null || fail "health check returned not ok"
+
+echo "[STEP] tenant session API"
+tenant_session_json="$(curl -fsS "${BASE_URL}/api/tenant/session")" || fail "tenant session endpoint unreachable"
+echo "$tenant_session_json" | grep '"ok":true' >/dev/null || fail "tenant session returned not ok"
+echo "$tenant_session_json" | grep '"id":"tenant_cherry"' >/dev/null || fail "tenant session missing default tenant"
+echo "$tenant_session_json" | grep '"role":"tenant_owner"' >/dev/null || fail "tenant session missing owner role"
 
 echo "[STEP] intake parse API"
 parse_json="$(curl -fsS -X POST "${BASE_URL}/api/clients/intake/parse" -H 'content-type: application/json' -d '{"text":"港区投資、予算8000万〜1億、月々30万円、本人確認は保留中"}')" || fail "intake parse endpoint failed"

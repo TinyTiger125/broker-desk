@@ -18,6 +18,14 @@ export const listUsers: typeof memory.listUsers = (...args) =>
   repo.listUsers(...args);
 export const getUserById: typeof memory.getUserById = (...args) =>
   repo.getUserById(...args);
+export const getTenantById: typeof memory.getTenantById = (...args) =>
+  repo.getTenantById(...args);
+export const listTenantMemberships: typeof memory.listTenantMemberships = (...args) =>
+  repo.listTenantMemberships(...args);
+export const getTenantMembership: typeof memory.getTenantMembership = (...args) =>
+  repo.getTenantMembership(...args);
+export const listTenantsForUser: typeof memory.listTenantsForUser = (...args) =>
+  repo.listTenantsForUser(...args);
 export const getOutputTemplateSettings: typeof memory.getOutputTemplateSettings = (...args) =>
   repo.getOutputTemplateSettings(...args);
 export const updateOutputTemplateSettings: typeof memory.updateOutputTemplateSettings = (...args) =>
@@ -152,6 +160,10 @@ export type {
   Attachment,
   AttachmentTargetType,
   GeneratedOutput,
+  Tenant,
+  TenantMembership,
+  TenantMembershipStatus,
+  TenantStatus,
   Property,
   Quotation,
   ImportJob,

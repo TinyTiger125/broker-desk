@@ -662,6 +662,22 @@ This applies to guarantee-company applications and future outputs.
 
 Goal: remove the false single-user model.
 
+Implementation status as of 2026-06-18: partially implemented as a foundation.
+
+Implemented:
+
+- Memory and Postgres data layers now include `tenants` and `tenant_memberships`.
+- Active tenant resolution exists through membership, optional tenant cookie, and default active membership.
+- `requireTenantSession` exists for route/server-side callers.
+- Initial action-based role matrix exists for owner/admin/manager/broker/data-operator/reviewer/viewer/platform-owner.
+- `/api/tenant/session` can expose the resolved tenant session for diagnostics.
+
+Not implemented yet:
+
+- Real external identity provider login.
+- Systematic replacement of demo/default user semantics.
+- Full enforcement across every frontstage route and server action.
+
 Tasks:
 
 1. Add real authenticated user session.
