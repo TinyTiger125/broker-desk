@@ -1,9 +1,10 @@
 import {
   inviteTenantMemberAction,
+  sendTenantMemberInvitationAction,
   updateTenantMemberRoleAction,
   updateTenantMemberStatusAction,
 } from "@/app/actions";
-import { listTenantMembers } from "@/lib/data";
+import { listTenantMembers, type TenantInvitationStatus } from "@/lib/data";
 import { getLocale, type Locale } from "@/lib/locale";
 import { TENANT_ROLES, roleHasTenantPermission, type TenantRole } from "@/lib/tenant-permissions";
 import { requireTenantSession } from "@/lib/tenant-session";
@@ -29,6 +30,15 @@ const roleLabels: Record<TenantRole, Record<Locale, string>> = {
   viewer: { ja: "Viewer", zh: "只读", ko: "조회자" },
 };
 
+const invitationLabels: Record<TenantInvitationStatus, Record<Locale, string>> = {
+  not_sent: { ja: "未送信", zh: "未发送", ko: "미발송" },
+  pending: { ja: "招待中", zh: "邀请中", ko: "초대 중" },
+  accepted: { ja: "ログイン済み", zh: "已登录", ko: "로그인 완료" },
+  revoked: { ja: "取消済み", zh: "已撤销", ko: "취소됨" },
+  expired: { ja: "期限切れ", zh: "已过期", ko: "만료됨" },
+  failed: { ja: "送信失敗", zh: "发送失败", ko: "전송 실패" },
+};
+
 function copy(locale: Locale) {
   return {
     title: locale === "zh" ? "租户成员与权限" : locale === "ko" ? "테넌트 멤버와 권한" : "メンバーと権限",
@@ -47,6 +57,9 @@ function copy(locale: Locale) {
     saveRole: locale === "zh" ? "保存角色" : locale === "ko" ? "역할 저장" : "ロール保存",
     suspend: locale === "zh" ? "停用" : locale === "ko" ? "중지" : "停止",
     reactivate: locale === "zh" ? "恢复" : locale === "ko" ? "재활성화" : "再有効化",
+    sendInvite: locale === "zh" ? "发送邀请" : locale === "ko" ? "초대 보내기" : "招待送信",
+    bound: locale === "zh" ? "已绑定登录" : locale === "ko" ? "로그인 연동됨" : "ログイン連携済み",
+    unbound: locale === "zh" ? "未绑定登录" : locale === "ko" ? "로그인 미연동" : "ログイン未連携",
     current: locale === "zh" ? "当前用户" : locale === "ko" ? "현재 사용자" : "現在のユーザー",
     noPermission:
       locale === "zh"
@@ -56,10 +69,10 @@ function copy(locale: Locale) {
           : "現在のロールではメンバー確認のみ可能で、変更はできません。",
     localOnly:
       locale === "zh"
-        ? "当前实现创建本地成员身份，不发送正式邀请邮件；生产登录供应商接入后再替换邀请流程。"
+        ? "成员会先占用一个席位并进入待邀请状态；Clerk 生产配置完成后可发送正式邀请邮件。"
         : locale === "ko"
-          ? "현재 구현은 로컬 멤버십만 생성하며 공식 초대 메일은 보내지 않습니다. 프로덕션 인증 연동 후 초대 흐름을 교체합니다."
-          : "現在の実装はローカルメンバー権限を作成するだけで、正式な招待メールは送信しません。プロダクション認証連携後に招待フローを差し替えます。",
+          ? "멤버는 먼저 좌석을 점유하고 초대 대기 상태가 됩니다. Clerk 프로덕션 설정 후 공식 초대 메일을 보낼 수 있습니다."
+          : "メンバーは先に席を確保して招待待ちになります。Clerk の本番設定後に正式な招待メールを送信できます。",
   };
 }
 
@@ -67,6 +80,14 @@ function statusTone(status: string) {
   if (status === "active") return "bg-emerald-100 text-emerald-800";
   if (status === "invited") return "bg-amber-100 text-amber-800";
   return "bg-slate-200 text-slate-700";
+}
+
+function invitationTone(status: TenantInvitationStatus) {
+  if (status === "accepted") return "bg-emerald-100 text-emerald-800";
+  if (status === "pending") return "bg-sky-100 text-sky-800";
+  if (status === "failed" || status === "expired") return "bg-rose-100 text-rose-800";
+  if (status === "revoked") return "bg-slate-200 text-slate-700";
+  return "bg-amber-100 text-amber-800";
 }
 
 export default async function TenantMembersPage({ searchParams }: MembersPageProps) {
@@ -162,8 +183,24 @@ export default async function TenantMembersPage({ searchParams }: MembersPagePro
                   <button className="rounded-md border border-slate-300 px-2 py-1.5 text-xs font-bold text-slate-700">{ui.saveRole}</button>
                 ) : null}
               </form>
-              <span className={`w-fit rounded-full px-2 py-1 text-xs font-bold ${statusTone(member.status)}`}>{member.status}</span>
-              <div>
+              <div className="space-y-1">
+                <span className={`block w-fit rounded-full px-2 py-1 text-xs font-bold ${statusTone(member.status)}`}>{member.status}</span>
+                <span className={`block w-fit rounded-full px-2 py-1 text-xs font-bold ${invitationTone(member.invitationStatus)}`}>
+                  {invitationLabels[member.invitationStatus][locale]}
+                </span>
+                <span className={`block w-fit rounded-full px-2 py-1 text-xs font-bold ${member.user.externalAuthSubject ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-700"}`}>
+                  {member.user.externalAuthSubject ? ui.bound : ui.unbound}
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {canInvite && member.status === "invited" ? (
+                  <form action={sendTenantMemberInvitationAction}>
+                    <input type="hidden" name="membershipId" value={member.id} />
+                    <button className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700">
+                      {ui.sendInvite}
+                    </button>
+                  </form>
+                ) : null}
                 {canRemove ? (
                   <form action={updateTenantMemberStatusAction}>
                     <input type="hidden" name="membershipId" value={member.id} />

@@ -146,26 +146,15 @@ function mapTenantMembership(row: Record<string, unknown>): TenantMembership {
     userId: String(row.user_id),
     role: String(row.role) as TenantMembership["role"],
     status: String(row.status ?? "active") as TenantMembershipStatus,
+    invitationProvider: String(row.invitation_provider ?? (row.status === "active" ? "manual" : "none")) as TenantMembership["invitationProvider"],
+    invitationStatus: String(row.invitation_status ?? (row.status === "active" ? "accepted" : "not_sent")) as TenantMembership["invitationStatus"],
+    providerInvitationId: row.provider_invitation_id ? String(row.provider_invitation_id) : undefined,
+    invitationUrl: row.invitation_url ? String(row.invitation_url) : undefined,
+    invitationSentAt: toDate(row.invitation_sent_at),
+    invitationAcceptedAt: toDate(row.invitation_accepted_at),
+    invitationError: row.invitation_error ? String(row.invitation_error) : undefined,
     createdAt: toDate(row.created_at) ?? new Date(),
     updatedAt: toDate(row.updated_at) ?? new Date(),
-  };
-}
-
-function mapTenantMember(row: Record<string, unknown>): TenantMemberListItem {
-  return {
-    id: String(row.id),
-    tenantId: String(row.tenant_id),
-    userId: String(row.user_id),
-    role: String(row.role) as TenantMembership["role"],
-    status: String(row.status ?? "active") as TenantMembershipStatus,
-    createdAt: toDate(row.created_at) ?? new Date(),
-    updatedAt: toDate(row.updated_at) ?? new Date(),
-    user: {
-      id: String(row.user_id),
-      name: String(row.user_name),
-      email: String(row.user_email),
-      createdAt: toDate(row.user_created_at) ?? new Date(),
-    },
   };
 }
 
@@ -574,6 +563,13 @@ async function ensureSchema() {
       user_id TEXT NOT NULL REFERENCES users(id),
       role TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'active',
+      invitation_provider TEXT NOT NULL DEFAULT 'none',
+      invitation_status TEXT NOT NULL DEFAULT 'not_sent',
+      provider_invitation_id TEXT,
+      invitation_url TEXT,
+      invitation_sent_at TIMESTAMPTZ,
+      invitation_accepted_at TIMESTAMPTZ,
+      invitation_error TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       UNIQUE (tenant_id, user_id)
@@ -998,6 +994,13 @@ async function ensureSchema() {
     ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS context_json JSONB;
     ALTER TABLE tenants ADD COLUMN IF NOT EXISTS account_type TEXT NOT NULL DEFAULT 'company';
     ALTER TABLE tenants ADD COLUMN IF NOT EXISTS purchased_seat_count INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE tenant_memberships ADD COLUMN IF NOT EXISTS invitation_provider TEXT NOT NULL DEFAULT 'none';
+    ALTER TABLE tenant_memberships ADD COLUMN IF NOT EXISTS invitation_status TEXT NOT NULL DEFAULT 'not_sent';
+    ALTER TABLE tenant_memberships ADD COLUMN IF NOT EXISTS provider_invitation_id TEXT;
+    ALTER TABLE tenant_memberships ADD COLUMN IF NOT EXISTS invitation_url TEXT;
+    ALTER TABLE tenant_memberships ADD COLUMN IF NOT EXISTS invitation_sent_at TIMESTAMPTZ;
+    ALTER TABLE tenant_memberships ADD COLUMN IF NOT EXISTS invitation_accepted_at TIMESTAMPTZ;
+    ALTER TABLE tenant_memberships ADD COLUMN IF NOT EXISTS invitation_error TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS external_auth_subject TEXT;
     CREATE UNIQUE INDEX IF NOT EXISTS idx_users_external_auth_subject ON users(external_auth_subject);
 
@@ -1006,6 +1009,12 @@ async function ensureSchema() {
     UPDATE generated_outputs SET document_number = id WHERE document_number IS NULL;
     UPDATE audit_logs SET actor_id = user_id WHERE actor_id IS NULL;
     UPDATE audit_logs SET context_json = '{}'::jsonb WHERE context_json IS NULL;
+    UPDATE tenant_memberships
+       SET invitation_provider = 'manual',
+           invitation_status = 'accepted',
+           invitation_accepted_at = COALESCE(invitation_accepted_at, updated_at)
+     WHERE status = 'active'
+       AND invitation_status = 'not_sent';
     UPDATE users SET external_auth_subject = 'demo:user_demo' WHERE id = 'user_demo' AND external_auth_subject IS NULL;
     UPDATE users SET external_auth_subject = 'demo:user_ops' WHERE id = 'user_ops' AND external_auth_subject IS NULL;
   `);
@@ -1054,13 +1063,18 @@ async function ensureSchema() {
     ["tenant_cherry", "Cherry Investment株式会社", "cherry-investment", "company", "active", 5]
   );
   await db.query(
-    `INSERT INTO tenant_memberships (id, tenant_id, user_id, role, status)
+    `INSERT INTO tenant_memberships (
+       id, tenant_id, user_id, role, status, invitation_provider, invitation_status, invitation_accepted_at
+     )
      VALUES
-      ($1, $2, $3, $4, $5),
-      ($6, $7, $8, $9, $10)
+      ($1, $2, $3, $4, $5, $6, $7, NOW()),
+      ($8, $9, $10, $11, $12, $13, $14, NOW())
      ON CONFLICT (tenant_id, user_id) DO UPDATE SET
       role = EXCLUDED.role,
       status = EXCLUDED.status,
+      invitation_provider = EXCLUDED.invitation_provider,
+      invitation_status = EXCLUDED.invitation_status,
+      invitation_accepted_at = COALESCE(tenant_memberships.invitation_accepted_at, EXCLUDED.invitation_accepted_at),
       updated_at = NOW()`,
     [
       "membership_cherry_owner",
@@ -1068,11 +1082,15 @@ async function ensureSchema() {
       "user_demo",
       "tenant_owner",
       "active",
+      "manual",
+      "accepted",
       "membership_cherry_admin",
       "tenant_cherry",
       "user_ops",
       "tenant_admin",
       "active",
+      "manual",
+      "accepted",
     ]
   );
 
@@ -1292,6 +1310,20 @@ function fallbackEmailForExternalSubject(subject: string): string {
   return `external-${safeSubject}@brokerdesk.local`;
 }
 
+async function activateInvitedMembershipsForUser(client: PoolClient, userId: string) {
+  await client.query(
+    `UPDATE tenant_memberships
+     SET status = 'active',
+         invitation_status = 'accepted',
+         invitation_accepted_at = NOW(),
+         invitation_error = NULL,
+         updated_at = NOW()
+     WHERE user_id = $1
+       AND status = 'invited'`,
+    [userId],
+  );
+}
+
 export async function ensureUserForExternalAuth(input: {
   subject: string;
   email?: string;
@@ -1307,7 +1339,11 @@ export async function ensureUserForExternalAuth(input: {
 
   return withTransaction(async (client) => {
     const bySubject = await client.query("SELECT * FROM users WHERE external_auth_subject = $1 LIMIT 1", [subject]);
-    if (bySubject.rows[0]) return mapUser(bySubject.rows[0]);
+    if (bySubject.rows[0]) {
+      const user = mapUser(bySubject.rows[0]);
+      await activateInvitedMembershipsForUser(client, user.id);
+      return user;
+    }
 
     if (email) {
       const byEmail = await client.query("SELECT * FROM users WHERE lower(email) = lower($1) LIMIT 1", [email]);
@@ -1324,7 +1360,9 @@ export async function ensureUserForExternalAuth(input: {
            RETURNING *`,
           [subject, name, user.id],
         );
-        return mapUser(linked.rows[0]);
+        const linkedUser = mapUser(linked.rows[0]);
+        await activateInvitedMembershipsForUser(client, linkedUser.id);
+        return linkedUser;
       }
     }
 
@@ -1333,10 +1371,35 @@ export async function ensureUserForExternalAuth(input: {
        VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (external_auth_subject) DO UPDATE SET
          name = CASE WHEN trim(users.name) = '' THEN EXCLUDED.name ELSE users.name END
-       RETURNING *`,
+      RETURNING *`,
       [genId("user"), name, email || fallbackEmail, "external_auth_user", subject],
     );
-    return mapUser(inserted.rows[0]);
+    const user = mapUser(inserted.rows[0]);
+    await activateInvitedMembershipsForUser(client, user.id);
+    return user;
+  });
+}
+
+export async function suspendUserForExternalAuthSubject(subject: string): Promise<{ userId?: string; suspendedMembershipCount: number }> {
+  await ensureSchema();
+  const normalized = subject.trim();
+  if (!normalized) return { suspendedMembershipCount: 0 };
+  return withTransaction(async (client) => {
+    const found = await client.query("SELECT * FROM users WHERE external_auth_subject = $1 LIMIT 1", [normalized]);
+    if (!found.rows[0]) return { suspendedMembershipCount: 0 };
+    const user = mapUser(found.rows[0]);
+    await client.query("UPDATE users SET external_auth_subject = NULL WHERE id = $1", [user.id]);
+    const suspended = await client.query(
+      `UPDATE tenant_memberships
+       SET status = 'suspended',
+           invitation_status = 'revoked',
+           updated_at = NOW()
+       WHERE user_id = $1
+         AND status <> 'suspended'
+       RETURNING id`,
+      [user.id],
+    );
+    return { userId: user.id, suspendedMembershipCount: suspended.rowCount ?? 0 };
   });
 }
 
@@ -1368,12 +1431,28 @@ function mapTenantAccountSummary(row: Record<string, unknown>): TenantAccountSum
     invitedSeatCount,
     usedSeatCount,
     availableSeatCount: Math.max(0, tenant.purchasedSeatCount - usedSeatCount),
+    ownerMembers: [],
+  };
+}
+
+function mapTenantMemberJoinedRow(row: Record<string, unknown>): TenantMemberListItem {
+  const membership = mapTenantMembership(row);
+  return {
+    ...membership,
+    user: {
+      id: membership.userId,
+      name: String(row.user_name ?? ""),
+      email: String(row.user_email ?? ""),
+      externalAuthSubject: row.user_external_auth_subject ? String(row.user_external_auth_subject) : undefined,
+      createdAt: toDate(row.user_created_at) ?? new Date(),
+    },
   };
 }
 
 export async function listPlatformTenantAccounts(): Promise<TenantAccountSummary[]> {
   await ensureSchema();
-  const result = await getPool().query(
+  const db = getPool();
+  const result = await db.query(
     `SELECT
        tenants.*,
        COUNT(*) FILTER (WHERE tenant_memberships.status = 'active')::int AS active_seat_count,
@@ -1383,7 +1462,33 @@ export async function listPlatformTenantAccounts(): Promise<TenantAccountSummary
      GROUP BY tenants.id
      ORDER BY tenants.created_at ASC`,
   );
-  return result.rows.map(mapTenantAccountSummary);
+  const accounts = result.rows.map(mapTenantAccountSummary);
+  const ownerResult = await db.query(
+    `SELECT
+       tenant_memberships.*,
+       users.name AS user_name,
+       users.email AS user_email,
+       users.external_auth_subject AS user_external_auth_subject,
+       users.created_at AS user_created_at
+     FROM tenant_memberships
+     JOIN users ON users.id = tenant_memberships.user_id
+     WHERE tenant_memberships.role = 'tenant_owner'
+     ORDER BY tenant_memberships.created_at ASC`,
+  );
+  const ownersByTenant = new Map<string, TenantAccountSummary["ownerMembers"]>();
+  ownerResult.rows.forEach((row) => {
+    const member = mapTenantMemberJoinedRow(row);
+    const current = ownersByTenant.get(member.tenantId) ?? [];
+    current.push({
+      ...member,
+      isBoundToExternalAuth: Boolean(member.user.externalAuthSubject),
+    });
+    ownersByTenant.set(member.tenantId, current);
+  });
+  return accounts.map((account) => ({
+    ...account,
+    ownerMembers: ownersByTenant.get(account.id) ?? [],
+  }));
 }
 
 function slugifyTenantName(value: string): string {
@@ -1470,22 +1575,39 @@ export async function createTenantAccount(input: {
       owner = mapUser(inserted.rows[0]);
     }
 
-    await client.query(
-      `INSERT INTO tenant_memberships (id, tenant_id, user_id, role, status)
-       VALUES ($1, $2, $3, $4, $5)
+    const membershipResult = await client.query(
+      `INSERT INTO tenant_memberships (
+         id, tenant_id, user_id, role, status, invitation_provider, invitation_status
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        ON CONFLICT (tenant_id, user_id) DO UPDATE SET
          role = EXCLUDED.role,
          status = EXCLUDED.status,
-         updated_at = NOW()`,
-      [genId("membership"), tenant.id, owner.id, "tenant_owner", "active"],
+         invitation_provider = EXCLUDED.invitation_provider,
+         invitation_status = EXCLUDED.invitation_status,
+         updated_at = NOW()
+       RETURNING *`,
+      [genId("membership"), tenant.id, owner.id, "tenant_owner", "invited", "none", "not_sent"],
     );
+    const ownerMembership = mapTenantMembership(membershipResult.rows[0]);
 
     return {
       ...tenant,
-      activeSeatCount: 1,
-      invitedSeatCount: 0,
+      activeSeatCount: 0,
+      invitedSeatCount: 1,
       usedSeatCount: 1,
       availableSeatCount: Math.max(0, tenant.purchasedSeatCount - 1),
+      ownerMembers: [{
+        ...ownerMembership,
+        user: {
+          id: owner.id,
+          name: owner.name,
+          email: owner.email,
+          externalAuthSubject: owner.externalAuthSubject,
+          createdAt: owner.createdAt,
+        },
+        isBoundToExternalAuth: Boolean(owner.externalAuthSubject),
+      }],
     };
   });
 }
@@ -1535,6 +1657,7 @@ export async function updateTenantAccountLifecycle(input: {
       invitedSeatCount,
       usedSeatCount,
       availableSeatCount: Math.max(0, nextSeatCount - usedSeatCount),
+      ownerMembers: [],
     };
   });
 }
@@ -1580,6 +1703,7 @@ export async function listTenantMembers(tenantId: string): Promise<TenantMemberL
        tenant_memberships.*,
        users.name AS user_name,
        users.email AS user_email,
+       users.external_auth_subject AS user_external_auth_subject,
        users.created_at AS user_created_at
      FROM tenant_memberships
      JOIN users ON users.id = tenant_memberships.user_id
@@ -1589,7 +1713,73 @@ export async function listTenantMembers(tenantId: string): Promise<TenantMemberL
        tenant_memberships.created_at ASC`,
     [scopeTenantId],
   );
-  return result.rows.map(mapTenantMember);
+  return result.rows.map(mapTenantMemberJoinedRow);
+}
+
+export async function getTenantMemberById(input: {
+  tenantId?: string;
+  membershipId: string;
+}): Promise<TenantMemberListItem | null> {
+  await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const result = await getPool().query(
+    `SELECT
+       tenant_memberships.*,
+       users.name AS user_name,
+       users.email AS user_email,
+       users.external_auth_subject AS user_external_auth_subject,
+       users.created_at AS user_created_at
+     FROM tenant_memberships
+     JOIN users ON users.id = tenant_memberships.user_id
+     WHERE tenant_memberships.id = $1
+       AND tenant_memberships.tenant_id = $2
+     LIMIT 1`,
+    [input.membershipId, scopeTenantId],
+  );
+  return result.rows[0] ? mapTenantMemberJoinedRow(result.rows[0]) : null;
+}
+
+export async function updateTenantMemberInvitation(input: {
+  tenantId?: string;
+  membershipId: string;
+  invitationProvider: TenantMembership["invitationProvider"];
+  invitationStatus: TenantMembership["invitationStatus"];
+  providerInvitationId?: string;
+  invitationUrl?: string;
+  invitationError?: string;
+  sentAt?: Date;
+  acceptedAt?: Date;
+}): Promise<TenantMemberListItem | null> {
+  await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const result = await getPool().query(
+    `UPDATE tenant_memberships
+     SET invitation_provider = $1,
+         invitation_status = $2,
+         provider_invitation_id = $3,
+         invitation_url = $4,
+         invitation_error = $5,
+         invitation_sent_at = COALESCE($6, invitation_sent_at),
+         invitation_accepted_at = COALESCE($7, invitation_accepted_at),
+         updated_at = NOW()
+     WHERE id = $8
+       AND tenant_id = $9
+     RETURNING *`,
+    [
+      input.invitationProvider,
+      input.invitationStatus,
+      input.providerInvitationId ?? null,
+      input.invitationUrl ?? null,
+      input.invitationError ?? null,
+      input.sentAt ?? null,
+      input.acceptedAt ?? null,
+      input.membershipId,
+      scopeTenantId,
+    ],
+  );
+  if (!result.rows[0]) return null;
+  const memberResult = await getTenantMemberById({ tenantId: scopeTenantId, membershipId: input.membershipId });
+  return memberResult;
 }
 
 export async function inviteTenantMember(input: {
@@ -1629,14 +1819,28 @@ export async function inviteTenantMember(input: {
 
     const membershipId = genId("membership");
     const membershipResult = await client.query(
-      `INSERT INTO tenant_memberships (id, tenant_id, user_id, role, status)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO tenant_memberships (
+         id, tenant_id, user_id, role, status, invitation_provider, invitation_status, invitation_accepted_at
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        ON CONFLICT (tenant_id, user_id) DO UPDATE SET
          role = EXCLUDED.role,
          status = EXCLUDED.status,
+         invitation_provider = COALESCE(tenant_memberships.invitation_provider, EXCLUDED.invitation_provider),
+         invitation_status = CASE WHEN EXCLUDED.status = 'active' THEN 'accepted' ELSE tenant_memberships.invitation_status END,
+         invitation_accepted_at = CASE WHEN EXCLUDED.status = 'active' THEN COALESCE(tenant_memberships.invitation_accepted_at, NOW()) ELSE tenant_memberships.invitation_accepted_at END,
          updated_at = NOW()
        RETURNING *`,
-      [membershipId, scopeTenantId, user.id, input.role, nextStatus],
+      [
+        membershipId,
+        scopeTenantId,
+        user.id,
+        input.role,
+        nextStatus,
+        nextStatus === "active" ? "manual" : "none",
+        nextStatus === "active" ? "accepted" : "not_sent",
+        nextStatus === "active" ? new Date() : null,
+      ],
     );
     const membership = mapTenantMembership(membershipResult.rows[0]);
     return {
@@ -1645,6 +1849,7 @@ export async function inviteTenantMember(input: {
         id: user.id,
         name: user.name,
         email: user.email,
+        externalAuthSubject: user.externalAuthSubject,
         createdAt: user.createdAt,
       },
     };
@@ -1675,6 +1880,7 @@ export async function updateTenantMemberRole(input: {
       id: user.id,
       name: user.name,
       email: user.email,
+      externalAuthSubject: user.externalAuthSubject,
       createdAt: user.createdAt,
     },
   };
@@ -1699,7 +1905,10 @@ export async function updateTenantMemberStatus(input: {
 
     const result = await client.query(
       `UPDATE tenant_memberships
-       SET status = $1, updated_at = NOW()
+       SET status = $1,
+           invitation_status = CASE WHEN status = 'invited' AND $1 = 'active' THEN 'accepted' ELSE invitation_status END,
+           invitation_accepted_at = CASE WHEN status = 'invited' AND $1 = 'active' THEN COALESCE(invitation_accepted_at, NOW()) ELSE invitation_accepted_at END,
+           updated_at = NOW()
        WHERE id = $2 AND tenant_id = $3
        RETURNING *`,
       [input.status, input.membershipId, scopeTenantId],
@@ -1715,6 +1924,7 @@ export async function updateTenantMemberStatus(input: {
         id: user.id,
         name: user.name,
         email: user.email,
+        externalAuthSubject: user.externalAuthSubject,
         createdAt: user.createdAt,
       },
     };

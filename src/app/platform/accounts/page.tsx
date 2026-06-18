@@ -1,9 +1,10 @@
 import Link from "next/link";
 import {
   createTenantAccountAction,
+  sendPlatformTenantMemberInvitationAction,
   updateTenantAccountLifecycleAction,
 } from "@/app/actions";
-import { listPlatformTenantAccounts, type TenantAccountSummary, type TenantStatus } from "@/lib/data";
+import { listPlatformTenantAccounts, type TenantAccountSummary, type TenantInvitationStatus, type TenantStatus } from "@/lib/data";
 import { getLocale, type Locale } from "@/lib/locale";
 import { PlatformSessionError, requirePlatformOwnerSession } from "@/lib/platform-session";
 
@@ -22,6 +23,15 @@ const statusLabels: Record<TenantStatus, Record<Locale, string>> = {
   active: { ja: "Active", zh: "启用", ko: "활성" },
   suspended: { ja: "Suspended", zh: "冻结", ko: "중지" },
   cancelled: { ja: "Cancelled", zh: "取消", ko: "취소" },
+};
+
+const invitationLabels: Record<TenantInvitationStatus, Record<Locale, string>> = {
+  not_sent: { ja: "未送信", zh: "未发送", ko: "미발송" },
+  pending: { ja: "招待中", zh: "邀请中", ko: "초대 중" },
+  accepted: { ja: "ログイン済み", zh: "已登录", ko: "로그인 완료" },
+  revoked: { ja: "取消済み", zh: "已撤销", ko: "취소됨" },
+  expired: { ja: "期限切れ", zh: "已过期", ko: "만료됨" },
+  failed: { ja: "送信失敗", zh: "发送失败", ko: "전송 실패" },
 };
 
 function copy(locale: Locale) {
@@ -50,6 +60,10 @@ function copy(locale: Locale) {
     used: locale === "zh" ? "已用" : locale === "ko" ? "사용" : "使用中",
     invited: locale === "zh" ? "邀请中" : locale === "ko" ? "초대 중" : "招待中",
     available: locale === "zh" ? "剩余" : locale === "ko" ? "잔여" : "残",
+    owner: locale === "zh" ? "负责人" : locale === "ko" ? "책임자" : "オーナー",
+    bound: locale === "zh" ? "已绑定" : locale === "ko" ? "연동됨" : "外部ID連携済み",
+    unbound: locale === "zh" ? "未绑定" : locale === "ko" ? "미연동" : "外部ID未連携",
+    sendInvite: locale === "zh" ? "发送邀请" : locale === "ko" ? "초대 보내기" : "招待送信",
     update: locale === "zh" ? "保存生命周期" : locale === "ko" ? "라이프사이클 저장" : "ライフサイクル保存",
     templates: locale === "zh" ? "官方模板工厂" : locale === "ko" ? "공식 템플릿 팩토리" : "公式テンプレート工場",
   };
@@ -66,6 +80,14 @@ function seatTone(account: TenantAccountSummary) {
   if (account.availableSeatCount < 0) return "text-rose-700";
   if (account.availableSeatCount === 0) return "text-amber-700";
   return "text-emerald-700";
+}
+
+function invitationTone(status: TenantInvitationStatus) {
+  if (status === "accepted") return "bg-emerald-100 text-emerald-800";
+  if (status === "pending") return "bg-sky-100 text-sky-800";
+  if (status === "failed" || status === "expired") return "bg-rose-100 text-rose-800";
+  if (status === "revoked") return "bg-slate-200 text-slate-700";
+  return "bg-amber-100 text-amber-800";
 }
 
 export default async function PlatformAccountsPage({ searchParams }: PlatformAccountsPageProps) {
@@ -160,6 +182,21 @@ export default async function PlatformAccountsPage({ searchParams }: PlatformAcc
               <div className="min-w-0">
                 <p className="truncate text-sm font-bold text-slate-900">{account.name}</p>
                 <p className="truncate text-xs text-slate-500">{account.slug} / {account.id}</p>
+                <div className="mt-2 space-y-1">
+                  {account.ownerMembers.map((owner) => (
+                    <div key={owner.id} className="min-w-0 rounded-md bg-slate-50 px-2 py-1">
+                      <p className="truncate text-xs font-bold text-slate-700">{ui.owner}: {owner.user.email}</p>
+                      <div className="mt-1 flex flex-wrap items-center gap-1">
+                        <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${invitationTone(owner.invitationStatus)}`}>
+                          {invitationLabels[owner.invitationStatus][locale]}
+                        </span>
+                        <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${owner.isBoundToExternalAuth ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-700"}`}>
+                          {owner.isBoundToExternalAuth ? ui.bound : ui.unbound}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
               <span className="text-sm font-semibold text-slate-700">
                 {account.accountType === "company" ? ui.company : ui.individual}
@@ -172,28 +209,39 @@ export default async function PlatformAccountsPage({ searchParams }: PlatformAcc
                 <p>{ui.invited} {account.invitedSeatCount}</p>
                 <p className={seatTone(account)}>{ui.available} {account.availableSeatCount}</p>
               </div>
-              <form action={updateTenantAccountLifecycleAction} className="grid grid-cols-[1fr_96px_auto] gap-2">
-                <input type="hidden" name="tenantId" value={account.id} />
-                <select name="status" defaultValue={account.status} className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
-                  {tenantStatuses.map((status) => (
-                    <option key={status} value={status}>
-                      {statusLabels[status][locale]}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  name="purchasedSeatCount"
-                  type="number"
-                  min={1}
-                  step={1}
-                  defaultValue={account.purchasedSeatCount}
-                  aria-label={ui.purchasedSeats}
-                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                />
-                <button className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">
-                  {ui.update}
-                </button>
-              </form>
+              <div className="space-y-2">
+                <form action={updateTenantAccountLifecycleAction} className="grid grid-cols-[1fr_96px_auto] gap-2">
+                  <input type="hidden" name="tenantId" value={account.id} />
+                  <select name="status" defaultValue={account.status} className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                    {tenantStatuses.map((status) => (
+                      <option key={status} value={status}>
+                        {statusLabels[status][locale]}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    name="purchasedSeatCount"
+                    type="number"
+                    min={1}
+                    step={1}
+                    defaultValue={account.purchasedSeatCount}
+                    aria-label={ui.purchasedSeats}
+                    className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  />
+                  <button className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">
+                    {ui.update}
+                  </button>
+                </form>
+                {account.ownerMembers.map((owner) => (
+                  <form key={owner.id} action={sendPlatformTenantMemberInvitationAction} className="flex justify-end">
+                    <input type="hidden" name="tenantId" value={account.id} />
+                    <input type="hidden" name="membershipId" value={owner.id} />
+                    <button className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">
+                      {ui.sendInvite}
+                    </button>
+                  </form>
+                ))}
+              </div>
             </div>
           ))}
         </div>

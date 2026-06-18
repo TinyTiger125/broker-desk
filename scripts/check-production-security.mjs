@@ -121,6 +121,8 @@ assert(schemaSql.includes("external_auth_subject TEXT UNIQUE"), "schema must inc
 assert(schemaSql.includes("idx_users_external_auth_subject"), "schema must index external auth subject");
 assert(schemaSql.includes("account_type TEXT NOT NULL DEFAULT 'company'"), "schema must include tenant account type");
 assert(schemaSql.includes("purchased_seat_count INTEGER NOT NULL DEFAULT 1"), "schema must include tenant purchased seat count");
+assert(schemaSql.includes("invitation_status TEXT NOT NULL DEFAULT 'not_sent'"), "schema must include tenant invitation status");
+assert(schemaSql.includes("provider_invitation_id TEXT"), "schema must include provider invitation id");
 
 const packageJson = JSON.parse(fs.readFileSync("package.json", "utf8"));
 assert(packageJson.dependencies?.["@clerk/nextjs"], "package must include @clerk/nextjs");
@@ -135,7 +137,17 @@ assert(proxySource.includes("/api/webhooks/clerk(.*)"), "Clerk webhook route mus
 
 const dataSource = fs.readFileSync("src/lib/data.ts", "utf8");
 assert(dataSource.includes("ensureUserForExternalAuth"), "data layer must map external auth subjects to local users");
+assert(dataSource.includes("suspendUserForExternalAuthSubject"), "data layer must suspend deleted external identities");
 assert(dataSource.includes("getClerkAuthIdentity"), "data layer must read Clerk identity in clerk mode");
+
+const clerkInvitationSource = fs.readFileSync("src/lib/clerk-invitations.ts", "utf8");
+assert(clerkInvitationSource.includes("client.invitations.createInvitation"), "Clerk invitation helper must use Clerk Invitations API");
+assert(clerkInvitationSource.includes("brokerDeskMembershipId"), "Clerk invitation helper must include local membership metadata");
+
+const clerkWebhookSource = fs.readFileSync("src/app/api/webhooks/clerk/route.ts", "utf8");
+assert(clerkWebhookSource.includes("verifyWebhook"), "Clerk webhook route must verify signatures");
+assert(clerkWebhookSource.includes("ensureUserForExternalAuth"), "Clerk webhook route must sync external users");
+assert(clerkWebhookSource.includes("suspendUserForExternalAuthSubject"), "Clerk webhook route must handle deleted users");
 
 const rlsSql = fs.readFileSync("docs/engineering/postgres_rls.sql", "utf8");
 assert(rlsSql.includes("brokerdesk_private"), "RLS helpers must live outside the exposed public schema");

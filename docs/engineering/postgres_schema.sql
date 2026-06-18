@@ -24,6 +24,13 @@ CREATE TABLE IF NOT EXISTS tenant_memberships (
   user_id TEXT NOT NULL REFERENCES users(id),
   role TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'active',
+  invitation_provider TEXT NOT NULL DEFAULT 'none',
+  invitation_status TEXT NOT NULL DEFAULT 'not_sent',
+  provider_invitation_id TEXT,
+  invitation_url TEXT,
+  invitation_sent_at TIMESTAMPTZ,
+  invitation_accepted_at TIMESTAMPTZ,
+  invitation_error TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (tenant_id, user_id)
@@ -195,6 +202,19 @@ CREATE INDEX IF NOT EXISTS idx_output_template_version_user_created ON output_te
 -- Backward-compatible migration for existing clients table.
 ALTER TABLE tenants ADD COLUMN IF NOT EXISTS account_type TEXT NOT NULL DEFAULT 'company';
 ALTER TABLE tenants ADD COLUMN IF NOT EXISTS purchased_seat_count INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE tenant_memberships ADD COLUMN IF NOT EXISTS invitation_provider TEXT NOT NULL DEFAULT 'none';
+ALTER TABLE tenant_memberships ADD COLUMN IF NOT EXISTS invitation_status TEXT NOT NULL DEFAULT 'not_sent';
+ALTER TABLE tenant_memberships ADD COLUMN IF NOT EXISTS provider_invitation_id TEXT;
+ALTER TABLE tenant_memberships ADD COLUMN IF NOT EXISTS invitation_url TEXT;
+ALTER TABLE tenant_memberships ADD COLUMN IF NOT EXISTS invitation_sent_at TIMESTAMPTZ;
+ALTER TABLE tenant_memberships ADD COLUMN IF NOT EXISTS invitation_accepted_at TIMESTAMPTZ;
+ALTER TABLE tenant_memberships ADD COLUMN IF NOT EXISTS invitation_error TEXT;
+UPDATE tenant_memberships
+   SET invitation_provider = 'manual',
+       invitation_status = 'accepted',
+       invitation_accepted_at = COALESCE(invitation_accepted_at, updated_at)
+ WHERE status = 'active'
+   AND invitation_status = 'not_sent';
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
 ALTER TABLE properties ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
 ALTER TABLE quotations ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';

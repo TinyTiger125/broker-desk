@@ -45,6 +45,8 @@ export const getUserByExternalAuthSubject: typeof memory.getUserByExternalAuthSu
   repo.getUserByExternalAuthSubject(...args);
 export const ensureUserForExternalAuth: typeof memory.ensureUserForExternalAuth = (...args) =>
   repo.ensureUserForExternalAuth(...args);
+export const suspendUserForExternalAuthSubject: typeof memory.suspendUserForExternalAuthSubject = (...args) =>
+  repo.suspendUserForExternalAuthSubject(...args);
 export const getTenantById: typeof memory.getTenantById = (...args) =>
   repo.getTenantById(...args);
 export const isTenantAccessibleStatus: typeof memory.isTenantAccessibleStatus = (...args) =>
@@ -63,6 +65,10 @@ export const listTenantsForUser: typeof memory.listTenantsForUser = (...args) =>
   repo.listTenantsForUser(...args);
 export const listTenantMembers: typeof memory.listTenantMembers = (...args) =>
   repo.listTenantMembers(...args);
+export const getTenantMemberById: typeof memory.getTenantMemberById = (...args) =>
+  repo.getTenantMemberById(...args);
+export const updateTenantMemberInvitation: typeof memory.updateTenantMemberInvitation = (...args) =>
+  repo.updateTenantMemberInvitation(...args);
 export const inviteTenantMember: typeof memory.inviteTenantMember = (...args) =>
   repo.inviteTenantMember(...args);
 export const updateTenantMemberRole: typeof memory.updateTenantMemberRole = (...args) =>
@@ -206,6 +212,9 @@ export type {
   Tenant,
   TenantAccountSummary,
   TenantAccountType,
+  TenantAccountMemberSummary,
+  TenantInvitationProvider,
+  TenantInvitationStatus,
   TenantMembership,
   TenantMemberListItem,
   TenantMembershipStatus,

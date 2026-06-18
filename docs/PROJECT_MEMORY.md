@@ -188,7 +188,7 @@ Implemented or materially present:
   - `requireTenantSession` supports multi-action permission checks, and AI field pre-match now requires both template and AI pre-match permissions.
   - production demo auth fallback is disabled unless `BROKER_DESK_ENABLE_DEMO_AUTH=true`; real production login is still a separate release requirement.
   - `/settings/members` provides tenant member list, local member creation, role update, suspension/reactivation, last-owner protection, and audit logging.
-  - `/platform/accounts` provides PlatformOwner-only tenant account lifecycle management: create individual/company account, set purchased seats, create initial owner, and update trial/active/suspended/cancelled status.
+  - `/platform/accounts` provides PlatformOwner-only tenant account lifecycle management: create individual/company account, set purchased seats, create initial invited owner, send/retry Clerk invitation, display invitation/binding status, and update trial/active/suspended/cancelled status.
   - member invite/reactivation is blocked when it would exceed purchased seats.
   - `/platform/templates` provides a PlatformOwner-only official-template factory overview; production PlatformOwner access must be explicitly configured through `BROKER_DESK_PLATFORM_OWNER_IDS`.
   - official guarantee-application PDF downloads are recorded as generated outputs with case/template/data/draft/layout snapshots and audit logs.
@@ -197,6 +197,7 @@ Implemented or materially present:
   - `BROKER_DESK_AUTH_MODE=trusted_header` can accept an upstream IdP/auth-proxy identity only when the shared ingress secret header is present.
   - `BROKER_DESK_AUTH_MODE=clerk` is the selected production identity path. Clerk owns login/session identity; Postgres `users.external_auth_subject` bridges Clerk `userId` to Broker Desk's local user.
   - Clerk first login links to an invited local user by email when possible; otherwise it creates a local user without tenant membership, so tenant access still fails closed until membership is granted.
+  - `/api/webhooks/clerk` verifies Clerk signatures, maps Clerk users to `users.external_auth_subject`, activates invited memberships on user create/update, and suspends local memberships when a Clerk user is deleted.
   - production auth fails closed by default when no real auth mode is configured.
   - `users.external_auth_subject` is the bridge from immutable external identity subject to internal Broker Desk user ID.
   - `docs/engineering/postgres_rls.sql` defines the first Supabase/Postgres RLS baseline for tenant-owned tables, global user/tenant/membership reads, and no anonymous business-table grants.
@@ -214,6 +215,7 @@ Not yet release-ready:
 - `users.external_auth_subject` is not backfilled for real production users.
 - `docs/engineering/postgres_rls.sql` has not been applied to a live production database in this workspace.
 - Local member creation is not real email invitation or SSO provisioning.
+- Live Clerk invitation delivery and webhook delivery are not verified in this workspace because real Clerk keys/project settings are not present.
 - AI usage quota/cost accounting is not implemented yet.
 - Database RLS SQL exists as a baseline, but service-layer tenant scoping remains the only verified runtime guard until the SQL is applied and tested on the production database.
 
@@ -442,3 +444,4 @@ http://localhost:3002/api/guarantee-applications/j_lease_individual_v1/download?
 - Explicit boundary: Phase 1 does not yet prove production multi-tenant safety. Phase 2 must add `tenant_id` business data scoping and cross-tenant denial tests before closed pilot risk is materially reduced.
 - Added the seat-based B2B account lifecycle foundation: tenants can be individual/company accounts with purchased seats and trial/active/suspended/cancelled status; `/platform/accounts` lets PlatformOwner create/update accounts, while tenant member allocation remains constrained by purchased seats.
 - Closed the app-level public `/sign-up` route to match the business model: Broker Desk accounts are provisioned/invited, not publicly self-created.
+- Added the first real-account provisioning loop: new platform owners and tenant-added members start as invited seats, Clerk invitation sending is wired through the server-side Clerk Invitations API when configured, `/api/webhooks/clerk` binds/deletes external identities, and invited memberships activate on Clerk login/webhook sync.

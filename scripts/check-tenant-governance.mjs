@@ -89,7 +89,9 @@ const seatAccount = await data.createTenantAccount({
   ownerEmail: `seat-owner-${suffix}@example.test`,
 });
 assert(seatAccount.purchasedSeatCount === 1, "tenant account should persist purchased seat count");
-assert(seatAccount.activeSeatCount === 1, "initial tenant owner should consume one active seat");
+assert(seatAccount.activeSeatCount === 0, "new platform-created owner should not be active before login binding");
+assert(seatAccount.invitedSeatCount === 1, "new platform-created owner should consume one invited seat");
+assert(seatAccount.ownerMembers[0]?.invitationStatus === "not_sent", "new platform-created owner should start as not sent");
 
 let overCapacityRejected = false;
 try {
@@ -155,6 +157,44 @@ try {
   reactivateRejected = String(error?.message ?? error).includes("purchased seat count exceeded");
 }
 assert(reactivateRejected, "reactivating a suspended member must also honor purchased seats");
+
+const loginOwnerEmail = `login-owner-${suffix}@example.test`;
+const loginAccount = await data.createTenantAccount({
+  name: `Login Test ${suffix}`,
+  accountType: "individual",
+  status: "trial",
+  purchasedSeatCount: 1,
+  ownerName: "Login Owner",
+  ownerEmail: loginOwnerEmail,
+});
+assert(loginAccount.ownerMembers[0]?.status === "invited", "new owner should start as invited before external login");
+
+const externalSubject = `clerk_user_${suffix}`;
+const linkedUser = await data.ensureUserForExternalAuth({
+  subject: externalSubject,
+  email: loginOwnerEmail,
+  name: "Login Owner",
+});
+assert(linkedUser?.externalAuthSubject === externalSubject, "external auth login should link invited local user");
+
+const loginMembers = await data.listTenantMembers(loginAccount.id);
+const loginOwner = loginMembers.find((member) => member.user.email === loginOwnerEmail);
+assert(loginOwner?.status === "active", "external auth login should activate invited membership");
+assert(loginOwner?.invitationStatus === "accepted", "external auth login should mark invitation accepted");
+assert(loginOwner?.user.externalAuthSubject === externalSubject, "member list should expose external auth binding");
+
+const ownerTenants = await data.listTenantsForUser(linkedUser.id);
+assert(ownerTenants.some((tenant) => tenant.id === loginAccount.id), "activated owner should be able to resolve their tenant");
+
+const suspendedExternal = await data.suspendUserForExternalAuthSubject(externalSubject);
+assert(suspendedExternal.suspendedMembershipCount >= 1, "external auth deletion should suspend linked memberships");
+const suspendedLoginMembers = await data.listTenantMembers(loginAccount.id);
+assert(
+  suspendedLoginMembers.some((member) => member.user.email === loginOwnerEmail && member.status === "suspended"),
+  "external auth deletion should suspend the tenant membership",
+);
+const suspendedOwnerTenants = await data.listTenantsForUser(linkedUser.id);
+assert(!suspendedOwnerTenants.some((tenant) => tenant.id === loginAccount.id), "suspended external user should lose tenant resolution");
 
 const layoutSnapshot = friendsPdf.getFriendsGuaranteeTemplateLayoutSnapshot("friends_guarantee_individual_v1");
 assert(layoutSnapshot.templateId === "friends_guarantee_individual_v1", "layout snapshot should retain template id");

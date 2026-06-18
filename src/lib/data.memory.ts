@@ -45,6 +45,8 @@ export type ExternalAuthUserInput = {
 export type TenantStatus = "trial" | "active" | "suspended" | "cancelled";
 export type TenantAccountType = "individual" | "company";
 export type TenantMembershipStatus = "active" | "invited" | "suspended";
+export type TenantInvitationProvider = "none" | "manual" | "clerk";
+export type TenantInvitationStatus = "not_sent" | "pending" | "accepted" | "revoked" | "expired" | "failed";
 
 export type Tenant = {
   id: string;
@@ -63,12 +65,23 @@ export type TenantMembership = {
   userId: string;
   role: TenantRole;
   status: TenantMembershipStatus;
+  invitationProvider: TenantInvitationProvider;
+  invitationStatus: TenantInvitationStatus;
+  providerInvitationId?: string;
+  invitationUrl?: string;
+  invitationSentAt?: Date;
+  invitationAcceptedAt?: Date;
+  invitationError?: string;
   createdAt: Date;
   updatedAt: Date;
 };
 
 export type TenantMemberListItem = TenantMembership & {
-  user: Pick<User, "id" | "name" | "email" | "createdAt">;
+  user: Pick<User, "id" | "name" | "email" | "externalAuthSubject" | "createdAt">;
+};
+
+export type TenantAccountMemberSummary = TenantMemberListItem & {
+  isBoundToExternalAuth: boolean;
 };
 
 export type TenantAccountSummary = Tenant & {
@@ -76,6 +89,7 @@ export type TenantAccountSummary = Tenant & {
   invitedSeatCount: number;
   usedSeatCount: number;
   availableSeatCount: number;
+  ownerMembers: TenantAccountMemberSummary[];
 };
 
 export type Client = {
@@ -453,12 +467,43 @@ function countUsedSeats(tenantId: string): { activeSeatCount: number; invitedSea
   };
 }
 
+function ensureTenantMembershipDefaults(membership: TenantMembership): TenantMembership {
+  membership.invitationProvider = membership.invitationProvider ?? (membership.status === "active" ? "manual" : "none");
+  membership.invitationStatus = membership.invitationStatus ?? (membership.status === "active" ? "accepted" : "not_sent");
+  return membership;
+}
+
+function toTenantMemberListItem(membership: TenantMembership): TenantMemberListItem | null {
+  ensureTenantMembershipDefaults(membership);
+  const user = db.users.find((item) => item.id === membership.userId);
+  if (!user) return null;
+  return {
+    ...membership,
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      externalAuthSubject: user.externalAuthSubject,
+      createdAt: user.createdAt,
+    },
+  };
+}
+
 function toTenantAccountSummary(tenant: Tenant): TenantAccountSummary {
   const seats = countUsedSeats(tenant.id);
+  const ownerMembers = db.tenantMemberships
+    .filter((membership) => membership.tenantId === tenant.id && membership.role === "tenant_owner")
+    .map(toTenantMemberListItem)
+    .filter((membership): membership is TenantMemberListItem => Boolean(membership))
+    .map((membership) => ({
+      ...membership,
+      isBoundToExternalAuth: Boolean(membership.user.externalAuthSubject),
+    }));
   return {
     ...tenant,
     ...seats,
     availableSeatCount: Math.max(0, tenant.purchasedSeatCount - seats.usedSeatCount),
+    ownerMembers,
   };
 }
 
@@ -499,6 +544,7 @@ function backfillTenantScope(dbLike: DB) {
 function withDefaultTenantScope(input: Record<string, unknown>): DB {
   const scopedDb = input as DB;
   scopedDb.tenants.forEach(ensureTenantDefaults);
+  scopedDb.tenantMemberships.forEach(ensureTenantMembershipDefaults);
   backfillTenantScope(scopedDb);
   return scopedDb;
 }
@@ -576,6 +622,9 @@ const _freshDb: DB = withDefaultTenantScope({
       userId: "user_demo",
       role: "tenant_owner",
       status: "active",
+      invitationProvider: "manual",
+      invitationStatus: "accepted",
+      invitationAcceptedAt: new Date(now - 90 * 24 * 60 * 60 * 1000),
       createdAt: new Date(now - 90 * 24 * 60 * 60 * 1000),
       updatedAt: new Date(now - 5 * 24 * 60 * 60 * 1000),
     },
@@ -585,6 +634,9 @@ const _freshDb: DB = withDefaultTenantScope({
       userId: "user_ops",
       role: "tenant_admin",
       status: "active",
+      invitationProvider: "manual",
+      invitationStatus: "accepted",
+      invitationAcceptedAt: new Date(now - 45 * 24 * 60 * 60 * 1000),
       createdAt: new Date(now - 45 * 24 * 60 * 60 * 1000),
       updatedAt: new Date(now - 5 * 24 * 60 * 60 * 1000),
     },
@@ -1022,6 +1074,7 @@ backfillTenantScope(db);
 if (!db.tenants) db.tenants = [..._freshDb.tenants];
 db.tenants.forEach(ensureTenantDefaults);
 if (!db.tenantMemberships) db.tenantMemberships = [..._freshDb.tenantMemberships];
+db.tenantMemberships.forEach(ensureTenantMembershipDefaults);
 if (!db.guaranteeApplicationDrafts) db.guaranteeApplicationDrafts = [..._freshDb.guaranteeApplicationDrafts];
 if (!db.correctionEvents) db.correctionEvents = [];
 if (!db.aiExperienceDrafts) db.aiExperienceDrafts = [];
@@ -1171,6 +1224,19 @@ function fallbackEmailForExternalSubject(subject: string): string {
   return `external-${safeSubject}@brokerdesk.local`;
 }
 
+function activateInvitedMembershipsForUser(userId: string) {
+  const acceptedAt = new Date();
+  db.tenantMemberships
+    .filter((membership) => membership.userId === userId && membership.status === "invited")
+    .forEach((membership) => {
+      membership.status = "active";
+      membership.invitationStatus = "accepted";
+      membership.invitationAcceptedAt = acceptedAt;
+      membership.invitationError = undefined;
+      membership.updatedAt = acceptedAt;
+    });
+}
+
 export async function ensureUserForExternalAuth(input: ExternalAuthUserInput): Promise<User | null> {
   const subject = input.subject.trim();
   if (!subject) return null;
@@ -1178,7 +1244,10 @@ export async function ensureUserForExternalAuth(input: ExternalAuthUserInput): P
   const email = input.email?.trim().toLowerCase();
   const name = input.name?.trim() || email || subject;
   const bySubject = db.users.find((item) => item.externalAuthSubject === subject);
-  if (bySubject) return { ...bySubject };
+  if (bySubject) {
+    activateInvitedMembershipsForUser(bySubject.id);
+    return { ...bySubject };
+  }
 
   if (email) {
     const byEmail = db.users.find((item) => item.email.toLowerCase() === email);
@@ -1188,6 +1257,7 @@ export async function ensureUserForExternalAuth(input: ExternalAuthUserInput): P
       }
       byEmail.externalAuthSubject = subject;
       byEmail.name = byEmail.name.trim() || name;
+      activateInvitedMembershipsForUser(byEmail.id);
       return { ...byEmail };
     }
   }
@@ -1201,7 +1271,26 @@ export async function ensureUserForExternalAuth(input: ExternalAuthUserInput): P
     createdAt: new Date(),
   };
   db.users.push(user);
+  activateInvitedMembershipsForUser(user.id);
   return { ...user };
+}
+
+export async function suspendUserForExternalAuthSubject(subject: string): Promise<{ userId?: string; suspendedMembershipCount: number }> {
+  const normalized = subject.trim();
+  if (!normalized) return { suspendedMembershipCount: 0 };
+  const user = db.users.find((item) => item.externalAuthSubject === normalized);
+  if (!user) return { suspendedMembershipCount: 0 };
+  user.externalAuthSubject = undefined;
+  let suspendedMembershipCount = 0;
+  db.tenantMemberships
+    .filter((membership) => membership.userId === user.id && membership.status !== "suspended")
+    .forEach((membership) => {
+      membership.status = "suspended";
+      membership.invitationStatus = "revoked";
+      membership.updatedAt = new Date();
+      suspendedMembershipCount += 1;
+    });
+  return { userId: user.id, suspendedMembershipCount };
 }
 
 export async function getDefaultUser(preferredUserId?: string) {
@@ -1295,7 +1384,9 @@ export async function createTenantAccount(input: {
     tenantId: tenant.id,
     userId: owner.id,
     role: "tenant_owner",
-    status: "active",
+    status: "invited",
+    invitationProvider: "none",
+    invitationStatus: "not_sent",
     createdAt: new Date(),
     updatedAt: new Date(),
   });
@@ -1330,14 +1421,14 @@ export async function listTenantMemberships(userId: string): Promise<TenantMembe
   return db.tenantMemberships
     .filter((item) => item.userId === userId)
     .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
-    .map((item) => ({ ...item }));
+    .map((item) => ({ ...ensureTenantMembershipDefaults(item) }));
 }
 
 export async function getTenantMembership(input: { userId: string; tenantId: string }): Promise<TenantMembership | null> {
   const found = db.tenantMemberships.find(
     (item) => item.userId === input.userId && item.tenantId === input.tenantId,
   );
-  return found ? { ...found } : null;
+  return found ? { ...ensureTenantMembershipDefaults(found) } : null;
 }
 
 export async function listTenantsForUser(userId: string): Promise<Tenant[]> {
@@ -1358,18 +1449,47 @@ export async function listTenantMembers(tenantId: string): Promise<TenantMemberL
       return a.createdAt.getTime() - b.createdAt.getTime();
     })
     .flatMap((membership) => {
-      const user = db.users.find((item) => item.id === membership.userId);
-      if (!user) return [];
-      return [{
-        ...membership,
-        user: {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          createdAt: user.createdAt,
-        },
-      }];
+      const item = toTenantMemberListItem(membership);
+      return item ? [item] : [];
     });
+}
+
+export async function getTenantMemberById(input: {
+  tenantId?: string;
+  membershipId: string;
+}): Promise<TenantMemberListItem | null> {
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const membership = db.tenantMemberships.find(
+    (item) => item.id === input.membershipId && item.tenantId === scopeTenantId,
+  );
+  return membership ? toTenantMemberListItem(membership) : null;
+}
+
+export async function updateTenantMemberInvitation(input: {
+  tenantId?: string;
+  membershipId: string;
+  invitationProvider: TenantInvitationProvider;
+  invitationStatus: TenantInvitationStatus;
+  providerInvitationId?: string;
+  invitationUrl?: string;
+  invitationError?: string;
+  sentAt?: Date;
+  acceptedAt?: Date;
+}): Promise<TenantMemberListItem | null> {
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const membership = db.tenantMemberships.find(
+    (item) => item.id === input.membershipId && item.tenantId === scopeTenantId,
+  );
+  if (!membership) return null;
+  membership.invitationProvider = input.invitationProvider;
+  membership.invitationStatus = input.invitationStatus;
+  membership.providerInvitationId = input.providerInvitationId;
+  membership.invitationUrl = input.invitationUrl;
+  membership.invitationError = input.invitationError;
+  membership.invitationSentAt = input.sentAt ?? membership.invitationSentAt;
+  membership.invitationAcceptedAt = input.acceptedAt ?? membership.invitationAcceptedAt;
+  membership.updatedAt = new Date();
+  return toTenantMemberListItem(membership);
 }
 
 export async function inviteTenantMember(input: {
@@ -1407,6 +1527,9 @@ export async function inviteTenantMember(input: {
     }
     existing.role = input.role;
     existing.status = nextStatus;
+    existing.invitationProvider = existing.invitationProvider ?? "none";
+    existing.invitationStatus = nextStatus === "active" ? "accepted" : existing.invitationStatus ?? "not_sent";
+    if (nextStatus === "active") existing.invitationAcceptedAt = existing.invitationAcceptedAt ?? new Date();
     existing.updatedAt = new Date();
     return {
       ...existing,
@@ -1414,6 +1537,7 @@ export async function inviteTenantMember(input: {
         id: user.id,
         name: user.name,
         email: user.email,
+        externalAuthSubject: user.externalAuthSubject,
         createdAt: user.createdAt,
       },
     };
@@ -1428,6 +1552,9 @@ export async function inviteTenantMember(input: {
     userId: user.id,
     role: input.role,
     status: nextStatus,
+    invitationProvider: nextStatus === "active" ? "manual" : "none",
+    invitationStatus: nextStatus === "active" ? "accepted" : "not_sent",
+    invitationAcceptedAt: nextStatus === "active" ? nowDate : undefined,
     createdAt: nowDate,
     updatedAt: nowDate,
   };
@@ -1438,6 +1565,7 @@ export async function inviteTenantMember(input: {
       id: user.id,
       name: user.name,
       email: user.email,
+      externalAuthSubject: user.externalAuthSubject,
       createdAt: user.createdAt,
     },
   };
@@ -1463,6 +1591,7 @@ export async function updateTenantMemberRole(input: {
       id: user.id,
       name: user.name,
       email: user.email,
+      externalAuthSubject: user.externalAuthSubject,
       createdAt: user.createdAt,
     },
   };
@@ -1481,7 +1610,12 @@ export async function updateTenantMemberStatus(input: {
   if (membership.status === "suspended" && input.status !== "suspended") {
     assertTenantHasSeatCapacity(scopeTenantId, input.status);
   }
+  const previousStatus = membership.status;
   membership.status = input.status;
+  if (input.status === "active" && previousStatus === "invited") {
+    membership.invitationStatus = "accepted";
+    membership.invitationAcceptedAt = new Date();
+  }
   membership.updatedAt = new Date();
   const user = db.users.find((item) => item.id === membership.userId);
   if (!user) return null;
@@ -1491,6 +1625,7 @@ export async function updateTenantMemberStatus(input: {
       id: user.id,
       name: user.name,
       email: user.email,
+      externalAuthSubject: user.externalAuthSubject,
       createdAt: user.createdAt,
     },
   };

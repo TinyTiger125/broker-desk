@@ -36,6 +36,7 @@ Commercial account decision as of 2026-06-18:
 - The platform operator sells and opens a fixed number of seats, then controls lifecycle state: `trial`, `active`, `suspended`, or `cancelled`.
 - Public self-sign-up is not part of the MVP. Users should be provisioned by platform account lifecycle or invitation flow, then authenticated by Clerk.
 - Tenant admins may allocate members only inside the purchased seat count.
+- A purchased seat may be `invited` before login. Invited seats count against quota but do not grant tenant access until the Clerk identity is bound and the membership becomes `active`.
 
 ## Product Boundary
 
@@ -82,8 +83,11 @@ MVP sales and operations model:
 ```text
 PlatformOwner creates Tenant
   -> sets account_type and purchased_seat_count
-  -> creates first tenant_owner membership
+  -> creates first invited tenant_owner membership
+  -> sends Clerk invitation when production Clerk is configured
   -> Clerk authenticates login identity
+  -> webhook / first login binds users.external_auth_subject
+  -> invited membership becomes active
   -> Broker Desk membership/role decides business access
 ```
 
@@ -860,6 +864,8 @@ Implemented:
 - `BROKER_DESK_AUTH_MODE=clerk` is the selected login/session path.
 - The public `/sign-up` route is closed in the app UI because account creation belongs to platform provisioning, not consumer self-registration.
 - `users.external_auth_subject` separates internal Broker Desk user IDs from immutable external identity-provider subjects.
+- `/api/webhooks/clerk` verifies Clerk webhook signatures and handles `user.created`, `user.updated`, and `user.deleted`.
+- Clerk user creation/update binds an invited local user by email and activates invited memberships; Clerk deletion clears the external subject and suspends memberships.
 - `docs/engineering/postgres_rls.sql` defines the first Supabase/Postgres RLS baseline around `tenant_id`, `external_auth_subject`, accessible tenant lifecycle status, and active `tenant_memberships`.
 - `npm run test:production-security` checks production demo-auth lockout, trusted-header secret enforcement, and RLS table coverage.
 
@@ -867,6 +873,7 @@ Still required before external release:
 
 - A concrete IdP/proxy deployment, with header stripping/injection verified outside the app.
 - Clerk project-level public registration must also be disabled or restricted outside this repository; the local `/sign-up` page alone is not a sufficient production control.
+- A live Clerk webhook delivery test from the real Clerk project to the deployed domain.
 - Backfill `users.external_auth_subject` for every real production user.
 - Apply and verify `docs/engineering/postgres_rls.sql` against the production Supabase/Postgres database.
 - Use a database role that does not bypass RLS for any user-facing Data API path.
@@ -895,8 +902,9 @@ Implementation status as of 2026-06-18: member-management and platform account l
 Implemented:
 
 - `/platform/accounts` is a PlatformOwner-only account lifecycle console. It creates individual/company tenant accounts, records purchased seat count, creates the initial tenant owner, and updates lifecycle status/seat count.
+- Platform-created owners start as invited memberships; the page shows invitation state and external-auth binding state and can send/retry Clerk invitations.
 - The memory and Postgres repositories prevent adding or reactivating active/invited members beyond the purchased seat count.
-- `/settings/members` lists tenant members, adds local members, updates roles, suspends/reactivates members, prevents self-suspension, prevents removing the last active owner, and audits member changes.
+- `/settings/members` lists tenant members, adds invited members, sends/retries Clerk invitations, updates roles, suspends/reactivates members, prevents self-suspension, prevents removing the last active owner, and audits member changes.
 - Existing `/audit-log` remains the operational audit viewer.
 - Existing `/settings/output-templates` remains tenant output-template settings and version history.
 

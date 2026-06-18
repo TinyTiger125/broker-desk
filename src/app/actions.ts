@@ -42,6 +42,7 @@ import {
   applyOutputTemplateVersion,
   addQuotation,
   createOutputTemplateVersion,
+  getTenantMemberById,
   appendFollowUp,
   createComplianceTaskFromAlert,
   duplicateQuotation,
@@ -71,6 +72,7 @@ import {
   updateTenantMemberRole,
   updateTenantMemberStatus,
   updateTenantAccountLifecycle,
+  updateTenantMemberInvitation,
   inviteTenantMember,
   updateOutputTemplateSettings,
   updateTaskStatus,
@@ -105,6 +107,7 @@ import { assertTenantPermission, requireTenantSession } from "@/lib/tenant-sessi
 import { requirePlatformOwnerSession } from "@/lib/platform-session";
 import { extractInputFileFromWorkbook, type InputFileExtractionResult } from "@/lib/input-file-extractor";
 import { extractIdentityDocumentFromBuffer } from "@/lib/identity-document-extractor";
+import { createClerkInvitationForTenantMember } from "@/lib/clerk-invitations";
 import { CASE_FIELD_KEYS, isKnownCaseFieldKey } from "@/lib/case-field-catalog";
 import { canonicalizeCaseFieldKey, clearCaseFieldValueAliases, getCaseFieldValue } from "@/lib/case-field-normalization";
 import { applyJapanesePostalCodeAddressCompletions } from "@/lib/japan-postal-code";
@@ -1959,6 +1962,73 @@ async function assertNotLastActiveTenantOwner(input: {
   }
 }
 
+async function sendTenantMemberInvitation(input: {
+  tenantId: string;
+  membershipId: string;
+  actorId: string;
+  recordSkippedAsFailure: boolean;
+}) {
+  const member = await getTenantMemberById({ tenantId: input.tenantId, membershipId: input.membershipId });
+  if (!member) throw new Error("招待対象メンバーが見つかりません。");
+
+  const result = await createClerkInvitationForTenantMember(member).catch((error) => ({
+    ok: false as const,
+    skipped: false,
+    reason: error instanceof Error ? error.message : String(error),
+  }));
+  if (result.ok) {
+    const updated = await updateTenantMemberInvitation({
+      tenantId: input.tenantId,
+      membershipId: input.membershipId,
+      invitationProvider: "clerk",
+      invitationStatus: "pending",
+      providerInvitationId: result.providerInvitationId,
+      invitationUrl: result.invitationUrl,
+      sentAt: result.sentAt,
+    });
+    await addAuditLog({
+      tenantId: input.tenantId,
+      userId: input.actorId,
+      action: "member_invitation_sent",
+      targetType: "member",
+      targetId: input.membershipId,
+      message: `Clerk 招待を送信しました: ${member.user.email}`,
+      context: {
+        memberUserId: member.userId,
+        role: member.role,
+        providerInvitationId: result.providerInvitationId,
+      },
+    });
+    return { member: updated ?? member, sent: true, skipped: false };
+  }
+
+  if (input.recordSkippedAsFailure || !result.skipped) {
+    const updated = await updateTenantMemberInvitation({
+      tenantId: input.tenantId,
+      membershipId: input.membershipId,
+      invitationProvider: "clerk",
+      invitationStatus: "failed",
+      invitationError: result.reason,
+    });
+    await addAuditLog({
+      tenantId: input.tenantId,
+      userId: input.actorId,
+      action: "member_invitation_failed",
+      targetType: "member",
+      targetId: input.membershipId,
+      message: `Clerk 招待を送信できませんでした: ${member.user.email} / ${result.reason}`,
+      context: {
+        memberUserId: member.userId,
+        role: member.role,
+        reason: result.reason,
+      },
+    });
+    return { member: updated ?? member, sent: false, skipped: result.skipped };
+  }
+
+  return { member, sent: false, skipped: result.skipped };
+}
+
 export async function createTenantAccountAction(formData: FormData) {
   const session = await requirePlatformOwnerSession();
   const name = String(formData.get("name") ?? "").trim();
@@ -1999,6 +2069,15 @@ export async function createTenantAccountAction(formData: FormData) {
       ownerEmail,
     },
   });
+  const ownerMembership = account.ownerMembers[0];
+  if (ownerMembership) {
+    await sendTenantMemberInvitation({
+      tenantId: account.id,
+      membershipId: ownerMembership.id,
+      actorId: session.user.id,
+      recordSkippedAsFailure: false,
+    });
+  }
   revalidatePath("/platform/accounts");
   redirect("/platform/accounts?flash=tenant_created");
 }
@@ -2038,6 +2117,35 @@ export async function updateTenantAccountLifecycleAction(formData: FormData) {
   redirect("/platform/accounts?flash=tenant_updated");
 }
 
+export async function sendPlatformTenantMemberInvitationAction(formData: FormData) {
+  const session = await requirePlatformOwnerSession();
+  const tenantId = String(formData.get("tenantId") ?? "").trim();
+  const membershipId = String(formData.get("membershipId") ?? "").trim();
+  if (!tenantId || !membershipId) throw new Error("招待対象が不正です。");
+  await sendTenantMemberInvitation({
+    tenantId,
+    membershipId,
+    actorId: session.user.id,
+    recordSkippedAsFailure: true,
+  });
+  revalidatePath("/platform/accounts");
+  redirect("/platform/accounts?flash=invitation_sent");
+}
+
+export async function sendTenantMemberInvitationAction(formData: FormData) {
+  const session = await requireTenantSession({ permission: "member.invite" });
+  const membershipId = String(formData.get("membershipId") ?? "").trim();
+  if (!membershipId) throw new Error("招待対象が不正です。");
+  await sendTenantMemberInvitation({
+    tenantId: session.tenant.id,
+    membershipId,
+    actorId: session.user.id,
+    recordSkippedAsFailure: true,
+  });
+  revalidatePath("/settings/members");
+  redirect("/settings/members?flash=invitation_sent");
+}
+
 export async function inviteTenantMemberAction(formData: FormData) {
   const session = await requireTenantSession({ permission: "member.invite" });
   const tenantId = session.tenant.id;
@@ -2051,7 +2159,13 @@ export async function inviteTenantMemberAction(formData: FormData) {
     name,
     email,
     role,
-    status: "active",
+    status: "invited",
+  });
+  await sendTenantMemberInvitation({
+    tenantId,
+    membershipId: member.id,
+    actorId: session.user.id,
+    recordSkippedAsFailure: false,
   });
   await addAuditLog({
     tenantId,
