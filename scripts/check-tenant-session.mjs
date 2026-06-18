@@ -106,4 +106,13 @@ const fallbackSession = await requireTenantSession({
 assert(fallbackSession.tenant.id === "tenant_cherry", "local platform owner should fall back to the default tenant");
 assert(fallbackSession.membership.role === "platform_owner", "local platform owner fallback should retain full platform role");
 
+process.env.NODE_ENV = "production";
+process.env.BROKER_DESK_ENABLE_DEMO_AUTH = "true";
+process.env.BROKER_DESK_ENABLE_PLATFORM_OWNER_TENANT_FALLBACK = "true";
+const nextStartFallbackSession = await requireTenantSession({
+  preferredUserId: externalPlatformOwner.id,
+  permission: "output.preview",
+});
+assert(nextStartFallbackSession.tenant.id === "tenant_cherry", "explicit local fallback should work under next start production runtime");
+
 console.log("[PASS] tenant session foundation regression");

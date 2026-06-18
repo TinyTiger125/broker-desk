@@ -16,5 +16,8 @@ export function isConfiguredPlatformOwnerUser(user: Pick<User, "id" | "externalA
 }
 
 export function isDevelopmentPlatformOwnerTenantFallbackEnabled() {
-  return process.env.NODE_ENV !== "production" && process.env.BROKER_DESK_ENABLE_PLATFORM_OWNER_TENANT_FALLBACK !== "false";
+  const configured = process.env.BROKER_DESK_ENABLE_PLATFORM_OWNER_TENANT_FALLBACK?.trim().toLowerCase();
+  if (configured === "true") return true;
+  if (configured === "false") return false;
+  return process.env.NODE_ENV !== "production";
 }

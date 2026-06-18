@@ -145,7 +145,9 @@ assert(platformSessionSource.includes("isConfiguredPlatformOwnerUser"), "platfor
 
 const platformOwnerSource = fs.readFileSync("src/lib/platform-owner.ts", "utf8");
 assert(platformOwnerSource.includes("externalAuthSubject"), "platform owner access must support external auth subjects such as Clerk user ids");
-assert(platformOwnerSource.includes('process.env.NODE_ENV !== "production"'), "platform owner tenant fallback must stay development-only");
+assert(platformOwnerSource.includes('configured === "true"'), "platform owner tenant fallback must support explicit local next-start opt-in");
+assert(platformOwnerSource.includes('configured === "false"'), "platform owner tenant fallback must support explicit local opt-out");
+assert(platformOwnerSource.includes('process.env.NODE_ENV !== "production"'), "platform owner tenant fallback default must stay development-only");
 assert(platformOwnerSource.includes("BROKER_DESK_ENABLE_PLATFORM_OWNER_TENANT_FALLBACK"), "platform owner tenant fallback must have an explicit disable switch");
 
 const tenantSessionSource = fs.readFileSync("src/lib/tenant-session.ts", "utf8");
