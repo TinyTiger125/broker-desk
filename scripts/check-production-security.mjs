@@ -47,6 +47,8 @@ function withEnv(nextEnv, fn) {
     "BROKER_DESK_AUTH_MODE",
     "BROKER_DESK_ENABLE_DEMO_AUTH",
     "BROKER_DESK_AUTH_TRUSTED_HEADER_SECRET",
+    "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
+    "CLERK_SECRET_KEY",
   ];
   const previous = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
   for (const key of keys) delete process.env[key];
@@ -67,6 +69,23 @@ withEnv({ NODE_ENV: "production" }, () => {
   assert(authMode.getAuthMode() === "disabled", "production auth mode must fail closed when not configured");
   assert(!authMode.isDemoAuthEnabled(), "production demo auth must be disabled by default");
 });
+
+withEnv({ NODE_ENV: "production", BROKER_DESK_AUTH_MODE: "clerk" }, () => {
+  assert(authMode.getAuthMode() === "clerk", "clerk must be an explicit production auth mode");
+  assert(!authMode.isClerkAuthConfigured(), "clerk auth must require Clerk keys");
+});
+
+withEnv(
+  {
+    NODE_ENV: "production",
+    BROKER_DESK_AUTH_MODE: "clerk",
+    NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: "pk_test_regression",
+    CLERK_SECRET_KEY: "sk_test_regression",
+  },
+  () => {
+    assert(authMode.isClerkAuthConfigured(), "clerk auth should be configured only when both keys are present");
+  },
+);
 
 withEnv({ NODE_ENV: "production", BROKER_DESK_AUTH_MODE: "trusted_header" }, () => {
   const result = authMode.readTrustedHeaderAuthIdentity(new Headers());
@@ -100,6 +119,18 @@ withEnv(
 const schemaSql = fs.readFileSync("docs/engineering/postgres_schema.sql", "utf8");
 assert(schemaSql.includes("external_auth_subject TEXT UNIQUE"), "schema must include external auth subject");
 assert(schemaSql.includes("idx_users_external_auth_subject"), "schema must index external auth subject");
+
+const packageJson = JSON.parse(fs.readFileSync("package.json", "utf8"));
+assert(packageJson.dependencies?.["@clerk/nextjs"], "package must include @clerk/nextjs");
+
+const proxySource = fs.readFileSync("src/proxy.ts", "utf8");
+assert(proxySource.includes("clerkMiddleware"), "Next proxy must wire Clerk middleware");
+assert(proxySource.includes("isClerkAuthEnabled()"), "Clerk proxy must be gated by auth mode");
+assert(proxySource.includes("/api/webhooks/clerk(.*)"), "Clerk webhook route must stay public");
+
+const dataSource = fs.readFileSync("src/lib/data.ts", "utf8");
+assert(dataSource.includes("ensureUserForExternalAuth"), "data layer must map external auth subjects to local users");
+assert(dataSource.includes("getClerkAuthIdentity"), "data layer must read Clerk identity in clerk mode");
 
 const rlsSql = fs.readFileSync("docs/engineering/postgres_rls.sql", "utf8");
 assert(rlsSql.includes("brokerdesk_private"), "RLS helpers must live outside the exposed public schema");

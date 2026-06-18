@@ -20,6 +20,14 @@ It must not be centered on guarantee-company PDF output.
 
 Guarantee-company applications are one important V1 output family, but they are only one consumer of confirmed case data. The permission system must protect the whole information lifecycle: uploaded source material, extracted candidates, reviewed facts, workbench edits, generated outputs, template assets, AI usage, and audit records.
 
+Production identity decision as of 2026-06-18:
+
+- Use Clerk for login/session identity.
+- Use Postgres as the durable product database.
+- Store Clerk `userId` in `users.external_auth_subject`.
+- Keep `tenant_memberships` and Broker Desk roles as the source of business authorization.
+- Treat Clerk Organizations as a possible account-switching/provisioning layer later, not as the MVP permission authority.
+
 ## Product Boundary
 
 Broker Desk is a structured business-information workbench for small Japanese real-estate brokerage teams.

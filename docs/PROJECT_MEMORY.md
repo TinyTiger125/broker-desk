@@ -192,10 +192,12 @@ Implemented or materially present:
   - `npm run test:tenant-governance` covers role guardrails, member operations, template layout snapshot capture, and output snapshot persistence.
 - Phase 6 production auth / RLS foundation:
   - `BROKER_DESK_AUTH_MODE=trusted_header` can accept an upstream IdP/auth-proxy identity only when the shared ingress secret header is present.
+  - `BROKER_DESK_AUTH_MODE=clerk` is the selected production identity path. Clerk owns login/session identity; Postgres `users.external_auth_subject` bridges Clerk `userId` to Broker Desk's local user.
+  - Clerk first login links to an invited local user by email when possible; otherwise it creates a local user without tenant membership, so tenant access still fails closed until membership is granted.
   - production auth fails closed by default when no real auth mode is configured.
   - `users.external_auth_subject` is the bridge from immutable external identity subject to internal Broker Desk user ID.
   - `docs/engineering/postgres_rls.sql` defines the first Supabase/Postgres RLS baseline for tenant-owned tables, global user/tenant/membership reads, and no anonymous business-table grants.
-  - `npm run test:production-security` covers production demo-auth lockout, trusted-header signature enforcement, and RLS SQL coverage.
+  - `npm run test:production-security` covers production demo-auth lockout, Clerk configuration guardrails, trusted-header signature enforcement, and RLS SQL coverage.
 - Stitch-based visual direction has been partially integrated.
 
 Not yet release-ready:
@@ -204,7 +206,7 @@ Not yet release-ready:
 - Five guarantee-company templates are not all at the same quality level.
 - Company-specific checkbox/plan option output is incomplete on some templates.
 - Some UI still mixes broker workflow and admin/template-factory controls.
-- Concrete production IdP/proxy deployment is not implemented or verified.
+- Concrete Clerk project configuration, live keys, hosted-domain redirects, and production webhook sync are not implemented or verified in this workspace.
 - `users.external_auth_subject` is not backfilled for real production users.
 - `docs/engineering/postgres_rls.sql` has not been applied to a live production database in this workspace.
 - Local member creation is not real email invitation or SSO provisioning.

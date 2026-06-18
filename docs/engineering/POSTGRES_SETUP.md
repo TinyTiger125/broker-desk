@@ -1,4 +1,4 @@
-# Postgres / Supabase Setup
+# Postgres Setup
 
 ## 1) Configure env
 Edit `.env`:
@@ -10,7 +10,29 @@ DATABASE_URL=postgresql://USER:PASSWORD@HOST:6543/postgres?sslmode=require
 
 If `DATA_DRIVER` is not `postgres` or `DATABASE_URL` is empty, app will use in-memory mode.
 
-Production auth must not rely on the local demo actor fallback. For an auth proxy / IdP integration that signs trusted headers, set:
+Production auth must not rely on the local demo actor fallback.
+
+Selected production path:
+
+```bash
+DATA_DRIVER=postgres
+BROKER_DESK_AUTH_MODE=clerk
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=replace-with-clerk-publishable-key
+CLERK_SECRET_KEY=replace-with-clerk-secret-key
+CLERK_WEBHOOK_SIGNING_SECRET=replace-when-webhooks-are-enabled
+```
+
+The app maps Clerk `userId` to `users.external_auth_subject`. If a tenant admin has already invited a member by email, the first Clerk login links that Clerk subject to the existing local user; otherwise a local user is created without tenant membership and tenant access remains denied until membership is granted.
+
+Clerk is the identity provider. Broker Desk's business authorization remains in Postgres:
+
+```text
+Clerk session -> users.external_auth_subject -> tenant_memberships -> role permissions
+```
+
+Do not use Clerk organization roles as the direct source of business permissions until the mirror/sync contract is explicitly designed and tested.
+
+Legacy / alternative auth-proxy path:
 
 ```bash
 BROKER_DESK_AUTH_MODE=trusted_header
@@ -45,14 +67,14 @@ A default demo user is auto-created if `users` is empty.
 The output template settings table (`output_template_settings`) is also auto-created and seeded.
 
 ## 5) Optional manual schema init
-You can also run SQL manually in Supabase SQL Editor using:
+You can also run SQL manually in a managed Postgres SQL console using:
 - `docs/engineering/postgres_schema.sql`
 - `docs/engineering/postgres_rls.sql`
 
 ## 6) Current note
 Postgres persistence uses the same function signatures as the memory repository. Existing pages/actions do not need to change when switching driver.
 
-The RLS baseline is intentionally separate from the auto-created schema because local direct-connection development may not have Supabase roles. Apply `postgres_rls.sql` in the production Supabase/Postgres project after `users.external_auth_subject` has been backfilled for real users.
+The RLS baseline is intentionally separate from the auto-created schema because local direct-connection development may not have managed-provider roles. Apply `postgres_rls.sql` in the production Postgres project after `users.external_auth_subject` has been backfilled for real users.
 
 RLS policy model:
 
@@ -76,4 +98,5 @@ This verifies:
 - output templates rendering
 - board stage update API (forward + rollback)
 - production auth fail-closed behavior
+- Clerk auth configuration guardrails
 - RLS baseline coverage for tenant-owned tables

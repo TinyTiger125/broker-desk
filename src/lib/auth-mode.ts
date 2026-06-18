@@ -1,4 +1,4 @@
-export type BrokerDeskAuthMode = "demo" | "trusted_header" | "disabled";
+export type BrokerDeskAuthMode = "demo" | "trusted_header" | "clerk" | "disabled";
 
 export type TrustedHeaderAuthIdentity = {
   subject: string;
@@ -28,7 +28,7 @@ export function isProductionRuntime() {
 
 export function getAuthMode(): BrokerDeskAuthMode {
   const configured = process.env.BROKER_DESK_AUTH_MODE?.trim().toLowerCase();
-  if (configured === "demo" || configured === "trusted_header" || configured === "disabled") {
+  if (configured === "demo" || configured === "trusted_header" || configured === "clerk" || configured === "disabled") {
     return configured;
   }
   return isProductionRuntime() ? "disabled" : "demo";
@@ -41,6 +41,17 @@ export function isDemoAuthEnabled() {
 
 export function isTrustedHeaderAuthEnabled() {
   return getAuthMode() === "trusted_header";
+}
+
+export function isClerkAuthEnabled() {
+  return getAuthMode() === "clerk";
+}
+
+export function isClerkAuthConfigured() {
+  return Boolean(
+    process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY?.trim() &&
+      process.env.CLERK_SECRET_KEY?.trim(),
+  );
 }
 
 export function getTrustedHeaderAuthConfig() {

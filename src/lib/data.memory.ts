@@ -36,6 +36,12 @@ export type User = {
   createdAt: Date;
 };
 
+export type ExternalAuthUserInput = {
+  subject: string;
+  email?: string;
+  name?: string;
+};
+
 export type TenantStatus = "active" | "suspended";
 export type TenantMembershipStatus = "active" | "invited" | "suspended";
 
@@ -1108,6 +1114,44 @@ export async function getUserByExternalAuthSubject(subject: string): Promise<Use
   if (!normalized) return null;
   const found = db.users.find((item) => item.externalAuthSubject === normalized);
   return found ? { ...found } : null;
+}
+
+function fallbackEmailForExternalSubject(subject: string): string {
+  const safeSubject = subject.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "user";
+  return `external-${safeSubject}@brokerdesk.local`;
+}
+
+export async function ensureUserForExternalAuth(input: ExternalAuthUserInput): Promise<User | null> {
+  const subject = input.subject.trim();
+  if (!subject) return null;
+
+  const email = input.email?.trim().toLowerCase();
+  const name = input.name?.trim() || email || subject;
+  const bySubject = db.users.find((item) => item.externalAuthSubject === subject);
+  if (bySubject) return { ...bySubject };
+
+  if (email) {
+    const byEmail = db.users.find((item) => item.email.toLowerCase() === email);
+    if (byEmail) {
+      if (byEmail.externalAuthSubject && byEmail.externalAuthSubject !== subject) {
+        throw new Error("email is already linked to another external identity");
+      }
+      byEmail.externalAuthSubject = subject;
+      byEmail.name = byEmail.name.trim() || name;
+      return { ...byEmail };
+    }
+  }
+
+  const user: User = {
+    id: makeId("user"),
+    name,
+    email: email || fallbackEmailForExternalSubject(subject),
+    passwordHash: "external_auth_user",
+    externalAuthSubject: subject,
+    createdAt: new Date(),
+  };
+  db.users.push(user);
+  return { ...user };
 }
 
 export async function getDefaultUser(preferredUserId?: string) {

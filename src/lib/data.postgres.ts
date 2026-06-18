@@ -1268,6 +1268,59 @@ export async function getUserByExternalAuthSubject(subject: string): Promise<Use
   return result.rows[0] ? mapUser(result.rows[0]) : null;
 }
 
+function fallbackEmailForExternalSubject(subject: string): string {
+  const safeSubject = subject.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "user";
+  return `external-${safeSubject}@brokerdesk.local`;
+}
+
+export async function ensureUserForExternalAuth(input: {
+  subject: string;
+  email?: string;
+  name?: string;
+}): Promise<User | null> {
+  await ensureSchema();
+  const subject = input.subject.trim();
+  if (!subject) return null;
+
+  const email = input.email?.trim().toLowerCase();
+  const fallbackEmail = fallbackEmailForExternalSubject(subject);
+  const name = input.name?.trim() || email || subject;
+
+  return withTransaction(async (client) => {
+    const bySubject = await client.query("SELECT * FROM users WHERE external_auth_subject = $1 LIMIT 1", [subject]);
+    if (bySubject.rows[0]) return mapUser(bySubject.rows[0]);
+
+    if (email) {
+      const byEmail = await client.query("SELECT * FROM users WHERE lower(email) = lower($1) LIMIT 1", [email]);
+      if (byEmail.rows[0]) {
+        const user = mapUser(byEmail.rows[0]);
+        if (user.externalAuthSubject && user.externalAuthSubject !== subject) {
+          throw new Error("email is already linked to another external identity");
+        }
+        const linked = await client.query(
+          `UPDATE users
+           SET external_auth_subject = $1,
+               name = CASE WHEN trim(name) = '' THEN $2 ELSE name END
+           WHERE id = $3
+           RETURNING *`,
+          [subject, name, user.id],
+        );
+        return mapUser(linked.rows[0]);
+      }
+    }
+
+    const inserted = await client.query(
+      `INSERT INTO users (id, name, email, password_hash, external_auth_subject)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (external_auth_subject) DO UPDATE SET
+         name = CASE WHEN trim(users.name) = '' THEN EXCLUDED.name ELSE users.name END
+       RETURNING *`,
+      [genId("user"), name, email || fallbackEmail, "external_auth_user", subject],
+    );
+    return mapUser(inserted.rows[0]);
+  });
+}
+
 export async function getDefaultUser(preferredUserId?: string) {
   await ensureSchema();
   if (preferredUserId) {
