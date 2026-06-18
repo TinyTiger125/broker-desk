@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import {
   getDefaultUser,
   getTenantById,
+  isTenantAccessibleStatus,
   listTenantMemberships,
   type Tenant,
   type TenantMembership,
@@ -71,7 +72,7 @@ export async function requireTenantSession(options: {
   }
 
   const tenant = await getTenantById(membership.tenantId);
-  if (!tenant || tenant.status !== "active") {
+  if (!tenant || !isTenantAccessibleStatus(tenant.status)) {
     throw new TenantSessionError("Active tenant was not found.", "tenant_not_found");
   }
 

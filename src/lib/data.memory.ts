@@ -42,14 +42,17 @@ export type ExternalAuthUserInput = {
   name?: string;
 };
 
-export type TenantStatus = "active" | "suspended";
+export type TenantStatus = "trial" | "active" | "suspended" | "cancelled";
+export type TenantAccountType = "individual" | "company";
 export type TenantMembershipStatus = "active" | "invited" | "suspended";
 
 export type Tenant = {
   id: string;
   name: string;
   slug: string;
+  accountType: TenantAccountType;
   status: TenantStatus;
+  purchasedSeatCount: number;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -66,6 +69,13 @@ export type TenantMembership = {
 
 export type TenantMemberListItem = TenantMembership & {
   user: Pick<User, "id" | "name" | "email" | "createdAt">;
+};
+
+export type TenantAccountSummary = Tenant & {
+  activeSeatCount: number;
+  invitedSeatCount: number;
+  usedSeatCount: number;
+  availableSeatCount: number;
 };
 
 export type Client = {
@@ -422,6 +432,42 @@ function resolveTenantId(tenantId?: string): string {
   return tenantId?.trim() || DEFAULT_TENANT_ID;
 }
 
+export function isTenantAccessibleStatus(status: TenantStatus): boolean {
+  return status === "trial" || status === "active";
+}
+
+function normalizePurchasedSeatCount(value: unknown): number {
+  const count = Number(value);
+  if (!Number.isFinite(count)) return 1;
+  return Math.max(1, Math.floor(count));
+}
+
+function countUsedSeats(tenantId: string): { activeSeatCount: number; invitedSeatCount: number; usedSeatCount: number } {
+  const members = db.tenantMemberships.filter((membership) => membership.tenantId === tenantId);
+  const activeSeatCount = members.filter((membership) => membership.status === "active").length;
+  const invitedSeatCount = members.filter((membership) => membership.status === "invited").length;
+  return {
+    activeSeatCount,
+    invitedSeatCount,
+    usedSeatCount: activeSeatCount + invitedSeatCount,
+  };
+}
+
+function toTenantAccountSummary(tenant: Tenant): TenantAccountSummary {
+  const seats = countUsedSeats(tenant.id);
+  return {
+    ...tenant,
+    ...seats,
+    availableSeatCount: Math.max(0, tenant.purchasedSeatCount - seats.usedSeatCount),
+  };
+}
+
+function ensureTenantDefaults(tenant: Tenant): Tenant {
+  tenant.accountType = tenant.accountType ?? "company";
+  tenant.purchasedSeatCount = normalizePurchasedSeatCount(tenant.purchasedSeatCount ?? 1);
+  return tenant;
+}
+
 const tenantScopedCollectionKeys = [
   "clients",
   "properties",
@@ -452,6 +498,7 @@ function backfillTenantScope(dbLike: DB) {
 
 function withDefaultTenantScope(input: Record<string, unknown>): DB {
   const scopedDb = input as DB;
+  scopedDb.tenants.forEach(ensureTenantDefaults);
   backfillTenantScope(scopedDb);
   return scopedDb;
 }
@@ -515,7 +562,9 @@ const _freshDb: DB = withDefaultTenantScope({
       id: "tenant_cherry",
       name: "Cherry Investment株式会社",
       slug: "cherry-investment",
+      accountType: "company",
       status: "active",
+      purchasedSeatCount: 5,
       createdAt: new Date(now - 90 * 24 * 60 * 60 * 1000),
       updatedAt: new Date(now - 5 * 24 * 60 * 60 * 1000),
     },
@@ -971,6 +1020,7 @@ if (!_g.__brokerDb) _g.__brokerDb = _freshDb;
 const db: DB = _g.__brokerDb;
 backfillTenantScope(db);
 if (!db.tenants) db.tenants = [..._freshDb.tenants];
+db.tenants.forEach(ensureTenantDefaults);
 if (!db.tenantMemberships) db.tenantMemberships = [..._freshDb.tenantMemberships];
 if (!db.guaranteeApplicationDrafts) db.guaranteeApplicationDrafts = [..._freshDb.guaranteeApplicationDrafts];
 if (!db.correctionEvents) db.correctionEvents = [];
@@ -1167,6 +1217,115 @@ export async function getTenantById(tenantId: string): Promise<Tenant | null> {
   return found ? { ...found } : null;
 }
 
+export async function listPlatformTenantAccounts(): Promise<TenantAccountSummary[]> {
+  return db.tenants
+    .slice()
+    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+    .map(toTenantAccountSummary);
+}
+
+function slugifyTenantName(value: string): string {
+  const slug = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  return slug || `tenant-${Date.now().toString(36)}`;
+}
+
+function assertTenantHasSeatCapacity(tenantId: string, nextStatus: TenantMembershipStatus) {
+  if (nextStatus === "suspended") return;
+  const tenant = db.tenants.find((item) => item.id === tenantId);
+  if (!tenant) throw new Error("tenant not found");
+  const seats = countUsedSeats(tenantId);
+  if (seats.usedSeatCount >= tenant.purchasedSeatCount) {
+    throw new Error("purchased seat count exceeded");
+  }
+}
+
+export async function createTenantAccount(input: {
+  name: string;
+  slug?: string;
+  accountType: TenantAccountType;
+  status?: TenantStatus;
+  purchasedSeatCount: number;
+  ownerName: string;
+  ownerEmail: string;
+}): Promise<TenantAccountSummary> {
+  const name = input.name.trim();
+  const ownerEmail = input.ownerEmail.trim().toLowerCase();
+  if (!name) throw new Error("tenant name is required");
+  if (!ownerEmail) throw new Error("owner email is required");
+
+  const baseSlug = slugifyTenantName(input.slug || name);
+  let slug = baseSlug;
+  let suffix = 2;
+  while (db.tenants.some((tenant) => tenant.slug === slug)) {
+    slug = `${baseSlug}-${suffix}`;
+    suffix += 1;
+  }
+
+  const tenant: Tenant = {
+    id: makeId("tenant"),
+    name,
+    slug,
+    accountType: input.accountType,
+    status: input.status ?? "trial",
+    purchasedSeatCount: normalizePurchasedSeatCount(input.purchasedSeatCount),
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+  db.tenants.push(tenant);
+
+  let owner = db.users.find((item) => item.email.toLowerCase() === ownerEmail);
+  if (!owner) {
+    owner = {
+      id: makeId("user"),
+      name: input.ownerName.trim() || ownerEmail,
+      email: ownerEmail,
+      passwordHash: "platform_invited_user",
+      externalAuthSubject: undefined,
+      createdAt: new Date(),
+    };
+    db.users.push(owner);
+  }
+
+  db.tenantMemberships.push({
+    id: makeId("membership"),
+    tenantId: tenant.id,
+    userId: owner.id,
+    role: "tenant_owner",
+    status: "active",
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+
+  return toTenantAccountSummary(tenant);
+}
+
+export async function updateTenantAccountLifecycle(input: {
+  tenantId: string;
+  status?: TenantStatus;
+  purchasedSeatCount?: number;
+}): Promise<TenantAccountSummary | null> {
+  const tenant = db.tenants.find((item) => item.id === input.tenantId);
+  if (!tenant) return null;
+
+  if (input.purchasedSeatCount != null) {
+    const nextSeatCount = normalizePurchasedSeatCount(input.purchasedSeatCount);
+    const used = countUsedSeats(tenant.id).usedSeatCount;
+    if (nextSeatCount < used) {
+      throw new Error("purchased seat count cannot be lower than used seats");
+    }
+    tenant.purchasedSeatCount = nextSeatCount;
+  }
+  if (input.status) {
+    tenant.status = input.status;
+  }
+  tenant.updatedAt = new Date();
+  return toTenantAccountSummary(tenant);
+}
+
 export async function listTenantMemberships(userId: string): Promise<TenantMembership[]> {
   return db.tenantMemberships
     .filter((item) => item.userId === userId)
@@ -1185,7 +1344,7 @@ export async function listTenantsForUser(userId: string): Promise<Tenant[]> {
   const memberships = await listTenantMemberships(userId);
   const tenantIds = new Set(memberships.filter((item) => item.status === "active").map((item) => item.tenantId));
   return db.tenants
-    .filter((item) => item.status === "active" && tenantIds.has(item.id))
+    .filter((item) => isTenantAccessibleStatus(item.status) && tenantIds.has(item.id))
     .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
     .map((item) => ({ ...item }));
 }
@@ -1242,8 +1401,12 @@ export async function inviteTenantMember(input: {
     (membership) => membership.tenantId === scopeTenantId && membership.userId === user.id,
   );
   if (existing) {
+    const nextStatus = input.status ?? "active";
+    if (existing.status === "suspended" && nextStatus !== "suspended") {
+      assertTenantHasSeatCapacity(scopeTenantId, nextStatus);
+    }
     existing.role = input.role;
-    existing.status = input.status ?? "active";
+    existing.status = nextStatus;
     existing.updatedAt = new Date();
     return {
       ...existing,
@@ -1256,13 +1419,15 @@ export async function inviteTenantMember(input: {
     };
   }
 
+  const nextStatus = input.status ?? "active";
+  assertTenantHasSeatCapacity(scopeTenantId, nextStatus);
   const nowDate = new Date();
   const membership: TenantMembership = {
     id: makeId("membership"),
     tenantId: scopeTenantId,
     userId: user.id,
     role: input.role,
-    status: input.status ?? "active",
+    status: nextStatus,
     createdAt: nowDate,
     updatedAt: nowDate,
   };
@@ -1313,6 +1478,9 @@ export async function updateTenantMemberStatus(input: {
     (item) => item.id === input.membershipId && item.tenantId === scopeTenantId,
   );
   if (!membership) return null;
+  if (membership.status === "suspended" && input.status !== "suspended") {
+    assertTenantHasSeatCapacity(scopeTenantId, input.status);
+  }
   membership.status = input.status;
   membership.updatedAt = new Date();
   const user = db.users.find((item) => item.id === membership.userId);

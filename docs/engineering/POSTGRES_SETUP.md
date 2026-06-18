@@ -20,6 +20,7 @@ BROKER_DESK_AUTH_MODE=clerk
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=replace-with-clerk-publishable-key
 CLERK_SECRET_KEY=replace-with-clerk-secret-key
 CLERK_WEBHOOK_SIGNING_SECRET=replace-when-webhooks-are-enabled
+BROKER_DESK_PLATFORM_OWNER_IDS=comma-separated-internal-user-ids
 ```
 
 The app maps Clerk `userId` to `users.external_auth_subject`. If a tenant admin has already invited a member by email, the first Clerk login links that Clerk subject to the existing local user; otherwise a local user is created without tenant membership and tenant access remains denied until membership is granted.
@@ -29,6 +30,13 @@ Clerk is the identity provider. Broker Desk's business authorization remains in 
 ```text
 Clerk session -> users.external_auth_subject -> tenant_memberships -> role permissions
 ```
+
+Broker Desk account creation is not public self-sign-up. In production:
+
+- Use `/platform/accounts` as the platform-owner lifecycle console for opening individual/company tenant accounts and setting purchased seats.
+- Configure `BROKER_DESK_PLATFORM_OWNER_IDS` explicitly. In production there is no implicit `user_demo` platform owner fallback.
+- Keep tenant member allocation inside `tenant_memberships`; member invite/reactivation is blocked when it exceeds `tenants.purchased_seat_count`.
+- Disable or restrict public sign-up in the Clerk project configuration as well as in the app UI. The repository closes `/sign-up`, but Clerk dashboard configuration is still an external production control.
 
 Do not use Clerk organization roles as the direct source of business permissions until the mirror/sync contract is explicitly designed and tested.
 
@@ -81,6 +89,7 @@ RLS policy model:
 - Tenant-owned business tables use `tenant_id`.
 - `users.external_auth_subject` stores the immutable IdP subject.
 - `tenant_memberships` remains the authority boundary.
+- Tenant access is allowed only when the membership is active and the tenant lifecycle status is `trial` or `active`.
 - No Broker Desk business table is granted to `anon`.
 - `authenticated` access is granted only when that database role exists.
 

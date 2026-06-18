@@ -49,7 +49,7 @@ AS $$
     WHERE tenant_memberships.user_id = brokerdesk_private.current_user_id()
       AND tenant_memberships.tenant_id = target_tenant_id
       AND tenant_memberships.status = 'active'
-      AND tenants.status = 'active'
+      AND tenants.status IN ('trial', 'active')
   );
 $$;
 
@@ -71,7 +71,7 @@ AS $$
         AND own_membership.status = 'active'
         AND target_membership.user_id = target_user_id
         AND target_membership.status IN ('active', 'invited')
-        AND tenants.status = 'active'
+        AND tenants.status IN ('trial', 'active')
     );
 $$;
 

@@ -47,6 +47,14 @@ export const ensureUserForExternalAuth: typeof memory.ensureUserForExternalAuth 
   repo.ensureUserForExternalAuth(...args);
 export const getTenantById: typeof memory.getTenantById = (...args) =>
   repo.getTenantById(...args);
+export const isTenantAccessibleStatus: typeof memory.isTenantAccessibleStatus = (...args) =>
+  repo.isTenantAccessibleStatus(...args);
+export const listPlatformTenantAccounts: typeof memory.listPlatformTenantAccounts = (...args) =>
+  repo.listPlatformTenantAccounts(...args);
+export const createTenantAccount: typeof memory.createTenantAccount = (...args) =>
+  repo.createTenantAccount(...args);
+export const updateTenantAccountLifecycle: typeof memory.updateTenantAccountLifecycle = (...args) =>
+  repo.updateTenantAccountLifecycle(...args);
 export const listTenantMemberships: typeof memory.listTenantMemberships = (...args) =>
   repo.listTenantMemberships(...args);
 export const getTenantMembership: typeof memory.getTenantMembership = (...args) =>
@@ -196,6 +204,8 @@ export type {
   AttachmentTargetType,
   GeneratedOutput,
   Tenant,
+  TenantAccountSummary,
+  TenantAccountType,
   TenantMembership,
   TenantMemberListItem,
   TenantMembershipStatus,

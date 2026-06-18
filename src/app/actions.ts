@@ -38,6 +38,7 @@ import {
   addProperty,
   addImportJob,
   addTask,
+  createTenantAccount,
   applyOutputTemplateVersion,
   addQuotation,
   createOutputTemplateVersion,
@@ -69,6 +70,7 @@ import {
   updateAiExperienceDraftStatus,
   updateTenantMemberRole,
   updateTenantMemberStatus,
+  updateTenantAccountLifecycle,
   inviteTenantMember,
   updateOutputTemplateSettings,
   updateTaskStatus,
@@ -78,6 +80,8 @@ import {
   type ExtractionReviewItem,
   type ExtractionReviewStatus,
   type AiExperienceDraftStatus,
+  type TenantAccountType,
+  type TenantStatus,
 } from "@/lib/data";
 import {
   getAttachmentStorageMode,
@@ -98,6 +102,7 @@ import {
 } from "@/lib/import-mapping";
 import { materializeExtractionReviewValue } from "@/lib/extraction-review-materialization";
 import { assertTenantPermission, requireTenantSession } from "@/lib/tenant-session";
+import { requirePlatformOwnerSession } from "@/lib/platform-session";
 import { extractInputFileFromWorkbook, type InputFileExtractionResult } from "@/lib/input-file-extractor";
 import { extractIdentityDocumentFromBuffer } from "@/lib/identity-document-extractor";
 import { CASE_FIELD_KEYS, isKnownCaseFieldKey } from "@/lib/case-field-catalog";
@@ -174,6 +179,18 @@ function parseTenantRole(value: FormDataEntryValue | null): TenantRole {
   if (!isTenantRole(role)) throw new Error("ロールが不正です。");
   if (role === "platform_owner") throw new Error("platform_owner は通常のテナントメンバーに付与できません。");
   return role;
+}
+
+function parseTenantAccountType(value: FormDataEntryValue | null): TenantAccountType {
+  const accountType = String(value ?? "").trim();
+  if (accountType === "individual" || accountType === "company") return accountType;
+  throw new Error("アカウント種別が不正です。");
+}
+
+function parseTenantLifecycleStatus(value: FormDataEntryValue | null): TenantStatus {
+  const status = String(value ?? "").trim();
+  if (status === "trial" || status === "active" || status === "suspended" || status === "cancelled") return status;
+  throw new Error("テナント状態が不正です。");
 }
 
 function isComplianceAlertType(value: string): value is ComplianceAlertType {
@@ -1940,6 +1957,85 @@ async function assertNotLastActiveTenantOwner(input: {
   if (!wouldRemainActiveOwner && activeOwners.length <= 1) {
     throw new Error("最後の有効なオーナーは降格・停止できません。");
   }
+}
+
+export async function createTenantAccountAction(formData: FormData) {
+  const session = await requirePlatformOwnerSession();
+  const name = String(formData.get("name") ?? "").trim();
+  const slug = String(formData.get("slug") ?? "").trim();
+  const accountType = parseTenantAccountType(formData.get("accountType"));
+  const status = parseTenantLifecycleStatus(formData.get("status"));
+  const purchasedSeatCount = parseNumber(formData.get("purchasedSeatCount"), 1);
+  const ownerName = String(formData.get("ownerName") ?? "").trim();
+  const ownerEmail = String(formData.get("ownerEmail") ?? "").trim();
+
+  if (!name) throw new Error("テナント名は必須です。");
+  if (!ownerEmail) throw new Error("初期オーナーのメールアドレスは必須です。");
+  if (!Number.isInteger(purchasedSeatCount) || purchasedSeatCount < 1) {
+    throw new Error("購入席数は 1 以上の整数で指定してください。");
+  }
+
+  const account = await createTenantAccount({
+    name,
+    slug: slug || undefined,
+    accountType,
+    status,
+    purchasedSeatCount,
+    ownerName,
+    ownerEmail,
+  });
+
+  await addAuditLog({
+    tenantId: account.id,
+    userId: session.user.id,
+    action: "tenant_account_created",
+    targetType: "tenant",
+    targetId: account.id,
+    message: `テナントアカウントを作成しました: ${account.name} / ${account.purchasedSeatCount} seats`,
+    context: {
+      accountType: account.accountType,
+      status: account.status,
+      purchasedSeatCount: account.purchasedSeatCount,
+      ownerEmail,
+    },
+  });
+  revalidatePath("/platform/accounts");
+  redirect("/platform/accounts?flash=tenant_created");
+}
+
+export async function updateTenantAccountLifecycleAction(formData: FormData) {
+  const session = await requirePlatformOwnerSession();
+  const tenantId = String(formData.get("tenantId") ?? "").trim();
+  const status = parseTenantLifecycleStatus(formData.get("status"));
+  const purchasedSeatCount = parseNumber(formData.get("purchasedSeatCount"), 1);
+  if (!tenantId) throw new Error("テナントIDが不正です。");
+  if (!Number.isInteger(purchasedSeatCount) || purchasedSeatCount < 1) {
+    throw new Error("購入席数は 1 以上の整数で指定してください。");
+  }
+
+  const account = await updateTenantAccountLifecycle({
+    tenantId,
+    status,
+    purchasedSeatCount,
+  });
+  if (!account) throw new Error("テナントが見つかりません。");
+
+  await addAuditLog({
+    tenantId: account.id,
+    userId: session.user.id,
+    action: "tenant_account_lifecycle_updated",
+    targetType: "tenant",
+    targetId: account.id,
+    message: `テナント状態を更新しました: ${account.name} / ${account.status} / ${account.purchasedSeatCount} seats`,
+    context: {
+      status: account.status,
+      purchasedSeatCount: account.purchasedSeatCount,
+      usedSeatCount: account.usedSeatCount,
+      availableSeatCount: account.availableSeatCount,
+    },
+  });
+  revalidatePath("/platform/accounts");
+  redirect("/platform/accounts?flash=tenant_updated");
 }
 
 export async function inviteTenantMemberAction(formData: FormData) {

@@ -174,6 +174,7 @@ Implemented or materially present:
 - Standard field catalog.
 - Phase 1 tenant/session foundation:
   - `tenants` and `tenant_memberships` exist in memory/Postgres data layers.
+  - tenants now carry `accountType`, lifecycle `status`, and `purchasedSeatCount` for seat-based B2B account control.
   - active tenant can resolve from membership/cookie/default membership.
   - initial role/action permission matrix exists for tenant, case, source, extraction, record, review, output, template, AI, and audit actions.
   - `/api/tenant/session` exposes the resolved user, tenant, membership, and role for diagnostics.
@@ -187,6 +188,8 @@ Implemented or materially present:
   - `requireTenantSession` supports multi-action permission checks, and AI field pre-match now requires both template and AI pre-match permissions.
   - production demo auth fallback is disabled unless `BROKER_DESK_ENABLE_DEMO_AUTH=true`; real production login is still a separate release requirement.
   - `/settings/members` provides tenant member list, local member creation, role update, suspension/reactivation, last-owner protection, and audit logging.
+  - `/platform/accounts` provides PlatformOwner-only tenant account lifecycle management: create individual/company account, set purchased seats, create initial owner, and update trial/active/suspended/cancelled status.
+  - member invite/reactivation is blocked when it would exceed purchased seats.
   - `/platform/templates` provides a PlatformOwner-only official-template factory overview; production PlatformOwner access must be explicitly configured through `BROKER_DESK_PLATFORM_OWNER_IDS`.
   - official guarantee-application PDF downloads are recorded as generated outputs with case/template/data/draft/layout snapshots and audit logs.
   - `npm run test:tenant-governance` covers role guardrails, member operations, template layout snapshot capture, and output snapshot persistence.
@@ -207,6 +210,7 @@ Not yet release-ready:
 - Company-specific checkbox/plan option output is incomplete on some templates.
 - Some UI still mixes broker workflow and admin/template-factory controls.
 - Concrete Clerk project configuration, live keys, hosted-domain redirects, and production webhook sync are not implemented or verified in this workspace.
+- Clerk dashboard-level public sign-up restriction is not verified in this workspace; the app-level `/sign-up` page is closed, but production must also enforce this in Clerk configuration.
 - `users.external_auth_subject` is not backfilled for real production users.
 - `docs/engineering/postgres_rls.sql` has not been applied to a live production database in this workspace.
 - Local member creation is not real email invitation or SSO provisioning.
@@ -436,3 +440,5 @@ http://localhost:3002/api/guarantee-applications/j_lease_individual_v1/download?
 - Cleaned and reorganized project documentation into product, engineering, operations, and archive buckets; `.broker-desk/friends-guarantee-layouts.json` is tracked as the current template calibration asset.
 - Added Phase 1 tenant/session foundation: tenant and membership data models, active tenant resolution, conservative role/action permission matrix, diagnostic tenant session API, and regression coverage.
 - Explicit boundary: Phase 1 does not yet prove production multi-tenant safety. Phase 2 must add `tenant_id` business data scoping and cross-tenant denial tests before closed pilot risk is materially reduced.
+- Added the seat-based B2B account lifecycle foundation: tenants can be individual/company accounts with purchased seats and trial/active/suspended/cancelled status; `/platform/accounts` lets PlatformOwner create/update accounts, while tenant member allocation remains constrained by purchased seats.
+- Closed the app-level public `/sign-up` route to match the business model: Broker Desk accounts are provisioned/invited, not publicly self-created.

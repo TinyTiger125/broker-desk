@@ -119,9 +119,14 @@ withEnv(
 const schemaSql = fs.readFileSync("docs/engineering/postgres_schema.sql", "utf8");
 assert(schemaSql.includes("external_auth_subject TEXT UNIQUE"), "schema must include external auth subject");
 assert(schemaSql.includes("idx_users_external_auth_subject"), "schema must index external auth subject");
+assert(schemaSql.includes("account_type TEXT NOT NULL DEFAULT 'company'"), "schema must include tenant account type");
+assert(schemaSql.includes("purchased_seat_count INTEGER NOT NULL DEFAULT 1"), "schema must include tenant purchased seat count");
 
 const packageJson = JSON.parse(fs.readFileSync("package.json", "utf8"));
 assert(packageJson.dependencies?.["@clerk/nextjs"], "package must include @clerk/nextjs");
+
+const signUpSource = fs.readFileSync("src/app/sign-up/[[...sign-up]]/page.tsx", "utf8");
+assert(!signUpSource.includes("@clerk/nextjs") && !signUpSource.includes("<SignUp"), "app-level public Clerk sign-up route must remain closed");
 
 const proxySource = fs.readFileSync("src/proxy.ts", "utf8");
 assert(proxySource.includes("clerkMiddleware"), "Next proxy must wire Clerk middleware");
@@ -135,6 +140,7 @@ assert(dataSource.includes("getClerkAuthIdentity"), "data layer must read Clerk 
 const rlsSql = fs.readFileSync("docs/engineering/postgres_rls.sql", "utf8");
 assert(rlsSql.includes("brokerdesk_private"), "RLS helpers must live outside the exposed public schema");
 assert(!/GRANT\s+[^;]*\s+TO\s+anon\b/i.test(rlsSql), "RLS baseline must not grant Broker Desk business tables to anon");
+assert(rlsSql.includes("tenants.status IN ('trial', 'active')"), "RLS baseline must allow only accessible tenant lifecycle states");
 
 const tenantScopedTables = [
   "clients",

@@ -54,6 +54,7 @@ import type {
   Quotation,
   Task,
   Tenant,
+  TenantAccountSummary,
   TenantMemberListItem,
   TenantMembership,
   TenantMembershipStatus,
@@ -104,6 +105,16 @@ function resolveTenantId(tenantId?: string): string {
   return tenantId?.trim() || DEFAULT_TENANT_ID;
 }
 
+export function isTenantAccessibleStatus(status: TenantStatus): boolean {
+  return status === "trial" || status === "active";
+}
+
+function normalizePurchasedSeatCount(value: unknown): number {
+  const count = Number(value);
+  if (!Number.isFinite(count)) return 1;
+  return Math.max(1, Math.floor(count));
+}
+
 function mapUser(row: Record<string, unknown>): User {
   return {
     id: String(row.id),
@@ -120,7 +131,9 @@ function mapTenant(row: Record<string, unknown>): Tenant {
     id: String(row.id),
     name: String(row.name),
     slug: String(row.slug),
+    accountType: String(row.account_type ?? "company") as Tenant["accountType"],
     status: String(row.status ?? "active") as TenantStatus,
+    purchasedSeatCount: Number(row.purchased_seat_count ?? 1),
     createdAt: toDate(row.created_at) ?? new Date(),
     updatedAt: toDate(row.updated_at) ?? new Date(),
   };
@@ -548,7 +561,9 @@ async function ensureSchema() {
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       slug TEXT UNIQUE NOT NULL,
+      account_type TEXT NOT NULL DEFAULT 'company',
       status TEXT NOT NULL DEFAULT 'active',
+      purchased_seat_count INTEGER NOT NULL DEFAULT 1,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
@@ -981,6 +996,8 @@ async function ensureSchema() {
 
     ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS actor_id TEXT;
     ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS context_json JSONB;
+    ALTER TABLE tenants ADD COLUMN IF NOT EXISTS account_type TEXT NOT NULL DEFAULT 'company';
+    ALTER TABLE tenants ADD COLUMN IF NOT EXISTS purchased_seat_count INTEGER NOT NULL DEFAULT 1;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS external_auth_subject TEXT;
     CREATE UNIQUE INDEX IF NOT EXISTS idx_users_external_auth_subject ON users(external_auth_subject);
 
@@ -1025,14 +1042,16 @@ async function ensureSchema() {
   );
 
   await db.query(
-    `INSERT INTO tenants (id, name, slug, status)
-     VALUES ($1, $2, $3, $4)
+    `INSERT INTO tenants (id, name, slug, account_type, status, purchased_seat_count)
+     VALUES ($1, $2, $3, $4, $5, $6)
      ON CONFLICT (id) DO UPDATE SET
       name = EXCLUDED.name,
       slug = EXCLUDED.slug,
+      account_type = EXCLUDED.account_type,
       status = EXCLUDED.status,
+      purchased_seat_count = GREATEST(tenants.purchased_seat_count, EXCLUDED.purchased_seat_count),
       updated_at = NOW()`,
-    ["tenant_cherry", "Cherry Investment株式会社", "cherry-investment", "active"]
+    ["tenant_cherry", "Cherry Investment株式会社", "cherry-investment", "company", "active", 5]
   );
   await db.query(
     `INSERT INTO tenant_memberships (id, tenant_id, user_id, role, status)
@@ -1338,6 +1357,188 @@ export async function getTenantById(tenantId: string): Promise<Tenant | null> {
   return result.rows[0] ? mapTenant(result.rows[0]) : null;
 }
 
+function mapTenantAccountSummary(row: Record<string, unknown>): TenantAccountSummary {
+  const tenant = mapTenant(row);
+  const activeSeatCount = Number(row.active_seat_count ?? 0);
+  const invitedSeatCount = Number(row.invited_seat_count ?? 0);
+  const usedSeatCount = activeSeatCount + invitedSeatCount;
+  return {
+    ...tenant,
+    activeSeatCount,
+    invitedSeatCount,
+    usedSeatCount,
+    availableSeatCount: Math.max(0, tenant.purchasedSeatCount - usedSeatCount),
+  };
+}
+
+export async function listPlatformTenantAccounts(): Promise<TenantAccountSummary[]> {
+  await ensureSchema();
+  const result = await getPool().query(
+    `SELECT
+       tenants.*,
+       COUNT(*) FILTER (WHERE tenant_memberships.status = 'active')::int AS active_seat_count,
+       COUNT(*) FILTER (WHERE tenant_memberships.status = 'invited')::int AS invited_seat_count
+     FROM tenants
+     LEFT JOIN tenant_memberships ON tenant_memberships.tenant_id = tenants.id
+     GROUP BY tenants.id
+     ORDER BY tenants.created_at ASC`,
+  );
+  return result.rows.map(mapTenantAccountSummary);
+}
+
+function slugifyTenantName(value: string): string {
+  const slug = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  return slug || `tenant-${Date.now().toString(36)}`;
+}
+
+async function assertTenantHasSeatCapacity(
+  client: Pool | PoolClient,
+  tenantId: string,
+  nextStatus: TenantMembershipStatus,
+) {
+  if (nextStatus === "suspended") return;
+  const result = await client.query(
+    `SELECT tenants.purchased_seat_count,
+            COUNT(*) FILTER (WHERE tenant_memberships.status IN ('active', 'invited'))::int AS used_seat_count
+     FROM tenants
+     LEFT JOIN tenant_memberships ON tenant_memberships.tenant_id = tenants.id
+     WHERE tenants.id = $1
+     GROUP BY tenants.id`,
+    [tenantId],
+  );
+  const row = result.rows[0];
+  if (!row) throw new Error("tenant not found");
+  if (Number(row.used_seat_count ?? 0) >= Number(row.purchased_seat_count ?? 1)) {
+    throw new Error("purchased seat count exceeded");
+  }
+}
+
+export async function createTenantAccount(input: {
+  name: string;
+  slug?: string;
+  accountType: Tenant["accountType"];
+  status?: TenantStatus;
+  purchasedSeatCount: number;
+  ownerName: string;
+  ownerEmail: string;
+}): Promise<TenantAccountSummary> {
+  await ensureSchema();
+  const name = input.name.trim();
+  const ownerEmail = input.ownerEmail.trim().toLowerCase();
+  if (!name) throw new Error("tenant name is required");
+  if (!ownerEmail) throw new Error("owner email is required");
+
+  return withTransaction(async (client) => {
+    const baseSlug = slugifyTenantName(input.slug || name);
+    let slug = baseSlug;
+    let suffix = 2;
+    while (true) {
+      const slugResult = await client.query("SELECT id FROM tenants WHERE slug = $1 LIMIT 1", [slug]);
+      if (!slugResult.rows[0]) break;
+      slug = `${baseSlug}-${suffix}`;
+      suffix += 1;
+    }
+
+    const tenantResult = await client.query(
+      `INSERT INTO tenants (id, name, slug, account_type, status, purchased_seat_count)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING *`,
+      [
+        genId("tenant"),
+        name,
+        slug,
+        input.accountType,
+        input.status ?? "trial",
+        normalizePurchasedSeatCount(input.purchasedSeatCount),
+      ],
+    );
+    const tenant = mapTenant(tenantResult.rows[0]);
+
+    const userResult = await client.query("SELECT * FROM users WHERE lower(email) = lower($1) LIMIT 1", [ownerEmail]);
+    let owner = userResult.rows[0] ? mapUser(userResult.rows[0]) : null;
+    if (!owner) {
+      const inserted = await client.query(
+        `INSERT INTO users (id, name, email, password_hash, external_auth_subject)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING *`,
+        [genId("user"), input.ownerName.trim() || ownerEmail, ownerEmail, "platform_invited_user", null],
+      );
+      owner = mapUser(inserted.rows[0]);
+    }
+
+    await client.query(
+      `INSERT INTO tenant_memberships (id, tenant_id, user_id, role, status)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (tenant_id, user_id) DO UPDATE SET
+         role = EXCLUDED.role,
+         status = EXCLUDED.status,
+         updated_at = NOW()`,
+      [genId("membership"), tenant.id, owner.id, "tenant_owner", "active"],
+    );
+
+    return {
+      ...tenant,
+      activeSeatCount: 1,
+      invitedSeatCount: 0,
+      usedSeatCount: 1,
+      availableSeatCount: Math.max(0, tenant.purchasedSeatCount - 1),
+    };
+  });
+}
+
+export async function updateTenantAccountLifecycle(input: {
+  tenantId: string;
+  status?: TenantStatus;
+  purchasedSeatCount?: number;
+}): Promise<TenantAccountSummary | null> {
+  await ensureSchema();
+  return withTransaction(async (client) => {
+    const current = await client.query(
+      `SELECT tenants.*,
+              COUNT(*) FILTER (WHERE tenant_memberships.status = 'active')::int AS active_seat_count,
+              COUNT(*) FILTER (WHERE tenant_memberships.status = 'invited')::int AS invited_seat_count
+       FROM tenants
+       LEFT JOIN tenant_memberships ON tenant_memberships.tenant_id = tenants.id
+       WHERE tenants.id = $1
+       GROUP BY tenants.id`,
+      [input.tenantId],
+    );
+    if (!current.rows[0]) return null;
+
+    const activeSeatCount = Number(current.rows[0].active_seat_count ?? 0);
+    const invitedSeatCount = Number(current.rows[0].invited_seat_count ?? 0);
+    const usedSeatCount = activeSeatCount + invitedSeatCount;
+    const nextSeatCount =
+      input.purchasedSeatCount == null
+        ? Number(current.rows[0].purchased_seat_count ?? 1)
+        : normalizePurchasedSeatCount(input.purchasedSeatCount);
+    if (nextSeatCount < usedSeatCount) {
+      throw new Error("purchased seat count cannot be lower than used seats");
+    }
+
+    const updated = await client.query(
+      `UPDATE tenants
+       SET status = COALESCE($2, status),
+           purchased_seat_count = $3,
+           updated_at = NOW()
+       WHERE id = $1
+       RETURNING *`,
+      [input.tenantId, input.status ?? null, nextSeatCount],
+    );
+    return {
+      ...mapTenant(updated.rows[0]),
+      activeSeatCount,
+      invitedSeatCount,
+      usedSeatCount,
+      availableSeatCount: Math.max(0, nextSeatCount - usedSeatCount),
+    };
+  });
+}
+
 export async function listTenantMemberships(userId: string): Promise<TenantMembership[]> {
   await ensureSchema();
   const result = await getPool().query(
@@ -1364,7 +1565,7 @@ export async function listTenantsForUser(userId: string): Promise<Tenant[]> {
      JOIN tenant_memberships ON tenant_memberships.tenant_id = tenants.id
      WHERE tenant_memberships.user_id = $1
        AND tenant_memberships.status = 'active'
-       AND tenants.status = 'active'
+       AND tenants.status IN ('trial', 'active')
      ORDER BY tenants.created_at ASC`,
     [userId],
   );
@@ -1417,6 +1618,15 @@ export async function inviteTenantMember(input: {
       user = mapUser(inserted.rows[0]);
     }
 
+    const nextStatus = input.status ?? "active";
+    const existingMembership = await client.query(
+      "SELECT * FROM tenant_memberships WHERE tenant_id = $1 AND user_id = $2 LIMIT 1",
+      [scopeTenantId, user.id],
+    );
+    if (!existingMembership.rows[0] || existingMembership.rows[0].status === "suspended") {
+      await assertTenantHasSeatCapacity(client, scopeTenantId, nextStatus);
+    }
+
     const membershipId = genId("membership");
     const membershipResult = await client.query(
       `INSERT INTO tenant_memberships (id, tenant_id, user_id, role, status)
@@ -1426,7 +1636,7 @@ export async function inviteTenantMember(input: {
          status = EXCLUDED.status,
          updated_at = NOW()
        RETURNING *`,
-      [membershipId, scopeTenantId, user.id, input.role, input.status ?? "active"],
+      [membershipId, scopeTenantId, user.id, input.role, nextStatus],
     );
     const membership = mapTenantMembership(membershipResult.rows[0]);
     return {
@@ -1477,26 +1687,38 @@ export async function updateTenantMemberStatus(input: {
 }): Promise<TenantMemberListItem | null> {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(input.tenantId);
-  const result = await getPool().query(
-    `UPDATE tenant_memberships
-     SET status = $1, updated_at = NOW()
-     WHERE id = $2 AND tenant_id = $3
-     RETURNING *`,
-    [input.status, input.membershipId, scopeTenantId],
-  );
-  const membership = result.rows[0] ? mapTenantMembership(result.rows[0]) : null;
-  if (!membership) return null;
-  const user = await getUserById(membership.userId);
-  if (!user) return null;
-  return {
-    ...membership,
-    user: {
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      createdAt: user.createdAt,
-    },
-  };
+  return withTransaction(async (client) => {
+    const current = await client.query(
+      "SELECT * FROM tenant_memberships WHERE id = $1 AND tenant_id = $2 LIMIT 1",
+      [input.membershipId, scopeTenantId],
+    );
+    if (!current.rows[0]) return null;
+    if (current.rows[0].status === "suspended" && input.status !== "suspended") {
+      await assertTenantHasSeatCapacity(client, scopeTenantId, input.status);
+    }
+
+    const result = await client.query(
+      `UPDATE tenant_memberships
+       SET status = $1, updated_at = NOW()
+       WHERE id = $2 AND tenant_id = $3
+       RETURNING *`,
+      [input.status, input.membershipId, scopeTenantId],
+    );
+    const membership = result.rows[0] ? mapTenantMembership(result.rows[0]) : null;
+    if (!membership) return null;
+    const userResult = await client.query("SELECT * FROM users WHERE id = $1 LIMIT 1", [membership.userId]);
+    const user = userResult.rows[0] ? mapUser(userResult.rows[0]) : null;
+    if (!user) return null;
+    return {
+      ...membership,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        createdAt: user.createdAt,
+      },
+    };
+  });
 }
 
 export async function getOutputTemplateSettings(userId: string, tenantId = DEFAULT_TENANT_ID): Promise<OutputTemplateSettings> {

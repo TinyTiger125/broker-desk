@@ -28,6 +28,15 @@ Production identity decision as of 2026-06-18:
 - Keep `tenant_memberships` and Broker Desk roles as the source of business authorization.
 - Treat Clerk Organizations as a possible account-switching/provisioning layer later, not as the MVP permission authority.
 
+Commercial account decision as of 2026-06-18:
+
+- Broker Desk is a seat-based B2B product for real-estate brokers and brokerage companies.
+- There is no external consumer/customer user in the current product model.
+- A tenant may be an individual broker account or a company/organization account.
+- The platform operator sells and opens a fixed number of seats, then controls lifecycle state: `trial`, `active`, `suspended`, or `cancelled`.
+- Public self-sign-up is not part of the MVP. Users should be provisioned by platform account lifecycle or invitation flow, then authenticated by Clerk.
+- Tenant admins may allocate members only inside the purchased seat count.
+
 ## Product Boundary
 
 Broker Desk is a structured business-information workbench for small Japanese real-estate brokerage teams.
@@ -53,12 +62,12 @@ The release-ready permission model should therefore answer these questions first
 
 ## Target Customer Shape
 
-The expected customer is a small real-estate company, branch office, or broker team.
+The expected customer is an independent real-estate broker, small real-estate company, branch office, or broker team.
 
 The tenant should represent the operating organization, not a single document type:
 
 ```text
-Tenant = company, branch, or workspace
+Tenant = individual broker account, company, branch, or workspace
 User = login identity
 Membership = user's role inside one tenant
 Case = one business transaction or document-work package
@@ -67,6 +76,18 @@ Case = one business transaction or document-work package
 A user may belong to multiple tenants. A case belongs to exactly one tenant in the MVP model.
 
 Do not introduce headquarters/branch inheritance, cross-tenant sharing, or field-level visibility in the first implementation unless concrete paying users require them.
+
+MVP sales and operations model:
+
+```text
+PlatformOwner creates Tenant
+  -> sets account_type and purchased_seat_count
+  -> creates first tenant_owner membership
+  -> Clerk authenticates login identity
+  -> Broker Desk membership/role decides business access
+```
+
+This keeps billing/account lifecycle under the platform operator instead of letting unqualified public users create workspaces.
 
 ## Core Objects
 
@@ -675,6 +696,7 @@ Implementation status as of 2026-06-18: partially implemented as a foundation.
 Implemented:
 
 - Memory and Postgres data layers now include `tenants` and `tenant_memberships`.
+- `Tenant` includes `account_type`, lifecycle `status`, and `purchased_seat_count` for seat-based B2B account control.
 - Active tenant resolution exists through membership, optional tenant cookie, and default active membership.
 - `requireTenantSession` exists for route/server-side callers.
 - Initial action-based role matrix exists for owner/admin/manager/broker/data-operator/reviewer/viewer/platform-owner.
@@ -835,13 +857,16 @@ Implemented:
 
 - Production auth fails closed by default when `BROKER_DESK_AUTH_MODE` is not configured.
 - `BROKER_DESK_AUTH_MODE=trusted_header` supports an upstream IdP/auth-proxy integration through signed server-side headers.
+- `BROKER_DESK_AUTH_MODE=clerk` is the selected login/session path.
+- The public `/sign-up` route is closed in the app UI because account creation belongs to platform provisioning, not consumer self-registration.
 - `users.external_auth_subject` separates internal Broker Desk user IDs from immutable external identity-provider subjects.
-- `docs/engineering/postgres_rls.sql` defines the first Supabase/Postgres RLS baseline around `tenant_id`, `external_auth_subject`, and active `tenant_memberships`.
+- `docs/engineering/postgres_rls.sql` defines the first Supabase/Postgres RLS baseline around `tenant_id`, `external_auth_subject`, accessible tenant lifecycle status, and active `tenant_memberships`.
 - `npm run test:production-security` checks production demo-auth lockout, trusted-header secret enforcement, and RLS table coverage.
 
 Still required before external release:
 
 - A concrete IdP/proxy deployment, with header stripping/injection verified outside the app.
+- Clerk project-level public registration must also be disabled or restricted outside this repository; the local `/sign-up` page alone is not a sufficient production control.
 - Backfill `users.external_auth_subject` for every real production user.
 - Apply and verify `docs/engineering/postgres_rls.sql` against the production Supabase/Postgres database.
 - Use a database role that does not bypass RLS for any user-facing Data API path.
@@ -865,10 +890,12 @@ Exit criteria:
 
 Goal: expose permissions safely after the backend is enforceable.
 
-Implementation status as of 2026-06-18: member-management foundation implemented.
+Implementation status as of 2026-06-18: member-management and platform account lifecycle foundations implemented.
 
 Implemented:
 
+- `/platform/accounts` is a PlatformOwner-only account lifecycle console. It creates individual/company tenant accounts, records purchased seat count, creates the initial tenant owner, and updates lifecycle status/seat count.
+- The memory and Postgres repositories prevent adding or reactivating active/invited members beyond the purchased seat count.
 - `/settings/members` lists tenant members, adds local members, updates roles, suspends/reactivates members, prevents self-suspension, prevents removing the last active owner, and audits member changes.
 - Existing `/audit-log` remains the operational audit viewer.
 - Existing `/settings/output-templates` remains tenant output-template settings and version history.
@@ -876,18 +903,20 @@ Implemented:
 Still required before external release:
 
 - Real invitation email flow tied to the production identity provider.
+- Billing/subscription reconciliation, invoice status, renewal dates, and seat purchase history.
 - Tenant settings and billing UI.
 - AI quota/permission settings UI.
 - Move official-template editing to a dedicated backstage experience.
 
 Tasks:
 
-1. Tenant settings page.
-2. Member management page.
-3. Role assignment.
-4. Template management backstage page.
-5. Audit viewer.
-6. AI usage/permission settings.
+1. Platform account lifecycle page.
+2. Tenant settings page.
+3. Member management page.
+4. Role assignment.
+5. Template management backstage page.
+6. Audit viewer.
+7. AI usage/permission settings.
 
 Exit criteria:
 

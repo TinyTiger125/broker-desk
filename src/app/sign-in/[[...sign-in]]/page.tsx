@@ -16,7 +16,7 @@ export default function SignInPage() {
 
   return (
     <section className="mx-auto flex min-h-[70vh] max-w-xl items-center justify-center">
-      <SignIn routing="path" path="/sign-in" signUpUrl="/sign-up" />
+      <SignIn routing="path" path="/sign-in" />
     </section>
   );
 }
