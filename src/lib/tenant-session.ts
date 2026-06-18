@@ -9,6 +9,7 @@ import {
 } from "@/lib/data";
 import {
   ACTIVE_TENANT_COOKIE_NAME,
+  roleHasAllTenantPermissions,
   roleHasTenantPermission,
   type TenantPermissionAction,
 } from "@/lib/tenant-permissions";
@@ -55,6 +56,7 @@ export async function requireTenantSession(options: {
   preferredUserId?: string;
   requestedTenantId?: string;
   permission?: TenantPermissionAction;
+  permissions?: readonly TenantPermissionAction[];
 } = {}): Promise<TenantSession> {
   const user = await getDefaultUser(options.preferredUserId);
   if (!user) {
@@ -73,9 +75,28 @@ export async function requireTenantSession(options: {
     throw new TenantSessionError("Active tenant was not found.", "tenant_not_found");
   }
 
-  if (options.permission && !roleHasTenantPermission(membership.role, options.permission)) {
+  const requiredPermissions = [
+    ...(options.permission ? [options.permission] : []),
+    ...(options.permissions ?? []),
+  ];
+  if (
+    requiredPermissions.length > 0 &&
+    !roleHasAllTenantPermissions(membership.role, requiredPermissions)
+  ) {
     throw new TenantSessionError("Tenant membership does not allow this action.", "permission_denied");
   }
 
   return { user, tenant, membership };
+}
+
+export function assertTenantPermission(session: TenantSession, permission: TenantPermissionAction) {
+  if (!roleHasTenantPermission(session.membership.role, permission)) {
+    throw new TenantSessionError("Tenant membership does not allow this action.", "permission_denied");
+  }
+}
+
+export function assertTenantPermissions(session: TenantSession, permissions: readonly TenantPermissionAction[]) {
+  if (!roleHasAllTenantPermissions(session.membership.role, permissions)) {
+    throw new TenantSessionError("Tenant membership does not allow this action.", "permission_denied");
+  }
 }

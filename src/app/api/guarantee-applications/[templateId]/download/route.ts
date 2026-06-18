@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
-import { getBrokerageCaseById, getGuaranteeApplicationDraft } from "@/lib/data";
-import { renderFriendsGuaranteePdf } from "@/lib/friends-guarantee-pdf";
+import { addAuditLog, addGeneratedOutput, getBrokerageCaseById, getGuaranteeApplicationDraft } from "@/lib/data";
+import {
+  getFriendsGuaranteeTemplateLayoutSnapshot,
+  getGuaranteePdfTemplateConfig,
+  renderFriendsGuaranteePdf,
+} from "@/lib/friends-guarantee-pdf";
 import { findGuaranteeCompanyTemplate } from "@/lib/guarantee-application";
 import { evaluateGuaranteeDownloadGate } from "@/lib/guarantee-download-gate";
 import { requireTenantSession, TenantSessionError } from "@/lib/tenant-session";
@@ -13,6 +17,19 @@ type GuaranteeTemplateDownloadRouteProps = {
 
 function safePdfFileName(value: string): string {
   return (value.replace(/[^\p{L}\p{N}_-]+/gu, "_").slice(0, 80) || "guarantee_application") + ".pdf";
+}
+
+function compactDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}${month}${day}`;
+}
+
+function createGuaranteeDocumentNumber(input: { templateId: string; caseId: string; generatedAt: Date }) {
+  const templateToken = input.templateId.replace(/[^a-zA-Z0-9]/g, "").toUpperCase().slice(0, 10) || "GUARANTEE";
+  const caseToken = input.caseId.replace(/[^a-zA-Z0-9]/g, "").toUpperCase().slice(-8) || "CASE";
+  return `BD-GA-${compactDate(input.generatedAt)}-${templateToken}-${caseToken}`;
 }
 
 export async function GET(request: Request, { params }: GuaranteeTemplateDownloadRouteProps) {
@@ -81,6 +98,51 @@ export async function GET(request: Request, { params }: GuaranteeTemplateDownloa
       caseTitle: brokerageCase.caseTitle,
       templateId: template.id,
     });
+    if (mode !== "preview") {
+      const generatedAt = new Date();
+      const layoutSnapshot = getFriendsGuaranteeTemplateLayoutSnapshot(template.id);
+      const pdfTemplateConfig = getGuaranteePdfTemplateConfig(template.id);
+      const documentNumber = createGuaranteeDocumentNumber({
+        templateId: template.id,
+        caseId: brokerageCase.id,
+        generatedAt,
+      });
+      const generated = await addGeneratedOutput({
+        tenantId: session.tenant.id,
+        userId: session.user.id,
+        actorId: session.user.id,
+        outputType: "guarantee_application",
+        outputFormat: "pdf",
+        language: "ja",
+        title: `${template.companyDisplayName}申込書 - ${brokerageCase.caseTitle}`,
+        documentNumber,
+        templateVersionId: `official:${template.id}:${layoutSnapshot.baselineVersion}`,
+        caseId: brokerageCase.id,
+        templateId: template.id,
+        inputDataSnapshot: brokerageCase.confirmedDataJson,
+        draftValueSnapshot: draft?.fieldValuesJson ?? {},
+        fieldMappingSnapshot: {
+          templateId: template.id,
+          overlayFieldKeys: pdfTemplateConfig.overlayFields.map((field) => field.fieldKey),
+        },
+        layoutSnapshot,
+      });
+      await addAuditLog({
+        tenantId: session.tenant.id,
+        userId: session.user.id,
+        action: "guarantee_application_downloaded",
+        targetType: "output",
+        targetId: generated.id,
+        message: `${template.companyDisplayName}申込書PDFを生成・ダウンロードしました: ${brokerageCase.caseTitle}`,
+        context: {
+          caseId: brokerageCase.id,
+          templateId: template.id,
+          outputId: generated.id,
+          documentNumber,
+          templateVersionId: generated.templateVersionId,
+        },
+      });
+    }
     const fileName = safePdfFileName(`${template.companyDisplayName}申込書_${brokerageCase.caseTitle}`);
     const disposition = mode === "preview" ? "inline" : "attachment";
     return new NextResponse(Buffer.from(bytes), {

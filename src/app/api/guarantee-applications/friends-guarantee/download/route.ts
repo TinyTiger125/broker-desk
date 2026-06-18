@@ -1,12 +1,30 @@
 import { NextResponse } from "next/server";
-import { getBrokerageCaseById, getGuaranteeApplicationDraft } from "@/lib/data";
-import { renderFriendsGuaranteePdf } from "@/lib/friends-guarantee-pdf";
+import { addAuditLog, addGeneratedOutput, getBrokerageCaseById, getGuaranteeApplicationDraft } from "@/lib/data";
+import {
+  getFriendsGuaranteeTemplateLayoutSnapshot,
+  getGuaranteePdfTemplateConfig,
+  renderFriendsGuaranteePdf,
+} from "@/lib/friends-guarantee-pdf";
 import { getGuaranteeCompanyTemplate } from "@/lib/guarantee-application";
 import { evaluateGuaranteeDownloadGate } from "@/lib/guarantee-download-gate";
 import { requireTenantSession, TenantSessionError } from "@/lib/tenant-session";
 
+const TEMPLATE_ID = "friends_guarantee_individual_v1";
+
 function safePdfFileName(value: string): string {
   return (value.replace(/[^\p{L}\p{N}_-]+/gu, "_").slice(0, 80) || "friends_guarantee_application") + ".pdf";
+}
+
+function compactDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}${month}${day}`;
+}
+
+function createGuaranteeDocumentNumber(input: { caseId: string; generatedAt: Date }) {
+  const caseToken = input.caseId.replace(/[^a-zA-Z0-9]/g, "").toUpperCase().slice(-8) || "CASE";
+  return `BD-GA-${compactDate(input.generatedAt)}-FRIENDS-${caseToken}`;
 }
 
 export async function GET(request: Request) {
@@ -35,9 +53,9 @@ export async function GET(request: Request) {
     userId: session.user.id,
     tenantId: session.tenant.id,
     caseId,
-    templateId: "friends_guarantee_individual_v1",
+    templateId: TEMPLATE_ID,
   });
-  const template = getGuaranteeCompanyTemplate("friends_guarantee_individual_v1");
+  const template = getGuaranteeCompanyTemplate(TEMPLATE_ID);
   const downloadGate = evaluateGuaranteeDownloadGate({
     brokerageCase,
     template,
@@ -69,7 +87,49 @@ export async function GET(request: Request) {
       confirmedDataJson: brokerageCase?.confirmedDataJson,
       draftFieldValuesJson: draft?.fieldValuesJson,
       caseTitle: brokerageCase?.caseTitle,
+      templateId: TEMPLATE_ID,
     });
+    if (mode !== "preview") {
+      const generatedAt = new Date();
+      const layoutSnapshot = getFriendsGuaranteeTemplateLayoutSnapshot(TEMPLATE_ID);
+      const pdfTemplateConfig = getGuaranteePdfTemplateConfig(TEMPLATE_ID);
+      const documentNumber = createGuaranteeDocumentNumber({ caseId: brokerageCase.id, generatedAt });
+      const generated = await addGeneratedOutput({
+        tenantId: session.tenant.id,
+        userId: session.user.id,
+        actorId: session.user.id,
+        outputType: "guarantee_application",
+        outputFormat: "pdf",
+        language: "ja",
+        title: `ふれんず保証申込書 - ${brokerageCase.caseTitle}`,
+        documentNumber,
+        templateVersionId: `official:${TEMPLATE_ID}:${layoutSnapshot.baselineVersion}`,
+        caseId: brokerageCase.id,
+        templateId: TEMPLATE_ID,
+        inputDataSnapshot: brokerageCase.confirmedDataJson,
+        draftValueSnapshot: draft?.fieldValuesJson ?? {},
+        fieldMappingSnapshot: {
+          templateId: TEMPLATE_ID,
+          overlayFieldKeys: pdfTemplateConfig.overlayFields.map((field) => field.fieldKey),
+        },
+        layoutSnapshot,
+      });
+      await addAuditLog({
+        tenantId: session.tenant.id,
+        userId: session.user.id,
+        action: "guarantee_application_downloaded",
+        targetType: "output",
+        targetId: generated.id,
+        message: `ふれんず保証申込書PDFを生成・ダウンロードしました: ${brokerageCase.caseTitle}`,
+        context: {
+          caseId: brokerageCase.id,
+          templateId: TEMPLATE_ID,
+          outputId: generated.id,
+          documentNumber,
+          templateVersionId: generated.templateVersionId,
+        },
+      });
+    }
     const fileName = safePdfFileName(`ふれんず保証申込書_${brokerageCase?.caseTitle ?? "未選択案件"}`);
     const disposition = mode === "preview" ? "inline" : "attachment";
     return new NextResponse(Buffer.from(bytes), {

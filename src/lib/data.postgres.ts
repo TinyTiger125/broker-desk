@@ -54,6 +54,7 @@ import type {
   Quotation,
   Task,
   Tenant,
+  TenantMemberListItem,
   TenantMembership,
   TenantMembershipStatus,
   TenantStatus,
@@ -61,6 +62,7 @@ import type {
   AuditLog,
   OutputTemplateVersion,
 } from "@/lib/data.memory";
+import type { TenantRole } from "@/lib/tenant-permissions";
 
 let pool: Pool | null = null;
 let schemaEnsured = false;
@@ -132,6 +134,24 @@ function mapTenantMembership(row: Record<string, unknown>): TenantMembership {
     status: String(row.status ?? "active") as TenantMembershipStatus,
     createdAt: toDate(row.created_at) ?? new Date(),
     updatedAt: toDate(row.updated_at) ?? new Date(),
+  };
+}
+
+function mapTenantMember(row: Record<string, unknown>): TenantMemberListItem {
+  return {
+    id: String(row.id),
+    tenantId: String(row.tenant_id),
+    userId: String(row.user_id),
+    role: String(row.role) as TenantMembership["role"],
+    status: String(row.status ?? "active") as TenantMembershipStatus,
+    createdAt: toDate(row.created_at) ?? new Date(),
+    updatedAt: toDate(row.updated_at) ?? new Date(),
+    user: {
+      id: String(row.user_id),
+      name: String(row.user_name),
+      email: String(row.user_email),
+      createdAt: toDate(row.user_created_at) ?? new Date(),
+    },
   };
 }
 
@@ -485,6 +505,12 @@ function mapGeneratedOutput(row: Record<string, unknown>): GeneratedOutput {
     title: String(row.title),
     documentNumber: String(row.document_number ?? ""),
     templateVersionId: row.template_version_id ? String(row.template_version_id) : undefined,
+    caseId: row.case_id ? String(row.case_id) : undefined,
+    templateId: row.template_id ? String(row.template_id) : undefined,
+    inputDataSnapshot: row.input_data_snapshot && typeof row.input_data_snapshot === "object" ? row.input_data_snapshot as Record<string, unknown> : undefined,
+    draftValueSnapshot: row.draft_value_snapshot && typeof row.draft_value_snapshot === "object" ? row.draft_value_snapshot as Record<string, unknown> : undefined,
+    fieldMappingSnapshot: row.field_mapping_snapshot && typeof row.field_mapping_snapshot === "object" ? row.field_mapping_snapshot as Record<string, unknown> : undefined,
+    layoutSnapshot: row.layout_snapshot && typeof row.layout_snapshot === "object" ? row.layout_snapshot as Record<string, unknown> : undefined,
     generatedAt: toDate(row.generated_at) ?? new Date(),
   };
 }
@@ -817,6 +843,12 @@ async function ensureSchema() {
       title TEXT NOT NULL,
       document_number TEXT,
       template_version_id TEXT,
+      case_id TEXT,
+      template_id TEXT,
+      input_data_snapshot JSONB,
+      draft_value_snapshot JSONB,
+      field_mapping_snapshot JSONB,
+      layout_snapshot JSONB,
       generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
@@ -937,6 +969,12 @@ async function ensureSchema() {
     ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS document_number TEXT;
     ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
     ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS template_version_id TEXT;
+    ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS case_id TEXT;
+    ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS template_id TEXT;
+    ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS input_data_snapshot JSONB;
+    ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS draft_value_snapshot JSONB;
+    ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS field_mapping_snapshot JSONB;
+    ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS layout_snapshot JSONB;
     ALTER TABLE generated_outputs ALTER COLUMN quote_id DROP NOT NULL;
 
     ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS actor_id TEXT;
@@ -1261,6 +1299,134 @@ export async function listTenantsForUser(userId: string): Promise<Tenant[]> {
     [userId],
   );
   return result.rows.map(mapTenant);
+}
+
+export async function listTenantMembers(tenantId: string): Promise<TenantMemberListItem[]> {
+  await ensureSchema();
+  const scopeTenantId = resolveTenantId(tenantId);
+  const result = await getPool().query(
+    `SELECT
+       tenant_memberships.*,
+       users.name AS user_name,
+       users.email AS user_email,
+       users.created_at AS user_created_at
+     FROM tenant_memberships
+     JOIN users ON users.id = tenant_memberships.user_id
+     WHERE tenant_memberships.tenant_id = $1
+     ORDER BY
+       CASE tenant_memberships.status WHEN 'active' THEN 0 WHEN 'invited' THEN 1 ELSE 2 END,
+       tenant_memberships.created_at ASC`,
+    [scopeTenantId],
+  );
+  return result.rows.map(mapTenantMember);
+}
+
+export async function inviteTenantMember(input: {
+  tenantId?: string;
+  name: string;
+  email: string;
+  role: TenantRole;
+  status?: TenantMembershipStatus;
+}): Promise<TenantMemberListItem> {
+  await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const email = input.email.trim().toLowerCase();
+  const name = input.name.trim() || email;
+  if (!email) throw new Error("member email is required");
+
+  return withTransaction(async (client) => {
+    const userResult = await client.query("SELECT * FROM users WHERE lower(email) = lower($1) LIMIT 1", [email]);
+    let user = userResult.rows[0] ? mapUser(userResult.rows[0]) : null;
+    if (!user) {
+      const inserted = await client.query(
+        `INSERT INTO users (id, name, email, password_hash)
+         VALUES ($1, $2, $3, $4)
+         RETURNING *`,
+        [genId("user"), name, email, "local_invited_user"],
+      );
+      user = mapUser(inserted.rows[0]);
+    }
+
+    const membershipId = genId("membership");
+    const membershipResult = await client.query(
+      `INSERT INTO tenant_memberships (id, tenant_id, user_id, role, status)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (tenant_id, user_id) DO UPDATE SET
+         role = EXCLUDED.role,
+         status = EXCLUDED.status,
+         updated_at = NOW()
+       RETURNING *`,
+      [membershipId, scopeTenantId, user.id, input.role, input.status ?? "active"],
+    );
+    const membership = mapTenantMembership(membershipResult.rows[0]);
+    return {
+      ...membership,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        createdAt: user.createdAt,
+      },
+    };
+  });
+}
+
+export async function updateTenantMemberRole(input: {
+  tenantId?: string;
+  membershipId: string;
+  role: TenantRole;
+}): Promise<TenantMemberListItem | null> {
+  await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const result = await getPool().query(
+    `UPDATE tenant_memberships
+     SET role = $1, updated_at = NOW()
+     WHERE id = $2 AND tenant_id = $3
+     RETURNING *`,
+    [input.role, input.membershipId, scopeTenantId],
+  );
+  const membership = result.rows[0] ? mapTenantMembership(result.rows[0]) : null;
+  if (!membership) return null;
+  const user = await getUserById(membership.userId);
+  if (!user) return null;
+  return {
+    ...membership,
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      createdAt: user.createdAt,
+    },
+  };
+}
+
+export async function updateTenantMemberStatus(input: {
+  tenantId?: string;
+  membershipId: string;
+  status: TenantMembershipStatus;
+}): Promise<TenantMemberListItem | null> {
+  await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const result = await getPool().query(
+    `UPDATE tenant_memberships
+     SET status = $1, updated_at = NOW()
+     WHERE id = $2 AND tenant_id = $3
+     RETURNING *`,
+    [input.status, input.membershipId, scopeTenantId],
+  );
+  const membership = result.rows[0] ? mapTenantMembership(result.rows[0]) : null;
+  if (!membership) return null;
+  const user = await getUserById(membership.userId);
+  if (!user) return null;
+  return {
+    ...membership,
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      createdAt: user.createdAt,
+    },
+  };
 }
 
 export async function getOutputTemplateSettings(userId: string, tenantId = DEFAULT_TENANT_ID): Promise<OutputTemplateSettings> {
@@ -2340,14 +2506,20 @@ export async function addGeneratedOutput(input: {
   title: string;
   documentNumber: string;
   templateVersionId?: string;
+  caseId?: string;
+  templateId?: string;
+  inputDataSnapshot?: Record<string, unknown>;
+  draftValueSnapshot?: Record<string, unknown>;
+  fieldMappingSnapshot?: Record<string, unknown>;
+  layoutSnapshot?: Record<string, unknown>;
 }): Promise<GeneratedOutput> {
   await ensureSchema();
   const actorId = input.actorId ?? input.userId;
   const sourceQuoteId = input.sourceQuoteId ?? input.quoteId;
   const result = await getPool().query(
     `INSERT INTO generated_outputs (
-      id, tenant_id, user_id, actor_id, quote_id, source_quote_id, property_id, party_id, output_type, output_format, language, title, document_number, template_version_id, generated_at
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW())
+      id, tenant_id, user_id, actor_id, quote_id, source_quote_id, property_id, party_id, output_type, output_format, language, title, document_number, template_version_id, case_id, template_id, input_data_snapshot, draft_value_snapshot, field_mapping_snapshot, layout_snapshot, generated_at
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,NOW())
     RETURNING *`,
     [
       genId("out"),
@@ -2364,6 +2536,12 @@ export async function addGeneratedOutput(input: {
       input.title.trim(),
       input.documentNumber.trim(),
       input.templateVersionId ?? null,
+      input.caseId ?? null,
+      input.templateId ?? null,
+      input.inputDataSnapshot ? JSON.stringify(input.inputDataSnapshot) : null,
+      input.draftValueSnapshot ? JSON.stringify(input.draftValueSnapshot) : null,
+      input.fieldMappingSnapshot ? JSON.stringify(input.fieldMappingSnapshot) : null,
+      input.layoutSnapshot ? JSON.stringify(input.layoutSnapshot) : null,
     ]
   );
   return mapGeneratedOutput(result.rows[0]);

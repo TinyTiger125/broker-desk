@@ -55,6 +55,7 @@ import {
   listClients,
   listExtractionReviewItems,
   listImportJobs,
+  listTenantMembers,
   listOutputTemplateVersions,
   mergeBrokerageCaseExtractionReview,
   rollbackBrokerageCaseMerge,
@@ -66,6 +67,9 @@ import {
   setClientStage,
   updateImportJobMapping,
   updateAiExperienceDraftStatus,
+  updateTenantMemberRole,
+  updateTenantMemberStatus,
+  inviteTenantMember,
   updateOutputTemplateSettings,
   updateTaskStatus,
   updateClient,
@@ -93,7 +97,7 @@ import {
   type ImportValidationIssueLevel,
 } from "@/lib/import-mapping";
 import { materializeExtractionReviewValue } from "@/lib/extraction-review-materialization";
-import { requireTenantSession } from "@/lib/tenant-session";
+import { assertTenantPermission, requireTenantSession } from "@/lib/tenant-session";
 import { extractInputFileFromWorkbook, type InputFileExtractionResult } from "@/lib/input-file-extractor";
 import { extractIdentityDocumentFromBuffer } from "@/lib/identity-document-extractor";
 import { CASE_FIELD_KEYS, isKnownCaseFieldKey } from "@/lib/case-field-catalog";
@@ -147,6 +151,7 @@ import { listHubContracts } from "@/lib/hub";
 import { draftAiExperiencesFromRecentCorrections } from "@/lib/ai-experience-job";
 import { getLocale, type Locale } from "@/lib/locale";
 import { createDocumentNumber, getDefaultOutputTemplateSettings, getOutputDocLabel, isOutputDocType } from "@/lib/output-doc";
+import { isTenantRole, type TenantRole } from "@/lib/tenant-permissions";
 
 function parseNumber(value: FormDataEntryValue | null, fallback = 0): number {
   if (!value) return fallback;
@@ -162,6 +167,13 @@ function parseDate(value: FormDataEntryValue | null): Date | undefined {
 
 function parseCheckbox(value: FormDataEntryValue | null): boolean {
   return value === "on" || value === "true" || value === "1";
+}
+
+function parseTenantRole(value: FormDataEntryValue | null): TenantRole {
+  const role = String(value ?? "").trim();
+  if (!isTenantRole(role)) throw new Error("ロールが不正です。");
+  if (role === "platform_owner") throw new Error("platform_owner は通常のテナントメンバーに付与できません。");
+  return role;
 }
 
 function isComplianceAlertType(value: string): value is ComplianceAlertType {
@@ -1633,6 +1645,20 @@ export async function generateOutputDocumentAction(formData: FormData) {
       title,
       documentNumber,
       templateVersionId: activeTemplateVersion?.id,
+      inputDataSnapshot: {
+        property,
+        targetParty: targetParty || undefined,
+      },
+      draftValueSnapshot: {},
+      fieldMappingSnapshot: {
+        outputType: typeRaw,
+        templateSettings,
+      },
+      layoutSnapshot: {
+        templateVersionId: activeTemplateVersion?.id,
+        templateVersionNumber: activeTemplateVersion?.versionNumber,
+        settingsSnapshot: activeTemplateVersion?.settingsSnapshot,
+      },
     });
 
     await addAuditLog({
@@ -1718,6 +1744,40 @@ export async function generateOutputDocumentAction(formData: FormData) {
     title,
     documentNumber,
     templateVersionId: activeTemplateVersion?.id,
+    inputDataSnapshot: {
+      quote: {
+        id: quote.id,
+        quoteTitle: quote.quoteTitle,
+        listingPrice: quote.listingPrice,
+        brokerageFee: quote.brokerageFee,
+        taxFee: quote.taxFee,
+        managementFee: quote.managementFee,
+        repairFee: quote.repairFee,
+        otherFee: quote.otherFee,
+        downPayment: quote.downPayment,
+        loanAmount: quote.loanAmount,
+        interestRate: quote.interestRate,
+        loanYears: quote.loanYears,
+        monthlyPaymentEstimate: quote.monthlyPaymentEstimate,
+        totalInitialCost: quote.totalInitialCost,
+        monthlyTotalCost: quote.monthlyTotalCost,
+        summaryText: quote.summaryText,
+      },
+      client: quote.client,
+      property: quote.property,
+      targetProperty: targetProperty || undefined,
+      targetParty: targetParty || undefined,
+    },
+    draftValueSnapshot: {},
+    fieldMappingSnapshot: {
+      outputType: typeRaw,
+      templateSettings,
+    },
+    layoutSnapshot: {
+      templateVersionId: activeTemplateVersion?.id,
+      templateVersionNumber: activeTemplateVersion?.versionNumber,
+      settingsSnapshot: activeTemplateVersion?.settingsSnapshot,
+    },
   });
 
   await addAuditLog({
@@ -1864,8 +1924,116 @@ export async function changeQuotationStatus(formData: FormData) {
   });
 }
 
+async function assertNotLastActiveTenantOwner(input: {
+  tenantId: string;
+  changingMembershipId: string;
+  nextRole?: TenantRole;
+  nextStatus?: "active" | "invited" | "suspended";
+}) {
+  const members = await listTenantMembers(input.tenantId);
+  const activeOwners = members.filter((member) => member.status === "active" && member.role === "tenant_owner");
+  const target = members.find((member) => member.id === input.changingMembershipId);
+  if (!target || target.role !== "tenant_owner" || target.status !== "active") return;
+  const wouldRemainActiveOwner =
+    (input.nextStatus ?? target.status) === "active" &&
+    (input.nextRole ?? target.role) === "tenant_owner";
+  if (!wouldRemainActiveOwner && activeOwners.length <= 1) {
+    throw new Error("最後の有効なオーナーは降格・停止できません。");
+  }
+}
+
+export async function inviteTenantMemberAction(formData: FormData) {
+  const session = await requireTenantSession({ permission: "member.invite" });
+  const tenantId = session.tenant.id;
+  const name = String(formData.get("name") ?? "").trim();
+  const email = String(formData.get("email") ?? "").trim();
+  const role = parseTenantRole(formData.get("role"));
+  if (!email) throw new Error("メールアドレスは必須です。");
+
+  const member = await inviteTenantMember({
+    tenantId,
+    name,
+    email,
+    role,
+    status: "active",
+  });
+  await addAuditLog({
+    tenantId,
+    userId: session.user.id,
+    action: "member_invited",
+    targetType: "member",
+    targetId: member.id,
+    message: `テナントメンバーを追加しました: ${member.user.email} / ${member.role}`,
+    context: {
+      memberUserId: member.userId,
+      role: member.role,
+      status: member.status,
+    },
+  });
+  revalidatePath("/settings/members");
+  redirect("/settings/members?flash=member_invited");
+}
+
+export async function updateTenantMemberRoleAction(formData: FormData) {
+  const session = await requireTenantSession({ permission: "member.update_role" });
+  const tenantId = session.tenant.id;
+  const membershipId = String(formData.get("membershipId") ?? "").trim();
+  const role = parseTenantRole(formData.get("role"));
+  if (!membershipId) throw new Error("メンバーIDが不正です。");
+
+  await assertNotLastActiveTenantOwner({ tenantId, changingMembershipId: membershipId, nextRole: role });
+  const member = await updateTenantMemberRole({ tenantId, membershipId, role });
+  if (!member) throw new Error("メンバーが見つかりません。");
+  await addAuditLog({
+    tenantId,
+    userId: session.user.id,
+    action: "member_role_updated",
+    targetType: "member",
+    targetId: member.id,
+    message: `テナントメンバーのロールを更新しました: ${member.user.email} / ${member.role}`,
+    context: {
+      memberUserId: member.userId,
+      role: member.role,
+      status: member.status,
+    },
+  });
+  revalidatePath("/settings/members");
+  redirect("/settings/members?flash=member_role_updated");
+}
+
+export async function updateTenantMemberStatusAction(formData: FormData) {
+  const session = await requireTenantSession({ permission: "member.remove" });
+  const tenantId = session.tenant.id;
+  const membershipId = String(formData.get("membershipId") ?? "").trim();
+  const rawStatus = String(formData.get("status") ?? "").trim();
+  const status = rawStatus === "active" || rawStatus === "suspended" ? rawStatus : undefined;
+  if (!membershipId || !status) throw new Error("メンバー状態が不正です。");
+  if (membershipId === session.membership.id && status !== "active") {
+    throw new Error("現在の自分自身のメンバー権限は停止できません。");
+  }
+
+  await assertNotLastActiveTenantOwner({ tenantId, changingMembershipId: membershipId, nextStatus: status });
+  const member = await updateTenantMemberStatus({ tenantId, membershipId, status });
+  if (!member) throw new Error("メンバーが見つかりません。");
+  await addAuditLog({
+    tenantId,
+    userId: session.user.id,
+    action: status === "active" ? "member_reactivated" : "member_suspended",
+    targetType: "member",
+    targetId: member.id,
+    message: `テナントメンバー状態を更新しました: ${member.user.email} / ${member.status}`,
+    context: {
+      memberUserId: member.userId,
+      role: member.role,
+      status: member.status,
+    },
+  });
+  revalidatePath("/settings/members");
+  redirect(`/settings/members?flash=${status === "active" ? "member_reactivated" : "member_suspended"}`);
+}
+
 export async function updateOutputTemplateSettingsAction(formData: FormData) {
-  const session = await requireTenantSession({ permission: "template.edit_draft" });
+  const session = await requireTenantSession({ permissions: ["template.edit_draft", "template.publish"] });
   const user = session.user;
   const tenantId = session.tenant.id;
 
@@ -2664,6 +2832,10 @@ export async function saveGuaranteeApplicationPreviewAction(formData: FormData) 
       ? sanitizeFriendsGuaranteeDeletedOverlayFieldKeys(deletedOverlayFieldsInput, template.id)
       : [];
   const layoutSaveScope = formData.get("layoutSaveScope") === "template" ? "template" : "case";
+  if (layoutSaveScope === "template") {
+    assertTenantPermission(session, "template.edit_draft");
+    assertTenantPermission(session, "template.publish");
+  }
   const customFieldsInput = formData.get("customOverlayFields");
   const customFieldsSubmitted = typeof customFieldsInput === "string";
   const submittedCustomFieldCount = countSubmittedCustomOverlayFieldItems(customFieldsInput);

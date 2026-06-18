@@ -10,6 +10,7 @@ import {
   listQuotations,
   type AttachmentTargetType,
   type Client,
+  type GeneratedOutput,
   type Task,
 } from "@/lib/data";
 import type { Locale } from "@/lib/locale";
@@ -91,7 +92,7 @@ export type HubImportJobItem = {
 export type HubGeneratedOutputItem = {
   id: string;
   actorId: string;
-  outputType: OutputDocType;
+  outputType: GeneratedOutput["outputType"];
   outputFormat: "pdf" | "docx";
   language: Locale;
   title: string;
@@ -106,6 +107,13 @@ export type HubGeneratedOutputItem = {
   templateVersionId?: string;
   templateVersionLabel?: string;
 };
+
+function getGeneratedOutputTypeLabel(locale: Locale, outputType: GeneratedOutput["outputType"]) {
+  if (outputType === "guarantee_application") {
+    return tr(locale, { ja: "保証会社申込書", zh: "保证公司申请书", ko: "보증회사 신청서" });
+  }
+  return getOutputDocLabel(locale, outputType as OutputDocType);
+}
 
 export type HubAttachmentItem = {
   id: string;
@@ -326,12 +334,12 @@ export async function listHubGeneratedOutputs(
         const title =
           item.title ||
           (isPropertyOverview
-            ? `${getOutputDocLabel(locale, item.outputType as OutputDocType)} - ${relatedProperty ?? "N/A"}`
-            : `${getOutputDocLabel(locale, item.outputType as OutputDocType)} - ${quote?.client.name ?? "N/A"}`);
+            ? `${getGeneratedOutputTypeLabel(locale, item.outputType)} - ${relatedProperty ?? "N/A"}`
+            : `${getGeneratedOutputTypeLabel(locale, item.outputType)} - ${quote?.client.name ?? "N/A"}`);
         return {
           id: item.id,
           actorId: item.actorId,
-          outputType: item.outputType as OutputDocType,
+          outputType: item.outputType,
           outputFormat: item.outputFormat,
           language: item.language,
           title,

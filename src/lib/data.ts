@@ -10,8 +10,14 @@ const repo: typeof memory = usePostgres
   ? (postgres as unknown as typeof memory)
   : memory;
 
+export function isDemoAuthEnabled() {
+  if (process.env.BROKER_DESK_ENABLE_DEMO_AUTH === "true") return true;
+  return process.env.NODE_ENV !== "production";
+}
+
 export async function getDefaultUser(preferredUserId?: string) {
   const actorId = preferredUserId ?? (await getActorIdFromCookie());
+  if (!actorId && !isDemoAuthEnabled()) return null;
   return repo.getDefaultUser(actorId);
 }
 export const listUsers: typeof memory.listUsers = (...args) =>
@@ -26,6 +32,14 @@ export const getTenantMembership: typeof memory.getTenantMembership = (...args) 
   repo.getTenantMembership(...args);
 export const listTenantsForUser: typeof memory.listTenantsForUser = (...args) =>
   repo.listTenantsForUser(...args);
+export const listTenantMembers: typeof memory.listTenantMembers = (...args) =>
+  repo.listTenantMembers(...args);
+export const inviteTenantMember: typeof memory.inviteTenantMember = (...args) =>
+  repo.inviteTenantMember(...args);
+export const updateTenantMemberRole: typeof memory.updateTenantMemberRole = (...args) =>
+  repo.updateTenantMemberRole(...args);
+export const updateTenantMemberStatus: typeof memory.updateTenantMemberStatus = (...args) =>
+  repo.updateTenantMemberStatus(...args);
 export const getOutputTemplateSettings: typeof memory.getOutputTemplateSettings = (...args) =>
   repo.getOutputTemplateSettings(...args);
 export const updateOutputTemplateSettings: typeof memory.updateOutputTemplateSettings = (...args) =>
@@ -162,6 +176,7 @@ export type {
   GeneratedOutput,
   Tenant,
   TenantMembership,
+  TenantMemberListItem,
   TenantMembershipStatus,
   TenantStatus,
   Property,

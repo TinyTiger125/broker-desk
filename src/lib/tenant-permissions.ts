@@ -132,8 +132,6 @@ const ROLE_PERMISSIONS: Record<TenantRole, TenantPermissionAction[]> = {
     "extract.run",
     "extract.view_result",
     "extract.accept_result",
-    "extract.override_result",
-    "extract.reject_result",
     "record.read",
     "record.read_sensitive",
     "record.update",
@@ -145,8 +143,6 @@ const ROLE_PERMISSIONS: Record<TenantRole, TenantPermissionAction[]> = {
     "output.preview",
     "output.create_draft",
     "output.update_draft",
-    "output.generate_final",
-    "output.download_final",
     "template.view",
     "template.copy_official",
     "ai.extract",
@@ -164,8 +160,6 @@ const ROLE_PERMISSIONS: Record<TenantRole, TenantPermissionAction[]> = {
     "extract.run",
     "extract.view_result",
     "extract.accept_result",
-    "extract.override_result",
-    "extract.reject_result",
     "record.read",
     "record.update",
     "record.confirm",
@@ -218,6 +212,10 @@ export function isTenantRole(value: string): value is TenantRole {
 
 export function roleHasTenantPermission(role: TenantRole, action: TenantPermissionAction) {
   return ROLE_PERMISSIONS[role].includes(action);
+}
+
+export function roleHasAllTenantPermissions(role: TenantRole, actions: readonly TenantPermissionAction[]) {
+  return actions.every((action) => roleHasTenantPermission(role, action));
 }
 
 export function listTenantRolePermissions(role: TenantRole): TenantPermissionAction[] {

@@ -182,6 +182,14 @@ Implemented or materially present:
   - business records carry `tenantId` in memory and Postgres repositories.
   - pages, server actions, and frontstage APIs resolve a tenant session and pass tenant scope into repository calls.
   - cross-tenant regression covers cases, source jobs, review items, guarantee drafts, correction events, AI drafts, attachments, generated outputs, and template settings/versions.
+- Phase 3-5 local tenant governance hardening:
+  - high-risk role defaults are conservative: ordinary brokers cannot download final outputs, override extraction results, publish templates, or run template AI pre-match by default.
+  - `requireTenantSession` supports multi-action permission checks, and AI field pre-match now requires both template and AI pre-match permissions.
+  - production demo auth fallback is disabled unless `BROKER_DESK_ENABLE_DEMO_AUTH=true`; real production login is still a separate release requirement.
+  - `/settings/members` provides tenant member list, local member creation, role update, suspension/reactivation, last-owner protection, and audit logging.
+  - `/platform/templates` provides a PlatformOwner-only official-template factory overview; production PlatformOwner access must be explicitly configured through `BROKER_DESK_PLATFORM_OWNER_IDS`.
+  - official guarantee-application PDF downloads are recorded as generated outputs with case/template/data/draft/layout snapshots and audit logs.
+  - `npm run test:tenant-governance` covers role guardrails, member operations, template layout snapshot capture, and output snapshot persistence.
 - Stitch-based visual direction has been partially integrated.
 
 Not yet release-ready:
@@ -190,9 +198,10 @@ Not yet release-ready:
 - Five guarantee-company templates are not all at the same quality level.
 - Company-specific checkbox/plan option output is incomplete on some templates.
 - Some UI still mixes broker workflow and admin/template-factory controls.
-- Auth is still local/demo-session based; production identity provider login is not implemented.
-- Real production identity provider login is not implemented; current tenant resolution still starts from the local/demo user model.
-- Route-level permission enforcement exists on the main application path but is not a substitute for a production auth provider, database RLS, or member-management UI.
+- Production identity provider login is not implemented.
+- Local member creation is not real email invitation or SSO provisioning.
+- AI usage quota/cost accounting is not implemented yet.
+- Database RLS is not implemented; service-layer tenant scoping is the current primary guard.
 
 ## Guarantee Template Status
 

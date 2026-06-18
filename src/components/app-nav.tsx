@@ -28,6 +28,8 @@ function getSupportLinks(locale: Locale) {
     { href: "/quotes", label: t(locale, "nav.link.quotes") },
     { href: "/contracts", label: t(locale, "nav.link.contracts") },
     { href: "/service-requests", label: t(locale, "nav.link.serviceRequests") },
+    { href: "/settings/members", label: locale === "zh" ? "成员/权限" : locale === "ko" ? "멤버/권한" : "メンバー/権限" },
+    { href: "/settings/output-templates", label: locale === "zh" ? "输出模板" : locale === "ko" ? "출력 템플릿" : "出力テンプレート" },
     { href: "/settings/ai-experience", label: locale === "zh" ? "AI经验审核" : locale === "ko" ? "AI 경험 리뷰" : "AI経験レビュー" },
   ];
 }

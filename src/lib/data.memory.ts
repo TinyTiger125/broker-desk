@@ -57,6 +57,10 @@ export type TenantMembership = {
   updatedAt: Date;
 };
 
+export type TenantMemberListItem = TenantMembership & {
+  user: Pick<User, "id" | "name" | "email" | "createdAt">;
+};
+
 export type Client = {
   id: string;
   tenantId?: string;
@@ -160,6 +164,12 @@ export type AuditLog = {
   userId: string;
   action: string;
   targetType:
+    | "tenant"
+    | "member"
+    | "template"
+    | "official_template"
+    | "case"
+    | "source_file"
     | "client"
     | "task"
     | "quote"
@@ -340,12 +350,24 @@ export type GeneratedOutput = {
   quoteId?: string;
   propertyId?: string;
   partyId?: string;
-  outputType: "property_overview" | "proposal" | "estimate_sheet" | "funding_plan" | "assumption_memo";
+  outputType:
+    | "property_overview"
+    | "proposal"
+    | "estimate_sheet"
+    | "funding_plan"
+    | "assumption_memo"
+    | "guarantee_application";
   outputFormat: "pdf" | "docx";
   language: Locale;
   title: string;
   documentNumber: string;
   templateVersionId?: string;
+  caseId?: string;
+  templateId?: string;
+  inputDataSnapshot?: Record<string, unknown>;
+  draftValueSnapshot?: Record<string, unknown>;
+  fieldMappingSnapshot?: Record<string, unknown>;
+  layoutSnapshot?: Record<string, unknown>;
   generatedAt: Date;
 };
 
@@ -1114,6 +1136,143 @@ export async function listTenantsForUser(userId: string): Promise<Tenant[]> {
     .map((item) => ({ ...item }));
 }
 
+export async function listTenantMembers(tenantId: string): Promise<TenantMemberListItem[]> {
+  const scopeTenantId = resolveTenantId(tenantId);
+  return db.tenantMemberships
+    .filter((membership) => membership.tenantId === scopeTenantId)
+    .sort((a, b) => {
+      if (a.status !== b.status) return a.status === "active" ? -1 : 1;
+      return a.createdAt.getTime() - b.createdAt.getTime();
+    })
+    .flatMap((membership) => {
+      const user = db.users.find((item) => item.id === membership.userId);
+      if (!user) return [];
+      return [{
+        ...membership,
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          createdAt: user.createdAt,
+        },
+      }];
+    });
+}
+
+export async function inviteTenantMember(input: {
+  tenantId?: string;
+  name: string;
+  email: string;
+  role: TenantRole;
+  status?: TenantMembershipStatus;
+}): Promise<TenantMemberListItem> {
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const email = input.email.trim().toLowerCase();
+  const name = input.name.trim() || email;
+  if (!email) throw new Error("member email is required");
+
+  let user = db.users.find((item) => item.email.toLowerCase() === email);
+  if (!user) {
+    user = {
+      id: makeId("user"),
+      name,
+      email,
+      passwordHash: "local_invited_user",
+      createdAt: new Date(),
+    };
+    db.users.push(user);
+  }
+
+  const existing = db.tenantMemberships.find(
+    (membership) => membership.tenantId === scopeTenantId && membership.userId === user.id,
+  );
+  if (existing) {
+    existing.role = input.role;
+    existing.status = input.status ?? "active";
+    existing.updatedAt = new Date();
+    return {
+      ...existing,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        createdAt: user.createdAt,
+      },
+    };
+  }
+
+  const nowDate = new Date();
+  const membership: TenantMembership = {
+    id: makeId("membership"),
+    tenantId: scopeTenantId,
+    userId: user.id,
+    role: input.role,
+    status: input.status ?? "active",
+    createdAt: nowDate,
+    updatedAt: nowDate,
+  };
+  db.tenantMemberships.push(membership);
+  return {
+    ...membership,
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      createdAt: user.createdAt,
+    },
+  };
+}
+
+export async function updateTenantMemberRole(input: {
+  tenantId?: string;
+  membershipId: string;
+  role: TenantRole;
+}): Promise<TenantMemberListItem | null> {
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const membership = db.tenantMemberships.find(
+    (item) => item.id === input.membershipId && item.tenantId === scopeTenantId,
+  );
+  if (!membership) return null;
+  membership.role = input.role;
+  membership.updatedAt = new Date();
+  const user = db.users.find((item) => item.id === membership.userId);
+  if (!user) return null;
+  return {
+    ...membership,
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      createdAt: user.createdAt,
+    },
+  };
+}
+
+export async function updateTenantMemberStatus(input: {
+  tenantId?: string;
+  membershipId: string;
+  status: TenantMembershipStatus;
+}): Promise<TenantMemberListItem | null> {
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const membership = db.tenantMemberships.find(
+    (item) => item.id === input.membershipId && item.tenantId === scopeTenantId,
+  );
+  if (!membership) return null;
+  membership.status = input.status;
+  membership.updatedAt = new Date();
+  const user = db.users.find((item) => item.id === membership.userId);
+  if (!user) return null;
+  return {
+    ...membership,
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      createdAt: user.createdAt,
+    },
+  };
+}
+
 export async function getOutputTemplateSettings(userId: string, tenantId?: string): Promise<OutputTemplateSettings> {
   const scopeTenantId = resolveTenantId(tenantId);
   const existing = db.outputTemplateSettings.find((item) => item.userId === userId && item.tenantId === scopeTenantId);
@@ -1797,6 +1956,12 @@ export async function addGeneratedOutput(input: {
   title: string;
   documentNumber: string;
   templateVersionId?: string;
+  caseId?: string;
+  templateId?: string;
+  inputDataSnapshot?: Record<string, unknown>;
+  draftValueSnapshot?: Record<string, unknown>;
+  fieldMappingSnapshot?: Record<string, unknown>;
+  layoutSnapshot?: Record<string, unknown>;
 }): Promise<GeneratedOutput> {
   const output: GeneratedOutput = {
     id: makeId("out"),
@@ -1813,6 +1978,12 @@ export async function addGeneratedOutput(input: {
     title: input.title.trim(),
     documentNumber: input.documentNumber.trim(),
     templateVersionId: input.templateVersionId,
+    caseId: input.caseId,
+    templateId: input.templateId,
+    inputDataSnapshot: input.inputDataSnapshot,
+    draftValueSnapshot: input.draftValueSnapshot,
+    fieldMappingSnapshot: input.fieldMappingSnapshot,
+    layoutSnapshot: input.layoutSnapshot,
     generatedAt: new Date(),
   };
   db.generatedOutputs.unshift(output);

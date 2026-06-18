@@ -1,0 +1,115 @@
+import Link from "next/link";
+import {
+  getFriendsGuaranteeTemplateLayoutSnapshot,
+  getGuaranteePdfTemplateConfig,
+} from "@/lib/friends-guarantee-pdf";
+import { guaranteeCompanyTemplates } from "@/lib/guarantee-application";
+import { getLocale, type Locale } from "@/lib/locale";
+import { PlatformSessionError, requirePlatformOwnerSession } from "@/lib/platform-session";
+
+export const dynamic = "force-dynamic";
+
+function copy(locale: Locale) {
+  return {
+    title: locale === "zh" ? "平台官方模板工厂" : locale === "ko" ? "플랫폼 공식 템플릿 팩토리" : "プラットフォーム公式テンプレート工場",
+    subtitle:
+      locale === "zh"
+        ? "官方 PDF 底板、框体、字段绑定和发布状态在这里治理；租户生产环境只消费已发布模板。"
+        : locale === "ko"
+          ? "공식 PDF 원본, 박스, 필드 바인딩, 릴리스 상태를 이곳에서 관리합니다. 테넌트 프로덕션은 게시된 템플릿만 사용합니다."
+          : "公式PDF原本・入力枠・フィールド紐付け・リリース状態をここで管理します。テナント本番利用は公開済みテンプレートのみを参照します。",
+    forbidden: locale === "zh" ? "需要平台管理员权限。" : locale === "ko" ? "플랫폼 관리자 권한이 필요합니다." : "プラットフォーム管理者権限が必要です。",
+    template: locale === "zh" ? "模板" : locale === "ko" ? "템플릿" : "テンプレート",
+    quality: locale === "zh" ? "质量" : locale === "ko" ? "품질" : "品質",
+    source: locale === "zh" ? "官方源文件" : locale === "ko" ? "공식 원본" : "公式原本",
+    overlay: locale === "zh" ? "框体/覆盖层" : locale === "ko" ? "박스/오버레이" : "入力枠/オーバーレイ",
+    actions: locale === "zh" ? "操作" : locale === "ko" ? "작업" : "操作",
+    openFactory: locale === "zh" ? "打开校准界面" : locale === "ko" ? "보정 화면 열기" : "校正画面を開く",
+  };
+}
+
+function qualityTone(status: string) {
+  if (status === "verified") return "bg-emerald-100 text-emerald-800";
+  if (status === "source_quality_blocked") return "bg-rose-100 text-rose-800";
+  return "bg-amber-100 text-amber-800";
+}
+
+export default async function PlatformTemplatesPage() {
+  const locale = await getLocale();
+  const ui = copy(locale);
+  let platformUserName = "";
+  try {
+    const session = await requirePlatformOwnerSession();
+    platformUserName = session.user.name;
+  } catch (error) {
+    if (error instanceof PlatformSessionError) {
+      return (
+        <div className="mx-auto max-w-3xl rounded-lg border border-rose-200 bg-rose-50 p-6 text-rose-900">
+          <h1 className="text-xl font-bold">{ui.title}</h1>
+          <p className="mt-2 text-sm">{ui.forbidden}</p>
+        </div>
+      );
+    }
+    throw error;
+  }
+
+  const rows = guaranteeCompanyTemplates.map((template) => {
+    const layout = getFriendsGuaranteeTemplateLayoutSnapshot(template.id);
+    const config = getGuaranteePdfTemplateConfig(template.id);
+    return {
+      template,
+      layout,
+      overlayCount: config.overlayFields.length + layout.customOverlayFields.length,
+      layoutOverrideCount: Object.keys(layout.layoutOverrides).length,
+      deletedCount: layout.deletedOverlayFieldKeys.length,
+    };
+  });
+
+  return (
+    <div className="space-y-6">
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">PlatformOwner / {platformUserName}</p>
+          <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-900">{ui.title}</h1>
+          <p className="mt-1 max-w-4xl text-sm text-slate-600">{ui.subtitle}</p>
+        </div>
+      </header>
+
+      <section className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <div className="grid grid-cols-[1.4fr_0.8fr_1fr_1fr_0.8fr] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-black uppercase tracking-wider text-slate-500">
+          <span>{ui.template}</span>
+          <span>{ui.quality}</span>
+          <span>{ui.source}</span>
+          <span>{ui.overlay}</span>
+          <span>{ui.actions}</span>
+        </div>
+        <div className="divide-y divide-slate-100">
+          {rows.map(({ template, layout, overlayCount, layoutOverrideCount, deletedCount }) => (
+            <div key={template.id} className="grid grid-cols-[1.4fr_0.8fr_1fr_1fr_0.8fr] items-center gap-3 px-4 py-4">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-bold text-slate-900">{template.companyDisplayName} / {template.templateDisplayName}</p>
+                <p className="truncate text-xs text-slate-500">{template.id} / {template.templateVersion}</p>
+              </div>
+              <span className={`w-fit rounded-full px-2 py-1 text-xs font-bold ${qualityTone(template.qualityStatus)}`}>{template.qualityStatus}</span>
+              <div className="min-w-0 text-xs text-slate-600">
+                <p className="truncate">{template.sourcePdfFileName}</p>
+                <p className="truncate text-slate-400">{template.coordinateMappingVersion}</p>
+              </div>
+              <div className="text-xs text-slate-600">
+                <p>fields {overlayCount}</p>
+                <p>overrides {layoutOverrideCount} / deleted {deletedCount}</p>
+                <p className="text-slate-400">{layout.baselineVersion}</p>
+              </div>
+              <Link
+                href={`/guarantee-applications/${template.id}/preview`}
+                className="rounded-md border border-slate-300 px-3 py-2 text-center text-xs font-bold text-slate-700 hover:bg-slate-50"
+              >
+                {ui.openFactory}
+              </Link>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}

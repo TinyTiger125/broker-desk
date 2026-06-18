@@ -33,6 +33,8 @@ export function MainNavLinks({ links, orientation = "row" }: MainNavLinksProps) 
     "/service-requests": "support_agent",
     "/output-center": "print",
     "/templates": "view_module",
+    "/settings/members": "manage_accounts",
+    "/settings/output-templates": "edit_document",
     "/settings/ai-experience": "psychology",
   };
 

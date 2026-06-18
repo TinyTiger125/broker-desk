@@ -5,6 +5,7 @@ import {
   createAiResponse,
 } from "@/lib/ai";
 import { findGuaranteeCompanyTemplate } from "@/lib/guarantee-application";
+import { requireTenantSession, TenantSessionError } from "@/lib/tenant-session";
 
 type FieldPrematchRouteProps = {
   params: Promise<{
@@ -273,6 +274,15 @@ export async function POST(request: Request, { params }: FieldPrematchRouteProps
   if (!template) {
     return NextResponse.json({ ok: false, error: "template_not_found" }, { status: 404 });
   }
+  let session;
+  try {
+    session = await requireTenantSession({ permissions: ["template.ai_prematch", "ai.field_prematch"] });
+  } catch (error) {
+    if (error instanceof TenantSessionError) {
+      return NextResponse.json({ ok: false, error: error.code }, { status: error.status });
+    }
+    throw error;
+  }
   const body = (await request.json().catch(() => ({}))) as PrematchRequest;
 
   const fields = (body.fields ?? []).map(sanitizeField).filter((field): field is PrematchField => Boolean(field)).slice(0, 220);
@@ -330,6 +340,8 @@ export async function POST(request: Request, { params }: FieldPrematchRouteProps
       },
       metadata: {
         templateId: template.id,
+        tenantId: session.tenant.id,
+        userId: session.user.id,
       },
     });
 

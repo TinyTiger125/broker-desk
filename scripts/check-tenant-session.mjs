@@ -55,7 +55,10 @@ const {
 assert(roleHasTenantPermission("tenant_owner", "member.invite"), "tenant owner should manage members");
 assert(roleHasTenantPermission("tenant_admin", "template.edit_draft"), "tenant admin should edit tenant template drafts");
 assert(roleHasTenantPermission("broker", "output.preview"), "broker should preview outputs");
+assert(!roleHasTenantPermission("broker", "output.download_final"), "broker must not download final outputs by default");
+assert(!roleHasTenantPermission("broker", "extract.override_result"), "broker must not override extraction results by default");
 assert(!roleHasTenantPermission("broker", "template.publish"), "broker must not publish reusable templates by default");
+assert(!roleHasTenantPermission("data_operator", "output.download_final"), "data operator must not download final outputs by default");
 assert(!roleHasTenantPermission("viewer", "source.upload"), "viewer must not upload source files");
 assert(listTenantRolePermissions("platform_owner").includes("template.manage_official"), "platform owner should manage official templates");
 

@@ -252,6 +252,12 @@ CREATE TABLE IF NOT EXISTS generated_outputs (
   title TEXT NOT NULL,
   document_number TEXT,
   template_version_id TEXT,
+  case_id TEXT,
+  template_id TEXT,
+  input_data_snapshot JSONB,
+  draft_value_snapshot JSONB,
+  field_mapping_snapshot JSONB,
+  layout_snapshot JSONB,
   generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_generated_outputs_user_created ON generated_outputs(user_id, generated_at DESC);
@@ -264,6 +270,12 @@ ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL D
 ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS source_quote_id TEXT;
 ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS document_number TEXT;
 ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS template_version_id TEXT;
+ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS case_id TEXT;
+ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS template_id TEXT;
+ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS input_data_snapshot JSONB;
+ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS draft_value_snapshot JSONB;
+ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS field_mapping_snapshot JSONB;
+ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS layout_snapshot JSONB;
 ALTER TABLE generated_outputs ALTER COLUMN quote_id DROP NOT NULL;
 UPDATE generated_outputs SET source_quote_id = quote_id WHERE source_quote_id IS NULL;
 UPDATE generated_outputs SET actor_id = user_id WHERE actor_id IS NULL;

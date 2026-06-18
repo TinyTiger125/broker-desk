@@ -100,6 +100,9 @@ node scripts/check-tenant-session.mjs || fail "tenant session foundation failed"
 echo "[STEP] tenant data access boundary"
 node scripts/check-tenant-data-access.mjs || fail "tenant data access boundary failed"
 
+echo "[STEP] tenant governance boundary"
+node scripts/check-tenant-governance.mjs || fail "tenant governance boundary failed"
+
 echo "[STEP] health check"
 health_json="$(curl -fsS "${BASE_URL}/api/health/data")" || fail "health endpoint unreachable"
 echo "$health_json" | grep '"ok":true' >/dev/null || fail "health check returned not ok"

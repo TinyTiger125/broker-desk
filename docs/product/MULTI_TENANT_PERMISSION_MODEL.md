@@ -729,6 +729,18 @@ Exit criteria:
 
 Goal: make permission checks systematic.
 
+Implementation status as of 2026-06-18: implemented for the high-risk local release path, with production auth still external.
+
+Implemented:
+
+- `requireTenantSession` can require one or multiple permission actions.
+- Ordinary broker and data-operator defaults no longer include final-output download or extraction override.
+- AI template field pre-match requires both `template.ai_prematch` and `ai.field_prematch`.
+- Template settings publish requires both `template.edit_draft` and `template.publish`.
+- Guarantee preview template-level layout save requires template edit and publish permission.
+- Member invite, role update, and suspension require server-side member permissions.
+- `npm run test:tenant-session` and `npm run test:tenant-governance` cover the high-risk role matrix.
+
 Tasks:
 
 1. Implement action-based permission map.
@@ -743,6 +755,22 @@ Exit criteria:
 ### Phase 4: Template Governance
 
 Goal: protect reusable output assets.
+
+Implementation status as of 2026-06-18: partially implemented as a local governance boundary.
+
+Implemented:
+
+- `/platform/templates` is a PlatformOwner-only official guarantee-template overview.
+- PlatformOwner access is separate from tenant membership and must be explicitly configured in production through `BROKER_DESK_PLATFORM_OWNER_IDS`; local development defaults to `user_demo`.
+- Official guarantee-template layout snapshots can be captured from the current local layout store.
+- Official guarantee-application downloads create generated output records with case, template, data, draft, field mapping, and layout snapshots.
+- Template-level save from the preview flow is server-side permission gated.
+
+Still required before external release:
+
+- Move actual coordinate editing out of the broker-facing preview surface.
+- Add explicit draft -> publish workflow for guarantee layout changes instead of immediately writing local layout JSON.
+- Store immutable published guarantee-template versions in the database or an equivalent versioned artifact store.
 
 Tasks:
 
@@ -762,6 +790,20 @@ Exit criteria:
 
 Goal: prevent uncontrolled AI cost, privacy, and overwrite risk.
 
+Implementation status as of 2026-06-18: permission-gated, not quota-complete.
+
+Implemented:
+
+- AI field pre-match is blocked unless the user has both template pre-match and AI field pre-match permissions.
+- Existing blank-template safety metadata is still required before pre-match runs.
+- Approved AI experience retrieval is tenant/template scoped in the existing retrieval regression.
+
+Still required before external release:
+
+- Persistent AI job records with token/cost estimates.
+- Tenant AI quota and usage dashboard.
+- Separate production policy for model selection and sensitive-data redaction.
+
 Tasks:
 
 1. Add AI task records and tenant usage tracking.
@@ -778,6 +820,21 @@ Exit criteria:
 ### Phase 6: Admin UI
 
 Goal: expose permissions safely after the backend is enforceable.
+
+Implementation status as of 2026-06-18: member-management foundation implemented.
+
+Implemented:
+
+- `/settings/members` lists tenant members, adds local members, updates roles, suspends/reactivates members, prevents self-suspension, prevents removing the last active owner, and audits member changes.
+- Existing `/audit-log` remains the operational audit viewer.
+- Existing `/settings/output-templates` remains tenant output-template settings and version history.
+
+Still required before external release:
+
+- Real invitation email flow tied to the production identity provider.
+- Tenant settings and billing UI.
+- AI quota/permission settings UI.
+- Move official-template editing to a dedicated backstage experience.
 
 Tasks:
 

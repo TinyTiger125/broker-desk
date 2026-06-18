@@ -843,6 +843,14 @@ type FriendsGuaranteeLayoutStoreSnapshot = {
   customFieldsByTemplate?: Record<string, FriendsCustomOverlayField[]>;
 };
 
+export type FriendsGuaranteeTemplateLayoutSnapshot = {
+  templateId: string;
+  baselineVersion: string;
+  layoutOverrides: FriendsOverlayLayoutOverrides;
+  deletedOverlayFieldKeys: string[];
+  customOverlayFields: FriendsCustomOverlayField[];
+};
+
 const FRIENDS_GUARANTEE_LAYOUT_STORE_PATH =
   process.env.FRIENDS_GUARANTEE_LAYOUT_STORE_PATH ?? join(process.cwd(), ".broker-desk/friends-guarantee-layouts.json");
 
@@ -1487,6 +1495,18 @@ export function getFriendsGuaranteeTemplateCustomOverlayFields(
     friendsGuaranteeLayoutStore.__friendsGuaranteeTemplateCustomFieldsByTemplate?.[templateId] ?? [],
     templateId,
   );
+}
+
+export function getFriendsGuaranteeTemplateLayoutSnapshot(
+  templateId = FRIENDS_GUARANTEE_DEFAULT_TEMPLATE_ID,
+): FriendsGuaranteeTemplateLayoutSnapshot {
+  return {
+    templateId,
+    baselineVersion: getFriendsGuaranteeLayoutBaselineVersion(templateId),
+    layoutOverrides: getFriendsGuaranteeTemplateLayoutOverrides(templateId),
+    deletedOverlayFieldKeys: getFriendsGuaranteeTemplateDeletedOverlayFieldKeys(templateId),
+    customOverlayFields: getFriendsGuaranteeTemplateCustomOverlayFields(templateId),
+  };
 }
 
 export function saveFriendsGuaranteeTemplateCustomOverlayFields(
