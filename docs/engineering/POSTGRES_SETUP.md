@@ -20,11 +20,11 @@ BROKER_DESK_AUTH_MODE=clerk
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=replace-with-clerk-publishable-key
 CLERK_SECRET_KEY=replace-with-clerk-secret-key
 CLERK_WEBHOOK_SIGNING_SECRET=replace-when-webhooks-are-enabled
-BROKER_DESK_PLATFORM_OWNER_IDS=comma-separated-internal-user-ids
+BROKER_DESK_PLATFORM_OWNER_IDS=comma-separated-local-user-ids-or-clerk-user-ids
 BROKER_DESK_CLERK_INVITATION_REDIRECT_URL=https://your-domain.example.com/sign-in
 ```
 
-The app maps Clerk `userId` to `users.external_auth_subject`. If a tenant admin has already invited a member by email, the first Clerk login links that Clerk subject to the existing local user; otherwise a local user is created without tenant membership and tenant access remains denied until membership is granted.
+The app maps Clerk `userId` to `users.external_auth_subject`. `BROKER_DESK_PLATFORM_OWNER_IDS` may contain either local `users.id` values or Clerk `user_...` IDs. If a tenant admin has already invited a member by email, the first Clerk login links that Clerk subject to the existing local user; otherwise a local user is created without tenant membership and tenant access remains denied until membership is granted.
 
 Clerk is the identity provider. Broker Desk's business authorization remains in Postgres:
 

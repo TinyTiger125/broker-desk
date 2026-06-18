@@ -140,6 +140,9 @@ assert(dataSource.includes("ensureUserForExternalAuth"), "data layer must map ex
 assert(dataSource.includes("suspendUserForExternalAuthSubject"), "data layer must suspend deleted external identities");
 assert(dataSource.includes("getClerkAuthIdentity"), "data layer must read Clerk identity in clerk mode");
 
+const platformSessionSource = fs.readFileSync("src/lib/platform-session.ts", "utf8");
+assert(platformSessionSource.includes("user.externalAuthSubject"), "platform owner access must support external auth subjects such as Clerk user ids");
+
 const clerkInvitationSource = fs.readFileSync("src/lib/clerk-invitations.ts", "utf8");
 assert(clerkInvitationSource.includes("client.invitations.createInvitation"), "Clerk invitation helper must use Clerk Invitations API");
 assert(clerkInvitationSource.includes("brokerDeskMembershipId"), "Clerk invitation helper must include local membership metadata");

@@ -795,7 +795,7 @@ Implementation status as of 2026-06-18: partially implemented as a local governa
 Implemented:
 
 - `/platform/templates` is a PlatformOwner-only official guarantee-template overview.
-- PlatformOwner access is separate from tenant membership and must be explicitly configured in production through `BROKER_DESK_PLATFORM_OWNER_IDS`; local development defaults to `user_demo`.
+- PlatformOwner access is separate from tenant membership and must be explicitly configured in production through `BROKER_DESK_PLATFORM_OWNER_IDS`; the value may include local `users.id` values or Clerk `user_...` IDs, and local development defaults to `user_demo`.
 - Official guarantee-template layout snapshots can be captured from the current local layout store.
 - Official guarantee-application downloads create generated output records with case, template, data, draft, field mapping, and layout snapshots.
 - Template-level save from the preview flow is server-side permission gated.

@@ -22,7 +22,8 @@ function configuredPlatformOwnerIds(): Set<string> {
 export async function requirePlatformOwnerSession(): Promise<{ user: User }> {
   const user = await getDefaultUser();
   if (!user) throw new PlatformSessionError("Authenticated user is required.", "user_not_found");
-  if (!configuredPlatformOwnerIds().has(user.id)) {
+  const ownerIds = configuredPlatformOwnerIds();
+  if (!ownerIds.has(user.id) && (!user.externalAuthSubject || !ownerIds.has(user.externalAuthSubject))) {
     throw new PlatformSessionError("Platform owner access is required.", "platform_forbidden");
   }
   return { user };
