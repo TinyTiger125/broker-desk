@@ -1,16 +1,305 @@
 import Link from "next/link";
-import { getGuaranteeApplicationDraft, listBrokerageCases } from "@/lib/data";
+import {
+  getGuaranteeApplicationDraft,
+  listAuditLogs,
+  listBrokerageCases,
+  listGeneratedOutputs,
+} from "@/lib/data";
 import { formatDate } from "@/lib/format";
 import {
-  buildGuaranteeDraftReadiness,
   buildGuaranteeApplicationReadiness,
+  buildGuaranteeDraftReadiness,
   guaranteeCompanyTemplates,
 } from "@/lib/guarantee-application";
-import { listHubImportJobs } from "@/lib/hub";
-import { getLocale } from "@/lib/locale";
+import {
+  listHubAttachments,
+  listHubContracts,
+  listHubImportJobs,
+  listHubParties,
+  listHubProperties,
+  listHubServiceRequests,
+  type HubSearchEntity,
+} from "@/lib/hub";
+import { getLocale, type Locale } from "@/lib/locale";
 import { requireTenantSession } from "@/lib/tenant-session";
 
 export const dynamic = "force-dynamic";
+
+type HomePageProps = {
+  searchParams?: Promise<{ q?: string }>;
+};
+
+type DashboardCopy = {
+  title: string;
+  subtitle: string;
+  tenant: string;
+  searchPlaceholder: string;
+  search: string;
+  clear: string;
+  noSearchResults: string;
+  searchResults: string;
+  totalRecords: string;
+  inputMaterials: string;
+  cases: string;
+  properties: string;
+  parties: string;
+  contracts: string;
+  serviceRequests: string;
+  attachments: string;
+  generatedOutputs: string;
+  auditLogs: string;
+  pending: string;
+  reviewed: string;
+  open: string;
+  total: string;
+  dataFlow: string;
+  flowInput: string;
+  flowInputDesc: string;
+  flowOrganize: string;
+  flowOrganizeDesc: string;
+  flowConfirm: string;
+  flowConfirmDesc: string;
+  flowOutput: string;
+  flowOutputDesc: string;
+  flowAudit: string;
+  flowAuditDesc: string;
+  priority: string;
+  quickActions: string;
+  uploadMaterial: string;
+  openWorkbench: string;
+  openOutput: string;
+  openTemplateFactory: string;
+  recentWork: string;
+  recentInputs: string;
+  recentCases: string;
+  recentOutputs: string;
+  outputReadiness: string;
+  currentCase: string;
+  missingFields: string;
+  additionalMissing: string;
+  readyTemplates: string;
+  blockedTemplates: string;
+  noCurrentCase: string;
+  noRecentData: string;
+  statusQueued: string;
+  statusMapped: string;
+  statusCompleted: string;
+  statusReviewed: string;
+  statusDraft: string;
+  statusReady: string;
+  statusBlocked: string;
+  entityProperty: string;
+  entityParty: string;
+  entityContract: string;
+  entityServiceRequest: string;
+  entityOutput: string;
+  entityCase: string;
+  entityInput: string;
+};
+
+const copyByLocale: Record<Locale, DashboardCopy> = {
+  ja: {
+    title: "資料管理センター",
+    subtitle: "入力資料、整理済み案件、物件・顧客データ、出力書類、監査ログを同じ画面で確認します。",
+    tenant: "対象ワークスペース",
+    searchPlaceholder: "顧客、物件、案件、資料、出力書類を検索",
+    search: "検索",
+    clear: "クリア",
+    noSearchResults: "該当する資料は見つかりませんでした。",
+    searchResults: "検索結果",
+    totalRecords: "管理対象",
+    inputMaterials: "入力資料",
+    cases: "案件",
+    properties: "物件",
+    parties: "関係者",
+    contracts: "契約/提案",
+    serviceRequests: "対応タスク",
+    attachments: "添付ファイル",
+    generatedOutputs: "生成済み書類",
+    auditLogs: "監査ログ",
+    pending: "未処理",
+    reviewed: "確認済み",
+    open: "未完了",
+    total: "合計",
+    dataFlow: "資料フロー",
+    flowInput: "入力",
+    flowInputDesc: "資料を取り込み、候補データを作成します。",
+    flowOrganize: "整理",
+    flowOrganizeDesc: "案件ごとに構造化して不足を見つけます。",
+    flowConfirm: "確認",
+    flowConfirmDesc: "人が確認した情報だけを確定します。",
+    flowOutput: "出力",
+    flowOutputDesc: "保証会社申込書や提案資料を生成します。",
+    flowAudit: "監査",
+    flowAuditDesc: "変更と出力の履歴を残します。",
+    priority: "優先確認",
+    quickActions: "クイック操作",
+    uploadMaterial: "資料をアップロード",
+    openWorkbench: "情報整理を開く",
+    openOutput: "出力センターを開く",
+    openTemplateFactory: "公式テンプレートを見る",
+    recentWork: "最近の作業",
+    recentInputs: "最近の入力",
+    recentCases: "最近の案件",
+    recentOutputs: "最近の出力",
+    outputReadiness: "保証会社申込書の準備度",
+    currentCase: "対象案件",
+    missingFields: "未解決項目",
+    additionalMissing: "追加項目未入力",
+    readyTemplates: "出力可能",
+    blockedTemplates: "要確認",
+    noCurrentCase: "処理対象の案件はまだありません。",
+    noRecentData: "表示できる履歴はまだありません。",
+    statusQueued: "待機",
+    statusMapped: "確認待ち",
+    statusCompleted: "完了",
+    statusReviewed: "確認済み",
+    statusDraft: "下書き",
+    statusReady: "準備済み",
+    statusBlocked: "要確認",
+    entityProperty: "物件",
+    entityParty: "関係者",
+    entityContract: "契約/提案",
+    entityServiceRequest: "対応タスク",
+    entityOutput: "出力書類",
+    entityCase: "案件",
+    entityInput: "入力資料",
+  },
+  zh: {
+    title: "资料管理中心",
+    subtitle: "把输入资料、整理后的案件、物件/客户数据、输出文件和审计记录放在同一个工作台里查看。",
+    tenant: "当前工作区",
+    searchPlaceholder: "搜索客户、物件、案件、资料、输出文件",
+    search: "搜索",
+    clear: "清除",
+    noSearchResults: "没有找到对应资料。",
+    searchResults: "搜索结果",
+    totalRecords: "管理对象",
+    inputMaterials: "输入资料",
+    cases: "案件",
+    properties: "物件",
+    parties: "关系人",
+    contracts: "合同/提案",
+    serviceRequests: "处理任务",
+    attachments: "附件",
+    generatedOutputs: "已生成文件",
+    auditLogs: "审计记录",
+    pending: "待处理",
+    reviewed: "已确认",
+    open: "未完成",
+    total: "合计",
+    dataFlow: "资料流转",
+    flowInput: "输入",
+    flowInputDesc: "上传资料，生成候选数据。",
+    flowOrganize: "整理",
+    flowOrganizeDesc: "按案件结构化资料并找出缺口。",
+    flowConfirm: "确认",
+    flowConfirmDesc: "只把人工确认后的信息写入确定数据。",
+    flowOutput: "输出",
+    flowOutputDesc: "生成保证会社申请书和提案资料。",
+    flowAudit: "审计",
+    flowAuditDesc: "保留修改和输出记录。",
+    priority: "优先确认",
+    quickActions: "快捷操作",
+    uploadMaterial: "上传资料",
+    openWorkbench: "打开信息整理",
+    openOutput: "打开输出中心",
+    openTemplateFactory: "查看官方模板",
+    recentWork: "最近作业",
+    recentInputs: "最近输入",
+    recentCases: "最近案件",
+    recentOutputs: "最近输出",
+    outputReadiness: "保证会社申请书准备度",
+    currentCase: "目标案件",
+    missingFields: "未解决项目",
+    additionalMissing: "追加项目未填写",
+    readyTemplates: "可输出",
+    blockedTemplates: "需确认",
+    noCurrentCase: "目前还没有可处理案件。",
+    noRecentData: "暂无可显示记录。",
+    statusQueued: "待处理",
+    statusMapped: "待确认",
+    statusCompleted: "完成",
+    statusReviewed: "已确认",
+    statusDraft: "草稿",
+    statusReady: "准备完成",
+    statusBlocked: "需确认",
+    entityProperty: "物件",
+    entityParty: "关系人",
+    entityContract: "合同/提案",
+    entityServiceRequest: "处理任务",
+    entityOutput: "输出文件",
+    entityCase: "案件",
+    entityInput: "输入资料",
+  },
+  ko: {
+    title: "자료 관리 센터",
+    subtitle: "입력 자료, 정리된 안건, 매물/고객 데이터, 출력 문서, 감사 기록을 한 화면에서 확인합니다.",
+    tenant: "현재 워크스페이스",
+    searchPlaceholder: "고객, 매물, 안건, 자료, 출력 문서 검색",
+    search: "검색",
+    clear: "지우기",
+    noSearchResults: "해당 자료를 찾지 못했습니다.",
+    searchResults: "검색 결과",
+    totalRecords: "관리 대상",
+    inputMaterials: "입력 자료",
+    cases: "안건",
+    properties: "매물",
+    parties: "관계자",
+    contracts: "계약/제안",
+    serviceRequests: "처리 작업",
+    attachments: "첨부 파일",
+    generatedOutputs: "생성 문서",
+    auditLogs: "감사 로그",
+    pending: "미처리",
+    reviewed: "확인됨",
+    open: "미완료",
+    total: "합계",
+    dataFlow: "자료 흐름",
+    flowInput: "입력",
+    flowInputDesc: "자료를 넣고 후보 데이터를 만듭니다.",
+    flowOrganize: "정리",
+    flowOrganizeDesc: "안건별로 구조화하고 부족한 부분을 찾습니다.",
+    flowConfirm: "확인",
+    flowConfirmDesc: "사람이 확인한 정보만 확정합니다.",
+    flowOutput: "출력",
+    flowOutputDesc: "보증회사 신청서와 제안 자료를 생성합니다.",
+    flowAudit: "감사",
+    flowAuditDesc: "변경과 출력 이력을 남깁니다.",
+    priority: "우선 확인",
+    quickActions: "빠른 작업",
+    uploadMaterial: "자료 업로드",
+    openWorkbench: "정보 정리 열기",
+    openOutput: "출력 센터 열기",
+    openTemplateFactory: "공식 템플릿 보기",
+    recentWork: "최근 작업",
+    recentInputs: "최근 입력",
+    recentCases: "최근 안건",
+    recentOutputs: "최근 출력",
+    outputReadiness: "보증회사 신청서 준비도",
+    currentCase: "대상 안건",
+    missingFields: "미해결 항목",
+    additionalMissing: "추가 항목 미입력",
+    readyTemplates: "출력 가능",
+    blockedTemplates: "확인 필요",
+    noCurrentCase: "처리할 안건이 아직 없습니다.",
+    noRecentData: "표시할 이력이 아직 없습니다.",
+    statusQueued: "대기",
+    statusMapped: "확인 대기",
+    statusCompleted: "완료",
+    statusReviewed: "확인됨",
+    statusDraft: "초안",
+    statusReady: "준비됨",
+    statusBlocked: "확인 필요",
+    entityProperty: "매물",
+    entityParty: "관계자",
+    entityContract: "계약/제안",
+    entityServiceRequest: "처리 작업",
+    entityOutput: "출력 문서",
+    entityCase: "안건",
+    entityInput: "입력 자료",
+  },
+};
 
 function workbenchAnchorForGuaranteeField(fieldKey: string) {
   if (fieldKey.startsWith("company_option.")) return "guarantee-template-drafts";
@@ -32,233 +321,71 @@ function workbenchAnchorForGuaranteeField(fieldKey: string) {
   return "workbench-unresolved";
 }
 
-const copyByLocale = {
-  ja: {
-    noUser: "利用可能なユーザーがありません。",
-    eyebrow: "今日の業務",
-    title: "今日の申込書業務",
-    subtitle: "資料入力、案件データの整理、保証会社申込書の出力までを一つの流れで進めます。",
-    step1: "資料を入れる",
-    step1Desc: "Excelや申込資料をアップロードして候補を取り込みます。",
-    step2: "足りない項目だけ確認",
-    step2Desc: "整理画面で未入力・要確認の項目だけ埋めます。",
-    step3: "申込書を出す",
-    step3Desc: "保証会社の申込書を確認して出力します。",
-    stepDone: "完了",
-    stepCurrent: "現在",
-    stepWaiting: "待機",
-    openStep: "開く",
-    nextAction: "今やること",
-    nextImportTitle: "まず資料を入れる",
-    nextImportDesc: "Excel、本人確認資料、申込関連資料を入れて、案件データの候補を作ります。",
-    nextReviewTitle: "足りない項目だけ確認する",
-    nextReviewDesc: "整理画面で、未入力・要確認の項目だけ補正します。",
-    nextOutputTitle: "申込書を出す",
-    nextOutputDesc: "保証会社を選び、公式底版の上で最終確認してPDFを出します。",
-    currentTask: "続きから作業",
-    currentCase: "現在の案件",
-    workbench: "情報整理",
-    company: "保証会社",
-    missing: "残り必須項目",
-    draftMissing: "追加項目未入力",
-    updated: "更新日",
-    continueTask: "保証会社申込書を続ける",
-    upload: "資料をアップロード",
-    fixMissing: "不足項目を確認",
-    download: "申込書を出す",
-    noCaseTitle: "まだ申込書の案件がありません",
-    noCaseDesc: "まず資料をアップロードして、確認済みデータを案件に保存してください。",
-    activeCaseTitle: "次に処理する案件",
-    activeCaseDesc: "未入力・要確認があれば情報整理で補正し、問題なければ出力へ進みます。",
-    workQueue: "案件キュー",
-    workQueueDesc: "最近更新された案件から処理します。",
-    urgentAction: "今やること",
-    missingFieldsLabel: "不足項目",
-    aiConfidence: "AI候補の信頼度",
-    nextStep: "次の作業",
-    productionDesk: "申込書業務",
-    statusLabel: "状態",
-    recentInputs: "最近入れた資料",
-    recentInputsDesc: "取り込み結果は案件データの候補として使います。",
-    outputReadiness: "出力準備",
-    outputReadinessDesc: "保証会社ごとの未入力数を確認します。",
-    readyTemplates: "出力可能",
-    blockedTemplates: "要確認",
-    aiSupport: "AI補助",
-    aiSupportDesc: "抽出・不足検知・申込書候補は裏側で支援し、ユーザーには確認すべき項目だけ出します。",
-    noQueue: "処理中の案件はありません。",
-    noRecentInputs: "最近の取り込みはありません。",
-    statusReviewed: "確認済み",
-    statusDraft: "未完了",
-    statusQueued: "待機",
-    statusMapped: "確認待ち",
-    statusCompleted: "完了",
-    supportTitle: "資料庫 / 設定",
-    supportDesc: "物件台帳、顧客、提案、テンプレート設定などは通常業務の裏側に置き、必要な時だけ開きます。",
-    primaryNext: "次の作業を開く",
-    importCenter: "入力資料",
-    outputCenter: "申込書出力",
-    cases: "案件",
-    properties: "物件台帳",
-    clients: "顧客",
-    quotes: "提案・試算",
-    templates: "テンプレート設定",
-  },
-  zh: {
-    noUser: "没有可用用户。",
-    eyebrow: "今日业务",
-    title: "今日申请书业务",
-    subtitle: "把资料录入、案件数据整理、保证会社申请书输出串成一条清晰生产线。",
-    step1: "上传资料",
-    step1Desc: "上传 Excel 或申请资料，系统整理候选内容。",
-    step2: "只确认缺失项",
-    step2Desc: "在信息整理页补齐未填写和需确认项目。",
-    step3: "输出申请书",
-    step3Desc: "确认保证会社申请书并输出。",
-    stepDone: "已完成",
-    stepCurrent: "当前",
-    stepWaiting: "待处理",
-    openStep: "打开",
-    nextAction: "现在该做什么",
-    nextImportTitle: "先上传资料",
-    nextImportDesc: "上传 Excel、本人确认资料和申请相关资料，生成案件数据候选。",
-    nextReviewTitle: "只确认缺失项",
-    nextReviewDesc: "在信息整理页里，只补正未填写和需要确认的项目。",
-    nextOutputTitle: "输出申请书",
-    nextOutputDesc: "选择保证会社，在官方底版上最终确认并输出 PDF。",
-    currentTask: "继续处理",
-    currentCase: "当前案件",
-    workbench: "信息整理",
-    company: "保证会社",
-    missing: "剩余必填项",
-    draftMissing: "追加项目未填写",
-    updated: "更新日",
-    continueTask: "继续处理保证会社申请书",
-    upload: "上传资料",
-    fixMissing: "确认缺失项",
-    download: "输出申请书",
-    noCaseTitle: "还没有申请书案件",
-    noCaseDesc: "请先上传资料，并把确认后的数据保存到案件。",
-    activeCaseTitle: "下一件该处理的案件",
-    activeCaseDesc: "有未填写或需确认项就先在信息整理页补正，没有问题再进入输出。",
-    workQueue: "案件队列",
-    workQueueDesc: "优先处理最近更新的案件。",
-    urgentAction: "现在该做什么",
-    missingFieldsLabel: "缺失项目",
-    aiConfidence: "AI候选可信度",
-    nextStep: "下一步",
-    productionDesk: "申请书业务",
-    statusLabel: "状态",
-    recentInputs: "最近上传资料",
-    recentInputsDesc: "录入结果会作为案件数据候选。",
-    outputReadiness: "输出准备度",
-    outputReadinessDesc: "按保证会社确认未填写数量。",
-    readyTemplates: "可输出",
-    blockedTemplates: "需确认",
-    aiSupport: "AI 辅助",
-    aiSupportDesc: "抽取、缺失检测、申请书候选在后台辅助，前台只暴露需要确认的项目。",
-    noQueue: "当前没有处理中的案件。",
-    noRecentInputs: "暂无最近导入记录。",
-    statusReviewed: "已确认",
-    statusDraft: "未完成",
-    statusQueued: "待处理",
-    statusMapped: "待确认",
-    statusCompleted: "完成",
-    supportTitle: "资料库 / 设置",
-    supportDesc: "物件台账、客户、报价、模板设置等能力放在主流程背后，需要时再打开。",
-    primaryNext: "打开下一步",
-    importCenter: "输入资料",
-    outputCenter: "申请书输出",
-    cases: "案件",
-    properties: "物件台账",
-    clients: "客户",
-    quotes: "报价/试算",
-    templates: "模板设置",
-  },
-  ko: {
-    noUser: "사용 가능한 사용자가 없습니다.",
-    eyebrow: "오늘 업무",
-    title: "오늘 신청서 업무",
-    subtitle: "자료 입력, 안건 데이터 정리, 보증회사 신청서 출력을 하나의 흐름으로 처리합니다.",
-    step1: "자료를 넣기",
-    step1Desc: "Excel이나 신청 자료를 업로드해 후보 값을 정리합니다.",
-    step2: "부족 항목만 확인",
-    step2Desc: "정보 정리 화면에서 미입력/확인 필요 항목만 보완합니다.",
-    step3: "신청서 출력",
-    step3Desc: "보증회사 신청서를 확인하고 출력합니다.",
-    stepDone: "완료",
-    stepCurrent: "현재",
-    stepWaiting: "대기",
-    openStep: "열기",
-    nextAction: "지금 할 일",
-    nextImportTitle: "먼저 자료를 넣기",
-    nextImportDesc: "Excel, 본인 확인 자료, 신청 관련 자료를 넣어 안건 데이터 후보를 만듭니다.",
-    nextReviewTitle: "부족 항목만 확인",
-    nextReviewDesc: "정보 정리 화면에서 미입력/확인 필요 항목만 보완합니다.",
-    nextOutputTitle: "신청서 출력",
-    nextOutputDesc: "보증회사를 선택하고 공식 양식 위에서 최종 확인 후 PDF를 출력합니다.",
-    currentTask: "이어서 작업",
-    currentCase: "현재 안건",
-    workbench: "정보 정리",
-    company: "보증회사",
-    missing: "남은 필수 항목",
-    draftMissing: "추가 항목 미입력",
-    updated: "갱신일",
-    continueTask: "보증회사 신청서 계속하기",
-    upload: "자료 업로드",
-    fixMissing: "부족 항목 확인",
-    download: "신청서 출력",
-    noCaseTitle: "아직 신청서 안건이 없습니다",
-    noCaseDesc: "먼저 자료를 업로드하고 확인 데이터를 안건에 저장하세요.",
-    activeCaseTitle: "다음 처리 안건",
-    activeCaseDesc: "미입력/확인 필요 항목은 정보 정리에서 보완하고, 문제가 없으면 출력으로 이동합니다.",
-    workQueue: "안건 큐",
-    workQueueDesc: "최근 갱신된 안건부터 처리합니다.",
-    urgentAction: "지금 할 일",
-    missingFieldsLabel: "부족 항목",
-    aiConfidence: "AI 후보 신뢰도",
-    nextStep: "다음 작업",
-    productionDesk: "신청서 업무",
-    statusLabel: "상태",
-    recentInputs: "최근 입력 자료",
-    recentInputsDesc: "가져온 결과는 안건 데이터 후보로 사용합니다.",
-    outputReadiness: "출력 준비도",
-    outputReadinessDesc: "보증회사별 미입력 수를 확인합니다.",
-    readyTemplates: "출력 가능",
-    blockedTemplates: "확인 필요",
-    aiSupport: "AI 보조",
-    aiSupportDesc: "추출, 누락 감지, 신청서 후보는 뒤에서 보조하고 사용자는 확인할 항목만 봅니다.",
-    noQueue: "처리 중인 안건이 없습니다.",
-    noRecentInputs: "최근 가져오기 기록이 없습니다.",
-    statusReviewed: "확인됨",
-    statusDraft: "미완료",
-    statusQueued: "대기",
-    statusMapped: "확인 대기",
-    statusCompleted: "완료",
-    supportTitle: "자료실 / 설정",
-    supportDesc: "매물 대장, 고객, 제안, 템플릿 설정은 주 흐름 뒤에 두고 필요할 때만 엽니다.",
-    primaryNext: "다음 작업 열기",
-    importCenter: "입력 자료",
-    outputCenter: "신청서 출력",
-    cases: "안건",
-    properties: "매물 대장",
-    clients: "고객",
-    quotes: "제안/시산",
-    templates: "템플릿 설정",
-  },
-} as const;
+function importStatusLabel(status: string, copy: DashboardCopy) {
+  if (status === "completed") return copy.statusCompleted;
+  if (status === "mapped") return copy.statusMapped;
+  return copy.statusQueued;
+}
 
-export default async function HomePage() {
+function caseStatusLabel(status: string, copy: DashboardCopy) {
+  return status === "reviewed" ? copy.statusReviewed : copy.statusDraft;
+}
+
+function entityLabel(entity: HubSearchEntity | "case" | "input", copy: DashboardCopy) {
+  const labels = {
+    property: copy.entityProperty,
+    party: copy.entityParty,
+    contract: copy.entityContract,
+    service_request: copy.entityServiceRequest,
+    output: copy.entityOutput,
+    case: copy.entityCase,
+    input: copy.entityInput,
+  };
+  return labels[entity];
+}
+
+function includesQuery(query: string, ...values: Array<string | undefined>) {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) return false;
+  return values.some((value) => value?.toLowerCase().includes(normalized));
+}
+
+function getOutputTypeLabel(outputType: string, copy: DashboardCopy) {
+  if (outputType === "guarantee_application") return copy.entityOutput;
+  return copy.generatedOutputs;
+}
+
+export default async function HomePage({ searchParams }: HomePageProps) {
+  const params = searchParams ? await searchParams : undefined;
+  const searchQuery = params?.q?.trim() ?? "";
   const [locale, session] = await Promise.all([getLocale(), requireTenantSession({ permission: "tenant.read" })]);
+  const copy = copyByLocale[locale];
   const user = session.user;
   const tenantId = session.tenant.id;
-  const copy = copyByLocale[locale];
-
   const hubContext = { userId: user.id, tenantId };
-  const [cases, importJobs] = await Promise.all([
-    listBrokerageCases(user.id, 20, tenantId),
+
+  const [
+    cases,
+    importJobs,
+    properties,
+    parties,
+    contracts,
+    serviceRequests,
+    attachments,
+    generatedOutputs,
+    auditLogs,
+  ] = await Promise.all([
+    listBrokerageCases(user.id, 50, tenantId),
     listHubImportJobs(hubContext),
+    listHubProperties(locale, hubContext),
+    listHubParties(locale, hubContext),
+    listHubContracts(locale, hubContext),
+    listHubServiceRequests(hubContext),
+    listHubAttachments(locale, 50, hubContext),
+    listGeneratedOutputs({ userId: user.id, tenantId, limit: 50 }),
+    listAuditLogs(user.id, { tenantId, limit: 50 }),
   ]);
+
   const currentCase =
     cases.find((item) => item.id === "case_fixture_friends_guarantee_pdf") ??
     cases.find((item) => item.status === "reviewed") ??
@@ -267,6 +394,7 @@ export default async function HomePage() {
   const primaryGuaranteeTemplate =
     activeGuaranteeTemplates.find((template) => template.id === "friends_guarantee_individual_v1") ??
     activeGuaranteeTemplates[0];
+
   const guaranteeDrafts = currentCase
     ? await Promise.all(
         activeGuaranteeTemplates.map((template) =>
@@ -279,6 +407,7 @@ export default async function HomePage() {
         ),
       )
     : [];
+
   const guaranteeTemplateSummaries = activeGuaranteeTemplates.map((template, index) => {
     const draft = guaranteeDrafts[index] ?? null;
     const readinessGroups = buildGuaranteeApplicationReadiness({ brokerageCase: currentCase, template, draft });
@@ -293,267 +422,392 @@ export default async function HomePage() {
     guaranteeTemplateSummaries[0];
   const missingFields = primaryGuaranteeSummary?.unresolvedFields ?? [];
   const draftMissingTotal = primaryGuaranteeSummary?.draftReadiness.requiredMissingCount ?? 0;
-  const selectedTemplateBlocked = missingFields.length > 0 || draftMissingTotal > 0;
   const blockedTemplateCount = guaranteeTemplateSummaries.filter(
     (summary) => summary.unresolvedFields.length > 0 || summary.draftReadiness.requiredMissingCount > 0,
   ).length;
   const readyTemplateCount = Math.max(activeGuaranteeTemplates.length - blockedTemplateCount, 0);
+
+  const primaryTemplateId = primaryGuaranteeTemplate?.id ?? "friends_guarantee_individual_v1";
   const outputHref = currentCase
-    ? `/output-center?caseId=${encodeURIComponent(currentCase.id)}&guaranteeTemplate=${encodeURIComponent(primaryGuaranteeTemplate?.id ?? "friends_guarantee_individual_v1")}`
+    ? `/output-center?caseId=${encodeURIComponent(currentCase.id)}&guaranteeTemplate=${encodeURIComponent(primaryTemplateId)}`
     : "/output-center";
   const workbenchHref = currentCase
-    ? `/cases/${currentCase.id}?guaranteeTemplate=${encodeURIComponent(primaryGuaranteeTemplate?.id ?? "friends_guarantee_individual_v1")}#workbench-unresolved`
+    ? `/cases/${currentCase.id}?guaranteeTemplate=${encodeURIComponent(primaryTemplateId)}#workbench-unresolved`
     : "/import-center";
-  const primaryHref = !currentCase
-    ? "/import-center"
-    : selectedTemplateBlocked
-      ? workbenchHref
-      : outputHref;
-  const primaryLabel = !currentCase
-    ? copy.upload
-    : selectedTemplateBlocked
-      ? copy.fixMissing
-      : copy.download;
   const workbenchLinkForField = (fieldKey: string) =>
     currentCase
-      ? `/cases/${currentCase.id}?guaranteeTemplate=${encodeURIComponent(primaryGuaranteeTemplate?.id ?? "friends_guarantee_individual_v1")}#${workbenchAnchorForGuaranteeField(fieldKey)}`
+      ? `/cases/${currentCase.id}?guaranteeTemplate=${encodeURIComponent(primaryTemplateId)}#${workbenchAnchorForGuaranteeField(fieldKey)}`
       : "/import-center";
-  const nextActionTitle = !currentCase
-    ? copy.nextImportTitle
-    : selectedTemplateBlocked
-      ? copy.nextReviewTitle
-      : copy.nextOutputTitle;
-  const nextActionDesc = !currentCase
-    ? copy.nextImportDesc
-    : selectedTemplateBlocked
-      ? copy.nextReviewDesc
-      : copy.nextOutputDesc;
-  const workQueue = cases.slice(0, 5);
-  const recentInputs = importJobs.slice(0, 4);
-  const todayLabel = new Date().toLocaleDateString(locale === "zh" ? "zh-CN" : locale === "ko" ? "ko-KR" : "ja-JP");
-  const totalMissing = missingFields.length + draftMissingTotal;
-  const confidencePercent = selectedTemplateBlocked ? 85 : 100;
-  const caseStatusLabel = (status: string) => (status === "reviewed" ? copy.statusReviewed : copy.statusDraft);
-  const importStatusLabel = (status: string) => {
-    if (status === "completed") return copy.statusCompleted;
-    if (status === "mapped") return copy.statusMapped;
-    return copy.statusQueued;
-  };
+
+  const pendingImportCount = importJobs.filter((item) => item.status !== "completed").length;
+  const reviewedCaseCount = cases.filter((item) => item.status === "reviewed").length;
+  const openServiceRequestCount = serviceRequests.filter((item) => item.status === "open").length;
+  const totalManagedRecords =
+    importJobs.length +
+    cases.length +
+    properties.length +
+    parties.length +
+    contracts.length +
+    serviceRequests.length +
+    attachments.length +
+    generatedOutputs.length;
+
+  const dashboardStats = [
+    { label: copy.totalRecords, value: totalManagedRecords, meta: copy.total, href: "/properties" },
+    { label: copy.inputMaterials, value: importJobs.length, meta: `${pendingImportCount} ${copy.pending}`, href: "/import-center" },
+    { label: copy.cases, value: cases.length, meta: `${reviewedCaseCount} ${copy.reviewed}`, href: currentCase ? `/cases/${currentCase.id}` : "/import-center" },
+    { label: copy.generatedOutputs, value: generatedOutputs.length, meta: copy.total, href: "/output-center" },
+  ];
+
   const flowSteps = [
+    { label: copy.flowInput, desc: copy.flowInputDesc, value: importJobs.length, meta: `${pendingImportCount} ${copy.pending}`, href: "/import-center" },
+    { label: copy.flowOrganize, desc: copy.flowOrganizeDesc, value: cases.length, meta: copy.cases, href: workbenchHref },
+    { label: copy.flowConfirm, desc: copy.flowConfirmDesc, value: reviewedCaseCount, meta: copy.reviewed, href: workbenchHref },
+    { label: copy.flowOutput, desc: copy.flowOutputDesc, value: generatedOutputs.length, meta: copy.generatedOutputs, href: outputHref },
+    { label: copy.flowAudit, desc: copy.flowAuditDesc, value: auditLogs.length, meta: copy.auditLogs, href: "/audit-log" },
+  ];
+
+  const priorityItems = [
     {
-      id: "input",
-      label: copy.step1,
-      desc: copy.step1Desc,
+      label: copy.inputMaterials,
+      value: pendingImportCount,
+      meta: copy.pending,
       href: "/import-center",
-      icon: "upload_file",
-      state: currentCase ? copy.stepDone : copy.stepCurrent,
-      tone: currentCase ? "border-emerald-200 bg-emerald-50" : "border-[#1960a3] bg-[#eff4ff]",
     },
     {
-      id: "organize",
-      label: copy.step2,
-      desc: copy.step2Desc,
-      href: currentCase ? workbenchHref : "/import-center",
-      icon: "fact_check",
-      state: !currentCase ? copy.stepWaiting : selectedTemplateBlocked ? copy.stepCurrent : copy.stepDone,
-      tone: !currentCase
-        ? "border-slate-200 bg-white"
-        : selectedTemplateBlocked
-          ? "border-[#1960a3] bg-[#eff4ff]"
-          : "border-emerald-200 bg-emerald-50",
+      label: copy.serviceRequests,
+      value: openServiceRequestCount,
+      meta: copy.open,
+      href: "/service-requests?status=open",
     },
     {
-      id: "output",
-      label: copy.step3,
-      desc: copy.step3Desc,
+      label: copy.outputReadiness,
+      value: blockedTemplateCount,
+      meta: copy.blockedTemplates,
       href: outputHref,
-      icon: "print",
-      state: !currentCase || selectedTemplateBlocked ? copy.stepWaiting : copy.stepCurrent,
-      tone: !currentCase || selectedTemplateBlocked ? "border-slate-200 bg-white" : "border-[#1960a3] bg-[#eff4ff]",
     },
   ];
 
+  const recentWork = [
+    ...importJobs.slice(0, 4).map((item) => ({
+      id: `input-${item.id}`,
+      label: entityLabel("input", copy),
+      title: item.title,
+      meta: `${importStatusLabel(item.status, copy)} / ${formatDate(item.createdAt, locale)}`,
+      href: "/import-center",
+      time: item.createdAt.getTime(),
+    })),
+    ...cases.slice(0, 4).map((item) => ({
+      id: `case-${item.id}`,
+      label: entityLabel("case", copy),
+      title: item.caseTitle,
+      meta: `${caseStatusLabel(item.status, copy)} / ${formatDate(item.updatedAt, locale)}`,
+      href: `/cases/${item.id}`,
+      time: item.updatedAt.getTime(),
+    })),
+    ...generatedOutputs.slice(0, 4).map((item) => ({
+      id: `output-${item.id}`,
+      label: entityLabel("output", copy),
+      title: item.title,
+      meta: `${item.outputFormat.toUpperCase()} / ${formatDate(item.generatedAt, locale)}`,
+      href: item.caseId ? `/output-center?caseId=${encodeURIComponent(item.caseId)}` : "/output-center",
+      time: item.generatedAt.getTime(),
+    })),
+  ].sort((a, b) => b.time - a.time).slice(0, 8);
+
+  const searchResults = searchQuery
+    ? [
+        ...properties
+          .filter((item) => includesQuery(searchQuery, item.name, item.area))
+          .slice(0, 5)
+          .map((item) => ({
+            id: `property-${item.id}`,
+            entity: "property" as const,
+            title: item.name,
+            subtitle: item.area,
+            href: `/properties?focus=${item.id}`,
+          })),
+        ...parties
+          .filter((item) => includesQuery(searchQuery, item.name, item.phone, item.email, item.relatedPropertyHint))
+          .slice(0, 5)
+          .map((item) => ({
+            id: `party-${item.id}`,
+            entity: "party" as const,
+            title: item.name,
+            subtitle: [item.phone, item.relatedPropertyHint].filter(Boolean).join(" / "),
+            href: `/parties?focus=${item.id}`,
+          })),
+        ...contracts
+          .filter((item) => includesQuery(searchQuery, item.contractNumber, item.relatedProperty, item.relatedParty))
+          .slice(0, 5)
+          .map((item) => ({
+            id: `contract-${item.id}`,
+            entity: "contract" as const,
+            title: item.contractNumber,
+            subtitle: [item.relatedProperty, item.relatedParty].filter(Boolean).join(" / "),
+            href: `/contracts?focus=${item.id}`,
+          })),
+        ...serviceRequests
+          .filter((item) => includesQuery(searchQuery, item.title, item.relatedProperty, item.relatedParty))
+          .slice(0, 5)
+          .map((item) => ({
+            id: `request-${item.id}`,
+            entity: "service_request" as const,
+            title: item.title,
+            subtitle: [item.relatedProperty, item.relatedParty].filter(Boolean).join(" / "),
+            href: `/service-requests?focus=${item.id}`,
+          })),
+        ...cases
+          .filter((item) => includesQuery(searchQuery, item.id, item.caseTitle))
+          .slice(0, 5)
+          .map((item) => ({
+            id: `case-${item.id}`,
+            entity: "case" as const,
+            title: item.caseTitle,
+            subtitle: caseStatusLabel(item.status, copy),
+            href: `/cases/${item.id}`,
+          })),
+        ...importJobs
+          .filter((item) => includesQuery(searchQuery, item.title, item.notes, item.validationMessage))
+          .slice(0, 5)
+          .map((item) => ({
+            id: `input-${item.id}`,
+            entity: "input" as const,
+            title: item.title,
+            subtitle: importStatusLabel(item.status, copy),
+            href: "/import-center",
+          })),
+        ...generatedOutputs
+          .filter((item) => includesQuery(searchQuery, item.title, item.documentNumber, item.templateId))
+          .slice(0, 5)
+          .map((item) => ({
+            id: `output-${item.id}`,
+            entity: "output" as const,
+            title: item.title,
+            subtitle: getOutputTypeLabel(item.outputType, copy),
+            href: item.caseId ? `/output-center?caseId=${encodeURIComponent(item.caseId)}` : "/output-center",
+          })),
+      ].slice(0, 12)
+    : [];
+
   return (
-    <div className="space-y-5">
-      <header className="flex items-end justify-between border-b border-slate-950 pb-1">
-        <div>
-          <p className="text-[11px] font-black uppercase tracking-[0.05em] text-slate-500">{copy.productionDesk}</p>
-          <h1 className="text-3xl font-black leading-tight text-slate-950">{copy.eyebrow}</h1>
+    <div className="mx-auto max-w-7xl space-y-6">
+      <header className="border-b border-[#111827] bg-white px-4 py-5 sm:px-6">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(320px,520px)] lg:items-end">
+          <div>
+            <p className="text-xs font-black text-[#002FA7]">{copy.tenant}: {session.tenant.name}</p>
+            <h1 className="mt-2 text-4xl font-black leading-none tracking-normal text-[#111827] sm:text-5xl">
+              {copy.title}
+            </h1>
+            <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">{copy.subtitle}</p>
+          </div>
+          <form action="/" className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+            <label className="sr-only" htmlFor="dashboard-search">
+              {copy.search}
+            </label>
+            <input
+              id="dashboard-search"
+              name="q"
+              defaultValue={searchQuery}
+              placeholder={copy.searchPlaceholder}
+              className="h-11 min-w-0 border border-[#111827] bg-white px-3 text-sm font-semibold text-[#111827] outline-none focus:border-[#002FA7]"
+            />
+            <button className="h-11 border border-[#002FA7] bg-[#002FA7] px-4 text-sm font-black text-white" type="submit">
+              {copy.search}
+            </button>
+            {searchQuery ? (
+              <Link href="/" className="flex h-11 items-center justify-center border border-slate-300 bg-[#F7F7F8] px-4 text-sm font-black text-slate-700">
+                {copy.clear}
+              </Link>
+            ) : null}
+          </form>
         </div>
-        <p className="hidden text-xs font-semibold tracking-wide text-slate-500 sm:block">
-          {todayLabel} | {copy.productionDesk}
-        </p>
       </header>
 
-      <section className="grid gap-3 md:grid-cols-3">
-        {flowSteps.map((step, index) => (
-          <Link key={step.id} href={step.href} className={`group rounded border p-4 transition hover:border-[#1960a3] hover:bg-[#eff4ff] ${step.tone}`}>
-            <div className="flex items-start justify-between gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded bg-slate-950 text-white">
-                <span className="material-symbols-outlined text-[19px]">{step.icon}</span>
-              </span>
-              <span className="rounded-full bg-white px-2 py-1 text-[11px] font-black text-slate-700 ring-1 ring-slate-200">
-                {String(index + 1).padStart(2, "0")} / {step.state}
-              </span>
+      <section className="grid border border-[#111827] bg-white sm:grid-cols-2 xl:grid-cols-4">
+        {dashboardStats.map((item, index) => (
+          <Link
+            key={item.label}
+            href={item.href}
+            className={`group min-h-36 p-4 hover:bg-[#F7F7F8] ${index > 0 ? "border-t border-[#111827] sm:border-t-0 sm:border-l" : ""} ${index === 2 ? "xl:border-l" : ""}`}
+          >
+            <p className="text-xs font-black text-slate-500">{String(index + 1).padStart(2, "0")}</p>
+            <p className="mt-6 text-5xl font-black leading-none tabular-nums text-[#111827]">{item.value}</p>
+            <div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-300 pt-3">
+              <p className="text-sm font-black text-[#111827]">{item.label}</p>
+              <p className="text-xs font-bold text-[#002FA7]">{item.meta}</p>
             </div>
-            <h2 className="mt-4 text-lg font-black text-slate-950">{step.label}</h2>
-            <p className="mt-1 min-h-10 text-sm leading-5 text-slate-600">{step.desc}</p>
           </Link>
         ))}
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
-        <div className="space-y-4">
-          {currentCase ? (
-            <div className="relative rounded border border-slate-300 bg-white p-4">
-              <div className="absolute bottom-0 left-0 top-0 w-1 bg-[#1960a3]" />
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                <div>
-                  <span className="inline-flex rounded border border-slate-300 bg-slate-100 px-2 py-1 text-[11px] font-black uppercase tracking-[0.05em] text-slate-700">
-                    {copy.urgentAction}
+      {searchQuery ? (
+        <section className="border border-[#111827] bg-white">
+          <div className="border-b border-[#111827] px-4 py-3">
+            <h2 className="text-lg font-black text-[#111827]">{copy.searchResults}</h2>
+          </div>
+          <div className="divide-y divide-slate-200">
+            {searchResults.length > 0 ? (
+              searchResults.map((item) => (
+                <Link key={item.id} href={item.href} className="grid gap-1 px-4 py-3 hover:bg-[#F7F7F8] sm:grid-cols-[10rem_minmax(0,1fr)] sm:items-center">
+                  <span className="text-xs font-black text-[#002FA7]">{entityLabel(item.entity, copy)}</span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-black text-[#111827]">{item.title}</span>
+                    {item.subtitle ? <span className="block truncate text-xs font-semibold text-slate-500">{item.subtitle}</span> : null}
                   </span>
-                  <h2 className="mt-3 text-xl font-black leading-snug text-slate-950">{currentCase.caseTitle}</h2>
-                  <p className="mt-1 text-sm text-slate-600">
-                    {copy.statusLabel}: <span className="font-black text-[#1960a3]">{caseStatusLabel(currentCase.status)}</span> | {copy.aiSupport}
-                  </p>
-                </div>
-                <Link href={primaryHref} className="inline-flex min-w-[13rem] items-center justify-center gap-2 rounded bg-slate-950 px-4 py-3 text-sm font-black text-white hover:bg-slate-800">
-                  <span className="material-symbols-outlined text-[18px]">assignment_turned_in</span>
-                  {primaryLabel}
                 </Link>
-              </div>
-              <div className="mt-4 grid gap-4 border-t border-slate-200 pt-4 md:grid-cols-3">
-                <div>
-                  <p className="text-[11px] font-black uppercase tracking-[0.05em] text-slate-500">{copy.missingFieldsLabel}</p>
-                  <p className={`mt-2 flex items-center gap-1 text-sm font-black ${totalMissing > 0 ? "text-red-700" : "text-emerald-700"}`}>
-                    <span className="material-symbols-outlined text-[16px]">{totalMissing > 0 ? "warning" : "check_circle"}</span>
-                    {totalMissing} {copy.missing}
-                  </p>
-                  {missingFields.length > 0 ? (
-                    <ul className="mt-2 list-inside list-disc text-sm leading-6 text-slate-700">
-                      {missingFields.slice(0, 3).map((field) => (
-                        <li key={field.fieldKey}>
-                          <Link href={workbenchLinkForField(field.fieldKey)} className="hover:text-[#1960a3] hover:underline">
-                            {field.label}
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
-                </div>
-                <div>
-                  <p className="text-[11px] font-black uppercase tracking-[0.05em] text-slate-500">{copy.aiConfidence}</p>
-                  <div className="mt-3 flex items-center gap-2">
-                    <div className="h-2 flex-1 overflow-hidden rounded bg-[#d4e4fc]">
-                      <div className="h-full bg-[#1960a3]" style={{ width: `${confidencePercent}%` }} />
-                    </div>
-                    <span className="text-xs font-black tabular-nums text-slate-700">{confidencePercent}%</span>
+              ))
+            ) : (
+              <p className="px-4 py-5 text-sm font-semibold text-slate-500">{copy.noSearchResults}</p>
+            )}
+          </div>
+        </section>
+      ) : null}
+
+      <section className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.65fr)]">
+        <div className="space-y-6">
+          <section className="border border-[#111827] bg-white">
+            <div className="border-b border-[#111827] px-4 py-3">
+              <h2 className="text-lg font-black text-[#111827]">{copy.dataFlow}</h2>
+            </div>
+            <div className="grid md:grid-cols-5">
+              {flowSteps.map((step, index) => (
+                <Link
+                  key={step.label}
+                  href={step.href}
+                  className={`min-h-44 p-4 hover:bg-[#F7F7F8] ${index > 0 ? "border-t border-[#111827] md:border-t-0 md:border-l" : ""}`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="text-xs font-black text-slate-500">{String(index + 1).padStart(2, "0")}</span>
+                    <span className="text-2xl font-black tabular-nums text-[#002FA7]">{step.value}</span>
                   </div>
-                </div>
-                <div>
-                  <p className="text-[11px] font-black uppercase tracking-[0.05em] text-slate-500">{copy.nextStep}</p>
-                  <p className="mt-2 text-sm leading-6 text-slate-700">{nextActionTitle}</p>
-                  <p className="mt-1 text-xs leading-5 text-slate-500">{nextActionDesc}</p>
-                </div>
+                  <h3 className="mt-8 text-base font-black text-[#111827]">{step.label}</h3>
+                  <p className="mt-2 min-h-12 text-xs leading-5 text-slate-600">{step.desc}</p>
+                  <p className="mt-4 border-t border-slate-300 pt-2 text-xs font-bold text-slate-500">{step.meta}</p>
+                </Link>
+              ))}
+            </div>
+          </section>
+
+          <section className="grid gap-6 lg:grid-cols-2">
+            <div className="border border-[#111827] bg-white">
+              <div className="border-b border-[#111827] px-4 py-3">
+                <h2 className="text-lg font-black text-[#111827]">{copy.recentWork}</h2>
+              </div>
+              <div className="divide-y divide-slate-200">
+                {recentWork.length > 0 ? (
+                  recentWork.map((item) => (
+                    <Link key={item.id} href={item.href} className="grid gap-1 px-4 py-3 hover:bg-[#F7F7F8]">
+                      <span className="text-xs font-black text-[#002FA7]">{item.label}</span>
+                      <span className="truncate text-sm font-black text-[#111827]">{item.title}</span>
+                      <span className="text-xs font-semibold text-slate-500">{item.meta}</span>
+                    </Link>
+                  ))
+                ) : (
+                  <p className="px-4 py-5 text-sm font-semibold text-slate-500">{copy.noRecentData}</p>
+                )}
               </div>
             </div>
-          ) : (
-            <div className="rounded border border-dashed border-slate-300 bg-white p-4">
-              <h2 className="text-xl font-black text-slate-950">{copy.noCaseTitle}</h2>
-              <p className="mt-2 text-sm text-slate-600">{copy.noCaseDesc}</p>
-              <Link href="/import-center" className="mt-4 inline-flex rounded bg-slate-950 px-4 py-2 text-sm font-bold text-white hover:bg-slate-800">
-                {copy.upload}
-              </Link>
-            </div>
-          )}
 
-          <div className="rounded border border-slate-300 bg-white">
-            <div className="border-b border-slate-300 p-4">
-              <h2 className="text-xl font-black text-slate-950">{copy.recentInputs}</h2>
-            </div>
-            <div className="divide-y divide-slate-200 p-4">
-              {recentInputs.length > 0 ? (
-                recentInputs.map((item) => (
-                  <Link key={item.id} href="/import-center" className="flex items-center justify-between gap-4 py-3 hover:bg-[#eff4ff]">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-slate-950">{item.title}</p>
-                      <p className="mt-1 text-xs font-semibold text-slate-500">{formatDate(item.createdAt, locale)}</p>
-                    </div>
-                    <span className="shrink-0 rounded border border-slate-300 bg-slate-100 px-2 py-1 text-xs font-black text-slate-600">
-                      {importStatusLabel(item.status)}
-                    </span>
-                  </Link>
-                ))
-              ) : (
-                <p className="py-4 text-sm text-slate-500">{copy.noRecentInputs}</p>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="grid gap-4">
-          <div className="rounded border border-slate-300 bg-white">
-            <div className="border-b border-slate-300 p-4">
-              <h2 className="text-xl font-black text-slate-950">{copy.workQueue}</h2>
-              <p className="mt-1 text-sm text-slate-500">{copy.workQueueDesc}</p>
-            </div>
-            <div className="space-y-3 p-4">
-              {workQueue.length > 0 ? (
-                workQueue.slice(0, 3).map((item) => (
-                  <Link
-                    key={item.id}
-                    href={`/cases/${item.id}?guaranteeTemplate=${encodeURIComponent(primaryGuaranteeTemplate?.id ?? "friends_guarantee_individual_v1")}`}
-                    className={`flex items-center justify-between gap-3 rounded border p-3 hover:bg-[#eff4ff] ${
-                      item.id === currentCase?.id ? "border-[#1960a3] bg-[#eff4ff]" : "border-slate-300 bg-[#f8f9ff]"
-                    }`}
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-xs font-black tabular-nums text-[#001e40]">#{item.id.replace("case_", "").slice(0, 8)}</p>
-                      <p className="mt-1 truncate text-sm font-semibold text-slate-950">{item.caseTitle}</p>
-                    </div>
-                    <span className="shrink-0 rounded border border-slate-300 bg-white px-2 py-1 text-xs font-black text-slate-700">
-                      {caseStatusLabel(item.status)}
-                    </span>
-                  </Link>
-                ))
-              ) : (
-                <p className="text-sm text-slate-500">{copy.noQueue}</p>
-              )}
-            </div>
-          </div>
-
-          <div className="rounded border border-slate-300 bg-white p-4">
-            <h2 className="text-xl font-black text-slate-950">{copy.outputReadiness}</h2>
-            <Link href={outputHref} className="mt-4 flex items-center justify-between rounded border border-[#7db6ff] bg-[#d4e4fc] p-4 hover:bg-[#cfe0fb]">
-              <div>
-                <p className="text-3xl font-black tabular-nums text-slate-950">{readyTemplateCount}</p>
-                <p className="text-xs font-black text-slate-700">{copy.readyTemplates}</p>
+            <div className="border border-[#111827] bg-white">
+              <div className="border-b border-[#111827] px-4 py-3">
+                <h2 className="text-lg font-black text-[#111827]">{copy.outputReadiness}</h2>
               </div>
-              <span className="flex h-10 w-10 items-center justify-center rounded bg-slate-950 text-white">
-                <span className="material-symbols-outlined text-[20px]">download</span>
-              </span>
-            </Link>
-          </div>
+              <div className="p-4">
+                {currentCase ? (
+                  <>
+                    <p className="text-xs font-black text-[#002FA7]">{copy.currentCase}</p>
+                    <h3 className="mt-1 text-xl font-black leading-snug text-[#111827]">{currentCase.caseTitle}</h3>
+                    <div className="mt-5 grid grid-cols-2 border border-[#111827]">
+                      <Link href={outputHref} className="p-4 hover:bg-[#F7F7F8]">
+                        <p className="text-4xl font-black tabular-nums text-[#111827]">{readyTemplateCount}</p>
+                        <p className="mt-2 text-xs font-black text-slate-600">{copy.readyTemplates}</p>
+                      </Link>
+                      <Link href={workbenchHref} className="border-l border-[#111827] p-4 hover:bg-[#F7F7F8]">
+                        <p className="text-4xl font-black tabular-nums text-[#111827]">{blockedTemplateCount}</p>
+                        <p className="mt-2 text-xs font-black text-slate-600">{copy.blockedTemplates}</p>
+                      </Link>
+                    </div>
+                    <div className="mt-4 space-y-2 border-t border-slate-300 pt-4">
+                      <p className="text-sm font-black text-[#111827]">
+                        {copy.missingFields}: {missingFields.length}
+                      </p>
+                      <p className="text-sm font-black text-[#111827]">
+                        {copy.additionalMissing}: {draftMissingTotal}
+                      </p>
+                      {missingFields.slice(0, 4).map((field) => (
+                        <Link key={field.fieldKey} href={workbenchLinkForField(field.fieldKey)} className="block truncate text-sm font-semibold text-[#002FA7] hover:underline">
+                          {field.label}
+                        </Link>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-sm font-semibold text-slate-500">{copy.noCurrentCase}</p>
+                )}
+              </div>
+            </div>
+          </section>
         </div>
+
+        <aside className="space-y-6">
+          <section className="border border-[#111827] bg-white">
+            <div className="border-b border-[#111827] px-4 py-3">
+              <h2 className="text-lg font-black text-[#111827]">{copy.priority}</h2>
+            </div>
+            <div className="divide-y divide-slate-200">
+              {priorityItems.map((item) => (
+                <Link key={item.label} href={item.href} className="grid grid-cols-[5rem_minmax(0,1fr)] items-center gap-4 px-4 py-4 hover:bg-[#F7F7F8]">
+                  <span className="text-4xl font-black tabular-nums text-[#002FA7]">{item.value}</span>
+                  <span>
+                    <span className="block text-sm font-black text-[#111827]">{item.label}</span>
+                    <span className="block text-xs font-semibold text-slate-500">{item.meta}</span>
+                  </span>
+                </Link>
+              ))}
+            </div>
+          </section>
+
+          <section className="border border-[#111827] bg-white">
+            <div className="border-b border-[#111827] px-4 py-3">
+              <h2 className="text-lg font-black text-[#111827]">{copy.quickActions}</h2>
+            </div>
+            <div className="grid">
+              {[
+                { label: copy.uploadMaterial, href: "/import-center", icon: "upload_file" },
+                { label: copy.openWorkbench, href: workbenchHref, icon: "fact_check" },
+                { label: copy.openOutput, href: outputHref, icon: "print" },
+                { label: copy.openTemplateFactory, href: "/platform/templates", icon: "view_module" },
+              ].map((item) => (
+                <Link key={item.href} href={item.href} className="flex items-center justify-between border-b border-slate-200 px-4 py-4 text-sm font-black text-[#111827] last:border-b-0 hover:bg-[#F7F7F8]">
+                  <span>{item.label}</span>
+                  <span className="material-symbols-outlined text-[18px] text-[#002FA7]">{item.icon}</span>
+                </Link>
+              ))}
+            </div>
+          </section>
+
+          <section className="border border-[#111827] bg-white">
+            <div className="grid grid-cols-2">
+              {[
+                { label: copy.properties, value: properties.length, href: "/properties" },
+                { label: copy.parties, value: parties.length, href: "/parties" },
+                { label: copy.contracts, value: contracts.length, href: "/contracts" },
+                { label: copy.attachments, value: attachments.length, href: "/import-center" },
+              ].map((item, index) => (
+                <Link
+                  key={item.label}
+                  href={item.href}
+                  className={`min-h-28 p-4 hover:bg-[#F7F7F8] ${index % 2 === 1 ? "border-l border-[#111827]" : ""} ${index > 1 ? "border-t border-[#111827]" : ""}`}
+                >
+                  <p className="text-3xl font-black tabular-nums text-[#111827]">{item.value}</p>
+                  <p className="mt-3 text-xs font-black text-slate-600">{item.label}</p>
+                </Link>
+              ))}
+            </div>
+          </section>
+        </aside>
       </section>
-
-      <details className="rounded border border-slate-300 bg-white p-4">
-        <summary className="cursor-pointer text-sm font-black text-slate-900">{copy.supportTitle}</summary>
-        <p className="mt-2 text-sm text-slate-600">{copy.supportDesc}</p>
-        <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
-          {[
-            { label: copy.properties, href: "/properties" },
-            { label: copy.clients, href: "/clients" },
-            { label: copy.quotes, href: "/quotes" },
-            { label: copy.templates, href: "/templates" },
-          ].map((item) => (
-            <Link key={item.href} href={item.href} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">
-              {item.label}
-            </Link>
-          ))}
-        </div>
-      </details>
-      <span className="sr-only">資料入力 整理 出力</span>
     </div>
   );
 }

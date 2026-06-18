@@ -136,12 +136,12 @@ fi
 
 echo "[STEP] dashboard key modules"
 dash_html="$(curl -fsS "${BASE_URL}/")" || fail "dashboard page unreachable"
-echo "$dash_html" | grep '港区グランドタワー 8F 保証会社申込書' >/dev/null || fail "home page missing guarantee application task title"
-echo "$dash_html" | grep '資料を入れる' >/dev/null || fail "home page missing step 1 input task"
-echo "$dash_html" | grep '足りない項目だけ確認' >/dev/null || fail "home page missing step 2 missing-field task"
-echo "$dash_html" | grep '申込書を出す' >/dev/null || fail "home page missing step 3 application task"
-echo "$dash_html" | grep '今やること' >/dev/null || fail "home page missing single next-action section"
-echo "$dash_html" | grep '情報を整理' >/dev/null || fail "home page missing workbench correction layer"
+echo "$dash_html" | grep '資料管理センター' >/dev/null || fail "home page missing document center title"
+echo "$dash_html" | grep '顧客、物件、案件、資料、出力書類を検索' >/dev/null || fail "home page missing global search"
+echo "$dash_html" | grep '資料フロー' >/dev/null || fail "home page missing document flow section"
+echo "$dash_html" | grep '優先確認' >/dev/null || fail "home page missing priority queue"
+echo "$dash_html" | grep 'クイック操作' >/dev/null || fail "home page missing quick actions"
+echo "$dash_html" | grep '保証会社申込書の準備度' >/dev/null || fail "home page missing guarantee readiness section"
 
 echo "[STEP] new IA routes"
 curl -fsS "${BASE_URL}/import-center" >/dev/null || fail "import-center unreachable"
