@@ -141,7 +141,16 @@ assert(dataSource.includes("suspendUserForExternalAuthSubject"), "data layer mus
 assert(dataSource.includes("getClerkAuthIdentity"), "data layer must read Clerk identity in clerk mode");
 
 const platformSessionSource = fs.readFileSync("src/lib/platform-session.ts", "utf8");
-assert(platformSessionSource.includes("user.externalAuthSubject"), "platform owner access must support external auth subjects such as Clerk user ids");
+assert(platformSessionSource.includes("isConfiguredPlatformOwnerUser"), "platform owner access must use centralized owner-id checks");
+
+const platformOwnerSource = fs.readFileSync("src/lib/platform-owner.ts", "utf8");
+assert(platformOwnerSource.includes("externalAuthSubject"), "platform owner access must support external auth subjects such as Clerk user ids");
+assert(platformOwnerSource.includes('process.env.NODE_ENV !== "production"'), "platform owner tenant fallback must stay development-only");
+assert(platformOwnerSource.includes("BROKER_DESK_ENABLE_PLATFORM_OWNER_TENANT_FALLBACK"), "platform owner tenant fallback must have an explicit disable switch");
+
+const tenantSessionSource = fs.readFileSync("src/lib/tenant-session.ts", "utf8");
+assert(tenantSessionSource.includes("isDevelopmentPlatformOwnerTenantFallbackEnabled"), "tenant sessions should avoid local platform-owner navigation crashes");
+assert(tenantSessionSource.includes('role: "platform_owner"'), "local platform-owner tenant fallback should retain full local permissions");
 
 const clerkInvitationSource = fs.readFileSync("src/lib/clerk-invitations.ts", "utf8");
 assert(clerkInvitationSource.includes("client.invitations.createInvitation"), "Clerk invitation helper must use Clerk Invitations API");

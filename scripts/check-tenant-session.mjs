@@ -46,7 +46,9 @@ const {
   listTenantRolePermissions,
 } = loadTsModule("src/lib/tenant-permissions.ts");
 const { selectActiveTenantMembership } = loadTsModule("src/lib/tenant-session.ts");
+const { requireTenantSession } = loadTsModule("src/lib/tenant-session.ts");
 const {
+  ensureUserForExternalAuth,
   getTenantById,
   listTenantMemberships,
   listTenantsForUser,
@@ -86,5 +88,22 @@ assert(tenant?.status === "active", "Cherry tenant should be active");
 
 const tenants = await listTenantsForUser("user_ops");
 assert(tenants.some((item) => item.id === "tenant_cherry"), "ops user should resolve Cherry tenant");
+
+process.env.BROKER_DESK_AUTH_MODE = "demo";
+process.env.BROKER_DESK_PLATFORM_OWNER_IDS = "clerk_platform_owner_regression";
+const externalPlatformOwner = await ensureUserForExternalAuth({
+  subject: "clerk_platform_owner_regression",
+  email: "platform-owner-regression@brokerdesk.local",
+  name: "Platform Owner Regression",
+});
+assert(externalPlatformOwner, "external platform owner should be materialized");
+const externalOwnerMemberships = await listTenantMemberships(externalPlatformOwner.id);
+assert(externalOwnerMemberships.length === 0, "external platform owner fixture should start without tenant membership");
+const fallbackSession = await requireTenantSession({
+  preferredUserId: externalPlatformOwner.id,
+  permission: "output.preview",
+});
+assert(fallbackSession.tenant.id === "tenant_cherry", "local platform owner should fall back to the default tenant");
+assert(fallbackSession.membership.role === "platform_owner", "local platform owner fallback should retain full platform role");
 
 console.log("[PASS] tenant session foundation regression");

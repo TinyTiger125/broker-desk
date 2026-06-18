@@ -1,4 +1,5 @@
 import { getDefaultUser, type User } from "@/lib/data";
+import { isConfiguredPlatformOwnerUser } from "@/lib/platform-owner";
 
 export class PlatformSessionError extends Error {
   constructor(
@@ -10,20 +11,10 @@ export class PlatformSessionError extends Error {
   }
 }
 
-function configuredPlatformOwnerIds(): Set<string> {
-  const configured = process.env.BROKER_DESK_PLATFORM_OWNER_IDS?.split(",")
-    .map((value) => value.trim())
-    .filter(Boolean);
-  if (configured && configured.length > 0) return new Set(configured);
-  if (process.env.NODE_ENV !== "production") return new Set(["user_demo"]);
-  return new Set();
-}
-
 export async function requirePlatformOwnerSession(): Promise<{ user: User }> {
   const user = await getDefaultUser();
   if (!user) throw new PlatformSessionError("Authenticated user is required.", "user_not_found");
-  const ownerIds = configuredPlatformOwnerIds();
-  if (!ownerIds.has(user.id) && (!user.externalAuthSubject || !ownerIds.has(user.externalAuthSubject))) {
+  if (!isConfiguredPlatformOwnerUser(user)) {
     throw new PlatformSessionError("Platform owner access is required.", "platform_forbidden");
   }
   return { user };

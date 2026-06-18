@@ -26,6 +26,12 @@ BROKER_DESK_CLERK_INVITATION_REDIRECT_URL=https://your-domain.example.com/sign-i
 
 The app maps Clerk `userId` to `users.external_auth_subject`. `BROKER_DESK_PLATFORM_OWNER_IDS` may contain either local `users.id` values or Clerk `user_...` IDs. If a tenant admin has already invited a member by email, the first Clerk login links that Clerk subject to the existing local user; otherwise a local user is created without tenant membership and tenant access remains denied until membership is granted.
 
+Local development has one convenience fallback: a configured PlatformOwner without tenant membership can use the seeded default tenant as a temporary `platform_owner` tenant session so navigation across product modules does not crash during Clerk bootstrap. This fallback is disabled automatically when `NODE_ENV=production`, and can also be disabled locally with:
+
+```bash
+BROKER_DESK_ENABLE_PLATFORM_OWNER_TENANT_FALLBACK=false
+```
+
 Clerk is the identity provider. Broker Desk's business authorization remains in Postgres:
 
 ```text

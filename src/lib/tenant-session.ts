@@ -9,6 +9,11 @@ import {
   type User,
 } from "@/lib/data";
 import {
+  isConfiguredPlatformOwnerUser,
+  isDevelopmentPlatformOwnerTenantFallbackEnabled,
+} from "@/lib/platform-owner";
+import { DEFAULT_TENANT_ID } from "@/lib/tenant-constants";
+import {
   ACTIVE_TENANT_COOKIE_NAME,
   roleHasAllTenantPermissions,
   roleHasTenantPermission,
@@ -43,6 +48,38 @@ export function selectActiveTenantMembership(input: {
   return activeMemberships[0] ?? null;
 }
 
+async function selectDevelopmentPlatformOwnerTenantMembership(input: {
+  user: User;
+  requestedTenantId?: string;
+}): Promise<TenantMembership | null> {
+  if (!isDevelopmentPlatformOwnerTenantFallbackEnabled()) return null;
+  if (!isConfiguredPlatformOwnerUser(input.user)) return null;
+
+  const candidateTenantIds = Array.from(
+    new Set([input.requestedTenantId, DEFAULT_TENANT_ID].filter((value): value is string => Boolean(value))),
+  );
+  for (const tenantId of candidateTenantIds) {
+    const tenant = await getTenantById(tenantId);
+    if (tenant && isTenantAccessibleStatus(tenant.status)) {
+      const now = new Date();
+      return {
+        id: `platform_owner_dev_${input.user.id}_${tenant.id}`,
+        tenantId: tenant.id,
+        userId: input.user.id,
+        role: "platform_owner",
+        status: "active",
+        invitationProvider: "manual",
+        invitationStatus: "accepted",
+        invitationAcceptedAt: now,
+        createdAt: now,
+        updatedAt: now,
+      };
+    }
+  }
+
+  return null;
+}
+
 export async function getActiveTenantIdFromCookie(): Promise<string | undefined> {
   try {
     const store = await cookies();
@@ -66,7 +103,9 @@ export async function requireTenantSession(options: {
 
   const requestedTenantId = options.requestedTenantId ?? (await getActiveTenantIdFromCookie());
   const memberships = await listTenantMemberships(user.id);
-  const membership = selectActiveTenantMembership({ memberships, requestedTenantId });
+  const membership =
+    selectActiveTenantMembership({ memberships, requestedTenantId }) ??
+    (await selectDevelopmentPlatformOwnerTenantMembership({ user, requestedTenantId }));
   if (!membership) {
     throw new TenantSessionError("User does not belong to the requested tenant.", "tenant_forbidden");
   }
