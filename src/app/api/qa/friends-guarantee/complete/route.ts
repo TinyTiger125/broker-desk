@@ -4,7 +4,6 @@ import {
   activeDataDriver,
   addAuditLog,
   getBrokerageCaseById,
-  getDefaultUser,
   saveGuaranteeApplicationDraft,
   updateBrokerageCaseConfirmedData,
 } from "@/lib/data";
@@ -22,6 +21,7 @@ import {
 } from "@/lib/friends-guarantee-pdf";
 import { COMPLETE_CASE_FIELD_DEFAULTS, COMPLETE_DRAFT_DEFAULTS } from "@/lib/guarantee-application-fixtures";
 import { isQaApiRequestAllowed, rejectQaApiRequest } from "@/lib/qa-api";
+import { TenantSessionError, requireTenantSession } from "@/lib/tenant-session";
 
 export const dynamic = "force-dynamic";
 
@@ -41,17 +41,24 @@ export async function POST(request: Request) {
     draftFields?: Record<string, string>;
     overwrite?: boolean;
   };
-  const user = await getDefaultUser();
-  if (!user) {
-    return NextResponse.json({ ok: false, error: "user_not_found" }, { status: 401 });
+  let session;
+  try {
+    session = await requireTenantSession({ permission: "output.update_draft" });
+  } catch (error) {
+    if (error instanceof TenantSessionError) {
+      return NextResponse.json({ ok: false, error: error.code }, { status: error.status });
+    }
+    throw error;
   }
+  const user = session.user;
+  const tenantId = session.tenant.id;
 
   const caseId = String(body.caseId ?? "").trim();
   if (!caseId) {
     return NextResponse.json({ ok: false, error: "case_id_required" }, { status: 400 });
   }
 
-  const brokerageCase = await getBrokerageCaseById({ userId: user.id, caseId });
+  const brokerageCase = await getBrokerageCaseById({ userId: user.id, tenantId, caseId });
   if (!brokerageCase) {
     return NextResponse.json({ ok: false, error: "case_not_found" }, { status: 404 });
   }
@@ -89,6 +96,7 @@ export async function POST(request: Request) {
 
   const updatedCase = await updateBrokerageCaseConfirmedData({
     userId: user.id,
+    tenantId,
     caseId,
     confirmedDataJson: nextConfirmedData,
   });
@@ -110,6 +118,7 @@ export async function POST(request: Request) {
     const readiness = buildGuaranteeDraftReadiness({
       id: "qa_complete",
       userId: user.id,
+      tenantId,
       caseId,
       templateId: template.id,
       companyCode: template.companyCode,
@@ -121,6 +130,7 @@ export async function POST(request: Request) {
     }, template.id);
     const draft = await saveGuaranteeApplicationDraft({
       userId: user.id,
+      tenantId,
       caseId,
       templateId: template.id,
       companyCode: template.companyCode,
@@ -139,6 +149,7 @@ export async function POST(request: Request) {
     drafts.find((result) => result.draft.templateId === primaryTemplate?.id) ?? primaryDraft;
 
   await addAuditLog({
+    tenantId,
     userId: user.id,
     action: "qa_guarantee_applications_completed",
     targetType: "import_job",

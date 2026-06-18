@@ -178,6 +178,10 @@ Implemented or materially present:
   - initial role/action permission matrix exists for tenant, case, source, extraction, record, review, output, template, AI, and audit actions.
   - `/api/tenant/session` exposes the resolved user, tenant, membership, and role for diagnostics.
 - AI correction-event and approved-experience skeleton.
+- Phase 2 tenant-scoped business data access on the main application path:
+  - business records carry `tenantId` in memory and Postgres repositories.
+  - pages, server actions, and frontstage APIs resolve a tenant session and pass tenant scope into repository calls.
+  - cross-tenant regression covers cases, source jobs, review items, guarantee drafts, correction events, AI drafts, attachments, generated outputs, and template settings/versions.
 - Stitch-based visual direction has been partially integrated.
 
 Not yet release-ready:
@@ -187,8 +191,8 @@ Not yet release-ready:
 - Company-specific checkbox/plan option output is incomplete on some templates.
 - Some UI still mixes broker workflow and admin/template-factory controls.
 - Auth is still local/demo-session based; production identity provider login is not implemented.
-- Phase 2 tenant-scoped business data access is not implemented: existing cases, source files, confirmed records, outputs, templates, AI jobs, and audit data are not yet fully protected by `tenant_id` repository boundaries.
-- Permission architecture is not yet enforced across all routes, server actions, template governance, AI calls, or audit.
+- Real production identity provider login is not implemented; current tenant resolution still starts from the local/demo user model.
+- Route-level permission enforcement exists on the main application path but is not a substitute for a production auth provider, database RLS, or member-management UI.
 
 ## Guarantee Template Status
 
@@ -346,11 +350,10 @@ Architecture lesson:
 
 Immediate:
 
-1. Start Phase 2 tenant-scoped data access: add `tenant_id` to business tables and seed/local memory records.
-2. Change repository reads/writes from raw ids to tenant-scoped helpers.
-3. Add denial tests proving tenant A cannot access tenant B cases, source files, records, outputs, templates, AI jobs, or audit rows.
-4. Then wire `requireTenantSession` and action permissions into frontstage API routes/server actions.
-5. Preserve the current 1/2/3/4/5 template coordinate state and avoid accidental overwrite.
+1. Harden Phase 2 with production auth integration and persistent-database migration verification.
+2. Add member-management UI and tenant switching semantics for real users.
+3. Add denial tests for high-risk permissions: template publish, source delete, final download, AI pre-match overwrite, and member role changes.
+4. Preserve the current 1/2/3/4/5 template coordinate state and avoid accidental overwrite.
 
 Near term:
 

@@ -4,7 +4,6 @@ import {
   activeDataDriver,
   addAuditLog,
   getBrokerageCaseById,
-  getDefaultUser,
   updateBrokerageCaseConfirmedData,
 } from "@/lib/data";
 import {
@@ -16,6 +15,7 @@ import {
   sanitizeGuaranteeConfirmedOverlayFields,
 } from "@/lib/friends-guarantee-pdf";
 import { isQaApiRequestAllowed, rejectQaApiRequest } from "@/lib/qa-api";
+import { TenantSessionError, requireTenantSession } from "@/lib/tenant-session";
 
 export const dynamic = "force-dynamic";
 
@@ -117,11 +117,20 @@ export async function POST(request: Request) {
   }
 
   const body = (await request.json().catch(() => ({}))) as { caseId?: string };
-  const user = await getDefaultUser();
-  if (!user) return NextResponse.json({ ok: false, error: "user_not_found" }, { status: 401 });
+  let session;
+  try {
+    session = await requireTenantSession({ permission: "output.update_draft" });
+  } catch (error) {
+    if (error instanceof TenantSessionError) {
+      return NextResponse.json({ ok: false, error: error.code }, { status: error.status });
+    }
+    throw error;
+  }
+  const user = session.user;
+  const tenantId = session.tenant.id;
 
   const caseId = String(body.caseId ?? DEFAULT_CASE_ID).trim() || DEFAULT_CASE_ID;
-  const brokerageCase = await getBrokerageCaseById({ userId: user.id, caseId });
+  const brokerageCase = await getBrokerageCaseById({ userId: user.id, tenantId, caseId });
   if (!brokerageCase) return NextResponse.json({ ok: false, error: "case_not_found" }, { status: 404 });
 
   const nextConfirmedData: Record<string, unknown> = {
@@ -145,12 +154,14 @@ export async function POST(request: Request) {
 
   const updatedCase = await updateBrokerageCaseConfirmedData({
     userId: user.id,
+    tenantId,
     caseId,
     confirmedDataJson: nextConfirmedData,
   });
   if (!updatedCase) return NextResponse.json({ ok: false, error: "case_update_failed" }, { status: 500 });
 
   await addAuditLog({
+    tenantId,
     userId: user.id,
     action: "qa_zenhoren_auto_demo_generated",
     targetType: "import_job",

@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
 import * as XLSX from "xlsx";
 import { NextResponse } from "next/server";
-import { addAuditLog, addImportJob, getDefaultUser } from "@/lib/data";
+import { addAuditLog, addImportJob } from "@/lib/data";
 import { extractInputFileFromWorkbook, type InputFileExtractionResult } from "@/lib/input-file-extractor";
+import { TenantSessionError, requireTenantSession } from "@/lib/tenant-session";
 
 export const dynamic = "force-dynamic";
 
@@ -20,10 +21,17 @@ type ExcelImportPayload = {
 };
 
 export async function POST(request: Request) {
-  const user = await getDefaultUser();
-  if (!user) {
-    return NextResponse.json({ ok: false, error: "user_not_found" }, { status: 401 });
+  let session;
+  try {
+    session = await requireTenantSession({ permission: "source.upload" });
+  } catch (error) {
+    if (error instanceof TenantSessionError) {
+      return NextResponse.json({ ok: false, error: error.code }, { status: error.status });
+    }
+    throw error;
   }
+  const user = session.user;
+  const tenantId = session.tenant.id;
   const contentLength = Number(request.headers.get("content-length") ?? 0);
   if (Number.isFinite(contentLength) && contentLength > MAX_EXCEL_UPLOAD_BYTES + MAX_MULTIPART_OVERHEAD_BYTES) {
     return NextResponse.json({ ok: false, error: "file_too_large", maxBytes: MAX_EXCEL_UPLOAD_BYTES }, { status: 413 });
@@ -62,6 +70,7 @@ export async function POST(request: Request) {
   };
 
   const job = await addImportJob({
+    tenantId,
     userId: user.id,
     sourceType: "excel",
     targetEntity: inputExtraction.extractionStatus === "recognized" ? "contracts" : "properties",
@@ -71,6 +80,7 @@ export async function POST(request: Request) {
   });
 
   await addAuditLog({
+    tenantId,
     userId: user.id,
     action: inputExtraction.extractionStatus === "recognized" ? "input_file_extraction_created" : "input_file_extraction_unknown",
     targetType: "import_job",

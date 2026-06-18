@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PrintToolbar } from "@/components/print-toolbar";
-import { getDefaultUser, getOutputTemplateSettings, getQuotationById } from "@/lib/data";
+import { getOutputTemplateSettings, getQuotationById } from "@/lib/data";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { getLocale } from "@/lib/locale";
 import {
@@ -11,12 +11,12 @@ import {
 } from "@/lib/options";
 import {
   createDocumentNumber,
-  getDefaultOutputTemplateSettings,
   getOutputTitle,
   isOutputDocType,
   getOutputDocDescription,
   type OutputDocType,
 } from "@/lib/output-doc";
+import { requireTenantSession } from "@/lib/tenant-session";
 
 export const dynamic = "force-dynamic";
 
@@ -291,7 +291,10 @@ const texts = {
 } as const;
 
 export default async function QuotePrintPage({ params, searchParams }: QuotePrintPageProps) {
-  const locale = await getLocale();
+  const [locale, session] = await Promise.all([
+    getLocale(),
+    requireTenantSession({ permission: "output.preview" }),
+  ]);
   const tx = texts[locale];
   const brokerageLabel = getBrokerageContractTypeLabel(locale);
   const loanPreLabel = getLoanPreApprovalLabel(locale);
@@ -299,7 +302,7 @@ export default async function QuotePrintPage({ params, searchParams }: QuotePrin
 
   const { id } = await params;
   const query = (await searchParams) ?? {};
-  const quote = await getQuotationById(id);
+  const quote = await getQuotationById(id, session.tenant.id);
 
   if (!quote || !quote.client) {
     notFound();
@@ -313,10 +316,7 @@ export default async function QuotePrintPage({ params, searchParams }: QuotePrin
   const versionMatch = quote.quoteTitle.match(/\sv(\d+)$/i);
   const versionLabel = versionMatch ? `Ver.${versionMatch[1]}` : "Ver.1";
   const documentNumber = createDocumentNumber(quote.id, docType, issueAt);
-  const user = await getDefaultUser();
-  const settings = user
-    ? await getOutputTemplateSettings(user.id)
-    : getDefaultOutputTemplateSettings("user_demo");
+  const settings = await getOutputTemplateSettings(session.user.id, session.tenant.id);
 
   const acquisitionExpense = quote.brokerageFee + quote.taxFee + quote.otherFee;
   const initialCashRequired = quote.downPayment + acquisitionExpense;

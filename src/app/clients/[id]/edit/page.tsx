@@ -4,6 +4,7 @@ import { updateClientProfile } from "@/app/actions";
 import { ClientForm } from "@/components/client-form";
 import { getClientById } from "@/lib/data";
 import { getLocale } from "@/lib/locale";
+import { requireTenantSession } from "@/lib/tenant-session";
 
 export const dynamic = "force-dynamic";
 
@@ -30,10 +31,13 @@ const texts = {
 } as const;
 
 export default async function EditClientPage({ params }: EditClientPageProps) {
-  const locale = await getLocale();
+  const [locale, session] = await Promise.all([
+    getLocale(),
+    requireTenantSession({ permission: "record.update" }),
+  ]);
   const text = texts[locale];
   const { id } = await params;
-  const client = await getClientById(id);
+  const client = await getClientById(id, session.tenant.id);
 
   if (!client) {
     notFound();

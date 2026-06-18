@@ -2,7 +2,7 @@ import Link from "next/link";
 import { generateOutputDocumentAction } from "@/app/actions";
 import { FormDraftAssist } from "@/components/form-draft-assist";
 import { PageFlashBanner } from "@/components/page-flash-banner";
-import { getDefaultUser, getGuaranteeApplicationDraft, listBrokerageCases, listQuoteFormData, listQuotations } from "@/lib/data";
+import { getGuaranteeApplicationDraft, listBrokerageCases, listQuoteFormData, listQuotations } from "@/lib/data";
 import { formatCurrency, formatDate } from "@/lib/format";
 import {
   buildGuaranteeApplicationReadiness,
@@ -16,6 +16,7 @@ import { listHubGeneratedOutputs, listHubParties } from "@/lib/hub";
 import { t } from "@/lib/i18n";
 import { getLocale, type Locale } from "@/lib/locale";
 import { getOutputDocDescription, getOutputDocLabel, isOutputDocType, type OutputDocType } from "@/lib/output-doc";
+import { requireTenantSession } from "@/lib/tenant-session";
 
 export const dynamic = "force-dynamic";
 
@@ -409,19 +410,21 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
   const locale = await getLocale();
   const params = searchParams ? await searchParams : undefined;
   const copy = outputCenterCopy[locale];
-  const userPromise = getDefaultUser();
-  const quoteDataPromise = listQuoteFormData();
-  const quotesPromise = listQuotations(100);
-  const partiesPromise = listHubParties(locale);
-  const outputsPromise = listHubGeneratedOutputs(locale);
-  const [user, { properties }, quotes, parties, outputs] = await Promise.all([
-    userPromise,
+  const session = await requireTenantSession({ permission: "output.preview" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
+  const hubContext = { userId: user.id, tenantId };
+  const quoteDataPromise = listQuoteFormData(tenantId);
+  const quotesPromise = listQuotations(100, tenantId);
+  const partiesPromise = listHubParties(locale, hubContext);
+  const outputsPromise = listHubGeneratedOutputs(locale, hubContext);
+  const [{ properties }, quotes, parties, outputs] = await Promise.all([
     quoteDataPromise,
     quotesPromise,
     partiesPromise,
     outputsPromise,
   ]);
-  const cases = user ? await listBrokerageCases(user.id, 50) : [];
+  const cases = await listBrokerageCases(user.id, 50, tenantId);
   const selectedCaseId = String(params?.caseId ?? "").trim();
   const selectedCase = selectedCaseId
     ? cases.find((item) => item.id === selectedCaseId)
@@ -435,11 +438,12 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
   const selectedGuaranteeTemplate = getGuaranteeCompanyTemplate(requestedGuaranteeTemplate);
   const selectedGuaranteeTemplateNeedsCalibration = selectedGuaranteeTemplate.qualityStatus !== "verified";
   const guaranteeTemplateDrafts =
-    user && selectedCase
+    selectedCase
       ? await Promise.all(
           activeGuaranteeTemplates.map((template) =>
             getGuaranteeApplicationDraft({
               userId: user.id,
+              tenantId,
               caseId: selectedCase.id,
               templateId: template.id,
             }),

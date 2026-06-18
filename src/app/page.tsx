@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getDefaultUser, getGuaranteeApplicationDraft, listBrokerageCases } from "@/lib/data";
+import { getGuaranteeApplicationDraft, listBrokerageCases } from "@/lib/data";
 import { formatDate } from "@/lib/format";
 import {
   buildGuaranteeDraftReadiness,
@@ -8,6 +8,7 @@ import {
 } from "@/lib/guarantee-application";
 import { listHubImportJobs } from "@/lib/hub";
 import { getLocale } from "@/lib/locale";
+import { requireTenantSession } from "@/lib/tenant-session";
 
 export const dynamic = "force-dynamic";
 
@@ -248,12 +249,16 @@ const copyByLocale = {
 } as const;
 
 export default async function HomePage() {
-  const [locale, user] = await Promise.all([getLocale(), getDefaultUser()]);
+  const [locale, session] = await Promise.all([getLocale(), requireTenantSession({ permission: "tenant.read" })]);
+  const user = session.user;
+  const tenantId = session.tenant.id;
   const copy = copyByLocale[locale];
 
-  if (!user) return <p className="text-sm text-slate-600">{copy.noUser}</p>;
-
-  const [cases, importJobs] = await Promise.all([listBrokerageCases(user.id, 20), listHubImportJobs()]);
+  const hubContext = { userId: user.id, tenantId };
+  const [cases, importJobs] = await Promise.all([
+    listBrokerageCases(user.id, 20, tenantId),
+    listHubImportJobs(hubContext),
+  ]);
   const currentCase =
     cases.find((item) => item.id === "case_fixture_friends_guarantee_pdf") ??
     cases.find((item) => item.status === "reviewed") ??
@@ -267,6 +272,7 @@ export default async function HomePage() {
         activeGuaranteeTemplates.map((template) =>
           getGuaranteeApplicationDraft({
             userId: user.id,
+            tenantId,
             caseId: currentCase.id,
             templateId: template.id,
           }),

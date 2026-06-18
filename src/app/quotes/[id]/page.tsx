@@ -8,6 +8,7 @@ import { getLocale } from "@/lib/locale";
 import { getQuoteStatusLabel, getQuoteStatusOptions } from "@/lib/options";
 import { generateQuoteSummaries } from "@/lib/quote";
 import { getOutputDocDescription, getOutputDocLabel, type OutputDocType } from "@/lib/output-doc";
+import { requireTenantSession } from "@/lib/tenant-session";
 
 export const dynamic = "force-dynamic";
 
@@ -128,14 +129,18 @@ const texts = {
 } as const;
 
 export default async function QuoteDetailPage({ params, searchParams }: QuoteDetailPageProps) {
-  const locale = await getLocale();
+  const [locale, session] = await Promise.all([
+    getLocale(),
+    requireTenantSession({ permission: "record.read" }),
+  ]);
   const text = texts[locale];
   const quoteStatusLabel = getQuoteStatusLabel(locale);
   const quoteStatusOptions = getQuoteStatusOptions(locale);
 
   const { id } = await params;
   const query = (await searchParams) ?? {};
-  const quote = await getQuotationById(id);
+  const tenantId = session.tenant.id;
+  const quote = await getQuotationById(id, tenantId);
 
   if (!quote || !quote.client) {
     notFound();
@@ -159,7 +164,7 @@ export default async function QuoteDetailPage({ params, searchParams }: QuoteDet
     locale
   );
   const compareMode = query.compare === "1";
-  const clientDetail = await getClientDetail(quote.client.id);
+  const clientDetail = await getClientDetail(quote.client.id, tenantId);
   const clientQuotes = (clientDetail?.quotations ?? []).slice(0, 5);
   const outputTypes: OutputDocType[] = ["proposal", "estimate_sheet", "funding_plan", "assumption_memo"];
 

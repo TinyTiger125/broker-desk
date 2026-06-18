@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { rollbackCaseMergeAction, saveCaseWorkbenchAction, saveGuaranteeApplicationDraftAction } from "@/app/actions";
 import { PageFlashBanner } from "@/components/page-flash-banner";
-import { getBrokerageCaseById, getDefaultUser, getGuaranteeApplicationDraft, listCorrectionEvents, listExtractionReviewItems, listImportJobs } from "@/lib/data";
+import { getBrokerageCaseById, getGuaranteeApplicationDraft, listCorrectionEvents, listExtractionReviewItems, listImportJobs } from "@/lib/data";
 import type { CorrectionEvent, ExtractionReviewItem, ExtractionReviewStatus } from "@/lib/data";
 import { getCaseFieldAliases, getCaseFieldValue } from "@/lib/case-field-normalization";
 import { CASE_FIELD_CATALOG_GROUPS, getCaseFieldDefinition, type CaseFieldDefinition } from "@/lib/case-field-catalog";
@@ -20,6 +20,7 @@ import {
 } from "@/lib/guarantee-application";
 import { evaluateGuaranteeDownloadGate } from "@/lib/guarantee-download-gate";
 import { getLocale, type Locale } from "@/lib/locale";
+import { requireTenantSession } from "@/lib/tenant-session";
 
 export const dynamic = "force-dynamic";
 
@@ -791,8 +792,9 @@ function WorkbenchEvidenceDetails({ locale, field }: { locale: Locale; field: Wo
 
 export default async function CasePage({ params, searchParams }: CasePageProps) {
   const locale = await getLocale();
-  const user = await getDefaultUser();
-  if (!user) notFound();
+  const session = await requireTenantSession({ permission: "case.read_assigned" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
 
   const [{ id }, query] = await Promise.all([
     params,
@@ -806,12 +808,12 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
     activeGuaranteeTemplates[0] ??
     getGuaranteeCompanyTemplate(requestedGuaranteeTemplateId);
   const [brokerageCase, reviewItems, correctionEvents, importJobs, ...guaranteeDrafts] = await Promise.all([
-    getBrokerageCaseById({ userId: user.id, caseId: id }),
-    listExtractionReviewItems({ userId: user.id, caseId: id }),
-    listCorrectionEvents({ userId: user.id, caseId: id, limit: 12 }),
-    listImportJobs(user.id, 200),
+    getBrokerageCaseById({ userId: user.id, tenantId, caseId: id }),
+    listExtractionReviewItems({ userId: user.id, tenantId, caseId: id }),
+    listCorrectionEvents({ userId: user.id, tenantId, caseId: id, limit: 12 }),
+    listImportJobs(user.id, 200, tenantId),
     ...activeGuaranteeTemplates.map((template) =>
-      getGuaranteeApplicationDraft({ userId: user.id, caseId: id, templateId: template.id }),
+      getGuaranteeApplicationDraft({ userId: user.id, tenantId, caseId: id, templateId: template.id }),
     ),
   ]);
   if (!brokerageCase) notFound();

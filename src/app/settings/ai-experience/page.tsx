@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { draftAiExperiencesAction, reviewAiExperienceDraftAction } from "@/app/actions";
-import { getDefaultUser, listAiExperienceDrafts, listCorrectionEvents, type AiExperienceDraftStatus } from "@/lib/data";
+import { listAiExperienceDrafts, listCorrectionEvents, type AiExperienceDraftStatus } from "@/lib/data";
 import { formatDate } from "@/lib/format";
 import { getLocale, type Locale } from "@/lib/locale";
+import { requireTenantSession } from "@/lib/tenant-session";
 
 export const dynamic = "force-dynamic";
 
@@ -58,14 +59,19 @@ function scopeLabel(scope: string) {
 }
 
 export default async function AiExperiencePage({ searchParams }: AiExperiencePageProps) {
-  const [params, locale, user] = await Promise.all([searchParams, getLocale(), getDefaultUser()]);
-  if (!user) return <p className="text-sm text-slate-600">{tr(locale, { ja: "利用可能なユーザーがありません。", zh: "没有可用用户。", ko: "사용 가능한 사용자가 없습니다." })}</p>;
+  const [params, locale, session] = await Promise.all([
+    searchParams,
+    getLocale(),
+    requireTenantSession({ permission: "ai.experience_review" }),
+  ]);
+  const user = session.user;
+  const tenantId = session.tenant.id;
 
   const selectedStatus = isDraftStatus(params?.status) ? params.status : undefined;
   const [visibleDrafts, allDrafts, correctionEvents] = await Promise.all([
-    listAiExperienceDrafts({ userId: user.id, status: selectedStatus, limit: 80 }),
-    listAiExperienceDrafts({ userId: user.id, limit: 300 }),
-    listCorrectionEvents({ userId: user.id, limit: 120 }),
+    listAiExperienceDrafts({ userId: user.id, tenantId, status: selectedStatus, limit: 80 }),
+    listAiExperienceDrafts({ userId: user.id, tenantId, limit: 300 }),
+    listCorrectionEvents({ userId: user.id, tenantId, limit: 120 }),
   ]);
   const counts = {
     all: allDrafts.length,

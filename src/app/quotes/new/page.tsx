@@ -2,6 +2,7 @@ import { createQuotation } from "@/app/actions";
 import { QuoteForm } from "@/components/quote-form";
 import { listQuoteFormData } from "@/lib/data";
 import { getLocale } from "@/lib/locale";
+import { requireTenantSession } from "@/lib/tenant-session";
 
 export const dynamic = "force-dynamic";
 
@@ -25,10 +26,13 @@ const texts = {
 } as const;
 
 export default async function NewQuotePage({ searchParams }: NewQuotePageProps) {
-  const locale = await getLocale();
+  const [locale, session] = await Promise.all([
+    getLocale(),
+    requireTenantSession({ permission: "record.read" }),
+  ]);
   const text = texts[locale];
   const params = (await searchParams) ?? {};
-  const { clients, properties } = await listQuoteFormData();
+  const { clients, properties } = await listQuoteFormData(session.tenant.id);
   const hasDefaultClient = clients.some((client) => client.id === params.clientId);
 
   return (

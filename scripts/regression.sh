@@ -97,6 +97,9 @@ NODE
 echo "[STEP] tenant session foundation"
 node scripts/check-tenant-session.mjs || fail "tenant session foundation failed"
 
+echo "[STEP] tenant data access boundary"
+node scripts/check-tenant-data-access.mjs || fail "tenant data access boundary failed"
+
 echo "[STEP] health check"
 health_json="$(curl -fsS "${BASE_URL}/api/health/data")" || fail "health endpoint unreachable"
 echo "$health_json" | grep '"ok":true' >/dev/null || fail "health check returned not ok"
@@ -388,8 +391,9 @@ invalid_property_html="$(curl -fsS "${BASE_URL}/output-center?type=property_over
 echo "$invalid_property_html" | grep '対象物件が未選択です' >/dev/null || fail "property overview invalid-target state not explicit"
 curl -fsS "${BASE_URL}/templates" >/dev/null || fail "templates unreachable"
 
-quote_path="$(echo "$output_html" | rg -o '/quotes/[A-Za-z0-9_-]+' | rg -v '/quotes/new' | head -n 1)"
-[ -n "$quote_path" ] || fail "no quote link found on output-center"
+quotes_html="$(curl -fsS "${BASE_URL}/quotes")" || fail "quotes page unreachable"
+quote_path="$(printf '%s\n' "$quotes_html" | rg -o '/quotes/quote_[A-Za-z0-9_-]+' | head -n 1 || true)"
+[ -n "$quote_path" ] || fail "no quote link found on quotes page"
 
 echo "[STEP] output templates"
 proposal_html="$(curl -fsS "${BASE_URL}${quote_path}/print?type=proposal")" || fail "proposal template unreachable"

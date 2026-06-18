@@ -1,19 +1,15 @@
 import { NextResponse } from "next/server";
-import { getBrokerageCaseById, getDefaultUser, getGuaranteeApplicationDraft } from "@/lib/data";
+import { getBrokerageCaseById, getGuaranteeApplicationDraft } from "@/lib/data";
 import { renderFriendsGuaranteePdf } from "@/lib/friends-guarantee-pdf";
 import { getGuaranteeCompanyTemplate } from "@/lib/guarantee-application";
 import { evaluateGuaranteeDownloadGate } from "@/lib/guarantee-download-gate";
+import { requireTenantSession, TenantSessionError } from "@/lib/tenant-session";
 
 function safePdfFileName(value: string): string {
   return (value.replace(/[^\p{L}\p{N}_-]+/gu, "_").slice(0, 80) || "friends_guarantee_application") + ".pdf";
 }
 
 export async function GET(request: Request) {
-  const user = await getDefaultUser();
-  if (!user) {
-    return NextResponse.json({ error: "user_not_found" }, { status: 401 });
-  }
-
   const url = new URL(request.url);
   const caseId = String(url.searchParams.get("caseId") ?? "").trim();
   const mode = String(url.searchParams.get("mode") ?? "").trim();
@@ -21,12 +17,23 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "case_required" }, { status: 400 });
   }
 
-  const brokerageCase = await getBrokerageCaseById({ userId: user.id, caseId });
+  let session;
+  try {
+    session = await requireTenantSession({ permission: mode === "preview" ? "output.preview" : "output.download_final" });
+  } catch (error) {
+    if (error instanceof TenantSessionError) {
+      return NextResponse.json({ error: error.code }, { status: error.status });
+    }
+    throw error;
+  }
+
+  const brokerageCase = await getBrokerageCaseById({ userId: session.user.id, tenantId: session.tenant.id, caseId });
   if (!brokerageCase) {
     return NextResponse.json({ error: "case_not_found" }, { status: 404 });
   }
   const draft = await getGuaranteeApplicationDraft({
-    userId: user.id,
+    userId: session.user.id,
+    tenantId: session.tenant.id,
     caseId,
     templateId: "friends_guarantee_individual_v1",
   });

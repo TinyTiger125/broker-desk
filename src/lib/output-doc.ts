@@ -1,4 +1,5 @@
 import type { Locale } from "@/lib/locale";
+import { DEFAULT_TENANT_ID } from "@/lib/tenant-constants";
 
 export type OutputDocType = "property_overview" | "proposal" | "estimate_sheet" | "funding_plan" | "assumption_memo";
 
@@ -74,6 +75,7 @@ export function isOutputDocType(value: string): value is OutputDocType {
 
 export type OutputTemplateSettings = {
   id: string;
+  tenantId?: string;
   userId: string;
   companyName: string;
   department: string;
@@ -152,9 +154,10 @@ export function getOutputCompanyProfile(): OutputCompanyProfile {
   };
 }
 
-export function getDefaultOutputTemplateSettings(userId: string): OutputTemplateSettings {
+export function getDefaultOutputTemplateSettings(userId: string, tenantId = DEFAULT_TENANT_ID): OutputTemplateSettings {
   return {
     id: `output_tpl_${userId}`,
+    tenantId,
     userId,
     companyName: process.env.OUTPUT_COMPANY_NAME ?? "株式会社ブローカーデスク不動産",
     department: process.env.OUTPUT_DEPARTMENT ?? "売買仲介部",

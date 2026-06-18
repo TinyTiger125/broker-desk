@@ -13,7 +13,7 @@ import {
 import { FormDraftAssist } from "@/components/form-draft-assist";
 import { InputExtractionReview } from "@/components/input-extraction-review";
 import { PageFlashBanner } from "@/components/page-flash-banner";
-import { getDefaultUser, listBrokerageCases } from "@/lib/data";
+import { listBrokerageCases } from "@/lib/data";
 import { formatDate } from "@/lib/format";
 import { t } from "@/lib/i18n";
 import type { InputFileExtractionResult } from "@/lib/input-file-extractor";
@@ -25,6 +25,7 @@ import {
 } from "@/lib/import-mapping";
 import { getLocale, type Locale } from "@/lib/locale";
 import { listHubAttachments, listHubImportJobs, type HubImportJobItem } from "@/lib/hub";
+import { requireTenantSession } from "@/lib/tenant-session";
 
 export const dynamic = "force-dynamic";
 
@@ -430,12 +431,21 @@ function isInputFileExtractionJob(job: HubImportJobItem) {
 }
 
 export default async function ImportCenterPage({ searchParams }: ImportCenterPageProps) {
-  const locale = await getLocale();
+  const [locale, session] = await Promise.all([
+    getLocale(),
+    requireTenantSession({ permission: "source.read" }),
+  ]);
   const copy = getCopy(locale);
   const params = searchParams ? await searchParams : undefined;
   const showAdvanced = params?.advanced === "1";
-  const [jobs, attachments, user] = await Promise.all([listHubImportJobs(), listHubAttachments(locale, 30), getDefaultUser()]);
-  const cases = user ? await listBrokerageCases(user.id, 20) : [];
+  const user = session.user;
+  const tenantId = session.tenant.id;
+  const hubContext = { userId: user.id, tenantId };
+  const [jobs, attachments, cases] = await Promise.all([
+    listHubImportJobs(hubContext),
+    listHubAttachments(locale, 30, hubContext),
+    listBrokerageCases(user.id, 20, tenantId),
+  ]);
   const currentCase =
     cases.find((item) => item.id === "case_fixture_friends_guarantee_pdf") ??
     cases.find((item) => item.status === "reviewed") ??

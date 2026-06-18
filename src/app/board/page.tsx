@@ -1,6 +1,7 @@
 import { BoardKanban } from "@/components/board-kanban";
-import { getBoardData, getDefaultUser } from "@/lib/data";
+import { getBoardData } from "@/lib/data";
 import { getLocale } from "@/lib/locale";
+import { requireTenantSession } from "@/lib/tenant-session";
 
 export const dynamic = "force-dynamic";
 
@@ -23,15 +24,13 @@ const texts = {
 } as const;
 
 export default async function BoardPage() {
-  const locale = await getLocale();
+  const [locale, session] = await Promise.all([
+    getLocale(),
+    requireTenantSession({ permission: "record.read" }),
+  ]);
   const text = texts[locale];
 
-  const user = await getDefaultUser();
-  if (!user) {
-    return <p className="text-sm text-slate-600">{text.noUser}</p>;
-  }
-
-  const board = await getBoardData(user.id);
+  const board = await getBoardData(session.user.id, session.tenant.id);
 
   const initialBoard = {
     lead: board.lead.map((item) => ({

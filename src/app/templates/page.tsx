@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { getDefaultUser, listBrokerageCases, listOutputTemplateVersions } from "@/lib/data";
+import { listBrokerageCases, listOutputTemplateVersions } from "@/lib/data";
 import { formatDate } from "@/lib/format";
 import {
   guaranteeCompanyTemplates,
@@ -9,6 +9,7 @@ import {
   type GuaranteeTemplateQualityStatus,
 } from "@/lib/guarantee-application";
 import { getLocale, type Locale } from "@/lib/locale";
+import { requireTenantSession } from "@/lib/tenant-session";
 
 export const dynamic = "force-dynamic";
 
@@ -203,17 +204,21 @@ function countCompletionModes(template: GuaranteeCompanyTemplate) {
 }
 
 export default async function TemplatesPage({ searchParams }: TemplatesPageProps) {
-  const locale = await getLocale();
+  const [locale, session] = await Promise.all([
+    getLocale(),
+    requireTenantSession({ permission: "template.view" }),
+  ]);
   const copy = copyByLocale[locale];
   const params = searchParams ? await searchParams : undefined;
   const selectedTemplateId = params?.template ?? "friends_guarantee_individual_v1";
   const templates = guaranteeCompanyTemplates.filter((template) => template.outputStatus === "active");
   const selectedTemplate = templates.find((template) => template.id === selectedTemplateId) ?? templates[0];
   const selectedVisual = templateVisuals[selectedTemplate.id] ?? templateVisuals.friends_guarantee_individual_v1;
-  const user = await getDefaultUser();
+  const user = session.user;
+  const tenantId = session.tenant.id;
   const [versions, cases] = await Promise.all([
-    user ? listOutputTemplateVersions(user.id, 6) : Promise.resolve([]),
-    user ? listBrokerageCases(user.id, 20) : Promise.resolve([]),
+    listOutputTemplateVersions(user.id, 6, tenantId),
+    listBrokerageCases(user.id, 20, tenantId),
   ]);
   const currentCase =
     cases.find((item) => item.id === "case_fixture_friends_guarantee_pdf") ??

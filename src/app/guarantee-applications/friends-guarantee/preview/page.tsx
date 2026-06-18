@@ -4,7 +4,7 @@ import { saveGuaranteeApplicationPreviewAction } from "@/app/actions";
 import { FriendsGuaranteeCalibrationPreview } from "@/components/friends-guarantee-calibration-preview";
 import { PageFlashBanner } from "@/components/page-flash-banner";
 import { CASE_FIELD_DEFINITIONS, type CatalogCaseFieldDefinition } from "@/lib/case-field-catalog";
-import { getBrokerageCaseById, getDefaultUser, getGuaranteeApplicationDraft, listBrokerageCases } from "@/lib/data";
+import { getBrokerageCaseById, getGuaranteeApplicationDraft, listBrokerageCases } from "@/lib/data";
 import { formatDate } from "@/lib/format";
 import {
   buildGuaranteeDraftReadiness,
@@ -32,6 +32,7 @@ import {
 } from "@/lib/friends-guarantee-pdf";
 import { getFriendsOverlayEstimatedTextFit, type FriendsOverlayTextFitStatus } from "@/lib/friends-guarantee-fit";
 import { evaluateGuaranteeDownloadGate } from "@/lib/guarantee-download-gate";
+import { requireTenantSession } from "@/lib/tenant-session";
 
 export const dynamic = "force-dynamic";
 
@@ -123,23 +124,18 @@ type PreviewBindingOption = {
 
 export default async function GuaranteeApplicationPreviewPage({ searchParams }: GuaranteeApplicationPreviewPageProps) {
   const params = searchParams ? await searchParams : undefined;
-  const user = await getDefaultUser();
-  if (!user) {
-    return (
-      <main className="min-h-screen bg-slate-50 p-6">
-        <div className="rounded-xl border border-rose-200 bg-white p-5 text-sm font-bold text-rose-700">担当ユーザーが見つかりません。</div>
-      </main>
-    );
-  }
+  const session = await requireTenantSession({ permission: "output.preview" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
 
-  const cases = await listBrokerageCases(user.id, 50);
+  const cases = await listBrokerageCases(user.id, 50, tenantId);
   const requestedCaseId = String(params?.caseId ?? "").trim();
   const requestedTemplateId = String(params?.templateId ?? FRIENDS_GUARANTEE_DEFAULT_TEMPLATE_ID).trim() || FRIENDS_GUARANTEE_DEFAULT_TEMPLATE_ID;
   const template = findGuaranteeCompanyTemplate(requestedTemplateId);
   if (!template) notFound();
   const templateConfig = getGuaranteePdfTemplateConfig(template.id);
   const selectedCase =
-    (requestedCaseId ? await getBrokerageCaseById({ userId: user.id, caseId: requestedCaseId }) : null) ??
+    (requestedCaseId ? await getBrokerageCaseById({ userId: user.id, tenantId, caseId: requestedCaseId }) : null) ??
     cases.find((item) => item.id === "case_fixture_friends_guarantee_pdf") ??
     cases.find((item) => item.status === "reviewed") ??
     cases[0] ??
@@ -147,6 +143,7 @@ export default async function GuaranteeApplicationPreviewPage({ searchParams }: 
   const draft = selectedCase
     ? await getGuaranteeApplicationDraft({
         userId: user.id,
+        tenantId,
         caseId: selectedCase.id,
         templateId: template.id,
       })

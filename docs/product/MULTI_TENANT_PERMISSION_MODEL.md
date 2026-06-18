@@ -696,6 +696,23 @@ Exit criteria:
 
 Goal: prevent cross-tenant data leaks.
 
+Implementation status as of 2026-06-18: implemented for the main application path, with production hardening still required.
+
+Implemented:
+
+- Business-owned memory and Postgres records now carry `tenant_id`/`tenantId` for CRM records, quote records, source import jobs, brokerage cases, extraction review items, guarantee drafts, correction events, AI experience drafts, attachments, generated outputs, and output template settings/versions.
+- Repository reads/writes accept tenant scope and filter by tenant before returning records.
+- Frontstage pages, server actions, download APIs, upload APIs, hub export, and QA helper APIs resolve `requireTenantSession` and pass tenant scope into data access.
+- Cross-tenant regression coverage exists in `npm run test:tenant-data-access`.
+- The default local data set is backfilled into `tenant_cherry` for compatibility.
+
+Still required before production:
+
+- Real identity provider integration; the current session helper still starts from the local/demo user model.
+- Persistent Postgres migration rehearsal against a copy of production-like data.
+- Database-level RLS or equivalent defense in depth after service-layer scope is stable.
+- Permission-denial tests for destructive or high-risk actions.
+
 Tasks:
 
 1. Add `tenant_id` to business tables.

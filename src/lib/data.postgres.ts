@@ -22,6 +22,7 @@ import {
   type OutputTemplateSettings,
   type OutputTemplateSettingsInput,
 } from "@/lib/output-doc";
+import { DEFAULT_TENANT_ID } from "@/lib/tenant-constants";
 import type {
   Attachment,
   AttachmentTargetType,
@@ -97,6 +98,10 @@ function toDate(value: unknown): Date | undefined {
   return date;
 }
 
+function resolveTenantId(tenantId?: string): string {
+  return tenantId?.trim() || DEFAULT_TENANT_ID;
+}
+
 function mapUser(row: Record<string, unknown>): User {
   return {
     id: String(row.id),
@@ -133,6 +138,7 @@ function mapTenantMembership(row: Record<string, unknown>): TenantMembership {
 function mapClient(row: Record<string, unknown>): Client {
   return {
     id: String(row.id),
+    tenantId: String(row.tenant_id ?? DEFAULT_TENANT_ID),
     name: String(row.name),
     phone: String(row.phone),
     lineId: row.line_id ? String(row.line_id) : undefined,
@@ -167,6 +173,7 @@ function mapClient(row: Record<string, unknown>): Client {
 function mapProperty(row: Record<string, unknown>): Property {
   return {
     id: String(row.id),
+    tenantId: String(row.tenant_id ?? DEFAULT_TENANT_ID),
     name: String(row.name),
     area: row.area ? String(row.area) : undefined,
     address: row.address ? String(row.address) : undefined,
@@ -182,6 +189,7 @@ function mapProperty(row: Record<string, unknown>): Property {
 function mapQuotation(row: Record<string, unknown>): Quotation {
   return {
     id: String(row.id),
+    tenantId: String(row.tenant_id ?? DEFAULT_TENANT_ID),
     clientId: String(row.client_id),
     propertyId: row.property_id ? String(row.property_id) : undefined,
     quoteTitle: String(row.quote_title),
@@ -208,6 +216,7 @@ function mapQuotation(row: Record<string, unknown>): Quotation {
 function mapFollowUp(row: Record<string, unknown>): FollowUp {
   return {
     id: String(row.id),
+    tenantId: String(row.tenant_id ?? DEFAULT_TENANT_ID),
     clientId: String(row.client_id),
     type: String(row.type) as FollowUpType,
     content: String(row.content),
@@ -221,6 +230,7 @@ function mapFollowUp(row: Record<string, unknown>): FollowUp {
 function mapTask(row: Record<string, unknown>): Task {
   return {
     id: String(row.id),
+    tenantId: String(row.tenant_id ?? DEFAULT_TENANT_ID),
     clientId: row.client_id ? String(row.client_id) : undefined,
     title: String(row.title),
     dueAt: toDate(row.due_at),
@@ -234,6 +244,7 @@ function mapAuditLog(row: Record<string, unknown>): AuditLog {
   const actorId = row.actor_id ? String(row.actor_id) : String(row.user_id);
   return {
     id: String(row.id),
+    tenantId: String(row.tenant_id ?? DEFAULT_TENANT_ID),
     actorId,
     userId: actorId,
     action: String(row.action),
@@ -251,6 +262,7 @@ function mapAuditLog(row: Record<string, unknown>): AuditLog {
 function mapOutputTemplateSettings(row: Record<string, unknown>): OutputTemplateSettings {
   return {
     id: String(row.id),
+    tenantId: String(row.tenant_id ?? DEFAULT_TENANT_ID),
     userId: String(row.user_id),
     companyName: String(row.company_name ?? ""),
     department: String(row.department ?? ""),
@@ -306,6 +318,7 @@ function toTemplateSettingsInput(settings: OutputTemplateSettings): OutputTempla
 function mapImportJob(row: Record<string, unknown>): ImportJob {
   return {
     id: String(row.id),
+    tenantId: String(row.tenant_id ?? DEFAULT_TENANT_ID),
     userId: String(row.user_id),
     sourceType: String(row.source_type) as ImportSourceType,
     title: String(row.title),
@@ -322,6 +335,7 @@ function mapImportJob(row: Record<string, unknown>): ImportJob {
 function mapBrokerageCase(row: Record<string, unknown>): BrokerageCase {
   return {
     id: String(row.id),
+    tenantId: String(row.tenant_id ?? DEFAULT_TENANT_ID),
     userId: String(row.user_id),
     caseType: String(row.case_type) as BrokerageCaseType,
     caseTitle: String(row.case_title),
@@ -342,6 +356,7 @@ function mapBrokerageCase(row: Record<string, unknown>): BrokerageCase {
 function mapExtractionReviewItem(row: Record<string, unknown>): ExtractionReviewItem {
   return {
     id: String(row.id),
+    tenantId: String(row.tenant_id ?? DEFAULT_TENANT_ID),
     userId: String(row.user_id),
     caseId: String(row.case_id),
     importJobId: String(row.import_job_id),
@@ -368,6 +383,7 @@ function mapExtractionReviewItem(row: Record<string, unknown>): ExtractionReview
 function mapCorrectionEvent(row: Record<string, unknown>): CorrectionEvent {
   return {
     id: String(row.id),
+    tenantId: String(row.tenant_id ?? DEFAULT_TENANT_ID),
     userId: String(row.user_id),
     caseId: String(row.case_id),
     trigger: String(row.trigger) as CorrectionEventTrigger,
@@ -393,6 +409,7 @@ function mapCorrectionEvent(row: Record<string, unknown>): CorrectionEvent {
 function mapAiExperienceDraft(row: Record<string, unknown>): AiExperienceDraft {
   return {
     id: String(row.id),
+    tenantId: String(row.tenant_id ?? DEFAULT_TENANT_ID),
     userId: String(row.user_id),
     status: String(row.status ?? "draft") as AiExperienceDraftStatus,
     title: String(row.title ?? ""),
@@ -414,6 +431,7 @@ function mapAiExperienceDraft(row: Record<string, unknown>): AiExperienceDraft {
 function mapGuaranteeApplicationDraft(row: Record<string, unknown>): GuaranteeApplicationDraft {
   return {
     id: String(row.id),
+    tenantId: String(row.tenant_id ?? DEFAULT_TENANT_ID),
     userId: String(row.user_id),
     caseId: String(row.case_id),
     templateId: String(row.template_id),
@@ -436,6 +454,7 @@ function mapGuaranteeApplicationDraft(row: Record<string, unknown>): GuaranteeAp
 function mapAttachment(row: Record<string, unknown>): Attachment {
   return {
     id: String(row.id),
+    tenantId: String(row.tenant_id ?? DEFAULT_TENANT_ID),
     userId: String(row.user_id),
     targetType: String(row.target_type) as AttachmentTargetType,
     targetId: String(row.target_id),
@@ -453,6 +472,7 @@ function mapGeneratedOutput(row: Record<string, unknown>): GeneratedOutput {
   const sourceQuoteId = row.source_quote_id ? String(row.source_quote_id) : quoteId;
   return {
     id: String(row.id),
+    tenantId: String(row.tenant_id ?? DEFAULT_TENANT_ID),
     actorId,
     userId: actorId,
     sourceQuoteId,
@@ -472,6 +492,7 @@ function mapGeneratedOutput(row: Record<string, unknown>): GeneratedOutput {
 function mapOutputTemplateVersion(row: Record<string, unknown>): OutputTemplateVersion {
   return {
     id: String(row.id),
+    tenantId: String(row.tenant_id ?? DEFAULT_TENANT_ID),
     userId: String(row.user_id),
     versionNumber: Number(row.version_number ?? 0),
     versionLabel: String(row.version_label ?? ""),
@@ -517,6 +538,7 @@ async function ensureSchema() {
 
     CREATE TABLE IF NOT EXISTS clients (
       id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry',
       name TEXT NOT NULL,
       phone TEXT NOT NULL,
       line_id TEXT,
@@ -549,6 +571,7 @@ async function ensureSchema() {
 
     CREATE TABLE IF NOT EXISTS properties (
       id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry',
       name TEXT NOT NULL,
       area TEXT,
       address TEXT,
@@ -562,6 +585,7 @@ async function ensureSchema() {
 
     CREATE TABLE IF NOT EXISTS quotations (
       id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry',
       client_id TEXT NOT NULL REFERENCES clients(id),
       property_id TEXT REFERENCES properties(id),
       quote_title TEXT NOT NULL,
@@ -586,6 +610,7 @@ async function ensureSchema() {
 
     CREATE TABLE IF NOT EXISTS follow_ups (
       id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry',
       client_id TEXT NOT NULL REFERENCES clients(id),
       type TEXT NOT NULL,
       content TEXT NOT NULL,
@@ -597,6 +622,7 @@ async function ensureSchema() {
 
     CREATE TABLE IF NOT EXISTS tasks (
       id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry',
       client_id TEXT REFERENCES clients(id),
       title TEXT NOT NULL,
       due_at TIMESTAMPTZ,
@@ -607,6 +633,7 @@ async function ensureSchema() {
 
     CREATE TABLE IF NOT EXISTS audit_logs (
       id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry',
       user_id TEXT NOT NULL REFERENCES users(id),
       actor_id TEXT REFERENCES users(id),
       action TEXT NOT NULL,
@@ -619,7 +646,8 @@ async function ensureSchema() {
 
     CREATE TABLE IF NOT EXISTS output_template_settings (
       id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL UNIQUE REFERENCES users(id),
+      tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry',
+      user_id TEXT NOT NULL REFERENCES users(id),
       company_name TEXT NOT NULL,
       department TEXT NOT NULL,
       representative TEXT NOT NULL,
@@ -643,6 +671,7 @@ async function ensureSchema() {
 
     CREATE TABLE IF NOT EXISTS output_template_versions (
       id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry',
       user_id TEXT NOT NULL REFERENCES users(id),
       version_number INTEGER NOT NULL,
       version_label TEXT NOT NULL,
@@ -654,6 +683,7 @@ async function ensureSchema() {
 
     CREATE TABLE IF NOT EXISTS import_jobs (
       id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry',
       user_id TEXT NOT NULL REFERENCES users(id),
       source_type TEXT NOT NULL,
       title TEXT NOT NULL,
@@ -668,6 +698,7 @@ async function ensureSchema() {
 
     CREATE TABLE IF NOT EXISTS brokerage_cases (
       id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry',
       user_id TEXT NOT NULL REFERENCES users(id),
       case_type TEXT NOT NULL DEFAULT 'unit_sale',
       case_title TEXT NOT NULL,
@@ -681,6 +712,7 @@ async function ensureSchema() {
 
     CREATE TABLE IF NOT EXISTS extraction_review_items (
       id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry',
       user_id TEXT NOT NULL REFERENCES users(id),
       case_id TEXT NOT NULL REFERENCES brokerage_cases(id) ON DELETE CASCADE,
       import_job_id TEXT NOT NULL REFERENCES import_jobs(id),
@@ -705,6 +737,7 @@ async function ensureSchema() {
 
     CREATE TABLE IF NOT EXISTS guarantee_application_drafts (
       id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry',
       user_id TEXT NOT NULL REFERENCES users(id),
       case_id TEXT NOT NULL REFERENCES brokerage_cases(id) ON DELETE CASCADE,
       template_id TEXT NOT NULL,
@@ -715,11 +748,12 @@ async function ensureSchema() {
       last_reviewed_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      UNIQUE(user_id, case_id, template_id)
+      UNIQUE(tenant_id, user_id, case_id, template_id)
     );
 
     CREATE TABLE IF NOT EXISTS correction_events (
       id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry',
       user_id TEXT NOT NULL REFERENCES users(id),
       case_id TEXT NOT NULL REFERENCES brokerage_cases(id) ON DELETE CASCADE,
       trigger TEXT NOT NULL,
@@ -740,6 +774,7 @@ async function ensureSchema() {
 
     CREATE TABLE IF NOT EXISTS ai_experience_drafts (
       id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry',
       user_id TEXT NOT NULL REFERENCES users(id),
       status TEXT NOT NULL DEFAULT 'draft',
       title TEXT NOT NULL,
@@ -756,6 +791,7 @@ async function ensureSchema() {
 
     CREATE TABLE IF NOT EXISTS attachments (
       id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry',
       user_id TEXT NOT NULL REFERENCES users(id),
       target_type TEXT NOT NULL,
       target_id TEXT NOT NULL,
@@ -768,6 +804,7 @@ async function ensureSchema() {
 
     CREATE TABLE IF NOT EXISTS generated_outputs (
       id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry',
       user_id TEXT NOT NULL REFERENCES users(id),
       actor_id TEXT REFERENCES users(id),
       quote_id TEXT REFERENCES quotations(id),
@@ -785,6 +822,9 @@ async function ensureSchema() {
 
     CREATE INDEX IF NOT EXISTS idx_tenant_memberships_user_status ON tenant_memberships(user_id, status);
     CREATE INDEX IF NOT EXISTS idx_tenant_memberships_tenant_role ON tenant_memberships(tenant_id, role);
+    CREATE INDEX IF NOT EXISTS idx_clients_tenant_owner_stage ON clients(tenant_id, owner_user_id, stage);
+    CREATE INDEX IF NOT EXISTS idx_properties_tenant_created ON properties(tenant_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_quotes_tenant_created ON quotations(tenant_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_clients_owner_stage ON clients(owner_user_id, stage);
     CREATE INDEX IF NOT EXISTS idx_clients_next_followup ON clients(next_follow_up_at);
     CREATE INDEX IF NOT EXISTS idx_quotes_client_created ON quotations(client_id, created_at DESC);
@@ -792,22 +832,52 @@ async function ensureSchema() {
     CREATE INDEX IF NOT EXISTS idx_tasks_client_status_due ON tasks(client_id, status, due_at);
     CREATE INDEX IF NOT EXISTS idx_audit_logs_user_created ON audit_logs(user_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_audit_logs_actor_created ON audit_logs(actor_id, created_at DESC);
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_output_template_user ON output_template_settings(user_id);
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_output_template_version_user_number ON output_template_versions(user_id, version_number);
+    ALTER TABLE output_template_settings DROP CONSTRAINT IF EXISTS output_template_settings_user_id_key;
+    DROP INDEX IF EXISTS idx_output_template_user;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_output_template_tenant_user ON output_template_settings(tenant_id, user_id);
+    DROP INDEX IF EXISTS idx_output_template_version_user_number;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_output_template_version_tenant_user_number ON output_template_versions(tenant_id, user_id, version_number);
     CREATE INDEX IF NOT EXISTS idx_output_template_version_user_created ON output_template_versions(user_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_import_jobs_user_created ON import_jobs(user_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_import_jobs_tenant_user_created ON import_jobs(tenant_id, user_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_brokerage_cases_user_updated ON brokerage_cases(user_id, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_brokerage_cases_tenant_user_updated ON brokerage_cases(tenant_id, user_id, updated_at DESC);
     CREATE INDEX IF NOT EXISTS idx_extraction_review_case ON extraction_review_items(case_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_extraction_review_tenant_case ON extraction_review_items(tenant_id, case_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_extraction_review_import_job ON extraction_review_items(import_job_id);
     CREATE INDEX IF NOT EXISTS idx_guarantee_drafts_case_template ON guarantee_application_drafts(user_id, case_id, template_id);
+    CREATE INDEX IF NOT EXISTS idx_guarantee_drafts_tenant_case_template ON guarantee_application_drafts(tenant_id, user_id, case_id, template_id);
+    ALTER TABLE guarantee_application_drafts DROP CONSTRAINT IF EXISTS guarantee_application_drafts_user_id_case_id_template_id_key;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_guarantee_drafts_tenant_user_case_template_unique ON guarantee_application_drafts(tenant_id, user_id, case_id, template_id);
     CREATE INDEX IF NOT EXISTS idx_correction_events_case_created ON correction_events(user_id, case_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_correction_events_tenant_case_created ON correction_events(tenant_id, user_id, case_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_correction_events_change_type ON correction_events(change_type, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_ai_experience_drafts_user_status_created ON ai_experience_drafts(user_id, status, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_ai_experience_drafts_tenant_status_created ON ai_experience_drafts(tenant_id, user_id, status, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_ai_experience_drafts_scope ON ai_experience_drafts(scope_candidate, template_id, field_key);
     CREATE INDEX IF NOT EXISTS idx_attachments_user_target ON attachments(user_id, target_type, target_id);
+    CREATE INDEX IF NOT EXISTS idx_attachments_tenant_user_target ON attachments(tenant_id, user_id, target_type, target_id);
     CREATE INDEX IF NOT EXISTS idx_generated_outputs_user_created ON generated_outputs(user_id, generated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_generated_outputs_tenant_user_created ON generated_outputs(tenant_id, user_id, generated_at DESC);
     CREATE INDEX IF NOT EXISTS idx_generated_outputs_actor_created ON generated_outputs(actor_id, generated_at DESC);
     CREATE INDEX IF NOT EXISTS idx_generated_outputs_quote ON generated_outputs(quote_id, generated_at DESC);
+
+    ALTER TABLE clients ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
+    ALTER TABLE properties ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
+    ALTER TABLE quotations ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
+    ALTER TABLE follow_ups ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
+    ALTER TABLE tasks ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
+    ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
+    ALTER TABLE output_template_settings ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
+    ALTER TABLE output_template_versions ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
+    ALTER TABLE import_jobs ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
+    ALTER TABLE brokerage_cases ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
+    ALTER TABLE extraction_review_items ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
+    ALTER TABLE guarantee_application_drafts ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
+    ALTER TABLE correction_events ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
+    ALTER TABLE ai_experience_drafts ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
+    ALTER TABLE attachments ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
+    ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
 
     ALTER TABLE clients ADD COLUMN IF NOT EXISTS budget_type TEXT NOT NULL DEFAULT 'total_price';
     ALTER TABLE clients ADD COLUMN IF NOT EXISTS first_choice_area TEXT;
@@ -1193,34 +1263,36 @@ export async function listTenantsForUser(userId: string): Promise<Tenant[]> {
   return result.rows.map(mapTenant);
 }
 
-export async function getOutputTemplateSettings(userId: string): Promise<OutputTemplateSettings> {
+export async function getOutputTemplateSettings(userId: string, tenantId = DEFAULT_TENANT_ID): Promise<OutputTemplateSettings> {
   await ensureSchema();
+  const scopeTenantId = resolveTenantId(tenantId);
   const db = getPool();
   const existingRes = await db.query(
-    "SELECT * FROM output_template_settings WHERE user_id = $1 LIMIT 1",
-    [userId]
+    "SELECT * FROM output_template_settings WHERE user_id = $1 AND tenant_id = $2 LIMIT 1",
+    [userId, scopeTenantId]
   );
   if (existingRes.rows[0]) {
     return mapOutputTemplateSettings(existingRes.rows[0]);
   }
 
-  const defaults = getDefaultOutputTemplateSettings(userId);
+  const defaults = getDefaultOutputTemplateSettings(userId, scopeTenantId);
   const insertedRes = await db.query(
     `INSERT INTO output_template_settings (
-      id, user_id, company_name, department, representative, license_number, postal_address, phone, email,
+      id, tenant_id, user_id, company_name, department, representative, license_number, postal_address, phone, email,
       proposal_title, estimate_sheet_title, funding_plan_title, assumption_memo_title,
       document_classification, disclaimer_line1, disclaimer_line2, disclaimer_line3,
       show_approval_section, show_legal_status_digest, show_outstanding_balance_table, updated_at
     ) VALUES (
-      $1,$2,$3,$4,$5,$6,$7,$8,$9,
-      $10,$11,$12,$13,
-      $14,$15,$16,$17,
-      $18,$19,$20,$21
+      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
+      $11,$12,$13,$14,
+      $15,$16,$17,$18,
+      $19,$20,$21,$22
     )
-    ON CONFLICT (user_id) DO UPDATE SET updated_at = output_template_settings.updated_at
+    ON CONFLICT (tenant_id, user_id) DO UPDATE SET updated_at = output_template_settings.updated_at
     RETURNING *`,
     [
       defaults.id,
+      scopeTenantId,
       defaults.userId,
       defaults.companyName,
       defaults.department,
@@ -1248,10 +1320,12 @@ export async function getOutputTemplateSettings(userId: string): Promise<OutputT
 
 export async function updateOutputTemplateSettings(
   userId: string,
-  input: OutputTemplateSettingsInput
+  input: OutputTemplateSettingsInput,
+  tenantId = DEFAULT_TENANT_ID,
 ): Promise<OutputTemplateSettings> {
   await ensureSchema();
-  const current = await getOutputTemplateSettings(userId);
+  const scopeTenantId = resolveTenantId(tenantId);
+  const current = await getOutputTemplateSettings(userId, scopeTenantId);
   const result = await getPool().query(
     `UPDATE output_template_settings
      SET
@@ -1274,7 +1348,7 @@ export async function updateOutputTemplateSettings(
       show_legal_status_digest = $18,
       show_outstanding_balance_table = $19,
       updated_at = NOW()
-     WHERE user_id = $1
+     WHERE user_id = $1 AND tenant_id = $20
      RETURNING *`,
     [
       userId,
@@ -1296,6 +1370,7 @@ export async function updateOutputTemplateSettings(
       input.showApprovalSection,
       input.showLegalStatusDigest,
       input.showOutstandingBalanceTable,
+      scopeTenantId,
     ]
   );
 
@@ -1310,19 +1385,21 @@ export async function updateOutputTemplateSettings(
   };
 }
 
-export async function listOutputTemplateVersions(userId: string, limit = 20): Promise<OutputTemplateVersion[]> {
+export async function listOutputTemplateVersions(userId: string, limit = 20, tenantId = DEFAULT_TENANT_ID): Promise<OutputTemplateVersion[]> {
   await ensureSchema();
+  const scopeTenantId = resolveTenantId(tenantId);
   const result = await getPool().query(
     `SELECT * FROM output_template_versions
-     WHERE user_id = $1
+     WHERE user_id = $1 AND tenant_id = $2
      ORDER BY version_number DESC
-     LIMIT $2`,
-    [userId, limit]
+     LIMIT $3`,
+    [userId, scopeTenantId, limit]
   );
   return result.rows.map(mapOutputTemplateVersion);
 }
 
 export async function createOutputTemplateVersion(input: {
+  tenantId?: string;
   userId: string;
   versionLabel?: string;
   changeNote?: string;
@@ -1330,27 +1407,32 @@ export async function createOutputTemplateVersion(input: {
   activate?: boolean;
 }): Promise<OutputTemplateVersion> {
   await ensureSchema();
-  const settings = input.settingsSnapshot ?? toTemplateSettingsInput(await getOutputTemplateSettings(input.userId));
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const settings = input.settingsSnapshot ?? toTemplateSettingsInput(await getOutputTemplateSettings(input.userId, scopeTenantId));
   const activate = input.activate ?? true;
 
   return withTransaction(async (client) => {
     const nextRes = await client.query(
-      "SELECT COALESCE(MAX(version_number), 0)::int + 1 AS next FROM output_template_versions WHERE user_id = $1",
-      [input.userId]
+      "SELECT COALESCE(MAX(version_number), 0)::int + 1 AS next FROM output_template_versions WHERE user_id = $1 AND tenant_id = $2",
+      [input.userId, scopeTenantId]
     );
     const versionNumber = Number(nextRes.rows[0]?.next ?? 1);
 
     if (activate) {
-      await client.query("UPDATE output_template_versions SET is_active = FALSE WHERE user_id = $1", [input.userId]);
+      await client.query("UPDATE output_template_versions SET is_active = FALSE WHERE user_id = $1 AND tenant_id = $2", [
+        input.userId,
+        scopeTenantId,
+      ]);
     }
 
     const inserted = await client.query(
       `INSERT INTO output_template_versions (
-        id, user_id, version_number, version_label, change_note, settings_snapshot, is_active, created_at
-      ) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,NOW())
+        id, tenant_id, user_id, version_number, version_label, change_note, settings_snapshot, is_active, created_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,NOW())
       RETURNING *`,
       [
         genId("tplver"),
+        scopeTenantId,
         input.userId,
         versionNumber,
         input.versionLabel?.trim() || `テンプレート v${versionNumber}`,
@@ -1364,15 +1446,17 @@ export async function createOutputTemplateVersion(input: {
 }
 
 export async function applyOutputTemplateVersion(input: {
+  tenantId?: string;
   userId: string;
   versionId: string;
 }): Promise<OutputTemplateSettings | null> {
   await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
 
   return withTransaction(async (client) => {
     const versionRes = await client.query(
-      "SELECT * FROM output_template_versions WHERE id = $1 AND user_id = $2 LIMIT 1 FOR UPDATE",
-      [input.versionId, input.userId]
+      "SELECT * FROM output_template_versions WHERE id = $1 AND user_id = $2 AND tenant_id = $3 LIMIT 1 FOR UPDATE",
+      [input.versionId, input.userId, scopeTenantId]
     );
     if (!versionRes.rows[0]) return null;
 
@@ -1399,7 +1483,7 @@ export async function applyOutputTemplateVersion(input: {
         show_legal_status_digest = $18,
         show_outstanding_balance_table = $19,
         updated_at = NOW()
-       WHERE user_id = $1
+       WHERE user_id = $1 AND tenant_id = $20
        RETURNING *`,
       [
         input.userId,
@@ -1421,13 +1505,18 @@ export async function applyOutputTemplateVersion(input: {
         version.settingsSnapshot.showApprovalSection,
         version.settingsSnapshot.showLegalStatusDigest,
         version.settingsSnapshot.showOutstandingBalanceTable,
+        scopeTenantId,
       ]
     );
 
-    await client.query("UPDATE output_template_versions SET is_active = FALSE WHERE user_id = $1", [input.userId]);
-    await client.query("UPDATE output_template_versions SET is_active = TRUE WHERE id = $1 AND user_id = $2", [
+    await client.query("UPDATE output_template_versions SET is_active = FALSE WHERE user_id = $1 AND tenant_id = $2", [
+      input.userId,
+      scopeTenantId,
+    ]);
+    await client.query("UPDATE output_template_versions SET is_active = TRUE WHERE id = $1 AND user_id = $2 AND tenant_id = $3", [
       input.versionId,
       input.userId,
+      scopeTenantId,
     ]);
 
     return result.rows[0] ? mapOutputTemplateSettings(result.rows[0]) : null;
@@ -1435,30 +1524,33 @@ export async function applyOutputTemplateVersion(input: {
 }
 
 export async function getOutputTemplateVersionById(input: {
+  tenantId?: string;
   userId: string;
   versionId: string;
 }): Promise<OutputTemplateVersion | null> {
   await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
   const result = await getPool().query(
-    "SELECT * FROM output_template_versions WHERE id = $1 AND user_id = $2 LIMIT 1",
-    [input.versionId, input.userId]
+    "SELECT * FROM output_template_versions WHERE id = $1 AND user_id = $2 AND tenant_id = $3 LIMIT 1",
+    [input.versionId, input.userId, scopeTenantId]
   );
   return result.rows[0] ? mapOutputTemplateVersion(result.rows[0]) : null;
 }
 
-export async function listImportJobs(userId: string, limit = 50): Promise<ImportJob[]> {
+export async function listImportJobs(userId: string, limit = 50, tenantId = DEFAULT_TENANT_ID): Promise<ImportJob[]> {
   await ensureSchema();
   const result = await getPool().query(
     `SELECT * FROM import_jobs
-     WHERE user_id = $1
+     WHERE user_id = $1 AND tenant_id = $2
      ORDER BY created_at DESC
-     LIMIT $2`,
-    [userId, limit]
+     LIMIT $3`,
+    [userId, tenantId, limit]
   );
   return result.rows.map(mapImportJob);
 }
 
 export async function addImportJob(input: {
+  tenantId?: string;
   userId: string;
   sourceType: ImportSourceType;
   title: string;
@@ -1481,11 +1573,12 @@ export async function addImportJob(input: {
   };
   const result = await getPool().query(
     `INSERT INTO import_jobs (
-      id, user_id, source_type, title, target_entity, status, notes, mapping_json, validation_message, created_at, updated_at
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,NULL,NULL,NOW(),NOW())
+      id, tenant_id, user_id, source_type, title, target_entity, status, notes, mapping_json, validation_message, created_at, updated_at
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULL,NULL,NOW(),NOW())
     RETURNING *`,
     [
       genId("import"),
+      input.tenantId ?? DEFAULT_TENANT_ID,
       input.userId,
       input.sourceType,
       input.title.trim() || `${sourceLabel[input.sourceType]}取込 - ${targetLabel[input.targetEntity]}`,
@@ -1498,6 +1591,7 @@ export async function addImportJob(input: {
 }
 
 export async function updateImportJobMapping(input: {
+  tenantId?: string;
   userId: string;
   jobId: string;
   mappingJson: Record<string, string>;
@@ -1509,8 +1603,8 @@ export async function updateImportJobMapping(input: {
   await ensureSchema();
 
   const currentRes = await getPool().query(
-    "SELECT status FROM import_jobs WHERE id = $1 AND user_id = $2 LIMIT 1",
-    [input.jobId, input.userId]
+    "SELECT status FROM import_jobs WHERE id = $1 AND user_id = $2 AND tenant_id = $3 LIMIT 1",
+    [input.jobId, input.userId, input.tenantId ?? DEFAULT_TENANT_ID]
   );
   if (!currentRes.rows[0]) return null;
   const currentStatus = String(currentRes.rows[0].status) as ImportJobStatus;
@@ -1526,7 +1620,7 @@ export async function updateImportJobMapping(input: {
       notes = COALESCE($5, notes),
       status = COALESCE($6, status),
       updated_at = NOW()
-     WHERE id = $1 AND user_id = $2
+     WHERE id = $1 AND user_id = $2 AND tenant_id = $7
      RETURNING *`,
     [
       input.jobId,
@@ -1535,36 +1629,39 @@ export async function updateImportJobMapping(input: {
       input.validationMessage?.trim() || null,
       input.notes?.trim() || null,
       input.status ?? null,
+      input.tenantId ?? DEFAULT_TENANT_ID,
     ]
   );
   return result.rows[0] ? mapImportJob(result.rows[0]) : null;
 }
 
-export async function listBrokerageCases(userId: string, limit = 50): Promise<BrokerageCase[]> {
+export async function listBrokerageCases(userId: string, limit = 50, tenantId = DEFAULT_TENANT_ID): Promise<BrokerageCase[]> {
   await ensureSchema();
   const result = await getPool().query(
     `SELECT * FROM brokerage_cases
-     WHERE user_id = $1
+     WHERE user_id = $1 AND tenant_id = $2
      ORDER BY updated_at DESC
-     LIMIT $2`,
-    [userId, limit]
+     LIMIT $3`,
+    [userId, tenantId, limit]
   );
   return result.rows.map(mapBrokerageCase);
 }
 
 export async function getBrokerageCaseById(input: {
+  tenantId?: string;
   userId: string;
   caseId: string;
 }): Promise<BrokerageCase | null> {
   await ensureSchema();
   const result = await getPool().query(
-    "SELECT * FROM brokerage_cases WHERE id = $1 AND user_id = $2 LIMIT 1",
-    [input.caseId, input.userId]
+    "SELECT * FROM brokerage_cases WHERE id = $1 AND user_id = $2 AND tenant_id = $3 LIMIT 1",
+    [input.caseId, input.userId, input.tenantId ?? DEFAULT_TENANT_ID]
   );
   return result.rows[0] ? mapBrokerageCase(result.rows[0]) : null;
 }
 
 export async function getBrokerageCaseByImportJobId(input: {
+  tenantId?: string;
   userId: string;
   importJobId: string;
 }): Promise<BrokerageCase | null> {
@@ -1572,14 +1669,16 @@ export async function getBrokerageCaseByImportJobId(input: {
   const result = await getPool().query(
     `SELECT * FROM brokerage_cases
      WHERE user_id = $1 AND $2 = ANY(source_import_job_ids)
+       AND tenant_id = $3
      ORDER BY updated_at DESC
      LIMIT 1`,
-    [input.userId, input.importJobId]
+    [input.userId, input.importJobId, input.tenantId ?? DEFAULT_TENANT_ID]
   );
   return result.rows[0] ? mapBrokerageCase(result.rows[0]) : null;
 }
 
 export async function updateBrokerageCaseConfirmedData(input: {
+  tenantId?: string;
   userId: string;
   caseId: string;
   confirmedDataJson: Record<string, unknown>;
@@ -1588,14 +1687,15 @@ export async function updateBrokerageCaseConfirmedData(input: {
   const result = await getPool().query(
     `UPDATE brokerage_cases
      SET confirmed_data_json = $3, updated_at = NOW()
-     WHERE id = $1 AND user_id = $2
+     WHERE id = $1 AND user_id = $2 AND tenant_id = $4
      RETURNING *`,
-    [input.caseId, input.userId, JSON.stringify(input.confirmedDataJson)],
+    [input.caseId, input.userId, JSON.stringify(input.confirmedDataJson), input.tenantId ?? DEFAULT_TENANT_ID],
   );
   return result.rows[0] ? mapBrokerageCase(result.rows[0]) : null;
 }
 
 export async function saveBrokerageCaseExtractionReview(input: {
+  tenantId?: string;
   userId: string;
   caseId?: string;
   caseType: BrokerageCaseType;
@@ -1604,27 +1704,33 @@ export async function saveBrokerageCaseExtractionReview(input: {
   status?: BrokerageCaseStatus;
   confirmedDataJson: Record<string, unknown>;
   sourceImportJobIds: string[];
-  reviewItems: Array<Omit<ExtractionReviewItem, "id" | "userId" | "caseId" | "createdAt">>;
+  reviewItems: Array<Omit<ExtractionReviewItem, "id" | "tenantId" | "userId" | "caseId" | "createdAt">>;
 }): Promise<BrokerageCase> {
   await ensureSchema();
   const nowIso = new Date().toISOString();
   const caseId = input.caseId ?? genId("case");
+  const tenantId = input.tenantId ?? DEFAULT_TENANT_ID;
   const sourceImportJobIds = [...new Set(input.sourceImportJobIds)];
   const caseResult = await withTransaction(async (client) => {
     const existing = input.caseId
-      ? await client.query("SELECT id FROM brokerage_cases WHERE id = $1 AND user_id = $2 LIMIT 1", [input.caseId, input.userId])
+      ? await client.query("SELECT id FROM brokerage_cases WHERE id = $1 AND user_id = $2 AND tenant_id = $3 LIMIT 1", [
+          input.caseId,
+          input.userId,
+          tenantId,
+        ])
       : { rows: [] };
     const result =
       existing.rows.length > 0
         ? await client.query(
             `UPDATE brokerage_cases
-             SET case_type = $3, case_title = $4, primary_property_id = $5, status = $6,
-                 confirmed_data_json = $7, source_import_job_ids = $8, updated_at = NOW()
-             WHERE id = $1 AND user_id = $2
+             SET case_type = $4, case_title = $5, primary_property_id = $6, status = $7,
+                 confirmed_data_json = $8, source_import_job_ids = $9, updated_at = NOW()
+             WHERE id = $1 AND user_id = $2 AND tenant_id = $3
              RETURNING *`,
             [
               caseId,
               input.userId,
+              tenantId,
               input.caseType,
               input.caseTitle.trim() || "抽出確認案件",
               input.primaryPropertyId ?? null,
@@ -1635,12 +1741,13 @@ export async function saveBrokerageCaseExtractionReview(input: {
           )
         : await client.query(
             `INSERT INTO brokerage_cases (
-              id, user_id, case_type, case_title, primary_property_id, status,
+              id, tenant_id, user_id, case_type, case_title, primary_property_id, status,
               confirmed_data_json, source_import_job_ids, created_at, updated_at
-             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW(),NOW())
+             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW(),NOW())
              RETURNING *`,
             [
               caseId,
+              tenantId,
               input.userId,
               input.caseType,
               input.caseTitle.trim() || "抽出確認案件",
@@ -1651,17 +1758,18 @@ export async function saveBrokerageCaseExtractionReview(input: {
             ]
           );
 
-    await client.query("DELETE FROM extraction_review_items WHERE case_id = $1", [caseId]);
+    await client.query("DELETE FROM extraction_review_items WHERE case_id = $1 AND tenant_id = $2", [caseId, tenantId]);
     for (const item of input.reviewItems) {
       await client.query(
         `INSERT INTO extraction_review_items (
-          id, user_id, case_id, import_job_id, field_key, label,
+          id, tenant_id, user_id, case_id, import_job_id, field_key, label,
           extracted_value, normalized_value, edited_value, final_value,
           source_sheet, source_cell, source_range, method, confidence, review_status,
           source_file_hash, template_version, reviewed_by_id, reviewed_at, created_at
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
         [
           genId("review"),
+          tenantId,
           input.userId,
           caseId,
           item.importJobId,
@@ -1692,45 +1800,48 @@ export async function saveBrokerageCaseExtractionReview(input: {
 }
 
 export async function mergeBrokerageCaseExtractionReview(input: {
+  tenantId?: string;
   userId: string;
   caseId: string;
   confirmedDataJson: Record<string, unknown>;
   sourceImportJobIds: string[];
   replaceImportJobIds: string[];
-  reviewItems: Array<Omit<ExtractionReviewItem, "id" | "userId" | "caseId" | "createdAt">>;
+  reviewItems: Array<Omit<ExtractionReviewItem, "id" | "tenantId" | "userId" | "caseId" | "createdAt">>;
 }): Promise<BrokerageCase | null> {
   await ensureSchema();
   const nowIso = new Date().toISOString();
+  const tenantId = input.tenantId ?? DEFAULT_TENANT_ID;
   const sourceImportJobIds = [...new Set(input.sourceImportJobIds)];
   const replaceImportJobIds = [...new Set(input.replaceImportJobIds)];
   const caseResult = await withTransaction(async (client) => {
     const result = await client.query(
       `UPDATE brokerage_cases
        SET confirmed_data_json = $3, source_import_job_ids = $4, updated_at = NOW()
-       WHERE id = $1 AND user_id = $2
+       WHERE id = $1 AND user_id = $2 AND tenant_id = $5
        RETURNING *`,
-      [input.caseId, input.userId, JSON.stringify(input.confirmedDataJson), sourceImportJobIds],
+      [input.caseId, input.userId, JSON.stringify(input.confirmedDataJson), sourceImportJobIds, tenantId],
     );
     if (!result.rows[0]) return null;
 
     if (replaceImportJobIds.length > 0) {
       await client.query(
         `DELETE FROM extraction_review_items
-         WHERE case_id = $1 AND user_id = $2 AND import_job_id = ANY($3)`,
-        [input.caseId, input.userId, replaceImportJobIds],
+         WHERE case_id = $1 AND user_id = $2 AND tenant_id = $3 AND import_job_id = ANY($4)`,
+        [input.caseId, input.userId, tenantId, replaceImportJobIds],
       );
     }
 
     for (const item of input.reviewItems) {
       await client.query(
         `INSERT INTO extraction_review_items (
-          id, user_id, case_id, import_job_id, field_key, label,
+          id, tenant_id, user_id, case_id, import_job_id, field_key, label,
           extracted_value, normalized_value, edited_value, final_value,
           source_sheet, source_cell, source_range, method, confidence, review_status,
           source_file_hash, template_version, reviewed_by_id, reviewed_at, created_at
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
         [
           genId("review"),
+          tenantId,
           input.userId,
           input.caseId,
           item.importJobId,
@@ -1761,6 +1872,7 @@ export async function mergeBrokerageCaseExtractionReview(input: {
 }
 
 export async function rollbackBrokerageCaseMerge(input: {
+  tenantId?: string;
   userId: string;
   caseId: string;
   restoredConfirmedDataJson: Record<string, unknown>;
@@ -1769,24 +1881,26 @@ export async function rollbackBrokerageCaseMerge(input: {
   splitCaseId?: string;
   splitConfirmedDataJson: Record<string, unknown>;
   splitSourceImportJobIds: string[];
-  splitReviewItems: Array<Omit<ExtractionReviewItem, "id" | "userId" | "caseId" | "createdAt">>;
+  splitReviewItems: Array<Omit<ExtractionReviewItem, "id" | "tenantId" | "userId" | "caseId" | "createdAt">>;
   removeImportJobIds: string[];
 }): Promise<{ restoredCase: BrokerageCase; splitCase: BrokerageCase } | null> {
   await ensureSchema();
   const nowIso = new Date().toISOString();
+  const tenantId = input.tenantId ?? DEFAULT_TENANT_ID;
   const splitCaseId = input.splitCaseId ?? genId("case");
   const removeImportJobIds = [...new Set(input.removeImportJobIds)];
   const result = await withTransaction(async (client) => {
     const restoredResult = await client.query(
       `UPDATE brokerage_cases
        SET confirmed_data_json = $3, source_import_job_ids = $4, updated_at = NOW()
-       WHERE id = $1 AND user_id = $2
+       WHERE id = $1 AND user_id = $2 AND tenant_id = $5
        RETURNING *`,
       [
         input.caseId,
         input.userId,
         JSON.stringify(input.restoredConfirmedDataJson),
         [...new Set(input.restoredSourceImportJobIds)],
+        tenantId,
       ],
     );
     if (!restoredResult.rows[0]) return null;
@@ -1794,25 +1908,26 @@ export async function rollbackBrokerageCaseMerge(input: {
     if (removeImportJobIds.length > 0) {
       await client.query(
         `DELETE FROM extraction_review_items
-         WHERE case_id = $1 AND user_id = $2 AND import_job_id = ANY($3)`,
-        [input.caseId, input.userId, removeImportJobIds],
+         WHERE case_id = $1 AND user_id = $2 AND tenant_id = $3 AND import_job_id = ANY($4)`,
+        [input.caseId, input.userId, tenantId, removeImportJobIds],
       );
     }
 
     const splitResult = await client.query(
       `INSERT INTO brokerage_cases (
-        id, user_id, case_type, case_title, primary_property_id, status,
+        id, tenant_id, user_id, case_type, case_title, primary_property_id, status,
         confirmed_data_json, source_import_job_ids, created_at, updated_at
        )
-       SELECT $1, user_id, case_type, $4, primary_property_id, 'reviewed',
-              $5, $6, NOW(), NOW()
+       SELECT $1, tenant_id, user_id, case_type, $5, primary_property_id, 'reviewed',
+              $6, $7, NOW(), NOW()
        FROM brokerage_cases
-       WHERE id = $2 AND user_id = $3
+       WHERE id = $2 AND user_id = $3 AND tenant_id = $4
        RETURNING *`,
       [
         splitCaseId,
         input.caseId,
         input.userId,
+        tenantId,
         input.splitCaseTitle.trim() || "分離した抽出確認案件",
         JSON.stringify(input.splitConfirmedDataJson),
         [...new Set(input.splitSourceImportJobIds)],
@@ -1822,13 +1937,14 @@ export async function rollbackBrokerageCaseMerge(input: {
     for (const item of input.splitReviewItems) {
       await client.query(
         `INSERT INTO extraction_review_items (
-          id, user_id, case_id, import_job_id, field_key, label,
+          id, tenant_id, user_id, case_id, import_job_id, field_key, label,
           extracted_value, normalized_value, edited_value, final_value,
           source_sheet, source_cell, source_range, method, confidence, review_status,
           source_file_hash, template_version, reviewed_by_id, reviewed_at, created_at
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
         [
           genId("review"),
+          tenantId,
           input.userId,
           splitCaseId,
           item.importJobId,
@@ -1867,38 +1983,42 @@ export async function rollbackBrokerageCaseMerge(input: {
 }
 
 export async function listExtractionReviewItems(input: {
+  tenantId?: string;
   userId: string;
   caseId: string;
 }): Promise<ExtractionReviewItem[]> {
   await ensureSchema();
   const result = await getPool().query(
     `SELECT * FROM extraction_review_items
-     WHERE user_id = $1 AND case_id = $2
+     WHERE user_id = $1 AND case_id = $2 AND tenant_id = $3
      ORDER BY created_at ASC`,
-    [input.userId, input.caseId]
+    [input.userId, input.caseId, input.tenantId ?? DEFAULT_TENANT_ID]
   );
   return result.rows.map(mapExtractionReviewItem);
 }
 
 export async function addCorrectionEvents(input: {
+  tenantId?: string;
   userId: string;
-  events: Array<Omit<CorrectionEvent, "id" | "userId" | "createdAt">>;
+  events: Array<Omit<CorrectionEvent, "id" | "tenantId" | "userId" | "createdAt">>;
 }): Promise<CorrectionEvent[]> {
   await ensureSchema();
   if (input.events.length === 0) return [];
+  const tenantId = input.tenantId ?? DEFAULT_TENANT_ID;
 
   const result = await withTransaction(async (client) => {
     const rows: Record<string, unknown>[] = [];
     for (const event of input.events) {
       const insertResult = await client.query(
         `INSERT INTO correction_events (
-          id, user_id, case_id, trigger, field_key, field_label,
+          id, tenant_id, user_id, case_id, trigger, field_key, field_label,
           ai_value, confirmed_value, change_type, source_import_job_id, source_location,
           extraction_method, confidence_before, template_id, scope_candidate, source_evidence_json
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb)
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb)
         RETURNING *`,
         [
           genId("correction"),
+          tenantId,
           input.userId,
           event.caseId,
           event.trigger,
@@ -1925,6 +2045,7 @@ export async function addCorrectionEvents(input: {
 }
 
 export async function listCorrectionEvents(input: {
+  tenantId?: string;
   userId: string;
   caseId?: string;
   limit?: number;
@@ -1934,39 +2055,46 @@ export async function listCorrectionEvents(input: {
   const result = input.caseId
     ? await getPool().query(
         `SELECT * FROM correction_events
-         WHERE user_id = $1 AND case_id = $2
+         WHERE user_id = $1 AND case_id = $2 AND tenant_id = $3
          ORDER BY created_at DESC
-         LIMIT $3`,
-        [input.userId, input.caseId, limit],
+         LIMIT $4`,
+        [input.userId, input.caseId, input.tenantId ?? DEFAULT_TENANT_ID, limit],
       )
     : await getPool().query(
         `SELECT * FROM correction_events
-         WHERE user_id = $1
+         WHERE user_id = $1 AND tenant_id = $2
          ORDER BY created_at DESC
-         LIMIT $2`,
-        [input.userId, limit],
+         LIMIT $3`,
+        [input.userId, input.tenantId ?? DEFAULT_TENANT_ID, limit],
       );
   return result.rows.map(mapCorrectionEvent);
 }
 
 export async function addAiExperienceDrafts(input: {
+  tenantId?: string;
   userId: string;
-  drafts: Array<Omit<AiExperienceDraft, "id" | "userId" | "status" | "createdAt" | "updatedAt"> & { status?: AiExperienceDraftStatus }>;
+  drafts: Array<
+    Omit<AiExperienceDraft, "id" | "tenantId" | "userId" | "status" | "createdAt" | "updatedAt"> & {
+      status?: AiExperienceDraftStatus;
+    }
+  >;
 }): Promise<AiExperienceDraft[]> {
   await ensureSchema();
   if (input.drafts.length === 0) return [];
+  const tenantId = input.tenantId ?? DEFAULT_TENANT_ID;
 
   const result = await withTransaction(async (client) => {
     const rows: Record<string, unknown>[] = [];
     for (const draft of input.drafts) {
       const insertResult = await client.query(
         `INSERT INTO ai_experience_drafts (
-          id, user_id, status, title, body_markdown, event_ids,
+          id, tenant_id, user_id, status, title, body_markdown, event_ids,
           field_key, template_id, change_type, scope_candidate, evidence_summary_json
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb)
         RETURNING *`,
         [
           genId("experience"),
+          tenantId,
           input.userId,
           draft.status ?? "draft",
           draft.title,
@@ -1988,6 +2116,7 @@ export async function addAiExperienceDrafts(input: {
 }
 
 export async function listAiExperienceDrafts(input: {
+  tenantId?: string;
   userId: string;
   status?: AiExperienceDraftStatus;
   limit?: number;
@@ -1997,22 +2126,23 @@ export async function listAiExperienceDrafts(input: {
   const result = input.status
     ? await getPool().query(
         `SELECT * FROM ai_experience_drafts
-         WHERE user_id = $1 AND status = $2
+         WHERE user_id = $1 AND status = $2 AND tenant_id = $3
          ORDER BY created_at DESC
-         LIMIT $3`,
-        [input.userId, input.status, limit],
+         LIMIT $4`,
+        [input.userId, input.status, input.tenantId ?? DEFAULT_TENANT_ID, limit],
       )
     : await getPool().query(
         `SELECT * FROM ai_experience_drafts
-         WHERE user_id = $1
+         WHERE user_id = $1 AND tenant_id = $2
          ORDER BY created_at DESC
-         LIMIT $2`,
-        [input.userId, limit],
+         LIMIT $3`,
+        [input.userId, input.tenantId ?? DEFAULT_TENANT_ID, limit],
       );
   return result.rows.map(mapAiExperienceDraft);
 }
 
 export async function updateAiExperienceDraftStatus(input: {
+  tenantId?: string;
   userId: string;
   draftId: string;
   status: AiExperienceDraftStatus;
@@ -2021,14 +2151,15 @@ export async function updateAiExperienceDraftStatus(input: {
   const result = await getPool().query(
     `UPDATE ai_experience_drafts
      SET status = $3, updated_at = NOW()
-     WHERE user_id = $1 AND id = $2
+     WHERE user_id = $1 AND id = $2 AND tenant_id = $4
      RETURNING *`,
-    [input.userId, input.draftId, input.status],
+    [input.userId, input.draftId, input.status, input.tenantId ?? DEFAULT_TENANT_ID],
   );
   return result.rows[0] ? mapAiExperienceDraft(result.rows[0]) : null;
 }
 
 export async function getGuaranteeApplicationDraft(input: {
+  tenantId?: string;
   userId: string;
   caseId: string;
   templateId: string;
@@ -2037,13 +2168,15 @@ export async function getGuaranteeApplicationDraft(input: {
   const result = await getPool().query(
     `SELECT * FROM guarantee_application_drafts
      WHERE user_id = $1 AND case_id = $2 AND template_id = $3
+       AND tenant_id = $4
      LIMIT 1`,
-    [input.userId, input.caseId, input.templateId],
+    [input.userId, input.caseId, input.templateId, input.tenantId ?? DEFAULT_TENANT_ID],
   );
   return result.rows[0] ? mapGuaranteeApplicationDraft(result.rows[0]) : null;
 }
 
 export async function saveGuaranteeApplicationDraft(input: {
+  tenantId?: string;
   userId: string;
   caseId: string;
   templateId: string;
@@ -2057,11 +2190,11 @@ export async function saveGuaranteeApplicationDraft(input: {
   const id = `draft_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
   const result = await getPool().query(
     `INSERT INTO guarantee_application_drafts (
-       id, user_id, case_id, template_id, company_code, status,
+       id, tenant_id, user_id, case_id, template_id, company_code, status,
        field_values_json, field_statuses_json, last_reviewed_at, created_at, updated_at
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
-     ON CONFLICT (user_id, case_id, template_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
+     ON CONFLICT (tenant_id, user_id, case_id, template_id)
      DO UPDATE SET
        company_code = EXCLUDED.company_code,
        status = EXCLUDED.status,
@@ -2072,6 +2205,7 @@ export async function saveGuaranteeApplicationDraft(input: {
      RETURNING *`,
     [
       id,
+      input.tenantId ?? DEFAULT_TENANT_ID,
       input.userId,
       input.caseId,
       input.templateId,
@@ -2086,6 +2220,7 @@ export async function saveGuaranteeApplicationDraft(input: {
 }
 
 export async function listAttachments(input: {
+  tenantId?: string;
   userId: string;
   targetType?: AttachmentTargetType;
   targetId?: string;
@@ -2093,9 +2228,9 @@ export async function listAttachments(input: {
 }): Promise<Attachment[]> {
   await ensureSchema();
   const limit = input.limit ?? 100;
-  const values: Array<string | number> = [input.userId];
-  const filters: string[] = ["user_id = $1"];
-  let idx = 2;
+  const values: Array<string | number> = [input.userId, input.tenantId ?? DEFAULT_TENANT_ID];
+  const filters: string[] = ["user_id = $1", "tenant_id = $2"];
+  let idx = 3;
   if (input.targetType) {
     filters.push(`target_type = $${idx}`);
     values.push(input.targetType);
@@ -2118,6 +2253,7 @@ export async function listAttachments(input: {
 }
 
 export async function addAttachment(input: {
+  tenantId?: string;
   userId: string;
   targetType: AttachmentTargetType;
   targetId: string;
@@ -2129,11 +2265,12 @@ export async function addAttachment(input: {
   await ensureSchema();
   const result = await getPool().query(
     `INSERT INTO attachments (
-      id, user_id, target_type, target_id, file_name, file_type, file_size_bytes, storage_path, uploaded_at
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW())
+      id, tenant_id, user_id, target_type, target_id, file_name, file_type, file_size_bytes, storage_path, uploaded_at
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())
     RETURNING *`,
     [
       genId("att"),
+      input.tenantId ?? DEFAULT_TENANT_ID,
       input.userId,
       input.targetType,
       input.targetId,
@@ -2147,15 +2284,16 @@ export async function addAttachment(input: {
 }
 
 export async function listGeneratedOutputs(input: {
+  tenantId?: string;
   userId: string;
   quoteId?: string;
   limit?: number;
 }): Promise<GeneratedOutput[]> {
   await ensureSchema();
   const limit = input.limit ?? 100;
-  const values: Array<string | number> = [input.userId];
-  const filters: string[] = ["user_id = $1"];
-  let idx = 2;
+  const values: Array<string | number> = [input.userId, input.tenantId ?? DEFAULT_TENANT_ID];
+  const filters: string[] = ["user_id = $1", "tenant_id = $2"];
+  let idx = 3;
   if (input.quoteId) {
     filters.push(`quote_id = $${idx}`);
     values.push(input.quoteId);
@@ -2173,21 +2311,23 @@ export async function listGeneratedOutputs(input: {
 }
 
 export async function getGeneratedOutputById(input: {
+  tenantId?: string;
   userId: string;
   id: string;
 }): Promise<GeneratedOutput | undefined> {
   await ensureSchema();
   const result = await getPool().query(
     `SELECT * FROM generated_outputs
-     WHERE user_id = $1 AND id = $2
+     WHERE user_id = $1 AND id = $2 AND tenant_id = $3
      LIMIT 1`,
-    [input.userId, input.id]
+    [input.userId, input.id, input.tenantId ?? DEFAULT_TENANT_ID]
   );
   if (result.rows.length === 0) return undefined;
   return mapGeneratedOutput(result.rows[0]);
 }
 
 export async function addGeneratedOutput(input: {
+  tenantId?: string;
   userId: string;
   actorId?: string;
   sourceQuoteId?: string;
@@ -2206,11 +2346,12 @@ export async function addGeneratedOutput(input: {
   const sourceQuoteId = input.sourceQuoteId ?? input.quoteId;
   const result = await getPool().query(
     `INSERT INTO generated_outputs (
-      id, user_id, actor_id, quote_id, source_quote_id, property_id, party_id, output_type, output_format, language, title, document_number, template_version_id, generated_at
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW())
+      id, tenant_id, user_id, actor_id, quote_id, source_quote_id, property_id, party_id, output_type, output_format, language, title, document_number, template_version_id, generated_at
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW())
     RETURNING *`,
     [
       genId("out"),
+      input.tenantId ?? DEFAULT_TENANT_ID,
       input.userId,
       actorId,
       input.quoteId,
@@ -2366,9 +2507,10 @@ export async function getDashboardData(userId: string) {
 
 export async function listAuditLogs(userId: string, filter: AuditLogFilter = {}): Promise<AuditLog[]> {
   await ensureSchema();
-  const values: Array<string | number> = [userId];
-  const where: string[] = ["(actor_id = $1 OR user_id = $1)"];
-  let index = 2;
+  const scopeTenantId = resolveTenantId(filter.tenantId);
+  const values: Array<string | number> = [userId, scopeTenantId];
+  const where: string[] = ["(actor_id = $1 OR user_id = $1)", "tenant_id = $2"];
+  let index = 3;
 
   if (filter.actorId) {
     where.push(`actor_id = $${index}`);
@@ -2417,7 +2559,11 @@ export async function listAuditLogs(userId: string, filter: AuditLogFilter = {})
 
 export async function listClients(userId: string, filter: ClientListFilter = {}) {
   await ensureSchema();
-  const result = await getPool().query("SELECT * FROM clients WHERE owner_user_id = $1", [userId]);
+  const scopeTenantId = resolveTenantId(filter.tenantId);
+  const result = await getPool().query("SELECT * FROM clients WHERE owner_user_id = $1 AND tenant_id = $2", [
+    userId,
+    scopeTenantId,
+  ]);
   let clients = result.rows.map(mapClient);
 
   if (filter.stage && filter.stage !== "all") {
@@ -2456,14 +2602,14 @@ export async function listClients(userId: string, filter: ClientListFilter = {})
 
   if (ids.length > 0) {
     const quoteRes = await getPool().query(
-      "SELECT client_id, COUNT(*)::int AS count FROM quotations WHERE client_id = ANY($1) GROUP BY client_id",
-      [ids]
+      "SELECT client_id, COUNT(*)::int AS count FROM quotations WHERE client_id = ANY($1) AND tenant_id = $2 GROUP BY client_id",
+      [ids, scopeTenantId]
     );
     quoteRes.rows.forEach((row) => quoteCountMap.set(String(row.client_id), Number(row.count)));
 
     const followRes = await getPool().query(
-      "SELECT client_id, COUNT(*)::int AS count FROM follow_ups WHERE client_id = ANY($1) GROUP BY client_id",
-      [ids]
+      "SELECT client_id, COUNT(*)::int AS count FROM follow_ups WHERE client_id = ANY($1) AND tenant_id = $2 GROUP BY client_id",
+      [ids, scopeTenantId]
     );
     followRes.rows.forEach((row) => followCountMap.set(String(row.client_id), Number(row.count)));
   }
@@ -2477,27 +2623,38 @@ export async function listClients(userId: string, filter: ClientListFilter = {})
   }));
 }
 
-export async function getClientById(clientId: string) {
+export async function getClientById(clientId: string, tenantId = DEFAULT_TENANT_ID) {
   await ensureSchema();
-  const result = await getPool().query("SELECT * FROM clients WHERE id = $1 LIMIT 1", [clientId]);
+  const scopeTenantId = resolveTenantId(tenantId);
+  const result = await getPool().query("SELECT * FROM clients WHERE id = $1 AND tenant_id = $2 LIMIT 1", [
+    clientId,
+    scopeTenantId,
+  ]);
   return result.rows[0] ? mapClient(result.rows[0]) : null;
 }
 
-export async function getClientDetail(clientId: string) {
+export async function getClientDetail(clientId: string, tenantId = DEFAULT_TENANT_ID) {
   await ensureSchema();
+  const scopeTenantId = resolveTenantId(tenantId);
 
   const [clientRes, quoteRes, followRes, taskRes] = await Promise.all([
-    getPool().query("SELECT * FROM clients WHERE id = $1 LIMIT 1", [clientId]),
-    getPool().query("SELECT * FROM quotations WHERE client_id = $1 ORDER BY created_at DESC", [clientId]),
-    getPool().query("SELECT * FROM follow_ups WHERE client_id = $1 ORDER BY created_at DESC", [clientId]),
+    getPool().query("SELECT * FROM clients WHERE id = $1 AND tenant_id = $2 LIMIT 1", [clientId, scopeTenantId]),
+    getPool().query("SELECT * FROM quotations WHERE client_id = $1 AND tenant_id = $2 ORDER BY created_at DESC", [
+      clientId,
+      scopeTenantId,
+    ]),
+    getPool().query("SELECT * FROM follow_ups WHERE client_id = $1 AND tenant_id = $2 ORDER BY created_at DESC", [
+      clientId,
+      scopeTenantId,
+    ]),
     getPool().query(
       `SELECT * FROM tasks
-       WHERE client_id = $1
+       WHERE client_id = $1 AND tenant_id = $2
        ORDER BY
          CASE status WHEN 'pending' THEN 0 WHEN 'done' THEN 1 ELSE 2 END,
          due_at ASC NULLS LAST,
          created_at DESC`,
-      [clientId]
+      [clientId, scopeTenantId]
     ),
   ]);
 
@@ -2507,14 +2664,18 @@ export async function getClientDetail(clientId: string) {
   const propertyIds = quoteRes.rows.map((row) => row.property_id).filter(Boolean) as string[];
   const properties = new Map<string, Property>();
   if (propertyIds.length > 0) {
-    const propRes = await getPool().query("SELECT * FROM properties WHERE id = ANY($1)", [propertyIds]);
+    const propRes = await getPool().query("SELECT * FROM properties WHERE id = ANY($1) AND tenant_id = $2", [
+      propertyIds,
+      scopeTenantId,
+    ]);
     propRes.rows.forEach((row) => {
       const property = mapProperty(row);
       properties.set(property.id, property);
     });
   }
 
-  const owner = await getDefaultUser();
+  const ownerRes = await getPool().query("SELECT * FROM users WHERE id = $1 LIMIT 1", [client.ownerUserId]);
+  const owner = ownerRes.rows[0] ? mapUser(ownerRes.rows[0]) : await getDefaultUser();
 
   return {
     ...client,
@@ -2531,9 +2692,13 @@ export async function getClientDetail(clientId: string) {
   };
 }
 
-export async function getBoardData(userId: string) {
+export async function getBoardData(userId: string, tenantId = DEFAULT_TENANT_ID) {
   await ensureSchema();
-  const result = await getPool().query("SELECT * FROM clients WHERE owner_user_id = $1 ORDER BY updated_at DESC", [userId]);
+  const scopeTenantId = resolveTenantId(tenantId);
+  const result = await getPool().query(
+    "SELECT * FROM clients WHERE owner_user_id = $1 AND tenant_id = $2 ORDER BY updated_at DESC",
+    [userId, scopeTenantId],
+  );
   const clients = result.rows.map(mapClient);
 
   return clients.reduce<Record<ClientStage, Client[]>>(
@@ -2553,11 +2718,15 @@ export async function getBoardData(userId: string) {
   );
 }
 
-export async function listQuoteFormData() {
+export async function listQuoteFormData(tenantId = DEFAULT_TENANT_ID) {
   await ensureSchema();
+  const scopeTenantId = resolveTenantId(tenantId);
   const [clientsRes, propertiesRes] = await Promise.all([
-    getPool().query("SELECT id, name FROM clients ORDER BY updated_at DESC"),
-    getPool().query("SELECT id, name, listing_price, management_fee, repair_fee FROM properties ORDER BY created_at DESC"),
+    getPool().query("SELECT id, name FROM clients WHERE tenant_id = $1 ORDER BY updated_at DESC", [scopeTenantId]),
+    getPool().query(
+      "SELECT id, name, listing_price, management_fee, repair_fee FROM properties WHERE tenant_id = $1 ORDER BY created_at DESC",
+      [scopeTenantId],
+    ),
   ]);
 
   return {
@@ -2573,6 +2742,7 @@ export async function listQuoteFormData() {
 }
 
 export async function addProperty(input: {
+  tenantId?: string;
   name: string;
   area?: string;
   address?: string;
@@ -2583,13 +2753,15 @@ export async function addProperty(input: {
   notes?: string;
 }) {
   await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
   const result = await getPool().query(
     `INSERT INTO properties (
-      id, name, area, address, listing_price, size_sqm, management_fee, repair_fee, notes
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      id, tenant_id, name, area, address, listing_price, size_sqm, management_fee, repair_fee, notes
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
     RETURNING *`,
     [
       genId("prop"),
+      scopeTenantId,
       input.name,
       input.area ?? null,
       input.address ?? null,
@@ -2603,12 +2775,16 @@ export async function addProperty(input: {
   return mapProperty(result.rows[0]);
 }
 
-export async function listQuotations(limit?: number): Promise<DashboardQuoteItem[]> {
+export async function listQuotations(limit?: number, tenantId = DEFAULT_TENANT_ID): Promise<DashboardQuoteItem[]> {
   await ensureSchema();
+  const scopeTenantId = resolveTenantId(tenantId);
   const hasLimit = typeof limit === "number";
   const quoteRes = hasLimit
-    ? await getPool().query("SELECT * FROM quotations ORDER BY created_at DESC LIMIT $1", [limit])
-    : await getPool().query("SELECT * FROM quotations ORDER BY created_at DESC");
+    ? await getPool().query("SELECT * FROM quotations WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2", [
+        scopeTenantId,
+        limit,
+      ])
+    : await getPool().query("SELECT * FROM quotations WHERE tenant_id = $1 ORDER BY created_at DESC", [scopeTenantId]);
 
   const quotes = quoteRes.rows.map(mapQuotation);
   if (quotes.length === 0) return [];
@@ -2617,9 +2793,9 @@ export async function listQuotations(limit?: number): Promise<DashboardQuoteItem
   const propertyIds = [...new Set(quotes.map((item) => item.propertyId).filter(Boolean) as string[])];
 
   const [clientRes, propertyRes] = await Promise.all([
-    getPool().query("SELECT * FROM clients WHERE id = ANY($1)", [clientIds]),
+    getPool().query("SELECT * FROM clients WHERE id = ANY($1) AND tenant_id = $2", [clientIds, scopeTenantId]),
     propertyIds.length > 0
-      ? getPool().query("SELECT * FROM properties WHERE id = ANY($1)", [propertyIds])
+      ? getPool().query("SELECT * FROM properties WHERE id = ANY($1) AND tenant_id = $2", [propertyIds, scopeTenantId])
       : Promise.resolve({ rows: [] as Array<Record<string, unknown>> }),
   ]);
 
@@ -2646,18 +2822,25 @@ export async function listQuotations(limit?: number): Promise<DashboardQuoteItem
   return items;
 }
 
-export async function getQuotationById(quoteId: string) {
+export async function getQuotationById(quoteId: string, tenantId = DEFAULT_TENANT_ID) {
   await ensureSchema();
+  const scopeTenantId = resolveTenantId(tenantId);
 
-  const quoteRes = await getPool().query("SELECT * FROM quotations WHERE id = $1 LIMIT 1", [quoteId]);
+  const quoteRes = await getPool().query("SELECT * FROM quotations WHERE id = $1 AND tenant_id = $2 LIMIT 1", [
+    quoteId,
+    scopeTenantId,
+  ]);
   const row = quoteRes.rows[0];
   if (!row) return null;
 
   const quote = mapQuotation(row);
   const [clientRes, propertyRes] = await Promise.all([
-    getPool().query("SELECT * FROM clients WHERE id = $1 LIMIT 1", [quote.clientId]),
+    getPool().query("SELECT * FROM clients WHERE id = $1 AND tenant_id = $2 LIMIT 1", [quote.clientId, scopeTenantId]),
     quote.propertyId
-      ? getPool().query("SELECT * FROM properties WHERE id = $1 LIMIT 1", [quote.propertyId])
+      ? getPool().query("SELECT * FROM properties WHERE id = $1 AND tenant_id = $2 LIMIT 1", [
+          quote.propertyId,
+          scopeTenantId,
+        ])
       : Promise.resolve({ rows: [] as Array<Record<string, unknown>> }),
   ]);
 
@@ -2669,6 +2852,7 @@ export async function getQuotationById(quoteId: string) {
 }
 
 export async function addClient(input: {
+  tenantId?: string;
   ownerUserId: string;
   name: string;
   phone: string;
@@ -2696,19 +2880,21 @@ export async function addClient(input: {
   notes?: string;
 }) {
   await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
   const id = genId("client");
 
   const result = await getPool().query(
     `INSERT INTO clients (
-      id, name, phone, line_id, email, budget_min, budget_max, budget_type, preferred_area,
+      id, tenant_id, name, phone, line_id, email, budget_min, budget_max, budget_type, preferred_area,
       first_choice_area, second_choice_area, purpose, loan_pre_approval_status, desired_move_in_period,
       stage, temperature, brokerage_contract_type, brokerage_contract_signed_at, brokerage_contract_expires_at,
       important_matters_explained_at, contract_document_delivered_at, personal_info_consent_at, aml_check_status,
       next_follow_up_at, notes, owner_user_id
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
     RETURNING *`,
     [
       id,
+      scopeTenantId,
       input.name,
       input.phone,
       input.lineId ?? null,
@@ -2743,6 +2929,7 @@ export async function addClient(input: {
 export async function updateClient(
   clientId: string,
   input: {
+    tenantId?: string;
     name: string;
     phone: string;
     lineId?: string;
@@ -2770,6 +2957,7 @@ export async function updateClient(
   }
 ) {
   await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
 
   const result = await getPool().query(
     `UPDATE clients SET
@@ -2798,7 +2986,7 @@ export async function updateClient(
       next_follow_up_at = $24,
       notes = $25,
       updated_at = NOW()
-    WHERE id = $1
+    WHERE id = $1 AND tenant_id = $26
     RETURNING *`,
     [
       clientId,
@@ -2826,6 +3014,7 @@ export async function updateClient(
       input.amlCheckStatus,
       input.nextFollowUpAt ?? null,
       input.notes ?? null,
+      scopeTenantId,
     ]
   );
 
@@ -2833,6 +3022,7 @@ export async function updateClient(
 }
 
 export async function appendFollowUp(input: {
+  tenantId?: string;
   clientId: string;
   createdById: string;
   type: FollowUpType;
@@ -2841,16 +3031,18 @@ export async function appendFollowUp(input: {
   nextFollowUpAt?: Date;
 }) {
   await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
 
   return withTransaction(async (client) => {
     const followId = genId("followup");
     const followRes = await client.query(
       `INSERT INTO follow_ups (
-        id, client_id, type, content, next_action, next_follow_up_at, created_by_id
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7)
+        id, tenant_id, client_id, type, content, next_action, next_follow_up_at, created_by_id
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
       RETURNING *`,
       [
         followId,
+        scopeTenantId,
         input.clientId,
         input.type,
         input.content,
@@ -2863,8 +3055,8 @@ export async function appendFollowUp(input: {
     await client.query(
       `UPDATE clients
        SET last_contacted_at = NOW(), next_follow_up_at = $2, updated_at = NOW()
-       WHERE id = $1`,
-      [input.clientId, input.nextFollowUpAt ?? null]
+       WHERE id = $1 AND tenant_id = $3`,
+      [input.clientId, input.nextFollowUpAt ?? null, scopeTenantId]
     );
 
     return mapFollowUp(followRes.rows[0]);
@@ -2872,6 +3064,7 @@ export async function appendFollowUp(input: {
 }
 
 export async function createComplianceTaskFromAlert(input: {
+  tenantId?: string;
   clientId: string;
   alertType: ComplianceAlertType;
   alertTitle: string;
@@ -2880,11 +3073,12 @@ export async function createComplianceTaskFromAlert(input: {
   createdById?: string;
 }) {
   await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
 
   return withTransaction(async (client) => {
     const clientRes = await client.query(
-      "SELECT owner_user_id FROM clients WHERE id = $1 LIMIT 1 FOR UPDATE",
-      [input.clientId]
+      "SELECT owner_user_id FROM clients WHERE id = $1 AND tenant_id = $2 LIMIT 1 FOR UPDATE",
+      [input.clientId, scopeTenantId]
     );
     if (!clientRes.rows[0]) return null;
 
@@ -2892,9 +3086,9 @@ export async function createComplianceTaskFromAlert(input: {
 
     const existingRes = await client.query(
       `SELECT * FROM tasks
-       WHERE client_id = $1 AND title = $2 AND status = 'pending'
+       WHERE client_id = $1 AND tenant_id = $2 AND title = $3 AND status = 'pending'
        LIMIT 1`,
-      [input.clientId, input.alertTitle]
+      [input.clientId, scopeTenantId, input.alertTitle]
     );
     if (existingRes.rows[0]) {
       return mapTask(existingRes.rows[0]);
@@ -2902,18 +3096,19 @@ export async function createComplianceTaskFromAlert(input: {
 
     const taskRes = await client.query(
       `INSERT INTO tasks (
-        id, client_id, title, due_at, status, created_by_id
-      ) VALUES ($1,$2,$3,$4,'pending',$5)
+        id, tenant_id, client_id, title, due_at, status, created_by_id
+      ) VALUES ($1,$2,$3,$4,$5,'pending',$6)
       RETURNING *`,
-      [genId("task"), input.clientId, input.alertTitle, input.dueAt ?? null, createdById]
+      [genId("task"), scopeTenantId, input.clientId, input.alertTitle, input.dueAt ?? null, createdById]
     );
 
     await client.query(
       `INSERT INTO follow_ups (
-        id, client_id, type, content, next_action, next_follow_up_at, created_by_id
-      ) VALUES ($1,$2,'note',$3,$4,$5,$6)`,
+        id, tenant_id, client_id, type, content, next_action, next_follow_up_at, created_by_id
+      ) VALUES ($1,$2,$3,'note',$4,$5,$6,$7)`,
       [
         genId("followup"),
+        scopeTenantId,
         input.clientId,
         `法定対応タスクを作成: ${input.alertTitle}`,
         input.reason,
@@ -2922,13 +3117,17 @@ export async function createComplianceTaskFromAlert(input: {
       ]
     );
 
-    await client.query("UPDATE clients SET updated_at = NOW() WHERE id = $1", [input.clientId]);
+    await client.query("UPDATE clients SET updated_at = NOW() WHERE id = $1 AND tenant_id = $2", [
+      input.clientId,
+      scopeTenantId,
+    ]);
     await client.query(
       `INSERT INTO audit_logs (
-        id, user_id, actor_id, action, target_type, target_id, message, context_json
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)`,
+        id, tenant_id, user_id, actor_id, action, target_type, target_id, message, context_json
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)`,
       [
         genId("audit"),
+        scopeTenantId,
         createdById,
         createdById,
         "compliance_task_created",
@@ -2944,6 +3143,7 @@ export async function createComplianceTaskFromAlert(input: {
 }
 
 export async function addTask(input: {
+  tenantId?: string;
   clientId?: string;
   title: string;
   dueAt?: Date;
@@ -2951,13 +3151,15 @@ export async function addTask(input: {
   createdById: string;
 }) {
   await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
   const result = await getPool().query(
     `INSERT INTO tasks (
-      id, client_id, title, due_at, status, created_by_id
-    ) VALUES ($1,$2,$3,$4,$5,$6)
+      id, tenant_id, client_id, title, due_at, status, created_by_id
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7)
     RETURNING *`,
     [
       genId("task"),
+      scopeTenantId,
       input.clientId ?? null,
       input.title,
       input.dueAt ?? null,
@@ -2969,6 +3171,7 @@ export async function addTask(input: {
 }
 
 export async function addAuditLog(input: {
+  tenantId?: string;
   userId?: string;
   actorId?: string;
   action: string;
@@ -2978,17 +3181,19 @@ export async function addAuditLog(input: {
   context?: Record<string, unknown>;
 }) {
   await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
   const actorId = input.actorId ?? input.userId;
   if (!actorId) {
     throw new Error("監査ログに必要な actorId が不足しています。");
   }
   const result = await getPool().query(
     `INSERT INTO audit_logs (
-      id, user_id, actor_id, action, target_type, target_id, message, context_json
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)
+      id, tenant_id, user_id, actor_id, action, target_type, target_id, message, context_json
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)
     RETURNING *`,
     [
       genId("audit"),
+      scopeTenantId,
       actorId,
       actorId,
       input.action,
@@ -3002,6 +3207,7 @@ export async function addAuditLog(input: {
 }
 
 export async function resolveComplianceAlert(input: {
+  tenantId?: string;
   clientId: string;
   alertType: ComplianceAlertType;
   resolvedById: string;
@@ -3009,16 +3215,20 @@ export async function resolveComplianceAlert(input: {
   extendDays?: number;
 }) {
   await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
 
   return withTransaction(async (client) => {
-    const currentRes = await client.query("SELECT * FROM clients WHERE id = $1 LIMIT 1 FOR UPDATE", [input.clientId]);
+    const currentRes = await client.query("SELECT * FROM clients WHERE id = $1 AND tenant_id = $2 LIMIT 1 FOR UPDATE", [
+      input.clientId,
+      scopeTenantId,
+    ]);
     if (!currentRes.rows[0]) return null;
     const current = mapClient(currentRes.rows[0]);
 
     const resolvedAt = input.resolvedAt ?? new Date();
     const updates: string[] = ["updated_at = NOW()"];
-    const values: Array<string | Date | number | null> = [input.clientId];
-    let idx = 2;
+    const values: Array<string | Date | number | null> = [input.clientId, scopeTenantId];
+    let idx = 3;
     let content = "法定対応を更新しました。";
 
     const pushSet = (column: string, value: string | Date | null) => {
@@ -3051,23 +3261,31 @@ export async function resolveComplianceAlert(input: {
     const updateRes = await client.query(
       `UPDATE clients
        SET ${updates.join(", ")}
-       WHERE id = $1
+       WHERE id = $1 AND tenant_id = $2
        RETURNING *`,
       values
     );
 
     await client.query(
       `INSERT INTO follow_ups (
-        id, client_id, type, content, next_action, created_by_id
-      ) VALUES ($1,$2,'note',$3,$4,$5)`,
-      [genId("followup"), input.clientId, `法定対応を解消: ${content}`, "法定対応記録を再確認", input.resolvedById]
+        id, tenant_id, client_id, type, content, next_action, created_by_id
+      ) VALUES ($1,$2,$3,'note',$4,$5,$6)`,
+      [
+        genId("followup"),
+        scopeTenantId,
+        input.clientId,
+        `法定対応を解消: ${content}`,
+        "法定対応記録を再確認",
+        input.resolvedById,
+      ]
     );
     await client.query(
       `INSERT INTO audit_logs (
-        id, user_id, actor_id, action, target_type, target_id, message, context_json
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)`,
+        id, tenant_id, user_id, actor_id, action, target_type, target_id, message, context_json
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)`,
       [
         genId("audit"),
+        scopeTenantId,
         input.resolvedById,
         input.resolvedById,
         "compliance_resolved",
@@ -3083,30 +3301,36 @@ export async function resolveComplianceAlert(input: {
 }
 
 export async function updateTaskStatus(input: {
+  tenantId?: string;
   taskId: string;
   status: TaskStatus;
   updatedById: string;
 }) {
   await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
   const statusLabel = input.status === "done" ? "完了" : input.status === "canceled" ? "取消" : "未着手";
 
   return withTransaction(async (client) => {
-    const taskRes = await client.query("SELECT * FROM tasks WHERE id = $1 LIMIT 1 FOR UPDATE", [input.taskId]);
+    const taskRes = await client.query("SELECT * FROM tasks WHERE id = $1 AND tenant_id = $2 LIMIT 1 FOR UPDATE", [
+      input.taskId,
+      scopeTenantId,
+    ]);
     if (!taskRes.rows[0]) return null;
     const task = mapTask(taskRes.rows[0]);
 
     const updatedRes = await client.query(
-      "UPDATE tasks SET status = $2 WHERE id = $1 RETURNING *",
-      [input.taskId, input.status]
+      "UPDATE tasks SET status = $2 WHERE id = $1 AND tenant_id = $3 RETURNING *",
+      [input.taskId, input.status, scopeTenantId]
     );
 
     if (task.clientId) {
       await client.query(
         `INSERT INTO follow_ups (
-          id, client_id, type, content, next_action, created_by_id
-        ) VALUES ($1,$2,'note',$3,$4,$5)`,
+          id, tenant_id, client_id, type, content, next_action, created_by_id
+        ) VALUES ($1,$2,$3,'note',$4,$5,$6)`,
         [
           genId("followup"),
+          scopeTenantId,
           task.clientId,
           `タスク状態を更新: ${task.title}（${statusLabel}）`,
           input.status === "done" ? "次の優先タスクを確認" : "必要に応じて再計画",
@@ -3116,10 +3340,11 @@ export async function updateTaskStatus(input: {
     }
     await client.query(
       `INSERT INTO audit_logs (
-        id, user_id, actor_id, action, target_type, target_id, message, context_json
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)`,
+        id, tenant_id, user_id, actor_id, action, target_type, target_id, message, context_json
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)`,
       [
         genId("audit"),
+        scopeTenantId,
         input.updatedById,
         input.updatedById,
         "task_status_updated",
@@ -3135,29 +3360,35 @@ export async function updateTaskStatus(input: {
 }
 
 export async function rescheduleTask(input: {
+  tenantId?: string;
   taskId: string;
   dueAt: Date;
   updatedById: string;
 }) {
   await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
 
   return withTransaction(async (client) => {
-    const taskRes = await client.query("SELECT * FROM tasks WHERE id = $1 LIMIT 1 FOR UPDATE", [input.taskId]);
+    const taskRes = await client.query("SELECT * FROM tasks WHERE id = $1 AND tenant_id = $2 LIMIT 1 FOR UPDATE", [
+      input.taskId,
+      scopeTenantId,
+    ]);
     if (!taskRes.rows[0]) return null;
     const task = mapTask(taskRes.rows[0]);
 
     const updatedRes = await client.query(
-      "UPDATE tasks SET due_at = $2, status = 'pending' WHERE id = $1 RETURNING *",
-      [input.taskId, input.dueAt]
+      "UPDATE tasks SET due_at = $2, status = 'pending' WHERE id = $1 AND tenant_id = $3 RETURNING *",
+      [input.taskId, input.dueAt, scopeTenantId]
     );
 
     if (task.clientId) {
       await client.query(
         `INSERT INTO follow_ups (
-          id, client_id, type, content, next_action, next_follow_up_at, created_by_id
-        ) VALUES ($1,$2,'note',$3,$4,$5,$6)`,
+          id, tenant_id, client_id, type, content, next_action, next_follow_up_at, created_by_id
+        ) VALUES ($1,$2,$3,'note',$4,$5,$6,$7)`,
         [
           genId("followup"),
+          scopeTenantId,
           task.clientId,
           `タスク期限を変更: ${task.title}`,
           `新しい期限は ${input.dueAt.toLocaleDateString("ja-JP")}`,
@@ -3168,10 +3399,11 @@ export async function rescheduleTask(input: {
     }
     await client.query(
       `INSERT INTO audit_logs (
-        id, user_id, actor_id, action, target_type, target_id, message, context_json
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)`,
+        id, tenant_id, user_id, actor_id, action, target_type, target_id, message, context_json
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)`,
       [
         genId("audit"),
+        scopeTenantId,
         input.updatedById,
         input.updatedById,
         "task_rescheduled",
@@ -3186,16 +3418,29 @@ export async function rescheduleTask(input: {
   });
 }
 
-export async function setClientStage(clientId: string, stage: ClientStage) {
+export async function setClientStage(clientId: string, stage: ClientStage, tenantId = DEFAULT_TENANT_ID) {
   await ensureSchema();
+  const scopeTenantId = resolveTenantId(tenantId);
   const db = getPool();
-  const beforeRes = await db.query("SELECT * FROM clients WHERE id = $1 LIMIT 1", [clientId]);
+  const beforeRes = await db.query("SELECT * FROM clients WHERE id = $1 AND tenant_id = $2 LIMIT 1", [
+    clientId,
+    scopeTenantId,
+  ]);
   if (!beforeRes.rows[0]) return null;
   const before = mapClient(beforeRes.rows[0]);
   const [quoteCountRes, followCountRes, viewingCountRes] = await Promise.all([
-    db.query("SELECT COUNT(*)::int AS count FROM quotations WHERE client_id = $1", [clientId]),
-    db.query("SELECT COUNT(*)::int AS count FROM follow_ups WHERE client_id = $1", [clientId]),
-    db.query("SELECT COUNT(*)::int AS count FROM follow_ups WHERE client_id = $1 AND type = 'viewing'", [clientId]),
+    db.query("SELECT COUNT(*)::int AS count FROM quotations WHERE client_id = $1 AND tenant_id = $2", [
+      clientId,
+      scopeTenantId,
+    ]),
+    db.query("SELECT COUNT(*)::int AS count FROM follow_ups WHERE client_id = $1 AND tenant_id = $2", [
+      clientId,
+      scopeTenantId,
+    ]),
+    db.query("SELECT COUNT(*)::int AS count FROM follow_ups WHERE client_id = $1 AND tenant_id = $2 AND type = 'viewing'", [
+      clientId,
+      scopeTenantId,
+    ]),
   ]);
   const blockers = validateStageTransition({
     from: before.stage,
@@ -3211,11 +3456,16 @@ export async function setClientStage(clientId: string, stage: ClientStage) {
     throw new StageTransitionBlockedError(blockers);
   }
 
-  const result = await db.query("UPDATE clients SET stage = $2, updated_at = NOW() WHERE id = $1 RETURNING *", [clientId, stage]);
+  const result = await db.query("UPDATE clients SET stage = $2, updated_at = NOW() WHERE id = $1 AND tenant_id = $3 RETURNING *", [
+    clientId,
+    stage,
+    scopeTenantId,
+  ]);
   return result.rows[0] ? mapClient(result.rows[0]) : null;
 }
 
 export async function setClientStageWithLog(input: {
+  tenantId?: string;
   clientId: string;
   stage: ClientStage;
   createdById?: string;
@@ -3223,18 +3473,31 @@ export async function setClientStageWithLog(input: {
   locale?: Locale;
 }) {
   await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
   const locale = input.locale ?? "ja";
   const stageLabel = getStageLabel(locale);
 
   return withTransaction(async (client) => {
-    const beforeRes = await client.query("SELECT * FROM clients WHERE id = $1 LIMIT 1 FOR UPDATE", [input.clientId]);
+    const beforeRes = await client.query("SELECT * FROM clients WHERE id = $1 AND tenant_id = $2 LIMIT 1 FOR UPDATE", [
+      input.clientId,
+      scopeTenantId,
+    ]);
     if (!beforeRes.rows[0]) return null;
 
     const before = mapClient(beforeRes.rows[0]);
     const [quoteCountRes, followCountRes, viewingCountRes] = await Promise.all([
-      client.query("SELECT COUNT(*)::int AS count FROM quotations WHERE client_id = $1", [input.clientId]),
-      client.query("SELECT COUNT(*)::int AS count FROM follow_ups WHERE client_id = $1", [input.clientId]),
-      client.query("SELECT COUNT(*)::int AS count FROM follow_ups WHERE client_id = $1 AND type = 'viewing'", [input.clientId]),
+      client.query("SELECT COUNT(*)::int AS count FROM quotations WHERE client_id = $1 AND tenant_id = $2", [
+        input.clientId,
+        scopeTenantId,
+      ]),
+      client.query("SELECT COUNT(*)::int AS count FROM follow_ups WHERE client_id = $1 AND tenant_id = $2", [
+        input.clientId,
+        scopeTenantId,
+      ]),
+      client.query("SELECT COUNT(*)::int AS count FROM follow_ups WHERE client_id = $1 AND tenant_id = $2 AND type = 'viewing'", [
+        input.clientId,
+        scopeTenantId,
+      ]),
     ]);
     const blockers = validateStageTransition({
       from: before.stage,
@@ -3252,18 +3515,19 @@ export async function setClientStageWithLog(input: {
     }
 
     const updateRes = await client.query(
-      "UPDATE clients SET stage = $2, updated_at = NOW() WHERE id = $1 RETURNING *",
-      [input.clientId, input.stage]
+      "UPDATE clients SET stage = $2, updated_at = NOW() WHERE id = $1 AND tenant_id = $3 RETURNING *",
+      [input.clientId, input.stage, scopeTenantId]
     );
     const updated = mapClient(updateRes.rows[0]);
 
     if (before.stage !== updated.stage) {
       await client.query(
         `INSERT INTO follow_ups (
-          id, client_id, type, content, next_action, created_by_id
-        ) VALUES ($1,$2,'note',$3,$4,$5)`,
+          id, tenant_id, client_id, type, content, next_action, created_by_id
+        ) VALUES ($1,$2,$3,'note',$4,$5,$6)`,
         [
           genId("followup"),
+          scopeTenantId,
           input.clientId,
           locale === "zh"
             ? `阶段更新: ${stageLabel[before.stage]} -> ${stageLabel[updated.stage]}`
@@ -3286,6 +3550,7 @@ export async function setClientStageWithLog(input: {
 }
 
 export async function addQuotation(input: {
+  tenantId?: string;
   clientId: string;
   propertyId?: string;
   quoteTitle: string;
@@ -3301,10 +3566,14 @@ export async function addQuotation(input: {
   summaryText: string;
 }) {
   await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
   const computed = computeQuote(input);
 
   return withTransaction(async (client) => {
-    const ownerRes = await client.query("SELECT owner_user_id, stage, next_follow_up_at FROM clients WHERE id = $1 LIMIT 1 FOR UPDATE", [input.clientId]);
+    const ownerRes = await client.query(
+      "SELECT owner_user_id, stage, next_follow_up_at FROM clients WHERE id = $1 AND tenant_id = $2 LIMIT 1 FOR UPDATE",
+      [input.clientId, scopeTenantId],
+    );
     if (!ownerRes.rows[0]) {
       throw new Error("顧客が見つかりません。");
     }
@@ -3315,20 +3584,21 @@ export async function addQuotation(input: {
     const quoteId = genId("quote");
     const quoteRes = await client.query(
       `INSERT INTO quotations (
-        id, client_id, property_id, quote_title,
+        id, tenant_id, client_id, property_id, quote_title,
         listing_price, brokerage_fee, tax_fee, management_fee,
         repair_fee, other_fee, down_payment, loan_amount,
         interest_rate, loan_years, monthly_payment_estimate,
         total_initial_cost, monthly_total_cost, summary_text, status
       ) VALUES (
-        $1,$2,$3,$4,
-        $5,$6,$7,$8,
-        $9,$10,$11,$12,
-        $13,$14,$15,
-        $16,$17,$18,'draft'
+        $1,$2,$3,$4,$5,
+        $6,$7,$8,$9,
+        $10,$11,$12,$13,
+        $14,$15,$16,
+        $17,$18,$19,'draft'
       ) RETURNING *`,
       [
         quoteId,
+        scopeTenantId,
         input.clientId,
         input.propertyId ?? null,
         input.quoteTitle,
@@ -3350,16 +3620,17 @@ export async function addQuotation(input: {
     );
 
     await client.query(
-      "UPDATE clients SET stage = 'quoted', last_contacted_at = NOW(), updated_at = NOW() WHERE id = $1",
-      [input.clientId]
+      "UPDATE clients SET stage = 'quoted', last_contacted_at = NOW(), updated_at = NOW() WHERE id = $1 AND tenant_id = $2",
+      [input.clientId, scopeTenantId]
     );
 
     await client.query(
       `INSERT INTO follow_ups (
-        id, client_id, type, content, next_action, next_follow_up_at, created_by_id
-      ) VALUES ($1,$2,'note',$3,$4,$5,$6)`,
+        id, tenant_id, client_id, type, content, next_action, next_follow_up_at, created_by_id
+      ) VALUES ($1,$2,$3,'note',$4,$5,$6,$7)`,
       [
         genId("followup"),
+        scopeTenantId,
         input.clientId,
         `見積を作成: ${input.quoteTitle}（月々返済 ${computed.monthlyPaymentEstimate.toLocaleString("ja-JP")} 円）`,
         "見積を送付し、顧客フィードバックを回収",
@@ -3371,10 +3642,11 @@ export async function addQuotation(input: {
     if (beforeStage !== "quoted") {
       await client.query(
         `INSERT INTO follow_ups (
-          id, client_id, type, content, next_action, next_follow_up_at, created_by_id
-        ) VALUES ($1,$2,'note',$3,$4,$5,$6)`,
+          id, tenant_id, client_id, type, content, next_action, next_follow_up_at, created_by_id
+        ) VALUES ($1,$2,$3,'note',$4,$5,$6,$7)`,
         [
           genId("followup"),
+          scopeTenantId,
           input.clientId,
           `ステージ提案: 「${STAGE_JA_LABEL.quoted}」へ自動反映しました。`,
           "頭金と月次支出の受容度を確認",
@@ -3388,15 +3660,22 @@ export async function addQuotation(input: {
   });
 }
 
-export async function duplicateQuotation(quoteId: string) {
+export async function duplicateQuotation(quoteId: string, tenantId = DEFAULT_TENANT_ID) {
   await ensureSchema();
+  const scopeTenantId = resolveTenantId(tenantId);
 
-  const sourceRes = await getPool().query("SELECT * FROM quotations WHERE id = $1 LIMIT 1", [quoteId]);
+  const sourceRes = await getPool().query("SELECT * FROM quotations WHERE id = $1 AND tenant_id = $2 LIMIT 1", [
+    quoteId,
+    scopeTenantId,
+  ]);
   if (!sourceRes.rows[0]) return null;
   const source = mapQuotation(sourceRes.rows[0]);
 
   const normalized = source.quoteTitle.replace(/\s+v\d+$/i, "").trim();
-  const titleRes = await getPool().query("SELECT quote_title FROM quotations WHERE quote_title ILIKE $1", [`${normalized}%`]);
+  const titleRes = await getPool().query("SELECT quote_title FROM quotations WHERE tenant_id = $1 AND quote_title ILIKE $2", [
+    scopeTenantId,
+    `${normalized}%`,
+  ]);
 
   const escaped = normalized.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const versionRegex = new RegExp(`^${escaped}\\s+v(\\d+)$`, "i");
@@ -3414,20 +3693,21 @@ export async function duplicateQuotation(quoteId: string) {
 
   const result = await getPool().query(
     `INSERT INTO quotations (
-      id, client_id, property_id, quote_title,
+      id, tenant_id, client_id, property_id, quote_title,
       listing_price, brokerage_fee, tax_fee, management_fee,
       repair_fee, other_fee, down_payment, loan_amount,
       interest_rate, loan_years, monthly_payment_estimate,
       total_initial_cost, monthly_total_cost, summary_text, status
     ) VALUES (
-      $1,$2,$3,$4,
-      $5,$6,$7,$8,
-      $9,$10,$11,$12,
-      $13,$14,$15,
-      $16,$17,$18,'draft'
+      $1,$2,$3,$4,$5,
+      $6,$7,$8,$9,
+      $10,$11,$12,$13,
+      $14,$15,$16,
+      $17,$18,$19,'draft'
     ) RETURNING *`,
     [
       genId("quote"),
+      scopeTenantId,
       source.clientId,
       source.propertyId ?? null,
       newTitle,
@@ -3450,16 +3730,17 @@ export async function duplicateQuotation(quoteId: string) {
 
   const duplicated = mapQuotation(result.rows[0]);
   const clientRes = await getPool().query(
-    "SELECT owner_user_id, next_follow_up_at FROM clients WHERE id = $1 LIMIT 1",
-    [duplicated.clientId]
+    "SELECT owner_user_id, next_follow_up_at FROM clients WHERE id = $1 AND tenant_id = $2 LIMIT 1",
+    [duplicated.clientId, scopeTenantId]
   );
   if (clientRes.rows[0]) {
     await getPool().query(
       `INSERT INTO follow_ups (
-        id, client_id, type, content, next_action, next_follow_up_at, created_by_id
-      ) VALUES ($1,$2,'note',$3,$4,$5,$6)`,
+        id, tenant_id, client_id, type, content, next_action, next_follow_up_at, created_by_id
+      ) VALUES ($1,$2,$3,'note',$4,$5,$6,$7)`,
       [
         genId("followup"),
+        scopeTenantId,
         duplicated.clientId,
         `見積改訂: 新バージョン ${duplicated.quoteTitle} を作成。`,
         "差分確認後に顧客へ送付",
@@ -3472,11 +3753,12 @@ export async function duplicateQuotation(quoteId: string) {
   return duplicated;
 }
 
-export async function updateQuotationStatus(quoteId: string, status: QuoteStatus) {
+export async function updateQuotationStatus(quoteId: string, status: QuoteStatus, tenantId = DEFAULT_TENANT_ID) {
   await ensureSchema();
+  const scopeTenantId = resolveTenantId(tenantId);
   const result = await getPool().query(
-    "UPDATE quotations SET status = $2, updated_at = NOW() WHERE id = $1 RETURNING *",
-    [quoteId, status]
+    "UPDATE quotations SET status = $2, updated_at = NOW() WHERE id = $1 AND tenant_id = $3 RETURNING *",
+    [quoteId, status, scopeTenantId]
   );
   return result.rows[0] ? mapQuotation(result.rows[0]) : null;
 }

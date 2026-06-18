@@ -1,10 +1,10 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { applyOutputTemplateVersionAction, updateOutputTemplateSettingsAction } from "@/app/actions";
-import { getDefaultUser, getOutputTemplateSettings, listOutputTemplateVersions, listQuotations } from "@/lib/data";
+import { getOutputTemplateSettings, listOutputTemplateVersions, listQuotations } from "@/lib/data";
 import { listHubGeneratedOutputs } from "@/lib/hub";
 import { getLocale, type Locale } from "@/lib/locale";
 import { getOutputDocLabel, type OutputDocType, type OutputTemplateSettingsInput } from "@/lib/output-doc";
+import { requireTenantSession } from "@/lib/tenant-session";
 
 export const dynamic = "force-dynamic";
 
@@ -247,21 +247,23 @@ function formatDateTime(date: Date, locale: Locale): string {
 }
 
 export default async function OutputTemplateSettingsPage({ searchParams }: OutputTemplateSettingsPageProps) {
-  const locale = await getLocale();
+  const [locale, session] = await Promise.all([
+    getLocale(),
+    requireTenantSession({ permission: "template.view" }),
+  ]);
   const copy = getCopy(locale);
   const templateFieldLabels = getTemplateFieldLabels(locale);
 
   const params = searchParams ? await searchParams : undefined;
   const diffVersionId = params?.diffVersionId?.trim() ?? "";
-  const user = await getDefaultUser();
-  if (!user) {
-    notFound();
-  }
+  const user = session.user;
+  const tenantId = session.tenant.id;
+  const hubContext = { userId: user.id, tenantId };
   const [settings, versions, latestQuoteList, generatedOutputs] = await Promise.all([
-    getOutputTemplateSettings(user.id),
-    listOutputTemplateVersions(user.id, 20),
-    listQuotations(1),
-    listHubGeneratedOutputs(locale),
+    getOutputTemplateSettings(user.id, tenantId),
+    listOutputTemplateVersions(user.id, 20, tenantId),
+    listQuotations(1, tenantId),
+    listHubGeneratedOutputs(locale, hubContext),
   ]);
   const latestQuote = latestQuoteList[0];
   const versionOutputCountMap = generatedOutputs.reduce<Map<string, number>>((acc, output) => {

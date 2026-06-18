@@ -22,6 +22,7 @@ import {
   type OutputTemplateSettingsInput,
 } from "@/lib/output-doc";
 import { COMPLETE_CASE_FIELD_DEFAULTS, COMPLETE_DRAFT_DEFAULTS } from "@/lib/guarantee-application-fixtures";
+import { DEFAULT_TENANT_ID } from "@/lib/tenant-constants";
 import type { TenantRole } from "@/lib/tenant-permissions";
 
 export type { OutputTemplateSettingsInput } from "@/lib/output-doc";
@@ -58,6 +59,7 @@ export type TenantMembership = {
 
 export type Client = {
   id: string;
+  tenantId?: string;
   name: string;
   phone: string;
   lineId?: string;
@@ -90,6 +92,7 @@ export type Client = {
 
 export type Property = {
   id: string;
+  tenantId?: string;
   name: string;
   area?: string;
   address?: string;
@@ -103,6 +106,7 @@ export type Property = {
 
 export type Quotation = {
   id: string;
+  tenantId?: string;
   clientId: string;
   propertyId?: string;
   quoteTitle: string;
@@ -127,6 +131,7 @@ export type Quotation = {
 
 export type FollowUp = {
   id: string;
+  tenantId?: string;
   clientId: string;
   type: FollowUpType;
   content: string;
@@ -138,6 +143,7 @@ export type FollowUp = {
 
 export type Task = {
   id: string;
+  tenantId?: string;
   clientId?: string;
   title: string;
   dueAt?: Date;
@@ -148,6 +154,7 @@ export type Task = {
 
 export type AuditLog = {
   id: string;
+  tenantId?: string;
   actorId: string;
   // Legacy alias kept for backward compatibility.
   userId: string;
@@ -176,6 +183,7 @@ export type ImportJobStatus = "queued" | "mapped" | "completed";
 
 export type ImportJob = {
   id: string;
+  tenantId?: string;
   userId: string;
   sourceType: ImportSourceType;
   title: string;
@@ -196,6 +204,7 @@ export type GuaranteeApplicationDraftCompanyCode = "zenhoren" | "nihon_safety" |
 
 export type BrokerageCase = {
   id: string;
+  tenantId?: string;
   userId: string;
   caseType: BrokerageCaseType;
   caseTitle: string;
@@ -209,6 +218,7 @@ export type BrokerageCase = {
 
 export type ExtractionReviewItem = {
   id: string;
+  tenantId?: string;
   userId: string;
   caseId: string;
   importJobId: string;
@@ -233,6 +243,7 @@ export type ExtractionReviewItem = {
 
 export type GuaranteeApplicationDraft = {
   id: string;
+  tenantId?: string;
   userId: string;
   caseId: string;
   templateId: string;
@@ -267,6 +278,7 @@ export type CorrectionEventScopeCandidate =
 
 export type CorrectionEvent = {
   id: string;
+  tenantId?: string;
   userId: string;
   caseId: string;
   trigger: CorrectionEventTrigger;
@@ -289,6 +301,7 @@ export type AiExperienceDraftStatus = "draft" | "approved" | "rejected";
 
 export type AiExperienceDraft = {
   id: string;
+  tenantId?: string;
   userId: string;
   status: AiExperienceDraftStatus;
   title: string;
@@ -307,6 +320,7 @@ export type AttachmentTargetType = "property" | "party" | "contract" | "service_
 
 export type Attachment = {
   id: string;
+  tenantId?: string;
   userId: string;
   targetType: AttachmentTargetType;
   targetId: string;
@@ -319,6 +333,7 @@ export type Attachment = {
 
 export type GeneratedOutput = {
   id: string;
+  tenantId?: string;
   actorId: string;
   userId: string;
   sourceQuoteId?: string;
@@ -336,6 +351,7 @@ export type GeneratedOutput = {
 
 export type OutputTemplateVersion = {
   id: string;
+  tenantId?: string;
   userId: string;
   versionNumber: number;
   versionLabel: string;
@@ -373,6 +389,44 @@ function makeId(prefix: string): string {
 
 const now = Date.now();
 
+function resolveTenantId(tenantId?: string): string {
+  return tenantId?.trim() || DEFAULT_TENANT_ID;
+}
+
+const tenantScopedCollectionKeys = [
+  "clients",
+  "properties",
+  "quotations",
+  "followUps",
+  "tasks",
+  "auditLogs",
+  "outputTemplateSettings",
+  "outputTemplateVersions",
+  "importJobs",
+  "brokerageCases",
+  "extractionReviewItems",
+  "guaranteeApplicationDrafts",
+  "correctionEvents",
+  "aiExperienceDrafts",
+  "attachments",
+  "generatedOutputs",
+] as const;
+
+function backfillTenantScope(dbLike: DB) {
+  tenantScopedCollectionKeys.forEach((key) => {
+    const records = dbLike[key] as Array<{ tenantId?: string }>;
+    records.forEach((record) => {
+      record.tenantId = resolveTenantId(record.tenantId);
+    });
+  });
+}
+
+function withDefaultTenantScope(input: Record<string, unknown>): DB {
+  const scopedDb = input as DB;
+  backfillTenantScope(scopedDb);
+  return scopedDb;
+}
+
 function toTemplateSettingsInput(settings: OutputTemplateSettings): OutputTemplateSettingsInput {
   return {
     companyName: settings.companyName,
@@ -408,7 +462,7 @@ cherryOutputTemplate.email = "info@cherry-investment.co.jp";
 
 const _g = globalThis as typeof globalThis & { __brokerDb?: DB };
 
-const _freshDb: DB = {
+const _freshDb: DB = withDefaultTenantScope({
   users: [
     {
       id: "user_demo",
@@ -880,10 +934,11 @@ const _freshDb: DB = {
     { id: "att_contract_yamada", userId: "user_demo", targetType: "contract", targetId: "quote_yamada_b", fileName: "売買契約書ドラフト_山田様.pdf", fileType: "application/pdf", fileSizeBytes: 1105920, storagePath: "demo/contracts/quote_yamada_b/draft.pdf", uploadedAt: new Date(now - 2 * 24 * 60 * 60 * 1000) },
   ],
   generatedOutputs: [],
-};
+});
 
 if (!_g.__brokerDb) _g.__brokerDb = _freshDb;
 const db: DB = _g.__brokerDb;
+backfillTenantScope(db);
 if (!db.tenants) db.tenants = [..._freshDb.tenants];
 if (!db.tenantMemberships) db.tenantMemberships = [..._freshDb.tenantMemberships];
 if (!db.guaranteeApplicationDrafts) db.guaranteeApplicationDrafts = [..._freshDb.guaranteeApplicationDrafts];
@@ -913,6 +968,7 @@ export function resetBusinessDataForQa(): Record<keyof Omit<DB, "users" | "outpu
   db.outputTemplateVersions = [
     {
       id: "tplver_user_demo_qa_blank",
+      tenantId: DEFAULT_TENANT_ID,
       userId: "user_demo",
       versionNumber: 1,
       versionLabel: "標準版 v1",
@@ -954,31 +1010,31 @@ export function resetBusinessDataForQa(): Record<keyof Omit<DB, "users" | "outpu
 const seedQuoteYamadaA = (() => {
   const data = { listingPrice: 135000000, brokerageFee: 4180000, taxFee: 1450000, managementFee: 44000, repairFee: 18000, otherFee: 850000, downPayment: 35000000, interestRate: 1.65, loanYears: 30 };
   const computed = computeQuote(data);
-  return { id: "quote_yamada_a", clientId: "client_yamada", propertyId: "prop_minato_tower", quoteTitle: "山田様 港区グランドタワー プランA", ...data, ...computed, summaryText: "頭金3500万円・30年1.65%の条件で月々返済約28.4万円。表面利回り4.1%。申込条件調整中。", status: "sent" as const, createdAt: new Date(now - 14 * 24 * 60 * 60 * 1000), updatedAt: new Date(now - 14 * 24 * 60 * 60 * 1000) } satisfies Quotation;
+  return { id: "quote_yamada_a", tenantId: DEFAULT_TENANT_ID, clientId: "client_yamada", propertyId: "prop_minato_tower", quoteTitle: "山田様 港区グランドタワー プランA", ...data, ...computed, summaryText: "頭金3500万円・30年1.65%の条件で月々返済約28.4万円。表面利回り4.1%。申込条件調整中。", status: "sent" as const, createdAt: new Date(now - 14 * 24 * 60 * 60 * 1000), updatedAt: new Date(now - 14 * 24 * 60 * 60 * 1000) } satisfies Quotation;
 })();
 
 const seedQuoteYamadaB = (() => {
   const data = { listingPrice: 135000000, brokerageFee: 4180000, taxFee: 1450000, managementFee: 44000, repairFee: 18000, otherFee: 850000, downPayment: 40000000, interestRate: 1.65, loanYears: 30 };
   const computed = computeQuote(data);
-  return { id: "quote_yamada_b", clientId: "client_yamada", propertyId: "prop_minato_tower", quoteTitle: "山田様 港区グランドタワー プランB（頭金増額）", ...data, ...computed, summaryText: "頭金4000万円に増額。月々返済約26.9万円に改善。キャッシュフロー負担を軽減したプラン。", status: "revised" as const, createdAt: new Date(now - 8 * 24 * 60 * 60 * 1000), updatedAt: new Date(now - 8 * 24 * 60 * 60 * 1000) } satisfies Quotation;
+  return { id: "quote_yamada_b", tenantId: DEFAULT_TENANT_ID, clientId: "client_yamada", propertyId: "prop_minato_tower", quoteTitle: "山田様 港区グランドタワー プランB（頭金増額）", ...data, ...computed, summaryText: "頭金4000万円に増額。月々返済約26.9万円に改善。キャッシュフロー負担を軽減したプラン。", status: "revised" as const, createdAt: new Date(now - 8 * 24 * 60 * 60 * 1000), updatedAt: new Date(now - 8 * 24 * 60 * 60 * 1000) } satisfies Quotation;
 })();
 
 const seedQuoteMeiling = (() => {
   const data = { listingPrice: 88000000, brokerageFee: 2740000, taxFee: 960000, managementFee: 36000, repairFee: 13000, otherFee: 580000, downPayment: 15000000, interestRate: 1.5, loanYears: 35 };
   const computed = computeQuote(data);
-  return { id: "quote_meiling_a", clientId: "client_li_meiling", propertyId: "prop_shibuya_court", quoteTitle: "李様 渋谷コートレジデンス プランA", ...data, ...computed, summaryText: "頭金1500万円・35年1.5%。月々返済約25.8万円。内見済み、申込意向確認待ち。", status: "sent" as const, createdAt: new Date(now - 8 * 24 * 60 * 60 * 1000), updatedAt: new Date(now - 8 * 24 * 60 * 60 * 1000) } satisfies Quotation;
+  return { id: "quote_meiling_a", tenantId: DEFAULT_TENANT_ID, clientId: "client_li_meiling", propertyId: "prop_shibuya_court", quoteTitle: "李様 渋谷コートレジデンス プランA", ...data, ...computed, summaryText: "頭金1500万円・35年1.5%。月々返済約25.8万円。内見済み、申込意向確認待ち。", status: "sent" as const, createdAt: new Date(now - 8 * 24 * 60 * 60 * 1000), updatedAt: new Date(now - 8 * 24 * 60 * 60 * 1000) } satisfies Quotation;
 })();
 
 const seedQuoteTamura = (() => {
   const data = { listingPrice: 72000000, brokerageFee: 2260000, taxFee: 790000, managementFee: 28000, repairFee: 11000, otherFee: 480000, downPayment: 12000000, interestRate: 1.55, loanYears: 35 };
   const computed = computeQuote(data);
-  return { id: "quote_tamura_a", clientId: "client_tamura", propertyId: "prop_setagaya_garden", quoteTitle: "田村様 世田谷ガーデンテラス プランA", ...data, ...computed, summaryText: "頭金1200万円・35年1.55%。月々返済約19.6万円。送付後6日経過、返答待ち。", status: "sent" as const, createdAt: new Date(now - 6 * 24 * 60 * 60 * 1000), updatedAt: new Date(now - 6 * 24 * 60 * 60 * 1000) } satisfies Quotation;
+  return { id: "quote_tamura_a", tenantId: DEFAULT_TENANT_ID, clientId: "client_tamura", propertyId: "prop_setagaya_garden", quoteTitle: "田村様 世田谷ガーデンテラス プランA", ...data, ...computed, summaryText: "頭金1200万円・35年1.55%。月々返済約19.6万円。送付後6日経過、返答待ち。", status: "sent" as const, createdAt: new Date(now - 6 * 24 * 60 * 60 * 1000), updatedAt: new Date(now - 6 * 24 * 60 * 60 * 1000) } satisfies Quotation;
 })();
 
 const seedQuoteNakamura = (() => {
   const data = { listingPrice: 95000000, brokerageFee: 2950000, taxFee: 1030000, managementFee: 38000, repairFee: 15000, otherFee: 620000, downPayment: 18000000, interestRate: 1.45, loanYears: 35 };
   const computed = computeQuote(data);
-  return { id: "quote_nakamura_a", clientId: "client_nakamura", propertyId: "prop_bunkyo_soleil", quoteTitle: "中村様 文京区ソレイユ 最終プラン（成約）", ...data, ...computed, summaryText: "成約済み。引渡し2026年4月15日予定。頭金1800万円・35年1.45%・月々約25.1万円。", status: "sent" as const, createdAt: new Date(now - 28 * 24 * 60 * 60 * 1000), updatedAt: new Date(now - 12 * 24 * 60 * 60 * 1000) } satisfies Quotation;
+  return { id: "quote_nakamura_a", tenantId: DEFAULT_TENANT_ID, clientId: "client_nakamura", propertyId: "prop_bunkyo_soleil", quoteTitle: "中村様 文京区ソレイユ 最終プラン（成約）", ...data, ...computed, summaryText: "成約済み。引渡し2026年4月15日予定。頭金1800万円・35年1.45%・月々約25.1万円。", status: "sent" as const, createdAt: new Date(now - 28 * 24 * 60 * 60 * 1000), updatedAt: new Date(now - 12 * 24 * 60 * 60 * 1000) } satisfies Quotation;
 })();
 
 if (db.quotations.length === 0) {
@@ -1058,26 +1114,30 @@ export async function listTenantsForUser(userId: string): Promise<Tenant[]> {
     .map((item) => ({ ...item }));
 }
 
-export async function getOutputTemplateSettings(userId: string): Promise<OutputTemplateSettings> {
-  const existing = db.outputTemplateSettings.find((item) => item.userId === userId);
+export async function getOutputTemplateSettings(userId: string, tenantId?: string): Promise<OutputTemplateSettings> {
+  const scopeTenantId = resolveTenantId(tenantId);
+  const existing = db.outputTemplateSettings.find((item) => item.userId === userId && item.tenantId === scopeTenantId);
   if (existing) return existing;
 
-  const fallback = getDefaultOutputTemplateSettings(userId);
+  const fallback = getDefaultOutputTemplateSettings(userId, scopeTenantId);
   db.outputTemplateSettings.push(fallback);
   return fallback;
 }
 
 export async function updateOutputTemplateSettings(
   userId: string,
-  input: OutputTemplateSettingsInput
+  input: OutputTemplateSettingsInput,
+  tenantId?: string,
 ): Promise<OutputTemplateSettings> {
-  const current = await getOutputTemplateSettings(userId);
+  const scopeTenantId = resolveTenantId(tenantId);
+  const current = await getOutputTemplateSettings(userId, scopeTenantId);
   const next: OutputTemplateSettings = {
     ...current,
+    tenantId: scopeTenantId,
     ...input,
     updatedAt: new Date(),
   };
-  const index = db.outputTemplateSettings.findIndex((item) => item.userId === userId);
+  const index = db.outputTemplateSettings.findIndex((item) => item.userId === userId && item.tenantId === scopeTenantId);
   if (index >= 0) {
     db.outputTemplateSettings[index] = next;
   } else {
@@ -1086,36 +1146,40 @@ export async function updateOutputTemplateSettings(
   return next;
 }
 
-export async function listOutputTemplateVersions(userId: string, limit = 20): Promise<OutputTemplateVersion[]> {
+export async function listOutputTemplateVersions(userId: string, limit = 20, tenantId?: string): Promise<OutputTemplateVersion[]> {
+  const scopeTenantId = resolveTenantId(tenantId);
   return db.outputTemplateVersions
-    .filter((item) => item.userId === userId)
+    .filter((item) => item.userId === userId && item.tenantId === scopeTenantId)
     .sort((a, b) => b.versionNumber - a.versionNumber)
     .slice(0, limit)
     .map((item) => ({ ...item }));
 }
 
 export async function createOutputTemplateVersion(input: {
+  tenantId?: string;
   userId: string;
   versionLabel?: string;
   changeNote?: string;
   settingsSnapshot?: OutputTemplateSettingsInput;
   activate?: boolean;
 }): Promise<OutputTemplateVersion> {
-  const current = await getOutputTemplateSettings(input.userId);
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const current = await getOutputTemplateSettings(input.userId, scopeTenantId);
   const currentMax = db.outputTemplateVersions
-    .filter((item) => item.userId === input.userId)
+    .filter((item) => item.userId === input.userId && item.tenantId === scopeTenantId)
     .reduce((max, item) => Math.max(max, item.versionNumber), 0);
   const versionNumber = currentMax + 1;
   const nextActive = input.activate ?? true;
 
   if (nextActive) {
     db.outputTemplateVersions.forEach((item) => {
-      if (item.userId === input.userId) item.isActive = false;
+      if (item.userId === input.userId && item.tenantId === scopeTenantId) item.isActive = false;
     });
   }
 
   const version: OutputTemplateVersion = {
     id: makeId("tplver"),
+    tenantId: scopeTenantId,
     userId: input.userId,
     versionNumber,
     versionLabel: input.versionLabel?.trim() || `テンプレート v${versionNumber}`,
@@ -1130,15 +1194,19 @@ export async function createOutputTemplateVersion(input: {
 }
 
 export async function applyOutputTemplateVersion(input: {
+  tenantId?: string;
   userId: string;
   versionId: string;
 }): Promise<OutputTemplateSettings | null> {
-  const version = db.outputTemplateVersions.find((item) => item.userId === input.userId && item.id === input.versionId);
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const version = db.outputTemplateVersions.find(
+    (item) => item.userId === input.userId && item.tenantId === scopeTenantId && item.id === input.versionId,
+  );
   if (!version) return null;
 
-  const settings = await updateOutputTemplateSettings(input.userId, version.settingsSnapshot);
+  const settings = await updateOutputTemplateSettings(input.userId, version.settingsSnapshot, scopeTenantId);
   db.outputTemplateVersions.forEach((item) => {
-    if (item.userId === input.userId) {
+    if (item.userId === input.userId && item.tenantId === scopeTenantId) {
       item.isActive = item.id === input.versionId;
     }
   });
@@ -1146,22 +1214,28 @@ export async function applyOutputTemplateVersion(input: {
 }
 
 export async function getOutputTemplateVersionById(input: {
+  tenantId?: string;
   userId: string;
   versionId: string;
 }): Promise<OutputTemplateVersion | null> {
-  const version = db.outputTemplateVersions.find((item) => item.userId === input.userId && item.id === input.versionId);
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const version = db.outputTemplateVersions.find(
+    (item) => item.userId === input.userId && item.tenantId === scopeTenantId && item.id === input.versionId,
+  );
   return version ? { ...version } : null;
 }
 
-export async function listImportJobs(userId: string, limit = 50): Promise<ImportJob[]> {
+export async function listImportJobs(userId: string, limit = 50, tenantId?: string): Promise<ImportJob[]> {
+  const scopeTenantId = resolveTenantId(tenantId);
   return db.importJobs
-    .filter((item) => item.userId === userId)
+    .filter((item) => item.userId === userId && item.tenantId === scopeTenantId)
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
     .slice(0, limit)
     .map((item) => ({ ...item }));
 }
 
 export async function addImportJob(input: {
+  tenantId?: string;
   userId: string;
   sourceType: ImportSourceType;
   title: string;
@@ -1184,6 +1258,7 @@ export async function addImportJob(input: {
   const nowDate = new Date();
   const job: ImportJob = {
     id: makeId("import"),
+    tenantId: resolveTenantId(input.tenantId),
     userId: input.userId,
     sourceType: input.sourceType,
     title: input.title.trim() || `${sourceLabel[input.sourceType]}取込 - ${targetLabel[input.targetEntity]}`,
@@ -1198,6 +1273,7 @@ export async function addImportJob(input: {
 }
 
 export async function updateImportJobMapping(input: {
+  tenantId?: string;
   userId: string;
   jobId: string;
   mappingJson: Record<string, string>;
@@ -1206,7 +1282,10 @@ export async function updateImportJobMapping(input: {
   status?: ImportJobStatus;
   allowRetry?: boolean;
 }): Promise<ImportJob | null> {
-  const job = db.importJobs.find((item) => item.userId === input.userId && item.id === input.jobId);
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const job = db.importJobs.find(
+    (item) => item.userId === input.userId && item.tenantId === scopeTenantId && item.id === input.jobId,
+  );
   if (!job) return null;
 
   job.mappingJson = input.mappingJson;
@@ -1232,38 +1311,52 @@ function cloneBrokerageCase(item: BrokerageCase): BrokerageCase {
   };
 }
 
-export async function listBrokerageCases(userId: string, limit = 50): Promise<BrokerageCase[]> {
+export async function listBrokerageCases(userId: string, limit = 50, tenantId?: string): Promise<BrokerageCase[]> {
+  const scopeTenantId = resolveTenantId(tenantId);
   return db.brokerageCases
-    .filter((item) => item.userId === userId)
+    .filter((item) => item.userId === userId && item.tenantId === scopeTenantId)
     .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
     .slice(0, limit)
     .map(cloneBrokerageCase);
 }
 
 export async function getBrokerageCaseById(input: {
+  tenantId?: string;
   userId: string;
   caseId: string;
 }): Promise<BrokerageCase | null> {
-  const item = db.brokerageCases.find((caseItem) => caseItem.userId === input.userId && caseItem.id === input.caseId);
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const item = db.brokerageCases.find(
+    (caseItem) => caseItem.userId === input.userId && caseItem.tenantId === scopeTenantId && caseItem.id === input.caseId,
+  );
   return item ? cloneBrokerageCase(item) : null;
 }
 
 export async function getBrokerageCaseByImportJobId(input: {
+  tenantId?: string;
   userId: string;
   importJobId: string;
 }): Promise<BrokerageCase | null> {
+  const scopeTenantId = resolveTenantId(input.tenantId);
   const item = db.brokerageCases.find(
-    (caseItem) => caseItem.userId === input.userId && caseItem.sourceImportJobIds.includes(input.importJobId),
+    (caseItem) =>
+      caseItem.userId === input.userId &&
+      caseItem.tenantId === scopeTenantId &&
+      caseItem.sourceImportJobIds.includes(input.importJobId),
   );
   return item ? cloneBrokerageCase(item) : null;
 }
 
 export async function updateBrokerageCaseConfirmedData(input: {
+  tenantId?: string;
   userId: string;
   caseId: string;
   confirmedDataJson: Record<string, unknown>;
 }): Promise<BrokerageCase | null> {
-  const item = db.brokerageCases.find((caseItem) => caseItem.userId === input.userId && caseItem.id === input.caseId);
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const item = db.brokerageCases.find(
+    (caseItem) => caseItem.userId === input.userId && caseItem.tenantId === scopeTenantId && caseItem.id === input.caseId,
+  );
   if (!item) return null;
 
   item.confirmedDataJson = { ...input.confirmedDataJson };
@@ -1272,6 +1365,7 @@ export async function updateBrokerageCaseConfirmedData(input: {
 }
 
 export async function saveBrokerageCaseExtractionReview(input: {
+  tenantId?: string;
   userId: string;
   caseId?: string;
   caseType: BrokerageCaseType;
@@ -1280,16 +1374,20 @@ export async function saveBrokerageCaseExtractionReview(input: {
   status?: BrokerageCaseStatus;
   confirmedDataJson: Record<string, unknown>;
   sourceImportJobIds: string[];
-  reviewItems: Array<Omit<ExtractionReviewItem, "id" | "userId" | "caseId" | "createdAt">>;
+  reviewItems: Array<Omit<ExtractionReviewItem, "id" | "tenantId" | "userId" | "caseId" | "createdAt">>;
 }): Promise<BrokerageCase> {
   const nowDate = new Date();
+  const scopeTenantId = resolveTenantId(input.tenantId);
   let item = input.caseId
-    ? db.brokerageCases.find((caseItem) => caseItem.userId === input.userId && caseItem.id === input.caseId)
+    ? db.brokerageCases.find(
+        (caseItem) => caseItem.userId === input.userId && caseItem.tenantId === scopeTenantId && caseItem.id === input.caseId,
+      )
     : undefined;
 
   if (!item) {
     item = {
       id: makeId("case"),
+      tenantId: scopeTenantId,
       userId: input.userId,
       caseType: input.caseType,
       caseTitle: input.caseTitle.trim() || "抽出確認案件",
@@ -1311,11 +1409,14 @@ export async function saveBrokerageCaseExtractionReview(input: {
     item.updatedAt = nowDate;
   }
 
-  db.extractionReviewItems = db.extractionReviewItems.filter((reviewItem) => reviewItem.caseId !== item.id);
+  db.extractionReviewItems = db.extractionReviewItems.filter(
+    (reviewItem) => reviewItem.tenantId !== scopeTenantId || reviewItem.caseId !== item.id,
+  );
   input.reviewItems.forEach((reviewItem) => {
     db.extractionReviewItems.push({
       ...reviewItem,
       id: makeId("review"),
+      tenantId: scopeTenantId,
       userId: input.userId,
       caseId: item.id,
       createdAt: nowDate,
@@ -1326,14 +1427,18 @@ export async function saveBrokerageCaseExtractionReview(input: {
 }
 
 export async function mergeBrokerageCaseExtractionReview(input: {
+  tenantId?: string;
   userId: string;
   caseId: string;
   confirmedDataJson: Record<string, unknown>;
   sourceImportJobIds: string[];
   replaceImportJobIds: string[];
-  reviewItems: Array<Omit<ExtractionReviewItem, "id" | "userId" | "caseId" | "createdAt">>;
+  reviewItems: Array<Omit<ExtractionReviewItem, "id" | "tenantId" | "userId" | "caseId" | "createdAt">>;
 }): Promise<BrokerageCase | null> {
-  const item = db.brokerageCases.find((caseItem) => caseItem.userId === input.userId && caseItem.id === input.caseId);
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const item = db.brokerageCases.find(
+    (caseItem) => caseItem.userId === input.userId && caseItem.tenantId === scopeTenantId && caseItem.id === input.caseId,
+  );
   if (!item) return null;
 
   const nowDate = new Date();
@@ -1349,6 +1454,7 @@ export async function mergeBrokerageCaseExtractionReview(input: {
     db.extractionReviewItems.push({
       ...reviewItem,
       id: makeId("review"),
+      tenantId: scopeTenantId,
       userId: input.userId,
       caseId: item.id,
       createdAt: nowDate,
@@ -1359,6 +1465,7 @@ export async function mergeBrokerageCaseExtractionReview(input: {
 }
 
 export async function rollbackBrokerageCaseMerge(input: {
+  tenantId?: string;
   userId: string;
   caseId: string;
   restoredConfirmedDataJson: Record<string, unknown>;
@@ -1367,10 +1474,13 @@ export async function rollbackBrokerageCaseMerge(input: {
   splitCaseId?: string;
   splitConfirmedDataJson: Record<string, unknown>;
   splitSourceImportJobIds: string[];
-  splitReviewItems: Array<Omit<ExtractionReviewItem, "id" | "userId" | "caseId" | "createdAt">>;
+  splitReviewItems: Array<Omit<ExtractionReviewItem, "id" | "tenantId" | "userId" | "caseId" | "createdAt">>;
   removeImportJobIds: string[];
 }): Promise<{ restoredCase: BrokerageCase; splitCase: BrokerageCase } | null> {
-  const item = db.brokerageCases.find((caseItem) => caseItem.userId === input.userId && caseItem.id === input.caseId);
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const item = db.brokerageCases.find(
+    (caseItem) => caseItem.userId === input.userId && caseItem.tenantId === scopeTenantId && caseItem.id === input.caseId,
+  );
   if (!item) return null;
 
   const nowDate = new Date();
@@ -1385,6 +1495,7 @@ export async function rollbackBrokerageCaseMerge(input: {
 
   const splitCase: BrokerageCase = {
     id: input.splitCaseId ?? makeId("case"),
+    tenantId: scopeTenantId,
     userId: input.userId,
     caseType: item.caseType,
     caseTitle: input.splitCaseTitle.trim() || "分離した抽出確認案件",
@@ -1399,6 +1510,7 @@ export async function rollbackBrokerageCaseMerge(input: {
     db.extractionReviewItems.push({
       ...reviewItem,
       id: makeId("review"),
+      tenantId: scopeTenantId,
       userId: input.userId,
       caseId: splitCase.id,
       createdAt: nowDate,
@@ -1409,23 +1521,28 @@ export async function rollbackBrokerageCaseMerge(input: {
 }
 
 export async function listExtractionReviewItems(input: {
+  tenantId?: string;
   userId: string;
   caseId: string;
 }): Promise<ExtractionReviewItem[]> {
+  const scopeTenantId = resolveTenantId(input.tenantId);
   return db.extractionReviewItems
-    .filter((item) => item.userId === input.userId && item.caseId === input.caseId)
+    .filter((item) => item.userId === input.userId && item.tenantId === scopeTenantId && item.caseId === input.caseId)
     .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
     .map((item) => ({ ...item }));
 }
 
 export async function addCorrectionEvents(input: {
+  tenantId?: string;
   userId: string;
-  events: Array<Omit<CorrectionEvent, "id" | "userId" | "createdAt">>;
+  events: Array<Omit<CorrectionEvent, "id" | "tenantId" | "userId" | "createdAt">>;
 }): Promise<CorrectionEvent[]> {
   const nowDate = new Date();
+  const scopeTenantId = resolveTenantId(input.tenantId);
   const events = input.events.map((event) => ({
     ...event,
     id: makeId("correction"),
+    tenantId: scopeTenantId,
     userId: input.userId,
     createdAt: nowDate,
   }));
@@ -1434,13 +1551,20 @@ export async function addCorrectionEvents(input: {
 }
 
 export async function listCorrectionEvents(input: {
+  tenantId?: string;
   userId: string;
   caseId?: string;
   limit?: number;
 }): Promise<CorrectionEvent[]> {
   const limit = input.limit ?? 50;
+  const scopeTenantId = resolveTenantId(input.tenantId);
   return db.correctionEvents
-    .filter((item) => item.userId === input.userId && (!input.caseId || item.caseId === input.caseId))
+    .filter(
+      (item) =>
+        item.userId === input.userId &&
+        item.tenantId === scopeTenantId &&
+        (!input.caseId || item.caseId === input.caseId),
+    )
     .slice()
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
     .slice(0, limit)
@@ -1458,13 +1582,20 @@ function cloneAiExperienceDraft(item: AiExperienceDraft): AiExperienceDraft {
 }
 
 export async function addAiExperienceDrafts(input: {
+  tenantId?: string;
   userId: string;
-  drafts: Array<Omit<AiExperienceDraft, "id" | "userId" | "status" | "createdAt" | "updatedAt"> & { status?: AiExperienceDraftStatus }>;
+  drafts: Array<
+    Omit<AiExperienceDraft, "id" | "tenantId" | "userId" | "status" | "createdAt" | "updatedAt"> & {
+      status?: AiExperienceDraftStatus;
+    }
+  >;
 }): Promise<AiExperienceDraft[]> {
   const nowDate = new Date();
+  const scopeTenantId = resolveTenantId(input.tenantId);
   const drafts = input.drafts.map((draft) => ({
     ...draft,
     id: makeId("experience"),
+    tenantId: scopeTenantId,
     userId: input.userId,
     status: draft.status ?? "draft",
     createdAt: nowDate,
@@ -1475,13 +1606,15 @@ export async function addAiExperienceDrafts(input: {
 }
 
 export async function listAiExperienceDrafts(input: {
+  tenantId?: string;
   userId: string;
   status?: AiExperienceDraftStatus;
   limit?: number;
 }): Promise<AiExperienceDraft[]> {
   const limit = input.limit ?? 50;
+  const scopeTenantId = resolveTenantId(input.tenantId);
   return db.aiExperienceDrafts
-    .filter((item) => item.userId === input.userId && (!input.status || item.status === input.status))
+    .filter((item) => item.userId === input.userId && item.tenantId === scopeTenantId && (!input.status || item.status === input.status))
     .slice()
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
     .slice(0, limit)
@@ -1489,11 +1622,15 @@ export async function listAiExperienceDrafts(input: {
 }
 
 export async function updateAiExperienceDraftStatus(input: {
+  tenantId?: string;
   userId: string;
   draftId: string;
   status: AiExperienceDraftStatus;
 }): Promise<AiExperienceDraft | null> {
-  const draft = db.aiExperienceDrafts.find((item) => item.userId === input.userId && item.id === input.draftId);
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const draft = db.aiExperienceDrafts.find(
+    (item) => item.userId === input.userId && item.tenantId === scopeTenantId && item.id === input.draftId,
+  );
   if (!draft) return null;
   draft.status = input.status;
   draft.updatedAt = new Date();
@@ -1509,17 +1646,24 @@ function cloneGuaranteeApplicationDraft(item: GuaranteeApplicationDraft): Guaran
 }
 
 export async function getGuaranteeApplicationDraft(input: {
+  tenantId?: string;
   userId: string;
   caseId: string;
   templateId: string;
 }): Promise<GuaranteeApplicationDraft | null> {
+  const scopeTenantId = resolveTenantId(input.tenantId);
   const item = db.guaranteeApplicationDrafts.find(
-    (draft) => draft.userId === input.userId && draft.caseId === input.caseId && draft.templateId === input.templateId,
+    (draft) =>
+      draft.userId === input.userId &&
+      draft.tenantId === scopeTenantId &&
+      draft.caseId === input.caseId &&
+      draft.templateId === input.templateId,
   );
   return item ? cloneGuaranteeApplicationDraft(item) : null;
 }
 
 export async function saveGuaranteeApplicationDraft(input: {
+  tenantId?: string;
   userId: string;
   caseId: string;
   templateId: string;
@@ -1530,13 +1674,19 @@ export async function saveGuaranteeApplicationDraft(input: {
   lastReviewedAt?: Date;
 }): Promise<GuaranteeApplicationDraft> {
   const nowDate = new Date();
+  const scopeTenantId = resolveTenantId(input.tenantId);
   let item = db.guaranteeApplicationDrafts.find(
-    (draft) => draft.userId === input.userId && draft.caseId === input.caseId && draft.templateId === input.templateId,
+    (draft) =>
+      draft.userId === input.userId &&
+      draft.tenantId === scopeTenantId &&
+      draft.caseId === input.caseId &&
+      draft.templateId === input.templateId,
   );
 
   if (!item) {
     item = {
       id: makeId("draft"),
+      tenantId: scopeTenantId,
       userId: input.userId,
       caseId: input.caseId,
       templateId: input.templateId,
@@ -1562,14 +1712,16 @@ export async function saveGuaranteeApplicationDraft(input: {
 }
 
 export async function listAttachments(input: {
+  tenantId?: string;
   userId: string;
   targetType?: AttachmentTargetType;
   targetId?: string;
   limit?: number;
 }): Promise<Attachment[]> {
   const limit = input.limit ?? 100;
+  const scopeTenantId = resolveTenantId(input.tenantId);
   return db.attachments
-    .filter((item) => item.userId === input.userId)
+    .filter((item) => item.userId === input.userId && item.tenantId === scopeTenantId)
     .filter((item) => (input.targetType ? item.targetType === input.targetType : true))
     .filter((item) => (input.targetId ? item.targetId === input.targetId : true))
     .sort((a, b) => b.uploadedAt.getTime() - a.uploadedAt.getTime())
@@ -1578,6 +1730,7 @@ export async function listAttachments(input: {
 }
 
 export async function addAttachment(input: {
+  tenantId?: string;
   userId: string;
   targetType: AttachmentTargetType;
   targetId: string;
@@ -1588,6 +1741,7 @@ export async function addAttachment(input: {
 }): Promise<Attachment> {
   const attachment: Attachment = {
     id: makeId("att"),
+    tenantId: resolveTenantId(input.tenantId),
     userId: input.userId,
     targetType: input.targetType,
     targetId: input.targetId,
@@ -1602,13 +1756,15 @@ export async function addAttachment(input: {
 }
 
 export async function listGeneratedOutputs(input: {
+  tenantId?: string;
   userId: string;
   quoteId?: string;
   limit?: number;
 }): Promise<GeneratedOutput[]> {
   const limit = input.limit ?? 100;
+  const scopeTenantId = resolveTenantId(input.tenantId);
   return db.generatedOutputs
-    .filter((item) => item.userId === input.userId)
+    .filter((item) => item.userId === input.userId && item.tenantId === scopeTenantId)
     .filter((item) => (input.quoteId ? item.quoteId === input.quoteId : true))
     .sort((a, b) => b.generatedAt.getTime() - a.generatedAt.getTime())
     .slice(0, limit)
@@ -1616,14 +1772,19 @@ export async function listGeneratedOutputs(input: {
 }
 
 export async function getGeneratedOutputById(input: {
+  tenantId?: string;
   userId: string;
   id: string;
 }): Promise<GeneratedOutput | undefined> {
-  const found = db.generatedOutputs.find((item) => item.userId === input.userId && item.id === input.id);
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const found = db.generatedOutputs.find(
+    (item) => item.userId === input.userId && item.tenantId === scopeTenantId && item.id === input.id,
+  );
   return found ? { ...found } : undefined;
 }
 
 export async function addGeneratedOutput(input: {
+  tenantId?: string;
   userId: string;
   actorId?: string;
   sourceQuoteId?: string;
@@ -1639,6 +1800,7 @@ export async function addGeneratedOutput(input: {
 }): Promise<GeneratedOutput> {
   const output: GeneratedOutput = {
     id: makeId("out"),
+    tenantId: resolveTenantId(input.tenantId),
     actorId: input.actorId ?? input.userId,
     userId: input.userId,
     sourceQuoteId: input.sourceQuoteId ?? input.quoteId,
@@ -1787,9 +1949,11 @@ export type AuditLogFilter = {
   from?: Date;
   to?: Date;
   limit?: number;
+  tenantId?: string;
 };
 
 export async function listAuditLogs(userId: string, filter: AuditLogFilter = {}): Promise<AuditLog[]> {
+  const scopeTenantId = resolveTenantId(filter.tenantId);
   const query = filter.query?.trim().toLowerCase() ?? "";
   const fromTime = filter.from?.getTime();
   const toTime = filter.to?.getTime();
@@ -1797,6 +1961,7 @@ export async function listAuditLogs(userId: string, filter: AuditLogFilter = {})
 
   return db.auditLogs
     .filter((item) => item.actorId === userId || item.userId === userId)
+    .filter((item) => item.tenantId === scopeTenantId)
     .filter((item) => (filter.actorId ? item.actorId === filter.actorId : true))
     .filter((item) => (filter.action ? item.action === filter.action : true))
     .filter((item) => (filter.targetType && filter.targetType !== "all" ? item.targetType === filter.targetType : true))
@@ -1826,11 +1991,14 @@ export type ClientListFilter = {
   purpose?: Purpose | "all";
   temperature?: Temperature | "all";
   sort?: ClientListSort;
+  tenantId?: string;
 };
 
 export async function listClients(userId: string, filter: ClientListFilter = {}) {
+  const scopeTenantId = resolveTenantId(filter.tenantId);
   const filtered = db.clients
     .filter((item) => item.ownerUserId === userId)
+    .filter((item) => item.tenantId === scopeTenantId)
     .filter((item) => (filter.stage && filter.stage !== "all" ? item.stage === filter.stage : true))
     .filter((item) => (filter.purpose && filter.purpose !== "all" ? item.purpose === filter.purpose : true))
     .filter((item) =>
@@ -1866,22 +2034,24 @@ export async function listClients(userId: string, filter: ClientListFilter = {})
   return filtered.map((item) => ({
     ...item,
     _count: {
-      quotations: db.quotations.filter((quote) => quote.clientId === item.id).length,
-      followUps: db.followUps.filter((followUp) => followUp.clientId === item.id).length,
+      quotations: db.quotations.filter((quote) => quote.clientId === item.id && quote.tenantId === scopeTenantId).length,
+      followUps: db.followUps.filter((followUp) => followUp.clientId === item.id && followUp.tenantId === scopeTenantId).length,
     },
   }));
 }
 
-export async function getClientById(clientId: string) {
-  return db.clients.find((item) => item.id === clientId) ?? null;
+export async function getClientById(clientId: string, tenantId?: string) {
+  const scopeTenantId = resolveTenantId(tenantId);
+  return db.clients.find((item) => item.id === clientId && item.tenantId === scopeTenantId) ?? null;
 }
 
-export async function getClientDetail(clientId: string) {
-  const client = db.clients.find((item) => item.id === clientId);
+export async function getClientDetail(clientId: string, tenantId?: string) {
+  const scopeTenantId = resolveTenantId(tenantId);
+  const client = db.clients.find((item) => item.id === clientId && item.tenantId === scopeTenantId);
   if (!client) return null;
 
   const tasks = db.tasks
-    .filter((item) => item.clientId === clientId)
+    .filter((item) => item.clientId === clientId && item.tenantId === scopeTenantId)
     .sort((a, b) => {
       const statusWeight = (status: TaskStatus) => {
         if (status === "pending") return 0;
@@ -1901,22 +2071,23 @@ export async function getClientDetail(clientId: string) {
   return {
     ...client,
     quotations: db.quotations
-      .filter((item) => item.clientId === clientId)
+      .filter((item) => item.clientId === clientId && item.tenantId === scopeTenantId)
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       .map((item) => ({
         ...item,
-        property: item.propertyId ? db.properties.find((property) => property.id === item.propertyId) : undefined,
+        property: item.propertyId ? db.properties.find((property) => property.id === item.propertyId && property.tenantId === scopeTenantId) : undefined,
       })),
     followUps: db.followUps
-      .filter((item) => item.clientId === clientId)
+      .filter((item) => item.clientId === clientId && item.tenantId === scopeTenantId)
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()),
     tasks,
     ownerUser: db.users.find((user) => user.id === client.ownerUserId)!,
   };
 }
 
-export async function getBoardData(userId: string) {
-  const clients = db.clients.filter((item) => item.ownerUserId === userId);
+export async function getBoardData(userId: string, tenantId?: string) {
+  const scopeTenantId = resolveTenantId(tenantId);
+  const clients = db.clients.filter((item) => item.ownerUserId === userId && item.tenantId === scopeTenantId);
   return clients.reduce<Record<ClientStage, Client[]>>(
     (acc, client) => {
       acc[client.stage].push(client);
@@ -1934,10 +2105,11 @@ export async function getBoardData(userId: string) {
   );
 }
 
-export async function listQuoteFormData() {
+export async function listQuoteFormData(tenantId?: string) {
+  const scopeTenantId = resolveTenantId(tenantId);
   return {
-    clients: db.clients.map((item) => ({ id: item.id, name: item.name })),
-    properties: db.properties.map((item) => ({
+    clients: db.clients.filter((item) => item.tenantId === scopeTenantId).map((item) => ({ id: item.id, name: item.name })),
+    properties: db.properties.filter((item) => item.tenantId === scopeTenantId).map((item) => ({
       id: item.id,
       name: item.name,
       listingPrice: item.listingPrice,
@@ -1948,6 +2120,7 @@ export async function listQuoteFormData() {
 }
 
 export async function addProperty(input: {
+  tenantId?: string;
   name: string;
   area?: string;
   address?: string;
@@ -1957,8 +2130,10 @@ export async function addProperty(input: {
   repairFee?: number;
   notes?: string;
 }) {
+  const scopeTenantId = resolveTenantId(input.tenantId);
   const property: Property = {
     id: makeId("prop"),
+    tenantId: scopeTenantId,
     name: input.name,
     area: input.area,
     address: input.address,
@@ -1973,29 +2148,34 @@ export async function addProperty(input: {
   return property;
 }
 
-export async function listQuotations(limit?: number) {
-  const sorted = [...db.quotations].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+export async function listQuotations(limit?: number, tenantId?: string) {
+  const scopeTenantId = resolveTenantId(tenantId);
+  const sorted = db.quotations
+    .filter((item) => item.tenantId === scopeTenantId)
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   const sliced = typeof limit === "number" ? sorted.slice(0, limit) : sorted;
 
   return sliced.map((quote) => ({
     ...quote,
-    client: db.clients.find((item) => item.id === quote.clientId)!,
-    property: quote.propertyId ? db.properties.find((item) => item.id === quote.propertyId) : undefined,
+    client: db.clients.find((item) => item.id === quote.clientId && item.tenantId === scopeTenantId)!,
+    property: quote.propertyId ? db.properties.find((item) => item.id === quote.propertyId && item.tenantId === scopeTenantId) : undefined,
   }));
 }
 
-export async function getQuotationById(quoteId: string) {
-  const quote = db.quotations.find((item) => item.id === quoteId);
+export async function getQuotationById(quoteId: string, tenantId?: string) {
+  const scopeTenantId = resolveTenantId(tenantId);
+  const quote = db.quotations.find((item) => item.id === quoteId && item.tenantId === scopeTenantId);
   if (!quote) return null;
 
   return {
     ...quote,
-    client: db.clients.find((item) => item.id === quote.clientId),
-    property: quote.propertyId ? db.properties.find((item) => item.id === quote.propertyId) : undefined,
+    client: db.clients.find((item) => item.id === quote.clientId && item.tenantId === scopeTenantId),
+    property: quote.propertyId ? db.properties.find((item) => item.id === quote.propertyId && item.tenantId === scopeTenantId) : undefined,
   };
 }
 
 export async function addClient(input: {
+  tenantId?: string;
   ownerUserId: string;
   name: string;
   phone: string;
@@ -2022,8 +2202,10 @@ export async function addClient(input: {
   nextFollowUpAt?: Date;
   notes?: string;
 }) {
+  const scopeTenantId = resolveTenantId(input.tenantId);
   const client: Client = {
     id: makeId("client"),
+    tenantId: scopeTenantId,
     name: input.name,
     phone: input.phone,
     lineId: input.lineId,
@@ -2060,6 +2242,7 @@ export async function addClient(input: {
 export async function updateClient(
   clientId: string,
   input: {
+    tenantId?: string;
     name: string;
     phone: string;
     lineId?: string;
@@ -2086,7 +2269,8 @@ export async function updateClient(
     notes?: string;
   }
 ) {
-  const client = db.clients.find((entry) => entry.id === clientId);
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const client = db.clients.find((entry) => entry.id === clientId && entry.tenantId === scopeTenantId);
   if (!client) return null;
 
   client.name = input.name;
@@ -2119,6 +2303,7 @@ export async function updateClient(
 }
 
 export async function appendFollowUp(input: {
+  tenantId?: string;
   clientId: string;
   createdById: string;
   type: FollowUpType;
@@ -2126,8 +2311,11 @@ export async function appendFollowUp(input: {
   nextAction?: string;
   nextFollowUpAt?: Date;
 }) {
+  const scopeTenantId =
+    input.tenantId ?? db.clients.find((entry) => entry.id === input.clientId)?.tenantId ?? DEFAULT_TENANT_ID;
   const item: FollowUp = {
     id: makeId("followup"),
+    tenantId: resolveTenantId(scopeTenantId),
     clientId: input.clientId,
     createdById: input.createdById,
     type: input.type,
@@ -2139,7 +2327,7 @@ export async function appendFollowUp(input: {
 
   db.followUps.unshift(item);
 
-  const client = db.clients.find((entry) => entry.id === input.clientId);
+  const client = db.clients.find((entry) => entry.id === input.clientId && entry.tenantId === resolveTenantId(scopeTenantId));
   if (client) {
     client.lastContactedAt = new Date();
     client.nextFollowUpAt = input.nextFollowUpAt;
@@ -2150,6 +2338,7 @@ export async function appendFollowUp(input: {
 }
 
 export async function addAuditLog(input: {
+  tenantId?: string;
   userId?: string;
   actorId?: string;
   action: string;
@@ -2158,12 +2347,14 @@ export async function addAuditLog(input: {
   message: string;
   context?: Record<string, unknown>;
 }) {
+  const scopeTenantId = resolveTenantId(input.tenantId);
   const actorId = input.actorId ?? input.userId;
   if (!actorId) {
     throw new Error("監査ログに必要な actorId が不足しています。");
   }
   const log: AuditLog = {
     id: makeId("audit"),
+    tenantId: scopeTenantId,
     actorId,
     userId: actorId,
     action: input.action,
@@ -2178,6 +2369,7 @@ export async function addAuditLog(input: {
 }
 
 export async function createComplianceTaskFromAlert(input: {
+  tenantId?: string;
   clientId: string;
   alertType: ComplianceAlertType;
   alertTitle: string;
@@ -2185,13 +2377,15 @@ export async function createComplianceTaskFromAlert(input: {
   dueAt?: Date;
   createdById?: string;
 }) {
-  const client = db.clients.find((entry) => entry.id === input.clientId);
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const client = db.clients.find((entry) => entry.id === input.clientId && entry.tenantId === scopeTenantId);
   if (!client) return null;
 
   const createdById = input.createdById ?? client.ownerUserId;
   const existing = db.tasks.find(
     (task) =>
       task.clientId === input.clientId &&
+      task.tenantId === scopeTenantId &&
       task.title === input.alertTitle &&
       task.status === "pending"
   );
@@ -2199,6 +2393,7 @@ export async function createComplianceTaskFromAlert(input: {
 
   const task: Task = {
     id: makeId("task"),
+    tenantId: scopeTenantId,
     clientId: input.clientId,
     title: input.alertTitle,
     dueAt: input.dueAt,
@@ -2210,6 +2405,7 @@ export async function createComplianceTaskFromAlert(input: {
 
   db.followUps.unshift({
     id: makeId("followup"),
+    tenantId: scopeTenantId,
     clientId: input.clientId,
     createdById,
     type: "note",
@@ -2221,6 +2417,7 @@ export async function createComplianceTaskFromAlert(input: {
 
   client.updatedAt = new Date();
   await addAuditLog({
+    tenantId: scopeTenantId,
     userId: createdById,
     action: "compliance_task_created",
     targetType: "task",
@@ -2232,14 +2429,18 @@ export async function createComplianceTaskFromAlert(input: {
 }
 
 export async function addTask(input: {
+  tenantId?: string;
   clientId?: string;
   title: string;
   dueAt?: Date;
   status?: TaskStatus;
   createdById: string;
 }) {
+  const scopeTenantId =
+    input.tenantId ?? (input.clientId ? db.clients.find((entry) => entry.id === input.clientId)?.tenantId : undefined) ?? DEFAULT_TENANT_ID;
   const task: Task = {
     id: makeId("task"),
+    tenantId: resolveTenantId(scopeTenantId),
     clientId: input.clientId,
     title: input.title,
     dueAt: input.dueAt,
@@ -2252,13 +2453,15 @@ export async function addTask(input: {
 }
 
 export async function resolveComplianceAlert(input: {
+  tenantId?: string;
   clientId: string;
   alertType: ComplianceAlertType;
   resolvedById: string;
   resolvedAt?: Date;
   extendDays?: number;
 }) {
-  const client = db.clients.find((entry) => entry.id === input.clientId);
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const client = db.clients.find((entry) => entry.id === input.clientId && entry.tenantId === scopeTenantId);
   if (!client) return null;
 
   const resolvedAt = input.resolvedAt ?? new Date();
@@ -2286,6 +2489,7 @@ export async function resolveComplianceAlert(input: {
 
   db.followUps.unshift({
     id: makeId("followup"),
+    tenantId: scopeTenantId,
     clientId: client.id,
     createdById: input.resolvedById,
     type: "note",
@@ -2294,6 +2498,7 @@ export async function resolveComplianceAlert(input: {
     createdAt: new Date(),
   });
   await addAuditLog({
+    tenantId: scopeTenantId,
     userId: input.resolvedById,
     action: "compliance_resolved",
     targetType: "compliance",
@@ -2304,11 +2509,13 @@ export async function resolveComplianceAlert(input: {
 }
 
 export async function updateTaskStatus(input: {
+  tenantId?: string;
   taskId: string;
   status: TaskStatus;
   updatedById: string;
 }) {
-  const task = db.tasks.find((entry) => entry.id === input.taskId);
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const task = db.tasks.find((entry) => entry.id === input.taskId && entry.tenantId === scopeTenantId);
   if (!task) return null;
   task.status = input.status;
   const statusLabel = input.status === "done" ? "完了" : input.status === "canceled" ? "取消" : "未着手";
@@ -2316,6 +2523,7 @@ export async function updateTaskStatus(input: {
   if (task.clientId) {
     db.followUps.unshift({
       id: makeId("followup"),
+      tenantId: scopeTenantId,
       clientId: task.clientId,
       createdById: input.updatedById,
       type: "note",
@@ -2325,6 +2533,7 @@ export async function updateTaskStatus(input: {
     });
   }
   await addAuditLog({
+    tenantId: scopeTenantId,
     userId: input.updatedById,
     action: "task_status_updated",
     targetType: "task",
@@ -2335,11 +2544,13 @@ export async function updateTaskStatus(input: {
 }
 
 export async function rescheduleTask(input: {
+  tenantId?: string;
   taskId: string;
   dueAt: Date;
   updatedById: string;
 }) {
-  const task = db.tasks.find((entry) => entry.id === input.taskId);
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const task = db.tasks.find((entry) => entry.id === input.taskId && entry.tenantId === scopeTenantId);
   if (!task) return null;
   task.dueAt = input.dueAt;
   task.status = "pending";
@@ -2347,6 +2558,7 @@ export async function rescheduleTask(input: {
   if (task.clientId) {
     db.followUps.unshift({
       id: makeId("followup"),
+      tenantId: scopeTenantId,
       clientId: task.clientId,
       createdById: input.updatedById,
       type: "note",
@@ -2357,6 +2569,7 @@ export async function rescheduleTask(input: {
     });
   }
   await addAuditLog({
+    tenantId: scopeTenantId,
     userId: input.updatedById,
     action: "task_rescheduled",
     targetType: "task",
@@ -2366,15 +2579,16 @@ export async function rescheduleTask(input: {
   return task;
 }
 
-export async function setClientStage(clientId: string, stage: ClientStage) {
-  const client = db.clients.find((entry) => entry.id === clientId);
+export async function setClientStage(clientId: string, stage: ClientStage, tenantId?: string) {
+  const scopeTenantId = resolveTenantId(tenantId);
+  const client = db.clients.find((entry) => entry.id === clientId && entry.tenantId === scopeTenantId);
   if (!client) return null;
   const blockers = validateStageTransition({
     from: client.stage,
     to: stage,
-    quotationCount: db.quotations.filter((item) => item.clientId === client.id).length,
-    followUpCount: db.followUps.filter((item) => item.clientId === client.id).length,
-    hasViewingFollowUp: db.followUps.some((item) => item.clientId === client.id && item.type === "viewing"),
+    quotationCount: db.quotations.filter((item) => item.clientId === client.id && item.tenantId === scopeTenantId).length,
+    followUpCount: db.followUps.filter((item) => item.clientId === client.id && item.tenantId === scopeTenantId).length,
+    hasViewingFollowUp: db.followUps.some((item) => item.clientId === client.id && item.tenantId === scopeTenantId && item.type === "viewing"),
     importantMattersExplainedAt: client.importantMattersExplainedAt,
     personalInfoConsentAt: client.personalInfoConsentAt,
     amlCheckStatus: client.amlCheckStatus,
@@ -2388,13 +2602,15 @@ export async function setClientStage(clientId: string, stage: ClientStage) {
 }
 
 export async function setClientStageWithLog(input: {
+  tenantId?: string;
   clientId: string;
   stage: ClientStage;
   createdById?: string;
   reason?: string;
   locale?: Locale;
 }) {
-  const client = db.clients.find((entry) => entry.id === input.clientId);
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const client = db.clients.find((entry) => entry.id === input.clientId && entry.tenantId === scopeTenantId);
   if (!client) return null;
 
   const fromStage = client.stage;
@@ -2404,9 +2620,9 @@ export async function setClientStageWithLog(input: {
   const blockers = validateStageTransition({
     from: fromStage,
     to: toStage,
-    quotationCount: db.quotations.filter((item) => item.clientId === client.id).length,
-    followUpCount: db.followUps.filter((item) => item.clientId === client.id).length,
-    hasViewingFollowUp: db.followUps.some((item) => item.clientId === client.id && item.type === "viewing"),
+    quotationCount: db.quotations.filter((item) => item.clientId === client.id && item.tenantId === scopeTenantId).length,
+    followUpCount: db.followUps.filter((item) => item.clientId === client.id && item.tenantId === scopeTenantId).length,
+    hasViewingFollowUp: db.followUps.some((item) => item.clientId === client.id && item.tenantId === scopeTenantId && item.type === "viewing"),
     importantMattersExplainedAt: client.importantMattersExplainedAt,
     personalInfoConsentAt: client.personalInfoConsentAt,
     amlCheckStatus: client.amlCheckStatus,
@@ -2422,6 +2638,7 @@ export async function setClientStageWithLog(input: {
   if (fromStage !== toStage) {
     db.followUps.unshift({
       id: makeId("followup"),
+      tenantId: scopeTenantId,
       clientId: client.id,
       createdById: input.createdById ?? client.ownerUserId,
       type: "note",
@@ -2446,6 +2663,7 @@ export async function setClientStageWithLog(input: {
 }
 
 export async function addQuotation(input: {
+  tenantId?: string;
   clientId: string;
   propertyId?: string;
   quoteTitle: string;
@@ -2460,10 +2678,13 @@ export async function addQuotation(input: {
   loanYears: number;
   summaryText: string;
 }) {
+  const scopeTenantId =
+    input.tenantId ?? db.clients.find((entry) => entry.id === input.clientId)?.tenantId ?? DEFAULT_TENANT_ID;
   const computed = computeQuote(input);
 
   const quotation: Quotation = {
     id: makeId("quote"),
+    tenantId: resolveTenantId(scopeTenantId),
     clientId: input.clientId,
     propertyId: input.propertyId,
     quoteTitle: input.quoteTitle,
@@ -2485,7 +2706,7 @@ export async function addQuotation(input: {
 
   db.quotations.unshift(quotation);
 
-  const client = db.clients.find((entry) => entry.id === input.clientId);
+  const client = db.clients.find((entry) => entry.id === input.clientId && entry.tenantId === resolveTenantId(scopeTenantId));
   if (client) {
     const stageBefore = client.stage;
     client.stage = "quoted";
@@ -2494,6 +2715,7 @@ export async function addQuotation(input: {
 
     db.followUps.unshift({
       id: makeId("followup"),
+      tenantId: resolveTenantId(scopeTenantId),
       clientId: client.id,
       createdById: client.ownerUserId,
       type: "note",
@@ -2506,6 +2728,7 @@ export async function addQuotation(input: {
     if (stageBefore !== "quoted") {
       db.followUps.unshift({
         id: makeId("followup"),
+        tenantId: resolveTenantId(scopeTenantId),
         clientId: client.id,
         createdById: client.ownerUserId,
         type: "note",
@@ -2520,12 +2743,13 @@ export async function addQuotation(input: {
   return quotation;
 }
 
-export async function duplicateQuotation(quoteId: string) {
-  const source = db.quotations.find((item) => item.id === quoteId);
+export async function duplicateQuotation(quoteId: string, tenantId?: string) {
+  const scopeTenantId = resolveTenantId(tenantId);
+  const source = db.quotations.find((item) => item.id === quoteId && item.tenantId === scopeTenantId);
   if (!source) return null;
 
   const normalized = source.quoteTitle.replace(/\s+v\d+$/i, "").trim();
-  const maxVersion = db.quotations.reduce((max, quote) => {
+  const maxVersion = db.quotations.filter((quote) => quote.tenantId === scopeTenantId).reduce((max, quote) => {
     const match = quote.quoteTitle.match(new RegExp(`^${normalized.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s+v(\\d+)$`, "i"));
     if (!match) return max;
     const parsed = Number(match[1]);
@@ -2544,10 +2768,11 @@ export async function duplicateQuotation(quoteId: string) {
 
   db.quotations.unshift(quotation);
 
-  const client = db.clients.find((entry) => entry.id === quotation.clientId);
+  const client = db.clients.find((entry) => entry.id === quotation.clientId && entry.tenantId === scopeTenantId);
   if (client) {
     db.followUps.unshift({
       id: makeId("followup"),
+      tenantId: scopeTenantId,
       clientId: client.id,
       createdById: client.ownerUserId,
       type: "note",
@@ -2561,8 +2786,9 @@ export async function duplicateQuotation(quoteId: string) {
   return quotation;
 }
 
-export async function updateQuotationStatus(quoteId: string, status: QuoteStatus) {
-  const quote = db.quotations.find((item) => item.id === quoteId);
+export async function updateQuotationStatus(quoteId: string, status: QuoteStatus, tenantId?: string) {
+  const scopeTenantId = resolveTenantId(tenantId);
+  const quote = db.quotations.find((item) => item.id === quoteId && item.tenantId === scopeTenantId);
   if (!quote) return null;
   quote.status = status;
   quote.updatedAt = new Date();

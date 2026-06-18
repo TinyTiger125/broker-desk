@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import { addAuditLog, addImportJob, getDefaultUser } from "@/lib/data";
+import { addAuditLog, addImportJob } from "@/lib/data";
 import { extractIdentityDocumentFromBuffer } from "@/lib/identity-document-extractor";
 import type { InputFileExtractionResult } from "@/lib/input-file-extractor";
+import { TenantSessionError, requireTenantSession } from "@/lib/tenant-session";
 
 export const dynamic = "force-dynamic";
 
@@ -19,10 +20,17 @@ type IdentityImportPayload = {
 };
 
 export async function POST(request: Request) {
-  const user = await getDefaultUser();
-  if (!user) {
-    return NextResponse.json({ ok: false, error: "user_not_found" }, { status: 401 });
+  let session;
+  try {
+    session = await requireTenantSession({ permission: "source.upload" });
+  } catch (error) {
+    if (error instanceof TenantSessionError) {
+      return NextResponse.json({ ok: false, error: error.code }, { status: error.status });
+    }
+    throw error;
   }
+  const user = session.user;
+  const tenantId = session.tenant.id;
   const contentLength = Number(request.headers.get("content-length") ?? 0);
   if (Number.isFinite(contentLength) && contentLength > MAX_IDENTITY_UPLOAD_BYTES + MAX_MULTIPART_OVERHEAD_BYTES) {
     return NextResponse.json({ ok: false, error: "file_too_large", maxBytes: MAX_IDENTITY_UPLOAD_BYTES }, { status: 413 });
@@ -64,6 +72,7 @@ export async function POST(request: Request) {
   };
 
   const job = await addImportJob({
+    tenantId,
     userId: user.id,
     sourceType: "scan",
     targetEntity: "parties",
@@ -73,6 +82,7 @@ export async function POST(request: Request) {
   });
 
   await addAuditLog({
+    tenantId,
     userId: user.id,
     action: "identity_document_extraction_created",
     targetType: "import_job",

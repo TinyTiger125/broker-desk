@@ -9,7 +9,7 @@ import {
   type Temperature,
 } from "@/lib/domain";
 import { formatCurrency, formatDate, formatRelativeDays } from "@/lib/format";
-import { getDefaultUser, listClients, type ClientListSort } from "@/lib/data";
+import { listClients, type ClientListSort } from "@/lib/data";
 import { getLocale } from "@/lib/locale";
 import {
   getBudgetTypeLabel,
@@ -22,6 +22,7 @@ import {
   getTemperatureLabel,
   getTemperatureOptions,
 } from "@/lib/options";
+import { requireTenantSession } from "@/lib/tenant-session";
 
 export const dynamic = "force-dynamic";
 
@@ -162,7 +163,10 @@ const texts = {
 } as const;
 
 export default async function ClientsPage({ searchParams }: ClientsPageProps) {
-  const locale = await getLocale();
+  const [locale, session] = await Promise.all([
+    getLocale(),
+    requireTenantSession({ permission: "record.read" }),
+  ]);
   const text = texts[locale];
 
   const stageLabel = getStageLabel(locale);
@@ -175,10 +179,8 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
   const loanPreApprovalLabel = getLoanPreApprovalLabel(locale);
   const clientSortOptions = getClientSortOptions(locale);
 
-  const user = await getDefaultUser();
-  if (!user) {
-    return <p className="text-sm text-slate-600">{text.noUser}</p>;
-  }
+  const user = session.user;
+  const tenantId = session.tenant.id;
 
   const params = (await searchParams) ?? {};
   const query = params.q?.trim() ?? "";
@@ -202,6 +204,7 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
     purpose,
     temperature,
     sort,
+    tenantId,
   });
 
   return (

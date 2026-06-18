@@ -5,7 +5,6 @@ import {
   addAuditLog,
   getBrokerageCaseById,
   getBrokerageCaseByImportJobId,
-  getDefaultUser,
   listBrokerageCases,
   listImportJobs,
   mergeBrokerageCaseExtractionReview,
@@ -23,6 +22,7 @@ import {
 import { canonicalizeCaseFieldKey } from "@/lib/case-field-normalization";
 import { materializeExtractionReviewValue } from "@/lib/extraction-review-materialization";
 import { isQaApiRequestAllowed, rejectQaApiRequest } from "@/lib/qa-api";
+import { TenantSessionError, requireTenantSession } from "@/lib/tenant-session";
 import type { InputFileExtractionResult } from "@/lib/input-file-extractor";
 
 export const dynamic = "force-dynamic";
@@ -115,17 +115,24 @@ export async function POST(request: Request) {
     mergeTargetCaseId?: string;
     mergeConfirm?: boolean;
   };
-  const user = await getDefaultUser();
-  if (!user) {
-    return NextResponse.json({ ok: false, error: "user_not_found" }, { status: 401 });
+  let session;
+  try {
+    session = await requireTenantSession({ permission: "extract.accept_result" });
+  } catch (error) {
+    if (error instanceof TenantSessionError) {
+      return NextResponse.json({ ok: false, error: error.code }, { status: error.status });
+    }
+    throw error;
   }
+  const user = session.user;
+  const tenantId = session.tenant.id;
 
   const jobId = String(body.jobId ?? "").trim();
   if (!jobId) {
     return NextResponse.json({ ok: false, error: "job_id_required" }, { status: 400 });
   }
 
-  const jobs = await listImportJobs(user.id, 500);
+  const jobs = await listImportJobs(user.id, 500, tenantId);
   const job = jobs.find((item) => item.id === jobId);
   if (!job?.notes) {
     return NextResponse.json({ ok: false, error: "job_not_found" }, { status: 404 });
@@ -160,12 +167,13 @@ export async function POST(request: Request) {
   });
   const preSaveCandidates = evaluateCaseMergeCandidates({
     incomingData: confirmedDataJson,
-    cases: await listBrokerageCases(user.id, 500),
+    cases: await listBrokerageCases(user.id, 500, tenantId),
     currentImportJobId: job.id,
   });
   const mergeTargetCaseId = String(body.mergeTargetCaseId ?? "").trim();
   const existingCase = await getBrokerageCaseByImportJobId({
     userId: user.id,
+    tenantId,
     importJobId: job.id,
   });
 
@@ -174,7 +182,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: "merge_confirm_required" }, { status: 400 });
     }
 
-    const targetCase = await getBrokerageCaseById({ userId: user.id, caseId: mergeTargetCaseId });
+    const targetCase = await getBrokerageCaseById({ userId: user.id, tenantId, caseId: mergeTargetCaseId });
     if (!targetCase) {
       return NextResponse.json({ ok: false, error: "merge_target_not_found" }, { status: 404 });
     }
@@ -220,6 +228,7 @@ export async function POST(request: Request) {
     });
     const brokerageCase = await mergeBrokerageCaseExtractionReview({
       userId: user.id,
+      tenantId,
       caseId: targetCase.id,
       confirmedDataJson: setCaseMergeHistory(mergedData.nextData, [
         ...getCaseMergeHistory(targetCase.confirmedDataJson),
@@ -234,6 +243,7 @@ export async function POST(request: Request) {
     }
 
     await addAuditLog({
+      tenantId,
       userId: user.id,
       action: "qa_case_source_merged",
       targetType: "import_job",
@@ -270,6 +280,7 @@ export async function POST(request: Request) {
     });
     brokerageCase = await mergeBrokerageCaseExtractionReview({
       userId: user.id,
+      tenantId,
       caseId: existingCase.id,
       confirmedDataJson: setCaseMergeHistory(
         mergedData.nextData,
@@ -285,6 +296,7 @@ export async function POST(request: Request) {
   } else {
     brokerageCase = await saveBrokerageCaseExtractionReview({
       userId: user.id,
+      tenantId,
       caseId: existingCase?.id,
       caseType: "unit_sale",
       caseTitle: buildCaseTitle(payload.inputExtraction, job.title),
@@ -296,6 +308,7 @@ export async function POST(request: Request) {
   }
 
   await addAuditLog({
+    tenantId,
     userId: user.id,
     action: "qa_extraction_review_saved",
     targetType: "import_job",

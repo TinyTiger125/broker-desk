@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { formatDate } from "@/lib/format";
-import { getDefaultUser, listAuditLogs, listUsers } from "@/lib/data";
+import { listAuditLogs, listUsers } from "@/lib/data";
 import { getLocale, type Locale } from "@/lib/locale";
+import { requireTenantSession } from "@/lib/tenant-session";
 
 export const dynamic = "force-dynamic";
 
@@ -135,13 +136,14 @@ function toDateInputValue(date: Date): string {
 }
 
 export default async function AuditLogPage({ searchParams }: AuditLogPageProps) {
-  const locale = await getLocale();
+  const [locale, session] = await Promise.all([
+    getLocale(),
+    requireTenantSession({ permission: "audit.view" }),
+  ]);
   const copy = getCopy(locale);
   const params = searchParams ? await searchParams : undefined;
-  const user = await getDefaultUser();
-  if (!user) {
-    throw new Error("担当ユーザーが見つかりません。");
-  }
+  const user = session.user;
+  const tenantId = session.tenant.id;
 
   const rawPreset = String(params?.preset ?? "").trim();
   const preset = rawPreset === "last_7_days" || rawPreset === "key_writes" ? rawPreset : "all";
@@ -174,10 +176,11 @@ export default async function AuditLogPage({ searchParams }: AuditLogPageProps) 
     "output_template_version_applied",
   ]);
 
-  const [users, baseLogs] = await Promise.all([listUsers(20), listAuditLogs(user.id, { limit: 400 })]);
+  const [users, baseLogs] = await Promise.all([listUsers(20), listAuditLogs(user.id, { tenantId, limit: 400 })]);
   const actions = [...new Set(baseLogs.map((log) => log.action))];
   const targets = [...new Set(baseLogs.map((log) => log.targetType))];
   const rawFilteredLogs = await listAuditLogs(user.id, {
+    tenantId,
     actorId: actor && actor !== "all" ? actor : undefined,
     action: action && action !== "all" ? action : undefined,
     targetType: target && target !== "all" ? (target as typeof baseLogs[number]["targetType"]) : "all",

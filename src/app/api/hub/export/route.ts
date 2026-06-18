@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDefaultUser, listAuditLogs } from "@/lib/data";
+import { listAuditLogs } from "@/lib/data";
 import {
   getHubOverview,
   listHubContracts,
@@ -10,6 +10,7 @@ import {
   listHubServiceRequests,
 } from "@/lib/hub";
 import type { Locale } from "@/lib/locale";
+import { TenantSessionError, requireTenantSession } from "@/lib/tenant-session";
 
 function toCsv(rows: Array<Record<string, string | number | null | undefined>>) {
   if (rows.length === 0) return "";
@@ -47,9 +48,19 @@ export async function GET(request: NextRequest) {
   );
   const idSet = ids.length > 0 ? new Set(ids) : null;
   const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+  let session;
+  try {
+    session = await requireTenantSession({ permission: "record.read" });
+  } catch (error) {
+    if (error instanceof TenantSessionError) {
+      return NextResponse.json({ ok: false, error: error.code }, { status: error.status });
+    }
+    throw error;
+  }
+  const hubContext = { userId: session.user.id, tenantId: session.tenant.id };
 
   if (scope === "dashboard") {
-    const overview = await getHubOverview();
+    const overview = await getHubOverview(hubContext);
     const csv = toCsv([
       {
         property_count: overview.propertyCount,
@@ -69,7 +80,7 @@ export async function GET(request: NextRequest) {
   }
 
   if (scope === "properties") {
-    const items = (await listHubProperties(locale)).filter((item) => (idSet ? idSet.has(item.id) : true));
+    const items = (await listHubProperties(locale, hubContext)).filter((item) => (idSet ? idSet.has(item.id) : true));
     const csv = toCsv(
       items.map((item) => ({
         id: item.id,
@@ -91,7 +102,7 @@ export async function GET(request: NextRequest) {
   }
 
   if (scope === "parties") {
-    const items = (await listHubParties(locale)).filter((item) => (idSet ? idSet.has(item.id) : true));
+    const items = (await listHubParties(locale, hubContext)).filter((item) => (idSet ? idSet.has(item.id) : true));
     const csv = toCsv(
       items.map((item) => ({
         id: item.id,
@@ -113,7 +124,7 @@ export async function GET(request: NextRequest) {
   }
 
   if (scope === "contracts") {
-    const items = (await listHubContracts(locale)).filter((item) => (idSet ? idSet.has(item.id) : true));
+    const items = (await listHubContracts(locale, hubContext)).filter((item) => (idSet ? idSet.has(item.id) : true));
     const csv = toCsv(
       items.map((item) => ({
         id: item.id,
@@ -135,7 +146,7 @@ export async function GET(request: NextRequest) {
   }
 
   if (scope === "service_requests") {
-    const items = (await listHubServiceRequests()).filter((item) => (idSet ? idSet.has(item.id) : true));
+    const items = (await listHubServiceRequests(hubContext)).filter((item) => (idSet ? idSet.has(item.id) : true));
     const csv = toCsv(
       items.map((item) => ({
         id: item.id,
@@ -161,7 +172,7 @@ export async function GET(request: NextRequest) {
     const outputLangFilter = request.nextUrl.searchParams.get("lang");
     const outputFormatFilter = request.nextUrl.searchParams.get("format");
     const outputTemplateFilter = request.nextUrl.searchParams.get("templateVersion");
-    const items = (await listHubGeneratedOutputs(locale)).filter((item) =>
+    const items = (await listHubGeneratedOutputs(locale, hubContext)).filter((item) =>
       (outputTypeFilter ? item.outputType === outputTypeFilter : true) &&
       (outputLangFilter ? item.language === outputLangFilter : true) &&
       (outputFormatFilter ? item.outputFormat === outputFormatFilter : true) &&
@@ -202,7 +213,7 @@ export async function GET(request: NextRequest) {
     const outputLangFilter = request.nextUrl.searchParams.get("lang");
     const outputFormatFilter = request.nextUrl.searchParams.get("format");
     const outputTemplateFilter = request.nextUrl.searchParams.get("templateVersion");
-    const items = (await listHubGeneratedOutputs(locale)).filter((item) =>
+    const items = (await listHubGeneratedOutputs(locale, hubContext)).filter((item) =>
       (outputTypeFilter ? item.outputType === outputTypeFilter : true) &&
       (outputLangFilter ? item.language === outputLangFilter : true) &&
       (outputFormatFilter ? item.outputFormat === outputFormatFilter : true) &&
@@ -260,7 +271,7 @@ export async function GET(request: NextRequest) {
   }
 
   if (scope === "import_jobs") {
-    const items = await listHubImportJobs();
+    const items = await listHubImportJobs(hubContext);
     const csv = toCsv(
       items.map((item) => ({
         id: item.id,
@@ -331,11 +342,8 @@ export async function GET(request: NextRequest) {
       "output_template_version_applied",
     ]);
 
-    const user = await getDefaultUser();
-    if (!user) {
-      return NextResponse.json({ ok: false, error: "user_not_found" }, { status: 404 });
-    }
-    const queriedLogs = await listAuditLogs(user.id, {
+    const queriedLogs = await listAuditLogs(session.user.id, {
+      tenantId: session.tenant.id,
       actorId: actor && actor !== "all" ? actor : undefined,
       action: action && action !== "all" ? action : undefined,
       targetType,

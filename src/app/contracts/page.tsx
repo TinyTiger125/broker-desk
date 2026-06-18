@@ -5,6 +5,7 @@ import { formatDate } from "@/lib/format";
 import { listHubContracts, type HubContractItem } from "@/lib/hub";
 import { t } from "@/lib/i18n";
 import { getLocale } from "@/lib/locale";
+import { requireTenantSession } from "@/lib/tenant-session";
 
 export const dynamic = "force-dynamic";
 
@@ -212,7 +213,8 @@ export default async function ContractsPage({ searchParams }: ContractsPageProps
   const undoStages = String(params?.undoStages ?? "").trim();
   const page = Math.max(1, Number(params?.page ?? "1") || 1);
   const copy = contractsCopy[locale];
-  const contracts = await listHubContracts(locale);
+  const session = await requireTenantSession({ permission: "record.read" });
+  const contracts = await listHubContracts(locale, { userId: session.user.id, tenantId: session.tenant.id });
   const filteredContracts =
     filter === "active"
       ? contracts.filter((item) => item.status === "active")

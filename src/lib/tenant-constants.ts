@@ -1,0 +1,1 @@
+export const DEFAULT_TENANT_ID = "tenant_cherry";

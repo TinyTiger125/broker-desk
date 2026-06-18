@@ -24,6 +24,7 @@
     "test:guarantee-print-fit": "node scripts/check-guarantee-print-fit.mjs",
     "test:case-field-catalog": "node scripts/check-case-field-catalog.mjs",
     "test:tenant-session": "node scripts/check-tenant-session.mjs",
+    "test:tenant-data-access": "node scripts/check-tenant-data-access.mjs",
     "test:regression": "bash scripts/regression.sh",
     "test:ja-terms": "bash scripts/check-ja-terms.sh"
   },

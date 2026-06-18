@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
-import { getBrokerageCaseById, getDefaultUser, getGuaranteeApplicationDraft } from "@/lib/data";
+import { getBrokerageCaseById, getGuaranteeApplicationDraft } from "@/lib/data";
 import { renderFriendsGuaranteePdf } from "@/lib/friends-guarantee-pdf";
 import { findGuaranteeCompanyTemplate } from "@/lib/guarantee-application";
 import { evaluateGuaranteeDownloadGate } from "@/lib/guarantee-download-gate";
+import { requireTenantSession, TenantSessionError } from "@/lib/tenant-session";
 
 type GuaranteeTemplateDownloadRouteProps = {
   params: Promise<{
@@ -15,11 +16,6 @@ function safePdfFileName(value: string): string {
 }
 
 export async function GET(request: Request, { params }: GuaranteeTemplateDownloadRouteProps) {
-  const user = await getDefaultUser();
-  if (!user) {
-    return NextResponse.json({ error: "user_not_found" }, { status: 401 });
-  }
-
   const routeParams = await params;
   const template = findGuaranteeCompanyTemplate(routeParams.templateId);
   if (!template) {
@@ -32,12 +28,23 @@ export async function GET(request: Request, { params }: GuaranteeTemplateDownloa
     return NextResponse.json({ error: "case_required" }, { status: 400 });
   }
 
-  const brokerageCase = await getBrokerageCaseById({ userId: user.id, caseId });
+  let session;
+  try {
+    session = await requireTenantSession({ permission: mode === "preview" ? "output.preview" : "output.download_final" });
+  } catch (error) {
+    if (error instanceof TenantSessionError) {
+      return NextResponse.json({ error: error.code }, { status: error.status });
+    }
+    throw error;
+  }
+
+  const brokerageCase = await getBrokerageCaseById({ userId: session.user.id, tenantId: session.tenant.id, caseId });
   if (!brokerageCase) {
     return NextResponse.json({ error: "case_not_found" }, { status: 404 });
   }
   const draft = await getGuaranteeApplicationDraft({
-    userId: user.id,
+    userId: session.user.id,
+    tenantId: session.tenant.id,
     caseId,
     templateId: template.id,
   });

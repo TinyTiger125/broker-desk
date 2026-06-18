@@ -3,6 +3,7 @@ import { formatCurrency, formatDate } from "@/lib/format";
 import { listQuotations } from "@/lib/data";
 import { getLocale } from "@/lib/locale";
 import { getQuoteStatusLabel } from "@/lib/options";
+import { requireTenantSession } from "@/lib/tenant-session";
 
 export const dynamic = "force-dynamic";
 
@@ -58,10 +59,13 @@ const texts = {
 } as const;
 
 export default async function QuoteListPage() {
-  const locale = await getLocale();
+  const [locale, session] = await Promise.all([
+    getLocale(),
+    requireTenantSession({ permission: "record.read" }),
+  ]);
   const text = texts[locale];
   const quoteStatusLabel = getQuoteStatusLabel(locale);
-  const quotes = await listQuotations();
+  const quotes = await listQuotations(undefined, session.tenant.id);
 
   return (
     <div className="space-y-6">

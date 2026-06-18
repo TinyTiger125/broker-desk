@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { isClientStage } from "@/lib/domain";
-import { addAuditLog, getClientById, getDefaultUser, setClientStageWithLog } from "@/lib/data";
+import { addAuditLog, getClientById, setClientStageWithLog } from "@/lib/data";
 import { isLocale, LOCALE_COOKIE_NAME, type Locale } from "@/lib/locale";
+import { TenantSessionError, requireTenantSession } from "@/lib/tenant-session";
 import { StageTransitionBlockedError } from "@/lib/workflow-engine";
 
 type PatchContext = {
@@ -50,11 +51,18 @@ export async function PATCH(request: Request, context: PatchContext) {
   const tx = textByLocale[locale];
 
   const { id } = await context.params;
-  const user = await getDefaultUser();
-  if (!user) {
-    return NextResponse.json({ error: tx.userNotFound }, { status: 401 });
+  let session;
+  try {
+    session = await requireTenantSession({ permission: "record.update" });
+  } catch (error) {
+    if (error instanceof TenantSessionError) {
+      return NextResponse.json({ error: error.code === "user_not_found" ? tx.userNotFound : error.message }, { status: error.status });
+    }
+    throw error;
   }
-  const client = await getClientById(id);
+  const user = session.user;
+  const tenantId = session.tenant.id;
+  const client = await getClientById(id, tenantId);
   if (!client) {
     return NextResponse.json({ error: tx.clientNotFound }, { status: 404 });
   }
@@ -75,6 +83,7 @@ export async function PATCH(request: Request, context: PatchContext) {
   let updated;
   try {
     updated = await setClientStageWithLog({
+      tenantId,
       clientId: id,
       stage,
       createdById: user.id,
@@ -97,6 +106,7 @@ export async function PATCH(request: Request, context: PatchContext) {
     return NextResponse.json({ error: tx.clientNotFound }, { status: 404 });
   }
   await addAuditLog({
+    tenantId,
     userId: user.id,
     action: "client_stage_updated",
     targetType: "client",

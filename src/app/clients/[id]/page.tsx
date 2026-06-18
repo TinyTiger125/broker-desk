@@ -6,6 +6,7 @@ import { SectionCard } from "@/components/section-card";
 import { formatCurrency, formatDate, formatRelativeDays } from "@/lib/format";
 import { getClientDetail } from "@/lib/data";
 import { getLocale } from "@/lib/locale";
+import { requireTenantSession } from "@/lib/tenant-session";
 import { buildClientWorkflowGuide, getAllowedStageTargets, WORKFLOW_STAGE_PATH } from "@/lib/workflow-engine";
 import {
   getAmlCheckStatusLabel,
@@ -290,7 +291,10 @@ type ClientDetailPageProps = {
 };
 
 export default async function ClientDetailPage({ params, searchParams }: ClientDetailPageProps) {
-  const locale = await getLocale();
+  const [locale, session] = await Promise.all([
+    getLocale(),
+    requireTenantSession({ permission: "record.read" }),
+  ]);
   const text = texts[locale];
 
   const purposeLabel = getPurposeLabel(locale);
@@ -307,7 +311,7 @@ export default async function ClientDetailPage({ params, searchParams }: ClientD
 
   const { id } = await params;
   const query = (await searchParams) ?? {};
-  const client = await getClientDetail(id);
+  const client = await getClientDetail(id, session.tenant.id);
 
   if (!client) {
     notFound();

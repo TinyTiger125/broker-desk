@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import { getDefaultUser, getGeneratedOutputById, getQuotationById, listQuoteFormData } from "@/lib/data";
+import { getGeneratedOutputById, getQuotationById, listQuoteFormData } from "@/lib/data";
 import { getOutputDocLabel, isOutputDocType } from "@/lib/output-doc";
 import type { Locale } from "@/lib/locale";
+import { TenantSessionError, requireTenantSession } from "@/lib/tenant-session";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -13,23 +14,30 @@ function normalizeLocale(value: string | null): Locale {
 }
 
 export async function GET(request: Request, context: RouteContext) {
-  const user = await getDefaultUser();
-  if (!user) {
-    return NextResponse.json({ error: "user_not_found" }, { status: 401 });
+  let session;
+  try {
+    session = await requireTenantSession({ permission: "output.download_final" });
+  } catch (error) {
+    if (error instanceof TenantSessionError) {
+      return NextResponse.json({ error: error.code }, { status: error.status });
+    }
+    throw error;
   }
+  const user = session.user;
+  const tenantId = session.tenant.id;
 
   const { id } = await context.params;
   if (!id) {
     return NextResponse.json({ error: "missing_id" }, { status: 400 });
   }
 
-  const output = await getGeneratedOutputById({ userId: user.id, id });
+  const output = await getGeneratedOutputById({ userId: user.id, tenantId, id });
   if (!output) {
     return NextResponse.json({ error: "output_not_found" }, { status: 404 });
   }
 
-  const quote = output.quoteId ? await getQuotationById(output.quoteId) : undefined;
-  const { properties } = await listQuoteFormData();
+  const quote = output.quoteId ? await getQuotationById(output.quoteId, tenantId) : undefined;
+  const { properties } = await listQuoteFormData(tenantId);
   const property = output.propertyId ? properties.find((item) => item.id === output.propertyId) : quote?.property;
   const locale = normalizeLocale(new URL(request.url).searchParams.get("locale"));
   const outputType = isOutputDocType(output.outputType) ? output.outputType : "proposal";

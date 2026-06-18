@@ -7,6 +7,7 @@ import { formatDate } from "@/lib/format";
 import { listHubAttachments, listHubParties } from "@/lib/hub";
 import { t } from "@/lib/i18n";
 import { getLocale } from "@/lib/locale";
+import { requireTenantSession } from "@/lib/tenant-session";
 
 export const dynamic = "force-dynamic";
 
@@ -136,12 +137,19 @@ const partiesCopy = {
 } as const;
 
 export default async function PartiesPage({ searchParams }: PartiesPageProps) {
-  const locale = await getLocale();
+  const [locale, session] = await Promise.all([
+    getLocale(),
+    requireTenantSession({ permission: "record.read" }),
+  ]);
   const copy = partiesCopy[locale];
+  const hubContext = { userId: session.user.id, tenantId: session.tenant.id };
   const params = searchParams ? await searchParams : undefined;
   const query = params?.q?.trim() ?? "";
   const focus = params?.focus?.trim() ?? "";
-  const [parties, attachments] = await Promise.all([listHubParties(locale), listHubAttachments(locale, 200)]);
+  const [parties, attachments] = await Promise.all([
+    listHubParties(locale, hubContext),
+    listHubAttachments(locale, 200, hubContext),
+  ]);
 
   const filtered = query
     ? parties.filter((party) => {

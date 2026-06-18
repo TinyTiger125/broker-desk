@@ -7,6 +7,7 @@ import { formatCurrency } from "@/lib/format";
 import { listHubProperties } from "@/lib/hub";
 import { t } from "@/lib/i18n";
 import { getLocale } from "@/lib/locale";
+import { requireTenantSession } from "@/lib/tenant-session";
 
 export const dynamic = "force-dynamic";
 
@@ -172,14 +173,17 @@ type PropertiesPageProps = {
 };
 
 export default async function PropertiesPage({ searchParams }: PropertiesPageProps) {
-  const locale = await getLocale();
+  const [locale, session] = await Promise.all([
+    getLocale(),
+    requireTenantSession({ permission: "record.read" }),
+  ]);
   const params = searchParams ? await searchParams : undefined;
   const statusFilter = params?.status === "active" || params?.status === "archived" ? params.status : "all";
   const focusId = String(params?.focus ?? "").trim();
   const sort = params?.sort === "price" ? "price" : "updated";
   const page = Math.max(1, Number(params?.page ?? "1") || 1);
   const copy = propertiesCopy[locale];
-  const properties = await listHubProperties(locale);
+  const properties = await listHubProperties(locale, { userId: session.user.id, tenantId: session.tenant.id });
   const filtered = statusFilter === "all" ? properties : properties.filter((property) => property.status === statusFilter);
   const sortedProperties =
     sort === "price"

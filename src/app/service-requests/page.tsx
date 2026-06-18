@@ -7,6 +7,7 @@ import { formatCurrency } from "@/lib/format";
 import { listHubServiceRequests, type HubServiceRequestItem } from "@/lib/hub";
 import { t } from "@/lib/i18n";
 import { getLocale } from "@/lib/locale";
+import { requireTenantSession } from "@/lib/tenant-session";
 
 export const dynamic = "force-dynamic";
 
@@ -147,7 +148,10 @@ type ServiceRequestsPageProps = {
 };
 
 export default async function ServiceRequestsPage({ searchParams }: ServiceRequestsPageProps) {
-  const locale = await getLocale();
+  const [locale, session] = await Promise.all([
+    getLocale(),
+    requireTenantSession({ permission: "record.read" }),
+  ]);
   const params = searchParams ? await searchParams : undefined;
   const statusFilter =
     params?.status === "done" || params?.status === "canceled" || params?.status === "open"
@@ -155,7 +159,7 @@ export default async function ServiceRequestsPage({ searchParams }: ServiceReque
       : "all";
   const focusId = String(params?.focus ?? "").trim();
   const copy = requestsCopy[locale];
-  const requests = await listHubServiceRequests();
+  const requests = await listHubServiceRequests({ userId: session.user.id, tenantId: session.tenant.id });
   const filtered = statusFilter === "all" ? requests : requests.filter((request) => request.status === statusFilter);
   const sorted = [...filtered].sort((a, b) => (b.occurredAt?.getTime() ?? 0) - (a.occurredAt?.getTime() ?? 0));
   const openCount = sorted.filter((request) => request.status === "open").length;

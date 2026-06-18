@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS tenant_memberships (
 
 CREATE TABLE IF NOT EXISTS clients (
   id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry',
   name TEXT NOT NULL,
   phone TEXT NOT NULL,
   line_id TEXT,
@@ -60,6 +61,7 @@ CREATE TABLE IF NOT EXISTS clients (
 
 CREATE TABLE IF NOT EXISTS properties (
   id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry',
   name TEXT NOT NULL,
   area TEXT,
   address TEXT,
@@ -73,6 +75,7 @@ CREATE TABLE IF NOT EXISTS properties (
 
 CREATE TABLE IF NOT EXISTS quotations (
   id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry',
   client_id TEXT NOT NULL REFERENCES clients(id),
   property_id TEXT REFERENCES properties(id),
   quote_title TEXT NOT NULL,
@@ -97,6 +100,7 @@ CREATE TABLE IF NOT EXISTS quotations (
 
 CREATE TABLE IF NOT EXISTS follow_ups (
   id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry',
   client_id TEXT NOT NULL REFERENCES clients(id),
   type TEXT NOT NULL,
   content TEXT NOT NULL,
@@ -108,6 +112,7 @@ CREATE TABLE IF NOT EXISTS follow_ups (
 
 CREATE TABLE IF NOT EXISTS tasks (
   id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry',
   client_id TEXT REFERENCES clients(id),
   title TEXT NOT NULL,
   due_at TIMESTAMPTZ,
@@ -118,17 +123,21 @@ CREATE TABLE IF NOT EXISTS tasks (
 
 CREATE TABLE IF NOT EXISTS audit_logs (
   id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry',
   user_id TEXT NOT NULL REFERENCES users(id),
+  actor_id TEXT REFERENCES users(id),
   action TEXT NOT NULL,
   target_type TEXT NOT NULL,
   target_id TEXT,
   message TEXT NOT NULL,
+  context_json JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS output_template_settings (
   id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL UNIQUE REFERENCES users(id),
+  tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry',
+  user_id TEXT NOT NULL REFERENCES users(id),
   company_name TEXT NOT NULL,
   department TEXT NOT NULL,
   representative TEXT NOT NULL,
@@ -152,6 +161,7 @@ CREATE TABLE IF NOT EXISTS output_template_settings (
 
 CREATE TABLE IF NOT EXISTS output_template_versions (
   id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry',
   user_id TEXT NOT NULL REFERENCES users(id),
   version_number INTEGER NOT NULL,
   version_label TEXT NOT NULL,
@@ -162,16 +172,31 @@ CREATE TABLE IF NOT EXISTS output_template_versions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_clients_owner_stage ON clients(owner_user_id, stage);
+CREATE INDEX IF NOT EXISTS idx_clients_tenant_owner_stage ON clients(tenant_id, owner_user_id, stage);
 CREATE INDEX IF NOT EXISTS idx_clients_next_followup ON clients(next_follow_up_at);
+CREATE INDEX IF NOT EXISTS idx_properties_tenant_created ON properties(tenant_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_quotes_tenant_created ON quotations(tenant_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_quotes_client_created ON quotations(client_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_followups_client_created ON follow_ups(client_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_tasks_client_status_due ON tasks(client_id, status, due_at);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_user_created ON audit_logs(user_id, created_at DESC);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_output_template_user ON output_template_settings(user_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_output_template_version_user_number ON output_template_versions(user_id, version_number);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_actor_created ON audit_logs(actor_id, created_at DESC);
+ALTER TABLE output_template_settings DROP CONSTRAINT IF EXISTS output_template_settings_user_id_key;
+DROP INDEX IF EXISTS idx_output_template_user;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_output_template_tenant_user ON output_template_settings(tenant_id, user_id);
+DROP INDEX IF EXISTS idx_output_template_version_user_number;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_output_template_version_tenant_user_number ON output_template_versions(tenant_id, user_id, version_number);
 CREATE INDEX IF NOT EXISTS idx_output_template_version_user_created ON output_template_versions(user_id, created_at DESC);
 
 -- Backward-compatible migration for existing clients table.
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
+ALTER TABLE properties ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
+ALTER TABLE quotations ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
+ALTER TABLE follow_ups ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
+ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
+ALTER TABLE output_template_settings ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
+ALTER TABLE output_template_versions ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS budget_type TEXT NOT NULL DEFAULT 'total_price';
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS first_choice_area TEXT;
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS second_choice_area TEXT;
@@ -214,6 +239,7 @@ UPDATE audit_logs SET context_json = '{}'::jsonb WHERE context_json IS NULL;
 
 CREATE TABLE IF NOT EXISTS generated_outputs (
   id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry',
   user_id TEXT NOT NULL REFERENCES users(id),
   actor_id TEXT REFERENCES users(id),
   quote_id TEXT REFERENCES quotations(id),
@@ -229,10 +255,12 @@ CREATE TABLE IF NOT EXISTS generated_outputs (
   generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_generated_outputs_user_created ON generated_outputs(user_id, generated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_generated_outputs_tenant_user_created ON generated_outputs(tenant_id, user_id, generated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_generated_outputs_actor_created ON generated_outputs(actor_id, generated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_generated_outputs_quote ON generated_outputs(quote_id, generated_at DESC);
 
 ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS actor_id TEXT;
+ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
 ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS source_quote_id TEXT;
 ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS document_number TEXT;
 ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS template_version_id TEXT;
@@ -244,6 +272,7 @@ UPDATE generated_outputs SET document_number = id WHERE document_number IS NULL;
 -- V1 input review save: source job -> field-level review -> lightweight case data.
 CREATE TABLE IF NOT EXISTS import_jobs (
   id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry',
   user_id TEXT NOT NULL REFERENCES users(id),
   source_type TEXT NOT NULL,
   title TEXT NOT NULL,
@@ -256,9 +285,11 @@ CREATE TABLE IF NOT EXISTS import_jobs (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_import_jobs_user_created ON import_jobs(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_import_jobs_tenant_user_created ON import_jobs(tenant_id, user_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS attachments (
   id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry',
   user_id TEXT NOT NULL REFERENCES users(id),
   target_type TEXT NOT NULL,
   target_id TEXT NOT NULL,
@@ -269,9 +300,11 @@ CREATE TABLE IF NOT EXISTS attachments (
   uploaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_attachments_user_target ON attachments(user_id, target_type, target_id);
+CREATE INDEX IF NOT EXISTS idx_attachments_tenant_user_target ON attachments(tenant_id, user_id, target_type, target_id);
 
 CREATE TABLE IF NOT EXISTS brokerage_cases (
   id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry',
   user_id TEXT NOT NULL REFERENCES users(id),
   case_type TEXT NOT NULL DEFAULT 'unit_sale',
   case_title TEXT NOT NULL,
@@ -285,6 +318,7 @@ CREATE TABLE IF NOT EXISTS brokerage_cases (
 
 CREATE TABLE IF NOT EXISTS extraction_review_items (
   id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry',
   user_id TEXT NOT NULL REFERENCES users(id),
   case_id TEXT NOT NULL REFERENCES brokerage_cases(id) ON DELETE CASCADE,
   import_job_id TEXT NOT NULL REFERENCES import_jobs(id),
@@ -309,6 +343,7 @@ CREATE TABLE IF NOT EXISTS extraction_review_items (
 
 CREATE TABLE IF NOT EXISTS guarantee_application_drafts (
   id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry',
   user_id TEXT NOT NULL REFERENCES users(id),
   case_id TEXT NOT NULL REFERENCES brokerage_cases(id) ON DELETE CASCADE,
   template_id TEXT NOT NULL,
@@ -319,11 +354,12 @@ CREATE TABLE IF NOT EXISTS guarantee_application_drafts (
   last_reviewed_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE(user_id, case_id, template_id)
+  UNIQUE(tenant_id, user_id, case_id, template_id)
 );
 
 CREATE TABLE IF NOT EXISTS correction_events (
   id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry',
   user_id TEXT NOT NULL REFERENCES users(id),
   case_id TEXT NOT NULL REFERENCES brokerage_cases(id) ON DELETE CASCADE,
   trigger TEXT NOT NULL,
@@ -344,6 +380,7 @@ CREATE TABLE IF NOT EXISTS correction_events (
 
 CREATE TABLE IF NOT EXISTS ai_experience_drafts (
   id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry',
   user_id TEXT NOT NULL REFERENCES users(id),
   status TEXT NOT NULL DEFAULT 'draft',
   title TEXT NOT NULL,
@@ -361,10 +398,25 @@ CREATE TABLE IF NOT EXISTS ai_experience_drafts (
 CREATE INDEX IF NOT EXISTS idx_tenant_memberships_user_status ON tenant_memberships(user_id, status);
 CREATE INDEX IF NOT EXISTS idx_tenant_memberships_tenant_role ON tenant_memberships(tenant_id, role);
 CREATE INDEX IF NOT EXISTS idx_brokerage_cases_user_updated ON brokerage_cases(user_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_brokerage_cases_tenant_user_updated ON brokerage_cases(tenant_id, user_id, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_extraction_review_case ON extraction_review_items(case_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_extraction_review_tenant_case ON extraction_review_items(tenant_id, case_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_extraction_review_import_job ON extraction_review_items(import_job_id);
 CREATE INDEX IF NOT EXISTS idx_guarantee_drafts_case_template ON guarantee_application_drafts(user_id, case_id, template_id);
+CREATE INDEX IF NOT EXISTS idx_guarantee_drafts_tenant_case_template ON guarantee_application_drafts(tenant_id, user_id, case_id, template_id);
+ALTER TABLE guarantee_application_drafts DROP CONSTRAINT IF EXISTS guarantee_application_drafts_user_id_case_id_template_id_key;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_guarantee_drafts_tenant_user_case_template_unique ON guarantee_application_drafts(tenant_id, user_id, case_id, template_id);
 CREATE INDEX IF NOT EXISTS idx_correction_events_case_created ON correction_events(user_id, case_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_correction_events_tenant_case_created ON correction_events(tenant_id, user_id, case_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_correction_events_change_type ON correction_events(change_type, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_ai_experience_drafts_user_status_created ON ai_experience_drafts(user_id, status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ai_experience_drafts_tenant_status_created ON ai_experience_drafts(tenant_id, user_id, status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_ai_experience_drafts_scope ON ai_experience_drafts(scope_candidate, template_id, field_key);
+
+ALTER TABLE import_jobs ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
+ALTER TABLE attachments ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
+ALTER TABLE brokerage_cases ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
+ALTER TABLE extraction_review_items ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
+ALTER TABLE guarantee_application_drafts ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
+ALTER TABLE correction_events ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
+ALTER TABLE ai_experience_drafts ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';

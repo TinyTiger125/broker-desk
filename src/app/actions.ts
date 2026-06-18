@@ -48,7 +48,6 @@ import {
   getBrokerageCaseByImportJobId,
   getClientById,
   getClientDetail,
-  getDefaultUser,
   getGuaranteeApplicationDraft,
   getOutputTemplateSettings,
   getQuotationById,
@@ -94,6 +93,7 @@ import {
   type ImportValidationIssueLevel,
 } from "@/lib/import-mapping";
 import { materializeExtractionReviewValue } from "@/lib/extraction-review-materialization";
+import { requireTenantSession } from "@/lib/tenant-session";
 import { extractInputFileFromWorkbook, type InputFileExtractionResult } from "@/lib/input-file-extractor";
 import { extractIdentityDocumentFromBuffer } from "@/lib/identity-document-extractor";
 import { CASE_FIELD_KEYS, isKnownCaseFieldKey } from "@/lib/case-field-catalog";
@@ -263,8 +263,8 @@ function safeReturnTo(value: FormDataEntryValue | null, fallback: string): strin
   return path;
 }
 
-async function ensureClientOwnership(clientId: string, userId: string) {
-  const client = await getClientById(clientId);
+async function ensureClientOwnership(clientId: string, userId: string, tenantId?: string) {
+  const client = await getClientById(clientId, tenantId);
   if (!client) {
     throw new Error("顧客が見つかりません。");
   }
@@ -275,10 +275,9 @@ async function ensureClientOwnership(clientId: string, userId: string) {
 }
 
 export async function createClient(formData: FormData) {
-  const user = await getDefaultUser();
-  if (!user) {
-    throw new Error("担当ユーザーが見つかりません。");
-  }
+  const session = await requireTenantSession({ permission: "record.update" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
 
   const name = String(formData.get("name") ?? "").trim();
   const phone = String(formData.get("phone") ?? "").trim();
@@ -316,6 +315,7 @@ export async function createClient(formData: FormData) {
   }
 
   const client = await addClient({
+    tenantId,
     ownerUserId: user.id,
     name,
     phone,
@@ -347,6 +347,7 @@ export async function createClient(formData: FormData) {
   revalidatePath("/");
   revalidatePath("/board");
   await addAuditLog({
+    tenantId,
     userId: user.id,
     action: "client_created",
     targetType: "client",
@@ -366,15 +367,14 @@ export async function createClient(formData: FormData) {
 }
 
 export async function updateClientProfile(formData: FormData) {
-  const user = await getDefaultUser();
-  if (!user) {
-    throw new Error("担当ユーザーが見つかりません。");
-  }
+  const session = await requireTenantSession({ permission: "record.update" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
   const clientId = String(formData.get("clientId") ?? "").trim();
   if (!clientId) {
     throw new Error("顧客IDは必須です。");
   }
-  await ensureClientOwnership(clientId, user.id);
+  await ensureClientOwnership(clientId, user.id, tenantId);
 
   const name = String(formData.get("name") ?? "").trim();
   const phone = String(formData.get("phone") ?? "").trim();
@@ -402,6 +402,7 @@ export async function updateClientProfile(formData: FormData) {
   }
 
   await updateClient(clientId, {
+    tenantId,
     name,
     phone,
     lineId: String(formData.get("lineId") ?? "").trim() || undefined,
@@ -433,6 +434,7 @@ export async function updateClientProfile(formData: FormData) {
   revalidatePath("/");
   revalidatePath("/board");
   await addAuditLog({
+    tenantId,
     userId: user.id,
     action: "client_updated",
     targetType: "client",
@@ -444,23 +446,23 @@ export async function updateClientProfile(formData: FormData) {
 }
 
 export async function addFollowUp(formData: FormData) {
-  const user = await getDefaultUser();
-  if (!user) {
-    throw new Error("担当ユーザーが見つかりません。");
-  }
+  const session = await requireTenantSession({ permission: "record.update" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
 
   const clientId = String(formData.get("clientId") ?? "");
   const content = String(formData.get("content") ?? "").trim();
   if (!clientId || !content) {
     throw new Error("顧客IDと内容は必須です。");
   }
-  await ensureClientOwnership(clientId, user.id);
+  await ensureClientOwnership(clientId, user.id, tenantId);
 
   const type =
     (String(formData.get("type") ?? FOLLOWUP_TYPES[5]) as FollowUpType) ??
     FOLLOWUP_TYPES[5];
 
   await appendFollowUp({
+    tenantId,
     clientId,
     createdById: user.id,
     type,
@@ -473,6 +475,7 @@ export async function addFollowUp(formData: FormData) {
   revalidatePath("/");
   revalidatePath("/board");
   await addAuditLog({
+    tenantId,
     userId: user.id,
     action: "followup_added",
     targetType: "client",
@@ -482,10 +485,9 @@ export async function addFollowUp(formData: FormData) {
 }
 
 export async function updateClientStage(formData: FormData) {
-  const user = await getDefaultUser();
-  if (!user) {
-    throw new Error("担当ユーザーが見つかりません。");
-  }
+  const session = await requireTenantSession({ permission: "record.update" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
   const locale = await getLocale();
   const clientId = String(formData.get("clientId") ?? "");
   const stage = String(formData.get("stage") ?? "lead");
@@ -497,9 +499,10 @@ export async function updateClientStage(formData: FormData) {
   if (!isClientStage(stage)) {
     throw new Error("ステージの値が不正です。");
   }
-  await ensureClientOwnership(clientId, user.id);
+  await ensureClientOwnership(clientId, user.id, tenantId);
 
   await setClientStageWithLog({
+    tenantId,
     clientId,
     stage,
     createdById: user.id,
@@ -512,6 +515,7 @@ export async function updateClientStage(formData: FormData) {
   revalidatePath("/");
   revalidatePath("/board");
   await addAuditLog({
+    tenantId,
     userId: user.id,
     action: "client_stage_updated",
     targetType: "client",
@@ -521,10 +525,9 @@ export async function updateClientStage(formData: FormData) {
 }
 
 export async function createComplianceTask(formData: FormData) {
-  const user = await getDefaultUser();
-  if (!user) {
-    throw new Error("担当ユーザーが見つかりません。");
-  }
+  const session = await requireTenantSession({ permission: "review_task.create" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
   const clientId = String(formData.get("clientId") ?? "").trim();
   const alertType = String(formData.get("alertType") ?? "").trim();
   const alertTitle = String(formData.get("alertTitle") ?? "").trim();
@@ -536,9 +539,10 @@ export async function createComplianceTask(formData: FormData) {
   if (!isComplianceAlertType(alertType)) {
     throw new Error("法定アラート種別の値が不正です。");
   }
-  await ensureClientOwnership(clientId, user.id);
+  await ensureClientOwnership(clientId, user.id, tenantId);
 
   const task = await createComplianceTaskFromAlert({
+    tenantId,
     clientId,
     alertType,
     alertTitle,
@@ -558,10 +562,9 @@ export async function createComplianceTask(formData: FormData) {
 }
 
 export async function resolveComplianceAlertAction(formData: FormData) {
-  const user = await getDefaultUser();
-  if (!user) {
-    throw new Error("担当ユーザーが見つかりません。");
-  }
+  const session = await requireTenantSession({ permission: "record.update" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
   const clientId = String(formData.get("clientId") ?? "").trim();
   const alertType = String(formData.get("alertType") ?? "").trim();
   const extendDays = parseNumber(formData.get("extendDays"), 90);
@@ -572,9 +575,10 @@ export async function resolveComplianceAlertAction(formData: FormData) {
   if (!isComplianceAlertType(alertType)) {
     throw new Error("法定アラート種別の値が不正です。");
   }
-  await ensureClientOwnership(clientId, user.id);
+  await ensureClientOwnership(clientId, user.id, tenantId);
 
   const updated = await resolveComplianceAlert({
+    tenantId,
     clientId,
     alertType,
     resolvedById: user.id,
@@ -592,10 +596,9 @@ export async function resolveComplianceAlertAction(formData: FormData) {
 }
 
 export async function changeTaskStatusAction(formData: FormData) {
-  const user = await getDefaultUser();
-  if (!user) {
-    throw new Error("担当ユーザーが見つかりません。");
-  }
+  const session = await requireTenantSession({ permission: "review_task.resolve" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
   const taskId = String(formData.get("taskId") ?? "").trim();
   const status = String(formData.get("status") ?? "").trim();
   const clientId = String(formData.get("clientId") ?? "").trim();
@@ -609,9 +612,10 @@ export async function changeTaskStatusAction(formData: FormData) {
     throw new Error("タスク状態が不正です。");
   }
   const previousStatus = isTaskStatus(previousStatusRaw) ? previousStatusRaw : undefined;
-  await ensureClientOwnership(clientId, user.id);
+  await ensureClientOwnership(clientId, user.id, tenantId);
 
   const updated = await updateTaskStatus({
+    tenantId,
     taskId,
     status,
     updatedById: user.id,
@@ -634,10 +638,9 @@ export async function changeTaskStatusAction(formData: FormData) {
 }
 
 export async function batchUpdateServiceRequestStatusAction(formData: FormData) {
-  const user = await getDefaultUser();
-  if (!user) {
-    throw new Error("担当ユーザーが見つかりません。");
-  }
+  const session = await requireTenantSession({ permission: "review_task.resolve" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
   const locale = await getLocale();
   const status = String(formData.get("status") ?? "").trim();
   const returnTo = safeReturnTo(formData.get("returnTo"), "/service-requests");
@@ -659,8 +662,8 @@ export async function batchUpdateServiceRequestStatusAction(formData: FormData) 
     );
   }
 
-  const clients = await listClients(user.id, { sort: "follow_up" });
-  const details = await Promise.all(clients.map((client) => getClientDetail(client.id)));
+  const clients = await listClients(user.id, { sort: "follow_up", tenantId });
+  const details = await Promise.all(clients.map((client) => getClientDetail(client.id, tenantId)));
   const allowedTaskIds = new Set<string>();
   details.forEach((detail) => detail?.tasks.forEach((task) => allowedTaskIds.add(task.id)));
   const targetIds = taskIds.filter((id) => allowedTaskIds.has(id));
@@ -674,9 +677,10 @@ export async function batchUpdateServiceRequestStatusAction(formData: FormData) 
     );
   }
 
-  await Promise.all(targetIds.map((taskId) => updateTaskStatus({ taskId, status, updatedById: user.id })));
+  await Promise.all(targetIds.map((taskId) => updateTaskStatus({ tenantId, taskId, status, updatedById: user.id })));
 
   await addAuditLog({
+    tenantId,
     userId: user.id,
     action: "service_request_batch_updated",
     targetType: "task",
@@ -695,10 +699,9 @@ export async function batchUpdateServiceRequestStatusAction(formData: FormData) 
 }
 
 export async function batchUpdateContractStatusAction(formData: FormData) {
-  const user = await getDefaultUser();
-  if (!user) {
-    throw new Error("担当ユーザーが見つかりません。");
-  }
+  const session = await requireTenantSession({ permission: "record.update" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
   const locale = await getLocale();
   const status = String(formData.get("status") ?? "").trim();
   const returnTo = safeReturnTo(formData.get("returnTo"), "/contracts");
@@ -726,8 +729,9 @@ export async function batchUpdateContractStatusAction(formData: FormData) {
     );
   }
 
-  const contracts = await listHubContracts(locale);
-  const clients = await listClients(user.id, { sort: "follow_up" });
+  const hubContext = { userId: user.id, tenantId };
+  const contracts = await listHubContracts(locale, hubContext);
+  const clients = await listClients(user.id, { sort: "follow_up", tenantId });
   const clientStageMap = new Map(clients.map((client) => [client.id, client.stage]));
   const uniqueClientIds = [
     ...new Set(
@@ -756,9 +760,10 @@ export async function batchUpdateContractStatusAction(formData: FormData) {
 
   await Promise.all(
     uniqueClientIds.map(async (clientId) => {
-      const client = await ensureClientOwnership(clientId, user.id);
-      await setClientStage(client.id, targetStage);
+      const client = await ensureClientOwnership(clientId, user.id, tenantId);
+      await setClientStage(client.id, targetStage, tenantId);
       await addAuditLog({
+        tenantId,
         userId: user.id,
         action: "contract_batch_status_updated",
         targetType: "client",
@@ -784,10 +789,9 @@ export async function batchUpdateContractStatusAction(formData: FormData) {
 }
 
 export async function undoContractBatchStatusAction(formData: FormData) {
-  const user = await getDefaultUser();
-  if (!user) {
-    throw new Error("担当ユーザーが見つかりません。");
-  }
+  const session = await requireTenantSession({ permission: "record.update" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
   const locale = await getLocale();
   const returnTo = safeReturnTo(formData.get("returnTo"), "/contracts");
   const clientIds = parseCommaList(String(formData.get("clientIds") ?? ""));
@@ -822,12 +826,13 @@ export async function undoContractBatchStatusAction(formData: FormData) {
 
   await Promise.all(
     validPairs.map(async ({ clientId, stage }) => {
-      const client = await ensureClientOwnership(clientId, user.id);
-      await setClientStage(client.id, stage);
+      const client = await ensureClientOwnership(clientId, user.id, tenantId);
+      await setClientStage(client.id, stage, tenantId);
     })
   );
 
   await addAuditLog({
+    tenantId,
     userId: user.id,
     action: "contract_batch_status_undone",
     targetType: "client",
@@ -846,10 +851,9 @@ export async function undoContractBatchStatusAction(formData: FormData) {
 }
 
 export async function rescheduleTaskAction(formData: FormData) {
-  const user = await getDefaultUser();
-  if (!user) {
-    throw new Error("担当ユーザーが見つかりません。");
-  }
+  const session = await requireTenantSession({ permission: "review_task.resolve" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
   const taskId = String(formData.get("taskId") ?? "").trim();
   const clientId = String(formData.get("clientId") ?? "").trim();
   const dueAt = parseDate(formData.get("dueAt"));
@@ -858,9 +862,10 @@ export async function rescheduleTaskAction(formData: FormData) {
   if (!taskId || !clientId || !dueAt) {
     throw new Error("タスクID・顧客ID・新しい期限は必須です。");
   }
-  await ensureClientOwnership(clientId, user.id);
+  await ensureClientOwnership(clientId, user.id, tenantId);
 
   const updated = await rescheduleTask({
+    tenantId,
     taskId,
     dueAt,
     updatedById: user.id,
@@ -877,10 +882,9 @@ export async function rescheduleTaskAction(formData: FormData) {
 }
 
 export async function undoTaskStatusAction(formData: FormData) {
-  const user = await getDefaultUser();
-  if (!user) {
-    throw new Error("担当ユーザーが見つかりません。");
-  }
+  const session = await requireTenantSession({ permission: "review_task.resolve" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
   const taskId = String(formData.get("taskId") ?? "").trim();
   const clientId = String(formData.get("clientId") ?? "").trim();
   const statusRaw = String(formData.get("status") ?? "").trim();
@@ -888,8 +892,9 @@ export async function undoTaskStatusAction(formData: FormData) {
   if (!taskId || !clientId || !isTaskStatus(statusRaw)) {
     throw new Error("元に戻す情報が不足しています。");
   }
-  await ensureClientOwnership(clientId, user.id);
+  await ensureClientOwnership(clientId, user.id, tenantId);
   const updated = await updateTaskStatus({
+    tenantId,
     taskId,
     status: statusRaw,
     updatedById: user.id,
@@ -903,10 +908,9 @@ export async function undoTaskStatusAction(formData: FormData) {
 }
 
 export async function createImportJobAction(formData: FormData) {
-  const user = await getDefaultUser();
-  if (!user) {
-    throw new Error("担当ユーザーが見つかりません。");
-  }
+  const session = await requireTenantSession({ permission: "source.upload" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
 
   const sourceType = String(formData.get("sourceType") ?? "").trim();
   const targetEntity = String(formData.get("targetEntity") ?? "").trim();
@@ -921,6 +925,7 @@ export async function createImportJobAction(formData: FormData) {
   }
 
   const job = await addImportJob({
+    tenantId,
     userId: user.id,
     sourceType,
     targetEntity,
@@ -929,6 +934,7 @@ export async function createImportJobAction(formData: FormData) {
   });
 
   await addAuditLog({
+    tenantId,
     userId: user.id,
     action: "import_job_created",
     targetType: "task",
@@ -942,10 +948,9 @@ export async function createImportJobAction(formData: FormData) {
 }
 
 export async function updateImportJobMappingAction(formData: FormData) {
-  const user = await getDefaultUser();
-  if (!user) {
-    throw new Error("担当ユーザーが見つかりません。");
-  }
+  const session = await requireTenantSession({ permission: "extract.override_result" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
   const locale = await getLocale();
 
   const jobId = String(formData.get("jobId") ?? "").trim();
@@ -1033,6 +1038,7 @@ export async function updateImportJobMappingAction(formData: FormData) {
   });
 
   const updated = await updateImportJobMapping({
+    tenantId,
     userId: user.id,
     jobId,
     mappingJson,
@@ -1045,6 +1051,7 @@ export async function updateImportJobMappingAction(formData: FormData) {
   }
 
   await addAuditLog({
+    tenantId,
     userId: user.id,
     action: "import_mapping_updated",
     targetType: "task",
@@ -1058,10 +1065,9 @@ export async function updateImportJobMappingAction(formData: FormData) {
 }
 
 export async function autoMapImportJobAction(formData: FormData) {
-  const user = await getDefaultUser();
-  if (!user) {
-    throw new Error("担当ユーザーが見つかりません。");
-  }
+  const session = await requireTenantSession({ permission: "extract.override_result" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
   const locale = await getLocale();
 
   const jobId = String(formData.get("jobId") ?? "").trim();
@@ -1152,6 +1158,7 @@ export async function autoMapImportJobAction(formData: FormData) {
   });
 
   const updated = await updateImportJobMapping({
+    tenantId,
     userId: user.id,
     jobId,
     mappingJson,
@@ -1164,6 +1171,7 @@ export async function autoMapImportJobAction(formData: FormData) {
   }
 
   await addAuditLog({
+    tenantId,
     userId: user.id,
     action: "import_mapping_updated",
     targetType: "task",
@@ -1177,10 +1185,9 @@ export async function autoMapImportJobAction(formData: FormData) {
 }
 
 export async function resolveImportValidationAction(formData: FormData) {
-  const user = await getDefaultUser();
-  if (!user) {
-    throw new Error("担当ユーザーが見つかりません。");
-  }
+  const session = await requireTenantSession({ permission: "extract.override_result" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
   const locale = await getLocale();
 
   const jobId = String(formData.get("jobId") ?? "").trim();
@@ -1189,7 +1196,7 @@ export async function resolveImportValidationAction(formData: FormData) {
     throw new Error("ジョブIDは必須です。");
   }
 
-  const jobs = await listImportJobs(user.id, 200);
+  const jobs = await listImportJobs(user.id, 200, tenantId);
   const job = jobs.find((item) => item.id === jobId);
   if (!job) {
     throw new Error("取込ジョブが見つかりません。");
@@ -1225,6 +1232,7 @@ export async function resolveImportValidationAction(formData: FormData) {
   const nextNotes = [job.notes, `${new Date().toISOString()} ${operationLabel}`].filter(Boolean).join("\n");
 
   await updateImportJobMapping({
+    tenantId,
     userId: user.id,
     jobId: job.id,
     mappingJson: job.mappingJson ?? {},
@@ -1234,6 +1242,7 @@ export async function resolveImportValidationAction(formData: FormData) {
   });
 
   await addAuditLog({
+    tenantId,
     userId: user.id,
     action: "import_validation_resolved",
     targetType: "task",
@@ -1247,10 +1256,9 @@ export async function resolveImportValidationAction(formData: FormData) {
 }
 
 export async function retryImportJobAction(formData: FormData) {
-  const user = await getDefaultUser();
-  if (!user) {
-    throw new Error("担当ユーザーが見つかりません。");
-  }
+  const session = await requireTenantSession({ permission: "extract.run" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
   const locale = await getLocale();
 
   const jobId = String(formData.get("jobId") ?? "").trim();
@@ -1258,7 +1266,7 @@ export async function retryImportJobAction(formData: FormData) {
     throw new Error("ジョブIDは必須です。");
   }
 
-  const jobs = await listImportJobs(user.id, 200);
+  const jobs = await listImportJobs(user.id, 200, tenantId);
   const job = jobs.find((item) => item.id === jobId);
   if (!job) {
     throw new Error("取込ジョブが見つかりません。");
@@ -1293,6 +1301,7 @@ export async function retryImportJobAction(formData: FormData) {
   });
 
   const retried = await updateImportJobMapping({
+    tenantId,
     userId: user.id,
     jobId,
     mappingJson: job.mappingJson ?? {},
@@ -1306,6 +1315,7 @@ export async function retryImportJobAction(formData: FormData) {
   }
 
   await addAuditLog({
+    tenantId,
     userId: user.id,
     action: "import_job_retried",
     targetType: "import_job",
@@ -1327,10 +1337,9 @@ export async function retryImportJobAction(formData: FormData) {
 }
 
 export async function registerAttachmentAction(formData: FormData) {
-  const user = await getDefaultUser();
-  if (!user) {
-    throw new Error("担当ユーザーが見つかりません。");
-  }
+  const session = await requireTenantSession({ permission: "source.upload" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
 
   const targetType = String(formData.get("targetType") ?? "").trim();
   const targetId = String(formData.get("targetId") ?? "").trim();
@@ -1379,6 +1388,7 @@ export async function registerAttachmentAction(formData: FormData) {
   }
 
   const attachment = await addAttachment({
+    tenantId,
     userId: user.id,
     targetType,
     targetId,
@@ -1389,6 +1399,7 @@ export async function registerAttachmentAction(formData: FormData) {
   });
 
   await addAuditLog({
+    tenantId,
     userId: user.id,
     action: "attachment_registered",
     targetType: "task",
@@ -1405,10 +1416,9 @@ export async function registerAttachmentAction(formData: FormData) {
 }
 
 export async function createPropertyQuickAction(formData: FormData) {
-  const user = await getDefaultUser();
-  if (!user) {
-    throw new Error("担当ユーザーが見つかりません。");
-  }
+  const session = await requireTenantSession({ permission: "record.update" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
   const locale = await getLocale();
 
   const defaultName = tr(locale, {
@@ -1426,6 +1436,7 @@ export async function createPropertyQuickAction(formData: FormData) {
   const repairFee = parseNumber(formData.get("repairFee"), 0) || undefined;
 
   const property = await addProperty({
+    tenantId,
     name,
     area,
     address,
@@ -1436,6 +1447,7 @@ export async function createPropertyQuickAction(formData: FormData) {
   });
 
   await addAuditLog({
+    tenantId,
     userId: user.id,
     action: "property_created",
     targetType: "compliance",
@@ -1454,10 +1466,9 @@ export async function createPropertyQuickAction(formData: FormData) {
 }
 
 export async function createPartyQuickAction(formData: FormData) {
-  const user = await getDefaultUser();
-  if (!user) {
-    throw new Error("担当ユーザーが見つかりません。");
-  }
+  const session = await requireTenantSession({ permission: "record.update" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
   const locale = await getLocale();
 
   const name =
@@ -1472,6 +1483,7 @@ export async function createPartyQuickAction(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim() || undefined;
 
   const client = await addClient({
+    tenantId,
     ownerUserId: user.id,
     name,
     phone,
@@ -1487,6 +1499,7 @@ export async function createPartyQuickAction(formData: FormData) {
   });
 
   await addAuditLog({
+    tenantId,
     userId: user.id,
     action: "party_created",
     targetType: "client",
@@ -1505,16 +1518,15 @@ export async function createPartyQuickAction(formData: FormData) {
 }
 
 export async function createServiceRequestQuickAction(formData: FormData) {
-  const user = await getDefaultUser();
-  if (!user) {
-    throw new Error("担当ユーザーが見つかりません。");
-  }
+  const session = await requireTenantSession({ permission: "review_task.create" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
   const locale = await getLocale();
 
   const requestedClientId = String(formData.get("clientId") ?? "").trim();
   let clientId = requestedClientId;
   if (!clientId) {
-    const clients = await listClients(user.id, { sort: "follow_up" });
+    const clients = await listClients(user.id, { sort: "follow_up", tenantId });
     clientId = clients[0]?.id ?? "";
   }
   if (!clientId) {
@@ -1526,6 +1538,7 @@ export async function createServiceRequestQuickAction(formData: FormData) {
       })
     );
   }
+  await ensureClientOwnership(clientId, user.id, tenantId);
 
   const title =
     String(formData.get("title") ?? "").trim() ||
@@ -1538,6 +1551,7 @@ export async function createServiceRequestQuickAction(formData: FormData) {
   const returnTo = safeReturnTo(formData.get("returnTo"), "/service-requests");
 
   const task = await addTask({
+    tenantId,
     clientId,
     title,
     dueAt,
@@ -1546,6 +1560,7 @@ export async function createServiceRequestQuickAction(formData: FormData) {
   });
 
   await addAuditLog({
+    tenantId,
     userId: user.id,
     action: "service_request_created",
     targetType: "task",
@@ -1564,10 +1579,9 @@ export async function createServiceRequestQuickAction(formData: FormData) {
 }
 
 export async function generateOutputDocumentAction(formData: FormData) {
-  const user = await getDefaultUser();
-  if (!user) {
-    throw new Error("担当ユーザーが見つかりません。");
-  }
+  const session = await requireTenantSession({ permission: "output.generate_final" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
   const locale = await getLocale();
 
   const quoteId = String(formData.get("quoteId") ?? "").trim();
@@ -1587,8 +1601,8 @@ export async function generateOutputDocumentAction(formData: FormData) {
     `/output-center?type=${encodeURIComponent(typeRaw)}&format=${encodeURIComponent(safeFormat)}&lang=${encodeURIComponent(safeLanguage)}&quoteId=${encodeURIComponent(quoteId)}&targetProperty=${encodeURIComponent(targetProperty)}&targetParty=${encodeURIComponent(targetParty)}&historyType=all&historyLang=all&historyFormat=all`
   );
   const [templateSettings, templateVersions] = await Promise.all([
-    getOutputTemplateSettings(user.id),
-    listOutputTemplateVersions(user.id, 20),
+    getOutputTemplateSettings(user.id, tenantId),
+    listOutputTemplateVersions(user.id, 20, tenantId),
   ]);
   const activeTemplateVersion = templateVersions.find((item) => item.isActive) ?? templateVersions[0];
   const issuedAt = new Date();
@@ -1599,7 +1613,7 @@ export async function generateOutputDocumentAction(formData: FormData) {
       redirect(appendQuery(withValidationFlash, "issues", "missing_target_property"));
     }
 
-    const { properties } = await listQuoteFormData();
+    const { properties } = await listQuoteFormData(tenantId);
     const property = properties.find((item) => item.id === targetProperty);
     if (!property) {
       throw new Error("対象物件が見つかりません。");
@@ -1608,6 +1622,7 @@ export async function generateOutputDocumentAction(formData: FormData) {
     const documentNumber = createDocumentNumber(property.id, typeRaw, issuedAt);
     const title = `${getOutputDocLabel(safeLanguage, typeRaw)} - ${property.name}`;
     const generated = await addGeneratedOutput({
+      tenantId,
       userId: user.id,
       actorId: user.id,
       propertyId: property.id,
@@ -1621,6 +1636,7 @@ export async function generateOutputDocumentAction(formData: FormData) {
     });
 
     await addAuditLog({
+      tenantId,
       userId: user.id,
       action: "output_generated",
       targetType: "property",
@@ -1641,7 +1657,7 @@ export async function generateOutputDocumentAction(formData: FormData) {
   if (!quoteId) {
     throw new Error("提案IDは必須です。");
   }
-  const quote = await getQuotationById(quoteId);
+  const quote = await getQuotationById(quoteId, tenantId);
   if (!quote) {
     throw new Error("提案データが見つかりません。");
   }
@@ -1670,6 +1686,7 @@ export async function generateOutputDocumentAction(formData: FormData) {
   }
   if (validationIssues.length > 0) {
     await addAuditLog({
+      tenantId,
       userId: user.id,
       action: "output_validation_failed",
       targetType: "quote",
@@ -1688,6 +1705,7 @@ export async function generateOutputDocumentAction(formData: FormData) {
   const title = `${getOutputDocLabel(safeLanguage, typeRaw)} - ${partyLabel}`;
 
   const generated = await addGeneratedOutput({
+    tenantId,
     userId: user.id,
     actorId: user.id,
     sourceQuoteId: quote.id,
@@ -1703,6 +1721,7 @@ export async function generateOutputDocumentAction(formData: FormData) {
   });
 
   await addAuditLog({
+    tenantId,
     userId: user.id,
     action: "output_generated",
     targetType: "quote",
@@ -1721,15 +1740,14 @@ export async function generateOutputDocumentAction(formData: FormData) {
 }
 
 export async function createQuotation(formData: FormData) {
-  const user = await getDefaultUser();
-  if (!user) {
-    throw new Error("担当ユーザーが見つかりません。");
-  }
+  const session = await requireTenantSession({ permission: "record.update" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
   const clientId = String(formData.get("clientId") ?? "").trim();
   if (!clientId) {
     throw new Error("顧客IDは必須です。");
   }
-  await ensureClientOwnership(clientId, user.id);
+  await ensureClientOwnership(clientId, user.id, tenantId);
 
   const summaryMode = String(formData.get("summaryMode") ?? "short").trim();
   const generatedShortSummary = String(formData.get("generatedShortSummary") ?? "").trim();
@@ -1744,6 +1762,7 @@ export async function createQuotation(formData: FormData) {
     : finalSummary;
 
   const quote = await addQuotation({
+    tenantId,
     clientId,
     propertyId: String(formData.get("propertyId") ?? "").trim() || undefined,
     quoteTitle: String(formData.get("quoteTitle") ?? "提案プラン").trim(),
@@ -1766,6 +1785,7 @@ export async function createQuotation(formData: FormData) {
   revalidatePath("/quotes/new");
   revalidatePath("/board");
   await addAuditLog({
+    tenantId,
     userId: user.id,
     action: "quote_created",
     targetType: "quote",
@@ -1777,21 +1797,20 @@ export async function createQuotation(formData: FormData) {
 }
 
 export async function duplicateQuotationAction(formData: FormData) {
-  const user = await getDefaultUser();
-  if (!user) {
-    throw new Error("担当ユーザーが見つかりません。");
-  }
+  const session = await requireTenantSession({ permission: "record.update" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
   const quoteId = String(formData.get("quoteId") ?? "").trim();
   if (!quoteId) {
     throw new Error("提案IDは必須です。");
   }
-  const source = await getQuotationById(quoteId);
+  const source = await getQuotationById(quoteId, tenantId);
   if (!source || !source.client) {
     throw new Error("提案が見つかりません。");
   }
-  await ensureClientOwnership(source.client.id, user.id);
+  await ensureClientOwnership(source.client.id, user.id, tenantId);
 
-  const duplicated = await duplicateQuotation(quoteId);
+  const duplicated = await duplicateQuotation(quoteId, tenantId);
   if (!duplicated) {
     throw new Error("提案が見つかりません。");
   }
@@ -1800,6 +1819,7 @@ export async function duplicateQuotationAction(formData: FormData) {
   revalidatePath("/quotes");
   revalidatePath(`/quotes/${quoteId}`);
   await addAuditLog({
+    tenantId,
     userId: user.id,
     action: "quote_duplicated",
     targetType: "quote",
@@ -1811,10 +1831,9 @@ export async function duplicateQuotationAction(formData: FormData) {
 }
 
 export async function changeQuotationStatus(formData: FormData) {
-  const user = await getDefaultUser();
-  if (!user) {
-    throw new Error("担当ユーザーが見つかりません。");
-  }
+  const session = await requireTenantSession({ permission: "record.update" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
   const quoteId = String(formData.get("quoteId") ?? "").trim();
   const status = String(formData.get("status") ?? "draft");
 
@@ -1824,18 +1843,19 @@ export async function changeQuotationStatus(formData: FormData) {
   if (!isQuoteStatus(status)) {
     throw new Error("ステータスの値が不正です。");
   }
-  const quote = await getQuotationById(quoteId);
+  const quote = await getQuotationById(quoteId, tenantId);
   if (!quote || !quote.client) {
     throw new Error("提案が見つかりません。");
   }
-  await ensureClientOwnership(quote.client.id, user.id);
+  await ensureClientOwnership(quote.client.id, user.id, tenantId);
 
-  await updateQuotationStatus(quoteId, status);
+  await updateQuotationStatus(quoteId, status, tenantId);
 
   revalidatePath("/");
   revalidatePath("/quotes");
   revalidatePath(`/quotes/${quoteId}`);
   await addAuditLog({
+    tenantId,
     userId: user.id,
     action: "quote_status_updated",
     targetType: "quote",
@@ -1845,14 +1865,13 @@ export async function changeQuotationStatus(formData: FormData) {
 }
 
 export async function updateOutputTemplateSettingsAction(formData: FormData) {
-  const user = await getDefaultUser();
-  if (!user) {
-    throw new Error("担当ユーザーが見つかりません。");
-  }
+  const session = await requireTenantSession({ permission: "template.edit_draft" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
 
-  const current = await getOutputTemplateSettings(user.id);
+  const current = await getOutputTemplateSettings(user.id, tenantId);
   const shouldResetToStandard = parseCheckbox(formData.get("resetToStandard"));
-  const standard = getDefaultOutputTemplateSettings(user.id);
+  const standard = getDefaultOutputTemplateSettings(user.id, tenantId);
   const versionLabel = String(formData.get("versionLabel") ?? "").trim();
   const changeNote = String(formData.get("changeNote") ?? "").trim();
   const text = (name: string, fallback: string) => {
@@ -1891,9 +1910,10 @@ export async function updateOutputTemplateSettingsAction(formData: FormData) {
     showOutstandingBalanceTable: shouldResetToStandard
       ? standard.showOutstandingBalanceTable
       : parseCheckbox(formData.get("showOutstandingBalanceTable")),
-  });
+  }, tenantId);
 
   await createOutputTemplateVersion({
+    tenantId,
     userId: user.id,
     versionLabel: shouldResetToStandard ? "日本標準テンプレート再適用" : versionLabel || undefined,
     changeNote: changeNote || undefined,
@@ -1928,6 +1948,7 @@ export async function updateOutputTemplateSettingsAction(formData: FormData) {
   revalidatePath("/quotes/[id]/print");
 
   await addAuditLog({
+    tenantId,
     userId: user.id,
     action: "output_template_updated",
     targetType: "quote",
@@ -1937,10 +1958,9 @@ export async function updateOutputTemplateSettingsAction(formData: FormData) {
 }
 
 export async function applyOutputTemplateVersionAction(formData: FormData) {
-  const user = await getDefaultUser();
-  if (!user) {
-    throw new Error("担当ユーザーが見つかりません。");
-  }
+  const session = await requireTenantSession({ permission: "template.rollback" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
   const versionId = String(formData.get("versionId") ?? "").trim();
   const confirmApply = parseCheckbox(formData.get("confirmApply"));
   if (!versionId) {
@@ -1951,6 +1971,7 @@ export async function applyOutputTemplateVersionAction(formData: FormData) {
   }
 
   const applied = await applyOutputTemplateVersion({
+    tenantId,
     userId: user.id,
     versionId,
   });
@@ -1966,6 +1987,7 @@ export async function applyOutputTemplateVersionAction(formData: FormData) {
   revalidatePath("/quotes/[id]/print");
 
   await addAuditLog({
+    tenantId,
     userId: user.id,
     action: "output_template_version_applied",
     targetType: "quote",
@@ -1979,18 +2001,19 @@ function isAiExperienceDraftStatus(value: string): value is AiExperienceDraftSta
 }
 
 export async function draftAiExperiencesAction() {
-  const user = await getDefaultUser();
-  if (!user) {
-    throw new Error("担当ユーザーが見つかりません。");
-  }
+  const session = await requireTenantSession({ permission: "ai.experience_review" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
 
   const result = await draftAiExperiencesFromRecentCorrections({
     userId: user.id,
+    tenantId,
     limit: 200,
     minEventsPerDraft: 2,
   });
 
   await addAuditLog({
+    tenantId,
     userId: user.id,
     action: "ai_experience_drafts_generated",
     targetType: "ai_experience",
@@ -2008,10 +2031,9 @@ export async function draftAiExperiencesAction() {
 }
 
 export async function reviewAiExperienceDraftAction(formData: FormData) {
-  const user = await getDefaultUser();
-  if (!user) {
-    throw new Error("担当ユーザーが見つかりません。");
-  }
+  const session = await requireTenantSession({ permission: "ai.experience_review" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
 
   const draftId = String(formData.get("draftId") ?? "").trim();
   const status = String(formData.get("status") ?? "").trim();
@@ -2022,12 +2044,14 @@ export async function reviewAiExperienceDraftAction(formData: FormData) {
 
   const updated = await updateAiExperienceDraftStatus({
     userId: user.id,
+    tenantId,
     draftId,
     status,
   });
   if (!updated) throw new Error("AI経験草稿が見つかりません。");
 
   await addAuditLog({
+    tenantId,
     userId: user.id,
     action: "ai_experience_draft_reviewed",
     targetType: "ai_experience",
@@ -2370,14 +2394,15 @@ function buildCaseTitle(extraction: InputFileExtractionResult, fallbackTitle: st
 }
 
 export async function saveCaseWorkbenchAction(formData: FormData) {
-  const user = await getDefaultUser();
-  if (!user) throw new Error("担当ユーザーが見つかりません。");
+  const session = await requireTenantSession({ permission: "record.update" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
 
   const caseId = String(formData.get("caseId") ?? "").trim();
   if (!caseId) throw new Error("案件IDが不正です。");
-  const brokerageCase = await getBrokerageCaseById({ userId: user.id, caseId });
+  const brokerageCase = await getBrokerageCaseById({ userId: user.id, tenantId, caseId });
   if (!brokerageCase) throw new Error("案件が見つかりません。");
-  const reviewItems = await listExtractionReviewItems({ userId: user.id, caseId });
+  const reviewItems = await listExtractionReviewItems({ userId: user.id, tenantId, caseId });
 
   const nextConfirmedData: Record<string, unknown> = { ...brokerageCase.confirmedDataJson };
   const existingStatusMap =
@@ -2439,6 +2464,7 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
 
   const updatedCase = await updateBrokerageCaseConfirmedData({
     userId: user.id,
+    tenantId,
     caseId,
     confirmedDataJson: nextConfirmedData,
   });
@@ -2446,10 +2472,12 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
 
   const correctionEvents = await addCorrectionEvents({
     userId: user.id,
+    tenantId,
     events: correctionEventDrafts,
   });
 
   await addAuditLog({
+    tenantId,
     userId: user.id,
     action: "case_workbench_saved",
     targetType: "import_job",
@@ -2476,8 +2504,9 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
 }
 
 export async function saveGuaranteeApplicationDraftAction(formData: FormData) {
-  const user = await getDefaultUser();
-  if (!user) throw new Error("担当ユーザーが見つかりません。");
+  const session = await requireTenantSession({ permission: "output.update_draft" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
 
   const caseId = String(formData.get("caseId") ?? "").trim();
   if (!caseId) throw new Error("案件IDが不正です。");
@@ -2485,7 +2514,7 @@ export async function saveGuaranteeApplicationDraftAction(formData: FormData) {
   const template = findGuaranteeCompanyTemplate(templateId);
   if (!template) throw new Error("保証会社テンプレートが見つかりません。");
 
-  const brokerageCase = await getBrokerageCaseById({ userId: user.id, caseId });
+  const brokerageCase = await getBrokerageCaseById({ userId: user.id, tenantId, caseId });
   if (!brokerageCase) throw new Error("案件が見つかりません。");
 
   const draftDefinitions = getGuaranteeDraftFieldDefinitions(template.id);
@@ -2500,6 +2529,7 @@ export async function saveGuaranteeApplicationDraftAction(formData: FormData) {
 
   const draftReadiness = buildGuaranteeDraftReadiness({
     id: "case-workbench",
+    tenantId,
     userId: user.id,
     caseId,
     templateId: template.id,
@@ -2511,9 +2541,10 @@ export async function saveGuaranteeApplicationDraftAction(formData: FormData) {
     updatedAt: new Date(),
   }, template.id);
 
-  const previousDraft = await getGuaranteeApplicationDraft({ userId: user.id, caseId, templateId: template.id });
+  const previousDraft = await getGuaranteeApplicationDraft({ userId: user.id, tenantId, caseId, templateId: template.id });
   const draft = await saveGuaranteeApplicationDraft({
     userId: user.id,
+    tenantId,
     caseId,
     templateId: template.id,
     companyCode: template.companyCode,
@@ -2524,6 +2555,7 @@ export async function saveGuaranteeApplicationDraftAction(formData: FormData) {
   });
   const draftCorrectionEvents = await addCorrectionEvents({
     userId: user.id,
+    tenantId,
     events: buildGuaranteeDraftCorrectionEvents({
       caseId,
       templateId: template.id,
@@ -2535,6 +2567,7 @@ export async function saveGuaranteeApplicationDraftAction(formData: FormData) {
   });
 
   await addAuditLog({
+    tenantId,
     userId: user.id,
     action: "guarantee_application_draft_saved",
     targetType: "import_job",
@@ -2572,8 +2605,9 @@ function countSubmittedCustomOverlayFieldItems(value: FormDataEntryValue | null)
 }
 
 export async function saveGuaranteeApplicationPreviewAction(formData: FormData) {
-  const user = await getDefaultUser();
-  if (!user) throw new Error("担当ユーザーが見つかりません。");
+  const session = await requireTenantSession({ permission: "output.update_draft" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
 
   const caseId = String(formData.get("caseId") ?? "").trim();
   if (!caseId) throw new Error("案件IDが不正です。");
@@ -2581,9 +2615,9 @@ export async function saveGuaranteeApplicationPreviewAction(formData: FormData) 
   const template = findGuaranteeCompanyTemplate(templateId);
   if (!template) throw new Error("保証会社テンプレートが見つかりません。");
 
-  const brokerageCase = await getBrokerageCaseById({ userId: user.id, caseId });
+  const brokerageCase = await getBrokerageCaseById({ userId: user.id, tenantId, caseId });
   if (!brokerageCase) throw new Error("案件が見つかりません。");
-  const previousDraft = await getGuaranteeApplicationDraft({ userId: user.id, caseId, templateId: template.id });
+  const previousDraft = await getGuaranteeApplicationDraft({ userId: user.id, tenantId, caseId, templateId: template.id });
   const previousLayoutOverrides = getFriendsGuaranteeEffectiveLayoutOverrides({
     templateId: template.id,
     confirmedDataJson: brokerageCase.confirmedDataJson,
@@ -2753,6 +2787,7 @@ export async function saveGuaranteeApplicationPreviewAction(formData: FormData) 
 
   await updateBrokerageCaseConfirmedData({
     userId: user.id,
+    tenantId,
     caseId,
     confirmedDataJson: nextConfirmedData,
   });
@@ -2769,6 +2804,7 @@ export async function saveGuaranteeApplicationPreviewAction(formData: FormData) 
 
   const draftReadiness = buildGuaranteeDraftReadiness({
     id: "preview",
+    tenantId,
     userId: user.id,
     caseId,
     templateId: template.id,
@@ -2781,6 +2817,7 @@ export async function saveGuaranteeApplicationPreviewAction(formData: FormData) 
   }, template.id);
   const draft = await saveGuaranteeApplicationDraft({
     userId: user.id,
+    tenantId,
     caseId,
     templateId: template.id,
     companyCode: template.companyCode,
@@ -2803,6 +2840,7 @@ export async function saveGuaranteeApplicationPreviewAction(formData: FormData) 
   const draftLabels = Object.fromEntries(draftDefinitions.map((definition) => [definition.fieldKey, definition.label]));
   const previewCorrectionEvents = await addCorrectionEvents({
     userId: user.id,
+    tenantId,
     events: buildPdfPreviewCorrectionEvents({
       caseId,
       templateId: template.id,
@@ -2830,6 +2868,7 @@ export async function saveGuaranteeApplicationPreviewAction(formData: FormData) 
   });
 
   await addAuditLog({
+    tenantId,
     userId: user.id,
     action: "guarantee_application_preview_saved",
     targetType: "import_job",
@@ -2873,8 +2912,9 @@ function parsePrice(val: unknown): number {
 }
 
 export async function uploadAndParseExcelAction(formData: FormData) {
-  const user = await getDefaultUser();
-  if (!user) throw new Error("担当ユーザーが見つかりません。");
+  const session = await requireTenantSession({ permission: "source.upload" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
 
   const file = formData.get("excelFile");
   if (!(file instanceof File) || file.size === 0) {
@@ -2906,6 +2946,7 @@ export async function uploadAndParseExcelAction(formData: FormData) {
     };
 
     const job = await addImportJob({
+      tenantId,
       userId: user.id,
       sourceType: "excel",
       targetEntity: "contracts",
@@ -2915,6 +2956,7 @@ export async function uploadAndParseExcelAction(formData: FormData) {
     });
 
     await addAuditLog({
+      tenantId,
       userId: user.id,
       action: "input_file_extraction_created",
       targetType: "import_job",
@@ -2950,6 +2992,7 @@ export async function uploadAndParseExcelAction(formData: FormData) {
     };
 
     const job = await addImportJob({
+      tenantId,
       userId: user.id,
       sourceType: "excel",
       targetEntity: "properties",
@@ -2959,6 +3002,7 @@ export async function uploadAndParseExcelAction(formData: FormData) {
     });
 
     await addAuditLog({
+      tenantId,
       userId: user.id,
       action: "input_file_extraction_unknown",
       targetType: "import_job",
@@ -2995,6 +3039,7 @@ export async function uploadAndParseExcelAction(formData: FormData) {
   };
 
   const job = await addImportJob({
+    tenantId,
     userId: user.id,
     sourceType: "excel",
     targetEntity: "properties",
@@ -3003,6 +3048,7 @@ export async function uploadAndParseExcelAction(formData: FormData) {
   });
 
   await addAuditLog({
+    tenantId,
     userId: user.id,
     action: "import_job_created",
     targetType: "task",
@@ -3015,8 +3061,9 @@ export async function uploadAndParseExcelAction(formData: FormData) {
 }
 
 export async function uploadAndParseIdentityDocumentAction(formData: FormData) {
-  const user = await getDefaultUser();
-  if (!user) throw new Error("担当ユーザーが見つかりません。");
+  const session = await requireTenantSession({ permission: "source.upload" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
 
   const file = formData.get("identityDocumentFile");
   if (!(file instanceof File) || file.size === 0) {
@@ -3051,6 +3098,7 @@ export async function uploadAndParseIdentityDocumentAction(formData: FormData) {
   };
 
   const job = await addImportJob({
+    tenantId,
     userId: user.id,
     sourceType: "scan",
     targetEntity: "parties",
@@ -3060,6 +3108,7 @@ export async function uploadAndParseIdentityDocumentAction(formData: FormData) {
   });
 
   await addAuditLog({
+    tenantId,
     userId: user.id,
     action: "identity_document_extraction_created",
     targetType: "import_job",
@@ -3077,13 +3126,14 @@ export async function uploadAndParseIdentityDocumentAction(formData: FormData) {
 }
 
 export async function saveExtractionReviewAction(formData: FormData) {
-  const user = await getDefaultUser();
-  if (!user) throw new Error("担当ユーザーが見つかりません。");
+  const session = await requireTenantSession({ permission: "extract.accept_result" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
 
   const jobId = String(formData.get("jobId") ?? "").trim();
   if (!jobId) throw new Error("ジョブIDが不正です。");
 
-  const jobs = await listImportJobs(user.id, 200);
+  const jobs = await listImportJobs(user.id, 200, tenantId);
   const job = jobs.find((item) => item.id === jobId);
   if (!job?.notes) {
     throw new Error("抽出元ジョブが見つかりません。再度アップロードしてください。");
@@ -3162,6 +3212,7 @@ export async function saveExtractionReviewAction(formData: FormData) {
   const mergeConfirmed = parseCheckbox(formData.get("mergeConfirm"));
   const existingCase = await getBrokerageCaseByImportJobId({
     userId: user.id,
+    tenantId,
     importJobId: job.id,
   });
 
@@ -3169,7 +3220,7 @@ export async function saveExtractionReviewAction(formData: FormData) {
     if (!mergeConfirmed) {
       throw new Error("案件に追加する前に、合併確認にチェックしてください。");
     }
-    const targetCase = await getBrokerageCaseById({ userId: user.id, caseId: mergeTargetCaseId });
+    const targetCase = await getBrokerageCaseById({ userId: user.id, tenantId, caseId: mergeTargetCaseId });
     if (!targetCase) throw new Error("合併先の案件が見つかりません。");
     if (targetCase.sourceImportJobIds.includes(job.id)) {
       throw new Error("この資料はすでに選択した案件に含まれています。");
@@ -3207,6 +3258,7 @@ export async function saveExtractionReviewAction(formData: FormData) {
       historyItem,
     ]);
     const brokerageCase = await mergeBrokerageCaseExtractionReview({
+      tenantId,
       userId: user.id,
       caseId: targetCase.id,
       confirmedDataJson: nextConfirmedDataJson,
@@ -3217,6 +3269,7 @@ export async function saveExtractionReviewAction(formData: FormData) {
     if (!brokerageCase) throw new Error("案件の合併保存に失敗しました。");
     const correctionEvents = await addCorrectionEvents({
       userId: user.id,
+      tenantId,
       events: buildExtractionReviewCorrectionEvents({
         caseId: brokerageCase.id,
         reviewItems,
@@ -3224,6 +3277,7 @@ export async function saveExtractionReviewAction(formData: FormData) {
     });
 
     await addAuditLog({
+      tenantId,
       userId: user.id,
       action: "case_source_merged",
       targetType: "import_job",
@@ -3257,6 +3311,7 @@ export async function saveExtractionReviewAction(formData: FormData) {
       getCaseMergeHistory(existingCase.confirmedDataJson),
     );
     brokerageCase = await mergeBrokerageCaseExtractionReview({
+      tenantId,
       userId: user.id,
       caseId: existingCase.id,
       confirmedDataJson: nextConfirmedDataJson,
@@ -3267,6 +3322,7 @@ export async function saveExtractionReviewAction(formData: FormData) {
     if (!brokerageCase) throw new Error("案件の保存に失敗しました。");
   } else {
     brokerageCase = await saveBrokerageCaseExtractionReview({
+      tenantId,
       userId: user.id,
       caseId: existingCase?.id,
       caseType: "unit_sale",
@@ -3279,6 +3335,7 @@ export async function saveExtractionReviewAction(formData: FormData) {
   }
   const correctionEvents = await addCorrectionEvents({
     userId: user.id,
+    tenantId,
     events: buildExtractionReviewCorrectionEvents({
       caseId: brokerageCase.id,
       reviewItems,
@@ -3286,6 +3343,7 @@ export async function saveExtractionReviewAction(formData: FormData) {
   });
 
   await addAuditLog({
+    tenantId,
     userId: user.id,
     action: "extraction_review_saved",
     targetType: "import_job",
@@ -3331,8 +3389,9 @@ function toReviewInput(item: ExtractionReviewItem): Omit<ExtractionReviewItem, "
 }
 
 export async function rollbackCaseMergeAction(formData: FormData) {
-  const user = await getDefaultUser();
-  if (!user) throw new Error("担当ユーザーが見つかりません。");
+  const session = await requireTenantSession({ permission: "record.update" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
 
   const caseId = String(formData.get("caseId") ?? "").trim();
   const mergeId = String(formData.get("mergeId") ?? "").trim();
@@ -3341,7 +3400,7 @@ export async function rollbackCaseMergeAction(formData: FormData) {
     throw new Error("分離して戻す前に確認チェックを入れてください。");
   }
 
-  const brokerageCase = await getBrokerageCaseById({ userId: user.id, caseId });
+  const brokerageCase = await getBrokerageCaseById({ userId: user.id, tenantId, caseId });
   if (!brokerageCase) throw new Error("案件が見つかりません。");
 
   const latestMerge = getLatestActiveCaseMerge(brokerageCase.confirmedDataJson);
@@ -3358,12 +3417,13 @@ export async function rollbackCaseMergeAction(formData: FormData) {
     mergeId: latestMerge.id,
     splitCaseId,
   });
-  const reviewItems = await listExtractionReviewItems({ userId: user.id, caseId: brokerageCase.id });
+  const reviewItems = await listExtractionReviewItems({ userId: user.id, tenantId, caseId: brokerageCase.id });
   const splitReviewItems = reviewItems
     .filter((item) => item.importJobId === latestMerge.sourceImportJobId)
     .map(toReviewInput);
 
   const result = await rollbackBrokerageCaseMerge({
+    tenantId,
     userId: user.id,
     caseId: brokerageCase.id,
     restoredConfirmedDataJson,
@@ -3378,6 +3438,7 @@ export async function rollbackCaseMergeAction(formData: FormData) {
   if (!result) throw new Error("案件の分離に失敗しました。");
 
   await addAuditLog({
+    tenantId,
     userId: user.id,
     action: "case_merge_rolled_back",
     targetType: "import_job",
@@ -3397,14 +3458,15 @@ export async function rollbackCaseMergeAction(formData: FormData) {
 }
 
 export async function executePropertyImportAction(formData: FormData) {
-  const user = await getDefaultUser();
-  if (!user) throw new Error("担当ユーザーが見つかりません。");
+  const session = await requireTenantSession({ permission: "extract.run" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
   const locale = await getLocale();
 
   const jobId = String(formData.get("jobId") ?? "").trim();
   if (!jobId) throw new Error("ジョブIDが不正です。");
 
-  const jobs = await listImportJobs(user.id, 200);
+  const jobs = await listImportJobs(user.id, 200, tenantId);
   const job = jobs.find((j) => j.id === jobId);
   if (!job?.notes) throw new Error("取込ジョブが見つかりません。再度アップロードしてください。");
 
@@ -3426,6 +3488,7 @@ export async function executePropertyImportAction(formData: FormData) {
   });
 
   await updateImportJobMapping({
+    tenantId,
     userId: user.id,
     jobId: job.id,
     mappingJson: mapping,
@@ -3468,6 +3531,7 @@ export async function executePropertyImportAction(formData: FormData) {
 
     try {
       await addProperty({
+        tenantId,
         name,
         area: String(mapped["area"] ?? "").trim() || undefined,
         address: String(mapped["address"] ?? "").trim() || undefined,
@@ -3603,6 +3667,7 @@ export async function executePropertyImportAction(formData: FormData) {
     },
   });
   await updateImportJobMapping({
+    tenantId,
     userId: user.id,
     jobId: job.id,
     mappingJson: mapping,
@@ -3619,6 +3684,7 @@ export async function executePropertyImportAction(formData: FormData) {
   });
 
   await addAuditLog({
+    tenantId,
     userId: user.id,
     action: successCount > 0 ? "import_job_completed" : "import_job_requires_retry",
     targetType: "import_job",

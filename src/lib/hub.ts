@@ -15,6 +15,11 @@ import {
 import type { Locale } from "@/lib/locale";
 import { getOutputDocLabel, type OutputDocType } from "@/lib/output-doc";
 
+export type HubQueryContext = {
+  userId?: string;
+  tenantId?: string;
+};
+
 export type HubOverview = {
   propertyCount: number;
   partyCount: number;
@@ -166,12 +171,20 @@ function mapContractStatus(stage: string): HubContractItem["status"] {
   return "draft";
 }
 
-export async function getHubOverview(): Promise<HubOverview> {
-  const properties = await listHubProperties();
-  const parties = await listHubParties();
-  const contracts = await listHubContracts();
-  const serviceRequests = await listHubServiceRequests();
-  const outputs = await listHubGeneratedOutputs();
+async function resolveHubContext(context: HubQueryContext = {}): Promise<{ userId: string; tenantId?: string } | null> {
+  if (context.userId) {
+    return { userId: context.userId, tenantId: context.tenantId };
+  }
+  const user = await getDefaultUser();
+  return user ? { userId: user.id, tenantId: context.tenantId } : null;
+}
+
+export async function getHubOverview(context: HubQueryContext = {}): Promise<HubOverview> {
+  const properties = await listHubProperties("ja", context);
+  const parties = await listHubParties("ja", context);
+  const contracts = await listHubContracts("ja", context);
+  const serviceRequests = await listHubServiceRequests(context);
+  const outputs = await listHubGeneratedOutputs("ja", context);
 
   return {
     propertyCount: properties.length,
@@ -183,14 +196,16 @@ export async function getHubOverview(): Promise<HubOverview> {
   };
 }
 
-export async function listHubProperties(locale: Locale = "ja"): Promise<HubPropertyItem[]> {
-  const user = await getDefaultUser();
-  const attachments = user ? await listAttachments({ userId: user.id, targetType: "property", limit: 500 }) : [];
+export async function listHubProperties(locale: Locale = "ja", context: HubQueryContext = {}): Promise<HubPropertyItem[]> {
+  const resolved = await resolveHubContext(context);
+  const attachments = resolved
+    ? await listAttachments({ userId: resolved.userId, tenantId: resolved.tenantId, targetType: "property", limit: 500 })
+    : [];
   const attachmentCountMap = attachments.reduce((map, item) => {
     map.set(item.targetId, (map.get(item.targetId) ?? 0) + 1);
     return map;
   }, new Map<string, number>());
-  const { properties } = await listQuoteFormData();
+  const { properties } = await listQuoteFormData(resolved?.tenantId);
   return properties.map((property) => ({
     id: property.id,
     name: property.name,
@@ -205,11 +220,11 @@ export async function listHubProperties(locale: Locale = "ja"): Promise<HubPrope
   }));
 }
 
-export async function listHubParties(locale: Locale = "ja"): Promise<HubPartyItem[]> {
-  const user = await getDefaultUser();
-  if (!user) return [];
-  const clients = await listClients(user.id, { sort: "recent_contact" });
-  const quotes = await listQuotations();
+export async function listHubParties(locale: Locale = "ja", context: HubQueryContext = {}): Promise<HubPartyItem[]> {
+  const resolved = await resolveHubContext(context);
+  if (!resolved) return [];
+  const clients = await listClients(resolved.userId, { sort: "recent_contact", tenantId: resolved.tenantId });
+  const quotes = await listQuotations(undefined, resolved.tenantId);
   const countMap = new Map<string, number>();
   quotes.forEach((quote) => {
     countMap.set(quote.clientId, (countMap.get(quote.clientId) ?? 0) + 1);
@@ -227,8 +242,8 @@ export async function listHubParties(locale: Locale = "ja"): Promise<HubPartyIte
   }));
 }
 
-export async function listHubContracts(locale: Locale = "ja"): Promise<HubContractItem[]> {
-  const quotes = await listQuotations();
+export async function listHubContracts(locale: Locale = "ja", context: HubQueryContext = {}): Promise<HubContractItem[]> {
+  const quotes = await listQuotations(undefined, context.tenantId);
   const contractPrefix = tr(locale, {
     ja: "売買",
     zh: "买卖",
@@ -248,11 +263,11 @@ export async function listHubContracts(locale: Locale = "ja"): Promise<HubContra
   }));
 }
 
-export async function listHubServiceRequests(): Promise<HubServiceRequestItem[]> {
-  const user = await getDefaultUser();
-  if (!user) return [];
-  const clients = await listClients(user.id, { sort: "follow_up" });
-  const details = await Promise.all(clients.map((client) => getClientDetail(client.id)));
+export async function listHubServiceRequests(context: HubQueryContext = {}): Promise<HubServiceRequestItem[]> {
+  const resolved = await resolveHubContext(context);
+  if (!resolved) return [];
+  const clients = await listClients(resolved.userId, { sort: "follow_up", tenantId: resolved.tenantId });
+  const details = await Promise.all(clients.map((client) => getClientDetail(client.id, resolved.tenantId)));
   const items: HubServiceRequestItem[] = [];
 
   details.forEach((detail) => {
@@ -275,26 +290,29 @@ export async function listHubServiceRequests(): Promise<HubServiceRequestItem[]>
   return items.sort((a, b) => (b.occurredAt?.getTime() ?? 0) - (a.occurredAt?.getTime() ?? 0));
 }
 
-export async function listHubImportJobs(): Promise<HubImportJobItem[]> {
-  const user = await getDefaultUser();
-  if (!user) return [];
-  return listImportJobs(user.id, 100);
+export async function listHubImportJobs(context: HubQueryContext = {}): Promise<HubImportJobItem[]> {
+  const resolved = await resolveHubContext(context);
+  if (!resolved) return [];
+  return listImportJobs(resolved.userId, 100, resolved.tenantId);
 }
 
-export async function listHubGeneratedOutputs(locale: Locale = "ja"): Promise<HubGeneratedOutputItem[]> {
-  const user = await getDefaultUser();
-  if (!user) return [];
+export async function listHubGeneratedOutputs(
+  locale: Locale = "ja",
+  context: HubQueryContext = {},
+): Promise<HubGeneratedOutputItem[]> {
+  const resolved = await resolveHubContext(context);
+  if (!resolved) return [];
   const [quotes, properties, parties, templateVersions] = await Promise.all([
-    listQuotations(100),
-    listQuoteFormData(),
-    listHubParties(locale),
-    listOutputTemplateVersions(user.id, 50),
+    listQuotations(100, resolved.tenantId),
+    listQuoteFormData(resolved.tenantId),
+    listHubParties(locale, resolved),
+    listOutputTemplateVersions(resolved.userId, 50, resolved.tenantId),
   ]);
   const quoteMap = new Map(quotes.map((quote) => [quote.id, quote]));
   const propertyMap = new Map(properties.properties.map((property) => [property.id, property.name]));
   const partyMap = new Map(parties.map((party) => [party.id, party.name]));
   const versionLabelMap = new Map(templateVersions.map((v) => [v.id, v.versionLabel]));
-  const generated = await listGeneratedOutputs({ userId: user.id, limit: 200 });
+  const generated = await listGeneratedOutputs({ userId: resolved.userId, tenantId: resolved.tenantId, limit: 200 });
 
   const contractPrefix = tr(locale, { ja: "売買", zh: "买卖", ko: "매매" });
 
@@ -367,10 +385,14 @@ function getAttachmentTargetLabel(locale: Locale): Record<AttachmentTargetType, 
   };
 }
 
-export async function listHubAttachments(locale: Locale = "ja", limit = 30): Promise<HubAttachmentItem[]> {
-  const user = await getDefaultUser();
-  if (!user) return [];
-  const list = await listAttachments({ userId: user.id, limit });
+export async function listHubAttachments(
+  locale: Locale = "ja",
+  limit = 30,
+  context: HubQueryContext = {},
+): Promise<HubAttachmentItem[]> {
+  const resolved = await resolveHubContext(context);
+  if (!resolved) return [];
+  const list = await listAttachments({ userId: resolved.userId, tenantId: resolved.tenantId, limit });
   const attachmentTargetLabel = getAttachmentTargetLabel(locale);
   return list.map((item) => ({
     id: item.id,
@@ -385,21 +407,30 @@ export async function listHubAttachments(locale: Locale = "ja", limit = 30): Pro
   }));
 }
 
-export async function listHubOutputsByTemplateVersion(versionId: string, locale: Locale = "ja"): Promise<HubGeneratedOutputItem[]> {
-  const all = await listHubGeneratedOutputs(locale);
+export async function listHubOutputsByTemplateVersion(
+  versionId: string,
+  locale: Locale = "ja",
+  context: HubQueryContext = {},
+): Promise<HubGeneratedOutputItem[]> {
+  const all = await listHubGeneratedOutputs(locale, context);
   return all.filter((o) => o.templateVersionId === versionId);
 }
 
-export async function searchHubItems(locale: Locale = "ja", query = "", limitPerEntity = 5): Promise<HubSearchItem[]> {
+export async function searchHubItems(
+  locale: Locale = "ja",
+  query = "",
+  limitPerEntity = 5,
+  context: HubQueryContext = {},
+): Promise<HubSearchItem[]> {
   const normalized = query.trim().toLowerCase();
   if (!normalized) return [];
 
   const [properties, parties, contracts, requests, outputs] = await Promise.all([
-    listHubProperties(locale),
-    listHubParties(locale),
-    listHubContracts(locale),
-    listHubServiceRequests(),
-    listHubGeneratedOutputs(locale),
+    listHubProperties(locale, context),
+    listHubParties(locale, context),
+    listHubContracts(locale, context),
+    listHubServiceRequests(context),
+    listHubGeneratedOutputs(locale, context),
   ]);
 
   const includes = (...values: Array<string | undefined>) =>
