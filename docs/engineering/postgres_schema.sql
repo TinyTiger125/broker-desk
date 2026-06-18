@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS users (
   name TEXT NOT NULL,
   email TEXT UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
+  external_auth_subject TEXT UNIQUE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -181,6 +182,7 @@ CREATE INDEX IF NOT EXISTS idx_followups_client_created ON follow_ups(client_id,
 CREATE INDEX IF NOT EXISTS idx_tasks_client_status_due ON tasks(client_id, status, due_at);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_user_created ON audit_logs(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_actor_created ON audit_logs(actor_id, created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_external_auth_subject ON users(external_auth_subject);
 ALTER TABLE output_template_settings DROP CONSTRAINT IF EXISTS output_template_settings_user_id_key;
 DROP INDEX IF EXISTS idx_output_template_user;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_output_template_tenant_user ON output_template_settings(tenant_id, user_id);
@@ -197,6 +199,7 @@ ALTER TABLE tasks ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tena
 ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
 ALTER TABLE output_template_settings ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
 ALTER TABLE output_template_versions ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS external_auth_subject TEXT;
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS budget_type TEXT NOT NULL DEFAULT 'total_price';
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS first_choice_area TEXT;
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS second_choice_area TEXT;

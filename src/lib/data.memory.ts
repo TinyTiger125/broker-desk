@@ -32,6 +32,7 @@ export type User = {
   name: string;
   email: string;
   passwordHash: string;
+  externalAuthSubject?: string;
   createdAt: Date;
 };
 
@@ -491,6 +492,7 @@ const _freshDb: DB = withDefaultTenantScope({
       name: "李 杰明",
       email: "lijieming@cherry-investment.co.jp",
       passwordHash: "demo_password_hash",
+      externalAuthSubject: "demo:user_demo",
       createdAt: new Date(now - 60 * 24 * 60 * 60 * 1000),
     },
     {
@@ -498,6 +500,7 @@ const _freshDb: DB = withDefaultTenantScope({
       name: "運用担当 佐伯",
       email: "ops@brokerdesk.local",
       passwordHash: "ops_demo_password_hash",
+      externalAuthSubject: "demo:user_ops",
       createdAt: new Date(now - 45 * 24 * 60 * 60 * 1000),
     },
   ],
@@ -1100,6 +1103,13 @@ export async function getUserById(userId: string): Promise<User | null> {
   return found ? { ...found } : null;
 }
 
+export async function getUserByExternalAuthSubject(subject: string): Promise<User | null> {
+  const normalized = subject.trim();
+  if (!normalized) return null;
+  const found = db.users.find((item) => item.externalAuthSubject === normalized);
+  return found ? { ...found } : null;
+}
+
 export async function getDefaultUser(preferredUserId?: string) {
   if (preferredUserId) {
     const found = db.users.find((item) => item.id === preferredUserId);
@@ -1178,6 +1188,7 @@ export async function inviteTenantMember(input: {
       name,
       email,
       passwordHash: "local_invited_user",
+      externalAuthSubject: undefined,
       createdAt: new Date(),
     };
     db.users.push(user);

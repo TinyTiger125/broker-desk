@@ -26,6 +26,7 @@
     "test:tenant-session": "node scripts/check-tenant-session.mjs",
     "test:tenant-data-access": "node scripts/check-tenant-data-access.mjs",
     "test:tenant-governance": "node scripts/check-tenant-governance.mjs",
+    "test:production-security": "node scripts/check-production-security.mjs",
     "test:regression": "bash scripts/regression.sh",
     "test:ja-terms": "bash scripts/check-ja-terms.sh"
   },

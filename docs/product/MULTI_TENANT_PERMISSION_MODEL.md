@@ -817,7 +817,43 @@ Exit criteria:
 - AI calls are attributable to tenant/user/task.
 - AI cannot overwrite confirmed data or existing template bindings without explicit permission.
 
-### Phase 6: Admin UI
+### Phase 6: Production Auth And Database Isolation
+
+Goal: remove demo identity from the production path and make tenant isolation enforceable below the service layer.
+
+Implementation status as of 2026-06-18: foundation implemented, live production database verification still required.
+
+Implemented:
+
+- Production auth fails closed by default when `BROKER_DESK_AUTH_MODE` is not configured.
+- `BROKER_DESK_AUTH_MODE=trusted_header` supports an upstream IdP/auth-proxy integration through signed server-side headers.
+- `users.external_auth_subject` separates internal Broker Desk user IDs from immutable external identity-provider subjects.
+- `docs/engineering/postgres_rls.sql` defines the first Supabase/Postgres RLS baseline around `tenant_id`, `external_auth_subject`, and active `tenant_memberships`.
+- `npm run test:production-security` checks production demo-auth lockout, trusted-header secret enforcement, and RLS table coverage.
+
+Still required before external release:
+
+- A concrete IdP/proxy deployment, with header stripping/injection verified outside the app.
+- Backfill `users.external_auth_subject` for every real production user.
+- Apply and verify `docs/engineering/postgres_rls.sql` against the production Supabase/Postgres database.
+- Use a database role that does not bypass RLS for any user-facing Data API path.
+- Add a live RLS verification query that proves tenant A cannot read tenant B as `authenticated`.
+- Remove `BROKER_DESK_ENABLE_DEMO_AUTH=true` from all production deployments.
+
+Tasks:
+
+1. Select and deploy the production IdP/proxy.
+2. Strip incoming auth headers at the edge and inject verified signed headers.
+3. Backfill `users.external_auth_subject`.
+4. Apply RLS SQL in production.
+5. Verify cross-tenant denial through the same role/path external clients would use.
+
+Exit criteria:
+
+- No production business route resolves a user from local demo fallback.
+- A user without active membership cannot read or mutate tenant data through service APIs or database policies.
+
+### Phase 7: Admin UI
 
 Goal: expose permissions safely after the backend is enforceable.
 

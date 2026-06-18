@@ -103,6 +103,9 @@ node scripts/check-tenant-data-access.mjs || fail "tenant data access boundary f
 echo "[STEP] tenant governance boundary"
 node scripts/check-tenant-governance.mjs || fail "tenant governance boundary failed"
 
+echo "[STEP] production auth and RLS baseline"
+node scripts/check-production-security.mjs || fail "production auth and RLS baseline failed"
+
 echo "[STEP] health check"
 health_json="$(curl -fsS "${BASE_URL}/api/health/data")" || fail "health endpoint unreachable"
 echo "$health_json" | grep '"ok":true' >/dev/null || fail "health check returned not ok"

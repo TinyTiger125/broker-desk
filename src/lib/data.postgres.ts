@@ -110,6 +110,7 @@ function mapUser(row: Record<string, unknown>): User {
     name: String(row.name),
     email: String(row.email),
     passwordHash: String(row.password_hash),
+    externalAuthSubject: row.external_auth_subject ? String(row.external_auth_subject) : undefined,
     createdAt: toDate(row.created_at) ?? new Date(),
   };
 }
@@ -539,6 +540,7 @@ async function ensureSchema() {
       name TEXT NOT NULL,
       email TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
+      external_auth_subject TEXT UNIQUE,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
@@ -979,40 +981,47 @@ async function ensureSchema() {
 
     ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS actor_id TEXT;
     ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS context_json JSONB;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS external_auth_subject TEXT;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_users_external_auth_subject ON users(external_auth_subject);
 
     UPDATE generated_outputs SET source_quote_id = quote_id WHERE source_quote_id IS NULL;
     UPDATE generated_outputs SET actor_id = user_id WHERE actor_id IS NULL;
     UPDATE generated_outputs SET document_number = id WHERE document_number IS NULL;
     UPDATE audit_logs SET actor_id = user_id WHERE actor_id IS NULL;
     UPDATE audit_logs SET context_json = '{}'::jsonb WHERE context_json IS NULL;
+    UPDATE users SET external_auth_subject = 'demo:user_demo' WHERE id = 'user_demo' AND external_auth_subject IS NULL;
+    UPDATE users SET external_auth_subject = 'demo:user_ops' WHERE id = 'user_ops' AND external_auth_subject IS NULL;
   `);
 
   const userCount = await db.query("SELECT COUNT(*)::int AS count FROM users");
   const count = Number(userCount.rows[0]?.count ?? 0);
   if (count === 0) {
     await db.query(
-      `INSERT INTO users (id, name, email, password_hash)
+      `INSERT INTO users (id, name, email, password_hash, external_auth_subject)
        VALUES
-        ($1, $2, $3, $4),
-        ($5, $6, $7, $8)`,
+        ($1, $2, $3, $4, $5),
+        ($6, $7, $8, $9, $10)`,
       [
         "user_demo",
         "デモ担当者",
         "demo@brokerdesk.local",
         "demo_password_hash",
+        "demo:user_demo",
         "user_ops",
         "運用担当 佐伯",
         "ops@brokerdesk.local",
         "ops_demo_password_hash",
+        "demo:user_ops",
       ]
     );
   }
 
   await db.query(
-    `INSERT INTO users (id, name, email, password_hash)
-     VALUES ($1, $2, $3, $4)
-     ON CONFLICT (id) DO NOTHING`,
-    ["user_ops", "運用担当 佐伯", "ops@brokerdesk.local", "ops_demo_password_hash"]
+    `INSERT INTO users (id, name, email, password_hash, external_auth_subject)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (id) DO UPDATE SET
+      external_auth_subject = COALESCE(users.external_auth_subject, EXCLUDED.external_auth_subject)`,
+    ["user_ops", "運用担当 佐伯", "ops@brokerdesk.local", "ops_demo_password_hash", "demo:user_ops"]
   );
 
   await db.query(
@@ -1251,6 +1260,14 @@ export async function getUserById(userId: string): Promise<User | null> {
   return result.rows[0] ? mapUser(result.rows[0]) : null;
 }
 
+export async function getUserByExternalAuthSubject(subject: string): Promise<User | null> {
+  await ensureSchema();
+  const normalized = subject.trim();
+  if (!normalized) return null;
+  const result = await getPool().query("SELECT * FROM users WHERE external_auth_subject = $1 LIMIT 1", [normalized]);
+  return result.rows[0] ? mapUser(result.rows[0]) : null;
+}
+
 export async function getDefaultUser(preferredUserId?: string) {
   await ensureSchema();
   if (preferredUserId) {
@@ -1339,10 +1356,10 @@ export async function inviteTenantMember(input: {
     let user = userResult.rows[0] ? mapUser(userResult.rows[0]) : null;
     if (!user) {
       const inserted = await client.query(
-        `INSERT INTO users (id, name, email, password_hash)
-         VALUES ($1, $2, $3, $4)
+        `INSERT INTO users (id, name, email, password_hash, external_auth_subject)
+         VALUES ($1, $2, $3, $4, $5)
          RETURNING *`,
-        [genId("user"), name, email, "local_invited_user"],
+        [genId("user"), name, email, "local_invited_user", null],
       );
       user = mapUser(inserted.rows[0]);
     }

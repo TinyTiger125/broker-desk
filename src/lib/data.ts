@@ -1,6 +1,12 @@
 import * as memory from "@/lib/data.memory";
 import * as postgres from "@/lib/data.postgres";
 import { getActorIdFromCookie } from "@/lib/actor";
+import {
+  isDemoAuthEnabled,
+  isTrustedHeaderAuthEnabled,
+  readTrustedHeaderAuthIdentity,
+} from "@/lib/auth-mode";
+import { headers } from "next/headers";
 
 const usePostgres =
   process.env.DATA_DRIVER?.toLowerCase() === "postgres" &&
@@ -10,13 +16,16 @@ const repo: typeof memory = usePostgres
   ? (postgres as unknown as typeof memory)
   : memory;
 
-export function isDemoAuthEnabled() {
-  if (process.env.BROKER_DESK_ENABLE_DEMO_AUTH === "true") return true;
-  return process.env.NODE_ENV !== "production";
-}
+export { isDemoAuthEnabled };
 
 export async function getDefaultUser(preferredUserId?: string) {
-  const actorId = preferredUserId ?? (await getActorIdFromCookie());
+  if (isTrustedHeaderAuthEnabled()) {
+    const identity = readTrustedHeaderAuthIdentity(await headers());
+    if (!identity.ok) return null;
+    return repo.getUserByExternalAuthSubject(identity.identity.subject);
+  }
+
+  const actorId = isDemoAuthEnabled() ? preferredUserId ?? (await getActorIdFromCookie()) : undefined;
   if (!actorId && !isDemoAuthEnabled()) return null;
   return repo.getDefaultUser(actorId);
 }
@@ -24,6 +33,8 @@ export const listUsers: typeof memory.listUsers = (...args) =>
   repo.listUsers(...args);
 export const getUserById: typeof memory.getUserById = (...args) =>
   repo.getUserById(...args);
+export const getUserByExternalAuthSubject: typeof memory.getUserByExternalAuthSubject = (...args) =>
+  repo.getUserByExternalAuthSubject(...args);
 export const getTenantById: typeof memory.getTenantById = (...args) =>
   repo.getTenantById(...args);
 export const listTenantMemberships: typeof memory.listTenantMemberships = (...args) =>

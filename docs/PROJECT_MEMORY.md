@@ -190,6 +190,12 @@ Implemented or materially present:
   - `/platform/templates` provides a PlatformOwner-only official-template factory overview; production PlatformOwner access must be explicitly configured through `BROKER_DESK_PLATFORM_OWNER_IDS`.
   - official guarantee-application PDF downloads are recorded as generated outputs with case/template/data/draft/layout snapshots and audit logs.
   - `npm run test:tenant-governance` covers role guardrails, member operations, template layout snapshot capture, and output snapshot persistence.
+- Phase 6 production auth / RLS foundation:
+  - `BROKER_DESK_AUTH_MODE=trusted_header` can accept an upstream IdP/auth-proxy identity only when the shared ingress secret header is present.
+  - production auth fails closed by default when no real auth mode is configured.
+  - `users.external_auth_subject` is the bridge from immutable external identity subject to internal Broker Desk user ID.
+  - `docs/engineering/postgres_rls.sql` defines the first Supabase/Postgres RLS baseline for tenant-owned tables, global user/tenant/membership reads, and no anonymous business-table grants.
+  - `npm run test:production-security` covers production demo-auth lockout, trusted-header signature enforcement, and RLS SQL coverage.
 - Stitch-based visual direction has been partially integrated.
 
 Not yet release-ready:
@@ -198,10 +204,12 @@ Not yet release-ready:
 - Five guarantee-company templates are not all at the same quality level.
 - Company-specific checkbox/plan option output is incomplete on some templates.
 - Some UI still mixes broker workflow and admin/template-factory controls.
-- Production identity provider login is not implemented.
+- Concrete production IdP/proxy deployment is not implemented or verified.
+- `users.external_auth_subject` is not backfilled for real production users.
+- `docs/engineering/postgres_rls.sql` has not been applied to a live production database in this workspace.
 - Local member creation is not real email invitation or SSO provisioning.
 - AI usage quota/cost accounting is not implemented yet.
-- Database RLS is not implemented; service-layer tenant scoping is the current primary guard.
+- Database RLS SQL exists as a baseline, but service-layer tenant scoping remains the only verified runtime guard until the SQL is applied and tested on the production database.
 
 ## Guarantee Template Status
 
