@@ -117,4 +117,8 @@ const nextStartFallbackSession = await requireTenantSession({
 assert(nextStartFallbackSession.tenant.id === "tenant_cherry", "explicit local fallback should work under next start production runtime");
 assert(nextStartFallbackSession.user.id === "user_demo", "explicit local fallback should keep seeded demo data visible under next start");
 
+const appNavSource = fs.readFileSync("src/components/app-nav.tsx", "utf8");
+assert(appNavSource.includes("getNavigationDataUser"), "AppNav should resolve a navigation data user");
+assert(appNavSource.includes('getUserById("user_demo")'), "AppNav should keep seeded cases visible for local Clerk platform owners");
+
 console.log("[PASS] tenant session foundation regression");

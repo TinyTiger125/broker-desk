@@ -3,9 +3,13 @@ import { ActorSwitcher } from "@/components/actor-switcher";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { MainNavLinks } from "@/components/main-nav-links";
 import { isActorSwitchingEnabled } from "@/lib/actor";
-import { listBrokerageCases, listUsers, getDefaultUser } from "@/lib/data";
+import { listBrokerageCases, listUsers, getDefaultUser, getUserById, type User } from "@/lib/data";
 import { t } from "@/lib/i18n";
 import { getLocale, type Locale } from "@/lib/locale";
+import {
+  isConfiguredPlatformOwnerUser,
+  isDevelopmentPlatformOwnerTenantFallbackEnabled,
+} from "@/lib/platform-owner";
 
 function getLinks(locale: Locale, currentCaseId?: string) {
   const workbenchHref = currentCaseId ? `/cases/${currentCaseId}` : "/import-center";
@@ -34,6 +38,17 @@ function getSupportLinks(locale: Locale) {
   ];
 }
 
+async function getNavigationDataUser(currentActor: User | null) {
+  if (
+    currentActor &&
+    isDevelopmentPlatformOwnerTenantFallbackEnabled() &&
+    isConfiguredPlatformOwnerUser(currentActor)
+  ) {
+    return (await getUserById("user_demo")) ?? currentActor;
+  }
+  return currentActor;
+}
+
 export async function AppNav() {
   const locale = await getLocale();
   const actorSwitchingEnabled = isActorSwitchingEnabled();
@@ -41,7 +56,8 @@ export async function AppNav() {
     actorSwitchingEnabled ? listUsers(20) : Promise.resolve([]),
     getDefaultUser(),
   ]);
-  const currentCases = currentActor ? await listBrokerageCases(currentActor.id, 20) : [];
+  const navigationDataUser = await getNavigationDataUser(currentActor);
+  const currentCases = navigationDataUser ? await listBrokerageCases(navigationDataUser.id, 20) : [];
   const currentCase =
     currentCases.find((item) => item.id === "case_fixture_friends_guarantee_pdf") ??
     currentCases.find((item) => item.status === "reviewed") ??
