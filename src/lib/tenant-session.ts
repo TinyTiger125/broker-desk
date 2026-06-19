@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import {
   getDefaultUser,
   getTenantById,
+  getUserById,
   isTenantAccessibleStatus,
   listTenantMemberships,
   type Tenant,
@@ -51,10 +52,11 @@ export function selectActiveTenantMembership(input: {
 async function selectDevelopmentPlatformOwnerTenantMembership(input: {
   user: User;
   requestedTenantId?: string;
-}): Promise<TenantMembership | null> {
+}): Promise<{ user: User; membership: TenantMembership } | null> {
   if (!isDevelopmentPlatformOwnerTenantFallbackEnabled()) return null;
   if (!isConfiguredPlatformOwnerUser(input.user)) return null;
 
+  const dataUser = (await getUserById("user_demo")) ?? input.user;
   const candidateTenantIds = Array.from(
     new Set([input.requestedTenantId, DEFAULT_TENANT_ID].filter((value): value is string => Boolean(value))),
   );
@@ -63,16 +65,19 @@ async function selectDevelopmentPlatformOwnerTenantMembership(input: {
     if (tenant && isTenantAccessibleStatus(tenant.status)) {
       const now = new Date();
       return {
-        id: `platform_owner_dev_${input.user.id}_${tenant.id}`,
-        tenantId: tenant.id,
-        userId: input.user.id,
-        role: "platform_owner",
-        status: "active",
-        invitationProvider: "manual",
-        invitationStatus: "accepted",
-        invitationAcceptedAt: now,
-        createdAt: now,
-        updatedAt: now,
+        user: dataUser,
+        membership: {
+          id: `platform_owner_dev_${input.user.id}_${tenant.id}`,
+          tenantId: tenant.id,
+          userId: dataUser.id,
+          role: "platform_owner",
+          status: "active",
+          invitationProvider: "manual",
+          invitationStatus: "accepted",
+          invitationAcceptedAt: now,
+          createdAt: now,
+          updatedAt: now,
+        },
       };
     }
   }
@@ -103,9 +108,10 @@ export async function requireTenantSession(options: {
 
   const requestedTenantId = options.requestedTenantId ?? (await getActiveTenantIdFromCookie());
   const memberships = await listTenantMemberships(user.id);
-  const membership =
-    selectActiveTenantMembership({ memberships, requestedTenantId }) ??
-    (await selectDevelopmentPlatformOwnerTenantMembership({ user, requestedTenantId }));
+  const activeMembership = selectActiveTenantMembership({ memberships, requestedTenantId });
+  const fallbackSession = activeMembership ? null : await selectDevelopmentPlatformOwnerTenantMembership({ user, requestedTenantId });
+  const sessionUser = fallbackSession?.user ?? user;
+  const membership = activeMembership ?? fallbackSession?.membership;
   if (!membership) {
     throw new TenantSessionError("User does not belong to the requested tenant.", "tenant_forbidden");
   }
@@ -126,7 +132,7 @@ export async function requireTenantSession(options: {
     throw new TenantSessionError("Tenant membership does not allow this action.", "permission_denied");
   }
 
-  return { user, tenant, membership };
+  return { user: sessionUser, tenant, membership };
 }
 
 export function assertTenantPermission(session: TenantSession, permission: TenantPermissionAction) {
