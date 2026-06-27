@@ -106,7 +106,7 @@ import { materializeExtractionReviewValue } from "@/lib/extraction-review-materi
 import { assertTenantPermission, requireTenantSession } from "@/lib/tenant-session";
 import { requirePlatformOwnerSession } from "@/lib/platform-session";
 import { extractInputFileFromWorkbook, type InputFileExtractionResult } from "@/lib/input-file-extractor";
-import { extractIdentityDocumentFromBuffer } from "@/lib/identity-document-extractor";
+import { extractIdentityDocumentsFromFiles } from "@/lib/identity-document-extractor";
 import { createClerkInvitationForTenantMember } from "@/lib/clerk-invitations";
 import { CASE_FIELD_KEYS, isKnownCaseFieldKey } from "@/lib/case-field-catalog";
 import { canonicalizeCaseFieldKey, clearCaseFieldValueAliases, getCaseFieldValue } from "@/lib/case-field-normalization";
@@ -160,6 +160,12 @@ import { draftAiExperiencesFromRecentCorrections } from "@/lib/ai-experience-job
 import { getLocale, type Locale } from "@/lib/locale";
 import { createDocumentNumber, getDefaultOutputTemplateSettings, getOutputDocLabel, isOutputDocType } from "@/lib/output-doc";
 import { isTenantRole, type TenantRole } from "@/lib/tenant-permissions";
+import {
+  buildPartyProfileNotes,
+  inferPurposeFromPartyRole,
+  isPartyProfileRole,
+  isPartyProfileType,
+} from "@/lib/party-profile";
 
 function parseNumber(value: FormDataEntryValue | null, fallback = 0): number {
   if (!value) return fallback;
@@ -1175,9 +1181,9 @@ export async function autoMapImportJobAction(formData: FormData) {
     );
   }
   const autoSummaryPrefix = tr(locale, {
-    ja: "自動候補",
-    zh: "自动候选",
-    ko: "자동 후보",
+    ja: "整理提案",
+    zh: "整理建议",
+    ko: "정리 제안",
   });
   const message = buildImportValidationMessage({
     source: "auto_mapping",
@@ -1466,6 +1472,7 @@ export async function createPropertyQuickAction(formData: FormData) {
   const sizeSqm = parseNumber(formData.get("sizeSqm"), 0) || undefined;
   const managementFee = parseNumber(formData.get("managementFee"), 0) || undefined;
   const repairFee = parseNumber(formData.get("repairFee"), 0) || undefined;
+  const afterSave = String(formData.get("afterSave") ?? "list").trim();
 
   const property = await addProperty({
     tenantId,
@@ -1494,40 +1501,86 @@ export async function createPropertyQuickAction(formData: FormData) {
   revalidatePath("/properties");
   revalidatePath("/");
   revalidatePath("/output-center");
-  redirect(withFlash("/properties", "property_created"));
+  revalidatePath("/organize-center");
+
+  const destination =
+    afterSave === "organize"
+      ? `/organize-center?type=property&focus=${encodeURIComponent(property.id)}`
+      : "/properties";
+  redirect(withFlash(destination, "property_created"));
 }
 
-export async function createPartyQuickAction(formData: FormData) {
+function parsePartyProfileForm(formData: FormData, locale: Locale) {
+  const name = String(formData.get("name") ?? "").trim();
+  const partyTypeRaw = String(formData.get("partyType") ?? "individual").trim();
+  const partyRoleRaw = String(formData.get("partyRole") ?? "applicant").trim();
+  const phone = String(formData.get("phone") ?? "").trim();
+  const email = String(formData.get("email") ?? "").trim();
+  const lineId = String(formData.get("lineId") ?? "").trim();
+  const relationHint = String(formData.get("relationHint") ?? "").trim();
+  const note = String(formData.get("note") ?? "").trim();
+
+  if (!name) {
+    throw new Error(
+      tr(locale, {
+        ja: "氏名または会社名は必須です。",
+        zh: "姓名或公司名是必填项。",
+        ko: "이름 또는 회사명은 필수입니다.",
+      })
+    );
+  }
+  if (!isPartyProfileType(partyTypeRaw) || !isPartyProfileRole(partyRoleRaw)) {
+    throw new Error(
+      tr(locale, {
+        ja: "関係者データの形式が不正です。",
+        zh: "主体数据格式不正确。",
+        ko: "관계자 데이터 형식이 올바르지 않습니다.",
+      })
+    );
+  }
+
+  return {
+    name,
+    partyType: partyTypeRaw,
+    partyRole: partyRoleRaw,
+    phone,
+    email: email || undefined,
+    lineId: lineId || undefined,
+    relationHint: relationHint || undefined,
+    note,
+    notes: buildPartyProfileNotes({
+      type: partyTypeRaw,
+      role: partyRoleRaw,
+      status: "active",
+      note,
+      locale,
+    }),
+  };
+}
+
+export async function createPartyProfileAction(formData: FormData) {
   const session = await requireTenantSession({ permission: "record.update" });
   const user = session.user;
   const tenantId = session.tenant.id;
   const locale = await getLocale();
-
-  const name =
-    String(formData.get("name") ?? "").trim() ||
-    tr(locale, {
-      ja: "新規関係者",
-      zh: "新主体",
-      ko: "신규 관계자",
-    });
-  const phone = String(formData.get("phone") ?? "").trim() || "000-0000-0000";
-  const preferredArea = String(formData.get("preferredArea") ?? "").trim() || undefined;
-  const email = String(formData.get("email") ?? "").trim() || undefined;
+  const payload = parsePartyProfileForm(formData, locale);
 
   const client = await addClient({
     tenantId,
     ownerUserId: user.id,
-    name,
-    phone,
-    preferredArea,
-    email,
+    name: payload.name,
+    phone: payload.phone,
+    lineId: payload.lineId,
+    preferredArea: payload.relationHint,
+    email: payload.email,
     budgetType: "total_price",
-    purpose: "self_use",
+    purpose: inferPurposeFromPartyRole(payload.partyRole),
     loanPreApprovalStatus: "not_applied",
     stage: "lead",
     temperature: "medium",
     brokerageContractType: "none",
     amlCheckStatus: "not_required",
+    notes: payload.notes,
   });
 
   await addAuditLog({
@@ -1546,7 +1599,93 @@ export async function createPartyQuickAction(formData: FormData) {
   revalidatePath("/parties");
   revalidatePath("/clients");
   revalidatePath("/");
-  redirect(withFlash(`/parties?focus=${client.id}`, "party_created"));
+  const afterSave = String(formData.get("afterSave") ?? "edit");
+  redirect(withFlash(afterSave === "list" ? `/parties?focus=${client.id}` : `/parties/${client.id}/edit`, "party_created"));
+}
+
+export async function updatePartyProfileAction(formData: FormData) {
+  const session = await requireTenantSession({ permission: "record.update" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
+  const locale = await getLocale();
+  const clientId = String(formData.get("partyId") ?? "").trim();
+  if (!clientId) {
+    throw new Error(
+      tr(locale, {
+        ja: "関係者IDは必須です。",
+        zh: "主体ID是必填项。",
+        ko: "관계자 ID는 필수입니다.",
+      })
+    );
+  }
+  await ensureClientOwnership(clientId, user.id, tenantId);
+  const existing = await getClientById(clientId, tenantId);
+  if (!existing) {
+    throw new Error(
+      tr(locale, {
+        ja: "関係者が見つかりません。",
+        zh: "未找到主体。",
+        ko: "관계자를 찾을 수 없습니다.",
+      })
+    );
+  }
+  const payload = parsePartyProfileForm(formData, locale);
+
+  await updateClient(clientId, {
+    tenantId,
+    name: payload.name,
+    phone: payload.phone,
+    lineId: payload.lineId,
+    email: payload.email,
+    budgetMin: existing.budgetMin,
+    budgetMax: existing.budgetMax,
+    budgetType: existing.budgetType,
+    preferredArea: payload.relationHint,
+    firstChoiceArea: existing.firstChoiceArea,
+    secondChoiceArea: existing.secondChoiceArea,
+    purpose: inferPurposeFromPartyRole(payload.partyRole),
+    loanPreApprovalStatus: existing.loanPreApprovalStatus,
+    desiredMoveInPeriod: existing.desiredMoveInPeriod,
+    stage: existing.stage,
+    temperature: existing.temperature,
+    brokerageContractType: existing.brokerageContractType,
+    brokerageContractSignedAt: existing.brokerageContractSignedAt,
+    brokerageContractExpiresAt: existing.brokerageContractExpiresAt,
+    importantMattersExplainedAt: existing.importantMattersExplainedAt,
+    contractDocumentDeliveredAt: existing.contractDocumentDeliveredAt,
+    personalInfoConsentAt: existing.personalInfoConsentAt,
+    amlCheckStatus: existing.amlCheckStatus,
+    nextFollowUpAt: existing.nextFollowUpAt,
+    notes: payload.notes,
+  });
+
+  await addAuditLog({
+    tenantId,
+    userId: user.id,
+    action: "party_updated",
+    targetType: "client",
+    targetId: clientId,
+    message: tr(locale, {
+      ja: `関係者を更新しました: ${payload.name}`,
+      zh: `已更新主体：${payload.name}`,
+      ko: `관계자를 업데이트했습니다: ${payload.name}`,
+    }),
+  });
+
+  revalidatePath(`/parties/${clientId}/edit`);
+  revalidatePath("/parties");
+  revalidatePath("/clients");
+  revalidatePath("/");
+  const afterSave = String(formData.get("afterSave") ?? "edit");
+  redirect(withFlash(afterSave === "list" ? `/parties?focus=${clientId}` : `/parties/${clientId}/edit`, "party_updated"));
+}
+
+export async function createPartyQuickAction(formData: FormData) {
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name) {
+    redirect("/parties/new");
+  }
+  redirect(`/parties/new?name=${encodeURIComponent(name)}&flash=${encodeURIComponent("continue_profile")}`);
 }
 
 export async function createServiceRequestQuickAction(formData: FormData) {
@@ -1688,9 +1827,9 @@ export async function generateOutputDocumentAction(formData: FormData) {
       targetType: "property",
       targetId: property.id,
       message: tr(locale, {
-        ja: `物件概要PDFを生成しました: ${property.name} (${safeFormat}/${safeLanguage}) / doc=${documentNumber} / tpl=${activeTemplateVersion?.versionNumber ?? "n/a"} / class=${templateSettings.documentClassification}`,
-        zh: `已生成物件概要PDF：${property.name} (${safeFormat}/${safeLanguage}) / doc=${documentNumber} / tpl=${activeTemplateVersion?.versionNumber ?? "n/a"} / class=${templateSettings.documentClassification}`,
-        ko: `매물 개요 PDF를 생성했습니다: ${property.name} (${safeFormat}/${safeLanguage}) / doc=${documentNumber} / tpl=${activeTemplateVersion?.versionNumber ?? "n/a"} / class=${templateSettings.documentClassification}`,
+        ja: `物件概要PDFを出力しました: ${property.name} (${safeFormat}/${safeLanguage}) / doc=${documentNumber} / tpl=${activeTemplateVersion?.versionNumber ?? "n/a"} / class=${templateSettings.documentClassification}`,
+        zh: `已输出物件概要PDF：${property.name} (${safeFormat}/${safeLanguage}) / doc=${documentNumber} / tpl=${activeTemplateVersion?.versionNumber ?? "n/a"} / class=${templateSettings.documentClassification}`,
+        ko: `매물 개요 PDF를 출력했습니다: ${property.name} (${safeFormat}/${safeLanguage}) / doc=${documentNumber} / tpl=${activeTemplateVersion?.versionNumber ?? "n/a"} / class=${templateSettings.documentClassification}`,
       }),
     });
 
@@ -1807,9 +1946,9 @@ export async function generateOutputDocumentAction(formData: FormData) {
     targetType: "quote",
     targetId: quote.id,
     message: tr(locale, {
-      ja: `帳票を生成しました: ${quote.quoteTitle} (${typeRaw}/${safeFormat}/${safeLanguage}) / doc=${documentNumber} / tpl=${activeTemplateVersion?.versionNumber ?? "n/a"} / class=${templateSettings.documentClassification}`,
-      zh: `已生成文书：${quote.quoteTitle} (${typeRaw}/${safeFormat}/${safeLanguage}) / doc=${documentNumber} / tpl=${activeTemplateVersion?.versionNumber ?? "n/a"} / class=${templateSettings.documentClassification}`,
-      ko: `문서를 생성했습니다: ${quote.quoteTitle} (${typeRaw}/${safeFormat}/${safeLanguage}) / doc=${documentNumber} / tpl=${activeTemplateVersion?.versionNumber ?? "n/a"} / class=${templateSettings.documentClassification}`,
+      ja: `帳票を出力しました: ${quote.quoteTitle} (${typeRaw}/${safeFormat}/${safeLanguage}) / doc=${documentNumber} / tpl=${activeTemplateVersion?.versionNumber ?? "n/a"} / class=${templateSettings.documentClassification}`,
+      zh: `已输出文书：${quote.quoteTitle} (${typeRaw}/${safeFormat}/${safeLanguage}) / doc=${documentNumber} / tpl=${activeTemplateVersion?.versionNumber ?? "n/a"} / class=${templateSettings.documentClassification}`,
+      ko: `문서를 출력했습니다: ${quote.quoteTitle} (${typeRaw}/${safeFormat}/${safeLanguage}) / doc=${documentNumber} / tpl=${activeTemplateVersion?.versionNumber ?? "n/a"} / class=${templateSettings.documentClassification}`,
     }),
   });
 
@@ -2395,7 +2534,7 @@ export async function draftAiExperiencesAction() {
     userId: user.id,
     action: "ai_experience_drafts_generated",
     targetType: "ai_experience",
-    message: `AI経験草稿を生成しました: ${result.createdDrafts.length}件`,
+    message: `入力ルール提案を作成しました: ${result.createdDrafts.length}件`,
     context: {
       createdDraftCount: result.createdDrafts.length,
       skippedDuplicateCount: result.skippedDuplicateCount,
@@ -2415,9 +2554,9 @@ export async function reviewAiExperienceDraftAction(formData: FormData) {
 
   const draftId = String(formData.get("draftId") ?? "").trim();
   const status = String(formData.get("status") ?? "").trim();
-  if (!draftId) throw new Error("AI経験草稿IDが不正です。");
+  if (!draftId) throw new Error("入力ルール提案IDが不正です。");
   if (!isAiExperienceDraftStatus(status) || status === "draft") {
-    throw new Error("AI経験草稿の審査ステータスが不正です。");
+    throw new Error("入力ルール提案の審査ステータスが不正です。");
   }
 
   const updated = await updateAiExperienceDraftStatus({
@@ -2426,7 +2565,7 @@ export async function reviewAiExperienceDraftAction(formData: FormData) {
     draftId,
     status,
   });
-  if (!updated) throw new Error("AI経験草稿が見つかりません。");
+  if (!updated) throw new Error("入力ルール提案が見つかりません。");
 
   await addAuditLog({
     tenantId,
@@ -2434,7 +2573,7 @@ export async function reviewAiExperienceDraftAction(formData: FormData) {
     action: "ai_experience_draft_reviewed",
     targetType: "ai_experience",
     targetId: updated.id,
-    message: `AI経験草稿を${status === "approved" ? "承認" : "却下"}しました: ${updated.title}`,
+    message: `入力ルール提案を${status === "approved" ? "承認" : "却下"}しました: ${updated.title}`,
     context: {
       draftId: updated.id,
       status,
@@ -2459,6 +2598,7 @@ type ExcelImportPayload = {
   originalFilename: string;
   totalRows: number;
   inputExtraction?: InputFileExtractionResult;
+  targetCaseId?: string;
 };
 
 type ExtractionReviewDecision = {
@@ -2605,9 +2745,9 @@ function getCaseWorkbenchFieldKeysFromForm(formData: FormData): string[] {
   }
 }
 
-function getCaseWorkbenchFieldDecision(formData: FormData, fieldKey: string): "confirmed" | "unknown" | "rejected" {
+function getCaseWorkbenchFieldDecision(formData: FormData, fieldKey: string): "confirmed" | "unknown" | "not_applicable" | "rejected" {
   const decision = String(formData.get(`status:${fieldKey}`) ?? "confirmed").trim();
-  if (decision === "unknown" || decision === "rejected") return decision;
+  if (decision === "unknown" || decision === "not_applicable" || decision === "rejected") return decision;
   return "confirmed";
 }
 
@@ -2771,6 +2911,79 @@ function buildCaseTitle(extraction: InputFileExtractionResult, fallbackTitle: st
     .join(" / ");
 }
 
+function formatCaseTitleDate(date: Date) {
+  return `${date.getFullYear()}/${String(date.getMonth() + 1).padStart(2, "0")}/${String(date.getDate()).padStart(2, "0")}`;
+}
+
+export async function createBlankBrokerageCaseAction(formData: FormData) {
+  const session = await requireTenantSession({ permission: "case.create" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
+  const locale = await getLocale();
+  const requestedTitle = String(formData.get("caseTitle") ?? "").trim();
+  const primaryPartyId = String(formData.get("primaryPartyId") ?? "").trim();
+  const primaryPropertyId = String(formData.get("primaryPropertyId") ?? "").trim();
+  const workflowType = String(formData.get("workflowType") ?? "").trim();
+  const quoteFormData = await listQuoteFormData(tenantId);
+  const primaryParty = quoteFormData.clients.find((item) => item.id === primaryPartyId);
+  const primaryProperty = quoteFormData.properties.find((item) => item.id === primaryPropertyId);
+  const today = formatCaseTitleDate(new Date());
+  const defaultTitle = tr(locale, {
+    ja: `新規案件 ${today}`,
+    zh: `新开案件 ${today}`,
+    ko: `새 안건 ${today}`,
+  });
+  const relationshipTitle = [primaryParty?.name, primaryProperty?.name].filter(Boolean).join(" / ");
+  const initialConfirmedData: Record<string, unknown> = {};
+  if (primaryParty) {
+    initialConfirmedData["applicant.name"] = primaryParty.name;
+    initialConfirmedData.__primaryPartyId = primaryParty.id;
+  }
+  if (primaryProperty) {
+    initialConfirmedData["property.name"] = primaryProperty.name;
+    initialConfirmedData.__primaryPropertyId = primaryProperty.id;
+  }
+  if (workflowType) {
+    initialConfirmedData.__workflowType = workflowType;
+  }
+
+  const brokerageCase = await saveBrokerageCaseExtractionReview({
+    tenantId,
+    userId: user.id,
+    caseType: "unit_sale",
+    caseTitle: requestedTitle || relationshipTitle || defaultTitle,
+    primaryPropertyId: primaryProperty?.id,
+    status: "draft",
+    confirmedDataJson: initialConfirmedData,
+    sourceImportJobIds: [],
+    reviewItems: [],
+  });
+
+  await addAuditLog({
+    tenantId,
+    userId: user.id,
+    action: "case_created_blank",
+    targetType: "case",
+    targetId: brokerageCase.id,
+    message: tr(locale, {
+      ja: `空の案件を作成しました: ${brokerageCase.caseTitle}`,
+      zh: `已创建空案件：${brokerageCase.caseTitle}`,
+      ko: `빈 안건을 만들었습니다: ${brokerageCase.caseTitle}`,
+    }),
+    context: {
+      source: "case_create_flow",
+      primaryPartyId: primaryParty?.id,
+      primaryPropertyId: primaryProperty?.id,
+      workflowType,
+    },
+  });
+
+  revalidatePath("/import-center");
+  revalidatePath("/organize-center");
+  revalidatePath(`/cases/${brokerageCase.id}`);
+  redirect(`/cases/${encodeURIComponent(brokerageCase.id)}?flash=blank_case_created`);
+}
+
 export async function saveCaseWorkbenchAction(formData: FormData) {
   const session = await requireTenantSession({ permission: "record.update" });
   const user = session.user;
@@ -2803,7 +3016,7 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
         decision = "confirmed";
       }
     }
-    if (decision === "unknown" || decision === "rejected") {
+    if (decision === "unknown" || decision === "not_applicable" || decision === "rejected") {
       clearCaseFieldValueAliases(nextConfirmedData, fieldKey);
       existingStatusMap[fieldKey] = decision;
       return;
@@ -2813,7 +3026,7 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
       nextConfirmedData[fieldKey] = nextValue;
       if (nextValue !== previousValue) {
         existingStatusMap[fieldKey] = previousValue ? "edited" : "confirmed";
-      } else if (existingStatusMap[fieldKey] === "unknown" || existingStatusMap[fieldKey] === "rejected" || !existingStatusMap[fieldKey]) {
+      } else if (existingStatusMap[fieldKey] === "unknown" || existingStatusMap[fieldKey] === "not_applicable" || existingStatusMap[fieldKey] === "rejected" || !existingStatusMap[fieldKey]) {
         existingStatusMap[fieldKey] = "confirmed";
       }
     } else {
@@ -2875,8 +3088,10 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
   revalidatePath("/output-center");
   const returnAnchor = safeHashAnchor(formData.get("returnAnchor"));
   const guaranteeTemplate = safeQueryToken(formData.get("guaranteeTemplate"));
+  const returnNode = safeQueryToken(formData.get("returnNode"));
   const redirectParams = new URLSearchParams();
   if (guaranteeTemplate) redirectParams.set("guaranteeTemplate", guaranteeTemplate);
+  if (returnNode) redirectParams.set("node", returnNode);
   redirectParams.set("flash", "case_workbench_saved");
   redirect(`/cases/${caseId}?${redirectParams.toString()}${returnAnchor ? `#${returnAnchor}` : ""}`);
 }
@@ -3297,6 +3512,12 @@ export async function uploadAndParseExcelAction(formData: FormData) {
   const session = await requireTenantSession({ permission: "source.upload" });
   const user = session.user;
   const tenantId = session.tenant.id;
+  const targetCaseId = String(formData.get("targetCaseId") ?? "").trim();
+  if (targetCaseId) {
+    const targetCase = await getBrokerageCaseById({ userId: user.id, tenantId, caseId: targetCaseId });
+    if (!targetCase) throw new Error("追加先の案件が見つかりません。");
+  }
+  const targetCaseQuery = targetCaseId ? `&targetCaseId=${encodeURIComponent(targetCaseId)}` : "";
 
   const file = formData.get("excelFile");
   if (!(file instanceof File) || file.size === 0) {
@@ -3325,6 +3546,7 @@ export async function uploadAndParseExcelAction(formData: FormData) {
       originalFilename: file.name,
       totalRows: 0,
       inputExtraction,
+      targetCaseId: targetCaseId || undefined,
     };
 
     const job = await addImportJob({
@@ -3351,7 +3573,7 @@ export async function uploadAndParseExcelAction(formData: FormData) {
     });
 
     revalidatePath("/import-center");
-    redirect(`/import-center?xlsxJob=${job.id}&flash=input_extraction_ready`);
+    redirect(`/import-center?xlsxJob=${job.id}&flash=input_extraction_ready${targetCaseQuery}`);
   }
 
   const sheetName = workbook.SheetNames[0];
@@ -3371,6 +3593,7 @@ export async function uploadAndParseExcelAction(formData: FormData) {
       originalFilename: file.name,
       totalRows: 0,
       inputExtraction,
+      targetCaseId: targetCaseId || undefined,
     };
 
     const job = await addImportJob({
@@ -3394,7 +3617,7 @@ export async function uploadAndParseExcelAction(formData: FormData) {
     });
 
     revalidatePath("/import-center");
-    redirect(`/import-center?xlsxJob=${job.id}&flash=input_extraction_ready`);
+    redirect(`/import-center?xlsxJob=${job.id}&flash=input_extraction_ready${targetCaseQuery}`);
   }
 
   const dataRows = (rawRows.slice(1) as unknown[][]).filter((row) =>
@@ -3418,6 +3641,7 @@ export async function uploadAndParseExcelAction(formData: FormData) {
     originalFilename: file.name,
     totalRows: rowObjects.length,
     inputExtraction,
+    targetCaseId: targetCaseId || undefined,
   };
 
   const job = await addImportJob({
@@ -3439,72 +3663,150 @@ export async function uploadAndParseExcelAction(formData: FormData) {
   });
 
   revalidatePath("/import-center");
-  redirect(`/import-center?xlsxJob=${job.id}`);
+  redirect(`/import-center?xlsxJob=${job.id}${targetCaseQuery}`);
+}
+
+const MAX_IDENTITY_DOCUMENT_FILES = 6;
+const MAX_IDENTITY_DOCUMENT_FILE_BYTES = 25 * 1024 * 1024;
+const MAX_IDENTITY_DOCUMENT_TOTAL_BYTES = 60 * 1024 * 1024;
+
+function isAllowedIdentityDocumentFile(file: File) {
+  const lowerName = file.name.toLowerCase();
+  return (
+    lowerName.endsWith(".pdf") ||
+    lowerName.endsWith(".png") ||
+    lowerName.endsWith(".jpg") ||
+    lowerName.endsWith(".jpeg") ||
+    file.type === "application/pdf" ||
+    file.type.startsWith("image/")
+  );
+}
+
+function identityUploadTitle(files: File[]) {
+  return files.length === 1 ? files[0].name : `本人確認資料 ${files.length}件`;
+}
+
+async function createIdentityExtractionImportJob(input: {
+  tenantId: string;
+  userId: string;
+  title: string;
+  inputExtraction: InputFileExtractionResult;
+  fileCount: number;
+  targetCaseId?: string;
+}) {
+  const payload: ExcelImportPayload = {
+    kind: "input_file_extraction",
+    headers: [],
+    autoMapping: {},
+    rows: [],
+    originalFilename: input.title,
+    totalRows: 0,
+    inputExtraction: input.inputExtraction,
+    targetCaseId: input.targetCaseId,
+  };
+
+  const job = await addImportJob({
+    tenantId: input.tenantId,
+    userId: input.userId,
+    sourceType: "scan",
+    targetEntity: "parties",
+    title: input.title,
+    notes: JSON.stringify(payload),
+    status: "mapped",
+  });
+
+  await addAuditLog({
+    tenantId: input.tenantId,
+    userId: input.userId,
+    action: "identity_document_extraction_created",
+    targetType: "import_job",
+    targetId: job.id,
+    message: `本人確認資料の抽出プレビュー作成: ${input.title} (${input.inputExtraction.documentType})`,
+    context: {
+      documentType: input.inputExtraction.documentType,
+      fieldCount: input.inputExtraction.fields.length,
+      extractionStatus: input.inputExtraction.extractionStatus,
+      fileCount: input.fileCount,
+    },
+  });
+
+  return job;
 }
 
 export async function uploadAndParseIdentityDocumentAction(formData: FormData) {
   const session = await requireTenantSession({ permission: "source.upload" });
   const user = session.user;
   const tenantId = session.tenant.id;
+  const uploadMode = String(formData.get("identityUploadMode") ?? "same_person").trim();
+  const targetCaseId = String(formData.get("targetCaseId") ?? "").trim();
+  if (targetCaseId) {
+    const targetCase = await getBrokerageCaseById({ userId: user.id, tenantId, caseId: targetCaseId });
+    if (!targetCase) throw new Error("追加先の案件が見つかりません。");
+  }
+  const targetCaseQuery = targetCaseId ? `&targetCaseId=${encodeURIComponent(targetCaseId)}` : "";
 
-  const file = formData.get("identityDocumentFile");
-  if (!(file instanceof File) || file.size === 0) {
+  const files = formData
+    .getAll("identityDocumentFile")
+    .filter((file): file is File => file instanceof File && file.size > 0);
+  if (files.length === 0) {
     throw new Error("本人確認資料ファイルが選択されていません。");
   }
-
-  const lowerName = file.name.toLowerCase();
-  const allowed =
-    lowerName.endsWith(".pdf") ||
-    lowerName.endsWith(".png") ||
-    lowerName.endsWith(".jpg") ||
-    lowerName.endsWith(".jpeg") ||
-    file.type === "application/pdf" ||
-    file.type.startsWith("image/");
-  if (!allowed) {
-    throw new Error("在留カード・運転免許証のPDFまたは画像ファイルを選択してください。");
+  if (files.length > MAX_IDENTITY_DOCUMENT_FILES) {
+    throw new Error(`本人確認資料は一度に${MAX_IDENTITY_DOCUMENT_FILES}件まで選択できます。`);
   }
 
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const inputExtraction = await extractIdentityDocumentFromBuffer({
-    buffer,
+  let totalBytes = 0;
+  for (const file of files) {
+    totalBytes += file.size;
+    if (file.size > MAX_IDENTITY_DOCUMENT_FILE_BYTES) {
+      throw new Error("本人確認資料は1ファイル25MB以下にしてください。");
+    }
+    if (!isAllowedIdentityDocumentFile(file)) {
+      throw new Error("在留カード・運転免許証のPDFまたは画像ファイルを選択してください。");
+    }
+  }
+  if (totalBytes > MAX_IDENTITY_DOCUMENT_TOTAL_BYTES) {
+    throw new Error("本人確認資料の合計サイズは60MB以下にしてください。");
+  }
+
+  if (uploadMode === "separate_people" && files.length > 1) {
+    const jobs = [];
+    for (const file of files) {
+      const inputExtraction = await extractIdentityDocumentsFromFiles([{
+        buffer: Buffer.from(await file.arrayBuffer()),
+        filename: file.name,
+      }]);
+      jobs.push(await createIdentityExtractionImportJob({
+        tenantId,
+        userId: user.id,
+        title: file.name,
+        inputExtraction,
+        fileCount: 1,
+        targetCaseId: targetCaseId || undefined,
+      }));
+    }
+
+    revalidatePath("/import-center");
+    redirect(`/import-center?xlsxJob=${jobs[0].id}&flash=identity_extraction_ready${targetCaseQuery}`);
+  }
+
+  const uploadFiles = await Promise.all(files.map(async (file) => ({
+    buffer: Buffer.from(await file.arrayBuffer()),
     filename: file.name,
-  });
-  const payload: ExcelImportPayload = {
-    kind: "input_file_extraction",
-    headers: [],
-    autoMapping: {},
-    rows: [],
-    originalFilename: file.name,
-    totalRows: 0,
+  })));
+  const inputExtraction = await extractIdentityDocumentsFromFiles(uploadFiles);
+  const title = identityUploadTitle(files);
+  const job = await createIdentityExtractionImportJob({
+    tenantId,
+    userId: user.id,
+    title,
     inputExtraction,
-  };
-
-  const job = await addImportJob({
-    tenantId,
-    userId: user.id,
-    sourceType: "scan",
-    targetEntity: "parties",
-    title: file.name,
-    notes: JSON.stringify(payload),
-    status: "mapped",
-  });
-
-  await addAuditLog({
-    tenantId,
-    userId: user.id,
-    action: "identity_document_extraction_created",
-    targetType: "import_job",
-    targetId: job.id,
-    message: `本人確認資料の抽出プレビュー作成: ${file.name} (${inputExtraction.documentType})`,
-    context: {
-      documentType: inputExtraction.documentType,
-      fieldCount: inputExtraction.fields.length,
-      extractionStatus: inputExtraction.extractionStatus,
-    },
+    fileCount: files.length,
+    targetCaseId: targetCaseId || undefined,
   });
 
   revalidatePath("/import-center");
-  redirect(`/import-center?xlsxJob=${job.id}&flash=identity_extraction_ready`);
+  redirect(`/import-center?xlsxJob=${job.id}&flash=identity_extraction_ready${targetCaseQuery}`);
 }
 
 export async function saveExtractionReviewAction(formData: FormData) {
@@ -3589,6 +3891,82 @@ export async function saveExtractionReviewAction(formData: FormData) {
   const postalCompletionResult = applyJapanesePostalCodeAddressCompletions({
     confirmedData: confirmedDataJson,
   });
+
+  const targetCaseId = String(formData.get("targetCaseId") ?? payload.targetCaseId ?? "").trim();
+  if (targetCaseId) {
+    const targetCase = await getBrokerageCaseById({ userId: user.id, tenantId, caseId: targetCaseId });
+    if (!targetCase) throw new Error("追加先の案件が見つかりません。");
+
+    const mergedData = mergeConfirmedCaseData({
+      existingData: targetCase.confirmedDataJson,
+      incomingData: confirmedDataJson,
+    });
+    const existingHistory = getCaseMergeHistory(targetCase.confirmedDataJson);
+    const sourceAlreadyLinked = targetCase.sourceImportJobIds.includes(job.id);
+    const historyItem = sourceAlreadyLinked
+      ? null
+      : createCaseMergeHistoryItem({
+          sourceImportJobId: job.id,
+          sourceImportJobTitle: job.title,
+          mergedById: user.id,
+          confidenceScore: 100,
+          matchReasons: ["案件ページから追加"],
+          conflictFields: mergedData.conflictFields,
+          conflictDetails: mergedData.conflictDetails,
+          addedFields: mergedData.addedFields,
+          preservedFields: mergedData.preservedFields,
+          beforeConfirmedDataJson: targetCase.confirmedDataJson,
+          beforeSourceImportJobIds: targetCase.sourceImportJobIds,
+          incomingConfirmedDataJson: confirmedDataJson,
+        });
+    const nextConfirmedDataJson = setCaseMergeHistory(
+      mergedData.nextData,
+      historyItem ? [...existingHistory, historyItem] : existingHistory,
+    );
+    const brokerageCase = await mergeBrokerageCaseExtractionReview({
+      tenantId,
+      userId: user.id,
+      caseId: targetCase.id,
+      confirmedDataJson: nextConfirmedDataJson,
+      sourceImportJobIds: sourceAlreadyLinked ? targetCase.sourceImportJobIds : [...targetCase.sourceImportJobIds, job.id],
+      replaceImportJobIds: [job.id],
+      reviewItems,
+    });
+    if (!brokerageCase) throw new Error("案件への追加保存に失敗しました。");
+
+    const correctionEvents = await addCorrectionEvents({
+      userId: user.id,
+      tenantId,
+      events: buildExtractionReviewCorrectionEvents({
+        caseId: brokerageCase.id,
+        reviewItems,
+      }),
+    });
+
+    await addAuditLog({
+      tenantId,
+      userId: user.id,
+      action: "case_source_merged",
+      targetType: "import_job",
+      targetId: job.id,
+      message: `抽出レビューを案件へ追加保存しました: ${brokerageCase.caseTitle}`,
+      context: {
+        caseId: brokerageCase.id,
+        mergeId: historyItem?.id,
+        addedFieldCount: mergedData.addedFields.length,
+        conflictFieldCount: mergedData.conflictFields.length,
+        correctionEventCount: correctionEvents.length,
+        correctionEventIds: correctionEvents.map((event) => event.id),
+        postalCodeLookupCount: postalCompletionResult.lookupCount,
+        postalCodeConflictCount: postalCompletionResult.conflictCount,
+      },
+    });
+
+    revalidatePath("/import-center");
+    revalidatePath("/cases");
+    revalidatePath(`/cases/${brokerageCase.id}`);
+    redirect(`/cases/${brokerageCase.id}?flash=case_source_merged`);
+  }
 
   const mergeTargetCaseId = String(formData.get("mergeTargetCaseId") ?? "").trim();
   const mergeConfirmed = parseCheckbox(formData.get("mergeConfirm"));

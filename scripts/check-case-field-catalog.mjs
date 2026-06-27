@@ -6,6 +6,20 @@ const root = process.cwd();
 const catalogPath = join(root, "src/lib/case-field-catalog.ts");
 const catalogSource = readFileSync(catalogPath, "utf8");
 
+const requiredInformationArchitectureExports = [
+  "export type CaseFieldImportance",
+  "export type CaseFieldAppliesWhen",
+  "export const CASE_INFORMATION_TREE",
+  "export function getCaseFieldInformation",
+];
+
+const missingInformationArchitectureExports = requiredInformationArchitectureExports.filter((token) => !catalogSource.includes(token));
+if (missingInformationArchitectureExports.length > 0) {
+  console.error("Case field catalog is missing information-architecture exports:");
+  missingInformationArchitectureExports.forEach((token) => console.error(`- ${token}`));
+  process.exit(1);
+}
+
 const catalogKeys = [...catalogSource.matchAll(/fieldKey:\s*"([^"]+)"/g)].map((match) => match[1]);
 const catalogKeySet = new Set(catalogKeys);
 for (const index of [0, 1, 2]) {

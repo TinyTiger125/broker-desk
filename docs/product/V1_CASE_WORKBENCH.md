@@ -18,6 +18,14 @@ The workbench is a digital Excel replacement, not a passive database page.
 
 Editable fields should be generated from the canonical field catalog. The workbench may show only a prioritized subset by default, but field names, grouping, input kind, and output links must not drift into a separate hand-maintained field list.
 
+2026-06-20 information-architecture decision:
+
+- Treat the workbench as a reusable case dossier, not as a guarantee-application pre-form.
+- Use a shallow information tree for orientation, but do not rely on the tree as the whole workflow.
+- Pair the tree with issue queues, search, field states, and source evidence.
+- Keep output-specific draft facts, company-specific options, and render fragments outside the default case dossier tree.
+- Source of truth for this structure: `docs/product/V1_CASE_INFORMATION_ARCHITECTURE.md`.
+
 Excel-like meaning:
 
 - fields are already structured
@@ -64,9 +72,9 @@ Avoid primary user-facing terms:
 - raw key
 - JSON
 
-## Required Workbench Sections
+## V1 Guarantee Application Section Legacy
 
-For the guarantee application V1 path, the case workbench should prioritize sections needed by guarantee company application forms:
+For the guarantee application V1 path, the workbench previously prioritized sections needed by guarantee company application forms:
 
 1. 物件・契約条件
 2. 申込者・賃借人
@@ -78,7 +86,7 @@ For the guarantee application V1 path, the case workbench should prioritize sect
 8. 未入力・要確認
 9. 入力ファイル・出典
 
-The workbench may later expand for sales contracts, important matters, advertisements, and financial reports, but V1 must stay aligned with guarantee application output.
+These sections are still useful as field coverage for the current guarantee-company path, but they are not the final broker-facing information architecture. The durable navigation should move toward the case dossier tree in `V1_CASE_INFORMATION_ARCHITECTURE.md`, while guarantee-company-specific fields stay in the output draft layer.
 
 ## AI Role In The Workbench
 
@@ -247,8 +255,11 @@ Acceptance boundary:
 
 ## Workbench UX Requirements
 
-The case workbench should behave like a structured editing table:
+The case workbench should behave like a structured case-data editor:
 
+- dossier tree navigation
+- issue queue entry points
+- search across labels, keys, aliases, values, and source clues
 - grouped rows
 - editable values
 - status badges
@@ -256,7 +267,7 @@ The case workbench should behave like a structured editing table:
 - missing and needs-review filters
 - conflict view
 - save changes
-- output readiness summary
+- secondary output readiness summary
 - deep links from output readiness/missing items to the editable field group
 
 Priority filters:
@@ -269,6 +280,8 @@ Priority filters:
 6. `確認済み`
 
 The default view should not overwhelm the broker. Start with required missing and uncertain fields, then allow expansion into all fields.
+
+`整理情報` should not default to a guarantee-application checklist. Output readiness stays useful, but it is a consumer of the case dossier, not the page's information architecture.
 
 ## Missing Field Navigation
 

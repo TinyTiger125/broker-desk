@@ -15,6 +15,10 @@ import {
 } from "@/lib/data";
 import type { Locale } from "@/lib/locale";
 import { getOutputDocLabel, type OutputDocType } from "@/lib/output-doc";
+import {
+  extractPartyProfileFromNotes,
+  getPartyProfileRoleLabel,
+} from "@/lib/party-profile";
 
 export type HubQueryContext = {
   userId?: string;
@@ -144,6 +148,8 @@ function tr(locale: Locale, message: { ja: string; zh: string; ko: string }): st
 }
 
 function mapPartyType(client: Client): "individual" | "corporate" {
+  const profile = extractPartyProfileFromNotes(client.notes);
+  if (profile.type) return profile.type;
   const name = client.name.trim();
   if (name.includes("株式会社") || name.includes("有限会社") || name.endsWith("法人")) {
     return "corporate";
@@ -152,6 +158,10 @@ function mapPartyType(client: Client): "individual" | "corporate" {
 }
 
 function buildRoleTags(client: Client, locale: Locale): string[] {
+  const profile = extractPartyProfileFromNotes(client.notes);
+  if (profile.role) {
+    return [getPartyProfileRoleLabel(profile.role, locale)];
+  }
   const roles: string[] = [];
   roles.push(
     client.purpose === "self_use"

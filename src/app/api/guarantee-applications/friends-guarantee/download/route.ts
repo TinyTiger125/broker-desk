@@ -120,7 +120,7 @@ export async function GET(request: Request) {
         action: "guarantee_application_downloaded",
         targetType: "output",
         targetId: generated.id,
-        message: `ふれんず保証申込書PDFを生成・ダウンロードしました: ${brokerageCase.caseTitle}`,
+        message: `ふれんず保証申込書PDFを出力・ダウンロードしました: ${brokerageCase.caseTitle}`,
         context: {
           caseId: brokerageCase.id,
           templateId: TEMPLATE_ID,

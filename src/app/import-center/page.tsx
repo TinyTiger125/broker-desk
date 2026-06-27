@@ -11,6 +11,7 @@ import {
   uploadAndParseExcelAction,
 } from "@/app/actions";
 import { FormDraftAssist } from "@/components/form-draft-assist";
+import { IdentityDocumentUploadForm } from "@/components/identity-document-upload-form";
 import { InputExtractionReview } from "@/components/input-extraction-review";
 import { PageFlashBanner } from "@/components/page-flash-banner";
 import { listBrokerageCases } from "@/lib/data";
@@ -75,8 +76,8 @@ const sourceColumnExamplesByLocale: Record<
 function getCopy(locale: Locale) {
   const copyByLocale = {
     ja: {
-      pageTitle: "資料を入れる",
-      pageDesc: "保証会社申込書に使う資料をアップロードします。確認できた内容は情報整理へ送り、足りない項目だけ補完します。",
+      pageTitle: "作成・取込",
+      pageDesc: "案件、関係者、物件を作成し、必要な資料を読み取ります。",
       cardExcelTitle: "Excel 一括取込",
       cardExcelSubtitle: "物件台帳化を優先",
       cardPdfTitle: "PDF / スキャン登録",
@@ -102,7 +103,7 @@ function getCopy(locale: Locale) {
       colCreatedAt: "作成日",
       colStatus: "状態",
       wizardTitle: "資料整理アシスト",
-      wizardSubtitle: "自動整理 + 目視確認",
+      wizardSubtitle: "保存先の確認",
       stepSelect: "選択",
       stepMap: "整理確認",
       stepValidate: "検証",
@@ -113,47 +114,47 @@ function getCopy(locale: Locale) {
       continueValidation: "検証へ進む",
       sourceColumn: "資料の列",
       targetField: "保存先の項目",
-      autoMapCol: "自動候補",
+      autoMapCol: "整理提案",
       sampleValue: "プレビュー値",
       unmapped: "-- 未設定 --",
       recentImportHistory: "最近の取込履歴",
       viewArchive: "アーカイブ表示",
-      readinessTitle: "取込準備度",
+      readinessTitle: "取込状態",
       issueStatsTitle: "問題コード集計",
       issueStatsDesc: "直近ジョブの検証結果をコード単位で集計",
       issueTrendTitle: "問題コード推移（7日）",
       issueTrendDesc: "日別の検証件数（Critical / Warning / Info）",
       mapped: "整理済",
       alerts: "アラート",
-      validationLog: "検証ログ",
+      validationLog: "検証記録",
       noFurtherAlerts: "追加アラートはありません",
       validationUnmappedRequired: "必須項目の保存先が未設定",
       validationFormatMismatch: "データ形式の不一致",
-      validationSchemaSuggestion: "保存先候補の提案",
+      validationSchemaSuggestion: "保存先の提案",
       validationUnmappedMsg: "案件に保存する必須項目がまだ選ばれていません。",
       validationFormatMsg: "取込元データに形式の揺れがあります。",
-      validationSchemaMsg: "信頼度の高い保存先候補があります。",
+      validationSchemaMsg: "保存先の提案があります。",
       actionResolveNow: "今すぐ修正",
       actionAutoFix: "自動補正",
-      actionApplyMapping: "候補を使う",
+      actionApplyMapping: "提案を使う",
       exportValidationReport: "検証レポートを出力",
       proTipTitle: "操作ヒント",
       proTipDesc:
-        "自動候補はそのまま使えます。違う行だけ保存先を直してから確認へ進んでください。",
+        "整理提案を確認し、違う行だけ保存先を直してから確認へ進んでください。",
       noJobs: "先に取込ジョブを1件作成してください。",
-      wizardStep1: "1. 保存先候補を作成",
+      wizardStep1: "1. 保存先を合わせる",
       wizardStep2: "2. 違うところだけ直す",
       labelTargetJob: "対象ジョブ",
       labelTargetEntity: "保存先",
       labelSourceColumns: "資料の列（カンマ区切り）",
       labelTargetFields: "保存先の項目（カンマ区切り）",
-      btnAutoMap: "標準ルールで候補作成",
+      btnAutoMap: "標準ルールで整理",
       btnSaveMap: "確認して保存",
       phSourceCols: "例: 物件名,所在地,エリア,価格",
-      phMapMemo: "例: 保存先候補の初回生成",
+      phMapMemo: "例: 保存先の初回整理",
       phSaveMemo: "例: 価格列は税抜",
       fieldDefTitle: "保存先項目",
-      fieldDefSubtitle: "申込書に必要な項目を優先して確認",
+      fieldDefSubtitle: "案件に保存する項目を確認",
       attachmentTitle: "添付登録",
       attachmentSubtitle: "実ファイル保存対応",
       labelAttachmentTargetType: "対象種別",
@@ -183,8 +184,8 @@ function getCopy(locale: Locale) {
       optionParty: "関係者",
     },
     zh: {
-      pageTitle: "上传资料",
-      pageDesc: "上传保证会社申请书所需资料。可确认的内容会进入信息整理页，只补齐缺失项。",
+      pageTitle: "建档导入",
+      pageDesc: "先建立案件、主体或物件，也可以先导入资料后再归属。",
       cardExcelTitle: "Excel 批量导入",
       cardExcelSubtitle: "优先整理物件台账",
       cardPdfTitle: "PDF / 扫描登记",
@@ -210,7 +211,7 @@ function getCopy(locale: Locale) {
       colCreatedAt: "创建日期",
       colStatus: "状态",
       wizardTitle: "资料整理助手",
-      wizardSubtitle: "自动整理 + 人工确认",
+      wizardSubtitle: "确认保存项目",
       stepSelect: "选择",
       stepMap: "整理确认",
       stepValidate: "校验",
@@ -221,46 +222,46 @@ function getCopy(locale: Locale) {
       continueValidation: "进入校验",
       sourceColumn: "资料列",
       targetField: "保存项目",
-      autoMapCol: "自动候选",
+      autoMapCol: "整理建议",
       sampleValue: "预览值",
       unmapped: "-- 未设置 --",
       recentImportHistory: "最近导入历史",
       viewArchive: "查看归档",
-      readinessTitle: "导入就绪度",
+      readinessTitle: "导入状态",
       issueStatsTitle: "问题码聚合",
       issueStatsDesc: "按问题码统计最近任务的校验结果",
       issueTrendTitle: "问题码趋势（7天）",
       issueTrendDesc: "按天统计校验条目（Critical / Warning / Info）",
       mapped: "已整理",
       alerts: "告警",
-      validationLog: "校验日志",
+      validationLog: "校验记录",
       noFurtherAlerts: "暂无更多告警",
       validationUnmappedRequired: "必填项还没有保存位置",
       validationFormatMismatch: "数据格式不一致",
       validationSchemaSuggestion: "保存项目建议",
       validationUnmappedMsg: "案件必填项还没有选择保存位置。",
       validationFormatMsg: "源数据包含格式不一致内容。",
-      validationSchemaMsg: "检测到高可信保存项目候选。",
+      validationSchemaMsg: "发现保存项目建议。",
       actionResolveNow: "立即处理",
       actionAutoFix: "自动修复",
-      actionApplyMapping: "使用候选",
+      actionApplyMapping: "使用建议",
       exportValidationReport: "导出校验报告",
       proTipTitle: "操作提示",
-      proTipDesc: "自动候选可直接使用，只需要修正不对的行再进入确认。",
+      proTipDesc: "先检查整理建议，只需要修正不对的行再进入确认。",
       noJobs: "请先创建至少 1 个导入任务。",
-      wizardStep1: "1. 生成保存项目候选",
+      wizardStep1: "1. 匹配保存项目",
       wizardStep2: "2. 只修正不对的地方",
       labelTargetJob: "目标任务",
       labelTargetEntity: "保存到",
       labelSourceColumns: "资料列（逗号分隔）",
       labelTargetFields: "保存项目（逗号分隔）",
-      btnAutoMap: "按标准规则生成候选",
+      btnAutoMap: "按标准规则匹配",
       btnSaveMap: "确认并保存",
       phSourceCols: "例：物件名称,地址,区域,价格",
-      phMapMemo: "例：首次生成保存项目候选",
+      phMapMemo: "例：首次匹配保存项目",
       phSaveMemo: "例：价格列为不含税",
       fieldDefTitle: "可保存项目",
-      fieldDefSubtitle: "优先确认申请书需要的项目",
+      fieldDefSubtitle: "确认要保存到案件的项目",
       attachmentTitle: "附件登记",
       attachmentSubtitle: "支持实际文件保存",
       labelAttachmentTargetType: "目标类型",
@@ -290,10 +291,10 @@ function getCopy(locale: Locale) {
       optionParty: "主体",
     },
     ko: {
-      pageTitle: "자료를 넣기",
-      pageDesc: "보증회사 신청서에 쓸 자료를 업로드합니다. 확인 가능한 내용은 정보 정리 화면으로 보내고 부족 항목만 보완합니다.",
+      pageTitle: "등록·가져오기",
+      pageDesc: "안건, 관계자, 매물을 만들고 필요한 자료를 읽습니다.",
       cardExcelTitle: "Excel 일괄 가져오기",
-      cardExcelSubtitle: "매물 대장 구조화 우선",
+      cardExcelSubtitle: "매물 대장 정리 우선",
       cardPdfTitle: "PDF / 스캔 등록",
       cardPdfSubtitle: "구 계약/문서 보관",
       cardManualTitle: "수기 가져오기",
@@ -317,7 +318,7 @@ function getCopy(locale: Locale) {
       colCreatedAt: "생성일",
       colStatus: "상태",
       wizardTitle: "자료 정리 도우미",
-      wizardSubtitle: "자동 정리 + 육안 확인",
+      wizardSubtitle: "저장 항목 확인",
       stepSelect: "선택",
       stepMap: "정리 확인",
       stepValidate: "검증",
@@ -328,46 +329,46 @@ function getCopy(locale: Locale) {
       continueValidation: "검증으로 이동",
       sourceColumn: "자료 열",
       targetField: "저장 항목",
-      autoMapCol: "자동 후보",
+      autoMapCol: "정리 제안",
       sampleValue: "미리보기 값",
       unmapped: "-- 미설정 --",
       recentImportHistory: "최근 가져오기 이력",
       viewArchive: "보관 이력 보기",
-      readinessTitle: "가져오기 준비도",
+      readinessTitle: "가져오기 상태",
       issueStatsTitle: "문제 코드 집계",
       issueStatsDesc: "최근 작업의 검증 결과를 코드별로 집계",
       issueTrendTitle: "문제 코드 추이 (7일)",
       issueTrendDesc: "일자별 검증 건수 (Critical / Warning / Info)",
       mapped: "정리됨",
       alerts: "알림",
-      validationLog: "검증 로그",
+      validationLog: "검증 기록",
       noFurtherAlerts: "추가 알림이 없습니다",
       validationUnmappedRequired: "필수 항목의 저장 위치 미설정",
       validationFormatMismatch: "데이터 형식 불일치",
-      validationSchemaSuggestion: "저장 항목 후보 제안",
+      validationSchemaSuggestion: "저장 항목 제안",
       validationUnmappedMsg: "안건 필수 항목의 저장 위치가 아직 선택되지 않았습니다.",
       validationFormatMsg: "원본 데이터 형식이 일치하지 않습니다.",
-      validationSchemaMsg: "신뢰도 높은 저장 항목 후보가 있습니다.",
+      validationSchemaMsg: "확인할 저장 항목 제안이 있습니다.",
       actionResolveNow: "지금 수정",
       actionAutoFix: "자동 보정",
-      actionApplyMapping: "후보 사용",
+      actionApplyMapping: "제안 사용",
       exportValidationReport: "검증 리포트 내보내기",
       proTipTitle: "사용 팁",
-      proTipDesc: "자동 후보는 그대로 사용할 수 있습니다. 다른 행만 저장 항목을 고친 뒤 확인으로 진행하세요.",
+      proTipDesc: "정리 제안을 확인하고, 다른 행만 저장 항목을 고친 뒤 확인으로 진행하세요.",
       noJobs: "먼저 가져오기 작업을 1건 이상 생성하세요.",
-      wizardStep1: "1. 저장 항목 후보 생성",
+      wizardStep1: "1. 저장 항목 맞추기",
       wizardStep2: "2. 다른 곳만 수정",
       labelTargetJob: "대상 작업",
       labelTargetEntity: "저장 위치",
       labelSourceColumns: "자료 열(쉼표 구분)",
       labelTargetFields: "저장 항목(쉼표 구분)",
-      btnAutoMap: "표준 규칙으로 후보 생성",
+      btnAutoMap: "표준 규칙으로 정리",
       btnSaveMap: "확인 후 저장",
       phSourceCols: "예: 매물명,소재지,지역,가격",
-      phMapMemo: "예: 저장 항목 후보 초기 생성",
+      phMapMemo: "예: 저장 항목 첫 정리",
       phSaveMemo: "예: 가격 컬럼은 세전",
       fieldDefTitle: "저장 항목",
-      fieldDefSubtitle: "신청서에 필요한 항목 우선 확인",
+      fieldDefSubtitle: "안건에 저장할 항목 확인",
       attachmentTitle: "첨부 등록",
       attachmentSubtitle: "실파일 저장 지원",
       labelAttachmentTargetType: "대상 유형",
@@ -409,6 +410,7 @@ type ExcelImportPayload = {
   originalFilename: string;
   totalRows: number;
   inputExtraction?: InputFileExtractionResult;
+  targetCaseId?: string;
 };
 
 type ExcelImportResult = {
@@ -417,7 +419,7 @@ type ExcelImportResult = {
 };
 
 type ImportCenterPageProps = {
-  searchParams?: Promise<{ job?: string; flash?: string; xlsxJob?: string; advanced?: string }>;
+  searchParams?: Promise<{ job?: string; flash?: string; xlsxJob?: string; advanced?: string; intake?: string; targetCaseId?: string }>;
 };
 
 function isInputFileExtractionJob(job: HubImportJobItem) {
@@ -446,12 +448,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
     listHubAttachments(locale, 30, hubContext),
     listBrokerageCases(user.id, 20, tenantId),
   ]);
-  const currentCase =
-    cases.find((item) => item.id === "case_fixture_friends_guarantee_pdf") ??
-    cases.find((item) => item.status === "reviewed") ??
-    cases[0];
-  const reviewHref = currentCase ? `/cases/${currentCase.id}#workbench-unresolved` : "/output-center";
-  const outputHref = currentCase ? `/output-center?caseId=${encodeURIComponent(currentCase.id)}` : "/output-center";
+  const reviewHref = "/organize-center";
 
   const sourceLabel: Record<HubImportJobItem["sourceType"], string> = {
     excel: t(locale, "import.source.excel"),
@@ -665,14 +662,14 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
       ko: "자료 저장 항목을 확인했습니다.",
     },
     import_mapping_autofilled: {
-      ja: "自動整理候補を適用しました。",
-      zh: "已使用自动整理候选。",
-      ko: "자동 정리 후보를 적용했습니다.",
+      ja: "整理提案を適用しました。",
+      zh: "已使用整理建议。",
+      ko: "정리 제안을 적용했습니다.",
     },
     import_validation_resolved: {
-      ja: "検証ログを更新しました。",
-      zh: "校验日志已更新。",
-      ko: "검증 로그를 업데이트했습니다.",
+      ja: "検証記録を更新しました。",
+      zh: "校验记录已更新。",
+      ko: "검증 기록을 업데이트했습니다.",
     },
     import_job_retried: {
       ja: "取込ジョブを再試行キューへ戻しました。",
@@ -680,14 +677,14 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
       ko: "가져오기 작업을 재시도 큐로 되돌렸습니다.",
     },
     input_extraction_ready: {
-      ja: "業務ファイルの抽出候補を自動識別しました。",
-      zh: "已自动识别业务文件抽取候选。",
-      ko: "업무 파일 추출 후보를 자동 식별했습니다.",
+      ja: "業務ファイルの確認項目を読み取りました。",
+      zh: "已读取业务文件的待确认项目。",
+      ko: "업무 파일의 확인 항목을 읽었습니다.",
     },
     identity_extraction_ready: {
-      ja: "本人確認資料の抽出候補を自動識別しました。",
-      zh: "已自动识别身份资料抽取候选。",
-      ko: "본인 확인 자료 추출 후보를 자동 식별했습니다.",
+      ja: "本人確認資料の確認項目を読み取りました。",
+      zh: "已读取身份资料的待确认项目。",
+      ko: "본인 확인 자료의 확인 항목을 읽었습니다.",
     },
     extraction_review_saved: {
       ja: "確認結果を案件として保存しました。",
@@ -719,11 +716,12 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
   }
   const inputExtractionPreview = xlsxPayload?.inputExtraction;
   const isInputExtractionOnly = xlsxPayload?.kind === "input_file_extraction";
+  const targetCaseId = String(params?.targetCaseId ?? xlsxPayload?.targetCaseId ?? "").trim();
   const isIdentityExtractionOnly =
     isInputExtractionOnly &&
     (xlsxJob?.sourceType === "scan" || Boolean(inputExtractionPreview?.documentType.startsWith("identity_")));
   const mergeCandidates =
-    xlsxJob && inputExtractionPreview
+    xlsxJob && inputExtractionPreview && !targetCaseId
       ? evaluateCaseMergeCandidates({
           incomingData: buildRawExtractionCaseData(inputExtractionPreview),
           cases,
@@ -760,6 +758,76 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
     { value: "repair_fee", label: locale === "zh" ? "修缮基金" : locale === "ko" ? "수선적립금" : "修繕積立金" },
     { value: "notes", label: locale === "zh" ? "备注" : locale === "ko" ? "비고" : "備考" },
   ];
+  const intakeMode = String(params?.intake ?? "new").trim();
+  const isExistingIntake = intakeMode === "existing";
+  const isHoldingIntake = intakeMode === "holding";
+  const recentJobHref = (job: HubImportJobItem) => {
+    if (isInputFileExtractionJob(job)) return `/import-center?xlsxJob=${encodeURIComponent(job.id)}`;
+    return `/import-center?job=${encodeURIComponent(job.id)}&advanced=1`;
+  };
+  const assignmentCards: Array<
+    {
+      id: string;
+      href: string;
+      icon: string;
+      label: string;
+      desc: string;
+      active: boolean;
+    }
+  > = [
+    {
+      id: "case",
+      href: "/cases/new",
+      icon: "business_center",
+      label: locale === "zh" ? "新开案件" : locale === "ko" ? "새 안건" : "新規案件",
+      desc:
+        locale === "zh"
+          ? "租赁、买卖、报价或合同需要完整工作台时，从案件开始。"
+          : locale === "ko"
+            ? "임대, 매매, 견적, 계약처럼 작업대가 필요할 때 안건부터 만듭니다."
+            : "賃貸、売買、見積、契約の作業台が必要なときは案件から始めます。",
+      active: false,
+    },
+    {
+      id: "party",
+      href: "/parties/new",
+      icon: "person_add",
+      label: locale === "zh" ? "新建主体" : locale === "ko" ? "관계자 추가" : "関係者を追加",
+      desc:
+        locale === "zh"
+          ? "客户、业主、租户、保证人或公司，只先登记人和公司资料。"
+          : locale === "ko"
+            ? "고객, 소유자, 임차인, 보증인, 회사 정보를 먼저 등록합니다."
+            : "顧客、オーナー、借主、保証人、会社を先に登録します。",
+      active: false,
+    },
+    {
+      id: "property",
+      href: "/properties/new",
+      icon: "domain_add",
+      label: locale === "zh" ? "新建物件" : locale === "ko" ? "새 매물" : "物件を追加",
+      desc:
+        locale === "zh"
+          ? "房源、房号、地址、租金或售价明确时，先建立物件资料。"
+          : locale === "ko"
+            ? "매물, 호실, 주소, 임대료나 가격이 명확할 때 매물을 먼저 만듭니다."
+            : "物件、部屋番号、住所、賃料や価格が明確なときは物件を先に作成します。",
+      active: false,
+    },
+    {
+      id: "import",
+      href: "/import-center#source-upload",
+      icon: "drive_folder_upload",
+      label: locale === "zh" ? "导入资料" : locale === "ko" ? "자료 가져오기" : "資料を取り込む",
+      desc:
+        locale === "zh"
+          ? "已有证件、申请资料或台账文件时，先读取再核对归属。"
+          : locale === "ko"
+            ? "증명서, 신청 자료, 대장 파일이 있을 때 먼저 읽고 귀속을 확인합니다."
+            : "証明書、申込資料、台帳ファイルがある場合は読み取って割当を確認します。",
+      active: !isExistingIntake && !isHoldingIntake,
+    },
+  ];
 
   return (
     <div className="space-y-7">
@@ -769,61 +837,108 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
       </section>
       <PageFlashBanner message={flashMessage} />
 
-      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-xs font-bold text-indigo-700">
-              {locale === "zh" ? "申请书工作流" : locale === "ko" ? "신청서 작업 흐름" : "申込書ワークフロー"}
+            <p className="text-[11px] font-black uppercase tracking-wider text-blue-700">
+              {locale === "zh" ? "工作入口" : locale === "ko" ? "작업 시작" : "開始方法"}
             </p>
-            <h2 className="mt-1 text-xl font-black text-slate-950">
-              {locale === "zh" ? "资料进来以后，只确认会影响输出的项目" : locale === "ko" ? "자료가 들어오면 출력에 영향을 주는 항목만 확인" : "資料が入ったら、出力に影響する項目だけ確認"}
+            <h2 className="mt-1 text-base font-bold text-slate-950">
+              {locale === "zh" ? "选择要创建或导入的内容" : locale === "ko" ? "만들거나 가져올 대상을 선택" : "作成または取込の対象を選択"}
             </h2>
+            <p className="mt-1 text-xs text-slate-500">
+              {locale === "zh"
+                ? "案件、主体、物件可以直接建档；文件类资料放到导入区读取后再归属。"
+                : locale === "ko"
+                  ? "안건, 관계자, 매물은 바로 등록할 수 있고 파일 자료는 가져오기 영역에서 읽은 뒤 귀속을 정합니다."
+                  : "案件、関係者、物件は直接作成できます。ファイル資料は取込エリアで読み取ってから割当します。"}
+            </p>
           </div>
-          <div className="grid gap-2 sm:grid-cols-3 lg:min-w-[560px]">
-            {[
-              {
-                step: "1",
-                title: locale === "zh" ? "上传资料" : locale === "ko" ? "자료 업로드" : "資料を入れる",
-                desc: locale === "zh" ? "Excel / 在留卡 / 驾照" : locale === "ko" ? "Excel / 재류카드 / 면허증" : "Excel / 在留カード / 免許証",
-              },
-              {
-                step: "2",
-                title: locale === "zh" ? "补齐缺失" : locale === "ko" ? "부족 항목 보완" : "不足項目を補完",
-                desc: currentCase ? currentCase.caseTitle : locale === "zh" ? "创建案件后进入" : locale === "ko" ? "안건 생성 후 이동" : "案件作成後に確認",
-              },
-              {
-                step: "3",
-                title: locale === "zh" ? "输出申请书" : locale === "ko" ? "신청서 출력" : "申込書を出す",
-                desc: locale === "zh" ? "预览、微调、下载" : locale === "ko" ? "미리보기, 조정, 다운로드" : "プレビュー・微調整・PDF",
-              },
-            ].map((item) => (
-              <div key={item.step} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                <p className="text-[11px] font-black text-slate-400">{item.step}</p>
-                <p className="mt-1 text-sm font-black text-slate-950">{item.title}</p>
-                <p className="mt-1 truncate text-[11px] font-semibold text-slate-500">{item.desc}</p>
+          <Link href="/organize-center" className="inline-flex items-center justify-center rounded-lg border border-slate-300 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">
+            {locale === "zh" ? "查看整理中心" : locale === "ko" ? "정리 센터 보기" : "整理センターを見る"}
+          </Link>
+        </div>
+        <div className="mt-4 grid gap-3 lg:grid-cols-4">
+          {assignmentCards.map((item) => {
+            const cardClassName =
+              "group block w-full rounded-xl border p-4 text-left transition " +
+              (item.active
+                ? "border-[#001e40] bg-[#f2f6ff] ring-1 ring-[#001e40]/10"
+                : "border-slate-200 bg-slate-50 hover:border-[#001e40] hover:bg-white");
+            const cardContent = (
+              <div className="flex items-start gap-3">
+                <span className={"material-symbols-outlined text-[22px] " + (item.active ? "text-[#001e40]" : "text-slate-500")}>{item.icon}</span>
+                <div>
+                  <p className="text-sm font-bold text-slate-950">{item.label}</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">{item.desc}</p>
+                </div>
               </div>
-            ))}
+            );
+            return (
+              <Link key={item.id} href={item.href} className={cardClassName}>
+                {cardContent}
+              </Link>
+            );
+          })}
+        </div>
+
+        {isExistingIntake ? (
+          <div id="existing-case-list" className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-slate-950">
+                  {locale === "zh" ? "已有案件" : locale === "ko" ? "기존 안건" : "既存案件"}
+                </h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  {locale === "zh"
+                    ? "进入案件可查看已有资料；上传后的核对结果只会在可信匹配时追加。"
+                    : locale === "ko"
+                      ? "안건에서 기존 자료를 확인할 수 있습니다. 업로드 후 검토 결과는 신뢰 가능한 경우에만 추가됩니다."
+                      : "案件で既存資料を確認できます。アップロード後の確認結果は信頼できる場合のみ追加します。"}
+                </p>
+              </div>
+              <Link href="/organize-center" className="text-xs font-bold text-blue-700 hover:underline">
+                {locale === "zh" ? "全部案件" : locale === "ko" ? "전체 안건" : "全案件"}
+              </Link>
+            </div>
+            <div className="mt-3 grid gap-2 md:grid-cols-3">
+              {cases.slice(0, 3).map((caseItem) => (
+                <Link key={caseItem.id} href={`/cases/${encodeURIComponent(caseItem.id)}`} className="rounded-lg border border-slate-200 bg-white p-3 hover:border-blue-300 hover:bg-blue-50/40">
+                  <p className="truncate text-sm font-bold text-slate-950">{caseItem.caseTitle}</p>
+                  <p className="mt-1 text-[11px] text-slate-500">{formatDate(caseItem.updatedAt, locale)}</p>
+                </Link>
+              ))}
+              {cases.length === 0 ? (
+                <p className="rounded-lg border border-dashed border-slate-200 bg-white p-3 text-sm text-slate-500">
+                  {locale === "zh" ? "还没有可选择的案件。" : locale === "ko" ? "선택할 안건이 없습니다." : "選択できる案件はまだありません。"}
+                </p>
+              ) : null}
+            </div>
           </div>
-        </div>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <Link href={reviewHref} className="inline-flex items-center gap-2 rounded-lg bg-slate-950 px-4 py-2 text-xs font-bold text-white hover:bg-slate-800">
-            <span className="material-symbols-outlined text-[16px]">rule</span>
-            {locale === "zh" ? "进入缺项确认" : locale === "ko" ? "부족 항목 확인으로" : "不足項目の確認へ"}
-          </Link>
-          <Link href={outputHref} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">
-            <span className="material-symbols-outlined text-[16px]">picture_as_pdf</span>
-            {locale === "zh" ? "进入申请书输出" : locale === "ko" ? "신청서 출력으로" : "申込書出力へ"}
-          </Link>
-        </div>
+        ) : null}
       </section>
 
-      <section className="rounded-2xl border border-emerald-200 bg-white p-6 shadow-sm">
+      <section id="source-upload" className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div>
+          <h2 className="text-base font-bold text-slate-950">
+            {locale === "zh" ? "资料导入" : locale === "ko" ? "자료 가져오기" : "資料取込"}
+          </h2>
+          <p className="mt-1 text-xs text-slate-500">
+            {locale === "zh"
+              ? "已有文件时先读取内容，再进入核对和归属。"
+              : locale === "ko"
+                ? "파일이 있으면 먼저 내용을 읽고 확인과 귀속을 진행합니다."
+                : "ファイルがある場合は内容を読み取り、確認と割当へ進みます。"}
+          </p>
+        </div>
+
+      <section className="rounded-xl border border-emerald-200 bg-white p-6 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <span className="material-symbols-outlined text-emerald-700">badge</span>
               <h2 className="text-base font-bold text-slate-950">
-                {locale === "zh" ? "本人确认资料" : locale === "ko" ? "본인 확인 자료" : "本人確認資料"}
+                {locale === "zh" ? "本人资料" : locale === "ko" ? "본인 자료" : "本人資料"}
               </h2>
               <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
                 {locale === "zh" ? "在留卡 / 驾照二选一" : locale === "ko" ? "재류카드 / 운전면허증 중 하나" : "在留カード / 運転免許証のどちらか"}
@@ -831,30 +946,14 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
             </div>
             <p className="mt-2 max-w-2xl text-xs leading-6 text-slate-600">
               {locale === "zh"
-                ? "上传在留卡或驾照扫描件，系统先抽取申请人的姓名、生日、地址、证件号码等候选项；确认前不会覆盖案件资料。"
+                ? "在留卡 / 驾照：姓名、生日、地址、证件号码。"
                 : locale === "ko"
-                  ? "재류카드 또는 운전면허증 스캔본을 올리면 신청자의 이름, 생년월일, 주소, 증명서 번호 등을 후보로 추출합니다. 확인 전에는 안건 데이터를 덮어쓰지 않습니다."
-                  : "在留カードまたは運転免許証のスキャンを入れると、氏名・生年月日・住所・証明書番号などを候補化します。確認前に案件データは上書きしません。"}
+                  ? "재류카드 / 운전면허증: 이름, 생년월일, 주소, 증명서 번호."
+                  : "在留カード / 運転免許証: 氏名、生年月日、住所、証明書番号。"}
             </p>
           </div>
           {!isIdentityExtractionOnly ? (
-            <form action={uploadAndParseIdentityDocumentAction} className="w-full space-y-3 rounded-xl border border-emerald-100 bg-emerald-50 p-4 lg:max-w-md">
-              <label className="block space-y-1">
-                <span className="text-xs font-semibold text-emerald-900">
-                  {locale === "zh" ? "选择 PDF 或图片" : locale === "ko" ? "PDF 또는 이미지 선택" : "PDF または画像を選択"}
-                </span>
-                <input
-                  name="identityDocumentFile"
-                  type="file"
-                  accept=".pdf,.png,.jpg,.jpeg,image/*,application/pdf"
-                  required
-                  className="w-full rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm"
-                />
-              </label>
-              <button type="submit" className="w-full rounded-lg bg-emerald-700 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-800">
-                {locale === "zh" ? "识别本人资料" : locale === "ko" ? "본인 자료 인식" : "本人資料を識別"}
-              </button>
-            </form>
+            <IdentityDocumentUploadForm action={uploadAndParseIdentityDocumentAction} locale={locale} />
           ) : (
             <a href="/import-center" className="inline-flex items-center justify-center rounded-lg border border-slate-300 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">
               {locale === "zh" ? "重新上传" : locale === "ko" ? "다시 업로드" : "再アップロード"}
@@ -868,7 +967,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="text-sm font-bold text-emerald-950">
-                    {locale === "zh" ? "身份资料抽取结果核对" : locale === "ko" ? "신분 자료 추출 결과 확인" : "本人確認資料の抽出結果確認"}
+                    {locale === "zh" ? "本人资料核对" : locale === "ko" ? "본인 자료 확인" : "本人資料の確認"}
                   </h3>
                   <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-emerald-700">
                     {inputExtractionPreview.extractionStatus === "recognized"
@@ -878,7 +977,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                 </div>
                 <p className="mt-1 text-xs text-slate-600">
                   {locale === "zh"
-                    ? "请只采用确认无误的字段。系统允许只上传在留卡或只上传驾照，不要求两份都齐。"
+                    ? "只采用确认无误的字段。在留卡或驾照任选一份即可。"
                     : locale === "ko"
                       ? "확실한 항목만 채택하세요. 재류카드 또는 운전면허증 중 하나만 업로드해도 됩니다."
                       : "正しい項目だけ採用してください。在留カードまたは運転免許証の片方だけで進められます。"}
@@ -893,6 +992,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
               locale={locale}
               importJobId={xlsxJob.id}
               mergeCandidates={mergeCandidates}
+              targetCaseId={targetCaseId || undefined}
             />
           </div>
         ) : null}
@@ -900,46 +1000,49 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
 
       {/* ── Excel 物件一括取込 ─────────────────────────────────────── */}
       <section className="rounded-2xl border border-blue-200 bg-blue-50 p-6 space-y-5">
-        <div className="flex items-center gap-2">
-          <span className="material-symbols-outlined text-blue-700">table_view</span>
-          <h2 className="text-base font-bold text-blue-900">
-            {locale === "zh" ? "上传申请资料" : locale === "ko" ? "신청 자료 업로드" : "申込資料をアップロード"}
-          </h2>
-          <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-600">
-            {locale === "zh" ? "仅支持 .xlsx" : locale === "ko" ? ".xlsx 전용" : ".xlsx 専用"}
-          </span>
-        </div>
-
-        {/* Step 1: Upload */}
-        {!xlsxJob && (
-          <form action={uploadAndParseExcelAction} className="space-y-3">
-            <p className="text-xs text-blue-700">
-              {locale === "zh"
-                ? "普通物件台账会读取第一行表头；已知业务书式会先自动识别抽取候选。"
-                : locale === "ko"
-                  ? "일반 매물 대장은 첫 행의 열 이름을 읽고, 알려진 업무 서식은 추출 후보를 먼저 자동 식별합니다."
-                  : "通常の物件台帳は1行目の見出しを読み取り、既知の業務書式は抽出候補を先に自動識別します。"}
-            </p>
-            <label className="block space-y-1">
-              <span className="text-xs font-semibold text-blue-800">
-                {locale === "zh" ? "选择 .xlsx 文件" : locale === "ko" ? ".xlsx 파일 선택" : ".xlsx ファイルを選択"}
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-blue-700">table_view</span>
+              <h2 className="text-base font-bold text-blue-900">
+                {locale === "zh" ? "上传申请资料" : locale === "ko" ? "신청 자료 업로드" : "申込資料をアップロード"}
+              </h2>
+              <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-600">
+                {locale === "zh" ? "仅支持 .xlsx" : locale === "ko" ? ".xlsx 전용" : ".xlsx 専用"}
               </span>
-              <input
-                name="excelFile"
-                type="file"
-                accept=".xlsx"
-                required
-                className="w-full rounded-lg border border-blue-300 bg-white px-3 py-2 text-sm"
-              />
-            </label>
-            <button
-              type="submit"
-              className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-bold text-white hover:bg-blue-800"
-            >
-              {locale === "zh" ? "解析文件" : locale === "ko" ? "파일 분석" : "ファイルを解析"}
-            </button>
-          </form>
-        )}
+            </div>
+            <p className="mt-2 max-w-2xl text-xs leading-6 text-blue-700">
+              {locale === "zh"
+                ? "保证会社申请资料、物件台账。"
+                : locale === "ko"
+                  ? "보증회사 신청 자료, 매물 대장."
+                  : "保証会社申込資料、物件台帳。"}
+            </p>
+          </div>
+
+          {!xlsxJob && (
+            <form action={uploadAndParseExcelAction} className="w-full space-y-3 rounded-xl border border-blue-100 bg-white/75 p-4 lg:max-w-md">
+              <label className="block space-y-1">
+                <span className="text-xs font-semibold text-blue-800">
+                  {locale === "zh" ? "选择 .xlsx 文件" : locale === "ko" ? ".xlsx 파일 선택" : ".xlsx ファイルを選択"}
+                </span>
+                <input
+                  name="excelFile"
+                  type="file"
+                  accept=".xlsx"
+                  required
+                  className="w-full rounded-lg border border-blue-300 bg-white px-3 py-2 text-sm"
+                />
+              </label>
+              <button
+                type="submit"
+                className="w-full rounded-lg bg-blue-700 px-4 py-2 text-sm font-bold text-white hover:bg-blue-800"
+              >
+                {locale === "zh" ? "上传并读取" : locale === "ko" ? "업로드 후 읽기" : "アップロードして読み取る"}
+              </button>
+            </form>
+          )}
+        </div>
 
         {/* Known business file extraction preview */}
         {xlsxJob && xlsxPayload && inputExtractionPreview && !isIdentityExtractionOnly && (
@@ -948,20 +1051,20 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="text-sm font-bold text-indigo-950">
-                    {locale === "zh" ? "业务文件抽取结果核对" : locale === "ko" ? "업무 파일 추출 결과 확인" : "業務ファイル抽出結果の確認"}
+                    {locale === "zh" ? "申请资料核对" : locale === "ko" ? "신청 자료 확인" : "申込資料の確認"}
                   </h3>
                   <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700">
                     {inputExtractionPreview.extractionStatus === "recognized"
-                      ? locale === "zh" ? "已自动识别" : locale === "ko" ? "자동 식별 완료" : "自動識別済み"
-                      : locale === "zh" ? "未识别" : locale === "ko" ? "미식별" : "未識別"}
+                      ? locale === "zh" ? "已读取" : locale === "ko" ? "읽기 완료" : "読取済み"
+                      : locale === "zh" ? "需确认" : locale === "ko" ? "확인 필요" : "確認が必要"}
                   </span>
                 </div>
                 <p className="mt-1 text-xs text-slate-600">
                   {locale === "zh"
-                    ? "系统已把可识别内容整理为抽取候选。请逐项核对、修正或标为不明；未确认前不会自动写入正式物件、客户或报价。"
+                    ? "逐项核对、修正或标为不明。"
                     : locale === "ko"
-                      ? "시스템이 식별 가능한 내용을 추출 후보로 정리했습니다. 항목별로 확인, 수정 또는 불명 표시를 해 주세요. 확인 전에는 정식 매물, 고객, 견적에 자동 반영되지 않습니다."
-                      : "識別できた内容を抽出候補として整理しました。項目ごとに確認・修正・不明の判断をしてください。未確認の内容は正式な物件・顧客・見積へ自動登録されません。"}
+                      ? "항목별로 확인, 수정 또는 불명 표시를 해 주세요."
+                      : "項目ごとに確認・修正・不明を選びます。"}
                 </p>
               </div>
               <a href="/import-center" className="text-xs font-semibold text-indigo-700 hover:underline">
@@ -971,15 +1074,15 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
 
             <details className="rounded-lg border border-indigo-100 bg-indigo-50/40 p-3">
               <summary className="cursor-pointer text-xs font-bold text-indigo-900">
-                {locale === "zh" ? "识别详情" : locale === "ko" ? "식별 상세" : "識別の詳細"}
+                {locale === "zh" ? "资料详情" : locale === "ko" ? "자료 상세" : "資料詳細"}
               </summary>
             <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-4">
               <div className="rounded-lg bg-indigo-50 p-3">
-                <dt className="font-semibold text-indigo-900">{locale === "zh" ? "识别状态" : locale === "ko" ? "식별 상태" : "識別状態"}</dt>
+                <dt className="font-semibold text-indigo-900">{locale === "zh" ? "状态" : locale === "ko" ? "상태" : "状態"}</dt>
                 <dd className="mt-1 text-slate-700">
                   {inputExtractionPreview.extractionStatus === "recognized"
-                    ? locale === "zh" ? "已识别" : locale === "ko" ? "식별됨" : "識別済み"
-                    : "unknown"}
+                    ? locale === "zh" ? "已读取" : locale === "ko" ? "읽기 완료" : "読取済み"
+                    : locale === "zh" ? "需确认" : locale === "ko" ? "확인 필요" : "確認が必要"}
                 </dd>
               </div>
               <div className="rounded-lg bg-indigo-50 p-3">
@@ -991,11 +1094,11 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                 <dd className="mt-1 truncate text-slate-700">{inputExtractionPreview.detectedSheet ?? "-"}</dd>
               </div>
               <div className="rounded-lg bg-indigo-50 p-3">
-                <dt className="font-semibold text-indigo-900">{locale === "zh" ? "候选项目数" : locale === "ko" ? "후보 항목 수" : "候補項目数"}</dt>
+                <dt className="font-semibold text-indigo-900">{locale === "zh" ? "待确认项目数" : locale === "ko" ? "확인 항목 수" : "確認項目数"}</dt>
                 <dd className="mt-1 text-slate-700">{inputExtractionPreview.fields.length}</dd>
               </div>
               <div className="rounded-lg bg-indigo-50 p-3">
-                <dt className="font-semibold text-indigo-900">{locale === "zh" ? "识别规则" : locale === "ko" ? "식별 규칙" : "識別ルール"}</dt>
+                <dt className="font-semibold text-indigo-900">{locale === "zh" ? "模板版本" : locale === "ko" ? "템플릿 버전" : "テンプレート版"}</dt>
                 <dd className="mt-1 break-all font-mono text-[11px] text-slate-700">{inputExtractionPreview.templateVersion}</dd>
               </div>
               <div className="rounded-lg bg-indigo-50 p-3">
@@ -1005,7 +1108,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                 </dd>
               </div>
               <div className="rounded-lg bg-indigo-50 p-3">
-                <dt className="font-semibold text-indigo-900">{locale === "zh" ? "自动识别置信度" : locale === "ko" ? "자동 식별 신뢰도" : "自動識別の確度"}</dt>
+                <dt className="font-semibold text-indigo-900">{locale === "zh" ? "匹配度" : locale === "ko" ? "일치도" : "一致度"}</dt>
                 <dd className="mt-1 tabular-nums text-slate-700">{Math.round(inputExtractionPreview.fingerprintConfidence * 100)}%</dd>
               </div>
             </dl>
@@ -1017,14 +1120,15 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                 locale={locale}
                 importJobId={xlsxJob.id}
                 mergeCandidates={mergeCandidates}
+                targetCaseId={targetCaseId || undefined}
               />
             ) : (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
                 {locale === "zh"
-                  ? "未识别为已知业务文件。如这是普通物件台账，可继续使用下方表格导入。"
+                  ? "未匹配到申请资料格式。普通物件台账可继续导入。"
                   : locale === "ko"
-                    ? "알려진 업무 파일로 식별되지 않았습니다. 일반 매물 대장이라면 아래 표 가져오기를 계속 사용할 수 있습니다."
-                    : "既知の業務ファイルとして識別できませんでした。通常の物件台帳の場合は下の表取込を続行できます。"}
+                    ? "신청 자료 형식과 일치하지 않습니다. 일반 매물 대장은 계속 가져올 수 있습니다."
+                    : "申込資料の形式と一致しません。通常の物件台帳は続けて取り込めます。"}
               </div>
             )}
           </div>
@@ -1137,10 +1241,10 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
               </p>
               <p className="mt-1 text-xs text-slate-600">
                 {locale === "zh"
-                  ? "先进入信息整理页，只确认缺失或需要人工判断的项目；确认后再输出保证会社申请书。"
+                  ? "打开整理信息，确认要保留到案件的数据。"
                   : locale === "ko"
-                    ? "먼저 정보 정리 화면에서 부족하거나 사람이 판단해야 할 항목만 확인한 뒤 보증회사 신청서를 출력하세요."
-                    : "まず情報整理で、足りない項目と人の判断が必要な項目だけ確認します。その後、保証会社申込書を出します。"}
+                    ? "정보 정리를 열고 안건에 남길 데이터를 확인하세요."
+                    : "情報整理を開き、案件に残すデータを確認します。"}
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
@@ -1148,13 +1252,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                 href={reviewHref}
                 className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-700"
               >
-                {locale === "zh" ? "确认缺失项" : locale === "ko" ? "부족 항목 확인" : "不足項目を確認"}
-              </a>
-              <a
-                href={outputHref}
-                className="rounded-lg border border-blue-300 bg-white px-4 py-2 text-sm font-bold text-blue-800 hover:bg-blue-50"
-              >
-                {locale === "zh" ? "进入申请书输出" : locale === "ko" ? "신청서 출력으로" : "申込書出力へ"}
+                {locale === "zh" ? "整理信息" : locale === "ko" ? "정보 정리" : "情報整理へ"}
               </a>
               <a href="/import-center" className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">
                 {locale === "zh" ? "继续导入" : locale === "ko" ? "계속 가져오기" : "続けて取り込む"}
@@ -1162,6 +1260,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
             </div>
           </div>
         )}
+      </section>
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -1172,26 +1271,22 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
             </h2>
             <p className="mt-1 text-xs text-slate-500">
               {locale === "zh"
-                ? "上传后请进入信息整理页，只确认缺失或需确认的项目。"
+                ? "选择一条资料继续整理。"
                 : locale === "ko"
-                  ? "업로드 후 정보 정리 화면에서 부족하거나 확인이 필요한 항목만 봅니다."
-                  : "アップロード後は情報整理で、足りない項目と確認が必要な項目だけ見ます。"}
+                  ? "자료를 선택해 계속 정리합니다."
+                : "資料を選んで整理を続けます。"}
             </p>
           </div>
-          <Link href={reviewHref} className="inline-flex items-center gap-2 rounded-lg bg-slate-950 px-4 py-2 text-xs font-bold text-white hover:bg-slate-800">
-            <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
-            {locale === "zh" ? "下一步" : locale === "ko" ? "다음 단계" : "次のステップ"}
-          </Link>
         </div>
         <div className="mt-4 grid gap-2 md:grid-cols-3">
           {jobs.slice(0, 3).map((job) => (
-            <Link key={`simple-import-${job.id}`} href={reviewHref} className="rounded-lg border border-slate-200 bg-slate-50 p-3 hover:bg-white">
+            <Link key={`simple-import-${job.id}`} href={recentJobHref(job)} className="rounded-lg border border-slate-200 bg-slate-50 p-3 hover:bg-white">
               <p className="truncate text-sm font-bold text-slate-900">{job.title}</p>
               <p className="mt-1 text-xs text-slate-500">
                 {formatDate(job.createdAt, locale)} / {statusLabel[job.status]}
               </p>
               <p className="mt-2 text-[11px] font-bold text-slate-700">
-                {locale === "zh" ? "去确认缺失项" : locale === "ko" ? "부족 항목 확인" : "不足項目を確認"}
+                {locale === "zh" ? "继续处理这条资料" : locale === "ko" ? "이 자료 계속 처리" : "この資料を続ける"}
               </p>
             </Link>
           ))}
@@ -1207,14 +1302,14 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
         <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
           <div>
             <h2 className="text-sm font-bold text-slate-900">
-              {locale === "zh" ? "普通台账导入 / 详细设置" : locale === "ko" ? "일반 대장 가져오기 / 상세 설정" : "通常の台帳取込・詳細設定"}
+              {locale === "zh" ? "台账与附件" : locale === "ko" ? "대장과 첨부" : "台帳と添付"}
             </h2>
             <p className="mt-1 text-xs text-slate-500">
               {locale === "zh"
-                ? "这里保留批量导入、校验日志和附件登记等后台能力，日常创建申请书不需要打开。"
+                ? "批量导入、校验记录、附件登记。"
                 : locale === "ko"
-                  ? "일괄 가져오기, 검증 로그, 첨부 등록 등 보조 기능입니다. 일반 신청서 작성에는 필요하지 않습니다."
-                  : "一括取込、検証ログ、添付登録などの補助機能です。通常の申込書作成では開く必要はありません。"}
+                  ? "일괄 가져오기, 검증 기록, 첨부 등록."
+                  : "一括取込、検証記録、添付登録。"}
             </p>
           </div>
           {!showAdvanced ? (

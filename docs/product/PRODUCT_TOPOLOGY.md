@@ -16,6 +16,49 @@ The product replaces repetitive Excel work by turning scattered source files int
 
 AI is not a separate frontstage product. AI is an operator inside this workbench: it reads source files, proposes candidates, highlights uncertainty, prepares outputs, and learns from user-confirmed corrections through product-owned memory.
 
+## AI Agent Boundary
+
+Broker Desk should not present AI as an upgraded RPA script.
+
+RPA automates stable actions in stable interfaces: click, copy, paste, submit. Broker Desk AI is valuable only when it handles work that fixed automation cannot reliably handle:
+
+- understand the business meaning of messy source files
+- identify whether a document belongs to a case, subject, property, or unassigned intake
+- extract structured candidates from Excel, PDF, scans, and photos
+- compare values across sources and expose conflicts
+- separate confirmed facts from candidates, unknowns, and user-filled missing values
+- prepare output-specific suggestions without polluting reusable case data
+- produce auditable proposals that a broker can accept, edit, reject, or leave unresolved
+
+The product-level AI shape is:
+
+```text
+Real-estate data assistant
+  -> skills for bounded tasks
+  -> tools for product actions
+  -> agent workflow for goal-directed, audited, human-approved execution
+```
+
+Definitions:
+
+- `Skill`: a bounded capability such as document extraction, field matching, conflict detection, or PDF-template pre-match.
+- `Tool`: a product action such as read case, create candidate fields, save review decision, generate draft output, or open template preview.
+- `Agent`: a controlled workflow that knows the user's goal, gathers product context, calls skills/tools, proposes changes, and waits for approval before durable writes.
+
+The model is not the memory system. Broker Desk's own database is the memory system:
+
+- subjects
+- properties
+- cases
+- source files and OCR/extraction results
+- field decisions and correction events
+- user-confirmed values
+- rejected suggestions
+- template bindings and approved experience notes
+- tenant/user preferences and permission rules
+
+External models may be stateless. Broker Desk must remain stateful by retrieving the relevant product memory before each AI task and by writing auditable events after user confirmation.
+
 ## Product Value Map
 
 ### 1. Convenience Layer: Input
@@ -48,7 +91,8 @@ Workbench value:
 - AI candidate review
 - conflict resolution
 - source evidence lookup
-- output readiness
+- search across case facts, aliases, values, and source files
+- issue queues for missing, candidate, conflicting, stale, and recently imported facts
 - case-level confirmed data
 
 This is where the broker actually works after input and before output.
@@ -111,6 +155,67 @@ Source Files
               -> Correction Events / Experience Updates
 ```
 
+## Ownership-First Intake
+
+Broker Desk should not treat raw upload as the primary work start.
+
+The product's main operating unit is the `Case`. A case binds reusable subjects, reusable properties, source files, confirmed case facts, output artifacts, and execution state for one concrete brokerage workflow.
+
+The correct intake rule is:
+
+```text
+Choose or create ownership
+  -> upload / read source files
+    -> review extracted candidates
+      -> save confirmed facts to the chosen owner
+        -> use case data for outputs and execution tracking
+```
+
+Valid ownership targets:
+
+- `Case`: rental application, rental mandate, sale mandate, quote preparation, contract workflow, renewal, cancellation, or other business operation.
+- `Subject`: reusable person or company records such as applicant, owner, guarantor, tenant, buyer, seller, broker, or management company.
+- `Property`: reusable property records such as building, room, address, rent, fees, ownership, and management information.
+- `Unassigned Intake`: temporary holding space for files whose owner is unclear.
+
+Product rules:
+
+- Files without a chosen owner must stay in `Unassigned Intake`.
+- Unassigned files may be detected and previewed, but must not write confirmed facts into subject, property, or case records.
+- The `整理信息` entry must be an object center, not a case-only list. Users should be able to start from a case, subject, property, or unassigned file, then attach missing relationships later.
+- Creating a `Subject` must open a profile workflow. It must not silently create a usable record with placeholder phone numbers, fake purposes, or inferred roles.
+- Subject profile drafts may auto-save locally while the user is typing, but drafts must not participate in output autofill until the user explicitly saves the subject.
+- Multi-file merge is allowed only inside one chosen owner and only when key identity or property facts do not conflict.
+- Drag-and-drop can help assign files to a case, subject, or property, but explicit business roles still require structured fields.
+- Quotes, guarantee applications, contracts, and future documents are output artifacts under a case, not standalone data islands.
+- Generated output artifacts must keep snapshots of the data used at generation time so later edits do not rewrite historical quotes or contracts.
+
+## Organize Center Rule
+
+`整理信息` is the broker's object index and editing entry. It should not force every record into a case before the business relationship is known.
+
+Top-level work objects:
+
+- `Subject`: person or company records such as applicants, owners, guarantors, buyers, sellers, brokers, and management companies.
+- `Property`: reusable property records such as building, room, address, rent, fees, owner, and management context.
+- `Case`: a concrete business workflow that connects subjects, properties, files, and future outputs.
+- `Unassigned Intake`: source files that have been read but do not yet have a confirmed owner.
+
+Default behavior:
+
+- New subject and new property actions open their own editing workflows.
+- New case action opens an empty case workbench with the normal field structure already present.
+- Upload actions may happen before or after ownership is chosen, but unassigned uploads must remain in the intake queue until assigned.
+- The object list must support type, status, and search filters before data volume becomes large.
+- Output readiness belongs in output workflows, not as the primary organizing model of `整理信息`.
+
+2026-06-27 implementation checkpoint:
+
+- The app now has a first object-center scaffold for cases, subjects / related parties, properties, and unassigned intake.
+- The homepage has been redirected away from "today's tasks" toward a data relationship center.
+- New case, subject, and property paths now open object-specific creation flows.
+- This is not yet the final interaction design. The next product pass must reduce density, remove remaining internal concepts from ordinary screens, and make the first action path obvious within a few seconds.
+
 Expanded:
 
 ```text
@@ -147,7 +252,7 @@ V1 should now focus on this spine:
 2. Extracted values enter a reviewable state.
 3. User can work in an editable case workbench.
 4. Workbench shows confirmed, edited, AI-suggested, missing, conflicting, rejected, and unknown states.
-5. Output readiness is calculated from workbench data.
+5. Workbench organizes reusable case facts as a case dossier; output readiness is calculated inside each output workflow from confirmed workbench data plus output draft state.
 6. `ふれんず保証` can export certified-safe fields from confirmed case data and candidate/manual fields after preview confirmation.
 7. Save/proceed/export actions produce correction events when AI/rule candidates differ from confirmed user results.
 8. Other guarantee templates can be added after the workbench spine is solid.
@@ -184,8 +289,8 @@ The workbench is acceptable when:
 - missing fields are visible
 - AI candidates and low-confidence fields are visible
 - conflicts are visible
-- output-required fields are highlighted
-- summary/readiness tells the broker what remains before output
+- case facts can be confirmed without starting an output workflow
+- output readiness is checked in the relevant output workflow, not as the organizing center of the workbench
 
 ### Output OK
 

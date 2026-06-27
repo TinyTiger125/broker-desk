@@ -86,29 +86,31 @@ export default async function AiExperiencePage({ searchParams }: AiExperiencePag
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-xs font-black uppercase tracking-wider text-[#002FA7]">AI Review</p>
+            <p className="text-xs font-black uppercase tracking-wider text-[#002FA7]">
+              {tr(locale, { ja: "入力ルール", zh: "填写规则", ko: "작성 규칙" })}
+            </p>
             <h1 className="mt-2 text-2xl font-black tracking-tight text-slate-950">
-              {tr(locale, { ja: "AI経験レビュー", zh: "AI 经验审核", ko: "AI 경험 리뷰" })}
+              {tr(locale, { ja: "入力ルールの確認", zh: "填写规则审核", ko: "작성 규칙 검토" })}
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
               {tr(locale, {
-                ja: "承認済みだけが後続のAI文脈候補になります。却下や承認待ちは業務判断に使いません。",
-                zh: "只有已批准经验会进入后续 AI 上下文候选；待审核和已拒绝不会用于业务判断。",
-                ko: "승인된 경험만 이후 AI 문맥 후보가 됩니다. 대기/거절 항목은 업무 판단에 쓰지 않습니다.",
+                ja: "承認したルールだけが今後の入力支援に使われます。保留中や却下した内容は反映しません。",
+                zh: "只有已批准的规则会用于后续填写辅助；待审核和已拒绝的内容不会生效。",
+                ko: "승인된 규칙만 이후 작성 지원에 사용됩니다. 대기/거절 항목은 반영하지 않습니다.",
               })}
             </p>
           </div>
           <form action={draftAiExperiencesAction}>
             <button className="inline-flex items-center gap-2 rounded-lg bg-slate-950 px-4 py-2 text-sm font-black text-white hover:bg-slate-800">
               <span className="material-symbols-outlined text-[18px]">sync</span>
-              {tr(locale, { ja: "草稿を生成", zh: "生成草稿", ko: "초안 생성" })}
+              {tr(locale, { ja: "提案を作成", zh: "整理待审规则", ko: "검토 항목 정리" })}
             </button>
           </form>
         </div>
         {params?.flash ? (
           <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-800">
             {params.flash === "experience_drafted"
-              ? tr(locale, { ja: `生成: ${createdCount}件`, zh: `已生成：${createdCount} 条`, ko: `생성: ${createdCount}건` })
+              ? tr(locale, { ja: `整理済み: ${createdCount}件`, zh: `已整理：${createdCount} 条`, ko: `정리됨: ${createdCount}건` })
               : tr(locale, { ja: "審査を保存しました。", zh: "审核已保存。", ko: "리뷰를 저장했습니다." })}
           </div>
         ) : null}

@@ -10,8 +10,9 @@ const nextConfig: NextConfig = {
     root: projectRoot,
   },
   experimental: {
+    proxyClientMaxBodySize: "72mb",
     serverActions: {
-      bodySizeLimit: "5mb",
+      bodySizeLimit: "72mb",
     },
   },
   images: {

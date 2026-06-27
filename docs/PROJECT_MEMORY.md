@@ -1,6 +1,6 @@
 # Broker Desk Project Memory
 
-Last updated: 2026-06-18
+Last updated: 2026-06-27
 
 This file is the fixed project-memory entrypoint for Broker Desk.
 
@@ -37,8 +37,10 @@ Do not use this file for:
 4. `docs/product/PRODUCT_TOPOLOGY.md`: product value topology and phase model.
 5. `docs/operations/PM_CONTROL.md`: multi-agent operating model and historical task board.
 6. Task-specific docs:
+   - current handoff: `docs/operations/DEVELOPMENT_HANDOFF_2026_06_27.md`
    - input: `docs/product/V1_INPUT_FILE_MODEL.md`
    - workbench: `docs/product/V1_CASE_WORKBENCH.md`
+   - case information architecture: `docs/product/V1_CASE_INFORMATION_ARCHITECTURE.md`
    - guarantee output: `docs/product/V1_GUARANTEE_APPLICATION_OUTPUT.md`
    - PDF template factory: `docs/product/PDF_TEMPLATE_AUTHORING_EXPERIENCE.md`
    - field catalog: `docs/product/CANONICAL_FIELD_CATALOG.md`
@@ -68,6 +70,36 @@ Input convenience -> editable case workbench -> output convenience
 ```
 
 The product should feel like a faster structured Excel workbench, not a generic CRM, not a PDF editor, and not an AI chat product.
+
+2026-06-20 information-architecture decision:
+
+- `整理信息` is the product's case dossier workbench, not a guarantee-application pre-form.
+- The workbench should organize data by a finite property-case information model: participants, property, contract terms, employment/income, identity documents, related companies, source evidence, and issue states.
+- A tree is useful as the dossier map, but it must be paired with issue queues, search, field states, and source evidence. A pure tree would become a collapsed spreadsheet.
+- Output modules should run their own missing-field checks. Output-specific draft fields and render fragments must not pollute the reusable case dossier.
+- First implementation slice is in place: the field catalog exposes derived information-tree metadata; the case workbench renders the dossier tree, issue summary, search, field path/importance chips, and a `not_applicable` decision.
+- Durable source: `docs/product/V1_CASE_INFORMATION_ARCHITECTURE.md`.
+
+2026-06-24 AI and input-system decision:
+
+- Broker Desk AI is not an upgraded RPA layer. RPA automates stable clicks; Broker Desk AI is valuable only when it understands messy source material, proposes structured candidates, detects conflicts, classifies ownership, and returns auditable changes for human approval.
+- A `Skill` is a bounded capability, a `Tool` is a product action, and an `Agent` is the orchestrated workflow that assembles context, invokes skills/tools, proposes changes, and waits for approval before durable writes.
+- The model is not the memory system. Broker Desk's own database state is product memory: confirmed case data, source evidence, correction events, rejected suggestions, approved AI experience notes, template bindings, output snapshots, tenant preferences, and permission rules.
+- `建档导入` must be treated as object routing plus material intake, not as a raw upload page.
+- Users must be able to create a case, subject, or property before any upload; each create path should open an editable workflow with expected fields present even when values are empty.
+- Uploads can happen before or after ownership is chosen, but unassigned material must not silently write confirmed facts into case, subject, or property records.
+- Durable sources: `docs/product/PRODUCT_TOPOLOGY.md`, `docs/product/V1_AI_CORRECTION_LEARNING.md`, `docs/product/V1_INPUT_FILE_MODEL.md`.
+
+2026-06-27 input-system implementation checkpoint:
+
+- The product frontstage is now organized around `资料管理中心`, `建档导入`, `整理信息`, and `输出文件`.
+- `资料管理中心` is no longer a generic "today's tasks" screen. It now attempts to show the relationship between cases, subjects / related parties, properties, and imported material.
+- `建档导入` is now an ownership-routing and material-intake surface. It can start from a new case, an existing case, or unassigned intake; upload remains a method inside that flow.
+- `整理信息` is now an object-center list for cases, subjects, properties, and unassigned intake. It is not only a case list and not only a guarantee-application preparation page.
+- New case, subject, and property actions now open dedicated editable workflows instead of only adding placeholder rows.
+- The case workbench has begun moving from a global save model toward per-field-card saves.
+- Current UX is not finished: the home screen and object center are functionally closer to the product direction, but still need spacing, hierarchy, and broker-first simplification before pilot-quality acceptance.
+- Durable source: `docs/operations/DEVELOPMENT_HANDOFF_2026_06_27.md`.
 
 ## Target User
 
@@ -124,6 +156,7 @@ Current source:
 
 - `src/lib/case-field-catalog.ts`
 - `docs/product/CANONICAL_FIELD_CATALOG.md`
+- `docs/product/V1_CASE_INFORMATION_ARCHITECTURE.md`
 
 Product rule:
 
@@ -203,6 +236,13 @@ Implemented or materially present:
   - `docs/engineering/postgres_rls.sql` defines the first Supabase/Postgres RLS baseline for tenant-owned tables, global user/tenant/membership reads, and no anonymous business-table grants.
   - `npm run test:production-security` covers production demo-auth lockout, Clerk configuration guardrails, trusted-header signature enforcement, and RLS SQL coverage.
 - Stitch-based visual direction has been partially integrated.
+- 2026-06-27 input-system scaffold:
+  - `/` is now a data-management center with search, relationship-oriented lanes, object list, current-object panel, and recent updates.
+  - `/import-center` is now framed as ownership-first material intake instead of plain upload.
+  - `/organize-center` lists cases, subjects / related parties, properties, and unassigned intake with type/status/search filters.
+  - `/cases/new`, `/parties/new`, and `/properties/new` provide object-specific create flows.
+  - `/cases/[id]` has a per-field-card save component for the case workbench.
+  - identity-document upload supports multiple files with local count and size validation.
 
 Not yet release-ready:
 
@@ -218,6 +258,10 @@ Not yet release-ready:
 - Live Clerk invitation delivery and webhook delivery are not verified in this workspace because real Clerk keys/project settings are not present.
 - AI usage quota/cost accounting is not implemented yet.
 - Database RLS SQL exists as a baseline, but service-layer tenant scoping remains the only verified runtime guard until the SQL is applied and tested on the production database.
+- The 2026-06-27 input-system route split is not yet a finished design system. It is a functional scaffold that still needs browser QA and layout refinement.
+- `资料管理中心` still needs a serious UX pass. It should become a clear broker operating console, not a dense object table.
+- Subject and property editing flows are still much shallower than the case workbench.
+- Some advanced import/template language and controls remain accessible in current routes and must be gated or demoted before external users.
 
 ## Guarantee Template Status
 
@@ -375,18 +419,20 @@ Architecture lesson:
 
 Immediate:
 
-1. Harden Phase 2 with production auth integration and persistent-database migration verification.
-2. Add member-management UI and tenant switching semantics for real users.
-3. Add denial tests for high-risk permissions: template publish, source delete, final download, AI pre-match overwrite, and member role changes.
-4. Preserve the current 1/2/3/4/5 template coordinate state and avoid accidental overwrite.
+1. Bring up the 2026-06-27 handoff version on the next device and verify the documented acceptance gate.
+2. Refine `资料管理中心` until it clearly works as a broker console: search, object relationship map, actionable attention list, and creation/continuation routes.
+3. Continue the input-system polish around object-specific workflows: new case, new subject, new property, and unassigned intake.
+4. Keep batch file reading available after ownership is chosen, so documents can bulk-fill an existing record.
+5. Preserve the current 1/2/3/4/5 template coordinate state and avoid accidental overwrite.
 
 Near term:
 
-1. Move or gate template factory controls behind admin/backstage semantics.
-2. Finish remaining company-option output gaps such as Jリース checkbox/plan output.
-3. Repeat full-data tests across 1/2/3/4/5.
-4. Record per-template acceptance status: ready, conditional, blocked, or calibration-needed.
-5. Keep ordinary broker flow strictly 1-2-3.
+1. Harden per-field-card save behavior in the case workbench with browser QA.
+2. Add richer subject and property profile workflows instead of leaving them as shallow create forms.
+3. Move or gate internal import mapping and template-factory controls behind admin/backstage semantics.
+4. Harden production auth integration and persistent-database migration verification.
+5. Add denial tests for high-risk permissions: template publish, source delete, final download, AI pre-match overwrite, and member role changes.
+6. Keep ordinary broker flow strictly: create/route material -> organize confirmed facts -> output documents.
 
 Before closed pilot:
 
@@ -447,3 +493,24 @@ http://localhost:3002/api/guarantee-applications/j_lease_individual_v1/download?
 - Added the first real-account provisioning loop: new platform owners and tenant-added members start as invited seats, Clerk invitation sending is wired through the server-side Clerk Invitations API when configured, `/api/webhooks/clerk` binds/deletes external identities, and invited memberships activate on Clerk login/webhook sync.
 - Clerk platform-owner bootstrap now accepts either local `users.id` values or Clerk `user_...` subjects in `BROKER_DESK_PLATFORM_OWNER_IDS`; this avoids requiring an unstable local memory user id during first real-login setup.
 - Local Clerk bootstrap has a PlatformOwner tenant fallback for local testing: a configured PlatformOwner without tenant membership can use the seeded default tenant as a temporary `platform_owner` session and, in memory mode, read through the seeded `user_demo` data view so product-module navigation does not 500 or lose the example case. It is default-on only outside production runtime; `next start` local testing requires `BROKER_DESK_ENABLE_PLATFORM_OWNER_TENANT_FALLBACK=true`. This is not a production tenant-access rule.
+
+### 2026-06-21
+
+- Started the `整理信息` IA rebuild: the case workbench now has a case-dossier tree, derived node status, cross-field search, queue/status filters, and a `not_applicable` field decision for facts that do not apply to a case.
+- Product boundary recorded: `整理信息` is the reusable case-data center, not a guarantee-application pre-form. Guarantee applications, quotes, ads, and future output documents must consume confirmed case dossier data and run their own missing-field checks.
+- The main editable case-data form is visually prioritized before guarantee-application readiness and company-specific draft controls. Saving from that form preserves the current tree/search/filter context so brokers can work inside a narrowed information category without being bounced back to a default output view.
+
+### 2026-06-24
+
+- Recorded the AI/RPA boundary: Broker Desk AI should handle semantic extraction, ownership classification, conflict detection, and auditable proposals, not act as a screen-clicking automation layer.
+- Recorded the Agent/Skill/Tool boundary: skills are bounded capabilities, tools are product actions, and the agent is a controlled workflow with human approval before durable writes.
+- Recorded the memory boundary: product memory lives in Broker Desk's database and audit records, not in the external model's private memory.
+- Recentered the input direction on owner-first creation and routing: users can create cases, subjects, or properties before uploading files; uploaded files can then fill or update those chosen owners.
+
+### 2026-06-27
+
+- Added a device-transfer handoff document: `docs/operations/DEVELOPMENT_HANDOFF_2026_06_27.md`.
+- Updated the frontstage navigation direction around `资料管理中心`, `建档导入`, `整理信息`, and `输出文件`.
+- Implemented the first object-center scaffold: homepage relationship map, organize-center object list, and dedicated create flows for cases, subjects, and properties.
+- Added per-field-card save behavior to the case workbench as a step away from one global save button.
+- Recorded that this is not a finished UX state. The next pass must simplify density, hierarchy, object routing, and broker-facing language before treating it as pilot-ready.

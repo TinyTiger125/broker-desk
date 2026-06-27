@@ -21,6 +21,7 @@ Files in `docs/product/` describe current product direction and product-owned mo
 | `docs/product/PRODUCT_TOPOLOGY.md` | Product position, value topology, and priority rule. |
 | `docs/product/V1_INPUT_FILE_MODEL.md` | Source-file import, extraction, review, and trust model. |
 | `docs/product/V1_CASE_WORKBENCH.md` | Case workbench behavior, trust states, and review workflow. |
+| `docs/product/V1_CASE_INFORMATION_ARCHITECTURE.md` | Case dossier information tree, issue queues, evidence layer, and Excel-replacement workbench structure. |
 | `docs/product/V1_GUARANTEE_APPLICATION_OUTPUT.md` | Guarantee-company application output model. |
 | `docs/product/CANONICAL_FIELD_CATALOG.md` | Standard case field catalog and aliases. |
 | `docs/product/PDF_TEMPLATE_AUTHORING_EXPERIENCE.md` | Internal PDF template authoring and calibration workflow. |
@@ -45,6 +46,7 @@ Files in `docs/operations/` describe PM control, terminology, and market constra
 
 | File | Purpose |
 | --- | --- |
+| `docs/operations/DEVELOPMENT_HANDOFF_2026_06_27.md` | Current device-transfer handoff: implementation state, risks, and next steps as of 2026-06-27. |
 | `docs/operations/PM_CONTROL.md` | Historical PM task board and multi-agent operating model. |
 | `docs/operations/JP_COMPLIANCE_CHECKLIST.md` | Japan real-estate compliance mapping checklist. |
 | `docs/operations/JA_TERMINOLOGY_STYLE_GUIDE.md` | Japanese terminology style guide. |

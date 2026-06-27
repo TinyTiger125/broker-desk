@@ -49,6 +49,53 @@ Model/runtime baseline:
 - Use smaller models only for bounded low-risk classification or preprocessing tasks.
 - See `docs/product/V1_AI_MODEL_SELECTION.md` for the model routing decision.
 
+## Agent, Skill, Tool, And Memory Boundary
+
+Broker Desk AI must not be implemented or marketed as a generic chatbot or a screen-clicking RPA layer.
+
+Useful AI work is semantic and reviewable:
+
+- read source material and propose structured candidates
+- classify ownership: case, subject, property, or unassigned intake
+- detect conflicts across documents
+- normalize names, addresses, postal codes, dates, phone numbers, money, and split-field formats
+- explain uncertainty through source evidence
+- prepare output-specific drafts from confirmed data
+- suggest template field bindings for internal/admin template authoring
+
+Implementation vocabulary:
+
+- `Skill`: a narrow model-backed or deterministic capability, such as OCR cleanup, field extraction, conflict detection, candidate normalization, output preflight, or template field pre-match.
+- `Tool`: a product API/action that reads or writes Broker Desk state, such as listing case data, creating extraction candidates, saving a review decision, or generating a PDF draft.
+- `Agent`: an orchestrated workflow that receives a user goal, assembles context from Broker Desk state, invokes skills/tools, returns a proposed change set, and waits for human approval before durable writes.
+
+Product rule:
+
+```text
+No durable business fact is finalized only because AI generated it.
+AI can propose. The product records what the user confirmed.
+```
+
+Memory rule:
+
+```text
+Model memory is not product memory.
+Broker Desk database state is product memory.
+```
+
+The product memory sources are:
+
+- confirmed case data
+- source file text/OCR/extraction evidence
+- extraction review decisions
+- correction events
+- approved AI experience notes
+- rejected or overridden suggestions
+- template bindings and output snapshots
+- tenant-scoped preferences and permission rules
+
+Before each AI task, Broker Desk should assemble only the relevant context and pass it to the model. After each reviewed action, Broker Desk should write structured evidence back into its own state. This keeps the AI portable across model vendors and prevents product behavior from depending on a provider's private model memory.
+
 ## Current Implementation Status
 
 Phase A foundation is implemented:

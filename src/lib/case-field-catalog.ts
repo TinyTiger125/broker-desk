@@ -1,5 +1,18 @@
 export type CaseFieldStorageScope = "case_fact" | "output_process" | "template_option";
 
+export type CaseFieldImportance = "core" | "conditional" | "low_frequency" | "output_specific";
+
+export type CaseFieldAppliesWhen =
+  | "always"
+  | "lease_case"
+  | "identity_document_available"
+  | "employment_required"
+  | "guarantor_required"
+  | "emergency_contact_required"
+  | "co_occupant_exists"
+  | "brokerage_or_management_known"
+  | "output_template_selected";
+
 export type CaseFieldValueKind =
   | "text"
   | "textarea"
@@ -34,7 +47,107 @@ export type CaseFieldGroupDefinition = {
 export type CatalogCaseFieldDefinition = CaseFieldDefinition & {
   groupId: string;
   groupLabel: string;
+  treeNodeId: string;
+  treePath: readonly string[];
+  importance: CaseFieldImportance;
+  appliesWhen: CaseFieldAppliesWhen;
+  searchAliases: readonly string[];
 };
+
+export type CaseInformationTreeNode = {
+  id: string;
+  label: string;
+  children?: readonly CaseInformationTreeNode[];
+};
+
+export const CASE_INFORMATION_TREE = [
+  {
+    id: "case_overview",
+    label: "案件概要",
+    children: [
+      { id: "case_overview_status", label: "取引種別・進行状況" },
+      { id: "case_overview_owner", label: "担当・店舗" },
+      { id: "case_overview_notes", label: "重要メモ" },
+    ],
+  },
+  {
+    id: "participants",
+    label: "参加者",
+    children: [
+      { id: "participants_applicant_basic", label: "申込者・賃借人" },
+      { id: "participants_applicant_contact", label: "連絡先" },
+      { id: "participants_applicant_current_address", label: "現住所" },
+      { id: "participants_co_occupants", label: "同居人・入居者" },
+      { id: "participants_emergency_contact", label: "緊急連絡先" },
+      { id: "participants_guarantor", label: "連帯保証人" },
+    ],
+  },
+  {
+    id: "property",
+    label: "物件",
+    children: [
+      { id: "property_basic", label: "物件基本" },
+      { id: "property_address", label: "所在地・郵便番号" },
+      { id: "property_room", label: "部屋・号室" },
+      { id: "property_management", label: "管理情報" },
+    ],
+  },
+  {
+    id: "contract_terms",
+    label: "契約条件",
+    children: [
+      { id: "contract_monthly_fees", label: "月額費用" },
+      { id: "contract_initial_fees", label: "初期費用" },
+      { id: "contract_dates", label: "日付・契約期間" },
+      { id: "contract_payment", label: "支払条件" },
+    ],
+  },
+  {
+    id: "employment_income",
+    label: "勤務・収入",
+    children: [
+      { id: "employment_company", label: "勤務先・学校" },
+      { id: "employment_role", label: "職業・雇用形態" },
+      { id: "employment_income_amount", label: "収入・勤続" },
+    ],
+  },
+  {
+    id: "identity_documents",
+    label: "本人確認資料",
+    children: [
+      { id: "identity_type", label: "確認資料種別" },
+      { id: "identity_residence_card", label: "在留カード" },
+      { id: "identity_driver_license", label: "運転免許証" },
+      { id: "identity_insurance", label: "保険証" },
+    ],
+  },
+  {
+    id: "related_companies",
+    label: "関係会社",
+    children: [
+      { id: "related_broker", label: "仲介会社" },
+      { id: "related_management", label: "管理会社" },
+      { id: "related_landlord", label: "貸主" },
+    ],
+  },
+  {
+    id: "source_evidence",
+    label: "資料來源",
+    children: [
+      { id: "source_files", label: "アップロード文件" },
+      { id: "source_extraction", label: "AI抽出結果" },
+      { id: "source_history", label: "手動修正履歴" },
+    ],
+  },
+  {
+    id: "output_draft",
+    label: "出力専用",
+    children: [
+      { id: "output_process", label: "申込処理" },
+      { id: "output_guarantee_options", label: "保証会社別追加項目" },
+    ],
+  },
+] as const satisfies readonly CaseInformationTreeNode[];
 
 const coOccupantFields = (index: 0 | 1 | 2): readonly CaseFieldDefinition[] => {
   const prefix = `coOccupants.${index}`;
@@ -49,6 +162,162 @@ const coOccupantFields = (index: 0 | 1 | 2): readonly CaseFieldDefinition[] => {
     { fieldKey: `${prefix}.employerName`, label: `${labelPrefix} 勤務先又は学校名`, valueKind: "text", storageScope: "case_fact" },
   ];
 };
+
+const treePathByNodeId = new Map<string, readonly string[]>();
+
+function indexCaseInformationTree(nodes: readonly CaseInformationTreeNode[], parentPath: readonly string[] = []) {
+  nodes.forEach((node) => {
+    const nextPath = [...parentPath, node.label];
+    treePathByNodeId.set(node.id, nextPath);
+    if (node.children) indexCaseInformationTree(node.children, nextPath);
+  });
+}
+
+indexCaseInformationTree(CASE_INFORMATION_TREE);
+
+function getFieldTreeNodeId(field: CaseFieldDefinition) {
+  const key = field.fieldKey;
+  if (field.storageScope === "output_process") return "output_process";
+  if (field.storageScope === "template_option" || key.startsWith("company_option.") || key.startsWith("guarantee.")) return "output_guarantee_options";
+
+  if (key === "property.roomNumber") return "property_room";
+  if (key === "property.postalCode" || key === "property.address") return "property_address";
+  if (key.startsWith("property.")) return "property_basic";
+
+  if (["lease.rent", "lease.commonFee", "lease.parkingFee", "lease.waterTownFee", "lease.otherMonthlyFee", "lease.monthlyRentTotal"].includes(key)) {
+    return "contract_monthly_fees";
+  }
+  if (["lease.deposit", "lease.keyMoney", "lease.insuranceFee", "lease.keyExchangeFee", "lease.cancellationDeduction", "lease.initialCostTotal"].includes(key)) {
+    return "contract_initial_fees";
+  }
+  if (["lease.contractType", "lease.contractStartDate", "lease.contractEndDate", "lease.moveInDate"].includes(key)) return "contract_dates";
+  if (key.startsWith("lease.")) return "contract_payment";
+
+  if (["applicant.phone", "applicant.mobilePhone", "applicant.homePhone", "applicant.email"].includes(key)) return "participants_applicant_contact";
+  if (key.startsWith("applicant.current") || key === "applicant.residenceYears" || key === "applicant.housingType" || key === "applicant.cohabitingFamilyCount") {
+    return "participants_applicant_current_address";
+  }
+  if (key.startsWith("applicant.employer")) return "employment_company";
+  if (["applicant.occupation", "applicant.jobType", "applicant.employmentType", "applicant.moveReason"].includes(key)) return "employment_role";
+  if (["applicant.annualIncome", "applicant.monthlyIncome", "applicant.yearsEmployed", "applicant.payday"].includes(key)) return "employment_income_amount";
+  if (key === "applicant.identityDocumentType") return "identity_type";
+  if (key.startsWith("applicant.residence") || key === "applicant.nationality" || key === "applicant.workRestriction") return "identity_residence_card";
+  if (key.startsWith("applicant.driverLicense")) return "identity_driver_license";
+  if (key === "applicant.healthInsuranceType") return "identity_insurance";
+  if (key.startsWith("applicant.")) return "participants_applicant_basic";
+
+  if (key.startsWith("coOccupants.")) return "participants_co_occupants";
+  if (key.startsWith("emergencyContact.")) return "participants_emergency_contact";
+  if (key.startsWith("guarantor.")) return "participants_guarantor";
+
+  if (key.startsWith("broker.")) return "related_broker";
+  if (key.startsWith("management.")) return "related_management";
+  if (key.startsWith("landlord.")) return "related_landlord";
+  return "case_overview_status";
+}
+
+function getFieldAppliesWhen(field: CaseFieldDefinition): CaseFieldAppliesWhen {
+  const key = field.fieldKey;
+  if (field.storageScope === "output_process" || field.storageScope === "template_option" || key.startsWith("company_option.") || key.startsWith("guarantee.")) {
+    return "output_template_selected";
+  }
+  if (key.startsWith("coOccupants.")) return "co_occupant_exists";
+  if (key.startsWith("guarantor.")) return "guarantor_required";
+  if (key.startsWith("emergencyContact.")) return "emergency_contact_required";
+  if (key.startsWith("broker.") || key.startsWith("management.") || key.startsWith("landlord.")) return "brokerage_or_management_known";
+  if (
+    key.startsWith("applicant.residence") ||
+    key.startsWith("applicant.driverLicense") ||
+    key === "applicant.identityDocumentType" ||
+    key === "applicant.nationality" ||
+    key === "applicant.workRestriction" ||
+    key === "applicant.healthInsuranceType"
+  ) {
+    return "identity_document_available";
+  }
+  if (key.startsWith("applicant.employer") || key === "applicant.occupation" || key === "applicant.jobType" || key === "applicant.employmentType" || key.endsWith("Income") || key === "applicant.payday" || key === "applicant.yearsEmployed") {
+    return "employment_required";
+  }
+  return "lease_case";
+}
+
+function getFieldImportance(field: CaseFieldDefinition): CaseFieldImportance {
+  const key = field.fieldKey;
+  if (field.storageScope === "output_process" || field.storageScope === "template_option" || key.startsWith("company_option.") || key.startsWith("guarantee.")) return "output_specific";
+  if (
+    [
+      "property.name",
+      "property.roomNumber",
+      "property.postalCode",
+      "property.address",
+      "lease.moveInDate",
+      "lease.rent",
+      "lease.commonFee",
+      "lease.monthlyRentTotal",
+      "applicant.furigana",
+      "applicant.name",
+      "applicant.birthDate",
+      "applicant.phone",
+      "applicant.currentPostalCode",
+      "applicant.currentAddress",
+      "applicant.employerName",
+      "applicant.employerPhone",
+      "applicant.employmentType",
+      "applicant.annualIncome",
+      "emergencyContact.name",
+      "emergencyContact.relationship",
+      "emergencyContact.phone",
+      "broker.companyName",
+      "broker.phone",
+    ].includes(key)
+  ) {
+    return "core";
+  }
+  if (key.includes("HomePage") || key.includes("fax") || key.endsWith(".fax") || key.endsWith("Conditions") || key === "applicant.monthlyIncome" || key.endsWith(".payday")) {
+    return "low_frequency";
+  }
+  return "conditional";
+}
+
+const SEARCH_ALIAS_BY_FIELD_KEY: Record<string, readonly string[]> = {
+  "property.name": ["物件", "物件名", "房源", "房产", "楼名", "building"],
+  "property.roomNumber": ["号室", "部屋", "房号", "房间", "room", "unit"],
+  "property.postalCode": ["郵便番号", "邮编", "zip", "postal"],
+  "property.address": ["所在地", "住所", "地址", "location"],
+  "lease.rent": ["家賃", "賃料", "租金", "rent"],
+  "lease.commonFee": ["共益費", "管理費", "管理费", "common fee"],
+  "lease.moveInDate": ["入居予定日", "入住日", "move in"],
+  "applicant.name": ["申込者", "賃借人", "氏名", "姓名", "客户", "tenant"],
+  "applicant.furigana": ["フリガナ", "片假名", "ふりがな", "kana"],
+  "applicant.phone": ["電話", "携帯", "手机号", "电话", "mobile"],
+  "applicant.email": ["メール", "邮箱", "mail", "email"],
+  "applicant.currentPostalCode": ["現住所郵便番号", "现住址邮编", "邮编", "postal"],
+  "applicant.currentAddress": ["現住所", "现住址", "住址", "address"],
+  "applicant.employerName": ["勤務先", "学校", "工作单位", "公司", "employer"],
+  "applicant.employerPhone": ["勤務先電話", "公司电话", "work phone"],
+  "applicant.annualIncome": ["年収", "年收入", "income"],
+  "emergencyContact.name": ["緊急連絡先", "紧急联系人", "emergency"],
+  "guarantor.name": ["連帯保証人", "保证人", "guarantor"],
+};
+
+export function getCaseFieldInformation(field: CaseFieldDefinition) {
+  const treeNodeId = getFieldTreeNodeId(field);
+  const treePath = treePathByNodeId.get(treeNodeId) ?? ["案件概要"];
+  const searchAliases = [
+    field.fieldKey,
+    field.label,
+    ...(field.aliases ?? []),
+    ...(SEARCH_ALIAS_BY_FIELD_KEY[field.fieldKey] ?? []),
+    ...treePath,
+  ];
+  return {
+    treeNodeId,
+    treePath,
+    importance: getFieldImportance(field),
+    appliesWhen: getFieldAppliesWhen(field),
+    searchAliases: [...new Set(searchAliases)],
+  } as const;
+}
 
 export const CASE_FIELD_CATALOG_GROUPS = [
   {
@@ -269,11 +538,15 @@ export const CASE_FIELD_CATALOG_GROUPS = [
 ] as const satisfies readonly CaseFieldGroupDefinition[];
 
 export const CASE_FIELD_DEFINITIONS: readonly CatalogCaseFieldDefinition[] = CASE_FIELD_CATALOG_GROUPS.flatMap((group) =>
-  group.fields.map((field) => ({
-    ...field,
-    groupId: group.id,
-    groupLabel: group.label,
-  })),
+  group.fields.map((field) => {
+    const information = getCaseFieldInformation(field);
+    return {
+      ...field,
+      ...information,
+      groupId: group.id,
+      groupLabel: group.label,
+    };
+  }),
 );
 
 export const CASE_FIELD_KEYS = CASE_FIELD_DEFINITIONS.map((field) => field.fieldKey);

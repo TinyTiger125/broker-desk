@@ -21,7 +21,7 @@ type AuditLogPageProps = {
 function getCopy(locale: Locale) {
   const copyByLocale = {
     ja: {
-      title: "監査ログ",
+      title: "操作履歴",
       subtitle: "誰が・いつ・何を更新したかを検索できます。",
       backToContracts: "契約管理へ戻る",
       totalLogs: "ログ件数",
@@ -49,11 +49,11 @@ function getCopy(locale: Locale) {
       allActors: "すべて",
       allActions: "すべて",
       allTargets: "すべて",
-      noLogs: "該当する監査ログはありません。",
+      noLogs: "該当する操作履歴はありません。",
       noContext: "なし",
     },
     zh: {
-      title: "审计日志",
+      title: "操作记录",
       subtitle: "可检索“谁在何时对什么做了什么”。",
       backToContracts: "返回合同管理",
       totalLogs: "日志总数",
@@ -81,11 +81,11 @@ function getCopy(locale: Locale) {
       allActors: "全部",
       allActions: "全部",
       allTargets: "全部",
-      noLogs: "没有符合条件的审计日志。",
+      noLogs: "没有符合条件的操作记录。",
       noContext: "无",
     },
     ko: {
-      title: "감사 로그",
+      title: "작업 기록",
       subtitle: "누가 언제 무엇을 변경했는지 검색할 수 있습니다.",
       backToContracts: "계약 관리로 돌아가기",
       totalLogs: "로그 건수",
@@ -113,7 +113,7 @@ function getCopy(locale: Locale) {
       allActors: "전체",
       allActions: "전체",
       allTargets: "전체",
-      noLogs: "조건에 맞는 감사 로그가 없습니다.",
+      noLogs: "조건에 맞는 작업 기록이 없습니다.",
       noContext: "없음",
     },
   } as const;

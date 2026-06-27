@@ -133,7 +133,7 @@ export async function GET(request: Request, { params }: GuaranteeTemplateDownloa
         action: "guarantee_application_downloaded",
         targetType: "output",
         targetId: generated.id,
-        message: `${template.companyDisplayName}申込書PDFを生成・ダウンロードしました: ${brokerageCase.caseTitle}`,
+        message: `${template.companyDisplayName}申込書PDFを出力・ダウンロードしました: ${brokerageCase.caseTitle}`,
         context: {
           caseId: brokerageCase.id,
           templateId: template.id,

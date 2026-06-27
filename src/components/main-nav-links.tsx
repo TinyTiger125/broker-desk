@@ -25,17 +25,18 @@ export function MainNavLinks({ links, orientation = "row" }: MainNavLinksProps) 
   const iconByHref: Record<string, string> = {
     "/": "space_dashboard",
     "/clients": "person_search",
-    "/import-center": "cloud_upload",
+    "/import-center": "create_new_folder",
+    "/organize-center": "fact_check",
     "/properties": "domain",
     "/parties": "group",
     "/quotes": "request_quote",
     "/contracts": "description",
     "/service-requests": "support_agent",
     "/output-center": "print",
-    "/templates": "view_module",
+    "/templates": "dashboard_customize",
     "/settings/members": "manage_accounts",
     "/settings/output-templates": "edit_document",
-    "/settings/ai-experience": "psychology",
+    "/settings/ai-experience": "rule_settings",
   };
 
   return (

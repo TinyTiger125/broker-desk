@@ -12,6 +12,67 @@ Source file -> template identification -> deterministic extraction where possibl
 
 The initial source files are seed templates from one broker's real operating habits. They are not the only valid industry format. Other small brokerage circles may use similar documents with different wording, cell positions, sheet names, or local edits. Product design must support this variation without abandoning the deterministic skeleton.
 
+## 2026-06-24 Input System Direction
+
+The input system should not be a raw upload page.
+
+The frontstage job is to help the broker decide where material belongs, then read and structure it. Upload is only one method inside this larger input workflow.
+
+Correct mental model:
+
+```text
+Create or choose owner
+  -> add material
+    -> read candidates
+      -> review/edit only the uncertain or missing parts
+        -> save confirmed facts to the owner
+          -> reuse those facts in workbench and outputs
+```
+
+Supported owners:
+
+- `Case`: a concrete brokerage workflow such as rental application, rental mandate, sale mandate, quote preparation, contract preparation, renewal, or cancellation.
+- `Subject`: a reusable person or company, including applicant, owner, tenant, buyer, seller, guarantor, emergency contact, broker, or management company.
+- `Property`: a reusable real-estate object, including building, room, address, rent, fees, management, and ownership facts.
+- `Unassigned Intake`: temporary holding for material whose owner is not clear yet.
+
+Product rules:
+
+- A user may create a case, subject, or property before uploading any file.
+- New object creation should open the relevant editing workflow with expected fields present, even when every value is empty.
+- Uploading files can create a new owner only when the user explicitly chooses that path.
+- Uploading files into an existing owner should update candidates for that owner, not create a random case.
+- Multi-file upload is allowed when the files belong to the same chosen owner. If multiple customers/properties/cases are mixed, the product must split or ask for assignment before writing confirmed facts.
+- Unassigned material may be read and previewed, but cannot silently update case, subject, or property records.
+- Input should not be optimized around guarantee-company output readiness. Output-specific checks belong in output workflows.
+
+Today-level optimization target:
+
+1. Make `建档导入` a clear object-routing surface, not an upload-only page.
+2. Make `整理信息` the object index and editing entry for case, subject, property, and unassigned material.
+3. Make every create action land in an editable object page with auto-save/draft safety.
+4. Keep batch file reading available after the owner is chosen, so documents can bulk-fill an existing record.
+5. Keep output checks out of the input/editing surface except for explicit output workflows.
+
+## 2026-06-27 Implementation Checkpoint
+
+Implemented in the current codebase:
+
+- `/import-center` now presents intake as material routing: new case, existing case, or unassigned intake.
+- `/organize-center` now lists cases, subjects / related parties, properties, and unassigned intake from one object index.
+- `/cases/new` creates a blank brokerage case and redirects into the case workbench.
+- `/parties/new` creates a subject / related-party profile instead of only inserting a placeholder row.
+- `/properties/new` creates a property profile with basic location and cost fields.
+- identity-document upload supports multiple files with count and size validation.
+- case workbench fields can be saved from individual field cards.
+
+Still not complete:
+
+- The homepage and organize-center layout still need broker-facing simplification and visual rhythm improvements.
+- Advanced import mapping remains available and should not become the ordinary broker path.
+- Subject and property profiles are much shallower than the case workbench and need richer object-specific information trees.
+- The memory driver remains a development convenience, not reliable pilot persistence.
+
 ## Source Files Reviewed
 
 Source folder:

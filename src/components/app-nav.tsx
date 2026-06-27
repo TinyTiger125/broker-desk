@@ -3,50 +3,27 @@ import { ActorSwitcher } from "@/components/actor-switcher";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { MainNavLinks } from "@/components/main-nav-links";
 import { isActorSwitchingEnabled } from "@/lib/actor";
-import { listBrokerageCases, listUsers, getDefaultUser, getUserById, type User } from "@/lib/data";
+import { listUsers, getDefaultUser } from "@/lib/data";
 import { t } from "@/lib/i18n";
 import { getLocale, type Locale } from "@/lib/locale";
-import {
-  isConfiguredPlatformOwnerUser,
-  isDevelopmentPlatformOwnerTenantFallbackEnabled,
-} from "@/lib/platform-owner";
 
-function getLinks(locale: Locale, currentCaseId?: string) {
-  const workbenchHref = currentCaseId ? `/cases/${currentCaseId}` : "/import-center";
-  const outputHref = currentCaseId ? `/output-center?caseId=${encodeURIComponent(currentCaseId)}` : "/output-center";
+function getLinks(locale: Locale) {
   const organizeLabel = locale === "zh" ? "整理信息" : locale === "ko" ? "정보 정리" : "情報を整理";
   return [
     { href: "/", label: t(locale, "nav.link.dashboard") },
     { href: "/import-center", label: t(locale, "nav.link.importCenter") },
-    { href: workbenchHref, label: organizeLabel },
-    { href: outputHref, label: t(locale, "nav.link.outputCenter") },
+    { href: "/organize-center", label: organizeLabel },
+    { href: "/output-center", label: t(locale, "nav.link.outputCenter") },
   ];
 }
 
-function getSupportLinks(locale: Locale) {
+function getAdminLinks(locale: Locale) {
   return [
-    { href: "/templates", label: t(locale, "nav.link.templates") },
-    { href: "/properties", label: t(locale, "nav.link.properties") },
-    { href: "/parties", label: t(locale, "nav.link.parties") },
-    { href: "/clients", label: t(locale, "nav.link.clients") },
-    { href: "/quotes", label: t(locale, "nav.link.quotes") },
-    { href: "/contracts", label: t(locale, "nav.link.contracts") },
-    { href: "/service-requests", label: t(locale, "nav.link.serviceRequests") },
     { href: "/settings/members", label: locale === "zh" ? "成员/权限" : locale === "ko" ? "멤버/권한" : "メンバー/権限" },
+    { href: "/templates", label: locale === "zh" ? "模板管理" : locale === "ko" ? "템플릿 관리" : "テンプレート管理" },
     { href: "/settings/output-templates", label: locale === "zh" ? "输出模板" : locale === "ko" ? "출력 템플릿" : "出力テンプレート" },
-    { href: "/settings/ai-experience", label: locale === "zh" ? "AI经验审核" : locale === "ko" ? "AI 경험 리뷰" : "AI経験レビュー" },
+    { href: "/settings/ai-experience", label: locale === "zh" ? "填写规则" : locale === "ko" ? "작성 규칙" : "入力ルール" },
   ];
-}
-
-async function getNavigationDataUser(currentActor: User | null) {
-  if (
-    currentActor &&
-    isDevelopmentPlatformOwnerTenantFallbackEnabled() &&
-    isConfiguredPlatformOwnerUser(currentActor)
-  ) {
-    return (await getUserById("user_demo")) ?? currentActor;
-  }
-  return currentActor;
 }
 
 export async function AppNav() {
@@ -56,23 +33,17 @@ export async function AppNav() {
     actorSwitchingEnabled ? listUsers(20) : Promise.resolve([]),
     getDefaultUser(),
   ]);
-  const navigationDataUser = await getNavigationDataUser(currentActor);
-  const currentCases = navigationDataUser ? await listBrokerageCases(navigationDataUser.id, 20) : [];
-  const currentCase =
-    currentCases.find((item) => item.id === "case_fixture_friends_guarantee_pdf") ??
-    currentCases.find((item) => item.status === "reviewed") ??
-    currentCases[0];
-  const links = getLinks(locale, currentCase?.id);
-  const supportLinks = getSupportLinks(locale);
+  const links = getLinks(locale);
+  const adminLinks = getAdminLinks(locale);
   const appTitle = t(locale, "app.title");
   const actorLabel = locale === "zh" ? "执行账号" : locale === "ko" ? "작업 계정" : "実行担当";
   const actorOptions = users.map((item) => ({ id: item.id, name: item.name }));
   const flowLabel =
     locale === "zh"
-      ? "1 上传资料 / 2 整理信息 / 3 输出申请书"
+      ? "资料管理 / 建档导入 / 整理 / 输出"
       : locale === "ko"
-        ? "1 자료 입력 / 2 정보 정리 / 3 신청서 출력"
-        : "1 資料を入れる / 2 情報を整理する / 3 申込書を出す";
+        ? "자료관리 / 등록·가져오기 / 정리 / 출력"
+        : "資料管理 / 作成・取込 / 整理 / 出力";
 
   return (
     <>
@@ -107,10 +78,10 @@ export async function AppNav() {
           </div>
           <details className="mt-2 border-t border-slate-200 pt-2">
             <summary className="cursor-pointer px-1 text-xs font-bold text-slate-500">
-              {locale === "zh" ? "资料库 / 设置" : locale === "ko" ? "자료실 / 설정" : "資料庫 / 設定"}
+              {locale === "zh" ? "后台管理" : locale === "ko" ? "관리 설정" : "管理設定"}
             </summary>
             <div className="mt-2 overflow-x-auto">
-              <MainNavLinks links={supportLinks} />
+              <MainNavLinks links={adminLinks} />
             </div>
           </details>
         </div>
@@ -129,10 +100,10 @@ export async function AppNav() {
           <MainNavLinks links={links} orientation="column" />
           <details className="mt-4 border-t border-slate-800 pt-4">
             <summary className="cursor-pointer px-3 text-[10px] font-black uppercase tracking-wider text-slate-500">
-              {locale === "zh" ? "资料库 / 设置" : locale === "ko" ? "자료실 / 설정" : "資料庫 / 設定"}
+              {locale === "zh" ? "后台管理" : locale === "ko" ? "관리 설정" : "管理設定"}
             </summary>
             <div className="mt-2">
-              <MainNavLinks links={supportLinks} orientation="column" />
+              <MainNavLinks links={adminLinks} orientation="column" />
             </div>
           </details>
         </div>

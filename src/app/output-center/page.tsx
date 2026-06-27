@@ -39,7 +39,7 @@ const iconColorByType: Record<OutputDocType, string> = {
 
 const outputCenterCopy = {
   ja: {
-    subtitle: "現在の案件で足りない項目を確認し、保証会社申込書を出します。",
+    subtitle: "対象案件を選択し、出力テンプレートとプレビューへ進みます。",
     recentActivity: "最近の更新",
     newBatchOutput: "提案データを作成",
     selected: "選択中",
@@ -50,7 +50,7 @@ const outputCenterCopy = {
     targetParty: "対象関係者",
     outputFormat: "出力形式",
     language: "言語",
-    generateDocument: "帳票を生成",
+    generateDocument: "帳票を出力",
     recentOutputs: "出力履歴",
     templateHitTitle: "テンプレート命中率",
     templateHitDesc: "現在の履歴フィルタ条件に対する版管理適用状況",
@@ -101,7 +101,7 @@ const outputCenterCopy = {
     sellerSign: "売主 署名",
     buyerSign: "買主 署名",
     docIdLabel: "文書ID",
-    outputCenterTitle: "申込書を出す",
+    outputCenterTitle: "書類を出力",
     guaranteePrimaryEyebrow: "申込書作成",
     guaranteePrimaryTitle: "保証会社申込書",
     guaranteePrimaryPanelTitle: "確認してから出力",
@@ -141,7 +141,7 @@ const outputCenterCopy = {
     guaranteeLegacyDesc: "物件概要書や提案関連の既存出力は補助機能として残しています。",
   },
   zh: {
-    subtitle: "确认当前案件缺失项，并输出保证会社申请书。",
+    subtitle: "选择目标案件和输出范本，然后进入预览或下载。",
     recentActivity: "最近动态",
     newBatchOutput: "创建提案数据",
     selected: "已选择",
@@ -152,7 +152,7 @@ const outputCenterCopy = {
     targetParty: "目标主体",
     outputFormat: "输出格式",
     language: "语言",
-    generateDocument: "生成文书",
+    generateDocument: "输出文书",
     recentOutputs: "输出历史",
     templateHitTitle: "模板命中率",
     templateHitDesc: "基于当前历史筛选条件的版本管理覆盖率",
@@ -203,7 +203,7 @@ const outputCenterCopy = {
     sellerSign: "卖方签署",
     buyerSign: "买方签署",
     docIdLabel: "文档ID",
-    outputCenterTitle: "输出申请书",
+    outputCenterTitle: "输出文件",
     guaranteePrimaryEyebrow: "申请书创建",
     guaranteePrimaryTitle: "保证会社申请书",
     guaranteePrimaryPanelTitle: "确认后输出",
@@ -243,9 +243,9 @@ const outputCenterCopy = {
     guaranteeLegacyDesc: "物件概要书与提案相关既有输出保留为辅助功能。",
   },
   ko: {
-    subtitle: "현재 안건의 부족 항목을 확인하고 보증회사 신청서를 출력합니다.",
+    subtitle: "대상 안건을 선택하고 출력 템플릿과 미리보기로 이동합니다.",
     recentActivity: "최근 활동",
-    newBatchOutput: "제안 데이터 생성",
+    newBatchOutput: "제안 데이터 작성",
     selected: "선택됨",
     selectTemplate: "보증회사 선택",
     generationSettings: "출력 전 점검",
@@ -254,7 +254,7 @@ const outputCenterCopy = {
     targetParty: "대상 관계자",
     outputFormat: "출력 형식",
     language: "언어",
-    generateDocument: "문서 생성",
+    generateDocument: "문서 출력",
     recentOutputs: "출력 이력",
     templateHitTitle: "템플릿 적중률",
     templateHitDesc: "현재 이력 필터 기준 버전 관리 적용률",
@@ -305,7 +305,7 @@ const outputCenterCopy = {
     sellerSign: "매도인 서명",
     buyerSign: "매수인 서명",
     docIdLabel: "문서ID",
-    outputCenterTitle: "신청서 출력",
+    outputCenterTitle: "문서 출력",
     guaranteePrimaryEyebrow: "신청서 작성",
     guaranteePrimaryTitle: "보증회사 신청서",
     guaranteePrimaryPanelTitle: "확인 후 출력",
@@ -428,7 +428,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
   const selectedCaseId = String(params?.caseId ?? "").trim();
   const selectedCase = selectedCaseId
     ? cases.find((item) => item.id === selectedCaseId)
-    : cases.find((item) => item.id === "case_fixture_friends_guarantee_pdf") ?? cases.find((item) => item.status === "reviewed") ?? cases[0];
+    : undefined;
   const activeGuaranteeTemplates = guaranteeCompanyTemplates.filter((template) => template.outputStatus === "active");
   const defaultGuaranteeTemplateId =
     activeGuaranteeTemplates.find((template) => template.id === "friends_guarantee_individual_v1")?.id ??
@@ -711,9 +711,9 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
   }
   const flashMap = {
     output_generated: {
-      ja: "帳票を生成しました。",
-      zh: "文书已生成。",
-      ko: "문서를 생성했습니다.",
+      ja: "帳票を出力しました。",
+      zh: "文书已输出。",
+      ko: "문서를 출력했습니다.",
     },
     output_validation_failed: {
       ja: "出力前チェックで不足項目が見つかりました。",
@@ -790,6 +790,41 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
         </div>
       </section>
 
+      {!selectedCase ? (
+        <section id="guarantee-case-selector" className="scroll-mt-24 rounded border border-[#002FA7] bg-white">
+          <div className="border-b border-slate-200 px-4 py-3">
+            <h2 className="text-base font-black text-slate-950">{copy.guaranteeSelectCaseFirst}</h2>
+            <p className="mt-1 text-sm font-semibold text-slate-600">{copy.guaranteeCase}</p>
+          </div>
+          {cases.length > 0 ? (
+            <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
+              {cases.slice(0, 9).map((caseItem) => (
+                <Link
+                  key={caseItem.id}
+                  href={`/output-center?caseId=${encodeURIComponent(caseItem.id)}&guaranteeTemplate=${encodeURIComponent(selectedGuaranteeTemplate.id)}`}
+                  className="min-h-28 rounded border border-slate-200 bg-white p-4 hover:border-[#002FA7] hover:bg-slate-50"
+                >
+                  <span className="text-xs font-black text-[#002FA7]">{formatDate(caseItem.updatedAt, locale)}</span>
+                  <span className="mt-2 block truncate text-base font-black text-slate-950">{caseItem.caseTitle}</span>
+                  <span className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-slate-600">
+                    <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
+                    {copy.guaranteeTemplate}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <div className="p-4">
+              <p className="text-sm font-semibold text-slate-600">{copy.guaranteeNoCase}</p>
+              <Link href="/import-center" className="mt-3 inline-flex rounded bg-slate-950 px-4 py-2 text-sm font-black text-white hover:bg-slate-800">
+                {copy.guaranteeImportLink}
+              </Link>
+            </div>
+          )}
+        </section>
+      ) : null}
+
+      {selectedCase ? (
       <section className={`rounded border bg-white p-4 ${guaranteeBlockingFields.length > 0 ? "border-red-300 border-l-4 border-l-red-700" : "border-emerald-300 border-l-4 border-l-emerald-700"}`}>
         <h3 className={`flex items-center gap-2 text-base font-black ${guaranteeBlockingFields.length > 0 ? "text-red-700" : "text-emerald-700"}`}>
           <span className="material-symbols-outlined text-[20px]">{guaranteeBlockingFields.length > 0 ? "warning" : "check_circle"}</span>
@@ -818,7 +853,9 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
           )}
         </div>
       </section>
+      ) : null}
 
+      {selectedCase ? (
       <section>
         <h2 className="mb-4 text-2xl font-black text-slate-950">{copy.selectTemplate}</h2>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -868,7 +905,9 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
           ))}
         </div>
       </section>
+      ) : null}
 
+      {selectedCase ? (
       <section className="rounded border border-slate-300 bg-white p-4">
         <details>
           <summary className="cursor-pointer text-sm font-bold text-slate-900">{copy.guaranteeDetailToggle}</summary>
@@ -1132,6 +1171,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
         </div>
         </details>
       </section>
+      ) : null}
 
       <details id={legacySectionId} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
         <summary className="cursor-pointer text-sm font-bold text-slate-900">{copy.guaranteeBackstageToggle}</summary>
@@ -1285,10 +1325,10 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                   </p>
                   <p className="mt-1">
                     {locale === "zh"
-                      ? "请从物件台账的 PDF 入口进入，以确保生成记录绑定正确物件。"
+                        ? "请从物件台账的 PDF 入口进入，以确保输出记录绑定正确物件。"
                       : locale === "ko"
-                        ? "생성 기록이 올바른 매물에 연결되도록 매물 대장의 PDF 입구에서 이동하세요."
-                        : "生成記録を正しい物件に紐づけるため、物件台帳の PDF 入口から遷移してください。"}
+                        ? "출력 기록이 올바른 매물에 연결되도록 매물 대장의 PDF 입구에서 이동하세요."
+                        : "出力記録を正しい物件に紐づけるため、物件台帳の PDF 入口から遷移してください。"}
                   </p>
                   <Link href="/properties" className="mt-2 inline-flex font-bold text-amber-900 underline">
                     {locale === "zh" ? "前往物件台账" : locale === "ko" ? "매물 대장으로 이동" : "物件台帳へ"}
@@ -1356,7 +1396,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
               <div className="rounded-lg border border-blue-100 bg-white p-3 text-xs text-slate-600">
                 <div className="flex items-center justify-between gap-3">
                   <p className="font-bold text-slate-800">
-                    {locale === "zh" ? "生成前确认" : locale === "ko" ? "생성 전 확인" : "生成前確認"}
+                    {locale === "zh" ? "输出前确认" : locale === "ko" ? "출력 전 확인" : "出力前確認"}
                   </p>
                   <Link href="/settings/output-templates" className="font-semibold text-[#001e40] hover:underline">
                     {locale === "zh" ? "调整模板" : locale === "ko" ? "템플릿 조정" : "テンプレート調整"}
@@ -1482,7 +1522,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
               {isHighlightFiltered && highlightedOutput ? (
                 <div>
                   <p className="mb-1 px-1 text-[10px] font-semibold text-[#001e40]">
-                    {locale === "zh" ? "这是刚刚生成的文书" : locale === "ko" ? "방금 생성된 문서입니다" : "今生成した帳票です"}
+                    {locale === "zh" ? "这是刚刚输出的文书" : locale === "ko" ? "방금 출력한 문서입니다" : "今出力した帳票です"}
                   </p>
                   <div className="group flex items-center gap-3 rounded-lg bg-[#edf2fd] p-3 ring-2 ring-[#001e40]">
                     <div className="flex h-10 w-10 items-center justify-center rounded bg-red-100 text-red-500">

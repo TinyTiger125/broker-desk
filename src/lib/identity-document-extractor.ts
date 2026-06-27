@@ -375,3 +375,123 @@ export async function extractIdentityDocumentFromBuffer(input: {
     fields: extractedFields,
   };
 }
+
+function hasResidenceCardDocument(type: InputDocumentType) {
+  return type === "identity_residence_card" || type === "identity_residence_card_or_driver_license";
+}
+
+function hasDriverLicenseDocument(type: InputDocumentType) {
+  return type === "identity_driver_license" || type === "identity_residence_card_or_driver_license";
+}
+
+function mergeIdentityDocumentType(results: InputFileExtractionResult[]): InputDocumentType {
+  const hasResidenceCard = results.some((result) => hasResidenceCardDocument(result.documentType));
+  const hasDriverLicense = results.some((result) => hasDriverLicenseDocument(result.documentType));
+  return detectDocumentType(hasResidenceCard, hasDriverLicense);
+}
+
+function getIdentityDocumentValue(type: InputDocumentType) {
+  if (type === "identity_residence_card_or_driver_license") return "在留カード / 運転免許証";
+  if (type === "identity_residence_card") return "在留カード";
+  if (type === "identity_driver_license") return "運転免許証";
+  return "";
+}
+
+const IDENTITY_MERGE_CONFLICT_FIELDS = new Set(["applicant.name", "applicant.birthDate", "applicant.gender"]);
+const IDENTITY_MERGE_CONFLICT_LABELS: Record<string, string> = {
+  "applicant.name": "氏名",
+  "applicant.birthDate": "生年月日",
+  "applicant.gender": "性別",
+};
+
+function assertNoIdentityMergeConflicts(results: InputFileExtractionResult[]) {
+  const valuesByFieldKey = new Map<string, Set<string>>();
+  for (const field of results.flatMap((result) => result.fields)) {
+    if (!IDENTITY_MERGE_CONFLICT_FIELDS.has(field.fieldKey)) continue;
+    const value = normalizeComparable(field.normalizedValue || field.value);
+    if (!value) continue;
+    valuesByFieldKey.set(field.fieldKey, (valuesByFieldKey.get(field.fieldKey) ?? new Set()).add(value));
+  }
+
+  const conflictField = [...valuesByFieldKey.entries()].find(([, values]) => values.size > 1)?.[0];
+  if (conflictField) {
+    const label = IDENTITY_MERGE_CONFLICT_LABELS[conflictField] ?? "主要項目";
+    throw new Error(`本人確認資料の${label}が一致しません。同一人物の資料だけをまとめてアップロードしてください。`);
+  }
+}
+
+function mergeIdentityFields(results: InputFileExtractionResult[], documentType: InputDocumentType, sourceFileHash: string, templateVersion: string) {
+  const byKey = new Map<string, ExtractedInputField>();
+  for (const field of results.flatMap((result) => result.fields)) {
+    const existing = byKey.get(field.fieldKey);
+    if (!existing) {
+      byKey.set(field.fieldKey, field);
+      continue;
+    }
+    const existingValue = clean(existing.normalizedValue || existing.value);
+    const nextValue = clean(field.normalizedValue || field.value);
+    if ((!existingValue && nextValue) || (nextValue && field.confidence > existing.confidence)) {
+      byKey.set(field.fieldKey, field);
+    }
+  }
+
+  const identityDocumentValue = getIdentityDocumentValue(documentType);
+  if (identityDocumentValue) {
+    const sourceField = byKey.get("applicant.identityDocumentType");
+    byKey.set("applicant.identityDocumentType", {
+      fieldKey: "applicant.identityDocumentType",
+      label: sourceField?.label ?? "本人確認資料種別",
+      value: identityDocumentValue,
+      normalizedValue: identityDocumentValue,
+      sourceSheet: sourceField?.sourceSheet ?? "本人確認資料 OCR",
+      sourceCell: sourceField?.sourceCell,
+      sourceRange: sourceField?.sourceRange,
+      method: "ocr",
+      confidence: Math.max(sourceField?.confidence ?? 0, 0.92),
+      reviewStatus: "suggested",
+      sourceFileHash,
+      templateVersion,
+    });
+  }
+
+  return [...byKey.values()];
+}
+
+export async function extractIdentityDocumentsFromFiles(inputs: Array<{
+  buffer: Buffer;
+  filename: string;
+}>): Promise<InputFileExtractionResult> {
+  if (inputs.length === 1) {
+    return extractIdentityDocumentFromBuffer(inputs[0]);
+  }
+
+  const results: InputFileExtractionResult[] = [];
+  for (const input of inputs) {
+    results.push(await extractIdentityDocumentFromBuffer(input));
+  }
+  assertNoIdentityMergeConflicts(results);
+
+  const sourceFileHash = createHash("sha256");
+  for (const result of results) {
+    sourceFileHash.update(result.sourceFileHash);
+  }
+  const mergedSourceFileHash = sourceFileHash.digest("hex");
+  const documentType = mergeIdentityDocumentType(results);
+  const templateVersion = `identity_document:${documentType}:multi_file_vision_ocr_v1`;
+  const fields = mergeIdentityFields(results, documentType, mergedSourceFileHash, templateVersion);
+  const sourceFilename = inputs.map((input) => input.filename).join(", ");
+
+  return {
+    schemaVersion: "v1",
+    documentType,
+    documentTypeLabel: DOCUMENT_LABELS[documentType],
+    extractionStatus: documentType === "unknown_identity_scan" ? "unknown" : "recognized",
+    sourceFilename,
+    sourceFileHash: mergedSourceFileHash,
+    templateVersion,
+    fingerprintConfidence: documentType === "unknown_identity_scan" ? 0.25 : 0.82,
+    detectedSheet: fields[0]?.sourceSheet ?? "本人確認資料 OCR",
+    detectedTitle: DOCUMENT_LABELS[documentType],
+    fields,
+  };
+}

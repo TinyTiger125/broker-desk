@@ -278,3 +278,14 @@ button:disabled:not([class~="text-white"]):not([class~="!text-white"]) {
   color: #324256;
   border-top: 1px solid rgba(195, 198, 209, 0.2);
 }
+
+@keyframes caseCardSettle {
+  from {
+    opacity: 0.72;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

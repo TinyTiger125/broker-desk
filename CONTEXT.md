@@ -68,7 +68,13 @@ The broker-facing review step where extracted values can be accepted, edited, re
 
 ### Case
 
-The working unit for a brokerage transaction before final document output. A case collects property, applicant, lease, broker, management company, guarantee-plan, and source-evidence data.
+The main work unit for a brokerage transaction or mandate.
+
+A case connects subjects, properties, source files, confirmed facts, output artifacts, and execution state for one concrete business workflow. A case may represent a rental application, rental mandate, sale mandate, quote workflow, contract workflow, renewal, cancellation, or other brokerage operation.
+
+A case must not replace master data. Subjects and properties remain reusable records. The case stores the role-specific relationship and the facts needed for this business workflow.
+
+Files should not silently enter confirmed case data before their ownership is clear. Files without a subject, property, or case owner belong in an unassigned intake area until a broker assigns them.
 
 ### Case Workbench
 
@@ -134,6 +140,38 @@ Template-specific values and options prepared before final PDF output. Output dr
 A generated business output, such as a guarantee-company application, customer summary, lease package, owner notice, or report.
 
 An output artifact should keep the case id, tenant id, template version, input data snapshot, draft value snapshot, generated-by user, and audit trail needed to explain what was produced.
+
+### Subject
+
+A reusable person or company record.
+
+A subject may act as applicant, tenant, owner, landlord, seller, buyer, guarantor, emergency contact, broker, management company, corporate applicant, or other case role. Do not treat "customer" as the database-level identity because the same person or company may play different roles in different cases.
+
+Subject creation is a profile workflow, not a quick insert. A new subject starts as a draft/profile form, auto-saves while the broker types, and becomes a usable record only after the broker explicitly saves it. Never create a subject with fake placeholder values just to make the row exist.
+
+### Property
+
+A reusable property record.
+
+A property may appear in multiple cases over time: rental application, rental mandate, sale mandate, contract, renewal, cancellation, maintenance, quote, or document preparation.
+
+### Case Role
+
+The relationship between a subject and a case.
+
+Examples: applicant, co-occupant, emergency contact, guarantor, owner, landlord, buyer, seller, broker, management company, corporate applicant. Roles must be explicit product data, not inferred from drag-and-drop lines alone.
+
+### File Ownership
+
+The explicit relationship between a source file and one or more product objects.
+
+A file may be owned by a subject, property, case, output artifact, or remain unassigned. The source file is stored once; usage by a case or output should be represented as a reference, not by duplicating the file.
+
+### Unassigned Intake
+
+Temporary holding space for files whose business owner is not yet clear.
+
+Unassigned files may be detected, previewed, and queued, but must not write confirmed facts into subject, property, or case records until a broker assigns ownership.
 
 ### Editable PDF Preview
 

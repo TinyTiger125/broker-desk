@@ -1,7 +1,5 @@
 import Link from "next/link";
 import Image from "next/image";
-import { createPartyQuickAction } from "@/app/actions";
-import { FormDraftAssist } from "@/components/form-draft-assist";
 import { PageFlashBanner } from "@/components/page-flash-banner";
 import { formatDate } from "@/lib/format";
 import { listHubAttachments, listHubParties } from "@/lib/hub";
@@ -26,6 +24,7 @@ const partiesCopy = {
   ja: {
     filter: "絞り込み",
     addParty: "関係者追加",
+    editParty: "編集",
     tableEntity: "法人 / 個人",
     tableType: "種別",
     tableRole: "役割",
@@ -63,6 +62,7 @@ const partiesCopy = {
   zh: {
     filter: "筛选",
     addParty: "新增主体",
+    editParty: "编辑",
     tableEntity: "法人 / 个人",
     tableType: "类型",
     tableRole: "角色",
@@ -100,6 +100,7 @@ const partiesCopy = {
   ko: {
     filter: "필터",
     addParty: "관계자 추가",
+    editParty: "편집",
     tableEntity: "법인 / 개인",
     tableType: "유형",
     tableRole: "역할",
@@ -176,6 +177,11 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
       zh: "主体已创建。",
       ko: "관계자를 등록했습니다.",
     },
+    party_updated: {
+      ja: "関係者を更新しました。",
+      zh: "主体已更新。",
+      ko: "관계자를 업데이트했습니다.",
+    },
   } as const;
   const flashKey = String(params?.flash ?? "").trim() as keyof typeof flashMap;
   const flashMessage = flashMap[flashKey]?.[locale];
@@ -194,24 +200,13 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
             <span className="material-symbols-outlined text-[16px]">filter_list</span>
             {copy.filter}
           </Link>
-          <form id="party-quick-create-form" action={createPartyQuickAction} className="flex items-center gap-2">
-            <input
-              name="name"
-              placeholder={copy.addParty}
-              className="w-44 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-[#d5e3fc]"
-            />
-            <button className="inline-flex items-center gap-1 rounded-lg bg-gradient-to-br from-[#001e40] to-[#003366] px-4 py-2 text-sm font-semibold text-white shadow-[0_8px_20px_-10px_rgba(0,30,64,0.8)]">
-              <span className="material-symbols-outlined text-[16px]">add</span>
-              {copy.addParty}
-            </button>
-          </form>
-          <FormDraftAssist
-            formId="party-quick-create-form"
-            storageKey="draft:parties:quick-create"
-            fieldNames={["name"]}
-            reuseKey="parties:quick-create"
-            locale={locale}
-          />
+          <Link
+            href="/parties/new"
+            className="inline-flex items-center gap-1 rounded-lg bg-gradient-to-br from-[#001e40] to-[#003366] px-4 py-2 text-sm font-semibold text-white shadow-[0_8px_20px_-10px_rgba(0,30,64,0.8)]"
+          >
+            <span className="material-symbols-outlined text-[16px]">add</span>
+            {copy.addParty}
+          </Link>
         </div>
       </section>
       <PageFlashBanner message={flashMessage} />
@@ -329,8 +324,12 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
                       .slice(0, 2)
                       .toUpperCase()}
                   </div>
-                  <Link href={`/parties?q=${encodeURIComponent(selected.name)}`} className="text-slate-400 hover:text-slate-700">
-                    <span className="material-symbols-outlined">more_horiz</span>
+                  <Link
+                    href={`/parties/${selected.id}/edit`}
+                    className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">edit</span>
+                    {copy.editParty}
                   </Link>
                 </div>
                 <h2 className="text-3xl font-bold tracking-tight text-slate-900">{selected.name}</h2>

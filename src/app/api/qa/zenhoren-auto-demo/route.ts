@@ -166,7 +166,7 @@ export async function POST(request: Request) {
     action: "qa_zenhoren_auto_demo_generated",
     targetType: "import_job",
     targetId: caseId,
-    message: `全保連の安全自動入力デモデータを生成しました: ${updatedCase.caseTitle}`,
+    message: `全保連の安全自動入力デモデータを準備しました: ${updatedCase.caseTitle}`,
     context: {
       caseId,
       templateId: ZENHOREN_TEMPLATE_ID,
