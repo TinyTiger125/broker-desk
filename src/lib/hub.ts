@@ -19,6 +19,14 @@ import {
   extractPartyProfileFromNotes,
   getPartyProfileRoleLabel,
 } from "@/lib/party-profile";
+import {
+  localizeDemoClient,
+  localizeDemoGeneratedOutput,
+  localizeDemoImportJob,
+  localizeDemoProperty,
+  localizeDemoQuotation,
+  localizeDemoText,
+} from "@/lib/demo-localization";
 
 export type HubQueryContext = {
   userId?: string;
@@ -224,18 +232,24 @@ export async function listHubProperties(locale: Locale = "ja", context: HubQuery
     return map;
   }, new Map<string, number>());
   const { properties } = await listQuoteFormData(resolved?.tenantId);
-  return properties.map((property) => ({
+  return properties.map((rawProperty) => {
+    const property = localizeDemoProperty(locale, rawProperty);
+    const propertyArea = "area" in property && typeof property.area === "string" ? property.area : undefined;
+    return {
     id: property.id,
     name: property.name,
-    area: property.name.includes("区")
-      ? property.name
-      : tr(locale, { ja: "未設定", zh: "未设置", ko: "미설정" }),
+    area: propertyArea
+      ? propertyArea
+      : property.name.includes("区")
+        ? property.name
+        : tr(locale, { ja: "未設定", zh: "未设置", ko: "미설정" }),
     listingPrice: property.listingPrice,
     managementFee: property.managementFee ?? 0,
     repairFee: property.repairFee ?? 0,
     attachmentCount: attachmentCountMap.get(property.id) ?? 0,
     status: "active",
-  }));
+  };
+  });
 }
 
 export async function listHubParties(locale: Locale = "ja", context: HubQueryContext = {}): Promise<HubPartyItem[]> {
@@ -248,20 +262,23 @@ export async function listHubParties(locale: Locale = "ja", context: HubQueryCon
     countMap.set(quote.clientId, (countMap.get(quote.clientId) ?? 0) + 1);
   });
 
-  return clients.map((client) => ({
-    id: client.id,
-    name: client.name,
-    phone: client.phone,
-    email: client.email,
-    partyType: mapPartyType(client),
-    roles: buildRoleTags(client, locale),
-    relatedPropertyHint: client.preferredArea,
-    contractCount: countMap.get(client.id) ?? 0,
-  }));
+  return clients.map((rawClient) => {
+    const client = localizeDemoClient(locale, rawClient);
+    return {
+      id: client.id,
+      name: client.name,
+      phone: client.phone,
+      email: client.email,
+      partyType: mapPartyType(client),
+      roles: buildRoleTags(client, locale),
+      relatedPropertyHint: client.preferredArea,
+      contractCount: countMap.get(client.id) ?? 0,
+    };
+  });
 }
 
 export async function listHubContracts(locale: Locale = "ja", context: HubQueryContext = {}): Promise<HubContractItem[]> {
-  const quotes = await listQuotations(undefined, context.tenantId);
+  const quotes = (await listQuotations(undefined, context.tenantId)).map((item) => localizeDemoQuotation(locale, item));
   const contractPrefix = tr(locale, {
     ja: "売買",
     zh: "买卖",
@@ -308,10 +325,10 @@ export async function listHubServiceRequests(context: HubQueryContext = {}): Pro
   return items.sort((a, b) => (b.occurredAt?.getTime() ?? 0) - (a.occurredAt?.getTime() ?? 0));
 }
 
-export async function listHubImportJobs(context: HubQueryContext = {}): Promise<HubImportJobItem[]> {
+export async function listHubImportJobs(context: HubQueryContext = {}, locale: Locale = "ja"): Promise<HubImportJobItem[]> {
   const resolved = await resolveHubContext(context);
   if (!resolved) return [];
-  return listImportJobs(resolved.userId, 100, resolved.tenantId);
+  return (await listImportJobs(resolved.userId, 100, resolved.tenantId)).map((item) => localizeDemoImportJob(locale, item));
 }
 
 export async function listHubGeneratedOutputs(
@@ -320,17 +337,24 @@ export async function listHubGeneratedOutputs(
 ): Promise<HubGeneratedOutputItem[]> {
   const resolved = await resolveHubContext(context);
   if (!resolved) return [];
-  const [quotes, properties, parties, templateVersions] = await Promise.all([
+  const [rawQuotes, rawProperties, parties, templateVersions] = await Promise.all([
     listQuotations(100, resolved.tenantId),
     listQuoteFormData(resolved.tenantId),
     listHubParties(locale, resolved),
     listOutputTemplateVersions(resolved.userId, 50, resolved.tenantId),
   ]);
+  const quotes = rawQuotes.map((item) => localizeDemoQuotation(locale, item));
   const quoteMap = new Map(quotes.map((quote) => [quote.id, quote]));
-  const propertyMap = new Map(properties.properties.map((property) => [property.id, property.name]));
+  const propertyMap = new Map(
+    rawProperties.properties.map((property) => {
+      const localized = localizeDemoProperty(locale, property);
+      return [localized.id, localized.name];
+    }),
+  );
   const partyMap = new Map(parties.map((party) => [party.id, party.name]));
   const versionLabelMap = new Map(templateVersions.map((v) => [v.id, v.versionLabel]));
-  const generated = await listGeneratedOutputs({ userId: resolved.userId, tenantId: resolved.tenantId, limit: 200 });
+  const generated = (await listGeneratedOutputs({ userId: resolved.userId, tenantId: resolved.tenantId, limit: 200 }))
+    .map((item) => localizeDemoGeneratedOutput(locale, item));
 
   const contractPrefix = tr(locale, { ja: "売買", zh: "买卖", ko: "매매" });
 
@@ -342,7 +366,7 @@ export async function listHubGeneratedOutputs(
         const relatedProperty = item.propertyId ? propertyMap.get(item.propertyId) : quote?.property?.name;
         const relatedParty = item.partyId ? partyMap.get(item.partyId) : isPropertyOverview ? undefined : quote?.client?.name;
         const title =
-          item.title ||
+          localizeDemoText(locale, item.title) ||
           (isPropertyOverview
             ? `${getGeneratedOutputTypeLabel(locale, item.outputType)} - ${relatedProperty ?? "N/A"}`
             : `${getGeneratedOutputTypeLabel(locale, item.outputType)} - ${quote?.client.name ?? "N/A"}`);

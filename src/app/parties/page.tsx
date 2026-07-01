@@ -2,7 +2,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { PageFlashBanner } from "@/components/page-flash-banner";
 import { formatDate } from "@/lib/format";
-import { listHubAttachments, listHubParties } from "@/lib/hub";
+import { listHubAttachments, listHubContracts, listHubParties } from "@/lib/hub";
 import { t } from "@/lib/i18n";
 import { getLocale } from "@/lib/locale";
 import { requireTenantSession } from "@/lib/tenant-session";
@@ -10,7 +10,13 @@ import { requireTenantSession } from "@/lib/tenant-session";
 export const dynamic = "force-dynamic";
 
 type PartiesPageProps = {
-  searchParams?: Promise<{ q?: string; focus?: string; flash?: string }>;
+  searchParams?: Promise<{
+    q?: string;
+    focus?: string;
+    flash?: string;
+    type?: string;
+    relation?: string;
+  }>;
 };
 
 const avatars = [
@@ -22,120 +28,120 @@ const avatars = [
 
 const partiesCopy = {
   ja: {
-    filter: "絞り込み",
     addParty: "関係者追加",
+    batchExportBtn: "選択関係者をCSV出力",
+    batchHint: "選択した関係者だけCSV出力します。",
+    batchTools: "一括操作",
+    businessRelation: "業務関係",
+    clear: "解除",
+    continueCase: "案件を開く",
+    createCase: "案件を作成",
+    currentSignal: "現在の状態",
     editParty: "編集",
-    tableEntity: "法人 / 個人",
-    tableType: "種別",
+    emptyResult: "一致する関係者がありません。キーワードを変更するか、新規関係者を追加してください。",
+    filter: "絞り込み",
+    filterAll: "すべて",
+    filterCorporate: "法人",
+    filterIndividual: "個人",
+    filterNoCases: "案件なし",
+    filterWithCases: "案件あり",
+    listTitle: "関係者一覧",
+    nextAction: "次の操作",
+    pageTitle: "関係者",
+    partyTypeCorporate: "法人",
+    partyTypeIndividual: "個人",
+    profileTitle: "関係者ファイル",
+    relationCases: "関連案件",
+    relationDocuments: "資料",
+    relationProperty: "関連物件",
+    reviewDocuments: "資料を確認",
+    searchPlaceholder: "名前・電話・メール・役割で検索",
+    signalNoCase: "まだ案件化されていません。関係者情報を確認してから案件を作成します。",
+    signalWithCase: "案件に紐づいています。案件側で次の処理を進めてください。",
     tableRole: "役割",
-    tableContracts: "契約数",
-    tableEscrow: "エスクロー残高",
-    tableLastActivity: "最終更新",
     today: "本日 09:42",
     yesterday: "昨日",
-    meetingLogged: "面談記録",
-    contractRevision: "契約改訂",
-    panelFundTypeCorporate: "ファンド法人",
-    panelFundTypePrivate: "個人投資家",
-    portfolioValue: "ポートフォリオ評価額",
-    riskScore: "リスク評価",
-    low: "低",
-    primaryContacts: "主要連絡先",
-    managingDirector: "マネージングディレクター",
-    recentDocuments: "最近の書類",
-    viewAll: "すべて表示",
-    uploadedAgo: "2日前にアップロード",
-    verifiedAt: "10/14 検証済み",
-    ledgerTimeline: "台帳タイムライン",
-    revisionRequest: "契約改訂依頼",
-    fundsDisbursed: "資金実行",
-    systemUser: "システムユーザー",
-    treasury: "会計",
-    commandActions: "操作",
-    commandSearch: "全体検索...",
-    timelineQuote: "第4.2条（二次配分権）の文言を更新しました。",
-    emptyResult: "一致する関係者がありません。キーワードを変更するか、新規関係者を追加してください。",
-    batchExportTitle: "選択出力",
-    batchExportDesc: "複数関係者を選択してCSV出力できます。",
-    batchExportBtn: "選択関係者をCSV出力",
   },
   zh: {
-    filter: "筛选",
     addParty: "新增主体",
+    batchExportBtn: "导出选中主体CSV",
+    batchHint: "只对勾选的主体执行 CSV 导出。",
+    batchTools: "批量工具",
+    businessRelation: "业务关系",
+    clear: "清除",
+    continueCase: "打开案件",
+    createCase: "创建案件",
+    currentSignal: "当前判断",
     editParty: "编辑",
-    tableEntity: "法人 / 个人",
-    tableType: "类型",
+    emptyResult: "未找到匹配主体，请调整关键词或新增主体。",
+    filter: "筛选",
+    filterAll: "全部",
+    filterCorporate: "法人",
+    filterIndividual: "个人",
+    filterNoCases: "无案件",
+    filterWithCases: "有案件",
+    listTitle: "主体列表",
+    nextAction: "下一步",
+    pageTitle: "相关主体",
+    partyTypeCorporate: "法人",
+    partyTypeIndividual: "个人",
+    profileTitle: "主体档案",
+    relationCases: "关联案件",
+    relationDocuments: "资料",
+    relationProperty: "关联物件",
+    reviewDocuments: "查看资料",
+    searchPlaceholder: "按姓名、电话、邮箱、角色搜索",
+    signalNoCase: "还没有形成案件，先确认主体信息再创建案件。",
+    signalWithCase: "已经有关联案件，应从案件继续推进。",
     tableRole: "角色",
-    tableContracts: "合同数",
-    tableEscrow: "托管余额",
-    tableLastActivity: "最后活动",
     today: "今天 09:42",
     yesterday: "昨天",
-    meetingLogged: "会议记录",
-    contractRevision: "合同修订",
-    panelFundTypeCorporate: "机构基金",
-    panelFundTypePrivate: "个人投资者",
-    portfolioValue: "资产组合价值",
-    riskScore: "风险评分",
-    low: "低",
-    primaryContacts: "主要联系人",
-    managingDirector: "管理负责人",
-    recentDocuments: "最近文档",
-    viewAll: "查看全部",
-    uploadedAgo: "2天前上传",
-    verifiedAt: "10/14 已验证",
-    ledgerTimeline: "台账时间线",
-    revisionRequest: "合同修订请求",
-    fundsDisbursed: "资金发放",
-    systemUser: "系统用户",
-    treasury: "财务",
-    commandActions: "操作",
-    commandSearch: "全局搜索...",
-    timelineQuote: "已更新第 4.2 条关于二次分配权的条款。",
-    emptyResult: "未找到匹配主体，请调整关键词或新增主体。",
-    batchExportTitle: "批量导出",
-    batchExportDesc: "可选择多个主体并导出CSV。",
-    batchExportBtn: "导出选中主体CSV",
   },
   ko: {
-    filter: "필터",
     addParty: "관계자 추가",
+    batchExportBtn: "선택 관계자 CSV 내보내기",
+    batchHint: "선택한 관계자만 CSV로 내보냅니다.",
+    batchTools: "일괄 작업",
+    businessRelation: "업무 관계",
+    clear: "초기화",
+    continueCase: "안건 열기",
+    createCase: "안건 만들기",
+    currentSignal: "현재 상태",
     editParty: "편집",
-    tableEntity: "법인 / 개인",
-    tableType: "유형",
+    emptyResult: "일치하는 관계자가 없습니다. 검색어를 변경하거나 관계자를 추가해 주세요.",
+    filter: "필터",
+    filterAll: "전체",
+    filterCorporate: "법인",
+    filterIndividual: "개인",
+    filterNoCases: "안건 없음",
+    filterWithCases: "안건 있음",
+    listTitle: "관계자 목록",
+    nextAction: "다음 작업",
+    pageTitle: "관계자",
+    partyTypeCorporate: "법인",
+    partyTypeIndividual: "개인",
+    profileTitle: "관계자 파일",
+    relationCases: "연계 안건",
+    relationDocuments: "자료",
+    relationProperty: "연계 매물",
+    reviewDocuments: "자료 확인",
+    searchPlaceholder: "이름, 전화, 이메일, 역할 검색",
+    signalNoCase: "아직 안건이 없습니다. 관계자 정보를 확인한 뒤 안건을 만드세요.",
+    signalWithCase: "안건에 연결되어 있습니다. 안건에서 다음 작업을 진행하세요.",
     tableRole: "역할",
-    tableContracts: "계약 수",
-    tableEscrow: "에스크로 잔액",
-    tableLastActivity: "최근 활동",
     today: "오늘 09:42",
     yesterday: "어제",
-    meetingLogged: "미팅 기록",
-    contractRevision: "계약 개정",
-    panelFundTypeCorporate: "기관 펀드",
-    panelFundTypePrivate: "개인 투자자",
-    portfolioValue: "포트폴리오 가치",
-    riskScore: "리스크 점수",
-    low: "낮음",
-    primaryContacts: "주요 연락처",
-    managingDirector: "총괄 디렉터",
-    recentDocuments: "최근 문서",
-    viewAll: "전체 보기",
-    uploadedAgo: "2일 전 업로드",
-    verifiedAt: "10/14 검증 완료",
-    ledgerTimeline: "원장 타임라인",
-    revisionRequest: "계약 개정 요청",
-    fundsDisbursed: "자금 집행",
-    systemUser: "시스템 사용자",
-    treasury: "재무",
-    commandActions: "작업",
-    commandSearch: "전체 검색...",
-    timelineQuote: "2차 배분 권한에 대한 4.2조 문구를 수정했습니다.",
-    emptyResult: "일치하는 관계자가 없습니다. 검색어를 변경하거나 관계자를 추가해 주세요.",
-    batchExportTitle: "선택 내보내기",
-    batchExportDesc: "여러 관계자를 선택해 CSV로 내보낼 수 있습니다.",
-    batchExportBtn: "선택 관계자 CSV 내보내기",
   },
 } as const;
+
+function initials(name: string) {
+  return name
+    .split(" ")
+    .map((piece) => piece[0] ?? "")
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+}
 
 export default async function PartiesPage({ searchParams }: PartiesPageProps) {
   const [locale, session] = await Promise.all([
@@ -143,34 +149,57 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
     requireTenantSession({ permission: "record.read" }),
   ]);
   const copy = partiesCopy[locale];
-  const hubContext = { userId: session.user.id, tenantId: session.tenant.id };
   const params = searchParams ? await searchParams : undefined;
   const query = params?.q?.trim() ?? "";
   const focus = params?.focus?.trim() ?? "";
-  const [parties, attachments] = await Promise.all([
+  const typeFilter = params?.type === "corporate" || params?.type === "individual" ? params.type : "all";
+  const relationFilter =
+    params?.relation === "with_cases" || params?.relation === "no_cases" ? params.relation : "all";
+  const hubContext = { userId: session.user.id, tenantId: session.tenant.id };
+
+  const [parties, attachments, contracts] = await Promise.all([
     listHubParties(locale, hubContext),
     listHubAttachments(locale, 200, hubContext),
+    listHubContracts(locale, hubContext),
   ]);
 
-  const filtered = query
+  const caseCountByParty = contracts.reduce((map, contract) => {
+    map.set(contract.clientId, (map.get(contract.clientId) ?? 0) + 1);
+    return map;
+  }, new Map<string, number>());
+  const getCaseCount = (partyId: string) => caseCountByParty.get(partyId) ?? 0;
+  const searched = query
     ? parties.filter((party) => {
+        const normalized = query.toLowerCase();
         return (
-          party.name.includes(query) ||
-          party.phone.includes(query) ||
-          (party.email?.includes(query) ?? false) ||
-          party.roles.some((role) => role.includes(query))
+          party.name.toLowerCase().includes(normalized) ||
+          party.phone.toLowerCase().includes(normalized) ||
+          (party.email?.toLowerCase().includes(normalized) ?? false) ||
+          party.roles.some((role) => role.toLowerCase().includes(normalized))
         );
       })
     : parties;
+  const filtered = searched.filter((party) => {
+    const caseCount = getCaseCount(party.id);
+    const matchesType = typeFilter === "all" || party.partyType === typeFilter;
+    const matchesRelation =
+      relationFilter === "all" ||
+      (relationFilter === "with_cases" && caseCount > 0) ||
+      (relationFilter === "no_cases" && caseCount === 0);
+    return matchesType && matchesRelation;
+  });
 
   const selected = filtered.find((party) => party.id === focus) ?? filtered[0];
   const selectedAttachments = selected
-    ? attachments.filter((item) => item.targetType === "party" && item.targetId === selected.id).slice(0, 2)
+    ? attachments.filter((item) => item.targetType === "party" && item.targetId === selected.id).slice(0, 3)
     : [];
-  const localeCode = locale === "zh" ? "zh-CN" : locale === "ko" ? "ko-KR" : "ja-JP";
+  const selectedContracts = selected ? contracts.filter((contract) => contract.clientId === selected.id) : [];
+  const selectedCaseHref = selectedContracts[0]
+    ? `/contracts?filter=all&focus=${selectedContracts[0].id}`
+    : selected
+      ? `/quotes/new?clientId=${selected.id}`
+      : "/quotes/new";
   const previousDay = selectedAttachments[0] ? formatDate(selectedAttachments[0].uploadedAt, locale) : copy.yesterday;
-  const timelineDate1 = selectedAttachments[0] ? formatDate(selectedAttachments[0].uploadedAt, locale) : t(locale, "common.notSet");
-  const timelineDate2 = selectedAttachments[1] ? formatDate(selectedAttachments[1].uploadedAt, locale) : t(locale, "common.notSet");
   const flashMap = {
     party_created: {
       ja: "関係者を登録しました。",
@@ -185,87 +214,151 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
   } as const;
   const flashKey = String(params?.flash ?? "").trim() as keyof typeof flashMap;
   const flashMessage = flashMap[flashKey]?.[locale];
+  const makeHref = (next: { q?: string; type?: string; relation?: string; focus?: string }) => {
+    const urlParams = new URLSearchParams();
+    const nextQuery = next.q ?? query;
+    const nextType = next.type ?? typeFilter;
+    const nextRelation = next.relation ?? relationFilter;
+    const nextFocus = next.focus ?? focus;
+    if (nextQuery) urlParams.set("q", nextQuery);
+    if (nextType !== "all") urlParams.set("type", nextType);
+    if (nextRelation !== "all") urlParams.set("relation", nextRelation);
+    if (nextFocus) urlParams.set("focus", nextFocus);
+    const suffix = urlParams.toString();
+    return suffix ? `/parties?${suffix}` : "/parties";
+  };
+  const partyTypeLabel = (partyType: "individual" | "corporate") =>
+    partyType === "corporate" ? copy.partyTypeCorporate : copy.partyTypeIndividual;
+  const filterChips = [
+    {
+      label: copy.filterAll,
+      href: makeHref({ type: "all", relation: "all", focus: "" }),
+      active: typeFilter === "all" && relationFilter === "all",
+    },
+    {
+      label: copy.filterWithCases,
+      href: makeHref({ relation: "with_cases", focus: "" }),
+      active: relationFilter === "with_cases",
+    },
+    {
+      label: copy.filterNoCases,
+      href: makeHref({ relation: "no_cases", focus: "" }),
+      active: relationFilter === "no_cases",
+    },
+    {
+      label: copy.filterCorporate,
+      href: makeHref({ type: "corporate", focus: "" }),
+      active: typeFilter === "corporate",
+    },
+    {
+      label: copy.filterIndividual,
+      href: makeHref({ type: "individual", focus: "" }),
+      active: typeFilter === "individual",
+    },
+  ];
 
   return (
-    <div className="space-y-6 pb-20">
+    <div className="space-y-6 pb-12">
       <section className="flex flex-wrap items-end justify-between gap-3">
         <div className="space-y-1">
-          <h1 className="text-4xl font-bold tracking-tight text-slate-900">{t(locale, "parties.title")}</h1>
+          <h1 className="text-4xl font-bold tracking-tight text-slate-900">{copy.pageTitle}</h1>
           <p className="text-sm font-medium text-slate-600">
-            {filtered.length} {t(locale, "parties.table.resultCount", { count: filtered.length })}
+            {t(locale, "parties.table.resultCount", { count: filtered.length })}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Link href={`/parties?q=${encodeURIComponent(query)}`} className="inline-flex items-center gap-1 rounded-lg bg-[#e9effc] px-4 py-2 text-sm font-semibold text-slate-800">
-            <span className="material-symbols-outlined text-[16px]">filter_list</span>
-            {copy.filter}
-          </Link>
-          <Link
-            href="/parties/new"
-            className="inline-flex items-center gap-1 rounded-lg bg-gradient-to-br from-[#001e40] to-[#003366] px-4 py-2 text-sm font-semibold text-white shadow-[0_8px_20px_-10px_rgba(0,30,64,0.8)]"
-          >
-            <span className="material-symbols-outlined text-[16px]">add</span>
-            {copy.addParty}
-          </Link>
-        </div>
+        <Link
+          href="/parties/new"
+          className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-gradient-to-br from-[#001e40] to-[#003366] px-4 text-sm font-semibold text-white shadow-[0_8px_20px_-10px_rgba(0,30,64,0.8)]"
+        >
+          <span className="material-symbols-outlined text-[17px]" aria-hidden="true">add</span>
+          {copy.addParty}
+        </Link>
       </section>
       <PageFlashBanner message={flashMessage} />
 
       <section className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200/35">
-        <h2 className="text-base font-bold text-slate-900">{copy.batchExportTitle}</h2>
-        <p className="mt-1 text-xs text-slate-500">{copy.batchExportDesc}</p>
-        <form action="/api/hub/export" method="get" className="mt-3 space-y-3">
-          <input type="hidden" name="scope" value="parties" />
-          <input type="hidden" name="locale" value={locale} />
-          <div className="max-h-40 overflow-auto rounded-lg border border-slate-200 bg-slate-50 p-3">
-            <div className="space-y-2">
-              {filtered.slice(0, 40).map((party) => (
-                <label key={`export-party-${party.id}`} className="flex items-center gap-2 rounded-md bg-white px-2 py-1.5 text-sm">
-                  <input type="checkbox" name="ids" value={party.id} className="h-4 w-4 rounded border-slate-300" />
-                  <span className="min-w-0 flex-1 truncate text-slate-800">{party.name}</span>
-                  <span className="text-xs text-slate-500">{party.phone}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-          <button className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-            {copy.batchExportBtn}
+        <form className="grid gap-3 lg:grid-cols-[minmax(240px,1fr)_auto_auto]" action="/parties">
+          <input
+            name="q"
+            defaultValue={query}
+            placeholder={copy.searchPlaceholder}
+            className="min-h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none focus:border-[#0046ad] focus:ring-2 focus:ring-blue-100"
+          />
+          <input type="hidden" name="type" value={typeFilter} />
+          <input type="hidden" name="relation" value={relationFilter} />
+          <button className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-[#001e40] px-4 text-sm font-bold text-white">
+            <span className="material-symbols-outlined text-[17px]" aria-hidden="true">search</span>
+            {copy.filter}
           </button>
+          <Link
+            href="/parties"
+            className="inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-200 px-4 text-sm font-bold text-slate-700 hover:bg-slate-50"
+          >
+            {copy.clear}
+          </Link>
         </form>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {filterChips.map((item) => (
+            <Link
+              key={item.label}
+              href={item.href}
+              className={
+                "rounded-full px-3 py-1.5 text-xs font-bold transition " +
+                (item.active ? "bg-blue-700 text-white" : "bg-[#edf2fd] text-slate-700 hover:bg-blue-100")
+              }
+            >
+              {item.label}
+            </Link>
+          ))}
+        </div>
       </section>
 
-      <section className="grid gap-0 overflow-hidden rounded-xl bg-[#e9effc]/80 shadow-sm ring-1 ring-slate-200/40 xl:grid-cols-[minmax(0,2fr)_360px]">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[860px] border-separate border-spacing-y-2 p-3 text-left">
-            <thead>
-              <tr className="text-[11px] font-bold uppercase tracking-widest text-slate-400">
-                <th className="px-4 pb-2">{copy.tableEntity}</th>
-                <th className="pb-2">{copy.tableType}</th>
-                <th className="pb-2">{copy.tableRole}</th>
-                <th className="pb-2">{copy.tableContracts}</th>
-                <th className="pb-2 text-right">{copy.tableEscrow}</th>
-                <th className="px-4 pb-2 text-right">{copy.tableLastActivity}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((party, index) => (
-                <tr
+      <section className="grid gap-0 overflow-hidden rounded-xl bg-[#e9effc]/80 shadow-sm ring-1 ring-slate-200/40 xl:grid-cols-[minmax(0,1fr)_400px]">
+        <form action="/api/hub/export" method="get" className="min-w-0 space-y-3 p-4">
+          <input type="hidden" name="scope" value="parties" />
+          <input type="hidden" name="locale" value={locale} />
+          <div className="flex flex-wrap items-center justify-between gap-3 px-1">
+            <div>
+              <h2 className="text-lg font-bold text-slate-900">{copy.listTitle}</h2>
+              <p className="mt-1 text-xs font-medium text-slate-500">
+                {t(locale, "parties.table.resultCount", { count: filtered.length })}
+              </p>
+            </div>
+            <details className="group relative">
+              <summary className="inline-flex cursor-pointer list-none items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">
+                <span className="material-symbols-outlined text-[16px]" aria-hidden="true">checklist</span>
+                {copy.batchTools}
+              </summary>
+              <div className="absolute right-0 z-10 mt-2 w-64 rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
+                <p className="text-xs leading-5 text-slate-500">{copy.batchHint}</p>
+                <button className="mt-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">
+                  {copy.batchExportBtn}
+                </button>
+              </div>
+            </details>
+          </div>
+
+          <div className="space-y-2">
+            {filtered.map((party, index) => {
+              const caseCount = getCaseCount(party.id);
+              const partyHref = makeHref({ focus: party.id });
+              return (
+                <article
                   key={party.id}
                   className={
-                    "cursor-pointer rounded-xl bg-white transition hover:bg-[#f6f9ff] " +
-                    (selected?.id === party.id ? "ring-2 ring-[#001e40]/10" : "")
+                    "grid gap-3 rounded-xl bg-white p-4 transition hover:bg-[#f6f9ff] md:grid-cols-[auto_minmax(0,1fr)_auto] " +
+                    (selected?.id === party.id ? "ring-2 ring-[#001e40]/15" : "")
                   }
                 >
-                  <td className="rounded-l-xl px-4 py-4">
-                    <div className="flex items-center gap-3">
+                  <label className="flex items-start pt-1">
+                    <span className="sr-only">{copy.batchTools}</span>
+                    <input type="checkbox" name="ids" value={party.id} className="h-4 w-4 rounded border-slate-300" />
+                  </label>
+                  <Link href={partyHref} className="min-w-0">
+                    <div className="flex min-w-0 items-center gap-3">
                       {selected?.id === party.id ? (
-                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#e6eeff] text-sm font-black text-[#001e40]">
-                          {party.name
-                            .split(" ")
-                            .map((piece) => piece[0] ?? "")
-                            .join("")
-                            .slice(0, 2)
-                            .toUpperCase()}
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#e6eeff] text-sm font-black text-[#001e40]">
+                          {initials(party.name)}
                         </div>
                       ) : (
                         <Image
@@ -273,43 +366,41 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
                           alt={party.name}
                           width={40}
                           height={40}
-                          className="h-10 w-10 rounded-full object-cover"
+                          className="h-10 w-10 shrink-0 rounded-full object-cover"
                         />
                       )}
-                      <div>
-                        <p className="text-sm font-bold text-slate-900">{party.name}</p>
-                        <p className="text-xs text-slate-500">ID: {party.id.toUpperCase()}</p>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-bold text-slate-900">{party.name}</p>
+                        <p className="mt-1 truncate text-xs text-slate-500">
+                          {party.roles[0] ?? t(locale, "common.notSet")} · {partyTypeLabel(party.partyType)}
+                        </p>
                       </div>
                     </div>
-                  </td>
-                  <td className="py-4">
-                    <span className="rounded bg-[#edf2fd] px-2 py-0.5 text-[10px] font-bold uppercase text-slate-600">{party.partyType}</span>
-                  </td>
-                  <td className="py-4">
-                    <p className="text-sm font-medium text-slate-800">{party.roles[0] ?? "-"}</p>
-                  </td>
-                  <td className="py-4 text-sm font-semibold tabular-nums text-slate-800">{party.contractCount}</td>
-                  <td className="py-4 text-right text-sm font-bold tabular-nums text-slate-900">
-                    ¥{(party.contractCount * 124000).toLocaleString(locale === "zh" ? "zh-CN" : locale === "ko" ? "ko-KR" : "ja-JP")}
-                  </td>
-                  <td className="rounded-r-xl px-4 py-4 text-right">
-                    <p className="text-sm font-medium text-slate-800">{index === 0 ? copy.today : index === 1 ? previousDay : copy.yesterday}</p>
-                    <Link href={`/parties?q=${encodeURIComponent(query)}&focus=${party.id}`} className="text-xs text-[#d8885c] hover:underline">
-                      {index === 0 ? copy.contractRevision : copy.meetingLogged}
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-              {filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="rounded-xl bg-white px-4 py-10 text-center text-sm text-slate-500">
-                    {copy.emptyResult}
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
+                    <div className="mt-3 grid gap-2 text-xs font-medium text-slate-600 md:grid-cols-3">
+                      <span className="rounded-lg bg-[#edf2fd] px-2 py-1">
+                        {copy.relationCases}: {caseCount}
+                      </span>
+                      <span className="truncate rounded-lg bg-[#edf2fd] px-2 py-1">
+                        {copy.relationProperty}: {party.relatedPropertyHint ?? t(locale, "common.notSet")}
+                      </span>
+                      <span className="rounded-lg bg-[#edf2fd] px-2 py-1">
+                        {index === 0 ? copy.today : index === 1 ? previousDay : copy.yesterday}
+                      </span>
+                    </div>
+                  </Link>
+                  <div className="flex items-center justify-end">
+                    <span className="material-symbols-outlined text-slate-300" aria-hidden="true">arrow_forward</span>
+                  </div>
+                </article>
+              );
+            })}
+            {filtered.length === 0 ? (
+              <div className="rounded-xl bg-white px-4 py-10 text-center text-sm text-slate-500">
+                {copy.emptyResult}
+              </div>
+            ) : null}
+          </div>
+        </form>
 
         <aside className="border-l border-slate-200/70 bg-white">
           {selected ? (
@@ -317,104 +408,110 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
               <div>
                 <div className="mb-4 flex items-start justify-between">
                   <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-[#eff4ff] text-4xl font-black text-[#001e40]">
-                    {selected.name
-                      .split(" ")
-                      .map((piece) => piece[0] ?? "")
-                      .join("")
-                      .slice(0, 2)
-                      .toUpperCase()}
+                    {initials(selected.name)}
                   </div>
                   <Link
                     href={`/parties/${selected.id}/edit`}
                     className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
                   >
-                    <span className="material-symbols-outlined text-[16px]">edit</span>
+                    <span className="material-symbols-outlined text-[16px]" aria-hidden="true">edit</span>
                     {copy.editParty}
                   </Link>
                 </div>
-                <h2 className="text-3xl font-bold tracking-tight text-slate-900">{selected.name}</h2>
+                <p className="text-[11px] font-black uppercase tracking-widest text-slate-400">{copy.profileTitle}</p>
+                <h2 className="mt-1 text-3xl font-bold tracking-tight text-slate-900">{selected.name}</h2>
                 <p className="mt-1 text-sm font-medium text-slate-500">
-                  {selected.partyType === "corporate" ? copy.panelFundTypeCorporate : copy.panelFundTypePrivate} • {selected.relatedPropertyHint ?? t(locale, "common.notSet")}
+                  {partyTypeLabel(selected.partyType)} · {selected.roles.join(" / ") || t(locale, "common.notSet")}
                 </p>
                 <div className="mt-5 grid grid-cols-2 gap-3">
                   <div className="rounded-xl bg-[#edf2fd] p-3">
-                    <p className="text-[10px] font-bold uppercase text-slate-400">{copy.portfolioValue}</p>
-                    <p className="mt-1 text-2xl font-bold text-slate-900">¥{(selected.contractCount * 1450000).toLocaleString()}</p>
+                    <p className="text-[10px] font-bold uppercase text-slate-400">{copy.relationCases}</p>
+                    <p className="mt-1 text-2xl font-bold text-slate-900">{selectedContracts.length}</p>
                   </div>
                   <div className="rounded-xl bg-[#edf2fd] p-3">
-                    <p className="text-[10px] font-bold uppercase text-slate-400">{copy.riskScore}</p>
-                    <p className="mt-1 text-2xl font-bold text-emerald-600">{copy.low}</p>
+                    <p className="text-[10px] font-bold uppercase text-slate-400">{copy.relationDocuments}</p>
+                    <p className="mt-1 text-2xl font-bold text-slate-900">{selectedAttachments.length}</p>
                   </div>
                 </div>
               </div>
 
               <div>
-                <h3 className="text-[11px] font-black uppercase tracking-widest text-slate-400">{copy.primaryContacts}</h3>
-                <div className="mt-3 rounded-xl border border-slate-200/70 bg-slate-50 p-3">
-                  <div className="flex items-center gap-3">
-                    <Image src={avatars[1]} alt="contact" width={32} height={32} className="h-8 w-8 rounded-full object-cover" />
-                    <div className="flex-1">
-                      <p className="text-xs font-bold text-slate-900">{selected.name}</p>
-                      <p className="text-[10px] text-slate-500">{copy.managingDirector}</p>
-                    </div>
-                    <a href={`mailto:${selected.email ?? ""}`} className="rounded-lg p-1.5 text-slate-500 hover:bg-[#edf2fd]">
-                      <span className="material-symbols-outlined text-[18px]">mail</span>
-                    </a>
+                <h3 className="text-[11px] font-black uppercase tracking-widest text-slate-400">{copy.businessRelation}</h3>
+                <div className="mt-3 space-y-2 rounded-xl border border-slate-200/70 bg-slate-50 p-3">
+                  <div className="flex justify-between gap-3 text-sm">
+                    <span className="font-semibold text-slate-500">{copy.relationProperty}</span>
+                    <span className="text-right font-bold text-slate-900">{selected.relatedPropertyHint ?? t(locale, "common.notSet")}</span>
                   </div>
+                  <div className="flex justify-between gap-3 text-sm">
+                    <span className="font-semibold text-slate-500">{copy.tableRole}</span>
+                    <span className="text-right font-bold text-slate-900">{selected.roles.join(" / ") || t(locale, "common.notSet")}</span>
+                  </div>
+                  <div className="flex justify-between gap-3 text-sm">
+                    <span className="font-semibold text-slate-500">{copy.relationCases}</span>
+                    <span className="text-right font-bold text-slate-900">{selectedContracts.length}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border-l-4 border-[#0046ad] bg-blue-50 p-4">
+                <p className="text-xs font-black text-blue-700">{copy.currentSignal}</p>
+                <p className="mt-2 text-sm font-semibold leading-6 text-slate-900">
+                  {selectedContracts.length > 0 ? copy.signalWithCase : copy.signalNoCase}
+                </p>
+              </div>
+
+              <div>
+                <h3 className="mb-3 text-[11px] font-black uppercase tracking-widest text-slate-400">{copy.nextAction}</h3>
+                <div className="grid gap-2">
+                  <Link
+                    href={selectedCaseHref}
+                    className="inline-flex items-center justify-between rounded-lg bg-[#001e40] px-4 py-3 text-sm font-bold text-white"
+                  >
+                    {selectedContracts.length > 0 ? copy.continueCase : copy.createCase}
+                    <span className="material-symbols-outlined text-[18px]" aria-hidden="true">arrow_forward</span>
+                  </Link>
+                  <Link
+                    href={`/parties/${selected.id}/edit`}
+                    className="inline-flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 text-sm font-bold text-slate-800 hover:bg-slate-50"
+                  >
+                    {copy.editParty}
+                    <span className="material-symbols-outlined text-[18px]" aria-hidden="true">edit</span>
+                  </Link>
                 </div>
               </div>
 
               <div>
                 <div className="mb-3 flex items-center justify-between">
-                  <h3 className="text-[11px] font-black uppercase tracking-widest text-slate-400">{copy.recentDocuments}</h3>
-                  <Link href="/output-center" className="text-[11px] font-bold text-slate-700">
-                    {copy.viewAll}
+                  <h3 className="text-[11px] font-black uppercase tracking-widest text-slate-400">{copy.relationDocuments}</h3>
+                  <Link href={`/output-center?partyId=${selected.id}`} className="text-[11px] font-bold text-slate-700">
+                    {copy.reviewDocuments}
                   </Link>
                 </div>
                 <div className="space-y-2">
                   {selectedAttachments.length > 0 ? (
                     selectedAttachments.map((doc, index) => (
                       <div key={doc.id} className="flex items-center gap-3 rounded-lg border border-slate-200/70 bg-white p-3">
-                        <span className={"material-symbols-outlined " + (index % 2 === 0 ? "text-[#d8885c]" : "text-blue-500")}>
+                        <span
+                          className={"material-symbols-outlined " + (index % 2 === 0 ? "text-[#d8885c]" : "text-blue-500")}
+                          aria-hidden="true"
+                        >
                           {index % 2 === 0 ? "description" : "article"}
                         </span>
                         <div className="min-w-0">
                           <p className="truncate text-xs font-bold text-slate-900">{doc.fileName}</p>
-                          <p className="text-[10px] text-slate-500">{new Date(doc.uploadedAt).toLocaleDateString(localeCode)}</p>
+                          <p className="text-[10px] text-slate-500">{formatDate(doc.uploadedAt, locale)}</p>
                         </div>
                       </div>
                     ))
                   ) : (
                     <div className="flex items-center gap-3 rounded-lg border border-slate-200/70 bg-white p-3">
-                      <span className="material-symbols-outlined text-slate-400">description</span>
+                      <span className="material-symbols-outlined text-slate-400" aria-hidden="true">description</span>
                       <div>
                         <p className="text-xs font-bold text-slate-900">{t(locale, "common.notSet")}</p>
-                        <p className="text-[10px] text-slate-500">{copy.uploadedAgo}</p>
+                        <p className="text-[10px] text-slate-500">{copy.relationDocuments}</p>
                       </div>
                     </div>
                   )}
-                </div>
-              </div>
-
-              <div>
-                <h3 className="mb-3 text-[11px] font-black uppercase tracking-widest text-slate-400">{copy.ledgerTimeline}</h3>
-                <div className="relative space-y-5 pl-4 before:absolute before:bottom-0 before:left-0 before:top-0 before:w-px before:bg-slate-200">
-                  <div className="relative">
-                    <span className="absolute -left-[19px] top-1 h-3 w-3 rounded-full border-2 border-white bg-[#001e40]" />
-                    <p className="text-xs font-bold text-slate-900">{copy.revisionRequest}</p>
-                    <p className="text-[10px] text-slate-500">{timelineDate1} • {copy.systemUser}</p>
-                    <p className="mt-2 rounded-lg border border-slate-200/70 bg-white p-2 text-[11px] italic text-slate-600">
-                      &quot;{copy.timelineQuote}&quot;
-                    </p>
-                  </div>
-                  <div className="relative">
-                    <span className="absolute -left-[19px] top-1 h-3 w-3 rounded-full border-2 border-white bg-slate-300" />
-                    <p className="text-xs font-bold text-slate-900">{copy.fundsDisbursed}</p>
-                    <p className="text-[10px] text-slate-500">{timelineDate2} • {copy.treasury}</p>
-                    <p className="text-[11px] font-bold text-emerald-600">
-                      +¥{(selected.contractCount * 70000).toLocaleString(localeCode)}
-                    </p>
-                  </div>
                 </div>
               </div>
             </div>
@@ -423,25 +520,6 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
           )}
         </aside>
       </section>
-
-      <div className="fixed bottom-7 left-1/2 z-30 hidden -translate-x-1/2 items-center gap-5 rounded-full border border-white/10 bg-slate-900/90 px-6 py-3 text-white shadow-2xl backdrop-blur lg:flex">
-        <div className="flex items-center gap-3 border-r border-white/20 pr-5">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-white/60">{copy.commandActions}</span>
-          <Link href="/output-center" className="rounded-lg p-1.5 transition hover:bg-white/10">
-            <span className="material-symbols-outlined text-[18px]">print</span>
-          </Link>
-          <Link href="/templates" className="rounded-lg p-1.5 transition hover:bg-white/10">
-            <span className="material-symbols-outlined text-[18px]">share</span>
-          </Link>
-          <Link href="/import-center" className="rounded-lg p-1.5 transition hover:bg-white/10">
-            <span className="material-symbols-outlined text-[18px]">archive</span>
-          </Link>
-        </div>
-        <div className="flex items-center gap-2">
-          <kbd className="rounded border border-white/20 bg-white/10 px-2 py-0.5 text-[10px]">CMD</kbd>
-          <span className="text-sm text-white/80">{copy.commandSearch}</span>
-        </div>
-      </div>
     </div>
   );
 }

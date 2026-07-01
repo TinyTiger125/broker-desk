@@ -13,5 +13,7 @@ export async function getLocale(): Promise<Locale> {
   const store = await cookies();
   const value = store.get(LOCALE_COOKIE_NAME)?.value?.trim();
   if (value && isLocale(value)) return value;
+  const defaultLocale = process.env.BROKER_DESK_DEFAULT_LOCALE?.trim();
+  if (defaultLocale && isLocale(defaultLocale)) return defaultLocale;
   return "ja";
 }

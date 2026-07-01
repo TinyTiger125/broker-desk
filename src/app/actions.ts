@@ -3183,7 +3183,7 @@ export async function saveGuaranteeApplicationDraftAction(formData: FormData) {
   revalidatePath("/output-center");
   revalidatePath(`/guarantee-applications/${template.id}/preview`);
   redirect(
-    `/cases/${encodeURIComponent(caseId)}?guaranteeTemplate=${encodeURIComponent(template.id)}&flash=guarantee_draft_saved#guarantee-template-drafts`,
+    `/guarantee-applications/${encodeURIComponent(template.id)}/preview?caseId=${encodeURIComponent(caseId)}&flash=guarantee_draft_saved#company-draft-fields`,
   );
 }
 

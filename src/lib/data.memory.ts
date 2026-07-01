@@ -572,6 +572,80 @@ function toTemplateSettingsInput(settings: OutputTemplateSettings): OutputTempla
   };
 }
 
+type QaBusinessDataCounts = Record<keyof Omit<DB, "users" | "outputTemplateSettings" | "outputTemplateVersions">, number>;
+
+function cloneValue<T>(value: T): T {
+  if (value instanceof Date) return new Date(value) as T;
+  if (Array.isArray(value)) return value.map((item) => cloneValue(item)) as T;
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, nestedValue]) => [key, cloneValue(nestedValue)]),
+    ) as T;
+  }
+  return value;
+}
+
+function cloneCollection<T>(items: T[]): T[] {
+  return items.map((item) => cloneValue(item));
+}
+
+function cloneDb(input: DB): DB {
+  return {
+    users: cloneCollection(input.users),
+    tenants: cloneCollection(input.tenants),
+    tenantMemberships: cloneCollection(input.tenantMemberships),
+    clients: cloneCollection(input.clients),
+    properties: cloneCollection(input.properties),
+    quotations: cloneCollection(input.quotations),
+    followUps: cloneCollection(input.followUps),
+    tasks: cloneCollection(input.tasks),
+    auditLogs: cloneCollection(input.auditLogs),
+    outputTemplateSettings: cloneCollection(input.outputTemplateSettings),
+    outputTemplateVersions: cloneCollection(input.outputTemplateVersions),
+    importJobs: cloneCollection(input.importJobs),
+    brokerageCases: cloneCollection(input.brokerageCases),
+    extractionReviewItems: cloneCollection(input.extractionReviewItems),
+    guaranteeApplicationDrafts: cloneCollection(input.guaranteeApplicationDrafts),
+    correctionEvents: cloneCollection(input.correctionEvents),
+    aiExperienceDrafts: cloneCollection(input.aiExperienceDrafts),
+    attachments: cloneCollection(input.attachments),
+    generatedOutputs: cloneCollection(input.generatedOutputs),
+  };
+}
+
+function qaBusinessDataCounts(): QaBusinessDataCounts {
+  return {
+    tenants: db.tenants.length,
+    tenantMemberships: db.tenantMemberships.length,
+    clients: db.clients.length,
+    properties: db.properties.length,
+    quotations: db.quotations.length,
+    followUps: db.followUps.length,
+    tasks: db.tasks.length,
+    auditLogs: db.auditLogs.length,
+    importJobs: db.importJobs.length,
+    brokerageCases: db.brokerageCases.length,
+    extractionReviewItems: db.extractionReviewItems.length,
+    guaranteeApplicationDrafts: db.guaranteeApplicationDrafts.length,
+    correctionEvents: db.correctionEvents.length,
+    aiExperienceDrafts: db.aiExperienceDrafts.length,
+    attachments: db.attachments.length,
+    generatedOutputs: db.generatedOutputs.length,
+  };
+}
+
+function createQaBlankTemplateSettings() {
+  const templateSettings = getDefaultOutputTemplateSettings("user_demo");
+  templateSettings.companyName = cherryOutputTemplate.companyName;
+  templateSettings.department = cherryOutputTemplate.department;
+  templateSettings.representative = cherryOutputTemplate.representative;
+  templateSettings.licenseNumber = cherryOutputTemplate.licenseNumber;
+  templateSettings.postalAddress = cherryOutputTemplate.postalAddress;
+  templateSettings.phone = cherryOutputTemplate.phone;
+  templateSettings.email = cherryOutputTemplate.email;
+  return templateSettings;
+}
+
 
 const cherryOutputTemplate = getDefaultOutputTemplateSettings("user_demo");
 cherryOutputTemplate.companyName = "Cherry Investment株式会社";
@@ -610,7 +684,7 @@ const _freshDb: DB = withDefaultTenantScope({
       slug: "cherry-investment",
       accountType: "company",
       status: "active",
-      purchasedSeatCount: 5,
+      purchasedSeatCount: 8,
       createdAt: new Date(now - 90 * 24 * 60 * 60 * 1000),
       updatedAt: new Date(now - 5 * 24 * 60 * 60 * 1000),
     },
@@ -1068,30 +1142,23 @@ const _freshDb: DB = withDefaultTenantScope({
   generatedOutputs: [],
 });
 
-if (!_g.__brokerDb) _g.__brokerDb = _freshDb;
+if (!_g.__brokerDb) _g.__brokerDb = cloneDb(_freshDb);
 const db: DB = _g.__brokerDb;
 backfillTenantScope(db);
-if (!db.tenants) db.tenants = [..._freshDb.tenants];
+if (!db.tenants) db.tenants = cloneCollection(_freshDb.tenants);
 db.tenants.forEach(ensureTenantDefaults);
-if (!db.tenantMemberships) db.tenantMemberships = [..._freshDb.tenantMemberships];
+if (!db.tenantMemberships) db.tenantMemberships = cloneCollection(_freshDb.tenantMemberships);
 db.tenantMemberships.forEach(ensureTenantMembershipDefaults);
-if (!db.guaranteeApplicationDrafts) db.guaranteeApplicationDrafts = [..._freshDb.guaranteeApplicationDrafts];
+if (!db.guaranteeApplicationDrafts) db.guaranteeApplicationDrafts = cloneCollection(_freshDb.guaranteeApplicationDrafts);
 if (!db.correctionEvents) db.correctionEvents = [];
 if (!db.aiExperienceDrafts) db.aiExperienceDrafts = [];
 
-export function resetBusinessDataForQa(): Record<keyof Omit<DB, "users" | "outputTemplateSettings" | "outputTemplateVersions">, number> {
-  const templateSettings = getDefaultOutputTemplateSettings("user_demo");
-  templateSettings.companyName = cherryOutputTemplate.companyName;
-  templateSettings.department = cherryOutputTemplate.department;
-  templateSettings.representative = cherryOutputTemplate.representative;
-  templateSettings.licenseNumber = cherryOutputTemplate.licenseNumber;
-  templateSettings.postalAddress = cherryOutputTemplate.postalAddress;
-  templateSettings.phone = cherryOutputTemplate.phone;
-  templateSettings.email = cherryOutputTemplate.email;
+export function resetBusinessDataForQa(): QaBusinessDataCounts {
+  const templateSettings = createQaBlankTemplateSettings();
 
-  db.users = _freshDb.users.map((user) => ({ ...user }));
-  db.tenants = _freshDb.tenants.map((tenant) => ({ ...tenant }));
-  db.tenantMemberships = _freshDb.tenantMemberships.map((membership) => ({ ...membership }));
+  db.users = cloneCollection(_freshDb.users);
+  db.tenants = cloneCollection(_freshDb.tenants);
+  db.tenantMemberships = cloneCollection(_freshDb.tenantMemberships);
   db.clients = [];
   db.properties = [];
   db.quotations = [];
@@ -1121,24 +1188,17 @@ export function resetBusinessDataForQa(): Record<keyof Omit<DB, "users" | "outpu
   db.attachments = [];
   db.generatedOutputs = [];
 
-  return {
-    tenants: db.tenants.length,
-    tenantMemberships: db.tenantMemberships.length,
-    clients: db.clients.length,
-    properties: db.properties.length,
-    quotations: db.quotations.length,
-    followUps: db.followUps.length,
-    tasks: db.tasks.length,
-    auditLogs: db.auditLogs.length,
-    importJobs: db.importJobs.length,
-    brokerageCases: db.brokerageCases.length,
-    extractionReviewItems: db.extractionReviewItems.length,
-    guaranteeApplicationDrafts: db.guaranteeApplicationDrafts.length,
-    correctionEvents: db.correctionEvents.length,
-    aiExperienceDrafts: db.aiExperienceDrafts.length,
-    attachments: db.attachments.length,
-    generatedOutputs: db.generatedOutputs.length,
-  };
+  return qaBusinessDataCounts();
+}
+
+export function seedBusinessDataForQa(): QaBusinessDataCounts {
+  Object.assign(db, cloneDb(_freshDb));
+  backfillTenantScope(db);
+  db.tenants.forEach(ensureTenantDefaults);
+  db.tenantMemberships.forEach(ensureTenantMembershipDefaults);
+  ensureBaseQuoteData();
+  ensureRichDemoData();
+  return qaBusinessDataCounts();
 }
 
 const seedQuoteYamadaA = (() => {
@@ -1171,9 +1231,11 @@ const seedQuoteNakamura = (() => {
   return { id: "quote_nakamura_a", tenantId: DEFAULT_TENANT_ID, clientId: "client_nakamura", propertyId: "prop_bunkyo_soleil", quoteTitle: "中村様 文京区ソレイユ 最終プラン（成約）", ...data, ...computed, summaryText: "成約済み。引渡し2026年4月15日予定。頭金1800万円・35年1.45%・月々約25.1万円。", status: "sent" as const, createdAt: new Date(now - 28 * 24 * 60 * 60 * 1000), updatedAt: new Date(now - 12 * 24 * 60 * 60 * 1000) } satisfies Quotation;
 })();
 
-if (db.quotations.length === 0) {
+function ensureBaseQuoteData() {
+  if (db.quotations.length > 0) return;
   db.quotations.push(seedQuoteYamadaA, seedQuoteYamadaB, seedQuoteMeiling, seedQuoteTamura, seedQuoteNakamura);
 }
+ensureBaseQuoteData();
 
 function dateAgo(days: number, hours = 0): Date {
   return new Date(now - (days * 24 + hours) * 60 * 60 * 1000);
@@ -1447,7 +1509,11 @@ function ensureRichDemoData() {
   backfillTenantScope(db);
 }
 
-ensureRichDemoData();
+if (process.env.BROKER_DESK_SEED_MODE === "blank") {
+  resetBusinessDataForQa();
+} else {
+  ensureRichDemoData();
+}
 
 const OPEN_STAGES: ClientStage[] = ["lead", "contacted", "quoted", "viewing", "negotiating"];
 const STAGE_JA_LABEL: Record<ClientStage, string> = {

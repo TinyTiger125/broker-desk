@@ -44,6 +44,87 @@ const targetFieldOptions: Record<string, string[]> = {
   service_requests: ["title", "property_id", "party_id", "occurred_at", "status"],
 };
 
+const targetFieldCopy: Record<
+  string,
+  {
+    label: Record<Locale, string>;
+    helper: Record<Locale, string>;
+  }
+> = {
+  name: {
+    label: { ja: "物件名", zh: "物件名称", ko: "매물명" },
+    helper: { ja: "物件台帳の名称として保存", zh: "保存到物件资料的名称", ko: "매물 정보의 이름으로 저장" },
+  },
+  address: {
+    label: { ja: "所在地", zh: "地址", ko: "소재지" },
+    helper: { ja: "物件の住所として保存", zh: "保存到物件地址", ko: "매물 주소로 저장" },
+  },
+  area: {
+    label: { ja: "エリア", zh: "区域", ko: "지역" },
+    helper: { ja: "検索や分類用のエリア", zh: "用于搜索和归类的位置区域", ko: "검색과 분류에 쓰는 지역" },
+  },
+  listing_price: {
+    label: { ja: "売出価格", zh: "挂牌价格", ko: "매도호가" },
+    helper: { ja: "売買・提案で使う価格", zh: "用于买卖或提案的价格", ko: "매매와 제안에 쓰는 가격" },
+  },
+  phone: {
+    label: { ja: "電話番号", zh: "电话", ko: "전화번호" },
+    helper: { ja: "顧客・関係者の連絡先", zh: "客户或关系人的联系方式", ko: "고객/관계자 연락처" },
+  },
+  email: {
+    label: { ja: "メール", zh: "邮箱", ko: "이메일" },
+    helper: { ja: "顧客・関係者のメール", zh: "客户或关系人的邮箱", ko: "고객/관계자 이메일" },
+  },
+  party_type: {
+    label: { ja: "個人 / 法人", zh: "个人 / 公司", ko: "개인 / 법인" },
+    helper: { ja: "相手が個人か法人か", zh: "判断对方是个人还是公司", ko: "상대가 개인인지 법인인지" },
+  },
+  contract_number: {
+    label: { ja: "契約番号", zh: "合同编号", ko: "계약번호" },
+    helper: { ja: "契約や申込の管理番号", zh: "合同或申请资料的管理编号", ko: "계약/신청 관리번호" },
+  },
+  contract_type: {
+    label: { ja: "契約種別", zh: "合同类型", ko: "계약 유형" },
+    helper: { ja: "賃貸、売買、保証などの種別", zh: "租赁、买卖、保证等业务类型", ko: "임대, 매매, 보증 등 유형" },
+  },
+  property_id: {
+    label: { ja: "関連物件", zh: "关联物件", ko: "연결 매물" },
+    helper: { ja: "どの物件の資料かを紐付け", zh: "确认这份资料属于哪个物件", ko: "어느 매물의 자료인지 연결" },
+  },
+  party_id: {
+    label: { ja: "関連者", zh: "关联客户/关系人", ko: "연결 관계자" },
+    helper: { ja: "顧客、貸主、借主などへ紐付け", zh: "关联到客户、业主、租户等对象", ko: "고객, 소유자, 임차인 등에 연결" },
+  },
+  signed_at: {
+    label: { ja: "契約日", zh: "签约日期", ko: "계약일" },
+    helper: { ja: "契約書に記載された日付", zh: "合同或申请书里的签署日期", ko: "계약서에 적힌 날짜" },
+  },
+  title: {
+    label: { ja: "件名", zh: "事项名称", ko: "제목" },
+    helper: { ja: "対応依頼や作業の名前", zh: "处理事项或待办工作的名称", ko: "처리 요청이나 작업 이름" },
+  },
+  occurred_at: {
+    label: { ja: "発生日", zh: "发生日期", ko: "발생일" },
+    helper: { ja: "問い合わせや対応が発生した日", zh: "事项发生或接到资料的日期", ko: "문의나 처리가 발생한 날짜" },
+  },
+  status: {
+    label: { ja: "対応状態", zh: "处理状态", ko: "처리 상태" },
+    helper: { ja: "未対応、対応中、完了など", zh: "待处理、处理中、已完成等状态", ko: "대기, 처리 중, 완료 등 상태" },
+  },
+  "property.name": {
+    label: { ja: "物件名", zh: "物件名称", ko: "매물명" },
+    helper: { ja: "申込・契約内の物件名", zh: "申请或合同里的物件名称", ko: "신청/계약 안의 매물명" },
+  },
+  "applicant.name": {
+    label: { ja: "申込者名", zh: "申请人姓名", ko: "신청자명" },
+    helper: { ja: "申込者または顧客の名前", zh: "申请人或客户的姓名", ko: "신청자 또는 고객 이름" },
+  },
+  "lease.rent": {
+    label: { ja: "賃料", zh: "租金", ko: "임대료" },
+    helper: { ja: "賃貸条件の月額賃料", zh: "租赁条件里的月租金", ko: "임대 조건의 월 임대료" },
+  },
+};
+
 const sourceColumnExamplesByLocale: Record<
   Locale,
   {
@@ -72,6 +153,26 @@ const sourceColumnExamplesByLocale: Record<
     service_requests: "제목,매물ID,관계자ID,내용,발생일,상태,비용",
   },
 };
+
+function getTargetFieldLabel(locale: Locale, field: string) {
+  return targetFieldCopy[field]?.label[locale] ?? (locale === "zh" ? "其他保存项" : locale === "ko" ? "기타 저장 항목" : "その他の保存項目");
+}
+
+function getTargetFieldHelper(locale: Locale, field: string) {
+  return targetFieldCopy[field]?.helper[locale] ?? (locale === "zh" ? "系统识别出的补充保存项目" : locale === "ko" ? "시스템이 인식한 추가 저장 항목" : "システムが認識した追加の保存項目");
+}
+
+function getMappingConfirmation(locale: Locale, source: string, target?: string) {
+  if (!target) {
+    if (locale === "zh") return `「${source}」暂不保存到资料库。`;
+    if (locale === "ko") return `「${source}」는 자료실에 저장하지 않습니다.`;
+    return `「${source}」は保存しません。`;
+  }
+  const label = getTargetFieldLabel(locale, target);
+  if (locale === "zh") return `将「${source}」保存为「${label}」。`;
+  if (locale === "ko") return `「${source}」를 「${label}」로 저장합니다.`;
+  return `「${source}」を「${label}」として保存します。`;
+}
 
 function getCopy(locale: Locale) {
   const copyByLocale = {
@@ -105,18 +206,18 @@ function getCopy(locale: Locale) {
       wizardTitle: "資料整理アシスト",
       wizardSubtitle: "保存先の確認",
       stepSelect: "選択",
-      stepMap: "整理確認",
+      stepMap: "保存確認",
       stepValidate: "検証",
       stepComplete: "完了",
-      schemaMappingTitle: "手順 2: 読み取った列を確認",
-      schemaMappingDesc: "資料の列を、案件で使う項目として保存する前に確認します。",
+      schemaMappingTitle: "資料の保存先を確認",
+      schemaMappingDesc: "資料にある名前を、業務で使う保存先に合わせます。違うところだけ直してください。",
       saveDraft: "途中保存",
       continueValidation: "検証へ進む",
-      sourceColumn: "資料の列",
-      targetField: "保存先の項目",
-      autoMapCol: "整理提案",
-      sampleValue: "プレビュー値",
-      unmapped: "-- 未設定 --",
+      sourceColumn: "資料上の名前",
+      targetField: "保存する項目",
+      autoMapCol: "システム判断",
+      sampleValue: "確認内容",
+      unmapped: "この列は保存しない",
       recentImportHistory: "最近の取込履歴",
       viewArchive: "アーカイブ表示",
       readinessTitle: "取込状態",
@@ -213,18 +314,18 @@ function getCopy(locale: Locale) {
       wizardTitle: "资料整理助手",
       wizardSubtitle: "确认保存项目",
       stepSelect: "选择",
-      stepMap: "整理确认",
+      stepMap: "保存确认",
       stepValidate: "校验",
       stepComplete: "完成",
-      schemaMappingTitle: "步骤 2：确认读取到的列",
-      schemaMappingDesc: "把资料里的列确认成案件会使用的保存项目。",
+      schemaMappingTitle: "确认资料要保存到哪里",
+      schemaMappingDesc: "把资料里的名称对应到业务保存位置，明显不对的地方直接改。",
       saveDraft: "暂存",
       continueValidation: "进入校验",
-      sourceColumn: "资料列",
-      targetField: "保存项目",
-      autoMapCol: "整理建议",
-      sampleValue: "预览值",
-      unmapped: "-- 未设置 --",
+      sourceColumn: "资料里的名称",
+      targetField: "保存成",
+      autoMapCol: "系统判断",
+      sampleValue: "确认说明",
+      unmapped: "不保存这一列",
       recentImportHistory: "最近导入历史",
       viewArchive: "查看归档",
       readinessTitle: "导入状态",
@@ -320,18 +421,18 @@ function getCopy(locale: Locale) {
       wizardTitle: "자료 정리 도우미",
       wizardSubtitle: "저장 항목 확인",
       stepSelect: "선택",
-      stepMap: "정리 확인",
+      stepMap: "저장 확인",
       stepValidate: "검증",
       stepComplete: "완료",
-      schemaMappingTitle: "2단계: 읽은 열 확인",
-      schemaMappingDesc: "자료의 열을 안건에서 사용할 저장 항목으로 확인합니다.",
+      schemaMappingTitle: "자료를 어디에 저장할지 확인",
+      schemaMappingDesc: "자료에 적힌 이름을 업무 저장 위치에 맞춥니다. 다른 부분만 수정하세요.",
       saveDraft: "임시 저장",
       continueValidation: "검증으로 이동",
-      sourceColumn: "자료 열",
-      targetField: "저장 항목",
-      autoMapCol: "정리 제안",
-      sampleValue: "미리보기 값",
-      unmapped: "-- 미설정 --",
+      sourceColumn: "자료에 적힌 이름",
+      targetField: "저장 위치",
+      autoMapCol: "시스템 판단",
+      sampleValue: "확인 내용",
+      unmapped: "이 열은 저장하지 않음",
       recentImportHistory: "최근 가져오기 이력",
       viewArchive: "보관 이력 보기",
       readinessTitle: "가져오기 상태",
@@ -482,7 +583,8 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
   const sourceColumnExamples = sourceColumnExamplesByLocale[locale];
   const focusJobId = String(params?.job ?? "").trim();
   const mappingJobs = jobs.filter((job) => !isInputFileExtractionJob(job));
-  const defaultJob = mappingJobs.find((job) => job.id === focusJobId) ?? mappingJobs[0];
+  const focusedMappingJob = focusJobId ? mappingJobs.find((job) => job.id === focusJobId) : undefined;
+  const defaultJob = focusedMappingJob ?? mappingJobs[0];
   const hasDefaultJob = Boolean(defaultJob);
   const defaultTarget = defaultJob?.targetEntity ?? "properties";
   const defaultSourceColumns =
@@ -505,11 +607,17 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
     .map((value) => value.trim())
     .filter(Boolean)
     .slice(0, 6);
-  const previewRows = previewSourceColumns.map((source, index) => ({
-    source,
-    target: previewTargetFields[index],
-  }));
-  const previewValues = previewRows.map((row) => (row.target ? `${row.source} -> ${row.target}` : t(locale, "common.notSet")));
+  const mappingTargetOptions = Array.from(new Set([...(targetFieldOptions[defaultTarget] ?? []), ...previewTargetFields])).filter(Boolean);
+  const previewRows = previewSourceColumns.map((source, index) => {
+    const target = previewTargetFields[index];
+    return {
+      source,
+      target,
+      targetLabel: target ? getTargetFieldLabel(locale, target) : copy.unmapped,
+      targetHelper: target ? getTargetFieldHelper(locale, target) : copy.unmapped,
+      confirmation: getMappingConfirmation(locale, source, target),
+    };
+  });
   const actionLabelByOperation: Record<ImportValidationIssueAction, string> = {
     resolve_now: copy.actionResolveNow,
     auto_fix: copy.actionAutoFix,
@@ -761,9 +869,12 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
   const intakeMode = String(params?.intake ?? "new").trim();
   const isExistingIntake = intakeMode === "existing";
   const isHoldingIntake = intakeMode === "holding";
+  const requestedJobId = xlsxJobId || focusJobId;
+  const requestedJob = xlsxJob ?? focusedMappingJob;
+  const missingRequestedJob = Boolean(requestedJobId && !requestedJob);
   const recentJobHref = (job: HubImportJobItem) => {
-    if (isInputFileExtractionJob(job)) return `/import-center?xlsxJob=${encodeURIComponent(job.id)}`;
-    return `/import-center?job=${encodeURIComponent(job.id)}&advanced=1`;
+    if (isInputFileExtractionJob(job)) return `/import-center?xlsxJob=${encodeURIComponent(job.id)}#source-upload`;
+    return `/import-center?job=${encodeURIComponent(job.id)}&advanced=1#job-mapping`;
   };
   const assignmentCards: Array<
     {
@@ -836,6 +947,37 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
         <p className="mt-1 text-sm text-slate-600">{copy.pageDesc}</p>
       </section>
       <PageFlashBanner message={flashMessage} />
+
+      {requestedJob ? (
+        <section className="rounded-2xl border border-blue-200 bg-blue-50/70 p-4 shadow-sm">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-[11px] font-black uppercase tracking-wider text-blue-700">
+                {locale === "zh" ? "已定位到资料" : locale === "ko" ? "자료 위치 확인" : "資料を選択中"}
+              </p>
+              <h2 className="mt-1 truncate text-base font-black text-slate-950">{requestedJob.title}</h2>
+              <p className="mt-1 text-xs font-semibold text-slate-600">
+                {sourceLabel[requestedJob.sourceType]} / {targetLabel[requestedJob.targetEntity]} / {statusLabel[requestedJob.status]}
+              </p>
+            </div>
+            <a
+              href={isInputFileExtractionJob(requestedJob) ? "#source-upload" : "#job-mapping"}
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#001e40] px-4 py-2 text-xs font-black text-white hover:bg-[#003366]"
+            >
+              <span className="material-symbols-outlined text-[16px]">arrow_downward</span>
+              {locale === "zh" ? "去处理这份资料" : locale === "ko" ? "이 자료 처리" : "この資料を処理"}
+            </a>
+          </div>
+        </section>
+      ) : missingRequestedJob ? (
+        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">
+          {locale === "zh"
+            ? "这条资料记录暂时找不到，可能已经被移动、合并或清理。"
+            : locale === "ko"
+              ? "이 자료 기록을 찾을 수 없습니다. 이동, 병합 또는 정리되었을 수 있습니다."
+              : "この資料は見つかりません。移動、統合、または整理された可能性があります。"}
+        </section>
+      ) : null}
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -1277,19 +1419,31 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                 : "資料を選んで整理を続けます。"}
             </p>
           </div>
-        </div>
-        <div className="mt-4 grid gap-2 md:grid-cols-3">
-          {jobs.slice(0, 3).map((job) => (
-            <Link key={`simple-import-${job.id}`} href={recentJobHref(job)} className="rounded-lg border border-slate-200 bg-slate-50 p-3 hover:bg-white">
-              <p className="truncate text-sm font-bold text-slate-900">{job.title}</p>
-              <p className="mt-1 text-xs text-slate-500">
-                {formatDate(job.createdAt, locale)} / {statusLabel[job.status]}
-              </p>
-              <p className="mt-2 text-[11px] font-bold text-slate-700">
-                {locale === "zh" ? "继续处理这条资料" : locale === "ko" ? "이 자료 계속 처리" : "この資料を続ける"}
-              </p>
-            </Link>
-          ))}
+	        </div>
+	        <div className="mt-4 grid gap-2 md:grid-cols-3">
+	          {jobs.slice(0, 3).map((job) => {
+	            const selected = job.id === requestedJobId;
+	            return (
+	              <Link
+	                key={`simple-import-${job.id}`}
+	                href={recentJobHref(job)}
+	                className={
+	                  "rounded-lg border p-3 hover:bg-white " +
+	                  (selected ? "border-blue-300 bg-blue-50 ring-1 ring-blue-100" : "border-slate-200 bg-slate-50")
+	                }
+	              >
+	                <p className="truncate text-sm font-bold text-slate-900">{job.title}</p>
+	                <p className="mt-1 text-xs text-slate-500">
+	                  {formatDate(job.createdAt, locale)} / {statusLabel[job.status]}
+	                </p>
+	                <p className={"mt-2 text-[11px] font-bold " + (selected ? "text-blue-700" : "text-slate-700")}>
+	                  {selected
+	                    ? locale === "zh" ? "正在处理这条资料" : locale === "ko" ? "이 자료 처리 중" : "この資料を処理中"
+	                    : locale === "zh" ? "继续处理这条资料" : locale === "ko" ? "이 자료 계속 처리" : "この資料を続ける"}
+	                </p>
+	              </Link>
+	            );
+	          })}
           {jobs.length === 0 ? (
             <p className="rounded-lg border border-dashed border-slate-200 p-3 text-sm text-slate-500">
               {locale === "zh" ? "还没有上传记录。" : locale === "ko" ? "아직 업로드 기록이 없습니다." : "まだアップロード履歴はありません。"}
@@ -1417,7 +1571,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
       </section>
 
       {!isInputExtractionOnly && (
-      <section className="grid gap-6 xl:grid-cols-12">
+	      <section id="job-mapping" className="scroll-mt-24 grid gap-6 xl:grid-cols-12">
         <div className="space-y-6 xl:col-span-8">
           <article className="rounded-xl bg-[#e6eeff] p-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1440,12 +1594,12 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
             </div>
           </article>
 
-          <article className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200/30">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/70 px-6 py-5">
-              <div>
-                <h2 className="text-lg font-bold text-[#001e40]">{copy.schemaMappingTitle}</h2>
-                <p className="text-xs text-slate-500">{copy.schemaMappingDesc}</p>
-              </div>
+	          <article className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200/30">
+	            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/70 px-6 py-5">
+	              <div>
+	                <h2 className="text-lg font-bold text-[#001e40]">{copy.schemaMappingTitle}</h2>
+	                <p className="text-xs text-slate-500">{copy.schemaMappingDesc}</p>
+	              </div>
               <div className="flex gap-2">
                 <form action={autoMapImportJobAction}>
                   <input type="hidden" name="jobId" value={defaultJob?.id} />
@@ -1465,51 +1619,80 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                   className="rounded-lg bg-gradient-to-br from-[#001e40] to-[#003366] px-5 py-2 text-xs font-bold text-white shadow-md disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {copy.continueValidation}
-                </button>
-              </div>
-            </div>
-            {!hasDefaultJob ? <p className="px-6 py-3 text-sm text-amber-700">{copy.noJobs}</p> : null}
+	                </button>
+	              </div>
+	            </div>
+	            {defaultJob ? (
+	              <div className={"border-b px-6 py-4 " + (focusedMappingJob ? "border-blue-100 bg-blue-50/70" : "border-slate-100 bg-white")}>
+	                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+	                  <div className="min-w-0">
+	                    <p className="text-[11px] font-black uppercase tracking-wider text-blue-700">
+	                      {focusedMappingJob
+	                        ? locale === "zh" ? "当前处理资料" : locale === "ko" ? "현재 처리 자료" : "現在処理中の資料"
+	                        : locale === "zh" ? "当前任务" : locale === "ko" ? "현재 작업" : "現在のジョブ"}
+	                    </p>
+	                    <h3 className="mt-1 truncate text-base font-black text-slate-950">{defaultJob.title}</h3>
+	                    <p className="mt-1 text-xs font-semibold text-slate-600">
+	                      {sourceLabel[defaultJob.sourceType]} / {targetLabel[defaultJob.targetEntity]}
+	                      {defaultJob.notes ? ` / ${defaultJob.notes}` : ""}
+	                    </p>
+	                  </div>
+	                  <span className={"inline-flex w-fit rounded-full px-3 py-1 text-[11px] font-black " + (defaultJob.status === "completed" ? "bg-emerald-100 text-emerald-700" : "bg-rose-50 text-rose-700 ring-1 ring-rose-100")}>
+	                    {statusLabel[defaultJob.status]}
+	                  </span>
+	                </div>
+	                {focusedMappingJob?.validationMessage ? (
+	                  <p className="mt-3 rounded-lg border border-blue-100 bg-white px-3 py-2 text-xs font-semibold text-slate-700">
+	                    {focusedMappingJob.validationMessage}
+	                  </p>
+	                ) : null}
+	              </div>
+	            ) : null}
+	            {!hasDefaultJob ? <p className="px-6 py-3 text-sm text-amber-700">{copy.noJobs}</p> : null}
 
-            <form id="mapping-form" action={updateImportJobMappingAction}>
+	            <form id="mapping-form" action={updateImportJobMappingAction}>
               <input type="hidden" name="jobId" value={defaultJob?.id} />
               <input type="hidden" name="targetEntity" value={defaultTarget} />
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[900px] border-collapse text-left">
-                  <thead>
-                    <tr className="bg-[#edf2fd]">
-                      <th className="px-6 py-4 text-[11px] font-black uppercase tracking-widest text-[#1f477b]">{copy.sourceColumn}</th>
-                      <th className="px-6 py-4 text-[11px] font-black uppercase tracking-widest text-[#1f477b]">{copy.targetField}</th>
-                      <th className="px-6 py-4 text-center text-[11px] font-black uppercase tracking-widest text-[#1f477b]">{copy.autoMapCol}</th>
-                      <th className="px-6 py-4 text-[11px] font-black uppercase tracking-widest text-[#1f477b]">{copy.sampleValue}</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {previewRows.map((row, index) => {
-                      const mapped = Boolean(row.target);
-                      return (
-                        <tr key={row.source + index} className="transition hover:bg-slate-50/70">
-                          <td className="px-6 py-4 text-sm font-medium text-slate-900">{row.source}</td>
-                          <td className="px-6 py-4">
-                            <input type="hidden" name="sourceColumn" value={row.source} />
-                            <select
-                              name="targetField"
-                              defaultValue={row.target ?? ""}
-                              className={"w-full rounded-lg border px-3 py-1.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#001e40] " + (mapped ? "border-[#001e40] bg-[#edf2fd] text-[#001e40]" : "border-red-300 bg-red-50 text-red-600")}
-                            >
-                              <option value="">{copy.unmapped}</option>
-                              {(targetFieldOptions[defaultTarget] ?? []).map((field) => (
-                                <option key={field} value={field}>{field}</option>
-                              ))}
-                            </select>
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <span className={"material-symbols-outlined text-[18px] " + (mapped ? "text-emerald-600" : "text-slate-300")}>{mapped ? "check_circle" : "close"}</span>
-                          </td>
-                          <td className="px-6 py-4 text-xs tabular-nums text-slate-400">
-                            {previewValues[index] ?? t(locale, "common.notSet")}
-                          </td>
-                        </tr>
-                      );
+	              <div className="overflow-x-auto">
+		                <table className="w-full min-w-[760px] border-collapse text-left">
+		                  <thead>
+		                    <tr className="bg-[#edf2fd]">
+		                      <th className="px-6 py-4 text-[11px] font-black uppercase tracking-widest text-[#1f477b]">{copy.sourceColumn}</th>
+		                      <th className="px-6 py-4 text-[11px] font-black uppercase tracking-widest text-[#1f477b]">{copy.targetField}</th>
+		                      <th className="px-6 py-4 text-[11px] font-black uppercase tracking-widest text-[#1f477b]">{copy.sampleValue}</th>
+		                    </tr>
+	                  </thead>
+	                  <tbody className="divide-y divide-slate-100">
+	                    {previewRows.map((row, index) => {
+	                      const mapped = Boolean(row.target);
+	                      return (
+	                        <tr key={row.source + index} className="transition hover:bg-slate-50/70">
+	                          <td className="px-6 py-4">
+	                            <p className="text-sm font-black text-slate-950">{row.source}</p>
+	                            <p className="mt-1 text-[11px] font-semibold text-slate-500">
+	                              {locale === "zh" ? "原资料表头" : locale === "ko" ? "원본 자료 표기" : "元資料の表記"}
+	                            </p>
+	                          </td>
+	                          <td className="px-6 py-4">
+	                            <input type="hidden" name="sourceColumn" value={row.source} />
+	                            <select
+	                              name="targetField"
+	                              defaultValue={row.target ?? ""}
+	                              aria-label={`${copy.targetField}: ${row.source}`}
+	                              className={"w-full rounded-lg border px-3 py-2 text-sm font-black focus:outline-none focus:ring-2 focus:ring-[#001e40] " + (mapped ? "border-[#001e40] bg-[#edf2fd] text-[#001e40]" : "border-red-300 bg-red-50 text-red-600")}
+	                            >
+	                              <option value="">{copy.unmapped}</option>
+	                              {mappingTargetOptions.map((field) => (
+	                                <option key={field} value={field}>{getTargetFieldLabel(locale, field)}</option>
+	                              ))}
+	                            </select>
+	                            <p className="mt-1.5 text-[11px] font-semibold leading-5 text-slate-500">{row.targetHelper}</p>
+	                          </td>
+		                          <td className="px-6 py-4">
+		                            <p className="text-xs font-semibold leading-5 text-slate-600">{row.confirmation}</p>
+		                          </td>
+	                        </tr>
+	                      );
                     })}
                   </tbody>
                 </table>
@@ -1526,25 +1709,34 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
               </Link>
             </div>
             <div className="space-y-2">
-              {jobs.slice(0, 3).map((job, index) => (
-                <div key={job.id} className="group flex items-center gap-5 rounded-xl bg-[#edf2fd] p-4 transition hover:bg-[#e4edff]">
-                  <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100 text-[#003366]">
-                    <span className="material-symbols-outlined">{index % 2 === 0 ? "table_chart" : "cloud_upload"}</span>
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-bold text-slate-900">{job.title}</p>
-                    <p className="truncate text-[11px] uppercase tracking-tight text-slate-500">
-                      {sourceLabel[job.sourceType]} • {targetLabel[job.targetEntity]} • {formatDate(job.createdAt, locale)}
-                    </p>
-                  </div>
-                  <span className={"rounded-full px-3 py-1 text-[10px] font-bold uppercase " + (job.status === "completed" ? "bg-emerald-100 text-emerald-700" : "bg-[#ffdbca] text-[#723610]")}>
-                    {statusLabel[job.status]}
-                  </span>
-                  <Link href={`/import-center?job=${job.id}`} className="text-slate-400 transition group-hover:text-slate-700">
-                    <span className="material-symbols-outlined">more_vert</span>
-                  </Link>
-                </div>
-              ))}
+	              {jobs.slice(0, 3).map((job, index) => {
+	                const selected = job.id === requestedJobId;
+	                return (
+	                  <div
+	                    key={job.id}
+	                    className={
+	                      "group flex items-center gap-5 rounded-xl p-4 transition hover:bg-[#e4edff] " +
+	                      (selected ? "bg-blue-50 ring-2 ring-blue-200" : "bg-[#edf2fd]")
+	                    }
+	                  >
+	                    <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100 text-[#003366]">
+	                      <span className="material-symbols-outlined">{index % 2 === 0 ? "table_chart" : "cloud_upload"}</span>
+	                    </span>
+	                    <div className="min-w-0 flex-1">
+	                      <p className="truncate text-sm font-bold text-slate-900">{job.title}</p>
+	                      <p className="truncate text-[11px] uppercase tracking-tight text-slate-500">
+	                        {sourceLabel[job.sourceType]} • {targetLabel[job.targetEntity]} • {formatDate(job.createdAt, locale)}
+	                      </p>
+	                    </div>
+	                    <span className={"rounded-full px-3 py-1 text-[10px] font-bold uppercase " + (job.status === "completed" ? "bg-emerald-100 text-emerald-700" : "bg-[#ffdbca] text-[#723610]")}>
+	                      {statusLabel[job.status]}
+	                    </span>
+	                    <Link href={recentJobHref(job)} className="text-slate-400 transition group-hover:text-slate-700">
+	                      <span className="material-symbols-outlined">more_vert</span>
+	                    </Link>
+	                  </div>
+	                );
+	              })}
             </div>
           </article>
         </div>

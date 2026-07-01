@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { listBrokerageCases } from "@/lib/data";
 import { getCaseFieldValue } from "@/lib/case-field-normalization";
-import { formatCurrency, formatDate } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 import {
   listHubImportJobs,
   listHubParties,
@@ -27,9 +27,9 @@ type WorkObject = {
   title: string;
   subtitle: string;
   relation: string;
+  relationLabel: string;
+  taskReason: string;
   updatedAt?: Date;
-  metricLabel: string;
-  metricValue: string;
   href: string;
   secondaryHref?: string;
   secondaryLabel?: string;
@@ -56,13 +56,13 @@ const copyByLocale = {
     needsInput: "補完が必要",
     ready: "整理済み",
     unassigned: "未紐付け",
-    tableName: "対象",
-    tableType: "種別",
-    tableRelation: "関連",
-    tableMetric: "情報量",
-    tableUpdated: "更新",
-    tableAction: "操作",
-    detailTitle: "選択中の対象",
+    detailTitle: "現在のタスク",
+    taskQueue: "整理タスク",
+    taskQueueDesc: "対象名よりも、止まっている理由と次の操作を先に見ます。",
+    whyBlocked: "なぜ処理が必要か",
+    relatedObjects: "関連する対象",
+    taskUpdated: "更新",
+    nextStep: "次に行うこと",
     noSelection: "対象を選択してください。",
     empty: "条件に一致する対象がありません。",
     open: "開く",
@@ -72,10 +72,6 @@ const copyByLocale = {
     editParty: "関係者を編集",
     openProperty: "物件を見る",
     processMaterial: "資料を確認",
-    savedFields: "保存項目",
-    role: "役割",
-    price: "価格",
-    source: "資料種別",
     corporate: "法人",
     individual: "個人",
     noRelation: "未紐付け",
@@ -83,6 +79,17 @@ const copyByLocale = {
     personUnset: "関係者未設定",
     propertyUnset: "物件未設定",
     propertyRelationHint: "関係者や案件に紐付けて使います",
+    reasonCaseNeeds: "案件情報に未確認の項目があります。出力前に不足情報を確認します。",
+    reasonCaseReady: "案件の基本情報は整理済みです。出力前の確認または追加資料の登録に進めます。",
+    reasonPartyNeeds: "関係者の連絡先または役割が不足しています。案件へ進む前に確認します。",
+    reasonPartyReady: "関係者の基本情報は整理済みです。関連案件や物件から次の処理へ進めます。",
+    reasonPropertyNeeds: "物件の価格、管理費、修繕積立などの基礎情報が不足しています。",
+    reasonPropertyReady: "物件の基礎情報は整理済みです。案件や出力に紐付けて使えます。",
+    reasonInbox: "資料がまだ案件、関係者、物件のどれにも紐付いていません。まず紐付け先を決めます。",
+    relationCase: "案件内の関係",
+    relationParty: "関係先",
+    relationProperty: "利用先",
+    relationInbox: "紐付け先",
   },
   zh: {
     title: "整理信息",
@@ -104,13 +111,13 @@ const copyByLocale = {
     needsInput: "待补全",
     ready: "已整理",
     unassigned: "未归属",
-    tableName: "对象",
-    tableType: "类型",
-    tableRelation: "关联",
-    tableMetric: "信息量",
-    tableUpdated: "更新",
-    tableAction: "操作",
-    detailTitle: "当前对象",
+    detailTitle: "当前任务",
+    taskQueue: "整理任务",
+    taskQueueDesc: "优先看为什么卡住、关联到谁、下一步做什么。",
+    whyBlocked: "为什么需要处理",
+    relatedObjects: "相关对象",
+    taskUpdated: "更新",
+    nextStep: "下一步",
     noSelection: "请选择一个对象。",
     empty: "没有符合条件的对象。",
     open: "打开",
@@ -120,10 +127,6 @@ const copyByLocale = {
     editParty: "编辑主体",
     openProperty: "查看物件",
     processMaterial: "处理资料",
-    savedFields: "保存项",
-    role: "角色",
-    price: "价格",
-    source: "资料类型",
     corporate: "法人",
     individual: "个人",
     noRelation: "未关联",
@@ -131,6 +134,17 @@ const copyByLocale = {
     personUnset: "主体未设置",
     propertyUnset: "物件未设置",
     propertyRelationHint: "可关联主体或案件后继续使用",
+    reasonCaseNeeds: "案件信息仍有未确认项，输出前需要继续核对。",
+    reasonCaseReady: "案件基础信息已整理，可以进入输出检查或补充资料。",
+    reasonPartyNeeds: "主体缺少联系方式或角色信息，进入案件前需要确认。",
+    reasonPartyReady: "主体基础信息已整理，可以从关联案件或物件继续推进。",
+    reasonPropertyNeeds: "物件缺少价格、管理费或修缮基金等基础信息。",
+    reasonPropertyReady: "物件基础信息已整理，可以关联案件或用于输出。",
+    reasonInbox: "资料还没有归属到案件、主体或物件，需要先选择归属对象。",
+    relationCase: "案件关系",
+    relationParty: "关联对象",
+    relationProperty: "使用位置",
+    relationInbox: "归属对象",
   },
   ko: {
     title: "정보 정리",
@@ -152,13 +166,13 @@ const copyByLocale = {
     needsInput: "보완 필요",
     ready: "정리됨",
     unassigned: "미연결",
-    tableName: "대상",
-    tableType: "유형",
-    tableRelation: "연결",
-    tableMetric: "정보량",
-    tableUpdated: "업데이트",
-    tableAction: "작업",
-    detailTitle: "선택 대상",
+    detailTitle: "현재 작업",
+    taskQueue: "정리 작업",
+    taskQueueDesc: "대상명보다 막힌 이유, 연결 대상, 다음 작업을 먼저 봅니다.",
+    whyBlocked: "처리가 필요한 이유",
+    relatedObjects: "관련 대상",
+    taskUpdated: "업데이트",
+    nextStep: "다음 단계",
     noSelection: "대상을 선택해 주세요.",
     empty: "조건에 맞는 대상이 없습니다.",
     open: "열기",
@@ -168,10 +182,6 @@ const copyByLocale = {
     editParty: "관계자 편집",
     openProperty: "매물 보기",
     processMaterial: "자료 확인",
-    savedFields: "저장 항목",
-    role: "역할",
-    price: "가격",
-    source: "자료 유형",
     corporate: "법인",
     individual: "개인",
     noRelation: "미연결",
@@ -179,6 +189,17 @@ const copyByLocale = {
     personUnset: "관계자 미설정",
     propertyUnset: "매물 미설정",
     propertyRelationHint: "관계자 또는 안건에 연결해 사용합니다",
+    reasonCaseNeeds: "안건 정보에 미확인 항목이 있습니다. 출력 전에 부족 정보를 확인합니다.",
+    reasonCaseReady: "안건 기본 정보가 정리되었습니다. 출력 확인 또는 자료 추가로 진행할 수 있습니다.",
+    reasonPartyNeeds: "관계자의 연락처 또는 역할 정보가 부족합니다. 안건으로 진행하기 전에 확인합니다.",
+    reasonPartyReady: "관계자 기본 정보가 정리되었습니다. 관련 안건이나 매물에서 다음 작업을 진행합니다.",
+    reasonPropertyNeeds: "매물의 가격, 관리비, 수선비 등 기본 정보가 부족합니다.",
+    reasonPropertyReady: "매물 기본 정보가 정리되었습니다. 안건 또는 출력에 연결해 사용할 수 있습니다.",
+    reasonInbox: "자료가 아직 안건, 관계자, 매물에 연결되지 않았습니다. 먼저 연결 대상을 정합니다.",
+    relationCase: "안건 관계",
+    relationParty: "연결 대상",
+    relationProperty: "사용 위치",
+    relationInbox: "연결 대상",
   },
 } satisfies Record<Locale, Record<string, string>>;
 
@@ -211,6 +232,20 @@ function getStatusClass(status: WorkObject["status"]) {
   return "bg-rose-50 text-rose-700 ring-1 ring-rose-100";
 }
 
+function getTypeIcon(type: WorkObject["type"]) {
+  if (type === "case") return "work";
+  if (type === "party") return "person";
+  if (type === "property") return "apartment";
+  return "upload_file";
+}
+
+function getPrimaryActionLabel(type: WorkObject["type"], copy: Record<string, string>) {
+  if (type === "case") return copy.continueWork;
+  if (type === "party") return copy.editParty;
+  if (type === "property") return copy.openProperty;
+  return copy.processMaterial;
+}
+
 function getSourceTypeLabel(locale: Locale, sourceType: HubImportJobItem["sourceType"]) {
   const labels: Record<HubImportJobItem["sourceType"], Record<Locale, string>> = {
     excel: { ja: "Excel", zh: "Excel", ko: "Excel" },
@@ -236,7 +271,7 @@ function hrefWithFilters(type: ObjectType, status: ObjectStatus, query: string, 
 }
 
 function buildSearchText(item: WorkObject) {
-  return [item.title, item.subtitle, item.relation, item.metricValue].join(" ").toLowerCase();
+  return [item.title, item.subtitle, item.relation, item.taskReason].join(" ").toLowerCase();
 }
 
 function getCreateActions(copy: Record<string, string>) {
@@ -280,9 +315,9 @@ export default async function OrganizeCenterPage({ searchParams }: OrganizeCente
       title: item.caseTitle,
       subtitle: getStatusLabel(status, copy),
       relation: `${applicantName || copy.personUnset} / ${propertyName || copy.propertyUnset}`,
+      relationLabel: copy.relationCase,
+      taskReason: status === "ready" ? copy.reasonCaseReady : copy.reasonCaseNeeds,
       updatedAt: item.updatedAt,
-      metricLabel: copy.savedFields,
-      metricValue: String(savedFieldCount),
       href: `/cases/${encodeURIComponent(item.id)}`,
       secondaryHref: `/output-center?caseId=${encodeURIComponent(item.id)}`,
       secondaryLabel: copy.output,
@@ -299,8 +334,8 @@ export default async function OrganizeCenterPage({ searchParams }: OrganizeCente
       title: item.name,
       subtitle: item.partyType === "corporate" ? copy.corporate : copy.individual,
       relation: item.relatedPropertyHint || copy.noRelation,
-      metricLabel: copy.role,
-      metricValue: item.roles.join(" / ") || copy.noRelation,
+      relationLabel: copy.relationParty,
+      taskReason: status === "ready" ? copy.reasonPartyReady : copy.reasonPartyNeeds,
       href: `/parties/${encodeURIComponent(item.id)}/edit`,
       secondaryHref: `/parties?focus=${encodeURIComponent(item.id)}`,
       secondaryLabel: copy.open,
@@ -316,8 +351,8 @@ export default async function OrganizeCenterPage({ searchParams }: OrganizeCente
       title: item.name,
       subtitle: item.area,
       relation: copy.propertyRelationHint,
-      metricLabel: copy.price,
-      metricValue: item.listingPrice > 0 ? formatCurrency(item.listingPrice, locale) : copy.noRelation,
+      relationLabel: copy.relationProperty,
+      taskReason: status === "ready" ? copy.reasonPropertyReady : copy.reasonPropertyNeeds,
       href: `/properties?focus=${encodeURIComponent(item.id)}`,
       secondaryHref: "/output-center",
       secondaryLabel: copy.output,
@@ -331,11 +366,11 @@ export default async function OrganizeCenterPage({ searchParams }: OrganizeCente
       type: "inbox",
       status: "unassigned",
       title: item.title,
-      subtitle: item.validationMessage || getStatusLabel("unassigned", copy),
+      subtitle: getSourceTypeLabel(locale, item.sourceType),
       relation: copy.noRelation,
+      relationLabel: copy.relationInbox,
+      taskReason: copy.reasonInbox,
       updatedAt: item.createdAt,
-      metricLabel: copy.source,
-      metricValue: getSourceTypeLabel(locale, item.sourceType),
       href: `/import-center?job=${encodeURIComponent(item.id)}`,
       secondaryHref: "/import-center",
       secondaryLabel: copy.processMaterial,
@@ -475,49 +510,66 @@ export default async function OrganizeCenterPage({ searchParams }: OrganizeCente
             </div>
 
             {filteredItems.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[760px] border-collapse text-left">
-                  <thead className="bg-slate-50 text-xs font-black text-slate-500">
-                    <tr>
-                      <th className="border-b border-slate-200 px-4 py-3">{copy.tableName}</th>
-                      <th className="border-b border-slate-200 px-4 py-3">{copy.tableType}</th>
-                      <th className="border-b border-slate-200 px-4 py-3">{copy.tableRelation}</th>
-                      <th className="border-b border-slate-200 px-4 py-3">{copy.tableMetric}</th>
-                      <th className="border-b border-slate-200 px-4 py-3">{copy.tableUpdated}</th>
-                      <th className="border-b border-slate-200 px-4 py-3 text-right">{copy.tableAction}</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-sm">
-                    {filteredItems.map((item) => {
-                      const active = selectedItem?.id === item.id;
-                      return (
-                        <tr key={`${item.type}:${item.id}`} className={active ? "bg-blue-50/60" : "bg-white hover:bg-slate-50"}>
-                          <td className="px-4 py-3">
-                            <Link href={hrefWithFilters(selectedType, selectedStatus, query, item.id)} className="block">
-                              <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-black ${getStatusClass(item.status)}`}>
-                                {getStatusLabel(item.status, copy)}
-                              </span>
-                              <span className="mt-2 block max-w-[260px] truncate font-black text-slate-950">{item.title}</span>
-                              <span className="mt-1 block max-w-[260px] truncate text-xs font-semibold text-slate-500">{item.subtitle}</span>
-                            </Link>
-                          </td>
-                          <td className="px-4 py-3 font-bold text-slate-700">{getTypeLabel(item.type, copy)}</td>
-                          <td className="max-w-[220px] truncate px-4 py-3 font-semibold text-slate-600">{item.relation}</td>
-                          <td className="px-4 py-3">
-                            <span className="block text-xs font-black text-slate-500">{item.metricLabel}</span>
-                            <span className="mt-1 block font-black text-slate-950">{item.metricValue}</span>
-                          </td>
-                          <td className="px-4 py-3 font-bold tabular-nums text-slate-700">{item.updatedAt ? formatDate(item.updatedAt, locale) : copy.noDate}</td>
-                          <td className="px-4 py-3 text-right">
-                            <Link href={item.href} className="inline-flex rounded border border-slate-300 px-3 py-1.5 text-xs font-black text-slate-800 hover:bg-slate-50">
-                              {copy.open}
-                            </Link>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+              <div className="p-4">
+                <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+                  <div>
+                    <h2 className="text-lg font-black text-slate-950">{copy.taskQueue}</h2>
+                    <p className="mt-1 text-xs font-semibold text-slate-500">{copy.taskQueueDesc}</p>
+                  </div>
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">
+                    {filteredItems.length}
+                  </span>
+                </div>
+                <div className="space-y-3">
+                  {filteredItems.map((item) => {
+                    const active = selectedItem?.id === item.id;
+                    return (
+                      <Link
+                        key={`${item.type}:${item.id}`}
+                        href={hrefWithFilters(selectedType, selectedStatus, query, item.id)}
+                        className={
+                          "block rounded-lg border bg-white p-4 transition hover:border-blue-200 hover:bg-blue-50/30 " +
+                          (active ? "border-[#002FA7] shadow-sm ring-1 ring-blue-100" : "border-slate-200")
+                        }
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="flex min-w-0 items-start gap-3">
+                            <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#edf2fd] text-[#002FA7]">
+                              <span className="material-symbols-outlined text-[18px]" aria-hidden="true">{getTypeIcon(item.type)}</span>
+                            </span>
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-black ${getStatusClass(item.status)}`}>
+                                  {getStatusLabel(item.status, copy)}
+                                </span>
+                                <span className="text-xs font-black text-slate-500">{getTypeLabel(item.type, copy)}</span>
+                              </div>
+                              <h3 className="mt-2 line-clamp-2 text-base font-black leading-6 text-slate-950">{item.title}</h3>
+                            </div>
+                          </div>
+                          <span className="text-xs font-bold tabular-nums text-slate-500">
+                            {item.updatedAt ? formatDate(item.updatedAt, locale) : copy.noDate}
+                          </span>
+                        </div>
+
+                        <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_1fr_auto]">
+                          <div className="rounded-lg bg-slate-50 p-3">
+                            <p className="text-[11px] font-black text-slate-500">{copy.whyBlocked}</p>
+                            <p className="mt-1 line-clamp-2 text-sm font-semibold leading-5 text-slate-800">{item.taskReason}</p>
+                          </div>
+                          <div className="rounded-lg bg-slate-50 p-3">
+                            <p className="text-[11px] font-black text-slate-500">{item.relationLabel}</p>
+                            <p className="mt-1 line-clamp-2 text-sm font-semibold leading-5 text-slate-800">{item.relation}</p>
+                          </div>
+                          <div className="flex items-center justify-between gap-3 rounded-lg bg-slate-950 px-3 py-3 text-sm font-black text-white lg:min-w-32">
+                            <span>{getPrimaryActionLabel(item.type, copy)}</span>
+                            <span className="material-symbols-outlined text-[17px]" aria-hidden="true">arrow_forward</span>
+                          </div>
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </div>
               </div>
             ) : (
               <div className="p-6">
@@ -537,31 +589,36 @@ export default async function OrganizeCenterPage({ searchParams }: OrganizeCente
                     {getStatusLabel(selectedItem.status, copy)}
                   </span>
                   <h3 className="mt-3 text-xl font-black leading-7 text-slate-950">{selectedItem.title}</h3>
-                  <p className="mt-2 text-sm font-semibold text-slate-600">{selectedItem.subtitle}</p>
+                  <p className="mt-2 text-sm font-semibold text-slate-600">{getTypeLabel(selectedItem.type, copy)} · {selectedItem.subtitle}</p>
                 </div>
-                <div className="grid gap-px bg-slate-200 text-sm">
-                  <div className="bg-white p-4">
-                    <p className="text-xs font-black text-slate-500">{copy.tableType}</p>
-                    <p className="mt-1 font-black text-slate-950">{getTypeLabel(selectedItem.type, copy)}</p>
+                <div className="space-y-3 p-4 text-sm">
+                  <div className="rounded-lg border-l-4 border-rose-500 bg-rose-50 p-3">
+                    <p className="text-xs font-black text-rose-700">{copy.whyBlocked}</p>
+                    <p className="mt-2 font-semibold leading-6 text-slate-900">{selectedItem.taskReason}</p>
                   </div>
-                  <div className="bg-white p-4">
-                    <p className="text-xs font-black text-slate-500">{copy.tableRelation}</p>
-                    <p className="mt-1 font-semibold text-slate-800">{selectedItem.relation}</p>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-xs font-black text-slate-500">{copy.relatedObjects}</p>
+                    <div className="mt-2 flex items-start gap-2">
+                      <span className="material-symbols-outlined mt-0.5 text-[17px] text-[#002FA7]" aria-hidden="true">
+                        {getTypeIcon(selectedItem.type)}
+                      </span>
+                      <div>
+                        <p className="text-xs font-black text-slate-500">{selectedItem.relationLabel}</p>
+                        <p className="mt-1 font-semibold leading-5 text-slate-900">{selectedItem.relation}</p>
+                      </div>
+                    </div>
                   </div>
-                  <div className="bg-white p-4">
-                    <p className="text-xs font-black text-slate-500">{selectedItem.metricLabel}</p>
-                    <p className="mt-1 font-black text-slate-950">{selectedItem.metricValue}</p>
+                  <div className="rounded-lg border border-slate-200 bg-white p-3">
+                    <p className="text-xs font-black text-slate-500">{copy.taskUpdated}</p>
+                    <p className="mt-1 font-black tabular-nums text-slate-950">
+                      {selectedItem.updatedAt ? formatDate(selectedItem.updatedAt, locale) : copy.noDate}
+                    </p>
                   </div>
                 </div>
-                <div className="space-y-2 p-4">
+                <div className="space-y-2 border-t border-slate-200 p-4">
+                  <p className="text-xs font-black text-slate-500">{copy.nextStep}</p>
                   <Link href={selectedItem.href} className="flex h-11 items-center justify-center rounded bg-slate-950 px-4 text-sm font-black text-white hover:bg-slate-800">
-                    {selectedItem.type === "case"
-                      ? copy.continueWork
-                      : selectedItem.type === "party"
-                        ? copy.editParty
-                        : selectedItem.type === "property"
-                          ? copy.openProperty
-                          : copy.processMaterial}
+                    {getPrimaryActionLabel(selectedItem.type, copy)}
                   </Link>
                   {selectedItem.secondaryHref && selectedItem.secondaryLabel ? (
                     <Link href={selectedItem.secondaryHref} className="flex h-11 items-center justify-center rounded border border-slate-300 bg-white px-4 text-sm font-black text-slate-800 hover:bg-slate-50">

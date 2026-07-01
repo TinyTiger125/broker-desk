@@ -117,8 +117,8 @@ function makeReason(input: {
 export function buildGuaranteeDownloadUrls(input: { caseId: string; templateId: string }) {
   const encodedCaseId = encodeURIComponent(input.caseId);
   const encodedTemplateId = encodeURIComponent(input.templateId);
-  const workbenchUrl = `/cases/${encodedCaseId}?guaranteeTemplate=${encodedTemplateId}#workbench-unresolved`;
-  const draftUrl = `/cases/${encodedCaseId}?guaranteeTemplate=${encodedTemplateId}#guarantee-template-drafts`;
+  const workbenchUrl = `/cases/${encodedCaseId}?guaranteeTemplate=${encodedTemplateId}#case-main-editor`;
+  const draftUrl = `/guarantee-applications/${encodedTemplateId}/preview?caseId=${encodedCaseId}#company-draft-fields`;
   const previewUrl = `/guarantee-applications/${encodedTemplateId}/preview?caseId=${encodedCaseId}`;
   return { workbenchUrl, draftUrl, previewUrl };
 }

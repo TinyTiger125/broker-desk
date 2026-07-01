@@ -67,6 +67,8 @@ const propertiesCopy = {
     batchExportTitle: "台帳データ確認",
     batchExportDesc: "Excel取込後の物件を選択してCSVで確認できます。",
     batchExportBtn: "選択物件をCSV出力",
+    batchTools: "一括操作",
+    batchHint: "選択した物件だけCSV出力します。",
   },
   zh: {
     exportReport: "导出台账CSV",
@@ -116,6 +118,8 @@ const propertiesCopy = {
     batchExportTitle: "台账数据确认",
     batchExportDesc: "选择 Excel 导入后的物件并导出 CSV 核对。",
     batchExportBtn: "导出选中物件CSV",
+    batchTools: "批量工具",
+    batchHint: "只对勾选的物件执行 CSV 导出。",
   },
   ko: {
     exportReport: "대장 CSV 내보내기",
@@ -165,6 +169,8 @@ const propertiesCopy = {
     batchExportTitle: "대장 데이터 확인",
     batchExportDesc: "Excel에서 가져온 매물을 선택해 CSV로 확인할 수 있습니다.",
     batchExportBtn: "선택 매물 CSV 내보내기",
+    batchTools: "일괄 작업",
+    batchHint: "선택한 매물만 CSV로 내보냅니다.",
   },
 } as const;
 
@@ -219,13 +225,6 @@ export default async function PropertiesPage({ searchParams }: PropertiesPagePro
           <p className="mt-1 text-sm font-medium text-slate-600">{t(locale, "properties.desc")}</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <Link
-            href={`/api/hub/export?scope=properties&locale=${locale}`}
-            className="inline-flex items-center gap-2 rounded-lg bg-[#e9effc] px-4 py-2.5 text-sm font-semibold text-slate-800 transition hover:bg-[#dfe8fa]"
-          >
-            <span className="material-symbols-outlined text-[18px]">file_download</span>
-            {copy.exportReport}
-          </Link>
           <form id="property-quick-create-form" action={createPropertyQuickAction} className="flex items-center gap-2">
             <input
               name="name"
@@ -247,29 +246,6 @@ export default async function PropertiesPage({ searchParams }: PropertiesPagePro
         </div>
       </section>
       <PageFlashBanner message={flashMessage} />
-
-      <section className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200/35">
-        <h2 className="text-base font-bold text-slate-900">{copy.batchExportTitle}</h2>
-        <p className="mt-1 text-xs text-slate-500">{copy.batchExportDesc}</p>
-        <form action="/api/hub/export" method="get" className="mt-3 space-y-3">
-          <input type="hidden" name="scope" value="properties" />
-          <input type="hidden" name="locale" value={locale} />
-          <div className="max-h-40 overflow-auto rounded-lg border border-slate-200 bg-slate-50 p-3">
-            <div className="space-y-2">
-              {sortedProperties.slice(0, 40).map((property) => (
-                <label key={`export-property-${property.id}`} className="flex items-center gap-2 rounded-md bg-white px-2 py-1.5 text-sm">
-                  <input type="checkbox" name="ids" value={property.id} className="h-4 w-4 rounded border-slate-300" />
-                  <span className="min-w-0 flex-1 truncate text-slate-800">{property.name}</span>
-                  <span className="text-xs tabular-nums text-slate-500">{formatCurrency(property.listingPrice, locale)}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-          <button className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-            {copy.batchExportBtn}
-          </button>
-        </form>
-      </section>
 
       <section className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
         <article className="space-y-4 rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200/30">
@@ -360,7 +336,23 @@ export default async function PropertiesPage({ searchParams }: PropertiesPagePro
             <span className="material-symbols-outlined text-[16px] text-slate-400">payments</span>
             {copy.priceRange}
           </Link>
-          <div className="ml-auto flex items-center gap-2 pr-2">
+          <details className="relative ml-auto">
+            <summary className="inline-flex cursor-pointer list-none items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm">
+              <span className="material-symbols-outlined text-[16px] text-slate-400" aria-hidden="true">checklist</span>
+              {copy.batchTools}
+            </summary>
+            <div className="absolute right-0 z-10 mt-2 w-64 rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
+              <p className="text-xs leading-5 text-slate-500">{copy.batchHint}</p>
+              <button
+                type="submit"
+                form="property-export-form"
+                className="mt-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
+              >
+                {copy.batchExportBtn}
+              </button>
+            </div>
+          </details>
+          <div className="flex items-center gap-2 pr-2">
             <span className="text-xs font-bold uppercase text-slate-500">{copy.sortBy}</span>
             <Link href={`/properties?status=${statusFilter}&sort=${sort === "updated" ? "price" : "updated"}`} className="inline-flex items-center gap-1 text-sm font-bold text-slate-800">
               {copy.lastModified}
@@ -371,10 +363,14 @@ export default async function PropertiesPage({ searchParams }: PropertiesPagePro
       </section>
 
       <section className="overflow-hidden rounded-xl bg-[#e6eeff] shadow-sm ring-1 ring-slate-200/30">
+        <form id="property-export-form" action="/api/hub/export" method="get">
+          <input type="hidden" name="scope" value="properties" />
+          <input type="hidden" name="locale" value={locale} />
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1080px] border-collapse">
             <thead>
               <tr className="bg-[#edf2fd]/80">
+                <th className="w-12 px-4 py-4" />
                 <th className="px-6 py-4 text-left text-[11px] font-black uppercase tracking-widest text-slate-500">{copy.tablePropertyDetail}</th>
                 <th className="px-6 py-4 text-left text-[11px] font-black uppercase tracking-widest text-slate-500">{copy.tableStatus}</th>
                 <th className="px-6 py-4 text-right text-[11px] font-black uppercase tracking-widest text-slate-500">{copy.tableValuePrice}</th>
@@ -392,6 +388,12 @@ export default async function PropertiesPage({ searchParams }: PropertiesPagePro
                     (focusId === property.id ? "ring-2 ring-[#001e40]/15" : "")
                   }
                 >
+                  <td className="px-4 py-4 align-middle">
+                    <label className="inline-flex">
+                      <span className="sr-only">{copy.batchTools}</span>
+                      <input type="checkbox" name="ids" value={property.id} className="h-4 w-4 rounded border-slate-300" />
+                    </label>
+                  </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-4">
                       <Image
@@ -455,7 +457,7 @@ export default async function PropertiesPage({ searchParams }: PropertiesPagePro
               ))}
               {pagedProperties.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center">
+                  <td colSpan={7} className="px-6 py-12 text-center">
                     <p className="text-sm text-slate-500">{copy.emptyList}</p>
                     <Link href="/properties" className="mt-3 inline-flex rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">
                       {copy.newProperty}
@@ -486,6 +488,7 @@ export default async function PropertiesPage({ searchParams }: PropertiesPagePro
             ) : null}
           </div>
         </div>
+        </form>
       </section>
 
       <section className="grid gap-6 xl:grid-cols-3">

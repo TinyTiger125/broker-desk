@@ -12,6 +12,7 @@ import {
   type GuaranteeReadinessStatus,
   type GuaranteeTemplateQualityStatus,
 } from "@/lib/guarantee-application";
+import { getCaseFieldDefinition, getCaseFieldInformation } from "@/lib/case-field-catalog";
 import { listHubGeneratedOutputs, listHubParties } from "@/lib/hub";
 import { t } from "@/lib/i18n";
 import { getLocale, type Locale } from "@/lib/locale";
@@ -388,22 +389,28 @@ function templateQualityClass(status: GuaranteeTemplateQualityStatus) {
   return "bg-amber-100 text-amber-800";
 }
 
-function workbenchAnchorForGuaranteeField(fieldKey: string) {
-  if (fieldKey.startsWith("company_option.")) return "guarantee-template-drafts";
-  if (fieldKey.startsWith("property.") || fieldKey.startsWith("lease.")) return "workbench-property_lease";
-  if (fieldKey.startsWith("applicant.employer") || fieldKey === "applicant.occupation" || fieldKey === "applicant.employmentType" || fieldKey === "applicant.annualIncome" || fieldKey === "applicant.yearsEmployed") {
-    return "workbench-employment_income";
-  }
-  if (fieldKey.startsWith("applicant.")) return "workbench-applicant";
-  if (fieldKey.startsWith("emergencyContact.")) return "workbench-contact_guarantor";
-  if (fieldKey.startsWith("coOccupants.")) return "workbench-co_occupants";
-  if (fieldKey.startsWith("broker.") || fieldKey.startsWith("management.")) return "workbench-broker_management";
-  if (fieldKey.startsWith("guarantee.")) return "workbench-guarantee_options";
-  return "workbench-unresolved";
+function previewFieldId(fieldKey: string) {
+  return `field-${fieldKey.replaceAll(".", "-")}`;
 }
 
-function isDraftSpecificGuaranteeField(fieldKey: string) {
-  return fieldKey.startsWith("company_option.");
+function isOutputSpecificGuaranteeField(fieldKey: string) {
+  const definition = getCaseFieldDefinition(fieldKey);
+  return fieldKey.startsWith("company_option.") || fieldKey.startsWith("guarantee.") || definition?.storageScope !== "case_fact";
+}
+
+function caseWorkbenchHrefForGuaranteeField(input: { caseId: string; templateId: string; fieldKey: string }) {
+  const params = new URLSearchParams();
+  params.set("guaranteeTemplate", input.templateId);
+  const definition = getCaseFieldDefinition(input.fieldKey);
+  if (definition?.storageScope === "case_fact") {
+    params.set("node", getCaseFieldInformation(definition).treeNodeId);
+  }
+  return `/cases/${encodeURIComponent(input.caseId)}?${params.toString()}#case-main-editor`;
+}
+
+function previewHrefForGuaranteeField(input: { caseId: string; templateId: string; fieldKey?: string }) {
+  const base = `/guarantee-applications/${encodeURIComponent(input.templateId)}/preview?caseId=${encodeURIComponent(input.caseId)}`;
+  return input.fieldKey ? `${base}#${previewFieldId(input.fieldKey)}` : `${base}#company-draft-fields`;
 }
 
 export default async function OutputCenterPage({ searchParams }: OutputCenterPageProps) {
@@ -503,15 +510,17 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
   const selectedCaseWorkbenchHref = selectedCase
     ? `/cases/${selectedCase.id}?guaranteeTemplate=${encodeURIComponent(selectedGuaranteeTemplate.id)}`
     : "#guarantee-case-selector";
-  const selectedCaseDraftHref = selectedCase ? `${selectedCaseWorkbenchHref}#guarantee-template-drafts` : "#guarantee-case-selector";
+  const selectedCaseDraftHref = selectedCase
+    ? previewHrefForGuaranteeField({ caseId: selectedCase.id, templateId: selectedGuaranteeTemplate.id })
+    : "#guarantee-case-selector";
   const guaranteePreviewLabel = copy.guaranteePreviewAction.replace("{company}", selectedGuaranteeTemplate.companyDisplayName);
   const firstBlockingField = guaranteeBlockingFields[0];
   const outputNextHref = !selectedCase
     ? "#guarantee-case-selector"
     : firstBlockingField
-      ? isDraftSpecificGuaranteeField(firstBlockingField.fieldKey)
-        ? selectedCaseDraftHref
-        : `${selectedCaseWorkbenchHref}#${workbenchAnchorForGuaranteeField(firstBlockingField.fieldKey)}`
+      ? isOutputSpecificGuaranteeField(firstBlockingField.fieldKey)
+        ? previewHrefForGuaranteeField({ caseId: selectedCase.id, templateId: selectedGuaranteeTemplate.id, fieldKey: firstBlockingField.fieldKey })
+        : caseWorkbenchHrefForGuaranteeField({ caseId: selectedCase.id, templateId: selectedGuaranteeTemplate.id, fieldKey: firstBlockingField.fieldKey })
       : selectedGuaranteePreviewHref;
   const outputNextLabel = !selectedCase
     ? copy.guaranteeSelectCaseFirst
@@ -837,9 +846,9 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                 key={`primary-missing-${field.fieldKey}`}
                 href={
                   selectedCase
-                    ? isDraftSpecificGuaranteeField(field.fieldKey)
-                      ? `${selectedGuaranteePreviewHref}#field-${field.fieldKey.replaceAll(".", "-")}`
-                      : `${selectedCaseWorkbenchHref}#${workbenchAnchorForGuaranteeField(field.fieldKey)}`
+                    ? isOutputSpecificGuaranteeField(field.fieldKey)
+                      ? previewHrefForGuaranteeField({ caseId: selectedCase.id, templateId: selectedGuaranteeTemplate.id, fieldKey: field.fieldKey })
+                      : caseWorkbenchHrefForGuaranteeField({ caseId: selectedCase.id, templateId: selectedGuaranteeTemplate.id, fieldKey: field.fieldKey })
                     : "#guarantee-case-selector"
                 }
                 className="flex items-center gap-2 text-sm text-slate-800 hover:text-[#1960a3] hover:underline"
@@ -1139,18 +1148,18 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                               <Link
                                 href={
                                   selectedCase
-                                    ? isDraftSpecificGuaranteeField(field.fieldKey)
+                                    ? isOutputSpecificGuaranteeField(field.fieldKey)
                                       ? selectedCaseDraftHref
-                                      : `${selectedCaseWorkbenchHref}#${workbenchAnchorForGuaranteeField(field.fieldKey)}`
+                                      : caseWorkbenchHrefForGuaranteeField({ caseId: selectedCase.id, templateId: selectedGuaranteeTemplate.id, fieldKey: field.fieldKey })
                                     : "#guarantee-case-selector"
                                 }
                                 className="mt-3 inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-white px-2 py-1 text-[11px] font-bold text-indigo-800 hover:bg-indigo-50"
                               >
                                 <span className="material-symbols-outlined text-[14px]">
-                                  {isDraftSpecificGuaranteeField(field.fieldKey) ? "edit_note" : "fact_check"}
+                                  {isOutputSpecificGuaranteeField(field.fieldKey) ? "edit_note" : "fact_check"}
                                 </span>
                                 {selectedCase
-                                  ? isDraftSpecificGuaranteeField(field.fieldKey)
+                                  ? isOutputSpecificGuaranteeField(field.fieldKey)
                                     ? copy.guaranteeFillInDraft
                                     : copy.guaranteeFillInWorkbench
                                   : copy.guaranteeSelectCaseFirst}

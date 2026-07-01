@@ -138,7 +138,7 @@ const summaries = guaranteeCompanyTemplates
     });
     assert(!missingGate.canDownload, `${template.id}: empty case must not download`);
     assert(missingGate.blockedReasons.some((reason) => reason.code === "required_fields_missing"), `${template.id}: empty case should expose workbench missing reason`);
-    assert(missingGate.draftUrl.includes("guarantee-template-drafts"), `${template.id}: draft URL should deep-link to company draft editor`);
+    assert(missingGate.draftUrl.includes("company-draft-fields"), `${template.id}: draft URL should deep-link to preview company fields`);
 
     const readyDraft = draft(template, buildDraftValues(template));
     const candidateGate = evaluateGuaranteeDownloadGate({

@@ -223,7 +223,7 @@ export default async function GuaranteeApplicationPreviewPage({ searchParams }: 
   const caseWorkbenchHref = selectedCase
     ? `/cases/${encodeURIComponent(selectedCase.id)}?guaranteeTemplate=${encodeURIComponent(template.id)}`
     : "#";
-  const caseDraftHref = selectedCase ? `${caseWorkbenchHref}#guarantee-template-drafts` : "#";
+  const companyDraftHref = selectedCase ? "#company-draft-fields" : "#";
   const layoutOverrides = getFriendsGuaranteeEffectiveLayoutOverrides({
     templateId: template.id,
     confirmedDataJson: selectedCase?.confirmedDataJson,
@@ -392,7 +392,7 @@ export default async function GuaranteeApplicationPreviewPage({ searchParams }: 
               </span>
             </div>
             <div className="mt-3 grid grid-cols-2 gap-2">
-              <Link href={caseDraftHref} className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-900 hover:bg-emerald-100">
+              <Link href={companyDraftHref} className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-900 hover:bg-emerald-100">
                 会社別草稿 {draftReadiness.readyCount}/{draftReadiness.fields.length}
               </Link>
               <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700">
@@ -433,16 +433,16 @@ export default async function GuaranteeApplicationPreviewPage({ searchParams }: 
                 <section className="rounded-xl border border-rose-200 bg-rose-50 p-4">
                   <p className="text-sm font-black text-rose-950">先に確認する項目</p>
                   {draftMissingCount > 0 ? (
-                    <Link href={caseDraftHref} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-rose-700 px-3 py-2 text-xs font-black text-white hover:bg-rose-800">
+                    <Link href={companyDraftHref} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-rose-700 px-3 py-2 text-xs font-black text-white hover:bg-rose-800">
                       <span className="material-symbols-outlined text-[14px]">edit_note</span>
-                      会社別草稿をワークベンチで補う
+                      会社別確認項目を補う
                     </Link>
                   ) : null}
                   <div className="mt-3 grid gap-2">
                     {unresolvedRequiredFields.map((field) => (
                       <a
                         key={`missing-${field.fieldKey}`}
-                        href={isDraftSpecificField(field.fieldKey) ? caseDraftHref : `#${previewFieldId(field.fieldKey)}`}
+                        href={isDraftSpecificField(field.fieldKey) ? companyDraftHref : `#${previewFieldId(field.fieldKey)}`}
                         className="rounded-lg border border-rose-200 bg-white px-3 py-2 text-xs font-bold text-rose-800 hover:bg-rose-50"
                       >
                         {field.label}
@@ -540,15 +540,11 @@ export default async function GuaranteeApplicationPreviewPage({ searchParams }: 
                 </div>
               </section>
 
-              <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <section id="company-draft-fields" className="scroll-mt-24 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                 <h3 className="text-sm font-black text-slate-950">{template.companyDisplayName}の確認項目</h3>
                 <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
-                  ここで直した内容も会社別草稿として保存されます。まとめて補う場合はワークベンチの会社別草稿を使います。
+                  この申込書だけで使う会社別の選択肢をここで補います。保存するとPDFプレビューへ反映されます。
                 </p>
-                <Link href={caseDraftHref} className="mt-3 inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-bold text-emerald-800 hover:bg-emerald-100">
-                  <span className="material-symbols-outlined text-[14px]">edit_note</span>
-                  ワークベンチの会社別草稿へ
-                </Link>
                 <div className="mt-3 grid gap-3">
                   {draftDefinitions.map((definition) => {
                     const value = getDraftValue(draftValues, definition.fieldKey);

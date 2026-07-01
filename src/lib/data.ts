@@ -184,6 +184,8 @@ export const addGeneratedOutput: typeof memory.addGeneratedOutput = (...args) =>
 export const activeDataDriver = usePostgres ? "postgres" : "memory";
 export const resetBusinessDataForQa =
   activeDataDriver === "memory" ? memory.resetBusinessDataForQa : undefined;
+export const seedBusinessDataForQa =
+  activeDataDriver === "memory" ? memory.seedBusinessDataForQa : undefined;
 export type DataDriver = typeof activeDataDriver;
 
 export async function healthCheckDataDriver() {

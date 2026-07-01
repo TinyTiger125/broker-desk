@@ -58,7 +58,9 @@ export function MainNavLinks({ links, orientation = "row" }: MainNavLinksProps) 
 
         return (
           <Link key={`${link.label}:${link.href}`} href={link.href} className={`${base} ${tone} ${isRow ? "justify-center" : "flex items-center gap-3"}`}>
-            <span className={`material-symbols-outlined ${isRow ? "hidden" : "inline-block text-[20px]"}`}>{icon}</span>
+            <span aria-hidden="true" className={`material-symbols-outlined ${isRow ? "hidden" : "inline-block text-[20px]"}`}>
+              {icon}
+            </span>
             <span>{link.label}</span>
           </Link>
         );

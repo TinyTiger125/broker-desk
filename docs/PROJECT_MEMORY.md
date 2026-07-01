@@ -1,6 +1,6 @@
 # Broker Desk Project Memory
 
-Last updated: 2026-06-27
+Last updated: 2026-07-01
 
 This file is the fixed project-memory entrypoint for Broker Desk.
 
@@ -37,7 +37,8 @@ Do not use this file for:
 4. `docs/product/PRODUCT_TOPOLOGY.md`: product value topology and phase model.
 5. `docs/operations/PM_CONTROL.md`: multi-agent operating model and historical task board.
 6. Task-specific docs:
-   - current handoff: `docs/operations/DEVELOPMENT_HANDOFF_2026_06_27.md`
+   - current handoff: `docs/operations/DEVELOPMENT_HANDOFF_2026_07_01.md`
+   - previous handoff: `docs/operations/DEVELOPMENT_HANDOFF_2026_06_27.md`
    - input: `docs/product/V1_INPUT_FILE_MODEL.md`
    - workbench: `docs/product/V1_CASE_WORKBENCH.md`
    - case information architecture: `docs/product/V1_CASE_INFORMATION_ARCHITECTURE.md`
@@ -100,6 +101,23 @@ The product should feel like a faster structured Excel workbench, not a generic 
 - The case workbench has begun moving from a global save model toward per-field-card saves.
 - Current UX is not finished: the home screen and object center are functionally closer to the product direction, but still need spacing, hierarchy, and broker-first simplification before pilot-quality acceptance.
 - Durable source: `docs/operations/DEVELOPMENT_HANDOFF_2026_06_27.md`.
+
+2026-07-01 pre-friend-test checkpoint:
+
+- Final pre-friend-test audit cycle completed.
+- The current code supports a blank business-data friend-test mode through `BROKER_DESK_SEED_MODE=blank` and default Chinese UI through `BROKER_DESK_DEFAULT_LOCALE=zh`.
+- A QA full-data seed/reset lifecycle is in place for repeatable audits. `npm run test:regression` now creates full QA data, runs the regression suite, and clears business data on exit.
+- QA endpoints are local test tooling: local loopback is allowed in development, production requires a token, and non-loopback forwarded hosts are rejected to reduce ngrok exposure risk.
+- Output-center missing-field links now route to real case-workbench nodes or guarantee-preview sections instead of stale anchors.
+- Current external-test command:
+
+```bash
+BROKER_DESK_AUTH_MODE=demo BROKER_DESK_ENABLE_DEMO_AUTH=true BROKER_DESK_SEED_MODE=blank BROKER_DESK_DEFAULT_LOCALE=zh npx next dev --webpack
+```
+
+- Validation passed before handoff: `npx tsc --noEmit --pretty false`, `npm run lint -- --quiet`, `npm run build`, and `npm run test:regression`.
+- Known runtime caution: after mixing production build and dev server runs, Next dev cache can produce missing manifest/runtime errors. Stop the dev server, remove `.next`, and restart with `npx next dev --webpack`.
+- Durable source: `docs/operations/DEVELOPMENT_HANDOFF_2026_07_01.md`.
 
 ## Target User
 
