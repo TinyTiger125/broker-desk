@@ -28,7 +28,9 @@
     "test:tenant-governance": "node scripts/check-tenant-governance.mjs",
     "test:production-security": "node scripts/check-production-security.mjs",
     "test:regression": "bash scripts/regression.sh",
-    "test:ja-terms": "bash scripts/check-ja-terms.sh"
+    "test:ja-terms": "bash scripts/check-ja-terms.sh",
+    "terms:export": "node scripts/export-ui-terminology.mjs",
+    "terms:import": "node scripts/import-ui-terminology.mjs"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.5.4",

@@ -74,6 +74,7 @@ import {
   updateTenantAccountLifecycle,
   updateTenantMemberInvitation,
   inviteTenantMember,
+  updateCaseWorkbenchFieldRules,
   updateOutputTemplateSettings,
   updateTaskStatus,
   updateClient,
@@ -109,6 +110,11 @@ import { extractInputFileFromWorkbook, type InputFileExtractionResult } from "@/
 import { extractIdentityDocumentsFromFiles } from "@/lib/identity-document-extractor";
 import { createClerkInvitationForTenantMember } from "@/lib/clerk-invitations";
 import { CASE_FIELD_KEYS, isKnownCaseFieldKey } from "@/lib/case-field-catalog";
+import {
+  CASE_WORKBENCH_FIELD_KEYS,
+  isCaseWorkbenchFieldKey,
+  normalizeCaseFieldRequirement,
+} from "@/lib/case-workbench-field-rules";
 import { canonicalizeCaseFieldKey, clearCaseFieldValueAliases, getCaseFieldValue } from "@/lib/case-field-normalization";
 import { applyJapanesePostalCodeAddressCompletions } from "@/lib/japan-postal-code";
 import {
@@ -693,9 +699,9 @@ export async function batchUpdateServiceRequestStatusAction(formData: FormData) 
   if (taskIds.length === 0) {
     throw new Error(
       tr(locale, {
-        ja: "対象の対応依頼を選択してください。",
-        zh: "请先选择要处理的服务请求。",
-        ko: "처리할 서비스 요청을 먼저 선택해 주세요.",
+        ja: "対象の対応履歴を選択してください。",
+        zh: "请先选择要处理的跟进记录。",
+        ko: "처리할 후속 기록을 먼저 선택해 주세요.",
       })
     );
   }
@@ -708,9 +714,9 @@ export async function batchUpdateServiceRequestStatusAction(formData: FormData) 
   if (targetIds.length === 0) {
     throw new Error(
       tr(locale, {
-        ja: "更新可能な対応依頼が見つかりません。",
-        zh: "未找到可更新的服务请求。",
-        ko: "업데이트 가능한 서비스 요청이 없습니다.",
+        ja: "更新可能な対応履歴が見つかりません。",
+        zh: "未找到可更新的跟进记录。",
+        ko: "업데이트 가능한 후속 기록이 없습니다.",
       })
     );
   }
@@ -724,9 +730,9 @@ export async function batchUpdateServiceRequestStatusAction(formData: FormData) 
     targetType: "task",
     targetId: targetIds[0],
     message: tr(locale, {
-      ja: `対応依頼を一括更新しました: ${targetIds.length}件`,
-      zh: `已批量更新服务请求：${targetIds.length}条`,
-      ko: `서비스 요청 일괄 업데이트: ${targetIds.length}건`,
+      ja: `対応履歴を一括更新しました: ${targetIds.length}件`,
+      zh: `已批量更新跟进记录：${targetIds.length}条`,
+      ko: `후속 기록 일괄 업데이트: ${targetIds.length}건`,
     }),
   });
 
@@ -956,10 +962,10 @@ export async function createImportJobAction(formData: FormData) {
   const notes = String(formData.get("notes") ?? "").trim();
 
   if (!isImportSourceType(sourceType)) {
-    throw new Error("取込元種別が不正です。");
+    throw new Error("資料種別が不正です。");
   }
   if (!isImportTargetEntity(targetEntity)) {
-    throw new Error("取込対象が不正です。");
+    throw new Error("保存先が不正です。");
   }
 
   const job = await addImportJob({
@@ -977,7 +983,7 @@ export async function createImportJobAction(formData: FormData) {
     action: "import_job_created",
     targetType: "task",
     targetId: job.id,
-    message: `取込ジョブを作成しました: ${job.title}`,
+    message: `資料読取記録を作成しました: ${job.title}`,
   });
 
   revalidatePath("/");
@@ -1001,7 +1007,7 @@ export async function updateImportJobMappingAction(formData: FormData) {
     throw new Error("ジョブIDは必須です。");
   }
   if (!isImportTargetEntity(targetEntity)) {
-    throw new Error("取込対象が不正です。");
+    throw new Error("保存先が不正です。");
   }
 
   const sourceColumns = parseCommaList(sourceColumnsText);
@@ -1058,10 +1064,10 @@ export async function updateImportJobMappingAction(formData: FormData) {
         action: "apply_mapping",
         message:
           locale === "zh"
-            ? "映射已满足导入要求。"
+            ? "保存位置已确认。"
             : locale === "ko"
-              ? "매핑이 가져오기 요건을 충족했습니다."
-              : "マッピングは取込要件を満たしています。",
+              ? "저장 위치가 확인되었습니다."
+              : "保存先の確認が完了しました。",
       })
     );
   }
@@ -1085,7 +1091,7 @@ export async function updateImportJobMappingAction(formData: FormData) {
     status,
   });
   if (!updated) {
-    throw new Error("取込ジョブが見つかりません。");
+    throw new Error("資料読取記録が見つかりません。");
   }
 
   await addAuditLog({
@@ -1094,7 +1100,7 @@ export async function updateImportJobMappingAction(formData: FormData) {
     action: "import_mapping_updated",
     targetType: "task",
     targetId: updated.id,
-    message: `取込マッピングを更新しました: ${updated.title}`,
+    message: `資料の保存先を更新しました: ${updated.title}`,
   });
 
   revalidatePath("/");
@@ -1117,7 +1123,7 @@ export async function autoMapImportJobAction(formData: FormData) {
     throw new Error("ジョブIDは必須です。");
   }
   if (!isImportTargetEntity(targetEntity)) {
-    throw new Error("取込対象が不正です。");
+    throw new Error("保存先が不正です。");
   }
 
   const sourceColumns = parseCommaList(sourceColumnsText);
@@ -1173,10 +1179,10 @@ export async function autoMapImportJobAction(formData: FormData) {
         action: "apply_mapping",
         message:
           locale === "zh"
-            ? "自动映射已满足导入要求。"
+            ? "保存位置建议已确认。"
             : locale === "ko"
-              ? "자동 매핑이 가져오기 요건을 충족했습니다."
-              : "自動マッピングは取込要件を満たしています。",
+              ? "저장 위치 제안이 확인되었습니다."
+              : "保存先の提案を確認しました。",
       })
     );
   }
@@ -1205,7 +1211,7 @@ export async function autoMapImportJobAction(formData: FormData) {
     status,
   });
   if (!updated) {
-    throw new Error("取込ジョブが見つかりません。");
+    throw new Error("資料読取記録が見つかりません。");
   }
 
   await addAuditLog({
@@ -1237,7 +1243,7 @@ export async function resolveImportValidationAction(formData: FormData) {
   const jobs = await listImportJobs(user.id, 200, tenantId);
   const job = jobs.find((item) => item.id === jobId);
   if (!job) {
-    throw new Error("取込ジョブが見つかりません。");
+    throw new Error("資料読取記録が見つかりません。");
   }
 
   const operationLabel = tr(locale, {
@@ -1307,7 +1313,7 @@ export async function retryImportJobAction(formData: FormData) {
   const jobs = await listImportJobs(user.id, 200, tenantId);
   const job = jobs.find((item) => item.id === jobId);
   if (!job) {
-    throw new Error("取込ジョブが見つかりません。");
+    throw new Error("資料読取記録が見つかりません。");
   }
 
   const retryAt = new Date().toISOString();
@@ -1349,7 +1355,7 @@ export async function retryImportJobAction(formData: FormData) {
     allowRetry: true,
   });
   if (!retried) {
-    throw new Error("取込ジョブの再試行に失敗しました。");
+    throw new Error("資料読取記録の再処理に失敗しました。");
   }
 
   await addAuditLog({
@@ -1359,9 +1365,9 @@ export async function retryImportJobAction(formData: FormData) {
     targetType: "import_job",
     targetId: jobId,
     message: tr(locale, {
-      ja: `取込ジョブを再試行キューへ戻しました: ${retried.title}`,
-      zh: `已将导入任务退回重试队列：${retried.title}`,
-      ko: `가져오기 작업을 재시도 대기열로 되돌렸습니다: ${retried.title}`,
+      ja: `資料読取記録を再処理へ戻しました: ${retried.title}`,
+      zh: `已将资料读取记录退回待处理：${retried.title}`,
+      ko: `자료 읽기 기록을 다시 처리하도록 되돌렸습니다: ${retried.title}`,
     }),
     context: {
       previousStatus: job.status,
@@ -1510,8 +1516,8 @@ export async function createPropertyQuickAction(formData: FormData) {
   redirect(withFlash(destination, "property_created"));
 }
 
-function parsePartyProfileForm(formData: FormData, locale: Locale) {
-  const name = String(formData.get("name") ?? "").trim();
+function parsePartyProfileForm(formData: FormData, locale: Locale, options?: { fallbackName?: string }) {
+  const name = String(formData.get("name") ?? "").trim() || String(options?.fallbackName ?? "").trim();
   const partyTypeRaw = String(formData.get("partyType") ?? "individual").trim();
   const partyRoleRaw = String(formData.get("partyRole") ?? "applicant").trim();
   const phone = String(formData.get("phone") ?? "").trim();
@@ -1563,7 +1569,13 @@ export async function createPartyProfileAction(formData: FormData) {
   const user = session.user;
   const tenantId = session.tenant.id;
   const locale = await getLocale();
-  const payload = parsePartyProfileForm(formData, locale);
+  const today = formatCaseTitleDate(new Date());
+  const defaultName = tr(locale, {
+    ja: `新規関係者 ${today}`,
+    zh: `新主体 ${today}`,
+    ko: `새 관계자 ${today}`,
+  });
+  const payload = parsePartyProfileForm(formData, locale, { fallbackName: defaultName });
 
   const client = await addClient({
     tenantId,
@@ -1714,9 +1726,9 @@ export async function createServiceRequestQuickAction(formData: FormData) {
   const title =
     String(formData.get("title") ?? "").trim() ||
     tr(locale, {
-      ja: "新規対応依頼",
-      zh: "新建服务请求",
-      ko: "신규 서비스 요청",
+      ja: "新規対応履歴",
+      zh: "新建跟进记录",
+      ko: "새 후속 기록",
     });
   const dueAt = parseDate(formData.get("dueAt"));
   const returnTo = safeReturnTo(formData.get("returnTo"), "/service-requests");
@@ -1737,9 +1749,9 @@ export async function createServiceRequestQuickAction(formData: FormData) {
     targetType: "task",
     targetId: task.id,
     message: tr(locale, {
-      ja: `対応依頼を登録しました: ${title}`,
-      zh: `已新增服务请求：${title}`,
-      ko: `서비스 요청을 등록했습니다: ${title}`,
+      ja: `対応履歴を登録しました: ${title}`,
+      zh: `已新增跟进记录：${title}`,
+      ko: `후속 기록을 등록했습니다: ${title}`,
     }),
   });
 
@@ -1877,9 +1889,9 @@ export async function generateOutputDocumentAction(formData: FormData) {
       targetType: "quote",
       targetId: quote.id,
       message: tr(locale, {
-        ja: `出力前チェックで差し戻し: ${documentNumber} / issues=${validationIssues.join("|")} / tpl=${activeTemplateVersion?.versionNumber ?? "n/a"}`,
-        zh: `输出前校验未通过: ${documentNumber} / issues=${validationIssues.join("|")} / tpl=${activeTemplateVersion?.versionNumber ?? "n/a"}`,
-        ko: `출력 전 검증 실패: ${documentNumber} / issues=${validationIssues.join("|")} / tpl=${activeTemplateVersion?.versionNumber ?? "n/a"}`,
+        ja: `生成チェックで不足項目が見つかりました: ${documentNumber}`,
+        zh: `生成检查发现缺失项：${documentNumber}`,
+        ko: `생성 점검에서 누락 항목이 발견되었습니다: ${documentNumber}`,
       }),
     });
     const withValidationFlash = withFlash(returnTo, "output_validation_failed");
@@ -2474,6 +2486,50 @@ export async function updateOutputTemplateSettingsAction(formData: FormData) {
   });
 }
 
+export async function updateCaseWorkbenchFieldRulesAction(formData: FormData) {
+  const session = await requireTenantSession({ permission: "tenant.update_settings" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
+  const submittedFieldKeys = String(formData.get("fieldKeysJson") ?? "").trim();
+  let fieldKeys = CASE_WORKBENCH_FIELD_KEYS;
+
+  if (submittedFieldKeys) {
+    try {
+      const parsed = JSON.parse(submittedFieldKeys);
+      if (Array.isArray(parsed)) {
+        const filtered = parsed.filter((item): item is string => typeof item === "string" && isCaseWorkbenchFieldKey(item));
+        if (filtered.length > 0) fieldKeys = filtered;
+      }
+    } catch {
+      fieldKeys = CASE_WORKBENCH_FIELD_KEYS;
+    }
+  }
+
+  const rules = fieldKeys.map((fieldKey) => ({
+    fieldKey,
+    requirement: normalizeCaseFieldRequirement(formData.get(`requirement:${fieldKey}`)) ?? "optional",
+  }));
+
+  const updated = await updateCaseWorkbenchFieldRules(user.id, rules, tenantId);
+
+  await addAuditLog({
+    tenantId,
+    userId: user.id,
+    action: "case_workbench_field_rules_updated",
+    targetType: "case",
+    message: "情報整理の項目ルールを更新しました。",
+    context: {
+      ruleCount: updated.length,
+      requiredCount: updated.filter((rule) => rule.requirement === "required").length,
+    },
+  });
+
+  revalidatePath("/settings/case-workbench-fields");
+  revalidatePath("/organize-center");
+  revalidatePath("/cases/[id]");
+  redirect("/settings/case-workbench-fields?flash=rules_saved");
+}
+
 export async function applyOutputTemplateVersionAction(formData: FormData) {
   const session = await requireTenantSession({ permission: "template.rollback" });
   const user = session.user;
@@ -2493,7 +2549,7 @@ export async function applyOutputTemplateVersionAction(formData: FormData) {
     versionId,
   });
   if (!applied) {
-    throw new Error("テンプレート版が見つかりません。");
+    throw new Error("テンプレート記録が見つかりません。");
   }
 
   revalidatePath("/");
@@ -2509,7 +2565,7 @@ export async function applyOutputTemplateVersionAction(formData: FormData) {
     action: "output_template_version_applied",
     targetType: "quote",
     targetId: versionId,
-    message: `テンプレート版を適用しました: ${versionId}`,
+    message: `テンプレート記録を適用しました: ${versionId}`,
   });
 }
 
@@ -2588,7 +2644,7 @@ export async function reviewAiExperienceDraftAction(formData: FormData) {
   redirect(`/settings/ai-experience?flash=experience_reviewed&status=${status}`);
 }
 
-// ─── Excel 物件一括取込 ────────────────────────────────────────────
+// ─── Excel 物件一括保存 ────────────────────────────────────────────
 
 type ExcelImportPayload = {
   kind?: "property_row_import" | "input_file_extraction";
@@ -2608,125 +2664,6 @@ type ExtractionReviewDecision = {
 };
 
 const WORKBENCH_FIELD_STATUS_KEY = "__workbenchFieldStatuses";
-const CASE_WORKBENCH_FIELD_KEYS = [
-  "property.name",
-  "property.roomNumber",
-  "property.postalCode",
-  "property.address",
-  "lease.moveInDate",
-  "lease.rent",
-  "lease.commonFee",
-  "lease.parkingFee",
-  "lease.monthlyRentTotal",
-  "lease.deposit",
-  "lease.keyMoney",
-  "lease.insuranceFee",
-  "lease.keyExchangeFee",
-  "applicant.name",
-  "applicant.furigana",
-  "applicant.gender",
-  "applicant.spouse",
-  "applicant.birthDate",
-  "applicant.phone",
-  "applicant.email",
-  "applicant.currentPostalCode",
-  "applicant.currentAddress",
-  "applicant.nationality",
-  "applicant.identityDocumentType",
-  "applicant.residenceStatus",
-  "applicant.residencePeriod",
-  "applicant.residenceCardExpiry",
-  "applicant.residenceCardNumber",
-  "applicant.workRestriction",
-  "applicant.driverLicenseNumber",
-  "applicant.driverLicenseExpiry",
-  "applicant.driverLicenseConditions",
-  "applicant.residenceYears",
-  "applicant.housingType",
-  "applicant.currentRent",
-  "applicant.employerName",
-  "applicant.employerFurigana",
-  "applicant.employerPhone",
-  "applicant.employerPostalCode",
-  "applicant.employerAddress",
-  "applicant.occupation",
-  "applicant.jobType",
-  "applicant.employmentType",
-  "applicant.annualIncome",
-  "applicant.yearsEmployed",
-  "applicant.payday",
-  "applicant.moveReason",
-  "guarantor.furigana",
-  "guarantor.name",
-  "guarantor.gender",
-  "guarantor.spouse",
-  "guarantor.relationship",
-  "guarantor.birthDate",
-  "guarantor.postalCode",
-  "guarantor.address",
-  "guarantor.driverLicenseNumber",
-  "guarantor.residenceYears",
-  "guarantor.housingType",
-  "guarantor.phone",
-  "guarantor.employerFurigana",
-  "guarantor.employerName",
-  "guarantor.employerAddress",
-  "guarantor.occupation",
-  "guarantor.jobType",
-  "guarantor.employmentType",
-  "guarantor.annualIncome",
-  "guarantor.payday",
-  "emergencyContact.name",
-  "emergencyContact.furigana",
-  "emergencyContact.gender",
-  "emergencyContact.spouse",
-  "emergencyContact.relationship",
-  "emergencyContact.birthDate",
-  "emergencyContact.phone",
-  "emergencyContact.postalCode",
-  "emergencyContact.address",
-  "emergencyContact.driverLicenseNumber",
-  "emergencyContact.residenceYears",
-  "emergencyContact.housingType",
-  "emergencyContact.employerName",
-  "emergencyContact.employerFurigana",
-  "emergencyContact.employerAddress",
-  "emergencyContact.occupation",
-  "emergencyContact.jobType",
-  "emergencyContact.employmentType",
-  "emergencyContact.annualIncome",
-  "emergencyContact.payday",
-  "coOccupants.0.furigana",
-  "coOccupants.0.name",
-  "coOccupants.0.relationship",
-  "coOccupants.0.birthDate",
-  "coOccupants.0.phone",
-  "coOccupants.0.employerName",
-  "coOccupants.1.furigana",
-  "coOccupants.1.name",
-  "coOccupants.1.relationship",
-  "coOccupants.1.birthDate",
-  "coOccupants.1.phone",
-  "coOccupants.1.employerName",
-  "coOccupants.2.furigana",
-  "coOccupants.2.name",
-  "coOccupants.2.relationship",
-  "coOccupants.2.birthDate",
-  "coOccupants.2.phone",
-  "coOccupants.2.employerName",
-  "broker.companyName",
-  "broker.staffName",
-  "broker.phone",
-  "broker.address",
-  "management.companyName",
-  "management.phone",
-  "management.address",
-  "management.staffName",
-  "guarantee.plan",
-  "guarantee.initialFee",
-  "guarantee.monthlyFee",
-  "guarantee.renewalFee",
-] as const;
 
 function getCaseWorkbenchFieldKeysFromForm(formData: FormData): string[] {
   const requestedFields = String(formData.get("presentFieldKeysJson") ?? "").trim();
@@ -3026,7 +2963,7 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
       nextConfirmedData[fieldKey] = nextValue;
       if (nextValue !== previousValue) {
         existingStatusMap[fieldKey] = previousValue ? "edited" : "confirmed";
-      } else if (existingStatusMap[fieldKey] === "unknown" || existingStatusMap[fieldKey] === "not_applicable" || existingStatusMap[fieldKey] === "rejected" || !existingStatusMap[fieldKey]) {
+      } else if (existingStatusMap[fieldKey] !== "confirmed" && existingStatusMap[fieldKey] !== "edited") {
         existingStatusMap[fieldKey] = "confirmed";
       }
     } else {
@@ -3513,27 +3450,36 @@ export async function uploadAndParseExcelAction(formData: FormData) {
   const user = session.user;
   const tenantId = session.tenant.id;
   const targetCaseId = String(formData.get("targetCaseId") ?? "").trim();
+  const uploadContext = String(formData.get("uploadContext") ?? "").trim();
   if (targetCaseId) {
     const targetCase = await getBrokerageCaseById({ userId: user.id, tenantId, caseId: targetCaseId });
     if (!targetCase) throw new Error("追加先の案件が見つかりません。");
   }
   const targetCaseQuery = targetCaseId ? `&targetCaseId=${encodeURIComponent(targetCaseId)}` : "";
+  const redirectExcelUploadError = (flash: string): never => {
+    if (targetCaseId && uploadContext === "case") {
+      redirect(`/cases/${encodeURIComponent(targetCaseId)}?flash=${encodeURIComponent(flash)}#case-source-intake`);
+    }
+    redirect(`/import-center?flash=${encodeURIComponent(flash)}${targetCaseQuery}`);
+  };
 
-  const file = formData.get("excelFile");
-  if (!(file instanceof File) || file.size === 0) {
-    throw new Error("ファイルが選択されていません。");
+  const fileEntry = formData.get("excelFile");
+  if (!(fileEntry instanceof File) || fileEntry.size === 0) {
+    redirectExcelUploadError("excel_upload_missing");
   }
+  const file = fileEntry as File;
   if (!file.name.toLowerCase().endsWith(".xlsx")) {
-    throw new Error(".xlsx 形式のファイルのみ対応しています。.xls / .csv は対応外です。");
+    redirectExcelUploadError("excel_upload_type");
   }
 
   const buffer = await file.arrayBuffer();
-  let workbook: XLSX.WorkBook;
-  try {
-    workbook = XLSX.read(new Uint8Array(buffer), { type: "array" });
-  } catch {
-    throw new Error("ファイルの読み込みに失敗しました。正しい .xlsx ファイルか確認してください。");
-  }
+  const workbook = (() => {
+    try {
+      return XLSX.read(new Uint8Array(buffer), { type: "array" });
+    } catch {
+      return redirectExcelUploadError("excel_upload_read_failed");
+    }
+  })();
 
   const sourceFileHash = createHash("sha256").update(Buffer.from(buffer)).digest("hex");
   const inputExtraction = extractInputFileFromWorkbook(workbook, file.name, sourceFileHash);
@@ -3577,11 +3523,11 @@ export async function uploadAndParseExcelAction(formData: FormData) {
   }
 
   const sheetName = workbook.SheetNames[0];
-  if (!sheetName) throw new Error("シートが見つかりません。");
+  if (!sheetName) redirectExcelUploadError("excel_upload_empty");
 
   const sheet = workbook.Sheets[sheetName];
   const rawRows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: "" });
-  if (rawRows.length === 0) throw new Error("ファイルにデータがありません。");
+  if (rawRows.length === 0) redirectExcelUploadError("excel_upload_empty");
 
   const headers = (rawRows[0] as unknown[]).map(String).filter((h) => h.trim() !== "");
   if (headers.length === 0) {
@@ -3659,7 +3605,7 @@ export async function uploadAndParseExcelAction(formData: FormData) {
     action: "import_job_created",
     targetType: "task",
     targetId: job.id,
-    message: `Excel 物件取込ジョブ作成: ${file.name} (${rowObjects.length} 行)`,
+    message: `Excel 物件資料を読み取りました: ${file.name} (${rowObjects.length} 行)`,
   });
 
   revalidatePath("/import-center");
@@ -3739,34 +3685,41 @@ export async function uploadAndParseIdentityDocumentAction(formData: FormData) {
   const tenantId = session.tenant.id;
   const uploadMode = String(formData.get("identityUploadMode") ?? "same_person").trim();
   const targetCaseId = String(formData.get("targetCaseId") ?? "").trim();
+  const uploadContext = String(formData.get("uploadContext") ?? "").trim();
   if (targetCaseId) {
     const targetCase = await getBrokerageCaseById({ userId: user.id, tenantId, caseId: targetCaseId });
     if (!targetCase) throw new Error("追加先の案件が見つかりません。");
   }
   const targetCaseQuery = targetCaseId ? `&targetCaseId=${encodeURIComponent(targetCaseId)}` : "";
+  const redirectIdentityUploadError = (flash: string): never => {
+    if (targetCaseId && uploadContext === "case") {
+      redirect(`/cases/${encodeURIComponent(targetCaseId)}?flash=${encodeURIComponent(flash)}#case-source-intake`);
+    }
+    redirect(`/import-center?flash=${encodeURIComponent(flash)}${targetCaseQuery}`);
+  };
 
   const files = formData
     .getAll("identityDocumentFile")
     .filter((file): file is File => file instanceof File && file.size > 0);
   if (files.length === 0) {
-    throw new Error("本人確認資料ファイルが選択されていません。");
+    redirectIdentityUploadError("identity_upload_missing");
   }
   if (files.length > MAX_IDENTITY_DOCUMENT_FILES) {
-    throw new Error(`本人確認資料は一度に${MAX_IDENTITY_DOCUMENT_FILES}件まで選択できます。`);
+    redirectIdentityUploadError("identity_upload_too_many");
   }
 
   let totalBytes = 0;
   for (const file of files) {
     totalBytes += file.size;
     if (file.size > MAX_IDENTITY_DOCUMENT_FILE_BYTES) {
-      throw new Error("本人確認資料は1ファイル25MB以下にしてください。");
+      redirectIdentityUploadError("identity_upload_too_large");
     }
     if (!isAllowedIdentityDocumentFile(file)) {
-      throw new Error("在留カード・運転免許証のPDFまたは画像ファイルを選択してください。");
+      redirectIdentityUploadError("identity_upload_type");
     }
   }
   if (totalBytes > MAX_IDENTITY_DOCUMENT_TOTAL_BYTES) {
-    throw new Error("本人確認資料の合計サイズは60MB以下にしてください。");
+    redirectIdentityUploadError("identity_upload_total_too_large");
   }
 
   if (uploadMode === "separate_people" && files.length > 1) {
@@ -4228,16 +4181,16 @@ export async function executePropertyImportAction(formData: FormData) {
 
   const jobs = await listImportJobs(user.id, 200, tenantId);
   const job = jobs.find((j) => j.id === jobId);
-  if (!job?.notes) throw new Error("取込ジョブが見つかりません。再度アップロードしてください。");
+  if (!job?.notes) throw new Error("資料読取記録が見つかりません。再度アップロードしてください。");
 
   let payload: ExcelImportPayload;
   try {
     payload = JSON.parse(job.notes) as ExcelImportPayload;
   } catch {
-    throw new Error("取込データの読み込みに失敗しました。再度アップロードしてください。");
+    throw new Error("資料データの読み込みに失敗しました。再度アップロードしてください。");
   }
   if (payload.kind === "input_file_extraction") {
-    throw new Error("このジョブは業務ファイル抽出プレビューです。物件台帳への一括取込は実行できません。");
+    throw new Error("この資料は内容確認用です。物件台帳への一括保存は実行できません。");
   }
 
   const sourceCols = formData.getAll("sourceCol") as string[];
@@ -4253,9 +4206,9 @@ export async function executePropertyImportAction(formData: FormData) {
     jobId: job.id,
     mappingJson: mapping,
     validationMessage: tr(locale, {
-      ja: "マッピング適用済み。取込処理を開始します。",
-      zh: "映射已应用，开始执行导入。",
-      ko: "매핑을 적용했고 가져오기를 시작합니다.",
+      ja: "保存先を適用しました。保存処理を開始します。",
+      zh: "保存位置已应用，开始保存。",
+      ko: "저장 위치를 적용했고 저장을 시작합니다.",
     }),
     status: "mapped",
   });
@@ -4324,10 +4277,10 @@ export async function executePropertyImportAction(formData: FormData) {
         action: "retry",
         message:
           locale === "zh"
-            ? "导入成功数为 0，请修复映射或源数据后重试。"
+            ? "保存成功数为 0，请修正保存位置或源数据后重试。"
             : locale === "ko"
-              ? "가져오기 성공 건수가 0건입니다. 매핑 또는 원본 데이터를 수정 후 재시도하세요."
-              : "取込成功件数が 0 件です。マッピングまたは元データを修正して再試行してください。",
+              ? "저장 성공 건수가 0건입니다. 저장 위치 또는 원본 데이터를 수정 후 다시 시도하세요."
+              : "保存成功件数が 0 件です。保存先または元データを修正して再試行してください。",
       })
     );
   }
@@ -4371,10 +4324,10 @@ export async function executePropertyImportAction(formData: FormData) {
         action: "resolve_now",
         message:
           locale === "zh"
-            ? "部分行导入失败，请查看错误详情。"
+            ? "部分行保存失败，请查看错误详情。"
             : locale === "ko"
-              ? "일부 행 가져오기에 실패했습니다. 상세 오류를 확인해 주세요."
-              : "一部行の取込に失敗しました。詳細エラーを確認してください。",
+              ? "일부 행 저장에 실패했습니다. 상세 오류를 확인해 주세요."
+              : "一部行の保存に失敗しました。詳細エラーを確認してください。",
         count: skippedByCode.import_row_unknown_error,
       })
     );
@@ -4387,10 +4340,10 @@ export async function executePropertyImportAction(formData: FormData) {
         action: "apply_mapping",
         message:
           locale === "zh"
-            ? "导入已完成，但有部分行被跳过。"
+            ? "保存已完成，但有部分行被跳过。"
             : locale === "ko"
-              ? "가져오기는 완료되었지만 일부 행이 건너뛰어졌습니다."
-              : "取込は完了しましたが、一部行はスキップされました。",
+              ? "저장은 완료되었지만 일부 행이 건너뛰어졌습니다."
+              : "保存は完了しましたが、一部行はスキップされました。",
       })
     );
   }
@@ -4402,10 +4355,10 @@ export async function executePropertyImportAction(formData: FormData) {
         action: "apply_mapping",
         message:
           locale === "zh"
-            ? "导入已完成，全部记录通过。"
+            ? "保存已完成，全部记录通过。"
             : locale === "ko"
-              ? "가져오기가 완료되었고 모든 레코드가 정상 반영되었습니다."
-              : "取込が完了し、全レコードが正常反映されました。",
+              ? "저장이 완료되었고 모든 레코드가 정상 반영되었습니다."
+              : "保存が完了し、全レコードが正常反映されました。",
       })
     );
   }
@@ -4413,10 +4366,10 @@ export async function executePropertyImportAction(formData: FormData) {
     source: "import_execution",
     summary:
       locale === "zh"
-        ? `导入完成：成功 ${successCount} 条，跳过 ${skipped.length} 条`
+        ? `保存完成：成功 ${successCount} 条，跳过 ${skipped.length} 条`
         : locale === "ko"
-          ? `가져오기 완료: 성공 ${successCount}건, 건너뜀 ${skipped.length}건`
-          : `取込完了: 成功 ${successCount} 件、スキップ ${skipped.length} 件`,
+          ? `저장 완료: 성공 ${successCount}건, 건너뜀 ${skipped.length}건`
+          : `保存完了: 成功 ${successCount} 件、スキップ ${skipped.length} 件`,
     issues: executionIssues,
     metrics: {
       successCount,
@@ -4436,9 +4389,9 @@ export async function executePropertyImportAction(formData: FormData) {
       successCount > 0
         ? undefined
         : tr(locale, {
-            ja: "取込件数が0件のため、再試行が必要です。",
-            zh: "成功导入为0，请修复后重试。",
-            ko: "가져오기 성공 건수가 0건이므로 수정 후 재시도해야 합니다.",
+            ja: "保存件数が0件のため、再試行が必要です。",
+            zh: "成功保存为0，请修复后重试。",
+            ko: "저장 성공 건수가 0건이므로 수정 후 다시 시도해야 합니다.",
           }),
     status: nextStatus,
   });
@@ -4449,7 +4402,7 @@ export async function executePropertyImportAction(formData: FormData) {
     action: successCount > 0 ? "import_job_completed" : "import_job_requires_retry",
     targetType: "import_job",
     targetId: job.id,
-    message: `Excel 物件取込: ${successCount} 件登録、${skipped.length} 件スキップ`,
+    message: `Excel 物件保存: ${successCount} 件登録、${skipped.length} 件スキップ`,
     context: {
       successCount,
       skippedCount: skipped.length,

@@ -109,6 +109,7 @@ The product should feel like a faster structured Excel workbench, not a generic 
 - A QA full-data seed/reset lifecycle is in place for repeatable audits. `npm run test:regression` now creates full QA data, runs the regression suite, and clears business data on exit.
 - QA endpoints are local test tooling: local loopback is allowed in development, production requires a token, and non-loopback forwarded hosts are rejected to reduce ngrok exposure risk.
 - Output-center missing-field links now route to real case-workbench nodes or guarantee-preview sections instead of stale anchors.
+- Friend-test feedback must be collected against the V1 chain, not against isolated features. Use `docs/operations/FRIEND_TEST_CHECKLIST_2026_07_02.md` for tester tasks, pass/fail signals, and issue severity.
 - Current external-test command:
 
 ```bash
@@ -532,3 +533,11 @@ http://localhost:3002/api/guarantee-applications/j_lease_individual_v1/download?
 - Implemented the first object-center scaffold: homepage relationship map, organize-center object list, and dedicated create flows for cases, subjects, and properties.
 - Added per-field-card save behavior to the case workbench as a step away from one global save button.
 - Recorded that this is not a finished UX state. The next pass must simplify density, hierarchy, object routing, and broker-facing language before treating it as pilot-ready.
+
+### 2026-07-12
+
+- Added a development-branch handoff document: `docs/operations/DEVELOPMENT_HANDOFF_2026_07_12.md`.
+- Preserved the boundary that `dev/friend-test-fixes-20260702` is not merged into `main` without explicit user approval.
+- Recorded friend-test driven input-system changes: compact intake controls, route-first import, object-oriented organization, per-field-card save, required/optional field administration, and a visual case-workbench dossier map.
+- The case workbench `资料地图` is no longer a count-only navigation tree. It now presents selected-category field rows with value/status visibility and links unresolved items to the editing cards.
+- Last development verification before handoff: `npm run lint`, `npm run build`, and `BASE_URL=http://localhost:3001 npm run test:regression` all passed.

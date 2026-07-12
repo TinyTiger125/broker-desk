@@ -75,6 +75,10 @@ export const updateTenantMemberRole: typeof memory.updateTenantMemberRole = (...
   repo.updateTenantMemberRole(...args);
 export const updateTenantMemberStatus: typeof memory.updateTenantMemberStatus = (...args) =>
   repo.updateTenantMemberStatus(...args);
+export const listCaseWorkbenchFieldRules: typeof memory.listCaseWorkbenchFieldRules = (...args) =>
+  repo.listCaseWorkbenchFieldRules(...args);
+export const updateCaseWorkbenchFieldRules: typeof memory.updateCaseWorkbenchFieldRules = (...args) =>
+  repo.updateCaseWorkbenchFieldRules(...args);
 export const getOutputTemplateSettings: typeof memory.getOutputTemplateSettings = (...args) =>
   repo.getOutputTemplateSettings(...args);
 export const updateOutputTemplateSettings: typeof memory.updateOutputTemplateSettings = (...args) =>
@@ -211,6 +215,9 @@ export type {
   Attachment,
   AttachmentTargetType,
   GeneratedOutput,
+  CaseFieldRequirement,
+  CaseWorkbenchFieldRule,
+  CaseWorkbenchFieldRuleInput,
   Tenant,
   TenantAccountSummary,
   TenantAccountType,

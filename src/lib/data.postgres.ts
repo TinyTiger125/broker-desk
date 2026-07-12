@@ -61,6 +61,8 @@ import type {
   TenantStatus,
   User,
   AuditLog,
+  CaseWorkbenchFieldRule,
+  CaseWorkbenchFieldRuleInput,
   OutputTemplateVersion,
 } from "@/lib/data.memory";
 import type { TenantRole } from "@/lib/tenant-permissions";
@@ -532,6 +534,17 @@ function mapOutputTemplateVersion(row: Record<string, unknown>): OutputTemplateV
   };
 }
 
+function mapCaseWorkbenchFieldRule(row: Record<string, unknown>): CaseWorkbenchFieldRule {
+  return {
+    id: String(row.id),
+    tenantId: String(row.tenant_id ?? DEFAULT_TENANT_ID),
+    userId: String(row.user_id),
+    fieldKey: String(row.field_key),
+    requirement: String(row.requirement) === "required" ? "required" : "optional",
+    updatedAt: toDate(row.updated_at) ?? new Date(),
+  };
+}
+
 async function ensureSchema() {
   if (schemaEnsured) return;
   const db = getPool();
@@ -681,6 +694,16 @@ async function ensureSchema() {
       message TEXT NOT NULL,
       context_json JSONB,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS case_workbench_field_rules (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry',
+      user_id TEXT NOT NULL REFERENCES users(id),
+      field_key TEXT NOT NULL,
+      requirement TEXT NOT NULL DEFAULT 'optional',
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (tenant_id, user_id, field_key)
     );
 
     CREATE TABLE IF NOT EXISTS output_template_settings (
@@ -877,6 +900,7 @@ async function ensureSchema() {
     CREATE INDEX IF NOT EXISTS idx_tasks_client_status_due ON tasks(client_id, status, due_at);
     CREATE INDEX IF NOT EXISTS idx_audit_logs_user_created ON audit_logs(user_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_audit_logs_actor_created ON audit_logs(actor_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_case_workbench_field_rules_user ON case_workbench_field_rules(tenant_id, user_id, field_key);
     ALTER TABLE output_template_settings DROP CONSTRAINT IF EXISTS output_template_settings_user_id_key;
     DROP INDEX IF EXISTS idx_output_template_user;
     CREATE UNIQUE INDEX IF NOT EXISTS idx_output_template_tenant_user ON output_template_settings(tenant_id, user_id);
@@ -913,6 +937,9 @@ async function ensureSchema() {
     ALTER TABLE follow_ups ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
     ALTER TABLE tasks ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
     ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
+    ALTER TABLE case_workbench_field_rules ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
+    ALTER TABLE case_workbench_field_rules ADD COLUMN IF NOT EXISTS requirement TEXT NOT NULL DEFAULT 'optional';
+    ALTER TABLE case_workbench_field_rules ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
     ALTER TABLE output_template_settings ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
     ALTER TABLE output_template_versions ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
     ALTER TABLE import_jobs ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
@@ -957,7 +984,7 @@ async function ensureSchema() {
     ALTER TABLE output_template_settings ADD COLUMN IF NOT EXISTS show_outstanding_balance_table BOOLEAN NOT NULL DEFAULT TRUE;
     ALTER TABLE output_template_settings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
-    ALTER TABLE output_template_versions ADD COLUMN IF NOT EXISTS version_label TEXT NOT NULL DEFAULT 'テンプレート版';
+    ALTER TABLE output_template_versions ADD COLUMN IF NOT EXISTS version_label TEXT NOT NULL DEFAULT 'テンプレート改訂記録';
     ALTER TABLE output_template_versions ADD COLUMN IF NOT EXISTS change_note TEXT;
     ALTER TABLE output_template_versions ADD COLUMN IF NOT EXISTS settings_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb;
     ALTER TABLE output_template_versions ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT FALSE;
@@ -1180,7 +1207,7 @@ async function ensureSchema() {
         "物件台帳_2026Q1.xlsx",
         "properties",
         "completed",
-        "物件31件を取込",
+        "物件31件を保存",
         JSON.stringify({
           物件名: "name",
           所在地: "address",
@@ -1191,7 +1218,7 @@ async function ensureSchema() {
         new Date(Date.now() - 4 * 24 * 60 * 60 * 1000),
         "import_002",
         "pdf",
-        "旧契約書一括取込（5件）",
+        "旧契約書一括登録（5件）",
         "contracts",
         "mapped",
         "契約種別の確認待ち",
@@ -1931,6 +1958,52 @@ export async function updateTenantMemberStatus(input: {
   });
 }
 
+export async function listCaseWorkbenchFieldRules(userId: string, tenantId = DEFAULT_TENANT_ID): Promise<CaseWorkbenchFieldRule[]> {
+  await ensureSchema();
+  const scopeTenantId = resolveTenantId(tenantId);
+  const result = await getPool().query(
+    `SELECT *
+     FROM case_workbench_field_rules
+     WHERE user_id = $1 AND tenant_id = $2
+     ORDER BY field_key ASC`,
+    [userId, scopeTenantId],
+  );
+  return result.rows.map(mapCaseWorkbenchFieldRule);
+}
+
+export async function updateCaseWorkbenchFieldRules(
+  userId: string,
+  input: CaseWorkbenchFieldRuleInput[],
+  tenantId = DEFAULT_TENANT_ID,
+): Promise<CaseWorkbenchFieldRule[]> {
+  await ensureSchema();
+  const scopeTenantId = resolveTenantId(tenantId);
+  const db = getPool();
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    for (const rule of input) {
+      await client.query(
+        `INSERT INTO case_workbench_field_rules (
+          id, tenant_id, user_id, field_key, requirement, updated_at
+        ) VALUES (
+          $1, $2, $3, $4, $5, NOW()
+        )
+        ON CONFLICT (tenant_id, user_id, field_key)
+        DO UPDATE SET requirement = EXCLUDED.requirement, updated_at = NOW()`,
+        [genId("casefieldrule"), scopeTenantId, userId, rule.fieldKey, rule.requirement],
+      );
+    }
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+  return listCaseWorkbenchFieldRules(userId, scopeTenantId);
+}
+
 export async function getOutputTemplateSettings(userId: string, tenantId = DEFAULT_TENANT_ID): Promise<OutputTemplateSettings> {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(tenantId);
@@ -2237,7 +2310,7 @@ export async function addImportJob(input: {
     properties: "物件",
     parties: "関係者",
     contracts: "契約",
-    service_requests: "対応依頼",
+    service_requests: "対応履歴",
   };
   const result = await getPool().query(
     `INSERT INTO import_jobs (
@@ -2249,7 +2322,7 @@ export async function addImportJob(input: {
       input.tenantId ?? DEFAULT_TENANT_ID,
       input.userId,
       input.sourceType,
-      input.title.trim() || `${sourceLabel[input.sourceType]}取込 - ${targetLabel[input.targetEntity]}`,
+      input.title.trim() || `${sourceLabel[input.sourceType]}資料 - ${targetLabel[input.targetEntity]}`,
       input.targetEntity,
       input.status ?? "queued",
       input.notes?.trim() || null,
@@ -2277,7 +2350,7 @@ export async function updateImportJobMapping(input: {
   if (!currentRes.rows[0]) return null;
   const currentStatus = String(currentRes.rows[0].status) as ImportJobStatus;
   if (input.status && !isValidImportStatusTransition(currentStatus, input.status, Boolean(input.allowRetry))) {
-    throw new Error(`取込ジョブ状態遷移が不正です: ${currentStatus} -> ${input.status}`);
+    throw new Error(`資料読取記録の状態変更が不正です: ${currentStatus} -> ${input.status}`);
   }
 
   const result = await getPool().query(

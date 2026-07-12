@@ -25,6 +25,13 @@ function copy(locale: Locale) {
     overlay: locale === "zh" ? "框体/覆盖层" : locale === "ko" ? "박스/오버레이" : "入力枠/オーバーレイ",
     actions: locale === "zh" ? "操作" : locale === "ko" ? "작업" : "操作",
     openFactory: locale === "zh" ? "打开校准界面" : locale === "ko" ? "보정 화면 열기" : "校正画面を開く",
+    ownerLabel: locale === "zh" ? "后台管理" : locale === "ko" ? "관리자 화면" : "管理画面",
+    officialBase: locale === "zh" ? "官方底板" : locale === "ko" ? "공식 원본" : "公式原本",
+    coordinateSetup: locale === "zh" ? "坐标配置" : locale === "ko" ? "좌표 설정" : "座標設定",
+    fieldCount: locale === "zh" ? "输入框" : locale === "ko" ? "입력칸" : "入力枠",
+    adjustedCount: locale === "zh" ? "调整" : locale === "ko" ? "조정" : "調整",
+    removedCount: locale === "zh" ? "删除" : locale === "ko" ? "삭제" : "削除",
+    baseVersion: locale === "zh" ? "底板记录" : locale === "ko" ? "원본 기록" : "原本記録",
   };
 }
 
@@ -69,7 +76,7 @@ export default async function PlatformTemplatesPage() {
     <div className="space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">PlatformOwner / {platformUserName}</p>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">{ui.ownerLabel} / {platformUserName}</p>
           <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-900">{ui.title}</h1>
           <p className="mt-1 max-w-4xl text-sm text-slate-600">{ui.subtitle}</p>
         </div>
@@ -88,17 +95,17 @@ export default async function PlatformTemplatesPage() {
             <div key={template.id} className="grid grid-cols-[1.4fr_0.8fr_1fr_1fr_0.8fr] items-center gap-3 px-4 py-4">
               <div className="min-w-0">
                 <p className="truncate text-sm font-bold text-slate-900">{template.companyDisplayName} / {template.templateDisplayName}</p>
-                <p className="truncate text-xs text-slate-500">{template.id} / {template.templateVersion}</p>
+                <p className="truncate text-xs text-slate-500">{ui.officialBase}</p>
               </div>
               <span className={`w-fit rounded-full px-2 py-1 text-xs font-bold ${qualityTone(template.qualityStatus)}`}>{template.qualityStatus}</span>
               <div className="min-w-0 text-xs text-slate-600">
                 <p className="truncate">{template.sourcePdfFileName}</p>
-                <p className="truncate text-slate-400">{template.coordinateMappingVersion}</p>
+                <p className="truncate text-slate-400">{ui.coordinateSetup}</p>
               </div>
               <div className="text-xs text-slate-600">
-                <p>fields {overlayCount}</p>
-                <p>overrides {layoutOverrideCount} / deleted {deletedCount}</p>
-                <p className="text-slate-400">{layout.baselineVersion}</p>
+                <p>{ui.fieldCount} {overlayCount}</p>
+                <p>{ui.adjustedCount} {layoutOverrideCount} / {ui.removedCount} {deletedCount}</p>
+                <p className="text-slate-400">{ui.baseVersion} {layout.baselineVersion}</p>
               </div>
               <Link
                 href={`/guarantee-applications/${template.id}/preview`}

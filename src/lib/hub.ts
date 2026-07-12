@@ -421,8 +421,8 @@ function getAttachmentTargetLabel(locale: Locale): Record<AttachmentTargetType, 
     property: tr(locale, { ja: "物件", zh: "物件", ko: "매물" }),
     party: tr(locale, { ja: "関係者", zh: "主体", ko: "관계자" }),
     contract: tr(locale, { ja: "契約", zh: "合同", ko: "계약" }),
-    service_request: tr(locale, { ja: "対応依頼", zh: "服务请求", ko: "서비스 요청" }),
-    import_job: tr(locale, { ja: "取込ジョブ", zh: "导入任务", ko: "가져오기 작업" }),
+    service_request: tr(locale, { ja: "対応履歴", zh: "跟进记录", ko: "후속 기록" }),
+    import_job: tr(locale, { ja: "読取資料", zh: "读取资料", ko: "읽은 자료" }),
     quote: tr(locale, { ja: "提案", zh: "提案", ko: "제안" }),
   };
 }

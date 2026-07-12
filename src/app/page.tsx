@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { getCaseFieldValue } from "@/lib/case-field-normalization";
 import { listBrokerageCases } from "@/lib/data";
 import { formatCurrency, formatDate } from "@/lib/format";
 import {
@@ -30,21 +29,16 @@ type DashboardCopy = {
   searchPlaceholder: string;
   search: string;
   clear: string;
-  nextWork: string;
-  currentBlocker: string;
-  recommendedAction: string;
   browseByType: string;
   dataMap: string;
   dataMapDesc: string;
-  caseHub: string;
-  caseConnection: string;
-  progressItems: string;
+  intakeActionTitle: string;
+  intakeActionDesc: string;
+  outputActionTitle: string;
+  outputActionDesc: string;
   linkedSources: string;
   unassignedMaterials: string;
   noLinkedSources: string;
-  outputReady: string;
-  outputNeedsReview: string;
-  prepareOutput: string;
   globalCounts: string;
   objectList: string;
   currentObject: string;
@@ -98,8 +92,6 @@ type DashboardCopy = {
   missingPartyReason: string;
   missingPropertyReason: string;
   sourceNeedsReviewReason: string;
-  outputBlockedReason: string;
-  outputReadyReason: string;
 };
 
 type WorkObject = {
@@ -131,26 +123,21 @@ type RelationshipSummary = {
 const copyByLocale: Record<Locale, DashboardCopy> = {
   ja: {
     title: "資料管理センター",
-    subtitle: "要整理の案件と資料を先に見つけ、作成・取込・整理・出力へ進みます。",
+    subtitle: "案件、顧客、物件、資料のつながりをまとめて確認します。",
     tenant: "対象ワークスペース",
     searchPlaceholder: "顧客、物件、案件、資料、出力書類を検索",
     search: "検索",
     clear: "クリア",
-    nextWork: "次に処理する項目",
-    currentBlocker: "現在の詰まり",
-    recommendedAction: "推奨アクション",
     browseByType: "種類で見る",
-    dataMap: "現在の案件進捗",
-    dataMapDesc: "この案件の関係者、物件、紐付いた資料、出力準備の状態を確認します。",
-    caseHub: "中心案件",
-    caseConnection: "進捗項目",
-    progressItems: "項目",
+    dataMap: "資料マップ",
+    dataMapDesc: "案件、顧客、物件、資料ファイルを並べて確認します。",
+    intakeActionTitle: "案件を作成・資料を追加",
+    intakeActionDesc: "案件、顧客、物件を作成し、必要な資料を追加します。",
+    outputActionTitle: "書類を出力",
+    outputActionDesc: "案件を選び、テンプレートを確認して出力します。",
     linkedSources: "紐付いた資料",
     unassignedMaterials: "未整理資料",
     noLinkedSources: "まだ紐付いた資料がありません。",
-    outputReady: "出力準備済み",
-    outputNeedsReview: "確認が必要",
-    prepareOutput: "出力へ進む",
     globalCounts: "全体",
     objectList: "資料索引",
     currentObject: "選択中",
@@ -159,7 +146,7 @@ const copyByLocale: Record<Locale, DashboardCopy> = {
     cases: "案件",
     parties: "顧客/関係者",
     properties: "物件",
-    inputMaterials: "取込資料",
+    inputMaterials: "資料ファイル",
     outputs: "出力書類",
     contracts: "契約/提案",
     attachments: "添付",
@@ -193,42 +180,35 @@ const copyByLocale: Record<Locale, DashboardCopy> = {
     noRecentData: "表示できる履歴はまだありません。",
     filteredBy: "表示",
     activeFilter: "表示中",
-    caseNeedsReviewReason: "案件データの確認が残っています。整理後に出力へ進めます。",
-    caseReadyReason: "案件データは整理済みです。内容確認または出力に進めます。",
+    caseNeedsReviewReason: "案件内に確認が必要な情報があります。関係者、物件、費用などを補完してください。",
+    caseReadyReason: "案件データは整理済みです。内容確認や資料追加を続けられます。",
     objectReadyReason: "基本情報は整理済みです。必要に応じて内容を確認できます。",
     partyNeedsInfoReason: "関係者情報が不足しています。連絡先や役割を確認してください。",
     propertyNeedsInfoReason: "物件情報が不足しています。案件へ紐付ける前に確認してください。",
     inputNeedsAssignReason: "資料の紐付け先がまだ確定していません。",
-    inputNeedsReviewReason: "取込資料を対象の案件、関係者、物件へ整理してください。",
-    inputReadyReason: "取込資料は整理済みです。必要に応じて内容を確認できます。",
+    inputNeedsReviewReason: "この資料を対象の案件、関係者、物件へ整理してください。",
+    inputReadyReason: "この資料は整理済みです。必要に応じて内容を確認できます。",
     missingPartyReason: "関係者が未設定です。案件で顧客/関係者を確認してください。",
     missingPropertyReason: "物件が未設定です。案件で物件を確認してください。",
     sourceNeedsReviewReason: "紐付いた資料に未整理のものがあります。",
-    outputBlockedReason: "出力前に案件データの確認が必要です。",
-    outputReadyReason: "確認済みデータから出力に進めます。",
   },
   zh: {
     title: "资料管理中心",
-    subtitle: "先找到需要处理的案件和资料，再进入建档、整理和输出。",
+    subtitle: "集中查看客户、物件、案件和资料的归属状态。",
     tenant: "当前工作区",
     searchPlaceholder: "搜索客户、物件、案件、资料、输出文件",
     search: "搜索",
     clear: "清除",
-    nextWork: "下一步处理",
-    currentBlocker: "当前卡点",
-    recommendedAction: "推荐动作",
     browseByType: "按类型查看",
-    dataMap: "当前案件进度",
-    dataMapDesc: "查看这个案件的客户、物件、关联资料和输出准备情况。",
-    caseHub: "中心案件",
-    caseConnection: "进度项目",
-    progressItems: "项进度",
+    dataMap: "资料地图",
+    dataMapDesc: "按案件、客户/关系人、物件和资料文件查看当前状态。",
+    intakeActionTitle: "新建案件 / 补充资料",
+    intakeActionDesc: "新建案件、客户或物件，也可以补充手头资料。",
+    outputActionTitle: "输出文件",
+    outputActionDesc: "选择案件和模板，检查后生成申请书或其他文件。",
     linkedSources: "已关联资料",
     unassignedMaterials: "待归属资料",
     noLinkedSources: "还没有关联资料。",
-    outputReady: "可准备输出",
-    outputNeedsReview: "需要确认",
-    prepareOutput: "去输出",
     globalCounts: "全体",
     objectList: "资料索引",
     currentObject: "选中项目",
@@ -237,7 +217,7 @@ const copyByLocale: Record<Locale, DashboardCopy> = {
     cases: "案件",
     parties: "客户/关系人",
     properties: "物件",
-    inputMaterials: "导入资料",
+    inputMaterials: "资料文件",
     outputs: "输出文件",
     contracts: "合同/提案",
     attachments: "附件",
@@ -271,42 +251,35 @@ const copyByLocale: Record<Locale, DashboardCopy> = {
     noRecentData: "暂无可显示记录。",
     filteredBy: "当前显示",
     activeFilter: "当前显示",
-    caseNeedsReviewReason: "案件资料还需要确认，整理完成后才能顺畅进入输出。",
-    caseReadyReason: "案件资料已经整理，可继续查看或进入输出准备。",
+    caseNeedsReviewReason: "案件里仍有资料待确认，需要继续补全人员、物件或费用信息。",
+    caseReadyReason: "案件资料已经整理，可继续查看、补充或关联其他资料。",
     objectReadyReason: "基础信息已经整理，可按需打开查看。",
     partyNeedsInfoReason: "关系人信息还不完整，请先确认角色或联系资料。",
     propertyNeedsInfoReason: "物件信息还不完整，请先补齐后再关联案件。",
     inputNeedsAssignReason: "这份资料还没有确认归属，需要先分配到案件、客户或物件。",
-    inputNeedsReviewReason: "这份导入资料还需要整理到对应的业务对象。",
-    inputReadyReason: "这份导入资料已经整理，可按需打开查看。",
+    inputNeedsReviewReason: "这份资料还需要归入案件、客户或物件。",
+    inputReadyReason: "这份资料已经整理，可按需打开查看。",
     missingPartyReason: "客户/关系人未设置，请回到案件中确认。",
     missingPropertyReason: "物件未设置，请回到案件中确认。",
     sourceNeedsReviewReason: "已关联资料中仍有未整理内容。",
-    outputBlockedReason: "输出前还需要确认案件资料。",
-    outputReadyReason: "已确认资料可进入输出准备。",
   },
   ko: {
     title: "자료 관리 센터",
-    subtitle: "정리할 안건과 자료를 먼저 찾고, 생성·가져오기·정리·출력으로 이어갑니다.",
+    subtitle: "고객, 매물, 안건, 자료의 연결 상태를 한곳에서 확인합니다.",
     tenant: "현재 워크스페이스",
     searchPlaceholder: "고객, 매물, 안건, 자료, 출력 문서 검색",
     search: "검색",
     clear: "지우기",
-    nextWork: "다음 처리 항목",
-    currentBlocker: "현재 걸림돌",
-    recommendedAction: "권장 작업",
     browseByType: "유형별 보기",
-    dataMap: "현재 안건 진행",
-    dataMapDesc: "이 안건의 관계자, 매물, 연결된 자료, 출력 준비 상태를 확인합니다.",
-    caseHub: "중심 안건",
-    caseConnection: "진행 항목",
-    progressItems: "개 항목",
+    dataMap: "자료 지도",
+    dataMapDesc: "안건, 고객/관계자, 매물, 자료 파일의 상태를 함께 확인합니다.",
+    intakeActionTitle: "안건 생성 / 자료 추가",
+    intakeActionDesc: "안건, 고객, 매물을 만들고 필요한 자료를 추가합니다.",
+    outputActionTitle: "문서 출력",
+    outputActionDesc: "안건과 템플릿을 선택한 뒤 문서를 생성합니다.",
     linkedSources: "연결된 자료",
     unassignedMaterials: "미분류 자료",
     noLinkedSources: "아직 연결된 자료가 없습니다.",
-    outputReady: "출력 준비됨",
-    outputNeedsReview: "확인 필요",
-    prepareOutput: "출력으로",
     globalCounts: "전체",
     objectList: "자료 색인",
     currentObject: "선택 항목",
@@ -315,7 +288,7 @@ const copyByLocale: Record<Locale, DashboardCopy> = {
     cases: "안건",
     parties: "관계자",
     properties: "매물",
-    inputMaterials: "가져온 자료",
+    inputMaterials: "자료 파일",
     outputs: "출력 문서",
     contracts: "계약/제안",
     attachments: "첨부",
@@ -349,19 +322,17 @@ const copyByLocale: Record<Locale, DashboardCopy> = {
     noRecentData: "표시할 이력이 아직 없습니다.",
     filteredBy: "표시",
     activeFilter: "표시 중",
-    caseNeedsReviewReason: "안건 자료 확인이 남아 있습니다. 정리 후 출력으로 이어갈 수 있습니다.",
-    caseReadyReason: "안건 자료가 정리되었습니다. 확인하거나 출력 준비로 이동할 수 있습니다.",
+    caseNeedsReviewReason: "안건 안에 확인할 정보가 남아 있습니다. 관계자, 매물, 비용 정보를 보완하세요.",
+    caseReadyReason: "안건 자료가 정리되었습니다. 확인하거나 자료 추가를 계속할 수 있습니다.",
     objectReadyReason: "기본 정보가 정리되었습니다. 필요하면 열어 확인할 수 있습니다.",
     partyNeedsInfoReason: "관계자 정보가 부족합니다. 역할이나 연락처를 확인하세요.",
     propertyNeedsInfoReason: "매물 정보가 부족합니다. 안건에 연결하기 전에 확인하세요.",
     inputNeedsAssignReason: "이 자료의 연결 대상이 아직 확정되지 않았습니다.",
-    inputNeedsReviewReason: "가져온 자료를 안건, 관계자, 매물 중 알맞은 대상으로 정리하세요.",
-    inputReadyReason: "가져온 자료가 정리되었습니다. 필요하면 열어 확인할 수 있습니다.",
+    inputNeedsReviewReason: "이 자료를 안건, 관계자, 매물 중 알맞은 대상으로 정리하세요.",
+    inputReadyReason: "이 자료는 정리되었습니다. 필요하면 열어 확인할 수 있습니다.",
     missingPartyReason: "관계자가 설정되지 않았습니다. 안건에서 관계자를 확인하세요.",
     missingPropertyReason: "매물이 설정되지 않았습니다. 안건에서 매물을 확인하세요.",
     sourceNeedsReviewReason: "연결된 자료 중 아직 정리할 항목이 있습니다.",
-    outputBlockedReason: "출력 전에 안건 자료 확인이 필요합니다.",
-    outputReadyReason: "확인된 자료로 출력 준비를 진행할 수 있습니다.",
   },
 };
 
@@ -668,112 +639,12 @@ export default async function HomePage({ searchParams }: HomePageProps) {
     },
   ];
 
-  const caseFromFocus =
-    focusedObject?.type === "case"
-      ? cases.find((item) => item.id === focusedObject.id)
-      : focusedObject?.type === "property"
-        ? cases.find((item) => item.primaryPropertyId === focusedObject.id)
-        : focusedObject?.type === "input"
-          ? cases.find((item) => item.sourceImportJobIds.includes(focusedObject.id))
-          : undefined;
-  const relationshipCase = caseFromFocus ?? cases.find((item) => item.status !== "reviewed") ?? cases[0];
-  const importJobById = new Map(importJobs.map((item) => [item.id, item]));
-  const linkedSourceJobs = relationshipCase
-    ? relationshipCase.sourceImportJobIds
-        .map((id) => importJobById.get(id))
-        .filter((item): item is HubImportJobItem => Boolean(item))
-    : [];
-  const linkedImportIds = new Set(cases.flatMap((item) => item.sourceImportJobIds));
-  const importStatusRank = { queued: 0, mapped: 1, completed: 2 } satisfies Record<HubImportJobItem["status"], number>;
-  const unassignedSourceJobs = importJobs
-    .filter((item) => !linkedImportIds.has(item.id))
-    .sort((a, b) => importStatusRank[a.status] - importStatusRank[b.status] || b.createdAt.getTime() - a.createdAt.getTime())
-    .slice(0, 3);
-  const relationshipCaseHref = relationshipCase ? `/cases/${relationshipCase.id}` : "/cases/new";
-  const relationshipOutputHref = relationshipCase
-    ? `/output-center?caseId=${encodeURIComponent(relationshipCase.id)}`
-    : "/output-center";
-  const relationshipApplicant = relationshipCase
-    ? getCaseFieldValue(relationshipCase.confirmedDataJson, "applicant.name")
-    : "";
-  const relationshipPropertyFromFields = relationshipCase
-    ? [
-        getCaseFieldValue(relationshipCase.confirmedDataJson, "property.name"),
-        getCaseFieldValue(relationshipCase.confirmedDataJson, "property.roomNumber"),
-      ]
-        .filter(Boolean)
-        .join(" ")
-    : "";
-  const relationshipProperty =
-    (relationshipCase?.primaryPropertyId ? propertyNameById.get(relationshipCase.primaryPropertyId) : undefined) ||
-    relationshipPropertyFromFields;
-  const relationshipOutputs = relationshipCase
-    ? generatedOutputs.filter((item) => {
-        const partyMatches = Boolean(relationshipApplicant && item.relatedParty?.includes(relationshipApplicant));
-        return partyMatches;
-      })
-    : [];
-  const relationshipCaseStatus: WorkStatus = relationshipCase?.status === "reviewed" ? "ready" : "needs_action";
-  const relationshipOutputLabel = relationshipCase?.status === "reviewed" ? copy.outputReady : copy.outputNeedsReview;
-  const linkedSourceCount = formatLinkedSourceCount(locale, linkedSourceJobs.length);
-  const linkedSourceStatus: WorkStatus =
-    linkedSourceJobs.length === 0
-      ? "unassigned"
-      : linkedSourceJobs.some((item) => item.status !== "completed")
-        ? "needs_action"
-        : "ready";
-  const relationshipNodes: Array<{
-    key: string;
-    icon: string;
-    label: string;
-    title: string;
-    subtitle: string;
-    href: string;
-    status: WorkStatus;
-  }> = [
-    {
-      key: "party",
-      icon: "person",
-      label: copy.parties,
-      title: relationshipApplicant || copy.noRelation,
-      subtitle: relationshipApplicant ? copy.objectReadyReason : copy.missingPartyReason,
-      href: relationshipCaseHref,
-      status: relationshipApplicant ? "ready" : "needs_action",
-    },
-    {
-      key: "property",
-      icon: "domain",
-      label: copy.properties,
-      title: relationshipProperty || copy.noRelation,
-      subtitle: relationshipProperty ? copy.objectReadyReason : copy.missingPropertyReason,
-      href: relationshipCaseHref,
-      status: relationshipProperty ? "ready" : "needs_action",
-    },
-    {
-      key: "sources",
-      icon: "description",
-      label: copy.linkedSources,
-      title: linkedSourceJobs[0]?.title ?? copy.noLinkedSources,
-      subtitle:
-        linkedSourceJobs.length === 0
-          ? copy.noLinkedSources
-              : linkedSourceStatus === "ready"
-                ? `${copy.linkedSources} ${linkedSourceCount}`
-                : copy.sourceNeedsReviewReason,
-      href: linkedSourceJobs[0] ? getImportJobHref(linkedSourceJobs[0]) : "/import-center",
-      status: linkedSourceStatus,
-    },
-    {
-      key: "outputs",
-      icon: "assignment_turned_in",
-      label: copy.outputs,
-      title: relationshipOutputs[0]?.title ?? relationshipOutputLabel,
-      subtitle: relationshipCase?.status === "reviewed" ? copy.outputReadyReason : copy.outputBlockedReason,
-      href: relationshipOutputHref,
-      status: relationshipCase?.status === "reviewed" ? "ready" : "needs_action",
-    },
+  const mapLanes = [
+    { summary: relationshipSummaries[0], items: caseLaneObjects.slice(0, 3) },
+    { summary: relationshipSummaries[1], items: partyLaneObjects.slice(0, 3) },
+    { summary: relationshipSummaries[2], items: propertyLaneObjects.slice(0, 3) },
+    { summary: relationshipSummaries[3], items: inputLaneObjects.slice(0, 3) },
   ];
-  const relationshipBlocker = relationshipNodes.find((node) => node.status !== "ready") ?? relationshipNodes[0];
 
   const pendingObjects = allObjects.filter((item) => item.status !== "ready");
   const visibleRows = visibleObjects.slice(0, 12);
@@ -803,10 +674,10 @@ export default async function HomePage({ searchParams }: HomePageProps) {
     .slice(0, 5);
 
   return (
-    <div className="mx-auto max-w-[1440px] space-y-8">
-      <header className="overflow-hidden border border-slate-200 bg-white">
-        <div className="grid gap-px bg-slate-200 lg:grid-cols-[minmax(280px,0.65fr)_minmax(0,1.35fr)]">
-          <div className="order-2 bg-white px-6 py-6 sm:px-8 lg:order-1">
+    <div className="mx-auto max-w-[1360px] space-y-7">
+      <header className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <div className="grid gap-px bg-slate-200 lg:grid-cols-[minmax(360px,1.05fr)_minmax(360px,0.95fr)]">
+          <div className="bg-white px-6 py-7 sm:px-8">
             <p className="text-xs font-black text-[#002FA7]">
               {copy.tenant}: {session.tenant.name}
             </p>
@@ -843,233 +714,99 @@ export default async function HomePage({ searchParams }: HomePageProps) {
             </form>
           </div>
 
-          <div className="order-1 bg-white px-6 py-6 sm:px-8 lg:order-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full bg-rose-50 px-2.5 py-1 text-xs font-black text-rose-700 ring-1 ring-rose-100">
-                {pendingObjects.length} {copy.needsAction}
-              </span>
-              {focusedObject ? (
-                <span className={`rounded-full px-2.5 py-1 text-xs font-black ${getStatusClass(focusedObject.status)}`}>
-                  {getTypeLabel(focusedObject.type, copy)}
-                </span>
-              ) : null}
-              <span className="text-xs font-black text-slate-500">{copy.nextWork}</span>
-            </div>
-            <h2 className="mt-3 line-clamp-2 text-2xl font-black leading-tight text-slate-950 sm:text-3xl">
-              {focusedObject?.title ?? copy.noResults}
-            </h2>
-            <p className="mt-2 line-clamp-1 text-sm font-semibold text-slate-600">
-              {focusedObject?.relation ?? copy.noRelation}
-            </p>
-            <div className="mt-4 border-l-4 border-[#002FA7] bg-blue-50/70 px-4 py-3">
-              <p className="text-xs font-black text-[#002FA7]">{copy.currentBlocker}</p>
-              <p className="mt-1 text-sm font-black leading-6 text-slate-950">
-                {focusedObject?.reason ?? copy.noResults}
-              </p>
-            </div>
-            <div className="mt-4 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-              {focusedObject ? (
-                <Link
-                  href={focusedObject.actionHref}
-                  className="inline-flex h-11 items-center justify-center gap-2 rounded-md border border-[#002FA7] bg-[#002FA7] px-4 text-sm font-black text-white hover:bg-blue-800"
-                >
-                  <span aria-hidden="true" className="material-symbols-outlined text-[18px]">
-                    arrow_forward
-                  </span>
-                  {focusedObject.actionLabel}
-                </Link>
-              ) : (
-                <Link
-                  href="/cases/new"
-                  className="inline-flex h-11 items-center justify-center gap-2 rounded-md border border-[#002FA7] bg-[#002FA7] px-4 text-sm font-black text-white hover:bg-blue-800"
-                >
-                  <span aria-hidden="true" className="material-symbols-outlined text-[18px]">
+          <div className="grid gap-px bg-slate-200 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+            <Link href="/import-center" className="group flex min-h-44 flex-col justify-between bg-white p-6 hover:bg-blue-50/40">
+              <div>
+                <div className="flex justify-end">
+                  <span aria-hidden="true" className="material-symbols-outlined text-[22px] text-[#002FA7]">
                     add_box
                   </span>
-                  {copy.createCase}
-                </Link>
-              )}
-              <Link
-                href="/import-center"
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-4 text-sm font-black text-slate-900 hover:border-[#002FA7] hover:text-[#002FA7]"
-              >
-                <span aria-hidden="true" className="material-symbols-outlined text-[18px]">
-                  upload_file
+                </div>
+                <h2 className="mt-4 text-2xl font-black leading-tight text-slate-950">{copy.intakeActionTitle}</h2>
+                <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">{copy.intakeActionDesc}</p>
+              </div>
+              <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4">
+                <span className="text-sm font-black text-slate-950 group-hover:text-[#002FA7]">{copy.open}</span>
+                <span className="rounded-full bg-rose-50 px-2.5 py-1 text-xs font-black text-rose-700 ring-1 ring-rose-100">
+                  {pendingObjects.length} {copy.needsAction}
                 </span>
-                {copy.addMaterials}
-              </Link>
-            </div>
+              </div>
+            </Link>
+
+            <Link href="/output-center" className="group flex min-h-44 flex-col justify-between bg-white p-6 hover:bg-blue-50/40">
+              <div>
+                <div className="flex justify-end">
+                  <span aria-hidden="true" className="material-symbols-outlined text-[22px] text-[#002FA7]">
+                    description
+                  </span>
+                </div>
+                <h2 className="mt-4 text-2xl font-black leading-tight text-slate-950">{copy.outputActionTitle}</h2>
+                <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">{copy.outputActionDesc}</p>
+              </div>
+              <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4">
+                <span className="text-sm font-black text-slate-950 group-hover:text-[#002FA7]">{copy.open}</span>
+                <span aria-hidden="true" className="material-symbols-outlined text-[20px] text-slate-400 group-hover:text-[#002FA7]">
+                  arrow_forward
+                </span>
+              </div>
+            </Link>
           </div>
         </div>
       </header>
 
-      <section className="border border-slate-200 bg-white">
-        <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
+      <section className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-base font-black text-slate-950">{copy.dataMap}</h2>
             <p className="mt-1 text-xs font-semibold text-slate-500">{copy.dataMapDesc}</p>
           </div>
-          <div className="max-w-xl rounded-md bg-rose-50 px-3 py-2 text-xs font-black leading-5 text-rose-700 ring-1 ring-rose-100">
-            {copy.currentBlocker}: {relationshipBlocker.subtitle}
-          </div>
-        </div>
-
-        <div className="grid gap-px bg-slate-200 lg:grid-cols-[minmax(280px,0.78fr)_minmax(0,1.22fr)]">
-          <Link href={relationshipCaseHref} className="group bg-white p-5 hover:bg-slate-50">
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-xs font-black text-[#002FA7]">{copy.caseHub}</p>
-              <span className={`rounded-full px-2.5 py-1 text-xs font-black ${getStatusClass(relationshipCaseStatus)}`}>
-                {getStatusLabel(relationshipCaseStatus, copy)}
-              </span>
-            </div>
-            <h3 className="mt-4 line-clamp-3 text-xl font-black leading-tight text-slate-950">
-              {relationshipCase?.caseTitle ?? copy.createCase}
-            </h3>
-            <p className="mt-2 line-clamp-2 text-sm font-semibold leading-6 text-slate-600">
-              {relationshipProperty ? `${copy.relatedProperty}: ${relationshipProperty}` : copy.noRelation}
-            </p>
-            <div className="mt-4 grid grid-cols-2 gap-px border border-slate-200 bg-slate-200">
-              <div className="bg-white p-3">
-                <p className="text-xs font-black text-slate-500">{copy.linkedSources}</p>
-                <p className="mt-1 text-xl font-black tabular-nums text-slate-950">{linkedSourceCount}</p>
-              </div>
-              <div className="bg-white p-3">
-                <p className="text-xs font-black text-slate-500">{copy.outputs}</p>
-                <p className="mt-1 text-sm font-black leading-5 text-slate-950">{relationshipOutputLabel}</p>
-              </div>
-            </div>
-            <div className="mt-4 border-l-4 border-rose-500 bg-rose-50 px-3 py-2">
-              <p className="text-xs font-black text-rose-700">{copy.currentBlocker}</p>
-              <p className="mt-1 text-sm font-black leading-6 text-slate-950">{relationshipBlocker.subtitle}</p>
-            </div>
-            <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-4">
-              <span className="text-xs font-black text-slate-700 group-hover:text-[#002FA7]">{copy.continueOrganizing}</span>
-              <span aria-hidden="true" className="material-symbols-outlined text-[18px] text-slate-400 group-hover:text-[#002FA7]">
-                arrow_forward
-              </span>
-            </div>
+          <Link href={homeHref({ hash: "object-list" })} className="text-xs font-black text-slate-500 hover:text-[#002FA7]">
+            {copy.viewAll}
           </Link>
-
-          <div className="relative bg-white p-5">
-            <div className="absolute -left-px top-1/2 hidden h-px w-5 bg-[#002FA7] lg:block" />
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-xs font-black text-slate-500">{copy.caseConnection}</p>
-              <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-black text-[#002FA7] ring-1 ring-blue-100">
-                {relationshipNodes.length} {copy.progressItems}
-              </span>
-            </div>
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
-              {relationshipNodes.map((node) => (
-                <Link
-                  key={node.key}
-                  href={node.href}
-                  aria-label={`${copy.cases} ${node.label}: ${node.title}. ${node.subtitle}`}
-                  className={`group grid min-h-24 grid-cols-[2rem_minmax(0,1fr)_auto] gap-3 border p-3 hover:border-[#002FA7] hover:bg-blue-50/30 ${
-                    node.status === "ready" ? "border-slate-200 bg-white" : "border-rose-100 bg-rose-50/40"
-                  }`}
-                >
-                  <span
-                    aria-hidden="true"
-                    className="material-symbols-outlined flex h-8 w-8 items-center justify-center rounded-full bg-blue-50 text-[18px] text-[#002FA7]"
-                  >
-                    {node.icon}
-                  </span>
-                  <div className="min-w-0">
-                    <p className="text-xs font-black text-[#002FA7]">{node.label}</p>
-                    <h3 className="mt-1 line-clamp-2 text-sm font-black leading-5 text-slate-950">{node.title}</h3>
-                    <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-slate-600">{node.subtitle}</p>
-                  </div>
-                  <div className="flex min-w-0 flex-col items-end justify-between">
-                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-black ${getStatusClass(node.status)}`}>
-                      {getStatusLabel(node.status, copy)}
-                    </span>
-                    <span aria-hidden="true" className="material-symbols-outlined text-[18px] text-slate-400 group-hover:text-[#002FA7]">
-                      arrow_forward
-                    </span>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </div>
         </div>
 
-        {unassignedSourceJobs.length > 0 ? (
-          <div className="border-t border-slate-200 bg-white px-5 py-4">
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-xs font-black text-rose-600">{copy.unassignedMaterials}</p>
-              <Link href={getImportJobHref(unassignedSourceJobs[0])} className="text-xs font-black text-slate-500 hover:text-[#002FA7]">
-                {copy.continueOrganizing}
-              </Link>
-            </div>
-            <div className="mt-3 grid gap-2 lg:grid-cols-3">
-              {unassignedSourceJobs.map((job) => {
-                const status: WorkStatus =
-                  job.status === "completed" ? "ready" : job.status === "queued" ? "unassigned" : "needs_action";
-                return (
-                  <Link
-                    key={job.id}
-                    href={getImportJobHref(job)}
-                    className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border border-slate-100 bg-slate-50 px-3 py-2.5 hover:border-[#002FA7] hover:bg-white"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-xs font-black text-slate-800">{job.title}</p>
-                      <p className="mt-1 truncate text-[11px] font-semibold text-slate-500">
-                        {getSourceTypeLabel(locale, job.sourceType)} / {getImportTargetLabel(job.targetEntity, copy)}
-                      </p>
-                    </div>
-                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-black ${getStatusClass(status)}`}>
-                      {getStatusLabel(status, copy)}
-                    </span>
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        ) : null}
-
-        <div className="border-t border-slate-200 px-5 py-4">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <h3 className="text-sm font-black text-slate-950">{copy.browseByType}</h3>
-            <Link href={homeHref({ hash: "object-list" })} className="text-xs font-black text-slate-500 hover:text-[#002FA7]">
-              {copy.viewAll}
-            </Link>
-          </div>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-            {relationshipSummaries.map((summary, index) => {
+        <div className="grid gap-px bg-slate-200 lg:grid-cols-4">
+          {mapLanes.map(({ summary, items }, index) => {
               const selected = activeView === summary.type;
               return (
-                <Link
+                <div
                   key={summary.type}
-                  href={summary.href}
-                  aria-current={selected ? "page" : undefined}
-                  className={`flex min-h-16 items-center justify-between gap-3 border px-3 py-2 transition hover:border-[#002FA7] hover:bg-blue-50/30 ${
-                    selected ? "border-[#002FA7] bg-blue-50/80" : "border-slate-200 bg-white"
-                  }`}
+                  className={`bg-white p-4 ${selected ? "ring-2 ring-inset ring-[#002FA7]" : ""}`}
                 >
-                  <div className="min-w-0">
-                    <p className="text-[11px] font-black text-slate-400">{String(index + 1).padStart(2, "0")}</p>
-                    <div className="mt-0.5 flex flex-wrap items-center gap-2">
-                      <h4 className="text-sm font-black text-slate-950">{summary.label}</h4>
-                      {selected ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-[#002FA7] px-2 py-0.5 text-[11px] font-black text-white">
-                          <span aria-hidden="true" className="material-symbols-outlined text-[13px]">
-                            check
-                          </span>
-                          {copy.activeFilter}
-                        </span>
-                      ) : null}
+                  <Link href={summary.href} aria-current={selected ? "page" : undefined} className="group block">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-[11px] font-black text-slate-400">{String(index + 1).padStart(2, "0")}</p>
+                        <h3 className="mt-1 text-lg font-black text-slate-950 group-hover:text-[#002FA7]">{summary.label}</h3>
+                        <p className="mt-1 text-xs font-black text-rose-600">
+                          {summary.needsAction} {copy.needsAction}
+                        </p>
+                      </div>
+                      <p className={`text-4xl font-black leading-none tabular-nums ${selected ? "text-[#002FA7]" : "text-slate-950"}`}>
+                        {summary.count}
+                      </p>
                     </div>
-                    <p className="mt-1 text-xs font-black text-rose-600">
-                      {summary.needsAction} {copy.needsAction}
-                    </p>
+                  </Link>
+                  <div className="mt-5 space-y-2 border-t border-slate-100 pt-4">
+                    {items.length > 0 ? (
+                      items.map((item) => (
+                        <Link key={item.key} href={homeHref({ view: summary.type, focus: item.key, q: searchQuery, hash: "object-list" })} className="group grid grid-cols-[minmax(0,1fr)_auto] gap-2 rounded-md px-2 py-2 hover:bg-blue-50/50">
+                          <div className="min-w-0">
+                            <p className="truncate text-xs font-black text-slate-900 group-hover:text-[#002FA7]">{item.title}</p>
+                            <p className="mt-0.5 truncate text-[11px] font-semibold text-slate-500">{item.relation}</p>
+                          </div>
+                          <span className={`self-start rounded-full px-2 py-0.5 text-[11px] font-black ${getStatusClass(item.status)}`}>
+                            {getStatusLabel(item.status, copy)}
+                          </span>
+                        </Link>
+                      ))
+                    ) : (
+                      <p className="rounded-md bg-slate-50 px-2 py-3 text-xs font-semibold text-slate-500">{copy.noResults}</p>
+                    )}
                   </div>
-                  <p className={`text-2xl font-black leading-none tabular-nums ${selected ? "text-[#002FA7]" : "text-slate-950"}`}>
-                    {summary.count}
-                  </p>
-                </Link>
+                </div>
               );
             })}
-          </div>
         </div>
       </section>
 
@@ -1154,11 +891,10 @@ export default async function HomePage({ searchParams }: HomePageProps) {
                   <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">{focusedObject.relation}</p>
                 </div>
                 <div className="border-l-4 border-[#002FA7] bg-blue-50/70 px-4 py-3">
-                  <p className="text-xs font-black text-[#002FA7]">{copy.currentBlocker}</p>
+                  <p className="text-xs font-black text-[#002FA7]">{copy.status}</p>
                   <p className="mt-1 text-sm font-black leading-6 text-slate-950">{focusedObject.reason}</p>
                 </div>
                 <div className="grid gap-2">
-                  <p className="text-xs font-black text-slate-500">{copy.recommendedAction}</p>
                   <Link
                     href={focusedObject.actionHref}
                     className="flex h-11 items-center justify-center rounded-md border border-slate-950 bg-slate-950 px-3 text-sm font-black text-white hover:bg-slate-800"

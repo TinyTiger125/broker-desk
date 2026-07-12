@@ -7,11 +7,16 @@ import { requireTenantSession } from "@/lib/tenant-session";
 
 export const dynamic = "force-dynamic";
 
+type NewCasePageProps = {
+  searchParams?: Promise<{ from?: string }>;
+};
+
 const copy = {
   ja: {
     title: "案件を作成",
     desc: "案件の用途を決め、必要であれば関係者と物件を先に紐付けます。",
     back: "整理情報へ戻る",
+    backEntry: "作成入口へ戻る",
     basic: "案件情報",
     relation: "関連付け",
     caseTitle: "案件名",
@@ -32,6 +37,7 @@ const copy = {
     title: "新建案件",
     desc: "先确定案件用途；如有已知主体和物件，可以在创建时先关联。",
     back: "返回整理信息",
+    backEntry: "返回建档入口",
     basic: "案件信息",
     relation: "关联对象",
     caseTitle: "案件名",
@@ -52,6 +58,7 @@ const copy = {
     title: "안건 생성",
     desc: "안건의 용도를 정하고, 필요한 경우 관계자와 매물을 먼저 연결합니다.",
     back: "정보 정리로 돌아가기",
+    backEntry: "등록 입구로 돌아가기",
     basic: "안건 정보",
     relation: "연결 대상",
     caseTitle: "안건명",
@@ -73,13 +80,17 @@ const copy = {
 const inputClass =
   "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-[#d5e3fc]";
 
-export default async function NewCasePage() {
-  const [locale, session] = await Promise.all([
+export default async function NewCasePage({ searchParams }: NewCasePageProps) {
+  const [locale, session, params] = await Promise.all([
     getLocale(),
     requireTenantSession({ permission: "case.create" }),
+    searchParams ?? Promise.resolve({} as { from?: string }),
   ]);
   const text = copy[locale];
   const { clients, properties } = await listQuoteFormData(session.tenant.id);
+  const fromEntry = params.from === "entry";
+  const backHref = fromEntry ? "/import-center" : "/organize-center?type=case";
+  const backLabel = fromEntry ? text.backEntry : text.back;
   const formId = "case-create-form";
   const fieldNames = ["caseTitle", "workflowType", "primaryPartyId", "primaryPropertyId"];
   const workflowOptions = [
@@ -97,8 +108,8 @@ export default async function NewCasePage() {
           <h1 className="text-3xl font-black tracking-tight text-slate-950">{text.title}</h1>
           <p className="mt-2 text-sm font-semibold text-slate-600">{text.desc}</p>
         </div>
-        <Link href="/organize-center?type=case" className="rounded border border-slate-300 px-3 py-2 text-sm font-black text-slate-700 hover:bg-slate-50">
-          {text.back}
+        <Link href={backHref} className="rounded border border-slate-300 px-3 py-2 text-sm font-black text-slate-700 hover:bg-slate-50">
+          {backLabel}
         </Link>
       </header>
 

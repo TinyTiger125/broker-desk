@@ -27,6 +27,7 @@ function getAdminLinks(locale: Locale) {
     { href: "/settings/members", label: locale === "zh" ? "成员/权限" : locale === "ko" ? "멤버/권한" : "メンバー/権限" },
     { href: "/templates", label: locale === "zh" ? "模板管理" : locale === "ko" ? "템플릿 관리" : "テンプレート管理" },
     { href: "/settings/output-templates", label: locale === "zh" ? "输出模板" : locale === "ko" ? "출력 템플릿" : "出力テンプレート" },
+    { href: "/settings/case-workbench-fields", label: locale === "zh" ? "整理项目" : locale === "ko" ? "정리 항목" : "整理項目" },
     { href: "/settings/ai-experience", label: locale === "zh" ? "填写规则" : locale === "ko" ? "작성 규칙" : "入力ルール" },
   ];
 }
@@ -55,10 +56,10 @@ export async function AppNav() {
   const actorOptions = users.map((item) => ({ id: item.id, name: localizeDemoText(locale, item.name) ?? item.name }));
   const flowLabel =
     locale === "zh"
-      ? "资料管理 / 建档导入 / 整理 / 输出"
+      ? "资料管理 / 建档入口 / 整理 / 输出"
       : locale === "ko"
-        ? "자료관리 / 등록·가져오기 / 정리 / 출력"
-        : "資料管理 / 作成・取込 / 整理 / 出力";
+        ? "자료관리 / 등록 입구 / 정리 / 출력"
+        : "資料管理 / 作成・資料登録 / 整理 / 出力";
 
   return (
     <>

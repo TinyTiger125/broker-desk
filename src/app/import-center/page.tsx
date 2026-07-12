@@ -101,7 +101,7 @@ const targetFieldCopy: Record<
   },
   title: {
     label: { ja: "件名", zh: "事项名称", ko: "제목" },
-    helper: { ja: "対応依頼や作業の名前", zh: "处理事项或待办工作的名称", ko: "처리 요청이나 작업 이름" },
+    helper: { ja: "対応履歴や作業の名前", zh: "处理事项或待办工作的名称", ko: "후속 기록이나 작업 이름" },
   },
   occurred_at: {
     label: { ja: "発生日", zh: "发生日期", ko: "발생일" },
@@ -159,7 +159,7 @@ function getTargetFieldLabel(locale: Locale, field: string) {
 }
 
 function getTargetFieldHelper(locale: Locale, field: string) {
-  return targetFieldCopy[field]?.helper[locale] ?? (locale === "zh" ? "系统识别出的补充保存项目" : locale === "ko" ? "시스템이 인식한 추가 저장 항목" : "システムが認識した追加の保存項目");
+  return targetFieldCopy[field]?.helper[locale] ?? (locale === "zh" ? "读取到的补充项目" : locale === "ko" ? "읽어 온 추가 항목" : "読み取った補足項目");
 }
 
 function getMappingConfirmation(locale: Locale, source: string, target?: string) {
@@ -177,28 +177,28 @@ function getMappingConfirmation(locale: Locale, source: string, target?: string)
 function getCopy(locale: Locale) {
   const copyByLocale = {
     ja: {
-      pageTitle: "作成・取込",
+      pageTitle: "作成・資料登録",
       pageDesc: "案件、関係者、物件を作成し、必要な資料を読み取ります。",
-      cardExcelTitle: "Excel 一括取込",
+      cardExcelTitle: "Excel 一括読取",
       cardExcelSubtitle: "物件台帳化を優先",
       cardPdfTitle: "PDF / スキャン登録",
       cardPdfSubtitle: "旧契約・書面を保管",
-      cardManualTitle: "手入力取込",
+      cardManualTitle: "手入力登録",
       cardManualSubtitle: "不足情報の補完",
-      labelJobName: "ジョブ名",
+      labelJobName: "資料名",
       labelMemo: "メモ（任意）",
-      btnCreateExcelJob: "Excel取込ジョブを作成",
-      btnCreatePdfJob: "PDF取込ジョブを作成",
-      btnCreateManualJob: "手入力ジョブを作成",
+      btnCreateExcelJob: "Excel資料を登録",
+      btnCreatePdfJob: "PDF資料を登録",
+      btnCreateManualJob: "手入力を作成",
       phExcelJob: "例: 物件台帳_2026Q2.xlsx",
-      phPdfJob: "例: 旧契約書一括取込（10件）",
+      phPdfJob: "例: 旧契約書一括登録（10件）",
       phManualJob: "例: 修繕履歴_管理物件A",
       phMemoExcel: "例: 31件、ヘッダ確認済",
       phMemoPdf: "例: 契約種別確認待ち",
       phMemoManual: "例: 先に発生日だけ入力",
-      historyTitle: "取込ジョブ履歴",
+      historyTitle: "資料登録履歴",
       historySubtitle: "最新順",
-      colJob: "ジョブ",
+      colJob: "資料",
       colSource: "入力種別",
       colTarget: "対象",
       colCreatedAt: "作成日",
@@ -207,45 +207,45 @@ function getCopy(locale: Locale) {
       wizardSubtitle: "保存先の確認",
       stepSelect: "選択",
       stepMap: "保存確認",
-      stepValidate: "検証",
+      stepValidate: "確認",
       stepComplete: "完了",
       schemaMappingTitle: "資料の保存先を確認",
       schemaMappingDesc: "資料にある名前を、業務で使う保存先に合わせます。違うところだけ直してください。",
       saveDraft: "途中保存",
-      continueValidation: "検証へ進む",
+      continueValidation: "確認へ進む",
       sourceColumn: "資料上の名前",
       targetField: "保存する項目",
-      autoMapCol: "システム判断",
+      autoMapCol: "初期対応",
       sampleValue: "確認内容",
       unmapped: "この列は保存しない",
-      recentImportHistory: "最近の取込履歴",
+      recentImportHistory: "最近の読取履歴",
       viewArchive: "アーカイブ表示",
-      readinessTitle: "取込状態",
-      issueStatsTitle: "問題コード集計",
-      issueStatsDesc: "直近ジョブの検証結果をコード単位で集計",
-      issueTrendTitle: "問題コード推移（7日）",
-      issueTrendDesc: "日別の検証件数（Critical / Warning / Info）",
+      readinessTitle: "読取状態",
+      issueStatsTitle: "確認事項",
+      issueStatsDesc: "直近の読取で確認が必要な内容",
+      issueTrendTitle: "確認事項の推移（7日）",
+      issueTrendDesc: "日別の確認件数",
       mapped: "整理済",
       alerts: "アラート",
-      validationLog: "検証記録",
+      validationLog: "確認記録",
       noFurtherAlerts: "追加アラートはありません",
       validationUnmappedRequired: "必須項目の保存先が未設定",
       validationFormatMismatch: "データ形式の不一致",
-      validationSchemaSuggestion: "保存先の提案",
+      validationSchemaSuggestion: "保存先の確認",
       validationUnmappedMsg: "案件に保存する必須項目がまだ選ばれていません。",
-      validationFormatMsg: "取込元データに形式の揺れがあります。",
-      validationSchemaMsg: "保存先の提案があります。",
+      validationFormatMsg: "読取元データに形式の揺れがあります。",
+      validationSchemaMsg: "保存先を確認してください。",
       actionResolveNow: "今すぐ修正",
-      actionAutoFix: "自動補正",
+      actionAutoFix: "確認内容を反映",
       actionApplyMapping: "提案を使う",
-      exportValidationReport: "検証レポートを出力",
+      exportValidationReport: "確認結果を出力",
       proTipTitle: "操作ヒント",
       proTipDesc:
         "整理提案を確認し、違う行だけ保存先を直してから確認へ進んでください。",
-      noJobs: "先に取込ジョブを1件作成してください。",
+      noJobs: "先に資料を1件追加してください。",
       wizardStep1: "1. 保存先を合わせる",
       wizardStep2: "2. 違うところだけ直す",
-      labelTargetJob: "対象ジョブ",
+      labelTargetJob: "対象資料",
       labelTargetEntity: "保存先",
       labelSourceColumns: "資料の列（カンマ区切り）",
       labelTargetFields: "保存先の項目（カンマ区切り）",
@@ -259,14 +259,14 @@ function getCopy(locale: Locale) {
       attachmentTitle: "添付登録",
       attachmentSubtitle: "実ファイル保存対応",
       labelAttachmentTargetType: "対象種別",
-      labelAttachmentTargetId: "対象ID",
+      labelAttachmentTargetId: "関連記録",
       labelUpload: "ファイルアップロード（推奨）",
       labelFileName: "ファイル名（任意）",
-      labelExternalUrl: "外部保存先URL（任意）",
-      labelMime: "MIME（任意）",
-      labelFileSize: "サイズ(Bytes・任意)",
+      labelExternalUrl: "外部ファイルの場所（任意）",
+      labelMime: "ファイル形式（任意）",
+      labelFileSize: "ファイルサイズ（任意）",
       btnRegisterAttachment: "添付を登録",
-      attachmentHint: "直接アップロードまたは外部保存先URLのいずれかを指定してください（後続でS3/Supabase連携へ拡張可能）。",
+      attachmentHint: "直接アップロードまたは外部ファイルの場所のいずれかを指定してください。",
       phTargetId: "例: import_002 / prop_shibuya",
       phFileName: "アップロードしない場合のみ入力",
       phExternalUrl: "例: https://storage.example.com/docs/a.pdf",
@@ -274,106 +274,106 @@ function getCopy(locale: Locale) {
       latestAttachmentTitle: "最新添付履歴",
       latestAttachmentSubtitle: "最新30件",
       noAttachments: "添付はまだありません。",
-      typeUnset: "type未設定",
+      typeUnset: "未設定",
       uploadDatePrefix: "登録日",
       openStorage: "保存ファイルを開く",
-      optionImportJob: "取込ジョブ",
+      optionImportJob: "読取資料",
       optionProperty: "物件",
       optionContract: "契約",
-      optionServiceRequest: "対応依頼",
+      optionServiceRequest: "対応履歴",
       optionQuote: "提案",
       optionParty: "関係者",
     },
     zh: {
-      pageTitle: "建档导入",
-      pageDesc: "先建立案件、主体或物件，也可以先导入资料后再归属。",
-      cardExcelTitle: "Excel 批量导入",
+      pageTitle: "建档入口",
+      pageDesc: "新建案件、主体或物件；已有资料先读取，再归入对应对象。",
+      cardExcelTitle: "Excel 批量读取",
       cardExcelSubtitle: "优先整理物件台账",
       cardPdfTitle: "PDF / 扫描登记",
       cardPdfSubtitle: "归档旧合同与文件",
-      cardManualTitle: "手动导入",
+      cardManualTitle: "手动登记",
       cardManualSubtitle: "补齐缺失信息",
-      labelJobName: "任务名称",
+      labelJobName: "资料名称",
       labelMemo: "备注（可选）",
-      btnCreateExcelJob: "创建 Excel 导入任务",
-      btnCreatePdfJob: "创建 PDF 导入任务",
-      btnCreateManualJob: "创建手动导入任务",
+      btnCreateExcelJob: "登记 Excel 资料",
+      btnCreatePdfJob: "登记 PDF 资料",
+      btnCreateManualJob: "登记手动资料",
       phExcelJob: "例：物件台账_2026Q2.xlsx",
-      phPdfJob: "例：旧合同批量导入（10条）",
+      phPdfJob: "例：旧合同批量登记（10条）",
       phManualJob: "例：维修履历_管理物件A",
       phMemoExcel: "例：31条，表头已确认",
       phMemoPdf: "例：待确认合同类型",
       phMemoManual: "例：先录入发生日期",
-      historyTitle: "导入任务历史",
+      historyTitle: "资料读取历史",
       historySubtitle: "按最新排序",
-      colJob: "任务",
+      colJob: "资料",
       colSource: "来源类型",
       colTarget: "目标",
       colCreatedAt: "创建日期",
       colStatus: "状态",
       wizardTitle: "资料整理助手",
-      wizardSubtitle: "确认保存项目",
+      wizardSubtitle: "确认保存位置",
       stepSelect: "选择",
       stepMap: "保存确认",
-      stepValidate: "校验",
+      stepValidate: "检查",
       stepComplete: "完成",
       schemaMappingTitle: "确认资料要保存到哪里",
       schemaMappingDesc: "把资料里的名称对应到业务保存位置，明显不对的地方直接改。",
       saveDraft: "暂存",
-      continueValidation: "进入校验",
+      continueValidation: "进入检查",
       sourceColumn: "资料里的名称",
       targetField: "保存成",
-      autoMapCol: "系统判断",
+      autoMapCol: "初步对应",
       sampleValue: "确认说明",
       unmapped: "不保存这一列",
-      recentImportHistory: "最近导入历史",
+      recentImportHistory: "最近读取历史",
       viewArchive: "查看归档",
-      readinessTitle: "导入状态",
-      issueStatsTitle: "问题码聚合",
-      issueStatsDesc: "按问题码统计最近任务的校验结果",
-      issueTrendTitle: "问题码趋势（7天）",
-      issueTrendDesc: "按天统计校验条目（Critical / Warning / Info）",
+      readinessTitle: "读取状态",
+      issueStatsTitle: "问题汇总",
+      issueStatsDesc: "按最近读取结果统计需要处理的内容",
+      issueTrendTitle: "问题变化（7天）",
+      issueTrendDesc: "按天统计需要确认的内容",
       mapped: "已整理",
       alerts: "告警",
-      validationLog: "校验记录",
+      validationLog: "检查记录",
       noFurtherAlerts: "暂无更多告警",
       validationUnmappedRequired: "必填项还没有保存位置",
       validationFormatMismatch: "数据格式不一致",
-      validationSchemaSuggestion: "保存项目建议",
+      validationSchemaSuggestion: "保存位置建议",
       validationUnmappedMsg: "案件必填项还没有选择保存位置。",
       validationFormatMsg: "源数据包含格式不一致内容。",
-      validationSchemaMsg: "发现保存项目建议。",
+      validationSchemaMsg: "请确认保存位置。",
       actionResolveNow: "立即处理",
-      actionAutoFix: "自动修复",
+      actionAutoFix: "按建议处理",
       actionApplyMapping: "使用建议",
-      exportValidationReport: "导出校验报告",
+      exportValidationReport: "导出检查结果",
       proTipTitle: "操作提示",
-      proTipDesc: "先检查整理建议，只需要修正不对的行再进入确认。",
-      noJobs: "请先创建至少 1 个导入任务。",
-      wizardStep1: "1. 匹配保存项目",
+      proTipDesc: "先检查读取结果，只修正不对的行再进入确认。",
+      noJobs: "请先登记至少 1 份资料。",
+      wizardStep1: "1. 确认保存位置",
       wizardStep2: "2. 只修正不对的地方",
-      labelTargetJob: "目标任务",
+      labelTargetJob: "目标资料",
       labelTargetEntity: "保存到",
       labelSourceColumns: "资料列（逗号分隔）",
-      labelTargetFields: "保存项目（逗号分隔）",
-      btnAutoMap: "按标准规则匹配",
+      labelTargetFields: "保存位置（逗号分隔）",
+      btnAutoMap: "按标准规则整理",
       btnSaveMap: "确认并保存",
       phSourceCols: "例：物件名称,地址,区域,价格",
-      phMapMemo: "例：首次匹配保存项目",
+      phMapMemo: "例：首次确认保存位置",
       phSaveMemo: "例：价格列为不含税",
-      fieldDefTitle: "可保存项目",
+      fieldDefTitle: "可保存内容",
       fieldDefSubtitle: "确认要保存到案件的项目",
       attachmentTitle: "附件登记",
       attachmentSubtitle: "支持实际文件保存",
       labelAttachmentTargetType: "目标类型",
-      labelAttachmentTargetId: "目标ID",
+      labelAttachmentTargetId: "关联记录",
       labelUpload: "上传文件（推荐）",
       labelFileName: "文件名（可选）",
-      labelExternalUrl: "外部存储URL（可选）",
-      labelMime: "MIME（可选）",
-      labelFileSize: "大小（Bytes，可选）",
+      labelExternalUrl: "外部文件地址（可选）",
+      labelMime: "文件格式（可选）",
+      labelFileSize: "文件大小（可选）",
       btnRegisterAttachment: "登记附件",
-      attachmentHint: "请在“直接上传”与“外部存储 URL”中二选一（后续可扩展 S3 / Supabase）。",
+      attachmentHint: "请在直接上传与外部文件地址中二选一。",
       phTargetId: "例：import_002 / prop_shibuya",
       phFileName: "仅在不上传时填写",
       phExternalUrl: "例：https://storage.example.com/docs/a.pdf",
@@ -384,36 +384,36 @@ function getCopy(locale: Locale) {
       typeUnset: "类型未设置",
       uploadDatePrefix: "登记日",
       openStorage: "打开已保存文件",
-      optionImportJob: "导入任务",
+      optionImportJob: "读取资料",
       optionProperty: "物件",
       optionContract: "合同",
-      optionServiceRequest: "服务请求",
+      optionServiceRequest: "跟进记录",
       optionQuote: "提案",
       optionParty: "主体",
     },
     ko: {
-      pageTitle: "등록·가져오기",
+      pageTitle: "등록 입구",
       pageDesc: "안건, 관계자, 매물을 만들고 필요한 자료를 읽습니다.",
-      cardExcelTitle: "Excel 일괄 가져오기",
+      cardExcelTitle: "Excel 일괄 읽기",
       cardExcelSubtitle: "매물 대장 정리 우선",
       cardPdfTitle: "PDF / 스캔 등록",
       cardPdfSubtitle: "구 계약/문서 보관",
-      cardManualTitle: "수기 가져오기",
+      cardManualTitle: "수기 등록",
       cardManualSubtitle: "누락 정보 보완",
-      labelJobName: "작업명",
+      labelJobName: "자료명",
       labelMemo: "메모(선택)",
-      btnCreateExcelJob: "Excel 가져오기 작업 생성",
-      btnCreatePdfJob: "PDF 가져오기 작업 생성",
-      btnCreateManualJob: "수기 작업 생성",
+      btnCreateExcelJob: "Excel 자료 등록",
+      btnCreatePdfJob: "PDF 자료 등록",
+      btnCreateManualJob: "수기 자료 등록",
       phExcelJob: "예: 매물대장_2026Q2.xlsx",
-      phPdfJob: "예: 구 계약서 일괄 가져오기(10건)",
+      phPdfJob: "예: 구 계약서 일괄 등록(10건)",
       phManualJob: "예: 수선 이력_관리매물A",
       phMemoExcel: "예: 31건, 헤더 확인 완료",
       phMemoPdf: "예: 계약 유형 확인 대기",
       phMemoManual: "예: 먼저 발생일만 입력",
-      historyTitle: "가져오기 작업 이력",
+      historyTitle: "자료 읽기 이력",
       historySubtitle: "최신순",
-      colJob: "작업",
+      colJob: "자료",
       colSource: "입력 유형",
       colTarget: "대상",
       colCreatedAt: "생성일",
@@ -422,44 +422,44 @@ function getCopy(locale: Locale) {
       wizardSubtitle: "저장 항목 확인",
       stepSelect: "선택",
       stepMap: "저장 확인",
-      stepValidate: "검증",
+      stepValidate: "확인",
       stepComplete: "완료",
       schemaMappingTitle: "자료를 어디에 저장할지 확인",
       schemaMappingDesc: "자료에 적힌 이름을 업무 저장 위치에 맞춥니다. 다른 부분만 수정하세요.",
       saveDraft: "임시 저장",
-      continueValidation: "검증으로 이동",
+      continueValidation: "확인으로 이동",
       sourceColumn: "자료에 적힌 이름",
       targetField: "저장 위치",
-      autoMapCol: "시스템 판단",
+      autoMapCol: "초기 대응",
       sampleValue: "확인 내용",
       unmapped: "이 열은 저장하지 않음",
-      recentImportHistory: "최근 가져오기 이력",
+      recentImportHistory: "최근 읽기 이력",
       viewArchive: "보관 이력 보기",
-      readinessTitle: "가져오기 상태",
-      issueStatsTitle: "문제 코드 집계",
-      issueStatsDesc: "최근 작업의 검증 결과를 코드별로 집계",
-      issueTrendTitle: "문제 코드 추이 (7일)",
-      issueTrendDesc: "일자별 검증 건수 (Critical / Warning / Info)",
+      readinessTitle: "읽기 상태",
+      issueStatsTitle: "확인 사항",
+      issueStatsDesc: "최근 읽기 결과에서 확인이 필요한 내용",
+      issueTrendTitle: "확인 사항 추이 (7일)",
+      issueTrendDesc: "일자별 확인 건수",
       mapped: "정리됨",
       alerts: "알림",
-      validationLog: "검증 기록",
+      validationLog: "확인 기록",
       noFurtherAlerts: "추가 알림이 없습니다",
       validationUnmappedRequired: "필수 항목의 저장 위치 미설정",
       validationFormatMismatch: "데이터 형식 불일치",
-      validationSchemaSuggestion: "저장 항목 제안",
+      validationSchemaSuggestion: "저장 위치 후보",
       validationUnmappedMsg: "안건 필수 항목의 저장 위치가 아직 선택되지 않았습니다.",
       validationFormatMsg: "원본 데이터 형식이 일치하지 않습니다.",
       validationSchemaMsg: "확인할 저장 항목 제안이 있습니다.",
       actionResolveNow: "지금 수정",
-      actionAutoFix: "자동 보정",
+      actionAutoFix: "후보 반영",
       actionApplyMapping: "제안 사용",
-      exportValidationReport: "검증 리포트 내보내기",
+      exportValidationReport: "확인 결과 내보내기",
       proTipTitle: "사용 팁",
       proTipDesc: "정리 제안을 확인하고, 다른 행만 저장 항목을 고친 뒤 확인으로 진행하세요.",
-      noJobs: "먼저 가져오기 작업을 1건 이상 생성하세요.",
+      noJobs: "먼저 자료를 1건 이상 등록하세요.",
       wizardStep1: "1. 저장 항목 맞추기",
       wizardStep2: "2. 다른 곳만 수정",
-      labelTargetJob: "대상 작업",
+      labelTargetJob: "대상 자료",
       labelTargetEntity: "저장 위치",
       labelSourceColumns: "자료 열(쉼표 구분)",
       labelTargetFields: "저장 항목(쉼표 구분)",
@@ -473,14 +473,14 @@ function getCopy(locale: Locale) {
       attachmentTitle: "첨부 등록",
       attachmentSubtitle: "실파일 저장 지원",
       labelAttachmentTargetType: "대상 유형",
-      labelAttachmentTargetId: "대상 ID",
+      labelAttachmentTargetId: "연결 기록",
       labelUpload: "파일 업로드(권장)",
       labelFileName: "파일명(선택)",
-      labelExternalUrl: "외부 저장 URL(선택)",
-      labelMime: "MIME(선택)",
-      labelFileSize: "크기(Bytes, 선택)",
+      labelExternalUrl: "외부 파일 위치(선택)",
+      labelMime: "파일 형식(선택)",
+      labelFileSize: "파일 크기(선택)",
       btnRegisterAttachment: "첨부 등록",
-      attachmentHint: "직접 업로드 또는 외부 저장 URL 중 하나를 지정하세요(추후 S3/Supabase 연동 확장 가능).",
+      attachmentHint: "직접 업로드 또는 외부 파일 위치 중 하나를 지정하세요.",
       phTargetId: "예: import_002 / prop_shibuya",
       phFileName: "업로드하지 않을 때만 입력",
       phExternalUrl: "예: https://storage.example.com/docs/a.pdf",
@@ -491,10 +491,10 @@ function getCopy(locale: Locale) {
       typeUnset: "유형 미설정",
       uploadDatePrefix: "등록일",
       openStorage: "저장 파일 열기",
-      optionImportJob: "가져오기 작업",
+      optionImportJob: "읽은 자료",
       optionProperty: "매물",
       optionContract: "계약",
-      optionServiceRequest: "서비스 요청",
+      optionServiceRequest: "후속 기록",
       optionQuote: "제안",
       optionParty: "관계자",
     },
@@ -622,27 +622,27 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
     resolve_now: copy.actionResolveNow,
     auto_fix: copy.actionAutoFix,
     apply_mapping: copy.actionApplyMapping,
-    retry: locale === "zh" ? "重试任务" : locale === "ko" ? "재시도" : "再試行",
+    retry: locale === "zh" ? "重新读取" : locale === "ko" ? "재시도" : "再試行",
   };
   const codeTitleMap: Record<string, string> = {
     missing_required_mapping: copy.validationUnmappedRequired,
     unknown_target_fields: copy.validationFormatMismatch,
     mapping_ready: copy.validationSchemaSuggestion,
-    import_zero_success: locale === "zh" ? "导入结果为 0" : locale === "ko" ? "가져오기 성공 0건" : "取込成功 0 件",
+    import_zero_success: locale === "zh" ? "保存结果为 0" : locale === "ko" ? "저장 성공 0건" : "保存成功 0 件",
     import_row_missing_name:
       locale === "zh" ? "存在空名称行" : locale === "ko" ? "매물명 누락 행 있음" : "物件名未入力行あり",
     import_row_invalid_listing_price:
       locale === "zh" ? "价格格式异常" : locale === "ko" ? "가격 형식 오류" : "価格フィールド異常",
     import_row_unknown_error:
-      locale === "zh" ? "导入处理异常" : locale === "ko" ? "가져오기 처리 오류" : "取込処理エラー",
+      locale === "zh" ? "保存处理异常" : locale === "ko" ? "저장 처리 오류" : "保存処理エラー",
     import_partial_completed:
-      locale === "zh" ? "已部分完成导入" : locale === "ko" ? "부분 가져오기 완료" : "一部取込完了",
+      locale === "zh" ? "已部分保存" : locale === "ko" ? "일부 저장 완료" : "一部保存完了",
     import_completed:
-      locale === "zh" ? "导入完成" : locale === "ko" ? "가져오기 완료" : "取込完了",
+      locale === "zh" ? "保存完成" : locale === "ko" ? "저장 완료" : "保存完了",
     validation_resolved:
-      locale === "zh" ? "校验已处理" : locale === "ko" ? "검증 조치 완료" : "検証対応済み",
+      locale === "zh" ? "检查已处理" : locale === "ko" ? "확인 완료" : "確認済み",
     retry_queued:
-      locale === "zh" ? "已进入重试队列" : locale === "ko" ? "재시도 대기열 등록" : "再試行キュー登録済み",
+      locale === "zh" ? "已安排重试" : locale === "ko" ? "다시 시도 예정" : "再試行を予定",
   };
   const validationItems: Array<{
     id: string;
@@ -755,18 +755,18 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
   const maxIssueTrendTotal = Math.max(1, ...issueTrendDays.map((item) => item.total));
   const flashMap = {
     excel_imported: {
-      ja: "物件を取り込みました。",
-      zh: "物件已导入。",
-      ko: "매물을 가져왔습니다.",
+      ja: "物件を保存しました。",
+      zh: "物件已保存。",
+      ko: "매물을 저장했습니다.",
     },
     import_job_created: {
-      ja: "取込ジョブを作成しました。",
-      zh: "导入任务已创建。",
-      ko: "가져오기 작업을 생성했습니다.",
+      ja: "資料を登録しました。",
+      zh: "资料已登记。",
+      ko: "자료를 등록했습니다.",
     },
     import_mapping_saved: {
       ja: "資料の保存先を確認しました。",
-      zh: "资料保存项目已确认。",
+      zh: "资料保存位置已确认。",
       ko: "자료 저장 항목을 확인했습니다.",
     },
     import_mapping_autofilled: {
@@ -775,14 +775,14 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
       ko: "정리 제안을 적용했습니다.",
     },
     import_validation_resolved: {
-      ja: "検証記録を更新しました。",
-      zh: "校验记录已更新。",
-      ko: "검증 기록을 업데이트했습니다.",
+      ja: "確認記録を更新しました。",
+      zh: "检查记录已更新。",
+      ko: "확인 기록을 업데이트했습니다.",
     },
     import_job_retried: {
-      ja: "取込ジョブを再試行キューへ戻しました。",
-      zh: "导入任务已退回重试队列。",
-      ko: "가져오기 작업을 재시도 큐로 되돌렸습니다.",
+      ja: "この資料をもう一度読み取ります。",
+      zh: "这份资料将重新读取。",
+      ko: "이 자료를 다시 읽습니다.",
     },
     input_extraction_ready: {
       ja: "業務ファイルの確認項目を読み取りました。",
@@ -793,6 +793,51 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
       ja: "本人確認資料の確認項目を読み取りました。",
       zh: "已读取身份资料的待确认项目。",
       ko: "본인 확인 자료의 확인 항목을 읽었습니다.",
+    },
+    excel_upload_missing: {
+      ja: "Excel ファイルを選択してください。",
+      zh: "请选择 Excel 文件。",
+      ko: "Excel 파일을 선택해 주세요.",
+    },
+    excel_upload_type: {
+      ja: ".xlsx ファイルを選択してください。",
+      zh: "请选择 .xlsx 文件。",
+      ko: ".xlsx 파일을 선택해 주세요.",
+    },
+    excel_upload_read_failed: {
+      ja: "Excel ファイルを読み取れませんでした。ファイル形式を確認してください。",
+      zh: "无法读取 Excel 文件，请确认文件格式。",
+      ko: "Excel 파일을 읽을 수 없습니다. 파일 형식을 확인해 주세요.",
+    },
+    excel_upload_empty: {
+      ja: "Excel 内に読み取れるデータがありません。",
+      zh: "Excel 内没有可读取的数据。",
+      ko: "Excel 안에 읽을 수 있는 데이터가 없습니다.",
+    },
+    identity_upload_missing: {
+      ja: "PDF または画像を選択してください。",
+      zh: "请选择 PDF 或图片。",
+      ko: "PDF 또는 이미지를 선택해 주세요.",
+    },
+    identity_upload_too_many: {
+      ja: "本人確認資料は一度に6件まで選択できます。",
+      zh: "本人资料一次最多选择 6 个文件。",
+      ko: "본인 확인 자료는 한 번에 6개까지 선택할 수 있습니다.",
+    },
+    identity_upload_too_large: {
+      ja: "1ファイルあたり25MB以下にしてください。",
+      zh: "单个文件请控制在 25MB 以下。",
+      ko: "파일 1개당 25MB 이하로 선택해 주세요.",
+    },
+    identity_upload_total_too_large: {
+      ja: "本人確認資料の合計サイズは60MB以下にしてください。",
+      zh: "本人资料总大小请控制在 60MB 以下。",
+      ko: "본인 확인 자료의 총 용량은 60MB 이하로 선택해 주세요.",
+    },
+    identity_upload_type: {
+      ja: "在留カード・運転免許証のPDFまたは画像ファイルを選択してください。",
+      zh: "请选择在留卡或驾照的 PDF / 图片文件。",
+      ko: "재류카드 또는 운전면허증 PDF/이미지를 선택해 주세요.",
     },
     extraction_review_saved: {
       ja: "確認結果を案件として保存しました。",
@@ -807,8 +852,10 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
   } as const;
   const flashKey = String(params?.flash ?? "").trim() as keyof typeof flashMap;
   const flashMessage = flashMap[flashKey]?.[locale];
+  const flashTone =
+    String(flashKey).includes("upload_") || String(flashKey).includes("missing") ? "error" : "success";
 
-  // ── Excel 物件取込 state ──────────────────────────────────────────
+  // ── Excel 物件保存 state ──────────────────────────────────────────
   const xlsxJobId = String(params?.xlsxJob ?? "").trim();
   const xlsxJob = xlsxJobId ? jobs.find((j) => j.id === xlsxJobId) : undefined;
 
@@ -868,7 +915,6 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
   ];
   const intakeMode = String(params?.intake ?? "new").trim();
   const isExistingIntake = intakeMode === "existing";
-  const isHoldingIntake = intakeMode === "holding";
   const requestedJobId = xlsxJobId || focusJobId;
   const requestedJob = xlsxJob ?? focusedMappingJob;
   const missingRequestedJob = Boolean(requestedJobId && !requestedJob);
@@ -876,19 +922,18 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
     if (isInputFileExtractionJob(job)) return `/import-center?xlsxJob=${encodeURIComponent(job.id)}#source-upload`;
     return `/import-center?job=${encodeURIComponent(job.id)}&advanced=1#job-mapping`;
   };
-  const assignmentCards: Array<
+  const creationCards: Array<
     {
       id: string;
       href: string;
       icon: string;
       label: string;
       desc: string;
-      active: boolean;
     }
   > = [
     {
       id: "case",
-      href: "/cases/new",
+      href: "/cases/new?from=entry",
       icon: "business_center",
       label: locale === "zh" ? "新开案件" : locale === "ko" ? "새 안건" : "新規案件",
       desc:
@@ -897,11 +942,10 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
           : locale === "ko"
             ? "임대, 매매, 견적, 계약처럼 작업대가 필요할 때 안건부터 만듭니다."
             : "賃貸、売買、見積、契約の作業台が必要なときは案件から始めます。",
-      active: false,
     },
     {
       id: "party",
-      href: "/parties/new",
+      href: "/parties/new?from=entry",
       icon: "person_add",
       label: locale === "zh" ? "新建主体" : locale === "ko" ? "관계자 추가" : "関係者を追加",
       desc:
@@ -910,11 +954,10 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
           : locale === "ko"
             ? "고객, 소유자, 임차인, 보증인, 회사 정보를 먼저 등록합니다."
             : "顧客、オーナー、借主、保証人、会社を先に登録します。",
-      active: false,
     },
     {
       id: "property",
-      href: "/properties/new",
+      href: "/properties/new?from=entry",
       icon: "domain_add",
       label: locale === "zh" ? "新建物件" : locale === "ko" ? "새 매물" : "物件を追加",
       desc:
@@ -923,30 +966,15 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
           : locale === "ko"
             ? "매물, 호실, 주소, 임대료나 가격이 명확할 때 매물을 먼저 만듭니다."
             : "物件、部屋番号、住所、賃料や価格が明確なときは物件を先に作成します。",
-      active: false,
-    },
-    {
-      id: "import",
-      href: "/import-center#source-upload",
-      icon: "drive_folder_upload",
-      label: locale === "zh" ? "导入资料" : locale === "ko" ? "자료 가져오기" : "資料を取り込む",
-      desc:
-        locale === "zh"
-          ? "已有证件、申请资料或台账文件时，先读取再核对归属。"
-          : locale === "ko"
-            ? "증명서, 신청 자료, 대장 파일이 있을 때 먼저 읽고 귀속을 확인합니다."
-            : "証明書、申込資料、台帳ファイルがある場合は読み取って割当を確認します。",
-      active: !isExistingIntake && !isHoldingIntake,
     },
   ];
-
   return (
     <div className="space-y-7">
       <section>
         <h1 className="text-4xl font-bold tracking-tight text-slate-900">{copy.pageTitle}</h1>
         <p className="mt-1 text-sm text-slate-600">{copy.pageDesc}</p>
       </section>
-      <PageFlashBanner message={flashMessage} />
+      <PageFlashBanner message={flashMessage} tone={flashTone} />
 
       {requestedJob ? (
         <section className="rounded-2xl border border-blue-200 bg-blue-50/70 p-4 shadow-sm">
@@ -983,33 +1011,30 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-[11px] font-black uppercase tracking-wider text-blue-700">
-              {locale === "zh" ? "工作入口" : locale === "ko" ? "작업 시작" : "開始方法"}
+              {locale === "zh" ? "建档入口" : locale === "ko" ? "등록 입구" : "作成入口"}
             </p>
             <h2 className="mt-1 text-base font-bold text-slate-950">
-              {locale === "zh" ? "选择要创建或导入的内容" : locale === "ko" ? "만들거나 가져올 대상을 선택" : "作成または取込の対象を選択"}
+              {locale === "zh" ? "先确定资料归属" : locale === "ko" ? "먼저 자료 귀속을 정함" : "先に資料の割当を決める"}
             </h2>
             <p className="mt-1 text-xs text-slate-500">
               {locale === "zh"
-                ? "案件、主体、物件可以直接建档；文件类资料放到导入区读取后再归属。"
+                ? "没有文件也可以先建档；已有文件时，在下方读取后再归入对应对象。"
                 : locale === "ko"
-                  ? "안건, 관계자, 매물은 바로 등록할 수 있고 파일 자료는 가져오기 영역에서 읽은 뒤 귀속을 정합니다."
-                  : "案件、関係者、物件は直接作成できます。ファイル資料は取込エリアで読み取ってから割当します。"}
+                  ? "파일이 없어도 먼저 등록할 수 있습니다. 파일이 있으면 아래에서 읽은 뒤 귀속을 정합니다."
+                  : "ファイルがなくても先に作成できます。ファイルがある場合は下で読み取ってから割当します。"}
             </p>
           </div>
           <Link href="/organize-center" className="inline-flex items-center justify-center rounded-lg border border-slate-300 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">
             {locale === "zh" ? "查看整理中心" : locale === "ko" ? "정리 센터 보기" : "整理センターを見る"}
           </Link>
         </div>
-        <div className="mt-4 grid gap-3 lg:grid-cols-4">
-          {assignmentCards.map((item) => {
+        <div className="mt-4 grid gap-3 lg:grid-cols-3">
+          {creationCards.map((item) => {
             const cardClassName =
-              "group block w-full rounded-xl border p-4 text-left transition " +
-              (item.active
-                ? "border-[#001e40] bg-[#f2f6ff] ring-1 ring-[#001e40]/10"
-                : "border-slate-200 bg-slate-50 hover:border-[#001e40] hover:bg-white");
+              "group block w-full rounded-xl border border-slate-200 bg-slate-50 p-4 text-left transition hover:border-[#001e40] hover:bg-white";
             const cardContent = (
               <div className="flex items-start gap-3">
-                <span className={"material-symbols-outlined text-[22px] " + (item.active ? "text-[#001e40]" : "text-slate-500")}>{item.icon}</span>
+                <span className="material-symbols-outlined text-[22px] text-slate-500">{item.icon}</span>
                 <div>
                   <p className="text-sm font-bold text-slate-950">{item.label}</p>
                   <p className="mt-1 text-xs leading-5 text-slate-500">{item.desc}</p>
@@ -1023,7 +1048,6 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
             );
           })}
         </div>
-
         {isExistingIntake ? (
           <div id="existing-case-list" className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
             <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
@@ -1033,10 +1057,10 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                 </h3>
                 <p className="mt-1 text-xs text-slate-500">
                   {locale === "zh"
-                    ? "进入案件可查看已有资料；上传后的核对结果只会在可信匹配时追加。"
+                    ? "进入案件可查看已有资料；读取后的核对结果会先等待确认，再追加到案件。"
                     : locale === "ko"
-                      ? "안건에서 기존 자료를 확인할 수 있습니다. 업로드 후 검토 결과는 신뢰 가능한 경우에만 추가됩니다."
-                      : "案件で既存資料を確認できます。アップロード後の確認結果は信頼できる場合のみ追加します。"}
+                      ? "안건에서 기존 자료를 확인할 수 있습니다. 읽은 뒤 확인 결과는 검토 후 안건에 추가됩니다."
+                      : "案件で既存資料を確認できます。読取後の確認結果は確認後に案件へ追加します。"}
                 </p>
               </div>
               <Link href="/organize-center" className="text-xs font-bold text-blue-700 hover:underline">
@@ -1060,48 +1084,51 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
         ) : null}
       </section>
 
-      <section id="source-upload" className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div>
+      <section id="source-upload" className="scroll-mt-24 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-100 p-5">
+          <p className="text-[11px] font-black uppercase tracking-wider text-blue-700">
+            {locale === "zh" ? "读取资料" : locale === "ko" ? "자료 읽기" : "資料読取"}
+          </p>
           <h2 className="text-base font-bold text-slate-950">
-            {locale === "zh" ? "资料导入" : locale === "ko" ? "자료 가져오기" : "資料取込"}
+            {locale === "zh" ? "已有文件时从这里开始" : locale === "ko" ? "파일이 있을 때 여기서 시작" : "ファイルがある場合はここから始める"}
           </h2>
           <p className="mt-1 text-xs text-slate-500">
             {locale === "zh"
-              ? "已有文件时先读取内容，再进入核对和归属。"
+              ? "读取后先核对内容，再保存到案件、主体或物件。"
               : locale === "ko"
-                ? "파일이 있으면 먼저 내용을 읽고 확인과 귀속을 진행합니다."
-                : "ファイルがある場合は内容を読み取り、確認と割当へ進みます。"}
+                ? "읽은 뒤 내용을 확인하고 안건, 관계자, 매물에 저장합니다."
+                : "読み取った内容を確認してから、案件、関係者、物件に保存します。"}
           </p>
         </div>
 
-      <section className="rounded-xl border border-emerald-200 bg-white p-6 shadow-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="material-symbols-outlined text-emerald-700">badge</span>
-              <h2 className="text-base font-bold text-slate-950">
-                {locale === "zh" ? "本人资料" : locale === "ko" ? "본인 자료" : "本人資料"}
-              </h2>
-              <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
-                {locale === "zh" ? "在留卡 / 驾照二选一" : locale === "ko" ? "재류카드 / 운전면허증 중 하나" : "在留カード / 運転免許証のどちらか"}
-              </span>
+        <section className="border-b border-emerald-100 bg-emerald-50/30 p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="material-symbols-outlined text-emerald-700">badge</span>
+                <h2 className="text-base font-bold text-slate-950">
+                  {locale === "zh" ? "本人资料" : locale === "ko" ? "본인 자료" : "本人資料"}
+                </h2>
+                <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                  {locale === "zh" ? "在留卡 / 驾照二选一" : locale === "ko" ? "재류카드 / 운전면허증 중 하나" : "在留カード / 運転免許証のどちらか"}
+                </span>
+              </div>
+              <p className="mt-2 max-w-2xl text-xs leading-6 text-slate-600">
+                {locale === "zh"
+                  ? "在留卡 / 驾照：姓名、生日、地址、证件号码。"
+                  : locale === "ko"
+                    ? "재류카드 / 운전면허증: 이름, 생년월일, 주소, 증명서 번호."
+                    : "在留カード / 運転免許証: 氏名、生年月日、住所、証明書番号。"}
+              </p>
             </div>
-            <p className="mt-2 max-w-2xl text-xs leading-6 text-slate-600">
-              {locale === "zh"
-                ? "在留卡 / 驾照：姓名、生日、地址、证件号码。"
-                : locale === "ko"
-                  ? "재류카드 / 운전면허증: 이름, 생년월일, 주소, 증명서 번호."
-                  : "在留カード / 運転免許証: 氏名、生年月日、住所、証明書番号。"}
-            </p>
+            {!isIdentityExtractionOnly ? (
+              <IdentityDocumentUploadForm action={uploadAndParseIdentityDocumentAction} locale={locale} />
+            ) : (
+              <a href="/import-center" className="inline-flex items-center justify-center rounded-lg border border-slate-300 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">
+                {locale === "zh" ? "重新选择文件" : locale === "ko" ? "파일 다시 선택" : "ファイルを選び直す"}
+              </a>
+            )}
           </div>
-          {!isIdentityExtractionOnly ? (
-            <IdentityDocumentUploadForm action={uploadAndParseIdentityDocumentAction} locale={locale} />
-          ) : (
-            <a href="/import-center" className="inline-flex items-center justify-center rounded-lg border border-slate-300 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">
-              {locale === "zh" ? "重新上传" : locale === "ko" ? "다시 업로드" : "再アップロード"}
-            </a>
-          )}
-        </div>
 
         {xlsxJob && xlsxPayload && inputExtractionPreview && isIdentityExtractionOnly ? (
           <div className="mt-5 space-y-4 rounded-xl border border-emerald-200 bg-emerald-50/50 p-4">
@@ -1140,14 +1167,14 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
         ) : null}
       </section>
 
-      {/* ── Excel 物件一括取込 ─────────────────────────────────────── */}
-      <section className="rounded-2xl border border-blue-200 bg-blue-50 p-6 space-y-5">
+      {/* ── Excel 物件一括保存 ─────────────────────────────────────── */}
+      <section className="space-y-5 bg-blue-50/40 p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="flex items-center gap-2">
               <span className="material-symbols-outlined text-blue-700">table_view</span>
               <h2 className="text-base font-bold text-blue-900">
-                {locale === "zh" ? "上传申请资料" : locale === "ko" ? "신청 자료 업로드" : "申込資料をアップロード"}
+                {locale === "zh" ? "读取申请资料" : locale === "ko" ? "신청 자료 읽기" : "申込資料を読み取る"}
               </h2>
               <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-600">
                 {locale === "zh" ? "仅支持 .xlsx" : locale === "ko" ? ".xlsx 전용" : ".xlsx 専用"}
@@ -1163,7 +1190,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
           </div>
 
           {!xlsxJob && (
-            <form action={uploadAndParseExcelAction} className="w-full space-y-3 rounded-xl border border-blue-100 bg-white/75 p-4 lg:max-w-md">
+            <form action={uploadAndParseExcelAction} noValidate className="w-full space-y-3 rounded-xl border border-blue-100 bg-white/75 p-4 lg:max-w-md">
               <label className="block space-y-1">
                 <span className="text-xs font-semibold text-blue-800">
                   {locale === "zh" ? "选择 .xlsx 文件" : locale === "ko" ? ".xlsx 파일 선택" : ".xlsx ファイルを選択"}
@@ -1172,7 +1199,6 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                   name="excelFile"
                   type="file"
                   accept=".xlsx"
-                  required
                   className="w-full rounded-lg border border-blue-300 bg-white px-3 py-2 text-sm"
                 />
               </label>
@@ -1180,7 +1206,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                 type="submit"
                 className="w-full rounded-lg bg-blue-700 px-4 py-2 text-sm font-bold text-white hover:bg-blue-800"
               >
-                {locale === "zh" ? "上传并读取" : locale === "ko" ? "업로드 후 읽기" : "アップロードして読み取る"}
+                {locale === "zh" ? "选择文件并读取" : locale === "ko" ? "파일 선택 후 읽기" : "ファイルを選んで読み取る"}
               </button>
             </form>
           )}
@@ -1210,7 +1236,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                 </p>
               </div>
               <a href="/import-center" className="text-xs font-semibold text-indigo-700 hover:underline">
-                {locale === "zh" ? "重新上传" : locale === "ko" ? "다시 업로드" : "再アップロード"}
+                {locale === "zh" ? "重新选择文件" : locale === "ko" ? "파일 다시 선택" : "ファイルを選び直す"}
               </a>
             </div>
 
@@ -1239,20 +1265,6 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                 <dt className="font-semibold text-indigo-900">{locale === "zh" ? "待确认项目数" : locale === "ko" ? "확인 항목 수" : "確認項目数"}</dt>
                 <dd className="mt-1 text-slate-700">{inputExtractionPreview.fields.length}</dd>
               </div>
-              <div className="rounded-lg bg-indigo-50 p-3">
-                <dt className="font-semibold text-indigo-900">{locale === "zh" ? "模板版本" : locale === "ko" ? "템플릿 버전" : "テンプレート版"}</dt>
-                <dd className="mt-1 break-all font-mono text-[11px] text-slate-700">{inputExtractionPreview.templateVersion}</dd>
-              </div>
-              <div className="rounded-lg bg-indigo-50 p-3">
-                <dt className="font-semibold text-indigo-900">{locale === "zh" ? "文件照合ID" : locale === "ko" ? "파일 대조 ID" : "ファイル照合ID"}</dt>
-                <dd className="mt-1 font-mono text-[11px] text-slate-700">
-                  {inputExtractionPreview.sourceFileHash ? `${inputExtractionPreview.sourceFileHash.slice(0, 12)}...` : "-"}
-                </dd>
-              </div>
-              <div className="rounded-lg bg-indigo-50 p-3">
-                <dt className="font-semibold text-indigo-900">{locale === "zh" ? "匹配度" : locale === "ko" ? "일치도" : "一致度"}</dt>
-                <dd className="mt-1 tabular-nums text-slate-700">{Math.round(inputExtractionPreview.fingerprintConfidence * 100)}%</dd>
-              </div>
             </dl>
             </details>
 
@@ -1267,10 +1279,10 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
             ) : (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
                 {locale === "zh"
-                  ? "未匹配到申请资料格式。普通物件台账可继续导入。"
+                  ? "没有识别为支持的申请资料格式。普通物件台账可继续保存。"
                   : locale === "ko"
-                    ? "신청 자료 형식과 일치하지 않습니다. 일반 매물 대장은 계속 가져올 수 있습니다."
-                    : "申込資料の形式と一致しません。通常の物件台帳は続けて取り込めます。"}
+                    ? "신청 자료 형식과 일치하지 않습니다. 일반 매물 대장은 계속 저장할 수 있습니다."
+                    : "申込資料の形式と一致しません。通常の物件台帳は続けて保存できます。"}
               </div>
             )}
           </div>
@@ -1285,7 +1297,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                 {locale === "zh" ? "行数据" : locale === "ko" ? "행 데이터" : "行のデータ"}
               </p>
               <a href="/import-center" className="text-xs text-blue-600 hover:underline">
-                {locale === "zh" ? "重新上传" : locale === "ko" ? "다시 업로드" : "再アップロード"}
+                {locale === "zh" ? "重新选择文件" : locale === "ko" ? "파일 다시 선택" : "ファイルを選び直す"}
               </a>
             </div>
 
@@ -1319,7 +1331,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
             {/* Mapping form */}
             <details className="rounded-lg border border-blue-200 bg-white p-3">
               <summary className="cursor-pointer text-xs font-bold text-blue-900">
-                {locale === "zh" ? "普通物件台账导入设置" : locale === "ko" ? "일반 매물 대장 가져오기 설정" : "通常の物件台帳取込設定"}
+                {locale === "zh" ? "普通物件台账保存设置" : locale === "ko" ? "일반 매물 대장 저장 설정" : "通常の物件台帳保存設定"}
               </summary>
             <form action={executePropertyImportAction} className="mt-3 space-y-3">
               <input type="hidden" name="jobId" value={xlsxJob.id} />
@@ -1348,7 +1360,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                 type="submit"
                 className="rounded-lg bg-blue-700 px-5 py-2 text-sm font-bold text-white hover:bg-blue-800"
               >
-                {locale === "zh" ? "执行导入" : locale === "ko" ? "가져오기 실행" : "取込を実行"}
+                {locale === "zh" ? "保存到物件台账" : locale === "ko" ? "매물 대장에 저장" : "物件台帳に保存"}
               </button>
             </form>
             </details>
@@ -1397,7 +1409,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                 {locale === "zh" ? "整理信息" : locale === "ko" ? "정보 정리" : "情報整理へ"}
               </a>
               <a href="/import-center" className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">
-                {locale === "zh" ? "继续导入" : locale === "ko" ? "계속 가져오기" : "続けて取り込む"}
+                {locale === "zh" ? "继续读取资料" : locale === "ko" ? "자료 계속 읽기" : "続けて資料を読み取る"}
               </a>
             </div>
           </div>
@@ -1409,7 +1421,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
         <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
           <div>
             <h2 className="text-base font-bold text-slate-950">
-              {locale === "zh" ? "最近上传的资料" : locale === "ko" ? "최근 업로드 자료" : "最近入れた資料"}
+              {locale === "zh" ? "最近读取的资料" : locale === "ko" ? "최근 읽은 자료" : "最近読み取った資料"}
             </h2>
             <p className="mt-1 text-xs text-slate-500">
               {locale === "zh"
@@ -1446,7 +1458,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
 	          })}
           {jobs.length === 0 ? (
             <p className="rounded-lg border border-dashed border-slate-200 p-3 text-sm text-slate-500">
-              {locale === "zh" ? "还没有上传记录。" : locale === "ko" ? "아직 업로드 기록이 없습니다." : "まだアップロード履歴はありません。"}
+              {locale === "zh" ? "还没有读取记录。" : locale === "ko" ? "아직 읽기 기록이 없습니다." : "まだ読取記録はありません。"}
             </p>
           ) : null}
         </div>
@@ -1460,10 +1472,10 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
             </h2>
             <p className="mt-1 text-xs text-slate-500">
               {locale === "zh"
-                ? "批量导入、校验记录、附件登记。"
+                ? "批量保存、检查记录、附件登记。"
                 : locale === "ko"
-                  ? "일괄 가져오기, 검증 기록, 첨부 등록."
-                  : "一括取込、検証記録、添付登録。"}
+                  ? "일괄 저장, 확인 기록, 첨부 등록."
+                  : "一括保存、確認記録、添付登録。"}
             </p>
           </div>
           {!showAdvanced ? (
@@ -1629,7 +1641,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
 	                    <p className="text-[11px] font-black uppercase tracking-wider text-blue-700">
 	                      {focusedMappingJob
 	                        ? locale === "zh" ? "当前处理资料" : locale === "ko" ? "현재 처리 자료" : "現在処理中の資料"
-	                        : locale === "zh" ? "当前任务" : locale === "ko" ? "현재 작업" : "現在のジョブ"}
+	                        : locale === "zh" ? "当前资料" : locale === "ko" ? "현재 자료" : "現在の資料"}
 	                    </p>
 	                    <h3 className="mt-1 truncate text-base font-black text-slate-950">{defaultJob.title}</h3>
 	                    <p className="mt-1 text-xs font-semibold text-slate-600">
@@ -1852,7 +1864,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                     <form action={retryImportJobAction} className="mt-2">
                       <input type="hidden" name="jobId" value={item.jobId} />
                       <button className="rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5 text-[10px] font-bold text-slate-700 hover:bg-slate-100">
-                        {locale === "zh" ? "重试任务" : locale === "ko" ? "재시도" : "再試行"}
+                        {locale === "zh" ? "重新读取" : locale === "ko" ? "재시도" : "再試行"}
                       </button>
                     </form>
                   ) : null}

@@ -21,11 +21,20 @@ import {
   type OutputTemplateSettings,
   type OutputTemplateSettingsInput,
 } from "@/lib/output-doc";
+import type {
+  CaseWorkbenchFieldRule,
+  CaseWorkbenchFieldRuleInput,
+} from "@/lib/case-workbench-field-rules";
 import { COMPLETE_CASE_FIELD_DEFAULTS, COMPLETE_DRAFT_DEFAULTS } from "@/lib/guarantee-application-fixtures";
 import { DEFAULT_TENANT_ID } from "@/lib/tenant-constants";
 import type { TenantRole } from "@/lib/tenant-permissions";
 
 export type { OutputTemplateSettingsInput } from "@/lib/output-doc";
+export type {
+  CaseFieldRequirement,
+  CaseWorkbenchFieldRule,
+  CaseWorkbenchFieldRuleInput,
+} from "@/lib/case-workbench-field-rules";
 
 export type User = {
   id: string;
@@ -424,6 +433,7 @@ type DB = {
   followUps: FollowUp[];
   tasks: Task[];
   auditLogs: AuditLog[];
+  caseWorkbenchFieldRules: CaseWorkbenchFieldRule[];
   outputTemplateSettings: OutputTemplateSettings[];
   outputTemplateVersions: OutputTemplateVersion[];
   importJobs: ImportJob[];
@@ -520,6 +530,7 @@ const tenantScopedCollectionKeys = [
   "followUps",
   "tasks",
   "auditLogs",
+  "caseWorkbenchFieldRules",
   "outputTemplateSettings",
   "outputTemplateVersions",
   "importJobs",
@@ -543,6 +554,7 @@ function backfillTenantScope(dbLike: DB) {
 
 function withDefaultTenantScope(input: Record<string, unknown>): DB {
   const scopedDb = input as DB;
+  scopedDb.caseWorkbenchFieldRules = scopedDb.caseWorkbenchFieldRules ?? [];
   scopedDb.tenants.forEach(ensureTenantDefaults);
   scopedDb.tenantMemberships.forEach(ensureTenantMembershipDefaults);
   backfillTenantScope(scopedDb);
@@ -572,7 +584,7 @@ function toTemplateSettingsInput(settings: OutputTemplateSettings): OutputTempla
   };
 }
 
-type QaBusinessDataCounts = Record<keyof Omit<DB, "users" | "outputTemplateSettings" | "outputTemplateVersions">, number>;
+type QaBusinessDataCounts = Record<keyof Omit<DB, "users" | "outputTemplateSettings" | "outputTemplateVersions" | "caseWorkbenchFieldRules">, number>;
 
 function cloneValue<T>(value: T): T {
   if (value instanceof Date) return new Date(value) as T;
@@ -600,6 +612,7 @@ function cloneDb(input: DB): DB {
     followUps: cloneCollection(input.followUps),
     tasks: cloneCollection(input.tasks),
     auditLogs: cloneCollection(input.auditLogs),
+    caseWorkbenchFieldRules: cloneCollection(input.caseWorkbenchFieldRules),
     outputTemplateSettings: cloneCollection(input.outputTemplateSettings),
     outputTemplateVersions: cloneCollection(input.outputTemplateVersions),
     importJobs: cloneCollection(input.importJobs),
@@ -1009,13 +1022,14 @@ const _freshDb: DB = withDefaultTenantScope({
     { id: "log_4", actorId: "user_demo", userId: "user_demo", action: "quote_sent", targetType: "quote", targetId: "quote_tamura_a", message: "田村様 世田谷ガーデンテラス プランA を送付済みに更新しました", createdAt: new Date(now - 6 * 24 * 60 * 60 * 1000), context: { source: "seed" } },
     { id: "log_5", actorId: "user_demo", userId: "user_demo", action: "client_won", targetType: "client", targetId: "client_nakamura", message: "中村 恵子 様 が成約しました。文京区ソレイユ", createdAt: new Date(now - 8 * 24 * 60 * 60 * 1000), context: { source: "seed" } },
   ],
+  caseWorkbenchFieldRules: [],
   outputTemplateSettings: [cherryOutputTemplate],
   outputTemplateVersions: [
     { id: "tplver_user_demo_001", userId: "user_demo", versionNumber: 1, versionLabel: "標準版 v1", changeNote: "初期標準テンプレート", settingsSnapshot: toTemplateSettingsInput(cherryOutputTemplate), isActive: true, createdAt: new Date(now - 15 * 24 * 60 * 60 * 1000) },
   ],
   importJobs: [
-    { id: "import_001", userId: "user_demo", sourceType: "excel", title: "物件台帳_2026Q1.xlsx", targetEntity: "properties", status: "completed", notes: "物件5件を取込", mappingJson: { 物件名: "name", 所在地: "address", エリア: "area", 売出価格: "listing_price" }, validationMessage: "必須項目を充足（4/4）", createdAt: new Date(now - 4 * 24 * 60 * 60 * 1000), updatedAt: new Date(now - 4 * 24 * 60 * 60 * 1000) },
-    { id: "import_002", userId: "user_demo", sourceType: "pdf", title: "旧契約書一括取込（3件）", targetEntity: "contracts", status: "mapped", notes: "契約種別の確認待ち", mappingJson: { 契約番号: "contract_number", 契約種別: "contract_type", 物件ID: "property_id" }, validationMessage: "必須項目が不足（署名日）", createdAt: new Date(now - 2 * 24 * 60 * 60 * 1000), updatedAt: new Date(now - 2 * 24 * 60 * 60 * 1000) },
+    { id: "import_001", userId: "user_demo", sourceType: "excel", title: "物件台帳_2026Q1.xlsx", targetEntity: "properties", status: "completed", notes: "物件5件を保存", mappingJson: { 物件名: "name", 所在地: "address", エリア: "area", 売出価格: "listing_price" }, validationMessage: "必須項目を充足（4/4）", createdAt: new Date(now - 4 * 24 * 60 * 60 * 1000), updatedAt: new Date(now - 4 * 24 * 60 * 60 * 1000) },
+    { id: "import_002", userId: "user_demo", sourceType: "pdf", title: "旧契約書一括登録（3件）", targetEntity: "contracts", status: "mapped", notes: "契約種別の確認待ち", mappingJson: { 契約番号: "contract_number", 契約種別: "contract_type", 物件ID: "property_id" }, validationMessage: "必須項目が不足（署名日）", createdAt: new Date(now - 2 * 24 * 60 * 60 * 1000), updatedAt: new Date(now - 2 * 24 * 60 * 60 * 1000) },
     { id: "import_003", userId: "user_demo", sourceType: "excel", title: "港区グランドタワー_申込資料.xlsx", targetEntity: "properties", status: "mapped", notes: "申込書作成前の確認待ち", validationMessage: "物件名・部屋番号・取扱店情報を確認", createdAt: new Date(now - 1 * 24 * 60 * 60 * 1000), updatedAt: new Date(now - 1 * 24 * 60 * 60 * 1000) },
   ],
   brokerageCases: [
@@ -1152,6 +1166,7 @@ db.tenantMemberships.forEach(ensureTenantMembershipDefaults);
 if (!db.guaranteeApplicationDrafts) db.guaranteeApplicationDrafts = cloneCollection(_freshDb.guaranteeApplicationDrafts);
 if (!db.correctionEvents) db.correctionEvents = [];
 if (!db.aiExperienceDrafts) db.aiExperienceDrafts = [];
+if (!db.caseWorkbenchFieldRules) db.caseWorkbenchFieldRules = [];
 
 export function resetBusinessDataForQa(): QaBusinessDataCounts {
   const templateSettings = createQaBlankTemplateSettings();
@@ -1165,6 +1180,7 @@ export function resetBusinessDataForQa(): QaBusinessDataCounts {
   db.followUps = [];
   db.tasks = [];
   db.auditLogs = [];
+  db.caseWorkbenchFieldRules = [];
   db.outputTemplateSettings = [templateSettings];
   db.outputTemplateVersions = [
     {
@@ -1417,7 +1433,7 @@ function ensureRichDemoData() {
   const demoImportJobs: ImportJob[] = [
     { id: "import_demo_004", tenantId: DEFAULT_TENANT_ID, userId: "user_demo", sourceType: "excel", title: "勝どきリバーサイド_賃貸申込一式.xlsx", targetEntity: "contracts", status: "mapped", notes: "保証会社申込書へ反映前の確認待ち", mappingJson: { 物件名: "property.name", 申込者: "applicant.name", 賃料: "lease.rent" }, validationMessage: "勤務先証明と在留期限を確認", createdAt: dateAgo(0, 8), updatedAt: dateAgo(0, 8) },
     { id: "import_demo_005", tenantId: DEFAULT_TENANT_ID, userId: "user_demo", sourceType: "scan", title: "ガルシア様_在留カード表裏.jpg", targetEntity: "parties", status: "queued", notes: "本人資料の再読取待ち", validationMessage: "画像の一部が反射で読みにくい", createdAt: dateAgo(0, 4), updatedAt: dateAgo(0, 4) },
-    { id: "import_demo_006", tenantId: DEFAULT_TENANT_ID, userId: "user_demo", sourceType: "excel", title: "6月新規問合せ_海外投資家.xlsx", targetEntity: "parties", status: "completed", notes: "4件を主体台帳へ取込", mappingJson: { 氏名: "name", 電話: "phone", 希望エリア: "preferredArea" }, validationMessage: "必須項目を充足", createdAt: dateAgo(1, 4), updatedAt: dateAgo(1, 3) },
+    { id: "import_demo_006", tenantId: DEFAULT_TENANT_ID, userId: "user_demo", sourceType: "excel", title: "6月新規問合せ_海外投資家.xlsx", targetEntity: "parties", status: "completed", notes: "4件を主体台帳へ保存", mappingJson: { 氏名: "name", 電話: "phone", 希望エリア: "preferredArea" }, validationMessage: "必須項目を充足", createdAt: dateAgo(1, 4), updatedAt: dateAgo(1, 3) },
     { id: "import_demo_007", tenantId: DEFAULT_TENANT_ID, userId: "user_demo", sourceType: "pdf", title: "新宿御苑前オフィス_法人申込書.pdf", targetEntity: "contracts", status: "mapped", notes: "法人代表者情報の確認待ち", validationMessage: "代表者本人確認欄を確認", createdAt: dateAgo(2, 4), updatedAt: dateAgo(2, 2) },
     { id: "import_demo_008", tenantId: DEFAULT_TENANT_ID, userId: "user_demo", sourceType: "excel", title: "管理会社_費用更新_202606.xlsx", targetEntity: "properties", status: "completed", notes: "管理費・修繕積立金を更新", mappingJson: { 管理費: "managementFee", 修繕積立金: "repairFee" }, validationMessage: "7物件を更新", createdAt: dateAgo(3), updatedAt: dateAgo(3) },
     { id: "import_demo_009", tenantId: DEFAULT_TENANT_ID, userId: "user_demo", sourceType: "manual", title: "小林様_貸主聞き取りメモ", targetEntity: "parties", status: "queued", notes: "貸主口座情報は未入力", createdAt: dateAgo(4), updatedAt: dateAgo(4) },
@@ -1971,6 +1987,48 @@ export async function updateTenantMemberStatus(input: {
   };
 }
 
+export async function listCaseWorkbenchFieldRules(userId: string, tenantId?: string): Promise<CaseWorkbenchFieldRule[]> {
+  const scopeTenantId = resolveTenantId(tenantId);
+  return db.caseWorkbenchFieldRules
+    .filter((item) => item.userId === userId && item.tenantId === scopeTenantId)
+    .sort((a, b) => a.fieldKey.localeCompare(b.fieldKey))
+    .map((item) => ({ ...item }));
+}
+
+export async function updateCaseWorkbenchFieldRules(
+  userId: string,
+  input: CaseWorkbenchFieldRuleInput[],
+  tenantId?: string,
+): Promise<CaseWorkbenchFieldRule[]> {
+  const scopeTenantId = resolveTenantId(tenantId);
+  const nowDate = new Date();
+  const uniqueRules = new Map<string, CaseWorkbenchFieldRuleInput>();
+  input.forEach((rule) => {
+    uniqueRules.set(rule.fieldKey, rule);
+  });
+
+  uniqueRules.forEach((rule) => {
+    const index = db.caseWorkbenchFieldRules.findIndex(
+      (item) => item.userId === userId && item.tenantId === scopeTenantId && item.fieldKey === rule.fieldKey,
+    );
+    const next: CaseWorkbenchFieldRule = {
+      id: index >= 0 ? db.caseWorkbenchFieldRules[index].id : makeId("casefieldrule"),
+      tenantId: scopeTenantId,
+      userId,
+      fieldKey: rule.fieldKey,
+      requirement: rule.requirement,
+      updatedAt: nowDate,
+    };
+    if (index >= 0) {
+      db.caseWorkbenchFieldRules[index] = next;
+    } else {
+      db.caseWorkbenchFieldRules.push(next);
+    }
+  });
+
+  return listCaseWorkbenchFieldRules(userId, scopeTenantId);
+}
+
 export async function getOutputTemplateSettings(userId: string, tenantId?: string): Promise<OutputTemplateSettings> {
   const scopeTenantId = resolveTenantId(tenantId);
   const existing = db.outputTemplateSettings.find((item) => item.userId === userId && item.tenantId === scopeTenantId);
@@ -2110,7 +2168,7 @@ export async function addImportJob(input: {
     properties: "物件",
     parties: "関係者",
     contracts: "契約",
-    service_requests: "対応依頼",
+    service_requests: "対応履歴",
   };
   const nowDate = new Date();
   const job: ImportJob = {
@@ -2118,7 +2176,7 @@ export async function addImportJob(input: {
     tenantId: resolveTenantId(input.tenantId),
     userId: input.userId,
     sourceType: input.sourceType,
-    title: input.title.trim() || `${sourceLabel[input.sourceType]}取込 - ${targetLabel[input.targetEntity]}`,
+    title: input.title.trim() || `${sourceLabel[input.sourceType]}資料 - ${targetLabel[input.targetEntity]}`,
     targetEntity: input.targetEntity,
     status: input.status ?? "queued",
     notes: input.notes?.trim() || undefined,
@@ -2152,7 +2210,7 @@ export async function updateImportJobMapping(input: {
   }
   if (input.status) {
     if (!isValidImportStatusTransition(job.status, input.status, Boolean(input.allowRetry))) {
-      throw new Error(`取込ジョブ状態遷移が不正です: ${job.status} -> ${input.status}`);
+      throw new Error(`資料読取記録の状態変更が不正です: ${job.status} -> ${input.status}`);
     }
     job.status = input.status;
   }
