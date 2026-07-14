@@ -28,7 +28,7 @@ type WorkObject = {
   subtitle: string;
   relation: string;
   relationLabel: string;
-  taskReason: string;
+  statusNote: string;
   updatedAt?: Date;
   href: string;
   secondaryHref?: string;
@@ -56,19 +56,23 @@ const copyByLocale = {
     needsInput: "補完が必要",
     ready: "整理済み",
     unassigned: "未紐付け",
-    detailTitle: "現在のタスク",
-    taskQueue: "整理タスク",
-    taskQueueDesc: "対象名よりも、止まっている理由と次の操作を先に見ます。",
-    whyBlocked: "なぜ処理が必要か",
+    detailTitle: "選択中の対象",
+    objectListTitle: "資料一覧",
+    objectListDesc: "補完や紐付けが必要な対象を先に表示します。",
+    statusNote: "現在の状態",
     relatedObjects: "関連する対象",
     taskUpdated: "更新",
-    nextStep: "次に行うこと",
+    availableActions: "操作",
+    status: "状態",
+    object: "対象",
+    typeLabel: "種類",
+    relation: "関連",
+    action: "操作",
     noSelection: "対象を選択してください。",
     empty: "条件に一致する対象がありません。",
     open: "開く",
     continueWork: "整理を続ける",
     addMaterial: "資料を追加",
-    output: "出力へ",
     editParty: "関係者を編集",
     openProperty: "物件を見る",
     processMaterial: "資料を確認",
@@ -79,12 +83,12 @@ const copyByLocale = {
     personUnset: "関係者未設定",
     propertyUnset: "物件未設定",
     propertyRelationHint: "関係者や案件に紐付けて使います",
-    reasonCaseNeeds: "案件情報に未確認の項目があります。出力前に不足情報を確認します。",
-    reasonCaseReady: "案件の基本情報は整理済みです。出力前の確認または追加資料の登録に進めます。",
-    reasonPartyNeeds: "関係者の連絡先または役割が不足しています。案件へ進む前に確認します。",
-    reasonPartyReady: "関係者の基本情報は整理済みです。関連案件や物件から次の処理へ進めます。",
+    reasonCaseNeeds: "案件資料に未整理の項目があります。関係者、物件、費用などの基本情報を確認します。",
+    reasonCaseReady: "案件の基本情報は整理済みです。関連資料の追加や内容確認を続けられます。",
+    reasonPartyNeeds: "関係者の連絡先または役割が不足しています。関連案件と紐付ける前に確認します。",
+    reasonPartyReady: "関係者の基本情報は整理済みです。関連案件や物件と合わせて確認できます。",
     reasonPropertyNeeds: "物件の価格、管理費、修繕積立などの基礎情報が不足しています。",
-    reasonPropertyReady: "物件の基礎情報は整理済みです。案件や出力に紐付けて使えます。",
+    reasonPropertyReady: "物件の基礎情報は整理済みです。案件や関係者と紐付けて使えます。",
     reasonInbox: "資料がまだ案件、関係者、物件のどれにも紐付いていません。まず紐付け先を決めます。",
     relationCase: "案件内の関係",
     relationParty: "関係先",
@@ -99,7 +103,7 @@ const copyByLocale = {
     createParty: "新建主体",
     createProperty: "新建物件",
     createCase: "新建案件",
-    upload: "导入资料",
+    upload: "读取资料",
     moreCreate: "其他新建",
     searchPlaceholder: "搜索姓名、物件、案件、资料名",
     filter: "筛选",
@@ -111,19 +115,23 @@ const copyByLocale = {
     needsInput: "待补全",
     ready: "已整理",
     unassigned: "未归属",
-    detailTitle: "当前任务",
-    taskQueue: "整理任务",
-    taskQueueDesc: "优先看为什么卡住、关联到谁、下一步做什么。",
-    whyBlocked: "为什么需要处理",
+    detailTitle: "当前对象",
+    objectListTitle: "资料索引",
+    objectListDesc: "待补全和未归属内容优先显示。",
+    statusNote: "当前状态",
     relatedObjects: "相关对象",
     taskUpdated: "更新",
-    nextStep: "下一步",
+    availableActions: "可执行操作",
+    status: "状态",
+    object: "对象",
+    typeLabel: "类型",
+    relation: "关联",
+    action: "操作",
     noSelection: "请选择一个对象。",
     empty: "没有符合条件的对象。",
     open: "打开",
     continueWork: "继续整理",
     addMaterial: "补充资料",
-    output: "去输出",
     editParty: "编辑主体",
     openProperty: "查看物件",
     processMaterial: "处理资料",
@@ -134,12 +142,12 @@ const copyByLocale = {
     personUnset: "主体未设置",
     propertyUnset: "物件未设置",
     propertyRelationHint: "可关联主体或案件后继续使用",
-    reasonCaseNeeds: "案件信息仍有未确认项，输出前需要继续核对。",
-    reasonCaseReady: "案件基础信息已整理，可以进入输出检查或补充资料。",
-    reasonPartyNeeds: "主体缺少联系方式或角色信息，进入案件前需要确认。",
-    reasonPartyReady: "主体基础信息已整理，可以从关联案件或物件继续推进。",
+    reasonCaseNeeds: "案件资料仍有待补全项，需要继续确认人员、物件、费用等基础信息。",
+    reasonCaseReady: "案件基础信息已整理，可以继续补充资料或查看关联内容。",
+    reasonPartyNeeds: "主体缺少联系方式或角色信息，关联到案件前需要确认。",
+    reasonPartyReady: "主体基础信息已整理，可以和关联案件或物件一起查看。",
     reasonPropertyNeeds: "物件缺少价格、管理费或修缮基金等基础信息。",
-    reasonPropertyReady: "物件基础信息已整理，可以关联案件或用于输出。",
+    reasonPropertyReady: "物件基础信息已整理，可以关联案件或主体继续使用。",
     reasonInbox: "资料还没有归属到案件、主体或物件，需要先选择归属对象。",
     relationCase: "案件关系",
     relationParty: "关联对象",
@@ -166,19 +174,23 @@ const copyByLocale = {
     needsInput: "보완 필요",
     ready: "정리됨",
     unassigned: "미연결",
-    detailTitle: "현재 작업",
-    taskQueue: "정리 작업",
-    taskQueueDesc: "대상명보다 막힌 이유, 연결 대상, 다음 작업을 먼저 봅니다.",
-    whyBlocked: "처리가 필요한 이유",
+    detailTitle: "선택한 대상",
+    objectListTitle: "자료 목록",
+    objectListDesc: "보완 또는 연결이 필요한 대상을 먼저 표시합니다.",
+    statusNote: "현재 상태",
     relatedObjects: "관련 대상",
     taskUpdated: "업데이트",
-    nextStep: "다음 단계",
+    availableActions: "작업",
+    status: "상태",
+    object: "대상",
+    typeLabel: "종류",
+    relation: "연결",
+    action: "작업",
     noSelection: "대상을 선택해 주세요.",
     empty: "조건에 맞는 대상이 없습니다.",
     open: "열기",
     continueWork: "정리 계속",
     addMaterial: "자료 추가",
-    output: "출력으로",
     editParty: "관계자 편집",
     openProperty: "매물 보기",
     processMaterial: "자료 확인",
@@ -189,12 +201,12 @@ const copyByLocale = {
     personUnset: "관계자 미설정",
     propertyUnset: "매물 미설정",
     propertyRelationHint: "관계자 또는 안건에 연결해 사용합니다",
-    reasonCaseNeeds: "안건 정보에 미확인 항목이 있습니다. 출력 전에 부족 정보를 확인합니다.",
-    reasonCaseReady: "안건 기본 정보가 정리되었습니다. 출력 확인 또는 자료 추가로 진행할 수 있습니다.",
-    reasonPartyNeeds: "관계자의 연락처 또는 역할 정보가 부족합니다. 안건으로 진행하기 전에 확인합니다.",
-    reasonPartyReady: "관계자 기본 정보가 정리되었습니다. 관련 안건이나 매물에서 다음 작업을 진행합니다.",
+    reasonCaseNeeds: "안건 자료에 보완할 항목이 있습니다. 관계자, 매물, 비용 등 기본 정보를 확인합니다.",
+    reasonCaseReady: "안건 기본 정보가 정리되었습니다. 자료 추가 또는 관련 내용 확인을 계속할 수 있습니다.",
+    reasonPartyNeeds: "관계자의 연락처 또는 역할 정보가 부족합니다. 관련 안건과 연결하기 전에 확인합니다.",
+    reasonPartyReady: "관계자 기본 정보가 정리되었습니다. 관련 안건이나 매물과 함께 확인할 수 있습니다.",
     reasonPropertyNeeds: "매물의 가격, 관리비, 수선비 등 기본 정보가 부족합니다.",
-    reasonPropertyReady: "매물 기본 정보가 정리되었습니다. 안건 또는 출력에 연결해 사용할 수 있습니다.",
+    reasonPropertyReady: "매물 기본 정보가 정리되었습니다. 안건이나 관계자와 연결해 사용할 수 있습니다.",
     reasonInbox: "자료가 아직 안건, 관계자, 매물에 연결되지 않았습니다. 먼저 연결 대상을 정합니다.",
     relationCase: "안건 관계",
     relationParty: "연결 대상",
@@ -256,6 +268,21 @@ function getSourceTypeLabel(locale: Locale, sourceType: HubImportJobItem["source
   return labels[sourceType][locale];
 }
 
+const objectStatusRank: Record<WorkObject["status"], number> = {
+  needs_input: 0,
+  unassigned: 1,
+  ready: 2,
+};
+
+function compareWorkObjects(a: WorkObject, b: WorkObject) {
+  const statusDiff = objectStatusRank[a.status] - objectStatusRank[b.status];
+  if (statusDiff !== 0) return statusDiff;
+  const aTime = a.updatedAt?.getTime() ?? 0;
+  const bTime = b.updatedAt?.getTime() ?? 0;
+  if (aTime !== bTime) return bTime - aTime;
+  return a.title.localeCompare(b.title);
+}
+
 function countCaseFields(data: Record<string, unknown>) {
   return Object.keys(data).filter((key) => !key.startsWith("__")).length;
 }
@@ -271,7 +298,7 @@ function hrefWithFilters(type: ObjectType, status: ObjectStatus, query: string, 
 }
 
 function buildSearchText(item: WorkObject) {
-  return [item.title, item.subtitle, item.relation, item.taskReason].join(" ").toLowerCase();
+  return [item.title, item.subtitle, item.relation, item.statusNote].join(" ").toLowerCase();
 }
 
 function getCreateActions(copy: Record<string, string>) {
@@ -316,11 +343,9 @@ export default async function OrganizeCenterPage({ searchParams }: OrganizeCente
       subtitle: getStatusLabel(status, copy),
       relation: `${applicantName || copy.personUnset} / ${propertyName || copy.propertyUnset}`,
       relationLabel: copy.relationCase,
-      taskReason: status === "ready" ? copy.reasonCaseReady : copy.reasonCaseNeeds,
+      statusNote: status === "ready" ? copy.reasonCaseReady : copy.reasonCaseNeeds,
       updatedAt: item.updatedAt,
       href: `/cases/${encodeURIComponent(item.id)}`,
-      secondaryHref: `/output-center?caseId=${encodeURIComponent(item.id)}`,
-      secondaryLabel: copy.output,
     };
   });
 
@@ -335,7 +360,7 @@ export default async function OrganizeCenterPage({ searchParams }: OrganizeCente
       subtitle: item.partyType === "corporate" ? copy.corporate : copy.individual,
       relation: item.relatedPropertyHint || copy.noRelation,
       relationLabel: copy.relationParty,
-      taskReason: status === "ready" ? copy.reasonPartyReady : copy.reasonPartyNeeds,
+      statusNote: status === "ready" ? copy.reasonPartyReady : copy.reasonPartyNeeds,
       href: `/parties/${encodeURIComponent(item.id)}/edit`,
       secondaryHref: `/parties?focus=${encodeURIComponent(item.id)}`,
       secondaryLabel: copy.open,
@@ -352,10 +377,8 @@ export default async function OrganizeCenterPage({ searchParams }: OrganizeCente
       subtitle: item.area,
       relation: copy.propertyRelationHint,
       relationLabel: copy.relationProperty,
-      taskReason: status === "ready" ? copy.reasonPropertyReady : copy.reasonPropertyNeeds,
+      statusNote: status === "ready" ? copy.reasonPropertyReady : copy.reasonPropertyNeeds,
       href: `/properties?focus=${encodeURIComponent(item.id)}`,
-      secondaryHref: "/output-center",
-      secondaryLabel: copy.output,
     };
   });
 
@@ -369,19 +392,14 @@ export default async function OrganizeCenterPage({ searchParams }: OrganizeCente
       subtitle: getSourceTypeLabel(locale, item.sourceType),
       relation: copy.noRelation,
       relationLabel: copy.relationInbox,
-      taskReason: copy.reasonInbox,
+      statusNote: copy.reasonInbox,
       updatedAt: item.createdAt,
       href: `/import-center?job=${encodeURIComponent(item.id)}`,
       secondaryHref: "/import-center",
       secondaryLabel: copy.processMaterial,
     }));
 
-  const allItems = [...caseItems, ...partyItems, ...propertyItems, ...inboxItems].sort((a, b) => {
-    const aTime = a.updatedAt?.getTime() ?? 0;
-    const bTime = b.updatedAt?.getTime() ?? 0;
-    if (aTime !== bTime) return bTime - aTime;
-    return a.title.localeCompare(b.title);
-  });
+  const allItems = [...caseItems, ...partyItems, ...propertyItems, ...inboxItems].sort(compareWorkObjects);
 
   const normalizedQuery = query.toLowerCase();
   const filteredItems = allItems.filter((item) => {
@@ -513,14 +531,22 @@ export default async function OrganizeCenterPage({ searchParams }: OrganizeCente
               <div className="p-4">
                 <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
                   <div>
-                    <h2 className="text-lg font-black text-slate-950">{copy.taskQueue}</h2>
-                    <p className="mt-1 text-xs font-semibold text-slate-500">{copy.taskQueueDesc}</p>
+                    <h2 className="text-lg font-black text-slate-950">{copy.objectListTitle}</h2>
+                    <p className="mt-1 text-xs font-semibold text-slate-500">{copy.objectListDesc}</p>
                   </div>
                   <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">
                     {filteredItems.length}
                   </span>
                 </div>
-                <div className="space-y-3">
+                <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+                  <div className="hidden grid-cols-[112px_minmax(0,1.7fr)_110px_minmax(0,1.25fr)_108px] border-b border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-black uppercase text-slate-500 lg:grid">
+                    <span>{copy.status}</span>
+                    <span>{copy.object}</span>
+                    <span>{copy.typeLabel}</span>
+                    <span>{copy.relation}</span>
+                    <span>{copy.taskUpdated}</span>
+                  </div>
+                  <div className="divide-y divide-slate-100">
                   {filteredItems.map((item) => {
                     const active = selectedItem?.id === item.id;
                     return (
@@ -528,47 +554,34 @@ export default async function OrganizeCenterPage({ searchParams }: OrganizeCente
                         key={`${item.type}:${item.id}`}
                         href={hrefWithFilters(selectedType, selectedStatus, query, item.id)}
                         className={
-                          "block rounded-lg border bg-white p-4 transition hover:border-blue-200 hover:bg-blue-50/30 " +
-                          (active ? "border-[#002FA7] shadow-sm ring-1 ring-blue-100" : "border-slate-200")
+                          "grid gap-3 px-3 py-3 text-sm transition hover:bg-blue-50/40 lg:grid-cols-[112px_minmax(0,1.7fr)_110px_minmax(0,1.25fr)_108px] lg:items-center " +
+                          (active ? "bg-blue-50/60 ring-1 ring-inset ring-[#002FA7]" : "bg-white")
                         }
                       >
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div className="flex min-w-0 items-start gap-3">
-                            <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#edf2fd] text-[#002FA7]">
-                              <span className="material-symbols-outlined text-[18px]" aria-hidden="true">{getTypeIcon(item.type)}</span>
-                            </span>
-                            <div className="min-w-0">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-black ${getStatusClass(item.status)}`}>
-                                  {getStatusLabel(item.status, copy)}
-                                </span>
-                                <span className="text-xs font-black text-slate-500">{getTypeLabel(item.type, copy)}</span>
-                              </div>
-                              <h3 className="mt-2 line-clamp-2 text-base font-black leading-6 text-slate-950">{item.title}</h3>
-                            </div>
-                          </div>
-                          <span className="text-xs font-bold tabular-nums text-slate-500">
-                            {item.updatedAt ? formatDate(item.updatedAt, locale) : copy.noDate}
+                        <div>
+                          <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-black ${getStatusClass(item.status)}`}>
+                            {getStatusLabel(item.status, copy)}
                           </span>
                         </div>
-
-                        <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_1fr_auto]">
-                          <div className="rounded-lg bg-slate-50 p-3">
-                            <p className="text-[11px] font-black text-slate-500">{copy.whyBlocked}</p>
-                            <p className="mt-1 line-clamp-2 text-sm font-semibold leading-5 text-slate-800">{item.taskReason}</p>
-                          </div>
-                          <div className="rounded-lg bg-slate-50 p-3">
-                            <p className="text-[11px] font-black text-slate-500">{item.relationLabel}</p>
-                            <p className="mt-1 line-clamp-2 text-sm font-semibold leading-5 text-slate-800">{item.relation}</p>
-                          </div>
-                          <div className="flex items-center justify-between gap-3 rounded-lg bg-slate-950 px-3 py-3 text-sm font-black text-white lg:min-w-32">
-                            <span>{getPrimaryActionLabel(item.type, copy)}</span>
-                            <span className="material-symbols-outlined text-[17px]" aria-hidden="true">arrow_forward</span>
-                          </div>
+                        <div className="min-w-0">
+                          <h3 className="truncate font-black text-slate-950">{item.title}</h3>
+                          <p className="mt-1 truncate text-xs font-semibold text-slate-500">{item.subtitle}</p>
+                        </div>
+                        <div className="flex items-center gap-2 font-black text-slate-700">
+                          <span className="material-symbols-outlined text-[17px] text-[#002FA7]" aria-hidden="true">{getTypeIcon(item.type)}</span>
+                          <span>{getTypeLabel(item.type, copy)}</span>
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-xs font-black text-slate-500">{item.relationLabel}</p>
+                          <p className="mt-1 truncate font-semibold text-slate-800">{item.relation}</p>
+                        </div>
+                        <div className="text-xs font-bold tabular-nums text-slate-500">
+                          {item.updatedAt ? formatDate(item.updatedAt, locale) : copy.noDate}
                         </div>
                       </Link>
                     );
                   })}
+                  </div>
                 </div>
               </div>
             ) : (
@@ -592,9 +605,9 @@ export default async function OrganizeCenterPage({ searchParams }: OrganizeCente
                   <p className="mt-2 text-sm font-semibold text-slate-600">{getTypeLabel(selectedItem.type, copy)} · {selectedItem.subtitle}</p>
                 </div>
                 <div className="space-y-3 p-4 text-sm">
-                  <div className="rounded-lg border-l-4 border-rose-500 bg-rose-50 p-3">
-                    <p className="text-xs font-black text-rose-700">{copy.whyBlocked}</p>
-                    <p className="mt-2 font-semibold leading-6 text-slate-900">{selectedItem.taskReason}</p>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-xs font-black text-slate-500">{copy.statusNote}</p>
+                    <p className="mt-2 font-semibold leading-6 text-slate-900">{selectedItem.statusNote}</p>
                   </div>
                   <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                     <p className="text-xs font-black text-slate-500">{copy.relatedObjects}</p>
@@ -616,7 +629,7 @@ export default async function OrganizeCenterPage({ searchParams }: OrganizeCente
                   </div>
                 </div>
                 <div className="space-y-2 border-t border-slate-200 p-4">
-                  <p className="text-xs font-black text-slate-500">{copy.nextStep}</p>
+                  <p className="text-xs font-black text-slate-500">{copy.availableActions}</p>
                   <Link href={selectedItem.href} className="flex h-11 items-center justify-center rounded bg-slate-950 px-4 text-sm font-black text-white hover:bg-slate-800">
                     {getPrimaryActionLabel(selectedItem.type, copy)}
                   </Link>

@@ -289,3 +289,42 @@ button:disabled:not([class~="text-white"]):not([class~="!text-white"]) {
     transform: translateY(0);
   }
 }
+
+@keyframes caseProgressGlow {
+  0% {
+    box-shadow: 0 0 0 0 rgba(79, 70, 229, 0);
+    transform: translateY(0);
+  }
+  22% {
+    box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.12), 0 12px 28px rgba(79, 70, 229, 0.12);
+    transform: translateY(-1px);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(79, 70, 229, 0);
+    transform: translateY(0);
+  }
+}
+
+@keyframes caseProgressShine {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(420%);
+  }
+}
+
+@keyframes caseXpBadge {
+  0% {
+    opacity: 0;
+    transform: translateY(6px) scale(0.92);
+  }
+  45% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.04);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}

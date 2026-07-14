@@ -335,7 +335,7 @@ export default async function GuaranteeApplicationPreviewPage({ searchParams }: 
                         ? "候補を保存してからダウンロード"
                         : manualPlacementCount > 0
                           ? "位置を保存してからダウンロード"
-                          : "出力前チェックを完了してください"}
+                          : "生成チェックを完了してください"}
               </button>
             )}
           </div>
@@ -521,7 +521,7 @@ export default async function GuaranteeApplicationPreviewPage({ searchParams }: 
               </section>
 
               <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                <h3 className="text-sm font-black text-slate-950">出力前チェック</h3>
+                <h3 className="text-sm font-black text-slate-950">生成チェック</h3>
                 <div className="mt-3 grid grid-cols-3 gap-2 text-center">
                   <div className="rounded-lg bg-slate-50 p-3">
                     <p className="text-[11px] font-bold text-slate-500">手動位置</p>

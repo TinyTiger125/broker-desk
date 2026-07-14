@@ -45,7 +45,7 @@ const outputCenterCopy = {
     newBatchOutput: "提案データを作成",
     selected: "選択中",
     selectTemplate: "保証会社を選ぶ",
-    generationSettings: "出力前チェック",
+    generationSettings: "生成チェック",
     targetQuote: "対象提案（見積・資金計画用）",
     targetProperty: "対象物件",
     targetParty: "対象関係者",
@@ -53,21 +53,21 @@ const outputCenterCopy = {
     language: "言語",
     generateDocument: "帳票を出力",
     recentOutputs: "出力履歴",
-    templateHitTitle: "テンプレート命中率",
-    templateHitDesc: "現在の履歴フィルタ条件に対する版管理適用状況",
-    withTemplateVersion: "版あり",
-    withoutTemplateVersion: "版未設定",
-    topTemplateVersions: "上位テンプレート版",
+    templateHitTitle: "テンプレート利用状況",
+    templateHitDesc: "現在の履歴条件で使われたテンプレート記録",
+    withTemplateVersion: "記録あり",
+    withoutTemplateVersion: "記録なし",
+    topTemplateVersions: "よく使うテンプレート",
     viewAll: "すべて表示",
     allType: "すべての種別",
     allLang: "すべての言語",
     allFormat: "すべての形式",
-    allTemplate: "すべての版",
-    templateUnbound: "版未設定",
-    templateVersion: "テンプレート版",
+    allTemplate: "すべてのテンプレート",
+    templateUnbound: "テンプレート未記録",
+    templateVersion: "使用テンプレート",
     filterApply: "適用",
     filterReset: "リセット",
-    exportHitRate: "命中率CSV",
+    exportHitRate: "利用状況CSV",
     emptyFilteredOutputs: "現在のフィルタ条件に一致する出力履歴がありません。",
     previewMode: "PDFプレビュー",
     download: "ダウンロード",
@@ -109,6 +109,13 @@ const outputCenterCopy = {
     guaranteePrimaryDesc: "現在の案件を確認し、足りない項目だけ補って、選択した保証会社の申込書を出します。",
     guaranteeNextAction: "次にやること",
     guaranteeChecklist: "残りの確認項目",
+    outputPathCase: "案件",
+    outputPathTemplate: "保証会社",
+    outputPathPreview: "プレビュー",
+    caseReadyForPreview: "プレビュー可",
+    caseMissingItems: "未完了",
+    chooseThisCase: "この案件を選ぶ",
+    caseCardUpdated: "更新",
     guaranteeDetailToggle: "詳細を表示",
     guaranteeBackstageToggle: "補助機能を表示",
     guaranteeCase: "対象案件",
@@ -134,7 +141,7 @@ const outputCenterCopy = {
     guaranteePreviewNeedsCase: "案件を選択すると、確認済みデータを使って申込書を出せます。",
     guaranteeSourceConfirmed: "確認済み案件データ",
     guaranteeSourceDraft: "会社別追加項目",
-    guaranteeSourceCandidate: "候補値（確認が必要）",
+    guaranteeSourceCandidate: "読取内容（確認が必要）",
     guaranteeSourceMissing: "未入力",
     guaranteeCaseLink: "案件を確認",
     guaranteeImportLink: "入力ファイルを取り込む",
@@ -147,7 +154,7 @@ const outputCenterCopy = {
     newBatchOutput: "创建提案数据",
     selected: "已选择",
     selectTemplate: "选择保证会社",
-    generationSettings: "输出前检查",
+    generationSettings: "生成检查",
     targetQuote: "目标提案（用于费用/资金计划）",
     targetProperty: "目标物件",
     targetParty: "目标主体",
@@ -155,21 +162,21 @@ const outputCenterCopy = {
     language: "语言",
     generateDocument: "输出文书",
     recentOutputs: "输出历史",
-    templateHitTitle: "模板命中率",
-    templateHitDesc: "基于当前历史筛选条件的版本管理覆盖率",
-    withTemplateVersion: "有版本绑定",
-    withoutTemplateVersion: "未绑定版本",
-    topTemplateVersions: "模板版本 Top",
+    templateHitTitle: "范本使用情况",
+    templateHitDesc: "查看已生成文件使用过哪些范本",
+    withTemplateVersion: "有范本记录",
+    withoutTemplateVersion: "未记录范本",
+    topTemplateVersions: "常用范本",
     viewAll: "查看全部",
     allType: "全部类型",
     allLang: "全部语言",
     allFormat: "全部格式",
-    allTemplate: "全部版本",
-    templateUnbound: "未绑定版本",
-    templateVersion: "模板版本",
+    allTemplate: "全部范本",
+    templateUnbound: "未记录范本",
+    templateVersion: "使用范本",
     filterApply: "应用",
     filterReset: "重置",
-    exportHitRate: "命中率 CSV",
+    exportHitRate: "使用情况 CSV",
     emptyFilteredOutputs: "当前筛选条件下暂无输出记录。",
     previewMode: "PDF 预览",
     download: "下载",
@@ -211,6 +218,13 @@ const outputCenterCopy = {
     guaranteePrimaryDesc: "确认当前案件，只补齐缺失项，然后输出所选保证会社申请书。",
     guaranteeNextAction: "下一步",
     guaranteeChecklist: "剩余确认项",
+    outputPathCase: "案件",
+    outputPathTemplate: "保证会社",
+    outputPathPreview: "预览",
+    caseReadyForPreview: "可预览",
+    caseMissingItems: "未完成",
+    chooseThisCase: "选择这个案件",
+    caseCardUpdated: "更新",
     guaranteeDetailToggle: "显示详情",
     guaranteeBackstageToggle: "显示辅助功能",
     guaranteeCase: "目标案件",
@@ -236,7 +250,7 @@ const outputCenterCopy = {
     guaranteePreviewNeedsCase: "选择案件后，可使用已确认数据输出申请书。",
     guaranteeSourceConfirmed: "已确认案件数据",
     guaranteeSourceDraft: "会社别追加项目",
-    guaranteeSourceCandidate: "候选值（需确认）",
+    guaranteeSourceCandidate: "读取内容（需确认）",
     guaranteeSourceMissing: "未填写",
     guaranteeCaseLink: "查看案件",
     guaranteeImportLink: "导入输入文件",
@@ -249,7 +263,7 @@ const outputCenterCopy = {
     newBatchOutput: "제안 데이터 작성",
     selected: "선택됨",
     selectTemplate: "보증회사 선택",
-    generationSettings: "출력 전 점검",
+    generationSettings: "생성 점검",
     targetQuote: "대상 제안(비용/자금계획용)",
     targetProperty: "대상 매물",
     targetParty: "대상 관계자",
@@ -257,21 +271,21 @@ const outputCenterCopy = {
     language: "언어",
     generateDocument: "문서 출력",
     recentOutputs: "출력 이력",
-    templateHitTitle: "템플릿 적중률",
-    templateHitDesc: "현재 이력 필터 기준 버전 관리 적용률",
-    withTemplateVersion: "버전 연결",
-    withoutTemplateVersion: "버전 미설정",
-    topTemplateVersions: "상위 템플릿 버전",
+    templateHitTitle: "템플릿 사용 현황",
+    templateHitDesc: "현재 이력 조건에서 사용된 템플릿 기록",
+    withTemplateVersion: "기록 있음",
+    withoutTemplateVersion: "기록 없음",
+    topTemplateVersions: "자주 쓰는 템플릿",
     viewAll: "전체 보기",
     allType: "전체 유형",
     allLang: "전체 언어",
     allFormat: "전체 형식",
-    allTemplate: "전체 버전",
-    templateUnbound: "버전 미설정",
-    templateVersion: "템플릿 버전",
+    allTemplate: "전체 템플릿",
+    templateUnbound: "템플릿 미기록",
+    templateVersion: "사용 템플릿",
     filterApply: "적용",
     filterReset: "초기화",
-    exportHitRate: "적중률 CSV",
+    exportHitRate: "사용 현황 CSV",
     emptyFilteredOutputs: "현재 필터 조건에 맞는 출력 이력이 없습니다.",
     previewMode: "PDF 미리보기",
     download: "다운로드",
@@ -313,6 +327,13 @@ const outputCenterCopy = {
     guaranteePrimaryDesc: "현재 안건을 확인하고 부족한 항목만 보완한 뒤 선택한 보증회사 신청서를 출력합니다.",
     guaranteeNextAction: "다음 작업",
     guaranteeChecklist: "남은 확인 항목",
+    outputPathCase: "안건",
+    outputPathTemplate: "보증회사",
+    outputPathPreview: "미리보기",
+    caseReadyForPreview: "미리보기 가능",
+    caseMissingItems: "미완료",
+    chooseThisCase: "이 안건 선택",
+    caseCardUpdated: "갱신",
     guaranteeDetailToggle: "상세 표시",
     guaranteeBackstageToggle: "보조 기능 표시",
     guaranteeCase: "대상 안건",
@@ -341,7 +362,7 @@ const outputCenterCopy = {
     guaranteeSourceCandidate: "후보값(확인 필요)",
     guaranteeSourceMissing: "미입력",
     guaranteeCaseLink: "안건 확인",
-    guaranteeImportLink: "입력 파일 가져오기",
+    guaranteeImportLink: "자료 등록으로 이동",
     guaranteeLegacyTitle: "기존 출력",
     guaranteeLegacyDesc: "매물 개요서와 제안 관련 기존 출력은 보조 기능으로 유지합니다.",
   },
@@ -477,6 +498,30 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
   });
   const guaranteeBlockingCount = guaranteeReadinessGroups.find((group) => group.id === "unresolved")?.fields.length ?? 0;
   const guaranteeBlockingFields = guaranteeReadinessGroups.find((group) => group.id === "unresolved")?.fields ?? [];
+  const caseSelectorCards = !selectedCase
+    ? await Promise.all(
+        cases.slice(0, 9).map(async (caseItem) => {
+          const draft = await getGuaranteeApplicationDraft({
+            userId: user.id,
+            tenantId,
+            caseId: caseItem.id,
+            templateId: selectedGuaranteeTemplate.id,
+          });
+          const readinessGroups = buildGuaranteeApplicationReadiness({
+            brokerageCase: caseItem,
+            template: selectedGuaranteeTemplate,
+            candidateData: guaranteeCandidateData,
+            draft,
+          });
+          const unresolvedCount = readinessGroups.find((group) => group.id === "unresolved")?.fields.length ?? 0;
+          const draftMissingCount = buildGuaranteeDraftReadiness(draft, selectedGuaranteeTemplate.id).requiredMissingCount;
+          return {
+            caseItem,
+            missingCount: unresolvedCount + draftMissingCount,
+          };
+        }),
+      )
+    : [];
   const guaranteeTemplateCards = activeGuaranteeTemplates.map((template, index) => {
     const draft = guaranteeTemplateDrafts[index] ?? null;
     const readinessGroups = buildGuaranteeApplicationReadiness({
@@ -528,6 +573,30 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
       ? copy.guaranteeReviewMissing
       : copy.guaranteePreviewAction.replace("{company}", selectedGuaranteeTemplate.companyDisplayName);
   const outputNextIcon = !selectedCase ? "folder_open" : firstBlockingField ? "fact_check" : "visibility";
+  const outputPathItems = [
+    {
+      label: copy.outputPathCase,
+      value: selectedCase?.caseTitle ?? copy.guaranteeSelectCaseFirst,
+      ready: Boolean(selectedCase),
+      icon: "folder_open",
+    },
+    {
+      label: copy.outputPathTemplate,
+      value: selectedGuaranteeTemplate.companyDisplayName,
+      ready: Boolean(selectedCase),
+      icon: "article",
+    },
+    {
+      label: copy.outputPathPreview,
+      value: !selectedCase
+        ? copy.guaranteeSelectCaseFirst
+        : guaranteeBlockingCount > 0
+          ? `${copy.caseMissingItems}: ${guaranteeBlockingCount}`
+          : copy.caseReadyForPreview,
+      ready: Boolean(selectedCase && guaranteeBlockingCount === 0),
+      icon: guaranteeBlockingCount > 0 ? "fact_check" : "visibility",
+    },
+  ];
   const legacySectionId = "existing-outputs";
   const historyType =
     params?.historyType && isOutputDocType(params.historyType) ? params.historyType : "all";
@@ -725,9 +794,9 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
       ko: "문서를 출력했습니다.",
     },
     output_validation_failed: {
-      ja: "出力前チェックで不足項目が見つかりました。",
-      zh: "输出前校验发现缺失项。",
-      ko: "출력 전 점검에서 누락 항목이 발견되었습니다.",
+      ja: "生成チェックで不足項目が見つかりました。",
+      zh: "生成检查发现缺失项。",
+      ko: "생성 점검에서 누락 항목이 발견되었습니다.",
     },
   } as const;
   const flashKey = String(params?.flash ?? "").trim() as keyof typeof flashMap;
@@ -777,6 +846,9 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
       <section className="rounded border border-slate-300 bg-white p-4">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
+            <p className="text-xs font-black text-[#002FA7]">
+              {locale === "zh" ? "三步生成申请书" : locale === "ko" ? "3단계 신청서 작성" : "3ステップで申込書作成"}
+            </p>
             <h2 className="text-xl font-black text-slate-950">{copy.guaranteePrimaryTitle}</h2>
             <p className="mt-1 text-sm text-slate-700">
               {copy.guaranteeCase}: <span className="font-semibold">{selectedCase?.caseTitle ?? copy.guaranteeNoCase}</span>
@@ -790,6 +862,26 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
               }`}>
                 {guaranteeBlockingCount > 0 ? `${copy.guaranteeMissing}: ${guaranteeBlockingCount}` : copy.guaranteeReady}
               </span>
+            </div>
+            <div className="mt-4 grid gap-2 md:grid-cols-3">
+              {outputPathItems.map((item, index) => (
+                <div
+                  key={item.label}
+                  className={`rounded-lg border px-3 py-3 ${
+                    item.ready ? "border-emerald-300 bg-emerald-50" : "border-slate-200 bg-slate-50"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 text-[11px] font-black text-slate-500">
+                    <span className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-black ${
+                      item.ready ? "bg-emerald-700 text-white" : "bg-slate-200 text-slate-700"
+                    }`}>
+                      {index + 1}
+                    </span>
+                    {item.label}
+                  </div>
+                  <p className={`mt-2 truncate text-sm font-black ${item.ready ? "text-emerald-800" : "text-slate-700"}`}>{item.value}</p>
+                </div>
+              ))}
             </div>
           </div>
           <Link href={outputNextHref} className="inline-flex min-w-[13rem] items-center justify-center gap-2 rounded bg-slate-950 px-4 py-3 text-sm font-black text-white hover:bg-slate-800">
@@ -807,17 +899,26 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
           </div>
           {cases.length > 0 ? (
             <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
-              {cases.slice(0, 9).map((caseItem) => (
+              {caseSelectorCards.map(({ caseItem, missingCount }) => (
                 <Link
                   key={caseItem.id}
                   href={`/output-center?caseId=${encodeURIComponent(caseItem.id)}&guaranteeTemplate=${encodeURIComponent(selectedGuaranteeTemplate.id)}`}
-                  className="min-h-28 rounded border border-slate-200 bg-white p-4 hover:border-[#002FA7] hover:bg-slate-50"
+                  className="min-h-32 rounded border border-slate-200 bg-white p-4 hover:border-[#002FA7] hover:bg-slate-50"
                 >
-                  <span className="text-xs font-black text-[#002FA7]">{formatDate(caseItem.updatedAt, locale)}</span>
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="text-xs font-black text-[#002FA7]">
+                      {copy.caseCardUpdated}: {formatDate(caseItem.updatedAt, locale)}
+                    </span>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-black ${
+                      missingCount > 0 ? "bg-rose-100 text-rose-700" : "bg-emerald-100 text-emerald-800"
+                    }`}>
+                      {missingCount > 0 ? `${copy.caseMissingItems}: ${missingCount}` : copy.caseReadyForPreview}
+                    </span>
+                  </div>
                   <span className="mt-2 block truncate text-base font-black text-slate-950">{caseItem.caseTitle}</span>
                   <span className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-slate-600">
                     <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
-                    {copy.guaranteeTemplate}
+                    {copy.chooseThisCase}
                   </span>
                 </Link>
               ))}
@@ -1405,7 +1506,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
               <div className="rounded-lg border border-blue-100 bg-white p-3 text-xs text-slate-600">
                 <div className="flex items-center justify-between gap-3">
                   <p className="font-bold text-slate-800">
-                    {locale === "zh" ? "输出前确认" : locale === "ko" ? "출력 전 확인" : "出力前確認"}
+                    {locale === "zh" ? "生成前确认" : locale === "ko" ? "생성 전 확인" : "生成前確認"}
                   </p>
                   <Link href="/settings/output-templates" className="font-semibold text-[#001e40] hover:underline">
                     {locale === "zh" ? "调整模板" : locale === "ko" ? "템플릿 조정" : "テンプレート調整"}

@@ -101,7 +101,7 @@ export function PartyProfileForm({ action, defaults, locale, mode }: PartyProfil
         <div className="grid gap-3 md:grid-cols-3">
           <label className="space-y-1 md:col-span-3">
             <span className="text-xs font-semibold text-slate-600">{text.name}</span>
-            <input name="name" required defaultValue={defaults?.name ?? ""} className={inputClass} />
+            <input name="name" required={mode === "edit"} defaultValue={defaults?.name ?? ""} className={inputClass} />
           </label>
           <label className="space-y-1">
             <span className="text-xs font-semibold text-slate-600">{text.type}</span>

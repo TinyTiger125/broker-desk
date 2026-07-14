@@ -6,10 +6,11 @@ import {
   uploadAndParseExcelAction,
   uploadAndParseIdentityDocumentAction,
 } from "@/app/actions";
+import { CaseProgressExperience } from "@/components/case-progress-experience";
 import { CaseWorkbenchFieldForm } from "@/components/case-workbench-field-form";
 import { IdentityDocumentUploadForm } from "@/components/identity-document-upload-form";
 import { PageFlashBanner } from "@/components/page-flash-banner";
-import { getBrokerageCaseById, listCorrectionEvents, listExtractionReviewItems, listImportJobs } from "@/lib/data";
+import { getBrokerageCaseById, listCaseWorkbenchFieldRules, listCorrectionEvents, listExtractionReviewItems, listImportJobs } from "@/lib/data";
 import type { CorrectionEvent, ExtractionReviewItem, ExtractionReviewStatus } from "@/lib/data";
 import { getCaseFieldAliases, getCaseFieldValue } from "@/lib/case-field-normalization";
 import {
@@ -22,6 +23,7 @@ import {
   type CaseFieldImportance,
   type CaseInformationTreeNode,
 } from "@/lib/case-field-catalog";
+import { buildCaseWorkbenchRuleMap, resolveCaseWorkbenchFieldRequirement, type CaseFieldRequirement } from "@/lib/case-workbench-field-rules";
 import { getCaseMergeHistory, getLatestActiveCaseMerge } from "@/lib/case-merge";
 import { formatDate } from "@/lib/format";
 import { getLocale, type Locale } from "@/lib/locale";
@@ -33,7 +35,7 @@ const WORKBENCH_FIELD_STATUS_KEY = "__workbenchFieldStatuses";
 
 type CasePageProps = {
   params: Promise<{ id: string }>;
-  searchParams?: Promise<{ flash?: string; node?: string }>;
+  searchParams?: Promise<{ flash?: string; node?: string; progressFrom?: string; progressGain?: string }>;
 };
 
 type WorkbenchTrustState =
@@ -73,6 +75,7 @@ type WorkbenchField = {
   sourceLabel: string;
   decision: WorkbenchFieldDecision;
   evidenceItems: WorkbenchFieldEvidence[];
+  requirement: CaseFieldRequirement;
 };
 
 type WorkbenchFieldInputKind = "text" | "textarea" | "tel" | "email" | "money" | "number" | "date" | "select";
@@ -270,20 +273,28 @@ function fieldNeedsAttention(field: WorkbenchField) {
   return field.required && field.state === "missing";
 }
 
+function fieldShouldShowInEditor(field: WorkbenchField) {
+  return field.state === "missing" || field.state === "conflict" || field.state === "needs_review" || field.state === "ai_suggested" || field.state === "unknown";
+}
+
+function getWorkbenchStateRank(field: WorkbenchField) {
+  if (field.state === "conflict") return 0;
+  if (field.state === "needs_review" || field.state === "ai_suggested" || field.state === "unknown") return 1;
+  if (field.state === "missing") return 2;
+  return 9;
+}
+
 function getWorkbenchEditRank(field: WorkbenchField) {
-  if (fieldNeedsAttention(field)) return 0;
-  if (field.state === "conflict" || field.state === "needs_review" || field.state === "unknown" || field.state === "rejected") return 1;
-  if (field.state === "ai_suggested") return 2;
-  if (field.state === "missing") return 3;
-  if (field.state === "not_applicable") return 5;
-  return 4;
+  if (!fieldShouldShowInEditor(field)) return 9;
+  return field.required ? 0 : 1;
 }
 
 function sortWorkbenchEditFields<T extends WorkbenchField>(fields: T[]) {
   return fields.slice().sort((a, b) => {
     const rankDiff = getWorkbenchEditRank(a) - getWorkbenchEditRank(b);
     if (rankDiff !== 0) return rankDiff;
-    if (a.required !== b.required) return a.required ? -1 : 1;
+    const stateRankDiff = getWorkbenchStateRank(a) - getWorkbenchStateRank(b);
+    if (stateRankDiff !== 0) return stateRankDiff;
     const aConfidence = getPrimaryEvidence(a)?.confidencePercent ?? -1;
     const bConfidence = getPrimaryEvidence(b)?.confidencePercent ?? -1;
     if (aConfidence !== bConfidence) return bConfidence - aConfidence;
@@ -294,6 +305,28 @@ function sortWorkbenchEditFields<T extends WorkbenchField>(fields: T[]) {
 function getWorkbenchGroupEditRank(fields: WorkbenchField[]) {
   if (fields.length === 0) return 99;
   return Math.min(...fields.map(getWorkbenchEditRank));
+}
+
+function getDossierMapFieldRank(field: WorkbenchField) {
+  if (fieldShouldShowInEditor(field)) return field.required ? 0 : 1;
+  if (field.state === "confirmed" || field.state === "edited") return 2;
+  if (field.state === "not_applicable") return 3;
+  if (field.state === "rejected") return 4;
+  return 5;
+}
+
+function sortDossierMapFields<T extends WorkbenchField>(fields: T[]) {
+  return fields.slice().sort((a, b) => {
+    const rankDiff = getDossierMapFieldRank(a) - getDossierMapFieldRank(b);
+    if (rankDiff !== 0) return rankDiff;
+    const stateRankDiff = getWorkbenchStateRank(a) - getWorkbenchStateRank(b);
+    if (stateRankDiff !== 0) return stateRankDiff;
+    return a.label.localeCompare(b.label);
+  });
+}
+
+function getWorkbenchFieldAnchor(fieldKey: string) {
+  return `case-field-${fieldKey.replaceAll(".", "-")}`;
 }
 
 function getImportanceLabel(locale: Locale, importance: CaseFieldImportance) {
@@ -377,6 +410,7 @@ function buildWorkbenchField(input: {
   confirmedData: Record<string, unknown>;
   statusMap: Record<string, string>;
   reviewByFieldKey: Map<string, ExtractionReviewItem[]>;
+  ruleMap: ReadonlyMap<string, CaseFieldRequirement>;
 }): WorkbenchField {
   const value = readText(input.confirmedData, input.fieldKey);
   const catalogDefinition = getCaseFieldDefinition(input.fieldKey);
@@ -393,7 +427,8 @@ function buildWorkbenchField(input: {
     .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
   const latestReview = reviewItems[reviewItems.length - 1];
   const manualState = input.statusMap[input.fieldKey] as WorkbenchTrustState | undefined;
-  const required = information.importance === "core";
+  const requirement = resolveCaseWorkbenchFieldRequirement(input.fieldKey, information.importance, input.ruleMap);
+  const required = requirement === "required";
   let state: WorkbenchTrustState = value ? "confirmed" : "missing";
   if (manualState === "edited" || manualState === "unknown" || manualState === "rejected" || manualState === "needs_review" || manualState === "not_applicable") state = manualState;
   else if (manualState === "confirmed") state = "confirmed";
@@ -428,6 +463,7 @@ function buildWorkbenchField(input: {
     sourceLabel: latestReview ? `${latestReview.sourceSheet} / ${getSource(latestReview)}` : "案件データ",
     decision: state === "unknown" ? "unknown" : state === "rejected" ? "rejected" : state === "not_applicable" ? "not_applicable" : "confirmed",
     evidenceItems,
+    requirement,
   };
 }
 
@@ -503,6 +539,20 @@ function getFieldSourceClass(field: WorkbenchField) {
   return "bg-rose-50 text-rose-700";
 }
 
+function getDossierMapPreviewValue(locale: Locale, field: WorkbenchField) {
+  if (field.value) return field.value;
+  const evidence = getPrimaryEvidence(field);
+  if (evidence?.value) return evidence.value;
+  return tr(locale, { ja: "未入力", zh: "未填写", ko: "미입력" });
+}
+
+function getDossierMapPreviewClass(field: WorkbenchField) {
+  if (field.value) return "text-slate-950";
+  if (getPrimaryEvidence(field)?.value) return "text-indigo-800";
+  if (field.required) return "text-rose-700";
+  return "text-slate-500";
+}
+
 function WorkbenchFieldGuidance({ locale, field }: { locale: Locale; field: WorkbenchField }) {
   return (
     <div className="mt-3 flex flex-wrap gap-1.5">
@@ -510,7 +560,7 @@ function WorkbenchFieldGuidance({ locale, field }: { locale: Locale; field: Work
         {getAppliesWhenLabel(locale, field.appliesWhen)}
       </span>
       <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${field.required ? "bg-slate-950 text-white" : "bg-slate-100 text-slate-700"}`}>
-        {field.required ? tr(locale, { ja: "重点", zh: "重点", ko: "중점" }) : tr(locale, { ja: "任意", zh: "选填", ko: "선택" })}
+        {field.required ? tr(locale, { ja: "必須", zh: "必填", ko: "필수" }) : tr(locale, { ja: "任意", zh: "选填", ko: "선택" })}
       </span>
       <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${getFieldSourceClass(field)}`}>
         {getFieldSourceLabel(locale, field)}
@@ -538,13 +588,18 @@ function fieldMatchesTreeNode(field: WorkbenchField, node: CaseInformationTreeNo
 }
 
 function getTreeNodeStatus(fields: WorkbenchField[]) {
+  const openFields = fields.filter(fieldShouldShowInEditor);
   return {
     total: fields.length,
     attention: fields.filter(fieldNeedsAttention).length,
+    open: openFields.length,
+    requiredOpen: openFields.filter((field) => field.required).length,
+    optionalOpen: openFields.filter((field) => !field.required).length,
     missing: fields.filter((field) => field.state === "missing").length,
     candidates: fields.filter((field) => field.state === "ai_suggested" || field.state === "needs_review").length,
     conflicts: fields.filter((field) => field.state === "conflict").length,
     confirmed: fields.filter((field) => field.state === "confirmed" || field.state === "edited").length,
+    completed: fields.filter((field) => field.state === "confirmed" || field.state === "edited" || field.state === "not_applicable" || field.state === "rejected").length,
     notApplicable: fields.filter((field) => field.state === "not_applicable").length,
   };
 }
@@ -552,6 +607,18 @@ function getTreeNodeStatus(fields: WorkbenchField[]) {
 function getActiveTreeNode(nodeId: string | undefined) {
   if (!isTreeNodeSelected(nodeId)) return undefined;
   return flattenTreeNodes(CASE_INFORMATION_TREE).find((node) => node.id === nodeId);
+}
+
+function parseProgressPercent(value: string | undefined) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return undefined;
+  return Math.max(0, Math.min(100, Math.round(parsed)));
+}
+
+function parsePositiveInteger(value: string | undefined) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) return 0;
+  return Math.min(parsed, 99);
 }
 
 function WorkbenchEvidenceSummary({ locale, field }: { locale: Locale; field: WorkbenchField }) {
@@ -692,13 +759,14 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
 
   const [{ id }, query] = await Promise.all([
     params,
-    searchParams ?? Promise.resolve({} as { flash?: string; node?: string }),
+    searchParams ?? Promise.resolve({} as { flash?: string; node?: string; progressFrom?: string; progressGain?: string }),
   ]);
-  const [brokerageCase, reviewItems, correctionEvents, importJobs] = await Promise.all([
+  const [brokerageCase, reviewItems, correctionEvents, importJobs, fieldRules] = await Promise.all([
     getBrokerageCaseById({ userId: user.id, tenantId, caseId: id }),
     listExtractionReviewItems({ userId: user.id, tenantId, caseId: id }),
     listCorrectionEvents({ userId: user.id, tenantId, caseId: id, limit: 12 }),
     listImportJobs(user.id, 200, tenantId),
+    listCaseWorkbenchFieldRules(user.id, tenantId),
   ]);
   if (!brokerageCase) notFound();
 
@@ -715,6 +783,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
     return acc;
   }, new Map());
   const statusMap = readStatusMap(brokerageCase.confirmedDataJson);
+  const fieldRuleMap = buildCaseWorkbenchRuleMap(fieldRules);
   const workbenchFieldGroups = workbenchGroups.map((group) => ({
     ...group,
     fields: group.fields.map(([fieldKey, label]) =>
@@ -724,6 +793,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
         confirmedData: brokerageCase.confirmedDataJson,
         statusMap,
         reviewByFieldKey,
+        ruleMap: fieldRuleMap,
       }),
     ),
   }));
@@ -739,7 +809,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
       .filter((field) => !selectedTreeNode || fieldMatchesTreeNode(field, selectedTreeNode))
       .map((field) => field.fieldKey),
   );
-  const selectedTreeFields = sortWorkbenchEditFields(allWorkbenchFields.filter((field) => treeFilteredFieldKeys.has(field.fieldKey)));
+  const selectedTreeFields = sortWorkbenchEditFields(allWorkbenchFields.filter((field) => treeFilteredFieldKeys.has(field.fieldKey) && fieldShouldShowInEditor(field)));
   const displayedWorkbenchFieldGroups = selectedTreeNode
     ? selectedTreeFields.length > 0
       ? [
@@ -753,7 +823,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
     : workbenchFieldGroups
         .map((group) => ({
           ...group,
-          fields: sortWorkbenchEditFields(group.fields.filter((field) => treeFilteredFieldKeys.has(field.fieldKey))),
+          fields: sortWorkbenchEditFields(group.fields.filter((field) => treeFilteredFieldKeys.has(field.fieldKey) && fieldShouldShowInEditor(field))),
         }))
         .filter((group) => group.fields.length > 0)
         .sort((a, b) => {
@@ -761,12 +831,26 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
           if (rankDiff !== 0) return rankDiff;
           return a.label.localeCompare(b.label);
         });
-  const displayedFieldKeysJson = JSON.stringify(displayedWorkbenchFieldGroups.flatMap((group) => group.fields.map((field) => field.fieldKey)));
-  const displayedConfirmableCandidateCount = displayedWorkbenchFieldGroups
-    .flatMap((group) => group.fields)
-    .filter((field) => Boolean(getPrimaryEvidence(field)?.value)).length;
   const coreDossierFields = allWorkbenchFields.filter((field) => field.importance !== "output_specific");
   const dossierStatus = getTreeNodeStatus(coreDossierFields);
+  const dossierTreeNodes = CASE_INFORMATION_TREE.filter((node) => node.id !== "output_draft" && node.id !== "source_evidence");
+  const selectedDossierMapNode =
+    selectedTreeNode ??
+    dossierTreeNodes
+      .flatMap((node) => [node, ...(node.children ?? [])])
+      .find((node) => getTreeNodeStatus(allWorkbenchFields.filter((field) => fieldMatchesTreeNode(field, node))).open > 0) ??
+    dossierTreeNodes[0];
+  const selectedDossierMapFields = selectedDossierMapNode
+    ? sortDossierMapFields(allWorkbenchFields.filter((field) => fieldMatchesTreeNode(field, selectedDossierMapNode)))
+    : [];
+  const dossierProgressPercent = dossierStatus.total > 0 ? Math.round((dossierStatus.completed / dossierStatus.total) * 100) : 0;
+  const progressGain = query?.flash === "case_workbench_saved" ? parsePositiveInteger(query.progressGain) : 0;
+  const progressFromPercent = progressGain > 0 ? parseProgressPercent(query?.progressFrom) : undefined;
+  const selectedDossierMapStatus = getTreeNodeStatus(selectedDossierMapFields);
+  const selectedOpenFields = selectedDossierMapFields.filter(fieldShouldShowInEditor).slice(0, 6);
+  const selectedFilledFields = selectedDossierMapFields
+    .filter((field) => field.value || getPrimaryEvidence(field)?.value)
+    .slice(0, 8);
   const outputHref = `/output-center?caseId=${encodeURIComponent(brokerageCase.id)}`;
   const caseWorkbenchHref = (options?: { node?: string; hash?: string }) => {
     const params = new URLSearchParams();
@@ -805,7 +889,63 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                   zh: "已将最新合并拆分回退；拆出的资料已作为独立案件保留。",
                   ko: "최신 합병을 분리해 되돌렸습니다. 분리한 자료는 별도 안건으로 남아 있습니다.",
                 })
-              : undefined;
+              : query?.flash === "excel_upload_missing"
+                ? tr(locale, {
+                    ja: "Excel ファイルを選択してください。",
+                    zh: "请选择 Excel 文件。",
+                    ko: "Excel 파일을 선택해 주세요.",
+                  })
+                : query?.flash === "excel_upload_type"
+                  ? tr(locale, {
+                      ja: ".xlsx ファイルを選択してください。",
+                      zh: "请选择 .xlsx 文件。",
+                      ko: ".xlsx 파일을 선택해 주세요.",
+                    })
+                  : query?.flash === "excel_upload_read_failed"
+                    ? tr(locale, {
+                        ja: "Excel ファイルを読み取れませんでした。ファイル形式を確認してください。",
+                        zh: "无法读取 Excel 文件，请确认文件格式。",
+                        ko: "Excel 파일을 읽을 수 없습니다. 파일 형식을 확인해 주세요.",
+                      })
+	                : query?.flash === "excel_upload_empty"
+	                  ? tr(locale, {
+	                      ja: "Excel 内に読み取れるデータがありません。",
+	                      zh: "Excel 内没有可读取的数据。",
+	                      ko: "Excel 안에 읽을 수 있는 데이터가 없습니다.",
+	                    })
+	                  : query?.flash === "identity_upload_missing"
+	                    ? tr(locale, {
+	                        ja: "本人資料ファイルを選択してください。",
+	                        zh: "请选择本人资料文件。",
+	                        ko: "본인 자료 파일을 선택해 주세요.",
+	                      })
+	                    : query?.flash === "identity_upload_too_many"
+	                      ? tr(locale, {
+	                          ja: "本人資料は一度に6件まで選択できます。",
+	                          zh: "本人资料一次最多选择6个文件。",
+	                          ko: "본인 자료는 한 번에 6개까지 선택할 수 있습니다.",
+	                        })
+	                      : query?.flash === "identity_upload_too_large"
+	                        ? tr(locale, {
+	                            ja: "1ファイル25MB以下にしてください。",
+	                            zh: "单个文件请控制在25MB以内。",
+	                            ko: "파일 1개는 25MB 이하로 선택해 주세요.",
+	                          })
+	                        : query?.flash === "identity_upload_total_too_large"
+	                          ? tr(locale, {
+	                              ja: "ファイル合計を60MB以下にしてください。",
+	                              zh: "文件合计请控制在60MB以内。",
+	                              ko: "전체 파일 합계는 60MB 이하로 선택해 주세요.",
+	                            })
+	                          : query?.flash === "identity_upload_type"
+	                            ? tr(locale, {
+	                                ja: "PDF または画像ファイルを選択してください。",
+	                                zh: "请选择 PDF 或图片文件。",
+	                                ko: "PDF 또는 이미지 파일을 선택해 주세요.",
+	                              })
+	              : undefined;
+	  const flashTone =
+	    query?.flash?.startsWith("excel_upload_") || query?.flash?.startsWith("identity_upload_") ? "error" : undefined;
 
   return (
     <div className="flex flex-col gap-6">
@@ -831,18 +971,15 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
           </Link>
         </div>
       </div>
-      <PageFlashBanner message={flashMessage} />
+      <PageFlashBanner message={flashMessage} tone={flashTone} />
 
-      <section id="case-source-intake" className="scroll-mt-24 rounded-xl border border-slate-200 bg-white p-5">
-        <div className="flex flex-wrap items-start justify-between gap-4">
+      <section id="case-source-intake" className="scroll-mt-24 rounded-lg border border-slate-200 bg-white p-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-xs font-bold text-indigo-700">
-              {tr(locale, { ja: "資料を追加する", zh: "补充资料", ko: "자료 추가" })}
-            </p>
-            <h2 className="mt-1 text-lg font-black text-slate-950">
+            <h2 className="text-sm font-black text-slate-950">
               {tr(locale, { ja: "この案件に資料を追加", zh: "给当前案件追加资料", ko: "현재 안건에 자료 추가" })}
             </h2>
-            <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-600">
+            <p className="mt-0.5 max-w-3xl text-xs leading-5 text-slate-500">
               {tr(locale, {
                 ja: "読み取り後、確認画面で採用した項目だけをこの案件へ反映します。",
                 zh: "读取后，只会把核对画面中采用的项目写入当前案件。",
@@ -851,17 +988,17 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
             </p>
           </div>
           <Link href="/import-center" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">
-            {tr(locale, { ja: "汎用取込を開く", zh: "打开通用导入", ko: "일반 가져오기 열기" })}
+            {tr(locale, { ja: "資料読取を開く", zh: "打开资料读取", ko: "자료 읽기 열기" })}
           </Link>
         </div>
 
-        <div className="mt-4 grid gap-4 xl:grid-cols-2">
-          <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 p-4">
-            <div className="mb-3">
+        <div className="mt-2 grid gap-2 2xl:grid-cols-2">
+          <div className="grid gap-2 rounded-md border border-emerald-100 bg-emerald-50/30 p-2 lg:grid-cols-[170px_minmax(0,1fr)] lg:items-center">
+            <div>
               <h3 className="text-sm font-black text-emerald-950">
                 {tr(locale, { ja: "本人資料", zh: "本人资料", ko: "본인 자료" })}
               </h3>
-              <p className="mt-1 text-xs leading-5 text-emerald-900">
+              <p className="mt-0.5 text-xs leading-5 text-emerald-900">
                 {tr(locale, {
                   ja: "在留カード、運転免許証、本人確認資料。",
                   zh: "在留卡、驾照、本人确认资料。",
@@ -873,15 +1010,17 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
               action={uploadAndParseIdentityDocumentAction}
               locale={locale}
               targetCaseId={brokerageCase.id}
+              uploadContext="case"
+              density="compact"
             />
           </div>
 
-          <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-4">
-            <div className="mb-3">
+          <div className="grid gap-2 rounded-md border border-blue-100 bg-blue-50/30 p-2 lg:grid-cols-[170px_minmax(0,1fr)] lg:items-center">
+            <div>
               <h3 className="text-sm font-black text-blue-950">
                 {tr(locale, { ja: "Excel資料・台帳", zh: "Excel资料 / 台账", ko: "Excel 자료 / 대장" })}
               </h3>
-              <p className="mt-1 text-xs leading-5 text-blue-900">
+              <p className="mt-0.5 text-xs leading-5 text-blue-900">
                 {tr(locale, {
                   ja: "物件台帳、記入済み資料、補足一覧の .xlsx。",
                   zh: "物件台账、已填写资料、补充清单的 .xlsx。",
@@ -889,21 +1028,21 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                 })}
               </p>
             </div>
-            <form action={uploadAndParseExcelAction} className="space-y-3 rounded-xl border border-blue-100 bg-white/80 p-4">
+            <form action={uploadAndParseExcelAction} noValidate className="grid gap-2 rounded-md border border-blue-100 bg-blue-50 p-2 md:grid-cols-[minmax(220px,1fr)_120px] md:items-end">
               <input type="hidden" name="targetCaseId" value={brokerageCase.id} />
+              <input type="hidden" name="uploadContext" value="case" />
               <label className="block space-y-1">
-                <span className="text-xs font-semibold text-blue-900">
+                <span className="text-[11px] font-semibold text-blue-900">
                   {tr(locale, { ja: ".xlsx ファイル", zh: ".xlsx 文件", ko: ".xlsx 파일" })}
                 </span>
                 <input
                   name="excelFile"
                   type="file"
                   accept=".xlsx"
-                  required
-                  className="w-full rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm"
+                  className="h-9 w-full rounded-md border border-blue-200 bg-white px-2 py-1 text-xs"
                 />
               </label>
-              <button type="submit" className="w-full rounded-lg bg-blue-700 px-4 py-2 text-sm font-bold text-white hover:bg-blue-800">
+              <button type="submit" className="h-9 w-full rounded-md bg-blue-700 px-3 text-xs font-bold text-white hover:bg-blue-800">
                 {tr(locale, { ja: "読み取る", zh: "读取资料", ko: "자료 읽기" })}
               </button>
             </form>
@@ -912,56 +1051,126 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white">
-        <div className="grid gap-0 lg:grid-cols-[280px_minmax(0,1fr)]">
-          <aside className="border-b border-slate-200 p-4 lg:border-b-0 lg:border-r">
+        <div className="grid gap-0 lg:grid-cols-[420px_minmax(0,1fr)]">
+          <aside className="border-b border-slate-200 p-4 lg:sticky lg:top-14 lg:max-h-[calc(100vh-4rem)] lg:overflow-y-auto lg:border-b-0 lg:border-r">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-xs font-bold text-indigo-700">
-                  {tr(locale, { ja: "案件資料ツリー", zh: "案件资料树", ko: "안건 자료 트리" })}
+                  {tr(locale, { ja: "左側の表示欄", zh: "左侧显示栏", ko: "왼쪽 표시 영역" })}
                 </p>
                 <h2 className="mt-1 text-base font-black text-slate-950">
-                  {tr(locale, { ja: "資料の地図", zh: "资料地图", ko: "자료 지도" })}
+                  {tr(locale, { ja: "完成度と入力結果", zh: "完成度与已填内容", ko: "완성도와 입력 결과" })}
                 </h2>
               </div>
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold tabular-nums text-slate-700">
-                {dossierStatus.confirmed}/{dossierStatus.total}
+              <span className="rounded-full bg-slate-950 px-2.5 py-1 text-[11px] font-black tabular-nums text-white">
+                {dossierProgressPercent}%
               </span>
             </div>
+            <CaseProgressExperience
+              completed={dossierStatus.completed}
+              total={dossierStatus.total}
+              open={dossierStatus.open}
+              currentPercent={dossierProgressPercent}
+              animateFromPercent={progressFromPercent}
+              gainCount={progressGain}
+              labels={{
+                overall: tr(locale, { ja: "全体", zh: "整体", ko: "전체" }),
+                remaining: tr(locale, { ja: "残り", zh: "还差", ko: "남음" }),
+                helper: tr(locale, {
+                  ja: "右側で入力した内容は保存後ここに反映されます。未入力と確認待ちだけを優先して表示します。",
+                  zh: "右侧填写并保存后，会在这里反映。未填写和待确认项目优先显示。",
+                  ko: "오른쪽에서 입력해 저장한 내용이 여기에 반영됩니다. 미입력과 확인 대기를 먼저 보여줍니다.",
+                }),
+                gainPrefix: tr(locale, { ja: "+", zh: "+", ko: "+" }),
+                gainSuffix: tr(locale, { ja: "項目 完了", zh: "项完成", ko: "개 완료" }),
+              }}
+            />
+            <div className="mt-3 rounded-lg border border-indigo-100 bg-white p-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[11px] font-black text-indigo-700">
+                  {tr(locale, { ja: "今見ている入力結果", zh: "当前输入结果", ko: "현재 입력 결과" })}
+                </p>
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black text-slate-600">{selectedDossierMapNode?.label}</span>
+              </div>
+              {selectedOpenFields.length > 0 ? (
+                <Link
+                  href={caseWorkbenchHref({ node: selectedOpenFields[0].treeNodeId, hash: getWorkbenchFieldAnchor(selectedOpenFields[0].fieldKey) })}
+                  className="mt-2 flex items-center justify-between gap-2 rounded bg-amber-50 px-2 py-2 text-[11px] font-black text-amber-900 hover:text-indigo-700"
+                >
+                  <span>{tr(locale, { ja: "次に入力", zh: "下一项", ko: "다음 입력" })}: {selectedOpenFields[0].label}</span>
+                  <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
+                </Link>
+              ) : (
+                <p className="mt-2 rounded bg-emerald-50 px-2 py-2 text-[11px] font-black text-emerald-800">
+                  {tr(locale, { ja: "この分類は整理済みです。", zh: "当前分类已整理。", ko: "현재 분류는 정리되었습니다." })}
+                </p>
+              )}
+              <div className="mt-2 space-y-1">
+                {selectedFilledFields.slice(0, 3).map((field) => (
+                  <Link
+                    key={`summary-${field.fieldKey}`}
+                    href={caseWorkbenchHref({ node: field.treeNodeId, hash: getWorkbenchFieldAnchor(field.fieldKey) })}
+                    className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-2 rounded px-2 py-1 text-[11px] hover:bg-blue-50"
+                  >
+                    <span className="truncate font-black text-slate-500">{field.label}</span>
+                    <span className="truncate font-bold text-slate-950">{getDossierMapPreviewValue(locale, field)}</span>
+                  </Link>
+                ))}
+              </div>
+            </div>
             <nav className="mt-4 space-y-2">
-              {CASE_INFORMATION_TREE.filter((node) => node.id !== "output_draft" && node.id !== "source_evidence").map((node) => {
+              {dossierTreeNodes.map((node) => {
                 const nodeFields = allWorkbenchFields.filter((field) => fieldMatchesTreeNode(field, node));
                 const status = getTreeNodeStatus(nodeFields);
-                const selected = selectedTreeNode?.id === node.id || node.children?.some((child) => child.id === selectedTreeNode?.id);
+                const selected = selectedDossierMapNode?.id === node.id || node.children?.some((child) => child.id === selectedDossierMapNode?.id);
+                const progress = status.total > 0 ? Math.round((status.completed / status.total) * 100) : 0;
                 return (
-                  <div key={node.id} className="rounded-lg border border-slate-200 bg-slate-50">
+                  <div key={node.id} className={`overflow-hidden rounded-lg border ${selected ? "border-slate-950 bg-slate-950" : "border-slate-200 bg-white"}`}>
                     <Link
                       href={caseWorkbenchHref({ node: node.id, hash: "case-main-editor" })}
-                      className={`flex items-center justify-between gap-2 px-3 py-2 text-sm font-black ${
-                        selected ? "bg-slate-950 text-white" : "text-slate-900 hover:bg-white"
+                      className={`block px-3 py-2 ${
+                        selected ? "text-white" : "text-slate-900 hover:bg-slate-50"
                       }`}
                     >
-                      <span>{node.label}</span>
-                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-black tabular-nums ${selected ? "bg-white/15 text-white ring-1 ring-white/30" : "bg-white text-slate-700"}`}>
-                        {status.confirmed}/{status.total}
+                      <span className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-black">{node.label}</span>
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${selected ? "bg-white/15 text-white" : status.open > 0 ? "bg-amber-50 text-amber-800" : "bg-emerald-50 text-emerald-800"}`}>
+                          {status.open > 0
+                            ? tr(locale, { ja: "未整理あり", zh: "有待整理", ko: "정리 필요" })
+                            : tr(locale, { ja: "整理済み", zh: "已整理", ko: "정리됨" })}
+                        </span>
+                      </span>
+                      <span className={`mt-2 block h-1.5 overflow-hidden rounded-full ${selected ? "bg-white/15" : "bg-slate-100"}`}>
+                        <span className={`block h-full rounded-full ${selected ? "bg-white" : "bg-indigo-700"}`} style={{ width: `${progress}%` }} />
                       </span>
                     </Link>
                     {node.children ? (
-                      <div className="space-y-1 border-t border-slate-200 p-2">
+                      <div className={`${selected ? "border-t border-white/10 bg-white" : "border-t border-slate-100 bg-white"}`}>
                         {node.children.map((child) => {
                           const childFields = allWorkbenchFields.filter((field) => fieldMatchesTreeNode(field, child));
                           if (childFields.length === 0) return null;
                           const childStatus = getTreeNodeStatus(childFields);
-                          const childSelected = selectedTreeNode?.id === child.id;
+                          const childSelected = selectedDossierMapNode?.id === child.id;
+                          const childProgress = childStatus.total > 0 ? Math.round((childStatus.completed / childStatus.total) * 100) : 0;
                           return (
                             <Link
                               key={child.id}
                               href={caseWorkbenchHref({ node: child.id, hash: "case-main-editor" })}
-                              className={`flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-xs font-bold ${
-                                childSelected ? "bg-indigo-100 text-indigo-900" : "text-slate-600 hover:bg-white hover:text-slate-950"
+                              className={`block border-t border-slate-100 px-3 py-2 ${
+                                childSelected ? "bg-indigo-50 text-indigo-950" : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
                               }`}
                             >
-                              <span className="truncate">{child.label}</span>
-                              <span className="shrink-0 tabular-nums">{childStatus.attention > 0 ? `要${childStatus.attention}` : `${childStatus.confirmed}/${childStatus.total}`}</span>
+                              <span className="flex items-center justify-between gap-2">
+                                <span className="truncate text-[11px] font-bold">{child.label}</span>
+                                <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${childStatus.open > 0 ? "bg-amber-50 text-amber-800" : "bg-emerald-50 text-emerald-800"}`}>
+                                  {childStatus.open > 0
+                                    ? tr(locale, { ja: "未整理", zh: "待整理", ko: "정리 필요" })
+                                    : tr(locale, { ja: "済", zh: "完成", ko: "완료" })}
+                                </span>
+                              </span>
+                              <span className="mt-1.5 block h-1 overflow-hidden rounded-full bg-slate-100">
+                                <span className="block h-full rounded-full bg-indigo-600" style={{ width: `${childProgress}%` }} />
+                              </span>
                             </Link>
                           );
                         })}
@@ -971,99 +1180,168 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                 );
               })}
             </nav>
+            <div className="mt-4 overflow-hidden rounded-lg border border-slate-200 bg-white">
+              <div className="border-b border-slate-100 bg-slate-50 px-3 py-2">
+                <p className="text-[11px] font-bold text-slate-500">
+                  {tr(locale, { ja: "現在表示している分類", zh: "当前显示分类", ko: "현재 표시 분류" })}
+                </p>
+                <h3 className="mt-0.5 text-sm font-black text-slate-950">{selectedDossierMapNode?.label}</h3>
+                <p className="mt-1 text-[11px] font-semibold text-slate-500">
+                  {tr(locale, { ja: "未整理", zh: "待整理", ko: "정리 필요" })}: {selectedDossierMapStatus.open} / {tr(locale, { ja: "入力済み", zh: "已填写", ko: "입력됨" })}: {selectedDossierMapStatus.completed}
+                </p>
+              </div>
+              {selectedOpenFields.length > 0 ? (
+                <div className="border-b border-amber-100 bg-amber-50/70 px-3 py-2">
+                  <p className="text-[11px] font-black text-amber-900">
+                    {tr(locale, { ja: "次に入力する項目", zh: "接下来要填", ko: "다음 입력 항목" })}
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {selectedOpenFields.map((field) => (
+                      <Link
+                        key={`open-${field.fieldKey}`}
+                        href={caseWorkbenchHref({ node: field.treeNodeId, hash: getWorkbenchFieldAnchor(field.fieldKey) })}
+                        className="rounded-full bg-white px-2 py-1 text-[10px] font-black text-amber-900 ring-1 ring-amber-100 hover:text-indigo-700"
+                      >
+                        {field.label}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              {selectedFilledFields.length > 0 ? (
+                <div className="border-b border-slate-100 px-3 py-2">
+                  <p className="text-[11px] font-black text-slate-500">
+                    {tr(locale, { ja: "すでに入っている内容", zh: "已经有的内容", ko: "이미 입력된 내용" })}
+                  </p>
+                  <div className="mt-2 space-y-1.5">
+                    {selectedFilledFields.slice(0, 4).map((field) => (
+                      <Link
+                        key={`filled-${field.fieldKey}`}
+                        href={caseWorkbenchHref({ node: field.treeNodeId, hash: getWorkbenchFieldAnchor(field.fieldKey) })}
+                        className="grid grid-cols-[7.5rem_minmax(0,1fr)] gap-2 rounded bg-slate-50 px-2 py-1.5 text-[11px] hover:bg-blue-50"
+                      >
+                        <span className="truncate font-black text-slate-600">{field.label}</span>
+                        <span className="truncate font-bold text-slate-950">{getDossierMapPreviewValue(locale, field)}</span>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              <div className="max-h-[480px] overflow-y-auto">
+                <table className="w-full table-fixed border-collapse text-left">
+                  <thead className="sticky top-0 z-10 bg-white text-[10px] font-black text-slate-500">
+                    <tr className="border-b border-slate-100">
+                      <th className="w-[34%] px-3 py-2">{tr(locale, { ja: "項目", zh: "项目", ko: "항목" })}</th>
+                      <th className="px-2 py-2">{tr(locale, { ja: "内容", zh: "内容", ko: "내용" })}</th>
+                      <th className="w-[58px] px-2 py-2 text-right">{tr(locale, { ja: "状態", zh: "状态", ko: "상태" })}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {selectedDossierMapFields.map((field) => {
+                      const fieldHref = fieldShouldShowInEditor(field)
+                        ? caseWorkbenchHref({ node: field.treeNodeId, hash: getWorkbenchFieldAnchor(field.fieldKey) })
+                        : undefined;
+                      const valueText = getDossierMapPreviewValue(locale, field);
+                      const valueClass = getDossierMapPreviewClass(field);
+                      return (
+                        <tr key={field.fieldKey} className={fieldNeedsAttention(field) ? "bg-amber-50/45" : "bg-white"}>
+                          <td className="px-3 py-2 align-top">
+                            {fieldHref ? (
+                              <Link href={fieldHref} className="line-clamp-2 text-[11px] font-black leading-4 text-slate-950 hover:text-indigo-700">
+                                {field.label}
+                              </Link>
+                            ) : (
+                              <span className="line-clamp-2 text-[11px] font-black leading-4 text-slate-800">{field.label}</span>
+                            )}
+                          </td>
+                          <td className="px-2 py-2 align-top">
+                            {fieldHref ? (
+                              <Link href={fieldHref} className={`block truncate text-[11px] font-bold leading-4 hover:text-indigo-700 ${valueClass}`}>
+                                {valueText}
+                              </Link>
+                            ) : (
+                              <span className={`block truncate text-[11px] font-bold leading-4 ${valueClass}`}>{valueText}</span>
+                            )}
+                          </td>
+                          <td className="px-2 py-2 text-right align-top">
+                            <span className={`inline-flex rounded-full px-1.5 py-0.5 text-[9px] font-black ${getTrustStateClass(field.state)}`}>
+                              {getTrustStateLabel(locale, field.state)}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </aside>
 
           <div className="space-y-4 p-4">
             <div id="case-main-editor" className="scroll-mt-24 space-y-3">
-              {displayedConfirmableCandidateCount > 0 ? (
-                <div className="flex flex-wrap justify-end gap-2">
-                  <form action={saveCaseWorkbenchAction}>
-                    <input type="hidden" name="caseId" value={brokerageCase.id} />
-                    <input type="hidden" name="presentFieldKeysJson" value={displayedFieldKeysJson} />
-                    <input type="hidden" name="returnAnchor" value="case-main-editor" />
-                    {selectedTreeNode ? <input type="hidden" name="returnNode" value={selectedTreeNode.id} /> : null}
-                  <button type="submit" name="saveMode" value="confirm_visible_candidates" className="rounded-lg border border-emerald-200 bg-white px-5 py-2 text-sm font-bold text-emerald-800 hover:bg-emerald-50">
-                    {tr(locale, { ja: "表示中の項目をまとめて確認", zh: "批量确认当前项目", ko: "표시 항목 일괄 확인" })}
-                  </button>
-                  </form>
-                </div>
-              ) : null}
-
               {displayedWorkbenchFieldGroups.length > 0 ? displayedWorkbenchFieldGroups.map((group) => (
                 <section key={group.id} id={`workbench-${group.id}`} className="scroll-mt-24 rounded-lg border border-slate-200 bg-white">
                   <div className="border-b border-slate-100 px-5 py-4">
                     <h2 className="text-sm font-bold text-slate-950">{group.label}</h2>
                   </div>
-                  <div className="grid gap-5 p-5 xl:grid-cols-2">
+                  <div className="grid gap-4 p-5">
                     {group.fields.map((field) => (
-                      <CaseWorkbenchFieldForm
-                        key={field.fieldKey}
-                        action={saveCaseWorkbenchAction}
-                        caseId={brokerageCase.id}
-                        fieldKey={field.fieldKey}
-                        returnNode={selectedTreeNode?.id}
-                        saveLabel={tr(locale, { ja: "この項目を保存", zh: "保存此项", ko: "이 항목 저장" })}
-                        savingLabel={tr(locale, { ja: "保存中", zh: "保存中", ko: "저장 중" })}
-                        className={`motion-safe:animate-[caseCardSettle_220ms_ease-out] rounded-lg border p-5 ${
-                          fieldNeedsAttention(field) ? "border-amber-200 bg-amber-50/45" : "border-slate-200 bg-white"
-                        }`}
-                      >
-                        <div className="space-y-3">
-                          <div className="flex items-start justify-between gap-3">
-                            <span className="min-w-0">
-                              <span className="block text-base font-black leading-6 text-slate-950">
-                                {field.label}
-                                {field.required ? <span className="ml-1 text-slate-400">*</span> : null}
-                              </span>
-                              <span className="mt-2 flex flex-wrap gap-1.5">
-                                <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-slate-600">
-                                  {field.treePath.join(" / ")}
+                      <div key={field.fieldKey} id={getWorkbenchFieldAnchor(field.fieldKey)} className="scroll-mt-28">
+                        <CaseWorkbenchFieldForm
+                          action={saveCaseWorkbenchAction}
+                          caseId={brokerageCase.id}
+                          fieldKey={field.fieldKey}
+                          returnNode={selectedTreeNode?.id}
+                          saveLabel={tr(locale, { ja: "保存して左に反映", zh: "保存并更新左侧", ko: "저장하고 왼쪽 반영" })}
+                          savingLabel={tr(locale, { ja: "保存中", zh: "保存中", ko: "저장 중" })}
+                          className={`motion-safe:animate-[caseCardSettle_220ms_ease-out] rounded-lg border p-5 ${
+                            fieldNeedsAttention(field) ? "border-amber-200 bg-amber-50/45" : "border-slate-200 bg-white"
+                          }`}
+                        >
+                          <div className="space-y-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <span className="min-w-0">
+                                <span className="block text-base font-black leading-6 text-slate-950">
+                                  {field.label}
+                                  {field.required ? <span className="ml-1 text-slate-400">*</span> : null}
                                 </span>
-                                <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${getImportanceClass(field.importance)}`}>
-                                  {getImportanceLabel(locale, field.importance)}
+                                <span className="mt-2 flex flex-wrap gap-1.5">
+                                  <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                                    {field.treePath.join(" / ")}
+                                  </span>
+                                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${getImportanceClass(field.importance)}`}>
+                                    {getImportanceLabel(locale, field.importance)}
+                                  </span>
                                 </span>
                               </span>
-                            </span>
-                            <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-black ${getTrustStateClass(field.state)}`}>
-                              {getTrustStateLabel(locale, field.state)}
-                            </span>
+                              <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-black ${getTrustStateClass(field.state)}`}>
+                                {getTrustStateLabel(locale, field.state)}
+                              </span>
+                            </div>
+                            <WorkbenchFieldGuidance locale={locale} field={field} />
+                            <WorkbenchEvidenceSummary locale={locale} field={field} />
                           </div>
-                          <WorkbenchFieldGuidance locale={locale} field={field} />
-                          <WorkbenchEvidenceSummary locale={locale} field={field} />
-                        </div>
-                        <div className="mt-4 rounded-md border border-slate-100 bg-slate-50/70 p-4">
-                          <WorkbenchFieldControl locale={locale} field={field} flush />
-                          <div className="mt-3">
-                            <WorkbenchDecisionSelect locale={locale} field={field} flush />
+                          <div className="mt-4 rounded-md border border-slate-100 bg-slate-50/70 p-4">
+                            <WorkbenchFieldControl locale={locale} field={field} flush />
+                            <div className="mt-3">
+                              <WorkbenchDecisionSelect locale={locale} field={field} flush />
+                            </div>
                           </div>
-                        </div>
-                        <WorkbenchEvidenceDetails locale={locale} field={field} />
-                      </CaseWorkbenchFieldForm>
+                          <WorkbenchEvidenceDetails locale={locale} field={field} />
+                        </CaseWorkbenchFieldForm>
+                      </div>
                     ))}
                   </div>
                 </section>
               )) : (
                 <section className="rounded-lg border border-slate-200 bg-white p-6 text-sm font-semibold text-slate-600">
-                  {tr(locale, { ja: "この状態の項目はありません。", zh: "没有这个状态的项目。", ko: "이 상태의 항목이 없습니다." })}
+                  {tr(locale, { ja: "この分類に未処理の項目はありません。", zh: "当前分类没有待填写项目。", ko: "이 분류에 남은 항목이 없습니다." })}
                 </section>
               )}
             </div>
           </div>
         </div>
       </section>
-
-      <details className="rounded-xl border border-indigo-100 bg-white p-4">
-        <summary className="cursor-pointer text-sm font-bold text-indigo-950">
-          {tr(locale, { ja: "状態ラベルを表示", zh: "显示状态说明", ko: "상태 설명 표시" })}
-        </summary>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {(["confirmed", "edited", "ai_suggested", "needs_review", "missing", "conflict", "not_applicable", "rejected", "unknown"] as WorkbenchTrustState[]).map((state) => (
-            <span key={state} className={`rounded-full px-3 py-1 text-xs font-bold ${getTrustStateClass(state)}`}>
-              {getTrustStateLabel(locale, state)}
-            </span>
-          ))}
-        </div>
-      </details>
 
       {mergeHistory.length > 0 ? (
         <section className="order-7 rounded-xl border border-emerald-200 bg-white p-4">
@@ -1096,7 +1374,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                       <div>
                         <p className="text-sm font-bold text-slate-900">{item.sourceImportJobTitle}</p>
                         <p className="mt-1 text-xs text-slate-600">
-                          {formatDate(new Date(item.mergedAt), locale)} / {tr(locale, { ja: "照合度", zh: "匹配度", ko: "대조도" })} {item.confidenceScore}%
+                          {formatDate(new Date(item.mergedAt), locale)} / {tr(locale, { ja: "割当参考", zh: "归属参考", ko: "귀속 참고" })} {item.confidenceScore}%
                         </p>
                       </div>
                       <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${item.status === "active" ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-700"}`}>

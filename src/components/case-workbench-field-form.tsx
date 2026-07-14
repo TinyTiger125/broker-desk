@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { useState } from "react";
 import { useFormStatus } from "react-dom";
 
@@ -14,14 +14,6 @@ type CaseWorkbenchFieldFormProps = {
   savingLabel: string;
   children: ReactNode;
 };
-
-type ViewTransitionDocument = Document & {
-  startViewTransition?: (callback: () => void | Promise<void>) => { finished: Promise<void> };
-};
-
-function getFieldViewTransitionName(fieldKey: string) {
-  return `case-field-${fieldKey.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
-}
 
 function FieldSaveButton({ dirty, saveLabel, savingLabel }: { dirty: boolean; saveLabel: string; savingLabel: string }) {
   const { pending } = useFormStatus();
@@ -53,25 +45,14 @@ export function CaseWorkbenchFieldForm({
   children,
 }: CaseWorkbenchFieldFormProps) {
   const [dirty, setDirty] = useState(false);
-  const viewTransitionStyle = { viewTransitionName: getFieldViewTransitionName(fieldKey) } as CSSProperties;
-  const submitAction = async (formData: FormData) => {
-    setDirty(false);
-    const transitionDocument = document as ViewTransitionDocument;
-    if (!transitionDocument.startViewTransition) {
-      await action(formData);
-      return;
-    }
-    const startViewTransition = transitionDocument.startViewTransition.bind(transitionDocument);
-    await startViewTransition(() => action(formData)).finished;
-  };
 
   return (
     <form
-      action={submitAction}
+      action={action}
       onChange={() => setDirty(true)}
       onInput={() => setDirty(true)}
+      onSubmit={() => setDirty(false)}
       className={className}
-      style={viewTransitionStyle}
     >
       <input type="hidden" name="caseId" value={caseId} />
       <input type="hidden" name="presentFieldKeysJson" value={JSON.stringify([fieldKey])} />

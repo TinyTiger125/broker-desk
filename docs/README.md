@@ -47,9 +47,17 @@ Files in `docs/operations/` describe PM control, terminology, and market constra
 | File | Purpose |
 | --- | --- |
 | `docs/operations/DEVELOPMENT_HANDOFF_2026_06_27.md` | Current device-transfer handoff: implementation state, risks, and next steps as of 2026-06-27. |
+| `docs/operations/DEVELOPMENT_HANDOFF_2026_07_01.md` | Final pre-friend-test handoff: blank seed mode, QA lifecycle, external test state, and known risks. |
+| `docs/operations/DEVELOPMENT_HANDOFF_2026_07_12.md` | Current development-branch handoff: friend-test fixes, input workbench state, validation status, and no-merge boundary. |
+| `docs/operations/FRIEND_TEST_CHECKLIST_2026_07_02.md` | External friend-test task checklist, pass/fail signals, and issue severity for the V1 chain. |
 | `docs/operations/PM_CONTROL.md` | Historical PM task board and multi-agent operating model. |
 | `docs/operations/JP_COMPLIANCE_CHECKLIST.md` | Japan real-estate compliance mapping checklist. |
 | `docs/operations/JA_TERMINOLOGY_STYLE_GUIDE.md` | Japanese terminology style guide. |
+| `docs/operations/UI_TERMINOLOGY_WORKFLOW.md` | CSV export/import workflow for UI terminology review. |
+| `docs/operations/UI_TERMINOLOGY_REVIEW_HANDOFF_2026_07_14.md` | Friend-review handoff for the current UI terminology package. |
+| `docs/operations/UI_TERMINOLOGY_REVIEW_GUIDE_JA_2026_07_14.md` | Chinese instructions for a Japanese terminology quick review CSV. |
+| `docs/operations/PRODUCT_TERMINOLOGY_DICTIONARY_JA_2026_07_14.md` | Japanese product glossary for the current practical terminology review. |
+| `docs/operations/PRODUCT_TERMINOLOGY_DICTIONARY_2026_07_14.md` | Product-level glossary and terminology decisions for the July terminology review. |
 
 ## QA And Evidence
 
