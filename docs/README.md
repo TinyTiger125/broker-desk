@@ -53,6 +53,11 @@ Files in `docs/operations/` describe PM control, terminology, and market constra
 | `docs/operations/PM_CONTROL.md` | Historical PM task board and multi-agent operating model. |
 | `docs/operations/JP_COMPLIANCE_CHECKLIST.md` | Japan real-estate compliance mapping checklist. |
 | `docs/operations/JA_TERMINOLOGY_STYLE_GUIDE.md` | Japanese terminology style guide. |
+| `docs/operations/UI_TERMINOLOGY_WORKFLOW.md` | CSV export/import workflow for UI terminology review. |
+| `docs/operations/UI_TERMINOLOGY_REVIEW_HANDOFF_2026_07_14.md` | Friend-review handoff for the current UI terminology package. |
+| `docs/operations/UI_TERMINOLOGY_REVIEW_GUIDE_JA_2026_07_14.md` | Chinese instructions for a Japanese terminology quick review CSV. |
+| `docs/operations/PRODUCT_TERMINOLOGY_DICTIONARY_JA_2026_07_14.md` | Japanese product glossary for the current practical terminology review. |
+| `docs/operations/PRODUCT_TERMINOLOGY_DICTIONARY_2026_07_14.md` | Product-level glossary and terminology decisions for the July terminology review. |
 
 ## QA And Evidence
 

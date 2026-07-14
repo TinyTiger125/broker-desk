@@ -25,10 +25,19 @@ type WorkStatus = "needs_action" | "ready" | "unassigned";
 type DashboardCopy = {
   title: string;
   subtitle: string;
+  startHere: string;
+  startHereDesc: string;
   tenant: string;
   searchPlaceholder: string;
   search: string;
   clear: string;
+  createActionTitle: string;
+  createActionDesc: string;
+  readActionTitle: string;
+  readActionDesc: string;
+  organizeActionTitle: string;
+  organizeActionDesc: string;
+  actionStatusTitle: string;
   browseByType: string;
   dataMap: string;
   dataMapDesc: string;
@@ -124,10 +133,19 @@ const copyByLocale: Record<Locale, DashboardCopy> = {
   ja: {
     title: "資料管理センター",
     subtitle: "案件、顧客、物件、資料のつながりをまとめて確認します。",
+    startHere: "まず何をしますか",
+    startHereDesc: "案件を作る、資料を読む、足りない情報を整理する、申込書を出す。よく使う順番だけを先に置いています。",
     tenant: "対象ワークスペース",
     searchPlaceholder: "顧客、物件、案件、資料、出力書類を検索",
     search: "検索",
     clear: "クリア",
+    createActionTitle: "案件を作る",
+    createActionDesc: "資料がなくても、先に案件・顧客・物件を作れます。",
+    readActionTitle: "資料を読む",
+    readActionDesc: "Excel、在留カード、免許証などを読み取ります。",
+    organizeActionTitle: "足りない情報を入れる",
+    organizeActionDesc: "未入力や確認待ちの項目だけを続けて整理します。",
+    actionStatusTitle: "現在の整理状況",
     browseByType: "種類で見る",
     dataMap: "資料マップ",
     dataMapDesc: "案件、顧客、物件、資料ファイルを並べて確認します。",
@@ -195,10 +213,19 @@ const copyByLocale: Record<Locale, DashboardCopy> = {
   zh: {
     title: "资料管理中心",
     subtitle: "集中查看客户、物件、案件和资料的归属状态。",
+    startHere: "现在要做哪一步",
+    startHereDesc: "先把最常用的四件事放在这里：新建案件、读取资料、补齐信息、生成申请书。",
     tenant: "当前工作区",
     searchPlaceholder: "搜索客户、物件、案件、资料、输出文件",
     search: "搜索",
     clear: "清除",
+    createActionTitle: "新建案件",
+    createActionDesc: "没有文件也可以先建案件、客户或物件。",
+    readActionTitle: "读取资料",
+    readActionDesc: "读取 Excel、在留卡、驾照或图片资料。",
+    organizeActionTitle: "补齐信息",
+    organizeActionDesc: "只处理未填写、待确认和不一致的项目。",
+    actionStatusTitle: "当前整理情况",
     browseByType: "按类型查看",
     dataMap: "资料地图",
     dataMapDesc: "按案件、客户/关系人、物件和资料文件查看当前状态。",
@@ -266,10 +293,19 @@ const copyByLocale: Record<Locale, DashboardCopy> = {
   ko: {
     title: "자료 관리 센터",
     subtitle: "고객, 매물, 안건, 자료의 연결 상태를 한곳에서 확인합니다.",
+    startHere: "지금 무엇을 할까요",
+    startHereDesc: "자주 쓰는 네 가지 흐름을 먼저 둡니다. 안건 생성, 자료 읽기, 부족 정보 정리, 신청서 출력입니다.",
     tenant: "현재 워크스페이스",
     searchPlaceholder: "고객, 매물, 안건, 자료, 출력 문서 검색",
     search: "검색",
     clear: "지우기",
+    createActionTitle: "안건 만들기",
+    createActionDesc: "파일이 없어도 안건, 고객, 매물을 먼저 만들 수 있습니다.",
+    readActionTitle: "자료 읽기",
+    readActionDesc: "Excel, 재류카드, 운전면허증, 이미지 자료를 읽습니다.",
+    organizeActionTitle: "부족 정보 입력",
+    organizeActionDesc: "미입력, 확인 대기, 불일치 항목만 이어서 정리합니다.",
+    actionStatusTitle: "현재 정리 상태",
     browseByType: "유형별 보기",
     dataMap: "자료 지도",
     dataMapDesc: "안건, 고객/관계자, 매물, 자료 파일의 상태를 함께 확인합니다.",
@@ -672,92 +708,125 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   ]
     .sort((a, b) => b.date.getTime() - a.date.getTime())
     .slice(0, 5);
+  const primaryActions = [
+    {
+      href: "/cases/new?from=entry",
+      icon: "add_business",
+      title: copy.createActionTitle,
+      desc: copy.createActionDesc,
+      meta: `${caseLaneObjects.filter((item) => item.status !== "ready").length} ${copy.needsAction}`,
+      className: "border-slate-950 bg-slate-950 text-white hover:bg-slate-800",
+      iconClassName: "bg-white/10 text-white",
+      metaClassName: "bg-white/10 text-white",
+    },
+    {
+      href: "/import-center#source-upload",
+      icon: "document_scanner",
+      title: copy.readActionTitle,
+      desc: copy.readActionDesc,
+      meta: `${inputLaneObjects.filter((item) => item.status !== "ready").length} ${copy.needsAction}`,
+      className: "border-blue-200 bg-blue-50 text-slate-950 hover:border-[#002FA7] hover:bg-blue-100",
+      iconClassName: "bg-white text-[#002FA7]",
+      metaClassName: "bg-white text-[#002FA7] ring-1 ring-blue-100",
+    },
+    {
+      href: "/organize-center",
+      icon: "fact_check",
+      title: copy.organizeActionTitle,
+      desc: copy.organizeActionDesc,
+      meta: `${pendingObjects.length} ${copy.needsAction}`,
+      className: "border-amber-200 bg-amber-50 text-slate-950 hover:border-amber-400 hover:bg-amber-100",
+      iconClassName: "bg-white text-amber-700",
+      metaClassName: "bg-white text-amber-800 ring-1 ring-amber-100",
+    },
+    {
+      href: "/output-center",
+      icon: "picture_as_pdf",
+      title: copy.outputActionTitle,
+      desc: copy.outputActionDesc,
+      meta: `${generatedOutputs.length} ${copy.outputs}`,
+      className: "border-emerald-200 bg-emerald-50 text-slate-950 hover:border-emerald-400 hover:bg-emerald-100",
+      iconClassName: "bg-white text-emerald-700",
+      metaClassName: "bg-white text-emerald-800 ring-1 ring-emerald-100",
+    },
+  ];
 
   return (
     <div className="mx-auto max-w-[1360px] space-y-7">
-      <header className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-        <div className="grid gap-px bg-slate-200 lg:grid-cols-[minmax(360px,1.05fr)_minmax(360px,0.95fr)]">
-          <div className="bg-white px-6 py-7 sm:px-8">
+      <header className="rounded-lg border border-slate-200 bg-white px-6 py-6 sm:px-8">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_440px] lg:items-end">
+          <div>
             <p className="text-xs font-black text-[#002FA7]">
               {copy.tenant}: {session.tenant.name}
             </p>
-            <h1 className="mt-2 text-2xl font-black leading-tight tracking-normal text-slate-950 sm:text-3xl">
-              {copy.title}
+            <h1 className="mt-2 text-3xl font-black leading-tight tracking-normal text-slate-950 sm:text-4xl">
+              {copy.startHere}
             </h1>
-            <p className="mt-2 max-w-xl text-sm font-semibold leading-6 text-slate-600">{copy.subtitle}</p>
-
-            <form action="/" className="mt-5 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-              <label className="sr-only" htmlFor="dashboard-search">
-                {copy.search}
-              </label>
-              <input
-                id="dashboard-search"
-                name="q"
-                defaultValue={searchQuery}
-                placeholder={copy.searchPlaceholder}
-                className="h-10 min-w-0 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 outline-none focus:border-[#002FA7] focus:ring-2 focus:ring-blue-100"
-              />
-              <button
-                className="h-10 rounded-md border border-slate-300 bg-white px-4 text-sm font-black text-slate-800 hover:border-[#002FA7] hover:text-[#002FA7]"
-                type="submit"
+            <p className="mt-3 max-w-3xl text-sm font-semibold leading-6 text-slate-600">{copy.startHereDesc}</p>
+          </div>
+          <form action="/" className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+            <label className="sr-only" htmlFor="dashboard-search">
+              {copy.search}
+            </label>
+            <input
+              id="dashboard-search"
+              name="q"
+              defaultValue={searchQuery}
+              placeholder={copy.searchPlaceholder}
+              className="h-11 min-w-0 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 outline-none focus:border-[#002FA7] focus:ring-2 focus:ring-blue-100"
+            />
+            <button
+              className="h-11 rounded-md border border-slate-300 bg-white px-4 text-sm font-black text-slate-800 hover:border-[#002FA7] hover:text-[#002FA7]"
+              type="submit"
+            >
+              {copy.search}
+            </button>
+            {searchQuery ? (
+              <Link
+                href={homeHref({ view: activeView })}
+                className="flex h-10 items-center justify-center rounded-md border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 hover:bg-slate-50 sm:col-span-2"
               >
-                {copy.search}
-              </button>
-              {searchQuery ? (
-                <Link
-                  href={homeHref({ view: activeView })}
-                  className="flex h-10 items-center justify-center rounded-md border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 hover:bg-slate-50 sm:col-span-2"
-                >
-                  {copy.clear}
-                </Link>
-              ) : null}
-            </form>
-          </div>
-
-          <div className="grid gap-px bg-slate-200 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-            <Link href="/import-center" className="group flex min-h-44 flex-col justify-between bg-white p-6 hover:bg-blue-50/40">
-              <div>
-                <div className="flex justify-end">
-                  <span aria-hidden="true" className="material-symbols-outlined text-[22px] text-[#002FA7]">
-                    add_box
-                  </span>
-                </div>
-                <h2 className="mt-4 text-2xl font-black leading-tight text-slate-950">{copy.intakeActionTitle}</h2>
-                <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">{copy.intakeActionDesc}</p>
-              </div>
-              <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4">
-                <span className="text-sm font-black text-slate-950 group-hover:text-[#002FA7]">{copy.open}</span>
-                <span className="rounded-full bg-rose-50 px-2.5 py-1 text-xs font-black text-rose-700 ring-1 ring-rose-100">
-                  {pendingObjects.length} {copy.needsAction}
-                </span>
-              </div>
-            </Link>
-
-            <Link href="/output-center" className="group flex min-h-44 flex-col justify-between bg-white p-6 hover:bg-blue-50/40">
-              <div>
-                <div className="flex justify-end">
-                  <span aria-hidden="true" className="material-symbols-outlined text-[22px] text-[#002FA7]">
-                    description
-                  </span>
-                </div>
-                <h2 className="mt-4 text-2xl font-black leading-tight text-slate-950">{copy.outputActionTitle}</h2>
-                <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">{copy.outputActionDesc}</p>
-              </div>
-              <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4">
-                <span className="text-sm font-black text-slate-950 group-hover:text-[#002FA7]">{copy.open}</span>
-                <span aria-hidden="true" className="material-symbols-outlined text-[20px] text-slate-400 group-hover:text-[#002FA7]">
-                  arrow_forward
-                </span>
-              </div>
-            </Link>
-          </div>
+                {copy.clear}
+              </Link>
+            ) : null}
+          </form>
         </div>
       </header>
+
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {primaryActions.map((action, index) => (
+          <Link
+            key={action.href}
+            href={action.href}
+            className={`group flex min-h-48 flex-col justify-between rounded-lg border p-5 transition ${action.className}`}
+          >
+            <div>
+              <div className="flex items-start justify-between gap-3">
+                <span className={`flex h-11 w-11 items-center justify-center rounded-md ${action.iconClassName}`}>
+                  <span aria-hidden="true" className="material-symbols-outlined text-[22px]">
+                    {action.icon}
+                  </span>
+                </span>
+                <span className="text-xs font-black opacity-60">{String(index + 1).padStart(2, "0")}</span>
+              </div>
+              <h2 className="mt-5 text-2xl font-black leading-tight">{action.title}</h2>
+              <p className={`mt-2 text-sm font-semibold leading-6 ${index === 0 ? "text-white/75" : "text-slate-600"}`}>{action.desc}</p>
+            </div>
+            <div className="mt-5 flex items-center justify-between border-t border-current/10 pt-4">
+              <span className={`rounded-full px-2.5 py-1 text-xs font-black ${action.metaClassName}`}>{action.meta}</span>
+              <span aria-hidden="true" className="material-symbols-outlined text-[20px] opacity-70 group-hover:translate-x-0.5">
+                arrow_forward
+              </span>
+            </div>
+          </Link>
+        ))}
+      </section>
 
       <section className="overflow-hidden rounded-lg border border-slate-200 bg-white">
         <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-base font-black text-slate-950">{copy.dataMap}</h2>
+            <p className="text-xs font-black text-[#002FA7]">{copy.actionStatusTitle}</p>
+            <h2 className="mt-1 text-base font-black text-slate-950">{copy.dataMap}</h2>
             <p className="mt-1 text-xs font-semibold text-slate-500">{copy.dataMapDesc}</p>
           </div>
           <Link href={homeHref({ hash: "object-list" })} className="text-xs font-black text-slate-500 hover:text-[#002FA7]">

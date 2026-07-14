@@ -120,6 +120,16 @@ BROKER_DESK_AUTH_MODE=demo BROKER_DESK_ENABLE_DEMO_AUTH=true BROKER_DESK_SEED_MO
 - Known runtime caution: after mixing production build and dev server runs, Next dev cache can produce missing manifest/runtime errors. Stop the dev server, remove `.next`, and restart with `npx next dev --webpack`.
 - Durable source: `docs/operations/DEVELOPMENT_HANDOFF_2026_07_01.md`.
 
+2026-07-14 terminology review checkpoint:
+
+- The current UI terminology review package has been regenerated from the active development branch.
+- Practical friend review should use the Japanese package `docs/operations/ui-terminology-ja-business-review.csv`; Chinese review files are primarily developer aids.
+- First-pass quick Japanese review can use `docs/operations/ui-terminology-ja-starter-review.csv`, not the full export.
+- Japanese terminology dictionary: `docs/operations/PRODUCT_TERMINOLOGY_DICTIONARY_JA_2026_07_14.md`.
+- Reviewer handoff: `docs/operations/UI_TERMINOLOGY_REVIEW_HANDOFF_2026_07_14.md`.
+- Product glossary: `docs/operations/PRODUCT_TERMINOLOGY_DICTIONARY_2026_07_14.md`.
+- Durable rule: product UI terms can be localized, but raw business data such as names, addresses, building names, company names, filenames, and official form labels should not be hard-translated.
+
 ## Target User
 
 Primary V1 user:

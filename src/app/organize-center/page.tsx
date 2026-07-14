@@ -539,13 +539,12 @@ export default async function OrganizeCenterPage({ searchParams }: OrganizeCente
                   </span>
                 </div>
                 <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-                  <div className="hidden grid-cols-[112px_minmax(0,1.5fr)_110px_minmax(0,1fr)_108px_92px] border-b border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-black uppercase text-slate-500 lg:grid">
+                  <div className="hidden grid-cols-[112px_minmax(0,1.7fr)_110px_minmax(0,1.25fr)_108px] border-b border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-black uppercase text-slate-500 lg:grid">
                     <span>{copy.status}</span>
                     <span>{copy.object}</span>
                     <span>{copy.typeLabel}</span>
                     <span>{copy.relation}</span>
                     <span>{copy.taskUpdated}</span>
-                    <span className="text-right">{copy.action}</span>
                   </div>
                   <div className="divide-y divide-slate-100">
                   {filteredItems.map((item) => {
@@ -555,7 +554,7 @@ export default async function OrganizeCenterPage({ searchParams }: OrganizeCente
                         key={`${item.type}:${item.id}`}
                         href={hrefWithFilters(selectedType, selectedStatus, query, item.id)}
                         className={
-                          "grid gap-3 px-3 py-3 text-sm transition hover:bg-blue-50/40 lg:grid-cols-[112px_minmax(0,1.5fr)_110px_minmax(0,1fr)_108px_92px] lg:items-center " +
+                          "grid gap-3 px-3 py-3 text-sm transition hover:bg-blue-50/40 lg:grid-cols-[112px_minmax(0,1.7fr)_110px_minmax(0,1.25fr)_108px] lg:items-center " +
                           (active ? "bg-blue-50/60 ring-1 ring-inset ring-[#002FA7]" : "bg-white")
                         }
                       >
@@ -578,13 +577,6 @@ export default async function OrganizeCenterPage({ searchParams }: OrganizeCente
                         </div>
                         <div className="text-xs font-bold tabular-nums text-slate-500">
                           {item.updatedAt ? formatDate(item.updatedAt, locale) : copy.noDate}
-                        </div>
-                        <div className="flex items-center justify-between gap-2 font-black text-[#002FA7] lg:justify-end">
-                          <span className="lg:hidden">{copy.action}</span>
-                          <div className="flex items-center gap-1">
-                            <span>{getPrimaryActionLabel(item.type, copy)}</span>
-                            <span className="material-symbols-outlined text-[17px]" aria-hidden="true">arrow_forward</span>
-                          </div>
                         </div>
                       </Link>
                     );

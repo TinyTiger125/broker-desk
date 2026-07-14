@@ -22,15 +22,34 @@ Generated files:
 
 ```text
 docs/operations/ui-terminology-starter-review.csv
+docs/operations/ui-terminology-ja-starter-review.csv
+docs/operations/ui-terminology-ja-business-review.csv
+docs/operations/ui-terminology-zh-business-review.csv
 docs/operations/ui-terminology-core-review.csv
 docs/operations/ui-terminology-review.csv
 ```
 
 Use `ui-terminology-starter-review.csv` for the first business review. It is capped to high-impact frontstage text from the main entry, import, organize, case, output, and extraction-review flows. The file starts with importable i18n rows, then includes a smaller set of hardcoded migration targets.
 
+Use `ui-terminology-ja-starter-review.csv` for a smaller practical Japanese review when the reviewer should not see Chinese or Korean rows.
+
+Use `ui-terminology-ja-business-review.csv` as the default friend-review package for the practical Japanese product language. It contains Japanese i18n rows plus likely Japanese frontstage hardcoded rows that still need engineering migration.
+
+Use `ui-terminology-zh-business-review.csv` when a Chinese reviewer wants a localization-style review pack. It contains Chinese i18n rows plus frontstage hardcoded rows that still need engineering migration.
+
 Use `ui-terminology-core-review.csv` for a broader business review. It contains all frontstage product text.
 
 Use `ui-terminology-review.csv` for engineering cleanup. It includes system, library, and secondary screens.
+
+For the 2026-07-14 friend-feedback review package, use:
+
+- `docs/operations/UI_TERMINOLOGY_REVIEW_HANDOFF_2026_07_14.md`
+- `docs/operations/PRODUCT_TERMINOLOGY_DICTIONARY_JA_2026_07_14.md`
+- `docs/operations/PRODUCT_TERMINOLOGY_DICTIONARY_2026_07_14.md`
+- `docs/operations/ui-terminology-starter-review.csv`
+- `docs/operations/ui-terminology-ja-starter-review.csv`
+- `docs/operations/ui-terminology-ja-business-review.csv`
+- `docs/operations/ui-terminology-zh-business-review.csv`
 
 ## CSV Columns
 
@@ -51,6 +70,8 @@ Use `ui-terminology-review.csv` for engineering cleanup. It includes system, lib
 Only edit `suggested_text`.
 
 Do not edit `id`, `source`, `file`, `locale`, `key`, or `current_text`.
+
+Do not translate raw business data such as person names, addresses, building names, company names, source filenames, or official-form labels. These are source facts, not UI terminology.
 
 Rows with `source=i18n` can be imported automatically.
 

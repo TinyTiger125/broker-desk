@@ -10,9 +10,17 @@ const srcRoot = path.join(repoRoot, "src");
 const outPath = path.join(repoRoot, "docs", "operations", "ui-terminology-review.csv");
 const coreOutPath = path.join(repoRoot, "docs", "operations", "ui-terminology-core-review.csv");
 const starterOutPath = path.join(repoRoot, "docs", "operations", "ui-terminology-starter-review.csv");
+const jaStarterOutPath = path.join(repoRoot, "docs", "operations", "ui-terminology-ja-starter-review.csv");
+const jaBusinessOutPath = path.join(repoRoot, "docs", "operations", "ui-terminology-ja-business-review.csv");
+const zhBusinessOutPath = path.join(repoRoot, "docs", "operations", "ui-terminology-zh-business-review.csv");
 const targetExtensions = new Set([".ts", ".tsx"]);
 const cjkPattern = /[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/;
 const localeNames = new Set(["ja", "zh", "ko"]);
+const kanaPattern = /[\u3040-\u30ff]/;
+const hangulPattern = /[\uac00-\ud7af]/;
+const simplifiedChineseHintPattern = /[们这为认读资输关连联导项经请选择创见错调历处发页显补归齐户须该仅编编码签状态查价填写采后会列议级码类总个现体并返当]/;
+const japaneseBusinessTermPattern =
+  /(資料|物件|関係者|案件|申込|保証|契約|賃貸|売買|台帳|帳票|出力|入力|確認|保存|追加|編集|選択|対象|作成|管理|履歴|修繕|住所|氏名|電話|生年月日|勤務|年収|連絡|本人|会社|賃料|貸主|借主|買主|売主|未入力|不一致|不明|不要|採用|反映|項目|書類|保証会社|申請|入居|家賃|月額|仲介|分離|合併|照合|読|読み|戻|紐づけ|割当|整備|担当|検索|完了|未完了|候補|補足|会社別)/;
 const starterI18nReviewLimit = 220;
 const starterHardcodedReviewLimit = 80;
 const starterReviewFiles = new Set([
@@ -66,6 +74,13 @@ function classifySurface(file) {
   if (file.startsWith("src/app/api/") || file === "src/app/actions.ts") return "system";
   if (file.startsWith("src/lib/")) return "library";
   return "secondary";
+}
+
+function looksLikeJapaneseReviewText(text) {
+  if (!text || hangulPattern.test(text)) return false;
+  if (kanaPattern.test(text)) return true;
+  if (simplifiedChineseHintPattern.test(text)) return false;
+  return japaneseBusinessTermPattern.test(text);
 }
 
 function reviewPriority(row) {
@@ -243,12 +258,50 @@ function main() {
       a.line - b.line ||
       a.id.localeCompare(b.id),
     );
+  const jaStarterRows = [
+    ...starterCandidates
+      .filter((row) => row.source === "i18n" && row.locale === "ja")
+      .sort(sortByPriority)
+      .slice(0, starterI18nReviewLimit),
+    ...starterCandidates
+      .filter((row) => row.source === "hardcoded" && looksLikeJapaneseReviewText(row.currentText))
+      .sort(sortByPriority)
+      .slice(0, starterHardcodedReviewLimit),
+  ]
+    .sort((a, b) =>
+      (sourceRank[a.source] ?? 9) - (sourceRank[b.source] ?? 9) ||
+      a.file.localeCompare(b.file) ||
+      a.line - b.line ||
+      a.id.localeCompare(b.id),
+    );
   fs.writeFileSync(outPath, `${toCsv(outputRows)}\n`, "utf8");
   fs.writeFileSync(coreOutPath, `${toCsv(coreRows)}\n`, "utf8");
   fs.writeFileSync(starterOutPath, `${toCsv(starterRows)}\n`, "utf8");
+  fs.writeFileSync(jaStarterOutPath, `${toCsv(jaStarterRows)}\n`, "utf8");
+  const jaBusinessRows = coreRows
+    .filter((row) => (row.source === "i18n" && row.locale === "ja") || (row.source === "hardcoded" && looksLikeJapaneseReviewText(row.currentText)))
+    .sort((a, b) =>
+      (sourceRank[a.source] ?? 9) - (sourceRank[b.source] ?? 9) ||
+      a.file.localeCompare(b.file) ||
+      a.line - b.line ||
+      a.id.localeCompare(b.id),
+    );
+  const zhBusinessRows = coreRows
+    .filter((row) => (row.source === "i18n" && row.locale === "zh") || row.source === "hardcoded")
+    .sort((a, b) =>
+      (sourceRank[a.source] ?? 9) - (sourceRank[b.source] ?? 9) ||
+      a.file.localeCompare(b.file) ||
+      a.line - b.line ||
+      a.id.localeCompare(b.id),
+    );
+  fs.writeFileSync(jaBusinessOutPath, `${toCsv(jaBusinessRows)}\n`, "utf8");
+  fs.writeFileSync(zhBusinessOutPath, `${toCsv(zhBusinessRows)}\n`, "utf8");
   console.log(`Exported ${outputRows.length} unique UI terminology rows from ${rows.length} occurrences to ${path.relative(repoRoot, outPath)}`);
   console.log(`Exported ${coreRows.length} frontstage review rows to ${path.relative(repoRoot, coreOutPath)}`);
   console.log(`Exported ${starterRows.length} high-priority review rows to ${path.relative(repoRoot, starterOutPath)}`);
+  console.log(`Exported ${jaStarterRows.length} Japanese high-priority review rows to ${path.relative(repoRoot, jaStarterOutPath)}`);
+  console.log(`Exported ${jaBusinessRows.length} Japanese business review rows to ${path.relative(repoRoot, jaBusinessOutPath)}`);
+  console.log(`Exported ${zhBusinessRows.length} Chinese business review rows to ${path.relative(repoRoot, zhBusinessOutPath)}`);
 }
 
 main();

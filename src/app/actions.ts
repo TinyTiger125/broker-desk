@@ -109,13 +109,13 @@ import { requirePlatformOwnerSession } from "@/lib/platform-session";
 import { extractInputFileFromWorkbook, type InputFileExtractionResult } from "@/lib/input-file-extractor";
 import { extractIdentityDocumentsFromFiles } from "@/lib/identity-document-extractor";
 import { createClerkInvitationForTenantMember } from "@/lib/clerk-invitations";
-import { CASE_FIELD_KEYS, isKnownCaseFieldKey } from "@/lib/case-field-catalog";
+import { CASE_FIELD_DEFINITIONS, CASE_FIELD_KEYS, getCaseFieldInformation, isKnownCaseFieldKey } from "@/lib/case-field-catalog";
 import {
   CASE_WORKBENCH_FIELD_KEYS,
   isCaseWorkbenchFieldKey,
   normalizeCaseFieldRequirement,
 } from "@/lib/case-workbench-field-rules";
-import { canonicalizeCaseFieldKey, clearCaseFieldValueAliases, getCaseFieldValue } from "@/lib/case-field-normalization";
+import { canonicalizeCaseFieldKey, clearCaseFieldValueAliases, getCaseFieldAliases, getCaseFieldValue } from "@/lib/case-field-normalization";
 import { applyJapanesePostalCodeAddressCompletions } from "@/lib/japan-postal-code";
 import {
   buildExtractionReviewCorrectionEvents,
@@ -2664,6 +2664,69 @@ type ExtractionReviewDecision = {
 };
 
 const WORKBENCH_FIELD_STATUS_KEY = "__workbenchFieldStatuses";
+const CASE_PROGRESS_FIELD_KEYS = CASE_FIELD_DEFINITIONS
+  .filter((field) => field.storageScope === "case_fact" && getCaseFieldInformation(field).importance !== "output_specific")
+  .map((field) => field.fieldKey);
+const CASE_PROGRESS_COMPLETED_STATES = new Set(["confirmed", "edited", "not_applicable", "rejected"]);
+
+function readWorkbenchStatusMap(confirmedData: Record<string, unknown>): Record<string, string> {
+  const raw = confirmedData[WORKBENCH_FIELD_STATUS_KEY];
+  return raw && typeof raw === "object" ? (raw as Record<string, string>) : {};
+}
+
+function buildReviewItemsByFieldKey(reviewItems: ExtractionReviewItem[]) {
+  return reviewItems.reduce<Map<string, ExtractionReviewItem[]>>((acc, item) => {
+    const list = acc.get(item.fieldKey) ?? [];
+    list.push(item);
+    acc.set(item.fieldKey, list);
+    return acc;
+  }, new Map());
+}
+
+function getLatestReviewForCaseField(reviewByFieldKey: Map<string, ExtractionReviewItem[]>, fieldKey: string) {
+  const items = getCaseFieldAliases(fieldKey)
+    .flatMap((alias) => reviewByFieldKey.get(alias) ?? [])
+    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  return items[items.length - 1];
+}
+
+function getCaseWorkbenchProgressSnapshot(confirmedData: Record<string, unknown>, reviewItems: ExtractionReviewItem[]) {
+  const statusMap = readWorkbenchStatusMap(confirmedData);
+  const reviewByFieldKey = buildReviewItemsByFieldKey(reviewItems);
+  const completed = CASE_PROGRESS_FIELD_KEYS.filter((fieldKey) => {
+    const value = getCaseFieldValue(confirmedData, fieldKey);
+    const manualState = statusMap[fieldKey];
+    let state = value ? "confirmed" : "missing";
+    const latestReview = getLatestReviewForCaseField(reviewByFieldKey, fieldKey);
+
+    if (
+      manualState === "confirmed" ||
+      manualState === "edited" ||
+      manualState === "unknown" ||
+      manualState === "rejected" ||
+      manualState === "needs_review" ||
+      manualState === "not_applicable"
+    ) {
+      state = manualState;
+    } else if (latestReview?.reviewStatus === "suggested") {
+      state = value ? "ai_suggested" : "needs_review";
+    } else if (latestReview?.reviewStatus === "rejected") {
+      state = "rejected";
+    } else if (latestReview?.reviewStatus === "unknown") {
+      state = "unknown";
+    } else if (value && latestReview?.reviewStatus === "edited") {
+      state = "edited";
+    }
+
+    return CASE_PROGRESS_COMPLETED_STATES.has(state);
+  }).length;
+  const total = CASE_PROGRESS_FIELD_KEYS.length;
+  return {
+    completed,
+    total,
+    percent: total > 0 ? Math.round((completed / total) * 100) : 0,
+  };
+}
 
 function getCaseWorkbenchFieldKeysFromForm(formData: FormData): string[] {
   const requestedFields = String(formData.get("presentFieldKeysJson") ?? "").trim();
@@ -2931,6 +2994,7 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
   const brokerageCase = await getBrokerageCaseById({ userId: user.id, tenantId, caseId });
   if (!brokerageCase) throw new Error("案件が見つかりません。");
   const reviewItems = await listExtractionReviewItems({ userId: user.id, tenantId, caseId });
+  const progressBefore = getCaseWorkbenchProgressSnapshot(brokerageCase.confirmedDataJson, reviewItems);
 
   const nextConfirmedData: Record<string, unknown> = { ...brokerageCase.confirmedDataJson };
   const existingStatusMap =
@@ -2978,6 +3042,8 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
   });
 
   nextConfirmedData[WORKBENCH_FIELD_STATUS_KEY] = existingStatusMap;
+  const progressAfter = getCaseWorkbenchProgressSnapshot(nextConfirmedData, reviewItems);
+  const progressGain = Math.max(0, progressAfter.completed - progressBefore.completed);
   const eventFieldKeys = [...new Set([...fieldKeysToSave, ...postalCompletionResult.completedFieldKeys])];
   const labelsByFieldKey = Object.fromEntries(eventFieldKeys.map((fieldKey) => [fieldKey, fieldKey]));
   const correctionEventDrafts = buildWorkbenchCorrectionEvents({
@@ -3014,6 +3080,9 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
     context: {
       caseId,
       confirmedFieldCount: Object.keys(nextConfirmedData).filter((key) => key !== WORKBENCH_FIELD_STATUS_KEY).length,
+      progressCompletedBefore: progressBefore.completed,
+      progressCompletedAfter: progressAfter.completed,
+      progressGain,
       postalCodeLookupCount: postalCompletionResult.lookupCount,
       postalCodeConflictCount: postalCompletionResult.conflictCount,
       correctionEventCount: correctionEvents.length,
@@ -3030,6 +3099,10 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
   if (guaranteeTemplate) redirectParams.set("guaranteeTemplate", guaranteeTemplate);
   if (returnNode) redirectParams.set("node", returnNode);
   redirectParams.set("flash", "case_workbench_saved");
+  if (progressGain > 0) {
+    redirectParams.set("progressFrom", String(progressBefore.percent));
+    redirectParams.set("progressGain", String(progressGain));
+  }
   redirect(`/cases/${caseId}?${redirectParams.toString()}${returnAnchor ? `#${returnAnchor}` : ""}`);
 }
 

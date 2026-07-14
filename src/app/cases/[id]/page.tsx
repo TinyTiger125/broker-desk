@@ -6,6 +6,7 @@ import {
   uploadAndParseExcelAction,
   uploadAndParseIdentityDocumentAction,
 } from "@/app/actions";
+import { CaseProgressExperience } from "@/components/case-progress-experience";
 import { CaseWorkbenchFieldForm } from "@/components/case-workbench-field-form";
 import { IdentityDocumentUploadForm } from "@/components/identity-document-upload-form";
 import { PageFlashBanner } from "@/components/page-flash-banner";
@@ -34,7 +35,7 @@ const WORKBENCH_FIELD_STATUS_KEY = "__workbenchFieldStatuses";
 
 type CasePageProps = {
   params: Promise<{ id: string }>;
-  searchParams?: Promise<{ flash?: string; node?: string }>;
+  searchParams?: Promise<{ flash?: string; node?: string; progressFrom?: string; progressGain?: string }>;
 };
 
 type WorkbenchTrustState =
@@ -608,6 +609,18 @@ function getActiveTreeNode(nodeId: string | undefined) {
   return flattenTreeNodes(CASE_INFORMATION_TREE).find((node) => node.id === nodeId);
 }
 
+function parseProgressPercent(value: string | undefined) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return undefined;
+  return Math.max(0, Math.min(100, Math.round(parsed)));
+}
+
+function parsePositiveInteger(value: string | undefined) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) return 0;
+  return Math.min(parsed, 99);
+}
+
 function WorkbenchEvidenceSummary({ locale, field }: { locale: Locale; field: WorkbenchField }) {
   const evidence = getPrimaryEvidence(field);
   const canUseCandidate = Boolean(evidence?.value);
@@ -746,7 +759,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
 
   const [{ id }, query] = await Promise.all([
     params,
-    searchParams ?? Promise.resolve({} as { flash?: string; node?: string }),
+    searchParams ?? Promise.resolve({} as { flash?: string; node?: string; progressFrom?: string; progressGain?: string }),
   ]);
   const [brokerageCase, reviewItems, correctionEvents, importJobs, fieldRules] = await Promise.all([
     getBrokerageCaseById({ userId: user.id, tenantId, caseId: id }),
@@ -830,6 +843,14 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
   const selectedDossierMapFields = selectedDossierMapNode
     ? sortDossierMapFields(allWorkbenchFields.filter((field) => fieldMatchesTreeNode(field, selectedDossierMapNode)))
     : [];
+  const dossierProgressPercent = dossierStatus.total > 0 ? Math.round((dossierStatus.completed / dossierStatus.total) * 100) : 0;
+  const progressGain = query?.flash === "case_workbench_saved" ? parsePositiveInteger(query.progressGain) : 0;
+  const progressFromPercent = progressGain > 0 ? parseProgressPercent(query?.progressFrom) : undefined;
+  const selectedDossierMapStatus = getTreeNodeStatus(selectedDossierMapFields);
+  const selectedOpenFields = selectedDossierMapFields.filter(fieldShouldShowInEditor).slice(0, 6);
+  const selectedFilledFields = selectedDossierMapFields
+    .filter((field) => field.value || getPrimaryEvidence(field)?.value)
+    .slice(0, 8);
   const outputHref = `/output-center?caseId=${encodeURIComponent(brokerageCase.id)}`;
   const caseWorkbenchHref = (options?: { node?: string; hash?: string }) => {
     const params = new URLSearchParams();
@@ -971,7 +992,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
           </Link>
         </div>
 
-        <div className="mt-2 grid gap-2 xl:grid-cols-2">
+        <div className="mt-2 grid gap-2 2xl:grid-cols-2">
           <div className="grid gap-2 rounded-md border border-emerald-100 bg-emerald-50/30 p-2 lg:grid-cols-[170px_minmax(0,1fr)] lg:items-center">
             <div>
               <h3 className="text-sm font-black text-emerald-950">
@@ -1030,20 +1051,72 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white">
-        <div className="grid gap-0 lg:grid-cols-[360px_minmax(0,1fr)]">
+        <div className="grid gap-0 lg:grid-cols-[420px_minmax(0,1fr)]">
           <aside className="border-b border-slate-200 p-4 lg:sticky lg:top-14 lg:max-h-[calc(100vh-4rem)] lg:overflow-y-auto lg:border-b-0 lg:border-r">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-xs font-bold text-indigo-700">
-                  {tr(locale, { ja: "案件資料ツリー", zh: "案件资料树", ko: "안건 자료 트리" })}
+                  {tr(locale, { ja: "左側の表示欄", zh: "左侧显示栏", ko: "왼쪽 표시 영역" })}
                 </p>
                 <h2 className="mt-1 text-base font-black text-slate-950">
-                  {tr(locale, { ja: "資料の地図", zh: "资料地图", ko: "자료 지도" })}
+                  {tr(locale, { ja: "完成度と入力結果", zh: "完成度与已填内容", ko: "완성도와 입력 결과" })}
                 </h2>
               </div>
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold tabular-nums text-slate-700">
-                {dossierStatus.completed}/{dossierStatus.total}
+              <span className="rounded-full bg-slate-950 px-2.5 py-1 text-[11px] font-black tabular-nums text-white">
+                {dossierProgressPercent}%
               </span>
+            </div>
+            <CaseProgressExperience
+              completed={dossierStatus.completed}
+              total={dossierStatus.total}
+              open={dossierStatus.open}
+              currentPercent={dossierProgressPercent}
+              animateFromPercent={progressFromPercent}
+              gainCount={progressGain}
+              labels={{
+                overall: tr(locale, { ja: "全体", zh: "整体", ko: "전체" }),
+                remaining: tr(locale, { ja: "残り", zh: "还差", ko: "남음" }),
+                helper: tr(locale, {
+                  ja: "右側で入力した内容は保存後ここに反映されます。未入力と確認待ちだけを優先して表示します。",
+                  zh: "右侧填写并保存后，会在这里反映。未填写和待确认项目优先显示。",
+                  ko: "오른쪽에서 입력해 저장한 내용이 여기에 반영됩니다. 미입력과 확인 대기를 먼저 보여줍니다.",
+                }),
+                gainPrefix: tr(locale, { ja: "+", zh: "+", ko: "+" }),
+                gainSuffix: tr(locale, { ja: "項目 完了", zh: "项完成", ko: "개 완료" }),
+              }}
+            />
+            <div className="mt-3 rounded-lg border border-indigo-100 bg-white p-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[11px] font-black text-indigo-700">
+                  {tr(locale, { ja: "今見ている入力結果", zh: "当前输入结果", ko: "현재 입력 결과" })}
+                </p>
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black text-slate-600">{selectedDossierMapNode?.label}</span>
+              </div>
+              {selectedOpenFields.length > 0 ? (
+                <Link
+                  href={caseWorkbenchHref({ node: selectedOpenFields[0].treeNodeId, hash: getWorkbenchFieldAnchor(selectedOpenFields[0].fieldKey) })}
+                  className="mt-2 flex items-center justify-between gap-2 rounded bg-amber-50 px-2 py-2 text-[11px] font-black text-amber-900 hover:text-indigo-700"
+                >
+                  <span>{tr(locale, { ja: "次に入力", zh: "下一项", ko: "다음 입력" })}: {selectedOpenFields[0].label}</span>
+                  <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
+                </Link>
+              ) : (
+                <p className="mt-2 rounded bg-emerald-50 px-2 py-2 text-[11px] font-black text-emerald-800">
+                  {tr(locale, { ja: "この分類は整理済みです。", zh: "当前分类已整理。", ko: "현재 분류는 정리되었습니다." })}
+                </p>
+              )}
+              <div className="mt-2 space-y-1">
+                {selectedFilledFields.slice(0, 3).map((field) => (
+                  <Link
+                    key={`summary-${field.fieldKey}`}
+                    href={caseWorkbenchHref({ node: field.treeNodeId, hash: getWorkbenchFieldAnchor(field.fieldKey) })}
+                    className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-2 rounded px-2 py-1 text-[11px] hover:bg-blue-50"
+                  >
+                    <span className="truncate font-black text-slate-500">{field.label}</span>
+                    <span className="truncate font-bold text-slate-950">{getDossierMapPreviewValue(locale, field)}</span>
+                  </Link>
+                ))}
+              </div>
             </div>
             <nav className="mt-4 space-y-2">
               {dossierTreeNodes.map((node) => {
@@ -1110,10 +1183,50 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
             <div className="mt-4 overflow-hidden rounded-lg border border-slate-200 bg-white">
               <div className="border-b border-slate-100 bg-slate-50 px-3 py-2">
                 <p className="text-[11px] font-bold text-slate-500">
-                  {tr(locale, { ja: "現在の分類", zh: "当前分类", ko: "현재 분류" })}
+                  {tr(locale, { ja: "現在表示している分類", zh: "当前显示分类", ko: "현재 표시 분류" })}
                 </p>
                 <h3 className="mt-0.5 text-sm font-black text-slate-950">{selectedDossierMapNode?.label}</h3>
+                <p className="mt-1 text-[11px] font-semibold text-slate-500">
+                  {tr(locale, { ja: "未整理", zh: "待整理", ko: "정리 필요" })}: {selectedDossierMapStatus.open} / {tr(locale, { ja: "入力済み", zh: "已填写", ko: "입력됨" })}: {selectedDossierMapStatus.completed}
+                </p>
               </div>
+              {selectedOpenFields.length > 0 ? (
+                <div className="border-b border-amber-100 bg-amber-50/70 px-3 py-2">
+                  <p className="text-[11px] font-black text-amber-900">
+                    {tr(locale, { ja: "次に入力する項目", zh: "接下来要填", ko: "다음 입력 항목" })}
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {selectedOpenFields.map((field) => (
+                      <Link
+                        key={`open-${field.fieldKey}`}
+                        href={caseWorkbenchHref({ node: field.treeNodeId, hash: getWorkbenchFieldAnchor(field.fieldKey) })}
+                        className="rounded-full bg-white px-2 py-1 text-[10px] font-black text-amber-900 ring-1 ring-amber-100 hover:text-indigo-700"
+                      >
+                        {field.label}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              {selectedFilledFields.length > 0 ? (
+                <div className="border-b border-slate-100 px-3 py-2">
+                  <p className="text-[11px] font-black text-slate-500">
+                    {tr(locale, { ja: "すでに入っている内容", zh: "已经有的内容", ko: "이미 입력된 내용" })}
+                  </p>
+                  <div className="mt-2 space-y-1.5">
+                    {selectedFilledFields.slice(0, 4).map((field) => (
+                      <Link
+                        key={`filled-${field.fieldKey}`}
+                        href={caseWorkbenchHref({ node: field.treeNodeId, hash: getWorkbenchFieldAnchor(field.fieldKey) })}
+                        className="grid grid-cols-[7.5rem_minmax(0,1fr)] gap-2 rounded bg-slate-50 px-2 py-1.5 text-[11px] hover:bg-blue-50"
+                      >
+                        <span className="truncate font-black text-slate-600">{field.label}</span>
+                        <span className="truncate font-bold text-slate-950">{getDossierMapPreviewValue(locale, field)}</span>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
               <div className="max-h-[480px] overflow-y-auto">
                 <table className="w-full table-fixed border-collapse text-left">
                   <thead className="sticky top-0 z-10 bg-white text-[10px] font-black text-slate-500">
@@ -1171,7 +1284,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                   <div className="border-b border-slate-100 px-5 py-4">
                     <h2 className="text-sm font-bold text-slate-950">{group.label}</h2>
                   </div>
-                  <div className="grid gap-5 p-5 xl:grid-cols-2">
+                  <div className="grid gap-4 p-5">
                     {group.fields.map((field) => (
                       <div key={field.fieldKey} id={getWorkbenchFieldAnchor(field.fieldKey)} className="scroll-mt-28">
                         <CaseWorkbenchFieldForm
@@ -1179,7 +1292,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                           caseId={brokerageCase.id}
                           fieldKey={field.fieldKey}
                           returnNode={selectedTreeNode?.id}
-                          saveLabel={tr(locale, { ja: "この項目を保存", zh: "保存此项", ko: "이 항목 저장" })}
+                          saveLabel={tr(locale, { ja: "保存して左に反映", zh: "保存并更新左侧", ko: "저장하고 왼쪽 반영" })}
                           savingLabel={tr(locale, { ja: "保存中", zh: "保存中", ko: "저장 중" })}
                           className={`motion-safe:animate-[caseCardSettle_220ms_ease-out] rounded-lg border p-5 ${
                             fieldNeedsAttention(field) ? "border-amber-200 bg-amber-50/45" : "border-slate-200 bg-white"
@@ -1229,19 +1342,6 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
           </div>
         </div>
       </section>
-
-      <details className="rounded-xl border border-indigo-100 bg-white p-4">
-        <summary className="cursor-pointer text-sm font-bold text-indigo-950">
-          {tr(locale, { ja: "状態ラベルを表示", zh: "显示状态说明", ko: "상태 설명 표시" })}
-        </summary>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {(["confirmed", "edited", "ai_suggested", "needs_review", "missing", "conflict", "not_applicable", "rejected", "unknown"] as WorkbenchTrustState[]).map((state) => (
-            <span key={state} className={`rounded-full px-3 py-1 text-xs font-bold ${getTrustStateClass(state)}`}>
-              {getTrustStateLabel(locale, state)}
-            </span>
-          ))}
-        </div>
-      </details>
 
       {mergeHistory.length > 0 ? (
         <section className="order-7 rounded-xl border border-emerald-200 bg-white p-4">

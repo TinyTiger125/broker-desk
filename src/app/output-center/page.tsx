@@ -846,6 +846,9 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
       <section className="rounded border border-slate-300 bg-white p-4">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
+            <p className="text-xs font-black text-[#002FA7]">
+              {locale === "zh" ? "三步生成申请书" : locale === "ko" ? "3단계 신청서 작성" : "3ステップで申込書作成"}
+            </p>
             <h2 className="text-xl font-black text-slate-950">{copy.guaranteePrimaryTitle}</h2>
             <p className="mt-1 text-sm text-slate-700">
               {copy.guaranteeCase}: <span className="font-semibold">{selectedCase?.caseTitle ?? copy.guaranteeNoCase}</span>
@@ -861,18 +864,22 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
               </span>
             </div>
             <div className="mt-4 grid gap-2 md:grid-cols-3">
-              {outputPathItems.map((item) => (
+              {outputPathItems.map((item, index) => (
                 <div
                   key={item.label}
-                  className={`rounded border px-3 py-2 ${
-                    item.ready ? "border-emerald-200 bg-emerald-50" : "border-slate-200 bg-slate-50"
+                  className={`rounded-lg border px-3 py-3 ${
+                    item.ready ? "border-emerald-300 bg-emerald-50" : "border-slate-200 bg-slate-50"
                   }`}
                 >
                   <div className="flex items-center gap-2 text-[11px] font-black text-slate-500">
-                    <span className="material-symbols-outlined text-[14px]">{item.icon}</span>
+                    <span className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-black ${
+                      item.ready ? "bg-emerald-700 text-white" : "bg-slate-200 text-slate-700"
+                    }`}>
+                      {index + 1}
+                    </span>
                     {item.label}
                   </div>
-                  <p className={`mt-1 truncate text-xs font-black ${item.ready ? "text-emerald-800" : "text-slate-700"}`}>{item.value}</p>
+                  <p className={`mt-2 truncate text-sm font-black ${item.ready ? "text-emerald-800" : "text-slate-700"}`}>{item.value}</p>
                 </div>
               ))}
             </div>
