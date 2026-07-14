@@ -973,7 +973,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
       </div>
       <PageFlashBanner message={flashMessage} tone={flashTone} />
 
-      <section id="case-source-intake" className="scroll-mt-24 rounded-lg border border-slate-200 bg-white p-2.5">
+      <section id="case-source-intake" className="scroll-mt-24 rounded-lg border border-slate-200 bg-white p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-sm font-black text-slate-950">
@@ -992,8 +992,8 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
           </Link>
         </div>
 
-        <div className="mt-2 grid gap-2 2xl:grid-cols-2">
-          <div className="grid gap-2 rounded-md border border-emerald-100 bg-emerald-50/30 p-2 lg:grid-cols-[170px_minmax(0,1fr)] lg:items-center">
+        <div className="mt-3 grid gap-3 xl:grid-cols-2">
+          <div className="rounded-lg border border-emerald-100 bg-emerald-50/30 p-3">
             <div>
               <h3 className="text-sm font-black text-emerald-950">
                 {tr(locale, { ja: "本人資料", zh: "本人资料", ko: "본인 자료" })}
@@ -1006,16 +1006,18 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                 })}
               </p>
             </div>
-            <IdentityDocumentUploadForm
-              action={uploadAndParseIdentityDocumentAction}
-              locale={locale}
-              targetCaseId={brokerageCase.id}
-              uploadContext="case"
-              density="compact"
-            />
+            <div className="mt-3">
+              <IdentityDocumentUploadForm
+                action={uploadAndParseIdentityDocumentAction}
+                locale={locale}
+                targetCaseId={brokerageCase.id}
+                uploadContext="case"
+                density="compact"
+              />
+            </div>
           </div>
 
-          <div className="grid gap-2 rounded-md border border-blue-100 bg-blue-50/30 p-2 lg:grid-cols-[170px_minmax(0,1fr)] lg:items-center">
+          <div className="rounded-lg border border-blue-100 bg-blue-50/30 p-3">
             <div>
               <h3 className="text-sm font-black text-blue-950">
                 {tr(locale, { ja: "Excel資料・台帳", zh: "Excel资料 / 台账", ko: "Excel 자료 / 대장" })}
@@ -1028,7 +1030,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                 })}
               </p>
             </div>
-            <form action={uploadAndParseExcelAction} noValidate className="grid gap-2 rounded-md border border-blue-100 bg-blue-50 p-2 md:grid-cols-[minmax(220px,1fr)_120px] md:items-end">
+            <form action={uploadAndParseExcelAction} noValidate className="mt-3 grid gap-2 rounded-md border border-blue-100 bg-blue-50 p-2 sm:grid-cols-[minmax(220px,1fr)_140px] sm:items-end">
               <input type="hidden" name="targetCaseId" value={brokerageCase.id} />
               <input type="hidden" name="uploadContext" value="case" />
               <label className="block space-y-1">

@@ -86,7 +86,7 @@ export function IdentityDocumentUploadForm({ action, locale = "ja", targetCaseId
       <form
         action={action}
         noValidate
-        className="grid w-full gap-2 rounded-md border border-emerald-100 bg-emerald-50 p-2 md:grid-cols-[170px_minmax(220px,1fr)_170px] md:items-end"
+        className="grid w-full gap-2 rounded-md border border-emerald-100 bg-emerald-50 p-2 sm:grid-cols-2"
         onSubmit={(event) => {
           const input = event.currentTarget.elements.namedItem("identityDocumentFile");
           const files = input instanceof HTMLInputElement && input.files ? Array.from(input.files) : [];
@@ -115,11 +115,11 @@ export function IdentityDocumentUploadForm({ action, locale = "ja", targetCaseId
             onChange={(event) => updateFileState(Array.from(event.currentTarget.files ?? []))}
           />
         </label>
-        <button type="submit" className="h-9 w-full rounded-md bg-emerald-700 px-3 text-xs font-bold text-white hover:bg-emerald-800">
+        <button type="submit" className="h-9 w-full rounded-md bg-emerald-700 px-3 text-xs font-bold text-white hover:bg-emerald-800 sm:col-span-2">
           {text.submit}
         </button>
-        {summary ? <p className="text-[11px] font-semibold text-emerald-900 md:col-span-3">{summary}</p> : null}
-        {error ? <p className="text-[11px] font-bold text-red-700 md:col-span-3" role="alert">{error}</p> : null}
+        {summary ? <p className="text-[11px] font-semibold text-emerald-900 sm:col-span-2">{summary}</p> : null}
+        {error ? <p className="text-[11px] font-bold text-red-700 sm:col-span-2" role="alert">{error}</p> : null}
       </form>
     );
   }
