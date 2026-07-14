@@ -638,11 +638,6 @@ export default async function OrganizeCenterPage({ searchParams }: OrganizeCente
                       {selectedItem.secondaryLabel}
                     </Link>
                   ) : null}
-                  {selectedItem.type === "case" ? (
-                    <Link href={`/cases/${encodeURIComponent(selectedItem.id)}#case-source-intake`} className="flex h-11 items-center justify-center rounded border border-blue-200 bg-blue-50 px-4 text-sm font-black text-[#002FA7] hover:bg-blue-100">
-                      {copy.addMaterial}
-                    </Link>
-                  ) : null}
                 </div>
               </div>
             ) : (
