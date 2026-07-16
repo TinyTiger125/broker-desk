@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   rollbackCaseMergeAction,
+  saveCaseApplicabilityAction,
   saveCaseWorkbenchAction,
   uploadAndParseExcelAction,
   uploadAndParseIdentityDocumentAction,
@@ -24,6 +25,15 @@ import {
   type CaseInformationTreeNode,
 } from "@/lib/case-field-catalog";
 import { buildCaseWorkbenchRuleMap, resolveCaseWorkbenchFieldRequirement, type CaseFieldRequirement } from "@/lib/case-workbench-field-rules";
+import {
+  CASE_APPLICABILITY_CONDITIONS,
+  isCaseFieldApplicable,
+  resolveCaseApplicabilityConditions,
+  type CaseApplicabilityChoice,
+  type CaseApplicabilityConditionKey,
+  type ResolvedCaseApplicabilityCondition,
+} from "@/lib/case-field-applicability";
+import { getCaseWorkbenchProgressSnapshot } from "@/lib/case-workbench-progress";
 import { getCaseMergeHistory, getLatestActiveCaseMerge } from "@/lib/case-merge";
 import { formatDate } from "@/lib/format";
 import { getLocale, type Locale } from "@/lib/locale";
@@ -71,6 +81,7 @@ type WorkbenchField = {
   treePath: readonly string[];
   importance: CaseFieldImportance;
   appliesWhen: CaseFieldAppliesWhen;
+  applicable: boolean;
   searchAliases: readonly string[];
   sourceLabel: string;
   decision: WorkbenchFieldDecision;
@@ -103,6 +114,12 @@ const workbenchGroups = CASE_FIELD_CATALOG_GROUPS.map((group) => ({
 
 function tr(locale: Locale, messages: Record<Locale, string>) {
   return messages[locale];
+}
+
+function getBusinessFieldLabel(locale: Locale, fieldKey: string) {
+  const definition = getCaseFieldDefinition(fieldKey);
+  if (definition?.label) return definition.label;
+  return tr(locale, { ja: "確認項目", zh: "资料项目", ko: "확인 항목" });
 }
 
 function getReviewStatusLabel(locale: Locale, status: ExtractionReviewStatus) {
@@ -266,6 +283,7 @@ function getReviewStatusClass(status: ExtractionReviewStatus) {
 }
 
 function fieldNeedsAttention(field: WorkbenchField) {
+  if (!field.applicable) return false;
   if (field.state === "not_applicable") return false;
   if (field.state === "conflict" || field.state === "needs_review" || field.state === "ai_suggested" || field.state === "unknown") {
     return true;
@@ -274,7 +292,11 @@ function fieldNeedsAttention(field: WorkbenchField) {
 }
 
 function fieldShouldShowInEditor(field: WorkbenchField) {
-  return field.state === "missing" || field.state === "conflict" || field.state === "needs_review" || field.state === "ai_suggested" || field.state === "unknown";
+  if (!field.applicable) return false;
+  if (field.state === "conflict" || field.state === "needs_review" || field.state === "ai_suggested" || field.state === "unknown") return true;
+  if (field.state === "rejected") return field.required;
+  if (field.state === "missing") return field.required;
+  return false;
 }
 
 function getWorkbenchStateRank(field: WorkbenchField) {
@@ -308,6 +330,7 @@ function getWorkbenchGroupEditRank(fields: WorkbenchField[]) {
 }
 
 function getDossierMapFieldRank(field: WorkbenchField) {
+  if (!field.applicable) return 8;
   if (fieldShouldShowInEditor(field)) return field.required ? 0 : 1;
   if (field.state === "confirmed" || field.state === "edited") return 2;
   if (field.state === "not_applicable") return 3;
@@ -411,6 +434,7 @@ function buildWorkbenchField(input: {
   statusMap: Record<string, string>;
   reviewByFieldKey: Map<string, ExtractionReviewItem[]>;
   ruleMap: ReadonlyMap<string, CaseFieldRequirement>;
+  conditions: Record<CaseApplicabilityConditionKey, ResolvedCaseApplicabilityCondition>;
 }): WorkbenchField {
   const value = readText(input.confirmedData, input.fieldKey);
   const catalogDefinition = getCaseFieldDefinition(input.fieldKey);
@@ -429,6 +453,12 @@ function buildWorkbenchField(input: {
   const manualState = input.statusMap[input.fieldKey] as WorkbenchTrustState | undefined;
   const requirement = resolveCaseWorkbenchFieldRequirement(input.fieldKey, information.importance, input.ruleMap);
   const required = requirement === "required";
+  const applicable = isCaseFieldApplicable({
+    appliesWhen: information.appliesWhen,
+    confirmedData: input.confirmedData,
+    conditions: input.conditions,
+    manualState,
+  });
   let state: WorkbenchTrustState = value ? "confirmed" : "missing";
   if (manualState === "edited" || manualState === "unknown" || manualState === "rejected" || manualState === "needs_review" || manualState === "not_applicable") state = manualState;
   else if (manualState === "confirmed") state = "confirmed";
@@ -459,6 +489,7 @@ function buildWorkbenchField(input: {
     treePath: information.treePath,
     importance: information.importance,
     appliesWhen: information.appliesWhen,
+    applicable,
     searchAliases: information.searchAliases,
     sourceLabel: latestReview ? `${latestReview.sourceSheet} / ${getSource(latestReview)}` : "案件データ",
     decision: state === "unknown" ? "unknown" : state === "rejected" ? "rejected" : state === "not_applicable" ? "not_applicable" : "confirmed",
@@ -516,6 +547,40 @@ function getAppliesWhenLabel(locale: Locale, appliesWhen: CaseFieldAppliesWhen) 
     output_template_selected: { ja: "出力選択時", zh: "选择输出文件时", ko: "출력 선택 시" },
   };
   return labels[appliesWhen][locale];
+}
+
+function getApplicabilityConditionLabel(locale: Locale, key: CaseApplicabilityConditionKey) {
+  const labels: Record<CaseApplicabilityConditionKey, Record<Locale, string>> = {
+    identity_document_available: { ja: "本人確認資料", zh: "本人资料", ko: "본인 자료" },
+    employment_required: { ja: "勤務先・収入", zh: "工作/收入", ko: "근무/수입" },
+    guarantor_required: { ja: "連帯保証人", zh: "保证人", ko: "보증인" },
+    emergency_contact_required: { ja: "緊急連絡先", zh: "紧急联系人", ko: "긴급 연락처" },
+    co_occupant_exists: { ja: "同居人・入居者", zh: "同住人/入居者", ko: "동거인/입주자" },
+    brokerage_or_management_known: { ja: "仲介・管理会社", zh: "中介/管理公司", ko: "중개/관리회사" },
+  };
+  return labels[key][locale];
+}
+
+function getApplicabilityConditionHint(locale: Locale, key: CaseApplicabilityConditionKey) {
+  const hints: Record<CaseApplicabilityConditionKey, Record<Locale, string>> = {
+    identity_document_available: { ja: "在留カード・免許証など", zh: "在留卡、驾照等", ko: "재류카드/운전면허증 등" },
+    employment_required: { ja: "勤務先、収入、職種を確認", zh: "确认工作、收入、职业", ko: "근무처/수입/직종 확인" },
+    guarantor_required: { ja: "保証人欄を使う案件", zh: "需要填写保证人栏", ko: "보증인 항목을 쓰는 안건" },
+    emergency_contact_required: { ja: "緊急時連絡先が必要", zh: "需要紧急联系人", ko: "긴급 연락처 필요" },
+    co_occupant_exists: { ja: "同居人・入居予定者あり", zh: "有同住人或入居者", ko: "동거인/입주 예정자 있음" },
+    brokerage_or_management_known: { ja: "管理会社・仲介会社を確認", zh: "确认管理/中介公司", ko: "관리/중개회사 확인" },
+  };
+  return hints[key][locale];
+}
+
+function getApplicabilityChoiceLabel(locale: Locale, key: CaseApplicabilityConditionKey, choice: CaseApplicabilityChoice) {
+  if (choice === "excluded") {
+    return tr(locale, { ja: "対象外", zh: "不需要", ko: "대상 아님" });
+  }
+  if (key === "guarantor_required" || key === "emergency_contact_required" || key === "employment_required") {
+    return tr(locale, { ja: "必要", zh: "需要", ko: "필요" });
+  }
+  return tr(locale, { ja: "対象", zh: "需要", ko: "대상" });
 }
 
 function getFieldSourceLabel(locale: Locale, field: WorkbenchField) {
@@ -588,19 +653,21 @@ function fieldMatchesTreeNode(field: WorkbenchField, node: CaseInformationTreeNo
 }
 
 function getTreeNodeStatus(fields: WorkbenchField[]) {
-  const openFields = fields.filter(fieldShouldShowInEditor);
+  const applicableFields = fields.filter((field) => field.applicable);
+  const progressFields = applicableFields.filter((field) => field.required);
+  const openFields = applicableFields.filter(fieldShouldShowInEditor);
   return {
-    total: fields.length,
-    attention: fields.filter(fieldNeedsAttention).length,
+    total: progressFields.length,
+    attention: applicableFields.filter(fieldNeedsAttention).length,
     open: openFields.length,
     requiredOpen: openFields.filter((field) => field.required).length,
     optionalOpen: openFields.filter((field) => !field.required).length,
-    missing: fields.filter((field) => field.state === "missing").length,
-    candidates: fields.filter((field) => field.state === "ai_suggested" || field.state === "needs_review").length,
-    conflicts: fields.filter((field) => field.state === "conflict").length,
-    confirmed: fields.filter((field) => field.state === "confirmed" || field.state === "edited").length,
-    completed: fields.filter((field) => field.state === "confirmed" || field.state === "edited" || field.state === "not_applicable" || field.state === "rejected").length,
-    notApplicable: fields.filter((field) => field.state === "not_applicable").length,
+    missing: applicableFields.filter((field) => field.state === "missing").length,
+    candidates: applicableFields.filter((field) => field.state === "ai_suggested" || field.state === "needs_review").length,
+    conflicts: applicableFields.filter((field) => field.state === "conflict").length,
+    confirmed: applicableFields.filter((field) => field.state === "confirmed" || field.state === "edited").length,
+    completed: progressFields.filter((field) => field.state === "confirmed" || field.state === "edited").length,
+    notApplicable: fields.filter((field) => !field.applicable || field.state === "not_applicable").length,
   };
 }
 
@@ -751,6 +818,66 @@ function WorkbenchEvidenceDetails({ locale, field }: { locale: Locale; field: Wo
   );
 }
 
+function CaseApplicabilitySettingsForm({
+  locale,
+  caseId,
+  returnNode,
+  conditions,
+}: {
+  locale: Locale;
+  caseId: string;
+  returnNode?: string;
+  conditions: Record<CaseApplicabilityConditionKey, ResolvedCaseApplicabilityCondition>;
+}) {
+  return (
+    <form id="case-applicability-settings" action={saveCaseApplicabilityAction} className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
+      <input type="hidden" name="caseId" value={caseId} />
+      {returnNode ? <input type="hidden" name="returnNode" value={returnNode} /> : null}
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <p className="text-[11px] font-black text-slate-950">
+            {tr(locale, { ja: "この案件で使う項目", zh: "当前案件需要的项目", ko: "현재 안건에서 쓰는 항목" })}
+          </p>
+          <p className="mt-0.5 text-[10px] font-semibold leading-4 text-slate-500">
+            {tr(locale, {
+              ja: "対象外にすると、関連する必須項目は完成度から外れます。",
+              zh: "设为不需要后，相关必填项不会进入完成度。",
+              ko: "대상 아님으로 두면 관련 필수 항목은 완성도에서 제외됩니다.",
+            })}
+          </p>
+        </div>
+        <Link href="/settings/case-workbench-fields" className="shrink-0 text-[10px] font-black text-indigo-700 hover:underline">
+          {tr(locale, { ja: "項目設定", zh: "项目设置", ko: "항목 설정" })}
+        </Link>
+      </div>
+      <div className="mt-3 grid gap-2">
+        {CASE_APPLICABILITY_CONDITIONS.map((key) => {
+          const condition = conditions[key];
+          return (
+            <label key={key} className="grid grid-cols-[minmax(0,1fr)_108px] items-center gap-2 rounded-md bg-slate-50 px-2 py-2">
+              <span className="min-w-0">
+                <span className="block truncate text-[11px] font-black text-slate-900">{getApplicabilityConditionLabel(locale, key)}</span>
+                <span className="block truncate text-[10px] font-semibold text-slate-500">{getApplicabilityConditionHint(locale, key)}</span>
+              </span>
+              <select
+                name={`condition:${key}`}
+                defaultValue={condition.choice}
+                className="h-9 rounded-md border border-slate-200 bg-white px-2 text-[11px] font-black text-slate-800"
+              >
+                <option value="included">{getApplicabilityChoiceLabel(locale, key, "included")}</option>
+                <option value="excluded">{getApplicabilityChoiceLabel(locale, key, "excluded")}</option>
+              </select>
+            </label>
+          );
+        })}
+      </div>
+      <button className="mt-3 h-9 w-full rounded-md bg-slate-950 px-3 text-xs font-black text-white hover:bg-slate-800">
+        {tr(locale, { ja: "案件条件を保存", zh: "保存案件条件", ko: "안건 조건 저장" })}
+      </button>
+    </form>
+  );
+}
+
 export default async function CasePage({ params, searchParams }: CasePageProps) {
   const locale = await getLocale();
   const session = await requireTenantSession({ permission: "case.read_assigned" });
@@ -784,6 +911,16 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
   }, new Map());
   const statusMap = readStatusMap(brokerageCase.confirmedDataJson);
   const fieldRuleMap = buildCaseWorkbenchRuleMap(fieldRules);
+  const evidenceFieldKeys = new Set(reviewItems.map((item) => item.fieldKey));
+  const caseApplicabilityConditions = resolveCaseApplicabilityConditions({
+    confirmedData: brokerageCase.confirmedDataJson,
+    evidenceFieldKeys,
+  });
+  const caseProgressSnapshot = getCaseWorkbenchProgressSnapshot({
+    confirmedData: brokerageCase.confirmedDataJson,
+    reviewItems,
+    ruleMap: fieldRuleMap,
+  });
   const workbenchFieldGroups = workbenchGroups.map((group) => ({
     ...group,
     fields: group.fields.map(([fieldKey, label]) =>
@@ -794,6 +931,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
         statusMap,
         reviewByFieldKey,
         ruleMap: fieldRuleMap,
+        conditions: caseApplicabilityConditions,
       }),
     ),
   }));
@@ -803,13 +941,14 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
   const allWorkbenchFields = workbenchFieldGroups.flatMap((group) =>
     group.fields.map((field) => ({ ...field, groupId: group.id, label: `${group.label} / ${field.label}` })),
   );
+  const applicableWorkbenchFields = allWorkbenchFields.filter((field) => field.applicable);
   const selectedTreeNode = getActiveTreeNode(query?.node);
   const treeFilteredFieldKeys = new Set(
-    allWorkbenchFields
+    applicableWorkbenchFields
       .filter((field) => !selectedTreeNode || fieldMatchesTreeNode(field, selectedTreeNode))
       .map((field) => field.fieldKey),
   );
-  const selectedTreeFields = sortWorkbenchEditFields(allWorkbenchFields.filter((field) => treeFilteredFieldKeys.has(field.fieldKey) && fieldShouldShowInEditor(field)));
+  const selectedTreeFields = sortWorkbenchEditFields(applicableWorkbenchFields.filter((field) => treeFilteredFieldKeys.has(field.fieldKey) && fieldShouldShowInEditor(field)));
   const displayedWorkbenchFieldGroups = selectedTreeNode
     ? selectedTreeFields.length > 0
       ? [
@@ -831,20 +970,18 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
           if (rankDiff !== 0) return rankDiff;
           return a.label.localeCompare(b.label);
         });
-  const coreDossierFields = allWorkbenchFields.filter((field) => field.importance !== "output_specific");
-  const dossierStatus = getTreeNodeStatus(coreDossierFields);
   const dossierTreeNodes = CASE_INFORMATION_TREE.filter((node) => node.id !== "output_draft" && node.id !== "source_evidence");
   const selectedDossierMapNode =
     selectedTreeNode ??
     dossierTreeNodes
       .flatMap((node) => [node, ...(node.children ?? [])])
-      .find((node) => getTreeNodeStatus(allWorkbenchFields.filter((field) => fieldMatchesTreeNode(field, node))).open > 0) ??
+      .find((node) => getTreeNodeStatus(applicableWorkbenchFields.filter((field) => fieldMatchesTreeNode(field, node))).open > 0) ??
     dossierTreeNodes[0];
   const selectedDossierMapFields = selectedDossierMapNode
-    ? sortDossierMapFields(allWorkbenchFields.filter((field) => fieldMatchesTreeNode(field, selectedDossierMapNode)))
+    ? sortDossierMapFields(applicableWorkbenchFields.filter((field) => fieldMatchesTreeNode(field, selectedDossierMapNode)))
     : [];
-  const dossierProgressPercent = dossierStatus.total > 0 ? Math.round((dossierStatus.completed / dossierStatus.total) * 100) : 0;
-  const progressGain = query?.flash === "case_workbench_saved" ? parsePositiveInteger(query.progressGain) : 0;
+  const dossierProgressPercent = caseProgressSnapshot.percent;
+  const progressGain = query?.flash === "case_workbench_saved" || query?.flash === "case_applicability_saved" ? parsePositiveInteger(query.progressGain) : 0;
   const progressFromPercent = progressGain > 0 ? parseProgressPercent(query?.progressFrom) : undefined;
   const selectedDossierMapStatus = getTreeNodeStatus(selectedDossierMapFields);
   const selectedOpenFields = selectedDossierMapFields.filter(fieldShouldShowInEditor).slice(0, 6);
@@ -877,6 +1014,12 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
             zh: "信息整理已保存。",
             ko: "정보 정리를 저장했습니다.",
           })
+          : query?.flash === "case_applicability_saved"
+            ? tr(locale, {
+                ja: "この案件で使う項目を保存しました。",
+                zh: "当前案件需要的项目已保存。",
+                ko: "현재 안건에서 쓰는 항목을 저장했습니다.",
+              })
           : query?.flash === "case_source_merged"
             ? tr(locale, {
                 ja: "資料を既存案件へ追加しました。合併履歴から確認・分離できます。",
@@ -1069,9 +1212,9 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
               </span>
             </div>
             <CaseProgressExperience
-              completed={dossierStatus.completed}
-              total={dossierStatus.total}
-              open={dossierStatus.open}
+              completed={caseProgressSnapshot.completed}
+              total={caseProgressSnapshot.total}
+              open={caseProgressSnapshot.open}
               currentPercent={dossierProgressPercent}
               animateFromPercent={progressFromPercent}
               gainCount={progressGain}
@@ -1079,13 +1222,19 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                 overall: tr(locale, { ja: "全体", zh: "整体", ko: "전체" }),
                 remaining: tr(locale, { ja: "残り", zh: "还差", ko: "남음" }),
                 helper: tr(locale, {
-                  ja: "右側で入力した内容は保存後ここに反映されます。未入力と確認待ちだけを優先して表示します。",
-                  zh: "右侧填写并保存后，会在这里反映。未填写和待确认项目优先显示。",
-                  ko: "오른쪽에서 입력해 저장한 내용이 여기에 반영됩니다. 미입력과 확인 대기를 먼저 보여줍니다.",
+                  ja: "現在の案件条件と項目設定で、必須になっている項目だけを数えます。",
+                  zh: "只统计当前案件条件和账号设置中属于必填的项目。",
+                  ko: "현재 안건 조건과 항목 설정에서 필수인 항목만 계산합니다.",
                 }),
                 gainPrefix: tr(locale, { ja: "+", zh: "+", ko: "+" }),
                 gainSuffix: tr(locale, { ja: "項目 完了", zh: "项完成", ko: "개 완료" }),
               }}
+            />
+            <CaseApplicabilitySettingsForm
+              locale={locale}
+              caseId={brokerageCase.id}
+              returnNode={selectedTreeNode?.id}
+              conditions={caseApplicabilityConditions}
             />
             <div className="mt-3 rounded-lg border border-indigo-100 bg-white p-3">
               <div className="flex items-center justify-between gap-2">
@@ -1122,10 +1271,11 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
             </div>
             <nav className="mt-4 space-y-2">
               {dossierTreeNodes.map((node) => {
-                const nodeFields = allWorkbenchFields.filter((field) => fieldMatchesTreeNode(field, node));
+                const nodeFields = applicableWorkbenchFields.filter((field) => fieldMatchesTreeNode(field, node));
+                if (nodeFields.length === 0) return null;
                 const status = getTreeNodeStatus(nodeFields);
                 const selected = selectedDossierMapNode?.id === node.id || node.children?.some((child) => child.id === selectedDossierMapNode?.id);
-                const progress = status.total > 0 ? Math.round((status.completed / status.total) * 100) : 0;
+                const progress = status.total > 0 ? Math.round((status.completed / status.total) * 100) : 100;
                 return (
                   <div key={node.id} className={`overflow-hidden rounded-lg border ${selected ? "border-slate-950 bg-slate-950" : "border-slate-200 bg-white"}`}>
                     <Link
@@ -1149,11 +1299,11 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                     {node.children ? (
                       <div className={`${selected ? "border-t border-white/10 bg-white" : "border-t border-slate-100 bg-white"}`}>
                         {node.children.map((child) => {
-                          const childFields = allWorkbenchFields.filter((field) => fieldMatchesTreeNode(field, child));
+                          const childFields = applicableWorkbenchFields.filter((field) => fieldMatchesTreeNode(field, child));
                           if (childFields.length === 0) return null;
                           const childStatus = getTreeNodeStatus(childFields);
                           const childSelected = selectedDossierMapNode?.id === child.id;
-                          const childProgress = childStatus.total > 0 ? Math.round((childStatus.completed / childStatus.total) * 100) : 0;
+                          const childProgress = childStatus.total > 0 ? Math.round((childStatus.completed / childStatus.total) * 100) : 100;
                           return (
                             <Link
                               key={child.id}
@@ -1189,7 +1339,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                 </p>
                 <h3 className="mt-0.5 text-sm font-black text-slate-950">{selectedDossierMapNode?.label}</h3>
                 <p className="mt-1 text-[11px] font-semibold text-slate-500">
-                  {tr(locale, { ja: "未整理", zh: "待整理", ko: "정리 필요" })}: {selectedDossierMapStatus.open} / {tr(locale, { ja: "入力済み", zh: "已填写", ko: "입력됨" })}: {selectedDossierMapStatus.completed}
+                  {tr(locale, { ja: "未整理", zh: "待整理", ko: "정리 필요" })}: {selectedDossierMapStatus.open} / {tr(locale, { ja: "必須完了", zh: "必填完成", ko: "필수 완료" })}: {selectedDossierMapStatus.completed}
                 </p>
               </div>
               {selectedOpenFields.length > 0 ? (
@@ -1403,7 +1553,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                         <p className="font-bold">{tr(locale, { ja: "差分内容", zh: "差异内容", ko: "차이 내용" })}</p>
                         {item.conflictDetails.map((detail) => (
                           <p key={detail.fieldKey} className="mt-1">
-                            {detail.fieldKey}: {detail.existingValue} / {detail.incomingValue}
+                            {getBusinessFieldLabel(locale, detail.fieldKey)}: {detail.existingValue} / {detail.incomingValue}
                           </p>
                         ))}
                       </div>

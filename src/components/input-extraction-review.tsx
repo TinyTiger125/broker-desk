@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { saveExtractionReviewAction } from "@/app/actions";
 import type { CaseMergeCandidateSummary } from "@/lib/case-merge";
+import { getCaseFieldDefinition } from "@/lib/case-field-catalog";
 import type { ExtractedInputField, InputFileExtractionResult } from "@/lib/input-file-extractor";
 import type { Locale } from "@/lib/locale";
 
@@ -66,22 +67,18 @@ function getGroupLabel(locale: Locale, groupKey: ExtractionGroupKey) {
   return labels[groupKey][locale];
 }
 
+function getBusinessFieldLabel(locale: Locale, fieldKey: string) {
+  const definition = getCaseFieldDefinition(fieldKey);
+  if (definition?.label) return definition.label;
+  return tr(locale, { ja: "確認項目", zh: "资料项目", ko: "확인 항목" });
+}
+
 function getStatusLabel(locale: Locale, status: LocalReviewStatus) {
   const labels: Record<LocalReviewStatus, Record<Locale, string>> = {
     suggested: { ja: "要確認", zh: "待核对", ko: "확인 필요" },
     accepted: { ja: "採用済み", zh: "已采用", ko: "채택됨" },
     edited: { ja: "修正済み", zh: "已修正", ko: "수정됨" },
     unknown: { ja: "保留", zh: "暂缓", ko: "보류" },
-    rejected: { ja: "保存しない", zh: "不保存", ko: "저장 안 함" },
-  };
-  return labels[status][locale];
-}
-
-function getDecisionButtonLabel(locale: Locale, status: Exclude<LocalReviewStatus, "suggested">) {
-  const labels: Record<Exclude<LocalReviewStatus, "suggested">, Record<Locale, string>> = {
-    accepted: { ja: "読取内容を保存", zh: "保存读取内容", ko: "읽은 내용 저장" },
-    edited: { ja: "手入力を保存", zh: "保存手动内容", ko: "직접 입력 저장" },
-    unknown: { ja: "後で確認", zh: "稍后确认", ko: "나중에 확인" },
     rejected: { ja: "保存しない", zh: "不保存", ko: "저장 안 함" },
   };
   return labels[status][locale];
@@ -127,6 +124,10 @@ function getFieldPriority(field: ExtractedInputField) {
   return 2;
 }
 
+function isResolvedStatus(status: LocalReviewStatus) {
+  return status === "accepted" || status === "edited" || status === "rejected";
+}
+
 export function InputExtractionReview({
   extraction,
   locale,
@@ -147,7 +148,12 @@ export function InputExtractionReview({
           ...field,
           groupKey: getGroupKey(field),
         }))
-        .sort((a, b) => getFieldPriority(a) - getFieldPriority(b) || a.label.localeCompare(b.label)),
+        .sort((a, b) => {
+          const priorityDifference = getFieldPriority(a) - getFieldPriority(b);
+          if (priorityDifference !== 0) return priorityDifference;
+          if (a.fieldKey === b.fieldKey) return 0;
+          return a.fieldKey < b.fieldKey ? -1 : 1;
+        }),
     [extraction.fields],
   );
   const groupedItems = useMemo(
@@ -162,6 +168,7 @@ export function InputExtractionReview({
   const [reviewStatuses, setReviewStatuses] = useState<Record<string, LocalReviewStatus>>({});
   const [editedValues, setEditedValues] = useState<Record<string, string>>({});
   const [selectedMergeCaseId, setSelectedMergeCaseId] = useState("");
+  const [reviewMode, setReviewMode] = useState<"pending" | "all">("pending");
   const extractionStats = useMemo(() => {
     const readable = items.filter(hasReadableValue).length;
     const empty = items.length - readable;
@@ -183,6 +190,33 @@ export function InputExtractionReview({
       ),
     [editedValues, items, reviewStatuses],
   );
+  const reviewProgress = useMemo(() => {
+    const resolved = items.filter((field) => {
+      const status = reviewStatuses[getFieldId(field)] ?? field.reviewStatus;
+      return isResolvedStatus(status);
+    }).length;
+    return {
+      resolved,
+      pending: items.length - resolved,
+      percent: items.length > 0 ? Math.round((resolved / items.length) * 100) : 100,
+    };
+  }, [items, reviewStatuses]);
+  const visibleGroups = useMemo(
+    () =>
+      groupedItems
+        .map((group) => ({
+          ...group,
+          items:
+            reviewMode === "all"
+              ? group.items
+              : group.items.filter((field) => {
+                  const status = reviewStatuses[getFieldId(field)] ?? field.reviewStatus;
+                  return !isResolvedStatus(status);
+                }),
+        }))
+        .filter((group) => group.items.length > 0),
+    [groupedItems, reviewMode, reviewStatuses],
+  );
 
   function setStatus(field: ExtractedInputField, status: LocalReviewStatus) {
     const id = getFieldId(field);
@@ -193,14 +227,29 @@ export function InputExtractionReview({
   }
 
   function acceptReadableFields() {
-    setReviewStatuses(
+    setReviewStatuses((current) =>
       Object.fromEntries(
-        items.map((field) => [
-          getFieldId(field),
-          hasReadableValue(field) ? ("accepted" satisfies LocalReviewStatus) : ("unknown" satisfies LocalReviewStatus),
-        ]),
+        items.map((field) => {
+          const id = getFieldId(field);
+          const status = current[id] ?? field.reviewStatus;
+          return [id, isResolvedStatus(status) ? status : hasReadableValue(field) ? "accepted" : status];
+        }),
       ),
     );
+  }
+
+  function confirmField(field: ExtractedInputField) {
+    const id = getFieldId(field);
+    const readValue = getFieldValue(field);
+    const nextValue = editedValues[id] ?? readValue;
+    if (!nextValue.trim()) {
+      setReviewStatuses((current) => ({ ...current, [id]: "unknown" }));
+      return;
+    }
+    setReviewStatuses((current) => ({
+      ...current,
+      [id]: nextValue === readValue ? "accepted" : "edited",
+    }));
   }
 
   return (
@@ -210,35 +259,32 @@ export function InputExtractionReview({
       <input type="hidden" name="mergeTargetCaseId" value={selectedMergeCaseId} />
       {targetCaseId ? <input type="hidden" name="targetCaseId" value={targetCaseId} /> : null}
       <section className="rounded-xl border border-slate-200 bg-white p-4">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
-            <p className="text-[11px] font-black uppercase tracking-wider text-blue-700">
-              {tr(locale, { ja: "読取結果", zh: "读取结果", ko: "읽기 결과" })}
-            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-[11px] font-black uppercase tracking-wider text-blue-700">
+                {tr(locale, { ja: "読取完了", zh: "读取完成", ko: "읽기 완료" })}
+              </p>
+              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
+                {tr(locale, { ja: "値を確認できます", zh: "可核对读取值", ko: "판독값 확인 가능" })}
+              </span>
+            </div>
             <h3 className="mt-1 text-lg font-black text-slate-950">{extraction.documentTypeLabel}</h3>
             <p className="mt-1 truncate text-xs text-slate-500">{extraction.sourceFilename}</p>
           </div>
-          <div className="grid min-w-[320px] grid-cols-3 overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
-            <div className="border-r border-slate-200 p-3">
-              <p className="text-[11px] font-bold text-slate-500">{tr(locale, { ja: "読取済み", zh: "已读取", ko: "읽음" })}</p>
-              <p className="mt-1 text-2xl font-black tabular-nums text-slate-950">{extractionStats.readable}</p>
-            </div>
-            <div className="border-r border-slate-200 p-3">
-              <p className="text-[11px] font-bold text-slate-500">{tr(locale, { ja: "要補完", zh: "需补充", ko: "보완 필요" })}</p>
-              <p className="mt-1 text-2xl font-black tabular-nums text-rose-700">{extractionStats.empty}</p>
-            </div>
-            <div className="p-3">
-              <p className="text-[11px] font-bold text-slate-500">{tr(locale, { ja: "再確認", zh: "需复核", ko: "재확인" })}</p>
-              <p className="mt-1 text-2xl font-black tabular-nums text-amber-700">{extractionStats.lowConfidence}</p>
-            </div>
+          <div className="flex flex-wrap items-center gap-2 text-xs font-bold">
+            <span className="rounded-lg bg-slate-100 px-3 py-2 text-slate-700">
+              {tr(locale, { ja: "読取値", zh: "读取值", ko: "판독값" })} {extractionStats.readable}
+            </span>
+            <span className="rounded-lg bg-rose-50 px-3 py-2 text-rose-700">
+              {tr(locale, { ja: "未読取", zh: "未读取", ko: "미판독" })} {extractionStats.empty}
+            </span>
+            {extractionStats.lowConfidence > 0 ? (
+              <span className="rounded-lg bg-amber-50 px-3 py-2 text-amber-800">
+                {tr(locale, { ja: "要確認", zh: "需仔细核对", ko: "주의 확인" })} {extractionStats.lowConfidence}
+              </span>
+            ) : null}
           </div>
-          <button
-            type="button"
-            onClick={acceptReadableFields}
-            className="shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
-          >
-            {tr(locale, { ja: "読取済みを採用", zh: "采用已读取项", ko: "읽은 항목 채택" })}
-          </button>
         </div>
       </section>
 
@@ -340,7 +386,7 @@ export function InputExtractionReview({
                         </span>
                         {candidate.conflictDetails.slice(0, 3).map((detail) => (
                           <span key={detail.fieldKey} className="mt-1 block">
-                            {detail.fieldKey}: {detail.existingValue} / {detail.incomingValue}
+                            {getBusinessFieldLabel(locale, detail.fieldKey)}: {detail.existingValue} / {detail.incomingValue}
                           </span>
                         ))}
                       </span>
@@ -366,141 +412,247 @@ export function InputExtractionReview({
         </section>
       )}
 
-      {groupedItems.map((group) => (
-        <section key={group.groupKey} className="rounded-xl border border-indigo-100 bg-white">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-indigo-50 bg-indigo-50/70 px-4 py-3">
-            <h4 className="text-sm font-bold text-indigo-950">{group.label}</h4>
-            <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-indigo-700">
-              {group.items.length} {tr(locale, { ja: "項目", zh: "项", ko: "항목" })}
-            </span>
+      <section className="grid items-start gap-4 xl:grid-cols-[minmax(280px,340px)_minmax(0,1fr)]">
+        <aside className="overflow-hidden rounded-xl border border-slate-200 bg-white xl:sticky xl:top-20">
+          <div className="border-b border-slate-100 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-black uppercase tracking-wider text-indigo-700">
+                  {tr(locale, { ja: "全体進捗", zh: "总体进度", ko: "전체 진행" })}
+                </p>
+                <p className="mt-1 text-2xl font-black tabular-nums text-slate-950">
+                  {reviewProgress.resolved}/{items.length}
+                </p>
+              </div>
+              <span className="rounded-full bg-slate-950 px-3 py-1 text-sm font-black tabular-nums text-white">
+                {reviewProgress.percent}%
+              </span>
+            </div>
+            <div
+              className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={reviewProgress.percent}
+            >
+              <div
+                className="h-full rounded-full bg-indigo-600 transition-[width] duration-500 ease-out motion-reduce:transition-none"
+                style={{ width: `${reviewProgress.percent}%` }}
+              />
+            </div>
+            <p className="mt-2 text-[11px] leading-5 text-slate-500">
+              {tr(locale, {
+                ja: "右側で修正した値はすぐここに反映されます。",
+                zh: "右侧修正后会立即反映在这里，无需按 Enter。",
+                ko: "오른쪽에서 수정한 값이 즉시 여기에 반영됩니다. Enter는 필요 없습니다.",
+              })}
+            </p>
+            <button
+              type="button"
+              onClick={acceptReadableFields}
+              className="mt-3 w-full rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-bold text-indigo-800 hover:bg-indigo-100"
+            >
+              {tr(locale, { ja: "読取できた値を一括確定", zh: "批量确认已读取值", ko: "판독된 값 일괄 확정" })}
+            </button>
           </div>
-          <div className="divide-y divide-indigo-50">
-            {group.items.map((field) => {
-              const id = getFieldId(field);
-              const currentStatus = reviewStatuses[id] ?? field.reviewStatus;
-              const readValue = getFieldValue(field);
-              const manualValue = currentStatus === "edited" ? editedValues[id] ?? readValue : "";
-              const useTextarea = readValue.length > 48 || readValue.includes("\n") || field.fieldKey.toLowerCase().includes("address");
-              const updateManualValue = (value: string) => {
-                setEditedValues((current) => ({ ...current, [id]: value }));
-                setReviewStatuses((current) => ({ ...current, [id]: "edited" }));
-              };
-              return (
-                <article key={id} className="grid gap-4 px-4 py-4 xl:grid-cols-[minmax(170px,220px)_minmax(260px,1fr)_minmax(280px,1fr)]">
-                  <div className="space-y-3">
-                    <p className="text-sm font-bold text-slate-900">{field.label}</p>
-                    <span className={`mt-2 inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${getStatusClass(currentStatus)}`}>
-                      {getStatusLabel(locale, currentStatus)}
-                    </span>
-                    <div className="space-y-1 text-[11px] text-slate-500">
-                      <p>
-                        {getMethodLabel(locale, field.method)}
-                        {" / "}
-                        {tr(locale, { ja: "読取目安", zh: "读取参考", ko: "읽기 참고" })} {Math.round(field.confidence * 100)}%
-                      </p>
-                      <p className="truncate">
-                        {tr(locale, { ja: "確認元", zh: "来源", ko: "출처" })}: {field.sourceSheet} {getSourceLabel(field)}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className={`rounded-lg border p-3 ${hasReadableValue(field) ? "border-slate-200 bg-slate-50" : "border-rose-200 bg-rose-50"}`}>
-                      <p className="text-[11px] font-semibold text-slate-500">
-                        {tr(locale, { ja: "読取内容", zh: "读取内容", ko: "읽은 내용" })}
-                      </p>
-                      {currentStatus === "edited" ? (
-                        <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-slate-800">
-                          {readValue || (
-                            <span className="text-slate-400">
-                              {tr(locale, { ja: "読み取れませんでした", zh: "这项没有读到", ko: "읽지 못했습니다" })}
-                            </span>
-                          )}
-                        </p>
-                      ) : (
-                        <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-slate-800">
-                          {readValue || (
-                            <span className="text-slate-400">
-                              {tr(locale, { ja: "読み取れませんでした", zh: "这项没有读到", ko: "읽지 못했습니다" })}
-                            </span>
-                          )}
-                        </p>
-                      )}
-                    </div>
-                    {field.normalizedValue && field.normalizedValue !== field.value ? (
-                      <p className="text-[11px] text-slate-500">
-                        {tr(locale, { ja: "整えた表示", zh: "整理后的显示", ko: "정리된 표시" })}: {field.normalizedValue}
-                      </p>
-                    ) : null}
-                  </div>
-
-                  <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3 text-xs">
-                    <div>
-                      <p className="font-semibold text-slate-800">
-                        {tr(locale, { ja: "保存する内容", zh: "要保存的内容", ko: "저장할 내용" })}
-                      </p>
-                      <p className="mt-1 text-[11px] text-slate-500">
-                        {tr(locale, {
-                          ja: "必要な場合だけここで補足・修正します。",
-                          zh: "需要补充或修正时，直接在这里填写。",
-                          ko: "필요할 때 여기서 보완하거나 수정합니다.",
-                        })}
-                      </p>
-                    </div>
-                    {useTextarea ? (
-                      <textarea
-                        value={manualValue}
-                        onChange={(event) => updateManualValue(event.target.value)}
-                        rows={3}
-                        placeholder={tr(locale, { ja: "手入力する内容", zh: "手动填写内容", ko: "직접 입력할 내용" })}
-                        className="w-full resize-y rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 focus:border-blue-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-100"
-                      />
-                    ) : (
-                      <input
-                        value={manualValue}
-                        onChange={(event) => updateManualValue(event.target.value)}
-                        placeholder={tr(locale, { ja: "手入力する内容", zh: "手动填写内容", ko: "직접 입력할 내용" })}
-                        className="w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 focus:border-blue-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-100"
-                      />
-                    )}
-                    <div className="flex flex-wrap gap-2 pt-1">
-                      {(["accepted", "edited", "unknown", "rejected"] as const).map((status) => {
-                        const disabled = status === "accepted" && !hasReadableValue(field);
-                        return (
-                          <button
-                            key={status}
-                            type="button"
-                            disabled={disabled}
-                            onClick={() => setStatus(field, status)}
-                            className={
-                              "rounded-md border px-2.5 py-1.5 text-[11px] font-bold transition " +
-                              (disabled
-                                ? "cursor-not-allowed border-slate-100 bg-slate-50 text-slate-300"
-                                : currentStatus === status
-                                  ? "border-indigo-700 bg-indigo-700 text-white"
-                                  : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50")
-                            }
-                          >
-                            {getDecisionButtonLabel(locale, status)}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </article>
-              );
-            })}
+          <div className="max-h-[62vh] space-y-4 overflow-y-auto p-3">
+            {groupedItems.map((group) => (
+              <div key={`overview-${group.groupKey}`}>
+                <div className="mb-1 flex items-center justify-between gap-2 px-1">
+                  <p className="text-xs font-black text-slate-700">{group.label}</p>
+                  <span className="text-[10px] font-bold tabular-nums text-slate-400">{group.items.length}</span>
+                </div>
+                <div className="divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-100">
+                  {group.items.map((field) => {
+                    const id = getFieldId(field);
+                    const status = reviewStatuses[id] ?? field.reviewStatus;
+                    const displayedValue = status === "rejected" ? "" : editedValues[id] ?? getFieldValue(field);
+                    return (
+                      <a key={`overview-${id}`} href={`#review-field-${encodeURIComponent(id)}`} className="block bg-white px-3 py-2 hover:bg-slate-50">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="truncate text-[11px] font-bold text-slate-700">{field.label}</p>
+                            <p className={`mt-0.5 truncate text-xs font-semibold ${displayedValue ? "text-slate-950" : "text-rose-600"}`}>
+                              {status === "rejected"
+                                ? tr(locale, { ja: "保存しない", zh: "不采用", ko: "저장 안 함" })
+                                : displayedValue || tr(locale, { ja: "未入力", zh: "未填写", ko: "미입력" })}
+                            </p>
+                          </div>
+                          <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold ${getStatusClass(status)}`}>
+                            {getStatusLabel(locale, status)}
+                          </span>
+                        </div>
+                      </a>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
-        </section>
-      ))}
+        </aside>
+
+        <div className="space-y-4">
+          <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h4 className="text-sm font-black text-slate-950">
+                {tr(locale, { ja: "値を確認・修正", zh: "核对并修正读取值", ko: "판독값 확인 및 수정" })}
+              </h4>
+              <p className="mt-1 text-xs text-slate-500">
+                {tr(locale, {
+                  ja: "読めなかった値はここですぐ入力できます。",
+                  zh: "读取失败的项会直接给出填写框，修正值实时显示在左侧。",
+                  ko: "판독하지 못한 항목은 여기서 바로 입력하고 수정값은 왼쪽에 즉시 표시됩니다.",
+                })}
+              </p>
+            </div>
+            <div className="inline-flex w-fit rounded-lg border border-slate-200 bg-slate-50 p-1" aria-label={tr(locale, { ja: "表示範囲", zh: "显示范围", ko: "표시 범위" })}>
+              <button
+                type="button"
+                onClick={() => setReviewMode("pending")}
+                className={`rounded-md px-3 py-1.5 text-xs font-bold ${reviewMode === "pending" ? "bg-white text-slate-950 shadow-sm" : "text-slate-500"}`}
+              >
+                {tr(locale, { ja: "未確定", zh: "待处理", ko: "미확정" })} {reviewProgress.pending}
+              </button>
+              <button
+                type="button"
+                onClick={() => setReviewMode("all")}
+                className={`rounded-md px-3 py-1.5 text-xs font-bold ${reviewMode === "all" ? "bg-white text-slate-950 shadow-sm" : "text-slate-500"}`}
+              >
+                {tr(locale, { ja: "すべて", zh: "全部", ko: "전체" })} {items.length}
+              </button>
+            </div>
+          </div>
+
+          {visibleGroups.length === 0 ? (
+            <section className="rounded-xl border border-emerald-200 bg-emerald-50 p-6 text-center">
+              <span className="material-symbols-outlined text-3xl text-emerald-700">task_alt</span>
+              <h4 className="mt-2 text-base font-black text-emerald-950">
+                {tr(locale, { ja: "確認が完了しました", zh: "待处理项已全部确认", ko: "확인이 완료되었습니다" })}
+              </h4>
+              <button type="button" onClick={() => setReviewMode("all")} className="mt-3 text-xs font-bold text-emerald-800 underline underline-offset-4">
+                {tr(locale, { ja: "すべての値を見直す", zh: "查看并修改全部值", ko: "전체 값 다시 보기" })}
+              </button>
+            </section>
+          ) : null}
+
+          {visibleGroups.map((group) => (
+            <section key={group.groupKey} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+              <div className="flex items-center justify-between gap-2 border-b border-slate-100 bg-slate-50 px-4 py-3">
+                <h4 className="text-sm font-black text-slate-900">{group.label}</h4>
+                <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-slate-600">{group.items.length}</span>
+              </div>
+              <div className="divide-y divide-slate-100">
+                {group.items.map((field) => {
+                  const id = getFieldId(field);
+                  const currentStatus = reviewStatuses[id] ?? field.reviewStatus;
+                  const readValue = getFieldValue(field);
+                  const currentValue = editedValues[id] ?? readValue;
+                  const useTextarea = currentValue.length > 48 || currentValue.includes("\n") || field.fieldKey.toLowerCase().includes("address");
+                  const updateValue = (value: string) => setEditedValues((current) => ({ ...current, [id]: value }));
+                  const commitEditedValue = () => {
+                    if (!Object.prototype.hasOwnProperty.call(editedValues, id) || currentValue === readValue) return;
+                    setReviewStatuses((current) => ({ ...current, [id]: currentValue.trim() ? "edited" : "unknown" }));
+                  };
+                  return (
+                    <article id={`review-field-${encodeURIComponent(id)}`} key={id} className="scroll-mt-24 p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-black text-slate-950">{field.label}</p>
+                          <div className="mt-1 flex flex-wrap items-center gap-2">
+                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${getStatusClass(currentStatus)}`}>
+                              {getStatusLabel(locale, currentStatus)}
+                            </span>
+                            {!hasReadableValue(field) ? (
+                              <span className="text-[11px] font-bold text-rose-600">
+                                {tr(locale, { ja: "読取できなかったため入力してください", zh: "未读取成功，请直接填写", ko: "판독하지 못했습니다. 직접 입력해 주세요" })}
+                              </span>
+                            ) : field.confidence < 0.65 ? (
+                              <span className="text-[11px] font-bold text-amber-700">
+                                {tr(locale, { ja: "読取値を仔細に確認", zh: "请仔细核对读取值", ko: "판독값을 주의해서 확인" })}
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
+                        <details className="text-right text-[11px] text-slate-500">
+                          <summary className="cursor-pointer font-bold text-slate-600">
+                            {tr(locale, { ja: "確認元", zh: "查看来源", ko: "출처 보기" })}
+                          </summary>
+                          <p className="mt-1 max-w-xs truncate">{field.sourceSheet} {getSourceLabel(field)}</p>
+                          <p>{getMethodLabel(locale, field.method)}</p>
+                        </details>
+                      </div>
+                      <div className={`mt-3 rounded-lg border p-3 ${hasReadableValue(field) ? "border-slate-200 bg-slate-50" : "border-rose-200 bg-rose-50/50"}`}>
+                        <label className="block">
+                          <span className="text-[11px] font-bold text-slate-600">
+                            {tr(locale, { ja: "確定する値", zh: "确认使用的值", ko: "확정할 값" })}
+                          </span>
+                          {useTextarea ? (
+                            <textarea
+                              value={currentValue}
+                              onChange={(event) => updateValue(event.target.value)}
+                              onBlur={commitEditedValue}
+                              rows={3}
+                              placeholder={tr(locale, { ja: "読み取れなかった値を入力", zh: "请填写未读取的值", ko: "판독하지 못한 값 입력" })}
+                              className="mt-1.5 w-full resize-y rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                            />
+                          ) : (
+                            <input
+                              value={currentValue}
+                              onChange={(event) => updateValue(event.target.value)}
+                              onBlur={commitEditedValue}
+                              placeholder={tr(locale, { ja: "読み取れなかった値を入力", zh: "请填写未读取的值", ko: "판독하지 못한 값 입력" })}
+                              className="mt-1.5 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                            />
+                          )}
+                        </label>
+                        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-[11px] text-slate-500">
+                            {tr(locale, { ja: "入力中の値は左側にすぐ反映", zh: "输入中的值会实时显示在左侧", ko: "입력 중인 값이 왼쪽에 즉시 표시" })}
+                          </p>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onMouseDown={(event) => event.preventDefault()}
+                              onClick={() => setStatus(field, "rejected")}
+                              className="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                            >
+                              {tr(locale, { ja: "保存しない", zh: "不采用", ko: "저장 안 함" })}
+                            </button>
+                            <button
+                              type="button"
+                              onMouseDown={(event) => event.preventDefault()}
+                              onClick={() => confirmField(field)}
+                              disabled={!currentValue.trim()}
+                              className="rounded-md bg-indigo-700 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                            >
+                              {tr(locale, { ja: "この値を確定", zh: "确认此项", ko: "이 값 확정" })}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+          ))}
+        </div>
+      </section>
       <div className="sticky bottom-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-indigo-200 bg-white/95 p-3 shadow-lg backdrop-blur">
-        <p className="text-xs text-slate-600">
-          {tr(locale, {
-            ja: "保存すると、採用・修正した内容を案件に反映します。",
-            zh: "保存后，采用和修正后的内容会写入案件。",
-            ko: "저장하면 채택/수정한 내용이 안건에 반영됩니다.",
-          })}
-        </p>
+        <div>
+          <p className="text-xs font-bold text-slate-800">
+            {reviewProgress.pending > 0
+              ? tr(locale, { ja: `未確定 ${reviewProgress.pending} 項目`, zh: `还有 ${reviewProgress.pending} 项待处理`, ko: `미확정 ${reviewProgress.pending}항목` })
+              : tr(locale, { ja: "すべて確定済み", zh: "所有项目已确认", ko: "모든 항목 확정 완료" })}
+          </p>
+          <p className="mt-0.5 text-[11px] text-slate-500">
+            {tr(locale, {
+              ja: "確定・修正した値だけ案件に反映します。",
+              zh: "只会把已确认或已修正的值写入案件。",
+              ko: "확정하거나 수정한 값만 안건에 반영합니다.",
+            })}
+          </p>
+        </div>
         <button
           type="submit"
           className="rounded-lg bg-indigo-700 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-800"

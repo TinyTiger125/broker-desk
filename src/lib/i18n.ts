@@ -349,7 +349,7 @@ const zh: Dict = {
   "output.history.titleCol": "标题",
 
   "templates.title": "模板 / 格式设置",
-  "templates.desc": "可根据法规更新和内部流程变化统一维护输出文书的文案、公司信息和显示项。",
+  "templates.desc": "可根据法规更新和业务习惯统一维护输出文书的文案、公司信息和显示项。",
   "templates.sheet.title": "文书模板",
   "templates.sheet.subtitle": "提案书・明细・资金计划・前提条件",
   "templates.sheet.desc": "统一设置标题、免责说明、公司信息和审批栏显示规则。",

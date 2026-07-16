@@ -46,7 +46,7 @@ const copyByLocale: Record<
     saved: "保存済み",
   },
   zh: {
-    available: "有草稿可恢复",
+    available: "有未保存内容可恢复",
     restore: "恢复",
     clear: "清除",
     reuseAvailable: "有上次输入",

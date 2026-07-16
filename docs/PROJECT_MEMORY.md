@@ -1,6 +1,6 @@
 # Broker Desk Project Memory
 
-Last updated: 2026-07-01
+Last updated: 2026-07-15
 
 This file is the fixed project-memory entrypoint for Broker Desk.
 
@@ -34,10 +34,11 @@ Do not use this file for:
 1. `docs/PROJECT_MEMORY.md`: current source of truth and next-step index.
 2. `docs/README.md`: current documentation map and archive rules.
 3. `CONTEXT.md`: domain language and product boundary.
-4. `docs/product/PRODUCT_TOPOLOGY.md`: product value topology and phase model.
-5. `docs/operations/PM_CONTROL.md`: multi-agent operating model and historical task board.
-6. Task-specific docs:
-   - current handoff: `docs/operations/DEVELOPMENT_HANDOFF_2026_07_01.md`
+4. `docs/product/BROKER_DESK_PRODUCT_TECHNICAL_CHARTER_2026_07_15.md`: current product, AI-native, architecture, roadmap, and pilot design authority.
+5. `docs/product/PRODUCT_TOPOLOGY.md`: product value topology and phase model.
+6. `docs/operations/PM_CONTROL.md`: multi-agent operating model and historical task board.
+7. Task-specific docs:
+   - current handoff: `docs/operations/DEVELOPMENT_HANDOFF_2026_07_12.md`
    - previous handoff: `docs/operations/DEVELOPMENT_HANDOFF_2026_06_27.md`
    - input: `docs/product/V1_INPUT_FILE_MODEL.md`
    - workbench: `docs/product/V1_CASE_WORKBENCH.md`
@@ -130,6 +131,18 @@ BROKER_DESK_AUTH_MODE=demo BROKER_DESK_ENABLE_DEMO_AUTH=true BROKER_DESK_SEED_MO
 - Product glossary: `docs/operations/PRODUCT_TERMINOLOGY_DICTIONARY_2026_07_14.md`.
 - Durable rule: product UI terms can be localized, but raw business data such as names, addresses, building names, company names, filenames, and official form labels should not be hard-translated.
 
+2026-07-15 product and AI-native charter checkpoint:
+
+- Current stage is a validated vertical prototype before controlled pilot, not a production-ready general product.
+- External positioning is a trusted real-estate case-fact workbench; internal technical positioning is an AI-native, evidence-grounded real-estate case operating system.
+- The durable product moat is not an OCR wrapper or prompt library. It is the case fact graph, official template versions, correction events, business eval corpus, workflow gates, tenant-specific history, and reliable execution record.
+- The target AI shape is model-operable product services, not UI-driving automation: models receive minimum case context, call typed tools, produce evidence-backed plans/candidates/patches, and rely on the product for permissions, validation, confirmation, transactions, and audit.
+- Automation should advance by task and field from suggestions to approved change sets and then bounded low-risk execution. Autonomous fact confirmation, compliance judgment, global template publication, and external submission are not product goals.
+- Ordinary broker preview and internal template factory must be separated before pilot. Extraction review must also hide field mapping and internal quality statistics from brokers.
+- Current code model defaults remain `gpt-5.5` / `gpt-5.4-*`; migration to the GPT-5.6 Sol/Terra/Luna family must happen only after task-level offline evals pass.
+- Durable source: `docs/product/BROKER_DESK_PRODUCT_TECHNICAL_CHARTER_2026_07_15.md`.
+- Current visual evidence: `docs/design-audit/product-charter-20260715/README.md`.
+
 ## Target User
 
 Primary V1 user:
@@ -174,7 +187,7 @@ PDF / output:
 AI:
 
 - OpenAI Responses API is the selected baseline.
-- `gpt-5.5` is the high-accuracy default in product docs; smaller models are only for bounded low-risk tasks.
+- Current implementation still defaults to `gpt-5.5` / `gpt-5.4-*`; the dated design authority recommends eval-gated migration to GPT-5.6 Sol/Terra/Luna by task risk.
 - Correction events and approved AI experience notes are the product-owned memory mechanism.
 
 ## Current Data Model Direction
@@ -551,3 +564,27 @@ http://localhost:3002/api/guarantee-applications/j_lease_individual_v1/download?
 - Recorded friend-test driven input-system changes: compact intake controls, route-first import, object-oriented organization, per-field-card save, required/optional field administration, and a visual case-workbench dossier map.
 - The case workbench `资料地图` is no longer a count-only navigation tree. It now presents selected-category field rows with value/status visibility and links unresolved items to the editing cards.
 - Last development verification before handoff: `npm run lint`, `npm run build`, and `BASE_URL=http://localhost:3001 npm run test:regression` all passed.
+
+### 2026-07-15 (development branch only, not merged)
+
+- Started the P0 trial-hardening sequence described in `docs/product/BROKER_DESK_PRODUCT_TECHNICAL_CHARTER_2026_07_15.md`.
+- Split the Friends Guarantee surface into two explicit routes and save scopes:
+  - Broker case preview: `/guarantee-applications/:templateId/preview`, where a broker may make only a case-local position adjustment and update that case's output draft.
+  - Official template factory: `/platform/templates/:templateId`, restricted to platform-template authoring and saving only the official template calibration asset.
+- Server actions now decide the save scope themselves. A browser-provided hidden field cannot turn a case-level save into a template-level save.
+- Added a runtime boundary check that validates both routes and updated browser verification to confirm the broker screen has no field-add/template-save controls while the factory screen does.
+- Development verification passed: `npx tsc --noEmit`, `npm run lint`, `npm run test:tenant-governance`, `npm run test:guarantee-download-gate`, `npm run test:guarantee-calibration`, and `npm run smoke:template-runtime` against port 3001.
+- This checkpoint is uncommitted and remains only on `dev/friend-test-fixes-20260702`. Do not merge, push, or alter the primary friend-test environment without explicit user approval.
+- Completed the P0 source-material review boundary in the same development-only checkpoint:
+  - Only ordinary Excel batch imports may enter column mapping. Scans, PDFs, and manual records now route to their linked case or a clear re-read/ownership recovery state.
+  - Extraction review now uses a two-column workflow: all current values and progress on the left, unresolved review work on the right, with immediate value reflection and animated progress after confirmation.
+  - Technical confidence percentages and source coordinates are removed from the main hierarchy and remain available only as optional evidence details.
+  - Added `import_demo_019` as a repeatable identity-document review fixture with readable, low-confidence, and missing fields.
+- P0 source-review verification passed: `npx tsc --noEmit`, `npm run lint`, `npm run test:ja-terms`, `git diff --check`, browser interaction checks, and `BASE_URL=http://localhost:3001 npm run test:regression`.
+- Detailed evidence: `docs/design-audit/p0-extraction-review-20260715/README.md`.
+- Completed the P0 required-field/applicability pass in development only:
+  - Added account-scoped case-workbench field rules at `/settings/case-workbench-fields`, so each tenant/account can choose which case fields are required or optional while keeping a default baseline.
+  - Added per-case condition controls for applicability, including employment, guarantor, emergency contact, co-occupant, identity-document, and brokerage/management conditions.
+  - Case completion now uses only applicable required fields as the denominator. Confirmed/edited values count as complete; rejected/unknown/review-needed/suggested values do not. Fields marked not applicable are removed from the denominator.
+  - The workbench prioritizes missing required fields, hides complete optional noise from the main editor, and keeps optional or inapplicable work from making the broker feel the case is endlessly unfinished.
+  - Development verification passed: `npx tsc --noEmit`, `npm run lint`, `npm run test:case-applicability`, and `BASE_URL=http://localhost:3001 npm run test:regression`.

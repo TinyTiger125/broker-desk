@@ -1453,7 +1453,60 @@ function ensureRichDemoData() {
   const caseHiroo = caseData({ "property.name": "広尾レジデンス", "property.furigana": "ヒロオレジデンス", "property.roomNumber": "602", "property.postalCode": "1500012", "property.address": "東京都渋谷区広尾5-9-12", "property.usage": "住居", "lease.moveInDate": "2026年8月15日", "lease.rent": "420000", "lease.commonFee": "30000", "lease.monthlyRentTotal": "450000", "lease.deposit": "840000", "lease.keyMoney": "420000", "applicant.name": "黄 文博", "applicant.furigana": "コウ ブンハク", "applicant.birthDate": "1985年6月30日", "applicant.phone": "080-8876-2401", "applicant.currentAddress": "東京都港区南麻布4-10-5", "applicant.employerName": "Huang Capital Pte. Ltd.", "applicant.employerPhone": "03-5500-9012", "applicant.annualIncome": "2200", "emergencyContact.name": "黄 麗", "emergencyContact.relationship": "配偶者", "emergencyContact.phone": "080-7710-1144" });
   const caseKawasaki = caseData({ "property.name": "川崎スタジオレジデンス", "property.furigana": "カワサキスタジオレジデンス", "property.roomNumber": "706", "property.postalCode": "2120014", "property.address": "神奈川県川崎市幸区大宮町14-5", "property.usage": "住居", "lease.moveInDate": "", "lease.rent": "112000", "lease.commonFee": "9000", "lease.monthlyRentTotal": "121000", "lease.deposit": "112000", "lease.keyMoney": "0", "applicant.name": "佐々木 悠斗", "applicant.furigana": "ササキ ユウト", "applicant.birthDate": "1999年10月8日", "applicant.phone": "090-7001-6600", "applicant.currentAddress": "神奈川県横浜市鶴見区豊岡町12-3", "applicant.employerName": "川崎物流サービス株式会社", "applicant.employerAddress": "", "applicant.employerPhone": "044-900-2211", "applicant.annualIncome": "360", "emergencyContact.name": "佐々木 智子", "emergencyContact.relationship": "母", "emergencyContact.phone": "090-3000-8811" });
 
+  const demoExtractionField = (
+    fieldKey: string,
+    label: string,
+    value: string,
+    confidence: number,
+    sourceRange: string,
+  ) => ({
+    fieldKey,
+    label,
+    value,
+    normalizedValue: value,
+    sourceSheet: "在留カード・申込情報",
+    sourceRange,
+    method: "ocr" as const,
+    confidence,
+    reviewStatus: "suggested" as const,
+    sourceFileHash: "demo-park-zairyu-reread",
+    templateVersion: "demo:identity-review-v2",
+  });
+  const demoInputExtractionNotes = JSON.stringify({
+    kind: "input_file_extraction",
+    headers: [],
+    autoMapping: {},
+    rows: [],
+    originalFilename: "パク様_在留カード_再読取.jpg",
+    totalRows: 0,
+    targetCaseId: "case_demo_park_ikebukuro_share",
+    inputExtraction: {
+      schemaVersion: "v1",
+      documentType: "identity_residence_card",
+      documentTypeLabel: "本人確認資料（在留カード）",
+      extractionStatus: "recognized",
+      sourceFilename: "パク様_在留カード_再読取.jpg",
+      sourceFileHash: "demo-park-zairyu-reread",
+      templateVersion: "demo:identity-review-v2",
+      fingerprintConfidence: 0.91,
+      detectedTitle: "在留カード",
+      fields: [
+        demoExtractionField("applicant.name", "申込者氏名", "パク ジス", 0.96, "front:name"),
+        demoExtractionField("applicant.birthDate", "生年月日", "2001年2月6日", 0.93, "front:birth_date"),
+        demoExtractionField("applicant.currentAddress", "現住所", "東京都新宿区高田馬場1-20-2", 0.82, "front:address"),
+        demoExtractionField("applicant.residenceCardNumber", "在留カード番号", "AB12345678CD", 0.74, "front:card_number"),
+        demoExtractionField("applicant.residenceCardExpiry", "在留カード有効期限", "2026年7月31日", 0.54, "front:expiry"),
+        demoExtractionField("applicant.phone", "電話番号", "080-1900-5531", 0.88, "application:phone"),
+        demoExtractionField("applicant.employerName", "勤務先名", "", 0.12, "application:employer_name"),
+        demoExtractionField("applicant.employerPhone", "勤務先電話", "", 0.1, "application:employer_phone"),
+        demoExtractionField("emergencyContact.name", "緊急連絡先氏名", "キム ミナ", 0.79, "application:emergency_name"),
+        demoExtractionField("emergencyContact.phone", "緊急連絡先電話", "", 0.08, "application:emergency_phone"),
+      ],
+    },
+  });
+
   const demoImportJobs: ImportJob[] = [
+    { id: "import_demo_019", tenantId: DEFAULT_TENANT_ID, userId: "user_demo", sourceType: "scan", title: "パク様_在留カード_再読取.jpg", targetEntity: "parties", status: "queued", notes: demoInputExtractionNotes, createdAt: dateAgo(0, 1), updatedAt: dateAgo(0, 1) },
     { id: "import_demo_004", tenantId: DEFAULT_TENANT_ID, userId: "user_demo", sourceType: "excel", title: "勝どきリバーサイド_賃貸申込一式.xlsx", targetEntity: "contracts", status: "mapped", notes: "保証会社申込書へ反映前の確認待ち", mappingJson: { 物件名: "property.name", 申込者: "applicant.name", 賃料: "lease.rent" }, validationMessage: "勤務先証明と在留期限を確認", createdAt: dateAgo(0, 8), updatedAt: dateAgo(0, 8) },
     { id: "import_demo_005", tenantId: DEFAULT_TENANT_ID, userId: "user_demo", sourceType: "scan", title: "ガルシア様_在留カード表裏.jpg", targetEntity: "parties", status: "queued", notes: "本人資料の再読取待ち", validationMessage: "画像の一部が反射で読みにくい", createdAt: dateAgo(0, 4), updatedAt: dateAgo(0, 4) },
     { id: "import_demo_006", tenantId: DEFAULT_TENANT_ID, userId: "user_demo", sourceType: "excel", title: "6月新規問合せ_海外投資家.xlsx", targetEntity: "parties", status: "completed", notes: "4件を主体台帳へ保存", mappingJson: { 氏名: "name", 電話: "phone", 希望エリア: "preferredArea" }, validationMessage: "必須項目を充足", createdAt: dateAgo(1, 4), updatedAt: dateAgo(1, 3) },
@@ -1480,7 +1533,7 @@ function ensureRichDemoData() {
     { id: "case_demo_asakusa_mori_rent", tenantId: DEFAULT_TENANT_ID, userId: "user_demo", caseType: "unit_sale", caseTitle: "森様 浅草スカイコート 賃貸申込", primaryPropertyId: "prop_asakusa_skycourt", status: "draft", confirmedDataJson: caseAsakusa, sourceImportJobIds: ["import_demo_010", "import_demo_011"], createdAt: dateAgo(0, 5), updatedAt: dateAgo(0, 2) },
     { id: "case_demo_orion_umeda_office", tenantId: DEFAULT_TENANT_ID, userId: "user_demo", caseType: "unit_sale", caseTitle: "オリオン商事 梅田センタービル 法人申込", primaryPropertyId: "prop_osaka_umeda_office", status: "draft", confirmedDataJson: caseOrion, sourceImportJobIds: ["import_demo_012"], createdAt: dateAgo(1, 7), updatedAt: dateAgo(0, 6) },
     { id: "case_demo_setagaya_family", tenantId: DEFAULT_TENANT_ID, userId: "user_demo", caseType: "unit_sale", caseTitle: "中村様 世田谷ガーデンテラス 家族入居", primaryPropertyId: "prop_setagaya_garden", status: "reviewed", confirmedDataJson: caseSetagaya, sourceImportJobIds: ["import_demo_013", "import_demo_014"], createdAt: dateAgo(1, 3), updatedAt: dateAgo(0, 8) },
-    { id: "case_demo_park_ikebukuro_share", tenantId: DEFAULT_TENANT_ID, userId: "user_demo", caseType: "unit_sale", caseTitle: "パク様 池袋シェアハウス 再審査", primaryPropertyId: "prop_ikebukuro_share", status: "draft", confirmedDataJson: casePark, sourceImportJobIds: ["import_demo_015", "import_demo_018"], createdAt: dateAgo(0, 3), updatedAt: dateAgo(0, 2) },
+    { id: "case_demo_park_ikebukuro_share", tenantId: DEFAULT_TENANT_ID, userId: "user_demo", caseType: "unit_sale", caseTitle: "パク様 池袋シェアハウス 再審査", primaryPropertyId: "prop_ikebukuro_share", status: "draft", confirmedDataJson: casePark, sourceImportJobIds: ["import_demo_015", "import_demo_018", "import_demo_019"], createdAt: dateAgo(0, 3), updatedAt: dateAgo(0, 1) },
     { id: "case_demo_hiroo_huang_rent", tenantId: DEFAULT_TENANT_ID, userId: "user_demo", caseType: "unit_sale", caseTitle: "黄様 広尾レジデンス 高額賃貸", primaryPropertyId: "prop_hiroo_residence", status: "reviewed", confirmedDataJson: caseHiroo, sourceImportJobIds: ["import_demo_016"], createdAt: dateAgo(2, 4), updatedAt: dateAgo(1) },
     { id: "case_demo_kawasaki_sasaki_studio", tenantId: DEFAULT_TENANT_ID, userId: "user_demo", caseType: "unit_sale", caseTitle: "佐々木様 川崎スタジオ 初回申込", primaryPropertyId: "prop_kawasaki_studio", status: "draft", confirmedDataJson: caseKawasaki, sourceImportJobIds: ["import_demo_017"], createdAt: dateAgo(0, 9), updatedAt: dateAgo(0, 8) },
   ] satisfies BrokerageCase[];

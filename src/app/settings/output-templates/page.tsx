@@ -96,7 +96,7 @@ function getCopy(locale: Locale) {
       diffPreviewDesc: "显示与当前生效模板的差异。",
       closeDiff: "关闭差异",
       noDiff: "无差异。",
-      diffColField: "字段",
+      diffColField: "项目",
       diffColCurrent: "当前值",
       diffColTarget: "对比值",
       shortcutTitle: "输出检查快捷入口",

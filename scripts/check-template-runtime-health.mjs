@@ -1,7 +1,25 @@
-const defaultUrl =
-  "http://localhost:3002/guarantee-applications/j_lease_individual_v1/preview?caseId=case_fixture_friends_guarantee_pdf";
+const defaultTemplateUrl =
+  "http://localhost:3002/platform/templates/j_lease_individual_v1?caseId=case_fixture_friends_guarantee_pdf";
 
-const targetUrl = process.argv[2] ?? process.env.BROKER_DESK_TEMPLATE_HEALTH_URL ?? defaultUrl;
+const templateUrl =
+  process.argv[2] ?? process.env.BROKER_DESK_TEMPLATE_HEALTH_URL ?? defaultTemplateUrl;
+
+function resolveBrokerPreviewUrl(authoringUrl) {
+  const url = new URL(authoringUrl);
+  const templateId = url.pathname.split("/").filter(Boolean).at(-1);
+  const caseId = url.searchParams.get("caseId");
+
+  assert(templateId, `Template id missing from authoring URL: ${authoringUrl}`);
+  assert(caseId, `caseId missing from authoring URL: ${authoringUrl}`);
+
+  return new URL(
+    `/guarantee-applications/${templateId}/preview?caseId=${encodeURIComponent(caseId)}`,
+    url,
+  ).toString();
+}
+
+const brokerPreviewUrl =
+  process.env.BROKER_DESK_BROKER_PREVIEW_HEALTH_URL ?? resolveBrokerPreviewUrl(templateUrl);
 
 function resolveAssetUrl(pageUrl, assetUrl) {
   return new URL(assetUrl.replaceAll("&amp;", "&"), pageUrl).toString();
@@ -28,17 +46,36 @@ async function fetchText(url) {
   return { response, text };
 }
 
-const page = await fetchText(targetUrl);
+const [templatePage, brokerPreviewPage] = await Promise.all([
+  fetchText(templateUrl),
+  fetchText(brokerPreviewUrl),
+]);
 
-assert(page.response.ok, `Preview page returned ${page.response.status}: ${targetUrl}`);
 assert(
-  page.text.includes("可編集プレビュー") || page.text.includes("テンプレート編集"),
-  "Preview page did not render the calibration surface",
+  templatePage.response.ok,
+  `Template authoring page returned ${templatePage.response.status}: ${templateUrl}`,
 );
-assert(page.text.includes("入力欄を追加"), "Preview page did not render the add-field toolbar control");
-assert(page.text.includes("吸着"), "Preview page did not render the snap toolbar control");
+assert(
+  templatePage.text.includes("テンプレート編集"),
+  "Template authoring page did not render the template editing surface",
+);
+assert(templatePage.text.includes("入力欄"), "Template authoring page did not render the add-field control");
+assert(templatePage.text.includes("吸着"), "Template authoring page did not render the snap control");
 
-const scriptUrls = extractScriptUrls(page.text, targetUrl);
+assert(
+  brokerPreviewPage.response.ok,
+  `Broker preview page returned ${brokerPreviewPage.response.status}: ${brokerPreviewUrl}`,
+);
+assert(
+  brokerPreviewPage.text.includes("申込書の確認"),
+  "Broker preview page did not render the case-level preview surface",
+);
+assert(
+  !brokerPreviewPage.text.includes("公式テンプレートを校正する"),
+  "Broker preview page rendered the template authoring heading",
+);
+
+const scriptUrls = extractScriptUrls(templatePage.text, templateUrl);
 assert(scriptUrls.length > 0, "Preview page did not include any Next.js client scripts");
 
 const scriptResults = await Promise.all(
@@ -64,5 +101,5 @@ const hasAppRuntime = scriptResults.some((result) => /\/(main-app|app-pages-inte
 assert(hasAppRuntime, "No App Router client runtime script was found");
 
 console.log(
-  `[PASS] Template runtime assets healthy: ${scriptResults.length} Next.js client scripts reachable for ${targetUrl}`,
+  `[PASS] Template factory and broker preview boundaries healthy: ${scriptResults.length} Next.js client scripts reachable for ${templateUrl}`,
 );

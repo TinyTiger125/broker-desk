@@ -65,7 +65,7 @@ function copy(locale: Locale) {
     unbound: locale === "zh" ? "未绑定" : locale === "ko" ? "미연동" : "外部ID未連携",
     sendInvite: locale === "zh" ? "发送邀请" : locale === "ko" ? "초대 보내기" : "招待送信",
     update: locale === "zh" ? "保存生命周期" : locale === "ko" ? "라이프사이클 저장" : "ライフサイクル保存",
-    templates: locale === "zh" ? "官方模板工厂" : locale === "ko" ? "공식 템플릿 팩토리" : "公式テンプレート工場",
+    templates: locale === "zh" ? "官方文书模板" : locale === "ko" ? "공식 문서 템플릿" : "公式書類テンプレート",
   };
 }
 

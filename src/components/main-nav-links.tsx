@@ -35,6 +35,7 @@ export function MainNavLinks({ links, orientation = "row" }: MainNavLinksProps) 
     "/output-center": "print",
     "/templates": "dashboard_customize",
     "/settings/members": "manage_accounts",
+    "/settings/case-workbench-fields": "rule",
     "/settings/output-templates": "edit_document",
     "/settings/ai-experience": "rule_settings",
   };

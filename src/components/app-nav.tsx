@@ -24,11 +24,10 @@ function getLinks(locale: Locale) {
 
 function getAdminLinks(locale: Locale) {
   return [
-    { href: "/settings/members", label: locale === "zh" ? "成员/权限" : locale === "ko" ? "멤버/권한" : "メンバー/権限" },
-    { href: "/templates", label: locale === "zh" ? "模板管理" : locale === "ko" ? "템플릿 관리" : "テンプレート管理" },
-    { href: "/settings/output-templates", label: locale === "zh" ? "输出模板" : locale === "ko" ? "출력 템플릿" : "出力テンプレート" },
-    { href: "/settings/case-workbench-fields", label: locale === "zh" ? "整理项目" : locale === "ko" ? "정리 항목" : "整理項目" },
-    { href: "/settings/ai-experience", label: locale === "zh" ? "填写规则" : locale === "ko" ? "작성 규칙" : "入力ルール" },
+    { href: "/settings/members", label: locale === "zh" ? "团队成员" : locale === "ko" ? "팀 멤버" : "チームメンバー" },
+    { href: "/settings/case-workbench-fields", label: locale === "zh" ? "必填项目" : locale === "ko" ? "필수 항목" : "必須項目" },
+    { href: "/settings/output-templates", label: locale === "zh" ? "文书格式" : locale === "ko" ? "문서 서식" : "書類フォーマット" },
+    { href: "/settings/ai-experience", label: locale === "zh" ? "智能填写" : locale === "ko" ? "자동 입력" : "入力サポート" },
   ];
 }
 
@@ -53,6 +52,13 @@ export async function AppNav() {
   const appTitle = t(locale, "app.title");
   const actorLabel = locale === "zh" ? "执行账号" : locale === "ko" ? "작업 계정" : "実行担当";
   const mobileSettingsLabel = locale === "zh" ? "账号/语言" : locale === "ko" ? "계정/언어" : "担当/言語";
+  const settingsLabel = locale === "zh" ? "工作区设置" : locale === "ko" ? "워크스페이스 설정" : "ワークスペース設定";
+  const settingsHint =
+    locale === "zh"
+      ? "管理团队、必填项目和文书格式"
+      : locale === "ko"
+        ? "팀, 필수 항목, 문서 서식을 관리"
+        : "チーム、必須項目、書類形式を管理";
   const actorOptions = users.map((item) => ({ id: item.id, name: localizeDemoText(locale, item.name) ?? item.name }));
   const flowLabel =
     locale === "zh"
@@ -99,7 +105,7 @@ export async function AppNav() {
           </details>
           <details className="mt-2 border-t border-slate-200 pt-2">
             <summary className="cursor-pointer px-1 text-xs font-bold text-slate-500">
-              {locale === "zh" ? "后台管理" : locale === "ko" ? "관리 설정" : "管理設定"}
+              {settingsLabel}
             </summary>
             <div className="mt-2 overflow-x-auto">
               <MainNavLinks links={adminLinks} />
@@ -119,14 +125,15 @@ export async function AppNav() {
 
         <div className="mt-5 flex-1 overflow-y-auto pr-1">
           <MainNavLinks links={links} orientation="column" />
-          <details className="mt-4 border-t border-slate-800 pt-4">
-            <summary className="cursor-pointer px-3 text-[10px] font-black uppercase tracking-wider text-slate-500">
-              {locale === "zh" ? "后台管理" : locale === "ko" ? "관리 설정" : "管理設定"}
-            </summary>
+          <section className="mt-5 border-t border-slate-800 pt-4">
+            <div className="px-3">
+              <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">{settingsLabel}</p>
+              <p className="mt-1 text-[10px] font-semibold leading-4 text-slate-600">{settingsHint}</p>
+            </div>
             <div className="mt-2">
               <MainNavLinks links={adminLinks} orientation="column" />
             </div>
-          </details>
+          </section>
         </div>
 
         <div className="mt-4 space-y-2 border-t border-slate-800 pt-4 [&_label]:w-full [&_label]:min-w-0 [&_select]:min-w-0">

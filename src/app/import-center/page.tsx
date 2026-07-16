@@ -356,7 +356,7 @@ function getCopy(locale: Locale) {
       labelTargetEntity: "保存到",
       labelSourceColumns: "资料列（逗号分隔）",
       labelTargetFields: "保存位置（逗号分隔）",
-      btnAutoMap: "按标准规则整理",
+      btnAutoMap: "按标准方式整理",
       btnSaveMap: "确认并保存",
       phSourceCols: "例：物件名称,地址,区域,价格",
       phMapMemo: "例：首次确认保存位置",
@@ -533,6 +533,10 @@ function isInputFileExtractionJob(job: HubImportJobItem) {
   }
 }
 
+function isBatchMappingJob(job: HubImportJobItem) {
+  return job.sourceType === "excel" && !isInputFileExtractionJob(job);
+}
+
 export default async function ImportCenterPage({ searchParams }: ImportCenterPageProps) {
   const [locale, session] = await Promise.all([
     getLocale(),
@@ -582,8 +586,9 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
 
   const sourceColumnExamples = sourceColumnExamplesByLocale[locale];
   const focusJobId = String(params?.job ?? "").trim();
-  const mappingJobs = jobs.filter((job) => !isInputFileExtractionJob(job));
-  const focusedMappingJob = focusJobId ? mappingJobs.find((job) => job.id === focusJobId) : undefined;
+  const mappingJobs = jobs.filter(isBatchMappingJob);
+  const focusedJob = focusJobId ? jobs.find((job) => job.id === focusJobId) : undefined;
+  const focusedMappingJob = focusedJob && isBatchMappingJob(focusedJob) ? focusedJob : undefined;
   const defaultJob = focusedMappingJob ?? mappingJobs[0];
   const hasDefaultJob = Boolean(defaultJob);
   const defaultTarget = defaultJob?.targetEntity ?? "properties";
@@ -916,12 +921,28 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
   const intakeMode = String(params?.intake ?? "new").trim();
   const isExistingIntake = intakeMode === "existing";
   const requestedJobId = xlsxJobId || focusJobId;
-  const requestedJob = xlsxJob ?? focusedMappingJob;
+  const requestedJob = xlsxJob ?? focusedJob;
   const missingRequestedJob = Boolean(requestedJobId && !requestedJob);
+  const caseByImportJobId = new Map(
+    cases.flatMap((caseItem) => caseItem.sourceImportJobIds.map((importJobId) => [importJobId, caseItem] as const)),
+  );
+  const requestedJobCase = requestedJob ? caseByImportJobId.get(requestedJob.id) : undefined;
   const recentJobHref = (job: HubImportJobItem) => {
     if (isInputFileExtractionJob(job)) return `/import-center?xlsxJob=${encodeURIComponent(job.id)}#source-upload`;
-    return `/import-center?job=${encodeURIComponent(job.id)}&advanced=1#job-mapping`;
+    if (isBatchMappingJob(job)) return `/import-center?job=${encodeURIComponent(job.id)}&advanced=1#job-mapping`;
+    const linkedCase = caseByImportJobId.get(job.id);
+    if (linkedCase) return `/cases/${encodeURIComponent(linkedCase.id)}#case-main-editor`;
+    return `/import-center?job=${encodeURIComponent(job.id)}#source-review-summary`;
   };
+  const requestedJobActionHref = requestedJob
+    ? isInputFileExtractionJob(requestedJob)
+      ? "#source-upload"
+      : isBatchMappingJob(requestedJob)
+        ? "#job-mapping"
+        : requestedJobCase
+          ? `/cases/${encodeURIComponent(requestedJobCase.id)}#case-main-editor`
+          : "#source-review-summary"
+    : "#source-upload";
   const creationCards: Array<
     {
       id: string;
@@ -988,13 +1009,17 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                 {sourceLabel[requestedJob.sourceType]} / {targetLabel[requestedJob.targetEntity]} / {statusLabel[requestedJob.status]}
               </p>
             </div>
-            <a
-              href={isInputFileExtractionJob(requestedJob) ? "#source-upload" : "#job-mapping"}
+            <Link
+              href={requestedJobActionHref}
               className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#001e40] px-4 py-2 text-xs font-black text-white hover:bg-[#003366]"
             >
-              <span className="material-symbols-outlined text-[16px]">arrow_downward</span>
-              {locale === "zh" ? "去处理这份资料" : locale === "ko" ? "이 자료 처리" : "この資料を処理"}
-            </a>
+              <span className="material-symbols-outlined text-[16px]">
+                {requestedJobCase && !isInputFileExtractionJob(requestedJob) && !isBatchMappingJob(requestedJob) ? "arrow_forward" : "arrow_downward"}
+              </span>
+              {requestedJobCase && !isInputFileExtractionJob(requestedJob) && !isBatchMappingJob(requestedJob)
+                ? locale === "zh" ? "到案件中核对" : locale === "ko" ? "안건에서 확인" : "案件で確認"
+                : locale === "zh" ? "去处理这份资料" : locale === "ko" ? "이 자료 처리" : "この資料を処理"}
+            </Link>
           </div>
         </section>
       ) : missingRequestedJob ? (
@@ -1004,6 +1029,59 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
             : locale === "ko"
               ? "이 자료 기록을 찾을 수 없습니다. 이동, 병합 또는 정리되었을 수 있습니다."
               : "この資料は見つかりません。移動、統合、または整理された可能性があります。"}
+        </section>
+      ) : null}
+
+      {requestedJob && !isInputFileExtractionJob(requestedJob) && !isBatchMappingJob(requestedJob) ? (
+        <section id="source-review-summary" className="scroll-mt-24 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="material-symbols-outlined text-blue-700">
+                  {requestedJob.sourceType === "scan" ? "document_scanner" : requestedJob.sourceType === "pdf" ? "picture_as_pdf" : "edit_note"}
+                </span>
+                <h2 className="text-base font-black text-slate-950">
+                  {locale === "zh" ? "资料核对入口" : locale === "ko" ? "자료 확인 입구" : "資料確認の入口"}
+                </h2>
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-700">
+                  {sourceLabel[requestedJob.sourceType]}
+                </span>
+              </div>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-700">
+                {requestedJobCase
+                  ? locale === "zh"
+                    ? `这份资料已归入「${requestedJobCase.caseTitle}」。证件图片、PDF 和手动资料不需要做 Excel 列匹配，请在案件中核对读取值和缺失项。`
+                    : locale === "ko"
+                      ? `이 자료는 「${requestedJobCase.caseTitle}」 안건에 연결되어 있습니다. 이미지, PDF, 수동 자료는 Excel 열 매핑이 필요하지 않으며 안건에서 판독값과 누락 항목을 확인합니다.`
+                      : `この資料は「${requestedJobCase.caseTitle}」に紐づいています。画像・PDF・手入力資料に Excel の列対応は不要です。案件で読取値と未入力項目を確認します。`
+                  : locale === "zh"
+                    ? "这条历史记录尚未连接案件，也没有可继续核对的读取值。可以重新读取原文件，或先建立归属。"
+                    : locale === "ko"
+                      ? "이 기존 기록은 아직 안건과 연결되지 않았고 계속 확인할 판독값도 없습니다. 원본 파일을 다시 읽거나 먼저 귀속을 지정하세요."
+                      : "この旧記録はまだ案件に紐づいておらず、続けて確認できる読取値もありません。元ファイルを読み直すか、先に割当先を決めてください。"}
+              </p>
+            </div>
+            <div className="flex shrink-0 flex-wrap gap-2">
+              {requestedJobCase ? (
+                <Link
+                  href={`/cases/${encodeURIComponent(requestedJobCase.id)}#case-main-editor`}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-950 px-4 py-2 text-xs font-black text-white hover:bg-slate-800"
+                >
+                  {locale === "zh" ? "核对案件资料" : locale === "ko" ? "안건 자료 확인" : "案件資料を確認"}
+                  <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
+                </Link>
+              ) : (
+                <>
+                  <Link href="#source-upload" className="rounded-lg bg-blue-700 px-4 py-2 text-xs font-black text-white hover:bg-blue-800">
+                    {locale === "zh" ? "重新读取" : locale === "ko" ? "다시 읽기" : "読み直す"}
+                  </Link>
+                  <Link href="/organize-center" className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-black text-slate-700 hover:bg-slate-50">
+                    {locale === "zh" ? "设置归属" : locale === "ko" ? "귀속 설정" : "割当先を設定"}
+                  </Link>
+                </>
+              )}
+            </div>
+          </div>
         </section>
       ) : null}
 
@@ -1146,7 +1224,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                 </div>
                 <p className="mt-1 text-xs text-slate-600">
                   {locale === "zh"
-                    ? "只采用确认无误的字段。在留卡或驾照任选一份即可。"
+                    ? "只采用确认无误的信息。在留卡或驾照任选一份即可。"
                     : locale === "ko"
                       ? "확실한 항목만 채택하세요. 재류카드 또는 운전면허증 중 하나만 업로드해도 됩니다."
                       : "正しい項目だけ採用してください。在留カードまたは運転免許証の片方だけで進められます。"}
@@ -1582,7 +1660,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
         </article>
       </section>
 
-      {!isInputExtractionOnly && (
+      {(!requestedJob || isBatchMappingJob(requestedJob)) && (
 	      <section id="job-mapping" className="scroll-mt-24 grid gap-6 xl:grid-cols-12">
         <div className="space-y-6 xl:col-span-8">
           <article className="rounded-xl bg-[#e6eeff] p-6">

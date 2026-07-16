@@ -11,10 +11,10 @@ export const dynamic = "force-dynamic";
 
 function copy(locale: Locale) {
   return {
-    title: locale === "zh" ? "平台官方模板工厂" : locale === "ko" ? "플랫폼 공식 템플릿 팩토리" : "プラットフォーム公式テンプレート工場",
+    title: locale === "zh" ? "官方文书模板" : locale === "ko" ? "공식 문서 템플릿" : "公式書類テンプレート",
     subtitle:
       locale === "zh"
-        ? "官方 PDF 底板、框体、字段绑定和发布状态在这里治理；租户生产环境只消费已发布模板。"
+        ? "在这里维护官方 PDF 表单、填写区域、项目对应关系和发布状态；工作区只使用已发布模板。"
         : locale === "ko"
           ? "공식 PDF 원본, 박스, 필드 바인딩, 릴리스 상태를 이곳에서 관리합니다. 테넌트 프로덕션은 게시된 템플릿만 사용합니다."
           : "公式PDF原本・入力枠・フィールド紐付け・リリース状態をここで管理します。テナント本番利用は公開済みテンプレートのみを参照します。",
@@ -22,16 +22,16 @@ function copy(locale: Locale) {
     template: locale === "zh" ? "模板" : locale === "ko" ? "템플릿" : "テンプレート",
     quality: locale === "zh" ? "质量" : locale === "ko" ? "품질" : "品質",
     source: locale === "zh" ? "官方源文件" : locale === "ko" ? "공식 원본" : "公式原本",
-    overlay: locale === "zh" ? "框体/覆盖层" : locale === "ko" ? "박스/오버레이" : "入力枠/オーバーレイ",
+    overlay: locale === "zh" ? "填写区域" : locale === "ko" ? "박스/오버레이" : "入力枠/オーバーレイ",
     actions: locale === "zh" ? "操作" : locale === "ko" ? "작업" : "操作",
-    openFactory: locale === "zh" ? "打开校准界面" : locale === "ko" ? "보정 화면 열기" : "校正画面を開く",
-    ownerLabel: locale === "zh" ? "后台管理" : locale === "ko" ? "관리자 화면" : "管理画面",
-    officialBase: locale === "zh" ? "官方底板" : locale === "ko" ? "공식 원본" : "公式原本",
-    coordinateSetup: locale === "zh" ? "坐标配置" : locale === "ko" ? "좌표 설정" : "座標設定",
+    openFactory: locale === "zh" ? "调整模板" : locale === "ko" ? "보정 화면 열기" : "校正画面を開く",
+    ownerLabel: locale === "zh" ? "模板维护" : locale === "ko" ? "플랫폼 템플릿 공장" : "プラットフォームテンプレート工場",
+    officialBase: locale === "zh" ? "官方表单" : locale === "ko" ? "공식 원본" : "公式原本",
+    coordinateSetup: locale === "zh" ? "填写位置" : locale === "ko" ? "좌표 설정" : "座標設定",
     fieldCount: locale === "zh" ? "输入框" : locale === "ko" ? "입력칸" : "入力枠",
     adjustedCount: locale === "zh" ? "调整" : locale === "ko" ? "조정" : "調整",
     removedCount: locale === "zh" ? "删除" : locale === "ko" ? "삭제" : "削除",
-    baseVersion: locale === "zh" ? "底板记录" : locale === "ko" ? "원본 기록" : "原本記録",
+    baseVersion: locale === "zh" ? "模板版本" : locale === "ko" ? "원본 기록" : "原本記録",
   };
 }
 
@@ -108,7 +108,7 @@ export default async function PlatformTemplatesPage() {
                 <p className="text-slate-400">{ui.baseVersion} {layout.baselineVersion}</p>
               </div>
               <Link
-                href={`/guarantee-applications/${template.id}/preview`}
+                href={`/platform/templates/${template.id}`}
                 className="rounded-md border border-slate-300 px-3 py-2 text-center text-xs font-bold text-slate-700 hover:bg-slate-50"
               >
                 {ui.openFactory}

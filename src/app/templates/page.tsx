@@ -102,7 +102,7 @@ const copyByLocale = {
     activeTemplatesDesc: "MVP 当前可选择的保证会社申请书。",
     selectedTemplate: "当前申请书",
     outputPolicy: "输出原则",
-    outputPolicyDesc: "不修改官方 PDF 的任何线条和框体，只在输入栏上方印字。",
+    outputPolicyDesc: "不修改官方 PDF 的任何线条和填写区域，只在输入栏上方印字。",
     safeAuto: "安全自动填入",
     assisted: "候选填入",
     manual: "电子手填",

@@ -16,10 +16,10 @@ import { localizeDemoBrokerageCase } from "@/lib/demo-localization";
 export const dynamic = "force-dynamic";
 
 type HomePageProps = {
-  searchParams?: Promise<{ q?: string; view?: string; focus?: string }>;
+  searchParams?: Promise<{ q?: string }>;
 };
 
-type ObjectType = "all" | "case" | "party" | "property" | "input";
+type ObjectType = "case" | "party" | "property" | "input";
 type WorkStatus = "needs_action" | "ready" | "unassigned";
 
 type DashboardCopy = {
@@ -38,6 +38,13 @@ type DashboardCopy = {
   organizeActionTitle: string;
   organizeActionDesc: string;
   actionStatusTitle: string;
+  actionStatusDesc: string;
+  searchResultsTitle: string;
+  overviewTitle: string;
+  overviewDesc: string;
+  noActionItems: string;
+  goToOrganizeCenter: string;
+  totalItems: string;
   browseByType: string;
   dataMap: string;
   dataMapDesc: string;
@@ -121,14 +128,6 @@ type WorkObject = {
   detailRows: Array<{ label: string; value: string }>;
 };
 
-type RelationshipSummary = {
-  type: Exclude<ObjectType, "all">;
-  label: string;
-  count: number;
-  needsAction: number;
-  href: string;
-};
-
 const copyByLocale: Record<Locale, DashboardCopy> = {
   ja: {
     title: "資料管理センター",
@@ -145,10 +144,17 @@ const copyByLocale: Record<Locale, DashboardCopy> = {
     readActionDesc: "Excel、在留カード、免許証などを読み取ります。",
     organizeActionTitle: "足りない情報を入れる",
     organizeActionDesc: "未入力や確認待ちの項目だけを続けて整理します。",
-    actionStatusTitle: "現在の整理状況",
+    actionStatusTitle: "次に処理するもの",
+    actionStatusDesc: "確認や補完が必要な対象だけを表示します。全体の確認は情報整理で行います。",
+    searchResultsTitle: "検索結果",
+    overviewTitle: "全体の残り",
+    overviewDesc: "詳しい検索、絞り込み、対象別の確認は情報整理で行います。",
+    noActionItems: "今すぐ整理が必要な対象はありません。",
+    goToOrganizeCenter: "情報整理を開く",
+    totalItems: "合計",
     browseByType: "種類で見る",
-    dataMap: "資料マップ",
-    dataMapDesc: "案件、顧客、物件、資料ファイルを並べて確認します。",
+    dataMap: "整理状況",
+    dataMapDesc: "対象ごとの件数と未処理数だけを確認します。",
     intakeActionTitle: "案件を作成・資料を追加",
     intakeActionDesc: "案件、顧客、物件を作成し、必要な資料を追加します。",
     outputActionTitle: "書類を出力",
@@ -157,9 +163,9 @@ const copyByLocale: Record<Locale, DashboardCopy> = {
     unassignedMaterials: "未整理資料",
     noLinkedSources: "まだ紐付いた資料がありません。",
     globalCounts: "全体",
-    objectList: "資料索引",
-    currentObject: "選択中",
-    recentUpdates: "最近の更新",
+    objectList: "資料一覧",
+    currentObject: "次の処理",
+    recentUpdates: "処理履歴",
     all: "すべて",
     cases: "案件",
     parties: "顧客/関係者",
@@ -225,10 +231,17 @@ const copyByLocale: Record<Locale, DashboardCopy> = {
     readActionDesc: "读取 Excel、在留卡、驾照或图片资料。",
     organizeActionTitle: "补齐信息",
     organizeActionDesc: "只处理未填写、待确认和不一致的项目。",
-    actionStatusTitle: "当前整理情况",
-    browseByType: "按类型查看",
-    dataMap: "资料地图",
-    dataMapDesc: "按案件、客户/关系人、物件和资料文件查看当前状态。",
+    actionStatusTitle: "下一批要处理",
+    actionStatusDesc: "这里只显示需要确认或补全的对象。查找全部资料，请进入整理信息。",
+    searchResultsTitle: "搜索结果",
+    overviewTitle: "整体剩余",
+    overviewDesc: "详细检索、筛选和按对象查看，统一放在整理信息里。",
+    noActionItems: "当前没有马上需要处理的对象。",
+    goToOrganizeCenter: "进入整理信息",
+    totalItems: "合计",
+    browseByType: "查看全部",
+    dataMap: "整理概况",
+    dataMapDesc: "只显示各类数量和待处理数量。",
     intakeActionTitle: "新建案件 / 补充资料",
     intakeActionDesc: "新建案件、客户或物件，也可以补充手头资料。",
     outputActionTitle: "输出文件",
@@ -239,7 +252,7 @@ const copyByLocale: Record<Locale, DashboardCopy> = {
     globalCounts: "全体",
     objectList: "资料索引",
     currentObject: "选中项目",
-    recentUpdates: "最近更新",
+    recentUpdates: "处理记录",
     all: "全部",
     cases: "案件",
     parties: "客户/关系人",
@@ -305,10 +318,17 @@ const copyByLocale: Record<Locale, DashboardCopy> = {
     readActionDesc: "Excel, 재류카드, 운전면허증, 이미지 자료를 읽습니다.",
     organizeActionTitle: "부족 정보 입력",
     organizeActionDesc: "미입력, 확인 대기, 불일치 항목만 이어서 정리합니다.",
-    actionStatusTitle: "현재 정리 상태",
+    actionStatusTitle: "다음에 처리할 대상",
+    actionStatusDesc: "확인 또는 보완이 필요한 대상만 표시합니다. 전체 확인은 정보 정리에서 합니다.",
+    searchResultsTitle: "검색 결과",
+    overviewTitle: "전체 남은 일",
+    overviewDesc: "상세 검색, 필터, 대상별 확인은 정보 정리에서 합니다.",
+    noActionItems: "지금 바로 정리할 대상이 없습니다.",
+    goToOrganizeCenter: "정보 정리 열기",
+    totalItems: "합계",
     browseByType: "유형별 보기",
-    dataMap: "자료 지도",
-    dataMapDesc: "안건, 고객/관계자, 매물, 자료 파일의 상태를 함께 확인합니다.",
+    dataMap: "정리 현황",
+    dataMapDesc: "대상별 수와 미처리 수만 확인합니다.",
     intakeActionTitle: "안건 생성 / 자료 추가",
     intakeActionDesc: "안건, 고객, 매물을 만들고 필요한 자료를 추가합니다.",
     outputActionTitle: "문서 출력",
@@ -371,10 +391,6 @@ const copyByLocale: Record<Locale, DashboardCopy> = {
     sourceNeedsReviewReason: "연결된 자료 중 아직 정리할 항목이 있습니다.",
   },
 };
-
-function isObjectType(value: string | undefined): value is ObjectType {
-  return value === "all" || value === "case" || value === "party" || value === "property" || value === "input";
-}
 
 function getTypeLabel(type: ObjectType, copy: DashboardCopy) {
   if (type === "case") return copy.cases;
@@ -449,14 +465,13 @@ function includesQuery(query: string, ...values: Array<string | undefined>) {
   return values.some((value) => value?.toLowerCase().includes(normalized));
 }
 
-function homeHref(input: { view?: ObjectType; focus?: string; q?: string; hash?: string }) {
+function organizeCenterHref(input: { type?: ObjectType; status?: "needs_input" | "ready" | "unassigned"; q?: string }) {
   const params = new URLSearchParams();
-  if (input.view && input.view !== "all") params.set("view", input.view);
-  if (input.focus) params.set("focus", input.focus);
+  if (input.type) params.set("type", input.type === "input" ? "inbox" : input.type);
+  if (input.status) params.set("status", input.status);
   if (input.q) params.set("q", input.q);
-  const search = params.toString();
-  const path = search ? `/?${search}` : "/";
-  return input.hash ? `${path}#${input.hash}` : path;
+  const query = params.toString();
+  return `/organize-center${query ? `?${query}` : ""}`;
 }
 
 const workStatusRank = { needs_action: 0, unassigned: 1, ready: 2 } satisfies Record<WorkStatus, number>;
@@ -476,8 +491,6 @@ function sortWorkObjects(items: WorkObject[]) {
 export default async function HomePage({ searchParams }: HomePageProps) {
   const params = searchParams ? await searchParams : undefined;
   const searchQuery = params?.q?.trim() ?? "";
-  const activeView = isObjectType(params?.view) ? params.view : "all";
-  const activeFocus = params?.focus;
   const [locale, session] = await Promise.all([getLocale(), requireTenantSession({ permission: "tenant.read" })]);
   const copy = copyByLocale[locale];
   const user = session.user;
@@ -628,93 +641,26 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   const objectMatchesSearch = (item: WorkObject) =>
     includesQuery(searchQuery, item.title, item.subtitle, item.relation, item.metricValue);
 
-  const visibleObjects = allObjects.filter((item) => {
-    const viewMatches = activeView === "all" || item.type === activeView;
-    return viewMatches && objectMatchesSearch(item);
-  });
-
-  const focusedObject =
-    (activeFocus ? allObjects.find((item) => item.key === activeFocus) : undefined) ??
-    visibleObjects.find((item) => item.status !== "ready") ??
-    visibleObjects[0] ??
-    allObjects[0];
-
-  const caseLaneObjects = sortWorkObjects(caseObjects.filter(objectMatchesSearch));
-  const partyLaneObjects = sortWorkObjects(partyObjects.filter(objectMatchesSearch));
-  const propertyLaneObjects = sortWorkObjects(propertyObjects.filter(objectMatchesSearch));
-  const inputLaneObjects = sortWorkObjects(inputObjects.filter(objectMatchesSearch));
-
-  const relationshipSummaries: RelationshipSummary[] = [
-    {
-      type: "case",
-      label: copy.cases,
-      count: caseLaneObjects.length,
-      needsAction: caseLaneObjects.filter((item) => item.status !== "ready").length,
-      href: homeHref({ view: "case", q: searchQuery, hash: "object-list" }),
-    },
-    {
-      type: "party",
-      label: copy.parties,
-      count: partyLaneObjects.length,
-      needsAction: partyLaneObjects.filter((item) => item.status !== "ready").length,
-      href: homeHref({ view: "party", q: searchQuery, hash: "object-list" }),
-    },
-    {
-      type: "property",
-      label: copy.properties,
-      count: propertyLaneObjects.length,
-      needsAction: propertyLaneObjects.filter((item) => item.status !== "ready").length,
-      href: homeHref({ view: "property", q: searchQuery, hash: "object-list" }),
-    },
-    {
-      type: "input",
-      label: copy.inputMaterials,
-      count: inputLaneObjects.length,
-      needsAction: inputLaneObjects.filter((item) => item.status !== "ready").length,
-      href: homeHref({ view: "input", q: searchQuery, hash: "object-list" }),
-    },
-  ];
-
-  const mapLanes = [
-    { summary: relationshipSummaries[0], items: caseLaneObjects.slice(0, 3) },
-    { summary: relationshipSummaries[1], items: partyLaneObjects.slice(0, 3) },
-    { summary: relationshipSummaries[2], items: propertyLaneObjects.slice(0, 3) },
-    { summary: relationshipSummaries[3], items: inputLaneObjects.slice(0, 3) },
-  ];
-
   const pendingObjects = allObjects.filter((item) => item.status !== "ready");
-  const visibleRows = visibleObjects.slice(0, 12);
-  const recentUpdates = [
-    ...importJobs.slice(0, 4).map((item) => ({
-      key: `input:${item.id}`,
-      label: copy.inputMaterials,
-      title: item.title,
-      subtitle: getImportTargetLabel(item.targetEntity, copy),
-      meta: `${formatDate(item.createdAt, locale)} / ${getSourceTypeLabel(locale, item.sourceType)}`,
-      href: getImportJobHref(item),
-      date: item.createdAt,
-      status: (item.status === "completed" ? "ready" : item.status === "queued" ? "unassigned" : "needs_action") as WorkStatus,
-    })),
-    ...generatedOutputs.slice(0, 4).map((item) => ({
-      key: `output:${item.id}`,
-      label: copy.outputs,
-      title: item.title,
-      subtitle: [item.relatedParty, item.relatedProperty].filter(Boolean).join(" / ") || copy.noRelation,
-      meta: `${formatDate(item.generatedAt, locale)} / ${item.outputFormat.toUpperCase()}`,
-      href: item.sourceQuoteId ? `/output-center?quoteId=${encodeURIComponent(item.sourceQuoteId)}` : "/output-center",
-      date: item.generatedAt,
-      status: "ready" as WorkStatus,
-    })),
-  ]
-    .sort((a, b) => b.date.getTime() - a.date.getTime())
-    .slice(0, 5);
+  const queueSource = searchQuery ? allObjects.filter(objectMatchesSearch) : pendingObjects;
+  const queueItems = queueSource.slice(0, 8);
+  const caseNeedsAction = caseObjects.filter((item) => item.status !== "ready").length;
+  const partyNeedsAction = partyObjects.filter((item) => item.status !== "ready").length;
+  const propertyNeedsAction = propertyObjects.filter((item) => item.status !== "ready").length;
+  const inputNeedsAction = inputObjects.filter((item) => item.status !== "ready").length;
+  const overviewItems = [
+    { type: "case" as const, icon: "work", label: copy.cases, count: caseObjects.length, needsAction: caseNeedsAction },
+    { type: "party" as const, icon: "person", label: copy.parties, count: partyObjects.length, needsAction: partyNeedsAction },
+    { type: "property" as const, icon: "apartment", label: copy.properties, count: propertyObjects.length, needsAction: propertyNeedsAction },
+    { type: "input" as const, icon: "upload_file", label: copy.inputMaterials, count: inputObjects.length, needsAction: inputNeedsAction },
+  ];
   const primaryActions = [
     {
       href: "/cases/new?from=entry",
       icon: "add_business",
       title: copy.createActionTitle,
       desc: copy.createActionDesc,
-      meta: `${caseLaneObjects.filter((item) => item.status !== "ready").length} ${copy.needsAction}`,
+      meta: `${caseNeedsAction} ${copy.needsAction}`,
       className: "border-slate-950 bg-slate-950 text-white hover:bg-slate-800",
       iconClassName: "bg-white/10 text-white",
       metaClassName: "bg-white/10 text-white",
@@ -724,13 +670,13 @@ export default async function HomePage({ searchParams }: HomePageProps) {
       icon: "document_scanner",
       title: copy.readActionTitle,
       desc: copy.readActionDesc,
-      meta: `${inputLaneObjects.filter((item) => item.status !== "ready").length} ${copy.needsAction}`,
+      meta: `${inputNeedsAction} ${copy.needsAction}`,
       className: "border-blue-200 bg-blue-50 text-slate-950 hover:border-[#002FA7] hover:bg-blue-100",
       iconClassName: "bg-white text-[#002FA7]",
       metaClassName: "bg-white text-[#002FA7] ring-1 ring-blue-100",
     },
     {
-      href: "/organize-center",
+      href: organizeCenterHref({ status: "needs_input" }),
       icon: "fact_check",
       title: copy.organizeActionTitle,
       desc: copy.organizeActionDesc,
@@ -783,7 +729,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
             </button>
             {searchQuery ? (
               <Link
-                href={homeHref({ view: activeView })}
+                href="/"
                 className="flex h-10 items-center justify-center rounded-md border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 hover:bg-slate-50 sm:col-span-2"
               >
                 {copy.clear}
@@ -822,204 +768,99 @@ export default async function HomePage({ searchParams }: HomePageProps) {
         ))}
       </section>
 
-      <section className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-        <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-xs font-black text-[#002FA7]">{copy.actionStatusTitle}</p>
-            <h2 className="mt-1 text-base font-black text-slate-950">{copy.dataMap}</h2>
-            <p className="mt-1 text-xs font-semibold text-slate-500">{copy.dataMapDesc}</p>
-          </div>
-          <Link href={homeHref({ hash: "object-list" })} className="text-xs font-black text-slate-500 hover:text-[#002FA7]">
-            {copy.viewAll}
-          </Link>
-        </div>
-
-        <div className="grid gap-px bg-slate-200 lg:grid-cols-4">
-          {mapLanes.map(({ summary, items }, index) => {
-              const selected = activeView === summary.type;
-              return (
-                <div
-                  key={summary.type}
-                  className={`bg-white p-4 ${selected ? "ring-2 ring-inset ring-[#002FA7]" : ""}`}
-                >
-                  <Link href={summary.href} aria-current={selected ? "page" : undefined} className="group block">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <p className="text-[11px] font-black text-slate-400">{String(index + 1).padStart(2, "0")}</p>
-                        <h3 className="mt-1 text-lg font-black text-slate-950 group-hover:text-[#002FA7]">{summary.label}</h3>
-                        <p className="mt-1 text-xs font-black text-rose-600">
-                          {summary.needsAction} {copy.needsAction}
-                        </p>
-                      </div>
-                      <p className={`text-4xl font-black leading-none tabular-nums ${selected ? "text-[#002FA7]" : "text-slate-950"}`}>
-                        {summary.count}
-                      </p>
-                    </div>
-                  </Link>
-                  <div className="mt-5 space-y-2 border-t border-slate-100 pt-4">
-                    {items.length > 0 ? (
-                      items.map((item) => (
-                        <Link key={item.key} href={homeHref({ view: summary.type, focus: item.key, q: searchQuery, hash: "object-list" })} className="group grid grid-cols-[minmax(0,1fr)_auto] gap-2 rounded-md px-2 py-2 hover:bg-blue-50/50">
-                          <div className="min-w-0">
-                            <p className="truncate text-xs font-black text-slate-900 group-hover:text-[#002FA7]">{item.title}</p>
-                            <p className="mt-0.5 truncate text-[11px] font-semibold text-slate-500">{item.relation}</p>
-                          </div>
-                          <span className={`self-start rounded-full px-2 py-0.5 text-[11px] font-black ${getStatusClass(item.status)}`}>
-                            {getStatusLabel(item.status, copy)}
-                          </span>
-                        </Link>
-                      ))
-                    ) : (
-                      <p className="rounded-md bg-slate-50 px-2 py-3 text-xs font-semibold text-slate-500">{copy.noResults}</p>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-        </div>
-      </section>
-
-      <section id="object-list" className="grid scroll-mt-24 gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <section className="border border-slate-200 bg-white">
-          <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
+      <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <section className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+          <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-base font-black text-slate-950">{copy.objectList}</h2>
-                {activeView !== "all" ? (
-                  <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-black text-[#002FA7] ring-1 ring-blue-100">
-                    {getTypeLabel(activeView, copy)}
-                  </span>
-                ) : null}
-              </div>
-              <p className="mt-1 text-xs font-semibold text-slate-500">
-                {copy.filteredBy}: {getTypeLabel(activeView, copy)} / {visibleObjects.length}
+              <p className="text-xs font-black text-[#002FA7]">
+                {searchQuery ? copy.searchResultsTitle : copy.actionStatusTitle}
               </p>
+              <h2 className="mt-1 text-lg font-black text-slate-950">
+                {searchQuery ? `${copy.searchResultsTitle}: ${searchQuery}` : copy.actionStatusTitle}
+              </h2>
+              <p className="mt-1 text-sm font-semibold leading-6 text-slate-600">{copy.actionStatusDesc}</p>
             </div>
-            {activeView !== "all" || searchQuery ? (
-              <Link
-                href={homeHref({ hash: "object-list" })}
-                className="inline-flex h-9 items-center justify-center rounded-md border border-slate-300 bg-white px-3 text-xs font-black text-slate-700 hover:bg-slate-50"
-              >
-                {copy.clear}
-              </Link>
-            ) : null}
+            <Link
+              href={organizeCenterHref({ status: "needs_input", q: searchQuery })}
+              className="inline-flex h-10 items-center justify-center rounded-md border border-slate-950 bg-slate-950 px-4 text-sm font-black text-white hover:bg-slate-800"
+            >
+              {copy.goToOrganizeCenter}
+            </Link>
           </div>
+
           <div className="divide-y divide-slate-100">
-            {visibleRows.length > 0 ? (
-              visibleRows.map((item) => {
-                const selected = focusedObject?.key === item.key;
-                return (
-                  <Link
-                    key={item.key}
-                    href={homeHref({ view: activeView, focus: item.key, q: searchQuery, hash: "object-list" })}
-                    className={`grid gap-3 px-5 py-4 hover:bg-slate-50 md:grid-cols-[8rem_minmax(0,1.2fr)_minmax(0,1fr)_8rem] md:items-center ${
-                      selected ? "bg-blue-50/60" : "bg-white"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-black ${getStatusClass(item.status)}`}>
-                        {getStatusLabel(item.status, copy)}
-                      </span>
-                      <span className="text-xs font-bold text-slate-500">{getTypeLabel(item.type, copy)}</span>
-                    </div>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-black text-slate-950">{item.title}</p>
-                      <p className="mt-1 truncate text-xs font-semibold text-slate-500">{item.subtitle}</p>
-                    </div>
-                    <p className="min-w-0 truncate text-xs font-semibold text-slate-600">{item.relation}</p>
-                    <div className="text-left md:text-right">
-                      <p className="text-xs font-bold text-slate-500">{item.metricLabel}</p>
-                      <p className="truncate text-sm font-black text-slate-950">{item.metricValue}</p>
-                    </div>
-                  </Link>
-                );
-              })
+            {queueItems.length > 0 ? (
+              queueItems.map((item) => (
+                <Link
+                  key={item.key}
+                  href={item.actionHref}
+                  className="grid gap-3 px-5 py-4 hover:bg-slate-50 lg:grid-cols-[8rem_minmax(0,1fr)_minmax(15rem,0.8fr)_8rem] lg:items-center"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-black ${getStatusClass(item.status)}`}>
+                      {getStatusLabel(item.status, copy)}
+                    </span>
+                    <span className="text-xs font-bold text-slate-500">{getTypeLabel(item.type, copy)}</span>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-black text-slate-950">{item.title}</p>
+                    <p className="mt-1 truncate text-xs font-semibold text-slate-500">{item.subtitle}</p>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-xs font-black text-slate-700">{item.relation}</p>
+                    <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-slate-500">{item.reason}</p>
+                  </div>
+                  <div className="flex items-center justify-start gap-1 text-sm font-black text-[#002FA7] lg:justify-end">
+                    {item.actionLabel}
+                    <span aria-hidden="true" className="material-symbols-outlined text-[18px]">arrow_forward</span>
+                  </div>
+                </Link>
+              ))
             ) : (
-              <p className="px-5 py-10 text-sm font-semibold text-slate-500">{copy.noResults}</p>
+              <div className="px-5 py-12">
+                <p className="text-base font-black text-slate-950">{copy.noActionItems}</p>
+                <p className="mt-2 text-sm font-semibold text-slate-600">{copy.overviewDesc}</p>
+              </div>
             )}
           </div>
         </section>
 
-        <aside className="space-y-6 xl:sticky xl:top-6 xl:self-start">
-          <section className="border border-slate-200 bg-white">
-            <div className="border-b border-slate-200 px-5 py-4">
-              <h2 className="text-base font-black text-slate-950">{copy.currentObject}</h2>
-            </div>
-            {focusedObject ? (
-              <div className="space-y-5 p-5">
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className={`rounded-full px-2 py-1 text-xs font-black ${getStatusClass(focusedObject.status)}`}>
-                      {getStatusLabel(focusedObject.status, copy)}
-                    </span>
-                    <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-black text-slate-600">
-                      {getTypeLabel(focusedObject.type, copy)}
-                    </span>
-                  </div>
-                  <h3 className="mt-4 text-xl font-black leading-tight text-slate-950">{focusedObject.title}</h3>
-                  <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">{focusedObject.relation}</p>
-                </div>
-                <div className="border-l-4 border-[#002FA7] bg-blue-50/70 px-4 py-3">
-                  <p className="text-xs font-black text-[#002FA7]">{copy.status}</p>
-                  <p className="mt-1 text-sm font-black leading-6 text-slate-950">{focusedObject.reason}</p>
-                </div>
-                <div className="grid gap-2">
-                  <Link
-                    href={focusedObject.actionHref}
-                    className="flex h-11 items-center justify-center rounded-md border border-slate-950 bg-slate-950 px-3 text-sm font-black text-white hover:bg-slate-800"
-                  >
-                    {focusedObject.actionLabel}
-                  </Link>
-                  <Link
-                    href={focusedObject.href}
-                    className="flex h-11 items-center justify-center rounded-md border border-slate-300 bg-white px-3 text-sm font-black text-slate-800 hover:bg-slate-50"
-                  >
-                    {copy.open}
-                  </Link>
-                </div>
-                <dl className="divide-y divide-slate-100 border-y border-slate-200">
-                  {focusedObject.detailRows
-                    .filter((row) => row.label !== copy.status)
-                    .slice(0, 3)
-                    .map((row) => (
-                      <div key={row.label} className="grid grid-cols-[6rem_minmax(0,1fr)] gap-3 py-3">
-                        <dt className="text-xs font-black text-slate-500">{row.label}</dt>
-                        <dd className="min-w-0 break-words text-sm font-black text-slate-950">{row.value}</dd>
-                      </div>
-                    ))}
-                </dl>
-              </div>
-            ) : (
-              <p className="p-5 text-sm font-semibold text-slate-500">{copy.noResults}</p>
-            )}
-          </section>
-
-          <section className="hidden border border-slate-200 bg-white xl:block">
-            <div className="border-b border-slate-200 px-5 py-4">
-              <h2 className="text-base font-black text-slate-950">{copy.recentUpdates}</h2>
-            </div>
-            <div className="divide-y divide-slate-100">
-              {recentUpdates.length > 0 ? (
-                recentUpdates.slice(0, 4).map((item) => (
-                  <Link key={item.key} href={item.href} className="block px-5 py-4 hover:bg-slate-50">
-                    <div className="flex items-start justify-between gap-3">
-                      <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-black text-[#002FA7]">
-                        {item.label}
-                      </span>
-                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-black ${getStatusClass(item.status)}`}>
-                        {getStatusLabel(item.status, copy)}
-                      </span>
-                    </div>
-                    <p className="mt-2 line-clamp-2 text-sm font-black leading-5 text-slate-950">{item.title}</p>
-                    <p className="mt-1 line-clamp-1 text-xs font-semibold text-slate-500">{item.subtitle}</p>
-                    <p className="mt-2 text-xs font-bold text-slate-500">{item.meta}</p>
-                  </Link>
-                ))
-              ) : (
-                <p className="p-5 text-sm font-semibold text-slate-500">{copy.noRecentData}</p>
-              )}
-            </div>
-          </section>
+        <aside className="rounded-lg border border-slate-200 bg-white">
+          <div className="border-b border-slate-200 px-5 py-4">
+            <p className="text-xs font-black text-[#002FA7]">{copy.dataMap}</p>
+            <h2 className="mt-1 text-lg font-black text-slate-950">{copy.overviewTitle}</h2>
+            <p className="mt-1 text-sm font-semibold leading-6 text-slate-600">{copy.overviewDesc}</p>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {overviewItems.map((item) => (
+              <Link
+                key={item.type}
+                href={organizeCenterHref({ type: item.type })}
+                className="grid grid-cols-[2.25rem_minmax(0,1fr)_auto] items-center gap-3 px-5 py-4 hover:bg-slate-50"
+              >
+                <span className="flex h-9 w-9 items-center justify-center rounded-md bg-blue-50 text-[#002FA7]">
+                  <span aria-hidden="true" className="material-symbols-outlined text-[19px]">{item.icon}</span>
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-black text-slate-950">{item.label}</span>
+                  <span className="mt-0.5 block text-xs font-semibold text-slate-500">
+                    {copy.totalItems} {item.count}
+                  </span>
+                </span>
+                <span className={`rounded-full px-2.5 py-1 text-xs font-black ${item.needsAction > 0 ? "bg-rose-50 text-rose-700 ring-1 ring-rose-100" : "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100"}`}>
+                  {item.needsAction} {copy.needsAction}
+                </span>
+              </Link>
+            ))}
+          </div>
+          <div className="border-t border-slate-200 p-5">
+            <Link
+              href="/organize-center"
+              className="flex h-11 items-center justify-center rounded-md border border-slate-300 bg-white px-3 text-sm font-black text-slate-800 hover:bg-slate-50"
+            >
+              {copy.goToOrganizeCenter}
+            </Link>
+          </div>
         </aside>
       </section>
     </div>

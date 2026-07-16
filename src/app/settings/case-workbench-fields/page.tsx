@@ -60,26 +60,27 @@ export default async function CaseWorkbenchFieldSettingsPage({ searchParams }: C
   const groupedRules = groupRules(catalog);
   const requiredCount = catalog.filter((rule) => rule.requirement === "required").length;
   const optionalCount = catalog.length - requiredCount;
+  const customizedCount = catalog.filter((rule) => rule.requirement !== rule.defaultRequirement).length;
 
   return (
     <div className="space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.18em] text-indigo-700">
-            {tr(locale, { ja: "管理設定", zh: "后台管理", ko: "관리 설정" })}
+            {tr(locale, { ja: "ワークスペース設定", zh: "工作区设置", ko: "워크스페이스 설정" })}
           </p>
           <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">
-            {tr(locale, { ja: "情報整理の項目設定", zh: "整理信息项目设置", ko: "정보 정리 항목 설정" })}
+            {tr(locale, { ja: "必須項目の設定", zh: "必填项目设置", ko: "필수 항목 설정" })}
           </h1>
           <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
             {tr(locale, {
-              ja: "案件整理画面に出す項目の優先度を管理します。未入力の必須項目が上に、任意項目がその下に表示されます。",
-              zh: "管理案件整理页面的项目优先级。未填写的必填项会排在最上，选填项排在其后。",
-              ko: "안건 정리 화면의 항목 우선순위를 관리합니다. 미입력 필수 항목이 위에, 선택 항목이 그 아래에 표시됩니다.",
+              ja: "案件ごとに必ず確認したい項目を選べます。未入力の必須項目は整理画面の上に表示されます。",
+              zh: "选择办理案件时必须确认的项目。未填写的必填项目会优先显示，选填项目排在后面。",
+              ko: "안건마다 반드시 확인할 항목을 선택합니다. 미입력 필수 항목은 정리 화면 위에 표시됩니다.",
             })}
           </p>
         </div>
-        <div className="grid grid-cols-2 overflow-hidden rounded-lg border border-slate-200 bg-white text-sm">
+        <div className="grid grid-cols-3 overflow-hidden rounded-lg border border-slate-200 bg-white text-sm">
           <div className="border-r border-slate-200 px-4 py-3">
             <p className="text-xs font-bold text-slate-500">{requirementLabel(locale, "required")}</p>
             <p className="mt-1 text-2xl font-black tabular-nums text-slate-950">{requiredCount}</p>
@@ -88,8 +89,33 @@ export default async function CaseWorkbenchFieldSettingsPage({ searchParams }: C
             <p className="text-xs font-bold text-slate-500">{requirementLabel(locale, "optional")}</p>
             <p className="mt-1 text-2xl font-black tabular-nums text-slate-950">{optionalCount}</p>
           </div>
+          <div className="border-l border-slate-200 px-4 py-3">
+            <p className="text-xs font-bold text-slate-500">{tr(locale, { ja: "変更", zh: "已调整", ko: "변경" })}</p>
+            <p className="mt-1 text-2xl font-black tabular-nums text-slate-950">{customizedCount}</p>
+          </div>
         </div>
       </header>
+
+      <section className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm md:grid-cols-3">
+        <div>
+          <p className="text-xs font-bold text-slate-500">{tr(locale, { ja: "ワークスペース", zh: "工作区", ko: "워크스페이스" })}</p>
+          <p className="mt-1 font-black text-slate-950">{session.tenant.name}</p>
+        </div>
+        <div>
+          <p className="text-xs font-bold text-slate-500">{tr(locale, { ja: "使用者", zh: "使用人", ko: "사용자" })}</p>
+          <p className="mt-1 font-black text-slate-950">{session.user.name}</p>
+        </div>
+        <div>
+          <p className="text-xs font-bold text-slate-500">{tr(locale, { ja: "表示される場所", zh: "生效位置", ko: "적용 위치" })}</p>
+          <p className="mt-1 font-semibold text-slate-700">
+            {tr(locale, {
+              ja: "情報整理画面の完成度と未入力順",
+              zh: "整理信息页的完成度和待补顺序",
+              ko: "정보 정리 화면의 완성도와 미입력 순서",
+            })}
+          </p>
+        </div>
+      </section>
 
       {params.flash === "rules_saved" ? (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800">
@@ -115,6 +141,9 @@ export default async function CaseWorkbenchFieldSettingsPage({ searchParams }: C
                       <p className="text-sm font-bold text-slate-950">{rule.label}</p>
                       <p className="mt-1 text-xs text-slate-500">
                         {rule.treePath.join(" / ")} · {appliesWhenLabel(locale, rule.appliesWhen)}
+                        {rule.defaultRequirement !== rule.requirement
+                          ? ` · ${tr(locale, { ja: "標準から変更", zh: "已不同于默认", ko: "기본값에서 변경" })}`
+                          : ""}
                       </p>
                     </div>
                     <select

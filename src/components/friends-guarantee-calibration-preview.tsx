@@ -277,7 +277,7 @@ const VALUE_KIND_LABELS: Record<string, string> = {
 };
 
 const STORAGE_SCOPE_LABELS: Record<string, string> = {
-  case_fact: "案件標準字段",
+  case_fact: "案件标准项目",
   output_process: "出力処理",
   template_option: "会社別項目",
 };
@@ -723,6 +723,7 @@ function groupBindingOptions(options: readonly FieldBindingOption[]) {
 }
 
 type FriendsGuaranteeCalibrationPreviewProps = {
+  mode?: "broker" | "authoring";
   fields: readonly FriendsOverlayField[];
   prematchReferenceFields?: readonly FriendsOverlayField[];
   fieldValues: Record<string, string>;
@@ -907,6 +908,7 @@ function snapBox(input: {
 }
 
 export function FriendsGuaranteeCalibrationPreview({
+  mode = "broker",
   fields,
   prematchReferenceFields = [],
   fieldValues,
@@ -926,13 +928,14 @@ export function FriendsGuaranteeCalibrationPreview({
   const dragRef = useRef<DragState | null>(null);
   const customFieldSequenceRef = useRef(0);
   const requiredSet = useMemo(() => new Set(requiredFieldKeys), [requiredFieldKeys]);
-  const [calibrationMode, setCalibrationMode] = useState(false);
+  const isTemplateAuthoring = mode === "authoring";
+  const [calibrationMode, setCalibrationMode] = useState(isTemplateAuthoring);
   const [layoutOverrides, setLayoutOverrides] = useState<FriendsOverlayLayoutOverrides>(initialLayoutOverrides);
   const [activeFieldKey, setActiveFieldKey] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [alignmentGuides, setAlignmentGuides] = useState<AlignmentGuide[]>([]);
-  const layoutSaveScope: LayoutSaveScope = "template";
+  const layoutSaveScope: LayoutSaveScope = isTemplateAuthoring ? "template" : "case";
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [newSegmentCells, setNewSegmentCells] = useState(CUSTOM_SEGMENT_DEFAULT.cells);
   const [bindingTemplateId, setBindingTemplateId] = useState(templateId);
@@ -1042,14 +1045,14 @@ export function FriendsGuaranteeCalibrationPreview({
         .slice(0, 3)
         .map((field) => `${field.label}(${field.reason})`)
         .join("、");
-      return `字段预匹配已停止：当前模板已有 ${aiPrematchSafety.existingBindingCount} 个绑定字段、${aiPrematchSafety.existingValueCount} 个已有值字段。请只在全表空框体状态使用。${examples ? `例：${examples}` : ""}`;
+      return `项目匹配已停止：当前模板已有 ${aiPrematchSafety.existingBindingCount} 个对应项目、${aiPrematchSafety.existingValueCount} 个已有内容。请只在整张表为空白填写区时使用。${examples ? `例：${examples}` : ""}`;
     }
     if (aiPrematchSafety.targetFieldCount === 0) return "未绑定の追加欄がありません。";
     return "";
   }, [aiPrematchSafety]);
 
   const aiPrematchButtonTitle =
-    aiPrematchBlockedMessage || "AIと位置情報から未绑定欄の字段候補を推定。空の全表框体にだけ使用できます。";
+    aiPrematchBlockedMessage || "AIと位置情報から未設定欄の項目候補を推定します。全体が未設定のときだけ使用できます。";
   const autoMatchElapsedSeconds = autoMatchStartedAt
     ? Math.max(0, Math.floor((autoMatchNow - autoMatchStartedAt) / 1000))
     : 0;
@@ -2038,9 +2041,9 @@ export function FriendsGuaranteeCalibrationPreview({
   const runLocalAutoMatch = (prefix?: string) => {
     const matchedCount = applyFieldMatchSuggestions(buildLocalFieldMatchSuggestions());
     if (matchedCount > 0) {
-      setAutoMatchMessage(`${prefix ? `${prefix} / ` : ""}本地字段预匹配 ${matchedCount} 件。请逐个检查后保存模板。`);
+      setAutoMatchMessage(`${prefix ? `${prefix} / ` : ""}本地项目匹配 ${matchedCount} 件。请逐个检查后保存模板。`);
     } else {
-      setAutoMatchMessage(`${prefix ? `${prefix} / ` : ""}没有找到足够可信的字段匹配。`);
+      setAutoMatchMessage(`${prefix ? `${prefix} / ` : ""}没有找到足够可信的项目匹配。`);
     }
   };
 
@@ -2081,13 +2084,13 @@ export function FriendsGuaranteeCalibrationPreview({
   const autoMatchCustomFields = async () => {
     if (autoMatchInFlight) return;
     if (!aiPrematchSafety.canRun) {
-      setAutoMatchMessage(aiPrematchBlockedMessage || "字段预匹配只能在全表空框体状态下执行。");
+      setAutoMatchMessage(aiPrematchBlockedMessage || "项目匹配只能在整张表为空白填写区时执行。");
       return;
     }
 
     setAutoMatchInFlight(true);
     setAutoMatchStartedAt(Date.now());
-    setAutoMatchMessage(`AI字段预匹配中。${aiPrematchSafety.targetFieldCount} 个空框 / ${fieldMatchCandidates.length} 个候选字段。`);
+    setAutoMatchMessage(`AI项目匹配中。${aiPrematchSafety.targetFieldCount} 个空白填写区 / ${fieldMatchCandidates.length} 个候选项目。`);
     try {
       const response = await fetch(`/api/guarantee-applications/${encodeURIComponent(templateId)}/field-prematch`, {
         method: "POST",
@@ -2099,7 +2102,7 @@ export function FriendsGuaranteeCalibrationPreview({
       const aiMatches = Array.isArray(result.matches) ? result.matches : [];
       const matchedCount = applyFieldMatchSuggestions(aiMatches);
       if (matchedCount > 0) {
-        setAutoMatchMessage(`AI字段预匹配 ${matchedCount} 件。${result.model ? `model=${result.model}。` : ""}请逐个检查后保存模板。`);
+        setAutoMatchMessage(`AI项目匹配 ${matchedCount} 件。请逐个检查后保存模板。`);
       } else {
         runLocalAutoMatch("AI没有返回足够可信的候选");
       }
@@ -2132,36 +2135,40 @@ export function FriendsGuaranteeCalibrationPreview({
           <div className="min-w-[190px] flex-1 pr-2">
             <div className="flex items-center gap-2">
               <span className="text-[11px] font-black text-[#002FA7]">02</span>
-              <p className="truncate text-sm font-black text-slate-950">テンプレート編集</p>
+              <p className="truncate text-sm font-black text-slate-950">
+                {isTemplateAuthoring ? "テンプレート編集" : "申込書の確認"}
+              </p>
             </div>
             <p className="mt-1 truncate text-xs font-semibold text-slate-500">
               {activeField
                 ? getFieldBadgeText(activeField)
                 : dirty
-                  ? "未保存のテンプレート変更"
+                  ? isTemplateAuthoring
+                    ? "未保存のテンプレート変更"
+                    : "未保存のこの案件の位置調整"
                   : "選択中の枠なし"}
             </p>
           </div>
           <div className="min-w-[260px] flex-[1.2]">
             <div className="flex flex-wrap items-center gap-2">
               <span
-                title="この申込書テンプレートの標準位置として保存"
+                title={isTemplateAuthoring ? "この申込書テンプレートの標準位置として保存" : "この案件だけに保存"}
                 className="inline-flex h-9 items-center gap-1.5 border border-slate-200 bg-slate-50 px-3 text-xs font-black text-slate-700"
               >
                 <span className="material-symbols-outlined text-[15px] text-[#002FA7]">save</span>
-                保存先: テンプレート
+                保存先: {isTemplateAuthoring ? "テンプレート" : "この案件"}
               </span>
               <div className="flex min-w-0 items-center gap-2">
-                {autoMatchMessage ? (
+                {isTemplateAuthoring && autoMatchMessage ? (
                   <span className="min-w-0 truncate border border-[#002FA7]/20 bg-[#eef4ff] px-3 py-2 text-xs font-black text-[#002FA7]">
                     {autoMatchInFlight ? `${autoMatchMessage} 已等待 ${autoMatchElapsedSeconds}s` : autoMatchMessage}
                   </span>
-                ) : aiPrematchSafety.blockedFields.length > 0 ? (
+                ) : isTemplateAuthoring && aiPrematchSafety.blockedFields.length > 0 ? (
                   <span
                     title={aiPrematchBlockedMessage}
                     className="min-w-0 truncate border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-black text-amber-700"
                   >
-                    字段预匹配停止：已有绑定或值
+                    项目匹配停止：已有对应项目或内容
                   </span>
                 ) : (
                   <span className="min-w-0 truncate border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-500">
@@ -2179,8 +2186,11 @@ export function FriendsGuaranteeCalibrationPreview({
 
         <div className="flex flex-wrap items-start gap-3 border-t border-slate-200 px-4 py-2">
           <div className="min-w-[360px] flex-[2]">
-            <p className="mb-2 text-[10px] font-black text-slate-500">テンプレート操作</p>
-            <div className="flex flex-wrap items-center gap-2">
+            <p className="mb-2 text-[10px] font-black text-slate-500">
+              {isTemplateAuthoring ? "テンプレート操作" : "今回の申込書"}
+            </p>
+            {isTemplateAuthoring ? (
+              <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 title="PDF上に入力欄を追加"
@@ -2237,7 +2247,7 @@ export function FriendsGuaranteeCalibrationPreview({
                 className="inline-flex h-9 items-center gap-2 border border-[#002FA7]/25 bg-[#eef4ff] px-3 text-xs font-black text-[#002FA7] hover:bg-[#dfeaff] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <span className="material-symbols-outlined text-[16px]">auto_fix_high</span>
-                {autoMatchInFlight ? "预匹配中" : "字段预匹配"}
+                {autoMatchInFlight ? "匹配中" : "项目匹配"}
               </button>
               <button
                 type="button"
@@ -2268,13 +2278,33 @@ export function FriendsGuaranteeCalibrationPreview({
                 <span className="material-symbols-outlined text-[16px]">grid_on</span>
                 吸着{snapEnabled ? "弱" : "OFF"}
               </button>
-            </div>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  title="この案件だけに印字位置と文字サイズの調整を保存"
+                  onClick={() => setCalibrationMode((current) => !current)}
+                  className={`inline-flex h-9 items-center gap-2 border px-3 text-xs font-black ${
+                    calibrationMode
+                      ? "border-slate-950 bg-slate-950 !text-white hover:bg-slate-800 [&_.material-symbols-outlined]:!text-white"
+                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[16px]">tune</span>
+                  {calibrationMode ? "位置調整を終了" : "この申込書の位置を調整"}
+                </button>
+                <span className="inline-flex h-9 items-center border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-600">
+                  変更はこの案件だけに反映されます
+                </span>
+              </div>
+            )}
           </div>
         </div>
       </div>
       {activeField && activeBoxNumbers ? (
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700">
-          <span className="mr-1 font-black text-slate-950">框体整理</span>
+          <span className="mr-1 font-black text-slate-950">填写区整理</span>
           {(["x", "y", "width", "height"] as const).map((key) => (
             <label key={`box-number-${key}`} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1">
               <span className="text-[10px] font-black uppercase text-slate-500">
@@ -2441,7 +2471,7 @@ export function FriendsGuaranteeCalibrationPreview({
       {activeCustomField ? (
         <div className="grid gap-2 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold text-slate-700 xl:grid-cols-[minmax(420px,2fr)_minmax(150px,0.75fr)_minmax(110px,0.6fr)_minmax(120px,0.65fr)_minmax(130px,0.75fr)]">
           <div className="grid gap-1">
-            <span className="text-[10px] font-black uppercase tracking-wide text-slate-500">绑定字段</span>
+            <span className="text-[10px] font-black uppercase tracking-wide text-slate-500">关联项目</span>
             <div className="grid gap-2 sm:grid-cols-[128px_180px_minmax(160px,0.8fr)_minmax(220px,1fr)]">
               <label className="grid gap-1">
                 <span className="text-[9px] font-black text-slate-400">表单</span>
@@ -2485,12 +2515,12 @@ export function FriendsGuaranteeCalibrationPreview({
                   type="search"
                   value={bindingSearchTerm}
                   onChange={(event) => setBindingSearchTerm(event.target.value)}
-                  placeholder="字段名 / key / 当前值"
+                  placeholder="项目名 / 当前值"
                   className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-xs font-bold text-slate-900 outline-none placeholder:text-slate-400 focus:border-[#002FA7] focus:ring-2 focus:ring-[#002FA7]/20"
                 />
               </label>
               <label className="grid gap-1">
-                <span className="text-[9px] font-black text-slate-400">字段</span>
+                <span className="text-[9px] font-black text-slate-400">项目</span>
                 <select
                   value={activeCustomField.sourceFieldKey ?? ""}
                   onChange={(event) => updateActiveCustomBinding(event.target.value)}
@@ -2511,7 +2541,7 @@ export function FriendsGuaranteeCalibrationPreview({
             </div>
             <span className="truncate text-[10px] font-semibold text-slate-500">
               {activeBindingOption?.value
-                ? `${activeBindingOption.groupLabel ?? "未分類"} / ${activeBindingOption.valueKind ? VALUE_KIND_LABELS[activeBindingOption.valueKind] ?? activeBindingOption.valueKind : "字段"} / 現在値: ${activeBindingOption.value}`
+                ? `${activeBindingOption.groupLabel ?? "未分類"} / ${activeBindingOption.valueKind ? VALUE_KIND_LABELS[activeBindingOption.valueKind] ?? activeBindingOption.valueKind : "项目"} / 現在値: ${activeBindingOption.value}`
                 : hasBindingSearchTerm
                   ? `${activeBindingTemplateGroup.label} 全体から検索 / ${filteredBindingOptions.length}項目`
                   : `${activeBindingTemplateGroup.label} / ${activeBindingSection?.label ?? "未分類"} / ${filteredBindingOptions.length}項目`}
@@ -2557,7 +2587,7 @@ export function FriendsGuaranteeCalibrationPreview({
           </label>
 
           <label className="grid gap-1">
-            <span className="text-[10px] font-black uppercase tracking-wide text-slate-500">字段拆分</span>
+            <span className="text-[10px] font-black uppercase tracking-wide text-slate-500">内容拆分</span>
             <select
               value={activeCustomField.valuePart ?? ""}
               disabled={!activeCanUseValuePart}
@@ -2578,8 +2608,8 @@ export function FriendsGuaranteeCalibrationPreview({
               {activeCanUseValuePart
                 ? activeBindingKind === "postal"
                   ? "郵便番号は前3桁 / 後4桁"
-                  : "只用于姓名等按空格拆开的字段"
-                : "当前字段类型不使用拆分"}
+                  : "只用于姓名等需要按空格拆开的内容"
+                : "当前内容不需要拆分"}
             </span>
           </label>
 
@@ -2700,9 +2730,9 @@ export function FriendsGuaranteeCalibrationPreview({
                 <div className="flex items-center gap-3">
                   <span className="material-symbols-outlined animate-spin text-[24px] text-[#002FA7]">sync</span>
                   <div className="min-w-0">
-                    <p className="text-sm font-black">AI字段预匹配中</p>
+                    <p className="text-sm font-black">AI项目匹配中</p>
                     <p className="mt-1 text-xs font-semibold text-slate-600">
-                      {aiPrematchSafety.targetFieldCount} 个空框 / {fieldMatchCandidates.length} 个候选字段，已等待 {autoMatchElapsedSeconds}s。
+                      {aiPrematchSafety.targetFieldCount} 个空白填写区 / {fieldMatchCandidates.length} 个候选项目，已等待 {autoMatchElapsedSeconds}s。
                     </p>
                   </div>
                 </div>
@@ -2940,23 +2970,25 @@ export function FriendsGuaranteeCalibrationPreview({
                         <span className="material-symbols-outlined text-[13px]">open_with</span>
                       </button>
                     ) : null}
-                    <button
-                      type="button"
-                      aria-label={`${field.label}を削除`}
-                      title={`${field.label}を削除`}
-                      className={`absolute -right-2 -top-2 z-30 flex h-5 w-5 items-center justify-center rounded-full border border-rose-300 bg-white text-[12px] font-black leading-none text-rose-700 shadow hover:bg-rose-50 ${inactiveCalibrationChromeClass}`}
-                      onPointerDown={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                      }}
-                      onClick={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        deleteField(field);
-                      }}
-                    >
-                      ×
-                    </button>
+                    {isTemplateAuthoring ? (
+                      <button
+                        type="button"
+                        aria-label={`${field.label}を削除`}
+                        title={`${field.label}を削除`}
+                        className={`absolute -right-2 -top-2 z-30 flex h-5 w-5 items-center justify-center rounded-full border border-rose-300 bg-white text-[12px] font-black leading-none text-rose-700 shadow hover:bg-rose-50 ${inactiveCalibrationChromeClass}`}
+                        onPointerDown={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                        }}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          deleteField(field);
+                        }}
+                      >
+                        ×
+                      </button>
+                    ) : null}
                     <span
                       role="presentation"
                       className={`absolute -right-1 top-1/2 h-4 w-2 -translate-y-1/2 cursor-ew-resize rounded-full border border-[#001e40] bg-white shadow ${inactiveCalibrationChromeClass}`}

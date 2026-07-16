@@ -55,6 +55,7 @@ import {
   getQuotationById,
   listQuoteFormData,
   listClients,
+  listCaseWorkbenchFieldRules,
   listExtractionReviewItems,
   listImportJobs,
   listTenantMembers,
@@ -109,13 +110,20 @@ import { requirePlatformOwnerSession } from "@/lib/platform-session";
 import { extractInputFileFromWorkbook, type InputFileExtractionResult } from "@/lib/input-file-extractor";
 import { extractIdentityDocumentsFromFiles } from "@/lib/identity-document-extractor";
 import { createClerkInvitationForTenantMember } from "@/lib/clerk-invitations";
-import { CASE_FIELD_DEFINITIONS, CASE_FIELD_KEYS, getCaseFieldInformation, isKnownCaseFieldKey } from "@/lib/case-field-catalog";
+import { CASE_FIELD_KEYS, isKnownCaseFieldKey } from "@/lib/case-field-catalog";
 import {
   CASE_WORKBENCH_FIELD_KEYS,
+  buildCaseWorkbenchRuleMap,
   isCaseWorkbenchFieldKey,
   normalizeCaseFieldRequirement,
 } from "@/lib/case-workbench-field-rules";
-import { canonicalizeCaseFieldKey, clearCaseFieldValueAliases, getCaseFieldAliases, getCaseFieldValue } from "@/lib/case-field-normalization";
+import { canonicalizeCaseFieldKey, clearCaseFieldValueAliases, getCaseFieldValue } from "@/lib/case-field-normalization";
+import {
+  parseCaseApplicabilitySettings,
+  readCaseApplicabilitySettings,
+  writeCaseApplicabilitySettings,
+} from "@/lib/case-field-applicability";
+import { getCaseWorkbenchProgressSnapshot } from "@/lib/case-workbench-progress";
 import { applyJapanesePostalCodeAddressCompletions } from "@/lib/japan-postal-code";
 import {
   buildExtractionReviewCorrectionEvents,
@@ -1032,7 +1040,7 @@ export async function updateImportJobMappingAction(formData: FormData) {
         action: "resolve_now",
         message:
           locale === "zh"
-            ? `必填字段未完成映射（${validation.missingRequired.length} 项）`
+            ? `必填项目还没有保存位置（${validation.missingRequired.length} 项）`
             : locale === "ko"
               ? `필수 필드 매핑 누락 (${validation.missingRequired.length}개)`
               : `必須フィールドのマッピング不足（${validation.missingRequired.length}件）`,
@@ -1048,7 +1056,7 @@ export async function updateImportJobMappingAction(formData: FormData) {
         action: "auto_fix",
         message:
           locale === "zh"
-            ? `检测到未知目标字段（${validation.unknownTargets.length} 项）`
+            ? `检测到无法识别的保存项目（${validation.unknownTargets.length} 项）`
             : locale === "ko"
               ? `알 수 없는 대상 필드 감지 (${validation.unknownTargets.length}개)`
               : `未知ターゲット項目を検出（${validation.unknownTargets.length}件）`,
@@ -1147,7 +1155,7 @@ export async function autoMapImportJobAction(formData: FormData) {
         action: "resolve_now",
         message:
           locale === "zh"
-            ? `自动映射后仍缺少必填字段（${validation.missingRequired.length} 项）`
+            ? `自动整理后仍有必填项目没有保存位置（${validation.missingRequired.length} 项）`
             : locale === "ko"
               ? `자동 매핑 후에도 필수 필드 누락 (${validation.missingRequired.length}개)`
               : `自動マッピング後も必須項目が不足（${validation.missingRequired.length}件）`,
@@ -1163,7 +1171,7 @@ export async function autoMapImportJobAction(formData: FormData) {
         action: "auto_fix",
         message:
           locale === "zh"
-            ? `自动映射包含未知字段（${validation.unknownTargets.length} 项）`
+            ? `自动整理包含无法识别的保存项目（${validation.unknownTargets.length} 项）`
             : locale === "ko"
               ? `자동 매핑에 알 수 없는 필드 포함 (${validation.unknownTargets.length}개)`
               : `自動マッピングに未知項目を含む（${validation.unknownTargets.length}件）`,
@@ -2526,7 +2534,7 @@ export async function updateCaseWorkbenchFieldRulesAction(formData: FormData) {
 
   revalidatePath("/settings/case-workbench-fields");
   revalidatePath("/organize-center");
-  revalidatePath("/cases/[id]");
+  revalidatePath("/cases/[id]", "page");
   redirect("/settings/case-workbench-fields?flash=rules_saved");
 }
 
@@ -2664,69 +2672,6 @@ type ExtractionReviewDecision = {
 };
 
 const WORKBENCH_FIELD_STATUS_KEY = "__workbenchFieldStatuses";
-const CASE_PROGRESS_FIELD_KEYS = CASE_FIELD_DEFINITIONS
-  .filter((field) => field.storageScope === "case_fact" && getCaseFieldInformation(field).importance !== "output_specific")
-  .map((field) => field.fieldKey);
-const CASE_PROGRESS_COMPLETED_STATES = new Set(["confirmed", "edited", "not_applicable", "rejected"]);
-
-function readWorkbenchStatusMap(confirmedData: Record<string, unknown>): Record<string, string> {
-  const raw = confirmedData[WORKBENCH_FIELD_STATUS_KEY];
-  return raw && typeof raw === "object" ? (raw as Record<string, string>) : {};
-}
-
-function buildReviewItemsByFieldKey(reviewItems: ExtractionReviewItem[]) {
-  return reviewItems.reduce<Map<string, ExtractionReviewItem[]>>((acc, item) => {
-    const list = acc.get(item.fieldKey) ?? [];
-    list.push(item);
-    acc.set(item.fieldKey, list);
-    return acc;
-  }, new Map());
-}
-
-function getLatestReviewForCaseField(reviewByFieldKey: Map<string, ExtractionReviewItem[]>, fieldKey: string) {
-  const items = getCaseFieldAliases(fieldKey)
-    .flatMap((alias) => reviewByFieldKey.get(alias) ?? [])
-    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
-  return items[items.length - 1];
-}
-
-function getCaseWorkbenchProgressSnapshot(confirmedData: Record<string, unknown>, reviewItems: ExtractionReviewItem[]) {
-  const statusMap = readWorkbenchStatusMap(confirmedData);
-  const reviewByFieldKey = buildReviewItemsByFieldKey(reviewItems);
-  const completed = CASE_PROGRESS_FIELD_KEYS.filter((fieldKey) => {
-    const value = getCaseFieldValue(confirmedData, fieldKey);
-    const manualState = statusMap[fieldKey];
-    let state = value ? "confirmed" : "missing";
-    const latestReview = getLatestReviewForCaseField(reviewByFieldKey, fieldKey);
-
-    if (
-      manualState === "confirmed" ||
-      manualState === "edited" ||
-      manualState === "unknown" ||
-      manualState === "rejected" ||
-      manualState === "needs_review" ||
-      manualState === "not_applicable"
-    ) {
-      state = manualState;
-    } else if (latestReview?.reviewStatus === "suggested") {
-      state = value ? "ai_suggested" : "needs_review";
-    } else if (latestReview?.reviewStatus === "rejected") {
-      state = "rejected";
-    } else if (latestReview?.reviewStatus === "unknown") {
-      state = "unknown";
-    } else if (value && latestReview?.reviewStatus === "edited") {
-      state = "edited";
-    }
-
-    return CASE_PROGRESS_COMPLETED_STATES.has(state);
-  }).length;
-  const total = CASE_PROGRESS_FIELD_KEYS.length;
-  return {
-    completed,
-    total,
-    percent: total > 0 ? Math.round((completed / total) * 100) : 0,
-  };
-}
 
 function getCaseWorkbenchFieldKeysFromForm(formData: FormData): string[] {
   const requestedFields = String(formData.get("presentFieldKeysJson") ?? "").trim();
@@ -2993,8 +2938,16 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
   if (!caseId) throw new Error("案件IDが不正です。");
   const brokerageCase = await getBrokerageCaseById({ userId: user.id, tenantId, caseId });
   if (!brokerageCase) throw new Error("案件が見つかりません。");
-  const reviewItems = await listExtractionReviewItems({ userId: user.id, tenantId, caseId });
-  const progressBefore = getCaseWorkbenchProgressSnapshot(brokerageCase.confirmedDataJson, reviewItems);
+  const [reviewItems, fieldRules] = await Promise.all([
+    listExtractionReviewItems({ userId: user.id, tenantId, caseId }),
+    listCaseWorkbenchFieldRules(user.id, tenantId),
+  ]);
+  const ruleMap = buildCaseWorkbenchRuleMap(fieldRules);
+  const progressBefore = getCaseWorkbenchProgressSnapshot({
+    confirmedData: brokerageCase.confirmedDataJson,
+    reviewItems,
+    ruleMap,
+  });
 
   const nextConfirmedData: Record<string, unknown> = { ...brokerageCase.confirmedDataJson };
   const existingStatusMap =
@@ -3042,8 +2995,12 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
   });
 
   nextConfirmedData[WORKBENCH_FIELD_STATUS_KEY] = existingStatusMap;
-  const progressAfter = getCaseWorkbenchProgressSnapshot(nextConfirmedData, reviewItems);
-  const progressGain = Math.max(0, progressAfter.completed - progressBefore.completed);
+  const progressAfter = getCaseWorkbenchProgressSnapshot({
+    confirmedData: nextConfirmedData,
+    reviewItems,
+    ruleMap,
+  });
+  const progressGain = Math.max(0, progressBefore.open - progressAfter.open);
   const eventFieldKeys = [...new Set([...fieldKeysToSave, ...postalCompletionResult.completedFieldKeys])];
   const labelsByFieldKey = Object.fromEntries(eventFieldKeys.map((fieldKey) => [fieldKey, fieldKey]));
   const correctionEventDrafts = buildWorkbenchCorrectionEvents({
@@ -3079,9 +3036,11 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
     message: `案件ワークベンチを保存しました: ${updatedCase.caseTitle}`,
     context: {
       caseId,
-      confirmedFieldCount: Object.keys(nextConfirmedData).filter((key) => key !== WORKBENCH_FIELD_STATUS_KEY).length,
+      confirmedFieldCount: Object.keys(nextConfirmedData).filter((key) => !key.startsWith("__")).length,
       progressCompletedBefore: progressBefore.completed,
       progressCompletedAfter: progressAfter.completed,
+      progressOpenBefore: progressBefore.open,
+      progressOpenAfter: progressAfter.open,
       progressGain,
       postalCodeLookupCount: postalCompletionResult.lookupCount,
       postalCodeConflictCount: postalCompletionResult.conflictCount,
@@ -3104,6 +3063,78 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
     redirectParams.set("progressGain", String(progressGain));
   }
   redirect(`/cases/${caseId}?${redirectParams.toString()}${returnAnchor ? `#${returnAnchor}` : ""}`);
+}
+
+export async function saveCaseApplicabilityAction(formData: FormData) {
+  const session = await requireTenantSession({ permission: "record.update" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
+
+  const caseId = String(formData.get("caseId") ?? "").trim();
+  if (!caseId) throw new Error("案件IDが不正です。");
+  const brokerageCase = await getBrokerageCaseById({ userId: user.id, tenantId, caseId });
+  if (!brokerageCase) throw new Error("案件が見つかりません。");
+
+  const [reviewItems, fieldRules] = await Promise.all([
+    listExtractionReviewItems({ userId: user.id, tenantId, caseId }),
+    listCaseWorkbenchFieldRules(user.id, tenantId),
+  ]);
+  const ruleMap = buildCaseWorkbenchRuleMap(fieldRules);
+  const progressBefore = getCaseWorkbenchProgressSnapshot({
+    confirmedData: brokerageCase.confirmedDataJson,
+    reviewItems,
+    ruleMap,
+  });
+  const parsedSettings = parseCaseApplicabilitySettings(formData);
+  const nextSettings = {
+    ...readCaseApplicabilitySettings(brokerageCase.confirmedDataJson),
+    ...parsedSettings,
+  };
+  const nextConfirmedData = writeCaseApplicabilitySettings(brokerageCase.confirmedDataJson, nextSettings);
+  const progressAfter = getCaseWorkbenchProgressSnapshot({
+    confirmedData: nextConfirmedData,
+    reviewItems,
+    ruleMap,
+  });
+  const progressGain = Math.max(0, progressBefore.open - progressAfter.open);
+
+  const updatedCase = await updateBrokerageCaseConfirmedData({
+    userId: user.id,
+    tenantId,
+    caseId,
+    confirmedDataJson: nextConfirmedData,
+  });
+  if (!updatedCase) throw new Error("案件条件の保存に失敗しました。");
+
+  await addAuditLog({
+    tenantId,
+    userId: user.id,
+    action: "case_applicability_saved",
+    targetType: "case",
+    targetId: caseId,
+    message: `案件条件を保存しました: ${updatedCase.caseTitle}`,
+    context: {
+      caseId,
+      settings: nextSettings,
+      progressCompletedBefore: progressBefore.completed,
+      progressCompletedAfter: progressAfter.completed,
+      progressOpenBefore: progressBefore.open,
+      progressOpenAfter: progressAfter.open,
+      progressGain,
+    },
+  });
+
+  revalidatePath(`/cases/${caseId}`);
+  revalidatePath("/organize-center");
+  const returnNode = safeQueryToken(formData.get("returnNode"));
+  const redirectParams = new URLSearchParams();
+  if (returnNode) redirectParams.set("node", returnNode);
+  redirectParams.set("flash", "case_applicability_saved");
+  if (progressGain > 0) {
+    redirectParams.set("progressFrom", String(progressBefore.percent));
+    redirectParams.set("progressGain", String(progressGain));
+  }
+  redirect(`/cases/${caseId}?${redirectParams.toString()}#case-applicability-settings`);
 }
 
 export async function saveGuaranteeApplicationDraftAction(formData: FormData) {
@@ -3175,7 +3206,7 @@ export async function saveGuaranteeApplicationDraftAction(formData: FormData) {
     action: "guarantee_application_draft_saved",
     targetType: "import_job",
     targetId: caseId,
-    message: `${template.companyDisplayName}会社別草稿を保存しました: ${brokerageCase.caseTitle}`,
+    message: `${template.companyDisplayName}申込書追加情報を保存しました: ${brokerageCase.caseTitle}`,
     context: {
       caseId,
       draftId: draft.id,
@@ -3207,8 +3238,26 @@ function countSubmittedCustomOverlayFieldItems(value: FormDataEntryValue | null)
   }
 }
 
+type GuaranteePreviewSaveMode = "case" | "template";
+
 export async function saveGuaranteeApplicationPreviewAction(formData: FormData) {
+  return saveGuaranteeApplicationPreviewWithScope(formData, "case");
+}
+
+export async function saveGuaranteeApplicationTemplateCalibrationAction(formData: FormData) {
+  return saveGuaranteeApplicationPreviewWithScope(formData, "template");
+}
+
+async function saveGuaranteeApplicationPreviewWithScope(
+  formData: FormData,
+  saveMode: GuaranteePreviewSaveMode,
+) {
   const session = await requireTenantSession({ permission: "output.update_draft" });
+  if (saveMode === "template") {
+    await requirePlatformOwnerSession();
+    assertTenantPermission(session, "template.edit_draft");
+    assertTenantPermission(session, "template.publish");
+  }
   const user = session.user;
   const tenantId = session.tenant.id;
 
@@ -3266,11 +3315,8 @@ export async function saveGuaranteeApplicationPreviewAction(formData: FormData) 
     typeof deletedOverlayFieldsInput === "string"
       ? sanitizeFriendsGuaranteeDeletedOverlayFieldKeys(deletedOverlayFieldsInput, template.id)
       : [];
-  const layoutSaveScope = formData.get("layoutSaveScope") === "template" ? "template" : "case";
-  if (layoutSaveScope === "template") {
-    assertTenantPermission(session, "template.edit_draft");
-    assertTenantPermission(session, "template.publish");
-  }
+  // The server action chooses the scope. Hidden form fields must never grant template authority.
+  const layoutSaveScope = saveMode;
   const customFieldsInput = formData.get("customOverlayFields");
   const customFieldsSubmitted = typeof customFieldsInput === "string";
   const submittedCustomFieldCount = countSubmittedCustomOverlayFieldItems(customFieldsInput);
@@ -3297,10 +3343,42 @@ export async function saveGuaranteeApplicationPreviewAction(formData: FormData) 
     );
   }
 
+  if (layoutSaveScope === "template") {
+    const layoutDirty = formData.get("layoutDirty") === "true";
+    if (typeof layoutOverridesInput === "string" && (layoutDirty || customFieldsSubmitted)) {
+      saveFriendsGuaranteeTemplateLayoutOverrides(layoutOverrides, template.id);
+      saveFriendsGuaranteeTemplateDeletedOverlayFieldKeys(deletedOverlayFieldKeys, template.id);
+      if (customFieldsSubmitted) {
+        saveFriendsGuaranteeTemplateCustomOverlayFields(customOverlayFields, template.id);
+      }
+    }
+
+    await addAuditLog({
+      tenantId,
+      userId: user.id,
+      action: "guarantee_template_layout_saved",
+      targetType: "official_template",
+      targetId: template.id,
+      message: `${template.companyDisplayName}の公式テンプレート配置を更新しました。`,
+      context: {
+        templateId: template.id,
+        layoutOverrideCount: Object.keys(layoutOverrides).length,
+        deletedOverlayFieldCount: deletedOverlayFieldKeys.length,
+        customOverlayFieldCount: customOverlayFields.length,
+        layoutDirty,
+      },
+    });
+
+    revalidatePath(`/platform/templates/${template.id}`);
+    revalidatePath("/platform/templates");
+    revalidatePath(`/guarantee-applications/${template.id}/preview`);
+    redirect(`/platform/templates/${encodeURIComponent(template.id)}?caseId=${encodeURIComponent(caseId)}&flash=template_layout_saved`);
+  }
+
   const nextCaseCustomOverlayFields = setFriendsGuaranteeCaseCustomOverlayFields({
     currentValue: nextConfirmedData[FRIENDS_GUARANTEE_CUSTOM_FIELDS_KEY],
     templateId: template.id,
-    fields: layoutSaveScope === "template" ? [] : customOverlayFields,
+    fields: customOverlayFields,
   });
   if (Object.keys(nextCaseCustomOverlayFields).length > 0) {
     nextConfirmedData[FRIENDS_GUARANTEE_CUSTOM_FIELDS_KEY] = nextCaseCustomOverlayFields;
@@ -3331,23 +3409,8 @@ export async function saveGuaranteeApplicationPreviewAction(formData: FormData) 
 
   const layoutDirty = formData.get("layoutDirty") === "true";
   const layoutOverrideCount = Object.keys(layoutOverrides).length;
-  if (typeof layoutOverridesInput === "string" && (layoutSaveScope === "template" || layoutDirty)) {
-    if (layoutSaveScope === "template") {
-      saveFriendsGuaranteeTemplateLayoutOverrides(layoutOverrides, template.id);
-      saveFriendsGuaranteeTemplateDeletedOverlayFieldKeys(deletedOverlayFieldKeys, template.id);
-      if (customFieldsSubmitted) {
-        saveFriendsGuaranteeTemplateCustomOverlayFields(customOverlayFields, template.id);
-      }
-      delete nextConfirmedData[FRIENDS_GUARANTEE_LAYOUT_OVERRIDES_KEY];
-      delete nextConfirmedData[FRIENDS_GUARANTEE_DELETED_OVERLAY_FIELDS_KEY];
-      const nextLayoutVersions = setFriendsGuaranteeCaseLayoutOverrideVersion({
-        currentValue: nextConfirmedData[FRIENDS_GUARANTEE_LAYOUT_OVERRIDE_VERSIONS_KEY],
-        templateId: template.id,
-        enabled: false,
-      });
-      if (Object.keys(nextLayoutVersions).length > 0) nextConfirmedData[FRIENDS_GUARANTEE_LAYOUT_OVERRIDE_VERSIONS_KEY] = nextLayoutVersions;
-      else delete nextConfirmedData[FRIENDS_GUARANTEE_LAYOUT_OVERRIDE_VERSIONS_KEY];
-    } else if (hasFriendsGuaranteeLayoutOverrides(layoutOverrides)) {
+  if (typeof layoutOverridesInput === "string" && layoutDirty) {
+    if (hasFriendsGuaranteeLayoutOverrides(layoutOverrides)) {
       nextConfirmedData[FRIENDS_GUARANTEE_LAYOUT_OVERRIDES_KEY] = layoutOverrides;
       const nextDeletedFields = setFriendsGuaranteeCaseDeletedOverlayFieldKeys({
         currentValue: nextConfirmedData[FRIENDS_GUARANTEE_DELETED_OVERLAY_FIELDS_KEY],
@@ -3501,11 +3564,8 @@ export async function saveGuaranteeApplicationPreviewAction(formData: FormData) 
   revalidatePath(`/cases/${caseId}`);
   revalidatePath("/output-center");
   revalidatePath(`/guarantee-applications/${template.id}/preview`);
-  redirect(
-    `/guarantee-applications/${encodeURIComponent(template.id)}/preview?caseId=${encodeURIComponent(caseId)}&flash=${
-      layoutSaveScope === "template" ? "template_layout_saved" : "preview_saved"
-    }`,
-  );
+  revalidatePath(`/platform/templates/${template.id}`);
+  redirect(`/guarantee-applications/${encodeURIComponent(template.id)}/preview?caseId=${encodeURIComponent(caseId)}&flash=preview_saved`);
 }
 
 function parsePrice(val: unknown): number {
@@ -4381,7 +4441,7 @@ export async function executePropertyImportAction(formData: FormData) {
         action: "auto_fix",
         message:
           locale === "zh"
-            ? "存在价格字段无法转换为数字的行。"
+            ? "存在价格内容无法转换为数字的行。"
             : locale === "ko"
               ? "가격 필드를 숫자로 변환할 수 없는 행이 있습니다."
               : "価格フィールドを数値化できない行があります。",

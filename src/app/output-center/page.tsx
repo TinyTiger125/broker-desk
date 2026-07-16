@@ -109,6 +109,7 @@ const outputCenterCopy = {
     guaranteePrimaryDesc: "現在の案件を確認し、足りない項目だけ補って、選択した保証会社の申込書を出します。",
     guaranteeNextAction: "次にやること",
     guaranteeChecklist: "残りの確認項目",
+    guaranteeTemplateSwitchDesc: "保証会社を変える場合だけ、ここで切り替えます。次の操作は上のボタンから続けます。",
     outputPathCase: "案件",
     outputPathTemplate: "保証会社",
     outputPathPreview: "プレビュー",
@@ -122,12 +123,12 @@ const outputCenterCopy = {
     guaranteeNoCase: "確認済み案件がまだありません",
     guaranteeTemplate: "保証会社",
     guaranteeReadiness: "申込データ準備",
-    guaranteeDraftReadiness: "会社別追加項目",
-    guaranteeDraftEdit: "会社別項目を編集",
+    guaranteeDraftReadiness: "申込書追加情報",
+    guaranteeDraftEdit: "追加情報を編集",
     guaranteeDraftReady: "追加項目入力済み",
     guaranteeDraftMissing: "追加項目未入力",
     guaranteeFillInWorkbench: "情報整理で入力",
-    guaranteeFillInDraft: "会社別項目で入力",
+    guaranteeFillInDraft: "追加情報を入力",
     guaranteeReviewMissing: "不足項目を確認",
     guaranteeSelectCaseFirst: "先に対象案件を選択",
     guaranteeReady: "準備済み",
@@ -140,7 +141,7 @@ const outputCenterCopy = {
     guaranteePreviewAction: "{company}申込書をプレビュー",
     guaranteePreviewNeedsCase: "案件を選択すると、確認済みデータを使って申込書を出せます。",
     guaranteeSourceConfirmed: "確認済み案件データ",
-    guaranteeSourceDraft: "会社別追加項目",
+    guaranteeSourceDraft: "申込書追加情報",
     guaranteeSourceCandidate: "読取内容（確認が必要）",
     guaranteeSourceMissing: "未入力",
     guaranteeCaseLink: "案件を確認",
@@ -218,6 +219,7 @@ const outputCenterCopy = {
     guaranteePrimaryDesc: "确认当前案件，只补齐缺失项，然后输出所选保证会社申请书。",
     guaranteeNextAction: "下一步",
     guaranteeChecklist: "剩余确认项",
+    guaranteeTemplateSwitchDesc: "只有需要更换保证会社时，才在这里切换。下一步仍然从上方主按钮继续。",
     outputPathCase: "案件",
     outputPathTemplate: "保证会社",
     outputPathPreview: "预览",
@@ -231,12 +233,12 @@ const outputCenterCopy = {
     guaranteeNoCase: "暂无已确认案件",
     guaranteeTemplate: "保证会社",
     guaranteeReadiness: "申请数据准备度",
-    guaranteeDraftReadiness: "会社别追加项目",
-    guaranteeDraftEdit: "编辑会社别项目",
-    guaranteeDraftReady: "追加项目已填写",
-    guaranteeDraftMissing: "追加项目未填写",
+    guaranteeDraftReadiness: "申请书补充信息",
+    guaranteeDraftEdit: "编辑补充信息",
+    guaranteeDraftReady: "补充信息已填写",
+    guaranteeDraftMissing: "补充信息未填写",
     guaranteeFillInWorkbench: "到信息整理页填写",
-    guaranteeFillInDraft: "到会社别项目填写",
+    guaranteeFillInDraft: "填写补充信息",
     guaranteeReviewMissing: "查看缺失项",
     guaranteeSelectCaseFirst: "请先选择目标案件",
     guaranteeReady: "已就绪",
@@ -249,7 +251,7 @@ const outputCenterCopy = {
     guaranteePreviewAction: "预览{company}申请书",
     guaranteePreviewNeedsCase: "选择案件后，可使用已确认数据输出申请书。",
     guaranteeSourceConfirmed: "已确认案件数据",
-    guaranteeSourceDraft: "会社别追加项目",
+    guaranteeSourceDraft: "申请书补充信息",
     guaranteeSourceCandidate: "读取内容（需确认）",
     guaranteeSourceMissing: "未填写",
     guaranteeCaseLink: "查看案件",
@@ -327,6 +329,7 @@ const outputCenterCopy = {
     guaranteePrimaryDesc: "현재 안건을 확인하고 부족한 항목만 보완한 뒤 선택한 보증회사 신청서를 출력합니다.",
     guaranteeNextAction: "다음 작업",
     guaranteeChecklist: "남은 확인 항목",
+    guaranteeTemplateSwitchDesc: "보증회사를 바꿀 때만 여기서 전환합니다. 다음 작업은 위의 기본 버튼으로 계속합니다.",
     outputPathCase: "안건",
     outputPathTemplate: "보증회사",
     outputPathPreview: "미리보기",
@@ -341,11 +344,11 @@ const outputCenterCopy = {
     guaranteeTemplate: "보증회사",
     guaranteeReadiness: "신청 데이터 준비도",
     guaranteeDraftReadiness: "회사별 추가 항목",
-    guaranteeDraftEdit: "회사별 항목 편집",
-    guaranteeDraftReady: "추가 항목 입력됨",
-    guaranteeDraftMissing: "추가 항목 미입력",
+    guaranteeDraftEdit: "추가 정보 편집",
+    guaranteeDraftReady: "추가 정보 입력됨",
+    guaranteeDraftMissing: "추가 정보 미입력",
     guaranteeFillInWorkbench: "정보 정리에서 입력",
-    guaranteeFillInDraft: "회사별 항목에서 입력",
+    guaranteeFillInDraft: "추가 정보 입력",
     guaranteeReviewMissing: "부족 항목 확인",
     guaranteeSelectCaseFirst: "먼저 대상 안건 선택",
     guaranteeReady: "준비됨",
@@ -358,7 +361,7 @@ const outputCenterCopy = {
     guaranteePreviewAction: "{company} 신청서 미리보기",
     guaranteePreviewNeedsCase: "안건을 선택하면 확인된 데이터로 신청서를 출력할 수 있습니다.",
     guaranteeSourceConfirmed: "확인된 안건 데이터",
-    guaranteeSourceDraft: "회사별 추가 항목",
+    guaranteeSourceDraft: "신청서 추가 정보",
     guaranteeSourceCandidate: "후보값(확인 필요)",
     guaranteeSourceMissing: "미입력",
     guaranteeCaseLink: "안건 확인",
@@ -498,6 +501,10 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
   });
   const guaranteeBlockingCount = guaranteeReadinessGroups.find((group) => group.id === "unresolved")?.fields.length ?? 0;
   const guaranteeBlockingFields = guaranteeReadinessGroups.find((group) => group.id === "unresolved")?.fields ?? [];
+  const selectedGuaranteeDraftMissingFields = selectedGuaranteeDraftReadiness.fields.filter(
+    (field) => field.required && field.status !== "available",
+  );
+  const selectedGuaranteeMissingCount = guaranteeBlockingCount + selectedGuaranteeDraftReadiness.requiredMissingCount;
   const caseSelectorCards = !selectedCase
     ? await Promise.all(
         cases.slice(0, 9).map(async (caseItem) => {
@@ -558,6 +565,12 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
   const selectedCaseDraftHref = selectedCase
     ? previewHrefForGuaranteeField({ caseId: selectedCase.id, templateId: selectedGuaranteeTemplate.id })
     : "#guarantee-case-selector";
+  const selectedGuaranteeDownloadHref = selectedCase
+    ? `/api/guarantee-applications/${encodeURIComponent(selectedGuaranteeTemplate.id)}/download?caseId=${encodeURIComponent(selectedCase.id)}`
+    : "#guarantee-case-selector";
+  const selectedGuaranteeCanDownload = Boolean(
+    selectedCase && selectedGuaranteeTemplate.allowDirectDownload && selectedGuaranteeMissingCount === 0,
+  );
   const guaranteePreviewLabel = copy.guaranteePreviewAction.replace("{company}", selectedGuaranteeTemplate.companyDisplayName);
   const firstBlockingField = guaranteeBlockingFields[0];
   const outputNextHref = !selectedCase
@@ -566,13 +579,23 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
       ? isOutputSpecificGuaranteeField(firstBlockingField.fieldKey)
         ? previewHrefForGuaranteeField({ caseId: selectedCase.id, templateId: selectedGuaranteeTemplate.id, fieldKey: firstBlockingField.fieldKey })
         : caseWorkbenchHrefForGuaranteeField({ caseId: selectedCase.id, templateId: selectedGuaranteeTemplate.id, fieldKey: firstBlockingField.fieldKey })
+      : selectedGuaranteeDraftReadiness.requiredMissingCount > 0
+        ? selectedCaseDraftHref
       : selectedGuaranteePreviewHref;
   const outputNextLabel = !selectedCase
     ? copy.guaranteeSelectCaseFirst
     : firstBlockingField
       ? copy.guaranteeReviewMissing
+      : selectedGuaranteeDraftReadiness.requiredMissingCount > 0
+        ? copy.guaranteeFillInDraft
       : copy.guaranteePreviewAction.replace("{company}", selectedGuaranteeTemplate.companyDisplayName);
-  const outputNextIcon = !selectedCase ? "folder_open" : firstBlockingField ? "fact_check" : "visibility";
+  const outputNextIcon = !selectedCase
+    ? "folder_open"
+    : firstBlockingField
+      ? "fact_check"
+      : selectedGuaranteeDraftReadiness.requiredMissingCount > 0
+        ? "edit_note"
+        : "visibility";
   const outputPathItems = [
     {
       label: copy.outputPathCase,
@@ -590,11 +613,11 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
       label: copy.outputPathPreview,
       value: !selectedCase
         ? copy.guaranteeSelectCaseFirst
-        : guaranteeBlockingCount > 0
-          ? `${copy.caseMissingItems}: ${guaranteeBlockingCount}`
+        : selectedGuaranteeMissingCount > 0
+          ? `${copy.caseMissingItems}: ${selectedGuaranteeMissingCount}`
           : copy.caseReadyForPreview,
-      ready: Boolean(selectedCase && guaranteeBlockingCount === 0),
-      icon: guaranteeBlockingCount > 0 ? "fact_check" : "visibility",
+      ready: Boolean(selectedCase && selectedGuaranteeMissingCount === 0),
+      icon: selectedGuaranteeMissingCount > 0 ? "fact_check" : "visibility",
     },
   ];
   const legacySectionId = "existing-outputs";
@@ -858,9 +881,9 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                 {selectedGuaranteeTemplate.companyDisplayName}
               </span>
               <span className={`rounded border px-2 py-1 text-xs font-black ${
-                guaranteeBlockingCount > 0 ? "border-red-700 bg-red-50 text-red-700" : "border-emerald-700 bg-emerald-700 text-white"
+                selectedGuaranteeMissingCount > 0 ? "border-red-700 bg-red-50 text-red-700" : "border-emerald-700 bg-emerald-700 text-white"
               }`}>
-                {guaranteeBlockingCount > 0 ? `${copy.guaranteeMissing}: ${guaranteeBlockingCount}` : copy.guaranteeReady}
+                {selectedGuaranteeMissingCount > 0 ? `${copy.guaranteeMissing}: ${selectedGuaranteeMissingCount}` : copy.guaranteeReady}
               </span>
             </div>
             <div className="mt-4 grid gap-2 md:grid-cols-3">
@@ -884,10 +907,18 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
               ))}
             </div>
           </div>
-          <Link href={outputNextHref} className="inline-flex min-w-[13rem] items-center justify-center gap-2 rounded bg-slate-950 px-4 py-3 text-sm font-black text-white hover:bg-slate-800">
-            <span className="material-symbols-outlined text-[18px]">{outputNextIcon}</span>
-            {outputNextLabel}
-          </Link>
+          <div className="grid gap-2 lg:min-w-[13rem]">
+            <Link href={outputNextHref} className="inline-flex items-center justify-center gap-2 rounded bg-slate-950 px-4 py-3 text-sm font-black text-white hover:bg-slate-800">
+              <span className="material-symbols-outlined text-[18px]">{outputNextIcon}</span>
+              {outputNextLabel}
+            </Link>
+            {selectedGuaranteeCanDownload ? (
+              <Link href={selectedGuaranteeDownloadHref} className="inline-flex items-center justify-center gap-2 rounded border border-slate-300 bg-white px-4 py-2 text-sm font-black text-slate-900 hover:bg-slate-50">
+                <span className="material-symbols-outlined text-[18px]">download</span>
+                {copy.download}
+              </Link>
+            ) : null}
+          </div>
         </div>
       </section>
 
@@ -935,9 +966,9 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
       ) : null}
 
       {selectedCase ? (
-      <section className={`rounded border bg-white p-4 ${guaranteeBlockingFields.length > 0 ? "border-red-300 border-l-4 border-l-red-700" : "border-emerald-300 border-l-4 border-l-emerald-700"}`}>
-        <h3 className={`flex items-center gap-2 text-base font-black ${guaranteeBlockingFields.length > 0 ? "text-red-700" : "text-emerald-700"}`}>
-          <span className="material-symbols-outlined text-[20px]">{guaranteeBlockingFields.length > 0 ? "warning" : "check_circle"}</span>
+      <section className={`rounded border bg-white p-4 ${selectedGuaranteeMissingCount > 0 ? "border-red-300 border-l-4 border-l-red-700" : "border-emerald-300 border-l-4 border-l-emerald-700"}`}>
+        <h3 className={`flex items-center gap-2 text-base font-black ${selectedGuaranteeMissingCount > 0 ? "text-red-700" : "text-emerald-700"}`}>
+          <span className="material-symbols-outlined text-[20px]">{selectedGuaranteeMissingCount > 0 ? "warning" : "check_circle"}</span>
           {copy.guaranteeChecklist}
         </h3>
         <div className="mt-3 space-y-2">
@@ -958,6 +989,17 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                 {field.label}
               </Link>
             ))
+          ) : selectedGuaranteeDraftMissingFields.length > 0 ? (
+            selectedGuaranteeDraftMissingFields.slice(0, 5).map((field) => (
+              <Link
+                key={`primary-draft-missing-${field.fieldKey}`}
+                href={selectedCaseDraftHref}
+                className="flex items-center gap-2 text-sm text-slate-800 hover:text-[#1960a3] hover:underline"
+              >
+                <span className="material-symbols-outlined text-[16px] text-red-700">edit_note</span>
+                {field.label}
+              </Link>
+            ))
           ) : (
             <p className="text-sm font-semibold text-emerald-800">{copy.guaranteeReady}</p>
           )}
@@ -966,52 +1008,48 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
       ) : null}
 
       {selectedCase ? (
-      <section>
-        <h2 className="mb-4 text-2xl font-black text-slate-950">{copy.selectTemplate}</h2>
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <section className="rounded border border-slate-300 bg-white p-4">
+        <div className="flex flex-col gap-2 border-b border-slate-200 pb-4 md:flex-row md:items-end md:justify-between">
+          <div>
+            <h2 className="text-lg font-black text-slate-950">{copy.selectTemplate}</h2>
+            <p className="mt-1 text-sm font-semibold text-slate-600">{copy.guaranteeTemplateSwitchDesc}</p>
+          </div>
+          <div className="rounded bg-slate-950 px-3 py-2 text-xs font-black text-white">
+            {selectedGuaranteeTemplate.companyDisplayName}
+          </div>
+        </div>
+        <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-5">
           {guaranteeTemplateCards.map((card) => (
-            <div
+            <Link
               key={card.template.id}
-              className={`relative flex min-h-[16rem] flex-col rounded border bg-white ${
-                card.selected ? "border-[#1960a3] ring-1 ring-[#1960a3]" : "border-slate-300"
+              href={`/output-center?caseId=${encodeURIComponent(selectedCase.id)}&guaranteeTemplate=${encodeURIComponent(card.template.id)}`}
+              aria-current={card.selected ? "page" : undefined}
+              className={`group flex min-h-36 flex-col justify-between rounded border p-3 transition ${
+                card.selected ? "border-[#1960a3] bg-blue-50 ring-1 ring-[#1960a3]" : "border-slate-200 bg-white hover:border-[#1960a3] hover:bg-slate-50"
               }`}
             >
-              {card.selected ? <span className="absolute -right-2 -top-2 h-4 w-4 rounded-full bg-[#1960a3]" /> : null}
-              <div className="flex items-center justify-between gap-3 border-b border-slate-300 bg-white p-4">
-                <h3 className="truncate text-xl font-black text-slate-950">{card.template.companyDisplayName}</h3>
-                <span className={`shrink-0 rounded border px-2 py-1 text-xs font-black ${
-                  card.missingCount > 0 ? "border-red-700 bg-red-50 text-red-700" : "border-emerald-700 bg-emerald-700 text-white"
-                }`}>
-                  {card.missingCount > 0 ? `${copy.guaranteeMissing}: ${card.missingCount}` : copy.guaranteeReady}
-                </span>
-              </div>
-              <div className="flex flex-1 flex-col justify-between gap-4 p-4">
-                <p className="text-sm text-slate-600">{card.template.templateDisplayName}</p>
-                <div className="space-y-3">
-                  <Link href={card.previewHref} className="inline-flex w-full items-center justify-center gap-2 rounded border border-[#7db6ff] bg-[#d4e4fc] px-4 py-2 text-sm font-black text-slate-950 hover:bg-[#cfe0fb]">
-                    <span className="material-symbols-outlined text-[18px]">visibility</span>
-                    {copy.guaranteePreviewAction.replace("{company}", "").trim()}
-                  </Link>
-                  {card.downloadEnabled ? (
-                    <Link href={card.downloadHref} className="inline-flex w-full items-center justify-center gap-2 rounded bg-slate-950 px-4 py-2 text-sm font-black text-white hover:bg-slate-800">
-                      <span className="material-symbols-outlined text-[18px]">download</span>
-                      {copy.download}
-                    </Link>
-                  ) : (
-                    <button disabled className="inline-flex w-full cursor-not-allowed items-center justify-center gap-2 rounded bg-slate-200 px-4 py-2 text-sm font-black text-slate-400">
-                      <span className="material-symbols-outlined text-[18px]">lock</span>
-                      {card.missingCount > 0
-                        ? copy.guaranteeReviewMissing
-                        : locale === "zh"
-                          ? "先预览校准"
-                          : locale === "ko"
-                            ? "먼저 미리보기 보정"
-                            : "先にプレビュー校正"}
-                    </button>
-                  )}
+              <div>
+                <div className="flex items-start justify-between gap-2">
+                  <span className={`flex h-7 w-7 items-center justify-center rounded-full ${
+                    card.selected ? "bg-[#1960a3] text-white" : "bg-slate-100 text-slate-500 group-hover:bg-blue-100 group-hover:text-[#1960a3]"
+                  }`}>
+                    <span aria-hidden="true" className="material-symbols-outlined text-[16px]">
+                      {card.selected ? "check" : "article"}
+                    </span>
+                  </span>
+                  <span className={`shrink-0 rounded px-2 py-0.5 text-[10px] font-black ${
+                    card.missingCount > 0 ? "bg-rose-50 text-rose-700 ring-1 ring-rose-100" : "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100"
+                  }`}>
+                    {card.missingCount > 0 ? `${copy.guaranteeMissing}: ${card.missingCount}` : copy.guaranteeReady}
+                  </span>
                 </div>
+                <h3 className="mt-3 truncate text-base font-black text-slate-950">{card.template.companyDisplayName}</h3>
+                <p className="mt-1 line-clamp-1 text-xs font-semibold text-slate-600">{card.template.companyLegalName}</p>
               </div>
-            </div>
+              <p className="mt-3 line-clamp-2 border-t border-slate-100 pt-3 text-xs font-semibold leading-5 text-slate-500">
+                {card.template.templateDisplayName}
+              </p>
+            </Link>
           ))}
         </div>
       </section>

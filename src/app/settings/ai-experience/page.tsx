@@ -17,9 +17,9 @@ type AiExperiencePageProps = {
 
 const statusTabs: Array<{ value: "all" | AiExperienceDraftStatus; label: Record<Locale, string> }> = [
   { value: "all", label: { ja: "すべて", zh: "全部", ko: "전체" } },
-  { value: "draft", label: { ja: "承認待ち", zh: "待审核", ko: "승인 대기" } },
-  { value: "approved", label: { ja: "承認済み", zh: "已批准", ko: "승인됨" } },
-  { value: "rejected", label: { ja: "却下", zh: "已拒绝", ko: "거절됨" } },
+  { value: "draft", label: { ja: "確認待ち", zh: "待确认", ko: "확인 대기" } },
+  { value: "approved", label: { ja: "有効", zh: "已启用", ko: "사용 중" } },
+  { value: "rejected", label: { ja: "使わない", zh: "不使用", ko: "사용 안 함" } },
 ];
 
 function tr(locale: Locale, values: Record<Locale, string>) {
@@ -32,9 +32,9 @@ function isDraftStatus(value?: string): value is AiExperienceDraftStatus {
 
 function statusLabel(locale: Locale, status: AiExperienceDraftStatus) {
   const labels: Record<AiExperienceDraftStatus, Record<Locale, string>> = {
-    draft: { ja: "承認待ち", zh: "待审核", ko: "승인 대기" },
-    approved: { ja: "承認済み", zh: "已批准", ko: "승인됨" },
-    rejected: { ja: "却下", zh: "已拒绝", ko: "거절됨" },
+    draft: { ja: "確認待ち", zh: "待确认", ko: "확인 대기" },
+    approved: { ja: "有効", zh: "已启用", ko: "사용 중" },
+    rejected: { ja: "使わない", zh: "不使用", ko: "사용 안 함" },
   };
   return labels[status][locale];
 }
@@ -45,17 +45,17 @@ function statusClass(status: AiExperienceDraftStatus) {
   return "bg-amber-100 text-amber-800";
 }
 
-function scopeLabel(scope: string) {
-  const labels: Record<string, string> = {
-    case_only: "case",
-    user_or_team: "team",
-    source_template: "source",
-    output_template: "output",
-    field_dictionary: "field",
-    global_rule_candidate: "global",
-    regression_case: "regression",
+function scopeLabel(locale: Locale, scope: string) {
+  const labels: Record<string, Record<Locale, string>> = {
+    case_only: { ja: "現在の案件", zh: "当前案件", ko: "현재 안건" },
+    user_or_team: { ja: "チーム", zh: "团队", ko: "팀" },
+    source_template: { ja: "資料読取", zh: "资料读取", ko: "자료 판독" },
+    output_template: { ja: "書類作成", zh: "文书生成", ko: "문서 작성" },
+    field_dictionary: { ja: "項目名", zh: "项目名称", ko: "항목명" },
+    global_rule_candidate: { ja: "共通", zh: "通用", ko: "공통" },
+    regression_case: { ja: "確認記録", zh: "验证记录", ko: "확인 기록" },
   };
-  return labels[scope] ?? scope;
+  return labels[scope]?.[locale] ?? (locale === "zh" ? "其他" : locale === "ko" ? "기타" : "その他");
 }
 
 export default async function AiExperiencePage({ searchParams }: AiExperiencePageProps) {
@@ -87,38 +87,38 @@ export default async function AiExperiencePage({ searchParams }: AiExperiencePag
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-xs font-black uppercase tracking-wider text-[#002FA7]">
-              {tr(locale, { ja: "入力ルール", zh: "填写规则", ko: "작성 규칙" })}
+              {tr(locale, { ja: "入力サポート", zh: "智能填写", ko: "자동 입력" })}
             </p>
             <h1 className="mt-2 text-2xl font-black tracking-tight text-slate-950">
-              {tr(locale, { ja: "入力ルールの確認", zh: "填写规则审核", ko: "작성 규칙 검토" })}
+              {tr(locale, { ja: "入力サポート設定", zh: "智能填写设置", ko: "자동 입력 설정" })}
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
               {tr(locale, {
-                ja: "承認したルールだけが今後の入力支援に使われます。保留中や却下した内容は反映しません。",
-                zh: "只有已批准的规则会用于后续填写辅助；待审核和已拒绝的内容不会生效。",
-                ko: "승인된 규칙만 이후 작성 지원에 사용됩니다. 대기/거절 항목은 반영하지 않습니다.",
+                ja: "確認した内容だけが、次回以降の資料読取や入力補助に使われます。",
+                zh: "已确认的内容会用于后续资料读取和填写辅助，未确认或不使用的内容不会生效。",
+                ko: "확인한 내용만 이후 자료 판독과 입력 보조에 사용됩니다.",
               })}
             </p>
           </div>
           <form action={draftAiExperiencesAction}>
             <button className="inline-flex items-center gap-2 rounded-lg bg-slate-950 px-4 py-2 text-sm font-black text-white hover:bg-slate-800">
               <span className="material-symbols-outlined text-[18px]">sync</span>
-              {tr(locale, { ja: "提案を作成", zh: "整理待审规则", ko: "검토 항목 정리" })}
+              {tr(locale, { ja: "新しい候補を確認", zh: "检查新的填写建议", ko: "새 제안 확인" })}
             </button>
           </form>
         </div>
         {params?.flash ? (
           <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-800">
             {params.flash === "experience_drafted"
-              ? tr(locale, { ja: `整理済み: ${createdCount}件`, zh: `已整理：${createdCount} 条`, ko: `정리됨: ${createdCount}건` })
-              : tr(locale, { ja: "審査を保存しました。", zh: "审核已保存。", ko: "리뷰를 저장했습니다." })}
+              ? tr(locale, { ja: `確認候補: ${createdCount}件`, zh: `已找到：${createdCount} 条`, ko: `확인 후보: ${createdCount}건` })
+              : tr(locale, { ja: "設定を保存しました。", zh: "设置已保存。", ko: "설정을 저장했습니다." })}
           </div>
         ) : null}
       </section>
 
       <section className="grid gap-3 md:grid-cols-4">
         <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <p className="text-xs font-bold text-slate-500">{tr(locale, { ja: "修正イベント", zh: "修正事件", ko: "수정 이벤트" })}</p>
+          <p className="text-xs font-bold text-slate-500">{tr(locale, { ja: "参考記録", zh: "可参考记录", ko: "참고 기록" })}</p>
           <p className="mt-1 text-3xl font-black text-slate-950">{correctionEvents.length}</p>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4">
@@ -163,12 +163,12 @@ export default async function AiExperiencePage({ searchParams }: AiExperiencePag
                       <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${statusClass(draft.status)}`}>
                         {statusLabel(locale, draft.status)}
                       </span>
-                      <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-slate-600">{scopeLabel(draft.scopeCandidate)}</span>
-                      {draft.templateId ? <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-slate-600">{draft.templateId}</span> : null}
+                      <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-slate-600">{scopeLabel(locale, draft.scopeCandidate)}</span>
+                      {draft.templateId ? <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-slate-600">{tr(locale, { ja: "書類関連", zh: "文书相关", ko: "문서 관련" })}</span> : null}
                     </div>
                     <h2 className="mt-2 text-base font-black text-slate-950">{draft.title}</h2>
                     <p className="mt-1 text-xs font-semibold text-slate-500">
-                      {draft.fieldKey ?? "-"} / {draft.changeType} / {formatDate(draft.createdAt, locale)}
+                      {tr(locale, { ja: "作成日", zh: "创建日期", ko: "생성일" })}: {formatDate(draft.createdAt, locale)}
                     </p>
                   </div>
                   {draft.status === "draft" ? (
@@ -177,14 +177,14 @@ export default async function AiExperiencePage({ searchParams }: AiExperiencePag
                         <input type="hidden" name="draftId" value={draft.id} />
                         <input type="hidden" name="status" value="approved" />
                         <button className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-black text-white hover:bg-emerald-800">
-                          {tr(locale, { ja: "承認", zh: "批准", ko: "승인" })}
+                          {tr(locale, { ja: "使う", zh: "启用", ko: "사용" })}
                         </button>
                       </form>
                       <form action={reviewAiExperienceDraftAction}>
                         <input type="hidden" name="draftId" value={draft.id} />
                         <input type="hidden" name="status" value="rejected" />
                         <button className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-100">
-                          {tr(locale, { ja: "却下", zh: "拒绝", ko: "거절" })}
+                          {tr(locale, { ja: "使わない", zh: "不使用", ko: "사용 안 함" })}
                         </button>
                       </form>
                     </div>
@@ -194,16 +194,13 @@ export default async function AiExperiencePage({ searchParams }: AiExperiencePag
                   {draft.bodyMarkdown}
                 </pre>
                 <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-bold text-slate-500">
-                  <span>{tr(locale, { ja: "根拠", zh: "依据", ko: "근거" })}: {draft.eventIds.length}</span>
-                  {draft.eventIds.slice(0, 4).map((eventId) => (
-                    <span key={eventId} className="rounded bg-white px-2 py-0.5 font-mono">{eventId}</span>
-                  ))}
+                  <span>{tr(locale, { ja: "参考記録", zh: "参考记录", ko: "참고 기록" })}: {draft.eventIds.length}</span>
                 </div>
               </article>
             ))
           ) : (
             <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm font-bold text-slate-500">
-              {tr(locale, { ja: "表示できる草稿はありません。", zh: "没有可显示的草稿。", ko: "표시할 초안이 없습니다." })}
+              {tr(locale, { ja: "確認が必要な内容はありません。", zh: "暂无需要确认的内容。", ko: "확인이 필요한 내용이 없습니다." })}
             </div>
           )}
         </div>

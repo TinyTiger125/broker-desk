@@ -1,5 +1,7 @@
 # V1 AI Model Selection
 
+> 2026-07-15 status note: the implementation and most of this document still describe the previous `gpt-5.5` / `gpt-5.4-*` routing baseline. The current target direction is the eval-gated GPT-5.6 Sol/Terra/Luna routing and model-operable product architecture defined in `docs/product/BROKER_DESK_PRODUCT_TECHNICAL_CHARTER_2026_07_15.md`. Do not change production model names without task-level regression evidence.
+
 Date: 2026-06-04
 
 ## Decision

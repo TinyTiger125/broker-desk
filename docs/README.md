@@ -18,6 +18,7 @@ Files in `docs/product/` describe current product direction and product-owned mo
 
 | File | Purpose |
 | --- | --- |
+| `docs/product/BROKER_DESK_PRODUCT_TECHNICAL_CHARTER_2026_07_15.md` | Current product positioning, AI-native target form, module boundaries, technical architecture, roadmap, and pilot gates. |
 | `docs/product/PRODUCT_TOPOLOGY.md` | Product position, value topology, and priority rule. |
 | `docs/product/V1_INPUT_FILE_MODEL.md` | Source-file import, extraction, review, and trust model. |
 | `docs/product/V1_CASE_WORKBENCH.md` | Case workbench behavior, trust states, and review workflow. |
@@ -66,6 +67,10 @@ Files in `docs/operations/` describe PM control, terminology, and market constra
 | `docs/acceptance/` | Formal acceptance reports and screenshots. |
 | `docs/design-audit/` | Visual audit evidence and screenshot comparisons. |
 | `docs/agents/` | Agent task briefs and domain read instructions. |
+
+Current full-product audit:
+
+- `docs/design-audit/product-charter-20260715/README.md`
 
 ## Archive
 
