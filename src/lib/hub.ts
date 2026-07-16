@@ -291,10 +291,10 @@ export async function listHubContracts(locale: Locale = "ja", context: HubQueryC
     contractNumber: `${contractPrefix}-${quote.id.toUpperCase()}`,
     contractValue: quote.listingPrice,
     relatedProperty: quote.property?.name,
-    relatedParty: quote.client.name,
+    relatedParty: quote.client?.name,
     signedAt: quote.createdAt,
     effectiveUntil: undefined,
-    status: mapContractStatus(quote.client.stage),
+    status: mapContractStatus(quote.client?.stage ?? ""),
   }));
 }
 
@@ -369,7 +369,7 @@ export async function listHubGeneratedOutputs(
           localizeDemoText(locale, item.title) ||
           (isPropertyOverview
             ? `${getGeneratedOutputTypeLabel(locale, item.outputType)} - ${relatedProperty ?? "N/A"}`
-            : `${getGeneratedOutputTypeLabel(locale, item.outputType)} - ${quote?.client.name ?? "N/A"}`);
+            : `${getGeneratedOutputTypeLabel(locale, item.outputType)} - ${quote?.client?.name ?? "N/A"}`);
         return {
           id: item.id,
           actorId: item.actorId,
@@ -403,10 +403,10 @@ export async function listHubGeneratedOutputs(
         outputType: type,
         outputFormat: "pdf",
         language: locale,
-        title: `${getOutputDocLabel(locale, type)} - ${quote.client.name}`,
+        title: `${getOutputDocLabel(locale, type)} - ${quote.client?.name ?? "N/A"}`,
         documentNumber: `DRAFT-${quote.id}-${type}`,
         relatedProperty: quote.property?.name,
-        relatedParty: quote.client.name,
+        relatedParty: quote.client?.name,
         relatedContractHint: `${contractPrefix}-${quote.id.toUpperCase()}`,
         sourceQuoteId: quote.id,
         generatedAt: quote.updatedAt ?? quote.createdAt,
