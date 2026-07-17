@@ -1,6 +1,6 @@
 # Broker Desk Project Memory
 
-Last updated: 2026-07-15
+Last updated: 2026-07-17
 
 This file is the fixed project-memory entrypoint for Broker Desk.
 
@@ -142,6 +142,16 @@ BROKER_DESK_AUTH_MODE=demo BROKER_DESK_ENABLE_DEMO_AUTH=true BROKER_DESK_SEED_MO
 - Current code model defaults remain `gpt-5.5` / `gpt-5.4-*`; migration to the GPT-5.6 Sol/Terra/Luna family must happen only after task-level offline evals pass.
 - Durable source: `docs/product/BROKER_DESK_PRODUCT_TECHNICAL_CHARTER_2026_07_15.md`.
 - Current visual evidence: `docs/design-audit/product-charter-20260715/README.md`.
+
+2026-07-17 environment and release cadence:
+
+- Maintain two independent local environments.
+- Development environment: `/Users/neo.yu/Documents/独立开发项目/房产专家/broker-desk-dev`, branch `dev/friend-test-fixes-20260702`, local port `3002`.
+- Main test / future production environment: `/Users/neo.yu/Documents/独立开发项目/房产专家/broker-desk`, branch `main`, local port `3001`, public tunnel when needed.
+- Do not directly develop in the main test environment. Main test receives only verified content from the development environment.
+- Monday / Wednesday / Friday: open the development environment tunnel for friend testing when requested.
+- Saturday: merge verified development work down to the main test environment as the weekly main-environment release.
+- Keep the main test tunnel and friend-facing test state stable while development continues independently.
 
 ## Target User
 
