@@ -82,8 +82,8 @@ export default async function PlatformTemplatesPage() {
         </div>
       </header>
 
-      <section className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-        <div className="grid grid-cols-[1.4fr_0.8fr_1fr_1fr_0.8fr] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-black uppercase tracking-wider text-slate-500">
+      <section className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+        <div className="grid min-w-[860px] grid-cols-[1.4fr_0.8fr_1fr_1fr_0.8fr] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-black uppercase tracking-wider text-slate-500">
           <span>{ui.template}</span>
           <span>{ui.quality}</span>
           <span>{ui.source}</span>
@@ -92,7 +92,7 @@ export default async function PlatformTemplatesPage() {
         </div>
         <div className="divide-y divide-slate-100">
           {rows.map(({ template, layout, overlayCount, layoutOverrideCount, deletedCount }) => (
-            <div key={template.id} className="grid grid-cols-[1.4fr_0.8fr_1fr_1fr_0.8fr] items-center gap-3 px-4 py-4">
+            <div key={template.id} className="grid min-w-[860px] grid-cols-[1.4fr_0.8fr_1fr_1fr_0.8fr] items-center gap-3 px-4 py-4">
               <div className="min-w-0">
                 <p className="truncate text-sm font-bold text-slate-900">{template.companyDisplayName} / {template.templateDisplayName}</p>
                 <p className="truncate text-xs text-slate-500">{ui.officialBase}</p>

@@ -20,6 +20,7 @@ import {
   roleHasTenantPermission,
   type TenantPermissionAction,
 } from "@/lib/tenant-permissions";
+import { isProductionRuntime } from "@/lib/auth-mode";
 
 export class TenantSessionError extends Error {
   constructor(
@@ -53,6 +54,7 @@ async function selectDevelopmentPlatformOwnerTenantMembership(input: {
   user: User;
   requestedTenantId?: string;
 }): Promise<{ user: User; membership: TenantMembership } | null> {
+  if (isProductionRuntime()) return null;
   if (!isDevelopmentPlatformOwnerTenantFallbackEnabled()) return null;
   if (!isConfiguredPlatformOwnerUser(input.user)) return null;
 
@@ -108,6 +110,9 @@ export async function requireTenantSession(options: {
 
   const requestedTenantId = options.requestedTenantId ?? (await getActiveTenantIdFromCookie());
   const memberships = await listTenantMemberships(user.id);
+  if (isProductionRuntime() && !requestedTenantId && memberships.filter((membership) => membership.status === "active").length !== 1) {
+    throw new TenantSessionError("An active tenant must be selected.", "tenant_forbidden");
+  }
   const activeMembership = selectActiveTenantMembership({ memberships, requestedTenantId });
   const fallbackSession = activeMembership ? null : await selectDevelopmentPlatformOwnerTenantMembership({ user, requestedTenantId });
   const sessionUser = fallbackSession?.user ?? user;

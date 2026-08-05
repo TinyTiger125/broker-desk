@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { addAuditLog, addImportJob } from "@/lib/data";
 import { extractIdentityDocumentsFromFiles } from "@/lib/identity-document-extractor";
 import type { InputFileExtractionResult } from "@/lib/input-file-extractor";
+import { isProductionRuntime } from "@/lib/production-readiness";
 import { TenantSessionError, requireTenantSession } from "@/lib/tenant-session";
 
 export const dynamic = "force-dynamic";
@@ -78,6 +79,11 @@ export async function POST(request: Request) {
   }
   const user = session.user;
   const tenantId = session.tenant.id;
+
+  if (isProductionRuntime()) {
+    return NextResponse.json({ ok: false, error: "service_unavailable" }, { status: 503 });
+  }
+
   const contentLength = Number(request.headers.get("content-length") ?? 0);
   if (Number.isFinite(contentLength) && contentLength > MAX_IDENTITY_UPLOAD_TOTAL_BYTES + MAX_MULTIPART_OVERHEAD_BYTES) {
     return NextResponse.json({ ok: false, error: "files_too_large", maxBytes: MAX_IDENTITY_UPLOAD_TOTAL_BYTES }, { status: 413 });

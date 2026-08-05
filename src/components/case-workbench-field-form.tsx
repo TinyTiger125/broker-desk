@@ -9,15 +9,28 @@ type CaseWorkbenchFieldFormProps = {
   caseId: string;
   fieldKey: string;
   returnNode?: string;
+  returnField?: string;
+  returnAnchor?: string;
+  showSaveWhenPristine?: boolean;
   className?: string;
   saveLabel: string;
   savingLabel: string;
   children: ReactNode;
 };
 
-function FieldSaveButton({ dirty, saveLabel, savingLabel }: { dirty: boolean; saveLabel: string; savingLabel: string }) {
+function FieldSaveButton({
+  dirty,
+  saveLabel,
+  savingLabel,
+  showWhenPristine = false,
+}: {
+  dirty: boolean;
+  saveLabel: string;
+  savingLabel: string;
+  showWhenPristine?: boolean;
+}) {
   const { pending } = useFormStatus();
-  const visible = dirty || pending;
+  const visible = showWhenPristine || dirty || pending;
 
   return (
     <div className={`overflow-hidden transition-all duration-200 ${visible ? "mt-4 max-h-12 opacity-100" : "mt-0 max-h-0 opacity-0"}`}>
@@ -39,6 +52,9 @@ export function CaseWorkbenchFieldForm({
   caseId,
   fieldKey,
   returnNode,
+  returnField,
+  returnAnchor = "case-main-editor",
+  showSaveWhenPristine = false,
   className,
   saveLabel,
   savingLabel,
@@ -56,10 +72,11 @@ export function CaseWorkbenchFieldForm({
     >
       <input type="hidden" name="caseId" value={caseId} />
       <input type="hidden" name="presentFieldKeysJson" value={JSON.stringify([fieldKey])} />
-      <input type="hidden" name="returnAnchor" value="case-main-editor" />
+      <input type="hidden" name="returnAnchor" value={returnAnchor} />
       {returnNode ? <input type="hidden" name="returnNode" value={returnNode} /> : null}
+      {returnField ? <input type="hidden" name="returnField" value={returnField} /> : null}
       {children}
-      <FieldSaveButton dirty={dirty} saveLabel={saveLabel} savingLabel={savingLabel} />
+      <FieldSaveButton dirty={dirty} saveLabel={saveLabel} savingLabel={savingLabel} showWhenPristine={showSaveWhenPristine} />
     </form>
   );
 }

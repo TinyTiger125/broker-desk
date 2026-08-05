@@ -111,11 +111,13 @@ DECLARE
     'extraction_review_items',
     'guarantee_application_drafts',
     'correction_events',
-    'ai_experience_drafts'
+    'ai_experience_drafts',
+    'case_workbench_field_rules'
   ];
 BEGIN
   FOREACH tenant_table IN ARRAY tenant_tables LOOP
     EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', tenant_table);
+    EXECUTE format('ALTER TABLE public.%I FORCE ROW LEVEL SECURITY', tenant_table);
     EXECUTE format('DROP POLICY IF EXISTS brokerdesk_tenant_isolation ON public.%I', tenant_table);
     EXECUTE format(
       'CREATE POLICY brokerdesk_tenant_isolation ON public.%I
@@ -146,6 +148,10 @@ FOR SELECT
 USING (brokerdesk_private.can_access_tenant(id));
 
 ALTER TABLE public.tenant_memberships ENABLE ROW LEVEL SECURITY;
+-- These authorization lookup tables are intentionally not FORCEd. The
+-- SECURITY DEFINER helpers above need to resolve membership without recursive
+-- policy evaluation. The production application role must not own tables and
+-- must not have BYPASSRLS.
 DROP POLICY IF EXISTS brokerdesk_memberships_read_same_tenant ON public.tenant_memberships;
 CREATE POLICY brokerdesk_memberships_read_same_tenant
 ON public.tenant_memberships

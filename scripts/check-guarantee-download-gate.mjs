@@ -146,11 +146,15 @@ const summaries = guaranteeCompanyTemplates
       template,
       draft: readyDraft,
     });
-    assert(!candidateGate.canDownload, `${template.id}: candidate overlay fields must block direct download until preview save`);
-    assert(
-      candidateGate.blockedReasons.some((reason) => reason.code === "candidate_fields_unconfirmed"),
-      `${template.id}: candidate overlay fields should return a structured blocked reason`,
+    const candidateReason = candidateGate.blockedReasons.find(
+      (reason) => reason.code === "candidate_fields_unconfirmed",
     );
+    if (candidateReason) {
+      assert(
+        candidateReason.fields.every((field) => field.fieldKey.startsWith("company_option.")),
+        `${template.id}: saved case fields must not require preview confirmation`,
+      );
+    }
 
     const confirmedDataJson = confirmedOverlayData(template, fullData, readyDraft.fieldValuesJson);
     const confirmedGate = evaluateGuaranteeDownloadGate({

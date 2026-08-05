@@ -158,54 +158,56 @@ export function BoardKanban({ initialBoard, locale = "ja" }: BoardKanbanProps) {
       {errorMessage ? (
         <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{errorMessage}</p>
       ) : null}
-      <div className="grid gap-3 xl:grid-cols-7">
-        {stageOptions.map((column) => (
-          <section
-            key={column.value}
-            className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm"
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={(event) => {
-              event.preventDefault();
-              const data = parseDragData(event.dataTransfer.getData("text/plain"));
-              if (!data) return;
-              void moveCard(data.id, data.from, column.value);
-            }}
-          >
-            <header className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-slate-900">{stageLabel[column.value]}</h2>
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{counts[column.value]}</span>
-            </header>
-            <div className="space-y-2">
-              {board[column.value].slice(0, 20).map((client) => (
-                <article
-                  key={client.id}
-                  draggable
-                  onDragStart={(event) => {
-                    const payload: DragMeta = { id: client.id, from: column.value };
-                    event.dataTransfer.setData("text/plain", JSON.stringify(payload));
-                    event.dataTransfer.effectAllowed = "move";
-                  }}
-                  className="cursor-grab rounded-xl border border-slate-200 p-2 text-sm active:cursor-grabbing"
-                >
-                  <Link href={`/clients/${client.id}`} className="font-medium text-slate-900 hover:underline">
-                    {client.name}
-                  </Link>
-                  <p className="mt-1 text-xs text-slate-600">{client.preferredArea ?? text.areaNotSet}</p>
-                  <p className="mt-1 text-xs text-slate-600">
-                    {client.budgetMax ? formatCurrency(client.budgetMax, locale) : text.budgetNotSet}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {text.lastContact} {formatDate(client.lastContactedAt, locale)}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {text.nextFollow} {formatDate(client.nextFollowUpAt, locale)}
-                  </p>
-                </article>
-              ))}
-              {board[column.value].length === 0 ? <p className="text-xs text-slate-500">{text.noClients}</p> : null}
-            </div>
-          </section>
-        ))}
+      <div className="overflow-x-auto pb-2">
+        <div className="grid min-w-[1120px] grid-cols-7 gap-3">
+          {stageOptions.map((column) => (
+            <section
+              key={column.value}
+              className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm"
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={(event) => {
+                event.preventDefault();
+                const data = parseDragData(event.dataTransfer.getData("text/plain"));
+                if (!data) return;
+                void moveCard(data.id, data.from, column.value);
+              }}
+            >
+              <header className="mb-3 flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-slate-900">{stageLabel[column.value]}</h2>
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{counts[column.value]}</span>
+              </header>
+              <div className="space-y-2">
+                {board[column.value].slice(0, 20).map((client) => (
+                  <article
+                    key={client.id}
+                    draggable
+                    onDragStart={(event) => {
+                      const payload: DragMeta = { id: client.id, from: column.value };
+                      event.dataTransfer.setData("text/plain", JSON.stringify(payload));
+                      event.dataTransfer.effectAllowed = "move";
+                    }}
+                    className="cursor-grab rounded-xl border border-slate-200 p-2 text-sm active:cursor-grabbing"
+                  >
+                    <Link href={`/clients/${client.id}`} className="font-medium text-slate-900 hover:underline">
+                      {client.name}
+                    </Link>
+                    <p className="mt-1 text-xs text-slate-600">{client.preferredArea ?? text.areaNotSet}</p>
+                    <p className="mt-1 text-xs text-slate-600">
+                      {client.budgetMax ? formatCurrency(client.budgetMax, locale) : text.budgetNotSet}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {text.lastContact} {formatDate(client.lastContactedAt, locale)}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {text.nextFollow} {formatDate(client.nextFollowUpAt, locale)}
+                    </p>
+                  </article>
+                ))}
+                {board[column.value].length === 0 ? <p className="text-xs text-slate-500">{text.noClients}</p> : null}
+              </div>
+            </section>
+          ))}
+        </div>
       </div>
     </div>
   );

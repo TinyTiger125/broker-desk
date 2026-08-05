@@ -1,12 +1,14 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-export type AttachmentStorageMode = "local_public" | "external_reference";
+export type AttachmentStorageMode = "local_private" | "object_private" | "external_reference";
 
 export function getAttachmentStorageMode(): AttachmentStorageMode {
-  const raw = (process.env.ATTACHMENT_STORAGE_MODE ?? "local_public").trim().toLowerCase();
-  return raw === "external_reference" ? "external_reference" : "local_public";
+  const raw = (process.env.ATTACHMENT_STORAGE_MODE ?? "local_private").trim().toLowerCase();
+  if (raw === "object_private") return "object_private";
+  if (raw === "external_reference") return "external_reference";
+  return "local_private";
 }
 
 const ACTIVE_WEB_EXTENSIONS = new Set([
@@ -32,24 +34,63 @@ function isHttpUrl(value: string): boolean {
   return /^https?:\/\//i.test(value.trim());
 }
 
-function isPublicPath(value: string): boolean {
-  return value.startsWith("/") && !value.startsWith("//") && !value.startsWith("/\\");
-}
-
 export function isValidStoragePath(value: string): boolean {
   const trimmed = value.trim();
   if (!trimmed) return false;
-  return isPublicPath(trimmed) || isHttpUrl(trimmed);
+  return isHttpUrl(trimmed);
 }
 
-export async function persistAttachmentToLocalPublic(file: File) {
+function getPrivateAttachmentRoot() {
+  return path.join(process.cwd(), ".broker-desk", "private-attachments");
+}
+
+function localPrivateStoragePath(tenantId: string, yyyy: string, mm: string, fileName: string) {
+  return `local-private://${tenantId}/${yyyy}/${mm}/${fileName}`;
+}
+
+export function isLocalPrivateStoragePath(value: string | undefined): boolean {
+  return Boolean(value?.startsWith("local-private://"));
+}
+
+function parseLocalPrivateStoragePath(storagePath: string) {
+  let url: URL;
+  try {
+    url = new URL(storagePath);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "local-private:" || !/^[a-zA-Z0-9_-]+$/.test(url.hostname)) return null;
+  const parts = url.pathname.split("/").filter(Boolean);
+  if (
+    parts.length !== 3 ||
+    !/^\d{4}$/.test(parts[0]) ||
+    !/^\d{2}$/.test(parts[1]) ||
+    !/^[a-zA-Z0-9._-]+$/.test(parts[2])
+  ) {
+    return null;
+  }
+  return {
+    tenantId: url.hostname,
+    yyyy: parts[0],
+    mm: parts[1],
+    fileName: parts[2],
+  };
+}
+
+export async function persistAttachmentToLocalPrivate(file: File, tenantId: string) {
+  if (!tenantId || !/^[a-zA-Z0-9_-]+$/.test(tenantId)) {
+    throw new Error("attachment storage requires a valid tenant scope");
+  }
+  if (file.size > 25 * 1024 * 1024) {
+    throw new Error("attachment exceeds the 25 MB local development limit");
+  }
+
   const now = new Date();
   const yyyy = String(now.getFullYear());
   const mm = String(now.getMonth() + 1).padStart(2, "0");
   const safeName = sanitizeFileName(file.name || "upload.bin");
   const finalName = `${randomUUID()}-${safeName}`;
-  const relativePath = path.posix.join("uploads", yyyy, mm, finalName);
-  const diskDir = path.join(process.cwd(), "public", "uploads", yyyy, mm);
+  const diskDir = path.join(getPrivateAttachmentRoot(), tenantId, yyyy, mm);
 
   await mkdir(diskDir, { recursive: true });
   const arrayBuffer = await file.arrayBuffer();
@@ -59,6 +100,17 @@ export async function persistAttachmentToLocalPublic(file: File) {
     fileName: file.name || "upload.bin",
     fileType: file.type || undefined,
     fileSizeBytes: file.size,
-    storagePath: `/${relativePath}`,
+    storagePath: localPrivateStoragePath(tenantId, yyyy, mm, finalName),
   };
+}
+
+export async function readLocalPrivateAttachment(input: { storagePath: string; tenantId: string }) {
+  const parsed = parseLocalPrivateStoragePath(input.storagePath);
+  if (!parsed || parsed.tenantId !== input.tenantId) return null;
+  const diskPath = path.join(getPrivateAttachmentRoot(), parsed.tenantId, parsed.yyyy, parsed.mm, parsed.fileName);
+  try {
+    return await readFile(diskPath);
+  } catch {
+    return null;
+  }
 }

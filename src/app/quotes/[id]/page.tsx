@@ -7,7 +7,6 @@ import { getClientDetail, getQuotationById } from "@/lib/data";
 import { getLocale } from "@/lib/locale";
 import { getQuoteStatusLabel, getQuoteStatusOptions } from "@/lib/options";
 import { generateQuoteSummaries } from "@/lib/quote";
-import { getOutputDocDescription, getOutputDocLabel, type OutputDocType } from "@/lib/output-doc";
 import { requireTenantSession } from "@/lib/tenant-session";
 
 export const dynamic = "force-dynamic";
@@ -166,7 +165,6 @@ export default async function QuoteDetailPage({ params, searchParams }: QuoteDet
   const compareMode = query.compare === "1";
   const clientDetail = await getClientDetail(quote.client.id, tenantId);
   const clientQuotes = (clientDetail?.quotations ?? []).slice(0, 5);
-  const outputTypes: OutputDocType[] = ["proposal", "estimate_sheet", "funding_plan", "assumption_memo"];
 
   return (
     <div className="space-y-6">
@@ -181,9 +179,6 @@ export default async function QuoteDetailPage({ params, searchParams }: QuoteDet
           <span className="rounded-md bg-slate-100 px-3 py-1 text-sm text-slate-700">
             {text.status}：{quoteStatusLabel[quote.status]}
           </span>
-          <Link href={`/quotes/${quote.id}/print`} className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100">
-            {text.preview}
-          </Link>
           <Link
             href={compareMode ? `/quotes/${quote.id}` : `/quotes/${quote.id}?compare=1`}
             className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
@@ -200,10 +195,10 @@ export default async function QuoteDetailPage({ params, searchParams }: QuoteDet
         </div>
       </header>
 
-      <section className="grid gap-4 lg:grid-cols-3">
-        <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm lg:col-span-2">
+      <section className="grid min-w-0 gap-4 2xl:grid-cols-3">
+        <article className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm 2xl:col-span-2">
           <h2 className="text-lg font-semibold text-slate-900">{text.structure}</h2>
-          <dl className="mt-3 grid grid-cols-[180px_1fr] gap-y-2 text-sm">
+          <dl className="mt-3 grid gap-y-2 text-sm sm:grid-cols-[180px_minmax(0,1fr)]">
             <dt className="text-slate-500">{text.property}</dt>
             <dd>{quote.property?.name ?? text.propertyUnlinked}</dd>
             <dt className="text-slate-500">{text.listingPrice}</dt>
@@ -270,25 +265,6 @@ export default async function QuoteDetailPage({ params, searchParams }: QuoteDet
                 {text.update}
               </button>
             </form>
-          </article>
-
-          <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 className="text-lg font-semibold text-slate-900">{text.outputs}</h2>
-            <p className="mt-1 text-xs text-slate-500">{text.outputsDesc}</p>
-            <Link href="/settings/output-templates" className="mt-2 inline-flex text-xs font-medium text-blue-700 hover:underline">
-              {text.tuneTemplate}
-            </Link>
-            <ul className="mt-3 space-y-2 text-sm">
-              {outputTypes.map((type) => (
-                <li key={type} className="rounded-lg border border-slate-200 p-2">
-                  <p className="font-medium text-slate-900">{getOutputDocLabel(locale, type)}</p>
-                  <p className="mt-0.5 text-xs text-slate-500">{getOutputDocDescription(locale, type)}</p>
-                  <Link href={`/quotes/${quote.id}/print?type=${type}`} className="mt-1 inline-flex text-xs font-medium text-blue-700 hover:underline">
-                    {text.openTemplate}
-                  </Link>
-                </li>
-              ))}
-            </ul>
           </article>
 
           <Link href={`/clients/${quote.client.id}`} className="inline-flex rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100">

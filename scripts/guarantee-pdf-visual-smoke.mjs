@@ -7,18 +7,14 @@ import { inflateSync } from "node:zlib";
 const baseUrl = process.env.BASE_URL?.replace(/\/$/, "");
 const caseId = process.env.CASE_ID ?? "case_fixture_friends_guarantee_pdf";
 const templateId = process.env.TEMPLATE_ID ?? "zenhoren_individual_v1";
-const mode = process.env.PDF_MODE;
+// Preview must stay available for incomplete cases so brokers can verify the
+// confirmed values that will print before resolving every output blocker.
+// Use PDF_MODE=final to deliberately exercise the final-download gate.
+const mode = process.env.PDF_MODE ?? "preview";
 const outputDir = process.env.OUTPUT_DIR ?? `/tmp/broker-desk-guarantee-visual-${templateId}`;
 const outputPdf = process.env.OUTPUT_PDF ?? join(outputDir, `${templateId}.pdf`);
 const renderSize = process.env.RENDER_SIZE ?? "3600";
-const sourcePdfByTemplate = {
-  zenhoren_individual_v1: "/Users/laineyzhu/Desktop/房产专家资料库/１全保連.pdf",
-  nihon_safety_individual_v1: "/Users/laineyzhu/Desktop/房产专家资料库/日本セーフティー(1).pdf",
-  j_lease_individual_v1: "/Users/laineyzhu/Desktop/房产专家资料库/３Jリース.pdf",
-  insure_individual_v1: "/Users/laineyzhu/Desktop/房产专家资料库/４インシュア.pdf",
-  friends_guarantee_individual_v1: "/Users/laineyzhu/Desktop/房产专家资料库/５ふれんず保証.pdf",
-};
-const sourcePdf = process.env.SOURCE_PDF ?? sourcePdfByTemplate[templateId];
+const sourcePdf = process.env.SOURCE_PDF;
 
 const criticalRegionsByTemplate = {
   zenhoren_individual_v1: [

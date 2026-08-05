@@ -1,5 +1,4 @@
 import Link from "next/link";
-import Image from "next/image";
 import { PageFlashBanner } from "@/components/page-flash-banner";
 import { formatDate } from "@/lib/format";
 import { listHubAttachments, listHubContracts, listHubParties } from "@/lib/hub";
@@ -18,13 +17,6 @@ type PartiesPageProps = {
     relation?: string;
   }>;
 };
-
-const avatars = [
-  "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=120&q=80",
-  "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=120&q=80",
-  "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=120&q=80",
-  "https://images.unsplash.com/photo-1544723795-3fb6469f5b39?auto=format&fit=crop&w=120&q=80",
-];
 
 const partiesCopy = {
   ja: {
@@ -51,6 +43,17 @@ const partiesCopy = {
     partyTypeCorporate: "法人",
     partyTypeIndividual: "個人",
     profileTitle: "関係者ファイル",
+    completionTitle: "必須情報",
+    outputCheck: "出力前確認",
+    relationTree: "関係ツリー",
+    openRelationTree: "関係を確認",
+    missingItems: "不足",
+    complete: "完了",
+    insufficient: "資料不足",
+    fieldName: "氏名",
+    fieldContact: "連絡先",
+    fieldRole: "役割",
+    fieldProperty: "関連物件",
     relationCases: "関連案件",
     relationDocuments: "資料",
     relationProperty: "関連物件",
@@ -86,6 +89,17 @@ const partiesCopy = {
     partyTypeCorporate: "法人",
     partyTypeIndividual: "个人",
     profileTitle: "主体档案",
+    completionTitle: "必填信息",
+    outputCheck: "输出前检查",
+    relationTree: "关系树",
+    openRelationTree: "查看关系",
+    missingItems: "缺少",
+    complete: "已完成",
+    insufficient: "资料不足",
+    fieldName: "姓名 / 名称",
+    fieldContact: "联系方式",
+    fieldRole: "角色",
+    fieldProperty: "关联物件",
     relationCases: "关联案件",
     relationDocuments: "资料",
     relationProperty: "关联物件",
@@ -121,6 +135,17 @@ const partiesCopy = {
     partyTypeCorporate: "법인",
     partyTypeIndividual: "개인",
     profileTitle: "관계자 파일",
+    completionTitle: "필수 정보",
+    outputCheck: "출력 전 확인",
+    relationTree: "관계 트리",
+    openRelationTree: "관계 확인",
+    missingItems: "부족",
+    complete: "완료",
+    insufficient: "자료 부족",
+    fieldName: "이름 / 명칭",
+    fieldContact: "연락처",
+    fieldRole: "역할",
+    fieldProperty: "연계 매물",
     relationCases: "연계 안건",
     relationDocuments: "자료",
     relationProperty: "연계 매물",
@@ -190,10 +215,23 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
   });
 
   const selected = filtered.find((party) => party.id === focus) ?? filtered[0];
-  const selectedAttachments = selected
-    ? attachments.filter((item) => item.targetType === "party" && item.targetId === selected.id).slice(0, 3)
+  const selectedAllAttachments = selected
+    ? attachments.filter((item) => item.targetType === "party" && item.targetId === selected.id)
     : [];
+  const selectedAttachments = selectedAllAttachments.slice(0, 3);
   const selectedContracts = selected ? contracts.filter((contract) => contract.clientId === selected.id) : [];
+  const selectedRequiredFields = selected
+    ? [
+        { label: copy.fieldName, value: selected.name },
+        { label: copy.fieldContact, value: selected.phone || selected.email },
+        { label: copy.fieldRole, value: selected.roles.join(" / ") },
+        { label: copy.fieldProperty, value: selected.relatedPropertyHint },
+      ]
+    : [];
+  const selectedMissingFields = selectedRequiredFields.filter((field) => !field.value);
+  const selectedCompletion = selectedRequiredFields.length > 0
+    ? Math.round(((selectedRequiredFields.length - selectedMissingFields.length) / selectedRequiredFields.length) * 100)
+    : 0;
   const selectedCaseHref = selectedContracts[0]
     ? `/contracts?filter=all&focus=${selectedContracts[0].id}`
     : selected
@@ -277,7 +315,7 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
       <PageFlashBanner message={flashMessage} />
 
       <section className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200/35">
-        <form className="grid gap-3 lg:grid-cols-[minmax(240px,1fr)_auto_auto]" action="/parties">
+        <form className="grid gap-3 2xl:grid-cols-[minmax(240px,1fr)_auto_auto]" action="/parties">
           <input
             name="q"
             defaultValue={query}
@@ -313,7 +351,7 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
         </div>
       </section>
 
-      <section className="grid gap-0 overflow-hidden rounded-xl bg-[#e9effc]/80 shadow-sm ring-1 ring-slate-200/40 xl:grid-cols-[minmax(0,1fr)_400px]">
+      <section className="grid min-w-0 gap-0 overflow-hidden rounded-xl bg-[#e9effc]/80 shadow-sm ring-1 ring-slate-200/40 2xl:grid-cols-[minmax(0,1fr)_minmax(22rem,25rem)]">
         <form action="/api/hub/export" method="get" className="min-w-0 space-y-3 p-4">
           <input type="hidden" name="scope" value="parties" />
           <input type="hidden" name="locale" value={locale} />
@@ -346,7 +384,7 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
                 <article
                   key={party.id}
                   className={
-                    "grid gap-3 rounded-xl bg-white p-4 transition hover:bg-[#f6f9ff] md:grid-cols-[auto_minmax(0,1fr)_auto] " +
+                    "grid gap-3 rounded-xl bg-white p-4 transition hover:bg-[#f6f9ff] lg:grid-cols-[auto_minmax(0,1fr)_auto] " +
                     (selected?.id === party.id ? "ring-2 ring-[#001e40]/15" : "")
                   }
                 >
@@ -356,19 +394,9 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
                   </label>
                   <Link href={partyHref} className="min-w-0">
                     <div className="flex min-w-0 items-center gap-3">
-                      {selected?.id === party.id ? (
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#e6eeff] text-sm font-black text-[#001e40]">
-                          {initials(party.name)}
-                        </div>
-                      ) : (
-                        <Image
-                          src={avatars[index % avatars.length]}
-                          alt={party.name}
-                          width={40}
-                          height={40}
-                          className="h-10 w-10 shrink-0 rounded-full object-cover"
-                        />
-                      )}
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#e6eeff] text-sm font-black text-[#001e40]" aria-hidden="true">
+                        {initials(party.name)}
+                      </div>
                       <div className="min-w-0">
                         <p className="truncate text-sm font-bold text-slate-900">{party.name}</p>
                         <p className="mt-1 truncate text-xs text-slate-500">
@@ -376,7 +404,7 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
                         </p>
                       </div>
                     </div>
-                    <div className="mt-3 grid gap-2 text-xs font-medium text-slate-600 md:grid-cols-3">
+                    <div className="mt-3 grid gap-2 text-xs font-medium text-slate-600 lg:grid-cols-3">
                       <span className="rounded-lg bg-[#edf2fd] px-2 py-1">
                         {copy.relationCases}: {caseCount}
                       </span>
@@ -430,8 +458,42 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
                   </div>
                   <div className="rounded-xl bg-[#edf2fd] p-3">
                     <p className="text-[10px] font-bold uppercase text-slate-400">{copy.relationDocuments}</p>
-                    <p className="mt-1 text-2xl font-bold text-slate-900">{selectedAttachments.length}</p>
+                    <p className="mt-1 text-2xl font-bold text-slate-900">{selectedAllAttachments.length}</p>
                   </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-200/70 bg-white p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-xs font-black text-[#002FA7]">{copy.completionTitle}</h3>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">
+                      {selectedRequiredFields.length - selectedMissingFields.length}/{selectedRequiredFields.length}
+                    </p>
+                  </div>
+                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-black ${
+                    selectedMissingFields.length > 0 ? "bg-rose-50 text-rose-700 ring-1 ring-rose-100" : "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100"
+                  }`}>
+                    {selectedMissingFields.length > 0 ? `${copy.missingItems} ${selectedMissingFields.length}` : copy.complete}
+                  </span>
+                </div>
+                <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
+                  <div className="h-full rounded-full bg-[#002FA7]" style={{ width: `${selectedCompletion}%` }} />
+                </div>
+                <div className="mt-3 divide-y divide-slate-100 rounded-lg border border-slate-100">
+                  {selectedRequiredFields.map((field) => {
+                    const filled = Boolean(field.value);
+                    return (
+                      <div key={field.label} className="flex items-center justify-between gap-3 px-3 py-2 text-xs">
+                        <span className="font-bold text-slate-600">{field.label}</span>
+                        <span className={`max-w-[55%] truncate text-right font-black ${
+                          filled ? "text-slate-950" : "text-rose-600"
+                        }`}>
+                          {field.value || copy.insufficient}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -454,7 +516,7 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
               </div>
 
               <div className="rounded-xl border-l-4 border-[#0046ad] bg-blue-50 p-4">
-                <p className="text-xs font-black text-blue-700">{copy.currentSignal}</p>
+                <p className="text-xs font-black text-blue-700">{copy.outputCheck}</p>
                 <p className="mt-2 text-sm font-semibold leading-6 text-slate-900">
                   {selectedContracts.length > 0 ? copy.signalWithCase : copy.signalNoCase}
                 </p>
@@ -469,6 +531,13 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
                   >
                     {selectedContracts.length > 0 ? copy.continueCase : copy.createCase}
                     <span className="material-symbols-outlined text-[18px]" aria-hidden="true">arrow_forward</span>
+                  </Link>
+                  <Link
+                    href={`/relationship-tree?type=party&id=${encodeURIComponent(selected.id)}`}
+                    className="inline-flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-bold text-[#002FA7] hover:bg-blue-100"
+                  >
+                    {copy.openRelationTree}
+                    <span className="material-symbols-outlined text-[18px]" aria-hidden="true">account_tree</span>
                   </Link>
                   <Link
                     href={`/parties/${selected.id}/edit`}

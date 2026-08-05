@@ -10,9 +10,6 @@ import {
 import { getCaseFieldDefinition } from "@/lib/case-field-catalog";
 import { getCaseFieldValue } from "@/lib/case-field-normalization";
 
-export const FRIENDS_GUARANTEE_TEMPLATE_PATH =
-  process.env.FRIENDS_GUARANTEE_TEMPLATE_PATH ?? "/Users/laineyzhu/Desktop/房产专家资料库/５ふれんず保証.pdf";
-
 const JAPANESE_FONT_CANDIDATES = [
   "/System/Library/AssetsV2/com_apple_MobileAsset_Font8/ee89e7987a76cc8cfdff36c96bd7bc77655b343e.asset/AssetData/YuGothic-Medium.otf",
   "/System/Library/AssetsV2/com_apple_MobileAsset_Font8/0b5bb0a7f7e82279e049e3c943133f4b186ff8a2.asset/AssetData/Osaka.ttf",
@@ -150,7 +147,6 @@ function applyGuaranteeOverlayPrintMode(
 export type GuaranteePdfTemplateConfig = {
   id: string;
   companyDisplayName: string;
-  pdfPath: string;
   imageSrc: string;
   imageWidth: number;
   imageHeight: number;
@@ -286,8 +282,6 @@ const POSTAL_7_PROPERTY: FriendsOverlaySegment = { ...POSTAL_7, yOffset: -4.4 };
 const POSTAL_7_WORKPLACE: FriendsOverlaySegment = { ...POSTAL_7, yOffset: -0.8 };
 const NIHON_SAFETY_PAGE_SIZE = { width: 841.89, height: 595.28 } as const;
 const NIHON_SAFETY_IMAGE_SIZE = { width: 2400, height: 1696 } as const;
-const NIHON_SAFETY_TEMPLATE_IMAGE_PATH = join(process.cwd(), "public/guarantee-templates/nihon-safety-v1-hd.png");
-
 export const FRIENDS_OVERLAY_FIELDS = [
   { fieldKey: "property.name", label: "物件名", x: 98, y: 686, size: 10, maxWidth: 220, minSize: 7.2 },
   { fieldKey: "property.roomNumber", label: "号室", x: 360, y: 686, size: 10, maxWidth: 48 },
@@ -860,7 +854,6 @@ const GUARANTEE_TEMPLATE_CONFIGS = {
 	  zenhoren_individual_v1: {
 	    id: "zenhoren_individual_v1",
 	    companyDisplayName: "全保連",
-	    pdfPath: "/Users/laineyzhu/Desktop/房产专家资料库/１全保連.pdf",
 	    imageSrc: "/guarantee-templates/zenhoren-v1-hd.png",
 	    imageWidth: 2400,
 	    imageHeight: 1697,
@@ -869,7 +862,6 @@ const GUARANTEE_TEMPLATE_CONFIGS = {
   nihon_safety_individual_v1: {
     id: "nihon_safety_individual_v1",
     companyDisplayName: "日本セーフティー",
-    pdfPath: "/Users/laineyzhu/Desktop/房产专家资料库/日本セーフティー(1).pdf",
     imageSrc: "/guarantee-templates/nihon-safety-v1-hd.png",
     imageWidth: 2400,
     imageHeight: 1696,
@@ -878,7 +870,6 @@ const GUARANTEE_TEMPLATE_CONFIGS = {
 	  j_lease_individual_v1: {
 	    id: "j_lease_individual_v1",
 	    companyDisplayName: "Jリース",
-	    pdfPath: "/Users/laineyzhu/Desktop/房产专家资料库/３Jリース.pdf",
 	    imageSrc: "/guarantee-templates/j-lease-v1-hd.png",
 	    imageWidth: 1697,
 	    imageHeight: 2400,
@@ -887,7 +878,6 @@ const GUARANTEE_TEMPLATE_CONFIGS = {
 	  insure_individual_v1: {
 	    id: "insure_individual_v1",
 	    companyDisplayName: "インシュア",
-	    pdfPath: "/Users/laineyzhu/Desktop/房产专家资料库/４インシュア.pdf",
 	    imageSrc: "/guarantee-templates/insure-v1-hd.png",
 	    imageWidth: 2400,
 	    imageHeight: 1658,
@@ -896,7 +886,6 @@ const GUARANTEE_TEMPLATE_CONFIGS = {
   friends_guarantee_individual_v1: {
     id: FRIENDS_GUARANTEE_DEFAULT_TEMPLATE_ID,
     companyDisplayName: "ふれんず保証",
-    pdfPath: FRIENDS_GUARANTEE_TEMPLATE_PATH,
     imageSrc: "/guarantee-templates/friends-guarantee-v1.png",
     imageWidth: 1600,
     imageHeight: 1131,
@@ -1064,6 +1053,19 @@ export function getGuaranteeConfirmedOverlayFieldKeys(input: {
     input.confirmedDataJson?.[GUARANTEE_CONFIRMED_OVERLAY_FIELDS_KEY],
   );
   return new Set(confirmedByTemplate[templateId] ?? []);
+}
+
+export function hasConfirmedGuaranteeFieldValue(
+  confirmedDataJson: Record<string, unknown> | undefined,
+  field: Pick<FriendsOverlayField, "fieldKey" | "sourceFieldKey">,
+): boolean {
+  const confirmedData = confirmedDataJson ?? {};
+  const sourceFieldKey = field.sourceFieldKey ?? field.fieldKey;
+
+  return Boolean(
+    getCaseFieldValue(confirmedData, field.fieldKey) ||
+      getCaseFieldValue(confirmedData, sourceFieldKey),
+  );
 }
 
 function sanitizeLayoutBox(
@@ -2060,35 +2062,23 @@ export async function renderFriendsGuaranteePdf(input: {
   templateId?: string;
 }): Promise<Uint8Array> {
   const templateConfig = getGuaranteePdfTemplateConfig(input.templateId);
-  if (!existsSync(templateConfig.pdfPath)) {
-    throw new Error(`Guarantee PDF template was not found: ${templateConfig.pdfPath}`);
+  const templateImagePath = join(process.cwd(), "public", templateConfig.imageSrc.replace(/^\/+/, ""));
+  if (!existsSync(templateImagePath)) {
+    throw new Error(`Guarantee PDF template image was not found: ${templateImagePath}`);
   }
 
-  let pdf: PDFDocument;
-  let page = undefined as ReturnType<PDFDocument["getPages"]>[number] | undefined;
-
-  if (templateConfig.id === "nihon_safety_individual_v1") {
-    if (!existsSync(NIHON_SAFETY_TEMPLATE_IMAGE_PATH)) {
-      throw new Error(`Guarantee PDF template image was not found: ${NIHON_SAFETY_TEMPLATE_IMAGE_PATH}`);
-    }
-    pdf = await PDFDocument.create();
-    const templateImageBytes = readFileSync(NIHON_SAFETY_TEMPLATE_IMAGE_PATH);
-    const templateImage = await pdf.embedPng(templateImageBytes);
-    page = pdf.addPage([templateConfig.pageSize.width, templateConfig.pageSize.height]);
-    page.drawImage(templateImage, {
-      x: 0,
-      y: 0,
-      width: templateConfig.pageSize.width,
-      height: templateConfig.pageSize.height,
-    });
-  } else {
-    const templateBytes = readFileSync(templateConfig.pdfPath);
-    pdf = await PDFDocument.load(templateBytes, { ignoreEncryption: true });
-    [page] = pdf.getPages();
-  }
+  const pdf = await PDFDocument.create();
+  const templateImageBytes = readFileSync(templateImagePath);
+  const templateImage = await pdf.embedPng(templateImageBytes);
+  const page = pdf.addPage([templateConfig.pageSize.width, templateConfig.pageSize.height]);
+  page.drawImage(templateImage, {
+    x: 0,
+    y: 0,
+    width: templateConfig.pageSize.width,
+    height: templateConfig.pageSize.height,
+  });
 
   pdf.registerFontkit(fontkit);
-  if (!page) throw new Error("Guarantee PDF template has no pages.");
 
   const customFields = getFriendsGuaranteeCustomOverlayFields({
     templateId: templateConfig.id,
@@ -2136,11 +2126,11 @@ export async function renderFriendsGuaranteePdf(input: {
     const printMode = getFriendsOverlayFieldPrintMode(field);
     if (printMode === "never") return;
     if (printMode === "manual" && !layoutBoxOverrideKeys.has(field.fieldKey)) return;
-    if (
-      printMode === "candidate" &&
-      !confirmedOverlayFieldKeys.has(field.fieldKey) &&
-      !(field.sourceFieldKey && confirmedOverlayFieldKeys.has(field.sourceFieldKey))
-    ) {
+    const hasExplicitOverlayConfirmation =
+      confirmedOverlayFieldKeys.has(field.fieldKey) ||
+      Boolean(field.sourceFieldKey && confirmedOverlayFieldKeys.has(field.sourceFieldKey));
+    const hasConfirmedCaseValue = hasConfirmedGuaranteeFieldValue(input.confirmedDataJson, field);
+    if (printMode === "candidate" && !hasConfirmedCaseValue && !hasExplicitOverlayConfirmation) {
       return;
     }
     const directValue = valueByKey.get(field.fieldKey);

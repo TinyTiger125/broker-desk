@@ -153,6 +153,13 @@ BROKER_DESK_AUTH_MODE=demo BROKER_DESK_ENABLE_DEMO_AUTH=true BROKER_DESK_SEED_MO
 - Saturday: merge verified development work down to the main test environment as the weekly main-environment release.
 - Keep the main test tunnel and friend-facing test state stable while development continues independently.
 
+2026-07-17 AI experience chain decision:
+
+- The former broker-facing `智能填写` settings entry is removed from navigation. AI experience is not a normal settings page and should not appear in the user's daily workflow.
+- The capability is preserved as a backstage model-context asset: correction events -> draft AI experience -> internal approval -> approved tenant-scoped model hints.
+- Future model calls must retrieve experience through `getApprovedAiExperienceContext` with tenant/user/task/template/field scope, and must treat the returned markdown as hints only, never as confirmed current-case facts.
+- Durable source: `docs/product/AI_EXPERIENCE_MODEL_CONTEXT_CHAIN.md`.
+
 ## Target User
 
 Primary V1 user:
@@ -598,3 +605,11 @@ http://localhost:3002/api/guarantee-applications/j_lease_individual_v1/download?
   - Case completion now uses only applicable required fields as the denominator. Confirmed/edited values count as complete; rejected/unknown/review-needed/suggested values do not. Fields marked not applicable are removed from the denominator.
   - The workbench prioritizes missing required fields, hides complete optional noise from the main editor, and keeps optional or inapplicable work from making the broker feel the case is endlessly unfinished.
   - Development verification passed: `npx tsc --noEmit`, `npm run lint`, `npm run test:case-applicability`, and `BASE_URL=http://localhost:3001 npm run test:regression`.
+
+### 2026-08-01
+
+- Added a conversation-compaction handoff document for restarting Codex with less context load: `docs/operations/DEVELOPMENT_HANDOFF_2026_08_01_CONVERSATION_COMPACT.md`.
+- The handoff captures the current development/test environment split, product positioning, page topology, AI capability boundaries, friend-feedback-driven UX principles, recent changes, known P0/P1 risks, and the recommended next execution order.
+- Treat this handoff as the starting context for the next development conversation. Continue on the development environment first, and do not merge into the main/friend-test environment without explicit approval.
+- Verified the guarantee-application preview path on the development environment only: all five templates render the selected case's confirmed values in preview even when output blockers remain. The preview endpoint remains available for review; the final-download gate still blocks incomplete applications.
+- Updated the visual PDF smoke check to use preview mode by default, with `PDF_MODE=final` reserved for deliberate final-download gate coverage. This prevents an intentionally incomplete case from producing a false preview failure.

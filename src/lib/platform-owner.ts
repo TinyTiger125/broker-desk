@@ -1,4 +1,5 @@
 import type { User } from "@/lib/data";
+import { isProductionRuntime } from "@/lib/auth-mode";
 
 export function configuredPlatformOwnerIds(): Set<string> {
   const configured = process.env.BROKER_DESK_PLATFORM_OWNER_IDS?.split(",")
@@ -16,8 +17,9 @@ export function isConfiguredPlatformOwnerUser(user: Pick<User, "id" | "externalA
 }
 
 export function isDevelopmentPlatformOwnerTenantFallbackEnabled() {
+  if (isProductionRuntime()) return false;
   const configured = process.env.BROKER_DESK_ENABLE_PLATFORM_OWNER_TENANT_FALLBACK?.trim().toLowerCase();
   if (configured === "true") return true;
   if (configured === "false") return false;
-  return process.env.NODE_ENV !== "production";
+  return true;
 }

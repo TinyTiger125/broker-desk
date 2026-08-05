@@ -69,6 +69,7 @@ assert(selected.every((draft) => draft.templateId !== "friends_guarantee_individ
 
 const markdown = buildApprovedAiExperienceContextMarkdown(selected);
 assert(markdown.includes("Approved Broker Desk Experience"), "context should include a clear approved-experience header");
+assert(markdown.includes("tenant-scoped"), "context should make tenant scope explicit");
 assert(markdown.includes("not confirmed facts"), "context should prevent treating hints as current facts");
 assert(markdown.includes("layout.applicant.phone"), "context should preserve scoped field evidence");
 

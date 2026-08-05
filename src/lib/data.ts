@@ -1,5 +1,6 @@
 import * as memory from "@/lib/data.memory";
 import * as postgres from "@/lib/data.postgres";
+import { assertProductionDataStoreReady } from "@/lib/production-readiness";
 import { getActorIdFromCookie } from "@/lib/actor";
 import {
   isClerkAuthEnabled,
@@ -14,9 +15,20 @@ const usePostgres =
   process.env.DATA_DRIVER?.toLowerCase() === "postgres" &&
   Boolean(process.env.DATABASE_URL);
 
-const repo: typeof memory = usePostgres
-  ? (postgres as unknown as typeof memory)
-  : memory;
+type DataRepository = typeof memory;
+
+function getRepository(): DataRepository {
+  assertProductionDataStoreReady();
+  return (usePostgres ? postgres : memory) as DataRepository;
+}
+
+const repo = new Proxy({} as DataRepository, {
+  get(_target, property) {
+    const source = getRepository();
+    const value = source[property as keyof DataRepository];
+    return typeof value === "function" ? value.bind(source) : value;
+  },
+}) as DataRepository;
 
 export { isDemoAuthEnabled };
 
@@ -105,6 +117,10 @@ export const listQuoteFormData: typeof memory.listQuoteFormData = (...args) =>
   repo.listQuoteFormData(...args);
 export const addProperty: typeof memory.addProperty = (...args) =>
   repo.addProperty(...args);
+export const getPropertyById: typeof memory.getPropertyById = (...args) =>
+  repo.getPropertyById(...args);
+export const updateProperty: typeof memory.updateProperty = (...args) =>
+  repo.updateProperty(...args);
 export const listQuotations: typeof memory.listQuotations = (...args) =>
   repo.listQuotations(...args);
 export const getQuotationById: typeof memory.getQuotationById = (...args) =>
@@ -176,6 +192,8 @@ export const saveGuaranteeApplicationDraft: typeof memory.saveGuaranteeApplicati
   repo.saveGuaranteeApplicationDraft(...args);
 export const listAttachments: typeof memory.listAttachments = (...args) =>
   repo.listAttachments(...args);
+export const getAttachmentById: typeof memory.getAttachmentById = (...args) =>
+  repo.getAttachmentById(...args);
 export const addAttachment: typeof memory.addAttachment = (...args) =>
   repo.addAttachment(...args);
 export const listGeneratedOutputs: typeof memory.listGeneratedOutputs = (...args) =>
@@ -193,6 +211,7 @@ export const seedBusinessDataForQa =
 export type DataDriver = typeof activeDataDriver;
 
 export async function healthCheckDataDriver() {
+  assertProductionDataStoreReady();
   if (usePostgres) {
     await postgres.healthCheckPostgres();
     return {

@@ -412,8 +412,8 @@ export function InputExtractionReview({
         </section>
       )}
 
-      <section className="grid items-start gap-4 xl:grid-cols-[minmax(280px,340px)_minmax(0,1fr)]">
-        <aside className="overflow-hidden rounded-xl border border-slate-200 bg-white xl:sticky xl:top-20">
+      <section className="grid min-w-0 items-start gap-4 2xl:grid-cols-[minmax(17rem,21rem)_minmax(0,1fr)]">
+        <aside className="overflow-hidden rounded-xl border border-slate-200 bg-white 2xl:sticky 2xl:top-20">
           <div className="border-b border-slate-100 p-4">
             <div className="flex items-center justify-between gap-3">
               <div>

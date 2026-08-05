@@ -3,23 +3,19 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { PDFDocument } from "pdf-lib";
 
 const templateId = process.env.TEMPLATE_ID ?? "friends_guarantee_individual_v1";
-const sourcePdfByTemplate = {
-  zenhoren_individual_v1: "/Users/laineyzhu/Desktop/房产专家资料库/１全保連.pdf",
-  nihon_safety_individual_v1: "/Users/laineyzhu/Desktop/房产专家资料库/日本セーフティー(1).pdf",
-  j_lease_individual_v1: "/Users/laineyzhu/Desktop/房产专家资料库/３Jリース.pdf",
-  insure_individual_v1: "/Users/laineyzhu/Desktop/房产专家资料库/４インシュア.pdf",
-  friends_guarantee_individual_v1: "/Users/laineyzhu/Desktop/房产专家资料库/５ふれんず保証.pdf",
-};
-const sourcePath =
-  process.env.SOURCE_PDF ??
-  process.env.FRIENDS_GUARANTEE_TEMPLATE_PATH ??
-  sourcePdfByTemplate[templateId] ??
-  sourcePdfByTemplate.friends_guarantee_individual_v1;
+const sourcePath = process.env.SOURCE_PDF;
 const outputPath = process.env.OUTPUT_PDF ?? `/tmp/broker-desk-${templateId}-smoke.pdf`;
 const baseUrl = process.env.BASE_URL?.replace(/\/$/, "");
 const caseId = process.env.CASE_ID ?? "case_fixture_friends_guarantee_pdf";
 const mode = process.env.PDF_MODE;
 const tolerance = 0.01;
+const expectedPageSizeByTemplate = {
+  zenhoren_individual_v1: { width: 1190.55, height: 841.89 },
+  nihon_safety_individual_v1: { width: 841.89, height: 595.28 },
+  j_lease_individual_v1: { width: 595.32, height: 841.92 },
+  insure_individual_v1: { width: 780, height: 539 },
+  friends_guarantee_individual_v1: { width: 1190.55, height: 841.89 },
+};
 
 function fail(message) {
   console.error(`[FAIL] ${message}`);
@@ -28,10 +24,6 @@ function fail(message) {
 
 function assert(condition, message) {
   if (!condition) fail(message);
-}
-
-if (!existsSync(sourcePath)) {
-  fail(`source template not found: ${sourcePath}`);
 }
 
 if (baseUrl) {
@@ -50,24 +42,22 @@ if (!existsSync(outputPath)) {
 const outputHeader = readFileSync(outputPath, { encoding: "utf8", flag: "r" }).slice(0, 4);
 assert(outputHeader === "%PDF", "output file does not start with %PDF");
 
-const [sourcePdf, outputPdf] = await Promise.all([
-  PDFDocument.load(readFileSync(sourcePath), { ignoreEncryption: true }),
-  PDFDocument.load(readFileSync(outputPath), { ignoreEncryption: true }),
-]);
+const outputPdf = await PDFDocument.load(readFileSync(outputPath), { ignoreEncryption: true });
+const expectedPageSize = expectedPageSizeByTemplate[templateId] ?? expectedPageSizeByTemplate.friends_guarantee_individual_v1;
+assert(outputPdf.getPageCount() === 1, `page count changed: expected=1 output=${outputPdf.getPageCount()}`);
+const outputPage = outputPdf.getPage(0);
+const outputSize = outputPage.getSize();
+assert(Math.abs(expectedPageSize.width - outputSize.width) <= tolerance, `page width changed: expected=${expectedPageSize.width} output=${outputSize.width}`);
+assert(Math.abs(expectedPageSize.height - outputSize.height) <= tolerance, `page height changed: expected=${expectedPageSize.height} output=${outputSize.height}`);
 
-assert(outputPdf.getPageCount() === sourcePdf.getPageCount(), `page count changed: source=${sourcePdf.getPageCount()} output=${outputPdf.getPageCount()}`);
-
-for (let index = 0; index < sourcePdf.getPageCount(); index += 1) {
-  const sourcePage = sourcePdf.getPage(index);
-  const outputPage = outputPdf.getPage(index);
+if (sourcePath) {
+  assert(existsSync(sourcePath), `source template not found: ${sourcePath}`);
+  const sourcePdf = await PDFDocument.load(readFileSync(sourcePath), { ignoreEncryption: true });
+  const sourcePage = sourcePdf.getPage(0);
   const sourceSize = sourcePage.getSize();
-  const outputSize = outputPage.getSize();
-  assert(Math.abs(sourceSize.width - outputSize.width) <= tolerance, `page ${index + 1} width changed: source=${sourceSize.width} output=${outputSize.width}`);
-  assert(Math.abs(sourceSize.height - outputSize.height) <= tolerance, `page ${index + 1} height changed: source=${sourceSize.height} output=${outputSize.height}`);
-  assert(
-    sourcePage.getRotation().angle === outputPage.getRotation().angle,
-    `page ${index + 1} rotation changed: source=${sourcePage.getRotation().angle} output=${outputPage.getRotation().angle}`,
-  );
+  assert(Math.abs(sourceSize.width - outputSize.width) <= tolerance, `page width changed: source=${sourceSize.width} output=${outputSize.width}`);
+  assert(Math.abs(sourceSize.height - outputSize.height) <= tolerance, `page height changed: source=${sourceSize.height} output=${outputSize.height}`);
+  assert(sourcePage.getRotation().angle === outputPage.getRotation().angle, `page rotation changed: source=${sourcePage.getRotation().angle} output=${outputPage.getRotation().angle}`);
 }
 
 console.log(
@@ -75,7 +65,7 @@ console.log(
     {
       ok: true,
       templateId,
-      sourcePath,
+      sourcePath: sourcePath ?? null,
       outputPath,
       pageCount: outputPdf.getPageCount(),
       firstPageSize: outputPdf.getPage(0).getSize(),

@@ -129,7 +129,7 @@ export default async function TenantMembersPage({ searchParams }: MembersPagePro
           </div>
         </div>
         {canInvite ? (
-          <form action={inviteTenantMemberAction} className="grid gap-3 md:grid-cols-[1fr_1.2fr_220px_auto]">
+          <form action={inviteTenantMemberAction} className="grid gap-3 2xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_220px_auto]">
             <input name="name" placeholder={ui.name} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
             <input name="email" type="email" required placeholder={ui.email} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
             <select name="role" defaultValue="broker" className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
@@ -146,8 +146,8 @@ export default async function TenantMembersPage({ searchParams }: MembersPagePro
         )}
       </section>
 
-      <section className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-        <div className="grid grid-cols-[1.4fr_1fr_1fr_1.4fr] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-black uppercase tracking-wider text-slate-500">
+      <section className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+        <div className="grid min-w-[760px] grid-cols-[1.4fr_1fr_1fr_1.4fr] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-black uppercase tracking-wider text-slate-500">
           <span>{ui.name}</span>
           <span>{ui.role}</span>
           <span>{ui.status}</span>
@@ -155,7 +155,7 @@ export default async function TenantMembersPage({ searchParams }: MembersPagePro
         </div>
         <div className="divide-y divide-slate-100">
           {members.map((member) => (
-            <div key={member.id} className="grid grid-cols-[1.4fr_1fr_1fr_1.4fr] items-center gap-3 px-4 py-3">
+            <div key={member.id} className="grid min-w-[760px] grid-cols-[1.4fr_1fr_1fr_1.4fr] items-center gap-3 px-4 py-3">
               <div className="min-w-0">
                 <p className="truncate text-sm font-bold text-slate-900">
                   {member.user.name}

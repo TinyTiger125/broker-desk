@@ -5,6 +5,11 @@ import { tmpdir } from "os";
 import path from "path";
 import { promisify } from "util";
 import type { ExtractedInputField, InputDocumentType, InputFileExtractionResult } from "@/lib/input-file-extractor";
+import {
+  assertProductionDocumentReaderReady,
+  isProductionRuntime,
+  ProductionReadinessError,
+} from "@/lib/production-readiness";
 
 const execFileAsync = promisify(execFile);
 
@@ -305,6 +310,13 @@ function detectDocumentType(hasResidenceCard: boolean, hasDriverLicense: boolean
 }
 
 async function runOcr(buffer: Buffer, filename: string): Promise<OcrResult> {
+  // The local Swift helper is development-only. Production must use a remote,
+  // auditable reader rather than silently running a machine-specific fallback.
+  if (isProductionRuntime()) {
+    assertProductionDocumentReaderReady();
+    throw new ProductionReadinessError("production_document_reader_required");
+  }
+
   const tempDir = await mkdtemp(path.join(tmpdir(), "broker-desk-id-"));
   const safeName = filename.replace(/[^\w.\-()]/g, "_") || `${randomUUID()}.pdf`;
   const inputPath = path.join(tempDir, safeName);
@@ -329,7 +341,10 @@ export async function extractIdentityDocumentFromBuffer(input: {
   let ocr: OcrResult = { pages: [] };
   try {
     ocr = await runOcr(input.buffer, input.filename);
-  } catch {
+  } catch (error) {
+    if (error instanceof ProductionReadinessError) {
+      throw error;
+    }
     ocr = { pages: [] };
   }
 

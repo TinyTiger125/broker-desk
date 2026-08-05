@@ -257,8 +257,8 @@ export default async function ServiceRequestsPage({ searchParams }: ServiceReque
         </section>
       ) : null}
 
-      <section className="grid gap-5 xl:grid-cols-12">
-        <article className="xl:col-span-5 rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200/30">
+      <section className="grid gap-5 2xl:grid-cols-12">
+        <article className="rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200/30 2xl:col-span-5">
           <div className="mb-5 flex items-start justify-between">
             <p className="text-xs font-bold uppercase tracking-widest text-slate-500">{copy.maintenanceBudget}</p>
             <span className="material-symbols-outlined text-[#d8885c]">analytics</span>
@@ -280,7 +280,7 @@ export default async function ServiceRequestsPage({ searchParams }: ServiceReque
           </div>
         </article>
 
-        <article className="xl:col-span-4 rounded-xl bg-[#e6eeff] p-6 shadow-sm ring-1 ring-slate-200/30">
+        <article className="rounded-xl bg-[#e6eeff] p-6 shadow-sm ring-1 ring-slate-200/30 2xl:col-span-4">
           <p className="text-xs font-bold uppercase tracking-widest text-slate-500">{copy.verificationContext}</p>
           <div className="mt-4 space-y-4">
             <div className="flex items-center justify-between">
@@ -307,7 +307,7 @@ export default async function ServiceRequestsPage({ searchParams }: ServiceReque
           </Link>
         </article>
 
-        <div className="space-y-5 xl:col-span-3">
+        <div className="space-y-5 2xl:col-span-3">
           <article className="rounded-xl bg-[#001e40] p-6 text-white shadow-sm">
             <p className="text-xs font-bold uppercase tracking-widest text-white/70">{copy.slaResponse}</p>
             <p className="mt-1 text-4xl font-bold">{slaRate}%</p>

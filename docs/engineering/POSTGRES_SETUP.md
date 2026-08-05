@@ -1,136 +1,76 @@
-# Postgres Setup
+# Postgres Deployment Boundary
 
-## 1) Configure env
-Edit `.env`:
+This document describes the production boundary. It is not a shortcut for turning a local demo into a hosted tenant service.
+
+## Local development
+
+Local development may use the in-memory repository or a disposable local Postgres database. It must use mock or anonymous data only. Do not put real identity documents, contracts, income data, or client contact information into a local tunnel environment.
 
 ```bash
 DATA_DRIVER=postgres
-DATABASE_URL=postgresql://USER:PASSWORD@HOST:6543/postgres?sslmode=require
+DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/broker_desk_dev
+npm run db:migrate
 ```
 
-If `DATA_DRIVER` is not `postgres` or `DATABASE_URL` is empty, app will use in-memory mode.
+The local database must be separate from staging and production. The application only uses the in-memory repository outside production; production deliberately refuses that fallback.
 
-Production auth must not rely on the local demo actor fallback.
+## Production prerequisites
 
-Selected production path:
+Before starting a production runtime, configure all of the following in the cloud secret manager. Do not store any of these values in the repository.
 
 ```bash
+NODE_ENV=production
 DATA_DRIVER=postgres
+DATABASE_URL=postgresql://RUNTIME_ROLE:PASSWORD@HOST:5432/broker_desk_production
 BROKER_DESK_AUTH_MODE=clerk
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=replace-with-clerk-publishable-key
-CLERK_SECRET_KEY=replace-with-clerk-secret-key
-CLERK_WEBHOOK_SIGNING_SECRET=replace-when-webhooks-are-enabled
-BROKER_DESK_PLATFORM_OWNER_IDS=comma-separated-local-user-ids-or-clerk-user-ids
-BROKER_DESK_CLERK_INVITATION_REDIRECT_URL=https://your-domain.example.com/sign-in
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=...
+CLERK_SECRET_KEY=...
+ATTACHMENT_STORAGE_MODE=object_private
+BROKER_DESK_ATTACHMENT_SIGNED_URL_ENDPOINT=...
+DOCUMENT_READING_PROVIDER=remote
+DOCUMENT_READING_ENDPOINT=...
+DOCUMENT_READING_API_TOKEN=...
+BROKER_DESK_PRODUCTION_DATA_RUNTIME_APPROVED=true
 ```
 
-The app maps Clerk `userId` to `users.external_auth_subject`. `BROKER_DESK_PLATFORM_OWNER_IDS` may contain either local `users.id` values or Clerk `user_...` IDs. If a tenant admin has already invited a member by email, the first Clerk login links that Clerk subject to the existing local user; otherwise a local user is created without tenant membership and tenant access remains denied until membership is granted.
+`BROKER_DESK_PRODUCTION_DATA_RUNTIME_APPROVED=true` is an operational release gate, not an application setting to enable early. Set it only after the migration, RLS negative test, backup restore test, private object-store test, and operational checklist in `docs/operations/P0_PRODUCTION_READINESS_RUNBOOK_2026_07_29.md` are complete.
 
-Local development has one convenience fallback: a configured PlatformOwner without tenant membership can use the seeded default tenant as a temporary `platform_owner` tenant session so navigation across product modules does not crash during Clerk bootstrap. In memory-mode local testing, this fallback also uses the seeded `user_demo` data view so the example cases remain visible. The fallback is enabled by default only outside production runtime. When testing a production build locally through `next start`, enable it explicitly:
+Production authentication is Clerk only. The development-only demo and trusted-header modes are intentionally disabled when `NODE_ENV=production`.
+
+## Database migration workflow
+
+SQL migrations are immutable files in `db/migrations/`. The application does not create or alter production tables on first request.
+
+1. Use a dedicated migration role that can perform DDL. Keep the runtime role unable to alter schema and without `BYPASSRLS`.
+2. Backup the database and verify the target environment.
+3. Run migrations once:
 
 ```bash
-BROKER_DESK_ENABLE_PLATFORM_OWNER_TENANT_FALLBACK=true
+NODE_ENV=production BROKER_DESK_RUN_MIGRATIONS=true DATABASE_URL=... npm run db:migrate
 ```
 
-Do not set this fallback in hosted production; real tenant access must come from `tenant_memberships`.
+4. Confirm `broker_desk_schema_migrations` records every migration with its checksum.
+5. Run the RLS cross-tenant negative test as the runtime application role.
+6. Only then enable `BROKER_DESK_PRODUCTION_DATA_RUNTIME_APPROVED=true` for the runtime service.
 
-Clerk is the identity provider. Broker Desk's business authorization remains in Postgres:
+Editing an applied migration is rejected by its checksum. Add a new migration instead.
+
+## Health endpoint
+
+`/api/health/data` returns only a generic availability state. It never exposes a database driver, database host, migration error, or stack trace. Detailed diagnostics belong in protected logs and alerting.
+
+## Data isolation
+
+RLS is defined in `db/migrations/20260727_001_tenant_rls.sql`. Tenant access is derived from:
 
 ```text
-Clerk session -> users.external_auth_subject -> tenant_memberships -> role permissions
+Clerk session -> users.external_auth_subject -> active tenant_memberships -> tenant_id
 ```
 
-Broker Desk account creation is not public self-sign-up. In production:
+The runtime must execute requests as a role subject to RLS. A privileged provider service key or database owner connection is not an acceptable tenant-runtime role because it can bypass RLS.
 
-- Use `/platform/accounts` as the platform-owner lifecycle console for opening individual/company tenant accounts and setting purchased seats.
-- Configure `BROKER_DESK_PLATFORM_OWNER_IDS` explicitly. In production there is no implicit `user_demo` platform owner fallback.
-- Keep tenant member allocation inside `tenant_memberships`; member invite/reactivation is blocked when it exceeds `tenants.purchased_seat_count`.
-- Platform-created owners and tenant-added members start as `tenant_memberships.status = 'invited'`; they consume a seat but cannot access tenant data until Clerk login/webhook binding activates the membership.
-- Disable or restrict public sign-up in the Clerk project configuration as well as in the app UI. The repository closes `/sign-up`, but Clerk dashboard configuration is still an external production control.
+## Attachments and document reading
 
-Do not use Clerk organization roles as the direct source of business permissions until the mirror/sync contract is explicitly designed and tested.
+Production attachments must live in a private object store and be delivered only through tenant-authorized, short-lived access. Local private files are a development implementation only.
 
-Clerk webhook setup:
-
-- Endpoint: `/api/webhooks/clerk`
-- Required secret: `CLERK_WEBHOOK_SIGNING_SECRET`
-- Required events for the current MVP:
-  - `user.created`
-  - `user.updated`
-  - `user.deleted`
-
-Webhook behavior:
-
-- `user.created` / `user.updated`: map Clerk `user.id` to `users.external_auth_subject`, match an invited local user by email, and activate any invited memberships for that user.
-- `user.deleted`: clear the external subject and suspend that user's active/invited memberships.
-- The route verifies Clerk signatures through `verifyWebhook`; unsigned webhook calls must be rejected.
-
-Legacy / alternative auth-proxy path:
-
-```bash
-BROKER_DESK_AUTH_MODE=trusted_header
-BROKER_DESK_AUTH_TRUSTED_HEADER_SECRET=replace-with-ingress-shared-secret
-BROKER_DESK_AUTH_SUBJECT_HEADER=x-brokerdesk-auth-subject
-BROKER_DESK_AUTH_EMAIL_HEADER=x-brokerdesk-auth-email
-BROKER_DESK_AUTH_NAME_HEADER=x-brokerdesk-auth-name
-BROKER_DESK_AUTH_SECRET_HEADER=x-brokerdesk-auth-secret
-```
-
-The app maps `x-brokerdesk-auth-subject` to `users.external_auth_subject`. In production, the upstream proxy must strip client-supplied auth headers, inject its own verified headers, and include the shared secret header. Without that configuration, production auth fails closed.
-
-## 2) Start app
-```bash
-npm install
-npm run dev
-```
-
-## 3) Verify data driver health
-Open:
-- `http://localhost:3000/api/health/data`
-
-Expected:
-- memory mode: `{"ok":true,"driver":"memory","checkedAt":"..."}`
-- postgres mode: `{"ok":true,"driver":"postgres","checkedAt":"..."}`
-
-If connection fails, API returns `500` with error message.
-
-## 4) First-run behavior
-The app will auto-create required tables on first data access.
-A default demo user is auto-created if `users` is empty.
-The output template settings table (`output_template_settings`) is also auto-created and seeded.
-
-## 5) Optional manual schema init
-You can also run SQL manually in a managed Postgres SQL console using:
-- `docs/engineering/postgres_schema.sql`
-- `docs/engineering/postgres_rls.sql`
-
-## 6) Current note
-Postgres persistence uses the same function signatures as the memory repository. Existing pages/actions do not need to change when switching driver.
-
-The RLS baseline is intentionally separate from the auto-created schema because local direct-connection development may not have managed-provider roles. Apply `postgres_rls.sql` in the production Postgres project after `users.external_auth_subject` has been backfilled for real users.
-
-RLS policy model:
-
-- Tenant-owned business tables use `tenant_id`.
-- `users.external_auth_subject` stores the immutable IdP subject.
-- `tenant_memberships` remains the authority boundary.
-- Tenant access is allowed only when the membership is active and the tenant lifecycle status is `trial` or `active`.
-- No Broker Desk business table is granted to `anon`.
-- `authenticated` access is granted only when that database role exists.
-
-## 7) Regression check (recommended)
-After local server starts, run:
-
-```bash
-BASE_URL=http://127.0.0.1:3000 npm run test:regression
-```
-
-This verifies:
-- data-driver health endpoint
-- intake parse API
-- dashboard critical modules
-- output templates rendering
-- board stage update API (forward + rollback)
-- production auth fail-closed behavior
-- Clerk auth configuration guardrails
-- RLS baseline coverage for tenant-owned tables
+The current macOS-native identity document reader is development-only. Production document reading must be submitted to the configured remote service and processed asynchronously; it must not depend on a local Swift or macOS executable.

@@ -69,6 +69,19 @@ const propertiesCopy = {
     batchExportBtn: "選択物件をCSV出力",
     batchTools: "一括操作",
     batchHint: "選択した物件だけCSV出力します。",
+    propertyProfile: "物件ファイル",
+    requiredInfo: "必須情報",
+    outputCheck: "出力前確認",
+    relationTree: "関係を確認",
+    missingItems: "不足",
+    complete: "完了",
+    insufficient: "資料不足",
+    fieldName: "物件名",
+    fieldArea: "所在地・エリア",
+    fieldPrice: "価格",
+    fieldManagementFee: "管理費",
+    fieldRepairFee: "修繕積立金",
+    openProfile: "物件を整理",
   },
   zh: {
     exportReport: "导出台账CSV",
@@ -120,6 +133,19 @@ const propertiesCopy = {
     batchExportBtn: "导出选中物件CSV",
     batchTools: "批量工具",
     batchHint: "只对勾选的物件执行 CSV 导出。",
+    propertyProfile: "物件档案",
+    requiredInfo: "必填信息",
+    outputCheck: "输出前检查",
+    relationTree: "查看关系",
+    missingItems: "缺少",
+    complete: "已完成",
+    insufficient: "资料不足",
+    fieldName: "物件名",
+    fieldArea: "所在地 / 区域",
+    fieldPrice: "价格",
+    fieldManagementFee: "管理费",
+    fieldRepairFee: "修缮基金",
+    openProfile: "整理物件",
   },
   ko: {
     exportReport: "대장 CSV 내보내기",
@@ -171,6 +197,19 @@ const propertiesCopy = {
     batchExportBtn: "선택 매물 CSV 내보내기",
     batchTools: "일괄 작업",
     batchHint: "선택한 매물만 CSV로 내보냅니다.",
+    propertyProfile: "매물 파일",
+    requiredInfo: "필수 정보",
+    outputCheck: "출력 전 확인",
+    relationTree: "관계 확인",
+    missingItems: "부족",
+    complete: "완료",
+    insufficient: "자료 부족",
+    fieldName: "매물명",
+    fieldArea: "소재지 / 지역",
+    fieldPrice: "가격",
+    fieldManagementFee: "관리비",
+    fieldRepairFee: "수선 적립금",
+    openProfile: "매물 정리",
   },
 } as const;
 
@@ -199,6 +238,20 @@ export default async function PropertiesPage({ searchParams }: PropertiesPagePro
   const totalPages = Math.max(1, Math.ceil(sortedProperties.length / pageSize));
   const currentPage = Math.min(page, totalPages);
   const pagedProperties = sortedProperties.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const selectedProperty = sortedProperties.find((property) => property.id === focusId) ?? pagedProperties[0] ?? properties[0];
+  const selectedRequiredFields = selectedProperty
+    ? [
+        { label: copy.fieldName, value: selectedProperty.name },
+        { label: copy.fieldArea, value: selectedProperty.area },
+        { label: copy.fieldPrice, value: selectedProperty.listingPrice > 0 ? formatCurrency(selectedProperty.listingPrice, locale) : "" },
+        { label: copy.fieldManagementFee, value: selectedProperty.managementFee > 0 ? formatCurrency(selectedProperty.managementFee, locale) : "" },
+        { label: copy.fieldRepairFee, value: selectedProperty.repairFee > 0 ? formatCurrency(selectedProperty.repairFee, locale) : "" },
+      ]
+    : [];
+  const selectedMissingFields = selectedRequiredFields.filter((field) => !field.value);
+  const selectedCompletion = selectedRequiredFields.length > 0
+    ? Math.round(((selectedRequiredFields.length - selectedMissingFields.length) / selectedRequiredFields.length) * 100)
+    : 0;
   const activeCount = properties.filter((property) => property.status === "active").length;
   const archivedCount = properties.length - activeCount;
   const totalPortfolioValue = properties.reduce((sum, property) => sum + property.listingPrice, 0);
@@ -247,7 +300,7 @@ export default async function PropertiesPage({ searchParams }: PropertiesPagePro
       </section>
       <PageFlashBanner message={flashMessage} />
 
-      <section className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-5 lg:grid-cols-2 2xl:grid-cols-4">
         <article className="space-y-4 rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200/30">
           <div className="flex items-center justify-between">
             <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{copy.totalPortfolioValue}</p>
@@ -362,7 +415,8 @@ export default async function PropertiesPage({ searchParams }: PropertiesPagePro
         </div>
       </section>
 
-      <section className="overflow-hidden rounded-xl bg-[#e6eeff] shadow-sm ring-1 ring-slate-200/30">
+      <section className="grid min-w-0 gap-5 2xl:grid-cols-[minmax(0,1fr)_minmax(20rem,24rem)]">
+      <div className="overflow-hidden rounded-xl bg-[#e6eeff] shadow-sm ring-1 ring-slate-200/30">
         <form id="property-export-form" action="/api/hub/export" method="get">
           <input type="hidden" name="scope" value="properties" />
           <input type="hidden" name="locale" value={locale} />
@@ -449,8 +503,12 @@ export default async function PropertiesPage({ searchParams }: PropertiesPagePro
                     </div>
                   </td>
                   <td className="px-6 py-4 text-right">
-                    <Link href={`/output-center?type=property_overview&targetProperty=${property.id}`} className="inline-flex rounded p-2 text-slate-400 transition-colors hover:text-slate-700">
-                      <span className="material-symbols-outlined">picture_as_pdf</span>
+                    <Link
+                      href={`/properties/${encodeURIComponent(property.id)}/edit`}
+                      className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-bold text-[#002FA7] transition-colors hover:bg-blue-50"
+                    >
+                      {copy.openProfile}
+                      <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
                     </Link>
                   </td>
                 </tr>
@@ -489,10 +547,84 @@ export default async function PropertiesPage({ searchParams }: PropertiesPagePro
           </div>
         </div>
         </form>
+      </div>
+
+      <aside className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        {selectedProperty ? (
+          <div className="space-y-5">
+            <div>
+              <p className="text-xs font-black text-[#002FA7]">{copy.propertyProfile}</p>
+              <h2 className="mt-2 text-2xl font-black leading-8 text-slate-950">{selectedProperty.name}</h2>
+              <p className="mt-1 text-sm font-semibold text-slate-500">{selectedProperty.area || t(locale, "common.notSet")}</p>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-xs font-black text-slate-500">{copy.requiredInfo}</h3>
+                  <p className="mt-1 text-xl font-black text-slate-950">
+                    {selectedRequiredFields.length - selectedMissingFields.length}/{selectedRequiredFields.length}
+                  </p>
+                </div>
+                <span className={`rounded-full px-2 py-0.5 text-[11px] font-black ${
+                  selectedMissingFields.length > 0 ? "bg-rose-50 text-rose-700 ring-1 ring-rose-100" : "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100"
+                }`}>
+                  {selectedMissingFields.length > 0 ? `${copy.missingItems} ${selectedMissingFields.length}` : copy.complete}
+                </span>
+              </div>
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-white">
+                <div className="h-full rounded-full bg-[#002FA7]" style={{ width: `${selectedCompletion}%` }} />
+              </div>
+              <div className="mt-3 divide-y divide-slate-200 rounded-lg bg-white">
+                {selectedRequiredFields.map((field) => {
+                  const filled = Boolean(field.value);
+                  return (
+                    <div key={field.label} className="flex items-center justify-between gap-3 px-3 py-2 text-xs">
+                      <span className="font-bold text-slate-500">{field.label}</span>
+                      <span className={`max-w-[55%] truncate text-right font-black ${
+                        filled ? "text-slate-950" : "text-rose-600"
+                      }`}>
+                        {field.value || copy.insufficient}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="rounded-xl border-l-4 border-[#002FA7] bg-blue-50 p-4">
+              <p className="text-xs font-black text-[#002FA7]">{copy.outputCheck}</p>
+              <p className="mt-2 text-sm font-semibold leading-6 text-slate-900">
+                {selectedMissingFields.length > 0
+                  ? copy.insufficient
+                  : locale === "zh"
+                    ? "基础信息已齐，可以关联案件继续使用。"
+                    : locale === "ko"
+                      ? "기본 정보가 준비되어 안건에 연결해 계속 사용할 수 있습니다."
+                      : "基本情報が揃っています。案件に紐づけて利用できます。"}
+              </p>
+            </div>
+
+            <div className="grid gap-2">
+              <Link
+                href={`/relationship-tree?type=property&id=${encodeURIComponent(selectedProperty.id)}`}
+                className="inline-flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-bold text-[#002FA7] hover:bg-blue-100"
+              >
+                {copy.relationTree}
+                <span className="material-symbols-outlined text-[18px]" aria-hidden="true">account_tree</span>
+              </Link>
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6 text-sm font-semibold text-slate-500">
+            {copy.emptyList}
+          </div>
+        )}
+      </aside>
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-3">
-        <article className="xl:col-span-2 rounded-xl bg-[#edf2fd] p-6">
+      <section className="grid gap-6 2xl:grid-cols-3">
+        <article className="rounded-xl bg-[#edf2fd] p-6 2xl:col-span-2">
           <div className="mb-5 flex items-center justify-between">
             <h2 className="text-xl font-bold tracking-tight text-slate-900">{copy.portfolioComposition}</h2>
             <Link href="/output-center" className="text-xs font-bold uppercase text-blue-700">

@@ -87,31 +87,31 @@ export default async function AiExperiencePage({ searchParams }: AiExperiencePag
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-xs font-black uppercase tracking-wider text-[#002FA7]">
-              {tr(locale, { ja: "入力サポート", zh: "智能填写", ko: "자동 입력" })}
+              {tr(locale, { ja: "AI経験", zh: "AI 经验", ko: "AI 경험" })}
             </p>
             <h1 className="mt-2 text-2xl font-black tracking-tight text-slate-950">
-              {tr(locale, { ja: "入力サポート設定", zh: "智能填写设置", ko: "자동 입력 설정" })}
+              {tr(locale, { ja: "AI経験レビュー", zh: "AI 经验审核", ko: "AI 경험 검토" })}
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
               {tr(locale, {
-                ja: "確認した内容だけが、次回以降の資料読取や入力補助に使われます。",
-                zh: "已确认的内容会用于后续资料读取和填写辅助，未确认或不使用的内容不会生效。",
-                ko: "확인한 내용만 이후 자료 판독과 입력 보조에 사용됩니다.",
+                ja: "承認した経験だけが、今後のAI処理で参考情報として使われます。案件事実として自動確定されることはありません。",
+                zh: "只有已审核启用的经验会作为后续模型参考，不会被当作当前案件事实自动写入。",
+                ko: "승인된 경험만 이후 AI 처리의 참고 정보로 사용되며, 현재 안건의 사실로 자동 확정되지 않습니다.",
               })}
             </p>
           </div>
           <form action={draftAiExperiencesAction}>
             <button className="inline-flex items-center gap-2 rounded-lg bg-slate-950 px-4 py-2 text-sm font-black text-white hover:bg-slate-800">
               <span className="material-symbols-outlined text-[18px]">sync</span>
-              {tr(locale, { ja: "新しい候補を確認", zh: "检查新的填写建议", ko: "새 제안 확인" })}
+              {tr(locale, { ja: "新しい経験候補を整理", zh: "整理新的经验候选", ko: "새 경험 후보 정리" })}
             </button>
           </form>
         </div>
         {params?.flash ? (
           <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-800">
             {params.flash === "experience_drafted"
-              ? tr(locale, { ja: `確認候補: ${createdCount}件`, zh: `已找到：${createdCount} 条`, ko: `확인 후보: ${createdCount}건` })
-              : tr(locale, { ja: "設定を保存しました。", zh: "设置已保存。", ko: "설정을 저장했습니다." })}
+              ? tr(locale, { ja: `経験候補: ${createdCount}件`, zh: `经验候选：${createdCount} 条`, ko: `경험 후보: ${createdCount}건` })
+              : tr(locale, { ja: "レビューを保存しました。", zh: "审核已保存。", ko: "검토를 저장했습니다." })}
           </div>
         ) : null}
       </section>

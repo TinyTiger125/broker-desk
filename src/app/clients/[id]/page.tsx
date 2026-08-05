@@ -359,10 +359,10 @@ export default async function ClientDetailPage({ params, searchParams }: ClientD
         </div>
       </header>
 
-      <section className="grid gap-4 lg:grid-cols-[2fr_1fr]">
-        <div className="space-y-4">
+      <section className="grid min-w-0 gap-4 2xl:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)]">
+        <div className="min-w-0 space-y-4">
           <SectionCard title={text.basic}>
-            <dl className="grid grid-cols-[120px_1fr] gap-y-2 text-sm">
+            <dl className="grid gap-y-2 text-sm sm:grid-cols-[120px_minmax(0,1fr)]">
               <dt className="text-slate-500">{text.usage}</dt>
               <dd>{purposeLabel[client.purpose]}</dd>
               <dt className="text-slate-500">{text.budget}</dt>
@@ -395,7 +395,7 @@ export default async function ClientDetailPage({ params, searchParams }: ClientD
           </SectionCard>
 
           <SectionCard title={text.legal}>
-            <dl className="grid grid-cols-[180px_1fr] gap-y-2 text-sm">
+            <dl className="grid gap-y-2 text-sm sm:grid-cols-[180px_minmax(0,1fr)]">
               <dt className="text-slate-500">{text.brokerage}</dt>
               <dd>{brokerageContractTypeLabel[client.brokerageContractType]}</dd>
               <dt className="text-slate-500">{text.signedAt}</dt>

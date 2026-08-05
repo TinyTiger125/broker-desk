@@ -107,8 +107,9 @@ Phase A foundation is implemented:
 - Editable PDF preview saves create correction events for output value edits, layout drag/resize adjustments, and custom/split overlay fields.
 - Correction events preserve field key, candidate value, confirmed value, source location, method, confidence, scope candidate, and source evidence.
 - `AiExperienceDraft` storage and a backend draft job exist for repeated correction groups. Drafts remain gated and are not promoted automatically.
-- PM/QA review surface exists at `/settings/ai-experience`; only approved drafts are eligible for later AI context.
+- The former user-facing `智能填写` settings entry has been removed. The AI experience review route remains an internal operator/QA surface only; it is not part of the broker workflow.
 - Approved-only retrieval helper exists for template/field-scoped AI context assembly.
+- Approved experience retrieval now requires tenant scope and returns explicit source metadata so future model calls can distinguish experience hints from confirmed case facts.
 - The case workbench exposes a lightweight correction history for trust/debug without adding a training workflow.
 - Regression scripts verify correction-event classification, experience-draft generation gates, approved-only retrieval, and review page reachability.
 
@@ -122,6 +123,8 @@ Next product step:
 1. Wire approved scoped experience notes into high-risk extraction and preflight prompts.
 2. Add OpenAI-assisted summarization after the deterministic grouping gate.
 3. Add review analytics for repeated rejected drafts before expanding automatic drafting.
+
+Detailed handoff for future model integration: `docs/product/AI_EXPERIENCE_MODEL_CONTEXT_CHAIN.md`.
 
 ## User Stories
 

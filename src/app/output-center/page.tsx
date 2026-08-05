@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { generateOutputDocumentAction } from "@/app/actions";
 import { FormDraftAssist } from "@/components/form-draft-assist";
+import { GuaranteeTemplateSelector } from "@/components/guarantee-template-selector";
 import { PageFlashBanner } from "@/components/page-flash-banner";
 import { getGuaranteeApplicationDraft, listBrokerageCases, listQuoteFormData, listQuotations } from "@/lib/data";
 import { formatCurrency, formatDate } from "@/lib/format";
@@ -10,34 +11,17 @@ import {
   getGuaranteeCompanyTemplate,
   guaranteeCompanyTemplates,
   type GuaranteeReadinessStatus,
-  type GuaranteeTemplateQualityStatus,
 } from "@/lib/guarantee-application";
 import { getCaseFieldDefinition, getCaseFieldInformation } from "@/lib/case-field-catalog";
 import { listHubGeneratedOutputs, listHubParties } from "@/lib/hub";
 import { t } from "@/lib/i18n";
-import { getLocale, type Locale } from "@/lib/locale";
-import { getOutputDocDescription, getOutputDocLabel, isOutputDocType, type OutputDocType } from "@/lib/output-doc";
+import { getLocale } from "@/lib/locale";
+import { getOutputDocLabel, isOutputDocType, type OutputDocType } from "@/lib/output-doc";
 import { requireTenantSession } from "@/lib/tenant-session";
 
 export const dynamic = "force-dynamic";
 
 const outputTypes: OutputDocType[] = ["property_overview", "proposal", "estimate_sheet", "funding_plan", "assumption_memo"];
-const iconByType: Record<OutputDocType, string> = {
-  property_overview: "home_work",
-  proposal: "description",
-  estimate_sheet: "receipt_long",
-  funding_plan: "payments",
-  assumption_memo: "fact_check",
-};
-
-const iconColorByType: Record<OutputDocType, string> = {
-  property_overview: "bg-sky-50 text-sky-700",
-  proposal: "bg-blue-50 text-blue-600",
-  estimate_sheet: "bg-emerald-50 text-emerald-600",
-  funding_plan: "bg-amber-50 text-amber-600",
-  assumption_memo: "bg-[#003366] text-white",
-};
-
 const outputCenterCopy = {
   ja: {
     subtitle: "対象案件を選択し、出力テンプレートとプレビューへ進みます。",
@@ -53,11 +37,6 @@ const outputCenterCopy = {
     language: "言語",
     generateDocument: "帳票を出力",
     recentOutputs: "出力履歴",
-    templateHitTitle: "テンプレート利用状況",
-    templateHitDesc: "現在の履歴条件で使われたテンプレート記録",
-    withTemplateVersion: "記録あり",
-    withoutTemplateVersion: "記録なし",
-    topTemplateVersions: "よく使うテンプレート",
     viewAll: "すべて表示",
     allType: "すべての種別",
     allLang: "すべての言語",
@@ -67,7 +46,6 @@ const outputCenterCopy = {
     templateVersion: "使用テンプレート",
     filterApply: "適用",
     filterReset: "リセット",
-    exportHitRate: "利用状況CSV",
     emptyFilteredOutputs: "現在のフィルタ条件に一致する出力履歴がありません。",
     previewMode: "PDFプレビュー",
     download: "ダウンロード",
@@ -102,14 +80,13 @@ const outputCenterCopy = {
     sellerSign: "売主 署名",
     buyerSign: "買主 署名",
     docIdLabel: "文書ID",
-    outputCenterTitle: "書類を出力",
-    guaranteePrimaryEyebrow: "申込書作成",
-    guaranteePrimaryTitle: "保証会社申込書",
-    guaranteePrimaryPanelTitle: "確認してから出力",
-    guaranteePrimaryDesc: "現在の案件を確認し、足りない項目だけ補って、選択した保証会社の申込書を出します。",
+    outputCenterTitle: "文書出力",
+    guaranteePrimaryEyebrow: "保証会社申込書作成",
+    guaranteePrimaryTitle: "出力",
+    guaranteePrimaryPanelTitle: "確認",
+    guaranteePrimaryDesc: "案件を選び、不足項目を確認してから申込書を出します。",
     guaranteeNextAction: "次にやること",
-    guaranteeChecklist: "残りの確認項目",
-    guaranteeTemplateSwitchDesc: "保証会社を変える場合だけ、ここで切り替えます。次の操作は上のボタンから続けます。",
+    guaranteeChecklist: "確認が必要な項目",
     outputPathCase: "案件",
     outputPathTemplate: "保証会社",
     outputPathPreview: "プレビュー",
@@ -118,9 +95,9 @@ const outputCenterCopy = {
     chooseThisCase: "この案件を選ぶ",
     caseCardUpdated: "更新",
     guaranteeDetailToggle: "詳細を表示",
-    guaranteeBackstageToggle: "補助機能を表示",
     guaranteeCase: "対象案件",
-    guaranteeNoCase: "確認済み案件がまだありません",
+    guaranteeNoCase: "案件がまだありません",
+    guaranteeCreateCase: "案件を作成",
     guaranteeTemplate: "保証会社",
     guaranteeReadiness: "申込データ準備",
     guaranteeDraftReadiness: "申込書追加情報",
@@ -136,8 +113,8 @@ const outputCenterCopy = {
     guaranteeNeedsConfirmation: "要確認",
     guaranteeRequiredMissing: "必須項目が未完了",
     guaranteeExportBlocked: "この保証会社の申込書出力は次の対応予定です。まずは不足項目の確認までできます。",
-    guaranteePdfPendingButton: "申込書出力は準備中",
-    guaranteePreviewReady: "まずPDFをプレビューし、印字位置と入力内容を確認してからダウンロードします。",
+    guaranteePdfPendingButton: "出力準備中（未入力あり）",
+    guaranteePreviewReady: "プレビューで内容と位置を確認します。",
     guaranteePreviewAction: "{company}申込書をプレビュー",
     guaranteePreviewNeedsCase: "案件を選択すると、確認済みデータを使って申込書を出せます。",
     guaranteeSourceConfirmed: "確認済み案件データ",
@@ -145,9 +122,9 @@ const outputCenterCopy = {
     guaranteeSourceCandidate: "読取内容（確認が必要）",
     guaranteeSourceMissing: "未入力",
     guaranteeCaseLink: "案件を確認",
-    guaranteeImportLink: "入力ファイルを取り込む",
-    guaranteeLegacyTitle: "既存の出力",
-    guaranteeLegacyDesc: "物件概要書や提案関連の既存出力は補助機能として残しています。",
+    guaranteeImportLink: "資料を読み取る",
+    guaranteeLegacyTitle: "他の文書",
+    guaranteeLegacyDesc: "物件概要書、提案書、費用明細などを確認できます。",
   },
   zh: {
     subtitle: "选择目标案件和输出范本，然后进入预览或下载。",
@@ -163,11 +140,6 @@ const outputCenterCopy = {
     language: "语言",
     generateDocument: "输出文书",
     recentOutputs: "输出历史",
-    templateHitTitle: "范本使用情况",
-    templateHitDesc: "查看已生成文件使用过哪些范本",
-    withTemplateVersion: "有范本记录",
-    withoutTemplateVersion: "未记录范本",
-    topTemplateVersions: "常用范本",
     viewAll: "查看全部",
     allType: "全部类型",
     allLang: "全部语言",
@@ -177,7 +149,6 @@ const outputCenterCopy = {
     templateVersion: "使用范本",
     filterApply: "应用",
     filterReset: "重置",
-    exportHitRate: "使用情况 CSV",
     emptyFilteredOutputs: "当前筛选条件下暂无输出记录。",
     previewMode: "PDF 预览",
     download: "下载",
@@ -219,7 +190,6 @@ const outputCenterCopy = {
     guaranteePrimaryDesc: "确认当前案件，只补齐缺失项，然后输出所选保证会社申请书。",
     guaranteeNextAction: "下一步",
     guaranteeChecklist: "剩余确认项",
-    guaranteeTemplateSwitchDesc: "只有需要更换保证会社时，才在这里切换。下一步仍然从上方主按钮继续。",
     outputPathCase: "案件",
     outputPathTemplate: "保证会社",
     outputPathPreview: "预览",
@@ -228,9 +198,9 @@ const outputCenterCopy = {
     chooseThisCase: "选择这个案件",
     caseCardUpdated: "更新",
     guaranteeDetailToggle: "显示详情",
-    guaranteeBackstageToggle: "显示辅助功能",
     guaranteeCase: "目标案件",
-    guaranteeNoCase: "暂无已确认案件",
+    guaranteeNoCase: "还没有案件",
+    guaranteeCreateCase: "新建案件",
     guaranteeTemplate: "保证会社",
     guaranteeReadiness: "申请数据准备度",
     guaranteeDraftReadiness: "申请书补充信息",
@@ -255,9 +225,9 @@ const outputCenterCopy = {
     guaranteeSourceCandidate: "读取内容（需确认）",
     guaranteeSourceMissing: "未填写",
     guaranteeCaseLink: "查看案件",
-    guaranteeImportLink: "导入输入文件",
-    guaranteeLegacyTitle: "既有输出",
-    guaranteeLegacyDesc: "物件概要书与提案相关既有输出保留为辅助功能。",
+    guaranteeImportLink: "读取资料",
+    guaranteeLegacyTitle: "其他文书",
+    guaranteeLegacyDesc: "可继续查看物件概要书、提案书、费用明细等文书。",
   },
   ko: {
     subtitle: "대상 안건을 선택하고 출력 템플릿과 미리보기로 이동합니다.",
@@ -273,11 +243,6 @@ const outputCenterCopy = {
     language: "언어",
     generateDocument: "문서 출력",
     recentOutputs: "출력 이력",
-    templateHitTitle: "템플릿 사용 현황",
-    templateHitDesc: "현재 이력 조건에서 사용된 템플릿 기록",
-    withTemplateVersion: "기록 있음",
-    withoutTemplateVersion: "기록 없음",
-    topTemplateVersions: "자주 쓰는 템플릿",
     viewAll: "전체 보기",
     allType: "전체 유형",
     allLang: "전체 언어",
@@ -287,7 +252,6 @@ const outputCenterCopy = {
     templateVersion: "사용 템플릿",
     filterApply: "적용",
     filterReset: "초기화",
-    exportHitRate: "사용 현황 CSV",
     emptyFilteredOutputs: "현재 필터 조건에 맞는 출력 이력이 없습니다.",
     previewMode: "PDF 미리보기",
     download: "다운로드",
@@ -329,7 +293,6 @@ const outputCenterCopy = {
     guaranteePrimaryDesc: "현재 안건을 확인하고 부족한 항목만 보완한 뒤 선택한 보증회사 신청서를 출력합니다.",
     guaranteeNextAction: "다음 작업",
     guaranteeChecklist: "남은 확인 항목",
-    guaranteeTemplateSwitchDesc: "보증회사를 바꿀 때만 여기서 전환합니다. 다음 작업은 위의 기본 버튼으로 계속합니다.",
     outputPathCase: "안건",
     outputPathTemplate: "보증회사",
     outputPathPreview: "미리보기",
@@ -338,9 +301,9 @@ const outputCenterCopy = {
     chooseThisCase: "이 안건 선택",
     caseCardUpdated: "갱신",
     guaranteeDetailToggle: "상세 표시",
-    guaranteeBackstageToggle: "보조 기능 표시",
     guaranteeCase: "대상 안건",
-    guaranteeNoCase: "확인된 안건이 아직 없습니다",
+    guaranteeNoCase: "아직 안건이 없습니다",
+    guaranteeCreateCase: "안건 만들기",
     guaranteeTemplate: "보증회사",
     guaranteeReadiness: "신청 데이터 준비도",
     guaranteeDraftReadiness: "회사별 추가 항목",
@@ -365,9 +328,9 @@ const outputCenterCopy = {
     guaranteeSourceCandidate: "후보값(확인 필요)",
     guaranteeSourceMissing: "미입력",
     guaranteeCaseLink: "안건 확인",
-    guaranteeImportLink: "자료 등록으로 이동",
-    guaranteeLegacyTitle: "기존 출력",
-    guaranteeLegacyDesc: "매물 개요서와 제안 관련 기존 출력은 보조 기능으로 유지합니다.",
+    guaranteeImportLink: "자료 읽기",
+    guaranteeLegacyTitle: "다른 문서",
+    guaranteeLegacyDesc: "매물 개요서, 제안서, 비용 명세 등 다른 문서를 확인할 수 있습니다.",
   },
 } as const;
 
@@ -389,6 +352,8 @@ type OutputCenterPageProps = {
     targetParty?: string;
     caseId?: string;
     guaranteeTemplate?: string;
+    docGroup?: string;
+    doc?: string;
   }>;
 };
 
@@ -396,21 +361,6 @@ function readinessClass(status: GuaranteeReadinessStatus) {
   if (status === "available") return "bg-emerald-100 text-emerald-800";
   if (status === "needs_confirmation") return "bg-amber-100 text-amber-800";
   return "bg-rose-100 text-rose-800";
-}
-
-function templateQualityLabel(locale: Locale, status: GuaranteeTemplateQualityStatus) {
-  const labels: Record<GuaranteeTemplateQualityStatus, Record<Locale, string>> = {
-    verified: { ja: "出荷可", zh: "出厂可用", ko: "출고 가능" },
-    needs_calibration: { ja: "要精校", zh: "需要精校", ko: "정밀 보정 필요" },
-    source_quality_blocked: { ja: "原本差替え", zh: "源文件待换", ko: "원본 교체 필요" },
-  };
-  return labels[status][locale];
-}
-
-function templateQualityClass(status: GuaranteeTemplateQualityStatus) {
-  if (status === "verified") return "bg-emerald-100 text-emerald-800";
-  if (status === "source_quality_blocked") return "bg-rose-100 text-rose-800";
-  return "bg-amber-100 text-amber-800";
 }
 
 function previewFieldId(fieldKey: string) {
@@ -467,7 +417,6 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
     "friends_guarantee_individual_v1";
   const requestedGuaranteeTemplate = String(params?.guaranteeTemplate ?? "").trim() || defaultGuaranteeTemplateId;
   const selectedGuaranteeTemplate = getGuaranteeCompanyTemplate(requestedGuaranteeTemplate);
-  const selectedGuaranteeTemplateNeedsCalibration = selectedGuaranteeTemplate.qualityStatus !== "verified";
   const guaranteeTemplateDrafts =
     selectedCase
       ? await Promise.all(
@@ -540,27 +489,14 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
     const unresolvedCount = readinessGroups.find((group) => group.id === "unresolved")?.fields.length ?? 0;
     const draftMissingCount = buildGuaranteeDraftReadiness(draft, template.id).requiredMissingCount;
     const missingCount = unresolvedCount + draftMissingCount;
-    const previewHref = selectedCase
-      ? `/guarantee-applications/${encodeURIComponent(template.id)}/preview?caseId=${encodeURIComponent(selectedCase.id)}`
-      : "#guarantee-case-selector";
-    const downloadHref = selectedCase
-      ? `/api/guarantee-applications/${encodeURIComponent(template.id)}/download?caseId=${encodeURIComponent(selectedCase.id)}`
-      : "#guarantee-case-selector";
 
     return {
       template,
       missingCount,
-      previewHref,
-      downloadHref,
-      selected: template.id === selectedGuaranteeTemplate.id,
-      downloadEnabled: Boolean(selectedCase && template.allowDirectDownload && missingCount === 0),
     };
   });
   const selectedGuaranteePreviewHref = selectedCase
     ? `/guarantee-applications/${encodeURIComponent(selectedGuaranteeTemplate.id)}/preview?caseId=${encodeURIComponent(selectedCase.id)}`
-    : "#guarantee-case-selector";
-  const selectedCaseWorkbenchHref = selectedCase
-    ? `/cases/${selectedCase.id}?guaranteeTemplate=${encodeURIComponent(selectedGuaranteeTemplate.id)}`
     : "#guarantee-case-selector";
   const selectedCaseDraftHref = selectedCase
     ? previewHrefForGuaranteeField({ caseId: selectedCase.id, templateId: selectedGuaranteeTemplate.id })
@@ -571,10 +507,12 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
   const selectedGuaranteeCanDownload = Boolean(
     selectedCase && selectedGuaranteeTemplate.allowDirectDownload && selectedGuaranteeMissingCount === 0,
   );
-  const guaranteePreviewLabel = copy.guaranteePreviewAction.replace("{company}", selectedGuaranteeTemplate.companyDisplayName);
   const firstBlockingField = guaranteeBlockingFields[0];
+  const hasAvailableCases = cases.length > 0;
   const outputNextHref = !selectedCase
-    ? "#guarantee-case-selector"
+    ? hasAvailableCases
+      ? "#guarantee-case-selector"
+      : "/cases/new?from=output"
     : firstBlockingField
       ? isOutputSpecificGuaranteeField(firstBlockingField.fieldKey)
         ? previewHrefForGuaranteeField({ caseId: selectedCase.id, templateId: selectedGuaranteeTemplate.id, fieldKey: firstBlockingField.fieldKey })
@@ -583,43 +521,23 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
         ? selectedCaseDraftHref
       : selectedGuaranteePreviewHref;
   const outputNextLabel = !selectedCase
-    ? copy.guaranteeSelectCaseFirst
+    ? hasAvailableCases
+      ? copy.guaranteeSelectCaseFirst
+      : copy.guaranteeCreateCase
     : firstBlockingField
       ? copy.guaranteeReviewMissing
       : selectedGuaranteeDraftReadiness.requiredMissingCount > 0
         ? copy.guaranteeFillInDraft
       : copy.guaranteePreviewAction.replace("{company}", selectedGuaranteeTemplate.companyDisplayName);
   const outputNextIcon = !selectedCase
-    ? "folder_open"
+    ? hasAvailableCases
+      ? "folder_open"
+      : "add_business"
     : firstBlockingField
       ? "fact_check"
       : selectedGuaranteeDraftReadiness.requiredMissingCount > 0
         ? "edit_note"
         : "visibility";
-  const outputPathItems = [
-    {
-      label: copy.outputPathCase,
-      value: selectedCase?.caseTitle ?? copy.guaranteeSelectCaseFirst,
-      ready: Boolean(selectedCase),
-      icon: "folder_open",
-    },
-    {
-      label: copy.outputPathTemplate,
-      value: selectedGuaranteeTemplate.companyDisplayName,
-      ready: Boolean(selectedCase),
-      icon: "article",
-    },
-    {
-      label: copy.outputPathPreview,
-      value: !selectedCase
-        ? copy.guaranteeSelectCaseFirst
-        : selectedGuaranteeMissingCount > 0
-          ? `${copy.caseMissingItems}: ${selectedGuaranteeMissingCount}`
-          : copy.caseReadyForPreview,
-      ready: Boolean(selectedCase && selectedGuaranteeMissingCount === 0),
-      icon: selectedGuaranteeMissingCount > 0 ? "fact_check" : "visibility",
-    },
-  ];
   const legacySectionId = "existing-outputs";
   const historyType =
     params?.historyType && isOutputDocType(params.historyType) ? params.historyType : "all";
@@ -652,25 +570,6 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
           ? !item.templateVersionId
           : item.templateVersionId === historyTemplate)
   );
-  const templateBoundCount = filteredOutputs.filter((item) => Boolean(item.templateVersionId)).length;
-  const templateHitRate = filteredOutputs.length > 0 ? Math.round((templateBoundCount / filteredOutputs.length) * 100) : 0;
-  const unboundCount = Math.max(0, filteredOutputs.length - templateBoundCount);
-  const templateVersionStats = filteredOutputs
-    .filter((item) => Boolean(item.templateVersionId))
-    .reduce<Map<string, { id: string; label: string; count: number }>>((acc, item) => {
-      const key = item.templateVersionId as string;
-      const existing = acc.get(key) ?? {
-        id: key,
-        label: item.templateVersionLabel ?? key,
-        count: 0,
-      };
-      existing.count += 1;
-      acc.set(key, existing);
-      return acc;
-    }, new Map());
-  const topTemplateVersions = [...templateVersionStats.values()]
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 3);
   const latestOutputs = filteredOutputs.slice(0, 3);
   const requestedType = String(params?.type ?? "").trim();
   const requestedPropertyId = String(params?.targetProperty ?? "").trim();
@@ -684,6 +583,8 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
   const selectedFormat = params?.format === "docx" ? "docx" : "pdf";
   const selectedLanguage = params?.lang === "zh" || params?.lang === "ko" || params?.lang === "ja" ? params.lang : locale;
   const selectedZoom = params?.zoom === "75" || params?.zoom === "85" || params?.zoom === "100" ? params.zoom : "85";
+  const missingQuoteClientLabel = locale === "zh" ? "客户未确认" : locale === "ko" ? "고객 미확인" : "顧客未確認";
+  const quoteOptionLabel = (quote: (typeof quotes)[number]) => `${quote.quoteTitle} - ${quote.client?.name ?? missingQuoteClientLabel}`;
   const requestedQuoteId = String(params?.quoteId ?? "").trim();
   const defaultQuoteId = isPropertyOverview ? requestedQuoteId : requestedQuoteId || latestOutputs[0]?.sourceQuoteId || quotes[0]?.id || "";
   const selectedQuote = isPropertyOverview ? undefined : quotes.find((quote) => quote.id === defaultQuoteId) ?? quotes[0];
@@ -715,7 +616,9 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
     locale === "zh" ? "zh-CN" : locale === "ko" ? "ko-KR" : "ja-JP"
   );
   const previewDocId = `BD-${selectedType.toUpperCase()}-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}`;
-  const returnToCurrent = `/output-center?type=${selectedType}&format=${selectedFormat}&lang=${selectedLanguage}&quoteId=${isPropertyOverview ? "" : selectedQuote?.id ?? ""}&targetProperty=${selectedPropertyId}&targetParty=${selectedPartyId}&historyType=${historyType}&historyLang=${historyLang}&historyFormat=${historyFormat}&historyTemplate=${historyTemplate}`;
+  const selectedLegacyDocumentGroup = isPropertyOverview ? "property" : "proposal";
+  const outputSelectionBaseHref = `/output-center?docGroup=${selectedLegacyDocumentGroup}&type=${selectedType}&format=${selectedFormat}&lang=${selectedLanguage}&quoteId=${isPropertyOverview ? "" : selectedQuote?.id ?? ""}&targetProperty=${selectedPropertyId}&targetParty=${selectedPartyId}`;
+  const returnToCurrent = `${outputSelectionBaseHref}&historyType=${historyType}&historyLang=${historyLang}&historyFormat=${historyFormat}&historyTemplate=${historyTemplate}`;
   const highlightOutputId = String(params?.generatedOutputId ?? "").trim();
   const highlightedOutput = highlightOutputId ? outputs.find((o) => o.id === highlightOutputId) : undefined;
   const isHighlightFiltered = highlightedOutput ? !filteredOutputs.some((o) => o.id === highlightOutputId) : false;
@@ -826,13 +729,155 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
   const flashMessage = flashMap[flashKey]?.[locale];
   const templateVersionQuery = historyTemplate !== "all" ? `&templateVersion=${encodeURIComponent(historyTemplate)}` : "";
   const outputsExportHref = `/api/hub/export?scope=outputs&locale=${locale}${historyType !== "all" ? `&type=${historyType}` : ""}${historyLang !== "all" ? `&lang=${historyLang}` : ""}${historyFormat !== "all" ? `&format=${historyFormat}` : ""}${templateVersionQuery}`;
-  const outputsHitRateExportHref = `/api/hub/export?scope=outputs_hitrate&locale=${locale}${historyType !== "all" ? `&type=${historyType}` : ""}${historyLang !== "all" ? `&lang=${historyLang}` : ""}${historyFormat !== "all" ? `&format=${historyFormat}` : ""}${templateVersionQuery}`;
+  const documentTreeGroupIds = ["application", "official"] as const;
+  type DocumentTreeGroupId = (typeof documentTreeGroupIds)[number];
+  type DocumentTreeItem = {
+    id: string;
+    label: string;
+    description?: string;
+    href?: string;
+    selected?: boolean;
+    status: string;
+    disabled?: boolean;
+    external?: boolean;
+  };
+
+  const documentTreeCopy = {
+    title: locale === "zh" ? "选择要输出的文书" : locale === "ko" ? "출력할 문서 선택" : "出力する文書を選択",
+    application: locale === "zh" ? "保证会社申请" : locale === "ko" ? "보증회사 신청" : "保証会社申込",
+    official: locale === "zh" ? "国土交通省官方原件" : locale === "ko" ? "국토교통성 공식 원본" : "国土交通省の公式原本",
+    officialDesc: locale === "zh"
+      ? "仅供查看和下载。完成字段映射与版式核验前，不作为自动生成模板。"
+      : locale === "ko"
+        ? "열람 및 다운로드용입니다. 필드 매핑과 레이아웃 검증이 끝나기 전에는 자동 생성 서식으로 사용하지 않습니다."
+        : "閲覧・ダウンロード用です。項目対応とレイアウト確認が完了するまでは自動作成に使用しません。",
+    mainFlow: locale === "zh" ? "可生成" : locale === "ko" ? "생성 가능" : "作成可能",
+    officialSource: locale === "zh" ? "官方原件" : locale === "ko" ? "공식 원본" : "公式原本",
+    chooseCase: locale === "zh" ? "先选案件" : locale === "ko" ? "안건 선택" : "案件選択",
+    readyToPreview: locale === "zh" ? "可预览" : locale === "ko" ? "미리보기 가능" : "プレビュー可",
+    needsInput: locale === "zh" ? "项待补齐" : locale === "ko" ? "항목 보완 필요" : "項目不足",
+    guaranteeApplication: locale === "zh" ? "保证会社申请书" : locale === "ko" ? "보증회사 신청서" : "保証会社申込書",
+  };
+  const requestedDocumentTreeGroupId = String(params?.docGroup ?? "").trim();
+  const selectedDocumentId = String(params?.doc ?? "").trim();
+  const requestedDocumentTreeGroup = documentTreeGroupIds.includes(requestedDocumentTreeGroupId as DocumentTreeGroupId)
+    ? (requestedDocumentTreeGroupId as DocumentTreeGroupId)
+    : null;
+  const inferredDocumentTreeGroup: DocumentTreeGroupId | null = selectedCaseId || String(params?.guaranteeTemplate ?? "").trim()
+    ? "application"
+    : null;
+  const selectedDocumentTreeGroupId = requestedDocumentTreeGroup ?? inferredDocumentTreeGroup;
+  const isGuaranteeDocumentSelected = selectedDocumentTreeGroupId === "application" && (
+    selectedDocumentId === "guarantee_application" ||
+    Boolean(selectedCaseId || String(params?.guaranteeTemplate ?? "").trim())
+  );
+  const shouldShowGuaranteeFlow = isGuaranteeDocumentSelected;
+  const shouldShowLegacyOutputFlow = false;
+  const guaranteeDocumentStatus = !selectedCase
+    ? documentTreeCopy.chooseCase
+    : selectedGuaranteeMissingCount > 0
+      ? `${selectedGuaranteeMissingCount} ${documentTreeCopy.needsInput}`
+      : documentTreeCopy.readyToPreview;
+  const documentTreeGroups: Array<{
+    id: DocumentTreeGroupId;
+    icon: string;
+    title: string;
+    description: string;
+    status: string;
+    items: DocumentTreeItem[];
+  }> = [
+    {
+      id: "application",
+      icon: "verified_user",
+      title: documentTreeCopy.application,
+      description: "",
+      status: documentTreeCopy.mainFlow,
+      items: [
+        {
+          id: "guarantee_application",
+          label: documentTreeCopy.guaranteeApplication,
+          description: selectedCase ? `${selectedGuaranteeTemplate.companyDisplayName} · ${selectedCase.caseTitle}` : undefined,
+          href: selectedCase
+            ? `/output-center?docGroup=application&doc=guarantee_application&caseId=${encodeURIComponent(selectedCase.id)}&guaranteeTemplate=${encodeURIComponent(selectedGuaranteeTemplate.id)}`
+            : "/output-center?docGroup=application&doc=guarantee_application#guarantee-case-selector",
+          selected: isGuaranteeDocumentSelected,
+          status: guaranteeDocumentStatus,
+        },
+      ],
+    },
+    {
+      id: "official",
+      icon: "verified",
+      title: documentTreeCopy.official,
+      description: documentTreeCopy.officialDesc,
+      status: documentTreeCopy.officialSource,
+      items: [
+        {
+          id: "important_matters_sale_exchange",
+          label: locale === "zh" ? "重要事项说明书（买卖·交换）记载例" : locale === "ko" ? "중요사항 설명서(매매·교환) 기재 예시" : "重要事項説明書（売買・交換）記載例",
+          description: locale === "zh" ? "国土交通省 · 2026年4月1日现行记载例" : locale === "ko" ? "국토교통성 · 2026년 4월 1일 현행 기재 예시" : "国土交通省 · 2026年4月1日現行記載例",
+          href: "/official-forms/mlit-important-matters-example-2026-04-01.pdf",
+          status: documentTreeCopy.officialSource,
+          external: true,
+        },
+        {
+          id: "rental_management_important_matters",
+          label: locale === "zh" ? "租赁住宅管理委托契约 重要事项说明书记载例" : locale === "ko" ? "임대주택 관리위탁계약 중요사항 설명서 기재 예시" : "賃貸住宅管理受託契約 重要事項説明書 記載例",
+          description: locale === "zh" ? "国土交通省 · 管理委托契约签订前说明用" : locale === "ko" ? "국토교통성 · 관리위탁계약 체결 전 설명용" : "国土交通省 · 管理受託契約締結前の説明用",
+          href: "/official-forms/mlit-rental-management-important-matters-2021-04-23.pdf",
+          status: documentTreeCopy.officialSource,
+          external: true,
+        },
+        {
+          id: "standard_brokerage_agreement_terms",
+          label: locale === "zh" ? "标准媒介契约约款" : locale === "ko" ? "표준 중개계약 약관" : "標準媒介契約約款",
+          description: locale === "zh" ? "国土交通省告示标准条款 · 2024年4月1日施行版" : locale === "ko" ? "국토교통성 고시 표준 약관 · 2024년 4월 1일 시행판" : "国土交通省告示の標準約款 · 2024年4月1日施行版",
+          href: "/official-forms/mlit-standard-brokerage-agreement-terms-2024-04-01.pdf",
+          status: documentTreeCopy.officialSource,
+          external: true,
+        },
+        {
+          id: "standard_rental_management_agreement",
+          label: locale === "zh" ? "租赁住宅标准管理委托契约书" : locale === "ko" ? "임대주택 표준 관리위탁계약서" : "賃貸住宅標準管理受託契約書",
+          description: locale === "zh" ? "国土交通省标准合同 · 管理业者与出租人使用" : locale === "ko" ? "국토교통성 표준 계약서 · 관리업자와 임대인용" : "国土交通省標準契約書 · 管理業者と賃貸人向け",
+          href: "/official-forms/mlit-standard-rental-management-agreement-2021-04-23.pdf",
+          status: documentTreeCopy.officialSource,
+          external: true,
+        },
+        {
+          id: "standard_residential_lease_joint_guarantor",
+          label: locale === "zh" ? "租赁住宅标准契约书（连带保证人型）" : locale === "ko" ? "임대주택 표준계약서(연대보증인형)" : "賃貸住宅標準契約書（連帯保証人型）",
+          description: locale === "zh" ? "国土交通省示范合同 · 非强制使用" : locale === "ko" ? "국토교통성 모델 계약서 · 의무 사용 아님" : "国土交通省のモデル契約書 · 使用義務なし",
+          href: "/official-forms/mlit-standard-residential-lease-joint-guarantor-2018.pdf",
+          status: documentTreeCopy.officialSource,
+          external: true,
+        },
+        {
+          id: "standard_residential_lease_rent_guarantee",
+          label: locale === "zh" ? "租赁住宅标准契约书（租金债务保证业者型）" : locale === "ko" ? "임대주택 표준계약서(임대료 채무보증업자형)" : "賃貸住宅標準契約書（家賃債務保証業者型）",
+          description: locale === "zh" ? "国土交通省示范合同 · 非强制使用" : locale === "ko" ? "국토교통성 모델 계약서 · 의무 사용 아님" : "国土交通省のモデル契約書 · 使用義務なし",
+          href: "/official-forms/mlit-standard-residential-lease-rent-guarantee-2018.pdf",
+          status: documentTreeCopy.officialSource,
+          external: true,
+        },
+      ],
+    },
+  ];
+  const activeDocumentTreeGroup = selectedDocumentTreeGroupId
+    ? documentTreeGroups.find((group) => group.id === selectedDocumentTreeGroupId)
+    : undefined;
+  const documentTreeGroupHref = (groupId: DocumentTreeGroupId) => {
+    const nextParams = new URLSearchParams();
+    nextParams.set("docGroup", groupId);
+    nextParams.set("format", selectedFormat);
+    nextParams.set("lang", selectedLanguage);
+    return `/output-center?${nextParams.toString()}`;
+  };
 
   return (
     <div className="space-y-6">
       <header className="border-b border-slate-950 pb-3">
         <h1 className="text-3xl font-black tracking-tight text-slate-950">{copy.outputCenterTitle}</h1>
-        <p className="mt-2 text-sm font-semibold text-slate-600">{copy.subtitle}</p>
       </header>
       <PageFlashBanner message={flashMessage} />
       {issueMessages.length > 0 ? (
@@ -866,52 +911,135 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
         </section>
       ) : null}
 
+      <section className="rounded border border-slate-300 bg-white">
+        <div className="border-b border-slate-200 p-4">
+          <h2 className="text-base font-black text-slate-950">{documentTreeCopy.title}</h2>
+        </div>
+        <div className="grid min-w-0 2xl:grid-cols-[minmax(14rem,17rem)_minmax(0,1fr)]">
+          <aside className="border-b border-slate-200 p-4 2xl:border-b-0 2xl:border-r">
+            <div className="grid gap-2">
+              {documentTreeGroups.map((group) => {
+                const selected = group.id === selectedDocumentTreeGroupId;
+                return (
+                  <Link
+                    key={`document-tree-nav-${group.id}`}
+                    href={documentTreeGroupHref(group.id)}
+                    className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-3 transition ${
+                      selected ? "border-[#002FA7] bg-blue-50 text-slate-950" : "border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:bg-slate-50"
+                    }`}
+                  >
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${selected ? "bg-[#002FA7] text-white" : "bg-slate-100 text-[#002FA7]"}`}>
+                        <span className="material-symbols-outlined text-[18px]" aria-hidden="true">{group.icon}</span>
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-black">{group.title}</span>
+                        <span className="mt-0.5 block text-[11px] font-semibold text-slate-500">{group.items.length}</span>
+                      </span>
+                    </span>
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${selected ? "bg-slate-950 text-white" : "bg-slate-100 text-slate-600"}`}>
+                      {group.status}
+                    </span>
+                  </Link>
+                );
+              })}
+            </div>
+          </aside>
+          <div className="min-w-0 space-y-5 p-4">
+            {activeDocumentTreeGroup ? (
+              <section key={`document-tree-group-${activeDocumentTreeGroup.id}`} id={`document-tree-${activeDocumentTreeGroup.id}`} className="scroll-mt-24">
+                <div className="flex flex-col gap-1 border-b border-slate-100 pb-3 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <h3 className="text-sm font-black text-slate-950">{activeDocumentTreeGroup.title}</h3>
+                  </div>
+                  <span className={`mt-1 w-fit rounded-full px-2 py-0.5 text-[10px] font-black ${
+                    activeDocumentTreeGroup.id === selectedDocumentTreeGroupId ? "bg-slate-950 text-white" : "bg-slate-100 text-slate-600"
+                  }`}>
+                    {activeDocumentTreeGroup.status}
+                  </span>
+                </div>
+                <div className="relative mt-3 grid gap-2 pl-5">
+                  <span aria-hidden="true" className="absolute bottom-4 left-[7px] top-4 w-px bg-slate-200" />
+                  {activeDocumentTreeGroup.items.map((item) => {
+                    const itemClass = `relative block rounded-lg border px-3 py-3 transition ${
+                      item.selected
+                        ? "border-[#002FA7] bg-blue-50 shadow-sm"
+                        : item.disabled
+                          ? "border-slate-200 bg-slate-50 text-slate-500"
+                          : "border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50/40"
+                    }`;
+                    const markerClass = `absolute -left-[18px] top-5 h-3 w-3 rounded-full border-2 ${
+                      item.selected ? "border-[#002FA7] bg-[#002FA7]" : item.disabled ? "border-slate-300 bg-white" : "border-blue-200 bg-white"
+                    }`;
+                    const statusClass = item.disabled
+                      ? "bg-slate-100 text-slate-500"
+                      : item.status === documentTreeCopy.officialSource || item.status === documentTreeCopy.readyToPreview
+                        ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100"
+                        : item.status.includes(documentTreeCopy.needsInput)
+                          ? "bg-rose-50 text-rose-700 ring-1 ring-rose-100"
+                          : "bg-blue-50 text-[#002FA7] ring-1 ring-blue-100";
+                    const itemBody = (
+                      <>
+                        <span aria-hidden="true" className={markerClass} />
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-black text-slate-950">{item.label}</p>
+                            {item.description ? (
+                              <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-slate-500">{item.description}</p>
+                            ) : null}
+                          </div>
+                          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-black ${statusClass}`}>
+                            {item.status}
+                          </span>
+                        </div>
+                      </>
+                    );
+                    return item.href && !item.disabled && item.external ? (
+                      <a key={item.id} href={item.href} target="_blank" rel="noreferrer" className={itemClass}>
+                        {itemBody}
+                      </a>
+                    ) : item.href && !item.disabled ? (
+                      <Link key={item.id} href={item.href} className={itemClass}>
+                        {itemBody}
+                      </Link>
+                    ) : (
+                      <div key={item.id} className={itemClass} aria-disabled="true">
+                        {itemBody}
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            ) : null}
+          </div>
+        </div>
+      </section>
+
+      {shouldShowGuaranteeFlow ? (
       <section className="rounded border border-slate-300 bg-white p-4">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <p className="text-xs font-black text-[#002FA7]">
-              {locale === "zh" ? "三步生成申请书" : locale === "ko" ? "3단계 신청서 작성" : "3ステップで申込書作成"}
-            </p>
-            <h2 className="text-xl font-black text-slate-950">{copy.guaranteePrimaryTitle}</h2>
-            <p className="mt-1 text-sm text-slate-700">
-              {copy.guaranteeCase}: <span className="font-semibold">{selectedCase?.caseTitle ?? copy.guaranteeNoCase}</span>
-            </p>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <span className="rounded border border-slate-300 bg-slate-50 px-2 py-1 text-xs font-black text-slate-700">
-                {selectedGuaranteeTemplate.companyDisplayName}
-              </span>
+            <p className="text-xs font-black text-[#002FA7]">{copy.guaranteeCase}</p>
+            <h2 className="mt-1 text-xl font-black text-slate-950">
+              {selectedCase?.caseTitle ?? (hasAvailableCases ? copy.guaranteeSelectCaseFirst : copy.guaranteeNoCase)}
+            </h2>
+            {selectedCase ? (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
               <span className={`rounded border px-2 py-1 text-xs font-black ${
                 selectedGuaranteeMissingCount > 0 ? "border-red-700 bg-red-50 text-red-700" : "border-emerald-700 bg-emerald-700 text-white"
               }`}>
                 {selectedGuaranteeMissingCount > 0 ? `${copy.guaranteeMissing}: ${selectedGuaranteeMissingCount}` : copy.guaranteeReady}
               </span>
-            </div>
-            <div className="mt-4 grid gap-2 md:grid-cols-3">
-              {outputPathItems.map((item, index) => (
-                <div
-                  key={item.label}
-                  className={`rounded-lg border px-3 py-3 ${
-                    item.ready ? "border-emerald-300 bg-emerald-50" : "border-slate-200 bg-slate-50"
-                  }`}
-                >
-                  <div className="flex items-center gap-2 text-[11px] font-black text-slate-500">
-                    <span className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-black ${
-                      item.ready ? "bg-emerald-700 text-white" : "bg-slate-200 text-slate-700"
-                    }`}>
-                      {index + 1}
-                    </span>
-                    {item.label}
-                  </div>
-                  <p className={`mt-2 truncate text-sm font-black ${item.ready ? "text-emerald-800" : "text-slate-700"}`}>{item.value}</p>
-                </div>
-              ))}
-            </div>
+              </div>
+            ) : null}
           </div>
           <div className="grid gap-2 lg:min-w-[13rem]">
-            <Link href={outputNextHref} className="inline-flex items-center justify-center gap-2 rounded bg-slate-950 px-4 py-3 text-sm font-black text-white hover:bg-slate-800">
-              <span className="material-symbols-outlined text-[18px]">{outputNextIcon}</span>
-              {outputNextLabel}
-            </Link>
+            {selectedCase || !hasAvailableCases ? (
+              <Link href={outputNextHref} className="inline-flex items-center justify-center gap-2 rounded bg-slate-950 px-4 py-3 text-sm font-black text-white hover:bg-slate-800">
+                <span className="material-symbols-outlined text-[18px]">{outputNextIcon}</span>
+                {outputNextLabel}
+              </Link>
+            ) : null}
             {selectedGuaranteeCanDownload ? (
               <Link href={selectedGuaranteeDownloadHref} className="inline-flex items-center justify-center gap-2 rounded border border-slate-300 bg-white px-4 py-2 text-sm font-black text-slate-900 hover:bg-slate-50">
                 <span className="material-symbols-outlined text-[18px]">download</span>
@@ -921,15 +1049,16 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
           </div>
         </div>
       </section>
+      ) : null}
 
-      {!selectedCase ? (
+      {shouldShowGuaranteeFlow && !selectedCase ? (
         <section id="guarantee-case-selector" className="scroll-mt-24 rounded border border-[#002FA7] bg-white">
           <div className="border-b border-slate-200 px-4 py-3">
             <h2 className="text-base font-black text-slate-950">{copy.guaranteeSelectCaseFirst}</h2>
             <p className="mt-1 text-sm font-semibold text-slate-600">{copy.guaranteeCase}</p>
           </div>
-          {cases.length > 0 ? (
-            <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
+          {hasAvailableCases ? (
+            <div className="grid gap-3 p-4 xl:grid-cols-2 2xl:grid-cols-3">
               {caseSelectorCards.map(({ caseItem, missingCount }) => (
                 <Link
                   key={caseItem.id}
@@ -957,15 +1086,36 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
           ) : (
             <div className="p-4">
               <p className="text-sm font-semibold text-slate-600">{copy.guaranteeNoCase}</p>
-              <Link href="/import-center" className="mt-3 inline-flex rounded bg-slate-950 px-4 py-2 text-sm font-black text-white hover:bg-slate-800">
-                {copy.guaranteeImportLink}
-              </Link>
             </div>
           )}
         </section>
       ) : null}
 
-      {selectedCase ? (
+      {shouldShowGuaranteeFlow && selectedCase ? (
+      <section className="rounded border border-slate-300 bg-white">
+        <div className="border-b border-slate-200 px-4 py-3">
+          <h2 className="text-lg font-black text-slate-950">{copy.selectTemplate}</h2>
+        </div>
+        <GuaranteeTemplateSelector
+          caseId={selectedCase.id}
+          initialTemplateId={selectedGuaranteeTemplate.id}
+          templates={guaranteeTemplateCards.map((card) => ({
+            id: card.template.id,
+            companyDisplayName: card.template.companyDisplayName,
+            companyLegalName: card.template.companyLegalName,
+            missingCount: card.missingCount,
+          }))}
+          labels={{
+            preview: copy.previewMode,
+            loading: locale === "zh" ? "正在加载预览" : locale === "ko" ? "미리보기를 불러오는 중" : "プレビューを読み込んでいます",
+            ready: copy.guaranteeReady,
+            missing: copy.guaranteeMissing,
+          }}
+        />
+      </section>
+      ) : null}
+
+      {shouldShowGuaranteeFlow && selectedCase ? (
       <section className={`rounded border bg-white p-4 ${selectedGuaranteeMissingCount > 0 ? "border-red-300 border-l-4 border-l-red-700" : "border-emerald-300 border-l-4 border-l-emerald-700"}`}>
         <h3 className={`flex items-center gap-2 text-base font-black ${selectedGuaranteeMissingCount > 0 ? "text-red-700" : "text-emerald-700"}`}>
           <span className="material-symbols-outlined text-[20px]">{selectedGuaranteeMissingCount > 0 ? "warning" : "check_circle"}</span>
@@ -977,11 +1127,9 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
               <Link
                 key={`primary-missing-${field.fieldKey}`}
                 href={
-                  selectedCase
-                    ? isOutputSpecificGuaranteeField(field.fieldKey)
-                      ? previewHrefForGuaranteeField({ caseId: selectedCase.id, templateId: selectedGuaranteeTemplate.id, fieldKey: field.fieldKey })
-                      : caseWorkbenchHrefForGuaranteeField({ caseId: selectedCase.id, templateId: selectedGuaranteeTemplate.id, fieldKey: field.fieldKey })
-                    : "#guarantee-case-selector"
+                  isOutputSpecificGuaranteeField(field.fieldKey)
+                    ? previewHrefForGuaranteeField({ caseId: selectedCase.id, templateId: selectedGuaranteeTemplate.id, fieldKey: field.fieldKey })
+                    : caseWorkbenchHrefForGuaranteeField({ caseId: selectedCase.id, templateId: selectedGuaranteeTemplate.id, fieldKey: field.fieldKey })
                 }
                 className="flex items-center gap-2 text-sm text-slate-800 hover:text-[#1960a3] hover:underline"
               >
@@ -1007,178 +1155,11 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
       </section>
       ) : null}
 
-      {selectedCase ? (
-      <section className="rounded border border-slate-300 bg-white p-4">
-        <div className="flex flex-col gap-2 border-b border-slate-200 pb-4 md:flex-row md:items-end md:justify-between">
-          <div>
-            <h2 className="text-lg font-black text-slate-950">{copy.selectTemplate}</h2>
-            <p className="mt-1 text-sm font-semibold text-slate-600">{copy.guaranteeTemplateSwitchDesc}</p>
-          </div>
-          <div className="rounded bg-slate-950 px-3 py-2 text-xs font-black text-white">
-            {selectedGuaranteeTemplate.companyDisplayName}
-          </div>
-        </div>
-        <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-5">
-          {guaranteeTemplateCards.map((card) => (
-            <Link
-              key={card.template.id}
-              href={`/output-center?caseId=${encodeURIComponent(selectedCase.id)}&guaranteeTemplate=${encodeURIComponent(card.template.id)}`}
-              aria-current={card.selected ? "page" : undefined}
-              className={`group flex min-h-36 flex-col justify-between rounded border p-3 transition ${
-                card.selected ? "border-[#1960a3] bg-blue-50 ring-1 ring-[#1960a3]" : "border-slate-200 bg-white hover:border-[#1960a3] hover:bg-slate-50"
-              }`}
-            >
-              <div>
-                <div className="flex items-start justify-between gap-2">
-                  <span className={`flex h-7 w-7 items-center justify-center rounded-full ${
-                    card.selected ? "bg-[#1960a3] text-white" : "bg-slate-100 text-slate-500 group-hover:bg-blue-100 group-hover:text-[#1960a3]"
-                  }`}>
-                    <span aria-hidden="true" className="material-symbols-outlined text-[16px]">
-                      {card.selected ? "check" : "article"}
-                    </span>
-                  </span>
-                  <span className={`shrink-0 rounded px-2 py-0.5 text-[10px] font-black ${
-                    card.missingCount > 0 ? "bg-rose-50 text-rose-700 ring-1 ring-rose-100" : "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100"
-                  }`}>
-                    {card.missingCount > 0 ? `${copy.guaranteeMissing}: ${card.missingCount}` : copy.guaranteeReady}
-                  </span>
-                </div>
-                <h3 className="mt-3 truncate text-base font-black text-slate-950">{card.template.companyDisplayName}</h3>
-                <p className="mt-1 line-clamp-1 text-xs font-semibold text-slate-600">{card.template.companyLegalName}</p>
-              </div>
-              <p className="mt-3 line-clamp-2 border-t border-slate-100 pt-3 text-xs font-semibold leading-5 text-slate-500">
-                {card.template.templateDisplayName}
-              </p>
-            </Link>
-          ))}
-        </div>
-      </section>
-      ) : null}
-
-      {selectedCase ? (
+      {shouldShowGuaranteeFlow && selectedCase ? (
       <section className="rounded border border-slate-300 bg-white p-4">
         <details>
           <summary className="cursor-pointer text-sm font-bold text-slate-900">{copy.guaranteeDetailToggle}</summary>
-        <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,360px)_1fr]">
-          <aside className="space-y-4">
-            <div id="guarantee-case-selector" className="scroll-mt-24 rounded-xl bg-indigo-50 p-4">
-              <p className="text-xs font-bold text-indigo-900">{copy.guaranteeCase}</p>
-              {cases.length > 0 ? (
-                <div className="mt-2 space-y-2">
-                  {cases.slice(0, 5).map((caseItem) => {
-                    const selected = caseItem.id === selectedCase?.id;
-                    return (
-                      <Link
-                        key={caseItem.id}
-                        href={`/output-center?caseId=${encodeURIComponent(caseItem.id)}&guaranteeTemplate=${encodeURIComponent(selectedGuaranteeTemplate.id)}`}
-                        className={
-                          "block rounded-lg border px-3 py-2 text-sm transition " +
-                          (selected ? "border-indigo-300 bg-white text-indigo-950 shadow-sm" : "border-transparent bg-indigo-100/60 text-slate-700 hover:bg-white")
-                        }
-                      >
-                        <span className="block truncate font-bold">{caseItem.caseTitle}</span>
-                        <span className="mt-0.5 block text-[11px] text-slate-500">{formatDate(caseItem.updatedAt, locale)}</span>
-                      </Link>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="mt-2 rounded-lg border border-dashed border-indigo-200 bg-white p-3 text-sm text-slate-600">
-                  <p>{copy.guaranteeNoCase}</p>
-                  <Link href="/import-center" className="mt-2 inline-flex font-bold text-indigo-700 hover:underline">
-                    {copy.guaranteeImportLink}
-                  </Link>
-                </div>
-              )}
-              {selectedCase ? (
-                <Link href={selectedCaseWorkbenchHref} className="mt-3 inline-flex text-xs font-bold text-indigo-700 hover:underline">
-                  {copy.guaranteeCaseLink}
-                </Link>
-              ) : null}
-            </div>
-
-            <div className="rounded-xl bg-slate-50 p-4">
-              <p className="text-xs font-bold text-slate-900">{copy.guaranteeTemplate}</p>
-              <div className="mt-2 grid gap-2">
-                {activeGuaranteeTemplates.map((template) => {
-                  const selected = template.id === selectedGuaranteeTemplate.id;
-                  return (
-                    <Link
-                      key={template.id}
-                      href={`/output-center?caseId=${encodeURIComponent(selectedCase?.id ?? "")}&guaranteeTemplate=${encodeURIComponent(template.id)}`}
-                      className={
-                        "rounded-lg border bg-white p-3 transition " +
-                        (selected ? "border-[#001e40] ring-2 ring-[#001e40]/10" : "border-slate-200 hover:border-slate-300")
-                      }
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="font-bold text-slate-950">{template.companyLegalName}</p>
-                        {selected ? <span className="material-symbols-outlined text-[18px] text-emerald-600">check_circle</span> : null}
-                      </div>
-                      <p className="mt-1 text-[11px] text-slate-500">
-                        {template.templateDisplayName}
-                      </p>
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        {template.id === "zenhoren_individual_v1" ? (
-                          <span className="rounded-full bg-slate-950 px-2 py-0.5 text-[10px] font-bold text-white">
-                            {locale === "zh" ? "最高频" : locale === "ko" ? "최다 사용" : "最頻出"}
-                          </span>
-                        ) : null}
-                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${templateQualityClass(template.qualityStatus)}`}>
-                          {templateQualityLabel(locale, template.qualityStatus)}
-                        </span>
-                        {!template.allowDirectDownload ? (
-                          <span className="text-[11px] font-semibold text-amber-700">
-                            {locale === "zh" ? "需预览校准后保存" : locale === "ko" ? "미리보기 보정 후 저장" : "プレビュー校正後に保存"}
-                          </span>
-                        ) : null}
-                      </div>
-                    </Link>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className={`rounded-xl border p-4 text-sm ${selectedGuaranteeTemplateNeedsCalibration ? "border-amber-200 bg-amber-50 text-amber-950" : "border-emerald-200 bg-emerald-50 text-emerald-950"}`}>
-                <p className="font-bold">{guaranteePreviewLabel}</p>
-                <p className="mt-1 text-xs leading-5">
-                  {selectedGuaranteeTemplateNeedsCalibration
-                    ? locale === "zh"
-                      ? "这张模板目前不能直接当成成品下载。请先进入可编辑预览，确认印字位置、文本长度和格子拆分后再保存。"
-                      : locale === "ko"
-                        ? "이 템플릿은 아직 바로 완성본 다운로드로 취급하지 않습니다. 편집 가능한 미리보기에서 위치, 긴/짧은 텍스트, 칸 분리를 확인한 뒤 저장하세요."
-                        : "このテンプレートはまだ直ダウンロード対象ではありません。編集可能プレビューで印字位置、長短テキスト、分割マスを確認してから保存します。"
-                    : copy.guaranteePreviewReady}
-                </p>
-                {!selectedCase ? (
-                  <div className="mt-3 rounded-lg border border-emerald-200 bg-white p-3 text-xs text-emerald-900">
-                    {copy.guaranteePreviewNeedsCase}
-                  </div>
-                ) : null}
-                {selectedCase ? (
-                  <Link
-                    href={selectedGuaranteePreviewHref}
-                    className={`mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-xs font-bold text-white ${selectedGuaranteeTemplateNeedsCalibration ? "bg-slate-950 hover:bg-slate-800" : "bg-emerald-700 hover:bg-emerald-800"}`}
-                  >
-                    <span className="material-symbols-outlined text-[16px]">preview</span>
-                    {guaranteePreviewLabel}
-                  </Link>
-                ) : (
-                  <button disabled className="mt-3 inline-flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-lg bg-slate-400 px-4 py-2 text-xs font-bold text-white">
-                    <span className="material-symbols-outlined text-[16px]">preview</span>
-                    {guaranteePreviewLabel}
-                  </button>
-                )}
-                {selectedCase ? (
-                  <Link href={selectedCaseDraftHref} className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-emerald-300 bg-white px-4 py-2 text-xs font-bold text-emerald-800 hover:bg-emerald-50">
-                    <span className="material-symbols-outlined text-[16px]">edit_note</span>
-                    {copy.guaranteeDraftEdit}
-                  </Link>
-                ) : null}
-              </div>
-          </aside>
-
-          <div className="space-y-4">
+        <div className="mt-4 min-w-0 space-y-4">
             {selectedGuaranteeDraftReadiness.fields.length > 0 ? (
               <section className="rounded-xl border border-emerald-200 bg-white">
                 <div className="border-b border-emerald-100 px-4 py-3">
@@ -1315,109 +1296,14 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
               ))}
             </div>
             </section>
-          </div>
         </div>
         </details>
       </section>
       ) : null}
 
-      <details id={legacySectionId} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-        <summary className="cursor-pointer text-sm font-bold text-slate-900">{copy.guaranteeBackstageToggle}</summary>
-        <div className="mt-4 space-y-5">
-          <div className="flex flex-col justify-between gap-2 md:flex-row md:items-end">
-            <div>
-              <h2 className="text-lg font-bold text-slate-950">{copy.guaranteeLegacyTitle}</h2>
-              <p className="mt-1 text-sm text-slate-600">{copy.guaranteeLegacyDesc}</p>
-            </div>
-            <Link href={`#${legacySectionId}`} className="text-xs font-bold text-slate-600">
-              {copy.viewAll}
-            </Link>
-          </div>
-
-      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-bold text-slate-900">{copy.templateHitTitle}</h2>
-            <p className="mt-0.5 text-xs text-slate-500">{copy.templateHitDesc}</p>
-          </div>
-          <p className="text-3xl font-black tabular-nums text-[#001e40]">{templateHitRate}%</p>
-        </div>
-        <div className="mt-2 flex justify-end">
-          <Link href={outputsHitRateExportHref} className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50">
-            {copy.exportHitRate}
-          </Link>
-        </div>
-        <div className="mt-3 grid gap-3 md:grid-cols-3">
-          <div className="rounded-lg bg-[#edf2fd] px-3 py-2">
-            <p className="text-[11px] text-slate-500">{copy.withTemplateVersion}</p>
-            <p className="text-xl font-black tabular-nums text-[#001e40]">{templateBoundCount}</p>
-          </div>
-          <div className="rounded-lg bg-slate-50 px-3 py-2">
-            <p className="text-[11px] text-slate-500">{copy.withoutTemplateVersion}</p>
-            <p className="text-xl font-black tabular-nums text-slate-700">{unboundCount}</p>
-          </div>
-          <div className="rounded-lg bg-slate-50 px-3 py-2">
-            <p className="text-[11px] text-slate-500">{copy.recentOutputs}</p>
-            <p className="text-xl font-black tabular-nums text-slate-700">{filteredOutputs.length}</p>
-          </div>
-        </div>
-        <div className="mt-3">
-          <p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-slate-500">{copy.topTemplateVersions}</p>
-          {topTemplateVersions.length === 0 ? (
-            <p className="text-xs text-slate-500">{copy.emptyFilteredOutputs}</p>
-          ) : (
-            <div className="space-y-2">
-              {topTemplateVersions.map((version) => (
-                <div key={`tpl-hit-${version.id}`} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="truncate text-xs font-semibold text-slate-800">{version.label}</p>
-                    <p className="text-xs font-bold tabular-nums text-[#001e40]">
-                      {version.count} / {filteredOutputs.length}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </section>
-
-      <section className="grid gap-5 xl:grid-cols-12">
-        {outputTypes.map((type) => {
-          const selected = type === selectedType;
-          return (
-            <article
-              key={type}
-              className={
-                "group relative overflow-hidden rounded-xl bg-white p-6 shadow-sm ring-1 transition xl:col-span-3 " +
-                (selected ? "ring-[#001e40]/20" : "ring-slate-200/30 hover:shadow-md")
-              }
-            >
-              <div className="absolute right-4 top-4 opacity-5">
-                <span className="material-symbols-outlined text-6xl">{iconByType[type]}</span>
-              </div>
-              <div className={`mb-6 flex h-12 w-12 items-center justify-center rounded-lg ${iconColorByType[type]}`}>
-                <span className="material-symbols-outlined">{iconByType[type]}</span>
-              </div>
-              <h2 className="text-xl font-bold tracking-tight text-slate-900">{getOutputDocLabel(locale, type)}</h2>
-              <p className="mt-1 min-h-12 text-xs leading-relaxed text-slate-500">{getOutputDocDescription(locale, type)}</p>
-              {selected ? (
-                <div className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#001e40] py-2 text-xs font-bold text-white">
-                  <span className="material-symbols-outlined text-[16px]">check_circle</span>
-                  {copy.selected}
-                </div>
-              ) : (
-                <Link href={`/output-center?type=${type}&format=${selectedFormat}&lang=${selectedLanguage}&quoteId=${type === "property_overview" ? "" : selectedQuote?.id ?? quotes[0]?.id ?? ""}&targetProperty=${selectedPropertyId}&targetParty=${selectedPartyId}&historyType=${historyType}&historyLang=${historyLang}&historyFormat=${historyFormat}&historyTemplate=${historyTemplate}`} className="mt-5 inline-flex w-full items-center justify-center rounded-lg bg-[#edf2fd] py-2 text-xs font-bold text-slate-700 transition hover:bg-[#e1eafc]">
-                  {copy.selectTemplate}
-                </Link>
-              )}
-            </article>
-          );
-        })}
-      </section>
-
-      <section className="grid gap-8 xl:grid-cols-12">
-        <div className="space-y-7 xl:col-span-5">
+      {shouldShowLegacyOutputFlow ? (
+      <section id={legacySectionId} className="grid gap-8 2xl:grid-cols-12">
+        <div className="space-y-7 2xl:col-span-4">
           <article className="rounded-xl bg-[#edf2fd] p-7">
             <h2 className="mb-6 text-xs font-black uppercase tracking-widest text-slate-700">{copy.generationSettings}</h2>
             <form id="output-generate-form" action={generateOutputDocumentAction} className="space-y-5">
@@ -1437,7 +1323,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                     >
                       {quotes.map((quote) => (
                         <option key={quote.id} value={quote.id}>
-                          {quote.quoteTitle} - {quote.client.name}
+                          {quoteOptionLabel(quote)}
                         </option>
                       ))}
                     </select>
@@ -1606,6 +1492,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
               </Link>
             </div>
             <form action="/output-center" method="get" className="mb-4 grid grid-cols-1 gap-2 md:grid-cols-6">
+              <input type="hidden" name="docGroup" value={selectedLegacyDocumentGroup} />
               <input type="hidden" name="type" value={selectedType} />
               <input type="hidden" name="format" value={selectedFormat} />
               <input type="hidden" name="lang" value={selectedLanguage} />
@@ -1660,7 +1547,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                 {copy.filterApply}
               </button>
               <Link
-                href={`/output-center?type=${selectedType}&format=${selectedFormat}&lang=${selectedLanguage}&quoteId=${isPropertyOverview ? "" : selectedQuote?.id ?? ""}&targetProperty=${selectedPropertyId}&targetParty=${selectedPartyId}`}
+                href={outputSelectionBaseHref}
                 className="inline-flex items-center justify-center rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] font-bold text-slate-600 hover:bg-slate-50"
               >
                 {copy.filterReset}
@@ -1727,19 +1614,19 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
           </article>
         </div>
 
-        <div className="xl:col-span-7">
-          <article className="flex min-h-[850px] flex-col rounded-xl bg-[#dce9ff] p-4">
+        <div className="2xl:col-span-8">
+          <article className="flex min-h-[70vh] flex-col rounded-xl bg-[#dce9ff] p-3 sm:p-4">
             <div className="flex flex-1 flex-col overflow-hidden rounded-lg bg-white shadow-inner">
               <div className="flex items-center justify-between border-b border-slate-100 px-6 py-3">
                 <div className="flex items-center gap-4">
                   <span className="text-xs font-bold uppercase tracking-widest text-slate-400">{copy.previewMode}</span>
                   <div className="h-4 w-px bg-slate-200" />
                   <div className="flex items-center gap-2">
-                    <Link href={`/output-center?type=${selectedType}&format=${selectedFormat}&lang=${selectedLanguage}&quoteId=${isPropertyOverview ? "" : selectedQuote?.id ?? ""}&targetProperty=${selectedPropertyId}&targetParty=${selectedPartyId}&historyType=${historyType}&historyLang=${historyLang}&historyFormat=${historyFormat}&historyTemplate=${historyTemplate}&zoom=75`} className="rounded p-1 text-slate-500 hover:bg-slate-100">
+                    <Link href={`${returnToCurrent}&zoom=75`} className="rounded p-1 text-slate-500 hover:bg-slate-100">
                       <span className="material-symbols-outlined text-[18px]">zoom_out</span>
                     </Link>
                     <span className="text-[11px] font-bold tabular-nums">{selectedZoom}%</span>
-                    <Link href={`/output-center?type=${selectedType}&format=${selectedFormat}&lang=${selectedLanguage}&quoteId=${isPropertyOverview ? "" : selectedQuote?.id ?? ""}&targetProperty=${selectedPropertyId}&targetParty=${selectedPartyId}&historyType=${historyType}&historyLang=${historyLang}&historyFormat=${historyFormat}&historyTemplate=${historyTemplate}&zoom=100`} className="rounded p-1 text-slate-500 hover:bg-slate-100">
+                    <Link href={`${returnToCurrent}&zoom=100`} className="rounded p-1 text-slate-500 hover:bg-slate-100">
                       <span className="material-symbols-outlined text-[18px]">zoom_in</span>
                     </Link>
                   </div>
@@ -1763,8 +1650,9 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                 </div>
               </div>
 
-              <div className="flex flex-1 justify-center overflow-y-auto bg-slate-100 p-10">
-                <div className="relative flex h-[842px] w-[595px] flex-col overflow-hidden bg-white p-10 shadow-2xl">
+              <div className="flex flex-1 overflow-auto bg-slate-100 p-4 sm:p-6 lg:p-10">
+                <div className="mx-auto min-w-[520px] shrink-0">
+                  <div className="relative flex h-[842px] w-[595px] flex-col overflow-hidden bg-white p-10 shadow-2xl">
                   <div className="absolute right-8 top-8 text-xl font-black uppercase tracking-tighter text-[#001e40]/20">BROKERDESK</div>
                   <div className="mb-10 border-b-4 border-[#001e40] pb-4">
                     <h3 className="text-4xl font-bold text-slate-900">{getOutputDocLabel(locale, selectedType)}</h3>
@@ -1825,14 +1713,14 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                       {copy.pageLabel} 1 / 4
                     </p>
                   </div>
+                  </div>
                 </div>
               </div>
             </div>
           </article>
         </div>
       </section>
-        </div>
-      </details>
+      ) : null}
     </div>
   );
 }

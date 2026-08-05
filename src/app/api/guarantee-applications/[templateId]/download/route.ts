@@ -1,4 +1,9 @@
 import { NextResponse } from "next/server";
+import { spawn } from "node:child_process";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { PDFDocument } from "pdf-lib";
 import { addAuditLog, addGeneratedOutput, getBrokerageCaseById, getGuaranteeApplicationDraft } from "@/lib/data";
 import {
   getFriendsGuaranteeTemplateLayoutSnapshot,
@@ -14,6 +19,69 @@ type GuaranteeTemplateDownloadRouteProps = {
     templateId: string;
   }>;
 };
+
+export const runtime = "nodejs";
+
+async function getPdfPageCount(pdfBytes: Uint8Array): Promise<number> {
+  const document = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
+  return document.getPageCount();
+}
+
+async function renderPdfPageAsPng(pdfBytes: Uint8Array, page: number, resolution: number): Promise<Buffer> {
+  const previewDirectory = await mkdtemp(join(tmpdir(), "broker-desk-preview-"));
+  const sourcePath = join(previewDirectory, "source.pdf");
+  const outputPrefix = join(previewDirectory, "page");
+
+  try {
+    await writeFile(sourcePath, pdfBytes);
+    await new Promise<void>((resolve, reject) => {
+      let timedOut = false;
+      const errors: Buffer[] = [];
+      const renderer = spawn(
+        process.env.BROKER_DESK_PDF_RENDERER ?? "pdftoppm",
+        [
+          "-f",
+          String(page),
+          "-l",
+          String(page),
+          "-r",
+          String(resolution),
+          "-png",
+          "-singlefile",
+          sourcePath,
+          outputPrefix,
+        ],
+        { stdio: ["ignore", "ignore", "pipe"] },
+      );
+      const timeout = setTimeout(() => {
+        timedOut = true;
+        renderer.kill("SIGKILL");
+      }, 12_000);
+
+      renderer.stderr.on("data", (chunk: Buffer) => errors.push(chunk));
+      renderer.on("error", (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
+      renderer.on("close", (code) => {
+        clearTimeout(timeout);
+        if (timedOut) {
+          reject(new Error("PDF preview renderer timed out"));
+          return;
+        }
+        if (code === 0) {
+          resolve();
+          return;
+        }
+        const detail = Buffer.concat(errors).toString("utf8").trim();
+        reject(new Error(detail || `PDF preview renderer exited with code ${code ?? "unknown"}`));
+      });
+    });
+    return readFile(`${outputPrefix}.png`);
+  } finally {
+    await rm(previewDirectory, { recursive: true, force: true });
+  }
+}
 
 function safePdfFileName(value: string): string {
   return (value.replace(/[^\p{L}\p{N}_-]+/gu, "_").slice(0, 80) || "guarantee_application") + ".pdf";
@@ -41,6 +109,7 @@ export async function GET(request: Request, { params }: GuaranteeTemplateDownloa
   const url = new URL(request.url);
   const caseId = String(url.searchParams.get("caseId") ?? "").trim();
   const mode = String(url.searchParams.get("mode") ?? "").trim();
+  const format = String(url.searchParams.get("format") ?? "").trim();
   if (!caseId) {
     return NextResponse.json({ error: "case_required" }, { status: 400 });
   }
@@ -98,6 +167,30 @@ export async function GET(request: Request, { params }: GuaranteeTemplateDownloa
       caseTitle: brokerageCase.caseTitle,
       templateId: template.id,
     });
+    if (mode === "preview" && format === "preview-info") {
+      return NextResponse.json(
+        { pageCount: await getPdfPageCount(bytes) },
+        { headers: { "cache-control": "no-store" } },
+      );
+    }
+
+    if (mode === "preview" && format === "png") {
+      const pageCount = await getPdfPageCount(bytes);
+      const requestedPage = Number.parseInt(url.searchParams.get("page") ?? "1", 10);
+      const page = Number.isFinite(requestedPage)
+        ? Math.min(Math.max(requestedPage, 1), pageCount)
+        : 1;
+      const requestedResolution = Number.parseInt(url.searchParams.get("resolution") ?? "144", 10);
+      const resolution = requestedResolution >= 200 ? 216 : 144;
+      const preview = await renderPdfPageAsPng(bytes, page, resolution);
+      return new NextResponse(Uint8Array.from(preview).buffer, {
+        status: 200,
+        headers: {
+          "content-type": "image/png",
+          "cache-control": "no-store",
+        },
+      });
+    }
     if (mode !== "preview") {
       const generatedAt = new Date();
       const layoutSnapshot = getFriendsGuaranteeTemplateLayoutSnapshot(template.id);

@@ -51,7 +51,7 @@ function isSort(value: string): value is ClientListSort {
 const texts = {
   ja: {
     noUser: "利用可能なユーザーがありません。",
-    title: "顧客管理",
+    title: "顧客",
     desc: "ステージ・用途・温度感で絞り込み、優先顧客を素早く特定します。",
     board: "ボード表示",
     create: "+ 新規顧客",

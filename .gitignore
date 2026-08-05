@@ -54,3 +54,4 @@ tmp/
 .git.backup-*/
 .broker-desk/*
 !.broker-desk/friends-guarantee-layouts.json
+.broker-desk/private-attachments/

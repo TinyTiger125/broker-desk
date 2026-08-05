@@ -25,7 +25,7 @@ export function MainNavLinks({ links, orientation = "row" }: MainNavLinksProps) 
   const iconByHref: Record<string, string> = {
     "/": "space_dashboard",
     "/clients": "person_search",
-    "/import-center": "create_new_folder",
+    "/import-center": "upload_file",
     "/organize-center": "fact_check",
     "/properties": "domain",
     "/parties": "group",
@@ -37,7 +37,6 @@ export function MainNavLinks({ links, orientation = "row" }: MainNavLinksProps) 
     "/settings/members": "manage_accounts",
     "/settings/case-workbench-fields": "rule",
     "/settings/output-templates": "edit_document",
-    "/settings/ai-experience": "rule_settings",
   };
 
   return (
@@ -46,7 +45,7 @@ export function MainNavLinks({ links, orientation = "row" }: MainNavLinksProps) 
         const active = isActive(pathname, link.href);
         const base = isRow
           ? "ui-nav-stable rounded-lg px-3 py-2 text-sm font-medium transition"
-          : "rounded px-3 py-3 text-sm font-bold transition";
+          : "app-nav-link rounded px-3 py-3 text-sm font-bold transition";
         const tone = active
           ? isRow
             ? "bg-white text-[#001e40] shadow-sm"
@@ -59,10 +58,10 @@ export function MainNavLinks({ links, orientation = "row" }: MainNavLinksProps) 
 
         return (
           <Link key={`${link.label}:${link.href}`} href={link.href} className={`${base} ${tone} ${isRow ? "justify-center" : "flex items-center gap-3"}`}>
-            <span aria-hidden="true" className={`material-symbols-outlined ${isRow ? "hidden" : "inline-block text-[20px]"}`}>
+            <span aria-hidden="true" className={`material-symbols-outlined app-nav-link-icon ${isRow ? "hidden" : "inline-block text-[20px]"}`}>
               {icon}
             </span>
-            <span>{link.label}</span>
+            <span className={isRow ? "" : "app-nav-link-label"}>{link.label}</span>
           </Link>
         );
       })}

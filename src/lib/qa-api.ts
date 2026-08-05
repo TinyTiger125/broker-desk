@@ -22,9 +22,8 @@ function isLoopbackHost(host: string | null) {
 }
 
 export function isQaApiRequestAllowed(request: Request) {
-  if (hasValidQaToken(request)) return true;
-
   if (process.env.NODE_ENV === "production") return false;
+  if (hasValidQaToken(request)) return true;
 
   const forwardedHost = request.headers.get("x-forwarded-host");
   if (forwardedHost && !isLoopbackHost(forwardedHost)) {

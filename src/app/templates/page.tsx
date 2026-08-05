@@ -40,7 +40,7 @@ const copyByLocale = {
       "保証会社の公式申込書を、底版・入力位置・品質状態ごとに管理します。通常作業では触らず、位置調整や版更新の時だけ開きます。",
     eyebrow: "補助業務",
     primaryFlow: "通常の流れ",
-    flow1: "作成・資料登録",
+    flow1: "情報入力",
     flow2: "案件ワークベンチで足りない項目だけ確認",
     flow3: "会社別申込書を確認して出す",
     openOutput: "申込書を出す",
@@ -85,7 +85,7 @@ const copyByLocale = {
     subtitle: "管理保证会社官方申请书的底版、填写位置和质量状态。日常作业不需要打开，只在位置调整或格式修订时使用。",
     eyebrow: "辅助业务",
     primaryFlow: "普通使用流程",
-    flow1: "建档入口",
+    flow1: "录入资料",
     flow2: "在案件工作台只确认缺失项",
     flow3: "确认公司别申请书并输出",
     openOutput: "输出申请书",
@@ -131,7 +131,7 @@ const copyByLocale = {
       "보증회사 공식 신청서의 원본 양식, 입력 위치, 품질 상태를 관리합니다. 일반 작업에서는 건드리지 않고 위치 조정이나 서식 수정 때만 엽니다.",
     eyebrow: "보조 업무",
     primaryFlow: "일반 작업 흐름",
-    flow1: "등록 입구",
+    flow1: "자료 입력",
     flow2: "안건 워크벤치에서 부족 항목만 확인",
     flow3: "회사별 신청서를 확인하고 출력",
     openOutput: "신청서 출력",
@@ -268,7 +268,7 @@ export default async function TemplatesPage({ searchParams }: TemplatesPageProps
         </div>
       </section>
 
-      <section className="grid gap-5 xl:grid-cols-[320px_minmax(0,1fr)]">
+      <section className="grid min-w-0 gap-5 2xl:grid-cols-[minmax(17rem,20rem)_minmax(0,1fr)]">
         <aside className="self-start rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="mb-4">
             <h2 className="text-sm font-black text-slate-950">{copy.activeTemplates}</h2>
@@ -305,7 +305,7 @@ export default async function TemplatesPage({ searchParams }: TemplatesPageProps
           </div>
         </aside>
 
-        <div className="space-y-4">
+        <div className="min-w-0 space-y-4">
           <article className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
             <div className="flex flex-col justify-between gap-3 border-b border-slate-200 bg-[#edf2fd] px-5 py-4 lg:flex-row lg:items-center">
               <div>

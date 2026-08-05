@@ -1,12 +1,12 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
-import { isClerkAuthConfigured, isClerkAuthEnabled } from "@/lib/auth-mode";
+import { isClerkAuthConfigured, isClerkAuthEnabled, isProductionRuntime } from "@/lib/auth-mode";
+import { assertProductionAuthReady } from "@/lib/production-readiness";
 
 const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
   "/sign-up(.*)",
   "/api/health/data(.*)",
-  "/api/qa(.*)",
   "/api/locale(.*)",
   "/api/webhooks/clerk(.*)",
 ]);
@@ -18,6 +18,13 @@ const clerkProxy = clerkMiddleware(async (auth, req) => {
 });
 
 export default function proxy(req: Parameters<typeof clerkProxy>[0], event: Parameters<typeof clerkProxy>[1]) {
+  if (isProductionRuntime()) {
+    try {
+      assertProductionAuthReady();
+    } catch {
+      return new NextResponse("Service unavailable", { status: 503 });
+    }
+  }
   if (!isClerkAuthEnabled()) return NextResponse.next();
   if (!isClerkAuthConfigured()) {
     return new NextResponse("Clerk auth is not configured.", { status: 503 });

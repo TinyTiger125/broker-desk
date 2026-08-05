@@ -47,6 +47,7 @@ const {
 } = loadTsModule("src/lib/tenant-permissions.ts");
 const { selectActiveTenantMembership } = loadTsModule("src/lib/tenant-session.ts");
 const { requireTenantSession } = loadTsModule("src/lib/tenant-session.ts");
+const { isDevelopmentPlatformOwnerTenantFallbackEnabled } = loadTsModule("src/lib/platform-owner.ts");
 const {
   ensureUserForExternalAuth,
   getTenantById,
@@ -110,12 +111,15 @@ assert(fallbackSession.membership.role === "platform_owner", "local platform own
 process.env.NODE_ENV = "production";
 process.env.BROKER_DESK_ENABLE_DEMO_AUTH = "true";
 process.env.BROKER_DESK_ENABLE_PLATFORM_OWNER_TENANT_FALLBACK = "true";
-const nextStartFallbackSession = await requireTenantSession({
-  preferredUserId: externalPlatformOwner.id,
-  permission: "output.preview",
-});
-assert(nextStartFallbackSession.tenant.id === "tenant_cherry", "explicit local fallback should work under next start production runtime");
-assert(nextStartFallbackSession.user.id === "user_demo", "explicit local fallback should keep seeded demo data visible under next start");
+assert(
+  !isDevelopmentPlatformOwnerTenantFallbackEnabled(),
+  "production runtime must not enable local platform owner tenant fallback, even when the environment variable is set",
+);
+const tenantSessionSource = fs.readFileSync("src/lib/tenant-session.ts", "utf8");
+assert(
+  tenantSessionSource.includes("if (isProductionRuntime()) return null;"),
+  "tenant session fallback must remain explicitly unavailable in production",
+);
 
 const appNavSource = fs.readFileSync("src/components/app-nav.tsx", "utf8");
 assert(appNavSource.includes("getNavigationDataUser"), "AppNav should resolve a navigation data user");

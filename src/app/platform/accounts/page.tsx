@@ -168,8 +168,8 @@ export default async function PlatformAccountsPage({ searchParams }: PlatformAcc
         </form>
       </section>
 
-      <section className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-        <div className="grid grid-cols-[1.5fr_0.8fr_1fr_1fr_1.5fr] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-black uppercase tracking-wider text-slate-500">
+      <section className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+        <div className="grid min-w-[980px] grid-cols-[1.5fr_0.8fr_1fr_1fr_1.5fr] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-black uppercase tracking-wider text-slate-500">
           <span>{ui.accounts}</span>
           <span>{ui.accountType}</span>
           <span>{ui.status}</span>
@@ -178,7 +178,7 @@ export default async function PlatformAccountsPage({ searchParams }: PlatformAcc
         </div>
         <div className="divide-y divide-slate-100">
           {accounts.map((account) => (
-            <div key={account.id} className="grid grid-cols-[1.5fr_0.8fr_1fr_1fr_1.5fr] items-center gap-3 px-4 py-4">
+            <div key={account.id} className="grid min-w-[980px] grid-cols-[1.5fr_0.8fr_1fr_1fr_1.5fr] items-center gap-3 px-4 py-4">
               <div className="min-w-0">
                 <p className="truncate text-sm font-bold text-slate-900">{account.name}</p>
                 <p className="truncate text-xs text-slate-500">{account.slug} / {account.id}</p>

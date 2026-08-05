@@ -326,8 +326,8 @@ export default async function ContractsPage({ searchParams }: ContractsPageProps
         </form>
       </section>
 
-      <section className="grid gap-5 xl:grid-cols-12">
-        <article className="xl:col-span-8 rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200/30">
+      <section className="grid gap-5 2xl:grid-cols-12">
+        <article className="rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200/30 2xl:col-span-8">
           <div className="mb-6 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="material-symbols-outlined text-[#001e40]">schedule</span>
@@ -367,7 +367,7 @@ export default async function ContractsPage({ searchParams }: ContractsPageProps
           </div>
         </article>
 
-        <article className="flex flex-col rounded-xl bg-[#592300] p-6 text-white shadow-sm xl:col-span-4">
+        <article className="flex flex-col rounded-xl bg-[#592300] p-6 text-white shadow-sm 2xl:col-span-4">
           <div className="mb-4 flex items-center gap-2">
             <span className="material-symbols-outlined text-[#ffdbca]">warning</span>
             <h2 className="text-lg font-bold">{copy.auditCompliance}</h2>
@@ -533,11 +533,6 @@ export default async function ContractsPage({ searchParams }: ContractsPageProps
           <Link href="/templates?template=lease_agreement_v4" className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold text-slate-800 hover:bg-white">
             <span className="material-symbols-outlined text-[18px]">description</span>
             {copy.bulkTemplates}
-          </Link>
-          <span className="mx-1 my-1 h-6 w-px bg-slate-200" />
-          <Link href="/output-center?type=funding_plan" className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold text-slate-800 hover:bg-white">
-            <span className="material-symbols-outlined text-[18px]">account_balance</span>
-            {copy.financialReview}
           </Link>
         </div>
       </footer>

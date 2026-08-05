@@ -1612,11 +1612,6 @@ function ensureRichDemoData() {
     { id: "out_demo_shinjuku_insure_pdf", tenantId: DEFAULT_TENANT_ID, actorId: "user_demo", userId: "user_demo", outputType: "guarantee_application", outputFormat: "pdf", language: "ja", title: "インシュア申込書 - 新宿御苑前オフィス", documentNumber: "GUA-20260621-004", propertyId: "prop_shinjuku_office", partyId: "client_lu_corporate", caseId: "case_demo_shinjuku_office", templateId: "insure_individual_v1", draftValueSnapshot: draftAllValues, generatedAt: dateAgo(1) },
     { id: "out_demo_setagaya_friends_pdf", tenantId: DEFAULT_TENANT_ID, actorId: "user_demo", userId: "user_demo", outputType: "guarantee_application", outputFormat: "pdf", language: "ja", title: "フレンズ保証申込書 - 世田谷ガーデンテラス 302", documentNumber: "GUA-20260701-002", propertyId: "prop_setagaya_garden", partyId: "client_nakamura_family", caseId: "case_demo_setagaya_family", templateId: "friends_guarantee_individual_v1", draftValueSnapshot: draftAllValues, generatedAt: dateAgo(0, 8) },
     { id: "out_demo_hiroo_nihon_pdf", tenantId: DEFAULT_TENANT_ID, actorId: "user_demo", userId: "user_demo", outputType: "guarantee_application", outputFormat: "pdf", language: "ja", title: "日本セーフティー申込書 - 広尾レジデンス 602", documentNumber: "GUA-20260701-003", propertyId: "prop_hiroo_residence", partyId: "client_huang_investor", caseId: "case_demo_hiroo_huang_rent", templateId: "nihon_safety_individual_v1", draftValueSnapshot: draftAllValues, generatedAt: dateAgo(1) },
-    { id: "out_demo_sato_proposal", tenantId: DEFAULT_TENANT_ID, actorId: "user_demo", userId: "user_demo", sourceQuoteId: "quote_sato_toyosu_a", quoteId: "quote_sato_toyosu_a", propertyId: "prop_toyosu_bay", partyId: "client_sato_kenichi", outputType: "proposal", outputFormat: "pdf", language: "zh", title: "购入提案书 - 佐藤様 豊洲ベイサイド", documentNumber: "PROP-20260621-002", templateVersionId: "tplver_user_demo_001", generatedAt: dateAgo(1, 2) },
-    { id: "out_demo_sato_estimate", tenantId: DEFAULT_TENANT_ID, actorId: "user_demo", userId: "user_demo", sourceQuoteId: "quote_sato_toyosu_a", quoteId: "quote_sato_toyosu_a", propertyId: "prop_toyosu_bay", partyId: "client_sato_kenichi", outputType: "estimate_sheet", outputFormat: "pdf", language: "ja", title: "費用明細 - 佐藤様 豊洲ベイサイド", documentNumber: "EST-20260621-002", templateVersionId: "tplver_user_demo_001", generatedAt: dateAgo(1, 1) },
-    { id: "out_demo_chen_funding", tenantId: DEFAULT_TENANT_ID, actorId: "user_demo", userId: "user_demo", sourceQuoteId: "quote_chen_nakameguro_a", quoteId: "quote_chen_nakameguro_a", propertyId: "prop_nakameguro_duplex", partyId: "client_chen_liang", outputType: "funding_plan", outputFormat: "pdf", language: "zh", title: "资金计划 - 陳様 中目黒デュープレックス", documentNumber: "FUND-20260620-003", templateVersionId: "tplver_user_demo_001", generatedAt: dateAgo(2) },
-    { id: "out_demo_roppongi_overview", tenantId: DEFAULT_TENANT_ID, actorId: "user_demo", userId: "user_demo", propertyId: "prop_roppongi_hills_west", outputType: "property_overview", outputFormat: "pdf", language: "ja", title: "物件概要 - 六本木ヒルズウェスト", documentNumber: "PROPVIEW-20260619-001", templateVersionId: "tplver_user_demo_001", generatedAt: dateAgo(3) },
-    { id: "out_demo_yamada_assumption", tenantId: DEFAULT_TENANT_ID, actorId: "user_demo", userId: "user_demo", sourceQuoteId: "quote_yamada_b", quoteId: "quote_yamada_b", propertyId: "prop_minato_tower", partyId: "client_yamada", outputType: "assumption_memo", outputFormat: "docx", language: "ja", title: "前提条件メモ - 山田様 港区グランドタワー", documentNumber: "MEMO-20260618-001", templateVersionId: "tplver_user_demo_001", generatedAt: dateAgo(4) },
   ] satisfies GeneratedOutput[];
 
   const demoAuditLogs = [
@@ -2771,6 +2766,18 @@ export async function listAttachments(input: {
     .map((item) => ({ ...item }));
 }
 
+export async function getAttachmentById(input: {
+  tenantId?: string;
+  userId: string;
+  id: string;
+}): Promise<Attachment | undefined> {
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const item = db.attachments.find(
+    (attachment) => attachment.id === input.id && attachment.userId === input.userId && attachment.tenantId === scopeTenantId,
+  );
+  return item ? { ...item } : undefined;
+}
+
 export async function addAttachment(input: {
   tenantId?: string;
   userId: string;
@@ -3202,18 +3209,60 @@ export async function addProperty(input: {
   return property;
 }
 
-export async function listQuotations(limit?: number, tenantId?: string) {
+export async function getPropertyById(propertyId: string, tenantId?: string) {
+  const scopeTenantId = resolveTenantId(tenantId);
+  return db.properties.find((item) => item.id === propertyId && item.tenantId === scopeTenantId) ?? null;
+}
+
+export async function updateProperty(
+  propertyId: string,
+  input: {
+    tenantId?: string;
+    name: string;
+    area?: string;
+    address?: string;
+    listingPrice: number;
+    sizeSqm?: number;
+    managementFee?: number;
+    repairFee?: number;
+    notes?: string;
+  }
+) {
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const property = db.properties.find((entry) => entry.id === propertyId && entry.tenantId === scopeTenantId);
+  if (!property) return null;
+
+  property.name = input.name;
+  property.area = input.area;
+  property.address = input.address;
+  property.listingPrice = input.listingPrice;
+  property.sizeSqm = input.sizeSqm;
+  property.managementFee = input.managementFee;
+  property.repairFee = input.repairFee;
+  property.notes = input.notes;
+
+  return property;
+}
+
+export async function listQuotations(limit?: number, tenantId?: string): Promise<DashboardQuoteItem[]> {
   const scopeTenantId = resolveTenantId(tenantId);
   const sorted = db.quotations
     .filter((item) => item.tenantId === scopeTenantId)
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   const sliced = typeof limit === "number" ? sorted.slice(0, limit) : sorted;
 
-  return sliced.map((quote) => ({
-    ...quote,
-    client: db.clients.find((item) => item.id === quote.clientId && item.tenantId === scopeTenantId)!,
-    property: quote.propertyId ? db.properties.find((item) => item.id === quote.propertyId && item.tenantId === scopeTenantId) : undefined,
-  }));
+  const items: DashboardQuoteItem[] = [];
+  for (const quote of sliced) {
+    const client = db.clients.find((item) => item.id === quote.clientId && item.tenantId === scopeTenantId);
+    if (!client) continue;
+    items.push({
+      ...quote,
+      client,
+      property: quote.propertyId ? db.properties.find((item) => item.id === quote.propertyId && item.tenantId === scopeTenantId) : undefined,
+    });
+  }
+
+  return items;
 }
 
 export async function getQuotationById(quoteId: string, tenantId?: string) {

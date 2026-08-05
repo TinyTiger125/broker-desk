@@ -354,7 +354,14 @@ export async function listHubGeneratedOutputs(
   const partyMap = new Map(parties.map((party) => [party.id, party.name]));
   const versionLabelMap = new Map(templateVersions.map((v) => [v.id, v.versionLabel]));
   const generated = (await listGeneratedOutputs({ userId: resolved.userId, tenantId: resolved.tenantId, limit: 200 }))
-    .map((item) => localizeDemoGeneratedOutput(locale, item));
+    .map((item) => localizeDemoGeneratedOutput(locale, item))
+    .filter((item) => ![
+      "property_overview",
+      "proposal",
+      "estimate_sheet",
+      "funding_plan",
+      "assumption_memo",
+    ].includes(item.outputType));
 
   const contractPrefix = tr(locale, { ja: "売買", zh: "买卖", ko: "매매" });
 
@@ -393,27 +400,7 @@ export async function listHubGeneratedOutputs(
       .slice(0, 30);
   }
 
-  const fallback: HubGeneratedOutputItem[] = [];
-  const types: OutputDocType[] = ["proposal", "estimate_sheet", "funding_plan", "assumption_memo"];
-  quotes.slice(0, 12).forEach((quote) => {
-    types.forEach((type) => {
-      fallback.push({
-        id: `output_${type}_${quote.id}`,
-        actorId: "user_demo",
-        outputType: type,
-        outputFormat: "pdf",
-        language: locale,
-        title: `${getOutputDocLabel(locale, type)} - ${quote.client?.name ?? "N/A"}`,
-        documentNumber: `DRAFT-${quote.id}-${type}`,
-        relatedProperty: quote.property?.name,
-        relatedParty: quote.client?.name,
-        relatedContractHint: `${contractPrefix}-${quote.id.toUpperCase()}`,
-        sourceQuoteId: quote.id,
-        generatedAt: quote.updatedAt ?? quote.createdAt,
-      });
-    });
-  });
-  return fallback.slice(0, 30);
+  return [];
 }
 
 function getAttachmentTargetLabel(locale: Locale): Record<AttachmentTargetType, string> {
@@ -530,9 +517,7 @@ export async function searchHubItems(
       entity: "output",
       title: item.title,
       subtitle: [item.relatedProperty, item.relatedParty].filter(Boolean).join(" / "),
-      href: item.sourceQuoteId
-        ? `/output-center?quoteId=${item.sourceQuoteId}&type=${item.outputType}`
-        : `/output-center?type=${item.outputType}&targetProperty=${item.propertyId ?? ""}`,
+      href: `/api/outputs/${encodeURIComponent(item.id)}/download`,
     }));
 
   return [...propertyItems, ...partyItems, ...contractItems, ...requestItems, ...outputItems];

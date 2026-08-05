@@ -34,7 +34,6 @@ import {
   addCorrectionEvents,
   addAuditLog,
   addClient,
-  addGeneratedOutput,
   addProperty,
   addImportJob,
   addTask,
@@ -52,6 +51,7 @@ import {
   getClientDetail,
   getGuaranteeApplicationDraft,
   getOutputTemplateSettings,
+  getPropertyById,
   getQuotationById,
   listQuoteFormData,
   listClients,
@@ -59,7 +59,6 @@ import {
   listExtractionReviewItems,
   listImportJobs,
   listTenantMembers,
-  listOutputTemplateVersions,
   mergeBrokerageCaseExtractionReview,
   rollbackBrokerageCaseMerge,
   rescheduleTask,
@@ -77,6 +76,7 @@ import {
   inviteTenantMember,
   updateCaseWorkbenchFieldRules,
   updateOutputTemplateSettings,
+  updateProperty,
   updateTaskStatus,
   updateClient,
   updateBrokerageCaseConfirmedData,
@@ -90,8 +90,9 @@ import {
 import {
   getAttachmentStorageMode,
   isValidStoragePath,
-  persistAttachmentToLocalPublic,
+  persistAttachmentToLocalPrivate,
 } from "@/lib/attachment-storage";
+import { assertProductionAttachmentStorageReady, isProductionRuntime } from "@/lib/production-readiness";
 import { type ComplianceAlertType } from "@/lib/compliance-alerts";
 import {
   buildMappingFromLists,
@@ -172,7 +173,7 @@ import {
 import { listHubContracts } from "@/lib/hub";
 import { draftAiExperiencesFromRecentCorrections } from "@/lib/ai-experience-job";
 import { getLocale, type Locale } from "@/lib/locale";
-import { createDocumentNumber, getDefaultOutputTemplateSettings, getOutputDocLabel, isOutputDocType } from "@/lib/output-doc";
+import { getDefaultOutputTemplateSettings } from "@/lib/output-doc";
 import { isTenantRole, type TenantRole } from "@/lib/tenant-permissions";
 import {
   buildPartyProfileNotes,
@@ -1418,19 +1419,23 @@ export async function registerAttachmentAction(formData: FormData) {
     fileType = upload.type || fileType || undefined;
     size = upload.size;
 
+    assertProductionAttachmentStorageReady();
     const mode = getAttachmentStorageMode();
-    if (mode === "local_public") {
-      const persisted = await persistAttachmentToLocalPublic(upload);
+    if (mode === "local_private") {
+      const persisted = await persistAttachmentToLocalPrivate(upload, tenantId);
       fileName = persisted.fileName;
       fileType = persisted.fileType || fileType;
       size = persisted.fileSizeBytes;
       storagePath = persisted.storagePath;
     } else {
-      throw new Error("現在の保存モードでは直接アップロードに対応していません。外部保存先URLを指定してください。");
+      throw new Error("この環境では直接アップロードを利用できません。保存先の設定を確認してください。");
     }
   } else if (externalStoragePathInput) {
+    if (isProductionRuntime()) {
+      throw new Error("本番環境では外部公開URLを資料の保存先として利用できません。");
+    }
     if (!isValidStoragePath(externalStoragePathInput)) {
-      throw new Error("外部保存先URLは http(s) または / から始まるパスで入力してください。");
+      throw new Error("保存先URLは http(s) で指定してください。");
     }
     storagePath = externalStoragePathInput;
   }
@@ -1522,6 +1527,85 @@ export async function createPropertyQuickAction(formData: FormData) {
       ? `/organize-center?type=property&focus=${encodeURIComponent(property.id)}`
       : "/properties";
   redirect(withFlash(destination, "property_created"));
+}
+
+export async function updatePropertyProfileAction(formData: FormData) {
+  const session = await requireTenantSession({ permission: "record.update" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
+  const locale = await getLocale();
+  const propertyId = String(formData.get("propertyId") ?? "").trim();
+  if (!propertyId) {
+    throw new Error(
+      tr(locale, {
+        ja: "物件IDは必須です。",
+        zh: "物件ID是必填项。",
+        ko: "매물 ID는 필수입니다.",
+      })
+    );
+  }
+
+  const existing = await getPropertyById(propertyId, tenantId);
+  if (!existing) {
+    throw new Error(
+      tr(locale, {
+        ja: "物件が見つかりません。",
+        zh: "未找到物件。",
+        ko: "매물을 찾을 수 없습니다.",
+      })
+    );
+  }
+
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name) {
+    throw new Error(
+      tr(locale, {
+        ja: "物件名は必須です。",
+        zh: "物件名是必填项。",
+        ko: "매물명은 필수입니다.",
+      })
+    );
+  }
+
+  const area = String(formData.get("area") ?? "").trim() || undefined;
+  const address = String(formData.get("address") ?? "").trim() || undefined;
+  const listingPrice = Math.max(0, parseNumber(formData.get("listingPrice"), 0));
+  const sizeSqm = parseNumber(formData.get("sizeSqm"), 0) || undefined;
+  const managementFee = parseNumber(formData.get("managementFee"), 0) || undefined;
+  const repairFee = parseNumber(formData.get("repairFee"), 0) || undefined;
+  const notes = String(formData.get("notes") ?? "").trim() || undefined;
+
+  await updateProperty(propertyId, {
+    tenantId,
+    name,
+    area,
+    address,
+    listingPrice,
+    sizeSqm,
+    managementFee,
+    repairFee,
+    notes,
+  });
+
+  await addAuditLog({
+    tenantId,
+    userId: user.id,
+    action: "property_updated",
+    targetType: "property",
+    targetId: propertyId,
+    message: tr(locale, {
+      ja: `物件を更新しました: ${name}`,
+      zh: `已更新物件：${name}`,
+      ko: `매물을 업데이트했습니다: ${name}`,
+    }),
+  });
+
+  revalidatePath(`/properties/${propertyId}/edit`);
+  revalidatePath("/properties");
+  revalidatePath("/organize-center");
+  revalidatePath("/output-center");
+  revalidatePath("/");
+  redirect(withFlash(`/properties/${propertyId}/edit`, "property_updated"));
 }
 
 function parsePartyProfileForm(formData: FormData, locale: Locale, options?: { fallbackName?: string }) {
@@ -1770,6 +1854,14 @@ export async function createServiceRequestQuickAction(formData: FormData) {
 }
 
 export async function generateOutputDocumentAction(formData: FormData) {
+  await requireTenantSession({ permission: "output.generate_final" });
+  void formData;
+  throw new Error("この出力形式は廃止されました。保証会社申込書を選択してください。");
+  /*
+   * Legacy proposal/property/estimate/funding generation was retired on 2026-07-26.
+   * Keep the old implementation out of the compiled path until the historical output
+   * schema is migrated and its compatibility types can be removed safely.
+   *
   const session = await requireTenantSession({ permission: "output.generate_final" });
   const user = session.user;
   const tenantId = session.tenant.id;
@@ -1976,6 +2068,7 @@ export async function generateOutputDocumentAction(formData: FormData) {
   revalidatePath("/output-center");
   const withSuccessFlash = withFlash(returnTo, "output_generated");
   redirect(appendQuery(withSuccessFlash, "generatedOutputId", generated.id));
+  */
 }
 
 export async function createQuotation(formData: FormData) {
@@ -2424,29 +2517,17 @@ export async function updateOutputTemplateSettingsAction(formData: FormData) {
     postalAddress: shouldResetToStandard ? standard.postalAddress : text("postalAddress", current.postalAddress),
     phone: shouldResetToStandard ? standard.phone : text("phone", current.phone),
     email: shouldResetToStandard ? standard.email : text("email", current.email),
-    proposalTitle: shouldResetToStandard ? standard.proposalTitle : text("proposalTitle", current.proposalTitle),
-    estimateSheetTitle: shouldResetToStandard
-      ? standard.estimateSheetTitle
-      : text("estimateSheetTitle", current.estimateSheetTitle),
-    fundingPlanTitle: shouldResetToStandard ? standard.fundingPlanTitle : text("fundingPlanTitle", current.fundingPlanTitle),
-    assumptionMemoTitle: shouldResetToStandard
-      ? standard.assumptionMemoTitle
-      : text("assumptionMemoTitle", current.assumptionMemoTitle),
-    documentClassification: shouldResetToStandard
-      ? standard.documentClassification
-      : text("documentClassification", current.documentClassification),
-    disclaimerLine1: shouldResetToStandard ? standard.disclaimerLine1 : text("disclaimerLine1", current.disclaimerLine1),
-    disclaimerLine2: shouldResetToStandard ? standard.disclaimerLine2 : text("disclaimerLine2", current.disclaimerLine2),
-    disclaimerLine3: shouldResetToStandard ? standard.disclaimerLine3 : text("disclaimerLine3", current.disclaimerLine3),
-    showApprovalSection: shouldResetToStandard
-      ? standard.showApprovalSection
-      : parseCheckbox(formData.get("showApprovalSection")),
-    showLegalStatusDigest: shouldResetToStandard
-      ? standard.showLegalStatusDigest
-      : parseCheckbox(formData.get("showLegalStatusDigest")),
-    showOutstandingBalanceTable: shouldResetToStandard
-      ? standard.showOutstandingBalanceTable
-      : parseCheckbox(formData.get("showOutstandingBalanceTable")),
+    proposalTitle: current.proposalTitle,
+    estimateSheetTitle: current.estimateSheetTitle,
+    fundingPlanTitle: current.fundingPlanTitle,
+    assumptionMemoTitle: current.assumptionMemoTitle,
+    documentClassification: current.documentClassification,
+    disclaimerLine1: current.disclaimerLine1,
+    disclaimerLine2: current.disclaimerLine2,
+    disclaimerLine3: current.disclaimerLine3,
+    showApprovalSection: current.showApprovalSection,
+    showLegalStatusDigest: current.showLegalStatusDigest,
+    showOutstandingBalanceTable: current.showOutstandingBalanceTable,
   }, tenantId);
 
   await createOutputTemplateVersion({
@@ -2704,6 +2785,11 @@ function safeHashAnchor(value: FormDataEntryValue | null): string {
 function safeQueryToken(value: FormDataEntryValue | null): string {
   const token = String(value ?? "").trim();
   return /^[a-zA-Z0-9_-]+$/.test(token) ? token : "";
+}
+
+function safeWorkbenchFieldToken(value: FormDataEntryValue | null): string {
+  const token = String(value ?? "").trim();
+  return isCaseWorkbenchFieldKey(token) || isKnownCaseFieldKey(token) ? token : "";
 }
 
 const GUARANTEE_APPLICATION_PREVIEW_CASE_FIELD_KEYS = [
@@ -3054,9 +3140,11 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
   const returnAnchor = safeHashAnchor(formData.get("returnAnchor"));
   const guaranteeTemplate = safeQueryToken(formData.get("guaranteeTemplate"));
   const returnNode = safeQueryToken(formData.get("returnNode"));
+  const returnField = safeWorkbenchFieldToken(formData.get("returnField"));
   const redirectParams = new URLSearchParams();
   if (guaranteeTemplate) redirectParams.set("guaranteeTemplate", guaranteeTemplate);
   if (returnNode) redirectParams.set("node", returnNode);
+  if (returnField) redirectParams.set("field", returnField);
   redirectParams.set("flash", "case_workbench_saved");
   if (progressGain > 0) {
     redirectParams.set("progressFrom", String(progressBefore.percent));
@@ -3591,7 +3679,7 @@ export async function uploadAndParseExcelAction(formData: FormData) {
   const targetCaseQuery = targetCaseId ? `&targetCaseId=${encodeURIComponent(targetCaseId)}` : "";
   const redirectExcelUploadError = (flash: string): never => {
     if (targetCaseId && uploadContext === "case") {
-      redirect(`/cases/${encodeURIComponent(targetCaseId)}?flash=${encodeURIComponent(flash)}#case-source-intake`);
+      redirect(`/cases/${encodeURIComponent(targetCaseId)}?flash=${encodeURIComponent(flash)}#case-review-desk`);
     }
     redirect(`/import-center?flash=${encodeURIComponent(flash)}${targetCaseQuery}`);
   };
@@ -3813,6 +3901,10 @@ async function createIdentityExtractionImportJob(input: {
 }
 
 export async function uploadAndParseIdentityDocumentAction(formData: FormData) {
+  if (isProductionRuntime()) {
+    throw new Error("Identity document extraction is unavailable until the production document reader is configured.");
+  }
+
   const session = await requireTenantSession({ permission: "source.upload" });
   const user = session.user;
   const tenantId = session.tenant.id;
@@ -3826,7 +3918,7 @@ export async function uploadAndParseIdentityDocumentAction(formData: FormData) {
   const targetCaseQuery = targetCaseId ? `&targetCaseId=${encodeURIComponent(targetCaseId)}` : "";
   const redirectIdentityUploadError = (flash: string): never => {
     if (targetCaseId && uploadContext === "case") {
-      redirect(`/cases/${encodeURIComponent(targetCaseId)}?flash=${encodeURIComponent(flash)}#case-source-intake`);
+      redirect(`/cases/${encodeURIComponent(targetCaseId)}?flash=${encodeURIComponent(flash)}#case-review-desk`);
     }
     redirect(`/import-center?flash=${encodeURIComponent(flash)}${targetCaseQuery}`);
   };

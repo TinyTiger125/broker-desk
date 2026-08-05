@@ -1,6 +1,10 @@
 import type { Locale } from "@/lib/locale";
 import { DEFAULT_TENANT_ID } from "@/lib/tenant-constants";
 
+/**
+ * Legacy output identifiers retained only for reading historical records.
+ * New creation is disabled until an audited official form is implemented.
+ */
 export type OutputDocType = "property_overview" | "proposal" | "estimate_sheet" | "funding_plan" | "assumption_memo";
 
 export const outputDocLabel: Record<OutputDocType, string> = {

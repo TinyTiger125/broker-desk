@@ -23,6 +23,11 @@ import {
   type OutputTemplateSettingsInput,
 } from "@/lib/output-doc";
 import { DEFAULT_TENANT_ID } from "@/lib/tenant-constants";
+import {
+  assertProductionDataStoreReady,
+  isProductionRuntime,
+  ProductionReadinessError,
+} from "@/lib/production-readiness";
 import type {
   Attachment,
   AttachmentTargetType,
@@ -70,6 +75,12 @@ import type { TenantRole } from "@/lib/tenant-permissions";
 let pool: Pool | null = null;
 let schemaEnsured = false;
 
+const REQUIRED_PRODUCTION_MIGRATIONS = [
+  "20260727_000_baseline_schema.sql",
+  "20260727_001_tenant_rls.sql",
+  "20260729_002_force_tenant_rls.sql",
+] as const;
+
 const OPEN_STAGES: ClientStage[] = ["lead", "contacted", "quoted", "viewing", "negotiating"];
 const STAGE_JA_LABEL: Record<ClientStage, string> = {
   lead: "新規受付",
@@ -104,7 +115,14 @@ function toDate(value: unknown): Date | undefined {
 }
 
 function resolveTenantId(tenantId?: string): string {
-  return tenantId?.trim() || DEFAULT_TENANT_ID;
+  const resolvedTenantId = tenantId?.trim();
+  if (resolvedTenantId) return resolvedTenantId;
+
+  if (isProductionRuntime()) {
+    throw new ProductionReadinessError("production_tenant_scope_required");
+  }
+
+  return DEFAULT_TENANT_ID;
 }
 
 export function isTenantAccessibleStatus(status: TenantStatus): boolean {
@@ -545,9 +563,31 @@ function mapCaseWorkbenchFieldRule(row: Record<string, unknown>): CaseWorkbenchF
   };
 }
 
+async function assertProductionMigrationsApplied(db: Pool) {
+  try {
+    const result = await db.query("SELECT name FROM broker_desk_schema_migrations");
+    const appliedMigrations = new Set(result.rows.map((row) => String(row.name)));
+    const hasRequiredMigrations = REQUIRED_PRODUCTION_MIGRATIONS.every((name) => appliedMigrations.has(name));
+
+    if (!hasRequiredMigrations) {
+      throw new ProductionReadinessError("production_migrations_required");
+    }
+  } catch (error) {
+    if (error instanceof ProductionReadinessError) throw error;
+    throw new ProductionReadinessError("production_migrations_required");
+  }
+}
+
 async function ensureSchema() {
   if (schemaEnsured) return;
+  assertProductionDataStoreReady();
   const db = getPool();
+
+  if (isProductionRuntime()) {
+    await assertProductionMigrationsApplied(db);
+    schemaEnsured = true;
+    return;
+  }
 
   await db.query(`
     CREATE TABLE IF NOT EXISTS users (
@@ -1958,7 +1998,7 @@ export async function updateTenantMemberStatus(input: {
   });
 }
 
-export async function listCaseWorkbenchFieldRules(userId: string, tenantId = DEFAULT_TENANT_ID): Promise<CaseWorkbenchFieldRule[]> {
+export async function listCaseWorkbenchFieldRules(userId: string, tenantId?: string): Promise<CaseWorkbenchFieldRule[]> {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(tenantId);
   const result = await getPool().query(
@@ -1974,7 +2014,7 @@ export async function listCaseWorkbenchFieldRules(userId: string, tenantId = DEF
 export async function updateCaseWorkbenchFieldRules(
   userId: string,
   input: CaseWorkbenchFieldRuleInput[],
-  tenantId = DEFAULT_TENANT_ID,
+  tenantId?: string,
 ): Promise<CaseWorkbenchFieldRule[]> {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(tenantId);
@@ -2004,7 +2044,7 @@ export async function updateCaseWorkbenchFieldRules(
   return listCaseWorkbenchFieldRules(userId, scopeTenantId);
 }
 
-export async function getOutputTemplateSettings(userId: string, tenantId = DEFAULT_TENANT_ID): Promise<OutputTemplateSettings> {
+export async function getOutputTemplateSettings(userId: string, tenantId?: string): Promise<OutputTemplateSettings> {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(tenantId);
   const db = getPool();
@@ -2062,7 +2102,7 @@ export async function getOutputTemplateSettings(userId: string, tenantId = DEFAU
 export async function updateOutputTemplateSettings(
   userId: string,
   input: OutputTemplateSettingsInput,
-  tenantId = DEFAULT_TENANT_ID,
+  tenantId?: string,
 ): Promise<OutputTemplateSettings> {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(tenantId);
@@ -2126,7 +2166,7 @@ export async function updateOutputTemplateSettings(
   };
 }
 
-export async function listOutputTemplateVersions(userId: string, limit = 20, tenantId = DEFAULT_TENANT_ID): Promise<OutputTemplateVersion[]> {
+export async function listOutputTemplateVersions(userId: string, limit = 20, tenantId?: string): Promise<OutputTemplateVersion[]> {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(tenantId);
   const result = await getPool().query(
@@ -2278,14 +2318,15 @@ export async function getOutputTemplateVersionById(input: {
   return result.rows[0] ? mapOutputTemplateVersion(result.rows[0]) : null;
 }
 
-export async function listImportJobs(userId: string, limit = 50, tenantId = DEFAULT_TENANT_ID): Promise<ImportJob[]> {
+export async function listImportJobs(userId: string, limit = 50, tenantId?: string): Promise<ImportJob[]> {
   await ensureSchema();
+  const scopeTenantId = resolveTenantId(tenantId);
   const result = await getPool().query(
     `SELECT * FROM import_jobs
      WHERE user_id = $1 AND tenant_id = $2
      ORDER BY created_at DESC
      LIMIT $3`,
-    [userId, tenantId, limit]
+    [userId, scopeTenantId, limit]
   );
   return result.rows.map(mapImportJob);
 }
@@ -2300,6 +2341,7 @@ export async function addImportJob(input: {
   notes?: string;
 }): Promise<ImportJob> {
   await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
   const sourceLabel: Record<ImportSourceType, string> = {
     excel: "Excel",
     pdf: "PDF",
@@ -2319,7 +2361,7 @@ export async function addImportJob(input: {
     RETURNING *`,
     [
       genId("import"),
-      input.tenantId ?? DEFAULT_TENANT_ID,
+      scopeTenantId,
       input.userId,
       input.sourceType,
       input.title.trim() || `${sourceLabel[input.sourceType]}資料 - ${targetLabel[input.targetEntity]}`,
@@ -2342,10 +2384,11 @@ export async function updateImportJobMapping(input: {
   allowRetry?: boolean;
 }): Promise<ImportJob | null> {
   await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
 
   const currentRes = await getPool().query(
     "SELECT status FROM import_jobs WHERE id = $1 AND user_id = $2 AND tenant_id = $3 LIMIT 1",
-    [input.jobId, input.userId, input.tenantId ?? DEFAULT_TENANT_ID]
+    [input.jobId, input.userId, scopeTenantId]
   );
   if (!currentRes.rows[0]) return null;
   const currentStatus = String(currentRes.rows[0].status) as ImportJobStatus;
@@ -2370,20 +2413,21 @@ export async function updateImportJobMapping(input: {
       input.validationMessage?.trim() || null,
       input.notes?.trim() || null,
       input.status ?? null,
-      input.tenantId ?? DEFAULT_TENANT_ID,
+      scopeTenantId,
     ]
   );
   return result.rows[0] ? mapImportJob(result.rows[0]) : null;
 }
 
-export async function listBrokerageCases(userId: string, limit = 50, tenantId = DEFAULT_TENANT_ID): Promise<BrokerageCase[]> {
+export async function listBrokerageCases(userId: string, limit = 50, tenantId?: string): Promise<BrokerageCase[]> {
   await ensureSchema();
+  const scopeTenantId = resolveTenantId(tenantId);
   const result = await getPool().query(
     `SELECT * FROM brokerage_cases
      WHERE user_id = $1 AND tenant_id = $2
      ORDER BY updated_at DESC
      LIMIT $3`,
-    [userId, tenantId, limit]
+    [userId, scopeTenantId, limit]
   );
   return result.rows.map(mapBrokerageCase);
 }
@@ -2394,9 +2438,10 @@ export async function getBrokerageCaseById(input: {
   caseId: string;
 }): Promise<BrokerageCase | null> {
   await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
   const result = await getPool().query(
     "SELECT * FROM brokerage_cases WHERE id = $1 AND user_id = $2 AND tenant_id = $3 LIMIT 1",
-    [input.caseId, input.userId, input.tenantId ?? DEFAULT_TENANT_ID]
+    [input.caseId, input.userId, scopeTenantId]
   );
   return result.rows[0] ? mapBrokerageCase(result.rows[0]) : null;
 }
@@ -2407,13 +2452,14 @@ export async function getBrokerageCaseByImportJobId(input: {
   importJobId: string;
 }): Promise<BrokerageCase | null> {
   await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
   const result = await getPool().query(
     `SELECT * FROM brokerage_cases
      WHERE user_id = $1 AND $2 = ANY(source_import_job_ids)
        AND tenant_id = $3
      ORDER BY updated_at DESC
      LIMIT 1`,
-    [input.userId, input.importJobId, input.tenantId ?? DEFAULT_TENANT_ID]
+    [input.userId, input.importJobId, scopeTenantId]
   );
   return result.rows[0] ? mapBrokerageCase(result.rows[0]) : null;
 }
@@ -2425,12 +2471,13 @@ export async function updateBrokerageCaseConfirmedData(input: {
   confirmedDataJson: Record<string, unknown>;
 }): Promise<BrokerageCase | null> {
   await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
   const result = await getPool().query(
     `UPDATE brokerage_cases
      SET confirmed_data_json = $3, updated_at = NOW()
      WHERE id = $1 AND user_id = $2 AND tenant_id = $4
      RETURNING *`,
-    [input.caseId, input.userId, JSON.stringify(input.confirmedDataJson), input.tenantId ?? DEFAULT_TENANT_ID],
+    [input.caseId, input.userId, JSON.stringify(input.confirmedDataJson), scopeTenantId],
   );
   return result.rows[0] ? mapBrokerageCase(result.rows[0]) : null;
 }
@@ -2450,7 +2497,7 @@ export async function saveBrokerageCaseExtractionReview(input: {
   await ensureSchema();
   const nowIso = new Date().toISOString();
   const caseId = input.caseId ?? genId("case");
-  const tenantId = input.tenantId ?? DEFAULT_TENANT_ID;
+  const tenantId = resolveTenantId(input.tenantId);
   const sourceImportJobIds = [...new Set(input.sourceImportJobIds)];
   const caseResult = await withTransaction(async (client) => {
     const existing = input.caseId
@@ -2551,7 +2598,7 @@ export async function mergeBrokerageCaseExtractionReview(input: {
 }): Promise<BrokerageCase | null> {
   await ensureSchema();
   const nowIso = new Date().toISOString();
-  const tenantId = input.tenantId ?? DEFAULT_TENANT_ID;
+  const tenantId = resolveTenantId(input.tenantId);
   const sourceImportJobIds = [...new Set(input.sourceImportJobIds)];
   const replaceImportJobIds = [...new Set(input.replaceImportJobIds)];
   const caseResult = await withTransaction(async (client) => {
@@ -2627,7 +2674,7 @@ export async function rollbackBrokerageCaseMerge(input: {
 }): Promise<{ restoredCase: BrokerageCase; splitCase: BrokerageCase } | null> {
   await ensureSchema();
   const nowIso = new Date().toISOString();
-  const tenantId = input.tenantId ?? DEFAULT_TENANT_ID;
+  const tenantId = resolveTenantId(input.tenantId);
   const splitCaseId = input.splitCaseId ?? genId("case");
   const removeImportJobIds = [...new Set(input.removeImportJobIds)];
   const result = await withTransaction(async (client) => {
@@ -2729,11 +2776,12 @@ export async function listExtractionReviewItems(input: {
   caseId: string;
 }): Promise<ExtractionReviewItem[]> {
   await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
   const result = await getPool().query(
     `SELECT * FROM extraction_review_items
      WHERE user_id = $1 AND case_id = $2 AND tenant_id = $3
      ORDER BY created_at ASC`,
-    [input.userId, input.caseId, input.tenantId ?? DEFAULT_TENANT_ID]
+    [input.userId, input.caseId, scopeTenantId]
   );
   return result.rows.map(mapExtractionReviewItem);
 }
@@ -2745,7 +2793,7 @@ export async function addCorrectionEvents(input: {
 }): Promise<CorrectionEvent[]> {
   await ensureSchema();
   if (input.events.length === 0) return [];
-  const tenantId = input.tenantId ?? DEFAULT_TENANT_ID;
+  const tenantId = resolveTenantId(input.tenantId);
 
   const result = await withTransaction(async (client) => {
     const rows: Record<string, unknown>[] = [];
@@ -2793,20 +2841,21 @@ export async function listCorrectionEvents(input: {
 }): Promise<CorrectionEvent[]> {
   await ensureSchema();
   const limit = Math.max(1, Math.min(input.limit ?? 50, 200));
+  const scopeTenantId = resolveTenantId(input.tenantId);
   const result = input.caseId
     ? await getPool().query(
         `SELECT * FROM correction_events
          WHERE user_id = $1 AND case_id = $2 AND tenant_id = $3
          ORDER BY created_at DESC
          LIMIT $4`,
-        [input.userId, input.caseId, input.tenantId ?? DEFAULT_TENANT_ID, limit],
+        [input.userId, input.caseId, scopeTenantId, limit],
       )
     : await getPool().query(
         `SELECT * FROM correction_events
          WHERE user_id = $1 AND tenant_id = $2
          ORDER BY created_at DESC
          LIMIT $3`,
-        [input.userId, input.tenantId ?? DEFAULT_TENANT_ID, limit],
+        [input.userId, scopeTenantId, limit],
       );
   return result.rows.map(mapCorrectionEvent);
 }
@@ -2822,7 +2871,7 @@ export async function addAiExperienceDrafts(input: {
 }): Promise<AiExperienceDraft[]> {
   await ensureSchema();
   if (input.drafts.length === 0) return [];
-  const tenantId = input.tenantId ?? DEFAULT_TENANT_ID;
+  const tenantId = resolveTenantId(input.tenantId);
 
   const result = await withTransaction(async (client) => {
     const rows: Record<string, unknown>[] = [];
@@ -2864,20 +2913,21 @@ export async function listAiExperienceDrafts(input: {
 }): Promise<AiExperienceDraft[]> {
   await ensureSchema();
   const limit = Math.max(1, Math.min(input.limit ?? 50, 200));
+  const scopeTenantId = resolveTenantId(input.tenantId);
   const result = input.status
     ? await getPool().query(
         `SELECT * FROM ai_experience_drafts
          WHERE user_id = $1 AND status = $2 AND tenant_id = $3
          ORDER BY created_at DESC
          LIMIT $4`,
-        [input.userId, input.status, input.tenantId ?? DEFAULT_TENANT_ID, limit],
+        [input.userId, input.status, scopeTenantId, limit],
       )
     : await getPool().query(
         `SELECT * FROM ai_experience_drafts
          WHERE user_id = $1 AND tenant_id = $2
          ORDER BY created_at DESC
          LIMIT $3`,
-        [input.userId, input.tenantId ?? DEFAULT_TENANT_ID, limit],
+        [input.userId, scopeTenantId, limit],
       );
   return result.rows.map(mapAiExperienceDraft);
 }
@@ -2889,12 +2939,13 @@ export async function updateAiExperienceDraftStatus(input: {
   status: AiExperienceDraftStatus;
 }): Promise<AiExperienceDraft | null> {
   await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
   const result = await getPool().query(
     `UPDATE ai_experience_drafts
      SET status = $3, updated_at = NOW()
      WHERE user_id = $1 AND id = $2 AND tenant_id = $4
      RETURNING *`,
-    [input.userId, input.draftId, input.status, input.tenantId ?? DEFAULT_TENANT_ID],
+    [input.userId, input.draftId, input.status, scopeTenantId],
   );
   return result.rows[0] ? mapAiExperienceDraft(result.rows[0]) : null;
 }
@@ -2906,12 +2957,13 @@ export async function getGuaranteeApplicationDraft(input: {
   templateId: string;
 }): Promise<GuaranteeApplicationDraft | null> {
   await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
   const result = await getPool().query(
     `SELECT * FROM guarantee_application_drafts
      WHERE user_id = $1 AND case_id = $2 AND template_id = $3
        AND tenant_id = $4
      LIMIT 1`,
-    [input.userId, input.caseId, input.templateId, input.tenantId ?? DEFAULT_TENANT_ID],
+    [input.userId, input.caseId, input.templateId, scopeTenantId],
   );
   return result.rows[0] ? mapGuaranteeApplicationDraft(result.rows[0]) : null;
 }
@@ -2928,6 +2980,7 @@ export async function saveGuaranteeApplicationDraft(input: {
   lastReviewedAt?: Date;
 }): Promise<GuaranteeApplicationDraft> {
   await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
   const id = `draft_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
   const result = await getPool().query(
     `INSERT INTO guarantee_application_drafts (
@@ -2946,7 +2999,7 @@ export async function saveGuaranteeApplicationDraft(input: {
      RETURNING *`,
     [
       id,
-      input.tenantId ?? DEFAULT_TENANT_ID,
+      scopeTenantId,
       input.userId,
       input.caseId,
       input.templateId,
@@ -2969,7 +3022,8 @@ export async function listAttachments(input: {
 }): Promise<Attachment[]> {
   await ensureSchema();
   const limit = input.limit ?? 100;
-  const values: Array<string | number> = [input.userId, input.tenantId ?? DEFAULT_TENANT_ID];
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const values: Array<string | number> = [input.userId, scopeTenantId];
   const filters: string[] = ["user_id = $1", "tenant_id = $2"];
   let idx = 3;
   if (input.targetType) {
@@ -2993,6 +3047,20 @@ export async function listAttachments(input: {
   return result.rows.map(mapAttachment);
 }
 
+export async function getAttachmentById(input: {
+  tenantId?: string;
+  userId: string;
+  id: string;
+}): Promise<Attachment | undefined> {
+  await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const result = await getPool().query(
+    `SELECT * FROM attachments WHERE id = $1 AND user_id = $2 AND tenant_id = $3 LIMIT 1`,
+    [input.id, input.userId, scopeTenantId],
+  );
+  return result.rows[0] ? mapAttachment(result.rows[0]) : undefined;
+}
+
 export async function addAttachment(input: {
   tenantId?: string;
   userId: string;
@@ -3004,6 +3072,7 @@ export async function addAttachment(input: {
   storagePath?: string;
 }): Promise<Attachment> {
   await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
   const result = await getPool().query(
     `INSERT INTO attachments (
       id, tenant_id, user_id, target_type, target_id, file_name, file_type, file_size_bytes, storage_path, uploaded_at
@@ -3011,7 +3080,7 @@ export async function addAttachment(input: {
     RETURNING *`,
     [
       genId("att"),
-      input.tenantId ?? DEFAULT_TENANT_ID,
+      scopeTenantId,
       input.userId,
       input.targetType,
       input.targetId,
@@ -3032,7 +3101,8 @@ export async function listGeneratedOutputs(input: {
 }): Promise<GeneratedOutput[]> {
   await ensureSchema();
   const limit = input.limit ?? 100;
-  const values: Array<string | number> = [input.userId, input.tenantId ?? DEFAULT_TENANT_ID];
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const values: Array<string | number> = [input.userId, scopeTenantId];
   const filters: string[] = ["user_id = $1", "tenant_id = $2"];
   let idx = 3;
   if (input.quoteId) {
@@ -3057,11 +3127,12 @@ export async function getGeneratedOutputById(input: {
   id: string;
 }): Promise<GeneratedOutput | undefined> {
   await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
   const result = await getPool().query(
     `SELECT * FROM generated_outputs
      WHERE user_id = $1 AND id = $2 AND tenant_id = $3
      LIMIT 1`,
-    [input.userId, input.id, input.tenantId ?? DEFAULT_TENANT_ID]
+    [input.userId, input.id, scopeTenantId]
   );
   if (result.rows.length === 0) return undefined;
   return mapGeneratedOutput(result.rows[0]);
@@ -3089,6 +3160,7 @@ export async function addGeneratedOutput(input: {
   layoutSnapshot?: Record<string, unknown>;
 }): Promise<GeneratedOutput> {
   await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
   const actorId = input.actorId ?? input.userId;
   const sourceQuoteId = input.sourceQuoteId ?? input.quoteId;
   const result = await getPool().query(
@@ -3098,7 +3170,7 @@ export async function addGeneratedOutput(input: {
     RETURNING *`,
     [
       genId("out"),
-      input.tenantId ?? DEFAULT_TENANT_ID,
+      scopeTenantId,
       input.userId,
       actorId,
       input.quoteId,
@@ -3376,7 +3448,7 @@ export async function listClients(userId: string, filter: ClientListFilter = {})
   }));
 }
 
-export async function getClientById(clientId: string, tenantId = DEFAULT_TENANT_ID) {
+export async function getClientById(clientId: string, tenantId?: string) {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(tenantId);
   const result = await getPool().query("SELECT * FROM clients WHERE id = $1 AND tenant_id = $2 LIMIT 1", [
@@ -3386,7 +3458,7 @@ export async function getClientById(clientId: string, tenantId = DEFAULT_TENANT_
   return result.rows[0] ? mapClient(result.rows[0]) : null;
 }
 
-export async function getClientDetail(clientId: string, tenantId = DEFAULT_TENANT_ID) {
+export async function getClientDetail(clientId: string, tenantId?: string) {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(tenantId);
 
@@ -3445,7 +3517,7 @@ export async function getClientDetail(clientId: string, tenantId = DEFAULT_TENAN
   };
 }
 
-export async function getBoardData(userId: string, tenantId = DEFAULT_TENANT_ID) {
+export async function getBoardData(userId: string, tenantId?: string) {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(tenantId);
   const result = await getPool().query(
@@ -3471,7 +3543,7 @@ export async function getBoardData(userId: string, tenantId = DEFAULT_TENANT_ID)
   );
 }
 
-export async function listQuoteFormData(tenantId = DEFAULT_TENANT_ID) {
+export async function listQuoteFormData(tenantId?: string) {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(tenantId);
   const [clientsRes, propertiesRes] = await Promise.all([
@@ -3528,7 +3600,7 @@ export async function addProperty(input: {
   return mapProperty(result.rows[0]);
 }
 
-export async function listQuotations(limit?: number, tenantId = DEFAULT_TENANT_ID): Promise<DashboardQuoteItem[]> {
+export async function listQuotations(limit?: number, tenantId?: string): Promise<DashboardQuoteItem[]> {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(tenantId);
   const hasLimit = typeof limit === "number";
@@ -3575,7 +3647,7 @@ export async function listQuotations(limit?: number, tenantId = DEFAULT_TENANT_I
   return items;
 }
 
-export async function getQuotationById(quoteId: string, tenantId = DEFAULT_TENANT_ID) {
+export async function getQuotationById(quoteId: string, tenantId?: string) {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(tenantId);
 
@@ -4171,7 +4243,7 @@ export async function rescheduleTask(input: {
   });
 }
 
-export async function setClientStage(clientId: string, stage: ClientStage, tenantId = DEFAULT_TENANT_ID) {
+export async function setClientStage(clientId: string, stage: ClientStage, tenantId?: string) {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(tenantId);
   const db = getPool();
@@ -4413,7 +4485,7 @@ export async function addQuotation(input: {
   });
 }
 
-export async function duplicateQuotation(quoteId: string, tenantId = DEFAULT_TENANT_ID) {
+export async function duplicateQuotation(quoteId: string, tenantId?: string) {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(tenantId);
 
@@ -4506,7 +4578,7 @@ export async function duplicateQuotation(quoteId: string, tenantId = DEFAULT_TEN
   return duplicated;
 }
 
-export async function updateQuotationStatus(quoteId: string, status: QuoteStatus, tenantId = DEFAULT_TENANT_ID) {
+export async function updateQuotationStatus(quoteId: string, status: QuoteStatus, tenantId?: string) {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(tenantId);
   const result = await getPool().query(

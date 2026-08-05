@@ -26,7 +26,7 @@ export default async function RootLayout({
     <>
       <ScrollMemory />
       <AppNav />
-      <main className="w-full px-4 py-6 sm:px-6 sm:py-8 lg:pl-[18rem] lg:pr-8 lg:pt-24">{children}</main>
+      <main className="app-main w-full px-4 py-6 sm:px-6 sm:py-8 lg:pr-8 lg:pt-24">{children}</main>
     </>
   );
 

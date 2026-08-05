@@ -27,6 +27,7 @@ Files in `docs/product/` describe current product direction and product-owned mo
 | `docs/product/CANONICAL_FIELD_CATALOG.md` | Standard case field catalog and aliases. |
 | `docs/product/PDF_TEMPLATE_AUTHORING_EXPERIENCE.md` | Internal PDF template authoring and calibration workflow. |
 | `docs/product/V1_AI_CORRECTION_LEARNING.md` | Correction-event and AI experience learning loop. |
+| `docs/product/AI_EXPERIENCE_MODEL_CONTEXT_CHAIN.md` | Internal AI experience handoff chain for future model context injection. |
 | `docs/product/V1_AI_MODEL_SELECTION.md` | OpenAI model routing and AI runtime boundary. |
 | `docs/product/MULTI_TENANT_PERMISSION_MODEL.md` | Tenant, membership, lifecycle-wide permissions, template governance, and release gates. |
 

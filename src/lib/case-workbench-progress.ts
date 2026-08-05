@@ -19,6 +19,10 @@ export type CaseWorkbenchProgressSnapshot = {
   total: number;
   open: number;
   percent: number;
+  reviewCompleted: number;
+  reviewTotal: number;
+  reviewOpen: number;
+  reviewPercent: number;
   applicableRequiredFieldKeys: string[];
 };
 
@@ -90,11 +94,34 @@ export function getCaseWorkbenchProgressSnapshot(input: {
     }),
   ).length;
   const total = applicableRequiredFields.length;
+  const applicableFields = CASE_FIELD_DEFINITIONS.filter((field) => {
+    if (field.storageScope !== "case_fact") return false;
+    const information = getCaseFieldInformation(field);
+    return isCaseFieldApplicable({
+      appliesWhen: information.appliesWhen,
+      confirmedData: input.confirmedData,
+      conditions,
+      manualState: statusMap[field.fieldKey],
+    });
+  });
+  const reviewCompleted = applicableFields.filter((field) =>
+    isFieldComplete({
+      fieldKey: field.fieldKey,
+      confirmedData: input.confirmedData,
+      statusMap,
+      latestReview: getLatestReview(field.fieldKey),
+    }),
+  ).length;
+  const reviewTotal = applicableFields.length;
   return {
     completed,
     total,
     open: Math.max(0, total - completed),
     percent: total > 0 ? Math.round((completed / total) * 100) : 100,
+    reviewCompleted,
+    reviewTotal,
+    reviewOpen: Math.max(0, reviewTotal - reviewCompleted),
+    reviewPercent: reviewTotal > 0 ? Math.round((reviewCompleted / reviewTotal) * 100) : 100,
     applicableRequiredFieldKeys: applicableRequiredFields.map((field) => field.fieldKey),
   };
 }

@@ -106,6 +106,21 @@ assert(
   "Guarantor fields should be excluded until the case requires a guarantor",
 );
 
+const identityReviewProgress = getCaseWorkbenchProgressSnapshot({
+  confirmedData: baseCaseData,
+  reviewItems: [reviewItem("applicant.residenceCardExpiry")],
+  ruleMap,
+});
+
+assert(
+  identityReviewProgress.reviewOpen > 0,
+  "Applicable identity-document fields with unresolved data must be visible in review progress",
+);
+assert(
+  identityReviewProgress.reviewPercent < 100,
+  "Review progress must not show 100% when applicable non-required identity fields still need attention",
+);
+
 const guarantorIncluded = writeCaseApplicabilitySettings(baseCaseData, {
   guarantor_required: "included",
 });

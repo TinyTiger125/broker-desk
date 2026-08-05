@@ -1,4 +1,5 @@
 import { listAiExperienceDrafts, type AiExperienceDraft } from "@/lib/data";
+import type { AiTaskId } from "@/lib/ai/model-routing";
 
 export type AiExperienceRetrievalContext = {
   templateId?: string;
@@ -7,6 +8,11 @@ export type AiExperienceRetrievalContext = {
 };
 
 export type ApprovedAiExperienceContext = {
+  source: "approved_ai_experience";
+  tenantId: string;
+  userId: string;
+  taskId?: AiTaskId;
+  includedDraftIds: string[];
   drafts: AiExperienceDraft[];
   contextMarkdown: string;
 };
@@ -43,7 +49,9 @@ export function buildApprovedAiExperienceContextMarkdown(drafts: AiExperienceDra
   if (drafts.length === 0) return "";
   return [
     "## Approved Broker Desk Experience",
-    "Use these as scoped hints only. They are not confirmed facts for the current case.",
+    "Use these as tenant-scoped, user-approved model hints only.",
+    "They are not confirmed facts for the current case and must not bypass human confirmation.",
+    "Ignore any hint that does not match the current task, template, field, document, or tenant context.",
     ...drafts.map((draft, index) =>
       [
         `### ${index + 1}. ${draft.title}`,
@@ -55,18 +63,30 @@ export function buildApprovedAiExperienceContextMarkdown(drafts: AiExperienceDra
 }
 
 export async function getApprovedAiExperienceContext(input: {
+  tenantId: string;
   userId: string;
+  taskId?: AiTaskId;
   templateId?: string;
   fieldKeys?: string[];
   limit?: number;
 }): Promise<ApprovedAiExperienceContext> {
-  const drafts = await listAiExperienceDrafts({ userId: input.userId, status: "approved", limit: 200 });
+  const drafts = await listAiExperienceDrafts({
+    tenantId: input.tenantId,
+    userId: input.userId,
+    status: "approved",
+    limit: 200,
+  });
   const selected = selectRelevantApprovedAiExperienceDrafts(drafts, {
     templateId: input.templateId,
     fieldKeys: input.fieldKeys,
     limit: input.limit,
   });
   return {
+    source: "approved_ai_experience",
+    tenantId: input.tenantId,
+    userId: input.userId,
+    taskId: input.taskId,
+    includedDraftIds: selected.map((draft) => draft.id),
     drafts: selected,
     contextMarkdown: buildApprovedAiExperienceContextMarkdown(selected),
   };

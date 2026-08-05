@@ -6,6 +6,7 @@ import {
   getFriendsGuaranteeEffectiveLayoutOverrides,
   getFriendsOverlayFieldPrintMode,
   getGuaranteeConfirmedOverlayFieldKeys,
+  hasConfirmedGuaranteeFieldValue,
   formatFriendsOverlayValue,
   type FriendsOverlayField,
 } from "@/lib/friends-guarantee-pdf";
@@ -177,8 +178,12 @@ export function evaluateGuaranteeDownloadGate(input: {
     const hasConfirmedOverlay =
       confirmedOverlayFieldKeys.has(field.fieldKey) ||
       (field.sourceFieldKey ? confirmedOverlayFieldKeys.has(field.sourceFieldKey) : false);
+    const hasConfirmedCaseValue = hasConfirmedGuaranteeFieldValue(
+      brokerageCase.confirmedDataJson,
+      field,
+    );
 
-    if (printMode === "candidate" && !hasConfirmedOverlay) {
+    if (printMode === "candidate" && !hasConfirmedCaseValue && !hasConfirmedOverlay) {
       candidateFieldsUnconfirmed.push({
         fieldKey: sourceFieldKey,
         label: field.label,

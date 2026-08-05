@@ -155,7 +155,7 @@ export function QuoteForm({ clients, properties, action, defaultClientId, locale
   const [summaryMode, setSummaryMode] = useState<"short" | "formal">("short");
 
   return (
-    <form action={action} className="grid gap-4 xl:grid-cols-[1.2fr_1fr]">
+    <form action={action} className="grid min-w-0 gap-4 2xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
       <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="text-lg font-semibold text-slate-900">{text.inputTitle}</h2>
         <div className="grid gap-3 md:grid-cols-2">

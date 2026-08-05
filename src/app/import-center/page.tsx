@@ -11,6 +11,7 @@ import {
   uploadAndParseExcelAction,
 } from "@/app/actions";
 import { FormDraftAssist } from "@/components/form-draft-assist";
+import { ExcelDocumentUploadForm } from "@/components/excel-document-upload-form";
 import { IdentityDocumentUploadForm } from "@/components/identity-document-upload-form";
 import { InputExtractionReview } from "@/components/input-extraction-review";
 import { PageFlashBanner } from "@/components/page-flash-banner";
@@ -177,8 +178,7 @@ function getMappingConfirmation(locale: Locale, source: string, target?: string)
 function getCopy(locale: Locale) {
   const copyByLocale = {
     ja: {
-      pageTitle: "作成・資料登録",
-      pageDesc: "案件、関係者、物件を作成し、必要な資料を読み取ります。",
+      pageTitle: "情報入力",
       cardExcelTitle: "Excel 一括読取",
       cardExcelSubtitle: "物件台帳化を優先",
       cardPdfTitle: "PDF / スキャン登録",
@@ -203,7 +203,7 @@ function getCopy(locale: Locale) {
       colTarget: "対象",
       colCreatedAt: "作成日",
       colStatus: "状態",
-      wizardTitle: "資料整理アシスト",
+      wizardTitle: "情報管理アシスト",
       wizardSubtitle: "保存先の確認",
       stepSelect: "選択",
       stepMap: "保存確認",
@@ -213,10 +213,10 @@ function getCopy(locale: Locale) {
       schemaMappingDesc: "資料にある名前を、業務で使う保存先に合わせます。違うところだけ直してください。",
       saveDraft: "途中保存",
       continueValidation: "確認へ進む",
-      sourceColumn: "資料上の名前",
-      targetField: "保存する項目",
+      sourceColumn: "情報分類",
+      targetField: "分類に保存",
       autoMapCol: "初期対応",
-      sampleValue: "確認内容",
+      sampleValue: "入力済情報確認",
       unmapped: "この列は保存しない",
       recentImportHistory: "最近の読取履歴",
       viewArchive: "アーカイブ表示",
@@ -225,7 +225,7 @@ function getCopy(locale: Locale) {
       issueStatsDesc: "直近の読取で確認が必要な内容",
       issueTrendTitle: "確認事項の推移（7日）",
       issueTrendDesc: "日別の確認件数",
-      mapped: "整理済",
+      mapped: "完了",
       alerts: "アラート",
       validationLog: "確認記録",
       noFurtherAlerts: "追加アラートはありません",
@@ -236,7 +236,7 @@ function getCopy(locale: Locale) {
       validationFormatMsg: "読取元データに形式の揺れがあります。",
       validationSchemaMsg: "保存先を確認してください。",
       actionResolveNow: "今すぐ修正",
-      actionAutoFix: "確認内容を反映",
+      actionAutoFix: "確認結果を保存",
       actionApplyMapping: "提案を使う",
       exportValidationReport: "確認結果を出力",
       proTipTitle: "操作ヒント",
@@ -250,12 +250,12 @@ function getCopy(locale: Locale) {
       labelSourceColumns: "資料の列（カンマ区切り）",
       labelTargetFields: "保存先の項目（カンマ区切り）",
       btnAutoMap: "標準ルールで整理",
-      btnSaveMap: "確認して保存",
+      btnSaveMap: "保存",
       phSourceCols: "例: 物件名,所在地,エリア,価格",
       phMapMemo: "例: 保存先の初回整理",
       phSaveMemo: "例: 価格列は税抜",
       fieldDefTitle: "保存先項目",
-      fieldDefSubtitle: "案件に保存する項目を確認",
+      fieldDefSubtitle: "保存先を確認",
       attachmentTitle: "添付登録",
       attachmentSubtitle: "実ファイル保存対応",
       labelAttachmentTargetType: "対象種別",
@@ -277,7 +277,7 @@ function getCopy(locale: Locale) {
       typeUnset: "未設定",
       uploadDatePrefix: "登録日",
       openStorage: "保存ファイルを開く",
-      optionImportJob: "読取資料",
+      optionImportJob: "書類読込",
       optionProperty: "物件",
       optionContract: "契約",
       optionServiceRequest: "対応履歴",
@@ -285,8 +285,7 @@ function getCopy(locale: Locale) {
       optionParty: "関係者",
     },
     zh: {
-      pageTitle: "建档入口",
-      pageDesc: "新建案件、主体或物件；已有资料先读取，再归入对应对象。",
+      pageTitle: "录入资料",
       cardExcelTitle: "Excel 批量读取",
       cardExcelSubtitle: "优先整理物件台账",
       cardPdfTitle: "PDF / 扫描登记",
@@ -333,7 +332,7 @@ function getCopy(locale: Locale) {
       issueStatsDesc: "按最近读取结果统计需要处理的内容",
       issueTrendTitle: "问题变化（7天）",
       issueTrendDesc: "按天统计需要确认的内容",
-      mapped: "已整理",
+      mapped: "已完成",
       alerts: "告警",
       validationLog: "检查记录",
       noFurtherAlerts: "暂无更多告警",
@@ -392,8 +391,7 @@ function getCopy(locale: Locale) {
       optionParty: "主体",
     },
     ko: {
-      pageTitle: "등록 입구",
-      pageDesc: "안건, 관계자, 매물을 만들고 필요한 자료를 읽습니다.",
+      pageTitle: "자료 입력",
       cardExcelTitle: "Excel 일괄 읽기",
       cardExcelSubtitle: "매물 대장 정리 우선",
       cardPdfTitle: "PDF / 스캔 등록",
@@ -440,7 +438,7 @@ function getCopy(locale: Locale) {
       issueStatsDesc: "최근 읽기 결과에서 확인이 필요한 내용",
       issueTrendTitle: "확인 사항 추이 (7일)",
       issueTrendDesc: "일자별 확인 건수",
-      mapped: "정리됨",
+      mapped: "완료",
       alerts: "알림",
       validationLog: "확인 기록",
       noFurtherAlerts: "추가 알림이 없습니다",
@@ -949,51 +947,31 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
       href: string;
       icon: string;
       label: string;
-      desc: string;
     }
   > = [
     {
       id: "case",
       href: "/cases/new?from=entry",
       icon: "business_center",
-      label: locale === "zh" ? "新开案件" : locale === "ko" ? "새 안건" : "新規案件",
-      desc:
-        locale === "zh"
-          ? "租赁、买卖、报价或合同需要完整工作台时，从案件开始。"
-          : locale === "ko"
-            ? "임대, 매매, 견적, 계약처럼 작업대가 필요할 때 안건부터 만듭니다."
-            : "賃貸、売買、見積、契約の作業台が必要なときは案件から始めます。",
+      label: locale === "zh" ? "新开案件" : locale === "ko" ? "새 안건" : "案件・新規作成",
     },
     {
       id: "party",
       href: "/parties/new?from=entry",
       icon: "person_add",
-      label: locale === "zh" ? "新建主体" : locale === "ko" ? "관계자 추가" : "関係者を追加",
-      desc:
-        locale === "zh"
-          ? "客户、业主、租户、保证人或公司，只先登记人和公司资料。"
-          : locale === "ko"
-            ? "고객, 소유자, 임차인, 보증인, 회사 정보를 먼저 등록합니다."
-            : "顧客、オーナー、借主、保証人、会社を先に登録します。",
+      label: locale === "zh" ? "新建主体" : locale === "ko" ? "관계자 추가" : "顧客・新規作成",
     },
     {
       id: "property",
       href: "/properties/new?from=entry",
       icon: "domain_add",
-      label: locale === "zh" ? "新建物件" : locale === "ko" ? "새 매물" : "物件を追加",
-      desc:
-        locale === "zh"
-          ? "房源、房号、地址、租金或售价明确时，先建立物件资料。"
-          : locale === "ko"
-            ? "매물, 호실, 주소, 임대료나 가격이 명확할 때 매물을 먼저 만듭니다."
-            : "物件、部屋番号、住所、賃料や価格が明確なときは物件を先に作成します。",
+      label: locale === "zh" ? "新建物件" : locale === "ko" ? "새 매물" : "物件・新規作成",
     },
   ];
   return (
     <div className="space-y-7">
       <section>
         <h1 className="text-4xl font-bold tracking-tight text-slate-900">{copy.pageTitle}</h1>
-        <p className="mt-1 text-sm text-slate-600">{copy.pageDesc}</p>
       </section>
       <PageFlashBanner message={flashMessage} tone={flashTone} />
 
@@ -1086,25 +1064,15 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
       ) : null}
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
           <div>
             <p className="text-[11px] font-black uppercase tracking-wider text-blue-700">
-              {locale === "zh" ? "建档入口" : locale === "ko" ? "등록 입구" : "作成入口"}
+              {locale === "zh" ? "录入资料" : locale === "ko" ? "자료 입력" : "情報入力"}
             </p>
             <h2 className="mt-1 text-base font-bold text-slate-950">
-              {locale === "zh" ? "先确定资料归属" : locale === "ko" ? "먼저 자료 귀속을 정함" : "先に資料の割当を決める"}
+              {locale === "zh" ? "选择录入方式" : locale === "ko" ? "입력 방식 선택" : "入力方法を選ぶ"}
             </h2>
-            <p className="mt-1 text-xs text-slate-500">
-              {locale === "zh"
-                ? "没有文件也可以先建档；已有文件时，在下方读取后再归入对应对象。"
-                : locale === "ko"
-                  ? "파일이 없어도 먼저 등록할 수 있습니다. 파일이 있으면 아래에서 읽은 뒤 귀속을 정합니다."
-                  : "ファイルがなくても先に作成できます。ファイルがある場合は下で読み取ってから割当します。"}
-            </p>
           </div>
-          <Link href="/organize-center" className="inline-flex items-center justify-center rounded-lg border border-slate-300 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">
-            {locale === "zh" ? "查看整理中心" : locale === "ko" ? "정리 센터 보기" : "整理センターを見る"}
-          </Link>
         </div>
         <div className="mt-4 grid gap-3 lg:grid-cols-3">
           {creationCards.map((item) => {
@@ -1115,7 +1083,6 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                 <span className="material-symbols-outlined text-[22px] text-slate-500">{item.icon}</span>
                 <div>
                   <p className="text-sm font-bold text-slate-950">{item.label}</p>
-                  <p className="mt-1 text-xs leading-5 text-slate-500">{item.desc}</p>
                 </div>
               </div>
             );
@@ -1165,56 +1132,63 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
       <section id="source-upload" className="scroll-mt-24 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-100 p-5">
           <p className="text-[11px] font-black uppercase tracking-wider text-blue-700">
-            {locale === "zh" ? "读取资料" : locale === "ko" ? "자료 읽기" : "資料読取"}
+            {locale === "zh" ? "读取资料" : locale === "ko" ? "자료 읽기" : "書類読込"}
           </p>
           <h2 className="text-base font-bold text-slate-950">
             {locale === "zh" ? "已有文件时从这里开始" : locale === "ko" ? "파일이 있을 때 여기서 시작" : "ファイルがある場合はここから始める"}
           </h2>
-          <p className="mt-1 text-xs text-slate-500">
-            {locale === "zh"
-              ? "读取后先核对内容，再保存到案件、主体或物件。"
-              : locale === "ko"
-                ? "읽은 뒤 내용을 확인하고 안건, 관계자, 매물에 저장합니다."
-                : "読み取った内容を確認してから、案件、関係者、物件に保存します。"}
-          </p>
         </div>
 
-        <section className="border-b border-emerald-100 bg-emerald-50/30 p-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="grid gap-4 p-5 xl:grid-cols-2">
+          <section className="flex min-h-96 flex-col rounded-2xl border border-emerald-200 bg-emerald-50/40 p-5">
             <div>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-emerald-700">badge</span>
-                <h2 className="text-base font-bold text-slate-950">
+                <h2 className="text-base font-bold text-emerald-950">
                   {locale === "zh" ? "本人资料" : locale === "ko" ? "본인 자료" : "本人資料"}
                 </h2>
-                <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
-                  {locale === "zh" ? "在留卡 / 驾照二选一" : locale === "ko" ? "재류카드 / 운전면허증 중 하나" : "在留カード / 運転免許証のどちらか"}
-                </span>
               </div>
-              <p className="mt-2 max-w-2xl text-xs leading-6 text-slate-600">
-                {locale === "zh"
-                  ? "在留卡 / 驾照：姓名、生日、地址、证件号码。"
-                  : locale === "ko"
-                    ? "재류카드 / 운전면허증: 이름, 생년월일, 주소, 증명서 번호."
-                    : "在留カード / 運転免許証: 氏名、生年月日、住所、証明書番号。"}
-              </p>
             </div>
-            {!isIdentityExtractionOnly ? (
-              <IdentityDocumentUploadForm action={uploadAndParseIdentityDocumentAction} locale={locale} />
-            ) : (
-              <a href="/import-center" className="inline-flex items-center justify-center rounded-lg border border-slate-300 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">
-                {locale === "zh" ? "重新选择文件" : locale === "ko" ? "파일 다시 선택" : "ファイルを選び直す"}
-              </a>
-            )}
-          </div>
+            <div className="mt-auto pt-5">
+              {!isIdentityExtractionOnly ? (
+                <IdentityDocumentUploadForm action={uploadAndParseIdentityDocumentAction} locale={locale} />
+              ) : (
+                <a href="/import-center" className="flex h-12 items-center justify-center rounded-lg border border-emerald-300 bg-white px-4 text-sm font-bold text-emerald-900 hover:bg-emerald-50">
+                  {locale === "zh" ? "重新选择文件" : locale === "ko" ? "파일 다시 선택" : "ファイルを選び直す"}
+                </a>
+              )}
+            </div>
+          </section>
+
+          <section className="flex min-h-96 flex-col rounded-2xl border border-blue-200 bg-blue-50/40 p-5">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-blue-700">table_view</span>
+                <h2 className="text-base font-bold text-blue-950">
+                  {locale === "zh" ? "申请资料 / 台账" : locale === "ko" ? "신청 자료 / 대장" : "申込資料 / 台帳"}
+                </h2>
+              </div>
+            </div>
+            <div className="mt-auto pt-5">
+              {!xlsxJob ? (
+                <ExcelDocumentUploadForm action={uploadAndParseExcelAction} locale={locale} />
+              ) : (
+                <a href="/import-center" className="flex h-12 items-center justify-center rounded-lg border border-blue-300 bg-white px-4 text-sm font-bold text-blue-900 hover:bg-blue-50">
+                  {locale === "zh" ? "重新选择文件" : locale === "ko" ? "파일 다시 선택" : "ファイルを選び直す"}
+                </a>
+              )}
+            </div>
+          </section>
+        </div>
 
         {xlsxJob && xlsxPayload && inputExtractionPreview && isIdentityExtractionOnly ? (
-          <div className="mt-5 space-y-4 rounded-xl border border-emerald-200 bg-emerald-50/50 p-4">
+          <div className="border-t border-emerald-100 p-5">
+          <div className="space-y-4 rounded-xl border border-emerald-200 bg-emerald-50/50 p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="text-sm font-bold text-emerald-950">
-                    {locale === "zh" ? "本人资料核对" : locale === "ko" ? "본인 자료 확인" : "本人資料の確認"}
+                    {locale === "zh" ? "本人资料核对" : locale === "ko" ? "본인 자료 확인" : "顧客情報の確認"}
                   </h3>
                   <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-emerald-700">
                     {inputExtractionPreview.extractionStatus === "recognized"
@@ -1242,53 +1216,10 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
               targetCaseId={targetCaseId || undefined}
             />
           </div>
-        ) : null}
-      </section>
-
-      {/* ── Excel 物件一括保存 ─────────────────────────────────────── */}
-      <section className="space-y-5 bg-blue-50/40 p-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-blue-700">table_view</span>
-              <h2 className="text-base font-bold text-blue-900">
-                {locale === "zh" ? "读取申请资料" : locale === "ko" ? "신청 자료 읽기" : "申込資料を読み取る"}
-              </h2>
-              <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-600">
-                {locale === "zh" ? "仅支持 .xlsx" : locale === "ko" ? ".xlsx 전용" : ".xlsx 専用"}
-              </span>
-            </div>
-            <p className="mt-2 max-w-2xl text-xs leading-6 text-blue-700">
-              {locale === "zh"
-                ? "保证会社申请资料、物件台账。"
-                : locale === "ko"
-                  ? "보증회사 신청 자료, 매물 대장."
-                  : "保証会社申込資料、物件台帳。"}
-            </p>
           </div>
-
-          {!xlsxJob && (
-            <form action={uploadAndParseExcelAction} noValidate className="w-full space-y-3 rounded-xl border border-blue-100 bg-white/75 p-4 lg:max-w-md">
-              <label className="block space-y-1">
-                <span className="text-xs font-semibold text-blue-800">
-                  {locale === "zh" ? "选择 .xlsx 文件" : locale === "ko" ? ".xlsx 파일 선택" : ".xlsx ファイルを選択"}
-                </span>
-                <input
-                  name="excelFile"
-                  type="file"
-                  accept=".xlsx"
-                  className="w-full rounded-lg border border-blue-300 bg-white px-3 py-2 text-sm"
-                />
-              </label>
-              <button
-                type="submit"
-                className="w-full rounded-lg bg-blue-700 px-4 py-2 text-sm font-bold text-white hover:bg-blue-800"
-              >
-                {locale === "zh" ? "选择文件并读取" : locale === "ko" ? "파일 선택 후 읽기" : "ファイルを選んで読み取る"}
-              </button>
-            </form>
-          )}
-        </div>
+        ) : null}
+        {xlsxJob && !isIdentityExtractionOnly ? (
+          <div className="border-t border-blue-100 p-5">
 
         {/* Known business file extraction preview */}
         {xlsxJob && xlsxPayload && inputExtractionPreview && !isIdentityExtractionOnly && (
@@ -1297,7 +1228,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="text-sm font-bold text-indigo-950">
-                    {locale === "zh" ? "申请资料核对" : locale === "ko" ? "신청 자료 확인" : "申込資料の確認"}
+                    {locale === "zh" ? "申请资料核对" : locale === "ko" ? "신청 자료 확인" : "入力内容の確認"}
                   </h3>
                   <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700">
                     {inputExtractionPreview.extractionStatus === "recognized"
@@ -1469,7 +1400,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
             )}
             <div className="rounded-lg border border-blue-200 bg-white p-3">
               <p className="text-xs font-bold text-blue-900">
-                {locale === "zh" ? "下一步" : locale === "ko" ? "다음 단계" : "次のステップ"}
+                {locale === "zh" ? "接下来确认" : locale === "ko" ? "다음 확인 항목" : "次に確認すること"}
               </p>
               <p className="mt-1 text-xs text-slate-600">
                 {locale === "zh"
@@ -1492,7 +1423,8 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
             </div>
           </div>
         )}
-      </section>
+          </div>
+        ) : null}
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -1661,8 +1593,8 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
       </section>
 
       {(!requestedJob || isBatchMappingJob(requestedJob)) && (
-	      <section id="job-mapping" className="scroll-mt-24 grid gap-6 xl:grid-cols-12">
-        <div className="space-y-6 xl:col-span-8">
+	      <section id="job-mapping" className="scroll-mt-24 grid gap-6 2xl:grid-cols-12">
+        <div className="space-y-6 2xl:col-span-8">
           <article className="rounded-xl bg-[#e6eeff] p-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-1 items-center gap-2">
@@ -1831,7 +1763,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
           </article>
         </div>
 
-        <aside className="space-y-5 xl:col-span-4">
+        <aside className="space-y-5 2xl:col-span-4">
           <article className="relative overflow-hidden rounded-xl bg-[#001e40] p-6 text-white">
             <div className="relative z-10">
               <div className="mb-4 flex items-center justify-between">
@@ -2037,7 +1969,12 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                       {copy.uploadDatePrefix}: {formatDate(att.uploadedAt, locale)}
                     </p>
                     {att.storagePath ? (
-                      <a href={att.storagePath} target="_blank" rel="noreferrer" className="mt-1 inline-flex text-[10px] font-bold text-[#001e40] hover:underline">
+                      <a
+                        href={att.storagePath.startsWith("local-private://") ? `/api/attachments/${att.id}` : att.storagePath}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-1 inline-flex text-[10px] font-bold text-[#001e40] hover:underline"
+                      >
                         {copy.openStorage}
                       </a>
                     ) : null}

@@ -13,24 +13,24 @@ type NewPartyPageProps = {
 
 const copy = {
   ja: {
-    title: "関係者を追加",
+    title: "顧客を追加",
     desc: "人物または会社の基本情報を先に登録し、必要な資料をあとで追加します。",
-    back: "関係者一覧へ",
-    backEntry: "作成入口へ戻る",
+    back: "顧客一覧へ",
+    backEntry: "情報入力へ戻る",
     flashContinue: "名称を引き継ぎました。内容を確認して保存してください。",
   },
   zh: {
     title: "新增主体",
     desc: "先建立人物或公司的基本档案，后续可以继续补充资料。",
     back: "返回主体列表",
-    backEntry: "返回建档入口",
+    backEntry: "返回录入资料",
     flashContinue: "已带入名称，请确认内容后保存。",
   },
   ko: {
     title: "관계자 추가",
     desc: "사람 또는 회사의 기본 정보를 먼저 등록하고 필요한 자료를 나중에 추가합니다.",
     back: "관계자 목록으로",
-    backEntry: "등록 입구로 돌아가기",
+    backEntry: "자료 입력으로 돌아가기",
     flashContinue: "이름을 가져왔습니다. 내용을 확인한 뒤 저장하세요.",
   },
 } as const;

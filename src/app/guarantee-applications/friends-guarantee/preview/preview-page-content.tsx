@@ -383,7 +383,7 @@ export async function GuaranteeApplicationPreviewPage({
         </div>
       </div>
 
-      <div className="grid gap-4 p-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+      <div className="grid min-w-0 gap-4 p-4 2xl:grid-cols-[minmax(0,1fr)_minmax(22rem,26rem)]">
         <section className="min-h-[calc(100vh-132px)] rounded-xl border border-slate-200 bg-white shadow-sm">
           {selectedCase ? (
             <FriendsGuaranteeCalibrationPreview

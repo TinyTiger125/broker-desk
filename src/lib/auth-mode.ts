@@ -35,12 +35,13 @@ export function getAuthMode(): BrokerDeskAuthMode {
 }
 
 export function isDemoAuthEnabled() {
+  if (isProductionRuntime()) return false;
   if (process.env.BROKER_DESK_ENABLE_DEMO_AUTH === "true") return true;
   return getAuthMode() === "demo" && !isProductionRuntime();
 }
 
 export function isTrustedHeaderAuthEnabled() {
-  return getAuthMode() === "trusted_header";
+  return !isProductionRuntime() && getAuthMode() === "trusted_header";
 }
 
 export function isClerkAuthEnabled() {

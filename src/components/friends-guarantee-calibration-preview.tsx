@@ -1553,6 +1553,10 @@ export function FriendsGuaranteeCalibrationPreview({
   const activeBox = activeField ? boxForField(activeField) : null;
   const activeBoxNumbers = activeBox ? boxToNumbers(activeBox) : null;
   const activeFieldSize = activeField ? roundBoxNumber(sizeForField(activeField)) : null;
+  const activeFieldIsYear =
+    activeField?.valueFormat === "dateYear" ||
+    activeField?.valueFormat === "dateYearShort" ||
+    /(?:^|[ /・])年$/.test(activeField?.label.trim() ?? "");
   const activeCoOccupantParts = activeField ? getCoOccupantParts(activeField) : null;
   const activeCoOccupantGroupFields = useMemo(() => {
     if (!activeCoOccupantParts) return [];
@@ -1641,6 +1645,12 @@ export function FriendsGuaranteeCalibrationPreview({
       ...box,
       [key]: value,
     }));
+  };
+
+  const fitActiveYearField = () => {
+    if (!activeField) return;
+    updateActiveFieldBox((box) => ({ ...box, width: Math.max(box.width, 42) }));
+    updateActiveFieldFontSize(Math.min(activeFieldSize ?? 6, 6));
   };
 
   const nudgeActiveField = (deltaX: number, deltaY: number) => {
@@ -2303,7 +2313,7 @@ export function FriendsGuaranteeCalibrationPreview({
         </div>
       </div>
       {activeField && activeBoxNumbers ? (
-        <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700">
+        <div className="sticky top-0 z-50 flex flex-wrap items-center gap-2 border-y border-slate-200 bg-white/95 px-4 py-2 text-xs font-bold text-slate-700 shadow-sm backdrop-blur">
           <span className="mr-1 font-black text-slate-950">填写区整理</span>
           {(["x", "y", "width", "height"] as const).map((key) => (
             <label key={`box-number-${key}`} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1">
@@ -2392,6 +2402,16 @@ export function FriendsGuaranteeCalibrationPreview({
           >
             数值取整
           </button>
+          {activeFieldIsYear ? (
+            <button
+              type="button"
+              title="4桁の年が切れない幅と文字サイズに調整"
+              onClick={fitActiveYearField}
+              className="rounded-lg border border-[#002FA7]/30 bg-[#eef4ff] px-3 py-1.5 text-xs font-black text-[#002FA7] hover:bg-[#dfeaff]"
+            >
+              适配4位年份
+            </button>
+          ) : null}
           {activeCustomField?.segment ? (
             <div className="inline-flex items-center overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
               <span className="px-2 py-1.5 text-xs font-black text-slate-700">桁数 {activeCustomField.segment.cells}</span>
@@ -2469,12 +2489,12 @@ export function FriendsGuaranteeCalibrationPreview({
         </div>
       ) : null}
       {activeCustomField ? (
-        <div className="grid gap-2 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold text-slate-700 xl:grid-cols-[minmax(420px,2fr)_minmax(150px,0.75fr)_minmax(110px,0.6fr)_minmax(120px,0.65fr)_minmax(130px,0.75fr)]">
-          <div className="grid gap-1">
+        <div className="grid gap-4 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold text-slate-700 2xl:grid-cols-4">
+          <div className="grid gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm 2xl:col-span-4">
             <span className="text-[10px] font-black uppercase tracking-wide text-slate-500">关联项目</span>
-            <div className="grid gap-2 sm:grid-cols-[128px_180px_minmax(160px,0.8fr)_minmax(220px,1fr)]">
+            <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-[minmax(10rem,0.7fr)_minmax(14rem,1fr)_minmax(0,1.4fr)]">
               <label className="grid gap-1">
-                <span className="text-[9px] font-black text-slate-400">表单</span>
+                <span className="text-[9px] font-black text-slate-400">1. 表单</span>
                 <select
                   value={bindingTemplateId}
                   onChange={(event) => {
@@ -2493,7 +2513,7 @@ export function FriendsGuaranteeCalibrationPreview({
                 </select>
               </label>
               <label className="grid gap-1">
-                <span className="text-[9px] font-black text-slate-400">表头/区域</span>
+                <span className="text-[9px] font-black text-slate-400">2. 表头/区域</span>
                 <select
                   value={activeBindingSection?.id ?? ""}
                   onChange={(event) => {
@@ -2510,7 +2530,7 @@ export function FriendsGuaranteeCalibrationPreview({
                 </select>
               </label>
               <label className="grid gap-1">
-                <span className="text-[9px] font-black text-slate-400">搜索</span>
+                <span className="text-[9px] font-black text-slate-400">3. 搜索</span>
                 <input
                   type="search"
                   value={bindingSearchTerm}
@@ -2519,8 +2539,8 @@ export function FriendsGuaranteeCalibrationPreview({
                   className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-xs font-bold text-slate-900 outline-none placeholder:text-slate-400 focus:border-[#002FA7] focus:ring-2 focus:ring-[#002FA7]/20"
                 />
               </label>
-              <label className="grid gap-1">
-                <span className="text-[9px] font-black text-slate-400">项目</span>
+              <label className="grid gap-1 md:col-span-2 2xl:col-span-3">
+                <span className="text-[9px] font-black text-slate-400">4. 匹配项目</span>
                 <select
                   value={activeCustomField.sourceFieldKey ?? ""}
                   onChange={(event) => updateActiveCustomBinding(event.target.value)}

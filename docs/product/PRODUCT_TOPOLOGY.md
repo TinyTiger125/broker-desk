@@ -155,6 +155,251 @@ Source Files
               -> Correction Events / Experience Updates
 ```
 
+## Current Page Topology (2026-07-23)
+
+This section describes the current route-level product map. It is the working reference for UX and routing changes.
+
+The product has one frontstage spine:
+
+```text
+Workbench -> Input Center -> Organize Center -> Object Workbench -> Output Center
+```
+
+The app should not create parallel chains for the same broker job. A page can be powerful, but its role in the chain must be narrow.
+
+### Frontstage Route Graph
+
+```mermaid
+flowchart LR
+  Home["/ Workbench<br/>choose next work"]
+  Import["/import-center<br/>read source files"]
+  Organize["/organize-center<br/>find the object to organize"]
+  CaseWB["/cases/[id]<br/>case workbench"]
+  PartyWB["/parties/[id]/edit<br/>subject workbench"]
+  PropertyWB["/properties/[id]/edit<br/>property workbench"]
+  Output["/output-center<br/>select document and generate"]
+  Preview["/guarantee-applications/[templateId]/preview<br/>official form preview"]
+  Relation["/relationship-tree<br/>relationship inspection"]
+  Settings["/settings/*<br/>workspace settings"]
+
+  Home --> Import
+  Home --> Organize
+  Home --> Output
+
+  Import --> Organize
+  Import --> CaseWB
+  Import --> Home
+
+  Organize --> CaseWB
+  Organize --> PartyWB
+  Organize --> PropertyWB
+  Organize --> Import
+
+  CaseWB --> Output
+  CaseWB --> Import
+  CaseWB --> Relation
+
+  PartyWB --> Relation
+  PropertyWB --> Relation
+
+  Output --> CaseWB
+  Output --> Import
+  Output --> Preview
+
+  Settings -. config only .-> Home
+```
+
+Route contract:
+
+- `/` is the decision surface. It answers "what should I do next?" and routes to one of the three production steps.
+- `/import-center` is the source-reading surface. It imports files, shows extracted candidates, and routes the user back to the chosen owner or to `整理信息`.
+- `/organize-center` is the object index. It is where the user chooses whether the next work target is a case, subject, property, or unassigned file.
+- `/cases/[id]`, `/parties/[id]/edit`, and `/properties/[id]/edit` are the object workbenches. They are the only places where "continue organizing" should perform deep object editing.
+- `/output-center` is the document production surface. It consumes confirmed case data and output drafts; it does not own raw extraction review.
+- `/relationship-tree` is an inspection surface. It explains how one selected object connects to other objects, source files, and outputs. It should not become another editing flow.
+- `/settings/*` is configuration only. It must not contain ordinary broker execution tasks.
+
+### Main Navigation Layers
+
+```mermaid
+flowchart TB
+  Nav["Main sidebar"]
+  Home["Workbench"]
+  Import["Input Center"]
+  Organize["Organize Center"]
+  Output["Output Center"]
+
+  SettingsNav["Workspace Settings"]
+  Members["Team Members"]
+  Required["Required Fields"]
+  OutputHeader["Document Header / Output Templates"]
+
+  Secondary["Secondary / legacy routes"]
+  Parties["/parties subject ledger"]
+  Properties["/properties property ledger"]
+  Quotes["/quotes legacy quote pages"]
+  Contracts["/contracts legacy contract pages"]
+  Service["/service-requests legacy request pages"]
+
+  Nav --> Home
+  Nav --> Import
+  Nav --> Organize
+  Nav --> Output
+
+  SettingsNav --> Members
+  SettingsNav --> Required
+  SettingsNav --> OutputHeader
+
+  Secondary --> Parties
+  Secondary --> Properties
+  Secondary --> Quotes
+  Secondary --> Contracts
+  Secondary --> Service
+```
+
+Layer rules:
+
+- Main sidebar links are the user-facing product chain.
+- Settings links configure the chain; they do not execute the chain.
+- Secondary / legacy routes may remain available while V1 stabilizes, but they should not define the default user mental model.
+- If a secondary page has a useful function, it should either be folded into the main chain or clearly positioned as a reference ledger.
+
+### Object Flow Contracts
+
+The user-facing objects are:
+
+- `Case`: one concrete brokerage workflow, such as a rental application, sale inquiry, or guarantee application.
+- `Subject`: one reusable person or company.
+- `Property`: one reusable property/building/room record.
+- `Unassigned Intake`: read files that do not yet have a confirmed owner.
+
+```mermaid
+flowchart TB
+  Organize["/organize-center"]
+
+  CaseList["Case card/list item"]
+  CaseCreate["/cases/new"]
+  CaseWB["/cases/[id]"]
+  CaseOutput["/output-center?caseId=..."]
+  CaseRelation["/relationship-tree?type=case&id=..."]
+
+  PartyList["Subject card/list item"]
+  PartyCreate["/parties/new"]
+  PartyWB["/parties/[id]/edit"]
+  PartyRelation["/relationship-tree?type=party&id=..."]
+
+  PropertyList["Property card/list item"]
+  PropertyCreate["/properties/new"]
+  PropertyWB["/properties/[id]/edit"]
+  PropertyRelation["/relationship-tree?type=property&id=..."]
+
+  InboxList["Unassigned file card/list item"]
+  ImportJob["/import-center?job=..."]
+
+  Organize --> CaseList --> CaseWB
+  Organize --> CaseCreate --> CaseWB
+  CaseWB --> CaseOutput
+  CaseWB --> CaseRelation
+
+  Organize --> PartyList --> PartyWB
+  Organize --> PartyCreate --> PartyWB
+  PartyWB --> PartyRelation
+
+  Organize --> PropertyList --> PropertyWB
+  Organize --> PropertyCreate
+  PropertyCreate --> Organize
+  PropertyWB --> PropertyRelation
+
+  Organize --> InboxList --> ImportJob
+  ImportJob --> CaseWB
+  ImportJob --> Organize
+```
+
+Current implementation notes:
+
+- Existing case, subject, and property records now have aligned "continue organizing" destinations:
+  - case -> `/cases/[id]`
+  - subject -> `/parties/[id]/edit`
+  - property -> `/properties/[id]/edit`
+- Subject creation can land in the subject workbench after save.
+- Property creation currently saves back to `整理信息` or the property ledger, then the user opens the property workbench. This should be unified so the primary save path enters `/properties/[id]/edit`.
+- `Unassigned Intake` should always return to ownership assignment or the selected owner workbench after the user chooses where the file belongs.
+
+### Page Responsibility Matrix
+
+| Page | User question | Allowed work | Should not do |
+| --- | --- | --- | --- |
+| `/` | What should I do now? | Show the main production steps, priority assistant, global search | Deep editing, full tables, diagnostics |
+| `/import-center` | What file do I want the system to read? | Upload/read files, show extraction result, choose owner, route to review | Long-term object management, output readiness |
+| `/organize-center` | Which object needs attention? | Search, filter, paginate, choose case/subject/property/file | Duplicate object editing styles, output generation |
+| `/cases/[id]` | What is missing from this case? | Edit case facts, review candidates, check relationships, prepare output-specific draft | Raw upload as primary task, unrelated object ledger browsing |
+| `/parties/[id]/edit` | What is missing from this subject? | Edit subject facts, view progress, inspect relationships | Separate CRM workflow, output generation |
+| `/properties/[id]/edit` | What is missing from this property? | Edit property facts, view progress, inspect relationships | Separate property-management workflow |
+| `/output-center` | Which document can I generate? | Select case/template, check missing items, preview/export | Raw extraction review, editing unrelated fields |
+| `/relationship-tree` | How are these objects connected? | Inspect object graph and jump to the relevant object | Become another editing page |
+| `/settings/members` | Who can use the workspace? | Team and permission configuration | Broker data execution |
+| `/settings/case-workbench-fields` | Which fields matter for this tenant? | Required/optional field settings | Case-by-case data entry |
+| `/settings/output-templates` | What document header/template rules apply? | Output template/header configuration | Generating one specific document |
+
+### Primary User Journeys
+
+#### A. Start With Files
+
+```mermaid
+flowchart LR
+  Import["Open /import-center"]
+  Upload["Upload or drag source files"]
+  Extract["Read and extract candidates"]
+  Assign["Choose owner<br/>case / subject / property"]
+  Workbench["Open owner workbench"]
+  Review["Confirm missing or uncertain fields"]
+  Output["Generate document when ready"]
+
+  Import --> Upload --> Extract --> Assign --> Workbench --> Review --> Output
+```
+
+#### B. Start Without Files
+
+```mermaid
+flowchart LR
+  Home["Open /"]
+  Create["Create case, subject, or property"]
+  Workbench["Open object workbench"]
+  AddFile["Add source files later"]
+  Review["Review and complete fields"]
+  Output["Generate document if case-ready"]
+
+  Home --> Create --> Workbench --> AddFile --> Review --> Output
+```
+
+#### C. Find Existing Work
+
+```mermaid
+flowchart LR
+  Organize["Open /organize-center"]
+  Filter["Filter by object/status/search"]
+  Select["Select object"]
+  Workbench["Continue organizing"]
+  Relation["Optional relationship tree"]
+  Output["Optional output center"]
+
+  Organize --> Filter --> Select --> Workbench
+  Workbench --> Relation
+  Workbench --> Output
+```
+
+### Topology Risks To Resolve
+
+These are not blockers for the current map, but they should be kept visible:
+
+- Property creation should route directly to the property workbench on the primary save path.
+- Subject creation still uses an older profile form while subject editing uses the new object workbench shell.
+- Secondary ledgers (`/parties`, `/properties`) must remain clearly positioned as search/reference pages, not as competing edit pages.
+- Output Center still contains legacy quote/property-overview paths. If they remain user-facing, their routes and wording must be aligned with the main case-output flow.
+- Legacy pages such as `/quotes`, `/contracts`, `/service-requests`, `/templates`, `/clients`, and `/audit-log` should be hidden, merged, or explicitly marked as backstage before release.
+- The relationship tree needs a consistent "open workbench" action for case, subject, property, file, and output nodes.
+- Any action label pair such as `Open` vs `Edit` must be collapsed into one product meaning per object state.
+
 ## Ownership-First Intake
 
 Broker Desk should not treat raw upload as the primary work start.
