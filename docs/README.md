@@ -38,6 +38,7 @@ Files in `docs/engineering/` describe runtime, persistence, and operational arch
 | File | Purpose |
 | --- | --- |
 | `docs/engineering/RUNTIME_STABILITY_AND_ARCHITECTURE.md` | Dev/runtime stability rules and release-like verification guidance. |
+| `docs/operations/RELEASE_V0.2.0_RC1_2026_08_05.md` | Unified public-beta candidate baseline, scope, verification gate, and versioning rule. |
 | `docs/engineering/POSTGRES_SETUP.md` | Postgres/Supabase setup and driver switching. |
 | `docs/engineering/postgres_schema.sql` | Manual SQL schema reference. |
 | `docs/engineering/postgres_rls.sql` | Supabase/Postgres RLS baseline for tenant isolation. |
