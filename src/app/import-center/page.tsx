@@ -12,6 +12,7 @@ import {
 } from "@/app/actions";
 import { FormDraftAssist } from "@/components/form-draft-assist";
 import { ExcelDocumentUploadForm } from "@/components/excel-document-upload-form";
+import { ExcelImportQueueProcessor } from "@/components/excel-import-queue-processor";
 import { IdentityDocumentUploadForm } from "@/components/identity-document-upload-form";
 import { InputExtractionReview } from "@/components/input-extraction-review";
 import { PageFlashBanner } from "@/components/page-flash-banner";
@@ -562,8 +563,10 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
 
   const statusLabel: Record<HubImportJobItem["status"], string> = {
     queued: t(locale, "import.status.queued"),
+    processing: t(locale, "import.status.processing"),
     mapped: t(locale, "import.status.mapped"),
     completed: t(locale, "import.status.completed"),
+    failed: t(locale, "import.status.failed"),
   };
 
   const targetLabel: Record<HubImportJobItem["targetEntity"], string> = {
@@ -792,6 +795,11 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
       zh: "已读取业务文件的待确认项目。",
       ko: "업무 파일의 확인 항목을 읽었습니다.",
     },
+    input_extraction_queued: {
+      ja: "資料を受け取りました。読み取りを開始します。",
+      zh: "资料已接收，正在开始读取。",
+      ko: "자료를 받았습니다. 읽기를 시작합니다.",
+    },
     identity_extraction_ready: {
       ja: "本人確認資料の確認項目を読み取りました。",
       zh: "已读取身份资料的待确认项目。",
@@ -821,6 +829,11 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
       ja: "PDF または画像を選択してください。",
       zh: "请选择 PDF 或图片。",
       ko: "PDF 또는 이미지를 선택해 주세요.",
+    },
+    identity_upload_save_failed: {
+      ja: "資料は読み取れましたが、元ファイルを安全に保存できませんでした。時間をおいて再試行してください。",
+      zh: "资料已读取，但原始文件未能安全保存。请稍后重试。",
+      ko: "자료는 읽었지만 원본 파일을 안전하게 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.",
     },
     identity_upload_too_many: {
       ja: "本人確認資料は一度に6件まで選択できます。",
@@ -969,7 +982,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
     },
   ];
   return (
-    <div className="space-y-7">
+    <div className="bd-page bd-import-page space-y-6">
       <section>
         <h1 className="text-4xl font-bold tracking-tight text-slate-900">{copy.pageTitle}</h1>
       </section>
@@ -1180,6 +1193,10 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
             </div>
           </section>
         </div>
+
+        {xlsxJob && (xlsxJob.status === "queued" || xlsxJob.status === "processing") ? (
+          <ExcelImportQueueProcessor jobId={xlsxJob.id} locale={locale} targetCaseId={targetCaseId || undefined} />
+        ) : null}
 
         {xlsxJob && xlsxPayload && inputExtractionPreview && isIdentityExtractionOnly ? (
           <div className="border-t border-emerald-100 p-5">
@@ -1786,7 +1803,6 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                 </div>
               </div>
             </div>
-            <div className="absolute -bottom-12 -right-12 h-40 w-40 rounded-full bg-white/5 blur-3xl" />
           </article>
 
           <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">

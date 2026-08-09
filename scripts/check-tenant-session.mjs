@@ -47,7 +47,10 @@ const {
 } = loadTsModule("src/lib/tenant-permissions.ts");
 const { selectActiveTenantMembership } = loadTsModule("src/lib/tenant-session.ts");
 const { requireTenantSession } = loadTsModule("src/lib/tenant-session.ts");
-const { isDevelopmentPlatformOwnerTenantFallbackEnabled } = loadTsModule("src/lib/platform-owner.ts");
+const {
+  hasActivePlatformOwnerMembership,
+  isDevelopmentPlatformOwnerTenantFallbackEnabled,
+} = loadTsModule("src/lib/platform-owner.ts");
 const {
   ensureUserForExternalAuth,
   getTenantById,
@@ -64,6 +67,14 @@ assert(!roleHasTenantPermission("broker", "template.publish"), "broker must not 
 assert(!roleHasTenantPermission("data_operator", "output.download_final"), "data operator must not download final outputs by default");
 assert(!roleHasTenantPermission("viewer", "source.upload"), "viewer must not upload source files");
 assert(listTenantRolePermissions("platform_owner").includes("template.manage_official"), "platform owner should manage official templates");
+assert(
+  hasActivePlatformOwnerMembership([{ role: "platform_owner", status: "active" }]),
+  "an active database platform_owner membership should authorize platform access",
+);
+assert(
+  !hasActivePlatformOwnerMembership([{ role: "platform_owner", status: "suspended" }]),
+  "a suspended database platform_owner membership must not authorize platform access",
+);
 
 const memberships = await listTenantMemberships("user_demo");
 assert(memberships.length >= 1, "demo user should have at least one tenant membership");
@@ -122,7 +133,30 @@ assert(
 );
 
 const appNavSource = fs.readFileSync("src/components/app-nav.tsx", "utf8");
-assert(appNavSource.includes("getNavigationDataUser"), "AppNav should resolve a navigation data user");
-assert(appNavSource.includes('getUserById("user_demo")'), "AppNav should keep seeded cases visible for local Clerk platform owners");
+assert(appNavSource.includes("getTenantSessionForNavigation"), "AppNav should resolve navigation identity only when required");
+assert(
+  appNavSource.includes("clerkEnabled ? Promise.resolve(null) : getTenantSessionForNavigation()"),
+  "AppNav must skip the navigation-only database session lookup for Clerk users",
+);
+assert(
+  appNavSource.includes("Protected pages still resolve and authorize their") && appNavSource.includes("own tenant session"),
+  "AppNav must leave actual tenant authorization to protected pages",
+);
+
+const dataSource = fs.readFileSync("src/lib/data.ts", "utf8");
+assert(
+  dataSource.includes("const resolveDefaultUser = cache"),
+  "default user resolution must remain request-cached so shell and page do not duplicate authentication work",
+);
+assert(
+  dataSource.includes("repo.getUserByExternalAuthSubject(subject)"),
+  "returning Clerk users must be resolved locally before a profile lookup or provisioning write",
+);
+
+const clerkAuthSource = fs.readFileSync("src/lib/clerk-auth.ts", "utf8");
+assert(
+  clerkAuthSource.includes("export const getClerkAuthSubject = cache"),
+  "Clerk session subject lookup must be request-cached",
+);
 
 console.log("[PASS] tenant session foundation regression");

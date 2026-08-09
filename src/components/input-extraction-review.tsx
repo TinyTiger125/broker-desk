@@ -76,7 +76,7 @@ function getBusinessFieldLabel(locale: Locale, fieldKey: string) {
 function getStatusLabel(locale: Locale, status: LocalReviewStatus) {
   const labels: Record<LocalReviewStatus, Record<Locale, string>> = {
     suggested: { ja: "要確認", zh: "待核对", ko: "확인 필요" },
-    accepted: { ja: "採用済み", zh: "已采用", ko: "채택됨" },
+    accepted: { ja: "確認済み", zh: "已确认", ko: "확인됨" },
     edited: { ja: "修正済み", zh: "已修正", ko: "수정됨" },
     unknown: { ja: "保留", zh: "暂缓", ko: "보류" },
     rejected: { ja: "保存しない", zh: "不保存", ko: "저장 안 함" },
@@ -128,6 +128,10 @@ function isResolvedStatus(status: LocalReviewStatus) {
   return status === "accepted" || status === "edited" || status === "rejected";
 }
 
+function isConfirmedStatus(status: LocalReviewStatus) {
+  return status === "accepted" || status === "edited";
+}
+
 export function InputExtractionReview({
   extraction,
   locale,
@@ -169,6 +173,8 @@ export function InputExtractionReview({
   const [editedValues, setEditedValues] = useState<Record<string, string>>({});
   const [selectedMergeCaseId, setSelectedMergeCaseId] = useState("");
   const [reviewMode, setReviewMode] = useState<"pending" | "all">("pending");
+  const [settlingFieldIds, setSettlingFieldIds] = useState<Set<string>>(() => new Set());
+  const [confirmationNotice, setConfirmationNotice] = useState<{ id: string; label: string } | null>(null);
   const extractionStats = useMemo(() => {
     const readable = items.filter(hasReadableValue).length;
     const empty = items.length - readable;
@@ -211,11 +217,12 @@ export function InputExtractionReview({
               ? group.items
               : group.items.filter((field) => {
                   const status = reviewStatuses[getFieldId(field)] ?? field.reviewStatus;
-                  return !isResolvedStatus(status);
+                  const id = getFieldId(field);
+                  return !isResolvedStatus(status) || settlingFieldIds.has(id);
                 }),
         }))
         .filter((group) => group.items.length > 0),
-    [groupedItems, reviewMode, reviewStatuses],
+    [groupedItems, reviewMode, reviewStatuses, settlingFieldIds],
   );
 
   function setStatus(field: ExtractedInputField, status: LocalReviewStatus) {
@@ -250,6 +257,22 @@ export function InputExtractionReview({
       ...current,
       [id]: nextValue === readValue ? "accepted" : "edited",
     }));
+    setSettlingFieldIds((current) => {
+      const next = new Set(current);
+      next.add(id);
+      return next;
+    });
+    setConfirmationNotice({ id, label: field.label });
+    window.setTimeout(() => {
+      setSettlingFieldIds((current) => {
+        const next = new Set(current);
+        next.delete(id);
+        return next;
+      });
+    }, 560);
+    window.setTimeout(() => {
+      setConfirmationNotice((current) => (current?.id === id ? null : current));
+    }, 2200);
   }
 
   return (
@@ -468,7 +491,13 @@ export function InputExtractionReview({
                     const status = reviewStatuses[id] ?? field.reviewStatus;
                     const displayedValue = status === "rejected" ? "" : editedValues[id] ?? getFieldValue(field);
                     return (
-                      <a key={`overview-${id}`} href={`#review-field-${encodeURIComponent(id)}`} className="block bg-white px-3 py-2 hover:bg-slate-50">
+                      <a
+                        key={`overview-${id}`}
+                        href={`#review-field-${encodeURIComponent(id)}`}
+                        className={`block px-3 py-2 transition-colors hover:bg-slate-50 ${
+                          isConfirmedStatus(status) ? "bg-emerald-50/70" : "bg-white"
+                        }`}
+                      >
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
                             <p className="truncate text-[11px] font-bold text-slate-700">{field.label}</p>
@@ -479,6 +508,7 @@ export function InputExtractionReview({
                             </p>
                           </div>
                           <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold ${getStatusClass(status)}`}>
+                            {isConfirmedStatus(status) ? "✓ " : ""}
                             {getStatusLabel(locale, status)}
                           </span>
                         </div>
@@ -492,6 +522,26 @@ export function InputExtractionReview({
         </aside>
 
         <div className="space-y-4">
+          {confirmationNotice ? (
+            <div
+              role="status"
+              aria-live="polite"
+              className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-900 shadow-sm"
+            >
+              <span aria-hidden="true" className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600 text-xs text-white">
+                ✓
+              </span>
+              <span>
+                {tr(locale, { ja: "「", zh: "「", ko: "「" })}
+                {confirmationNotice.label}
+                {tr(locale, {
+                  ja: "」を確認しました。左側の一覧に反映しています。",
+                  zh: "」已确认，左侧目录已更新。",
+                  ko: "」을 확인했습니다. 왼쪽 목록을 업데이트했습니다.",
+                })}
+              </span>
+            </div>
+          ) : null}
           <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h4 className="text-sm font-black text-slate-950">
@@ -542,10 +592,12 @@ export function InputExtractionReview({
                 <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-slate-600">{group.items.length}</span>
               </div>
               <div className="divide-y divide-slate-100">
-                {group.items.map((field) => {
-                  const id = getFieldId(field);
-                  const currentStatus = reviewStatuses[id] ?? field.reviewStatus;
-                  const readValue = getFieldValue(field);
+                  {group.items.map((field) => {
+                    const id = getFieldId(field);
+                    const currentStatus = reviewStatuses[id] ?? field.reviewStatus;
+                    const isConfirmed = isConfirmedStatus(currentStatus);
+                    const isSettling = reviewMode === "pending" && settlingFieldIds.has(id);
+                    const readValue = getFieldValue(field);
                   const currentValue = editedValues[id] ?? readValue;
                   const useTextarea = currentValue.length > 48 || currentValue.includes("\n") || field.fieldKey.toLowerCase().includes("address");
                   const updateValue = (value: string) => setEditedValues((current) => ({ ...current, [id]: value }));
@@ -554,12 +606,21 @@ export function InputExtractionReview({
                     setReviewStatuses((current) => ({ ...current, [id]: currentValue.trim() ? "edited" : "unknown" }));
                   };
                   return (
-                    <article id={`review-field-${encodeURIComponent(id)}`} key={id} className="scroll-mt-24 p-4">
+                    <article
+                      id={`review-field-${encodeURIComponent(id)}`}
+                      key={id}
+                      className={`scroll-mt-24 overflow-hidden transition-all duration-500 ease-out ${
+                        isSettling
+                          ? "max-h-0 -translate-x-8 scale-[0.98] p-0 opacity-0"
+                          : "max-h-[50rem] p-4 opacity-100"
+                      }`}
+                    >
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="min-w-0">
                           <p className="text-sm font-black text-slate-950">{field.label}</p>
                           <div className="mt-1 flex flex-wrap items-center gap-2">
                             <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${getStatusClass(currentStatus)}`}>
+                              {isConfirmed ? "✓ " : ""}
                               {getStatusLabel(locale, currentStatus)}
                             </span>
                             {!hasReadableValue(field) ? (
@@ -581,7 +642,15 @@ export function InputExtractionReview({
                           <p>{getMethodLabel(locale, field.method)}</p>
                         </details>
                       </div>
-                      <div className={`mt-3 rounded-lg border p-3 ${hasReadableValue(field) ? "border-slate-200 bg-slate-50" : "border-rose-200 bg-rose-50/50"}`}>
+                      <div
+                        className={`mt-3 rounded-lg border p-3 ${
+                          isConfirmed
+                            ? "border-emerald-200 bg-emerald-50/50"
+                            : hasReadableValue(field)
+                              ? "border-slate-200 bg-slate-50"
+                              : "border-rose-200 bg-rose-50/50"
+                        }`}
+                      >
                         <label className="block">
                           <span className="text-[11px] font-bold text-slate-600">
                             {tr(locale, { ja: "確定する値", zh: "确认使用的值", ko: "확정할 값" })}
@@ -610,23 +679,32 @@ export function InputExtractionReview({
                             {tr(locale, { ja: "入力中の値は左側にすぐ反映", zh: "输入中的值会实时显示在左侧", ko: "입력 중인 값이 왼쪽에 즉시 표시" })}
                           </p>
                           <div className="flex gap-2">
-                            <button
-                              type="button"
-                              onMouseDown={(event) => event.preventDefault()}
-                              onClick={() => setStatus(field, "rejected")}
-                              className="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50"
-                            >
-                              {tr(locale, { ja: "保存しない", zh: "不采用", ko: "저장 안 함" })}
-                            </button>
-                            <button
-                              type="button"
-                              onMouseDown={(event) => event.preventDefault()}
-                              onClick={() => confirmField(field)}
-                              disabled={!currentValue.trim()}
-                              className="rounded-md bg-indigo-700 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-800 disabled:cursor-not-allowed disabled:bg-slate-300"
-                            >
-                              {tr(locale, { ja: "この値を確定", zh: "确认此项", ko: "이 값 확정" })}
-                            </button>
+                            {isConfirmed ? (
+                              <span className="inline-flex items-center gap-1 rounded-md bg-emerald-100 px-3 py-2 text-xs font-bold text-emerald-800">
+                                <span aria-hidden="true">✓</span>
+                                {tr(locale, { ja: "確認済み", zh: "已确认", ko: "확인됨" })}
+                              </span>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  onMouseDown={(event) => event.preventDefault()}
+                                  onClick={() => setStatus(field, "rejected")}
+                                  className="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                                >
+                                  {tr(locale, { ja: "保存しない", zh: "不采用", ko: "저장 안 함" })}
+                                </button>
+                                <button
+                                  type="button"
+                                  onMouseDown={(event) => event.preventDefault()}
+                                  onClick={() => confirmField(field)}
+                                  disabled={!currentValue.trim() || isSettling}
+                                  className="rounded-md bg-indigo-700 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                                >
+                                  {tr(locale, { ja: "この値を確定", zh: "确认此项", ko: "이 값 확정" })}
+                                </button>
+                              </>
+                            )}
                           </div>
                         </div>
                       </div>

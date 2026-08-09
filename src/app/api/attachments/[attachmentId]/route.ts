@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
-import { getAttachmentById } from "@/lib/data";
-import { isLocalPrivateStoragePath, readLocalPrivateAttachment } from "@/lib/attachment-storage";
+import { getAttachmentById, readPrivateAttachmentContent } from "@/lib/data";
+import {
+  isLocalPrivateStoragePath,
+  isPostgresPrivateStoragePath,
+  readLocalPrivateAttachment,
+} from "@/lib/attachment-storage";
 import { TenantSessionError, requireTenantSession } from "@/lib/tenant-session";
 
 export const dynamic = "force-dynamic";
@@ -27,19 +31,29 @@ export async function GET(_request: Request, context: { params: Promise<{ attach
     tenantId: session.tenant.id,
     userId: session.user.id,
   });
-  if (!attachment || !isLocalPrivateStoragePath(attachment.storagePath)) {
+  if (!attachment) {
     return NextResponse.json({ ok: false, error: "attachment_not_found" }, { status: 404 });
   }
 
-  const content = await readLocalPrivateAttachment({
-    storagePath: attachment.storagePath!,
-    tenantId: session.tenant.id,
-  });
+  const content = isLocalPrivateStoragePath(attachment.storagePath)
+    ? await readLocalPrivateAttachment({
+        storagePath: attachment.storagePath!,
+        tenantId: session.tenant.id,
+      })
+    : isPostgresPrivateStoragePath(attachment.storagePath)
+      ? await readPrivateAttachmentContent({
+          id: attachment.id,
+          tenantId: session.tenant.id,
+          userId: session.user.id,
+        })
+      : null;
   if (!content) {
     return NextResponse.json({ ok: false, error: "attachment_not_found" }, { status: 404 });
   }
 
-  return new NextResponse(content, {
+  const responseBody = content.buffer.slice(content.byteOffset, content.byteOffset + content.byteLength) as ArrayBuffer;
+
+  return new NextResponse(responseBody, {
     headers: {
       "content-type": attachment.fileType || "application/octet-stream",
       "content-disposition": contentDisposition(attachment.fileName),

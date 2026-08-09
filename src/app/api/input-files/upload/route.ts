@@ -1,105 +1,41 @@
-import { createHash } from "node:crypto";
-import * as XLSX from "xlsx";
 import { NextResponse } from "next/server";
-import { addAuditLog, addImportJob } from "@/lib/data";
-import { extractInputFileFromWorkbook, type InputFileExtractionResult } from "@/lib/input-file-extractor";
+import { getExcelUploadLimitBytes, queueExcelImportSource } from "@/lib/excel-import-queue";
+import { getRequestId, logOperationalEvent } from "@/lib/operational-logging";
+import { assertProductionImportWorkerReady } from "@/lib/production-readiness";
 import { TenantSessionError, requireTenantSession } from "@/lib/tenant-session";
 
 export const dynamic = "force-dynamic";
-
-const MAX_EXCEL_UPLOAD_BYTES = 20 * 1024 * 1024;
 const MAX_MULTIPART_OVERHEAD_BYTES = 1024 * 1024;
 
-type ExcelImportPayload = {
-  kind: "input_file_extraction";
-  headers: string[];
-  autoMapping: Record<string, string>;
-  rows: Record<string, unknown>[];
-  originalFilename: string;
-  totalRows: number;
-  inputExtraction: InputFileExtractionResult;
-};
-
 export async function POST(request: Request) {
-  let session;
+  const requestId = getRequestId(request);
   try {
-    session = await requireTenantSession({ permission: "source.upload" });
-  } catch (error) {
-    if (error instanceof TenantSessionError) {
-      return NextResponse.json({ ok: false, error: error.code }, { status: error.status });
+    assertProductionImportWorkerReady();
+    const session = await requireTenantSession({ permission: "source.upload" });
+    const maxBytes = getExcelUploadLimitBytes();
+    const contentLength = Number(request.headers.get("content-length") ?? 0);
+    if (Number.isFinite(contentLength) && contentLength > maxBytes + MAX_MULTIPART_OVERHEAD_BYTES) {
+      return NextResponse.json({ ok: false, error: "file_too_large", maxBytes, requestId }, { status: 413 });
     }
-    throw error;
+    const formData = await request.formData();
+    const file = formData.get("excelFile");
+    if (!(file instanceof File)) return NextResponse.json({ ok: false, error: "file_required", requestId }, { status: 400 });
+    const targetCaseId = String(formData.get("targetCaseId") ?? "").trim() || undefined;
+    const result = await queueExcelImportSource({ tenantId: session.tenant.id, userId: session.user.id, file, targetCaseId });
+    if (!result.ok) {
+      const status = result.error === "file_too_large" ? 413 : result.error === "source_persistence_failed" ? 500 : 400;
+      return NextResponse.json({ ...result, requestId }, { status, headers: { "x-request-id": requestId } });
+    }
+    logOperationalEvent({ event: "excel_import", requestId, tenantId: session.tenant.id, userId: session.user.id, jobId: result.jobId, outcome: result.deduplicated ? "deduplicated" : "accepted" });
+    return NextResponse.json({
+      ...result,
+      reviewUrl: `/import-center?xlsxJob=${encodeURIComponent(result.jobId)}&flash=input_extraction_queued${targetCaseId ? `&targetCaseId=${encodeURIComponent(targetCaseId)}` : ""}`,
+      processUrl: `/api/input-files/${encodeURIComponent(result.jobId)}/process`,
+      requestId,
+    }, { status: result.status === "queued" ? 202 : 200, headers: { "x-request-id": requestId } });
+  } catch (error) {
+    if (error instanceof TenantSessionError) return NextResponse.json({ ok: false, error: error.code, requestId }, { status: error.status });
+    const code = error instanceof Error && "code" in error ? String(error.code) : "service_unavailable";
+    return NextResponse.json({ ok: false, error: code, requestId }, { status: 503 });
   }
-  const user = session.user;
-  const tenantId = session.tenant.id;
-  const contentLength = Number(request.headers.get("content-length") ?? 0);
-  if (Number.isFinite(contentLength) && contentLength > MAX_EXCEL_UPLOAD_BYTES + MAX_MULTIPART_OVERHEAD_BYTES) {
-    return NextResponse.json({ ok: false, error: "file_too_large", maxBytes: MAX_EXCEL_UPLOAD_BYTES }, { status: 413 });
-  }
-
-  const formData = await request.formData();
-  const file = formData.get("excelFile");
-  if (!(file instanceof File) || file.size === 0) {
-    return NextResponse.json({ ok: false, error: "file_required" }, { status: 400 });
-  }
-  if (file.size > MAX_EXCEL_UPLOAD_BYTES) {
-    return NextResponse.json({ ok: false, error: "file_too_large", maxBytes: MAX_EXCEL_UPLOAD_BYTES }, { status: 413 });
-  }
-  if (!file.name.toLowerCase().endsWith(".xlsx")) {
-    return NextResponse.json({ ok: false, error: "xlsx_required" }, { status: 400 });
-  }
-
-  const buffer = await file.arrayBuffer();
-  let workbook: XLSX.WorkBook;
-  try {
-    workbook = XLSX.read(new Uint8Array(buffer), { type: "array" });
-  } catch {
-    return NextResponse.json({ ok: false, error: "invalid_xlsx" }, { status: 400 });
-  }
-
-  const sourceFileHash = createHash("sha256").update(Buffer.from(buffer)).digest("hex");
-  const inputExtraction = extractInputFileFromWorkbook(workbook, file.name, sourceFileHash);
-  const payload: ExcelImportPayload = {
-    kind: "input_file_extraction",
-    headers: [],
-    autoMapping: {},
-    rows: [],
-    originalFilename: file.name,
-    totalRows: 0,
-    inputExtraction,
-  };
-
-  const job = await addImportJob({
-    tenantId,
-    userId: user.id,
-    sourceType: "excel",
-    targetEntity: inputExtraction.extractionStatus === "recognized" ? "contracts" : "properties",
-    title: file.name,
-    notes: JSON.stringify(payload),
-    status: "mapped",
-  });
-
-  await addAuditLog({
-    tenantId,
-    userId: user.id,
-    action: inputExtraction.extractionStatus === "recognized" ? "input_file_extraction_created" : "input_file_extraction_unknown",
-    targetType: "import_job",
-    targetId: job.id,
-    message: `Excel 業務ファイル抽出 API: ${file.name} (${inputExtraction.documentType})`,
-    context: {
-      documentType: inputExtraction.documentType,
-      fieldCount: inputExtraction.fields.length,
-    },
-  });
-
-  return NextResponse.json({
-    ok: true,
-    jobId: job.id,
-    reviewUrl: `/import-center?xlsxJob=${encodeURIComponent(job.id)}&flash=input_extraction_ready`,
-    extractionStatus: inputExtraction.extractionStatus,
-    documentType: inputExtraction.documentType,
-    documentTypeLabel: inputExtraction.documentTypeLabel,
-    fieldCount: inputExtraction.fields.length,
-    fingerprintConfidence: inputExtraction.fingerprintConfidence,
-  });
 }

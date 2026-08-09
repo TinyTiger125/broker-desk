@@ -3,15 +3,17 @@ set -eu
 
 BASE_URL="${BASE_URL:-http://127.0.0.1:3000}"
 REGRESSION_LOCALE="${REGRESSION_LOCALE:-ja}"
-REGRESSION_ACTOR_ID="${REGRESSION_ACTOR_ID:-user_demo}"
-REGRESSION_TENANT_ID="${REGRESSION_TENANT_ID:-tenant_cherry}"
+# Export a real Clerk browser session cookie only for local/staging regression.
+# The old actor/tenant cookies were demo-only and must never stand in for an
+# authenticated tenant in a public-beta acceptance run.
+BROKER_DESK_REGRESSION_COOKIE="${BROKER_DESK_REGRESSION_COOKIE:-}"
 QA_CURL_HEADERS=()
 if [ -n "${BROKER_DESK_QA_TOKEN:-}" ]; then
   QA_CURL_HEADERS=(-H "x-broker-desk-qa-token: ${BROKER_DESK_QA_TOKEN}")
 fi
 
 curl() {
-  command curl -H "Cookie: brokerdesk_locale=${REGRESSION_LOCALE}; brokerdesk_actor_id=${REGRESSION_ACTOR_ID}; brokerdesk_tenant_id=${REGRESSION_TENANT_ID}" "$@"
+  command curl -H "Cookie: brokerdesk_locale=${REGRESSION_LOCALE}; ${BROKER_DESK_REGRESSION_COOKIE}" "$@"
 }
 
 fail() {
@@ -38,8 +40,12 @@ trap cleanup_business_data EXIT
 
 echo "[INFO] BASE_URL=${BASE_URL}"
 echo "[INFO] REGRESSION_LOCALE=${REGRESSION_LOCALE}"
-echo "[INFO] REGRESSION_ACTOR_ID=${REGRESSION_ACTOR_ID}"
-echo "[INFO] REGRESSION_TENANT_ID=${REGRESSION_TENANT_ID}"
+
+if [ -z "${BROKER_DESK_REGRESSION_COOKIE}" ]; then
+  echo "[BLOCKED] Set BROKER_DESK_REGRESSION_COOKIE to a short-lived Clerk browser session cookie before running authenticated regression."
+  echo "[BLOCKED] Legacy brokerdesk_actor_id and brokerdesk_tenant_id cookies are deliberately unsupported."
+  exit 2
+fi
 
 echo "[STEP] default Japanese locale smoke"
 default_home_html="$(command curl -fsS "${BASE_URL}/")" || fail "default home page unreachable"

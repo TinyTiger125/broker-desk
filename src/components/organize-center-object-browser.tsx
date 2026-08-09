@@ -3,6 +3,9 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { ArchiveRecordButton } from "@/components/archive-record-button";
+import type { Locale } from "@/lib/locale";
+import type { LifecycleFilter, LifecycleStatus } from "@/lib/record-lifecycle";
 
 type ObjectType = "all" | "case" | "party" | "property" | "inbox";
 type ObjectStatus = "all" | "unconfirmed" | "inconsistent" | "insufficient" | "complete";
@@ -20,6 +23,7 @@ export type OrganizeCenterBrowserItem = {
   href: string;
   secondaryHref?: string;
   secondaryLabel?: string;
+  lifecycleStatus: LifecycleStatus;
 };
 
 type OrganizeCenterObjectBrowserProps = {
@@ -27,6 +31,8 @@ type OrganizeCenterObjectBrowserProps = {
   selectedType: ObjectType;
   query: string;
   copy: Record<string, string>;
+  lifecycleFilter: LifecycleFilter;
+  locale: Locale;
 };
 
 const LIST_PAGE_SIZE = 6;
@@ -74,14 +80,27 @@ function filterItems(items: OrganizeCenterBrowserItem[], type: ObjectType, query
   });
 }
 
-function syncBrowserUrl(type: ObjectType, query: string) {
+function buildBrowserHref(type: ObjectType, query: string, lifecycleFilter: LifecycleFilter) {
+  const params = new URLSearchParams();
+  if (type !== "all") params.set("type", type);
+  if (lifecycleFilter !== "active") params.set("lifecycle", lifecycleFilter);
+  if (query.trim()) params.set("q", query.trim());
+  const search = params.toString();
+  return search ? `/organize-center?${search}` : "/organize-center";
+}
+
+function syncBrowserUrl(type: ObjectType, query: string, lifecycleFilter: LifecycleFilter) {
   const url = new URL(window.location.href);
   if (type === "all") {
     url.searchParams.delete("type");
   } else {
     url.searchParams.set("type", type);
   }
-  url.searchParams.delete("status");
+  if (lifecycleFilter === "active") {
+    url.searchParams.delete("lifecycle");
+  } else {
+    url.searchParams.set("lifecycle", lifecycleFilter);
+  }
   if (query.trim()) {
     url.searchParams.set("q", query.trim());
   } else {
@@ -98,7 +117,7 @@ function restoreScrollPosition(left: number, top: number) {
   });
 }
 
-export function OrganizeCenterObjectBrowser({ items, selectedType, query, copy }: OrganizeCenterObjectBrowserProps) {
+export function OrganizeCenterObjectBrowser({ items, selectedType, query, copy, lifecycleFilter, locale }: OrganizeCenterObjectBrowserProps) {
   const router = useRouter();
   const activeType = selectedType;
   const [activeQuery, setActiveQuery] = useState(query);
@@ -184,7 +203,7 @@ export function OrganizeCenterObjectBrowser({ items, selectedType, query, copy }
     setSearchInput(nextQuery);
     setPageIndex(0);
     setSelectedId(nextFocusId);
-    syncBrowserUrl(activeType, nextQuery);
+    syncBrowserUrl(activeType, nextQuery, lifecycleFilter);
     restoreScrollPosition(scrollLeft, scrollTop);
   }
 
@@ -213,7 +232,7 @@ export function OrganizeCenterObjectBrowser({ items, selectedType, query, copy }
         {branchCards.map((card) => (
           <Link
             key={card.type}
-            href={`/organize-center?type=${card.type}`}
+            href={buildBrowserHref(card.type, activeQuery, lifecycleFilter)}
             data-testid={`organize-branch-${card.type}`}
             className="group min-h-44 rounded-lg border border-slate-200 bg-white p-4 text-left transition hover:border-blue-300 hover:bg-blue-50/40"
           >
@@ -244,8 +263,28 @@ export function OrganizeCenterObjectBrowser({ items, selectedType, query, copy }
   }
 
   return (
-    <div>
+    <div className="organize-object-browser">
       <div className="border-b border-slate-200 p-4">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          {([
+            ["active", copy.activeRecords],
+            ["archived", copy.archivedRecords],
+            ["all", copy.allRecords],
+          ] as const).map(([filter, label]) => (
+            <Link
+              key={filter}
+              href={buildBrowserHref(activeType, activeQuery, filter)}
+              className={
+                "rounded-full px-3 py-1.5 text-xs font-black transition " +
+                (lifecycleFilter === filter
+                  ? "bg-slate-950 text-white"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200")
+              }
+            >
+              {label}
+            </Link>
+          ))}
+        </div>
         <form
           className="flex gap-2"
           onSubmit={(event) => {
@@ -299,14 +338,18 @@ export function OrganizeCenterObjectBrowser({ items, selectedType, query, copy }
               {visibleItems.map((item) => {
                 const active = selectedItem?.id === item.id;
                 return (
-                  <button
+                  <div
                     key={`${item.type}:${item.id}`}
-                    type="button"
+                    role="button"
+                    tabIndex={0}
                     aria-pressed={active}
                     onClick={() => selectItem(item.id)}
                     onDoubleClick={() => openItem(item)}
                     onKeyDown={(event) => {
-                      if (event.key === "Enter") openItem(item);
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        openItem(item);
+                      }
                     }}
                     className={
                       "block w-full px-4 py-4 text-left text-sm transition hover:bg-blue-50/40 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[#002FA7] " +
@@ -340,8 +383,19 @@ export function OrganizeCenterObjectBrowser({ items, selectedType, query, copy }
                         <p className="text-[11px] font-black text-slate-500">{copy.statusNote}</p>
                         <p className="mt-1 line-clamp-2 font-semibold leading-5 text-slate-800">{item.statusNote}</p>
                       </div>
-                    </div>
-                  </button>
+                      </div>
+                    {item.type !== "inbox" ? (
+                      <div className="mt-3 flex justify-end">
+                        <ArchiveRecordButton
+                          entityType={item.type === "party" ? "party" : item.type}
+                          entityId={item.id}
+                          status={item.lifecycleStatus}
+                          locale={locale}
+                          returnTo={buildBrowserHref(activeType, activeQuery, lifecycleFilter)}
+                        />
+                      </div>
+                    ) : null}
+                  </div>
                 );
               })}
             </div>

@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable @next/next/no-img-element -- Template previews use generated, authenticated image URLs. */
 
 import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -78,11 +79,12 @@ export function GuaranteeTemplateSelector({
 
   const selectedTemplate =
     templates.find((template) => template.id === selectedTemplateId) ?? templates[0];
+  const selectedTemplatePreviewId = selectedTemplate?.id;
   const previewSrc = useMemo(() => {
-    if (!selectedTemplate) return "";
+    if (!selectedTemplatePreviewId) return "";
     const params = new URLSearchParams({ caseId, mode: "preview", format: "png" });
-    return `/api/guarantee-applications/${encodeURIComponent(selectedTemplate.id)}/download?${params.toString()}`;
-  }, [caseId, selectedTemplate]);
+    return `/api/guarantee-applications/${encodeURIComponent(selectedTemplatePreviewId)}/download?${params.toString()}`;
+  }, [caseId, selectedTemplatePreviewId]);
   const previewSources = useMemo(
     () => Array.from({ length: previewPageCount }, (_, index) => `${previewSrc}&page=${index + 1}`),
     [previewPageCount, previewSrc],
@@ -116,13 +118,13 @@ export function GuaranteeTemplateSelector({
   }, [isFullscreenPreviewOpen]);
 
   useEffect(() => {
-    if (!selectedTemplate || !caseId) return;
+    if (!selectedTemplatePreviewId || !caseId) return;
 
     const controller = new AbortController();
     const params = new URLSearchParams({ caseId, mode: "preview", format: "preview-info" });
 
     void fetch(
-      `/api/guarantee-applications/${encodeURIComponent(selectedTemplate.id)}/download?${params.toString()}`,
+      `/api/guarantee-applications/${encodeURIComponent(selectedTemplatePreviewId)}/download?${params.toString()}`,
       { signal: controller.signal },
     )
       .then(async (response) => {
@@ -138,7 +140,7 @@ export function GuaranteeTemplateSelector({
       });
 
     return () => controller.abort();
-  }, [caseId, selectedTemplate?.id]);
+  }, [caseId, selectedTemplatePreviewId]);
 
   function selectTemplate(templateId: string) {
     if (templateId === selectedTemplateId) return;

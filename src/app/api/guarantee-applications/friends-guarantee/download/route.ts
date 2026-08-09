@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { addAuditLog, addGeneratedOutput, getBrokerageCaseById, getGuaranteeApplicationDraft } from "@/lib/data";
+import { addAuditLog, addGeneratedOutput, getActiveTenantGuaranteeTemplateInstall, getBrokerageCaseById, getGuaranteeApplicationDraft } from "@/lib/data";
 import {
-  getFriendsGuaranteeTemplateLayoutSnapshot,
   getGuaranteePdfTemplateConfig,
   renderFriendsGuaranteePdf,
 } from "@/lib/friends-guarantee-pdf";
+import { resolveGuaranteeTemplateLayout } from "@/lib/guarantee-template-layout-runtime";
 import { getGuaranteeCompanyTemplate } from "@/lib/guarantee-application";
 import { evaluateGuaranteeDownloadGate } from "@/lib/guarantee-download-gate";
 import { requireTenantSession, TenantSessionError } from "@/lib/tenant-session";
@@ -49,6 +49,13 @@ export async function GET(request: Request) {
   if (!brokerageCase) {
     return NextResponse.json({ error: "case_not_found" }, { status: 404 });
   }
+  const installedTemplate = await getActiveTenantGuaranteeTemplateInstall({
+    tenantId: session.tenant.id,
+    templateId: TEMPLATE_ID,
+  });
+  if (!installedTemplate) {
+    return NextResponse.json({ error: "template_not_installed" }, { status: 403 });
+  }
   const draft = await getGuaranteeApplicationDraft({
     userId: session.user.id,
     tenantId: session.tenant.id,
@@ -83,15 +90,17 @@ export async function GET(request: Request) {
   }
 
   try {
+    const templateLayout = await resolveGuaranteeTemplateLayout(TEMPLATE_ID, session.tenant.id);
     const bytes = await renderFriendsGuaranteePdf({
       confirmedDataJson: brokerageCase?.confirmedDataJson,
       draftFieldValuesJson: draft?.fieldValuesJson,
       caseTitle: brokerageCase?.caseTitle,
       templateId: TEMPLATE_ID,
+      templateLayoutSnapshot: templateLayout.snapshot,
     });
     if (mode !== "preview") {
       const generatedAt = new Date();
-      const layoutSnapshot = getFriendsGuaranteeTemplateLayoutSnapshot(TEMPLATE_ID);
+      const layoutSnapshot = templateLayout.snapshot;
       const pdfTemplateConfig = getGuaranteePdfTemplateConfig(TEMPLATE_ID);
       const documentNumber = createGuaranteeDocumentNumber({ caseId: brokerageCase.id, generatedAt });
       const generated = await addGeneratedOutput({
@@ -103,7 +112,7 @@ export async function GET(request: Request) {
         language: "ja",
         title: `ふれんず保証申込書 - ${brokerageCase.caseTitle}`,
         documentNumber,
-        templateVersionId: `official:${TEMPLATE_ID}:${layoutSnapshot.baselineVersion}`,
+        templateVersionId: templateLayout.versionId,
         caseId: brokerageCase.id,
         templateId: TEMPLATE_ID,
         inputDataSnapshot: brokerageCase.confirmedDataJson,
@@ -127,6 +136,8 @@ export async function GET(request: Request) {
           outputId: generated.id,
           documentNumber,
           templateVersionId: generated.templateVersionId,
+          publishedLayoutVersion: templateLayout.versionNumber,
+          publishedLayoutSource: templateLayout.source,
         },
       });
     }

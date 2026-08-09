@@ -31,13 +31,15 @@ export function getAuthMode(): BrokerDeskAuthMode {
   if (configured === "demo" || configured === "trusted_header" || configured === "clerk" || configured === "disabled") {
     return configured;
   }
-  return isProductionRuntime() ? "disabled" : "demo";
+  // A real Clerk configuration is sufficient to opt into the real account path.
+  // Demo access must always be chosen explicitly so a copied checkout cannot
+  // silently expose a workspace without authentication.
+  if (isClerkAuthConfigured()) return "clerk";
+  return "disabled";
 }
 
 export function isDemoAuthEnabled() {
-  if (isProductionRuntime()) return false;
-  if (process.env.BROKER_DESK_ENABLE_DEMO_AUTH === "true") return true;
-  return getAuthMode() === "demo" && !isProductionRuntime();
+  return !isProductionRuntime() && getAuthMode() === "demo";
 }
 
 export function isTrustedHeaderAuthEnabled() {

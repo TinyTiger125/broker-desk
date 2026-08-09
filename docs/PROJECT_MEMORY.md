@@ -1,6 +1,6 @@
 # Broker Desk Project Memory
 
-Last updated: 2026-07-17
+Last updated: 2026-08-06
 
 This file is the fixed project-memory entrypoint for Broker Desk.
 
@@ -49,6 +49,7 @@ Do not use this file for:
    - AI learning: `docs/product/V1_AI_CORRECTION_LEARNING.md`
    - model routing: `docs/product/V1_AI_MODEL_SELECTION.md`
    - multi-tenant permissions: `docs/product/MULTI_TENANT_PERMISSION_MODEL.md`
+   - record lifecycle: `docs/product/RECORD_LIFECYCLE.md`
    - runtime stability: `docs/engineering/RUNTIME_STABILITY_AND_ARCHITECTURE.md`
 
 If these documents conflict, treat this file as the current routing layer, then update the stale document or record the conflict here.
@@ -160,6 +161,16 @@ BROKER_DESK_AUTH_MODE=demo BROKER_DESK_ENABLE_DEMO_AUTH=true BROKER_DESK_SEED_MO
 - Future model calls must retrieve experience through `getApprovedAiExperienceContext` with tenant/user/task/template/field scope, and must treat the returned markdown as hints only, never as confirmed current-case facts.
 - Durable source: `docs/product/AI_EXPERIENCE_MODEL_CONTEXT_CHAIN.md`.
 
+2026-08-05 template distribution and cross-device consistency checkpoint:
+
+- Official guarantee-company template layouts are no longer allowed to depend on a workstation-local calibration file in production. Each official publication is immutable, asset-fingerprinted, versioned, and resolved from shared storage.
+- The existing five calibrated guarantee templates are seeded by `20260805_003_guarantee_template_layout_versions.sql`.
+- A workspace can install an official template through `20260805_004_tenant_guarantee_template_installs.sql`. Preview and PDF output resolve that tenant-installed frozen copy first; later official releases cannot overwrite it.
+- Broker-facing `/templates` is now the Template Library: official templates are discoverable, but each new workspace starts with zero installed templates. Only an installed template appears in output; direct preview/download requests for an uninstalled template are refused.
+- The currently delivered tenant workflow is install and use. Tenant-side layout editing, compare-and-upgrade, and export/import migration tooling remain separate follow-up work and must be explicitly designed to preserve tenant history.
+- Cross-device acceptance requires a shared PostgreSQL database, applied migrations 003 and 004, Clerk-enabled authentication, two active tenant members in the same tenant, and a visual comparison of the same generated PDF from both devices.
+- Durable source: `docs/engineering/GUARANTEE_TEMPLATE_PUBLICATION.md`.
+
 ## Target User
 
 Primary V1 user:
@@ -196,7 +207,7 @@ PDF / output:
 
 - PDF generation uses official source PDFs/raster backgrounds plus overlay text/checkmarks.
 - The five guarantee-company forms do not expose useful AcroForm fields.
-- Template coordinates and custom boxes are stored in `.broker-desk/friends-guarantee-layouts.json`.
+- Official template coordinates and custom boxes are stored as immutable, shared database publications. `.broker-desk/friends-guarantee-layouts.json` is legacy bootstrap/development fallback only; see `docs/engineering/GUARANTEE_TEMPLATE_PUBLICATION.md`.
 - Common render logic is in `src/lib/friends-guarantee-pdf.ts`.
 - Download gating is in `src/lib/guarantee-download-gate.ts`.
 - Template authoring UI is currently in the preview/calibration surface and should move to admin/backstage before release.
@@ -430,6 +441,14 @@ Required permission/UX rules:
 - Account settings and tenant permissions should eventually distinguish `broker`, `tenant_template_admin`, and `internal_template_author`.
 - User feedback and one-off corrections should become candidate evidence for future template improvements, not automatic global changes.
 
+Record lifecycle boundary:
+
+- Cases, parties, and properties use soft archive/restore rather than physical deletion.
+- Active records are shown by default; archived records are available through an explicit filter.
+- Archiving preserves linked source files, case relations, output history, and audit records.
+- The `record.archive` permission is tenant-scoped and every archive/restore action is audited.
+- Do not add a physical-delete UI until retention, approval, dependency handling, and audit requirements are defined.
+
 ## Guarantee Form Automation Boundary
 
 Decision recorded on 2026-06-16:
@@ -613,3 +632,14 @@ http://localhost:3002/api/guarantee-applications/j_lease_individual_v1/download?
 - Treat this handoff as the starting context for the next development conversation. Continue on the development environment first, and do not merge into the main/friend-test environment without explicit approval.
 - Verified the guarantee-application preview path on the development environment only: all five templates render the selected case's confirmed values in preview even when output blockers remain. The preview endpoint remains available for review; the final-download gate still blocks incomplete applications.
 - Updated the visual PDF smoke check to use preview mode by default, with `PDF_MODE=final` reserved for deliberate final-download gate coverage. This prevents an intentionally incomplete case from producing a false preview failure.
+
+### 2026-08-06
+
+- Clarified the Template Library authority boundary: every active customer-account role can browse the official library and add an official template as a frozen copy in its current workspace. This is a controlled workspace installation, not an unmanaged file download.
+- Login entry review: the application already has Clerk-based identity, invitation, membership-binding, and production fail-closed guardrails. This checkout has no Clerk environment configuration, so every business route now redirects to `/sign-in` instead of silently using a demo identity. `/sign-in` and `/sign-up` render outside the workspace navigation shell and state the invitation-only commercial model. `BROKER_DESK_AUTH_MODE=demo` is an explicit local-QA escape hatch only. A real release remains blocked on live Clerk keys, public-sign-up restriction in Clerk, invitation delivery/webhook verification, and a multi-workspace selection flow for users with more than one active membership.
+- Added `/workspace` as the post-login workspace boundary. It lists only active, accessible memberships; the selection endpoint independently resolves the current authenticated user and rejects any tenant without an active membership before setting the HttpOnly active-workspace cookie. One available workspace is entered automatically; multiple workspaces require an explicit choice. Direct deep-link recovery to this selector still needs a global post-auth redirect policy before release.
+- Official template calibration, publication, and source-template editing remain available only to the configured platform owner via `/platform/templates`. Tenant administrators do not gain official-template authority from Template Library access.
+- Extended `scripts/check-guarantee-template-publication.mjs` so it fails if any standard customer role loses `template.copy_official` and the UI/action boundary diverges again.
+- Connected the unified local beta runtime to a managed cloud Postgres instance and applied the immutable migration ledger through the template-install migrations. The runtime now checks the ledger and serializes schema readiness; it no longer attempts runtime table creation against Postgres, preventing concurrent first-request initialization failures.
+- Added `npm run db:bootstrap-platform-owner` as the controlled, one-time platform-owner bootstrap path. It requires an existing Clerk-linked user, refuses a second active platform owner, creates the internal workspace, and writes an audit event. The intended owner must first complete Clerk sign-in; until then, the expected UI state is `尚未开通工作区`.
+- Beta boundary: shared cloud storage and Clerk identity are configured, but production is not approved. A restricted Postgres runtime role, verified RLS negative test under that role, private attachment storage, remote document-reading service, backup/restore verification, and Clerk invitation/public-sign-up configuration remain release gates.

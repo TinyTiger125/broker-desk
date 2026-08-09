@@ -1,14 +1,18 @@
 import { cookies } from "next/headers";
+import { cache } from "react";
 import {
   getDefaultUser,
   getTenantById,
   getUserById,
   isTenantAccessibleStatus,
+  listTenantSessionLookupsByExternalAuthSubject,
   listTenantMemberships,
   type Tenant,
   type TenantMembership,
   type User,
 } from "@/lib/data";
+import { isClerkAuthEnabled } from "@/lib/auth-mode";
+import { getClerkAuthSubject } from "@/lib/clerk-auth";
 import {
   isConfiguredPlatformOwnerUser,
   isDevelopmentPlatformOwnerTenantFallbackEnabled,
@@ -97,19 +101,22 @@ export async function getActiveTenantIdFromCookie(): Promise<string | undefined>
   }
 }
 
-export async function requireTenantSession(options: {
-  preferredUserId?: string;
-  requestedTenantId?: string;
-  permission?: TenantPermissionAction;
-  permissions?: readonly TenantPermissionAction[];
-} = {}): Promise<TenantSession> {
-  const user = await getDefaultUser(options.preferredUserId);
+const resolveTenantSession = cache(async (preferredUserId?: string, requestedTenantIdOverride?: string): Promise<TenantSession> => {
+  const [requestedTenantId, clerkSubject] = await Promise.all([
+    requestedTenantIdOverride ?? getActiveTenantIdFromCookie(),
+    isClerkAuthEnabled() ? getClerkAuthSubject() : Promise.resolve(null),
+  ]);
+  const sessionLookups = clerkSubject
+    ? await listTenantSessionLookupsByExternalAuthSubject(clerkSubject)
+    : [];
+  const user = sessionLookups[0]?.user ?? (await getDefaultUser(preferredUserId));
   if (!user) {
     throw new TenantSessionError("Authenticated user is required.", "user_not_found");
   }
 
-  const requestedTenantId = options.requestedTenantId ?? (await getActiveTenantIdFromCookie());
-  const memberships = await listTenantMemberships(user.id);
+  const memberships = sessionLookups.length > 0
+    ? sessionLookups.map((item) => item.membership)
+    : await listTenantMemberships(user.id);
   if (isProductionRuntime() && !requestedTenantId && memberships.filter((membership) => membership.status === "active").length !== 1) {
     throw new TenantSessionError("An active tenant must be selected.", "tenant_forbidden");
   }
@@ -121,23 +128,44 @@ export async function requireTenantSession(options: {
     throw new TenantSessionError("User does not belong to the requested tenant.", "tenant_forbidden");
   }
 
-  const tenant = await getTenantById(membership.tenantId);
+  const tenant = sessionLookups.find((item) => item.membership.id === membership.id)?.tenant
+    ?? await getTenantById(membership.tenantId);
   if (!tenant || !isTenantAccessibleStatus(tenant.status)) {
     throw new TenantSessionError("Active tenant was not found.", "tenant_not_found");
   }
 
+  return { user: sessionUser, tenant, membership };
+});
+
+export const getTenantSessionForNavigation = cache(async (): Promise<TenantSession | null> => {
+  try {
+    return await resolveTenantSession();
+  } catch {
+    // Public auth pages render the shell before a tenant exists. Protected
+    // routes still surface the original session error from requireTenantSession.
+    return null;
+  }
+});
+
+export async function requireTenantSession(options: {
+  preferredUserId?: string;
+  requestedTenantId?: string;
+  permission?: TenantPermissionAction;
+  permissions?: readonly TenantPermissionAction[];
+} = {}): Promise<TenantSession> {
+  const session = await resolveTenantSession(options.preferredUserId, options.requestedTenantId);
   const requiredPermissions = [
     ...(options.permission ? [options.permission] : []),
     ...(options.permissions ?? []),
   ];
   if (
     requiredPermissions.length > 0 &&
-    !roleHasAllTenantPermissions(membership.role, requiredPermissions)
+    !roleHasAllTenantPermissions(session.membership.role, requiredPermissions)
   ) {
     throw new TenantSessionError("Tenant membership does not allow this action.", "permission_denied");
   }
 
-  return { user: sessionUser, tenant, membership };
+  return session;
 }
 
 export function assertTenantPermission(session: TenantSession, permission: TenantPermissionAction) {

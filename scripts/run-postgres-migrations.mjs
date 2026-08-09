@@ -1,14 +1,22 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { Client } from "pg";
 
+// Node parses dotenv values correctly, including DATABASE_URL query strings.
+// Do not source .env.local in a shell: '&' in a connection string becomes a
+// shell control character and can silently break a migration command.
+if (!process.env.DATABASE_URL && !process.env.DATABASE_MIGRATION_URL && !process.env.DATABASE_DEVELOPMENT_URL && existsSync(path.resolve(".env.local"))) {
+  process.loadEnvFile(path.resolve(".env.local"));
+}
+
 const migrationsDirectory = path.resolve("db/migrations");
-const databaseUrl = process.env.DATABASE_URL;
+const databaseUrl = process.env.DATABASE_MIGRATION_URL ?? process.env.DATABASE_DEVELOPMENT_URL;
 
 if (!databaseUrl) {
-  throw new Error("DATABASE_URL is required to run database migrations.");
+  throw new Error("DATABASE_MIGRATION_URL or DATABASE_DEVELOPMENT_URL is required to run database migrations.");
 }
 
 if (process.env.NODE_ENV === "production" && process.env.BROKER_DESK_RUN_MIGRATIONS !== "true") {
@@ -36,6 +44,9 @@ try {
     )
   `);
 
+  let appliedCount = 0;
+  let skippedCount = 0;
+
   for (const name of migrationNames) {
     const sql = await readFile(path.join(migrationsDirectory, name), "utf8");
     const checksum = createHash("sha256").update(sql).digest("hex");
@@ -48,6 +59,7 @@ try {
       if (existing.rows[0].checksum !== checksum) {
         throw new Error(`Migration checksum mismatch: ${name}. Create a new migration instead of editing an applied one.`);
       }
+      skippedCount += 1;
       continue;
     }
 
@@ -59,12 +71,15 @@ try {
         [name, checksum],
       );
       await client.query("COMMIT");
+      appliedCount += 1;
       console.log(`Applied ${name}`);
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
     }
   }
+
+  console.log(`Migration check complete: ${appliedCount} applied, ${skippedCount} already current.`);
 } finally {
   try {
     await client.query("SELECT pg_advisory_unlock(hashtext('broker-desk-schema-migrations'))");

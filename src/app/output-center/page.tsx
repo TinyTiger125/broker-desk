@@ -3,7 +3,7 @@ import { generateOutputDocumentAction } from "@/app/actions";
 import { FormDraftAssist } from "@/components/form-draft-assist";
 import { GuaranteeTemplateSelector } from "@/components/guarantee-template-selector";
 import { PageFlashBanner } from "@/components/page-flash-banner";
-import { getGuaranteeApplicationDraft, listBrokerageCases, listQuoteFormData, listQuotations } from "@/lib/data";
+import { listBrokerageCases, listGuaranteeApplicationDrafts, listQuoteFormData, listQuotations, listTenantGuaranteeTemplateInstalls } from "@/lib/data";
 import { formatCurrency, formatDate } from "@/lib/format";
 import {
   buildGuaranteeApplicationReadiness,
@@ -123,6 +123,8 @@ const outputCenterCopy = {
     guaranteeSourceMissing: "未入力",
     guaranteeCaseLink: "案件を確認",
     guaranteeImportLink: "資料を読み取る",
+    guaranteeLibraryRequired: "このワークスペースには利用できる保証会社申込書テンプレートがありません。テンプレートライブラリから追加してください。",
+    guaranteeLibraryAction: "テンプレートライブラリを開く",
     guaranteeLegacyTitle: "他の文書",
     guaranteeLegacyDesc: "物件概要書、提案書、費用明細などを確認できます。",
   },
@@ -226,6 +228,8 @@ const outputCenterCopy = {
     guaranteeSourceMissing: "未填写",
     guaranteeCaseLink: "查看案件",
     guaranteeImportLink: "读取资料",
+    guaranteeLibraryRequired: "当前工作区还没有可用的保证会社申请书模板。请先从模板库中添加。",
+    guaranteeLibraryAction: "打开模板库",
     guaranteeLegacyTitle: "其他文书",
     guaranteeLegacyDesc: "可继续查看物件概要书、提案书、费用明细等文书。",
   },
@@ -329,6 +333,8 @@ const outputCenterCopy = {
     guaranteeSourceMissing: "미입력",
     guaranteeCaseLink: "안건 확인",
     guaranteeImportLink: "자료 읽기",
+    guaranteeLibraryRequired: "현재 워크스페이스에는 사용할 수 있는 보증회사 신청서 템플릿이 없습니다. 템플릿 라이브러리에서 먼저 추가하세요.",
+    guaranteeLibraryAction: "템플릿 라이브러리 열기",
     guaranteeLegacyTitle: "다른 문서",
     guaranteeLegacyDesc: "매물 개요서, 제안서, 비용 명세 등 다른 문서를 확인할 수 있습니다.",
   },
@@ -388,10 +394,12 @@ function previewHrefForGuaranteeField(input: { caseId: string; templateId: strin
 }
 
 export default async function OutputCenterPage({ searchParams }: OutputCenterPageProps) {
-  const locale = await getLocale();
-  const params = searchParams ? await searchParams : undefined;
+  const [locale, params, session] = await Promise.all([
+    getLocale(),
+    searchParams ? searchParams : Promise.resolve(undefined),
+    requireTenantSession({ permission: "output.preview" }),
+  ]);
   const copy = outputCenterCopy[locale];
-  const session = await requireTenantSession({ permission: "output.preview" });
   const user = session.user;
   const tenantId = session.tenant.id;
   const hubContext = { userId: user.id, tenantId };
@@ -399,37 +407,47 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
   const quotesPromise = listQuotations(100, tenantId);
   const partiesPromise = listHubParties(locale, hubContext);
   const outputsPromise = listHubGeneratedOutputs(locale, hubContext);
-  const [{ properties }, quotes, parties, outputs] = await Promise.all([
+  const installedGuaranteeTemplatesPromise = listTenantGuaranteeTemplateInstalls({ tenantId });
+  const casesPromise = listBrokerageCases(user.id, 50, tenantId);
+  const [{ properties }, quotes, parties, outputs, installedGuaranteeTemplates, cases] = await Promise.all([
     quoteDataPromise,
     quotesPromise,
     partiesPromise,
     outputsPromise,
+    installedGuaranteeTemplatesPromise,
+    casesPromise,
   ]);
-  const cases = await listBrokerageCases(user.id, 50, tenantId);
   const selectedCaseId = String(params?.caseId ?? "").trim();
   const selectedCase = selectedCaseId
     ? cases.find((item) => item.id === selectedCaseId)
     : undefined;
-  const activeGuaranteeTemplates = guaranteeCompanyTemplates.filter((template) => template.outputStatus === "active");
+  const installedGuaranteeTemplateIds = new Set(installedGuaranteeTemplates.map((item) => item.templateId));
+  const activeGuaranteeTemplates = guaranteeCompanyTemplates.filter(
+    (template) => template.outputStatus === "active" && installedGuaranteeTemplateIds.has(template.id),
+  );
+  const hasInstalledGuaranteeTemplates = activeGuaranteeTemplates.length > 0;
+  const fallbackGuaranteeTemplate = guaranteeCompanyTemplates.find((template) => template.outputStatus === "active");
   const defaultGuaranteeTemplateId =
     activeGuaranteeTemplates.find((template) => template.id === "friends_guarantee_individual_v1")?.id ??
     activeGuaranteeTemplates[0]?.id ??
+    fallbackGuaranteeTemplate?.id ??
     "friends_guarantee_individual_v1";
-  const requestedGuaranteeTemplate = String(params?.guaranteeTemplate ?? "").trim() || defaultGuaranteeTemplateId;
+  const requestedGuaranteeTemplateCandidate = String(params?.guaranteeTemplate ?? "").trim();
+  const requestedGuaranteeTemplate = activeGuaranteeTemplates.some((template) => template.id === requestedGuaranteeTemplateCandidate)
+    ? requestedGuaranteeTemplateCandidate
+    : defaultGuaranteeTemplateId;
   const selectedGuaranteeTemplate = getGuaranteeCompanyTemplate(requestedGuaranteeTemplate);
-  const guaranteeTemplateDrafts =
-    selectedCase
-      ? await Promise.all(
-          activeGuaranteeTemplates.map((template) =>
-            getGuaranteeApplicationDraft({
-              userId: user.id,
-              tenantId,
-              caseId: selectedCase.id,
-              templateId: template.id,
-            }),
-          ),
-        )
-      : [];
+  const candidateCaseIds = selectedCase ? [selectedCase.id] : cases.slice(0, 9).map((caseItem) => caseItem.id);
+  const draftRows = await listGuaranteeApplicationDrafts({
+    userId: user.id,
+    tenantId,
+    caseIds: candidateCaseIds,
+    templateIds: activeGuaranteeTemplates.map((template) => template.id),
+  });
+  const draftMap = new Map(draftRows.map((draft) => [`${draft.caseId}:${draft.templateId}`, draft]));
+  const guaranteeTemplateDrafts = selectedCase
+    ? activeGuaranteeTemplates.map((template) => draftMap.get(`${selectedCase.id}:${template.id}`) ?? null)
+    : [];
   const selectedGuaranteeDraft =
     guaranteeTemplateDrafts[activeGuaranteeTemplates.findIndex((template) => template.id === selectedGuaranteeTemplate.id)] ?? null;
   const selectedGuaranteeDraftReadiness = buildGuaranteeDraftReadiness(selectedGuaranteeDraft, selectedGuaranteeTemplate.id);
@@ -455,14 +473,8 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
   );
   const selectedGuaranteeMissingCount = guaranteeBlockingCount + selectedGuaranteeDraftReadiness.requiredMissingCount;
   const caseSelectorCards = !selectedCase
-    ? await Promise.all(
-        cases.slice(0, 9).map(async (caseItem) => {
-          const draft = await getGuaranteeApplicationDraft({
-            userId: user.id,
-            tenantId,
-            caseId: caseItem.id,
-            templateId: selectedGuaranteeTemplate.id,
-          });
+    ? cases.slice(0, 9).map((caseItem) => {
+          const draft = draftMap.get(`${caseItem.id}:${selectedGuaranteeTemplate.id}`) ?? null;
           const readinessGroups = buildGuaranteeApplicationReadiness({
             brokerageCase: caseItem,
             template: selectedGuaranteeTemplate,
@@ -475,8 +487,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
             caseItem,
             missingCount: unresolvedCount + draftMissingCount,
           };
-        }),
-      )
+        })
     : [];
   const guaranteeTemplateCards = activeGuaranteeTemplates.map((template, index) => {
     const draft = guaranteeTemplateDrafts[index] ?? null;
@@ -753,6 +764,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
         : "閲覧・ダウンロード用です。項目対応とレイアウト確認が完了するまでは自動作成に使用しません。",
     mainFlow: locale === "zh" ? "可生成" : locale === "ko" ? "생성 가능" : "作成可能",
     officialSource: locale === "zh" ? "官方原件" : locale === "ko" ? "공식 원본" : "公式原本",
+    templateLibrary: locale === "zh" ? "先添加模板" : locale === "ko" ? "템플릿 추가 필요" : "テンプレートを追加",
     chooseCase: locale === "zh" ? "先选案件" : locale === "ko" ? "안건 선택" : "案件選択",
     readyToPreview: locale === "zh" ? "可预览" : locale === "ko" ? "미리보기 가능" : "プレビュー可",
     needsInput: locale === "zh" ? "项待补齐" : locale === "ko" ? "항목 보완 필요" : "項目不足",
@@ -771,9 +783,11 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
     selectedDocumentId === "guarantee_application" ||
     Boolean(selectedCaseId || String(params?.guaranteeTemplate ?? "").trim())
   );
-  const shouldShowGuaranteeFlow = isGuaranteeDocumentSelected;
+  const shouldShowGuaranteeFlow = isGuaranteeDocumentSelected && hasInstalledGuaranteeTemplates;
   const shouldShowLegacyOutputFlow = false;
-  const guaranteeDocumentStatus = !selectedCase
+  const guaranteeDocumentStatus = !hasInstalledGuaranteeTemplates
+    ? documentTreeCopy.templateLibrary
+    : !selectedCase
     ? documentTreeCopy.chooseCase
     : selectedGuaranteeMissingCount > 0
       ? `${selectedGuaranteeMissingCount} ${documentTreeCopy.needsInput}`
@@ -791,15 +805,19 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
       icon: "verified_user",
       title: documentTreeCopy.application,
       description: "",
-      status: documentTreeCopy.mainFlow,
+      status: hasInstalledGuaranteeTemplates ? documentTreeCopy.mainFlow : documentTreeCopy.templateLibrary,
       items: [
         {
           id: "guarantee_application",
           label: documentTreeCopy.guaranteeApplication,
-          description: selectedCase ? `${selectedGuaranteeTemplate.companyDisplayName} · ${selectedCase.caseTitle}` : undefined,
-          href: selectedCase
-            ? `/output-center?docGroup=application&doc=guarantee_application&caseId=${encodeURIComponent(selectedCase.id)}&guaranteeTemplate=${encodeURIComponent(selectedGuaranteeTemplate.id)}`
-            : "/output-center?docGroup=application&doc=guarantee_application#guarantee-case-selector",
+          description: hasInstalledGuaranteeTemplates
+            ? selectedCase ? `${selectedGuaranteeTemplate.companyDisplayName} · ${selectedCase.caseTitle}` : undefined
+            : copy.guaranteeLibraryRequired,
+          href: hasInstalledGuaranteeTemplates
+            ? selectedCase
+              ? `/output-center?docGroup=application&doc=guarantee_application&caseId=${encodeURIComponent(selectedCase.id)}&guaranteeTemplate=${encodeURIComponent(selectedGuaranteeTemplate.id)}`
+              : "/output-center?docGroup=application&doc=guarantee_application#guarantee-case-selector"
+            : "/templates",
           selected: isGuaranteeDocumentSelected,
           status: guaranteeDocumentStatus,
         },
@@ -875,8 +893,8 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
   };
 
   return (
-    <div className="space-y-6">
-      <header className="border-b border-slate-950 pb-3">
+    <div className="bd-page bd-output-page space-y-6">
+      <header className="bd-page-header">
         <h1 className="text-3xl font-black tracking-tight text-slate-950">{copy.outputCenterTitle}</h1>
       </header>
       <PageFlashBanner message={flashMessage} />
@@ -1014,6 +1032,18 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
           </div>
         </div>
       </section>
+
+      {isGuaranteeDocumentSelected && !hasInstalledGuaranteeTemplates ? (
+        <section className="border border-blue-200 bg-[#edf2fd] px-5 py-5">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <p className="max-w-2xl text-sm leading-6 text-slate-700">{copy.guaranteeLibraryRequired}</p>
+            <Link href="/templates" className="inline-flex shrink-0 items-center justify-center gap-2 rounded bg-slate-950 px-4 py-2 text-sm font-black text-white hover:bg-slate-800">
+              <span aria-hidden="true" className="material-symbols-outlined text-[18px]">library_books</span>
+              {copy.guaranteeLibraryAction}
+            </Link>
+          </div>
+        </section>
+      ) : null}
 
       {shouldShowGuaranteeFlow ? (
       <section className="rounded border border-slate-300 bg-white p-4">

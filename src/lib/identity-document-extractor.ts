@@ -309,12 +309,73 @@ function detectDocumentType(hasResidenceCard: boolean, hasDriverLicense: boolean
   return "unknown_identity_scan";
 }
 
+const REMOTE_READER_TIMEOUT_MS = 60_000;
+const MAX_REMOTE_READER_PAGES = 20;
+const MAX_REMOTE_READER_LINES_PER_PAGE = 500;
+const MAX_REMOTE_READER_LINE_LENGTH = 1_000;
+
+function parseRemoteOcrResult(value: unknown): OcrResult {
+  if (!value || typeof value !== "object" || !("pages" in value) || !Array.isArray(value.pages)) {
+    throw new Error("remote_document_reader_invalid_response");
+  }
+
+  const pages = value.pages.slice(0, MAX_REMOTE_READER_PAGES).map((page, index) => {
+    if (!page || typeof page !== "object" || !Array.isArray((page as { lines?: unknown }).lines)) {
+      throw new Error("remote_document_reader_invalid_page");
+    }
+    const pageNumber = Number((page as { pageNumber?: unknown }).pageNumber);
+    const lines = (page as { lines: unknown[] }).lines
+      .slice(0, MAX_REMOTE_READER_LINES_PER_PAGE)
+      .map((line) => String(line).slice(0, MAX_REMOTE_READER_LINE_LENGTH));
+    return {
+      pageNumber: Number.isInteger(pageNumber) && pageNumber > 0 ? pageNumber : index + 1,
+      lines,
+    };
+  });
+
+  return { pages };
+}
+
+async function runRemoteOcr(buffer: Buffer, filename: string): Promise<OcrResult> {
+  assertProductionDocumentReaderReady();
+  const endpoint = process.env.DOCUMENT_READING_ENDPOINT?.trim();
+  const token = process.env.DOCUMENT_READING_API_TOKEN?.trim();
+  if (!endpoint || !token) {
+    throw new ProductionReadinessError("production_document_reader_required");
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REMOTE_READER_TIMEOUT_MS);
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      cache: "no-store",
+      signal: controller.signal,
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        accept: "application/json",
+        "x-broker-desk-reader-version": "v1",
+      },
+      body: JSON.stringify({
+        document: {
+          filename,
+          contentBase64: buffer.toString("base64"),
+        },
+      }),
+    });
+    if (!response.ok) throw new Error(`remote_document_reader_http_${response.status}`);
+    return parseRemoteOcrResult(await response.json());
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function runOcr(buffer: Buffer, filename: string): Promise<OcrResult> {
   // The local Swift helper is development-only. Production must use a remote,
   // auditable reader rather than silently running a machine-specific fallback.
   if (isProductionRuntime()) {
-    assertProductionDocumentReaderReady();
-    throw new ProductionReadinessError("production_document_reader_required");
+    return runRemoteOcr(buffer, filename);
   }
 
   const tempDir = await mkdtemp(path.join(tmpdir(), "broker-desk-id-"));
@@ -342,7 +403,7 @@ export async function extractIdentityDocumentFromBuffer(input: {
   try {
     ocr = await runOcr(input.buffer, input.filename);
   } catch (error) {
-    if (error instanceof ProductionReadinessError) {
+    if (isProductionRuntime() || error instanceof ProductionReadinessError) {
       throw error;
     }
     ocr = { pages: [] };

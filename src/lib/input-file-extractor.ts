@@ -1,4 +1,10 @@
-import * as XLSX from "xlsx";
+import {
+  getCellText,
+  getRangeText,
+  getWorkbookSheetNames,
+  type ExcelWorkbook,
+  type ExcelWorksheet,
+} from "@/lib/excel-workbook";
 
 export type InputDocumentType =
   | "important_matters_unit_sale"
@@ -105,38 +111,15 @@ const TEMPLATE_FINGERPRINTS: TemplateFingerprint[] = [
   },
 ];
 
-function normalizeText(value: unknown): string {
-  return String(value ?? "")
-    .replace(/\r?\n/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 function normalizeValue(value: string): string {
   return value.replace(/[　\s]+/g, " ").trim();
 }
 
-function getCellText(sheet: XLSX.WorkSheet, cell: string): string {
-  const item = sheet[cell];
-  return normalizeText(item?.w ?? item?.v ?? "");
-}
-
-function getRangeText(sheet: XLSX.WorkSheet, rangeAddress: string): string {
-  const range = XLSX.utils.decode_range(rangeAddress);
-  const values: string[] = [];
-  for (let row = range.s.r; row <= range.e.r; row++) {
-    for (let col = range.s.c; col <= range.e.c; col++) {
-      const text = getCellText(sheet, XLSX.utils.encode_cell({ r: row, c: col }));
-      if (text) values.push(text);
-    }
-  }
-  return [...new Set(values)].join(" / ");
-}
-
-function evaluateFingerprint(workbook: XLSX.WorkBook, sourceFileHash: string, fingerprint: TemplateFingerprint) {
-  const expectedSheetMatches = fingerprint.expectedSheets.filter((sheetName) => workbook.SheetNames.includes(sheetName));
+function evaluateFingerprint(workbook: ExcelWorkbook, sourceFileHash: string, fingerprint: TemplateFingerprint) {
+  const sheetNames = getWorkbookSheetNames(workbook);
+  const expectedSheetMatches = fingerprint.expectedSheets.filter((sheetName) => sheetNames.includes(sheetName));
   const titleSignalMatches = fingerprint.requiredTitleSignals.filter((signal) => {
-    const sheet = workbook.Sheets[signal.sheetName];
+    const sheet = workbook.getWorksheet(signal.sheetName);
     return sheet ? getCellText(sheet, signal.cell).includes(signal.includes) : false;
   });
   const hashMatched = Boolean(fingerprint.knownHashPrefixes?.some((prefix) => sourceFileHash.startsWith(prefix)));
@@ -159,7 +142,7 @@ function addCellField(
   fields: ExtractedInputField[],
   context: { sourceFileHash: string; templateVersion: string },
   sheetName: string,
-  sheet: XLSX.WorkSheet,
+  sheet: ExcelWorksheet,
   fieldKey: string,
   label: string,
   sourceCell: string,
@@ -185,7 +168,7 @@ function addRangeField(
   fields: ExtractedInputField[],
   context: { sourceFileHash: string; templateVersion: string },
   sheetName: string,
-  sheet: XLSX.WorkSheet,
+  sheet: ExcelWorksheet,
   fieldKey: string,
   label: string,
   sourceRange: string,
@@ -233,14 +216,15 @@ function createResult(
 }
 
 function extractImportantMatters(
-  workbook: XLSX.WorkBook,
+  workbook: ExcelWorkbook,
   sourceFilename: string,
   fingerprint: TemplateFingerprint,
   sourceFileHash: string,
   fingerprintConfidence: number
 ): InputFileExtractionResult {
-  const sheetName = fingerprint.expectedSheets.find((name) => workbook.SheetNames.includes(name)) ?? workbook.SheetNames[0];
-  const sheet = workbook.Sheets[sheetName];
+  const sheetNames = getWorkbookSheetNames(workbook);
+  const sheetName = fingerprint.expectedSheets.find((name) => sheetNames.includes(name)) ?? sheetNames[0];
+  const sheet = sheetName ? workbook.getWorksheet(sheetName) : undefined;
   const fields: ExtractedInputField[] = [];
   const context = { sourceFileHash, templateVersion: fingerprint.templateVersion };
   if (!sheet) return createResult("unknown_excel", sourceFilename, sourceFileHash, "unknown", 0, undefined, undefined, fields);
@@ -271,14 +255,15 @@ function extractImportantMatters(
 }
 
 function extractSaleContract(
-  workbook: XLSX.WorkBook,
+  workbook: ExcelWorkbook,
   sourceFilename: string,
   fingerprint: TemplateFingerprint,
   sourceFileHash: string,
   fingerprintConfidence: number
 ): InputFileExtractionResult {
-  const sheetName = fingerprint.expectedSheets.find((name) => workbook.SheetNames.includes(name)) ?? workbook.SheetNames[0];
-  const sheet = workbook.Sheets[sheetName];
+  const sheetNames = getWorkbookSheetNames(workbook);
+  const sheetName = fingerprint.expectedSheets.find((name) => sheetNames.includes(name)) ?? sheetNames[0];
+  const sheet = sheetName ? workbook.getWorksheet(sheetName) : undefined;
   const fields: ExtractedInputField[] = [];
   const context = { sourceFileHash, templateVersion: fingerprint.templateVersion };
   if (!sheet) return createResult("unknown_excel", sourceFilename, sourceFileHash, "unknown", 0, undefined, undefined, fields);
@@ -314,7 +299,7 @@ function addQuestionnaireFields(
   fields: ExtractedInputField[],
   context: { sourceFileHash: string; templateVersion: string },
   sheetName: string,
-  sheet: XLSX.WorkSheet,
+  sheet: ExcelWorksheet,
   itemKey: string,
   itemLabel: string,
   ranges: {
@@ -341,14 +326,15 @@ function addQuestionnaireFields(
 }
 
 function extractConditionNotice(
-  workbook: XLSX.WorkBook,
+  workbook: ExcelWorkbook,
   sourceFilename: string,
   fingerprint: TemplateFingerprint,
   sourceFileHash: string,
   fingerprintConfidence: number
 ): InputFileExtractionResult {
-  const sheetName = fingerprint.expectedSheets.find((name) => name === "告知書" && workbook.SheetNames.includes(name)) ?? workbook.SheetNames[0];
-  const sheet = workbook.Sheets[sheetName];
+  const sheetNames = getWorkbookSheetNames(workbook);
+  const sheetName = fingerprint.expectedSheets.find((name) => name === "告知書" && sheetNames.includes(name)) ?? sheetNames[0];
+  const sheet = sheetName ? workbook.getWorksheet(sheetName) : undefined;
   const fields: ExtractedInputField[] = [];
   const context = { sourceFileHash, templateVersion: fingerprint.templateVersion };
   if (!sheet) return createResult("unknown_excel", sourceFilename, sourceFileHash, "unknown", 0, undefined, undefined, fields);
@@ -399,7 +385,7 @@ function extractConditionNotice(
 }
 
 export function extractInputFileFromWorkbook(
-  workbook: XLSX.WorkBook,
+  workbook: ExcelWorkbook,
   sourceFilename: string,
   sourceFileHash = ""
 ): InputFileExtractionResult {
@@ -408,7 +394,7 @@ export function extractInputFileFromWorkbook(
   );
   const bestMatch = matches[0];
   if (!bestMatch?.passes) {
-    return createResult("unknown_excel", sourceFilename, sourceFileHash, "unknown", bestMatch?.confidence ?? 0, workbook.SheetNames[0], undefined, []);
+    return createResult("unknown_excel", sourceFilename, sourceFileHash, "unknown", bestMatch?.confidence ?? 0, getWorkbookSheetNames(workbook)[0], undefined, []);
   }
 
   if (bestMatch.fingerprint.documentType === "important_matters_unit_sale") {

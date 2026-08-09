@@ -1,7 +1,6 @@
 "use server";
 
-import { createHash, randomUUID } from "crypto";
-import * as XLSX from "xlsx";
+import { randomUUID } from "crypto";
 import {
   AML_CHECK_STATUSES,
   BROKERAGE_CONTRACT_TYPES,
@@ -31,6 +30,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
   addAttachment,
+  addPrivateAttachment,
   addCorrectionEvents,
   addAuditLog,
   addClient,
@@ -41,6 +41,8 @@ import {
   applyOutputTemplateVersion,
   addQuotation,
   createOutputTemplateVersion,
+  publishGuaranteeTemplateLayoutVersion,
+  installGuaranteeTemplateForTenant,
   getTenantMemberById,
   appendFollowUp,
   createComplianceTaskFromAlert,
@@ -65,6 +67,9 @@ import {
   resolveComplianceAlert,
   saveBrokerageCaseExtractionReview,
   saveGuaranteeApplicationDraft,
+  setBrokerageCaseLifecycleStatus,
+  setClientLifecycleStatus,
+  setPropertyLifecycleStatus,
   setClientStageWithLog,
   setClientStage,
   updateImportJobMapping,
@@ -89,10 +94,16 @@ import {
 } from "@/lib/data";
 import {
   getAttachmentStorageMode,
+  getPostgresPrivateAttachmentLimitBytes,
   isValidStoragePath,
   persistAttachmentToLocalPrivate,
 } from "@/lib/attachment-storage";
-import { assertProductionAttachmentStorageReady, isProductionRuntime } from "@/lib/production-readiness";
+import {
+  assertProductionAttachmentStorageReady,
+  assertProductionDocumentReaderReady,
+  assertProductionImportWorkerReady,
+  isProductionRuntime,
+} from "@/lib/production-readiness";
 import { type ComplianceAlertType } from "@/lib/compliance-alerts";
 import {
   buildMappingFromLists,
@@ -108,8 +119,10 @@ import {
 import { materializeExtractionReviewValue } from "@/lib/extraction-review-materialization";
 import { assertTenantPermission, requireTenantSession } from "@/lib/tenant-session";
 import { requirePlatformOwnerSession } from "@/lib/platform-session";
-import { extractInputFileFromWorkbook, type InputFileExtractionResult } from "@/lib/input-file-extractor";
-import { extractIdentityDocumentsFromFiles } from "@/lib/identity-document-extractor";
+import { isLifecycleStatus, type LifecycleStatus } from "@/lib/record-lifecycle";
+import type { InputFileExtractionResult } from "@/lib/input-file-extractor";
+import { queueExcelImportSource } from "@/lib/excel-import-queue";
+import { queueIdentityImportSources } from "@/lib/identity-import-queue";
 import { createClerkInvitationForTenantMember } from "@/lib/clerk-invitations";
 import { CASE_FIELD_KEYS, isKnownCaseFieldKey } from "@/lib/case-field-catalog";
 import {
@@ -149,9 +162,6 @@ import {
   getFriendsGuaranteeEffectiveLayoutOverrides,
   getGuaranteePdfTemplateConfig,
   hasFriendsGuaranteeLayoutOverrides,
-  saveFriendsGuaranteeTemplateLayoutOverrides,
-  saveFriendsGuaranteeTemplateDeletedOverlayFieldKeys,
-  saveFriendsGuaranteeTemplateCustomOverlayFields,
   setFriendsGuaranteeCaseDeletedOverlayFieldKeys,
   setFriendsGuaranteeCaseCustomOverlayFields,
   setFriendsGuaranteeCaseLayoutOverrideVersion,
@@ -160,6 +170,7 @@ import {
   sanitizeFriendsGuaranteeDeletedOverlayFieldKeys,
   sanitizeFriendsGuaranteeLayoutOverrides,
 } from "@/lib/friends-guarantee-pdf";
+import { resolveGuaranteeTemplateLayout } from "@/lib/guarantee-template-layout-runtime";
 import {
   CASE_MERGE_MIN_CONFIDENCE,
   createCaseMergeHistoryItem,
@@ -314,6 +325,62 @@ function safeReturnTo(value: FormDataEntryValue | null, fallback: string): strin
   const path = String(value ?? "").trim();
   if (!path.startsWith("/") || path.startsWith("//") || path.startsWith("/\\")) return fallback;
   return path;
+}
+
+export async function setRecordLifecycleAction(formData: FormData) {
+  const session = await requireTenantSession({ permission: "record.archive" });
+  const entityType = String(formData.get("entityType") ?? "");
+  const entityId = String(formData.get("entityId") ?? "").trim();
+  const statusRaw = String(formData.get("status") ?? "");
+
+  if (!(entityType === "case" || entityType === "party" || entityType === "property") || !entityId || !isLifecycleStatus(statusRaw)) {
+    throw new Error("归档对象或状态无效。");
+  }
+
+  const status = statusRaw as LifecycleStatus;
+  let updated: unknown;
+  if (entityType === "case") {
+    updated = await setBrokerageCaseLifecycleStatus({
+      tenantId: session.tenant.id,
+      userId: session.user.id,
+      caseId: entityId,
+      status,
+      archivedById: session.user.id,
+    });
+  } else if (entityType === "party") {
+    updated = await setClientLifecycleStatus({
+      tenantId: session.tenant.id,
+      userId: session.user.id,
+      clientId: entityId,
+      status,
+      archivedById: session.user.id,
+    });
+  } else {
+    updated = await setPropertyLifecycleStatus({
+      tenantId: session.tenant.id,
+      propertyId: entityId,
+      status,
+      archivedById: session.user.id,
+    });
+  }
+
+  if (!updated) throw new Error("对象不存在或无权操作。");
+
+  const targetType: "case" | "client" | "property" = entityType === "party" ? "client" : entityType;
+  await addAuditLog({
+    actorId: session.user.id,
+    tenantId: session.tenant.id,
+    action: status === "archived" ? "record_archived" : "record_restored",
+    targetType,
+    targetId: entityId,
+    message: status === "archived" ? "记录已归档。" : "记录已恢复。",
+  });
+
+  revalidatePath("/organize-center");
+  revalidatePath("/parties");
+  revalidatePath("/properties");
+  revalidatePath("/");
+  redirect(safeReturnTo(formData.get("returnTo"), "/organize-center"));
 }
 
 async function ensureClientOwnership(clientId: string, userId: string, tenantId?: string) {
@@ -1413,6 +1480,7 @@ export async function registerAttachmentAction(formData: FormData) {
   let fileType = fileTypeInput || undefined;
   let size = fileSizeBytes > 0 ? fileSizeBytes : undefined;
   let storagePath: string | undefined;
+  let privateContent: Buffer | undefined;
 
   if (upload instanceof File && upload.size > 0) {
     fileName = upload.name || fileNameInput || "upload.bin";
@@ -1427,6 +1495,11 @@ export async function registerAttachmentAction(formData: FormData) {
       fileType = persisted.fileType || fileType;
       size = persisted.fileSizeBytes;
       storagePath = persisted.storagePath;
+    } else if (mode === "postgres_private") {
+      if (upload.size > getPostgresPrivateAttachmentLimitBytes()) {
+        throw new Error("公测环境中单个附件不能超过 10 MB。");
+      }
+      privateContent = Buffer.from(await upload.arrayBuffer());
     } else {
       throw new Error("この環境では直接アップロードを利用できません。保存先の設定を確認してください。");
     }
@@ -1444,16 +1517,26 @@ export async function registerAttachmentAction(formData: FormData) {
     throw new Error("ファイル名またはアップロードファイルを指定してください。");
   }
 
-  const attachment = await addAttachment({
-    tenantId,
-    userId: user.id,
-    targetType,
-    targetId,
-    fileName,
-    fileType,
-    fileSizeBytes: size,
-    storagePath,
-  });
+  const attachment = privateContent
+    ? await addPrivateAttachment({
+        tenantId,
+        userId: user.id,
+        targetType,
+        targetId,
+        fileName,
+        fileType,
+        content: privateContent,
+      })
+    : await addAttachment({
+        tenantId,
+        userId: user.id,
+        targetType,
+        targetId,
+        fileName,
+        fileType,
+        fileSizeBytes: size,
+        storagePath,
+      });
 
   await addAuditLog({
     tenantId,
@@ -3336,6 +3419,55 @@ export async function saveGuaranteeApplicationTemplateCalibrationAction(formData
   return saveGuaranteeApplicationPreviewWithScope(formData, "template");
 }
 
+export async function installGuaranteeTemplateForTenantAction(formData: FormData) {
+  const session = await requireTenantSession({ permission: "template.copy_official" });
+  const templateId = String(formData.get("templateId") ?? "").trim();
+  const template = findGuaranteeCompanyTemplate(templateId);
+  if (!template || template.outputStatus !== "active") {
+    throw new Error("利用可能な公式テンプレートが見つかりません。");
+  }
+
+  // Deliberately resolve without tenant scope. Installing always snapshots the
+  // current official release, never an existing tenant copy.
+  const source = await resolveGuaranteeTemplateLayout(template.id);
+  const isInMemoryDevelopment =
+    !isProductionRuntime() &&
+    !(process.env.DATA_DRIVER?.toLowerCase() === "postgres" && process.env.DATABASE_URL);
+  if (source.source !== "published" && !isInMemoryDevelopment) {
+    throw new Error("公式テンプレートの公開版が未設定です。公開版を作成してから追加してください。");
+  }
+  const installed = await installGuaranteeTemplateForTenant({
+    tenantId: session.tenant.id,
+    templateId: template.id,
+    sourceLayoutVersionId: source.versionId,
+    sourceVersionNumber: source.versionNumber,
+    sourceAssetFingerprint: source.snapshot.assetFingerprint ?? "",
+    displayName: `${template.companyDisplayName} ${template.templateDisplayName}`,
+    layoutSnapshot: source.snapshot,
+    installedByUserId: session.user.id,
+  });
+
+  await addAuditLog({
+    tenantId: session.tenant.id,
+    userId: session.user.id,
+    action: "guarantee_template_installed",
+    targetType: "template",
+    targetId: installed.id,
+    message: `${template.companyDisplayName}の公式テンプレート v${source.versionNumber} をワークスペースへ追加しました。`,
+    context: {
+      templateId: template.id,
+      sourceLayoutVersionId: source.versionId,
+      sourceVersionNumber: source.versionNumber,
+      tenantRevisionNumber: installed.revisionNumber,
+    },
+  });
+
+  revalidatePath("/templates");
+  revalidatePath("/output-center");
+  revalidatePath(`/guarantee-applications/${template.id}/preview`);
+  redirect(`/templates?template=${encodeURIComponent(template.id)}&flash=template_installed`);
+}
+
 async function saveGuaranteeApplicationPreviewWithScope(
   formData: FormData,
   saveMode: GuaranteePreviewSaveMode,
@@ -3434,11 +3566,36 @@ async function saveGuaranteeApplicationPreviewWithScope(
   if (layoutSaveScope === "template") {
     const layoutDirty = formData.get("layoutDirty") === "true";
     if (typeof layoutOverridesInput === "string" && (layoutDirty || customFieldsSubmitted)) {
-      saveFriendsGuaranteeTemplateLayoutOverrides(layoutOverrides, template.id);
-      saveFriendsGuaranteeTemplateDeletedOverlayFieldKeys(deletedOverlayFieldKeys, template.id);
-      if (customFieldsSubmitted) {
-        saveFriendsGuaranteeTemplateCustomOverlayFields(customOverlayFields, template.id);
-      }
+      const baselineSnapshot = (await resolveGuaranteeTemplateLayout(template.id)).snapshot;
+      const published = await publishGuaranteeTemplateLayoutVersion({
+        templateId: template.id,
+        baselineVersion: baselineSnapshot.baselineVersion,
+        assetFingerprint: baselineSnapshot.assetFingerprint ?? "",
+        layoutSnapshot: {
+          templateId: template.id,
+          baselineVersion: baselineSnapshot.baselineVersion,
+          assetFingerprint: baselineSnapshot.assetFingerprint,
+          layoutOverrides,
+          deletedOverlayFieldKeys,
+          customOverlayFields: customFieldsSubmitted ? customOverlayFields : baselineSnapshot.customOverlayFields,
+        },
+        publishedByUserId: user.id,
+        changeNote: `公式配置を更新 (${Object.keys(layoutOverrides).length}枠)`,
+      });
+
+      await addAuditLog({
+        tenantId,
+        userId: user.id,
+        action: "guarantee_template_layout_published",
+        targetType: "official_template",
+        targetId: published.id,
+        message: `${template.companyDisplayName}の公式テンプレート配置 v${published.versionNumber} を公開しました。`,
+        context: {
+          templateId: template.id,
+          versionNumber: published.versionNumber,
+          assetFingerprint: published.assetFingerprint,
+        },
+      });
     }
 
     await addAuditLog({
@@ -3447,7 +3604,7 @@ async function saveGuaranteeApplicationPreviewWithScope(
       action: "guarantee_template_layout_saved",
       targetType: "official_template",
       targetId: template.id,
-      message: `${template.companyDisplayName}の公式テンプレート配置を更新しました。`,
+      message: `${template.companyDisplayName}の公式テンプレート配置を公開しました。`,
       context: {
         templateId: template.id,
         layoutOverrideCount: Object.keys(layoutOverrides).length,
@@ -3667,6 +3824,7 @@ function parsePrice(val: unknown): number {
 }
 
 export async function uploadAndParseExcelAction(formData: FormData) {
+  assertProductionImportWorkerReady();
   const session = await requireTenantSession({ permission: "source.upload" });
   const user = session.user;
   const tenantId = session.tenant.id;
@@ -3689,222 +3847,22 @@ export async function uploadAndParseExcelAction(formData: FormData) {
     redirectExcelUploadError("excel_upload_missing");
   }
   const file = fileEntry as File;
-  if (!file.name.toLowerCase().endsWith(".xlsx")) {
-    redirectExcelUploadError("excel_upload_type");
-  }
-
-  const buffer = await file.arrayBuffer();
-  const workbook = (() => {
-    try {
-      return XLSX.read(new Uint8Array(buffer), { type: "array" });
-    } catch {
-      return redirectExcelUploadError("excel_upload_read_failed");
-    }
-  })();
-
-  const sourceFileHash = createHash("sha256").update(Buffer.from(buffer)).digest("hex");
-  const inputExtraction = extractInputFileFromWorkbook(workbook, file.name, sourceFileHash);
-  if (inputExtraction.extractionStatus === "recognized") {
-    const payload: ExcelImportPayload = {
-      kind: "input_file_extraction",
-      headers: [],
-      autoMapping: {},
-      rows: [],
-      originalFilename: file.name,
-      totalRows: 0,
-      inputExtraction,
-      targetCaseId: targetCaseId || undefined,
-    };
-
-    const job = await addImportJob({
-      tenantId,
-      userId: user.id,
-      sourceType: "excel",
-      targetEntity: "contracts",
-      title: file.name,
-      notes: JSON.stringify(payload),
-      status: "mapped",
-    });
-
-    await addAuditLog({
-      tenantId,
-      userId: user.id,
-      action: "input_file_extraction_created",
-      targetType: "import_job",
-      targetId: job.id,
-      message: `Excel 業務ファイル抽出プレビュー作成: ${file.name} (${inputExtraction.documentType})`,
-      context: {
-        documentType: inputExtraction.documentType,
-        fieldCount: inputExtraction.fields.length,
-      },
-    });
-
+  const result = await queueExcelImportSource({ tenantId, userId: user.id, file, targetCaseId: targetCaseId || undefined });
+  if ("error" in result) {
+    const flash = result.error === "xlsx_required" ? "excel_upload_type"
+      : result.error === "file_too_large" ? "excel_upload_too_large"
+      : result.error === "file_required" ? "excel_upload_missing"
+      : "excel_upload_read_failed";
+    redirectExcelUploadError(flash);
+  } else {
     revalidatePath("/import-center");
-    redirect(`/import-center?xlsxJob=${job.id}&flash=input_extraction_ready${targetCaseQuery}`);
+    redirect(`/import-center?xlsxJob=${result.jobId}&flash=input_extraction_queued${targetCaseQuery}`);
   }
-
-  const sheetName = workbook.SheetNames[0];
-  if (!sheetName) redirectExcelUploadError("excel_upload_empty");
-
-  const sheet = workbook.Sheets[sheetName];
-  const rawRows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: "" });
-  if (rawRows.length === 0) redirectExcelUploadError("excel_upload_empty");
-
-  const headers = (rawRows[0] as unknown[]).map(String).filter((h) => h.trim() !== "");
-  if (headers.length === 0) {
-    const payload: ExcelImportPayload = {
-      kind: "input_file_extraction",
-      headers: [],
-      autoMapping: {},
-      rows: [],
-      originalFilename: file.name,
-      totalRows: 0,
-      inputExtraction,
-      targetCaseId: targetCaseId || undefined,
-    };
-
-    const job = await addImportJob({
-      tenantId,
-      userId: user.id,
-      sourceType: "excel",
-      targetEntity: "properties",
-      title: file.name,
-      notes: JSON.stringify(payload),
-      status: "mapped",
-    });
-
-    await addAuditLog({
-      tenantId,
-      userId: user.id,
-      action: "input_file_extraction_unknown",
-      targetType: "import_job",
-      targetId: job.id,
-      message: `Excel 業務ファイル識別結果 unknown: ${file.name}`,
-      context: { documentType: inputExtraction.documentType },
-    });
-
-    revalidatePath("/import-center");
-    redirect(`/import-center?xlsxJob=${job.id}&flash=input_extraction_ready${targetCaseQuery}`);
-  }
-
-  const dataRows = (rawRows.slice(1) as unknown[][]).filter((row) =>
-    row.some((cell) => String(cell).trim() !== ""),
-  );
-  const rowObjects: Record<string, unknown>[] = dataRows.map((row) => {
-    const obj: Record<string, unknown> = {};
-    headers.forEach((h, i) => {
-      obj[h] = row[i] ?? "";
-    });
-    return obj;
-  });
-
-  const autoMapping = suggestImportMapping("properties", headers);
-
-  const payload: ExcelImportPayload = {
-    kind: "property_row_import",
-    headers,
-    autoMapping,
-    rows: rowObjects,
-    originalFilename: file.name,
-    totalRows: rowObjects.length,
-    inputExtraction,
-    targetCaseId: targetCaseId || undefined,
-  };
-
-  const job = await addImportJob({
-    tenantId,
-    userId: user.id,
-    sourceType: "excel",
-    targetEntity: "properties",
-    title: file.name,
-    notes: JSON.stringify(payload),
-  });
-
-  await addAuditLog({
-    tenantId,
-    userId: user.id,
-    action: "import_job_created",
-    targetType: "task",
-    targetId: job.id,
-    message: `Excel 物件資料を読み取りました: ${file.name} (${rowObjects.length} 行)`,
-  });
-
-  revalidatePath("/import-center");
-  redirect(`/import-center?xlsxJob=${job.id}${targetCaseQuery}`);
-}
-
-const MAX_IDENTITY_DOCUMENT_FILES = 6;
-const MAX_IDENTITY_DOCUMENT_FILE_BYTES = 25 * 1024 * 1024;
-const MAX_IDENTITY_DOCUMENT_TOTAL_BYTES = 60 * 1024 * 1024;
-
-function isAllowedIdentityDocumentFile(file: File) {
-  const lowerName = file.name.toLowerCase();
-  return (
-    lowerName.endsWith(".pdf") ||
-    lowerName.endsWith(".png") ||
-    lowerName.endsWith(".jpg") ||
-    lowerName.endsWith(".jpeg") ||
-    file.type === "application/pdf" ||
-    file.type.startsWith("image/")
-  );
-}
-
-function identityUploadTitle(files: File[]) {
-  return files.length === 1 ? files[0].name : `本人確認資料 ${files.length}件`;
-}
-
-async function createIdentityExtractionImportJob(input: {
-  tenantId: string;
-  userId: string;
-  title: string;
-  inputExtraction: InputFileExtractionResult;
-  fileCount: number;
-  targetCaseId?: string;
-}) {
-  const payload: ExcelImportPayload = {
-    kind: "input_file_extraction",
-    headers: [],
-    autoMapping: {},
-    rows: [],
-    originalFilename: input.title,
-    totalRows: 0,
-    inputExtraction: input.inputExtraction,
-    targetCaseId: input.targetCaseId,
-  };
-
-  const job = await addImportJob({
-    tenantId: input.tenantId,
-    userId: input.userId,
-    sourceType: "scan",
-    targetEntity: "parties",
-    title: input.title,
-    notes: JSON.stringify(payload),
-    status: "mapped",
-  });
-
-  await addAuditLog({
-    tenantId: input.tenantId,
-    userId: input.userId,
-    action: "identity_document_extraction_created",
-    targetType: "import_job",
-    targetId: job.id,
-    message: `本人確認資料の抽出プレビュー作成: ${input.title} (${input.inputExtraction.documentType})`,
-    context: {
-      documentType: input.inputExtraction.documentType,
-      fieldCount: input.inputExtraction.fields.length,
-      extractionStatus: input.inputExtraction.extractionStatus,
-      fileCount: input.fileCount,
-    },
-  });
-
-  return job;
 }
 
 export async function uploadAndParseIdentityDocumentAction(formData: FormData) {
-  if (isProductionRuntime()) {
-    throw new Error("Identity document extraction is unavailable until the production document reader is configured.");
-  }
-
+  assertProductionImportWorkerReady();
+  assertProductionDocumentReaderReady();
   const session = await requireTenantSession({ permission: "source.upload" });
   const user = session.user;
   const tenantId = session.tenant.id;
@@ -3926,65 +3884,25 @@ export async function uploadAndParseIdentityDocumentAction(formData: FormData) {
   const files = formData
     .getAll("identityDocumentFile")
     .filter((file): file is File => file instanceof File && file.size > 0);
-  if (files.length === 0) {
-    redirectIdentityUploadError("identity_upload_missing");
-  }
-  if (files.length > MAX_IDENTITY_DOCUMENT_FILES) {
-    redirectIdentityUploadError("identity_upload_too_many");
-  }
-
-  let totalBytes = 0;
-  for (const file of files) {
-    totalBytes += file.size;
-    if (file.size > MAX_IDENTITY_DOCUMENT_FILE_BYTES) {
-      redirectIdentityUploadError("identity_upload_too_large");
-    }
-    if (!isAllowedIdentityDocumentFile(file)) {
-      redirectIdentityUploadError("identity_upload_type");
-    }
-  }
-  if (totalBytes > MAX_IDENTITY_DOCUMENT_TOTAL_BYTES) {
-    redirectIdentityUploadError("identity_upload_total_too_large");
-  }
-
-  if (uploadMode === "separate_people" && files.length > 1) {
-    const jobs = [];
-    for (const file of files) {
-      const inputExtraction = await extractIdentityDocumentsFromFiles([{
-        buffer: Buffer.from(await file.arrayBuffer()),
-        filename: file.name,
-      }]);
-      jobs.push(await createIdentityExtractionImportJob({
-        tenantId,
-        userId: user.id,
-        title: file.name,
-        inputExtraction,
-        fileCount: 1,
-        targetCaseId: targetCaseId || undefined,
-      }));
-    }
-
-    revalidatePath("/import-center");
-    redirect(`/import-center?xlsxJob=${jobs[0].id}&flash=identity_extraction_ready${targetCaseQuery}`);
-  }
-
-  const uploadFiles = await Promise.all(files.map(async (file) => ({
-    buffer: Buffer.from(await file.arrayBuffer()),
-    filename: file.name,
-  })));
-  const inputExtraction = await extractIdentityDocumentsFromFiles(uploadFiles);
-  const title = identityUploadTitle(files);
-  const job = await createIdentityExtractionImportJob({
+  const result = await queueIdentityImportSources({
     tenantId,
     userId: user.id,
-    title,
-    inputExtraction,
-    fileCount: files.length,
+    files,
+    uploadMode: uploadMode === "separate_people" ? "separate_people" : "same_person",
     targetCaseId: targetCaseId || undefined,
   });
-
-  revalidatePath("/import-center");
-  redirect(`/import-center?xlsxJob=${job.id}&flash=identity_extraction_ready${targetCaseQuery}`);
+  if ("error" in result) {
+    const flash = result.error === "file_required" ? "identity_upload_missing"
+      : result.error === "too_many_files" ? "identity_upload_too_many"
+      : result.error === "file_too_large" ? "identity_upload_too_large"
+      : result.error === "files_too_large" ? "identity_upload_total_too_large"
+      : result.error === "invalid_identity_document" ? "identity_upload_type"
+      : "identity_upload_save_failed";
+    redirectIdentityUploadError(flash);
+  } else {
+    revalidatePath("/import-center");
+    redirect(`/import-center?xlsxJob=${result.jobIds[0]}&flash=input_extraction_queued${targetCaseQuery}`);
+  }
 }
 
 export async function saveExtractionReviewAction(formData: FormData) {

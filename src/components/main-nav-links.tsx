@@ -33,10 +33,11 @@ export function MainNavLinks({ links, orientation = "row" }: MainNavLinksProps) 
     "/contracts": "description",
     "/service-requests": "support_agent",
     "/output-center": "print",
-    "/templates": "dashboard_customize",
+    "/templates": "library_books",
     "/settings/members": "manage_accounts",
     "/settings/case-workbench-fields": "rule",
     "/settings/output-templates": "edit_document",
+    "/platform/accounts": "admin_panel_settings",
   };
 
   return (
@@ -44,15 +45,15 @@ export function MainNavLinks({ links, orientation = "row" }: MainNavLinksProps) 
       {links.map((link) => {
         const active = isActive(pathname, link.href);
         const base = isRow
-          ? "ui-nav-stable rounded-lg px-3 py-2 text-sm font-medium transition"
-          : "app-nav-link rounded px-3 py-3 text-sm font-bold transition";
+          ? "ui-nav-stable rounded-md px-3 py-2 text-sm font-semibold transition"
+          : "app-nav-link rounded-md px-3 py-2.5 text-sm font-semibold transition";
         const tone = active
           ? isRow
-            ? "bg-white text-[#001e40] shadow-sm"
-            : "bg-[#1960a3] text-white"
+            ? "bg-[#e7edff] text-[#173b9f]"
+            : "bg-[#3158d8] text-white"
           : isRow
-            ? "text-slate-600 hover:bg-slate-200/50 hover:text-slate-900"
-            : "text-slate-500 hover:bg-slate-900 hover:text-white";
+            ? "text-slate-600 hover:bg-slate-200/60 hover:text-slate-950"
+            : "text-slate-300 hover:bg-[#263149] hover:text-white";
         const hrefPath = link.href.split(/[?#]/)[0] || "/";
         const icon = iconByHref[hrefPath] ?? (hrefPath.startsWith("/cases/") ? "fact_check" : "circle");
 

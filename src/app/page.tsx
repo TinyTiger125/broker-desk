@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { listBrokerageCases } from "@/lib/data";
 import { formatCurrency, formatDate } from "@/lib/format";
 import {
@@ -10,7 +11,7 @@ import {
   type HubImportJobItem,
 } from "@/lib/hub";
 import { getLocale, type Locale } from "@/lib/locale";
-import { requireTenantSession } from "@/lib/tenant-session";
+import { requireTenantSession, TenantSessionError } from "@/lib/tenant-session";
 import { localizeDemoBrokerageCase } from "@/lib/demo-localization";
 
 export const dynamic = "force-dynamic";
@@ -524,9 +525,24 @@ function sortAssistantQueue(items: WorkObject[]) {
 }
 
 export default async function HomePage({ searchParams }: HomePageProps) {
-  const params = searchParams ? await searchParams : undefined;
+  const [params, locale, sessionResult] = await Promise.all([
+    searchParams ? searchParams : Promise.resolve(undefined),
+    getLocale(),
+    requireTenantSession({ permission: "tenant.read" }).then(
+      (session) => ({ session }),
+      (error) => ({ error }),
+    ),
+  ]);
   const searchQuery = params?.q?.trim() ?? "";
-  const [locale, session] = await Promise.all([getLocale(), requireTenantSession({ permission: "tenant.read" })]);
+  if ("error" in sessionResult) {
+    const error = sessionResult.error;
+    // A stale workspace cookie after account sign-in/switching is recoverable.
+    if (error instanceof TenantSessionError && error.code === "tenant_forbidden") {
+      redirect("/workspace/reset");
+    }
+    throw error;
+  }
+  const session = sessionResult.session;
   const copy = copyByLocale[locale];
   const user = session.user;
   const tenantId = session.tenant.id;
@@ -700,7 +716,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
       desc: copy.intakeActionDesc,
       badge: locale === "zh" ? "入口" : locale === "ko" ? "입력" : "入力",
       meta: locale === "zh" ? "新建或读取" : locale === "ko" ? "생성 또는 읽기" : "作成または読取",
-      className: "border-slate-950 bg-slate-950 text-white hover:bg-slate-800",
+      className: "bd-action-card-primary",
       iconClassName: "bg-white/10 text-white",
       badgeClassName: "bg-white/10 text-white",
       metaClassName: "bg-white/10 text-white",
@@ -712,7 +728,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
       desc: copy.organizeActionDesc,
       badge: locale === "zh" ? "核对" : locale === "ko" ? "확인" : "確認",
       meta: `${pendingObjects.length} ${copy.needsAction}`,
-      className: "border-amber-200 bg-amber-50 text-slate-950 hover:border-amber-400 hover:bg-amber-100",
+      className: "border-amber-200 bg-[#fffaf0] text-slate-950 hover:border-amber-400 hover:bg-[#fff6df]",
       iconClassName: "bg-white text-amber-700",
       badgeClassName: "bg-white text-amber-800 ring-1 ring-amber-100",
       metaClassName: "bg-white text-amber-800 ring-1 ring-amber-100",
@@ -724,7 +740,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
       desc: copy.outputActionDesc,
       badge: locale === "zh" ? "生成" : locale === "ko" ? "출력" : "出力",
       meta: `${generatedOutputs.length} ${copy.outputs}`,
-      className: "border-emerald-200 bg-emerald-50 text-slate-950 hover:border-emerald-400 hover:bg-emerald-100",
+      className: "border-emerald-200 bg-[#f2fbf7] text-slate-950 hover:border-emerald-400 hover:bg-[#e4f7ee]",
       iconClassName: "bg-white text-emerald-700",
       badgeClassName: "bg-white text-emerald-800 ring-1 ring-emerald-100",
       metaClassName: "bg-white text-emerald-800 ring-1 ring-emerald-100",
@@ -732,8 +748,8 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   ];
 
   return (
-    <div className="mx-auto max-w-[1680px] space-y-7">
-      <header className="rounded-lg border border-slate-200 bg-white px-6 py-6 sm:px-8">
+    <div className="bd-page bd-home-page space-y-6">
+      <header className="bd-page-header px-6 py-6 sm:px-8">
         <div className="grid min-w-0 gap-5 2xl:grid-cols-[minmax(0,1fr)_minmax(22rem,28rem)] 2xl:items-end">
           <div className="min-w-0">
             <p className="text-xs font-black text-[#002FA7]">
@@ -880,7 +896,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
           <Link
             key={action.href}
             href={action.href}
-            className={`group flex min-h-48 flex-col justify-between rounded-lg border p-5 transition ${action.className}`}
+            className={`bd-action-card group ${action.className}`}
           >
             <div>
               <div className="flex items-start justify-between gap-3">

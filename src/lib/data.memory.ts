@@ -28,6 +28,7 @@ import type {
 import { COMPLETE_CASE_FIELD_DEFAULTS, COMPLETE_DRAFT_DEFAULTS } from "@/lib/guarantee-application-fixtures";
 import { DEFAULT_TENANT_ID } from "@/lib/tenant-constants";
 import type { TenantRole } from "@/lib/tenant-permissions";
+import type { LifecycleFilter, LifecycleStatus } from "@/lib/record-lifecycle";
 
 export type { OutputTemplateSettingsInput } from "@/lib/output-doc";
 export type {
@@ -85,6 +86,12 @@ export type TenantMembership = {
   updatedAt: Date;
 };
 
+export type TenantSessionLookup = {
+  user: User;
+  membership: TenantMembership;
+  tenant: Tenant;
+};
+
 export type TenantMemberListItem = TenantMembership & {
   user: Pick<User, "id" | "name" | "email" | "externalAuthSubject" | "createdAt">;
 };
@@ -132,6 +139,9 @@ export type Client = {
   ownerUserId: string;
   createdAt: Date;
   updatedAt: Date;
+  lifecycleStatus?: LifecycleStatus;
+  archivedAt?: Date;
+  archivedById?: string;
 };
 
 export type Property = {
@@ -146,6 +156,9 @@ export type Property = {
   repairFee?: number;
   notes?: string;
   createdAt: Date;
+  lifecycleStatus?: LifecycleStatus;
+  archivedAt?: Date;
+  archivedById?: string;
 };
 
 export type Quotation = {
@@ -229,7 +242,7 @@ export type AuditLog = {
 
 export type ImportSourceType = "excel" | "pdf" | "scan" | "manual";
 export type ImportTargetEntity = "properties" | "parties" | "contracts" | "service_requests";
-export type ImportJobStatus = "queued" | "mapped" | "completed";
+export type ImportJobStatus = "queued" | "processing" | "mapped" | "completed" | "failed";
 
 export type ImportJob = {
   id: string;
@@ -242,6 +255,14 @@ export type ImportJob = {
   notes?: string;
   mappingJson?: Record<string, string>;
   validationMessage?: string;
+  processingStartedAt?: Date;
+  completedAt?: Date;
+  failedAt?: Date;
+  // Historical demo records predate execution tracking. New jobs always set this to 0.
+  attemptCount?: number;
+  errorCode?: string;
+  errorSummary?: string;
+  idempotencyKey?: string;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -264,6 +285,9 @@ export type BrokerageCase = {
   sourceImportJobIds: string[];
   createdAt: Date;
   updatedAt: Date;
+  lifecycleStatus?: LifecycleStatus;
+  archivedAt?: Date;
+  archivedById?: string;
 };
 
 export type ExtractionReviewItem = {
@@ -381,6 +405,18 @@ export type Attachment = {
   uploadedAt: Date;
 };
 
+export type PrivateAttachmentInput = {
+  tenantId?: string;
+  userId: string;
+  targetType: AttachmentTargetType;
+  targetId: string;
+  fileName: string;
+  fileType?: string;
+  content: Buffer;
+};
+
+const privateAttachmentContents = new Map<string, Buffer>();
+
 export type GeneratedOutput = {
   id: string;
   tenantId?: string;
@@ -423,6 +459,43 @@ export type OutputTemplateVersion = {
   createdAt: Date;
 };
 
+// Shared, immutable calibration for a platform-owned PDF base template.
+// Tenant-installed copies will be modeled separately from this publication.
+export type GuaranteeTemplateLayoutVersion = {
+  id: string;
+  templateId: string;
+  versionNumber: number;
+  baselineVersion: string;
+  assetFingerprint: string;
+  layoutSnapshot: Record<string, unknown>;
+  changeNote?: string;
+  // The initial migration is system-published; subsequent authoring publishes
+  // always carry the platform administrator id.
+  publishedByUserId?: string;
+  isActive: boolean;
+  createdAt: Date;
+  publishedAt: Date;
+};
+
+// A tenant installation is a point-in-time private copy of one published
+// official layout. Future tenant edits must update this copy only; they never
+// mutate the platform publication or another tenant's installed copy.
+export type TenantGuaranteeTemplateInstall = {
+  id: string;
+  tenantId: string;
+  templateId: string;
+  sourceLayoutVersionId: string;
+  sourceVersionNumber: number;
+  sourceAssetFingerprint: string;
+  displayName: string;
+  layoutSnapshot: Record<string, unknown>;
+  revisionNumber: number;
+  status: "active" | "archived";
+  installedByUserId?: string;
+  installedAt: Date;
+  updatedAt: Date;
+};
+
 type DB = {
   users: User[];
   tenants: Tenant[];
@@ -436,6 +509,8 @@ type DB = {
   caseWorkbenchFieldRules: CaseWorkbenchFieldRule[];
   outputTemplateSettings: OutputTemplateSettings[];
   outputTemplateVersions: OutputTemplateVersion[];
+  guaranteeTemplateLayoutVersions: GuaranteeTemplateLayoutVersion[];
+  tenantGuaranteeTemplateInstalls: TenantGuaranteeTemplateInstall[];
   importJobs: ImportJob[];
   brokerageCases: BrokerageCase[];
   extractionReviewItems: ExtractionReviewItem[];
@@ -584,7 +659,13 @@ function toTemplateSettingsInput(settings: OutputTemplateSettings): OutputTempla
   };
 }
 
-type QaBusinessDataCounts = Record<keyof Omit<DB, "users" | "outputTemplateSettings" | "outputTemplateVersions" | "caseWorkbenchFieldRules">, number>;
+type QaBusinessDataCounts = Record<
+  keyof Omit<
+    DB,
+    "users" | "outputTemplateSettings" | "outputTemplateVersions" | "guaranteeTemplateLayoutVersions" | "tenantGuaranteeTemplateInstalls" | "caseWorkbenchFieldRules"
+  >,
+  number
+>;
 
 function cloneValue<T>(value: T): T {
   if (value instanceof Date) return new Date(value) as T;
@@ -615,6 +696,8 @@ function cloneDb(input: DB): DB {
     caseWorkbenchFieldRules: cloneCollection(input.caseWorkbenchFieldRules),
     outputTemplateSettings: cloneCollection(input.outputTemplateSettings),
     outputTemplateVersions: cloneCollection(input.outputTemplateVersions),
+    guaranteeTemplateLayoutVersions: cloneCollection(input.guaranteeTemplateLayoutVersions),
+    tenantGuaranteeTemplateInstalls: cloneCollection(input.tenantGuaranteeTemplateInstalls),
     importJobs: cloneCollection(input.importJobs),
     brokerageCases: cloneCollection(input.brokerageCases),
     extractionReviewItems: cloneCollection(input.extractionReviewItems),
@@ -1027,6 +1110,8 @@ const _freshDb: DB = withDefaultTenantScope({
   outputTemplateVersions: [
     { id: "tplver_user_demo_001", userId: "user_demo", versionNumber: 1, versionLabel: "標準版 v1", changeNote: "初期標準テンプレート", settingsSnapshot: toTemplateSettingsInput(cherryOutputTemplate), isActive: true, createdAt: new Date(now - 15 * 24 * 60 * 60 * 1000) },
   ],
+  guaranteeTemplateLayoutVersions: [],
+  tenantGuaranteeTemplateInstalls: [],
   importJobs: [
     { id: "import_001", userId: "user_demo", sourceType: "excel", title: "物件台帳_2026Q1.xlsx", targetEntity: "properties", status: "completed", notes: "物件5件を保存", mappingJson: { 物件名: "name", 所在地: "address", エリア: "area", 売出価格: "listing_price" }, validationMessage: "必須項目を充足（4/4）", createdAt: new Date(now - 4 * 24 * 60 * 60 * 1000), updatedAt: new Date(now - 4 * 24 * 60 * 60 * 1000) },
     { id: "import_002", userId: "user_demo", sourceType: "pdf", title: "旧契約書一括登録（3件）", targetEntity: "contracts", status: "mapped", notes: "契約種別の確認待ち", mappingJson: { 契約番号: "contract_number", 契約種別: "contract_type", 物件ID: "property_id" }, validationMessage: "必須項目が不足（署名日）", createdAt: new Date(now - 2 * 24 * 60 * 60 * 1000), updatedAt: new Date(now - 2 * 24 * 60 * 60 * 1000) },
@@ -1167,9 +1252,13 @@ if (!db.guaranteeApplicationDrafts) db.guaranteeApplicationDrafts = cloneCollect
 if (!db.correctionEvents) db.correctionEvents = [];
 if (!db.aiExperienceDrafts) db.aiExperienceDrafts = [];
 if (!db.caseWorkbenchFieldRules) db.caseWorkbenchFieldRules = [];
+if (!db.guaranteeTemplateLayoutVersions) db.guaranteeTemplateLayoutVersions = [];
+if (!db.tenantGuaranteeTemplateInstalls) db.tenantGuaranteeTemplateInstalls = [];
 
 export function resetBusinessDataForQa(): QaBusinessDataCounts {
   const templateSettings = createQaBlankTemplateSettings();
+
+  privateAttachmentContents.clear();
 
   db.users = cloneCollection(_freshDb.users);
   db.tenants = cloneCollection(_freshDb.tenants);
@@ -1208,6 +1297,7 @@ export function resetBusinessDataForQa(): QaBusinessDataCounts {
 }
 
 export function seedBusinessDataForQa(): QaBusinessDataCounts {
+  privateAttachmentContents.clear();
   Object.assign(db, cloneDb(_freshDb));
   backfillTenantScope(db);
   db.tenants.forEach(ensureTenantDefaults);
@@ -1671,9 +1761,11 @@ export type DashboardQuoteItem = Quotation & {
 
 function isValidImportStatusTransition(from: ImportJobStatus, to: ImportJobStatus, allowRetry: boolean): boolean {
   if (from === to) return true;
-  if (allowRetry && to === "queued") return true;
-  if (from === "queued" && to === "mapped") return true;
-  if (from === "mapped" && (to === "queued" || to === "completed")) return true;
+  if (allowRetry && from === "failed" && to === "queued") return true;
+  if (from === "queued" && to === "failed") return true;
+  if (from === "queued" && to === "processing") return true;
+  if (from === "processing" && (to === "mapped" || to === "failed")) return true;
+  if (from === "mapped" && (to === "queued" || to === "completed" || to === "failed")) return true;
   return false;
 }
 
@@ -1695,6 +1787,25 @@ export async function getUserByExternalAuthSubject(subject: string): Promise<Use
   if (!normalized) return null;
   const found = db.users.find((item) => item.externalAuthSubject === normalized);
   return found ? { ...found } : null;
+}
+
+export async function listTenantSessionLookupsByExternalAuthSubject(subject: string): Promise<TenantSessionLookup[]> {
+  const user = await getUserByExternalAuthSubject(subject);
+  if (!user) return [];
+
+  return db.tenantMemberships
+    .filter((membership) => membership.userId === user.id)
+    .map((membership) => {
+      const tenant = db.tenants.find((item) => item.id === membership.tenantId);
+      return tenant
+        ? {
+            user: { ...user },
+            membership: { ...membership },
+            tenant: { ...tenant },
+          }
+        : null;
+    })
+    .filter((lookup): lookup is TenantSessionLookup => Boolean(lookup));
 }
 
 function fallbackEmailForExternalSubject(subject: string): string {
@@ -2230,6 +2341,139 @@ export async function createOutputTemplateVersion(input: {
   return version;
 }
 
+export async function getActiveGuaranteeTemplateLayoutVersion(
+  templateId: string,
+): Promise<GuaranteeTemplateLayoutVersion | null> {
+  const active = db.guaranteeTemplateLayoutVersions.find(
+    (item) => item.templateId === templateId && item.isActive,
+  );
+  return active ? { ...active, layoutSnapshot: { ...active.layoutSnapshot } } : null;
+}
+
+export async function listGuaranteeTemplateLayoutVersions(
+  templateId: string,
+  limit = 20,
+): Promise<GuaranteeTemplateLayoutVersion[]> {
+  return db.guaranteeTemplateLayoutVersions
+    .filter((item) => item.templateId === templateId)
+    .sort((a, b) => b.versionNumber - a.versionNumber)
+    .slice(0, limit)
+    .map((item) => ({ ...item, layoutSnapshot: { ...item.layoutSnapshot } }));
+}
+
+export async function publishGuaranteeTemplateLayoutVersion(input: {
+  templateId: string;
+  baselineVersion: string;
+  assetFingerprint: string;
+  layoutSnapshot: Record<string, unknown>;
+  publishedByUserId: string;
+  changeNote?: string;
+}): Promise<GuaranteeTemplateLayoutVersion> {
+  const previous = db.guaranteeTemplateLayoutVersions.filter((item) => item.templateId === input.templateId);
+  const versionNumber = previous.reduce((max, item) => Math.max(max, item.versionNumber), 0) + 1;
+  db.guaranteeTemplateLayoutVersions.forEach((item) => {
+    if (item.templateId === input.templateId) item.isActive = false;
+  });
+  const now = new Date();
+  const version: GuaranteeTemplateLayoutVersion = {
+    id: makeId("guarantee_layout"),
+    templateId: input.templateId,
+    versionNumber,
+    baselineVersion: input.baselineVersion,
+    assetFingerprint: input.assetFingerprint,
+    layoutSnapshot: { ...input.layoutSnapshot },
+    changeNote: input.changeNote?.trim() || undefined,
+    publishedByUserId: input.publishedByUserId,
+    isActive: true,
+    createdAt: now,
+    publishedAt: now,
+  };
+  db.guaranteeTemplateLayoutVersions.unshift(version);
+  return { ...version, layoutSnapshot: { ...version.layoutSnapshot } };
+}
+
+function cloneTemplateSnapshot(snapshot: Record<string, unknown>): Record<string, unknown> {
+  return JSON.parse(JSON.stringify(snapshot)) as Record<string, unknown>;
+}
+
+export async function listTenantGuaranteeTemplateInstalls(input: {
+  tenantId?: string;
+  templateId?: string;
+  includeArchived?: boolean;
+}): Promise<TenantGuaranteeTemplateInstall[]> {
+  const tenantId = resolveTenantId(input.tenantId);
+  return db.tenantGuaranteeTemplateInstalls
+    .filter((item) => item.tenantId === tenantId)
+    .filter((item) => !input.templateId || item.templateId === input.templateId)
+    .filter((item) => input.includeArchived || item.status === "active")
+    .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+    .map((item) => ({ ...item, layoutSnapshot: cloneTemplateSnapshot(item.layoutSnapshot) }));
+}
+
+export async function getActiveTenantGuaranteeTemplateInstall(input: {
+  tenantId?: string;
+  templateId: string;
+}): Promise<TenantGuaranteeTemplateInstall | null> {
+  const installs = await listTenantGuaranteeTemplateInstalls({
+    tenantId: input.tenantId,
+    templateId: input.templateId,
+  });
+  return installs[0] ?? null;
+}
+
+export async function installGuaranteeTemplateForTenant(input: {
+  tenantId?: string;
+  templateId: string;
+  sourceLayoutVersionId: string;
+  sourceVersionNumber: number;
+  sourceAssetFingerprint: string;
+  displayName: string;
+  layoutSnapshot: Record<string, unknown>;
+  installedByUserId?: string;
+}): Promise<TenantGuaranteeTemplateInstall> {
+  const tenantId = resolveTenantId(input.tenantId);
+  const existing = db.tenantGuaranteeTemplateInstalls.find(
+    (item) => item.tenantId === tenantId && item.templateId === input.templateId && item.status === "active",
+  );
+  // Installation is intentionally idempotent. An explicit future upgrade flow
+  // must compare and replace a tenant copy; a repeated install may never do it.
+  if (existing) {
+    return { ...existing, layoutSnapshot: cloneTemplateSnapshot(existing.layoutSnapshot) };
+  }
+  const now = new Date();
+  const next: TenantGuaranteeTemplateInstall = {
+    id: makeId("tenant_guarantee_template"),
+    tenantId,
+    templateId: input.templateId,
+    sourceLayoutVersionId: input.sourceLayoutVersionId,
+    sourceVersionNumber: input.sourceVersionNumber,
+    sourceAssetFingerprint: input.sourceAssetFingerprint,
+    displayName: input.displayName.trim(),
+    layoutSnapshot: cloneTemplateSnapshot(input.layoutSnapshot),
+    revisionNumber: 1,
+    status: "active",
+    installedByUserId: input.installedByUserId,
+    installedAt: now,
+    updatedAt: now,
+  };
+  db.tenantGuaranteeTemplateInstalls.unshift(next);
+  return { ...next, layoutSnapshot: cloneTemplateSnapshot(next.layoutSnapshot) };
+}
+
+export async function archiveTenantGuaranteeTemplateInstall(input: {
+  tenantId?: string;
+  installId: string;
+}): Promise<TenantGuaranteeTemplateInstall | null> {
+  const tenantId = resolveTenantId(input.tenantId);
+  const install = db.tenantGuaranteeTemplateInstalls.find(
+    (item) => item.id === input.installId && item.tenantId === tenantId,
+  );
+  if (!install) return null;
+  install.status = "archived";
+  install.updatedAt = new Date();
+  return { ...install, layoutSnapshot: cloneTemplateSnapshot(install.layoutSnapshot) };
+}
+
 export async function applyOutputTemplateVersion(input: {
   tenantId?: string;
   userId: string;
@@ -2271,6 +2515,20 @@ export async function listImportJobs(userId: string, limit = 50, tenantId?: stri
     .map((item) => ({ ...item }));
 }
 
+export async function getImportJobByIdempotencyKey(input: {
+  tenantId?: string;
+  userId: string;
+  idempotencyKey: string;
+}): Promise<ImportJob | null> {
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const normalizedKey = input.idempotencyKey.trim();
+  if (!normalizedKey) return null;
+  const job = db.importJobs.find(
+    (item) => item.tenantId === scopeTenantId && item.userId === input.userId && item.idempotencyKey === normalizedKey,
+  );
+  return job ? { ...job } : null;
+}
+
 export async function addImportJob(input: {
   tenantId?: string;
   userId: string;
@@ -2279,6 +2537,7 @@ export async function addImportJob(input: {
   targetEntity: ImportTargetEntity;
   status?: ImportJobStatus;
   notes?: string;
+  idempotencyKey?: string;
 }): Promise<ImportJob> {
   const sourceLabel: Record<ImportSourceType, string> = {
     excel: "Excel",
@@ -2302,6 +2561,8 @@ export async function addImportJob(input: {
     targetEntity: input.targetEntity,
     status: input.status ?? "queued",
     notes: input.notes?.trim() || undefined,
+    idempotencyKey: input.idempotencyKey?.trim() || undefined,
+    attemptCount: 0,
     createdAt: nowDate,
     updatedAt: nowDate,
   };
@@ -2340,6 +2601,61 @@ export async function updateImportJobMapping(input: {
   return { ...job };
 }
 
+export async function updateImportJobExecution(input: {
+  tenantId?: string;
+  userId: string;
+  jobId: string;
+  status: "processing" | "failed" | "completed";
+  errorCode?: string;
+  errorSummary?: string;
+  allowRetry?: boolean;
+}): Promise<ImportJob | null> {
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const job = db.importJobs.find(
+    (item) => item.userId === input.userId && item.tenantId === scopeTenantId && item.id === input.jobId,
+  );
+  if (!job) return null;
+  if (!isValidImportStatusTransition(job.status, input.status, Boolean(input.allowRetry))) {
+    throw new Error(`資料読取記録の状態変更が不正です: ${job.status} -> ${input.status}`);
+  }
+  const now = new Date();
+  job.status = input.status;
+  if (input.status === "processing") {
+    job.processingStartedAt = now;
+    job.attemptCount = (job.attemptCount ?? 0) + 1;
+    job.errorCode = undefined;
+    job.errorSummary = undefined;
+  }
+  if (input.status === "failed") {
+    job.failedAt = now;
+    job.errorCode = input.errorCode?.trim() || "import_failed";
+    job.errorSummary = input.errorSummary?.trim() || "資料を読み取れませんでした。";
+  }
+  if (input.status === "completed") job.completedAt = now;
+  job.updatedAt = now;
+  return { ...job };
+}
+
+export async function retryImportJobExecution(input: {
+  tenantId?: string;
+  userId: string;
+  jobId: string;
+}): Promise<ImportJob | null> {
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const job = db.importJobs.find(
+    (item) => item.userId === input.userId && item.tenantId === scopeTenantId && item.id === input.jobId,
+  );
+  if (!job) return null;
+  if (job.status !== "failed") return { ...job };
+
+  job.status = "queued";
+  job.processingStartedAt = undefined;
+  job.errorCode = undefined;
+  job.errorSummary = undefined;
+  job.updatedAt = new Date();
+  return { ...job };
+}
+
 function cloneBrokerageCase(item: BrokerageCase): BrokerageCase {
   return {
     ...item,
@@ -2348,10 +2664,16 @@ function cloneBrokerageCase(item: BrokerageCase): BrokerageCase {
   };
 }
 
-export async function listBrokerageCases(userId: string, limit = 50, tenantId?: string): Promise<BrokerageCase[]> {
+export async function listBrokerageCases(
+  userId: string,
+  limit = 50,
+  tenantId?: string,
+  lifecycleStatus: LifecycleFilter = "active",
+): Promise<BrokerageCase[]> {
   const scopeTenantId = resolveTenantId(tenantId);
   return db.brokerageCases
     .filter((item) => item.userId === userId && item.tenantId === scopeTenantId)
+    .filter((item) => lifecycleStatus === "all" || (item.lifecycleStatus ?? "active") === lifecycleStatus)
     .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
     .slice(0, limit)
     .map(cloneBrokerageCase);
@@ -2699,6 +3021,28 @@ export async function getGuaranteeApplicationDraft(input: {
   return item ? cloneGuaranteeApplicationDraft(item) : null;
 }
 
+export async function listGuaranteeApplicationDrafts(input: {
+  tenantId?: string;
+  userId: string;
+  caseIds: string[];
+  templateIds: string[];
+}): Promise<GuaranteeApplicationDraft[]> {
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const caseIds = new Set(input.caseIds.map((value) => value.trim()).filter(Boolean));
+  const templateIds = new Set(input.templateIds.map((value) => value.trim()).filter(Boolean));
+  if (caseIds.size === 0 || templateIds.size === 0) return [];
+
+  return db.guaranteeApplicationDrafts
+    .filter(
+      (draft) =>
+        draft.userId === input.userId &&
+        draft.tenantId === scopeTenantId &&
+        caseIds.has(draft.caseId) &&
+        templateIds.has(draft.templateId),
+    )
+    .map(cloneGuaranteeApplicationDraft);
+}
+
 export async function saveGuaranteeApplicationDraft(input: {
   tenantId?: string;
   userId: string;
@@ -2802,6 +3146,33 @@ export async function addAttachment(input: {
   };
   db.attachments.unshift(attachment);
   return attachment;
+}
+
+export async function addPrivateAttachment(input: PrivateAttachmentInput): Promise<Attachment> {
+  const attachment = await addAttachment({
+    tenantId: input.tenantId,
+    userId: input.userId,
+    targetType: input.targetType,
+    targetId: input.targetId,
+    fileName: input.fileName,
+    fileType: input.fileType,
+    fileSizeBytes: input.content.length,
+    storagePath: `postgres-private://${input.tenantId ?? DEFAULT_TENANT_ID}/${Date.now().toString(36)}`,
+  });
+  privateAttachmentContents.set(attachment.id, Buffer.from(input.content));
+  attachment.storagePath = `postgres-private://${attachment.tenantId}/${attachment.id}`;
+  return attachment;
+}
+
+export async function readPrivateAttachmentContent(input: {
+  tenantId?: string;
+  userId: string;
+  id: string;
+}): Promise<Buffer | null> {
+  const attachment = await getAttachmentById(input);
+  if (!attachment?.storagePath?.startsWith("postgres-private://")) return null;
+  const content = privateAttachmentContents.get(attachment.id);
+  return content ? Buffer.from(content) : null;
 }
 
 export async function listGeneratedOutputs(input: {
@@ -3053,6 +3424,7 @@ export type ClientListFilter = {
   temperature?: Temperature | "all";
   sort?: ClientListSort;
   tenantId?: string;
+  lifecycleStatus?: LifecycleFilter;
 };
 
 export async function listClients(userId: string, filter: ClientListFilter = {}) {
@@ -3060,6 +3432,9 @@ export async function listClients(userId: string, filter: ClientListFilter = {})
   const filtered = db.clients
     .filter((item) => item.ownerUserId === userId)
     .filter((item) => item.tenantId === scopeTenantId)
+    .filter((item) =>
+      filter.lifecycleStatus === "all" || (item.lifecycleStatus ?? "active") === (filter.lifecycleStatus ?? "active")
+    )
     .filter((item) => (filter.stage && filter.stage !== "all" ? item.stage === filter.stage : true))
     .filter((item) => (filter.purpose && filter.purpose !== "all" ? item.purpose === filter.purpose : true))
     .filter((item) =>
@@ -3166,18 +3541,78 @@ export async function getBoardData(userId: string, tenantId?: string) {
   );
 }
 
-export async function listQuoteFormData(tenantId?: string) {
+export async function listQuoteFormData(tenantId?: string, lifecycleStatus: LifecycleFilter = "active") {
   const scopeTenantId = resolveTenantId(tenantId);
   return {
-    clients: db.clients.filter((item) => item.tenantId === scopeTenantId).map((item) => ({ id: item.id, name: item.name })),
-    properties: db.properties.filter((item) => item.tenantId === scopeTenantId).map((item) => ({
+    clients: db.clients
+      .filter((item) => item.tenantId === scopeTenantId)
+      .filter((item) => lifecycleStatus === "all" || (item.lifecycleStatus ?? "active") === lifecycleStatus)
+      .map((item) => ({ id: item.id, name: item.name, lifecycleStatus: item.lifecycleStatus ?? "active" as LifecycleStatus })),
+    properties: db.properties
+      .filter((item) => item.tenantId === scopeTenantId)
+      .filter((item) => lifecycleStatus === "all" || (item.lifecycleStatus ?? "active") === lifecycleStatus)
+      .map((item) => ({
       id: item.id,
       name: item.name,
       listingPrice: item.listingPrice,
       managementFee: item.managementFee ?? null,
       repairFee: item.repairFee ?? null,
-    })),
+      lifecycleStatus: item.lifecycleStatus ?? "active" as LifecycleStatus,
+      })),
   };
+}
+
+export async function setBrokerageCaseLifecycleStatus(input: {
+  tenantId?: string;
+  userId: string;
+  caseId: string;
+  status: LifecycleStatus;
+  archivedById?: string;
+}): Promise<BrokerageCase | null> {
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const item = db.brokerageCases.find(
+    (caseItem) => caseItem.userId === input.userId && caseItem.tenantId === scopeTenantId && caseItem.id === input.caseId,
+  );
+  if (!item) return null;
+  item.lifecycleStatus = input.status;
+  item.archivedAt = input.status === "archived" ? new Date() : undefined;
+  item.archivedById = input.status === "archived" ? input.archivedById ?? input.userId : undefined;
+  item.updatedAt = new Date();
+  return cloneBrokerageCase(item);
+}
+
+export async function setClientLifecycleStatus(input: {
+  tenantId?: string;
+  userId: string;
+  clientId: string;
+  status: LifecycleStatus;
+  archivedById?: string;
+}): Promise<Client | null> {
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const item = db.clients.find(
+    (client) => client.ownerUserId === input.userId && client.tenantId === scopeTenantId && client.id === input.clientId,
+  );
+  if (!item) return null;
+  item.lifecycleStatus = input.status;
+  item.archivedAt = input.status === "archived" ? new Date() : undefined;
+  item.archivedById = input.status === "archived" ? input.archivedById ?? input.userId : undefined;
+  item.updatedAt = new Date();
+  return { ...item };
+}
+
+export async function setPropertyLifecycleStatus(input: {
+  tenantId?: string;
+  propertyId: string;
+  status: LifecycleStatus;
+  archivedById?: string;
+}): Promise<Property | null> {
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const item = db.properties.find((property) => property.tenantId === scopeTenantId && property.id === input.propertyId);
+  if (!item) return null;
+  item.lifecycleStatus = input.status;
+  item.archivedAt = input.status === "archived" ? new Date() : undefined;
+  item.archivedById = input.status === "archived" ? input.archivedById : undefined;
+  return { ...item };
 }
 
 export async function addProperty(input: {

@@ -9,6 +9,7 @@ const labels = {
     import: "录入资料",
     organize: "整理信息",
     output: "输出文件",
+    templates: "模板库",
     case: "案件资料",
     party: "主体资料",
     property: "物件资料",
@@ -24,6 +25,7 @@ const labels = {
     import: "情報入力",
     organize: "情報整理",
     output: "文書出力",
+    templates: "テンプレートライブラリ",
     case: "案件資料",
     party: "主体資料",
     property: "物件資料",
@@ -39,6 +41,7 @@ const labels = {
     import: "자료 입력",
     organize: "정보 정리",
     output: "문서 출력",
+    templates: "템플릿 라이브러리",
     case: "안건 자료",
     party: "주체 자료",
     property: "물건 자료",
@@ -63,6 +66,7 @@ export function AppRouteTitle({ locale }: { locale: Locale }) {
   if (pathname === "/") return <span>{l.home}</span>;
   if (pathname.startsWith("/import-center")) return <span>{joinPath([l.home, l.import])}</span>;
   if (pathname.startsWith("/output-center")) return <span>{joinPath([l.home, l.output])}</span>;
+  if (pathname.startsWith("/templates")) return <span>{joinPath([l.home, l.templates])}</span>;
   if (pathname.startsWith("/relationship-tree")) return <span>{joinPath([l.home, l.organize, l.relation])}</span>;
   if (pathname.startsWith("/cases/")) return <span>{joinPath([l.home, l.organize, l.case])}</span>;
   if (pathname.startsWith("/parties/")) return <span>{joinPath([l.home, l.organize, l.party])}</span>;

@@ -5,8 +5,14 @@ type ProductionReadinessCode =
   | "production_attachment_storage_required"
   | "production_attachment_adapter_required"
   | "production_document_reader_required"
+  | "production_document_reader_endpoint_invalid"
+  | "production_document_reader_endpoint_not_allowed"
   | "production_migrations_required"
-  | "production_tenant_scope_required";
+  | "production_tenant_scope_required"
+  | "production_database_role_unsafe"
+  | "production_admin_database_required"
+  | "production_rate_limit_required"
+  | "production_import_worker_required";
 
 export class ProductionReadinessError extends Error {
   readonly code: ProductionReadinessCode;
@@ -41,11 +47,9 @@ export function assertProductionDataStoreReady() {
 export function assertProductionTenantScopeBindingReady() {
   if (!isProductionRuntime()) return;
 
-  // The Postgres driver currently uses pool.query directly and does not bind
-  // the authenticated Clerk subject with set_config inside the same request
-  // transaction. Until that adapter exists and has been verified against RLS,
-  // production data access must remain fail-closed.
-  throw new ProductionReadinessError("production_tenant_scope_required");
+  // The Postgres repository binds the immutable Clerk subject on the same
+  // connection as every business query. Its runtime role is verified by the
+  // repository before the first production request.
 }
 
 export function assertProductionAuthReady() {
@@ -56,8 +60,25 @@ export function assertProductionAuthReady() {
   }
 }
 
+export function assertProductionRateLimitReady() {
+  if (!isProductionRuntime()) return;
+
+  // The in-process limiter is intentionally only a fallback. A public service
+  // must have an independently deployed, shared policy at its HTTPS edge.
+  if (
+    process.env.BROKER_DESK_EDGE_RATE_LIMIT_ENFORCED !== "true" ||
+    !process.env.BROKER_DESK_EDGE_RATE_LIMIT_POLICY_ID?.trim()
+  ) {
+    throw new ProductionReadinessError("production_rate_limit_required");
+  }
+}
+
 export function assertProductionAttachmentStorageReady() {
   if (!isProductionRuntime()) return;
+
+  if (process.env.ATTACHMENT_STORAGE_MODE === "postgres_private") {
+    return;
+  }
 
   if (
     process.env.ATTACHMENT_STORAGE_MODE !== "object_private" ||
@@ -82,5 +103,37 @@ export function assertProductionDocumentReaderReady() {
     !process.env.DOCUMENT_READING_API_TOKEN
   ) {
     throw new ProductionReadinessError("production_document_reader_required");
+  }
+  try {
+    const endpoint = new URL(process.env.DOCUMENT_READING_ENDPOINT);
+    if (endpoint.protocol !== "https:") throw new Error("HTTPS required");
+
+    // The endpoint receives identity document bytes. Requiring an explicit
+    // hostname allowlist avoids turning an environment typo into an SSRF path.
+    const allowedHosts = (process.env.DOCUMENT_READING_ALLOWED_HOSTS ?? "")
+      .split(",")
+      .map((host) => host.trim().toLowerCase())
+      .filter(Boolean);
+    if (!allowedHosts.includes(endpoint.hostname.toLowerCase())) {
+      throw new ProductionReadinessError("production_document_reader_endpoint_not_allowed");
+    }
+  } catch (error) {
+    if (error instanceof ProductionReadinessError) throw error;
+    throw new ProductionReadinessError("production_document_reader_endpoint_invalid");
+  }
+}
+
+export function assertProductionImportWorkerReady() {
+  if (!isProductionRuntime()) return;
+
+  // Requests only persist source files and enqueue jobs. A production system
+  // must have a separate authenticated worker/scheduler to claim those jobs;
+  // otherwise accepted uploads would silently remain queued.
+  if (
+    process.env.BROKER_DESK_IMPORT_WORKER_ENABLED !== "true" ||
+    !process.env.BROKER_DESK_IMPORT_WORKER_SCHEDULE?.trim() ||
+    (process.env.BROKER_DESK_IMPORT_WORKER_TOKEN?.trim().length ?? 0) < 32
+  ) {
+    throw new ProductionReadinessError("production_import_worker_required");
   }
 }

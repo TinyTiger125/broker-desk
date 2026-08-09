@@ -2,9 +2,9 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { verifyWebhook } from "@clerk/nextjs/webhooks";
 import {
-  ensureUserForExternalAuth,
-  suspendUserForExternalAuthSubject,
-} from "@/lib/data";
+  suspendExternalAuthUser,
+  syncExternalAuthUser,
+} from "@/lib/data.admin.postgres";
 
 export const dynamic = "force-dynamic";
 
@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
     if (!subject) {
       return NextResponse.json({ ok: false, error: "clerk_user_id_missing" }, { status: 400 });
     }
-    const user = await ensureUserForExternalAuth({
+    const user = await syncExternalAuthUser({
       subject,
       email: extractEmail(data),
       name: extractName(data),
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       eventType: event.type,
-      userId: user?.id,
+      userId: user.userId,
     });
   }
 
@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
     if (!subject) {
       return NextResponse.json({ ok: false, error: "clerk_user_id_missing" }, { status: 400 });
     }
-    const result = await suspendUserForExternalAuthSubject(subject);
+    const result = await suspendExternalAuthUser(subject);
     return NextResponse.json({
       ok: true,
       eventType: event.type,

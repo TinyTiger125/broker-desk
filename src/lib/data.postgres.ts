@@ -1,4 +1,8 @@
+import { AsyncLocalStorage } from "node:async_hooks";
+import { createHash } from "node:crypto";
 import { Pool, type PoolClient } from "pg";
+import { normalizeDatabaseConnectionString } from "@/lib/database-connection";
+import { cache } from "react";
 import { computeQuote } from "@/lib/quote";
 import {
   type AmlCheckStatus,
@@ -68,17 +72,50 @@ import type {
   AuditLog,
   CaseWorkbenchFieldRule,
   CaseWorkbenchFieldRuleInput,
+  GuaranteeTemplateLayoutVersion,
+  TenantGuaranteeTemplateInstall,
   OutputTemplateVersion,
 } from "@/lib/data.memory";
 import type { TenantRole } from "@/lib/tenant-permissions";
+import type { LifecycleFilter, LifecycleStatus } from "@/lib/record-lifecycle";
 
-let pool: Pool | null = null;
-let schemaEnsured = false;
+export type TenantSessionLookup = {
+  user: User;
+  membership: TenantMembership;
+  tenant: Tenant;
+};
+
+type BrokerDeskGlobal = typeof globalThis & {
+  __brokerDeskPostgresPool?: Pool;
+  __brokerDeskPostgresWarmup?: Promise<void> | null;
+  __brokerDeskPostgresSchemaEnsured?: boolean;
+  __brokerDeskPostgresSchemaEnsure?: Promise<void> | null;
+};
+
+type PostgresRequestScope = {
+  externalAuthSubject: string;
+};
+
+const brokerDeskGlobal = globalThis as BrokerDeskGlobal;
+let pool: Pool | null = brokerDeskGlobal.__brokerDeskPostgresPool ?? null;
+let poolWarmupPromise: Promise<void> | null = brokerDeskGlobal.__brokerDeskPostgresWarmup ?? null;
+let schemaEnsured = brokerDeskGlobal.__brokerDeskPostgresSchemaEnsured ?? false;
+let schemaEnsurePromise: Promise<void> | null = brokerDeskGlobal.__brokerDeskPostgresSchemaEnsure ?? null;
+const postgresRequestScope = new AsyncLocalStorage<PostgresRequestScope>();
+let productionRuntimeRoleCheck: Promise<void> | null = null;
 
 const REQUIRED_PRODUCTION_MIGRATIONS = [
   "20260727_000_baseline_schema.sql",
   "20260727_001_tenant_rls.sql",
   "20260729_002_force_tenant_rls.sql",
+  "20260805_003_guarantee_template_layout_versions.sql",
+  "20260805_004_tenant_guarantee_template_installs.sql",
+  "20260808_001_record_lifecycle.sql",
+  "20260809_001_external_auth_lifecycle_functions.sql",
+  "20260809_002_force_tenant_template_installs_rls.sql",
+  "20260809_003_private_attachment_blobs.sql",
+  "20260809_004_import_job_execution_state.sql",
+  "20260809_005_import_worker_claim.sql",
 ] as const;
 
 const OPEN_STAGES: ClientStage[] = ["lead", "contacted", "quoted", "viewing", "negotiating"];
@@ -92,19 +129,139 @@ const STAGE_JA_LABEL: Record<ClientStage, string> = {
   lost: "見送り",
 };
 
-function getPool(): Pool {
+function getRawPool(): Pool {
   if (!pool) {
-    const connectionString = process.env.DATABASE_URL;
+    // Local development uses the migration-owner connection so existing
+    // fixtures and internal setup screens remain usable. Public runtimes must
+    // use the restricted role from DATABASE_URL; RLS then enforces tenancy.
+    const rawConnectionString = isProductionRuntime()
+      ? process.env.DATABASE_URL
+      : process.env.DATABASE_DEVELOPMENT_URL ?? process.env.DATABASE_URL;
+    const connectionString = normalizeDatabaseConnectionString(rawConnectionString);
     pool = new Pool({
       connectionString,
+      // Neon connection setup is materially slower than a normal indexed read.
+      // Keep a small number of authenticated sessions alive so each route does
+      // not fan out into a new cold connection for every independent query.
+      max: 4,
+      // Keep one development connection available while the local app is being
+      // tested. Production can scale idle connections back to zero.
+      min: process.env.NODE_ENV === "development" ? 1 : 0,
+      idleTimeoutMillis: process.env.NODE_ENV === "development" ? 15 * 60 * 1000 : 60 * 1000,
+      connectionTimeoutMillis: 10 * 1000,
       ssl: connectionString?.includes("supabase.co")
         ? {
             rejectUnauthorized: false,
           }
         : undefined,
     });
+    brokerDeskGlobal.__brokerDeskPostgresPool = pool;
+    // node-postgres emits this when the database closes an idle client. The
+    // pool removes it itself; this listener prevents an automatic reconnect
+    // from becoming an uncaught application error.
+    pool.on("error", () => {});
   }
   return pool;
+}
+
+function getRequestScope(): PostgresRequestScope | undefined {
+  return postgresRequestScope.getStore();
+}
+
+export async function withPostgresAuthContext<T>(
+  externalAuthSubject: string,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const normalizedSubject = externalAuthSubject.trim();
+  if (!normalizedSubject) {
+    throw new ProductionReadinessError("production_tenant_scope_required");
+  }
+
+  // Nested repository calls from one server render must preserve the original
+  // Clerk subject rather than creating competing request scopes.
+  const currentScope = getRequestScope();
+  if (currentScope?.externalAuthSubject === normalizedSubject) {
+    return operation();
+  }
+
+  return postgresRequestScope.run({ externalAuthSubject: normalizedSubject }, operation);
+}
+
+function requireRequestScope(): PostgresRequestScope | undefined {
+  const scope = getRequestScope();
+  if (isProductionRuntime() && !scope?.externalAuthSubject) {
+    throw new ProductionReadinessError("production_tenant_scope_required");
+  }
+  return scope;
+}
+
+async function applyRequestScope(client: PoolClient): Promise<boolean> {
+  const scope = requireRequestScope();
+  if (!scope) return false;
+  await client.query("SELECT set_config('app.external_auth_subject', $1, false)", [scope.externalAuthSubject]);
+  return true;
+}
+
+async function clearRequestScope(client: PoolClient): Promise<void> {
+  await client.query("RESET app.external_auth_subject");
+}
+
+async function queryWithinRequestScope(rawPool: Pool, args: unknown[]) {
+  const client = await rawPool.connect();
+  let appliedScope = false;
+  let releaseWithError = false;
+  try {
+    appliedScope = await applyRequestScope(client);
+    return await (client.query as (...queryArgs: unknown[]) => Promise<unknown>)(...args);
+  } catch (error) {
+    releaseWithError = true;
+    throw error;
+  } finally {
+    if (appliedScope) {
+      try {
+        await clearRequestScope(client);
+      } catch {
+        releaseWithError = true;
+      }
+    }
+    client.release(releaseWithError);
+  }
+}
+
+function getPool(): Pool {
+  const rawPool = getRawPool();
+  if (!isProductionRuntime()) return rawPool;
+
+  // Pool.query does not keep a caller-selected connection. Use a proxy so the
+  // session variable and business query always run on the same client, then
+  // clear the variable before that client returns to Neon’s pool.
+  return new Proxy(rawPool, {
+    get(target, property, receiver) {
+      if (property === "query") {
+        return (...args: unknown[]) => queryWithinRequestScope(target, args);
+      }
+      return Reflect.get(target, property, receiver);
+    },
+  }) as Pool;
+}
+
+export function warmPostgresPool(): Promise<void> {
+  if (process.env.DATA_DRIVER?.toLowerCase() !== "postgres" || !process.env.DATABASE_URL) {
+    return Promise.resolve();
+  }
+  if (!poolWarmupPromise) {
+    // One warm connection is enough for the first request. Opening four
+    // remote Neon connections in parallel makes cold navigation slower without
+    // improving the first page render.
+    poolWarmupPromise = getRawPool().query("SELECT 1")
+      .then(() => undefined)
+      .catch(() => {
+        poolWarmupPromise = null;
+        brokerDeskGlobal.__brokerDeskPostgresWarmup = null;
+      });
+    brokerDeskGlobal.__brokerDeskPostgresWarmup = poolWarmupPromise;
+  }
+  return poolWarmupPromise;
 }
 
 function toDate(value: unknown): Date | undefined {
@@ -210,6 +367,9 @@ function mapClient(row: Record<string, unknown>): Client {
     ownerUserId: String(row.owner_user_id),
     createdAt: toDate(row.created_at) ?? new Date(),
     updatedAt: toDate(row.updated_at) ?? new Date(),
+    lifecycleStatus: (row.lifecycle_status ?? "active") as LifecycleStatus,
+    archivedAt: toDate(row.archived_at),
+    archivedById: row.archived_by_id ? String(row.archived_by_id) : undefined,
   };
 }
 
@@ -226,6 +386,9 @@ function mapProperty(row: Record<string, unknown>): Property {
     repairFee: row.repair_fee != null ? Number(row.repair_fee) : undefined,
     notes: row.notes ? String(row.notes) : undefined,
     createdAt: toDate(row.created_at) ?? new Date(),
+    lifecycleStatus: (row.lifecycle_status ?? "active") as LifecycleStatus,
+    archivedAt: toDate(row.archived_at),
+    archivedById: row.archived_by_id ? String(row.archived_by_id) : undefined,
   };
 }
 
@@ -370,6 +533,13 @@ function mapImportJob(row: Record<string, unknown>): ImportJob {
     notes: row.notes ? String(row.notes) : undefined,
     mappingJson: (row.mapping_json as Record<string, string> | null) ?? undefined,
     validationMessage: row.validation_message ? String(row.validation_message) : undefined,
+    processingStartedAt: toDate(row.processing_started_at),
+    completedAt: toDate(row.completed_at),
+    failedAt: toDate(row.failed_at),
+    attemptCount: Number(row.attempt_count ?? 0),
+    errorCode: row.error_code ? String(row.error_code) : undefined,
+    errorSummary: row.error_summary ? String(row.error_summary) : undefined,
+    idempotencyKey: row.idempotency_key ? String(row.idempotency_key) : undefined,
     createdAt: toDate(row.created_at) ?? new Date(),
     updatedAt: toDate(row.updated_at) ?? new Date(),
   };
@@ -393,6 +563,9 @@ function mapBrokerageCase(row: Record<string, unknown>): BrokerageCase {
       : [],
     createdAt: toDate(row.created_at) ?? new Date(),
     updatedAt: toDate(row.updated_at) ?? new Date(),
+    lifecycleStatus: (row.lifecycle_status ?? "active") as LifecycleStatus,
+    archivedAt: toDate(row.archived_at),
+    archivedById: row.archived_by_id ? String(row.archived_by_id) : undefined,
   };
 }
 
@@ -552,6 +725,46 @@ function mapOutputTemplateVersion(row: Record<string, unknown>): OutputTemplateV
   };
 }
 
+function mapGuaranteeTemplateLayoutVersion(row: Record<string, unknown>): GuaranteeTemplateLayoutVersion {
+  return {
+    id: String(row.id),
+    templateId: String(row.template_id),
+    versionNumber: Number(row.version_number ?? 0),
+    baselineVersion: String(row.baseline_version ?? ""),
+    assetFingerprint: String(row.asset_fingerprint ?? ""),
+    layoutSnapshot:
+      row.layout_snapshot && typeof row.layout_snapshot === "object"
+        ? (row.layout_snapshot as Record<string, unknown>)
+        : {},
+    changeNote: row.change_note ? String(row.change_note) : undefined,
+    publishedByUserId: row.published_by_user_id ? String(row.published_by_user_id) : undefined,
+    isActive: Boolean(row.is_active),
+    createdAt: toDate(row.created_at) ?? new Date(),
+    publishedAt: toDate(row.published_at) ?? new Date(),
+  };
+}
+
+function mapTenantGuaranteeTemplateInstall(row: Record<string, unknown>): TenantGuaranteeTemplateInstall {
+  return {
+    id: String(row.id),
+    tenantId: String(row.tenant_id ?? DEFAULT_TENANT_ID),
+    templateId: String(row.template_id),
+    sourceLayoutVersionId: String(row.source_layout_version_id),
+    sourceVersionNumber: Number(row.source_version_number ?? 0),
+    sourceAssetFingerprint: String(row.source_asset_fingerprint ?? ""),
+    displayName: String(row.display_name ?? ""),
+    layoutSnapshot:
+      row.layout_snapshot && typeof row.layout_snapshot === "object"
+        ? (row.layout_snapshot as Record<string, unknown>)
+        : {},
+    revisionNumber: Number(row.revision_number ?? 1),
+    status: String(row.status) === "archived" ? "archived" : "active",
+    installedByUserId: row.installed_by_user_id ? String(row.installed_by_user_id) : undefined,
+    installedAt: toDate(row.installed_at) ?? new Date(),
+    updatedAt: toDate(row.updated_at) ?? new Date(),
+  };
+}
+
 function mapCaseWorkbenchFieldRule(row: Record<string, unknown>): CaseWorkbenchFieldRule {
   return {
     id: String(row.id),
@@ -578,14 +791,73 @@ async function assertProductionMigrationsApplied(db: Pool) {
   }
 }
 
+async function assertProductionRuntimeRoleSafe(db: Pool) {
+  if (!isProductionRuntime()) return;
+
+  if (!productionRuntimeRoleCheck) {
+    productionRuntimeRoleCheck = db
+      .query("SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user")
+      .then((result) => {
+        if (!result.rows[0] || Boolean(result.rows[0].rolbypassrls)) {
+          throw new ProductionReadinessError("production_database_role_unsafe");
+        }
+      })
+      .catch((error) => {
+        productionRuntimeRoleCheck = null;
+        if (error instanceof ProductionReadinessError) throw error;
+        throw new ProductionReadinessError("production_database_role_unsafe");
+      });
+  }
+
+  await productionRuntimeRoleCheck;
+}
+
 async function ensureSchema() {
   if (schemaEnsured) return;
+
+  if (!schemaEnsurePromise) {
+    schemaEnsurePromise = (async () => {
+      assertProductionDataStoreReady();
+      // A new Neon/Supabase connection can take materially longer than the
+      // actual indexed query. Await the shared warmup before the first schema
+      // check so parallel page data requests reuse ready connections.
+      await warmPostgresPool();
+      const db = getRawPool();
+
+      // PostgreSQL schema changes are migration-owned in every environment.
+      // Runtime DDL can race on concurrent requests and makes shared beta
+      // environments drift from the migration ledger.
+      await assertProductionMigrationsApplied(db);
+      await assertProductionRuntimeRoleSafe(db);
+      schemaEnsured = true;
+      brokerDeskGlobal.__brokerDeskPostgresSchemaEnsured = true;
+    })().catch((error) => {
+      schemaEnsurePromise = null;
+      brokerDeskGlobal.__brokerDeskPostgresSchemaEnsure = null;
+      throw error;
+    });
+    brokerDeskGlobal.__brokerDeskPostgresSchemaEnsure = schemaEnsurePromise;
+  }
+
+  await schemaEnsurePromise;
+}
+
+// Kept temporarily only to read historical local databases during migration
+// investigations. Runtime code exclusively calls ensureSchema(), which is
+// migration-owned and never executes DDL. Remove this after the public-beta
+// data migration window closes.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+async function ensureSchemaLegacyForUnversionedDevelopment() {
+  if (schemaEnsured) return;
   assertProductionDataStoreReady();
-  const db = getPool();
+  await warmPostgresPool();
+  const db = getRawPool();
 
   if (isProductionRuntime()) {
     await assertProductionMigrationsApplied(db);
+    await assertProductionRuntimeRoleSafe(db);
     schemaEnsured = true;
+    brokerDeskGlobal.__brokerDeskPostgresSchemaEnsured = true;
     return;
   }
 
@@ -783,6 +1055,21 @@ async function ensureSchema() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    CREATE TABLE IF NOT EXISTS guarantee_template_layout_versions (
+      id TEXT PRIMARY KEY,
+      template_id TEXT NOT NULL,
+      version_number INTEGER NOT NULL,
+      baseline_version TEXT NOT NULL,
+      asset_fingerprint TEXT NOT NULL,
+      layout_snapshot JSONB NOT NULL,
+      change_note TEXT,
+      published_by_user_id TEXT REFERENCES users(id),
+      is_active BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      published_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (template_id, version_number)
+    );
+
     CREATE TABLE IF NOT EXISTS import_jobs (
       id TEXT PRIMARY KEY,
       tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry',
@@ -794,6 +1081,13 @@ async function ensureSchema() {
       notes TEXT,
       mapping_json JSONB,
       validation_message TEXT,
+      processing_started_at TIMESTAMPTZ,
+      completed_at TIMESTAMPTZ,
+      failed_at TIMESTAMPTZ,
+      attempt_count INTEGER NOT NULL DEFAULT 0,
+      error_code TEXT,
+      error_summary TEXT,
+      idempotency_key TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
@@ -947,8 +1241,36 @@ async function ensureSchema() {
     DROP INDEX IF EXISTS idx_output_template_version_user_number;
     CREATE UNIQUE INDEX IF NOT EXISTS idx_output_template_version_tenant_user_number ON output_template_versions(tenant_id, user_id, version_number);
     CREATE INDEX IF NOT EXISTS idx_output_template_version_user_created ON output_template_versions(user_id, created_at DESC);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_guarantee_template_layout_active
+      ON guarantee_template_layout_versions(template_id) WHERE is_active;
+    CREATE INDEX IF NOT EXISTS idx_guarantee_template_layout_versions_template
+      ON guarantee_template_layout_versions(template_id, version_number DESC);
+    CREATE TABLE IF NOT EXISTS tenant_guarantee_template_installs (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL REFERENCES tenants(id),
+      template_id TEXT NOT NULL,
+      source_layout_version_id TEXT NOT NULL REFERENCES guarantee_template_layout_versions(id),
+      source_version_number INTEGER NOT NULL,
+      source_asset_fingerprint TEXT NOT NULL,
+      display_name TEXT NOT NULL,
+      layout_snapshot JSONB NOT NULL,
+      revision_number INTEGER NOT NULL DEFAULT 1,
+      status TEXT NOT NULL DEFAULT 'active',
+      installed_by_user_id TEXT REFERENCES users(id),
+      installed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_tenant_guarantee_template_active
+      ON tenant_guarantee_template_installs(tenant_id, template_id) WHERE status = 'active';
+    CREATE INDEX IF NOT EXISTS idx_tenant_guarantee_template_installs_tenant
+      ON tenant_guarantee_template_installs(tenant_id, updated_at DESC);
     CREATE INDEX IF NOT EXISTS idx_import_jobs_user_created ON import_jobs(user_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_import_jobs_tenant_user_created ON import_jobs(tenant_id, user_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_import_jobs_tenant_status_created ON import_jobs(tenant_id, status, created_at ASC);
+    CREATE INDEX IF NOT EXISTS idx_import_jobs_tenant_processing_started ON import_jobs(tenant_id, processing_started_at ASC)
+      WHERE status = 'processing';
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_import_jobs_tenant_idempotency_unique ON import_jobs(tenant_id, idempotency_key)
+      WHERE idempotency_key IS NOT NULL;
     CREATE INDEX IF NOT EXISTS idx_brokerage_cases_user_updated ON brokerage_cases(user_id, updated_at DESC);
     CREATE INDEX IF NOT EXISTS idx_brokerage_cases_tenant_user_updated ON brokerage_cases(tenant_id, user_id, updated_at DESC);
     CREATE INDEX IF NOT EXISTS idx_extraction_review_case ON extraction_review_items(case_id, created_at);
@@ -1033,6 +1355,13 @@ async function ensureSchema() {
     ALTER TABLE import_jobs ADD COLUMN IF NOT EXISTS notes TEXT;
     ALTER TABLE import_jobs ADD COLUMN IF NOT EXISTS mapping_json JSONB;
     ALTER TABLE import_jobs ADD COLUMN IF NOT EXISTS validation_message TEXT;
+    ALTER TABLE import_jobs ADD COLUMN IF NOT EXISTS processing_started_at TIMESTAMPTZ;
+    ALTER TABLE import_jobs ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
+    ALTER TABLE import_jobs ADD COLUMN IF NOT EXISTS failed_at TIMESTAMPTZ;
+    ALTER TABLE import_jobs ADD COLUMN IF NOT EXISTS attempt_count INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE import_jobs ADD COLUMN IF NOT EXISTS error_code TEXT;
+    ALTER TABLE import_jobs ADD COLUMN IF NOT EXISTS error_summary TEXT;
+    ALTER TABLE import_jobs ADD COLUMN IF NOT EXISTS idempotency_key TEXT;
     ALTER TABLE import_jobs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
     ALTER TABLE attachments ADD COLUMN IF NOT EXISTS file_type TEXT;
@@ -1323,6 +1652,7 @@ async function ensureSchema() {
   }
 
   schemaEnsured = true;
+  brokerDeskGlobal.__brokerDeskPostgresSchemaEnsured = true;
 }
 
 function genId(prefix: string): string {
@@ -1330,25 +1660,38 @@ function genId(prefix: string): string {
 }
 
 async function withTransaction<T>(fn: (client: PoolClient) => Promise<T>) {
-  const client = await getPool().connect();
+  const client = await getRawPool().connect();
+  let appliedScope = false;
+  let releaseWithError = false;
   try {
+    appliedScope = await applyRequestScope(client);
     await client.query("BEGIN");
     const result = await fn(client);
     await client.query("COMMIT");
     return result;
   } catch (error) {
-    await client.query("ROLLBACK");
+    releaseWithError = true;
+    await client.query("ROLLBACK").catch(() => undefined);
     throw error;
   } finally {
-    client.release();
+    if (appliedScope) {
+      try {
+        await clearRequestScope(client);
+      } catch {
+        releaseWithError = true;
+      }
+    }
+    client.release(releaseWithError);
   }
 }
 
 function isValidImportStatusTransition(from: ImportJobStatus, to: ImportJobStatus, allowRetry: boolean): boolean {
   if (from === to) return true;
-  if (allowRetry && to === "queued") return true;
-  if (from === "queued" && to === "mapped") return true;
-  if (from === "mapped" && (to === "queued" || to === "completed")) return true;
+  if (allowRetry && from === "failed" && to === "queued") return true;
+  if (from === "queued" && to === "failed") return true;
+  if (from === "queued" && to === "processing") return true;
+  if (from === "processing" && (to === "mapped" || to === "failed")) return true;
+  if (from === "mapped" && (to === "queued" || to === "completed" || to === "failed")) return true;
   return false;
 }
 
@@ -1738,6 +2081,34 @@ export async function listTenantMemberships(userId: string): Promise<TenantMembe
   return result.rows.map(mapTenantMembership);
 }
 
+export const listTenantSessionLookupsByExternalAuthSubject = cache(async function listTenantSessionLookupsByExternalAuthSubject(
+  subject: string,
+): Promise<TenantSessionLookup[]> {
+  await ensureSchema();
+  const normalized = subject.trim();
+  if (!normalized) return [];
+
+  // The navigation shell and the route both need this triplet. Returning it
+  // from one tenant-scoped query avoids three sequential network round trips.
+  const result = await getPool().query(
+    `SELECT
+       row_to_json(users) AS user,
+       row_to_json(tenant_memberships) AS membership,
+       row_to_json(tenants) AS tenant
+     FROM users
+     JOIN tenant_memberships ON tenant_memberships.user_id = users.id
+     JOIN tenants ON tenants.id = tenant_memberships.tenant_id
+     WHERE users.external_auth_subject = $1
+     ORDER BY tenant_memberships.created_at ASC`,
+    [normalized],
+  );
+  return result.rows.map((row) => ({
+    user: mapUser(row.user as Record<string, unknown>),
+    membership: mapTenantMembership(row.membership as Record<string, unknown>),
+    tenant: mapTenant(row.tenant as Record<string, unknown>),
+  }));
+});
+
 export async function getTenantMembership(input: { userId: string; tenantId: string }): Promise<TenantMembership | null> {
   await ensureSchema();
   const result = await getPool().query(
@@ -2018,10 +2389,7 @@ export async function updateCaseWorkbenchFieldRules(
 ): Promise<CaseWorkbenchFieldRule[]> {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(tenantId);
-  const db = getPool();
-  const client = await db.connect();
-  try {
-    await client.query("BEGIN");
+  await withTransaction(async (client) => {
     for (const rule of input) {
       await client.query(
         `INSERT INTO case_workbench_field_rules (
@@ -2034,13 +2402,7 @@ export async function updateCaseWorkbenchFieldRules(
         [genId("casefieldrule"), scopeTenantId, userId, rule.fieldKey, rule.requirement],
       );
     }
-    await client.query("COMMIT");
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
-  } finally {
-    client.release();
-  }
+  });
   return listCaseWorkbenchFieldRules(userId, scopeTenantId);
 }
 
@@ -2226,6 +2588,170 @@ export async function createOutputTemplateVersion(input: {
   });
 }
 
+export async function getActiveGuaranteeTemplateLayoutVersion(
+  templateId: string,
+): Promise<GuaranteeTemplateLayoutVersion | null> {
+  await ensureSchema();
+  const result = await getPool().query(
+    `SELECT * FROM guarantee_template_layout_versions
+     WHERE template_id = $1 AND is_active = TRUE
+     LIMIT 1`,
+    [templateId],
+  );
+  return result.rows[0] ? mapGuaranteeTemplateLayoutVersion(result.rows[0]) : null;
+}
+
+export async function listGuaranteeTemplateLayoutVersions(
+  templateId: string,
+  limit = 20,
+): Promise<GuaranteeTemplateLayoutVersion[]> {
+  await ensureSchema();
+  const result = await getPool().query(
+    `SELECT * FROM guarantee_template_layout_versions
+     WHERE template_id = $1
+     ORDER BY version_number DESC
+     LIMIT $2`,
+    [templateId, limit],
+  );
+  return result.rows.map(mapGuaranteeTemplateLayoutVersion);
+}
+
+export async function publishGuaranteeTemplateLayoutVersion(input: {
+  templateId: string;
+  baselineVersion: string;
+  assetFingerprint: string;
+  layoutSnapshot: Record<string, unknown>;
+  publishedByUserId: string;
+  changeNote?: string;
+}): Promise<GuaranteeTemplateLayoutVersion> {
+  await ensureSchema();
+  return withTransaction(async (client) => {
+    const nextResult = await client.query(
+      `SELECT COALESCE(MAX(version_number), 0)::int + 1 AS next
+       FROM guarantee_template_layout_versions
+       WHERE template_id = $1`,
+      [input.templateId],
+    );
+    const versionNumber = Number(nextResult.rows[0]?.next ?? 1);
+    await client.query(
+      "UPDATE guarantee_template_layout_versions SET is_active = FALSE WHERE template_id = $1 AND is_active = TRUE",
+      [input.templateId],
+    );
+    const inserted = await client.query(
+      `INSERT INTO guarantee_template_layout_versions (
+        id, template_id, version_number, baseline_version, asset_fingerprint,
+        layout_snapshot, change_note, published_by_user_id, is_active, created_at, published_at
+      ) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,TRUE,NOW(),NOW())
+      RETURNING *`,
+      [
+        genId("guarantee_layout"),
+        input.templateId,
+        versionNumber,
+        input.baselineVersion,
+        input.assetFingerprint,
+        JSON.stringify(input.layoutSnapshot),
+        input.changeNote?.trim() || null,
+        input.publishedByUserId,
+      ],
+    );
+    return mapGuaranteeTemplateLayoutVersion(inserted.rows[0]);
+  });
+}
+
+export async function listTenantGuaranteeTemplateInstalls(input: {
+  tenantId?: string;
+  templateId?: string;
+  includeArchived?: boolean;
+}): Promise<TenantGuaranteeTemplateInstall[]> {
+  await ensureSchema();
+  const tenantId = resolveTenantId(input.tenantId);
+  const result = await getPool().query(
+    `SELECT * FROM tenant_guarantee_template_installs
+     WHERE tenant_id = $1
+       AND ($2::text IS NULL OR template_id = $2)
+       AND ($3::boolean = TRUE OR status = 'active')
+     ORDER BY updated_at DESC`,
+    [tenantId, input.templateId?.trim() || null, Boolean(input.includeArchived)],
+  );
+  return result.rows.map(mapTenantGuaranteeTemplateInstall);
+}
+
+export async function getActiveTenantGuaranteeTemplateInstall(input: {
+  tenantId?: string;
+  templateId: string;
+}): Promise<TenantGuaranteeTemplateInstall | null> {
+  const installs = await listTenantGuaranteeTemplateInstalls({
+    tenantId: input.tenantId,
+    templateId: input.templateId,
+  });
+  return installs[0] ?? null;
+}
+
+export async function installGuaranteeTemplateForTenant(input: {
+  tenantId?: string;
+  templateId: string;
+  sourceLayoutVersionId: string;
+  sourceVersionNumber: number;
+  sourceAssetFingerprint: string;
+  displayName: string;
+  layoutSnapshot: Record<string, unknown>;
+  installedByUserId?: string;
+}): Promise<TenantGuaranteeTemplateInstall> {
+  await ensureSchema();
+  const tenantId = resolveTenantId(input.tenantId);
+  return withTransaction(async (client) => {
+    const existing = await client.query(
+      `SELECT * FROM tenant_guarantee_template_installs
+       WHERE tenant_id = $1 AND template_id = $2 AND status = 'active'
+       LIMIT 1 FOR UPDATE`,
+      [tenantId, input.templateId],
+    );
+    const previous = existing.rows[0] ? mapTenantGuaranteeTemplateInstall(existing.rows[0]) : null;
+    // Repeating an installation must never become an implicit tenant upgrade.
+    // Upgrade will be a separate, explicitly confirmed operation.
+    if (previous) return previous;
+    const revisionNumber = 1;
+    const installId = genId("tenant_guarantee_template");
+    const result = await client.query(
+      `INSERT INTO tenant_guarantee_template_installs (
+        id, tenant_id, template_id, source_layout_version_id, source_version_number,
+        source_asset_fingerprint, display_name, layout_snapshot, revision_number,
+        status, installed_by_user_id, installed_at, updated_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,'active',$10,NOW(),NOW())
+      RETURNING *`,
+      [
+        installId,
+        tenantId,
+        input.templateId,
+        input.sourceLayoutVersionId,
+        input.sourceVersionNumber,
+        input.sourceAssetFingerprint,
+        input.displayName.trim(),
+        JSON.stringify(input.layoutSnapshot),
+        revisionNumber,
+        input.installedByUserId ?? null,
+      ],
+    );
+    return mapTenantGuaranteeTemplateInstall(result.rows[0]);
+  });
+}
+
+export async function archiveTenantGuaranteeTemplateInstall(input: {
+  tenantId?: string;
+  installId: string;
+}): Promise<TenantGuaranteeTemplateInstall | null> {
+  await ensureSchema();
+  const tenantId = resolveTenantId(input.tenantId);
+  const result = await getPool().query(
+    `UPDATE tenant_guarantee_template_installs
+     SET status = 'archived', updated_at = NOW()
+     WHERE id = $1 AND tenant_id = $2
+     RETURNING *`,
+    [input.installId, tenantId],
+  );
+  return result.rows[0] ? mapTenantGuaranteeTemplateInstall(result.rows[0]) : null;
+}
+
 export async function applyOutputTemplateVersion(input: {
   tenantId?: string;
   userId: string;
@@ -2331,6 +2857,24 @@ export async function listImportJobs(userId: string, limit = 50, tenantId?: stri
   return result.rows.map(mapImportJob);
 }
 
+export async function getImportJobByIdempotencyKey(input: {
+  tenantId?: string;
+  userId: string;
+  idempotencyKey: string;
+}): Promise<ImportJob | null> {
+  await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const normalizedKey = input.idempotencyKey.trim();
+  if (!normalizedKey) return null;
+  const result = await getPool().query(
+    `SELECT * FROM import_jobs
+     WHERE tenant_id = $1 AND user_id = $2 AND idempotency_key = $3
+     LIMIT 1`,
+    [scopeTenantId, input.userId, normalizedKey],
+  );
+  return result.rows[0] ? mapImportJob(result.rows[0]) : null;
+}
+
 export async function addImportJob(input: {
   tenantId?: string;
   userId: string;
@@ -2339,6 +2883,7 @@ export async function addImportJob(input: {
   targetEntity: ImportTargetEntity;
   status?: ImportJobStatus;
   notes?: string;
+  idempotencyKey?: string;
 }): Promise<ImportJob> {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(input.tenantId);
@@ -2356,8 +2901,8 @@ export async function addImportJob(input: {
   };
   const result = await getPool().query(
     `INSERT INTO import_jobs (
-      id, tenant_id, user_id, source_type, title, target_entity, status, notes, mapping_json, validation_message, created_at, updated_at
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULL,NULL,NOW(),NOW())
+      id, tenant_id, user_id, source_type, title, target_entity, status, notes, mapping_json, validation_message, idempotency_key, created_at, updated_at
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULL,NULL,$9,NOW(),NOW())
     RETURNING *`,
     [
       genId("import"),
@@ -2368,6 +2913,7 @@ export async function addImportJob(input: {
       input.targetEntity,
       input.status ?? "queued",
       input.notes?.trim() || null,
+      input.idempotencyKey?.trim() || null,
     ]
   );
   return mapImportJob(result.rows[0]);
@@ -2419,15 +2965,86 @@ export async function updateImportJobMapping(input: {
   return result.rows[0] ? mapImportJob(result.rows[0]) : null;
 }
 
-export async function listBrokerageCases(userId: string, limit = 50, tenantId?: string): Promise<BrokerageCase[]> {
+export async function updateImportJobExecution(input: {
+  tenantId?: string;
+  userId: string;
+  jobId: string;
+  status: "processing" | "failed" | "completed";
+  errorCode?: string;
+  errorSummary?: string;
+  allowRetry?: boolean;
+}): Promise<ImportJob | null> {
+  await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const currentRes = await getPool().query(
+    "SELECT status FROM import_jobs WHERE id = $1 AND user_id = $2 AND tenant_id = $3 LIMIT 1",
+    [input.jobId, input.userId, scopeTenantId],
+  );
+  if (!currentRes.rows[0]) return null;
+  const currentStatus = String(currentRes.rows[0].status) as ImportJobStatus;
+  if (!isValidImportStatusTransition(currentStatus, input.status, Boolean(input.allowRetry))) {
+    throw new Error(`資料読取記録の状態変更が不正です: ${currentStatus} -> ${input.status}`);
+  }
+
+  const result = await getPool().query(
+    `UPDATE import_jobs
+     SET status = $4,
+         processing_started_at = CASE WHEN $4 = 'processing' THEN NOW() ELSE processing_started_at END,
+         completed_at = CASE WHEN $4 = 'completed' THEN NOW() ELSE completed_at END,
+         failed_at = CASE WHEN $4 = 'failed' THEN NOW() ELSE failed_at END,
+         attempt_count = CASE WHEN $4 = 'processing' THEN attempt_count + 1 ELSE attempt_count END,
+         error_code = CASE WHEN $4 = 'failed' THEN $5 ELSE NULL END,
+         error_summary = CASE WHEN $4 = 'failed' THEN $6 ELSE NULL END,
+         updated_at = NOW()
+     WHERE id = $1 AND user_id = $2 AND tenant_id = $3
+     RETURNING *`,
+    [input.jobId, input.userId, scopeTenantId, input.status, input.errorCode?.trim() || "import_failed", input.errorSummary?.trim() || "資料を読み取れませんでした。"],
+  );
+  return result.rows[0] ? mapImportJob(result.rows[0]) : null;
+}
+
+export async function retryImportJobExecution(input: {
+  tenantId?: string;
+  userId: string;
+  jobId: string;
+}): Promise<ImportJob | null> {
+  await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const result = await getPool().query(
+    `UPDATE import_jobs
+     SET status = 'queued',
+         processing_started_at = NULL,
+         error_code = NULL,
+         error_summary = NULL,
+         updated_at = NOW()
+     WHERE id = $1 AND user_id = $2 AND tenant_id = $3 AND status = 'failed'
+     RETURNING *`,
+    [input.jobId, input.userId, scopeTenantId],
+  );
+  if (result.rows[0]) return mapImportJob(result.rows[0]);
+
+  const existing = await getPool().query(
+    "SELECT * FROM import_jobs WHERE id = $1 AND user_id = $2 AND tenant_id = $3 LIMIT 1",
+    [input.jobId, input.userId, scopeTenantId],
+  );
+  return existing.rows[0] ? mapImportJob(existing.rows[0]) : null;
+}
+
+export async function listBrokerageCases(
+  userId: string,
+  limit = 50,
+  tenantId?: string,
+  lifecycleStatus: LifecycleFilter = "active",
+): Promise<BrokerageCase[]> {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(tenantId);
   const result = await getPool().query(
     `SELECT * FROM brokerage_cases
      WHERE user_id = $1 AND tenant_id = $2
+       AND ($3 = 'all' OR lifecycle_status = $3)
      ORDER BY updated_at DESC
-     LIMIT $3`,
-    [userId, scopeTenantId, limit]
+     LIMIT $4`,
+    [userId, scopeTenantId, lifecycleStatus, limit]
   );
   return result.rows.map(mapBrokerageCase);
 }
@@ -2968,6 +3585,29 @@ export async function getGuaranteeApplicationDraft(input: {
   return result.rows[0] ? mapGuaranteeApplicationDraft(result.rows[0]) : null;
 }
 
+export async function listGuaranteeApplicationDrafts(input: {
+  tenantId?: string;
+  userId: string;
+  caseIds: string[];
+  templateIds: string[];
+}): Promise<GuaranteeApplicationDraft[]> {
+  await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const caseIds = [...new Set(input.caseIds.map((value) => value.trim()).filter(Boolean))];
+  const templateIds = [...new Set(input.templateIds.map((value) => value.trim()).filter(Boolean))];
+  if (caseIds.length === 0 || templateIds.length === 0) return [];
+
+  const result = await getPool().query(
+    `SELECT * FROM guarantee_application_drafts
+     WHERE user_id = $1 AND tenant_id = $2
+       AND case_id = ANY($3::text[])
+       AND template_id = ANY($4::text[])
+     ORDER BY updated_at DESC`,
+    [input.userId, scopeTenantId, caseIds, templateIds],
+  );
+  return result.rows.map(mapGuaranteeApplicationDraft);
+}
+
 export async function saveGuaranteeApplicationDraft(input: {
   tenantId?: string;
   userId: string;
@@ -3091,6 +3731,70 @@ export async function addAttachment(input: {
     ]
   );
   return mapAttachment(result.rows[0]);
+}
+
+export async function addPrivateAttachment(input: {
+  tenantId?: string;
+  userId: string;
+  targetType: AttachmentTargetType;
+  targetId: string;
+  fileName: string;
+  fileType?: string;
+  content: Buffer;
+}): Promise<Attachment> {
+  await ensureSchema();
+  if (input.content.length > 10 * 1024 * 1024) {
+    throw new Error("private attachment exceeds the 10 MB public-beta limit");
+  }
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const attachmentId = genId("att");
+  return withTransaction(async (client) => {
+    const attachmentResult = await client.query(
+      `INSERT INTO attachments (
+        id, tenant_id, user_id, target_type, target_id, file_name, file_type, file_size_bytes, storage_path, uploaded_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())
+      RETURNING *`,
+      [
+        attachmentId,
+        scopeTenantId,
+        input.userId,
+        input.targetType,
+        input.targetId,
+        input.fileName.trim(),
+        input.fileType?.trim() || null,
+        input.content.length,
+        `postgres-private://${scopeTenantId}/${attachmentId}`,
+      ],
+    );
+    await client.query(
+      `INSERT INTO private_attachment_blobs (attachment_id, tenant_id, content, sha256)
+       VALUES ($1,$2,$3,$4)`,
+      [attachmentId, scopeTenantId, input.content, createHash("sha256").update(input.content).digest("hex")],
+    );
+    return mapAttachment(attachmentResult.rows[0]);
+  });
+}
+
+export async function readPrivateAttachmentContent(input: {
+  tenantId?: string;
+  userId: string;
+  id: string;
+}): Promise<Buffer | null> {
+  await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const result = await getPool().query(
+    `SELECT blob.content
+       FROM private_attachment_blobs blob
+       JOIN attachments attachment ON attachment.id = blob.attachment_id
+      WHERE attachment.id = $1
+        AND attachment.user_id = $2
+        AND attachment.tenant_id = $3
+        AND blob.tenant_id = $3
+      LIMIT 1`,
+    [input.id, input.userId, scopeTenantId],
+  );
+  const content = result.rows[0]?.content;
+  return Buffer.isBuffer(content) ? content : content ? Buffer.from(content) : null;
 }
 
 export async function listGeneratedOutputs(input: {
@@ -3400,6 +4104,9 @@ export async function listClients(userId: string, filter: ClientListFilter = {})
   if (filter.temperature && filter.temperature !== "all") {
     clients = clients.filter((item) => item.temperature === filter.temperature);
   }
+  if (filter.lifecycleStatus && filter.lifecycleStatus !== "all") {
+    clients = clients.filter((item) => (item.lifecycleStatus ?? "active") === filter.lifecycleStatus);
+  }
   if (filter.query) {
     clients = clients.filter(
       (item) =>
@@ -3426,16 +4133,17 @@ export async function listClients(userId: string, filter: ClientListFilter = {})
   const followCountMap = new Map<string, number>();
 
   if (ids.length > 0) {
-    const quoteRes = await getPool().query(
-      "SELECT client_id, COUNT(*)::int AS count FROM quotations WHERE client_id = ANY($1) AND tenant_id = $2 GROUP BY client_id",
-      [ids, scopeTenantId]
-    );
+    const [quoteRes, followRes] = await Promise.all([
+      getPool().query(
+        "SELECT client_id, COUNT(*)::int AS count FROM quotations WHERE client_id = ANY($1) AND tenant_id = $2 GROUP BY client_id",
+        [ids, scopeTenantId]
+      ),
+      getPool().query(
+        "SELECT client_id, COUNT(*)::int AS count FROM follow_ups WHERE client_id = ANY($1) AND tenant_id = $2 GROUP BY client_id",
+        [ids, scopeTenantId]
+      ),
+    ]);
     quoteRes.rows.forEach((row) => quoteCountMap.set(String(row.client_id), Number(row.count)));
-
-    const followRes = await getPool().query(
-      "SELECT client_id, COUNT(*)::int AS count FROM follow_ups WHERE client_id = ANY($1) AND tenant_id = $2 GROUP BY client_id",
-      [ids, scopeTenantId]
-    );
     followRes.rows.forEach((row) => followCountMap.set(String(row.client_id), Number(row.count)));
   }
 
@@ -3543,27 +4251,100 @@ export async function getBoardData(userId: string, tenantId?: string) {
   );
 }
 
-export async function listQuoteFormData(tenantId?: string) {
+export async function listQuoteFormData(tenantId?: string, lifecycleStatus: LifecycleFilter = "active") {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(tenantId);
   const [clientsRes, propertiesRes] = await Promise.all([
-    getPool().query("SELECT id, name FROM clients WHERE tenant_id = $1 ORDER BY updated_at DESC", [scopeTenantId]),
     getPool().query(
-      "SELECT id, name, listing_price, management_fee, repair_fee FROM properties WHERE tenant_id = $1 ORDER BY created_at DESC",
-      [scopeTenantId],
+      "SELECT id, name, lifecycle_status FROM clients WHERE tenant_id = $1 AND ($2 = 'all' OR lifecycle_status = $2) ORDER BY updated_at DESC",
+      [scopeTenantId, lifecycleStatus],
+    ),
+    getPool().query(
+      "SELECT id, name, listing_price, management_fee, repair_fee, lifecycle_status FROM properties WHERE tenant_id = $1 AND ($2 = 'all' OR lifecycle_status = $2) ORDER BY created_at DESC",
+      [scopeTenantId, lifecycleStatus],
     ),
   ]);
 
   return {
-    clients: clientsRes.rows.map((row) => ({ id: String(row.id), name: String(row.name) })),
+    clients: clientsRes.rows.map((row) => ({
+      id: String(row.id),
+      name: String(row.name),
+      lifecycleStatus: (row.lifecycle_status ?? "active") as LifecycleStatus,
+    })),
     properties: propertiesRes.rows.map((row) => ({
       id: String(row.id),
       name: String(row.name),
       listingPrice: Number(row.listing_price ?? 0),
       managementFee: row.management_fee != null ? Number(row.management_fee) : null,
       repairFee: row.repair_fee != null ? Number(row.repair_fee) : null,
+      lifecycleStatus: (row.lifecycle_status ?? "active") as LifecycleStatus,
     })),
   };
+}
+
+export async function setBrokerageCaseLifecycleStatus(input: {
+  tenantId?: string;
+  userId: string;
+  caseId: string;
+  status: LifecycleStatus;
+  archivedById?: string;
+}) {
+  await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const result = await getPool().query(
+    `UPDATE brokerage_cases
+        SET lifecycle_status = $4,
+            archived_at = CASE WHEN $4 = 'archived' THEN NOW() ELSE NULL END,
+            archived_by_id = CASE WHEN $4 = 'archived' THEN COALESCE($5, $2) ELSE NULL END,
+            updated_at = NOW()
+      WHERE id = $1 AND user_id = $2 AND tenant_id = $3
+      RETURNING *`,
+    [input.caseId, input.userId, scopeTenantId, input.status, input.archivedById ?? null],
+  );
+  return result.rows[0] ? mapBrokerageCase(result.rows[0]) : null;
+}
+
+export async function setClientLifecycleStatus(input: {
+  tenantId?: string;
+  userId: string;
+  clientId: string;
+  status: LifecycleStatus;
+  archivedById?: string;
+}) {
+  await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const result = await getPool().query(
+    `UPDATE clients
+        SET lifecycle_status = $4,
+            archived_at = CASE WHEN $4 = 'archived' THEN NOW() ELSE NULL END,
+            archived_by_id = CASE WHEN $4 = 'archived' THEN COALESCE($5, $2) ELSE NULL END,
+            updated_at = NOW()
+      WHERE id = $1 AND owner_user_id = $2 AND tenant_id = $3
+      RETURNING *`,
+    [input.clientId, input.userId, scopeTenantId, input.status, input.archivedById ?? null],
+  );
+  return result.rows[0] ? mapClient(result.rows[0]) : null;
+}
+
+export async function setPropertyLifecycleStatus(input: {
+  tenantId?: string;
+  propertyId: string;
+  status: LifecycleStatus;
+  archivedById?: string;
+}) {
+  await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const result = await getPool().query(
+    `UPDATE properties
+        SET lifecycle_status = $3,
+            updated_at = NOW(),
+            archived_at = CASE WHEN $3 = 'archived' THEN NOW() ELSE NULL END,
+            archived_by_id = CASE WHEN $3 = 'archived' THEN $4 ELSE NULL END
+      WHERE id = $1 AND tenant_id = $2
+      RETURNING *`,
+    [input.propertyId, scopeTenantId, input.status, input.archivedById ?? null],
+  );
+  return result.rows[0] ? mapProperty(result.rows[0]) : null;
 }
 
 export async function addProperty(input: {

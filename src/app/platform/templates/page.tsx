@@ -1,9 +1,7 @@
 import Link from "next/link";
-import {
-  getFriendsGuaranteeTemplateLayoutSnapshot,
-  getGuaranteePdfTemplateConfig,
-} from "@/lib/friends-guarantee-pdf";
+import { getGuaranteePdfTemplateConfig } from "@/lib/friends-guarantee-pdf";
 import { guaranteeCompanyTemplates } from "@/lib/guarantee-application";
+import { resolveGuaranteeTemplateLayout } from "@/lib/guarantee-template-layout-runtime";
 import { getLocale, type Locale } from "@/lib/locale";
 import { PlatformSessionError, requirePlatformOwnerSession } from "@/lib/platform-session";
 
@@ -32,6 +30,8 @@ function copy(locale: Locale) {
     adjustedCount: locale === "zh" ? "调整" : locale === "ko" ? "조정" : "調整",
     removedCount: locale === "zh" ? "删除" : locale === "ko" ? "삭제" : "削除",
     baseVersion: locale === "zh" ? "模板版本" : locale === "ko" ? "원본 기록" : "原本記録",
+    publication: locale === "zh" ? "发布版本" : locale === "ko" ? "게시 버전" : "公開版",
+    developmentOnly: locale === "zh" ? "开发用本地底稿" : locale === "ko" ? "개발용 로컬 원본" : "開発用ローカル底版",
   };
 }
 
@@ -60,20 +60,20 @@ export default async function PlatformTemplatesPage() {
     throw error;
   }
 
-  const rows = guaranteeCompanyTemplates.map((template) => {
-    const layout = getFriendsGuaranteeTemplateLayoutSnapshot(template.id);
+  const rows = await Promise.all(guaranteeCompanyTemplates.map(async (template) => {
+    const layout = await resolveGuaranteeTemplateLayout(template.id);
     const config = getGuaranteePdfTemplateConfig(template.id);
     return {
       template,
       layout,
-      overlayCount: config.overlayFields.length + layout.customOverlayFields.length,
-      layoutOverrideCount: Object.keys(layout.layoutOverrides).length,
-      deletedCount: layout.deletedOverlayFieldKeys.length,
+      overlayCount: config.overlayFields.length + layout.snapshot.customOverlayFields.length,
+      layoutOverrideCount: Object.keys(layout.snapshot.layoutOverrides).length,
+      deletedCount: layout.snapshot.deletedOverlayFieldKeys.length,
     };
-  });
+  }));
 
   return (
-    <div className="space-y-6">
+    <div className="bd-page bd-templates-page space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">{ui.ownerLabel} / {platformUserName}</p>
@@ -105,7 +105,10 @@ export default async function PlatformTemplatesPage() {
               <div className="text-xs text-slate-600">
                 <p>{ui.fieldCount} {overlayCount}</p>
                 <p>{ui.adjustedCount} {layoutOverrideCount} / {ui.removedCount} {deletedCount}</p>
-                <p className="text-slate-400">{ui.baseVersion} {layout.baselineVersion}</p>
+                <p className="text-slate-400">{ui.baseVersion} {layout.snapshot.baselineVersion}</p>
+                <p className="text-slate-400">
+                  {layout.source === "published" ? `${ui.publication} v${layout.versionNumber}` : ui.developmentOnly}
+                </p>
               </div>
               <Link
                 href={`/platform/templates/${template.id}`}

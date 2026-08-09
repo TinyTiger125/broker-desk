@@ -423,6 +423,12 @@ template.archive
 template.manage_official
 ```
 
+### Template Library Boundary
+
+`template.view` and `template.copy_official` are standard customer-account capabilities: every active tenant role can browse the Template Library and install an official template into the current workspace. Installation creates a tenant-scoped frozen copy and never grants authority over the official source.
+
+`template.manage_official`, official calibration, and publication are platform-owner capabilities only. They are enforced through the separate `/platform/templates` route and are not part of tenant administration.
+
 ### AI
 
 ```text

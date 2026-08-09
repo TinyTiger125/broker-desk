@@ -1,9 +1,11 @@
 import Link from "next/link";
+import { ArchiveRecordButton } from "@/components/archive-record-button";
 import { PageFlashBanner } from "@/components/page-flash-banner";
 import { formatDate } from "@/lib/format";
 import { listHubAttachments, listHubContracts, listHubParties } from "@/lib/hub";
 import { t } from "@/lib/i18n";
 import { getLocale } from "@/lib/locale";
+import { normalizeLifecycleFilter, type LifecycleFilter } from "@/lib/record-lifecycle";
 import { requireTenantSession } from "@/lib/tenant-session";
 
 export const dynamic = "force-dynamic";
@@ -15,6 +17,7 @@ type PartiesPageProps = {
     flash?: string;
     type?: string;
     relation?: string;
+    lifecycle?: string;
   }>;
 };
 
@@ -64,6 +67,9 @@ const partiesCopy = {
     tableRole: "役割",
     today: "本日 09:42",
     yesterday: "昨日",
+    activeRecords: "有効",
+    archivedRecords: "アーカイブ済み",
+    allRecords: "すべて",
   },
   zh: {
     addParty: "新增主体",
@@ -110,6 +116,9 @@ const partiesCopy = {
     tableRole: "角色",
     today: "今天 09:42",
     yesterday: "昨天",
+    activeRecords: "有效",
+    archivedRecords: "已归档",
+    allRecords: "全部",
   },
   ko: {
     addParty: "관계자 추가",
@@ -156,6 +165,9 @@ const partiesCopy = {
     tableRole: "역할",
     today: "오늘 09:42",
     yesterday: "어제",
+    activeRecords: "유효",
+    archivedRecords: "보관됨",
+    allRecords: "전체",
   },
 } as const;
 
@@ -180,7 +192,8 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
   const typeFilter = params?.type === "corporate" || params?.type === "individual" ? params.type : "all";
   const relationFilter =
     params?.relation === "with_cases" || params?.relation === "no_cases" ? params.relation : "all";
-  const hubContext = { userId: session.user.id, tenantId: session.tenant.id };
+  const lifecycleFilter: LifecycleFilter = normalizeLifecycleFilter(params?.lifecycle);
+  const hubContext = { userId: session.user.id, tenantId: session.tenant.id, lifecycleStatus: lifecycleFilter };
 
   const [parties, attachments, contracts] = await Promise.all([
     listHubParties(locale, hubContext),
@@ -252,16 +265,18 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
   } as const;
   const flashKey = String(params?.flash ?? "").trim() as keyof typeof flashMap;
   const flashMessage = flashMap[flashKey]?.[locale];
-  const makeHref = (next: { q?: string; type?: string; relation?: string; focus?: string }) => {
+  const makeHref = (next: { q?: string; type?: string; relation?: string; focus?: string; lifecycle?: LifecycleFilter }) => {
     const urlParams = new URLSearchParams();
     const nextQuery = next.q ?? query;
     const nextType = next.type ?? typeFilter;
     const nextRelation = next.relation ?? relationFilter;
     const nextFocus = next.focus ?? focus;
+    const nextLifecycle = next.lifecycle ?? lifecycleFilter;
     if (nextQuery) urlParams.set("q", nextQuery);
     if (nextType !== "all") urlParams.set("type", nextType);
     if (nextRelation !== "all") urlParams.set("relation", nextRelation);
     if (nextFocus) urlParams.set("focus", nextFocus);
+    if (nextLifecycle !== "active") urlParams.set("lifecycle", nextLifecycle);
     const suffix = urlParams.toString();
     return suffix ? `/parties?${suffix}` : "/parties";
   };
@@ -294,6 +309,11 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
       active: typeFilter === "individual",
     },
   ];
+  const lifecycleChips = [
+    { label: copy.activeRecords, href: makeHref({ lifecycle: "active", focus: "" }), active: lifecycleFilter === "active" },
+    { label: copy.archivedRecords, href: makeHref({ lifecycle: "archived", focus: "" }), active: lifecycleFilter === "archived" },
+    { label: copy.allRecords, href: makeHref({ lifecycle: "all", focus: "" }), active: lifecycleFilter === "all" },
+  ];
 
   return (
     <div className="space-y-6 pb-12">
@@ -324,6 +344,7 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
           />
           <input type="hidden" name="type" value={typeFilter} />
           <input type="hidden" name="relation" value={relationFilter} />
+          <input type="hidden" name="lifecycle" value={lifecycleFilter} />
           <button className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-[#001e40] px-4 text-sm font-bold text-white">
             <span className="material-symbols-outlined text-[17px]" aria-hidden="true">search</span>
             {copy.filter}
@@ -343,6 +364,18 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
               className={
                 "rounded-full px-3 py-1.5 text-xs font-bold transition " +
                 (item.active ? "bg-blue-700 text-white" : "bg-[#edf2fd] text-slate-700 hover:bg-blue-100")
+              }
+            >
+              {item.label}
+            </Link>
+          ))}
+          {lifecycleChips.map((item) => (
+            <Link
+              key={item.label}
+              href={item.href}
+              className={
+                "rounded-full px-3 py-1.5 text-xs font-bold transition " +
+                (item.active ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200")
               }
             >
               {item.label}
@@ -416,7 +449,14 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
                       </span>
                     </div>
                   </Link>
-                  <div className="flex items-center justify-end">
+                  <div className="flex items-center justify-end gap-2">
+                    <ArchiveRecordButton
+                      entityType="party"
+                      entityId={party.id}
+                      status={party.status}
+                      locale={locale}
+                      returnTo={makeHref({ focus: "" })}
+                    />
                     <span className="material-symbols-outlined text-slate-300" aria-hidden="true">arrow_forward</span>
                   </div>
                 </article>
@@ -434,17 +474,26 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
           {selected ? (
             <div className="space-y-6 p-6">
               <div>
-                <div className="mb-4 flex items-start justify-between">
+                <div className="mb-4 flex items-start justify-between gap-3">
                   <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-[#eff4ff] text-4xl font-black text-[#001e40]">
                     {initials(selected.name)}
                   </div>
-                  <Link
-                    href={`/parties/${selected.id}/edit`}
-                    className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
-                  >
-                    <span className="material-symbols-outlined text-[16px]" aria-hidden="true">edit</span>
-                    {copy.editParty}
-                  </Link>
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <Link
+                      href={`/parties/${selected.id}/edit`}
+                      className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                    >
+                      <span className="material-symbols-outlined text-[16px]" aria-hidden="true">edit</span>
+                      {copy.editParty}
+                    </Link>
+                    <ArchiveRecordButton
+                      entityType="party"
+                      entityId={selected.id}
+                      status={selected.status}
+                      locale={locale}
+                      returnTo={makeHref({ focus: "" })}
+                    />
+                  </div>
                 </div>
                 <p className="text-[11px] font-black uppercase tracking-widest text-slate-400">{copy.profileTitle}</p>
                 <h2 className="mt-1 text-3xl font-bold tracking-tight text-slate-900">{selected.name}</h2>

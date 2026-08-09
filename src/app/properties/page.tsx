@@ -1,12 +1,14 @@
 import Link from "next/link";
 import Image from "next/image";
 import { createPropertyQuickAction } from "@/app/actions";
+import { ArchiveRecordButton } from "@/components/archive-record-button";
 import { FormDraftAssist } from "@/components/form-draft-assist";
 import { PageFlashBanner } from "@/components/page-flash-banner";
 import { formatCurrency } from "@/lib/format";
 import { listHubProperties } from "@/lib/hub";
 import { t } from "@/lib/i18n";
 import { getLocale } from "@/lib/locale";
+import { normalizeLifecycleFilter, type LifecycleFilter } from "@/lib/record-lifecycle";
 import { requireTenantSession } from "@/lib/tenant-session";
 
 export const dynamic = "force-dynamic";
@@ -223,12 +225,16 @@ export default async function PropertiesPage({ searchParams }: PropertiesPagePro
     requireTenantSession({ permission: "record.read" }),
   ]);
   const params = searchParams ? await searchParams : undefined;
-  const statusFilter = params?.status === "active" || params?.status === "archived" ? params.status : "all";
+  const statusFilter: LifecycleFilter = normalizeLifecycleFilter(params?.status);
   const focusId = String(params?.focus ?? "").trim();
   const sort = params?.sort === "price" ? "price" : "updated";
   const page = Math.max(1, Number(params?.page ?? "1") || 1);
   const copy = propertiesCopy[locale];
-  const properties = await listHubProperties(locale, { userId: session.user.id, tenantId: session.tenant.id });
+  const properties = await listHubProperties(locale, {
+    userId: session.user.id,
+    tenantId: session.tenant.id,
+    lifecycleStatus: statusFilter,
+  });
   const filtered = statusFilter === "all" ? properties : properties.filter((property) => property.status === statusFilter);
   const sortedProperties =
     sort === "price"
@@ -238,7 +244,7 @@ export default async function PropertiesPage({ searchParams }: PropertiesPagePro
   const totalPages = Math.max(1, Math.ceil(sortedProperties.length / pageSize));
   const currentPage = Math.min(page, totalPages);
   const pagedProperties = sortedProperties.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-  const selectedProperty = sortedProperties.find((property) => property.id === focusId) ?? pagedProperties[0] ?? properties[0];
+  const selectedProperty = sortedProperties.find((property) => property.id === focusId) ?? pagedProperties[0];
   const selectedRequiredFields = selectedProperty
     ? [
         { label: copy.fieldName, value: selectedProperty.name },
@@ -375,11 +381,17 @@ export default async function PropertiesPage({ searchParams }: PropertiesPagePro
 
       <section className="rounded-xl bg-[#edf2fd] p-2.5">
         <div className="flex flex-wrap items-center gap-2">
-          <Link href={`/properties?status=${statusFilter === "active" ? "all" : "active"}&sort=${sort}`} className="inline-flex min-w-[190px] items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm">
-            <span className="material-symbols-outlined text-[16px] text-slate-400">filter_list</span>
-            {copy.statusAllAssets}
-            <span className="material-symbols-outlined ml-auto text-[16px] text-slate-400">expand_more</span>
-          </Link>
+          <div className="flex flex-wrap items-center gap-1 rounded-lg bg-white p-1 shadow-sm">
+            <Link href={`/properties?status=active&sort=${sort}`} className={"rounded-md px-3 py-2 text-sm font-semibold " + (statusFilter === "active" ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100")}>
+              {copy.managed}
+            </Link>
+            <Link href={`/properties?status=archived&sort=${sort}`} className={"rounded-md px-3 py-2 text-sm font-semibold " + (statusFilter === "archived" ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100")}>
+              {copy.archived}
+            </Link>
+            <Link href={`/properties?status=all&sort=${sort}`} className={"rounded-md px-3 py-2 text-sm font-semibold " + (statusFilter === "all" ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100")}>
+              {copy.statusAllAssets}
+            </Link>
+          </div>
           <Link href={`/properties?status=all&sort=${sort}`} className="inline-flex min-w-[160px] items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm">
             <span className="material-symbols-outlined text-[16px] text-slate-400">category</span>
             {copy.typeAny}
@@ -503,13 +515,22 @@ export default async function PropertiesPage({ searchParams }: PropertiesPagePro
                     </div>
                   </td>
                   <td className="px-6 py-4 text-right">
-                    <Link
-                      href={`/properties/${encodeURIComponent(property.id)}/edit`}
-                      className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-bold text-[#002FA7] transition-colors hover:bg-blue-50"
-                    >
-                      {copy.openProfile}
-                      <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
-                    </Link>
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      <Link
+                        href={`/properties/${encodeURIComponent(property.id)}/edit`}
+                        className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-bold text-[#002FA7] transition-colors hover:bg-blue-50"
+                      >
+                        {copy.openProfile}
+                        <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
+                      </Link>
+                      <ArchiveRecordButton
+                        entityType="property"
+                        entityId={property.id}
+                        status={property.status}
+                        locale={locale}
+                        returnTo={`/properties?status=${statusFilter}&sort=${sort}&page=${currentPage}`}
+                      />
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -556,6 +577,15 @@ export default async function PropertiesPage({ searchParams }: PropertiesPagePro
               <p className="text-xs font-black text-[#002FA7]">{copy.propertyProfile}</p>
               <h2 className="mt-2 text-2xl font-black leading-8 text-slate-950">{selectedProperty.name}</h2>
               <p className="mt-1 text-sm font-semibold text-slate-500">{selectedProperty.area || t(locale, "common.notSet")}</p>
+              <div className="mt-3">
+                <ArchiveRecordButton
+                  entityType="property"
+                  entityId={selectedProperty.id}
+                  status={selectedProperty.status}
+                  locale={locale}
+                  returnTo={`/properties?status=${statusFilter}&sort=${sort}&page=${currentPage}`}
+                />
+              </div>
             </div>
 
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">

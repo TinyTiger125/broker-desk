@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import XLSX from "xlsx";
+import ExcelJS from "exceljs";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const outputDir = join(root, "tmp/qa_stress_samples");
@@ -65,7 +65,7 @@ const amountFormats = [
 ];
 
 function setCell(sheet, address, value) {
-  sheet[address] = { t: "s", v: value, w: value };
+  sheet.getCell(address).value = value;
 }
 
 function setCells(sheet, addresses, value) {
@@ -74,8 +74,13 @@ function setCells(sheet, addresses, value) {
 }
 
 function sheetByHint(workbook, hint) {
-  const sheetName = workbook.SheetNames.find((name) => name.includes(hint)) ?? workbook.SheetNames[0];
-  return workbook.Sheets[sheetName];
+  return workbook.worksheets.find((sheet) => sheet.name.includes(hint)) ?? workbook.worksheets[0];
+}
+
+async function readWorkbook(templatePath) {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.readFile(templatePath);
+  return workbook;
 }
 
 function mutateImportant(workbook, sample) {
@@ -198,15 +203,15 @@ const samples = [...generatedSamples, ...edgeCaseSamples];
 
 const manifest = [];
 for (const sample of samples) {
-  const importantWorkbook = XLSX.readFile(importantTemplate, { cellStyles: true });
+  const importantWorkbook = await readWorkbook(importantTemplate);
   mutateImportant(importantWorkbook, sample);
-  const contractWorkbook = XLSX.readFile(contractTemplate, { cellStyles: true });
+  const contractWorkbook = await readWorkbook(contractTemplate);
   mutateContract(contractWorkbook, sample);
 
   const importantPath = join(outputDir, `${sample.id}_important_${sample.variant}.xlsx`);
   const contractPath = join(outputDir, `${sample.id}_contract_${sample.variant}.xlsx`);
-  XLSX.writeFile(importantWorkbook, importantPath, { bookType: "xlsx", cellStyles: true });
-  XLSX.writeFile(contractWorkbook, contractPath, { bookType: "xlsx", cellStyles: true });
+  await importantWorkbook.xlsx.writeFile(importantPath);
+  await contractWorkbook.xlsx.writeFile(contractPath);
   manifest.push({
     ...sample,
     importantPath,

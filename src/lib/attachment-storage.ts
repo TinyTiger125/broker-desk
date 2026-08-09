@@ -2,10 +2,13 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-export type AttachmentStorageMode = "local_private" | "object_private" | "external_reference";
+export type AttachmentStorageMode = "local_private" | "postgres_private" | "object_private" | "external_reference";
+
+const POSTGRES_PRIVATE_ATTACHMENT_LIMIT_BYTES = 10 * 1024 * 1024;
 
 export function getAttachmentStorageMode(): AttachmentStorageMode {
   const raw = (process.env.ATTACHMENT_STORAGE_MODE ?? "local_private").trim().toLowerCase();
+  if (raw === "postgres_private") return "postgres_private";
   if (raw === "object_private") return "object_private";
   if (raw === "external_reference") return "external_reference";
   return "local_private";
@@ -50,6 +53,14 @@ function localPrivateStoragePath(tenantId: string, yyyy: string, mm: string, fil
 
 export function isLocalPrivateStoragePath(value: string | undefined): boolean {
   return Boolean(value?.startsWith("local-private://"));
+}
+
+export function isPostgresPrivateStoragePath(value: string | undefined): boolean {
+  return Boolean(value?.startsWith("postgres-private://"));
+}
+
+export function getPostgresPrivateAttachmentLimitBytes(): number {
+  return POSTGRES_PRIVATE_ATTACHMENT_LIMIT_BYTES;
 }
 
 function parseLocalPrivateStoragePath(storagePath: string) {

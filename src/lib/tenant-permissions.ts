@@ -43,6 +43,7 @@ export const TENANT_PERMISSION_ACTIONS = [
   "record.read",
   "record.read_sensitive",
   "record.update",
+  "record.archive",
   "record.confirm",
   "record.mark_unknown",
   "record.resolve_conflict",
@@ -102,6 +103,7 @@ const ROLE_PERMISSIONS: Record<TenantRole, TenantPermissionAction[]> = {
     "record.read",
     "record.read_sensitive",
     "record.update",
+    "record.archive",
     "record.confirm",
     "record.mark_unknown",
     "record.resolve_conflict",
@@ -171,6 +173,7 @@ const ROLE_PERMISSIONS: Record<TenantRole, TenantPermissionAction[]> = {
     "output.create_draft",
     "output.update_draft",
     "template.view",
+    "template.copy_official",
     "ai.extract",
     "ai.review_assist",
   ],
@@ -194,6 +197,7 @@ const ROLE_PERMISSIONS: Record<TenantRole, TenantPermissionAction[]> = {
     "output.generate_final",
     "output.download_final",
     "template.view",
+    "template.copy_official",
   ],
   viewer: [
     "tenant.read",
@@ -203,6 +207,7 @@ const ROLE_PERMISSIONS: Record<TenantRole, TenantPermissionAction[]> = {
     "record.read",
     "output.preview",
     "template.view",
+    "template.copy_official",
   ],
 };
 

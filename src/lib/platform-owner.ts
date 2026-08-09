@@ -1,4 +1,4 @@
-import type { User } from "@/lib/data";
+import type { TenantMembership, User } from "@/lib/data";
 import { isProductionRuntime } from "@/lib/auth-mode";
 
 export function configuredPlatformOwnerIds(): Set<string> {
@@ -14,6 +14,15 @@ export function isConfiguredPlatformOwnerUser(user: Pick<User, "id" | "externalA
   if (!user) return false;
   const ownerIds = configuredPlatformOwnerIds();
   return ownerIds.has(user.id) || Boolean(user.externalAuthSubject && ownerIds.has(user.externalAuthSubject));
+}
+
+/**
+ * Platform ownership is normally granted through a protected database
+ * membership. The environment allow-list remains an explicit break-glass path
+ * for the first bootstrap or a controlled recovery.
+ */
+export function hasActivePlatformOwnerMembership(memberships: readonly Pick<TenantMembership, "role" | "status">[]) {
+  return memberships.some((membership) => membership.role === "platform_owner" && membership.status === "active");
 }
 
 export function isDevelopmentPlatformOwnerTenantFallbackEnabled() {

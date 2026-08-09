@@ -51,12 +51,19 @@ function withEnv(nextEnv, fn) {
     "CLERK_SECRET_KEY",
     "DATA_DRIVER",
     "DATABASE_URL",
+    "DATABASE_ADMIN_URL",
     "BROKER_DESK_PRODUCTION_DATA_RUNTIME_APPROVED",
     "ATTACHMENT_STORAGE_MODE",
     "BROKER_DESK_ATTACHMENT_SIGNED_URL_ENDPOINT",
     "DOCUMENT_READING_PROVIDER",
     "DOCUMENT_READING_ENDPOINT",
     "DOCUMENT_READING_API_TOKEN",
+    "DOCUMENT_READING_ALLOWED_HOSTS",
+    "BROKER_DESK_IMPORT_WORKER_ENABLED",
+    "BROKER_DESK_IMPORT_WORKER_SCHEDULE",
+    "BROKER_DESK_IMPORT_WORKER_TOKEN",
+    "BROKER_DESK_EDGE_RATE_LIMIT_ENFORCED",
+    "BROKER_DESK_EDGE_RATE_LIMIT_POLICY_ID",
   ];
   const previous = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
   for (const key of keys) delete process.env[key];
@@ -90,6 +97,26 @@ withEnv({ NODE_ENV: "production" }, () => {
   assert(!authMode.isDemoAuthEnabled(), "production demo auth must be disabled by default");
 });
 
+withEnv({ NODE_ENV: "development" }, () => {
+  assert(authMode.getAuthMode() === "disabled", "development auth mode must not silently fall back to demo access");
+  assert(!authMode.isDemoAuthEnabled(), "development demo access must require an explicit auth mode");
+});
+
+withEnv(
+  {
+    NODE_ENV: "development",
+    NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: "pk_test_regression",
+    CLERK_SECRET_KEY: "sk_test_regression",
+  },
+  () => {
+    assert(authMode.getAuthMode() === "clerk", "configured Clerk keys must select the login path by default");
+  },
+);
+
+withEnv({ NODE_ENV: "development", BROKER_DESK_AUTH_MODE: "demo" }, () => {
+  assert(authMode.isDemoAuthEnabled(), "demo access must remain available only when explicitly requested locally");
+});
+
 withEnv(
   {
     NODE_ENV: "production",
@@ -100,6 +127,16 @@ withEnv(
       !platformOwner.isDevelopmentPlatformOwnerTenantFallbackEnabled(),
       "production runtime must force local platform-owner tenant fallback off",
     );
+  },
+);
+
+withEnv(
+  {
+    NODE_ENV: "production",
+    ATTACHMENT_STORAGE_MODE: "postgres_private",
+  },
+  () => {
+    readiness.assertProductionAttachmentStorageReady();
   },
 );
 
@@ -122,6 +159,25 @@ withEnv({ NODE_ENV: "production", BROKER_DESK_AUTH_MODE: "clerk" }, () => {
   assert(authMode.getAuthMode() === "clerk", "clerk must be an explicit production auth mode");
   assert(!authMode.isClerkAuthConfigured(), "clerk auth must require Clerk keys");
 });
+
+withEnv({ NODE_ENV: "production" }, () => {
+  assertThrowsCode(
+    readiness.assertProductionRateLimitReady,
+    "production_rate_limit_required",
+    "production runtime must reject a missing shared edge rate-limit policy",
+  );
+});
+
+withEnv(
+  {
+    NODE_ENV: "production",
+    BROKER_DESK_EDGE_RATE_LIMIT_ENFORCED: "true",
+    BROKER_DESK_EDGE_RATE_LIMIT_POLICY_ID: "policy_public_beta_v1",
+  },
+  () => {
+    readiness.assertProductionRateLimitReady();
+  },
+);
 
 withEnv(
   {
@@ -180,7 +236,62 @@ withEnv({ NODE_ENV: "production" }, () => {
     "production_document_reader_required",
     "production runtime must reject the local document reader",
   );
+  assertThrowsCode(
+    readiness.assertProductionImportWorkerReady,
+    "production_import_worker_required",
+    "production runtime must reject a missing import worker",
+  );
 });
+
+withEnv(
+  {
+    NODE_ENV: "production",
+    DOCUMENT_READING_PROVIDER: "remote",
+    DOCUMENT_READING_ENDPOINT: "https://reader.example.test/extract",
+    DOCUMENT_READING_API_TOKEN: "reader-token",
+  },
+  () => {
+    assertThrowsCode(
+      readiness.assertProductionDocumentReaderReady,
+      "production_document_reader_endpoint_not_allowed",
+      "production reader must require an explicit hostname allowlist",
+    );
+  },
+);
+
+withEnv(
+  {
+    NODE_ENV: "production",
+    DOCUMENT_READING_PROVIDER: "remote",
+    DOCUMENT_READING_ENDPOINT: "http://reader.example.test/extract",
+    DOCUMENT_READING_API_TOKEN: "reader-token",
+    DOCUMENT_READING_ALLOWED_HOSTS: "reader.example.test",
+  },
+  () => {
+    assertThrowsCode(
+      readiness.assertProductionDocumentReaderReady,
+      "production_document_reader_endpoint_invalid",
+      "production reader must require HTTPS",
+    );
+  },
+);
+
+withEnv(
+  {
+    NODE_ENV: "production",
+    DOCUMENT_READING_PROVIDER: "remote",
+    DOCUMENT_READING_ENDPOINT: "https://reader.example.test/extract",
+    DOCUMENT_READING_API_TOKEN: "reader-token",
+    DOCUMENT_READING_ALLOWED_HOSTS: "reader.example.test",
+    BROKER_DESK_IMPORT_WORKER_ENABLED: "true",
+    BROKER_DESK_IMPORT_WORKER_SCHEDULE: "every 1 minute",
+    BROKER_DESK_IMPORT_WORKER_TOKEN: "a-32-character-import-worker-token",
+  },
+  () => {
+    readiness.assertProductionDocumentReaderReady();
+    readiness.assertProductionImportWorkerReady();
+  },
+);
 
 withEnv(
   {
@@ -205,11 +316,7 @@ withEnv(
     BROKER_DESK_PRODUCTION_DATA_RUNTIME_APPROVED: "true",
   },
   () => {
-    assertThrowsCode(
-      readiness.assertProductionDataStoreReady,
-      "production_tenant_scope_required",
-      "production runtime must reject data access until Clerk identity is bound in every database transaction",
-    );
+    readiness.assertProductionDataStoreReady();
   },
 );
 
@@ -228,11 +335,36 @@ assert(packageJson.scripts?.["db:migrate"] === "node scripts/run-postgres-migrat
 assert(fs.existsSync("db/migrations/20260727_000_baseline_schema.sql"), "baseline schema migration must exist");
 assert(fs.existsSync("db/migrations/20260727_001_tenant_rls.sql"), "tenant RLS migration must exist");
 assert(fs.existsSync("db/migrations/20260729_002_force_tenant_rls.sql"), "forced tenant RLS migration must exist");
+assert(fs.existsSync("db/migrations/20260809_001_external_auth_lifecycle_functions.sql"), "external-auth lifecycle function migration must exist");
+assert(fs.existsSync("db/migrations/20260809_002_force_tenant_template_installs_rls.sql"), "template-install forced RLS migration must exist");
+assert(fs.existsSync("db/migrations/20260809_003_private_attachment_blobs.sql"), "private attachment blob migration must exist");
+assert(fs.existsSync("db/migrations/20260809_004_import_job_execution_state.sql"), "import job execution migration must exist");
+assert(fs.existsSync("db/migrations/20260809_005_import_worker_claim.sql"), "import worker claim migration must exist");
 
 const postgresDataSource = fs.readFileSync("src/lib/data.postgres.ts", "utf8");
 assert(
   postgresDataSource.includes('"20260729_002_force_tenant_rls.sql"'),
   "production migration ledger must require the forced tenant RLS migration",
+);
+assert(
+  postgresDataSource.includes("set_config('app.external_auth_subject'") && postgresDataSource.includes("RESET app.external_auth_subject"),
+  "Postgres repository must bind and clear the Clerk subject on the same pooled connection as each business query",
+);
+assert(
+  postgresDataSource.includes("rolbypassrls"),
+  "Postgres repository must reject a production role that can bypass RLS",
+);
+assert(
+  postgresDataSource.includes('"20260809_002_force_tenant_template_installs_rls.sql"'),
+  "production migration ledger must require tenant-template-install forced RLS",
+);
+assert(
+  postgresDataSource.includes('"20260809_003_private_attachment_blobs.sql"'),
+  "production migration ledger must require private attachment blob storage",
+);
+assert(
+  postgresDataSource.includes('"20260809_004_import_job_execution_state.sql"') && postgresDataSource.includes('"20260809_005_import_worker_claim.sql"'),
+  "production migration ledger must require import execution and worker claim migrations",
 );
 
 const signUpSource = fs.readFileSync("src/app/sign-up/[[...sign-up]]/page.tsx", "utf8");
@@ -243,19 +375,30 @@ assert(proxySource.includes("clerkMiddleware"), "Next proxy must wire Clerk midd
 assert(proxySource.includes("isClerkAuthEnabled()"), "Clerk proxy must be gated by auth mode");
 assert(proxySource.includes("/api/webhooks/clerk(.*)"), "Clerk webhook route must stay public");
 assert(proxySource.includes("assertProductionAuthReady"), "production proxy must block an unconfigured production auth boundary");
-assert(!proxySource.includes("/api/qa(.*)"), "QA route must not remain public in production");
+const publicRouteMatcherSource = proxySource.match(/const isPublicRoute = createRouteMatcher\(\[([\s\S]*?)\]\);/);
+assert(publicRouteMatcherSource && !publicRouteMatcherSource[1].includes("/api/qa(.*)"), "QA route must not remain public in production");
+assert(proxySource.includes("invalid_request_origin"), "unsafe browser API writes must have a same-origin guard");
+assert(proxySource.includes("req.headers.get(\"origin\") === req.nextUrl.origin"), "same-origin guard must compare the canonical request origin");
+
+const nextConfigSource = fs.readFileSync("next.config.ts", "utf8");
+for (const header of ["X-Content-Type-Options", "X-Frame-Options", "Referrer-Policy", "Permissions-Policy", "Strict-Transport-Security"]) {
+  assert(nextConfigSource.includes(header), `security header ${header} must be configured`);
+}
 
 const dataSource = fs.readFileSync("src/lib/data.ts", "utf8");
 assert(dataSource.includes("ensureUserForExternalAuth"), "data layer must map external auth subjects to local users");
 assert(dataSource.includes("suspendUserForExternalAuthSubject"), "data layer must suspend deleted external identities");
 assert(dataSource.includes("getClerkAuthIdentity"), "data layer must read Clerk identity in clerk mode");
 assert(dataSource.includes("assertProductionDataStoreReady"), "data layer must reject production memory fallback");
+assert(dataSource.includes("withPostgresAuthContext"), "data layer must bind Clerk identity before calling the Postgres repository");
 
 const platformSessionSource = fs.readFileSync("src/lib/platform-session.ts", "utf8");
 assert(platformSessionSource.includes("isConfiguredPlatformOwnerUser"), "platform owner access must use centralized owner-id checks");
+assert(platformSessionSource.includes("hasActivePlatformOwnerMembership"), "platform owner access must accept only active database platform-owner memberships");
 
 const platformOwnerSource = fs.readFileSync("src/lib/platform-owner.ts", "utf8");
 assert(platformOwnerSource.includes("externalAuthSubject"), "platform owner access must support external auth subjects such as Clerk user ids");
+assert(platformOwnerSource.includes('membership.role === "platform_owner" && membership.status === "active"'), "database platform-owner access must require an active membership");
 assert(platformOwnerSource.includes('configured === "true"'), "platform owner tenant fallback must support explicit local next-start opt-in");
 assert(platformOwnerSource.includes('configured === "false"'), "platform owner tenant fallback must support explicit local opt-out");
 assert(platformOwnerSource.includes("if (isProductionRuntime()) return false;"), "platform owner tenant fallback must be force-disabled in production");
@@ -271,8 +414,15 @@ assert(clerkInvitationSource.includes("brokerDeskMembershipId"), "Clerk invitati
 
 const clerkWebhookSource = fs.readFileSync("src/app/api/webhooks/clerk/route.ts", "utf8");
 assert(clerkWebhookSource.includes("verifyWebhook"), "Clerk webhook route must verify signatures");
-assert(clerkWebhookSource.includes("ensureUserForExternalAuth"), "Clerk webhook route must sync external users");
-assert(clerkWebhookSource.includes("suspendUserForExternalAuthSubject"), "Clerk webhook route must handle deleted users");
+assert(clerkWebhookSource.includes("@/lib/data.admin.postgres"), "Clerk webhook route must use the isolated lifecycle data module");
+assert(clerkWebhookSource.includes("syncExternalAuthUser"), "Clerk webhook route must sync external users through the isolated lifecycle data module");
+assert(clerkWebhookSource.includes("suspendExternalAuthUser"), "Clerk webhook route must handle deleted users through the isolated lifecycle data module");
+
+const adminDataSource = fs.readFileSync("src/lib/data.admin.postgres.ts", "utf8");
+assert(adminDataSource.includes('import "server-only"'), "admin lifecycle module must be server-only");
+assert(adminDataSource.includes("DATABASE_ADMIN_URL"), "admin lifecycle module must require its own production connection");
+assert(adminDataSource.includes("sync_external_auth_user") && adminDataSource.includes("suspend_external_auth_user"), "admin lifecycle module must call only the approved lifecycle functions");
+assert(!/\b(?:INSERT|UPDATE|DELETE)\s+INTO\s+(?:public\.)?(?:users|tenant_memberships)/i.test(adminDataSource), "admin lifecycle module must not write identity tables directly");
 
 const rlsSql = fs.readFileSync("docs/engineering/postgres_rls.sql", "utf8");
 assert(rlsSql.includes("brokerdesk_private"), "RLS helpers must live outside the exposed public schema");
@@ -321,6 +471,11 @@ for (const table of tenantScopedTables) {
   assert(rlsSql.includes(`'${table}'`), `RLS baseline missing tenant table ${table}`);
 }
 
+const templateInstallRlsMigrationSql = fs.readFileSync("db/migrations/20260805_004_tenant_guarantee_template_installs.sql", "utf8");
+const templateInstallForceRlsMigrationSql = fs.readFileSync("db/migrations/20260809_002_force_tenant_template_installs_rls.sql", "utf8");
+assert(templateInstallRlsMigrationSql.includes("ENABLE ROW LEVEL SECURITY"), "template-install migration must enable RLS");
+assert(templateInstallForceRlsMigrationSql.includes("FORCE ROW LEVEL SECURITY"), "template-install migration must force RLS");
+
 for (const globalTable of ["public.users", "public.tenants", "public.tenant_memberships"]) {
   assert(rlsSql.includes(`ALTER TABLE ${globalTable} ENABLE ROW LEVEL SECURITY`), `RLS baseline missing ${globalTable}`);
   assert(!forcedRlsMigrationSql.includes(`ALTER TABLE ${globalTable} FORCE ROW LEVEL SECURITY`), `${globalTable} must not force RLS while authorization helpers resolve membership through SECURITY DEFINER`);
@@ -332,6 +487,8 @@ assert(!healthRouteSource.includes("driver:"), "health route must not expose the
 
 const attachmentSource = fs.readFileSync("src/lib/attachment-storage.ts", "utf8");
 assert(attachmentSource.includes("local-private://"), "development attachments must use a private server URI");
+assert(attachmentSource.includes("postgres-private://"), "public-beta attachments must support a private database URI");
+assert(attachmentSource.includes("10 * 1024 * 1024"), "private database attachments must enforce a 10 MB limit");
 assert(!attachmentSource.includes("public/uploads"), "development attachments must not use public upload storage");
 assert(attachmentSource.includes("url.protocol !== \"local-private:\""), "private attachment paths must validate their protocol");
 assert(attachmentSource.includes("attachment storage requires a valid tenant scope"), "private attachment writes must validate their tenant scope");
@@ -339,16 +496,30 @@ assert(attachmentSource.includes("attachment storage requires a valid tenant sco
 const productionReadinessSource = fs.readFileSync("src/lib/production-readiness.ts", "utf8");
 assert(
   productionReadinessSource.includes('"production_attachment_adapter_required"'),
-  "production readiness must remain closed until a private object-storage adapter exists",
+  "production readiness must reject object storage until its private adapter exists",
 );
 assert(
   productionReadinessSource.includes("assertProductionTenantScopeBindingReady"),
   "production readiness must remain closed until request-scoped tenant identity binding exists",
 );
+assert(
+  productionReadinessSource.includes("DOCUMENT_READING_ALLOWED_HOSTS") && productionReadinessSource.includes("production_document_reader_endpoint_not_allowed"),
+  "production document reading must restrict remote endpoints to an explicit allowlist",
+);
+assert(
+  productionReadinessSource.includes("assertProductionImportWorkerReady") && productionReadinessSource.includes("BROKER_DESK_IMPORT_WORKER_TOKEN"),
+  "production imports must require an authenticated worker configuration",
+);
 
 const actionsSource = fs.readFileSync("src/app/actions.ts", "utf8");
 assert(actionsSource.includes("isProductionRuntime()"), "attachment registration must detect the production runtime");
 assert(actionsSource.includes("外部公開URLを資料の保存先として利用できません"), "production attachments must reject public external URLs");
+assert(actionsSource.includes("addPrivateAttachment"), "private database attachments must be registered through the tenant repository");
+
+assert(
+  postgresDataSource.includes("createHash(\"sha256\")") && postgresDataSource.includes("private_attachment_blobs"),
+  "private database attachments must retain a content integrity hash",
+);
 
 const attachmentRouteSource = fs.readFileSync("src/app/api/attachments/[attachmentId]/route.ts", "utf8");
 assert(attachmentRouteSource.includes("requireTenantSession"), "attachment downloads must require a tenant session");
@@ -359,6 +530,18 @@ const identityReaderSource = fs.readFileSync("src/lib/identity-document-extracto
 assert(identityReaderSource.includes("assertProductionDocumentReaderReady"), "identity reading must block the local reader in production");
 
 const identityRouteSource = fs.readFileSync("src/app/api/input-files/identity/route.ts", "utf8");
-assert(identityRouteSource.includes("service_unavailable"), "identity API must fail generically when production reading is unavailable");
+assert(
+  identityRouteSource.includes("ProductionReadinessError") && identityRouteSource.includes("status: 503"),
+  "identity API must fail closed without exposing reader internals when production reading is unavailable",
+);
+
+const importDrainRouteSource = fs.readFileSync("src/app/api/internal/import-jobs/drain/route.ts", "utf8");
+assert(importDrainRouteSource.includes("timingSafeEqual"), "import worker route must compare its bearer token safely");
+assert(importDrainRouteSource.includes("claimQueuedImportJobs"), "import worker route must claim queued work atomically");
+assert(importDrainRouteSource.includes("withWorkerRepositoryIdentity"), "import worker route must retain tenant identity while processing jobs");
+
+const importProcessorSource = fs.readFileSync("src/components/excel-import-queue-processor.tsx", "utf8");
+assert(importProcessorSource.includes("retryKey"), "import status polling must reset deterministically after a retry");
+assert(importProcessorSource.includes("/process"), "import UI must support explicit server-side retry processing");
 
 console.log("[PASS] production security, storage, reader, migration and RLS baseline regression");

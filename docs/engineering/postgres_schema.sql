@@ -320,11 +320,23 @@ CREATE TABLE IF NOT EXISTS import_jobs (
   notes TEXT,
   mapping_json JSONB,
   validation_message TEXT,
+  processing_started_at TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ,
+  failed_at TIMESTAMPTZ,
+  attempt_count INTEGER NOT NULL DEFAULT 0,
+  error_code TEXT,
+  error_summary TEXT,
+  idempotency_key TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_import_jobs_user_created ON import_jobs(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_import_jobs_tenant_user_created ON import_jobs(tenant_id, user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_import_jobs_tenant_status_created ON import_jobs(tenant_id, status, created_at ASC);
+CREATE INDEX IF NOT EXISTS idx_import_jobs_tenant_processing_started ON import_jobs(tenant_id, processing_started_at ASC)
+  WHERE status = 'processing';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_import_jobs_tenant_idempotency_unique ON import_jobs(tenant_id, idempotency_key)
+  WHERE idempotency_key IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS attachments (
   id TEXT PRIMARY KEY,
@@ -464,6 +476,13 @@ CREATE INDEX IF NOT EXISTS idx_ai_experience_drafts_scope ON ai_experience_draft
 CREATE INDEX IF NOT EXISTS idx_case_workbench_field_rules_user ON case_workbench_field_rules(tenant_id, user_id, field_key);
 
 ALTER TABLE import_jobs ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
+ALTER TABLE import_jobs ADD COLUMN IF NOT EXISTS processing_started_at TIMESTAMPTZ;
+ALTER TABLE import_jobs ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
+ALTER TABLE import_jobs ADD COLUMN IF NOT EXISTS failed_at TIMESTAMPTZ;
+ALTER TABLE import_jobs ADD COLUMN IF NOT EXISTS attempt_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE import_jobs ADD COLUMN IF NOT EXISTS error_code TEXT;
+ALTER TABLE import_jobs ADD COLUMN IF NOT EXISTS error_summary TEXT;
+ALTER TABLE import_jobs ADD COLUMN IF NOT EXISTS idempotency_key TEXT;
 ALTER TABLE attachments ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
 ALTER TABLE brokerage_cases ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
 ALTER TABLE extraction_review_items ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';

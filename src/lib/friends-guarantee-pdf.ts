@@ -1,4 +1,5 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { createHash } from "crypto";
 import { dirname, join } from "path";
 import { PDFDocument, rgb } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
@@ -840,6 +841,7 @@ type FriendsGuaranteeLayoutStoreSnapshot = {
 export type FriendsGuaranteeTemplateLayoutSnapshot = {
   templateId: string;
   baselineVersion: string;
+  assetFingerprint?: string;
   layoutOverrides: FriendsOverlayLayoutOverrides;
   deletedOverlayFieldKeys: string[];
   customOverlayFields: FriendsCustomOverlayField[];
@@ -892,6 +894,23 @@ const GUARANTEE_TEMPLATE_CONFIGS = {
     pageSize: FRIENDS_GUARANTEE_TEMPLATE_PAGE_SIZE,
   },
 } as const;
+
+export function getGuaranteeTemplateAssetFingerprint(
+  templateId = FRIENDS_GUARANTEE_DEFAULT_TEMPLATE_ID,
+): string {
+  const config = getGuaranteePdfTemplateConfig(templateId);
+  const imagePath = join(process.cwd(), "public", config.imageSrc.replace(/^\/+/, ""));
+  if (!existsSync(imagePath)) {
+    throw new Error(`Guarantee PDF template image was not found: ${imagePath}`);
+  }
+  const imageHash = createHash("sha256").update(readFileSync(imagePath)).digest("hex");
+  return [
+    "sha256",
+    imageHash,
+    `image:${config.imageWidth}x${config.imageHeight}`,
+    `page:${config.pageSize.width}x${config.pageSize.height}`,
+  ].join(":");
+}
 
 function hydrateFriendsGuaranteeLayoutStore(): void {
   if (friendsGuaranteeLayoutStoreHydrated) return;
@@ -1505,9 +1524,37 @@ export function getFriendsGuaranteeTemplateLayoutSnapshot(
   return {
     templateId,
     baselineVersion: getFriendsGuaranteeLayoutBaselineVersion(templateId),
+    assetFingerprint: getGuaranteeTemplateAssetFingerprint(templateId),
     layoutOverrides: getFriendsGuaranteeTemplateLayoutOverrides(templateId),
     deletedOverlayFieldKeys: getFriendsGuaranteeTemplateDeletedOverlayFieldKeys(templateId),
     customOverlayFields: getFriendsGuaranteeTemplateCustomOverlayFields(templateId),
+  };
+}
+
+export function normalizeFriendsGuaranteeTemplateLayoutSnapshot(input: {
+  templateId: string;
+  snapshot: unknown;
+  expectedAssetFingerprint?: string;
+}): FriendsGuaranteeTemplateLayoutSnapshot {
+  const raw = input.snapshot && typeof input.snapshot === "object"
+    ? input.snapshot as Record<string, unknown>
+    : {};
+  const templateId = input.templateId;
+  const baselineVersion = String(raw.baselineVersion ?? "").trim();
+  if (baselineVersion !== getFriendsGuaranteeLayoutBaselineVersion(templateId)) {
+    throw new Error("Published template layout is incompatible with the current field catalog.");
+  }
+  const assetFingerprint = String(raw.assetFingerprint ?? "").trim();
+  if (input.expectedAssetFingerprint && assetFingerprint !== input.expectedAssetFingerprint) {
+    throw new Error("Published template layout does not match the current template asset.");
+  }
+  return {
+    templateId,
+    baselineVersion,
+    assetFingerprint,
+    layoutOverrides: sanitizeFriendsGuaranteeLayoutOverrides(raw.layoutOverrides, templateId),
+    deletedOverlayFieldKeys: sanitizeFriendsGuaranteeDeletedOverlayFieldKeys(raw.deletedOverlayFieldKeys, templateId),
+    customOverlayFields: sanitizeFriendsGuaranteeCustomOverlayFields(raw.customOverlayFields, templateId),
   };
 }
 
@@ -2060,6 +2107,7 @@ export async function renderFriendsGuaranteePdf(input: {
   draftFieldValuesJson?: Record<string, unknown>;
   caseTitle?: string;
   templateId?: string;
+  templateLayoutSnapshot?: FriendsGuaranteeTemplateLayoutSnapshot;
 }): Promise<Uint8Array> {
   const templateConfig = getGuaranteePdfTemplateConfig(input.templateId);
   const templateImagePath = join(process.cwd(), "public", templateConfig.imageSrc.replace(/^\/+/, ""));
@@ -2080,18 +2128,37 @@ export async function renderFriendsGuaranteePdf(input: {
 
   pdf.registerFontkit(fontkit);
 
-  const customFields = getFriendsGuaranteeCustomOverlayFields({
-    templateId: templateConfig.id,
-    confirmedDataJson: input.confirmedDataJson,
-  });
-  const layoutOverrides = getFriendsGuaranteeEffectiveLayoutOverrides({
-    templateId: templateConfig.id,
-    confirmedDataJson: input.confirmedDataJson,
-  });
-  const deletedOverlayFieldKeys = getFriendsGuaranteeEffectiveDeletedOverlayFieldKeys({
-    templateId: templateConfig.id,
-    confirmedDataJson: input.confirmedDataJson,
-  });
+  const publishedTemplateLayout = input.templateLayoutSnapshot
+    ? normalizeFriendsGuaranteeTemplateLayoutSnapshot({
+        templateId: templateConfig.id,
+        snapshot: input.templateLayoutSnapshot,
+        expectedAssetFingerprint: getGuaranteeTemplateAssetFingerprint(templateConfig.id),
+      })
+    : getFriendsGuaranteeTemplateLayoutSnapshot(templateConfig.id);
+  const customFields = mergeCustomOverlayFields(
+    publishedTemplateLayout.customOverlayFields,
+    getFriendsGuaranteeCaseCustomOverlayFields({
+      templateId: templateConfig.id,
+      confirmedDataJson: input.confirmedDataJson,
+    }),
+  );
+  const layoutOverrides = sanitizeFriendsGuaranteeLayoutOverrides(
+    {
+      ...publishedTemplateLayout.layoutOverrides,
+      ...getFriendsGuaranteeCaseLayoutOverrides({
+        templateId: templateConfig.id,
+        confirmedDataJson: input.confirmedDataJson,
+      }),
+    },
+    templateConfig.id,
+  );
+  const deletedOverlayFieldKeys = new Set([
+    ...publishedTemplateLayout.deletedOverlayFieldKeys,
+    ...getFriendsGuaranteeCaseDeletedOverlayFieldKeys({
+      templateId: templateConfig.id,
+      confirmedDataJson: input.confirmedDataJson,
+    }),
+  ]);
   const layoutBoxOverrideKeys = new Set(
     Object.entries(layoutOverrides).flatMap(([fieldKey, override]) => (override.box ? [fieldKey] : [])),
   );

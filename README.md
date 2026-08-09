@@ -1,15 +1,13 @@
-# Broker Desk (MVP)
+# Broker Desk
 
-日本小型不动产经纪人的 Excel-migration business document automation workspace。
+面向日本不动产经纪业务的资料管理、确认与文书输出工作台。
 
 ## 项目目标
-用一个轻量 Web 工作台替代 `Excel + Word + 手工 PDF`，聚焦 V1 主链路：
-- Excel import or quick entry
-- field mapping and confirmation
-- structured property / party / business data
-- template selection and pre-output adjustment
-- PDF preview and generation
-- output history
+核心链路：
+
+`录入资料 -> 提取与人工确认 -> 案件资料整理 -> 选择模板 -> 预览与输出 -> 审计留痕`
+
+当前代码具备封闭公测所需的认证、租户、模板、资料确认与异步导入骨架；它尚未部署到托管服务器。真实客户资料只应在满足 [公测门禁](docs/operations/PUBLIC_BETA_RELEASE_GATE.md) 的托管环境中处理。
 
 ## 已实现页面
 - `/` Dashboard（今日待跟进、最近报价、风险提醒）
@@ -49,27 +47,12 @@
 可通过浏览器直接 `印刷 / PDF保存`。
 模板可在 `帳票テンプレート` 页面统一调整，并支持一键恢复日本标准模板。
 
-## 当前数据层说明
-当前版本为 **双驱动数据仓库**（`src/lib/data.ts`）：
-- `memory`：无需数据库初始化，启动即用（重启后运行时新增数据会重置）
-- `postgres`：可接 Supabase/PostgreSQL，持久化保存数据
+## 数据、文件与读取边界
 
-可通过 `.env` 切换：
-```bash
-DATA_DRIVER=memory
-# or
-DATA_DRIVER=postgres
-DATABASE_URL=postgresql://...
-```
-
-## 附件存储策略（可扩展）
-当前附件上传已抽象为存储适配层（`src/lib/attachment-storage.ts`）：
-- `ATTACHMENT_STORAGE_MODE=local_public`：默认，本地保存到 `public/uploads/YYYY/MM/...`
-- `ATTACHMENT_STORAGE_MODE=external_reference`：不接收直接上传，改为登记外部存储 URL（为后续 S3/Supabase 对接预留）
-
-说明：
-- 取込センター的“添付登録”已支持两种方式：直接上传 or 外部保存先 URL。
-- 附件历史中会自动提供可访问链接（`/` 或 `http(s)`）。
+- 本地演示可使用内存数据或开发数据库，但不得写入真实证件、合同或客户资料。
+- 受控公测和生产运行必须使用 PostgreSQL，并通过 Clerk 身份和 tenant membership 建立租户范围。
+- 现阶段可用 `ATTACHMENT_STORAGE_MODE=postgres_private` 作为封闭公测的私有附件实现。`object_private` 是后续可替换的对象存储适配位，当前不会假装支持。
+- 身份证件、Excel/PDF 的长耗时读取不会在页面请求中执行；资料先进入 `import_jobs`，由受鉴权的后台 worker 处理。详见 [异步导入运行手册](docs/operations/IMPORT_WORKER_RUNBOOK.md)。
 
 ## 文档入口
 - `docs/PROJECT_MEMORY.md`（固定项目记忆入口：当前定位、进度、风险、下一步）
@@ -84,6 +67,18 @@ DATABASE_URL=postgresql://...
 npm install
 npm run dev
 ```
+
+## 登录配置
+业务页面默认不再以演示身份直接开放。复制 `env.example` 为 `.env.local`，填入 Clerk 密钥后重启服务：
+```bash
+BROKER_DESK_AUTH_MODE=clerk
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_...
+CLERK_SECRET_KEY=sk_...
+# Optional but recommended for lower request latency. This is the public
+# signing key used to verify Clerk session tokens without a network round trip.
+CLERK_JWT_KEY="-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----"
+```
+未配置 Clerk 时，所有业务路由会停在 `/sign-in`，不会绕过账号验证。仅本地 QA 可显式设置 `BROKER_DESK_AUTH_MODE=demo`；不得用于共享链接或公开测试。
 
 ## 产出物公司信息配置（推荐）
 可在 `.env` 配置文书抬头信息：
@@ -101,6 +96,8 @@ OUTPUT_EMAIL=...
 ```bash
 npm run lint
 npm run build
+npm run test:public-beta-gate
+npm run test:production-security
 ```
 
 ## 术语与回归检查（推荐）
@@ -130,10 +127,8 @@ curl -X POST http://127.0.0.1:3000/api/locale \
   3. `npm run build`
   4. 启动本地服务并执行 `npm run test:regression`
 
-## 数据驱动健康检查
+## 数据健康检查
 启动后可访问：
 - `/api/health/data`
 
-返回示例：
-- `{"ok":true,"driver":"memory"}`
-- `{"ok":true,"driver":"postgres"}`
+返回仅包含可用性信息，不泄露数据库驱动、主机、迁移状态或内部错误。

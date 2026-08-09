@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { rollbackCaseMergeAction, saveCaseWorkbenchAction } from "@/app/actions";
+import { ArchiveRecordButton } from "@/components/archive-record-button";
 import { CaseWorkbenchFieldForm } from "@/components/case-workbench-field-form";
 import { PageFlashBanner } from "@/components/page-flash-banner";
 import { getBrokerageCaseById, listCaseWorkbenchFieldRules, listExtractionReviewItems } from "@/lib/data";
@@ -118,17 +119,6 @@ function getBusinessFieldLabel(locale: Locale, fieldKey: string) {
   const definition = getCaseFieldDefinition(fieldKey);
   if (definition?.label) return definition.label;
   return tr(locale, { ja: "確認項目", zh: "资料项目", ko: "확인 항목" });
-}
-
-function getReviewStatusLabel(locale: Locale, status: ExtractionReviewStatus) {
-  const labels: Record<ExtractionReviewStatus, Record<Locale, string>> = {
-    suggested: { ja: "確認が必要", zh: "需要确认", ko: "확인 필요" },
-    accepted: { ja: "確認済み", zh: "已确认", ko: "확인됨" },
-    edited: { ja: "修正済み", zh: "已修正", ko: "수정됨" },
-    unknown: { ja: "不明", zh: "不明", ko: "불명" },
-    rejected: { ja: "不採用", zh: "不采用", ko: "미채택" },
-  };
-  return labels[status][locale];
 }
 
 function getTrustStateLabel(locale: Locale, state: WorkbenchTrustState) {
@@ -267,14 +257,6 @@ function getWorkbenchFieldInputSpec(fieldKey: string): WorkbenchFieldInputSpec {
     return { kind: "textarea", rows: 2 };
   }
   return { kind: "text" };
-}
-
-function getReviewStatusClass(status: ExtractionReviewStatus) {
-  if (status === "accepted") return "bg-emerald-100 text-emerald-800";
-  if (status === "edited") return "bg-blue-100 text-blue-800";
-  if (status === "unknown") return "bg-slate-200 text-slate-700";
-  if (status === "rejected") return "bg-rose-100 text-rose-800";
-  return "bg-amber-100 text-amber-800";
 }
 
 function fieldNeedsAttention(field: WorkbenchField) {
@@ -941,6 +923,13 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
           <Link href={outputHref} className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800 hover:bg-emerald-100">
             {tr(locale, { ja: "文書出力", zh: "输出文件", ko: "서류 출력" })}
           </Link>
+          <ArchiveRecordButton
+            entityType="case"
+            entityId={brokerageCase.id}
+            status={brokerageCase.lifecycleStatus ?? "active"}
+            locale={locale}
+            returnTo="/organize-center?type=case"
+          />
         </div>
       </div>
       <PageFlashBanner message={flashMessage} tone={flashTone} />

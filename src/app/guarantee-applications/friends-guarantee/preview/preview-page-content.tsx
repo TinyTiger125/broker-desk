@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import {
   saveGuaranteeApplicationPreviewAction,
   saveGuaranteeApplicationTemplateCalibrationAction,
@@ -7,7 +7,7 @@ import {
 import { FriendsGuaranteeCalibrationPreview } from "@/components/friends-guarantee-calibration-preview";
 import { PageFlashBanner } from "@/components/page-flash-banner";
 import { CASE_FIELD_DEFINITIONS, type CatalogCaseFieldDefinition } from "@/lib/case-field-catalog";
-import { getBrokerageCaseById, getGuaranteeApplicationDraft, listBrokerageCases } from "@/lib/data";
+import { getActiveTenantGuaranteeTemplateInstall, getBrokerageCaseById, getGuaranteeApplicationDraft, listBrokerageCases } from "@/lib/data";
 import { formatDate } from "@/lib/format";
 import {
   buildGuaranteeDraftReadiness,
@@ -24,18 +24,16 @@ import {
   FRIENDS_GUARANTEE_DEFAULT_TEMPLATE_ID,
   getGuaranteeConfirmedOverlayFieldKeys,
   type FriendsOverlayField,
-  getFriendsGuaranteeCustomOverlayFields,
-  getFriendsGuaranteeTemplateCustomOverlayFields,
-  getFriendsGuaranteeTemplateDeletedOverlayFieldKeys,
-  getFriendsGuaranteeTemplateLayoutOverrides,
-  getFriendsGuaranteeEffectiveDeletedOverlayFieldKeys,
-  getFriendsGuaranteeEffectiveLayoutOverrides,
+  getFriendsGuaranteeCaseCustomOverlayFields,
+  getFriendsGuaranteeCaseDeletedOverlayFieldKeys,
+  getFriendsGuaranteeCaseLayoutOverrides,
   getFriendsOverlayFieldPrintMode,
   formatFriendsOverlayValue,
   isFriendsOverlayFieldManualOnly,
   isFriendsOverlayFieldNeverPrinted,
   getGuaranteePdfTemplateConfig,
 } from "@/lib/friends-guarantee-pdf";
+import { resolveGuaranteeTemplateLayout } from "@/lib/guarantee-template-layout-runtime";
 import { getFriendsOverlayEstimatedTextFit, type FriendsOverlayTextFitStatus } from "@/lib/friends-guarantee-fit";
 import { evaluateGuaranteeDownloadGate } from "@/lib/guarantee-download-gate";
 import { requireTenantSession } from "@/lib/tenant-session";
@@ -163,7 +161,17 @@ export async function GuaranteeApplicationPreviewPage({
     FRIENDS_GUARANTEE_DEFAULT_TEMPLATE_ID;
   const template = findGuaranteeCompanyTemplate(requestedTemplateId);
   if (!template) notFound();
+  if (!isTemplateAuthoring) {
+    const installedTemplate = await getActiveTenantGuaranteeTemplateInstall({ tenantId, templateId: template.id });
+    if (!installedTemplate) {
+      redirect(`/templates?template=${encodeURIComponent(template.id)}`);
+    }
+  }
   const templateConfig = getGuaranteePdfTemplateConfig(template.id);
+  const publishedTemplateLayout = await resolveGuaranteeTemplateLayout(
+    template.id,
+    isTemplateAuthoring ? undefined : tenantId,
+  );
   const selectedCase =
     (requestedCaseId ? await getBrokerageCaseById({ userId: user.id, tenantId, caseId: requestedCaseId }) : null) ??
     cases.find((item) => item.id === "case_fixture_friends_guarantee_pdf") ??
@@ -190,16 +198,19 @@ export async function GuaranteeApplicationPreviewPage({
   const requiredFieldKeys = new Set(template.requiredFieldKeys);
   const unresolvedRequiredFields = readinessGroups.find((group) => group.id === "unresolved")?.fields ?? [];
   const requiredMissingCount = unresolvedRequiredFields.length;
+  const templateCustomFields = publishedTemplateLayout.snapshot.customOverlayFields;
+  const caseCustomFields = selectedCase
+    ? getFriendsGuaranteeCaseCustomOverlayFields({ templateId: template.id, confirmedDataJson: selectedCase.confirmedDataJson })
+    : [];
   const customFields = isTemplateAuthoring
-    ? getFriendsGuaranteeTemplateCustomOverlayFields(template.id)
-    : selectedCase
-      ? getFriendsGuaranteeCustomOverlayFields({ templateId: template.id, confirmedDataJson: selectedCase.confirmedDataJson })
-      : [];
-  const deletedOverlayFieldKeys = isTemplateAuthoring
-    ? new Set(getFriendsGuaranteeTemplateDeletedOverlayFieldKeys(template.id))
-    : selectedCase
-      ? getFriendsGuaranteeEffectiveDeletedOverlayFieldKeys({ templateId: template.id, confirmedDataJson: selectedCase.confirmedDataJson })
-      : new Set<string>();
+    ? templateCustomFields
+    : [...new Map([...templateCustomFields, ...caseCustomFields].map((field) => [field.fieldKey, field])).values()];
+  const deletedOverlayFieldKeys = new Set([
+    ...publishedTemplateLayout.snapshot.deletedOverlayFieldKeys,
+    ...(selectedCase && !isTemplateAuthoring
+      ? getFriendsGuaranteeCaseDeletedOverlayFieldKeys({ templateId: template.id, confirmedDataJson: selectedCase.confirmedDataJson })
+      : []),
+  ]);
   const overlayFields = [...templateConfig.overlayFields, ...customFields].filter(
     (field) => !isFriendsOverlayFieldNeverPrinted(field) && !deletedOverlayFieldKeys.has(field.fieldKey),
   );
@@ -258,12 +269,12 @@ export async function GuaranteeApplicationPreviewPage({
     ? `/cases/${encodeURIComponent(selectedCase.id)}?guaranteeTemplate=${encodeURIComponent(template.id)}`
     : "#";
   const companyDraftHref = selectedCase ? "#company-draft-fields" : "#";
-  const layoutOverrides = isTemplateAuthoring
-    ? getFriendsGuaranteeTemplateLayoutOverrides(template.id)
-    : getFriendsGuaranteeEffectiveLayoutOverrides({
-        templateId: template.id,
-        confirmedDataJson: selectedCase?.confirmedDataJson,
-      });
+  const layoutOverrides = {
+    ...publishedTemplateLayout.snapshot.layoutOverrides,
+    ...(selectedCase && !isTemplateAuthoring
+      ? getFriendsGuaranteeCaseLayoutOverrides({ templateId: template.id, confirmedDataJson: selectedCase.confirmedDataJson })
+      : {}),
+  };
   const previewFieldValues = Object.fromEntries(
     overlayFields.map((field) => {
       const value = getCustomFieldRawValue(field);

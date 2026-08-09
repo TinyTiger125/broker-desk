@@ -1,6 +1,10 @@
 import * as memory from "@/lib/data.memory";
 import * as postgres from "@/lib/data.postgres";
-import { assertProductionDataStoreReady } from "@/lib/production-readiness";
+import {
+  assertProductionDataStoreReady,
+  isProductionRuntime,
+  ProductionReadinessError,
+} from "@/lib/production-readiness";
 import { getActorIdFromCookie } from "@/lib/actor";
 import {
   isClerkAuthEnabled,
@@ -8,32 +12,108 @@ import {
   isTrustedHeaderAuthEnabled,
   readTrustedHeaderAuthIdentity,
 } from "@/lib/auth-mode";
-import { getClerkAuthIdentity } from "@/lib/clerk-auth";
+import { getClerkAuthIdentity, getClerkAuthSubject } from "@/lib/clerk-auth";
 import { headers } from "next/headers";
+import { cache } from "react";
+import { AsyncLocalStorage } from "node:async_hooks";
+
+export type TenantSessionLookup = {
+  user: memory.User;
+  membership: memory.TenantMembership;
+  tenant: memory.Tenant;
+};
+
+type ClientListFilterInput = NonNullable<Parameters<typeof memory.listClients>[1]>;
 
 const usePostgres =
   process.env.DATA_DRIVER?.toLowerCase() === "postgres" &&
   Boolean(process.env.DATABASE_URL);
 
 type DataRepository = typeof memory;
+const workerRepositorySubject = new AsyncLocalStorage<string>();
 
 function getRepository(): DataRepository {
   assertProductionDataStoreReady();
   return (usePostgres ? postgres : memory) as DataRepository;
 }
 
+const syncRepositoryMethods = new Set<keyof DataRepository>(["isTenantAccessibleStatus"]);
+
+async function withRepositoryIdentity<T>(operation: () => Promise<T>): Promise<T> {
+  if (!usePostgres || !isProductionRuntime()) {
+    return operation();
+  }
+
+  const subject = workerRepositorySubject.getStore() ?? (await getClerkAuthSubject());
+  if (!subject) {
+    throw new ProductionReadinessError("production_tenant_scope_required");
+  }
+
+  return postgres.withPostgresAuthContext(subject, operation);
+}
+
+/** Runs a background job in the same tenant-scoped repository context as its owner. */
+export async function withWorkerRepositoryIdentity<T>(externalAuthSubject: string, operation: () => Promise<T>): Promise<T> {
+  const subject = externalAuthSubject.trim();
+  if (!subject) throw new ProductionReadinessError("production_tenant_scope_required");
+  if (!usePostgres || !isProductionRuntime()) return operation();
+  return workerRepositorySubject.run(subject, () => postgres.withPostgresAuthContext(subject, operation));
+}
+
 const repo = new Proxy({} as DataRepository, {
   get(_target, property) {
     const source = getRepository();
     const value = source[property as keyof DataRepository];
-    return typeof value === "function" ? value.bind(source) : value;
+    if (typeof value !== "function") return value;
+    if (syncRepositoryMethods.has(property as keyof DataRepository)) return value.bind(source);
+    const method = value as (...args: unknown[]) => unknown;
+
+    return (...args: unknown[]) =>
+      withRepositoryIdentity(() => Promise.resolve(method(...args)));
   },
 }) as DataRepository;
 
 export { isDemoAuthEnabled };
 
-export async function getDefaultUser(preferredUserId?: string) {
+const resolveTenantSessionLookupsByExternalAuthSubject = cache(
+  async (subject: string): Promise<TenantSessionLookup[]> => {
+    const normalized = subject.trim();
+    if (!normalized) return [];
+
+    if (usePostgres) return repo.listTenantSessionLookupsByExternalAuthSubject(normalized);
+
+    const user = await repo.getUserByExternalAuthSubject(normalized);
+    if (!user) return [];
+    const memberships = await repo.listTenantMemberships(user.id);
+    const tenants = await Promise.all(memberships.map((membership) => repo.getTenantById(membership.tenantId)));
+    return memberships.flatMap((membership, index) => {
+      const tenant = tenants[index];
+      return tenant ? [{ user, membership, tenant }] : [];
+    });
+  },
+);
+
+const resolveDefaultUser = cache(async (preferredUserId?: string) => {
   if (isClerkAuthEnabled()) {
+    const subject = await getClerkAuthSubject();
+    if (!subject) return null;
+
+    // A subject never changes. For a returning user, this avoids a full Clerk
+    // profile request, a write transaction, and separate membership lookups
+    // on every route navigation.
+    const [sessionLookup] = await resolveTenantSessionLookupsByExternalAuthSubject(subject);
+    if (sessionLookup) return sessionLookup.user;
+
+    // A user can exist before their first workspace membership is assigned.
+    // Keep that state readable so the workspace selector can explain it.
+    const existingUser = await repo.getUserByExternalAuthSubject(subject);
+    if (existingUser) return existingUser;
+
+    // Production provisioning is webhook-owned and uses a narrowly scoped
+    // management connection. A tenant request must never self-provision by
+    // falling back to an owner-capable database role.
+    if (isProductionRuntime()) return null;
+
     const identity = await getClerkAuthIdentity();
     if (!identity) return null;
     return repo.ensureUserForExternalAuth(identity);
@@ -48,7 +128,34 @@ export async function getDefaultUser(preferredUserId?: string) {
   const actorId = isDemoAuthEnabled() ? preferredUserId ?? (await getActorIdFromCookie()) : undefined;
   if (!actorId && !isDemoAuthEnabled()) return null;
   return repo.getDefaultUser(actorId);
+});
+
+export async function getDefaultUser(preferredUserId?: string) {
+  return resolveDefaultUser(preferredUserId);
 }
+
+// These values are immutable for the duration of a server render. The app
+// shell and the page often need the same membership and tenant at once.
+const resolveTenantMemberships = cache(async (userId: string) => repo.listTenantMemberships(userId));
+const resolveTenantById = cache(async (tenantId: string) => repo.getTenantById(tenantId));
+const resolveClientList = cache(
+  async (
+    userId: string,
+    stage: ClientListFilterInput["stage"],
+    purpose: ClientListFilterInput["purpose"],
+    temperature: ClientListFilterInput["temperature"],
+    query: ClientListFilterInput["query"],
+    sort: ClientListFilterInput["sort"],
+    tenantId: ClientListFilterInput["tenantId"],
+    lifecycleStatus: ClientListFilterInput["lifecycleStatus"],
+  ) => repo.listClients(userId, { stage, purpose, temperature, query, sort, tenantId, lifecycleStatus }),
+);
+const resolveQuoteFormData = cache(async (tenantId?: string, lifecycleStatus?: Parameters<typeof memory.listQuoteFormData>[1]) =>
+  repo.listQuoteFormData(tenantId, lifecycleStatus),
+);
+const resolveQuotations = cache(async (limit?: number, tenantId?: string) => repo.listQuotations(limit, tenantId));
+export const listTenantSessionLookupsByExternalAuthSubject = (subject: string) =>
+  resolveTenantSessionLookupsByExternalAuthSubject(subject);
 export const listUsers: typeof memory.listUsers = (...args) =>
   repo.listUsers(...args);
 export const getUserById: typeof memory.getUserById = (...args) =>
@@ -60,7 +167,7 @@ export const ensureUserForExternalAuth: typeof memory.ensureUserForExternalAuth 
 export const suspendUserForExternalAuthSubject: typeof memory.suspendUserForExternalAuthSubject = (...args) =>
   repo.suspendUserForExternalAuthSubject(...args);
 export const getTenantById: typeof memory.getTenantById = (...args) =>
-  repo.getTenantById(...args);
+  resolveTenantById(...args);
 export const isTenantAccessibleStatus: typeof memory.isTenantAccessibleStatus = (...args) =>
   repo.isTenantAccessibleStatus(...args);
 export const listPlatformTenantAccounts: typeof memory.listPlatformTenantAccounts = (...args) =>
@@ -70,7 +177,7 @@ export const createTenantAccount: typeof memory.createTenantAccount = (...args) 
 export const updateTenantAccountLifecycle: typeof memory.updateTenantAccountLifecycle = (...args) =>
   repo.updateTenantAccountLifecycle(...args);
 export const listTenantMemberships: typeof memory.listTenantMemberships = (...args) =>
-  repo.listTenantMemberships(...args);
+  resolveTenantMemberships(...args);
 export const getTenantMembership: typeof memory.getTenantMembership = (...args) =>
   repo.getTenantMembership(...args);
 export const listTenantsForUser: typeof memory.listTenantsForUser = (...args) =>
@@ -103,26 +210,55 @@ export const applyOutputTemplateVersion: typeof memory.applyOutputTemplateVersio
   repo.applyOutputTemplateVersion(...args);
 export const getOutputTemplateVersionById: typeof memory.getOutputTemplateVersionById = (...args) =>
   repo.getOutputTemplateVersionById(...args);
+export const getActiveGuaranteeTemplateLayoutVersion: typeof memory.getActiveGuaranteeTemplateLayoutVersion = (...args) =>
+  repo.getActiveGuaranteeTemplateLayoutVersion(...args);
+export const listGuaranteeTemplateLayoutVersions: typeof memory.listGuaranteeTemplateLayoutVersions = (...args) =>
+  repo.listGuaranteeTemplateLayoutVersions(...args);
+export const publishGuaranteeTemplateLayoutVersion: typeof memory.publishGuaranteeTemplateLayoutVersion = (...args) =>
+  repo.publishGuaranteeTemplateLayoutVersion(...args);
+export const listTenantGuaranteeTemplateInstalls: typeof memory.listTenantGuaranteeTemplateInstalls = (...args) =>
+  repo.listTenantGuaranteeTemplateInstalls(...args);
+export const getActiveTenantGuaranteeTemplateInstall: typeof memory.getActiveTenantGuaranteeTemplateInstall = (...args) =>
+  repo.getActiveTenantGuaranteeTemplateInstall(...args);
+export const installGuaranteeTemplateForTenant: typeof memory.installGuaranteeTemplateForTenant = (...args) =>
+  repo.installGuaranteeTemplateForTenant(...args);
+export const archiveTenantGuaranteeTemplateInstall: typeof memory.archiveTenantGuaranteeTemplateInstall = (...args) =>
+  repo.archiveTenantGuaranteeTemplateInstall(...args);
 export const getDashboardData: typeof memory.getDashboardData = (...args) =>
   repo.getDashboardData(...args);
-export const listClients: typeof memory.listClients = (...args) =>
-  repo.listClients(...args);
+export const listClients: typeof memory.listClients = (userId, filter = {}) =>
+  resolveClientList(
+    userId,
+    filter.stage,
+    filter.purpose,
+    filter.temperature,
+    filter.query,
+    filter.sort,
+    filter.tenantId,
+    filter.lifecycleStatus,
+  );
 export const getClientById: typeof memory.getClientById = (...args) =>
   repo.getClientById(...args);
 export const getClientDetail: typeof memory.getClientDetail = (...args) =>
   repo.getClientDetail(...args);
 export const getBoardData: typeof memory.getBoardData = (...args) =>
   repo.getBoardData(...args);
-export const listQuoteFormData: typeof memory.listQuoteFormData = (...args) =>
-  repo.listQuoteFormData(...args);
+export const listQuoteFormData: typeof memory.listQuoteFormData = (tenantId, lifecycleStatus) =>
+  resolveQuoteFormData(tenantId, lifecycleStatus);
 export const addProperty: typeof memory.addProperty = (...args) =>
   repo.addProperty(...args);
 export const getPropertyById: typeof memory.getPropertyById = (...args) =>
   repo.getPropertyById(...args);
 export const updateProperty: typeof memory.updateProperty = (...args) =>
   repo.updateProperty(...args);
-export const listQuotations: typeof memory.listQuotations = (...args) =>
-  repo.listQuotations(...args);
+export const setBrokerageCaseLifecycleStatus: typeof memory.setBrokerageCaseLifecycleStatus = (...args) =>
+  repo.setBrokerageCaseLifecycleStatus(...args);
+export const setClientLifecycleStatus: typeof memory.setClientLifecycleStatus = (...args) =>
+  repo.setClientLifecycleStatus(...args);
+export const setPropertyLifecycleStatus: typeof memory.setPropertyLifecycleStatus = (...args) =>
+  repo.setPropertyLifecycleStatus(...args);
+export const listQuotations: typeof memory.listQuotations = (limit, tenantId) =>
+  resolveQuotations(limit, tenantId);
 export const getQuotationById: typeof memory.getQuotationById = (...args) =>
   repo.getQuotationById(...args);
 export const addClient: typeof memory.addClient = (...args) => repo.addClient(...args);
@@ -156,10 +292,16 @@ export const updateQuotationStatus: typeof memory.updateQuotationStatus = (...ar
   repo.updateQuotationStatus(...args);
 export const listImportJobs: typeof memory.listImportJobs = (...args) =>
   repo.listImportJobs(...args);
+export const getImportJobByIdempotencyKey: typeof memory.getImportJobByIdempotencyKey = (...args) =>
+  repo.getImportJobByIdempotencyKey(...args);
 export const addImportJob: typeof memory.addImportJob = (...args) =>
   repo.addImportJob(...args);
 export const updateImportJobMapping: typeof memory.updateImportJobMapping = (...args) =>
   repo.updateImportJobMapping(...args);
+export const updateImportJobExecution: typeof memory.updateImportJobExecution = (...args) =>
+  repo.updateImportJobExecution(...args);
+export const retryImportJobExecution: typeof memory.retryImportJobExecution = (...args) =>
+  repo.retryImportJobExecution(...args);
 export const listBrokerageCases: typeof memory.listBrokerageCases = (...args) =>
   repo.listBrokerageCases(...args);
 export const getBrokerageCaseById: typeof memory.getBrokerageCaseById = (...args) =>
@@ -188,6 +330,8 @@ export const updateAiExperienceDraftStatus: typeof memory.updateAiExperienceDraf
   repo.updateAiExperienceDraftStatus(...args);
 export const getGuaranteeApplicationDraft: typeof memory.getGuaranteeApplicationDraft = (...args) =>
   repo.getGuaranteeApplicationDraft(...args);
+export const listGuaranteeApplicationDrafts: typeof memory.listGuaranteeApplicationDrafts = (...args) =>
+  repo.listGuaranteeApplicationDrafts(...args);
 export const saveGuaranteeApplicationDraft: typeof memory.saveGuaranteeApplicationDraft = (...args) =>
   repo.saveGuaranteeApplicationDraft(...args);
 export const listAttachments: typeof memory.listAttachments = (...args) =>
@@ -196,6 +340,10 @@ export const getAttachmentById: typeof memory.getAttachmentById = (...args) =>
   repo.getAttachmentById(...args);
 export const addAttachment: typeof memory.addAttachment = (...args) =>
   repo.addAttachment(...args);
+export const addPrivateAttachment: typeof memory.addPrivateAttachment = (...args) =>
+  repo.addPrivateAttachment(...args);
+export const readPrivateAttachmentContent: typeof memory.readPrivateAttachmentContent = (...args) =>
+  repo.readPrivateAttachmentContent(...args);
 export const listGeneratedOutputs: typeof memory.listGeneratedOutputs = (...args) =>
   repo.listGeneratedOutputs(...args);
 export const getGeneratedOutputById: typeof memory.getGeneratedOutputById = (...args) =>

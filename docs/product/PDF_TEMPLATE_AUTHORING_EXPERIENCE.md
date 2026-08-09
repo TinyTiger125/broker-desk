@@ -399,7 +399,7 @@ Required rule:
 - the preview save action must compare submitted custom-field count against sanitized custom-field count
 - if submitted fields are rejected by sanitation, the server must abort the save instead of persisting a partial template
 - if the hidden custom-field payload is missing or unreadable, the server must not overwrite existing template custom fields with an empty set
-- before any risky template persistence change, keep a timestamped copy of `.broker-desk/friends-guarantee-layouts.json`
+- before any risky template persistence change, publish a new immutable platform version; legacy JSON export is backup only
 
 ## Long-Term Product Direction
 

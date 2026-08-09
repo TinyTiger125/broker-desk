@@ -51,7 +51,7 @@ The failure mode is dangerous because the UI looked normal while being non-inter
 - Never continue template calibration when toolbar controls do not respond.
 - Never assume a visible Next page is hydrated.
 - Never debug template coordinates until runtime health is confirmed.
-- Back up `.broker-desk/friends-guarantee-layouts.json` before runtime cleanup, server restarts, or risky template tooling changes.
+- Do not calibrate against a local runtime file in production. Official layouts must be published to the shared template-version store; see `GUARANTEE_TEMPLATE_PUBLICATION.md`.
 - Prefer production-mode verification for acceptance of official PDF output.
 
 ## Required Health Check
@@ -131,14 +131,15 @@ This protects against silent static HTML.
 
 ### 3. Template Asset Protection
 
-Template coordinates are production assets. The runtime should treat `.broker-desk/friends-guarantee-layouts.json` as protected state.
+Template coordinates are production assets. The runtime must resolve a published, asset-fingerprinted layout version from the shared database.
 
 Minimum protection:
 
-- timestamped backup before authoring sessions
-- explicit template-save operation
+- immutable publication instead of in-place coordinate mutation
+- tenant-installed copies resolve before official publications and are never overwritten by later releases
+- SHA-256 asset fingerprint and page-geometry verification before render
 - no automatic coordinate writes during runtime debugging
-- regression check that saved template positions survive restart
+- regression check that preview and download both use the published version
 
 ### 4. Acceptance Runtime Should Match Release Runtime
 

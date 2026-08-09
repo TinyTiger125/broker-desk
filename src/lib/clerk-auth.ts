@@ -1,4 +1,5 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
+import { cache } from "react";
 
 export type ClerkAuthIdentity = {
   subject: string;
@@ -6,9 +7,23 @@ export type ClerkAuthIdentity = {
   name?: string;
 };
 
-export async function getClerkAuthIdentity(): Promise<ClerkAuthIdentity | null> {
+/**
+ * Authentication state is needed by both the application shell and the page
+ * being rendered. Keep the inexpensive subject lookup request-scoped so one
+ * navigation does not ask Clerk for the same session more than once.
+ */
+export const getClerkAuthSubject = cache(async (): Promise<string | null> => {
   const authState = await auth();
-  if (!authState.userId) return null;
+  return authState.userId ?? null;
+});
+
+/**
+ * Fetch the Clerk profile only when a local user record must be provisioned.
+ * Existing users are resolved by immutable Clerk subject in data.ts.
+ */
+export const getClerkAuthIdentity = cache(async (): Promise<ClerkAuthIdentity | null> => {
+  const subject = await getClerkAuthSubject();
+  if (!subject) return null;
 
   const user = await currentUser();
   const primaryEmail =
@@ -18,8 +33,8 @@ export async function getClerkAuthIdentity(): Promise<ClerkAuthIdentity | null> 
   const name = [user?.firstName, user?.lastName].filter(Boolean).join(" ").trim() || user?.username || undefined;
 
   return {
-    subject: authState.userId,
+    subject,
     email: primaryEmail?.trim().toLowerCase() || undefined,
     name,
   };
-}
+});

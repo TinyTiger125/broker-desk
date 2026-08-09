@@ -70,8 +70,10 @@ const ja: Dict = {
   "dashboard.coverage.contractCount": "契約連携",
 
   "import.status.queued": "受付",
+  "import.status.processing": "読取中",
   "import.status.mapped": "確認待ち",
   "import.status.completed": "完了",
+  "import.status.failed": "読取失敗",
   "import.source.excel": "Excel",
   "import.source.pdf": "PDF",
   "import.source.scan": "スキャン",
@@ -254,8 +256,10 @@ const zh: Dict = {
   "dashboard.coverage.contractCount": "合同关联",
 
   "import.status.queued": "已受理",
+  "import.status.processing": "读取中",
   "import.status.mapped": "待确认",
   "import.status.completed": "完成",
+  "import.status.failed": "读取失败",
   "import.source.scan": "扫描",
   "import.source.manual": "手动输入",
   "request.status.open": "处理中",
@@ -435,8 +439,10 @@ const ko: Dict = {
   "dashboard.coverage.contractCount": "계약 연결",
 
   "import.status.queued": "접수",
+  "import.status.processing": "읽는 중",
   "import.status.mapped": "확인 대기",
   "import.status.completed": "완료",
+  "import.status.failed": "읽기 실패",
   "import.source.scan": "스캔",
   "import.source.manual": "수기 입력",
   "request.status.open": "처리 중",

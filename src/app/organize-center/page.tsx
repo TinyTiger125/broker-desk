@@ -12,12 +12,13 @@ import {
   type HubImportJobItem,
 } from "@/lib/hub";
 import { getLocale, type Locale } from "@/lib/locale";
+import { normalizeLifecycleFilter, type LifecycleFilter } from "@/lib/record-lifecycle";
 import { requireTenantSession } from "@/lib/tenant-session";
 
 export const dynamic = "force-dynamic";
 
 type OrganizeCenterPageProps = {
-  searchParams?: Promise<{ type?: string; q?: string }>;
+  searchParams?: Promise<{ type?: string; q?: string; lifecycle?: string }>;
 };
 
 type ObjectType = "all" | "case" | "party" | "property" | "inbox";
@@ -36,6 +37,7 @@ type WorkObject = {
   href: string;
   secondaryHref?: string;
   secondaryLabel?: string;
+  lifecycleStatus: "active" | "archived";
 };
 
 const copyByLocale = {
@@ -83,6 +85,9 @@ const copyByLocale = {
     pageStatus: "表示中",
     previousPage: "前へ",
     nextPage: "次へ",
+    activeRecords: "有効な記録",
+    archivedRecords: "保管済み",
+    allRecords: "すべての記録",
   },
   zh: {
     title: "整理信息",
@@ -128,6 +133,9 @@ const copyByLocale = {
     pageStatus: "当前显示",
     previousPage: "上一页",
     nextPage: "下一页",
+    activeRecords: "有效记录",
+    archivedRecords: "已归档",
+    allRecords: "全部记录",
   },
   ko: {
     title: "정보 정리",
@@ -173,6 +181,9 @@ const copyByLocale = {
     pageStatus: "현재 표시",
     previousPage: "이전",
     nextPage: "다음",
+    activeRecords: "활성 기록",
+    archivedRecords: "보관된 기록",
+    allRecords: "전체 기록",
   },
 } satisfies Record<Locale, Record<string, string>>;
 
@@ -227,10 +238,11 @@ export default async function OrganizeCenterPage({ searchParams }: OrganizeCente
   const params = searchParams ? await searchParams : undefined;
   const selectedType = isObjectType(params?.type) ? params.type : "all";
   const query = String(params?.q ?? "").trim();
-  const context = { userId: session.user.id, tenantId: session.tenant.id };
+  const lifecycleFilter: LifecycleFilter = normalizeLifecycleFilter(params?.lifecycle);
+  const context = { userId: session.user.id, tenantId: session.tenant.id, lifecycleStatus: lifecycleFilter };
 
   const [cases, parties, properties, importJobs] = await Promise.all([
-    listBrokerageCases(session.user.id, 100, session.tenant.id),
+    listBrokerageCases(session.user.id, 100, session.tenant.id, lifecycleFilter),
     listHubParties(locale, context),
     listHubProperties(locale, context),
     listHubImportJobs(context),
@@ -251,6 +263,7 @@ export default async function OrganizeCenterPage({ searchParams }: OrganizeCente
       id: item.id,
       type: "case",
       status,
+      lifecycleStatus: item.lifecycleStatus ?? "active",
       title: item.caseTitle,
       subtitle: getStatusLabel(status, copy),
       relation: `${applicantName || copy.personUnset} / ${propertyName || copy.propertyUnset}`,
@@ -273,6 +286,7 @@ export default async function OrganizeCenterPage({ searchParams }: OrganizeCente
       id: item.id,
       type: "party",
       status,
+      lifecycleStatus: item.status ?? "active",
       title: item.name,
       subtitle: item.partyType === "corporate" ? copy.corporate : copy.individual,
       relation: item.relatedPropertyHint || copy.noRelation,
@@ -289,6 +303,7 @@ export default async function OrganizeCenterPage({ searchParams }: OrganizeCente
       id: item.id,
       type: "property",
       status,
+      lifecycleStatus: item.status ?? "active",
       title: item.name,
       subtitle: item.area,
       relation: copy.propertyRelationHint,
@@ -304,6 +319,7 @@ export default async function OrganizeCenterPage({ searchParams }: OrganizeCente
       id: item.id,
       type: "inbox",
       status: "unconfirmed",
+      lifecycleStatus: "active",
       title: item.title,
       subtitle: getSourceTypeLabel(locale, item.sourceType),
       relation: copy.noRelation,
@@ -319,6 +335,7 @@ export default async function OrganizeCenterPage({ searchParams }: OrganizeCente
     id: item.id,
     type: item.type,
     status: item.status,
+    lifecycleStatus: item.lifecycleStatus,
     title: item.title,
     subtitle: item.subtitle,
     relation: item.relation,
@@ -330,12 +347,12 @@ export default async function OrganizeCenterPage({ searchParams }: OrganizeCente
     secondaryLabel: item.secondaryLabel,
   }));
   return (
-    <div className="space-y-6">
-      <header className="border-b border-slate-200 pb-5">
+    <div className="bd-page bd-organize-page space-y-6">
+      <header className="bd-page-header">
         <h1 className="text-3xl font-black tracking-tight text-slate-950">{copy.title}</h1>
       </header>
 
-      <section className="rounded-lg border border-slate-200 bg-white">
+      <section className="bd-section">
         {selectedType === "all" ? (
           <div className="border-b border-slate-200 p-4">
             <div>
@@ -345,11 +362,13 @@ export default async function OrganizeCenterPage({ searchParams }: OrganizeCente
         ) : null}
 
         <OrganizeCenterObjectBrowser
-          key={`${selectedType}:${query}`}
+          key={`${selectedType}:${query}:${lifecycleFilter}`}
           items={browserItems}
           selectedType={selectedType}
           query={query}
           copy={copy}
+          lifecycleFilter={lifecycleFilter}
+          locale={locale}
         />
       </section>
     </div>

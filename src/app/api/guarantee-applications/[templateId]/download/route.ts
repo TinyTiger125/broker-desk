@@ -4,12 +4,12 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PDFDocument } from "pdf-lib";
-import { addAuditLog, addGeneratedOutput, getBrokerageCaseById, getGuaranteeApplicationDraft } from "@/lib/data";
+import { addAuditLog, addGeneratedOutput, getActiveTenantGuaranteeTemplateInstall, getBrokerageCaseById, getGuaranteeApplicationDraft } from "@/lib/data";
 import {
-  getFriendsGuaranteeTemplateLayoutSnapshot,
   getGuaranteePdfTemplateConfig,
   renderFriendsGuaranteePdf,
 } from "@/lib/friends-guarantee-pdf";
+import { resolveGuaranteeTemplateLayout } from "@/lib/guarantee-template-layout-runtime";
 import { findGuaranteeCompanyTemplate } from "@/lib/guarantee-application";
 import { evaluateGuaranteeDownloadGate } from "@/lib/guarantee-download-gate";
 import { requireTenantSession, TenantSessionError } from "@/lib/tenant-session";
@@ -128,6 +128,13 @@ export async function GET(request: Request, { params }: GuaranteeTemplateDownloa
   if (!brokerageCase) {
     return NextResponse.json({ error: "case_not_found" }, { status: 404 });
   }
+  const installedTemplate = await getActiveTenantGuaranteeTemplateInstall({
+    tenantId: session.tenant.id,
+    templateId: template.id,
+  });
+  if (!installedTemplate) {
+    return NextResponse.json({ error: "template_not_installed" }, { status: 403 });
+  }
   const draft = await getGuaranteeApplicationDraft({
     userId: session.user.id,
     tenantId: session.tenant.id,
@@ -161,11 +168,13 @@ export async function GET(request: Request, { params }: GuaranteeTemplateDownloa
   }
 
   try {
+    const templateLayout = await resolveGuaranteeTemplateLayout(template.id, session.tenant.id);
     const bytes = await renderFriendsGuaranteePdf({
       confirmedDataJson: brokerageCase.confirmedDataJson,
       draftFieldValuesJson: draft?.fieldValuesJson,
       caseTitle: brokerageCase.caseTitle,
       templateId: template.id,
+      templateLayoutSnapshot: templateLayout.snapshot,
     });
     if (mode === "preview" && format === "preview-info") {
       return NextResponse.json(
@@ -193,7 +202,7 @@ export async function GET(request: Request, { params }: GuaranteeTemplateDownloa
     }
     if (mode !== "preview") {
       const generatedAt = new Date();
-      const layoutSnapshot = getFriendsGuaranteeTemplateLayoutSnapshot(template.id);
+      const layoutSnapshot = templateLayout.snapshot;
       const pdfTemplateConfig = getGuaranteePdfTemplateConfig(template.id);
       const documentNumber = createGuaranteeDocumentNumber({
         templateId: template.id,
@@ -209,7 +218,7 @@ export async function GET(request: Request, { params }: GuaranteeTemplateDownloa
         language: "ja",
         title: `${template.companyDisplayName}申込書 - ${brokerageCase.caseTitle}`,
         documentNumber,
-        templateVersionId: `official:${template.id}:${layoutSnapshot.baselineVersion}`,
+        templateVersionId: templateLayout.versionId,
         caseId: brokerageCase.id,
         templateId: template.id,
         inputDataSnapshot: brokerageCase.confirmedDataJson,
@@ -233,6 +242,8 @@ export async function GET(request: Request, { params }: GuaranteeTemplateDownloa
           outputId: generated.id,
           documentNumber,
           templateVersionId: generated.templateVersionId,
+          publishedLayoutVersion: templateLayout.versionNumber,
+          publishedLayoutSource: templateLayout.source,
         },
       });
     }

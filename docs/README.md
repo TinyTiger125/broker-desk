@@ -30,6 +30,7 @@ Files in `docs/product/` describe current product direction and product-owned mo
 | `docs/product/AI_EXPERIENCE_MODEL_CONTEXT_CHAIN.md` | Internal AI experience handoff chain for future model context injection. |
 | `docs/product/V1_AI_MODEL_SELECTION.md` | OpenAI model routing and AI runtime boundary. |
 | `docs/product/MULTI_TENANT_PERMISSION_MODEL.md` | Tenant, membership, lifecycle-wide permissions, template governance, and release gates. |
+| `docs/product/RECORD_LIFECYCLE.md` | Soft-archive and restore rules for cases, parties, properties, permissions, and data retention. |
 
 ## Engineering Sources
 
@@ -38,6 +39,7 @@ Files in `docs/engineering/` describe runtime, persistence, and operational arch
 | File | Purpose |
 | --- | --- |
 | `docs/engineering/RUNTIME_STABILITY_AND_ARCHITECTURE.md` | Dev/runtime stability rules and release-like verification guidance. |
+| `docs/engineering/GUARANTEE_TEMPLATE_PUBLICATION.md` | Official template publication, tenant installation, and cross-device PDF consistency contract. |
 | `docs/operations/RELEASE_V0.2.0_RC1_2026_08_05.md` | Unified public-beta candidate baseline, scope, verification gate, and versioning rule. |
 | `docs/engineering/POSTGRES_SETUP.md` | Postgres/Supabase setup and driver switching. |
 | `docs/engineering/postgres_schema.sql` | Manual SQL schema reference. |
