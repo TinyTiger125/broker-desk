@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getExcelUploadLimitBytes, queueExcelImportSource } from "@/lib/excel-import-queue";
 import { getRequestId, logOperationalEvent } from "@/lib/operational-logging";
-import { assertProductionImportWorkerReady } from "@/lib/production-readiness";
+import { assertProductionImportWorkerReady, ProductionReadinessError } from "@/lib/production-readiness";
 import { TenantSessionError, requireTenantSession } from "@/lib/tenant-session";
 
 export const dynamic = "force-dynamic";
@@ -35,7 +35,10 @@ export async function POST(request: Request) {
     }, { status: result.status === "queued" ? 202 : 200, headers: { "x-request-id": requestId } });
   } catch (error) {
     if (error instanceof TenantSessionError) return NextResponse.json({ ok: false, error: error.code, requestId }, { status: error.status });
-    const code = error instanceof Error && "code" in error ? String(error.code) : "service_unavailable";
-    return NextResponse.json({ ok: false, error: code, requestId }, { status: 503 });
+    if (error instanceof ProductionReadinessError) {
+      return NextResponse.json({ ok: false, error: error.code, requestId }, { status: 503 });
+    }
+    logOperationalEvent({ event: "excel_import", requestId, outcome: "failed", detail: { code: "excel_import_unavailable" } });
+    return NextResponse.json({ ok: false, error: "excel_import_unavailable", requestId }, { status: 503 });
   }
 }

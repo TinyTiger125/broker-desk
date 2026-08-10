@@ -250,10 +250,19 @@ const totals = summaries.reduce(
   },
 );
 
+const ok = totals.requiredTextSourceGaps === 0 && totals.unboundCustomFields === 0;
+
 console.log(JSON.stringify({
-  ok: totals.requiredTextSourceGaps === 0 && totals.unboundCustomFields === 0,
+  ok,
   fixtureFieldCount: Object.keys(fixtureValues).length,
   templateCount: summaries.length,
   totals,
   templates: summaries,
 }, null, 2));
+
+if (!ok) {
+  console.error(
+    `[FAIL] guarantee template coverage has ${totals.requiredTextSourceGaps} required source gap(s) and ${totals.unboundCustomFields} unbound custom field(s).`,
+  );
+  process.exit(1);
+}

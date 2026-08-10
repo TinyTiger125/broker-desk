@@ -4,11 +4,14 @@
 
 ## 必须通过
 
-- [ ] 在已配置的开发环境运行 `npm run verify:public-beta` 并保存通过输出。这是代码、迁移与已连接开发数据库的统一门禁，不替代以下托管环境验证。
+- [x] 在已配置的开发环境运行 `npm run verify:public-beta` 并保存通过输出（2026-08-10，`v0.2.0-rc.2`）。这是代码、迁移与已连接开发数据库的统一门禁，不替代以下托管环境验证。
 - [ ] 干净克隆执行 install、migration、lint、build 与静态门禁均通过。
-- [ ] `npm audit --omit=dev` 无未处理 Critical/High，或每项例外已有风险接受人、到期日和隔离说明。
-- [ ] migration role、runtime role、webhook admin role 已分离；runtime role 不是 owner、superuser 或 BYPASSRLS。
-- [ ] RLS 负向测试使用真实 runtime role，通过跨租户页面、API、附件、后台 job 的拒绝验证。
+- [x] `npm audit --omit=dev --registry=https://registry.npmjs.org` 无未处理 Critical/High（2026-08-09）；本地镜像源不支持 audit API，不能以其错误替代真实审计结论。
+- [ ] 两台真实设备对同一共享工作区、同一固定案件完成五张保证公司模板的跨设备视觉验收，并保存两端 `manifestDigest`、模板版本与视觉冒烟输出。执行步骤见 `GUARANTEE_TEMPLATE_CROSS_DEVICE_ACCEPTANCE.md`。
+- [ ] 平台管理员、租户管理员和普通经纪人三个真实 Clerk 身份完成正向与越权拒绝验证。执行步骤见 `ROLE_AUTH_E2E_ACCEPTANCE.md`。
+- [x] 资料导入的格式错误、权限拒绝、读取服务不可用和未知失败均在产品内显示可恢复状态；页面不暴露堆栈或内部错误码（2026-08-10 自动门禁通过）。上线前仍需在托管环境手动验证一次读取服务不可用场景。自动检查见 `test:import-failure-recovery`，用语边界见 `P0_UI_LANGUAGE_BOUNDARY.md`。
+- [x] migration role、runtime role、webhook admin role 已分离；runtime role 不是 owner、superuser 或 BYPASSRLS（2026-08-10 已连接开发数据库验证）。
+- [x] RLS 负向测试使用真实 runtime role，通过跨租户数据读取拒绝验证（2026-08-10 已连接开发数据库验证）。上线前仍需覆盖页面、附件与后台 job 的托管环境路径。
 - [ ] Clerk production instance、数据库、附件存储和读取服务均与开发环境隔离。
 - [ ] 远程读取服务符合 `REMOTE_DOCUMENT_READER_CONTRACT.md`，其域名已加入 allowlist。
 - [ ] import worker 已由托管调度器启动，幂等、失败、超时、重试和并发领取演练通过。

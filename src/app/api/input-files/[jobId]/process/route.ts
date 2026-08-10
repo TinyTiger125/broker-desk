@@ -39,7 +39,8 @@ export async function GET(request: Request, context: { params: Promise<{ jobId: 
     if (error instanceof TenantSessionError) {
       return NextResponse.json({ ok: false, error: error.code, requestId }, { status: error.status });
     }
-    throw error;
+    logOperationalEvent({ event: "import_job_status", requestId, outcome: "failed", detail: { code: "import_status_unavailable" } });
+    return NextResponse.json({ ok: false, error: "import_status_unavailable", requestId }, { status: 503 });
   }
 }
 
@@ -107,6 +108,7 @@ export async function POST(request: Request, context: { params: Promise<{ jobId:
     if (error instanceof ProductionReadinessError) {
       return NextResponse.json({ ok: false, error: error.code, requestId }, { status: 503 });
     }
-    throw error;
+    logOperationalEvent({ event: "import_job_process", requestId, outcome: "failed", detail: { code: "import_processing_unavailable" } });
+    return NextResponse.json({ ok: false, error: "import_processing_unavailable", requestId }, { status: 503 });
   }
 }

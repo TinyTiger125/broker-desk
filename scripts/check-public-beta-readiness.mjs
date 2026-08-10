@@ -16,14 +16,20 @@ const scripts = packageJson.scripts ?? {};
 for (const scriptName of [
   "build",
   "lint",
+  "typecheck",
   "db:migrate",
   "db:provision-runtime-roles",
   "worker:import",
   "test:production-security",
   "test:postgres-rls",
+  "test:tenant-auth-lifecycle-state",
   "test:upload-validation",
+  "test:import-failure-recovery",
   "test:request-rate-limit",
   "test:ja-terms",
+  "test:product-language",
+  "test:guarantee-template-reproducibility",
+  "test:guarantee-template-publication-state",
 ]) {
   assert(scripts[scriptName], `missing required package script: ${scriptName}`);
 }
@@ -78,6 +84,9 @@ for (const filePath of [
   "docs/operations/PUBLIC_BETA_RELEASE_GATE.md",
   "docs/operations/IMPORT_WORKER_RUNBOOK.md",
   "docs/operations/REMOTE_DOCUMENT_READER_CONTRACT.md",
+  "docs/operations/GUARANTEE_TEMPLATE_CROSS_DEVICE_ACCEPTANCE.md",
+  "docs/operations/ROLE_AUTH_E2E_ACCEPTANCE.md",
+  "docs/operations/P0_UI_LANGUAGE_BOUNDARY.md",
   "docs/engineering/POSTGRES_SETUP.md",
 ]) {
   read(filePath);

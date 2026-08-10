@@ -58,7 +58,12 @@ export function MainNavLinks({ links, orientation = "row" }: MainNavLinksProps) 
         const icon = iconByHref[hrefPath] ?? (hrefPath.startsWith("/cases/") ? "fact_check" : "circle");
 
         return (
-          <Link key={`${link.label}:${link.href}`} href={link.href} className={`${base} ${tone} ${isRow ? "justify-center" : "flex items-center gap-3"}`}>
+          <Link
+            key={`${link.label}:${link.href}`}
+            href={link.href}
+            prefetch
+            className={`${base} ${tone} ${isRow ? "justify-center" : "flex items-center gap-3"}`}
+          >
             <span aria-hidden="true" className={`material-symbols-outlined app-nav-link-icon ${isRow ? "hidden" : "inline-block text-[20px]"}`}>
               {icon}
             </span>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useFormStatus } from "react-dom";
 import { saveExtractionReviewAction } from "@/app/actions";
 import type { CaseMergeCandidateSummary } from "@/lib/case-merge";
 import { getCaseFieldDefinition } from "@/lib/case-field-catalog";
@@ -132,6 +133,32 @@ function isConfirmedStatus(status: LocalReviewStatus) {
   return status === "accepted" || status === "edited";
 }
 
+function SaveReviewButton({
+  locale,
+  hasTarget,
+}: {
+  locale: Locale;
+  hasTarget: boolean;
+}) {
+  const { pending } = useFormStatus();
+  const defaultLabel = hasTarget
+    ? tr(locale, { ja: "確認結果を案件へ追加保存", zh: "将核对结果追加到案件", ko: "확인 결과를 안건에 추가 저장" })
+    : tr(locale, { ja: "確認結果を案件として保存", zh: "保存核对结果为案件", ko: "확인 결과를 안건으로 저장" });
+
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      className="inline-flex min-w-40 items-center justify-center gap-2 rounded-lg bg-indigo-700 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-indigo-800 disabled:cursor-wait disabled:bg-indigo-400"
+    >
+      {pending ? <span aria-hidden="true" className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/35 border-t-white" /> : null}
+      {pending
+        ? tr(locale, { ja: "案件へ保存中…", zh: "正在保存到案件...", ko: "안건에 저장 중..." })
+        : defaultLabel}
+    </button>
+  );
+}
+
 export function InputExtractionReview({
   extraction,
   locale,
@@ -175,6 +202,7 @@ export function InputExtractionReview({
   const [reviewMode, setReviewMode] = useState<"pending" | "all">("pending");
   const [settlingFieldIds, setSettlingFieldIds] = useState<Set<string>>(() => new Set());
   const [confirmationNotice, setConfirmationNotice] = useState<{ id: string; label: string } | null>(null);
+  const [recentlyConfirmedIds, setRecentlyConfirmedIds] = useState<Set<string>>(() => new Set());
   const extractionStats = useMemo(() => {
     const readable = items.filter(hasReadableValue).length;
     const empty = items.length - readable;
@@ -263,13 +291,21 @@ export function InputExtractionReview({
       return next;
     });
     setConfirmationNotice({ id, label: field.label });
+    setRecentlyConfirmedIds((current) => new Set(current).add(id));
     window.setTimeout(() => {
       setSettlingFieldIds((current) => {
         const next = new Set(current);
         next.delete(id);
         return next;
       });
-    }, 560);
+    }, 760);
+    window.setTimeout(() => {
+      setRecentlyConfirmedIds((current) => {
+        const next = new Set(current);
+        next.delete(id);
+        return next;
+      });
+    }, 1500);
     window.setTimeout(() => {
       setConfirmationNotice((current) => (current?.id === id ? null : current));
     }, 2200);
@@ -536,7 +572,7 @@ export function InputExtractionReview({
                 {confirmationNotice.label}
                 {tr(locale, {
                   ja: "」を確認しました。左側の一覧に反映しています。",
-                  zh: "」已确认，左侧目录已更新。",
+                  zh: "」已确认，已收束到左侧目录；点击下方保存后才会写入案件。",
                   ko: "」을 확인했습니다. 왼쪽 목록을 업데이트했습니다.",
                 })}
               </span>
@@ -597,6 +633,7 @@ export function InputExtractionReview({
                     const currentStatus = reviewStatuses[id] ?? field.reviewStatus;
                     const isConfirmed = isConfirmedStatus(currentStatus);
                     const isSettling = reviewMode === "pending" && settlingFieldIds.has(id);
+                    const wasRecentlyConfirmed = recentlyConfirmedIds.has(id);
                     const readValue = getFieldValue(field);
                   const currentValue = editedValues[id] ?? readValue;
                   const useTextarea = currentValue.length > 48 || currentValue.includes("\n") || field.fieldKey.toLowerCase().includes("address");
@@ -611,8 +648,8 @@ export function InputExtractionReview({
                       key={id}
                       className={`scroll-mt-24 overflow-hidden transition-all duration-500 ease-out ${
                         isSettling
-                          ? "max-h-0 -translate-x-8 scale-[0.98] p-0 opacity-0"
-                          : "max-h-[50rem] p-4 opacity-100"
+                          ? "max-h-0 -translate-x-10 scale-[0.97] p-0 opacity-0"
+                          : `max-h-[50rem] p-4 opacity-100 ${wasRecentlyConfirmed ? "bg-emerald-50/70 ring-2 ring-inset ring-emerald-300" : ""}`
                       }`}
                     >
                       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -680,9 +717,9 @@ export function InputExtractionReview({
                           </p>
                           <div className="flex gap-2">
                             {isConfirmed ? (
-                              <span className="inline-flex items-center gap-1 rounded-md bg-emerald-100 px-3 py-2 text-xs font-bold text-emerald-800">
+                              <span className={`inline-flex items-center gap-1 rounded-md bg-emerald-100 px-3 py-2 text-xs font-bold text-emerald-800 transition-all duration-300 ${wasRecentlyConfirmed ? "scale-105 shadow-sm" : ""}`}>
                                 <span aria-hidden="true">✓</span>
-                                {tr(locale, { ja: "確認済み", zh: "已确认", ko: "확인됨" })}
+                                {tr(locale, { ja: "確認済み・保存待ち", zh: "已确认，待保存", ko: "확인됨 · 저장 대기" })}
                               </span>
                             ) : (
                               <>
@@ -731,14 +768,7 @@ export function InputExtractionReview({
             })}
           </p>
         </div>
-        <button
-          type="submit"
-          className="rounded-lg bg-indigo-700 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-800"
-        >
-          {targetCaseId || selectedMergeCaseId
-            ? tr(locale, { ja: "確認結果を案件へ追加保存", zh: "将核对结果追加到案件", ko: "확인 결과를 안건에 추가 저장" })
-            : tr(locale, { ja: "確認結果を案件として保存", zh: "保存核对结果为案件", ko: "확인 결과를 안건으로 저장" })}
-        </button>
+        <SaveReviewButton locale={locale} hasTarget={Boolean(targetCaseId || selectedMergeCaseId)} />
       </div>
     </form>
   );

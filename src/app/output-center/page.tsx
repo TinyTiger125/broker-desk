@@ -758,10 +758,10 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
     application: locale === "zh" ? "保证会社申请" : locale === "ko" ? "보증회사 신청" : "保証会社申込",
     official: locale === "zh" ? "国土交通省官方原件" : locale === "ko" ? "국토교통성 공식 원본" : "国土交通省の公式原本",
     officialDesc: locale === "zh"
-      ? "仅供查看和下载。完成字段映射与版式核验前，不作为自动生成模板。"
+      ? "当前模板仅供查看和下载，完成配置确认后才可用于自动生成。"
       : locale === "ko"
-        ? "열람 및 다운로드용입니다. 필드 매핑과 레이아웃 검증이 끝나기 전에는 자동 생성 서식으로 사용하지 않습니다."
-        : "閲覧・ダウンロード用です。項目対応とレイアウト確認が完了するまでは自動作成に使用しません。",
+        ? "열람 및 다운로드용입니다. 필요한 설정 확인 전에는 자동 생성 서식으로 사용하지 않습니다."
+        : "閲覧・ダウンロード用です。必要な設定が確認されるまでは自動作成に使用しません。",
     mainFlow: locale === "zh" ? "可生成" : locale === "ko" ? "생성 가능" : "作成可能",
     officialSource: locale === "zh" ? "官方原件" : locale === "ko" ? "공식 원본" : "公式原本",
     templateLibrary: locale === "zh" ? "先添加模板" : locale === "ko" ? "템플릿 추가 필요" : "テンプレートを追加",

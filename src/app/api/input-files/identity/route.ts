@@ -84,6 +84,7 @@ export async function POST(request: Request) {
     if (error instanceof ProductionReadinessError) {
       return NextResponse.json({ ok: false, error: error.code, requestId }, { status: 503 });
     }
-    throw error;
+    logOperationalEvent({ event: "identity_import_queue", requestId, outcome: "failed", detail: { code: "identity_import_unavailable" } });
+    return NextResponse.json({ ok: false, error: "identity_import_unavailable", requestId }, { status: 503 });
   }
 }

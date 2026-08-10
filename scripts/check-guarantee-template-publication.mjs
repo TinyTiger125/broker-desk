@@ -5,6 +5,8 @@ import { join } from "node:path";
 
 const root = process.cwd();
 const migration = readFileSync(join(root, "db/migrations/20260805_003_guarantee_template_layout_versions.sql"), "utf8");
+const nihonSafetyFingerprintRepair = readFileSync(join(root, "db/migrations/20260810_001_repair_nihon_safety_template_fingerprint.sql"), "utf8");
+const friendsGuaranteeFingerprintRepair = readFileSync(join(root, "db/migrations/20260810_002_repair_friends_guarantee_template_fingerprint.sql"), "utf8");
 const tenantInstallMigration = readFileSync(join(root, "db/migrations/20260805_004_tenant_guarantee_template_installs.sql"), "utf8");
 const runtime = readFileSync(join(root, "src/lib/guarantee-template-layout-runtime.ts"), "utf8");
 const preview = readFileSync(join(root, "src/app/guarantee-applications/friends-guarantee/preview/preview-page-content.tsx"), "utf8");
@@ -16,7 +18,7 @@ const tenantPermissions = readFileSync(join(root, "src/lib/tenant-permissions.ts
 
 const templates = [
   ["zenhoren_individual_v1", "zenhoren-v1-hd.png", 2400, 1697, 1190.55, 841.89],
-  ["nihon_safety_individual_v1", "nihon-safety-v1-hd.png", 2400, 1696, 841.89, 595.32],
+  ["nihon_safety_individual_v1", "nihon-safety-v1-hd.png", 2400, 1696, 841.89, 595.28],
   ["j_lease_individual_v1", "j-lease-v1-hd.png", 1697, 2400, 595.32, 841.92],
   ["insure_individual_v1", "insure-v1-hd.png", 2400, 1658, 780, 539],
   ["friends_guarantee_individual_v1", "friends-guarantee-v1.png", 1600, 1131, 841.89, 595.32],
@@ -27,7 +29,39 @@ for (const [templateId, imageName, imageWidth, imageHeight, pageWidth, pageHeigh
   const image = readFileSync(join(root, "public/guarantee-templates", imageName));
   const fingerprint = `sha256:${createHash("sha256").update(image).digest("hex")}:image:${imageWidth}x${imageHeight}:page:${pageWidth}x${pageHeight}`;
   if (!migration.includes(`guarantee_layout_seed_${templateId}`)) failures.push(`missing seed: ${templateId}`);
-  if (!migration.includes(fingerprint)) failures.push(`fingerprint mismatch: ${templateId}`);
+  const fingerprintIsPublished =
+    migration.includes(fingerprint) ||
+    nihonSafetyFingerprintRepair.includes(fingerprint) ||
+    friendsGuaranteeFingerprintRepair.includes(fingerprint);
+  if (!fingerprintIsPublished) failures.push(`fingerprint mismatch: ${templateId}`);
+}
+
+const friendsLegacyFingerprint = "sha256:d1491cb0ad956cbee9e359c76c1d326496e7a757f50903e8ce52451980189518:image:1600x1131:page:841.89x595.32";
+const friendsCanonicalFingerprint = "sha256:d1491cb0ad956cbee9e359c76c1d326496e7a757f50903e8ce52451980189518:image:1600x1131:page:1190.55x841.89";
+for (const requiredFragment of [
+  friendsLegacyFingerprint,
+  friendsCanonicalFingerprint,
+  "guarantee_layout_seed_friends_guarantee_individual_v2",
+  "source_layout_version_id = 'guarantee_layout_seed_friends_guarantee_individual_v2'",
+]) {
+  if (!friendsGuaranteeFingerprintRepair.includes(requiredFragment)) {
+    failures.push("Friends guarantee fingerprint repair migration is incomplete");
+    break;
+  }
+}
+
+const nihonLegacyFingerprint = "sha256:e8bdd2412b85d6b0b4f4a8d01bc8e84ee97ccadf96b03a012eb49823e1fc1c55:image:2400x1696:page:841.89x595.32";
+const nihonCanonicalFingerprint = "sha256:e8bdd2412b85d6b0b4f4a8d01bc8e84ee97ccadf96b03a012eb49823e1fc1c55:image:2400x1696:page:841.89x595.28";
+for (const requiredFragment of [
+  nihonLegacyFingerprint,
+  nihonCanonicalFingerprint,
+  "guarantee_layout_seed_nihon_safety_individual_v2",
+  "source_layout_version_id = 'guarantee_layout_seed_nihon_safety_individual_v2'",
+]) {
+  if (!nihonSafetyFingerprintRepair.includes(requiredFragment)) {
+    failures.push("Nihon Safety fingerprint repair migration is incomplete");
+    break;
+  }
 }
 
 for (const [name, source] of [
