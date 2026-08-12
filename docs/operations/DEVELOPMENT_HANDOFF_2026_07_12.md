@@ -1,5 +1,8 @@
 # Development Handoff - 2026-07-12
 
+> Historical handoff only. It is not the current progress source or active
+> task authority. Use CURRENT_WORKING_CONTEXT.md and local task cards.
+
 This handoff freezes the current development branch state for work on another device.
 
 ## Branch And Merge Boundary

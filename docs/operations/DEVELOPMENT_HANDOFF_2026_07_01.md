@@ -1,5 +1,8 @@
 # Development Handoff 2026-07-01
 
+> Historical handoff only. It is not the current progress source or active
+> task authority. Use CURRENT_WORKING_CONTEXT.md and local task cards.
+
 This handoff records the Broker Desk state after the final pre-friend-test audit cycle and before moving work back to the primary development environment.
 
 ## Repository
@@ -251,4 +254,3 @@ Ask the tester to try the product without explanation first, then observe:
 - Does `输出文件` feel reachable only after data is ready?
 - Are Japanese names, addresses, and document names preserved naturally in Chinese UI?
 - Do any pages feel like IT/admin tooling rather than broker tooling?
-

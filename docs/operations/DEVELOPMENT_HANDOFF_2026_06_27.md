@@ -1,5 +1,8 @@
 # Development Handoff 2026-06-27
 
+> Historical handoff only. It is not the current progress source or active
+> task authority. Use CURRENT_WORKING_CONTEXT.md and local task cards.
+
 This handoff records the current Broker Desk state before moving development to another device.
 
 ## Repository

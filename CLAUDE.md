@@ -1,5 +1,10 @@
 # Claude.md
 
+> Historical compatibility file. It is retained for traceability and is not
+> the current task board, progress source, product authority, or architecture
+> authority. Read AGENTS.md, CURRENT_WORKING_CONTEXT.md, the local task cards,
+> PRODUCT.md, and ARCHITECTURE.md instead.
+
 Current active-work entrypoint: `docs/operations/CURRENT_WORKING_CONTEXT.md`.
 
 Read `docs/operations/CURRENT_WORKING_CONTEXT.md` first for active task scope, current runtime, priorities, and operating rules. Then read `docs/PROJECT_MEMORY.md` for stable facts only, followed by `CONTEXT.md` and task-specific documents.

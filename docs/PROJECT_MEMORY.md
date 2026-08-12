@@ -2,9 +2,11 @@
 
 Last updated: 2026-08-06
 
-This file is the fixed project-memory entrypoint for Broker Desk.
+This historical file is retained as stable project memory for Broker Desk. It is not the
+active task log, current backlog, or current handoff.
 
-Every future PM, development, QA, UX, or template-authoring agent should read this file first, then follow the linked deep documents only when the current task requires detail.
+Read docs/operations/CURRENT_WORKING_CONTEXT.md and the assigned local task
+card first. Read this file only for stable facts and linked deep documents.
 
 ## Update Rule
 
@@ -33,28 +35,12 @@ Do not use this file for:
 
 ## Fixed Read Order
 
-1. `docs/PROJECT_MEMORY.md`: current source of truth and next-step index.
-2. `docs/README.md`: current documentation map and archive rules.
-3. `CONTEXT.md`: domain language and product boundary.
-4. `docs/product/BROKER_DESK_PRODUCT_TECHNICAL_CHARTER_2026_07_15.md`: current product, AI-native, architecture, roadmap, and pilot design authority.
-5. `docs/product/PRODUCT_TOPOLOGY.md`: product value topology and phase model.
-6. `docs/operations/PM_CONTROL.md`: multi-agent operating model and historical task board.
-7. Task-specific docs:
-   - current handoff: `docs/operations/DEVELOPMENT_HANDOFF_2026_07_12.md`
-   - previous handoff: `docs/operations/DEVELOPMENT_HANDOFF_2026_06_27.md`
-   - input: `docs/product/V1_INPUT_FILE_MODEL.md`
-   - workbench: `docs/product/V1_CASE_WORKBENCH.md`
-   - case information architecture: `docs/product/V1_CASE_INFORMATION_ARCHITECTURE.md`
-   - guarantee output: `docs/product/V1_GUARANTEE_APPLICATION_OUTPUT.md`
-   - PDF template factory: `docs/product/PDF_TEMPLATE_AUTHORING_EXPERIENCE.md`
-   - field catalog: `docs/product/CANONICAL_FIELD_CATALOG.md`
-   - AI learning: `docs/product/V1_AI_CORRECTION_LEARNING.md`
-   - model routing: `docs/product/V1_AI_MODEL_SELECTION.md`
-   - multi-tenant permissions: `docs/product/MULTI_TENANT_PERMISSION_MODEL.md`
-   - record lifecycle: `docs/product/RECORD_LIFECYCLE.md`
-   - runtime stability: `docs/engineering/RUNTIME_STABILITY_AND_ARCHITECTURE.md`
-
-If these documents conflict, treat this file as the current routing layer, then update the stale document or record the conflict here.
+1. docs/operations/CURRENT_WORKING_CONTEXT.md: only active handoff and progress source.
+2. BACKLOG.md and docs/tasks/: local task authority.
+3. PRODUCT.md and ARCHITECTURE.md: stable product and committed-main facts.
+4. docs/README.md: documentation map and archive rules.
+5. Read a deeper product, engineering, or operations document only when the
+   assigned task requires it.
 
 ## Product Position
 
@@ -359,7 +345,7 @@ High-resolution replacement source exists: `/Users/laineyzhu/Desktop/房产专�
 
 ### 3 Jリース
 
-Current active work item.
+Historical active work item (2026-06-11 snapshot; not current task status).
 
 As of 2026-06-11:
 
@@ -493,9 +479,9 @@ Architecture lesson:
 
 - The template factory is now product-critical. It needs a stable authoring runtime, startup health checks, and browser-level smoke tests before PM/admin calibration work begins.
 - A dev server that can silently lose React hydration is not acceptable as the only operating mode for template calibration.
-- `CLAUDE.md` contains historical notes and may conflict with current Codex docs. Treat this file as the current routing index.
+- CLAUDE.md contains historical notes and may conflict with current Codex docs. Treat it as reference only; current routing is defined by the active context and local task cards.
 
-## Current Next Steps
+## Historical Next Steps (not the current queue)
 
 Immediate:
 
@@ -558,7 +544,7 @@ http://localhost:3002/api/guarantee-applications/j_lease_individual_v1/download?
 
 ### 2026-06-11
 
-- Created this fixed project-memory entrypoint because project knowledge had become scattered across PM, topology, template, field-catalog, and acceptance documents.
+- This stable memory document consolidates durable facts that were previously scattered across PM, topology, template, field-catalog, and acceptance documents.
 - Recorded current product position, template-factory boundary, standard-field direction, active Jリース status, and next-step priorities.
 - Added an explicit rule that future durable decisions and acceptance results must be appended here.
 - Added Japanese postal-code lookup as deterministic master data: input postal code can auto-complete prefecture, municipality, and town area from a local Japan Post index. AI must not be used for this step. Postal-derived address prefixes are allowed to assist address entry and output fragments, but prefix-only completion must remain reviewable so it does not hide missing street/building details.

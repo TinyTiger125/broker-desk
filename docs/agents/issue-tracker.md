@@ -1,6 +1,12 @@
 # Issue Tracker: GitHub
 
-Issues, PRDs, triage notes, and agent-ready work items for this repo live in GitHub Issues.
+> Historical integration note. GitHub Issues are optional mirrors and
+> collaboration surfaces, not the task authority or active progress source.
+> Use BACKLOG.md and docs/tasks/ for current local scope, status, acceptance,
+> and completion evidence.
+
+Issues, PRDs, triage notes, and agent-ready work items may be mirrored in
+GitHub Issues.
 
 Repository remote:
 
@@ -20,6 +26,8 @@ Use the `gh` CLI from the repo root for issue operations.
 
 When a skill says "publish to the issue tracker", create a GitHub issue.
 
-When a skill says "fetch the relevant ticket", read the GitHub issue and comments.
+When a skill says "fetch the relevant ticket", read the GitHub issue and
+comments as supplemental context, then reconcile it against the local task
+card before acting.
 
 Do not create local markdown issues unless the user explicitly asks to switch away from GitHub Issues.

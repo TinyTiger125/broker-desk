@@ -1,144 +1,53 @@
 # Broker Desk Current Working Context
 
-> Canonical active-work entrypoint.
->
+> This is the only active handoff and active-progress entry.
 > Last updated: 2026-08-12.
->
-> Read this first after a context reset. It supersedes dated handoffs on active
-> runtime, priorities, and operating rules. Dated handoffs remain historical
-> snapshots.
 
-## Mandatory Task Protocol
+## 当前任务
 
-- One task changes exactly one defect or one page. Split multi-defect or multi-page requests into separate tasks.
-- Every modification must run one explicit verification command after the edit.
-- When verification passes, commit the scoped diff immediately. Do not move to another item in the same task.
-- Start the next item as a new task.
-- This file is the only authoritative active-progress file.
-- `docs/PROJECT_MEMORY.md` is stable memory only; do not put attempts, failures, transient debugging, or per-task progress there.
-- If two consecutive turns contain only analysis/read output and no diff or test output, terminate the task and start a new task.
+建立纯治理基线并修复独立审查发现的治理问题。
 
-## Process Rule Change (2026-08-12)
+## 当前分支与基点
 
-- The repository task protocol above is mandatory for all future work.
-- Verification command for this rule change: `npm run test:workflow-rules`.
-- Verification result: passed.
+- Branch: governance/clean-baseline-20260812
+- Base: main at 11fe7fc9d0616aa7c3197ef80eb3fe440c6de9c9
+- Recovery branch: safety/wip-mixed-worktree-20260812; preserve unchanged.
+- WIP snapshot: 6f199375467bbfedd77bc90d80a53c423d4c9969; preserve unchanged.
+- No src/ business code is in scope for this baseline.
 
-## Product And Release Position
+## 当前状态
 
-- Japanese real-estate brokerage information center.
-- V1 core: ingest source materials -> extract, review, and confirm -> organize
-  case data -> generate official documents.
-- Current candidate: `v0.2.0-rc.2`.
-- No public deployment yet. Do not create paid infrastructure or services
-  without explaining cost and obtaining approval.
-- This is not a generic CRM, OCR wrapper, PDF editor, or AI chat interface.
+- TASK-001: Done after governance-only verification.
+- TASK-002: In Review; fragment-level attribution remains evidence work.
+- TASK-003: Proposed.
+- TASK-006A: Proposed; not Ready and not implemented.
+- TASK-004, TASK-005, TASK-006, TASK-007, TASK-008, TASK-009 remain Proposed.
+- TASK-010 remains Blocked.
 
-## Non-Negotiable Product Rules
+## 下一项任务
 
-- One local app before public beta: `http://localhost:3000`. Do not maintain
-  parallel development and test applications.
-- Clerk identity plus tenant membership scopes data and actions.
-- A platform administrator can edit all official published or unpublished
-  templates. Official save and publish create an explicit shared version.
-- Users browse and install templates into their workspace. New user workspaces
-  begin with no templates. A tenant-local copy never mutates the official
-  template.
-- Cross-device output must use shared official template layout and version
-  assets, never workstation-local calibration.
-- Organize information independently of Output. Output runs its own
-  completeness checks.
-- AI can extract, classify, compare, and recommend. AI must not silently
-  confirm facts.
-- Keep field keys, mapping rules, model reasoning, and internal quality
-  language out of broker UI.
-- Completed actions require explicit result feedback and visible state change.
-- No destructive git operation. Do not push unless the user explicitly asks. After the current task's verification passes, commit the scoped diff immediately.
+下一项唯一任务：完成TASK-002的diff片段级归属审查并重新审查纯治理基线。
 
-## Runtime And Data
+## 边界
 
-- Next.js App Router, Clerk authentication, and Neon-hosted PostgreSQL through
-  a connection string. Secrets live only in `.env.local`.
-- The local app is not production infrastructure. Ngrok is external testing
-  only and requires both the local host and tunnel to remain running.
-- Platform configuration uses persisted tenant and membership records. Never
-  assume a user has tenant membership without verifying it.
-- Development performance must be measured before it is claimed fixed. Keep
-  loading views stable and avoid blank-page layout flashes.
+- Do not implement TASK-006A or any business task in this handoff.
+- The candidate address for TASK-006A is /organize-center?type=case.
+- Lifecycle returnTo, party/property pages, browser back, q preservation, and
+  global navigation are outside TASK-006A.
+- BACKLOG.md and docs/tasks/ define task scope and status.
+- Historical handoffs, CLAUDE files, PM_CONTROL, PROJECT_MEMORY, and DESIGN.md
+  are not current progress authority.
 
-## Verified Product Baseline
+## 验证记录
 
-- Five Japanese guarantee-company official templates have manually mapped
-  fields. The supported boundary is high-accuracy manual confirmation, not
-  universal checkbox automation.
-- Template Library separates official distribution from tenant-local use.
-  Admin editing needs direct access; normal users only browse, install, and use.
-- Main workflow navigation: Workspace, Input, Organize, Output. Settings and
-  resources are secondary account surfaces.
-- Record lifecycle is archive and restore first. Destructive deletion needs a
-  retained audit record and explicit permission.
-- Product copy must be customer-facing. Avoid raw IDs, AI thoughts,
-  prompt-like explanations, and implementation details.
+- Before commit: git status --short, git diff --check,
+  npm run test:workflow-rules, relevant document checks, git diff --stat,
+  and git diff.
+- Required final proof: no src/ path changed; branch history is directly
+  based on main; no task is Done or Ready by business inference.
 
-## Active Repair Queue
+## 当前交接入口
 
-1. Input merge completion: selection target -> explicit final confirmation ->
-   progress -> result summary -> route to review. A selected target alone is
-   not a completed action.
-2. Template editor: official save and publish must persist, refresh version and
-   timestamp, and give clear feedback. Review role and tenant routing.
-3. Template visual issue: diagnose duplicated digit characters in fields.
-   Distinguish source-PDF values, overlay duplicates, and stale preview state
-   before changing mappings.
-4. Template IA: remove or consolidate redundant official-template list versus
-   library preview. Include latest update time where template selection needs it.
-5. Organize navigation: detail screens need a return to the organize
-   selector/list while preserving relevant filters. Return to Workspace is not
-   sufficient.
-6. Confirmation UX: per-item confirm and non-use actions must update list state
-   and give a short visible success transition. Motion must not delay
-   persistence.
-7. Lifecycle: complete archive, restore, auditing, permissions, and migration
-   safety for cases, subjects, properties, and materials.
-8. Performance: investigate slow page transitions, use appropriately sized
-   stable skeletons only while data is pending, and eliminate old-layout flashes.
-9. Public-beta hardening: tenant isolation, migration and recovery rehearsal,
-   backups, rate limits, error reporting, and privacy/access review.
-
-## Release Gates Before Public Deployment
-
-- The same generated PDF visually matches across two devices using the same
-  official version.
-- Tenant isolation is verified for owner, member, and no-membership cases.
-- Archive, restore, and audit history are verified.
-- Schema migration and rollback or recovery rehearsal are verified.
-- Backup and restore, storage handling, rate limiting, error monitoring, and
-  privacy/access checklist are completed.
-- Focused browser acceptance and PDF visual regression run after template edits.
-
-## Working Method
-
-- Reproduce before diagnosis; make a narrow change; run focused verification;
-  state what was and was not tested.
-- Prefer existing repository patterns and structured data access.
-- Do not turn product pages into documentation. User-facing copy must answer an
-  immediate action or state.
-- When a task resumes, read this file, then `docs/PROJECT_MEMORY.md`,
-  `CONTEXT.md`, and only the task-specific source document.
-- Update this file only for a durable change in active baseline, rules,
-  environment, or active queue. Keep dated handoffs untouched as history.
-
-## Skill Authoring Rule (2026-08-12)
-- Any project-local skill, procedure, or checklist must pass `docs/agents/skill-writing-checklist.md`.
-- This task converts Matt Pocock's "writing great skills" principles into the Broker Desk project checklist and wires it into `AGENTS.md`; it does not create a duplicate template/PDF QA skill.
-- Verification command:
-  `test -s docs/agents/skill-writing-checklist.md && rg -n "Gap gate|触发|不触发|渐进披露|单一事实来源|租户|验证命令" docs/agents/skill-writing-checklist.md && rg -n "skill-writing-checklist" AGENTS.md docs/operations/CURRENT_WORKING_CONTEXT.md && git diff --check && printf 'CHECK PASS: skill checklist wiring and diff whitespace\n'`
-- Verification result: passed.
-
-## Read Next
-
-1. `docs/PROJECT_MEMORY.md`
-2. `CONTEXT.md`
-3. `docs/product/PRODUCT_TOPOLOGY.md`
-4. `docs/operations/RELEASE_V0.2.0_RC2_2026_08_09.md`
-5. The task-specific source document
+Read this file first, then the assigned task card, PRODUCT.md, and
+ARCHITECTURE.md as needed. Stop after the governance commit; do not start
+TASK-006A in the same task.

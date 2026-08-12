@@ -1,5 +1,10 @@
 # Claude.md
 
+> Historical compatibility file only. It is not the current task board,
+> progress source, product authority, or architecture authority. Use
+> AGENTS.md, CURRENT_WORKING_CONTEXT.md, local task cards, PRODUCT.md, and
+> ARCHITECTURE.md for current work.
+
 ## 1. 项目当前定位（已落地）
 - 产品名：`Broker Desk`
 - 当前版本定位：日本小微不动产业者的轻量业务资料中枢（Web SaaS）

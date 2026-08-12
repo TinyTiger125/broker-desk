@@ -1,10 +1,13 @@
 # PM Control Center
 
-This document is the operating source of truth for multi-agent product work on Broker Desk.
+> Historical operating model retained for reference. This file is not the
+> current task board, active handoff, progress source, or product authority.
+> Current task scope and status live in BACKLOG.md, docs/tasks/, and
+> docs/operations/CURRENT_WORKING_CONTEXT.md.
 
 ## Operating Mode
 
-Current thread owner: PM Agent.
+Historical thread owner: PM Agent.
 
 The PM Agent controls product direction, task decomposition, task dispatch, acceptance, and next-step decisions. Other agents execute bounded work and return structured results to the PM Agent.
 
@@ -118,7 +121,7 @@ Does not own:
 
 Reference prompt: `docs/agents/mvp-acceptance-agent.md`.
 
-Current fixed agent:
+Historical fixed agent:
 
 - Nickname: Arendt
 - Agent id: `019e9bca-3e77-79c1-9322-7ee86b7d6f08`
@@ -135,7 +138,7 @@ Current fixed agent:
 7. PM Agent accepts, rejects, or requests another iteration.
 8. PM Agent updates the task state and prepares the next assignment.
 
-## Task Status Board
+## Historical Task Status Board
 
 | ID | Owner | Status | Task | Output Expected |
 | --- | --- | --- | --- | --- |
