@@ -128,6 +128,13 @@
 - Update this file only for a durable change in active baseline, rules,
   environment, or active queue. Keep dated handoffs untouched as history.
 
+## Skill Authoring Rule (2026-08-12)
+- Any project-local skill, procedure, or checklist must pass `docs/agents/skill-writing-checklist.md`.
+- This task converts Matt Pocock's "writing great skills" principles into the Broker Desk project checklist and wires it into `AGENTS.md`; it does not create a duplicate template/PDF QA skill.
+- Verification command:
+  `test -s docs/agents/skill-writing-checklist.md && rg -n "Gap gate|触发|不触发|渐进披露|单一事实来源|租户|验证命令" docs/agents/skill-writing-checklist.md && rg -n "skill-writing-checklist" AGENTS.md docs/operations/CURRENT_WORKING_CONTEXT.md && git diff --check && printf 'CHECK PASS: skill checklist wiring and diff whitespace\n'`
+- Verification result: passed.
+
 ## Read Next
 
 1. `docs/PROJECT_MEMORY.md`

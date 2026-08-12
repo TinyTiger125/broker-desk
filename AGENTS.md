@@ -32,3 +32,8 @@ These rules are mandatory for every Codex task in this repository.
 ## No-Progress Guard
 
 - If two consecutive turns contain only analysis/read output and no diff or test output, terminate the current task and start a new task.
+
+## Agent Skills
+
+- Before creating or editing a project-local skill or procedure, apply `docs/agents/skill-writing-checklist.md`.
+- Inventory existing skills, agents, automations, and docs before adding a new asset; prefer extending an existing asset.
