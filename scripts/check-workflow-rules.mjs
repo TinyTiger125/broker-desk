@@ -94,7 +94,7 @@ async function main() {
       "## Product boundaries",
     ],
     "ARCHITECTURE.md": [
-      "Baseline: committed main at 11fe7fc9d0616aa7c3197ef80eb3fe440c6de9c9.",
+      "Baseline: committed local main at fedb4c96e5f7b5e33caef977c5defd78ecf24ac9.",
       "## Runtime",
       "## Data and persistence",
       "## Verification entry points",
@@ -114,7 +114,7 @@ async function main() {
     ],
     "docs/operations/CURRENT_WORKING_CONTEXT.md": [
       "## 当前任务",
-      "下一项唯一任务：完成TASK-002的diff片段级归属审查并重新审查纯治理基线。",
+      "当前唯一任务：完成 TASK-002 的 diff 片段级归属审查并重新审查治理基线。",
       "/organize-center?type=case",
       "TASK-006A: Proposed; not Ready and not implemented.",
     ],

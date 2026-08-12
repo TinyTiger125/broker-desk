@@ -10,6 +10,7 @@
 |---|---:|---|---|---|---|---|
 | TASK-001 | P0 | Establish the pure governance baseline | Done | — | [TASK-001](docs/tasks/TASK-001.md) | Governance-only commit; checker and diff checks pass |
 | TASK-002 | P0 | Decompose and register the mixed WIP by diff fragment | In Review | TASK-001 | [TASK-002](docs/tasks/TASK-002.md) | Fragment-level candidates recorded; unresolved fragments remain Needs Review |
+| TASK-011 | P0 | Repair governance baseline metadata and document residue | Done | TASK-001 | [TASK-011](docs/tasks/TASK-011.md) | No patch residue; branch and baseline metadata agree; governance checks pass |
 | TASK-003 | P0 | Close the input-material merge completion loop | Proposed | TASK-002 | [TASK-003](docs/tasks/TASK-003.md) | Selection, confirmation, result, failure, and refresh evidence |
 | TASK-004 | P0 | Consolidate template-library and official-template boundaries | Proposed | TASK-002 | [TASK-004](docs/tasks/TASK-004.md) | Role-aware entry, visibility, and installation evidence |
 | TASK-005 | P0 | Separate official template draft and publish states | Proposed | TASK-004 | [TASK-005](docs/tasks/TASK-005.md) | Independent draft save, publish, immutable version, and failure evidence |
@@ -24,7 +25,8 @@
 
 - TASK-002 remains In Review; Needs Review is an evidence label, not a task
   lifecycle status.
+- TASK-011 is Done and governance-only; it did not change business code or
+  historical recovery references.
 - TASK-003 and TASK-006A remain Proposed. Neither is Ready.
 - TASK-006A is the only narrowed candidate business trial in this baseline.
 - No business task is implemented by the pure governance baseline commit.
-*** Delete File: broker-desk-web-dev/docs/README.md

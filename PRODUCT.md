@@ -41,4 +41,3 @@ source material -> extract and review -> confirm case facts
   explicit permission and audit history.
 - No public deployment or real-customer pilot is approved until the release
   gates in docs/operations/PUBLIC_BETA_RELEASE_GATE.md are evidenced.
-*** Delete File: broker-desk-web-dev/ARCHITECTURE.md

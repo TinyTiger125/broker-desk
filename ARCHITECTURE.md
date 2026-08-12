@@ -1,6 +1,6 @@
 # Broker Desk Current Architecture
 
-> Baseline: committed main at 11fe7fc9d0616aa7c3197ef80eb3fe440c6de9c9.
+> Baseline: committed local main at fedb4c96e5f7b5e33caef977c5defd78ecf24ac9.
 > This file describes committed main only. Safety branches, WIP snapshots,
 > uncommitted changes, and proposed task behavior are not architecture facts.
 
@@ -51,4 +51,3 @@ or cross-device acceptance by itself.
 The safety branch safety/wip-mixed-worktree-20260812 and WIP snapshot
 6f199375467bbfedd77bc90d80a53c423d4c9969 are recovery references. They are
 not part of this baseline and their business changes are not described here.
-*** Delete File: broker-desk-web-dev/BACKLOG.md

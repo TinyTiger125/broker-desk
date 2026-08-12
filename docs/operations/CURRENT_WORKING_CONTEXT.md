@@ -1,16 +1,16 @@
 # Broker Desk Current Working Context
 
 > This is the only active handoff and active-progress entry.
-> Last updated: 2026-08-12.
+> Last updated: 2026-08-13.
 
 ## 当前任务
 
-建立纯治理基线并修复独立审查发现的治理问题。
+完成 TASK-011 后，进入 TASK-002 的 diff 片段级归属审查。
 
 ## 当前分支与基点
 
 - Branch: governance/clean-baseline-20260812
-- Base: main at 11fe7fc9d0616aa7c3197ef80eb3fe440c6de9c9
+- Base: local main and governance baseline at fedb4c96e5f7b5e33caef977c5defd78ecf24ac9
 - Recovery branch: safety/wip-mixed-worktree-20260812; preserve unchanged.
 - WIP snapshot: 6f199375467bbfedd77bc90d80a53c423d4c9969; preserve unchanged.
 - No src/ business code is in scope for this baseline.
@@ -19,6 +19,7 @@
 
 - TASK-001: Done after governance-only verification.
 - TASK-002: In Review; fragment-level attribution remains evidence work.
+- TASK-011: Done; governance metadata and document residue were repaired and independently reviewed.
 - TASK-003: Proposed.
 - TASK-006A: Proposed; not Ready and not implemented.
 - TASK-004, TASK-005, TASK-006, TASK-007, TASK-008, TASK-009 remain Proposed.
@@ -26,7 +27,7 @@
 
 ## 下一项任务
 
-下一项唯一任务：完成TASK-002的diff片段级归属审查并重新审查纯治理基线。
+当前唯一任务：完成 TASK-002 的 diff 片段级归属审查并重新审查治理基线。
 
 ## 边界
 

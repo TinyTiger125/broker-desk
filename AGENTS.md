@@ -55,4 +55,3 @@ These rules govern every task in this repository.
 - Stop when the task is committed, blocked by a missing decision/evidence, or
   two consecutive rounds produce no new diff or validation result. Start the
   next task separately.
-*** Delete File: broker-desk-web-dev/PRODUCT.md
