@@ -1,8 +1,10 @@
 # Claude.md
 
-Current project-memory entrypoint: `docs/PROJECT_MEMORY.md`.
+Current active-work entrypoint: `docs/operations/CURRENT_WORKING_CONTEXT.md`.
 
-Read `docs/PROJECT_MEMORY.md` first for current status, active direction, risks, and next steps. This file contains historical notes and may be stale where it conflicts with `docs/PROJECT_MEMORY.md`.
+Read `docs/operations/CURRENT_WORKING_CONTEXT.md` first for active task scope, current runtime, priorities, and operating rules. Then read `docs/PROJECT_MEMORY.md` for stable facts only, followed by `CONTEXT.md` and task-specific documents.
+
+Repository execution rules: `AGENTS.md`.
 
 Current documentation map and archive rules: `docs/README.md`.
 
@@ -133,11 +135,14 @@ This is a single-context repo. Engineering skills should read root `CONTEXT.md`,
 4. 导入映射的半自动填充与错误恢复机制
 
 ## 9. 协作与学习规则（必须执行）
-- 每次开发结束后，必须更新本文件：
-  - 本次完成了什么
-  - 改了哪些文件
-  - 验证是否通过
-  - 残留问题与下步计划
+- 一条任务只解决一个缺陷或一个页面；多缺陷、多页面请求必须拆成多个任务。
+- 修改后必须运行一个明确的验证命令，并记录命令与结果。
+- 验证通过后立即提交当前任务的 Git diff；不得把无关改动一起提交。
+- 下一项工作必须开新任务，不得在同一任务内继续处理下一项。
+- 当前进度唯一权威文件是 `docs/operations/CURRENT_WORKING_CONTEXT.md`；本文件不再承担逐任务进度记录。
+- `docs/PROJECT_MEMORY.md` 只记录稳定事实、长期决策、发布门槛和深层文档索引。
+- `docs/PROJECT_MEMORY.md` 不得记录尝试过程、失败过程、临时调试输出或逐任务进度。
+- 连续两轮只有分析/读取、没有 diff 或测试输出时，立即终止当前任务并重开任务。
 - 所有“看起来可点”的主要控件必须有真实后端动作或明确可追踪跳转。
 - 新增功能优先保证：
   - 三语一致（JA/ZH/KO）

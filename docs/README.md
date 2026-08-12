@@ -6,11 +6,12 @@ This directory is organized by decision status and operating purpose.
 
 For normal product, engineering, QA, or agent work, read in this order:
 
-1. `docs/PROJECT_MEMORY.md`
-2. `CONTEXT.md`
-3. The task-specific document listed below
+1. `docs/operations/CURRENT_WORKING_CONTEXT.md`
+2. `docs/PROJECT_MEMORY.md`
+3. `CONTEXT.md`
+4. The task-specific document listed below
 
-`docs/PROJECT_MEMORY.md` is the current routing layer. If it conflicts with another document, treat `PROJECT_MEMORY` as current and update the stale document.
+`docs/operations/CURRENT_WORKING_CONTEXT.md` is the only authoritative active-progress file. Use it for active task scope, runtime, priorities, and operating rules. Dated handoffs, reports, plans, and acceptance documents are historical or task-specific references, not alternate progress authorities. If it conflicts with older documents, trust it first, then `docs/PROJECT_MEMORY.md`, then the newest dated operations or release document.
 
 ## Current Product Sources
 
@@ -95,4 +96,4 @@ Use this placement rule:
 - Agent prompt or reusable task brief: `docs/agents/`
 - Historical or superseded material: `docs/archive/`
 
-If a new document becomes durable product truth, add it to `docs/PROJECT_MEMORY.md` and this map.
+If a new document becomes durable product truth, add only its stable fact or index entry to `docs/PROJECT_MEMORY.md` and this map; never create a second active-progress file.

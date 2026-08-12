@@ -47,6 +47,7 @@
     "test:regression": "bash scripts/regression.sh",
     "test:ja-terms": "bash scripts/check-ja-terms.sh",
     "test:product-language": "node scripts/check-product-language-boundary.mjs",
+    "test:workflow-rules": "node scripts/check-workflow-rules.mjs",
     "terms:export": "node scripts/export-ui-terminology.mjs",
     "terms:import": "node scripts/import-ui-terminology.mjs"
   },

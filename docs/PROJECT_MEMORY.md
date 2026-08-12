@@ -8,18 +8,18 @@ Every future PM, development, QA, UX, or template-authoring agent should read th
 
 ## Update Rule
 
-Update this file whenever a durable product decision, implementation milestone, acceptance result, known risk, or next-step priority changes.
+This file contains stable project facts, durable product decisions, durable release and quality gates, and links to deeper documents. It is not the active task log.
 
-Do not record secrets, API keys, private customer identifiers, or one-off terminal noise here.
+Update it only when one of those durable facts changes. Do not record secrets, API keys, private customer identifiers, one-off terminal noise, attempt logs, failure histories, transient debugging output, or per-task progress.
 
 Use this file for:
 
 - current product positioning
-- current implementation state
-- active phase and next actions
+- durable implementation milestones
 - high-risk constraints
 - template-quality status
 - durable PM decisions
+- durable release and quality gates
 - links to deeper docs
 
 Do not use this file for:
@@ -27,6 +27,8 @@ Do not use this file for:
 - full task transcripts
 - large code diffs
 - temporary debugging logs
+- attempt/failure histories
+- task-by-task progress or next-step queues
 - speculative ideas that have not become product direction
 
 ## Fixed Read Order
