@@ -119,6 +119,10 @@ The status of a field in the case workbench. Canonical states are:
 
 The V1 output document family: `保証会社申込書`.
 
+In V1, this is the only primary generated product output. Other output
+artifact types remain future candidates or compatibility examples and do not
+define current V1 navigation, task scope, or acceptance criteria.
+
 The first supported companies are:
 
 - 全保連
@@ -131,6 +135,12 @@ The first supported companies are:
 
 A source form provided by a guarantee company. Its original lines, layout, and format must not be changed. Broker Desk may only place values into the available spaces.
 
+### Official Source Document
+
+A document collected for reference, source evidence, or template provenance.
+Viewing or downloading an official source document does not mean Broker Desk
+generated a product output.
+
 ### Output Draft
 
 Template-specific values and options prepared before final PDF output. Output drafts should consume confirmed case data and explicitly saved draft values, not raw extraction candidates.
@@ -138,6 +148,10 @@ Template-specific values and options prepared before final PDF output. Output dr
 ### Output Artifact
 
 A generated business output, such as a guarantee-company application, customer summary, lease package, owner notice, or report.
+
+For the current V1 product, only the guarantee-company application is the
+primary generated output. The other examples describe domain possibilities or
+future/compatibility artifacts, not parallel V1 product outputs.
 
 An output artifact should keep the case id, tenant id, template version, input data snapshot, draft value snapshot, generated-by user, and audit trail needed to explain what was produced.
 

@@ -99,7 +99,7 @@ Expected product behavior:
 3. System extracts key fields and shows source cell references.
 4. User reviews, edits, accepts, rejects, or marks fields as unknown.
 5. Confirmed fields are saved into structured case data.
-6. Structured data can later fill product outputs. The first V1 output priority is guarantee company application forms (`保証会社申込書`).
+6. Structured data can later fill product outputs. The only current V1 generated output is the guarantee-company application (`保証会社申込書`). Other output families remain future candidates or compatibility examples.
 
 The system must preserve user trust by making every extracted field reviewable and traceable.
 
@@ -235,7 +235,7 @@ If implementation cannot add a full case model immediately, use import job metad
 
 Output-side note:
 
-The current V1 output target is `保証会社申込書`, using the five initial guarantee company PDF templates documented in `docs/product/V1_GUARANTEE_APPLICATION_OUTPUT.md`. Input fields should therefore prioritize reusable property, lease, applicant, emergency contact / guarantor, co-occupant, brokerage, and management company facts needed by those templates.
+The only current V1 output target is `保証会社申込書`, using the five initial guarantee company PDF templates documented in `docs/product/V1_GUARANTEE_APPLICATION_OUTPUT.md`. Input fields should therefore prioritize reusable property, lease, applicant, emergency contact / guarantor, co-occupant, brokerage, and management company facts needed by those templates.
 
 ## Review / Save Architecture
 
@@ -732,4 +732,4 @@ Input-side work is acceptable only when:
 4. User can edit or reject extracted values before save.
 5. Property-related confirmed values can flow into the property ledger.
 6. The system does not present AI guesses as confirmed truth.
-7. Existing Excel property row import and property overview PDF path are not broken.
+7. Existing Excel property row import remains compatible; any existing property overview PDF path is compatibility evidence only and is not a current V1 completion criterion.

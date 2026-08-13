@@ -3,8 +3,8 @@
 ## Product
 
 Broker Desk is a workbench for small Japanese real-estate brokers. It turns
-source material into reviewed case information and traceable official
-business documents.
+source material into reviewed case information and a traceable
+guarantee-company application based on an official form.
 
 ## Target user
 
@@ -16,7 +16,11 @@ repeated document preparation.
 
 source material -> extract and review -> confirm case facts
 -> organize the case -> choose an official template
--> preview -> generate a traceable document
+-> preview the guarantee-company application -> generate a traceable
+guarantee-company application
+
+For V1, the only primary generated product output is the guarantee-company
+application (`保証会社申込書`).
 
 ## Product boundaries
 
@@ -34,9 +38,15 @@ source material -> extract and review -> confirm case facts
 
 ## Stable product decisions
 
-- The primary workflow is input, organize, and output.
+- The V1 primary workflow is input, organize, confirm, and produce the
+  guarantee-company application (`保証会社申込書`).
 - The workbench is the product center; output-specific completeness checks stay
   in Output.
+- Other document families are future candidates or historical compatibility
+  surfaces. They are not parallel V1 output paths, navigation requirements, or
+  completion criteria.
+- Official-source registries provide reference evidence. Viewing or downloading
+  an official source document is not the same as generating a product output.
 - Record lifecycle starts with archive and restore. Destructive deletion needs
   explicit permission and audit history.
 - No public deployment or real-customer pilot is approved until the release

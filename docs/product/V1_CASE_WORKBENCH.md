@@ -180,7 +180,10 @@ The case workbench must now behave as the main post-input operating page:
 - Priority queue: for V1 guarantee application work, the workbench should sort review work in this order: current-application blockers, trusted candidates, low-confidence items, required fields with no source candidate, then other attention fields.
 - Queue scope: this priority order is for the guarantee application path only. Future business workflows may introduce different queue rules.
 
-This is the minimum acceptable workbench posture before adding more output templates: the user should know what to fix first, why it is flagged, and whether it will be allowed into output.
+This is the minimum acceptable workbench posture before adding more
+guarantee-company templates within the V1 output family: the user should know
+what to fix first, why it is flagged, and whether it will be allowed into the
+guarantee-company application output.
 
 ## Data Architecture
 

@@ -12,7 +12,7 @@ It is not primarily:
 - a PDF generator
 - an AI agent that decides facts automatically
 
-The product replaces repetitive Excel work by turning scattered source files into structured, editable, reviewable, and reusable case data, then using that data to produce standard business documents.
+The product replaces repetitive Excel work by turning scattered source files into structured, editable, reviewable, and reusable case data, then using that data to produce the V1 guarantee-company application. Other document families remain future candidates or legacy compatibility surfaces.
 
 AI is not a separate frontstage product. AI is an operator inside this workbench: it reads source files, proposes candidates, highlights uncertainty, prepares outputs, and learns from user-confirmed corrections through product-owned memory.
 
@@ -101,13 +101,17 @@ If this layer is weak, the product becomes a file uploader plus PDF printer and 
 
 ### 3. Convenience Layer: Output
 
-Output is the exit convenience.
+Output is the exit convenience for the V1 guarantee-company application.
 
-It turns confirmed workbench data into official or standard templates.
+It turns confirmed workbench data into a selected official guarantee-company
+application template.
+
+Other document families are future candidates or legacy compatibility surfaces;
+they are not parallel V1 output paths.
 
 Output value:
 
-- select standard template
+- select a supported guarantee-company application template
 - auto-fill only certified-safe fields from confirmed data
 - show candidate values on the editable official-form preview
 - let users electronically complete non-certified fields on the form surface
@@ -155,6 +159,12 @@ Source Files
               -> Correction Events / Experience Updates
 ```
 
+The V1 frontstage path is:
+
+```text
+资料输入 -> 案件信息整理与确认 -> 保证公司申请书预览 -> 导出或打印
+```
+
 ## Current Page Topology (2026-07-23)
 
 This section describes the current route-level product map. It is the working reference for UX and routing changes.
@@ -177,7 +187,7 @@ flowchart LR
   CaseWB["/cases/[id]<br/>case workbench"]
   PartyWB["/parties/[id]/edit<br/>subject workbench"]
   PropertyWB["/properties/[id]/edit<br/>property workbench"]
-  Output["/output-center<br/>select document and generate"]
+  Output["/output-center<br/>select guarantee application template and generate"]
   Preview["/guarantee-applications/[templateId]/preview<br/>official form preview"]
   Relation["/relationship-tree<br/>relationship inspection"]
   Settings["/settings/*<br/>workspace settings"]
@@ -215,7 +225,7 @@ Route contract:
 - `/import-center` is the source-reading surface. It imports files, shows extracted candidates, and routes the user back to the chosen owner or to `整理信息`.
 - `/organize-center` is the object index. It is where the user chooses whether the next work target is a case, subject, property, or unassigned file.
 - `/cases/[id]`, `/parties/[id]/edit`, and `/properties/[id]/edit` are the object workbenches. They are the only places where "continue organizing" should perform deep object editing.
-- `/output-center` is the document production surface. It consumes confirmed case data and output drafts; it does not own raw extraction review.
+- `/output-center` is the V1 guarantee-company application production surface. It consumes confirmed case data and output drafts; it does not own raw extraction review or define other document families as V1 outputs.
 - `/relationship-tree` is an inspection surface. It explains how one selected object connects to other objects, source files, and outputs. It should not become another editing flow.
 - `/settings/*` is configuration only. It must not contain ordinary broker execution tasks.
 
@@ -232,13 +242,13 @@ flowchart TB
   SettingsNav["Workspace Settings"]
   Members["Team Members"]
   Required["Required Fields"]
-  OutputHeader["Document Header / Output Templates"]
+  OutputHeader["Guarantee Application Header / Templates"]
 
   Secondary["Secondary / legacy routes"]
   Parties["/parties subject ledger"]
   Properties["/properties property ledger"]
-  Quotes["/quotes legacy quote pages"]
-  Contracts["/contracts legacy contract pages"]
+  Quotes["/quotes legacy compatibility, not V1 output"]
+  Contracts["/contracts legacy compatibility pages"]
   Service["/service-requests legacy request pages"]
 
   Nav --> Home
@@ -335,11 +345,11 @@ Current implementation notes:
 | `/cases/[id]` | What is missing from this case? | Edit case facts, review candidates, check relationships, prepare output-specific draft | Raw upload as primary task, unrelated object ledger browsing |
 | `/parties/[id]/edit` | What is missing from this subject? | Edit subject facts, view progress, inspect relationships | Separate CRM workflow, output generation |
 | `/properties/[id]/edit` | What is missing from this property? | Edit property facts, view progress, inspect relationships | Separate property-management workflow |
-| `/output-center` | Which document can I generate? | Select case/template, check missing items, preview/export | Raw extraction review, editing unrelated fields |
+| `/output-center` | Which guarantee-company application am I preparing? | Select case/template, check missing items, preview/export | Raw extraction review, editing unrelated fields, parallel document-family generation |
 | `/relationship-tree` | How are these objects connected? | Inspect object graph and jump to the relevant object | Become another editing page |
 | `/settings/members` | Who can use the workspace? | Team and permission configuration | Broker data execution |
 | `/settings/case-workbench-fields` | Which fields matter for this tenant? | Required/optional field settings | Case-by-case data entry |
-| `/settings/output-templates` | What document header/template rules apply? | Output template/header configuration | Generating one specific document |
+| `/settings/output-templates` | What guarantee application header/template rules apply? | Guarantee application template/header configuration | Generating one specific document |
 
 ### Primary User Journeys
 
@@ -395,7 +405,7 @@ These are not blockers for the current map, but they should be kept visible:
 - Property creation should route directly to the property workbench on the primary save path.
 - Subject creation still uses an older profile form while subject editing uses the new object workbench shell.
 - Secondary ledgers (`/parties`, `/properties`) must remain clearly positioned as search/reference pages, not as competing edit pages.
-- Output Center still contains legacy quote/property-overview paths. If they remain user-facing, their routes and wording must be aligned with the main case-output flow.
+- Output Center may still contain legacy quote/property-overview paths. They are compatibility or backstage surfaces, not V1 output paths; if they remain user-facing, their routes and wording must not compete with the guarantee-application flow.
 - Legacy pages such as `/quotes`, `/contracts`, `/service-requests`, `/templates`, `/clients`, and `/audit-log` should be hidden, merged, or explicitly marked as backstage before release.
 - The relationship tree needs a consistent "open workbench" action for case, subject, property, file, and output nodes.
 - Any action label pair such as `Open` vs `Edit` must be collapsed into one product meaning per object state.
@@ -432,8 +442,8 @@ Product rules:
 - Subject profile drafts may auto-save locally while the user is typing, but drafts must not participate in output autofill until the user explicitly saves the subject.
 - Multi-file merge is allowed only inside one chosen owner and only when key identity or property facts do not conflict.
 - Drag-and-drop can help assign files to a case, subject, or property, but explicit business roles still require structured fields.
-- Quotes, guarantee applications, contracts, and future documents are output artifacts under a case, not standalone data islands.
-- Generated output artifacts must keep snapshots of the data used at generation time so later edits do not rewrite historical quotes or contracts.
+- Guarantee applications are the active V1 output artifact under a case. Quotes, contracts, and other documents may remain domain or compatibility artifacts, but they are not current V1 output paths.
+- Generated output artifacts must keep snapshots of the data used at generation time so later edits do not rewrite historical compatibility artifacts.
 
 ## Organize Center Rule
 
@@ -484,7 +494,7 @@ When deciding priority, use this order:
 2. Does it reduce manual re-entry or manual checking?
 3. Does it make uncertain/missing/conflicting data easier to review?
 4. Does it improve reuse of confirmed case data?
-5. Does it make a standard output faster or more reliable?
+5. Does it make the guarantee-company application faster or more reliable?
 6. Does it convert confirmed user corrections into reusable product knowledge without increasing broker workload?
 
 Do not prioritize features that only add modules without strengthening the input -> workbench -> output chain.
@@ -504,7 +514,7 @@ V1 should now focus on this spine:
 
 ## V1 Chain Acceptance
 
-The first product milestone is not "many inputs" or "many outputs".
+The first product milestone is not "many input types" or "many output families".
 
 The milestone is one complete three-step chain:
 
@@ -512,7 +522,9 @@ The milestone is one complete three-step chain:
 2. Edit / organize / summary workbench OK
 3. Output OK
 
-Only after this chain is convincing should input and output be copied outward to more source files and more guarantee company templates.
+Only after this chain is convincing should the input coverage expand or the
+guarantee-company template family grow. Other document families remain future
+candidates.
 
 ### Input OK
 
@@ -537,11 +549,11 @@ The workbench is acceptable when:
 - case facts can be confirmed without starting an output workflow
 - output readiness is checked in the relevant output workflow, not as the organizing center of the workbench
 
-### Output OK
+### Guarantee Application Output OK
 
-Output is acceptable when:
+The V1 output is acceptable when the guarantee-company application:
 
-- a selected official template consumes confirmed workbench data
+- a selected official guarantee-company template consumes confirmed workbench data
 - missing required data is not fabricated
 - only certified-safe fields are auto-printed without preview confirmation
 - candidate/manual fields can be completed electronically on the official form surface
@@ -740,7 +752,7 @@ The default layout priority is:
 1. current task and selected case
 2. one primary next action
 3. missing or uncertain items only
-4. generated output availability
+4. guarantee-company application availability
 5. detailed workbench / evidence / diagnostics collapsed below
 
 The app may keep deeper workbench power, but the broker should not meet it until they ask for detail or need to fix a specific missing item.

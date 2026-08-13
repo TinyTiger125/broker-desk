@@ -5,8 +5,8 @@
 
 ## 当前任务
 
-- `TASK-013 / MIG-002`：拆解并降级 `docs/PROJECT_MEMORY.md`，实现、验证和独立审查均已完成，状态为 `Done`。
-- 用户结果：PROJECT_MEMORY退出综合性第二权威位置；有效事实有唯一规范来源，历史原文仍可追溯但不发出当前指令。
+- `TASK-014 / MIG-003`：固化“保证公司申请书是V1唯一主输出”的产品文档边界，修改已完成，状态为 `In Review`。
+- 用户结果：活动产品文档不再把旧输出类型描述为V1并列主输出；官方资料索引与产品生成输出明确分离。
 
 ## Git事实
 
@@ -22,18 +22,16 @@
 
 ## 本任务边界
 
-- 只审计和处理 `docs/PROJECT_MEMORY.md`、其历史归档、允许的规范来源、当前交接、文档地图、BACKLOG、TASK-013和直接活动引用。
-- 不新建Playbook，不修改产品方向、`.cursor`、业务代码、数据库、public或运行配置，不处理 `CLAUDE 3.md`，不实施MIG-003及后续任务。
+- 只处理TASK-014列出的当前产品文档、BACKLOG、当前交接和任务卡。
+- 不修改 `src`、`db`、`public`、业务配置、实际页面行为、用户可见文字、`.cursor`或历史产品资料，不执行MIG-004及后续任务。
 
-## 本次实现结果
+## 本任务实现状态
 
-- 已创建带历史降级声明的 `docs/archive/legacy-project-memory/PROJECT_MEMORY_2026_08_06.md`，正文对应执行前原文第 1-633 行。
-- `docs/PROJECT_MEMORY.md` 已缩减为非权威兼容指针。
-- 实际修改文件：`BACKLOG.md`、`docs/PROJECT_MEMORY.md`、`docs/README.md`、`docs/agents/domain.md`、`docs/agents/skill-writing-checklist.md`、`docs/archive/README.md`、`docs/archive/legacy-project-memory/PROJECT_MEMORY_2026_08_06.md`、`docs/engineering/RUNTIME_STABILITY_AND_ARCHITECTURE.md`、`docs/operations/CURRENT_WORKING_CONTEXT.md`、`docs/tasks/TASK-012.md`、`docs/tasks/TASK-013.md`、`scripts/check-workflow-rules.mjs`。
-- 未修改 `PRODUCT.md`、`ARCHITECTURE.md`、`CONTEXT.md`、业务代码、数据库、public、运行配置、`.cursor` 和 `CLAUDE 3.md`。
+- 已完成当前活动产品文档的初始冲突盘点和边界修改，证据与逐项对照记录在 `docs/tasks/TASK-014.md`。
+- 实际修改：`PRODUCT.md`、`CONTEXT.md`、`docs/product/PRODUCT_TOPOLOGY.md`、`docs/product/V1_GUARANTEE_APPLICATION_OUTPUT.md`、`docs/product/V1_INPUT_FILE_MODEL.md`、`docs/product/V1_CASE_WORKBENCH.md`、`docs/product/OFFICIAL_JAPAN_DOCUMENT_SOURCE_REGISTRY_2026_07_26.md`、`BACKLOG.md`、本文件和 `docs/tasks/TASK-014.md`。
+- 未修改业务代码、数据库、public、页面文字、`.cursor`、历史产品资料和MIG-002历史提交。
 
 ## 验证与下一步
 
-- 必须完成任务卡中的治理检查、差异检查、lint、typecheck、入口扫描和独立审查。
-- 任务卡中的治理检查、差异检查、lint、typecheck、入口扫描和独立审查均已通过；TASK-013附录A的审计基线和附录B的唯一规范来源修订已复核。
-- MIG-002完成后停止，等待MIG-003批准。
+- 必须完成TASK-014中的产品边界扫描、差异检查、lint、typecheck、文档链接检查和独立审查。
+- 下一步：完成TASK-014规定的验证，然后由独立审查Agent只读复核。

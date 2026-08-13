@@ -8,6 +8,10 @@ V1 output should first focus on one high-value document family:
 
 The first product goal is not broad PDF generation. The goal is to let a small Japan real estate brokerage team select a guarantee company template, reuse confirmed case data, auto-fill the application, review missing items, and export or print a broker-ready application form.
 
+For V1, this is the only primary generated product output. Other document
+families are future candidates or historical compatibility surfaces; they do
+not belong in current V1 navigation, task scope, or acceptance criteria.
+
 This is the clearest V1 loop:
 
 Input files -> extraction review -> structured case data -> guarantee company template selection -> auto-filled application preview -> PDF export / print.
@@ -31,6 +35,12 @@ Initial output templates:
 Important technical product finding:
 
 These PDFs do not expose AcroForm fields. V1 cannot rely on ordinary PDF form-field filling. It needs a template-specific rendering / overlay approach where the system writes values at known positions on top of the original template and then exports a flattened PDF.
+
+`保証会社申込書` is the product family name. Each selected source PDF keeps
+its original official title, such as `保証委託申込書` or
+`入居申込書兼保証委託申込書`; the product family label must not rename the
+official form. Viewing or downloading an official source PDF is reference
+work and is not itself a generated product output.
 
 ## Product Interpretation
 
@@ -67,13 +77,14 @@ When the broker edits, moves, resizes, or aligns fields in the editable PDF prev
 
 ## V1 Scope Decision
 
-V1 output priority is now:
+V1 output scope is one primary product output:
 
 1. Guarantee company application forms.
 2. Case data review and missing field completion for guarantee applications.
 3. PDF preview / export / print of supported templates.
 
-Defer:
+Defer as future candidates or historical compatibility; do not include these
+in current V1 navigation, task scope, or acceptance criteria:
 
 - generic property overview output
 - quotation PDF expansion
@@ -82,7 +93,9 @@ Defer:
 - drag-and-drop freeform PDF design
 - broad contract package generation
 
-Existing generic PDF output can remain if already implemented, but it is no longer the product's primary V1 output story.
+Existing generic PDF output may remain as compatibility evidence if already
+implemented, but it is not the current V1 navigation, task scope, acceptance
+criterion, or product output definition.
 
 ## Common Data Model
 

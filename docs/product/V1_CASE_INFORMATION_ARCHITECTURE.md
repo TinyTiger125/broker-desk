@@ -12,7 +12,10 @@ It is not enough to show a flatter or prettier field table. The product is repla
 
 The case workbench should be organized around the property-case information model, not around one output document.
 
-Output modules such as guarantee-company applications, quotes, ads, contracts, and future documents should run their own missing-field checks when the user starts that output workflow.
+The current V1 output workflow is the guarantee-company application. It should
+run its own missing-field checks when the user starts that workflow. Quotes,
+ads, contracts, and other document workflows remain future candidates or
+compatibility surfaces and are not parallel V1 output paths.
 
 The `整理信息` module should instead answer:
 
@@ -354,7 +357,9 @@ The information architecture is working when:
 
 1. A broker can understand the case structure without knowing the old Excel sheets.
 2. A broker can resolve the next important data problem without opening every tree node.
-3. The same confirmed fact is maintained once and reused across multiple outputs.
+3. The same confirmed fact is maintained once and reused by the current
+   guarantee-company application and, when approved later, future output
+   workflows.
 4. Conditional fields stop producing false missing warnings after they are marked not applicable.
 5. Output-specific fields no longer pollute the general case dossier.
 6. Search finds likely fields even when the broker uses a different language or term.
