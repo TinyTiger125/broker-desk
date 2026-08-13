@@ -37,6 +37,7 @@
 
 - 已准备 `docs/operations/MIG-004_TERMINOLOGY_DECISION_DRAFT_2026_08_13.md`，只记录裁决方法、证据和待确认的用户可见词。
 - `MIG-004` 仍只是候选；未经确认不得实施术语迁移、批量回填或代码修改。
+- `TASK-015 / MIG-005` 仅为未来 Proposed 任务：正式建立 `TECHNICAL_PM.md` 时，必须纳入建设性反对、证据分层、最小验证、决策记录和“避免无休止讨论”的独立审查；当前不创建 Playbook。
 
 ## 当前禁止事项
 
