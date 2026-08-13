@@ -5,8 +5,8 @@
 
 ## 当前任务
 
-- `TASK-012 / MIG-001`：统一治理入口，状态为 `Done`。
-- 用户结果：进入仓库后先找到唯一永久规则、当前交接和当前任务，不把CLAUDE或历史文档当作第二套权威。
+- `TASK-013 / MIG-002`：拆解并降级 `docs/PROJECT_MEMORY.md`，实现已完成，状态为 `In Review`。
+- 用户结果：PROJECT_MEMORY退出综合性第二权威位置；有效事实有唯一规范来源，历史原文仍可追溯但不发出当前指令。
 
 ## Git事实
 
@@ -14,17 +14,25 @@
 - Branch: `governance/clean-baseline-20260812`
 - MIG-001审计基线/父提交：`9d12c0a`
 - MIG-001实现提交：`ee1850e`
+- MIG-001审查修复提交：`2cb8f45`
 - local main: `fedb4c9`
 - safety/WIP分支：`safety/wip-mixed-worktree-20260812`，保持不变。
 - 当前HEAD以进入任务时的绝对路径Git现场核验为准；本交接不把后续修复提交误写成初始基线。
-- 本任务开始前工作区干净；本任务只允许治理入口文件和必要的直接检查引用。
+- 进入本任务时工作区只有预置治理修改；本次实现只更新下列治理入口、历史归档、直接引用和检查器文件。
 
 ## 本任务边界
 
-- 只收敛 `AGENTS.md`、`CLAUDE.md`、README、文档地图、当前交接和本任务登记。
-- 不新建Playbook，不修改产品/架构事实，不修改 `.cursor`、业务代码、数据库、public或运行配置，不移动、归档或删除历史文件。
+- 只审计和处理 `docs/PROJECT_MEMORY.md`、其历史归档、允许的规范来源、当前交接、文档地图、BACKLOG、TASK-013和直接活动引用。
+- 不新建Playbook，不修改产品方向、`.cursor`、业务代码、数据库、public或运行配置，不处理 `CLAUDE 3.md`，不实施MIG-003及后续任务。
+
+## 本次实现结果
+
+- 已创建带历史降级声明的 `docs/archive/legacy-project-memory/PROJECT_MEMORY_2026_08_06.md`，正文对应执行前原文第 1-633 行。
+- `docs/PROJECT_MEMORY.md` 已缩减为非权威兼容指针。
+- 实际修改文件：`BACKLOG.md`、`docs/PROJECT_MEMORY.md`、`docs/README.md`、`docs/agents/domain.md`、`docs/agents/skill-writing-checklist.md`、`docs/archive/README.md`、`docs/archive/legacy-project-memory/PROJECT_MEMORY_2026_08_06.md`、`docs/engineering/RUNTIME_STABILITY_AND_ARCHITECTURE.md`、`docs/operations/CURRENT_WORKING_CONTEXT.md`、`docs/tasks/TASK-012.md`、`docs/tasks/TASK-013.md`、`scripts/check-workflow-rules.mjs`。
+- 未修改 `PRODUCT.md`、`ARCHITECTURE.md`、`CONTEXT.md`、业务代码、数据库、public、运行配置、`.cursor` 和 `CLAUDE 3.md`。
 
 ## 验证与下一步
 
 - 必须完成任务卡中的治理检查、差异检查、lint、typecheck、入口扫描和独立审查。
-- 实现提交、独立审查、明确问题修复和复验已完成；停止当前任务，等待MIG-002批准；不在本交接中启动下一项迁移。
+- 已完成 PROJECT_MEMORY 逐节审计和迁移对照表；当前待完成实现验证，之后由独立审查Agent只读复核。MIG-002完成后停止，等待MIG-003批准。

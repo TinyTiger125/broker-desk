@@ -94,7 +94,6 @@ async function main() {
       "## Product boundaries",
     ],
     "ARCHITECTURE.md": [
-      "Baseline: committed local main at fedb4c96e5f7b5e33caef977c5defd78ecf24ac9.",
       "## Runtime",
       "## Data and persistence",
       "## Verification entry points",
@@ -114,9 +113,8 @@ async function main() {
     ],
     "docs/operations/CURRENT_WORKING_CONTEXT.md": [
       "## 当前任务",
-      "TASK-012 / MIG-001",
-      "MIG-001审计基线/父提交：`9d12c0a`",
-      "不新建Playbook",
+      "正式仓库：",
+      "Branch:",
     ],
   };
 
@@ -265,7 +263,6 @@ async function main() {
     "docs/agents/issue-tracker.md",
     "CLAUDE.md",
     "CLAUDE 3.md",
-    "docs/PROJECT_MEMORY.md",
     "docs/operations/PM_CONTROL.md",
     "docs/operations/DEVELOPMENT_HANDOFF_2026_06_27.md",
     "docs/operations/DEVELOPMENT_HANDOFF_2026_07_01.md",
@@ -282,10 +279,42 @@ async function main() {
       errors.push(relativePath + ": missing historical downgrade declaration");
     }
   }
+
+  const projectMemoryPath = "docs/PROJECT_MEMORY.md";
+  const projectMemory = await read(projectMemoryPath);
+  for (const needle of [
+    "Historical compatibility pointer",
+    "non-authoritative",
+    "docs/archive/legacy-project-memory/PROJECT_MEMORY_2026_08_06.md",
+  ]) {
+    requireText(projectMemoryPath, projectMemory, needle);
+  }
+  for (const phrase of ["current source of truth", "fixed project-memory entrypoint"]) {
+    if (projectMemory.includes(phrase)) {
+      errors.push(projectMemoryPath + ": stale authority claim remains: " + phrase);
+    }
+  }
+
+  const archivedProjectMemoryPath =
+    "docs/archive/legacy-project-memory/PROJECT_MEMORY_2026_08_06.md";
+  if (!(await exists(archivedProjectMemoryPath))) {
+    errors.push("missing retained legacy file: " + archivedProjectMemoryPath);
+  } else {
+    const archivedProjectMemory = await read(archivedProjectMemoryPath);
+    if (!/(Historical|historical|历史)/.test(archivedProjectMemory)) {
+      errors.push(archivedProjectMemoryPath + ": missing historical downgrade declaration");
+    }
+    if (
+      !archivedProjectMemory.includes(
+        "仅历史证据，不是当前任务、产品、架构或执行授权。",
+      )
+    ) {
+      errors.push(archivedProjectMemoryPath + ": missing explicit non-authority declaration");
+    }
+  }
+
   const bannedLegacyClaims = [
     ["docs/agents/issue-tracker.md", "live in GitHub Issues"],
-    ["docs/PROJECT_MEMORY.md", "current source of truth"],
-    ["docs/PROJECT_MEMORY.md", "fixed project-memory entrypoint"],
     ["docs/operations/PM_CONTROL.md", "This document is the operating source of truth"],
     ["docs/operations/DEVELOPMENT_HANDOFF_2026_08_01_CONVERSATION_COMPACT.md", "请先阅读本文件，并把它作为当前上下文"],
   ];

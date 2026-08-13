@@ -66,7 +66,7 @@
 - [ ] 触发条件、数据模型、权限模型或验证命令变化时重新复核。
 - [ ] 定期检查重复 skill；能合并就合并，不能证明价值就删除或标记 `Skip`。
 - [ ] 活跃进度只写入 `docs/operations/CURRENT_WORKING_CONTEXT.md`。
-- [ ] `docs/PROJECT_MEMORY.md` 只记录稳定事实、长期决策、发布门槛和链接。
+- [ ] 不再创建综合性 `PROJECT_MEMORY`；稳定事实写入各自唯一规范来源，历史快照只用于追溯、不作当前依据。
 
 ## Reviewer form
 

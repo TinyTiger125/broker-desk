@@ -7,8 +7,9 @@ Before using engineering skills such as `diagnose`, `tdd`, `to-prd`, `to-issues`
 ## Primary Domain Files
 
 - `docs/README.md`: documentation map, current directories, and archive rules.
-- `docs/PROJECT_MEMORY.md`: historical/reference material only; it is not the active handoff or task entrypoint.
 - `CONTEXT.md` at the repo root: canonical domain glossary and product boundaries.
+- Read the relevant professional files under `docs/product/`, `docs/engineering/`, or `docs/operations/` only when the task requires them.
+- `docs/archive/legacy-project-memory/PROJECT_MEMORY_2026_08_06.md`: historical snapshot only; use it for traceability, never as the current domain source.
 - `docs/product/PRODUCT_TOPOLOGY.md`: product value topology and V1 product center.
 - `docs/product/V1_INPUT_FILE_MODEL.md`: input-side source file model and extraction-review principles.
 - `docs/product/V1_CASE_WORKBENCH.md`: case workbench model, trust states, and required sections.

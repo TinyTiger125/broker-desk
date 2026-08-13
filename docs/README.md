@@ -29,7 +29,8 @@
 ## 历史资料
 
 - `archive/`：已降级的历史交接、设计和旧方案。
-- `../CLAUDE 3.md`、`PROJECT_MEMORY.md`和dated handoffs：历史或参考资料，不是当前启动入口。
+- `../PROJECT_MEMORY.md`：仅为兼容指针；完整原文位于 `archive/legacy-project-memory/PROJECT_MEMORY_2026_08_06.md`。根指针和归档快照都不是默认启动入口。
+- `../CLAUDE 3.md` 和 dated handoffs：历史或参考资料，不是当前启动入口。
 
 ## 工具适配
 

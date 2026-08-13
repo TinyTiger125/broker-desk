@@ -172,6 +172,6 @@ When a UI control appears broken in Broker Desk:
 2. Check client chunk network status.
 3. Reproduce with a real browser action, not screenshots only.
 4. Only then inspect component click handlers.
-5. Record the confirmed root cause in `docs/PROJECT_MEMORY.md` if it changes product risk or process.
+5. Record the confirmed root cause in the relevant engineering Runbook or current task card; if it changes committed architecture, product boundaries, or domain semantics, update `ARCHITECTURE.md`, `PRODUCT.md`, or `CONTEXT.md` through the corresponding task.
 
 Do not spend time tuning PDF coordinates while runtime hydration is unproven.

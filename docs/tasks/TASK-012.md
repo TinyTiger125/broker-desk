@@ -75,7 +75,7 @@ BACKLOG.md、docs/tasks/TASK-012.md；必要时仅修改直接硬编码旧入口
 - CLAUDE.md原有的工程技能域文档读取清单：已由 docs/agents/domain.md 承载，后续由角色Playbook任务决定读取位置。
 - CLAUDE.md中历史产品、架构、功能、执行记录和讨论冻结内容：不在本任务直接删除，需由后续产品/架构/历史迁移任务按证据归属处理。
 - `.cursor/README.md`和`.cursor/rules/*.mdc`仍有`CLAUDE.md wins`或CLAUDE最高真源类旧声明；本任务明确禁止修改`.cursor`，由工具适配迁移任务处理，不作为MIG-001的已解决项。
-- `docs/archive/README.md`仍可能把PROJECT_MEMORY列为历史文档导航入口；文件位于归档范围，本任务不修改，后续归档入口清理时处理。
+- MIG-001结束时发现的 `docs/archive/README.md` PROJECT_MEMORY历史导航残留，已由MIG-002更新；本条保留为MIG-001发现记录，不表示当前仍是默认入口。
 
 ## 验证命令
 
