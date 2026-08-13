@@ -6,8 +6,8 @@ Before using engineering skills such as `diagnose`, `tdd`, `to-prd`, `to-issues`
 
 ## Primary Domain Files
 
-- `docs/PROJECT_MEMORY.md`: fixed project-memory entrypoint, current status, active risks, and next-step index. Read this first.
 - `docs/README.md`: documentation map, current directories, and archive rules.
+- `docs/PROJECT_MEMORY.md`: historical/reference material only; it is not the active handoff or task entrypoint.
 - `CONTEXT.md` at the repo root: canonical domain glossary and product boundaries.
 - `docs/product/PRODUCT_TOPOLOGY.md`: product value topology and V1 product center.
 - `docs/product/V1_INPUT_FILE_MODEL.md`: input-side source file model and extraction-review principles.

@@ -1,54 +1,28 @@
-# Broker Desk Current Working Context
+# Broker Desk 当前工作交接
 
-> This is the only active handoff and active-progress entry.
+> 本文件是唯一活动交接和进度入口。它不重复产品、架构或历史记录。
 > Last updated: 2026-08-13.
 
 ## 当前任务
 
-完成 TASK-011 后，进入 TASK-002 的 diff 片段级归属审查。
+- `TASK-012 / MIG-001`：统一治理入口，状态为 `In Review`。
+- 用户结果：进入仓库后先找到唯一永久规则、当前交接和当前任务，不把CLAUDE或历史文档当作第二套权威。
 
-## 当前分支与基点
+## Git事实
 
-- Branch: governance/clean-baseline-20260812
-- Base: local main and governance baseline at fedb4c96e5f7b5e33caef977c5defd78ecf24ac9
-- Recovery branch: safety/wip-mixed-worktree-20260812; preserve unchanged.
-- WIP snapshot: 6f199375467bbfedd77bc90d80a53c423d4c9969; preserve unchanged.
-- No src/ business code is in scope for this baseline.
+- 正式仓库：`/Users/laineyzhu/Documents/独立开发项目/房产专家/broker-desk-web-dev`
+- Branch: `governance/clean-baseline-20260812`
+- HEAD: `9d12c0a`
+- local main: `fedb4c9`
+- safety/WIP分支：`safety/wip-mixed-worktree-20260812`，保持不变。
+- 本任务开始前工作区干净；本任务只允许治理入口文件和必要的直接检查引用。
 
-## 当前状态
+## 本任务边界
 
-- TASK-001: Done after governance-only verification.
-- TASK-002: In Review; fragment-level attribution remains evidence work.
-- TASK-011: Done; governance metadata and document residue were repaired and independently reviewed.
-- TASK-003: Proposed.
-- TASK-006A: Proposed; not Ready and not implemented.
-- TASK-004, TASK-005, TASK-006, TASK-007, TASK-008, TASK-009 remain Proposed.
-- TASK-010 remains Blocked.
+- 只收敛 `AGENTS.md`、`CLAUDE.md`、README、文档地图、当前交接和本任务登记。
+- 不新建Playbook，不修改产品/架构事实，不修改 `.cursor`、业务代码、数据库、public或运行配置，不移动、归档或删除历史文件。
 
-## 下一项任务
+## 验证与下一步
 
-当前唯一任务：完成 TASK-002 的 diff 片段级归属审查并重新审查治理基线。
-
-## 边界
-
-- Do not implement TASK-006A or any business task in this handoff.
-- The candidate address for TASK-006A is /organize-center?type=case.
-- Lifecycle returnTo, party/property pages, browser back, q preservation, and
-  global navigation are outside TASK-006A.
-- BACKLOG.md and docs/tasks/ define task scope and status.
-- Historical handoffs, CLAUDE files, PM_CONTROL, PROJECT_MEMORY, and DESIGN.md
-  are not current progress authority.
-
-## 验证记录
-
-- Before commit: git status --short, git diff --check,
-  npm run test:workflow-rules, relevant document checks, git diff --stat,
-  and git diff.
-- Required final proof: no src/ path changed; branch history is directly
-  based on main; no task is Done or Ready by business inference.
-
-## 当前交接入口
-
-Read this file first, then the assigned task card, PRODUCT.md, and
-ARCHITECTURE.md as needed. Stop after the governance commit; do not start
-TASK-006A in the same task.
+- 必须完成任务卡中的治理检查、差异检查、lint、typecheck、入口扫描和独立审查。
+- 实现和审查通过并形成MIG-001提交后，停止当前任务，等待MIG-002批准；不在本交接中启动下一项迁移。

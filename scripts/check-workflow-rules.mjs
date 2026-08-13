@@ -82,10 +82,10 @@ async function main() {
 
   const requiredText = {
     "AGENTS.md": [
-      "BACKLOG.md and the task cards under docs/tasks/ are the task authority.",
-      "docs/operations/CURRENT_WORKING_CONTEXT.md is the only active handoff",
-      "A governance-only task may modify governance documents",
-      "Do not mark a task Done or Ready when required evidence is absent.",
+      "BACKLOG.md` and the assigned task card define the current task scope,",
+      "docs/operations/CURRENT_WORKING_CONTEXT.md` is the only active handoff and",
+      "A governance-only task may change governance documents and the direct",
+      "Do not mark a task `Done` or `Ready` while required evidence is missing.",
     ],
     "PRODUCT.md": [
       "## Product",
@@ -108,15 +108,15 @@ async function main() {
       "TASK-006A is the only narrowed candidate business trial",
     ],
     "docs/README.md": [
-      "docs/operations/CURRENT_WORKING_CONTEXT.md is the only active handoff",
-      "BACKLOG.md and docs/tasks/ are the local task authority.",
-      "DESIGN.md is retained as a design-contract candidate.",
+      "本文件只说明文档类别和读取路径，不复制其他文档正文。",
+      "operations/CURRENT_WORKING_CONTEXT.md`：唯一活动交接和进度入口。",
+      "tasks/`：任务卡；只读取当前任务卡，不默认读取全部任务卡。",
     ],
     "docs/operations/CURRENT_WORKING_CONTEXT.md": [
       "## 当前任务",
-      "当前唯一任务：完成 TASK-002 的 diff 片段级归属审查并重新审查治理基线。",
-      "/organize-center?type=case",
-      "TASK-006A: Proposed; not Ready and not implemented.",
+      "TASK-012 / MIG-001",
+      "9d12c0a",
+      "不新建Playbook",
     ],
   };
 

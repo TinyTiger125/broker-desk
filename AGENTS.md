@@ -1,57 +1,83 @@
 # Repository Execution Rules
 
-These rules govern every task in this repository.
+These are the permanent rules shared by every agent and human contributor.
+They do not define product direction, page details, business workflows, or
+historical progress.
 
-## Authority and boundaries
+## Canonical repository and start
 
-- The canonical repository is this checkout. Do not use sibling copies or
-  generated .next* directories as working repositories.
-- BACKLOG.md and the task cards under docs/tasks/ are the task authority.
-- docs/operations/CURRENT_WORKING_CONTEXT.md is the only active handoff and
+- The canonical repository is `/Users/laineyzhu/Documents/独立开发项目/房产专家/broker-desk-web-dev`.
+- Do not use sibling copies, generated directories, or the parent project
+  directory as a working repository.
+- Before editing, verify the canonical path, current branch, expected base,
+  and `git status --short --branch --untracked-files=all`.
+- Read in this order: `AGENTS.md`,
+  `docs/operations/CURRENT_WORKING_CONTEXT.md`, the assigned card under
+  `docs/tasks/`, then only the product, architecture, and professional files
+  required by that card.
+
+## Authority and task scope
+
+- `AGENTS.md` is the only permanent cross-role rule file.
+- `BACKLOG.md` and the assigned task card define the current task scope,
+  status, acceptance evidence, and completion boundary.
+- `docs/operations/CURRENT_WORKING_CONTEXT.md` is the only active handoff and
   active-progress entry.
-- PRODUCT.md contains stable product facts. ARCHITECTURE.md describes the
-  committed main architecture. Historical documents are reference only.
-- DESIGN.md, CLAUDE*.md, docs/PROJECT_MEMORY.md,
-  docs/operations/PM_CONTROL.md, and dated handoffs must not override the
-  active task authority.
-- A task card must have exactly one task identifier and one valid status:
-  Proposed, Ready, In Progress, In Review, Blocked, or Done.
+- `PRODUCT.md` contains stable product facts. `ARCHITECTURE.md` contains the
+  committed architecture. Other documents are read only when the task calls
+  for them; historical documents never override current authority.
+- One task changes one bounded result. Do not silently enlarge its scope or
+  implement a downstream task.
 
-## Start
+## Modification authorization
 
-1. Read this file, then docs/operations/CURRENT_WORKING_CONTEXT.md and the
-   assigned task card.
-2. Read PRODUCT.md and ARCHITECTURE.md only as needed for the assigned task.
-3. Run git status --short and inspect the relevant diff before editing.
-4. Confirm that the requested files and behavior belong to the assigned task.
+- Modify only files explicitly listed by the assigned task card.
+- Preserve unrelated user work. Do not move, delete, regenerate, or rewrite
+  files unless the task explicitly authorizes that exact action.
+- A governance-only task may change governance documents and the direct
+  governance checker needed to validate them, but must not change `src/`,
+  database migrations, runtime behavior, public assets, or business config.
+- If a required change is outside the card, stop and report the exact file and
+  reason instead of assuming authorization.
 
-## Scope
+## Git safety
 
-- One task changes one defect, one page, or one bounded governance result.
-- Do not silently enlarge scope, implement a downstream task, or redesign the
-  product.
-- A governance-only task may modify governance documents and governance
-  checking scripts, but must not modify src/ or other business behavior.
-- Preserve unrelated work. Never use git reset --hard, git checkout --,
-  git clean, history rewriting, or equivalent destructive operations.
+- Work only on the assigned branch and keep `main` and recovery/WIP refs
+  unchanged unless explicitly authorized.
+- Never use `git reset --hard`, `git checkout --`, `git clean`, history rewrite,
+  force push, or an equivalent destructive operation.
+- Inspect the diff before staging. Stage only the current task's files.
+- Commit one scoped result after verification. Do not push unless explicitly
+  authorized.
 
-## Verification
+## Verification and independent review
 
-- Every modification must run an explicit verification command with visible
-  output.
-- Run the task-card checks, git diff --check, and git status --short.
-- Passing a static check does not prove browser, runtime, data, permission, or
-  recovery acceptance when the task requires those forms of evidence.
-- Do not mark a task Done or Ready when required evidence is absent.
+- Every change requires visible, task-card-defined verification output,
+  `git diff --check`, and a final `git status --short`.
+- Static checks do not prove runtime, browser, data, permission, or recovery
+  behavior unless that evidence is explicitly collected.
+- Implementation and independent review are sequential. The implementer
+  finishes and exits before a separate reviewer starts.
+- Do not mark a task `Done` or `Ready` while required evidence is missing.
 
-## Commit and stop
+## Agent lifecycle
 
-- Stage only the current task's files.
-- Inspect the staged diff before committing.
-- Commit the scoped result after verification passes. Do not push unless the
-  product owner explicitly asks.
-- Update BACKLOG.md, the task card, and the short current context when the
-  task result changes.
-- Stop when the task is committed, blocked by a missing decision/evidence, or
-  two consecutive rounds produce no new diff or validation result. Start the
-  next task separately.
+- The project manager is the only agent allowed to create subagents.
+- At most two subagents may be active at once, and no subagent may create a
+  child agent.
+- Do not run two agents against the same write set. Keep implementation and
+  review sequential and independent.
+- A subagent stops after its assigned result, on a real blocker, or after two
+  consecutive rounds without new evidence, a useful diff, or validation.
+- Close completed or blocked subagents before phase handoff. Do not keep an
+  idle agent alive or create a permanent team.
+
+## Stop and handoff
+
+- Stop for an unexpected worktree change, baseline mismatch, out-of-scope
+  access, security/data risk, missing decision, or required destructive action.
+- A normal wait timeout is not evidence of failure; request a bounded status
+  report before deciding whether to stop an agent.
+- Before handoff, record the current task status, changed files, verification,
+  commit, known risks, and next task in the active context. Then stop; do not
+  start the next task in the same handoff.
