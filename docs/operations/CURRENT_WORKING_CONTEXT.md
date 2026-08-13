@@ -8,7 +8,8 @@
 - `PM-HANDOFF-001` 接管验证已通过；下一阶段项目经理已正式接管。
 - `TASK-016 / MIG-004` 已完成：已建立术语唯一规范来源并迁移相关活动文档，不修改业务代码或实际界面文案。
 - `TASK-015 / MIG-005` 已完成：已建立技术项目经理、实现 Agent、独立审查 Agent 三类最小 Playbook，并通过独立只读审查。
-- 下一项为 `MIG-006` 候选，尚未授权实施。
+- `TASK-017 / MIG-006` 已完成：已清理 `.cursor` 活动规则、建立薄适配入口并处理高风险 Skill 指针。
+- 下一步不是继续治理，而是选择一个小型真实业务任务进行完整试运行；当前尚未指定或授权具体业务任务。
 - 不补建独立的 `PM-HANDOFF-001` 任务卡：`AGENTS.md` 要求实施任务使用指定任务卡，但没有要求只读接管单独建卡；本文件、`BACKLOG.md` 和 `TASK-014` 已提供足够交接证据。
 
 ## 已完成迁移证据
@@ -33,7 +34,7 @@
 
 - `TASK-002` 保持 `In Review`：任务卡明确要求未决片段继续为 `Needs Review`，没有新业务证据可改为 Done。
 - `TASK-010` 保持 `Blocked`：仍依赖 TASK-005、TASK-007、TASK-009，并缺少真实环境、权限、恢复和双设备证据。
-- `.cursor`、旧 CLAUDE 内容、旧输出路由和两份日语术语字典冲突仍未处理；历史资料继续保留，但当前术语选择只以 `docs/operations/PRODUCT_TERMINOLOGY_CANONICAL.md` 为准。
+- `.cursor` 的旧活动规则和旧权威顺序已由 TASK-017 清理；旧 CLAUDE 内容、旧输出路由和两份日语术语字典仍按既有边界保留或另行处理，当前术语选择只以 `docs/operations/PRODUCT_TERMINOLOGY_CANONICAL.md` 为准。
 
 ## MIG-004结果
 
@@ -41,14 +42,31 @@
 - 2026-07-14 字典、旧 handoff 和 CSV 只保留历史证据，不升格为当前权威；活动工作流和风格指南不得另立冲突词表。
 - 未执行术语批量回填、代码修改或实际界面文案修改；独立只读审查已通过。
 - `TASK-015 / MIG-005` 已完成：三类 Playbook 为 `docs/agents/TECHNICAL_PM.md`、`docs/agents/IMPLEMENTATION_AGENT.md`、`docs/agents/INDEPENDENT_REVIEW_AGENT.md`；包含建设性反对、证据分层、最小验证、停止条件、Agent 生命周期和交接要求。
-- `PRODUCT_TERMINOLOGY_CANONICAL.md` 的 `docs/operations/` 目录归属问题只登记为后续 `MIG-006` 候选，本轮不移动、不重命名、不返工。
+- `PRODUCT_TERMINOLOGY_CANONICAL.md` 的 `docs/operations/` 目录归属问题已登记在 `TASK-017` 的明确排除项中，本轮不移动、不重命名、不返工。
+
+## MIG-006结果
+
+- `.cursor` 现在只通过一个带 Cursor 元数据的薄入口路由到 `AGENTS.md`、当前上下文、`TASK-017` 和按角色匹配的三类 Playbook。
+- 已处理旧 `CLAUDE.md wins`/权威顺序、重复规则正文、失效规则引用和高风险 Skill；低风险按需 Skill 未做完整重构。
+- `PRODUCT_TERMINOLOGY_CANONICAL.md` 的目录归属本轮未迁移；未新增 MIG-007。
+- 真实 Cursor 加载行为无法由本地检查证明，已明确记录为“需要人工验证”，未伪称通过。
+
+## 开发恢复检查表
+
+- 治理入口：静态检查通过；`.cursor/rules/00-governance-entry.mdc` 是唯一活动规则入口。
+- 权威路由：入口指向 `AGENTS.md`、当前上下文、TASK-017 和三类角色 Playbook；旧 CLAUDE/wins/权威顺序已清除。
+- Skill 风险：6 个高风险 Skill 已降为薄指针，6 个低风险 Skill 保持未修改。
+- 范围安全：业务代码、数据库、界面、产品/架构文件、历史资料、术语目录和 MIG-007 无差异。
+- 验证：`git diff --check`、`npm run test:workflow-rules`、引用扫描和独立审查均通过。
+- 未验证项：真实 Cursor 加载顺序/UI 行为需要人工验证。
+- Git：MIG-006 收口提交号见 Git 历史；最终工作区收口后保持干净。
 
 ## 当前禁止事项
 
-- 不修改业务代码、数据库、public、业务配置、页面行为、用户可见文字、`.cursor`、历史资料、`main` 或 safety/WIP。
-- 不切换分支、合并、rebase、cherry-pick、reset；MIG-005 收口后不继续创建 Playbook 或下级 Agent，等待 MIG-006 明确批准。
+- 不修改业务代码、数据库、public、业务配置、页面行为、用户可见文字、历史资料、`main` 或 safety/WIP；`.cursor` 仅按 TASK-017 授权范围修改。
+- 不切换分支、合并、rebase、cherry-pick、reset；不创建 MIG-007，不扩大为完整 Cursor Skill 重构或术语目录迁移。
 - 后续实施必须先有明确任务卡、授权范围、验证和独立审查。
 
 ## Agent状态
 
-- MIG-005 按顺序使用 1 个实现 Agent 和 1 个独立审查 Agent；实现 Agent 已退出，审查 Agent 经一次明确问题修复后复核 PASS 并退出；当前活跃子Agent：`0`。
+- MIG-005 按顺序使用 1 个实现 Agent 和 1 个独立审查 Agent，均已退出；MIG-006 当前活跃子Agent：`0`，按本卡顺序调度。

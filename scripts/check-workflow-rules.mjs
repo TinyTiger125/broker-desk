@@ -12,6 +12,32 @@ const allowedStatuses = new Set([
   "Done",
 ]);
 const taskIdPattern = /TASK-\d{3}[A-Z]?/g;
+const cursorEntryPath = ".cursor/rules/00-governance-entry.mdc";
+const cursorLegacyRulePaths = [
+  ".cursor/rules/00-product-positioning.mdc",
+  ".cursor/rules/01-scope-boundaries.mdc",
+  ".cursor/rules/02-domain-model.mdc",
+  ".cursor/rules/03-import-center.mdc",
+  ".cursor/rules/04-output-center.mdc",
+  ".cursor/rules/07-coding-workflow.mdc",
+  ".cursor/rules/08-ui-ux-constraints.mdc",
+];
+const cursorSkillRoutes = new Map([
+  [".cursor/skills/feature-planner/SKILL.md", "docs/agents/TECHNICAL_PM.md"],
+  [".cursor/skills/import-mapper/SKILL.md", "docs/agents/IMPLEMENTATION_AGENT.md"],
+  [".cursor/skills/domain-model-guardian/SKILL.md", "docs/agents/TECHNICAL_PM.md"],
+  [".cursor/skills/output-template-builder/SKILL.md", "docs/agents/IMPLEMENTATION_AGENT.md"],
+  [".cursor/skills/migration-safe-refactor/SKILL.md", "docs/agents/IMPLEMENTATION_AGENT.md"],
+  [".cursor/skills/service-request-traceability/SKILL.md", "docs/agents/IMPLEMENTATION_AGENT.md"],
+]);
+const cursorEntryRoutes = [
+  "AGENTS.md",
+  "docs/operations/CURRENT_WORKING_CONTEXT.md",
+  "docs/tasks/TASK-017.md",
+  "docs/agents/TECHNICAL_PM.md",
+  "docs/agents/IMPLEMENTATION_AGENT.md",
+  "docs/agents/INDEPENDENT_REVIEW_AGENT.md",
+];
 
 async function read(relativePath) {
   return readFile(path.join(root, relativePath), "utf8");
@@ -330,6 +356,87 @@ async function main() {
     errors.push("DESIGN.md: missing non-authority declaration");
   }
 
+  const cursorDirectory = path.join(root, ".cursor");
+  let cursorDirectoryExists = true;
+  try {
+    await readdir(cursorDirectory);
+  } catch {
+    cursorDirectoryExists = false;
+  }
+  if (!cursorDirectoryExists) {
+    errors.push(".cursor: directory is missing");
+  } else {
+    const cursorRelativeFiles = allFiles
+      .map(relative)
+      .filter((file) => file.startsWith(".cursor/"));
+    const cursorContents = new Map();
+    for (const relativePath of cursorRelativeFiles) {
+      cursorContents.set(relativePath, await read(relativePath));
+    }
+
+    if (!(await exists(cursorEntryPath))) {
+      errors.push(".cursor: missing unique governance entry " + cursorEntryPath);
+    } else {
+      const entry = cursorContents.get(cursorEntryPath) ?? (await read(cursorEntryPath));
+      if (!/^---\s*\n[\s\S]*^description:\s*.+$/m.test(entry)) {
+        errors.push(cursorEntryPath + ': missing Cursor "description" frontmatter');
+      }
+      if (!/^---\s*\n[\s\S]*^alwaysApply:\s*true\s*$/m.test(entry)) {
+        errors.push(cursorEntryPath + ': missing Cursor "alwaysApply: true" frontmatter');
+      }
+      for (const route of cursorEntryRoutes) {
+        requireText(cursorEntryPath, entry, route);
+      }
+    }
+
+    const ruleDirectory = path.join(cursorDirectory, "rules");
+    const ruleEntries = await readdir(ruleDirectory, { withFileTypes: true });
+    const activeRuleFiles = ruleEntries
+      .filter((entry) => entry.isFile() && entry.name.endsWith(".mdc"))
+      .map((entry) => ".cursor/rules/" + entry.name)
+      .sort();
+    if (activeRuleFiles.length !== 1 || activeRuleFiles[0] !== cursorEntryPath) {
+      errors.push(
+        ".cursor/rules: expected only " + cursorEntryPath + "; found " + activeRuleFiles.join(", "),
+      );
+    }
+
+    for (const legacyPath of cursorLegacyRulePaths) {
+      if (await exists(legacyPath)) {
+        errors.push(".cursor: legacy rule still exists " + legacyPath);
+      }
+    }
+
+    const forbiddenCursorClaims = [
+      [/CLAUDE(?:\.md)?/i, "CLAUDE authority declaration"],
+      [/\bwins\b/i, "wins declaration"],
+      [/active[\s_-]*sprint/i, "active-sprint guidance"],
+    ];
+    for (const [relativePath, fileContents] of cursorContents) {
+      for (const [pattern, label] of forbiddenCursorClaims) {
+        if (pattern.test(fileContents)) {
+          errors.push(relativePath + ": stale " + label + " remains");
+        }
+      }
+      for (const legacyPath of cursorLegacyRulePaths) {
+        if (fileContents.includes(legacyPath)) {
+          errors.push(relativePath + ": stale rule reference remains: " + legacyPath);
+        }
+      }
+    }
+
+    for (const [skillPath, playbookPath] of cursorSkillRoutes) {
+      const skillContents = cursorContents.get(skillPath);
+      if (!skillContents) {
+        errors.push(".cursor: missing high-risk skill " + skillPath);
+        continue;
+      }
+      for (const route of [cursorEntryPath, "docs/operations/CURRENT_WORKING_CONTEXT.md", "docs/tasks/TASK-017.md", playbookPath]) {
+        requireText(skillPath, skillContents, route);
+      }
+    }
+  }
+
   if (errors.length > 0) {
     console.error("workflow rules check: FAIL");
     for (const error of errors) console.error("- " + error);
@@ -338,7 +445,7 @@ async function main() {
   }
 
   console.log("workflow rules check: PASS");
-  console.log("Checked governance authority paths, task/card status parity, context references, and legacy downgrade declarations");
+  console.log("Checked governance authority paths, task/card status parity, context references, legacy downgrade declarations, and Cursor routing boundaries");
 }
 
 main().catch((error) => {

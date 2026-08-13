@@ -16,6 +16,7 @@
 | TASK-014 | P0 | MIG-003固化V1唯一主输出边界 | Done | TASK-013 | [TASK-014](docs/tasks/TASK-014.md) | Product-document boundary, validation, and independent review complete; no business-code changes |
 | TASK-016 | P0 | MIG-004建立日语用户界面术语唯一规范来源 | Done | TASK-014 | [TASK-016](docs/tasks/TASK-016.md) | Canonical source, active-document routing, historical-source preservation, exact five-term check, workflow-rules check, and independent read-only review PASS |
 | TASK-015 | P1 | MIG-005建立三类核心角色 Playbook | Done | TASK-016 | [TASK-015](docs/tasks/TASK-015.md) | Three role Playbooks, fixed constructive-dissent protocol, evidence labels, minimal validation, lifecycle/hand-off rules, review-fix, and independent review PASS |
+| TASK-017 | P0 | MIG-006清理 Cursor 活动规则并建立薄适配入口 | Done | TASK-015 | [TASK-017](docs/tasks/TASK-017.md) | Thin Cursor governance entry, legacy authority cleanup, high-risk skill pointers, reference scan, governance checks, manual-load verification record, review-fix, and independent review PASS |
 | TASK-003 | P0 | Close the input-material merge completion loop | Proposed | TASK-002 | [TASK-003](docs/tasks/TASK-003.md) | Selection, confirmation, result, failure, and refresh evidence |
 | TASK-004 | P0 | Consolidate template-library and official-template boundaries | Proposed | TASK-002 | [TASK-004](docs/tasks/TASK-004.md) | Role-aware entry, visibility, and installation evidence |
 | TASK-005 | P0 | Separate official template draft and publish states | Proposed | TASK-004 | [TASK-005](docs/tasks/TASK-005.md) | Independent draft save, publish, immutable version, and failure evidence |
@@ -39,4 +40,5 @@
 - PM-HANDOFF-001接管验证已通过并完成收口；它只记录治理状态，不是业务实施任务，也未单独建立任务卡。
 - TASK-016 / MIG-004已完成；当前唯一规范来源为[`PRODUCT_TERMINOLOGY_CANONICAL.md`](docs/operations/PRODUCT_TERMINOLOGY_CANONICAL.md)。本次只迁移术语规范来源和相关文档，不修改业务代码或实际界面文案；独立只读审查已通过。
 - TASK-015 / MIG-005已完成；本轮只建立三类核心角色 Playbook及其任务治理记录，不修改`AGENTS.md`、业务代码、产品功能或 MIG-006；独立审查 PASS。
+- TASK-017 / MIG-006已完成；本轮只清理 `.cursor` 活动规则和高风险 Skill 入口，不修改业务文件、产品范围、架构、术语目录或 MIG-007；真实 Cursor 加载行为仍需人工验证。
 - No business task is implemented by the pure governance baseline commit.

@@ -1,23 +1,13 @@
 # Skill: Service Request Traceability
 
 ## When to use
-- Service request creation/update
-- Timeline/status/cost tracking
-- Property-linked issue history
 
-## Source Of Truth
-- Follow `CLAUDE.md` and current service request boundaries.
+Use for service-request implementation and traceability work.
 
-## Checklist
-1. Related property is linkable and queryable.
-2. Optional related party is preserved.
-3. Status transitions are auditable.
-4. Key dates exist (`occurred_at`, `completed_at` when done).
-5. Cost and notes remain traceable.
+## Route
 
-## Output format
-- Data fields used
-- Status transition rules
-- Traceability/audit records
-- UI actions and recovery path
+Start at `.cursor/rules/00-governance-entry.mdc`, then read:
 
+- `docs/operations/CURRENT_WORKING_CONTEXT.md`
+- `docs/tasks/TASK-017.md`
+- `docs/agents/IMPLEMENTATION_AGENT.md` for implementation work.

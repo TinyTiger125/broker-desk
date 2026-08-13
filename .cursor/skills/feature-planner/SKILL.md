@@ -1,34 +1,13 @@
 # Skill: Feature Planner
 
 ## When to use
-- New feature request
-- Non-trivial refactor
-- Any work crossing more than one module
 
-## Source Of Truth
-- If conflict exists, follow `CLAUDE.md` first, then `.cursor/rules/*`.
+Use for feature requests, non-trivial refactors, or work crossing modules.
 
-## Steps
-1. Classify request into one:
-   - import
-   - core_data
-   - output
-   - template
-   - ai_future
-2. Confirm scope:
-   - in current phase?
-   - out-of-scope but extensibility-only?
-3. Map impacts:
-   - entities
-   - APIs/actions
-   - pages
-   - tests/checks
-4. Propose minimal delivery slice with acceptance checks.
+## Route
 
-## Output format
-- Goal
-- Scope decision (in/out)
-- Impacted files/modules
-- Implementation order
-- Verification plan
+Start at `.cursor/rules/00-governance-entry.mdc`, then read:
 
+- `docs/operations/CURRENT_WORKING_CONTEXT.md`
+- `docs/tasks/TASK-017.md`
+- `docs/agents/TECHNICAL_PM.md` for planning and scope decisions.

@@ -1,0 +1,16 @@
+---
+description: "Route Cursor work to the repository governance, current context, task card, and matching role Playbook."
+alwaysApply: true
+---
+
+# Governance entry
+
+Read the following repository documents before acting:
+
+- `AGENTS.md`
+- `docs/operations/CURRENT_WORKING_CONTEXT.md`
+- `docs/tasks/TASK-017.md`
+- The role-matching Playbook:
+  - `docs/agents/TECHNICAL_PM.md`
+  - `docs/agents/IMPLEMENTATION_AGENT.md`
+  - `docs/agents/INDEPENDENT_REVIEW_AGENT.md`
