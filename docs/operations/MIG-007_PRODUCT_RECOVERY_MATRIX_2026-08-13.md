@@ -1,6 +1,6 @@
 # MIG-007 产品恢复矩阵
 
-> 状态：阶段一、阶段二完成；产品负责人已批准 A→审查→B→审查。当前处于检查点 A，未开始 B。
+> 状态：阶段一、阶段二完成；产品负责人已批准 A→审查→B→审查。A 的实现和独立审查已完成，但真实浏览器/数据行为门禁阻塞，B 未开始。
 >
 > 事实、推断和建议分开记录。当前唯一产品基线候选是治理分支 `governance/clean-baseline-20260812` 的代码（与 `main` 的业务代码一致）；`safety/wip-mixed-worktree-20260812` 和 WIP 快照只作恢复证据，未被修改。
 
@@ -8,16 +8,16 @@
 
 | 项目 | 已验证事实 |
 |---|---|
-| 当前分支 | `governance/clean-baseline-20260812` |
-| 当前 HEAD | `27ff1037f1aa2edc98d94ff37bfa3d168a0acb2a` |
+| 当前分支 | `recovery/mig-007-checkpoint-a` |
+| 当前 HEAD | 以 `git rev-parse HEAD` 为准；A 实现和收口证据位于本分支最新提交。 |
 | `main` HEAD | `fedb4c96e5f7b5e33caef977c5defd78ecf24ac9` |
 | 当前分支与 main | `git merge-base main HEAD` 等于 `main` HEAD；当前分支的业务代码与 main 一致，差异是治理文件。 |
 | 冻结 safety/WIP | `safety/wip-mixed-worktree-20260812` = `61bce515e4ad44a6c32da551377dbf427d8bd946`。相对 WIP 快照只新增治理记录；业务 WIP 仍可在两者中复查。 |
 | WIP 快照 | `6f199375467bbfedd77bc90d80a53c423d4c9969`，父链上承载混合业务 WIP 和历史治理材料。 |
-| 当前工作区 | 只读盘点副作用已清理；无业务代码或未解释的未跟踪文件。 |
-| 静态能力 | `npm run typecheck`、`npm run lint`、`npm run build` 通过。 |
-| 开发启动探测 | `PORT=3101 npm run dev` 可启动；`/sign-in` 与 `/api/health/data` 返回 200；根页和受保护核心页按预期重定向。开发服务器自动写入的 Next Agent 规则已恢复，未保留副作用。 |
-| 生产启动探测 | `npm start` 进程可监听，但根页、登录页、健康检查和整理页均返回 503。代码将生产认证/限流就绪不足视为 Service unavailable；不能视为可开隧道。 |
+| 当前工作区 | A 收口前有已审查的组件修改和治理记录修改；收口提交后应保持干净，无未解释文件。 |
+| 静态能力 | `npm run typecheck`、`npm run lint`、`npm run build`、导入失败恢复、纠正事件检查和 `git diff --check` 通过。 |
+| 开发启动探测 | `DATA_DRIVER=memory` 的本地开发服务可监听，公开 `/api/health/data` 返回 `200 ready`；受保护 `/import-center` 返回 `307 /sign-in?reason=login_required`。命令行显式设置 demo 变量后仍未获得可用 demo 工作区身份；in-app Browser 无法连接临时本地端口。 |
+| 生产启动探测 | `npm start` 进程可监听，但 `/`、`/sign-in`、`/api/health/data`、`/organize-center` 均返回 503。认证配置存在，首个明确失败为边缘限流启用标志和策略 ID 缺失；生产数据发布批准、附件存储和文档读取配置也未满足。不能视为可开隧道。 |
 | 外部状态检查 | `npm run test:guarantee-template-publication-state` 在可连接开发数据库后失败：两个模板未使用要求的修正版 v2 active version。该结果是外部数据库事实，不由静态脚本通过覆盖。 |
 | 依赖变化 | `main..safety` 没有 `package.json`、`package-lock.json` 或数据库迁移新增/修改；WIP 业务片段主要是现有页面、Server Action、组件、会话辅助和检查脚本。 |
 
@@ -71,6 +71,13 @@
 
 产品负责人已批准第一集成边界。当前只允许实施检查点 A；A 的实现和独立审查通过后才允许进入 B。
 
+## 6A. 检查点 A 运行门禁
+
+- **已验证事实**：A 的实现 Agent 和独立审查 Agent 已按顺序完成并退出；审查通过；静态检查通过；没有修改 safety/WIP、WIP 快照、数据库或 TASK-004～008 代码。
+- **已验证事实**：开发服务器可启动，数据健康公开接口为 `200 ready`；生产服务可监听但四个探测路由均为 `503`。
+- **未验证事实**：无法进入一个可用的 demo 工作区；受保护资料页面只能得到登录重定向；in-app Browser 无法连接临时端口。因此尚未验证真实资料导入、确认、新建/追加/合并、权限、持久化、异常和案件工作台行为。
+- **停止结论**：A 代码审查通过，但 A 用户流程未通过。B、端到端验收和隧道开放前检查均保持 Pending。
+
 ## 5. 朋友测试目标：149 项专业分类
 
 ### 已验证事实
@@ -94,7 +101,7 @@
 
 | 检查点 | 状态 | 允许范围 | 进入条件 |
 |---|---|---|---|
-| A / TASK-003 | In Progress | 资料导入、确认、新建/追加/合并、案件工作台及必要权限/持久化/异常链路 | 实现 Agent 完成并退出，独立审查通过 |
+| A / TASK-003 | Runtime gate blocked | 资料导入、确认、新建/追加/合并、案件工作台及必要权限/持久化/异常链路 | 需要可用测试身份和可连接的浏览器环境；未满足前不得进入 B |
 | B / TASK-004 前台 | Pending | 模板库、租户安装、输出中心、申请书预览/下载 | A 通过；不得带入 TASK-005～008 |
 | 端到端验收 | Pending | 从资料进入系统到申请书下载的浏览器和数据行为 | B 通过 |
 | 演示运行检查 | Pending | npm start 503 原因、测试账号/租户/数据、隧道安全 | 端到端验收通过 |

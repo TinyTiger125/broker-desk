@@ -9,7 +9,7 @@
 - `TASK-016 / MIG-004` 已完成：已建立术语唯一规范来源并迁移相关活动文档，不修改业务代码或实际界面文案。
 - `TASK-015 / MIG-005` 已完成：已建立技术项目经理、实现 Agent、独立审查 Agent 三类最小 Playbook，并通过独立只读审查。
 - `TASK-017 / MIG-006` 已完成：已清理 `.cursor` 活动规则、建立薄适配入口并处理高风险 Skill 指针。
-- `TASK-018 / MIG-007` 已进入实施：产品负责人批准 A→独立审查→B→独立审查；当前在独立恢复分支 `recovery/mig-007-checkpoint-a` 执行 TASK-003，A 未通过不得进入 B。
+- `TASK-018 / MIG-007` 已进入实施：产品负责人批准 A→独立审查→B→独立审查；A 的 TASK-003 实现和独立审查已通过，但真实浏览器/数据行为门禁阻塞，B 不得开始。
 - 不补建独立的 `PM-HANDOFF-001` 任务卡：`AGENTS.md` 要求实施任务使用指定任务卡，但没有要求只读接管单独建卡；本文件、`BACKLOG.md` 和 `TASK-014` 已提供足够交接证据。
 
 ## 已完成迁移证据
@@ -22,14 +22,14 @@
 ## Git事实
 
 - 正式仓库：`/Users/laineyzhu/Documents/独立开发项目/房产专家/broker-desk-web-dev`
-- Branch: `governance/clean-baseline-20260812`
-- 当前分支：`governance/clean-baseline-20260812`
+- Branch: `recovery/mig-007-checkpoint-a`
+- 当前分支：`recovery/mig-007-checkpoint-a`
 - 当前 HEAD：以 `git rev-parse HEAD` 为准；MIG-004 收口提交号见 Git 历史。
 - `main` HEAD：`fedb4c96e5f7b5e33caef977c5defd78ecf24ac9`
 - `git merge-base main HEAD` 应等于 `main` HEAD；本轮核验结果相等。不得维护易漂移的“领先多少个提交”手工计数。
 - `safety/wip-mixed-worktree-20260812`：`61bce515e4ad44a6c32da551377dbf427d8bd946`；仅作混合 WIP 隔离证据，保持不变。
-- 本轮收口前工作区干净；收口后必须再次保持干净。
-- MIG-007 只读盘点事实：开发模式可启动并到达 `/sign-in`、数据健康入口和受保护路由重定向；`npm start` 生产模式因认证/限流就绪门禁返回 503。模板发布状态检查在连接开发数据库后仍有两个模板未达修正版 active version 要求。
+- A 收口提交后工作区必须再次保持干净；运行 Next 开发服务生成的规则块不得保留在 `AGENTS.md`。
+- MIG-007 当前事实：开发服务可监听，公开 `/api/health/data` 返回 `200 ready`；受保护 `/import-center` 返回 `307 /sign-in?reason=login_required`。命令行显式设置 demo 变量后仍未获得可用 demo 工作区身份，in-app Browser 无法连接临时端口。`npm start` 的 `/`、`/sign-in`、`/api/health/data`、`/organize-center` 均返回 503；首个明确阻断为边缘限流启用标志和策略 ID 缺失，生产数据发布批准、附件存储和文档读取配置也未满足。模板发布状态检查在连接开发数据库后仍有两个模板未达修正版 active version 要求。
 - WIP 产品去向：TASK-003 资料确认/合并和 TASK-004 前台模板使用是推荐第一集成边界；TASK-005 官方模板 draft/publish、TASK-006 返回路径、TASK-007 视觉诊断、TASK-008 生命周期继续候选/隔离。矩阵见 `docs/operations/MIG-007_PRODUCT_RECOVERY_MATRIX_2026-08-13.md`。
 - 朋友测试目标补充：当前目录有 167 个字段，其中 149 个案件事实字段；设置页已有 8 个主分类、分枝、搜索和必填/选填控制，但完整“专业分类”展示不属于 A/B，不能在 MIG-007 结束时伪称已完成。
 
@@ -68,8 +68,8 @@
 
 - A/B 以外不修改或合并业务代码、数据库、public、业务配置、页面行为、用户可见文字、历史资料、`main` 或 safety/WIP；不合并、rebase、cherry-pick、reset。
 - 不把 WIP 整体合入，不单独提取会破坏完整用户流程的 hunk；不把生产 503、外部数据库失败或真实隧道行为伪称为通过。
-- 当前只允许 TASK-003；A 实现和独立审查通过后才允许 TASK-004 前台流程。149 项专业分类、TASK-005～008 不得顺手迁入；MIG-007 完成后停止新增治理任务。
+- 当前只允许完成 TASK-003 的 A 运行门禁；A 真实浏览器/数据行为未通过前禁止 TASK-004 前台流程。149 项专业分类、TASK-005～008 不得顺手迁入；MIG-007 完成后停止新增治理任务。
 
 ## Agent状态
 
-- MIG-005 按顺序使用 1 个实现 Agent 和 1 个独立审查 Agent，均已退出；MIG-007 当前检查点 A 尚未创建 Agent，调度规则为每个检查点顺序使用 1 个实现 Agent、1 个独立审查 Agent，完成后立即退出。
+- MIG-005 按顺序使用 1 个实现 Agent 和 1 个独立审查 Agent，均已退出；MIG-007 检查点 A 已按顺序使用 1 个实现 Agent 和 1 个独立审查 Agent，均已退出；当前活跃 Agent 数量为 0。B 尚未创建 Agent。

@@ -73,4 +73,13 @@ TASK-002 的片段登记仍是 WIP 归属证据；TASK-017 / MIG-006 已完成�
 
 ## 当前状态
 
-In Progress。产品负责人已批准两个顺序检查点；当前处于检查点 A，尚未开始 B。149 项专业分类已登记为 A/B 之外的朋友测试验收缺口，未修改分类功能。
+In Progress。检查点 A 的实现和独立审查已通过，静态验证已通过；但本地受保护页面尚未完成真实浏览器与数据行为验收，因此 A 运行门禁未通过，B 尚未开始。149 项专业分类已登记为 A/B 之外的朋友测试验收缺口，未修改分类功能。
+
+## 2026-08-13 检查点 A 收口证据
+
+- 已验证：A 只修改 `src/components/input-extraction-review.tsx` 的资料确认/新建/追加/合并交互；后端 Action、租户权限、持久化和审计链路未被旁带修改。
+- 已验证：实现 Agent 完成后退出，独立审查 Agent 随后复核通过并退出；审查指出的保存提示文案和交接分支记录已修正。
+- 已验证：`npm run typecheck`、`npm run lint`、`npm run build`、导入失败恢复、纠正事件检查和 `git diff --check` 通过。
+- 已验证：本地开发服务可监听，公开 `/api/health/data` 返回 `200 ready`；受保护 `/import-center` 返回 `307 /sign-in?reason=login_required`。以命令行显式设置 demo 变量后，仍未获得可用的 demo 工作区身份；in-app Browser 也无法连接该临时本地端口。
+- 结论：A 的代码审查通过不等于 A 的用户行为通过。资料导入、确认、新建/追加/合并、案件工作台、权限、持久化和异常路径仍需可访问的测试身份与浏览器验证；在此之前禁止进入 B。
+- `npm start` 诊断：生产构建成功、进程可监听，但 `/`、`/sign-in`、`/api/health/data`、`/organize-center` 均为 `503`。`src/proxy.ts` 的生产门禁先通过认证检查，再因 `production_rate_limit_required` 条件不满足而统一返回 503；当前边缘限流启用标志和策略 ID 均缺失。即使补齐该门禁，生产数据发布批准、附件存储和文档读取配置仍分别未满足，不能开放隧道。

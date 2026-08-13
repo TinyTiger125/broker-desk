@@ -135,25 +135,30 @@ function isConfirmedStatus(status: LocalReviewStatus) {
 
 function SaveReviewButton({
   locale,
-  hasTarget,
+  mode,
+  disabled = false,
 }: {
   locale: Locale;
-  hasTarget: boolean;
+  mode: "append" | "merge" | "new";
+  disabled?: boolean;
 }) {
   const { pending } = useFormStatus();
-  const defaultLabel = hasTarget
-    ? tr(locale, { ja: "確認結果を案件へ追加保存", zh: "将核对结果追加到案件", ko: "확인 결과를 안건에 추가 저장" })
-    : tr(locale, { ja: "確認結果を案件として保存", zh: "保存核对结果为案件", ko: "확인 결과를 안건으로 저장" });
+  const defaultLabel =
+    mode === "append"
+      ? tr(locale, { ja: "確認して現在の案件に追加", zh: "确认并追加到当前案件", ko: "확인 후 현재 안건에 추가" })
+      : mode === "merge"
+        ? tr(locale, { ja: "確認して選択した案件に統合", zh: "确认并合并到所选案件", ko: "확인 후 선택한 안건에 병합" })
+        : tr(locale, { ja: "確認して新しい案件として保存", zh: "确认并保存为新案件", ko: "확인 후 새 안건으로 저장" });
 
   return (
     <button
       type="submit"
-      disabled={pending}
-      className="inline-flex min-w-40 items-center justify-center gap-2 rounded-lg bg-indigo-700 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-indigo-800 disabled:cursor-wait disabled:bg-indigo-400"
+      disabled={pending || disabled}
+      className="inline-flex min-w-48 items-center justify-center gap-2 rounded-lg bg-indigo-700 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-indigo-800 disabled:cursor-not-allowed disabled:bg-indigo-300"
     >
       {pending ? <span aria-hidden="true" className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/35 border-t-white" /> : null}
       {pending
-        ? tr(locale, { ja: "案件へ保存中…", zh: "正在保存到案件...", ko: "안건에 저장 중..." })
+        ? tr(locale, { ja: "保存中…", zh: "正在保存...", ko: "저장 중..." })
         : defaultLabel}
     </button>
   );
@@ -199,6 +204,7 @@ export function InputExtractionReview({
   const [reviewStatuses, setReviewStatuses] = useState<Record<string, LocalReviewStatus>>({});
   const [editedValues, setEditedValues] = useState<Record<string, string>>({});
   const [selectedMergeCaseId, setSelectedMergeCaseId] = useState("");
+  const [mergeConfirmed, setMergeConfirmed] = useState(false);
   const [reviewMode, setReviewMode] = useState<"pending" | "all">("pending");
   const [settlingFieldIds, setSettlingFieldIds] = useState<Set<string>>(() => new Set());
   const [confirmationNotice, setConfirmationNotice] = useState<{ id: string; label: string } | null>(null);
@@ -235,6 +241,15 @@ export function InputExtractionReview({
       percent: items.length > 0 ? Math.round((resolved / items.length) * 100) : 100,
     };
   }, [items, reviewStatuses]);
+  const selectedMergeCandidate = useMemo(
+    () => mergeCandidates.find((candidate) => candidate.caseId === selectedMergeCaseId),
+    [mergeCandidates, selectedMergeCaseId],
+  );
+  const confirmedValueCount = useMemo(
+    () =>
+      items.filter((field) => isConfirmedStatus(reviewStatuses[getFieldId(field)] ?? field.reviewStatus)).length,
+    [items, reviewStatuses],
+  );
   const visibleGroups = useMemo(
     () =>
       groupedItems
@@ -390,7 +405,10 @@ export function InputExtractionReview({
                   name="mergeMode"
                   value="new"
                   checked={!selectedMergeCaseId}
-                  onChange={() => setSelectedMergeCaseId("")}
+                  onChange={() => {
+                    setSelectedMergeCaseId("");
+                    setMergeConfirmed(false);
+                  }}
                   className="mt-0.5"
                 />
                 <span>
@@ -417,7 +435,10 @@ export function InputExtractionReview({
                     name="mergeMode"
                     value="merge"
                     checked={selectedMergeCaseId === candidate.caseId}
-                    onChange={() => setSelectedMergeCaseId(candidate.caseId)}
+                    onChange={() => {
+                      setSelectedMergeCaseId(candidate.caseId);
+                      setMergeConfirmed(false);
+                    }}
                     className="mt-0.5"
                   />
                   <span className="min-w-0 flex-1">
@@ -458,7 +479,14 @@ export function InputExtractionReview({
 
           {selectedMergeCaseId ? (
             <label className="mt-3 flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900">
-              <input type="checkbox" name="mergeConfirm" required className="mt-0.5" />
+              <input
+                type="checkbox"
+                name="mergeConfirm"
+                required
+                checked={mergeConfirmed}
+                onChange={(event) => setMergeConfirmed(event.target.checked)}
+                className="mt-0.5"
+              />
               <span>
                 {tr(locale, {
                   ja: "照合理由と差分を確認しました。この資料を選択した既存案件へ追加し、合併履歴を残します。",
@@ -470,6 +498,56 @@ export function InputExtractionReview({
           ) : null}
         </section>
       )}
+
+      <section aria-live="polite" className="rounded-xl border border-indigo-200 bg-indigo-50/70 p-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-slate-950">
+              {tr(locale, { ja: "確認して保存", zh: "确认并保存", ko: "확인 후 저장" })}
+            </p>
+            <p className="mt-1 text-xs leading-5 text-slate-700">
+              {targetCaseId
+                ? tr(locale, {
+                    ja: "開いている案件へ、今回確認した内容だけを追加します。",
+                    zh: "将本次已确认的信息追加到当前案件。",
+                    ko: "이번에 확인한 정보만 현재 안건에 추가합니다.",
+                  })
+                : selectedMergeCandidate
+                  ? tr(locale, {
+                      ja: `確認した内容を「${selectedMergeCandidate.caseTitle}」へ追加し、資料と統合履歴を残します。`,
+                      zh: `将本次已确认的信息追加到「${selectedMergeCandidate.caseTitle}」，并保留原始资料和合并记录。`,
+                      ko: `이번에 확인한 정보를 '${selectedMergeCandidate.caseTitle}'에 추가하고 원본 자료와 병합 기록을 남깁니다.`,
+                    })
+                  : tr(locale, {
+                      ja: "確認後の内容を新しい案件として保存します。",
+                      zh: "将本次已确认的信息保存为新案件。",
+                      ko: "이번에 확인한 정보를 새 안건으로 저장합니다.",
+                    })}
+            </p>
+            <p className="mt-1 text-xs font-medium text-slate-600">
+              {tr(locale, {
+                ja: `保存対象 ${confirmedValueCount} 項目。未確定 ${reviewProgress.pending} 項目と不採用の内容は保存しません。`,
+                zh: `将写入 ${confirmedValueCount} 项已确认信息；${reviewProgress.pending} 项待处理及不采用内容不会写入。`,
+                ko: `확정 ${confirmedValueCount}항목을 저장합니다. 미확정 ${reviewProgress.pending}항목과 미채택 내용은 저장하지 않습니다.`,
+              })}
+            </p>
+            {selectedMergeCaseId && !mergeConfirmed ? (
+              <p className="mt-2 text-xs font-bold text-amber-700">
+                {tr(locale, {
+                  ja: "統合確認にチェックを入れると実行できます。",
+                  zh: "勾选合并确认后即可执行。",
+                  ko: "병합 확인을 체크하면 실행할 수 있습니다.",
+                })}
+              </p>
+            ) : null}
+          </div>
+          <SaveReviewButton
+            locale={locale}
+            mode={targetCaseId ? "append" : selectedMergeCaseId ? "merge" : "new"}
+            disabled={Boolean(selectedMergeCaseId && !mergeConfirmed)}
+          />
+        </div>
+      </section>
 
       <section className="grid min-w-0 items-start gap-4 2xl:grid-cols-[minmax(17rem,21rem)_minmax(0,1fr)]">
         <aside className="overflow-hidden rounded-xl border border-slate-200 bg-white 2xl:sticky 2xl:top-20">
@@ -572,7 +650,7 @@ export function InputExtractionReview({
                 {confirmationNotice.label}
                 {tr(locale, {
                   ja: "」を確認しました。左側の一覧に反映しています。",
-                  zh: "」已确认，已收束到左侧目录；点击下方保存后才会写入案件。",
+                  zh: "」已确认，已收束到左侧目录；点击“确认并保存”后才会写入案件。",
                   ko: "」을 확인했습니다. 왼쪽 목록을 업데이트했습니다.",
                 })}
               </span>
@@ -753,23 +831,6 @@ export function InputExtractionReview({
           ))}
         </div>
       </section>
-      <div className="sticky bottom-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-indigo-200 bg-white/95 p-3 shadow-lg backdrop-blur">
-        <div>
-          <p className="text-xs font-bold text-slate-800">
-            {reviewProgress.pending > 0
-              ? tr(locale, { ja: `未確定 ${reviewProgress.pending} 項目`, zh: `还有 ${reviewProgress.pending} 项待处理`, ko: `미확정 ${reviewProgress.pending}항목` })
-              : tr(locale, { ja: "すべて確定済み", zh: "所有项目已确认", ko: "모든 항목 확정 완료" })}
-          </p>
-          <p className="mt-0.5 text-[11px] text-slate-500">
-            {tr(locale, {
-              ja: "確定・修正した値だけ案件に反映します。",
-              zh: "只会把已确认或已修正的值写入案件。",
-              ko: "확정하거나 수정한 값만 안건에 반영합니다.",
-            })}
-          </p>
-        </div>
-        <SaveReviewButton locale={locale} hasTarget={Boolean(targetCaseId || selectedMergeCaseId)} />
-      </div>
     </form>
   );
 }
