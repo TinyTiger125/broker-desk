@@ -34,6 +34,6 @@
 - TASK-006A is the only narrowed candidate business trial in this baseline.
 - TASK-013 is Done; implementation, validation, review-fix, and independent read-only review are complete.
 - TASK-014 is Done; product-document scope, validation, and independent review are complete with no business-code or page-behavior changes.
-- PM-HANDOFF-001 is the sole active project-manager handoff phase; it records repository state and does not implement a migration or business task.
-- MIG-004 is only the next migration candidate; it is not approved, Ready, or In Progress before handoff confirmation.
+- PM-HANDOFF-001接管验证已通过并完成收口；它只记录治理状态，不是业务实施任务，也未单独建立任务卡。
+- MIG-004仍只是下一迁移候选；术语决策准备材料位于`docs/operations/MIG-004_TERMINOLOGY_DECISION_DRAFT_2026_08_13.md`，未批准、未Ready、未In Progress，不代表已授权实施。
 - No business task is implemented by the pure governance baseline commit.
