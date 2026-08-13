@@ -1,6 +1,6 @@
 # TASK-013：MIG-002 拆解并降级 PROJECT_MEMORY
 
-- 状态: In Review
+- 状态: Done
 - 优先级: P0
 - 负责人: 主 Agent / 实现Agent / 独立审查Agent
 - 依赖关系: TASK-012 / MIG-001
@@ -94,13 +94,13 @@ TASK-012 / MIG-001 已完成；不依赖业务代码任务。
 
 ## 当前状态
 
-逐节审计和迁移对照表已完成；已确认没有需要新增到 PRODUCT、ARCHITECTURE 或 CONTEXT 的独有当前事实。实现Agent已完成归档、最小历史指针、直接引用和规则检查器修复，当前进入独立审查前的 `In Review` 状态。
+逐节审计和迁移对照表已完成；已确认没有需要新增到 PRODUCT、ARCHITECTURE 或 CONTEXT 的独有当前事实。实现Agent已完成归档、最小历史指针、直接引用和规则检查器修复；独立审查提出的两个文档问题已修复并复核通过，任务状态为 `Done`。
 
 ## 实际修改文件与下一步
 
 - 实际修改：`BACKLOG.md`、`docs/PROJECT_MEMORY.md`、`docs/README.md`、`docs/agents/domain.md`、`docs/agents/skill-writing-checklist.md`、`docs/archive/README.md`、`docs/archive/legacy-project-memory/PROJECT_MEMORY_2026_08_06.md`、`docs/engineering/RUNTIME_STABILITY_AND_ARCHITECTURE.md`、`docs/operations/CURRENT_WORKING_CONTEXT.md`、`docs/tasks/TASK-012.md`、`docs/tasks/TASK-013.md`、`scripts/check-workflow-rules.mjs`。
 - 未修改：`PRODUCT.md`、`ARCHITECTURE.md`、`CONTEXT.md`、业务代码、数据库、public、运行配置、`.cursor`、`CLAUDE 3.md`。
-- 下一步：完成本卡验证命令、归档逐行对照和引用分类；随后由独立审查Agent只读复核。不得在本任务内执行 MIG-003 或创建提交。
+- 完成结果：验证命令、归档逐行对照、引用分类和独立审查均已通过；不得在本任务内执行 MIG-003。
 
 ## 附录A：原文件逐节审计表
 
@@ -112,7 +112,7 @@ TASK-012 / MIG-001 已完成；不依赖业务代码任务。
 - E4：当前提交代码和迁移：`src/app/actions.ts:2857-2860,3142`、`src/lib/guarantee-application.ts:70`、`src/lib/friends-guarantee-pdf.ts:86,1825`、`src/lib/data.memory.ts:435,1701-1704,1740`、`db/migrations/20260805_004_tenant_guarantee_template_installs.sql:1-43`、`scripts/check-guarantee-template-publication.mjs:1-90`。
 - E5：`docs/product/V1_CASE_INFORMATION_ARCHITECTURE.md:1-25,71-72,200-206,317-325`、`docs/product/V1_CASE_WORKBENCH.md:1-13,89-93,206-231`、`docs/product/V1_GUARANTEE_APPLICATION_OUTPUT.md:5-9,37-89,430-438`、`docs/product/CANONICAL_FIELD_CATALOG.md:120-147`、`docs/product/AI_EXPERIENCE_MODEL_CONTEXT_CHAIN.md:1-112`、`docs/product/MULTI_TENANT_PERMISSION_MODEL.md:1-21,428-463`。
 - E6：`docs/engineering/GUARANTEE_TEMPLATE_PUBLICATION.md:1-69`、`docs/engineering/POSTGRES_SETUP.md:1-142`、`docs/operations/PUBLIC_BETA_RELEASE_GATE.md:1-15`、`docs/operations/PM_CONTROL.md:301-371,469-500`；单主题工程、发布和PM资料。
-- E7：Git事实：当前 `HEAD=2cb8f45`，当前分支为 `governance/clean-baseline-20260812`，main=`fedb4c9`，safety/WIP=`61bce51`；PROJECT_MEMORY:3、135-143、344、592-601、616-622 中的旧分支、外部路径、开发分支和未合入声明不属于当前架构事实。
+- E7：MIG-002审计基线/父提交 Git事实：`HEAD=2cb8f45`，分支为 `governance/clean-baseline-20260812`，main=`fedb4c9`，safety/WIP=`61bce51`；本次实现提交为 `3d4d345`。PROJECT_MEMORY:3、135-143、344、592-601、616-622 中的旧分支、外部路径、开发分支和未合入声明不属于当前架构事实。
 
 | 原文件行段 | 内容摘要 | 信息类型 | 已有规范来源 | 当前代码/Git/批准决定支持 | 建议去向与最终处理 |
 |---|---|---|---|---|---|
@@ -159,18 +159,23 @@ TASK-012 / MIG-001 已完成；不依赖业务代码任务。
 
 ## 附录B：信息迁移对照表
 
-| 信息簇 | 原始行段 | 唯一规范来源 | 从原文提取的独有信息 | 冲突裁决 | 最终处理 | 验证 |
-|---|---:|---|---|---|---|---|
-| 治理规则与读取顺序 | 1-43 | `AGENTS.md`、`docs/README.md`、当前交接、任务卡 | 无；全部是治理入口或索引 | 以MIG-001后的AGENTS和当前交接为准 | 不迁移；归档原文；原路径改指针 | `test:workflow-rules`、入口扫描 |
-| 产品定位与核心流程 | 45-72,162-181,235-248,563-567 | `PRODUCT.md`、`CONTEXT.md`、E5 | 无；已完整存在 | 以当前PRODUCT/CONTEXT及已批准V1决定为准 | 不迁移；归档 | 重复定义扫描 |
-| AI、记忆和输入边界 | 74-82,145-150,569-574 | `CONTEXT.md`、E5 | 无；产品数据库记忆和人工确认规则已存在 | 以CONTEXT和AI专文为准，不把PROJECT_MEMORY当更新入口 | 不迁移；归档 | 引用和术语扫描 |
-| 术语审查 | 113-121 | 两份2026-07-14字典、MIG-004 | 无；冲突词尚未获用户裁决 | 不在MIG-002裁决用户可见词 | 不迁移；归档 | 确认MIG-004仍在BACKLOG/任务范围 |
-| 当前架构、字段和权限 | 183-248,250-295,368-438,552-561,624-633 | `ARCHITECTURE.md`、CONTEXT、E4-E6 | 无；可验证事实已有单主题来源 | 代码/Git优先；生产配置和未验证状态不得升级 | 不迁移；归档 | code/Git对照、架构职责扫描 |
-| 模板质量与输出边界 | 152-160,324-366,440-448 | `V1_GUARANTEE_APPLICATION_OUTPUT.md`、`GUARANTEE_TEMPLATE_PUBLICATION.md`、发布门禁 | 无；质量和模板机制已有来源 | 以当前代码、模板测试和发布门禁为准，不复制旧质量数字 | 不迁移；归档 | 相关测试、重复扫描 |
-| 环境、命令和运行事故 | 95-111,135-143,450-482,511-541 | 工程Runbook、任务卡、测试脚本 | 运行事故叙述只作为历史证据；外部机器路径没有当前归属 | 当前正式仓库和可重复命令优先；外部环境信息不进入架构 | 归档；更新直接引用到Runbook或任务卡 | 路径存在性、命令扫描 |
-| 历史路线图和任务队列 | 84-93,484-510,576-622 | BACKLOG、历史handoff、归档 | 历史决策和时间线 | 当前任务只由BACKLOG/任务卡决定 | 仅保留历史 | 旧入口扫描 |
-| 邮编主数据和字段微拆分 | 209-233,543-550 | `CANONICAL_FIELD_CATALOG.md`、源码 | 无；邮编和render fragment已有唯一来源 | 不在ARCHITECTURE重复 | 不迁移；归档 | 字段目录与源码对照 |
-| 旧CLAUDE保护证据 | 与PROJECT_MEMORY重叠的74-482、552-633 | `TASK-012.md`，后续MIG-008 | PROJECT_MEMORY不能替代旧CLAUDE全部独有历史 | 保留MIG-008责任，不提前核销 | 归档并在TASK-013保留风险说明 | 任务卡和引用扫描 |
+| 信息簇 | 原始行段 | 唯一规范来源 | 辅助证据/验证来源 | 从原文提取的独有信息 | 冲突裁决 | 最终处理 | 验证 |
+|---|---:|---|---|---|---|---|---|
+| 永久治理规则与默认读取顺序 | 1-43 | `AGENTS.md` | `docs/README.md`、`CLAUDE.md`、当前交接、TASK-013 | 无；原文只是重复入口和规则 | `AGENTS.md`是唯一永久规则；入口文件只能指向它，不能反向定义规则 | 不迁移；归档原文；原路径改为指针 | `test:workflow-rules`、入口扫描 |
+| 当前交接状态 | 1-15,484-510,576-622 | `docs/operations/CURRENT_WORKING_CONTEXT.md` | `BACKLOG.md`、当前任务卡、Git状态 | 无；旧状态均为历史记录 | 当前交接只描述当前阶段和阻塞；旧handoff不覆盖当前状态 | 不迁移；归档原文 | 状态一致性检查、旧入口扫描 |
+| 产品定位与核心流程 | 45-72,162-181,235-248,563-567 | `PRODUCT.md` | `CONTEXT.md`、`docs/product/PRODUCT_TOPOLOGY.md`、已批准V1决定、当前代码 | 无；稳定产品边界已存在 | `PRODUCT.md`定义稳定产品边界；辅助资料不得另立产品定位 | 不迁移；归档 | 产品重复定义扫描 |
+| 领域边界、工作流和AI/记忆语义 | 74-82,145-150,569-574 | `CONTEXT.md` | `docs/product/AI_EXPERIENCE_MODEL_CONTEXT_CHAIN.md`、`docs/product/V1_INPUT_FILE_MODEL.md`、当前代码 | 无；领域和人工确认边界已有来源 | `CONTEXT.md`定义领域含义；专业资料只补充主题方法，不改写领域定义 | 不迁移；归档 | 术语和重复定义扫描 |
+| V1保证申请主输出及输出边界 | 152-160,235-248,440-448 | `docs/product/V1_GUARANTEE_APPLICATION_OUTPUT.md` | `PRODUCT.md`、`CONTEXT.md`、`src/lib/guarantee-application.ts`、输出测试 | 无；原文没有未覆盖的当前输出事实 | V1输出文档定义产品输出边界；代码验证实现，旧质量数字不自动升级 | 不迁移；归档 | 输出路径和重复定义扫描 |
+| 当前运行与系统架构 | 183-233,250-295,368-384,552-561,624-633 | `ARCHITECTURE.md` | 当前提交代码、数据库迁移、`CONTEXT.md`、工程Runbook、Git历史 | 无；可验证架构事实已有来源 | 当前代码和Git验证 `ARCHITECTURE.md`；旧分支、外部路径和未合入状态不得进入当前架构 | 不迁移；归档 | code/Git对照、架构职责扫描 |
+| 规范字段、邮编主数据和输出绑定 | 209-233,543-550 | `docs/product/CANONICAL_FIELD_CATALOG.md` | 相关源码、`CONTEXT.md`、字段测试 | 无；字段和邮编规则已有单主题来源 | 字段目录是唯一字段语义来源；源码只能证明当前实现，不产生第二字段定义 | 不迁移；归档 | 字段目录与源码对照 |
+| 租户、权限和记录生命周期 | 386-438,552-561 | `docs/product/MULTI_TENANT_PERMISSION_MODEL.md` | `CONTEXT.md`、数据库迁移、当前权限代码、`RECORD_LIFECYCLE.md` | 无；原文重复权限和恢复原则 | 权限模型文档定义授权边界；代码/Git验证实现，历史状态不覆盖当前模型 | 不迁移；归档 | 权限/生命周期重复扫描 |
+| 官方模板发布与安装机制 | 152-160,324-384 | `docs/engineering/GUARANTEE_TEMPLATE_PUBLICATION.md` | `ARCHITECTURE.md`、模板迁移、发布脚本、发布门禁 | 无；机制已有工程单主题来源 | 工程Runbook定义发布机制；代码和测试验证，旧模板质量数字只作历史证据 | 不迁移；归档 | 模板脚本、迁移和测试对照 |
+| 运行事故与稳定性处置 | 450-482,511-541 | `docs/engineering/RUNTIME_STABILITY_AND_ARCHITECTURE.md` | 测试脚本、任务卡、Git历史 | 事故叙述只保留历史证据；旧命令和环境状态可能漂移 | 工程Runbook是运行事故处置的唯一来源；历史事故不产生当前授权 | 归档；直接活动引用改到工程Runbook或任务卡 | 命令、路径和运行Runbook扫描 |
+| 发布门槛 | 305-322,377-384 | `docs/operations/PUBLIC_BETA_RELEASE_GATE.md` | `docs/engineering/GUARANTEE_TEMPLATE_PUBLICATION.md`、测试脚本、任务卡 | 无；旧发布状态不自动代表当前通过 | 发布门禁文件是唯一发布门槛来源；工程资料只提供验证步骤 | 不迁移；归档 | 发布门禁和测试对照 |
+| 当前任务队列与优先级 | 84-93,484-510 | `BACKLOG.md` | 任务卡、当前交接、历史handoff | 无；旧路线图不是当前授权 | `BACKLOG.md`定义当前队列；任务卡定义单项范围，历史路线图不覆盖二者 | 不迁移；归档 | BACKLOG/任务状态一致性 |
+| 用户可见日语术语 | 113-121 | `Needs Review：MIG-004裁决后建立唯一规范来源` | 两份2026-07-14字典、`JA_TERMINOLOGY_STYLE_GUIDE.md`、MIG-004任务范围 | 冲突词差异本身保留在历史证据中 | 在用户确认前不把任一字典升级为唯一规范来源；MIG-004完成后只保留一个词汇规范来源 | 不迁移；归档；留待MIG-004 | 冲突词决策表、MIG-004状态 |
+| 旧CLAUDE独有信息核销责任 | 与PROJECT_MEMORY重叠的74-482、552-633 | `docs/tasks/TASK-012.md` | `TASK-013.md`、归档快照、Git历史、后续MIG-008 | PROJECT_MEMORY不能替代旧CLAUDE全部独有历史 | TASK-012/后续MIG-008保留核销责任；本任务不宣称已完成 | 归档并保留风险说明 | 任务卡和引用扫描 |
+| 历史事件、路线图和旧环境证据 | 全文历史段落 | `docs/archive/legacy-project-memory/PROJECT_MEMORY_2026_08_06.md` | Git历史、旧handoff、原文件指针 | 原文全文及其时间线、旧路径、旧判断 | 归档内容只证明过去发生过什么，不定义当前产品、架构、任务或执行授权 | 原文逐字归档；不删除历史 | 归档逐行/字节对照、默认读取检查 |
 
 ## 迁移执行清单
 
