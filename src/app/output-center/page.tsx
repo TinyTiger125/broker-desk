@@ -1138,6 +1138,8 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
           labels={{
             preview: copy.previewMode,
             loading: locale === "zh" ? "正在加载预览" : locale === "ko" ? "미리보기를 불러오는 중" : "プレビューを読み込んでいます",
+            failed: locale === "zh" ? "PDF 预览加载失败，请刷新后重试。" : locale === "ko" ? "PDF 미리보기를 불러오지 못했습니다. 새로고침 후 다시 시도하세요." : "PDFプレビューの読み込みに失敗しました。更新して再試行してください。",
+            retry: locale === "zh" ? "刷新预览" : locale === "ko" ? "미리보기 새로고침" : "プレビューを更新",
             ready: copy.guaranteeReady,
             missing: copy.guaranteeMissing,
           }}

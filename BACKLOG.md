@@ -17,7 +17,7 @@
 | TASK-016 | P0 | MIG-004建立日语用户界面术语唯一规范来源 | Done | TASK-014 | [TASK-016](docs/tasks/TASK-016.md) | Canonical source, active-document routing, historical-source preservation, exact five-term check, workflow-rules check, and independent read-only review PASS |
 | TASK-015 | P1 | MIG-005建立三类核心角色 Playbook | Done | TASK-016 | [TASK-015](docs/tasks/TASK-015.md) | Three role Playbooks, fixed constructive-dissent protocol, evidence labels, minimal validation, lifecycle/hand-off rules, review-fix, and independent review PASS |
 | TASK-017 | P0 | MIG-006清理 Cursor 活动规则并建立薄适配入口 | Done | TASK-015 | [TASK-017](docs/tasks/TASK-017.md) | Thin Cursor governance entry, legacy authority cleanup, high-risk skill pointers, reference scan, governance checks, manual-load verification record, review-fix, and independent review PASS |
-| TASK-018 | P0 | MIG-007恢复唯一可运行产品基线 | In Progress | TASK-002, TASK-017 | [TASK-018](docs/tasks/TASK-018.md) | A implementation/review, static checks, and local browser/data gate pass; production/external-service checks remain manual; B has not started |
+| TASK-018 | P0 | MIG-007恢复唯一可运行产品基线 | In Progress | TASK-002, TASK-017 | [TASK-018](docs/tasks/TASK-018.md) | A and B implementation/review, static checks, and local end-to-end browser/data gate pass; production/external-service checks remain manual; tunnel not opened |
 | TASK-003 | P0 | Close the input-material merge completion loop | Proposed | TASK-002 | [TASK-003](docs/tasks/TASK-003.md) | Selection, confirmation, result, failure, and refresh evidence |
 | TASK-004 | P0 | Consolidate template-library and official-template boundaries | Proposed | TASK-002 | [TASK-004](docs/tasks/TASK-004.md) | Role-aware entry, visibility, and installation evidence |
 | TASK-005 | P0 | Separate official template draft and publish states | Proposed | TASK-004 | [TASK-005](docs/tasks/TASK-005.md) | Independent draft save, publish, immutable version, and failure evidence |
@@ -42,6 +42,6 @@
 - TASK-016 / MIG-004已完成；当前唯一规范来源为[`PRODUCT_TERMINOLOGY_CANONICAL.md`](docs/operations/PRODUCT_TERMINOLOGY_CANONICAL.md)。本次只迁移术语规范来源和相关文档，不修改业务代码或实际界面文案；独立只读审查已通过。
 - TASK-015 / MIG-005已完成；本轮只建立三类核心角色 Playbook及其任务治理记录，不修改`AGENTS.md`、业务代码、产品功能或 MIG-006；独立审查 PASS。
 - TASK-017 / MIG-006已完成；本轮只清理 `.cursor` 活动规则和高风险 Skill 入口，不修改业务文件、产品范围、架构、术语目录或 MIG-007；真实 Cursor 加载行为仍需人工验证。
-- TASK-018 / MIG-007已进入实施：A 的 TASK-003 实现、独立审查、静态检查和本地浏览器/数据行为门禁已通过；资料处理器失败后的恢复链路已验证，但真实 OCR/外部附件存储、生产登录、生产数据库和隧道仍需人工验证。B 尚未开始。TASK-005/006/007/008 继续暂缓。149 项专业分类已登记为 A/B 之外的朋友测试验收缺口。
+- TASK-018 / MIG-007已进入实施：A 和 B 的实现、独立审查、静态检查和本地端到端浏览器/数据行为门禁已通过；资料处理器失败后的恢复链路已验证，但真实 OCR/外部附件存储、生产登录、生产数据库、双租户真实浏览器隔离和隧道仍需人工验证。TASK-005/006/007/008 继续暂缓。149 项专业分类已登记为 A/B 之外的朋友测试验收缺口。
 - 显式非生产 demo 身份和 `DATA_DRIVER=memory` 下开发服务可启动，公开数据健康检查为 `200 ready`，受保护资料流程可由浏览器完成；`npm start` 的四个探测路由仍为 `503`，首个明确阻断为生产边缘限流启用标志和策略 ID 缺失，其他生产就绪门禁也未满足。真实登录、外部数据库发布状态和隧道行为仍需人工验证。safety/WIP 与 WIP 快照保持冻结。
 - No business task is implemented by the pure governance baseline commit.

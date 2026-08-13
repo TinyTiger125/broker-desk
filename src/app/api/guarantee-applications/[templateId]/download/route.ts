@@ -1,8 +1,5 @@
 import { NextResponse } from "next/server";
-import { spawn } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { pdf2img } from "@pdfme/converter";
 import { PDFDocument } from "pdf-lib";
 import { addAuditLog, addGeneratedOutput, getActiveTenantGuaranteeTemplateInstall, getBrokerageCaseById, getGuaranteeApplicationDraft } from "@/lib/data";
 import {
@@ -28,59 +25,13 @@ async function getPdfPageCount(pdfBytes: Uint8Array): Promise<number> {
 }
 
 async function renderPdfPageAsPng(pdfBytes: Uint8Array, page: number, resolution: number): Promise<Buffer> {
-  const previewDirectory = await mkdtemp(join(tmpdir(), "broker-desk-preview-"));
-  const sourcePath = join(previewDirectory, "source.pdf");
-  const outputPrefix = join(previewDirectory, "page");
-
-  try {
-    await writeFile(sourcePath, pdfBytes);
-    await new Promise<void>((resolve, reject) => {
-      let timedOut = false;
-      const errors: Buffer[] = [];
-      const renderer = spawn(
-        process.env.BROKER_DESK_PDF_RENDERER ?? "pdftoppm",
-        [
-          "-f",
-          String(page),
-          "-l",
-          String(page),
-          "-r",
-          String(resolution),
-          "-png",
-          "-singlefile",
-          sourcePath,
-          outputPrefix,
-        ],
-        { stdio: ["ignore", "ignore", "pipe"] },
-      );
-      const timeout = setTimeout(() => {
-        timedOut = true;
-        renderer.kill("SIGKILL");
-      }, 12_000);
-
-      renderer.stderr.on("data", (chunk: Buffer) => errors.push(chunk));
-      renderer.on("error", (error) => {
-        clearTimeout(timeout);
-        reject(error);
-      });
-      renderer.on("close", (code) => {
-        clearTimeout(timeout);
-        if (timedOut) {
-          reject(new Error("PDF preview renderer timed out"));
-          return;
-        }
-        if (code === 0) {
-          resolve();
-          return;
-        }
-        const detail = Buffer.concat(errors).toString("utf8").trim();
-        reject(new Error(detail || `PDF preview renderer exited with code ${code ?? "unknown"}`));
-      });
-    });
-    return readFile(`${outputPrefix}.png`);
-  } finally {
-    await rm(previewDirectory, { recursive: true, force: true });
-  }
+  const images = await pdf2img(pdfBytes, {
+    range: { start: page - 1, end: page - 1 },
+    scale: resolution / 72,
+  });
+  const image = images[0];
+  if (!image) throw new Error(`PDF preview page ${page} could not be rendered`);
+  return Buffer.from(image);
 }
 
 function safePdfFileName(value: string): string {

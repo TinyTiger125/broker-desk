@@ -18,6 +18,8 @@ type GuaranteeTemplateSelectorProps = {
   labels: {
     preview: string;
     loading: string;
+    failed: string;
+    retry: string;
     ready: string;
     missing: string;
   };
@@ -245,7 +247,16 @@ export function GuaranteeTemplateSelector({
             </div>
           ) : null}
           {previewFailed ? (
-            <p className="text-sm font-semibold text-slate-600">{labels.preview}</p>
+            <div role="alert" className="flex h-full flex-col items-center justify-center gap-3 px-5 text-center">
+              <p className="text-sm font-semibold text-rose-800">{labels.failed}</p>
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="rounded border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-800 hover:bg-slate-50"
+              >
+                {labels.retry}
+              </button>
+            </div>
           ) : null}
           <div className={`flex flex-col items-center gap-3 ${previewFailed ? "hidden" : ""}`}>
             {previewSources.map((source, index) => (

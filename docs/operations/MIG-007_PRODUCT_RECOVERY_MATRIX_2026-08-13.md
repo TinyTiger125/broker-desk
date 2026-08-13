@@ -1,6 +1,6 @@
 # MIG-007 产品恢复矩阵
 
-> 状态：阶段一、阶段二完成；产品负责人已批准 A→审查→B→审查。A 的实现、独立审查和本地浏览器/数据行为门禁已完成，B 尚未开始。
+> 状态：阶段一、阶段二完成；产品负责人已批准 A→审查→B→审查。A、B 的实现审查和本地浏览器/数据行为门禁已完成，端到端本地验收通过；生产与隧道人工门禁仍未完成。
 >
 > 事实、推断和建议分开记录。当前唯一产品基线候选是 `recovery/mig-007-checkpoint-a` 的 A 收口状态；`main` 和 `safety/wip-mixed-worktree-20260812` 均未被修改，WIP 快照只作恢复证据。
 
@@ -9,12 +9,12 @@
 | 项目 | 已验证事实 |
 |---|---|
 | 当前分支 | `recovery/mig-007-checkpoint-a` |
-| 当前 HEAD | 以 `git rev-parse HEAD` 为准；A 实现、demo 认证门禁修复和收口证据位于本分支最新提交。 |
+| 当前 HEAD | 以 `git rev-parse HEAD` 为准；A/B 实现、PDF 预览修复和收口证据位于本分支最新提交。 |
 | `main` HEAD | `fedb4c96e5f7b5e33caef977c5defd78ecf24ac9` |
-| 当前分支与 main | `git merge-base main HEAD` 等于 `main` HEAD；当前分支包含治理记录和 TASK-003 A 的确认/合并交互，`main` 未被修改；本轮另有仅限非生产显式 demo 模式的 `src/proxy.ts` 门禁修复。 |
+| 当前分支与 main | `git merge-base main HEAD` 等于 `main` HEAD；当前分支包含治理记录、TASK-003 A 交互和 TASK-004 B 的 PDF/输出前台修复，`main` 未被修改；仅限非生产显式 demo 模式的 `src/proxy.ts` 门禁修复也保持在恢复分支。 |
 | 冻结 safety/WIP | `safety/wip-mixed-worktree-20260812` = `61bce515e4ad44a6c32da551377dbf427d8bd946`。相对 WIP 快照只新增治理记录；业务 WIP 仍可在两者中复查。 |
 | WIP 快照 | `6f199375467bbfedd77bc90d80a53c423d4c9969`，父链上承载混合业务 WIP 和历史治理材料。 |
-| 当前工作区 | A 收口前有已审查的组件修改、非生产 demo 认证门禁修复和治理记录修改；收口提交后应保持干净，无未解释文件。 |
+| 当前工作区 | B 收口前有 PDF 预览路由、输出中心失败反馈和模板预览失败反馈三项明确修改；收口提交后应保持干净，无未解释文件。 |
 | 静态能力 | `npm run typecheck`、`npm run lint`、`npm run build`、导入失败恢复、纠正事件、租户会话/数据/治理检查和 `git diff --check` 通过。 |
 | 开发启动探测 | 显式设置非生产 demo 身份和 `DATA_DRIVER=memory` 后，本地服务可监听；公开 `/api/health/data`、受保护 `/import-center`、`/organize-center` 和设置页均返回可用页面并完成浏览器访问。 |
 | 生产启动探测 | `npm start` 进程可监听，但 `/`、`/sign-in`、`/api/health/data`、`/organize-center` 均返回 503。认证配置存在，首个明确失败为边缘限流启用标志和策略 ID 缺失；生产数据发布批准、附件存储和文档读取配置也未满足。不能视为可开隧道。 |
@@ -29,7 +29,7 @@
 | **B. 资料导入 → 读取 → 逐项确认 → 新建案件**：用户上传资料，查看识别结果，只把确认/编辑后的值保存到案件并回到案件工作台。 | 后端已在当前治理/main；WIP UI 在 safety `61bce51` / 快照 `6f19937` 的 `input-extraction-review.tsx`。 | `src/app/import-center/page.tsx`、`src/components/input-extraction-review.tsx`、`src/app/actions.ts`、导入队列/处理器、memory/Postgres 数据层；无新增依赖或迁移。 | 已验证事实：main 已有保存审查结果的 Server Action 和租户查询。WIP 主要增加保存模式文案、已确认数量、pending 状态和重复提交阻止；没有新的后端权威。推断：单独搬 UI 仍可能留下成功/冲突/刷新证据缺口。 | **保留为 TASK-003 的完整流程候选，拆分集成边界**。不要按单个按钮或单个 hunk 合入；若批准，应与现有 action、目标权限、结果页和恢复验证一起纳入。 | 自动：typecheck/lint、导入失败恢复、租户数据检查。人工浏览器：新建、追加、取消、冲突、失败、刷新恢复、目标租户权限。回退：恢复分支回到当前治理 HEAD；WIP 保持原状。 |
 | **C. 资料导入 → 候选案件 → 显式合并 → 案件工作台**：用户看到匹配理由和差异，确认后把资料追加到已有案件，保留原始资料和合并历史。 | main/治理已有合并后端和基础 UI；显式确认增强在 safety/WIP 的 `input-extraction-review.tsx`。 | `src/app/actions.ts`、`src/lib/case-merge.ts`、导入页面与数据层；WIP 未新增数据库结构。 | 产品方向一致，但这是高风险写入和归属行为。已有后端会检查租户和候选置信度；WIP 客户端确认不能替代服务端权限、冲突和幂等验证。 | **与 B 作为一个完整 TASK-003 候选保留，不接受“只恢复合并按钮”的方案**。当前基线先保留 main 实现，待证据后决定是否纳入 WIP UI。 | 自动：现有导入失败恢复和静态检查。人工浏览器/数据：明确确认、未确认拒绝、低置信度拒绝、重复提交、冲突、回滚/刷新和审计记录。回退：恢复分支回退到当前 HEAD。 |
 | **D. 案件/主体/物件整理 → 详情/编辑 → 返回整理中心**：用户完成编辑或生命周期操作后回到正确的对象列表和上下文。 | WIP 片段在 safety/快照：`cases/[id]/page.tsx`、`parties/[id]/edit/page.tsx`、`properties/[id]/edit/page.tsx`、`actions.ts`。 | Server Action 的 `returnTo`/flash、整理中心 query、三个实体页面；无新增依赖。 | WIP 新增案件返回按钮，但使用 `/organize-center`；并删除部分 `type`/`focus` 参数。TASK-002 已登记这可能丢失选择器上下文。单独恢复会造成“能返回但返回位置不对”的破碎体验。 | **保留为 TASK-006 候选，暂不纳入恢复基线；不得按页面逐个提取。** TASK-006A 的固定案件返回地址仍不是本矩阵批准证据。 | 人工浏览器：三种实体 deep-link、列表类型、搜索/focus、保存、归档、恢复、刷新。自动：typecheck/lint/regression。回退：不合入 WIP return path hunk。 |
-| **E. 模板库 → 安装 → 输出中心 → 申请书预览/下载**：普通用户浏览官方模板，安装后在输出中心使用，未安装或资料不足时得到明确阻断。 | 当前治理/main 已有模板库、安装动作和输出门禁；WIP 页面增强在 safety/快照的 `src/app/templates/page.tsx`、`src/app/platform/accounts/page.tsx`、旧 `/platform/templates` 路由和预览页。 | 模板页面、`installGuaranteeTemplateForTenantAction`、租户模板安装数据、输出中心、PDF 下载路由、Clerk/租户权限。 | 产品方向一致。WIP 将旧总览重定向到统一模板库、增加管理员入口和更新时间；但普通用户、平台管理员、旧链接兼容性仍需真实角色验证。无新增依赖。 | **保留为 TASK-004 的完整流程候选，拆分为“发现/安装/使用”和“官方编辑/发布”两条边界；不直接整体合入 safety。** 当前 main 流程作为稳定回退。 | 自动：模板静态门禁、下载门禁、租户会话检查。人工：普通用户不可见编辑/发布、管理员可达编辑、安装幂等、未安装阻断、输出回到正确案件。回退：恢复分支回到当前 HEAD。 |
+| **E. 模板库 → 安装 → 输出中心 → 申请书预览/下载**：普通用户浏览官方模板，安装后在输出中心使用，未安装或资料不足时得到明确阻断。 | 当前恢复分支已完成 TASK-004 租户前台 B；WIP 页面增强仍只作差异证据。 | 模板页面、`installGuaranteeTemplateForTenantAction`、租户模板安装数据、输出中心、PDF 下载路由、Clerk/租户权限。 | 产品方向一致；已证明普通租户安装持久化、案件确认数据进入预览、下载内容与预览一致。平台管理员编辑/发布仍不属于 B。 | **B 已纳入租户前台完整流程；官方编辑/发布继续隔离为 TASK-005，不从 safety 整体合入。** | 自动：模板静态门禁、下载门禁、租户会话/数据/治理检查。浏览器：安装刷新、A 案件选择、缺失数据阻断、预览、下载、普通运营角色拒绝平台管理、A 入口回归。回退：恢复分支回退到 B 前提交，不触碰 safety/WIP。 |
 | **F. 平台管理员官方模板校准 → 保存 → 发布 → 租户使用新版本**：管理员调整官方表单，发布后租户看到不可变版本，历史输出仍指向原快照。 | WIP 在 safety/快照：`src/app/actions.ts` 模板保存 scope、`official-template-save-button.tsx`、预览页、模板库、`platform-session.ts`。当前 main 没有这些 WIP hunk。 | `publishGuaranteeTemplateLayoutVersion`、模板布局 runtime、模板版本/租户安装数据、平台会话和 Server Action；现有数据库迁移。 | **最大冲突**：WIP 所谓“保存”仍直接调用 publish action；快照比较只减少未变化发布，不等于 draft/publish 分离。pending 按钮只阻止客户端重复提交，不证明服务端幂等、失败回滚或 active pointer 安全。外部数据库检查还显示两个模板 active version 不符合修正版要求。 | **保留为 TASK-005 候选，当前放弃纳入唯一基线**；不得把 `official-template-save-button.tsx`、快照比较或检查脚本单独当作完成。只有完成 draft/publish 数据边界和外部状态修复后，才作为完整流程集成。 | 自动：发布状态、重现性、覆盖率检查；当前发布状态检查失败。人工：草稿不改变 active、明确发布、重复发布、失败恢复、历史输出、普通/平台角色。回退：独立恢复分支丢弃该流程，不改 safety/WIP 或外部数据库。 |
 | **G. 模板校准预览 → 文字输入 → PDF 视觉结果**：字段文字只显示一层，输入值和 overlay 不重复，输出位置可被人信任。 | WIP `friends-guarantee-calibration-preview.tsx` 在 safety/快照；任务归属 TASK-007。 | React overlay、Friends Guarantee PDF 资产和 renderer、模板 layout runtime；无新增依赖。 | WIP 的透明输入文字样式是局部视觉修正；没有源 PDF/生成 PDF/overlay/状态的分层证据。直接合入会把症状修复当成根因结论。 | **保留为 TASK-007 诊断候选，暂不纳入基线；不按视觉 hunk 直接合入。** | `smoke:guarantee-visual`、`test:guarantee-print-fit`、源/生成 PDF 逐层比较和人工视觉验收。回退：不合入该 hunk，保持当前 main renderer。 |
 | **H. 归档/恢复 → 审计 → 继续工作**：用户安全归档错误记录，恢复后关联关系可继续使用，管理员能看到审计。 | WIP `actions.ts` 生命周期 flash、`/cases` revalidate 和实体返回片段在 safety/快照；当前 main 有基础生命周期能力。 | `setRecordLifecycleAction`、实体页面、整理中心、审计日志、租户权限。 | 产品方向一致，但 WIP 的 flash/revalidate 与返回参数改变属于完整生命周期契约，不是可独立证明的页面改动。TASK-008 仍要求先选定一种记录类型并验证幂等、权限和审计。 | **保留为 TASK-008/TASK-006 候选，暂不从 WIP 恢复。** 不将生命周期 hunk 混入输入或模板恢复。 | 自动：tenant governance/data access。人工：授权拒绝、归档、恢复、重复操作、审计、跨租户隔离。回退：不合入生命周期 hunk。 |
@@ -69,7 +69,7 @@
 2. 是否接受先恢复“可在开发模式本地演示”的基线，同时把生产配置/真实登录/隧道作为单独人工安全门禁；当前 `npm start` 已被生产安全门禁正确阻断。
 3. 是否同意继续将 TASK-005、TASK-006、TASK-007、TASK-008 留在候选/隔离状态，而不是为了让 WIP 看起来完整而一次性恢复。
 
-产品负责人已批准第一集成边界。检查点 A 已完成本地运行门禁；B 仍须单独进入并继续按 TASK-004 范围执行。
+产品负责人已批准第一集成边界。检查点 A、B 已按顺序完成本地运行门禁；TASK-005～008 仍保持隔离。
 
 ## 6A. 检查点 A 运行门禁
 
@@ -78,7 +78,18 @@
 - **已验证事实**：新建案件后进入案件工作台；工作台字段保存后刷新仍保留；普通运营角色访问平台账户页时受到平台管理员权限拒绝；租户会话、数据访问和治理自动检查通过。
 - **已验证事实**：演示来源处理器返回 `422`，但确认/修正/不采用/追加恢复链路成功完成。这是失败回退证据，不是真实 OCR 或外部附件存储成功证据。
 - **已验证事实**：`src/proxy.ts` 只在非生产且显式 `BROKER_DESK_AUTH_MODE=demo` 时放行 demo 身份；生产认证、限流、同源检查和生产就绪门禁未被关闭。
-- **停止结论**：A 本地运行门禁通过；B 尚未开始。生产认证、真实外部服务、生产数据库、隧道和真实文件处理仍需人工验证，不能开放朋友测试。
+- **停止结论**：A 本地运行门禁通过，随后允许进入 B。生产认证、真实外部服务、生产数据库、隧道和真实文件处理仍需人工验证，不能开放朋友测试。
+
+## 6B. 检查点 B 运行门禁
+
+- **已验证事实**：实现 Agent 按顺序完成并退出；独立审查 Agent 先发现本地 `pdftoppm` 缺失导致 PNG 预览 500，随后对 B 范围内修复复核通过并退出。
+- **已验证事实**：普通租户模板库显示 5 个允许安装的官方模板；全保連模板安装后刷新仍存在；模板安装按租户数据读取，未安装模板会回到模板库并显示添加入口。
+- **已验证事实**：使用 A 已确认案件 `case_demo_park_ikebukuro_share` 进入输出中心和申请书预览；预览显示池袋シェアハウス、パク ジス等案件确认数据。补齐 A 中明确不采用的两个缺失字段后，下载门禁解除。
+- **已验证事实**：PNG 预览返回 `200 image/png`；下载返回 `200 application/pdf`，`pdf-lib` 可打开 1 页；预览与下载 PDF 渲染后的页面哈希一致，视觉检查确认案件数据已进入表单。
+- **已验证事实**：输出中心预览失败时有明确错误提示和刷新恢复动作；普通运营角色访问 `/platform/accounts` 被平台管理员权限边界拒绝；A 资料入口仍可访问。
+- **已验证事实**：B 只修改 `src/app/api/guarantee-applications/[templateId]/download/route.ts`、`src/app/output-center/page.tsx`、`src/components/guarantee-template-selector.tsx`；没有带入平台模板管理、TASK-005～008、认证、限流、同源或数据隔离规则。
+- **降级说明**：资料处理器返回 `422` 的人工确认/修正/不采用路径仍是降级恢复证据，不是真实 OCR 或自动处理成功证据。
+- **未验证**：真实 Clerk 登录、真实生产数据库、外部附件/文档服务、双租户真实浏览器隔离和隧道安全检查。这些不阻塞本地 B 功能通过，但阻塞朋友测试和隧道开放。
 
 ## 5. 朋友测试目标：149 项专业分类
 
@@ -104,6 +115,6 @@
 | 检查点 | 状态 | 允许范围 | 进入条件 |
 |---|---|---|---|
 | A / TASK-003 | Passed (local demo gate) | 资料导入确认/修正/不采用、追加/新建、案件工作台、持久化、权限拒绝和失败恢复链路 | 已完成本地浏览器验收；真实 OCR、外部附件存储、生产登录、生产数据库和隧道仍需人工验证 |
-| B / TASK-004 前台 | Pending | 模板库、租户安装、输出中心、申请书预览/下载 | A 通过；不得带入 TASK-005～008 |
-| 端到端验收 | Pending | 从资料进入系统到申请书下载的浏览器和数据行为 | B 通过 |
+| B / TASK-004 前台 | Passed (local demo gate) | 模板库、租户安装、输出中心、申请书预览/下载 | 已由独立审查复核；生产登录、外部服务和双租户真实浏览器仍需人工验证 |
+| 端到端验收 | Passed (local demo flow) | 从 A 已确认案件到申请书下载的浏览器和数据行为 | 已证明预览和下载使用同一案件数据；不得据此开放隧道 |
 | 演示运行检查 | Pending | npm start 503 原因、测试账号/租户/数据、隧道安全 | 端到端验收通过 |
