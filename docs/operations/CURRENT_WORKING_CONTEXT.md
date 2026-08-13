@@ -5,7 +5,7 @@
 
 ## 当前任务
 
-- `TASK-014 / MIG-003`：固化“保证公司申请书是V1唯一主输出”的产品文档边界，修改已完成，状态为 `In Review`。
+- `TASK-014 / MIG-003`：固化“保证公司申请书是V1唯一主输出”的产品文档边界，修改、验证和独立审查均已完成，状态为 `Done`。
 - 用户结果：活动产品文档不再把旧输出类型描述为V1并列主输出；官方资料索引与产品生成输出明确分离。
 
 ## Git事实
@@ -28,10 +28,10 @@
 ## 本任务实现状态
 
 - 已完成当前活动产品文档的初始冲突盘点和边界修改，证据与逐项对照记录在 `docs/tasks/TASK-014.md`。
-- 实际修改：`PRODUCT.md`、`CONTEXT.md`、`docs/product/PRODUCT_TOPOLOGY.md`、`docs/product/V1_GUARANTEE_APPLICATION_OUTPUT.md`、`docs/product/V1_INPUT_FILE_MODEL.md`、`docs/product/V1_CASE_WORKBENCH.md`、`docs/product/OFFICIAL_JAPAN_DOCUMENT_SOURCE_REGISTRY_2026_07_26.md`、`BACKLOG.md`、本文件和 `docs/tasks/TASK-014.md`。
+- 实际修改：`PRODUCT.md`、`CONTEXT.md`、`docs/product/PRODUCT_TOPOLOGY.md`、`docs/product/V1_GUARANTEE_APPLICATION_OUTPUT.md`、`docs/product/V1_INPUT_FILE_MODEL.md`、`docs/product/V1_CASE_WORKBENCH.md`、`docs/product/V1_CASE_INFORMATION_ARCHITECTURE.md`、`docs/product/OFFICIAL_JAPAN_DOCUMENT_SOURCE_REGISTRY_2026_07_26.md`、`BACKLOG.md`、本文件和 `docs/tasks/TASK-014.md`。
 - 未修改业务代码、数据库、public、页面文字、`.cursor`、历史产品资料和MIG-002历史提交。
 
 ## 验证与下一步
 
-- 必须完成TASK-014中的产品边界扫描、差异检查、lint、typecheck、文档链接检查和独立审查。
-- 下一步：完成TASK-014规定的验证，然后由独立审查Agent只读复核。
+- TASK-014中的产品边界扫描、差异检查、lint、typecheck、文档链接检查和独立审查均已通过。
+- MIG-003完成后停止，等待MIG-004批准；本任务不改变代码或实际页面行为。

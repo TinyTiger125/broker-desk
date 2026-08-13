@@ -13,7 +13,7 @@
 | TASK-011 | P0 | Repair governance baseline metadata and document residue | Done | TASK-001 | [TASK-011](docs/tasks/TASK-011.md) | No patch residue; branch and baseline metadata agree; governance checks pass |
 | TASK-012 | P0 | MIG-001 unify governance entrypoints | Done | — | [TASK-012](docs/tasks/TASK-012.md) | Entry documents converge on AGENTS.md, current context, and the assigned task card |
 | TASK-013 | P0 | MIG-002 decompose and downgrade PROJECT_MEMORY | Done | TASK-012 | [TASK-013](docs/tasks/TASK-013.md) | Archive, compatibility pointer, direct references, checker, validation, and independent review complete |
-| TASK-014 | P0 | MIG-003固化V1唯一主输出边界 | In Review | TASK-013 | [TASK-014](docs/tasks/TASK-014.md) | Product-document boundary implemented; validation and independent review pending |
+| TASK-014 | P0 | MIG-003固化V1唯一主输出边界 | Done | TASK-013 | [TASK-014](docs/tasks/TASK-014.md) | Product-document boundary, validation, and independent review complete; no business-code changes |
 | TASK-003 | P0 | Close the input-material merge completion loop | Proposed | TASK-002 | [TASK-003](docs/tasks/TASK-003.md) | Selection, confirmation, result, failure, and refresh evidence |
 | TASK-004 | P0 | Consolidate template-library and official-template boundaries | Proposed | TASK-002 | [TASK-004](docs/tasks/TASK-004.md) | Role-aware entry, visibility, and installation evidence |
 | TASK-005 | P0 | Separate official template draft and publish states | Proposed | TASK-004 | [TASK-005](docs/tasks/TASK-005.md) | Independent draft save, publish, immutable version, and failure evidence |
@@ -33,5 +33,5 @@
 - TASK-003 and TASK-006A remain Proposed. Neither is Ready.
 - TASK-006A is the only narrowed candidate business trial in this baseline.
 - TASK-013 is Done; implementation, validation, review-fix, and independent read-only review are complete.
-- TASK-014 is In Review; product-document scope is implemented with no business-code or page-behavior changes.
+- TASK-014 is Done; product-document scope, validation, and independent review are complete with no business-code or page-behavior changes.
 - No business task is implemented by the pure governance baseline commit.
