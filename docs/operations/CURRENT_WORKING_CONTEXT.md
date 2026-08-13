@@ -1,39 +1,52 @@
 # Broker Desk 当前工作交接
 
-> 本文件是唯一活动交接和进度入口。它不重复产品、架构或历史记录。
+> 本文件是唯一活动交接和进度入口，不重复产品、架构或历史正文。新项目经理接管前必须先核对绝对路径、分支、HEAD和工作区。
 > Last updated: 2026-08-13.
 
 ## 当前任务
 
-- `TASK-014 / MIG-003`：固化“保证公司申请书是V1唯一主输出”的产品文档边界，修改、验证和独立审查均已完成，状态为 `Done`。
-- 用户结果：活动产品文档不再把旧输出类型描述为V1并列主输出；官方资料索引与产品生成输出明确分离。
+- `PM-HANDOFF-001`：项目经理交出阶段。本轮只固化真实状态，不实施文档迁移、业务开发或清理。
+- 当前唯一任务：完成并确认本次项目经理交接；不得并行启动其他任务。
+
+## 已完成迁移证据
+
+- `MIG-001 / TASK-012`：统一治理入口；实现 `ee1850e`，审查收尾 `2cb8f45`。
+- `MIG-002 / TASK-013`：拆解并降级 `PROJECT_MEMORY.md`；实现 `3d4d345`，审查收尾 `baad0b9`。
+- `MIG-003 / TASK-014`：固化保证公司申请书为 V1 唯一主输出；实现 `5066a61`，审查收尾 `f81ef84`。
+- 上述任务均为 `Done`，且没有业务代码、数据库、页面行为或用户可见文字修改。
 
 ## Git事实
 
 - 正式仓库：`/Users/laineyzhu/Documents/独立开发项目/房产专家/broker-desk-web-dev`
 - Branch: `governance/clean-baseline-20260812`
-- MIG-001审计基线/父提交：`9d12c0a`
-- MIG-001实现提交：`ee1850e`
-- MIG-001审查修复提交：`2cb8f45`
-- MIG-003产品文档实现提交：`5066a61`
-- MIG-003审查收尾提交：`f81ef84`
-- local main: `fedb4c9`
-- safety/WIP分支：`safety/wip-mixed-worktree-20260812`，保持不变。
-- 当前HEAD以进入任务时的绝对路径Git现场核验为准；本交接不把后续修复提交误写成初始基线。
-- 进入MIG-003时工作区干净；本次只更新授权的当前产品文档、BACKLOG、任务卡和本文件。
+- 当前分支：`governance/clean-baseline-20260812`
+- 交接开始时 HEAD：`5c4d5f3`；本次交接提交完成后，当前 HEAD 以 `git rev-parse --short HEAD` 现场核验为准。
+- `main`：`fedb4c9`；它是治理分支共同祖先，治理分支相对 main 领先 8 个提交；本轮不合入 main。
+- `safety/wip-mixed-worktree-20260812`：`61bce51`；仅作为历史混合工作区安全证据，不能指导当前结论，本轮保持不变。
+- 交接开始时工作区干净；交接提交后仍必须保持干净。
 
-## 本任务边界
+## 已知高风险但未处理
 
-- 只处理TASK-014列出的当前产品文档、BACKLOG、当前交接和任务卡。
-- 不修改 `src`、`db`、`public`、业务配置、实际页面行为、用户可见文字、`.cursor`或历史产品资料，不执行MIG-004及后续任务。
+- `.cursor/README.md`仍可能把 `CLAUDE.md`描述为单一真源；`.cursor`适配层尚未清理，不能在本阶段处理。
+- `CLAUDE 3.md`及旧CLAUDE独有内容尚未完成最终核销；后续任务负责，不得由 `PROJECT_MEMORY` 归档替代。
+- 两份 2026-07-14 日语术语字典的冲突尚未裁决，属于 `MIG-004`范围。
+- 代码和页面中可能仍有旧输出类型或旧路由；MIG-003只统一文档事实，未改变业务行为。
+- `TASK-002`仍为 `In Review`，`TASK-010`仍为 `Blocked`；它们不是本次交接任务，不得擅自改状态。
 
-## 本任务实现状态
+## 当前禁止事项
 
-- 已完成当前活动产品文档的初始冲突盘点和边界修改，证据与逐项对照记录在 `docs/tasks/TASK-014.md`。
-- 实际修改：`PRODUCT.md`、`CONTEXT.md`、`docs/product/PRODUCT_TOPOLOGY.md`、`docs/product/V1_GUARANTEE_APPLICATION_OUTPUT.md`、`docs/product/V1_INPUT_FILE_MODEL.md`、`docs/product/V1_CASE_WORKBENCH.md`、`docs/product/V1_CASE_INFORMATION_ARCHITECTURE.md`、`docs/product/OFFICIAL_JAPAN_DOCUMENT_SOURCE_REGISTRY_2026_07_26.md`、`BACKLOG.md`、本文件和 `docs/tasks/TASK-014.md`。
-- 未修改业务代码、数据库、public、页面文字、`.cursor`、历史产品资料和MIG-002历史提交。
+- 不修改业务代码、数据库、public、业务配置、页面行为或用户可见文字。
+- 不修改、移动或删除历史文档，不执行 MIG-004 或其他迁移任务，不建立新的Playbook。
+- 不修改 `.cursor`、`main`或`safety/WIP`；不把历史分支或旧文档当作当前事实。
+- 所有后续实现都必须先有明确任务卡、授权范围、验证和独立审查。
 
-## 验证与下一步
+## 接管后的唯一下一步
 
-- TASK-014中的产品边界扫描、差异检查、lint、typecheck、文档链接检查和独立审查均已通过。
-- MIG-003完成后停止，等待MIG-004批准；本任务不改变代码或实际页面行为。
+- 新项目经理先读取 `AGENTS.md`、本文件、`BACKLOG.md` 和 `docs/tasks/TASK-014.md`，重新核对 Git 现场及子Agent状态，再向用户报告是否完成接管。
+- 建议接管确认后优先准备 `MIG-004` 的日语术语冲突决策表；在用户确认前不得实施迁移。
+- 下一迁移候选为 `MIG-004`，明确不属于本次交接范围。
+
+## Agent状态
+
+- 本次未创建子Agent；先前 MIG-003 的实现和独立审查Agent均已完成并退出。
+- 当前活跃子Agent：`0`。
