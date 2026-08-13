@@ -1,6 +1,6 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
-import { isClerkAuthConfigured, isClerkAuthEnabled, isProductionRuntime } from "@/lib/auth-mode";
+import { isClerkAuthConfigured, isClerkAuthEnabled, isDemoAuthEnabled, isProductionRuntime } from "@/lib/auth-mode";
 import { assertProductionAuthReady, assertProductionRateLimitReady } from "@/lib/production-readiness";
 import { checkRequestRateLimit } from "@/lib/request-rate-limit";
 
@@ -62,6 +62,7 @@ export default function proxy(req: Parameters<typeof clerkProxy>[0], event: Para
     return NextResponse.json({ ok: false, error: "invalid_request_origin" }, { status: 403 });
   }
   if (!isClerkAuthEnabled()) {
+    if (isDemoAuthEnabled()) return NextResponse.next();
     if (isPublicRoute(req)) return NextResponse.next();
     if (req.nextUrl.pathname.startsWith("/api/")) {
       return NextResponse.json({ ok: false, error: "authentication_required" }, { status: 401 });
