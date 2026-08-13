@@ -1,150 +1,150 @@
-序号,fieldKey,当前名称,当前分组,当前信息树路径,valueKind,importance,appliesWhen,aliases,朋友重分类,朋友备注
-1,property.furigana,物件フリガナ,物件・契約条件,物件 / 物件基本,text,conditional,lease_case,property_furigana / building_furigana,,
-2,property.name,物件名,物件・契約条件,物件 / 物件基本,text,core,lease_case,property_name / building_name,,
-3,property.roomNumber,部屋番号・号室,物件・契約条件,物件 / 部屋・号室,text,core,lease_case,room_number / unit_number,,
-4,property.postalCode,物件郵便番号,物件・契約条件,物件 / 所在地・郵便番号,postal_code,core,lease_case,property_postal_code / postal_code / zip_code,,
-5,property.address,物件所在地,物件・契約条件,物件 / 所在地・郵便番号,textarea,core,lease_case,property_location / residential_address / building_location,,
-6,property.usage,物件用途,物件・契約条件,物件 / 物件基本,select,conditional,lease_case,property_use / property_usage / use_type,,
-7,lease.contractType,契約形態,物件・契約条件,契約条件 / 日付・契約期間,select,conditional,lease_case,contract_type / lease_contract_type,,
-8,lease.contractStartDate,契約期間開始日,物件・契約条件,契約条件 / 日付・契約期間,date,conditional,lease_case,contract_start_date,,
-9,lease.contractEndDate,契約期間終了日,物件・契約条件,契約条件 / 日付・契約期間,date,conditional,lease_case,contract_end_date,,
-10,lease.moveInDate,入居予定日,物件・契約条件,契約条件 / 日付・契約期間,date,core,lease_case,move_in_date / move_in_planned_date,,
-11,lease.rent,賃料・家賃,物件・契約条件,契約条件 / 月額費用,money_yen,core,lease_case,rent / monthly_rent,,
-12,lease.commonFee,共益費・管理費,物件・契約条件,契約条件 / 月額費用,money_yen,core,lease_case,common_fee / management_fee,,
-13,lease.parkingFee,駐車場代,物件・契約条件,契約条件 / 月額費用,money_yen,conditional,lease_case,parking_fee,,
-14,lease.waterTownFee,水道料・町費,物件・契約条件,契約条件 / 月額費用,money_yen,conditional,lease_case,water_town_fee / water_fee / town_fee,,
-15,lease.otherMonthlyFee,その他月額費用,物件・契約条件,契約条件 / 月額費用,money_yen,conditional,lease_case,other_monthly_fee,,
-16,lease.monthlyRentTotal,月額賃料合計,物件・契約条件,契約条件 / 月額費用,money_yen,core,lease_case,monthly_rent_total / rent_total,,
-17,lease.deposit,敷金・保証金,物件・契約条件,契約条件 / 初期費用,money_yen,conditional,lease_case,deposit / security_deposit,,
-18,lease.keyMoney,礼金,物件・契約条件,契約条件 / 初期費用,money_yen,conditional,lease_case,key_money,,
-19,lease.insuranceFee,保険料,物件・契約条件,契約条件 / 初期費用,money_yen,conditional,lease_case,insurance_fee,,
-20,lease.keyExchangeFee,鍵交換代,物件・契約条件,契約条件 / 初期費用,money_yen,conditional,lease_case,key_exchange_fee,,
-21,lease.cancellationDeduction,敷引・解約引,物件・契約条件,契約条件 / 初期費用,money_yen,conditional,lease_case,cancellation_deduction,,
-22,lease.initialCostTotal,初回費用合計,物件・契約条件,契約条件 / 初期費用,money_yen,conditional,lease_case,initial_cost_total,,
-23,lease.paymentMethod,賃料支払方法,物件・契約条件,契約条件 / 支払条件,select,conditional,lease_case,rent_payment_method,,
-24,lease.rentPaymentDay,賃料支払日,物件・契約条件,契約条件 / 支払条件,number,conditional,lease_case,rent_payment_day,,
-25,applicant.furigana,フリガナ,申込者・賃借人,参加者 / 申込者・賃借人,text,core,lease_case,buyer_furigana / tenant_furigana,,
-26,applicant.name,氏名,申込者・賃借人,参加者 / 申込者・賃借人,text,core,lease_case,buyer_name / tenant_name,,
-27,applicant.gender,性別,申込者・賃借人,参加者 / 申込者・賃借人,select,conditional,lease_case,tenant_gender,,
-28,applicant.spouse,配偶者,申込者・賃借人,参加者 / 申込者・賃借人,select,conditional,lease_case,tenant_spouse,,
-29,applicant.birthDate,生年月日,申込者・賃借人,参加者 / 申込者・賃借人,date,core,lease_case,buyer_birth_date / tenant_birth_date,,
-30,applicant.phone,代表電話番号,申込者・賃借人,参加者 / 連絡先,phone,core,lease_case,buyer_phone / tenant_phone / mobile_phone,,
-31,applicant.mobilePhone,携帯電話,申込者・賃借人,参加者 / 連絡先,phone,conditional,lease_case,applicant_mobile_phone,,
-32,applicant.homePhone,自宅電話,申込者・賃借人,参加者 / 連絡先,phone,conditional,lease_case,applicant_home_phone,,
-33,applicant.email,メール,申込者・賃借人,参加者 / 連絡先,email,conditional,lease_case,buyer_email / tenant_email,,
-34,applicant.currentPostalCode,現住所 郵便番号,申込者・賃借人,参加者 / 現住所,postal_code,core,lease_case,applicant_current_postal_code / buyer_postal_code / tenant_postal_code,,
-35,applicant.currentAddress,現住所,申込者・賃借人,参加者 / 現住所,textarea,core,lease_case,buyer_address / tenant_address,,
-36,applicant.nationality,国籍,申込者・賃借人,本人確認資料 / 在留カード,text,conditional,identity_document_available,nationality,,
-37,applicant.residenceYears,居住年数,申込者・賃借人,参加者 / 現住所,duration_years,conditional,identity_document_available,residence_years,,
-38,applicant.housingType,現住居区分,申込者・賃借人,参加者 / 現住所,select,conditional,lease_case,housing_type,,
-39,applicant.currentRent,現家賃,申込者・賃借人,参加者 / 現住所,money_yen,conditional,lease_case,current_rent,,
-40,applicant.cohabitingFamilyCount,同居家族人数,申込者・賃借人,参加者 / 現住所,number,conditional,lease_case,cohabiting_family_count,,
-41,applicant.identityDocumentType,確認資料種別,本人確認資料,本人確認資料 / 確認資料種別,select,conditional,identity_document_available,identity_document_type,,
-42,applicant.residenceStatus,在留資格,本人確認資料,本人確認資料 / 在留カード,text,conditional,identity_document_available,residence_status,,
-43,applicant.residencePeriod,在留期間,本人確認資料,本人確認資料 / 在留カード,text,conditional,identity_document_available,residence_period,,
-44,applicant.residenceCardExpiry,在留カード有効期限,本人確認資料,本人確認資料 / 在留カード,date,conditional,identity_document_available,residence_card_expiry,,
-45,applicant.residenceCardNumber,在留カード番号,本人確認資料,本人確認資料 / 在留カード,id_number,conditional,identity_document_available,residence_card_number,,
-46,applicant.workRestriction,就労制限,本人確認資料,本人確認資料 / 在留カード,select,conditional,identity_document_available,work_restriction,,
-47,applicant.driverLicenseNumber,免許証番号,本人確認資料,本人確認資料 / 運転免許証,id_number,conditional,identity_document_available,driver_license_number / applicant_license_number,,
-48,applicant.driverLicenseExpiry,免許証有効期限,本人確認資料,本人確認資料 / 運転免許証,date,conditional,identity_document_available,driver_license_expiry,,
-49,applicant.driverLicenseConditions,免許条件,本人確認資料,本人確認資料 / 運転免許証,textarea,low_frequency,identity_document_available,driver_license_conditions,,
-50,applicant.healthInsuranceType,保険証種類,本人確認資料,本人確認資料 / 保険証,select,conditional,identity_document_available,health_insurance_type,,
-51,applicant.employerFurigana,勤務先フリガナ,勤務先・収入,勤務・収入 / 勤務先・学校,text,conditional,employment_required,employer_furigana / workplace_furigana,,
-52,applicant.employerName,勤務先名・学校名,勤務先・収入,勤務・収入 / 勤務先・学校,text,core,employment_required,employer_name / workplace_name / school_name,,
-53,applicant.employerDepartment,部署,勤務先・収入,勤務・収入 / 勤務先・学校,text,conditional,employment_required,employer_department / department,,
-54,applicant.employerPhone,勤務先電話,勤務先・収入,勤務・収入 / 勤務先・学校,phone,core,employment_required,employer_phone / workplace_phone,,
-55,applicant.employerPostalCode,勤務先 郵便番号,勤務先・収入,勤務・収入 / 勤務先・学校,postal_code,conditional,employment_required,applicant_employer_postal_code / employer_postal_code / workplace_postal_code,,
-56,applicant.employerAddress,勤務先住所,勤務先・収入,勤務・収入 / 勤務先・学校,textarea,conditional,employment_required,employer_address / workplace_address,,
-57,applicant.employerHomePage,勤務先ホームページ,勤務先・収入,勤務・収入 / 勤務先・学校,text,low_frequency,employment_required,employer_homepage / workplace_homepage,,
-58,applicant.occupation,業種,勤務先・収入,勤務・収入 / 職業・雇用形態,text,conditional,employment_required,occupation / industry,,
-59,applicant.jobType,職種,勤務先・収入,勤務・収入 / 職業・雇用形態,text,conditional,employment_required,job_type,,
-60,applicant.employmentType,雇用形態,勤務先・収入,勤務・収入 / 職業・雇用形態,select,core,employment_required,employment_type,,
-61,applicant.annualIncome,年収,勤務先・収入,勤務・収入 / 収入・勤続,money_man_yen,core,employment_required,annual_income,,
-62,applicant.monthlyIncome,月収,勤務先・収入,勤務・収入 / 収入・勤続,money_man_yen,low_frequency,employment_required,monthly_income,,
-63,applicant.yearsEmployed,勤続年数,勤務先・収入,勤務・収入 / 収入・勤続,duration_years,conditional,employment_required,years_employed,,
-64,applicant.payday,給料日・収入日,勤務先・収入,勤務・収入 / 収入・勤続,number,low_frequency,employment_required,payday / income_day,,
-65,applicant.moveReason,転居理由,勤務先・収入,勤務・収入 / 職業・雇用形態,select,conditional,lease_case,move_reason,,
-66,guarantor.furigana,連帯保証人1 フリガナ,連帯保証人,参加者 / 連帯保証人,text,conditional,guarantor_required,,,
-67,guarantor.name,連帯保証人1 氏名,連帯保証人,参加者 / 連帯保証人,text,conditional,guarantor_required,,,
-68,guarantor.gender,連帯保証人1 性別,連帯保証人,参加者 / 連帯保証人,select,conditional,guarantor_required,,,
-69,guarantor.spouse,連帯保証人1 配偶者,連帯保証人,参加者 / 連帯保証人,select,conditional,guarantor_required,,,
-70,guarantor.relationship,連帯保証人1 続柄,連帯保証人,参加者 / 連帯保証人,select,conditional,guarantor_required,,,
-71,guarantor.birthDate,連帯保証人1 生年月日,連帯保証人,参加者 / 連帯保証人,date,conditional,guarantor_required,,,
-72,guarantor.driverLicenseNumber,連帯保証人1 免許証番号,連帯保証人,参加者 / 連帯保証人,id_number,conditional,guarantor_required,guarantor_driver_license_number,,
-73,guarantor.postalCode,連帯保証人1 自宅郵便番号,連帯保証人,参加者 / 連帯保証人,postal_code,conditional,guarantor_required,guarantor_postal_code,,
-74,guarantor.address,連帯保証人1 自宅住所,連帯保証人,参加者 / 連帯保証人,textarea,conditional,guarantor_required,,,
-75,guarantor.phone,連帯保証人1 代表電話,連帯保証人,参加者 / 連帯保証人,phone,conditional,guarantor_required,,,
-76,guarantor.mobilePhone,連帯保証人1 携帯電話,連帯保証人,参加者 / 連帯保証人,phone,conditional,guarantor_required,guarantor_mobile_phone,,
-77,guarantor.homePhone,連帯保証人1 自宅電話,連帯保証人,参加者 / 連帯保証人,phone,conditional,guarantor_required,guarantor_home_phone,,
-78,guarantor.residenceYears,連帯保証人1 居住年数,連帯保証人,参加者 / 連帯保証人,duration_years,conditional,guarantor_required,,,
-79,guarantor.housingType,連帯保証人1 自宅・賃貸,連帯保証人,参加者 / 連帯保証人,select,conditional,guarantor_required,,,
-80,guarantor.employerFurigana,連帯保証人1 勤務先フリガナ,連帯保証人,参加者 / 連帯保証人,text,conditional,guarantor_required,,,
-81,guarantor.employerName,連帯保証人1 勤務先名,連帯保証人,参加者 / 連帯保証人,text,conditional,guarantor_required,,,
-82,guarantor.employerPhone,連帯保証人1 勤務先電話,連帯保証人,参加者 / 連帯保証人,phone,conditional,guarantor_required,,,
-83,guarantor.employerAddress,連帯保証人1 勤務先住所,連帯保証人,参加者 / 連帯保証人,textarea,conditional,guarantor_required,,,
-84,guarantor.occupation,連帯保証人1 業種,連帯保証人,参加者 / 連帯保証人,text,conditional,guarantor_required,,,
-85,guarantor.jobType,連帯保証人1 職種,連帯保証人,参加者 / 連帯保証人,text,conditional,guarantor_required,,,
-86,guarantor.employmentType,連帯保証人1 雇用形態,連帯保証人,参加者 / 連帯保証人,select,conditional,guarantor_required,,,
-87,guarantor.annualIncome,連帯保証人1 年収,連帯保証人,参加者 / 連帯保証人,money_man_yen,conditional,guarantor_required,,,
-88,guarantor.yearsEmployed,連帯保証人1 勤続年数,連帯保証人,参加者 / 連帯保証人,duration_years,conditional,guarantor_required,,,
-89,guarantor.payday,連帯保証人1 給料日,連帯保証人,参加者 / 連帯保証人,number,low_frequency,guarantor_required,,,
-90,emergencyContact.furigana,緊急連絡先 フリガナ,緊急連絡先,参加者 / 緊急連絡先,text,conditional,emergency_contact_required,emergency_contact_furigana,,
-91,emergencyContact.name,緊急連絡先 氏名,緊急連絡先,参加者 / 緊急連絡先,text,core,emergency_contact_required,guarantor_name / emergency_contact_name,,
-92,emergencyContact.gender,緊急連絡先 性別,緊急連絡先,参加者 / 緊急連絡先,select,conditional,emergency_contact_required,,,
-93,emergencyContact.spouse,緊急連絡先 配偶者,緊急連絡先,参加者 / 緊急連絡先,select,conditional,emergency_contact_required,,,
-94,emergencyContact.relationship,緊急連絡先 続柄,緊急連絡先,参加者 / 緊急連絡先,select,core,emergency_contact_required,guarantor_relationship / emergency_contact_relationship,,
-95,emergencyContact.birthDate,緊急連絡先 生年月日,緊急連絡先,参加者 / 緊急連絡先,date,conditional,emergency_contact_required,guarantor_birth_date / emergency_contact_birth_date,,
-96,emergencyContact.driverLicenseNumber,緊急連絡先 免許証番号,緊急連絡先,参加者 / 緊急連絡先,id_number,conditional,emergency_contact_required,emergency_contact_driver_license_number,,
-97,emergencyContact.postalCode,緊急連絡先 自宅郵便番号,緊急連絡先,参加者 / 緊急連絡先,postal_code,conditional,emergency_contact_required,emergency_contact_postal_code,,
-98,emergencyContact.address,緊急連絡先 自宅住所,緊急連絡先,参加者 / 緊急連絡先,textarea,conditional,emergency_contact_required,guarantor_address / emergency_contact_address,,
-99,emergencyContact.phone,緊急連絡先 代表電話,緊急連絡先,参加者 / 緊急連絡先,phone,core,emergency_contact_required,guarantor_phone / emergency_contact_phone,,
-100,emergencyContact.mobilePhone,緊急連絡先 携帯電話,緊急連絡先,参加者 / 緊急連絡先,phone,conditional,emergency_contact_required,emergency_contact_mobile_phone,,
-101,emergencyContact.homePhone,緊急連絡先 自宅電話,緊急連絡先,参加者 / 緊急連絡先,phone,conditional,emergency_contact_required,emergency_contact_home_phone,,
-102,emergencyContact.residenceYears,緊急連絡先 居住年数,緊急連絡先,参加者 / 緊急連絡先,duration_years,conditional,emergency_contact_required,,,
-103,emergencyContact.housingType,緊急連絡先 自宅・賃貸,緊急連絡先,参加者 / 緊急連絡先,select,conditional,emergency_contact_required,,,
-104,emergencyContact.employerFurigana,緊急連絡先 勤務先フリガナ,緊急連絡先,参加者 / 緊急連絡先,text,conditional,emergency_contact_required,,,
-105,emergencyContact.employerName,緊急連絡先 勤務先名,緊急連絡先,参加者 / 緊急連絡先,text,conditional,emergency_contact_required,guarantor_employer_name,,
-106,emergencyContact.employerPhone,緊急連絡先 勤務先電話,緊急連絡先,参加者 / 緊急連絡先,phone,conditional,emergency_contact_required,,,
-107,emergencyContact.employerAddress,緊急連絡先 勤務先住所,緊急連絡先,参加者 / 緊急連絡先,textarea,conditional,emergency_contact_required,,,
-108,emergencyContact.occupation,緊急連絡先 業種,緊急連絡先,参加者 / 緊急連絡先,text,conditional,emergency_contact_required,,,
-109,emergencyContact.jobType,緊急連絡先 職種,緊急連絡先,参加者 / 緊急連絡先,text,conditional,emergency_contact_required,,,
-110,emergencyContact.employmentType,緊急連絡先 雇用形態,緊急連絡先,参加者 / 緊急連絡先,select,conditional,emergency_contact_required,,,
-111,emergencyContact.annualIncome,緊急連絡先 年収,緊急連絡先,参加者 / 緊急連絡先,money_man_yen,conditional,emergency_contact_required,,,
-112,emergencyContact.yearsEmployed,緊急連絡先 勤続年数,緊急連絡先,参加者 / 緊急連絡先,duration_years,conditional,emergency_contact_required,,,
-113,emergencyContact.payday,緊急連絡先 給料日,緊急連絡先,参加者 / 緊急連絡先,number,low_frequency,emergency_contact_required,,,
-114,coOccupants.0.furigana,同居人1 フリガナ,同居人・入居者,参加者 / 同居人・入居者,text,conditional,co_occupant_exists,,,
-115,coOccupants.0.name,同居人1 氏名,同居人・入居者,参加者 / 同居人・入居者,text,conditional,co_occupant_exists,,,
-116,coOccupants.0.relationship,同居人1 続柄,同居人・入居者,参加者 / 同居人・入居者,select,conditional,co_occupant_exists,,,
-117,coOccupants.0.gender,同居人1 性別,同居人・入居者,参加者 / 同居人・入居者,select,conditional,co_occupant_exists,,,
-118,coOccupants.0.birthDate,同居人1 生年月日,同居人・入居者,参加者 / 同居人・入居者,date,conditional,co_occupant_exists,,,
-119,coOccupants.0.phone,同居人1 電話番号,同居人・入居者,参加者 / 同居人・入居者,phone,conditional,co_occupant_exists,,,
-120,coOccupants.0.employerName,同居人1 勤務先又は学校名,同居人・入居者,参加者 / 同居人・入居者,text,conditional,co_occupant_exists,,,
-121,coOccupants.1.furigana,同居人2 フリガナ,同居人・入居者,参加者 / 同居人・入居者,text,conditional,co_occupant_exists,,,
-122,coOccupants.1.name,同居人2 氏名,同居人・入居者,参加者 / 同居人・入居者,text,conditional,co_occupant_exists,,,
-123,coOccupants.1.relationship,同居人2 続柄,同居人・入居者,参加者 / 同居人・入居者,select,conditional,co_occupant_exists,,,
-124,coOccupants.1.gender,同居人2 性別,同居人・入居者,参加者 / 同居人・入居者,select,conditional,co_occupant_exists,,,
-125,coOccupants.1.birthDate,同居人2 生年月日,同居人・入居者,参加者 / 同居人・入居者,date,conditional,co_occupant_exists,,,
-126,coOccupants.1.phone,同居人2 電話番号,同居人・入居者,参加者 / 同居人・入居者,phone,conditional,co_occupant_exists,,,
-127,coOccupants.1.employerName,同居人2 勤務先又は学校名,同居人・入居者,参加者 / 同居人・入居者,text,conditional,co_occupant_exists,,,
-128,coOccupants.2.furigana,同居人3 フリガナ,同居人・入居者,参加者 / 同居人・入居者,text,conditional,co_occupant_exists,,,
-129,coOccupants.2.name,同居人3 氏名,同居人・入居者,参加者 / 同居人・入居者,text,conditional,co_occupant_exists,,,
-130,coOccupants.2.relationship,同居人3 続柄,同居人・入居者,参加者 / 同居人・入居者,select,conditional,co_occupant_exists,,,
-131,coOccupants.2.gender,同居人3 性別,同居人・入居者,参加者 / 同居人・入居者,select,conditional,co_occupant_exists,,,
-132,coOccupants.2.birthDate,同居人3 生年月日,同居人・入居者,参加者 / 同居人・入居者,date,conditional,co_occupant_exists,,,
-133,coOccupants.2.phone,同居人3 電話番号,同居人・入居者,参加者 / 同居人・入居者,phone,conditional,co_occupant_exists,,,
-134,coOccupants.2.employerName,同居人3 勤務先又は学校名,同居人・入居者,参加者 / 同居人・入居者,text,conditional,co_occupant_exists,,,
-135,broker.companyName,協定会社・取扱店名,仲介会社・管理会社,関係会社 / 仲介会社,text,core,brokerage_or_management_known,broker_a_company_name / broker_b_company_name,,
-136,broker.branchName,支店名,仲介会社・管理会社,関係会社 / 仲介会社,text,conditional,brokerage_or_management_known,broker_branch_name,,
-137,broker.staffName,担当者,仲介会社・管理会社,関係会社 / 仲介会社,text,conditional,brokerage_or_management_known,agent_a_name / agent_b_name,,
-138,broker.phone,協定会社・取扱店TEL,仲介会社・管理会社,関係会社 / 仲介会社,phone,core,brokerage_or_management_known,broker_a_phone / broker_b_phone,,
-139,broker.fax,協定会社・取扱店FAX,仲介会社・管理会社,関係会社 / 仲介会社,phone,low_frequency,brokerage_or_management_known,broker_a_fax / broker_b_fax,,
-140,broker.address,協定会社・取扱店住所,仲介会社・管理会社,関係会社 / 仲介会社,textarea,conditional,brokerage_or_management_known,broker_address,,
-141,broker.agentCompanyName,仲介会社名,仲介会社・管理会社,関係会社 / 仲介会社,text,conditional,brokerage_or_management_known,agent_company_name,,
-142,broker.agentPhone,仲介会社TEL,仲介会社・管理会社,関係会社 / 仲介会社,phone,conditional,brokerage_or_management_known,agent_phone,,
-143,broker.agentFax,仲介会社FAX,仲介会社・管理会社,関係会社 / 仲介会社,phone,conditional,brokerage_or_management_known,agent_fax,,
-144,management.companyName,管理会社名,仲介会社・管理会社,関係会社 / 管理会社,text,conditional,brokerage_or_management_known,management_company_name,,
-145,management.address,管理会社住所,仲介会社・管理会社,関係会社 / 管理会社,textarea,conditional,brokerage_or_management_known,management_address,,
-146,management.phone,管理会社電話,仲介会社・管理会社,関係会社 / 管理会社,phone,conditional,brokerage_or_management_known,management_phone,,
-147,management.staffName,管理会社担当者,仲介会社・管理会社,関係会社 / 管理会社,text,conditional,brokerage_or_management_known,management_staff_name,,
-148,landlord.name,賃貸人・貸主名,仲介会社・管理会社,関係会社 / 貸主,text,conditional,brokerage_or_management_known,landlord_name,,
-149,landlord.address,賃貸人住所,仲介会社・管理会社,関係会社 / 貸主,textarea,conditional,brokerage_or_management_known,landlord_address,,
+分类,属性,日文名称,中文名称
+房产与合同条件,房产假名,物件フリガナ,房产假名
+房产与合同条件,房产名称,物件名,房产名称
+房产与合同条件,房间号,部屋番号・号室,房间号
+房产与合同条件,房产邮政编码,物件郵便番号,房产邮政编码
+房产与合同条件,房产地址,物件所在地,房产地址
+房产与合同条件,房产用途,物件用途,房产用途
+房产与合同条件,合同类型,契約形態,合同类型
+房产与合同条件,合同开始日期,契約期間開始日,合同开始日期
+房产与合同条件,合同结束日期,契約期間終了日,合同结束日期
+房产与合同条件,预计入住日期,入居予定日,预计入住日期
+房产与合同条件,租金,賃料・家賃,租金
+房产与合同条件,共益费／管理费,共益費・管理費,共益费／管理费
+房产与合同条件,停车费,駐車場代,停车费
+房产与合同条件,水费／町会费,水道料・町費,水费／町会费
+房产与合同条件,其他月度费用,その他月額費用,其他月度费用
+房产与合同条件,月租金合计,月額賃料合計,月租金合计
+房产与合同条件,押金／保证金,敷金・保証金,押金／保证金
+房产与合同条件,礼金,礼金,礼金
+房产与合同条件,保险费,保険料,保险费
+房产与合同条件,换锁费,鍵交換代,换锁费
+房产与合同条件,敷引／解约扣款,敷引・解約引,敷引／解约扣款
+房产与合同条件,初始费用合计,初回費用合計,初始费用合计
+房产与合同条件,租金支付方式,賃料支払方法,租金支付方式
+房产与合同条件,租金支付日,賃料支払日,租金支付日
+客户（申请人／租客）,姓名假名,フリガナ,姓名假名
+客户（申请人／租客）,姓名,氏名,姓名
+客户（申请人／租客）,性别,性別,性别
+客户（申请人／租客）,配偶,配偶者,配偶
+客户（申请人／租客）,出生日期,生年月日,出生日期
+客户（申请人／租客）,主要电话号码,代表電話番号,主要电话号码
+客户（申请人／租客）,手机号码,携帯電話,手机号码
+客户（申请人／租客）,家庭电话号码,自宅電話,家庭电话号码
+客户（申请人／租客）,电子邮箱,メール,电子邮箱
+客户（申请人／租客）,现住址邮政编码,現住所 郵便番号,现住址邮政编码
+客户（申请人／租客）,现住址,現住所,现住址
+客户（申请人／租客）,国籍,国籍,国籍
+客户（申请人／租客）,居住年数,居住年数,居住年数
+客户（申请人／租客）,现住房类型,現住居区分,现住房类型
+客户（申请人／租客）,现租金,現家賃,现租金
+客户（申请人／租客）,同住家人数,同居家族人数,同住家人数
+身份证明资料,身份证明资料类型,確認資料種別,身份证明资料类型
+身份证明资料,在留资格,在留資格,在留资格
+身份证明资料,在留期限,在留期間,在留期限
+身份证明资料,在留卡有效期,在留カード有効期限,在留卡有效期
+身份证明资料,在留卡号码,在留カード番号,在留卡号码
+身份证明资料,就业限制,就労制限,就业限制
+身份证明资料,驾照号码,免許証番号,驾照号码
+身份证明资料,驾照有效期,免許証有効期限,驾照有效期
+身份证明资料,驾照条件,免許条件,驾照条件
+身份证明资料,健康保险证类型,保険証種類,健康保险证类型
+工作与收入,工作单位假名,勤務先フリガナ,工作单位假名
+工作与收入,工作单位／学校名称,勤務先名・学校名,工作单位／学校名称
+工作与收入,部门,部署,部门
+工作与收入,工作单位电话,勤務先電話,工作单位电话
+工作与收入,工作单位邮政编码,勤務先 郵便番号,工作单位邮政编码
+工作与收入,工作单位地址,勤務先住所,工作单位地址
+工作与收入,工作单位主页,勤務先ホームページ,工作单位主页
+工作与收入,行业,業種,行业
+工作与收入,职业,職種,职业
+工作与收入,雇佣形式,雇用形態,雇佣形式
+工作与收入,年收入,年収,年收入
+工作与收入,月收入,月収,月收入
+工作与收入,工龄,勤続年数,工龄
+工作与收入,发薪日／收入日,給料日・収入日,发薪日／收入日
+工作与收入,搬家原因,転居理由,搬家原因
+连带保证人,姓名假名,連帯保証人1 フリガナ,姓名假名
+连带保证人,姓名,連帯保証人1 氏名,姓名
+连带保证人,性别,連帯保証人1 性別,性别
+连带保证人,配偶,連帯保証人1 配偶者,配偶
+连带保证人,关系,連帯保証人1 続柄,关系
+连带保证人,出生日期,連帯保証人1 生年月日,出生日期
+连带保证人,驾照号码,連帯保証人1 免許証番号,驾照号码
+连带保证人,自宅邮政编码,連帯保証人1 自宅郵便番号,自宅邮政编码
+连带保证人,自宅地址,連帯保証人1 自宅住所,自宅地址
+连带保证人,主要电话号码,連帯保証人1 代表電話,主要电话号码
+连带保证人,手机号码,連帯保証人1 携帯電話,手机号码
+连带保证人,家庭电话号码,連帯保証人1 自宅電話,家庭电话号码
+连带保证人,居住年数,連帯保証人1 居住年数,居住年数
+连带保证人,住房类型,連帯保証人1 自宅・賃貸,住房类型
+连带保证人,工作单位假名,連帯保証人1 勤務先フリガナ,工作单位假名
+连带保证人,工作单位名称,連帯保証人1 勤務先名,工作单位名称
+连带保证人,工作单位电话,連帯保証人1 勤務先電話,工作单位电话
+连带保证人,工作单位地址,連帯保証人1 勤務先住所,工作单位地址
+连带保证人,行业,連帯保証人1 業種,行业
+连带保证人,职业,連帯保証人1 職種,职业
+连带保证人,雇佣形式,連帯保証人1 雇用形態,雇佣形式
+连带保证人,年收入,連帯保証人1 年収,年收入
+连带保证人,工龄,連帯保証人1 勤続年数,工龄
+连带保证人,发薪日,連帯保証人1 給料日,发薪日
+紧急联系人,姓名假名,緊急連絡先 フリガナ,姓名假名
+紧急联系人,姓名,緊急連絡先 氏名,姓名
+紧急联系人,性别,緊急連絡先 性別,性别
+紧急联系人,配偶,緊急連絡先 配偶者,配偶
+紧急联系人,关系,緊急連絡先 続柄,关系
+紧急联系人,出生日期,緊急連絡先 生年月日,出生日期
+紧急联系人,驾照号码,緊急連絡先 免許証番号,驾照号码
+紧急联系人,自宅邮政编码,緊急連絡先 自宅郵便番号,自宅邮政编码
+紧急联系人,自宅地址,緊急連絡先 自宅住所,自宅地址
+紧急联系人,主要电话号码,緊急連絡先 代表電話,主要电话号码
+紧急联系人,手机号码,緊急連絡先 携帯電話,手机号码
+紧急联系人,家庭电话号码,緊急連絡先 自宅電話,家庭电话号码
+紧急联系人,居住年数,緊急連絡先 居住年数,居住年数
+紧急联系人,住房类型,緊急連絡先 自宅・賃貸,住房类型
+紧急联系人,工作单位假名,緊急連絡先 勤務先フリガナ,工作单位假名
+紧急联系人,工作单位名称,緊急連絡先 勤務先名,工作单位名称
+紧急联系人,工作单位电话,緊急連絡先 勤務先電話,工作单位电话
+紧急联系人,工作单位地址,緊急連絡先 勤務先住所,工作单位地址
+紧急联系人,行业,緊急連絡先 業種,行业
+紧急联系人,职业,緊急連絡先 職種,职业
+紧急联系人,雇佣形式,緊急連絡先 雇用形態,雇佣形式
+紧急联系人,年收入,緊急連絡先 年収,年收入
+紧急联系人,工龄,緊急連絡先 勤続年数,工龄
+紧急联系人,发薪日,緊急連絡先 給料日,发薪日
+同住人／入住人,姓名假名,同居人1 フリガナ,姓名假名
+同住人／入住人,姓名,同居人1 氏名,姓名
+同住人／入住人,关系,同居人1 続柄,关系
+同住人／入住人,性别,同居人1 性別,性别
+同住人／入住人,出生日期,同居人1 生年月日,出生日期
+同住人／入住人,主要电话号码,同居人1 電話番号,主要电话号码
+同住人／入住人,工作单位名称,同居人1 勤務先又は学校名,工作单位名称
+同住人／入住人,姓名假名,同居人2 フリガナ,姓名假名
+同住人／入住人,姓名,同居人2 氏名,姓名
+同住人／入住人,关系,同居人2 続柄,关系
+同住人／入住人,性别,同居人2 性別,性别
+同住人／入住人,出生日期,同居人2 生年月日,出生日期
+同住人／入住人,主要电话号码,同居人2 電話番号,主要电话号码
+同住人／入住人,工作单位名称,同居人2 勤務先又は学校名,工作单位名称
+同住人／入住人,姓名假名,同居人3 フリガナ,姓名假名
+同住人／入住人,姓名,同居人3 氏名,姓名
+同住人／入住人,关系,同居人3 続柄,关系
+同住人／入住人,性别,同居人3 性別,性别
+同住人／入住人,出生日期,同居人3 生年月日,出生日期
+同住人／入住人,主要电话号码,同居人3 電話番号,主要电话号码
+同住人／入住人,工作单位名称,同居人3 勤務先又は学校名,工作单位名称
+中介、管理公司与房东,合作公司／经办店名称,協定会社・取扱店名,合作公司／经办店名称
+中介、管理公司与房东,支店名称,支店名,支店名称
+中介、管理公司与房东,负责人姓名,担当者,负责人姓名
+中介、管理公司与房东,合作公司／经办店电话,協定会社・取扱店TEL,合作公司／经办店电话
+中介、管理公司与房东,合作公司／经办店传真,協定会社・取扱店FAX,合作公司／经办店传真
+中介、管理公司与房东,合作公司／经办店地址,協定会社・取扱店住所,合作公司／经办店地址
+中介、管理公司与房东,中介公司名称,仲介会社名,中介公司名称
+中介、管理公司与房东,中介公司电话,仲介会社TEL,中介公司电话
+中介、管理公司与房东,中介公司传真,仲介会社FAX,中介公司传真
+中介、管理公司与房东,管理公司名称,管理会社名,管理公司名称
+中介、管理公司与房东,管理公司地址,管理会社住所,管理公司地址
+中介、管理公司与房东,管理公司电话,管理会社電話,管理公司电话
+中介、管理公司与房东,管理公司负责人姓名,管理会社担当者,管理公司负责人姓名
+中介、管理公司与房东,房东／出租人姓名,賃貸人・貸主名,房东／出租人姓名
+中介、管理公司与房东,房东／出租人地址,賃貸人住所,房东／出租人地址
