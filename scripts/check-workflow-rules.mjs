@@ -115,7 +115,7 @@ async function main() {
     "docs/operations/CURRENT_WORKING_CONTEXT.md": [
       "## 当前任务",
       "TASK-012 / MIG-001",
-      "9d12c0a",
+      "MIG-001审计基线/父提交：`9d12c0a`",
       "不新建Playbook",
     ],
   };
