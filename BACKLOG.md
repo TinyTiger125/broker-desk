@@ -17,7 +17,7 @@
 | TASK-016 | P0 | MIG-004建立日语用户界面术语唯一规范来源 | Done | TASK-014 | [TASK-016](docs/tasks/TASK-016.md) | Canonical source, active-document routing, historical-source preservation, exact five-term check, workflow-rules check, and independent read-only review PASS |
 | TASK-015 | P1 | MIG-005建立三类核心角色 Playbook | Done | TASK-016 | [TASK-015](docs/tasks/TASK-015.md) | Three role Playbooks, fixed constructive-dissent protocol, evidence labels, minimal validation, lifecycle/hand-off rules, review-fix, and independent review PASS |
 | TASK-017 | P0 | MIG-006清理 Cursor 活动规则并建立薄适配入口 | Done | TASK-015 | [TASK-017](docs/tasks/TASK-017.md) | Thin Cursor governance entry, legacy authority cleanup, high-risk skill pointers, reference scan, governance checks, manual-load verification record, review-fix, and independent review PASS |
-| TASK-018 | P0 | MIG-007恢复唯一可运行产品基线 | In Progress | TASK-002, TASK-017 | [TASK-018](docs/tasks/TASK-018.md) | Read-only product recovery matrix and approved flow-level integration boundary; later install/build/start, browser, permission, isolation, review, clean-worktree, and tunnel precheck evidence |
+| TASK-018 | P0 | MIG-007恢复唯一可运行产品基线 | In Progress | TASK-002, TASK-017 | [TASK-018](docs/tasks/TASK-018.md) | Checkpoint A TASK-003 implementation/review, then checkpoint B TASK-004 frontstage implementation/review, end-to-end browser evidence, runtime diagnosis, and clean-worktree/tunnel precheck |
 | TASK-003 | P0 | Close the input-material merge completion loop | Proposed | TASK-002 | [TASK-003](docs/tasks/TASK-003.md) | Selection, confirmation, result, failure, and refresh evidence |
 | TASK-004 | P0 | Consolidate template-library and official-template boundaries | Proposed | TASK-002 | [TASK-004](docs/tasks/TASK-004.md) | Role-aware entry, visibility, and installation evidence |
 | TASK-005 | P0 | Separate official template draft and publish states | Proposed | TASK-004 | [TASK-005](docs/tasks/TASK-005.md) | Independent draft save, publish, immutable version, and failure evidence |
@@ -42,6 +42,6 @@
 - TASK-016 / MIG-004已完成；当前唯一规范来源为[`PRODUCT_TERMINOLOGY_CANONICAL.md`](docs/operations/PRODUCT_TERMINOLOGY_CANONICAL.md)。本次只迁移术语规范来源和相关文档，不修改业务代码或实际界面文案；独立只读审查已通过。
 - TASK-015 / MIG-005已完成；本轮只建立三类核心角色 Playbook及其任务治理记录，不修改`AGENTS.md`、业务代码、产品功能或 MIG-006；独立审查 PASS。
 - TASK-017 / MIG-006已完成；本轮只清理 `.cursor` 活动规则和高风险 Skill 入口，不修改业务文件、产品范围、架构、术语目录或 MIG-007；真实 Cursor 加载行为仍需人工验证。
-- TASK-018 / MIG-007已建立并进入 In Progress；阶段一、二只读盘点已完成，产品恢复矩阵见[`MIG-007_PRODUCT_RECOVERY_MATRIX_2026-08-13.md`](docs/operations/MIG-007_PRODUCT_RECOVERY_MATRIX_2026-08-13.md)。当前推荐先以完整流程恢复 TASK-003 和 TASK-004 前台部分，TASK-005/006/007/008 继续候选或隔离；尚未获得产品批准，未修改或合并业务代码。
+- TASK-018 / MIG-007已进入实施：产品负责人批准按 A→独立审查→B→独立审查顺序恢复 TASK-003 和 TASK-004 前台部分；当前处于 A，TASK-005/006/007/008 继续暂缓。149 项专业分类已登记为 A/B 之外的朋友测试验收缺口。
 - 当前开发模式可启动并到达登录/数据健康入口，但生产启动被安全就绪门禁阻断；真实登录、外部数据库发布状态和隧道行为仍需人工验证。safety/WIP 与 WIP 快照保持冻结。
 - No business task is implemented by the pure governance baseline commit.
