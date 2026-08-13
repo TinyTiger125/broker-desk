@@ -1,5 +1,7 @@
 # UI Terminology Review Workflow
 
+> 当前术语唯一规范来源：[`PRODUCT_TERMINOLOGY_CANONICAL.md`](PRODUCT_TERMINOLOGY_CANONICAL.md)。本文件只定义 CSV 导出、审校和导入流程；若流程说明与当前术语选择冲突，以 canonical source 为准。
+
 ## Purpose
 
 This workflow lets a business reviewer clean up product terminology without editing source code directly.
@@ -41,7 +43,10 @@ Use `ui-terminology-core-review.csv` for a broader business review. It contains 
 
 Use `ui-terminology-review.csv` for engineering cleanup. It includes system, library, and secondary screens.
 
-For the 2026-07-14 friend-feedback review package, use:
+For the 2026-07-14 friend-feedback review package, use the following historical
+input and evidence only. These files are not the current terminology authority;
+current product choices come from
+[`PRODUCT_TERMINOLOGY_CANONICAL.md`](PRODUCT_TERMINOLOGY_CANONICAL.md):
 
 - `docs/operations/UI_TERMINOLOGY_REVIEW_HANDOFF_2026_07_14.md`
 - `docs/operations/PRODUCT_TERMINOLOGY_DICTIONARY_JA_2026_07_14.md`

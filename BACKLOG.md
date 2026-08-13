@@ -14,6 +14,7 @@
 | TASK-012 | P0 | MIG-001 unify governance entrypoints | Done | — | [TASK-012](docs/tasks/TASK-012.md) | Entry documents converge on AGENTS.md, current context, and the assigned task card |
 | TASK-013 | P0 | MIG-002 decompose and downgrade PROJECT_MEMORY | Done | TASK-012 | [TASK-013](docs/tasks/TASK-013.md) | Archive, compatibility pointer, direct references, checker, validation, and independent review complete |
 | TASK-014 | P0 | MIG-003固化V1唯一主输出边界 | Done | TASK-013 | [TASK-014](docs/tasks/TASK-014.md) | Product-document boundary, validation, and independent review complete; no business-code changes |
+| TASK-016 | P0 | MIG-004建立日语用户界面术语唯一规范来源 | Done | TASK-014 | [TASK-016](docs/tasks/TASK-016.md) | Canonical source, active-document routing, historical-source preservation, exact five-term check, workflow-rules check, and independent read-only review PASS |
 | TASK-015 | P1 | MIG-005建立TECHNICAL_PM Playbook | Proposed | MIG-004 decision confirmation | [TASK-015](docs/tasks/TASK-015.md) | Constructive dissent, evidence labels, minimal validation, decision capture, and independent review without endless debate |
 | TASK-003 | P0 | Close the input-material merge completion loop | Proposed | TASK-002 | [TASK-003](docs/tasks/TASK-003.md) | Selection, confirmation, result, failure, and refresh evidence |
 | TASK-004 | P0 | Consolidate template-library and official-template boundaries | Proposed | TASK-002 | [TASK-004](docs/tasks/TASK-004.md) | Role-aware entry, visibility, and installation evidence |
@@ -36,6 +37,6 @@
 - TASK-013 is Done; implementation, validation, review-fix, and independent read-only review are complete.
 - TASK-014 is Done; product-document scope, validation, and independent review are complete with no business-code or page-behavior changes.
 - PM-HANDOFF-001接管验证已通过并完成收口；它只记录治理状态，不是业务实施任务，也未单独建立任务卡。
-- MIG-004仍只是下一迁移候选；术语决策准备材料位于`docs/operations/MIG-004_TERMINOLOGY_DECISION_DRAFT_2026_08_13.md`，未批准、未Ready、未In Progress，不代表已授权实施。
+- TASK-016 / MIG-004已完成；当前唯一规范来源为[`PRODUCT_TERMINOLOGY_CANONICAL.md`](docs/operations/PRODUCT_TERMINOLOGY_CANONICAL.md)。本次只迁移术语规范来源和相关文档，不修改业务代码或实际界面文案；独立只读审查已通过。
 - TASK-015 / MIG-005仅为未来 Proposed 任务；不授权现在创建 Playbook，也不授权修改`AGENTS.md`。
 - No business task is implemented by the pure governance baseline commit.
