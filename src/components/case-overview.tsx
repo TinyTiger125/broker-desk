@@ -1,0 +1,558 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { CaseWorkbenchFieldForm } from "@/components/case-workbench-field-form";
+import type { Locale } from "@/lib/locale";
+
+type InputSpec = {
+  kind: "text" | "textarea" | "tel" | "email" | "money" | "number" | "date" | "select";
+  inputMode?: "text" | "numeric" | "decimal" | "tel" | "email";
+  unit?: string;
+  rows?: number;
+  placeholder?: Partial<Record<Locale, string>>;
+  options?: string[];
+};
+
+type EvidenceItem = {
+  id: string;
+  value: string;
+  sourceLabel: string;
+  reviewStatus: string;
+  confidencePercent: number;
+  method: string;
+};
+
+export type CaseOverviewField = {
+  fieldKey: string;
+  label: string;
+  value: string;
+  displayValue: string;
+  required: boolean;
+  state: string;
+  importance: string;
+  applicable: boolean;
+  issueLabel?: string;
+  treePath: readonly string[];
+  sourceLabel: string;
+  evidenceItems: EvidenceItem[];
+  inputSpec: InputSpec;
+};
+
+export type CaseOverviewChildSection = {
+  id: string;
+  label: string;
+  fields: CaseOverviewField[];
+};
+
+export type CaseOverviewSection = {
+  id: string;
+  label: string;
+  children: CaseOverviewChildSection[];
+};
+
+type OutputBlockerField = {
+  fieldKey: string;
+  label: string;
+  actionUrl: string;
+};
+
+export type CaseOverviewOutputBlocker = {
+  code: string;
+  count: number;
+  label: string;
+  message: string;
+  fields: OutputBlockerField[];
+};
+
+type SaveAction = (formData: FormData) => void | Promise<void>;
+
+type CaseViewSwitchProps = {
+  caseId: string;
+  activeView: "quick" | "overview";
+  issueCount: number;
+  locale: Locale;
+};
+
+function viewHref(caseId: string, view: "quick" | "overview") {
+  return `/cases/${encodeURIComponent(caseId)}?view=${view}`;
+}
+
+export function CaseViewSwitch({ caseId, activeView, issueCount, locale }: CaseViewSwitchProps) {
+  const labels = {
+    quick: { ja: "補完", zh: "快速补全", ko: "빠른 보완" },
+    overview: { ja: "案件全体", zh: "案件总览", ko: "안건 전체" },
+  } as const;
+
+  return (
+    <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm" aria-label={locale === "zh" ? "案件视图" : locale === "ko" ? "안건 보기" : "案件表示"}>
+      {(["quick", "overview"] as const).map((view) => (
+        <Link
+          key={view}
+          href={viewHref(caseId, view)}
+          aria-current={activeView === view ? "page" : undefined}
+          className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-black transition sm:px-4 ${
+            activeView === view ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
+          }`}
+        >
+          {labels[view][locale]}
+          {view === "quick" && issueCount > 0 ? <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${activeView === view ? "bg-white/15 text-white" : "bg-rose-100 text-rose-700"}`}>{issueCount}</span> : null}
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+function fieldAnchor(fieldKey: string) {
+  return `case-field-${fieldKey.replaceAll(".", "-")}`;
+}
+
+function fieldIssue(field: CaseOverviewField) {
+  return Boolean(field.issueLabel);
+}
+
+function inputClass(tone: "default" | "attention") {
+  return tone === "attention"
+    ? "w-full rounded-lg border border-rose-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-950 outline-none transition focus:border-slate-950 focus:ring-2 focus:ring-rose-100"
+    : "w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-950 outline-none transition focus:border-slate-950 focus:ring-2 focus:ring-blue-100";
+}
+
+function FieldInput({ field, locale }: { field: CaseOverviewField; locale: Locale }) {
+  const spec = field.inputSpec;
+  const tone = fieldIssue(field) ? "attention" : "default";
+  const placeholder = spec.placeholder?.[locale];
+
+  if (spec.kind === "select") {
+    return (
+      <select name={`field:${field.fieldKey}`} defaultValue={field.value} aria-label={field.label} className={inputClass(tone)}>
+        <option value="">{locale === "zh" ? "未填写" : locale === "ko" ? "미입력" : "未入力"}</option>
+        {spec.options?.map((option) => <option key={option} value={option}>{option}</option>)}
+      </select>
+    );
+  }
+
+  if (spec.kind === "textarea") {
+    return <textarea name={`field:${field.fieldKey}`} aria-label={field.label} defaultValue={field.value} rows={spec.rows ?? 3} placeholder={placeholder} className={inputClass(tone)} />;
+  }
+
+  return (
+    <span className="relative block">
+      <input
+        name={`field:${field.fieldKey}`}
+        type={spec.kind === "date" ? "date" : spec.kind === "email" ? "email" : "text"}
+        inputMode={spec.inputMode}
+        aria-label={field.label}
+        defaultValue={field.value}
+        placeholder={placeholder}
+        className={`${inputClass(tone)} ${spec.unit ? "pr-14" : ""}`}
+      />
+      {spec.unit ? <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs font-bold text-slate-500">{spec.unit}</span> : null}
+    </span>
+  );
+}
+
+function localizeOutputLabel(locale: Locale, code: string) {
+  const labels: Record<string, Record<Locale, string>> = {
+    required_fields_missing: { ja: "必須情報が未入力", zh: "必填信息未填写", ko: "필수 정보가 비어 있음" },
+    draft_required_missing: { ja: "申込書の追加情報が未入力", zh: "申请书追加信息未填写", ko: "신청서 추가 정보가 비어 있음" },
+    template_not_verified: { ja: "テンプレートの確認が必要", zh: "模板仍需确认", ko: "템플릿 확인 필요" },
+    candidate_fields_unconfirmed: { ja: "候補入力の確認が必要", zh: "候选输入仍需处理", ko: "후보 입력 확인 필요" },
+    manual_fields_unplaced: { ja: "印字位置の確認が必要", zh: "打印位置仍需确认", ko: "인쇄 위치 확인 필요" },
+    print_fit_blocked: { ja: "文字が印字枠に収まらない", zh: "文字超出打印区域", ko: "문자가 인쇄 영역을 넘음" },
+  };
+  return labels[code]?.[locale] ?? (locale === "zh" ? "输出前需要处理" : locale === "ko" ? "출력 전에 처리 필요" : "出力前に対応が必要");
+}
+
+function localizeOutputMessage(locale: Locale, code: string) {
+  const messages: Record<string, Record<Locale, string>> = {
+    required_fields_missing: { ja: "案件の必須情報を補ってください。", zh: "请补齐案件必填信息。", ko: "안건의 필수 정보를 보완해 주세요." },
+    draft_required_missing: { ja: "申込書の追加情報を補ってください。", zh: "请补齐申请书追加信息。", ko: "신청서 추가 정보를 보완해 주세요." },
+    template_not_verified: { ja: "テンプレートを確認してから出力してください。", zh: "请先确认模板，再进行输出。", ko: "템플릿을 확인한 뒤 출력해 주세요." },
+    candidate_fields_unconfirmed: { ja: "候補入力を申込書プレビューで確認してください。", zh: "请在申请书预览中处理候选输入。", ko: "신청서 미리보기에서 후보 입력을 확인해 주세요." },
+    manual_fields_unplaced: { ja: "申込書上の入力位置を確認してください。", zh: "请确认申请书上的输入位置。", ko: "신청서 입력 위치를 확인해 주세요." },
+    print_fit_blocked: { ja: "長い文字列や桁数超過をプレビューで調整してください。", zh: "请在预览中调整过长文字或超出位数。", ko: "미리보기에서 긴 문자열이나 자릿수 초과를 조정해 주세요." },
+  };
+  return messages[code]?.[locale] ?? (locale === "zh" ? "请处理后再下载。" : locale === "ko" ? "처리한 뒤 다운로드해 주세요." : "対応してからダウンロードしてください。");
+}
+
+function useActiveSection(sectionIds: string[]) {
+  const [activeSection, setActiveSection] = useState(sectionIds[0] ?? "");
+
+  useEffect(() => {
+    const elements = sectionIds.map((id) => document.getElementById(id)).filter((element): element is HTMLElement => Boolean(element));
+    if (elements.length === 0) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+        if (visible[0]?.target instanceof HTMLElement) setActiveSection(visible[0].target.id);
+      },
+      { rootMargin: "-170px 0px -55% 0px", threshold: [0, 0.1, 0.4] },
+    );
+    elements.forEach((element) => observer.observe(element));
+    return () => observer.disconnect();
+  }, [sectionIds]);
+
+  return [activeSection, setActiveSection] as const;
+}
+
+function scrollToId(id: string) {
+  const target = document.getElementById(id);
+  if (!target) return;
+  const top = target.getBoundingClientRect().top + window.scrollY - 164;
+  window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+  window.history.replaceState(null, "", `#${id}`);
+}
+
+export function CaseOverview({
+  caseId,
+  caseTitle,
+  applicantSummary,
+  propertySummary,
+  guaranteeCompanySummary,
+  currentHandlerSummary,
+  sections,
+  locale,
+  issueCount,
+  outputHref,
+  previewHref,
+  downloadHref,
+  dataVersion,
+  outputBlockers,
+  hasOutputTemplate,
+  saveAction,
+  flash,
+}: {
+  caseId: string;
+  caseTitle: string;
+  applicantSummary: string;
+  propertySummary: string;
+  guaranteeCompanySummary: string;
+  currentHandlerSummary: string;
+  sections: CaseOverviewSection[];
+  locale: Locale;
+  issueCount: number;
+  outputHref: string;
+  previewHref: string;
+  downloadHref: string | null;
+  dataVersion: string;
+  outputBlockers: CaseOverviewOutputBlocker[];
+  hasOutputTemplate: boolean;
+  saveAction: SaveAction;
+  flash?: React.ReactNode;
+}) {
+  const sectionIds = useMemo(() => sections.map((section) => section.id), [sections]);
+  const [activeSection, setActiveSection] = useActiveSection(sectionIds);
+  const [compactHeader, setCompactHeader] = useState(false);
+  const [queueOpen, setQueueOpen] = useState(false);
+  const [downloadAttempted, setDownloadAttempted] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmedVersion, setConfirmedVersion] = useState<string | null>(null);
+  const [editingFieldKey, setEditingFieldKey] = useState<string | null>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
+  const lastTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const hasBlockingOutput = outputBlockers.length > 0;
+  const isConfirmedForCurrentData = confirmedVersion === dataVersion;
+  const attentionFields = useMemo(
+    () => sections.flatMap((section) => section.children.flatMap((child) => child.fields.filter(fieldIssue))),
+    [sections],
+  );
+  const editingField = editingFieldKey ? sections.flatMap((section) => section.children.flatMap((child) => child.fields)).find((field) => field.fieldKey === editingFieldKey) : undefined;
+
+  useEffect(() => {
+    const onScroll = () => setCompactHeader(window.scrollY > 80);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  useEffect(() => {
+    if (!editingFieldKey) return;
+    const frame = window.requestAnimationFrame(() => {
+      const input = editorRef.current?.querySelector<HTMLElement>("input:not([type=hidden]), select, textarea, button");
+      input?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [editingFieldKey]);
+
+  useEffect(() => {
+    const hash = window.location.hash.slice(1);
+    if (!hash) return;
+    const frame = window.requestAnimationFrame(() => {
+      const trigger = document.querySelector<HTMLButtonElement>(`[data-field-trigger="${hash}"]`);
+      trigger?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
+  const focusField = (fieldKey: string) => {
+    const id = fieldAnchor(fieldKey);
+    setQueueOpen(false);
+    scrollToId(id);
+    window.setTimeout(() => document.querySelector<HTMLButtonElement>(`[data-field-trigger="${id}"]`)?.focus({ preventScroll: true }), 350);
+  };
+
+  const openEditor = (field: CaseOverviewField, trigger: HTMLButtonElement) => {
+    lastTriggerRef.current = trigger;
+    setEditingFieldKey(field.fieldKey);
+  };
+
+  const closeEditor = () => {
+    setEditingFieldKey(null);
+    window.requestAnimationFrame(() => lastTriggerRef.current?.focus({ preventScroll: true }));
+  };
+
+  const handleDownload = () => {
+    if (!hasOutputTemplate || !downloadHref) {
+      window.location.assign(outputHref);
+      return;
+    }
+    if (hasBlockingOutput) {
+      setDownloadAttempted(true);
+      setQueueOpen(true);
+      window.requestAnimationFrame(() => document.getElementById("case-output-blockers")?.scrollIntoView({ behavior: "smooth", block: "center" }));
+      return;
+    }
+    if (isConfirmedForCurrentData) {
+      window.location.assign(downloadHref);
+      return;
+    }
+    setConfirmOpen(true);
+  };
+
+  const visibleAnchors = sections.slice(0, 4);
+  const overflowAnchors = sections.slice(4);
+
+  return (
+    <div className="flex min-w-0 flex-col gap-4 pb-16">
+      <header className={`sticky top-16 z-30 border border-slate-200 bg-white/95 shadow-sm backdrop-blur transition-[padding,box-shadow] duration-200 lg:top-20 ${compactHeader ? "rounded-lg px-4 py-2" : "rounded-xl px-4 py-4 sm:px-5"}`}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 text-[11px] font-bold text-slate-500">
+              <span>{locale === "zh" ? "案件总览" : locale === "ko" ? "안건 전체" : "案件全体"}</span>
+              {compactHeader ? <span className="truncate text-slate-900">· {caseTitle}</span> : null}
+            </div>
+            {!compactHeader ? <h1 className="mt-1 truncate text-xl font-black tracking-tight text-slate-950 sm:text-2xl">{caseTitle}</h1> : null}
+            <div className={`flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-semibold text-slate-600 ${compactHeader ? "mt-0" : "mt-2"}`}>
+              <span>{locale === "zh" ? "申请人" : locale === "ko" ? "신청인" : "申込人"}：{applicantSummary}</span>
+              <span className="hidden sm:inline">{locale === "zh" ? "物件" : locale === "ko" ? "물건" : "物件"}：{propertySummary}</span>
+              <span className="hidden md:inline">{locale === "zh" ? "负责人" : locale === "ko" ? "담당" : "担当"}：{currentHandlerSummary}</span>
+              <span className="hidden lg:inline">{locale === "zh" ? "保证公司" : locale === "ko" ? "보증 회사" : "保証会社"}：{guaranteeCompanySummary}</span>
+            </div>
+          </div>
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+            <Link href={previewHref} className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-900 hover:bg-emerald-100">
+              <span className="material-symbols-outlined text-[16px]" aria-hidden="true">visibility</span>
+              {locale === "zh" ? "申请书预览" : locale === "ko" ? "신청서 미리보기" : "申込書プレビュー"}
+            </Link>
+            <button type="button" onClick={handleDownload} className="inline-flex items-center gap-1.5 rounded-lg bg-slate-950 px-3 py-2 text-xs font-black text-white hover:bg-slate-800">
+              <span className="material-symbols-outlined text-[16px]" aria-hidden="true">download</span>
+              {hasOutputTemplate ? (locale === "zh" ? "下载申请书" : locale === "ko" ? "신청서 다운로드" : "申込書をダウンロード") : (locale === "zh" ? "选择输出模板" : locale === "ko" ? "출력 템플릿 선택" : "出力テンプレートを選ぶ")}
+            </button>
+          </div>
+        </div>
+        {!compactHeader ? (
+          <div className="mt-4 grid gap-2 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center">
+            <CaseViewSwitch caseId={caseId} activeView="overview" issueCount={issueCount} locale={locale} />
+            <div className="min-w-0 text-xs font-bold text-slate-600">
+              {issueCount > 0 ? <span>{locale === "zh" ? `待处理（${issueCount}）` : locale === "ko" ? `처리 필요 (${issueCount})` : `要対応（${issueCount}件）`}</span> : <span>{locale === "zh" ? "案件信息已整理" : locale === "ko" ? "안건 정보가 정리되었습니다" : "案件情報を整理しました"}</span>}
+              <button type="button" className="ml-2 rounded-md px-2 py-1 text-blue-700 underline-offset-2 hover:bg-blue-50 hover:underline" onClick={() => setQueueOpen((open) => !open)} aria-expanded={queueOpen} aria-controls="case-attention-queue">
+                {locale === "zh" ? (queueOpen ? "收起" : "展开") : locale === "ko" ? (queueOpen ? "접기" : "펼치기") : (queueOpen ? "閉じる" : "展開")}
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </header>
+
+      {flash}
+
+      <nav aria-label={locale === "zh" ? "案件章节" : locale === "ko" ? "안건 섹션" : "案件セクション"} className="sticky top-[8.75rem] z-20 rounded-xl border border-slate-200 bg-white/95 px-2 py-2 shadow-sm backdrop-blur lg:top-[10.5rem]">
+        <div className="hidden items-center gap-1 sm:flex">
+          {visibleAnchors.map((section) => (
+            <a key={section.id} href={`#${section.id}`} onClick={(event) => { event.preventDefault(); setActiveSection(section.id); scrollToId(section.id); }} aria-current={activeSection === section.id ? "location" : undefined} className={`min-w-0 flex-1 truncate rounded-lg px-3 py-2 text-center text-xs font-black transition ${activeSection === section.id ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"}`}>
+              {section.label}
+            </a>
+          ))}
+          {overflowAnchors.length > 0 ? (
+            <details className="relative shrink-0">
+              <summary className="cursor-pointer list-none rounded-lg px-3 py-2 text-xs font-black text-slate-600 hover:bg-slate-50">{locale === "zh" ? "更多" : locale === "ko" ? "더보기" : "その他"}</summary>
+              <div className="absolute right-0 top-full mt-1 w-52 rounded-lg border border-slate-200 bg-white p-1 shadow-xl">
+                {overflowAnchors.map((section) => <a key={section.id} href={`#${section.id}`} onClick={(event) => { event.preventDefault(); setActiveSection(section.id); scrollToId(section.id); }} className={`block rounded-md px-3 py-2 text-left text-xs font-bold ${activeSection === section.id ? "bg-slate-100 text-slate-950" : "text-slate-600 hover:bg-slate-50"}`}>{section.label}</a>)}
+              </div>
+            </details>
+          ) : null}
+        </div>
+        <label className="flex items-center gap-2 sm:hidden">
+          <span className="sr-only">{locale === "zh" ? "当前章节" : locale === "ko" ? "현재 섹션" : "現在のセクション"}</span>
+          <select value={activeSection} onChange={(event) => { setActiveSection(event.target.value); scrollToId(event.target.value); }} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-900 focus:border-slate-950 focus:ring-2 focus:ring-blue-100">
+            {sections.map((section) => <option key={section.id} value={section.id}>{section.label}</option>)}
+          </select>
+        </label>
+      </nav>
+
+      {queueOpen ? (
+        <section id="case-attention-queue" className="rounded-xl border border-amber-200 bg-amber-50/60 p-4" aria-label={locale === "zh" ? "待处理项目" : locale === "ko" ? "처리 필요 항목" : "要対応項目"}>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-black text-amber-950">{locale === "zh" ? "待处理" : locale === "ko" ? "처리 필요" : "要対応"}</h2>
+              <p className="mt-1 text-xs font-semibold text-amber-900">{locale === "zh" ? "只列出缺失、冲突或无法可靠决定的项目。" : locale === "ko" ? "누락, 충돌 또는 안정적으로 결정할 수 없는 항목만 표시합니다." : "未入力、相違、判断できない項目だけを表示します。"}</p>
+            </div>
+            <button type="button" onClick={() => setQueueOpen(false)} className="rounded-md px-2 py-1 text-xs font-bold text-amber-900 underline underline-offset-2">{locale === "zh" ? "收起" : locale === "ko" ? "접기" : "閉じる"}</button>
+          </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {attentionFields.map((field) => (
+              <button key={field.fieldKey} type="button" onClick={() => focusField(field.fieldKey)} className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-white px-3 py-2 text-left text-xs font-bold text-slate-800 hover:border-amber-400">
+                <span className="min-w-0 truncate">{field.label}</span>
+                <span className="shrink-0 text-amber-800">{locale === "zh" ? "定位" : locale === "ko" ? "이동" : "移動"}</span>
+              </button>
+            ))}
+            {attentionFields.length === 0 ? <p className="text-xs font-semibold text-amber-900">{locale === "zh" ? "当前没有可定位的字段异常。" : locale === "ko" ? "현재 이동할 필드 문제가 없습니다." : "移動できる項目はありません。"}</p> : null}
+          </div>
+        </section>
+      ) : null}
+
+      {downloadAttempted && hasBlockingOutput ? (
+        <section id="case-output-blockers" role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4">
+          <div className="flex items-start gap-3">
+            <span className="material-symbols-outlined text-[20px] text-rose-700" aria-hidden="true">error</span>
+            <div>
+              <h2 className="text-sm font-black text-rose-950">{locale === "zh" ? "暂时不能下载申请书" : locale === "ko" ? "신청서를 아직 다운로드할 수 없습니다" : "申込書をまだダウンロードできません"}</h2>
+              <p className="mt-1 text-xs font-semibold text-rose-900">{locale === "zh" ? "请处理以下问题后重试。申请书预览仍然可以打开。" : locale === "ko" ? "아래 문제를 처리한 뒤 다시 시도해 주세요. 신청서 미리보기는 계속 열 수 있습니다." : "次の項目を対応してから再試行してください。申込書プレビューは開けます。"}</p>
+            </div>
+          </div>
+          <div className="mt-3 grid gap-2">
+            {outputBlockers.map((blocker) => (
+              <div key={blocker.code} className="rounded-lg border border-rose-200 bg-white p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs font-black text-rose-900">{blocker.label || localizeOutputLabel(locale, blocker.code)}</p>
+                  <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-black text-rose-800">{blocker.count}</span>
+                </div>
+                <p className="mt-1 text-xs font-semibold text-slate-600">{blocker.message || localizeOutputMessage(locale, blocker.code)}</p>
+                {blocker.fields.length > 0 ? <div className="mt-2 flex flex-wrap gap-2">{blocker.fields.slice(0, 5).map((field) => <Link key={`${blocker.code}-${field.fieldKey}`} href={field.actionUrl} className="rounded-md border border-slate-200 px-2 py-1 text-[11px] font-bold text-slate-700 hover:bg-slate-50">{field.label}</Link>)}</div> : null}
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      <main className="space-y-4">
+        {sections.map((section) => {
+          const sectionFields = section.children.flatMap((child) => child.fields);
+          const sectionIssues = sectionFields.filter(fieldIssue).length;
+          return (
+            <section key={section.id} id={section.id} className="scroll-mt-[11rem] rounded-xl border border-slate-200 bg-white shadow-sm">
+              <div className="border-b border-slate-100 px-4 py-4 sm:px-6">
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="text-lg font-black text-slate-950">{section.label}</h2>
+                  {sectionIssues > 0 ? <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-black text-amber-900 ring-1 ring-amber-200">{locale === "zh" ? `待处理 ${sectionIssues}` : locale === "ko" ? `처리 필요 ${sectionIssues}` : `要対応 ${sectionIssues}`}</span> : null}
+                </div>
+              </div>
+              <div className="space-y-5 p-4 sm:p-6">
+                {section.children.map((child) => (
+                  <section key={child.id} id={`${section.id}-${child.id}`} className="[content-visibility:auto] [contain-intrinsic-size:420px]">
+                    <h3 className="text-sm font-black text-slate-700">{child.label}</h3>
+                    <div className="mt-2 divide-y divide-slate-100 rounded-lg border border-slate-100">
+                      {child.fields.map((field) => (
+                        <article key={field.fieldKey} id={fieldAnchor(field.fieldKey)} className={`scroll-mt-[11rem] px-3 py-3 sm:px-4 ${fieldIssue(field) ? "bg-amber-50/45" : "bg-white"}`}>
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                                <h4 className="text-sm font-black text-slate-950">{field.label}{field.required ? <span className="ml-1 text-slate-400" aria-label={locale === "zh" ? "必填" : locale === "ko" ? "필수" : "必須"}>*</span> : null}</h4>
+                                {fieldIssue(field) ? <span className="inline-flex items-center gap-1 text-xs font-black text-amber-900"><span aria-hidden="true">!</span>{field.issueLabel}</span> : null}
+                              </div>
+                              <p className={`mt-1 break-words text-sm ${field.displayValue === "-" ? "font-semibold text-slate-400" : "font-bold text-slate-800"}`}>{field.displayValue}</p>
+                              {fieldIssue(field) && field.evidenceItems.length > 0 ? (
+                                <details className="mt-2 text-xs">
+                                  <summary className="cursor-pointer font-bold text-slate-600">{locale === "zh" ? "查看资料依据" : locale === "ko" ? "자료 근거 보기" : "資料の根拠を見る"}</summary>
+                                  <div className="mt-2 space-y-2 rounded-lg border border-slate-200 bg-white p-2">
+                                    {field.evidenceItems.slice(0, 3).map((evidence) => <div key={evidence.id} className="flex flex-wrap items-center justify-between gap-2"><span className="font-semibold text-slate-700">{evidence.value || "-"}</span><span className="text-[11px] font-semibold text-slate-500">{evidence.sourceLabel}</span></div>)}
+                                  </div>
+                                </details>
+                              ) : null}
+                            </div>
+                            <button
+                              type="button"
+                              data-field-trigger={fieldAnchor(field.fieldKey)}
+                              onClick={(event) => openEditor(field, event.currentTarget)}
+                              className={`inline-flex shrink-0 items-center justify-center rounded-lg border px-3 py-2 text-xs font-black focus:outline-none focus:ring-2 focus:ring-blue-300 ${fieldIssue(field) ? "border-amber-300 bg-white text-amber-900 hover:bg-amber-50" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`}
+                            >
+                              {fieldIssue(field) ? (locale === "zh" ? "处理问题" : locale === "ko" ? "문제 처리" : "要対応") : (locale === "zh" ? "编辑" : locale === "ko" ? "편집" : "編集")}
+                            </button>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  </section>
+                ))}
+              </div>
+            </section>
+          );
+        })}
+      </main>
+
+      <div className="sticky bottom-3 z-20 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur">
+        <div className="min-w-0 text-xs font-semibold text-slate-600">
+          {hasBlockingOutput ? <span className="text-rose-800">{locale === "zh" ? "尚有阻塞项，仍可预览" : locale === "ko" ? "아직 차단 항목이 있지만 미리보기는 가능" : "対応項目がありますが、プレビューは可能"}</span> : <span className="text-emerald-800">{isConfirmedForCurrentData ? (locale === "zh" ? "已确认当前案件信息" : locale === "ko" ? "현재 안건 정보를 확인함" : "現在の案件情報を確認済み") : (locale === "zh" ? "下载前会请你确认案件信息" : locale === "ko" ? "다운로드 전에 안건 정보를 확인합니다" : "ダウンロード前に案件情報を確認します")}</span>}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={handleDownload} className="rounded-lg bg-slate-950 px-3 py-2 text-xs font-black text-white hover:bg-slate-800">{hasOutputTemplate ? (locale === "zh" ? "下载申请书" : locale === "ko" ? "신청서 다운로드" : "申込書をダウンロード") : (locale === "zh" ? "选择输出模板" : locale === "ko" ? "출력 템플릿 선택" : "出力テンプレートを選ぶ")}</button>
+        </div>
+      </div>
+
+      {editingField ? (
+        <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/35 p-0 sm:p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeEditor(); }}>
+          <div ref={editorRef} role="dialog" aria-modal="true" aria-labelledby="case-overview-editor-title" className="h-full w-full max-w-xl overflow-y-auto bg-white p-4 shadow-2xl sm:rounded-2xl sm:p-6">
+            <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-4">
+              <div>
+                <p className="text-xs font-bold text-blue-700">{editingField.treePath.join(" / ")}</p>
+                <h2 id="case-overview-editor-title" className="mt-1 text-lg font-black text-slate-950">{editingField.label}</h2>
+                {fieldIssue(editingField) ? <p className="mt-1 text-xs font-bold text-amber-900">{editingField.issueLabel}</p> : null}
+              </div>
+              <button type="button" onClick={closeEditor} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50">{locale === "zh" ? "取消" : locale === "ko" ? "취소" : "キャンセル"}</button>
+            </div>
+            <CaseWorkbenchFieldForm
+              action={saveAction}
+              caseId={caseId}
+              fieldKey={editingField.fieldKey}
+              returnField={editingField.fieldKey}
+              returnAnchor={fieldAnchor(editingField.fieldKey)}
+              showSaveWhenPristine
+              saveLabel={fieldIssue(editingField) ? (locale === "zh" ? "处理问题" : locale === "ko" ? "문제 처리" : "対応して保存") : (locale === "zh" ? "保存" : locale === "ko" ? "저장" : "保存")}
+              savingLabel={locale === "zh" ? "保存中" : locale === "ko" ? "저장 중" : "保存中"}
+              className="mt-5 space-y-4"
+            >
+              {editingField.evidenceItems.length > 0 ? (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                  <p className="text-xs font-black text-amber-950">{locale === "zh" ? "资料候选" : locale === "ko" ? "자료 후보" : "資料候補"}</p>
+                  <div className="mt-2 space-y-2">
+                    {editingField.evidenceItems.slice(0, 3).map((evidence) => <div key={evidence.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-white px-3 py-2"><span className="text-sm font-bold text-slate-900">{evidence.value || "-"}</span><span className="text-[11px] font-semibold text-slate-500">{evidence.sourceLabel}</span></div>)}
+                  </div>
+                  {editingField.evidenceItems[0]?.value ? <button type="submit" name="useCandidateField" value={editingField.fieldKey} className="mt-3 w-full rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-black text-blue-800 hover:bg-blue-100">{locale === "zh" ? "采用资料中的值" : locale === "ko" ? "자료 값을 사용" : "資料の値を使う"}</button> : null}
+                </div>
+              ) : null}
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-black text-slate-600">{locale === "zh" ? "案件信息" : locale === "ko" ? "안건 정보" : "案件情報"}</p>
+                <div className="mt-2"><FieldInput field={editingField} locale={locale} /></div>
+              </div>
+            </CaseWorkbenchFieldForm>
+          </div>
+        </div>
+      ) : null}
+
+      {confirmOpen ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/40 p-4" role="presentation">
+          <div role="dialog" aria-modal="true" aria-labelledby="case-download-confirm-title" className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl">
+            <h2 id="case-download-confirm-title" className="text-lg font-black text-slate-950">{locale === "zh" ? "下载申请书" : locale === "ko" ? "신청서 다운로드" : "申込書をダウンロード"}</h2>
+            <p className="mt-3 text-sm font-semibold leading-6 text-slate-700">{locale === "zh" ? "请确认当前案件信息将用于生成申请书。案件信息修改后，需要重新确认。" : locale === "ko" ? "현재 안건 정보로 신청서를 생성하는 것을 확인해 주세요. 안건 정보가 수정되면 다시 확인해야 합니다." : "現在の案件情報を申込書の作成に使用することを確認してください。案件情報を変更した場合は、もう一度確認が必要です。"}</p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" onClick={() => setConfirmOpen(false)} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50">{locale === "zh" ? "返回检查" : locale === "ko" ? "확인으로 돌아가기" : "確認に戻る"}</button>
+              <button type="button" onClick={() => { setConfirmedVersion(dataVersion); setConfirmOpen(false); if (downloadHref) window.location.assign(downloadHref); }} className="rounded-lg bg-slate-950 px-3 py-2 text-xs font-black text-white hover:bg-slate-800">{locale === "zh" ? "确认并下载" : locale === "ko" ? "확인하고 다운로드" : "確認してダウンロード"}</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}

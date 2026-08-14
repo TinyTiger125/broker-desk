@@ -3,8 +3,9 @@ import { notFound } from "next/navigation";
 import { rollbackCaseMergeAction, saveCaseWorkbenchAction } from "@/app/actions";
 import { ArchiveRecordButton } from "@/components/archive-record-button";
 import { CaseWorkbenchFieldForm } from "@/components/case-workbench-field-form";
+import { CaseOverview, CaseViewSwitch, type CaseOverviewOutputBlocker, type CaseOverviewSection } from "@/components/case-overview";
 import { PageFlashBanner } from "@/components/page-flash-banner";
-import { getBrokerageCaseById, listCaseWorkbenchFieldRules, listExtractionReviewItems } from "@/lib/data";
+import { getBrokerageCaseById, getGuaranteeApplicationDraft, listCaseWorkbenchFieldRules, listExtractionReviewItems, listTenantGuaranteeTemplateInstalls } from "@/lib/data";
 import type { ExtractionReviewItem, ExtractionReviewStatus } from "@/lib/data";
 import { getCaseFieldAliases, getCaseFieldValue } from "@/lib/case-field-normalization";
 import {
@@ -26,6 +27,9 @@ import {
 } from "@/lib/case-field-applicability";
 import { getCaseWorkbenchProgressSnapshot } from "@/lib/case-workbench-progress";
 import { getCaseMergeHistory, getLatestActiveCaseMerge } from "@/lib/case-merge";
+import { findGuaranteeCompanyTemplate } from "@/lib/guarantee-application";
+import { evaluateGuaranteeDownloadGate } from "@/lib/guarantee-download-gate";
+import { FRIENDS_GUARANTEE_DEFAULT_TEMPLATE_ID } from "@/lib/friends-guarantee-pdf";
 import { formatDate } from "@/lib/format";
 import { getLocale, type Locale } from "@/lib/locale";
 import { requireTenantSession } from "@/lib/tenant-session";
@@ -36,7 +40,7 @@ const WORKBENCH_FIELD_STATUS_KEY = "__workbenchFieldStatuses";
 
 type CasePageProps = {
   params: Promise<{ id: string }>;
-  searchParams?: Promise<{ flash?: string; node?: string; field?: string }>;
+  searchParams?: Promise<{ flash?: string; node?: string; field?: string; view?: string }>;
 };
 
 type WorkbenchTrustState =
@@ -78,6 +82,7 @@ type WorkbenchField = {
   decision: WorkbenchFieldDecision;
   evidenceItems: WorkbenchFieldEvidence[];
   requirement: CaseFieldRequirement;
+  inputSpec: WorkbenchFieldInputSpec;
 };
 
 type WorkbenchFieldInputKind = "text" | "textarea" | "tel" | "email" | "money" | "number" | "date" | "select";
@@ -119,6 +124,30 @@ function getBusinessFieldLabel(locale: Locale, fieldKey: string) {
   const definition = getCaseFieldDefinition(fieldKey);
   if (definition?.label) return definition.label;
   return tr(locale, { ja: "確認項目", zh: "资料项目", ko: "확인 항목" });
+}
+
+function getOutputBlockerLabel(locale: Locale, code: string) {
+  const labels: Record<string, Record<Locale, string>> = {
+    required_fields_missing: { ja: "必須情報が未入力", zh: "必填信息未填写", ko: "필수 정보가 비어 있음" },
+    draft_required_missing: { ja: "申込書の追加情報が未入力", zh: "申请书追加信息未填写", ko: "신청서 추가 정보가 비어 있음" },
+    template_not_verified: { ja: "テンプレートの確認が必要", zh: "模板仍需确认", ko: "템플릿 확인 필요" },
+    candidate_fields_unconfirmed: { ja: "候補入力の確認が必要", zh: "候选输入仍需处理", ko: "후보 입력 확인 필요" },
+    manual_fields_unplaced: { ja: "印字位置の確認が必要", zh: "打印位置仍需确认", ko: "인쇄 위치 확인 필요" },
+    print_fit_blocked: { ja: "文字が印字枠に収まらない", zh: "文字超出打印区域", ko: "문자가 인쇄 영역을 넘음" },
+  };
+  return labels[code]?.[locale] ?? tr(locale, { ja: "出力前に対応が必要", zh: "输出前需要处理", ko: "출력 전에 처리 필요" });
+}
+
+function getOutputBlockerMessage(locale: Locale, code: string) {
+  const messages: Record<string, Record<Locale, string>> = {
+    required_fields_missing: { ja: "案件の必須情報を補ってください。", zh: "请补齐案件必填信息。", ko: "안건의 필수 정보를 보완해 주세요." },
+    draft_required_missing: { ja: "申込書の追加情報を補ってください。", zh: "请补齐申请书追加信息。", ko: "신청서 추가 정보를 보완해 주세요." },
+    template_not_verified: { ja: "テンプレートを確認してから出力してください。", zh: "请先确认模板，再进行输出。", ko: "템플릿을 확인한 뒤 출력해 주세요." },
+    candidate_fields_unconfirmed: { ja: "候補入力を申込書プレビューで確認してください。", zh: "请在申请书预览中处理候选输入。", ko: "신청서 미리보기에서 후보 입력을 확인해 주세요." },
+    manual_fields_unplaced: { ja: "申込書上の入力位置を確認してください。", zh: "请确认申请书上的输入位置。", ko: "신청서 입력 위치를 확인해 주세요." },
+    print_fit_blocked: { ja: "長い文字列や桁数超過をプレビューで調整してください。", zh: "请在预览中调整过长文字或超出位数。", ko: "미리보기에서 긴 문자열이나 자릿수 초과를 조정해 주세요." },
+  };
+  return messages[code]?.[locale] ?? tr(locale, { ja: "対応してからダウンロードしてください。", zh: "请处理后再下载。", ko: "처리한 뒤 다운로드해 주세요." });
 }
 
 function getTrustStateLabel(locale: Locale, state: WorkbenchTrustState) {
@@ -407,6 +436,7 @@ function buildWorkbenchField(input: {
     decision: state === "unknown" ? "unknown" : state === "rejected" ? "rejected" : state === "not_applicable" ? "not_applicable" : "confirmed",
     evidenceItems,
     requirement,
+    inputSpec: getWorkbenchFieldInputSpec(input.fieldKey),
   };
 }
 
@@ -691,14 +721,27 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
 
   const [{ id }, query] = await Promise.all([
     params,
-    searchParams ?? Promise.resolve({} as { flash?: string; node?: string; field?: string }),
+    searchParams ?? Promise.resolve({} as { flash?: string; node?: string; field?: string; view?: string }),
   ]);
-  const [brokerageCase, reviewItems, fieldRules] = await Promise.all([
+  const [brokerageCase, reviewItems, fieldRules, installedGuaranteeTemplates] = await Promise.all([
     getBrokerageCaseById({ userId: user.id, tenantId, caseId: id }),
     listExtractionReviewItems({ userId: user.id, tenantId, caseId: id }),
     listCaseWorkbenchFieldRules(user.id, tenantId),
+    listTenantGuaranteeTemplateInstalls({ tenantId }),
   ]);
   if (!brokerageCase) notFound();
+
+  const installedTemplateIds = new Set(installedGuaranteeTemplates.map((install) => install.templateId));
+  const outputTemplateId = installedTemplateIds.has(FRIENDS_GUARANTEE_DEFAULT_TEMPLATE_ID)
+    ? FRIENDS_GUARANTEE_DEFAULT_TEMPLATE_ID
+    : installedGuaranteeTemplates[0]?.templateId;
+  const outputTemplate = findGuaranteeCompanyTemplate(outputTemplateId);
+  const outputDraft = outputTemplate
+    ? await getGuaranteeApplicationDraft({ userId: user.id, tenantId, caseId: brokerageCase.id, templateId: outputTemplate.id })
+    : null;
+  const downloadGate = outputTemplate
+    ? evaluateGuaranteeDownloadGate({ brokerageCase, template: outputTemplate, draft: outputDraft })
+    : null;
 
   const mergeHistory = getCaseMergeHistory(brokerageCase.confirmedDataJson);
   const latestActiveMerge = getLatestActiveCaseMerge(brokerageCase.confirmedDataJson);
@@ -791,6 +834,54 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
   const dossierProgressPercent = caseProgressSnapshot.reviewPercent;
   const outputHref = `/output-center?caseId=${encodeURIComponent(brokerageCase.id)}`;
   const supplementHref = `/import-center?targetCaseId=${encodeURIComponent(brokerageCase.id)}`;
+  const overviewSections: CaseOverviewSection[] = dossierTopNodes.map((node) => {
+    const childNodes = (node.children ?? []).filter((child) => applicableWorkbenchFields.some((field) => fieldMatchesTreeNode(field, child)));
+    const effectiveChildren = childNodes.length > 0 ? childNodes : [node];
+    return {
+      id: `case-section-${node.id}`,
+      label: node.label,
+      children: effectiveChildren.map((child) => ({
+        id: `${node.id}-${child.id}`,
+        label: child.label,
+        fields: applicableWorkbenchFields
+          .filter((field) => fieldMatchesTreeNode(field, child))
+          .map((field) => ({
+            fieldKey: field.fieldKey,
+            label: getShortWorkbenchFieldLabel(field),
+            value: field.value,
+            displayValue: getWorkbenchFieldDisplayValue(field),
+            required: field.required,
+            state: field.state,
+            importance: field.importance,
+            applicable: field.applicable,
+            issueLabel: fieldNeedsAttention(field) ? getWorkbenchFieldIssueLabel(locale, field) : undefined,
+            treePath: field.treePath,
+            sourceLabel: field.sourceLabel,
+            evidenceItems: field.evidenceItems,
+            inputSpec: field.inputSpec,
+          })),
+      })),
+    };
+  }).filter((section) => section.children.some((child) => child.fields.length > 0));
+  const overviewIssueCount = applicableWorkbenchFields.filter(fieldNeedsAttention).length;
+  const outputBlockers: CaseOverviewOutputBlocker[] = downloadGate?.blockedReasons.map((reason) => ({
+    code: reason.code,
+    count: reason.count,
+    label: getOutputBlockerLabel(locale, reason.code),
+    message: getOutputBlockerMessage(locale, reason.code),
+    fields: reason.fields.map((field) => ({
+      fieldKey: field.fieldKey,
+      label: getBusinessFieldLabel(locale, field.fieldKey),
+      actionUrl: field.actionUrl,
+    })),
+  })) ?? [];
+  const overviewHasOutputTemplate = Boolean(outputTemplate);
+  const overviewPreviewHref = outputTemplate
+    ? `/guarantee-applications/${encodeURIComponent(outputTemplate.id)}/preview?caseId=${encodeURIComponent(brokerageCase.id)}`
+    : outputHref;
+  const overviewDownloadHref = outputTemplate
+    ? `/api/guarantee-applications/${encodeURIComponent(outputTemplate.id)}/download?caseId=${encodeURIComponent(brokerageCase.id)}`
+    : null;
   const caseWorkbenchHref = (options?: { node?: string; field?: string; hash?: string }) => {
     const params = new URLSearchParams();
     if (options?.node) params.set("node", options.node);
@@ -901,8 +992,37 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
 	                                ko: "PDF 또는 이미지 파일을 선택해 주세요.",
 	                              })
 	              : undefined;
-	  const flashTone =
-	    query?.flash?.startsWith("excel_upload_") || query?.flash?.startsWith("identity_upload_") ? "error" : undefined;
+  const flashTone =
+    query?.flash?.startsWith("excel_upload_") || query?.flash?.startsWith("identity_upload_") ? "error" : undefined;
+  const activeView = query?.view === "quick" || query?.view === "overview"
+    ? query.view
+    : downloadGate && downloadGate.blockedReasons.length > 0
+      ? "quick"
+      : "overview";
+
+  if (activeView === "overview") {
+    return (
+      <CaseOverview
+        caseId={brokerageCase.id}
+        caseTitle={brokerageCase.caseTitle}
+        applicantSummary={applicantSummary}
+        propertySummary={propertySummary}
+        guaranteeCompanySummary={guaranteeCompanySummary}
+        currentHandlerSummary={currentHandlerSummary}
+        sections={overviewSections}
+        locale={locale}
+        issueCount={overviewIssueCount}
+        outputHref={outputHref}
+        previewHref={overviewPreviewHref}
+        downloadHref={overviewDownloadHref}
+        dataVersion={brokerageCase.updatedAt.toISOString()}
+        outputBlockers={outputBlockers}
+        hasOutputTemplate={overviewHasOutputTemplate}
+        saveAction={saveCaseWorkbenchAction}
+        flash={<PageFlashBanner message={flashMessage} tone={flashTone} />}
+      />
+    );
+  }
 
   return (
     <div className="flex min-w-0 flex-col gap-6">
@@ -933,6 +1053,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
         </div>
       </div>
       <PageFlashBanner message={flashMessage} tone={flashTone} />
+      <CaseViewSwitch caseId={brokerageCase.id} activeView="quick" issueCount={overviewIssueCount} locale={locale} />
 
       <section className="rounded-lg border border-slate-200 bg-white">
         <div className="grid min-w-0 divide-y divide-slate-200 md:grid-cols-2 md:divide-x 2xl:grid-cols-[1.2fr_1.2fr_1.2fr_1fr_0.7fr_0.7fr_0.9fr] 2xl:divide-y-0">
