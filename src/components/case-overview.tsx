@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { CaseWorkbenchFieldForm } from "@/components/case-workbench-field-form";
 import type { Locale } from "@/lib/locale";
 
-type InputSpec = {
+export type CaseFieldInputSpec = {
   kind: "text" | "textarea" | "tel" | "email" | "money" | "number" | "date" | "select";
   inputMode?: "text" | "numeric" | "decimal" | "tel" | "email";
   unit?: string;
@@ -36,7 +37,7 @@ export type CaseOverviewField = {
   treePath: readonly string[];
   sourceLabel: string;
   evidenceItems: EvidenceItem[];
-  inputSpec: InputSpec;
+  inputSpec: CaseFieldInputSpec;
 };
 
 export type CaseOverviewChildSection = {
@@ -91,7 +92,7 @@ export function CaseViewSwitch({ caseId, activeView, issueCount, locale }: CaseV
           key={view}
           href={viewHref(caseId, view)}
           aria-current={activeView === view ? "page" : undefined}
-          className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-black transition sm:px-4 ${
+          className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-black transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-offset-1 sm:px-4 ${
             activeView === view ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
           }`}
         >
@@ -103,6 +104,228 @@ export function CaseViewSwitch({ caseId, activeView, issueCount, locale }: CaseV
   );
 }
 
+export function CaseStatusSummary({
+  locale,
+  issueCount,
+  expanded = false,
+  onToggle,
+}: {
+  locale: Locale;
+  issueCount: number;
+  expanded?: boolean;
+  onToggle?: () => void;
+}) {
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2 text-xs font-bold text-amber-950">
+      <span className="shrink-0">{issueCount > 0 ? (locale === "zh" ? `待处理（${issueCount}）` : locale === "ko" ? `처리 필요 (${issueCount})` : `要対応（${issueCount}件）`) : locale === "zh" ? "案件信息已整理" : locale === "ko" ? "안건 정보가 정리되었습니다" : "案件情報を整理しました"}</span>
+      {onToggle ? (
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={expanded}
+          aria-controls="case-attention-queue"
+          className="rounded-md px-2 py-1 text-blue-700 underline-offset-2 hover:bg-blue-50 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300"
+        >
+          {locale === "zh" ? (expanded ? "收起" : "展开") : locale === "ko" ? (expanded ? "접기" : "펼치기") : expanded ? "閉じる" : "展開"}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+export function CaseFieldState({
+  issueLabel,
+  normalLabel,
+}: {
+  issueLabel?: string;
+  normalLabel?: string;
+}) {
+  return issueLabel ? (
+    <span className="inline-flex max-w-full items-center gap-1 rounded-md bg-amber-50 px-2 py-1 text-[10px] font-black text-amber-900 ring-1 ring-amber-200">
+      <span aria-hidden="true">!</span>
+      <span className="break-words">{issueLabel}</span>
+    </span>
+  ) : normalLabel ? (
+    <span className="text-xs font-semibold text-slate-500">{normalLabel}</span>
+  ) : null;
+}
+
+export function CaseFieldValue({
+  label,
+  value,
+  required = false,
+  sourceLabel,
+  showSource = false,
+}: {
+  label?: string;
+  value: string;
+  required?: boolean;
+  sourceLabel?: string;
+  showSource?: boolean;
+}) {
+  return (
+    <div className="min-w-0">
+      {label ? (
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          <span className="break-words text-sm font-black text-slate-950">
+            {label}
+            {required ? <span className="ml-1 text-slate-400" aria-label="required">*</span> : null}
+          </span>
+        </div>
+      ) : null}
+      <p className={`mt-1 break-words text-sm ${value === "-" ? "font-semibold text-slate-400" : "font-bold text-slate-800"}`}>{value}</p>
+      {showSource && sourceLabel ? <p className="mt-1 break-words text-[11px] font-semibold text-slate-500">{sourceLabel}</p> : null}
+    </div>
+  );
+}
+
+export function CaseEvidenceSummary({
+  locale,
+  title,
+  evidenceItems,
+  currentValue,
+  candidateFieldKey,
+}: {
+  locale: Locale;
+  title: string;
+  evidenceItems: EvidenceItem[];
+  currentValue: string;
+  candidateFieldKey: string;
+}) {
+  if (evidenceItems.length === 0) return null;
+  const candidate = evidenceItems[0];
+  return (
+    <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+      <p className="text-xs font-black text-amber-950">{title}</p>
+      <div className="mt-2 space-y-2">
+        {evidenceItems.slice(0, 3).map((evidence) => (
+          <div key={evidence.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-white px-3 py-2">
+            <span className="break-words text-sm font-bold text-slate-900">{evidence.value || "-"}</span>
+            <span className="break-words text-[11px] font-semibold text-slate-500">{evidence.sourceLabel}</span>
+          </div>
+        ))}
+      </div>
+      {candidate.value ? (
+        <button type="submit" name="useCandidateField" value={candidateFieldKey} className="mt-3 w-full rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-black text-blue-800 hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300">
+          {candidate.value === currentValue
+            ? locale === "zh" ? "按此值保存" : locale === "ko" ? "이 값으로 저장" : "この値で保存"
+            : locale === "zh" ? "采用资料中的值" : locale === "ko" ? "자료 값을 사용" : "資料の値を使う"}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+export function CaseEditPanel({
+  title,
+  context,
+  issueLabel,
+  closeLabel,
+  onClose,
+  children,
+  className = "",
+}: {
+  title: string;
+  context?: string;
+  issueLabel?: string;
+  closeLabel?: string;
+  onClose?: () => void;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <section className={`rounded-xl border border-slate-200 bg-white p-4 shadow-sm ${className}`}>
+      <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-4">
+        <div className="min-w-0">
+          {context ? <p className="text-[11px] font-bold text-blue-700">{context}</p> : null}
+          <h3 className="mt-1 break-words text-lg font-black text-slate-950">{title}</h3>
+          {issueLabel ? <p className="mt-1 break-words text-xs font-bold text-amber-900">{issueLabel}</p> : null}
+        </div>
+        {onClose && closeLabel ? (
+          <button type="button" onClick={onClose} className="shrink-0 rounded-lg border border-slate-200 px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300">
+            {closeLabel}
+          </button>
+        ) : null}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+export function CaseIdentityHeader({
+  caseId,
+  caseTitle,
+  applicantSummary,
+  propertySummary,
+  guaranteeCompanySummary,
+  currentHandlerSummary,
+  locale,
+  activeView,
+  issueCount,
+  actions,
+  queueOpen,
+  onToggleQueue,
+}: {
+  caseId: string;
+  caseTitle: string;
+  applicantSummary: string;
+  propertySummary: string;
+  guaranteeCompanySummary: string;
+  currentHandlerSummary: string;
+  locale: Locale;
+  activeView: "quick" | "overview";
+  issueCount: number;
+  actions: ReactNode;
+  queueOpen?: boolean;
+  onToggleQueue?: () => void;
+}) {
+  const [compactHeader, setCompactHeader] = useState(false);
+  const headerRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const header = headerRef.current;
+    if (!header) return;
+    const scrollContainer = findScrollContainer(header);
+    const usesWindow = !scrollContainer || scrollContainer === document.scrollingElement;
+    const onScroll = () => setCompactHeader((usesWindow ? window.scrollY : scrollContainer.scrollTop) > 80);
+    onScroll();
+    const target = usesWindow ? window : scrollContainer;
+    target.addEventListener("scroll", onScroll, { passive: true });
+    if (usesWindow) document.addEventListener("scroll", onScroll, { capture: true, passive: true });
+    return () => {
+      target.removeEventListener("scroll", onScroll);
+      if (usesWindow) document.removeEventListener("scroll", onScroll, { capture: true });
+    };
+  }, []);
+
+  return (
+    <header ref={headerRef} data-case-object-header className={`sticky top-16 z-30 border border-slate-200 bg-white/95 shadow-sm backdrop-blur transition-[padding,box-shadow] duration-200 lg:top-20 ${compactHeader ? "rounded-lg px-3 py-2 sm:px-4" : "rounded-xl px-3 py-3 sm:px-5 sm:py-4"}`}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 text-[11px] font-bold text-slate-500">
+            <span>{activeView === "quick" ? (locale === "zh" ? "快速补全" : locale === "ko" ? "빠른 보완" : "補完") : locale === "zh" ? "案件总览" : locale === "ko" ? "안건 전체" : "案件全体"}</span>
+            {compactHeader ? <span className="truncate text-slate-900">· {caseTitle}</span> : null}
+          </div>
+          {!compactHeader ? <h1 className="mt-1 break-words text-lg font-black tracking-tight text-slate-950 sm:text-2xl">{caseTitle}</h1> : null}
+          <div className={`flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-semibold text-slate-600 ${compactHeader ? "mt-0" : "mt-2"}`}>
+            <span>{locale === "zh" ? "申请人" : locale === "ko" ? "신청인" : "申込人"}：{applicantSummary}</span>
+            <span className="hidden sm:inline">{locale === "zh" ? "物件" : locale === "ko" ? "물건" : "物件"}：{propertySummary}</span>
+            <span className="hidden md:inline">{locale === "zh" ? "负责人" : locale === "ko" ? "담당" : "担当"}：{currentHandlerSummary}</span>
+            <span className="hidden lg:inline">{locale === "zh" ? "保证公司" : locale === "ko" ? "보증 회사" : "保証会社"}：{guaranteeCompanySummary}</span>
+          </div>
+        </div>
+        <div className="flex max-w-full shrink-0 flex-wrap items-center justify-end gap-2">{actions}</div>
+      </div>
+      {!compactHeader ? (
+        <div className="mt-3 flex flex-wrap items-center gap-2 sm:mt-4 sm:grid sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center">
+          <CaseViewSwitch caseId={caseId} activeView={activeView} issueCount={issueCount} locale={locale} />
+          <CaseStatusSummary locale={locale} issueCount={issueCount} expanded={queueOpen} onToggle={onToggleQueue} />
+        </div>
+      ) : null}
+    </header>
+  );
+}
+
 function fieldAnchor(fieldKey: string) {
   return `case-field-${fieldKey.replaceAll(".", "-")}`;
 }
@@ -111,44 +334,82 @@ function fieldIssue(field: CaseOverviewField) {
   return Boolean(field.issueLabel);
 }
 
+function findScrollContainer(element: HTMLElement) {
+  let parent = element.parentElement;
+  while (parent) {
+    const style = window.getComputedStyle(parent);
+    const canScroll = /(auto|scroll|overlay)/.test(style.overflowY);
+    if (canScroll && parent.scrollHeight > parent.clientHeight) return parent;
+    parent = parent.parentElement;
+  }
+  return document.scrollingElement instanceof HTMLElement ? document.scrollingElement : null;
+}
+
+function getStickyOffset() {
+  const header = document.querySelector<HTMLElement>("[data-case-object-header]");
+  const anchorNav = document.querySelector<HTMLElement>("[data-case-anchor-nav]");
+  const headerBottom = header?.getBoundingClientRect().bottom ?? 0;
+  const anchorBottom = anchorNav?.getBoundingClientRect().bottom ?? 0;
+  return Math.max(headerBottom, anchorBottom) + 12;
+}
+
 function inputClass(tone: "default" | "attention") {
   return tone === "attention"
     ? "w-full rounded-lg border border-rose-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-950 outline-none transition focus:border-slate-950 focus:ring-2 focus:ring-rose-100"
     : "w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-950 outline-none transition focus:border-slate-950 focus:ring-2 focus:ring-blue-100";
 }
 
-function FieldInput({ field, locale }: { field: CaseOverviewField; locale: Locale }) {
-  const spec = field.inputSpec;
-  const tone = fieldIssue(field) ? "attention" : "default";
+export function CaseFieldInput({
+  name,
+  value,
+  label,
+  inputSpec,
+  locale,
+  tone = "default",
+}: {
+  name: string;
+  value: string;
+  label: string;
+  inputSpec: CaseFieldInputSpec;
+  locale: Locale;
+  tone?: "default" | "attention";
+}) {
+  const spec = inputSpec;
   const placeholder = spec.placeholder?.[locale];
+  const currentOptionExists = spec.options?.some((option) => option === value);
 
   if (spec.kind === "select") {
     return (
-      <select name={`field:${field.fieldKey}`} defaultValue={field.value} aria-label={field.label} className={inputClass(tone)}>
+      <select name={name} defaultValue={value} aria-label={label} className={inputClass(tone)}>
         <option value="">{locale === "zh" ? "未填写" : locale === "ko" ? "미입력" : "未入力"}</option>
+        {value && !currentOptionExists ? <option value={value}>{value}</option> : null}
         {spec.options?.map((option) => <option key={option} value={option}>{option}</option>)}
       </select>
     );
   }
 
   if (spec.kind === "textarea") {
-    return <textarea name={`field:${field.fieldKey}`} aria-label={field.label} defaultValue={field.value} rows={spec.rows ?? 3} placeholder={placeholder} className={inputClass(tone)} />;
+    return <textarea name={name} aria-label={label} defaultValue={value} rows={spec.rows ?? 3} placeholder={placeholder} className={inputClass(tone)} />;
   }
 
   return (
     <span className="relative block">
       <input
-        name={`field:${field.fieldKey}`}
-        type={spec.kind === "date" ? "date" : spec.kind === "email" ? "email" : "text"}
+        name={name}
+        type={spec.kind === "date" ? "date" : spec.kind === "email" ? "email" : spec.kind === "tel" ? "tel" : "text"}
         inputMode={spec.inputMode}
-        aria-label={field.label}
-        defaultValue={field.value}
+        aria-label={label}
+        defaultValue={value}
         placeholder={placeholder}
         className={`${inputClass(tone)} ${spec.unit ? "pr-14" : ""}`}
       />
       {spec.unit ? <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs font-bold text-slate-500">{spec.unit}</span> : null}
     </span>
   );
+}
+
+function FieldInput({ field, locale }: { field: CaseOverviewField; locale: Locale }) {
+  return <CaseFieldInput name={`field:${field.fieldKey}`} value={field.value} label={field.label} inputSpec={field.inputSpec} locale={locale} tone={fieldIssue(field) ? "attention" : "default"} />;
 }
 
 function localizeOutputLabel(locale: Locale, code: string) {
@@ -181,29 +442,67 @@ function useActiveSection(sectionIds: string[]) {
   useEffect(() => {
     const elements = sectionIds.map((id) => document.getElementById(id)).filter((element): element is HTMLElement => Boolean(element));
     if (elements.length === 0) return;
+    const scrollContainer = findScrollContainer(elements[0]);
+    const observerRoot = scrollContainer && scrollContainer !== document.scrollingElement ? scrollContainer : null;
+    const updateFromScroll = () => {
+      const boundary = getStickyOffset() + 8;
+      const current = elements.filter((element) => element.getBoundingClientRect().top <= boundary).at(-1);
+      setActiveSection(current?.id ?? elements[0].id);
+    };
 
     const observer = new IntersectionObserver(
-      (entries) => {
-        const visible = entries
-          .filter((entry) => entry.isIntersecting)
-          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
-        if (visible[0]?.target instanceof HTMLElement) setActiveSection(visible[0].target.id);
-      },
-      { rootMargin: "-170px 0px -55% 0px", threshold: [0, 0.1, 0.4] },
+      () => updateFromScroll(),
+      { root: observerRoot, rootMargin: `-${Math.ceil(getStickyOffset())}px 0px -55% 0px`, threshold: [0, 0.1, 0.4] },
     );
     elements.forEach((element) => observer.observe(element));
-    return () => observer.disconnect();
+    const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(updateFromScroll);
+    const header = document.querySelector<HTMLElement>("[data-case-object-header]");
+    const anchorNav = document.querySelector<HTMLElement>("[data-case-anchor-nav]");
+    if (header) resizeObserver?.observe(header);
+    if (anchorNav) resizeObserver?.observe(anchorNav);
+    const target = observerRoot ?? window;
+    target.addEventListener("scroll", updateFromScroll, { passive: true });
+    if (!observerRoot) document.addEventListener("scroll", updateFromScroll, { capture: true, passive: true });
+    window.addEventListener("resize", updateFromScroll, { passive: true });
+    updateFromScroll();
+    return () => {
+      observer.disconnect();
+      resizeObserver?.disconnect();
+      target.removeEventListener("scroll", updateFromScroll);
+      if (!observerRoot) document.removeEventListener("scroll", updateFromScroll, { capture: true });
+      window.removeEventListener("resize", updateFromScroll);
+    };
   }, [sectionIds]);
 
   return [activeSection, setActiveSection] as const;
 }
 
-function scrollToId(id: string) {
+function scrollToId(id: string, behavior: ScrollBehavior = "smooth", updateHistory = true) {
   const target = document.getElementById(id);
   if (!target) return;
-  const top = target.getBoundingClientRect().top + window.scrollY - 164;
-  window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
-  window.history.replaceState(null, "", `#${id}`);
+  const scrollContainer = findScrollContainer(target);
+  const documentScroller = document.scrollingElement;
+  const usesWindow = !scrollContainer || scrollContainer === documentScroller;
+  const currentScrollTop = usesWindow ? window.scrollY : scrollContainer.scrollTop;
+  const top = target.getBoundingClientRect().top + currentScrollTop - getStickyOffset();
+  if (usesWindow) {
+    window.scrollTo({ top: Math.max(0, top), behavior });
+  } else {
+    scrollContainer.scrollTo({ top: Math.max(0, top), behavior });
+  }
+  const correctPosition = () => {
+    const correction = target.getBoundingClientRect().top - getStickyOffset();
+    if (Math.abs(correction) < 4) return;
+    if (usesWindow) {
+      window.scrollTo({ top: Math.max(0, window.scrollY + correction), behavior: "auto" });
+    } else {
+      scrollContainer.scrollTo({ top: Math.max(0, scrollContainer.scrollTop + correction), behavior: "auto" });
+    }
+  };
+  window.requestAnimationFrame(() => window.requestAnimationFrame(correctPosition));
+  window.setTimeout(correctPosition, behavior === "smooth" ? 650 : 0);
+  const nextHash = `#${id}`;
+  if (updateHistory && window.location.hash !== nextHash) window.history.pushState(null, "", nextHash);
 }
 
 export function CaseOverview({
@@ -241,16 +540,16 @@ export function CaseOverview({
   outputBlockers: CaseOverviewOutputBlocker[];
   hasOutputTemplate: boolean;
   saveAction: SaveAction;
-  flash?: React.ReactNode;
+  flash?: ReactNode;
 }) {
   const sectionIds = useMemo(() => sections.map((section) => section.id), [sections]);
   const [activeSection, setActiveSection] = useActiveSection(sectionIds);
-  const [compactHeader, setCompactHeader] = useState(false);
   const [queueOpen, setQueueOpen] = useState(false);
   const [downloadAttempted, setDownloadAttempted] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmedVersion, setConfirmedVersion] = useState<string | null>(null);
   const [editingFieldKey, setEditingFieldKey] = useState<string | null>(null);
+  const pageRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
   const lastTriggerRef = useRef<HTMLButtonElement | null>(null);
   const hasBlockingOutput = outputBlockers.length > 0;
@@ -262,16 +561,27 @@ export function CaseOverview({
   const editingField = editingFieldKey ? sections.flatMap((section) => section.children.flatMap((child) => child.fields)).find((field) => field.fieldKey === editingFieldKey) : undefined;
 
   useEffect(() => {
-    const onScroll = () => setCompactHeader(window.scrollY > 80);
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
+    const page = pageRef.current;
+    if (!page) return;
+    const syncScrollMargin = () => page.style.setProperty("--case-object-scroll-margin", `${Math.ceil(getStickyOffset())}px`);
+    syncScrollMargin();
+    const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(syncScrollMargin);
+    const header = document.querySelector<HTMLElement>("[data-case-object-header]");
+    const anchorNav = document.querySelector<HTMLElement>("[data-case-anchor-nav]");
+    if (header) resizeObserver?.observe(header);
+    if (anchorNav) resizeObserver?.observe(anchorNav);
+    window.addEventListener("resize", syncScrollMargin, { passive: true });
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", syncScrollMargin);
+      page.style.removeProperty("--case-object-scroll-margin");
+    };
   }, []);
 
   useEffect(() => {
     if (!editingFieldKey) return;
     const frame = window.requestAnimationFrame(() => {
-      const input = editorRef.current?.querySelector<HTMLElement>("input:not([type=hidden]), select, textarea, button");
+      const input = editorRef.current?.querySelector<HTMLElement>("input:not([type=hidden]), select, textarea") ?? editorRef.current?.querySelector<HTMLElement>("button");
       input?.focus();
     });
     return () => window.cancelAnimationFrame(frame);
@@ -281,10 +591,21 @@ export function CaseOverview({
     const hash = window.location.hash.slice(1);
     if (!hash) return;
     const frame = window.requestAnimationFrame(() => {
+      scrollToId(hash, "auto", false);
       const trigger = document.querySelector<HTMLButtonElement>(`[data-field-trigger="${hash}"]`);
       trigger?.focus({ preventScroll: true });
     });
     return () => window.cancelAnimationFrame(frame);
+  }, []);
+
+  useEffect(() => {
+    const onPopState = () => {
+      const hash = window.location.hash.slice(1);
+      if (hash) scrollToId(hash, "auto", false);
+      else window.scrollTo({ top: 0, behavior: "auto" });
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
   }, []);
 
   const focusField = (fieldKey: string) => {
@@ -326,52 +647,39 @@ export function CaseOverview({
   const overflowAnchors = sections.slice(4);
 
   return (
-    <div className="flex min-w-0 flex-col gap-4 pb-16">
-      <header className={`sticky top-16 z-30 border border-slate-200 bg-white/95 shadow-sm backdrop-blur transition-[padding,box-shadow] duration-200 lg:top-20 ${compactHeader ? "rounded-lg px-4 py-2" : "rounded-xl px-4 py-4 sm:px-5"}`}>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 text-[11px] font-bold text-slate-500">
-              <span>{locale === "zh" ? "案件总览" : locale === "ko" ? "안건 전체" : "案件全体"}</span>
-              {compactHeader ? <span className="truncate text-slate-900">· {caseTitle}</span> : null}
-            </div>
-            {!compactHeader ? <h1 className="mt-1 truncate text-xl font-black tracking-tight text-slate-950 sm:text-2xl">{caseTitle}</h1> : null}
-            <div className={`flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-semibold text-slate-600 ${compactHeader ? "mt-0" : "mt-2"}`}>
-              <span>{locale === "zh" ? "申请人" : locale === "ko" ? "신청인" : "申込人"}：{applicantSummary}</span>
-              <span className="hidden sm:inline">{locale === "zh" ? "物件" : locale === "ko" ? "물건" : "物件"}：{propertySummary}</span>
-              <span className="hidden md:inline">{locale === "zh" ? "负责人" : locale === "ko" ? "담당" : "担当"}：{currentHandlerSummary}</span>
-              <span className="hidden lg:inline">{locale === "zh" ? "保证公司" : locale === "ko" ? "보증 회사" : "保証会社"}：{guaranteeCompanySummary}</span>
-            </div>
-          </div>
-          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-            <Link href={previewHref} className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-900 hover:bg-emerald-100">
+    <div ref={pageRef} className="flex min-w-0 flex-col gap-4 pb-16">
+      <CaseIdentityHeader
+        caseId={caseId}
+        caseTitle={caseTitle}
+        applicantSummary={applicantSummary}
+        propertySummary={propertySummary}
+        guaranteeCompanySummary={guaranteeCompanySummary}
+        currentHandlerSummary={currentHandlerSummary}
+        locale={locale}
+        activeView="overview"
+        issueCount={issueCount}
+        queueOpen={queueOpen}
+        onToggleQueue={() => setQueueOpen((open) => !open)}
+        actions={
+          <>
+            <Link href={previewHref} className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-900 hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300">
               <span className="material-symbols-outlined text-[16px]" aria-hidden="true">visibility</span>
               {locale === "zh" ? "申请书预览" : locale === "ko" ? "신청서 미리보기" : "申込書プレビュー"}
             </Link>
-            <button type="button" onClick={handleDownload} className="inline-flex items-center gap-1.5 rounded-lg bg-slate-950 px-3 py-2 text-xs font-black text-white hover:bg-slate-800">
+            <button type="button" onClick={handleDownload} className="hidden items-center gap-1.5 rounded-lg bg-slate-950 px-3 py-2 text-xs font-black text-white hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 sm:inline-flex">
               <span className="material-symbols-outlined text-[16px]" aria-hidden="true">download</span>
               {hasOutputTemplate ? (locale === "zh" ? "下载申请书" : locale === "ko" ? "신청서 다운로드" : "申込書をダウンロード") : (locale === "zh" ? "选择输出模板" : locale === "ko" ? "출력 템플릿 선택" : "出力テンプレートを選ぶ")}
             </button>
-          </div>
-        </div>
-        {!compactHeader ? (
-          <div className="mt-4 grid gap-2 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center">
-            <CaseViewSwitch caseId={caseId} activeView="overview" issueCount={issueCount} locale={locale} />
-            <div className="min-w-0 text-xs font-bold text-slate-600">
-              {issueCount > 0 ? <span>{locale === "zh" ? `待处理（${issueCount}）` : locale === "ko" ? `처리 필요 (${issueCount})` : `要対応（${issueCount}件）`}</span> : <span>{locale === "zh" ? "案件信息已整理" : locale === "ko" ? "안건 정보가 정리되었습니다" : "案件情報を整理しました"}</span>}
-              <button type="button" className="ml-2 rounded-md px-2 py-1 text-blue-700 underline-offset-2 hover:bg-blue-50 hover:underline" onClick={() => setQueueOpen((open) => !open)} aria-expanded={queueOpen} aria-controls="case-attention-queue">
-                {locale === "zh" ? (queueOpen ? "收起" : "展开") : locale === "ko" ? (queueOpen ? "접기" : "펼치기") : (queueOpen ? "閉じる" : "展開")}
-              </button>
-            </div>
-          </div>
-        ) : null}
-      </header>
+          </>
+        }
+      />
 
       {flash}
 
-      <nav aria-label={locale === "zh" ? "案件章节" : locale === "ko" ? "안건 섹션" : "案件セクション"} className="sticky top-[8.75rem] z-20 rounded-xl border border-slate-200 bg-white/95 px-2 py-2 shadow-sm backdrop-blur lg:top-[10.5rem]">
+      <nav data-case-anchor-nav aria-label={locale === "zh" ? "案件章节" : locale === "ko" ? "안건 섹션" : "案件セクション"} className="sticky top-[8.75rem] z-20 rounded-xl border border-slate-200 bg-white/95 px-2 py-2 shadow-sm backdrop-blur lg:top-[10.5rem]">
         <div className="hidden items-center gap-1 sm:flex">
           {visibleAnchors.map((section) => (
-            <a key={section.id} href={`#${section.id}`} onClick={(event) => { event.preventDefault(); setActiveSection(section.id); scrollToId(section.id); }} aria-current={activeSection === section.id ? "location" : undefined} className={`min-w-0 flex-1 truncate rounded-lg px-3 py-2 text-center text-xs font-black transition ${activeSection === section.id ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"}`}>
+            <a key={section.id} href={`#${section.id}`} onClick={(event) => { event.preventDefault(); setActiveSection(section.id); scrollToId(section.id); }} aria-current={activeSection === section.id ? "location" : undefined} className={`min-w-0 flex-1 truncate rounded-lg px-3 py-2 text-center text-xs font-black transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 ${activeSection === section.id ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"}`}>
               {section.label}
             </a>
           ))}
@@ -442,7 +750,7 @@ export function CaseOverview({
           const sectionFields = section.children.flatMap((child) => child.fields);
           const sectionIssues = sectionFields.filter(fieldIssue).length;
           return (
-            <section key={section.id} id={section.id} className="scroll-mt-[11rem] rounded-xl border border-slate-200 bg-white shadow-sm">
+            <section key={section.id} id={section.id} style={{ scrollMarginTop: "var(--case-object-scroll-margin, 11rem)" }} className="scroll-mt-[11rem] rounded-xl border border-slate-200 bg-white shadow-sm">
               <div className="border-b border-slate-100 px-4 py-4 sm:px-6">
                 <div className="flex items-center justify-between gap-3">
                   <h2 className="text-lg font-black text-slate-950">{section.label}</h2>
@@ -451,18 +759,15 @@ export function CaseOverview({
               </div>
               <div className="space-y-5 p-4 sm:p-6">
                 {section.children.map((child) => (
-                  <section key={child.id} id={`${section.id}-${child.id}`} className="[content-visibility:auto] [contain-intrinsic-size:420px]">
+                  <section key={child.id} id={`${section.id}-${child.id}`}>
                     <h3 className="text-sm font-black text-slate-700">{child.label}</h3>
                     <div className="mt-2 divide-y divide-slate-100 rounded-lg border border-slate-100">
                       {child.fields.map((field) => (
-                        <article key={field.fieldKey} id={fieldAnchor(field.fieldKey)} className={`scroll-mt-[11rem] px-3 py-3 sm:px-4 ${fieldIssue(field) ? "bg-amber-50/45" : "bg-white"}`}>
+                        <article key={field.fieldKey} id={fieldAnchor(field.fieldKey)} style={{ scrollMarginTop: "var(--case-object-scroll-margin, 11rem)" }} className={`scroll-mt-[11rem] px-3 py-3 sm:px-4 ${fieldIssue(field) ? "bg-amber-50/45" : "bg-white"}`}>
                           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                             <div className="min-w-0 flex-1">
-                              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                                <h4 className="text-sm font-black text-slate-950">{field.label}{field.required ? <span className="ml-1 text-slate-400" aria-label={locale === "zh" ? "必填" : locale === "ko" ? "필수" : "必須"}>*</span> : null}</h4>
-                                {fieldIssue(field) ? <span className="inline-flex items-center gap-1 text-xs font-black text-amber-900"><span aria-hidden="true">!</span>{field.issueLabel}</span> : null}
-                              </div>
-                              <p className={`mt-1 break-words text-sm ${field.displayValue === "-" ? "font-semibold text-slate-400" : "font-bold text-slate-800"}`}>{field.displayValue}</p>
+                              <CaseFieldValue label={field.label} value={field.displayValue} required={field.required} />
+                              {fieldIssue(field) ? <CaseFieldState issueLabel={field.issueLabel} normalLabel={locale === "zh" ? "已填写" : locale === "ko" ? "입력됨" : "入力済み"} /> : null}
                               {fieldIssue(field) && field.evidenceItems.length > 0 ? (
                                 <details className="mt-2 text-xs">
                                   <summary className="cursor-pointer font-bold text-slate-600">{locale === "zh" ? "查看资料依据" : locale === "ko" ? "자료 근거 보기" : "資料の根拠を見る"}</summary>
@@ -494,15 +799,15 @@ export function CaseOverview({
 
       {editingField ? (
         <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/35 p-0 sm:p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeEditor(); }}>
-          <div ref={editorRef} role="dialog" aria-modal="true" aria-labelledby="case-overview-editor-title" className="h-full w-full max-w-xl overflow-y-auto bg-white p-4 shadow-2xl sm:rounded-2xl sm:p-6">
-            <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-4">
-              <div>
-                <p className="text-xs font-bold text-blue-700">{editingField.treePath.join(" / ")}</p>
-                <h2 id="case-overview-editor-title" className="mt-1 text-lg font-black text-slate-950">{editingField.label}</h2>
-                {fieldIssue(editingField) ? <p className="mt-1 text-xs font-bold text-amber-900">{editingField.issueLabel}</p> : null}
-              </div>
-              <button type="button" onClick={closeEditor} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50">{locale === "zh" ? "取消" : locale === "ko" ? "취소" : "キャンセル"}</button>
-            </div>
+          <div ref={editorRef} role="dialog" aria-modal="true" aria-label={editingField.label} className="h-full w-full max-w-xl overflow-y-auto bg-white p-4 shadow-2xl sm:rounded-2xl sm:p-6">
+            <CaseEditPanel
+              title={editingField.label}
+              context={editingField.treePath.join(" / ")}
+              issueLabel={fieldIssue(editingField) ? editingField.issueLabel : undefined}
+              closeLabel={locale === "zh" ? "取消" : locale === "ko" ? "취소" : "キャンセル"}
+              onClose={closeEditor}
+              className="border-0 p-0 shadow-none"
+            >
             <CaseWorkbenchFieldForm
               action={saveAction}
               caseId={caseId}
@@ -514,20 +819,19 @@ export function CaseOverview({
               savingLabel={locale === "zh" ? "保存中" : locale === "ko" ? "저장 중" : "保存中"}
               className="mt-5 space-y-4"
             >
-              {editingField.evidenceItems.length > 0 ? (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
-                  <p className="text-xs font-black text-amber-950">{locale === "zh" ? "资料候选" : locale === "ko" ? "자료 후보" : "資料候補"}</p>
-                  <div className="mt-2 space-y-2">
-                    {editingField.evidenceItems.slice(0, 3).map((evidence) => <div key={evidence.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-white px-3 py-2"><span className="text-sm font-bold text-slate-900">{evidence.value || "-"}</span><span className="text-[11px] font-semibold text-slate-500">{evidence.sourceLabel}</span></div>)}
-                  </div>
-                  {editingField.evidenceItems[0]?.value ? <button type="submit" name="useCandidateField" value={editingField.fieldKey} className="mt-3 w-full rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-black text-blue-800 hover:bg-blue-100">{locale === "zh" ? "采用资料中的值" : locale === "ko" ? "자료 값을 사용" : "資料の値を使う"}</button> : null}
-                </div>
-              ) : null}
+              <CaseEvidenceSummary
+                locale={locale}
+                title={locale === "zh" ? "资料候选" : locale === "ko" ? "자료 후보" : "資料候補"}
+                evidenceItems={editingField.evidenceItems}
+                currentValue={editingField.value}
+                candidateFieldKey={editingField.fieldKey}
+              />
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                 <p className="text-xs font-black text-slate-600">{locale === "zh" ? "案件信息" : locale === "ko" ? "안건 정보" : "案件情報"}</p>
                 <div className="mt-2"><FieldInput field={editingField} locale={locale} /></div>
               </div>
             </CaseWorkbenchFieldForm>
+            </CaseEditPanel>
           </div>
         </div>
       ) : null}

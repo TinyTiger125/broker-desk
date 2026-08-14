@@ -22,7 +22,7 @@
 | TASK-020 | P0 | 实施 C+ 案件总览 | Blocked | TASK-018 | [TASK-020](docs/tasks/TASK-020.md) | Implementation and independent review completed; latest recording shows stale active anchor and possible disappearing anchor bar after scroll/header transition; unique scroll container, header height, sticky offset, observer/hash/scroll-margin and full browser evidence remain |
 | TASK-021 | P0 | UI-GOV-001 页面与组件只读盘点、迁移矩阵和优先级 | Done | TASK-018 | [TASK-021](docs/tasks/TASK-021.md) | 38 个路由、3 个系统状态入口、P0 类型、公共组件候选、依赖、顺序、截图证据和业务边界已收口；无业务代码修改，等待 UI-GOV-002A 批准 |
 | TASK-022 | P0 | UI-GOV-002A 最小视觉基础 | Done | TASK-021 | [TASK-022](docs/tasks/TASK-022.md) | 唯一 Token、Object Page 最小基础组件和非导航开发预览 `/ui-foundation-preview` 已完成；静态、浏览器桌面/窄屏、焦点、触控、CJK 和范围门禁通过；未迁移正式业务页面 |
-| TASK-023 | P0 | UI-GOV-003 Checkpoint A 案件 Object Page 视觉合同 | In Review | TASK-022 | [TASK-023](docs/tasks/TASK-023.md) | 桌面方向和窄屏收口均已完成；1440×900 两图与 390×844 窄屏图、静态门禁和最终独立复核通过；只限预览作用域，不修改正式 `/cases/[id]`、AppNav 或 TASK-020，等待产品确认 |
+| TASK-023 | P0 | UI-GOV-003 案件 Object Page 参考实现 | In Review | TASK-022 | [TASK-023](docs/tasks/TASK-023.md) | Checkpoint B 正式案件页迁移和本地静态/浏览器门禁已完成；共享字段、异常、证据和编辑组件已收敛，锚点 hash/滚动/高亮证据已取得；真实 Clerk、第二租户、最终下载确认、数据修改失效和完整键盘/响应式仍 UNVERIFIED；TASK-020 继续 Blocked |
 | TASK-003 | P0 | Close the input-material merge completion loop | Proposed | TASK-002 | [TASK-003](docs/tasks/TASK-003.md) | Selection, confirmation, result, failure, and refresh evidence |
 | TASK-004 | P0 | Consolidate template-library and official-template boundaries | Proposed | TASK-002 | [TASK-004](docs/tasks/TASK-004.md) | Role-aware entry, visibility, and installation evidence |
 | TASK-005 | P0 | Separate official template draft and publish states | Proposed | TASK-004 | [TASK-005](docs/tasks/TASK-005.md) | Independent draft save, publish, immutable version, and failure evidence |
@@ -56,5 +56,5 @@
 - `UI-GOV-001 / TASK-021` 已 Done。候选 V1 仍只作为后续讨论基线；矩阵已补充 P0 页面类型、唯一主要任务、重复组件、公共组件候选、业务依赖、迁移顺序、截图证据和不可改变的业务能力。`/cases/new` 已按用户任务从 P0 调整为 P1 独立创建分支。本轮未修改 `src/`、数据库、配置或公共资产；未开始全站换皮、批量 CSS 或逐页布局实施。下一步只等待 UI-GOV-002A 批准。
 - `TASK-022 / UI-GOV-002A` 已收口：只修改 `globals.css`、`ui-foundation` 基础组件、非导航开发预览 `/ui-foundation-preview` 和治理记录；没有迁移正式业务页面，没有修复 TASK-020 锚点，也没有改变业务流程/数据/权限。仓库没有 Storybook/Ladle；预览入口会进入 Next 构建产物但不进入正式导航，后续可在 UI-GOV-003 前删除或转内部 QA。
 - `TASK-022 / UI-GOV-002A` 已 Done：实现 Agent 和独立审查 Agent 按顺序完成并全部退出；独立审查确认 Token/组件范围和预览路由，静态门禁通过；浏览器确认桌面/窄屏无横向溢出、44px 触控控件、CJK 长文本、焦点轮廓、ARIA 错误关联和本地交互。没有正式业务页面差异，下一步只等待 UI-GOV-003 批准。
-- `TASK-023 / UI-GOV-003 Checkpoint A` 桌面方向和 390×844 窄屏收口已完成：预览专用移动壳层和案件头部已压缩，重复状态/开发浮层已移除，章节和首个真实字段进入首屏；最新截图、静态门禁和最终独立复核通过，状态为 `In Review`，等待产品确认。不修改 `/cases/[id]`、AppNav 或 TASK-020，不进入 Checkpoint B。
+- `TASK-023 / UI-GOV-003` 的 Checkpoint A 目标图已获产品负责人批准。当前进入 Checkpoint B，只迁移正式 `/cases/[id]` 的已批准共同视觉结构；快速补全继续任务导向，案件总览继续对象导向。TASK-020 的锚点、滚动、焦点和下载确认仍须正式页面真实浏览器证据，不能因 B 代码变化自动关闭；不迁移其他页面、不改变数据/权限/租户/输出语义。
 - No business task is implemented by the pure governance baseline commit.

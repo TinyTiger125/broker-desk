@@ -1,7 +1,7 @@
-# TASK-023 / UI-GOV-003 Checkpoint A：案件 Object Page 视觉合同
+# TASK-023 / UI-GOV-003：案件 Object Page 参考实现
 
 - 状态: In Review
-- UI-GOV 编号: UI-GOV-003 Checkpoint A
+- 当前阶段: UI-GOV-003 Checkpoint B 已实施，待真实门禁收口
 - 优先级: P0
 - 负责人: 技术项目经理 / 实现 Agent / 独立审查 Agent
 - 依赖关系: TASK-022 已 Done；TASK-020 仍 Blocked，Checkpoint A 不得绕过或修复它
@@ -94,7 +94,70 @@ UI-GOV-002A 已建立唯一 Token 和案件 Object Page 所需的最小基础组
 
 ## 产品决定门
 
-Checkpoint A 的目标截图交付后，必须由产品负责人确认共同外壳与两种布局方向。未确认前不得修改 `/cases/[id]`、实现真实模式切换或修复 TASK-020 锚点。确认后才可进入 Checkpoint B，并重新执行 TASK-020 的真实浏览器门禁。
+Checkpoint A 的目标截图交付后，必须由产品负责人确认共同外壳与两种布局方向。产品负责人已正式批准目标图，允许进入 Checkpoint B。Checkpoint B 不重新探索产品方向，也不自动关闭 TASK-020；仍须用正式 `/cases/[id]` 的真实浏览器证据单独核验并关闭 TASK-020。
+
+## Checkpoint B：正式案件页面迁移
+
+### 目标
+
+将已批准的共同案件外壳和视觉结构迁入正式 `/cases/[id]`，使快速补全与案件总览属于同一个 Object Page 产品体系，同时保留两者不同的工作布局：快速补全回答“现在还要处理什么”，案件总览回答“这个案件整体是什么样、是否可以输出”。
+
+### 允许范围
+
+- 仅修改正式案件页及其直接共享案件组件；优先复用 `CaseOverview`、`CaseViewSwitch`、`CaseWorkbenchFieldForm` 和 UI Foundation，不复制第二套案件头、字段或编辑器。
+- 快速补全保留分类、进度、异常/待补充队列、快速定位和连续处理效率；案件总览保留业务章节、锚点、安静字段、字段旁操作和按需编辑面板。
+- 两种模式共享动态案件头、模式切换、状态摘要、按钮、字段、异常、编辑面板及保存/取消/错误反馈的视觉语言和交互契约。
+- 保留现有 `saveCaseWorkbenchAction`、候选/确认/来源/审计数据、输出模板选择、案件级下载确认和现有返回路径；共享组件迁移不得改变其提交语义。
+- 390px 窄屏至少保证案件身份、模式切换、章节或任务入口、首个可用字段/任务可见；桌面、窄屏和键盘行为均以正式页面验收。
+
+### 明确不做什么
+
+- 不新增数据模型、数据库字段、API 契约、业务字段目录或新的确认/版本语义。
+- 不改变 `requireTenantSession`、权限判断、租户过滤、输出下载门禁、模板安装可见性、候选值/confirmedDataJson 分离或申请书数据来源。
+- 不修改首页、资料导入、信息整理中心以外的页面、模板库、输出中心、预览页、公共导航或全局 Token；不启动 UI-GOV-002B 或其他页面迁移。
+- 不把快速补全改造成案件总览；不把案件总览退回异常审核页；不删除读取、候选、冲突、证据或确认数据。
+- 不把 Checkpoint B 中发生的代码变化直接当作 TASK-020 关闭证据。TASK-020 仍需逐项通过锚点点击、手动滚动、前进后退、带 hash 刷新、键盘、窄屏和动态头部展开/收起的正式浏览器验收。
+- 不修改或合并 `safety/wip-mixed-worktree-20260812`。
+
+### B 验收标准
+
+1. `/cases/[id]` 的快速补全和案件总览共用案件头、模式切换、状态摘要、字段、异常、编辑面板和反馈组件/视觉语言，但保留任务导向与对象导向的布局差异。
+2. 模式切换、字段保存、字段取消、保存后当前字段和滚动位置保持可理解；现有保存动作、返回参数和失败反馈不回归。
+3. 案件总览的锚点点击、手动上下滚动、当前章节高亮、返回顶部、动态头部展开/收起、URL hash、前进后退、带 hash 刷新和章节定位取得正式浏览器证据；这些证据仍单独归档到 TASK-020，未通过前 TASK-020 保持 Blocked。
+4. 390px 窄屏无横向溢出，案件内容进入首屏；编辑器打开后焦点进入正确控件，保存/取消后焦点和上下文恢复；无法自动验证的屏幕阅读器行为明确标记为人工验证。
+5. 无权限用户或不具备案件读取权限的用户继续被拒绝；不同租户不能读取案件、字段、编辑结果、模板安装或输出状态；不得用 demo 绕过认证来宣称这些门禁通过。
+6. 预览与下载仍使用当前案件数据和既有输出门禁；有阻塞时预览可按既有语义进入，下载确认和数据修改后确认失效语义不变。
+7. 未引入 SAPUI5、SAP 品牌视觉、全局整页编辑、公共页面批量迁移或隐性全局样式污染。
+8. `npm run lint`、`npm run typecheck`、`npm run build`、`npm run test:workflow-rules`、必要的案件/租户/输出回归、`git diff --check` 通过；工作区最终干净。
+9. 实现 Agent 完成并退出后，才启动独立审查 Agent；审查只能修复 Checkpoint B 范围内明确问题；两个 Agent 最终全部退出。
+
+### B 允许修改文件
+
+- `docs/tasks/TASK-023.md`
+- `BACKLOG.md`
+- `docs/operations/CURRENT_WORKING_CONTEXT.md`
+- `src/app/cases/[id]/page.tsx`
+- `src/components/case-overview.tsx`
+- `src/components/case-workbench-field-form.tsx`（仅在共享保存/焦点结构确有必要时）
+- `src/components/ui-foundation/*`（仅修复直接阻塞正式案件页的基础组件问题；不得扩展为设计系统）
+
+其他页面、公共导航、数据库、API、认证/权限、全局样式、Checkpoint A 预览和历史资料不在 B 范围内，除非独立审查证明存在由 B 直接造成的明确失效引用且修复不扩大范围。
+
+## Checkpoint B 执行记录（2026-08-15）
+
+- 产品负责人已批准 Checkpoint A 目标图；本轮只迁移正式 `/cases/[id]`，未进入其他页面治理。
+- 实现 Agent 已完成并退出；独立审查 Agent 顺序复核后确认共享组件和锚点结构已覆盖，但因真实权限、第二租户、下载确认和部分窄屏/键盘门禁仍缺证，结论为 `FAIL / In Review`。两个 Agent 均已退出，当前活跃数量为 0。
+- 快速补全保留分类、进度、任务队列、连续处理和任务表；案件总览保留章节锚点、业务分组和对象阅读结构。两者共同使用 `CaseIdentityHeader`、`CaseViewSwitch`、`CaseStatusSummary`、`CaseFieldValue`、`CaseFieldState`、`CaseFieldInput`、`CaseEvidenceSummary`、`CaseEditPanel` 和现有保存表单，不复制第二套字段控件或证据面板。
+- 正式 `localhost:3001/cases/case_demo_kachidoki_rent?view=overview` 浏览器证据：1440 桌面锚点点击定位、动态头部收缩、章节高亮、手动滚动、返回顶部锚点栏仍在；property→contract→back→forward 和带 hash 刷新均正确定位，目标章节顶部约 214–230px。390×844 下 `scrollWidth=390`、`bodyScrollWidth=390`，案件总览首个字段约在 `y=649`；快速补全首个“下一项任务”约在 `y=415`，无横向溢出。编辑面板焦点进入字段控件，取消后焦点回到原字段；输出按钮按现有语义进入输出中心。
+- 锚点实现已处理实际滚动容器、动态头部/锚点偏移、`IntersectionObserver` root/rootMargin、`ResizeObserver`、动态 `scroll-margin-top`、hash 初始定位、`pushState`、`popstate` 和滚动后校正；这些证据不自动关闭 TASK-020，TASK-020 仍为 `Blocked`。
+- 静态和回归门禁通过：`npm run lint`、`npm run typecheck`、`npm run build`、`npm run test:workflow-rules`、`npm run test:case-field-catalog`、`npm run test:case-applicability`、`npm run test:guarantee-download-gate`、`npm run test:tenant-session`、`npm run test:tenant-data-access`、`git diff --check`。
+
+### 仍未验证、不得伪称通过
+
+- 真实 Clerk 登录、无权限拒绝和第二租户真实浏览器隔离；当前浏览器证据使用显式 demo 身份和内存数据。
+- 真实模板已安装后的预览/下载文件、最终案件级下载确认、数据修改后确认失效，以及保存成功后的真实持久化与回滚。
+- 平板/窄屏完整操作链、键盘遍历全流程和屏幕阅读器；当前仅证明 390px 布局、编辑字段焦点和取消焦点恢复。
+- 以上缺口取得正式证据前，TASK-023 不标记 `Done`，也不关闭 TASK-020；本轮不开始 UI-GOV-002B 或其他页面迁移。
 
 ## Checkpoint A 证据
 
@@ -128,4 +191,4 @@ Checkpoint A 的目标截图交付后，必须由产品负责人确认共同外�
 
 ## 当前状态
 
-Checkpoint A 桌面方向和窄屏收口均已取得本轮浏览器证据，最终独立复核通过，任务保持 `In Review`，等待产品负责人确认后再决定是否进入 Checkpoint B。不得修改 `/cases/[id]`、实现真实模式切换、修复 TASK-020 或进入 Checkpoint B。
+Checkpoint A 桌面方向和窄屏收口均已取得浏览器证据，产品负责人已批准目标图。Checkpoint B 的正式页面迁移和可验证的本地浏览器/静态门禁已完成；因真实环境与剩余浏览器门禁未齐，任务保持 `In Review`，TASK-020 保持 `Blocked`。停止在此等待下一项产品/环境决定，不开始其他页面迁移。

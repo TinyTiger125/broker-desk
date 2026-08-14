@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { rollbackCaseMergeAction, saveCaseWorkbenchAction } from "@/app/actions";
 import { ArchiveRecordButton } from "@/components/archive-record-button";
 import { CaseWorkbenchFieldForm } from "@/components/case-workbench-field-form";
-import { CaseOverview, CaseViewSwitch, type CaseOverviewOutputBlocker, type CaseOverviewSection } from "@/components/case-overview";
+import { CaseEditPanel, CaseEvidenceSummary, CaseFieldInput, CaseFieldState, CaseFieldValue, CaseIdentityHeader, CaseOverview, type CaseOverviewOutputBlocker, type CaseOverviewSection } from "@/components/case-overview";
 import { PageFlashBanner } from "@/components/page-flash-banner";
 import { getBrokerageCaseById, getGuaranteeApplicationDraft, listCaseWorkbenchFieldRules, listExtractionReviewItems, listTenantGuaranteeTemplateInstalls } from "@/lib/data";
 import type { ExtractionReviewItem, ExtractionReviewStatus } from "@/lib/data";
@@ -523,13 +523,6 @@ function getWorkbenchFieldDisplayValue(field: WorkbenchField) {
   return field.value || evidence?.value || "-";
 }
 
-function getWorkbenchFieldDisplaySource(locale: Locale, field: WorkbenchField) {
-  const evidence = getPrimaryEvidence(field);
-  if (evidence) return evidence.sourceLabel;
-  if (field.value) return tr(locale, { ja: "保存済み", zh: "已保存", ko: "저장됨" });
-  return "-";
-}
-
 function getWorkbenchFieldIssueLabel(locale: Locale, field: WorkbenchField) {
   if (field.state === "conflict") return tr(locale, { ja: "資料が一致しません", zh: "资料不同", ko: "자료 불일치" });
   if (field.state === "missing") return field.required ? tr(locale, { ja: "未入力", zh: "待补充", ko: "미입력" }) : tr(locale, { ja: "未入力", zh: "未填写", ko: "미입력" });
@@ -1027,34 +1020,59 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
 
   return (
     <div className="flex min-w-0 flex-col gap-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">
-            {tr(locale, { ja: "情報を整理する", zh: "整理信息", ko: "정보 정리" })}
-          </p>
-          <h1 className="mt-1 break-words text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">{brokerageCase.caseTitle}</h1>
-        </div>
-        <div className="flex shrink-0 flex-wrap gap-2">
-          <Link href={supplementHref} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">
-            {tr(locale, { ja: "資料を追加", zh: "补充资料", ko: "자료 추가" })}
-          </Link>
-          <Link href={`/relationship-tree?type=case&id=${encodeURIComponent(brokerageCase.id)}`} className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-[#002FA7] hover:bg-blue-100">
-            {tr(locale, { ja: "関係を確認", zh: "查看关系", ko: "관계 확인" })}
-          </Link>
-          <Link href={outputHref} className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800 hover:bg-emerald-100">
-            {tr(locale, { ja: "文書出力", zh: "输出文件", ko: "서류 출력" })}
-          </Link>
-          <ArchiveRecordButton
-            entityType="case"
-            entityId={brokerageCase.id}
-            status={brokerageCase.lifecycleStatus ?? "active"}
-            locale={locale}
-            returnTo="/organize-center?type=case"
-          />
-        </div>
-      </div>
+      <CaseIdentityHeader
+        caseId={brokerageCase.id}
+        caseTitle={brokerageCase.caseTitle}
+        applicantSummary={applicantSummary}
+        propertySummary={propertySummary}
+        guaranteeCompanySummary={guaranteeCompanySummary}
+        currentHandlerSummary={currentHandlerSummary}
+        locale={locale}
+        activeView="quick"
+        issueCount={overviewIssueCount}
+        actions={
+          <>
+            <span className="hidden sm:inline-flex">
+              <Link href={supplementHref} className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300">
+                {tr(locale, { ja: "資料を追加", zh: "补充资料", ko: "자료 추가" })}
+              </Link>
+            </span>
+            <span className="hidden sm:inline-flex">
+              <Link href={`/relationship-tree?type=case&id=${encodeURIComponent(brokerageCase.id)}`} className="inline-flex items-center rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-[#002FA7] hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus:ring-blue-300">
+                {tr(locale, { ja: "関係を確認", zh: "查看关系", ko: "관계 확인" })}
+              </Link>
+            </span>
+            <Link href={outputHref} className="inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800 hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300">
+              {tr(locale, { ja: "文書出力", zh: "输出文件", ko: "서류 출력" })}
+            </Link>
+            <span className="hidden sm:inline-flex">
+              <ArchiveRecordButton
+                entityType="case"
+                entityId={brokerageCase.id}
+                status={brokerageCase.lifecycleStatus ?? "active"}
+                locale={locale}
+                returnTo="/organize-center?type=case"
+              />
+            </span>
+          </>
+        }
+      />
       <PageFlashBanner message={flashMessage} tone={flashTone} />
-      <CaseViewSwitch caseId={brokerageCase.id} activeView="quick" issueCount={overviewIssueCount} locale={locale} />
+
+      {selectedWorkbenchField ? (
+        <section className="rounded-lg border border-amber-200 bg-amber-50/70 p-3 sm:hidden" aria-label={tr(locale, { ja: "次の対応項目", zh: "下一项任务", ko: "다음 처리 항목" })}>
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[11px] font-black text-amber-900">{tr(locale, { ja: "次の対応項目", zh: "下一项任务", ko: "다음 처리 항목" })}</p>
+              <CaseFieldValue label={getShortWorkbenchFieldLabel(selectedWorkbenchField)} value={getWorkbenchFieldDisplayValue(selectedWorkbenchField)} />
+              <CaseFieldState issueLabel={fieldNeedsAttention(selectedWorkbenchField) ? getWorkbenchFieldIssueLabel(locale, selectedWorkbenchField) : undefined} />
+            </div>
+            <Link href={caseWorkbenchHref({ node: selectedChapterNode?.id, field: selectedWorkbenchField.fieldKey })} scroll={false} className="shrink-0 rounded-lg bg-slate-950 px-3 py-2 text-xs font-black text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300">
+              {getWorkbenchFieldActionLabel(locale, selectedWorkbenchField)}
+            </Link>
+          </div>
+        </section>
+      ) : null}
 
       <section className="rounded-lg border border-slate-200 bg-white">
         <div className="grid min-w-0 divide-y divide-slate-200 md:grid-cols-2 md:divide-x 2xl:grid-cols-[1.2fr_1.2fr_1.2fr_1fr_0.7fr_0.7fr_0.9fr] 2xl:divide-y-0">
@@ -1234,9 +1252,8 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
 
             <div className="grid min-w-0 2xl:grid-cols-[minmax(0,1fr)_minmax(20rem,24rem)]">
               <div className="min-w-0 border-b border-slate-200 2xl:border-b-0 2xl:border-r">
-                <div className="overflow-x-auto">
-                  <div className="min-w-[560px] sm:min-w-[640px]">
-                    <div className="grid grid-cols-[5.5rem_minmax(8rem,1fr)_minmax(9rem,1fr)_4rem] border-b border-slate-100 bg-slate-50 px-4 py-3 text-[11px] font-black text-slate-500 sm:grid-cols-[6rem_minmax(150px,1fr)_minmax(180px,1fr)_72px] sm:px-5">
+                <div className="min-w-0">
+                    <div className="grid grid-cols-[4rem_minmax(0,1fr)_minmax(0,1.15fr)_auto] gap-2 border-b border-slate-100 bg-slate-50 px-3 py-3 text-[11px] font-black text-slate-500 sm:grid-cols-[5.5rem_minmax(0,1fr)_minmax(0,1.15fr)_auto] sm:gap-3 sm:px-5">
                       <span>{tr(locale, { ja: "状態", zh: "状态", ko: "상태" })}</span>
                       <span>{tr(locale, { ja: "項目", zh: "项目", ko: "항목" })}</span>
                       <span>{tr(locale, { ja: "現在値", zh: "当前值", ko: "현재값" })}</span>
@@ -1250,24 +1267,26 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                             key={field.fieldKey}
                             href={caseWorkbenchHref({ node: selectedChapterNode?.id, field: field.fieldKey })}
                             scroll={false}
-                            className={`grid grid-cols-[5.5rem_minmax(8rem,1fr)_minmax(9rem,1fr)_4rem] gap-3 px-4 py-4 transition sm:grid-cols-[6rem_minmax(150px,1fr)_minmax(180px,1fr)_72px] sm:px-5 ${
+                            className={`grid grid-cols-[4rem_minmax(0,1fr)_minmax(0,1.15fr)_auto] gap-2 px-3 py-4 transition sm:grid-cols-[5.5rem_minmax(0,1fr)_minmax(0,1.15fr)_auto] sm:gap-3 sm:px-5 ${
                               selected ? "bg-blue-50 ring-1 ring-inset ring-blue-700" : "hover:bg-slate-50"
                             }`}
                           >
                             <span>
-                              <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-black ${getTrustStateClass(field.state)}`}>
-                                {getWorkbenchFieldIssueLabel(locale, field)}
+                              <CaseFieldState
+                                issueLabel={fieldNeedsAttention(field) ? getWorkbenchFieldIssueLabel(locale, field) : undefined}
+                              />
+                            </span>
+                            <span className="min-w-0">
+                              <span className="block break-words text-sm font-black text-slate-950">
+                                {getShortWorkbenchFieldLabel(field)}
+                                {field.required ? <span className="ml-1 text-slate-400" aria-label={tr(locale, { ja: "必須", zh: "必填", ko: "필수" })}>*</span> : null}
                               </span>
+                              <span className="mt-1 block break-words text-[11px] font-semibold text-slate-500">{field.treePath.join(" / ")}</span>
                             </span>
                             <span className="min-w-0">
-                              <span className="block truncate text-sm font-black text-slate-950">{getShortWorkbenchFieldLabel(field)}</span>
-                              <span className="mt-1 block truncate text-[11px] font-semibold text-slate-500">{field.treePath.join(" / ")}</span>
+                              <CaseFieldValue value={getWorkbenchFieldDisplayValue(field)} />
                             </span>
-                            <span className="min-w-0">
-                              <span className="block truncate text-sm font-bold text-slate-950">{getWorkbenchFieldDisplayValue(field)}</span>
-                              <span className="mt-1 block truncate text-[11px] font-semibold text-slate-500">{getWorkbenchFieldDisplaySource(locale, field)}</span>
-                            </span>
-                            <span className="text-right text-xs font-black text-blue-700">{getWorkbenchFieldActionLabel(locale, field)}</span>
+                            <span className="self-center text-right text-xs font-black text-blue-700">{getWorkbenchFieldActionLabel(locale, field)}</span>
                           </Link>
                         );
                       })}
@@ -1277,72 +1296,55 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                         </div>
                       ) : null}
                     </div>
-                  </div>
                 </div>
               </div>
 
               <aside id="case-field-editor" className="scroll-mt-24 bg-white p-4 2xl:sticky 2xl:top-20 2xl:max-h-[calc(100vh-6rem)] 2xl:self-start 2xl:overflow-y-auto">
                 {selectedWorkbenchField ? (
-                  <CaseWorkbenchFieldForm
-                    action={saveCaseWorkbenchAction}
-                    caseId={brokerageCase.id}
-                    fieldKey={selectedWorkbenchField.fieldKey}
-                    returnNode={selectedChapterNode?.id}
-                    returnField={selectedWorkbenchField.fieldKey}
-                    returnAnchor="case-field-editor"
-                    showSaveWhenPristine
-                    saveLabel={tr(locale, { ja: "確認して保存", zh: "确认并保存", ko: "확인하고 저장" })}
-                    savingLabel={tr(locale, { ja: "保存中", zh: "保存中", ko: "저장 중" })}
-                    className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
-                  >
+                  <CaseEditPanel title={getShortWorkbenchFieldLabel(selectedWorkbenchField)} context={selectedChapterNode?.label ?? tr(locale, { ja: "項目確認", zh: "项目核对", ko: "항목 확인" })} issueLabel={fieldNeedsAttention(selectedWorkbenchField) ? getWorkbenchFieldIssueLabel(locale, selectedWorkbenchField) : undefined}>
+                    <CaseWorkbenchFieldForm
+                      action={saveCaseWorkbenchAction}
+                      caseId={brokerageCase.id}
+                      fieldKey={selectedWorkbenchField.fieldKey}
+                      returnNode={selectedChapterNode?.id}
+                      returnField={selectedWorkbenchField.fieldKey}
+                      returnAnchor="case-field-editor"
+                      showSaveWhenPristine
+                      saveLabel={tr(locale, { ja: "確認して保存", zh: "确认并保存", ko: "확인하고 저장" })}
+                      savingLabel={tr(locale, { ja: "保存中", zh: "保存中", ko: "저장 중" })}
+                      className="mt-4 space-y-4"
+                    >
                     {selectedWorkbenchFieldEvidence ? (
                       <input type="hidden" name={`candidate:${selectedWorkbenchField.fieldKey}`} value={selectedWorkbenchFieldEvidence.value} />
                     ) : null}
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-[11px] font-bold text-blue-700">{selectedChapterNode?.label ?? tr(locale, { ja: "項目確認", zh: "项目核对", ko: "항목 확인" })}</p>
-                        <h3 className="mt-1 break-words text-lg font-black text-slate-950">{getShortWorkbenchFieldLabel(selectedWorkbenchField)}</h3>
-                      </div>
-                      <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-black ${getTrustStateClass(selectedWorkbenchField.state)}`}>
-                        {getWorkbenchFieldIssueLabel(locale, selectedWorkbenchField)}
-                      </span>
-                    </div>
-
-                    <div className="mt-4 space-y-3">
-                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                        <p className="text-[11px] font-bold text-slate-500">{tr(locale, { ja: "資料内容", zh: "资料内容", ko: "자료 내용" })}</p>
-                        <p className="mt-1 break-words text-sm font-black text-slate-950">
-                          {selectedWorkbenchFieldEvidence?.value || selectedWorkbenchField.value || "-"}
-                        </p>
-                        <p className="mt-1 break-words text-[11px] font-semibold text-slate-500">
-                          {selectedWorkbenchFieldEvidence?.sourceLabel ?? getWorkbenchFieldDisplaySource(locale, selectedWorkbenchField)}
-                        </p>
-                        {selectedWorkbenchFieldEvidence?.value ? (
-                          <button
-                            type="submit"
-                            name="useCandidateField"
-                            value={selectedWorkbenchField.fieldKey}
-                            className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-black text-blue-800 hover:bg-blue-100"
-                          >
-                            <span className="material-symbols-outlined text-[16px]" aria-hidden="true">
-                              check_circle
-                            </span>
-                            {tr(locale, { ja: "読取値を使う", zh: "采用读取值", ko: "판독값 사용" })}
-                          </button>
-                        ) : null}
-                      </div>
+                    <div className="space-y-3">
+                      <CaseEvidenceSummary
+                        locale={locale}
+                        title={tr(locale, { ja: "資料内容", zh: "资料内容", ko: "자료 내용" })}
+                        evidenceItems={selectedWorkbenchField.evidenceItems}
+                        currentValue={selectedWorkbenchField.value}
+                        candidateFieldKey={selectedWorkbenchField.fieldKey}
+                      />
 
                       <div className="rounded-lg border border-slate-200 bg-white p-3">
                         <p className="text-[11px] font-bold text-slate-500">{tr(locale, { ja: "確認内容", zh: "确认内容", ko: "확인 내용" })}</p>
                         <div className="mt-2">
-                          <WorkbenchFieldControl locale={locale} field={selectedWorkbenchField} flush />
+                          <CaseFieldInput
+                            name={`field:${selectedWorkbenchField.fieldKey}`}
+                            value={selectedWorkbenchField.value}
+                            label={selectedWorkbenchField.label}
+                            inputSpec={selectedWorkbenchField.inputSpec}
+                            locale={locale}
+                            tone={fieldNeedsAttention(selectedWorkbenchField) ? "attention" : "default"}
+                          />
                         </div>
                         <div className="mt-2">
                           <WorkbenchDecisionSelect locale={locale} field={selectedWorkbenchField} flush />
                         </div>
                       </div>
                     </div>
-                  </CaseWorkbenchFieldForm>
+                    </CaseWorkbenchFieldForm>
+                  </CaseEditPanel>
                 ) : (
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-5 text-sm font-semibold text-slate-500">
                     {tr(locale, { ja: "項目を選択してください。", zh: "请选择一个项目。", ko: "항목을 선택해 주세요." })}
