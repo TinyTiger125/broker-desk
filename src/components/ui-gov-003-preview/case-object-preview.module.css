@@ -6,7 +6,7 @@
 }
 
 .prototypeNotice {
-  display: flex;
+  display: none;
   align-items: center;
   gap: var(--bd-space-2);
   min-height: var(--bd-control-height-compact);
@@ -117,6 +117,10 @@
   align-items: flex-start;
   justify-content: flex-end;
   flex-wrap: wrap;
+}
+
+.mobileMoreAction {
+  display: none;
 }
 
 .headerMeta {
@@ -439,13 +443,63 @@
     padding: var(--bd-space-4);
   }
 
+  :global(html.uiGov003PreviewMobileShell) :global(.app-mobile-header).previewMobileHeader {
+    position: static;
+  }
+
+  :global(html.uiGov003PreviewMobileShell) :global(.app-mobile-header).previewMobileHeader :global(details) {
+    display: none;
+  }
+
+  :global(html.uiGov003PreviewMobileShell) :global(.app-mobile-header).previewMobileHeader :global(.mt-3) {
+    margin-top: var(--bd-space-2);
+  }
+
+  :global(html.uiGov003PreviewMobileShell) :global(.app-mobile-header).previewMobileHeader :global(nav) {
+    gap: 0;
+  }
+
+  :global(html.uiGov003PreviewMobileShell) :global(.app-mobile-header).previewMobileHeader :global(nav) a {
+    gap: 0;
+    min-width: 0;
+    padding-inline: var(--bd-space-2);
+    font-size: var(--bd-text-xs);
+  }
+
+  :global(html.uiGov003PreviewMobileShell) :global(.app-mobile-header).previewMobileHeader :global(nav) :global(.app-nav-link-icon) {
+    display: none;
+  }
+
+  .prototypeNotice {
+    display: none;
+  }
+
+  .headerCopy h1 {
+    font-size: 1.25rem;
+  }
+
+  .headerEyebrow,
+  .headerSubline {
+    display: none;
+  }
+
   .headerActions {
     justify-content: flex-start;
+  }
+
+  .headerActions > button:nth-child(2) {
+    display: none;
+  }
+
+  .mobileMoreAction {
+    display: inline-flex;
   }
 
   .headerMeta {
     align-items: flex-start;
     flex-direction: column;
+    gap: var(--bd-space-2);
+    padding-top: var(--bd-space-3);
   }
 
   .headerStatus {
@@ -454,13 +508,12 @@
   }
 
   .statusSummary {
-    align-items: flex-start;
-    flex-direction: column;
+    gap: var(--bd-space-2);
+    padding: var(--bd-space-2) var(--bd-space-3);
   }
 
   .statusSummaryDivider {
-    width: 100%;
-    height: 1px;
+    display: none;
   }
 
   .statusSummary button {

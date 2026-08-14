@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   Button,
   DateInput,
@@ -154,6 +154,7 @@ function CaseHeader({ mode, onModeChange }: { mode: PreviewMode; onModeChange: (
         <div className={styles.headerActions}>
           <Button tone="secondary" controlSize="compact">申请书预览</Button>
           <Button tone="primary" controlSize="compact">下载申请书</Button>
+          <Button tone="quiet" controlSize="compact" className={styles.mobileMoreAction}>更多</Button>
         </div>
 
         <div className={styles.headerMeta}>
@@ -201,8 +202,6 @@ function StatusSummary() {
     <div className={styles.statusSummary}>
       <span className={styles.statusSummaryLabel}>输出状态</span>
       <span className={styles.statusSummaryText}>可以预览</span>
-      <span className={styles.statusSummaryDivider} aria-hidden="true" />
-      <span className={styles.statusSummaryText}>下载前还需处理 4 项信息</span>
       <Button tone="quiet" controlSize="compact">查看问题</Button>
     </div>
   );
@@ -284,6 +283,25 @@ function CaseOverview({ onEdit }: { onEdit: (field: Field) => void }) {
 export function CaseObjectPreview({ initialMode }: { initialMode: PreviewMode }) {
   const [mode, setMode] = useState<PreviewMode>(initialMode);
   const [activeField, setActiveField] = useState<Field | null>(initialMode === "quick" ? groups[0].fields[2] : null);
+
+  useEffect(() => {
+    const previewShellClass = "uiGov003PreviewMobileShell";
+    const previewMobileHeaderClass = styles.previewMobileHeader;
+    const mediaQuery = window.matchMedia("(max-width: 47.9375rem)");
+    const mobileHeader = document.querySelector<HTMLElement>(".app-mobile-header");
+    const syncPreviewShell = () => {
+      document.documentElement.classList.toggle(previewShellClass, mediaQuery.matches);
+      mobileHeader?.classList.toggle(previewMobileHeaderClass, mediaQuery.matches);
+    };
+
+    syncPreviewShell();
+    mediaQuery.addEventListener("change", syncPreviewShell);
+    return () => {
+      mediaQuery.removeEventListener("change", syncPreviewShell);
+      document.documentElement.classList.remove(previewShellClass);
+      mobileHeader?.classList.remove(previewMobileHeaderClass);
+    };
+  }, []);
 
   function changeMode(nextMode: PreviewMode) {
     setMode(nextMode);

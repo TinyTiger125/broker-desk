@@ -30,7 +30,7 @@ UI-GOV-002A 已建立唯一 Token 和案件 Object Page 所需的最小基础组
 - 使用仓库已有演示案件数据或现有字段语义；不得虚构产品事实，不写入数据库，不调用正式保存动作。
 - 两种模式必须共同呈现：动态案件头部、案件身份与关键状态、全局预览/下载入口、模式切换、紧凑状态摘要、正常字段、异常字段、编辑面板的视觉形态、保存/取消/错误反馈。
 - 快速补全保留任务队列效率：待补充/差异/格式问题集中处理、快速定位字段、连续处理下一项；正常字段不进入默认队列。
-- 案件总览采用全宽长页信息结构：桌面可呈现三列、中等屏幕两列、窄屏一列；按业务组展示适用字段，复杂字段可跨列；异常在字段原位置提供业务化处理入口，编辑面板按需出现。
+- 案件总览采用全宽长页信息结构：有效内容宽度足够的宽屏可呈现三列，常规桌面两列，窄屏一列；按业务组展示适用字段，复杂字段可跨列；异常在字段原位置提供业务化处理入口，编辑面板按需出现。
 - 同一桌面尺寸下形成快速补全和案件总览两张目标图，再形成一张窄屏关键状态图。三图必须证明共同外壳、模式切换、字体、间距、圆角、颜色和控件语言一致，而内容组织方式不同。
 - 原型可以使用局部 UI 状态切换来展示编辑面板或异常队列，但不伪造保存成功、下载成功、权限、租户隔离或真实数据行为。
 
@@ -98,14 +98,25 @@ Checkpoint A 的目标截图交付后，必须由产品负责人确认共同外�
 
 ## Checkpoint A 证据
 
+## Checkpoint A 窄屏修正收口（产品复核后）
+
+- 桌面快速补全目标图通过；桌面案件总览方向通过；Checkpoint A 不整体进入 B，先补一轮 390×844 窄屏目标图。
+- 窄屏修正只限临时预览：首屏移除开发提示条，压缩案件头部为案件身份、待处理状态、模式切换和一个直接输出入口；不重复展示待处理/输出状态；章节导航和第一个真实字段必须进入首屏；移除预览截图中的 Next 开发浮层。
+- 窄屏全局壳层的账户/工作区展开行和图标导航不属于本任务允许修改的正式 `AppNav`；预览只允许使用明确带清理逻辑的临时作用域适配，不能修改共享导航或把该适配宣称为正式导航修复。正式导航图标/文字一致性仍需后续页面壳层任务验证。
+- 不改变桌面案件分组方向；响应式证据按“宽屏有效内容足够 3 列、常规桌面 2 列、窄屏 1 列”记录，不为满足文字而强制 3 列。
+- 本轮不得修改正式 `/cases/[id]`、`src/components/app-nav.tsx`、TASK-020、全局样式、业务能力或用户可见产品文案；完成新图和独立复核后任务回到 `In Review`，不进入 Checkpoint B。
+- 本轮浏览器证据使用显式 `BROKER_DESK_AUTH_MODE=demo`、`DATA_DRIVER=memory` 和 `NEXT_PRIVATE_DISABLE_DEV_OVERLAY_UX=1` 的临时本地预览；不连接真实数据库、不代表 Clerk、生产启动、权限或租户隔离通过。生产 `npm start` 曾返回 503，单独保留为后续演示环境问题。
+
 - 实现 Agent 已完成并退出；独立审查 Agent 随后完成并退出，审查结论为 `PASS`（仅限 Checkpoint A），未修改文件。
-- 浏览器目标图均来自 `http://localhost:3001/ui-gov-003-checkpoint-a`：快速补全使用 `?mode=quick`，案件总览使用 `?mode=overview`；两张桌面图同为 `1440×900`，窄屏图为 `390×844`。
-- 截图证据：
-  - `/Users/laineyzhu/.codex/visualizations/2026/08/13/019ff978-5813-7073-8e44-920871b81849/ui-gov-003-checkpoint-a-quick.png`
-  - `/Users/laineyzhu/.codex/visualizations/2026/08/13/019ff978-5813-7073-8e44-920871b81849/ui-gov-003-checkpoint-a-overview.png`
-  - `/Users/laineyzhu/.codex/visualizations/2026/08/13/019ff978-5813-7073-8e44-920871b81849/ui-gov-003-checkpoint-a-narrow.png`
-- 桌面图证明两种模式共用案件头部、模式切换、状态摘要、UI Foundation 字段/异常/按钮语言和全局输出入口；快速补全保留队列，案件总览使用业务分组、锚点和三列结构。
-- 窄屏浏览器检查的 `innerWidth=390`、`scrollWidth=390`、`bodyScrollWidth=390`，未发现横向溢出；目标图证明头部、状态、切换和关键内容在窄屏仍可读。
+- 产品复核要求的窄屏收口已完成；实现 Agent 和独立审查 Agent 均已退出，最终独立复核确认本轮预览范围、截图证据和 390×844 首屏通过。`AGENTS.md` 中由 Next 自动生成的越界区块已移除，当前差异回到允许范围。
+- 本轮浏览器目标图均来自 `http://localhost:3001/ui-gov-003-checkpoint-a`：快速补全使用 `?mode=quick`，案件总览使用 `?mode=overview`；两张桌面图同为 `1440×900`，窄屏图为 `390×844`。
+- 本轮截图证据：
+  - `/Users/laineyzhu/.codex/visualizations/2026/08/13/019ff978-5813-7073-8e44-920871b81849/ui-gov-003-checkpoint-a-quick-correction.png`
+  - `/Users/laineyzhu/.codex/visualizations/2026/08/13/019ff978-5813-7073-8e44-920871b81849/ui-gov-003-checkpoint-a-overview-correction.png`
+  - `/Users/laineyzhu/.codex/visualizations/2026/08/13/019ff978-5813-7073-8e44-920871b81849/ui-gov-003-checkpoint-a-narrow-correction.png`
+- 旧 `ui-gov-003-checkpoint-a-quick.png`、`overview.png`、`narrow.png` 为修正前证据，不能继续证明本轮窄屏通过；1440 旧图的三列表述已被本轮修正证据替代。
+- 桌面图证明两种模式共用案件头部、模式切换、状态摘要、UI Foundation 字段/异常/按钮语言和全局输出入口；快速补全保留队列，案件总览使用业务分组、锚点和响应式分组结构。1440 视口实际呈现两列业务分组，不强制三列。
+- 窄屏浏览器检查的 `innerWidth=390`、`innerHeight=844`、`scrollWidth=390`、`bodyScrollWidth=390`，导航四个文字入口均在可见范围；案件标题、待处理状态、模式切换、章节导航、申请人和“姓名/永田沙織”进入首屏；没有 Next 开发浮层。
 - 静态门禁最终通过：`npm run lint`、`npm run build`、构建后 `npm run typecheck`、`npm run test:workflow-rules`、`git diff --check`。
 - 差异范围核对通过：没有 `src/app/cases/[id]/page.tsx`、`src/components/case-overview.tsx`、`src/app/globals.css`、`src/components/ui-foundation/` 或 TASK-020 相关差异；没有数据库、API、认证、权限、租户或业务数据变化。
 
@@ -113,7 +124,8 @@ Checkpoint A 的目标截图交付后，必须由产品负责人确认共同外�
 
 - 这是临时非正式预览，不是正式 `/cases/[id]`；未验证正式案件页面的真实滚动、sticky、`IntersectionObserver`、hash、`scroll-margin-top`、保存/取消焦点恢复、权限、租户隔离、数据持久化或申请书输出。
 - 原型中的编辑、保存、取消和下载按钮仅展示视觉形态，不执行真实业务行为；完整韩文页面与生产预览路由边界仍待 Checkpoint B 处理。
+- 生产 `npm start -- --port 3002` 返回 `Service unavailable`（503）；因此本轮截图是隔离的内存 demo 预览证据，不是生产启动或外部演示证据。
 
 ## 当前状态
 
-Checkpoint A 的目标图和独立审查已完成，任务保持 `In Review`，等待产品负责人确认共同外壳与两种布局。产品负责人确认前不得修改 `/cases/[id]`、实现真实模式切换或修复 TASK-020；不进入 Checkpoint B。
+Checkpoint A 桌面方向和窄屏收口均已取得本轮浏览器证据，最终独立复核通过，任务保持 `In Review`，等待产品负责人确认后再决定是否进入 Checkpoint B。不得修改 `/cases/[id]`、实现真实模式切换、修复 TASK-020 或进入 Checkpoint B。
