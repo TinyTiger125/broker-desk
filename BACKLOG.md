@@ -21,6 +21,7 @@
 | TASK-019 | P0 | 外部演示环境准备 | Ready | TASK-018 | [TASK-019](docs/tasks/TASK-019.md) | Diagnose npm start 503; verify real Clerk, dedicated synthetic-data tenants, callbacks, isolation, security and rollback before tunnel sharing |
 | TASK-020 | P0 | 实施 C+ 案件总览 | Blocked | TASK-018 | [TASK-020](docs/tasks/TASK-020.md) | Implementation and independent review completed; latest recording shows stale active anchor and possible disappearing anchor bar after scroll/header transition; unique scroll container, header height, sticky offset, observer/hash/scroll-margin and full browser evidence remain |
 | TASK-021 | P0 | UI-GOV-001 页面与组件只读盘点、迁移矩阵和优先级 | Done | TASK-018 | [TASK-021](docs/tasks/TASK-021.md) | 38 个路由、3 个系统状态入口、P0 类型、公共组件候选、依赖、顺序、截图证据和业务边界已收口；无业务代码修改，等待 UI-GOV-002A 批准 |
+| TASK-022 | P0 | UI-GOV-002A 最小视觉基础 | Done | TASK-021 | [TASK-022](docs/tasks/TASK-022.md) | 唯一 Token、Object Page 最小基础组件和非导航开发预览 `/ui-foundation-preview` 已完成；静态、浏览器桌面/窄屏、焦点、触控、CJK 和范围门禁通过；未迁移正式业务页面 |
 | TASK-003 | P0 | Close the input-material merge completion loop | Proposed | TASK-002 | [TASK-003](docs/tasks/TASK-003.md) | Selection, confirmation, result, failure, and refresh evidence |
 | TASK-004 | P0 | Consolidate template-library and official-template boundaries | Proposed | TASK-002 | [TASK-004](docs/tasks/TASK-004.md) | Role-aware entry, visibility, and installation evidence |
 | TASK-005 | P0 | Separate official template draft and publish states | Proposed | TASK-004 | [TASK-005](docs/tasks/TASK-005.md) | Independent draft save, publish, immutable version, and failure evidence |
@@ -52,4 +53,6 @@
 - 最新录屏 `录屏2026-08-14 19.12.07.mov` 已登记到 TASK-020：点击“房产”后手动滚回“相关人员”时激活锚点仍停留在“房产”，动态头部切换后返回顶部时锚点栏可能消失。TASK-020 继续 `Blocked`；修复前必须检查唯一滚动容器、动态头部高度、sticky 偏移、`IntersectionObserver`、URL hash 和章节 `scroll-margin-top`，并通过锚点点击、手动滚动、前进后退、带 hash 刷新、键盘、窄屏和头部展开/收起验收。
 - 后续页面治理边界已登记：UI-GOV-002A 只建立共享 Token 和基础组件；UI-GOV-003 要求“快速补全”和“案件总览”共享动态头部、模式切换、字段、异常、编辑和反馈组件，案件总览采用三/二/一列，快速补全保留任务队列效率。上述证据和批准完成前，不启动页面批量迁移；UI-GOV-001 保持 Done，不重新打开。
 - `UI-GOV-001 / TASK-021` 已 Done。候选 V1 仍只作为后续讨论基线；矩阵已补充 P0 页面类型、唯一主要任务、重复组件、公共组件候选、业务依赖、迁移顺序、截图证据和不可改变的业务能力。`/cases/new` 已按用户任务从 P0 调整为 P1 独立创建分支。本轮未修改 `src/`、数据库、配置或公共资产；未开始全站换皮、批量 CSS 或逐页布局实施。下一步只等待 UI-GOV-002A 批准。
+- `TASK-022 / UI-GOV-002A` 已收口：只修改 `globals.css`、`ui-foundation` 基础组件、非导航开发预览 `/ui-foundation-preview` 和治理记录；没有迁移正式业务页面，没有修复 TASK-020 锚点，也没有改变业务流程/数据/权限。仓库没有 Storybook/Ladle；预览入口会进入 Next 构建产物但不进入正式导航，后续可在 UI-GOV-003 前删除或转内部 QA。
+- `TASK-022 / UI-GOV-002A` 已 Done：实现 Agent 和独立审查 Agent 按顺序完成并全部退出；独立审查确认 Token/组件范围和预览路由，静态门禁通过；浏览器确认桌面/窄屏无横向溢出、44px 触控控件、CJK 长文本、焦点轮廓、ARIA 错误关联和本地交互。没有正式业务页面差异，下一步只等待 UI-GOV-003 批准。
 - No business task is implemented by the pure governance baseline commit.
