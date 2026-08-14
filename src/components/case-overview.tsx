@@ -492,15 +492,6 @@ export function CaseOverview({
         })}
       </main>
 
-      <div className="sticky bottom-3 z-20 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur">
-        <div className="min-w-0 text-xs font-semibold text-slate-600">
-          {hasBlockingOutput ? <span className="text-rose-800">{locale === "zh" ? "尚有阻塞项，仍可预览" : locale === "ko" ? "아직 차단 항목이 있지만 미리보기는 가능" : "対応項目がありますが、プレビューは可能"}</span> : <span className="text-emerald-800">{isConfirmedForCurrentData ? (locale === "zh" ? "已确认当前案件信息" : locale === "ko" ? "현재 안건 정보를 확인함" : "現在の案件情報を確認済み") : (locale === "zh" ? "下载前会请你确认案件信息" : locale === "ko" ? "다운로드 전에 안건 정보를 확인합니다" : "ダウンロード前に案件情報を確認します")}</span>}
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={handleDownload} className="rounded-lg bg-slate-950 px-3 py-2 text-xs font-black text-white hover:bg-slate-800">{hasOutputTemplate ? (locale === "zh" ? "下载申请书" : locale === "ko" ? "신청서 다운로드" : "申込書をダウンロード") : (locale === "zh" ? "选择输出模板" : locale === "ko" ? "출력 템플릿 선택" : "出力テンプレートを選ぶ")}</button>
-        </div>
-      </div>
-
       {editingField ? (
         <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/35 p-0 sm:p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeEditor(); }}>
           <div ref={editorRef} role="dialog" aria-modal="true" aria-labelledby="case-overview-editor-title" className="h-full w-full max-w-xl overflow-y-auto bg-white p-4 shadow-2xl sm:rounded-2xl sm:p-6">

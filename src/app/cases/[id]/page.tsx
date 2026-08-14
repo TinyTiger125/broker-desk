@@ -30,6 +30,7 @@ import { getCaseMergeHistory, getLatestActiveCaseMerge } from "@/lib/case-merge"
 import { findGuaranteeCompanyTemplate } from "@/lib/guarantee-application";
 import { evaluateGuaranteeDownloadGate } from "@/lib/guarantee-download-gate";
 import { FRIENDS_GUARANTEE_DEFAULT_TEMPLATE_ID } from "@/lib/friends-guarantee-pdf";
+import { localizeCaseOverviewFieldLabel, localizeCaseOverviewTreeLabel } from "@/lib/case-overview-localization";
 import { formatDate } from "@/lib/format";
 import { getLocale, type Locale } from "@/lib/locale";
 import { requireTenantSession } from "@/lib/tenant-session";
@@ -839,15 +840,15 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
     const effectiveChildren = childNodes.length > 0 ? childNodes : [node];
     return {
       id: `case-section-${node.id}`,
-      label: node.label,
+      label: localizeCaseOverviewTreeLabel(locale, node.label),
       children: effectiveChildren.map((child) => ({
         id: `${node.id}-${child.id}`,
-        label: child.label,
+        label: localizeCaseOverviewTreeLabel(locale, child.label),
         fields: applicableWorkbenchFields
           .filter((field) => fieldMatchesTreeNode(field, child))
           .map((field) => ({
             fieldKey: field.fieldKey,
-            label: getShortWorkbenchFieldLabel(field),
+            label: localizeCaseOverviewFieldLabel(locale, getShortWorkbenchFieldLabel(field)),
             value: field.value,
             displayValue: getWorkbenchFieldDisplayValue(field),
             required: field.required,
@@ -855,7 +856,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
             importance: field.importance,
             applicable: field.applicable,
             issueLabel: fieldNeedsAttention(field) ? getWorkbenchFieldIssueLabel(locale, field) : undefined,
-            treePath: field.treePath,
+            treePath: field.treePath.map((path) => localizeCaseOverviewTreeLabel(locale, path)),
             sourceLabel: field.sourceLabel,
             evidenceItems: field.evidenceItems,
             inputSpec: field.inputSpec,
