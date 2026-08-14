@@ -19,7 +19,7 @@
 | TASK-017 | P0 | MIG-006清理 Cursor 活动规则并建立薄适配入口 | Done | TASK-015 | [TASK-017](docs/tasks/TASK-017.md) | Thin Cursor governance entry, legacy authority cleanup, high-risk skill pointers, reference scan, governance checks, manual-load verification record, review-fix, and independent review PASS |
 | TASK-018 | P0 | MIG-007恢复唯一可运行产品基线 | Done | TASK-002, TASK-017 | [TASK-018](docs/tasks/TASK-018.md) | A/B implementation and independent review, static checks, local browser/data gate, and end-to-end application preview/download pass; external demo gates moved to TASK-019; tunnel not opened |
 | TASK-019 | P0 | 外部演示环境准备 | Ready | TASK-018 | [TASK-019](docs/tasks/TASK-019.md) | Diagnose npm start 503; verify real Clerk, dedicated synthetic-data tenants, callbacks, isolation, security and rollback before tunnel sharing |
-| TASK-020 | P0 | 实施 C+ 案件总览 | Blocked | TASK-018 | [TASK-020](docs/tasks/TASK-020.md) | Implementation and independent review completed; recording confirms desktop header/anchors/editing; duplicate global footer actions fixed; keyboard, responsive, download-state, tenant and complete language evidence remain |
+| TASK-020 | P0 | 实施 C+ 案件总览 | Blocked | TASK-018 | [TASK-020](docs/tasks/TASK-020.md) | Implementation and independent review completed; latest recording shows stale active anchor and possible disappearing anchor bar after scroll/header transition; unique scroll container, header height, sticky offset, observer/hash/scroll-margin and full browser evidence remain |
 | TASK-021 | P0 | UI-GOV-001 页面与组件只读盘点、迁移矩阵和优先级 | Done | TASK-018 | [TASK-021](docs/tasks/TASK-021.md) | 38 个路由、3 个系统状态入口、P0 类型、公共组件候选、依赖、顺序、截图证据和业务边界已收口；无业务代码修改，等待 UI-GOV-002A 批准 |
 | TASK-003 | P0 | Close the input-material merge completion loop | Proposed | TASK-002 | [TASK-003](docs/tasks/TASK-003.md) | Selection, confirmation, result, failure, and refresh evidence |
 | TASK-004 | P0 | Consolidate template-library and official-template boundaries | Proposed | TASK-002 | [TASK-004](docs/tasks/TASK-004.md) | Role-aware entry, visibility, and installation evidence |
@@ -49,5 +49,7 @@
 - 显式非生产 demo 身份和 `DATA_DRIVER=memory` 下开发服务可启动，公开数据健康检查为 `200 ready`，受保护资料流程可由浏览器完成；`npm start` 的四个探测路由仍为 `503`，首个明确阻断为生产边缘限流启用标志和策略 ID 缺失，其他生产就绪门禁也未满足。真实登录、外部数据库发布状态和隧道行为仍需人工验证。safety/WIP 与 WIP 快照保持冻结。
 - TASK-019 已建立为 Ready；其完成前不得关闭安全门禁、开放隧道或向朋友分享地址。
 - C+案件总览设计基线已获产品负责人批准；`TASK-020` 已完成实现 Agent 和独立审查 Agent 的顺序执行，静态检查通过。产品负责人提供录屏补充证明桌面动态头部、锚点、章节定位、高亮、更多菜单和局部编辑；录屏发现的重复固定底部操作已删除，中文字段/章节标签已接入 149 项中日对照。TASK-020 仍为 Blocked：键盘、响应式、完整下载状态、数据确认失效、三语言和第二租户隔离尚未取得证据。TASK-019 的真实外部演示门禁仍独立保留，不由 TASK-020 绕过。
+- 最新录屏 `录屏2026-08-14 19.12.07.mov` 已登记到 TASK-020：点击“房产”后手动滚回“相关人员”时激活锚点仍停留在“房产”，动态头部切换后返回顶部时锚点栏可能消失。TASK-020 继续 `Blocked`；修复前必须检查唯一滚动容器、动态头部高度、sticky 偏移、`IntersectionObserver`、URL hash 和章节 `scroll-margin-top`，并通过锚点点击、手动滚动、前进后退、带 hash 刷新、键盘、窄屏和头部展开/收起验收。
+- 后续页面治理边界已登记：UI-GOV-002A 只建立共享 Token 和基础组件；UI-GOV-003 要求“快速补全”和“案件总览”共享动态头部、模式切换、字段、异常、编辑和反馈组件，案件总览采用三/二/一列，快速补全保留任务队列效率。上述证据和批准完成前，不启动页面批量迁移；UI-GOV-001 保持 Done，不重新打开。
 - `UI-GOV-001 / TASK-021` 已 Done。候选 V1 仍只作为后续讨论基线；矩阵已补充 P0 页面类型、唯一主要任务、重复组件、公共组件候选、业务依赖、迁移顺序、截图证据和不可改变的业务能力。`/cases/new` 已按用户任务从 P0 调整为 P1 独立创建分支。本轮未修改 `src/`、数据库、配置或公共资产；未开始全站换皮、批量 CSS 或逐页布局实施。下一步只等待 UI-GOV-002A 批准。
 - No business task is implemented by the pure governance baseline commit.
