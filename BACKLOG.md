@@ -20,6 +20,7 @@
 | TASK-018 | P0 | MIG-007恢复唯一可运行产品基线 | Done | TASK-002, TASK-017 | [TASK-018](docs/tasks/TASK-018.md) | A/B implementation and independent review, static checks, local browser/data gate, and end-to-end application preview/download pass; external demo gates moved to TASK-019; tunnel not opened |
 | TASK-019 | P0 | 外部演示环境准备 | Ready | TASK-018 | [TASK-019](docs/tasks/TASK-019.md) | Diagnose npm start 503; verify real Clerk, dedicated synthetic-data tenants, callbacks, isolation, security and rollback before tunnel sharing |
 | TASK-020 | P0 | 实施 C+ 案件总览 | Blocked | TASK-018 | [TASK-020](docs/tasks/TASK-020.md) | Implementation and independent review completed; recording confirms desktop header/anchors/editing; duplicate global footer actions fixed; keyboard, responsive, download-state, tenant and complete language evidence remain |
+| TASK-021 | P0 | UI-GOV-001 页面与组件只读盘点、迁移矩阵和优先级 | In Review | TASK-018 | [TASK-021](docs/tasks/TASK-021.md) | 38 个路由、系统状态、共享组件和视觉风险已盘点；矩阵已提交；未修改业务代码，等待页面治理边界批准 |
 | TASK-003 | P0 | Close the input-material merge completion loop | Proposed | TASK-002 | [TASK-003](docs/tasks/TASK-003.md) | Selection, confirmation, result, failure, and refresh evidence |
 | TASK-004 | P0 | Consolidate template-library and official-template boundaries | Proposed | TASK-002 | [TASK-004](docs/tasks/TASK-004.md) | Role-aware entry, visibility, and installation evidence |
 | TASK-005 | P0 | Separate official template draft and publish states | Proposed | TASK-004 | [TASK-005](docs/tasks/TASK-005.md) | Independent draft save, publish, immutable version, and failure evidence |
@@ -48,4 +49,5 @@
 - 显式非生产 demo 身份和 `DATA_DRIVER=memory` 下开发服务可启动，公开数据健康检查为 `200 ready`，受保护资料流程可由浏览器完成；`npm start` 的四个探测路由仍为 `503`，首个明确阻断为生产边缘限流启用标志和策略 ID 缺失，其他生产就绪门禁也未满足。真实登录、外部数据库发布状态和隧道行为仍需人工验证。safety/WIP 与 WIP 快照保持冻结。
 - TASK-019 已建立为 Ready；其完成前不得关闭安全门禁、开放隧道或向朋友分享地址。
 - C+案件总览设计基线已获产品负责人批准；`TASK-020` 已完成实现 Agent 和独立审查 Agent 的顺序执行，静态检查通过。产品负责人提供录屏补充证明桌面动态头部、锚点、章节定位、高亮、更多菜单和局部编辑；录屏发现的重复固定底部操作已删除，中文字段/章节标签已接入 149 项中日对照。TASK-020 仍为 Blocked：键盘、响应式、完整下载状态、数据确认失效、三语言和第二租户隔离尚未取得证据。TASK-019 的真实外部演示门禁仍独立保留，不由 TASK-020 绕过。
+- `UI-GOV-001` 已完成只读页面与组件盘点，状态为 `In Review`。候选 V1 只作为后续讨论基线；矩阵见 `docs/operations/UI_GOV_001_PAGE_MIGRATION_MATRIX_2026-08-14.md`。本轮未修改 `src/`、数据库、配置或公共资产；未开始全站换皮、批量 CSS 或逐页布局实施。等待产品负责人批准页面类型和迁移优先级，不建立下一治理任务。
 - No business task is implemented by the pure governance baseline commit.
