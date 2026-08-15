@@ -23,7 +23,7 @@
 | TASK-021 | P0 | UI-GOV-001 页面与组件只读盘点、迁移矩阵和优先级 | Done | TASK-018 | [TASK-021](docs/tasks/TASK-021.md) | 38 个路由、3 个系统状态入口、P0 类型、公共组件候选、依赖、顺序、截图证据和业务边界已收口；无业务代码修改，等待 UI-GOV-002A 批准 |
 | TASK-022 | P0 | UI-GOV-002A 最小视觉基础 | Done | TASK-021 | [TASK-022](docs/tasks/TASK-022.md) | 唯一 Token、Object Page 最小基础组件和非导航开发预览 `/ui-foundation-preview` 已完成；静态、浏览器桌面/窄屏、焦点、触控、CJK 和范围门禁通过；未迁移正式业务页面 |
 | TASK-023 | P0 | UI-GOV-003 案件 Object Page 参考实现 | Done | TASK-022 | [TASK-023](docs/tasks/TASK-023.md) | 两个开发预览路由已移除；手动滚动/hash、原生锚点 Enter、点击及前进后退的可回放浏览器证据通过；隔离模板下载确认及数据修改失效归 TASK-020；真实 Clerk/第二租户/生产环境另列发布门禁 |
-| TASK-024 | P0 | UI-GOV-002B Broker Desk Layout System 建设 | In Review | TASK-023 | [TASK-024](docs/tasks/TASK-024.md) | 阶段 A 已修订申请人 Responsive Form 的 1440/768/390 目标图，等待产品确认；普通字段无完整卡片边框，编辑器按断点重排；未改 `src/` |
+| TASK-024 | P0 | UI-GOV-002B Broker Desk Layout System 建设 | In Review | TASK-023 | [TASK-024](docs/tasks/TASK-024.md) | 条件批准复审图已补齐：768 编辑器紧跟选中行，390 编辑器紧跟选中字段且错误/按钮分行；桌面不变，未改 `src/` |
 | TASK-003 | P0 | Close the input-material merge completion loop | Proposed | TASK-002 | [TASK-003](docs/tasks/TASK-003.md) | Selection, confirmation, result, failure, and refresh evidence |
 | TASK-004 | P0 | Consolidate template-library and official-template boundaries | Proposed | TASK-002 | [TASK-004](docs/tasks/TASK-004.md) | Role-aware entry, visibility, and installation evidence |
 | TASK-005 | P0 | Separate official template draft and publish states | Proposed | TASK-004 | [TASK-005](docs/tasks/TASK-005.md) | Independent draft save, publish, immutable version, and failure evidence |
@@ -64,4 +64,5 @@
 - TASK-024 / UI-GOV-002B 已由 `Ready` 进入 `In Review`：阶段 A 只建立唯一规范和全路由 Floorplan 映射，目标图批准前不实现公共组件；后续只允许公共组合组件和案件总览“申请人” Responsive Form 试点，不批量迁移页面。首页最后处理。
 - TASK-024 阶段 A 目标图已提交：只覆盖案件总览“申请人” Responsive Form 的 1440/768/390 视口、正常字段、缺失/冲突字段和局部编辑面板；长期规范已移至 `docs/product/BROKER_DESK_LAYOUT_SYSTEM_V1.md`，迁移矩阵仍保留在 `docs/operations/`。等待产品负责人确认，不进入正式组件实现。
 - TASK-024 阶段 A 目标图完成一次修订：普通字段改为网格/留白/轻分隔，当前编辑字段增加选中态，章节取消强制高度，编辑器按 1440/768/390 断点定位；中日韩并排文本仅保留 QA 附图。任务仍 `In Review`，不进入公共组件实现。
+- TASK-024 条件批准复审修订完成：仅更新 768px 和 390px 目标图，编辑器改为紧跟选中行/字段，移动端错误信息与按钮分行；桌面目标图不变。等待复审通过后才进入公共组件实现。
 - No business task is implemented by the pure governance baseline commit.
