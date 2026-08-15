@@ -628,6 +628,13 @@ export function CaseOverview({
     window.setTimeout(() => document.querySelector<HTMLButtonElement>(`[data-field-trigger="${id}"]`)?.focus({ preventScroll: true }), 350);
   };
 
+  const activateAnchorWithKeyboard = (event: React.KeyboardEvent<HTMLAnchorElement>, id: string) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    setActiveSection(id);
+    scrollToId(id);
+  };
+
   const openEditor = (field: CaseOverviewField, trigger: HTMLButtonElement) => {
     lastTriggerRef.current = trigger;
     setEditingFieldKey(field.fieldKey);
@@ -692,7 +699,7 @@ export function CaseOverview({
       <nav data-case-anchor-nav aria-label={locale === "zh" ? "案件章节" : locale === "ko" ? "안건 섹션" : "案件セクション"} className="sticky top-[8.75rem] z-20 rounded-xl border border-slate-200 bg-white/95 px-2 py-2 shadow-sm backdrop-blur lg:top-[10.5rem]">
         <div className="hidden items-center gap-1 sm:flex">
           {visibleAnchors.map((section) => (
-            <a key={section.id} href={`#${section.id}`} onClick={(event) => { event.preventDefault(); setActiveSection(section.id); scrollToId(section.id); }} aria-current={activeSection === section.id ? "location" : undefined} className={`min-w-0 flex-1 truncate rounded-lg px-3 py-2 text-center text-xs font-black transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 ${activeSection === section.id ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"}`}>
+            <a key={section.id} href={`#${section.id}`} onClick={(event) => { event.preventDefault(); setActiveSection(section.id); scrollToId(section.id); }} onKeyDown={(event) => activateAnchorWithKeyboard(event, section.id)} aria-current={activeSection === section.id ? "location" : undefined} className={`min-w-0 flex-1 truncate rounded-lg px-3 py-2 text-center text-xs font-black transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 ${activeSection === section.id ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"}`}>
               {section.label}
             </a>
           ))}
@@ -700,7 +707,7 @@ export function CaseOverview({
             <details className="relative shrink-0">
               <summary className="cursor-pointer list-none rounded-lg px-3 py-2 text-xs font-black text-slate-600 hover:bg-slate-50">{locale === "zh" ? "更多" : locale === "ko" ? "더보기" : "その他"}</summary>
               <div className="absolute right-0 top-full mt-1 w-52 rounded-lg border border-slate-200 bg-white p-1 shadow-xl">
-                {overflowAnchors.map((section) => <a key={section.id} href={`#${section.id}`} onClick={(event) => { event.preventDefault(); setActiveSection(section.id); scrollToId(section.id); }} className={`block rounded-md px-3 py-2 text-left text-xs font-bold ${activeSection === section.id ? "bg-slate-100 text-slate-950" : "text-slate-600 hover:bg-slate-50"}`}>{section.label}</a>)}
+                {overflowAnchors.map((section) => <a key={section.id} href={`#${section.id}`} onClick={(event) => { event.preventDefault(); setActiveSection(section.id); scrollToId(section.id); }} onKeyDown={(event) => activateAnchorWithKeyboard(event, section.id)} className={`block rounded-md px-3 py-2 text-left text-xs font-bold ${activeSection === section.id ? "bg-slate-100 text-slate-950" : "text-slate-600 hover:bg-slate-50"}`}>{section.label}</a>)}
               </div>
             </details>
           ) : null}

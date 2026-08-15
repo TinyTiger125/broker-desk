@@ -1,7 +1,7 @@
 # TASK-023 / UI-GOV-003：案件 Object Page 参考实现
 
-- 状态: In Review
-- 当前阶段: UI-GOV-003 Checkpoint C 最小修复后独立复验仍未通过，保持 In Review
+- 状态: Done
+- 当前阶段: UI-GOV-003 Checkpoint C 最终证据收口完成
 - 优先级: P0
 - 负责人: 技术项目经理 / 实现 Agent / 独立审查 Agent
 - 依赖关系: TASK-022 已 Done；TASK-020 仍 Blocked，Checkpoint A 不得绕过或修复它
@@ -225,3 +225,29 @@ Checkpoint A 桌面方向和窄屏收口均已取得浏览器证据，产品负�
 4. **FAIL：隔离模板下载确认及数据修改后确认失效缺少独立复验。** 独立审查未确认隔离测试模板、实际下载确认和修改后重新要求确认的完整浏览器闭环；现有静态下载门禁测试不能替代该证据。
 
 主执行过程曾取得部分本地运行观察，但未由本轮独立审查 Agent 重新复核；按验收门禁不能将其折算为独立通过证据。因此 TASK-023 继续保持 `In Review`，不标记 `Done`。TASK-020 继续按自身条件保持 `Blocked`，本轮不自动关闭；UI-GOV-002B 不启动。
+
+## Checkpoint C：最终证据收口与验收归属修正（2026-08-15）
+
+产品负责人已明确：隔离模板下载确认及数据修改后的案件级确认失效属于 TASK-020 的输出闭环验收；本轮 UI 迁移未修改其业务语义，因此不再作为 TASK-023 的完成条件。TASK-020 继续保持 `Blocked`，等待其自身输出闭环证据。
+
+本轮 TASK-023 只收口以下范围：
+
+- 两个开发预览路由已移除，源码不再提供可执行入口。
+- 手动滚动时当前章节与 URL hash 同步；返回顶部后锚点栏仍可见且回到“相关人员”。
+- 锚点继续使用原生 `<a href="#...">`；增加对应的 Enter 键处理，Tab 聚焦和 Enter 激活取得正式页断言。
+- 点击锚点、手动滚动、前进/后退的 hash 与当前章节断言均通过。
+
+### 可回放浏览器证据
+
+- 断言报告：`/Users/laineyzhu/.codex/visualizations/2026/08/13/019ff978-5813-7073-8e44-920871b81849/task-023-anchor-evidence.json`
+- 截图：
+  - `/Users/laineyzhu/.codex/visualizations/2026/08/13/019ff978-5813-7073-8e44-920871b81849/task-023-anchor-property.png`
+  - `/Users/laineyzhu/.codex/visualizations/2026/08/13/019ff978-5813-7073-8e44-920871b81849/task-023-anchor-top.png`
+- JSON 已包含浏览器标识、视口、临时服务模式、完整 9 步操作序列、每步断言、实际观察结果和截图对应关系；断言结果全部为 `true`。
+- 断言覆盖：原生锚点唯一性、Enter 激活、手动滚动到“房产”后的 hash、返回顶部后的“相关人员” hash、锚点栏可见、点击以及前进/后退。
+
+### 最终审查与状态
+
+- 独立审查 Agent 未重新启动浏览器，只审核实现和补全后的证据；证据复核 `PASS`，确认 TASK-023 可标记 `Done`。
+- `npm run build`、`npm run lint`、`npm run typecheck`、`npm run test:workflow-rules`、`npm run test:case-field-catalog`、`npm run test:case-applicability`、`git diff --check` 均通过。
+- TASK-020 仍为 `Blocked`；UI-GOV-002B 不启动；两个开发预览路由不再重复审查。
