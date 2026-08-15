@@ -1,0 +1,161 @@
+.formLayout {
+  display: grid;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--bd-line);
+  border-radius: var(--bd-radius-lg);
+  background: var(--bd-surface);
+}
+
+.formFields,
+.formRow {
+  display: contents;
+}
+
+.formField {
+  min-width: 0;
+  padding: var(--bd-space-3);
+  border-bottom: 1px solid var(--bd-line);
+}
+
+.formFieldWide {
+  grid-column: 1 / -1;
+}
+
+.formFieldSelected {
+  border-inline-start: 3px solid var(--bd-accent);
+  background: var(--bd-surface-tint);
+  box-shadow: inset 0 0 0 var(--bd-focus-ring-width) var(--bd-focus-ring-color);
+}
+
+.formFieldBeforeSelected,
+.formFieldAfterSelected {
+  min-width: 0;
+}
+
+.editorSlot {
+  min-width: 0;
+  align-self: start;
+}
+
+.editorPanel {
+  min-width: 0;
+}
+
+.editorForm {
+  min-width: 0;
+}
+
+@media (min-width: 48rem) {
+  .formLayout:not([data-editor-open="true"]) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .formLayout[data-editor-open="true"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(20rem, 0.9fr);
+    align-items: start;
+  }
+
+  .formFields {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .formRow {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .editorSlot {
+    grid-column: 1 / -1;
+    border-top: 1px solid var(--bd-line);
+  }
+}
+
+@media (min-width: 64rem) {
+  .formLayout[data-editor-open="true"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(20rem, 0.9fr);
+    align-items: start;
+  }
+
+  .formLayout[data-editor-open="true"] .editorSlot {
+    grid-column: 3;
+    grid-row: 1 / -1;
+    position: sticky;
+    top: var(--bd-space-8);
+    border-top: 0;
+    border-left: 1px solid var(--bd-line);
+  }
+
+  .formLayout[data-editor-open="true"] .formFieldWide {
+    grid-column: 1 / 3;
+  }
+
+  .formFields,
+  .formRow {
+    display: contents;
+  }
+}
+
+@media (max-width: 47.9375rem) {
+  .formLayout {
+    display: block;
+  }
+
+  .formFields {
+    display: block;
+  }
+
+  .formRow {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .formFieldBeforeSelected {
+    order: 1;
+  }
+
+  .formFieldSelected {
+    order: 2;
+  }
+
+  .editorSlot {
+    order: 3;
+  }
+
+  .formFieldAfterSelected {
+    order: 4;
+  }
+
+  .formField {
+    padding: var(--bd-space-3);
+  }
+
+  .editorSlot {
+    grid-column: 1;
+    border-top: 1px solid var(--bd-line);
+  }
+
+  .editorPanel > div:first-child {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .editorPanel > div:first-child > button {
+    width: 100%;
+  }
+
+  .editorForm > div:last-child {
+    width: 100%;
+  }
+
+  .editorForm > div:last-child > div {
+    justify-content: stretch;
+  }
+
+  .editorForm > div:last-child button {
+    width: 100%;
+  }
+}

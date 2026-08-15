@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { CaseWorkbenchFieldForm } from "@/components/case-workbench-field-form";
+import { ResponsiveFormEditorSlot, ResponsiveFormField, ResponsiveFormLayout, ResponsiveFormRow } from "@/components/layout-system";
 import type { Locale } from "@/lib/locale";
+import layoutStyles from "@/components/layout-system/layout-system.module.css";
 
 export type CaseFieldInputSpec = {
   kind: "text" | "textarea" | "tel" | "email" | "money" | "number" | "date" | "select";
@@ -334,6 +336,36 @@ function fieldIssue(field: CaseOverviewField) {
   return Boolean(field.issueLabel);
 }
 
+function isApplicantChild(child: CaseOverviewChildSection) {
+  return child.id.includes("participants_applicant_");
+}
+
+function isWideResponsiveField(field: CaseOverviewField) {
+  return field.inputSpec.kind === "textarea";
+}
+
+function buildResponsiveFieldRows(fields: CaseOverviewField[]) {
+  const rows: CaseOverviewField[][] = [];
+  let index = 0;
+  while (index < fields.length) {
+    const current = fields[index];
+    const next = fields[index + 1];
+    if (isWideResponsiveField(current)) {
+      rows.push([current]);
+      index += 1;
+      continue;
+    }
+    if (next && !isWideResponsiveField(next)) {
+      rows.push([current, next]);
+      index += 2;
+      continue;
+    }
+    rows.push([current]);
+    index += 1;
+  }
+  return rows;
+}
+
 let suppressHashSyncUntil = 0;
 
 function findScrollContainer(element: HTMLElement) {
@@ -645,6 +677,17 @@ export function CaseOverview({
     window.requestAnimationFrame(() => lastTriggerRef.current?.focus({ preventScroll: true }));
   };
 
+  useEffect(() => {
+    if (!editingFieldKey) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      closeEditor();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [editingFieldKey]);
+
   const handleDownload = () => {
     if (!hasOutputTemplate || !downloadHref) {
       window.location.assign(outputHref);
@@ -665,6 +708,45 @@ export function CaseOverview({
 
   const visibleAnchors = sections.slice(0, 4);
   const overflowAnchors = sections.slice(4);
+  const editingApplicantField = editingField && sections.some((section) => section.children.some((child) => isApplicantChild(child) && child.fields.some((field) => field.fieldKey === editingField.fieldKey)));
+
+  const renderEditor = () => {
+    if (!editingField) return null;
+    return (
+      <CaseEditPanel
+        title={editingField.label}
+        context={editingField.treePath.join(" / ")}
+        issueLabel={fieldIssue(editingField) ? editingField.issueLabel : undefined}
+        closeLabel={locale === "zh" ? "取消" : locale === "ko" ? "취소" : "キャンセル"}
+        onClose={closeEditor}
+        className={layoutStyles.editorPanel}
+      >
+        <CaseWorkbenchFieldForm
+          action={saveAction}
+          caseId={caseId}
+          fieldKey={editingField.fieldKey}
+          returnField={editingField.fieldKey}
+          returnAnchor={fieldAnchor(editingField.fieldKey)}
+          showSaveWhenPristine
+          saveLabel={fieldIssue(editingField) ? (locale === "zh" ? "处理问题" : locale === "ko" ? "문제 처리" : "対応して保存") : (locale === "zh" ? "保存" : locale === "ko" ? "저장" : "保存")}
+          savingLabel={locale === "zh" ? "保存中" : locale === "ko" ? "저장 중" : "保存中"}
+          className={`${layoutStyles.editorForm} mt-5 space-y-4`}
+        >
+          <CaseEvidenceSummary
+            locale={locale}
+            title={locale === "zh" ? "资料候选" : locale === "ko" ? "자료 후보" : "資料候補"}
+            evidenceItems={editingField.evidenceItems}
+            currentValue={editingField.value}
+            candidateFieldKey={editingField.fieldKey}
+          />
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-xs font-black text-slate-600">{locale === "zh" ? "案件信息" : locale === "ko" ? "안건 정보" : "案件情報"}</p>
+            <div className="mt-2"><FieldInput field={editingField} locale={locale} /></div>
+          </div>
+        </CaseWorkbenchFieldForm>
+      </CaseEditPanel>
+    );
+  };
 
   return (
     <div ref={pageRef} className="flex min-w-0 flex-col gap-4 pb-16">
@@ -778,80 +860,86 @@ export function CaseOverview({
                 </div>
               </div>
               <div className="space-y-5 p-4 sm:p-6">
-                {section.children.map((child) => (
-                  <section key={child.id} id={`${section.id}-${child.id}`}>
-                    <h3 className="text-sm font-black text-slate-700">{child.label}</h3>
-                    <div className="mt-2 divide-y divide-slate-100 rounded-lg border border-slate-100">
-                      {child.fields.map((field) => (
-                        <article key={field.fieldKey} id={fieldAnchor(field.fieldKey)} style={{ scrollMarginTop: "var(--case-object-scroll-margin, 11rem)" }} className={`scroll-mt-[11rem] px-3 py-3 sm:px-4 ${fieldIssue(field) ? "bg-amber-50/45" : "bg-white"}`}>
-                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                            <div className="min-w-0 flex-1">
-                              <CaseFieldValue label={field.label} value={field.displayValue} required={field.required} />
-                              {fieldIssue(field) ? <CaseFieldState issueLabel={field.issueLabel} normalLabel={locale === "zh" ? "已填写" : locale === "ko" ? "입력됨" : "入力済み"} /> : null}
-                              {fieldIssue(field) && field.evidenceItems.length > 0 ? (
-                                <details className="mt-2 text-xs">
-                                  <summary className="cursor-pointer font-bold text-slate-600">{locale === "zh" ? "查看资料依据" : locale === "ko" ? "자료 근거 보기" : "資料の根拠を見る"}</summary>
-                                  <div className="mt-2 space-y-2 rounded-lg border border-slate-200 bg-white p-2">
-                                    {field.evidenceItems.slice(0, 3).map((evidence) => <div key={evidence.id} className="flex flex-wrap items-center justify-between gap-2"><span className="font-semibold text-slate-700">{evidence.value || "-"}</span><span className="text-[11px] font-semibold text-slate-500">{evidence.sourceLabel}</span></div>)}
-                                  </div>
-                                </details>
-                              ) : null}
+                {section.children.map((child) => {
+                  const applicantChild = isApplicantChild(child);
+                  const childEditing = Boolean(editingApplicantField && child.fields.some((field) => field.fieldKey === editingField?.fieldKey));
+                  const renderField = (field: CaseOverviewField) => (
+                    <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0 flex-1">
+                        <CaseFieldValue label={field.label} value={field.displayValue} required={field.required} />
+                        {fieldIssue(field) ? <CaseFieldState issueLabel={field.issueLabel} normalLabel={locale === "zh" ? "已填写" : locale === "ko" ? "입력됨" : "入力済み"} /> : null}
+                        {fieldIssue(field) && field.evidenceItems.length > 0 ? (
+                          <details className="mt-2 text-xs">
+                            <summary className="cursor-pointer font-bold text-slate-600">{locale === "zh" ? "查看资料依据" : locale === "ko" ? "자료 근거 보기" : "資料の根拠を見る"}</summary>
+                            <div className="mt-2 space-y-2 rounded-lg border border-slate-200 bg-white p-2">
+                              {field.evidenceItems.slice(0, 3).map((evidence) => <div key={evidence.id} className="flex flex-wrap items-center justify-between gap-2"><span className="font-semibold text-slate-700">{evidence.value || "-"}</span><span className="text-[11px] font-semibold text-slate-500">{evidence.sourceLabel}</span></div>)}
                             </div>
-                            <button
-                              type="button"
-                              data-field-trigger={fieldAnchor(field.fieldKey)}
-                              onClick={(event) => openEditor(field, event.currentTarget)}
-                              className={`inline-flex shrink-0 items-center justify-center rounded-lg border px-3 py-2 text-xs font-black focus:outline-none focus:ring-2 focus:ring-blue-300 ${fieldIssue(field) ? "border-amber-300 bg-white text-amber-900 hover:bg-amber-50" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`}
-                            >
-                              {fieldIssue(field) ? (locale === "zh" ? "处理问题" : locale === "ko" ? "문제 처리" : "要対応") : (locale === "zh" ? "编辑" : locale === "ko" ? "편집" : "編集")}
-                            </button>
-                          </div>
-                        </article>
-                      ))}
+                          </details>
+                        ) : null}
+                      </div>
+                      <button
+                        type="button"
+                        data-field-trigger={fieldAnchor(field.fieldKey)}
+                        onClick={(event) => openEditor(field, event.currentTarget)}
+                        className={`inline-flex shrink-0 items-center justify-center rounded-lg border px-3 py-2 text-xs font-black focus:outline-none focus:ring-2 focus:ring-blue-300 ${fieldIssue(field) ? "border-amber-300 bg-white text-amber-900 hover:bg-amber-50" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`}
+                      >
+                        {fieldIssue(field) ? (locale === "zh" ? "处理问题" : locale === "ko" ? "문제 처리" : "要対応") : (locale === "zh" ? "编辑" : locale === "ko" ? "편집" : "編集")}
+                      </button>
                     </div>
-                  </section>
-                ))}
+                  );
+
+                  return (
+                    <section key={child.id} id={`${section.id}-${child.id}`}>
+                      <h3 className="text-sm font-black text-slate-700">{child.label}</h3>
+                      {applicantChild ? (
+                        <ResponsiveFormLayout aria-label={child.label} editorOpen={childEditing} className="mt-2">
+                          <div className={layoutStyles.formFields}>
+                            {buildResponsiveFieldRows(child.fields).map((row) => (
+                              <ResponsiveFormRow key={row.map((field) => field.fieldKey).join("-")}>
+                                {row.map((field) => (
+                                  <Fragment key={field.fieldKey}>
+                                    <ResponsiveFormField
+                                      id={fieldAnchor(field.fieldKey)}
+                                      style={{ scrollMarginTop: "var(--case-object-scroll-margin, 11rem)" }}
+                                      className={`scroll-mt-[11rem] ${fieldIssue(field) ? "bg-amber-50/45" : "bg-white"} ${editingField?.fieldKey && row.some((rowField) => rowField.fieldKey === editingField.fieldKey) ? field.fieldKey === editingField.fieldKey ? layoutStyles.formFieldSelected : row.indexOf(field) < row.findIndex((rowField) => rowField.fieldKey === editingField.fieldKey) ? layoutStyles.formFieldBeforeSelected : layoutStyles.formFieldAfterSelected : ""}`}
+                                      wide={isWideResponsiveField(field)}
+                                      selected={editingField?.fieldKey === field.fieldKey}
+                                    >
+                                      {renderField(field)}
+                                    </ResponsiveFormField>
+                                  </Fragment>
+                                ))}
+                                {childEditing && editingField && row.some((field) => field.fieldKey === editingField.fieldKey) ? (
+                                  <ResponsiveFormEditorSlot ref={editorRef} aria-label={editingField.label}>
+                                    {renderEditor()}
+                                  </ResponsiveFormEditorSlot>
+                                ) : null}
+                              </ResponsiveFormRow>
+                            ))}
+                          </div>
+                        </ResponsiveFormLayout>
+                      ) : (
+                        <div className="mt-2 divide-y divide-slate-100 rounded-lg border border-slate-100">
+                          {child.fields.map((field) => (
+                            <article key={field.fieldKey} id={fieldAnchor(field.fieldKey)} style={{ scrollMarginTop: "var(--case-object-scroll-margin, 11rem)" }} className={`scroll-mt-[11rem] px-3 py-3 sm:px-4 ${fieldIssue(field) ? "bg-amber-50/45" : "bg-white"}`}>
+                              {renderField(field)}
+                            </article>
+                          ))}
+                        </div>
+                      )}
+                    </section>
+                  );
+                })}
               </div>
             </section>
           );
         })}
       </main>
 
-      {editingField ? (
+      {editingField && !editingApplicantField ? (
         <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/35 p-0 sm:p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeEditor(); }}>
           <div ref={editorRef} role="dialog" aria-modal="true" aria-label={editingField.label} className="h-full w-full max-w-xl overflow-y-auto bg-white p-4 shadow-2xl sm:rounded-2xl sm:p-6">
-            <CaseEditPanel
-              title={editingField.label}
-              context={editingField.treePath.join(" / ")}
-              issueLabel={fieldIssue(editingField) ? editingField.issueLabel : undefined}
-              closeLabel={locale === "zh" ? "取消" : locale === "ko" ? "취소" : "キャンセル"}
-              onClose={closeEditor}
-              className="border-0 p-0 shadow-none"
-            >
-            <CaseWorkbenchFieldForm
-              action={saveAction}
-              caseId={caseId}
-              fieldKey={editingField.fieldKey}
-              returnField={editingField.fieldKey}
-              returnAnchor={fieldAnchor(editingField.fieldKey)}
-              showSaveWhenPristine
-              saveLabel={fieldIssue(editingField) ? (locale === "zh" ? "处理问题" : locale === "ko" ? "문제 처리" : "対応して保存") : (locale === "zh" ? "保存" : locale === "ko" ? "저장" : "保存")}
-              savingLabel={locale === "zh" ? "保存中" : locale === "ko" ? "저장 중" : "保存中"}
-              className="mt-5 space-y-4"
-            >
-              <CaseEvidenceSummary
-                locale={locale}
-                title={locale === "zh" ? "资料候选" : locale === "ko" ? "자료 후보" : "資料候補"}
-                evidenceItems={editingField.evidenceItems}
-                currentValue={editingField.value}
-                candidateFieldKey={editingField.fieldKey}
-              />
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-xs font-black text-slate-600">{locale === "zh" ? "案件信息" : locale === "ko" ? "안건 정보" : "案件情報"}</p>
-                <div className="mt-2"><FieldInput field={editingField} locale={locale} /></div>
-              </div>
-            </CaseWorkbenchFieldForm>
-            </CaseEditPanel>
+            {renderEditor()}
           </div>
         </div>
       ) : null}

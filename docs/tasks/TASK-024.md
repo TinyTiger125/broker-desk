@@ -5,7 +5,7 @@
 - 优先级: P0
 - 负责人: 技术项目经理 / 实现 Agent / 独立审查 Agent
 - 依赖关系: TASK-023 已 Done；TASK-020 仍独立 Blocked，不因本任务绕过其输出闭环门禁
-- 当前阶段: Layout Contract 与目标图门禁；尚未批准正式代码实现
+- 当前阶段: 阶段 C 公共组件与申请人 Responsive Form 试点已实施；等待受保护正式页面的浏览器验收
 
 ## 任务名称
 
@@ -105,6 +105,14 @@
 
 ### 阶段 C：公共组合组件和单一试点（批准后才允许）
 
+阶段 A 目标图已于 2026-08-15 获产品负责人批准。阶段 C 已按批准范围实施：
+
+- `src/components/layout-system/index.tsx`
+- `src/components/layout-system/layout-system.module.css`
+- `src/components/case-overview.tsx` 中申请人 child 的 Responsive Form 接入
+
+实现保留快速补全与案件总览的工作差异，只对 `participants_applicant_` 子组接入新布局；未迁移其他页面，未改变字段、保存、权限、租户或输出语义。宽屏编辑器使用右侧列，768px 编辑器跟随完整字段行，390px 通过字段顺序将编辑器置于选中字段之后；内嵌编辑器使用区域语义，当前字段有独立 selected 状态。
+
 只建立后续迁移必需的公共组合组件，例如 `AppShell`、`DynamicPageHeader`、`PageActions`、`SectionNav`、`ResponsiveFormLayout`、`ListReportShell`、`WorklistShell`、`WizardShell`、`PreviewConfirmationShell`、`StateSurface` 和焦点/反馈组合。
 
 组件必须组合现有 UI Foundation 和唯一 Token，不复制案件领域数据组件，不建立第二套字段编辑系统。只在 `/cases/[id]` 的“申请人”章节进行 Responsive Form 试点；不得同时迁移其他正式页面。
@@ -193,7 +201,7 @@
 
 ## 当前状态
 
-`In Review`。阶段 A 的 Layout Contract、Floorplan 映射和 Responsive Form 目标图已提交；目标图未获产品负责人确认前不实现公共组件、不修改 `src/`，不迁移正式页面。
+`In Review`。阶段 A 目标图已获批准，阶段 C 实现与静态门禁已完成；独立审查确认范围、布局结构、唯一 Token 和内嵌编辑器语义，但正式 `/cases/[id]` 仍缺少 1440/768/390 浏览器布局、移动端无横向滚动、中日韩长文本、键盘、Escape、保存/取消后焦点与滚动恢复证据。当前本地浏览器被 Clerk 登录页阻断，不能宣称这些门禁通过。不得标记 Done，不能迁移其他页面。
 
 ## 停止条件与交接
 
