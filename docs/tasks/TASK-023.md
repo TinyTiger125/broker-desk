@@ -1,7 +1,7 @@
 # TASK-023 / UI-GOV-003：案件 Object Page 参考实现
 
 - 状态: In Review
-- 当前阶段: UI-GOV-003 Checkpoint C 验收收口未通过，保持 In Review
+- 当前阶段: UI-GOV-003 Checkpoint C 最小修复后独立复验仍未通过，保持 In Review
 - 优先级: P0
 - 负责人: 技术项目经理 / 实现 Agent / 独立审查 Agent
 - 依赖关系: TASK-022 已 Done；TASK-020 仍 Blocked，Checkpoint A 不得绕过或修复它
@@ -202,3 +202,26 @@ Checkpoint A 桌面方向和窄屏收口均已取得浏览器证据，产品负�
 - 发布环境门禁单独记录：真实 Clerk 登录、真实无权限拒绝、第二租户真实浏览器隔离、生产数据库和外部服务仍需 TASK-019/发布环境验证；认证、权限和租户过滤代码未在 `6b543261` 修改，自动化租户/会话/输出边界检查继续通过，因此不能仅因缺少生产环境无限期阻塞 UI 任务，但也不能用 demo 证据代替发布门禁。
 - `6b543261` 核对：当前 `main` HEAD 即该提交，直接父提交为 `f78b5cb`，提交范围仅含 TASK-023 允许的正式案件页面、共享案件组件、任务卡、BACKLOG 和当前交接；未修改认证、权限、数据库、API 或其他页面。
 - TASK-020 仍按自身条件保持 `Blocked`；本轮证据不得自动关闭它。两个 Agent 均不在本轮创建，当前活跃数量为 0。
+
+## Checkpoint C：授权最小修复与独立复验（2026-08-15）
+
+### 本轮授权边界
+
+本轮只允许在 TASK-023 内处理四项收口问题：移除两个开发预览路由；同步手动滚动后的当前章节与 URL hash；保持锚点的原生键盘语义；使用隔离测试模板复验下载确认及数据修改后的确认失效。不得重新设计页面、修改权限或租户逻辑、扩展输出功能、处理其他页面、启动 UI-GOV-002B 或扩大 TASK-020 验收范围。
+
+### 实施结果
+
+- 删除 `src/app/ui-foundation-preview/page.tsx` 和 `src/app/ui-gov-003-checkpoint-a/page.tsx`；当前源码不再提供这两个可执行路由入口。
+- 在 `src/components/case-overview.tsx` 中补充手动滚动的 hash 同步，并保留点击、`popstate`、动态布局变化和程序化滚动的抑制逻辑。章节控件继续使用原生 `<a href="#...">`，未引入自定义按钮语义或重复键盘处理。
+- 静态检查通过：`npm run lint`、`npm run typecheck`、`npm run build`、`npm run test:workflow-rules`、`npm run test:case-field-catalog`、`npm run test:case-applicability`、`npm run test:guarantee-download-gate`、`npm run test:tenant-session`、`npm run test:tenant-data-access`、`git diff --check`。
+
+### 独立复验结论
+
+独立审查 Agent 已按顺序启动、完成并退出；未修改文件。四项门禁结果如下：
+
+1. **PASS：两个开发预览路由已移除。** 独立审查确认两个路由文件已删除，源码未发现可执行入口；部署产物尚未作为独立生产证据验证。
+2. **FAIL：修复后的手动滚动—当前章节—URL hash 闭环缺少独立浏览器复验。** 独立审查确认代码已加入 `replaceState`，但没有采纳为正式通过证据的手动滚动、点击、前进/后退和刷新闭环记录。
+3. **FAIL：锚点键盘门禁缺少独立浏览器证据。** 独立审查确认原生 `<a href="#...">` 语义仍在，但没有取得正式页 Tab 聚焦和 Enter 激活的运行时证据。
+4. **FAIL：隔离模板下载确认及数据修改后确认失效缺少独立复验。** 独立审查未确认隔离测试模板、实际下载确认和修改后重新要求确认的完整浏览器闭环；现有静态下载门禁测试不能替代该证据。
+
+主执行过程曾取得部分本地运行观察，但未由本轮独立审查 Agent 重新复核；按验收门禁不能将其折算为独立通过证据。因此 TASK-023 继续保持 `In Review`，不标记 `Done`。TASK-020 继续按自身条件保持 `Blocked`，本轮不自动关闭；UI-GOV-002B 不启动。

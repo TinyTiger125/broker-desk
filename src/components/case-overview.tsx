@@ -334,6 +334,8 @@ function fieldIssue(field: CaseOverviewField) {
   return Boolean(field.issueLabel);
 }
 
+let suppressHashSyncUntil = 0;
+
 function findScrollContainer(element: HTMLElement) {
   let parent = element.parentElement;
   while (parent) {
@@ -444,10 +446,15 @@ function useActiveSection(sectionIds: string[]) {
     if (elements.length === 0) return;
     const scrollContainer = findScrollContainer(elements[0]);
     const observerRoot = scrollContainer && scrollContainer !== document.scrollingElement ? scrollContainer : null;
-    const updateFromScroll = () => {
+    const updateFromScroll = (syncHash = false) => {
       const boundary = getStickyOffset() + 8;
       const current = elements.filter((element) => element.getBoundingClientRect().top <= boundary).at(-1);
-      setActiveSection(current?.id ?? elements[0].id);
+      const nextSectionId = current?.id ?? elements[0].id;
+      setActiveSection(nextSectionId);
+      if (syncHash && Date.now() >= suppressHashSyncUntil) {
+        const nextHash = `#${nextSectionId}`;
+        if (window.location.hash !== nextHash) window.history.replaceState(window.history.state, "", nextHash);
+      }
     };
 
     const observer = new IntersectionObserver(
@@ -455,22 +462,24 @@ function useActiveSection(sectionIds: string[]) {
       { root: observerRoot, rootMargin: `-${Math.ceil(getStickyOffset())}px 0px -55% 0px`, threshold: [0, 0.1, 0.4] },
     );
     elements.forEach((element) => observer.observe(element));
-    const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(updateFromScroll);
+    const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => updateFromScroll());
     const header = document.querySelector<HTMLElement>("[data-case-object-header]");
     const anchorNav = document.querySelector<HTMLElement>("[data-case-anchor-nav]");
     if (header) resizeObserver?.observe(header);
     if (anchorNav) resizeObserver?.observe(anchorNav);
     const target = observerRoot ?? window;
-    target.addEventListener("scroll", updateFromScroll, { passive: true });
-    if (!observerRoot) document.addEventListener("scroll", updateFromScroll, { capture: true, passive: true });
-    window.addEventListener("resize", updateFromScroll, { passive: true });
+    const onScroll = () => updateFromScroll(true);
+    const onResize = () => updateFromScroll();
+    target.addEventListener("scroll", onScroll, { passive: true });
+    if (!observerRoot) document.addEventListener("scroll", onScroll, { capture: true, passive: true });
+    window.addEventListener("resize", onResize, { passive: true });
     updateFromScroll();
     return () => {
       observer.disconnect();
       resizeObserver?.disconnect();
-      target.removeEventListener("scroll", updateFromScroll);
-      if (!observerRoot) document.removeEventListener("scroll", updateFromScroll, { capture: true });
-      window.removeEventListener("resize", updateFromScroll);
+      target.removeEventListener("scroll", onScroll);
+      if (!observerRoot) document.removeEventListener("scroll", onScroll, { capture: true });
+      window.removeEventListener("resize", onResize);
     };
   }, [sectionIds]);
 
@@ -480,6 +489,7 @@ function useActiveSection(sectionIds: string[]) {
 function scrollToId(id: string, behavior: ScrollBehavior = "smooth", updateHistory = true) {
   const target = document.getElementById(id);
   if (!target) return;
+  suppressHashSyncUntil = Date.now() + (behavior === "smooth" ? 800 : 250);
   const scrollContainer = findScrollContainer(target);
   const documentScroller = document.scrollingElement;
   const usesWindow = !scrollContainer || scrollContainer === documentScroller;
@@ -602,7 +612,10 @@ export function CaseOverview({
     const onPopState = () => {
       const hash = window.location.hash.slice(1);
       if (hash) scrollToId(hash, "auto", false);
-      else window.scrollTo({ top: 0, behavior: "auto" });
+      else {
+        suppressHashSyncUntil = Date.now() + 250;
+        window.scrollTo({ top: 0, behavior: "auto" });
+      }
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
