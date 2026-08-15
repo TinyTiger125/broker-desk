@@ -1,7 +1,7 @@
 # UI-GOV-002B Layout Floorplan 映射矩阵
 
 - 状态: Draft，作为 TASK-024 阶段 A 设计输入
-- 规范来源: [`BROKER_DESK_LAYOUT_SYSTEM_V1.md`](BROKER_DESK_LAYOUT_SYSTEM_V1.md)
+- 规范来源: [`BROKER_DESK_LAYOUT_SYSTEM_V1.md`](../product/BROKER_DESK_LAYOUT_SYSTEM_V1.md)
 - 路由盘点来源: [`UI_GOV_001_PAGE_MIGRATION_MATRIX_2026-08-14.md`](UI_GOV_001_PAGE_MIGRATION_MATRIX_2026-08-14.md)
 - 说明: 本矩阵只冻结页面类型语言和迁移顺序，不批准本轮页面代码迁移
 

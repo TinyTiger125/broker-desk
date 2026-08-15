@@ -1,6 +1,6 @@
 # TASK-024 / UI-GOV-002B：Broker Desk Layout System 建设
 
-- 状态: Ready
+- 状态: In Review
 - UI-GOV 编号: UI-GOV-002B
 - 优先级: P0
 - 负责人: 技术项目经理 / 实现 Agent / 独立审查 Agent
@@ -21,7 +21,7 @@
 
 本任务不是全站换皮，也不是批量迁移页面。第一阶段只建立规范、Floorplan 映射和目标图；目标图获得产品负责人批准后，才允许建立公共组合组件，并以案件总览的“申请人”章节作为 Responsive Form 试点。
 
-唯一规范来源为 [`BROKER_DESK_LAYOUT_SYSTEM_V1.md`](../operations/BROKER_DESK_LAYOUT_SYSTEM_V1.md)。路由归属和迁移顺序记录在 [`UI_GOV_002B_LAYOUT_FLOORPLAN_MATRIX_2026-08-15.md`](../operations/UI_GOV_002B_LAYOUT_FLOORPLAN_MATRIX_2026-08-15.md)。二者都不替代产品术语规范、字段目录、业务规则或权限规则。
+唯一规范来源为 [`BROKER_DESK_LAYOUT_SYSTEM_V1.md`](../product/BROKER_DESK_LAYOUT_SYSTEM_V1.md)。路由归属和迁移顺序记录在 [`UI_GOV_002B_LAYOUT_FLOORPLAN_MATRIX_2026-08-15.md`](../operations/UI_GOV_002B_LAYOUT_FLOORPLAN_MATRIX_2026-08-15.md)。二者都不替代产品术语规范、字段目录、业务规则或权限规则。
 
 ## 本次范围
 
@@ -67,6 +67,25 @@
 本阶段禁止修改 `src/`、Token、公共组件、正式页面、数据库、API、权限、导航和业务文案。
 
 ### 阶段 B：目标图批准门禁
+
+阶段 A 的 Responsive Form 目标图已按产品负责人批准范围提交，当前等待视觉确认；正式组件实现仍未获批准。
+
+### 阶段 A 目标图提交（2026-08-15）
+
+本轮只提交案件总览“申请人”章节的 Responsive Form 目标图，不制作正式组件、不修改生产页面。三张图使用同一组代表性字段，覆盖短字段、长地址、缺失、资料冲突、编辑面板和中文/日文/韩文长文本：
+
+- 1440：两列字段组；长地址跨列；局部编辑面板位于右侧。
+- 768：两列字段组保持可读；局部编辑面板移到字段区下方。
+- 390：字段、长文本样本和编辑面板全部单列；不依赖横向滚动。
+- 正常字段不长期显示编辑按钮；章节保留“编辑本组”；缺失/冲突字段保留“处理问题”。
+
+目标图证据（设计画布导出，不是正式页面浏览器验收）：
+
+- [1440 目标图](/Users/laineyzhu/.codex/visualizations/2026/08/13/019ff978-5813-7073-8e44-920871b81849/task-024-applicant-1440.png)
+- [768 目标图](/Users/laineyzhu/.codex/visualizations/2026/08/13/019ff978-5813-7073-8e44-920871b81849/task-024-applicant-768.png)
+- [390 目标图](/Users/laineyzhu/.codex/visualizations/2026/08/13/019ff978-5813-7073-8e44-920871b81849/task-024-applicant-390.png)
+
+当前门禁：等待产品负责人确认目标图；不得据此推断正式响应式、键盘、数据保存或业务回归已经通过。
 
 目标图至少覆盖：
 
@@ -148,7 +167,7 @@
 ### 阶段 A 只读/治理文档
 
 - `docs/tasks/TASK-024.md`
-- `docs/operations/BROKER_DESK_LAYOUT_SYSTEM_V1.md`
+- `docs/product/BROKER_DESK_LAYOUT_SYSTEM_V1.md`
 - `docs/operations/UI_GOV_002B_LAYOUT_FLOORPLAN_MATRIX_2026-08-15.md`
 - `BACKLOG.md`
 - `docs/operations/CURRENT_WORKING_CONTEXT.md`
@@ -169,7 +188,7 @@
 
 ## 当前状态
 
-`Ready`。阶段 A 只允许完成 Layout Contract、Floorplan 映射和目标图；目标图未获产品负责人批准前不实现公共组件、不修改 `src/`，不迁移正式页面。
+`In Review`。阶段 A 的 Layout Contract、Floorplan 映射和 Responsive Form 目标图已提交；目标图未获产品负责人确认前不实现公共组件、不修改 `src/`，不迁移正式页面。
 
 ## 停止条件与交接
 
