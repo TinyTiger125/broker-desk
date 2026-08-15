@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { CaseWorkbenchFieldForm } from "@/components/case-workbench-field-form";
 import { ResponsiveFormEditorSlot, ResponsiveFormField, ResponsiveFormLayout, ResponsiveFormRow } from "@/components/layout-system";
@@ -593,7 +593,7 @@ export function CaseOverview({
   const [editingFieldKey, setEditingFieldKey] = useState<string | null>(null);
   const pageRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
-  const lastTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const lastTriggerIdRef = useRef<string | null>(null);
   const hasBlockingOutput = outputBlockers.length > 0;
   const isConfirmedForCurrentData = confirmedVersion === dataVersion;
   const attentionFields = useMemo(
@@ -627,6 +627,12 @@ export function CaseOverview({
       input?.focus();
     });
     return () => window.cancelAnimationFrame(frame);
+  }, [editingFieldKey]);
+
+  useLayoutEffect(() => {
+    if (editingFieldKey || !lastTriggerIdRef.current) return;
+    const triggerId = lastTriggerIdRef.current;
+    document.querySelector<HTMLButtonElement>(`[data-field-trigger="${triggerId}"]`)?.focus({ preventScroll: true });
   }, [editingFieldKey]);
 
   useEffect(() => {
@@ -667,14 +673,13 @@ export function CaseOverview({
     scrollToId(id);
   };
 
-  const openEditor = (field: CaseOverviewField, trigger: HTMLButtonElement) => {
-    lastTriggerRef.current = trigger;
+  const openEditor = (field: CaseOverviewField) => {
+    lastTriggerIdRef.current = fieldAnchor(field.fieldKey);
     setEditingFieldKey(field.fieldKey);
   };
 
   const closeEditor = () => {
     setEditingFieldKey(null);
-    window.requestAnimationFrame(() => lastTriggerRef.current?.focus({ preventScroll: true }));
   };
 
   useEffect(() => {
@@ -880,7 +885,7 @@ export function CaseOverview({
                       <button
                         type="button"
                         data-field-trigger={fieldAnchor(field.fieldKey)}
-                        onClick={(event) => openEditor(field, event.currentTarget)}
+                        onClick={() => openEditor(field)}
                         className={`inline-flex shrink-0 items-center justify-center rounded-lg border px-3 py-2 text-xs font-black focus:outline-none focus:ring-2 focus:ring-blue-300 ${fieldIssue(field) ? "border-amber-300 bg-white text-amber-900 hover:bg-amber-50" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`}
                       >
                         {fieldIssue(field) ? (locale === "zh" ? "处理问题" : locale === "ko" ? "문제 처리" : "要対応") : (locale === "zh" ? "编辑" : locale === "ko" ? "편집" : "編集")}
@@ -896,19 +901,34 @@ export function CaseOverview({
                           <div className={layoutStyles.formFields}>
                             {buildResponsiveFieldRows(child.fields).map((row) => (
                               <ResponsiveFormRow key={row.map((field) => field.fieldKey).join("-")}>
-                                {row.map((field) => (
-                                  <Fragment key={field.fieldKey}>
-                                    <ResponsiveFormField
-                                      id={fieldAnchor(field.fieldKey)}
-                                      style={{ scrollMarginTop: "var(--case-object-scroll-margin, 11rem)" }}
-                                      className={`scroll-mt-[11rem] ${fieldIssue(field) ? "bg-amber-50/45" : "bg-white"} ${editingField?.fieldKey && row.some((rowField) => rowField.fieldKey === editingField.fieldKey) ? field.fieldKey === editingField.fieldKey ? layoutStyles.formFieldSelected : row.indexOf(field) < row.findIndex((rowField) => rowField.fieldKey === editingField.fieldKey) ? layoutStyles.formFieldBeforeSelected : layoutStyles.formFieldAfterSelected : ""}`}
-                                      wide={isWideResponsiveField(field)}
-                                      selected={editingField?.fieldKey === field.fieldKey}
-                                    >
-                                      {renderField(field)}
-                                    </ResponsiveFormField>
-                                  </Fragment>
-                                ))}
+                                {row.map((field, fieldIndex) => {
+                                  const selectedIndex = editingField ? row.findIndex((rowField) => rowField.fieldKey === editingField.fieldKey) : -1;
+                                  const selectionClass = selectedIndex >= 0
+                                    ? fieldIndex === selectedIndex
+                                      ? layoutStyles.formFieldSelected
+                                      : fieldIndex < selectedIndex
+                                        ? layoutStyles.formFieldBeforeSelected
+                                        : layoutStyles.formFieldAfterSelected
+                                    : "";
+                                  const columnClass = isWideResponsiveField(field)
+                                    ? ""
+                                    : fieldIndex === 1
+                                      ? layoutStyles.formFieldColumnTwo
+                                      : layoutStyles.formFieldColumnOne;
+                                  return (
+                                    <Fragment key={field.fieldKey}>
+                                      <ResponsiveFormField
+                                        id={fieldAnchor(field.fieldKey)}
+                                        style={{ scrollMarginTop: "var(--case-object-scroll-margin, 11rem)" }}
+                                        className={`scroll-mt-[11rem] ${fieldIssue(field) ? "bg-amber-50/45" : "bg-white"} ${selectionClass} ${columnClass}`}
+                                        wide={isWideResponsiveField(field)}
+                                        selected={editingField?.fieldKey === field.fieldKey}
+                                      >
+                                        {renderField(field)}
+                                      </ResponsiveFormField>
+                                    </Fragment>
+                                  );
+                                })}
                                 {childEditing && editingField && row.some((field) => field.fieldKey === editingField.fieldKey) ? (
                                   <ResponsiveFormEditorSlot ref={editorRef} aria-label={editingField.label}>
                                     {renderEditor()}

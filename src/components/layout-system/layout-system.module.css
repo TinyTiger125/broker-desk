@@ -22,6 +22,14 @@
   grid-column: 1 / -1;
 }
 
+.formFieldColumnOne {
+  grid-column: 1;
+}
+
+.formFieldColumnTwo {
+  grid-column: 2;
+}
+
 .formFieldSelected {
   border-inline-start: 3px solid var(--bd-accent);
   background: var(--bd-surface-tint);
@@ -131,6 +139,12 @@
 
   .formField {
     padding: var(--bd-space-3);
+  }
+
+  .formFieldColumnOne,
+  .formFieldColumnTwo,
+  .formFieldWide {
+    grid-column: 1;
   }
 
   .editorSlot {
