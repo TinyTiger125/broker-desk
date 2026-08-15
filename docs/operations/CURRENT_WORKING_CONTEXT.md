@@ -14,7 +14,7 @@
 - `UI-GOV-001 / TASK-021` 已 Done。`Broker Desk 页面与交互规范 V1` 仍仅作为候选执行基线；页面迁移矩阵已收口 P0 页面类型、唯一主要任务、重复组件、公共组件候选、业务依赖、迁移顺序、当前截图/录屏证据和不可改变的业务能力。`/cases/new` 已按“无资料直接创建”从 P0 调整为 P1，不与资料导入 Wizard 混同。本轮未修改 `src/`、数据库、配置、公共资产或 `.cursor`，未开始全站换皮、批量 CSS 或逐页布局实施。下一步只等待 UI-GOV-002A 批准。
 - `TASK-022 / UI-GOV-002A 最小视觉基础` 已 Done；其基础组件已被 TASK-023 正式案件页参考实现使用。非导航开发预览路由已随 TASK-023 收口移除；TASK-024 另行承担 Layout System 的目标图和后续试点门禁。
 - `TASK-023 / UI-GOV-003` 已 Done：Checkpoint A/B/C 完成；两个开发预览路由移除，正式案件页手动滚动/hash、原生锚点 Enter、点击及前进后退的可回放浏览器证据通过。隔离模板下载确认及数据修改后的确认失效已按产品决定归回 `TASK-020`；`TASK-020` 仍 `Blocked`，不启动 UI-GOV-002B。
-- `TASK-024 / UI-GOV-002B` 处于 `In Review`：已提交案件总览“申请人” Responsive Form 的 1440/768/390 目标图及正常/异常/编辑局部状态，等待产品确认。长期规范位于 `docs/product/BROKER_DESK_LAYOUT_SYSTEM_V1.md`，迁移矩阵仍在 `docs/operations/`；确认前不修改 `src/`，不建立公共运行组件，不进行页面迁移。禁止全站换皮、批量 CSS、第二套 Token；首页最后处理。
+- `TASK-024 / UI-GOV-002B` 处于 `In Review`：申请人 Responsive Form 目标图已完成一次修订，普通字段采用网格/留白/轻分隔，当前编辑字段有选中态，章节无强制高度，编辑器按 1440/768/390 断点重排；中日韩并排文本仅作 QA 附图。长期规范位于 `docs/product/BROKER_DESK_LAYOUT_SYSTEM_V1.md`，迁移矩阵仍在 `docs/operations/`；确认前不修改 `src/`，不建立公共运行组件，不进行页面迁移。禁止全站换皮、批量 CSS、第二套 Token；首页最后处理。
 - B 锚点证据已覆盖实际滚动容器、动态偏移、IntersectionObserver/ResizeObserver、scroll-margin-top、hash push/popstate、手动滚动、返回顶部、property→contract→back→forward 和带 hash 刷新；390px overview 无横向溢出且首个字段进入首屏，quick 有窄屏“下一项任务”入口。完整外部权限、租户和下载证据前停止，不启动 UI-GOV-002B。
 - C+ 案件总览设计基线已获产品负责人批准；中文字段/章节标签已接入 149 项中日对照，官方表单原始日文标题保持不变。`TASK-020` 不修改生产认证、租户隔离、数据库或 TASK-005～008；韩文字段完整对照源缺失，不能宣称三语言通过。
 - 不补建独立的 `PM-HANDOFF-001` 任务卡：`AGENTS.md` 要求实施任务使用指定任务卡，但没有要求只读接管单独建卡；本文件、`BACKLOG.md` 和 `TASK-014` 已提供足够交接证据。
