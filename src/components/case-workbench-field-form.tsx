@@ -1,8 +1,9 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
+import { isValidJapanesePostalCode } from "@/lib/japanese-postal-code-validation";
 
 type CaseWorkbenchFieldFormProps = {
   action: (formData: FormData) => void | Promise<void>;
@@ -11,6 +12,7 @@ type CaseWorkbenchFieldFormProps = {
   returnNode?: string;
   returnField?: string;
   returnAnchor?: string;
+  returnView?: "quick" | "overview";
   showSaveWhenPristine?: boolean;
   className?: string;
   saveLabel: string;
@@ -54,6 +56,7 @@ export function CaseWorkbenchFieldForm({
   returnNode,
   returnField,
   returnAnchor = "case-main-editor",
+  returnView,
   showSaveWhenPristine = false,
   className,
   saveLabel,
@@ -61,18 +64,52 @@ export function CaseWorkbenchFieldForm({
   children,
 }: CaseWorkbenchFieldFormProps) {
   const [dirty, setDirty] = useState(false);
+  const scrollTopRef = useRef<HTMLInputElement>(null);
 
   return (
     <form
       action={action}
-      onChange={() => setDirty(true)}
-      onInput={() => setDirty(true)}
-      onSubmit={() => setDirty(false)}
+      onChange={(event) => {
+        setDirty(true);
+        const target = event.target;
+        if (target instanceof HTMLInputElement && target.dataset.caseValidation === "japanese-postal-code") {
+          target.setCustomValidity("");
+        }
+      }}
+      onInput={(event) => {
+        setDirty(true);
+        const target = event.target;
+        if (target instanceof HTMLInputElement && target.dataset.caseValidation === "japanese-postal-code") {
+          target.setCustomValidity("");
+        }
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" && (event.nativeEvent.isComposing || event.keyCode === 229)) {
+          event.preventDefault();
+        }
+      }}
+      onSubmit={(event) => {
+        const postalInput = event.currentTarget.querySelector<HTMLInputElement>('input[data-case-validation="japanese-postal-code"]');
+        if (postalInput && postalInput.value.trim() && !isValidJapanesePostalCode(postalInput.value)) {
+          event.preventDefault();
+          postalInput.setCustomValidity(postalInput.dataset.validationMessage || "日本の郵便番号は7桁で入力してください。");
+          postalInput.reportValidity();
+          postalInput.focus();
+          return;
+        }
+        postalInput?.setCustomValidity("");
+        if (scrollTopRef.current) {
+          scrollTopRef.current.value = String(Math.max(0, Math.round(document.scrollingElement?.scrollTop ?? window.scrollY)));
+        }
+        setDirty(false);
+      }}
       className={className}
     >
       <input type="hidden" name="caseId" value={caseId} />
       <input type="hidden" name="presentFieldKeysJson" value={JSON.stringify([fieldKey])} />
       <input type="hidden" name="returnAnchor" value={returnAnchor} />
+      <input type="hidden" name="returnScrollTop" ref={scrollTopRef} value="" readOnly />
+      {returnView ? <input type="hidden" name="returnView" value={returnView} /> : null}
       {returnNode ? <input type="hidden" name="returnNode" value={returnNode} /> : null}
       {returnField ? <input type="hidden" name="returnField" value={returnField} /> : null}
       {children}

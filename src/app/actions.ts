@@ -124,7 +124,7 @@ import type { InputFileExtractionResult } from "@/lib/input-file-extractor";
 import { queueExcelImportSource } from "@/lib/excel-import-queue";
 import { queueIdentityImportSources } from "@/lib/identity-import-queue";
 import { createClerkInvitationForTenantMember } from "@/lib/clerk-invitations";
-import { CASE_FIELD_KEYS, isKnownCaseFieldKey } from "@/lib/case-field-catalog";
+import { CASE_FIELD_KEYS, getCaseFieldDefinition, isKnownCaseFieldKey } from "@/lib/case-field-catalog";
 import {
   CASE_WORKBENCH_FIELD_KEYS,
   buildCaseWorkbenchRuleMap,
@@ -138,7 +138,7 @@ import {
   writeCaseApplicabilitySettings,
 } from "@/lib/case-field-applicability";
 import { getCaseWorkbenchProgressSnapshot } from "@/lib/case-workbench-progress";
-import { applyJapanesePostalCodeAddressCompletions } from "@/lib/japan-postal-code";
+import { applyJapanesePostalCodeAddressCompletions, isValidJapanesePostalCode } from "@/lib/japan-postal-code";
 import {
   buildExtractionReviewCorrectionEvents,
   buildGuaranteeDraftCorrectionEvents,
@@ -2875,6 +2875,11 @@ function safeWorkbenchFieldToken(value: FormDataEntryValue | null): string {
   return isCaseWorkbenchFieldKey(token) || isKnownCaseFieldKey(token) ? token : "";
 }
 
+function safeScrollTop(value: FormDataEntryValue | null): string {
+  const token = String(value ?? "").trim();
+  return /^\d+$/.test(token) ? token : "";
+}
+
 const GUARANTEE_APPLICATION_PREVIEW_CASE_FIELD_KEYS = [
   "property.name",
   "property.roomNumber",
@@ -3128,6 +3133,24 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
   const useCandidateFieldKey = String(formData.get("useCandidateField") ?? "").trim();
   const saveMode = String(formData.get("saveMode") ?? "").trim();
   const shouldBatchUseCandidates = saveMode === "confirm_visible_candidates" || saveMode === "confirm_trusted_candidates";
+  const returnAnchor = safeHashAnchor(formData.get("returnAnchor"));
+  const returnView = safeQueryToken(formData.get("returnView"));
+  const returnScrollTop = safeScrollTop(formData.get("returnScrollTop"));
+  const invalidPostalFieldKey = fieldKeysToSave.find((fieldKey) => {
+    if (getCaseFieldDefinition(fieldKey)?.valueKind !== "postal_code") return false;
+    const rawValue = String(formData.get(`field:${fieldKey}`) ?? "").trim();
+    const candidateValue = String(formData.get(`candidate:${fieldKey}`) ?? "").trim();
+    const nextValue = (fieldKey === useCandidateFieldKey || shouldBatchUseCandidates) && candidateValue ? candidateValue : rawValue;
+    return Boolean(nextValue) && !isValidJapanesePostalCode(nextValue);
+  });
+  if (invalidPostalFieldKey) {
+    const invalidParams = new URLSearchParams();
+    if (returnView) invalidParams.set("view", returnView);
+    invalidParams.set("flash", "case_field_invalid");
+    invalidParams.set("field", invalidPostalFieldKey);
+    if (returnScrollTop) invalidParams.set("scrollTop", returnScrollTop);
+    redirect(`/cases/${caseId}?${invalidParams.toString()}${returnAnchor ? `#${returnAnchor}` : ""}`);
+  }
   fieldKeysToSave.forEach((fieldKey) => {
     const previousValue = getCaseFieldValue(brokerageCase.confirmedDataJson, fieldKey);
     let nextValue = String(formData.get(`field:${fieldKey}`) ?? "").trim();
@@ -3220,7 +3243,6 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
 
   revalidatePath(`/cases/${caseId}`);
   revalidatePath("/output-center");
-  const returnAnchor = safeHashAnchor(formData.get("returnAnchor"));
   const guaranteeTemplate = safeQueryToken(formData.get("guaranteeTemplate"));
   const returnNode = safeQueryToken(formData.get("returnNode"));
   const returnField = safeWorkbenchFieldToken(formData.get("returnField"));
@@ -3228,6 +3250,8 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
   if (guaranteeTemplate) redirectParams.set("guaranteeTemplate", guaranteeTemplate);
   if (returnNode) redirectParams.set("node", returnNode);
   if (returnField) redirectParams.set("field", returnField);
+  if (returnView) redirectParams.set("view", returnView);
+  if (returnScrollTop) redirectParams.set("scrollTop", returnScrollTop);
   redirectParams.set("flash", "case_workbench_saved");
   if (progressGain > 0) {
     redirectParams.set("progressFrom", String(progressBefore.percent));

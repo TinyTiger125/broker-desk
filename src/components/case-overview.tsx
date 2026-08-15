@@ -15,6 +15,7 @@ export type CaseFieldInputSpec = {
   rows?: number;
   placeholder?: Partial<Record<Locale, string>>;
   options?: string[];
+  validation?: "japanese_postal_code";
 };
 
 type EvidenceItem = {
@@ -414,7 +415,7 @@ export function CaseFieldInput({
 
   if (spec.kind === "select") {
     return (
-      <select name={name} defaultValue={value} aria-label={label} className={inputClass(tone)}>
+      <select name={name} defaultValue={value} aria-label={label} data-case-validation={spec.validation?.replaceAll("_", "-")} className={inputClass(tone)}>
         <option value="">{locale === "zh" ? "未填写" : locale === "ko" ? "미입력" : "未入力"}</option>
         {value && !currentOptionExists ? <option value={value}>{value}</option> : null}
         {spec.options?.map((option) => <option key={option} value={option}>{option}</option>)}
@@ -433,6 +434,8 @@ export function CaseFieldInput({
         type={spec.kind === "date" ? "date" : spec.kind === "email" ? "email" : spec.kind === "tel" ? "tel" : "text"}
         inputMode={spec.inputMode}
         aria-label={label}
+        data-case-validation={spec.validation?.replaceAll("_", "-")}
+        data-validation-message={spec.validation === "japanese_postal_code" ? locale === "zh" ? "日本邮政编码必须为7位数字。" : locale === "ko" ? "일본 우편번호는 7자리로 입력해 주세요." : "日本の郵便番号は7桁で入力してください。" : undefined}
         defaultValue={value}
         placeholder={placeholder}
         className={`${inputClass(tone)} ${spec.unit ? "pr-14" : ""}`}
@@ -565,6 +568,8 @@ export function CaseOverview({
   hasOutputTemplate,
   saveAction,
   flash,
+  initialFieldKey,
+  initialScrollTop,
 }: {
   caseId: string;
   caseTitle: string;
@@ -583,6 +588,8 @@ export function CaseOverview({
   hasOutputTemplate: boolean;
   saveAction: SaveAction;
   flash?: ReactNode;
+  initialFieldKey?: string;
+  initialScrollTop?: number;
 }) {
   const sectionIds = useMemo(() => sections.map((section) => section.id), [sections]);
   const [activeSection, setActiveSection] = useActiveSection(sectionIds);
@@ -591,6 +598,7 @@ export function CaseOverview({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmedVersion, setConfirmedVersion] = useState<string | null>(null);
   const [editingFieldKey, setEditingFieldKey] = useState<string | null>(null);
+  const [wideResponsiveLayout, setWideResponsiveLayout] = useState(false);
   const pageRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
   const lastTriggerIdRef = useRef<string | null>(null);
@@ -601,6 +609,20 @@ export function CaseOverview({
     [sections],
   );
   const editingField = editingFieldKey ? sections.flatMap((section) => section.children.flatMap((child) => child.fields)).find((field) => field.fieldKey === editingFieldKey) : undefined;
+  const editingSection = editingField
+    ? sections.find((section) => section.children.some((child) => child.fields.some((field) => field.fieldKey === editingField.fieldKey)))
+    : undefined;
+  const initialFieldSectionId = initialFieldKey
+    ? sections.find((section) => section.children.some((child) => child.fields.some((field) => field.fieldKey === initialFieldKey)))?.id
+    : undefined;
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(min-width: 64rem)");
+    const syncViewport = () => setWideResponsiveLayout(mediaQuery.matches);
+    syncViewport();
+    mediaQuery.addEventListener?.("change", syncViewport);
+    return () => mediaQuery.removeEventListener?.("change", syncViewport);
+  }, []);
 
   useEffect(() => {
     const page = pageRef.current;
@@ -637,14 +659,30 @@ export function CaseOverview({
 
   useEffect(() => {
     const hash = window.location.hash.slice(1);
-    if (!hash) return;
+    const initialFieldAnchor = initialFieldKey ? fieldAnchor(initialFieldKey) : "";
+    const targetId = hash || initialFieldAnchor;
+    if (!targetId && initialScrollTop === undefined) return;
     const frame = window.requestAnimationFrame(() => {
-      scrollToId(hash, "auto", false);
-      const trigger = document.querySelector<HTMLButtonElement>(`[data-field-trigger="${hash}"]`);
+      suppressHashSyncUntil = Date.now() + 600;
+      if (initialScrollTop === undefined && targetId) scrollToId(targetId, "auto", false);
+      const trigger = initialFieldAnchor
+        ? document.querySelector<HTMLButtonElement>(`[data-field-trigger="${initialFieldAnchor}"]`)
+        : targetId.startsWith("case-field-")
+          ? document.querySelector<HTMLButtonElement>(`[data-field-trigger="${targetId}"]`)
+          : null;
       trigger?.focus({ preventScroll: true });
+      if (initialScrollTop !== undefined) {
+        window.requestAnimationFrame(() => {
+          window.scrollTo({ top: Math.max(0, initialScrollTop), behavior: "auto" });
+          if (initialFieldSectionId) {
+            window.history.replaceState(window.history.state, "", `#${initialFieldSectionId}`);
+          }
+          trigger?.focus({ preventScroll: true });
+        });
+      }
     });
     return () => window.cancelAnimationFrame(frame);
-  }, []);
+  }, [initialFieldKey, initialFieldSectionId, initialScrollTop]);
 
   useEffect(() => {
     const onPopState = () => {
@@ -731,7 +769,8 @@ export function CaseOverview({
           caseId={caseId}
           fieldKey={editingField.fieldKey}
           returnField={editingField.fieldKey}
-          returnAnchor={fieldAnchor(editingField.fieldKey)}
+          returnAnchor={editingSection?.id ?? fieldAnchor(editingField.fieldKey)}
+          returnView="overview"
           showSaveWhenPristine
           saveLabel={fieldIssue(editingField) ? (locale === "zh" ? "处理问题" : locale === "ko" ? "문제 처리" : "対応して保存") : (locale === "zh" ? "保存" : locale === "ko" ? "저장" : "保存")}
           savingLabel={locale === "zh" ? "保存中" : locale === "ko" ? "저장 중" : "保存中"}
@@ -886,6 +925,11 @@ export function CaseOverview({
                         type="button"
                         data-field-trigger={fieldAnchor(field.fieldKey)}
                         onClick={() => openEditor(field)}
+                        onKeyDown={(event) => {
+                          if (event.key !== "Enter" && event.key !== " ") return;
+                          event.preventDefault();
+                          openEditor(field);
+                        }}
                         className={`inline-flex shrink-0 items-center justify-center rounded-lg border px-3 py-2 text-xs font-black focus:outline-none focus:ring-2 focus:ring-blue-300 ${fieldIssue(field) ? "border-amber-300 bg-white text-amber-900 hover:bg-amber-50" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`}
                       >
                         {fieldIssue(field) ? (locale === "zh" ? "处理问题" : locale === "ko" ? "문제 처리" : "要対応") : (locale === "zh" ? "编辑" : locale === "ko" ? "편집" : "編集")}
@@ -929,7 +973,7 @@ export function CaseOverview({
                                     </Fragment>
                                   );
                                 })}
-                                {childEditing && editingField && row.some((field) => field.fieldKey === editingField.fieldKey) ? (
+                                {!wideResponsiveLayout && childEditing && editingField && row.some((field) => field.fieldKey === editingField.fieldKey) ? (
                                   <ResponsiveFormEditorSlot ref={editorRef} aria-label={editingField.label}>
                                     {renderEditor()}
                                   </ResponsiveFormEditorSlot>
@@ -937,6 +981,11 @@ export function CaseOverview({
                               </ResponsiveFormRow>
                             ))}
                           </div>
+                          {wideResponsiveLayout && childEditing && editingField ? (
+                            <ResponsiveFormEditorSlot ref={editorRef} aria-label={editingField.label}>
+                              {renderEditor()}
+                            </ResponsiveFormEditorSlot>
+                          ) : null}
                         </ResponsiveFormLayout>
                       ) : (
                         <div className="mt-2 divide-y divide-slate-100 rounded-lg border border-slate-100">

@@ -1,5 +1,8 @@
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
+import { isValidJapanesePostalCode, normalizeJapanesePostalCode } from "@/lib/japanese-postal-code-validation";
+
+export { isValidJapanesePostalCode, normalizeJapanesePostalCode } from "@/lib/japanese-postal-code-validation";
 
 const POSTAL_CODE_INDEX_PATH = join(process.cwd(), ".broker-desk", "japan-postal-code-index.json");
 const POSTAL_CODE_LOOKUP_STATUS_KEY = "__postalCodeLookups";
@@ -55,13 +58,6 @@ const POSTAL_TO_ADDRESS_FIELD_PAIRS = [
 ] as const;
 
 let cachedIndex: Record<string, JapanesePostalCodeAddress[]> | undefined;
-
-export function normalizeJapanesePostalCode(value: string): string {
-  return value
-    .replace(/[０-９]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0xfee0))
-    .replace(/[^\d]/g, "")
-    .slice(0, 7);
-}
 
 function loadPostalCodeIndex(): Record<string, JapanesePostalCodeAddress[]> {
   if (cachedIndex) return cachedIndex;
@@ -156,7 +152,7 @@ export function applyJapanesePostalCodeAddressCompletions(input: {
 
   for (const [postalFieldKey, addressFieldKey] of POSTAL_TO_ADDRESS_FIELD_PAIRS) {
     const postalCode = normalizeJapanesePostalCode(readText(input.confirmedData, postalFieldKey));
-    if (!postalCode) continue;
+    if (!postalCode || !isValidJapanesePostalCode(postalCode)) continue;
     if (postalCode !== readText(input.confirmedData, postalFieldKey)) {
       input.confirmedData[postalFieldKey] = postalCode;
       completedFieldKeys.add(postalFieldKey);

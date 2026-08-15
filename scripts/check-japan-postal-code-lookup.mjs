@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const source = readFileSync(join(process.cwd(), "src/lib/japan-postal-code.ts"), "utf8");
+const validationSource = readFileSync(join(process.cwd(), "src/lib/japanese-postal-code-validation.ts"), "utf8");
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -12,7 +13,7 @@ assert(source.includes('prefecture: "東京都"'), "fallback seed must include T
 assert(source.includes('municipality: "世田谷区"'), "fallback seed must include Setagaya municipality data");
 assert(source.includes('townArea: "三軒茶屋"'), "fallback seed must include Sangenjaya town-area data");
 assert(source.includes("normalizeJapanesePostalCode"), "postal-code normalization function must exist");
-assert(source.includes("replace(/[０-９]/g"), "normalization must support full-width digits");
+assert(validationSource.includes("replace(/[０-９]/g"), "normalization must support full-width digits");
 assert(source.includes("applyJapanesePostalCodeAddressCompletions"), "case-data completion function must exist");
 assert(source.includes('"property.postalCode", "property.address"'), "property postal code must complete property address");
 assert(source.includes('"applicant.currentPostalCode", "applicant.currentAddress"'), "applicant postal code must complete current address");

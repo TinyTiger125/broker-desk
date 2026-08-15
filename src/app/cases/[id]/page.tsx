@@ -41,7 +41,7 @@ const WORKBENCH_FIELD_STATUS_KEY = "__workbenchFieldStatuses";
 
 type CasePageProps = {
   params: Promise<{ id: string }>;
-  searchParams?: Promise<{ flash?: string; node?: string; field?: string; view?: string }>;
+  searchParams?: Promise<{ flash?: string; node?: string; field?: string; view?: string; scrollTop?: string }>;
 };
 
 type WorkbenchTrustState =
@@ -95,6 +95,7 @@ type WorkbenchFieldInputSpec = {
   rows?: number;
   placeholder?: Record<Locale, string>;
   options?: string[];
+  validation?: "japanese_postal_code";
 };
 
 function isWorkbenchCatalogField(field: CaseFieldDefinition) {
@@ -229,7 +230,7 @@ function getWorkbenchFieldInputSpec(fieldKey: string): WorkbenchFieldInputSpec {
     return { kind: "email", inputMode: "email", placeholder: { ja: "name@example.com", zh: "name@example.com", ko: "name@example.com" } };
   }
   if (fieldDefinition?.valueKind === "postal_code") {
-    return { kind: "text", inputMode: "numeric", placeholder: { ja: "1540024", zh: "1540024", ko: "1540024" } };
+    return { kind: "text", inputMode: "numeric", placeholder: { ja: "1540024", zh: "1540024", ko: "1540024" }, validation: "japanese_postal_code" };
   }
   if (fieldDefinition?.valueKind === "money_yen") {
     return { kind: "money", inputMode: "numeric", unit: "円" };
@@ -696,6 +697,8 @@ function WorkbenchFieldControl({ locale, field, tone = "default", flush = false 
         type={type}
         aria-label={field.label}
         inputMode={spec.inputMode}
+        data-case-validation={spec.validation?.replaceAll("_", "-")}
+        data-validation-message={spec.validation === "japanese_postal_code" ? locale === "zh" ? "日本邮政编码必须为7位数字。" : locale === "ko" ? "일본 우편번호는 7자리로 입력해 주세요." : "日本の郵便番号は7桁で入力してください。" : undefined}
         defaultValue={field.value}
         placeholder={placeholder}
         className={inputClass}
@@ -715,7 +718,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
 
   const [{ id }, query] = await Promise.all([
     params,
-    searchParams ?? Promise.resolve({} as { flash?: string; node?: string; field?: string; view?: string }),
+    searchParams ?? Promise.resolve({} as { flash?: string; node?: string; field?: string; view?: string; scrollTop?: string }),
   ]);
   const [brokerageCase, reviewItems, fieldRules, installedGuaranteeTemplates] = await Promise.all([
     getBrokerageCaseById({ userId: user.id, tenantId, caseId: id }),
@@ -913,6 +916,12 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
             zh: "信息整理已保存。",
             ko: "정보 정리를 저장했습니다.",
           })
+        : query?.flash === "case_field_invalid"
+          ? tr(locale, {
+              ja: "郵便番号は7桁で入力してください。変更は保存されていません。",
+              zh: "日本邮政编码必须为7位数字，修改未保存。",
+              ko: "일본 우편번호는 7자리여야 하며 변경 사항은 저장되지 않았습니다.",
+            })
           : query?.flash === "case_applicability_saved"
             ? tr(locale, {
                 ja: "保存しました。",
@@ -993,6 +1002,9 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
     : downloadGate && downloadGate.blockedReasons.length > 0
       ? "quick"
       : "overview";
+  const parsedScrollTop = query?.scrollTop ? Number(query.scrollTop) : Number.NaN;
+  const initialScrollTop = Number.isSafeInteger(parsedScrollTop) && parsedScrollTop >= 0 ? parsedScrollTop : undefined;
+  const initialFieldKey = query?.field && allWorkbenchFields.some((field) => field.fieldKey === query.field) ? query.field : undefined;
 
   if (activeView === "overview") {
     return (
@@ -1014,6 +1026,8 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
         hasOutputTemplate={overviewHasOutputTemplate}
         saveAction={saveCaseWorkbenchAction}
         flash={<PageFlashBanner message={flashMessage} tone={flashTone} />}
+        initialFieldKey={initialFieldKey}
+        initialScrollTop={initialScrollTop}
       />
     );
   }
