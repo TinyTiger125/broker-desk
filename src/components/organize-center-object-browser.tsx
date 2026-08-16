@@ -16,21 +16,15 @@ import {
 import type { Locale } from "@/lib/locale";
 import type { LifecycleFilter, LifecycleStatus } from "@/lib/record-lifecycle";
 
-type ObjectType = "all" | "case" | "party" | "property" | "inbox";
-
-export type OrganizeCenterObjectStatus =
-  | "unassigned"
-  | "failed";
+type ObjectType = "all" | "case" | "party" | "property";
 
 export type OrganizeCenterBrowserItem = {
   id: string;
   type: Exclude<ObjectType, "all">;
-  status?: OrganizeCenterObjectStatus;
   title: string;
   subtitle: string;
   relation: string;
   relationLabel: string;
-  statusNote?: string;
   updatedLabel: string;
   href: string;
   lifecycleStatus: LifecycleStatus;
@@ -54,30 +48,18 @@ function getTypeLabel(type: ObjectType, copy: Record<string, string>) {
   if (type === "case") return copy.case;
   if (type === "party") return copy.party;
   if (type === "property") return copy.property;
-  if (type === "inbox") return copy.inbox;
   return copy.all;
-}
-
-function getStatusLabel(status: OrganizeCenterObjectStatus, copy: Record<string, string>) {
-  if (status === "unassigned") return copy.unassigned;
-  if (status === "failed") return copy.failed;
-  return copy.statusNote;
-}
-
-function getStatusTone(status: OrganizeCenterObjectStatus): "neutral" | "info" | "success" | "warning" | "danger" {
-  if (status === "failed") return "danger";
-  return "warning";
 }
 
 function getTypeIcon(type: OrganizeCenterBrowserItem["type"]) {
   if (type === "case") return "work";
   if (type === "party") return "person";
   if (type === "property") return "apartment";
-  return "upload_file";
+  return "work";
 }
 
 function buildSearchText(item: OrganizeCenterBrowserItem) {
-  return [item.title, item.subtitle, item.relation, item.statusNote ?? ""].join(" ").toLowerCase();
+  return [item.title, item.subtitle, item.relation].join(" ").toLowerCase();
 }
 
 function filterItems(items: OrganizeCenterBrowserItem[], type: ObjectType, query: string) {
@@ -128,10 +110,6 @@ function rememberListReturnState(listUrl: string, itemId: string) {
   }
 }
 
-function isAttentionStatus(status: OrganizeCenterObjectStatus | undefined) {
-  return status === "failed" || status === "unassigned";
-}
-
 export function OrganizeCenterObjectBrowser({
   items,
   selectedType,
@@ -175,7 +153,6 @@ export function OrganizeCenterObjectBrowser({
       ["case", 0],
       ["party", 0],
       ["property", 0],
-      ["inbox", 0],
     ]);
     for (const item of items) countByType.set(item.type, (countByType.get(item.type) ?? 0) + 1);
 
@@ -183,20 +160,17 @@ export function OrganizeCenterObjectBrowser({
       { type: "case" as const, icon: "work", title: copy.case, description: copy.branchCaseDesc },
       { type: "party" as const, icon: "person", title: copy.party, description: copy.branchPartyDesc },
       { type: "property" as const, icon: "apartment", title: copy.property, description: copy.branchPropertyDesc },
-      { type: "inbox" as const, icon: "upload_file", title: copy.inbox, description: copy.branchInboxDesc },
     ]).map((card) => {
-      const branchItems = items.filter((item) => item.type === card.type);
       return {
         ...card,
         total: countByType.get(card.type) ?? 0,
-        attention: card.type === "inbox" ? branchItems.filter((item) => isAttentionStatus(item.status)).length : undefined,
       };
     });
 
     return (
       <Surface as="section" className="p-4 sm:p-5">
         <SectionHeader title={copy.objectCenter} description={copy.description} />
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {branchCards.map((card) => (
             <Link
               key={card.type}
@@ -216,11 +190,7 @@ export function OrganizeCenterObjectBrowser({
               <p className="mt-2 flex-1 text-sm font-semibold leading-6 text-slate-500">{card.description}</p>
               <div className="mt-5 flex items-end justify-between gap-3 border-t border-slate-100 pt-4">
                 <span className="text-xs font-bold leading-5 text-slate-600">
-                  {card.total === 0
-                    ? copy.emptyData
-                    : card.attention !== undefined && card.attention > 0
-                      ? `${card.attention} ${copy.pendingObjects}`
-                      : copy.continueCheck}
+                  {card.total === 0 ? copy.emptyData : copy.continueCheck}
                 </span>
                 <span className="material-symbols-outlined shrink-0 text-[18px] text-slate-400 transition group-hover:translate-x-0.5 group-hover:text-[#002FA7]" aria-hidden="true">
                   arrow_forward
@@ -339,38 +309,21 @@ export function OrganizeCenterObjectBrowser({
               </div>
 
               <div className="min-w-0 rounded-md bg-slate-50 px-3 py-2">
-                {item.status ? (
-                  <>
-                    <p className="text-[11px] font-black text-slate-500">{copy.statusNote}</p>
-                    <div className="mt-1 flex flex-wrap items-center gap-2">
-                      <StatusBadge tone={getStatusTone(item.status)}>{getStatusLabel(item.status, copy)}</StatusBadge>
-                      <StatusBadge tone={item.lifecycleStatus === "archived" ? "neutral" : "info"}>
-                        {item.lifecycleStatus === "archived" ? copy.archivedRecords : copy.activeRecords}
-                      </StatusBadge>
-                    </div>
-                    {item.statusNote ? <p className="mt-2 break-words text-sm font-semibold leading-5 text-slate-800">{item.statusNote}</p> : null}
-                  </>
-                ) : (
-                  <>
-                    <p className="text-[11px] font-black text-slate-500">{copy.lifecycle}</p>
-                    <StatusBadge tone={item.lifecycleStatus === "archived" ? "neutral" : "info"}>
-                      {item.lifecycleStatus === "archived" ? copy.archivedRecords : copy.activeRecords}
-                    </StatusBadge>
-                  </>
-                )}
+                <p className="text-[11px] font-black text-slate-500">{copy.lifecycle}</p>
+                <StatusBadge tone={item.lifecycleStatus === "archived" ? "neutral" : "info"}>
+                  {item.lifecycleStatus === "archived" ? copy.archivedRecords : copy.activeRecords}
+                </StatusBadge>
               </div>
 
               <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 md:col-span-2 xl:col-span-1 xl:flex-col xl:items-end xl:justify-start">
                 <span className="text-xs font-bold tabular-nums text-slate-500">{copy.taskUpdated}: {item.updatedLabel}</span>
-                {item.type !== "inbox" ? (
-                  <ArchiveRecordButton
-                    entityType={item.type}
-                    entityId={item.id}
-                    status={item.lifecycleStatus}
-                    locale={locale}
-                    returnTo={listHref}
-                  />
-                ) : null}
+                <ArchiveRecordButton
+                  entityType={item.type}
+                  entityId={item.id}
+                  status={item.lifecycleStatus}
+                  locale={locale}
+                  returnTo={listHref}
+                />
               </div>
             </article>
           ))}

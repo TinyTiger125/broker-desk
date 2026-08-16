@@ -3,18 +3,12 @@ import Link from "next/link";
 import {
   OrganizeCenterObjectBrowser,
   type OrganizeCenterBrowserItem,
-  type OrganizeCenterObjectStatus,
 } from "@/components/organize-center-object-browser";
 import { MessageStrip, SectionHeader, Surface } from "@/components/ui-foundation";
 import { listBrokerageCases } from "@/lib/data";
 import { getCaseFieldValue } from "@/lib/case-field-normalization";
 import { formatDate } from "@/lib/format";
-import {
-  listHubImportJobs,
-  listHubParties,
-  listHubProperties,
-  type HubImportJobItem,
-} from "@/lib/hub";
+import { listHubParties, listHubProperties } from "@/lib/hub";
 import { getLocale, type Locale } from "@/lib/locale";
 import { normalizeLifecycleFilter, type LifecycleFilter } from "@/lib/record-lifecycle";
 import { requireTenantSession, TenantSessionError } from "@/lib/tenant-session";
@@ -25,7 +19,8 @@ type OrganizeCenterPageProps = {
   searchParams?: Promise<{ type?: string; q?: string; lifecycle?: string; page?: string }>;
 };
 
-type ObjectType = "all" | "case" | "party" | "property" | "inbox";
+type ReliableObjectType = "case" | "party" | "property";
+type ObjectType = "all" | ReliableObjectType | "inbox";
 
 type OrganizeCenterQuery = {
   type?: string;
@@ -36,13 +31,11 @@ type OrganizeCenterQuery = {
 
 type WorkObject = {
   id: string;
-  type: Exclude<ObjectType, "all">;
-  status?: OrganizeCenterObjectStatus;
+  type: ReliableObjectType;
   title: string;
   subtitle: string;
   relation: string;
   relationLabel: string;
-  statusNote?: string;
   updatedAt?: Date;
   href: string;
   lifecycleStatus: "active" | "archived";
@@ -56,7 +49,6 @@ const copyByLocale = {
     branchCaseDesc: "申込、契約、費用、関係資料を案件ごとに確認します。",
     branchPartyDesc: "関係者の基本情報と関連先を確認します。",
     branchPropertyDesc: "住所、部屋番号、賃料、費用を物件ごとに確認します。",
-    branchInboxDesc: "未整理の資料を正しい対象に割り当てます。",
     keyword: "キーワード",
     lifecycle: "記録の状態",
     searchPlaceholder: "名前、物件、案件、資料名で検索",
@@ -67,23 +59,15 @@ const copyByLocale = {
     case: "案件",
     party: "関係者",
     property: "物件",
-    inbox: "未整理資料",
-    unassigned: "未紐付け",
-    failed: "処理失敗",
-    statusNote: "整理状態",
     taskUpdated: "更新",
     emptyData: "この種類の対象はまだありません。",
     noResults: "現在の条件に一致する対象はありません。",
     clearFilters: "検索と絞り込みをクリア",
     objectCount: "対象",
-    pendingObjects: "要確認の対象",
     continueCheck: "一覧で続けて確認",
-    reasonInbox: "案件、関係者、物件のどれに属するかを決めます。",
-    reasonImportFailed: "資料の処理に失敗しています。資料を開いて復旧方法を確認してください。",
     relationCase: "案件内の関係",
     relationParty: "関連先",
     relationProperty: "利用先",
-    relationInbox: "紐付け先",
     pageStatus: "表示中",
     pageOf: "ページ",
     previousPage: "前へ",
@@ -105,6 +89,9 @@ const copyByLocale = {
     permissionDeniedTitle: "この整理対象へのアクセス権がありません",
     permissionDeniedBody: "権限を変更せず、管理者にアクセス範囲を確認してください。",
     retry: "再試行",
+    inboxUnavailableTitle: "資料の帰属一覧は現在利用できません",
+    inboxUnavailableBody: "具体的な対象への帰属を確実に判断できるデータがありません。資料入力で処理状況を確認してください。",
+    openImportCenter: "資料入力を開く",
   },
   zh: {
     title: "整理信息",
@@ -113,7 +100,6 @@ const copyByLocale = {
     branchCaseDesc: "按案件查看申请、合同、费用和关联资料。",
     branchPartyDesc: "查看主体的基础资料和关联对象。",
     branchPropertyDesc: "按物件查看地址、房号、租金和费用。",
-    branchInboxDesc: "为未整理资料分配正确归属。",
     keyword: "关键字",
     lifecycle: "记录状态",
     searchPlaceholder: "搜索姓名、物件、案件、资料名",
@@ -124,23 +110,15 @@ const copyByLocale = {
     case: "案件",
     party: "主体",
     property: "物件",
-    inbox: "待归属资料",
-    unassigned: "待归属",
-    failed: "处理失败",
-    statusNote: "整理状态",
     taskUpdated: "更新",
     emptyData: "当前还没有这一类对象。",
     noResults: "当前条件没有结果。",
     clearFilters: "清除搜索和筛选",
     objectCount: "对象",
-    pendingObjects: "待核对对象",
     continueCheck: "进入列表继续核对",
-    reasonInbox: "先确定这份资料属于哪个案件、主体或物件。",
-    reasonImportFailed: "资料处理失败，请打开资料查看恢复方式。",
     relationCase: "案件关系",
     relationParty: "关联对象",
     relationProperty: "使用位置",
-    relationInbox: "归属对象",
     pageStatus: "当前显示",
     pageOf: "页",
     previousPage: "上一页",
@@ -162,6 +140,9 @@ const copyByLocale = {
     permissionDeniedTitle: "没有访问整理对象的权限",
     permissionDeniedBody: "页面未读取对象数据，请联系管理员确认访问范围。",
     retry: "重新尝试",
+    inboxUnavailableTitle: "待归属资料列表暂不可用",
+    inboxUnavailableBody: "当前没有可靠的具体对象归属数据。请在录入资料中查看资料处理状态。",
+    openImportCenter: "打开录入资料",
   },
   ko: {
     title: "정보 정리",
@@ -170,7 +151,6 @@ const copyByLocale = {
     branchCaseDesc: "신청, 계약, 비용, 관련 자료를 안건별로 확인합니다.",
     branchPartyDesc: "관계자의 기본 정보와 연결 대상을 확인합니다.",
     branchPropertyDesc: "주소, 호수, 임대료, 비용을 매물별로 확인합니다.",
-    branchInboxDesc: "미정리 자료를 올바른 대상에 연결합니다.",
     keyword: "검색어",
     lifecycle: "기록 상태",
     searchPlaceholder: "이름, 매물, 안건, 자료명 검색",
@@ -181,23 +161,15 @@ const copyByLocale = {
     case: "안건",
     party: "관계자",
     property: "매물",
-    inbox: "미분류 자료",
-    unassigned: "연결 필요",
-    failed: "처리 실패",
-    statusNote: "정리 상태",
     taskUpdated: "업데이트",
     emptyData: "이 유형의 대상이 아직 없습니다.",
     noResults: "현재 조건에 맞는 결과가 없습니다.",
     clearFilters: "검색과 필터 지우기",
     objectCount: "대상",
-    pendingObjects: "확인이 필요한 대상",
     continueCheck: "목록에서 계속 확인",
-    reasonInbox: "자료가 어느 안건, 관계자, 매물에 속하는지 정합니다.",
-    reasonImportFailed: "자료 처리에 실패했습니다. 자료를 열어 복구 방법을 확인하세요.",
     relationCase: "안건 관계",
     relationParty: "연결 대상",
     relationProperty: "사용 위치",
-    relationInbox: "연결 대상",
     pageStatus: "현재 표시",
     pageOf: "페이지",
     previousPage: "이전",
@@ -219,6 +191,9 @@ const copyByLocale = {
     permissionDeniedTitle: "정리 대상에 접근할 권한이 없습니다",
     permissionDeniedBody: "데이터를 읽지 않았습니다. 관리자에게 접근 범위를 확인하세요.",
     retry: "다시 시도",
+    inboxUnavailableTitle: "미분류 자료 목록을 현재 사용할 수 없습니다",
+    inboxUnavailableBody: "현재 구체적인 대상 귀속을 신뢰할 수 있는 데이터가 없습니다. 자료 입력에서 처리 상태를 확인하세요.",
+    openImportCenter: "자료 입력 열기",
   },
 } satisfies Record<Locale, Record<string, string>>;
 
@@ -239,16 +214,6 @@ function buildListHref(type: ObjectType, query: string, lifecycleFilter: Lifecyc
   if (page > 1) params.set("page", String(page));
   const search = params.toString();
   return search ? `/organize-center?${search}` : "/organize-center";
-}
-
-function getSourceTypeLabel(locale: Locale, sourceType: HubImportJobItem["sourceType"]) {
-  const labels: Record<HubImportJobItem["sourceType"], Record<Locale, string>> = {
-    excel: { ja: "Excel", zh: "Excel", ko: "Excel" },
-    pdf: { ja: "PDF", zh: "PDF", ko: "PDF" },
-    scan: { ja: "画像", zh: "图片", ko: "이미지" },
-    manual: { ja: "手入力", zh: "手动", ko: "수동" },
-  };
-  return labels[sourceType][locale];
 }
 
 function compareWorkObjects(a: WorkObject, b: WorkObject) {
@@ -290,6 +255,24 @@ function OrganizeCenterPermissionError({ copy }: { copy: Record<string, string> 
   );
 }
 
+function OrganizeCenterInboxUnavailable({ copy }: { copy: Record<string, string> }) {
+  return (
+    <Surface as="section" className="p-5">
+      <MessageStrip tone="info" title={copy.inboxUnavailableTitle}>
+        <p>{copy.inboxUnavailableBody}</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Link href="/import-center" className="inline-flex rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-800 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3158d8]">
+            {copy.openImportCenter}
+          </Link>
+          <Link href="/organize-center" className="inline-flex rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-800 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3158d8]">
+            {copy.backToSelector}
+          </Link>
+        </div>
+      </MessageStrip>
+    </Surface>
+  );
+}
+
 async function OrganizeCenterContent({ locale, params }: { locale: Locale; params: OrganizeCenterQuery }) {
   const copy = copyByLocale[locale];
   const selectedType = isObjectType(params.type) ? params.type : "all";
@@ -307,23 +290,24 @@ async function OrganizeCenterContent({ locale, params }: { locale: Locale; param
     throw error;
   }
 
+  if (selectedType === "inbox") {
+    return <OrganizeCenterInboxUnavailable copy={copy} />;
+  }
+
   let cases;
   let parties;
   let properties;
-  let importJobs;
   try {
     const context = { userId: session.user.id, tenantId: session.tenant.id, lifecycleStatus: lifecycleFilter };
-    [cases, parties, properties, importJobs] = await Promise.all([
+    [cases, parties, properties] = await Promise.all([
       listBrokerageCases(session.user.id, 100, session.tenant.id, lifecycleFilter),
       listHubParties(locale, context),
       listHubProperties(locale, context),
-      listHubImportJobs(context),
     ]);
   } catch {
     return <OrganizeCenterLoadError copy={copy} href={buildListHref(selectedType, query, lifecycleFilter, page)} />;
   }
 
-  const assignedImportJobIds = new Set(cases.flatMap((item) => item.sourceImportJobIds));
   const caseItems: WorkObject[] = cases.map((item) => {
     const applicantName = getCaseFieldValue(item.confirmedDataJson, "applicant.name");
     const propertyName = getCaseFieldValue(item.confirmedDataJson, "property.name");
@@ -366,36 +350,15 @@ async function OrganizeCenterContent({ locale, params }: { locale: Locale; param
     };
   });
 
-  const inboxItems: WorkObject[] = importJobs
-    .filter((item) => !assignedImportJobIds.has(item.id))
-    .map((item) => {
-      const failed = item.status === "failed";
-      return {
-        id: item.id,
-        type: "inbox" as const,
-        status: failed ? "failed" : "unassigned",
-        lifecycleStatus: "active" as const,
-        title: item.title,
-        subtitle: getSourceTypeLabel(locale, item.sourceType),
-        relation: copy.noRelation,
-        relationLabel: copy.relationInbox,
-        statusNote: failed ? copy.reasonImportFailed : copy.reasonInbox,
-        updatedAt: item.createdAt,
-        href: `/import-center?job=${encodeURIComponent(item.id)}`,
-      };
-    });
-
-  const allItems = [...caseItems, ...partyItems, ...propertyItems, ...inboxItems].sort(compareWorkObjects);
+  const allItems = [...caseItems, ...partyItems, ...propertyItems].sort(compareWorkObjects);
   const browserItems: OrganizeCenterBrowserItem[] = allItems.map((item) => ({
     id: item.id,
     type: item.type,
-    status: item.status,
     lifecycleStatus: item.lifecycleStatus,
     title: item.title,
     subtitle: item.subtitle,
     relation: item.relation,
     relationLabel: item.relationLabel,
-    statusNote: item.statusNote,
     updatedLabel: item.updatedAt ? formatDate(item.updatedAt, locale) : copy.noDate,
     href: item.href,
   }));
