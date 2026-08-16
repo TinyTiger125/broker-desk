@@ -15,6 +15,8 @@
 - `TASK-022 / UI-GOV-002A 最小视觉基础` 已 Done；其基础组件已被 TASK-023 正式案件页参考实现使用。非导航开发预览路由已随 TASK-023 收口移除；TASK-024 另行承担 Layout System 的目标图和后续试点门禁。
 - `TASK-023 / UI-GOV-003` 已 Done：Checkpoint A/B/C 完成；两个开发预览路由移除，正式案件页手动滚动/hash、原生锚点 Enter、点击及前进后退的可回放浏览器证据通过。隔离模板下载确认及数据修改后的确认失效已按产品决定归回 `TASK-020`；`TASK-020` 仍 `Blocked`，不启动 UI-GOV-002B。
 - `TASK-024 / UI-GOV-002B` 已 `Done`：阶段 A 目标图、阶段 C 申请人 Responsive Form 试点、运行闭环最小修复和独立只读审查均已完成。正式 Chrome 响应式、同一 Server Action 的六位拒绝/不同七位写入与恢复、Kotoeri 组合输入第一次 Enter 不提交三项门禁为 `3/3`。产品裁决明确不要求整页刷新、不把 768px 输入框级测量写成已完成，并保留服务端证据的非连续时间边界。脱敏证据、QA patch、提交元数据和脱敏日志已归档于 `docs/operations/evidence/TASK-024/2026-08-16/`；临时 QA worktree 和本地分支已清理，原始截图已删除，正式产品未合并 QA 调用器。下一步不启动 UI-GOV-002B 后续页面迁移。
+- 矩阵 V2 已冻结为 Approved baseline：34 个业务/后台页面族、2 个 Auth Shell 页面族、1 个退役路由、4 个系统状态入口；两个申请书预览路径合并为一个页面族，Workspace Selector 独立登记。API/QA、历史入口和删除候选独立登记，不计入正式页面数量。规范批准不等于页面迁移完成。
+- `TASK-025` 已进入 `In Progress`：Checkpoint A 已获批准，只针对 `/organize-center` 进行真实登录流程只读审计。审计完成前不制作目标图、不修改页面、不启动 Agent；案件、主体、物件业务权威保持分离。TASK-020 继续 Blocked，输出中心和最终预览/下载延期为独立输出产品专题，首页最后处理。
 - B 锚点证据已覆盖实际滚动容器、动态偏移、IntersectionObserver/ResizeObserver、scroll-margin-top、hash push/popstate、手动滚动、返回顶部、property→contract→back→forward 和带 hash 刷新；390px overview 无横向溢出且首个字段进入首屏，quick 有窄屏“下一项任务”入口。完整外部权限、租户和下载证据前停止，不启动 UI-GOV-002B。
 - C+ 案件总览设计基线已获产品负责人批准；中文字段/章节标签已接入 149 项中日对照，官方表单原始日文标题保持不变。`TASK-020` 不修改生产认证、租户隔离、数据库或 TASK-005～008；韩文字段完整对照源缺失，不能宣称三语言通过。
 - 不补建独立的 `PM-HANDOFF-001` 任务卡：`AGENTS.md` 要求实施任务使用指定任务卡，但没有要求只读接管单独建卡；本文件、`BACKLOG.md` 和 `TASK-014` 已提供足够交接证据。
