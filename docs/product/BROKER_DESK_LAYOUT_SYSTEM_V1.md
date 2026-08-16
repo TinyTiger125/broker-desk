@@ -1,12 +1,13 @@
 # Broker Desk Layout System V1
 
-- 状态: Draft，等待阶段 A 目标图批准
+- 状态: **Approved baseline**（2026-08-16）
+- 批准边界: 规范和页面归属已批准；不等于全产品页面迁移完成
 - 唯一 Layout 规范来源: 本文件
 - 适用产品: Broker Desk Web
 - 参考: SAP Fiori Object Page、Dynamic Page、List Report、Worklist、Wizard、Preview & Confirmation
 - 不采用: SAP 品牌视觉、SAPUI5、Fiori Elements、企业复杂工具栏和无关配置层级
 
-本文件只规定页面结构、操作层级、响应式和无障碍语言，不规定产品业务事实、149 项字段、数据模型、权限、租户、输出门禁或用户可见术语。业务事实继续由现有产品文档、任务卡、字段目录和术语规范提供。
+本文件只规定页面结构、操作层级、响应式和无障碍语言，不规定产品业务事实、149 项字段、数据模型、权限、租户、输出门禁或用户可见术语。业务事实继续由现有产品文档、任务卡、字段目录和术语规范提供。当前页面归属和迁移波次以 [`UI_GOV_002B_LAYOUT_FLOORPLAN_MATRIX_V2_2026-08-16.md`](../operations/UI_GOV_002B_LAYOUT_FLOORPLAN_MATRIX_V2_2026-08-16.md) 为准。
 
 ## 1. Layout 原则
 
@@ -82,6 +83,10 @@
 ### Relationship Explorer
 
 只用于关系树等确实需要展示对象关系的辅助页面。关系可读、节点可键盘访问、返回路径明确；不得成为案件、主体、物件的第二套详情权威。
+
+### Workspace Selector
+
+回答“当前账号进入哪个可访问工作区”。显示可访问工作区、账号/角色相关的空态和切换失败恢复；不承载案件任务队列，不拥有租户数据权威，也不替代 Auth Shell。工作区选择完成后，应用级 Shell 必须以一致方式显示当前工作区身份；单页迁移不得各自重复实现工作区标识。该能力未纳入当前页面任务时，应登记为共享 Shell 缺口，不得借单页迁移扩大范围。
 
 ### Auth Shell / System State
 
