@@ -1,7 +1,11 @@
+import { Suspense } from "react";
+import Link from "next/link";
 import {
   OrganizeCenterObjectBrowser,
   type OrganizeCenterBrowserItem,
+  type OrganizeCenterObjectStatus,
 } from "@/components/organize-center-object-browser";
+import { MessageStrip, SectionHeader, Surface } from "@/components/ui-foundation";
 import { listBrokerageCases } from "@/lib/data";
 import { getCaseFieldValue } from "@/lib/case-field-normalization";
 import { formatDate } from "@/lib/format";
@@ -13,177 +17,208 @@ import {
 } from "@/lib/hub";
 import { getLocale, type Locale } from "@/lib/locale";
 import { normalizeLifecycleFilter, type LifecycleFilter } from "@/lib/record-lifecycle";
-import { requireTenantSession } from "@/lib/tenant-session";
+import { requireTenantSession, TenantSessionError } from "@/lib/tenant-session";
 
 export const dynamic = "force-dynamic";
 
 type OrganizeCenterPageProps = {
-  searchParams?: Promise<{ type?: string; q?: string; lifecycle?: string }>;
+  searchParams?: Promise<{ type?: string; q?: string; lifecycle?: string; page?: string }>;
 };
 
 type ObjectType = "all" | "case" | "party" | "property" | "inbox";
-type ObjectStatus = "all" | "unconfirmed" | "inconsistent" | "insufficient" | "complete";
+
+type OrganizeCenterQuery = {
+  type?: string;
+  q?: string;
+  lifecycle?: string;
+  page?: string;
+};
 
 type WorkObject = {
   id: string;
   type: Exclude<ObjectType, "all">;
-  status: Exclude<ObjectStatus, "all">;
+  status?: OrganizeCenterObjectStatus;
   title: string;
   subtitle: string;
   relation: string;
   relationLabel: string;
-  statusNote: string;
+  statusNote?: string;
   updatedAt?: Date;
   href: string;
-  secondaryHref?: string;
-  secondaryLabel?: string;
   lifecycleStatus: "active" | "archived";
 };
 
 const copyByLocale = {
   ja: {
     title: "情報整理",
-    objectCenter: "優先すべき情報",
+    description: "対象を探して、次の確認へ進みます。出力可否はここでは判定しません。",
+    objectCenter: "整理する対象を選択",
     branchCaseDesc: "申込、契約、費用、関係資料を案件ごとに確認します。",
-    branchPartyDesc: "顧客、オーナー、入居者、保証人を確認します。",
+    branchPartyDesc: "関係者の基本情報と関連先を確認します。",
     branchPropertyDesc: "住所、部屋番号、賃料、費用を物件ごとに確認します。",
     branchInboxDesc: "未整理の資料を正しい対象に割り当てます。",
+    keyword: "キーワード",
+    lifecycle: "記録の状態",
     searchPlaceholder: "名前、物件、案件、資料名で検索",
-    filter: "絞り込み",
+    filter: "絞り込む",
+    clear: "条件をクリア",
+    backToSelector: "対象選択へ戻る",
     all: "すべて",
     case: "案件",
-    party: "顧客",
+    party: "関係者",
     property: "物件",
-    inbox: "未整理",
-    unconfirmed: "未確認",
-    inconsistent: "不一致",
-    insufficient: "資料不足",
-    complete: "完了",
-    statusNote: "現在の状態",
+    inbox: "未整理資料",
+    unassigned: "未紐付け",
+    failed: "処理失敗",
+    statusNote: "整理状態",
     taskUpdated: "更新",
-    empty: "条件に一致する対象がありません。",
-    corporate: "法人",
-    individual: "個人",
-    noRelation: "未紐付け",
-    noDate: "-",
-    personUnset: "顧客未設定",
-    propertyUnset: "物件未設定",
-    propertyRelationHint: "関係者や案件に紐付けて使います",
-    reasonCaseNeeds: "未入力や要確認の項目があります。",
-    reasonCaseReady: "入力済みです。関連資料の追加や内容確認を続けられます。",
-    reasonCaseUnconfirmed: "資料の内容をまだ確認していません。",
-    reasonCaseInconsistent: "資料間に確認すべき差分があります。",
-    reasonPartyNeeds: "顧客情報に未入力があります。",
-    reasonPartyReady: "入力済みです。関連案件や物件と合わせて確認できます。",
-    reasonPropertyNeeds: "物件の価格、管理費、修繕積立などの基礎情報が不足しています。",
-    reasonPropertyReady: "入力済みです。案件や顧客と紐付けて使えます。",
-    reasonInbox: "紐付け先を決めます。",
+    emptyData: "この種類の対象はまだありません。",
+    noResults: "現在の条件に一致する対象はありません。",
+    clearFilters: "検索と絞り込みをクリア",
+    objectCount: "対象",
+    pendingObjects: "要確認の対象",
+    continueCheck: "一覧で続けて確認",
+    reasonInbox: "案件、関係者、物件のどれに属するかを決めます。",
+    reasonImportFailed: "資料の処理に失敗しています。資料を開いて復旧方法を確認してください。",
     relationCase: "案件内の関係",
-    relationParty: "関係先",
+    relationParty: "関連先",
     relationProperty: "利用先",
     relationInbox: "紐付け先",
     pageStatus: "表示中",
+    pageOf: "ページ",
     previousPage: "前へ",
     nextPage: "次へ",
     activeRecords: "有効な記録",
     archivedRecords: "保管済み",
     allRecords: "すべての記録",
+    noRelation: "未紐付け",
+    noDate: "-",
+    personUnset: "関係者未設定",
+    propertyUnset: "物件未設定",
+    propertyRelationHint: "関係者や案件との関連は物件内で確認します",
+    corporate: "法人",
+    individual: "個人",
+    loadingTitle: "整理対象を読み込んでいます",
+    loadingBody: "ページ構造を保ったまま、権限のある対象を確認しています。",
+    loadErrorTitle: "整理対象を読み込めません",
+    loadErrorBody: "データを取得できませんでした。詳細は表示せず、再試行できます。",
+    permissionDeniedTitle: "この整理対象へのアクセス権がありません",
+    permissionDeniedBody: "権限を変更せず、管理者にアクセス範囲を確認してください。",
+    retry: "再試行",
   },
   zh: {
     title: "整理信息",
+    description: "先找到对象，再进入后续核对。这里不判定输出资格。",
     objectCenter: "选择整理对象",
-    branchCaseDesc: "申请、合同、费用和关联资料集中在这里。",
-    branchPartyDesc: "客户、业主、租客、保证人集中在这里。",
-    branchPropertyDesc: "房源地址、房号、租金和费用集中在这里。",
-    branchInboxDesc: "未归类文件先在这里分配归属。",
+    branchCaseDesc: "按案件查看申请、合同、费用和关联资料。",
+    branchPartyDesc: "查看主体的基础资料和关联对象。",
+    branchPropertyDesc: "按物件查看地址、房号、租金和费用。",
+    branchInboxDesc: "为未整理资料分配正确归属。",
+    keyword: "关键字",
+    lifecycle: "记录状态",
     searchPlaceholder: "搜索姓名、物件、案件、资料名",
     filter: "筛选",
+    clear: "清除条件",
+    backToSelector: "返回对象选择",
     all: "全部",
     case: "案件",
     party: "主体",
     property: "物件",
     inbox: "待归属资料",
-    unconfirmed: "未确认",
-    inconsistent: "不一致",
-    insufficient: "资料不足",
-    complete: "已完成",
-    statusNote: "当前状态",
+    unassigned: "待归属",
+    failed: "处理失败",
+    statusNote: "整理状态",
     taskUpdated: "更新",
-    empty: "没有符合条件的对象。",
-    corporate: "法人",
-    individual: "个人",
-    noRelation: "未关联",
-    noDate: "-",
-    personUnset: "主体未设置",
-    propertyUnset: "物件未设置",
-    propertyRelationHint: "可关联主体或案件后继续使用",
-    reasonCaseNeeds: "还有未确认内容，打开后继续补齐。",
-    reasonCaseReady: "已整理，可继续查看资料和输出文件。",
-    reasonCaseUnconfirmed: "有读取内容等待确认。",
-    reasonCaseInconsistent: "有差异需要确认。",
-    reasonPartyNeeds: "联系方式或角色还需要补齐。",
-    reasonPartyReady: "已整理，可查看关联案件或物件。",
-    reasonPropertyNeeds: "房号、地址、租金或费用还需要补齐。",
-    reasonPropertyReady: "已整理，可关联案件或主体继续使用。",
-    reasonInbox: "先选择这份资料属于哪个案件、主体或物件。",
+    emptyData: "当前还没有这一类对象。",
+    noResults: "当前条件没有结果。",
+    clearFilters: "清除搜索和筛选",
+    objectCount: "对象",
+    pendingObjects: "待核对对象",
+    continueCheck: "进入列表继续核对",
+    reasonInbox: "先确定这份资料属于哪个案件、主体或物件。",
+    reasonImportFailed: "资料处理失败，请打开资料查看恢复方式。",
     relationCase: "案件关系",
     relationParty: "关联对象",
     relationProperty: "使用位置",
     relationInbox: "归属对象",
     pageStatus: "当前显示",
+    pageOf: "页",
     previousPage: "上一页",
     nextPage: "下一页",
     activeRecords: "有效记录",
     archivedRecords: "已归档",
     allRecords: "全部记录",
+    noRelation: "未关联",
+    noDate: "-",
+    personUnset: "主体未设置",
+    propertyUnset: "物件未设置",
+    propertyRelationHint: "关联主体或案件后继续使用",
+    corporate: "法人",
+    individual: "个人",
+    loadingTitle: "正在加载整理对象",
+    loadingBody: "正在保留页面结构并读取当前权限范围内的对象。",
+    loadErrorTitle: "无法加载整理对象",
+    loadErrorBody: "数据读取失败。未显示服务端细节，可以重新尝试。",
+    permissionDeniedTitle: "没有访问整理对象的权限",
+    permissionDeniedBody: "页面未读取对象数据，请联系管理员确认访问范围。",
+    retry: "重新尝试",
   },
   ko: {
     title: "정보 정리",
+    description: "대상을 찾은 뒤 다음 확인으로 이동합니다. 여기서는 출력 자격을 판단하지 않습니다.",
     objectCenter: "정리 대상 선택",
     branchCaseDesc: "신청, 계약, 비용, 관련 자료를 안건별로 확인합니다.",
-    branchPartyDesc: "고객, 소유자, 입주자, 보증인을 확인합니다.",
+    branchPartyDesc: "관계자의 기본 정보와 연결 대상을 확인합니다.",
     branchPropertyDesc: "주소, 호수, 임대료, 비용을 매물별로 확인합니다.",
-    branchInboxDesc: "미분류 파일을 알맞은 대상에 연결합니다.",
+    branchInboxDesc: "미정리 자료를 올바른 대상에 연결합니다.",
+    keyword: "검색어",
+    lifecycle: "기록 상태",
     searchPlaceholder: "이름, 매물, 안건, 자료명 검색",
     filter: "필터",
+    clear: "조건 지우기",
+    backToSelector: "정리 대상 선택으로 돌아가기",
     all: "전체",
     case: "안건",
     party: "관계자",
     property: "매물",
     inbox: "미분류 자료",
-    unconfirmed: "미확인",
-    inconsistent: "불일치",
-    insufficient: "자료 부족",
-    complete: "완료",
-    statusNote: "현재 상태",
+    unassigned: "연결 필요",
+    failed: "처리 실패",
+    statusNote: "정리 상태",
     taskUpdated: "업데이트",
-    empty: "조건에 맞는 대상이 없습니다.",
-    corporate: "법인",
-    individual: "개인",
-    noRelation: "미연결",
-    noDate: "-",
-    personUnset: "관계자 미설정",
-    propertyUnset: "매물 미설정",
-    propertyRelationHint: "관계자 또는 안건에 연결해 사용합니다",
-    reasonCaseNeeds: "안건 자료에 보완할 항목이 있습니다. 관계자, 매물, 비용 등 기본 정보를 확인합니다.",
-    reasonCaseReady: "안건 기본 정보가 정리되었습니다. 자료 추가 또는 관련 내용 확인을 계속할 수 있습니다.",
-    reasonCaseUnconfirmed: "읽은 내용을 아직 확인하지 않았습니다.",
-    reasonCaseInconsistent: "자료 사이에 확인할 차이가 있습니다.",
-    reasonPartyNeeds: "관계자의 연락처 또는 역할 정보가 부족합니다. 관련 안건과 연결하기 전에 확인합니다.",
-    reasonPartyReady: "관계자 기본 정보가 정리되었습니다. 관련 안건이나 매물과 함께 확인할 수 있습니다.",
-    reasonPropertyNeeds: "매물의 가격, 관리비, 수선비 등 기본 정보가 부족합니다.",
-    reasonPropertyReady: "매물 기본 정보가 정리되었습니다. 안건이나 관계자와 연결해 사용할 수 있습니다.",
-    reasonInbox: "자료가 아직 안건, 관계자, 매물에 연결되지 않았습니다. 먼저 연결 대상을 정합니다.",
+    emptyData: "이 유형의 대상이 아직 없습니다.",
+    noResults: "현재 조건에 맞는 결과가 없습니다.",
+    clearFilters: "검색과 필터 지우기",
+    objectCount: "대상",
+    pendingObjects: "확인이 필요한 대상",
+    continueCheck: "목록에서 계속 확인",
+    reasonInbox: "자료가 어느 안건, 관계자, 매물에 속하는지 정합니다.",
+    reasonImportFailed: "자료 처리에 실패했습니다. 자료를 열어 복구 방법을 확인하세요.",
     relationCase: "안건 관계",
     relationParty: "연결 대상",
     relationProperty: "사용 위치",
     relationInbox: "연결 대상",
     pageStatus: "현재 표시",
+    pageOf: "페이지",
     previousPage: "이전",
     nextPage: "다음",
     activeRecords: "활성 기록",
     archivedRecords: "보관된 기록",
     allRecords: "전체 기록",
+    noRelation: "미연결",
+    noDate: "-",
+    personUnset: "관계자 미설정",
+    propertyUnset: "매물 미설정",
+    propertyRelationHint: "관계자 또는 안건과의 연결은 매물에서 확인합니다",
+    corporate: "법인",
+    individual: "개인",
+    loadingTitle: "정리 대상을 불러오는 중",
+    loadingBody: "페이지 구조를 유지하면서 권한이 있는 대상을 확인하고 있습니다.",
+    loadErrorTitle: "정리 대상을 불러올 수 없습니다",
+    loadErrorBody: "데이터를 가져오지 못했습니다. 서버 세부 정보는 표시하지 않으며 다시 시도할 수 있습니다.",
+    permissionDeniedTitle: "정리 대상에 접근할 권한이 없습니다",
+    permissionDeniedBody: "데이터를 읽지 않았습니다. 관리자에게 접근 범위를 확인하세요.",
+    retry: "다시 시도",
   },
 } satisfies Record<Locale, Record<string, string>>;
 
@@ -191,12 +226,19 @@ function isObjectType(value: string | undefined): value is ObjectType {
   return value === "all" || value === "case" || value === "party" || value === "property" || value === "inbox";
 }
 
-function getStatusLabel(status: ObjectStatus, copy: Record<string, string>) {
-  if (status === "unconfirmed") return copy.unconfirmed;
-  if (status === "inconsistent") return copy.inconsistent;
-  if (status === "insufficient") return copy.insufficient;
-  if (status === "complete") return copy.complete;
-  return copy.all;
+function parsePage(value: string | undefined) {
+  const page = Number.parseInt(value ?? "1", 10);
+  return Number.isFinite(page) && page > 0 ? page : 1;
+}
+
+function buildListHref(type: ObjectType, query: string, lifecycleFilter: LifecycleFilter, page = 1) {
+  const params = new URLSearchParams();
+  if (type !== "all") params.set("type", type);
+  if (query.trim()) params.set("q", query.trim());
+  if (lifecycleFilter !== "active") params.set("lifecycle", lifecycleFilter);
+  if (page > 1) params.set("page", String(page));
+  const search = params.toString();
+  return search ? `/organize-center?${search}` : "/organize-center";
 }
 
 function getSourceTypeLabel(locale: Locale, sourceType: HubImportJobItem["sourceType"]) {
@@ -209,128 +251,141 @@ function getSourceTypeLabel(locale: Locale, sourceType: HubImportJobItem["source
   return labels[sourceType][locale];
 }
 
-const objectStatusRank: Record<WorkObject["status"], number> = {
-  inconsistent: 0,
-  unconfirmed: 1,
-  insufficient: 2,
-  complete: 3,
-};
-
 function compareWorkObjects(a: WorkObject, b: WorkObject) {
   const aTime = a.updatedAt?.getTime() ?? 0;
   const bTime = b.updatedAt?.getTime() ?? 0;
   if (aTime !== bTime) return bTime - aTime;
-  const statusDiff = objectStatusRank[a.status] - objectStatusRank[b.status];
-  if (statusDiff !== 0) return statusDiff;
   return a.title.localeCompare(b.title);
 }
 
-function countCaseFields(data: Record<string, unknown>) {
-  return Object.keys(data).filter((key) => !key.startsWith("__")).length;
+function OrganizeCenterLoading({ copy }: { copy: Record<string, string> }) {
+  return (
+    <Surface as="section" className="p-5" aria-busy="true" aria-live="polite">
+      <SectionHeader title={copy.loadingTitle} description={copy.loadingBody} />
+      <div className="mt-4 h-24 animate-pulse rounded-lg bg-slate-100" />
+    </Surface>
+  );
 }
 
-export default async function OrganizeCenterPage({ searchParams }: OrganizeCenterPageProps) {
-  const [locale, session] = await Promise.all([
-    getLocale(),
-    requireTenantSession({ permission: "record.read" }),
-  ]);
-  const copy = copyByLocale[locale];
-  const params = searchParams ? await searchParams : undefined;
-  const selectedType = isObjectType(params?.type) ? params.type : "all";
-  const query = String(params?.q ?? "").trim();
-  const lifecycleFilter: LifecycleFilter = normalizeLifecycleFilter(params?.lifecycle);
-  const context = { userId: session.user.id, tenantId: session.tenant.id, lifecycleStatus: lifecycleFilter };
+function OrganizeCenterLoadError({ copy, href }: { copy: Record<string, string>; href: string }) {
+  return (
+    <Surface as="section" className="p-5">
+      <MessageStrip tone="danger" title={copy.loadErrorTitle}>
+        <p>{copy.loadErrorBody}</p>
+        <Link href={href} className="mt-3 inline-flex rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-800 hover:bg-slate-50">
+          {copy.retry}
+        </Link>
+      </MessageStrip>
+    </Surface>
+  );
+}
 
-  const [cases, parties, properties, importJobs] = await Promise.all([
-    listBrokerageCases(session.user.id, 100, session.tenant.id, lifecycleFilter),
-    listHubParties(locale, context),
-    listHubProperties(locale, context),
-    listHubImportJobs(context),
-  ]);
+function OrganizeCenterPermissionError({ copy }: { copy: Record<string, string> }) {
+  return (
+    <Surface as="section" className="p-5">
+      <MessageStrip tone="danger" title={copy.permissionDeniedTitle}>
+        {copy.permissionDeniedBody}
+      </MessageStrip>
+    </Surface>
+  );
+}
+
+async function OrganizeCenterContent({ locale, params }: { locale: Locale; params: OrganizeCenterQuery }) {
+  const copy = copyByLocale[locale];
+  const selectedType = isObjectType(params.type) ? params.type : "all";
+  const query = String(params.q ?? "").trim();
+  const lifecycleFilter: LifecycleFilter = normalizeLifecycleFilter(params.lifecycle);
+  const page = parsePage(params.page);
+
+  let session;
+  try {
+    session = await requireTenantSession({ permission: "record.read" });
+  } catch (error) {
+    if (error instanceof TenantSessionError && error.code === "permission_denied") {
+      return <OrganizeCenterPermissionError copy={copy} />;
+    }
+    throw error;
+  }
+
+  let cases;
+  let parties;
+  let properties;
+  let importJobs;
+  try {
+    const context = { userId: session.user.id, tenantId: session.tenant.id, lifecycleStatus: lifecycleFilter };
+    [cases, parties, properties, importJobs] = await Promise.all([
+      listBrokerageCases(session.user.id, 100, session.tenant.id, lifecycleFilter),
+      listHubParties(locale, context),
+      listHubProperties(locale, context),
+      listHubImportJobs(context),
+    ]);
+  } catch {
+    return <OrganizeCenterLoadError copy={copy} href={buildListHref(selectedType, query, lifecycleFilter, page)} />;
+  }
 
   const assignedImportJobIds = new Set(cases.flatMap((item) => item.sourceImportJobIds));
   const caseItems: WorkObject[] = cases.map((item) => {
-    const savedFieldCount = countCaseFields(item.confirmedDataJson ?? {});
     const applicantName = getCaseFieldValue(item.confirmedDataJson, "applicant.name");
     const propertyName = getCaseFieldValue(item.confirmedDataJson, "property.name");
-    const status: WorkObject["status"] =
-      item.status === "reviewed" && savedFieldCount > 0
-        ? "complete"
-        : item.sourceImportJobIds.length > 0
-          ? "unconfirmed"
-          : "insufficient";
     return {
       id: item.id,
       type: "case",
-      status,
       lifecycleStatus: item.lifecycleStatus ?? "active",
       title: item.caseTitle,
-      subtitle: getStatusLabel(status, copy),
+      subtitle: copy.case,
       relation: `${applicantName || copy.personUnset} / ${propertyName || copy.propertyUnset}`,
       relationLabel: copy.relationCase,
-      statusNote:
-        status === "complete"
-          ? copy.reasonCaseReady
-          : status === "unconfirmed"
-            ? copy.reasonCaseUnconfirmed
-            : copy.reasonCaseNeeds,
       updatedAt: item.updatedAt,
       href: `/cases/${encodeURIComponent(item.id)}`,
     };
   });
 
   const partyItems: WorkObject[] = parties.map((item) => {
-    const hasContact = Boolean(item.phone || item.email);
-    const status: WorkObject["status"] = hasContact ? "complete" : "insufficient";
     return {
       id: item.id,
       type: "party",
-      status,
       lifecycleStatus: item.status ?? "active",
       title: item.name,
       subtitle: item.partyType === "corporate" ? copy.corporate : copy.individual,
       relation: item.relatedPropertyHint || copy.noRelation,
       relationLabel: copy.relationParty,
-      statusNote: status === "complete" ? copy.reasonPartyReady : copy.reasonPartyNeeds,
       href: `/parties/${encodeURIComponent(item.id)}/edit`,
     };
   });
 
   const propertyItems: WorkObject[] = properties.map((item) => {
-    const status: WorkObject["status"] =
-      item.listingPrice > 0 || item.managementFee > 0 || item.repairFee > 0 ? "complete" : "insufficient";
     return {
       id: item.id,
       type: "property",
-      status,
       lifecycleStatus: item.status ?? "active",
       title: item.name,
       subtitle: item.area,
       relation: copy.propertyRelationHint,
       relationLabel: copy.relationProperty,
-      statusNote: status === "complete" ? copy.reasonPropertyReady : copy.reasonPropertyNeeds,
       href: `/properties/${encodeURIComponent(item.id)}/edit`,
     };
   });
 
   const inboxItems: WorkObject[] = importJobs
     .filter((item) => !assignedImportJobIds.has(item.id))
-    .map((item) => ({
-      id: item.id,
-      type: "inbox",
-      status: "unconfirmed",
-      lifecycleStatus: "active",
-      title: item.title,
-      subtitle: getSourceTypeLabel(locale, item.sourceType),
-      relation: copy.noRelation,
-      relationLabel: copy.relationInbox,
-      statusNote: copy.reasonInbox,
-      updatedAt: item.createdAt,
-      href: `/import-center?job=${encodeURIComponent(item.id)}`,
-    }));
+    .map((item) => {
+      const failed = item.status === "failed";
+      return {
+        id: item.id,
+        type: "inbox" as const,
+        status: failed ? "failed" : "unassigned",
+        lifecycleStatus: "active" as const,
+        title: item.title,
+        subtitle: getSourceTypeLabel(locale, item.sourceType),
+        relation: copy.noRelation,
+        relationLabel: copy.relationInbox,
+        statusNote: failed ? copy.reasonImportFailed : copy.reasonInbox,
+        updatedAt: item.createdAt,
+        href: `/import-center?job=${encodeURIComponent(item.id)}`,
+      };
+    });
 
   const allItems = [...caseItems, ...partyItems, ...propertyItems, ...inboxItems].sort(compareWorkObjects);
-
   const browserItems: OrganizeCenterBrowserItem[] = allItems.map((item) => ({
     id: item.id,
     type: item.type,
@@ -343,34 +398,39 @@ export default async function OrganizeCenterPage({ searchParams }: OrganizeCente
     statusNote: item.statusNote,
     updatedLabel: item.updatedAt ? formatDate(item.updatedAt, locale) : copy.noDate,
     href: item.href,
-    secondaryHref: item.secondaryHref,
-    secondaryLabel: item.secondaryLabel,
   }));
+
   return (
-    <div className="bd-page bd-organize-page space-y-6">
+    <OrganizeCenterObjectBrowser
+      key={`${selectedType}:${query}:${lifecycleFilter}:${page}`}
+      items={browserItems}
+      selectedType={selectedType}
+      query={query}
+      copy={copy}
+      lifecycleFilter={lifecycleFilter}
+      locale={locale}
+      page={page}
+    />
+  );
+}
+
+export default async function OrganizeCenterPage({ searchParams }: OrganizeCenterPageProps) {
+  const [locale, params] = await Promise.all([
+    getLocale(),
+    searchParams ?? Promise.resolve({} as OrganizeCenterQuery),
+  ]);
+  const copy = copyByLocale[locale];
+
+  return (
+    <div className="bd-page bd-organize-page space-y-6 pb-16">
       <header className="bd-page-header">
         <h1 className="text-3xl font-black tracking-tight text-slate-950">{copy.title}</h1>
+        <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-slate-600">{copy.description}</p>
       </header>
 
-      <section className="bd-section">
-        {selectedType === "all" ? (
-          <div className="border-b border-slate-200 p-4">
-            <div>
-              <h2 className="text-base font-black text-slate-950">{copy.objectCenter}</h2>
-            </div>
-          </div>
-        ) : null}
-
-        <OrganizeCenterObjectBrowser
-          key={`${selectedType}:${query}:${lifecycleFilter}`}
-          items={browserItems}
-          selectedType={selectedType}
-          query={query}
-          copy={copy}
-          lifecycleFilter={lifecycleFilter}
-          locale={locale}
-        />
-      </section>
+      <Suspense fallback={<OrganizeCenterLoading copy={copy} />}>
+        <OrganizeCenterContent locale={locale} params={params} />
+      </Suspense>
     </div>
   );
 }
