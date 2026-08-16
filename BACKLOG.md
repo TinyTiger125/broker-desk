@@ -24,7 +24,7 @@
 | TASK-022 | P0 | UI-GOV-002A 最小视觉基础 | Done | TASK-021 | [TASK-022](docs/tasks/TASK-022.md) | 唯一 Token、Object Page 最小基础组件和非导航开发预览 `/ui-foundation-preview` 已完成；静态、浏览器桌面/窄屏、焦点、触控、CJK 和范围门禁通过；未迁移正式业务页面 |
 | TASK-023 | P0 | UI-GOV-003 案件 Object Page 参考实现 | Done | TASK-022 | [TASK-023](docs/tasks/TASK-023.md) | 两个开发预览路由已移除；手动滚动/hash、原生锚点 Enter、点击及前进后退的可回放浏览器证据通过；隔离模板下载确认及数据修改失效归 TASK-020；真实 Clerk/第二租户/生产环境另列发布门禁 |
 | TASK-024 | P0 | UI-GOV-002B Broker Desk Layout System 建设 | Done | TASK-023 | [TASK-024](docs/tasks/TASK-024.md) | 阶段 A 目标图、阶段 C 实现和直接修复提交 `46f22d0` 已完成；响应式、服务端六位拒绝/不同七位写入与恢复、Kotoeri IME 第一次 Enter 不提交均通过，正式门禁 `3/3`；脱敏证据见 [`TASK-024 evidence archive`](docs/operations/evidence/TASK-024/2026-08-16/) |
-| TASK-025 | P0 | W1 信息整理中心 List Report 参考实现 | In Progress | TASK-024 | [TASK-025](docs/tasks/TASK-025.md) | Checkpoint A/B/C 已通过；代码提交 `4e80716` 和独立只读审查完成；W1 只交付案件、主体、物件三个对象类型；待归属资料冻结，Checkpoint D 最终验收尚未完成 |
+| TASK-025 | P0 | W1 信息整理中心 List Report 参考实现 | Blocked | TASK-024 | [TASK-025](docs/tasks/TASK-025.md) | Checkpoint A/B/C 已通过；Checkpoint D 预检完成但因尚未确认两个可合法使用的非生产测试租户及其 Clerk 身份、且没有可恢复合成数据验证分页/长列表滚动/归档恢复而阻塞；当前角色模型下无 `record.read` 门禁为 N/A |
 | TASK-003 | P0 | Close the input-material merge completion loop | Proposed | TASK-002 | [TASK-003](docs/tasks/TASK-003.md) | Selection, confirmation, result, failure, and refresh evidence |
 | TASK-004 | P0 | Consolidate template-library and official-template boundaries | Proposed | TASK-002 | [TASK-004](docs/tasks/TASK-004.md) | Role-aware entry, visibility, and installation evidence |
 | TASK-005 | P0 | Separate official template draft and publish states | Proposed | TASK-004 | [TASK-005](docs/tasks/TASK-005.md) | Independent draft save, publish, immutable version, and failure evidence |
@@ -42,7 +42,7 @@
 - TASK-011 is Done and governance-only; it did not change business code or
   historical recovery references.
 - TASK-003 and TASK-006A remain Proposed. Neither is Ready.
-- TASK-025 is In Progress. Checkpoints A, B, and C are complete; code commit `4e80716` and independent read-only review passed. W1 delivers only case, party, and property object types; the unassigned-materials entry is frozen because current data cannot prove concrete party/property ownership. Checkpoint D still requires long-list scroll recovery, permission denial, second-tenant isolation, security archive, and complete business regression evidence. This is not a zero-data or completed-page conclusion.
+- TASK-025 is Blocked after Checkpoint D preflight. Checkpoints A, B, and C are complete; code commit `4e80716` and independent read-only review passed. W1 delivers only case, party, and property object types; the unassigned-materials entry is frozen because current data cannot prove concrete party/property ownership. The only blockers are the absence of confirmed legal non-production test tenants/Clerk identities and the absence of recoverable synthetic data for pagination, long-list scrolling, and archive/restore. All formal roles currently include `record.read`, so the logged-in/no-read page gate is N/A and does not justify inventing a role. This is a QA-environment prerequisite block, not a product implementation failure or Checkpoint C regression.
 - TASK-006A is the only narrowed candidate business trial in this baseline.
 - TASK-013 is Done; implementation, validation, review-fix, and independent read-only review are complete.
 - TASK-014 is Done; product-document scope, validation, and independent review are complete with no business-code or page-behavior changes.
