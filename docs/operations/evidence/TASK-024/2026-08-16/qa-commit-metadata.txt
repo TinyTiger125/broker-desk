@@ -1,0 +1,31 @@
+TASK-024 temporary QA caller audit metadata
+Generated: 2026-08-16
+
+Formal baseline commit: 64c7e1e440a55f749e85dbba7f64f85755e55e9d
+Temporary QA commit: 9985b4dafb90ecf2e7a93e56b79773126596c642
+Temporary QA parent: 64c7e1e440a55f749e85dbba7f64f85755e55e9d
+Temporary QA branch: qa/task-024-server-action-20260816
+Formal closeout commit: bf88506e9e671ba712c635c8a436aa57b57cbfa4
+
+Diff range: 64c7e1e440a55f749e85dbba7f64f85755e55e9d..9985b4dafb90ecf2e7a93e56b79773126596c642
+Changed files: 2
+Inserted lines: 178
+Changed files:
+  src/app/qa/task-024/postal/page.tsx (113 lines added)
+  src/app/qa/task-024/postal/postal-qa-form.tsx (65 lines added)
+
+Archive files:
+  qa-caller.patch: 9609 bytes
+  server-action-runtime.log: 1012 bytes
+  private IME original: /Users/laineyzhu/Documents/独立开发项目/房产专家/.broker-desk-private-evidence/TASK-024/2026-08-16/10-ime-kotoeri-original.mov
+
+SHA-256:
+  qa-caller.patch: 67f76bc964a485dadb17b4cbea201308e8cfff623c1592c1636d9ad585886009
+  server-action-runtime.log: 0051cb7f9b29e3b14bdcc26dcdbf13532974468f84d778e30063f5cd483fcb32
+  private IME original: d40e4a78228f52c2a470cf0d31f4fc2c0fb39015371530cfed0ae9308cc1905d
+
+Scope and privacy:
+  The temporary caller imported and invoked the unmodified saveCaseWorkbenchAction from the formal baseline.
+  The patch contains no credential values, authentication headers, or real-customer data; any credential terms in source text are warnings only.
+  The runtime log is a sanitized copy containing route, action, timing, and non-production test-case observations only.
+  The caller is QA-only evidence and is not product code. It was never merged, pushed, or deployed.

@@ -1,0 +1,12 @@
+Captured from the temporary local Next.js server session; this sanitized copy contains only route, action, timing, and test-case observations.
+Clerk development runtime loaded.
+POST /qa/task-024/postal?caseId=case_bm4jsup9
+  └─ ƒ saveCaseWorkbenchAction({}) in 639ms src/app/actions.ts
+GET /cases/case_bm4jsup9?view=overview&flash=case_field_invalid&field=applicant.currentPostalCode&scrollTop=124
+POST /qa/task-024/postal?caseId=case_bm4jsup9
+  └─ ƒ saveCaseWorkbenchAction({}) in 1813ms src/app/actions.ts
+GET /cases/case_bm4jsup9?field=applicant.currentPostalCode&view=overview&scrollTop=124&flash=case_workbench_saved
+POST /qa/task-024/postal?caseId=case_bm4jsup9
+  └─ ƒ saveCaseWorkbenchAction({}) in 1712ms src/app/actions.ts
+GET /cases/case_bm4jsup9?field=applicant.currentPostalCode&view=overview&scrollTop=124&flash=case_workbench_saved
+The first POST in this evidence run is the repeated six-digit rejection; the next POST is 1540025 acceptance; the last POST is restoration to 1540024.

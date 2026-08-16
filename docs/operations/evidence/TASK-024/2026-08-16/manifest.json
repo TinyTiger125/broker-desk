@@ -5,6 +5,17 @@
   "qaHead": "9985b4dafb90ecf2e7a93e56b79773126596c642",
   "qaBranch": "qa/task-024-server-action-20260816",
   "qaIsolation": "Temporary worktree only; not merged, pushed, or deployed.",
+  "qaCallerAudit": {
+    "patch": "qa-caller.patch",
+    "metadata": "qa-commit-metadata.txt",
+    "runtimeLog": "server-action-runtime.log",
+    "sha256": {
+      "qa-caller.patch": "67f76bc964a485dadb17b4cbea201308e8cfff623c1592c1636d9ad585886009",
+      "qa-commit-metadata.txt": "f76af394f10e9a476992f0d74595e84f0a2f064c12f434a736c076fc38677638",
+      "server-action-runtime.log": "0051cb7f9b29e3b14bdcc26dcdbf13532974468f84d778e30063f5cd483fcb32"
+    },
+    "purpose": "Audit-only proof that the temporary caller invoked the unmodified formal saveCaseWorkbenchAction; not product code."
+  },
   "testCase": {
     "caseId": "case_bm4jsup9",
     "environment": "Non-production test data only",
@@ -43,14 +54,14 @@
     },
     "ime": {
       "formalSource": "Local-only original 录屏2026-08-16 01.56.18.mov",
-      "archivedMetadata": "The original is not copied here; its SHA-256 is d40e4a78228f52c2a470cf0d31f4fc2c0fb39015371530cfed0ae9308cc1905d and duration is approximately 35.911667 seconds.",
+      "archivedMetadata": "The original is stored outside the repository in a private local evidence directory; its SHA-256 is d40e4a78228f52c2a470cf0d31f4fc2c0fb39015371530cfed0ae9308cc1905d and duration is approximately 35.911667 seconds.",
       "result": "Kotoeri composition and candidate state were visible; first Enter confirmed the candidate without saving; the editor remained open; Network showed no case-save POST; cancel left the original value."
     }
   },
   "privacy": {
     "shareableCopies": "Cropped/redacted PNG and JSON only; no full synthetic name/address.",
-    "localOriginals": "Original screenshots and video remain local-only for review.",
-    "credentials": "No Cookie, Token, or sensitive request headers included."
+    "localOriginals": "The original IME video is retained outside the repository in a private local directory; original screenshots will be removed with the temporary worktree after audit.",
+    "credentials": "No credential values, authentication headers, or real-customer data included."
   },
   "productRulings": [
     "Full-page refresh is not a TASK-024 IME requirement; first Enter non-submit is the requirement and is evidenced.",

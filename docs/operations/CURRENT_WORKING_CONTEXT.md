@@ -32,7 +32,7 @@
 - Branch: `main`
 - 正式开发分支：`main`
 - 当前分支与 `main`：最终收口后当前分支为 `main`；`main` HEAD 与当前 HEAD 相同，且 Git 历史包含 MIG-001 至 MIG-007 的实现、审查和收口证据。不得维护易漂移的“领先多少个提交”手工计数。
-- TASK-024 写回前基线：`main` HEAD 为 `64c7e1e440a55f749e85dbba7f64f85755e55e9d`，工作区干净；本次行政收口完成后以 Git 的新 `main` HEAD 为正式事实。
+- TASK-024 正式收口提交：`bf88506e9e671ba712c635c8a436aa57b57cbfa4`；本轮只补充其持久审计证据和历史状态措辞，不改变任务、业务代码或产品状态。
 - 治理恢复分支：`recovery/mig-007-checkpoint-a` 已安全 fast-forward 合入 `main`，不再作为正式开发入口。
 - `safety/wip-mixed-worktree-20260812`：`61bce515e4ad44a6c32da551377dbf427d8bd946`；仅作混合 WIP 隔离证据，保持不变。
 - A/B 收口提交后工作区保持干净；运行 Next 开发服务生成的规则块不得保留在 `AGENTS.md`。

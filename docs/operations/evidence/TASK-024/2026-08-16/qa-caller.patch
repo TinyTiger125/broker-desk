@@ -1,0 +1,190 @@
+diff --git a/src/app/qa/task-024/postal/page.tsx b/src/app/qa/task-024/postal/page.tsx
+new file mode 100644
+index 0000000..93a992c
+--- /dev/null
++++ b/src/app/qa/task-024/postal/page.tsx
+@@ -0,0 +1,113 @@
++import { notFound } from "next/navigation";
++import { saveCaseWorkbenchAction } from "@/app/actions";
++import { CASE_FIELD_DEFINITIONS } from "@/lib/case-field-catalog";
++import { getCaseFieldValue } from "@/lib/case-field-normalization";
++import { buildCaseWorkbenchRuleMap } from "@/lib/case-workbench-field-rules";
++import { getCaseWorkbenchProgressSnapshot } from "@/lib/case-workbench-progress";
++import { getBrokerageCaseById, listCaseWorkbenchFieldRules, listExtractionReviewItems } from "@/lib/data";
++import { requireTenantSession } from "@/lib/tenant-session";
++import { PostalQaForm } from "./postal-qa-form";
++
++export const dynamic = "force-dynamic";
++
++type SearchParams = Promise<Record<string, string | string[] | undefined>>;
++
++function firstValue(value: string | string[] | undefined): string {
++  return Array.isArray(value) ? value[0] ?? "" : value ?? "";
++}
++
++function maskName(value: string): string {
++  const trimmed = value.trim();
++  if (!trimmed) return "未设置";
++  if (trimmed.length === 1) return "*";
++  return `${trimmed.slice(0, 1)}${"*".repeat(Math.max(1, trimmed.length - 2))}${trimmed.slice(-1)}`;
++}
++
++export default async function Task024PostalQaPage({ searchParams }: { searchParams: SearchParams }) {
++  if (process.env.NODE_ENV === "production") notFound();
++
++  const query = await searchParams;
++  const caseId = firstValue(query.caseId).trim();
++  if (!caseId) {
++    return (
++      <main className="min-h-screen bg-slate-50 p-6 text-slate-900 sm:p-10">
++        <div className="mx-auto max-w-3xl rounded-2xl border border-amber-200 bg-amber-50 p-6">
++          <h1 className="text-xl font-black">TASK-024 临时邮编 QA</h1>
++          <p className="mt-3 text-sm leading-6">请通过 `?caseId=` 指定明确的非生产测试案件。此页面没有案件选择器，也不会创建案件。</p>
++        </div>
++      </main>
++    );
++  }
++
++  const session = await requireTenantSession({ permission: "record.update" });
++  const [brokerageCase, reviewItems, fieldRules] = await Promise.all([
++    getBrokerageCaseById({ userId: session.user.id, tenantId: session.tenant.id, caseId }),
++    listExtractionReviewItems({ userId: session.user.id, tenantId: session.tenant.id, caseId }),
++    listCaseWorkbenchFieldRules(session.user.id, session.tenant.id),
++  ]);
++  if (!brokerageCase) notFound();
++
++  const progress = getCaseWorkbenchProgressSnapshot({
++    confirmedData: brokerageCase.confirmedDataJson,
++    reviewItems,
++    ruleMap: buildCaseWorkbenchRuleMap(fieldRules),
++  });
++  const postalField = CASE_FIELD_DEFINITIONS.find((field) => field.fieldKey === "applicant.currentPostalCode");
++  const postal = getCaseFieldValue(brokerageCase.confirmedDataJson, "applicant.currentPostalCode");
++  const applicantName = getCaseFieldValue(brokerageCase.confirmedDataJson, "applicant.name");
++
++  return (
++    <main className="min-h-screen bg-slate-50 p-4 text-slate-900 sm:p-8">
++      <div className="mx-auto max-w-4xl space-y-5">
++        <header className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
++          <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">TASK-024 / temporary QA only</p>
++          <h1 className="mt-2 text-2xl font-black">Server Action 邮编验证</h1>
++          <p className="mt-2 text-sm leading-6 text-slate-600">
++            本页只调用正式的 <code className="rounded bg-slate-100 px-1">saveCaseWorkbenchAction</code>。提交后会按正式动作跳转到案件页显示结果；本页不复制保存逻辑，也不绕过 Clerk、权限或租户范围。
++          </p>
++          <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
++            <div><dt className="font-bold text-slate-500">测试案件</dt><dd className="font-mono">{brokerageCase.id}</dd></div>
++            <div><dt className="font-bold text-slate-500">案件名称</dt><dd>{brokerageCase.caseTitle}</dd></div>
++            <div><dt className="font-bold text-slate-500">申请人姓名（脱敏）</dt><dd>{maskName(applicantName)}</dd></div>
++            <div><dt className="font-bold text-slate-500">案件级确认</dt><dd>本保存动作不持久化案件级确认状态；需在正式输出流程另行观察。</dd></div>
++            <div><dt className="font-bold text-slate-500">现住址邮编</dt><dd className="font-mono">{postal || "未设置"}</dd></div>
++            <div><dt className="font-bold text-slate-500">完成度</dt><dd>{progress.completed}/{progress.total}（{progress.percent}%）</dd></div>
++            <div><dt className="font-bold text-slate-500">待处理数量</dt><dd>{progress.open}</dd></div>
++            <div><dt className="font-bold text-slate-500">当前身份范围</dt><dd>{session.tenant.id} / {session.membership.role} / record.update</dd></div>
++          </dl>
++        </header>
++
++        <section className="rounded-2xl border border-blue-200 bg-blue-50 p-5 text-sm leading-6 text-blue-950">
++          <h2 className="font-black">运行边界</h2>
++          <ul className="mt-2 list-disc space-y-1 pl-5">
++            <li>仅使用非生产测试案件；当前值会产生真实修改历史，不能声称无痕恢复。</li>
++            <li>六位值应由未修改的 Server Action 拒绝；正式案件页应显示拒绝结果且状态不变。</li>
++            <li>七位值必须通过同一动作成功；测试结束后只能通过正式界面恢复原值。</li>
++            <li>页面在生产运行时返回 404，且临时分支不得合并、推送或部署。</li>
++          </ul>
++        </section>
++
++        <section className="grid gap-4 md:grid-cols-2" aria-label="邮编 Server Action 测试">
++          <PostalQaForm
++            action={saveCaseWorkbenchAction}
++            caseId={brokerageCase.id}
++            initialValue="124125"
++            label={`${postalField?.label ?? "現住所 郵便番号"} / 六位拒绝测试`}
++            value="124125"
++          />
++          <PostalQaForm
++            action={saveCaseWorkbenchAction}
++            caseId={brokerageCase.id}
++            initialValue="1540024"
++            label={`${postalField?.label ?? "現住所 郵便番号"} / 七位接受测试`}
++            value="1540024"
++          />
++        </section>
++
++        <footer className="rounded-xl border border-slate-200 bg-white p-4 text-xs leading-5 text-slate-500">
++          正式基线和临时分支由运行记录保存；证据中不得包含 Cookie、Token、请求头或真实客户资料。若案件不是明确的非生产测试案件，请立即停止。
++        </footer>
++      </div>
++    </main>
++  );
++}
+diff --git a/src/app/qa/task-024/postal/postal-qa-form.tsx b/src/app/qa/task-024/postal/postal-qa-form.tsx
+new file mode 100644
+index 0000000..dfca5c7
+--- /dev/null
++++ b/src/app/qa/task-024/postal/postal-qa-form.tsx
+@@ -0,0 +1,65 @@
++"use client";
++
++import type { ComponentProps } from "react";
++import { useRef } from "react";
++import { useFormStatus } from "react-dom";
++
++type PostalQaFormProps = {
++  action: ComponentProps<"form">["action"];
++  caseId: string;
++  initialValue: string;
++  label: string;
++  value: string;
++};
++
++function SubmitButton({ value }: { value: string }) {
++  const { pending } = useFormStatus();
++
++  return (
++    <button
++      type="submit"
++      disabled={pending}
++      className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-bold text-white transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-60"
++    >
++      {pending ? "送信中…" : `送信: ${value}`}
++    </button>
++  );
++}
++
++export function PostalQaForm({ action, caseId, initialValue, label, value }: PostalQaFormProps) {
++  const scrollTopRef = useRef<HTMLInputElement>(null);
++
++  return (
++    <form
++      action={action}
++      onSubmit={() => {
++        if (scrollTopRef.current) {
++          scrollTopRef.current.value = String(Math.max(0, Math.round(document.scrollingElement?.scrollTop ?? window.scrollY)));
++        }
++      }}
++      className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
++    >
++      <input type="hidden" name="caseId" value={caseId} />
++      <input type="hidden" name="presentFieldKeysJson" value='["applicant.currentPostalCode"]' />
++      <input type="hidden" name="returnView" value="overview" />
++      <input type="hidden" name="returnAnchor" value="case-section-participants" />
++      <input type="hidden" name="returnField" value="applicant.currentPostalCode" />
++      <input type="hidden" name="returnScrollTop" ref={scrollTopRef} value="" readOnly />
++      <input type="hidden" name="saveMode" value="manual" />
++      <label className="block text-sm font-bold text-slate-900" htmlFor={`postal-qa-${value}`}>
++        {label}
++      </label>
++      <div className="mt-2 flex flex-wrap items-center gap-3">
++        <input
++          id={`postal-qa-${value}`}
++          name="field:applicant.currentPostalCode"
++          defaultValue={initialValue}
++          inputMode="numeric"
++          autoComplete="off"
++          className="min-w-0 rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm text-slate-950 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200"
++        />
++        <SubmitButton value={value} />
++      </div>
++    </form>
++  );
++}
