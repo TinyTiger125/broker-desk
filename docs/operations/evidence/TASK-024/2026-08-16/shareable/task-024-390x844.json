@@ -1,0 +1,36 @@
+{
+  "articleRect": {
+    "bottom": 267.359375,
+    "height": 160.296875,
+    "left": 34,
+    "right": 356,
+    "top": 107.0625,
+    "width": 322
+  },
+  "capturedAt": "2026-08-15T12:42:32.962Z",
+  "editorAfterField": true,
+  "editorRect": {
+    "bottom": 652.796875,
+    "height": 385.4375,
+    "left": 34,
+    "right": 356,
+    "top": 267.359375,
+    "width": 322
+  },
+  "editorWithinViewport": true,
+  "head": "64c7e1e440a55f749e85dbba7f64f85755e55e9d",
+  "innerHeight": 844,
+  "innerWidth": 390,
+  "inputRect": {
+    "bottom": 562,
+    "height": 46.796875,
+    "left": 68,
+    "right": 322,
+    "top": 515.203125,
+    "width": 254
+  },
+  "inputWithinViewport": true,
+  "overflowX": false,
+  "scrollWidth": 390,
+  "url": "http://localhost:3000/cases/case_bm4jsup9?view=overview#case-section-participants"
+}

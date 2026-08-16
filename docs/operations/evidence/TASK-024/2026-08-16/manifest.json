@@ -1,0 +1,60 @@
+{
+  "task": "TASK-024",
+  "archiveDate": "2026-08-16",
+  "formalHeadBeforeCloseout": "64c7e1e440a55f749e85dbba7f64f85755e55e9d",
+  "qaHead": "9985b4dafb90ecf2e7a93e56b79773126596c642",
+  "qaBranch": "qa/task-024-server-action-20260816",
+  "qaIsolation": "Temporary worktree only; not merged, pushed, or deployed.",
+  "testCase": {
+    "caseId": "case_bm4jsup9",
+    "environment": "Non-production test data only",
+    "restoration": "Original postal code restored through the formal save action; audit history remains and restoration is not history-free."
+  },
+  "gateStatus": "3/3",
+  "evidence": {
+    "responsive": {
+      "screenshots": [
+        "shareable/task-024-768x900.png",
+        "shareable/task-024-390x844.png"
+      ],
+      "metadata": [
+        "shareable/task-024-768x900-corrected.json",
+        "shareable/task-024-390x844.json"
+      ],
+      "boundary": "768px metadata does not claim input-level rectangle measurement; it records viewport, no horizontal overflow, section/editor rectangles, and editor placement."
+    },
+    "serverAction": {
+      "screenshots": [
+        "shareable/02-six-digit-rejected-case.png",
+        "shareable/03-six-digit-after.png",
+        "shareable/05-seven-different-case.png",
+        "shareable/06-seven-different-after.png",
+        "shareable/07-restored-case.png",
+        "shareable/08-restored-after.png"
+      ],
+      "metadata": [
+        "shareable/01-baseline.json",
+        "shareable/02-six-digit-rejected-case.json",
+        "shareable/03-six-digit-after.json",
+        "shareable/06-seven-different-after.json",
+        "shareable/08-restored-after.json"
+      ],
+      "boundary": "The six-digit rejection and seven-digit write/restore are supported by independent snapshots and runtime evidence, not one continuous transaction recording."
+    },
+    "ime": {
+      "formalSource": "Local-only original 录屏2026-08-16 01.56.18.mov",
+      "archivedMetadata": "The original is not copied here; its SHA-256 is d40e4a78228f52c2a470cf0d31f4fc2c0fb39015371530cfed0ae9308cc1905d and duration is approximately 35.911667 seconds.",
+      "result": "Kotoeri composition and candidate state were visible; first Enter confirmed the candidate without saving; the editor remained open; Network showed no case-save POST; cancel left the original value."
+    }
+  },
+  "privacy": {
+    "shareableCopies": "Cropped/redacted PNG and JSON only; no full synthetic name/address.",
+    "localOriginals": "Original screenshots and video remain local-only for review.",
+    "credentials": "No Cookie, Token, or sensitive request headers included."
+  },
+  "productRulings": [
+    "Full-page refresh is not a TASK-024 IME requirement; first Enter non-submit is the requirement and is evidenced.",
+    "The corrected 768px record must not claim an inputRect measurement.",
+    "The 2026-08-16 01:56:18 recording is the formal IME source; the 01:53:30 recording is excluded."
+  ]
+}

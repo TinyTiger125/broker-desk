@@ -1,0 +1,7 @@
+{
+  "recordedAt": "2026-08-15T16:01:53.940Z",
+  "url": "http://localhost:3010/cases/case_bm4jsup9?view=overview&flash=case_field_invalid&field=applicant.currentPostalCode&scrollTop=124#case-section-participants",
+  "status": "日本邮政编码必须为7位数字，修改未保存。",
+  "loaded": true,
+  "screenshot": "02-six-digit-rejected-case.png"
+}

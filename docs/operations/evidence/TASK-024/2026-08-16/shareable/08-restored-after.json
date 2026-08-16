@@ -1,0 +1,17 @@
+{
+  "recordedAt": "2026-08-15T16:02:52.614Z",
+  "url": "http://localhost:3010/cases/case_bm4jsup9?field=applicant.currentPostalCode&view=overview&scrollTop=124&flash=case_workbench_saved#case-section-participants",
+  "submittedValue": "1540024",
+  "casePageField": "现住址邮政编码*\n\n1540024\n\n编辑",
+  "afterQaReload": {
+    "完成度": "3/21（14%）",
+    "当前身份范围": "tenant_broker_desk_internal / platform_owner / record.update",
+    "待处理数量": "18",
+    "案件名称": "[REDACTED_NON_PRODUCTION_TEST_CASE]",
+    "案件级确认": "本保存动作不持久化案件级确认状态；需在正式输出流程另行观察。",
+    "测试案件": "case_bm4jsup9",
+    "现住址邮编": "1540024",
+    "申请人姓名（脱敏）": "[REDACTED_NON_PRODUCTION_TEST_CASE]"
+  },
+  "history": "Server Action audit/history entries remain; restoration is not claimed to be history-free."
+}

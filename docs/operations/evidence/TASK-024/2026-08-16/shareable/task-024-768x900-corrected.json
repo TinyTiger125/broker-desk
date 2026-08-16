@@ -1,0 +1,35 @@
+{
+  "articleRect": {
+    "bottom": 522.09375,
+    "height": 105.5,
+    "left": 50,
+    "right": 384,
+    "top": 416.59375,
+    "width": 334
+  },
+  "capturedAt": "2026-08-15T12:42:01.363Z",
+  "editorAfterField": true,
+  "editorRect": {
+    "bottom": 852.734375,
+    "height": 330.640625,
+    "left": 50,
+    "right": 718,
+    "top": 522.09375,
+    "width": 668
+  },
+  "editorWithinViewport": true,
+  "head": "64c7e1e440a55f749e85dbba7f64f85755e55e9d",
+  "innerHeight": 900,
+  "innerWidth": 768,
+  "overflowX": false,
+  "scrollWidth": 768,
+  "url": "http://localhost:3000/cases/case_bm4jsup9?view=overview#case-section-participants",
+  "evidenceBasis": [
+    "screenshot",
+    "editorRect",
+    "articleRect",
+    "editorAfterField",
+    "noHorizontalOverflow"
+  ],
+  "qualityNote": "Original inputRect was all zero and the unsupported inputWithinViewport assertion was removed; no replacement input measurement is claimed."
+}

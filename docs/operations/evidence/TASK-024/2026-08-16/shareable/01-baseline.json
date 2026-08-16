@@ -1,0 +1,22 @@
+{
+  "recordedAt": "2026-08-15T16:01:00.837Z",
+  "formalHead": "64c7e1e440a55f749e85dbba7f64f85755e55e9d",
+  "tempBranch": "qa/task-024-server-action-20260816",
+  "tempHead": "9985b4dafb90ecf2e7a93e56b79773126596c642",
+  "url": "http://localhost:3010/qa/task-024/postal?caseId=case_bm4jsup9",
+  "caseId": "case_bm4jsup9",
+  "state": {
+    "完成度": "3/21（14%）",
+    "当前身份范围": "tenant_broker_desk_internal / platform_owner / record.update",
+    "待处理数量": "18",
+    "案件名称": "[REDACTED_NON_PRODUCTION_TEST_CASE]",
+    "案件级确认": "本保存动作不持久化案件级确认状态；需在正式输出流程另行观察。",
+    "测试案件": "case_bm4jsup9",
+    "现住址邮编": "1540024",
+    "申请人姓名（脱敏）": "[REDACTED_NON_PRODUCTION_TEST_CASE]"
+  },
+  "caseLevelConfirmation": {
+    "status": "not_persisted_and_not_confirmed",
+    "evidence": "saveCaseWorkbenchAction does not persist case-level download confirmation; fresh CaseOverview initializes confirmedVersion to null."
+  }
+}

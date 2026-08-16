@@ -23,7 +23,7 @@
 | TASK-021 | P0 | UI-GOV-001 页面与组件只读盘点、迁移矩阵和优先级 | Done | TASK-018 | [TASK-021](docs/tasks/TASK-021.md) | 38 个路由、3 个系统状态入口、P0 类型、公共组件候选、依赖、顺序、截图证据和业务边界已收口；无业务代码修改，等待 UI-GOV-002A 批准 |
 | TASK-022 | P0 | UI-GOV-002A 最小视觉基础 | Done | TASK-021 | [TASK-022](docs/tasks/TASK-022.md) | 唯一 Token、Object Page 最小基础组件和非导航开发预览 `/ui-foundation-preview` 已完成；静态、浏览器桌面/窄屏、焦点、触控、CJK 和范围门禁通过；未迁移正式业务页面 |
 | TASK-023 | P0 | UI-GOV-003 案件 Object Page 参考实现 | Done | TASK-022 | [TASK-023](docs/tasks/TASK-023.md) | 两个开发预览路由已移除；手动滚动/hash、原生锚点 Enter、点击及前进后退的可回放浏览器证据通过；隔离模板下载确认及数据修改失效归 TASK-020；真实 Clerk/第二租户/生产环境另列发布门禁 |
-| TASK-024 | P0 | UI-GOV-002B Broker Desk Layout System 建设 | In Review | TASK-023 | [TASK-024](docs/tasks/TASK-024.md) | 阶段 A 目标图已批准；阶段 C 和直接修复提交 `46f22d0` 已完成，1440/768/390、焦点/滚动、保存、CJK 溢出和下载阻塞证据通过；Tab/Enter 可重复浏览器证据仍缺 |
+| TASK-024 | P0 | UI-GOV-002B Broker Desk Layout System 建设 | Done | TASK-023 | [TASK-024](docs/tasks/TASK-024.md) | 阶段 A 目标图、阶段 C 实现和直接修复提交 `46f22d0` 已完成；响应式、服务端六位拒绝/不同七位写入与恢复、Kotoeri IME 第一次 Enter 不提交均通过，正式门禁 `3/3`；脱敏证据见 [`TASK-024 evidence archive`](docs/operations/evidence/TASK-024/2026-08-16/) |
 | TASK-003 | P0 | Close the input-material merge completion loop | Proposed | TASK-002 | [TASK-003](docs/tasks/TASK-003.md) | Selection, confirmation, result, failure, and refresh evidence |
 | TASK-004 | P0 | Consolidate template-library and official-template boundaries | Proposed | TASK-002 | [TASK-004](docs/tasks/TASK-004.md) | Role-aware entry, visibility, and installation evidence |
 | TASK-005 | P0 | Separate official template draft and publish states | Proposed | TASK-004 | [TASK-005](docs/tasks/TASK-005.md) | Independent draft save, publish, immutable version, and failure evidence |
@@ -61,10 +61,10 @@
 - `TASK-023 / UI-GOV-003` Checkpoint C 收口未通过：正式案件页的模式切换、编辑焦点、锚点点击、390/768 响应式和输出中心入口取得本地证据；手动滚动未同步 hash、键盘锚点未证明、当前 demo 无模板无法完成最终下载确认/数据修改失效；`/ui-foundation-preview` 与 `/ui-gov-003-checkpoint-a` 仍可直接访问且未见会话保护。TASK-023 保持 `In Review`，不启动 UI-GOV-002B；真实 Clerk/第二租户/生产服务只作为发布环境门禁记录。
 - TASK-023 授权最小修复已完成：两个开发预览路由移除，`case-overview.tsx` 加入手动滚动 hash 同步，原生锚点语义保持不变。独立审查 Agent 一次性复验确认路由移除通过，但未取得其余三项的修复后独立浏览器闭环证据：手动滚动/hash、键盘聚焦/Enter、隔离模板下载确认及修改后确认失效。因此 TASK-023 仍为 `In Review`，TASK-020 仍独立 `Blocked`，不启动 UI-GOV-002B；不扩大检查范围。
 - TASK-023 最终证据收口完成：在不重复启动浏览器复验 Agent 的前提下，补全了包含环境、视口、9 步操作序列、逐步断言、结果和截图映射的回放 JSON；同一独立审查 Agent 静态复核通过，TASK-023 标记 `Done`。隔离模板下载确认及数据修改后的确认失效正式归回 TASK-020；TASK-020 继续 `Blocked`，不启动 UI-GOV-002B。
-- TASK-024 / UI-GOV-002B 已由 `Ready` 进入 `In Review`：阶段 A 只建立唯一规范和全路由 Floorplan 映射，目标图批准前不实现公共组件；后续只允许公共组合组件和案件总览“申请人” Responsive Form 试点，不批量迁移页面。首页最后处理。
+- TASK-024 / UI-GOV-002B 已 `Done`：阶段 A 目标图、阶段 C 实现和运行闭环收口均完成；响应式、服务端邮编和 Kotoeri IME 三项正式门禁为 `3/3`，独立只读审查已完成。首页仍最后处理，后续不得据此启动全站迁移。
 - TASK-024 阶段 A 目标图已提交：只覆盖案件总览“申请人” Responsive Form 的 1440/768/390 视口、正常字段、缺失/冲突字段和局部编辑面板；长期规范已移至 `docs/product/BROKER_DESK_LAYOUT_SYSTEM_V1.md`，迁移矩阵仍保留在 `docs/operations/`。等待产品负责人确认，不进入正式组件实现。
 - TASK-024 阶段 A 目标图完成一次修订：普通字段改为网格/留白/轻分隔，当前编辑字段增加选中态，章节取消强制高度，编辑器按 1440/768/390 断点定位；中日韩并排文本仅保留 QA 附图。任务仍 `In Review`，不进入公共组件实现。
 - TASK-024 条件批准复审修订完成：仅更新 768px 和 390px 目标图，编辑器改为紧跟选中行/字段，移动端错误信息与按钮分行；桌面目标图不变。等待复审通过后才进入公共组件实现。
 - TASK-024 阶段 A 已获批准并进入阶段 C：实现 Agent 与独立审查 Agent 顺序完成并退出；仅新增 `src/components/layout-system/`、修改 `src/components/case-overview.tsx` 的申请人试点。typecheck、lint、build、workflow、字段目录和 diff check 通过。宽屏/768/390 的真实浏览器布局、键盘焦点、保存/取消恢复、CJK 长文本和移动端无横向滚动仍未验证；本地正式案件页被 Clerk 登录门禁阻断，不能标记 Done。
-- TASK-024 最终验收收口：已在非生产 Clerk 测试身份下取得 1440/768/390 编辑器位置、单编辑器、无横向溢出、Escape/取消后的焦点与滚动恢复、原值保存持久化、CJK 区域无溢出和下载阻塞反馈证据；直接修复提交为 `46f22d0`，独立审查 Agent 返回 PASS。Tab 操作未改变焦点、Enter 未打开字段按钮，当前仅能记录为浏览器证据缺口，任务保持 `In Review`，不启动 UI-GOV-002B 后续页面迁移。
+- TASK-024 最终验收收口：已在非生产 Clerk 测试身份下取得 1440/768/390 编辑器位置、单编辑器、无横向溢出、Escape/取消后的焦点与滚动恢复、原值保存持久化、CJK 区域无溢出和下载阻塞反馈证据；直接修复提交为 `46f22d0`，正式 Chrome 响应式、同一 Server Action 六位拒绝/不同七位写入与恢复、Kotoeri 组合输入第一次 Enter 不提交均已通过，正式门禁 `3/3`，独立只读审查已完成。产品裁决明确不要求整页刷新、不把 768px 输入框级测量写成已完成，并保留服务端证据的非连续时间边界。脱敏证据见 `docs/operations/evidence/TASK-024/2026-08-16/`；临时 QA 分支/worktree 保留且未合并、未推送、未部署。
 - No business task is implemented by the pure governance baseline commit.
