@@ -4,7 +4,7 @@
 - 优先级: P0
 - 负责人: 技术项目经理 / 实现 Agent / 独立审查 Agent
 - 依赖关系: TASK-024 已 Done；TASK-020 继续独立 Blocked，不是本任务的修复范围
-- 当前允许阶段: Checkpoint B 已批准；Checkpoint C 进入待归属权威修正，先完成文档写回，再进行最小代码修正和最终验收
+- 当前允许阶段: Checkpoint C 已通过（2026-08-16）；Checkpoint D 最终验收与独立审查尚未完成，任务继续保持 In Progress
 - Checkpoint A 状态: 已通过（2026-08-16）；审计结论已纳入 W1 目标结构草案
 - 参考矩阵: [`UI_GOV_002B_LAYOUT_FLOORPLAN_MATRIX_V2_2026-08-16.md`](../operations/UI_GOV_002B_LAYOUT_FLOORPLAN_MATRIX_V2_2026-08-16.md)
 - Checkpoint B 目标规格: [`TASK-025_W1_TARGET_STRUCTURE_2026-08-16.md`](../operations/TASK-025_W1_TARGET_STRUCTURE_2026-08-16.md)
@@ -89,7 +89,7 @@ Checkpoint A 未完成前：
 
 ### Checkpoint B：目标结构与产品批准
 
-当前状态：Checkpoint B 已批准；当前只进行 Checkpoint C 前置准备，正式代码实现须在两份遗留治理文档差异完成独立归属、工作区形成明确干净基线后另行开始。
+历史状态：Checkpoint B 已批准；随后已完成基线处理并进入 Checkpoint C 实施。
 
 仅在 A 证据完成后提出一套目标结构，至少说明：
 
@@ -103,9 +103,9 @@ Checkpoint A 未完成前：
 
 目标结构必须获得产品负责人批准后，才能进入 C。
 
-### Checkpoint C 前置准备与实施边界
+### Checkpoint C 实施边界
 
-Checkpoint B 已批准后，才允许准备单页实现；当前仍未进入代码实现。实现前必须先形成明确干净基线。形成后，最多启动一个实现 Agent，只实现 `/organize-center`，完成一次明确交付后退出并报告活跃 Agent 回到 0。
+历史实施前置条件已满足；本节记录已批准的单页实施边界。实施阶段最多启动一个实现 Agent，只实现 `/organize-center`，完成一次明确交付后退出并报告活跃 Agent 回到 0。
 
 允许优先检查或修改：
 
@@ -121,7 +121,7 @@ Checkpoint B 已批准后，才允许准备单页实现；当前仍未进入代�
 
 禁止修改全局导航、案件详情、保存动作、API 契约、权限、Clerk、租户隔离、数据库、149 项字段体系、TASK-020、输出/预览/下载/打印、其他 List Report、全局 CSS 或第二套 Token；禁止增加高级筛选、批量操作、侧栏预览、第二套对象模型或额外页面。
 
-### Checkpoint C：单页实现
+### Checkpoint C：单页实现（已通过，2026-08-16）
 
 只允许实现 `/organize-center`：
 
@@ -204,4 +204,4 @@ Checkpoint B 已批准后，才允许准备单页实现；当前仍未进入代�
 
 ## 当前状态
 
-Checkpoint A 已通过；Checkpoint B 已批准。产品负责人已裁决 W1 只交付案件、主体、物件三个对象类型；待归属资料因缺少具体对象归属权威而冻结，不代表数据为零或页面已完成。`e7aba60` 仅为前一轮状态修正提交，不能作为最终实现提交；本轮先完成文档写回，再进行待归属边界的最小代码修正和最终验收。TASK-020 和输出专题不受影响。
+Checkpoint A 已通过；Checkpoint B 已批准；Checkpoint C 已通过（代码提交 `4e80716`，独立只读审查通过）。产品负责人已裁决 W1 只交付案件、主体、物件三个对象类型；待归属资料因缺少具体对象归属权威而冻结，不代表数据为零或页面已完成。Checkpoint D 的长列表滚动恢复、权限拒绝、第二租户、安全归档和完整业务回归证据尚未完成，因此 TASK-025 继续保持 In Progress。TASK-020 和输出专题不受影响。

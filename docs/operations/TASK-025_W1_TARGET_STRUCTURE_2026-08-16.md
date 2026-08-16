@@ -3,7 +3,7 @@
 - 状态：Checkpoint B 已批准（2026-08-16）
 - 任务：`TASK-025`
 - 页面：`/organize-center`
-- 当前阶段：Checkpoint C 最小修正已获授权；先完成本次产品边界写回，再进行实现和最终验收
+- 当前阶段：Checkpoint C 已通过（2026-08-16）；Checkpoint D 最终验收与独立审查尚未完成
 - 参考规范：[`BROKER_DESK_LAYOUT_SYSTEM_V1.md`](../product/BROKER_DESK_LAYOUT_SYSTEM_V1.md)
 - 页面矩阵：[`UI_GOV_002B_LAYOUT_FLOORPLAN_MATRIX_V2_2026-08-16.md`](UI_GOV_002B_LAYOUT_FLOORPLAN_MATRIX_V2_2026-08-16.md)
 
