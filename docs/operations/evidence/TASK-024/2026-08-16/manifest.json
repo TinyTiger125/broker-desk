@@ -4,7 +4,7 @@
   "formalHeadBeforeCloseout": "64c7e1e440a55f749e85dbba7f64f85755e55e9d",
   "qaHead": "9985b4dafb90ecf2e7a93e56b79773126596c642",
   "qaBranch": "qa/task-024-server-action-20260816",
-  "qaIsolation": "Temporary worktree only; not merged, pushed, or deployed.",
+  "qaIsolation": "Historical temporary worktree and local branch removed after persistent archive; never merged, pushed, or deployed.",
   "qaCallerAudit": {
     "patch": "qa-caller.patch",
     "metadata": "qa-commit-metadata.txt",
@@ -60,7 +60,7 @@
   },
   "privacy": {
     "shareableCopies": "Cropped/redacted PNG and JSON only; no full synthetic name/address.",
-    "localOriginals": "The original IME video is retained outside the repository in a private local directory; original screenshots will be removed with the temporary worktree after audit.",
+    "localOriginals": "The original IME video is retained outside the repository in a private local directory; original screenshots were removed with the temporary worktree after audit.",
     "credentials": "No credential values, authentication headers, or real-customer data included."
   },
   "productRulings": [

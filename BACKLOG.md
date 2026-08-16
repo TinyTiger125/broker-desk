@@ -66,5 +66,5 @@
 - TASK-024 阶段 A 目标图完成一次修订：普通字段改为网格/留白/轻分隔，当前编辑字段增加选中态，章节取消强制高度，编辑器按 1440/768/390 断点定位；中日韩并排文本仅保留 QA 附图。任务仍 `In Review`，不进入公共组件实现。
 - TASK-024 条件批准复审修订完成：仅更新 768px 和 390px 目标图，编辑器改为紧跟选中行/字段，移动端错误信息与按钮分行；桌面目标图不变。等待复审通过后才进入公共组件实现。
 - TASK-024 阶段 A 已获批准并进入阶段 C：实现 Agent 与独立审查 Agent 顺序完成并退出；仅新增 `src/components/layout-system/`、修改 `src/components/case-overview.tsx` 的申请人试点。typecheck、lint、build、workflow、字段目录和 diff check 通过。宽屏/768/390 的真实浏览器布局、键盘焦点、保存/取消恢复、CJK 长文本和移动端无横向滚动仍未验证；本地正式案件页被 Clerk 登录门禁阻断，不能标记 Done。
-- TASK-024 最终验收收口：已在非生产 Clerk 测试身份下取得 1440/768/390 编辑器位置、单编辑器、无横向溢出、Escape/取消后的焦点与滚动恢复、原值保存持久化、CJK 区域无溢出和下载阻塞反馈证据；直接修复提交为 `46f22d0`，正式 Chrome 响应式、同一 Server Action 六位拒绝/不同七位写入与恢复、Kotoeri 组合输入第一次 Enter 不提交均已通过，正式门禁 `3/3`，独立只读审查已完成。产品裁决明确不要求整页刷新、不把 768px 输入框级测量写成已完成，并保留服务端证据的非连续时间边界。脱敏证据见 `docs/operations/evidence/TASK-024/2026-08-16/`；临时 QA 分支/worktree 保留且未合并、未推送、未部署。
+- TASK-024 最终验收收口：已在非生产 Clerk 测试身份下取得 1440/768/390 编辑器位置、单编辑器、无横向溢出、Escape/取消后的焦点与滚动恢复、原值保存持久化、CJK 区域无溢出和下载阻塞反馈证据；直接修复提交为 `46f22d0`，正式 Chrome 响应式、同一 Server Action 六位拒绝/不同七位写入与恢复、Kotoeri 组合输入第一次 Enter 不提交均已通过，正式门禁 `3/3`，独立只读审查已完成。产品裁决明确不要求整页刷新、不把 768px 输入框级测量写成已完成，并保留服务端证据的非连续时间边界。脱敏证据、QA patch、提交元数据和脱敏日志见 `docs/operations/evidence/TASK-024/2026-08-16/`；临时 QA worktree 和本地分支已清理，正式产品未合并 QA 调用器。
 - No business task is implemented by the pure governance baseline commit.
