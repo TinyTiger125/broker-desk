@@ -24,7 +24,7 @@
 | TASK-022 | P0 | UI-GOV-002A 最小视觉基础 | Done | TASK-021 | [TASK-022](docs/tasks/TASK-022.md) | 唯一 Token、Object Page 最小基础组件和非导航开发预览 `/ui-foundation-preview` 已完成；静态、浏览器桌面/窄屏、焦点、触控、CJK 和范围门禁通过；未迁移正式业务页面 |
 | TASK-023 | P0 | UI-GOV-003 案件 Object Page 参考实现 | Done | TASK-022 | [TASK-023](docs/tasks/TASK-023.md) | 两个开发预览路由已移除；手动滚动/hash、原生锚点 Enter、点击及前进后退的可回放浏览器证据通过；隔离模板下载确认及数据修改失效归 TASK-020；真实 Clerk/第二租户/生产环境另列发布门禁 |
 | TASK-024 | P0 | UI-GOV-002B Broker Desk Layout System 建设 | Done | TASK-023 | [TASK-024](docs/tasks/TASK-024.md) | 阶段 A 目标图、阶段 C 实现和直接修复提交 `46f22d0` 已完成；响应式、服务端六位拒绝/不同七位写入与恢复、Kotoeri IME 第一次 Enter 不提交均通过，正式门禁 `3/3`；脱敏证据见 [`TASK-024 evidence archive`](docs/operations/evidence/TASK-024/2026-08-16/) |
-| TASK-025 | P0 | W1 信息整理中心 List Report 参考实现 | In Progress | TASK-024 | [TASK-025](docs/tasks/TASK-025.md) | Checkpoint A 已批准，当前只进行真实登录流程只读审计；目标结构、页面实现和最终门禁尚未开始 |
+| TASK-025 | P0 | W1 信息整理中心 List Report 参考实现 | In Progress | TASK-024 | [TASK-025](docs/tasks/TASK-025.md) | Checkpoint A 已通过，Checkpoint B 已批准；当前只做 Checkpoint C 前置准备，需先形成明确干净基线；未修改业务代码 |
 | TASK-003 | P0 | Close the input-material merge completion loop | Proposed | TASK-002 | [TASK-003](docs/tasks/TASK-003.md) | Selection, confirmation, result, failure, and refresh evidence |
 | TASK-004 | P0 | Consolidate template-library and official-template boundaries | Proposed | TASK-002 | [TASK-004](docs/tasks/TASK-004.md) | Role-aware entry, visibility, and installation evidence |
 | TASK-005 | P0 | Separate official template draft and publish states | Proposed | TASK-004 | [TASK-005](docs/tasks/TASK-005.md) | Independent draft save, publish, immutable version, and failure evidence |
@@ -42,7 +42,7 @@
 - TASK-011 is Done and governance-only; it did not change business code or
   historical recovery references.
 - TASK-003 and TASK-006A remain Proposed. Neither is Ready.
-- TASK-025 is In Progress. Checkpoint A is approved and limited to real logged-in read-only audit of `/organize-center`; no target image or code change is allowed before the audit report is reviewed.
+- TASK-025 is In Progress. Checkpoint A and B are complete; only Checkpoint C preflight is allowed. Code implementation must wait until the two pre-existing governance diffs have clear ownership and the worktree has a clear clean baseline.
 - TASK-006A is the only narrowed candidate business trial in this baseline.
 - TASK-013 is Done; implementation, validation, review-fix, and independent read-only review are complete.
 - TASK-014 is Done; product-document scope, validation, and independent review are complete with no business-code or page-behavior changes.
@@ -70,6 +70,6 @@
 - TASK-024 阶段 A 已获批准并进入阶段 C：实现 Agent 与独立审查 Agent 顺序完成并退出；仅新增 `src/components/layout-system/`、修改 `src/components/case-overview.tsx` 的申请人试点。typecheck、lint、build、workflow、字段目录和 diff check 通过。宽屏/768/390 的真实浏览器布局、键盘焦点、保存/取消恢复、CJK 长文本和移动端无横向滚动仍未验证；本地正式案件页被 Clerk 登录门禁阻断，不能标记 Done。
 - TASK-024 最终验收收口：已在非生产 Clerk 测试身份下取得 1440/768/390 编辑器位置、单编辑器、无横向溢出、Escape/取消后的焦点与滚动恢复、原值保存持久化、CJK 区域无溢出和下载阻塞反馈证据；直接修复提交为 `46f22d0`，正式 Chrome 响应式、同一 Server Action 六位拒绝/不同七位写入与恢复、Kotoeri 组合输入第一次 Enter 不提交均已通过，正式门禁 `3/3`，独立只读审查已完成。产品裁决明确不要求整页刷新、不把 768px 输入框级测量写成已完成，并保留服务端证据的非连续时间边界。脱敏证据、QA patch、提交元数据和脱敏日志见 `docs/operations/evidence/TASK-024/2026-08-16/`；临时 QA worktree 和本地分支已清理，正式产品未合并 QA 调用器。
 - 矩阵 V2 已冻结为 Approved baseline：34 个业务/后台页面族、2 个 Auth Shell 页面族、1 个退役路由、4 个系统状态入口；两个申请书预览路径合并为一个页面族，Workspace Selector 独立登记。规范批准不等于全产品迁移完成；API/QA、历史入口和删除候选不计入正式页面数量。
-- W1 只允许先审计 `/organize-center` 的真实流程；Checkpoint A 完成前不得制作目标图、修改页面或启动 Agent。TASK-020 继续阻塞输出中心和最终预览/下载；首页最后处理。
+- W1 已完成 Checkpoint A 真实流程审计，Checkpoint B 目标结构与交互规格已批准；Checkpoint C 代码实现须等待基线清理，不得提前启动 Agent。TASK-020 继续阻塞输出中心和最终预览/下载；首页最后处理。
 - 输出中心、正式申请书预览/下载、报价单打印及版权/授权/版本/确认/下载权限/审计规则延期为独立输出产品专题，不阻塞 TASK-025；`/quotes/[id]/print` 保持退役/待决，不恢复、不重定向、不删除。
 - No business task is implemented by the pure governance baseline commit.
