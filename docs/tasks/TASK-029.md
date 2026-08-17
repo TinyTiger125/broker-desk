@@ -3,10 +3,10 @@
 - 状态: In Progress
 - 优先级: P0
 - 负责人: 技术项目经理
-- 当前阶段: Checkpoint C 有限实现和独立只读审查已完成，等待产品负责人复审
+- 当前阶段: Checkpoint C 最终结构微调和独立只读审查已完成，D-Lite `UNVERIFIED`，等待产品负责人最终收口
 - 前置任务: TASK-028
 - 目标结果: 用户能够找到一个个人或法人主体，理解其真实角色和关联关系，并进入正确的维护动作；列表不得自行判断主体资料是否完成、案件是否完成或能否输出
-- 当前停止点: 静态验证已完成；不自动进入 D-Lite 或视觉优化，等待产品负责人复审
+- 当前停止点: D-Lite 已按环境上限尝试并记录阻塞；不再修改视觉或重复认证排查，等待产品负责人最终收口
 
 ## 产品边界
 
@@ -228,4 +228,12 @@ Checkpoint A 报告必须包含已验证事实、代码推断、未验证项、�
 - `npm run test:product-language` 仍报告既有 `/import-center` 的“字段映射”文案问题，与 TASK-029 无关，不修改该问题。
 - 限制必须如实保留：`src/lib/hub.ts` 仍为其他页面保留名称/purpose/stage 兼容推断和 quotation 计数，但 `/parties` 不展示；新增脚本是有限静态守卫，未构造完整行为 fixture，不能宣称九项行为测试全部运行通过；主体编辑链接未新增 `returnTo`/焦点恢复机制，浏览器返回滚动与焦点尚未验证。
 - 浏览器、响应式、键盘、无障碍、真实归档和 CSV 下载继续为 `UNVERIFIED` 或批次回归项；本任务不宣称通过。
+
+## Checkpoint C 最终结构微调和 D-Lite 记录
+
+- 产品复审指出三项结构问题并授权一次最终微调：独立页面标题、桌面结果表头、无主体空态移除重复“新增主体”按钮；同时移除页面头部重复结果范围。
+- 微调提交为 `d0cf288`，仅修改 `src/app/parties/page.tsx` 和 `scripts/check-parties-list-report.mjs`；未修改 `hub.ts` 或其他业务边界。
+- 独立只读审查通过：`pageTitle`、桌面名称/类型/角色/状态/操作表头、手机行内标签、唯一主要链接和空态层级均符合；`aria-hidden` 表头语义不作为完整无障碍通过证据。
+- 微调后契约脚本、lint、typecheck、build、workflow rules 和 `git diff --check` 均通过。
+- D-Lite 运行证据为 `UNVERIFIED`：本地 demo 服务可监听 3002，但 `/parties` 返回 Next.js Build Error，错误链为 `pg-connection-string` 无法解析 Node `fs`（并伴随 `path/net/crypto` 等浏览器打包错误）；服务已停止，未进入认证、租户或数据排查。
 - 未跟踪的 `src/app/clients/page 2.tsx` 保持原状并排除所有提交。
