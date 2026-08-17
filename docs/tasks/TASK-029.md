@@ -1,12 +1,12 @@
 # TASK-029 / W6-B：主体索引 `/parties` List Report 参考迁移
 
-- 状态: In Progress
+- 状态: Done
 - 优先级: P0
 - 负责人: 技术项目经理
-- 当前阶段: Checkpoint C 最终结构微调和独立只读审查已完成，D-Lite `UNVERIFIED`，等待产品负责人最终收口
+- 当前阶段: 页面结构迁移完成，行政收口
 - 前置任务: TASK-028
 - 目标结果: 用户能够找到一个个人或法人主体，理解其真实角色和关联关系，并进入正确的维护动作；列表不得自行判断主体资料是否完成、案件是否完成或能否输出
-- 当前停止点: D-Lite 已按环境上限尝试并记录阻塞；不再修改视觉或重复认证排查，等待产品负责人最终收口
+- 当前停止点: 行政收口完成；等待产品负责人选择下一页面
 
 ## 产品边界
 
@@ -215,8 +215,8 @@ Checkpoint A 报告必须包含已验证事实、代码推断、未验证项、�
 
 ## 当前状态
 
-- Checkpoint A 只读审计已完成；Checkpoint B 条件通过，CSV/`flash` 边界修正已写入 `docs/operations/TASK-029_W6B_TARGET_STRUCTURE_2026-08-17.md`。
-- Checkpoint C 一次有限实现和一次独立只读审查已完成，代码提交为 `8686d9a`；TASK-029 保持 `In Progress`，等待产品负责人复审，不自动进入 D-Lite。
+- Checkpoint A 只读审计、Checkpoint B 目标结构、Checkpoint C 一次有限实现和一次独立只读审查已完成；CSV/`flash` 边界修正已写入 `docs/operations/TASK-029_W6B_TARGET_STRUCTURE_2026-08-17.md`。
+- TASK-029 已按页面结构迁移层面标记 `Done`；不自动启动下一矩阵任务，等待产品负责人选择下一页面。
 - `/parties` 已收敛为纯 List Report：只使用显式主体元数据，缺失显示“未设置”；移除 focus、默认第一条、右侧详情、完成度、案件/合同数量、关联筛选、输出/附件/案件动作和页面 CSV 控件；主体名称为唯一主要进入链接，关系图与归档/恢复为次级操作。
 - 本轮未修改 actions、CSV API、数据库、认证、权限、租户或禁止页面；未创建主体数据，未启动服务；未跟踪的 `src/app/clients/page 2.tsx` 保持原状并排除所有提交。
 
@@ -237,3 +237,36 @@ Checkpoint A 报告必须包含已验证事实、代码推断、未验证项、�
 - 微调后契约脚本、lint、typecheck、build、workflow rules 和 `git diff --check` 均通过。
 - D-Lite 运行证据为 `UNVERIFIED`：本地 demo 服务可监听 3002，但 `/parties` 返回 Next.js Build Error，错误链为 `pg-connection-string` 无法解析 Node `fs`（并伴随 `path/net/crypto` 等浏览器打包错误）；服务已停止，未进入认证、租户或数据排查。
 - 未跟踪的 `src/app/clients/page 2.tsx` 保持原状并排除所有提交。
+
+## 最终收口（页面结构迁移完成）
+
+产品负责人已决定 TASK-029 按页面结构迁移层面标记 `Done`。本结论不扩展为真实运行闭环、完整无障碍或跨租户验证通过。
+
+### 已完成
+
+- `/parties` 已收敛为纯 List Report。
+- 默认列表只显示主体名称、显式类型、显式角色、联系方式摘要和生命周期；缺少显式类型或角色时显示“未设置”。
+- 已移除兼容推断展示、主体/案件完成度、案件数量、关联筛选、`focus`、默认第一条、右侧详情、输出入口、附件、案件动作和 CSV 控件。
+- 主体名称是主要维护入口；关系图和归档/恢复是次级操作。
+- 页面标题、桌面列标题、手机行内标签和空态操作层级已完成代码修正。
+- 契约脚本、lint、typecheck、build、workflow rules 和 `git diff --check` 已通过；独立只读审查已通过。
+
+### 未验证项（进入批次回归）
+
+- 1440、768、390 的真实页面表现及横向溢出。
+- Tab、Enter 和浏览器返回焦点。
+- 真实空态、筛选、分页和归档/恢复反馈。
+- 完整无障碍，以及 `aria-hidden` 桌面表头的屏幕阅读器语义。
+- 真实权限、第二租户和跨租户行为。
+- CSV 下载、导出审计及服务器空 `ids` 契约。
+
+### 共享环境记录
+
+- 本地服务可监听 3002；`/parties` 访问因 `pg-connection-string` 解析 `fs` 及相关 Node 模块浏览器打包问题进入 Next.js Build Error。
+- `npm run build` 通过；当前没有证据证明该错误由 TASK-029 差异导致。
+- 本次不将 D-Lite 写成通过，也不继续认证、租户或依赖环境排查；未创建页面截图，仅保留运行阻塞事实。
+
+### CSV 边界
+
+- `/parties` 页面入口已冻结；现有 `/api/hub/export?scope=parties` 未修改、未删除。
+- 如需恢复主体导出，必须另立任务确定权威字段、筛选范围、空选择、权限和审计。
