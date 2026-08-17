@@ -3,10 +3,10 @@
 - 状态: In Progress
 - 优先级: P0
 - 负责人: 技术项目经理
-- 当前阶段: Checkpoint B 条件通过，CSV/`flash` 边界修正后已授权进入 Checkpoint C
+- 当前阶段: Checkpoint C 有限实现和独立只读审查已完成，等待产品负责人复审
 - 前置任务: TASK-028
 - 目标结果: 用户能够找到一个个人或法人主体，理解其真实角色和关联关系，并进入正确的维护动作；列表不得自行判断主体资料是否完成、案件是否完成或能否输出
-- 当前停止点: 规格修正提交后执行一次有限实现、一次独立只读审查和静态验证；不自动进入 D-Lite
+- 当前停止点: 静态验证已完成；不自动进入 D-Lite 或视觉优化，等待产品负责人复审
 
 ## 产品边界
 
@@ -215,7 +215,17 @@ Checkpoint A 报告必须包含已验证事实、代码推断、未验证项、�
 
 ## 当前状态
 
-- Checkpoint A 只读审计已完成；Checkpoint B 条件通过，CSV/`flash` 边界修正已写入 `docs/operations/TASK-029_W6B_TARGET_STRUCTURE_2026-08-17.md`，TASK-029 保持 `In Progress` 并授权进入 Checkpoint C；未启动实现。
-- Checkpoint B 已收束为单一标准 List Report：Client 兼容持久化边界、显式主体元数据、无完成度/案件数量/输出资格推导、无 `focus` 和右侧第二详情、页面不显示 CSV 控件，以及既有维护入口的明确层级。主体 CSV 因字段契约和空选择语义不可靠而冻结，现有 CSV API 不修改。
-- 本轮只修改治理文档；未修改 `src/`、数据库、API、认证、权限或租户；未创建主体数据，未启动实现或审查 Agent。
+- Checkpoint A 只读审计已完成；Checkpoint B 条件通过，CSV/`flash` 边界修正已写入 `docs/operations/TASK-029_W6B_TARGET_STRUCTURE_2026-08-17.md`。
+- Checkpoint C 一次有限实现和一次独立只读审查已完成，代码提交为 `8686d9a`；TASK-029 保持 `In Progress`，等待产品负责人复审，不自动进入 D-Lite。
+- `/parties` 已收敛为纯 List Report：只使用显式主体元数据，缺失显示“未设置”；移除 focus、默认第一条、右侧详情、完成度、案件/合同数量、关联筛选、输出/附件/案件动作和页面 CSV 控件；主体名称为唯一主要进入链接，关系图与归档/恢复为次级操作。
+- 本轮未修改 actions、CSV API、数据库、认证、权限、租户或禁止页面；未创建主体数据，未启动服务；未跟踪的 `src/app/clients/page 2.tsx` 保持原状并排除所有提交。
+
+## Checkpoint C 实现和独立审查记录
+
+- 实现范围仅为 `src/app/parties/page.tsx`、`src/lib/hub.ts` 的显式主体元数据/来源适配字段，以及 `scripts/check-parties-list-report.mjs` 有限静态契约守卫。
+- 独立只读审查结论：未发现越界修改、CSV 页面控件、旧 focus/第二详情、完成度/案件/输出推导或禁止文件变化；审查 Agent 已退出。
+- 通过：`node scripts/check-parties-list-report.mjs`、`npm run lint`、`npm run typecheck`、`npm run build`、`npm run test:workflow-rules`、`git diff --check`。
+- `npm run test:product-language` 仍报告既有 `/import-center` 的“字段映射”文案问题，与 TASK-029 无关，不修改该问题。
+- 限制必须如实保留：`src/lib/hub.ts` 仍为其他页面保留名称/purpose/stage 兼容推断和 quotation 计数，但 `/parties` 不展示；新增脚本是有限静态守卫，未构造完整行为 fixture，不能宣称九项行为测试全部运行通过；主体编辑链接未新增 `returnTo`/焦点恢复机制，浏览器返回滚动与焦点尚未验证。
+- 浏览器、响应式、键盘、无障碍、真实归档和 CSV 下载继续为 `UNVERIFIED` 或批次回归项；本任务不宣称通过。
 - 未跟踪的 `src/app/clients/page 2.tsx` 保持原状并排除所有提交。
