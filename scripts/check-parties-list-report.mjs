@@ -17,6 +17,13 @@ function forbidText(text, description) {
 }
 
 // Explicit profile metadata is the only source used by the List Report.
+requireText("pageTitle: \"相关主体\"", "page identity must have an independent Chinese page title");
+requireText('<h1 className="text-4xl font-bold tracking-tight text-slate-900">{copy.pageTitle}</h1>', "h1 must use the page title, not the name column label");
+requireText("hidden gap-4 border-b", "desktop results must include a visible column header row");
+requireText("<span>{copy.name}</span>", "desktop header must label the name column");
+requireText("{copy.actions}", "desktop header must label the actions column");
+forbidText('text-sm font-medium text-slate-600">{copy.resultRange', "result count must remain in the results area, not repeat in the page header");
+forbidText('href="/parties/new" className="inline-flex rounded-lg bg-[#001e40]', "empty no-party state must not duplicate the header add action");
 requireText("party.explicitPartyType === \"corporate\"", "corporate type must use explicit metadata");
 requireText("party.explicitPartyType === \"individual\"", "individual type must use explicit metadata");
 requireText(": notSet", "missing explicit type or role must render the unset label");

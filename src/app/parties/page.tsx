@@ -70,10 +70,12 @@ const partiesCopy = {
     page: (current: number, total: number) => `${current} / ${total}ページ`,
     previous: "前のページ",
     next: "次のページ",
+    pageTitle: "関係者",
     name: "関係者名",
     role: "役割",
     type: "種別",
     status: "状態",
+    actions: "操作",
     relationTree: "関係を確認",
     searchLabel: "キーワード",
     searchPlaceholder: "名前・電話・メール・役割で検索",
@@ -104,10 +106,12 @@ const partiesCopy = {
     page: (current: number, total: number) => `第 ${current} / ${total} 页`,
     previous: "上一页",
     next: "下一页",
+    pageTitle: "相关主体",
     name: "主体名称",
     role: "角色",
     type: "类型",
     status: "状态",
+    actions: "操作",
     relationTree: "查看关系图",
     searchLabel: "关键词",
     searchPlaceholder: "按姓名、电话、邮箱或角色搜索",
@@ -138,10 +142,12 @@ const partiesCopy = {
     page: (current: number, total: number) => `${current} / ${total}페이지`,
     previous: "이전 페이지",
     next: "다음 페이지",
+    pageTitle: "관계자",
     name: "관계자명",
     role: "역할",
     type: "유형",
     status: "상태",
+    actions: "작업",
     relationTree: "관계 확인",
     searchLabel: "키워드",
     searchPlaceholder: "이름, 전화, 이메일 또는 역할 검색",
@@ -228,8 +234,7 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div className="space-y-1">
           <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">{copy.results}</p>
-          <h1 className="text-4xl font-bold tracking-tight text-slate-900">{copy.name}</h1>
-          <p className="text-sm font-medium text-slate-600">{copy.resultRange(rangeStart, rangeEnd, filtered.length)}</p>
+          <h1 className="text-4xl font-bold tracking-tight text-slate-900">{copy.pageTitle}</h1>
         </div>
         <Link
           href="/parties/new"
@@ -294,6 +299,16 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
           ) : null}
         </div>
 
+        {!readError && filtered.length > 0 ? (
+          <div className="hidden gap-4 border-b border-slate-200/80 bg-slate-50/70 px-5 py-2 text-xs font-bold uppercase tracking-wide text-slate-500 lg:grid lg:grid-cols-[minmax(12rem,1.3fr)_minmax(7rem,0.7fr)_minmax(9rem,1fr)_minmax(6rem,0.6fr)_auto] lg:items-center" aria-hidden="true">
+            <span>{copy.name}</span>
+            <span>{copy.type}</span>
+            <span>{copy.role}</span>
+            <span>{copy.status}</span>
+            <span className="text-right">{copy.actions}</span>
+          </div>
+        ) : null}
+
         {readError ? (
           <div className="space-y-3 px-5 py-12 text-center">
             <p className="text-sm font-semibold text-rose-700">{copy.readError}</p>
@@ -306,7 +321,7 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
           <div className="space-y-3 px-5 py-12 text-center">
             <p className="text-sm font-semibold text-slate-700">{parties.length === 0 ? copy.noParties : copy.noResult}</p>
             {parties.length === 0 ? (
-              <Link href="/parties/new" className="inline-flex rounded-lg bg-[#001e40] px-4 py-2 text-sm font-bold text-white">{copy.addParty}</Link>
+              null
             ) : (
               <div className="space-y-2">
                 <p className="text-sm text-slate-500">{copy.noResultHint}</p>
