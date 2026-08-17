@@ -221,12 +221,10 @@ function getCopy(locale: Locale) {
       unmapped: "この列は保存しない",
       recentImportHistory: "最近の読取履歴",
       viewArchive: "アーカイブ表示",
-      readinessTitle: "処理段階",
       issueStatsTitle: "確認事項",
       issueStatsDesc: "直近の読取で確認が必要な内容",
       issueTrendTitle: "確認事項の推移（7日）",
       issueTrendDesc: "日別の確認件数",
-      mapped: "読取済み・確認待ち",
       alerts: "アラート",
       validationLog: "確認記録",
       noFurtherAlerts: "追加アラートはありません",
@@ -328,12 +326,10 @@ function getCopy(locale: Locale) {
       unmapped: "不保存这一列",
       recentImportHistory: "最近读取历史",
       viewArchive: "查看归档",
-      readinessTitle: "处理阶段",
       issueStatsTitle: "问题汇总",
       issueStatsDesc: "按最近读取结果统计需要处理的内容",
       issueTrendTitle: "问题变化（7天）",
       issueTrendDesc: "按天统计需要确认的内容",
-      mapped: "已读取/待确认",
       alerts: "告警",
       validationLog: "检查记录",
       noFurtherAlerts: "暂无更多告警",
@@ -434,12 +430,10 @@ function getCopy(locale: Locale) {
       unmapped: "이 열은 저장하지 않음",
       recentImportHistory: "최근 읽기 이력",
       viewArchive: "보관 이력 보기",
-      readinessTitle: "처리 단계",
       issueStatsTitle: "확인 사항",
       issueStatsDesc: "최근 읽기 결과에서 확인이 필요한 내용",
       issueTrendTitle: "확인 사항 추이 (7일)",
       issueTrendDesc: "일자별 확인 건수",
-      mapped: "읽기 완료·확인 대기",
       alerts: "알림",
       validationLog: "확인 기록",
       noFurtherAlerts: "추가 알림이 없습니다",
@@ -503,7 +497,7 @@ function getCopy(locale: Locale) {
 }
 
 type ExcelImportPayload = {
-  kind?: "property_row_import" | "input_file_extraction";
+  kind?: "property_row_import" | "input_file_extraction" | "identity_import_source";
   headers: string[];
   autoMapping: Record<string, string>;
   rows: Record<string, unknown>[];
@@ -519,17 +513,37 @@ type ExcelImportResult = {
 };
 
 type ImportCenterPageProps = {
-  searchParams?: Promise<{ job?: string; flash?: string; xlsxJob?: string; advanced?: string; intake?: string; targetCaseId?: string }>;
+  searchParams?: Promise<{
+    job?: string;
+    flash?: string;
+    xlsxJob?: string;
+    advanced?: string;
+    intake?: string;
+    targetCaseId?: string;
+    flow?: string;
+  }>;
 };
 
-function isInputFileExtractionJob(job: HubImportJobItem) {
-  if (!job.notes) return false;
+function getImportPayloadKind(job: HubImportJobItem) {
+  if (!job.notes) return undefined;
   try {
-    const payload = JSON.parse(job.notes) as Pick<ExcelImportPayload, "kind">;
-    return payload.kind === "input_file_extraction";
+    const rawNotes = job.notes.trim();
+    const firstLine = rawNotes.split(/\r?\n/, 1)[0] || rawNotes;
+    const payload = JSON.parse(firstLine) as Pick<ExcelImportPayload, "kind">;
+    return payload.kind;
   } catch {
-    return false;
+    return undefined;
   }
+}
+
+function isInputFileExtractionJob(job: HubImportJobItem) {
+  const kind = getImportPayloadKind(job);
+  return kind === "input_file_extraction" || kind === "identity_import_source";
+}
+
+function isModernExcelImportJob(job: HubImportJobItem) {
+  const kind = getImportPayloadKind(job);
+  return kind === "property_row_import" || kind === "input_file_extraction" || kind === "identity_import_source";
 }
 
 function isBatchMappingJob(job: HubImportJobItem) {
@@ -555,6 +569,22 @@ function hasBatchMappingPayload(payload: ExcelImportPayload | null): payload is 
     payload.autoMapping !== null
   );
 }
+
+function hasPendingExtractionException(extraction: InputFileExtractionResult | undefined) {
+  return Boolean(
+    extraction?.fields.some((field) => {
+      const status = String((field as ExtractedInputFieldWithDecision).reviewStatus ?? "suggested");
+      if (status === "unknown") return true;
+      if (status === "accepted" || status === "edited" || status === "rejected") return false;
+      const value = String(field.normalizedValue || field.value || "").trim();
+      return !value || field.confidence < 0.65;
+    }),
+  );
+}
+
+type ExtractedInputFieldWithDecision = InputFileExtractionResult["fields"][number] & {
+  reviewStatus?: "suggested" | "accepted" | "edited" | "unknown" | "rejected";
+};
 
 export default async function ImportCenterPage({ searchParams }: ImportCenterPageProps) {
   const [locale, session] = await Promise.all([
@@ -906,7 +936,8 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
     }
   }
   const inputExtractionPreview = xlsxPayload?.inputExtraction;
-  const isInputExtractionOnly = xlsxPayload?.kind === "input_file_extraction";
+  const isInputExtractionOnly =
+    xlsxPayload?.kind === "input_file_extraction" || xlsxPayload?.kind === "identity_import_source";
   const targetCaseId = String(params?.targetCaseId ?? xlsxPayload?.targetCaseId ?? "").trim();
   const targetCase = targetCaseId ? cases.find((caseItem) => caseItem.id === targetCaseId) : undefined;
   const isIdentityExtractionOnly =
@@ -939,7 +970,6 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
       xlsxResult = null;
     }
   }
-
   const xlsxTargetFieldOptions = [
     { value: "", label: locale === "zh" ? "-- 跳过 --" : locale === "ko" ? "-- 건너뜀 --" : "-- スキップ --" },
     { value: "name", label: locale === "zh" ? "物件名称 *" : locale === "ko" ? "매물명 *" : "物件名 *" },
@@ -960,8 +990,8 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
   );
   const requestedJobCase = requestedJob ? caseByImportJobId.get(requestedJob.id) : undefined;
   const recentJobHref = (job: HubImportJobItem) => {
-    if (isInputFileExtractionJob(job)) return `/import-center?xlsxJob=${encodeURIComponent(job.id)}#source-upload`;
-    if (job.sourceType === "excel" && (job.status === "queued" || job.status === "processing")) {
+    if (isModernExcelImportJob(job)) return `/import-center?xlsxJob=${encodeURIComponent(job.id)}#source-upload`;
+    if (job.sourceType === "excel" && (job.status === "queued" || job.status === "processing" || job.status === "failed")) {
       return `/import-center?xlsxJob=${encodeURIComponent(job.id)}#source-upload`;
     }
     if (isBatchMappingJob(job)) return `/import-center?job=${encodeURIComponent(job.id)}&advanced=1#job-mapping`;
@@ -972,7 +1002,8 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
   const requestedJobActionHref = requestedJob
     ? isInputFileExtractionJob(requestedJob)
       ? "#source-upload"
-      : requestedJob.sourceType === "excel" && (requestedJob.status === "queued" || requestedJob.status === "processing")
+      : requestedJob.sourceType === "excel" &&
+          (requestedJob.status === "queued" || requestedJob.status === "processing" || requestedJob.status === "failed")
         ? "#source-upload"
       : isBatchMappingJob(requestedJob)
         ? `/import-center?job=${encodeURIComponent(requestedJob.id)}&advanced=1#job-mapping`
@@ -980,6 +1011,37 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
           ? `/cases/${encodeURIComponent(requestedJobCase.id)}#case-main-editor`
           : "#source-review-summary"
     : "#source-upload";
+  const requestedFlow = params?.flow === "ledger" || params?.flow === "case" ? params.flow : undefined;
+  const flowIntent: "case" | "ledger" | undefined = targetCaseId ? "case" : requestedFlow;
+  const isLedgerFlow = flowIntent === "ledger";
+  const hasPendingExceptions = hasPendingExtractionException(inputExtractionPreview);
+  const hasAdvancedBatchPayload = hasBatchMappingPayload(xlsxPayload);
+  const hasCompletedBatchResult = Boolean(
+    requestedJob && requestedJob.status === "completed" && isBatchMappingJob(requestedJob),
+  );
+  const isAdvancedMappingStep = Boolean(
+    showAdvanced &&
+      (hasAdvancedBatchPayload ||
+        (!xlsxJob && focusedMappingJob && focusedMappingJob.status !== "completed")),
+  );
+  const wizardStep = !requestedJob
+    ? "select"
+    : requestedJob.status === "queued" || requestedJob.status === "processing"
+      ? "processing"
+      : requestedJob.status === "failed"
+        ? "failed"
+        : hasCompletedBatchResult
+          ? "result"
+          : hasAdvancedBatchPayload || isAdvancedMappingStep
+          ? "mapping"
+          : inputExtractionPreview
+            ? hasPendingExceptions
+              ? "review"
+              : "confirm"
+            : "review";
+  const showPostProcessingContent = wizardStep !== "processing" && wizardStep !== "failed";
+  const inputTaskJob = xlsxJob ?? (requestedJob && isInputFileExtractionJob(requestedJob) ? requestedJob : undefined);
+  const failedInputJob = inputTaskJob?.status === "failed" ? inputTaskJob : undefined;
   const creationCards: Array<
     {
       id: string;
@@ -990,13 +1052,13 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
   > = [
     {
       id: "case-materials",
-      href: "#case-material-upload",
+      href: "/import-center?flow=case#source-upload",
       icon: "badge",
       label: locale === "zh" ? "案件资料" : locale === "ko" ? "案件 자료" : "案件資料",
     },
     {
       id: "excel-ledger",
-      href: "#excel-ledger-upload",
+      href: "/import-center?flow=ledger#source-upload",
       icon: "table_view",
       label: locale === "zh" ? "Excel 批量台账" : locale === "ko" ? "Excel 일괄 대장" : "Excel 一括台帳",
     },
@@ -1019,14 +1081,14 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                 {targetCase?.caseTitle ?? targetCaseId}
               </p>
             </div>
-            <Link href="/import-center#source-upload" className="text-xs font-bold text-emerald-800 underline underline-offset-4">
+            <Link href={`/import-center?flow=case&targetCaseId=${encodeURIComponent(targetCaseId)}#source-upload`} className="text-xs font-bold text-emerald-800 underline underline-offset-4">
               {locale === "zh" ? "安全返回资料选择" : locale === "ko" ? "자료 선택으로 돌아가기" : "資料選択へ戻る"}
             </Link>
           </div>
         </section>
       ) : null}
 
-      {requestedJob ? (
+      {requestedJob && (wizardStep === "processing" || wizardStep === "failed") ? (
         <section className="rounded-2xl border border-blue-200 bg-blue-50/70 p-4 shadow-sm">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
@@ -1049,6 +1111,11 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                 ? locale === "zh" ? "到案件中核对" : locale === "ko" ? "안건에서 확인" : "案件で確認"
                 : locale === "zh" ? "去处理这份资料" : locale === "ko" ? "이 자료 처리" : "この資料を処理"}
             </Link>
+            {wizardStep === "processing" ? (
+              <Link href="/import-center?advanced=1" className="text-xs font-bold text-blue-800 underline underline-offset-4">
+                {locale === "zh" ? "安全离开，稍后从最近记录恢复" : locale === "ko" ? "안전하게 나가고 최근 기록에서 다시 열기" : "安全に離れ、最近の記録から再開"}
+              </Link>
+            ) : null}
           </div>
         </section>
       ) : missingRequestedJob ? (
@@ -1066,7 +1133,11 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
         </section>
       ) : null}
 
-      {requestedJob && !isInputFileExtractionJob(requestedJob) && !isBatchMappingJob(requestedJob) ? (
+      {requestedJob &&
+      wizardStep !== "processing" &&
+      wizardStep !== "failed" &&
+      !isInputFileExtractionJob(requestedJob) &&
+      !isBatchMappingJob(requestedJob) ? (
         <section id="source-review-summary" className="scroll-mt-24 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0">
@@ -1119,6 +1190,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
         </section>
       ) : null}
 
+      {wizardStep === "select" && !flowIntent && !requestedJob ? (
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div>
           <div>
@@ -1132,13 +1204,22 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
         </div>
         <div className="mt-4 grid gap-3 lg:grid-cols-2">
           {creationCards.map((item) => {
+            const isPrimary = item.id === "case-materials";
             const cardClassName =
-              "group block w-full rounded-xl border border-slate-200 bg-slate-50 p-4 text-left transition hover:border-[#001e40] hover:bg-white";
+              "group block w-full rounded-xl border p-4 text-left transition hover:bg-white " +
+              (isPrimary
+                ? "border-emerald-300 bg-emerald-50/50 lg:col-span-2 lg:p-5 hover:border-emerald-500"
+                : "border-slate-200 bg-slate-50 hover:border-[#001e40]");
             const cardContent = (
               <div className="flex items-start gap-3">
-                <span className="material-symbols-outlined text-[22px] text-slate-500">{item.icon}</span>
+                <span className={`material-symbols-outlined text-[22px] ${isPrimary ? "text-emerald-700" : "text-slate-500"}`}>{item.icon}</span>
                 <div>
-                  <p className="text-sm font-bold text-slate-950">{item.label}</p>
+                  <p className="text-[11px] font-black uppercase tracking-wider text-slate-500">
+                    {isPrimary
+                      ? locale === "zh" ? "主入口" : locale === "ko" ? "주요 입구" : "主入口"
+                      : locale === "zh" ? "次入口" : locale === "ko" ? "보조 입구" : "副入口"}
+                  </p>
+                  <p className="mt-1 text-sm font-bold text-slate-950">{item.label}</p>
                 </div>
               </div>
             );
@@ -1194,18 +1275,33 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
           </div>
         ) : null}
       </section>
+      ) : null}
 
+      {(Boolean(requestedJob) || (wizardStep === "select" && Boolean(flowIntent))) ? (
       <section id="source-upload" className="scroll-mt-24 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-100 p-5">
           <p className="text-[11px] font-black uppercase tracking-wider text-blue-700">
             {locale === "zh" ? "读取资料" : locale === "ko" ? "자료 읽기" : "書類読込"}
           </p>
           <h2 className="text-base font-bold text-slate-950">
-            {locale === "zh" ? "已有文件时从这里开始" : locale === "ko" ? "파일이 있을 때 여기서 시작" : "ファイルがある場合はここから始める"}
+            {wizardStep !== "select"
+              ? locale === "zh" ? "当前导入任务" : locale === "ko" ? "현재 가져오기 작업" : "現在の取込タスク"
+              : flowIntent === "case"
+              ? locale === "zh" ? "案件资料路径" : locale === "ko" ? "案件 자료 경로" : "案件資料の経路"
+              : isLedgerFlow
+                ? locale === "zh" ? "Excel 批量台账路径" : locale === "ko" ? "Excel 일괄 대장 경로" : "Excel 一括台帳の経路"
+                : locale === "zh" ? "选择资料路径" : locale === "ko" ? "자료 경로 선택" : "資料経路を選択"}
           </h2>
+          {wizardStep === "select" && flowIntent ? (
+            <Link href={targetCaseId ? `/import-center?intake=existing&flow=case&targetCaseId=${encodeURIComponent(targetCaseId)}#source-upload` : "/import-center"} className="mt-2 inline-flex text-xs font-bold text-blue-700 hover:underline">
+              {locale === "zh" ? "更换路径" : locale === "ko" ? "경로 변경" : "経路を変更"}
+            </Link>
+          ) : null}
         </div>
 
+        {wizardStep === "select" && !requestedJob && flowIntent ? (
         <div className="grid gap-4 p-5 xl:grid-cols-2">
+          {flowIntent === "case" ? (
           <section id="case-material-upload" className="flex min-h-96 flex-col rounded-2xl border border-emerald-200 bg-emerald-50/40 p-5">
             <div>
               <div className="flex items-center gap-2">
@@ -1230,13 +1326,18 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
               )}
             </div>
           </section>
+          ) : null}
 
           <section id="excel-ledger-upload" className="flex min-h-96 flex-col rounded-2xl border border-blue-200 bg-blue-50/40 p-5">
             <div>
               <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-blue-700">table_view</span>
                 <h2 className="text-base font-bold text-blue-950">
-                  {locale === "zh" ? "申请资料 / 台账" : locale === "ko" ? "신청 자료 / 대장" : "申込資料 / 台帳"}
+                  {flowIntent === "case"
+                    ? locale === "zh" ? "案件申请 Excel" : locale === "ko" ? "案件 신청 Excel" : "案件申込 Excel"
+                    : isLedgerFlow
+                      ? locale === "zh" ? "Excel 批量台账" : locale === "ko" ? "Excel 일괄 대장" : "Excel 一括台帳"
+                      : locale === "zh" ? "案件资料 Excel" : locale === "ko" ? "案件 자료 Excel" : "案件資料 Excel"}
                 </h2>
               </div>
             </div>
@@ -1256,12 +1357,22 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
             </div>
           </section>
         </div>
-
-        {xlsxJob && (xlsxJob.status === "queued" || xlsxJob.status === "processing") ? (
-          <ExcelImportQueueProcessor jobId={xlsxJob.id} locale={locale} targetCaseId={targetCaseId || undefined} />
         ) : null}
 
-        {xlsxJob && xlsxPayload && inputExtractionPreview && isIdentityExtractionOnly ? (
+        {inputTaskJob && (inputTaskJob.status === "queued" || inputTaskJob.status === "processing") ? (
+          <ExcelImportQueueProcessor jobId={inputTaskJob.id} locale={locale} targetCaseId={targetCaseId || undefined} />
+        ) : null}
+
+        {failedInputJob ? (
+          <ExcelImportQueueProcessor
+            jobId={failedInputJob.id}
+            locale={locale}
+            targetCaseId={targetCaseId || undefined}
+            statusOnly
+          />
+        ) : null}
+
+        {showPostProcessingContent && xlsxJob && xlsxPayload && inputExtractionPreview && isIdentityExtractionOnly ? (
           <div className="border-t border-emerald-100 p-5">
           <div className="space-y-4 rounded-xl border border-emerald-200 bg-emerald-50/50 p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1298,11 +1409,13 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
           </div>
           </div>
         ) : null}
-        {xlsxJob && !isIdentityExtractionOnly ? (
+        {showPostProcessingContent &&
+        !isIdentityExtractionOnly &&
+        (Boolean(inputExtractionPreview) || (wizardStep === "mapping" && showAdvanced) || wizardStep === "result") ? (
           <div className="border-t border-blue-100 p-5">
 
         {/* Known business file extraction preview */}
-        {xlsxJob && xlsxPayload && inputExtractionPreview && !isIdentityExtractionOnly && (
+        {showPostProcessingContent && xlsxJob && xlsxPayload && inputExtractionPreview && !isIdentityExtractionOnly && !hasBatchMappingPayload(xlsxPayload) && (
           <div className="space-y-4 rounded-xl border border-indigo-200 bg-white p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -1377,8 +1490,23 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
           </div>
         )}
 
+        {wizardStep === "mapping" && hasAdvancedBatchPayload && !showAdvanced && xlsxJob ? (
+          <div className="border-t border-blue-100 bg-blue-50/60 p-5">
+            <p className="text-sm font-bold text-blue-950">
+              {locale === "zh" ? "这份 Excel 被识别为批量台账" : locale === "ko" ? "이 Excel은 일괄 대장으로 인식되었습니다" : "この Excel は一括台帳として識別されました"}
+            </p>
+            <p className="mt-1 text-xs leading-5 text-slate-700">
+              {locale === "zh" ? "字段映射属于高级批量路径。打开后继续确认，不会把它伪装成案件资料复核。" : locale === "ko" ? "필드 매핑은 고급 일괄 경로입니다. 열어 확인을 계속하며案件 자료 확인으로 가장하지 않습니다." : "列対応は高度な一括経路です。開いて確認を続け、案件資料の確認として扱いません。"}
+            </p>
+            <Link href={`/import-center?xlsxJob=${encodeURIComponent(xlsxJob.id)}&advanced=1#job-mapping`} className="mt-3 inline-flex rounded-lg bg-blue-700 px-3 py-2 text-xs font-bold text-white hover:bg-blue-800">
+              {locale === "zh" ? "进入字段映射" : locale === "ko" ? "필드 매핑 열기" : "列対応を開く"}
+            </Link>
+          </div>
+        ) : null}
+
         {/* Step 2: Mapping confirmation */}
-        {showAdvanced &&
+        {wizardStep === "mapping" &&
+          showAdvanced &&
           xlsxJob &&
           xlsxJob.sourceType === "excel" &&
           xlsxJob.status !== "completed" &&
@@ -1461,19 +1589,27 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
         )}
 
         {/* Step 3: Result */}
-        {xlsxJob && xlsxJob.status === "completed" && xlsxResult && (
+        {wizardStep === "result" && requestedJob && requestedJob.status === "completed" && isBatchMappingJob(requestedJob) && (
           <div className="space-y-3">
             <div className="flex items-center gap-3">
-              <span className="material-symbols-outlined text-green-600">check_circle</span>
+              <span className={`material-symbols-outlined ${xlsxResult ? "text-green-600" : "text-amber-600"}`}>
+                {xlsxResult ? "check_circle" : "help"}
+              </span>
               <p className="text-sm font-bold text-slate-800">
-                {locale === "zh"
-                  ? `登录成功 ${xlsxResult.successCount} 件 / 跳过 ${xlsxResult.skipped.length} 件`
-                  : locale === "ko"
-                    ? `등록 성공 ${xlsxResult.successCount}건 / 건너뜀 ${xlsxResult.skipped.length}건`
-                    : `登録成功 ${xlsxResult.successCount} 件 / スキップ ${xlsxResult.skipped.length} 件`}
+                {xlsxResult
+                  ? locale === "zh"
+                    ? `登录成功 ${xlsxResult.successCount} 件 / 跳过 ${xlsxResult.skipped.length} 件`
+                    : locale === "ko"
+                      ? `등록 성공 ${xlsxResult.successCount}건 / 건너뜀 ${xlsxResult.skipped.length}건`
+                      : `登録成功 ${xlsxResult.successCount} 件 / スキップ ${xlsxResult.skipped.length} 件`
+                  : locale === "zh"
+                    ? "任务记录为 completed，但没有可验证的导入摘要；不能据此确认已写入或全部导入。"
+                    : locale === "ko"
+                      ? "작업 기록은 completed이지만 검증 가능한 가져오기 요약이 없습니다. 저장 또는 전체 가져오기를 확인할 수 없습니다."
+                      : "タスク記録は completed ですが、検証できる取込サマリーがありません。保存済み・全件取込とは確認できません。"}
               </p>
             </div>
-            {xlsxResult.skipped.length > 0 && (
+            {xlsxResult && xlsxResult.skipped.length > 0 && (
               <ul className="space-y-1 rounded-lg border border-amber-200 bg-amber-50 p-3">
                 {xlsxResult.skipped.map((s, index) => (
                   <li key={`skip-${s.row}-${index}`} className="text-xs text-amber-800">
@@ -1484,23 +1620,40 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
             )}
             <div className="rounded-lg border border-blue-200 bg-white p-3">
               <p className="text-xs font-bold text-blue-900">
-                {locale === "zh" ? "接下来确认" : locale === "ko" ? "다음 확인 항목" : "次に確認すること"}
+                {xlsxResult
+                  ? locale === "zh" ? "接下来确认" : locale === "ko" ? "다음 확인 항목" : "次に確認すること"
+                  : locale === "zh" ? "下一步" : locale === "ko" ? "다음 단계" : "次のステップ"}
               </p>
               <p className="mt-1 text-xs text-slate-600">
-                {locale === "zh"
-                  ? "打开整理信息，确认要保留到案件的数据。"
-                  : locale === "ko"
-                    ? "정보 정리를 열고 안건에 남길 데이터를 확인하세요."
-                    : "情報整理を開き、案件に残すデータを確認します。"}
+                {xlsxResult
+                  ? locale === "zh"
+                    ? "打开整理信息，确认要保留到案件的数据。"
+                    : locale === "ko"
+                      ? "정보 정리를 열고 안건에 남길 데이터를 확인하세요."
+                      : "情報整理を開き、案件に残すデータを確認します。"
+                  : locale === "zh"
+                    ? "打开高级历史查看这条任务的原始状态，不把 completed 单独当作已写入。"
+                    : locale === "ko"
+                      ? "고급 기록에서 원래 작업 상태를 확인하세요. completed만으로 저장 완료로 간주하지 않습니다."
+                      : "高度な履歴で元のタスク状態を確認します。completed だけで保存完了とは扱いません。"}
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
-              <a
-                href={reviewHref}
-                className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-700"
-              >
-                {locale === "zh" ? "整理信息" : locale === "ko" ? "정보 정리" : "情報整理へ"}
-              </a>
+              {xlsxResult ? (
+                <a
+                  href={reviewHref}
+                  className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-700"
+                >
+                  {locale === "zh" ? "整理信息" : locale === "ko" ? "정보 정리" : "情報整理へ"}
+                </a>
+              ) : (
+                <a
+                  href={`/import-center?xlsxJob=${encodeURIComponent(requestedJob.id)}&advanced=1#source-history`}
+                  className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-700"
+                >
+                  {locale === "zh" ? "查看任务记录" : locale === "ko" ? "작업 기록 보기" : "タスク記録を確認"}
+                </a>
+              )}
               <a href="/import-center" className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">
                 {locale === "zh" ? "继续读取资料" : locale === "ko" ? "자료 계속 읽기" : "続けて資料を読み取る"}
               </a>
@@ -1510,8 +1663,10 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
           </div>
         ) : null}
       </section>
+      ) : null}
 
-      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      {!requestedJob && wizardStep === "select" ? (
+      <section id={!showAdvanced ? "source-history" : undefined} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
           <div>
             <h2 className="text-base font-bold text-slate-950">
@@ -1557,7 +1712,9 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
           ) : null}
         </div>
       </section>
+      ) : null}
 
+      {wizardStep !== "processing" && wizardStep !== "failed" ? (
       <section className="rounded-xl border border-slate-200 bg-white p-5">
         <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
           <div>
@@ -1674,32 +1831,16 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
             className="mt-2"
           />
         </article>
-      </section>
+	      </section>
 
-      {(!requestedJob || isBatchMappingJob(requestedJob)) && (
+	      {showAdvanced &&
+        defaultJob &&
+        focusedMappingJob &&
+        isBatchMappingJob(defaultJob) &&
+        defaultJob.status !== "completed" &&
+        !xlsxJob && (
 	      <section id="job-mapping" className="scroll-mt-24 grid gap-6 2xl:grid-cols-12">
         <div className="space-y-6 2xl:col-span-8">
-          <article className="rounded-xl bg-[#e6eeff] p-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex flex-1 items-center gap-2">
-                {[
-                  { label: copy.stepSelect, done: true },
-                  { label: copy.stepMap, done: true },
-                  { label: copy.stepValidate, done: false },
-                  { label: copy.stepComplete, done: false },
-                ].map((step, index) => (
-                  <div key={step.label} className="flex flex-1 items-center gap-2">
-                    <div className={"flex h-10 w-10 items-center justify-center rounded-full text-sm " + (step.done ? "bg-[#001e40] text-white" : "border-2 border-slate-200 bg-white text-slate-400")}>
-                      <span className="material-symbols-outlined text-[16px]">{step.done ? (index === 0 ? "check" : "map") : index === 2 ? "verified" : "check_circle"}</span>
-                    </div>
-                    <span className={"text-xs font-bold " + (step.done ? "text-[#001e40]" : "text-slate-400")}>{step.label}</span>
-                    {index < 3 ? <span className={"h-[2px] flex-1 " + (step.done ? "bg-[#c8d8f6]" : "bg-slate-300")} /> : null}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </article>
-
 	          <article className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200/30">
 	            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/70 px-6 py-5">
 	              <div>
@@ -1743,7 +1884,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
 	                      {defaultJob.notes ? ` / ${defaultJob.notes}` : ""}
 	                    </p>
 	                  </div>
-	                  <span className={"inline-flex w-fit rounded-full px-3 py-1 text-[11px] font-black " + (defaultJob.status === "completed" ? "bg-emerald-100 text-emerald-700" : "bg-rose-50 text-rose-700 ring-1 ring-rose-100")}>
+	                  <span className="inline-flex w-fit rounded-full bg-rose-50 px-3 py-1 text-[11px] font-black text-rose-700 ring-1 ring-rose-100">
 	                    {statusLabel[defaultJob.status]}
 	                  </span>
 	                </div>
@@ -1806,7 +1947,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
             </form>
           </article>
 
-          <article className="space-y-3">
+          <article id="source-history" className="space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-[#001e40]">{copy.recentImportHistory}</h3>
               <Link href="/import-center?panel=history" className="inline-flex items-center gap-1 text-[11px] font-bold text-[#001e40]">
@@ -1848,35 +1989,24 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
         </div>
 
         <aside className="space-y-5 2xl:col-span-4">
-          <article className="relative overflow-hidden rounded-xl bg-[#001e40] p-6 text-white">
-            <div className="relative z-10">
-              <div className="mb-4 flex items-center justify-between">
-                <p className="text-[11px] font-bold uppercase tracking-widest text-blue-200">{copy.readinessTitle}</p>
-                <p className="text-xl font-black tabular-nums">
-                  {mappedJobCount + completedJobCount}/{jobs.length}
-                </p>
+          <article className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <h3 className="text-xs font-black uppercase tracking-widest text-[#1f477b]">
+              {locale === "zh" ? "处理状态" : locale === "ko" ? "처리 상태" : "処理状態"}
+            </h3>
+            <dl className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">
+              <div className="rounded-lg bg-white p-3">
+                <dt className="font-semibold text-slate-500">{locale === "zh" ? "读取待确认" : locale === "ko" ? "읽기 확인 대기" : "読取・確認待ち"}</dt>
+                <dd className="mt-1 text-xl font-black text-slate-900">{mappedJobCount}</dd>
               </div>
-              <div className="h-1.5 w-full overflow-hidden rounded-full bg-[#003366]">
-                <div className="h-full bg-blue-400" style={{ width: `${Math.min(100, Math.round(((mappedJobCount + completedJobCount) / Math.max(1, jobs.length)) * 100))}%` }} />
+              <div className="rounded-lg bg-white p-3">
+                <dt className="font-semibold text-slate-500">{locale === "zh" ? "已处理记录" : locale === "ko" ? "처리 기록" : "処理記録"}</dt>
+                <dd className="mt-1 text-xl font-black text-slate-900">{completedJobCount}</dd>
               </div>
-              <p className="mt-2 text-[11px] leading-5 text-blue-100">
-                {locale === "zh"
-                  ? "这里只表示任务已进入读取或处理阶段，不代表已写入案件。"
-                  : locale === "ko"
-                    ? "읽기 또는 처리 단계에 들어갔다는 뜻이며 안건 저장 완료를 의미하지 않습니다."
-                    : "読取または処理段階に入った件数です。案件への保存完了を示すものではありません。"}
-              </p>
-              <div className="mt-6 grid grid-cols-2 gap-3">
-                <div className="rounded-lg bg-white/10 p-3">
-                  <p className="text-[10px] uppercase text-blue-200">{copy.mapped}</p>
-                  <p className="text-2xl font-black">{mappedJobCount}</p>
-                </div>
-                <div className="rounded-lg bg-white/10 p-3">
-                  <p className="text-[10px] uppercase text-blue-200">{copy.alerts}</p>
-                  <p className="text-2xl font-black text-[#ffdbca]">{validationItems.length}</p>
-                </div>
+              <div className="rounded-lg bg-white p-3">
+                <dt className="font-semibold text-slate-500">{copy.alerts}</dt>
+                <dd className="mt-1 text-xl font-black text-rose-700">{validationItems.length}</dd>
               </div>
-            </div>
+            </dl>
           </article>
 
           <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -2087,6 +2217,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
         </div>
         ) : null}
       </section>
+      ) : null}
     </div>
   );
 }

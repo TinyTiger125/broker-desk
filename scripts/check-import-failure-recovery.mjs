@@ -32,6 +32,8 @@ assert(!processRoute.includes("throw error"), "import process route must not exp
 assert(processor.includes("role=\"alert\""), "failed import UI must announce an accessible failure state");
 assert(processor.includes("requestId"), "failed import UI must display the opaque request id when available");
 assert(processor.includes("setStatus(\"submitting\")"), "failed import UI must provide a retry transition");
+assert(processor.includes("statusOnly"), "failed recovery must support a read-only status rehydration");
+assert(processor.includes("readOnlyStatus"), "status rehydration must not POST before an explicit retry");
 assert(notFound.includes("返回工作台"), "missing pages must provide a product recovery route");
 
 console.log("[PASS] import failures stay in product recovery states with retry and request references");

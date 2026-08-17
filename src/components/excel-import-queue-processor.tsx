@@ -7,6 +7,7 @@ type ExcelImportQueueProcessorProps = {
   jobId: string;
   locale: Locale;
   targetCaseId?: string;
+  statusOnly?: boolean;
 };
 
 const copy = {
@@ -77,9 +78,10 @@ function classifyImportError(errorCode: string | null | undefined, httpStatus?: 
 }
 
 /** Starts one import, then waits for the worker before opening the review screen. */
-export function ExcelImportQueueProcessor({ jobId, locale, targetCaseId }: ExcelImportQueueProcessorProps) {
+export function ExcelImportQueueProcessor({ jobId, locale, targetCaseId, statusOnly = false }: ExcelImportQueueProcessorProps) {
   const started = useRef(false);
-  const [status, setStatus] = useState<ImportProcessStatus>("submitting");
+  const [readOnlyStatus, setReadOnlyStatus] = useState(statusOnly);
+  const [status, setStatus] = useState<ImportProcessStatus>(statusOnly ? "queued" : "submitting");
   const [retryKey, setRetryKey] = useState(0);
   const [requestId, setRequestId] = useState<string | null>(null);
   const [errorKind, setErrorKind] = useState<ImportErrorKind>("unknown");
@@ -98,11 +100,13 @@ export function ExcelImportQueueProcessor({ jobId, locale, targetCaseId }: Excel
     async function processJob() {
       let classifiedError = false;
       try {
-        const response = await fetch(`/api/input-files/${encodeURIComponent(jobId)}/process`, {
-          method: "POST",
-          credentials: "same-origin",
-          headers: { "x-requested-with": "broker-desk" },
-        });
+        const response = await fetch(`/api/input-files/${encodeURIComponent(jobId)}/process`, readOnlyStatus
+          ? { credentials: "same-origin", cache: "no-store" }
+          : {
+              method: "POST",
+              credentials: "same-origin",
+              headers: { "x-requested-with": "broker-desk" },
+            });
         const payload = (await response.json().catch(() => null)) as ImportProcessResponse | null;
         if (cancelled) return;
         if (!response.ok || !payload?.ok) {
@@ -136,7 +140,7 @@ export function ExcelImportQueueProcessor({ jobId, locale, targetCaseId }: Excel
     return () => {
       cancelled = true;
     };
-  }, [jobId, openReview, retryKey]);
+  }, [jobId, openReview, readOnlyStatus, retryKey]);
 
   useEffect(() => {
     if (status !== "queued") return;
@@ -185,7 +189,9 @@ export function ExcelImportQueueProcessor({ jobId, locale, targetCaseId }: Excel
 
   if (status === "failed") {
     const canRetry = errorKind === "retryable" || errorKind === "unavailable";
-    const recoveryHref = "/import-center#source-upload";
+    const recoveryHref = targetCaseId
+      ? `/import-center?flow=case&targetCaseId=${encodeURIComponent(targetCaseId)}#source-upload`
+      : "/import-center#source-upload";
     const recoveryLabel =
       errorKind === "needsFix"
         ? locale === "zh"
@@ -212,6 +218,7 @@ export function ExcelImportQueueProcessor({ jobId, locale, targetCaseId }: Excel
               type="button"
               onClick={() => {
                 started.current = false;
+                setReadOnlyStatus(false);
                 setRequestId(null);
                 setErrorKind("unknown");
                 setErrorSummary(null);

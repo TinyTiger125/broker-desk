@@ -44,6 +44,7 @@
     "test:request-rate-limit": "node scripts/check-request-rate-limit.mjs",
     "test:import-worker-authorization": "node scripts/check-import-worker-authorization.mjs",
     "test:import-failure-recovery": "node scripts/check-import-failure-recovery.mjs",
+    "test:import-review-decisions": "node scripts/check-import-review-decisions.mjs",
     "test:regression": "bash scripts/regression.sh",
     "test:ja-terms": "bash scripts/check-ja-terms.sh",
     "test:product-language": "node scripts/check-product-language-boundary.mjs",

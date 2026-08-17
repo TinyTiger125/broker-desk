@@ -10,6 +10,12 @@ import type { Locale } from "@/lib/locale";
 
 type LocalReviewStatus = "suggested" | "accepted" | "edited" | "unknown" | "rejected";
 
+export type ExtractionReviewDecision = {
+  fieldId: string;
+  reviewStatus: LocalReviewStatus;
+  editedValue?: string;
+};
+
 type ReviewItem = ExtractedInputField & {
   groupKey: ExtractionGroupKey;
 };
@@ -116,6 +122,11 @@ function getFieldValue(field: ExtractedInputField) {
   return field.normalizedValue || field.value;
 }
 
+function getFieldReviewStatus(field: ExtractedInputField): LocalReviewStatus {
+  const status = (field as unknown as { reviewStatus?: LocalReviewStatus }).reviewStatus;
+  return status === "accepted" || status === "edited" || status === "unknown" || status === "rejected" ? status : "suggested";
+}
+
 function hasReadableValue(field: ExtractedInputField) {
   return getFieldValue(field).trim().length > 0;
 }
@@ -127,15 +138,18 @@ function hasReadableValue(field: ExtractedInputField) {
  * merge/field review metadata and are never silently accepted here.
  */
 function isExceptionField(field: ExtractedInputField) {
+  const status = getFieldReviewStatus(field);
+  if (status === "unknown") return true;
+  if (status === "accepted" || status === "edited" || status === "rejected") return false;
   return !hasReadableValue(field) || field.confidence < 0.65;
 }
 
 function isImplicitNormalField(field: ExtractedInputField, explicitStatus: LocalReviewStatus | undefined) {
-  return !explicitStatus && field.reviewStatus === "suggested" && !isExceptionField(field);
+  return !explicitStatus && getFieldReviewStatus(field) === "suggested" && !isExceptionField(field);
 }
 
 function getEffectiveReviewStatus(field: ExtractedInputField, explicitStatus: LocalReviewStatus | undefined): LocalReviewStatus {
-  return explicitStatus ?? (isImplicitNormalField(field, explicitStatus) ? "accepted" : field.reviewStatus);
+  return explicitStatus ?? (isImplicitNormalField(field, explicitStatus) ? "accepted" : getFieldReviewStatus(field));
 }
 
 function getDisplayReviewStatus(field: ExtractedInputField, explicitStatus: LocalReviewStatus | undefined): LocalReviewStatus {
@@ -151,6 +165,23 @@ function getDisplayStatusLabel(locale: Locale, status: LocalReviewStatus, implic
     });
   }
   return getStatusLabel(locale, status);
+}
+
+export function buildExtractionReviewDecisions(
+  items: ExtractedInputField[],
+  reviewStatuses: Record<string, LocalReviewStatus> = {},
+  editedValues: Record<string, string> = {},
+): ExtractionReviewDecision[] {
+  return items.map((field) => {
+    const fieldId = getFieldId(field);
+    const explicitStatus = reviewStatuses[fieldId];
+    const reviewStatus = getEffectiveReviewStatus(field, explicitStatus);
+    return {
+      fieldId,
+      reviewStatus,
+      editedValue: reviewStatus === "edited" ? editedValues[fieldId] ?? field.normalizedValue ?? field.value : undefined,
+    };
+  });
 }
 
 function getFieldPriority(field: ExtractedInputField) {
@@ -250,34 +281,16 @@ export function InputExtractionReview({
     return { readable, empty, lowConfidence };
   }, [items]);
   const reviewDecisionsJson = useMemo(
-    () =>
-      JSON.stringify(
-        items.map((field) => {
-          const id = getFieldId(field);
-          const explicitStatus = reviewStatuses[id];
-          // A normal readable value is included by the single object-level
-          // confirmation. It is not presented as if the user clicked a
-          // per-field confirmation control.
-          const reviewStatus = getEffectiveReviewStatus(field, explicitStatus);
-          return {
-            fieldId: id,
-            reviewStatus,
-            editedValue: reviewStatus === "edited" ? editedValues[id] ?? field.normalizedValue ?? field.value : undefined,
-          };
-        }),
-      ),
+    () => JSON.stringify(buildExtractionReviewDecisions(items, reviewStatuses, editedValues)),
     [editedValues, items, reviewStatuses],
   );
-  const reviewProgress = useMemo(() => {
-    const resolved = items.filter((field) => {
-      const id = getFieldId(field);
-      const status = getEffectiveReviewStatus(field, reviewStatuses[id]);
-      return isResolvedStatus(status);
-    }).length;
+  const reviewCounts = useMemo(() => {
     return {
-      resolved,
-      pending: items.length - resolved,
-      percent: items.length > 0 ? Math.round((resolved / items.length) * 100) : 100,
+      pending: items.filter((field) => {
+        const id = getFieldId(field);
+        const status = getEffectiveReviewStatus(field, reviewStatuses[id]);
+        return !isResolvedStatus(status);
+      }).length,
     };
   }, [items, reviewStatuses]);
   const selectedMergeCandidate = useMemo(
@@ -557,9 +570,9 @@ export function InputExtractionReview({
             </p>
             <p className="mt-1 text-xs font-medium text-slate-600">
               {tr(locale, {
-                ja: `保存対象 ${confirmedValueCount} 項目。未確定 ${reviewProgress.pending} 項目と不採用の内容は保存しません。`,
-                zh: `将写入 ${confirmedValueCount} 项已确认信息；${reviewProgress.pending} 项待处理及不采用内容不会写入。`,
-                ko: `확정 ${confirmedValueCount}항목을 저장합니다. 미확정 ${reviewProgress.pending}항목과 미채택 내용은 저장하지 않습니다.`,
+                ja: `保存対象 ${confirmedValueCount} 項目。未確定 ${reviewCounts.pending} 項目と不採用の内容は保存しません。`,
+                zh: `将写入 ${confirmedValueCount} 项已确认信息；${reviewCounts.pending} 项待处理及不采用内容不会写入。`,
+                ko: `확정 ${confirmedValueCount}항목을 저장합니다. 미확정 ${reviewCounts.pending}항목과 미채택 내용은 저장하지 않습니다.`,
               })}
             </p>
             <p className="mt-1 text-xs font-semibold text-slate-700">
@@ -590,31 +603,12 @@ export function InputExtractionReview({
       <section className="grid min-w-0 items-start gap-4 2xl:grid-cols-[minmax(17rem,21rem)_minmax(0,1fr)]">
         <aside className="overflow-hidden rounded-xl border border-slate-200 bg-white 2xl:sticky 2xl:top-20">
           <div className="border-b border-slate-100 p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-[11px] font-black uppercase tracking-wider text-indigo-700">
-                  {tr(locale, { ja: "全体進捗", zh: "总体进度", ko: "전체 진행" })}
-                </p>
-                <p className="mt-1 text-2xl font-black tabular-nums text-slate-950">
-                  {reviewProgress.resolved}/{items.length}
-                </p>
-              </div>
-              <span className="rounded-full bg-slate-950 px-3 py-1 text-sm font-black tabular-nums text-white">
-                {reviewProgress.percent}%
-              </span>
-            </div>
-            <div
-              className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100"
-              role="progressbar"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={reviewProgress.percent}
-            >
-              <div
-                className="h-full rounded-full bg-indigo-600 transition-[width] duration-500 ease-out motion-reduce:transition-none"
-                style={{ width: `${reviewProgress.percent}%` }}
-              />
-            </div>
+            <p className="text-[11px] font-black uppercase tracking-wider text-indigo-700">
+              {tr(locale, { ja: "要確認項目", zh: "待处理项目", ko: "확인 필요 항목" })}
+            </p>
+            <p className="mt-1 text-2xl font-black tabular-nums text-slate-950">
+              {reviewCounts.pending}
+            </p>
             <p className="mt-2 text-[11px] leading-5 text-slate-500">
               {tr(locale, {
                 ja: "読み取れた通常項目は、最後の確認でまとめて採用します。要確認の項目だけ対応してください。",
@@ -709,7 +703,7 @@ export function InputExtractionReview({
                 onClick={() => setReviewMode("pending")}
                 className={`rounded-md px-3 py-1.5 text-xs font-bold ${reviewMode === "pending" ? "bg-white text-slate-950 shadow-sm" : "text-slate-500"}`}
               >
-                {tr(locale, { ja: "未確定", zh: "待处理", ko: "미확정" })} {reviewProgress.pending}
+                {tr(locale, { ja: "未確定", zh: "待处理", ko: "미확정" })} {reviewCounts.pending}
               </button>
               <button
                 type="button"
