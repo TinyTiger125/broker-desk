@@ -3,10 +3,10 @@
 - 状态: In Progress
 - 优先级: P0
 - 负责人: 技术项目经理
-- 当前阶段: Checkpoint C 一次有限实现和独立只读审查已完成；等待 D-Lite 页面验收
+- 当前阶段: Checkpoint C 一次有限实现和独立只读审查已完成；D-Lite 运行探测受环境阻塞
 - 前置任务: TASK-029
 - 目标结果: 用户能够查找一个物件，读取系统真实保存的名称、区域、价格费用和生命周期，并进入正确的物件维护动作；列表不得自行制造台账走势、资料完整度、输出准备度、关系或活动记录
-- 当前停止点: 独立审查无 P0/P1 阻塞；下一步仅进行一次 D-Lite 结构/响应式/主要链接验收，不进入第二轮视觉优化
+- 当前停止点: `npm run dev -- --port 3002` 因 `listen EPERM` 无法启动；D-Lite 页面、响应式和键盘证据保持 `UNVERIFIED`，不继续认证或环境排查
 
 ## 任务边界
 
@@ -47,7 +47,8 @@ Checkpoint A 首要结论：当前页面的固定比例趋势、字段填充准�
 ## 环境与证据边界
 
 - Checkpoint A 审计基于当时 `main` 分支的仓库代码和治理事实；本次 Checkpoint B 文档以当前仓库 Git 状态为准，不把历史审计提交号当作当前 HEAD。
-- 当前无 3000/3002 监听服务，未启动服务；没有可接受的当前浏览器截图、窄屏、键盘、真实空态、错误态或返回焦点证据，运行项标记为 `UNVERIFIED`。
+- 当前无 3000/3002 监听服务；D-Lite 启动探测失败，没有可接受的当前浏览器截图、窄屏、键盘、真实空态、错误态或返回焦点证据，运行项标记为 `UNVERIFIED`。
+- D-Lite 仅做一次本地运行探测：`npm run dev -- --port 3002` 返回 `Error: listen EPERM: operation not permitted 0.0.0.0:3002`；未启动成功、未进入浏览器、未进行认证/租户/真实数据排查。
 - 未进入认证、双账号、邀请、第二租户、跨租户循环；未创建、修改、归档或导出物件数据。
 
 ## Checkpoint C 执行门禁
@@ -142,4 +143,4 @@ Checkpoint C 完成 area 列表事实修正和 `/properties` 标准 List Report 
 
 ## 当前状态
 
-Checkpoint A 只读代码审计已完成并通过产品复审，报告见 `docs/operations/TASK-030_W6C_CHECKPOINT_A_AUDIT_2026-08-18.md`。Checkpoint B 方向已批准，有限事实修正已写入 `docs/operations/TASK-030_W6C_TARGET_STRUCTURE_2026-08-18.md`。Checkpoint C 实现和独立只读审查已完成，静态检查通过；TASK-030 保持 `In Progress`，等待一次 D-Lite 验收。
+Checkpoint A 只读代码审计已完成并通过产品复审，报告见 `docs/operations/TASK-030_W6C_CHECKPOINT_A_AUDIT_2026-08-18.md`。Checkpoint B 方向已批准，有限事实修正已写入 `docs/operations/TASK-030_W6C_TARGET_STRUCTURE_2026-08-18.md`。Checkpoint C 实现和独立只读审查已完成，静态检查通过；D-Lite 因 3002 绑定 `EPERM` 未取得运行证据，TASK-030 保持 `In Progress`，等待产品负责人决定是否按批次回归处理。
