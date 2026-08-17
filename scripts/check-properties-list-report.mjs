@@ -26,11 +26,18 @@ requireText(page, 'pageTitle: "物件"', "page identity must be an independent p
 requireText(page, 'name="q"', "property search must use q");
 requireText(page, 'name="lifecycle"', "lifecycle must be a URL filter");
 requireText(page, 'name="sort"', "sort must be a URL filter");
+requireText(page, 'lifecycleStatus: "all"', "the page must read all lifecycle records before filtering");
+requireText(page, "const lifecycleFiltered = lifecycle === \"all\"", "lifecycle filtering must happen after the all-record read");
+requireText(page, "properties.length === 0 ? copy.noProperties : copy.noResult", "empty copy must distinguish all-record empty from filtered empty");
 requireText(page, "buildPropertiesHref", "page links must preserve filter and page context");
 requireText(page, 'href="/properties/new"', "new property must be the only primary create route");
 requireText(page, "/properties/${encodeURIComponent(property.id)}/edit", "property name must enter the existing edit page");
 requireText(page, "<ArchiveRecordButton", "archive and restore must remain row-level risk actions");
-requireText(page, "hidden gap-4 border-b", "desktop results must have column headings");
+requireText(page, 'role="table"', "results must expose a complete table role");
+requireText(page, 'role="rowgroup"', "results must expose table rowgroups");
+requireText(page, 'role="row"', "results must expose table rows");
+requireText(page, 'role="columnheader"', "desktop results must expose column headers");
+requireText(page, 'role="cell"', "results must expose table cells");
 requireText(page, "<span role=\"columnheader\">{copy.area}</span>", "desktop results must label the area column");
 requireText(page, "property.managementFeeValue", "the page must preserve a null fee as distinct from zero");
 requireText(page, "property.repairFeeValue", "the page must preserve a null repair fee as distinct from zero");
@@ -52,6 +59,7 @@ for (const [text, description] of [
   ["completion", "completion algorithms must be removed"],
   ["portfolio", "portfolio KPI/dashboard language must be removed"],
   ["min-w-[1080px]", "the page must not force a horizontal desktop table"],
+  ["<ul className=\"divide-y divide-slate-200/80\"", "the results must not retain an incomplete list/table hybrid"],
 ]) {
   forbidText(page, text, description);
 }

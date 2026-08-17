@@ -195,21 +195,24 @@ export default async function PropertiesPage({ searchParams }: PropertiesPagePro
     properties = await listHubProperties(locale, {
       userId: session.user.id,
       tenantId: session.tenant.id,
-      lifecycleStatus: lifecycle,
+      lifecycleStatus: "all",
     });
   } catch {
     readError = true;
   }
 
+  const lifecycleFiltered = lifecycle === "all"
+    ? properties
+    : properties.filter((property) => property.status === lifecycle);
   const searched = query
-    ? properties.filter((property) => {
+    ? lifecycleFiltered.filter((property) => {
         const normalized = query.toLocaleLowerCase();
         return (
           property.name.toLocaleLowerCase().includes(normalized) ||
           property.area.toLocaleLowerCase().includes(normalized)
         );
       })
-    : properties;
+    : lifecycleFiltered;
   const sorted = [...searched];
   if (sort === "price") {
     sorted.sort((a, b) => {
@@ -307,18 +310,6 @@ export default async function PropertiesPage({ searchParams }: PropertiesPagePro
           ) : null}
         </div>
 
-        {!readError && sorted.length > 0 ? (
-          <div role="row" className="hidden gap-4 border-b border-slate-200/80 bg-slate-50/70 px-5 py-2 text-xs font-bold uppercase tracking-wide text-slate-500 lg:grid lg:grid-cols-[minmax(12rem,1.3fr)_minmax(8rem,.8fr)_minmax(8rem,.8fr)_minmax(8rem,.8fr)_minmax(8rem,.8fr)_minmax(6rem,.6fr)_auto] lg:items-center">
-            <span role="columnheader">{copy.name}</span>
-            <span role="columnheader">{copy.area}</span>
-            <span role="columnheader">{copy.listingPrice}</span>
-            <span role="columnheader">{copy.managementFee}</span>
-            <span role="columnheader">{copy.repairFee}</span>
-            <span role="columnheader">{copy.status}</span>
-            <span role="columnheader" className="text-right">{copy.actions}</span>
-          </div>
-        ) : null}
-
         {readError ? (
           <div className="space-y-3 px-5 py-12 text-center">
             <p className="text-sm font-semibold text-rose-700">{copy.readError}</p>
@@ -335,37 +326,50 @@ export default async function PropertiesPage({ searchParams }: PropertiesPagePro
             )}
           </div>
         ) : (
-          <ul className="divide-y divide-slate-200/80" aria-label={copy.results}>
-            {visibleProperties.map((property) => {
-              const statusLabel = property.status === "archived" ? copy.archived : copy.active;
-              return (
-                <li key={property.id} role="row" className="grid gap-4 px-5 py-4 transition hover:bg-slate-50 lg:grid-cols-[minmax(12rem,1.3fr)_minmax(8rem,.8fr)_minmax(8rem,.8fr)_minmax(8rem,.8fr)_minmax(8rem,.8fr)_minmax(6rem,.6fr)_auto] lg:items-center">
-                  <div role="cell" className="min-w-0">
-                    <Link
-                      href={`/properties/${encodeURIComponent(property.id)}/edit`}
-                      className="block truncate text-sm font-bold text-slate-900 underline-offset-4 hover:text-[#002fa7] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]"
-                    >
-                      {property.name}
-                    </Link>
+          <div role="table" aria-label={copy.results}>
+            <div role="rowgroup">
+              <div role="row" className="hidden gap-4 border-b border-slate-200/80 bg-slate-50/70 px-5 py-2 text-xs font-bold uppercase tracking-wide text-slate-500 lg:grid lg:grid-cols-[minmax(12rem,1.3fr)_minmax(8rem,.8fr)_minmax(8rem,.8fr)_minmax(8rem,.8fr)_minmax(8rem,.8fr)_minmax(6rem,.6fr)_auto] lg:items-center">
+                <span role="columnheader">{copy.name}</span>
+                <span role="columnheader">{copy.area}</span>
+                <span role="columnheader">{copy.listingPrice}</span>
+                <span role="columnheader">{copy.managementFee}</span>
+                <span role="columnheader">{copy.repairFee}</span>
+                <span role="columnheader">{copy.status}</span>
+                <span role="columnheader" className="text-right">{copy.actions}</span>
+              </div>
+            </div>
+            <div role="rowgroup" className="divide-y divide-slate-200/80">
+              {visibleProperties.map((property) => {
+                const statusLabel = property.status === "archived" ? copy.archived : copy.active;
+                return (
+                  <div key={property.id} role="row" className="grid gap-4 px-5 py-4 transition hover:bg-slate-50 lg:grid-cols-[minmax(12rem,1.3fr)_minmax(8rem,.8fr)_minmax(8rem,.8fr)_minmax(8rem,.8fr)_minmax(8rem,.8fr)_minmax(6rem,.6fr)_auto] lg:items-center">
+                    <div role="cell" className="min-w-0">
+                      <Link
+                        href={`/properties/${encodeURIComponent(property.id)}/edit`}
+                        className="block truncate text-sm font-bold text-slate-900 underline-offset-4 hover:text-[#002fa7] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]"
+                      >
+                        {property.name}
+                      </Link>
+                    </div>
+                    <div role="cell" className="text-sm text-slate-700"><span className="mr-2 text-xs font-bold text-slate-400 lg:hidden">{copy.area}</span>{property.area || copy.notSet}</div>
+                    <div role="cell" className="text-sm tabular-nums text-slate-900"><span className="mr-2 text-xs font-bold text-slate-400 lg:hidden">{copy.listingPrice}</span>{formatListingPrice(property, copy.notSet, locale)}</div>
+                    <div role="cell" className="text-sm tabular-nums text-slate-700"><span className="mr-2 text-xs font-bold text-slate-400 lg:hidden">{copy.managementFee}</span>{formatFee(property.managementFeeValue, copy.notSet, locale)}</div>
+                    <div role="cell" className="text-sm tabular-nums text-slate-700"><span className="mr-2 text-xs font-bold text-slate-400 lg:hidden">{copy.repairFee}</span>{formatFee(property.repairFeeValue, copy.notSet, locale)}</div>
+                    <div role="cell" className={property.status === "archived" ? "text-sm font-semibold text-slate-500" : "text-sm text-slate-700"}><span className="mr-2 text-xs font-bold text-slate-400 lg:hidden">{copy.status}</span>{statusLabel}</div>
+                    <div role="cell" className="flex items-center justify-start gap-2 lg:justify-end">
+                      <ArchiveRecordButton
+                        entityType="property"
+                        entityId={property.id}
+                        status={property.status}
+                        locale={locale}
+                        returnTo={returnTo}
+                      />
+                    </div>
                   </div>
-                  <div role="cell" className="text-sm text-slate-700"><span className="mr-2 text-xs font-bold text-slate-400 lg:hidden">{copy.area}</span>{property.area || copy.notSet}</div>
-                  <div role="cell" className="text-sm tabular-nums text-slate-900"><span className="mr-2 text-xs font-bold text-slate-400 lg:hidden">{copy.listingPrice}</span>{formatListingPrice(property, copy.notSet, locale)}</div>
-                  <div role="cell" className="text-sm tabular-nums text-slate-700"><span className="mr-2 text-xs font-bold text-slate-400 lg:hidden">{copy.managementFee}</span>{formatFee(property.managementFeeValue, copy.notSet, locale)}</div>
-                  <div role="cell" className="text-sm tabular-nums text-slate-700"><span className="mr-2 text-xs font-bold text-slate-400 lg:hidden">{copy.repairFee}</span>{formatFee(property.repairFeeValue, copy.notSet, locale)}</div>
-                  <div role="cell" className={property.status === "archived" ? "text-sm font-semibold text-slate-500" : "text-sm text-slate-700"}><span className="mr-2 text-xs font-bold text-slate-400 lg:hidden">{copy.status}</span>{statusLabel}</div>
-                  <div role="cell" className="flex items-center justify-start gap-2 lg:justify-end">
-                    <ArchiveRecordButton
-                      entityType="property"
-                      entityId={property.id}
-                      status={property.status}
-                      locale={locale}
-                      returnTo={returnTo}
-                    />
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
+                );
+              })}
+            </div>
+          </div>
         )}
       </section>
     </div>

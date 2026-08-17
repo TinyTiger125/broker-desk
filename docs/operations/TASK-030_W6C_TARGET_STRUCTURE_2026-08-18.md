@@ -1,7 +1,7 @@
 # TASK-030 / W6-C：物件索引 `/properties` List Report 目标结构规格
 
-- 规格状态：Checkpoint B 方向批准；有限事实修正已纳入，授权进入 Checkpoint C
-- 任务状态：`In Progress`
+- 规格状态：Checkpoint C 实现和独立只读审查完成；按页面结构迁移层面收口
+- 任务状态：`Done`（仅表示 List Report 页面结构迁移完成）
 - 本规格只保留一个标准 List Report 方案；事实修正完成后只进行一次有限实现
 - 依据：TASK-030 Checkpoint A 只读审计及产品负责人复审结论
 
@@ -9,7 +9,7 @@
 
 `/properties` 的唯一核心任务是：让用户快速找到一个物件，读取系统真实保存的名称、区域、价格费用和生命周期，并进入正确的物件维护动作。页面是标准 List Report，不是台账仪表盘、输出准备度看板、关系摘要页、活动时间线或第二套物件详情。
 
-本轮先修正 area 数据链、空值/lifecycle 规则并同步治理文档，随后按本规格授权一次有限实现。不得修改数据库结构、migration、actions、API、认证、权限、租户或物件数据，不启动服务，不重新进行方案讨论。未跟踪的 `src/app/clients/page 2.tsx` 保持原状、未提交、未删除。
+本任务已按本规格完成 area 数据链、空值/lifecycle 规则、纯 List Report 和 ARIA 结构修正。`Done` 只表示页面结构迁移完成，不表示真实浏览器、响应式、键盘、焦点、空态视觉、横向溢出、完整无障碍、权限、租户或 CSV 运行通过。未跟踪的 `src/app/clients/page 2.tsx` 保持原状、未提交、未删除。
 
 ## 一、对象、来源与字段契约
 
@@ -199,4 +199,4 @@ Checkpoint C 只能进行一次有限实现、一次独立只读审查、一次 
 
 未取得的真实浏览器、窄屏、键盘、空态、筛选、分页、归档反馈、数据库 migration 应用状态、权限/租户和 CSV 下载证据，必须明确标记 `UNVERIFIED` 并进入统一批次回归，不得因此把 TASK-030 扩展为物件领域模型、CSV 产品或输出专题任务。
 
-TASK-030 在以下条件全部满足后结束：`/properties` 完成标准 List Report 迁移；area 事实链从 memory/PostgreSQL 到 `listHubProperties` 成立；伪事实和第二详情被移除；权威字段、筛选、分页、创建入口和归档边界成立；静态检查和独立审查通过；可取得的轻量运行证据已记录；不可取得的运行证据已登记为批次回归。附件计数、`updatedAt`、关系权威、CSV 契约或输出专题未解决时，应冻结或另立范围，不得无限延长本任务。
+TASK-030 已满足结束条件：`/properties` 完成标准 List Report 迁移；area 事实链从 memory/PostgreSQL 到 `listHubProperties` 成立；伪事实和第二详情被移除；权威字段、筛选、分页、创建入口、归档边界、全量 lifecycle 空态事实和完整 ARIA table 结构成立；静态检查和独立审查通过。D-Lite 因环境 `listen EPERM` 未取得运行证据，已登记为批次回归。附件计数、`updatedAt`、关系权威、CSV 契约或输出专题仍冻结或另立范围，不延长本任务。

@@ -1,16 +1,16 @@
 # TASK-030 / W6-C：物件索引 `/properties` List Report 参考迁移
 
-- 状态: In Progress
+- 状态: Done
 - 优先级: P0
 - 负责人: 技术项目经理
-- 当前阶段: Checkpoint C 一次有限实现和独立只读审查已完成；D-Lite 运行探测受环境阻塞
+- 当前阶段: 页面结构迁移完成；TASK-030 按结构层面标记 Done
 - 前置任务: TASK-029
 - 目标结果: 用户能够查找一个物件，读取系统真实保存的名称、区域、价格费用和生命周期，并进入正确的物件维护动作；列表不得自行制造台账走势、资料完整度、输出准备度、关系或活动记录
-- 当前停止点: `npm run dev -- --port 3002` 因 `listen EPERM` 无法启动；D-Lite 页面、响应式和键盘证据保持 `UNVERIFIED`，不继续认证或环境排查
+- 当前停止点: 行政收口完成；D-Lite、响应式、键盘、空态视觉、横向溢出和完整无障碍统一进入全产品迁移后的批次回归
 
 ## 任务边界
 
-本任务当前完成 Checkpoint C 一次有限事实修正和一次有限 List Report 实现，并已通过一次独立只读审查。Checkpoint A 已完成只读审计并通过产品复审，Checkpoint B 方向已批准；实现文件严格在目标规格范围内，不修改数据库结构、migration、actions、API、认证、权限、租户或任何物件数据。
+本任务已完成 Checkpoint C 一次有限事实修正、一次有限 List Report 实现和一次独立只读审查，并按页面结构迁移层面标记 Done。Checkpoint A 已完成只读审计并通过产品复审，Checkpoint B 方向已批准；实现文件严格在目标规格范围内，不修改数据库结构、migration、actions、API、认证、权限、租户或任何物件数据。
 
 不触碰：
 
@@ -73,7 +73,7 @@ Checkpoint B 已批准，允许一次有限实现；执行必须满足：
 - 不创建、修改、归档或导出物件数据；
 - 不启动服务；按批准顺序最多使用一次实现和一次独立只读审查；
 - 不把代码审计写成视觉、响应式、键盘、无障碍或真实权限通过；
-- 不进入第二轮视觉优化或新的方案讨论；审查通过后才进入 D-Lite。
+- 不进入第二轮视觉优化或新的方案讨论；D-Lite 运行证据已转入统一批次回归。
 
 ## 任务名称
 
@@ -126,7 +126,7 @@ Checkpoint C 完成 area 列表事实修正和 `/properties` 标准 List Report 
 
 ### 后续阶段（按门禁执行）
 
-- 实现和独立审查完成后，才可进入一次 D-Lite 页面级运行验收；不得自动进行第二轮视觉优化；
+- D-Lite 页面级运行证据因环境限制转入统一批次回归；不得自动进行第二轮视觉优化；
 - 真实双账号、第二租户、跨租户、完整 CSV 下载和共享权限回归不在本阶段自动启动。
 
 ## 预计涉及的模块
@@ -143,4 +143,4 @@ Checkpoint C 完成 area 列表事实修正和 `/properties` 标准 List Report 
 
 ## 当前状态
 
-Checkpoint A 只读代码审计已完成并通过产品复审，报告见 `docs/operations/TASK-030_W6C_CHECKPOINT_A_AUDIT_2026-08-18.md`。Checkpoint B 方向已批准，有限事实修正已写入 `docs/operations/TASK-030_W6C_TARGET_STRUCTURE_2026-08-18.md`。Checkpoint C 实现和独立只读审查已完成，静态检查通过；D-Lite 因 3002 绑定 `EPERM` 未取得运行证据，TASK-030 保持 `In Progress`，等待产品负责人决定是否按批次回归处理。
+Checkpoint A 只读代码审计已完成并通过产品复审，报告见 `docs/operations/TASK-030_W6C_CHECKPOINT_A_AUDIT_2026-08-18.md`。Checkpoint B 方向已批准，有限事实修正已写入 `docs/operations/TASK-030_W6C_TARGET_STRUCTURE_2026-08-18.md`。Checkpoint C 实现和独立只读审查已完成，静态检查通过；D-Lite 因 3002 绑定 `EPERM` 未取得运行证据，TASK-030 按页面结构迁移层面标记 `Done`。本 Done 不宣称真实响应式、键盘、焦点、空态视觉、横向溢出或完整无障碍通过；这些项目统一进入批次回归。
