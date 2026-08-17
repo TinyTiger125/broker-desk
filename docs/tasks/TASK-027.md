@@ -12,7 +12,7 @@ W6-A：客户索引 List Report 参考迁移
 
 ## 背景和用户结果
 
-W2 客户索引 List Report 参考迁移。`/clients` 回答：
+W6 客户索引 List Report 参考迁移。`/clients` 回答：
 
 > 我要找到哪一个客户，并判断下一步跟进什么？
 
