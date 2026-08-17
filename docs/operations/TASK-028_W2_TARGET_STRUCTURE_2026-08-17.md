@@ -1,6 +1,6 @@
 # TASK-028 W2 `/import-center` Wizard 目标结构与交互规格
 
-- 状态：Checkpoint B 规格待产品负责人复审
+- 状态：Checkpoint B 已批准；Checkpoint C 有限实现进行中
 - 任务：`TASK-028`
 - 页面：`/import-center`
 - 主 Floorplan：Wizard
@@ -48,11 +48,13 @@ Checkpoint B 的规格不代表真实浏览器、OCR、422 恢复、响应式、
 
 | 参数 | 页面用途 | 不得推导 |
 |---|---|---|
-| `job` | 恢复案件资料读取任务 | 不代表案件已形成或已写入 |
-| `xlsxJob` | 恢复 Excel 批量任务 | 不代表台账已导入 |
-| `targetCaseId` | 显示既有案件追加上下文 | 不得改成主体/物件归属权威 |
-| `intake=existing` | 表达既有案件追加入口 | 不得在上传后重新要求用户选择另一个目标 |
-| `advanced=1` | 展开高级映射/运维区域 | 不得把高级区域变成默认首屏 |
+| `xlsxJob` | 恢复 input-file extraction 任务；任务可能来自身份资料或业务文件 | 不等于 Excel 批量台账，也不代表已写入 |
+| `job` | 定位通用导入记录；是否进入批量映射由任务类型与 `advanced=1` 共同决定 | 不得仅凭参数名称决定路径、案件形成或已写入 |
+| `targetCaseId` | 恢复明确的案件追加上下文 | 不得改成主体/物件归属权威 |
+| `intake=existing` | 表达既有案件进入意图 | 不单独证明目标案件，也不得绕过目标读取 |
+| `advanced=1` | 展开批量映射/运维区域 | 不得把高级区域变成默认首屏 |
+
+Wizard 路径必须依据现有任务 payload、`sourceType` 和处理结果判断；参数名称只用于定位或展开上下文，不能单独决定进入案件资料路径还是 Excel 批量路径。
 
 ### 2.2 外壳固定区域
 
@@ -126,7 +128,8 @@ Excel 的字段映射是批量台账的领域步骤，不进入案件资料 OCR 
 
 ### 刷新和恢复
 
-- `job` 恢复案件资料读取；`xlsxJob` 恢复 Excel 任务；`targetCaseId` 和 `intake` 恢复案件目标上下文；`advanced=1` 只恢复高级区域展开状态。
+- `xlsxJob` 恢复 input-file extraction 任务；`job` 定位通用导入记录。页面根据任务 payload、`sourceType`、处理结果以及 `advanced=1` 判断是否进入批量映射；不能按参数名称直接分流。
+- `targetCaseId` 恢复明确的案件追加上下文；`intake=existing` 只表达既有案件进入意图，不单独证明目标案件；`advanced=1` 展开批量映射/运维区域。
 - 刷新不得根据 URL 参数单独伪造 `completed`、已写入或可输出状态；必须重新读取现有任务/保存结果。
 - 任务不存在时转入“记录不存在”恢复动作，不重复轮询或重复上传。
 - 处理中的任务必须在最近导入记录中可继续；已失败任务保留 request ID 和恢复动作。

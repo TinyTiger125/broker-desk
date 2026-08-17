@@ -3,11 +3,11 @@
 - 状态: In Progress
 - 优先级: P0
 - 负责人: 技术项目经理
-- 当前阶段: Checkpoint B 有限目标结构设计
+- 当前阶段: Checkpoint C 有限实现
 - 目标 Floorplan: Wizard
 - 前置任务: TASK-027
-- Checkpoint B 规格: [`TASK-028_W2_TARGET_STRUCTURE_2026-08-17.md`](../operations/TASK-028_W2_TARGET_STRUCTURE_2026-08-17.md)
-- 当前停止点: Checkpoint B 规格提交后停止，等待产品负责人复审；不进入代码实现或独立审查
+- Checkpoint B 规格: [`TASK-028_W2_TARGET_STRUCTURE_2026-08-17.md`](../operations/TASK-028_W2_TARGET_STRUCTURE_2026-08-17.md)，已批准
+- 当前停止点: Checkpoint C 实现 Agent 完成并退出后，进入一次独立审查；不启动第二轮视觉优化
 
 ## 任务名称
 
@@ -32,7 +32,7 @@ Wizard 只作为连续决策外壳，不机械拆成大量页面步骤。推荐�
 
 ## 本次范围
 
-Checkpoint A 已完成并经产品负责人批准。本轮进入 Checkpoint B，只形成一份 `/import-center` 目标结构与交互规格；不制作多套视觉方案、不实现页面、不启动 Agent。
+Checkpoint A 已完成并经产品负责人批准，Checkpoint B 目标结构规格已获批准。本轮进入 Checkpoint C 有限实现；实现严格限定于批准文件范围，不修改服务端错误语义、数据模型、权限、租户或输出链路。
 
 ## 二、Checkpoint A 历史审计边界
 
@@ -215,4 +215,4 @@ Checkpoint A 只有在以下材料完成并经产品负责人复审后才结束�
 - 本报告完成了当前真实流程和代码结构的只读盘点，并区分了已验证事实、推断和未验证项。
 - 推荐方向只有一个：收敛为异常驱动、可回退的单一 Wizard，保留现有保存与审计权威。
 - 本报告不代表真实浏览器流程通过，不代表 OCR、422 恢复、租户隔离或输出链路通过。
-- Checkpoint A 已经产品负责人复审批准；当前进入 Checkpoint B。目标结构与交互规格见 [`TASK-028_W2_TARGET_STRUCTURE_2026-08-17.md`](../operations/TASK-028_W2_TARGET_STRUCTURE_2026-08-17.md)。本规格不代表真实浏览器、OCR、422 恢复、响应式或键盘体验通过；提交产品负责人复审后停止，不进入代码实现或独立审查。
+- Checkpoint A 已经产品负责人复审批准，Checkpoint B 目标结构规格已批准；当前进入 Checkpoint C 有限实现。实现 Agent 只能修改批准文件范围，完成后立即退出并提交报告；随后只启动一次独立审查。真实浏览器、OCR、422 恢复、响应式或键盘体验仍需单独证据，不由规格或静态检查替代。
