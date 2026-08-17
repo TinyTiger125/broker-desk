@@ -142,3 +142,43 @@
 - 当前活跃 Agent：0。
 
 本报告完成后停止，等待合法非生产登录环境恢复；不进入 Checkpoint B、目标结构、实现或其他页面迁移。
+
+## 9. 非敏感登录阻塞说明
+
+### 直接触发条件
+
+当前实现的认证决策链如下：
+
+1. [src/lib/auth-mode.ts](/Users/laineyzhu/Documents/独立开发项目/房产专家/broker-desk-web-dev/src/lib/auth-mode.ts) 只有在 `BROKER_DESK_AUTH_MODE` 明确为 `demo`、`trusted_header`、`clerk` 或 `disabled` 时才直接采用该模式。
+2. 如果没有明确模式，只有同时存在非空的 `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` 和 `CLERK_SECRET_KEY`，系统才自动选择 `clerk`；否则回退为 `disabled`。
+3. [src/proxy.ts](/Users/laineyzhu/Documents/独立开发项目/房产专家/broker-desk-web-dev/src/proxy.ts) 在业务路由上发现认证模式不是 Clerk 且不是开发用 demo 时，重定向到 `/sign-in?reason=login_required`。
+4. [src/app/sign-in/[[...sign-in]]/page.tsx](/Users/laineyzhu/Documents/独立开发项目/房产专家/broker-desk-web-dev/src/app/sign-in/[[...sign-in]]/page.tsx) 在 `isClerkAuthEnabled()` 为假时显示“登录服务尚未配置”。
+
+因此本次实际观察到的不是“Clerk 身份登录失败”，而是 Clerk 登录路径没有被配置为可用。若显式设置了 Clerk 模式但两个必要密钥缺失，代理会走另一条 503 分支；本次没有观察到该分支。
+
+### 环境变量状态
+
+以下状态只来自名称和是否为空的检查，不记录任何值：
+
+| 环境变量 | `.env.local` 状态 | 作用 |
+|---|---|---|
+| `BROKER_DESK_AUTH_MODE` | `MISSING` | 显式选择认证模式 |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | `MISSING` | Clerk 前端公钥；参与自动启用 Clerk 的判断 |
+| `CLERK_SECRET_KEY` | `MISSING` | Clerk 服务端密钥；参与自动启用 Clerk 的判断 |
+| `CLERK_JWT_KEY` | `MISSING` | 可选的 Clerk JWT 校验密钥；不是本次认证模式选择的直接条件 |
+| `BROKER_DESK_CLERK_INVITATION_REDIRECT_URL` | `PRESENT` | 邀请回跳配置；单独存在不能启用登录 |
+
+状态枚举含义：`PRESENT` 表示存在非空配置，`EMPTY` 表示变量存在但为空，`MISSING` 表示没有该变量，`NOT_LOADED` 表示无法证明当前进程加载了该变量。
+
+### 文件与加载路径
+
+- 正式仓库 `.env.local`：`PRESENT`。
+- 正式仓库 `.env`：`MISSING`。
+- 之前两次使用仓库既有 `npm run dev` 启动时，Next.js 启动输出明确列出 `Environments: .env.local`；因此可以确认那两个开发进程读取了 `.env.local` 文件。
+- 当前没有运行中的开发进程，因此“当前进程读取情况”是 `NOT_LOADED`；本轮没有重新启动服务来重复验证。
+
+### 缺口归因
+
+已验证缺失的是 **Clerk 开发配置**，不是配置加载路径。合法登录身份是否存在无法进入验证，因为认证服务尚未启用；不能据此判定账号无效，也不能把账号本身写成失败原因。
+
+只读检查未发现已批准、可直接恢复的其他本地配置来源。当前唯一确认存在的是仓库本地 `.env.local`，归属为本机开发环境配置，但其中缺少上述 Clerk 启用所需变量。本轮没有查看、输出或复制任何密钥，也没有检查外部密钥管理系统。
