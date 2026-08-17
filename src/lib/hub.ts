@@ -52,6 +52,9 @@ export type HubPropertyItem = {
   listingPrice: number;
   managementFee: number;
   repairFee: number;
+  /** Raw nullable fee values for List Report rendering; legacy consumers use numeric fields above. */
+  managementFeeValue: number | null;
+  repairFeeValue: number | null;
   attachmentCount: number;
   status: "active" | "archived";
 };
@@ -251,21 +254,19 @@ export async function listHubProperties(locale: Locale = "ja", context: HubQuery
   }, new Map<string, number>());
   return properties.map((rawProperty) => {
     const property = localizeDemoProperty(locale, rawProperty);
-    const propertyArea = "area" in property && typeof property.area === "string" ? property.area : undefined;
+    const propertyArea = typeof property.area === "string" && property.area.trim() ? property.area : "";
     return {
-    id: property.id,
-    name: property.name,
-    area: propertyArea
-      ? propertyArea
-      : property.name.includes("区")
-        ? property.name
-        : tr(locale, { ja: "未設定", zh: "未设置", ko: "미설정" }),
-    listingPrice: property.listingPrice,
-    managementFee: property.managementFee ?? 0,
-    repairFee: property.repairFee ?? 0,
-    attachmentCount: attachmentCountMap.get(property.id) ?? 0,
-    status: property.lifecycleStatus ?? "active",
-  };
+      id: property.id,
+      name: property.name,
+      area: propertyArea,
+      listingPrice: property.listingPrice,
+      managementFee: property.managementFee ?? 0,
+      repairFee: property.repairFee ?? 0,
+      managementFeeValue: property.managementFee ?? null,
+      repairFeeValue: property.repairFee ?? null,
+      attachmentCount: attachmentCountMap.get(property.id) ?? 0,
+      status: property.lifecycleStatus ?? "active",
+    };
   });
 }
 

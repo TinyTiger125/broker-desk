@@ -3554,6 +3554,7 @@ export async function listQuoteFormData(tenantId?: string, lifecycleStatus: Life
       .map((item) => ({
       id: item.id,
       name: item.name,
+      area: item.area ?? null,
       listingPrice: item.listingPrice,
       managementFee: item.managementFee ?? null,
       repairFee: item.repairFee ?? null,

@@ -3,14 +3,14 @@
 - 状态: In Progress
 - 优先级: P0
 - 负责人: 技术项目经理
-- 当前阶段: Checkpoint B 方向已批准；有限 area/空值/lifecycle 事实修正已写入规格，进入 Checkpoint C 一次有限实现
+- 当前阶段: Checkpoint C 一次有限实现和独立只读审查已完成；等待 D-Lite 页面验收
 - 前置任务: TASK-029
 - 目标结果: 用户能够查找一个物件，读取系统真实保存的名称、区域、价格费用和生命周期，并进入正确的物件维护动作；列表不得自行制造台账走势、资料完整度、输出准备度、关系或活动记录
-- 当前停止点: 先完成有限事实修正和一次实现；实现后启动一次独立只读审查，审查通过后才进入 D-Lite
+- 当前停止点: 独立审查无 P0/P1 阻塞；下一步仅进行一次 D-Lite 结构/响应式/主要链接验收，不进入第二轮视觉优化
 
 ## 任务边界
 
-本任务当前进入 Checkpoint C：按已批准目标结构完成一次有限事实修正和一次有限 List Report 实现。Checkpoint A 已完成只读审计并通过产品复审，Checkpoint B 方向已批准；允许修改的文件严格见目标规格，不修改数据库结构、migration、actions、API、认证、权限、租户或任何物件数据。
+本任务当前完成 Checkpoint C 一次有限事实修正和一次有限 List Report 实现，并已通过一次独立只读审查。Checkpoint A 已完成只读审计并通过产品复审，Checkpoint B 方向已批准；实现文件严格在目标规格范围内，不修改数据库结构、migration、actions、API、认证、权限、租户或任何物件数据。
 
 不触碰：
 
@@ -84,7 +84,7 @@ W6-C：物件索引 `/properties` List Report 参考迁移
 
 ## 本次范围
 
-Checkpoint C 完成 area 列表事实修正和 `/properties` 标准 List Report 有限实现，并以有限契约测试验证字段边界；不修改服务端保存事实或数据。
+Checkpoint C 完成 area 列表事实修正和 `/properties` 标准 List Report 有限实现，并以有限契约测试验证字段边界；不修改服务端保存事实或数据。独立只读审查已通过，无 P0/P1 阻塞。
 
 ## 明确不做什么
 
@@ -142,4 +142,4 @@ Checkpoint C 完成 area 列表事实修正和 `/properties` 标准 List Report 
 
 ## 当前状态
 
-Checkpoint A 只读代码审计已完成并通过产品复审，报告见 `docs/operations/TASK-030_W6C_CHECKPOINT_A_AUDIT_2026-08-18.md`。Checkpoint B 方向已批准，有限事实修正已写入 `docs/operations/TASK-030_W6C_TARGET_STRUCTURE_2026-08-18.md`。TASK-030 保持 `In Progress`，进入一次有限实现；实现后启动一次独立只读审查，再决定 D-Lite。
+Checkpoint A 只读代码审计已完成并通过产品复审，报告见 `docs/operations/TASK-030_W6C_CHECKPOINT_A_AUDIT_2026-08-18.md`。Checkpoint B 方向已批准，有限事实修正已写入 `docs/operations/TASK-030_W6C_TARGET_STRUCTURE_2026-08-18.md`。Checkpoint C 实现和独立只读审查已完成，静态检查通过；TASK-030 保持 `In Progress`，等待一次 D-Lite 验收。

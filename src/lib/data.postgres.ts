@@ -4260,7 +4260,7 @@ export async function listQuoteFormData(tenantId?: string, lifecycleStatus: Life
       [scopeTenantId, lifecycleStatus],
     ),
     getPool().query(
-      "SELECT id, name, listing_price, management_fee, repair_fee, lifecycle_status FROM properties WHERE tenant_id = $1 AND ($2 = 'all' OR lifecycle_status = $2) ORDER BY created_at DESC",
+      "SELECT id, name, area, listing_price, management_fee, repair_fee, lifecycle_status FROM properties WHERE tenant_id = $1 AND ($2 = 'all' OR lifecycle_status = $2) ORDER BY created_at DESC",
       [scopeTenantId, lifecycleStatus],
     ),
   ]);
@@ -4274,6 +4274,7 @@ export async function listQuoteFormData(tenantId?: string, lifecycleStatus: Life
     properties: propertiesRes.rows.map((row) => ({
       id: String(row.id),
       name: String(row.name),
+      area: row.area != null ? String(row.area) : null,
       listingPrice: Number(row.listing_price ?? 0),
       managementFee: row.management_fee != null ? Number(row.management_fee) : null,
       repairFee: row.repair_fee != null ? Number(row.repair_fee) : null,
