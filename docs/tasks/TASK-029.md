@@ -3,10 +3,10 @@
 - 状态: In Progress
 - 优先级: P0
 - 负责人: 技术项目经理
-- 当前阶段: Checkpoint A 只读审计完成，等待产品负责人复审
+- 当前阶段: Checkpoint B 目标结构规格已提交，等待产品负责人复审
 - 前置任务: TASK-028
 - 目标结果: 用户能够找到一个个人或法人主体，理解其真实角色和关联关系，并进入正确的维护动作；列表不得自行判断主体资料是否完成、案件是否完成或能否输出
-- 当前停止点: 只建立任务卡并执行 Checkpoint A 只读审计；不进入目标设计或实现
+- 当前停止点: Checkpoint B 规格已提交；不进入 Checkpoint C 实现，等待产品负责人复审
 
 ## 产品边界
 
@@ -213,6 +213,7 @@ Checkpoint A 报告必须包含已验证事实、代码推断、未验证项、�
 
 ## 当前状态
 
-- Checkpoint A 只读审计已完成，TASK-029 保持 `In Progress`，等待产品负责人复审；未进入目标设计或实现。
+- Checkpoint A 只读审计已完成；Checkpoint B 目标结构规格已提交至 `docs/operations/TASK-029_W6B_TARGET_STRUCTURE_2026-08-17.md`，TASK-029 保持 `In Progress`，等待产品负责人复审；未进入 Checkpoint C 实现。
+- Checkpoint B 已收束为单一标准 List Report：Client 兼容持久化边界、显式主体元数据、无完成度/案件数量/输出资格推导、无 `focus` 和右侧第二详情、选中主体 CSV 次级工具，以及既有维护入口的明确层级。
 - 本轮只修改治理文档；未修改 `src/`、数据库、API、认证、权限或租户；未创建主体数据，未启动实现或审查 Agent。
 - 未跟踪的 `src/app/clients/page 2.tsx` 保持原状并排除所有提交。

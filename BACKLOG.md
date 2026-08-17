@@ -28,7 +28,7 @@
 | TASK-026 | P0 | 建立可复用非生产 QA 环境 | Blocked | TASK-025 | [TASK-026](docs/tasks/TASK-026.md) | QA A 已实际进入并创建7条合成案件，已形成第2页；QA B独立工作区尚未核实，归档/恢复和跨租户隔离未验证 |
 | TASK-027 | P0 | W6-A：客户索引 List Report 参考迁移 | Done | TASK-025 | [TASK-027](docs/tasks/TASK-027.md) | 页面迁移层面目标、静态检查和独立审查完成；真实登录后的响应式、键盘、筛选、分页、滚动和焦点进入 List Report 批次运行回归，不宣称本任务已通过；未跟踪 `src/app/clients/page 2.tsx` 保留且排除 |
 | TASK-028 | P0 | W2：导入资料 /import-center Wizard 参考迁移 | Done | TASK-027 | [TASK-028](docs/tasks/TASK-028.md) | Checkpoint A/B/C 及 D-Lite 页面结构收口完成；结构、互斥路径和 1440/768/390 响应式证据已归档；真实 Tab/Enter/返回焦点、OCR、上传/保存、422/503 和完整闭环进入批次回归，不宣称已通过 |
-| TASK-029 | P0 | W6-B：主体索引 /parties List Report 参考迁移 | In Progress | TASK-028 | [TASK-029](docs/tasks/TASK-029.md) | Checkpoint A 只读审计完成，首要反证命中：复用 clients、quotation 数冒充案件数、完成度自算、右侧第二详情；浏览器 UNVERIFIED，等待产品负责人复审，不进入目标设计或实现 |
+| TASK-029 | P0 | W6-B：主体索引 /parties List Report 参考迁移 | In Progress | TASK-028 | [TASK-029](docs/tasks/TASK-029.md) | Checkpoint B 目标结构规格已提交，单一 List Report 方案：显式主体元数据、无完成度/案件数量/输出推导、无 focus/第二详情、CSV 仅导出选中主体；等待产品负责人复审，不进入实现 |
 | TASK-003 | P0 | Close the input-material merge completion loop | Proposed | TASK-002 | [TASK-003](docs/tasks/TASK-003.md) | Selection, confirmation, result, failure, and refresh evidence |
 | TASK-004 | P0 | Consolidate template-library and official-template boundaries | Proposed | TASK-002 | [TASK-004](docs/tasks/TASK-004.md) | Role-aware entry, visibility, and installation evidence |
 | TASK-005 | P0 | Separate official template draft and publish states | Proposed | TASK-004 | [TASK-005](docs/tasks/TASK-005.md) | Independent draft save, publish, immutable version, and failure evidence |
