@@ -3,10 +3,10 @@
 - 状态: In Progress
 - 优先级: P0
 - 负责人: 技术项目经理
-- 当前阶段: Checkpoint B 目标结构规格已提交，等待产品负责人复审
+- 当前阶段: Checkpoint B 条件通过，CSV/`flash` 边界修正后已授权进入 Checkpoint C
 - 前置任务: TASK-028
 - 目标结果: 用户能够找到一个个人或法人主体，理解其真实角色和关联关系，并进入正确的维护动作；列表不得自行判断主体资料是否完成、案件是否完成或能否输出
-- 当前停止点: Checkpoint B 规格已提交；不进入 Checkpoint C 实现，等待产品负责人复审
+- 当前停止点: 规格修正提交后执行一次有限实现、一次独立只读审查和静态验证；不自动进入 D-Lite
 
 ## 产品边界
 
@@ -180,7 +180,7 @@ Checkpoint A 报告必须包含已验证事实、代码推断、未验证项、�
 - 搜索、类型、关联状态、生命周期筛选及可回放 URL 上下文；
 - 关系树只读检查入口；
 - 从主体进入正确维护动作，而不是把主体推进到客户跟进或输出页面；
-- CSV 能力若继续保留，必须保留租户范围、权限、明确选择语义和安全字段口径。
+- CSV 页面能力在 W6-B 冻结并移除；现有 `/api/hub/export?scope=parties` 不修改、不删除。未来恢复必须由独立任务确定字段、空选择、筛选范围、权限和审计。
 
 ### 6. 推荐保留、降级或移出列表的结构
 
@@ -197,10 +197,12 @@ Checkpoint A 报告必须包含已验证事实、代码推断、未验证项、�
 - quotation/contract 数：改为诚实命名并从“关联案件”筛选中移出，直到案件关系权威确定；
 - `relatedPropertyHint`/字符串匹配：降级为未确认提示或移出关系统计；
 - 输出前检查、输出中心资料入口、打开/创建案件和 quotation 路由：移出主体列表，回归案件工作台或独立输出专题；
-- 批量 CSV：放入次级批量工具，明确空选择行为和权限，不与主体主要维护动作竞争；
+- 批量 CSV：从 W6-B 页面移除并冻结；不显示占位控件，不修改现有 CSV API；
 - 右侧完整详情面板：拆回 `/parties/[id]/edit` 或明确的主体工作台，不在 List Report 内建立第二套详情页。
 
 ### 7. Checkpoint B 前真正需要产品负责人决定的问题
+
+以下问题保留为 Checkpoint A 审计时的历史决策记录。CSV 页面能力与 `flash` 参数边界已由 Checkpoint B 最终裁决收束，当前实现以本任务后续授权条款和目标结构规格为准。
 
 1. “主体”是否继续以 `clients` 为权威对象，还是要定义独立主体事实层；若继续复用，产品术语和数据契约如何解释 Client/主体边界？
 2. “关联案件”到底指 `brokerage_cases`、quotation/contract，还是另一种关系？在权威来源确定前，列表应显示哪一种诚实名称？
@@ -213,7 +215,7 @@ Checkpoint A 报告必须包含已验证事实、代码推断、未验证项、�
 
 ## 当前状态
 
-- Checkpoint A 只读审计已完成；Checkpoint B 目标结构规格已提交至 `docs/operations/TASK-029_W6B_TARGET_STRUCTURE_2026-08-17.md`，TASK-029 保持 `In Progress`，等待产品负责人复审；未进入 Checkpoint C 实现。
-- Checkpoint B 已收束为单一标准 List Report：Client 兼容持久化边界、显式主体元数据、无完成度/案件数量/输出资格推导、无 `focus` 和右侧第二详情、选中主体 CSV 次级工具，以及既有维护入口的明确层级。
+- Checkpoint A 只读审计已完成；Checkpoint B 条件通过，CSV/`flash` 边界修正已写入 `docs/operations/TASK-029_W6B_TARGET_STRUCTURE_2026-08-17.md`，TASK-029 保持 `In Progress` 并授权进入 Checkpoint C；未启动实现。
+- Checkpoint B 已收束为单一标准 List Report：Client 兼容持久化边界、显式主体元数据、无完成度/案件数量/输出资格推导、无 `focus` 和右侧第二详情、页面不显示 CSV 控件，以及既有维护入口的明确层级。主体 CSV 因字段契约和空选择语义不可靠而冻结，现有 CSV API 不修改。
 - 本轮只修改治理文档；未修改 `src/`、数据库、API、认证、权限或租户；未创建主体数据，未启动实现或审查 Agent。
 - 未跟踪的 `src/app/clients/page 2.tsx` 保持原状并排除所有提交。
