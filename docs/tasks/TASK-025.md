@@ -1,10 +1,10 @@
 # TASK-025 / W1：信息整理中心 List Report 参考实现
 
-- 状态: In Review
+- 状态: Done
 - 优先级: P0
 - 负责人: 技术项目经理 / 实现 Agent / 独立审查 Agent
 - 依赖关系: TASK-024 已 Done；TASK-020 继续独立 Blocked，不是本任务的修复范围
-- 当前允许阶段: Checkpoint C 已通过（2026-08-16）；页面级 Checkpoint D 证据已完成，等待最终独立审查；共享平台门禁不纳入本次页面阻塞
+- 当前允许阶段: Checkpoint C 已通过（2026-08-16）；页面级 Checkpoint D 和独立只读审查已完成；共享平台门禁不纳入本次页面阻塞
 - Checkpoint A 状态: 已通过（2026-08-16）；审计结论已纳入 W1 目标结构草案
 - 参考矩阵: [`UI_GOV_002B_LAYOUT_FLOORPLAN_MATRIX_V2_2026-08-16.md`](../operations/UI_GOV_002B_LAYOUT_FLOORPLAN_MATRIX_V2_2026-08-16.md)
 - Checkpoint B 目标规格: [`TASK-025_W1_TARGET_STRUCTURE_2026-08-16.md`](../operations/TASK-025_W1_TARGET_STRUCTURE_2026-08-16.md)
@@ -181,6 +181,18 @@ Checkpoint C 已通过；Checkpoint D 预检已完成，但未启动浏览器验
 
 当前停止点：等待一个只读独立审查 Agent 基于最终 HEAD 检查本卡范围。审查通过后才可写回 `Done`；不得因共享平台缺口重新扩大本卡，也不得关闭 TASK-020。
 
+### Checkpoint D 独立审查结论：通过（2026-08-17）
+
+独立审查 Agent 基于最终 HEAD 完成只读核对，未发现 TASK-025 范围内的阻塞问题：
+
+- 三个可靠对象入口、`type=inbox` 不可用状态、搜索/无结果/清除、URL 分页、浏览器返回、滚动和触发链接焦点、Tab/Enter 原生链接行为与 1440/768/390 响应式范围均与批准边界一致；
+- 归档入口继续复用既有 `ArchiveRecordButton`，不嵌套在对象链接中；归档参数和 `returnTo` 仅按本卡页面结构边界核对，不把共享归档执行/恢复当作本卡通过证据；
+- 未发现重新引入案件/主体/物件状态推导、待归属推导或第二套归档逻辑；
+- `git diff --check` 和 `npm run test:workflow-rules` 通过；项目经理补跑 lint 通过。typecheck/build 在 TypeScript 环节因本地依赖目录存在带空格的重复 `@types` 目录而失败，未涉及本卡 `src/` 差异，记录为验证环境问题，不宣称通过，也不作为 TASK-025 页面范围回归；
+- 第二租户、跨租户隔离、Clerk 邀请激活和完整归档执行/恢复本轮仍未重新验证，继续作为共享平台/业务回归缺口。
+
+独立审查 Agent 已退出，当前活跃 Agent 数量为 `0`。TASK-025 页面级验收行政收口为 `Done`；TASK-020 继续 `Blocked`，不启动其他页面迁移。
+
 ## 必须保留的权威
 
 | 领域 | 权威 |
@@ -235,4 +247,4 @@ Checkpoint C 已通过；Checkpoint D 预检已完成，但未启动浏览器验
 
 ## 当前状态
 
-Checkpoint A 已通过；Checkpoint B 已批准；Checkpoint C 已通过（代码提交 `4e80716`，独立只读审查通过）。产品负责人已裁决 W1 只交付案件、主体、物件三个对象类型；待归属资料因缺少具体对象归属权威而冻结，不代表数据为零或页面已完成。页面级 Checkpoint D 证据已完成，TASK-025 当前为 `In Review`，等待最终独立审查。归档完整执行/恢复、第二租户和跨租户隔离本轮未重新验证，作为共享平台/业务回归缺口保留，不构成本卡页面验收阻塞。当前角色模型下无 `record.read` 角色门禁为 `N/A`，不创建虚构角色。TASK-020 和输出专题不受影响。
+Checkpoint A 已通过；Checkpoint B 已批准；Checkpoint C 已通过（代码提交 `4e80716`，独立只读审查通过）；页面级 Checkpoint D 和独立只读审查已完成，TASK-025 当前为 `Done`。产品负责人已裁决 W1 只交付案件、主体、物件三个对象类型；待归属资料因缺少具体对象归属权威而冻结，不代表资料为零或页面已完成。归档完整执行/恢复、第二租户和跨租户隔离本轮未重新验证，作为共享平台/业务回归缺口保留，不构成 TASK-025 页面验收证据。typecheck/build 的本地依赖目录错误已单独记录，不涉及本卡 `src/` 差异。当前角色模型下无 `record.read` 角色门禁为 `N/A`，不创建虚构角色。TASK-020 和输出专题不受影响。
