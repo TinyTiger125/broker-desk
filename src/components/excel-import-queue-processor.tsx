@@ -72,7 +72,7 @@ function classifyImportError(errorCode: string | null | undefined, httpStatus?: 
   if (httpStatus === 401 || httpStatus === 403 || /unauthor|forbidden|session|tenant|permission/.test(code)) return "auth";
   if (httpStatus === 503 || /unavailable/.test(code)) return "unavailable";
   if (code === "unsupported_import_source" || /unsupported|invalid.*(file|source)|file_type/.test(code)) return "unsupported";
-  if (/mapping|validation|format|content|parse/.test(code)) return "needsFix";
+  if (/mapping|validation|format|content|parse|xlsx_(sheet|cell)_limit/.test(code)) return "needsFix";
   return "unknown";
 }
 
@@ -107,7 +107,7 @@ export function ExcelImportQueueProcessor({ jobId, locale, targetCaseId }: Excel
         if (cancelled) return;
         if (!response.ok || !payload?.ok) {
           setRequestId(payload?.requestId ?? null);
-          setErrorKind(classifyImportError(payload?.error ?? payload?.errorCode, response.status));
+          setErrorKind(classifyImportError(payload?.errorCode ?? payload?.error, response.status));
           setErrorSummary(payload?.errorSummary ?? null);
           classifiedError = true;
           throw new Error("excel_import_process_failed");
@@ -118,7 +118,7 @@ export function ExcelImportQueueProcessor({ jobId, locale, targetCaseId }: Excel
         }
         if (payload.status === "failed") {
           setRequestId(payload.requestId ?? null);
-          setErrorKind(classifyImportError(payload.error ?? payload.errorCode));
+          setErrorKind(classifyImportError(payload.errorCode ?? payload.error));
           setErrorSummary(payload.errorSummary ?? null);
           classifiedError = true;
           throw new Error("excel_import_process_failed");
@@ -153,7 +153,7 @@ export function ExcelImportQueueProcessor({ jobId, locale, targetCaseId }: Excel
         if (cancelled) return;
         if (!response.ok || !payload?.ok) {
           setRequestId(payload?.requestId ?? null);
-          setErrorKind(classifyImportError(payload?.error ?? payload?.errorCode, response.status));
+          setErrorKind(classifyImportError(payload?.errorCode ?? payload?.error, response.status));
           setErrorSummary(payload?.errorSummary ?? null);
           classifiedError = true;
           throw new Error("excel_import_status_failed");
@@ -164,7 +164,7 @@ export function ExcelImportQueueProcessor({ jobId, locale, targetCaseId }: Excel
           return;
         }
         setRequestId(payload.requestId ?? null);
-        setErrorKind(classifyImportError(payload.error ?? payload.errorCode));
+        setErrorKind(classifyImportError(payload.errorCode ?? payload.error));
         setErrorSummary(payload.errorSummary ?? null);
         setStatus("failed");
       } catch {
@@ -184,6 +184,20 @@ export function ExcelImportQueueProcessor({ jobId, locale, targetCaseId }: Excel
   }, [jobId, openReview, status]);
 
   if (status === "failed") {
+    const canRetry = errorKind === "retryable" || errorKind === "unavailable";
+    const recoveryHref = "/import-center#source-upload";
+    const recoveryLabel =
+      errorKind === "needsFix"
+        ? locale === "zh"
+          ? "返回资料入口修正后继续"
+          : locale === "ko"
+            ? "자료 입구로 돌아가 수정 후 계속"
+            : "資料入口に戻って修正する"
+        : locale === "zh"
+          ? "返回资料入口"
+          : locale === "ko"
+            ? "자료 입구로 돌아가기"
+            : "資料入口へ戻る";
     return (
       <div role="alert" className="border-t border-rose-100 bg-rose-50/60 px-5 py-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -193,20 +207,26 @@ export function ExcelImportQueueProcessor({ jobId, locale, targetCaseId }: Excel
             {errorSummary ? <p className="mt-1 text-xs text-rose-700">{errorSummary}</p> : null}
             {requestId ? <p className="mt-1 text-xs text-rose-700">{copy[locale].request}: {requestId}</p> : null}
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              started.current = false;
-              setRequestId(null);
-              setErrorKind("unknown");
-              setErrorSummary(null);
-              setStatus("submitting");
-              setRetryKey((value) => value + 1);
-            }}
-            className="rounded-lg bg-slate-950 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800"
-          >
-            {copy[locale].retry}
-          </button>
+          {canRetry ? (
+            <button
+              type="button"
+              onClick={() => {
+                started.current = false;
+                setRequestId(null);
+                setErrorKind("unknown");
+                setErrorSummary(null);
+                setStatus("submitting");
+                setRetryKey((value) => value + 1);
+              }}
+              className="rounded-lg bg-slate-950 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+            >
+              {copy[locale].retry}
+            </button>
+          ) : (
+            <a href={recoveryHref} className="rounded-lg bg-slate-950 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800">
+              {recoveryLabel}
+            </a>
+          )}
         </div>
       </div>
     );

@@ -85,7 +85,8 @@ function getStatusLabel(locale: Locale, status: LocalReviewStatus) {
   return labels[status][locale];
 }
 
-function getStatusClass(status: LocalReviewStatus) {
+function getStatusClass(status: LocalReviewStatus, implicitNormal = false) {
+  if (implicitNormal) return "bg-slate-100 text-slate-700";
   if (status === "accepted") return "bg-emerald-100 text-emerald-800";
   if (status === "edited") return "bg-blue-100 text-blue-800";
   if (status === "unknown") return "bg-slate-200 text-slate-700";
@@ -127,6 +128,29 @@ function hasReadableValue(field: ExtractedInputField) {
  */
 function isExceptionField(field: ExtractedInputField) {
   return !hasReadableValue(field) || field.confidence < 0.65;
+}
+
+function isImplicitNormalField(field: ExtractedInputField, explicitStatus: LocalReviewStatus | undefined) {
+  return !explicitStatus && field.reviewStatus === "suggested" && !isExceptionField(field);
+}
+
+function getEffectiveReviewStatus(field: ExtractedInputField, explicitStatus: LocalReviewStatus | undefined): LocalReviewStatus {
+  return explicitStatus ?? (isImplicitNormalField(field, explicitStatus) ? "accepted" : field.reviewStatus);
+}
+
+function getDisplayReviewStatus(field: ExtractedInputField, explicitStatus: LocalReviewStatus | undefined): LocalReviewStatus {
+  return isImplicitNormalField(field, explicitStatus) ? "suggested" : getEffectiveReviewStatus(field, explicitStatus);
+}
+
+function getDisplayStatusLabel(locale: Locale, status: LocalReviewStatus, implicitNormal: boolean) {
+  if (implicitNormal) {
+    return tr(locale, {
+      ja: "正常読取・最終確認で採用",
+      zh: "正常读取，最终确认时采用",
+      ko: "정상 판독 · 최종 확인 시 채택",
+    });
+  }
+  return getStatusLabel(locale, status);
 }
 
 function getFieldPriority(field: ExtractedInputField) {
@@ -234,9 +258,7 @@ export function InputExtractionReview({
           // A normal readable value is included by the single object-level
           // confirmation. It is not presented as if the user clicked a
           // per-field confirmation control.
-          const reviewStatus =
-            explicitStatus ??
-            (field.reviewStatus === "suggested" && !isExceptionField(field) ? "accepted" : field.reviewStatus);
+          const reviewStatus = getEffectiveReviewStatus(field, explicitStatus);
           return {
             fieldId: id,
             reviewStatus,
@@ -249,9 +271,7 @@ export function InputExtractionReview({
   const reviewProgress = useMemo(() => {
     const resolved = items.filter((field) => {
       const id = getFieldId(field);
-      const status =
-        reviewStatuses[id] ??
-        (field.reviewStatus === "suggested" && !isExceptionField(field) ? "accepted" : field.reviewStatus);
+      const status = getEffectiveReviewStatus(field, reviewStatuses[id]);
       return isResolvedStatus(status);
     }).length;
     return {
@@ -268,9 +288,7 @@ export function InputExtractionReview({
     () =>
       items.filter((field) => {
         const id = getFieldId(field);
-        const status =
-          reviewStatuses[id] ??
-          (field.reviewStatus === "suggested" && !isExceptionField(field) ? "accepted" : field.reviewStatus);
+        const status = getEffectiveReviewStatus(field, reviewStatuses[id]);
         return isConfirmedStatus(status);
       }).length,
     [items, reviewStatuses],
@@ -285,9 +303,7 @@ export function InputExtractionReview({
               ? group.items
               : group.items.filter((field) => {
                   const id = getFieldId(field);
-                  const status =
-                    reviewStatuses[id] ??
-                    (field.reviewStatus === "suggested" && !isExceptionField(field) ? "accepted" : field.reviewStatus);
+                  const status = getEffectiveReviewStatus(field, reviewStatuses[id]);
                   return isExceptionField(field) && (!isResolvedStatus(status) || settlingFieldIds.has(id));
                 }),
         }))
@@ -617,16 +633,17 @@ export function InputExtractionReview({
                 <div className="divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-100">
                   {group.items.map((field) => {
                     const id = getFieldId(field);
-                    const status =
-                      reviewStatuses[id] ??
-                      (field.reviewStatus === "suggested" && !isExceptionField(field) ? "accepted" : field.reviewStatus);
+                    const explicitStatus = reviewStatuses[id];
+                    const status = getEffectiveReviewStatus(field, explicitStatus);
+                    const displayStatus = getDisplayReviewStatus(field, explicitStatus);
+                    const implicitNormal = isImplicitNormalField(field, explicitStatus);
                     const displayedValue = status === "rejected" ? "" : editedValues[id] ?? getFieldValue(field);
                     return (
                       <a
                         key={`overview-${id}`}
                         href={`#review-field-${encodeURIComponent(id)}`}
                         className={`block px-3 py-2 transition-colors hover:bg-slate-50 ${
-                          isConfirmedStatus(status) ? "bg-emerald-50/70" : "bg-white"
+                          isConfirmedStatus(status) && !implicitNormal ? "bg-emerald-50/70" : "bg-white"
                         }`}
                       >
                         <div className="flex items-start justify-between gap-2">
@@ -638,9 +655,9 @@ export function InputExtractionReview({
                                 : displayedValue || tr(locale, { ja: "未入力", zh: "未填写", ko: "미입력" })}
                             </p>
                           </div>
-                          <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold ${getStatusClass(status)}`}>
-                            {isConfirmedStatus(status) ? "✓ " : ""}
-                            {getStatusLabel(locale, status)}
+                          <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold ${getStatusClass(displayStatus, implicitNormal)}`}>
+                            {isConfirmedStatus(displayStatus) && !implicitNormal ? "✓ " : ""}
+                            {getDisplayStatusLabel(locale, displayStatus, implicitNormal)}
                           </span>
                         </div>
                       </a>
@@ -725,10 +742,10 @@ export function InputExtractionReview({
               <div className="divide-y divide-slate-100">
                   {group.items.map((field) => {
                     const id = getFieldId(field);
-                    const currentStatus =
-                      reviewStatuses[id] ??
-                      (field.reviewStatus === "suggested" && !isExceptionField(field) ? "accepted" : field.reviewStatus);
-                    const isConfirmed = isConfirmedStatus(currentStatus);
+                    const explicitStatus = reviewStatuses[id];
+                    const currentStatus = getDisplayReviewStatus(field, explicitStatus);
+                    const implicitNormal = isImplicitNormalField(field, explicitStatus);
+                    const isConfirmed = isConfirmedStatus(currentStatus) && !implicitNormal;
                     const isSettling = reviewMode === "pending" && settlingFieldIds.has(id);
                     const wasRecentlyConfirmed = recentlyConfirmedIds.has(id);
                     const readValue = getFieldValue(field);
@@ -753,9 +770,9 @@ export function InputExtractionReview({
                         <div className="min-w-0">
                           <p className="text-sm font-black text-slate-950">{field.label}</p>
                           <div className="mt-1 flex flex-wrap items-center gap-2">
-                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${getStatusClass(currentStatus)}`}>
+                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${getStatusClass(currentStatus, implicitNormal)}`}>
                               {isConfirmed ? "✓ " : ""}
-                              {getStatusLabel(locale, currentStatus)}
+                              {getDisplayStatusLabel(locale, currentStatus, implicitNormal)}
                             </span>
                             {!hasReadableValue(field) ? (
                               <span className="text-[11px] font-bold text-rose-600">

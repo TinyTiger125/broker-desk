@@ -221,12 +221,12 @@ function getCopy(locale: Locale) {
       unmapped: "この列は保存しない",
       recentImportHistory: "最近の読取履歴",
       viewArchive: "アーカイブ表示",
-      readinessTitle: "読取状態",
+      readinessTitle: "処理段階",
       issueStatsTitle: "確認事項",
       issueStatsDesc: "直近の読取で確認が必要な内容",
       issueTrendTitle: "確認事項の推移（7日）",
       issueTrendDesc: "日別の確認件数",
-      mapped: "完了",
+      mapped: "読取済み・確認待ち",
       alerts: "アラート",
       validationLog: "確認記録",
       noFurtherAlerts: "追加アラートはありません",
@@ -328,12 +328,12 @@ function getCopy(locale: Locale) {
       unmapped: "不保存这一列",
       recentImportHistory: "最近读取历史",
       viewArchive: "查看归档",
-      readinessTitle: "读取状态",
+      readinessTitle: "处理阶段",
       issueStatsTitle: "问题汇总",
       issueStatsDesc: "按最近读取结果统计需要处理的内容",
       issueTrendTitle: "问题变化（7天）",
       issueTrendDesc: "按天统计需要确认的内容",
-      mapped: "已完成",
+      mapped: "已读取/待确认",
       alerts: "告警",
       validationLog: "检查记录",
       noFurtherAlerts: "暂无更多告警",
@@ -434,12 +434,12 @@ function getCopy(locale: Locale) {
       unmapped: "이 열은 저장하지 않음",
       recentImportHistory: "최근 읽기 이력",
       viewArchive: "보관 이력 보기",
-      readinessTitle: "읽기 상태",
+      readinessTitle: "처리 단계",
       issueStatsTitle: "확인 사항",
       issueStatsDesc: "최근 읽기 결과에서 확인이 필요한 내용",
       issueTrendTitle: "확인 사항 추이 (7일)",
       issueTrendDesc: "일자별 확인 건수",
-      mapped: "완료",
+      mapped: "읽기 완료·확인 대기",
       alerts: "알림",
       validationLog: "확인 기록",
       noFurtherAlerts: "추가 알림이 없습니다",
@@ -533,7 +533,27 @@ function isInputFileExtractionJob(job: HubImportJobItem) {
 }
 
 function isBatchMappingJob(job: HubImportJobItem) {
-  return job.sourceType === "excel" && !isInputFileExtractionJob(job);
+  return (
+    job.sourceType === "excel" &&
+    !isInputFileExtractionJob(job) &&
+    job.status !== "queued" &&
+    job.status !== "processing"
+  );
+}
+
+function hasBatchMappingPayload(payload: ExcelImportPayload | null): payload is ExcelImportPayload & {
+  headers: string[];
+  autoMapping: Record<string, string>;
+  rows: Record<string, unknown>[];
+} {
+  if (!payload || payload.kind === "input_file_extraction") return false;
+  return (
+    (payload.kind === "property_row_import" || payload.kind === undefined) &&
+    Array.isArray(payload.headers) &&
+    Array.isArray(payload.rows) &&
+    typeof payload.autoMapping === "object" &&
+    payload.autoMapping !== null
+  );
 }
 
 export default async function ImportCenterPage({ searchParams }: ImportCenterPageProps) {
@@ -941,6 +961,9 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
   const requestedJobCase = requestedJob ? caseByImportJobId.get(requestedJob.id) : undefined;
   const recentJobHref = (job: HubImportJobItem) => {
     if (isInputFileExtractionJob(job)) return `/import-center?xlsxJob=${encodeURIComponent(job.id)}#source-upload`;
+    if (job.sourceType === "excel" && (job.status === "queued" || job.status === "processing")) {
+      return `/import-center?xlsxJob=${encodeURIComponent(job.id)}#source-upload`;
+    }
     if (isBatchMappingJob(job)) return `/import-center?job=${encodeURIComponent(job.id)}&advanced=1#job-mapping`;
     const linkedCase = caseByImportJobId.get(job.id);
     if (linkedCase) return `/cases/${encodeURIComponent(linkedCase.id)}#case-main-editor`;
@@ -949,6 +972,8 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
   const requestedJobActionHref = requestedJob
     ? isInputFileExtractionJob(requestedJob)
       ? "#source-upload"
+      : requestedJob.sourceType === "excel" && (requestedJob.status === "queued" || requestedJob.status === "processing")
+        ? "#source-upload"
       : isBatchMappingJob(requestedJob)
         ? `/import-center?job=${encodeURIComponent(requestedJob.id)}&advanced=1#job-mapping`
         : requestedJobCase
@@ -1353,7 +1378,11 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
         )}
 
         {/* Step 2: Mapping confirmation */}
-        {xlsxJob && xlsxPayload && xlsxJob.status !== "completed" && !isInputExtractionOnly && (
+        {showAdvanced &&
+          xlsxJob &&
+          xlsxJob.sourceType === "excel" &&
+          xlsxJob.status !== "completed" &&
+          hasBatchMappingPayload(xlsxPayload) && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <p className="text-sm font-semibold text-blue-900">
@@ -1823,13 +1852,20 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
             <div className="relative z-10">
               <div className="mb-4 flex items-center justify-between">
                 <p className="text-[11px] font-bold uppercase tracking-widest text-blue-200">{copy.readinessTitle}</p>
-                <p className="text-3xl font-black tabular-nums">
-                  {Math.min(100, Math.round(((mappedJobCount + completedJobCount) / Math.max(1, jobs.length)) * 100))}%
+                <p className="text-xl font-black tabular-nums">
+                  {mappedJobCount + completedJobCount}/{jobs.length}
                 </p>
               </div>
               <div className="h-1.5 w-full overflow-hidden rounded-full bg-[#003366]">
                 <div className="h-full bg-blue-400" style={{ width: `${Math.min(100, Math.round(((mappedJobCount + completedJobCount) / Math.max(1, jobs.length)) * 100))}%` }} />
               </div>
+              <p className="mt-2 text-[11px] leading-5 text-blue-100">
+                {locale === "zh"
+                  ? "这里只表示任务已进入读取或处理阶段，不代表已写入案件。"
+                  : locale === "ko"
+                    ? "읽기 또는 처리 단계에 들어갔다는 뜻이며 안건 저장 완료를 의미하지 않습니다."
+                    : "読取または処理段階に入った件数です。案件への保存完了を示すものではありません。"}
+              </p>
               <div className="mt-6 grid grid-cols-2 gap-3">
                 <div className="rounded-lg bg-white/10 p-3">
                   <p className="text-[10px] uppercase text-blue-200">{copy.mapped}</p>
