@@ -1,8 +1,8 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { ArchiveRecordButton } from "@/components/archive-record-button";
 import { PageFlashBanner } from "@/components/page-flash-banner";
-import { formatDate } from "@/lib/format";
-import { listHubAttachments, listHubContracts, listHubParties } from "@/lib/hub";
+import { listHubParties, type HubPartyItem } from "@/lib/hub";
 import { t } from "@/lib/i18n";
 import { getLocale } from "@/lib/locale";
 import { normalizeLifecycleFilter, type LifecycleFilter } from "@/lib/record-lifecycle";
@@ -10,174 +10,156 @@ import { requireTenantSession } from "@/lib/tenant-session";
 
 export const dynamic = "force-dynamic";
 
+const PARTIES_PAGE_SIZE = 12;
+
+type PartyTypeFilter = "all" | "corporate" | "individual";
+
 type PartiesPageProps = {
   searchParams?: Promise<{
     q?: string;
-    focus?: string;
     flash?: string;
     type?: string;
-    relation?: string;
     lifecycle?: string;
+    page?: string;
   }>;
 };
+
+type PartyFilters = {
+  query: string;
+  type: PartyTypeFilter;
+  lifecycle: LifecycleFilter;
+  page?: number;
+};
+
+function parsePage(value?: string): number {
+  const raw = value?.trim() ?? "";
+  if (!/^[1-9]\d*$/.test(raw)) return 1;
+  const parsed = Number(raw);
+  return Number.isSafeInteger(parsed) ? parsed : 1;
+}
+
+function buildPartiesHref(filters: PartyFilters): string {
+  const params = new URLSearchParams();
+  if (filters.query) params.set("q", filters.query);
+  if (filters.type !== "all") params.set("type", filters.type);
+  if (filters.lifecycle !== "active") params.set("lifecycle", filters.lifecycle);
+  if (filters.page && filters.page > 1) params.set("page", String(filters.page));
+  const search = params.toString();
+  return search ? `/parties?${search}` : "/parties";
+}
 
 const partiesCopy = {
   ja: {
     addParty: "関係者追加",
-    batchExportBtn: "選択関係者をCSV出力",
-    batchHint: "選択した関係者だけCSV出力します。",
-    batchTools: "一括操作",
-    businessRelation: "業務関係",
-    clear: "解除",
-    continueCase: "案件を開く",
-    createCase: "案件を作成",
-    currentSignal: "現在の状態",
-    editParty: "編集",
-    emptyResult: "一致する関係者がありません。キーワードを変更するか、新規関係者を追加してください。",
-    filter: "絞り込み",
-    filterAll: "すべて",
-    filterCorporate: "法人",
-    filterIndividual: "個人",
-    filterNoCases: "案件なし",
-    filterWithCases: "案件あり",
-    listTitle: "関係者一覧",
-    nextAction: "次の操作",
-    pageTitle: "関係者",
-    partyTypeCorporate: "法人",
-    partyTypeIndividual: "個人",
-    profileTitle: "関係者ファイル",
-    completionTitle: "必須情報",
-    outputCheck: "出力前確認",
-    relationTree: "関係ツリー",
-    openRelationTree: "関係を確認",
-    missingItems: "不足",
-    complete: "完了",
-    insufficient: "資料不足",
-    fieldName: "氏名",
-    fieldContact: "連絡先",
-    fieldRole: "役割",
-    fieldProperty: "関連物件",
-    relationCases: "関連案件",
-    relationDocuments: "資料",
-    relationProperty: "関連物件",
-    reviewDocuments: "資料を確認",
+    clear: "条件をクリア",
+    contact: "連絡先",
+    corporate: "法人",
+    individual: "個人",
+    lifecycle: "ライフサイクル",
+    active: "有効",
+    archived: "アーカイブ済み",
+    all: "すべて",
+    filter: "検索",
+    noParties: "登録されている関係者はまだありません。",
+    noResult: "条件に一致する関係者がいません。",
+    noResultHint: "条件を変更するか、すべての条件をクリアしてください。",
+    retry: "再試行",
+    readError: "関係者を読み込めませんでした。",
+    results: "関係者一覧",
+    resultRange: (start: number, end: number, total: number) => `${start}–${end} / ${total}名`,
+    page: (current: number, total: number) => `${current} / ${total}ページ`,
+    previous: "前のページ",
+    next: "次のページ",
+    name: "関係者名",
+    role: "役割",
+    type: "種別",
+    status: "状態",
+    relationTree: "関係を確認",
+    searchLabel: "キーワード",
     searchPlaceholder: "名前・電話・メール・役割で検索",
-    signalNoCase: "まだ案件化されていません。関係者情報を確認してから案件を作成します。",
-    signalWithCase: "案件に紐づいています。案件側で次の処理を進めてください。",
-    tableRole: "役割",
-    today: "本日 09:42",
-    yesterday: "昨日",
-    activeRecords: "有効",
-    archivedRecords: "アーカイブ済み",
-    allRecords: "すべて",
+    created: "関係者を登録しました。",
+    updated: "関係者を更新しました。",
+    archivedFeedback: "関係者をアーカイブしました。",
+    restoredFeedback: "関係者を復元しました。",
+    backToWorkbench: "ワークベンチに戻る",
   },
   zh: {
     addParty: "新增主体",
-    batchExportBtn: "导出选中主体CSV",
-    batchHint: "只对勾选的主体执行 CSV 导出。",
-    batchTools: "批量工具",
-    businessRelation: "业务关系",
-    clear: "清除",
-    continueCase: "打开案件",
-    createCase: "创建案件",
-    currentSignal: "当前判断",
-    editParty: "编辑",
-    emptyResult: "未找到匹配主体，请调整关键词或新增主体。",
-    filter: "筛选",
-    filterAll: "全部",
-    filterCorporate: "法人",
-    filterIndividual: "个人",
-    filterNoCases: "无案件",
-    filterWithCases: "有案件",
-    listTitle: "主体列表",
-    nextAction: "下一步",
-    pageTitle: "相关主体",
-    partyTypeCorporate: "法人",
-    partyTypeIndividual: "个人",
-    profileTitle: "主体档案",
-    completionTitle: "必填信息",
-    outputCheck: "输出前检查",
-    relationTree: "关系树",
-    openRelationTree: "查看关系",
-    missingItems: "缺少",
-    complete: "已完成",
-    insufficient: "资料不足",
-    fieldName: "姓名 / 名称",
-    fieldContact: "联系方式",
-    fieldRole: "角色",
-    fieldProperty: "关联物件",
-    relationCases: "关联案件",
-    relationDocuments: "资料",
-    relationProperty: "关联物件",
-    reviewDocuments: "查看资料",
-    searchPlaceholder: "按姓名、电话、邮箱、角色搜索",
-    signalNoCase: "还没有形成案件，先确认主体信息再创建案件。",
-    signalWithCase: "已经有关联案件，应从案件继续推进。",
-    tableRole: "角色",
-    today: "今天 09:42",
-    yesterday: "昨天",
-    activeRecords: "有效",
-    archivedRecords: "已归档",
-    allRecords: "全部",
+    clear: "清除条件",
+    contact: "联系方式",
+    corporate: "法人",
+    individual: "个人",
+    lifecycle: "生命周期",
+    active: "有效",
+    archived: "已归档",
+    all: "全部",
+    filter: "查找",
+    noParties: "当前还没有已登记的主体。",
+    noResult: "没有符合条件的主体。",
+    noResultHint: "请调整条件或清除全部筛选。",
+    retry: "重试",
+    readError: "无法读取主体列表。",
+    results: "主体列表",
+    resultRange: (start: number, end: number, total: number) => `${start}–${end} / 共 ${total} 位`,
+    page: (current: number, total: number) => `第 ${current} / ${total} 页`,
+    previous: "上一页",
+    next: "下一页",
+    name: "主体名称",
+    role: "角色",
+    type: "类型",
+    status: "状态",
+    relationTree: "查看关系图",
+    searchLabel: "关键词",
+    searchPlaceholder: "按姓名、电话、邮箱或角色搜索",
+    created: "主体已创建。",
+    updated: "主体已更新。",
+    archivedFeedback: "主体已归档。",
+    restoredFeedback: "主体已恢复。",
+    backToWorkbench: "返回工作台",
   },
   ko: {
     addParty: "관계자 추가",
-    batchExportBtn: "선택 관계자 CSV 내보내기",
-    batchHint: "선택한 관계자만 CSV로 내보냅니다.",
-    batchTools: "일괄 작업",
-    businessRelation: "업무 관계",
-    clear: "초기화",
-    continueCase: "안건 열기",
-    createCase: "안건 만들기",
-    currentSignal: "현재 상태",
-    editParty: "편집",
-    emptyResult: "일치하는 관계자가 없습니다. 검색어를 변경하거나 관계자를 추가해 주세요.",
-    filter: "필터",
-    filterAll: "전체",
-    filterCorporate: "법인",
-    filterIndividual: "개인",
-    filterNoCases: "안건 없음",
-    filterWithCases: "안건 있음",
-    listTitle: "관계자 목록",
-    nextAction: "다음 작업",
-    pageTitle: "관계자",
-    partyTypeCorporate: "법인",
-    partyTypeIndividual: "개인",
-    profileTitle: "관계자 파일",
-    completionTitle: "필수 정보",
-    outputCheck: "출력 전 확인",
-    relationTree: "관계 트리",
-    openRelationTree: "관계 확인",
-    missingItems: "부족",
-    complete: "완료",
-    insufficient: "자료 부족",
-    fieldName: "이름 / 명칭",
-    fieldContact: "연락처",
-    fieldRole: "역할",
-    fieldProperty: "연계 매물",
-    relationCases: "연계 안건",
-    relationDocuments: "자료",
-    relationProperty: "연계 매물",
-    reviewDocuments: "자료 확인",
-    searchPlaceholder: "이름, 전화, 이메일, 역할 검색",
-    signalNoCase: "아직 안건이 없습니다. 관계자 정보를 확인한 뒤 안건을 만드세요.",
-    signalWithCase: "안건에 연결되어 있습니다. 안건에서 다음 작업을 진행하세요.",
-    tableRole: "역할",
-    today: "오늘 09:42",
-    yesterday: "어제",
-    activeRecords: "유효",
-    archivedRecords: "보관됨",
-    allRecords: "전체",
+    clear: "조건 지우기",
+    contact: "연락처",
+    corporate: "법인",
+    individual: "개인",
+    lifecycle: "라이프사이클",
+    active: "유효",
+    archived: "보관됨",
+    all: "전체",
+    filter: "검색",
+    noParties: "아직 등록된 관계자가 없습니다.",
+    noResult: "조건에 맞는 관계자가 없습니다.",
+    noResultHint: "조건을 변경하거나 모든 필터를 지워 주세요.",
+    retry: "다시 시도",
+    readError: "관계자 목록을 읽을 수 없습니다.",
+    results: "관계자 목록",
+    resultRange: (start: number, end: number, total: number) => `${start}–${end} / ${total}명`,
+    page: (current: number, total: number) => `${current} / ${total}페이지`,
+    previous: "이전 페이지",
+    next: "다음 페이지",
+    name: "관계자명",
+    role: "역할",
+    type: "유형",
+    status: "상태",
+    relationTree: "관계 확인",
+    searchLabel: "키워드",
+    searchPlaceholder: "이름, 전화, 이메일 또는 역할 검색",
+    created: "관계자를 등록했습니다.",
+    updated: "관계자를 업데이트했습니다.",
+    archivedFeedback: "관계자를 보관했습니다.",
+    restoredFeedback: "관계자를 복원했습니다.",
+    backToWorkbench: "워크벤치로 돌아가기",
   },
 } as const;
 
-function initials(name: string) {
-  return name
-    .split(" ")
-    .map((piece) => piece[0] ?? "")
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
+function normalizeType(value?: string): PartyTypeFilter {
+  return value === "corporate" || value === "individual" ? value : "all";
+}
+
+function contactSummary(party: HubPartyItem, notSet: string): string {
+  const values = [party.phone, party.email].filter(Boolean);
+  return values.length > 0 ? values.join(" / ") : notSet;
 }
 
 export default async function PartiesPage({ searchParams }: PartiesPageProps) {
@@ -186,26 +168,26 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
     requireTenantSession({ permission: "record.read" }),
   ]);
   const copy = partiesCopy[locale];
-  const params = searchParams ? await searchParams : undefined;
-  const query = params?.q?.trim() ?? "";
-  const focus = params?.focus?.trim() ?? "";
-  const typeFilter = params?.type === "corporate" || params?.type === "individual" ? params.type : "all";
-  const relationFilter =
-    params?.relation === "with_cases" || params?.relation === "no_cases" ? params.relation : "all";
-  const lifecycleFilter: LifecycleFilter = normalizeLifecycleFilter(params?.lifecycle);
-  const hubContext = { userId: session.user.id, tenantId: session.tenant.id, lifecycleStatus: lifecycleFilter };
+  const params = (await searchParams) ?? {};
+  const query = params.q?.trim() ?? "";
+  const type = normalizeType(params.type);
+  const lifecycle = normalizeLifecycleFilter(params.lifecycle);
+  const requestedPage = parsePage(params.page);
+  const filters = { query, type, lifecycle } satisfies Omit<PartyFilters, "page">;
+  const context = {
+    userId: session.user.id,
+    tenantId: session.tenant.id,
+    lifecycleStatus: lifecycle,
+  };
 
-  const [parties, attachments, contracts] = await Promise.all([
-    listHubParties(locale, hubContext),
-    listHubAttachments(locale, 200, hubContext),
-    listHubContracts(locale, hubContext),
-  ]);
+  let parties: HubPartyItem[] = [];
+  let readError = false;
+  try {
+    parties = await listHubParties(locale, context);
+  } catch {
+    readError = true;
+  }
 
-  const caseCountByParty = contracts.reduce((map, contract) => {
-    map.set(contract.clientId, (map.get(contract.clientId) ?? 0) + 1);
-    return map;
-  }, new Map<string, number>());
-  const getCaseCount = (partyId: string) => caseCountByParty.get(partyId) ?? 0;
   const searched = query
     ? parties.filter((party) => {
         const normalized = query.toLowerCase();
@@ -213,116 +195,41 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
           party.name.toLowerCase().includes(normalized) ||
           party.phone.toLowerCase().includes(normalized) ||
           (party.email?.toLowerCase().includes(normalized) ?? false) ||
-          party.roles.some((role) => role.toLowerCase().includes(normalized))
+          party.explicitRoles.some((role) => role.toLowerCase().includes(normalized))
         );
       })
     : parties;
   const filtered = searched.filter((party) => {
-    const caseCount = getCaseCount(party.id);
-    const matchesType = typeFilter === "all" || party.partyType === typeFilter;
-    const matchesRelation =
-      relationFilter === "all" ||
-      (relationFilter === "with_cases" && caseCount > 0) ||
-      (relationFilter === "no_cases" && caseCount === 0);
-    return matchesType && matchesRelation;
+    const matchesType = type === "all" || party.explicitPartyType === type;
+    return matchesType;
   });
 
-  const selected = filtered.find((party) => party.id === focus) ?? filtered[0];
-  const selectedAllAttachments = selected
-    ? attachments.filter((item) => item.targetType === "party" && item.targetId === selected.id)
-    : [];
-  const selectedAttachments = selectedAllAttachments.slice(0, 3);
-  const selectedContracts = selected ? contracts.filter((contract) => contract.clientId === selected.id) : [];
-  const selectedRequiredFields = selected
-    ? [
-        { label: copy.fieldName, value: selected.name },
-        { label: copy.fieldContact, value: selected.phone || selected.email },
-        { label: copy.fieldRole, value: selected.roles.join(" / ") },
-        { label: copy.fieldProperty, value: selected.relatedPropertyHint },
-      ]
-    : [];
-  const selectedMissingFields = selectedRequiredFields.filter((field) => !field.value);
-  const selectedCompletion = selectedRequiredFields.length > 0
-    ? Math.round(((selectedRequiredFields.length - selectedMissingFields.length) / selectedRequiredFields.length) * 100)
-    : 0;
-  const selectedCaseHref = selectedContracts[0]
-    ? `/contracts?filter=all&focus=${selectedContracts[0].id}`
-    : selected
-      ? `/quotes/new?clientId=${selected.id}`
-      : "/quotes/new";
-  const previousDay = selectedAttachments[0] ? formatDate(selectedAttachments[0].uploadedAt, locale) : copy.yesterday;
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PARTIES_PAGE_SIZE));
+  const safePage = Math.min(requestedPage, pageCount);
+  if (!readError && params.page !== undefined && (params.page !== String(safePage) || safePage === 1)) {
+    redirect(buildPartiesHref({ ...filters, page: safePage }));
+  }
+  const visibleParties = filtered.slice((safePage - 1) * PARTIES_PAGE_SIZE, safePage * PARTIES_PAGE_SIZE);
+  const rangeStart = filtered.length === 0 ? 0 : (safePage - 1) * PARTIES_PAGE_SIZE + 1;
+  const rangeEnd = Math.min(filtered.length, safePage * PARTIES_PAGE_SIZE);
+  const returnTo = buildPartiesHref({ ...filters, page: safePage });
+  const clearHref = buildPartiesHref({ query: "", type: "all", lifecycle: "active" });
   const flashMap = {
-    party_created: {
-      ja: "関係者を登録しました。",
-      zh: "主体已创建。",
-      ko: "관계자를 등록했습니다.",
-    },
-    party_updated: {
-      ja: "関係者を更新しました。",
-      zh: "主体已更新。",
-      ko: "관계자를 업데이트했습니다.",
-    },
+    party_created: copy.created,
+    party_updated: copy.updated,
+    record_archived: copy.archivedFeedback,
+    record_restored: copy.restoredFeedback,
   } as const;
-  const flashKey = String(params?.flash ?? "").trim() as keyof typeof flashMap;
-  const flashMessage = flashMap[flashKey]?.[locale];
-  const makeHref = (next: { q?: string; type?: string; relation?: string; focus?: string; lifecycle?: LifecycleFilter }) => {
-    const urlParams = new URLSearchParams();
-    const nextQuery = next.q ?? query;
-    const nextType = next.type ?? typeFilter;
-    const nextRelation = next.relation ?? relationFilter;
-    const nextFocus = next.focus ?? focus;
-    const nextLifecycle = next.lifecycle ?? lifecycleFilter;
-    if (nextQuery) urlParams.set("q", nextQuery);
-    if (nextType !== "all") urlParams.set("type", nextType);
-    if (nextRelation !== "all") urlParams.set("relation", nextRelation);
-    if (nextFocus) urlParams.set("focus", nextFocus);
-    if (nextLifecycle !== "active") urlParams.set("lifecycle", nextLifecycle);
-    const suffix = urlParams.toString();
-    return suffix ? `/parties?${suffix}` : "/parties";
-  };
-  const partyTypeLabel = (partyType: "individual" | "corporate") =>
-    partyType === "corporate" ? copy.partyTypeCorporate : copy.partyTypeIndividual;
-  const filterChips = [
-    {
-      label: copy.filterAll,
-      href: makeHref({ type: "all", relation: "all", focus: "" }),
-      active: typeFilter === "all" && relationFilter === "all",
-    },
-    {
-      label: copy.filterWithCases,
-      href: makeHref({ relation: "with_cases", focus: "" }),
-      active: relationFilter === "with_cases",
-    },
-    {
-      label: copy.filterNoCases,
-      href: makeHref({ relation: "no_cases", focus: "" }),
-      active: relationFilter === "no_cases",
-    },
-    {
-      label: copy.filterCorporate,
-      href: makeHref({ type: "corporate", focus: "" }),
-      active: typeFilter === "corporate",
-    },
-    {
-      label: copy.filterIndividual,
-      href: makeHref({ type: "individual", focus: "" }),
-      active: typeFilter === "individual",
-    },
-  ];
-  const lifecycleChips = [
-    { label: copy.activeRecords, href: makeHref({ lifecycle: "active", focus: "" }), active: lifecycleFilter === "active" },
-    { label: copy.archivedRecords, href: makeHref({ lifecycle: "archived", focus: "" }), active: lifecycleFilter === "archived" },
-    { label: copy.allRecords, href: makeHref({ lifecycle: "all", focus: "" }), active: lifecycleFilter === "all" },
-  ];
+  const flashMessage = flashMap[String(params.flash ?? "").trim() as keyof typeof flashMap];
+  const notSet = t(locale, "common.notSet");
 
   return (
     <div className="space-y-6 pb-12">
-      <section className="flex flex-wrap items-end justify-between gap-3">
+      <header className="flex flex-wrap items-end justify-between gap-4">
         <div className="space-y-1">
-          <h1 className="text-4xl font-bold tracking-tight text-slate-900">{copy.pageTitle}</h1>
-          <p className="text-sm font-medium text-slate-600">
-            {t(locale, "parties.table.resultCount", { count: filtered.length })}
-          </p>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">{copy.results}</p>
+          <h1 className="text-4xl font-bold tracking-tight text-slate-900">{copy.name}</h1>
+          <p className="text-sm font-medium text-slate-600">{copy.resultRange(rangeStart, rangeEnd, filtered.length)}</p>
         </div>
         <Link
           href="/parties/new"
@@ -331,312 +238,126 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
           <span className="material-symbols-outlined text-[17px]" aria-hidden="true">add</span>
           {copy.addParty}
         </Link>
-      </section>
+      </header>
+
       <PageFlashBanner message={flashMessage} />
 
-      <section className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200/35">
-        <form className="grid gap-3 2xl:grid-cols-[minmax(240px,1fr)_auto_auto]" action="/parties">
+      <section className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200/35" aria-labelledby="parties-filter-heading">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <h2 id="parties-filter-heading" className="text-lg font-bold text-slate-900">{copy.searchLabel}</h2>
+          <Link href={clearHref} className="text-sm font-bold text-slate-700 hover:text-[#002fa7]">{copy.clear}</Link>
+        </div>
+        <form action="/parties" method="get" className="grid gap-3 lg:grid-cols-[minmax(240px,1fr)_auto_auto_auto]">
+          <label className="sr-only" htmlFor="party-query">{copy.searchLabel}</label>
           <input
+            id="party-query"
             name="q"
             defaultValue={query}
             placeholder={copy.searchPlaceholder}
             className="min-h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none focus:border-[#0046ad] focus:ring-2 focus:ring-blue-100"
           />
-          <input type="hidden" name="type" value={typeFilter} />
-          <input type="hidden" name="relation" value={relationFilter} />
-          <input type="hidden" name="lifecycle" value={lifecycleFilter} />
-          <button className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-[#001e40] px-4 text-sm font-bold text-white">
+          <label className="flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700">
+            <span className="sr-only">{copy.type}</span>
+            <select name="type" defaultValue={type} className="min-w-28 bg-transparent outline-none">
+              <option value="all">{copy.type}: {copy.all}</option>
+              <option value="individual">{copy.individual}</option>
+              <option value="corporate">{copy.corporate}</option>
+            </select>
+          </label>
+          <label className="flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700">
+            <span className="sr-only">{copy.lifecycle}</span>
+            <select name="lifecycle" defaultValue={lifecycle} className="min-w-32 bg-transparent outline-none">
+              <option value="active">{copy.lifecycle}: {copy.active}</option>
+              <option value="archived">{copy.archived}</option>
+              <option value="all">{copy.all}</option>
+            </select>
+          </label>
+          <button type="submit" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-[#001e40] px-4 text-sm font-bold text-white">
             <span className="material-symbols-outlined text-[17px]" aria-hidden="true">search</span>
             {copy.filter}
           </button>
-          <Link
-            href="/parties"
-            className="inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-200 px-4 text-sm font-bold text-slate-700 hover:bg-slate-50"
-          >
-            {copy.clear}
-          </Link>
         </form>
-        <div className="mt-4 flex flex-wrap gap-2">
-          {filterChips.map((item) => (
-            <Link
-              key={item.label}
-              href={item.href}
-              className={
-                "rounded-full px-3 py-1.5 text-xs font-bold transition " +
-                (item.active ? "bg-blue-700 text-white" : "bg-[#edf2fd] text-slate-700 hover:bg-blue-100")
-              }
-            >
-              {item.label}
-            </Link>
-          ))}
-          {lifecycleChips.map((item) => (
-            <Link
-              key={item.label}
-              href={item.href}
-              className={
-                "rounded-full px-3 py-1.5 text-xs font-bold transition " +
-                (item.active ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200")
-              }
-            >
-              {item.label}
-            </Link>
-          ))}
-        </div>
       </section>
 
-      <section className="grid min-w-0 gap-0 overflow-hidden rounded-xl bg-[#e9effc]/80 shadow-sm ring-1 ring-slate-200/40 2xl:grid-cols-[minmax(0,1fr)_minmax(22rem,25rem)]">
-        <form action="/api/hub/export" method="get" className="min-w-0 space-y-3 p-4">
-          <input type="hidden" name="scope" value="parties" />
-          <input type="hidden" name="locale" value={locale} />
-          <div className="flex flex-wrap items-center justify-between gap-3 px-1">
-            <div>
-              <h2 className="text-lg font-bold text-slate-900">{copy.listTitle}</h2>
-              <p className="mt-1 text-xs font-medium text-slate-500">
-                {t(locale, "parties.table.resultCount", { count: filtered.length })}
-              </p>
-            </div>
-            <details className="group relative">
-              <summary className="inline-flex cursor-pointer list-none items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">
-                <span className="material-symbols-outlined text-[16px]" aria-hidden="true">checklist</span>
-                {copy.batchTools}
-              </summary>
-              <div className="absolute right-0 z-10 mt-2 w-64 rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
-                <p className="text-xs leading-5 text-slate-500">{copy.batchHint}</p>
-                <button className="mt-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">
-                  {copy.batchExportBtn}
-                </button>
-              </div>
-            </details>
+      <section className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200/40" aria-labelledby="parties-results-heading">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/80 px-5 py-4">
+          <div>
+            <h2 id="parties-results-heading" className="text-lg font-bold text-slate-900">{copy.results}</h2>
+            <p className="mt-1 text-xs font-medium text-slate-500">{copy.resultRange(rangeStart, rangeEnd, filtered.length)}</p>
           </div>
+          {pageCount > 1 && !readError ? (
+            <nav aria-label={copy.results} className="flex items-center gap-2 text-sm font-bold">
+              {safePage > 1 ? <Link href={buildPartiesHref({ ...filters, page: safePage - 1 })} className="rounded-md border border-slate-200 px-3 py-2 text-slate-700 hover:bg-slate-50">{copy.previous}</Link> : null}
+              <span className="px-2 text-slate-500">{copy.page(safePage, pageCount)}</span>
+              {safePage < pageCount ? <Link href={buildPartiesHref({ ...filters, page: safePage + 1 })} className="rounded-md border border-slate-200 px-3 py-2 text-slate-700 hover:bg-slate-50">{copy.next}</Link> : null}
+            </nav>
+          ) : null}
+        </div>
 
-          <div className="space-y-2">
-            {filtered.map((party, index) => {
-              const caseCount = getCaseCount(party.id);
-              const partyHref = makeHref({ focus: party.id });
+        {readError ? (
+          <div className="space-y-3 px-5 py-12 text-center">
+            <p className="text-sm font-semibold text-rose-700">{copy.readError}</p>
+            <div className="flex flex-wrap justify-center gap-3">
+              <Link href={returnTo} className="rounded-lg bg-[#001e40] px-4 py-2 text-sm font-bold text-white">{copy.retry}</Link>
+              <Link href="/organize-center" className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700">{copy.backToWorkbench}</Link>
+            </div>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="space-y-3 px-5 py-12 text-center">
+            <p className="text-sm font-semibold text-slate-700">{parties.length === 0 ? copy.noParties : copy.noResult}</p>
+            {parties.length === 0 ? (
+              <Link href="/parties/new" className="inline-flex rounded-lg bg-[#001e40] px-4 py-2 text-sm font-bold text-white">{copy.addParty}</Link>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-sm text-slate-500">{copy.noResultHint}</p>
+                <Link href={clearHref} className="inline-flex rounded-lg border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700">{copy.clear}</Link>
+              </div>
+            )}
+          </div>
+        ) : (
+          <ul className="divide-y divide-slate-200/80" aria-label={copy.results}>
+            {visibleParties.map((party) => {
+              const typeLabel = party.explicitPartyType === "corporate"
+                ? copy.corporate
+                : party.explicitPartyType === "individual"
+                  ? copy.individual
+                  : notSet;
+              const roleLabel = party.explicitRoles.join(" / ") || notSet;
+              const statusLabel = party.status === "archived" ? copy.archived : copy.active;
               return (
-                <article
-                  key={party.id}
-                  className={
-                    "grid gap-3 rounded-xl bg-white p-4 transition hover:bg-[#f6f9ff] lg:grid-cols-[auto_minmax(0,1fr)_auto] " +
-                    (selected?.id === party.id ? "ring-2 ring-[#001e40]/15" : "")
-                  }
-                >
-                  <label className="flex items-start pt-1">
-                    <span className="sr-only">{copy.batchTools}</span>
-                    <input type="checkbox" name="ids" value={party.id} className="h-4 w-4 rounded border-slate-300" />
-                  </label>
-                  <Link href={partyHref} className="min-w-0">
-                    <div className="flex min-w-0 items-center gap-3">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#e6eeff] text-sm font-black text-[#001e40]" aria-hidden="true">
-                        {initials(party.name)}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-bold text-slate-900">{party.name}</p>
-                        <p className="mt-1 truncate text-xs text-slate-500">
-                          {party.roles[0] ?? t(locale, "common.notSet")} · {partyTypeLabel(party.partyType)}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="mt-3 grid gap-2 text-xs font-medium text-slate-600 lg:grid-cols-3">
-                      <span className="rounded-lg bg-[#edf2fd] px-2 py-1">
-                        {copy.relationCases}: {caseCount}
-                      </span>
-                      <span className="truncate rounded-lg bg-[#edf2fd] px-2 py-1">
-                        {copy.relationProperty}: {party.relatedPropertyHint ?? t(locale, "common.notSet")}
-                      </span>
-                      <span className="rounded-lg bg-[#edf2fd] px-2 py-1">
-                        {index === 0 ? copy.today : index === 1 ? previousDay : copy.yesterday}
-                      </span>
-                    </div>
-                  </Link>
-                  <div className="flex items-center justify-end gap-2">
+                <li key={party.id} className="grid gap-4 px-5 py-4 transition hover:bg-slate-50 lg:grid-cols-[minmax(12rem,1.3fr)_minmax(7rem,0.7fr)_minmax(9rem,1fr)_minmax(6rem,0.6fr)_auto] lg:items-center">
+                  <div className="min-w-0">
+                    <Link
+                      href={`/parties/${encodeURIComponent(party.id)}/edit`}
+                      className="block truncate text-sm font-bold text-slate-900 underline-offset-4 hover:text-[#002fa7] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]"
+                    >
+                      {party.name}
+                    </Link>
+                    <p className="mt-1 truncate text-xs font-medium text-slate-500">{contactSummary(party, notSet)}</p>
+                  </div>
+                  <div className="text-sm text-slate-700"><span className="mr-2 text-xs font-bold text-slate-400 lg:hidden">{copy.type}</span>{typeLabel}</div>
+                  <div className="text-sm text-slate-700"><span className="mr-2 text-xs font-bold text-slate-400 lg:hidden">{copy.role}</span>{roleLabel}</div>
+                  <div className={party.status === "archived" ? "text-sm font-semibold text-slate-500" : "text-sm text-slate-700"}><span className="mr-2 text-xs font-bold text-slate-400 lg:hidden">{copy.status}</span>{statusLabel}</div>
+                  <div className="flex flex-wrap items-center justify-start gap-2 lg:justify-end">
+                    <Link
+                      href={`/relationship-tree?type=party&id=${encodeURIComponent(party.id)}`}
+                      className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]"
+                    >
+                      {copy.relationTree}
+                    </Link>
                     <ArchiveRecordButton
                       entityType="party"
                       entityId={party.id}
                       status={party.status}
                       locale={locale}
-                      returnTo={makeHref({ focus: "" })}
+                      returnTo={returnTo}
                     />
-                    <span className="material-symbols-outlined text-slate-300" aria-hidden="true">arrow_forward</span>
                   </div>
-                </article>
+                </li>
               );
             })}
-            {filtered.length === 0 ? (
-              <div className="rounded-xl bg-white px-4 py-10 text-center text-sm text-slate-500">
-                {copy.emptyResult}
-              </div>
-            ) : null}
-          </div>
-        </form>
-
-        <aside className="border-l border-slate-200/70 bg-white">
-          {selected ? (
-            <div className="space-y-6 p-6">
-              <div>
-                <div className="mb-4 flex items-start justify-between gap-3">
-                  <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-[#eff4ff] text-4xl font-black text-[#001e40]">
-                    {initials(selected.name)}
-                  </div>
-                  <div className="flex flex-wrap justify-end gap-2">
-                    <Link
-                      href={`/parties/${selected.id}/edit`}
-                      className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
-                    >
-                      <span className="material-symbols-outlined text-[16px]" aria-hidden="true">edit</span>
-                      {copy.editParty}
-                    </Link>
-                    <ArchiveRecordButton
-                      entityType="party"
-                      entityId={selected.id}
-                      status={selected.status}
-                      locale={locale}
-                      returnTo={makeHref({ focus: "" })}
-                    />
-                  </div>
-                </div>
-                <p className="text-[11px] font-black uppercase tracking-widest text-slate-400">{copy.profileTitle}</p>
-                <h2 className="mt-1 text-3xl font-bold tracking-tight text-slate-900">{selected.name}</h2>
-                <p className="mt-1 text-sm font-medium text-slate-500">
-                  {partyTypeLabel(selected.partyType)} · {selected.roles.join(" / ") || t(locale, "common.notSet")}
-                </p>
-                <div className="mt-5 grid grid-cols-2 gap-3">
-                  <div className="rounded-xl bg-[#edf2fd] p-3">
-                    <p className="text-[10px] font-bold uppercase text-slate-400">{copy.relationCases}</p>
-                    <p className="mt-1 text-2xl font-bold text-slate-900">{selectedContracts.length}</p>
-                  </div>
-                  <div className="rounded-xl bg-[#edf2fd] p-3">
-                    <p className="text-[10px] font-bold uppercase text-slate-400">{copy.relationDocuments}</p>
-                    <p className="mt-1 text-2xl font-bold text-slate-900">{selectedAllAttachments.length}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-slate-200/70 bg-white p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <h3 className="text-xs font-black text-[#002FA7]">{copy.completionTitle}</h3>
-                    <p className="mt-1 text-sm font-semibold text-slate-900">
-                      {selectedRequiredFields.length - selectedMissingFields.length}/{selectedRequiredFields.length}
-                    </p>
-                  </div>
-                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-black ${
-                    selectedMissingFields.length > 0 ? "bg-rose-50 text-rose-700 ring-1 ring-rose-100" : "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100"
-                  }`}>
-                    {selectedMissingFields.length > 0 ? `${copy.missingItems} ${selectedMissingFields.length}` : copy.complete}
-                  </span>
-                </div>
-                <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
-                  <div className="h-full rounded-full bg-[#002FA7]" style={{ width: `${selectedCompletion}%` }} />
-                </div>
-                <div className="mt-3 divide-y divide-slate-100 rounded-lg border border-slate-100">
-                  {selectedRequiredFields.map((field) => {
-                    const filled = Boolean(field.value);
-                    return (
-                      <div key={field.label} className="flex items-center justify-between gap-3 px-3 py-2 text-xs">
-                        <span className="font-bold text-slate-600">{field.label}</span>
-                        <span className={`max-w-[55%] truncate text-right font-black ${
-                          filled ? "text-slate-950" : "text-rose-600"
-                        }`}>
-                          {field.value || copy.insufficient}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div>
-                <h3 className="text-[11px] font-black uppercase tracking-widest text-slate-400">{copy.businessRelation}</h3>
-                <div className="mt-3 space-y-2 rounded-xl border border-slate-200/70 bg-slate-50 p-3">
-                  <div className="flex justify-between gap-3 text-sm">
-                    <span className="font-semibold text-slate-500">{copy.relationProperty}</span>
-                    <span className="text-right font-bold text-slate-900">{selected.relatedPropertyHint ?? t(locale, "common.notSet")}</span>
-                  </div>
-                  <div className="flex justify-between gap-3 text-sm">
-                    <span className="font-semibold text-slate-500">{copy.tableRole}</span>
-                    <span className="text-right font-bold text-slate-900">{selected.roles.join(" / ") || t(locale, "common.notSet")}</span>
-                  </div>
-                  <div className="flex justify-between gap-3 text-sm">
-                    <span className="font-semibold text-slate-500">{copy.relationCases}</span>
-                    <span className="text-right font-bold text-slate-900">{selectedContracts.length}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-xl border-l-4 border-[#0046ad] bg-blue-50 p-4">
-                <p className="text-xs font-black text-blue-700">{copy.outputCheck}</p>
-                <p className="mt-2 text-sm font-semibold leading-6 text-slate-900">
-                  {selectedContracts.length > 0 ? copy.signalWithCase : copy.signalNoCase}
-                </p>
-              </div>
-
-              <div>
-                <h3 className="mb-3 text-[11px] font-black uppercase tracking-widest text-slate-400">{copy.nextAction}</h3>
-                <div className="grid gap-2">
-                  <Link
-                    href={selectedCaseHref}
-                    className="inline-flex items-center justify-between rounded-lg bg-[#001e40] px-4 py-3 text-sm font-bold text-white"
-                  >
-                    {selectedContracts.length > 0 ? copy.continueCase : copy.createCase}
-                    <span className="material-symbols-outlined text-[18px]" aria-hidden="true">arrow_forward</span>
-                  </Link>
-                  <Link
-                    href={`/relationship-tree?type=party&id=${encodeURIComponent(selected.id)}`}
-                    className="inline-flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-bold text-[#002FA7] hover:bg-blue-100"
-                  >
-                    {copy.openRelationTree}
-                    <span className="material-symbols-outlined text-[18px]" aria-hidden="true">account_tree</span>
-                  </Link>
-                  <Link
-                    href={`/parties/${selected.id}/edit`}
-                    className="inline-flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 text-sm font-bold text-slate-800 hover:bg-slate-50"
-                  >
-                    {copy.editParty}
-                    <span className="material-symbols-outlined text-[18px]" aria-hidden="true">edit</span>
-                  </Link>
-                </div>
-              </div>
-
-              <div>
-                <div className="mb-3 flex items-center justify-between">
-                  <h3 className="text-[11px] font-black uppercase tracking-widest text-slate-400">{copy.relationDocuments}</h3>
-                  <Link href={`/output-center?partyId=${selected.id}`} className="text-[11px] font-bold text-slate-700">
-                    {copy.reviewDocuments}
-                  </Link>
-                </div>
-                <div className="space-y-2">
-                  {selectedAttachments.length > 0 ? (
-                    selectedAttachments.map((doc, index) => (
-                      <div key={doc.id} className="flex items-center gap-3 rounded-lg border border-slate-200/70 bg-white p-3">
-                        <span
-                          className={"material-symbols-outlined " + (index % 2 === 0 ? "text-[#d8885c]" : "text-blue-500")}
-                          aria-hidden="true"
-                        >
-                          {index % 2 === 0 ? "description" : "article"}
-                        </span>
-                        <div className="min-w-0">
-                          <p className="truncate text-xs font-bold text-slate-900">{doc.fileName}</p>
-                          <p className="text-[10px] text-slate-500">{formatDate(doc.uploadedAt, locale)}</p>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="flex items-center gap-3 rounded-lg border border-slate-200/70 bg-white p-3">
-                      <span className="material-symbols-outlined text-slate-400" aria-hidden="true">description</span>
-                      <div>
-                        <p className="text-xs font-bold text-slate-900">{t(locale, "common.notSet")}</p>
-                        <p className="text-[10px] text-slate-500">{copy.relationDocuments}</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="p-6 text-sm text-slate-500">{t(locale, "common.notSet")}</div>
-          )}
-        </aside>
+          </ul>
+        )}
       </section>
     </div>
   );

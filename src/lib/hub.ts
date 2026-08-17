@@ -62,7 +62,15 @@ export type HubPartyItem = {
   phone: string;
   email?: string;
   partyType: "individual" | "corporate";
+  /**
+   * Explicit party-profile metadata, kept separate from the legacy
+   * compatibility values consumed by other hub surfaces.
+   */
+  explicitPartyType?: "individual" | "corporate";
   roles: string[];
+  explicitRoles: string[];
+  partyTypeSource: "explicit" | "compatibility";
+  rolesSource: "explicit" | "compatibility";
   relatedPropertyHint?: string;
   contractCount: number;
   status: "active" | "archived";
@@ -278,13 +286,18 @@ const resolveHubParties = cache(async (
 
   return clients.map((rawClient) => {
     const client = localizeDemoClient(locale, rawClient);
+    const profile = extractPartyProfileFromNotes(client.notes);
     return {
       id: client.id,
       name: client.name,
       phone: client.phone,
       email: client.email,
       partyType: mapPartyType(client),
+      explicitPartyType: profile.type,
       roles: buildRoleTags(client, locale),
+      explicitRoles: profile.role ? [getPartyProfileRoleLabel(profile.role, locale)] : [],
+      partyTypeSource: profile.type ? "explicit" : "compatibility",
+      rolesSource: profile.role ? "explicit" : "compatibility",
       relatedPropertyHint: client.preferredArea,
       contractCount: countMap.get(client.id) ?? 0,
       status: client.lifecycleStatus ?? "active",
