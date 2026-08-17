@@ -26,7 +26,8 @@
 | TASK-024 | P0 | UI-GOV-002B Broker Desk Layout System 建设 | Done | TASK-023 | [TASK-024](docs/tasks/TASK-024.md) | 阶段 A 目标图、阶段 C 实现和直接修复提交 `46f22d0` 已完成；响应式、服务端六位拒绝/不同七位写入与恢复、Kotoeri IME 第一次 Enter 不提交均通过，正式门禁 `3/3`；脱敏证据见 [`TASK-024 evidence archive`](docs/operations/evidence/TASK-024/2026-08-16/) |
 | TASK-025 | P0 | W1 信息整理中心 List Report 参考实现 | Done | TASK-024 | [TASK-025](docs/tasks/TASK-025.md) | Checkpoint A/B/C/D及独立只读审查完成；页面级证据通过；共享归档执行/恢复、第二租户和跨租户隔离本轮未重新验证，保留为共享平台QA缺口 |
 | TASK-026 | P0 | 建立可复用非生产 QA 环境 | Blocked | TASK-025 | [TASK-026](docs/tasks/TASK-026.md) | QA A 已实际进入并创建7条合成案件，已形成第2页；QA B独立工作区尚未核实，归档/恢复和跨租户隔离未验证 |
-| TASK-027 | P0 | W2 客户索引 List Report 参考迁移 | In Progress | TASK-025 | [TASK-027](docs/tasks/TASK-027.md) | Checkpoint A 运行审计受共享环境限制；已按批准的代码事实和产品边界进入 Checkpoint B/C，限于 /clients 页面、客户专属展示组件和已批准 List Report 基础组件，等待实现与独立审查 |
+| TASK-027 | P0 | W6-A：客户索引 List Report 参考迁移 | Done | TASK-025 | [TASK-027](docs/tasks/TASK-027.md) | 页面迁移层面目标、静态检查和独立审查完成；真实登录后的响应式、键盘、筛选、分页、滚动和焦点进入 List Report 批次运行回归，不宣称本任务已通过；未跟踪 `src/app/clients/page 2.tsx` 保留且排除 |
+| TASK-028 | P0 | W2：导入资料 /import-center Wizard 参考迁移 | In Progress | TASK-027 | [TASK-028](docs/tasks/TASK-028.md) | Checkpoint A 只读代码与流程审计：上传、处理、异常、归属、新建/追加/合并、422恢复和导入完成语义；等待产品复审，不进入实现 |
 | TASK-003 | P0 | Close the input-material merge completion loop | Proposed | TASK-002 | [TASK-003](docs/tasks/TASK-003.md) | Selection, confirmation, result, failure, and refresh evidence |
 | TASK-004 | P0 | Consolidate template-library and official-template boundaries | Proposed | TASK-002 | [TASK-004](docs/tasks/TASK-004.md) | Role-aware entry, visibility, and installation evidence |
 | TASK-005 | P0 | Separate official template draft and publish states | Proposed | TASK-004 | [TASK-005](docs/tasks/TASK-005.md) | Independent draft save, publish, immutable version, and failure evidence |
