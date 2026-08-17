@@ -119,6 +119,16 @@ function hasReadableValue(field: ExtractedInputField) {
   return getFieldValue(field).trim().length > 0;
 }
 
+/**
+ * Keep the day-to-day queue focused on values that actually need a decision.
+ * The extractor currently exposes confidence and readability as the reliable
+ * signals; explicit conflicts and target ambiguity remain in the existing
+ * merge/field review metadata and are never silently accepted here.
+ */
+function isExceptionField(field: ExtractedInputField) {
+  return !hasReadableValue(field) || field.confidence < 0.65;
+}
+
 function getFieldPriority(field: ExtractedInputField) {
   if (!hasReadableValue(field)) return 0;
   if (field.confidence < 0.65) return 1;
@@ -220,7 +230,13 @@ export function InputExtractionReview({
       JSON.stringify(
         items.map((field) => {
           const id = getFieldId(field);
-          const reviewStatus = reviewStatuses[id] ?? field.reviewStatus;
+          const explicitStatus = reviewStatuses[id];
+          // A normal readable value is included by the single object-level
+          // confirmation. It is not presented as if the user clicked a
+          // per-field confirmation control.
+          const reviewStatus =
+            explicitStatus ??
+            (field.reviewStatus === "suggested" && !isExceptionField(field) ? "accepted" : field.reviewStatus);
           return {
             fieldId: id,
             reviewStatus,
@@ -232,7 +248,10 @@ export function InputExtractionReview({
   );
   const reviewProgress = useMemo(() => {
     const resolved = items.filter((field) => {
-      const status = reviewStatuses[getFieldId(field)] ?? field.reviewStatus;
+      const id = getFieldId(field);
+      const status =
+        reviewStatuses[id] ??
+        (field.reviewStatus === "suggested" && !isExceptionField(field) ? "accepted" : field.reviewStatus);
       return isResolvedStatus(status);
     }).length;
     return {
@@ -247,7 +266,13 @@ export function InputExtractionReview({
   );
   const confirmedValueCount = useMemo(
     () =>
-      items.filter((field) => isConfirmedStatus(reviewStatuses[getFieldId(field)] ?? field.reviewStatus)).length,
+      items.filter((field) => {
+        const id = getFieldId(field);
+        const status =
+          reviewStatuses[id] ??
+          (field.reviewStatus === "suggested" && !isExceptionField(field) ? "accepted" : field.reviewStatus);
+        return isConfirmedStatus(status);
+      }).length,
     [items, reviewStatuses],
   );
   const visibleGroups = useMemo(
@@ -259,9 +284,11 @@ export function InputExtractionReview({
             reviewMode === "all"
               ? group.items
               : group.items.filter((field) => {
-                  const status = reviewStatuses[getFieldId(field)] ?? field.reviewStatus;
                   const id = getFieldId(field);
-                  return !isResolvedStatus(status) || settlingFieldIds.has(id);
+                  const status =
+                    reviewStatuses[id] ??
+                    (field.reviewStatus === "suggested" && !isExceptionField(field) ? "accepted" : field.reviewStatus);
+                  return isExceptionField(field) && (!isResolvedStatus(status) || settlingFieldIds.has(id));
                 }),
         }))
         .filter((group) => group.items.length > 0),
@@ -274,18 +301,6 @@ export function InputExtractionReview({
     if (status === "edited") {
       setEditedValues((current) => ({ ...current, [id]: current[id] ?? field.normalizedValue ?? field.value }));
     }
-  }
-
-  function acceptReadableFields() {
-    setReviewStatuses((current) =>
-      Object.fromEntries(
-        items.map((field) => {
-          const id = getFieldId(field);
-          const status = current[id] ?? field.reviewStatus;
-          return [id, isResolvedStatus(status) ? status : hasReadableValue(field) ? "accepted" : status];
-        }),
-      ),
-    );
   }
 
   function confirmField(field: ExtractedInputField) {
@@ -531,6 +546,13 @@ export function InputExtractionReview({
                 ko: `확정 ${confirmedValueCount}항목을 저장합니다. 미확정 ${reviewProgress.pending}항목과 미채택 내용은 저장하지 않습니다.`,
               })}
             </p>
+            <p className="mt-1 text-xs font-semibold text-slate-700">
+              {tr(locale, {
+                ja: "確認後、通常の読取項目はまとめて保存します。未読取・拒否・保留の項目は保存しません。",
+                zh: "确认后，正常读取的信息将一并写入；未读取、拒绝和仍待处理的信息不会写入。",
+                ko: "확인 후 정상 판독 정보는 한 번에 저장합니다. 미판독·거부·보류 항목은 저장하지 않습니다.",
+              })}
+            </p>
             {selectedMergeCaseId && !mergeConfirmed ? (
               <p className="mt-2 text-xs font-bold text-amber-700">
                 {tr(locale, {
@@ -579,18 +601,11 @@ export function InputExtractionReview({
             </div>
             <p className="mt-2 text-[11px] leading-5 text-slate-500">
               {tr(locale, {
-                ja: "右側で修正した値はすぐここに反映されます。",
-                zh: "右侧修正后会立即反映在这里，无需按 Enter。",
-                ko: "오른쪽에서 수정한 값이 즉시 여기에 반영됩니다. Enter는 필요 없습니다.",
+                ja: "読み取れた通常項目は、最後の確認でまとめて採用します。要確認の項目だけ対応してください。",
+                zh: "正常读取的项目会在最后一次确认时一并采用；这里只处理需要确认的项目。",
+                ko: "정상 판독 항목은 마지막 확인에서 한 번에 채택합니다. 확인이 필요한 항목만 처리하세요.",
               })}
             </p>
-            <button
-              type="button"
-              onClick={acceptReadableFields}
-              className="mt-3 w-full rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-bold text-indigo-800 hover:bg-indigo-100"
-            >
-              {tr(locale, { ja: "読取できた値を一括確定", zh: "批量确认已读取值", ko: "판독된 값 일괄 확정" })}
-            </button>
           </div>
           <div className="max-h-[62vh] space-y-4 overflow-y-auto p-3">
             {groupedItems.map((group) => (
@@ -602,7 +617,9 @@ export function InputExtractionReview({
                 <div className="divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-100">
                   {group.items.map((field) => {
                     const id = getFieldId(field);
-                    const status = reviewStatuses[id] ?? field.reviewStatus;
+                    const status =
+                      reviewStatuses[id] ??
+                      (field.reviewStatus === "suggested" && !isExceptionField(field) ? "accepted" : field.reviewStatus);
                     const displayedValue = status === "rejected" ? "" : editedValues[id] ?? getFieldValue(field);
                     return (
                       <a
@@ -708,7 +725,9 @@ export function InputExtractionReview({
               <div className="divide-y divide-slate-100">
                   {group.items.map((field) => {
                     const id = getFieldId(field);
-                    const currentStatus = reviewStatuses[id] ?? field.reviewStatus;
+                    const currentStatus =
+                      reviewStatuses[id] ??
+                      (field.reviewStatus === "suggested" && !isExceptionField(field) ? "accepted" : field.reviewStatus);
                     const isConfirmed = isConfirmedStatus(currentStatus);
                     const isSettling = reviewMode === "pending" && settlingFieldIds.has(id);
                     const wasRecentlyConfirmed = recentlyConfirmedIds.has(id);

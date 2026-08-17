@@ -888,6 +888,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
   const inputExtractionPreview = xlsxPayload?.inputExtraction;
   const isInputExtractionOnly = xlsxPayload?.kind === "input_file_extraction";
   const targetCaseId = String(params?.targetCaseId ?? xlsxPayload?.targetCaseId ?? "").trim();
+  const targetCase = targetCaseId ? cases.find((caseItem) => caseItem.id === targetCaseId) : undefined;
   const isIdentityExtractionOnly =
     isInputExtractionOnly &&
     (xlsxJob?.sourceType === "scan" || Boolean(inputExtractionPreview?.documentType.startsWith("identity_")));
@@ -949,7 +950,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
     ? isInputFileExtractionJob(requestedJob)
       ? "#source-upload"
       : isBatchMappingJob(requestedJob)
-        ? "#job-mapping"
+        ? `/import-center?job=${encodeURIComponent(requestedJob.id)}&advanced=1#job-mapping`
         : requestedJobCase
           ? `/cases/${encodeURIComponent(requestedJobCase.id)}#case-main-editor`
           : "#source-review-summary"
@@ -963,22 +964,16 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
     }
   > = [
     {
-      id: "case",
-      href: "/cases/new?from=entry",
-      icon: "business_center",
-      label: locale === "zh" ? "新开案件" : locale === "ko" ? "새 안건" : "案件・新規作成",
+      id: "case-materials",
+      href: "#case-material-upload",
+      icon: "badge",
+      label: locale === "zh" ? "案件资料" : locale === "ko" ? "案件 자료" : "案件資料",
     },
     {
-      id: "party",
-      href: "/parties/new?from=entry",
-      icon: "person_add",
-      label: locale === "zh" ? "新建主体" : locale === "ko" ? "관계자 추가" : "顧客・新規作成",
-    },
-    {
-      id: "property",
-      href: "/properties/new?from=entry",
-      icon: "domain_add",
-      label: locale === "zh" ? "新建物件" : locale === "ko" ? "새 매물" : "物件・新規作成",
+      id: "excel-ledger",
+      href: "#excel-ledger-upload",
+      icon: "table_view",
+      label: locale === "zh" ? "Excel 批量台账" : locale === "ko" ? "Excel 일괄 대장" : "Excel 一括台帳",
     },
   ];
   return (
@@ -987,6 +982,24 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
         <h1 className="text-4xl font-bold tracking-tight text-slate-900">{copy.pageTitle}</h1>
       </section>
       <PageFlashBanner message={flashMessage} tone={flashTone} />
+
+      {targetCaseId ? (
+        <section className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3" aria-label={locale === "zh" ? "当前案件目标" : locale === "ko" ? "현재 안건 대상" : "現在の案件"}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-[11px] font-black uppercase tracking-wider text-emerald-700">
+                {locale === "zh" ? "追加目标已确定" : locale === "ko" ? "추가 대상이 지정됨" : "追加先を指定済み"}
+              </p>
+              <p className="mt-1 text-sm font-bold text-emerald-950">
+                {targetCase?.caseTitle ?? targetCaseId}
+              </p>
+            </div>
+            <Link href="/import-center#source-upload" className="text-xs font-bold text-emerald-800 underline underline-offset-4">
+              {locale === "zh" ? "安全返回资料选择" : locale === "ko" ? "자료 선택으로 돌아가기" : "資料選択へ戻る"}
+            </Link>
+          </div>
+        </section>
+      ) : null}
 
       {requestedJob ? (
         <section className="rounded-2xl border border-blue-200 bg-blue-50/70 p-4 shadow-sm">
@@ -1015,11 +1028,16 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
         </section>
       ) : missingRequestedJob ? (
         <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">
-          {locale === "zh"
-            ? "这条资料记录暂时找不到，可能已经被移动、合并或清理。"
-            : locale === "ko"
-              ? "이 자료 기록을 찾을 수 없습니다. 이동, 병합 또는 정리되었을 수 있습니다."
-              : "この資料は見つかりません。移動、統合、または整理された可能性があります。"}
+          <p>
+            {locale === "zh"
+              ? "这条资料记录暂时找不到，可能已经被移动、合并或清理。"
+              : locale === "ko"
+                ? "이 자료 기록을 찾을 수 없습니다. 이동, 병합 또는 정리되었을 수 있습니다."
+                : "この資料は見つかりません。移動、統合、または整理された可能性があります。"}
+          </p>
+          <Link href="/import-center#source-upload" className="mt-2 inline-flex text-xs font-bold text-amber-950 underline underline-offset-4">
+            {locale === "zh" ? "返回资料入口" : locale === "ko" ? "자료 입구로 돌아가기" : "資料入口へ戻る"}
+          </Link>
         </section>
       ) : null}
 
@@ -1087,7 +1105,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
             </h2>
           </div>
         </div>
-        <div className="mt-4 grid gap-3 lg:grid-cols-3">
+        <div className="mt-4 grid gap-3 lg:grid-cols-2">
           {creationCards.map((item) => {
             const cardClassName =
               "group block w-full rounded-xl border border-slate-200 bg-slate-50 p-4 text-left transition hover:border-[#001e40] hover:bg-white";
@@ -1106,6 +1124,12 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
             );
           })}
         </div>
+        <p className="mt-4 text-xs text-slate-500">
+          {locale === "zh" ? "没有资料文件？" : locale === "ko" ? "자료 파일이 없나요?" : "資料ファイルがない場合は"} {" "}
+          <Link href="/cases/new?from=entry" className="font-bold text-blue-700 underline underline-offset-4 hover:text-blue-900">
+            {locale === "zh" ? "改为手动创建" : locale === "ko" ? "수동 생성으로 전환" : "手動作成へ切り替え"}
+          </Link>
+        </p>
         {isExistingIntake ? (
           <div id="existing-case-list" className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
             <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
@@ -1127,7 +1151,11 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
             </div>
             <div className="mt-3 grid gap-2 md:grid-cols-3">
               {cases.slice(0, 3).map((caseItem) => (
-                <Link key={caseItem.id} href={`/cases/${encodeURIComponent(caseItem.id)}`} className="rounded-lg border border-slate-200 bg-white p-3 hover:border-blue-300 hover:bg-blue-50/40">
+                <Link
+                  key={caseItem.id}
+                  href={`/import-center?intake=existing&targetCaseId=${encodeURIComponent(caseItem.id)}#source-upload`}
+                  className="rounded-lg border border-slate-200 bg-white p-3 hover:border-blue-300 hover:bg-blue-50/40"
+                >
                   <p className="truncate text-sm font-bold text-slate-950">{caseItem.caseTitle}</p>
                   <p className="mt-1 text-[11px] text-slate-500">{formatDate(caseItem.updatedAt, locale)}</p>
                 </Link>
@@ -1153,7 +1181,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
         </div>
 
         <div className="grid gap-4 p-5 xl:grid-cols-2">
-          <section className="flex min-h-96 flex-col rounded-2xl border border-emerald-200 bg-emerald-50/40 p-5">
+          <section id="case-material-upload" className="flex min-h-96 flex-col rounded-2xl border border-emerald-200 bg-emerald-50/40 p-5">
             <div>
               <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-emerald-700">badge</span>
@@ -1164,7 +1192,12 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
             </div>
             <div className="mt-auto pt-5">
               {!isIdentityExtractionOnly ? (
-                <IdentityDocumentUploadForm action={uploadAndParseIdentityDocumentAction} locale={locale} />
+                <IdentityDocumentUploadForm
+                  action={uploadAndParseIdentityDocumentAction}
+                  locale={locale}
+                  targetCaseId={targetCaseId || undefined}
+                  uploadContext={targetCaseId ? "case" : "import"}
+                />
               ) : (
                 <a href="/import-center" className="flex h-12 items-center justify-center rounded-lg border border-emerald-300 bg-white px-4 text-sm font-bold text-emerald-900 hover:bg-emerald-50">
                   {locale === "zh" ? "重新选择文件" : locale === "ko" ? "파일 다시 선택" : "ファイルを選び直す"}
@@ -1173,7 +1206,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
             </div>
           </section>
 
-          <section className="flex min-h-96 flex-col rounded-2xl border border-blue-200 bg-blue-50/40 p-5">
+          <section id="excel-ledger-upload" className="flex min-h-96 flex-col rounded-2xl border border-blue-200 bg-blue-50/40 p-5">
             <div>
               <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-blue-700">table_view</span>
@@ -1184,7 +1217,12 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
             </div>
             <div className="mt-auto pt-5">
               {!xlsxJob ? (
-                <ExcelDocumentUploadForm action={uploadAndParseExcelAction} locale={locale} />
+                <ExcelDocumentUploadForm
+                  action={uploadAndParseExcelAction}
+                  locale={locale}
+                  targetCaseId={targetCaseId || undefined}
+                  uploadContext={targetCaseId ? "case" : "import"}
+                />
               ) : (
                 <a href="/import-center" className="flex h-12 items-center justify-center rounded-lg border border-blue-300 bg-white px-4 text-sm font-bold text-blue-900 hover:bg-blue-50">
                   {locale === "zh" ? "重新选择文件" : locale === "ko" ? "파일 다시 선택" : "ファイルを選び直す"}
