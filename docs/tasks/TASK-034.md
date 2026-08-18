@@ -3,9 +3,9 @@
 - 状态: Done
 - 优先级: P0
 - 负责人: 技术项目经理
-- 当前阶段: 阶段 2 第一批行政收口完成
+- 当前阶段: 阶段 2 第二批有限实现、独立审查与行政收口完成
 - 前置任务: TASK-024、TASK-025、TASK-027–TASK-033
-- 目标页面: `/clients/[id]`、`/contracts`、`/service-requests`、`/audit-log`
+- 目标页面: 第一批 `/clients/[id]`、`/contracts`、`/service-requests`、`/audit-log`；第二批 `/cases/new`、`/workspace`、`/board`、`/relationship-tree`
 - 排除页面: 输出/模板/报价专题、TASK-020 未完成部分、`src/app/clients/page 2.tsx`
 
 ## 任务名称
@@ -23,7 +23,7 @@ W11-CORE：核心对象与工作流页面批次 Layout System 结构收口
 - `/service-requests`：Worklist
 - `/audit-log`：只读 List Report
 - 直接使用的页面组件、现有 Layout System/UI Foundation 组合和有限契约守卫
-- 阶段 2 第一批治理文档、静态检查和一次独立只读审查
+- 阶段 2 两批治理文档、静态检查和各一次独立只读审查
 
 ## 明确不做什么
 
@@ -46,11 +46,15 @@ W11-CORE：核心对象与工作流页面批次 Layout System 结构收口
 
 在 60 分钟内只读核对四个页面的真实数据来源、权威状态、伪 KPI/推导、必须保留和可降级操作，以及不改 API/权限/数据库时能否完成结构迁移。状态来源不明的表达应删除或安静隐藏；只有整个页面无法诚实表达时才冻结页面。
 
-## Checkpoint C 预期结构边界
+## 两批最终结构边界
 
 - 客户详情使用 Object Page，保留持久化阶段/用途/温度、跟进章节和可证明关系；编辑进入现有客户编辑页。
 - 合同与服务请求使用 Worklist，只认现有权威状态；批量动作必须基于明确选择；高风险操作降为次级；不使用伪 KPI。
 - 审计记录使用只读 List Report；时间、执行人、对象、动作、结果只来自审计记录；窄屏使用行式分组，不硬压桌面表格。
+- 案件创建使用单次提交 Responsive Form；移除 FormDraftAssist 和并列创建主体/物件入口，保留既有创建 Action 与租户范围选择。
+- 工作区保持唯一 Workspace Selector/System State，不修改选择、权限或租户逻辑。
+- 看板使用持久化 `Client.stage` 的真实七阶段 Kanban；保留既有拖拽 PATCH，仅改为 390 单列、768 双列和桌面多列。
+- 关系页使用 Relationship Explorer，仅显示显式案件主体/物件、来源导入任务、明确附件和直接合同关系；无显式关系时诚实显示空状态。
 
 ## 允许修改文件
 
@@ -58,6 +62,7 @@ W11-CORE：核心对象与工作流页面批次 Layout System 结构收口
 - `/clients/[id]` 专属 Object Page 组合或样式
 - 必要的有限契约测试/守卫
 - 本任务治理文档、矩阵和当前上下文
+- 第二批 `src/app/cases/new/page.tsx`、`src/components/board-kanban.tsx`、`src/app/relationship-tree/page.tsx` 及 `scripts/check-task-034-core-batch2.mjs`
 
 默认禁止修改 actions、API、数据库、认证、权限、租户、共享数据适配、其他矩阵页面和 `src/app/clients/page 2.tsx`。如事实审计证明结构迁移必须越界，冻结该页面并报告。
 
@@ -101,8 +106,8 @@ W11-CORE：核心对象与工作流页面批次 Layout System 结构收口
 - 一个实现 Agent 完成后退出，再启动一个独立只读审查 Agent；不创建下级 Agent
 - 统一服务探测最多一次；`listen EPERM` 立即记为批次回归并停止环境排查
 - 最终提交必须只包含本批获准页面、测试和治理文档；工作区只允许保留原有 `src/app/clients/page 2.tsx`
-- 完成本批后停止，不自动进入第二批
+- 第一批和第二批分别完成一次实现与一次独立只读审查后，独立提交并停止；不自动进入下一矩阵批次。
 
 ## 当前状态
 
-Checkpoint A 只读审计、一次有限实现和一次独立只读复审已完成，无 P0/P1。`/clients/[id]`、`/service-requests`、`/audit-log` 完成页面结构迁移；`/contracts` 完成只读 Worklist 迁移，合同状态、金额、批量更新和导出因报价/客户阶段推导及空选择语义冻结。统一服务探测因 `listen EPERM` 失败，真实浏览器、响应式、键盘、焦点、权限/租户和完整动作行为均为 `UNVERIFIED`，进入全产品批次回归。阶段 1 矩阵分类修正已同步写入 V2；旧 UI-GOV-001 建议已标记为历史并被后续任务替代。当前任务按“页面结构迁移完成/有限冻结已登记”口径标记 `Done`。
+第一批 Checkpoint A、有限实现、独立复审和行政提交已完成，基线为 `b9599c031ec9282ae3bf7e9890710711afb97cce`，不得重新审查或优化。第二批已完成限时事实审计、一次有限实现和一次独立只读审查：`/cases/new` 为 RF、`/workspace` 无需修改、`/board` 为真实阶段 WB/Kanban、`/relationship-tree` 为显式关系 Explorer。第二批专项脚本、typecheck、lint、build、workflow rules 和 diff check 均通过，未启动服务。真实浏览器、1440/768/390、键盘/焦点、权限/租户和完整动作行为统一进入批次回归；本任务按页面结构迁移口径标记 Done。

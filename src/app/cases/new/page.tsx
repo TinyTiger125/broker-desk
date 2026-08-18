@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { createBlankBrokerageCaseAction } from "@/app/actions";
-import { FormDraftAssist } from "@/components/form-draft-assist";
 import { listQuoteFormData } from "@/lib/data";
 import { getLocale } from "@/lib/locale";
 import { requireTenantSession } from "@/lib/tenant-session";
@@ -14,7 +13,7 @@ type NewCasePageProps = {
 const copy = {
   ja: {
     title: "案件を作成",
-    desc: "案件の用途を決め、必要であれば関係者と物件を先に紐付けます。",
+    desc: "案件の基本情報を入力し、必要な既存の関係者・物件を選択します。",
     back: "情報整理へ戻る",
     backEntry: "情報入力へ戻る",
     basic: "案件情報",
@@ -30,12 +29,10 @@ const copy = {
     quotePreparation: "見積・提案",
     contractPreparation: "契約準備",
     save: "案件を作成",
-    createParty: "顧客を追加",
-    createProperty: "物件を追加",
   },
   zh: {
     title: "新建案件",
-    desc: "先确定案件用途；如有已知主体和物件，可以在创建时先关联。",
+    desc: "填写案件基本信息，并按需选择已存在的主体和物件。",
     back: "返回整理信息",
     backEntry: "返回录入资料",
     basic: "案件信息",
@@ -51,12 +48,10 @@ const copy = {
     quotePreparation: "报价 / 提案",
     contractPreparation: "合同准备",
     save: "创建案件",
-    createParty: "新建主体",
-    createProperty: "新建物件",
   },
   ko: {
     title: "안건 생성",
-    desc: "안건의 용도를 정하고, 필요한 경우 관계자와 매물을 먼저 연결합니다.",
+    desc: "안건 기본 정보를 입력하고 필요한 기존 관계자와 매물을 선택합니다.",
     back: "정보 정리로 돌아가기",
     backEntry: "자료 입력으로 돌아가기",
     basic: "안건 정보",
@@ -72,8 +67,6 @@ const copy = {
     quotePreparation: "견적 / 제안",
     contractPreparation: "계약 준비",
     save: "안건 생성",
-    createParty: "관계자 추가",
-    createProperty: "매물 추가",
   },
 } as const;
 
@@ -92,7 +85,6 @@ export default async function NewCasePage({ searchParams }: NewCasePageProps) {
   const backHref = fromEntry ? "/import-center" : "/organize-center?type=case";
   const backLabel = fromEntry ? text.backEntry : text.back;
   const formId = "case-create-form";
-  const fieldNames = ["caseTitle", "workflowType", "primaryPartyId", "primaryPropertyId"];
   const workflowOptions = [
     { value: "rental_application", label: text.rentalApplication },
     { value: "rental_mandate", label: text.rentalMandate },
@@ -114,15 +106,6 @@ export default async function NewCasePage({ searchParams }: NewCasePageProps) {
       </header>
 
       <form id={formId} action={createBlankBrokerageCaseAction} className="space-y-5 rounded-lg border border-slate-200 bg-white p-5">
-        <FormDraftAssist
-          formId={formId}
-          storageKey="draft:cases:new"
-          fieldNames={fieldNames}
-          reuseKey="cases:create"
-          reuseFields={["workflowType"]}
-          locale={locale}
-        />
-
         <section className="space-y-3">
           <h2 className="text-base font-black text-slate-950">{text.basic}</h2>
           <div className="grid gap-3 md:grid-cols-2">
@@ -144,17 +127,7 @@ export default async function NewCasePage({ searchParams }: NewCasePageProps) {
         </section>
 
         <section className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-base font-black text-slate-950">{text.relation}</h2>
-            <div className="flex flex-wrap gap-2">
-              <Link href="/parties/new" className="rounded border border-slate-300 px-3 py-1.5 text-xs font-black text-slate-700 hover:bg-slate-50">
-                {text.createParty}
-              </Link>
-              <Link href="/properties/new" className="rounded border border-slate-300 px-3 py-1.5 text-xs font-black text-slate-700 hover:bg-slate-50">
-                {text.createProperty}
-              </Link>
-            </div>
-          </div>
+          <h2 className="text-base font-black text-slate-950">{text.relation}</h2>
           <div className="grid gap-3 md:grid-cols-2">
             <label className="space-y-1">
               <span className="text-xs font-black text-slate-600">{text.party}</span>

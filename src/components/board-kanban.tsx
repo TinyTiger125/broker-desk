@@ -158,8 +158,8 @@ export function BoardKanban({ initialBoard, locale = "ja" }: BoardKanbanProps) {
       {errorMessage ? (
         <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{errorMessage}</p>
       ) : null}
-      <div className="overflow-x-auto pb-2">
-        <div className="grid min-w-[1120px] grid-cols-7 gap-3">
+      <div className="pb-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
           {stageOptions.map((column) => (
             <section
               key={column.value}
