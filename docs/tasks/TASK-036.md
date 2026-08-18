@@ -60,6 +60,14 @@
 - 真实业务运行验收：`Blocked`
 - 输出专题：未开始
 
+## 产品决定：延期至服务器端预发布
+
+- 本地不再继续账号、工作区或端口排查；TASK-036 真实业务回归延期至预发布、Preview 或受控内部服务器环境。
+- 预发布必须绑定明确 Git SHA、使用一个内部测试身份和一个非生产 `active workspace`，不使用真实客户资料，并具备回滚到迁移前稳定版本的路径。
+- 不把生产环境当测试环境，不要求第二账号或第二租户。
+- 服务器恢复后只补既定差额：List Report 筛选/分页/返回；Responsive Form 非法值/错误焦点/合法保存/取消；一次真实 Kotoeri；Object Page、Worklist、Board、Relationship Explorer、首页和 Settings 真实内容/保存。
+- 只有差额全部通过、无 Layout System 范围 P0/P1、测试数据恢复或审计影响明确记录且独立审查通过，才可将 TASK-036 改为 `Done`；在此之前保持 `Blocked`。
+
 ## 验收标准
 
 - 22 个迁移路由完成冒烟，或对环境阻塞作逐项诚实记录。
