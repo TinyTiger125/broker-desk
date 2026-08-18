@@ -1,4 +1,3 @@
-import Link from "next/link";
 import {
   createTenantAccountAction,
   sendPlatformTenantMemberInvitationAction,
@@ -65,7 +64,6 @@ function copy(locale: Locale) {
     unbound: locale === "zh" ? "未绑定" : locale === "ko" ? "미연동" : "外部ID未連携",
     sendInvite: locale === "zh" ? "发送邀请" : locale === "ko" ? "초대 보내기" : "招待送信",
     update: locale === "zh" ? "保存生命周期" : locale === "ko" ? "라이프사이클 저장" : "ライフサイクル保存",
-    templates: locale === "zh" ? "官方文书模板" : locale === "ko" ? "공식 문서 템플릿" : "公式書類テンプレート",
   };
 }
 
@@ -121,12 +119,6 @@ export default async function PlatformAccountsPage({ searchParams }: PlatformAcc
           <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-900">{ui.title}</h1>
           <p className="mt-1 max-w-4xl text-sm text-slate-600">{ui.subtitle}</p>
         </div>
-        <Link
-          href="/platform/templates"
-          className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50"
-        >
-          {ui.templates}
-        </Link>
       </header>
 
       {params?.flash ? (
@@ -168,8 +160,8 @@ export default async function PlatformAccountsPage({ searchParams }: PlatformAcc
         </form>
       </section>
 
-      <section className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-        <div className="grid min-w-[980px] grid-cols-[1.5fr_0.8fr_1fr_1fr_1.5fr] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-black uppercase tracking-wider text-slate-500">
+      <section className="rounded-lg border border-slate-200 bg-white">
+        <div className="hidden grid-cols-[1.5fr_0.8fr_1fr_1fr_1.5fr] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-black uppercase tracking-wider text-slate-500 lg:grid">
           <span>{ui.accounts}</span>
           <span>{ui.accountType}</span>
           <span>{ui.status}</span>
@@ -178,7 +170,7 @@ export default async function PlatformAccountsPage({ searchParams }: PlatformAcc
         </div>
         <div className="divide-y divide-slate-100">
           {accounts.map((account) => (
-            <div key={account.id} className="grid min-w-[980px] grid-cols-[1.5fr_0.8fr_1fr_1fr_1.5fr] items-center gap-3 px-4 py-4">
+            <div key={account.id} className="grid gap-3 px-4 py-4 lg:grid-cols-[1.5fr_0.8fr_1fr_1fr_1.5fr] lg:items-center">
               <div className="min-w-0">
                 <p className="truncate text-sm font-bold text-slate-900">{account.name}</p>
                 <p className="truncate text-xs text-slate-500">{account.slug} / {account.id}</p>
@@ -198,18 +190,22 @@ export default async function PlatformAccountsPage({ searchParams }: PlatformAcc
                   ))}
                 </div>
               </div>
+              <div className="lg:hidden text-xs font-semibold text-slate-500">{ui.accountType}</div>
               <span className="text-sm font-semibold text-slate-700">
                 {account.accountType === "company" ? ui.company : ui.individual}
               </span>
+              <div className="lg:hidden text-xs font-semibold text-slate-500">{ui.status}</div>
               <span className={`w-fit rounded-full px-2 py-1 text-xs font-bold ${statusTone(account.status)}`}>
                 {statusLabels[account.status][locale]}
               </span>
+              <div className="lg:hidden text-xs font-semibold text-slate-500">{ui.seats}</div>
               <div className="text-xs font-semibold text-slate-600">
                 <p>{ui.used} {account.activeSeatCount} / {account.purchasedSeatCount}</p>
                 <p>{ui.invited} {account.invitedSeatCount}</p>
                 <p className={seatTone(account)}>{ui.available} {account.availableSeatCount}</p>
               </div>
               <div className="space-y-2">
+                <div className="lg:hidden text-xs font-semibold text-slate-500">{ui.update}</div>
                 <form action={updateTenantAccountLifecycleAction} className="grid grid-cols-[1fr_96px_auto] gap-2">
                   <input type="hidden" name="tenantId" value={account.id} />
                   <select name="status" defaultValue={account.status} className="rounded-lg border border-slate-300 px-3 py-2 text-sm">

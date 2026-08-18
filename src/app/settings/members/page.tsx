@@ -146,8 +146,8 @@ export default async function TenantMembersPage({ searchParams }: MembersPagePro
         )}
       </section>
 
-      <section className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-        <div className="grid min-w-[760px] grid-cols-[1.4fr_1fr_1fr_1.4fr] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-black uppercase tracking-wider text-slate-500">
+      <section className="rounded-lg border border-slate-200 bg-white">
+        <div className="hidden grid-cols-[1.4fr_1fr_1fr_1.4fr] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-black uppercase tracking-wider text-slate-500 lg:grid">
           <span>{ui.name}</span>
           <span>{ui.role}</span>
           <span>{ui.status}</span>
@@ -155,7 +155,7 @@ export default async function TenantMembersPage({ searchParams }: MembersPagePro
         </div>
         <div className="divide-y divide-slate-100">
           {members.map((member) => (
-            <div key={member.id} className="grid min-w-[760px] grid-cols-[1.4fr_1fr_1fr_1.4fr] items-center gap-3 px-4 py-3">
+            <div key={member.id} className="grid gap-3 px-4 py-4 lg:grid-cols-[1.4fr_1fr_1fr_1.4fr] lg:items-center">
               <div className="min-w-0">
                 <p className="truncate text-sm font-bold text-slate-900">
                   {member.user.name}
@@ -165,6 +165,7 @@ export default async function TenantMembersPage({ searchParams }: MembersPagePro
                 </p>
                 <p className="truncate text-xs text-slate-500">{member.user.email}</p>
               </div>
+              <div className="lg:hidden text-xs font-semibold text-slate-500">{ui.role}</div>
               <form action={updateTenantMemberRoleAction} className="flex items-center gap-2">
                 <input type="hidden" name="membershipId" value={member.id} />
                 <select
@@ -183,16 +184,18 @@ export default async function TenantMembersPage({ searchParams }: MembersPagePro
                   <button className="rounded-md border border-slate-300 px-2 py-1.5 text-xs font-bold text-slate-700">{ui.saveRole}</button>
                 ) : null}
               </form>
-              <div className="space-y-1">
-                <span className={`block w-fit rounded-full px-2 py-1 text-xs font-bold ${statusTone(member.status)}`}>{member.status}</span>
-                <span className={`block w-fit rounded-full px-2 py-1 text-xs font-bold ${invitationTone(member.invitationStatus)}`}>
+              <div className="flex flex-wrap items-center gap-2 text-xs font-bold">
+                <span className="lg:hidden basis-full text-xs font-semibold text-slate-500">{ui.status}</span>
+                <span className={`rounded-full px-2 py-1 ${statusTone(member.status)}`}>{member.status}</span>
+                <span className={`rounded-full px-2 py-1 ${invitationTone(member.invitationStatus)}`}>
                   {invitationLabels[member.invitationStatus][locale]}
                 </span>
-                <span className={`block w-fit rounded-full px-2 py-1 text-xs font-bold ${member.user.externalAuthSubject ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-700"}`}>
+                <span className={`rounded-full px-2 py-1 ${member.user.externalAuthSubject ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-700"}`}>
                   {member.user.externalAuthSubject ? ui.bound : ui.unbound}
                 </span>
               </div>
               <div className="flex flex-wrap gap-2">
+                <span className="lg:hidden basis-full text-xs font-semibold text-slate-500">{ui.actions}</span>
                 {canInvite && member.status === "invited" ? (
                   <form action={sendTenantMemberInvitationAction}>
                     <input type="hidden" name="membershipId" value={member.id} />

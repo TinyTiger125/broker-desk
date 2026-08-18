@@ -15,18 +15,20 @@
 | LR | List Report | 查找、筛选、排序一批对象 |
 | OP | Object Page | 通读一个复杂业务对象 |
 | RF | Responsive Form | 创建/编辑一组资料 |
+| SF | Settings Form | 管理已持久化的产品设置或后台候选 |
 | WZ | Wizard | 有顺序的输入、识别和决策流程 |
 | PC | Preview & Confirmation | 文书预览、确认和下载 |
 | RE | Relationship Explorer | 阅读对象关系网络 |
 | WS | Workspace Selector | 选择可访问工作区并确认当前工作区 |
 | AS | Auth Shell | 登录/注册 |
 | SS | System State | 加载、错误、Not Found 等支持状态 |
+| PE | Product Entry Page | 从首页选择今天要开始的实际工作 |
 
 ## 业务/后台页面族（34）
 
 | 页面族 | 用户主要任务 | 主 Floorplan | 局部结构 | 波次 | 不允许改变 |
 |---|---|---|---|---:|---|
-| `/` | 判断今天先处理什么 | WL | 状态摘要、任务入口 | W11 | 真实任务来源；不虚构 KPI |
+| `/` | 判断今天先处理什么 | Product Entry Page | 真实待处理摘要、任务入口 | W12 | 真实任务来源；不虚构 KPI |
 | `/import-center` | 上传资料并完成识别、归属、新建/追加/合并 | WZ | 步骤、恢复、识别异常 | W2 | 资料处理、422人工恢复、归属语义 |
 | `/organize-center` | 查找对象并进入后续处理 | LR | 局部异常 Worklist、筛选、结果行 | W1 | 案件、主体、物件权威不合并；不承担详情编辑 |
 | `/cases/[id]` | 通读、编辑案件并进入输出 | OP | Dynamic Header、锚点、RF字段组 | 已有参考 | C+、案件字段、权限、输出门禁；TASK-020独立验收 |
@@ -49,7 +51,7 @@
 | `/audit-log` | 检索并导出审计记录 | LR | Filter Bar、长表、导出 | W8 | 审计只读和导出权限 |
 | `/settings/output-templates` | 设置输出说明和记录 | RF | 设置表单、历史折叠区 | W9 | 不引入TASK-005发布语义 |
 | `/settings/case-workbench-fields` | 设置案件字段规则 | RF | 规则表单、保存反馈 | W9 | 不修改149项目录和适用性契约 |
-| `/settings/members` | 管理租户成员和角色 | LR | 成员结果、局部编辑 | W9 | 权限、角色、租户隔离 |
+| `/settings/members` | 管理租户成员和角色 | WL | 成员结果、局部编辑 | W9 | 权限、角色、租户隔离 |
 | `/platform/templates` | 平台管理员查看官方模板 | LR | 过滤、结果、平台操作 | W10 | 普通租户不可见；不带入租户安装行为 |
 | `/platform/templates/[templateId]` | 平台管理员查看/编辑模板 | OP | 详情、Authoring局部区 | W10 | 独立管理员工作台；TASK-005 draft/publish隔离 |
 | `/platform/accounts` | 管理租户账号 | LR | 结果、创建表单、生命周期 | W10 | 平台权限和租户边界 |
@@ -59,7 +61,7 @@
 | `/quotes/new` | 创建报价 | RF | 字段组、错误、取消 | W7 | 报价流程语义；统一纳入W7 |
 | `/quotes/[id]` | 查看报价详情并复制 | OP | 详情章节、局部操作 | W8 | 报价数据和复制行为 |
 | `/relationship-tree` | 阅读案件、主体、物件关系 | RE | 关系分组、节点、返回 | W8 | 不建立第二套对象详情权威 |
-| `/settings/ai-experience` | 管理AI经验候选 | WL | 状态筛选、审核任务 | W9 | 不把后台AI概念带回主业务流程 |
+| `/settings/ai-experience` | 管理AI经验候选 | SF | 状态筛选、审核任务 | W9 | 不把后台AI概念带回主业务流程 |
 
 ## Auth Shell 页面族（2）
 
@@ -112,14 +114,16 @@
 
 | 主Floorplan | 页面族数量 |
 |---|---:|
-| Worklist | 6 |
-| List Report | 10 |
+| Worklist | 5 |
+| List Report | 9 |
 | Object Page | 4 |
 | Responsive Form | 10 |
+| Settings Form | 1 |
 | Wizard | 1 |
 | Preview & Confirmation | 1 |
 | Relationship Explorer | 1 |
 | Workspace Selector | 1 |
+| Product Entry Page | 1 |
 | **合计** | **34** |
 
 ## 迁移波次与门禁
@@ -143,4 +147,36 @@
 
 ## 输出产品专题延期
 
-输出中心、申请书预览与下载、报价单打印、模板版权/授权/售卖形式、文件版本、案件确认、下载权限和审计规则统一延期到独立输出产品专题。TASK-020 继续 `Blocked`，W4/W5 不进入本轮实施；`/quotes/[id]/print` 保持退役/待决，不恢复、不重定向、不删除。该专题不阻塞 TASK-025。
+输出中心、申请书预览与下载、报价单打印、模板版权/授权/售卖形式、文件版本、案件确认、下载权限和审计规则统一延期到独立输出产品专题。TASK-020 继续 `Blocked`，W4/W5 不进入本轮实施；`/quotes/[id]/print` 保持退役，不恢复、不重定向、不删除。该专题不阻塞 TASK-025。
+
+## 最终状态对账（2026-08-18）
+
+本节是矩阵 V2 的唯一最终状态，不再保留“待决定”页面族。状态只描述页面结构迁移，不代表真实运行、权限、租户或业务闭环已经验证。
+
+### 已迁移（22）
+
+`/`、`/import-center`、`/organize-center`、`/cases/new`、`/clients`、`/clients/[id]`、`/clients/[id]/edit`、`/clients/new`、`/parties`、`/parties/[id]/edit`、`/parties/new`、`/properties`、`/properties/[id]/edit`、`/properties/new`、`/contracts`、`/service-requests`、`/audit-log`、`/settings/members`、`/platform/accounts`、`/board`、`/relationship-tree`、`/settings/ai-experience`。
+
+### 已符合，无需修改（1）
+
+`/workspace`：继续作为唯一 Workspace Selector/System State，本轮未修改选择、权限或租户逻辑。
+
+### 真实冻结（2）
+
+`/cases/[id]`：TASK-020 独立门禁仍未解除；`/settings/case-workbench-fields`：149 项字段契约未纳入本轮。
+
+页面内部能力冻结但不冻结整页：`/contracts` 的合同状态/金额/批量更新/导出仍因报价、客户阶段推导和空选择语义冻结。
+
+### 独立输出专题排除（9）
+
+`/templates`、`/output-center`、两个正式申请书预览路由、`/settings/output-templates`、`/platform/templates`、`/platform/templates/[templateId]`、`/quotes`、`/quotes/new`、`/quotes/[id]`。
+
+### 认证、系统状态与退役入口
+
+- Auth Shell `/sign-in/[[...]]`、`/sign-up/[[...]]`：已符合，无需修改；Clerk 运行证据进入批次回归。
+- 系统状态 `loading`、`error`、`global-error`、`not-found`：已符合，无需修改。
+- `/quotes/[id]/print`：退役，保持 `notFound()`，不恢复、不重定向、不删除。
+
+### 统一批次回归
+
+所有 `UNVERIFIED` 项汇总于 [`UNIFIED_LAYOUT_BATCH_REGRESSION_CHECKLIST_2026-08-18.md`](UNIFIED_LAYOUT_BATCH_REGRESSION_CHECKLIST_2026-08-18.md)。

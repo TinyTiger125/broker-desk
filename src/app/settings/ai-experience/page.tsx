@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { draftAiExperiencesAction, reviewAiExperienceDraftAction } from "@/app/actions";
-import { listAiExperienceDrafts, listCorrectionEvents, type AiExperienceDraftStatus } from "@/lib/data";
+import { listAiExperienceDrafts, type AiExperienceDraftStatus } from "@/lib/data";
 import { formatDate } from "@/lib/format";
 import { getLocale, type Locale } from "@/lib/locale";
 import { requireTenantSession } from "@/lib/tenant-session";
@@ -68,10 +68,9 @@ export default async function AiExperiencePage({ searchParams }: AiExperiencePag
   const tenantId = session.tenant.id;
 
   const selectedStatus = isDraftStatus(params?.status) ? params.status : undefined;
-  const [visibleDrafts, allDrafts, correctionEvents] = await Promise.all([
+  const [visibleDrafts, allDrafts] = await Promise.all([
     listAiExperienceDrafts({ userId: user.id, tenantId, status: selectedStatus, limit: 80 }),
     listAiExperienceDrafts({ userId: user.id, tenantId, limit: 300 }),
-    listCorrectionEvents({ userId: user.id, tenantId, limit: 120 }),
   ]);
   const counts = {
     all: allDrafts.length,
@@ -83,7 +82,7 @@ export default async function AiExperiencePage({ searchParams }: AiExperiencePag
 
   return (
     <main className="space-y-5">
-      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="rounded-lg border border-slate-200 bg-white p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-xs font-black uppercase tracking-wider text-[#002FA7]">
@@ -97,6 +96,13 @@ export default async function AiExperiencePage({ searchParams }: AiExperiencePag
                 ja: "承認した経験だけが、今後のAI処理で参考情報として使われます。案件事実として自動確定されることはありません。",
                 zh: "只有已审核启用的经验会作为后续模型参考，不会被当作当前案件事实自动写入。",
                 ko: "승인된 경험만 이후 AI 처리의 참고 정보로 사용되며, 현재 안건의 사실로 자동 확정되지 않습니다.",
+              })}
+            </p>
+            <p className="mt-3 max-w-2xl text-xs font-semibold leading-5 text-slate-500">
+              {tr(locale, {
+                ja: "AIは入力と整理の補助です。候補を有効にしても、案件や顧客の事実を確認したことにはなりません。",
+                zh: "AI 仅作为录入与整理辅助。启用候选不代表已确认案件或客户事实。",
+                ko: "AI는 입력과 정리를 돕는 보조 기능입니다. 후보를 사용해도 안건이나 고객 사실을 확인한 것은 아닙니다.",
               })}
             </p>
           </div>
@@ -116,26 +122,7 @@ export default async function AiExperiencePage({ searchParams }: AiExperiencePag
         ) : null}
       </section>
 
-      <section className="grid gap-3 md:grid-cols-4">
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <p className="text-xs font-bold text-slate-500">{tr(locale, { ja: "参考記録", zh: "可参考记录", ko: "참고 기록" })}</p>
-          <p className="mt-1 text-3xl font-black text-slate-950">{correctionEvents.length}</p>
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <p className="text-xs font-bold text-slate-500">{statusLabel(locale, "draft")}</p>
-          <p className="mt-1 text-3xl font-black text-amber-800">{counts.draft}</p>
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <p className="text-xs font-bold text-slate-500">{statusLabel(locale, "approved")}</p>
-          <p className="mt-1 text-3xl font-black text-emerald-800">{counts.approved}</p>
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <p className="text-xs font-bold text-slate-500">{statusLabel(locale, "rejected")}</p>
-          <p className="mt-1 text-3xl font-black text-slate-700">{counts.rejected}</p>
-        </div>
-      </section>
-
-      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <section className="rounded-lg border border-slate-200 bg-white p-4">
         <div className="flex flex-wrap gap-2">
           {statusTabs.map((tab) => {
             const active = tab.value === (selectedStatus ?? "all");
@@ -156,7 +143,7 @@ export default async function AiExperiencePage({ searchParams }: AiExperiencePag
         <div className="mt-4 space-y-3">
           {visibleDrafts.length > 0 ? (
             visibleDrafts.map((draft) => (
-              <article key={draft.id} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <article key={draft.id} className="border-b border-slate-200 py-4 first:pt-0 last:border-b-0 last:pb-0">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
