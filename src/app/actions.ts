@@ -191,6 +191,10 @@ import {
   inferPurposeFromPartyRole,
   isPartyProfileRole,
   isPartyProfileType,
+  mergePartyProfileMetadataNotes,
+  normalizePartyReturnTo,
+  type PartyProfileRole,
+  type PartyProfileType,
 } from "@/lib/party-profile";
 
 function parseNumber(value: FormDataEntryValue | null, fallback = 0): number {
@@ -378,6 +382,23 @@ export type ClientFormActionState = {
   message?: string;
   fieldErrors: Partial<Record<keyof ClientFormValues, string>>;
   values: ClientFormValues;
+};
+
+export type PartyProfileFormValues = {
+  partyId: string;
+  name: string;
+  phone: string;
+  email: string;
+  lineId: string;
+  partyType: string;
+  partyRole: string;
+};
+
+export type PartyProfileFormActionState = {
+  status: "idle" | "error";
+  message?: string;
+  fieldErrors: Partial<Record<keyof PartyProfileFormValues, string>>;
+  values: PartyProfileFormValues;
 };
 
 function propertyFormValues(formData: FormData): PropertyFormValues {
@@ -2058,47 +2079,130 @@ export async function createPartyProfileAction(formData: FormData) {
   redirect(withFlash(afterSave === "list" ? `/parties?focus=${client.id}` : `/parties/${client.id}/edit`, "party_created"));
 }
 
-export async function updatePartyProfileAction(formData: FormData) {
+function partyFormValues(formData: FormData): PartyProfileFormValues {
+  const read = (key: keyof PartyProfileFormValues) => String(formData.get(key) ?? "");
+  return {
+    partyId: read("partyId"),
+    name: read("name"),
+    phone: read("phone"),
+    email: read("email"),
+    lineId: read("lineId"),
+    partyType: read("partyType"),
+    partyRole: read("partyRole"),
+  };
+}
+
+function partyValidationMessage(locale: Locale, field: keyof PartyProfileFormValues): string {
+  const messages: Record<Locale, Partial<Record<keyof PartyProfileFormValues, string>>> = {
+    ja: {
+      name: "氏名または会社名は必須です。",
+      phone: "電話番号は必須です。",
+      partyType: "関係者種別を選択するか、未設定のままにしてください。",
+      partyRole: "役割を選択するか、未設定のままにしてください。",
+    },
+    zh: {
+      name: "姓名或公司名是必填项。",
+      phone: "电话号码是必填项。",
+      partyType: "请选择主体类型，或保留为未设置。",
+      partyRole: "请选择主体角色，或保留为未设置。",
+    },
+    ko: {
+      name: "이름 또는 회사명은 필수입니다.",
+      phone: "전화번호는 필수입니다.",
+      partyType: "관계자 유형을 선택하거나 미설정으로 두세요.",
+      partyRole: "역할을 선택하거나 미설정으로 두세요.",
+    },
+  };
+  return messages[locale][field] ?? tr(locale, { ja: "入力内容を確認してください。", zh: "请检查输入内容。", ko: "입력 내용을 확인해 주세요." });
+}
+
+function partyValidationState(
+  values: PartyProfileFormValues,
+  fieldErrors: PartyProfileFormActionState["fieldErrors"],
+  locale: Locale,
+): PartyProfileFormActionState {
+  return {
+    status: "error",
+    message: tr(locale, {
+      ja: "入力内容を確認してから保存してください。",
+      zh: "请修正以下字段后再保存。",
+      ko: "다음 항목을 확인한 후 저장해 주세요.",
+    }),
+    fieldErrors,
+    values,
+  };
+}
+
+function parsePartyUpdateForm(formData: FormData, locale: Locale) {
+  const values = partyFormValues(formData);
+  const fieldErrors: PartyProfileFormActionState["fieldErrors"] = {};
+  const name = values.name.trim();
+  const phone = values.phone.trim();
+  const partyTypeRaw = values.partyType.trim();
+  const partyRoleRaw = values.partyRole.trim();
+  if (!name) fieldErrors.name = partyValidationMessage(locale, "name");
+  if (!phone) fieldErrors.phone = partyValidationMessage(locale, "phone");
+  if (!formData.has("partyType")) fieldErrors.partyType = partyValidationMessage(locale, "partyType");
+  if (!formData.has("partyRole")) fieldErrors.partyRole = partyValidationMessage(locale, "partyRole");
+  if (partyTypeRaw && !isPartyProfileType(partyTypeRaw)) fieldErrors.partyType = partyValidationMessage(locale, "partyType");
+  if (partyRoleRaw && !isPartyProfileRole(partyRoleRaw)) fieldErrors.partyRole = partyValidationMessage(locale, "partyRole");
+
+  return {
+    values,
+    fieldErrors,
+    normalized: {
+      name,
+      phone,
+      email: values.email.trim() || undefined,
+      lineId: values.lineId.trim() || undefined,
+      partyType: partyTypeRaw ? (partyTypeRaw as PartyProfileType) : undefined,
+      partyRole: partyRoleRaw ? (partyRoleRaw as PartyProfileRole) : undefined,
+    },
+  };
+}
+
+export async function updatePartyProfileAction(
+  _previousState: PartyProfileFormActionState,
+  formData: FormData,
+): Promise<PartyProfileFormActionState> {
   const session = await requireTenantSession({ permission: "record.update" });
   const user = session.user;
   const tenantId = session.tenant.id;
   const locale = await getLocale();
-  const clientId = String(formData.get("partyId") ?? "").trim();
+  const values = partyFormValues(formData);
+  const clientId = values.partyId.trim();
   if (!clientId) {
-    throw new Error(
-      tr(locale, {
-        ja: "関係者IDは必須です。",
-        zh: "主体ID是必填项。",
-        ko: "관계자 ID는 필수입니다.",
-      })
-    );
+    return partyValidationState(values, { partyId: tr(locale, { ja: "関係者IDは必須です。", zh: "主体ID是必填项。", ko: "관계자 ID는 필수입니다." }) }, locale);
   }
   await ensureClientOwnership(clientId, user.id, tenantId);
   const existing = await getClientById(clientId, tenantId);
   if (!existing) {
-    throw new Error(
-      tr(locale, {
-        ja: "関係者が見つかりません。",
-        zh: "未找到主体。",
-        ko: "관계자를 찾을 수 없습니다.",
-      })
-    );
+    return partyValidationState(values, {}, locale);
   }
-  const payload = parsePartyProfileForm(formData, locale);
+  const payload = parsePartyUpdateForm(formData, locale);
+  if (Object.keys(payload.fieldErrors).length > 0) {
+    return partyValidationState(payload.values, payload.fieldErrors, locale);
+  }
+  const notes = mergePartyProfileMetadataNotes({
+    existingNotes: existing.notes,
+    type: payload.normalized.partyType,
+    role: payload.normalized.partyRole,
+    locale,
+  });
 
-  await updateClient(clientId, {
+  const updated = await updateClient(clientId, {
     tenantId,
-    name: payload.name,
-    phone: payload.phone,
-    lineId: payload.lineId,
-    email: payload.email,
+    name: payload.normalized.name,
+    phone: payload.normalized.phone,
+    lineId: payload.normalized.lineId,
+    email: payload.normalized.email,
     budgetMin: existing.budgetMin,
     budgetMax: existing.budgetMax,
     budgetType: existing.budgetType,
-    preferredArea: payload.relationHint,
+    preferredArea: existing.preferredArea,
     firstChoiceArea: existing.firstChoiceArea,
     secondChoiceArea: existing.secondChoiceArea,
-    purpose: inferPurposeFromPartyRole(payload.partyRole),
+    purpose: existing.purpose,
     loanPreApprovalStatus: existing.loanPreApprovalStatus,
     desiredMoveInPeriod: existing.desiredMoveInPeriod,
     stage: existing.stage,
@@ -2111,8 +2215,9 @@ export async function updatePartyProfileAction(formData: FormData) {
     personalInfoConsentAt: existing.personalInfoConsentAt,
     amlCheckStatus: existing.amlCheckStatus,
     nextFollowUpAt: existing.nextFollowUpAt,
-    notes: payload.notes,
+    notes,
   });
+  if (!updated) return partyValidationState(payload.values, {}, locale);
 
   await addAuditLog({
     tenantId,
@@ -2121,9 +2226,9 @@ export async function updatePartyProfileAction(formData: FormData) {
     targetType: "client",
     targetId: clientId,
     message: tr(locale, {
-      ja: `関係者を更新しました: ${payload.name}`,
-      zh: `已更新主体：${payload.name}`,
-      ko: `관계자를 업데이트했습니다: ${payload.name}`,
+        ja: `関係者を更新しました: ${payload.normalized.name}`,
+      zh: `已更新主体：${payload.normalized.name}`,
+      ko: `관계자를 업데이트했습니다: ${payload.normalized.name}`,
     }),
   });
 
@@ -2131,8 +2236,8 @@ export async function updatePartyProfileAction(formData: FormData) {
   revalidatePath("/parties");
   revalidatePath("/clients");
   revalidatePath("/");
-  const afterSave = String(formData.get("afterSave") ?? "edit");
-  redirect(withFlash(afterSave === "list" ? `/parties?focus=${clientId}` : `/parties/${clientId}/edit`, "party_updated"));
+  const returnTo = normalizePartyReturnTo(String(formData.get("returnTo") ?? ""));
+  redirect(withFlash(`/parties/${encodeURIComponent(clientId)}/edit?returnTo=${encodeURIComponent(returnTo)}`, "party_updated"));
 }
 
 export async function createPartyQuickAction(formData: FormData) {

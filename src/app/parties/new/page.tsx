@@ -1,72 +1,56 @@
 import Link from "next/link";
-import { createPartyProfileAction } from "@/app/actions";
-import { PartyProfileForm } from "@/components/party-profile-form";
-import { PageFlashBanner } from "@/components/page-flash-banner";
 import { getLocale } from "@/lib/locale";
 import { requireTenantSession } from "@/lib/tenant-session";
 
 export const dynamic = "force-dynamic";
 
-type NewPartyPageProps = {
-  searchParams?: Promise<{ name?: string; flash?: string; from?: string }>;
-};
-
 const copy = {
   ja: {
-    title: "顧客を追加",
-    desc: "人物または会社の基本情報を先に登録し、必要な資料をあとで追加します。",
-    back: "顧客一覧へ",
-    backEntry: "情報入力へ戻る",
-    flashContinue: "名称を引き継ぎました。内容を確認して保存してください。",
+    title: "関係者を追加",
+    description: "独立した関係者の新規作成",
+    message: "現在のデータモデルでは、顧客レコードを生成せずに関係者だけを作成することはできません。顧客の用途、ステージ、関係情報を変更しないため、独立した関係者の作成は現在利用できません。",
+    back: "関係者一覧へ戻る",
   },
   zh: {
     title: "新增主体",
-    desc: "先建立人物或公司的基本档案，后续可以继续补充资料。",
+    description: "独立主体创建",
+    message: "当前数据模型无法在不生成客户记录的情况下独立创建主体。为避免改变客户用途、阶段和关系信息，独立主体创建暂未开放。",
     back: "返回主体列表",
-    backEntry: "返回录入资料",
-    flashContinue: "已带入名称，请确认内容后保存。",
   },
   ko: {
     title: "관계자 추가",
-    desc: "사람 또는 회사의 기본 정보를 먼저 등록하고 필요한 자료를 나중에 추가합니다.",
+    description: "독립 관계자 생성",
+    message: "현재 데이터 모델에서는 고객 레코드를 만들지 않고 관계자만 독립적으로 생성할 수 없습니다. 고객의 용도, 단계와 관계 정보를 변경하지 않기 위해 독립 관계자 생성은 현재 제공하지 않습니다.",
     back: "관계자 목록으로",
-    backEntry: "자료 입력으로 돌아가기",
-    flashContinue: "이름을 가져왔습니다. 내용을 확인한 뒤 저장하세요.",
   },
 } as const;
 
-export default async function NewPartyPage({ searchParams }: NewPartyPageProps) {
+export default async function NewPartyPage() {
   const [locale] = await Promise.all([
     getLocale(),
     requireTenantSession({ permission: "record.update" }),
   ]);
   const text = copy[locale];
-  const params = (await searchParams) ?? {};
-  const fromEntry = params.from === "entry";
-  const backHref = fromEntry ? "/import-center" : "/parties";
-  const backLabel = fromEntry ? text.backEntry : text.back;
-  const flashMessage = params.flash === "continue_profile" ? text.flashContinue : undefined;
 
   return (
-    <div className="space-y-5 pb-16">
-      <header className="flex flex-wrap items-start justify-between gap-3">
+    <div className="mx-auto max-w-3xl space-y-6 pb-16">
+      <header className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-5">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">{text.title}</h1>
-          <p className="mt-1 text-sm text-slate-600">{text.desc}</p>
+          <p className="text-sm font-semibold text-slate-500">{text.description}</p>
+          <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">{text.title}</h1>
         </div>
-        <Link href={backHref} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">
-          {backLabel}
+        <Link
+          href="/parties"
+          className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]"
+        >
+          {text.back}
         </Link>
       </header>
-      <PageFlashBanner message={flashMessage} />
-      <PartyProfileForm
-        action={createPartyProfileAction}
-        mode="create"
-        locale={locale}
-        defaults={{
-          name: params.name?.trim() ?? "",
-        }}
-      />
+
+      <section className="border-b border-slate-200 pb-6" aria-labelledby="party-create-state">
+        <h2 id="party-create-state" className="text-base font-bold text-slate-950">{text.title}</h2>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">{text.message}</p>
+      </section>
     </div>
   );
 }

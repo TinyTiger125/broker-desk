@@ -247,3 +247,85 @@ export function buildPartyProfileNotes(input: {
   }
   return lines.join("\n");
 }
+
+type PartyMetadataKind = "type" | "role";
+
+function metadataKindForLine(line: string): PartyMetadataKind | undefined {
+  const trimmed = line.trim();
+  for (const kind of ["type", "role"] as const) {
+    for (const key of Object.values(labelKeys[kind])) {
+      if (trimmed.startsWith(`${key}:`) || trimmed.startsWith(`${key}：`)) return kind;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Replace only the known type/role metadata rows in a compatible Client.notes
+ * value. Unknown history and customer notes remain byte-for-byte in their
+ * original order; status and subject-note rows are deliberately untouched.
+ */
+export function mergePartyProfileMetadataNotes(input: {
+  existingNotes?: string;
+  type?: PartyProfileType;
+  role?: PartyProfileRole;
+  locale: Locale;
+}): string | undefined {
+  const source = input.existingNotes ?? "";
+  const lines = source ? source.split(/\r?\n/) : [];
+  const replacement: Record<PartyMetadataKind, string | undefined> = {
+    type: input.type ? `${labelKeys.type[input.locale]}：${getPartyProfileTypeLabel(input.type, input.locale)}` : undefined,
+    role: input.role ? `${labelKeys.role[input.locale]}：${getPartyProfileRoleLabel(input.role, input.locale)}` : undefined,
+  };
+  const seen = new Set<PartyMetadataKind>();
+  const result: string[] = [];
+
+  for (const line of lines) {
+    const kind = metadataKindForLine(line);
+    if (!kind) {
+      result.push(line);
+      continue;
+    }
+    if (!seen.has(kind)) {
+      seen.add(kind);
+      if (replacement[kind]) result.push(replacement[kind]!);
+    }
+  }
+
+  const missing = (["type", "role"] as const).filter((kind) => replacement[kind] && !seen.has(kind));
+  if (missing.length > 0) result.unshift(...missing.map((kind) => replacement[kind]!));
+
+  const merged = result.join("\n");
+  return merged || undefined;
+}
+
+export function normalizePartyReturnTo(value: string | null | undefined): string {
+  const fallback = "/parties";
+  const path = (value ?? "").trim();
+  if (!path || !path.startsWith("/") || path.startsWith("//") || path.startsWith("/\\") || path.includes("\\")) return fallback;
+  const rawPathname = path.split(/[?#]/, 1)[0];
+  let decodedPathname = rawPathname;
+  try {
+    decodedPathname = decodeURIComponent(rawPathname);
+  } catch {
+    return fallback;
+  }
+  if (decodedPathname.includes("\\") || decodedPathname.split("/").some((segment) => segment === "." || segment === "..")) return fallback;
+  let parsed: URL;
+  try {
+    parsed = new URL(path, "http://broker-desk.local");
+  } catch {
+    return fallback;
+  }
+  if (parsed.origin !== "http://broker-desk.local" || parsed.hash) return fallback;
+  const keys = [...new Set([...parsed.searchParams.keys()])];
+  if (parsed.pathname === "/parties") {
+    if (keys.some((key) => !["q", "type", "lifecycle", "page"].includes(key))) return fallback;
+    return `${parsed.pathname}${parsed.search}`;
+  }
+  if (parsed.pathname === "/organize-center") {
+    if (parsed.searchParams.get("type") !== "party" || keys.some((key) => !["type", "q", "lifecycle", "page"].includes(key))) return fallback;
+    return `${parsed.pathname}${parsed.search}`;
+  }
+  return fallback;
+}
