@@ -3,10 +3,11 @@
 - 状态: In Progress
 - 优先级: P0
 - 负责人: 技术项目经理
-- 当前阶段: Checkpoint A 只读审计
+- 当前阶段: Checkpoint B 目标结构规格
 - 前置任务: TASK-030
 - 目标结果: 用户能够从物件列表进入新增或编辑，按稳定业务分组填写物件资料，理解必填/可选/空值/错误，保存或取消并尽量返回原列表上下文；页面不以伪完成度、AI审核或重复确认干扰主任务
 - 审计报告: [`TASK-031_W7A_CHECKPOINT_A_AUDIT_2026-08-18.md`](../operations/TASK-031_W7A_CHECKPOINT_A_AUDIT_2026-08-18.md)
+- 目标结构规格: [`TASK-031_W7A_TARGET_STRUCTURE_2026-08-18.md`](../operations/TASK-031_W7A_TARGET_STRUCTURE_2026-08-18.md)
 
 ## 任务名称
 
@@ -18,13 +19,13 @@ W7-A：物件创建/编辑 Responsive Form 参考迁移
 
 ## 本次范围
 
-Checkpoint A 只读检查两个共享物件模型的页面族，并分别记录创建与编辑差异：
+Checkpoint A 已完成只读审计；当前 Checkpoint B 只编写目标结构规格。规格覆盖两个共享物件模型的页面族，并分别保留创建与编辑差异：
 
 - `/properties/new`
 - `/properties/[id]/edit`
 - 两页直接调用的 Server Action、数据适配、权限/租户/审计和返回边界；`FormDraftAssist`；Layout System、UI Foundation、TASK-024 Responsive Form 试点和当前 `/properties` List Report 作为对照
 
-本轮只建立任务卡和审计报告，不进入目标结构设计或实现。若保存、错误或返回语义证明差异过大，Checkpoint B 再决定是否拆分实现；不提前复制两套表单。
+创建与编辑不强行合并为一个带大量 `mode` 判断的表单；共享字段组合、术语、解析、校验、错误语言和 Responsive Form 结构，保留各自页面控制器、初始值和成功跳转。Checkpoint B 仍不进入实现。
 
 ## 明确不做什么
 
@@ -45,7 +46,7 @@ Checkpoint A 只读检查两个共享物件模型的页面族，并分别记录�
 
 ## 验收标准
 
-审计报告必须分别列出：
+Checkpoint A 审计报告必须分别列出：
 
 1. 已验证事实；
 2. 代码推断；
@@ -56,6 +57,18 @@ Checkpoint A 只读检查两个共享物件模型的页面族，并分别记录�
 7. Checkpoint B 前真正需要产品负责人决定的问题。
 
 必须覆盖字段来源、创建/编辑 Server Action、必填和服务端校验、空字符串/`0`/`null`、成功/失败、权限/租户/审计、草稿恢复和清理、返回上下文、未保存离开、桌面/768/390 候选、Tab/Enter/错误焦点及 Layout System 复用边界。
+
+Checkpoint B 规格必须固定：
+
+- 共同字段、术语、分组和创建/编辑模式差异；
+- 名称必填、空值/零值/非法值和服务端错误规则；
+- 单一主要保存、取消和白名单 `returnTo`；
+- 错误摘要、字段错误、`aria-invalid`、`aria-describedby` 和焦点；
+- 从新建页移除 `FormDraftAssist`，但不修改共享组件；
+- lifecycle 和关系边界；
+- Responsive Form 三/二/一列结构和 Layout System 复用；
+- PostgreSQL 最小读写适配；
+- Checkpoint C 允许文件、测试、独立审查、D-Lite 和停止条件。
 
 ## 验证命令
 
@@ -83,7 +96,9 @@ Checkpoint A 只读：
 - `src/components/layout-system/`、`src/components/ui-foundation/`
 - `docs/product/BROKER_DESK_LAYOUT_SYSTEM_V1.md`、TASK-024 文档和当前 `/properties` 页面
 
-Checkpoint C 的允许文件须待 Checkpoint B 批准后另行登记；本轮不授权修改任何业务代码。
+Checkpoint B 治理规格：`docs/operations/TASK-031_W7A_TARGET_STRUCTURE_2026-08-18.md`。
+
+Checkpoint C 预期允许文件已在目标结构规格中登记；本轮仍不授权修改任何业务代码。
 
 ## 风险和注意事项
 
@@ -95,4 +110,4 @@ Checkpoint C 的允许文件须待 Checkpoint B 批准后另行登记；本轮�
 
 ## 当前状态
 
-Checkpoint A 只读审计已完成，报告已写入指定路径；任务保持 `In Progress`，等待产品负责人复审。审计完成后本轮停止，不自动进入目标结构、实现或审查 Agent。
+Checkpoint A 产品复审已通过；Checkpoint B 目标结构规格已写入指定路径，任务保持 `In Progress`，等待产品负责人复审。当前不启动服务、实现 Agent 或审查 Agent；Checkpoint B 复审前不进入实现。
