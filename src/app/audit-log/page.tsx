@@ -23,10 +23,7 @@ function getCopy(locale: Locale) {
     ja: {
       title: "操作履歴",
       subtitle: "誰が・いつ・何を更新したかを検索できます。",
-      backToContracts: "契約管理へ戻る",
-      totalLogs: "ログ件数",
-      uniqueActions: "操作種別",
-      actorCount: "実行アカウント",
+      backToWorkspace: "ワークスペースへ戻る",
       preset: "プリセット",
       presetAll: "すべて",
       presetLast7Days: "直近7日",
@@ -55,10 +52,7 @@ function getCopy(locale: Locale) {
     zh: {
       title: "操作记录",
       subtitle: "可检索“谁在何时对什么做了什么”。",
-      backToContracts: "返回合同管理",
-      totalLogs: "日志总数",
-      uniqueActions: "操作类型",
-      actorCount: "执行账号",
+      backToWorkspace: "返回工作区",
       preset: "预设",
       presetAll: "全部",
       presetLast7Days: "最近7天",
@@ -87,10 +81,7 @@ function getCopy(locale: Locale) {
     ko: {
       title: "작업 기록",
       subtitle: "누가 언제 무엇을 변경했는지 검색할 수 있습니다.",
-      backToContracts: "계약 관리로 돌아가기",
-      totalLogs: "로그 건수",
-      uniqueActions: "작업 유형",
-      actorCount: "실행 계정",
+      backToWorkspace: "워크스페이스로 돌아가기",
       preset: "프리셋",
       presetAll: "전체",
       presetLast7Days: "최근 7일",
@@ -211,25 +202,10 @@ export default async function AuditLogPage({ searchParams }: AuditLogPageProps) 
           <h1 className="text-3xl font-bold tracking-tight text-slate-900">{copy.title}</h1>
           <p className="mt-1 text-sm text-slate-600">{copy.subtitle}</p>
         </div>
-        <Link href="/contracts" className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100">
-          {copy.backToContracts}
+        <Link href="/workspace" className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100">
+          {copy.backToWorkspace}
         </Link>
       </header>
-
-      <section className="grid gap-3 md:grid-cols-3">
-        <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs text-slate-500">{copy.totalLogs}</p>
-          <p className="mt-1 text-2xl font-black tabular-nums text-slate-900">{filteredLogs.length}</p>
-        </article>
-        <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs text-slate-500">{copy.uniqueActions}</p>
-          <p className="mt-1 text-2xl font-black tabular-nums text-slate-900">{new Set(filteredLogs.map((log) => log.action)).size}</p>
-        </article>
-        <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs text-slate-500">{copy.actorCount}</p>
-          <p className="mt-1 text-2xl font-black tabular-nums text-slate-900">{new Set(filteredLogs.map((log) => log.actorId)).size}</p>
-        </article>
-      </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <form action="/audit-log" method="get" className="grid gap-3 md:grid-cols-7">
@@ -301,8 +277,8 @@ export default async function AuditLogPage({ searchParams }: AuditLogPageProps) 
       </section>
 
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[980px] border-collapse text-left">
+        <div className="hidden overflow-x-auto md:block">
+          <table className="w-full border-collapse text-left">
             <thead className="bg-slate-50">
               <tr className="text-xs uppercase tracking-wide text-slate-500">
                 <th className="px-4 py-3">{copy.colTime}</th>
@@ -332,6 +308,20 @@ export default async function AuditLogPage({ searchParams }: AuditLogPageProps) 
               ))}
             </tbody>
           </table>
+        </div>
+        <div className="divide-y divide-slate-100 md:hidden">
+          {filteredLogs.map((log) => (
+            <article key={log.id} className="space-y-2 p-4 text-sm">
+              <div className="flex items-start justify-between gap-3">
+                <time className="text-xs tabular-nums text-slate-500">{formatDate(log.createdAt, locale)}</time>
+                <span className="text-xs font-semibold text-slate-700">{log.action}</span>
+              </div>
+              <p className="text-sm font-medium text-slate-900">{users.find((item) => item.id === log.actorId)?.name ?? log.actorId}</p>
+              <p className="text-xs text-slate-600">{log.targetType}{log.targetId ? ` / ${log.targetId}` : ""}</p>
+              <p className="text-sm text-slate-800">{log.message}</p>
+              <p className="text-xs text-slate-500">{log.context ? <code className="whitespace-pre-wrap break-words">{JSON.stringify(log.context)}</code> : copy.noContext}</p>
+            </article>
+          ))}
         </div>
         {filteredLogs.length === 0 ? <p className="px-4 py-8 text-center text-sm text-slate-500">{copy.noLogs}</p> : null}
       </section>

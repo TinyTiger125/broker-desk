@@ -7,7 +7,7 @@ import { formatCurrency, formatDate, formatRelativeDays } from "@/lib/format";
 import { getClientDetail } from "@/lib/data";
 import { getLocale } from "@/lib/locale";
 import { requireTenantSession } from "@/lib/tenant-session";
-import { buildClientWorkflowGuide, getAllowedStageTargets, WORKFLOW_STAGE_PATH } from "@/lib/workflow-engine";
+import { buildClientWorkflowGuide, getAllowedStageTargets } from "@/lib/workflow-engine";
 import {
   getAmlCheckStatusLabel,
   getBrokerageContractTypeLabel,
@@ -20,7 +20,6 @@ import {
   getStageOptions,
   getTemperatureLabel,
 } from "@/lib/options";
-import { type ClientStage } from "@/lib/domain";
 
 export const dynamic = "force-dynamic";
 
@@ -57,8 +56,6 @@ const texts = {
     manualReason: "顧客詳細画面でステージを手動更新",
     stageGuard: "※ 遷移条件を満たすステージのみ選択可能です。",
     stageUpdate: "ステージ更新",
-    stageSuggestion: "ステージ提案",
-    suggestTo: "「{{stage}}」へ更新する",
     weeklyTasks: "今週のタスク",
     noTasks: "未完了タスクはありません。",
     due: "期限",
@@ -95,9 +92,6 @@ const texts = {
     taskPending: "未着手",
     taskDone: "完了",
     taskCanceled: "取消",
-    suggestionViewing: "内見記録が追加されたため、「内見済み」への更新を推奨します。",
-    suggestionNegotiating: "提案が複数回更新されているため、「申込・条件調整」への更新を推奨します。",
-    suggestionQuoted: "提案が作成済みのため、「提案送付済み」への更新を推奨します。",
   },
   zh: {
     areaUnset: "未设置区域",
@@ -125,8 +119,6 @@ const texts = {
     manualReason: "在客户详情页手动更新阶段",
     stageGuard: "※ 仅可选择满足迁移条件的阶段。",
     stageUpdate: "更新阶段",
-    stageSuggestion: "阶段建议",
-    suggestTo: "更新为“{{stage}}”",
     weeklyTasks: "本周任务",
     noTasks: "暂无未完成任务。",
     due: "到期",
@@ -163,9 +155,6 @@ const texts = {
     taskPending: "未开始",
     taskDone: "已完成",
     taskCanceled: "已取消",
-    suggestionViewing: "已新增带看记录，建议更新到“已带看”。",
-    suggestionNegotiating: "提案已多次更新，建议更新到“谈判中”。",
-    suggestionQuoted: "提案已创建，建议更新到“已提案”。",
   },
   ko: {
     areaUnset: "지역 미설정",
@@ -193,8 +182,6 @@ const texts = {
     manualReason: "고객 상세 화면에서 수동 단계 업데이트",
     stageGuard: "※ 전이 조건을 만족하는 단계만 선택 가능합니다.",
     stageUpdate: "단계 업데이트",
-    stageSuggestion: "단계 제안",
-    suggestTo: "“{{stage}}”로 업데이트",
     weeklyTasks: "이번 주 작업",
     noTasks: "미완료 작업이 없습니다.",
     due: "기한",
@@ -231,15 +218,8 @@ const texts = {
     taskPending: "미착수",
     taskDone: "완료",
     taskCanceled: "취소",
-    suggestionViewing: "현장 확인 기록이 추가되어 “현장 확인 완료”로의 업데이트를 권장합니다.",
-    suggestionNegotiating: "제안이 여러 번 수정되어 “협의 진행”으로의 업데이트를 권장합니다.",
-    suggestionQuoted: "제안이 작성되어 “제안 발송 완료”로의 업데이트를 권장합니다.",
   },
 } as const;
-
-function interpolate(template: string, values: Record<string, string>): string {
-  return template.replace(/\{\{(\w+)\}\}/g, (_, token: string) => values[token] ?? "");
-}
 
 function getTaskStatusLabel(locale: "ja" | "zh" | "ko") {
   const text = texts[locale];
@@ -248,41 +228,6 @@ function getTaskStatusLabel(locale: "ja" | "zh" | "ko") {
     done: text.taskDone,
     canceled: text.taskCanceled,
   } as const;
-}
-
-function getStageSuggestion(
-  client: Awaited<ReturnType<typeof getClientDetail>>,
-  locale: "ja" | "zh" | "ko"
-) {
-  if (!client) return null;
-
-  const text = texts[locale];
-  const closed = client.stage === "won" || client.stage === "lost";
-  if (closed) return null;
-
-  const latestFollow = client.followUps[0];
-  if (latestFollow?.type === "viewing" && client.stage !== "viewing") {
-    return {
-      stage: "viewing" as ClientStage,
-      reason: text.suggestionViewing,
-    };
-  }
-
-  if (client.quotations.length >= 2 && client.stage !== "negotiating") {
-    return {
-      stage: "negotiating" as ClientStage,
-      reason: text.suggestionNegotiating,
-    };
-  }
-
-  if (client.quotations.length > 0 && client.stage !== "quoted") {
-    return {
-      stage: "quoted" as ClientStage,
-      reason: text.suggestionQuoted,
-    };
-  }
-
-  return null;
 }
 
 type ClientDetailPageProps = {
@@ -316,7 +261,6 @@ export default async function ClientDetailPage({ params, searchParams }: ClientD
   if (!client) {
     notFound();
   }
-  const stageSuggestion = getStageSuggestion(client, locale);
   const workflowGuide = buildClientWorkflowGuide({
     clientId: client.id,
     stage: client.stage,
@@ -355,11 +299,8 @@ export default async function ClientDetailPage({ params, searchParams }: ClientD
           </p>
         </div>
         <div className="flex gap-2">
-          <Link href={`/clients/${client.id}/edit`} className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100">
+          <Link href={`/clients/${client.id}/edit`} className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700">
             {text.edit}
-          </Link>
-          <Link href={`/quotes/new?clientId=${client.id}`} className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700">
-            {text.createQuote}
           </Link>
         </div>
       </header>
@@ -486,52 +427,10 @@ export default async function ClientDetailPage({ params, searchParams }: ClientD
         <aside className="space-y-4">
           <SectionCard title={text.workflow} subtitle={`${text.workflowCurrent}: ${workflowGuide.currentLabel}`}>
             <div className="space-y-3">
-              <div className="flex flex-wrap gap-1">
-                {WORKFLOW_STAGE_PATH.map((stage) => (
-                  <span
-                    key={stage}
-                    className={`rounded-full border px-2 py-1 text-xs ${
-                      stage === client.stage
-                        ? "border-blue-300 bg-blue-50 text-blue-700"
-                        : "border-slate-200 bg-slate-50 text-slate-500"
-                    }`}
-                  >
-                    {stageLabel[stage]}
-                  </span>
-                ))}
-              </div>
               <p className="text-sm text-slate-700">{workflowGuide.guidance}</p>
               <p className="text-xs text-slate-500">
                 {text.nextTarget}: {workflowGuide.nextLabel ?? text.doneClosed}
               </p>
-              <div className="space-y-2">
-                {workflowGuide.quickActions.map((action, index) => {
-                  if (action.type === "link") {
-                    return (
-                      <Link
-                        key={`${action.type}-${index}`}
-                        href={action.href}
-                        className="block rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
-                      >
-                        {action.label}
-                      </Link>
-                    );
-                  }
-                  return (
-                    <form action={updateClientStage} key={`${action.type}-${action.stage}-${index}`}>
-                      <input type="hidden" name="clientId" value={client.id} />
-                      <input type="hidden" name="stage" value={action.stage} />
-                      <input type="hidden" name="reason" value={action.reason} />
-                      <button
-                        type="submit"
-                        className="w-full rounded-lg border border-blue-300 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100"
-                      >
-                        {action.label}
-                      </button>
-                    </form>
-                  );
-                })}
-              </div>
             </div>
           </SectionCard>
 
@@ -571,20 +470,6 @@ export default async function ClientDetailPage({ params, searchParams }: ClientD
               </button>
             </form>
           </SectionCard>
-
-          {stageSuggestion ? (
-            <SectionCard title={text.stageSuggestion}>
-              <p className="text-sm text-slate-700">{stageSuggestion.reason}</p>
-              <form action={updateClientStage} className="mt-3">
-                <input type="hidden" name="clientId" value={client.id} />
-                <input type="hidden" name="stage" value={stageSuggestion.stage} />
-                <input type="hidden" name="reason" value={stageSuggestion.reason} />
-                <button type="submit" className="ui-button-stable w-full rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">
-                  {interpolate(text.suggestTo, { stage: stageLabel[stageSuggestion.stage] })}
-                </button>
-              </form>
-            </SectionCard>
-          ) : null}
 
           <SectionCard title={text.weeklyTasks}>
             <ul className="space-y-2">

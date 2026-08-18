@@ -112,7 +112,7 @@ Checkpoint A 报告必须分别记录：已验证事实、代码推断、非权�
 
 ## 当前状态
 
-Checkpoint A 已通过，Checkpoint B 条件批准并完成强制修订，任务保持 `In Progress`，进入一次有限实现与独立审查。独立主体创建冻结为零表单 System State，编辑仅维护姓名、联系方式、显式类型和单一角色；本轮尚未修改 `src/`。服务探测因 `listen EPERM` 失败，浏览器和真实数据行为均为 `UNVERIFIED`。
+历史状态记录（已被下方 Checkpoint C 收口记录替代）：Checkpoint A 已通过，Checkpoint B 条件批准并完成强制修订，任务曾保持 `In Progress`，进入一次有限实现与独立审查。独立主体创建冻结为零表单 System State，编辑仅维护姓名、联系方式、显式类型和单一角色；服务探测因 `listen EPERM` 失败，浏览器和真实数据行为均为 `UNVERIFIED`。当前任务状态为 `Done`。
 
 ## 范围与禁止事项
 
