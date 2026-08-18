@@ -325,6 +325,11 @@ export default async function ClientDetailPage({ params, searchParams }: ClientD
   });
   const allowedStageTargets = new Set(getAllowedStageTargets(client.stage));
   const flashMap = {
+    client_created: {
+      ja: "顧客を作成しました。",
+      zh: "客户已创建。",
+      ko: "고객을 생성했습니다.",
+    },
     request_status_updated: {
       ja: "タスク状態を更新しました。",
       zh: "任务状态已更新。",

@@ -1,92 +1,87 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { updateClientProfile } from "@/app/actions";
-import { ClientForm } from "@/components/client-form";
+import { updateClientProfileAction } from "@/app/actions";
+import { ClientForm, type ClientFormDefaults } from "@/components/client-form";
+import { PageFlashBanner } from "@/components/page-flash-banner";
 import { getClientById } from "@/lib/data";
 import { getLocale } from "@/lib/locale";
 import { requireTenantSession } from "@/lib/tenant-session";
 
 export const dynamic = "force-dynamic";
 
-type EditClientPageProps = {
-  params: Promise<{ id: string }>;
-};
+type EditClientPageProps = { params: Promise<{ id: string }>; searchParams?: Promise<{ returnTo?: string; flash?: string }> };
 
-const texts = {
-  ja: {
-    title: "顧客編集",
-    desc: "顧客情報とフォロー条件を更新します。",
-    back: "詳細へ戻る",
-  },
-  zh: {
-    title: "编辑客户",
-    desc: "更新客户信息与跟进条件。",
-    back: "返回详情",
-  },
-  ko: {
-    title: "고객 편집",
-    desc: "고객 정보와 후속 조건을 업데이트합니다.",
-    back: "상세로 돌아가기",
-  },
+const copy = {
+  ja: { title: "顧客編集", desc: "顧客の基本情報、希望条件と管理情報を更新します。", back: "戻る", updated: "顧客情報を保存しました。" },
+  zh: { title: "编辑客户", desc: "更新客户的基本信息、需求条件和管理信息。", back: "返回", updated: "客户信息已保存。" },
+  ko: { title: "고객 편집", desc: "고객의 기본 정보, 희망 조건과 관리 정보를 업데이트합니다.", back: "돌아가기", updated: "고객 정보를 저장했습니다." },
 } as const;
 
-export default async function EditClientPage({ params }: EditClientPageProps) {
-  const [locale, session] = await Promise.all([
-    getLocale(),
-    requireTenantSession({ permission: "record.update" }),
-  ]);
-  const text = texts[locale];
+function normalizeReturnTo(value: string | undefined, clientId: string): string {
+  const fallback = `/clients/${encodeURIComponent(clientId)}`;
+  const path = (value ?? "").trim();
+  if (!path || !path.startsWith("/") || path.startsWith("//") || path.includes("\\")) return fallback;
+  const rawPathname = path.split(/[?#]/, 1)[0];
+  let decoded = rawPathname;
+  try { decoded = decodeURIComponent(rawPathname); } catch { return fallback; }
+  if (decoded.includes("\\") || decoded.split("/").some((segment) => segment === "." || segment === "..")) return fallback;
+  let parsed: URL;
+  try { parsed = new URL(path, "http://broker-desk.local"); } catch { return fallback; }
+  if (parsed.origin !== "http://broker-desk.local") return fallback;
+  const keys = [...new Set([...parsed.searchParams.keys()])];
+  if (parsed.pathname === "/clients") {
+    if (keys.some((key) => !["q", "stage", "purpose", "temperature", "sort", "page"].includes(key))) return fallback;
+    return `${parsed.pathname}${parsed.search}`;
+  }
+  if (parsed.pathname === "/organize-center" && parsed.searchParams.get("type") === "client") {
+    if (keys.some((key) => !["type", "q", "lifecycle", "page"].includes(key))) return fallback;
+    return `${parsed.pathname}${parsed.search}`;
+  }
+  if (parsed.pathname === `/clients/${encodeURIComponent(clientId)}` && keys.length === 0) return parsed.pathname;
+  return fallback;
+}
+
+export default async function EditClientPage({ params, searchParams }: EditClientPageProps) {
+  const [locale, session] = await Promise.all([getLocale(), requireTenantSession({ permission: "record.update" })]);
+  const text = copy[locale];
   const { id } = await params;
   const client = await getClientById(id, session.tenant.id);
-
-  if (!client) {
-    notFound();
-  }
-
+  if (!client) notFound();
+  const query = (await searchParams) ?? {};
+  const returnTo = normalizeReturnTo(query.returnTo, client.id);
+  const flashMessage = query.flash === "client_updated" ? text.updated : undefined;
+  const defaults: ClientFormDefaults = {
+    clientId: client.id,
+    name: client.name,
+    phone: client.phone,
+    lineId: client.lineId,
+    email: client.email,
+    budgetMin: client.budgetMin,
+    budgetMax: client.budgetMax,
+    budgetType: client.budgetType,
+    preferredArea: client.preferredArea,
+    firstChoiceArea: client.firstChoiceArea,
+    secondChoiceArea: client.secondChoiceArea,
+    purpose: client.purpose,
+    loanPreApprovalStatus: client.loanPreApprovalStatus,
+    desiredMoveInPeriod: client.desiredMoveInPeriod,
+    stage: client.stage,
+    temperature: client.temperature,
+    brokerageContractType: client.brokerageContractType,
+    brokerageContractSignedAt: client.brokerageContractSignedAt,
+    brokerageContractExpiresAt: client.brokerageContractExpiresAt,
+    importantMattersExplainedAt: client.importantMattersExplainedAt,
+    contractDocumentDeliveredAt: client.contractDocumentDeliveredAt,
+    personalInfoConsentAt: client.personalInfoConsentAt,
+    amlCheckStatus: client.amlCheckStatus,
+    nextFollowUpAt: client.nextFollowUpAt,
+    notes: client.notes,
+  };
   return (
-    <div className="space-y-5">
-      <header className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">{text.title}</h1>
-          <p className="mt-1 text-sm text-slate-600">{text.desc}</p>
-        </div>
-        <Link href={`/clients/${client.id}`} className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100">
-          {text.back}
-        </Link>
-      </header>
-
-      <ClientForm
-        action={updateClientProfile}
-        mode="edit"
-        locale={locale}
-        defaults={{
-          clientId: client.id,
-          name: client.name,
-          phone: client.phone,
-          lineId: client.lineId,
-          email: client.email,
-          budgetMin: client.budgetMin,
-          budgetMax: client.budgetMax,
-          budgetType: client.budgetType,
-          preferredArea: client.preferredArea,
-          firstChoiceArea: client.firstChoiceArea,
-          secondChoiceArea: client.secondChoiceArea,
-          purpose: client.purpose,
-          loanPreApprovalStatus: client.loanPreApprovalStatus,
-          desiredMoveInPeriod: client.desiredMoveInPeriod,
-          stage: client.stage,
-          temperature: client.temperature,
-          brokerageContractType: client.brokerageContractType,
-          brokerageContractSignedAt: client.brokerageContractSignedAt,
-          brokerageContractExpiresAt: client.brokerageContractExpiresAt,
-          importantMattersExplainedAt: client.importantMattersExplainedAt,
-          contractDocumentDeliveredAt: client.contractDocumentDeliveredAt,
-          personalInfoConsentAt: client.personalInfoConsentAt,
-          amlCheckStatus: client.amlCheckStatus,
-          nextFollowUpAt: client.nextFollowUpAt,
-          notes: client.notes,
-        }}
-      />
+    <div className="mx-auto max-w-5xl space-y-6 pb-12">
+      <header className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-5"><div><h1 className="text-3xl font-bold tracking-tight text-slate-950">{text.title}</h1><p className="mt-2 text-sm font-medium text-slate-600">{client.name} · {text.desc}</p></div><Link href={returnTo} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">{text.back}</Link></header>
+      <PageFlashBanner message={flashMessage} />
+      <ClientForm action={updateClientProfileAction} mode="edit" defaults={defaults} locale={locale} returnTo={returnTo} />
     </div>
   );
 }

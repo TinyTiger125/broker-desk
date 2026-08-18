@@ -345,6 +345,41 @@ export type PropertyFormActionState = {
   values: PropertyFormValues;
 };
 
+export type ClientFormValues = {
+  clientId: string;
+  name: string;
+  phone: string;
+  lineId: string;
+  email: string;
+  budgetMin: string;
+  budgetMax: string;
+  budgetType: string;
+  preferredArea: string;
+  firstChoiceArea: string;
+  secondChoiceArea: string;
+  purpose: string;
+  loanPreApprovalStatus: string;
+  desiredMoveInPeriod: string;
+  stage: string;
+  temperature: string;
+  brokerageContractType: string;
+  brokerageContractSignedAt: string;
+  brokerageContractExpiresAt: string;
+  importantMattersExplainedAt: string;
+  contractDocumentDeliveredAt: string;
+  personalInfoConsentAt: string;
+  amlCheckStatus: string;
+  nextFollowUpAt: string;
+  notes: string;
+};
+
+export type ClientFormActionState = {
+  status: "idle" | "error";
+  message?: string;
+  fieldErrors: Partial<Record<keyof ClientFormValues, string>>;
+  values: ClientFormValues;
+};
+
 function propertyFormValues(formData: FormData): PropertyFormValues {
   const read = (key: keyof PropertyFormValues) => String(formData.get(key) ?? "");
   return {
@@ -536,175 +571,303 @@ async function ensureClientOwnership(clientId: string, userId: string, tenantId?
   return client;
 }
 
-export async function createClient(formData: FormData) {
-  const session = await requireTenantSession({ permission: "record.update" });
-  const user = session.user;
-  const tenantId = session.tenant.id;
-
-  const name = String(formData.get("name") ?? "").trim();
-  const phone = String(formData.get("phone") ?? "").trim();
-  const stageRaw = String(formData.get("stage") ?? "lead");
-  const purposeRaw = String(formData.get("purpose") ?? PURPOSES[0]);
-  const temperatureRaw = String(formData.get("temperature") ?? TEMPERATURES[1]);
-  const budgetTypeRaw = String(formData.get("budgetType") ?? BUDGET_TYPES[0]);
-  const loanPreApprovalStatusRaw = String(formData.get("loanPreApprovalStatus") ?? LOAN_PREAPPROVAL_STATUSES[0]);
-  const brokerageContractTypeRaw = String(formData.get("brokerageContractType") ?? BROKERAGE_CONTRACT_TYPES[0]);
-  const amlCheckStatusRaw = String(formData.get("amlCheckStatus") ?? AML_CHECK_STATUSES[0]);
-
-  if (!name || !phone) {
-    throw new Error("氏名と電話番号は必須です。");
-  }
-  if (!isClientStage(stageRaw)) {
-    throw new Error("ステージの値が不正です。");
-  }
-  if (!isPurpose(purposeRaw)) {
-    throw new Error("用途の値が不正です。");
-  }
-  if (!isTemperature(temperatureRaw)) {
-    throw new Error("温度感の値が不正です。");
-  }
-  if (!isBudgetType(budgetTypeRaw)) {
-    throw new Error("予算種別の値が不正です。");
-  }
-  if (!isLoanPreApprovalStatus(loanPreApprovalStatusRaw)) {
-    throw new Error("ローン事前審査ステータスの値が不正です。");
-  }
-  if (!isBrokerageContractType(brokerageContractTypeRaw)) {
-    throw new Error("媒介契約種別の値が不正です。");
-  }
-  if (!isAmlCheckStatus(amlCheckStatusRaw)) {
-    throw new Error("AML確認ステータスの値が不正です。");
-  }
-
-  const client = await addClient({
-    tenantId,
-    ownerUserId: user.id,
-    name,
-    phone,
-    lineId: String(formData.get("lineId") ?? "").trim() || undefined,
-    email: String(formData.get("email") ?? "").trim() || undefined,
-    budgetMin: parseNumber(formData.get("budgetMin"), 0) || undefined,
-    budgetMax: parseNumber(formData.get("budgetMax"), 0) || undefined,
-    budgetType: budgetTypeRaw as BudgetType,
-    preferredArea: String(formData.get("preferredArea") ?? "").trim() || undefined,
-    firstChoiceArea: String(formData.get("firstChoiceArea") ?? "").trim() || undefined,
-    secondChoiceArea: String(formData.get("secondChoiceArea") ?? "").trim() || undefined,
-    purpose: purposeRaw as Purpose,
-    loanPreApprovalStatus: loanPreApprovalStatusRaw as LoanPreApprovalStatus,
-    desiredMoveInPeriod: String(formData.get("desiredMoveInPeriod") ?? "").trim() || undefined,
-    stage: stageRaw,
-    temperature: temperatureRaw as Temperature,
-    brokerageContractType: brokerageContractTypeRaw as BrokerageContractType,
-    brokerageContractSignedAt: parseDate(formData.get("brokerageContractSignedAt")),
-    brokerageContractExpiresAt: parseDate(formData.get("brokerageContractExpiresAt")),
-    importantMattersExplainedAt: parseDate(formData.get("importantMattersExplainedAt")),
-    contractDocumentDeliveredAt: parseDate(formData.get("contractDocumentDeliveredAt")),
-    personalInfoConsentAt: parseDate(formData.get("personalInfoConsentAt")),
-    amlCheckStatus: amlCheckStatusRaw as AmlCheckStatus,
-    nextFollowUpAt: parseDate(formData.get("nextFollowUpAt")),
-    notes: String(formData.get("notes") ?? "").trim() || undefined,
-  });
-
-  revalidatePath("/clients");
-  revalidatePath("/");
-  revalidatePath("/board");
-  await addAuditLog({
-    tenantId,
-    userId: user.id,
-    action: "client_created",
-    targetType: "client",
-    targetId: client.id,
-    message: `顧客を新規登録しました: ${client.name}`,
-  });
-
-  const afterSave = String(formData.get("afterSave") ?? "detail");
-  if (afterSave === "quote") {
-    redirect(`/quotes/new?clientId=${client.id}`);
-  }
-  if (afterSave === "list") {
-    redirect("/clients");
-  }
-
-  redirect(`/clients/${client.id}`);
+function clientFormValues(formData: FormData): ClientFormValues {
+  const read = (key: keyof ClientFormValues) => String(formData.get(key) ?? "");
+  return {
+    clientId: read("clientId"),
+    name: read("name"),
+    phone: read("phone"),
+    lineId: read("lineId"),
+    email: read("email"),
+    budgetMin: read("budgetMin"),
+    budgetMax: read("budgetMax"),
+    budgetType: read("budgetType"),
+    preferredArea: read("preferredArea"),
+    firstChoiceArea: read("firstChoiceArea"),
+    secondChoiceArea: read("secondChoiceArea"),
+    purpose: read("purpose"),
+    loanPreApprovalStatus: read("loanPreApprovalStatus"),
+    desiredMoveInPeriod: read("desiredMoveInPeriod"),
+    stage: read("stage"),
+    temperature: read("temperature"),
+    brokerageContractType: read("brokerageContractType"),
+    brokerageContractSignedAt: read("brokerageContractSignedAt"),
+    brokerageContractExpiresAt: read("brokerageContractExpiresAt"),
+    importantMattersExplainedAt: read("importantMattersExplainedAt"),
+    contractDocumentDeliveredAt: read("contractDocumentDeliveredAt"),
+    personalInfoConsentAt: read("personalInfoConsentAt"),
+    amlCheckStatus: read("amlCheckStatus"),
+    nextFollowUpAt: read("nextFollowUpAt"),
+    notes: read("notes"),
+  };
 }
 
-export async function updateClientProfile(formData: FormData) {
+function clientValidationMessage(locale: Locale, field: keyof ClientFormValues): string {
+  const messages: Record<Locale, Partial<Record<keyof ClientFormValues, string>>> = {
+    ja: {
+      name: "顧客名を入力してください。",
+      phone: "電話番号を入力してください。",
+      budgetMin: "予算下限は0より大きい数値で入力してください。",
+      budgetMax: "予算上限は0より大きい数値で入力してください。",
+      budgetType: "予算種別を選択してください。",
+      purpose: "用途を選択してください。",
+      temperature: "温度感を選択してください。",
+      stage: "ステージを選択してください。",
+      loanPreApprovalStatus: "ローン事前審査の状態を選択してください。",
+      brokerageContractType: "媒介契約の状態を選択してください。",
+      amlCheckStatus: "本人確認/AMLの状態を選択してください。",
+      desiredMoveInPeriod: "希望時期を確認してください。",
+      brokerageContractSignedAt: "媒介契約締結日を確認してください。",
+      brokerageContractExpiresAt: "媒介契約満了日を確認してください。",
+      importantMattersExplainedAt: "35条の日付を確認してください。",
+      contractDocumentDeliveredAt: "37条の日付を確認してください。",
+      personalInfoConsentAt: "個人情報同意確認日を確認してください。",
+      nextFollowUpAt: "次回フォロー日を確認してください。",
+    },
+    zh: {
+      name: "请输入客户姓名。",
+      phone: "请输入电话号码。",
+      budgetMin: "预算下限必须是大于 0 的数字。",
+      budgetMax: "预算上限必须是大于 0 的数字。",
+      budgetType: "请选择预算类型。",
+      purpose: "请选择用途。",
+      temperature: "请选择温度。",
+      stage: "请选择阶段。",
+      loanPreApprovalStatus: "请选择贷款预审状态。",
+      brokerageContractType: "请选择媒介合同状态。",
+      amlCheckStatus: "请选择实名/AML状态。",
+      desiredMoveInPeriod: "请检查期望时间。",
+      brokerageContractSignedAt: "请检查媒介合同签订日。",
+      brokerageContractExpiresAt: "请检查媒介合同到期日。",
+      importantMattersExplainedAt: "请检查35条日期。",
+      contractDocumentDeliveredAt: "请检查37条日期。",
+      personalInfoConsentAt: "请检查个人信息同意日期。",
+      nextFollowUpAt: "请检查下次跟进日期。",
+    },
+    ko: {
+      name: "고객명을 입력해 주세요.",
+      phone: "전화번호를 입력해 주세요.",
+      budgetMin: "예산 하한은 0보다 큰 숫자여야 합니다.",
+      budgetMax: "예산 상한은 0보다 큰 숫자여야 합니다.",
+      budgetType: "예산 유형을 선택해 주세요.",
+      purpose: "용도를 선택해 주세요.",
+      temperature: "온도를 선택해 주세요.",
+      stage: "단계를 선택해 주세요.",
+      loanPreApprovalStatus: "대출 사전심사 상태를 선택해 주세요.",
+      brokerageContractType: "중개 계약 상태를 선택해 주세요.",
+      amlCheckStatus: "본인확인/AML 상태를 선택해 주세요.",
+      desiredMoveInPeriod: "희망 시기를 확인해 주세요.",
+      brokerageContractSignedAt: "중개 계약 체결일을 확인해 주세요.",
+      brokerageContractExpiresAt: "중개 계약 만료일을 확인해 주세요.",
+      importantMattersExplainedAt: "35조 날짜를 확인해 주세요.",
+      contractDocumentDeliveredAt: "37조 날짜를 확인해 주세요.",
+      personalInfoConsentAt: "개인정보 동의 확인일을 확인해 주세요.",
+      nextFollowUpAt: "다음 후속 날짜를 확인해 주세요.",
+    },
+  };
+  return messages[locale][field] ?? (locale === "zh" ? "请检查此字段。" : locale === "ko" ? "이 입력을 확인해 주세요." : "この入力を確認してください。");
+}
+
+function parseClientDate(value: string, locale: Locale, field: keyof ClientFormValues, fieldErrors: ClientFormActionState["fieldErrors"]): Date | undefined {
+  const raw = value.trim();
+  if (!raw) return undefined;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    fieldErrors[field] = clientValidationMessage(locale, field);
+    return undefined;
+  }
+  const date = new Date(`${raw}T00:00:00`);
+  const [year, month, day] = raw.split("-").map(Number);
+  const invalidCalendarDate = Number.isNaN(date.getTime()) || date.getFullYear() !== year || date.getMonth() + 1 !== month || date.getDate() !== day;
+  if (invalidCalendarDate) fieldErrors[field] = clientValidationMessage(locale, field);
+  return invalidCalendarDate ? undefined : date;
+}
+
+function parseClientForm(formData: FormData, locale: Locale, mode: "create" | "edit", compatibilityDefaults = false) {
+  const values = clientFormValues(formData);
+  const fieldErrors: ClientFormActionState["fieldErrors"] = {};
+  const name = values.name.trim();
+  const phone = values.phone.trim();
+  if (!name) fieldErrors.name = clientValidationMessage(locale, "name");
+  if (!phone) fieldErrors.phone = clientValidationMessage(locale, "phone");
+
+  const requiredEnum = <T extends string>(field: keyof ClientFormValues, raw: string, valid: (value: string) => value is T, fallback?: T) => {
+    const value = raw.trim() || (compatibilityDefaults ? fallback ?? "" : "");
+    if (!valid(value)) fieldErrors[field] = clientValidationMessage(locale, field);
+    return value;
+  };
+  const stage = values.stage.trim() || (mode === "create" ? "lead" : "");
+  const purpose = requiredEnum("purpose", values.purpose, isPurpose, compatibilityDefaults ? PURPOSES[0] : undefined);
+  const temperature = requiredEnum("temperature", values.temperature, isTemperature, compatibilityDefaults ? TEMPERATURES[1] : undefined);
+  const budgetType = requiredEnum("budgetType", values.budgetType, isBudgetType, compatibilityDefaults ? BUDGET_TYPES[0] : undefined);
+  const loanPreApprovalStatus = requiredEnum("loanPreApprovalStatus", values.loanPreApprovalStatus, isLoanPreApprovalStatus, compatibilityDefaults ? LOAN_PREAPPROVAL_STATUSES[0] : undefined);
+  const brokerageContractType = requiredEnum("brokerageContractType", values.brokerageContractType, isBrokerageContractType, compatibilityDefaults ? BROKERAGE_CONTRACT_TYPES[0] : undefined);
+  const amlCheckStatus = requiredEnum("amlCheckStatus", values.amlCheckStatus, isAmlCheckStatus, compatibilityDefaults ? AML_CHECK_STATUSES[0] : undefined);
+  if (!isClientStage(stage)) fieldErrors.stage = clientValidationMessage(locale, "stage");
+
+  const parseBudget = (field: "budgetMin" | "budgetMax") => {
+    const raw = values[field].trim();
+    if (!raw) return undefined;
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed <= 0) fieldErrors[field] = clientValidationMessage(locale, field);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+  };
+  const budgetMin = parseBudget("budgetMin");
+  const budgetMax = parseBudget("budgetMax");
+  if (budgetMin !== undefined && budgetMax !== undefined && budgetMin > budgetMax) {
+    fieldErrors.budgetMin = clientValidationMessage(locale, "budgetMin");
+    fieldErrors.budgetMax = clientValidationMessage(locale, "budgetMax");
+  }
+
+  const dates = {
+    brokerageContractSignedAt: parseClientDate(values.brokerageContractSignedAt, locale, "brokerageContractSignedAt", fieldErrors),
+    brokerageContractExpiresAt: parseClientDate(values.brokerageContractExpiresAt, locale, "brokerageContractExpiresAt", fieldErrors),
+    importantMattersExplainedAt: parseClientDate(values.importantMattersExplainedAt, locale, "importantMattersExplainedAt", fieldErrors),
+    contractDocumentDeliveredAt: parseClientDate(values.contractDocumentDeliveredAt, locale, "contractDocumentDeliveredAt", fieldErrors),
+    personalInfoConsentAt: parseClientDate(values.personalInfoConsentAt, locale, "personalInfoConsentAt", fieldErrors),
+    nextFollowUpAt: parseClientDate(values.nextFollowUpAt, locale, "nextFollowUpAt", fieldErrors),
+  };
+
+  return {
+    values,
+    fieldErrors,
+    normalized: {
+      name,
+      phone,
+      lineId: values.lineId.trim() || undefined,
+      email: values.email.trim() || undefined,
+      budgetMin,
+      budgetMax,
+      budgetType: budgetType as BudgetType,
+      preferredArea: values.preferredArea.trim() || undefined,
+      firstChoiceArea: values.firstChoiceArea.trim() || undefined,
+      secondChoiceArea: values.secondChoiceArea.trim() || undefined,
+      purpose: purpose as Purpose,
+      loanPreApprovalStatus: loanPreApprovalStatus as LoanPreApprovalStatus,
+      desiredMoveInPeriod: values.desiredMoveInPeriod.trim() || undefined,
+      stage: stage as ClientStage,
+      temperature: temperature as Temperature,
+      brokerageContractType: brokerageContractType as BrokerageContractType,
+      ...dates,
+      amlCheckStatus: amlCheckStatus as AmlCheckStatus,
+      notes: values.notes.trim() || undefined,
+    },
+  };
+}
+
+function clientValidationState(values: ClientFormValues, fieldErrors: ClientFormActionState["fieldErrors"], locale: Locale, message?: string): ClientFormActionState {
+  return {
+    status: "error",
+    message: message ?? (locale === "zh" ? "请修正以下字段后再保存。" : locale === "ko" ? "다음 항목을 확인한 후 저장해 주세요." : "入力内容を確認してから保存してください。"),
+    fieldErrors,
+    values,
+  };
+}
+
+function safeClientReturnTo(value: FormDataEntryValue | null, fallback: string, currentClientId?: string): string {
+  const path = String(value ?? "").trim();
+  if (!path || !path.startsWith("/") || path.startsWith("//") || path.includes("\\")) return fallback;
+  const rawPathname = path.split(/[?#]/, 1)[0];
+  let decodedPathname = rawPathname;
+  try {
+    decodedPathname = decodeURIComponent(rawPathname);
+  } catch {
+    return fallback;
+  }
+  if (decodedPathname.includes("\\") || decodedPathname.split("/").some((segment) => segment === "." || segment === "..")) return fallback;
+  let parsed: URL;
+  try {
+    parsed = new URL(path, "http://broker-desk.local");
+  } catch {
+    return fallback;
+  }
+  if (parsed.origin !== "http://broker-desk.local") return fallback;
+  const keys = [...new Set([...parsed.searchParams.keys()])];
+  if (parsed.pathname === "/clients") {
+    if (keys.some((key) => !["q", "stage", "purpose", "temperature", "sort", "page"].includes(key))) return fallback;
+    return `${parsed.pathname}${parsed.search}`;
+  }
+  if (parsed.pathname === "/organize-center") {
+    if (parsed.searchParams.get("type") !== "client" || keys.some((key) => !["type", "q", "lifecycle", "page"].includes(key))) return fallback;
+    return `${parsed.pathname}${parsed.search}`;
+  }
+  if (currentClientId && parsed.pathname === `/clients/${encodeURIComponent(currentClientId)}` && keys.length === 0) return parsed.pathname;
+  return fallback;
+}
+
+async function persistClientForm(
+  formData: FormData,
+  mode: "create" | "edit",
+  previousState?: ClientFormActionState,
+  compatibilityDefaults = false,
+) {
   const session = await requireTenantSession({ permission: "record.update" });
   const user = session.user;
   const tenantId = session.tenant.id;
-  const clientId = String(formData.get("clientId") ?? "").trim();
-  if (!clientId) {
-    throw new Error("顧客IDは必須です。");
-  }
-  await ensureClientOwnership(clientId, user.id, tenantId);
-
-  const name = String(formData.get("name") ?? "").trim();
-  const phone = String(formData.get("phone") ?? "").trim();
-  const stageRaw = String(formData.get("stage") ?? "lead");
-  const purposeRaw = String(formData.get("purpose") ?? PURPOSES[0]);
-  const temperatureRaw = String(formData.get("temperature") ?? TEMPERATURES[1]);
-  const budgetTypeRaw = String(formData.get("budgetType") ?? BUDGET_TYPES[0]);
-  const loanPreApprovalStatusRaw = String(formData.get("loanPreApprovalStatus") ?? LOAN_PREAPPROVAL_STATUSES[0]);
-  const brokerageContractTypeRaw = String(formData.get("brokerageContractType") ?? BROKERAGE_CONTRACT_TYPES[0]);
-  const amlCheckStatusRaw = String(formData.get("amlCheckStatus") ?? AML_CHECK_STATUSES[0]);
-
-  if (!name || !phone) {
-    throw new Error("氏名と電話番号は必須です。");
-  }
-  if (
-    !isClientStage(stageRaw) ||
-    !isPurpose(purposeRaw) ||
-    !isTemperature(temperatureRaw) ||
-    !isBudgetType(budgetTypeRaw) ||
-    !isLoanPreApprovalStatus(loanPreApprovalStatusRaw) ||
-    !isBrokerageContractType(brokerageContractTypeRaw) ||
-    !isAmlCheckStatus(amlCheckStatusRaw)
-  ) {
-    throw new Error("顧客データの形式が不正です。");
+  const locale = await getLocale();
+  const values = clientFormValues(formData);
+  const parsed = parseClientForm(formData, locale, mode, compatibilityDefaults);
+  if (Object.keys(parsed.fieldErrors).length > 0) {
+    if (previousState) return clientValidationState(parsed.values, parsed.fieldErrors, locale);
+    throw new Error(Object.values(parsed.fieldErrors)[0] ?? "顧客データの形式が不正です。");
   }
 
-  await updateClient(clientId, {
-    tenantId,
-    name,
-    phone,
-    lineId: String(formData.get("lineId") ?? "").trim() || undefined,
-    email: String(formData.get("email") ?? "").trim() || undefined,
-    budgetMin: parseNumber(formData.get("budgetMin"), 0) || undefined,
-    budgetMax: parseNumber(formData.get("budgetMax"), 0) || undefined,
-    budgetType: budgetTypeRaw,
-    preferredArea: String(formData.get("preferredArea") ?? "").trim() || undefined,
-    firstChoiceArea: String(formData.get("firstChoiceArea") ?? "").trim() || undefined,
-    secondChoiceArea: String(formData.get("secondChoiceArea") ?? "").trim() || undefined,
-    purpose: purposeRaw,
-    loanPreApprovalStatus: loanPreApprovalStatusRaw,
-    desiredMoveInPeriod: String(formData.get("desiredMoveInPeriod") ?? "").trim() || undefined,
-    stage: stageRaw,
-    temperature: temperatureRaw,
-    brokerageContractType: brokerageContractTypeRaw,
-    brokerageContractSignedAt: parseDate(formData.get("brokerageContractSignedAt")),
-    brokerageContractExpiresAt: parseDate(formData.get("brokerageContractExpiresAt")),
-    importantMattersExplainedAt: parseDate(formData.get("importantMattersExplainedAt")),
-    contractDocumentDeliveredAt: parseDate(formData.get("contractDocumentDeliveredAt")),
-    personalInfoConsentAt: parseDate(formData.get("personalInfoConsentAt")),
-    amlCheckStatus: amlCheckStatusRaw,
-    nextFollowUpAt: parseDate(formData.get("nextFollowUpAt")),
-    notes: String(formData.get("notes") ?? "").trim() || undefined,
-  });
+  const clientId = values.clientId.trim();
+  const fallback = mode === "create" || !clientId ? "/clients" : `/clients/${encodeURIComponent(clientId)}`;
+  const returnTo = safeClientReturnTo(formData.get("returnTo"), fallback, mode === "edit" ? clientId : undefined);
+  let client;
+  if (mode === "create") {
+    client = await addClient({ tenantId, ownerUserId: user.id, ...parsed.normalized });
+  } else {
+    if (!clientId) {
+      if (previousState) return clientValidationState(parsed.values, { clientId: "顧客IDは必須です。" }, locale, "顧客IDを確認してください。");
+      throw new Error("顧客IDは必須です。");
+    }
+    await ensureClientOwnership(clientId, user.id, tenantId);
+    client = await updateClient(clientId, { tenantId, ...parsed.normalized });
+    if (!client) {
+      if (previousState) return clientValidationState(parsed.values, {}, locale, "顧客が見つからないか、更新権限がありません。");
+      throw new Error("顧客が見つからないか、更新権限がありません。");
+    }
+  }
 
-  revalidatePath(`/clients/${clientId}`);
   revalidatePath("/clients");
+  revalidatePath(`/clients/${client.id}`);
   revalidatePath("/");
   revalidatePath("/board");
   await addAuditLog({
     tenantId,
     userId: user.id,
-    action: "client_updated",
+    action: mode === "create" ? "client_created" : "client_updated",
     targetType: "client",
-    targetId: clientId,
-    message: `顧客情報を更新しました。`,
+    targetId: client.id,
+    message: mode === "create" ? `顧客を新規登録しました: ${client.name}` : "顧客情報を更新しました。",
   });
 
-  redirect(`/clients/${clientId}`);
+  if (compatibilityDefaults) {
+    const afterSave = String(formData.get("afterSave") ?? "detail");
+    if (afterSave === "quote") redirect(`/quotes/new?clientId=${client.id}`);
+    if (afterSave === "list") redirect("/clients");
+  }
+  if (mode === "create") redirect(`/clients/${client.id}?flash=client_created`);
+  redirect(withFlash(`/clients/${client.id}/edit?returnTo=${encodeURIComponent(returnTo)}`, "client_updated"));
+}
+
+export async function createClientFormAction(_previousState: ClientFormActionState, formData: FormData): Promise<ClientFormActionState> {
+  return persistClientForm(formData, "create", _previousState, false);
+}
+
+export async function updateClientProfileAction(_previousState: ClientFormActionState, formData: FormData): Promise<ClientFormActionState> {
+  return persistClientForm(formData, "edit", _previousState, false);
+}
+
+/** Compatibility wrapper for the existing /clients quick-create form. */
+export async function createClient(formData: FormData): Promise<void> {
+  await persistClientForm(formData, "create", undefined, true);
+}
+
+/** Compatibility wrapper for older edit callers. The Responsive Form uses updateClientProfileAction. */
+export async function updateClientProfile(formData: FormData): Promise<void> {
+  await persistClientForm(formData, "edit", undefined, false);
 }
 
 export async function addFollowUp(formData: FormData) {
