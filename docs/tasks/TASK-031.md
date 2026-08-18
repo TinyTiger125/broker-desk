@@ -1,22 +1,22 @@
 # TASK-031 / W7-A：物件创建/编辑 Responsive Form 参考迁移
 
-- 状态: In Progress
+- 状态: Done
 - 优先级: P0
 - 负责人: 技术项目经理
-- 当前阶段: Checkpoint C 有限实现完成，独立只读审查通过；D-Lite/运行证据待批次回归
+- 当前阶段: 行政收口完成；页面结构迁移完成，运行证据转全产品批次回归
 - 前置任务: TASK-030
 - 目标结果: 用户能够从物件列表进入新增或编辑，按稳定业务分组填写物件资料，理解必填/可选/空值/错误，保存或取消并尽量返回原列表上下文；页面不以伪完成度、AI审核或重复确认干扰主任务
 - 审计报告: [`TASK-031_W7A_CHECKPOINT_A_AUDIT_2026-08-18.md`](../operations/TASK-031_W7A_CHECKPOINT_A_AUDIT_2026-08-18.md)
 - 目标结构规格: [`TASK-031_W7A_TARGET_STRUCTURE_2026-08-18.md`](../operations/TASK-031_W7A_TARGET_STRUCTURE_2026-08-18.md)
 
-## Checkpoint C 当前交付
+## Checkpoint C 与行政收口
 
-- 创建与编辑已改为共享字段组合、术语、分组和服务端解析/校验，保留各自页面控制器与成功跳转。
-- 已补齐 PostgreSQL `getPropertyById`/`updateProperty` 的租户作用域读写；售价留空使用兼容 `0`，显式 `0` 拒绝，费用真实 `0` 保留。
-- 已移除新建页 `FormDraftAssist` 调用、编辑页完成度/进度工作台/sticky 保存；校验失败使用结构化错误摘要、字段关联和固定摘要焦点。
-- 已通过 `check-property-form-contract.mjs`、TASK-030 契约脚本、lint、typecheck、build、workflow rules 和 `git diff --check`；独立只读审查无 P0/P1。
-- D-Lite 仅执行一次本地服务探测，`npm run dev -- --port 3002` 返回 `Error: listen EPERM: operation not permitted 0.0.0.0:3002`；未启动服务、未进入认证/租户排查，页面运行证据保持 `UNVERIFIED`。
-- 真实浏览器、1440/768/390、Tab/Enter/返回焦点、PostgreSQL 实际读写、权限/租户和完整无障碍仍未验证，不得写成通过。
+- 页面结构迁移完成：创建/编辑共享字段、业务分组、服务端校验、保存/取消和错误结构；PostgreSQL 租户作用域适配完成；独立代码审查无 P0/P1。
+- 售价留空使用兼容 `0`，显式 `0` 拒绝；管理费/修缮费真实 `0` 保留；创建审计 `targetType` 为 `property`。
+- D-Lite 仅执行一次本地服务探测，`npm run dev -- --port 3002` 返回 `Error: listen EPERM: operation not permitted 0.0.0.0:3002`；未启动服务、未进入认证/租户排查。
+- 以下项目不宣称通过，统一进入全产品批次回归：1440/768/390 真实页面表现、横向溢出、真实 Kotoeri 组合输入、Tab/Enter/错误摘要与字段焦点、浏览器返回上下文、PostgreSQL 真实读写、权限/租户隔离和完整无障碍。
+- IME 防误提交仅确认代码机制存在；页头返回列表属于页面级导航，底部取消属于放弃当前编辑，当前不构成阻塞；批次视觉回归检查二者是否产生重复主操作感。
+- `returnTo` 白名单在页面与 Server Action 中重复实现，登记为维护风险；本任务不重构，待规则漂移或第二页面族复用时另行处理。
 
 ## 任务名称
 
@@ -28,13 +28,13 @@ W7-A：物件创建/编辑 Responsive Form 参考迁移
 
 ## 本次范围
 
-Checkpoint A 已完成只读审计；当前 Checkpoint B 只编写目标结构规格。规格覆盖两个共享物件模型的页面族，并分别保留创建与编辑差异：
+Checkpoint A 已完成只读审计，Checkpoint B 规格已批准，Checkpoint C 已完成一次有限实现。规格覆盖两个共享物件模型的页面族，并分别保留创建与编辑差异：
 
 - `/properties/new`
 - `/properties/[id]/edit`
 - 两页直接调用的 Server Action、数据适配、权限/租户/审计和返回边界；`FormDraftAssist`；Layout System、UI Foundation、TASK-024 Responsive Form 试点和当前 `/properties` List Report 作为对照
 
-创建与编辑不强行合并为一个带大量 `mode` 判断的表单；共享字段组合、术语、解析、校验、错误语言和 Responsive Form 结构，保留各自页面控制器、初始值和成功跳转。Checkpoint B 规格已批准并已进入一次有限 Checkpoint C 实现。
+创建与编辑不强行合并为一个带大量 `mode` 判断的表单；共享字段组合、术语、解析、校验、错误语言和 Responsive Form 结构，保留各自页面控制器、初始值和成功跳转。
 
 ## 明确不做什么
 
@@ -110,12 +110,12 @@ Checkpoint C 实际修改文件已限于目标结构规格登记范围；审查�
 
 ## 风险和注意事项
 
-- 新建页调用的 `createPropertyQuickAction` 同时承担完整表单提交，并在空名称时生成默认物件名；这与“明确必填”目标存在契约冲突。
-- 编辑页使用 `ObjectWorkbenchShell`、章节完成度和状态徽章，尚未形成 Layout System 定义的 Responsive Form。
-- `src/lib/data.postgres.ts` 当前未导出与 `data.ts` 代理所需的 `getPropertyById`、`updateProperty`；编辑页在 PostgreSQL 路径的运行读写能力不能按现状假定成立。
-- `FormDraftAssist` 只挂在新建页，任何提交事件都会先清除草稿；服务端失败时是否应保留草稿尚无安全契约。
-- 真实浏览器、输入法、焦点、长文本、空值持久化、权限和租户边界仍需后续批次回归或 Checkpoint C 证据，不能由静态代码推断为通过。
+- 真实页面密度、1440/768/390 重排、横向溢出、Tab/Enter、错误摘要与字段焦点、浏览器返回上下文和完整无障碍未取得运行证据。
+- IME 防误提交仅有代码机制证据，不能写成真实 Kotoeri 验收通过。
+- PostgreSQL 实际读写、权限、租户隔离和完整保存闭环未取得运行证据。
+- 页头返回列表与底部取消保留不同语义；批次视觉回归只检查操作层级，不改变返回语义。
+- 页面与 Server Action 的 `returnTo` 白名单重复实现是维护风险，暂不在本任务重构。
 
 ## 当前状态
 
-Checkpoint A、B 产品复审已通过；Checkpoint C 有限实现和独立只读审查已完成，任务保持 `In Progress`，等待 D-Lite/产品收口决定。当前不启动新的实现或审查 Agent，不宣称浏览器、响应式、键盘、真实数据库/租户或完整无障碍通过。
+Checkpoint A、B、C 产品复审已通过；TASK-031 按“物件创建/编辑 Responsive Form 页面结构迁移完成”标记 `Done`。所有未验证运行项进入全产品批次回归，不启动第二轮视觉优化、端口/认证/双账号排查或新的 Agent。下一项建议建立 W7-B 任务并仅执行 `/clients/new`、`/clients/[id]/edit` 的 Checkpoint A 只读审计；客户阶段、用途、温度和跟进语义必须独立保留，不复制物件字段模型。
