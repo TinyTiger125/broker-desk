@@ -232,6 +232,7 @@ export default async function PropertiesPage({ searchParams }: PropertiesPagePro
   const rangeStart = sorted.length === 0 ? 0 : (safePage - 1) * PROPERTIES_PAGE_SIZE + 1;
   const rangeEnd = Math.min(sorted.length, safePage * PROPERTIES_PAGE_SIZE);
   const returnTo = buildPropertiesHref({ ...filters, page: safePage });
+  const createHref = `/properties/new?returnTo=${encodeURIComponent(returnTo)}`;
   const clearHref = buildPropertiesHref({ query: "", lifecycle: "active", sort: "default" });
   const flashMap = {
     property_created: copy.created,
@@ -249,7 +250,7 @@ export default async function PropertiesPage({ searchParams }: PropertiesPagePro
           <p className="text-sm font-medium text-slate-600">{copy.description}</p>
         </div>
         <Link
-          href="/properties/new"
+          href={createHref}
           className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-gradient-to-br from-[#001e40] to-[#003366] px-4 text-sm font-semibold text-white shadow-[0_8px_20px_-10px_rgba(0,30,64,0.8)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]"
         >
           <span className="material-symbols-outlined text-[17px]" aria-hidden="true">add</span>
@@ -345,7 +346,7 @@ export default async function PropertiesPage({ searchParams }: PropertiesPagePro
                   <div key={property.id} role="row" className="grid gap-4 px-5 py-4 transition hover:bg-slate-50 lg:grid-cols-[minmax(12rem,1.3fr)_minmax(8rem,.8fr)_minmax(8rem,.8fr)_minmax(8rem,.8fr)_minmax(8rem,.8fr)_minmax(6rem,.6fr)_auto] lg:items-center">
                     <div role="cell" className="min-w-0">
                       <Link
-                        href={`/properties/${encodeURIComponent(property.id)}/edit`}
+                        href={`/properties/${encodeURIComponent(property.id)}/edit?returnTo=${encodeURIComponent(returnTo)}`}
                         className="block truncate text-sm font-bold text-slate-900 underline-offset-4 hover:text-[#002fa7] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]"
                       >
                         {property.name}

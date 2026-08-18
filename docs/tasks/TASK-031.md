@@ -3,11 +3,20 @@
 - 状态: In Progress
 - 优先级: P0
 - 负责人: 技术项目经理
-- 当前阶段: Checkpoint B 目标结构规格
+- 当前阶段: Checkpoint C 有限实现完成，独立只读审查通过；D-Lite/运行证据待批次回归
 - 前置任务: TASK-030
 - 目标结果: 用户能够从物件列表进入新增或编辑，按稳定业务分组填写物件资料，理解必填/可选/空值/错误，保存或取消并尽量返回原列表上下文；页面不以伪完成度、AI审核或重复确认干扰主任务
 - 审计报告: [`TASK-031_W7A_CHECKPOINT_A_AUDIT_2026-08-18.md`](../operations/TASK-031_W7A_CHECKPOINT_A_AUDIT_2026-08-18.md)
 - 目标结构规格: [`TASK-031_W7A_TARGET_STRUCTURE_2026-08-18.md`](../operations/TASK-031_W7A_TARGET_STRUCTURE_2026-08-18.md)
+
+## Checkpoint C 当前交付
+
+- 创建与编辑已改为共享字段组合、术语、分组和服务端解析/校验，保留各自页面控制器与成功跳转。
+- 已补齐 PostgreSQL `getPropertyById`/`updateProperty` 的租户作用域读写；售价留空使用兼容 `0`，显式 `0` 拒绝，费用真实 `0` 保留。
+- 已移除新建页 `FormDraftAssist` 调用、编辑页完成度/进度工作台/sticky 保存；校验失败使用结构化错误摘要、字段关联和固定摘要焦点。
+- 已通过 `check-property-form-contract.mjs`、TASK-030 契约脚本、lint、typecheck、build、workflow rules 和 `git diff --check`；独立只读审查无 P0/P1。
+- D-Lite 仅执行一次本地服务探测，`npm run dev -- --port 3002` 返回 `Error: listen EPERM: operation not permitted 0.0.0.0:3002`；未启动服务、未进入认证/租户排查，页面运行证据保持 `UNVERIFIED`。
+- 真实浏览器、1440/768/390、Tab/Enter/返回焦点、PostgreSQL 实际读写、权限/租户和完整无障碍仍未验证，不得写成通过。
 
 ## 任务名称
 
@@ -25,12 +34,11 @@ Checkpoint A 已完成只读审计；当前 Checkpoint B 只编写目标结构�
 - `/properties/[id]/edit`
 - 两页直接调用的 Server Action、数据适配、权限/租户/审计和返回边界；`FormDraftAssist`；Layout System、UI Foundation、TASK-024 Responsive Form 试点和当前 `/properties` List Report 作为对照
 
-创建与编辑不强行合并为一个带大量 `mode` 判断的表单；共享字段组合、术语、解析、校验、错误语言和 Responsive Form 结构，保留各自页面控制器、初始值和成功跳转。Checkpoint B 仍不进入实现。
+创建与编辑不强行合并为一个带大量 `mode` 判断的表单；共享字段组合、术语、解析、校验、错误语言和 Responsive Form 结构，保留各自页面控制器、初始值和成功跳转。Checkpoint B 规格已批准并已进入一次有限 Checkpoint C 实现。
 
 ## 明确不做什么
 
-- 不修改 `src/`、数据库、migration、actions、API、认证、权限或租户逻辑；
-- 不修改 `/properties/new`、`/properties/[id]/edit` 的业务行为；
+- 不修改数据库、migration、API、认证、权限或租户模型；
 - 不迁移 `/properties`、`/organize-center`、`/relationship-tree`、`/output-center` 或其他 W7/W8 页面；
 - 不把物件页面改成 Object Page、Wizard、卡片仪表盘或第二套表单系统；
 - 不把字段非空比例、草稿、AI 辅助或状态徽章写成业务完成事实；
@@ -98,7 +106,7 @@ Checkpoint A 只读：
 
 Checkpoint B 治理规格：`docs/operations/TASK-031_W7A_TARGET_STRUCTURE_2026-08-18.md`。
 
-Checkpoint C 预期允许文件已在目标结构规格中登记；本轮仍不授权修改任何业务代码。
+Checkpoint C 实际修改文件已限于目标结构规格登记范围；审查后不再扩大实现或进入第二轮视觉优化。
 
 ## 风险和注意事项
 
@@ -110,4 +118,4 @@ Checkpoint C 预期允许文件已在目标结构规格中登记；本轮仍不�
 
 ## 当前状态
 
-Checkpoint A 产品复审已通过；Checkpoint B 目标结构规格已写入指定路径，任务保持 `In Progress`，等待产品负责人复审。当前不启动服务、实现 Agent 或审查 Agent；Checkpoint B 复审前不进入实现。
+Checkpoint A、B 产品复审已通过；Checkpoint C 有限实现和独立只读审查已完成，任务保持 `In Progress`，等待 D-Lite/产品收口决定。当前不启动新的实现或审查 Agent，不宣称浏览器、响应式、键盘、真实数据库/租户或完整无障碍通过。

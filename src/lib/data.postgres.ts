@@ -4382,6 +4382,60 @@ export async function addProperty(input: {
   return mapProperty(result.rows[0]);
 }
 
+export async function getPropertyById(propertyId: string, tenantId?: string) {
+  await ensureSchema();
+  const scopeTenantId = resolveTenantId(tenantId);
+  const result = await getPool().query(
+    "SELECT * FROM properties WHERE id = $1 AND tenant_id = $2 LIMIT 1",
+    [propertyId, scopeTenantId],
+  );
+  return result.rows[0] ? mapProperty(result.rows[0]) : null;
+}
+
+export async function updateProperty(
+  propertyId: string,
+  input: {
+    tenantId?: string;
+    name: string;
+    area?: string;
+    address?: string;
+    listingPrice: number;
+    sizeSqm?: number;
+    managementFee?: number;
+    repairFee?: number;
+    notes?: string;
+  },
+) {
+  await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const result = await getPool().query(
+    `UPDATE properties
+        SET name = $3,
+            area = $4,
+            address = $5,
+            listing_price = $6,
+            size_sqm = $7,
+            management_fee = $8,
+            repair_fee = $9,
+            notes = $10
+      WHERE id = $1 AND tenant_id = $2
+      RETURNING *`,
+    [
+      propertyId,
+      scopeTenantId,
+      input.name,
+      input.area ?? null,
+      input.address ?? null,
+      input.listingPrice,
+      input.sizeSqm ?? null,
+      input.managementFee ?? null,
+      input.repairFee ?? null,
+      input.notes ?? null,
+    ],
+  );
+  return result.rows[0] ? mapProperty(result.rows[0]) : null;
+}
+
 export async function listQuotations(limit?: number, tenantId?: string): Promise<DashboardQuoteItem[]> {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(tenantId);

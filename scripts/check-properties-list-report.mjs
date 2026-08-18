@@ -30,7 +30,7 @@ requireText(page, 'lifecycleStatus: "all"', "the page must read all lifecycle re
 requireText(page, "const lifecycleFiltered = lifecycle === \"all\"", "lifecycle filtering must happen after the all-record read");
 requireText(page, "properties.length === 0 ? copy.noProperties : copy.noResult", "empty copy must distinguish all-record empty from filtered empty");
 requireText(page, "buildPropertiesHref", "page links must preserve filter and page context");
-requireText(page, 'href="/properties/new"', "new property must be the only primary create route");
+requireText(page, "const createHref = `/properties/new?returnTo=", "new property must be the only primary create route and preserve return context");
 requireText(page, "/properties/${encodeURIComponent(property.id)}/edit", "property name must enter the existing edit page");
 requireText(page, "<ArchiveRecordButton", "archive and restore must remain row-level risk actions");
 requireText(page, 'role="table"', "results must expose a complete table role");

@@ -27,7 +27,7 @@ import {
   type ClientStage,
 } from "@/lib/domain";
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import {
   addAttachment,
   addPrivateAttachment,
@@ -325,6 +325,148 @@ function safeReturnTo(value: FormDataEntryValue | null, fallback: string): strin
   const path = String(value ?? "").trim();
   if (!path.startsWith("/") || path.startsWith("//") || path.startsWith("/\\")) return fallback;
   return path;
+}
+
+export type PropertyFormValues = {
+  name: string;
+  area: string;
+  address: string;
+  sizeSqm: string;
+  listingPrice: string;
+  managementFee: string;
+  repairFee: string;
+  notes: string;
+};
+
+export type PropertyFormActionState = {
+  status: "idle" | "error";
+  message?: string;
+  fieldErrors: Partial<Record<keyof PropertyFormValues, string>>;
+  values: PropertyFormValues;
+};
+
+function propertyFormValues(formData: FormData): PropertyFormValues {
+  const read = (key: keyof PropertyFormValues) => String(formData.get(key) ?? "");
+  return {
+    name: read("name"),
+    area: read("area"),
+    address: read("address"),
+    sizeSqm: read("sizeSqm"),
+    listingPrice: read("listingPrice"),
+    managementFee: read("managementFee"),
+    repairFee: read("repairFee"),
+    notes: read("notes"),
+  };
+}
+
+function propertyValidationMessage(locale: Locale, field: keyof PropertyFormValues): string {
+  const messages: Record<Locale, Partial<Record<keyof PropertyFormValues, string>>> = {
+    ja: {
+      name: "物件名を入力してください。",
+      listingPrice: "価格は空欄または0より大きい数値で入力してください。",
+      sizeSqm: "面積は空欄または0より大きい数値で入力してください。",
+      managementFee: "管理費は空欄または0以上の数値で入力してください。",
+      repairFee: "修繕積立金は空欄または0以上の数値で入力してください。",
+    },
+    zh: {
+      name: "请输入物件名称。",
+      listingPrice: "售价可留空，填写时必须是大于 0 的数字。",
+      sizeSqm: "面积可留空，填写时必须是大于 0 的数字。",
+      managementFee: "管理费可留空，填写时必须是 0 或更大的数字。",
+      repairFee: "修缮费可留空，填写时必须是 0 或更大的数字。",
+    },
+    ko: {
+      name: "매물명을 입력해 주세요.",
+      listingPrice: "가격은 비워 두거나 0보다 큰 숫자를 입력해 주세요.",
+      sizeSqm: "면적은 비워 두거나 0보다 큰 숫자를 입력해 주세요.",
+      managementFee: "관리비는 비워 두거나 0 이상의 숫자를 입력해 주세요.",
+      repairFee: "수선 적립금은 비워 두거나 0 이상의 숫자를 입력해 주세요.",
+    },
+  };
+  return messages[locale][field] ?? "入力内容を確認してください。";
+}
+
+function parsePropertyForm(formData: FormData, locale: Locale) {
+  const values = propertyFormValues(formData);
+  const fieldErrors: PropertyFormActionState["fieldErrors"] = {};
+  const name = values.name.trim();
+  if (!name) fieldErrors.name = propertyValidationMessage(locale, "name");
+
+  const parseOptionalNumber = (field: "listingPrice" | "sizeSqm" | "managementFee" | "repairFee", minimum: number) => {
+    const raw = values[field].trim();
+    if (!raw) return undefined;
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed < minimum || (field === "listingPrice" && parsed === 0)) {
+      fieldErrors[field] = propertyValidationMessage(locale, field);
+      return undefined;
+    }
+    return parsed;
+  };
+
+  const listingPrice = values.listingPrice.trim() ? parseOptionalNumber("listingPrice", 0) : 0;
+  const sizeSqm = parseOptionalNumber("sizeSqm", Number.MIN_VALUE);
+  const managementFee = parseOptionalNumber("managementFee", 0);
+  const repairFee = parseOptionalNumber("repairFee", 0);
+  return {
+    values,
+    fieldErrors,
+    normalized: {
+      name,
+      area: values.area.trim() || undefined,
+      address: values.address.trim() || undefined,
+      sizeSqm,
+      listingPrice: listingPrice ?? 0,
+      managementFee,
+      repairFee,
+      notes: values.notes.trim() || undefined,
+    },
+  };
+}
+
+function propertyValidationState(
+  values: PropertyFormValues,
+  fieldErrors: PropertyFormActionState["fieldErrors"],
+  locale: Locale,
+  message?: string,
+): PropertyFormActionState {
+  const summary = message ?? (locale === "zh" ? "请修正以下字段后再保存。" : locale === "ko" ? "다음 항목을 확인한 후 저장해 주세요." : "入力内容を確認してから保存してください。");
+  return { status: "error", message: summary, fieldErrors, values };
+}
+
+function safePropertyReturnTo(value: FormDataEntryValue | null): string {
+  const fallback = "/properties";
+  const path = String(value ?? "").trim();
+  if (!path || !path.startsWith("/") || path.startsWith("//") || path.startsWith("/\\") || path.includes("\\")) return fallback;
+  const rawPathname = path.split(/[?#]/, 1)[0];
+  let decodedPathname = rawPathname;
+  try {
+    decodedPathname = decodeURIComponent(rawPathname);
+  } catch {
+    return fallback;
+  }
+  if (decodedPathname.split("/").some((segment) => segment === "." || segment === "..")) return fallback;
+  let parsed: URL;
+  try {
+    parsed = new URL(path, "http://broker-desk.local");
+  } catch {
+    return fallback;
+  }
+  if (parsed.origin !== "http://broker-desk.local") return fallback;
+  const keys = [...new Set([...parsed.searchParams.keys()])];
+  if (parsed.pathname === "/properties") {
+    if (keys.some((key) => !["q", "lifecycle", "sort", "page"].includes(key))) return fallback;
+    return `${parsed.pathname}${parsed.search}`;
+  }
+  if (parsed.pathname === "/organize-center") {
+    if (keys.some((key) => !["type", "q", "lifecycle", "page"].includes(key)) || parsed.searchParams.get("type") !== "property") return fallback;
+    return `${parsed.pathname}${parsed.search}`;
+  }
+  if (parsed.pathname === "/import-center") {
+    const allowedImportKeys = ["flow", "targetCaseId", "job", "xlsxJob", "intake", "advanced", "flash", "panel"];
+    if (keys.some((key) => !allowedImportKeys.includes(key))) return fallback;
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  }
+  return fallback;
 }
 
 export async function setRecordLifecycleAction(formData: FormData) {
@@ -1555,43 +1697,31 @@ export async function registerAttachmentAction(formData: FormData) {
   redirect(withFlash("/import-center", "attachment_registered"));
 }
 
-export async function createPropertyQuickAction(formData: FormData) {
+export async function createPropertyQuickAction(
+  _previousState: PropertyFormActionState,
+  formData: FormData,
+): Promise<PropertyFormActionState> {
   const session = await requireTenantSession({ permission: "record.update" });
   const user = session.user;
   const tenantId = session.tenant.id;
   const locale = await getLocale();
 
-  const defaultName = tr(locale, {
-    ja: "新規物件",
-    zh: "新物件",
-    ko: "신규 매물",
-  });
-
-  const name = String(formData.get("name") ?? "").trim() || defaultName;
-  const area = String(formData.get("area") ?? "").trim() || undefined;
-  const address = String(formData.get("address") ?? "").trim() || undefined;
-  const listingPrice = Math.max(0, parseNumber(formData.get("listingPrice"), 0));
-  const sizeSqm = parseNumber(formData.get("sizeSqm"), 0) || undefined;
-  const managementFee = parseNumber(formData.get("managementFee"), 0) || undefined;
-  const repairFee = parseNumber(formData.get("repairFee"), 0) || undefined;
-  const afterSave = String(formData.get("afterSave") ?? "list").trim();
+  const parsed = parsePropertyForm(formData, locale);
+  if (Object.keys(parsed.fieldErrors).length > 0) {
+    return propertyValidationState(parsed.values, parsed.fieldErrors, locale);
+  }
+  const returnTo = safePropertyReturnTo(formData.get("returnTo"));
 
   const property = await addProperty({
     tenantId,
-    name,
-    area,
-    address,
-    listingPrice,
-    sizeSqm,
-    managementFee,
-    repairFee,
+    ...parsed.normalized,
   });
 
   await addAuditLog({
     tenantId,
     userId: user.id,
     action: "property_created",
-    targetType: "compliance",
+    targetType: "property",
     targetId: property.id,
     message: tr(locale, {
       ja: `物件を登録しました: ${property.name}`,
@@ -1602,73 +1732,50 @@ export async function createPropertyQuickAction(formData: FormData) {
 
   revalidatePath("/properties");
   revalidatePath("/");
-  revalidatePath("/output-center");
-  revalidatePath("/organize-center");
 
-  const destination =
-    afterSave === "organize"
-      ? `/organize-center?type=property&focus=${encodeURIComponent(property.id)}`
-      : "/properties";
+  const destination = `/properties/${encodeURIComponent(property.id)}/edit?returnTo=${encodeURIComponent(returnTo)}`;
   redirect(withFlash(destination, "property_created"));
 }
 
-export async function updatePropertyProfileAction(formData: FormData) {
+export async function updatePropertyProfileAction(
+  _previousState: PropertyFormActionState,
+  formData: FormData,
+): Promise<PropertyFormActionState> {
   const session = await requireTenantSession({ permission: "record.update" });
   const user = session.user;
   const tenantId = session.tenant.id;
   const locale = await getLocale();
   const propertyId = String(formData.get("propertyId") ?? "").trim();
   if (!propertyId) {
-    throw new Error(
-      tr(locale, {
-        ja: "物件IDは必須です。",
-        zh: "物件ID是必填项。",
-        ko: "매물 ID는 필수입니다.",
-      })
-    );
+    return propertyValidationState(propertyFormValues(formData), {}, locale, tr(locale, {
+      ja: "物件IDは必須です。",
+      zh: "物件ID是必填项。",
+      ko: "매물 ID는 필수입니다.",
+    }));
   }
 
   const existing = await getPropertyById(propertyId, tenantId);
   if (!existing) {
-    throw new Error(
-      tr(locale, {
-        ja: "物件が見つかりません。",
-        zh: "未找到物件。",
-        ko: "매물을 찾을 수 없습니다.",
-      })
-    );
+    notFound();
   }
 
-  const name = String(formData.get("name") ?? "").trim();
-  if (!name) {
-    throw new Error(
-      tr(locale, {
-        ja: "物件名は必須です。",
-        zh: "物件名是必填项。",
-        ko: "매물명은 필수입니다.",
-      })
-    );
+  const parsed = parsePropertyForm(formData, locale);
+  if (Object.keys(parsed.fieldErrors).length > 0) {
+    return propertyValidationState(parsed.values, parsed.fieldErrors, locale);
   }
+  const returnTo = safePropertyReturnTo(formData.get("returnTo"));
 
-  const area = String(formData.get("area") ?? "").trim() || undefined;
-  const address = String(formData.get("address") ?? "").trim() || undefined;
-  const listingPrice = Math.max(0, parseNumber(formData.get("listingPrice"), 0));
-  const sizeSqm = parseNumber(formData.get("sizeSqm"), 0) || undefined;
-  const managementFee = parseNumber(formData.get("managementFee"), 0) || undefined;
-  const repairFee = parseNumber(formData.get("repairFee"), 0) || undefined;
-  const notes = String(formData.get("notes") ?? "").trim() || undefined;
-
-  await updateProperty(propertyId, {
+  const updated = await updateProperty(propertyId, {
     tenantId,
-    name,
-    area,
-    address,
-    listingPrice,
-    sizeSqm,
-    managementFee,
-    repairFee,
-    notes,
+    ...parsed.normalized,
   });
+  if (!updated) {
+    return propertyValidationState(parsed.values, {}, locale, tr(locale, {
+      ja: "物件が見つからないか、更新権限がありません。",
+      zh: "未找到物件，或没有更新权限。",
+      ko: "매물을 찾을 수 없거나 업데이트 권한이 없습니다.",
+    }));
+  }
 
   await addAuditLog({
     tenantId,
@@ -1677,18 +1784,16 @@ export async function updatePropertyProfileAction(formData: FormData) {
     targetType: "property",
     targetId: propertyId,
     message: tr(locale, {
-      ja: `物件を更新しました: ${name}`,
-      zh: `已更新物件：${name}`,
-      ko: `매물을 업데이트했습니다: ${name}`,
+      ja: `物件を更新しました: ${parsed.normalized.name}`,
+      zh: `已更新物件：${parsed.normalized.name}`,
+      ko: `매물을 업데이트했습니다: ${parsed.normalized.name}`,
     }),
   });
 
   revalidatePath(`/properties/${propertyId}/edit`);
   revalidatePath("/properties");
-  revalidatePath("/organize-center");
-  revalidatePath("/output-center");
   revalidatePath("/");
-  redirect(withFlash(`/properties/${propertyId}/edit`, "property_updated"));
+  redirect(withFlash(`/properties/${propertyId}/edit?returnTo=${encodeURIComponent(returnTo)}`, "property_updated"));
 }
 
 function parsePartyProfileForm(formData: FormData, locale: Locale, options?: { fallbackName?: string }) {
