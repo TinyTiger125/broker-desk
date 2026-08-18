@@ -153,3 +153,12 @@
 - `/clients/new` 仅为结构可见 PASS，`/platform/accounts` 仅为权限拒绝 System State PASS；未宣称业务闭环通过。
 - 多数租户路由因身份与请求租户不匹配保持 `UNVERIFIED`，任务必须保持 `Blocked`。
 - P2：成员停用按钮的既有前端确认缺口继续登记，不在本任务扩展。
+
+## 产品复审后的恢复契约
+
+- 57 张截图、22 路由冒烟、三档宽度测量和键盘返回证据永久有效，恢复后不全量重跑。
+- 唯一合法恢复条件：一个现有 Clerk Development 身份对一个非生产工作区具有 `active membership`。
+- 第二租户隔离、跨租户拒绝和邀请激活归平台级 QA，不作为本任务前提。
+- 恢复后仅补一个 List Report、一个 Responsive Form、一次真实 Kotoeri、一个 Object Page、一个 Worklist、Board 的 `Client.stage`、Relationship Explorer 显式关系、首页真实入口和 Settings 保存。
+- 不重复 22 路由全量截图；仅对补测发现的 P0/P1 页面重跑。
+- 当前状态：结构迁移 `Done`；响应式路由冒烟 `Pass`；真实业务运行验收 `Blocked`；输出专题未开始。
