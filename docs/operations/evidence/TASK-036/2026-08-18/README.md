@@ -6,3 +6,4 @@
 - 复核命令：`find /private/tmp/task036-layout-evidence-20260818 -maxdepth 1 -type f -print0 | xargs -0 shasum -a 256 | LC_ALL=C sort | shasum -a 256`
 - 当前聚合 SHA-256：`a46731f984b49a855a8c42740032fb427478972d97fc005695bad6ac94b9664c`
 - 证据身份：既有 Clerk Development 会话；未记录个人敏感信息。
+- 恢复预检（2026-08-18）：当前会话访问 `/workspace` 显示无可访问工作区，未确认 `active membership`；未切换账号、租户或浏览器会话，未执行差额回归。当前恢复基线为 `08a4de5232f688af342c5a9343196b14c47510e7`，工作区只保留原有未跟踪 `src/app/clients/page 2.tsx`。

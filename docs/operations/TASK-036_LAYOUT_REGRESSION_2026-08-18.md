@@ -162,3 +162,14 @@
 - 恢复后仅补一个 List Report、一个 Responsive Form、一次真实 Kotoeri、一个 Object Page、一个 Worklist、Board 的 `Client.stage`、Relationship Explorer 显式关系、首页真实入口和 Settings 保存。
 - 不重复 22 路由全量截图；仅对补测发现的 P0/P1 页面重跑。
 - 当前状态：结构迁移 `Done`；响应式路由冒烟 `Pass`；真实业务运行验收 `Blocked`；输出专题未开始。
+
+## 恢复预检（2026-08-18，Asia/Tokyo）
+
+- 当前恢复基线：`main` HEAD `08a4de5232f688af342c5a9343196b14c47510e7`。
+- 预检时工作区仅保留原有未跟踪 `src/app/clients/page 2.tsx`；未修改、暂存或提交业务代码。
+- `.env.local` 继续由 `.gitignore` 忽略；本次未读取、输出或记录任何密钥、Cookie、Token、Clerk ID 或个人敏感信息。
+- 正常 `npm run dev -- --port 3000` 因沙箱 `listen EPERM` 失败；对同一命令进行一次合法提升后成功监听 `http://localhost:3000`。未执行备用构建启动、端口循环或其他环境排查。
+- 通过既有 Chrome Development 会话访问 `/workspace`，页面显示“尚未开通工作区 / 当前登录邮箱还没有可访问的工作区”；当前身份没有可用 `active membership`，未选择或固定工作区。
+- 当前浏览器会话只暴露该现有身份；未发现可安全只读核对的第二既有身份会话，因此没有提出账号切换请求，也未尝试切换、登出、登录或反复验证。
+- 由于未确认一个合法 `active membership`，本次停止在环境预检；不执行任何差额回归，不重复 57 张截图或 22 路由冒烟。
+- 预检结论：恢复条件未满足，TASK-036 继续 `Blocked`；Layout System 结构迁移仍为 `Done`，响应式路由冒烟仍为 `Pass`，真实业务运行验收仍为 `Blocked`。
