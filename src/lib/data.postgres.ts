@@ -299,6 +299,27 @@ function resolveTenantId(tenantId?: string): string {
   return DEFAULT_TENANT_ID;
 }
 
+/**
+ * Invitation RPCs compare their actor argument with current_user_id(), which
+ * is derived from the request's Clerk subject inside PostgreSQL. In the
+ * production runtime, use that same database-bound identity instead of
+ * trusting a caller-provided local user id.
+ */
+async function getAuthenticatedInvitationActorId(fallbackActorId?: string): Promise<string> {
+  if (!isProductionRuntime()) {
+    const fallback = fallbackActorId?.trim();
+    if (!fallback) throw new Error("invitation actor is required");
+    return fallback;
+  }
+
+  const result = await getPool().query(
+    "SELECT brokerdesk_private.current_user_id() AS user_id",
+  );
+  const actorId = String(result.rows[0]?.user_id ?? "").trim();
+  if (!actorId) throw new Error("authenticated invitation actor is required");
+  return actorId;
+}
+
 export function isTenantAccessibleStatus(status: TenantStatus): boolean {
   return status === "trial" || status === "active";
 }
@@ -2312,8 +2333,7 @@ export async function updateTenantMemberInvitation(input: {
 }): Promise<TenantMemberListItem | null> {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(input.tenantId);
-  const actorUserId = input.actorUserId?.trim();
-  if (!actorUserId) throw new Error("invitation actor is required");
+  const actorUserId = await getAuthenticatedInvitationActorId(input.actorUserId);
   const result = await getPool().query(
     `SELECT * FROM brokerdesk_private.record_tenant_invitation_delivery(
        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
@@ -2344,8 +2364,7 @@ export async function refreshTenantMemberInvitation(input: {
 }): Promise<TenantMemberListItem | null> {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(input.tenantId);
-  const actorUserId = input.invitedByUserId?.trim();
-  if (!actorUserId) throw new Error("invitation actor is required");
+  const actorUserId = await getAuthenticatedInvitationActorId(input.invitedByUserId);
   const result = await getPool().query(
     `SELECT * FROM brokerdesk_private.refresh_tenant_invitation($1, $2, $3, $4)`,
     [scopeTenantId, input.membershipId, actorUserId, actorUserId],
@@ -2371,11 +2390,12 @@ export async function inviteTenantMember(input: {
   if ((input.status ?? "invited") !== "invited") {
     throw new Error("PostgreSQL invitations must start in invited state");
   }
+  const actorUserId = await getAuthenticatedInvitationActorId(input.invitedByUserId);
 
   return withTransaction(async (client) => {
     const userResult = await client.query(
       `SELECT * FROM brokerdesk_private.create_tenant_invitation($1, $2, $3, $4, $5, $6)`,
-      [scopeTenantId, input.invitedByUserId ?? "", email, name, input.role, input.capability ?? "ordinary_member"],
+      [scopeTenantId, actorUserId, email, name, input.role, input.capability ?? "ordinary_member"],
     );
     if (!userResult.rows[0]) throw new Error("invited user bootstrap returned no user");
     const row = userResult.rows[0] as Record<string, unknown>;

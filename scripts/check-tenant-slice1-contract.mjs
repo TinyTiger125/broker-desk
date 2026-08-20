@@ -162,6 +162,8 @@ assert(postgresSource.includes("brokerdesk_private.refresh_tenant_invitation($1,
 assert(postgresSource.includes("brokerdesk_private.record_tenant_invitation_delivery("), "Postgres delivery path must call the restricted function");
 assert(postgresSource.includes("brokerdesk_private.accept_tenant_invitation($1, $2, $3, $4)"), "Postgres acceptance path must call the restricted function");
 assert(postgresSource.includes("brokerdesk_private.list_pending_tenant_invitations_for_current_user()"), "Postgres pending invitation path must call the current-user function");
+assert(postgresSource.includes("getAuthenticatedInvitationActorId"), "Postgres invitation writes must derive the actor from the authenticated database identity");
+assert(postgresSource.includes("brokerdesk_private.current_user_id() AS user_id"), "Postgres invitation actor resolution must use the current Clerk-bound database user");
 const pendingInvitationFunction = postgresSource.slice(
   postgresSource.indexOf("export async function listPendingTenantInvitations"),
   postgresSource.indexOf("export async function acceptTenantInvitation", postgresSource.indexOf("export async function listPendingTenantInvitations")),
@@ -174,16 +176,19 @@ const inviteTenantFunction = postgresSource.slice(
 );
 assert(!inviteTenantFunction.includes("INSERT INTO users"), "Postgres invite path must not directly insert users");
 assert(!inviteTenantFunction.includes("INSERT INTO tenant_memberships"), "Postgres invite path must not directly insert memberships");
+assert(inviteTenantFunction.includes("getAuthenticatedInvitationActorId(input.invitedByUserId)"), "Postgres invite path must not trust the supplied actor id");
 const refreshTenantFunction = postgresSource.slice(
   postgresSource.indexOf("export async function refreshTenantMemberInvitation"),
   postgresSource.indexOf("export async function inviteTenantMember", postgresSource.indexOf("export async function refreshTenantMemberInvitation")),
 );
 assert(!refreshTenantFunction.includes("UPDATE tenant_memberships"), "Postgres refresh path must not directly update memberships");
+assert(refreshTenantFunction.includes("getAuthenticatedInvitationActorId(input.invitedByUserId)"), "Postgres refresh path must use the authenticated actor id");
 const updateInvitationFunction = postgresSource.slice(
   postgresSource.indexOf("export async function updateTenantMemberInvitation"),
   postgresSource.indexOf("export async function refreshTenantMemberInvitation", postgresSource.indexOf("export async function updateTenantMemberInvitation")),
 );
 assert(!updateInvitationFunction.includes("UPDATE tenant_memberships"), "Postgres delivery path must not directly update memberships");
+assert(updateInvitationFunction.includes("getAuthenticatedInvitationActorId(input.actorUserId)"), "Postgres delivery path must use the authenticated actor id");
 const acceptInvitationFunction = postgresSource.slice(
   postgresSource.indexOf("export async function acceptTenantInvitation"),
   postgresSource.indexOf("export const listTenantSessionLookupsByExternalAuthSubject", postgresSource.indexOf("export async function acceptTenantInvitation")),
