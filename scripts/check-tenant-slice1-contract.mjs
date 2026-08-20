@@ -137,6 +137,11 @@ assert(workspaceSelectorSource.includes("if (items.length === 1 && !error)"), "s
 assert(workspaceSelectorSource.includes('window.location.replace("/")'), "workspace selection must perform a full navigation after persisting the cookie");
 assert(workspaceRouteSource.includes("shouldUseSecureCookie(request)"), "workspace cookie security must follow the request transport, not NODE_ENV alone");
 assert(workspaceResetSource.includes("shouldUseSecureCookie(request)"), "workspace reset must use the same request-aware cookie security");
+assert(workspaceRouteSource.includes("requireTenantSession"), "workspace selection must use the canonical current-identity tenant session resolver");
+assert(workspaceRouteSource.includes("requestedTenantId: tenantId"), "workspace selection must validate the requested tenant against the current identity");
+assert(workspaceRouteSource.includes("TenantSessionError"), "workspace selection must expose canonical session errors without swallowing them");
+assert(!workspaceRouteSource.includes("getDefaultUser"), "workspace selection must not resolve membership through a default user shortcut");
+assert(!workspaceRouteSource.includes("listTenantMemberships"), "workspace selection must not use a divergent user-id membership lookup");
 assert(postgresSource.includes("brokerdesk_private.update_tenant_member_capability($1, $2, $3, $4, $5)"), "Postgres role path must use the restricted capability function");
 assert(postgresSource.includes("brokerdesk_private.update_tenant_member_status($1, $2, $3, $4)"), "Postgres status path must use the restricted lifecycle function");
 const postgresRoleFunction = postgresSource.slice(
