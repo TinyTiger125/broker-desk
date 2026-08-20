@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 
 export type WorkspaceOption = {
   tenantId: string;
@@ -52,14 +52,6 @@ export function WorkspaceSelector({ items, copy }: WorkspaceSelectorProps) {
     },
     [copy.error],
   );
-
-  useEffect(() => {
-    if (items.length === 1) void chooseWorkspace(items[0].tenantId);
-  }, [chooseWorkspace, items]);
-
-  if (items.length === 1 && !error) {
-    return <p className="text-sm text-slate-600">{copy.loading}</p>;
-  }
 
   return (
     <div className="grid gap-3">

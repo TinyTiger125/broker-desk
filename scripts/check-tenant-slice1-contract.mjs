@@ -145,7 +145,10 @@ assert(appNavSource.includes("link.href !== \"/settings/members\" || canManageMe
 assert(workspacePageSource.includes("listTenantSessionLookupsByExternalAuthSubject"), "workspace page must use current Clerk subject membership state lookup");
 assert(workspacePageSource.includes("sessionLookups.map((lookup) => lookup.membership)"), "workspace page must derive status branches from current subject memberships");
 assert(workspaceSelectorSource.includes("new AbortController()"), "workspace selection must fail visibly instead of waiting forever");
-assert(workspaceSelectorSource.includes("if (items.length === 1 && !error)"), "single-workspace selection errors must remain visible");
+assert(!workspaceSelectorSource.includes("useEffect"), "workspace selection must not auto-enter and hide a single verified workspace");
+assert(!workspaceSelectorSource.includes("items.length === 1 && !error"), "single-workspace selection must remain an explicit visible action");
+assert(workspaceSelectorSource.includes("items.map"), "workspace selection must render the current user's verified workspace cards");
+assert(workspaceSelectorSource.includes('role="alert"'), "workspace selection failures must be announced and retryable");
 assert(workspaceSelectorSource.includes('credentials: "include"'), "workspace selection must include the current Clerk session when persisting the tenant cookie");
 assert(workspaceSelectorSource.includes('cache: "no-store"'), "workspace selection must not reuse a stale selection response");
 assert(workspaceSelectorSource.includes("await response.json()"), "workspace selection must consume the response before navigating so Set-Cookie is committed");
@@ -328,6 +331,10 @@ const accepted = await memory.acceptTenantInvitation({
   invitationToken: invited.invitationToken,
 });
 assert(accepted?.status === "active" && accepted.invitationStatus === "accepted", "explicit matching acceptance should activate membership");
+const activeMemberLookups = await memory.listTenantSessionLookupsByExternalAuthSubject(invitedSubject);
+assert(activeMemberLookups.length === 1, "an accepted Clerk subject must resolve its active workspace membership");
+assert(activeMemberLookups[0].membership.status === "active", "subject workspace lookup must return the active membership state");
+assert(activeMemberLookups[0].tenant.id === created.tenant.id, "subject workspace lookup must return the invited company only");
 assert(
   (await memory.acceptTenantInvitation({
     userId: member.id,
