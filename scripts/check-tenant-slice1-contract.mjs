@@ -134,6 +134,9 @@ assert(workspacePageSource.includes("listTenantSessionLookupsByExternalAuthSubje
 assert(workspacePageSource.includes("sessionLookups.map((lookup) => lookup.membership)"), "workspace page must derive status branches from current subject memberships");
 assert(workspaceSelectorSource.includes("new AbortController()"), "workspace selection must fail visibly instead of waiting forever");
 assert(workspaceSelectorSource.includes("if (items.length === 1 && !error)"), "single-workspace selection errors must remain visible");
+assert(workspaceSelectorSource.includes('credentials: "include"'), "workspace selection must include the current Clerk session when persisting the tenant cookie");
+assert(workspaceSelectorSource.includes('cache: "no-store"'), "workspace selection must not reuse a stale selection response");
+assert(workspaceSelectorSource.includes("await response.json()"), "workspace selection must consume the response before navigating so Set-Cookie is committed");
 assert(workspaceSelectorSource.includes('window.location.replace("/")'), "workspace selection must perform a full navigation after persisting the cookie");
 assert(workspaceRouteSource.includes("shouldUseSecureCookie(request)"), "workspace cookie security must follow the request transport, not NODE_ENV alone");
 assert(workspaceResetSource.includes("shouldUseSecureCookie(request)"), "workspace reset must use the same request-aware cookie security");

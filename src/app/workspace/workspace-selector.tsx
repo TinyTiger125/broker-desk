@@ -33,9 +33,12 @@ export function WorkspaceSelector({ items, copy }: WorkspaceSelectorProps) {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ tenantId }),
+          credentials: "include",
+          cache: "no-store",
           signal: controller.signal,
         });
-        if (!response.ok) throw new Error("workspace_selection_failed");
+        const result = (await response.json()) as { ok?: boolean };
+        if (!response.ok || !result.ok) throw new Error("workspace_selection_failed");
         // The response has already persisted the tenant cookie. A full
         // navigation guarantees the next server render reads that cookie;
         // push+refresh can race and leave the selector page mounted.
