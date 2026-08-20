@@ -38,3 +38,28 @@ export const getClerkAuthIdentity = cache(async (): Promise<ClerkAuthIdentity | 
     name,
   };
 });
+
+/**
+ * Invitation binding must use a verified email address. Prefer the verified
+ * primary address; if the primary address is not verified, use another
+ * verified address only when Clerk explicitly reports one. Never fall back to
+ * an unverified address for the membership-binding path.
+ */
+export const getVerifiedClerkAuthIdentity = cache(async (): Promise<ClerkAuthIdentity | null> => {
+  const subject = await getClerkAuthSubject();
+  if (!subject) return null;
+
+  const user = await currentUser();
+  const primary = user?.emailAddresses.find((item) => item.id === user.primaryEmailAddressId);
+  const verified = [primary, ...(user?.emailAddresses ?? [])].find(
+    (item) => item?.verification?.status === "verified" && item.emailAddress.trim(),
+  );
+  if (!verified) return null;
+
+  const name = [user?.firstName, user?.lastName].filter(Boolean).join(" ").trim() || user?.username || undefined;
+  return {
+    subject,
+    email: verified.emailAddress.trim().toLowerCase(),
+    name,
+  };
+});

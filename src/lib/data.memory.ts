@@ -1984,6 +1984,54 @@ export async function ensureUserForExternalAuth(input: ExternalAuthUserInput): P
   return { ...user };
 }
 
+/**
+ * Bind a real Clerk identity only to an existing, still-pending invitation.
+ * This is deliberately separate from ensureUserForExternalAuth: a production
+ * Clerk request must not provision an arbitrary user just because the email
+ * is new to Broker Desk.
+ */
+export async function bindCurrentClerkIdentityToPendingInvitation(
+  input: ExternalAuthUserInput,
+): Promise<User | null> {
+  const subject = input.subject.trim();
+  const email = input.email?.trim().toLowerCase();
+  if (!subject || !email) return null;
+
+  const alreadyBound = db.users.find((item) => item.externalAuthSubject === subject);
+  if (alreadyBound) return { ...alreadyBound };
+
+  const conflictingIdentity = db.users.find(
+    (item) => item.email.toLowerCase() === email && item.externalAuthSubject && item.externalAuthSubject !== subject,
+  );
+  if (conflictingIdentity) return null;
+
+  const candidates = db.users.filter((item) => {
+    if (item.externalAuthSubject || item.email.toLowerCase() !== email) return false;
+    return db.tenantMemberships.some((membership) => {
+      if (
+        membership.userId !== item.id ||
+        membership.status !== "invited" ||
+        membership.invitationStatus !== "pending" ||
+        membership.invitedEmail?.trim().toLowerCase() !== email
+      ) {
+        return false;
+      }
+      const tenant = db.tenants.find((candidate) => candidate.id === membership.tenantId);
+      return (
+        (tenant?.status === "trial" || tenant?.status === "active") &&
+        (!membership.invitationExpiresAt || membership.invitationExpiresAt.getTime() > Date.now())
+      );
+    });
+  });
+
+  if (candidates.length !== 1) return null;
+  if (!candidates[0].name.trim()) {
+    candidates[0].name = input.name?.trim() || email;
+  }
+  candidates[0].externalAuthSubject = subject;
+  return { ...candidates[0] };
+}
+
 export async function suspendUserForExternalAuthSubject(subject: string): Promise<{ userId?: string; suspendedMembershipCount: number }> {
   const normalized = subject.trim();
   if (!normalized) return { suspendedMembershipCount: 0 };

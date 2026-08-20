@@ -133,6 +133,7 @@ const REQUIRED_PRODUCTION_MIGRATIONS = [
   "20260819_008_current_user_membership_state_function.sql",
   "20260819_009_tenant_owner_lifecycle_lock.sql",
   "20260820_010_tenant_creation_idempotency.sql",
+  "20260820_011_bind_invited_clerk_identity.sql",
 ] as const;
 
 const OPEN_STAGES: ClientStage[] = ["lead", "contacted", "quoted", "viewing", "negotiating"];
@@ -1865,6 +1866,39 @@ export async function ensureUserForExternalAuth(input: {
     const user = mapUser(inserted.rows[0]);
     return user;
   });
+}
+
+/**
+ * Bind a Clerk identity only to an existing, valid pending invitation. The
+ * restricted SQL function performs the email, expiry, tenant-status and
+ * unbound-placeholder checks under one transaction; this adapter never
+ * provisions an arbitrary user.
+ */
+export async function bindCurrentClerkIdentityToPendingInvitation(input: {
+  subject: string;
+  email?: string;
+  name?: string;
+}): Promise<User | null> {
+  await ensureSchema();
+  const subject = input.subject.trim();
+  const email = input.email?.trim().toLowerCase();
+  if (!subject || !email) return null;
+
+  try {
+    const result = await getPool().query(
+      `SELECT brokerdesk_private.bind_current_clerk_identity_to_pending_invitation($1, $2, $3) AS user_id`,
+      [subject, email, input.name?.trim() || null],
+    );
+    if (!result.rows[0]?.user_id) return null;
+    return getUserByExternalAuthSubject(subject);
+  } catch (error) {
+    // The append-only function is intentionally not part of the currently
+    // applied migration set. Until it is applied, retain the honest
+    // no-binding result rather than turning an unconfigured invite path into
+    // a generic page failure.
+    if ((error as { code?: string })?.code === "42883") return null;
+    throw error;
+  }
 }
 
 export async function suspendUserForExternalAuthSubject(subject: string): Promise<{ userId?: string; suspendedMembershipCount: number }> {

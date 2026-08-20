@@ -132,7 +132,7 @@ import type { InputFileExtractionResult } from "@/lib/input-file-extractor";
 import { queueExcelImportSource } from "@/lib/excel-import-queue";
 import { queueIdentityImportSources } from "@/lib/identity-import-queue";
 import { createClerkInvitationForTenantMember } from "@/lib/clerk-invitations";
-import { getClerkAuthIdentity } from "@/lib/clerk-auth";
+import { getVerifiedClerkAuthIdentity } from "@/lib/clerk-auth";
 import { isClerkAuthEnabled } from "@/lib/auth-mode";
 import { CASE_FIELD_KEYS, getCaseFieldDefinition, isKnownCaseFieldKey } from "@/lib/case-field-catalog";
 import {
@@ -2847,7 +2847,7 @@ export async function createTenantForCurrentUserFormAction(
 export async function acceptTenantInvitationAction(formData: FormData) {
   const user = await getDefaultUser();
   if (!user) throw new Error("登录身份尚未准备好，请重新登录后再试。");
-  const identity = await getClerkAuthIdentity();
+  const identity = await getVerifiedClerkAuthIdentity();
   if (isClerkAuthEnabled() && !identity?.email) {
     throw new Error("无法确认当前 Clerk 身份的受邀邮箱，不能接受邀请。");
   }

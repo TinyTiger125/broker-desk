@@ -12,7 +12,7 @@ import {
   isTrustedHeaderAuthEnabled,
   readTrustedHeaderAuthIdentity,
 } from "@/lib/auth-mode";
-import { getClerkAuthIdentity, getClerkAuthSubject } from "@/lib/clerk-auth";
+import { getClerkAuthIdentity, getClerkAuthSubject, getVerifiedClerkAuthIdentity } from "@/lib/clerk-auth";
 import { headers } from "next/headers";
 import { cache } from "react";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -98,16 +98,24 @@ const resolveDefaultUser = cache(async (preferredUserId?: string) => {
     const subject = await getClerkAuthSubject();
     if (!subject) return null;
 
-    // A subject never changes. For a returning user, this avoids a full Clerk
-    // profile request, a write transaction, and separate membership lookups
-    // on every route navigation.
-    const [sessionLookup] = await resolveTenantSessionLookupsByExternalAuthSubject(subject);
-    if (sessionLookup) return sessionLookup.user;
-
     // A user can exist before their first workspace membership is assigned.
     // Keep that state readable so the workspace selector can explain it.
     const existingUser = await repo.getUserByExternalAuthSubject(subject);
     if (existingUser) return existingUser;
+
+    // An invited Clerk user starts as an email-only local placeholder. Bind
+    // that placeholder only when the current identity exactly matches a valid
+    // pending invitation; never use this path for arbitrary provisioning.
+    const verifiedIdentity = await getVerifiedClerkAuthIdentity();
+    if (verifiedIdentity?.email) {
+      const invitedUser = await repo.bindCurrentClerkIdentityToPendingInvitation(verifiedIdentity);
+      if (invitedUser) return invitedUser;
+    }
+
+    // Keep the lookup after the guarded bind. Calling it before the bind would
+    // cache an empty result for this render and hide the newly bound member.
+    const [sessionLookup] = await resolveTenantSessionLookupsByExternalAuthSubject(subject);
+    if (sessionLookup) return sessionLookup.user;
 
     // Production provisioning is webhook-owned and uses a narrowly scoped
     // management connection. A tenant request must never self-provision by
@@ -164,6 +172,8 @@ export const getUserByExternalAuthSubject: typeof memory.getUserByExternalAuthSu
   repo.getUserByExternalAuthSubject(...args);
 export const ensureUserForExternalAuth: typeof memory.ensureUserForExternalAuth = (...args) =>
   repo.ensureUserForExternalAuth(...args);
+export const bindCurrentClerkIdentityToPendingInvitation: typeof memory.bindCurrentClerkIdentityToPendingInvitation = (...args) =>
+  repo.bindCurrentClerkIdentityToPendingInvitation(...args);
 export const suspendUserForExternalAuthSubject: typeof memory.suspendUserForExternalAuthSubject = (...args) =>
   repo.suspendUserForExternalAuthSubject(...args);
 export const getTenantById: typeof memory.getTenantById = (...args) =>

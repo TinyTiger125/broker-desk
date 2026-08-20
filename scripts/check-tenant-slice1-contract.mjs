@@ -50,7 +50,9 @@ const memberLifecycleMigration = fs.readFileSync(path.resolve("db/migrations/202
 const membershipStateMigration = fs.readFileSync(path.resolve("db/migrations/20260819_008_current_user_membership_state_function.sql"), "utf8");
 const ownerLifecycleLockMigration = fs.readFileSync(path.resolve("db/migrations/20260819_009_tenant_owner_lifecycle_lock.sql"), "utf8");
 const tenantCreationIdempotencyMigration = fs.readFileSync(path.resolve("db/migrations/20260820_010_tenant_creation_idempotency.sql"), "utf8");
+const invitedIdentityBindingMigration = fs.readFileSync(path.resolve("db/migrations/20260820_011_bind_invited_clerk_identity.sql"), "utf8");
 const postgresSource = fs.readFileSync(path.resolve("src/lib/data.postgres.ts"), "utf8");
+const clerkAuthSource = fs.readFileSync(path.resolve("src/lib/clerk-auth.ts"), "utf8");
 const createWorkspacePageSource = fs.readFileSync(path.resolve("src/app/workspace/create/page.tsx"), "utf8");
 const createWorkspaceFormSource = fs.readFileSync(path.resolve("src/app/workspace/create/create-workspace-form.tsx"), "utf8");
 const invitationPageSource = fs.readFileSync(path.resolve("src/app/workspace/invitations/page.tsx"), "utf8");
@@ -79,6 +81,7 @@ assert(tenantCreationIdempotencyMigration.includes("legacy-"), "legacy tenant cr
 assert(!tenantCreationIdempotencyMigration.includes("UNIQUE (name)"), "company names must not become globally unique");
 assert(postgresSource.includes("brokerdesk_private.create_tenant_for_current_user($1, $2, $3)"), "Postgres adapter must pass the stable idempotency key");
 assert(postgresSource.includes("20260820_010_tenant_creation_idempotency.sql"), "required migration list must include tenant creation idempotency");
+assert(postgresSource.includes("20260820_011_bind_invited_clerk_identity.sql"), "required migration list must include invited identity binding");
 assert(createWorkspacePageSource.includes("requestId"), "workspace creation must preserve the request key across reloads");
 assert(createWorkspaceFormSource.includes("useActionState"), "workspace creation must expose structured retry state");
 assert(createWorkspaceFormSource.includes("disabled={pending}"), "workspace creation must disable duplicate submission while pending");
@@ -170,6 +173,23 @@ assert(postgresSource.includes("brokerdesk_private.refresh_tenant_invitation($1,
 assert(postgresSource.includes("brokerdesk_private.record_tenant_invitation_delivery("), "Postgres delivery path must call the restricted function");
 assert(postgresSource.includes("brokerdesk_private.accept_tenant_invitation($1, $2, $3, $4)"), "Postgres acceptance path must call the restricted function");
 assert(postgresSource.includes("brokerdesk_private.list_pending_tenant_invitations_for_current_user()"), "Postgres pending invitation path must call the current-user function");
+assert(postgresSource.includes("brokerdesk_private.bind_current_clerk_identity_to_pending_invitation($1, $2, $3)"), "Postgres Clerk invite binding must use the restricted current-identity function");
+assert(clerkAuthSource.includes("getVerifiedClerkAuthIdentity"), "invitation binding must use a dedicated verified Clerk identity helper");
+assert(clerkAuthSource.includes('item?.verification?.status === "verified"'), "invitation binding must require Clerk email verification");
+assert(fs.readFileSync(path.resolve("src/lib/data.ts"), "utf8").includes("getVerifiedClerkAuthIdentity"), "default user resolution must use the verified invitation identity");
+const acceptInvitationActionSource = actionsSource.slice(actionsSource.indexOf("export async function acceptTenantInvitationAction"));
+assert(acceptInvitationActionSource.includes("getVerifiedClerkAuthIdentity"), "invitation acceptance must use the verified Clerk identity helper");
+assert(!acceptInvitationActionSource.includes("getClerkAuthIdentity()"), "invitation acceptance must not fall back to an unverified Clerk email");
+assert(postgresSource.includes("42883"), "Postgres invite binding must fail closed when the append-only function is not applied");
+assert(invitedIdentityBindingMigration.includes("SECURITY DEFINER"), "invited identity binding must use a restricted definer function");
+assert(invitedIdentityBindingMigration.includes("current_external_auth_subject"), "invited identity binding must verify the request-scoped Clerk subject");
+assert(invitedIdentityBindingMigration.includes("configured_subject IS NULL OR configured_subject <> normalized_subject"), "invited identity binding must fail closed without a request-scoped Clerk subject");
+assert(invitedIdentityBindingMigration.includes("memberships.status = 'invited'"), "invited identity binding must require an invited membership");
+assert(invitedIdentityBindingMigration.includes("memberships.invitation_status = 'pending'"), "invited identity binding must require a pending invitation");
+assert(invitedIdentityBindingMigration.includes("memberships.invitation_expires_at IS NULL OR memberships.invitation_expires_at > NOW()"), "invited identity binding must reject expired invitations");
+assert(invitedIdentityBindingMigration.includes("users.external_auth_subject IS NULL"), "invited identity binding must not overwrite a bound user");
+assert(invitedIdentityBindingMigration.includes("pg_advisory_xact_lock(hashtextextended(normalized_email, 0))"), "invited identity binding must serialize same-email races");
+assert(invitedIdentityBindingMigration.includes("GRANT EXECUTE ON FUNCTION brokerdesk_private.bind_current_clerk_identity_to_pending_invitation(TEXT, TEXT, TEXT) TO brokerdesk_runtime"), "invited identity binding must be runtime-only");
 assert(postgresSource.includes("getAuthenticatedInvitationActorId"), "Postgres invitation writes must derive the actor from the authenticated database identity");
 assert(postgresSource.includes("brokerdesk_private.current_user_id() AS user_id"), "Postgres invitation actor resolution must use the current Clerk-bound database user");
 const pendingInvitationFunction = postgresSource.slice(
@@ -278,8 +298,16 @@ await memory.updateTenantMemberInvitation({
   invitationStatus: "pending",
   sentAt: new Date(),
 });
-const member = await memory.ensureUserForExternalAuth({ subject: `slice1-member-${Date.now()}`, email: invited.user.email, name: invited.user.name });
+assert(
+  (await memory.bindCurrentClerkIdentityToPendingInvitation({ subject: `slice1-wrong-email-${Date.now()}`, email: `wrong-${Date.now()}@example.test` })) === null,
+  "an identity with a different email must not bind to an invitation",
+);
+const invitedSubject = `slice1-member-${Date.now()}`;
+const member = await memory.bindCurrentClerkIdentityToPendingInvitation({ subject: invitedSubject, email: invited.user.email, name: invited.user.name });
 assert(member, "invited identity should bind to the invited local user");
+assert(member.externalAuthSubject === invitedSubject, "pending invitation binding should persist the current Clerk subject");
+const overwritten = await memory.bindCurrentClerkIdentityToPendingInvitation({ subject: `${invitedSubject}-other`, email: invited.user.email, name: invited.user.name });
+assert(overwritten === null, "a different Clerk subject must not overwrite a bound invited user");
 const pendingInvitations = await memory.listPendingTenantInvitations(member.id);
 assert(pendingInvitations.some((item) => item.id === invited.id), "invited user should see their own pending invitation");
 assert(pendingInvitations.find((item) => item.id === invited.id)?.tenantName === created.tenant.name, "pending invitation should include its tenant name without tenant membership access");
@@ -354,6 +382,10 @@ await memory.updateTenantMemberInvitation({
   expiresAt: new Date(Date.now() - 1),
 });
 assert(
+  (await memory.bindCurrentClerkIdentityToPendingInvitation({ subject: `slice1-expiring-${Date.now()}`, email: expiring.user.email })) === null,
+  "expired invitations must not bind a Clerk identity",
+);
+assert(
   (await memory.acceptTenantInvitation({
     userId: expiring.userId,
     tenantId: created.tenant.id,
@@ -378,6 +410,10 @@ await memory.updateTenantMemberInvitation({
   invitationProvider: "manual",
   invitationStatus: "revoked",
 });
+assert(
+  (await memory.bindCurrentClerkIdentityToPendingInvitation({ subject: `slice1-revoked-${Date.now()}`, email: revoked.user.email })) === null,
+  "revoked invitations must not bind a Clerk identity",
+);
 assert(
   (await memory.acceptTenantInvitation({ userId: revoked.userId, tenantId: created.tenant.id, membershipId: revoked.id, invitationToken: revoked.invitationToken })) === null,
   "revoked invitation must be rejected",
