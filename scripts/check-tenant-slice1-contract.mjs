@@ -58,6 +58,8 @@ const membersPageSource = fs.readFileSync(path.resolve("src/app/settings/members
 const appNavSource = fs.readFileSync(path.resolve("src/components/app-nav.tsx"), "utf8");
 const workspacePageSource = fs.readFileSync(path.resolve("src/app/workspace/page.tsx"), "utf8");
 const workspaceSelectorSource = fs.readFileSync(path.resolve("src/app/workspace/workspace-selector.tsx"), "utf8");
+const workspaceRouteSource = fs.readFileSync(path.resolve("src/app/api/workspace/route.ts"), "utf8");
+const workspaceResetSource = fs.readFileSync(path.resolve("src/app/workspace/reset/route.ts"), "utf8");
 
 assert(bootstrapMigration.includes("SECURITY DEFINER"), "tenant bootstrap must use a SECURITY DEFINER function");
 assert(bootstrapMigration.includes("brokerdesk_private.current_user_id()"), "tenant bootstrap must bind the current authenticated local user");
@@ -132,6 +134,9 @@ assert(workspacePageSource.includes("listTenantSessionLookupsByExternalAuthSubje
 assert(workspacePageSource.includes("sessionLookups.map((lookup) => lookup.membership)"), "workspace page must derive status branches from current subject memberships");
 assert(workspaceSelectorSource.includes("new AbortController()"), "workspace selection must fail visibly instead of waiting forever");
 assert(workspaceSelectorSource.includes("if (items.length === 1 && !error)"), "single-workspace selection errors must remain visible");
+assert(workspaceSelectorSource.includes('window.location.replace("/")'), "workspace selection must perform a full navigation after persisting the cookie");
+assert(workspaceRouteSource.includes("shouldUseSecureCookie(request)"), "workspace cookie security must follow the request transport, not NODE_ENV alone");
+assert(workspaceResetSource.includes("shouldUseSecureCookie(request)"), "workspace reset must use the same request-aware cookie security");
 assert(postgresSource.includes("brokerdesk_private.update_tenant_member_capability($1, $2, $3, $4, $5)"), "Postgres role path must use the restricted capability function");
 assert(postgresSource.includes("brokerdesk_private.update_tenant_member_status($1, $2, $3, $4)"), "Postgres status path must use the restricted lifecycle function");
 const postgresRoleFunction = postgresSource.slice(

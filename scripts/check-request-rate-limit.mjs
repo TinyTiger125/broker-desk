@@ -34,11 +34,13 @@ const downloadRequest = new Request("https://brokerdesk.example.test/api/attachm
   headers: { "x-forwarded-for": "198.51.100.40" },
 });
 const ordinaryRequest = new Request("https://brokerdesk.example.test/workspace");
+const membersPageRequest = new Request("https://brokerdesk.example.test/settings/members");
 
 assert(classifyRequestRateLimit(authRequest) === "authentication", "sign-in route must have auth rate limit");
 assert(classifyRequestRateLimit(mutationRequest) === "mutation", "mutating API must have mutation rate limit");
 assert(classifyRequestRateLimit(downloadRequest) === "download", "attachment route must have download rate limit");
 assert(classifyRequestRateLimit(ordinaryRequest) === undefined, "ordinary reads must not be rate limited in app memory");
+assert(classifyRequestRateLimit(membersPageRequest) === undefined, "member settings page GET must not be rate limited in app memory");
 
 const limiter = createRequestRateLimiter();
 const start = 1_000_000;

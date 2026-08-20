@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 
 export type WorkspaceOption = {
   tenantId: string;
@@ -20,7 +19,6 @@ type WorkspaceSelectorProps = {
 };
 
 export function WorkspaceSelector({ items, copy }: WorkspaceSelectorProps) {
-  const router = useRouter();
   const [pendingTenantId, setPendingTenantId] = useState<string | null>(null);
   const [error, setError] = useState("");
 
@@ -38,8 +36,10 @@ export function WorkspaceSelector({ items, copy }: WorkspaceSelectorProps) {
           signal: controller.signal,
         });
         if (!response.ok) throw new Error("workspace_selection_failed");
-        router.push("/");
-        router.refresh();
+        // The response has already persisted the tenant cookie. A full
+        // navigation guarantees the next server render reads that cookie;
+        // push+refresh can race and leave the selector page mounted.
+        window.location.replace("/");
       } catch {
         setPendingTenantId(null);
         setError(copy.error);
@@ -47,7 +47,7 @@ export function WorkspaceSelector({ items, copy }: WorkspaceSelectorProps) {
         window.clearTimeout(timeoutId);
       }
     },
-    [copy.error, router],
+    [copy.error],
   );
 
   useEffect(() => {

@@ -49,7 +49,7 @@ const {
   roleHasTenantPermission,
   listTenantRolePermissions,
 } = loadTsModule("src/lib/tenant-permissions.ts");
-const { selectActiveTenantMembership } = loadTsModule("src/lib/tenant-session.ts");
+const { selectActiveTenantMembership, shouldUseSecureCookie } = loadTsModule("src/lib/tenant-session.ts");
 const { requireTenantSession } = loadTsModule("src/lib/tenant-session.ts");
 const {
   hasActivePlatformOwnerMembership,
@@ -92,6 +92,21 @@ const selectedRequested = selectActiveTenantMembership({
   requestedTenantId: "tenant_cherry",
 });
 assert(selectedRequested?.tenantId === "tenant_cherry", "requested owned tenant should be selected");
+
+assert(
+  shouldUseSecureCookie(new Request("https://brokerdesk.example.test/workspace", { headers: { "x-forwarded-proto": "http" } })),
+  "HTTPS request must remain Secure despite a conflicting forwarded HTTP header",
+);
+assert(
+  shouldUseSecureCookie(new Request("http://brokerdesk.example.test/workspace", { headers: { "x-forwarded-proto": "https" } })),
+  "HTTP request behind an HTTPS proxy should use Secure cookies",
+);
+assert(
+  !shouldUseSecureCookie(new Request("http://brokerdesk.example.test/workspace", { headers: { "x-forwarded-proto": "http" } })),
+  "HTTP request with forwarded HTTP must not use Secure cookies",
+);
+assert(shouldUseSecureCookie(new Request("https://brokerdesk.example.test/workspace")), "HTTPS without a proxy header must use Secure cookies");
+assert(!shouldUseSecureCookie(new Request("http://brokerdesk.example.test/workspace")), "HTTP without a proxy header must not use Secure cookies");
 
 const forbiddenRequested = selectActiveTenantMembership({
   memberships,
@@ -139,11 +154,12 @@ assert(
 const appNavSource = fs.readFileSync("src/components/app-nav.tsx", "utf8");
 assert(appNavSource.includes("getTenantSessionForNavigation"), "AppNav should resolve navigation identity only when required");
 assert(
-  appNavSource.includes("clerkEnabled ? Promise.resolve(null) : getTenantSessionForNavigation()"),
-  "AppNav must skip the navigation-only database session lookup for Clerk users",
+  appNavSource.includes("getTenantSessionForNavigation()") &&
+    appNavSource.includes('capabilityHasTenantPermission(currentCapability, "member.invite")'),
+  "AppNav must resolve current membership capability so Clerk users without member-management permission do not see the members link",
 );
 assert(
-  appNavSource.includes("Protected pages still resolve and authorize their") && appNavSource.includes("own tenant session"),
+  appNavSource.includes("Protected pages") && appNavSource.includes("their own authorization"),
   "AppNav must leave actual tenant authorization to protected pages",
 );
 

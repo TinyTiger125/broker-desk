@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDefaultUser, getTenantById, isTenantAccessibleStatus, listTenantMemberships } from "@/lib/data";
 import { ACTIVE_TENANT_COOKIE_NAME } from "@/lib/tenant-permissions";
+import { shouldUseSecureCookie } from "@/lib/tenant-session";
 
 type WorkspacePayload = {
   tenantId?: string;
@@ -43,7 +44,7 @@ export async function POST(request: Request) {
     maxAge: 60 * 60 * 24 * 365,
     sameSite: "lax",
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: shouldUseSecureCookie(request),
   });
   return response;
 }

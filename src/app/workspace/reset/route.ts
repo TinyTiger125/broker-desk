@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { ACTIVE_TENANT_COOKIE_NAME } from "@/lib/tenant-permissions";
+import { shouldUseSecureCookie } from "@/lib/tenant-session";
 
 export function GET(request: Request) {
   const response = NextResponse.redirect(new URL("/workspace", request.url));
@@ -8,7 +9,7 @@ export function GET(request: Request) {
     maxAge: 0,
     sameSite: "lax",
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: shouldUseSecureCookie(request),
   });
   return response;
 }

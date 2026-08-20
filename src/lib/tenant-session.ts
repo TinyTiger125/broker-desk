@@ -43,6 +43,19 @@ export type TenantSession = {
   membership: TenantMembership;
 };
 
+/**
+ * Preserve Secure cookies whenever the request is already HTTPS. A proxy may
+ * expose the original HTTPS transport through x-forwarded-proto when the
+ * application server receives HTTP, but an untrusted `http` header must never
+ * downgrade an HTTPS request.
+ */
+export function shouldUseSecureCookie(request: Request): boolean {
+  const requestProtocol = new URL(request.url).protocol;
+  if (requestProtocol === "https:") return true;
+  const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase();
+  return forwardedProto === "https";
+}
+
 export function getTenantCapability(membership: TenantMembership): TenantCapabilityPreset {
   return membership.capability ?? "ordinary_member";
 }
