@@ -190,6 +190,8 @@ const postgresStatusFunction = postgresSource.slice(
   postgresSource.indexOf("export async function listCaseWorkbenchFieldRules", postgresSource.indexOf("export async function updateTenantMemberStatus")),
 );
 assert(!postgresStatusFunction.includes("UPDATE tenant_memberships"), "Postgres status path must not bypass the lifecycle function with direct RLS update");
+assert(postgresStatusFunction.includes("listTenantMembers(scopeTenantId)"), "Postgres status path must capture the target user before RLS can hide a suspended member");
+assert(!postgresStatusFunction.includes('SELECT * FROM users WHERE id = $1 LIMIT 1'), "Postgres status path must not reread a suspended user through ordinary RLS after updating");
 assert(postgresSource.includes("brokerdesk_private.create_tenant_invitation($1, $2, $3, $4, $5, $6)"), "Postgres invite path must call the restricted atomic function");
 assert(postgresSource.includes("brokerdesk_private.refresh_tenant_invitation($1, $2, $3, $4)"), "Postgres refresh path must call the restricted function");
 assert(postgresSource.includes("brokerdesk_private.record_tenant_invitation_delivery("), "Postgres delivery path must call the restricted function");

@@ -2501,6 +2501,13 @@ export async function updateTenantMemberStatus(input: {
   const scopeTenantId = resolveTenantId(input.tenantId);
   const actorUserId = input.actorUserId?.trim();
   if (!actorUserId) throw new Error("member status actor is required");
+  // Read the target through the restricted owner-authorized member-list
+  // function before changing its status. A normal users-table read after the
+  // update would be filtered by RLS for suspended/removed members and could
+  // incorrectly turn a committed update into a null result.
+  const existingMember = (await listTenantMembers(scopeTenantId)).find((member) => member.id === input.membershipId);
+  if (!existingMember) return null;
+
   return withTransaction(async (client) => {
     const result = await client.query(
       `SELECT * FROM brokerdesk_private.update_tenant_member_status($1, $2, $3, $4)`,
@@ -2508,18 +2515,9 @@ export async function updateTenantMemberStatus(input: {
     );
     const membership = result.rows[0] ? mapTenantMembership(result.rows[0]) : null;
     if (!membership) return null;
-    const userResult = await client.query("SELECT * FROM users WHERE id = $1 LIMIT 1", [membership.userId]);
-    const user = userResult.rows[0] ? mapUser(userResult.rows[0]) : null;
-    if (!user) return null;
     return {
       ...membership,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        externalAuthSubject: user.externalAuthSubject,
-        createdAt: user.createdAt,
-      },
+      user: existingMember.user,
     };
   });
 }
