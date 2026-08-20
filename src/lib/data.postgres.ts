@@ -5728,7 +5728,10 @@ export async function updateQuotationStatus(quoteId: string, status: QuoteStatus
 
 export async function healthCheckPostgres() {
   await ensureSchema();
-  await getPool().query("SELECT 1");
+  // Health probes have no Clerk request scope by design. The readiness work
+  // above still checks migrations and the restricted runtime role; this final
+  // liveness query must not be routed through the business-query scope proxy.
+  await getRawPool().query("SELECT 1");
   return { ok: true };
 }
 

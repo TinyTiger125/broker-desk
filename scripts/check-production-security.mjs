@@ -535,6 +535,11 @@ for (const globalTable of ["public.users", "public.tenants", "public.tenant_memb
 const healthRouteSource = fs.readFileSync("src/app/api/health/data/route.ts", "utf8");
 assert(!healthRouteSource.includes("error.message"), "health route must not expose internal errors");
 assert(!healthRouteSource.includes("driver:"), "health route must not expose the selected data driver");
+assert(publicRouteMatcherSource?.[1]?.includes("/api/health/data(.*)"), "data health must remain publicly probeable without Clerk identity");
+const healthCheckPostgresSource = postgresDataSource.slice(postgresDataSource.indexOf("export async function healthCheckPostgres"));
+assert(healthCheckPostgresSource.includes("await ensureSchema();"), "data health must retain migration and runtime-role readiness checks");
+assert(healthCheckPostgresSource.includes('await getRawPool().query("SELECT 1")'), "data health liveness must use the unscoped raw pool");
+assert(!healthCheckPostgresSource.includes('await getPool().query("SELECT 1")'), "data health must not require a Clerk business-query scope");
 
 const attachmentSource = fs.readFileSync("src/lib/attachment-storage.ts", "utf8");
 assert(attachmentSource.includes("local-private://"), "development attachments must use a private server URI");
