@@ -2266,23 +2266,29 @@ export async function acceptTenantInvitation(input: {
 export const listTenantSessionLookupsByExternalAuthSubject = cache(async function listTenantSessionLookupsByExternalAuthSubject(
   subject: string,
 ): Promise<TenantSessionLookup[]> {
-  await ensureSchema();
   const normalized = subject.trim();
   if (!normalized) return [];
 
-  // The navigation shell and the route both need this triplet. The restricted
-  // function also preserves suspended/removed membership states for the
-  // current identity without exposing another user's tenant rows.
-  const result = await getPool().query(
-    `SELECT user_record AS user, membership_record AS membership, tenant_record AS tenant
-     FROM brokerdesk_private.list_tenant_session_lookups_for_current_user()
-     ORDER BY (membership_record->>'created_at')::timestamptz ASC`,
-  );
-  return result.rows.map((row) => ({
-    user: mapUser(row.user as Record<string, unknown>),
-    membership: mapTenantMembership(row.membership as Record<string, unknown>),
-    tenant: mapTenant(row.tenant as Record<string, unknown>),
-  }));
+  // Keep the identity binding at this adapter boundary as well as in the
+  // repository proxy. This prevents a cached or direct caller from relying on
+  // an ambient scope that was established by a different request path.
+  return withPostgresAuthContext(normalized, async () => {
+    await ensureSchema();
+
+    // The navigation shell and the route both need this triplet. The restricted
+    // function also preserves suspended/removed membership states for the
+    // current identity without exposing another user's tenant rows.
+    const result = await getPool().query(
+      `SELECT user_record AS user, membership_record AS membership, tenant_record AS tenant
+       FROM brokerdesk_private.list_tenant_session_lookups_for_current_user()
+       ORDER BY (membership_record->>'created_at')::timestamptz ASC`,
+    );
+    return result.rows.map((row) => ({
+      user: mapUser(row.user as Record<string, unknown>),
+      membership: mapTenantMembership(row.membership as Record<string, unknown>),
+      tenant: mapTenant(row.tenant as Record<string, unknown>),
+    }));
+  });
 });
 
 export async function getTenantMembership(input: { userId: string; tenantId: string }): Promise<TenantMembership | null> {

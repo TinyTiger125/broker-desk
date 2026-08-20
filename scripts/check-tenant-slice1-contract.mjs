@@ -129,6 +129,11 @@ assert(membershipStateMigration.includes("memberships.user_id = users.id"), "mem
 assert(membershipStateMigration.includes("current_external_auth_subject()"), "membership state lookup must bind to the current Clerk subject");
 assert(!membershipStateMigration.includes("rolname = 'authenticated'"), "membership state lookup must not grant authenticated RPC execution");
 assert(postgresSource.includes("brokerdesk_private.list_tenant_session_lookups_for_current_user()"), "Postgres session lookup must use the restricted membership state function");
+const postgresSessionLookupFunction = postgresSource.slice(
+  postgresSource.indexOf("export const listTenantSessionLookupsByExternalAuthSubject"),
+  postgresSource.indexOf("export async function getTenantMembership", postgresSource.indexOf("export const listTenantSessionLookupsByExternalAuthSubject")),
+);
+assert(postgresSessionLookupFunction.includes("withPostgresAuthContext(normalized"), "Postgres session lookup must bind the supplied Clerk subject at its adapter boundary");
 assert(ownerLifecycleLockMigration.includes("pg_advisory_xact_lock(hashtextextended(COALESCE(p_tenant_id, ''), 0))"), "owner lifecycle writes must serialize per tenant");
 assert(ownerLifecycleLockMigration.includes("actor_membership.capability = 'company_owner'"), "owner lifecycle lock must preserve explicit capability authorization");
 assert(ownerLifecycleLockMigration.includes("target_status = 'invited' AND p_status = 'active'"), "locked status path must reject invited activation");
@@ -146,6 +151,8 @@ assert(membersReadBoundary.includes("requireTenantSession()"), "member managemen
 assert(appNavSource.includes("link.href !== \"/settings/members\" || canManageMembers"), "member management navigation must be hidden without member-management capability");
 assert(workspacePageSource.includes("listTenantSessionLookupsByExternalAuthSubject"), "workspace page must use current Clerk subject membership state lookup");
 assert(workspacePageSource.includes("sessionLookups.map((lookup) => lookup.membership)"), "workspace page must derive status branches from current subject memberships");
+assert(workspacePageSource.includes("sessionLookups[0]?.user"), "workspace page must prefer the user returned by the current-subject lookup");
+assert(workspacePageSource.includes("sessionLookupFailed"), "workspace page must expose a retryable current-subject lookup failure state");
 assert(workspaceSelectorSource.includes("new AbortController()"), "workspace selection must fail visibly instead of waiting forever");
 assert(!workspaceSelectorSource.includes("useEffect"), "workspace selection must not auto-enter and hide a single verified workspace");
 assert(!workspaceSelectorSource.includes("items.length === 1 && !error"), "single-workspace selection must remain an explicit visible action");
