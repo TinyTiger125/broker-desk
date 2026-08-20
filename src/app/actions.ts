@@ -2766,14 +2766,30 @@ async function sendTenantMemberInvitation(input: {
   return { member: pending ?? member, sent: false, skipped: true };
 }
 
-/** Create a company for the currently authenticated user and enter it atomically. */
-export async function createTenantForCurrentUserAction(formData: FormData) {
+export type CreateTenantActionState = {
+  status: "idle" | "error";
+  message?: string;
+  resetRequestKey?: boolean;
+};
+
+async function createTenantForCurrentUserCore(formData: FormData) {
   const user = await getDefaultUser();
   if (!user) throw new Error("登录身份尚未准备好，请重新登录后再试。");
   const name = String(formData.get("name") ?? "").trim();
   if (!name) throw new Error("公司名称是必填项。");
+  const idempotencyKey = String(formData.get("idempotencyKey") ?? "").trim();
+  if (!idempotencyKey) throw new Error("创建请求已失效，请刷新后重试。");
 
-  const result = await createTenantAccountForUser({ userId: user.id, name, accountType: "company" });
+  const result = await createTenantAccountForUser({
+    userId: user.id,
+    name,
+    accountType: "company",
+    idempotencyKey,
+  });
+  return { user, result };
+}
+
+async function persistTenantCreationSideEffects({ user, result }: Awaited<ReturnType<typeof createTenantForCurrentUserCore>>) {
   const store = await cookies();
   store.set(ACTIVE_TENANT_COOKIE_NAME, result.tenant.id, { httpOnly: true, sameSite: "lax", path: "/" });
   await addAuditLog({
@@ -2787,6 +2803,43 @@ export async function createTenantForCurrentUserAction(formData: FormData) {
   });
   revalidatePath("/workspace");
   revalidatePath("/");
+}
+
+/** Create a company for the currently authenticated user and enter it atomically. */
+export async function createTenantForCurrentUserAction(formData: FormData) {
+  await persistTenantCreationSideEffects(await createTenantForCurrentUserCore(formData));
+  redirect("/");
+}
+
+function createTenantActionError(error: unknown): CreateTenantActionState {
+  const message = error instanceof Error ? error.message : "";
+  if (message === "公司名称是必填项。" || message === "tenant name is required") {
+    return { status: "error", message: "公司名称是必填项。" };
+  }
+  if (message.includes("请求已失效") || message === "tenant idempotency key is required") {
+    return { status: "error", message: "创建请求已失效，请刷新后重试。" };
+  }
+  if (message.includes("idempotency key was reused with different request data")) {
+    return { status: "error", message: "创建内容已变化，请重新开始本次创建。", resetRequestKey: true };
+  }
+  return { status: "error", message: "创建公司失败，请稍后重试。" };
+}
+
+export async function createTenantForCurrentUserFormAction(
+  _previousState: CreateTenantActionState,
+  formData: FormData,
+): Promise<CreateTenantActionState> {
+  let creation: Awaited<ReturnType<typeof createTenantForCurrentUserCore>>;
+  try {
+    creation = await createTenantForCurrentUserCore(formData);
+  } catch (error) {
+    return createTenantActionError(error);
+  }
+  try {
+    await persistTenantCreationSideEffects(creation);
+  } catch {
+    return { status: "error", message: "公司已创建，但进入工作区失败，请重试。" };
+  }
   redirect("/");
 }
 

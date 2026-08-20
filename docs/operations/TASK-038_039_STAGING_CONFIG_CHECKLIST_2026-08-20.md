@@ -1,26 +1,33 @@
 # TASK-038 / TASK-039 `broker-desk-staging` 配置准备清单
 
-> 状态：仅完成版本与配置准备，尚未创建 Vercel 项目、尚未部署、尚未连接非生产数据库。
+> 状态：Vercel Preview 项目与 staging 部署已建立；非生产 Clerk 与 PostgreSQL 尚未接入，暂未开始产品验收。
 > 本清单不保存任何密钥、Cookie、Token、密码或数据库连接值。
 
 ## 代码版本
 
 - Vercel 项目名：`broker-desk-staging`
 - 部署分支：`staging/task-038-039-20260820`
-- 当前快照：`dd63a522e49cc359c69375f1ee8f9c93c3e86197`
+- 当前快照：`a1d6b9eba7012b8df110d5e53d5cb6a58613693d`
 - 基线：`35f0cd6541c4ce0e3e838e21d9dd282855ead37e`
 - 生产 `main` 不在本次部署范围内。
 - 未跟踪的 `src/app/clients/page 2.tsx` 未进入快照。
+- Preview 部署状态：`Ready`
+- Preview 地址：`https://broker-desk-staging-j1gasrthz-neos-projects-d66edfc8.vercel.app`
 
 ## Clerk Development（同一实例）
 
-由环境管理员在 Vercel Preview 环境注入，不写入仓库：
+由环境管理员在 Vercel Preview 环境注入，不写入仓库；当前仅已配置业务门禁变量，以下 Clerk 变量仍待接入：
 
 - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
 - `CLERK_SECRET_KEY`
 - `CLERK_JWT_KEY`（如该 Development 实例要求本地 JWT 验证）
 - `BROKER_DESK_AUTH_MODE=clerk`
 - `BROKER_DESK_CLERK_INVITATION_REDIRECT_URL=<staging-origin>/workspace/invitations`
+
+已配置到 Preview 分支的非敏感门禁变量：
+
+- `BROKER_DESK_DEPLOYMENT_ENV=staging`
+- `GUARANTEE_G1_SLICE1_ENABLED=false`
 
 要求：公开密钥、服务端密钥、JWT/JWKS 来源必须属于同一个 Clerk Development 实例；测试身份 A/B 由环境管理员管理，不写入环境文件、日志或验收材料。
 
@@ -53,8 +60,6 @@
 - Vercel 官方当前列出的 Hobby 为 `$0/月`；若该方案不适用于此次受控验收，Pro 当前列为 `$20/月`，升级前必须重新批准。[官方定价](https://vercel.com/pricing)
 - 部署失败或验收结束时，删除 `broker-desk-staging` 项目及独立数据库即可，不影响现有 `web` 项目和正式环境。
 
-## 一次性建项目请求前置条件
+## 当前状态
 
-仅在上述代码快照、Clerk Development 配置、独立数据库和非生产门禁确认后，向产品负责人提交一次：
-
-`Add New → Project` → 选择仓库 `TinyTiger125/broker-desk` → 分支 `staging/task-038-039-20260820` → 项目名 `broker-desk-staging`。
+项目已由 Vercel Preview 建立并重新部署同一 staging 分支；不得将该 Preview 误称为 Clerk、数据库和 A/B 验收已完成。接入剩余非生产配置后，必须再次部署同一分支并记录新的部署版本。

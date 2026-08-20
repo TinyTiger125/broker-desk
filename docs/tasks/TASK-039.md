@@ -1,9 +1,9 @@
 # TASK-039 / W8：经营主体、成员权限与内部数据可见性基础能力
 
 - 所属专题：全产品身份与经营主体基础能力
-- 状态: Blocked
-- 阻断原因: 非生产验收环境不可用
-- 当前阶段: Slice 1 — Execution blocked：middleware 无法访问 Clerk Development
+- 状态: In Progress
+- 当前阶段: Slice 1 — Runtime Defect Fix
+- 当前环境：Vercel Preview `broker-desk-staging` 已建立并可用于非生产验收；当前 P1 为经营主体创建请求的重复写入与响应丢失重试不幂等
 - 依赖：TASK-038 技术设计与当前有限实现先收口；TASK-036 仍为 Blocked，不作为本任务的本地运行前提
 - 计划：[经营主体、成员权限与内部数据可见性依赖计划](../product/ORGANIZATION_MEMBERS_VISIBILITY_FOUNDATION_PLAN_2026-08-19.md)
 - 切片 0 事实报告：[TASK-039 / W8 Checkpoint A：切片 0 事实报告](../product/ORGANIZATION_MEMBERS_VISIBILITY_FOUNDATION_SLICE_0_FACT_REPORT_2026-08-19.md)
@@ -81,6 +81,18 @@ Checkpoint A 事实结论已确认。本切片只证明：一个真实 Clerk 用
 运行证据记录见：[TASK-039 Slice 1 运行验证记录](../product/ORGANIZATION_MEMBERS_VISIBILITY_SLICE_1_RUNTIME_2026-08-19.md)。本轮仍未形成产品运行验收：本机隔离 PostgreSQL 已建立，完整 migration 链和 TASK-039 migration 已应用，受限 runtime/admin 角色检查通过；但 in-app Browser 没有可附着 tab，未提交登录、邀请或业务操作。Staging 模式服务已按授权启动，`/workspace` 可返回 Clerk 登录跳转；`AGENTS.md` 的 Next 运行时生成区块已清理。
 
 运行结果全部保持 `UNVERIFIED`，不把 memory/静态测试写成持久化或真实 Clerk 闭环。`typecheck`、`build`、工作流规则、差异检查和 TASK-039/TASK-038 专项契约检查通过；全局 lint 和两个依赖数据库/旧 TASK-038 脚本的检查仍按阻断项记录。TASK-039 继续 `In Progress`，TASK-038 继续暂停真实闭环。
+
+## Runtime Defect Fix：经营主体创建幂等（2026-08-20）
+
+Staging 黑盒预检发现创建页在响应迟缓/重复操作后产生两家同名非生产测试公司，且页面没有明确成功结果。现有两家同名测试公司保留为缺陷证据，不清理、不作为新测试主体。
+
+本轮限界修正：
+
+- 创建请求使用按当前用户隔离的持久幂等键，并将请求名称与账户类型绑定；同一键同一内容重试返回原经营主体及首位负责人关系，同一键内容冲突明确拒绝；不同键仍允许合法同名公司。
+- 数据库函数在同一事务内写入幂等映射、经营主体和首位 active `company_owner` membership；保留旧两参数函数兼容回滚到旧应用。
+- 创建表单在提交期间禁用输入和按钮；失败显示结构化错误并允许安全重试；成功设置当前工作区并进入首页。
+
+专项契约、typecheck、workflow rules、build 和差异检查通过；全局 lint 仍被既有 TASK-038 申请书页面错误阻断。独立只读复审确认本轮无 P0/P1，但 PostgreSQL migration 实际应用、真实浏览器的刷新/响应丢失、Cookie 持久化和 A/B 邀请链仍未验证。TASK-039 保持 `In Progress / Runtime Defect Fix`，TASK-038 继续暂停。
 
 ## 当前已验证缺口
 

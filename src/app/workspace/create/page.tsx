@@ -1,11 +1,16 @@
-import Link from "next/link";
-import { createTenantForCurrentUserAction } from "@/app/actions";
+import { randomUUID } from "node:crypto";
 import { getLocale } from "@/lib/locale";
+import { CreateWorkspaceForm } from "./create-workspace-form";
 
 export const dynamic = "force-dynamic";
 
-export default async function CreateWorkspacePage() {
+type CreateWorkspacePageProps = {
+  searchParams?: Promise<{ requestId?: string }>;
+};
+
+export default async function CreateWorkspacePage({ searchParams }: CreateWorkspacePageProps) {
   const locale = await getLocale();
+  const params = searchParams ? await searchParams : {};
   const isZh = locale === "zh";
   const isKo = locale === "ko";
   const title = isZh ? "创建公司" : isKo ? "회사 만들기" : "会社を作成";
@@ -16,7 +21,9 @@ export default async function CreateWorkspacePage() {
       : "会社を作成すると、同時に会社の責任者としてワークスペースに入ります。正式利用には契約またはトライアル資格が必要です。";
   const nameLabel = isZh ? "公司名称" : isKo ? "회사명" : "会社名";
   const submit = isZh ? "创建并进入" : isKo ? "만들고 입장" : "作成して入室";
+  const pending = isZh ? "创建中…" : isKo ? "만드는 중…" : "作成中…";
   const cancel = isZh ? "返回工作区" : isKo ? "워크스페이스로 돌아가기" : "ワークスペースに戻る";
+  const idempotencyKey = params.requestId?.trim() || randomUUID();
 
   return (
     <section className="broker-desk-auth-route flex min-h-screen items-center justify-center bg-[#f8f9ff] px-5 py-10 sm:px-8">
@@ -24,16 +31,13 @@ export default async function CreateWorkspacePage() {
         <p className="text-sm font-black uppercase tracking-[0.14em] text-[#1960a3]">Broker Desk</p>
         <h1 className="mt-3 text-3xl font-black text-slate-950">{title}</h1>
         <p className="mt-4 text-sm leading-6 text-slate-600">{description}</p>
-        <form action={createTenantForCurrentUserAction} className="mt-8 grid gap-3">
-          <label className="grid gap-2 text-sm font-bold text-slate-800">
-            {nameLabel}
-            <input name="name" required autoFocus className="min-h-11 rounded border border-slate-300 px-3 font-normal outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200" />
-          </label>
-          <div className="mt-3 flex flex-wrap gap-3">
-            <button type="submit" className="min-h-11 bg-slate-950 px-4 text-sm font-bold text-white hover:bg-slate-800">{submit}</button>
-            <Link href="/workspace" className="inline-flex min-h-11 items-center border border-slate-300 px-4 text-sm font-bold text-slate-900 hover:bg-slate-50">{cancel}</Link>
-          </div>
-        </form>
+        <CreateWorkspaceForm
+          initialIdempotencyKey={idempotencyKey}
+          nameLabel={nameLabel}
+          submitLabel={submit}
+          pendingLabel={pending}
+          cancelLabel={cancel}
+        />
       </div>
     </section>
   );

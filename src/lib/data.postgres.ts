@@ -84,9 +84,8 @@ import type {
   GuaranteePreviewOutputInput,
 } from "@/lib/data.memory";
 import type { TenantRole, TenantCapabilityPreset } from "@/lib/tenant-permissions";
-import { randomUUID } from "node:crypto";
 import type { LifecycleFilter, LifecycleStatus } from "@/lib/record-lifecycle";
-import { getTenantBootstrapStatus, getTenantDeploymentEnvironment } from "@/lib/tenant-bootstrap-policy";
+import { getTenantDeploymentEnvironment } from "@/lib/tenant-bootstrap-policy";
 
 export type TenantSessionLookup = {
   user: User;
@@ -133,6 +132,7 @@ const REQUIRED_PRODUCTION_MIGRATIONS = [
   "20260819_007_tenant_member_lifecycle_functions.sql",
   "20260819_008_current_user_membership_state_function.sql",
   "20260819_009_tenant_owner_lifecycle_lock.sql",
+  "20260820_010_tenant_creation_idempotency.sql",
 ] as const;
 
 const OPEN_STAGES: ClientStage[] = ["lead", "contacted", "quoted", "viewing", "negotiating"];
@@ -2135,21 +2135,23 @@ export async function createTenantAccountForUser(input: {
   name: string;
   slug?: string;
   accountType?: Tenant["accountType"];
+  idempotencyKey: string;
 }): Promise<{ tenant: Tenant; membership: TenantMembership }> {
   await ensureSchema();
   const name = input.name.trim();
   if (!name) throw new Error("tenant name is required");
+  const idempotencyKey = input.idempotencyKey.trim();
+  if (!idempotencyKey) throw new Error("tenant idempotency key is required");
 
   return withTransaction(async (client) => {
-    const tenantStatus = getTenantBootstrapStatus();
     await client.query(
       "SELECT set_config('app.broker_desk_deployment_env', $1, true)",
       [getTenantDeploymentEnvironment()],
     );
     const bootstrapResult = await client.query(
       `SELECT *
-       FROM brokerdesk_private.create_tenant_for_current_user($1, $2)`,
-      [name, input.accountType ?? "company"],
+       FROM brokerdesk_private.create_tenant_for_current_user($1, $2, $3)`,
+      [name, input.accountType ?? "company", idempotencyKey],
     );
     const bootstrap = bootstrapResult.rows[0] as Record<string, unknown> | undefined;
     if (!bootstrap) throw new Error("tenant bootstrap returned no membership");

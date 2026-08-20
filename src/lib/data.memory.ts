@@ -96,6 +96,17 @@ export type TenantMembership = {
   updatedAt: Date;
 };
 
+export type TenantCreationRequest = {
+  id: string;
+  userId: string;
+  idempotencyKey: string;
+  requestName: string;
+  accountType: TenantAccountType;
+  tenantId: string;
+  membershipId: string;
+  createdAt: Date;
+};
+
 export { capabilityHasTenantPermission, listTenantCapabilityPermissions } from "@/lib/tenant-permissions";
 export { tenantRoleForCapabilityPreset } from "@/lib/tenant-permissions";
 
@@ -572,6 +583,7 @@ type DB = {
   users: User[];
   tenants: Tenant[];
   tenantMemberships: TenantMembership[];
+  tenantCreationRequests: TenantCreationRequest[];
   clients: Client[];
   properties: Property[];
   quotations: Quotation[];
@@ -774,6 +786,7 @@ function cloneDb(input: DB): DB {
     users: cloneCollection(input.users),
     tenants: cloneCollection(input.tenants),
     tenantMemberships: cloneCollection(input.tenantMemberships),
+    tenantCreationRequests: cloneCollection(input.tenantCreationRequests),
     clients: cloneCollection(input.clients),
     properties: cloneCollection(input.properties),
     quotations: cloneCollection(input.quotations),
@@ -806,6 +819,7 @@ function qaBusinessDataCounts(): QaBusinessDataCounts {
   return {
     tenants: db.tenants.length,
     tenantMemberships: db.tenantMemberships.length,
+    tenantCreationRequests: db.tenantCreationRequests.length,
     clients: db.clients.length,
     properties: db.properties.length,
     quotations: db.quotations.length,
@@ -912,6 +926,7 @@ const _freshDb: DB = withDefaultTenantScope({
       updatedAt: new Date(now - 5 * 24 * 60 * 60 * 1000),
     },
   ],
+  tenantCreationRequests: [],
   properties: [
     {
       id: "prop_minato_tower",
@@ -1354,6 +1369,7 @@ backfillTenantScope(db);
 if (!db.tenants) db.tenants = cloneCollection(_freshDb.tenants);
 db.tenants.forEach(ensureTenantDefaults);
 if (!db.tenantMemberships) db.tenantMemberships = cloneCollection(_freshDb.tenantMemberships);
+if (!db.tenantCreationRequests) db.tenantCreationRequests = [];
 db.tenantMemberships.forEach(ensureTenantMembershipDefaults);
 if (!db.guaranteeApplicationDrafts) db.guaranteeApplicationDrafts = cloneCollection(_freshDb.guaranteeApplicationDrafts);
 if (!db.correctionEvents) db.correctionEvents = [];
@@ -1376,6 +1392,7 @@ export function resetBusinessDataForQa(): QaBusinessDataCounts {
   db.users = cloneCollection(_freshDb.users);
   db.tenants = cloneCollection(_freshDb.tenants);
   db.tenantMemberships = cloneCollection(_freshDb.tenantMemberships);
+  db.tenantCreationRequests = [];
   db.clients = [];
   db.properties = [];
   db.quotations = [];
@@ -2092,11 +2109,31 @@ export async function createTenantAccountForUser(input: {
   name: string;
   slug?: string;
   accountType?: TenantAccountType;
+  idempotencyKey: string;
 }): Promise<{ tenant: Tenant; membership: TenantMembership }> {
   const user = db.users.find((item) => item.id === input.userId);
   if (!user) throw new Error("user not found");
   const name = input.name.trim();
   if (!name) throw new Error("tenant name is required");
+  const idempotencyKey = input.idempotencyKey.trim();
+  if (!idempotencyKey) throw new Error("tenant idempotency key is required");
+  if (idempotencyKey.length > 200) throw new Error("tenant idempotency key is too long");
+  const accountType = input.accountType ?? "company";
+
+  const existingRequest = db.tenantCreationRequests.find(
+    (item) => item.userId === user.id && item.idempotencyKey === idempotencyKey,
+  );
+  if (existingRequest) {
+    if (existingRequest.requestName !== name || existingRequest.accountType !== accountType) {
+      throw new Error("tenant idempotency key was reused with different request data");
+    }
+    const existingTenant = db.tenants.find((item) => item.id === existingRequest.tenantId);
+    const existingMembership = db.tenantMemberships.find(
+      (item) => item.id === existingRequest.membershipId && item.tenantId === existingRequest.tenantId,
+    );
+    if (!existingTenant || !existingMembership) throw new Error("tenant creation record is incomplete");
+    return { tenant: { ...existingTenant }, membership: { ...existingMembership } };
+  }
 
   const baseSlug = slugifyTenantName(input.slug || name);
   let slug = baseSlug;
@@ -2111,7 +2148,7 @@ export async function createTenantAccountForUser(input: {
     id: makeId("tenant"),
     name,
     slug,
-    accountType: input.accountType ?? "company",
+    accountType,
     // A newly created company is a non-production test account in local and
     // preview environments. Production qualification remains a separate
     // subscription/trial/platform-approval gate.
@@ -2136,6 +2173,16 @@ export async function createTenantAccountForUser(input: {
   };
   db.tenants.push(tenant);
   db.tenantMemberships.push(membership);
+  db.tenantCreationRequests.push({
+    id: makeId("tenant_creation"),
+    userId: user.id,
+    idempotencyKey,
+    requestName: name,
+    accountType,
+    tenantId: tenant.id,
+    membershipId: membership.id,
+    createdAt: nowDate,
+  });
   return { tenant: { ...tenant }, membership: { ...membership } };
 }
 

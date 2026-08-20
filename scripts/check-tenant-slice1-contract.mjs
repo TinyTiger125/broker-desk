@@ -49,7 +49,10 @@ const invitationAcceptanceFixMigration = fs.readFileSync(path.resolve("db/migrat
 const memberLifecycleMigration = fs.readFileSync(path.resolve("db/migrations/20260819_007_tenant_member_lifecycle_functions.sql"), "utf8");
 const membershipStateMigration = fs.readFileSync(path.resolve("db/migrations/20260819_008_current_user_membership_state_function.sql"), "utf8");
 const ownerLifecycleLockMigration = fs.readFileSync(path.resolve("db/migrations/20260819_009_tenant_owner_lifecycle_lock.sql"), "utf8");
+const tenantCreationIdempotencyMigration = fs.readFileSync(path.resolve("db/migrations/20260820_010_tenant_creation_idempotency.sql"), "utf8");
 const postgresSource = fs.readFileSync(path.resolve("src/lib/data.postgres.ts"), "utf8");
+const createWorkspacePageSource = fs.readFileSync(path.resolve("src/app/workspace/create/page.tsx"), "utf8");
+const createWorkspaceFormSource = fs.readFileSync(path.resolve("src/app/workspace/create/create-workspace-form.tsx"), "utf8");
 const invitationPageSource = fs.readFileSync(path.resolve("src/app/workspace/invitations/page.tsx"), "utf8");
 const membersPageSource = fs.readFileSync(path.resolve("src/app/settings/members/page.tsx"), "utf8");
 const appNavSource = fs.readFileSync(path.resolve("src/components/app-nav.tsx"), "utf8");
@@ -61,7 +64,24 @@ assert(bootstrapMigration.includes("brokerdesk_private.current_user_id()"), "ten
 assert(bootstrapMigration.includes("app.broker_desk_deployment_env"), "tenant bootstrap status must use the server deployment environment");
 assert(!/\bp_status\b/.test(bootstrapMigration), "tenant bootstrap must not accept a caller-selected status");
 assert(!bootstrapMigration.includes("rolname = 'authenticated'"), "tenant bootstrap must not grant direct authenticated RPC execution");
-assert(postgresSource.includes("brokerdesk_private.create_tenant_for_current_user($1, $2)"), "Postgres adapter must call the owner bootstrap function without a status argument");
+assert(tenantCreationIdempotencyMigration.includes("CREATE TABLE IF NOT EXISTS public.tenant_creation_requests"), "tenant creation must persist an idempotency mapping");
+assert(tenantCreationIdempotencyMigration.includes("UNIQUE (user_id, idempotency_key)"), "tenant creation idempotency must be scoped to the user and request key");
+assert(tenantCreationIdempotencyMigration.includes("request_name TEXT NOT NULL"), "tenant creation mapping must bind the request name");
+assert(tenantCreationIdempotencyMigration.includes("account_type TEXT NOT NULL"), "tenant creation mapping must bind the account type");
+assert(tenantCreationIdempotencyMigration.includes("ENABLE ROW LEVEL SECURITY"), "tenant creation mapping must remain protected by RLS");
+assert(tenantCreationIdempotencyMigration.includes("REVOKE ALL ON TABLE public.tenant_creation_requests FROM PUBLIC"), "tenant creation mapping must not be directly public");
+assert(tenantCreationIdempotencyMigration.includes("pg_advisory_xact_lock"), "tenant creation retries must be serialized across processes");
+assert(tenantCreationIdempotencyMigration.includes("CREATE OR REPLACE FUNCTION brokerdesk_private.create_tenant_for_current_user("), "tenant creation must retain an explicit compatibility function");
+assert(tenantCreationIdempotencyMigration.includes("legacy-"), "legacy tenant creation calls must use a distinct compatibility key");
+assert(!tenantCreationIdempotencyMigration.includes("UNIQUE (name)"), "company names must not become globally unique");
+assert(postgresSource.includes("brokerdesk_private.create_tenant_for_current_user($1, $2, $3)"), "Postgres adapter must pass the stable idempotency key");
+assert(postgresSource.includes("20260820_010_tenant_creation_idempotency.sql"), "required migration list must include tenant creation idempotency");
+assert(createWorkspacePageSource.includes("requestId"), "workspace creation must preserve the request key across reloads");
+assert(createWorkspaceFormSource.includes("useActionState"), "workspace creation must expose structured retry state");
+assert(createWorkspaceFormSource.includes("disabled={pending}"), "workspace creation must disable duplicate submission while pending");
+assert(createWorkspaceFormSource.includes("history.replaceState"), "workspace creation must persist the request key in browser history");
+assert(createWorkspaceFormSource.includes("resetRequestKey"), "a changed request must receive a new client operation key");
+assert(createWorkspaceFormSource.includes("navigation?.type === \"reload\""), "only a page reload may reuse a request key from the URL");
 assert(invitedUserMigration.includes("create_tenant_invitation"), "invite bootstrap migration must define the restricted atomic function");
 assert(invitedUserMigration.includes("SECURITY DEFINER"), "invite user bootstrap must use a SECURITY DEFINER function");
 assert(invitedUserMigration.includes("ON CONFLICT (email) DO NOTHING"), "invite user bootstrap must be idempotent by email");
@@ -176,9 +196,45 @@ const owner = await memory.ensureUserForExternalAuth({
   name: "Slice 1 Owner",
 });
 assert(owner, "owner identity should be provisioned");
-const created = await memory.createTenantAccountForUser({ userId: owner.id, name: `Slice 1 Company ${Date.now()}` });
+const creationName = `Slice 1 Company ${Date.now()}`;
+const creationKey = `slice1-create-${Date.now()}`;
+const created = await memory.createTenantAccountForUser({ userId: owner.id, name: creationName, idempotencyKey: creationKey });
 assert(created.membership.status === "active", "company creation must create an active owner membership");
 assert(created.membership.role === "tenant_owner", "company creator must become tenant_owner");
+
+const retried = await memory.createTenantAccountForUser({ userId: owner.id, name: creationName, idempotencyKey: creationKey });
+assert(retried.tenant.id === created.tenant.id, "retrying the same creation key must return the original tenant");
+assert(retried.membership.id === created.membership.id, "retrying the same creation key must return the original owner membership");
+const sameKeyConcurrent = await Promise.all(
+  Array.from({ length: 4 }, () => memory.createTenantAccountForUser({ userId: owner.id, name: creationName, idempotencyKey: creationKey })),
+);
+assert(new Set(sameKeyConcurrent.map((result) => result.tenant.id)).size === 1, "parallel memory-adapter calls must converge on one tenant");
+let keyReuseRejected = false;
+try {
+  await memory.createTenantAccountForUser({ userId: owner.id, name: `${creationName} changed`, idempotencyKey: creationKey });
+} catch (error) {
+  keyReuseRejected = error instanceof Error && error.message.includes("idempotency key was reused");
+}
+assert(keyReuseRejected, "reusing a key with changed request data must be rejected");
+const sameNameDifferentKey = await memory.createTenantAccountForUser({
+  userId: owner.id,
+  name: creationName,
+  idempotencyKey: `${creationKey}-different`,
+});
+assert(sameNameDifferentKey.tenant.id !== created.tenant.id, "a different idempotency key may create another same-name company");
+let failedCreationRejected = false;
+try {
+  await memory.createTenantAccountForUser({ userId: owner.id, name: "", idempotencyKey: `${creationKey}-failed` });
+} catch (error) {
+  failedCreationRejected = error instanceof Error && error.message === "tenant name is required";
+}
+assert(failedCreationRejected, "invalid company creation must fail before persistence");
+const retriedAfterFailure = await memory.createTenantAccountForUser({
+  userId: owner.id,
+  name: `${creationName} retry`,
+  idempotencyKey: `${creationKey}-failed`,
+});
+assert(retriedAfterFailure.membership.status === "active", "a failed creation key must remain safely retryable");
 
 const invited = await memory.inviteTenantMember({
   tenantId: created.tenant.id,

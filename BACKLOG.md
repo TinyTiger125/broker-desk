@@ -38,7 +38,7 @@
 | TASK-036 | P0 | 全产品 Layout System 统一批次回归 | Blocked | TASK-035 | [TASK-036](docs/tasks/TASK-036.md) | Layout System 结构迁移 Done、响应式路由冒烟 Pass、真实业务回归延期至服务器端预发布；57 张截图/22 路由冒烟/三宽度/键盘返回证据永久保留。预发布需明确 SHA、单内部身份、单非生产 active workspace、可回滚且不使用真实客户资料；输出专题未开始 |
 | TASK-037 | P0 | G1-SLICE-0：保证公司申请书现有行为保护基线 | Done | TASK-036 | [TASK-037](docs/tasks/TASK-037.md) | 五套平台蒙板静态配置、入口、调用关系、隔离机制和回退要求已记录；运行证据为 `UNVERIFIED — Clerk active membership environment unavailable`；未修改代码、数据库或生产行为 |
 | TASK-038 | P0 | G1-SLICE-1：保证公司申请书最小端到端证明 | In Progress | TASK-037 | [TASK-038](docs/tasks/TASK-038.md) | Limited Implementation：默认关闭、单非生产经营主体；专项检查和独立审查后停止。禁止应用 migration、合并、部署、商业上架或改变五套现有平台蒙板生产行为 |
-| TASK-039 | P0 | W8：经营主体、成员权限与内部数据可见性基础能力 | Blocked | TASK-038 技术设计收口后进入切片 0 | [TASK-039](docs/tasks/TASK-039.md) | Blocked / 非生产验收环境不可用；Execution blocked：middleware 无法访问 Clerk Development。受控非生产数据库与 migration ledger 已准备，但真实浏览器验收未开始；不启动验收 Agent、不恢复 TASK-038、不扩大功能代码 |
+| TASK-039 | P0 | W8：经营主体、成员权限与内部数据可见性基础能力 | In Progress | TASK-038 技术设计收口后进入切片 0 | [TASK-039](docs/tasks/TASK-039.md) | Runtime Defect Fix：Staging 已可用；经营主体创建曾因重复提交/响应丢失产生同名重复公司，当前修复要求同一次操作幂等、首位负责人原子成立和失败安全重试；TASK-038 仍暂停 |
 | TASK-003 | P0 | Close the input-material merge completion loop | Proposed | TASK-002 | [TASK-003](docs/tasks/TASK-003.md) | Selection, confirmation, result, failure, and refresh evidence |
 | TASK-004 | P0 | Consolidate template-library and official-template boundaries | Proposed | TASK-002 | [TASK-004](docs/tasks/TASK-004.md) | Role-aware entry, visibility, and installation evidence |
 | TASK-005 | P0 | Separate official template draft and publish states | Proposed | TASK-004 | [TASK-005](docs/tasks/TASK-005.md) | Independent draft save, publish, immutable version, and failure evidence |
