@@ -56,6 +56,7 @@ const clerkAuthSource = fs.readFileSync(path.resolve("src/lib/clerk-auth.ts"), "
 const createWorkspacePageSource = fs.readFileSync(path.resolve("src/app/workspace/create/page.tsx"), "utf8");
 const createWorkspaceFormSource = fs.readFileSync(path.resolve("src/app/workspace/create/create-workspace-form.tsx"), "utf8");
 const invitationPageSource = fs.readFileSync(path.resolve("src/app/workspace/invitations/page.tsx"), "utf8");
+const acceptInvitationFormSource = fs.readFileSync(path.resolve("src/app/workspace/invitations/accept-invitation-form.tsx"), "utf8");
 const membersPageSource = fs.readFileSync(path.resolve("src/app/settings/members/page.tsx"), "utf8");
 const actionsSource = fs.readFileSync(path.resolve("src/app/actions.ts"), "utf8");
 const appNavSource = fs.readFileSync(path.resolve("src/components/app-nav.tsx"), "utf8");
@@ -180,6 +181,13 @@ assert(fs.readFileSync(path.resolve("src/lib/data.ts"), "utf8").includes("getVer
 const acceptInvitationActionSource = actionsSource.slice(actionsSource.indexOf("export async function acceptTenantInvitationAction"));
 assert(acceptInvitationActionSource.includes("getVerifiedClerkAuthIdentity"), "invitation acceptance must use the verified Clerk identity helper");
 assert(!acceptInvitationActionSource.includes("getClerkAuthIdentity()"), "invitation acceptance must not fall back to an unverified Clerk email");
+assert(acceptInvitationActionSource.includes("TenantInvitationActionState"), "invitation acceptance must expose structured UI state");
+assert(acceptInvitationActionSource.includes('return { status: "error"'), "invitation acceptance failures must return visible structured errors");
+assert(acceptInvitationActionSource.includes("try {"), "invitation acceptance must catch retryable server failures");
+assert(acceptInvitationFormSource.includes("useActionState"), "invitation acceptance UI must use the server action state contract");
+assert(acceptInvitationFormSource.includes('role="alert"'), "invitation acceptance UI must expose errors to assistive technology");
+assert(acceptInvitationFormSource.includes("disabled={pending}"), "invitation acceptance UI must prevent duplicate submissions while pending");
+assert(invitationPageSource.includes("AcceptInvitationForm"), "invitation page must render the retryable acceptance form");
 assert(postgresSource.includes("42883"), "Postgres invite binding must fail closed when the append-only function is not applied");
 assert(invitedIdentityBindingMigration.includes("SECURITY DEFINER"), "invited identity binding must use a restricted definer function");
 assert(invitedIdentityBindingMigration.includes("current_external_auth_subject"), "invited identity binding must verify the request-scoped Clerk subject");

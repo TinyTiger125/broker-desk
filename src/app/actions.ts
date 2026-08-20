@@ -2843,37 +2843,57 @@ export async function createTenantForCurrentUserFormAction(
   redirect("/");
 }
 
-/** Explicitly accept one pending invitation after the Clerk identity has been bound by email. */
-export async function acceptTenantInvitationAction(formData: FormData) {
-  const user = await getDefaultUser();
-  if (!user) throw new Error("登录身份尚未准备好，请重新登录后再试。");
-  const identity = await getVerifiedClerkAuthIdentity();
-  if (isClerkAuthEnabled() && !identity?.email) {
-    throw new Error("无法确认当前 Clerk 身份的受邀邮箱，不能接受邀请。");
-  }
-  if (identity?.email && identity.email.toLowerCase() !== user.email.toLowerCase()) {
-    throw new Error("当前登录邮箱与受邀邮箱不一致。");
-  }
-  const tenantId = String(formData.get("tenantId") ?? "").trim();
-  const membershipId = String(formData.get("membershipId") ?? "").trim();
-  const invitationToken = String(formData.get("invitationToken") ?? "").trim();
-  if (!tenantId || !membershipId || !invitationToken) throw new Error("邀请信息不完整。");
+export type TenantInvitationActionState = {
+  status: "idle" | "error";
+  message?: string;
+};
 
-  const member = await acceptTenantInvitation({ userId: user.id, tenantId, membershipId, invitationToken });
-  if (!member) throw new Error("邀请已撤销、已过期，或当前登录邮箱与受邀邮箱不一致。");
-  const store = await cookies();
-  store.set(ACTIVE_TENANT_COOKIE_NAME, tenantId, { httpOnly: true, sameSite: "lax", path: "/" });
-  await addAuditLog({
-    tenantId,
-    userId: user.id,
-    action: "tenant_invitation_accepted",
-    targetType: "member",
-    targetId: membershipId,
-    message: "成员已接受经营主体邀请。",
-    context: { membershipId, role: member.role },
-  });
-  revalidatePath("/workspace");
-  revalidatePath("/workspace/invitations");
+/** Explicitly accept one pending invitation after the Clerk identity has been bound by email. */
+export async function acceptTenantInvitationAction(
+  _previousState: TenantInvitationActionState,
+  formData: FormData,
+): Promise<TenantInvitationActionState> {
+  let tenantId = "";
+  let membershipId = "";
+  try {
+    const identity = await getVerifiedClerkAuthIdentity();
+    if (isClerkAuthEnabled() && !identity?.email) {
+      return { status: "error", message: "请先验证当前登录邮箱，再接受公司邀请。" };
+    }
+    const user = await getDefaultUser();
+    if (!user) {
+      return { status: "error", message: "当前登录身份尚未完成邀请绑定，请确认使用受邀邮箱登录。" };
+    }
+    if (identity?.email && identity.email.toLowerCase() !== user.email.toLowerCase()) {
+      return { status: "error", message: "当前登录邮箱与受邀邮箱不一致。" };
+    }
+    tenantId = String(formData.get("tenantId") ?? "").trim();
+    membershipId = String(formData.get("membershipId") ?? "").trim();
+    const invitationToken = String(formData.get("invitationToken") ?? "").trim();
+    if (!tenantId || !membershipId || !invitationToken) {
+      return { status: "error", message: "邀请信息不完整，请刷新后重试。" };
+    }
+
+    const member = await acceptTenantInvitation({ userId: user.id, tenantId, membershipId, invitationToken });
+    if (!member) {
+      return { status: "error", message: "邀请已撤销、已过期，或当前登录邮箱与受邀邮箱不一致。" };
+    }
+    const store = await cookies();
+    store.set(ACTIVE_TENANT_COOKIE_NAME, tenantId, { httpOnly: true, sameSite: "lax", path: "/" });
+    await addAuditLog({
+      tenantId,
+      userId: user.id,
+      action: "tenant_invitation_accepted",
+      targetType: "member",
+      targetId: membershipId,
+      message: "成员已接受经营主体邀请。",
+      context: { membershipId, role: member.role },
+    });
+    revalidatePath("/workspace");
+    revalidatePath("/workspace/invitations");
+  } catch {
+    return { status: "error", message: "邀请暂时无法接受，请检查登录身份后重试。" };
+  }
   redirect("/");
 }
 

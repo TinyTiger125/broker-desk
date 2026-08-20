@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { acceptTenantInvitationAction } from "@/app/actions";
 import { getDefaultUser, listPendingTenantInvitations } from "@/lib/data";
 import { getLocale } from "@/lib/locale";
+import { AcceptInvitationForm } from "./accept-invitation-form";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +13,7 @@ export default async function WorkspaceInvitationsPage() {
   const title = isZh ? "公司邀请" : isKo ? "회사 초대" : "会社への招待";
   const empty = isZh ? "当前没有待接受的邀请。" : isKo ? "현재 수락할 초대가 없습니다." : "承諾できる招待はありません。";
   const accept = isZh ? "接受并进入" : isKo ? "수락하고 입장" : "承諾して入室";
+  const accepting = isZh ? "正在接受…" : isKo ? "수락 중…" : "承諾中…";
   const back = isZh ? "返回工作区" : isKo ? "워크스페이스로 돌아가기" : "ワークスペースに戻る";
 
   return (
@@ -27,12 +28,13 @@ export default async function WorkspaceInvitationsPage() {
                 <p className="font-bold text-slate-950">{invitation.tenantName ?? invitation.tenantId}</p>
                 <p className="mt-1 text-xs text-slate-500">{user?.email}</p>
               </div>
-              <form action={acceptTenantInvitationAction}>
-                <input type="hidden" name="tenantId" value={invitation.tenantId} />
-                <input type="hidden" name="membershipId" value={invitation.id} />
-                <input type="hidden" name="invitationToken" value={invitation.invitationToken ?? ""} />
-                <button className="min-h-10 bg-slate-950 px-4 text-sm font-bold text-white hover:bg-slate-800">{accept}</button>
-              </form>
+              <AcceptInvitationForm
+                tenantId={invitation.tenantId}
+                membershipId={invitation.id}
+                invitationToken={invitation.invitationToken ?? ""}
+                acceptLabel={accept}
+                pendingLabel={accepting}
+              />
             </div>
           ))}
         </div>
