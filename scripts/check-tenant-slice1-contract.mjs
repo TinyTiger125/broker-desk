@@ -151,6 +151,7 @@ const membersReadBoundary = membersPageSource.slice(0, membersPageSource.indexOf
 assert(membersReadBoundary.includes("requireTenantSession()"), "member management page must establish session without broad read permission");
 assert(membersPageSource.includes("listTenantMembersForAuthenticatedTenant"), "member management page must read with the established authenticated session identity");
 assert(membersPageSource.includes("membersLoadFailed"), "member management page must expose a retryable member-read failure state");
+assert(membersPageSource.includes('redirect("/workspace")'), "member management page must return multi-tenant users to the canonical workspace selector");
 assert(dataSource.includes("postgres.withPostgresAuthContext(subject"), "authenticated member read must bind the established Clerk subject at the adapter boundary");
 assert(appNavSource.includes("link.href !== \"/settings/members\" || canManageMembers"), "member management navigation must be hidden without member-management capability");
 assert(workspacePageSource.includes("listTenantSessionLookupsByExternalAuthSubject"), "workspace page must use current Clerk subject membership state lookup");

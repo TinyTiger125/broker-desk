@@ -5,11 +5,12 @@ import {
   updateTenantMemberRoleAction,
   updateTenantMemberStatusAction,
 } from "@/app/actions";
+import { redirect } from "next/navigation";
 import { listTenantMembersForAuthenticatedTenant, type TenantInvitationStatus } from "@/lib/data";
 import { getLocale, type Locale } from "@/lib/locale";
 import { capabilityHasTenantPermission } from "@/lib/tenant-permissions";
 import { type TenantCapabilityPreset } from "@/lib/data";
-import { getTenantCapability, requireTenantSession } from "@/lib/tenant-session";
+import { getTenantCapability, requireTenantSession, TenantSessionError } from "@/lib/tenant-session";
 
 export const dynamic = "force-dynamic";
 
@@ -162,10 +163,20 @@ function flashMessage(locale: Locale, flash?: string) {
 }
 
 export default async function TenantMembersPage({ searchParams }: MembersPageProps) {
-  const [locale, session] = await Promise.all([
-    getLocale(),
-    requireTenantSession(),
-  ]);
+  const localePromise = getLocale();
+  let session;
+  try {
+    session = await requireTenantSession();
+  } catch (error) {
+    // A user with multiple active companies must choose the current company
+    // before any company-scoped page can read data. Send them to the canonical
+    // selector instead of exposing the generic route error page.
+    if (error instanceof TenantSessionError && error.code === "tenant_forbidden") {
+      redirect("/workspace");
+    }
+    throw error;
+  }
+  const locale = await localePromise;
   const ui = copy(locale);
   const currentCapability = getTenantCapability(session.membership);
   const canManageMembers = capabilityHasTenantPermission(currentCapability, "member.invite");
