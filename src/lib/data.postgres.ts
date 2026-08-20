@@ -135,6 +135,7 @@ const REQUIRED_PRODUCTION_MIGRATIONS = [
   "20260820_010_tenant_creation_idempotency.sql",
   "20260820_011_bind_invited_clerk_identity.sql",
   "20260820_012_current_tenant_member_read.sql",
+  "20260821_013_fix_removed_invitation_return.sql",
 ] as const;
 
 const OPEN_STAGES: ClientStage[] = ["lead", "contacted", "quoted", "viewing", "negotiating"];

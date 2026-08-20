@@ -286,24 +286,28 @@ export default async function TenantMembersPage({ searchParams }: MembersPagePro
                 <p className="truncate text-xs text-slate-500">{member.user.email}</p>
               </div>
               <div className="lg:hidden text-xs font-semibold text-slate-500">{ui.role}</div>
-              <form action={updateTenantMemberRoleAction} className="flex items-center gap-2">
-                <input type="hidden" name="membershipId" value={member.id} />
-                <select
-                  name="capabilityPreset"
-                  defaultValue={capabilityForMember(member)}
-                  disabled={!canUpdateRole}
-                  className="min-w-0 rounded-lg border border-slate-300 px-2 py-1.5 text-xs disabled:bg-slate-100"
-                >
-                  {Object.keys(capabilityLabels).map((preset) => (
-                    <option key={preset} value={preset}>
-                      {capabilityLabels[preset as TenantCapabilityPreset][locale]}
-                    </option>
-                  ))}
-                </select>
-                {canUpdateRole ? (
-                  <button className="rounded-md border border-slate-300 px-2 py-1.5 text-xs font-bold text-slate-700">{ui.saveRole}</button>
-                ) : null}
-              </form>
+              {member.status === "removed" ? (
+                <span className="text-xs font-semibold text-slate-500">{capabilityLabels[capabilityForMember(member)][locale]}</span>
+              ) : (
+                <form action={updateTenantMemberRoleAction} className="flex items-center gap-2">
+                  <input type="hidden" name="membershipId" value={member.id} />
+                  <select
+                    name="capabilityPreset"
+                    defaultValue={capabilityForMember(member)}
+                    disabled={!canUpdateRole}
+                    className="min-w-0 rounded-lg border border-slate-300 px-2 py-1.5 text-xs disabled:bg-slate-100"
+                  >
+                    {Object.keys(capabilityLabels).map((preset) => (
+                      <option key={preset} value={preset}>
+                        {capabilityLabels[preset as TenantCapabilityPreset][locale]}
+                      </option>
+                    ))}
+                  </select>
+                  {canUpdateRole ? (
+                    <button className="rounded-md border border-slate-300 px-2 py-1.5 text-xs font-bold text-slate-700">{ui.saveRole}</button>
+                  ) : null}
+                </form>
+              )}
               <div className="flex flex-wrap items-center gap-2 text-xs font-bold">
                 <span className="lg:hidden basis-full text-xs font-semibold text-slate-500">{ui.status}</span>
                 <span className={`rounded-full px-2 py-1 ${statusTone(member.status)}`}>{member.status}</span>
@@ -337,7 +341,7 @@ export default async function TenantMembersPage({ searchParams }: MembersPagePro
                     <button className="rounded-md border border-rose-200 px-3 py-1.5 text-xs font-bold text-rose-700">{ui.remove}</button>
                   </form>
                 ) : null}
-                {canRemove ? (
+                {canRemove && (member.status === "active" || member.status === "suspended") ? (
                   <form action={updateTenantMemberStatusAction}>
                     <input type="hidden" name="membershipId" value={member.id} />
                     <input type="hidden" name="status" value={member.status === "active" ? "suspended" : "active"} />

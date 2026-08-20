@@ -52,6 +52,7 @@ const ownerLifecycleLockMigration = fs.readFileSync(path.resolve("db/migrations/
 const tenantCreationIdempotencyMigration = fs.readFileSync(path.resolve("db/migrations/20260820_010_tenant_creation_idempotency.sql"), "utf8");
 const invitedIdentityBindingMigration = fs.readFileSync(path.resolve("db/migrations/20260820_011_bind_invited_clerk_identity.sql"), "utf8");
 const tenantMemberReadMigration = fs.readFileSync(path.resolve("db/migrations/20260820_012_current_tenant_member_read.sql"), "utf8");
+const removedInvitationFixMigration = fs.readFileSync(path.resolve("db/migrations/20260821_013_fix_removed_invitation_return.sql"), "utf8");
 const postgresSource = fs.readFileSync(path.resolve("src/lib/data.postgres.ts"), "utf8");
 const requestScopeQueryExecutor = postgresSource.slice(
   postgresSource.indexOf("async function queryWithinRequestScope"),
@@ -94,6 +95,7 @@ assert(postgresSource.includes("brokerdesk_private.create_tenant_for_current_use
 assert(postgresSource.includes("20260820_010_tenant_creation_idempotency.sql"), "required migration list must include tenant creation idempotency");
 assert(postgresSource.includes("20260820_011_bind_invited_clerk_identity.sql"), "required migration list must include invited identity binding");
 assert(postgresSource.includes("20260820_012_current_tenant_member_read.sql"), "required migration list must include current-tenant member read");
+assert(postgresSource.includes("20260821_013_fix_removed_invitation_return.sql"), "required migration list must include removed-invitation return fix");
 assert(postgresSource.includes("set_config('app.external_auth_subject', $1, true)"), "Postgres request scope must be transaction-local");
 assert(requestScopeQueryExecutor.indexOf('client.query("BEGIN")') < requestScopeQueryExecutor.indexOf("applyRequestScope(client)"), "scoped Pool.query must begin before applying the Clerk subject");
 assert(requestScopeQueryExecutor.includes('client.query("COMMIT")'), "scoped Pool.query must commit the business query transaction");
@@ -158,6 +160,8 @@ assert(ownerLifecycleLockMigration.includes("target_status = 'removed' AND p_sta
 assert(membersPageSource.includes("if (!canManageMembers)"), "member management page must return an explicit no-permission state before loading member data");
 assert(membersPageSource.includes("member_invited_pending"), "member management page must explain a created but not provider-sent invitation");
 assert(membersPageSource.includes("member_invitation_failed"), "member management page must explain invitation delivery failure");
+assert(membersPageSource.includes('canRemove && (member.status === "active" || member.status === "suspended")'), "removed members must not expose a direct reactivation action");
+assert(membersPageSource.includes('member.status === "removed" ? ('), "removed members must expose a read-only capability state");
 assert(actionsSource.includes("invitation.sent ? \"member_invited\""), "member invite action must report provider delivery success separately");
 assert(actionsSource.includes("invitation.skipped ? \"member_invited_pending\" : \"member_invitation_failed\""), "member invite action must report pending and failed delivery states");
 assert(actionsSource.includes("invitation.sent ? \"invitation_sent\""), "member resend action must report provider delivery success separately");
@@ -209,6 +213,9 @@ assert(!postgresStatusFunction.includes("UPDATE tenant_memberships"), "Postgres 
 assert(postgresStatusFunction.includes("listTenantMembers(scopeTenantId)"), "Postgres status path must capture the target user before RLS can hide a suspended member");
 assert(!postgresStatusFunction.includes('SELECT * FROM users WHERE id = $1 LIMIT 1'), "Postgres status path must not reread a suspended user through ordinary RLS after updating");
 assert(postgresSource.includes("brokerdesk_private.create_tenant_invitation($1, $2, $3, $4, $5, $6)"), "Postgres invite path must call the restricted atomic function");
+assert(removedInvitationFixMigration.includes("memberships.status = 'invited'"), "removed-member re-invite must return only the new invited membership");
+assert(removedInvitationFixMigration.includes("WHEN 'removed' THEN 3"), "removed-member re-invite must rank historical removed rows after usable memberships");
+assert(removedInvitationFixMigration.includes("CREATE OR REPLACE FUNCTION brokerdesk_private.create_tenant_invitation"), "removed-member re-invite must use an append-only function replacement");
 assert(postgresSource.includes("brokerdesk_private.refresh_tenant_invitation($1, $2, $3, $4)"), "Postgres refresh path must call the restricted function");
 assert(postgresSource.includes("brokerdesk_private.record_tenant_invitation_delivery("), "Postgres delivery path must call the restricted function");
 assert(postgresSource.includes("brokerdesk_private.accept_tenant_invitation($1, $2, $3, $4)"), "Postgres acceptance path must call the restricted function");
