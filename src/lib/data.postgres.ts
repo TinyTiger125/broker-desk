@@ -134,6 +134,7 @@ const REQUIRED_PRODUCTION_MIGRATIONS = [
   "20260819_009_tenant_owner_lifecycle_lock.sql",
   "20260820_010_tenant_creation_idempotency.sql",
   "20260820_011_bind_invited_clerk_identity.sql",
+  "20260820_012_current_tenant_member_read.sql",
 ] as const;
 
 const OPEN_STAGES: ClientStage[] = ["lead", "contacted", "quoted", "viewing", "negotiating"];
@@ -2312,21 +2313,11 @@ export async function listTenantMembers(tenantId: string): Promise<TenantMemberL
   await ensureSchema();
   const scopeTenantId = resolveTenantId(tenantId);
   const result = await getPool().query(
-    `SELECT
-       tenant_memberships.*,
-       users.name AS user_name,
-       users.email AS user_email,
-       users.external_auth_subject AS user_external_auth_subject,
-       users.created_at AS user_created_at
-     FROM tenant_memberships
-     JOIN users ON users.id = tenant_memberships.user_id
-     WHERE tenant_memberships.tenant_id = $1
-     ORDER BY
-       CASE tenant_memberships.status WHEN 'active' THEN 0 WHEN 'invited' THEN 1 ELSE 2 END,
-       tenant_memberships.created_at ASC`,
+    `SELECT member_record AS member
+     FROM brokerdesk_private.list_tenant_members_for_current_tenant($1)`,
     [scopeTenantId],
   );
-  return result.rows.map(mapTenantMemberJoinedRow);
+  return result.rows.map((row) => mapTenantMemberJoinedRow(row.member as Record<string, unknown>));
 }
 
 export async function getTenantMemberById(input: {

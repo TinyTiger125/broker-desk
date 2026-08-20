@@ -51,6 +51,7 @@ const membershipStateMigration = fs.readFileSync(path.resolve("db/migrations/202
 const ownerLifecycleLockMigration = fs.readFileSync(path.resolve("db/migrations/20260819_009_tenant_owner_lifecycle_lock.sql"), "utf8");
 const tenantCreationIdempotencyMigration = fs.readFileSync(path.resolve("db/migrations/20260820_010_tenant_creation_idempotency.sql"), "utf8");
 const invitedIdentityBindingMigration = fs.readFileSync(path.resolve("db/migrations/20260820_011_bind_invited_clerk_identity.sql"), "utf8");
+const tenantMemberReadMigration = fs.readFileSync(path.resolve("db/migrations/20260820_012_current_tenant_member_read.sql"), "utf8");
 const postgresSource = fs.readFileSync(path.resolve("src/lib/data.postgres.ts"), "utf8");
 const clerkAuthSource = fs.readFileSync(path.resolve("src/lib/clerk-auth.ts"), "utf8");
 const createWorkspacePageSource = fs.readFileSync(path.resolve("src/app/workspace/create/page.tsx"), "utf8");
@@ -83,6 +84,7 @@ assert(!tenantCreationIdempotencyMigration.includes("UNIQUE (name)"), "company n
 assert(postgresSource.includes("brokerdesk_private.create_tenant_for_current_user($1, $2, $3)"), "Postgres adapter must pass the stable idempotency key");
 assert(postgresSource.includes("20260820_010_tenant_creation_idempotency.sql"), "required migration list must include tenant creation idempotency");
 assert(postgresSource.includes("20260820_011_bind_invited_clerk_identity.sql"), "required migration list must include invited identity binding");
+assert(postgresSource.includes("20260820_012_current_tenant_member_read.sql"), "required migration list must include current-tenant member read");
 assert(createWorkspacePageSource.includes("requestId"), "workspace creation must preserve the request key across reloads");
 assert(createWorkspaceFormSource.includes("useActionState"), "workspace creation must expose structured retry state");
 assert(createWorkspaceFormSource.includes("disabled={pending}"), "workspace creation must disable duplicate submission while pending");
@@ -238,6 +240,17 @@ const createTenantFunction = postgresSource.slice(
   postgresSource.indexOf("export async function listTenantMemberships", postgresSource.indexOf("export async function createTenantAccountForUser")),
 );
 assert(!createTenantFunction.includes("INSERT INTO tenants"), "Postgres adapter must not bypass the owner bootstrap function with a direct tenant insert");
+const listTenantMembersFunction = postgresSource.slice(
+  postgresSource.indexOf("export async function listTenantMembers("),
+  postgresSource.indexOf("export async function getTenantMemberById(", postgresSource.indexOf("export async function listTenantMembers(")),
+);
+assert(listTenantMembersFunction.includes("brokerdesk_private.list_tenant_members_for_current_tenant($1)"), "Postgres member list must use the current-identity restricted read function");
+assert(!listTenantMembersFunction.includes("FROM tenant_memberships"), "Postgres member list must not directly read tenant membership tables");
+assert(tenantMemberReadMigration.includes("SECURITY DEFINER"), "member list read must use a restricted definer function");
+assert(tenantMemberReadMigration.includes("brokerdesk_private.current_user_id()"), "member list read must bind to the current Clerk identity");
+assert(tenantMemberReadMigration.includes("actor_membership.capability = 'company_owner'"), "member list read must require company owner capability");
+assert(tenantMemberReadMigration.includes("memberships.tenant_id = NULLIF(trim(COALESCE(p_tenant_id, '')), '')"), "member list read must scope to the requested tenant");
+assert(tenantMemberReadMigration.includes("GRANT EXECUTE ON FUNCTION brokerdesk_private.list_tenant_members_for_current_tenant(TEXT) TO brokerdesk_runtime"), "member list read must grant only the runtime role");
 
 const previousDeployment = process.env.BROKER_DESK_DEPLOYMENT_ENV;
 process.env.BROKER_DESK_DEPLOYMENT_ENV = "preview";
@@ -380,6 +393,8 @@ assert(created.membership.capability === "company_owner", "owner capability must
 assert(invited.capability === "ordinary_member", "ordinary member capability must be persisted");
 assert(memory.capabilityHasTenantPermission("company_owner", "member.invite"), "owner capability must invite");
 assert(!memory.capabilityHasTenantPermission("ordinary_member", "member.invite"), "ordinary member must not invite");
+const ownerMembers = await memory.listTenantMembers(created.tenant.id);
+assert(ownerMembers.some((item) => item.id === created.membership.id), "company owner must read the current company's member list");
 
 const expiring = await memory.inviteTenantMember({
   tenantId: created.tenant.id,
