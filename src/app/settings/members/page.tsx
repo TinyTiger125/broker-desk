@@ -92,6 +92,67 @@ function invitationTone(status: TenantInvitationStatus) {
   return "bg-amber-100 text-amber-800";
 }
 
+function flashMessage(locale: Locale, flash?: string) {
+  const messages: Record<string, Record<Locale, string>> = {
+    member_invited: {
+      ja: "メンバーを招待しました。招待は受け入れられるまで有効化されません。",
+      zh: "已发送成员邀请；对方接受前仍处于邀请中。",
+      ko: "멤버 초대를 보냈습니다. 수락 전에는 초대 중 상태로 유지됩니다.",
+    },
+    member_invited_pending: {
+      ja: "招待を作成しました。送信設定を確認してから受け取ったメールアドレスで承諾してください。",
+      zh: "已创建邀请，当前处于邀请中；请确认发送设置并让对方使用受邀邮箱接受。",
+      ko: "초대를 만들었습니다. 발송 설정을 확인한 뒤 초대받은 이메일로 수락해 주세요.",
+    },
+    member_invitation_failed: {
+      ja: "メンバーは招待中のまま保存されましたが、招待メールの送信に失敗しました。",
+      zh: "成员已保留在邀请中，但邀请邮件发送失败；请检查设置后重试。",
+      ko: "멤버는 초대 중으로 보존되었지만 초대 이메일 발송에 실패했습니다. 설정을 확인하고 다시 시도해 주세요.",
+    },
+    invitation_sent: {
+      ja: "招待を再送信しました。",
+      zh: "已重新发送邀请。",
+      ko: "초대를 다시 보냈습니다.",
+    },
+    invitation_pending: {
+      ja: "招待は送信待ちとして保持されています。",
+      zh: "邀请已保留为待发送状态。",
+      ko: "초대가 발송 대기 상태로 유지되었습니다.",
+    },
+    invitation_failed: {
+      ja: "招待の再送信に失敗しました。",
+      zh: "重新发送邀请失败。",
+      ko: "초대 재전송에 실패했습니다.",
+    },
+    invitation_revoked: {
+      ja: "招待を取り消しました。",
+      zh: "已撤销邀请。",
+      ko: "초대를 취소했습니다.",
+    },
+    member_role_updated: {
+      ja: "メンバーの権限を更新しました。",
+      zh: "已更新成员权限。",
+      ko: "멤버 권한을 업데이트했습니다.",
+    },
+    member_suspended: {
+      ja: "メンバーを停止しました。",
+      zh: "已暂停成员。",
+      ko: "멤버를 중지했습니다.",
+    },
+    member_reactivated: {
+      ja: "メンバーを復元しました。",
+      zh: "已恢复成员。",
+      ko: "멤버를 복원했습니다.",
+    },
+    member_removed: {
+      ja: "メンバーを移除しました。",
+      zh: "已移除成员。",
+      ko: "멤버를 제거했습니다.",
+    },
+  };
+  return flash ? messages[flash]?.[locale] : undefined;
+}
+
 export default async function TenantMembersPage({ searchParams }: MembersPageProps) {
   const [locale, session] = await Promise.all([
     getLocale(),
@@ -115,6 +176,9 @@ export default async function TenantMembersPage({ searchParams }: MembersPagePro
   }
 
   const params = searchParams ? await searchParams : undefined;
+  const feedback = flashMessage(locale, params?.flash);
+  const feedbackFailed = params?.flash?.includes("failed") ?? false;
+  const feedbackPending = params?.flash?.includes("pending") ?? false;
   const members = await listTenantMembers(session.tenant.id);
   const canInvite = capabilityHasTenantPermission(currentCapability, "member.invite");
   const canUpdateRole = capabilityHasTenantPermission(currentCapability, "member.update_role");
@@ -133,9 +197,9 @@ export default async function TenantMembersPage({ searchParams }: MembersPagePro
         </div>
       </header>
 
-      {params?.flash ? (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
-          {params.flash}
+      {feedback ? (
+        <div className={`rounded-lg border px-4 py-3 text-sm font-semibold ${feedbackFailed ? "border-rose-200 bg-rose-50 text-rose-800" : feedbackPending ? "border-amber-200 bg-amber-50 text-amber-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>
+          {feedback}
         </div>
       ) : null}
 

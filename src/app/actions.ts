@@ -2984,14 +2984,14 @@ export async function sendTenantMemberInvitationAction(formData: FormData) {
   const session = await requireTenantSession({ permission: "member.invite" });
   const membershipId = String(formData.get("membershipId") ?? "").trim();
   if (!membershipId) throw new Error("招待対象が不正です。");
-  await sendTenantMemberInvitation({
+  const invitation = await sendTenantMemberInvitation({
     tenantId: session.tenant.id,
     membershipId,
     actorId: session.user.id,
     recordSkippedAsFailure: true,
   });
   revalidatePath("/settings/members");
-  redirect("/settings/members?flash=invitation_sent");
+  redirect(`/settings/members?flash=${invitation.sent ? "invitation_sent" : "invitation_failed"}`);
 }
 
 export async function inviteTenantMemberAction(formData: FormData) {
@@ -3012,7 +3012,7 @@ export async function inviteTenantMemberAction(formData: FormData) {
     capability: capabilityPreset,
     invitedByUserId: session.user.id,
   });
-  await sendTenantMemberInvitation({
+  const invitation = await sendTenantMemberInvitation({
     tenantId,
     membershipId: member.id,
     actorId: session.user.id,
@@ -3033,7 +3033,7 @@ export async function inviteTenantMemberAction(formData: FormData) {
     },
   });
   revalidatePath("/settings/members");
-  redirect("/settings/members?flash=member_invited");
+  redirect(`/settings/members?flash=${invitation.sent ? "member_invited" : invitation.skipped ? "member_invited_pending" : "member_invitation_failed"}`);
 }
 
 export async function updateTenantMemberRoleAction(formData: FormData) {

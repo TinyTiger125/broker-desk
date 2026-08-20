@@ -55,6 +55,7 @@ const createWorkspacePageSource = fs.readFileSync(path.resolve("src/app/workspac
 const createWorkspaceFormSource = fs.readFileSync(path.resolve("src/app/workspace/create/create-workspace-form.tsx"), "utf8");
 const invitationPageSource = fs.readFileSync(path.resolve("src/app/workspace/invitations/page.tsx"), "utf8");
 const membersPageSource = fs.readFileSync(path.resolve("src/app/settings/members/page.tsx"), "utf8");
+const actionsSource = fs.readFileSync(path.resolve("src/app/actions.ts"), "utf8");
 const appNavSource = fs.readFileSync(path.resolve("src/components/app-nav.tsx"), "utf8");
 const workspacePageSource = fs.readFileSync(path.resolve("src/app/workspace/page.tsx"), "utf8");
 const workspaceSelectorSource = fs.readFileSync(path.resolve("src/app/workspace/workspace-selector.tsx"), "utf8");
@@ -127,6 +128,13 @@ assert(ownerLifecycleLockMigration.includes("actor_membership.capability = 'comp
 assert(ownerLifecycleLockMigration.includes("target_status = 'invited' AND p_status = 'active'"), "locked status path must reject invited activation");
 assert(ownerLifecycleLockMigration.includes("target_status = 'removed' AND p_status = 'active'"), "locked status path must reject removed reactivation");
 assert(membersPageSource.includes("if (!canManageMembers)"), "member management page must return an explicit no-permission state before loading member data");
+assert(membersPageSource.includes("member_invited_pending"), "member management page must explain a created but not provider-sent invitation");
+assert(membersPageSource.includes("member_invitation_failed"), "member management page must explain invitation delivery failure");
+assert(actionsSource.includes("invitation.sent ? \"member_invited\""), "member invite action must report provider delivery success separately");
+assert(actionsSource.includes("invitation.skipped ? \"member_invited_pending\" : \"member_invitation_failed\""), "member invite action must report pending and failed delivery states");
+assert(actionsSource.includes("invitation.sent ? \"invitation_sent\""), "member resend action must report provider delivery success separately");
+assert(actionsSource.includes("invitation.sent ? \"invitation_sent\" : \"invitation_failed\""), "member resend must report skipped provider delivery as failed when persistence marks it failed");
+assert(membersPageSource.includes("feedbackPending"), "member pending feedback must use a neutral state presentation");
 const membersReadBoundary = membersPageSource.slice(0, membersPageSource.indexOf("const members = await listTenantMembers"));
 assert(membersReadBoundary.includes("requireTenantSession()"), "member management page must establish session without broad read permission");
 assert(appNavSource.includes("link.href !== \"/settings/members\" || canManageMembers"), "member management navigation must be hidden without member-management capability");
