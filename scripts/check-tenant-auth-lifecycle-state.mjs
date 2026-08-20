@@ -14,7 +14,7 @@ if (!runtimeUrl || !adminUrl || !migrationUrl) {
 }
 
 const validRoles = new Set(["platform_owner", "tenant_owner", "tenant_admin", "manager", "broker", "data_operator", "reviewer", "viewer"]);
-const validStatuses = new Set(["active", "invited", "suspended"]);
+const validStatuses = new Set(["active", "invited", "suspended", "removed"]);
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);

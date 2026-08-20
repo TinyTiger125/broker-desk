@@ -1,13 +1,15 @@
 import {
   inviteTenantMemberAction,
+  revokeTenantMemberInvitationAction,
   sendTenantMemberInvitationAction,
   updateTenantMemberRoleAction,
   updateTenantMemberStatusAction,
 } from "@/app/actions";
 import { listTenantMembers, type TenantInvitationStatus } from "@/lib/data";
 import { getLocale, type Locale } from "@/lib/locale";
-import { TENANT_ROLES, roleHasTenantPermission, type TenantRole } from "@/lib/tenant-permissions";
-import { requireTenantSession } from "@/lib/tenant-session";
+import { capabilityHasTenantPermission } from "@/lib/tenant-permissions";
+import { type TenantCapabilityPreset } from "@/lib/data";
+import { getTenantCapability, requireTenantSession } from "@/lib/tenant-session";
 
 export const dynamic = "force-dynamic";
 
@@ -17,31 +19,28 @@ type MembersPageProps = {
   }>;
 };
 
-const tenantAssignableRoles = TENANT_ROLES.filter((role) => role !== "platform_owner");
-
-const roleLabels: Record<TenantRole, Record<Locale, string>> = {
-  platform_owner: { ja: "PlatformOwner", zh: "平台所有者", ko: "플랫폼 소유자" },
-  tenant_owner: { ja: "Owner", zh: "所有者", ko: "소유자" },
-  tenant_admin: { ja: "Admin", zh: "管理员", ko: "관리자" },
-  manager: { ja: "Manager", zh: "负责人", ko: "매니저" },
-  broker: { ja: "Broker", zh: "经纪人", ko: "중개 담당" },
-  data_operator: { ja: "DataOperator", zh: "资料处理", ko: "데이터 담당" },
-  reviewer: { ja: "Reviewer", zh: "审核员", ko: "검토자" },
-  viewer: { ja: "Viewer", zh: "只读", ko: "조회자" },
+const capabilityLabels: Record<TenantCapabilityPreset, Record<Locale, string>> = {
+  company_owner: { ja: "会社の責任者", zh: "公司负责人", ko: "회사 책임자" },
+  company_form_admin: { ja: "会社フォーム管理者", zh: "公司表格管理员", ko: "회사 양식 관리자" },
+  ordinary_member: { ja: "一般メンバー", zh: "普通成员", ko: "일반 멤버" },
 };
 
 const invitationLabels: Record<TenantInvitationStatus, Record<Locale, string>> = {
   not_sent: { ja: "未送信", zh: "未发送", ko: "미발송" },
   pending: { ja: "招待中", zh: "邀请中", ko: "초대 중" },
-  accepted: { ja: "ログイン済み", zh: "已登录", ko: "로그인 완료" },
+  accepted: { ja: "承諾済み・利用中", zh: "已接受并使用中", ko: "수락 및 사용 중" },
   revoked: { ja: "取消済み", zh: "已撤销", ko: "취소됨" },
   expired: { ja: "期限切れ", zh: "已过期", ko: "만료됨" },
   failed: { ja: "送信失敗", zh: "发送失败", ko: "전송 실패" },
 };
 
+function capabilityForMember(member: { capability?: TenantCapabilityPreset }): TenantCapabilityPreset {
+  return member.capability ?? "ordinary_member";
+}
+
 function copy(locale: Locale) {
   return {
-    title: locale === "zh" ? "租户成员与权限" : locale === "ko" ? "테넌트 멤버와 권한" : "メンバーと権限",
+    title: locale === "zh" ? "公司成员与权限" : locale === "ko" ? "회사 멤버와 권한" : "会社メンバーと権限",
     subtitle:
       locale === "zh"
         ? "这里管理当前工作区内谁能上传、整理、输出、维护模板和查看操作记录。"
@@ -58,27 +57,30 @@ function copy(locale: Locale) {
     suspend: locale === "zh" ? "停用" : locale === "ko" ? "중지" : "停止",
     reactivate: locale === "zh" ? "恢复" : locale === "ko" ? "재활성화" : "再有効化",
     sendInvite: locale === "zh" ? "发送邀请" : locale === "ko" ? "초대 보내기" : "招待送信",
+    revokeInvite: locale === "zh" ? "撤销邀请" : locale === "ko" ? "초대 취소" : "招待を取り消す",
+    remove: locale === "zh" ? "移除成员" : locale === "ko" ? "멤버 제거" : "メンバーを削除",
     bound: locale === "zh" ? "已绑定登录" : locale === "ko" ? "로그인 연동됨" : "ログイン連携済み",
     unbound: locale === "zh" ? "未绑定登录" : locale === "ko" ? "로그인 미연동" : "ログイン未連携",
     current: locale === "zh" ? "当前用户" : locale === "ko" ? "현재 사용자" : "現在のユーザー",
     noPermission:
       locale === "zh"
-        ? "当前角色只能查看成员，不能修改。"
+        ? "当前成员没有公司成员管理权限，请联系公司负责人。"
         : locale === "ko"
-          ? "현재 역할은 멤버 조회만 가능하며 수정할 수 없습니다."
-          : "現在のロールではメンバー確認のみ可能で、変更はできません。",
+          ? "현재 멤버에게는 회사 멤버 관리 권한이 없습니다. 회사 책임자에게 문의하세요."
+          : "現在のメンバーには会社メンバー管理権限がありません。会社の責任者にご確認ください。",
     localOnly:
       locale === "zh"
-        ? "成员会先占用一个席位并进入待邀请状态；Clerk 生产配置完成后可发送正式邀请邮件。"
+        ? "邀请发送后保持邀请中；受邀者使用匹配邮箱明确接受后，才会成为公司成员。"
         : locale === "ko"
-          ? "멤버는 먼저 좌석을 점유하고 초대 대기 상태가 됩니다. Clerk 프로덕션 설정 후 공식 초대 메일을 보낼 수 있습니다."
-          : "メンバーは先に席を確保して招待待ちになります。Clerk の本番設定後に正式な招待メールを送信できます。",
+          ? "초대 후에는 초대 중 상태로 유지됩니다. 초대받은 이메일로 명시적으로 수락해야 회사 멤버가 됩니다."
+          : "招待後は招待中のまま保持され、招待先のメールアドレスで明示的に承諾してから会社メンバーになります。",
   };
 }
 
 function statusTone(status: string) {
   if (status === "active") return "bg-emerald-100 text-emerald-800";
   if (status === "invited") return "bg-amber-100 text-amber-800";
+  if (status === "removed") return "bg-rose-100 text-rose-800";
   return "bg-slate-200 text-slate-700";
 }
 
@@ -93,14 +95,30 @@ function invitationTone(status: TenantInvitationStatus) {
 export default async function TenantMembersPage({ searchParams }: MembersPageProps) {
   const [locale, session] = await Promise.all([
     getLocale(),
-    requireTenantSession({ permission: "tenant.read" }),
+    requireTenantSession(),
   ]);
-  const params = searchParams ? await searchParams : undefined;
   const ui = copy(locale);
+  const currentCapability = getTenantCapability(session.membership);
+  const canManageMembers = capabilityHasTenantPermission(currentCapability, "member.invite");
+  if (!canManageMembers) {
+    return (
+      <div className="space-y-4">
+        <header>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">{session.tenant.name}</p>
+          <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-900">{ui.title}</h1>
+        </header>
+        <section className="border border-slate-200 bg-white p-6">
+          <p className="text-sm text-slate-700">{ui.noPermission}</p>
+        </section>
+      </div>
+    );
+  }
+
+  const params = searchParams ? await searchParams : undefined;
   const members = await listTenantMembers(session.tenant.id);
-  const canInvite = roleHasTenantPermission(session.membership.role, "member.invite");
-  const canUpdateRole = roleHasTenantPermission(session.membership.role, "member.update_role");
-  const canRemove = roleHasTenantPermission(session.membership.role, "member.remove");
+  const canInvite = capabilityHasTenantPermission(currentCapability, "member.invite");
+  const canUpdateRole = capabilityHasTenantPermission(currentCapability, "member.update_role");
+  const canRemove = capabilityHasTenantPermission(currentCapability, "member.remove");
 
   return (
     <div className="space-y-6">
@@ -111,7 +129,7 @@ export default async function TenantMembersPage({ searchParams }: MembersPagePro
           <p className="mt-1 text-sm text-slate-600">{ui.subtitle}</p>
         </div>
         <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700">
-          {roleLabels[session.membership.role][locale]}
+          {capabilityLabels[capabilityForMember(session.membership)][locale]}
         </div>
       </header>
 
@@ -132,10 +150,10 @@ export default async function TenantMembersPage({ searchParams }: MembersPagePro
           <form action={inviteTenantMemberAction} className="grid gap-3 2xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_220px_auto]">
             <input name="name" placeholder={ui.name} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
             <input name="email" type="email" required placeholder={ui.email} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-            <select name="role" defaultValue="broker" className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
-              {tenantAssignableRoles.map((role) => (
-                <option key={role} value={role}>
-                  {roleLabels[role][locale]}
+            <select name="capabilityPreset" defaultValue="ordinary_member" className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
+              {Object.keys(capabilityLabels).map((preset) => (
+                <option key={preset} value={preset}>
+                  {capabilityLabels[preset as TenantCapabilityPreset][locale]}
                 </option>
               ))}
             </select>
@@ -169,14 +187,14 @@ export default async function TenantMembersPage({ searchParams }: MembersPagePro
               <form action={updateTenantMemberRoleAction} className="flex items-center gap-2">
                 <input type="hidden" name="membershipId" value={member.id} />
                 <select
-                  name="role"
-                  defaultValue={member.role}
+                  name="capabilityPreset"
+                  defaultValue={capabilityForMember(member)}
                   disabled={!canUpdateRole}
                   className="min-w-0 rounded-lg border border-slate-300 px-2 py-1.5 text-xs disabled:bg-slate-100"
                 >
-                  {tenantAssignableRoles.map((role) => (
-                    <option key={role} value={role}>
-                      {roleLabels[role][locale]}
+                  {Object.keys(capabilityLabels).map((preset) => (
+                    <option key={preset} value={preset}>
+                      {capabilityLabels[preset as TenantCapabilityPreset][locale]}
                     </option>
                   ))}
                 </select>
@@ -202,6 +220,19 @@ export default async function TenantMembersPage({ searchParams }: MembersPagePro
                     <button className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700">
                       {ui.sendInvite}
                     </button>
+                  </form>
+                ) : null}
+                {canRemove && member.status === "invited" ? (
+                  <form action={revokeTenantMemberInvitationAction}>
+                    <input type="hidden" name="membershipId" value={member.id} />
+                    <button className="rounded-md border border-rose-200 px-3 py-1.5 text-xs font-bold text-rose-700">{ui.revokeInvite}</button>
+                  </form>
+                ) : null}
+                {canRemove && member.status === "active" && member.id !== session.membership.id ? (
+                  <form action={updateTenantMemberStatusAction}>
+                    <input type="hidden" name="membershipId" value={member.id} />
+                    <input type="hidden" name="status" value="removed" />
+                    <button className="rounded-md border border-rose-200 px-3 py-1.5 text-xs font-bold text-rose-700">{ui.remove}</button>
                   </form>
                 ) : null}
                 {canRemove ? (

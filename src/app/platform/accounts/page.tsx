@@ -15,11 +15,12 @@ type PlatformAccountsPageProps = {
   }>;
 };
 
-const tenantStatuses: TenantStatus[] = ["trial", "active", "suspended", "cancelled"];
+const tenantStatuses: TenantStatus[] = ["trial", "active", "pending_activation", "suspended", "cancelled"];
 
 const statusLabels: Record<TenantStatus, Record<Locale, string>> = {
   trial: { ja: "Trial", zh: "试用", ko: "체험" },
   active: { ja: "Active", zh: "启用", ko: "활성" },
+  pending_activation: { ja: "Pending activation", zh: "待激活", ko: "활성화 대기" },
   suspended: { ja: "Suspended", zh: "冻结", ko: "중지" },
   cancelled: { ja: "Cancelled", zh: "取消", ko: "취소" },
 };

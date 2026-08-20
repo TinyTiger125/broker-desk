@@ -13,6 +13,14 @@ export const TENANT_ROLES = [
 
 export type TenantRole = (typeof TENANT_ROLES)[number];
 
+export type TenantCapabilityPreset = "company_owner" | "company_form_admin" | "ordinary_member";
+
+export function tenantRoleForCapabilityPreset(capability: TenantCapabilityPreset): TenantRole {
+  if (capability === "company_owner") return "tenant_owner";
+  if (capability === "company_form_admin") return "manager";
+  return "broker";
+}
+
 export const TENANT_PERMISSION_ACTIONS = [
   "tenant.read",
   "tenant.update_settings",
@@ -117,6 +125,10 @@ const ROLE_PERMISSIONS: Record<TenantRole, TenantPermissionAction[]> = {
     "output.download_final",
     "template.view",
     "template.copy_official",
+    "template.edit_draft",
+    "template.publish",
+    "template.rollback",
+    "template.archive",
     "ai.extract",
     "ai.review_assist",
     "ai.preflight",
@@ -225,4 +237,89 @@ export function roleHasAllTenantPermissions(role: TenantRole, actions: readonly 
 
 export function listTenantRolePermissions(role: TenantRole): TenantPermissionAction[] {
   return [...ROLE_PERMISSIONS[role]];
+}
+
+const CAPABILITY_PERMISSIONS: Record<TenantCapabilityPreset, TenantPermissionAction[]> = {
+  company_owner: [...FULL_TENANT_ACTIONS],
+  company_form_admin: [
+    "tenant.read",
+    "audit.view",
+    "case.create",
+    "case.read_assigned",
+    "case.read_team",
+    "case.update_assigned",
+    "case.assign",
+    "source.upload",
+    "source.read",
+    "source.download_original",
+    "extract.run",
+    "extract.view_result",
+    "extract.accept_result",
+    "extract.override_result",
+    "extract.reject_result",
+    "record.read",
+    "record.read_sensitive",
+    "record.update",
+    "record.archive",
+    "record.confirm",
+    "record.mark_unknown",
+    "record.resolve_conflict",
+    "review_task.create",
+    "review_task.resolve",
+    "review_task.approve",
+    "output.preview",
+    "output.create_draft",
+    "output.update_draft",
+    "output.generate_final",
+    "output.download_final",
+    "template.view",
+    "template.copy_official",
+    "template.edit_draft",
+    "template.publish",
+    "template.rollback",
+    "template.archive",
+    "ai.extract",
+    "ai.review_assist",
+    "ai.preflight",
+  ],
+  ordinary_member: [
+    "tenant.read",
+    "case.create",
+    "case.read_own",
+    "case.read_assigned",
+    "case.update_own",
+    "case.update_assigned",
+    "source.upload",
+    "source.read",
+    "source.download_original",
+    "extract.run",
+    "extract.view_result",
+    "extract.accept_result",
+    "record.read",
+    "record.read_sensitive",
+    "record.update",
+    "record.confirm",
+    "record.mark_unknown",
+    "record.resolve_conflict",
+    "review_task.create",
+    "review_task.resolve",
+    "output.preview",
+    "output.create_draft",
+    "output.update_draft",
+    "output.generate_final",
+    "output.download_final",
+    "template.view",
+    "template.copy_official",
+    "ai.extract",
+    "ai.review_assist",
+    "ai.preflight",
+  ],
+};
+
+export function capabilityHasTenantPermission(capability: TenantCapabilityPreset, action: TenantPermissionAction) {
+  return CAPABILITY_PERMISSIONS[capability].includes(action);
+}
+
+export function listTenantCapabilityPermissions(capability: TenantCapabilityPreset) {
+  return [...CAPABILITY_PERMISSIONS[capability]];
 }

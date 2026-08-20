@@ -28,6 +28,7 @@ import {
 } from "@/lib/domain";
 import { revalidatePath } from "next/cache";
 import { notFound, redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import {
   addAttachment,
   addPrivateAttachment,
@@ -38,6 +39,9 @@ import {
   addImportJob,
   addTask,
   createTenantAccount,
+  createTenantAccountForUser,
+  acceptTenantInvitation,
+  getDefaultUser,
   applyOutputTemplateVersion,
   addQuotation,
   createOutputTemplateVersion,
@@ -78,6 +82,7 @@ import {
   updateTenantMemberStatus,
   updateTenantAccountLifecycle,
   updateTenantMemberInvitation,
+  refreshTenantMemberInvitation,
   inviteTenantMember,
   updateCaseWorkbenchFieldRules,
   updateOutputTemplateSettings,
@@ -91,6 +96,8 @@ import {
   type AiExperienceDraftStatus,
   type TenantAccountType,
   type TenantStatus,
+  tenantRoleForCapabilityPreset,
+  type TenantCapabilityPreset,
 } from "@/lib/data";
 import {
   getAttachmentStorageMode,
@@ -118,12 +125,15 @@ import {
 } from "@/lib/import-mapping";
 import { materializeExtractionReviewValue } from "@/lib/extraction-review-materialization";
 import { assertTenantPermission, requireTenantSession } from "@/lib/tenant-session";
+import { ACTIVE_TENANT_COOKIE_NAME } from "@/lib/tenant-permissions";
 import { requirePlatformOwnerSession } from "@/lib/platform-session";
 import { isLifecycleStatus, type LifecycleStatus } from "@/lib/record-lifecycle";
 import type { InputFileExtractionResult } from "@/lib/input-file-extractor";
 import { queueExcelImportSource } from "@/lib/excel-import-queue";
 import { queueIdentityImportSources } from "@/lib/identity-import-queue";
 import { createClerkInvitationForTenantMember } from "@/lib/clerk-invitations";
+import { getClerkAuthIdentity } from "@/lib/clerk-auth";
+import { isClerkAuthEnabled } from "@/lib/auth-mode";
 import { CASE_FIELD_KEYS, getCaseFieldDefinition, isKnownCaseFieldKey } from "@/lib/case-field-catalog";
 import {
   CASE_WORKBENCH_FIELD_KEYS,
@@ -185,7 +195,7 @@ import { listHubContracts } from "@/lib/hub";
 import { draftAiExperiencesFromRecentCorrections } from "@/lib/ai-experience-job";
 import { getLocale, type Locale } from "@/lib/locale";
 import { getDefaultOutputTemplateSettings } from "@/lib/output-doc";
-import { isTenantRole, type TenantRole } from "@/lib/tenant-permissions";
+import { type TenantRole } from "@/lib/tenant-permissions";
 import {
   buildPartyProfileNotes,
   inferPurposeFromPartyRole,
@@ -213,11 +223,10 @@ function parseCheckbox(value: FormDataEntryValue | null): boolean {
   return value === "on" || value === "true" || value === "1";
 }
 
-function parseTenantRole(value: FormDataEntryValue | null): TenantRole {
-  const role = String(value ?? "").trim();
-  if (!isTenantRole(role)) throw new Error("ロールが不正です。");
-  if (role === "platform_owner") throw new Error("platform_owner は通常のテナントメンバーに付与できません。");
-  return role;
+function parseTenantCapabilityPreset(value: FormDataEntryValue | null): TenantCapabilityPreset {
+  const preset = String(value ?? "").trim();
+  if (preset === "company_owner" || preset === "company_form_admin" || preset === "ordinary_member") return preset;
+  throw new Error("成员能力设置不正确。");
 }
 
 function parseTenantAccountType(value: FormDataEntryValue | null): TenantAccountType {
@@ -228,7 +237,7 @@ function parseTenantAccountType(value: FormDataEntryValue | null): TenantAccount
 
 function parseTenantLifecycleStatus(value: FormDataEntryValue | null): TenantStatus {
   const status = String(value ?? "").trim();
-  if (status === "trial" || status === "active" || status === "suspended" || status === "cancelled") return status;
+  if (status === "trial" || status === "active" || status === "pending_activation" || status === "suspended" || status === "cancelled") return status;
   throw new Error("テナント状態が不正です。");
 }
 
@@ -2656,7 +2665,7 @@ async function assertNotLastActiveTenantOwner(input: {
   tenantId: string;
   changingMembershipId: string;
   nextRole?: TenantRole;
-  nextStatus?: "active" | "invited" | "suspended";
+  nextStatus?: "active" | "invited" | "suspended" | "removed";
 }) {
   const members = await listTenantMembers(input.tenantId);
   const activeOwners = members.filter((member) => member.status === "active" && member.role === "tenant_owner");
@@ -2676,8 +2685,14 @@ async function sendTenantMemberInvitation(input: {
   actorId: string;
   recordSkippedAsFailure: boolean;
 }) {
-  const member = await getTenantMemberById({ tenantId: input.tenantId, membershipId: input.membershipId });
+  let member = await getTenantMemberById({ tenantId: input.tenantId, membershipId: input.membershipId });
   if (!member) throw new Error("招待対象メンバーが見つかりません。");
+  if (member.status !== "invited") throw new Error("只有邀请中的成员可以发送或重发邀请。");
+  member = (await refreshTenantMemberInvitation({
+    tenantId: input.tenantId,
+    membershipId: input.membershipId,
+    invitedByUserId: input.actorId,
+  })) ?? member;
 
   const result = await createClerkInvitationForTenantMember(member).catch((error) => ({
     ok: false as const,
@@ -2693,6 +2708,7 @@ async function sendTenantMemberInvitation(input: {
       providerInvitationId: result.providerInvitationId,
       invitationUrl: result.invitationUrl,
       sentAt: result.sentAt,
+      actorUserId: input.actorId,
     });
     await addAuditLog({
       tenantId: input.tenantId,
@@ -2717,6 +2733,7 @@ async function sendTenantMemberInvitation(input: {
       invitationProvider: "clerk",
       invitationStatus: "failed",
       invitationError: result.reason,
+      actorUserId: input.actorId,
     });
     await addAuditLog({
       tenantId: input.tenantId,
@@ -2734,7 +2751,77 @@ async function sendTenantMemberInvitation(input: {
     return { member: updated ?? member, sent: false, skipped: result.skipped };
   }
 
-  return { member, sent: false, skipped: result.skipped };
+  // Local/non-Clerk environments still expose the explicit acceptance path.
+  // The invitation is pending, not active; a real Clerk delivery can replace
+  // this provider record when configured.
+  const pending = await updateTenantMemberInvitation({
+    tenantId: input.tenantId,
+    membershipId: input.membershipId,
+    invitationProvider: "manual",
+    invitationStatus: "pending",
+    invitationError: result.reason,
+    sentAt: new Date(),
+    actorUserId: input.actorId,
+  });
+  return { member: pending ?? member, sent: false, skipped: true };
+}
+
+/** Create a company for the currently authenticated user and enter it atomically. */
+export async function createTenantForCurrentUserAction(formData: FormData) {
+  const user = await getDefaultUser();
+  if (!user) throw new Error("登录身份尚未准备好，请重新登录后再试。");
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name) throw new Error("公司名称是必填项。");
+
+  const result = await createTenantAccountForUser({ userId: user.id, name, accountType: "company" });
+  const store = await cookies();
+  store.set(ACTIVE_TENANT_COOKIE_NAME, result.tenant.id, { httpOnly: true, sameSite: "lax", path: "/" });
+  await addAuditLog({
+    tenantId: result.tenant.id,
+    userId: user.id,
+    action: "tenant_account_created_by_owner",
+    targetType: "tenant",
+    targetId: result.tenant.id,
+    message: `经营主体已创建: ${result.tenant.name}`,
+    context: { membershipId: result.membership.id, role: result.membership.role },
+  });
+  revalidatePath("/workspace");
+  revalidatePath("/");
+  redirect("/");
+}
+
+/** Explicitly accept one pending invitation after the Clerk identity has been bound by email. */
+export async function acceptTenantInvitationAction(formData: FormData) {
+  const user = await getDefaultUser();
+  if (!user) throw new Error("登录身份尚未准备好，请重新登录后再试。");
+  const identity = await getClerkAuthIdentity();
+  if (isClerkAuthEnabled() && !identity?.email) {
+    throw new Error("无法确认当前 Clerk 身份的受邀邮箱，不能接受邀请。");
+  }
+  if (identity?.email && identity.email.toLowerCase() !== user.email.toLowerCase()) {
+    throw new Error("当前登录邮箱与受邀邮箱不一致。");
+  }
+  const tenantId = String(formData.get("tenantId") ?? "").trim();
+  const membershipId = String(formData.get("membershipId") ?? "").trim();
+  const invitationToken = String(formData.get("invitationToken") ?? "").trim();
+  if (!tenantId || !membershipId || !invitationToken) throw new Error("邀请信息不完整。");
+
+  const member = await acceptTenantInvitation({ userId: user.id, tenantId, membershipId, invitationToken });
+  if (!member) throw new Error("邀请已撤销、已过期，或当前登录邮箱与受邀邮箱不一致。");
+  const store = await cookies();
+  store.set(ACTIVE_TENANT_COOKIE_NAME, tenantId, { httpOnly: true, sameSite: "lax", path: "/" });
+  await addAuditLog({
+    tenantId,
+    userId: user.id,
+    action: "tenant_invitation_accepted",
+    targetType: "member",
+    targetId: membershipId,
+    message: "成员已接受经营主体邀请。",
+    context: { membershipId, role: member.role },
+  });
+  revalidatePath("/workspace");
+  revalidatePath("/workspace/invitations");
+  redirect("/");
 }
 
 export async function createTenantAccountAction(formData: FormData) {
@@ -2859,7 +2946,8 @@ export async function inviteTenantMemberAction(formData: FormData) {
   const tenantId = session.tenant.id;
   const name = String(formData.get("name") ?? "").trim();
   const email = String(formData.get("email") ?? "").trim();
-  const role = parseTenantRole(formData.get("role"));
+  const capabilityPreset = parseTenantCapabilityPreset(formData.get("capabilityPreset"));
+  const role = tenantRoleForCapabilityPreset(capabilityPreset);
   if (!email) throw new Error("メールアドレスは必須です。");
 
   const member = await inviteTenantMember({
@@ -2868,6 +2956,8 @@ export async function inviteTenantMemberAction(formData: FormData) {
     email,
     role,
     status: "invited",
+    capability: capabilityPreset,
+    invitedByUserId: session.user.id,
   });
   await sendTenantMemberInvitation({
     tenantId,
@@ -2885,6 +2975,7 @@ export async function inviteTenantMemberAction(formData: FormData) {
     context: {
       memberUserId: member.userId,
       role: member.role,
+      capabilityPreset,
       status: member.status,
     },
   });
@@ -2896,11 +2987,12 @@ export async function updateTenantMemberRoleAction(formData: FormData) {
   const session = await requireTenantSession({ permission: "member.update_role" });
   const tenantId = session.tenant.id;
   const membershipId = String(formData.get("membershipId") ?? "").trim();
-  const role = parseTenantRole(formData.get("role"));
+  const capabilityPreset = parseTenantCapabilityPreset(formData.get("capabilityPreset"));
+  const role = tenantRoleForCapabilityPreset(capabilityPreset);
   if (!membershipId) throw new Error("メンバーIDが不正です。");
 
   await assertNotLastActiveTenantOwner({ tenantId, changingMembershipId: membershipId, nextRole: role });
-  const member = await updateTenantMemberRole({ tenantId, membershipId, role });
+  const member = await updateTenantMemberRole({ tenantId, membershipId, role, capability: capabilityPreset, actorUserId: session.user.id });
   if (!member) throw new Error("メンバーが見つかりません。");
   await addAuditLog({
     tenantId,
@@ -2912,6 +3004,7 @@ export async function updateTenantMemberRoleAction(formData: FormData) {
     context: {
       memberUserId: member.userId,
       role: member.role,
+      capabilityPreset,
       status: member.status,
     },
   });
@@ -2924,19 +3017,25 @@ export async function updateTenantMemberStatusAction(formData: FormData) {
   const tenantId = session.tenant.id;
   const membershipId = String(formData.get("membershipId") ?? "").trim();
   const rawStatus = String(formData.get("status") ?? "").trim();
-  const status = rawStatus === "active" || rawStatus === "suspended" ? rawStatus : undefined;
+  const status = rawStatus === "active" || rawStatus === "suspended" || rawStatus === "removed" ? rawStatus : undefined;
   if (!membershipId || !status) throw new Error("メンバー状態が不正です。");
+  if (status === "active") {
+    const target = await getTenantMemberById({ tenantId, membershipId });
+    if (target?.status === "invited" || target?.status === "removed") {
+      throw new Error("邀请成员必须使用邀请凭证明确接受；已移除成员必须重新邀请。");
+    }
+  }
   if (membershipId === session.membership.id && status !== "active") {
     throw new Error("現在の自分自身のメンバー権限は停止できません。");
   }
 
   await assertNotLastActiveTenantOwner({ tenantId, changingMembershipId: membershipId, nextStatus: status });
-  const member = await updateTenantMemberStatus({ tenantId, membershipId, status });
+  const member = await updateTenantMemberStatus({ tenantId, membershipId, status, actorUserId: session.user.id });
   if (!member) throw new Error("メンバーが見つかりません。");
   await addAuditLog({
     tenantId,
     userId: session.user.id,
-    action: status === "active" ? "member_reactivated" : "member_suspended",
+    action: status === "active" ? "member_reactivated" : status === "removed" ? "member_removed" : "member_suspended",
     targetType: "member",
     targetId: member.id,
     message: `テナントメンバー状態を更新しました: ${member.user.email} / ${member.status}`,
@@ -2947,7 +3046,34 @@ export async function updateTenantMemberStatusAction(formData: FormData) {
     },
   });
   revalidatePath("/settings/members");
-  redirect(`/settings/members?flash=${status === "active" ? "member_reactivated" : "member_suspended"}`);
+  redirect(`/settings/members?flash=${status === "active" ? "member_reactivated" : status === "removed" ? "member_removed" : "member_suspended"}`);
+}
+
+export async function revokeTenantMemberInvitationAction(formData: FormData) {
+  const session = await requireTenantSession({ permission: "member.remove" });
+  const membershipId = String(formData.get("membershipId") ?? "").trim();
+  if (!membershipId) throw new Error("邀请对象不正确。");
+  const member = await getTenantMemberById({ tenantId: session.tenant.id, membershipId });
+  if (!member || member.status !== "invited") throw new Error("待处理的邀请不存在。");
+  await updateTenantMemberInvitation({
+    tenantId: session.tenant.id,
+    membershipId,
+    invitationProvider: member.invitationProvider,
+    invitationStatus: "revoked",
+    invitationError: "revoked_by_company_owner",
+    actorUserId: session.user.id,
+  });
+  await updateTenantMemberStatus({ tenantId: session.tenant.id, membershipId, status: "removed", actorUserId: session.user.id });
+  await addAuditLog({
+    tenantId: session.tenant.id,
+    userId: session.user.id,
+    action: "member_invitation_revoked",
+    targetType: "member",
+    targetId: membershipId,
+    message: `成员邀请已撤销: ${member.user.email}`,
+  });
+  revalidatePath("/settings/members");
+  redirect("/settings/members?flash=invitation_revoked");
 }
 
 export async function updateOutputTemplateSettingsAction(formData: FormData) {

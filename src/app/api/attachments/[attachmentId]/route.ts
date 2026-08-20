@@ -34,6 +34,9 @@ export async function GET(_request: Request, context: { params: Promise<{ attach
   if (!attachment) {
     return NextResponse.json({ ok: false, error: "attachment_not_found" }, { status: 404 });
   }
+  if (attachment.targetType === "guarantee_blank_form" || attachment.targetType === "guarantee_generated_output") {
+    return NextResponse.json({ ok: false, error: "guarantee_file_requires_specific_access" }, { status: 403 });
+  }
 
   const content = isLocalPrivateStoragePath(attachment.storagePath)
     ? await readLocalPrivateAttachment({

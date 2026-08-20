@@ -28,11 +28,14 @@ export function WorkspaceSelector({ items, copy }: WorkspaceSelectorProps) {
     async (tenantId: string) => {
       setError("");
       setPendingTenantId(tenantId);
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), 10000);
       try {
         const response = await fetch("/api/workspace", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ tenantId }),
+          signal: controller.signal,
         });
         if (!response.ok) throw new Error("workspace_selection_failed");
         router.push("/");
@@ -40,6 +43,8 @@ export function WorkspaceSelector({ items, copy }: WorkspaceSelectorProps) {
       } catch {
         setPendingTenantId(null);
         setError(copy.error);
+      } finally {
+        window.clearTimeout(timeoutId);
       }
     },
     [copy.error, router],
@@ -49,7 +54,7 @@ export function WorkspaceSelector({ items, copy }: WorkspaceSelectorProps) {
     if (items.length === 1) void chooseWorkspace(items[0].tenantId);
   }, [chooseWorkspace, items]);
 
-  if (items.length === 1) {
+  if (items.length === 1 && !error) {
     return <p className="text-sm text-slate-600">{copy.loading}</p>;
   }
 

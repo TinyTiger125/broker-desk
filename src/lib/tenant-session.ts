@@ -11,7 +11,7 @@ import {
   type TenantMembership,
   type User,
 } from "@/lib/data";
-import { isClerkAuthEnabled } from "@/lib/auth-mode";
+import { isClerkAuthEnabled, isTrustedHeaderAuthEnabled } from "@/lib/auth-mode";
 import { getClerkAuthSubject } from "@/lib/clerk-auth";
 import {
   isConfiguredPlatformOwnerUser,
@@ -20,8 +20,8 @@ import {
 import { DEFAULT_TENANT_ID } from "@/lib/tenant-constants";
 import {
   ACTIVE_TENANT_COOKIE_NAME,
-  roleHasAllTenantPermissions,
-  roleHasTenantPermission,
+  capabilityHasTenantPermission,
+  type TenantCapabilityPreset,
   type TenantPermissionAction,
 } from "@/lib/tenant-permissions";
 import { isProductionRuntime } from "@/lib/auth-mode";
@@ -43,6 +43,10 @@ export type TenantSession = {
   membership: TenantMembership;
 };
 
+export function getTenantCapability(membership: TenantMembership): TenantCapabilityPreset {
+  return membership.capability ?? "ordinary_member";
+}
+
 export function selectActiveTenantMembership(input: {
   memberships: TenantMembership[];
   requestedTenantId?: string;
@@ -51,6 +55,7 @@ export function selectActiveTenantMembership(input: {
   if (input.requestedTenantId) {
     return activeMemberships.find((membership) => membership.tenantId === input.requestedTenantId) ?? null;
   }
+  if (activeMemberships.length > 1) return null;
   return activeMemberships[0] ?? null;
 }
 
@@ -59,6 +64,10 @@ async function selectDevelopmentPlatformOwnerTenantMembership(input: {
   requestedTenantId?: string;
 }): Promise<{ user: User; membership: TenantMembership } | null> {
   if (isProductionRuntime()) return null;
+  // A real Clerk identity must never be upgraded by the demo recovery path.
+  // Missing membership is an onboarding state, not a reason to fabricate one.
+  if (isClerkAuthEnabled()) return null;
+  if (isTrustedHeaderAuthEnabled()) return null;
   if (!isDevelopmentPlatformOwnerTenantFallbackEnabled()) return null;
   if (!isConfiguredPlatformOwnerUser(input.user)) return null;
 
@@ -117,7 +126,7 @@ const resolveTenantSession = cache(async (preferredUserId?: string, requestedTen
   const memberships = sessionLookups.length > 0
     ? sessionLookups.map((item) => item.membership)
     : await listTenantMemberships(user.id);
-  if (isProductionRuntime() && !requestedTenantId && memberships.filter((membership) => membership.status === "active").length !== 1) {
+  if (!requestedTenantId && memberships.filter((membership) => membership.status === "active").length > 1) {
     throw new TenantSessionError("An active tenant must be selected.", "tenant_forbidden");
   }
   const activeMembership = selectActiveTenantMembership({ memberships, requestedTenantId });
@@ -160,7 +169,7 @@ export async function requireTenantSession(options: {
   ];
   if (
     requiredPermissions.length > 0 &&
-    !roleHasAllTenantPermissions(session.membership.role, requiredPermissions)
+    !requiredPermissions.every((permission) => capabilityHasTenantPermission(getTenantCapability(session.membership), permission))
   ) {
     throw new TenantSessionError("Tenant membership does not allow this action.", "permission_denied");
   }
@@ -169,13 +178,13 @@ export async function requireTenantSession(options: {
 }
 
 export function assertTenantPermission(session: TenantSession, permission: TenantPermissionAction) {
-  if (!roleHasTenantPermission(session.membership.role, permission)) {
+  if (!capabilityHasTenantPermission(getTenantCapability(session.membership), permission)) {
     throw new TenantSessionError("Tenant membership does not allow this action.", "permission_denied");
   }
 }
 
 export function assertTenantPermissions(session: TenantSession, permissions: readonly TenantPermissionAction[]) {
-  if (!roleHasAllTenantPermissions(session.membership.role, permissions)) {
+  if (!permissions.every((permission) => capabilityHasTenantPermission(getTenantCapability(session.membership), permission))) {
     throw new TenantSessionError("Tenant membership does not allow this action.", "permission_denied");
   }
 }

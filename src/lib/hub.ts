@@ -447,6 +447,8 @@ function getAttachmentTargetLabel(locale: Locale): Record<AttachmentTargetType, 
     service_request: tr(locale, { ja: "対応履歴", zh: "跟进记录", ko: "후속 기록" }),
     import_job: tr(locale, { ja: "読取資料", zh: "读取资料", ko: "읽은 자료" }),
     quote: tr(locale, { ja: "提案", zh: "提案", ko: "제안" }),
+    guarantee_blank_form: tr(locale, { ja: "保証会社の空白書式", zh: "保证公司空白表格", ko: "보증회사 빈 양식" }),
+    guarantee_generated_output: tr(locale, { ja: "保証会社申込書", zh: "保证公司申请书", ko: "보증회사 신청서" }),
   };
 }
 

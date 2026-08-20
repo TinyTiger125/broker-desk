@@ -10,6 +10,7 @@ import {
   type TaskStatus,
   type Temperature,
 } from "@/lib/domain";
+import { randomUUID } from "node:crypto";
 import { buildFollowUpPriorityList } from "@/lib/followup-priority";
 import type { Locale } from "@/lib/locale";
 import { getStageLabel } from "@/lib/options";
@@ -27,8 +28,11 @@ import type {
 } from "@/lib/case-workbench-field-rules";
 import { COMPLETE_CASE_FIELD_DEFAULTS, COMPLETE_DRAFT_DEFAULTS } from "@/lib/guarantee-application-fixtures";
 import { DEFAULT_TENANT_ID } from "@/lib/tenant-constants";
-import type { TenantRole } from "@/lib/tenant-permissions";
+import type { TenantRole, TenantCapabilityPreset } from "@/lib/tenant-permissions";
+export type { TenantCapabilityPreset } from "@/lib/tenant-permissions";
 import type { LifecycleFilter, LifecycleStatus } from "@/lib/record-lifecycle";
+import { canPublishMaskVersion } from "@/lib/guarantee-slice1-policy.mjs";
+import { getTenantBootstrapStatus } from "@/lib/tenant-bootstrap-policy";
 
 export type { OutputTemplateSettingsInput } from "@/lib/output-doc";
 export type {
@@ -52,9 +56,9 @@ export type ExternalAuthUserInput = {
   name?: string;
 };
 
-export type TenantStatus = "trial" | "active" | "suspended" | "cancelled";
+export type TenantStatus = "trial" | "active" | "pending_activation" | "suspended" | "cancelled";
 export type TenantAccountType = "individual" | "company";
-export type TenantMembershipStatus = "active" | "invited" | "suspended";
+export type TenantMembershipStatus = "active" | "invited" | "suspended" | "removed";
 export type TenantInvitationProvider = "none" | "manual" | "clerk";
 export type TenantInvitationStatus = "not_sent" | "pending" | "accepted" | "revoked" | "expired" | "failed";
 
@@ -74,6 +78,8 @@ export type TenantMembership = {
   tenantId: string;
   userId: string;
   role: TenantRole;
+  /** User-facing company capability. Legacy role remains for compatibility only. */
+  capability?: TenantCapabilityPreset;
   status: TenantMembershipStatus;
   invitationProvider: TenantInvitationProvider;
   invitationStatus: TenantInvitationStatus;
@@ -82,9 +88,16 @@ export type TenantMembership = {
   invitationSentAt?: Date;
   invitationAcceptedAt?: Date;
   invitationError?: string;
+  invitedEmail?: string;
+  invitedByUserId?: string;
+  invitationExpiresAt?: Date;
+  invitationToken?: string;
   createdAt: Date;
   updatedAt: Date;
 };
+
+export { capabilityHasTenantPermission, listTenantCapabilityPermissions } from "@/lib/tenant-permissions";
+export { tenantRoleForCapabilityPreset } from "@/lib/tenant-permissions";
 
 export type TenantSessionLookup = {
   user: User;
@@ -93,6 +106,7 @@ export type TenantSessionLookup = {
 };
 
 export type TenantMemberListItem = TenantMembership & {
+  tenantName?: string;
   user: Pick<User, "id" | "name" | "email" | "externalAuthSubject" | "createdAt">;
 };
 
@@ -390,7 +404,7 @@ export type AiExperienceDraft = {
   updatedAt: Date;
 };
 
-export type AttachmentTargetType = "property" | "party" | "contract" | "service_request" | "import_job" | "quote";
+export type AttachmentTargetType = "property" | "party" | "contract" | "service_request" | "import_job" | "quote" | "guarantee_blank_form" | "guarantee_generated_output";
 
 export type Attachment = {
   id: string;
@@ -445,6 +459,64 @@ export type GeneratedOutput = {
   fieldMappingSnapshot?: Record<string, unknown>;
   layoutSnapshot?: Record<string, unknown>;
   generatedAt: Date;
+  fileAttachmentId?: string;
+  fileSha256?: string;
+  fileSizeBytes?: number;
+  fileMimeType?: string;
+  fileStatus?: "ready";
+  blankFormVersionId?: string;
+  blankFormSha256?: string;
+  companyMaskVersionId?: string;
+  fieldCatalogVersion?: string;
+  previewConfirmationId?: string;
+  caseInputSnapshotHash?: string;
+};
+
+export type GuaranteeBlankFormStatus = "uploaded" | "ready" | "rejected" | "archived";
+export type GuaranteeMaskMatchStatus = "exact" | "needs_recalibration" | "incompatible" | "unknown";
+export type GuaranteePreviewConfirmationStatus = "issued" | "processing" | "consumed" | "expired";
+export type GuaranteeBlankForm = {
+  id: string; tenantId: string; name: string; recipientOrPurpose?: string; activeVersionId?: string;
+  createdByUserId: string; createdAt: Date; archivedAt?: Date;
+};
+export type GuaranteeBlankFormVersion = {
+  id: string; blankFormId: string; tenantId: string; attachmentId: string; uploadedByUserId: string;
+  versionNumber: number; sha256: string; fileSizeBytes: number; mimeType: "application/pdf";
+  pageCount: number; pageWidth: number; pageHeight: number; status: GuaranteeBlankFormStatus;
+  createdAt: Date; statusChangedByUserId?: string;
+};
+export type GuaranteeCompanyMask = { id: string; tenantId: string; blankFormId: string; activeVersionId?: string; createdByUserId: string; createdAt: Date };
+export type GuaranteeCompanyMaskVersion = {
+  id: string; maskId: string; tenantId: string; blankFormId: string; blankFormVersionId: string;
+  sourcePlatformMaskId?: string; versionNumber: number; status: "draft" | "published" | "archived";
+  fieldCatalogVersion: string; layoutSnapshot: Record<string, unknown>; createdByUserId: string;
+  publishedByUserId?: string; testedByUserId?: string; testedAt?: Date; testedPdfSha256?: string;
+  testedLayoutDigest?: string;
+  testConfirmedByUserId?: string; testConfirmedAt?: Date; createdAt: Date; publishedAt?: Date;
+};
+export type GuaranteeMaskMatch = {
+  id: string; tenantId: string; blankFormVersionId: string; maskVersionId: string;
+  status: GuaranteeMaskMatchStatus; evaluatedAt?: Date; evaluatedByUserId?: string; reason?: string;
+  blankFormSha256?: string; pageWidth?: number; pageHeight?: number;
+};
+export type GuaranteePreviewConfirmation = {
+  id: string; tenantId: string; actorUserId: string; caseId: string; caseInputSnapshotHash: string;
+  blankFormVersionId: string; blankFormSha256: string; companyMaskVersionId: string; fieldCatalogVersion: string;
+  supplementSnapshot: Record<string, unknown>; supplementHash: string; expiresAt: Date;
+  status: GuaranteePreviewConfirmationStatus; processingExpiresAt?: Date; processingToken?: string; generatedOutputId?: string;
+  createdAt: Date; consumedAt?: Date;
+};
+
+export type GuaranteePreviewOutputInput = {
+  tenantId?: string; userId: string; actorId?: string; sourceQuoteId?: string; quoteId?: string; propertyId?: string; partyId?: string;
+  outputType: GeneratedOutput["outputType"];
+  outputFormat: GeneratedOutput["outputFormat"]; language: Locale; title: string; documentNumber: string;
+  templateVersionId?: string; caseId?: string; templateId?: string;
+  inputDataSnapshot?: Record<string, unknown>; draftValueSnapshot?: Record<string, unknown>;
+  fieldMappingSnapshot?: Record<string, unknown>; layoutSnapshot?: Record<string, unknown>;
+  fileAttachmentId?: string; fileSha256?: string; fileSizeBytes?: number; fileMimeType?: string;
+  blankFormVersionId?: string; blankFormSha256?: string; companyMaskVersionId?: string;
+  fieldCatalogVersion?: string; previewConfirmationId?: string; caseInputSnapshotHash?: string;
 };
 
 export type OutputTemplateVersion = {
@@ -519,6 +591,12 @@ type DB = {
   aiExperienceDrafts: AiExperienceDraft[];
   attachments: Attachment[];
   generatedOutputs: GeneratedOutput[];
+  guaranteeBlankForms: GuaranteeBlankForm[];
+  guaranteeBlankFormVersions: GuaranteeBlankFormVersion[];
+  guaranteeCompanyMasks: GuaranteeCompanyMask[];
+  guaranteeCompanyMaskVersions: GuaranteeCompanyMaskVersion[];
+  guaranteeMaskMatches: GuaranteeMaskMatch[];
+  guaranteePreviewConfirmations: GuaranteePreviewConfirmation[];
 };
 
 function makeId(prefix: string): string {
@@ -555,6 +633,9 @@ function countUsedSeats(tenantId: string): { activeSeatCount: number; invitedSea
 function ensureTenantMembershipDefaults(membership: TenantMembership): TenantMembership {
   membership.invitationProvider = membership.invitationProvider ?? (membership.status === "active" ? "manual" : "none");
   membership.invitationStatus = membership.invitationStatus ?? (membership.status === "active" ? "accepted" : "not_sent");
+  // Do not derive elevated capabilities from legacy roles. Missing capability
+  // is deliberately treated as the least-privileged compatibility state by
+  // the session layer until an explicit preset is stored.
   return membership;
 }
 
@@ -616,6 +697,12 @@ const tenantScopedCollectionKeys = [
   "aiExperienceDrafts",
   "attachments",
   "generatedOutputs",
+  "guaranteeBlankForms",
+  "guaranteeBlankFormVersions",
+  "guaranteeCompanyMasks",
+  "guaranteeCompanyMaskVersions",
+  "guaranteeMaskMatches",
+  "guaranteePreviewConfirmations",
 ] as const;
 
 function backfillTenantScope(dbLike: DB) {
@@ -706,6 +793,12 @@ function cloneDb(input: DB): DB {
     aiExperienceDrafts: cloneCollection(input.aiExperienceDrafts),
     attachments: cloneCollection(input.attachments),
     generatedOutputs: cloneCollection(input.generatedOutputs),
+    guaranteeBlankForms: cloneCollection(input.guaranteeBlankForms),
+    guaranteeBlankFormVersions: cloneCollection(input.guaranteeBlankFormVersions),
+    guaranteeCompanyMasks: cloneCollection(input.guaranteeCompanyMasks),
+    guaranteeCompanyMaskVersions: cloneCollection(input.guaranteeCompanyMaskVersions),
+    guaranteeMaskMatches: cloneCollection(input.guaranteeMaskMatches),
+    guaranteePreviewConfirmations: cloneCollection(input.guaranteePreviewConfirmations),
   };
 }
 
@@ -727,6 +820,12 @@ function qaBusinessDataCounts(): QaBusinessDataCounts {
     aiExperienceDrafts: db.aiExperienceDrafts.length,
     attachments: db.attachments.length,
     generatedOutputs: db.generatedOutputs.length,
+    guaranteeBlankForms: db.guaranteeBlankForms.length,
+    guaranteeBlankFormVersions: db.guaranteeBlankFormVersions.length,
+    guaranteeCompanyMasks: db.guaranteeCompanyMasks.length,
+    guaranteeCompanyMaskVersions: db.guaranteeCompanyMaskVersions.length,
+    guaranteeMaskMatches: db.guaranteeMaskMatches.length,
+    guaranteePreviewConfirmations: db.guaranteePreviewConfirmations.length,
   };
 }
 
@@ -791,6 +890,7 @@ const _freshDb: DB = withDefaultTenantScope({
       tenantId: "tenant_cherry",
       userId: "user_demo",
       role: "tenant_owner",
+      capability: "company_owner",
       status: "active",
       invitationProvider: "manual",
       invitationStatus: "accepted",
@@ -803,6 +903,7 @@ const _freshDb: DB = withDefaultTenantScope({
       tenantId: "tenant_cherry",
       userId: "user_ops",
       role: "tenant_admin",
+      capability: "ordinary_member",
       status: "active",
       invitationProvider: "manual",
       invitationStatus: "accepted",
@@ -1239,6 +1340,12 @@ const _freshDb: DB = withDefaultTenantScope({
     { id: "att_contract_yamada", userId: "user_demo", targetType: "contract", targetId: "quote_yamada_b", fileName: "売買契約書ドラフト_山田様.pdf", fileType: "application/pdf", fileSizeBytes: 1105920, storagePath: "demo/contracts/quote_yamada_b/draft.pdf", uploadedAt: new Date(now - 2 * 24 * 60 * 60 * 1000) },
   ],
   generatedOutputs: [],
+  guaranteeBlankForms: [],
+  guaranteeBlankFormVersions: [],
+  guaranteeCompanyMasks: [],
+  guaranteeCompanyMaskVersions: [],
+  guaranteeMaskMatches: [],
+  guaranteePreviewConfirmations: [],
 });
 
 if (!_g.__brokerDb) _g.__brokerDb = cloneDb(_freshDb);
@@ -1254,6 +1361,12 @@ if (!db.aiExperienceDrafts) db.aiExperienceDrafts = [];
 if (!db.caseWorkbenchFieldRules) db.caseWorkbenchFieldRules = [];
 if (!db.guaranteeTemplateLayoutVersions) db.guaranteeTemplateLayoutVersions = [];
 if (!db.tenantGuaranteeTemplateInstalls) db.tenantGuaranteeTemplateInstalls = [];
+if (!db.guaranteeBlankForms) db.guaranteeBlankForms = [];
+if (!db.guaranteeBlankFormVersions) db.guaranteeBlankFormVersions = [];
+if (!db.guaranteeCompanyMasks) db.guaranteeCompanyMasks = [];
+if (!db.guaranteeCompanyMaskVersions) db.guaranteeCompanyMaskVersions = [];
+if (!db.guaranteeMaskMatches) db.guaranteeMaskMatches = [];
+if (!db.guaranteePreviewConfirmations) db.guaranteePreviewConfirmations = [];
 
 export function resetBusinessDataForQa(): QaBusinessDataCounts {
   const templateSettings = createQaBlankTemplateSettings();
@@ -1292,6 +1405,12 @@ export function resetBusinessDataForQa(): QaBusinessDataCounts {
   db.aiExperienceDrafts = [];
   db.attachments = [];
   db.generatedOutputs = [];
+  db.guaranteeBlankForms = [];
+  db.guaranteeBlankFormVersions = [];
+  db.guaranteeCompanyMasks = [];
+  db.guaranteeCompanyMaskVersions = [];
+  db.guaranteeMaskMatches = [];
+  db.guaranteePreviewConfirmations = [];
 
   return qaBusinessDataCounts();
 }
@@ -1813,19 +1932,6 @@ function fallbackEmailForExternalSubject(subject: string): string {
   return `external-${safeSubject}@brokerdesk.local`;
 }
 
-function activateInvitedMembershipsForUser(userId: string) {
-  const acceptedAt = new Date();
-  db.tenantMemberships
-    .filter((membership) => membership.userId === userId && membership.status === "invited")
-    .forEach((membership) => {
-      membership.status = "active";
-      membership.invitationStatus = "accepted";
-      membership.invitationAcceptedAt = acceptedAt;
-      membership.invitationError = undefined;
-      membership.updatedAt = acceptedAt;
-    });
-}
-
 export async function ensureUserForExternalAuth(input: ExternalAuthUserInput): Promise<User | null> {
   const subject = input.subject.trim();
   if (!subject) return null;
@@ -1834,7 +1940,6 @@ export async function ensureUserForExternalAuth(input: ExternalAuthUserInput): P
   const name = input.name?.trim() || email || subject;
   const bySubject = db.users.find((item) => item.externalAuthSubject === subject);
   if (bySubject) {
-    activateInvitedMembershipsForUser(bySubject.id);
     return { ...bySubject };
   }
 
@@ -1846,7 +1951,6 @@ export async function ensureUserForExternalAuth(input: ExternalAuthUserInput): P
       }
       byEmail.externalAuthSubject = subject;
       byEmail.name = byEmail.name.trim() || name;
-      activateInvitedMembershipsForUser(byEmail.id);
       return { ...byEmail };
     }
   }
@@ -1860,7 +1964,6 @@ export async function ensureUserForExternalAuth(input: ExternalAuthUserInput): P
     createdAt: new Date(),
   };
   db.users.push(user);
-  activateInvitedMembershipsForUser(user.id);
   return { ...user };
 }
 
@@ -1983,6 +2086,59 @@ export async function createTenantAccount(input: {
   return toTenantAccountSummary(tenant);
 }
 
+/** Creates a company for the already-authenticated local user. */
+export async function createTenantAccountForUser(input: {
+  userId: string;
+  name: string;
+  slug?: string;
+  accountType?: TenantAccountType;
+}): Promise<{ tenant: Tenant; membership: TenantMembership }> {
+  const user = db.users.find((item) => item.id === input.userId);
+  if (!user) throw new Error("user not found");
+  const name = input.name.trim();
+  if (!name) throw new Error("tenant name is required");
+
+  const baseSlug = slugifyTenantName(input.slug || name);
+  let slug = baseSlug;
+  let suffix = 2;
+  while (db.tenants.some((tenant) => tenant.slug === slug)) {
+    slug = `${baseSlug}-${suffix}`;
+    suffix += 1;
+  }
+
+  const nowDate = new Date();
+  const tenant: Tenant = {
+    id: makeId("tenant"),
+    name,
+    slug,
+    accountType: input.accountType ?? "company",
+    // A newly created company is a non-production test account in local and
+    // preview environments. Production qualification remains a separate
+    // subscription/trial/platform-approval gate.
+    status: getTenantBootstrapStatus(),
+    // Compatibility-only legacy field. This path does not enforce seats.
+    purchasedSeatCount: 1,
+    createdAt: nowDate,
+    updatedAt: nowDate,
+  };
+  const membership: TenantMembership = {
+    id: makeId("membership"),
+    tenantId: tenant.id,
+    userId: user.id,
+    role: "tenant_owner",
+    capability: "company_owner",
+    status: "active",
+    invitationProvider: "manual",
+    invitationStatus: "accepted",
+    invitationAcceptedAt: nowDate,
+    createdAt: nowDate,
+    updatedAt: nowDate,
+  };
+  db.tenants.push(tenant);
+  db.tenantMemberships.push(membership);
+  return { tenant: { ...tenant }, membership: { ...membership } };
+}
+
 export async function updateTenantAccountLifecycle(input: {
   tenantId: string;
   status?: TenantStatus;
@@ -2011,6 +2167,61 @@ export async function listTenantMemberships(userId: string): Promise<TenantMembe
     .filter((item) => item.userId === userId)
     .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
     .map((item) => ({ ...ensureTenantMembershipDefaults(item) }));
+}
+
+export async function listPendingTenantInvitations(userId: string): Promise<TenantMemberListItem[]> {
+  const now = Date.now();
+  return db.tenantMemberships
+    .filter((item) => {
+      if (item.userId !== userId || item.status !== "invited" || item.invitationStatus !== "pending") return false;
+      if (item.invitationExpiresAt && item.invitationExpiresAt.getTime() <= now) {
+        item.invitationStatus = "expired";
+        item.updatedAt = new Date();
+        return false;
+      }
+      return true;
+    })
+    .flatMap((item): TenantMemberListItem[] => {
+      const mapped = toTenantMemberListItem(item);
+      const tenant = db.tenants.find((candidate) => candidate.id === item.tenantId);
+      return mapped ? [{ ...mapped, tenantName: tenant?.name }] : [];
+    });
+}
+
+export async function acceptTenantInvitation(input: {
+  userId: string;
+  tenantId: string;
+  membershipId: string;
+  invitationToken: string;
+}): Promise<TenantMemberListItem | null> {
+  const user = db.users.find((item) => item.id === input.userId);
+  const membership = db.tenantMemberships.find(
+    (item) => item.id === input.membershipId && item.tenantId === input.tenantId && item.userId === input.userId,
+  );
+  if (
+    !user ||
+    !membership ||
+    membership.status !== "invited" ||
+    membership.invitationStatus !== "pending" ||
+    !membership.invitationToken ||
+    membership.invitationToken !== input.invitationToken.trim() ||
+    !membership.invitedEmail ||
+    membership.invitedEmail.toLowerCase() !== user.email.toLowerCase()
+  ) {
+    return null;
+  }
+  if (membership.invitationExpiresAt && membership.invitationExpiresAt.getTime() <= Date.now()) {
+    membership.invitationStatus = "expired";
+    membership.updatedAt = new Date();
+    return null;
+  }
+  const nowDate = new Date();
+  membership.status = "active";
+  membership.invitationStatus = "accepted";
+  membership.invitationAcceptedAt = nowDate;
+  membership.invitationError = undefined;
+  membership.updatedAt = nowDate;
+  return toTenantMemberListItem(membership);
 }
 
 export async function getTenantMembership(input: { userId: string; tenantId: string }): Promise<TenantMembership | null> {
@@ -2057,6 +2268,7 @@ export async function getTenantMemberById(input: {
 export async function updateTenantMemberInvitation(input: {
   tenantId?: string;
   membershipId: string;
+  actorUserId?: string;
   invitationProvider: TenantInvitationProvider;
   invitationStatus: TenantInvitationStatus;
   providerInvitationId?: string;
@@ -2064,6 +2276,7 @@ export async function updateTenantMemberInvitation(input: {
   invitationError?: string;
   sentAt?: Date;
   acceptedAt?: Date;
+  expiresAt?: Date;
 }): Promise<TenantMemberListItem | null> {
   const scopeTenantId = resolveTenantId(input.tenantId);
   const membership = db.tenantMemberships.find(
@@ -2077,7 +2290,29 @@ export async function updateTenantMemberInvitation(input: {
   membership.invitationError = input.invitationError;
   membership.invitationSentAt = input.sentAt ?? membership.invitationSentAt;
   membership.invitationAcceptedAt = input.acceptedAt ?? membership.invitationAcceptedAt;
+  membership.invitationExpiresAt = input.expiresAt ?? membership.invitationExpiresAt;
   membership.updatedAt = new Date();
+  return toTenantMemberListItem(membership);
+}
+
+export async function refreshTenantMemberInvitation(input: {
+  tenantId?: string;
+  membershipId: string;
+  invitedByUserId?: string;
+}): Promise<TenantMemberListItem | null> {
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const membership = db.tenantMemberships.find(
+    (item) => item.id === input.membershipId && item.tenantId === scopeTenantId,
+  );
+  if (!membership || membership.status !== "invited") return null;
+  const nowDate = new Date();
+  membership.invitationStatus = "pending";
+  membership.invitationToken = randomUUID();
+  membership.invitationExpiresAt = new Date(nowDate.getTime() + 7 * 24 * 60 * 60 * 1000);
+  membership.invitedByUserId = input.invitedByUserId ?? membership.invitedByUserId;
+  membership.invitationSentAt = nowDate;
+  membership.invitationError = undefined;
+  membership.updatedAt = nowDate;
   return toTenantMemberListItem(membership);
 }
 
@@ -2087,6 +2322,8 @@ export async function inviteTenantMember(input: {
   email: string;
   role: TenantRole;
   status?: TenantMembershipStatus;
+  capability?: TenantCapabilityPreset;
+  invitedByUserId?: string;
 }): Promise<TenantMemberListItem> {
   const scopeTenantId = resolveTenantId(input.tenantId);
   const email = input.email.trim().toLowerCase();
@@ -2109,16 +2346,28 @@ export async function inviteTenantMember(input: {
   const existing = db.tenantMemberships.find(
     (membership) => membership.tenantId === scopeTenantId && membership.userId === user.id,
   );
-  if (existing) {
-    const nextStatus = input.status ?? "active";
+  if (existing && existing.status !== "removed") {
+    const nextStatus = input.status ?? "invited";
+    if (existing.status === "active" && nextStatus === "invited") {
+      throw new Error("active member cannot be changed back to invited");
+    }
     if (existing.status === "suspended" && nextStatus !== "suspended") {
-      assertTenantHasSeatCapacity(scopeTenantId, nextStatus);
+      throw new Error("suspended member must be explicitly reactivated, not re-invited");
     }
     existing.role = input.role;
+    existing.capability = input.capability ?? existing.capability ?? "ordinary_member";
     existing.status = nextStatus;
+    existing.invitedEmail = email;
+    existing.invitedByUserId = input.invitedByUserId;
     existing.invitationProvider = existing.invitationProvider ?? "none";
-    existing.invitationStatus = nextStatus === "active" ? "accepted" : existing.invitationStatus ?? "not_sent";
-    if (nextStatus === "active") existing.invitationAcceptedAt = existing.invitationAcceptedAt ?? new Date();
+    if (nextStatus === "active") {
+      existing.invitationStatus = "accepted";
+      existing.invitationAcceptedAt = existing.invitationAcceptedAt ?? new Date();
+    } else {
+      existing.invitationStatus = "pending";
+      existing.invitationToken = randomUUID();
+      existing.invitationExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    }
     existing.updatedAt = new Date();
     return {
       ...existing,
@@ -2132,17 +2381,21 @@ export async function inviteTenantMember(input: {
     };
   }
 
-  const nextStatus = input.status ?? "active";
-  assertTenantHasSeatCapacity(scopeTenantId, nextStatus);
+  const nextStatus = input.status ?? "invited";
   const nowDate = new Date();
   const membership: TenantMembership = {
     id: makeId("membership"),
     tenantId: scopeTenantId,
     userId: user.id,
     role: input.role,
+    capability: input.capability ?? "ordinary_member",
     status: nextStatus,
     invitationProvider: nextStatus === "active" ? "manual" : "none",
-    invitationStatus: nextStatus === "active" ? "accepted" : "not_sent",
+    invitationStatus: nextStatus === "active" ? "accepted" : "pending",
+    invitedEmail: email,
+    invitedByUserId: input.invitedByUserId,
+    invitationToken: nextStatus === "active" ? undefined : randomUUID(),
+    invitationExpiresAt: nextStatus === "active" ? undefined : new Date(nowDate.getTime() + 7 * 24 * 60 * 60 * 1000),
     invitationAcceptedAt: nextStatus === "active" ? nowDate : undefined,
     createdAt: nowDate,
     updatedAt: nowDate,
@@ -2164,6 +2417,8 @@ export async function updateTenantMemberRole(input: {
   tenantId?: string;
   membershipId: string;
   role: TenantRole;
+  capability?: TenantCapabilityPreset;
+  actorUserId?: string;
 }): Promise<TenantMemberListItem | null> {
   const scopeTenantId = resolveTenantId(input.tenantId);
   const membership = db.tenantMemberships.find(
@@ -2171,6 +2426,7 @@ export async function updateTenantMemberRole(input: {
   );
   if (!membership) return null;
   membership.role = input.role;
+  if (input.capability) membership.capability = input.capability;
   membership.updatedAt = new Date();
   const user = db.users.find((item) => item.id === membership.userId);
   if (!user) return null;
@@ -2190,14 +2446,18 @@ export async function updateTenantMemberStatus(input: {
   tenantId?: string;
   membershipId: string;
   status: TenantMembershipStatus;
+  actorUserId?: string;
 }): Promise<TenantMemberListItem | null> {
   const scopeTenantId = resolveTenantId(input.tenantId);
   const membership = db.tenantMemberships.find(
     (item) => item.id === input.membershipId && item.tenantId === scopeTenantId,
   );
   if (!membership) return null;
-  if (membership.status === "suspended" && input.status !== "suspended") {
-    assertTenantHasSeatCapacity(scopeTenantId, input.status);
+  if (membership.status === "removed" && input.status === "active") {
+    throw new Error("removed membership requires a new invitation");
+  }
+  if (membership.status === "invited" && input.status === "active") {
+    throw new Error("invited membership requires explicit token acceptance");
   }
   const previousStatus = membership.status;
   membership.status = input.status;
@@ -3013,7 +3273,6 @@ export async function getGuaranteeApplicationDraft(input: {
   const scopeTenantId = resolveTenantId(input.tenantId);
   const item = db.guaranteeApplicationDrafts.find(
     (draft) =>
-      draft.userId === input.userId &&
       draft.tenantId === scopeTenantId &&
       draft.caseId === input.caseId &&
       draft.templateId === input.templateId,
@@ -3035,7 +3294,6 @@ export async function listGuaranteeApplicationDrafts(input: {
   return db.guaranteeApplicationDrafts
     .filter(
       (draft) =>
-        draft.userId === input.userId &&
         draft.tenantId === scopeTenantId &&
         caseIds.has(draft.caseId) &&
         templateIds.has(draft.templateId),
@@ -3058,7 +3316,6 @@ export async function saveGuaranteeApplicationDraft(input: {
   const scopeTenantId = resolveTenantId(input.tenantId);
   let item = db.guaranteeApplicationDrafts.find(
     (draft) =>
-      draft.userId === input.userId &&
       draft.tenantId === scopeTenantId &&
       draft.caseId === input.caseId &&
       draft.templateId === input.templateId,
@@ -3081,6 +3338,9 @@ export async function saveGuaranteeApplicationDraft(input: {
     };
     db.guaranteeApplicationDrafts.unshift(item);
   } else {
+    // The record belongs to the tenant/case/form. Keep the latest actor only
+    // as provenance; it must not decide who can recover the case record.
+    item.userId = input.userId;
     item.companyCode = input.companyCode;
     item.status = input.status;
     item.fieldValuesJson = { ...input.fieldValuesJson };
@@ -3175,6 +3435,22 @@ export async function readPrivateAttachmentContent(input: {
   return content ? Buffer.from(content) : null;
 }
 
+export async function readPrivateAttachmentContentForTenant(input: { tenantId?: string; id: string }): Promise<Buffer | null> {
+  const attachment = db.attachments.find((item) => item.id === input.id && item.tenantId === resolveTenantId(input.tenantId));
+  if (!attachment?.storagePath?.startsWith("postgres-private://")) return null;
+  const content = privateAttachmentContents.get(attachment.id);
+  return content ? Buffer.from(content) : null;
+}
+
+export async function deletePrivateAttachmentForTenant(input: { tenantId?: string; id: string }): Promise<boolean> {
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const index = db.attachments.findIndex((item) => item.id === input.id && item.tenantId === scopeTenantId);
+  if (index < 0) return false;
+  db.attachments.splice(index, 1);
+  privateAttachmentContents.delete(input.id);
+  return true;
+}
+
 export async function listGeneratedOutputs(input: {
   tenantId?: string;
   userId: string;
@@ -3223,8 +3499,54 @@ export async function addGeneratedOutput(input: {
   draftValueSnapshot?: Record<string, unknown>;
   fieldMappingSnapshot?: Record<string, unknown>;
   layoutSnapshot?: Record<string, unknown>;
+  fileAttachmentId?: string;
+  fileSha256?: string;
+  fileSizeBytes?: number;
+  fileMimeType?: string;
+  blankFormVersionId?: string;
+  blankFormSha256?: string;
+  companyMaskVersionId?: string;
+  fieldCatalogVersion?: string;
+  previewConfirmationId?: string;
+  caseInputSnapshotHash?: string;
 }): Promise<GeneratedOutput> {
-  const output: GeneratedOutput = {
+  const output = buildGeneratedOutput(input);
+  db.generatedOutputs.unshift(output);
+  return output;
+}
+
+function buildGeneratedOutput(input: {
+  tenantId?: string;
+  userId: string;
+  actorId?: string;
+  sourceQuoteId?: string;
+  quoteId?: string;
+  propertyId?: string;
+  partyId?: string;
+  outputType: GeneratedOutput["outputType"];
+  outputFormat: GeneratedOutput["outputFormat"];
+  language: Locale;
+  title: string;
+  documentNumber: string;
+  templateVersionId?: string;
+  caseId?: string;
+  templateId?: string;
+  inputDataSnapshot?: Record<string, unknown>;
+  draftValueSnapshot?: Record<string, unknown>;
+  fieldMappingSnapshot?: Record<string, unknown>;
+  layoutSnapshot?: Record<string, unknown>;
+  fileAttachmentId?: string;
+  fileSha256?: string;
+  fileSizeBytes?: number;
+  fileMimeType?: string;
+  blankFormVersionId?: string;
+  blankFormSha256?: string;
+  companyMaskVersionId?: string;
+  fieldCatalogVersion?: string;
+  previewConfirmationId?: string;
+  caseInputSnapshotHash?: string;
+}): GeneratedOutput {
+  return {
     id: makeId("out"),
     tenantId: resolveTenantId(input.tenantId),
     actorId: input.actorId ?? input.userId,
@@ -3246,9 +3568,329 @@ export async function addGeneratedOutput(input: {
     fieldMappingSnapshot: input.fieldMappingSnapshot,
     layoutSnapshot: input.layoutSnapshot,
     generatedAt: new Date(),
+    fileAttachmentId: input.fileAttachmentId,
+    fileSha256: input.fileSha256,
+    fileSizeBytes: input.fileSizeBytes,
+    fileMimeType: input.fileMimeType,
+    fileStatus: input.fileAttachmentId ? "ready" : undefined,
+    blankFormVersionId: input.blankFormVersionId,
+    blankFormSha256: input.blankFormSha256,
+    companyMaskVersionId: input.companyMaskVersionId,
+    fieldCatalogVersion: input.fieldCatalogVersion,
+    previewConfirmationId: input.previewConfirmationId,
+    caseInputSnapshotHash: input.caseInputSnapshotHash,
   };
+}
+
+export async function finalizeGuaranteePreviewOutput(input: {
+  confirmationId: string; processingToken: string; output: GuaranteePreviewOutputInput;
+}): Promise<{ output: GeneratedOutput; confirmation: GuaranteePreviewConfirmation }> {
+  const tenantId = resolveTenantId(input.output.tenantId);
+  const confirmation = db.guaranteePreviewConfirmations.find((value) => value.id === input.confirmationId && value.tenantId === tenantId);
+  if (!confirmation) throw new Error("generation_confirmation_commit_failed");
+  // A consumed confirmation is an idempotent retry. Returning the already
+  // materialized output is required for double-clicks and network retries.
+  if (confirmation.status === "consumed" && confirmation.generatedOutputId) {
+    const existing = db.generatedOutputs.find((value) => value.id === confirmation.generatedOutputId && value.tenantId === tenantId);
+    if (!existing) throw new Error("generation_confirmation_commit_failed");
+    return { output: cloneGuarantee(existing), confirmation: cloneGuarantee(confirmation) };
+  }
+  if (confirmation.status !== "processing" || confirmation.processingToken !== input.processingToken) throw new Error("generation_confirmation_commit_failed");
+  // Keep the commit section synchronous in memory. There is no await between
+  // checking the token and writing the output, so two concurrent callers
+  // cannot both materialize a file/output pair in this adapter.
+  const output = buildGeneratedOutput({ ...input.output, previewConfirmationId: input.confirmationId });
   db.generatedOutputs.unshift(output);
-  return output;
+  confirmation.status = "consumed";
+  confirmation.generatedOutputId = output.id;
+  confirmation.consumedAt = new Date();
+  confirmation.processingExpiresAt = undefined;
+  confirmation.processingToken = undefined;
+  return { output: cloneGuarantee(output), confirmation: cloneGuarantee(confirmation) };
+}
+
+function cloneGuarantee<T>(value: T): T {
+  return structuredClone(value);
+}
+
+export async function createGuaranteeBlankForm(input: {
+  tenantId: string; userId: string; name: string; recipientOrPurpose?: string;
+}): Promise<GuaranteeBlankForm> {
+  const item: GuaranteeBlankForm = {
+    id: makeId("gblank"), tenantId: resolveTenantId(input.tenantId), name: input.name.trim(),
+    recipientOrPurpose: input.recipientOrPurpose?.trim() || undefined, createdByUserId: input.userId, createdAt: new Date(),
+  };
+  db.guaranteeBlankForms.unshift(item);
+  return cloneGuarantee(item);
+}
+
+export async function addGuaranteeBlankFormVersion(input: {
+  tenantId: string; blankFormId: string; attachmentId: string; uploadedByUserId: string;
+  sha256: string; fileSizeBytes: number; pageCount: number; pageWidth: number; pageHeight: number;
+  status?: GuaranteeBlankFormStatus;
+}): Promise<GuaranteeBlankFormVersion> {
+  const tenantId = resolveTenantId(input.tenantId);
+  const form = db.guaranteeBlankForms.find((item) => item.id === input.blankFormId && item.tenantId === tenantId);
+  if (!form) throw new Error("guarantee_blank_form_not_found");
+  const versionNumber = Math.max(0, ...db.guaranteeBlankFormVersions.filter((item) => item.blankFormId === form.id).map((item) => item.versionNumber)) + 1;
+  const item: GuaranteeBlankFormVersion = {
+    id: makeId("gblankver"), blankFormId: form.id, tenantId, attachmentId: input.attachmentId,
+    uploadedByUserId: input.uploadedByUserId, versionNumber, sha256: input.sha256, fileSizeBytes: input.fileSizeBytes,
+    mimeType: "application/pdf", pageCount: input.pageCount, pageWidth: input.pageWidth, pageHeight: input.pageHeight,
+    status: input.status ?? "ready", createdAt: new Date(), statusChangedByUserId: input.uploadedByUserId,
+  };
+  db.guaranteeBlankFormVersions.unshift(item);
+  form.activeVersionId = item.id;
+  return cloneGuarantee(item);
+}
+
+export async function getGuaranteeBlankForm(input: { tenantId: string; id: string }): Promise<GuaranteeBlankForm | undefined> {
+  const item = db.guaranteeBlankForms.find((value) => value.id === input.id && value.tenantId === resolveTenantId(input.tenantId));
+  return item ? cloneGuarantee(item) : undefined;
+}
+
+export async function listGuaranteeBlankForms(input: { tenantId: string }): Promise<GuaranteeBlankForm[]> {
+  const tenantId = resolveTenantId(input.tenantId);
+  return db.guaranteeBlankForms
+    .filter((value) => value.tenantId === tenantId && !value.archivedAt)
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+    .map(cloneGuarantee);
+}
+
+export async function deleteGuaranteeBlankFormForTenant(input: { tenantId: string; id: string }): Promise<boolean> {
+  const tenantId = resolveTenantId(input.tenantId);
+  const hasVersion = db.guaranteeBlankFormVersions.some((value) => value.tenantId === tenantId && value.blankFormId === input.id);
+  const hasMask = db.guaranteeCompanyMasks.some((value) => value.tenantId === tenantId && value.blankFormId === input.id);
+  if (hasVersion || hasMask) return false;
+  const index = db.guaranteeBlankForms.findIndex((value) => value.tenantId === tenantId && value.id === input.id);
+  if (index < 0) return false;
+  db.guaranteeBlankForms.splice(index, 1);
+  return true;
+}
+
+export async function getGuaranteeBlankFormVersion(input: { tenantId: string; id: string }): Promise<GuaranteeBlankFormVersion | undefined> {
+  const item = db.guaranteeBlankFormVersions.find((value) => value.id === input.id && value.tenantId === resolveTenantId(input.tenantId));
+  return item ? cloneGuarantee(item) : undefined;
+}
+
+export async function deleteGuaranteeBlankFormVersionForTenant(input: { tenantId: string; id: string }): Promise<boolean> {
+  const tenantId = resolveTenantId(input.tenantId);
+  const index = db.guaranteeBlankFormVersions.findIndex((value) => value.id === input.id && value.tenantId === tenantId);
+  if (index < 0) return false;
+  const version = db.guaranteeBlankFormVersions[index];
+  const form = db.guaranteeBlankForms.find((value) => value.id === version.blankFormId && value.tenantId === tenantId);
+  if (form?.activeVersionId === version.id) form.activeVersionId = undefined;
+  db.guaranteeBlankFormVersions.splice(index, 1);
+  return true;
+}
+
+export async function getGuaranteeCompanyMaskVersion(input: { tenantId: string; id: string }): Promise<GuaranteeCompanyMaskVersion | undefined> {
+  const item = db.guaranteeCompanyMaskVersions.find((value) => value.id === input.id && value.tenantId === resolveTenantId(input.tenantId));
+  return item ? cloneGuarantee(item) : undefined;
+}
+
+export async function listPublishedGuaranteeCompanyMaskVersions(input: { tenantId: string }): Promise<GuaranteeCompanyMaskVersion[]> {
+  const tenantId = resolveTenantId(input.tenantId);
+  return db.guaranteeCompanyMaskVersions
+    .filter((value) => value.tenantId === tenantId && value.status === "published")
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+    .map(cloneGuarantee);
+}
+
+export async function listGuaranteeCompanyMaskVersions(input: { tenantId: string }): Promise<GuaranteeCompanyMaskVersion[]> {
+  const tenantId = resolveTenantId(input.tenantId);
+  return db.guaranteeCompanyMaskVersions
+    .filter((value) => value.tenantId === tenantId && (value.status === "draft" || value.status === "published"))
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+    .map(cloneGuarantee);
+}
+
+export async function getGuaranteeCompanyMask(input: { tenantId: string; id: string }): Promise<GuaranteeCompanyMask | undefined> {
+  const item = db.guaranteeCompanyMasks.find((value) => value.id === input.id && value.tenantId === resolveTenantId(input.tenantId));
+  return item ? cloneGuarantee(item) : undefined;
+}
+
+export async function getGuaranteeOutputByCase(input: { tenantId: string; caseId: string; id: string }): Promise<GeneratedOutput | undefined> {
+  const item = db.generatedOutputs.find((value) => value.id === input.id && value.tenantId === resolveTenantId(input.tenantId) && value.caseId === input.caseId);
+  return item ? { ...item } : undefined;
+}
+
+export async function listGuaranteeOutputsByCase(input: { tenantId: string; caseId: string; limit?: number }): Promise<GeneratedOutput[]> {
+  const limit = input.limit ?? 50;
+  return db.generatedOutputs
+    .filter((value) => value.tenantId === resolveTenantId(input.tenantId) && value.caseId === input.caseId && value.outputType === "guarantee_application")
+    .sort((a, b) => b.generatedAt.getTime() - a.generatedAt.getTime())
+    .slice(0, limit)
+    .map((value) => ({ ...value }));
+}
+
+export async function deleteGeneratedOutputForTenant(input: { tenantId: string; id: string }): Promise<boolean> {
+  const index = db.generatedOutputs.findIndex((value) => value.id === input.id && value.tenantId === resolveTenantId(input.tenantId));
+  if (index < 0) return false;
+  db.generatedOutputs.splice(index, 1);
+  return true;
+}
+
+export async function createGuaranteeCompanyMask(input: { tenantId: string; blankFormId: string; userId: string }): Promise<GuaranteeCompanyMask> {
+  const tenantId = resolveTenantId(input.tenantId);
+  const existing = db.guaranteeCompanyMasks.find((item) => item.tenantId === tenantId && item.blankFormId === input.blankFormId);
+  if (existing) return cloneGuarantee(existing);
+  const item: GuaranteeCompanyMask = { id: makeId("gmask"), tenantId, blankFormId: input.blankFormId, createdByUserId: input.userId, createdAt: new Date() };
+  db.guaranteeCompanyMasks.unshift(item);
+  return cloneGuarantee(item);
+}
+
+export async function addGuaranteeCompanyMaskVersion(input: {
+  tenantId: string; maskId: string; blankFormVersionId: string; userId: string; fieldCatalogVersion: string;
+  layoutSnapshot: Record<string, unknown>; status?: "draft" | "published"; sourcePlatformMaskId?: string;
+}): Promise<GuaranteeCompanyMaskVersion> {
+  const tenantId = resolveTenantId(input.tenantId);
+  const mask = db.guaranteeCompanyMasks.find((item) => item.id === input.maskId && item.tenantId === tenantId);
+  if (!mask) throw new Error("guarantee_company_mask_not_found");
+  const existingDraft = db.guaranteeCompanyMaskVersions.find((item) => item.maskId === mask.id && item.status === "draft");
+  if (input.status === "draft" && existingDraft) {
+    existingDraft.layoutSnapshot = cloneGuarantee(input.layoutSnapshot);
+    existingDraft.blankFormVersionId = input.blankFormVersionId;
+    existingDraft.fieldCatalogVersion = input.fieldCatalogVersion;
+    existingDraft.testedByUserId = undefined;
+    existingDraft.testedAt = undefined;
+    existingDraft.testedPdfSha256 = undefined;
+    existingDraft.testedLayoutDigest = undefined;
+    existingDraft.testConfirmedByUserId = undefined;
+    existingDraft.testConfirmedAt = undefined;
+    return cloneGuarantee(existingDraft);
+  }
+  const versionNumber = Math.max(0, ...db.guaranteeCompanyMaskVersions.filter((item) => item.maskId === mask.id).map((item) => item.versionNumber)) + 1;
+  const now = new Date();
+  const item: GuaranteeCompanyMaskVersion = {
+    id: makeId("gmaskver"), maskId: mask.id, tenantId, blankFormId: mask.blankFormId, blankFormVersionId: input.blankFormVersionId,
+    sourcePlatformMaskId: input.sourcePlatformMaskId, versionNumber, status: input.status ?? "draft", fieldCatalogVersion: input.fieldCatalogVersion,
+    layoutSnapshot: cloneGuarantee(input.layoutSnapshot), createdByUserId: input.userId, createdAt: now,
+    publishedByUserId: input.status === "published" ? input.userId : undefined, publishedAt: input.status === "published" ? now : undefined,
+  };
+  db.guaranteeCompanyMaskVersions.unshift(item);
+  if (item.status === "published") mask.activeVersionId = item.id;
+  return cloneGuarantee(item);
+}
+
+export async function markGuaranteeCompanyMaskVersionTested(input: { tenantId: string; maskVersionId: string; userId: string; testPdfSha256: string; testedLayoutDigest: string }): Promise<GuaranteeCompanyMaskVersion | undefined> {
+  const tenantId = resolveTenantId(input.tenantId);
+  const item = db.guaranteeCompanyMaskVersions.find((value) => value.id === input.maskVersionId && value.tenantId === tenantId);
+  if (!item || item.status !== "draft") return undefined;
+  item.testedByUserId = input.userId;
+  item.testedAt = new Date();
+  item.testedPdfSha256 = input.testPdfSha256;
+  item.testedLayoutDigest = input.testedLayoutDigest;
+  item.testConfirmedByUserId = undefined;
+  item.testConfirmedAt = undefined;
+  return cloneGuarantee(item);
+}
+
+export async function confirmGuaranteeCompanyMaskVersionTest(input: { tenantId: string; maskVersionId: string; userId: string; testPdfSha256: string }): Promise<GuaranteeCompanyMaskVersion | undefined> {
+  const tenantId = resolveTenantId(input.tenantId);
+  const item = db.guaranteeCompanyMaskVersions.find((value) => value.id === input.maskVersionId && value.tenantId === tenantId);
+  if (!item || item.status !== "draft" || !item.testedAt || item.testedPdfSha256 !== input.testPdfSha256) return undefined;
+  item.testConfirmedByUserId = input.userId;
+  item.testConfirmedAt = new Date();
+  return cloneGuarantee(item);
+}
+
+export async function publishGuaranteeCompanyMaskVersion(input: { tenantId: string; maskVersionId: string; userId: string }): Promise<GuaranteeCompanyMaskVersion | undefined> {
+  const tenantId = resolveTenantId(input.tenantId);
+  const item = db.guaranteeCompanyMaskVersions.find((value) => value.id === input.maskVersionId && value.tenantId === tenantId);
+  const blank = item ? db.guaranteeBlankForms.find((value) => value.id === item.blankFormId && value.tenantId === tenantId) : undefined;
+  if (!item || !blank || blank.activeVersionId !== item.blankFormVersionId || item.status !== "draft" || !canPublishMaskVersion({ testedAt: item.testedAt, testConfirmedAt: item.testConfirmedAt })) return undefined;
+  item.status = "published"; item.publishedByUserId = input.userId; item.publishedAt = new Date();
+  const mask = db.guaranteeCompanyMasks.find((value) => value.id === item.maskId && value.tenantId === tenantId);
+  if (mask) mask.activeVersionId = item.id;
+  return cloneGuarantee(item);
+}
+
+export async function publishGuaranteeCompanyMaskVersionWithExactMatch(input: { tenantId: string; maskVersionId: string; userId: string; layoutDigest: string; failureInjection?: "before_match" }): Promise<{ version: GuaranteeCompanyMaskVersion; match: GuaranteeMaskMatch } | undefined> {
+  const tenantId = resolveTenantId(input.tenantId);
+  const item = db.guaranteeCompanyMaskVersions.find((value) => value.id === input.maskVersionId && value.tenantId === tenantId);
+  const mask = item ? db.guaranteeCompanyMasks.find((value) => value.id === item.maskId && value.tenantId === tenantId) : undefined;
+  const blank = item ? db.guaranteeBlankForms.find((value) => value.id === item.blankFormId && value.tenantId === tenantId) : undefined;
+  if (!item || !mask || !blank || blank.activeVersionId !== item.blankFormVersionId || item.status !== "draft" || !canPublishMaskVersion({ testedAt: item.testedAt, testConfirmedAt: item.testConfirmedAt }) || !item.testedLayoutDigest || item.testedLayoutDigest !== input.layoutDigest) return undefined;
+  const beforeItem = cloneGuarantee(item);
+  const beforeMask = cloneGuarantee(mask);
+  const existing = db.guaranteeMaskMatches.find((value) => value.tenantId === tenantId && value.blankFormVersionId === item.blankFormVersionId && value.maskVersionId === item.id);
+  const beforeMatch = existing ? cloneGuarantee(existing) : undefined;
+  item.status = "published"; item.publishedByUserId = input.userId; item.publishedAt = new Date(); mask.activeVersionId = item.id;
+  try {
+    if (input.failureInjection === "before_match") throw new Error("guarantee_match_write_injected_failure");
+    const match = existing ?? { id: makeId("gmatch"), tenantId, blankFormVersionId: item.blankFormVersionId, maskVersionId: item.id } as GuaranteeMaskMatch;
+    match.status = "exact"; match.evaluatedByUserId = input.userId; match.evaluatedAt = new Date(); match.reason = "admin-confirmed-test";
+    if (!existing) db.guaranteeMaskMatches.unshift(match);
+    return { version: cloneGuarantee(item), match: cloneGuarantee(match) };
+  } catch (error) {
+    Object.assign(item, beforeItem);
+    Object.assign(mask, beforeMask);
+    if (existing && beforeMatch) Object.assign(existing, beforeMatch);
+    if (!existing) {
+      const matchIndex = db.guaranteeMaskMatches.findIndex((value) => value.tenantId === tenantId && value.blankFormVersionId === item.blankFormVersionId && value.maskVersionId === item.id);
+      if (matchIndex >= 0) db.guaranteeMaskMatches.splice(matchIndex, 1);
+    }
+    throw error;
+  }
+}
+
+export async function rollbackGuaranteeCompanyMaskVersion(input: { tenantId: string; maskId: string; maskVersionId: string; userId: string }): Promise<GuaranteeCompanyMaskVersion | undefined> {
+  const tenantId = resolveTenantId(input.tenantId);
+  const version = db.guaranteeCompanyMaskVersions.find((value) => value.id === input.maskVersionId && value.maskId === input.maskId && value.tenantId === tenantId && value.status === "published");
+  const mask = db.guaranteeCompanyMasks.find((value) => value.id === input.maskId && value.tenantId === tenantId);
+  if (!version || !mask) return undefined;
+  mask.activeVersionId = version.id;
+  return cloneGuarantee(version);
+}
+
+export async function createGuaranteeMaskMatch(input: {
+  tenantId: string; blankFormVersionId: string; maskVersionId: string; status: GuaranteeMaskMatchStatus;
+  userId: string; reason?: string;
+}): Promise<GuaranteeMaskMatch> {
+  const tenantId = resolveTenantId(input.tenantId);
+  const existing = db.guaranteeMaskMatches.find((item) => item.tenantId === tenantId && item.blankFormVersionId === input.blankFormVersionId && item.maskVersionId === input.maskVersionId);
+  const value = existing ?? { id: makeId("gmatch"), tenantId, blankFormVersionId: input.blankFormVersionId, maskVersionId: input.maskVersionId } as GuaranteeMaskMatch;
+  value.status = input.status; value.reason = input.reason; value.evaluatedByUserId = input.userId; value.evaluatedAt = new Date();
+  if (!existing) db.guaranteeMaskMatches.unshift(value);
+  return cloneGuarantee(value);
+}
+
+export async function getGuaranteeMaskMatch(input: { tenantId: string; blankFormVersionId: string; maskVersionId: string }): Promise<GuaranteeMaskMatch | undefined> {
+  const item = db.guaranteeMaskMatches.find((value) => value.tenantId === resolveTenantId(input.tenantId) && value.blankFormVersionId === input.blankFormVersionId && value.maskVersionId === input.maskVersionId);
+  return item ? cloneGuarantee(item) : undefined;
+}
+
+export async function createGuaranteePreviewConfirmation(input: Omit<GuaranteePreviewConfirmation, "id" | "status" | "createdAt">): Promise<GuaranteePreviewConfirmation> {
+  const item: GuaranteePreviewConfirmation = { ...cloneGuarantee(input), id: makeId("gconfirm"), status: "issued", createdAt: new Date() };
+  db.guaranteePreviewConfirmations.unshift(item);
+  return cloneGuarantee(item);
+}
+
+export async function claimGuaranteePreviewConfirmation(input: { tenantId: string; id: string; actorUserId: string; leaseMs?: number }): Promise<GuaranteePreviewConfirmation | undefined> {
+  const item = db.guaranteePreviewConfirmations.find((value) => value.id === input.id && value.tenantId === resolveTenantId(input.tenantId) && value.actorUserId === input.actorUserId);
+  if (!item) return undefined;
+  if (item.status === "consumed") return cloneGuarantee(item);
+  if (item.expiresAt <= new Date()) { item.status = "expired"; return cloneGuarantee(item); }
+  if (item.status === "processing" && item.processingExpiresAt && item.processingExpiresAt > new Date()) return undefined;
+  item.status = "processing"; item.processingExpiresAt = new Date(Date.now() + (input.leaseMs ?? 60_000)); item.processingToken = randomUUID();
+  return cloneGuarantee(item);
+}
+
+export async function consumeGuaranteePreviewConfirmation(input: { tenantId: string; id: string; actorUserId: string; generatedOutputId: string; processingToken: string }): Promise<GuaranteePreviewConfirmation | undefined> {
+  const item = db.guaranteePreviewConfirmations.find((value) => value.id === input.id && value.tenantId === resolveTenantId(input.tenantId) && value.actorUserId === input.actorUserId);
+  if (!item || item.status !== "processing" || item.processingToken !== input.processingToken) return undefined;
+  item.status = "consumed"; item.generatedOutputId = input.generatedOutputId; item.consumedAt = new Date(); item.processingExpiresAt = undefined; item.processingToken = undefined;
+  return cloneGuarantee(item);
+}
+
+export async function releaseGuaranteePreviewConfirmation(input: { tenantId: string; id: string; actorUserId: string; processingToken: string }): Promise<GuaranteePreviewConfirmation | undefined> {
+  const item = db.guaranteePreviewConfirmations.find((value) => value.id === input.id && value.tenantId === resolveTenantId(input.tenantId) && value.actorUserId === input.actorUserId);
+  if (!item || item.status !== "processing" || item.generatedOutputId || item.processingToken !== input.processingToken) return item ? cloneGuarantee(item) : undefined;
+  item.status = "issued";
+  item.processingExpiresAt = undefined;
+  item.processingToken = undefined;
+  return cloneGuarantee(item);
 }
 
 export async function getDashboardData(userId: string) {

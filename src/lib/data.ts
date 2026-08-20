@@ -174,10 +174,18 @@ export const listPlatformTenantAccounts: typeof memory.listPlatformTenantAccount
   repo.listPlatformTenantAccounts(...args);
 export const createTenantAccount: typeof memory.createTenantAccount = (...args) =>
   repo.createTenantAccount(...args);
+export const createTenantAccountForUser: typeof memory.createTenantAccountForUser = (...args) =>
+  repo.createTenantAccountForUser(...args);
+export const tenantRoleForCapabilityPreset = memory.tenantRoleForCapabilityPreset;
+export const capabilityHasTenantPermission = memory.capabilityHasTenantPermission;
 export const updateTenantAccountLifecycle: typeof memory.updateTenantAccountLifecycle = (...args) =>
   repo.updateTenantAccountLifecycle(...args);
 export const listTenantMemberships: typeof memory.listTenantMemberships = (...args) =>
   resolveTenantMemberships(...args);
+export const listPendingTenantInvitations: typeof memory.listPendingTenantInvitations = (...args) =>
+  repo.listPendingTenantInvitations(...args);
+export const acceptTenantInvitation: typeof memory.acceptTenantInvitation = (...args) =>
+  repo.acceptTenantInvitation(...args);
 export const getTenantMembership: typeof memory.getTenantMembership = (...args) =>
   repo.getTenantMembership(...args);
 export const listTenantsForUser: typeof memory.listTenantsForUser = (...args) =>
@@ -188,6 +196,8 @@ export const getTenantMemberById: typeof memory.getTenantMemberById = (...args) 
   repo.getTenantMemberById(...args);
 export const updateTenantMemberInvitation: typeof memory.updateTenantMemberInvitation = (...args) =>
   repo.updateTenantMemberInvitation(...args);
+export const refreshTenantMemberInvitation: typeof memory.refreshTenantMemberInvitation = (...args) =>
+  repo.refreshTenantMemberInvitation(...args);
 export const inviteTenantMember: typeof memory.inviteTenantMember = (...args) =>
   repo.inviteTenantMember(...args);
 export const updateTenantMemberRole: typeof memory.updateTenantMemberRole = (...args) =>
@@ -346,6 +356,36 @@ export const readPrivateAttachmentContent: typeof memory.readPrivateAttachmentCo
   repo.readPrivateAttachmentContent(...args);
 export const listGeneratedOutputs: typeof memory.listGeneratedOutputs = (...args) =>
   repo.listGeneratedOutputs(...args);
+export const createGuaranteeBlankForm: typeof memory.createGuaranteeBlankForm = (...args) => repo.createGuaranteeBlankForm(...args);
+export const addGuaranteeBlankFormVersion: typeof memory.addGuaranteeBlankFormVersion = (...args) => repo.addGuaranteeBlankFormVersion(...args);
+export const getGuaranteeBlankForm: typeof memory.getGuaranteeBlankForm = (...args) => repo.getGuaranteeBlankForm(...args);
+export const listGuaranteeBlankForms: typeof memory.listGuaranteeBlankForms = (...args) => repo.listGuaranteeBlankForms(...args);
+export const deleteGuaranteeBlankFormForTenant: typeof memory.deleteGuaranteeBlankFormForTenant = (...args) => repo.deleteGuaranteeBlankFormForTenant(...args);
+export const getGuaranteeBlankFormVersion: typeof memory.getGuaranteeBlankFormVersion = (...args) => repo.getGuaranteeBlankFormVersion(...args);
+export const deleteGuaranteeBlankFormVersionForTenant: typeof memory.deleteGuaranteeBlankFormVersionForTenant = (...args) => repo.deleteGuaranteeBlankFormVersionForTenant(...args);
+export const getGuaranteeCompanyMaskVersion: typeof memory.getGuaranteeCompanyMaskVersion = (...args) => repo.getGuaranteeCompanyMaskVersion(...args);
+export const listPublishedGuaranteeCompanyMaskVersions: typeof memory.listPublishedGuaranteeCompanyMaskVersions = (...args) => repo.listPublishedGuaranteeCompanyMaskVersions(...args);
+export const listGuaranteeCompanyMaskVersions: typeof memory.listGuaranteeCompanyMaskVersions = (...args) => repo.listGuaranteeCompanyMaskVersions(...args);
+export const getGuaranteeCompanyMask: typeof memory.getGuaranteeCompanyMask = (...args) => repo.getGuaranteeCompanyMask(...args);
+export const getGuaranteeOutputByCase: typeof memory.getGuaranteeOutputByCase = (...args) => repo.getGuaranteeOutputByCase(...args);
+export const listGuaranteeOutputsByCase: typeof memory.listGuaranteeOutputsByCase = (...args) => repo.listGuaranteeOutputsByCase(...args);
+export const deleteGeneratedOutputForTenant: typeof memory.deleteGeneratedOutputForTenant = (...args) => repo.deleteGeneratedOutputForTenant(...args);
+export const readPrivateAttachmentContentForTenant: typeof memory.readPrivateAttachmentContentForTenant = (...args) => repo.readPrivateAttachmentContentForTenant(...args);
+export const deletePrivateAttachmentForTenant: typeof memory.deletePrivateAttachmentForTenant = (...args) => repo.deletePrivateAttachmentForTenant(...args);
+export const createGuaranteeCompanyMask: typeof memory.createGuaranteeCompanyMask = (...args) => repo.createGuaranteeCompanyMask(...args);
+export const addGuaranteeCompanyMaskVersion: typeof memory.addGuaranteeCompanyMaskVersion = (...args) => repo.addGuaranteeCompanyMaskVersion(...args);
+export const markGuaranteeCompanyMaskVersionTested: typeof memory.markGuaranteeCompanyMaskVersionTested = (...args) => repo.markGuaranteeCompanyMaskVersionTested(...args);
+export const confirmGuaranteeCompanyMaskVersionTest: typeof memory.confirmGuaranteeCompanyMaskVersionTest = (...args) => repo.confirmGuaranteeCompanyMaskVersionTest(...args);
+export const publishGuaranteeCompanyMaskVersion: typeof memory.publishGuaranteeCompanyMaskVersion = (...args) => repo.publishGuaranteeCompanyMaskVersion(...args);
+export const publishGuaranteeCompanyMaskVersionWithExactMatch: typeof memory.publishGuaranteeCompanyMaskVersionWithExactMatch = (...args) => repo.publishGuaranteeCompanyMaskVersionWithExactMatch(...args);
+export const rollbackGuaranteeCompanyMaskVersion: typeof memory.rollbackGuaranteeCompanyMaskVersion = (...args) => repo.rollbackGuaranteeCompanyMaskVersion(...args);
+export const createGuaranteeMaskMatch: typeof memory.createGuaranteeMaskMatch = (...args) => repo.createGuaranteeMaskMatch(...args);
+export const getGuaranteeMaskMatch: typeof memory.getGuaranteeMaskMatch = (...args) => repo.getGuaranteeMaskMatch(...args);
+export const createGuaranteePreviewConfirmation: typeof memory.createGuaranteePreviewConfirmation = (...args) => repo.createGuaranteePreviewConfirmation(...args);
+export const claimGuaranteePreviewConfirmation: typeof memory.claimGuaranteePreviewConfirmation = (...args) => repo.claimGuaranteePreviewConfirmation(...args);
+export const consumeGuaranteePreviewConfirmation: typeof memory.consumeGuaranteePreviewConfirmation = (...args) => repo.consumeGuaranteePreviewConfirmation(...args);
+export const releaseGuaranteePreviewConfirmation: typeof memory.releaseGuaranteePreviewConfirmation = (...args) => repo.releaseGuaranteePreviewConfirmation(...args);
+export const finalizeGuaranteePreviewOutput: typeof memory.finalizeGuaranteePreviewOutput = (...args) => repo.finalizeGuaranteePreviewOutput(...args);
 export const getGeneratedOutputById: typeof memory.getGeneratedOutputById = (...args) =>
   repo.getGeneratedOutputById(...args);
 export const addGeneratedOutput: typeof memory.addGeneratedOutput = (...args) =>
@@ -393,6 +433,7 @@ export type {
   TenantInvitationStatus,
   TenantMembership,
   TenantMemberListItem,
+  TenantCapabilityPreset,
   TenantMembershipStatus,
   TenantStatus,
   Property,

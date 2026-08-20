@@ -1,7 +1,7 @@
 # Broker Desk 当前工作交接
 
 > 本文件是唯一活动交接和进度入口，不重复产品、架构或历史正文。
-> Last updated: 2026-08-18.
+> Last updated: 2026-08-19.
 
 ## 当前任务
 
@@ -31,6 +31,9 @@
 - `TASK-036` 已完成一次统一运行回归但保持 `Blocked`：正常启动因 `listen EPERM` 失败后仅对同一命令提升一次并成功；既有 Clerk Development 会话与请求租户不匹配，22 路由无白屏/构建错误/横向溢出但多数业务页面只能记为 `UNVERIFIED`。当前口径固定为：Layout System 结构迁移 `Done`、响应式路由冒烟 `Pass`、真实业务运行验收 `Blocked`、输出专题未开始。57 张截图、22 路由冒烟、三宽度测量和键盘返回证据永久有效；恢复只需一个现有 Clerk Development 身份对一个非生产工作区的 `active membership`，不需要第二账号/第二租户，之后只补差额，不重跑全量截图。独立审查 `PASS`、无 P0/P1。证据报告为 [`TASK-036_LAYOUT_REGRESSION_2026-08-18.md`](TASK-036_LAYOUT_REGRESSION_2026-08-18.md)，截图索引为 [`evidence/TASK-036/2026-08-18/README.md`](evidence/TASK-036/2026-08-18/README.md)；不继续端口、Clerk、双账号或第二租户排查。
 - TASK-036 恢复预检已停止：当前既有 Chrome Development 会话访问 `/workspace` 显示没有可访问工作区，未确认 active membership；当前浏览器未暴露可安全核对的第二既有身份，因此未提出切换请求，也未切换账号。未执行任何差额回归，不重复既有截图或 22 路由冒烟；TASK-036 继续 `Blocked`。
 - 产品决定：TASK-036 剩余真实业务回归延期至服务器端预发布、Preview 或受控内部环境；本地不再继续账号/工作区测试。预发布必须绑定明确 Git SHA、单内部测试身份、单非生产 active workspace、非真实客户资料和可回滚路径；不要求第二账号/第二租户。恢复后只补既定差额，TASK-036 在独立审查和无 Layout System P0/P1 前保持 `Blocked`，输出专题继续冻结。
+- `TASK-037 / G1-SLICE-0` 已 Done：五套现有平台蒙板的静态配置、资产、入口、调用关系、租户/权限门、版本指纹和回退要求已形成证据包。运行边界固定为 `UNVERIFIED — Clerk active membership environment unavailable`；HTTP 404 仅证明 Clerk 身份保护拦截，未进入蒙板或 PDF 逻辑，不得写成蒙板/预览/输出失败。当前无可重复 PDF 样本不阻断 TASK-038 技术设计，但阻断实现前旧流程基线输出和最终合并/发布验收。证据包为 [`GUARANTEE_APPLICATION_G1_SLICE_0_EVIDENCE_2026-08-19.md`](../product/GUARANTEE_APPLICATION_G1_SLICE_0_EVIDENCE_2026-08-19.md)。
+- `TASK-038 / G1-SLICE-1` 当前为 `In Progress`，阶段为 `Limited Implementation`；仅允许默认关闭、单非生产经营主体 allowlist 的实现，migration 只创建/审查不应用，禁止合并、部署、商业上架和改变五套现有平台蒙板生产行为。技术设计见 [`GUARANTEE_APPLICATION_G1_SLICE_1_TECHNICAL_DESIGN_2026-08-19.md`](../product/GUARANTEE_APPLICATION_G1_SLICE_1_TECHNICAL_DESIGN_2026-08-19.md)。旧流程 PDF 样本、两个合法权限上下文和受控运行证据仍是合并/预发布/发布硬门；有限实现的普通成员区是专属 harness，不替代正式案件入口，现有案件读取仍按 `case.user_id` 限制，浏览器/旧样本/双权限/复选框视觉/PostgreSQL 运行均为 `UNVERIFIED`。
+- `TASK-039 / W8` 当前为 `Blocked / 非生产验收环境不可用`：`Execution blocked：middleware 无法访问 Clerk Development`。TASK-038 继续暂停；阻断解除前不启动验收 Agent、不扩大功能代码、不用静态检查替代产品验收，且不触碰 `src/app/clients/page 2.tsx`。
 - 实现前基线只读核对：`UI_GOV_002B_LAYOUT_FLOORPLAN_MATRIX_2026-08-15.md` 是由 V2 取代的历史兼容入口；`BROKER_DESK_LAYOUT_SYSTEM_V1.md` 是 2026-08-16 Layout System Approved baseline 并指向 V2。二者均已纳入当前 Git 历史；当前不修改、不删除、不把其视为未提交现场。
 - B 锚点证据已覆盖实际滚动容器、动态偏移、IntersectionObserver/ResizeObserver、scroll-margin-top、hash push/popstate、手动滚动、返回顶部、property→contract→back→forward 和带 hash 刷新；390px overview 无横向溢出且首个字段进入首屏，quick 有窄屏“下一项任务”入口。完整外部权限、租户和下载证据前停止，不启动 UI-GOV-002B。
 - C+ 案件总览设计基线已获产品负责人批准；中文字段/章节标签已接入 149 项中日对照，官方表单原始日文标题保持不变。`TASK-020` 不修改生产认证、租户隔离、数据库或 TASK-005～008；韩文字段完整对照源缺失，不能宣称三语言通过。

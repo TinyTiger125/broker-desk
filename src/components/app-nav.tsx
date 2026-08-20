@@ -16,7 +16,8 @@ import { getLocale, type Locale } from "@/lib/locale";
 import {
   isConfiguredPlatformOwnerUser,
 } from "@/lib/platform-owner";
-import { getTenantSessionForNavigation } from "@/lib/tenant-session";
+import { capabilityHasTenantPermission } from "@/lib/tenant-permissions";
+import { getTenantCapability, getTenantSessionForNavigation } from "@/lib/tenant-session";
 
 function getLinks(locale: Locale) {
   const organizeLabel = locale === "zh" ? "整理信息" : locale === "ko" ? "정보 정리" : "情報整理";
@@ -75,18 +76,20 @@ export async function AppNav() {
   const actorSwitchingAvailable = actorSwitchingEnabled && !clerkEnabled;
   const [users, tenantSession] = await Promise.all([
     actorSwitchingAvailable ? listUsers(20) : Promise.resolve([]),
-    // Clerk users do not need a database-backed session just to render the
-    // global navigation. Protected pages still resolve and authorize their
-    // own tenant session before returning data.
-    clerkEnabled ? Promise.resolve(null) : getTenantSessionForNavigation(),
+    // Resolve the current membership so company-management navigation can be
+    // hidden for ordinary members and form administrators. Protected pages
+    // still perform their own authorization before returning data.
+    getTenantSessionForNavigation(),
   ]);
   const links = getLinks(locale);
   // The page and shell share one request-scoped tenant resolution, avoiding a
   // second remote database round trip on every protected navigation.
   const currentActor = tenantSession?.user ?? null;
+  const currentCapability = tenantSession ? getTenantCapability(tenantSession.membership) : null;
+  const canManageMembers = Boolean(currentCapability && capabilityHasTenantPermission(currentCapability, "member.invite"));
   const hasPlatformAccess = Boolean(currentActor && isConfiguredPlatformOwnerUser(currentActor));
   const adminLinks = [
-    ...getAdminLinks(locale),
+    ...getAdminLinks(locale).filter((link) => link.href !== "/settings/members" || canManageMembers),
     // The destination performs the real PlatformOwner check. Keeping this
     // link in the workspace menu avoids a database lookup on every page just
     // to decide whether an admin-only destination should be visible.

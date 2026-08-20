@@ -75,9 +75,18 @@ import type {
   GuaranteeTemplateLayoutVersion,
   TenantGuaranteeTemplateInstall,
   OutputTemplateVersion,
+  GuaranteeBlankForm,
+  GuaranteeBlankFormVersion,
+  GuaranteeCompanyMask,
+  GuaranteeCompanyMaskVersion,
+  GuaranteeMaskMatch,
+  GuaranteePreviewConfirmation,
+  GuaranteePreviewOutputInput,
 } from "@/lib/data.memory";
-import type { TenantRole } from "@/lib/tenant-permissions";
+import type { TenantRole, TenantCapabilityPreset } from "@/lib/tenant-permissions";
+import { randomUUID } from "node:crypto";
 import type { LifecycleFilter, LifecycleStatus } from "@/lib/record-lifecycle";
+import { getTenantBootstrapStatus, getTenantDeploymentEnvironment } from "@/lib/tenant-bootstrap-policy";
 
 export type TenantSessionLookup = {
   user: User;
@@ -116,6 +125,14 @@ const REQUIRED_PRODUCTION_MIGRATIONS = [
   "20260809_003_private_attachment_blobs.sql",
   "20260809_004_import_job_execution_state.sql",
   "20260809_005_import_worker_claim.sql",
+  "20260819_002_tenant_capabilities_invitation_contract.sql",
+  "20260819_003_tenant_owner_create_path.sql",
+  "20260819_004_invited_user_bootstrap.sql",
+  "20260819_005_pending_invitations_read_function.sql",
+  "20260819_006_fix_invitation_acceptance_scope.sql",
+  "20260819_007_tenant_member_lifecycle_functions.sql",
+  "20260819_008_current_user_membership_state_function.sql",
+  "20260819_009_tenant_owner_lifecycle_lock.sql",
 ] as const;
 
 const OPEN_STAGES: ClientStage[] = ["lead", "contacted", "quoted", "viewing", "negotiating"];
@@ -322,6 +339,7 @@ function mapTenantMembership(row: Record<string, unknown>): TenantMembership {
     tenantId: String(row.tenant_id),
     userId: String(row.user_id),
     role: String(row.role) as TenantMembership["role"],
+    capability: row.capability ? String(row.capability) as TenantCapabilityPreset : undefined,
     status: String(row.status ?? "active") as TenantMembershipStatus,
     invitationProvider: String(row.invitation_provider ?? (row.status === "active" ? "manual" : "none")) as TenantMembership["invitationProvider"],
     invitationStatus: String(row.invitation_status ?? (row.status === "active" ? "accepted" : "not_sent")) as TenantMembership["invitationStatus"],
@@ -330,6 +348,10 @@ function mapTenantMembership(row: Record<string, unknown>): TenantMembership {
     invitationSentAt: toDate(row.invitation_sent_at),
     invitationAcceptedAt: toDate(row.invitation_accepted_at),
     invitationError: row.invitation_error ? String(row.invitation_error) : undefined,
+    invitedEmail: row.invited_email ? String(row.invited_email) : undefined,
+    invitedByUserId: row.invited_by_user_id ? String(row.invited_by_user_id) : undefined,
+    invitationExpiresAt: toDate(row.invitation_expires_at),
+    invitationToken: row.invitation_token ? String(row.invitation_token) : undefined,
     createdAt: toDate(row.created_at) ?? new Date(),
     updatedAt: toDate(row.updated_at) ?? new Date(),
   };
@@ -708,8 +730,30 @@ function mapGeneratedOutput(row: Record<string, unknown>): GeneratedOutput {
     fieldMappingSnapshot: row.field_mapping_snapshot && typeof row.field_mapping_snapshot === "object" ? row.field_mapping_snapshot as Record<string, unknown> : undefined,
     layoutSnapshot: row.layout_snapshot && typeof row.layout_snapshot === "object" ? row.layout_snapshot as Record<string, unknown> : undefined,
     generatedAt: toDate(row.generated_at) ?? new Date(),
+    fileAttachmentId: row.file_attachment_id ? String(row.file_attachment_id) : undefined,
+    fileSha256: row.file_sha256 ? String(row.file_sha256) : undefined,
+    fileSizeBytes: row.file_size_bytes != null ? Number(row.file_size_bytes) : undefined,
+    fileMimeType: row.file_mime_type ? String(row.file_mime_type) : undefined,
+    fileStatus: row.file_status === "ready" ? "ready" : undefined,
+    blankFormVersionId: row.blank_form_version_id ? String(row.blank_form_version_id) : undefined,
+    blankFormSha256: row.blank_form_sha256 ? String(row.blank_form_sha256) : undefined,
+    companyMaskVersionId: row.company_mask_version_id ? String(row.company_mask_version_id) : undefined,
+    fieldCatalogVersion: row.field_catalog_version ? String(row.field_catalog_version) : undefined,
+    previewConfirmationId: row.preview_confirmation_id ? String(row.preview_confirmation_id) : undefined,
+    caseInputSnapshotHash: row.case_input_snapshot_hash ? String(row.case_input_snapshot_hash) : undefined,
   };
 }
+
+function mapGuaranteeBlankForm(row: Record<string, unknown>): GuaranteeBlankForm {
+  return { id: String(row.id), tenantId: String(row.tenant_id), name: String(row.name), recipientOrPurpose: row.recipient_or_purpose ? String(row.recipient_or_purpose) : undefined, activeVersionId: row.active_version_id ? String(row.active_version_id) : undefined, createdByUserId: String(row.created_by_user_id), createdAt: toDate(row.created_at) ?? new Date(), archivedAt: toDate(row.archived_at) };
+}
+function mapGuaranteeBlankFormVersion(row: Record<string, unknown>): GuaranteeBlankFormVersion {
+  return { id: String(row.id), blankFormId: String(row.blank_form_id), tenantId: String(row.tenant_id), attachmentId: String(row.attachment_id), uploadedByUserId: String(row.uploaded_by_user_id), versionNumber: Number(row.version_number), sha256: String(row.sha256), fileSizeBytes: Number(row.file_size_bytes), mimeType: "application/pdf", pageCount: Number(row.page_count), pageWidth: Number(row.page_width), pageHeight: Number(row.page_height), status: String(row.status) as GuaranteeBlankFormVersion["status"], createdAt: toDate(row.created_at) ?? new Date(), statusChangedByUserId: row.status_changed_by_user_id ? String(row.status_changed_by_user_id) : undefined };
+}
+function mapGuaranteeCompanyMask(row: Record<string, unknown>): GuaranteeCompanyMask { return { id: String(row.id), tenantId: String(row.tenant_id), blankFormId: String(row.blank_form_id), activeVersionId: row.active_version_id ? String(row.active_version_id) : undefined, createdByUserId: String(row.created_by_user_id), createdAt: toDate(row.created_at) ?? new Date() }; }
+function mapGuaranteeCompanyMaskVersion(row: Record<string, unknown>): GuaranteeCompanyMaskVersion { return { id: String(row.id), maskId: String(row.mask_id), tenantId: String(row.tenant_id), blankFormId: String(row.blank_form_id), blankFormVersionId: String(row.blank_form_version_id), sourcePlatformMaskId: row.source_platform_mask_id ? String(row.source_platform_mask_id) : undefined, versionNumber: Number(row.version_number), status: String(row.status) as GuaranteeCompanyMaskVersion["status"], fieldCatalogVersion: String(row.field_catalog_version), layoutSnapshot: (row.layout_snapshot as Record<string, unknown>) ?? {}, createdByUserId: String(row.created_by_user_id), publishedByUserId: row.published_by_user_id ? String(row.published_by_user_id) : undefined, testedByUserId: row.tested_by_user_id ? String(row.tested_by_user_id) : undefined, testedAt: toDate(row.tested_at), testedPdfSha256: row.tested_pdf_sha256 ? String(row.tested_pdf_sha256) : undefined, testedLayoutDigest: row.tested_layout_digest ? String(row.tested_layout_digest) : undefined, testConfirmedByUserId: row.test_confirmed_by_user_id ? String(row.test_confirmed_by_user_id) : undefined, testConfirmedAt: toDate(row.test_confirmed_at), createdAt: toDate(row.created_at) ?? new Date(), publishedAt: toDate(row.published_at) }; }
+function mapGuaranteeMaskMatch(row: Record<string, unknown>): GuaranteeMaskMatch { return { id: String(row.id), tenantId: String(row.tenant_id), blankFormVersionId: String(row.blank_form_version_id), maskVersionId: String(row.mask_version_id), status: String(row.status) as GuaranteeMaskMatch["status"], evaluatedAt: toDate(row.evaluated_at), evaluatedByUserId: row.evaluated_by_user_id ? String(row.evaluated_by_user_id) : undefined, reason: row.reason ? String(row.reason) : undefined, blankFormSha256: row.blank_form_sha256 ? String(row.blank_form_sha256) : undefined, pageWidth: row.page_width == null ? undefined : Number(row.page_width), pageHeight: row.page_height == null ? undefined : Number(row.page_height) }; }
+function mapGuaranteePreviewConfirmation(row: Record<string, unknown>): GuaranteePreviewConfirmation { return { id: String(row.id), tenantId: String(row.tenant_id), actorUserId: String(row.actor_user_id), caseId: String(row.case_id), caseInputSnapshotHash: String(row.case_input_snapshot_hash), blankFormVersionId: String(row.blank_form_version_id), blankFormSha256: String(row.blank_form_sha256), companyMaskVersionId: String(row.company_mask_version_id), fieldCatalogVersion: String(row.field_catalog_version), supplementSnapshot: (row.supplement_snapshot as Record<string, unknown>) ?? {}, supplementHash: String(row.supplement_hash), expiresAt: toDate(row.expires_at) ?? new Date(0), status: String(row.status) as GuaranteePreviewConfirmation["status"], processingExpiresAt: toDate(row.processing_expires_at), processingToken: row.processing_token ? String(row.processing_token) : undefined, generatedOutputId: row.generated_output_id ? String(row.generated_output_id) : undefined, createdAt: toDate(row.created_at) ?? new Date(), consumedAt: toDate(row.consumed_at) }; }
 
 function mapOutputTemplateVersion(row: Record<string, unknown>): OutputTemplateVersion {
   return {
@@ -1221,6 +1265,32 @@ async function ensureSchemaLegacyForUnversionedDevelopment() {
       layout_snapshot JSONB,
       generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+    CREATE TABLE IF NOT EXISTS guarantee_blank_forms (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, name TEXT NOT NULL, recipient_or_purpose TEXT, active_version_id TEXT, created_by_user_id TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), archived_at TIMESTAMPTZ);
+    CREATE TABLE IF NOT EXISTS guarantee_blank_form_versions (id TEXT PRIMARY KEY, blank_form_id TEXT NOT NULL, tenant_id TEXT NOT NULL, attachment_id TEXT NOT NULL, uploaded_by_user_id TEXT NOT NULL, version_number INTEGER NOT NULL, sha256 TEXT NOT NULL, file_size_bytes INTEGER NOT NULL, mime_type TEXT NOT NULL DEFAULT 'application/pdf', page_count INTEGER NOT NULL, page_width DOUBLE PRECISION NOT NULL, page_height DOUBLE PRECISION NOT NULL, status TEXT NOT NULL DEFAULT 'uploaded', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), status_changed_by_user_id TEXT, UNIQUE(blank_form_id, version_number));
+    CREATE TABLE IF NOT EXISTS guarantee_company_masks (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, blank_form_id TEXT NOT NULL, active_version_id TEXT, created_by_user_id TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(tenant_id, blank_form_id));
+    CREATE TABLE IF NOT EXISTS guarantee_company_mask_versions (id TEXT PRIMARY KEY, mask_id TEXT NOT NULL, tenant_id TEXT NOT NULL, blank_form_id TEXT NOT NULL, blank_form_version_id TEXT NOT NULL, source_platform_mask_id TEXT, version_number INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'draft', field_catalog_version TEXT NOT NULL, layout_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb, created_by_user_id TEXT NOT NULL, tested_by_user_id TEXT, tested_at TIMESTAMPTZ, tested_pdf_sha256 TEXT, tested_layout_digest TEXT, test_confirmed_by_user_id TEXT, test_confirmed_at TIMESTAMPTZ, published_by_user_id TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), published_at TIMESTAMPTZ, UNIQUE(mask_id, version_number));
+    ALTER TABLE guarantee_company_mask_versions ADD COLUMN IF NOT EXISTS tested_by_user_id TEXT;
+    ALTER TABLE guarantee_company_mask_versions ADD COLUMN IF NOT EXISTS tested_at TIMESTAMPTZ;
+    ALTER TABLE guarantee_company_mask_versions ADD COLUMN IF NOT EXISTS tested_pdf_sha256 TEXT;
+    ALTER TABLE guarantee_company_mask_versions ADD COLUMN IF NOT EXISTS tested_layout_digest TEXT;
+    ALTER TABLE guarantee_company_mask_versions ADD COLUMN IF NOT EXISTS test_confirmed_by_user_id TEXT;
+    ALTER TABLE guarantee_company_mask_versions ADD COLUMN IF NOT EXISTS test_confirmed_at TIMESTAMPTZ;
+    CREATE TABLE IF NOT EXISTS guarantee_mask_matches (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, blank_form_version_id TEXT NOT NULL, mask_version_id TEXT NOT NULL, status TEXT NOT NULL, evaluated_at TIMESTAMPTZ, evaluated_by_user_id TEXT, reason TEXT, blank_form_sha256 TEXT, page_width DOUBLE PRECISION, page_height DOUBLE PRECISION, UNIQUE(tenant_id, blank_form_version_id, mask_version_id));
+    CREATE TABLE IF NOT EXISTS guarantee_preview_confirmations (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, actor_user_id TEXT NOT NULL, case_id TEXT NOT NULL, case_input_snapshot_hash TEXT NOT NULL, blank_form_version_id TEXT NOT NULL, blank_form_sha256 TEXT NOT NULL, company_mask_version_id TEXT NOT NULL, field_catalog_version TEXT NOT NULL, supplement_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb, supplement_hash TEXT NOT NULL, expires_at TIMESTAMPTZ NOT NULL, status TEXT NOT NULL DEFAULT 'issued', processing_expires_at TIMESTAMPTZ, processing_token TEXT, generated_output_id TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), consumed_at TIMESTAMPTZ);
+    ALTER TABLE guarantee_preview_confirmations ADD COLUMN IF NOT EXISTS processing_token TEXT;
+    ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS file_attachment_id TEXT;
+    ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS file_sha256 TEXT;
+    ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS file_size_bytes INTEGER;
+    ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS file_mime_type TEXT;
+    ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS file_status TEXT;
+    ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS blank_form_version_id TEXT;
+    ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS blank_form_sha256 TEXT;
+    ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS company_mask_version_id TEXT;
+    ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS field_catalog_version TEXT;
+    ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS preview_confirmation_id TEXT;
+    ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS case_input_snapshot_hash TEXT;
+    CREATE UNIQUE INDEX IF NOT EXISTS guarantee_outputs_confirmation_unique ON generated_outputs(preview_confirmation_id) WHERE preview_confirmation_id IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS guarantee_outputs_file_unique ON generated_outputs(file_attachment_id) WHERE file_attachment_id IS NOT NULL;
 
     CREATE INDEX IF NOT EXISTS idx_tenant_memberships_user_status ON tenant_memberships(user_id, status);
     CREATE INDEX IF NOT EXISTS idx_tenant_memberships_tenant_role ON tenant_memberships(tenant_id, role);
@@ -1460,13 +1530,14 @@ async function ensureSchemaLegacyForUnversionedDevelopment() {
   );
   await db.query(
     `INSERT INTO tenant_memberships (
-       id, tenant_id, user_id, role, status, invitation_provider, invitation_status, invitation_accepted_at
+       id, tenant_id, user_id, role, capability, status, invitation_provider, invitation_status, invitation_accepted_at
      )
      VALUES
-      ($1, $2, $3, $4, $5, $6, $7, NOW()),
-      ($8, $9, $10, $11, $12, $13, $14, NOW())
+      ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW()),
+      ($10, $11, $12, $13, $14, $15, $16, $17, NOW())
      ON CONFLICT (tenant_id, user_id) DO UPDATE SET
       role = EXCLUDED.role,
+      capability = EXCLUDED.capability,
       status = EXCLUDED.status,
       invitation_provider = EXCLUDED.invitation_provider,
       invitation_status = EXCLUDED.invitation_status,
@@ -1477,6 +1548,7 @@ async function ensureSchemaLegacyForUnversionedDevelopment() {
       "tenant_cherry",
       "user_demo",
       "tenant_owner",
+      "company_owner",
       "active",
       "manual",
       "accepted",
@@ -1484,6 +1556,7 @@ async function ensureSchemaLegacyForUnversionedDevelopment() {
       "tenant_cherry",
       "user_ops",
       "tenant_admin",
+      "ordinary_member",
       "active",
       "manual",
       "accepted",
@@ -1720,20 +1793,6 @@ function fallbackEmailForExternalSubject(subject: string): string {
   return `external-${safeSubject}@brokerdesk.local`;
 }
 
-async function activateInvitedMembershipsForUser(client: PoolClient, userId: string) {
-  await client.query(
-    `UPDATE tenant_memberships
-     SET status = 'active',
-         invitation_status = 'accepted',
-         invitation_accepted_at = NOW(),
-         invitation_error = NULL,
-         updated_at = NOW()
-     WHERE user_id = $1
-       AND status = 'invited'`,
-    [userId],
-  );
-}
-
 export async function ensureUserForExternalAuth(input: {
   subject: string;
   email?: string;
@@ -1751,7 +1810,6 @@ export async function ensureUserForExternalAuth(input: {
     const bySubject = await client.query("SELECT * FROM users WHERE external_auth_subject = $1 LIMIT 1", [subject]);
     if (bySubject.rows[0]) {
       const user = mapUser(bySubject.rows[0]);
-      await activateInvitedMembershipsForUser(client, user.id);
       return user;
     }
 
@@ -1771,7 +1829,6 @@ export async function ensureUserForExternalAuth(input: {
           [subject, name, user.id],
         );
         const linkedUser = mapUser(linked.rows[0]);
-        await activateInvitedMembershipsForUser(client, linkedUser.id);
         return linkedUser;
       }
     }
@@ -1785,7 +1842,6 @@ export async function ensureUserForExternalAuth(input: {
       [genId("user"), name, email || fallbackEmail, "external_auth_user", subject],
     );
     const user = mapUser(inserted.rows[0]);
-    await activateInvitedMembershipsForUser(client, user.id);
     return user;
   });
 }
@@ -1849,6 +1905,7 @@ function mapTenantMemberJoinedRow(row: Record<string, unknown>): TenantMemberLis
   const membership = mapTenantMembership(row);
   return {
     ...membership,
+    tenantName: row.tenant_name ? String(row.tenant_name) : undefined,
     user: {
       id: membership.userId,
       name: String(row.user_name ?? ""),
@@ -2072,13 +2129,80 @@ export async function updateTenantAccountLifecycle(input: {
   });
 }
 
+/** Creates a company for the already-authenticated local user. */
+export async function createTenantAccountForUser(input: {
+  userId: string;
+  name: string;
+  slug?: string;
+  accountType?: Tenant["accountType"];
+}): Promise<{ tenant: Tenant; membership: TenantMembership }> {
+  await ensureSchema();
+  const name = input.name.trim();
+  if (!name) throw new Error("tenant name is required");
+
+  return withTransaction(async (client) => {
+    const tenantStatus = getTenantBootstrapStatus();
+    await client.query(
+      "SELECT set_config('app.broker_desk_deployment_env', $1, true)",
+      [getTenantDeploymentEnvironment()],
+    );
+    const bootstrapResult = await client.query(
+      `SELECT *
+       FROM brokerdesk_private.create_tenant_for_current_user($1, $2)`,
+      [name, input.accountType ?? "company"],
+    );
+    const bootstrap = bootstrapResult.rows[0] as Record<string, unknown> | undefined;
+    if (!bootstrap) throw new Error("tenant bootstrap returned no membership");
+
+    const tenantResult = await client.query("SELECT * FROM tenants WHERE id = $1 LIMIT 1", [bootstrap.tenant_id]);
+    if (!tenantResult.rows[0]) throw new Error("tenant bootstrap could not load tenant");
+    const membershipResult = await client.query(
+      `SELECT * FROM tenant_memberships
+       WHERE id = $1 AND tenant_id = $2 LIMIT 1`,
+      [bootstrap.membership_id, bootstrap.tenant_id],
+    );
+    if (!membershipResult.rows[0]) throw new Error("tenant bootstrap could not load membership");
+
+    return {
+      tenant: mapTenant(tenantResult.rows[0]),
+      membership: mapTenantMembership(membershipResult.rows[0]),
+    };
+  });
+}
+
 export async function listTenantMemberships(userId: string): Promise<TenantMembership[]> {
   await ensureSchema();
   const result = await getPool().query(
-    "SELECT * FROM tenant_memberships WHERE user_id = $1 ORDER BY created_at ASC",
+    `SELECT membership_record AS membership
+     FROM brokerdesk_private.list_tenant_session_lookups_for_current_user()
+     WHERE membership_record->>'user_id' = $1
+     ORDER BY (membership_record->>'created_at')::timestamptz ASC`,
     [userId],
   );
-  return result.rows.map(mapTenantMembership);
+  return result.rows.map((row) => mapTenantMembership(row.membership as Record<string, unknown>));
+}
+
+export async function listPendingTenantInvitations(userId: string): Promise<TenantMemberListItem[]> {
+  await ensureSchema();
+  const result = await getPool().query(
+    `SELECT * FROM brokerdesk_private.list_pending_tenant_invitations_for_current_user()`,
+  );
+  return result.rows.filter((row) => String(row.user_id) === userId).map(mapTenantMemberJoinedRow);
+}
+
+export async function acceptTenantInvitation(input: {
+  userId: string;
+  tenantId: string;
+  membershipId: string;
+  invitationToken: string;
+}): Promise<TenantMemberListItem | null> {
+  await ensureSchema();
+  const result = await getPool().query(
+    `SELECT * FROM brokerdesk_private.accept_tenant_invitation($1, $2, $3, $4)`,
+    [input.tenantId, input.membershipId, input.userId, input.invitationToken.trim()],
+  );
+  if (!result.rows[0]) return null;
+  return getTenantMemberById({ tenantId: input.tenantId, membershipId: input.membershipId });
 }
 
 export const listTenantSessionLookupsByExternalAuthSubject = cache(async function listTenantSessionLookupsByExternalAuthSubject(
@@ -2088,19 +2212,13 @@ export const listTenantSessionLookupsByExternalAuthSubject = cache(async functio
   const normalized = subject.trim();
   if (!normalized) return [];
 
-  // The navigation shell and the route both need this triplet. Returning it
-  // from one tenant-scoped query avoids three sequential network round trips.
+  // The navigation shell and the route both need this triplet. The restricted
+  // function also preserves suspended/removed membership states for the
+  // current identity without exposing another user's tenant rows.
   const result = await getPool().query(
-    `SELECT
-       row_to_json(users) AS user,
-       row_to_json(tenant_memberships) AS membership,
-       row_to_json(tenants) AS tenant
-     FROM users
-     JOIN tenant_memberships ON tenant_memberships.user_id = users.id
-     JOIN tenants ON tenants.id = tenant_memberships.tenant_id
-     WHERE users.external_auth_subject = $1
-     ORDER BY tenant_memberships.created_at ASC`,
-    [normalized],
+    `SELECT user_record AS user, membership_record AS membership, tenant_record AS tenant
+     FROM brokerdesk_private.list_tenant_session_lookups_for_current_user()
+     ORDER BY (membership_record->>'created_at')::timestamptz ASC`,
   );
   return result.rows.map((row) => ({
     user: mapUser(row.user as Record<string, unknown>),
@@ -2180,6 +2298,7 @@ export async function getTenantMemberById(input: {
 export async function updateTenantMemberInvitation(input: {
   tenantId?: string;
   membershipId: string;
+  actorUserId?: string;
   invitationProvider: TenantMembership["invitationProvider"];
   invitationStatus: TenantMembership["invitationStatus"];
   providerInvitationId?: string;
@@ -2187,23 +2306,20 @@ export async function updateTenantMemberInvitation(input: {
   invitationError?: string;
   sentAt?: Date;
   acceptedAt?: Date;
+  expiresAt?: Date;
 }): Promise<TenantMemberListItem | null> {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(input.tenantId);
+  const actorUserId = input.actorUserId?.trim();
+  if (!actorUserId) throw new Error("invitation actor is required");
   const result = await getPool().query(
-    `UPDATE tenant_memberships
-     SET invitation_provider = $1,
-         invitation_status = $2,
-         provider_invitation_id = $3,
-         invitation_url = $4,
-         invitation_error = $5,
-         invitation_sent_at = COALESCE($6, invitation_sent_at),
-         invitation_accepted_at = COALESCE($7, invitation_accepted_at),
-         updated_at = NOW()
-     WHERE id = $8
-       AND tenant_id = $9
-     RETURNING *`,
+    `SELECT * FROM brokerdesk_private.record_tenant_invitation_delivery(
+       $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
+     )`,
     [
+      scopeTenantId,
+      input.membershipId,
+      actorUserId,
       input.invitationProvider,
       input.invitationStatus,
       input.providerInvitationId ?? null,
@@ -2211,13 +2327,29 @@ export async function updateTenantMemberInvitation(input: {
       input.invitationError ?? null,
       input.sentAt ?? null,
       input.acceptedAt ?? null,
-      input.membershipId,
-      scopeTenantId,
+      input.expiresAt ?? null,
     ],
   );
   if (!result.rows[0]) return null;
   const memberResult = await getTenantMemberById({ tenantId: scopeTenantId, membershipId: input.membershipId });
   return memberResult;
+}
+
+export async function refreshTenantMemberInvitation(input: {
+  tenantId?: string;
+  membershipId: string;
+  invitedByUserId?: string;
+}): Promise<TenantMemberListItem | null> {
+  await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const actorUserId = input.invitedByUserId?.trim();
+  if (!actorUserId) throw new Error("invitation actor is required");
+  const result = await getPool().query(
+    `SELECT * FROM brokerdesk_private.refresh_tenant_invitation($1, $2, $3, $4)`,
+    [scopeTenantId, input.membershipId, actorUserId, actorUserId],
+  );
+  if (!result.rows[0]) return null;
+  return getTenantMemberById({ tenantId: scopeTenantId, membershipId: input.membershipId });
 }
 
 export async function inviteTenantMember(input: {
@@ -2226,69 +2358,50 @@ export async function inviteTenantMember(input: {
   email: string;
   role: TenantRole;
   status?: TenantMembershipStatus;
+  capability?: TenantCapabilityPreset;
+  invitedByUserId?: string;
 }): Promise<TenantMemberListItem> {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(input.tenantId);
   const email = input.email.trim().toLowerCase();
   const name = input.name.trim() || email;
   if (!email) throw new Error("member email is required");
+  if ((input.status ?? "invited") !== "invited") {
+    throw new Error("PostgreSQL invitations must start in invited state");
+  }
 
   return withTransaction(async (client) => {
-    const userResult = await client.query("SELECT * FROM users WHERE lower(email) = lower($1) LIMIT 1", [email]);
-    let user = userResult.rows[0] ? mapUser(userResult.rows[0]) : null;
-    if (!user) {
-      const inserted = await client.query(
-        `INSERT INTO users (id, name, email, password_hash, external_auth_subject)
-         VALUES ($1, $2, $3, $4, $5)
-         RETURNING *`,
-        [genId("user"), name, email, "local_invited_user", null],
-      );
-      user = mapUser(inserted.rows[0]);
-    }
-
-    const nextStatus = input.status ?? "active";
-    const existingMembership = await client.query(
-      "SELECT * FROM tenant_memberships WHERE tenant_id = $1 AND user_id = $2 LIMIT 1",
-      [scopeTenantId, user.id],
+    const userResult = await client.query(
+      `SELECT * FROM brokerdesk_private.create_tenant_invitation($1, $2, $3, $4, $5, $6)`,
+      [scopeTenantId, input.invitedByUserId ?? "", email, name, input.role, input.capability ?? "ordinary_member"],
     );
-    if (!existingMembership.rows[0] || existingMembership.rows[0].status === "suspended") {
-      await assertTenantHasSeatCapacity(client, scopeTenantId, nextStatus);
-    }
-
-    const membershipId = genId("membership");
-    const membershipResult = await client.query(
-      `INSERT INTO tenant_memberships (
-         id, tenant_id, user_id, role, status, invitation_provider, invitation_status, invitation_accepted_at
-       )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-       ON CONFLICT (tenant_id, user_id) DO UPDATE SET
-         role = EXCLUDED.role,
-         status = EXCLUDED.status,
-         invitation_provider = COALESCE(tenant_memberships.invitation_provider, EXCLUDED.invitation_provider),
-         invitation_status = CASE WHEN EXCLUDED.status = 'active' THEN 'accepted' ELSE tenant_memberships.invitation_status END,
-         invitation_accepted_at = CASE WHEN EXCLUDED.status = 'active' THEN COALESCE(tenant_memberships.invitation_accepted_at, NOW()) ELSE tenant_memberships.invitation_accepted_at END,
-         updated_at = NOW()
-       RETURNING *`,
-      [
-        membershipId,
-        scopeTenantId,
-        user.id,
-        input.role,
-        nextStatus,
-        nextStatus === "active" ? "manual" : "none",
-        nextStatus === "active" ? "accepted" : "not_sent",
-        nextStatus === "active" ? new Date() : null,
-      ],
-    );
-    const membership = mapTenantMembership(membershipResult.rows[0]);
+    if (!userResult.rows[0]) throw new Error("invited user bootstrap returned no user");
+    const row = userResult.rows[0] as Record<string, unknown>;
+    const membership = mapTenantMembership({
+      id: row.membership_id,
+      tenant_id: row.tenant_id,
+      user_id: row.user_id,
+      role: row.role,
+      capability: row.capability,
+      status: row.status,
+      invitation_provider: row.invitation_provider,
+      invitation_status: row.invitation_status,
+      invitation_accepted_at: row.invitation_accepted_at,
+      invited_email: row.invited_email,
+      invited_by_user_id: row.invited_by_user_id,
+      invitation_expires_at: row.invitation_expires_at,
+      invitation_token: row.invitation_token,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+    });
     return {
       ...membership,
       user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        externalAuthSubject: user.externalAuthSubject,
-        createdAt: user.createdAt,
+        id: String(row.user_id),
+        name: String(row.user_name),
+        email: String(row.user_email),
+        externalAuthSubject: row.user_external_auth_subject ? String(row.user_external_auth_subject) : undefined,
+        createdAt: toDate(row.user_created_at) ?? new Date(),
       },
     };
   });
@@ -2298,15 +2411,16 @@ export async function updateTenantMemberRole(input: {
   tenantId?: string;
   membershipId: string;
   role: TenantRole;
+  capability?: TenantCapabilityPreset;
+  actorUserId?: string;
 }): Promise<TenantMemberListItem | null> {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(input.tenantId);
+  const actorUserId = input.actorUserId?.trim();
+  if (!actorUserId || !input.capability) throw new Error("member capability actor and preset are required");
   const result = await getPool().query(
-    `UPDATE tenant_memberships
-     SET role = $1, updated_at = NOW()
-     WHERE id = $2 AND tenant_id = $3
-     RETURNING *`,
-    [input.role, input.membershipId, scopeTenantId],
+    `SELECT * FROM brokerdesk_private.update_tenant_member_capability($1, $2, $3, $4, $5)`,
+    [scopeTenantId, input.membershipId, actorUserId, input.role, input.capability],
   );
   const membership = result.rows[0] ? mapTenantMembership(result.rows[0]) : null;
   if (!membership) return null;
@@ -2328,28 +2442,16 @@ export async function updateTenantMemberStatus(input: {
   tenantId?: string;
   membershipId: string;
   status: TenantMembershipStatus;
+  actorUserId?: string;
 }): Promise<TenantMemberListItem | null> {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(input.tenantId);
+  const actorUserId = input.actorUserId?.trim();
+  if (!actorUserId) throw new Error("member status actor is required");
   return withTransaction(async (client) => {
-    const current = await client.query(
-      "SELECT * FROM tenant_memberships WHERE id = $1 AND tenant_id = $2 LIMIT 1",
-      [input.membershipId, scopeTenantId],
-    );
-    if (!current.rows[0]) return null;
-    if (current.rows[0].status === "suspended" && input.status !== "suspended") {
-      await assertTenantHasSeatCapacity(client, scopeTenantId, input.status);
-    }
-
     const result = await client.query(
-      `UPDATE tenant_memberships
-       SET status = $1,
-           invitation_status = CASE WHEN status = 'invited' AND $1 = 'active' THEN 'accepted' ELSE invitation_status END,
-           invitation_accepted_at = CASE WHEN status = 'invited' AND $1 = 'active' THEN COALESCE(invitation_accepted_at, NOW()) ELSE invitation_accepted_at END,
-           updated_at = NOW()
-       WHERE id = $2 AND tenant_id = $3
-       RETURNING *`,
-      [input.status, input.membershipId, scopeTenantId],
+      `SELECT * FROM brokerdesk_private.update_tenant_member_status($1, $2, $3, $4)`,
+      [scopeTenantId, input.membershipId, actorUserId, input.status],
     );
     const membership = result.rows[0] ? mapTenantMembership(result.rows[0]) : null;
     if (!membership) return null;
@@ -3577,10 +3679,11 @@ export async function getGuaranteeApplicationDraft(input: {
   const scopeTenantId = resolveTenantId(input.tenantId);
   const result = await getPool().query(
     `SELECT * FROM guarantee_application_drafts
-     WHERE user_id = $1 AND case_id = $2 AND template_id = $3
-       AND tenant_id = $4
+     WHERE case_id = $1 AND template_id = $2
+       AND tenant_id = $3
+     ORDER BY updated_at DESC
      LIMIT 1`,
-    [input.userId, input.caseId, input.templateId, scopeTenantId],
+    [input.caseId, input.templateId, scopeTenantId],
   );
   return result.rows[0] ? mapGuaranteeApplicationDraft(result.rows[0]) : null;
 }
@@ -3599,11 +3702,11 @@ export async function listGuaranteeApplicationDrafts(input: {
 
   const result = await getPool().query(
     `SELECT * FROM guarantee_application_drafts
-     WHERE user_id = $1 AND tenant_id = $2
-       AND case_id = ANY($3::text[])
-       AND template_id = ANY($4::text[])
+     WHERE tenant_id = $1
+       AND case_id = ANY($2::text[])
+       AND template_id = ANY($3::text[])
      ORDER BY updated_at DESC`,
-    [input.userId, scopeTenantId, caseIds, templateIds],
+    [scopeTenantId, caseIds, templateIds],
   );
   return result.rows.map(mapGuaranteeApplicationDraft);
 }
@@ -3621,21 +3724,29 @@ export async function saveGuaranteeApplicationDraft(input: {
 }): Promise<GuaranteeApplicationDraft> {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(input.tenantId);
+  const existing = await getPool().query(
+    `SELECT id FROM guarantee_application_drafts
+     WHERE tenant_id = $1 AND case_id = $2 AND template_id = $3
+     ORDER BY updated_at DESC LIMIT 1`,
+    [scopeTenantId, input.caseId, input.templateId],
+  );
   const id = `draft_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-  const result = await getPool().query(
+  const result = existing.rows[0]
+    ? await getPool().query(
+      `UPDATE guarantee_application_drafts
+       SET user_id = $2, company_code = $3, status = $4,
+           field_values_json = $5, field_statuses_json = $6,
+           last_reviewed_at = $7, updated_at = NOW()
+       WHERE id = $1 AND tenant_id = $8
+       RETURNING *`,
+      [existing.rows[0].id, input.userId, input.companyCode, input.status, JSON.stringify(input.fieldValuesJson), JSON.stringify(input.fieldStatusesJson ?? {}), input.lastReviewedAt ?? null, scopeTenantId],
+    )
+    : await getPool().query(
     `INSERT INTO guarantee_application_drafts (
        id, tenant_id, user_id, case_id, template_id, company_code, status,
        field_values_json, field_statuses_json, last_reviewed_at, created_at, updated_at
      )
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
-     ON CONFLICT (tenant_id, user_id, case_id, template_id)
-     DO UPDATE SET
-       company_code = EXCLUDED.company_code,
-       status = EXCLUDED.status,
-       field_values_json = EXCLUDED.field_values_json,
-       field_statuses_json = EXCLUDED.field_statuses_json,
-       last_reviewed_at = EXCLUDED.last_reviewed_at,
-       updated_at = NOW()
      RETURNING *`,
     [
       id,
@@ -3649,7 +3760,7 @@ export async function saveGuaranteeApplicationDraft(input: {
       JSON.stringify(input.fieldStatusesJson ?? {}),
       input.lastReviewedAt ?? null,
     ],
-  );
+    );
   return mapGuaranteeApplicationDraft(result.rows[0]);
 }
 
@@ -3797,6 +3908,21 @@ export async function readPrivateAttachmentContent(input: {
   return Buffer.isBuffer(content) ? content : content ? Buffer.from(content) : null;
 }
 
+export async function readPrivateAttachmentContentForTenant(input: { tenantId?: string; id: string }): Promise<Buffer | null> {
+  await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const result = await getPool().query(`SELECT blob.content FROM private_attachment_blobs blob JOIN attachments attachment ON attachment.id=blob.attachment_id WHERE attachment.id=$1 AND attachment.tenant_id=$2 AND blob.tenant_id=$2 LIMIT 1`, [input.id, scopeTenantId]);
+  const content = result.rows[0]?.content;
+  return Buffer.isBuffer(content) ? content : content ? Buffer.from(content) : null;
+}
+
+export async function deletePrivateAttachmentForTenant(input: { tenantId?: string; id: string }): Promise<boolean> {
+  await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const result = await getPool().query(`DELETE FROM attachments WHERE id=$1 AND tenant_id=$2 RETURNING id`, [input.id, scopeTenantId]);
+  return result.rowCount === 1;
+}
+
 export async function listGeneratedOutputs(input: {
   tenantId?: string;
   userId: string;
@@ -3842,6 +3968,17 @@ export async function getGeneratedOutputById(input: {
   return mapGeneratedOutput(result.rows[0]);
 }
 
+export async function listGuaranteeOutputsByCase(input: { tenantId: string; caseId: string; limit?: number }): Promise<GeneratedOutput[]> {
+  await ensureSchema();
+  const result = await getPool().query(
+    `SELECT * FROM generated_outputs
+     WHERE tenant_id = $1 AND case_id = $2 AND output_type = 'guarantee_application'
+     ORDER BY generated_at DESC LIMIT $3`,
+    [resolveTenantId(input.tenantId), input.caseId, input.limit ?? 50],
+  );
+  return result.rows.map(mapGeneratedOutput);
+}
+
 export async function addGeneratedOutput(input: {
   tenantId?: string;
   userId: string;
@@ -3862,6 +3999,16 @@ export async function addGeneratedOutput(input: {
   draftValueSnapshot?: Record<string, unknown>;
   fieldMappingSnapshot?: Record<string, unknown>;
   layoutSnapshot?: Record<string, unknown>;
+  fileAttachmentId?: string;
+  fileSha256?: string;
+  fileSizeBytes?: number;
+  fileMimeType?: string;
+  blankFormVersionId?: string;
+  blankFormSha256?: string;
+  companyMaskVersionId?: string;
+  fieldCatalogVersion?: string;
+  previewConfirmationId?: string;
+  caseInputSnapshotHash?: string;
 }): Promise<GeneratedOutput> {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(input.tenantId);
@@ -3869,8 +4016,9 @@ export async function addGeneratedOutput(input: {
   const sourceQuoteId = input.sourceQuoteId ?? input.quoteId;
   const result = await getPool().query(
     `INSERT INTO generated_outputs (
-      id, tenant_id, user_id, actor_id, quote_id, source_quote_id, property_id, party_id, output_type, output_format, language, title, document_number, template_version_id, case_id, template_id, input_data_snapshot, draft_value_snapshot, field_mapping_snapshot, layout_snapshot, generated_at
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,NOW())
+      id, tenant_id, user_id, actor_id, quote_id, source_quote_id, property_id, party_id, output_type, output_format, language, title, document_number, template_version_id, case_id, template_id, input_data_snapshot, draft_value_snapshot, field_mapping_snapshot, layout_snapshot,
+      file_attachment_id, file_sha256, file_size_bytes, file_mime_type, file_status, blank_form_version_id, blank_form_sha256, company_mask_version_id, field_catalog_version, preview_confirmation_id, case_input_snapshot_hash, generated_at
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,NOW())
     RETURNING *`,
     [
       genId("out"),
@@ -3893,10 +4041,108 @@ export async function addGeneratedOutput(input: {
       input.draftValueSnapshot ? JSON.stringify(input.draftValueSnapshot) : null,
       input.fieldMappingSnapshot ? JSON.stringify(input.fieldMappingSnapshot) : null,
       input.layoutSnapshot ? JSON.stringify(input.layoutSnapshot) : null,
+      input.fileAttachmentId ?? null,
+      input.fileSha256 ?? null,
+      input.fileSizeBytes ?? null,
+      input.fileMimeType ?? null,
+      input.fileAttachmentId ? "ready" : null,
+      input.blankFormVersionId ?? null,
+      input.blankFormSha256 ?? null,
+      input.companyMaskVersionId ?? null,
+      input.fieldCatalogVersion ?? null,
+      input.previewConfirmationId ?? null,
+      input.caseInputSnapshotHash ?? null,
     ]
   );
   return mapGeneratedOutput(result.rows[0]);
 }
+
+export async function finalizeGuaranteePreviewOutput(input: {
+  confirmationId: string; processingToken: string; output: GuaranteePreviewOutputInput;
+}): Promise<{ output: GeneratedOutput; confirmation: GuaranteePreviewConfirmation }> {
+  await ensureSchema();
+  const outputInput = input.output;
+  const tenantId = resolveTenantId(outputInput.tenantId);
+  return withTransaction(async (client) => {
+    const confirmation = await client.query(
+      `SELECT * FROM guarantee_preview_confirmations
+       WHERE id=$1 AND tenant_id=$2 AND status='processing' AND processing_token=$3
+       FOR UPDATE`,
+      [input.confirmationId, tenantId, input.processingToken],
+    );
+    if (!confirmation.rows[0] || confirmation.rows[0].generated_output_id) throw new Error("generation_confirmation_commit_failed");
+    const actorId = outputInput.actorId ?? outputInput.userId;
+    const sourceQuoteId = outputInput.sourceQuoteId ?? outputInput.quoteId;
+    const outputId = genId("out");
+    const result = await client.query(
+      `INSERT INTO generated_outputs (
+        id, tenant_id, user_id, actor_id, quote_id, source_quote_id, property_id, party_id, output_type, output_format, language, title, document_number, template_version_id, case_id, template_id, input_data_snapshot, draft_value_snapshot, field_mapping_snapshot, layout_snapshot,
+        file_attachment_id, file_sha256, file_size_bytes, file_mime_type, file_status, blank_form_version_id, blank_form_sha256, company_mask_version_id, field_catalog_version, preview_confirmation_id, case_input_snapshot_hash, generated_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,NOW()) RETURNING *`,
+      [
+        outputId, tenantId, outputInput.userId, actorId, outputInput.quoteId ?? null, sourceQuoteId,
+        outputInput.propertyId ?? null, outputInput.partyId ?? null, outputInput.outputType, outputInput.outputFormat,
+        outputInput.language, outputInput.title.trim(), outputInput.documentNumber.trim(), outputInput.templateVersionId ?? null,
+        outputInput.caseId ?? null, outputInput.templateId ?? null,
+        outputInput.inputDataSnapshot ? JSON.stringify(outputInput.inputDataSnapshot) : null,
+        outputInput.draftValueSnapshot ? JSON.stringify(outputInput.draftValueSnapshot) : null,
+        outputInput.fieldMappingSnapshot ? JSON.stringify(outputInput.fieldMappingSnapshot) : null,
+        outputInput.layoutSnapshot ? JSON.stringify(outputInput.layoutSnapshot) : null,
+        outputInput.fileAttachmentId ?? null, outputInput.fileSha256 ?? null, outputInput.fileSizeBytes ?? null,
+        outputInput.fileMimeType ?? null, outputInput.fileAttachmentId ? "ready" : null,
+        outputInput.blankFormVersionId ?? null, outputInput.blankFormSha256 ?? null, outputInput.companyMaskVersionId ?? null,
+        outputInput.fieldCatalogVersion ?? null, input.confirmationId, outputInput.caseInputSnapshotHash ?? null,
+      ],
+    );
+    const consumed = await client.query(
+      `UPDATE guarantee_preview_confirmations
+       SET status='consumed',generated_output_id=$4,consumed_at=NOW(),processing_expires_at=NULL,processing_token=NULL
+       WHERE id=$1 AND tenant_id=$2 AND status='processing' AND processing_token=$3
+       RETURNING *`,
+      [input.confirmationId, tenantId, input.processingToken, outputId],
+    );
+    if (!consumed.rows[0]) throw new Error("generation_confirmation_commit_failed");
+    return { output: mapGeneratedOutput(result.rows[0]), confirmation: mapGuaranteePreviewConfirmation(consumed.rows[0]) };
+  });
+}
+
+export async function createGuaranteeBlankForm(input: { tenantId: string; userId: string; name: string; recipientOrPurpose?: string }): Promise<GuaranteeBlankForm> {
+  await ensureSchema(); const tenantId = resolveTenantId(input.tenantId);
+  const result = await getPool().query(`INSERT INTO guarantee_blank_forms (id,tenant_id,name,recipient_or_purpose,created_by_user_id) VALUES ($1,$2,$3,$4,$5) RETURNING *`, [genId("gblank"), tenantId, input.name.trim(), input.recipientOrPurpose?.trim() || null, input.userId]);
+  return mapGuaranteeBlankForm(result.rows[0]);
+}
+export async function addGuaranteeBlankFormVersion(input: { tenantId: string; blankFormId: string; attachmentId: string; uploadedByUserId: string; sha256: string; fileSizeBytes: number; pageCount: number; pageWidth: number; pageHeight: number; status?: GuaranteeBlankFormVersion["status"] }): Promise<GuaranteeBlankFormVersion> {
+  await ensureSchema(); const tenantId = resolveTenantId(input.tenantId);
+  const next = await getPool().query(`SELECT COALESCE(MAX(version_number),0)+1 AS version FROM guarantee_blank_form_versions WHERE blank_form_id=$1 AND tenant_id=$2`, [input.blankFormId, tenantId]);
+  const id = genId("gblankver");
+  const result = await getPool().query(`INSERT INTO guarantee_blank_form_versions (id,blank_form_id,tenant_id,attachment_id,uploaded_by_user_id,version_number,sha256,file_size_bytes,mime_type,page_count,page_width,page_height,status,status_changed_by_user_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'application/pdf',$9,$10,$11,$12,$5) RETURNING *`, [id,input.blankFormId,tenantId,input.attachmentId,input.uploadedByUserId,Number(next.rows[0].version),input.sha256,input.fileSizeBytes,input.pageCount,input.pageWidth,input.pageHeight,input.status ?? "ready"]);
+  await getPool().query(`UPDATE guarantee_blank_forms SET active_version_id=$1 WHERE id=$2 AND tenant_id=$3`, [id,input.blankFormId,tenantId]);
+  return mapGuaranteeBlankFormVersion(result.rows[0]);
+}
+export async function getGuaranteeBlankForm(input: { tenantId: string; id: string }): Promise<GuaranteeBlankForm | undefined> { await ensureSchema(); const result=await getPool().query(`SELECT * FROM guarantee_blank_forms WHERE id=$1 AND tenant_id=$2`,[input.id,resolveTenantId(input.tenantId)]); return result.rows[0] ? mapGuaranteeBlankForm(result.rows[0]) : undefined; }
+export async function listGuaranteeBlankForms(input: { tenantId: string }): Promise<GuaranteeBlankForm[]> { await ensureSchema(); const result=await getPool().query(`SELECT * FROM guarantee_blank_forms WHERE tenant_id=$1 AND archived_at IS NULL ORDER BY created_at DESC`,[resolveTenantId(input.tenantId)]); return result.rows.map(mapGuaranteeBlankForm); }
+export async function deleteGuaranteeBlankFormForTenant(input: { tenantId: string; id: string }): Promise<boolean> { await ensureSchema(); const tenantId=resolveTenantId(input.tenantId); const result=await getPool().query(`DELETE FROM guarantee_blank_forms b WHERE b.id=$1 AND b.tenant_id=$2 AND NOT EXISTS (SELECT 1 FROM guarantee_blank_form_versions v WHERE v.blank_form_id=b.id) AND NOT EXISTS (SELECT 1 FROM guarantee_company_masks m WHERE m.blank_form_id=b.id) RETURNING b.id`,[input.id,tenantId]); return result.rowCount === 1; }
+export async function getGuaranteeBlankFormVersion(input: { tenantId: string; id: string }): Promise<GuaranteeBlankFormVersion | undefined> { await ensureSchema(); const result = await getPool().query(`SELECT * FROM guarantee_blank_form_versions WHERE id=$1 AND tenant_id=$2`, [input.id,resolveTenantId(input.tenantId)]); return result.rows[0] ? mapGuaranteeBlankFormVersion(result.rows[0]) : undefined; }
+export async function deleteGuaranteeBlankFormVersionForTenant(input: { tenantId: string; id: string }): Promise<boolean> { await ensureSchema(); const tenantId = resolveTenantId(input.tenantId); const result = await getPool().query(`WITH cleared AS (UPDATE guarantee_blank_forms SET active_version_id=NULL WHERE active_version_id=$1 AND tenant_id=$2) DELETE FROM guarantee_blank_form_versions WHERE id=$1 AND tenant_id=$2 RETURNING id`, [input.id, tenantId]); return result.rowCount === 1; }
+export async function createGuaranteeCompanyMask(input: { tenantId: string; blankFormId: string; userId: string }): Promise<GuaranteeCompanyMask> { await ensureSchema(); const tenantId=resolveTenantId(input.tenantId); const result=await getPool().query(`INSERT INTO guarantee_company_masks (id,tenant_id,blank_form_id,created_by_user_id) VALUES ($1,$2,$3,$4) ON CONFLICT (tenant_id,blank_form_id) DO UPDATE SET blank_form_id=EXCLUDED.blank_form_id RETURNING *`,[genId("gmask"),tenantId,input.blankFormId,input.userId]); return mapGuaranteeCompanyMask(result.rows[0]); }
+export async function getGuaranteeCompanyMask(input: { tenantId: string; id: string }): Promise<GuaranteeCompanyMask | undefined> { await ensureSchema(); const result=await getPool().query(`SELECT * FROM guarantee_company_masks WHERE id=$1 AND tenant_id=$2`,[input.id,resolveTenantId(input.tenantId)]); return result.rows[0] ? mapGuaranteeCompanyMask(result.rows[0]) : undefined; }
+export async function getGuaranteeCompanyMaskVersion(input: { tenantId: string; id: string }): Promise<GuaranteeCompanyMaskVersion | undefined> { await ensureSchema(); const result=await getPool().query(`SELECT * FROM guarantee_company_mask_versions WHERE id=$1 AND tenant_id=$2`,[input.id,resolveTenantId(input.tenantId)]); return result.rows[0] ? mapGuaranteeCompanyMaskVersion(result.rows[0]) : undefined; }
+export async function listPublishedGuaranteeCompanyMaskVersions(input: { tenantId: string }): Promise<GuaranteeCompanyMaskVersion[]> { await ensureSchema(); const result=await getPool().query(`SELECT * FROM guarantee_company_mask_versions WHERE tenant_id=$1 AND status='published' ORDER BY created_at DESC`,[resolveTenantId(input.tenantId)]); return result.rows.map(mapGuaranteeCompanyMaskVersion); }
+export async function listGuaranteeCompanyMaskVersions(input: { tenantId: string }): Promise<GuaranteeCompanyMaskVersion[]> { await ensureSchema(); const result=await getPool().query(`SELECT * FROM guarantee_company_mask_versions WHERE tenant_id=$1 AND status IN ('draft','published') ORDER BY created_at DESC`,[resolveTenantId(input.tenantId)]); return result.rows.map(mapGuaranteeCompanyMaskVersion); }
+export async function getGuaranteeOutputByCase(input: { tenantId: string; caseId: string; id: string }): Promise<GeneratedOutput | undefined> { await ensureSchema(); const result=await getPool().query(`SELECT * FROM generated_outputs WHERE id=$1 AND case_id=$2 AND tenant_id=$3`,[input.id,input.caseId,resolveTenantId(input.tenantId)]); return result.rows[0] ? mapGeneratedOutput(result.rows[0]) : undefined; }
+export async function deleteGeneratedOutputForTenant(input: { tenantId: string; id: string }): Promise<boolean> { await ensureSchema(); const result=await getPool().query(`DELETE FROM generated_outputs WHERE id=$1 AND tenant_id=$2 RETURNING id`,[input.id,resolveTenantId(input.tenantId)]); return result.rowCount === 1; }
+export async function addGuaranteeCompanyMaskVersion(input: { tenantId: string; maskId: string; blankFormVersionId: string; userId: string; fieldCatalogVersion: string; layoutSnapshot: Record<string, unknown>; status?: GuaranteeCompanyMaskVersion["status"]; sourcePlatformMaskId?: string }): Promise<GuaranteeCompanyMaskVersion> { await ensureSchema(); const tenantId=resolveTenantId(input.tenantId); if (input.status === "draft") { const existing = await getPool().query(`SELECT * FROM guarantee_company_mask_versions WHERE mask_id=$1 AND tenant_id=$2 AND status='draft' LIMIT 1`, [input.maskId, tenantId]); if (existing.rows[0]) { const updated = await getPool().query(`UPDATE guarantee_company_mask_versions SET blank_form_version_id=$1,field_catalog_version=$2,layout_snapshot=$3,tested_by_user_id=NULL,tested_at=NULL,tested_pdf_sha256=NULL,tested_layout_digest=NULL,test_confirmed_by_user_id=NULL,test_confirmed_at=NULL WHERE id=$4 AND tenant_id=$5 RETURNING *`, [input.blankFormVersionId, input.fieldCatalogVersion, JSON.stringify(input.layoutSnapshot), existing.rows[0].id, tenantId]); return mapGuaranteeCompanyMaskVersion(updated.rows[0]); } } const next=await getPool().query(`SELECT COALESCE(MAX(version_number),0)+1 AS version FROM guarantee_company_mask_versions WHERE mask_id=$1 AND tenant_id=$2`,[input.maskId,tenantId]); const result=await getPool().query(`INSERT INTO guarantee_company_mask_versions (id,mask_id,tenant_id,blank_form_id,blank_form_version_id,source_platform_mask_id,version_number,status,field_catalog_version,layout_snapshot,created_by_user_id) SELECT $1,m.id,m.tenant_id,m.blank_form_id,$3,$4,$5,$6,$7,$8,$9 FROM guarantee_company_masks m WHERE m.id=$2 AND m.tenant_id=$10 RETURNING *`,[genId("gmaskver"),input.maskId,input.blankFormVersionId,input.sourcePlatformMaskId ?? null,Number(next.rows[0].version),input.status ?? "draft",input.fieldCatalogVersion,JSON.stringify(input.layoutSnapshot),input.userId,tenantId]); return mapGuaranteeCompanyMaskVersion(result.rows[0]); }
+export async function markGuaranteeCompanyMaskVersionTested(input: { tenantId: string; maskVersionId: string; userId: string; testPdfSha256: string; testedLayoutDigest: string }): Promise<GuaranteeCompanyMaskVersion | undefined> { await ensureSchema(); const result=await getPool().query(`UPDATE guarantee_company_mask_versions SET tested_by_user_id=$1,tested_at=NOW(),tested_pdf_sha256=$4,tested_layout_digest=$5,test_confirmed_by_user_id=NULL,test_confirmed_at=NULL WHERE id=$2 AND tenant_id=$3 AND status='draft' RETURNING *`,[input.userId,input.maskVersionId,resolveTenantId(input.tenantId),input.testPdfSha256,input.testedLayoutDigest]); return result.rows[0] ? mapGuaranteeCompanyMaskVersion(result.rows[0]) : undefined; }
+export async function confirmGuaranteeCompanyMaskVersionTest(input: { tenantId: string; maskVersionId: string; userId: string; testPdfSha256: string }): Promise<GuaranteeCompanyMaskVersion | undefined> { await ensureSchema(); const result=await getPool().query(`UPDATE guarantee_company_mask_versions SET test_confirmed_by_user_id=$1,test_confirmed_at=NOW() WHERE id=$2 AND tenant_id=$3 AND status='draft' AND tested_at IS NOT NULL AND tested_pdf_sha256=$4 RETURNING *`,[input.userId,input.maskVersionId,resolveTenantId(input.tenantId),input.testPdfSha256]); return result.rows[0] ? mapGuaranteeCompanyMaskVersion(result.rows[0]) : undefined; }
+export async function publishGuaranteeCompanyMaskVersion(input: { tenantId: string; maskVersionId: string; userId: string }): Promise<GuaranteeCompanyMaskVersion | undefined> { await ensureSchema(); const tenantId=resolveTenantId(input.tenantId); return withTransaction(async (client)=>{ const result=await client.query(`UPDATE guarantee_company_mask_versions SET status='published',published_by_user_id=$1,published_at=NOW() WHERE id=$2 AND tenant_id=$3 AND status='draft' AND tested_at IS NOT NULL AND test_confirmed_at IS NOT NULL AND EXISTS (SELECT 1 FROM guarantee_blank_forms b WHERE b.id=guarantee_company_mask_versions.blank_form_id AND b.tenant_id=$3 AND b.active_version_id=guarantee_company_mask_versions.blank_form_version_id) RETURNING *`,[input.userId,input.maskVersionId,tenantId]); if(!result.rows[0]) return undefined; await client.query(`UPDATE guarantee_company_masks SET active_version_id=$1 WHERE id=$2 AND tenant_id=$3`,[input.maskVersionId,result.rows[0].mask_id,tenantId]); return mapGuaranteeCompanyMaskVersion(result.rows[0]); }); }
+export async function publishGuaranteeCompanyMaskVersionWithExactMatch(input: { tenantId: string; maskVersionId: string; userId: string; layoutDigest: string }): Promise<{ version: GuaranteeCompanyMaskVersion; match: GuaranteeMaskMatch } | undefined> { await ensureSchema(); const tenantId=resolveTenantId(input.tenantId); return withTransaction(async (client)=>{ const result=await client.query(`UPDATE guarantee_company_mask_versions SET status='published',published_by_user_id=$1,published_at=NOW() WHERE id=$2 AND tenant_id=$3 AND status='draft' AND tested_at IS NOT NULL AND test_confirmed_at IS NOT NULL AND tested_layout_digest=$4 AND EXISTS (SELECT 1 FROM guarantee_blank_forms b WHERE b.id=guarantee_company_mask_versions.blank_form_id AND b.tenant_id=$3 AND b.active_version_id=guarantee_company_mask_versions.blank_form_version_id) RETURNING *`,[input.userId,input.maskVersionId,tenantId,input.layoutDigest]); if(!result.rows[0]) return undefined; await client.query(`UPDATE guarantee_company_masks SET active_version_id=$1 WHERE id=$2 AND tenant_id=$3`,[input.maskVersionId,result.rows[0].mask_id,tenantId]); const matchResult=await client.query(`INSERT INTO guarantee_mask_matches (id,tenant_id,blank_form_version_id,mask_version_id,status,evaluated_at,evaluated_by_user_id,reason) VALUES ($1,$2,$3,$4,'exact',NOW(),$5,'admin-confirmed-test') ON CONFLICT (tenant_id,blank_form_version_id,mask_version_id) DO UPDATE SET status='exact',evaluated_at=NOW(),evaluated_by_user_id=EXCLUDED.evaluated_by_user_id,reason='admin-confirmed-test' RETURNING *`,[genId("gmatch"),tenantId,result.rows[0].blank_form_version_id,input.maskVersionId,input.userId]); return { version: mapGuaranteeCompanyMaskVersion(result.rows[0]), match: mapGuaranteeMaskMatch(matchResult.rows[0]) }; }); }
+export async function rollbackGuaranteeCompanyMaskVersion(input: { tenantId: string; maskId: string; maskVersionId: string; userId: string }): Promise<GuaranteeCompanyMaskVersion | undefined> { await ensureSchema(); const tenantId=resolveTenantId(input.tenantId); return withTransaction(async (client)=>{ const result=await client.query(`SELECT * FROM guarantee_company_mask_versions WHERE id=$1 AND mask_id=$2 AND tenant_id=$3 AND status='published'`,[input.maskVersionId,input.maskId,tenantId]); if(!result.rows[0]) return undefined; await client.query(`UPDATE guarantee_company_masks SET active_version_id=$1 WHERE id=$2 AND tenant_id=$3`,[input.maskVersionId,input.maskId,tenantId]); return mapGuaranteeCompanyMaskVersion(result.rows[0]); }); }
+export async function createGuaranteeMaskMatch(input: { tenantId: string; blankFormVersionId: string; maskVersionId: string; status: GuaranteeMaskMatch["status"]; userId: string; reason?: string }): Promise<GuaranteeMaskMatch> { await ensureSchema(); const result=await getPool().query(`INSERT INTO guarantee_mask_matches (id,tenant_id,blank_form_version_id,mask_version_id,status,evaluated_at,evaluated_by_user_id,reason) VALUES ($1,$2,$3,$4,$5,NOW(),$6,$7) ON CONFLICT (tenant_id,blank_form_version_id,mask_version_id) DO UPDATE SET status=EXCLUDED.status,evaluated_at=NOW(),evaluated_by_user_id=EXCLUDED.evaluated_by_user_id,reason=EXCLUDED.reason RETURNING *`,[genId("gmatch"),resolveTenantId(input.tenantId),input.blankFormVersionId,input.maskVersionId,input.status,input.userId,input.reason ?? null]); return mapGuaranteeMaskMatch(result.rows[0]); }
+export async function getGuaranteeMaskMatch(input: { tenantId: string; blankFormVersionId: string; maskVersionId: string }): Promise<GuaranteeMaskMatch | undefined> { await ensureSchema(); const result=await getPool().query(`SELECT * FROM guarantee_mask_matches WHERE tenant_id=$1 AND blank_form_version_id=$2 AND mask_version_id=$3`,[resolveTenantId(input.tenantId),input.blankFormVersionId,input.maskVersionId]); return result.rows[0] ? mapGuaranteeMaskMatch(result.rows[0]) : undefined; }
+export async function createGuaranteePreviewConfirmation(input: Omit<GuaranteePreviewConfirmation, "id" | "status" | "createdAt">): Promise<GuaranteePreviewConfirmation> { await ensureSchema(); const result=await getPool().query(`INSERT INTO guarantee_preview_confirmations (id,tenant_id,actor_user_id,case_id,case_input_snapshot_hash,blank_form_version_id,blank_form_sha256,company_mask_version_id,field_catalog_version,supplement_snapshot,supplement_hash,expires_at,status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'issued') RETURNING *`,[genId("gconfirm"),input.tenantId,input.actorUserId,input.caseId,input.caseInputSnapshotHash,input.blankFormVersionId,input.blankFormSha256,input.companyMaskVersionId,input.fieldCatalogVersion,JSON.stringify(input.supplementSnapshot),input.supplementHash,input.expiresAt]); return mapGuaranteePreviewConfirmation(result.rows[0]); }
+export async function claimGuaranteePreviewConfirmation(input: { tenantId: string; id: string; actorUserId: string; leaseMs?: number }): Promise<GuaranteePreviewConfirmation | undefined> { await ensureSchema(); const tenantId=resolveTenantId(input.tenantId); const processingToken=genId("gclaim"); const result=await getPool().query(`UPDATE guarantee_preview_confirmations SET status='processing',processing_expires_at=NOW()+($4::text || ' milliseconds')::interval,processing_token=$5 WHERE id=$1 AND tenant_id=$2 AND actor_user_id=$3 AND expires_at>NOW() AND ((status='issued') OR (status='processing' AND processing_expires_at<NOW())) RETURNING *`,[input.id,tenantId,input.actorUserId,String(input.leaseMs ?? 60000),processingToken]); if(result.rows[0]) return mapGuaranteePreviewConfirmation(result.rows[0]); const existing=await getPool().query(`SELECT * FROM guarantee_preview_confirmations WHERE id=$1 AND tenant_id=$2 AND actor_user_id=$3`,[input.id,tenantId,input.actorUserId]); if(!existing.rows[0]) return undefined; if(String(existing.rows[0].status) === "consumed") return mapGuaranteePreviewConfirmation(existing.rows[0]); return undefined; }
+export async function consumeGuaranteePreviewConfirmation(input: { tenantId: string; id: string; actorUserId: string; generatedOutputId: string; processingToken: string }): Promise<GuaranteePreviewConfirmation | undefined> { await ensureSchema(); const result=await getPool().query(`UPDATE guarantee_preview_confirmations SET status='consumed',generated_output_id=$5,consumed_at=NOW(),processing_expires_at=NULL,processing_token=NULL WHERE id=$1 AND tenant_id=$2 AND actor_user_id=$3 AND status='processing' AND processing_token=$4 RETURNING *`,[input.id,resolveTenantId(input.tenantId),input.actorUserId,input.processingToken,input.generatedOutputId]); return result.rows[0] ? mapGuaranteePreviewConfirmation(result.rows[0]) : undefined; }
+export async function releaseGuaranteePreviewConfirmation(input: { tenantId: string; id: string; actorUserId: string; processingToken: string }): Promise<GuaranteePreviewConfirmation | undefined> { await ensureSchema(); const result=await getPool().query(`UPDATE guarantee_preview_confirmations SET status='issued',processing_expires_at=NULL,processing_token=NULL WHERE id=$1 AND tenant_id=$2 AND actor_user_id=$3 AND status='processing' AND processing_token=$4 AND generated_output_id IS NULL RETURNING *`,[input.id,resolveTenantId(input.tenantId),input.actorUserId,input.processingToken]); return result.rows[0] ? mapGuaranteePreviewConfirmation(result.rows[0]) : undefined; }
 
 export async function getDashboardData(userId: string) {
   await ensureSchema();
@@ -5455,4 +5701,10 @@ export type {
   AuditLog,
   OutputTemplateSettings,
   OutputTemplateSettingsInput,
+  GuaranteeBlankForm,
+  GuaranteeBlankFormVersion,
+  GuaranteeCompanyMask,
+  GuaranteeCompanyMaskVersion,
+  GuaranteeMaskMatch,
+  GuaranteePreviewConfirmation,
 };
