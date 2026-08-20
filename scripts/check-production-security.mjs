@@ -397,9 +397,33 @@ assert(
   postgresDataSource.includes('"20260729_002_force_tenant_rls.sql"'),
   "production migration ledger must require the forced tenant RLS migration",
 );
+const requestScopeQueryExecutor = postgresDataSource.slice(
+  postgresDataSource.indexOf("async function queryWithinRequestScope"),
+  postgresDataSource.indexOf("function getPool()", postgresDataSource.indexOf("async function queryWithinRequestScope")),
+);
+const transactionExecutor = postgresDataSource.slice(
+  postgresDataSource.indexOf("async function withTransaction"),
+  postgresDataSource.indexOf("function isValidImportStatusTransition", postgresDataSource.indexOf("async function withTransaction")),
+);
 assert(
-  postgresDataSource.includes("set_config('app.external_auth_subject'") && postgresDataSource.includes("RESET app.external_auth_subject"),
-  "Postgres repository must bind and clear the Clerk subject on the same pooled connection as each business query",
+  postgresDataSource.includes("set_config('app.external_auth_subject', $1, true)"),
+  "Postgres repository must bind the Clerk subject transaction-locally",
+);
+assert(
+  requestScopeQueryExecutor.indexOf('client.query("BEGIN")') < requestScopeQueryExecutor.indexOf("applyRequestScope(client)") &&
+    requestScopeQueryExecutor.includes('client.query("COMMIT")') &&
+    requestScopeQueryExecutor.includes('client.query("ROLLBACK")'),
+  "Postgres repository must run each scoped business query on one transaction-bound client",
+);
+assert(
+  transactionExecutor.indexOf('client.query("BEGIN")') < transactionExecutor.indexOf("applyRequestScope(client)") &&
+    transactionExecutor.includes('client.query("COMMIT")') &&
+    transactionExecutor.includes('client.query("ROLLBACK")'),
+  "Postgres transactions must bind the Clerk subject after BEGIN and roll back on failure",
+);
+assert(
+  !postgresDataSource.includes("clearRequestScope"),
+  "Postgres repository must not depend on an out-of-transaction subject reset",
 );
 assert(
   postgresDataSource.includes("rolbypassrls"),

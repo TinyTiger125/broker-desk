@@ -53,6 +53,14 @@ const tenantCreationIdempotencyMigration = fs.readFileSync(path.resolve("db/migr
 const invitedIdentityBindingMigration = fs.readFileSync(path.resolve("db/migrations/20260820_011_bind_invited_clerk_identity.sql"), "utf8");
 const tenantMemberReadMigration = fs.readFileSync(path.resolve("db/migrations/20260820_012_current_tenant_member_read.sql"), "utf8");
 const postgresSource = fs.readFileSync(path.resolve("src/lib/data.postgres.ts"), "utf8");
+const requestScopeQueryExecutor = postgresSource.slice(
+  postgresSource.indexOf("async function queryWithinRequestScope"),
+  postgresSource.indexOf("function getPool()", postgresSource.indexOf("async function queryWithinRequestScope")),
+);
+const transactionExecutor = postgresSource.slice(
+  postgresSource.indexOf("async function withTransaction"),
+  postgresSource.indexOf("function isValidImportStatusTransition", postgresSource.indexOf("async function withTransaction")),
+);
 const clerkAuthSource = fs.readFileSync(path.resolve("src/lib/clerk-auth.ts"), "utf8");
 const createWorkspacePageSource = fs.readFileSync(path.resolve("src/app/workspace/create/page.tsx"), "utf8");
 const createWorkspaceFormSource = fs.readFileSync(path.resolve("src/app/workspace/create/create-workspace-form.tsx"), "utf8");
@@ -86,6 +94,14 @@ assert(postgresSource.includes("brokerdesk_private.create_tenant_for_current_use
 assert(postgresSource.includes("20260820_010_tenant_creation_idempotency.sql"), "required migration list must include tenant creation idempotency");
 assert(postgresSource.includes("20260820_011_bind_invited_clerk_identity.sql"), "required migration list must include invited identity binding");
 assert(postgresSource.includes("20260820_012_current_tenant_member_read.sql"), "required migration list must include current-tenant member read");
+assert(postgresSource.includes("set_config('app.external_auth_subject', $1, true)"), "Postgres request scope must be transaction-local");
+assert(requestScopeQueryExecutor.indexOf('client.query("BEGIN")') < requestScopeQueryExecutor.indexOf("applyRequestScope(client)"), "scoped Pool.query must begin before applying the Clerk subject");
+assert(requestScopeQueryExecutor.includes('client.query("COMMIT")'), "scoped Pool.query must commit the business query transaction");
+assert(requestScopeQueryExecutor.includes('client.query("ROLLBACK")'), "scoped Pool.query must roll back failed business queries");
+assert(transactionExecutor.indexOf('client.query("BEGIN")') < transactionExecutor.indexOf("applyRequestScope(client)"), "withTransaction must begin before applying the Clerk subject");
+assert(transactionExecutor.includes('client.query("COMMIT")'), "withTransaction must commit after the business operation");
+assert(transactionExecutor.includes('client.query("ROLLBACK")'), "withTransaction must roll back failed business operations");
+assert(!postgresSource.includes("clearRequestScope"), "transaction-local request scope must not rely on an out-of-transaction reset");
 assert(createWorkspacePageSource.includes("requestId"), "workspace creation must preserve the request key across reloads");
 assert(createWorkspaceFormSource.includes("useActionState"), "workspace creation must expose structured retry state");
 assert(createWorkspaceFormSource.includes("disabled={pending}"), "workspace creation must disable duplicate submission while pending");

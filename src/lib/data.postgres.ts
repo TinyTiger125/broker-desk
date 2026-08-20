@@ -217,31 +217,34 @@ function requireRequestScope(): PostgresRequestScope | undefined {
 async function applyRequestScope(client: PoolClient): Promise<boolean> {
   const scope = requireRequestScope();
   if (!scope) return false;
-  await client.query("SELECT set_config('app.external_auth_subject', $1, false)", [scope.externalAuthSubject]);
+  // The caller must already have opened a transaction. A transaction-local
+  // setting keeps the Clerk subject on the same Neon transaction as the
+  // business query, even when the upstream pool uses transaction pooling.
+  await client.query("SELECT set_config('app.external_auth_subject', $1, true)", [scope.externalAuthSubject]);
   return true;
-}
-
-async function clearRequestScope(client: PoolClient): Promise<void> {
-  await client.query("RESET app.external_auth_subject");
 }
 
 async function queryWithinRequestScope(rawPool: Pool, args: unknown[]) {
   const client = await rawPool.connect();
-  let appliedScope = false;
+  let transactionStarted = false;
   let releaseWithError = false;
   try {
-    appliedScope = await applyRequestScope(client);
-    return await (client.query as (...queryArgs: unknown[]) => Promise<unknown>)(...args);
+    await client.query("BEGIN");
+    transactionStarted = true;
+    await applyRequestScope(client);
+    const result = await (client.query as (...queryArgs: unknown[]) => Promise<unknown>)(...args);
+    await client.query("COMMIT");
+    transactionStarted = false;
+    return result;
   } catch (error) {
     releaseWithError = true;
+    if (transactionStarted) {
+      await client.query("ROLLBACK").catch(() => undefined);
+    }
     throw error;
   } finally {
-    if (appliedScope) {
-      try {
-        await clearRequestScope(client);
-      } catch {
-        releaseWithError = true;
-      }
+    if (transactionStarted) {
+      releaseWithError = true;
     }
     client.release(releaseWithError);
   }
@@ -1757,25 +1760,25 @@ function genId(prefix: string): string {
 
 async function withTransaction<T>(fn: (client: PoolClient) => Promise<T>) {
   const client = await getRawPool().connect();
-  let appliedScope = false;
+  let transactionStarted = false;
   let releaseWithError = false;
   try {
-    appliedScope = await applyRequestScope(client);
     await client.query("BEGIN");
+    transactionStarted = true;
+    await applyRequestScope(client);
     const result = await fn(client);
     await client.query("COMMIT");
+    transactionStarted = false;
     return result;
   } catch (error) {
     releaseWithError = true;
-    await client.query("ROLLBACK").catch(() => undefined);
+    if (transactionStarted) {
+      await client.query("ROLLBACK").catch(() => undefined);
+    }
     throw error;
   } finally {
-    if (appliedScope) {
-      try {
-        await clearRequestScope(client);
-      } catch {
-        releaseWithError = true;
-      }
+    if (transactionStarted) {
+      releaseWithError = true;
     }
     client.release(releaseWithError);
   }
