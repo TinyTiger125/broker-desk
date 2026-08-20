@@ -29,7 +29,7 @@ import { isProductionRuntime } from "@/lib/auth-mode";
 export class TenantSessionError extends Error {
   constructor(
     message: string,
-    public readonly code: "user_not_found" | "tenant_not_found" | "tenant_forbidden" | "permission_denied",
+    public readonly code: "user_not_found" | "tenant_not_found" | "tenant_selection_required" | "tenant_forbidden" | "permission_denied",
     public readonly status: 401 | 403 | 404 = code === "user_not_found" ? 401 : code === "tenant_not_found" ? 404 : 403,
   ) {
     super(message);
@@ -140,7 +140,7 @@ const resolveTenantSession = cache(async (preferredUserId?: string, requestedTen
     ? sessionLookups.map((item) => item.membership)
     : await listTenantMemberships(user.id);
   if (!requestedTenantId && memberships.filter((membership) => membership.status === "active").length > 1) {
-    throw new TenantSessionError("An active tenant must be selected.", "tenant_forbidden");
+    throw new TenantSessionError("An active tenant must be selected.", "tenant_selection_required");
   }
   const activeMembership = selectActiveTenantMembership({ memberships, requestedTenantId });
   const fallbackSession = activeMembership ? null : await selectDevelopmentPlatformOwnerTenantMembership({ user, requestedTenantId });

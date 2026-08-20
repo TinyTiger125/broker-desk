@@ -151,6 +151,10 @@ const membersReadBoundary = membersPageSource.slice(0, membersPageSource.indexOf
 assert(membersReadBoundary.includes("requireTenantSession()"), "member management page must establish session without broad read permission");
 assert(membersPageSource.includes("listTenantMembersForAuthenticatedTenant"), "member management page must read with the established authenticated session identity");
 assert(membersPageSource.includes("membersLoadFailed"), "member management page must expose a retryable member-read failure state");
+const tenantSessionSource = fs.readFileSync(path.resolve("src/lib/tenant-session.ts"), "utf8");
+assert(membersPageSource.includes('error.code === "tenant_selection_required"'), "member management page must redirect only the explicit workspace-selection state");
+assert(tenantSessionSource.includes('"tenant_selection_required"'), "tenant session must distinguish missing selection from forbidden tenant access");
+assert(tenantSessionSource.includes('An active tenant must be selected.", "tenant_selection_required"'), "multiple active memberships without a selection must use the selection-required state");
 assert(membersPageSource.includes('redirect("/workspace")'), "member management page must return multi-tenant users to the canonical workspace selector");
 assert(dataSource.includes("postgres.withPostgresAuthContext(subject"), "authenticated member read must bind the established Clerk subject at the adapter boundary");
 assert(appNavSource.includes("link.href !== \"/settings/members\" || canManageMembers"), "member management navigation must be hidden without member-management capability");

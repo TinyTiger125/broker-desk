@@ -171,7 +171,7 @@ export default async function TenantMembersPage({ searchParams }: MembersPagePro
     // A user with multiple active companies must choose the current company
     // before any company-scoped page can read data. Send them to the canonical
     // selector instead of exposing the generic route error page.
-    if (error instanceof TenantSessionError && error.code === "tenant_forbidden") {
+    if (error instanceof TenantSessionError && error.code === "tenant_selection_required") {
       redirect("/workspace");
     }
     throw error;
