@@ -5,7 +5,7 @@ import {
   updateTenantMemberRoleAction,
   updateTenantMemberStatusAction,
 } from "@/app/actions";
-import { listTenantMembers, type TenantInvitationStatus } from "@/lib/data";
+import { listTenantMembersForAuthenticatedTenant, type TenantInvitationStatus } from "@/lib/data";
 import { getLocale, type Locale } from "@/lib/locale";
 import { capabilityHasTenantPermission } from "@/lib/tenant-permissions";
 import { type TenantCapabilityPreset } from "@/lib/data";
@@ -74,6 +74,14 @@ function copy(locale: Locale) {
         : locale === "ko"
           ? "초대 후에는 초대 중 상태로 유지됩니다. 초대받은 이메일로 명시적으로 수락해야 회사 멤버가 됩니다."
           : "招待後は招待中のまま保持され、招待先のメールアドレスで明示的に承諾してから会社メンバーになります。",
+    memberLoadErrorTitle: locale === "zh" ? "暂时无法读取成员" : locale === "ko" ? "멤버를 읽을 수 없습니다" : "メンバーを読み取れません",
+    memberLoadErrorDescription:
+      locale === "zh"
+        ? "当前公司的成员信息读取失败。请重试；权限和成员关系未被修改。"
+        : locale === "ko"
+          ? "현재 회사의 멤버 정보를 읽지 못했습니다. 다시 시도해 주세요. 권한과 멤버 관계는 변경되지 않았습니다."
+          : "現在の会社のメンバー情報を読み取れませんでした。もう一度お試しください。権限とメンバー関係は変更されていません。",
+    retry: locale === "zh" ? "重新读取" : locale === "ko" ? "다시 읽기" : "再読み込み",
   };
 }
 
@@ -179,7 +187,16 @@ export default async function TenantMembersPage({ searchParams }: MembersPagePro
   const feedback = flashMessage(locale, params?.flash);
   const feedbackFailed = params?.flash?.includes("failed") ?? false;
   const feedbackPending = params?.flash?.includes("pending") ?? false;
-  const members = await listTenantMembers(session.tenant.id);
+  let members: Awaited<ReturnType<typeof listTenantMembersForAuthenticatedTenant>> = [];
+  let membersLoadFailed = false;
+  try {
+    members = await listTenantMembersForAuthenticatedTenant({
+      tenantId: session.tenant.id,
+      externalAuthSubject: session.user.externalAuthSubject,
+    });
+  } catch {
+    membersLoadFailed = true;
+  }
   const canInvite = capabilityHasTenantPermission(currentCapability, "member.invite");
   const canUpdateRole = capabilityHasTenantPermission(currentCapability, "member.update_role");
   const canRemove = capabilityHasTenantPermission(currentCapability, "member.remove");
@@ -229,14 +246,24 @@ export default async function TenantMembersPage({ searchParams }: MembersPagePro
       </section>
 
       <section className="rounded-lg border border-slate-200 bg-white">
-        <div className="hidden grid-cols-[1.4fr_1fr_1fr_1.4fr] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-black uppercase tracking-wider text-slate-500 lg:grid">
-          <span>{ui.name}</span>
-          <span>{ui.role}</span>
-          <span>{ui.status}</span>
-          <span>{ui.actions}</span>
-        </div>
-        <div className="divide-y divide-slate-100">
-          {members.map((member) => (
+        {membersLoadFailed ? (
+          <div className="p-6">
+            <h2 className="text-base font-bold text-slate-900">{ui.memberLoadErrorTitle}</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">{ui.memberLoadErrorDescription}</p>
+            <a href="/settings/members" className="mt-4 inline-flex min-h-10 items-center rounded-lg bg-slate-950 px-4 py-2 text-sm font-bold text-white">
+              {ui.retry}
+            </a>
+          </div>
+        ) : (
+          <>
+            <div className="hidden grid-cols-[1.4fr_1fr_1fr_1.4fr] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-black uppercase tracking-wider text-slate-500 lg:grid">
+              <span>{ui.name}</span>
+              <span>{ui.role}</span>
+              <span>{ui.status}</span>
+              <span>{ui.actions}</span>
+            </div>
+            <div className="divide-y divide-slate-100">
+              {members.map((member) => (
             <div key={member.id} className="grid gap-3 px-4 py-4 lg:grid-cols-[1.4fr_1fr_1fr_1.4fr] lg:items-center">
               <div className="min-w-0">
                 <p className="truncate text-sm font-bold text-slate-900">
@@ -315,8 +342,10 @@ export default async function TenantMembersPage({ searchParams }: MembersPagePro
                 )}
               </div>
             </div>
-          ))}
-        </div>
+              ))}
+            </div>
+          </>
+        )}
       </section>
     </div>
   );

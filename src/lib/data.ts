@@ -202,6 +202,23 @@ export const listTenantsForUser: typeof memory.listTenantsForUser = (...args) =>
   repo.listTenantsForUser(...args);
 export const listTenantMembers: typeof memory.listTenantMembers = (...args) =>
   repo.listTenantMembers(...args);
+/**
+ * Read the current tenant's member list using the identity that already
+ * established the page session. This avoids a second Clerk lookup during the
+ * same render and keeps the restricted Postgres function on that exact
+ * subject. The tenant id is still checked by the database function.
+ */
+export async function listTenantMembersForAuthenticatedTenant(input: {
+  tenantId: string;
+  externalAuthSubject?: string;
+}): Promise<memory.TenantMemberListItem[]> {
+  if (usePostgres) {
+    const subject = input.externalAuthSubject?.trim();
+    if (!subject) throw new ProductionReadinessError("production_tenant_scope_required");
+    return postgres.withPostgresAuthContext(subject, () => postgres.listTenantMembers(input.tenantId));
+  }
+  return repo.listTenantMembers(input.tenantId);
+}
 export const getTenantMemberById: typeof memory.getTenantMemberById = (...args) =>
   repo.getTenantMemberById(...args);
 export const updateTenantMemberInvitation: typeof memory.updateTenantMemberInvitation = (...args) =>
