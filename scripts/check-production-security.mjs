@@ -52,6 +52,7 @@ function withEnv(nextEnv, fn) {
     "DATA_DRIVER",
     "DATABASE_URL",
     "DATABASE_ADMIN_URL",
+    "BROKER_DESK_DEPLOYMENT_ENV",
     "BROKER_DESK_PRODUCTION_DATA_RUNTIME_APPROVED",
     "ATTACHMENT_STORAGE_MODE",
     "BROKER_DESK_ATTACHMENT_SIGNED_URL_ENDPOINT",
@@ -296,6 +297,7 @@ withEnv(
 withEnv(
   {
     NODE_ENV: "production",
+    BROKER_DESK_DEPLOYMENT_ENV: "production",
     DATA_DRIVER: "postgres",
     DATABASE_URL: "postgresql://runtime:password@localhost:5432/broker_desk",
   },
@@ -311,12 +313,61 @@ withEnv(
 withEnv(
   {
     NODE_ENV: "production",
+    BROKER_DESK_DEPLOYMENT_ENV: "production",
     DATA_DRIVER: "postgres",
     DATABASE_URL: "postgresql://runtime:password@localhost:5432/broker_desk",
     BROKER_DESK_PRODUCTION_DATA_RUNTIME_APPROVED: "true",
   },
   () => {
     readiness.assertProductionDataStoreReady();
+  },
+);
+
+for (const deploymentEnvironment of ["preview", "staging"]) {
+  withEnv(
+    {
+      NODE_ENV: "production",
+      BROKER_DESK_DEPLOYMENT_ENV: deploymentEnvironment,
+      DATA_DRIVER: "postgres",
+      DATABASE_URL: "postgresql://runtime:password@localhost:5432/broker_desk",
+    },
+    () => {
+      readiness.assertProductionDataStoreReady();
+      assert(
+        !readiness.isFormalProductionDeployment(),
+        `${deploymentEnvironment} must not require the formal production release approval flag`,
+      );
+    },
+  );
+}
+
+withEnv(
+  {
+    NODE_ENV: "production",
+    BROKER_DESK_DEPLOYMENT_ENV: "preview",
+  },
+  () => {
+    assertThrowsCode(
+      readiness.assertProductionDataStoreReady,
+      "production_database_required",
+      "preview must retain the production-runtime Postgres requirement",
+    );
+  },
+);
+
+withEnv(
+  {
+    NODE_ENV: "production",
+    BROKER_DESK_DEPLOYMENT_ENV: "unknown",
+    DATA_DRIVER: "postgres",
+    DATABASE_URL: "postgresql://runtime:password@localhost:5432/broker_desk",
+  },
+  () => {
+    assertThrowsCode(
+      readiness.assertProductionDataStoreReady,
+      "production_release_not_approved",
+      "unknown deployment classifications must fail closed as formal production",
+    );
   },
 );
 

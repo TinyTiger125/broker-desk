@@ -28,6 +28,18 @@ export function isProductionRuntime() {
   return process.env.NODE_ENV === "production";
 }
 
+/**
+ * NODE_ENV describes the optimized Next.js runtime. Preview and staging
+ * deployments also run with NODE_ENV=production, so the formal release gate
+ * must use the explicit Broker Desk deployment classification instead.
+ * Missing or unknown classifications fail closed as formal production.
+ */
+export function isFormalProductionDeployment() {
+  if (!isProductionRuntime()) return false;
+  const deploymentEnvironment = process.env.BROKER_DESK_DEPLOYMENT_ENV?.trim().toLowerCase();
+  return deploymentEnvironment !== "preview" && deploymentEnvironment !== "staging";
+}
+
 export function assertProductionDataStoreReady() {
   if (!isProductionRuntime()) return;
 
@@ -37,7 +49,10 @@ export function assertProductionDataStoreReady() {
 
   // This explicit gate is only opened after the migration, RLS and restore
   // checks in the operations runbook have been carried out in the real cloud environment.
-  if (process.env.BROKER_DESK_PRODUCTION_DATA_RUNTIME_APPROVED !== "true") {
+  if (
+    isFormalProductionDeployment() &&
+    process.env.BROKER_DESK_PRODUCTION_DATA_RUNTIME_APPROVED !== "true"
+  ) {
     throw new ProductionReadinessError("production_release_not_approved");
   }
 

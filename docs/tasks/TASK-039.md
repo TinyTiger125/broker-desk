@@ -1,7 +1,8 @@
 # TASK-039 / W8：经营主体、成员权限与内部数据可见性基础能力
 
 - 所属专题：全产品身份与经营主体基础能力
-- 状态: Blocked / 非生产验收环境不可用
+- 状态: Blocked
+- 阻断原因: 非生产验收环境不可用
 - 当前阶段: Slice 1 — Execution blocked：middleware 无法访问 Clerk Development
 - 依赖：TASK-038 技术设计与当前有限实现先收口；TASK-036 仍为 Blocked，不作为本任务的本地运行前提
 - 计划：[经营主体、成员权限与内部数据可见性依赖计划](../product/ORGANIZATION_MEMBERS_VISIBILITY_FOUNDATION_PLAN_2026-08-19.md)
