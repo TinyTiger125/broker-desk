@@ -7,7 +7,7 @@
 
 - Vercel 项目名：`broker-desk-staging`
 - 部署分支：`staging/task-038-039-20260820`
-- 当前快照：`5d194e857539e4e8160acea19d8efb34db099429`
+- 当前快照：`dd63a522e49cc359c69375f1ee8f9c93c3e86197`
 - 基线：`35f0cd6541c4ce0e3e838e21d9dd282855ead37e`
 - 生产 `main` 不在本次部署范围内。
 - 未跟踪的 `src/app/clients/page 2.tsx` 未进入快照。
@@ -58,4 +58,3 @@
 仅在上述代码快照、Clerk Development 配置、独立数据库和非生产门禁确认后，向产品负责人提交一次：
 
 `Add New → Project` → 选择仓库 `TinyTiger125/broker-desk` → 分支 `staging/task-038-039-20260820` → 项目名 `broker-desk-staging`。
-
