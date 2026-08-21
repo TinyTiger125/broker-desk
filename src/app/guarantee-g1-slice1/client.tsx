@@ -24,7 +24,7 @@ type Props = {
 };
 type FieldType = "text" | "date" | "checkbox";
 type MaskField = { fieldId: string; type: FieldType; sourceFieldKey: string; label: string; pageNumber: number; x: number; y: number; width: number; height: number };
-type ApiPayload = Record<string, unknown> & { blankForm?: { id?: string }; blankFormVersion?: { id?: string; pageWidth?: number; pageHeight?: number }; maskVersion?: { id?: string; status?: string; testedLayoutDigest?: string; layoutSnapshot?: Record<string, unknown> }; confirmationId?: string; outputId?: string; blankPdfBase64?: string; blankPagePngBase64?: string; testPdfBase64?: string; testPdfSha256?: string; layoutDigest?: string };
+type ApiPayload = Record<string, unknown> & { blankForm?: { id?: string }; blankFormVersion?: { id?: string; pageWidth?: number; pageHeight?: number }; maskVersion?: { id?: string; status?: string; testedLayoutDigest?: string; layoutSnapshot?: Record<string, unknown> }; confirmationId?: string; outputId?: string; blankPdfBase64?: string; blankPagePngBase64?: string; testPdfBase64?: string; testPdfSha256?: string; layoutDigest?: string; requestId?: string };
 type Interaction = { index: number; mode: "move" | "resize"; startX: number; startY: number; startField: MaskField; scaleX: number; scaleY: number };
 
 const initialFields: MaskField[] = [
@@ -53,7 +53,11 @@ function defaultFieldsForPage(pageWidth: number, pageHeight: number): MaskField[
 async function postJson(action: string, body: Record<string, unknown>) {
   const response = await fetch("/api/guarantee-g1-slice1", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action, ...body }) });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(String(payload.error ?? "request_failed"));
+  if (!response.ok) {
+    const requestError = new Error(String(payload.error ?? "request_failed")) as Error & { requestId?: string };
+    requestError.requestId = typeof payload.requestId === "string" ? payload.requestId : undefined;
+    throw requestError;
+  }
   return payload as ApiPayload;
 }
 
@@ -69,11 +73,20 @@ const GUARANTEE_ERROR_MESSAGES: Record<string, string> = {
   blank_form_processing_timeout: "PDF 处理超时，请更换较简单的一页空白 PDF 后重试。",
   blank_form_preview_unavailable: "无法生成该 PDF 的校准预览，请更换文件后重试。",
   slice1_single_page_pdf_required: "第一版只支持一页 PDF。",
+  mask_test_version_not_found: "测试草稿不存在或已不是草稿，请重新打开表格后重试。",
+  mask_test_blank_form_not_ready: "客户空白 PDF 尚未准备好，草稿已保留，请稍后重试。",
+  mask_test_case_not_accessible: "测试案件不可用。请选择当前经营主体内自己有权查看的案件；草稿已保存，尚未发布，可以重试。",
+  mask_test_pdf_generation_failed: "PDF 测试生成失败。草稿已保存，尚未发布，请重试。",
+  guarantee_pdf_font_unavailable: "PDF 测试生成失败：日文字体不可用。草稿已保存，尚未发布，请稍后重试。",
+  blank_form_unavailable: "客户空白 PDF 暂时不可用。草稿已保存，尚未发布，请重试。",
+  request_failed: "请求未完成，请重试。",
 };
 
 function explainGuaranteeError(error: unknown) {
   const code = error instanceof Error ? error.message : String(error);
-  return GUARANTEE_ERROR_MESSAGES[code] ?? code;
+  const message = GUARANTEE_ERROR_MESSAGES[code] ?? "操作未完成，请重试。";
+  const requestId = error instanceof Error && "requestId" in error && typeof error.requestId === "string" ? error.requestId : "";
+  return requestId ? `${message}（请求编号：${requestId}）` : message;
 }
 
 function pdfFieldStyle(field: MaskField, pageWidth: number, pageHeight: number) {
@@ -330,7 +343,7 @@ export function GuaranteeSlice1Client({ enabled, isAdmin, cases, publishedVersio
               setTestedPdfSha256("");
               setMessage("蒙板草稿已保存。当前编辑内容尚未测试，请生成并查看测试 PDF。");
             })}>保存测试草稿</button>
-            <label className="grid gap-1 text-xs text-slate-600">测试案件 ID<input value={testCaseId} onChange={(event) => { setTestCaseId(event.target.value); invalidateTestState(); }} className="rounded border border-slate-300 px-2 py-1.5 text-sm" /></label>
+            <label className="grid gap-1 text-xs text-slate-600">测试案件{cases.length > 0 ? <select value={testCaseId} onChange={(event) => { setTestCaseId(event.target.value); invalidateTestState(); }} className="rounded border border-slate-300 px-2 py-1.5 text-sm"><option value="">选择当前可访问案件</option>{cases.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select> : <input value={testCaseId} placeholder="请输入当前可访问案件 ID" onChange={(event) => { setTestCaseId(event.target.value); invalidateTestState(); }} className="rounded border border-slate-300 px-2 py-1.5 text-sm" />}</label>
             <label className="grid gap-1 text-xs text-slate-600">测试复选框补充值<select value={testConsent ? "confirmed" : "unconfirmed"} onChange={(event) => { setTestConsent(event.target.value === "confirmed"); invalidateTestState(); }} className="rounded border border-slate-300 px-2 py-1.5 text-sm"><option value="unconfirmed">未確認</option><option value="confirmed">確認済み</option></select></label>
             <button type="button" disabled={!maskVersionId || !testCaseId || draftDirty} className="rounded-md border border-slate-300 px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-40" onClick={() => void run(async () => {
               const result = await postJson("test", { maskVersionId, caseId: testCaseId, supplement: { consent: testConsent } });

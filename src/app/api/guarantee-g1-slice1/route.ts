@@ -43,11 +43,11 @@ export const runtime = "nodejs";
 
 function hash(value: string | Buffer | Uint8Array) { return createHash("sha256").update(value).digest("hex"); }
 function jsonHash(value: unknown) { return hash(JSON.stringify(value, Object.keys((value as Record<string, unknown>) ?? {}).sort())); }
-function jsonError(error: unknown) {
-  if (error instanceof TenantSessionError) return NextResponse.json({ error: error.code }, { status: error.status });
+function jsonError(error: unknown, requestId: string) {
+  if (error instanceof TenantSessionError) return NextResponse.json({ error: error.code, requestId }, { status: error.status });
   const code = error instanceof Error ? error.message : "guarantee_slice1_failed";
   const status = code.includes("disabled") || code.includes("required") ? 403 : 400;
-  return NextResponse.json({ error: code }, { status });
+  return NextResponse.json({ error: code, requestId }, { status });
 }
 function asRecord(value: unknown): Record<string, unknown> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
 async function renderBlankPagePreview(bytes: Buffer): Promise<Buffer> {
@@ -254,14 +254,22 @@ async function handleTest(request: Request) {
   const caseId = String(body.caseId ?? "");
   if (!maskVersionId || !caseId) throw new Error("mask_test_context_required");
   const version = await getGuaranteeCompanyMaskVersion({ tenantId: session.tenant.id, id: maskVersionId });
+  if (!version || version.status !== "draft") throw new Error("mask_test_version_not_found");
   const blank = version ? await getGuaranteeBlankFormVersion({ tenantId: session.tenant.id, id: version.blankFormVersionId }) : undefined;
   const brokerageCase = await getBrokerageCaseById({ userId: session.user.id, tenantId: session.tenant.id, caseId });
-  if (!version || version.status !== "draft" || !blank || blank.status !== "ready" || !brokerageCase) throw new Error("mask_test_target_not_found");
+  if (!blank || blank.status !== "ready") throw new Error("mask_test_blank_form_not_ready");
+  if (!brokerageCase) throw new Error("mask_test_case_not_accessible");
   const source = await readPrivateAttachmentContentForTenant({ tenantId: session.tenant.id, id: blank.attachmentId });
   if (!source) throw new Error("blank_form_unavailable");
   const supplement = asRecord(body.supplement);
   validateSupplementValues(version, brokerageCase.confirmedDataJson, supplement);
-  const testBytes = await renderGuaranteePdf(source, version, brokerageCase.confirmedDataJson, supplement);
+  let testBytes: Buffer;
+  try {
+    testBytes = await renderGuaranteePdf(source, version, brokerageCase.confirmedDataJson, supplement);
+  } catch (error) {
+    if (error instanceof Error && error.message === "guarantee_pdf_font_unavailable") throw error;
+    throw new Error("mask_test_pdf_generation_failed");
+  }
   const testPdfSha256 = hash(testBytes);
   const tested = await markGuaranteeCompanyMaskVersionTested({ tenantId: session.tenant.id, maskVersionId, userId: session.user.id, testPdfSha256, testedLayoutDigest: layoutDigest(version.layoutSnapshot) });
   if (!tested) throw new Error("mask_test_failed");
@@ -382,19 +390,20 @@ async function handleGenerate(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const requestId = request.headers.get("x-request-id")?.trim() || randomUUID();
   try {
     const action = request.headers.get("content-type")?.includes("multipart/form-data") ? "upload" : String((asRecord(await request.clone().json())).action ?? "");
-    if (action === "upload") return handleUpload(request);
-    if (action === "draft") return handleDraft(request);
-    if (action === "loadAdminMask") return handleLoadAdminMask(request);
-    if (action === "loadAdminBlankForm") return handleLoadAdminBlankForm(request);
-    if (action === "publish") return handlePublish(request);
-    if (action === "test") return handleTest(request);
-    if (action === "confirmTest") return handleConfirmTest(request);
-    if (action === "rollback") return handleRollback(request);
-    if (action === "preview") return handlePreview(request);
-    if (action === "loadApplicationDraft") return handleLoadApplicationDraft(request);
-    if (action === "generate") return handleGenerate(request);
+    if (action === "upload") return await handleUpload(request);
+    if (action === "draft") return await handleDraft(request);
+    if (action === "loadAdminMask") return await handleLoadAdminMask(request);
+    if (action === "loadAdminBlankForm") return await handleLoadAdminBlankForm(request);
+    if (action === "publish") return await handlePublish(request);
+    if (action === "test") return await handleTest(request);
+    if (action === "confirmTest") return await handleConfirmTest(request);
+    if (action === "rollback") return await handleRollback(request);
+    if (action === "preview") return await handlePreview(request);
+    if (action === "loadApplicationDraft") return await handleLoadApplicationDraft(request);
+    if (action === "generate") return await handleGenerate(request);
     throw new Error("guarantee_slice1_action_invalid");
-  } catch (error) { return jsonError(error); }
+  } catch (error) { return jsonError(error, requestId); }
 }
