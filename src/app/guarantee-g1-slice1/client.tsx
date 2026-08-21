@@ -19,12 +19,27 @@ type Props = {
   initialBlankFormId?: string;
   initialBlankFormVersionId?: string;
   initialMaskId?: string;
+  initialAdminContext?: InitialAdminContext;
   adminOnly?: boolean;
   showUpload?: boolean;
   heading?: string;
 };
 type FieldType = "text" | "date" | "checkbox";
-type MaskField = { fieldId: string; type: FieldType; sourceFieldKey: string; label: string; pageNumber: number; x: number; y: number; width: number; height: number };
+export type MaskField = { fieldId: string; type: FieldType; sourceFieldKey: string; label: string; pageNumber: number; x: number; y: number; width: number; height: number };
+export type InitialAdminContext = {
+  status: "loaded" | "failed";
+  versionStatus?: "draft" | "published";
+  blankFormId?: string;
+  blankFormVersionId?: string;
+  maskId?: string;
+  maskVersionId?: string;
+  pageWidth?: number;
+  pageHeight?: number;
+  fields?: MaskField[];
+  blankPdfBase64?: string;
+  blankPagePngBase64?: string;
+  errorMessage?: string;
+};
 type ApiPayload = Record<string, unknown> & { blankForm?: { id?: string }; blankFormVersion?: { id?: string; pageWidth?: number; pageHeight?: number }; maskVersion?: { id?: string; status?: string; testedLayoutDigest?: string; layoutSnapshot?: Record<string, unknown> }; confirmationId?: string; outputId?: string; blankPdfBase64?: string; blankPagePngBase64?: string; testPdfBase64?: string; testPdfSha256?: string; layoutDigest?: string; requestId?: string };
 type Interaction = { index: number; mode: "move" | "resize"; startX: number; startY: number; startField: MaskField; scaleX: number; scaleY: number };
 type GuaranteeRequestError = Error & { requestId?: string };
@@ -157,14 +172,19 @@ function pdfFieldStyle(field: MaskField, pageWidth: number, pageHeight: number) 
   };
 }
 
-export function GuaranteeSlice1Client({ enabled, isAdmin, cases, publishedVersions, initialMaskVersionId, initialBlankFormId, initialBlankFormVersionId, initialMaskId, adminOnly = false, showUpload = true, heading }: Props) {
+export function GuaranteeSlice1Client({ enabled, isAdmin, cases, publishedVersions, initialMaskVersionId, initialBlankFormId, initialBlankFormVersionId, initialMaskId, initialAdminContext, adminOnly = false, showUpload = true, heading }: Props) {
   // Legacy contract marker: the editor no longer asks an administrator to type or copy an internal case ID (当前可访问案件 ID).
+  const hasInitialAdminContext = Boolean(initialAdminContext);
+  const initialLoadedContext = initialAdminContext?.status === "loaded" ? initialAdminContext : undefined;
+  const initialBlankPageSrc = initialLoadedContext?.blankPagePngBase64 ? `data:image/png;base64,${initialLoadedContext.blankPagePngBase64}` : "";
+  const initialContextFields = initialLoadedContext?.fields && initialLoadedContext.fields.length > 0 ? initialLoadedContext.fields : initialFields;
+  const restoreContextRequested = Boolean(enabled && isAdmin && (initialMaskVersionId || initialBlankFormId));
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [blankFormVersionId, setBlankFormVersionId] = useState(initialBlankFormVersionId ?? "");
-  const [blankFormId, setBlankFormId] = useState("");
-  const [maskId, setMaskId] = useState(initialMaskId ?? "");
-  const [maskVersionId, setMaskVersionId] = useState("");
+  const [blankFormVersionId, setBlankFormVersionId] = useState(initialLoadedContext?.blankFormVersionId ?? initialBlankFormVersionId ?? "");
+  const [blankFormId, setBlankFormId] = useState(initialLoadedContext?.blankFormId ?? initialBlankFormId ?? "");
+  const [maskId, setMaskId] = useState(initialLoadedContext?.maskId ?? initialMaskId ?? "");
+  const [maskVersionId, setMaskVersionId] = useState(initialLoadedContext?.maskVersionId ?? initialMaskVersionId ?? "");
   const [caseId, setCaseId] = useState("");
   const [memberMaskVersionId, setMemberMaskVersionId] = useState("");
   const [memberBlankFormVersionId, setMemberBlankFormVersionId] = useState("");
@@ -173,21 +193,21 @@ export function GuaranteeSlice1Client({ enabled, isAdmin, cases, publishedVersio
   const [outputId, setOutputId] = useState("");
   const [previewSrc, setPreviewSrc] = useState("");
   const [blankPdfSrc, setBlankPdfSrc] = useState("");
-  const [blankPageSrc, setBlankPageSrc] = useState("");
+  const [blankPageSrc, setBlankPageSrc] = useState(initialBlankPageSrc);
   const [testPdfSrc, setTestPdfSrc] = useState("");
   const [testedPdfSha256, setTestedPdfSha256] = useState("");
   const [testConfirmed, setTestConfirmed] = useState(false);
-  const [draftDirty, setDraftDirty] = useState(false);
+  const [draftDirty, setDraftDirty] = useState(initialLoadedContext?.versionStatus === "published");
   const [testedLayoutDigest, setTestedLayoutDigest] = useState("");
-  const [loadingExistingContext, setLoadingExistingContext] = useState(Boolean(enabled && isAdmin && (initialMaskVersionId || initialBlankFormId)));
-  const [existingContextError, setExistingContextError] = useState("");
+  const [loadingExistingContext, setLoadingExistingContext] = useState(Boolean(!hasInitialAdminContext && restoreContextRequested));
+  const [existingContextError, setExistingContextError] = useState(initialAdminContext?.status === "failed" ? initialAdminContext.errorMessage ?? "表格恢复失败，请稍后重试。" : "");
   const [existingContextRetry, setExistingContextRetry] = useState(0);
   const [testConsent, setTestConsent] = useState(false);
   const [memberConsent, setMemberConsent] = useState(false);
   const [memberDraftPersisted, setMemberDraftPersisted] = useState(false);
-  const [pageWidth, setPageWidth] = useState(612);
-  const [pageHeight, setPageHeight] = useState(792);
-  const [fields, setFields] = useState<MaskField[]>(initialFields);
+  const [pageWidth, setPageWidth] = useState(initialLoadedContext?.pageWidth ?? 612);
+  const [pageHeight, setPageHeight] = useState(initialLoadedContext?.pageHeight ?? 792);
+  const [fields, setFields] = useState<MaskField[]>(initialContextFields);
   const [interaction, setInteraction] = useState<Interaction>();
   const editorRef = useRef<HTMLDivElement>(null);
   const pageCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -339,7 +359,7 @@ export function GuaranteeSlice1Client({ enabled, isAdmin, cases, publishedVersio
   const recoveryGenerationRef = useRef(0);
 
   useEffect(() => {
-    if (!enabled || !isAdmin) return;
+    if (!enabled || !isAdmin || (hasInitialAdminContext && existingContextRetry === 0)) return;
     const generation = recoveryGenerationRef.current + 1;
     recoveryGenerationRef.current = generation;
     const controller = new AbortController();
@@ -383,7 +403,7 @@ export function GuaranteeSlice1Client({ enabled, isAdmin, cases, publishedVersio
     };
     // The formal edit route intentionally loads one existing version once.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialMaskVersionId, initialBlankFormId, initialBlankFormVersionId, initialMaskId, existingContextRetry]);
+  }, [initialMaskVersionId, initialBlankFormId, initialBlankFormVersionId, initialMaskId, existingContextRetry, hasInitialAdminContext]);
 
   const updateField = (index: number, key: keyof MaskField, value: string) => {
     invalidateTestState();
@@ -439,12 +459,13 @@ export function GuaranteeSlice1Client({ enabled, isAdmin, cases, publishedVersio
           <button className="w-fit rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white" type="submit">上传空白表格</button>
         </form>}
         {!showUpload && loadingExistingContext && <p className="mt-4 text-sm text-slate-600" role="status">正在恢复已保存的表格版本，请稍候。</p>}
-        {!showUpload && existingContextError && <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert"><p>{existingContextError}</p><button type="button" className="mt-3 rounded border border-red-300 bg-white px-3 py-1.5 font-medium text-red-800" onClick={() => { setError(""); setExistingContextError(""); setExistingContextRetry((value) => value + 1); }}>重新加载表格</button></div>}
+        {!showUpload && existingContextError && <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert"><p>{existingContextError}</p><div className="mt-3 flex flex-wrap gap-3"><button type="button" className="rounded border border-red-300 bg-white px-3 py-1.5 font-medium text-red-800" onClick={() => { setError(""); setExistingContextError(""); if (initialAdminContext?.status === "failed" && typeof window !== "undefined") { window.location.reload(); return; } setExistingContextRetry((value) => value + 1); }}>重新加载表格</button><a href="/guarantee-forms" className="rounded border border-red-300 bg-white px-3 py-1.5 font-medium text-red-800">返回公司表格库</a></div></div>}
         {!showUpload && !maskId && !loadingExistingContext && !existingContextError && !initialBlankFormId && !initialMaskVersionId && <p className="mt-4 text-sm text-slate-600">请选择表格库中的版本后继续编辑。此处不会要求重新上传客户空白 PDF。</p>}
         {maskId && !loadingExistingContext && !existingContextError && <div className="mt-6 border-t border-slate-200 pt-5">
           <p className="text-sm text-slate-600">表格版本：<code>{blankFormVersionId}</code> · 公司蒙板：<code>{maskId}</code></p>
           {blankPageSrc && <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
             <div ref={editorRef} className="relative mx-auto w-full max-w-[720px] overflow-hidden border border-slate-300 bg-slate-100" style={{ aspectRatio: `${pageWidth} / ${pageHeight}` }} aria-label="客户空白 PDF 与蒙板字段叠加校准区">
+              <img src={blankPageSrc} alt="客户空白 PDF 第 1 页" className="absolute inset-0 h-full w-full object-fill" />
               <canvas ref={pageCanvasRef} className="absolute inset-0 h-full w-full" aria-label="客户空白 PDF 第 1 页固定坐标画布" />
               <div className="absolute inset-0">
                 {fields.map((field, index) => <div key={field.fieldId} onPointerDown={(event) => beginInteraction(event, index, "move")} style={pdfFieldStyle(field, pageWidth, pageHeight)} className="absolute cursor-move border-2 border-blue-600 bg-blue-200/30 text-[10px] font-medium text-blue-900" aria-label={`${field.label}字段框，可拖动`}>
