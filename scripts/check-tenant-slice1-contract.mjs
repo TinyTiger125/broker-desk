@@ -142,7 +142,11 @@ assert(memberLifecycleMigration.includes("target_status = 'invited' AND p_status
 assert(memberLifecycleMigration.includes("target_status = 'removed' AND p_status = 'active'"), "removed memberships must not be reactivated by status updates");
 assert(memberLifecycleMigration.includes("target_role = 'tenant_owner'"), "member lifecycle writes must protect the last company owner");
 assert(actionsSource.includes("confirmSelfDemotion"), "self owner demotion must require an explicit server-checked confirmation");
+assert(actionsSource.includes("nextCapability") && actionsSource.includes('member.capability === "company_owner"'), "last owner guard must use role and capability together");
+assert(actionsSource.includes("last_owner_protected"), "last owner rejection must return a user-understandable result");
 assert(membersPageSource.includes("activeOwnerCount"), "members page must calculate active owners before rendering role controls");
+assert(membersPageSource.includes("isActiveCompanyOwner"), "members page owner counting must use role and capability together");
+assert(membersPageSource.includes("member.user.id === session.user.id"), "current member detection must remain bound to the authenticated local user");
 assert(membersPageSource.includes("soleOwnerLocked"), "last owner role controls must be visibly locked");
 assert(membersPageSource.includes('name="confirmSelfDemotion"') && membersPageSource.includes("required"), "self owner demotion must expose a required second confirmation");
 assert(memberLifecycleMigration.includes("GRANT EXECUTE ON FUNCTION brokerdesk_private.update_tenant_member_capability(TEXT, TEXT, TEXT, TEXT, TEXT) TO brokerdesk_runtime"), "capability lifecycle function must be runtime-only");

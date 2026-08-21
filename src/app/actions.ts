@@ -2665,17 +2665,27 @@ async function assertNotLastActiveTenantOwner(input: {
   tenantId: string;
   changingMembershipId: string;
   nextRole?: TenantRole;
+  nextCapability?: TenantCapabilityPreset;
   nextStatus?: "active" | "invited" | "suspended" | "removed";
 }) {
   const members = await listTenantMembers(input.tenantId);
-  const activeOwners = members.filter((member) => member.status === "active" && member.role === "tenant_owner");
+  const activeOwners = members.filter(
+    (member) => member.status === "active" && member.role === "tenant_owner" && member.capability === "company_owner",
+  );
   const target = members.find((member) => member.id === input.changingMembershipId);
-  if (!target || target.role !== "tenant_owner" || target.status !== "active") return;
+  if (
+    !target ||
+    target.role !== "tenant_owner" ||
+    target.capability !== "company_owner" ||
+    target.status !== "active"
+  ) return;
+  const nextCapability = input.nextCapability ?? target.capability;
   const wouldRemainActiveOwner =
     (input.nextStatus ?? target.status) === "active" &&
-    (input.nextRole ?? target.role) === "tenant_owner";
+    (input.nextRole ?? target.role) === "tenant_owner" &&
+    nextCapability === "company_owner";
   if (!wouldRemainActiveOwner && activeOwners.length <= 1) {
-    throw new Error("最後の有効なオーナーは降格・停止できません。");
+    throw new Error("最后一名有效公司负责人不能降级或停用。");
   }
 }
 
@@ -3073,7 +3083,19 @@ export async function updateTenantMemberRoleAction(formData: FormData) {
     throw new Error("自分の会社責任者権限を変更する場合は、確認にチェックしてください。");
   }
 
-  await assertNotLastActiveTenantOwner({ tenantId, changingMembershipId: membershipId, nextRole: role });
+  try {
+    await assertNotLastActiveTenantOwner({
+      tenantId,
+      changingMembershipId: membershipId,
+      nextRole: role,
+      nextCapability: capabilityPreset,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message === "最后一名有效公司负责人不能降级或停用。") {
+      redirect("/settings/members?flash=last_owner_protected");
+    }
+    throw error;
+  }
   const member = await updateTenantMemberRole({ tenantId, membershipId, role, capability: capabilityPreset, actorUserId: session.user.id });
   if (!member) throw new Error("メンバーが見つかりません。");
   await addAuditLog({
@@ -3111,7 +3133,14 @@ export async function updateTenantMemberStatusAction(formData: FormData) {
     throw new Error("現在の自分自身のメンバー権限は停止できません。");
   }
 
-  await assertNotLastActiveTenantOwner({ tenantId, changingMembershipId: membershipId, nextStatus: status });
+  try {
+    await assertNotLastActiveTenantOwner({ tenantId, changingMembershipId: membershipId, nextStatus: status });
+  } catch (error) {
+    if (error instanceof Error && error.message === "最后一名有效公司负责人不能降级或停用。") {
+      redirect("/settings/members?flash=last_owner_protected");
+    }
+    throw error;
+  }
   const member = await updateTenantMemberStatus({ tenantId, membershipId, status, actorUserId: session.user.id });
   if (!member) throw new Error("メンバーが見つかりません。");
   await addAuditLog({

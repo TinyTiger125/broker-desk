@@ -39,6 +39,10 @@ function capabilityForMember(member: { capability?: TenantCapabilityPreset }): T
   return member.capability ?? "ordinary_member";
 }
 
+function isActiveCompanyOwner(member: { status: string; role: string; capability?: TenantCapabilityPreset }) {
+  return member.status === "active" && member.role === "tenant_owner" && member.capability === "company_owner";
+}
+
 function copy(locale: Locale) {
   return {
     title: locale === "zh" ? "公司成员与权限" : locale === "ko" ? "회사 멤버와 권한" : "会社メンバーと権限",
@@ -72,6 +76,12 @@ function copy(locale: Locale) {
         : locale === "ko"
           ? "다른 회사 책임자를 지정했으며 내 책임자 권한을 낮추는 것을 확인합니다"
           : "別の会社責任者を指定し、自分の責任者権限を下げることを確認します",
+    lastOwnerProtected:
+      locale === "zh"
+        ? "最后一名有效公司负责人不能降级或停用。请先指定另一名公司负责人。"
+        : locale === "ko"
+          ? "마지막 유효 회사 책임자는 권한을 낮추거나 중지할 수 없습니다. 먼저 다른 회사 책임자를 지정하세요."
+          : "最後の有効な会社責任者は降格・停止できません。先に別の会社責任者を指定してください。",
     bound: locale === "zh" ? "已绑定登录" : locale === "ko" ? "로그인 연동됨" : "ログイン連携済み",
     unbound: locale === "zh" ? "未绑定登录" : locale === "ko" ? "로그인 미연동" : "ログイン未連携",
     current: locale === "zh" ? "当前用户" : locale === "ko" ? "현재 사용자" : "現在のユーザー",
@@ -170,6 +180,11 @@ function flashMessage(locale: Locale, flash?: string) {
       zh: "已移除成员。",
       ko: "멤버를 제거했습니다.",
     },
+    last_owner_protected: {
+      ja: "最後の有効な会社責任者は降格・停止できません。先に別の会社責任者を指定してください。",
+      zh: "最后一名有效公司负责人不能降级或停用。请先指定另一名公司负责人。",
+      ko: "마지막 유효 회사 책임자는 권한을 낮추거나 중지할 수 없습니다. 먼저 다른 회사 책임자를 지정하세요.",
+    },
   };
   return flash ? messages[flash]?.[locale] : undefined;
 }
@@ -208,7 +223,7 @@ export default async function TenantMembersPage({ searchParams }: MembersPagePro
 
   const params = searchParams ? await searchParams : undefined;
   const feedback = flashMessage(locale, params?.flash);
-  const feedbackFailed = params?.flash?.includes("failed") ?? false;
+  const feedbackFailed = (params?.flash?.includes("failed") ?? false) || params?.flash === "last_owner_protected";
   const feedbackPending = params?.flash?.includes("pending") ?? false;
   let members: Awaited<ReturnType<typeof listTenantMembersForAuthenticatedTenant>> = [];
   let membersLoadFailed = false;
@@ -223,7 +238,9 @@ export default async function TenantMembersPage({ searchParams }: MembersPagePro
   const canInvite = capabilityHasTenantPermission(currentCapability, "member.invite");
   const canUpdateRole = capabilityHasTenantPermission(currentCapability, "member.update_role");
   const canRemove = capabilityHasTenantPermission(currentCapability, "member.remove");
-  const activeOwnerCount = members.filter((member) => member.status === "active" && member.role === "tenant_owner").length;
+  const activeOwnerCount = members.filter(isActiveCompanyOwner).length;
+  const isCurrentMember = (member: (typeof members)[number]) =>
+    member.id === session.membership.id || member.user.id === session.user.id;
 
   return (
     <div className="space-y-6">
@@ -292,7 +309,7 @@ export default async function TenantMembersPage({ searchParams }: MembersPagePro
               <div className="min-w-0">
                 <p className="truncate text-sm font-bold text-slate-900">
                   {member.user.name}
-                  {member.id === session.membership.id ? (
+                  {isCurrentMember(member) ? (
                     <span className="ml-2 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-800">{ui.current}</span>
                   ) : null}
                 </p>
@@ -301,7 +318,7 @@ export default async function TenantMembersPage({ searchParams }: MembersPagePro
               <div className="lg:hidden text-xs font-semibold text-slate-500">{ui.role}</div>
               {member.status === "removed" ? (
                 <span className="text-xs font-semibold text-slate-500">{capabilityLabels[capabilityForMember(member)][locale]}</span>
-              ) : member.id === session.membership.id && member.status === "active" && member.role === "tenant_owner" && activeOwnerCount <= 1 ? (
+              ) : isCurrentMember(member) && isActiveCompanyOwner(member) && activeOwnerCount <= 1 ? (
                 <div className="space-y-1">
                   <span className="block text-xs font-semibold text-slate-500">{capabilityLabels.company_owner[locale]}</span>
                   <span className="block text-[11px] leading-4 text-amber-700">{ui.soleOwnerLocked}</span>
@@ -321,7 +338,7 @@ export default async function TenantMembersPage({ searchParams }: MembersPagePro
                       </option>
                     ))}
                   </select>
-                  {member.id === session.membership.id && member.status === "active" && member.role === "tenant_owner" && activeOwnerCount > 1 ? (
+                  {isCurrentMember(member) && isActiveCompanyOwner(member) && activeOwnerCount > 1 ? (
                     <label className="flex max-w-xs items-center gap-1 text-[11px] leading-4 text-amber-700">
                       <input type="checkbox" name="confirmSelfDemotion" value="true" required className="h-3.5 w-3.5" />
                       {ui.confirmSelfDemotion}
