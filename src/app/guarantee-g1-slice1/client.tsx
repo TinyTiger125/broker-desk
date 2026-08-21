@@ -8,6 +8,7 @@ import {
   resizePdfFieldFromBottomRight,
   serializeMaskLayout,
 } from "@/lib/guarantee-slice1-coordinates.mjs";
+import { getCaseFieldDefinition } from "@/lib/case-field-catalog";
 import type { GuaranteeTestCaseSummary } from "@/lib/guarantee-test-case-summary";
 
 type Props = {
@@ -179,9 +180,19 @@ function testLayoutError(fields: MaskField[], pageWidth: number, pageHeight: num
   if (fields.length !== 3) {
     return "请配置文本、日期和复选框三个测试字段后再生成 PDF。";
   }
+  const allowedTypes = new Set<FieldType>(["text", "date", "checkbox"]);
+  const textValueKinds = new Set(["text", "textarea", "phone", "email", "postal_code", "money_yen", "money_man_yen", "number", "duration_years", "select", "id_number"]);
+  const missingType = (["text", "date", "checkbox"] as const).find((type) => !fields.some((field) => field.type === type));
+  if (missingType) return `请各配置一个文本、日期和复选框字段；当前缺少“${missingType === "text" ? "文本" : missingType === "date" ? "日期" : "复选框"}”。`;
   for (const field of fields) {
     const fieldName = field.label || field.fieldId;
+    if (!allowedTypes.has(field.type)) return `字段“${fieldName}”的类型无效，请选择文本、日期或复选框。`;
     if (!field.sourceFieldKey.trim()) return `字段“${fieldName}”尚未绑定案件字段，请先完成绑定。`;
+    const definition = getCaseFieldDefinition(field.sourceFieldKey.trim());
+    if (!definition) return `字段“${fieldName}”绑定的案件字段不存在，请重新选择有效字段。`;
+    if (field.type === "date" && definition.valueKind !== "date") return `字段“${fieldName}”是日期字段，必须绑定日期类型的案件字段。`;
+    if (field.type === "checkbox" && definition.valueKind !== "boolean") return `字段“${fieldName}”是复选框，必须绑定布尔类型的案件字段。`;
+    if (field.type === "text" && !textValueKinds.has(definition.valueKind)) return `字段“${fieldName}”是文本字段，不能绑定日期或布尔类型的案件字段。`;
     if (field.pageNumber !== 1) return `字段“${fieldName}”必须放在第 1 页。`;
     if (![field.x, field.y, field.width, field.height].every(Number.isFinite)) return `字段“${fieldName}”的坐标或尺寸无效。`;
     if (field.width <= 0 || field.height <= 0) return `字段“${fieldName}”的宽度和高度必须大于 0。`;
@@ -237,6 +248,8 @@ export function GuaranteeSlice1Client({ enabled, isAdmin, cases, publishedVersio
     setTestedLayoutDigest("");
     setTestPdfSrc("");
     setTestedPdfSha256("");
+    setError("");
+    setMessage("测试条件已变化，请重新生成并确认测试 PDF。");
   };
 
   const invalidateTestState = () => {
