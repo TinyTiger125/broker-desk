@@ -24,7 +24,13 @@ export default async function GuaranteeFormEditPage({ params, searchParams }: { 
     const current = formVersions.filter((version) => version.status === "draft").sort((a, b) => b.versionNumber - a.versionNumber)[0]
       ?? formVersions.find((version) => version.blankFormVersionId === form.activeVersionId && version.status === "published")
       ?? formVersions.filter((version) => version.status === "published").sort((a, b) => b.versionNumber - a.versionNumber)[0];
-    return <GuaranteeSlice1Client enabled={enabled} isAdmin={capabilityHasTenantPermission(getTenantCapability(session.membership), "template.edit_draft")} cases={[]} publishedVersions={[]} initialMaskVersionId={current?.id} initialBlankFormId={current ? undefined : form.id} initialBlankFormVersionId={current ? undefined : initialBlankFormVersionId} initialMaskId={current ? undefined : initialMaskId} adminOnly showUpload={false} heading={`编辑公司表格：${form.name}`} />;
+    // A freshly uploaded form carries an explicit version/mask context in the
+    // URL. It must win over any draft discovered from the library; otherwise a
+    // stale draft can make the editor load the wrong mask and lose the uploaded
+    // PDF preview. Reopening from the library has no context and keeps the
+    // existing draft-first behavior.
+    const hasRequestedContext = Boolean(initialBlankFormVersionId && initialMaskId);
+    return <GuaranteeSlice1Client enabled={enabled} isAdmin={capabilityHasTenantPermission(getTenantCapability(session.membership), "template.edit_draft")} cases={[]} publishedVersions={[]} initialMaskVersionId={hasRequestedContext ? undefined : current?.id} initialBlankFormId={hasRequestedContext || !current ? form.id : undefined} initialBlankFormVersionId={hasRequestedContext ? initialBlankFormVersionId : undefined} initialMaskId={hasRequestedContext ? initialMaskId : undefined} adminOnly showUpload={false} heading={`编辑公司表格：${form.name}`} />;
   } catch (error) {
     const message = error instanceof TenantSessionError && error.code === "permission_denied" ? "只有公司表格管理员可以编辑蒙板。" : "请在受控非生产工作区中登录后再访问。";
     return <main className="mx-auto max-w-3xl px-6 py-12"><h1 className="text-2xl font-semibold text-slate-950">公司表格编辑</h1><p className="mt-3 text-sm text-slate-600">{message}</p><a href="/guarantee-forms" className="mt-4 inline-block text-sm text-blue-700 underline">返回公司表格库</a></main>;
