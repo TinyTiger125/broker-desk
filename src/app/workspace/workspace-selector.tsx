@@ -41,8 +41,18 @@ export function WorkspaceSelector({ items, copy }: WorkspaceSelectorProps) {
         if (!response.ok || !result.ok) throw new Error("workspace_selection_failed");
         // The response has already persisted the tenant cookie. A full
         // navigation guarantees the next server render reads that cookie;
-        // push+refresh can race and leave the selector page mounted.
-        window.location.replace("/");
+        // push+refresh can race and leave the selector page mounted. Do not
+        // let a late selection response override a newer navigation (for
+        // example, the user opening the forms editor while this request was
+        // still in flight).
+        if (window.location.pathname === "/workspace") {
+          window.location.replace("/");
+        } else {
+          // The cookie is already updated, so reload the route the user
+          // reached while the selection request was in flight. This keeps a
+          // late response from leaving an old-tenant page rendered.
+          window.location.reload();
+        }
       } catch {
         setPendingTenantId(null);
         setError(copy.error);

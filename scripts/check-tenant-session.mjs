@@ -179,4 +179,12 @@ assert(
   "Clerk session subject lookup must be request-cached",
 );
 
+const workspaceSelectorSource = fs.readFileSync("src/app/workspace/workspace-selector.tsx", "utf8");
+assert(
+  workspaceSelectorSource.includes('window.location.pathname === "/workspace"') &&
+    workspaceSelectorSource.includes("window.location.replace(\"/\")") &&
+    workspaceSelectorSource.includes("window.location.reload()"),
+  "a late workspace selection response must navigate or reload so the new tenant cookie is applied",
+);
+
 console.log("[PASS] tenant session foundation regression");
