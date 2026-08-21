@@ -15,6 +15,11 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "72mb",
     },
   },
+  // @pdfme/converter uses clawpdf's Node PDFium loader. Keep both packages
+  // external in server bundles so its runtime-resolved vendor/WASM assets are
+  // available in Serverless functions instead of being inlined with a build-
+  // machine file URL.
+  serverExternalPackages: ["@pdfme/converter", "clawpdf"],
   images: {
     remotePatterns: [
       {

@@ -19,6 +19,7 @@ const formsClient = read("src/app/guarantee-forms/client.tsx");
 const formsEditPage = read("src/app/guarantee-forms/[formId]/edit/page.tsx");
 const migration = read("db/migrations/20260819_001_guarantee_slice1_objects.sql");
 const behavior = read("scripts/test-guarantee-slice1-behavior.mjs");
+const nextConfig = read("next.config.ts");
 const mustInclude = (text, values, label) => values.forEach((value) => {
   if (!text.includes(value)) throw new Error(`${label} missing ${value}`);
 });
@@ -44,6 +45,7 @@ if (formsClient.includes('href="/templates"') || formsClient.includes("href='/te
 mustInclude(migration, ["ENABLE ROW LEVEL SECURITY", "guarantee_blank_forms", "guarantee_preview_confirmations"], "tenant isolation");
 mustInclude(design, ["guarantee_blank_forms", "guarantee_blank_form_versions", "processing", "file_attachment_id", "普通成员在本切片及第一版产品中始终不能移动坐标", "测试动作必须返回实际可查看的测试 PDF", "testConfirmedAt", "Preview/Staging", "Noto Sans JP"], "technical design alignment");
 mustInclude(behavior, ["src/lib/data.ts", "publishGuaranteeCompanyMaskVersionWithExactMatch", "finalizeGuaranteePreviewOutput", "readPrivateAttachmentContentForTenant", "failureInjection", "inflateSync", "確認済み", "未確認", "blank_form_rotation_unsupported", "blank_form_cropbox_unsupported"], "executable behavior test");
+mustInclude(nextConfig, ["serverExternalPackages", '"@pdfme/converter"', '"clawpdf"'], "server PDF preview packaging contract");
 if (behavior.includes("routeSource") || behavior.includes("assert.ok(handlerBody.includes")) throw new Error("behavior test must not rely on source-text scanning");
 if (route.includes("GUARANTEE_G1_SLICE1_ENABLED=true")) throw new Error("client or route must not hard-code enablement");
 console.log("[PASS] TASK-038 limited implementation contract");
