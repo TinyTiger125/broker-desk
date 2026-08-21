@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 type FormRow = {
   id: string;
   name: string;
-  activeVersionId?: string;
   versions: Array<{ id: string; versionNumber: number; status: string; maskVersionId?: string; tested: boolean }>;
 };
 

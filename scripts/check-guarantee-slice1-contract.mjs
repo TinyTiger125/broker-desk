@@ -37,7 +37,7 @@ mustInclude(client, ["普通成员不能移动坐标", "application/pdf", "blank
 if (client.includes('title="客户空白 PDF"')) throw new Error("calibration must not use a browser PDF iframe as its coordinate surface");
 mustInclude(outputRoute, ["output.download_final", "getBrokerageCaseById", "getGuaranteeOutputByCase", "readPrivateAttachmentContentForTenant"], "history download gate");
 mustInclude(pageRoute, ["listBrokerageCases", "listPublishedGuaranteeCompanyMaskVersions"], "case selection contract");
-mustInclude(formsPage, ["listGuaranteeBlankForms", "listPublishedGuaranteeCompanyMaskVersions", "template.edit_draft", "isGuaranteeSlice1EnabledForTenant"], "formal forms library server contract");
+mustInclude(formsPage, ["getGuaranteeCompanyMask", "getGuaranteeMaskMatch", "listGuaranteeBlankForms", "listPublishedGuaranteeCompanyMaskVersions", 'version.status !== "published"', "activeVersionId", 'match?.status === "exact"', "template.edit_draft", "isGuaranteeSlice1EnabledForTenant"], "formal forms library server contract");
 mustInclude(formsClient, ["平台所有", "公司内部", "上传公司表格", "打开并编辑", "现有旧配置不会在这里自动展示", "/guarantee-forms/", "/api/guarantee-g1-slice1"], "formal forms library UI contract");
 mustInclude(formsEditPage, ["requireTenantSession", "template.edit_draft", "GuaranteeSlice1Client", "initialMaskVersionId"], "formal editor access contract");
 if (formsClient.includes('href="/templates"') || formsClient.includes("href='/templates'")) throw new Error("formal forms library must not redirect to legacy templates route");
