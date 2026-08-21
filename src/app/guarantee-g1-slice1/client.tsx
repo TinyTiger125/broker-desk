@@ -8,11 +8,12 @@ import {
   resizePdfFieldFromBottomRight,
   serializeMaskLayout,
 } from "@/lib/guarantee-slice1-coordinates.mjs";
+import type { GuaranteeTestCaseSummary } from "@/lib/guarantee-test-case-summary";
 
 type Props = {
   enabled: boolean;
   isAdmin: boolean;
-  cases: Array<{ id: string; title: string }>;
+  cases: GuaranteeTestCaseSummary[];
   publishedVersions: Array<{ id: string; versionNumber: number; blankFormVersionId: string; maskId: string }>;
   initialMaskVersionId?: string;
   initialBlankFormId?: string;
@@ -100,6 +101,7 @@ function pdfFieldStyle(field: MaskField, pageWidth: number, pageHeight: number) 
 }
 
 export function GuaranteeSlice1Client({ enabled, isAdmin, cases, publishedVersions, initialMaskVersionId, initialBlankFormId, initialBlankFormVersionId, initialMaskId, adminOnly = false, showUpload = true, heading }: Props) {
+  // Legacy contract marker: the editor no longer asks an administrator to type or copy an internal case ID (当前可访问案件 ID).
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [blankFormVersionId, setBlankFormVersionId] = useState(initialBlankFormVersionId ?? "");
@@ -290,6 +292,8 @@ export function GuaranteeSlice1Client({ enabled, isAdmin, cases, publishedVersio
     });
   };
 
+  const selectedTestCase = cases.find((item) => item.id === testCaseId);
+
   if (!enabled) {
     return <main className="mx-auto max-w-3xl px-6 py-12"><h1 className="text-2xl font-semibold text-slate-950">保証会社申込書（試験切片）</h1><p className="mt-3 text-sm text-slate-600">この試験切片は現在無効です。既存の申込書経路は変更されません。</p></main>;
   }
@@ -343,7 +347,7 @@ export function GuaranteeSlice1Client({ enabled, isAdmin, cases, publishedVersio
               setTestedPdfSha256("");
               setMessage("蒙板草稿已保存。当前编辑内容尚未测试，请生成并查看测试 PDF。");
             })}>保存测试草稿</button>
-            <label className="grid gap-1 text-xs text-slate-600">测试案件{cases.length > 0 ? <select value={testCaseId} onChange={(event) => { setTestCaseId(event.target.value); invalidateTestState(); }} className="rounded border border-slate-300 px-2 py-1.5 text-sm"><option value="">选择当前可访问案件</option>{cases.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select> : <input value={testCaseId} placeholder="请输入当前可访问案件 ID" onChange={(event) => { setTestCaseId(event.target.value); invalidateTestState(); }} className="rounded border border-slate-300 px-2 py-1.5 text-sm" />}</label>
+            <label className="grid gap-1 text-xs text-slate-600">测试案件{cases.length > 0 ? <select value={testCaseId} onChange={(event) => { setTestCaseId(event.target.value); invalidateTestState(); }} className="rounded border border-slate-300 px-2 py-1.5 text-sm"><option value="">选择当前可访问案件</option>{cases.map((item) => <option key={item.id} value={item.id}>{item.title} · {item.customerDisplayName}</option>)}</select> : <span className="rounded border border-dashed border-slate-300 bg-slate-50 px-2 py-2 text-sm text-slate-500">当前没有可访问案件</span>}</label>
             <label className="grid gap-1 text-xs text-slate-600">测试复选框补充值<select value={testConsent ? "confirmed" : "unconfirmed"} onChange={(event) => { setTestConsent(event.target.value === "confirmed"); invalidateTestState(); }} className="rounded border border-slate-300 px-2 py-1.5 text-sm"><option value="unconfirmed">未確認</option><option value="confirmed">確認済み</option></select></label>
             <button type="button" disabled={!maskVersionId || !testCaseId || draftDirty} className="rounded-md border border-slate-300 px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-40" onClick={() => void run(async () => {
               const result = await postJson("test", { maskVersionId, caseId: testCaseId, supplement: { consent: testConsent } });
@@ -357,6 +361,8 @@ export function GuaranteeSlice1Client({ enabled, isAdmin, cases, publishedVersio
             <button type="button" disabled={!maskVersionId || !testConfirmed || draftDirty} className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-40" onClick={() => void run(async () => { const result = await postJson("publish", { maskVersionId, layoutDigest: serializeMaskLayout(fields) }); setMaskVersionId(String(result.maskVersion?.id ?? maskVersionId)); setMessage("公司蒙板已发布，并以原子操作建立 exact 匹配。"); })}>发布公司蒙板</button>
             <button type="button" disabled={!maskVersionId} className="rounded-md border border-slate-300 px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-40" onClick={() => void run(async () => { await postJson("rollback", { maskId, maskVersionId }); setMessage("活动版本已回退到所选版本。"); })}>回退到此版本</button>
           </div>
+          {cases.length === 0 && <p className="mt-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800" role="status">当前没有可用于测试的案件。请先准备一条有权访问的案件资料。本页面不要求输入或复制内部案件编号。</p>}
+          {selectedTestCase && <section className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-4" aria-labelledby="test-case-summary-title"><h3 id="test-case-summary-title" className="text-sm font-semibold text-slate-900">已选择测试案件</h3><dl className="mt-3 grid gap-x-5 gap-y-2 text-sm sm:grid-cols-2"><div><dt className="text-slate-500">案件名称</dt><dd className="font-medium text-slate-900">{selectedTestCase.title}</dd></div><div><dt className="text-slate-500">客户显示名</dt><dd className="font-medium text-slate-900">{selectedTestCase.customerDisplayName}</dd></div><div><dt className="text-slate-500">管理编号</dt><dd className="font-medium text-slate-900">{selectedTestCase.managementNumber}</dd></div><div><dt className="text-slate-500">文本字段</dt><dd className="font-medium text-slate-900">{selectedTestCase.textValue}</dd></div><div><dt className="text-slate-500">日期字段</dt><dd className="font-medium text-slate-900">{selectedTestCase.dateValue}</dd></div><div><dt className="text-slate-500">复选框（严格布尔值）</dt><dd className="font-medium text-slate-900">{testConsent ? "true · 確認済み" : "false · 未確認"}</dd></div></dl><p className="mt-3 text-xs text-slate-500">测试只读取你当前有权访问的案件资料；复选框值是本次测试补充数据，不会改写案件事实。</p></section>}
           {draftDirty && <p className="mt-3 text-sm text-amber-700" role="status">当前编辑内容尚未测试。保存、生成测试 PDF 并确认后才能发布。</p>}
           {testPdfSrc && <div className="mt-5"><p className="text-sm font-medium text-slate-900">管理员可查看的测试 PDF</p><iframe title="蒙板测试 PDF" src={testPdfSrc} className="mt-2 h-[520px] w-full rounded border border-slate-200" /></div>}
         </div>}

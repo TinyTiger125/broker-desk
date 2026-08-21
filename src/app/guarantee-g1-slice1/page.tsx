@@ -3,6 +3,7 @@ import { isGuaranteeSlice1EnabledForTenant } from "@/lib/guarantee-slice1-gate";
 import { getTenantCapability, requireTenantSession, TenantSessionError } from "@/lib/tenant-session";
 import { capabilityHasTenantPermission } from "@/lib/tenant-permissions";
 import { listBrokerageCases, listPublishedGuaranteeCompanyMaskVersions } from "@/lib/data";
+import { toGuaranteeTestCaseSummary } from "@/lib/guarantee-test-case-summary";
 
 export const runtime = "nodejs";
 
@@ -10,7 +11,7 @@ export default async function GuaranteeSlice1Page() {
   let enabled = false;
   let isAdmin = false;
   let message = "";
-  let cases: Array<{ id: string; title: string }> = [];
+  let cases: Array<ReturnType<typeof toGuaranteeTestCaseSummary>> = [];
   let publishedVersions: Array<{ id: string; versionNumber: number; blankFormVersionId: string; maskId: string }> = [];
   try {
     const session = await requireTenantSession();
@@ -21,7 +22,7 @@ export default async function GuaranteeSlice1Page() {
         listBrokerageCases(session.user.id, 50, session.tenant.id),
         listPublishedGuaranteeCompanyMaskVersions({ tenantId: session.tenant.id }),
       ]);
-      cases = caseRows.map((item) => ({ id: item.id, title: item.caseTitle }));
+      cases = caseRows.map(toGuaranteeTestCaseSummary);
       publishedVersions = versionRows.map((item) => ({ id: item.id, versionNumber: item.versionNumber, blankFormVersionId: item.blankFormVersionId, maskId: item.maskId }));
     }
   } catch (error) {

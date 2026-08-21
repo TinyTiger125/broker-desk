@@ -17,6 +17,7 @@ const pageRoute = read("src/app/guarantee-g1-slice1/page.tsx");
 const formsPage = read("src/app/guarantee-forms/page.tsx");
 const formsClient = read("src/app/guarantee-forms/client.tsx");
 const formsEditPage = read("src/app/guarantee-forms/[formId]/edit/page.tsx");
+const testCaseSummary = read("src/lib/guarantee-test-case-summary.ts");
 const migration = read("db/migrations/20260819_001_guarantee_slice1_objects.sql");
 const behavior = read("scripts/test-guarantee-slice1-behavior.mjs");
 const nextConfig = read("next.config.ts");
@@ -50,4 +51,7 @@ mustInclude(behavior, ["src/lib/data.ts", "publishGuaranteeCompanyMaskVersionWit
 mustInclude(nextConfig, ["serverExternalPackages", '"@pdfme/converter"', '"clawpdf"'], "server PDF preview packaging contract");
 if (behavior.includes("routeSource") || behavior.includes("assert.ok(handlerBody.includes")) throw new Error("behavior test must not rely on source-text scanning");
 if (route.includes("GUARANTEE_G1_SLICE1_ENABLED=true")) throw new Error("client or route must not hard-code enablement");
+mustInclude(testCaseSummary, ["toGuaranteeTestCaseSummary", "customerDisplayName", "managementNumber", "textValue", "dateValue", "applicant.name", "lease.moveInDate"], "test case summary");
+mustInclude(client, ["当前没有可用于测试的案件", "请先准备一条有权访问的案件资料", "案件名称", "客户显示名", "管理编号", "文本字段", "日期字段", "严格布尔值", "不要求输入或复制内部案件编号"], "test case selection summary");
+if (!client.includes("当前没有可访问案件") || !client.includes("不要求输入或复制内部案件编号")) throw new Error("empty case state must be explicit and must not ask for an internal ID");
 console.log("[PASS] TASK-038 limited implementation contract");
