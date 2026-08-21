@@ -43,10 +43,82 @@ export const runtime = "nodejs";
 
 function hash(value: string | Buffer | Uint8Array) { return createHash("sha256").update(value).digest("hex"); }
 function jsonHash(value: unknown) { return hash(JSON.stringify(value, Object.keys((value as Record<string, unknown>) ?? {}).sort())); }
+
+// Only these stable business outcomes are safe to expose to the browser. Any
+// unexpected Error may contain database, storage, or library implementation
+// details and must be collapsed to the generic 500 response below.
+const GUARANTEE_PUBLIC_ERROR_CODES = new Set([
+  "application_draft_context_required",
+  "blank_form_declaration_required",
+  "blank_form_dimensions_unsupported",
+  "blank_form_file_too_large",
+  "blank_form_not_ready",
+  "blank_form_page_origin_unsupported",
+  "blank_form_pdf_rejected",
+  "blank_form_pdf_required",
+  "blank_form_preview_unavailable",
+  "blank_form_processing_timeout",
+  "blank_form_required",
+  "blank_form_rotation_unsupported",
+  "blank_form_cropbox_unsupported",
+  "blank_form_unavailable",
+  "blank_form_encrypted_unsupported",
+  "case_not_found",
+  "generation_confirmation_claim_token_missing",
+  "generation_in_progress_or_not_found",
+  "guarantee_blank_form_not_found",
+  "guarantee_checkbox_value_unknown",
+  "guarantee_output_generate_permission_required",
+  "guarantee_output_permission_required",
+  "guarantee_pdf_font_unavailable",
+  "guarantee_slice1_action_invalid",
+  "guarantee_slice1_disabled",
+  "guarantee_template_admin_required",
+  "mask_blank_form_mismatch",
+  "mask_coordinate_invalid",
+  "mask_coordinate_out_of_bounds",
+  "mask_draft_fields_required",
+  "mask_draft_target_not_found",
+  "mask_match_not_exact",
+  "mask_publish_requires_confirmed_test",
+  "mask_publish_requires_retest",
+  "mask_rollback_context_required",
+  "mask_rollback_failed",
+  "mask_source_field_required",
+  "mask_source_field_type_mismatch",
+  "mask_source_field_unknown",
+  "mask_test_blank_form_not_ready",
+  "mask_test_case_not_accessible",
+  "mask_test_confirmation_invalid",
+  "mask_test_confirmation_required",
+  "mask_test_context_required",
+  "mask_test_failed",
+  "mask_test_pdf_generation_failed",
+  "mask_test_version_not_found",
+  "mask_version_not_found",
+  "mask_version_required",
+  "permission_denied",
+  "preview_confirmation_expired",
+  "preview_confirmation_required",
+  "preview_context_required",
+  "preview_stale",
+  "slice1_single_page_pdf_required",
+  "tenant_forbidden",
+  "tenant_not_found",
+  "tenant_selection_required",
+  "user_not_found",
+]);
+
 function jsonError(error: unknown, requestId: string) {
-  if (error instanceof TenantSessionError) return NextResponse.json({ error: error.code, requestId }, { status: error.status });
-  const code = error instanceof Error ? error.message : "guarantee_slice1_failed";
-  const status = code.includes("disabled") || code.includes("required") ? 403 : 400;
+  const candidate = error instanceof TenantSessionError ? error.code : error instanceof Error ? error.message : "";
+  const code = GUARANTEE_PUBLIC_ERROR_CODES.has(candidate) ? candidate : "guarantee_slice1_failed";
+  const status = code === "guarantee_slice1_failed"
+    ? 500
+    : error instanceof TenantSessionError && code === error.code
+      ? error.status
+      : code.includes("disabled") || code.includes("permission") || code.includes("required") || code.includes("forbidden")
+        ? 403
+        : 400;
   return NextResponse.json({ error: code, requestId }, { status });
 }
 function asRecord(value: unknown): Record<string, unknown> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
@@ -390,7 +462,7 @@ async function handleGenerate(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const requestId = request.headers.get("x-request-id")?.trim() || randomUUID();
+  const requestId = randomUUID();
   try {
     const action = request.headers.get("content-type")?.includes("multipart/form-data") ? "upload" : String((asRecord(await request.clone().json())).action ?? "");
     if (action === "upload") return await handleUpload(request);
