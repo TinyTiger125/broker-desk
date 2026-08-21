@@ -3779,44 +3779,49 @@ export async function saveGuaranteeApplicationDraft(input: {
 }): Promise<GuaranteeApplicationDraft> {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(input.tenantId);
-  const existing = await getPool().query(
-    `SELECT id FROM guarantee_application_drafts
-     WHERE tenant_id = $1 AND case_id = $2 AND template_id = $3
-     ORDER BY updated_at DESC LIMIT 1`,
-    [scopeTenantId, input.caseId, input.templateId],
-  );
-  const id = `draft_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-  const result = existing.rows[0]
-    ? await getPool().query(
-      `UPDATE guarantee_application_drafts
-       SET user_id = $2, company_code = $3, status = $4,
-           field_values_json = $5, field_statuses_json = $6,
-           last_reviewed_at = $7, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $8
-       RETURNING *`,
-      [existing.rows[0].id, input.userId, input.companyCode, input.status, JSON.stringify(input.fieldValuesJson), JSON.stringify(input.fieldStatusesJson ?? {}), input.lastReviewedAt ?? null, scopeTenantId],
-    )
-    : await getPool().query(
-    `INSERT INTO guarantee_application_drafts (
-       id, tenant_id, user_id, case_id, template_id, company_code, status,
-       field_values_json, field_statuses_json, last_reviewed_at, created_at, updated_at
-     )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
-     RETURNING *`,
-    [
-      id,
-      scopeTenantId,
-      input.userId,
-      input.caseId,
-      input.templateId,
-      input.companyCode,
-      input.status,
-      JSON.stringify(input.fieldValuesJson),
-      JSON.stringify(input.fieldStatusesJson ?? {}),
-      input.lastReviewedAt ?? null,
-    ],
+  return withTransaction(async (client) => {
+    // Serialize first-save races on the product ownership key. The record is
+    // tenant + case + logical form; the latest user id is provenance only.
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`guarantee-application:${scopeTenantId}:${input.caseId}:${input.templateId}`]);
+    const existing = await client.query(
+      `SELECT id FROM guarantee_application_drafts
+       WHERE tenant_id = $1 AND case_id = $2 AND template_id = $3
+       ORDER BY updated_at DESC LIMIT 1`,
+      [scopeTenantId, input.caseId, input.templateId],
     );
-  return mapGuaranteeApplicationDraft(result.rows[0]);
+    const id = `draft_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    const result = existing.rows[0]
+      ? await client.query(
+        `UPDATE guarantee_application_drafts
+         SET user_id = $2, company_code = $3, status = $4,
+             field_values_json = $5, field_statuses_json = $6,
+             last_reviewed_at = $7, updated_at = NOW()
+         WHERE id = $1 AND tenant_id = $8
+         RETURNING *`,
+        [existing.rows[0].id, input.userId, input.companyCode, input.status, JSON.stringify(input.fieldValuesJson), JSON.stringify(input.fieldStatusesJson ?? {}), input.lastReviewedAt ?? null, scopeTenantId],
+      )
+      : await client.query(
+      `INSERT INTO guarantee_application_drafts (
+         id, tenant_id, user_id, case_id, template_id, company_code, status,
+         field_values_json, field_statuses_json, last_reviewed_at, created_at, updated_at
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
+       RETURNING *`,
+      [
+        id,
+        scopeTenantId,
+        input.userId,
+        input.caseId,
+        input.templateId,
+        input.companyCode,
+        input.status,
+        JSON.stringify(input.fieldValuesJson),
+        JSON.stringify(input.fieldStatusesJson ?? {}),
+        input.lastReviewedAt ?? null,
+      ],
+      );
+    return mapGuaranteeApplicationDraft(result.rows[0]);
+  });
 }
 
 export async function listAttachments(input: {

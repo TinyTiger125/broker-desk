@@ -480,6 +480,7 @@ async function handleLoadApplicationDraft(request: Request) {
   // recoverable after a new mask version is published.
   const maskVersion = await getGuaranteeCompanyMaskVersion({ tenantId: session.tenant.id, id: maskVersionId });
   if (!maskVersion) throw new Error("mask_version_not_found");
+  await loadCurrentPublishedMaskContext(session.tenant.id, maskVersionId);
   const draft = await getGuaranteeApplicationDraft({ tenantId: session.tenant.id, userId: session.user.id, caseId, templateId: maskVersion.maskId });
   return NextResponse.json({
     caseId,
