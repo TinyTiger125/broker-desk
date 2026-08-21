@@ -172,6 +172,26 @@ function pdfFieldStyle(field: MaskField, pageWidth: number, pageHeight: number) 
   };
 }
 
+function testLayoutError(fields: MaskField[], pageWidth: number, pageHeight: number) {
+  if (!Number.isFinite(pageWidth) || !Number.isFinite(pageHeight) || pageWidth <= 0 || pageHeight <= 0) {
+    return "客户空白 PDF 页面尺寸无效，请重新打开表格后重试。";
+  }
+  if (fields.length !== 3) {
+    return "请配置文本、日期和复选框三个测试字段后再生成 PDF。";
+  }
+  for (const field of fields) {
+    const fieldName = field.label || field.fieldId;
+    if (!field.sourceFieldKey.trim()) return `字段“${fieldName}”尚未绑定案件字段，请先完成绑定。`;
+    if (field.pageNumber !== 1) return `字段“${fieldName}”必须放在第 1 页。`;
+    if (![field.x, field.y, field.width, field.height].every(Number.isFinite)) return `字段“${fieldName}”的坐标或尺寸无效。`;
+    if (field.width <= 0 || field.height <= 0) return `字段“${fieldName}”的宽度和高度必须大于 0。`;
+    if (field.x < 0 || field.y < 0 || field.x + field.width > pageWidth || field.y + field.height > pageHeight) {
+      return `字段“${fieldName}”超出客户空白 PDF 页面范围，请调整位置或尺寸。`;
+    }
+  }
+  return "";
+}
+
 export function GuaranteeSlice1Client({ enabled, isAdmin, cases, publishedVersions, initialMaskVersionId, initialBlankFormId, initialBlankFormVersionId, initialMaskId, initialAdminContext, adminOnly = false, showUpload = true, heading }: Props) {
   // Legacy contract marker: the editor no longer asks an administrator to type or copy an internal case ID (当前可访问案件 ID).
   const hasInitialAdminContext = Boolean(initialAdminContext);
@@ -212,12 +232,16 @@ export function GuaranteeSlice1Client({ enabled, isAdmin, cases, publishedVersio
   const editorRef = useRef<HTMLDivElement>(null);
   const pageCanvasRef = useRef<HTMLCanvasElement>(null);
 
-  const invalidateTestState = () => {
-    setDraftDirty(true);
+  const invalidateTestResult = () => {
     setTestConfirmed(false);
     setTestedLayoutDigest("");
     setTestPdfSrc("");
     setTestedPdfSha256("");
+  };
+
+  const invalidateTestState = () => {
+    setDraftDirty(true);
+    invalidateTestResult();
   };
 
   useEffect(() => {
@@ -433,6 +457,14 @@ export function GuaranteeSlice1Client({ enabled, isAdmin, cases, publishedVersio
   };
 
   const selectedTestCase = cases.find((item) => item.id === testCaseId);
+  const testBlockReasons = [
+    !maskVersionId ? "请先保存当前蒙板草稿，再生成测试 PDF。" : "",
+    draftDirty ? "当前编辑内容存在未保存修改。请先保存当前修改，再生成测试 PDF。" : "",
+    !testCaseId ? "请选择一条当前有权访问的测试案件。" : "",
+    testCaseId && !selectedTestCase ? "所选测试案件当前不可用，请重新选择当前有权访问的案件。" : "",
+    !blankPageSrc ? "客户空白 PDF 校准预览不可用，请重新打开表格后重试。" : "",
+    testLayoutError(fields, pageWidth, pageHeight),
+  ].filter(Boolean);
 
   if (!enabled) {
     return <main className="mx-auto max-w-3xl px-6 py-12"><h1 className="text-2xl font-semibold text-slate-950">保証会社申込書（試験切片）</h1><p className="mt-3 text-sm text-slate-600">この試験切片は現在無効です。既存の申込書経路は変更されません。</p></main>;
@@ -490,9 +522,9 @@ export function GuaranteeSlice1Client({ enabled, isAdmin, cases, publishedVersio
               setTestedPdfSha256("");
               setMessage("蒙板草稿已保存。当前编辑内容尚未测试，请生成并查看测试 PDF。");
             })}>保存测试草稿</button>
-            <label className="grid gap-1 text-xs text-slate-600">测试案件{cases.length > 0 ? <select value={testCaseId} onChange={(event) => { setTestCaseId(event.target.value); invalidateTestState(); }} className="rounded border border-slate-300 px-2 py-1.5 text-sm"><option value="">选择当前可访问案件</option>{cases.map((item) => <option key={item.id} value={item.id}>{item.title} · {item.customerDisplayName}</option>)}</select> : <span className="rounded border border-dashed border-slate-300 bg-slate-50 px-2 py-2 text-sm text-slate-500">当前没有可访问案件</span>}</label>
-            <label className="grid gap-1 text-xs text-slate-600">测试复选框补充值<select value={testConsent ? "confirmed" : "unconfirmed"} onChange={(event) => { setTestConsent(event.target.value === "confirmed"); invalidateTestState(); }} className="rounded border border-slate-300 px-2 py-1.5 text-sm"><option value="unconfirmed">未確認</option><option value="confirmed">確認済み</option></select></label>
-            <button type="button" disabled={!maskVersionId || !testCaseId || draftDirty} className="rounded-md border border-slate-300 px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-40" onClick={() => void run(async () => {
+            <label className="grid gap-1 text-xs text-slate-600">测试案件{cases.length > 0 ? <select value={testCaseId} onChange={(event) => { setTestCaseId(event.target.value); invalidateTestResult(); }} className="rounded border border-slate-300 px-2 py-1.5 text-sm"><option value="">选择当前可访问案件</option>{cases.map((item) => <option key={item.id} value={item.id}>{item.title} · {item.customerDisplayName}</option>)}</select> : <span className="rounded border border-dashed border-slate-300 bg-slate-50 px-2 py-2 text-sm text-slate-500">当前没有可访问案件</span>}</label>
+            <label className="grid gap-1 text-xs text-slate-600">测试复选框补充值<select value={testConsent ? "confirmed" : "unconfirmed"} onChange={(event) => { setTestConsent(event.target.value === "confirmed"); invalidateTestResult(); }} className="rounded border border-slate-300 px-2 py-1.5 text-sm"><option value="unconfirmed">未確認</option><option value="confirmed">確認済み</option></select></label>
+            <button type="button" disabled={testBlockReasons.length > 0} className="rounded-md border border-slate-300 px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-40" onClick={() => void run(async () => {
               const result = await postJson("test", { maskVersionId, caseId: testCaseId, supplement: { consent: testConsent } });
               setTestedPdfSha256(String(result.testPdfSha256 ?? ""));
               setTestedLayoutDigest(String(result.layoutDigest ?? ""));
@@ -505,6 +537,7 @@ export function GuaranteeSlice1Client({ enabled, isAdmin, cases, publishedVersio
             <button type="button" disabled={!maskVersionId} className="rounded-md border border-slate-300 px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-40" onClick={() => void run(async () => { await postJson("rollback", { maskId, maskVersionId }); setMessage("活动版本已回退到所选版本。"); })}>回退到此版本</button>
           </div>
           {cases.length === 0 && <p className="mt-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800" role="status">当前没有可用于测试的案件。请先准备一条有权访问的案件资料。本页面不要求输入或复制内部案件编号。</p>}
+          {testBlockReasons.length > 0 && <div className="mt-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800" role="status" aria-label="测试前置条件"><p className="font-medium">尚不能生成测试 PDF：</p><ul className="mt-1 list-disc pl-5">{testBlockReasons.map((reason) => <li key={reason}>{reason}</li>)}</ul></div>}
           {selectedTestCase && <section className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-4" aria-labelledby="test-case-summary-title"><h3 id="test-case-summary-title" className="text-sm font-semibold text-slate-900">已选择测试案件</h3><dl className="mt-3 grid gap-x-5 gap-y-2 text-sm sm:grid-cols-2"><div><dt className="text-slate-500">案件名称</dt><dd className="font-medium text-slate-900">{selectedTestCase.title}</dd></div><div><dt className="text-slate-500">客户显示名</dt><dd className="font-medium text-slate-900">{selectedTestCase.customerDisplayName}</dd></div><div><dt className="text-slate-500">管理编号</dt><dd className="font-medium text-slate-900">{selectedTestCase.managementNumber}</dd></div><div><dt className="text-slate-500">文本字段</dt><dd className="font-medium text-slate-900">{selectedTestCase.textValue}</dd></div><div><dt className="text-slate-500">日期字段</dt><dd className="font-medium text-slate-900">{selectedTestCase.dateValue}</dd></div><div><dt className="text-slate-500">复选框（严格布尔值）</dt><dd className="font-medium text-slate-900">{testConsent ? "true · 確認済み" : "false · 未確認"}</dd></div></dl><p className="mt-3 text-xs text-slate-500">测试只读取你当前有权访问的案件资料；复选框值是本次测试补充数据，不会改写案件事实。</p></section>}
           {draftDirty && <p className="mt-3 text-sm text-amber-700" role="status">当前编辑内容尚未测试。保存、生成测试 PDF 并确认后才能发布。</p>}
           {testPdfSrc && <div className="mt-5"><p className="text-sm font-medium text-slate-900">管理员可查看的测试 PDF</p><iframe title="蒙板测试 PDF" src={testPdfSrc} className="mt-2 h-[520px] w-full rounded border border-slate-200" /></div>}
