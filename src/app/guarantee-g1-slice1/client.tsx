@@ -27,9 +27,14 @@ type FieldType = "text" | "date" | "checkbox";
 type MaskField = { fieldId: string; type: FieldType; sourceFieldKey: string; label: string; pageNumber: number; x: number; y: number; width: number; height: number };
 type ApiPayload = Record<string, unknown> & { blankForm?: { id?: string }; blankFormVersion?: { id?: string; pageWidth?: number; pageHeight?: number }; maskVersion?: { id?: string; status?: string; testedLayoutDigest?: string; layoutSnapshot?: Record<string, unknown> }; confirmationId?: string; outputId?: string; blankPdfBase64?: string; blankPagePngBase64?: string; testPdfBase64?: string; testPdfSha256?: string; layoutDigest?: string; requestId?: string };
 type Interaction = { index: number; mode: "move" | "resize"; startX: number; startY: number; startField: MaskField; scaleX: number; scaleY: number };
-type AdminContextLoadResult = "loaded" | "fallback" | "failed";
+type GuaranteeRequestError = Error & { requestId?: string };
+type AdminContextLoadResult = { status: "loaded" | "fallback" | "failed"; requestId?: string };
+type AdminBlankFormLoadResult = { loaded: boolean; requestId?: string };
+type PostJsonOptions = { signal?: AbortSignal; timeoutMs?: number };
+type RecoveryContext = { signal: AbortSignal; isCurrent: () => boolean };
 
 const ADMIN_MASK_CONTEXT_FALLBACK_ERRORS = new Set(["mask_version_not_found", "mask_draft_target_not_found"]);
+const GUARANTEE_REQUEST_TIMEOUT_MS = 10_000;
 
 const initialFields: MaskField[] = [
   { fieldId: "applicant_name", type: "text", sourceFieldKey: "applicant.name", label: "氏名", pageNumber: 1, x: 72, y: 700, width: 180, height: 18 },
@@ -54,15 +59,61 @@ function defaultFieldsForPage(pageWidth: number, pageHeight: number): MaskField[
   ];
 }
 
-async function postJson(action: string, body: Record<string, unknown>) {
-  const response = await fetch("/api/guarantee-g1-slice1", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action, ...body }) });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const requestError = new Error(String(payload.error ?? "request_failed")) as Error & { requestId?: string };
-    requestError.requestId = typeof payload.requestId === "string" ? payload.requestId : undefined;
-    throw requestError;
+function createClientRequestId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return `client-${crypto.randomUUID()}`;
+  return `client-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function requestIdFromError(error: unknown) {
+  return error instanceof Error && "requestId" in error && typeof error.requestId === "string" ? error.requestId : undefined;
+}
+
+async function postJson(action: string, body: Record<string, unknown>, options?: PostJsonOptions) {
+  const controller = options?.timeoutMs ? new AbortController() : undefined;
+  const clientRequestId = createClientRequestId();
+  let timedOut = false;
+  let timeoutId: number | undefined;
+  let externalAbortHandler: (() => void) | undefined;
+  if (controller && options?.signal) {
+    externalAbortHandler = () => controller.abort();
+    if (options.signal.aborted) controller.abort();
+    else options.signal.addEventListener("abort", externalAbortHandler, { once: true });
   }
-  return payload as ApiPayload;
+  if (controller && options?.timeoutMs) {
+    timeoutId = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, options.timeoutMs);
+  }
+  const signal = controller?.signal ?? options?.signal;
+  try {
+    const response = await fetch("/api/guarantee-g1-slice1", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action, ...body }), ...(signal ? { signal } : {}) });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const code = response.status === 429 || payload.error === "rate_limited" ? "rate_limited" : String(payload.error ?? "request_failed");
+      const requestError = new Error(code) as GuaranteeRequestError;
+      requestError.requestId = typeof payload.requestId === "string" ? payload.requestId : clientRequestId;
+      throw requestError;
+    }
+    return payload as ApiPayload;
+  } catch (caught) {
+    if (timedOut || (caught instanceof Error && caught.name === "AbortError")) {
+      const abortError = new Error(timedOut ? "guarantee_request_timeout" : "guarantee_request_cancelled") as GuaranteeRequestError;
+      abortError.requestId = clientRequestId;
+      throw abortError;
+    }
+    if (caught instanceof Error) {
+      const requestError = caught as GuaranteeRequestError;
+      requestError.requestId ??= clientRequestId;
+      throw requestError;
+    }
+    const requestError = new Error("request_failed") as GuaranteeRequestError;
+    requestError.requestId = clientRequestId;
+    throw requestError;
+  } finally {
+    if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+    if (controller && options?.signal && externalAbortHandler) options.signal.removeEventListener("abort", externalAbortHandler);
+  }
 }
 
 const GUARANTEE_ERROR_MESSAGES: Record<string, string> = {
@@ -83,6 +134,9 @@ const GUARANTEE_ERROR_MESSAGES: Record<string, string> = {
   mask_test_pdf_generation_failed: "PDF 测试生成失败。草稿已保存，尚未发布，请重试。",
   guarantee_pdf_font_unavailable: "PDF 测试生成失败：日文字体不可用。草稿已保存，尚未发布，请稍后重试。",
   blank_form_unavailable: "客户空白 PDF 暂时不可用。草稿已保存，尚未发布，请重试。",
+  rate_limited: "请求较多，请稍后重试。",
+  guarantee_request_timeout: "请求超时，请稍后重试。",
+  guarantee_request_cancelled: "请求已取消，请重试。",
   request_failed: "请求未完成，请重试。",
 };
 
@@ -222,12 +276,14 @@ export function GuaranteeSlice1Client({ enabled, isAdmin, cases, publishedVersio
     setMessage("空白表格を受け取りました。PDF 上の字段框をドラッグまたは右下ハンドルで校准してから保存してください。");
   };
 
-  const loadExistingAdminMask = async (nextMaskVersionId: string): Promise<AdminContextLoadResult> => {
-    if (!nextMaskVersionId || !isAdmin) return "failed";
+  const loadExistingAdminMask = async (nextMaskVersionId: string, recoveryContext: RecoveryContext): Promise<AdminContextLoadResult> => {
+    if (!nextMaskVersionId || !isAdmin) return { status: "failed" };
     let loaded = false;
     let errorCode = "";
-    await run(async () => {
-      const payload = await postJson("loadAdminMask", { maskVersionId: nextMaskVersionId });
+    let requestId: string | undefined;
+    try {
+      const payload = await postJson("loadAdminMask", { maskVersionId: nextMaskVersionId }, { signal: recoveryContext.signal, timeoutMs: GUARANTEE_REQUEST_TIMEOUT_MS });
+      if (!recoveryContext.isCurrent()) return { status: "failed" };
       const loadedVersion = payload.maskVersion ?? {};
       const loadedLayout = loadedVersion.layoutSnapshot ?? {};
       const loadedFields = Array.isArray(loadedLayout.fields) ? loadedLayout.fields as MaskField[] : [];
@@ -245,16 +301,22 @@ export function GuaranteeSlice1Client({ enabled, isAdmin, cases, publishedVersio
       setTestConfirmed(false); setTestPdfSrc(""); setTestedPdfSha256(""); setTestedLayoutDigest("");
       setMessage(loadedVersion.status === "published" ? "已打开发布版本。修改后请另存草稿、重新测试并确认。" : "已恢复公司蒙板草稿，可以继续编辑。");
       loaded = true;
-    }, (caught) => { errorCode = caught instanceof Error ? caught.message : ""; });
-    if (loaded) return "loaded";
-    return ADMIN_MASK_CONTEXT_FALLBACK_ERRORS.has(errorCode) ? "fallback" : "failed";
+    } catch (caught) {
+      if (!recoveryContext.isCurrent()) return { status: "failed" };
+      errorCode = caught instanceof Error ? caught.message : "";
+      requestId = requestIdFromError(caught);
+    }
+    if (loaded) return { status: "loaded" };
+    return { status: ADMIN_MASK_CONTEXT_FALLBACK_ERRORS.has(errorCode) ? "fallback" : "failed", requestId };
   };
 
-  const loadExistingAdminBlankForm = async (nextBlankFormId: string, nextBlankFormVersionId?: string, nextMaskId?: string) => {
-    if (!nextBlankFormId || !isAdmin) return false;
+  const loadExistingAdminBlankForm = async (nextBlankFormId: string, nextBlankFormVersionId: string | undefined, nextMaskId: string | undefined, recoveryContext: RecoveryContext): Promise<AdminBlankFormLoadResult> => {
+    if (!nextBlankFormId || !isAdmin) return { loaded: false };
     let loaded = false;
-    await run(async () => {
-      const payload = await postJson("loadAdminBlankForm", { blankFormId: nextBlankFormId, blankFormVersionId: nextBlankFormVersionId, maskId: nextMaskId });
+    let requestId: string | undefined;
+    try {
+      const payload = await postJson("loadAdminBlankForm", { blankFormId: nextBlankFormId, blankFormVersionId: nextBlankFormVersionId, maskId: nextMaskId }, { signal: recoveryContext.signal, timeoutMs: GUARANTEE_REQUEST_TIMEOUT_MS });
+      if (!recoveryContext.isCurrent()) return { loaded: false };
       const width = Number(payload.blankFormVersion?.pageWidth ?? 612);
       const height = Number(payload.blankFormVersion?.pageHeight ?? 792);
       setBlankFormId(String(payload.blankForm?.id ?? nextBlankFormId));
@@ -267,29 +329,58 @@ export function GuaranteeSlice1Client({ enabled, isAdmin, cases, publishedVersio
       setDraftDirty(false); setTestConfirmed(false); setTestPdfSrc(""); setTestedPdfSha256(""); setTestedLayoutDigest("");
       setMessage("已打开公司表格。请放置字段框后保存草稿、测试并确认。");
       loaded = true;
-    });
-    return loaded;
+    } catch (caught) {
+      if (!recoveryContext.isCurrent()) return { loaded: false };
+      requestId = requestIdFromError(caught);
+    }
+    return { loaded, requestId };
   };
+
+  const recoveryGenerationRef = useRef(0);
 
   useEffect(() => {
     if (!enabled || !isAdmin) return;
+    const generation = recoveryGenerationRef.current + 1;
+    recoveryGenerationRef.current = generation;
+    const controller = new AbortController();
     let cancelled = false;
+    const isCurrentRecovery = () => !cancelled && recoveryGenerationRef.current === generation;
+    const recoveryContext: RecoveryContext = { signal: controller.signal, isCurrent: isCurrentRecovery };
     setLoadingExistingContext(true);
     setExistingContextError("");
     void (async () => {
       let loaded = false;
+      let failureRequestId: string | undefined;
       if (initialMaskVersionId) {
-        const result = await loadExistingAdminMask(initialMaskVersionId);
-        if (result === "loaded") loaded = true;
-        if (result === "fallback" && initialBlankFormId) loaded = await loadExistingAdminBlankForm(initialBlankFormId, initialBlankFormVersionId, initialMaskId);
+        const result = await loadExistingAdminMask(initialMaskVersionId, recoveryContext);
+        if (!isCurrentRecovery()) return;
+        if (result.status === "loaded") loaded = true;
+        if (result.status === "fallback" && initialBlankFormId) {
+          const fallback = await loadExistingAdminBlankForm(initialBlankFormId, initialBlankFormVersionId, initialMaskId, recoveryContext);
+          if (!isCurrentRecovery()) return;
+          loaded = fallback.loaded;
+          failureRequestId = fallback.requestId ?? result.requestId;
+        } else if (result.status === "failed") {
+          failureRequestId = result.requestId;
+        }
       } else if (initialBlankFormId) {
-        loaded = await loadExistingAdminBlankForm(initialBlankFormId, initialBlankFormVersionId, initialMaskId);
+        const result = await loadExistingAdminBlankForm(initialBlankFormId, initialBlankFormVersionId, initialMaskId, recoveryContext);
+        if (!isCurrentRecovery()) return;
+        loaded = result.loaded;
+        failureRequestId = result.requestId;
       }
       if (cancelled) return;
-      if (!loaded && (initialMaskVersionId || initialBlankFormId)) setExistingContextError("表格版本恢复失败。草稿未发布，当前没有可编辑内容，请重试。");
+      if (!loaded && (initialMaskVersionId || initialBlankFormId)) {
+        const requestSuffix = failureRequestId ? `（请求编号：${failureRequestId}）` : "";
+        setExistingContextError(`表格恢复失败，请稍后重试。草稿已保留，当前没有可编辑内容，发布仍不可用。${requestSuffix}`);
+      }
       setLoadingExistingContext(false);
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      controller.abort();
+      if (recoveryGenerationRef.current === generation) recoveryGenerationRef.current += 1;
+    };
     // The formal edit route intentionally loads one existing version once.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialMaskVersionId, initialBlankFormId, initialBlankFormVersionId, initialMaskId, existingContextRetry]);
