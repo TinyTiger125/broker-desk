@@ -19,18 +19,22 @@ export default async function GuaranteeFormEditPage({ params, searchParams }: { 
     if (!form) return <main className="mx-auto max-w-3xl px-6 py-12"><h1 className="text-2xl font-semibold text-slate-950">公司表格不存在</h1><a href="/guarantee-forms" className="mt-4 inline-block text-sm text-blue-700 underline">返回公司表格库</a></main>;
     const versions = await listGuaranteeCompanyMaskVersions({ tenantId: session.tenant.id });
     const formVersions = versions.filter((version) => version.blankFormId === form.id);
+    const requestedVersion = initialBlankFormVersionId && initialMaskId
+      ? formVersions
+        .filter((version) => version.blankFormVersionId === initialBlankFormVersionId && version.maskId === initialMaskId && (version.status === "draft" || version.status === "published"))
+        .sort((a, b) => (a.status === "draft" ? -1 : 1) - (b.status === "draft" ? -1 : 1) || b.versionNumber - a.versionNumber)[0]
+      : undefined;
     // A saved draft is the administrator's resumable work. Prefer it over
     // the active publication so reopening the library never discards edits.
     const current = formVersions.filter((version) => version.status === "draft").sort((a, b) => b.versionNumber - a.versionNumber)[0]
       ?? formVersions.find((version) => version.blankFormVersionId === form.activeVersionId && version.status === "published")
       ?? formVersions.filter((version) => version.status === "published").sort((a, b) => b.versionNumber - a.versionNumber)[0];
-    // A freshly uploaded form carries an explicit version/mask context in the
-    // URL. It must win over any draft discovered from the library; otherwise a
-    // stale draft can make the editor load the wrong mask and lose the uploaded
-    // PDF preview. Reopening from the library has no context and keeps the
-    // existing draft-first behavior.
-    const hasRequestedContext = Boolean(initialBlankFormVersionId && initialMaskId);
-    return <GuaranteeSlice1Client enabled={enabled} isAdmin={capabilityHasTenantPermission(getTenantCapability(session.membership), "template.edit_draft")} cases={[]} publishedVersions={[]} initialMaskVersionId={hasRequestedContext ? undefined : current?.id} initialBlankFormId={hasRequestedContext || !current ? form.id : undefined} initialBlankFormVersionId={hasRequestedContext ? initialBlankFormVersionId : undefined} initialMaskId={hasRequestedContext ? initialMaskId : undefined} adminOnly showUpload={false} heading={`编辑公司表格：${form.name}`} />;
+    // An uploaded URL context wins only when no matching saved version exists.
+    // Once draft/published data exists for that exact pair, load that version
+    // so refresh/reopen does not reset the editor to default fields.
+    const selectedVersion = requestedVersion ?? current;
+    const shouldLoadExplicitUpload = Boolean(initialBlankFormVersionId && initialMaskId && !requestedVersion);
+    return <GuaranteeSlice1Client enabled={enabled} isAdmin={capabilityHasTenantPermission(getTenantCapability(session.membership), "template.edit_draft")} cases={[]} publishedVersions={[]} initialMaskVersionId={selectedVersion?.id} initialBlankFormId={shouldLoadExplicitUpload || !selectedVersion ? form.id : undefined} initialBlankFormVersionId={shouldLoadExplicitUpload ? initialBlankFormVersionId : undefined} initialMaskId={shouldLoadExplicitUpload ? initialMaskId : undefined} adminOnly showUpload={false} heading={`编辑公司表格：${form.name}`} />;
   } catch (error) {
     const message = error instanceof TenantSessionError && error.code === "permission_denied" ? "只有公司表格管理员可以编辑蒙板。" : "请在受控非生产工作区中登录后再访问。";
     return <main className="mx-auto max-w-3xl px-6 py-12"><h1 className="text-2xl font-semibold text-slate-950">公司表格编辑</h1><p className="mt-3 text-sm text-slate-600">{message}</p><a href="/guarantee-forms" className="mt-4 inline-block text-sm text-blue-700 underline">返回公司表格库</a></main>;
