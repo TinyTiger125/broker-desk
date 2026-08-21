@@ -49,6 +49,7 @@ function jsonHash(value: unknown) { return hash(JSON.stringify(value, Object.key
 // details and must be collapsed to the generic 500 response below.
 const GUARANTEE_PUBLIC_ERROR_CODES = new Set([
   "application_draft_context_required",
+  "application_draft_save_context_required",
   "blank_form_declaration_required",
   "blank_form_dimensions_unsupported",
   "blank_form_file_too_large",
@@ -166,6 +167,31 @@ function validateSupplementValues(mask: Awaited<ReturnType<typeof getGuaranteeCo
     });
     if (value === undefined) throw new Error("guarantee_checkbox_value_unknown");
   }
+}
+
+function normalizeApplicationSupplement(value: Record<string, unknown>) {
+  const stringValue = (key: string) => typeof value[key] === "string" ? String(value[key]).trim() : "";
+  return {
+    "application.guarantee_company": stringValue("guaranteeCompany") || "friends_guarantee",
+    "application.application_date": stringValue("applicationDate"),
+    "company_option.friends_plan_type": stringValue("planType"),
+    "company_option.friends_consent": value.consent === true,
+    "company_option.friends_collection_agency": stringValue("collectionAgency"),
+    "company_option.friends_single_rider": stringValue("singleRider"),
+    "company_option.friends_notes": stringValue("notes"),
+  } satisfies Record<string, unknown>;
+}
+
+async function loadCurrentPublishedMaskContext(tenantId: string, maskVersionId: string) {
+  const mask = await getGuaranteeCompanyMaskVersion({ tenantId, id: maskVersionId });
+  const blank = mask ? await getGuaranteeBlankFormVersion({ tenantId, id: mask.blankFormVersionId }) : undefined;
+  const match = blank && mask ? await getGuaranteeMaskMatch({ tenantId, blankFormVersionId: blank.id, maskVersionId: mask.id }) : undefined;
+  const blankForm = blank ? await getGuaranteeBlankForm({ tenantId, id: blank.blankFormId }) : undefined;
+  const companyMask = mask ? await getGuaranteeCompanyMask({ tenantId, id: mask.maskId }) : undefined;
+  if (!blank || !mask || !match || match.status !== "exact" || blank.status !== "ready" || mask.status !== "published" || mask.blankFormVersionId !== blank.id || mask.blankFormId !== blank.blankFormId || blankForm?.activeVersionId !== blank.id || companyMask?.activeVersionId !== mask.id) {
+    throw new Error("mask_match_not_exact");
+  }
+  return { blank, mask };
 }
 
 async function requireSession(permission: "admin" | "member" | "generate") {
@@ -376,12 +402,9 @@ async function handlePreview(request: Request) {
   if (!caseId || !blankFormVersionId || !maskVersionId) throw new Error("preview_context_required");
   const brokerageCase = await getBrokerageCaseById({ userId: session.user.id, tenantId: session.tenant.id, caseId });
   if (!brokerageCase) throw new Error("case_not_found");
-  const blank = await getGuaranteeBlankFormVersion({ tenantId: session.tenant.id, id: blankFormVersionId }); const mask = await getGuaranteeCompanyMaskVersion({ tenantId: session.tenant.id, id: maskVersionId });
-  const match = await getGuaranteeMaskMatch({ tenantId: session.tenant.id, blankFormVersionId, maskVersionId });
-  const blankForm = blank ? await getGuaranteeBlankForm({ tenantId: session.tenant.id, id: blank.blankFormId }) : undefined;
-  const companyMask = mask ? await getGuaranteeCompanyMask({ tenantId: session.tenant.id, id: mask.maskId }) : undefined;
-  if (!blank || !mask || !match || match.status !== "exact" || blank.status !== "ready" || mask.status !== "published" || mask.blankFormVersionId !== blank.id || mask.blankFormId !== blank.blankFormId || blankForm?.activeVersionId !== blank.id || companyMask?.activeVersionId !== mask.id) throw new Error("mask_match_not_exact");
-  const supplement = asRecord(body.supplement);
+  const { blank, mask } = await loadCurrentPublishedMaskContext(session.tenant.id, maskVersionId);
+  if (blank.id !== blankFormVersionId) throw new Error("mask_match_not_exact");
+  const supplement = normalizeApplicationSupplement(asRecord(body.supplement));
   validateSupplementValues(mask, brokerageCase.confirmedDataJson, supplement);
   // This is the case-scoped application record for values that are not case
   // facts. It lets a member return to the same case and published mask without
@@ -390,17 +413,57 @@ async function handlePreview(request: Request) {
     tenantId: session.tenant.id,
     userId: session.user.id,
     caseId,
-    templateId: mask.id,
+    templateId: mask.maskId,
     companyCode: "friends_guarantee",
     status: "draft",
-    fieldValuesJson: { "company_option.friends_consent": supplement.consent },
-    fieldStatusesJson: { "company_option.friends_consent": "confirmed" },
+    fieldValuesJson: supplement,
+    fieldStatusesJson: {
+      "application.guarantee_company": "confirmed",
+      "application.application_date": "confirmed",
+      "company_option.friends_plan_type": "confirmed",
+      "company_option.friends_consent": "confirmed",
+      "company_option.friends_collection_agency": "confirmed",
+      "company_option.friends_single_rider": "confirmed",
+      "company_option.friends_notes": "confirmed",
+    },
   });
   const confirmation = await createGuaranteePreviewConfirmation({ tenantId: session.tenant.id, actorUserId: session.user.id, caseId, caseInputSnapshotHash: jsonHash(brokerageCase.confirmedDataJson), blankFormVersionId: blank.id, blankFormSha256: blank.sha256, companyMaskVersionId: mask.id, fieldCatalogVersion: mask.fieldCatalogVersion, supplementSnapshot: supplement, supplementHash: jsonHash(supplement), expiresAt: new Date(Date.now() + 15 * 60_000) });
   const source = await readPrivateAttachmentContentForTenant({ tenantId: session.tenant.id, id: blank.attachmentId });
   if (!source) throw new Error("blank_form_unavailable");
   const previewBytes = await renderGuaranteePdf(source, mask, brokerageCase.confirmedDataJson, supplement);
   return NextResponse.json({ confirmationId: confirmation.id, expiresAt: confirmation.expiresAt, maskVersionId: mask.id, previewPdfBase64: previewBytes.toString("base64") });
+}
+
+async function handleSaveApplicationDraft(request: Request) {
+  const session = await requireSession("member");
+  const body = asRecord(await request.json());
+  const caseId = String(body.caseId ?? "").trim();
+  const maskVersionId = String(body.maskVersionId ?? "").trim();
+  if (!caseId || !maskVersionId) throw new Error("application_draft_save_context_required");
+  const brokerageCase = await getBrokerageCaseById({ userId: session.user.id, tenantId: session.tenant.id, caseId });
+  if (!brokerageCase) throw new Error("case_not_found");
+  const { mask } = await loadCurrentPublishedMaskContext(session.tenant.id, maskVersionId);
+  const supplement = normalizeApplicationSupplement(asRecord(body.supplement));
+  validateSupplementValues(mask, brokerageCase.confirmedDataJson, supplement);
+  const draft = await saveGuaranteeApplicationDraft({
+    tenantId: session.tenant.id,
+    userId: session.user.id,
+    caseId,
+    templateId: mask.maskId,
+    companyCode: "friends_guarantee",
+    status: "draft",
+    fieldValuesJson: supplement,
+    fieldStatusesJson: {
+      "application.guarantee_company": "confirmed",
+      "application.application_date": "confirmed",
+      "company_option.friends_plan_type": "confirmed",
+      "company_option.friends_consent": "confirmed",
+      "company_option.friends_collection_agency": "confirmed",
+      "company_option.friends_single_rider": "confirmed",
+      "company_option.friends_notes": "confirmed",
+    },
+  });
+  return NextResponse.json({ caseId, maskVersionId, persisted: true, updatedAt: draft.updatedAt });
 }
 
 async function handleLoadApplicationDraft(request: Request) {
@@ -475,6 +538,7 @@ export async function POST(request: Request) {
     if (action === "rollback") return await handleRollback(request);
     if (action === "preview") return await handlePreview(request);
     if (action === "loadApplicationDraft") return await handleLoadApplicationDraft(request);
+    if (action === "saveApplicationDraft") return await handleSaveApplicationDraft(request);
     if (action === "generate") return await handleGenerate(request);
     throw new Error("guarantee_slice1_action_invalid");
   } catch (error) { return jsonError(error, requestId); }
