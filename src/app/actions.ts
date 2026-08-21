@@ -3064,6 +3064,15 @@ export async function updateTenantMemberRoleAction(formData: FormData) {
   const role = tenantRoleForCapabilityPreset(capabilityPreset);
   if (!membershipId) throw new Error("メンバーIDが不正です。");
 
+  const isSelfOwnerDemotion =
+    membershipId === session.membership.id &&
+    session.membership.status === "active" &&
+    session.membership.role === "tenant_owner" &&
+    role !== "tenant_owner";
+  if (isSelfOwnerDemotion && formData.get("confirmSelfDemotion") !== "true") {
+    throw new Error("自分の会社責任者権限を変更する場合は、確認にチェックしてください。");
+  }
+
   await assertNotLastActiveTenantOwner({ tenantId, changingMembershipId: membershipId, nextRole: role });
   const member = await updateTenantMemberRole({ tenantId, membershipId, role, capability: capabilityPreset, actorUserId: session.user.id });
   if (!member) throw new Error("メンバーが見つかりません。");

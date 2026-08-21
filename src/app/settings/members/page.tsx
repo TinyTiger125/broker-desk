@@ -60,6 +60,18 @@ function copy(locale: Locale) {
     sendInvite: locale === "zh" ? "发送邀请" : locale === "ko" ? "초대 보내기" : "招待送信",
     revokeInvite: locale === "zh" ? "撤销邀请" : locale === "ko" ? "초대 취소" : "招待を取り消す",
     remove: locale === "zh" ? "移除成员" : locale === "ko" ? "멤버 제거" : "メンバーを削除",
+    soleOwnerLocked:
+      locale === "zh"
+        ? "请先指定另一名公司负责人，才能修改自己的负责人权限。"
+        : locale === "ko"
+          ? "다른 회사 책임자를 먼저 지정해야 자신의 책임자 권한을 변경할 수 있습니다."
+          : "先に別の会社責任者を指定してから、自分の責任者権限を変更してください。",
+    confirmSelfDemotion:
+      locale === "zh"
+        ? "我确认已指定另一名公司负责人，并要降低自己的负责人权限"
+        : locale === "ko"
+          ? "다른 회사 책임자를 지정했으며 내 책임자 권한을 낮추는 것을 확인합니다"
+          : "別の会社責任者を指定し、自分の責任者権限を下げることを確認します",
     bound: locale === "zh" ? "已绑定登录" : locale === "ko" ? "로그인 연동됨" : "ログイン連携済み",
     unbound: locale === "zh" ? "未绑定登录" : locale === "ko" ? "로그인 미연동" : "ログイン未連携",
     current: locale === "zh" ? "当前用户" : locale === "ko" ? "현재 사용자" : "現在のユーザー",
@@ -211,6 +223,7 @@ export default async function TenantMembersPage({ searchParams }: MembersPagePro
   const canInvite = capabilityHasTenantPermission(currentCapability, "member.invite");
   const canUpdateRole = capabilityHasTenantPermission(currentCapability, "member.update_role");
   const canRemove = capabilityHasTenantPermission(currentCapability, "member.remove");
+  const activeOwnerCount = members.filter((member) => member.status === "active" && member.role === "tenant_owner").length;
 
   return (
     <div className="space-y-6">
@@ -288,6 +301,11 @@ export default async function TenantMembersPage({ searchParams }: MembersPagePro
               <div className="lg:hidden text-xs font-semibold text-slate-500">{ui.role}</div>
               {member.status === "removed" ? (
                 <span className="text-xs font-semibold text-slate-500">{capabilityLabels[capabilityForMember(member)][locale]}</span>
+              ) : member.id === session.membership.id && member.status === "active" && member.role === "tenant_owner" && activeOwnerCount <= 1 ? (
+                <div className="space-y-1">
+                  <span className="block text-xs font-semibold text-slate-500">{capabilityLabels.company_owner[locale]}</span>
+                  <span className="block text-[11px] leading-4 text-amber-700">{ui.soleOwnerLocked}</span>
+                </div>
               ) : (
                 <form action={updateTenantMemberRoleAction} className="flex items-center gap-2">
                   <input type="hidden" name="membershipId" value={member.id} />
@@ -303,6 +321,12 @@ export default async function TenantMembersPage({ searchParams }: MembersPagePro
                       </option>
                     ))}
                   </select>
+                  {member.id === session.membership.id && member.status === "active" && member.role === "tenant_owner" && activeOwnerCount > 1 ? (
+                    <label className="flex max-w-xs items-center gap-1 text-[11px] leading-4 text-amber-700">
+                      <input type="checkbox" name="confirmSelfDemotion" value="true" required className="h-3.5 w-3.5" />
+                      {ui.confirmSelfDemotion}
+                    </label>
+                  ) : null}
                   {canUpdateRole ? (
                     <button className="rounded-md border border-slate-300 px-2 py-1.5 text-xs font-bold text-slate-700">{ui.saveRole}</button>
                   ) : null}
