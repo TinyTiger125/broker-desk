@@ -181,10 +181,13 @@ assert(
 
 const workspaceSelectorSource = fs.readFileSync("src/app/workspace/workspace-selector.tsx", "utf8");
 assert(
-  workspaceSelectorSource.includes('window.location.pathname === "/workspace"') &&
+  workspaceSelectorSource.includes("pendingRef") &&
+    workspaceSelectorSource.includes('window.addEventListener("click", blockPendingNavigation, true)') &&
+    workspaceSelectorSource.includes("event.preventDefault()") &&
+    workspaceSelectorSource.includes("event.stopPropagation()") &&
     workspaceSelectorSource.includes("window.location.replace(\"/\")") &&
-    workspaceSelectorSource.includes("window.location.reload()"),
-  "a late workspace selection response must navigate or reload so the new tenant cookie is applied",
+    !workspaceSelectorSource.includes("window.location.reload()"),
+  "pending workspace selection must block same-origin product navigation and complete with one full redirect",
 );
 
 console.log("[PASS] tenant session foundation regression");

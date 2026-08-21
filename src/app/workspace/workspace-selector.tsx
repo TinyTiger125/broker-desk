@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export type WorkspaceOption = {
   tenantId: string;
@@ -21,10 +21,31 @@ type WorkspaceSelectorProps = {
 export function WorkspaceSelector({ items, copy }: WorkspaceSelectorProps) {
   const [pendingTenantId, setPendingTenantId] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const pendingRef = useRef(false);
+
+  useEffect(() => {
+    const blockPendingNavigation = (event: MouseEvent) => {
+      if (!pendingRef.current || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const anchor = target.closest("a[href]");
+      if (!(anchor instanceof HTMLAnchorElement) || anchor.target.toLowerCase() === "_blank" || anchor.hasAttribute("download")) return;
+      const destination = new URL(anchor.href, window.location.href);
+      if (destination.origin !== window.location.origin || destination.pathname === "/workspace") return;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
+    window.addEventListener("click", blockPendingNavigation, true);
+    return () => {
+      window.removeEventListener("click", blockPendingNavigation, true);
+    };
+  }, []);
 
   const chooseWorkspace = useCallback(
     async (tenantId: string) => {
       setError("");
+      pendingRef.current = true;
       setPendingTenantId(tenantId);
       const controller = new AbortController();
       const timeoutId = window.setTimeout(() => controller.abort(), 10000);
@@ -39,21 +60,12 @@ export function WorkspaceSelector({ items, copy }: WorkspaceSelectorProps) {
         });
         const result = (await response.json()) as { ok?: boolean };
         if (!response.ok || !result.ok) throw new Error("workspace_selection_failed");
-        // The response has already persisted the tenant cookie. A full
-        // navigation guarantees the next server render reads that cookie;
-        // push+refresh can race and leave the selector page mounted. Do not
-        // let a late selection response override a newer navigation (for
-        // example, the user opening the forms editor while this request was
-        // still in flight).
-        if (window.location.pathname === "/workspace") {
-          window.location.replace("/");
-        } else {
-          // The cookie is already updated, so reload the route the user
-          // reached while the selection request was in flight. This keeps a
-          // late response from leaving an old-tenant page rendered.
-          window.location.reload();
-        }
+        // The response has already persisted the tenant cookie. The pending
+        // navigation guard keeps this selector mounted until this complete
+        // navigation reads the cookie on the next server render.
+        window.location.replace("/");
       } catch {
+        pendingRef.current = false;
         setPendingTenantId(null);
         setError(copy.error);
       } finally {
