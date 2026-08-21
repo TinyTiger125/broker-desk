@@ -36,14 +36,14 @@ mustInclude(pdfPolicy, ["GUARANTEE_BLANK_FORM_MAX_BYTES", "blank_form_rotation_u
 mustInclude(memory, ["processingToken", "finalizeGuaranteePreviewOutput"], "confirmation atomicity");
 mustInclude(migration, ["processing_token"], "confirmation claim token");
 mustInclude(page, ["isGuaranteeSlice1EnabledForTenant", "template.edit_draft"], "slice page gate");
-mustInclude(client, ["普通成员不能移动坐标", "application/pdf", "blankFormDeclaration", "确认并生成文件", "客户空白 PDF", "调整大小", "测试并显示 PDF", "我已查看测试 PDF，确认位置正确", "确认済み", "未確認", "pageCanvasRef", "pdfPointsToCanvasRect", "resizePdfFieldFromBottomRight", "draftDirty", "serializeMaskLayout", "20 MB", "旋转页面暂不支持", "mask_test_case_not_accessible", "mask_test_pdf_generation_failed", "请求编号", "当前可访问案件 ID"], "slice UI");
+mustInclude(client, ["普通成员不能移动坐标", "application/pdf", "blankFormDeclaration", "确认并生成文件", "客户空白 PDF", "调整大小", "测试并显示 PDF", "我已查看测试 PDF，确认位置正确", "确认済み", "未確認", "pageCanvasRef", "pdfPointsToCanvasRect", "resizePdfFieldFromBottomRight", "draftDirty", "serializeMaskLayout", "20 MB", "旋转页面暂不支持", "mask_test_case_not_accessible", "mask_test_pdf_generation_failed", "请求编号", "当前可访问案件 ID", "loadingExistingContext", "existingContextError", "表格版本恢复失败", "重新加载表格", "mask_version_not_found", "mask_draft_target_not_found", "Boolean(enabled && isAdmin && (initialMaskVersionId || initialBlankFormId))"], "slice UI");
 if (client.includes('title="客户空白 PDF"')) throw new Error("calibration must not use a browser PDF iframe as its coordinate surface");
 if (client.includes("{blankPdfSrc && <div className=\"mt-5 grid")) throw new Error("calibration canvas must be gated by the rendered page image, not the raw PDF link");
 mustInclude(outputRoute, ["output.download_final", "getBrokerageCaseById", "getGuaranteeOutputByCase", "readPrivateAttachmentContentForTenant"], "history download gate");
 mustInclude(pageRoute, ["listBrokerageCases", "listPublishedGuaranteeCompanyMaskVersions"], "case selection contract");
 mustInclude(formsPage, ["getGuaranteeCompanyMask", "getGuaranteeMaskMatch", "listGuaranteeBlankForms", "listPublishedGuaranteeCompanyMaskVersions", 'version.status !== "published"', "activeVersionId", 'match?.status === "exact"', "template.edit_draft", "isGuaranteeSlice1EnabledForTenant"], "formal forms library server contract");
 mustInclude(formsClient, ["平台所有", "公司内部", "上传公司表格", "打开并编辑", "现有旧配置不会在这里自动展示", "/guarantee-forms/", "/api/guarantee-g1-slice1", "blankFormVersionId", "maskId"], "formal forms library UI contract");
-mustInclude(formsEditPage, ["requireTenantSession", "template.edit_draft", "GuaranteeSlice1Client", "listBrokerageCases", "initialMaskVersionId", "initialBlankFormVersionId", "initialMaskId", "requestedVersion", "shouldLoadExplicitUpload", "selectedVersion", "no matching saved version exists"], "formal editor access contract");
+mustInclude(formsEditPage, ["requireTenantSession", "template.edit_draft", "GuaranteeSlice1Client", "listBrokerageCases", "initialMaskVersionId", "initialBlankFormVersionId", "initialMaskId", "requestedVersion", "recoveryBlankFormVersionId", "recoveryMaskId", "selectedVersion", "no matching saved version exists"], "formal editor access contract");
 if (formsClient.includes('href="/templates"') || formsClient.includes("href='/templates'")) throw new Error("formal forms library must not redirect to legacy templates route");
 mustInclude(migration, ["ENABLE ROW LEVEL SECURITY", "guarantee_blank_forms", "guarantee_preview_confirmations"], "tenant isolation");
 mustInclude(design, ["guarantee_blank_forms", "guarantee_blank_form_versions", "processing", "file_attachment_id", "普通成员在本切片及第一版产品中始终不能移动坐标", "测试动作必须返回实际可查看的测试 PDF", "testConfirmedAt", "Preview/Staging", "Noto Sans JP"], "technical design alignment");
@@ -53,5 +53,5 @@ if (behavior.includes("routeSource") || behavior.includes("assert.ok(handlerBody
 if (route.includes("GUARANTEE_G1_SLICE1_ENABLED=true")) throw new Error("client or route must not hard-code enablement");
 mustInclude(testCaseSummary, ["toGuaranteeTestCaseSummary", "customerDisplayName", "managementNumber", "textValue", "dateValue", "applicant.name", "lease.moveInDate"], "test case summary");
 mustInclude(client, ["当前没有可用于测试的案件", "请先准备一条有权访问的案件资料", "案件名称", "客户显示名", "管理编号", "文本字段", "日期字段", "严格布尔值", "不要求输入或复制内部案件编号"], "test case selection summary");
-if (!client.includes("当前没有可访问案件") || !client.includes("不要求输入或复制内部案件编号")) throw new Error("empty case state must be explicit and must not ask for an internal ID");
+if (!client.includes("当前没有可用于测试的案件") || !client.includes("请先准备一条有权访问的案件资料") || !client.includes("不要求输入或复制内部案件编号")) throw new Error("empty case state must be explicit and must not ask for an internal ID");
 console.log("[PASS] TASK-038 limited implementation contract");

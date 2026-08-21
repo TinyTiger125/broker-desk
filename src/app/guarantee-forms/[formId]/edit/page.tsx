@@ -35,8 +35,9 @@ export default async function GuaranteeFormEditPage({ params, searchParams }: { 
     // Once draft/published data exists for that exact pair, load that version
     // so refresh/reopen does not reset the editor to default fields.
     const selectedVersion = requestedVersion ?? current;
-    const shouldLoadExplicitUpload = Boolean(initialBlankFormVersionId && initialMaskId && !requestedVersion);
-    return <GuaranteeSlice1Client enabled={enabled} isAdmin={capabilityHasTenantPermission(getTenantCapability(session.membership), "template.edit_draft")} cases={testCases.map(toGuaranteeTestCaseSummary)} publishedVersions={[]} initialMaskVersionId={selectedVersion?.id} initialBlankFormId={shouldLoadExplicitUpload || !selectedVersion ? form.id : undefined} initialBlankFormVersionId={shouldLoadExplicitUpload ? initialBlankFormVersionId : undefined} initialMaskId={shouldLoadExplicitUpload ? initialMaskId : undefined} adminOnly showUpload={false} heading={`编辑公司表格：${form.name}`} />;
+    const recoveryBlankFormVersionId = selectedVersion?.blankFormVersionId ?? initialBlankFormVersionId;
+    const recoveryMaskId = selectedVersion?.maskId ?? initialMaskId;
+    return <GuaranteeSlice1Client enabled={enabled} isAdmin={capabilityHasTenantPermission(getTenantCapability(session.membership), "template.edit_draft")} cases={testCases.map(toGuaranteeTestCaseSummary)} publishedVersions={[]} initialMaskVersionId={selectedVersion?.id} initialBlankFormId={form.id} initialBlankFormVersionId={recoveryBlankFormVersionId} initialMaskId={recoveryMaskId} adminOnly showUpload={false} heading={`编辑公司表格：${form.name}`} />;
   } catch (error) {
     const message = error instanceof TenantSessionError && error.code === "permission_denied" ? "只有公司表格管理员可以编辑蒙板。" : "请在受控非生产工作区中登录后再访问。";
     return <main className="mx-auto max-w-3xl px-6 py-12"><h1 className="text-2xl font-semibold text-slate-950">公司表格编辑</h1><p className="mt-3 text-sm text-slate-600">{message}</p><a href="/guarantee-forms" className="mt-4 inline-block text-sm text-blue-700 underline">返回公司表格库</a></main>;

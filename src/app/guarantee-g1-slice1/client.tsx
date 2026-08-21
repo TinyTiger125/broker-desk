@@ -27,6 +27,9 @@ type FieldType = "text" | "date" | "checkbox";
 type MaskField = { fieldId: string; type: FieldType; sourceFieldKey: string; label: string; pageNumber: number; x: number; y: number; width: number; height: number };
 type ApiPayload = Record<string, unknown> & { blankForm?: { id?: string }; blankFormVersion?: { id?: string; pageWidth?: number; pageHeight?: number }; maskVersion?: { id?: string; status?: string; testedLayoutDigest?: string; layoutSnapshot?: Record<string, unknown> }; confirmationId?: string; outputId?: string; blankPdfBase64?: string; blankPagePngBase64?: string; testPdfBase64?: string; testPdfSha256?: string; layoutDigest?: string; requestId?: string };
 type Interaction = { index: number; mode: "move" | "resize"; startX: number; startY: number; startField: MaskField; scaleX: number; scaleY: number };
+type AdminContextLoadResult = "loaded" | "fallback" | "failed";
+
+const ADMIN_MASK_CONTEXT_FALLBACK_ERRORS = new Set(["mask_version_not_found", "mask_draft_target_not_found"]);
 
 const initialFields: MaskField[] = [
   { fieldId: "applicant_name", type: "text", sourceFieldKey: "applicant.name", label: "氏名", pageNumber: 1, x: 72, y: 700, width: 180, height: 18 },
@@ -122,6 +125,9 @@ export function GuaranteeSlice1Client({ enabled, isAdmin, cases, publishedVersio
   const [testConfirmed, setTestConfirmed] = useState(false);
   const [draftDirty, setDraftDirty] = useState(false);
   const [testedLayoutDigest, setTestedLayoutDigest] = useState("");
+  const [loadingExistingContext, setLoadingExistingContext] = useState(Boolean(enabled && isAdmin && (initialMaskVersionId || initialBlankFormId)));
+  const [existingContextError, setExistingContextError] = useState("");
+  const [existingContextRetry, setExistingContextRetry] = useState(0);
   const [testConsent, setTestConsent] = useState(false);
   const [memberConsent, setMemberConsent] = useState(false);
   const [memberDraftPersisted, setMemberDraftPersisted] = useState(false);
@@ -194,9 +200,9 @@ export function GuaranteeSlice1Client({ enabled, isAdmin, cases, publishedVersio
     return () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", end); };
   }, [interaction, pageHeight, pageWidth]);
 
-  const run = async (operation: () => Promise<void>) => {
+  const run = async (operation: () => Promise<void>, onError?: (caught: unknown) => void) => {
     setError(""); setMessage("");
-    try { await operation(); } catch (caught) { setError(explainGuaranteeError(caught)); }
+    try { await operation(); } catch (caught) { onError?.(caught); setError(explainGuaranteeError(caught)); }
   };
 
   const upload = async (formElement: HTMLFormElement) => {
@@ -216,8 +222,10 @@ export function GuaranteeSlice1Client({ enabled, isAdmin, cases, publishedVersio
     setMessage("空白表格を受け取りました。PDF 上の字段框をドラッグまたは右下ハンドルで校准してから保存してください。");
   };
 
-  const loadExistingAdminMask = async (nextMaskVersionId: string) => {
-    if (!nextMaskVersionId || !isAdmin) return;
+  const loadExistingAdminMask = async (nextMaskVersionId: string): Promise<AdminContextLoadResult> => {
+    if (!nextMaskVersionId || !isAdmin) return "failed";
+    let loaded = false;
+    let errorCode = "";
     await run(async () => {
       const payload = await postJson("loadAdminMask", { maskVersionId: nextMaskVersionId });
       const loadedVersion = payload.maskVersion ?? {};
@@ -236,11 +244,15 @@ export function GuaranteeSlice1Client({ enabled, isAdmin, cases, publishedVersio
       setDraftDirty(loadedVersion.status === "published");
       setTestConfirmed(false); setTestPdfSrc(""); setTestedPdfSha256(""); setTestedLayoutDigest("");
       setMessage(loadedVersion.status === "published" ? "已打开发布版本。修改后请另存草稿、重新测试并确认。" : "已恢复公司蒙板草稿，可以继续编辑。");
-    });
+      loaded = true;
+    }, (caught) => { errorCode = caught instanceof Error ? caught.message : ""; });
+    if (loaded) return "loaded";
+    return ADMIN_MASK_CONTEXT_FALLBACK_ERRORS.has(errorCode) ? "fallback" : "failed";
   };
 
   const loadExistingAdminBlankForm = async (nextBlankFormId: string, nextBlankFormVersionId?: string, nextMaskId?: string) => {
-    if (!nextBlankFormId || !isAdmin) return;
+    if (!nextBlankFormId || !isAdmin) return false;
+    let loaded = false;
     await run(async () => {
       const payload = await postJson("loadAdminBlankForm", { blankFormId: nextBlankFormId, blankFormVersionId: nextBlankFormVersionId, maskId: nextMaskId });
       const width = Number(payload.blankFormVersion?.pageWidth ?? 612);
@@ -254,16 +266,33 @@ export function GuaranteeSlice1Client({ enabled, isAdmin, cases, publishedVersio
       setBlankPageSrc(payload.blankPagePngBase64 ? `data:image/png;base64,${String(payload.blankPagePngBase64)}` : "");
       setDraftDirty(false); setTestConfirmed(false); setTestPdfSrc(""); setTestedPdfSha256(""); setTestedLayoutDigest("");
       setMessage("已打开公司表格。请放置字段框后保存草稿、测试并确认。");
+      loaded = true;
     });
+    return loaded;
   };
 
   useEffect(() => {
-    if (!enabled) return;
-    if (initialMaskVersionId) void loadExistingAdminMask(initialMaskVersionId);
-    else if (initialBlankFormId) void loadExistingAdminBlankForm(initialBlankFormId, initialBlankFormVersionId, initialMaskId);
+    if (!enabled || !isAdmin) return;
+    let cancelled = false;
+    setLoadingExistingContext(true);
+    setExistingContextError("");
+    void (async () => {
+      let loaded = false;
+      if (initialMaskVersionId) {
+        const result = await loadExistingAdminMask(initialMaskVersionId);
+        if (result === "loaded") loaded = true;
+        if (result === "fallback" && initialBlankFormId) loaded = await loadExistingAdminBlankForm(initialBlankFormId, initialBlankFormVersionId, initialMaskId);
+      } else if (initialBlankFormId) {
+        loaded = await loadExistingAdminBlankForm(initialBlankFormId, initialBlankFormVersionId, initialMaskId);
+      }
+      if (cancelled) return;
+      if (!loaded && (initialMaskVersionId || initialBlankFormId)) setExistingContextError("表格版本恢复失败。草稿未发布，当前没有可编辑内容，请重试。");
+      setLoadingExistingContext(false);
+    })();
+    return () => { cancelled = true; };
     // The formal edit route intentionally loads one existing version once.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialMaskVersionId, initialBlankFormId, initialBlankFormVersionId, initialMaskId]);
+  }, [initialMaskVersionId, initialBlankFormId, initialBlankFormVersionId, initialMaskId, existingContextRetry]);
 
   const updateField = (index: number, key: keyof MaskField, value: string) => {
     invalidateTestState();
@@ -318,8 +347,10 @@ export function GuaranteeSlice1Client({ enabled, isAdmin, cases, publishedVersio
           <p className="text-xs leading-5 text-slate-600 md:col-span-2">第一版仅支持一页、20 MB 以下、未加密且未设密码的空白 PDF。旋转页面、非标准裁切框、尺寸或结构异常的文件会在上传时拒绝；失败时请更换文件，不会一直停留在处理中。</p>
           <button className="w-fit rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white" type="submit">上传空白表格</button>
         </form>}
-        {!showUpload && !maskId && <p className="mt-4 text-sm text-slate-600">请选择表格库中的版本后继续编辑。此处不会要求重新上传客户空白 PDF。</p>}
-        {maskId && <div className="mt-6 border-t border-slate-200 pt-5">
+        {!showUpload && loadingExistingContext && <p className="mt-4 text-sm text-slate-600" role="status">正在恢复已保存的表格版本，请稍候。</p>}
+        {!showUpload && existingContextError && <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert"><p>{existingContextError}</p><button type="button" className="mt-3 rounded border border-red-300 bg-white px-3 py-1.5 font-medium text-red-800" onClick={() => { setError(""); setExistingContextError(""); setExistingContextRetry((value) => value + 1); }}>重新加载表格</button></div>}
+        {!showUpload && !maskId && !loadingExistingContext && !existingContextError && !initialBlankFormId && !initialMaskVersionId && <p className="mt-4 text-sm text-slate-600">请选择表格库中的版本后继续编辑。此处不会要求重新上传客户空白 PDF。</p>}
+        {maskId && !loadingExistingContext && !existingContextError && <div className="mt-6 border-t border-slate-200 pt-5">
           <p className="text-sm text-slate-600">表格版本：<code>{blankFormVersionId}</code> · 公司蒙板：<code>{maskId}</code></p>
           {blankPageSrc && <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
             <div ref={editorRef} className="relative mx-auto w-full max-w-[720px] overflow-hidden border border-slate-300 bg-slate-100" style={{ aspectRatio: `${pageWidth} / ${pageHeight}` }} aria-label="客户空白 PDF 与蒙板字段叠加校准区">
