@@ -36,6 +36,7 @@ mustInclude(migration, ["processing_token"], "confirmation claim token");
 mustInclude(page, ["isGuaranteeSlice1EnabledForTenant", "template.edit_draft"], "slice page gate");
 mustInclude(client, ["普通成员不能移动坐标", "application/pdf", "blankFormDeclaration", "确认并生成文件", "客户空白 PDF", "调整大小", "测试并显示 PDF", "我已查看测试 PDF，确认位置正确", "确认済み", "未確認", "pageCanvasRef", "pdfPointsToCanvasRect", "resizePdfFieldFromBottomRight", "draftDirty", "serializeMaskLayout", "20 MB", "旋转页面暂不支持"], "slice UI");
 if (client.includes('title="客户空白 PDF"')) throw new Error("calibration must not use a browser PDF iframe as its coordinate surface");
+if (client.includes("{blankPdfSrc && <div className=\"mt-5 grid")) throw new Error("calibration canvas must be gated by the rendered page image, not the raw PDF link");
 mustInclude(outputRoute, ["output.download_final", "getBrokerageCaseById", "getGuaranteeOutputByCase", "readPrivateAttachmentContentForTenant"], "history download gate");
 mustInclude(pageRoute, ["listBrokerageCases", "listPublishedGuaranteeCompanyMaskVersions"], "case selection contract");
 mustInclude(formsPage, ["getGuaranteeCompanyMask", "getGuaranteeMaskMatch", "listGuaranteeBlankForms", "listPublishedGuaranteeCompanyMaskVersions", 'version.status !== "published"', "activeVersionId", 'match?.status === "exact"', "template.edit_draft", "isGuaranteeSlice1EnabledForTenant"], "formal forms library server contract");
