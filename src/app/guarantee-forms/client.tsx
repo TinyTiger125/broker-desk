@@ -27,8 +27,11 @@ export function GuaranteeFormsClient({ enabled, isAdmin, forms }: Props) {
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(String(payload.error ?? "upload_failed"));
       const id = String(payload.blankForm?.id ?? "");
-      if (!id) throw new Error("upload_failed");
-      router.push(`/guarantee-forms/${encodeURIComponent(id)}/edit`);
+      const blankFormVersionId = String(payload.blankFormVersion?.id ?? "");
+      const maskId = String(payload.maskId ?? "");
+      if (!id || !blankFormVersionId || !maskId) throw new Error("上传已完成，但编辑所需的表格版本信息不完整。请从公司表格库重新打开。");
+      const params = new URLSearchParams({ blankFormVersionId, maskId });
+      router.push(`/guarantee-forms/${encodeURIComponent(id)}/edit?${params.toString()}`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "upload_failed");
     } finally {

@@ -203,12 +203,17 @@ async function handleLoadAdminBlankForm(request: Request) {
   const body = asRecord(await request.json());
   const blankFormId = String(body.blankFormId ?? "").trim();
   if (!blankFormId) throw new Error("blank_form_required");
+  const requestedBlankFormVersionId = String(body.blankFormVersionId ?? "").trim();
+  const requestedMaskId = String(body.maskId ?? "").trim();
   const tenantId = session.tenant.id;
   const blankForm = await getGuaranteeBlankForm({ tenantId, id: blankFormId });
   if (!blankForm?.activeVersionId) throw new Error("blank_form_not_ready");
-  const blankVersion = await getGuaranteeBlankFormVersion({ tenantId, id: blankForm.activeVersionId });
-  if (!blankVersion || blankVersion.status !== "ready") throw new Error("blank_form_not_ready");
-  const companyMask = await createGuaranteeCompanyMask({ tenantId, blankFormId: blankForm.id, userId: session.user.id });
+  const blankVersion = await getGuaranteeBlankFormVersion({ tenantId, id: requestedBlankFormVersionId || blankForm.activeVersionId });
+  if (!blankVersion || blankVersion.status !== "ready" || blankVersion.blankFormId !== blankForm.id || blankVersion.id !== blankForm.activeVersionId) throw new Error("blank_form_not_ready");
+  const companyMask = requestedMaskId
+    ? await getGuaranteeCompanyMask({ tenantId, id: requestedMaskId })
+    : await createGuaranteeCompanyMask({ tenantId, blankFormId: blankForm.id, userId: session.user.id });
+  if (!companyMask || companyMask.blankFormId !== blankForm.id) throw new Error("mask_draft_target_not_found");
   const source = await readPrivateAttachmentContentForTenant({ tenantId, id: blankVersion.attachmentId });
   if (!source) throw new Error("blank_form_unavailable");
   const blankPagePreview = await renderBlankPagePreview(source);

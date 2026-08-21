@@ -16,6 +16,8 @@ type Props = {
   publishedVersions: Array<{ id: string; versionNumber: number; blankFormVersionId: string; maskId: string }>;
   initialMaskVersionId?: string;
   initialBlankFormId?: string;
+  initialBlankFormVersionId?: string;
+  initialMaskId?: string;
   adminOnly?: boolean;
   showUpload?: boolean;
   heading?: string;
@@ -84,12 +86,12 @@ function pdfFieldStyle(field: MaskField, pageWidth: number, pageHeight: number) 
   };
 }
 
-export function GuaranteeSlice1Client({ enabled, isAdmin, cases, publishedVersions, initialMaskVersionId, initialBlankFormId, adminOnly = false, showUpload = true, heading }: Props) {
+export function GuaranteeSlice1Client({ enabled, isAdmin, cases, publishedVersions, initialMaskVersionId, initialBlankFormId, initialBlankFormVersionId, initialMaskId, adminOnly = false, showUpload = true, heading }: Props) {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [blankFormVersionId, setBlankFormVersionId] = useState("");
+  const [blankFormVersionId, setBlankFormVersionId] = useState(initialBlankFormVersionId ?? "");
   const [blankFormId, setBlankFormId] = useState("");
-  const [maskId, setMaskId] = useState("");
+  const [maskId, setMaskId] = useState(initialMaskId ?? "");
   const [maskVersionId, setMaskVersionId] = useState("");
   const [caseId, setCaseId] = useState("");
   const [memberMaskVersionId, setMemberMaskVersionId] = useState("");
@@ -177,10 +179,6 @@ export function GuaranteeSlice1Client({ enabled, isAdmin, cases, publishedVersio
     return () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", end); };
   }, [interaction, pageHeight, pageWidth]);
 
-  if (!enabled) {
-    return <main className="mx-auto max-w-3xl px-6 py-12"><h1 className="text-2xl font-semibold text-slate-950">保証会社申込書（試験切片）</h1><p className="mt-3 text-sm text-slate-600">この試験切片は現在無効です。既存の申込書経路は変更されません。</p></main>;
-  }
-
   const run = async (operation: () => Promise<void>) => {
     setError(""); setMessage("");
     try { await operation(); } catch (caught) { setError(explainGuaranteeError(caught)); }
@@ -226,10 +224,10 @@ export function GuaranteeSlice1Client({ enabled, isAdmin, cases, publishedVersio
     });
   };
 
-  const loadExistingAdminBlankForm = async (nextBlankFormId: string) => {
+  const loadExistingAdminBlankForm = async (nextBlankFormId: string, nextBlankFormVersionId?: string, nextMaskId?: string) => {
     if (!nextBlankFormId || !isAdmin) return;
     await run(async () => {
-      const payload = await postJson("loadAdminBlankForm", { blankFormId: nextBlankFormId });
+      const payload = await postJson("loadAdminBlankForm", { blankFormId: nextBlankFormId, blankFormVersionId: nextBlankFormVersionId, maskId: nextMaskId });
       const width = Number(payload.blankFormVersion?.pageWidth ?? 612);
       const height = Number(payload.blankFormVersion?.pageHeight ?? 792);
       setBlankFormId(String(payload.blankForm?.id ?? nextBlankFormId));
@@ -245,11 +243,12 @@ export function GuaranteeSlice1Client({ enabled, isAdmin, cases, publishedVersio
   };
 
   useEffect(() => {
+    if (!enabled) return;
     if (initialMaskVersionId) void loadExistingAdminMask(initialMaskVersionId);
-    else if (initialBlankFormId) void loadExistingAdminBlankForm(initialBlankFormId);
+    else if (initialBlankFormId) void loadExistingAdminBlankForm(initialBlankFormId, initialBlankFormVersionId, initialMaskId);
     // The formal edit route intentionally loads one existing version once.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialMaskVersionId]);
+  }, [initialMaskVersionId, initialBlankFormId, initialBlankFormVersionId, initialMaskId]);
 
   const updateField = (index: number, key: keyof MaskField, value: string) => {
     invalidateTestState();
@@ -277,6 +276,10 @@ export function GuaranteeSlice1Client({ enabled, isAdmin, cases, publishedVersio
       setMemberDraftPersisted(Boolean(result.persisted));
     });
   };
+
+  if (!enabled) {
+    return <main className="mx-auto max-w-3xl px-6 py-12"><h1 className="text-2xl font-semibold text-slate-950">保証会社申込書（試験切片）</h1><p className="mt-3 text-sm text-slate-600">この試験切片は現在無効です。既存の申込書経路は変更されません。</p></main>;
+  }
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-10">
