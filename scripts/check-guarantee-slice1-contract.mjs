@@ -14,6 +14,9 @@ const page = read("src/app/guarantee-g1-slice1/page.tsx");
 const client = read("src/app/guarantee-g1-slice1/client.tsx");
 const outputRoute = read("src/app/api/guarantee-g1-slice1/output/[outputId]/route.ts");
 const pageRoute = read("src/app/guarantee-g1-slice1/page.tsx");
+const formsPage = read("src/app/guarantee-forms/page.tsx");
+const formsClient = read("src/app/guarantee-forms/client.tsx");
+const formsEditPage = read("src/app/guarantee-forms/[formId]/edit/page.tsx");
 const migration = read("db/migrations/20260819_001_guarantee_slice1_objects.sql");
 const behavior = read("scripts/test-guarantee-slice1-behavior.mjs");
 const mustInclude = (text, values, label) => values.forEach((value) => {
@@ -34,6 +37,10 @@ mustInclude(client, ["普通成员不能移动坐标", "application/pdf", "blank
 if (client.includes('title="客户空白 PDF"')) throw new Error("calibration must not use a browser PDF iframe as its coordinate surface");
 mustInclude(outputRoute, ["output.download_final", "getBrokerageCaseById", "getGuaranteeOutputByCase", "readPrivateAttachmentContentForTenant"], "history download gate");
 mustInclude(pageRoute, ["listBrokerageCases", "listPublishedGuaranteeCompanyMaskVersions"], "case selection contract");
+mustInclude(formsPage, ["listGuaranteeBlankForms", "listPublishedGuaranteeCompanyMaskVersions", "template.edit_draft", "isGuaranteeSlice1EnabledForTenant"], "formal forms library server contract");
+mustInclude(formsClient, ["平台所有", "公司内部", "上传公司表格", "打开并编辑", "现有旧配置不会在这里自动展示", "/guarantee-forms/", "/api/guarantee-g1-slice1"], "formal forms library UI contract");
+mustInclude(formsEditPage, ["requireTenantSession", "template.edit_draft", "GuaranteeSlice1Client", "initialMaskVersionId"], "formal editor access contract");
+if (formsClient.includes('href="/templates"') || formsClient.includes("href='/templates'")) throw new Error("formal forms library must not redirect to legacy templates route");
 mustInclude(migration, ["ENABLE ROW LEVEL SECURITY", "guarantee_blank_forms", "guarantee_preview_confirmations"], "tenant isolation");
 mustInclude(design, ["guarantee_blank_forms", "guarantee_blank_form_versions", "processing", "file_attachment_id", "普通成员在本切片及第一版产品中始终不能移动坐标", "测试动作必须返回实际可查看的测试 PDF", "testConfirmedAt", "Preview/Staging", "Noto Sans JP"], "technical design alignment");
 mustInclude(behavior, ["src/lib/data.ts", "publishGuaranteeCompanyMaskVersionWithExactMatch", "finalizeGuaranteePreviewOutput", "readPrivateAttachmentContentForTenant", "failureInjection", "inflateSync", "確認済み", "未確認", "blank_form_rotation_unsupported", "blank_form_cropbox_unsupported"], "executable behavior test");

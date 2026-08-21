@@ -45,7 +45,11 @@ export function GuaranteeFormsClient({ enabled, isAdmin, forms }: Props) {
         <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">公司表格管理员在这里保存、校准、测试和发布本公司的表格。普通成员只使用已发布表格，不进入蒙板编辑。</p>
       </header>
       {error && <p role="alert" className="mt-5 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</p>}
-      {isAdmin && <section className="mt-8 border-b border-slate-200 pb-8" aria-labelledby="upload-title">
+      <section className="mt-8" aria-labelledby="platform-forms-title">
+        <h2 id="platform-forms-title" className="text-lg font-semibold text-slate-950">平台所有</h2>
+        <p className="mt-2 rounded-md border border-dashed border-slate-300 px-4 py-6 text-sm leading-6 text-slate-600">当前没有可安装的平台蒙板。平台蒙板目录尚未开放，现有旧配置不会在这里自动展示。</p>
+      </section>
+      {isAdmin && <section id="upload-company-form" className="mt-8 border-y border-slate-200 py-8" aria-labelledby="upload-title">
         <h2 id="upload-title" className="text-lg font-semibold text-slate-950">上传客户空白表格</h2>
         <form className="mt-4 grid gap-4 md:grid-cols-2" onSubmit={(event) => { event.preventDefault(); void upload(event.currentTarget); }}>
           <label className="grid gap-2 text-sm text-slate-700">表格名称<input name="name" required className="rounded-md border border-slate-300 px-3 py-2" placeholder="测试申请书" /></label>
@@ -57,13 +61,12 @@ export function GuaranteeFormsClient({ enabled, isAdmin, forms }: Props) {
       </section>}
       <section className="mt-8" aria-labelledby="company-forms-title">
         <div className="flex items-baseline justify-between gap-4"><h2 id="company-forms-title" className="text-lg font-semibold text-slate-950">公司内部</h2><span className="text-sm text-slate-500">{forms.length} 张表格</span></div>
-        {forms.length === 0 ? <p className="mt-4 rounded-md border border-dashed border-slate-300 px-4 py-8 text-sm text-slate-600">还没有保存的公司表格。</p> : <ul className="mt-4 divide-y divide-slate-200 border-y border-slate-200">{forms.map((form) => {
+        {forms.length === 0 ? <div className="mt-4 rounded-md border border-dashed border-slate-300 px-4 py-8 text-sm text-slate-600"><p>还没有保存的公司表格。</p>{isAdmin && <a href="#upload-company-form" className="mt-3 inline-block rounded-md bg-slate-900 px-3 py-2 font-medium text-white">上传公司表格</a>}</div> : <ul className="mt-4 divide-y divide-slate-200 border-y border-slate-200">{forms.map((form) => {
           const published = form.versions.filter((version) => version.status === "published").sort((a, b) => b.versionNumber - a.versionNumber)[0];
-          const draft = form.versions.filter((version) => version.status === "draft").sort((a, b) => b.versionNumber - a.versionNumber)[0];
-          return <li key={form.id} className="flex flex-wrap items-center justify-between gap-4 py-4"><div><p className="font-medium text-slate-950">{form.name}</p><p className="mt-1 text-xs text-slate-500">{published ? `当前发布 v${published.versionNumber}` : "尚无发布版本"}{draft ? ` · 有待继续编辑的草稿 v${draft.versionNumber}` : ""}</p></div>{isAdmin ? <a href={`/guarantee-forms/${encodeURIComponent(form.id)}/edit`} className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-800">打开并编辑</a> : <span className="text-sm text-slate-600">仅可使用已发布版本</span>}</li>;
+          const draft = isAdmin ? form.versions.filter((version) => version.status === "draft").sort((a, b) => b.versionNumber - a.versionNumber)[0] : undefined;
+          return <li key={form.id} className="flex flex-wrap items-center justify-between gap-4 py-4"><div><p className="font-medium text-slate-950">{form.name}</p><p className="mt-1 text-xs text-slate-500">{published ? `当前发布 v${published.versionNumber}` : "尚无发布版本"}{draft ? ` · 有待继续编辑的草稿 v${draft.versionNumber}` : ""}</p></div>{isAdmin ? <a href={`/guarantee-forms/${encodeURIComponent(form.id)}/edit`} className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-800">打开并编辑</a> : <span className="text-sm text-slate-600">可用于案件申请书生成</span>}</li>;
         })}</ul>}
       </section>
-      <section className="mt-10" aria-labelledby="platform-forms-title"><h2 id="platform-forms-title" className="text-lg font-semibold text-slate-950">平台所有</h2><p className="mt-2 text-sm text-slate-600">平台蒙板只读；如需调整，请复制为公司内部蒙板。当前受控切片不开放公共目录安装。</p></section>
     </main>
   );
 }
