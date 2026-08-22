@@ -2,7 +2,7 @@
 
 - 所属专题：保证公司申请书 G1
 - 状态: In Progress
-- 当前阶段: Staging Infrastructure Fix — Vercel Edge 429；已定位并调整仅匹配Staging Preview主机的Vercel Firewall限流规则，待低频B回归确认后恢复Durable Private Files验收
+- 当前阶段: Staging Product Validation — Durable Private Files & Access；低频B回归未再出现Vercel边缘429，但“生成申请书”点击未跳转且未产生申请业务请求，Durable Private Files保持待验收
 - 顺序：1；依赖 TASK-037 / G1-SLICE-0
 - 技术设计：[TASK-038 G1-SLICE-1 技术设计](../product/GUARANTEE_APPLICATION_G1_SLICE_1_TECHNICAL_DESIGN_2026-08-19.md)
 - 最高依据：[第一版产品基线](../product/GUARANTEE_APPLICATION_PRODUCT_BASELINE_V1_2026-08-18.md)
@@ -47,9 +47,9 @@
 
 ## 当前状态
 
-2026-08-22：公司表格库、人工校准、测试确认、发布、案件申请持久化与 v2/v3 输出稳定性已有 Staging 产品证据。此前的 `tenant_selection_required` 已修复并固定为 `41822da`，B-1/B-2 可在选择公司后重新出现。两次低频B-1申请页访问返回Vercel通用边缘 `429 Too Many Requests`，应用运行日志均无对应业务请求。Vercel项目审查确认唯一命中规则为 `broker-desk-staging-preview-v1`：精确匹配Staging Preview主机、按IP固定窗口60秒、原阈值100次、动作429；Bot Protection、Attack Mode、Deployment Protection及用量配额未命中。已仅在该项目Preview范围将阈值调整为300次/60秒并发布，Production未改、未升级付费、未修改代码/数据库；回退为同一规则恢复100次/60秒并Publish。待一次低频B回归确认后恢复Durable Private Files验收。
+2026-08-22：公司表格库、人工校准、测试确认、发布、案件申请持久化与 v2/v3 输出稳定性已有 Staging 产品证据。此前的 `tenant_selection_required` 已修复并固定为 `41822da`，B-1/B-2 可在选择公司后重新出现。两次低频B-1申请页访问曾返回Vercel通用边缘 `429 Too Many Requests`；Vercel项目审查确认唯一命中规则为 `broker-desk-staging-preview-v1`：精确匹配Staging Preview主机、按IP固定窗口60秒、原阈值100次、动作429；Bot Protection、Attack Mode、Deployment Protection及用量配额未命中。已仅在该项目Preview范围将阈值调整为300次/60秒并发布，Production未改、未升级付费、未修改代码/数据库；回退为同一规则恢复100次/60秒并Publish。随后一次低频B会话中登录、工作区、案件列表和B-1详情均正常，未再出现429；但点击“生成申请书”未跳转且未产生申请业务请求，当前先登记为产品路径阻断，Durable Private Files尚未开始。
 
-In Progress；当前阶段为 Staging Infrastructure Fix — Vercel Edge 429。不得将健康接口、静态检查或旧历史记录写成持久化文件验收通过；修复后只建立一次B隔离会话，以正常用户节奏串行验证案件列表、B-1申请页和历史页，遇到429立即停止。低频访问稳定后再取得B新生成文件、跨部署同字节下载、案件访问权限和原始空白PDF权限的真实证据，随后恢复异常PDF验证。有限实现的普通成员区是 TASK-038 专属受控 harness：从当前经营主体列出的自有测试案件和已发布公司蒙板版本选择，不替代正式案件页入口；现有案件读取契约仍按 `case.user_id` 限制，不能宣称同公司任一案件读取成员已完成共享访问。
+In Progress；当前阶段为 Staging Product Validation — Durable Private Files & Access。Vercel边缘429低频复核未再复现；不得将健康接口、静态检查或旧历史记录写成持久化文件验收通过。当前首个产品阻断是B在B-1详情点击“生成申请书”后未跳转且未产生申请业务请求，需先恢复正常申请页入口，再取得B新生成文件、跨部署同字节下载、案件访问权限和原始空白PDF权限的真实证据，随后恢复异常PDF验证。有限实现的普通成员区是 TASK-038 专属受控 harness：从当前经营主体列出的自有测试案件和已发布公司蒙板版本选择，不替代正式案件页入口；现有案件读取契约仍按 `case.user_id` 限制，不能宣称同公司任一案件读取成员已完成共享访问。
 
 ## 1. 用户可观察结果
 
