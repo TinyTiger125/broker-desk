@@ -2,7 +2,7 @@
 
 - 所属专题：保证公司申请书 G1
 - 状态: In Progress
-- 当前阶段: Staging Product Validation — Durable Private Files & Access；429调查已关闭并保留为Staging基础设施观察项
+- 当前阶段: Staging Acceptance Infrastructure — 429 Investigation；低频单次B-1申请页访问再次返回Vercel边缘429，Durable Private Files保持待验收
 - 顺序：1；依赖 TASK-037 / G1-SLICE-0
 - 技术设计：[TASK-038 G1-SLICE-1 技术设计](../product/GUARANTEE_APPLICATION_G1_SLICE_1_TECHNICAL_DESIGN_2026-08-19.md)
 - 最高依据：[第一版产品基线](../product/GUARANTEE_APPLICATION_PRODUCT_BASELINE_V1_2026-08-18.md)
@@ -47,9 +47,9 @@
 
 ## 当前状态
 
-2026-08-22：公司表格库、人工校准、测试确认、发布、案件申请持久化与 v2/v3 输出稳定性已有 Staging 产品证据。此前的 `tenant_selection_required` 已修复并固定为 `41822da`，B-1/B-2 可在选择公司后重新出现。429调查已关闭：来源更符合Vercel边缘层/防火墙，发生前存在自动化重复访问，正常单次请求未复现，不登记Broker Desk产品P1。当前继续Durable Private Files、跨部署和权限验收；B会话过期只重建一次，遇429立即停止。
+2026-08-22：公司表格库、人工校准、测试确认、发布、案件申请持久化与 v2/v3 输出稳定性已有 Staging 产品证据。此前的 `tenant_selection_required` 已修复并固定为 `41822da`，B-1/B-2 可在选择公司后重新出现。一次重建B会话、单次公司选择、单次B-1申请页访问再次返回Vercel边缘 `429 Too Many Requests`，页面为通用边缘错误页，应用运行日志无对应业务请求；当前重新登记为Staging验收基础设施阻断，Durable Private Files未取得新文件，停止重复访问。
 
-In Progress；当前阶段为 Staging Product Validation — Durable Private Files & Access。不得将健康接口、静态检查或旧历史记录写成持久化文件验收通过；必须取得B新生成文件、跨部署同字节下载、案件访问权限和原始空白PDF权限的真实证据，再恢复异常 PDF 验证。有限实现的普通成员区是 TASK-038 专属受控 harness：从当前经营主体列出的自有测试案件和已发布公司蒙板版本选择，不替代正式案件页入口；现有案件读取契约仍按 `case.user_id` 限制，不能宣称同公司任一案件读取成员已完成共享访问。
+In Progress；当前阶段为 Staging Acceptance Infrastructure — 429 Investigation。不得将健康接口、静态检查或旧历史记录写成持久化文件验收通过；必须先恢复一次低频稳定的B-1申请页访问，再取得B新生成文件、跨部署同字节下载、案件访问权限和原始空白PDF权限的真实证据，随后恢复异常 PDF 验证。有限实现的普通成员区是 TASK-038 专属受控 harness：从当前经营主体列出的自有测试案件和已发布公司蒙板版本选择，不替代正式案件页入口；现有案件读取契约仍按 `case.user_id` 限制，不能宣称同公司任一案件读取成员已完成共享访问。
 
 ## 1. 用户可观察结果
 
