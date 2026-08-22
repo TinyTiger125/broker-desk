@@ -2,7 +2,7 @@
 
 - 所属专题：保证公司申请书 G1
 - 状态: In Progress
-- 当前阶段: Runtime Diagnosis — Case Application Navigation；控件直接目标可打开申请页，但真实鼠标/键盘触发无导航且无业务请求，Durable Private Files保持待验收
+- 当前阶段: Staging Product Validation — Durable Private Files & Access；版本 8267ca5 已恢复案件申请入口的原生导航，Durable Private Files保持待验收
 - 顺序：1；依赖 TASK-037 / G1-SLICE-0
 - 技术设计：[TASK-038 G1-SLICE-1 技术设计](../product/GUARANTEE_APPLICATION_G1_SLICE_1_TECHNICAL_DESIGN_2026-08-19.md)
 - 最高依据：[第一版产品基线](../product/GUARANTEE_APPLICATION_PRODUCT_BASELINE_V1_2026-08-18.md)
@@ -47,9 +47,9 @@
 
 ## 当前状态
 
-2026-08-22：公司表格库、人工校准、测试确认、发布、案件申请持久化与 v2/v3 输出稳定性已有 Staging 产品证据。此前的 `tenant_selection_required` 已修复并固定为 `41822da`，B-1/B-2 可在选择公司后重新出现。Vercel Preview限流规则已调整为300次/IP/60秒，低频B复核未再出现429。B-1详情的“申込書を生成”经脱敏浏览器证据确认是可见、未禁用的真实 `<a>`，href指向当前案件 `/guarantee-application`；鼠标点击及键盘Enter均无导航、无业务请求，但同一B会话直接打开该目标地址可正常进入申请页并显示案件资料、已发布表格和历史记录。因此当前登记为入口交互P1，Durable Private Files尚未开始。
+2026-08-23：公司表格库、人工校准、测试确认、发布、案件申请持久化与 v2/v3 输出稳定性已有 Staging 产品证据。此前的 `tenant_selection_required` 已修复并固定为 `41822da`，B-1/B-2 可在选择公司后重新出现。Vercel Preview限流规则已调整为300次/IP/60秒，低频复核未再出现429。版本 `8267ca5` 将 B-1/B-2 详情的“申込書を生成”恢复为绑定当前案件的原生 `<a>`；独立浏览器证据确认鼠标点击、B-1 键盘 Enter及直接地址均进入对应申请页，B 只看到 B-1/B-2，A 直接访问 B-1 得到“页面未找到”且无案件泄露。当前入口交互阻断已关闭，Durable Private Files尚未开始。
 
-In Progress；当前阶段为 Runtime Diagnosis — Case Application Navigation。Vercel边缘429低频复核未再复现；不得将健康接口、静态检查或直接地址可达写成入口产品通过。当前首个产品阻断是B在B-1详情对真实“申込書を生成”链接的鼠标/键盘触发均未导航且未产生业务请求，而直接目标可达；需先修复入口交互并由浏览器复验，再取得B新生成文件、跨部署同字节下载、案件访问权限和原始空白PDF权限的真实证据，随后恢复异常PDF验证。有限实现的普通成员区是 TASK-038 专属受控 harness：从当前经营主体列出的自有测试案件和已发布公司蒙板版本选择，不替代正式案件页入口；现有案件读取契约仍按 `case.user_id` 限制，不能宣称同公司任一案件读取成员已完成共享访问。
+In Progress；当前阶段为 Staging Product Validation — Durable Private Files & Access。版本 `8267ca5` 的入口修复已完成真实 B-1/B-2 鼠标、键盘、直接地址和 A 直接拒绝回归；不得将静态检查或直接地址单独写成 Durable Files 通过。下一步取得 B 新生成文件、跨部署同字节下载、案件访问权限和原始空白PDF权限的真实证据，随后恢复异常PDF验证。有限实现的普通成员区是 TASK-038 专属受控 harness：从当前经营主体列出的自有测试案件和已发布公司蒙板版本选择，不替代正式案件页入口；现有案件读取契约仍按 `case.user_id` 限制，不能宣称同公司任一案件读取成员已完成共享访问。
 
 ## 1. 用户可观察结果
 
