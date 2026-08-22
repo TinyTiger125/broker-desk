@@ -2,7 +2,7 @@
 
 - 所属专题：保证公司申请书 G1
 - 状态: In Progress
-- 当前阶段: Runtime Defect Fix — Tenant Context Continuity；先修复无当前经营主体时的工作区引导与返回路径，再恢复耐久文件和异常 PDF 验证
+- 当前阶段: Staging Acceptance Infrastructure — 429 Investigation；Durable Private Files 保持待验收，当前只诊断 Staging/Vercel 429 来源并收口验收工具请求预算
 - 顺序：1；依赖 TASK-037 / G1-SLICE-0
 - 技术设计：[TASK-038 G1-SLICE-1 技术设计](../product/GUARANTEE_APPLICATION_G1_SLICE_1_TECHNICAL_DESIGN_2026-08-19.md)
 - 最高依据：[第一版产品基线](../product/GUARANTEE_APPLICATION_PRODUCT_BASELINE_V1_2026-08-18.md)
@@ -47,9 +47,9 @@
 
 ## 当前状态
 
-2026-08-22：公司表格库、人工校准、测试确认、发布、案件申请持久化与 v2/v3 输出稳定性已有 Staging 产品证据。随后发现 Staging 重新部署后，B 仍能看到历史输出记录，但对应输出地址返回 404，历史文件无法稳定打开；当前先处理 `Runtime Defect Fix — Tenant Context Continuity`。只读核对已确认 B-1/B-2 仍在同一 Neon 非生产主分支，数据和成员关系没有删除或切换；当前运行阻断是缺少有效当前经营主体上下文，导致 `tenant_selection_required` 在案件列表页进入全局错误态。已补上工作区选择引导、返回原页面和安全返回路径；10MB 私有文件限制已在本地版本统一，尚待同一版本 Staging 运行验证。异常 PDF、旧行为和权限补验继续暂停。
+2026-08-22：公司表格库、人工校准、测试确认、发布、案件申请持久化与 v2/v3 输出稳定性已有 Staging 产品证据。此前的 `tenant_selection_required` 已修复并固定为 `41822da`，B-1/B-2 可在选择公司后重新出现。当前 Durable Private Files 仍待真实验收；B-1 申请页单次低频验收返回 Vercel 边缘 `429 Too Many Requests`，未生成新文件，当前不把该结果误判为耐久文件缺陷。先完成 429 来源诊断和验收工具请求预算收口，再恢复文件耐久性、权限和异常 PDF 验证。
 
-In Progress；当前阶段为 Runtime Defect Fix — Tenant Context Continuity。不得将健康接口、静态检查或旧历史记录写成持久化文件验收通过；必须先取得无当前公司时的工作区选择、选择后返回原案件列表、刷新保持和 B-1/B-2 重新出现的真实 Staging 证据，再恢复耐久文件和异常 PDF 验证。有限实现的普通成员区是 TASK-038 专属受控 harness：从当前经营主体列出的自有测试案件和已发布公司蒙板版本选择，不替代正式案件页入口；现有案件读取契约仍按 `case.user_id` 限制，不能宣称同公司任一案件读取成员已完成共享访问。
+In Progress；当前阶段为 Staging Acceptance Infrastructure — 429 Investigation。不得将健康接口、静态检查或旧历史记录写成持久化文件验收通过；必须先确认 429 来源并取得一次低频稳定的 B-1 申请页访问，再恢复耐久文件和异常 PDF 验证。有限实现的普通成员区是 TASK-038 专属受控 harness：从当前经营主体列出的自有测试案件和已发布公司蒙板版本选择，不替代正式案件页入口；现有案件读取契约仍按 `case.user_id` 限制，不能宣称同公司任一案件读取成员已完成共享访问。
 
 ## 1. 用户可观察结果
 
