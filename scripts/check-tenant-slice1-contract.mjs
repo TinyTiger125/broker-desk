@@ -73,6 +73,7 @@ const actionsSource = fs.readFileSync(path.resolve("src/app/actions.ts"), "utf8"
 const appNavSource = fs.readFileSync(path.resolve("src/components/app-nav.tsx"), "utf8");
 const workspacePageSource = fs.readFileSync(path.resolve("src/app/workspace/page.tsx"), "utf8");
 const workspaceSelectorSource = fs.readFileSync(path.resolve("src/app/workspace/workspace-selector.tsx"), "utf8");
+const organizeCenterSource = fs.readFileSync(path.resolve("src/app/organize-center/page.tsx"), "utf8");
 const workspaceRouteSource = fs.readFileSync(path.resolve("src/app/api/workspace/route.ts"), "utf8");
 const workspaceResetSource = fs.readFileSync(path.resolve("src/app/workspace/reset/route.ts"), "utf8");
 
@@ -191,14 +192,18 @@ assert(workspacePageSource.includes("sessionLookups.map((lookup) => lookup.membe
 assert(workspacePageSource.includes("sessionLookups[0]?.user"), "workspace page must prefer the user returned by the current-subject lookup");
 assert(workspacePageSource.includes("sessionLookupFailed"), "workspace page must expose a retryable current-subject lookup failure state");
 assert(workspaceSelectorSource.includes("new AbortController()"), "workspace selection must fail visibly instead of waiting forever");
-assert(!workspaceSelectorSource.includes("useEffect"), "workspace selection must not auto-enter and hide a single verified workspace");
-assert(!workspaceSelectorSource.includes("items.length === 1 && !error"), "single-workspace selection must remain an explicit visible action");
+assert(workspaceSelectorSource.includes("pendingRef.current = true"), "workspace selection must remain an explicit user action");
+assert(!workspaceSelectorSource.includes("items.length === 1 && !error"), "single-workspace selection must not auto-enter");
 assert(workspaceSelectorSource.includes("items.map"), "workspace selection must render the current user's verified workspace cards");
 assert(workspaceSelectorSource.includes('role="alert"'), "workspace selection failures must be announced and retryable");
 assert(workspaceSelectorSource.includes('credentials: "include"'), "workspace selection must include the current Clerk session when persisting the tenant cookie");
 assert(workspaceSelectorSource.includes('cache: "no-store"'), "workspace selection must not reuse a stale selection response");
 assert(workspaceSelectorSource.includes("await response.json()"), "workspace selection must consume the response before navigating so Set-Cookie is committed");
-assert(workspaceSelectorSource.includes('window.location.replace("/")'), "workspace selection must perform a full navigation after persisting the cookie");
+assert(workspaceSelectorSource.includes("window.location.replace(returnTo)"), "workspace selection must return to the requested page after persisting the cookie");
+assert(workspaceSelectorSource.includes("returnTo?: string"), "workspace selection return path must be explicit");
+assert(workspacePageSource.includes("safeWorkspaceReturnTo"), "workspace return paths must be same-origin and constrained");
+assert(workspacePageSource.includes("selectionRequiredTitle"), "workspace selector must explain a missing current company context");
+assert(organizeCenterSource.includes('error.code === "tenant_selection_required"') && organizeCenterSource.includes('encodeURIComponent(buildListHref'), "organize center must return to workspace selection and preserve the requested page");
 assert(workspaceRouteSource.includes("shouldUseSecureCookie(request)"), "workspace cookie security must follow the request transport, not NODE_ENV alone");
 assert(workspaceResetSource.includes("shouldUseSecureCookie(request)"), "workspace reset must use the same request-aware cookie security");
 assert(workspaceRouteSource.includes("requireTenantSession"), "workspace selection must use the canonical current-identity tenant session resolver");

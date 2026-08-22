@@ -12,6 +12,7 @@ import { listHubParties, listHubProperties } from "@/lib/hub";
 import { getLocale, type Locale } from "@/lib/locale";
 import { normalizeLifecycleFilter, type LifecycleFilter } from "@/lib/record-lifecycle";
 import { requireTenantSession, TenantSessionError } from "@/lib/tenant-session";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
@@ -286,6 +287,9 @@ async function OrganizeCenterContent({ locale, params }: { locale: Locale; param
   } catch (error) {
     if (error instanceof TenantSessionError && error.code === "permission_denied") {
       return <OrganizeCenterPermissionError copy={copy} />;
+    }
+    if (error instanceof TenantSessionError && (error.code === "tenant_selection_required" || error.code === "tenant_forbidden")) {
+      redirect(`/workspace?reason=tenant_selection_required&returnTo=${encodeURIComponent(buildListHref(selectedType, query, lifecycleFilter, page))}`);
     }
     throw error;
   }

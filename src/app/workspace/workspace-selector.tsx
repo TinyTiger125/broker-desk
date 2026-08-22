@@ -16,9 +16,10 @@ type WorkspaceSelectorProps = {
     choose: string;
     error: string;
   };
+  returnTo?: string;
 };
 
-export function WorkspaceSelector({ items, copy }: WorkspaceSelectorProps) {
+export function WorkspaceSelector({ items, copy, returnTo = "/" }: WorkspaceSelectorProps) {
   const [pendingTenantId, setPendingTenantId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const pendingRef = useRef(false);
@@ -63,7 +64,7 @@ export function WorkspaceSelector({ items, copy }: WorkspaceSelectorProps) {
         // The response has already persisted the tenant cookie. The pending
         // navigation guard keeps this selector mounted until this complete
         // navigation reads the cookie on the next server render.
-        window.location.replace("/");
+        window.location.replace(returnTo);
       } catch {
         pendingRef.current = false;
         setPendingTenantId(null);
@@ -72,7 +73,7 @@ export function WorkspaceSelector({ items, copy }: WorkspaceSelectorProps) {
         window.clearTimeout(timeoutId);
       }
     },
-    [copy.error],
+    [copy.error, returnTo],
   );
 
   return (

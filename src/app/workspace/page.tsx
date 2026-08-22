@@ -6,6 +6,20 @@ import { getClerkAuthSubject } from "@/lib/clerk-auth";
 import { WorkspaceSelector, type WorkspaceOption } from "./workspace-selector";
 import { WorkspaceSignOutButton } from "./sign-out-button";
 
+function safeWorkspaceReturnTo(value: string | undefined): string {
+  const candidate = String(value ?? "").trim();
+  if (!candidate || !candidate.startsWith("/") || candidate.startsWith("//")) return "/";
+  try {
+    const parsed = new URL(candidate, "https://brokerdesk.invalid");
+    if (parsed.origin !== "https://brokerdesk.invalid" || parsed.pathname === "/workspace" || parsed.pathname.startsWith("/workspace/")) {
+      return "/";
+    }
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return "/";
+  }
+}
+
 function copy(locale: Locale) {
   if (locale === "zh") {
     return {
@@ -24,6 +38,8 @@ function copy(locale: Locale) {
       loadErrorTitle: "暂时无法读取工作区",
       loadErrorDescription: "当前登录身份的工作区信息读取失败，请重试。",
       retry: "重新读取",
+      selectionRequiredTitle: "请先选择要进入的公司",
+      selectionRequiredDescription: "当前页面需要一个有效的公司工作区。选择公司后会返回刚才要打开的页面。",
       loading: "正在进入",
       choose: "进入后可在账户菜单中切换工作区。",
       error: "无法切换工作区，请刷新页面后重试。",
@@ -49,6 +65,8 @@ function copy(locale: Locale) {
       loadErrorTitle: "워크스페이스를 읽을 수 없습니다",
       loadErrorDescription: "현재 로그인한 계정의 워크스페이스 정보를 읽지 못했습니다. 다시 시도해 주세요.",
       retry: "다시 읽기",
+      selectionRequiredTitle: "먼저 들어갈 회사를 선택하세요",
+      selectionRequiredDescription: "이 페이지를 열려면 유효한 회사 워크스페이스가 필요합니다. 회사를 선택하면 원래 페이지로 돌아갑니다.",
       loading: "입장 중",
       choose: "입장 후 계정 메뉴에서 워크스페이스를 바꿀 수 있습니다.",
       error: "워크스페이스를 전환할 수 없습니다. 새로고침 후 다시 시도하세요.",
@@ -73,6 +91,8 @@ function copy(locale: Locale) {
     loadErrorTitle: "ワークスペースを読み取れません",
     loadErrorDescription: "現在のログイン情報からワークスペースを読み取れませんでした。もう一度お試しください。",
     retry: "再読み込み",
+    selectionRequiredTitle: "先に入室する会社を選択してください",
+    selectionRequiredDescription: "このページには有効な会社ワークスペースが必要です。会社を選択すると、元のページに戻ります。",
     loading: "入室中",
     choose: "入室後はアカウントメニューからワークスペースを切り替えられます。",
     error: "ワークスペースを切り替えられません。ページを更新してもう一度お試しください。",
@@ -82,9 +102,16 @@ function copy(locale: Locale) {
   };
 }
 
-export default async function WorkspacePage() {
+type WorkspacePageProps = {
+  searchParams?: Promise<{ returnTo?: string; reason?: string }>;
+};
+
+export default async function WorkspacePage({ searchParams }: WorkspacePageProps) {
   const locale = await getLocale();
   const text = copy(locale);
+  const params = (await searchParams) ?? {};
+  const returnTo = safeWorkspaceReturnTo(params.returnTo);
+  const selectionRequired = params.reason === "tenant_selection_required";
   const clerkSubject = isClerkAuthEnabled() ? await getClerkAuthSubject() : null;
   // In Clerk mode this reads the current identity's complete membership
   // state, including suspended/removed rows that tenant RLS hides from the
@@ -140,8 +167,14 @@ export default async function WorkspacePage() {
           <p className="mt-4 max-w-md text-base leading-7 text-slate-600">{text.description}</p>
         </div>
         <div className="border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+          {selectionRequired ? (
+            <div role="alert" className="mb-5 border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+              <p className="font-bold">{text.selectionRequiredTitle}</p>
+              <p className="mt-1 leading-6">{text.selectionRequiredDescription}</p>
+            </div>
+          ) : null}
           {items.length > 0 ? (
-            <WorkspaceSelector items={items} copy={text} />
+            <WorkspaceSelector items={items} copy={text} returnTo={returnTo} />
           ) : sessionLookupFailed ? (
             <div>
               <h2 className="text-lg font-black text-slate-950">{text.loadErrorTitle}</h2>
