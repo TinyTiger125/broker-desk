@@ -35,7 +35,7 @@ import { getCaseFieldDefinition } from "@/lib/case-field-catalog";
 import { assertGuaranteeSlice1Access } from "@/lib/guarantee-slice1-gate";
 import { renderGuaranteePdf as renderPdf } from "@/lib/guarantee-slice1-renderer.mjs";
 import { GUARANTEE_COORDINATE_SYSTEM, serializeMaskLayout } from "@/lib/guarantee-slice1-coordinates.mjs";
-import { inspectGuaranteeBlankPdf, withGuaranteePdfTimeout } from "@/lib/guarantee-slice1-pdf.mjs";
+import { GUARANTEE_BLANK_FORM_MAX_BYTES, inspectGuaranteeBlankPdf, withGuaranteePdfTimeout } from "@/lib/guarantee-slice1-pdf.mjs";
 import { resolveGuaranteeFieldValue } from "@/lib/guarantee-slice1-policy.mjs";
 import { getTenantCapability, requireTenantSession, TenantSessionError } from "@/lib/tenant-session";
 
@@ -206,7 +206,7 @@ async function handleUpload(request: Request) {
   const file = form.get("file");
   if (form.get("blankFormDeclaration") !== "on") throw new Error("blank_form_declaration_required");
   if (!(file instanceof File) || file.type !== "application/pdf") throw new Error("blank_form_pdf_required");
-  if (file.size > 20 * 1024 * 1024) throw new Error("blank_form_file_too_large");
+  if (file.size > GUARANTEE_BLANK_FORM_MAX_BYTES) throw new Error("blank_form_file_too_large");
   const bytes = Buffer.from(await file.arrayBuffer());
   let pdf: PDFDocument;
   try { pdf = await withGuaranteePdfTimeout(PDFDocument.load(bytes, { ignoreEncryption: false })); } catch (error) {

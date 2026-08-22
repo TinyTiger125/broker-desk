@@ -133,7 +133,7 @@ async function postJson(action: string, body: Record<string, unknown>, options?:
 }
 
 const GUARANTEE_ERROR_MESSAGES: Record<string, string> = {
-  blank_form_file_too_large: "文件超过 20 MB，请选择更小的空白 PDF。",
+  blank_form_file_too_large: "文件超过 10 MB，请选择更小的空白 PDF。",
   blank_form_pdf_required: "请上传 PDF 文件。",
   blank_form_pdf_rejected: "该文件无法安全读取，请确认它是未加密且未设密码的 PDF。",
   blank_form_encrypted_unsupported: "加密或密码保护的 PDF 暂不支持。",
@@ -500,7 +500,7 @@ export function GuaranteeSlice1Client({ enabled, isAdmin, cases, publishedVersio
           <label className="grid gap-2 text-sm text-slate-700">表格名称<input name="name" required className="rounded-md border border-slate-300 px-3 py-2" placeholder="测试申请书" /></label>
           <label className="grid gap-2 text-sm text-slate-700">客户空白 PDF<input name="file" required type="file" accept="application/pdf" className="rounded-md border border-slate-300 px-3 py-2" /></label>
           <label className="flex items-start gap-2 text-sm text-slate-700 md:col-span-2"><input name="blankFormDeclaration" value="on" required type="checkbox" className="mt-1" />このファイルが空白の PDF であり、本经营主体が業務で使用する権利を有することを確認します。</label>
-          <p className="text-xs leading-5 text-slate-600 md:col-span-2">第一版仅支持一页、20 MB 以下、未加密且未设密码的空白 PDF。旋转页面、非标准裁切框、尺寸或结构异常的文件会在上传时拒绝；失败时请更换文件，不会一直停留在处理中。</p>
+          <p className="text-xs leading-5 text-slate-600 md:col-span-2">第一版仅支持一页、10 MB 以下、未加密且未设密码的空白 PDF。旋转页面、非标准裁切框、尺寸或结构异常的文件会在上传时拒绝；失败时请更换文件，不会一直停留在处理中。</p>
           <button className="w-fit rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white" type="submit">上传空白表格</button>
         </form>}
         {!showUpload && loadingExistingContext && <p className="mt-4 text-sm text-slate-600" role="status">正在恢复已保存的表格版本，请稍候。</p>}

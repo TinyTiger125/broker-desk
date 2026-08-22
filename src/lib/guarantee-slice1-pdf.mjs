@@ -1,4 +1,8 @@
-export const GUARANTEE_BLANK_FORM_MAX_BYTES = 20 * 1024 * 1024;
+// Version 1 uses the durable PostgreSQL private-blob store, whose contract is
+// capped at 10 MB per object. Keep the validation constant aligned with that
+// persistence boundary so an upload cannot pass the page/API check and then
+// fail later while being stored.
+export const GUARANTEE_BLANK_FORM_MAX_BYTES = 10 * 1024 * 1024;
 export const GUARANTEE_BLANK_FORM_MAX_PAGE_POINTS = 14_400;
 export const GUARANTEE_BLANK_FORM_MAX_PAGE_AREA = 20_000_000;
 

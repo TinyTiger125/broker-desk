@@ -57,7 +57,7 @@ export function GuaranteeFormsClient({ enabled, isAdmin, forms }: Props) {
           <label className="grid gap-2 text-sm text-slate-700">表格名称<input name="name" required className="rounded-md border border-slate-300 px-3 py-2" placeholder="测试申请书" /></label>
           <label className="grid gap-2 text-sm text-slate-700">空白 PDF<input name="file" required type="file" accept="application/pdf" className="rounded-md border border-slate-300 px-3 py-2" /></label>
           <label className="flex items-start gap-2 text-sm text-slate-700 md:col-span-2"><input name="blankFormDeclaration" value="on" required type="checkbox" className="mt-1" />我确认这是空白 PDF，且本经营主体有权用于业务。</label>
-          <p className="text-xs leading-5 text-slate-600 md:col-span-2">第一版仅支持一页、20 MB以内、未加密且未设密码的 PDF。上传后表格会长期保存在公司表格库；再次编辑或生成文件不需要重新上传。</p>
+          <p className="text-xs leading-5 text-slate-600 md:col-span-2">第一版仅支持一页、10 MB 以内、未加密且未设密码的 PDF。上传后表格会长期保存在公司表格库；再次编辑或生成文件不需要重新上传。</p>
           <button disabled={uploading} className="w-fit rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50" type="submit">{uploading ? "正在上传…" : "上传并制作蒙板"}</button>
         </form>
       </section>}

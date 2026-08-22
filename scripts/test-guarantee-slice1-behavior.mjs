@@ -89,7 +89,7 @@ sourceDocument.addPage([300, 200]);
 const blankPdf = Buffer.from(await sourceDocument.save());
 const loadedBlankPdf = await PDFDocument.load(blankPdf);
 assert.doesNotThrow(() => inspectGuaranteeBlankPdf(loadedBlankPdf, blankPdf.length), "standard one-page PDF is accepted");
-assert.throws(() => inspectGuaranteeBlankPdf(loadedBlankPdf, GUARANTEE_BLANK_FORM_MAX_BYTES + 1), /blank_form_file_too_large/, "20 MB upload limit is enforced");
+assert.throws(() => inspectGuaranteeBlankPdf(loadedBlankPdf, GUARANTEE_BLANK_FORM_MAX_BYTES + 1), /blank_form_file_too_large/, "10 MB upload limit is enforced");
 const rotatedDocument = await PDFDocument.create();
 const rotatedPage = rotatedDocument.addPage([300, 200]);
 rotatedPage.setRotation(degrees(90));
