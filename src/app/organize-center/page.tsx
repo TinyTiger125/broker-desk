@@ -288,7 +288,7 @@ async function OrganizeCenterContent({ locale, params }: { locale: Locale; param
     if (error instanceof TenantSessionError && error.code === "permission_denied") {
       return <OrganizeCenterPermissionError copy={copy} />;
     }
-    if (error instanceof TenantSessionError && (error.code === "tenant_selection_required" || error.code === "tenant_forbidden")) {
+    if (error instanceof TenantSessionError && error.code === "tenant_selection_required") {
       redirect(`/workspace?reason=tenant_selection_required&returnTo=${encodeURIComponent(buildListHref(selectedType, query, lifecycleFilter, page))}`);
     }
     throw error;

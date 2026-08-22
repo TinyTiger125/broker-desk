@@ -180,14 +180,21 @@ assert(
 );
 
 const workspaceSelectorSource = fs.readFileSync("src/app/workspace/workspace-selector.tsx", "utf8");
+const workspacePageSource = fs.readFileSync("src/app/workspace/page.tsx", "utf8");
+const organizeCenterSource = fs.readFileSync("src/app/organize-center/page.tsx", "utf8");
 assert(
   workspaceSelectorSource.includes("pendingRef") &&
     workspaceSelectorSource.includes('window.addEventListener("click", blockPendingNavigation, true)') &&
     workspaceSelectorSource.includes("event.preventDefault()") &&
     workspaceSelectorSource.includes("event.stopPropagation()") &&
-    workspaceSelectorSource.includes("window.location.replace(\"/\")") &&
+    workspaceSelectorSource.includes("window.location.replace(returnTo)") &&
     !workspaceSelectorSource.includes("window.location.reload()"),
   "pending workspace selection must block same-origin product navigation and complete with one full redirect",
 );
+assert(workspacePageSource.includes("function safeWorkspaceReturnTo"), "workspace return path must be normalized server-side");
+assert(workspacePageSource.includes('candidate.startsWith("//")'), "workspace return path must reject protocol-relative URLs");
+assert(workspacePageSource.includes('parsed.pathname === "/workspace"') && workspacePageSource.includes('parsed.pathname.startsWith("/workspace/")'), "workspace return path must reject selector loops");
+assert(workspacePageSource.includes("return `${parsed.pathname}${parsed.search}${parsed.hash}`"), "workspace return path must preserve the requested path and query");
+assert(organizeCenterSource.includes('error.code === "tenant_selection_required"') && !organizeCenterSource.includes('error.code === "tenant_selection_required" || error.code === "tenant_forbidden"'), "foreign or stale tenant context must not be disguised as missing selection");
 
 console.log("[PASS] tenant session foundation regression");
