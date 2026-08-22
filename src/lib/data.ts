@@ -3,6 +3,7 @@ import * as postgres from "@/lib/data.postgres";
 import {
   assertProductionDataStoreReady,
   isProductionRuntime,
+  isPostgresDataStoreConfigured,
   ProductionReadinessError,
 } from "@/lib/production-readiness";
 import { getActorIdFromCookie } from "@/lib/actor";
@@ -25,9 +26,7 @@ export type TenantSessionLookup = {
 
 type ClientListFilterInput = NonNullable<Parameters<typeof memory.listClients>[1]>;
 
-const usePostgres =
-  process.env.DATA_DRIVER?.toLowerCase() === "postgres" &&
-  Boolean(process.env.DATABASE_URL);
+const usePostgres = isPostgresDataStoreConfigured();
 
 type DataRepository = typeof memory;
 const workerRepositorySubject = new AsyncLocalStorage<string>();
@@ -413,6 +412,8 @@ export const claimGuaranteePreviewConfirmation: typeof memory.claimGuaranteePrev
 export const consumeGuaranteePreviewConfirmation: typeof memory.consumeGuaranteePreviewConfirmation = (...args) => repo.consumeGuaranteePreviewConfirmation(...args);
 export const releaseGuaranteePreviewConfirmation: typeof memory.releaseGuaranteePreviewConfirmation = (...args) => repo.releaseGuaranteePreviewConfirmation(...args);
 export const finalizeGuaranteePreviewOutput: typeof memory.finalizeGuaranteePreviewOutput = (...args) => repo.finalizeGuaranteePreviewOutput(...args);
+export const markGeneratedOutputFileUnavailable: typeof memory.markGeneratedOutputFileUnavailable = (...args) =>
+  repo.markGeneratedOutputFileUnavailable(...args);
 export const getGeneratedOutputById: typeof memory.getGeneratedOutputById = (...args) =>
   repo.getGeneratedOutputById(...args);
 export const addGeneratedOutput: typeof memory.addGeneratedOutput = (...args) =>

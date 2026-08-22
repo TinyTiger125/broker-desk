@@ -30,6 +30,7 @@ import { DEFAULT_TENANT_ID } from "@/lib/tenant-constants";
 import {
   assertProductionDataStoreReady,
   isProductionRuntime,
+  isPostgresDataStoreConfigured,
   ProductionReadinessError,
 } from "@/lib/production-readiness";
 import type {
@@ -269,7 +270,7 @@ function getPool(): Pool {
 }
 
 export function warmPostgresPool(): Promise<void> {
-  if (process.env.DATA_DRIVER?.toLowerCase() !== "postgres" || !process.env.DATABASE_URL) {
+  if (!isPostgresDataStoreConfigured()) {
     return Promise.resolve();
   }
   if (!poolWarmupPromise) {
@@ -761,7 +762,7 @@ function mapGeneratedOutput(row: Record<string, unknown>): GeneratedOutput {
     fileSha256: row.file_sha256 ? String(row.file_sha256) : undefined,
     fileSizeBytes: row.file_size_bytes != null ? Number(row.file_size_bytes) : undefined,
     fileMimeType: row.file_mime_type ? String(row.file_mime_type) : undefined,
-    fileStatus: row.file_status === "ready" ? "ready" : undefined,
+    fileStatus: row.file_status === "ready" ? "ready" : row.file_status === "unavailable" ? "unavailable" : undefined,
     blankFormVersionId: row.blank_form_version_id ? String(row.blank_form_version_id) : undefined,
     blankFormSha256: row.blank_form_sha256 ? String(row.blank_form_sha256) : undefined,
     companyMaskVersionId: row.company_mask_version_id ? String(row.company_mask_version_id) : undefined,
@@ -4031,9 +4032,22 @@ export async function getGeneratedOutputById(input: {
 export async function listGuaranteeOutputsByCase(input: { tenantId: string; caseId: string; limit?: number }): Promise<GeneratedOutput[]> {
   await ensureSchema();
   const result = await getPool().query(
-    `SELECT * FROM generated_outputs
-     WHERE tenant_id = $1 AND case_id = $2 AND output_type = 'guarantee_application'
-     ORDER BY generated_at DESC LIMIT $3`,
+    `SELECT generated_outputs.*,
+            CASE
+              WHEN generated_outputs.file_status = 'ready'
+               AND generated_outputs.file_attachment_id IS NOT NULL
+               AND private_attachment_blobs.attachment_id IS NULL
+              THEN 'unavailable'
+              ELSE generated_outputs.file_status
+            END AS file_status
+       FROM generated_outputs
+       LEFT JOIN private_attachment_blobs
+         ON private_attachment_blobs.attachment_id = generated_outputs.file_attachment_id
+        AND private_attachment_blobs.tenant_id = generated_outputs.tenant_id
+      WHERE generated_outputs.tenant_id = $1
+        AND generated_outputs.case_id = $2
+        AND generated_outputs.output_type = 'guarantee_application'
+      ORDER BY generated_outputs.generated_at DESC LIMIT $3`,
     [resolveTenantId(input.tenantId), input.caseId, input.limit ?? 50],
   );
   return result.rows.map(mapGeneratedOutput);
@@ -4189,7 +4203,37 @@ export async function getGuaranteeCompanyMask(input: { tenantId: string; id: str
 export async function getGuaranteeCompanyMaskVersion(input: { tenantId: string; id: string }): Promise<GuaranteeCompanyMaskVersion | undefined> { await ensureSchema(); const result=await getPool().query(`SELECT * FROM guarantee_company_mask_versions WHERE id=$1 AND tenant_id=$2`,[input.id,resolveTenantId(input.tenantId)]); return result.rows[0] ? mapGuaranteeCompanyMaskVersion(result.rows[0]) : undefined; }
 export async function listPublishedGuaranteeCompanyMaskVersions(input: { tenantId: string }): Promise<GuaranteeCompanyMaskVersion[]> { await ensureSchema(); const result=await getPool().query(`SELECT * FROM guarantee_company_mask_versions WHERE tenant_id=$1 AND status='published' ORDER BY created_at DESC`,[resolveTenantId(input.tenantId)]); return result.rows.map(mapGuaranteeCompanyMaskVersion); }
 export async function listGuaranteeCompanyMaskVersions(input: { tenantId: string }): Promise<GuaranteeCompanyMaskVersion[]> { await ensureSchema(); const result=await getPool().query(`SELECT * FROM guarantee_company_mask_versions WHERE tenant_id=$1 AND status IN ('draft','published') ORDER BY created_at DESC`,[resolveTenantId(input.tenantId)]); return result.rows.map(mapGuaranteeCompanyMaskVersion); }
-export async function getGuaranteeOutputByCase(input: { tenantId: string; caseId: string; id: string }): Promise<GeneratedOutput | undefined> { await ensureSchema(); const result=await getPool().query(`SELECT * FROM generated_outputs WHERE id=$1 AND case_id=$2 AND tenant_id=$3`,[input.id,input.caseId,resolveTenantId(input.tenantId)]); return result.rows[0] ? mapGeneratedOutput(result.rows[0]) : undefined; }
+export async function getGuaranteeOutputByCase(input: { tenantId: string; caseId: string; id: string }): Promise<GeneratedOutput | undefined> {
+  await ensureSchema();
+  const result = await getPool().query(
+    `SELECT generated_outputs.*,
+            CASE
+              WHEN generated_outputs.file_status = 'ready'
+               AND generated_outputs.file_attachment_id IS NOT NULL
+               AND private_attachment_blobs.attachment_id IS NULL
+              THEN 'unavailable'
+              ELSE generated_outputs.file_status
+            END AS file_status
+       FROM generated_outputs
+       LEFT JOIN private_attachment_blobs
+         ON private_attachment_blobs.attachment_id = generated_outputs.file_attachment_id
+        AND private_attachment_blobs.tenant_id = generated_outputs.tenant_id
+      WHERE generated_outputs.id=$1 AND generated_outputs.case_id=$2 AND generated_outputs.tenant_id=$3`,
+    [input.id, input.caseId, resolveTenantId(input.tenantId)],
+  );
+  return result.rows[0] ? mapGeneratedOutput(result.rows[0]) : undefined;
+}
+export async function markGeneratedOutputFileUnavailable(input: { tenantId: string; caseId: string; id: string }): Promise<boolean> {
+  await ensureSchema();
+  const result = await getPool().query(
+    `UPDATE generated_outputs
+        SET file_status='unavailable'
+      WHERE id=$1 AND case_id=$2 AND tenant_id=$3 AND file_status='ready'
+      RETURNING id`,
+    [input.id, input.caseId, resolveTenantId(input.tenantId)],
+  );
+  return result.rowCount === 1;
+}
 export async function deleteGeneratedOutputForTenant(input: { tenantId: string; id: string }): Promise<boolean> { await ensureSchema(); const result=await getPool().query(`DELETE FROM generated_outputs WHERE id=$1 AND tenant_id=$2 RETURNING id`,[input.id,resolveTenantId(input.tenantId)]); return result.rowCount === 1; }
 export async function addGuaranteeCompanyMaskVersion(input: { tenantId: string; maskId: string; blankFormVersionId: string; userId: string; fieldCatalogVersion: string; layoutSnapshot: Record<string, unknown>; status?: GuaranteeCompanyMaskVersion["status"]; sourcePlatformMaskId?: string }): Promise<GuaranteeCompanyMaskVersion> { await ensureSchema(); const tenantId=resolveTenantId(input.tenantId); if (input.status === "draft") { const existing = await getPool().query(`SELECT * FROM guarantee_company_mask_versions WHERE mask_id=$1 AND tenant_id=$2 AND status='draft' LIMIT 1`, [input.maskId, tenantId]); if (existing.rows[0]) { const updated = await getPool().query(`UPDATE guarantee_company_mask_versions SET blank_form_version_id=$1,field_catalog_version=$2,layout_snapshot=$3,tested_by_user_id=NULL,tested_at=NULL,tested_pdf_sha256=NULL,tested_layout_digest=NULL,test_confirmed_by_user_id=NULL,test_confirmed_at=NULL WHERE id=$4 AND tenant_id=$5 RETURNING *`, [input.blankFormVersionId, input.fieldCatalogVersion, JSON.stringify(input.layoutSnapshot), existing.rows[0].id, tenantId]); return mapGuaranteeCompanyMaskVersion(updated.rows[0]); } } const next=await getPool().query(`SELECT COALESCE(MAX(version_number),0)+1 AS version FROM guarantee_company_mask_versions WHERE mask_id=$1 AND tenant_id=$2`,[input.maskId,tenantId]); const result=await getPool().query(`INSERT INTO guarantee_company_mask_versions (id,mask_id,tenant_id,blank_form_id,blank_form_version_id,source_platform_mask_id,version_number,status,field_catalog_version,layout_snapshot,created_by_user_id) SELECT $1,m.id,m.tenant_id,m.blank_form_id,$3,$4,$5,$6,$7,$8,$9 FROM guarantee_company_masks m WHERE m.id=$2 AND m.tenant_id=$10 RETURNING *`,[genId("gmaskver"),input.maskId,input.blankFormVersionId,input.sourcePlatformMaskId ?? null,Number(next.rows[0].version),input.status ?? "draft",input.fieldCatalogVersion,JSON.stringify(input.layoutSnapshot),input.userId,tenantId]); return mapGuaranteeCompanyMaskVersion(result.rows[0]); }
 export async function markGuaranteeCompanyMaskVersionTested(input: { tenantId: string; maskVersionId: string; userId: string; testPdfSha256: string; testedLayoutDigest: string }): Promise<GuaranteeCompanyMaskVersion | undefined> { await ensureSchema(); const result=await getPool().query(`UPDATE guarantee_company_mask_versions SET tested_by_user_id=$1,tested_at=NOW(),tested_pdf_sha256=$4,tested_layout_digest=$5,test_confirmed_by_user_id=NULL,test_confirmed_at=NULL WHERE id=$2 AND tenant_id=$3 AND status='draft' RETURNING *`,[input.userId,input.maskVersionId,resolveTenantId(input.tenantId),input.testPdfSha256,input.testedLayoutDigest]); return result.rows[0] ? mapGuaranteeCompanyMaskVersion(result.rows[0]) : undefined; }

@@ -474,7 +474,7 @@ export type GeneratedOutput = {
   fileSha256?: string;
   fileSizeBytes?: number;
   fileMimeType?: string;
-  fileStatus?: "ready";
+  fileStatus?: "ready" | "unavailable";
   blankFormVersionId?: string;
   blankFormSha256?: string;
   companyMaskVersionId?: string;
@@ -3816,7 +3816,21 @@ export async function listGuaranteeOutputsByCase(input: { tenantId: string; case
     .filter((value) => value.tenantId === resolveTenantId(input.tenantId) && value.caseId === input.caseId && value.outputType === "guarantee_application")
     .sort((a, b) => b.generatedAt.getTime() - a.generatedAt.getTime())
     .slice(0, limit)
-    .map((value) => ({ ...value }));
+    .map((value) => ({
+      ...value,
+      fileStatus: value.fileStatus === "ready" && value.fileAttachmentId && !privateAttachmentContents.has(value.fileAttachmentId)
+        ? "unavailable"
+        : value.fileStatus,
+    }));
+}
+
+export async function markGeneratedOutputFileUnavailable(input: { tenantId: string; caseId: string; id: string }): Promise<boolean> {
+  const item = db.generatedOutputs.find(
+    (value) => value.id === input.id && value.tenantId === resolveTenantId(input.tenantId) && value.caseId === input.caseId && value.fileStatus === "ready",
+  );
+  if (!item) return false;
+  item.fileStatus = "unavailable";
+  return true;
 }
 
 export async function deleteGeneratedOutputForTenant(input: { tenantId: string; id: string }): Promise<boolean> {

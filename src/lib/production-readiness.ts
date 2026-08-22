@@ -40,10 +40,25 @@ export function isFormalProductionDeployment() {
   return deploymentEnvironment !== "preview" && deploymentEnvironment !== "staging";
 }
 
+/**
+ * Preview/Staging runs use NODE_ENV=production on Vercel, but older managed
+ * deployments may not have carried the non-sensitive DATA_DRIVER switch. A
+ * configured DATABASE_URL is still an explicit target for those environments;
+ * infer Postgres there only, while formal production and local development
+ * remain fail-closed/explicit respectively.
+ */
+export function isPostgresDataStoreConfigured() {
+  const hasDatabaseUrl = Boolean(process.env.DATABASE_URL);
+  const explicitPostgres = process.env.DATA_DRIVER?.trim().toLowerCase() === "postgres";
+  if (!hasDatabaseUrl) return false;
+  if (explicitPostgres) return true;
+  return isProductionRuntime() && !isFormalProductionDeployment();
+}
+
 export function assertProductionDataStoreReady() {
   if (!isProductionRuntime()) return;
 
-  if (process.env.DATA_DRIVER?.toLowerCase() !== "postgres" || !process.env.DATABASE_URL) {
+  if (!isPostgresDataStoreConfigured()) {
     throw new ProductionReadinessError("production_database_required");
   }
 

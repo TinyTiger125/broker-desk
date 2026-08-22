@@ -1,24 +1,40 @@
+import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
-import { getBrokerageCaseById, getGuaranteeOutputByCase, readPrivateAttachmentContentForTenant } from "@/lib/data";
+import { getBrokerageCaseById, getGuaranteeOutputByCase, markGeneratedOutputFileUnavailable, readPrivateAttachmentContentForTenant } from "@/lib/data";
 import { requireTenantSession, TenantSessionError } from "@/lib/tenant-session";
+import { getRequestId } from "@/lib/operational-logging";
 
 export const runtime = "nodejs";
 
 export async function GET(request: Request, { params }: { params: Promise<{ outputId: string }> }) {
+  const requestId = getRequestId(request);
+  const jsonError = (error: string, status: number) => NextResponse.json({ error, requestId }, { status, headers: { "x-request-id": requestId } });
   try {
     const session = await requireTenantSession({ permission: "output.download_final" });
     const { outputId } = await params;
     const url = new URL(request.url); const caseId = String(url.searchParams.get("caseId") ?? "");
-    if (!caseId) return NextResponse.json({ error: "case_required" }, { status: 400 });
+    if (!caseId) return jsonError("case_required", 400);
     const brokerageCase = await getBrokerageCaseById({ userId: session.user.id, tenantId: session.tenant.id, caseId });
-    if (!brokerageCase) return NextResponse.json({ error: "case_not_found" }, { status: 404 });
+    if (!brokerageCase) return jsonError("case_not_found", 404);
     const output = await getGuaranteeOutputByCase({ tenantId: session.tenant.id, caseId, id: outputId });
-    if (!output?.fileAttachmentId || output.fileStatus !== "ready") return NextResponse.json({ error: "output_file_unavailable" }, { status: 404 });
+    if (!output?.fileAttachmentId) return jsonError("output_file_unavailable", 404);
+    if (output.fileStatus !== "ready") {
+      await markGeneratedOutputFileUnavailable({ tenantId: session.tenant.id, caseId, id: outputId });
+      return jsonError("output_file_unavailable", 404);
+    }
     const content = await readPrivateAttachmentContentForTenant({ tenantId: session.tenant.id, id: output.fileAttachmentId });
-    if (!content) return NextResponse.json({ error: "output_file_unavailable" }, { status: 404 });
-    return new NextResponse(new Uint8Array(content), { headers: { "content-type": "application/pdf", "content-disposition": `inline; filename="${output.documentNumber}.pdf"`, "cache-control": "private, no-store" } });
+    if (!content) {
+      await markGeneratedOutputFileUnavailable({ tenantId: session.tenant.id, caseId, id: outputId });
+      return jsonError("output_file_unavailable", 404);
+    }
+    const actualSha256 = createHash("sha256").update(content).digest("hex");
+    if (!output.fileSha256 || actualSha256 !== output.fileSha256 || output.fileSizeBytes !== content.length || (output.fileMimeType && output.fileMimeType !== "application/pdf")) {
+      await markGeneratedOutputFileUnavailable({ tenantId: session.tenant.id, caseId, id: outputId });
+      return jsonError("output_file_unavailable", 404);
+    }
+    return new NextResponse(new Uint8Array(content), { headers: { "content-type": "application/pdf", "content-length": String(content.length), "content-disposition": `inline; filename="${output.documentNumber}.pdf"`, "cache-control": "private, no-store", etag: `"${actualSha256}"`, "x-file-sha256": actualSha256 } });
   } catch (error) {
-    if (error instanceof TenantSessionError) return NextResponse.json({ error: error.code }, { status: error.status });
-    return NextResponse.json({ error: "output_file_access_failed" }, { status: 403 });
+    if (error instanceof TenantSessionError) return jsonError(error.code, error.status);
+    return jsonError("output_file_access_failed", 403);
   }
 }

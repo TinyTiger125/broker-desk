@@ -5,6 +5,8 @@ const root = process.cwd();
 const read = (file) => readFileSync(resolve(root, file), "utf8");
 const design = read("docs/product/GUARANTEE_APPLICATION_G1_SLICE_1_TECHNICAL_DESIGN_2026-08-19.md");
 const memory = read("src/lib/data.memory.ts");
+const data = read("src/lib/data.ts");
+const postgresData = read("src/lib/data.postgres.ts");
 const gate = read("src/lib/guarantee-slice1-gate.ts");
 const policy = read("src/lib/guarantee-slice1-policy.mjs");
 const route = read("src/app/api/guarantee-g1-slice1/route.ts");
@@ -25,6 +27,8 @@ const mustInclude = (text, values, label) => values.forEach((value) => {
   if (!text.includes(value)) throw new Error(`${label} missing ${value}`);
 });
 mustInclude(memory, ["guaranteeBlankForms", "guaranteeBlankFormVersions", "guaranteeCompanyMasks", "guaranteeCompanyMaskVersions", "guaranteeMaskMatches", "guaranteePreviewConfirmations", "fileAttachmentId", "fileSha256", "fileStatus", "testedLayoutDigest"], "memory contract");
+mustInclude(data, ["isPostgresDataStoreConfigured", "markGeneratedOutputFileUnavailable"], "durable private file repository contract");
+mustInclude(postgresData, ["private_attachment_blobs", "file_status='unavailable'", "fileSha256", "file_size_bytes"], "durable private file postgres contract");
 mustInclude(migration, ["guarantee_blank_forms", "guarantee_blank_form_versions", "guarantee_company_masks", "guarantee_company_mask_versions", "guarantee_mask_matches", "guarantee_preview_confirmations", "guarantee_outputs_confirmation_unique"], "migration contract");
 mustInclude(gate, ["GUARANTEE_G1_SLICE1_ENABLED", "GUARANTEE_G1_SLICE1_TENANT_ALLOWLIST", "BROKER_DESK_DEPLOYMENT_ENV", "template.edit_draft", "output.preview"], "server gate");
 mustInclude(policy, ["preview", "staging", "isGuaranteeSlice1TenantEnabled", "interpretGuaranteeBoolean", "確認済み", "未確認"], "deployment and value policy");

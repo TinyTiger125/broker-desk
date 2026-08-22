@@ -2,7 +2,7 @@
 
 - 所属专题：保证公司申请书 G1
 - 状态: In Progress
-- 当前阶段: Limited Implementation；仅限默认关闭、单非生产经营主体隔离的实现，禁止合并、部署和发布
+- 当前阶段: Runtime Defect Fix — Durable Private Files；先修复历史文件持久化与鉴权下载，再恢复异常 PDF 验证
 - 顺序：1；依赖 TASK-037 / G1-SLICE-0
 - 技术设计：[TASK-038 G1-SLICE-1 技术设计](../product/GUARANTEE_APPLICATION_G1_SLICE_1_TECHNICAL_DESIGN_2026-08-19.md)
 - 最高依据：[第一版产品基线](../product/GUARANTEE_APPLICATION_PRODUCT_BASELINE_V1_2026-08-18.md)
@@ -47,7 +47,9 @@
 
 ## 当前状态
 
-In Progress；当前阶段为 Limited Implementation。完成专项检查和独立只读审查后提交产品负责人复核；在旧流程 PDF 样本、两个合法权限上下文和受控运行证据取得前，不宣称无回归、合并或发布。有限实现的普通成员区是 TASK-038 专属受控 harness：从当前经营主体列出的自有测试案件和已发布公司蒙板版本选择，不替代正式案件页入口；现有案件读取契约仍按 `case.user_id` 限制，不能宣称同公司任一案件读取成员已完成共享访问。复选框最终视觉、真实浏览器和 PostgreSQL 运行仍为 `UNVERIFIED`。
+2026-08-22：公司表格库、人工校准、测试确认、发布、案件申请持久化与 v2/v3 输出稳定性已有 Staging 产品证据。随后发现 Staging 重新部署后，B 仍能看到历史输出记录，但对应输出地址返回 404，历史文件无法稳定打开；当前记录为 `Runtime Defect Fix — Durable Private Files`。已确认需要把非生产运行从 memory fallback 收口到带私有 blob 的 PostgreSQL，并在下载时核对附件存在、SHA-256、大小和 MIME；缺失文件必须标记不可用，不能静默重新生成。异常 PDF、旧行为和权限补验暂停，直到新的非生产输出能跨重新部署保持相同字节。
+
+In Progress；当前阶段为 Runtime Defect Fix — Durable Private Files。不得将健康接口、静态检查或旧历史记录写成持久化文件验收通过；完成持久化、鉴权下载、重新部署后字节与 SHA-256 不变的真实证据后，才恢复异常 PDF 验证。有限实现的普通成员区是 TASK-038 专属受控 harness：从当前经营主体列出的自有测试案件和已发布公司蒙板版本选择，不替代正式案件页入口；现有案件读取契约仍按 `case.user_id` 限制，不能宣称同公司任一案件读取成员已完成共享访问。
 
 ## 1. 用户可观察结果
 
