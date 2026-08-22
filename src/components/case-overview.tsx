@@ -808,9 +808,9 @@ export function CaseOverview({
         onToggleQueue={() => setQueueOpen((open) => !open)}
           actions={
           <>
-            <Link href={`/cases/${encodeURIComponent(caseId)}/guarantee-application`} className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-black text-blue-900 hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300">
+            <a href={`/cases/${encodeURIComponent(caseId)}/guarantee-application`} className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-black text-blue-900 hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300">
               {locale === "zh" ? "生成申请书" : locale === "ko" ? "신청서 생성" : "申込書を生成"}
-            </Link>
+            </a>
             <Link href={previewHref} className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-900 hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300">
               <span className="material-symbols-outlined text-[16px]" aria-hidden="true">visibility</span>
               {locale === "zh" ? "申请书预览" : locale === "ko" ? "신청서 미리보기" : "申込書プレビュー"}

@@ -1059,9 +1059,9 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
             <Link href={outputHref} className="inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800 hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300">
               {tr(locale, { ja: "文書出力", zh: "输出文件", ko: "서류 출력" })}
             </Link>
-            <Link href={`/cases/${encodeURIComponent(brokerageCase.id)}/guarantee-application`} className="inline-flex items-center rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-900 hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300">
+            <a href={`/cases/${encodeURIComponent(brokerageCase.id)}/guarantee-application`} className="inline-flex items-center rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-900 hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300">
               {tr(locale, { ja: "申込書を生成", zh: "生成申请书", ko: "신청서 생성" })}
-            </Link>
+            </a>
             <span className="hidden sm:inline-flex">
               <ArchiveRecordButton
                 entityType="case"
