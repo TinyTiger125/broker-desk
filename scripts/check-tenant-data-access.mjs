@@ -8,7 +8,15 @@ const tsModuleCache = new Map();
 
 function resolveProjectAlias(request) {
   if (!request.startsWith("@/lib/")) return null;
-  return path.resolve(`src/lib/${request.slice("@/lib/".length)}.ts`);
+  const relative = request.slice("@/lib/".length);
+  const candidates = [
+    path.resolve(`src/lib/${relative}`),
+    path.resolve(`src/lib/${relative}.ts`),
+    relative.endsWith(".mjs")
+      ? path.resolve(`src/lib/${relative.slice(0, -4)}.ts`)
+      : null,
+  ].filter(Boolean);
+  return candidates.find((candidate) => fs.existsSync(candidate)) ?? candidates[0];
 }
 
 function loadTsModule(sourcePath) {

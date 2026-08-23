@@ -38,6 +38,7 @@
     "test:tenant-data-access": "node scripts/check-tenant-data-access.mjs",
     "test:tenant-governance": "node scripts/check-tenant-governance.mjs",
     "test:tenant-auth-lifecycle-state": "node scripts/check-tenant-auth-lifecycle-state.mjs",
+    "test:tenant-auth-lifecycle-live": "node scripts/check-tenant-auth-lifecycle-state.mjs --live",
     "test:tenant-slice1-contract": "node scripts/check-tenant-slice1-contract.mjs",
     "test:production-security": "node scripts/check-production-security.mjs",
     "test:public-beta-gate": "node scripts/check-public-beta-readiness.mjs",

@@ -1,9 +1,9 @@
 # TASK-039 / W8：经营主体、成员权限与内部数据可见性基础能力
 
 - 所属专题：全产品身份与经营主体基础能力
-- 状态: In Progress
-- 当前阶段: Slice 1 — Runtime Defect Fix
-- 当前环境：Vercel Preview `broker-desk-staging` 已建立并可用于非生产验收；当前 P1 为经营主体创建请求的重复写入与响应丢失重试不幂等
+- 状态: In Progress / Foundation Accepted — Visibility Follow-up Pending
+- 当前阶段: 经营主体与成员基础阶段已产品验收；案件、人物、物件可见范围继续后续阶段
+- 当前环境：Vercel Preview `broker-desk-staging` 已完成非生产验收；当前剩余事项属于后续可见范围阶段，不扩大本次基础阶段
 - 依赖：TASK-038 技术设计与当前有限实现先收口；TASK-036 仍为 Blocked，不作为本任务的本地运行前提
 - 计划：[经营主体、成员权限与内部数据可见性依赖计划](../product/ORGANIZATION_MEMBERS_VISIBILITY_FOUNDATION_PLAN_2026-08-19.md)
 - 切片 0 事实报告：[TASK-039 / W8 Checkpoint A：切片 0 事实报告](../product/ORGANIZATION_MEMBERS_VISIBILITY_FOUNDATION_SLICE_0_FACT_REPORT_2026-08-19.md)
@@ -194,8 +194,10 @@ TASK-038 当前仍为 Limited Implementation，且工作区存在未收口差异
 
 ## 当前状态
 
-TASK-039 为 `In Progress / Slice 1 独立审查后 P1 阻断`。实现差异保留在工作区，等待产品负责人决定是否授权下一次范围内纠偏；不应用 migration、不连接生产、不启动真实浏览器双身份。TASK-038 继续 `In Progress / Limited Implementation`，待同一非生产经营主体具备公司负责人/表格管理员与普通成员两个合法身份且本 Slice P1 关闭后，才恢复真实产品验证；不把静态或 memory 行为证据写成闭环通过。TASK-036 继续 `Blocked`；输出专题、TASK-020 和 `src/app/clients/page 2.tsx` 继续冻结/排除。
+2026-08-24 当前裁决覆盖：经营主体创建、工作区选择、成员邀请/接受/暂停/恢复/移除/重新邀请、负责人保护、普通成员权限隔离和跨经营主体基础拒绝已完成产品验收。TASK-039 不标记 Done；案件、人物、物件完整可见范围、同公司资料共享、关联对象递归授权、离职资料接管、停止付费后的长期保留和删除继续作为后续阶段。
 
-## 当前停止条件
+以上旧运行快照保留为历史记录；当前裁决已将经营主体与成员基础阶段标记为产品验收通过，但 TASK-039 整体仍不标记 Done。TASK-036 继续 `Blocked`；输出专题、TASK-020 和 `src/app/clients/page 2.tsx` 继续冻结/排除。
+
+## 历史停止条件
 
 Checkpoint A 只读事实与技术合同完成后，提交产品负责人确认切片 1 的写集和 migration 边界；在确认前不启动实现 Agent。TASK-039 不因现有 Clerk 环境没有 active membership 而创建伪数据，也不把运行环境阻塞写成产品闭环通过。

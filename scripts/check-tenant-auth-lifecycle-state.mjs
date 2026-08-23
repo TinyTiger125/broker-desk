@@ -1,16 +1,43 @@
 #!/usr/bin/env node
-import { existsSync } from "node:fs";
-import path from "node:path";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { Client } from "pg";
 
-if (existsSync(path.resolve(".env.local"))) process.loadEnvFile(path.resolve(".env.local"));
+const live = process.argv.includes("--live");
 
-const runtimeUrl = (process.env.DATABASE_URL ?? "").trim();
-const adminUrl = (process.env.DATABASE_ADMIN_URL ?? "").trim();
-const migrationUrl = (process.env.DATABASE_MIGRATION_URL ?? process.env.DATABASE_DEVELOPMENT_URL ?? "").trim();
+if (!live) {
+  const source = readFileSync(fileURLToPath(import.meta.url), "utf8");
+  if (!source.includes("TASK_AUTH_LIFECYCLE_RUNTIME_URL") || !source.includes("TASK_AUTH_LIFECYCLE_ADMIN_URL") || !source.includes("TASK_AUTH_LIFECYCLE_MIGRATION_URL")) {
+    throw new Error("tenant auth lifecycle contract must define explicit TASK_AUTH_LIFECYCLE_* variables");
+  }
+  const implicitLoader = ["process", "loadEnvFile"].join(".");
+  if (source.includes(implicitLoader)) {
+    throw new Error("tenant auth lifecycle contract must not load implicit env files or target localhost");
+  }
+  console.log(
+    "[PASS] tenant auth lifecycle contract: live verification requires explicit non-production URLs; use --live with TASK_AUTH_LIFECYCLE_* variables.",
+  );
+  process.exit(0);
+}
+
+const runtimeUrl = (process.env.TASK_AUTH_LIFECYCLE_RUNTIME_URL ?? "").trim();
+const adminUrl = (process.env.TASK_AUTH_LIFECYCLE_ADMIN_URL ?? "").trim();
+const migrationUrl = (process.env.TASK_AUTH_LIFECYCLE_MIGRATION_URL ?? "").trim();
 
 if (!runtimeUrl || !adminUrl || !migrationUrl) {
-  throw new Error("DATABASE_URL, DATABASE_ADMIN_URL, and DATABASE_MIGRATION_URL or DATABASE_DEVELOPMENT_URL are required.");
+  throw new Error(
+    "--live requires TASK_AUTH_LIFECYCLE_RUNTIME_URL, TASK_AUTH_LIFECYCLE_ADMIN_URL, and TASK_AUTH_LIFECYCLE_MIGRATION_URL.",
+  );
+}
+
+for (const [label, value] of [
+  ["runtime", runtimeUrl],
+  ["admin", adminUrl],
+  ["migration", migrationUrl],
+]) {
+  if (/localhost|127\\.0\\.0\\.1|::1/i.test(value)) {
+    throw new Error(`${label} URL must target an explicitly supplied non-production database, not localhost.`);
+  }
 }
 
 const validRoles = new Set(["platform_owner", "tenant_owner", "tenant_admin", "manager", "broker", "data_operator", "reviewer", "viewer"]);
