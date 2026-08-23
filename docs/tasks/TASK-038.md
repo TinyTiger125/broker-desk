@@ -2,7 +2,7 @@
 
 - 所属专题：保证公司申请书 G1
 - 状态: In Progress
-- 当前阶段: Product Acceptance Closure — Locale & Merge Gates；七类异常文件、合法表格恢复、耐久私有文件和核心案件生成路径已完成产品验收，当前只收口 locale 与合并前工程门
+- 当前阶段: Runtime Defect Fix — Preview Gate & Locale；当前只修复 Preview/Staging 功能门的非生产配置与关闭态多语言体验，不扩大产品范围
 - 顺序：1；依赖 TASK-037 / G1-SLICE-0
 - 技术设计：[TASK-038 G1-SLICE-1 技术设计](../product/GUARANTEE_APPLICATION_G1_SLICE_1_TECHNICAL_DESIGN_2026-08-19.md)
 - 最高依据：[第一版产品基线](../product/GUARANTEE_APPLICATION_PRODUCT_BASELINE_V1_2026-08-18.md)
@@ -49,7 +49,7 @@
 
 2026-08-23：公司表格库、人工校准、测试确认、发布、案件申请持久化与 v2/v3 输出稳定性已有 Staging 产品证据。此前的 `tenant_selection_required` 已修复并固定为 `41822da`，B-1/B-2 可在选择公司后重新出现。Vercel Preview限流规则已调整为300次/IP/60秒，低频复核未再出现429。版本 `8267ca5` 将 B-1/B-2 详情的“申込書を生成”恢复为绑定当前案件的原生 `<a>`；独立浏览器证据确认鼠标点击、B-1 键盘 Enter及直接地址均进入对应申请页，B 只看到 B-1/B-2，A 直接访问 B-1 得到“页面未找到”且无案件泄露。当前入口交互阻断已关闭；此前快照中的 Durable Private Files 尚未开始，随后已完成实现并取得 Staging 产品证据。
 
-In Progress；当前阶段为 Product Acceptance Closure — Locale & Merge Gates。七类异常文件被安全拒绝，合法文件上传/草稿恢复、私有文件耐久性与权限、公司表格库人工校准/发布、案件生成与双案件隔离、重复生成幂等及 v2/v3 历史快照均已有 Staging 产品证据。当前只收口日文 locale 实际提示、既有 capability fixture、fallback 查询契约、相关自动检查和 TASK-037 旧行为保护证据门；不得将静态检查单独写成全部产品或 Production 通过。有限实现的普通成员区仍是 TASK-038 专属受控 harness，不替代正式案件页入口。
+In Progress；当前阶段为 Runtime Defect Fix — Preview Gate & Locale。七类异常文件被安全拒绝，合法文件上传/草稿恢复、私有文件耐久性与权限、公司表格库人工校准/发布、案件生成与双案件隔离、重复生成幂等及 v2/v3 历史快照均已有 Staging 产品证据。当前只恢复 Preview/Staging 功能门、修复关闭态 ja/zh/ko 文案与返回公司首页入口，并保留 fallback 只读工程门；不得将静态检查单独写成全部产品或 Production 通过。有限实现的普通成员区仍是 TASK-038 专属受控 harness，不替代正式案件页入口。
 
 ## 1. 用户可观察结果
 
