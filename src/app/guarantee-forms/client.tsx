@@ -45,7 +45,18 @@ export function GuaranteeFormsClient({ enabled, isAdmin, forms }: Props) {
   }
 
   async function upload(formElement: HTMLFormElement) {
-    setError(""); setUploading(true);
+    setError("");
+    const fileField = formElement.elements.namedItem("file");
+    const selectedFile = fileField instanceof HTMLInputElement ? fileField.files?.[0] : undefined;
+    if (!selectedFile || selectedFile.type !== "application/pdf") {
+      setError(UPLOAD_ERROR_MESSAGES.blank_form_pdf_required);
+      return;
+    }
+    if (selectedFile.size > 10 * 1024 * 1024) {
+      setError(UPLOAD_ERROR_MESSAGES.blank_form_file_too_large);
+      return;
+    }
+    setUploading(true);
     try {
       const response = await fetch("/api/guarantee-g1-slice1", { method: "POST", body: new FormData(formElement) });
       const payload = await response.json().catch(() => ({}));
