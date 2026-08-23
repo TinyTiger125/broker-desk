@@ -1,7 +1,8 @@
 # TASK-038 / G1-SLICE-1：保证公司申请书最小端到端证明
 
 - 所属专题：保证公司申请书 G1
-- 状态: Product Acceptance Passed / Integration Deferred
+- 状态: In Progress
+- 产品结论: Product Acceptance Passed / Integration Deferred
 - 当前阶段: 产品验收已完成；尚未合入 main、尚未部署 Production，Production 前门仍有效，不再扩大 TASK-038 产品范围
 - 顺序：1；依赖 TASK-037 / G1-SLICE-0
 - 技术设计：[TASK-038 G1-SLICE-1 技术设计](../product/GUARANTEE_APPLICATION_G1_SLICE_1_TECHNICAL_DESIGN_2026-08-19.md)

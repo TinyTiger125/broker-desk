@@ -1,7 +1,8 @@
 # TASK-039 / W8：经营主体、成员权限与内部数据可见性基础能力
 
 - 所属专题：全产品身份与经营主体基础能力
-- 状态: In Progress / Foundation Accepted — Visibility Follow-up Pending
+- 状态: In Progress
+- 产品结论: Foundation Accepted — Visibility Follow-up Pending
 - 当前阶段: 经营主体与成员基础阶段已产品验收；案件、人物、物件可见范围继续后续阶段
 - 当前环境：Vercel Preview `broker-desk-staging` 已完成非生产验收；当前剩余事项属于后续可见范围阶段，不扩大本次基础阶段
 - 依赖：TASK-038 技术设计与当前有限实现先收口；TASK-036 仍为 Blocked，不作为本任务的本地运行前提
