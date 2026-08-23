@@ -113,8 +113,15 @@ export default async function GuaranteeFormEditPage({ params, searchParams }: { 
     const selectedVersion = requestedVersion ?? current;
     const recoveryBlankFormVersionId = selectedVersion?.blankFormVersionId ?? initialBlankFormVersionId;
     const recoveryMaskId = selectedVersion?.maskId ?? initialMaskId;
-    const initialAdminContext = await loadInitialAdminContext(session.tenant.id, form.id, selectedVersion?.id, recoveryBlankFormVersionId, recoveryMaskId);
-    return <GuaranteeSlice1Client enabled={enabled} isAdmin={capabilityHasTenantPermission(getTenantCapability(session.membership), "template.edit_draft")} cases={testCases.map(toGuaranteeTestCaseSummary)} publishedVersions={[]} initialMaskVersionId={selectedVersion?.id} initialBlankFormId={selectedVersion ? form.id : undefined} initialBlankFormVersionId={recoveryBlankFormVersionId} initialMaskId={recoveryMaskId} initialAdminContext={initialAdminContext} adminOnly showUpload={false} heading={`编辑公司表格：${form.name}`} />;
+    // A brand-new upload has a ready blank-form version and a logical mask,
+    // but no mask version yet. Leave that first-load context to the protected
+    // client action so the upload response can be restored without an SSR
+    // conversion failure being mistaken for a missing draft.
+    const initialAdminContext = selectedVersion
+      ? await loadInitialAdminContext(session.tenant.id, form.id, selectedVersion.id, recoveryBlankFormVersionId, recoveryMaskId)
+      : undefined;
+    const clientBlankFormId = selectedVersion || (recoveryBlankFormVersionId && recoveryMaskId) ? form.id : undefined;
+    return <GuaranteeSlice1Client enabled={enabled} isAdmin={capabilityHasTenantPermission(getTenantCapability(session.membership), "template.edit_draft")} cases={testCases.map(toGuaranteeTestCaseSummary)} publishedVersions={[]} initialMaskVersionId={selectedVersion?.id} initialBlankFormId={clientBlankFormId} initialBlankFormVersionId={recoveryBlankFormVersionId} initialMaskId={recoveryMaskId} initialAdminContext={initialAdminContext} adminOnly showUpload={false} heading={`编辑公司表格：${form.name}`} />;
   } catch (error) {
     const message = error instanceof TenantSessionError && error.code === "permission_denied" ? "只有公司表格管理员可以编辑蒙板。" : "请在受控非生产工作区中登录后再访问。";
     return <main className="mx-auto max-w-3xl px-6 py-12"><h1 className="text-2xl font-semibold text-slate-950">公司表格编辑</h1><p className="mt-3 text-sm text-slate-600">{message}</p><a href="/guarantee-forms" className="mt-4 inline-block text-sm text-blue-700 underline">返回公司表格库</a></main>;

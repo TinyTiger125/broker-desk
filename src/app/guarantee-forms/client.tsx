@@ -11,6 +11,30 @@ type FormRow = {
 
 type Props = { enabled: boolean; isAdmin: boolean; forms: FormRow[] };
 
+const UPLOAD_ERROR_MESSAGES: Record<string, string> = {
+  blank_form_pdf_required: "请选择PDF文件。",
+  blank_form_pdf_rejected: "无法读取该PDF。请确认文件未损坏后重新上传。",
+  blank_form_encrypted_unsupported: "暂不支持加密或密码保护的PDF。请解除保护后重新上传空白PDF。",
+  blank_form_file_too_large: "PDF文件不能超过10MB。",
+  slice1_single_page_pdf_required: "第一版仅支持单页PDF。",
+  blank_form_rotation_unsupported: "暂不支持带页面旋转设置的PDF。请导出为方向固定的单页PDF后重试。",
+  blank_form_cropbox_unsupported: "该PDF的页面裁切设置暂不支持。请重新导出为标准单页PDF后重试。",
+  blank_form_page_origin_unsupported: "该PDF的页面裁切设置暂不支持。请重新导出为标准单页PDF后重试。",
+  blank_form_dimensions_unsupported: "该PDF的页面尺寸或结构暂不支持，请重新导出为标准单页PDF后重试。",
+  blank_form_processing_timeout: "PDF处理超时，请稍后重试。",
+  blank_form_preview_unavailable: "无法生成该PDF的校准预览，请更换文件后重试。",
+  blank_form_declaration_required: "请先确认这是空白PDF且本经营主体有权使用。",
+  guarantee_slice1_failed: "上传未完成，请稍后重试。",
+  upload_failed: "上传未完成，请稍后重试。",
+};
+
+function explainUploadError(error: unknown) {
+  const code = error instanceof Error ? error.message : String(error);
+  const message = UPLOAD_ERROR_MESSAGES[code] ?? "上传未完成，请稍后重试。";
+  const requestId = error instanceof Error && "requestId" in error && typeof error.requestId === "string" ? error.requestId : "";
+  return requestId ? `${message}（请求编号：${requestId}）` : message;
+}
+
 export function GuaranteeFormsClient({ enabled, isAdmin, forms }: Props) {
   const router = useRouter();
   const [error, setError] = useState("");
@@ -25,7 +49,11 @@ export function GuaranteeFormsClient({ enabled, isAdmin, forms }: Props) {
     try {
       const response = await fetch("/api/guarantee-g1-slice1", { method: "POST", body: new FormData(formElement) });
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(String(payload.error ?? "upload_failed"));
+      if (!response.ok) {
+        const uploadError = new Error(String(payload.error ?? "upload_failed")) as Error & { requestId?: string };
+        uploadError.requestId = typeof payload.requestId === "string" ? payload.requestId : undefined;
+        throw uploadError;
+      }
       const id = String(payload.blankForm?.id ?? "");
       const blankFormVersionId = String(payload.blankFormVersion?.id ?? "");
       const maskId = String(payload.maskId ?? "");
@@ -33,7 +61,7 @@ export function GuaranteeFormsClient({ enabled, isAdmin, forms }: Props) {
       const params = new URLSearchParams({ blankFormVersionId, maskId });
       router.push(`/guarantee-forms/${encodeURIComponent(id)}/edit?${params.toString()}`);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "upload_failed");
+      setError(explainUploadError(caught));
     } finally {
       setUploading(false);
     }

@@ -211,6 +211,7 @@ async function handleUpload(request: Request) {
   let pdf: PDFDocument;
   try { pdf = await withGuaranteePdfTimeout(PDFDocument.load(bytes, { ignoreEncryption: false })); } catch (error) {
     if (error instanceof Error && error.message === "blank_form_processing_timeout") throw error;
+    if (error instanceof Error && /encrypted|password|encryption/i.test(error.message)) throw new Error("blank_form_encrypted_unsupported");
     throw new Error("blank_form_pdf_rejected");
   }
   let inspected: ReturnType<typeof inspectGuaranteeBlankPdf>;
