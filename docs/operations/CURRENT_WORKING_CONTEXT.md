@@ -95,7 +95,7 @@
 
 ## 2026-08-24 当前状态覆盖
 
-- 正式合并基准固定为 `origin/main=aa35b6ad0f45c3731993cbadc0fadca38107f5b2`；平台候选固定为 `28b021782051eb2375a5a2f0e8da82094520e04e`。
+- 正式合并基准固定为 `origin/main=aa35b6ad0f45c3731993cbadc0fadca38107f5b2`；旧候选 `28b021782051eb2375a5a2f0e8da82094520e04e` 已标记 `Superseded / Not Mergeable`，当前修正候选以 Staging 分支远端 HEAD 与对应 Vercel 部署记录为准。
 - TASK-038 为 `Product Acceptance Passed / Integration Deferred`；不再扩大产品范围，尚未合入 main 或部署 Production。
 - TASK-039 仅经营主体与成员基础阶段验收通过；案件、人物、物件可见范围及后续资料授权继续未完成。
 - 平台候选在 Production 隔离、工程检查和完整独立审查门关闭前保持 `Not Mergeable`；不得合并 main、部署 Production 或执行 Production migration。
