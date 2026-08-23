@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Locale } from "@/lib/locale";
+import { getGuaranteeFormsMessages } from "@/lib/guarantee-forms-locale";
 
 type FormRow = {
   id: string;
@@ -90,11 +92,12 @@ type Props = { enabled: boolean; isAdmin: boolean; forms: FormRow[]; locale: Loc
 
 export function GuaranteeFormsClient({ enabled, isAdmin, forms, locale }: Props) {
   const router = useRouter();
+  const messages = getGuaranteeFormsMessages(locale);
   const [error, setError] = useState("");
   const [uploading, setUploading] = useState(false);
 
   if (!enabled) {
-    return <main className="mx-auto max-w-4xl px-6 py-12"><h1 className="text-3xl font-semibold text-slate-950">公司表格库</h1><p className="mt-3 text-sm text-slate-600">该功能当前仅在受控非生产环境开放。现有申请书流程不受影响。</p></main>;
+    return <main className="mx-auto max-w-4xl px-6 py-12"><h1 className="text-3xl font-semibold text-slate-950">{messages.title}</h1><p className="mt-3 text-sm text-slate-600">{messages.disabled}</p><Link href="/" className="mt-5 inline-block text-sm text-blue-700 underline">{messages.returnHome}</Link></main>;
   }
 
   async function upload(formElement: HTMLFormElement) {
