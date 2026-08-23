@@ -50,6 +50,20 @@ async function probeTenantTable(table, tenantId) {
   }
 }
 
+function canRead(result) {
+  return result.status === "read" && result.count > 0;
+}
+
+function deniedOrEmpty(result) {
+  return result.status === "denied" || result.count === 0;
+}
+
+async function setAuthContext({ externalAuthSubject, tenantId }) {
+  await client.query("SELECT set_config('request.jwt.claim.sub', $1, true)", [externalAuthSubject ?? ""]);
+  await client.query("SELECT set_config('app.external_auth_subject', $1, true)", [externalAuthSubject ?? ""]);
+  await client.query("SELECT set_config('app.tenant_id', $1, true)", [tenantId ?? ""]);
+}
+
 try {
   const role = (await client.query(`
     SELECT current_user AS role_name, r.rolsuper, r.rolbypassrls,
@@ -58,12 +72,12 @@ try {
         FROM pg_class c
         JOIN pg_namespace n ON n.oid = c.relnamespace
         WHERE n.nspname = 'public'
-          AND c.relname = 'brokerage_cases'
+          AND c.relname = ANY($1::text[])
           AND c.relowner = (SELECT oid FROM pg_roles WHERE rolname = current_user)
       ) AS owns_business_tables
     FROM pg_roles r
     WHERE r.rolname = current_user
-  `)).rows[0];
+  `, [tenantTables])).rows[0];
 
   if (!role || role.role_name !== "brokerdesk_runtime") throw new Error("runtime role mismatch");
   if (role.rolsuper || role.rolbypassrls || role.owns_business_tables) throw new Error("runtime role is over-privileged");
@@ -74,25 +88,46 @@ try {
       current_setting('neon.branch_id', true) AS branch_id
   `)).rows[0];
   if (identity.database_name !== expectedDatabase) throw new Error("database identity mismatch");
-  if (identity.project_id && identity.project_id !== expectedProject) throw new Error("Neon project identity mismatch");
-  if (identity.branch_id && identity.branch_id !== expectedBranch) throw new Error("Neon branch identity mismatch");
+  if (identity.project_id !== expectedProject) throw new Error("Neon project identity mismatch");
+  if (identity.branch_id !== expectedBranch) throw new Error("Neon branch identity mismatch");
 
   await client.query("BEGIN");
-  await client.query("SELECT set_config('app.external_auth_subject', $1, true)", [subject]);
-  await client.query("SELECT set_config('app.tenant_id', $1, true)", [tenantC]);
+  await setAuthContext({ externalAuthSubject: subject, tenantId: tenantA });
 
   const bound = (await client.query("SELECT brokerdesk_private.current_user_id() IS NOT NULL AS bound")).rows[0]?.bound;
   if (!bound) throw new Error("A subject is not mapped to a local user in this database");
 
   const tenantAResults = {};
-  const tenantCResults = {};
   for (const table of tenantTables) {
     tenantAResults[table] = await probeTenantTable(table, tenantA);
+  }
+
+  const tenantCResults = {};
+  await setAuthContext({ externalAuthSubject: subject, tenantId: tenantC });
+  for (const table of tenantTables) {
     tenantCResults[table] = await probeTenantTable(table, tenantC);
   }
 
-  await client.query("SELECT set_config('app.external_auth_subject', $1, true)", [`invalid-task038-${Date.now()}`]);
-  const invalidSubjectCases = await probeTenantTable("brokerage_cases", tenantA);
+  const missingContextResults = {};
+  await setAuthContext({ externalAuthSubject: null, tenantId: null });
+  for (const table of tenantTables) {
+    missingContextResults[table] = await probeTenantTable(table, tenantA);
+  }
+
+  const invalidSubjectResults = {};
+  await setAuthContext({ externalAuthSubject: `invalid-task038-${Date.now()}`, tenantId: tenantA });
+  for (const table of tenantTables) {
+    invalidSubjectResults[table] = await probeTenantTable(table, tenantA);
+  }
+
+  const tenantAHasVisibleData = Object.values(tenantAResults).some(canRead);
+  const tenantCIsDenied = Object.values(tenantCResults).every(deniedOrEmpty);
+  const missingContextIsDenied = Object.values(missingContextResults).every(deniedOrEmpty);
+  const invalidSubjectIsDenied = Object.values(invalidSubjectResults).every(deniedOrEmpty);
+  if (!tenantAHasVisibleData) throw new Error("A context did not read any legal tenant-A fixture data");
+  if (!tenantCIsDenied) throw new Error("A context read tenant-C data");
+  if (!missingContextIsDenied) throw new Error("missing auth context still read tenant data");
+  if (!invalidSubjectIsDenied) throw new Error("invalid auth subject still read tenant data");
 
   await client.query("ROLLBACK");
   console.log(JSON.stringify({
@@ -101,10 +136,14 @@ try {
     branch: identity.branch_id || "not_exposed_by_server",
     role: { name: role.role_name, superuser: role.rolsuper, bypassRls: role.rolbypassrls, ownsBusinessTables: role.owns_business_tables },
     mappedSubject: true,
+    tenantAHasVisibleData,
     tenantA: tenantAResults,
     tenantC: tenantCResults,
-    invalidSubject: invalidSubjectCases,
-    tenantContextForgeryDidNotWiden: Object.values(tenantCResults).every((result) => result.status === "denied" || result.count === 0),
+    missingContext: missingContextResults,
+    invalidSubject: invalidSubjectResults,
+    tenantContextForgeryDidNotWiden: tenantCIsDenied,
+    missingContextDenied: missingContextIsDenied,
+    invalidSubjectDenied: invalidSubjectIsDenied,
   }, null, 2));
 } finally {
   client.release();

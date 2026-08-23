@@ -1,20 +1,23 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { Client } from "pg";
 
-if (
-  !process.env.DATABASE_MIGRATION_URL &&
-  !process.env.DATABASE_DEVELOPMENT_URL &&
-  existsSync(path.resolve(".env.local"))
-) {
-  process.loadEnvFile(path.resolve(".env.local"));
-}
+const databaseUrl = process.env.TASK038_PUBLICATION_DATABASE_URL?.trim();
+const expectedProject = process.env.TASK038_PUBLICATION_EXPECTED_NEON_PROJECT_ID?.trim();
+const expectedBranch = process.env.TASK038_PUBLICATION_EXPECTED_NEON_BRANCH_ID?.trim();
+const expectedDatabase = process.env.TASK038_PUBLICATION_EXPECTED_DATABASE_NAME?.trim();
 
-const databaseUrl = process.env.DATABASE_MIGRATION_URL ?? process.env.DATABASE_DEVELOPMENT_URL;
-if (!databaseUrl) {
-  throw new Error("DATABASE_MIGRATION_URL or DATABASE_DEVELOPMENT_URL is required.");
+for (const [name, value] of Object.entries({
+  TASK038_PUBLICATION_DATABASE_URL: databaseUrl,
+  TASK038_PUBLICATION_EXPECTED_NEON_PROJECT_ID: expectedProject,
+  TASK038_PUBLICATION_EXPECTED_NEON_BRANCH_ID: expectedBranch,
+  TASK038_PUBLICATION_EXPECTED_DATABASE_NAME: expectedDatabase,
+})) {
+  if (!value) {
+    throw new Error(`${name} is required; this check never falls back to .env.local or a local database.`);
+  }
 }
 
 const root = process.cwd();
@@ -53,6 +56,20 @@ const client = new Client({ connectionString: databaseUrl });
 await client.connect();
 
 try {
+  const identity = (
+    await client.query(
+      `SELECT current_database() AS database_name,
+              current_setting('neon.project_id', true) AS project_id,
+              current_setting('neon.branch_id', true) AS branch_id`,
+    )
+  ).rows[0];
+  if (identity.database_name !== expectedDatabase) {
+    throw new Error("publication-state database identity mismatch");
+  }
+  if (identity.project_id !== expectedProject || identity.branch_id !== expectedBranch) {
+    throw new Error("publication-state Neon project or branch identity mismatch");
+  }
+
   const templateIds = templateDefinitions.map(([templateId]) => templateId);
   const versionsResult = await client.query(
     `
@@ -129,6 +146,9 @@ try {
 
   const result = {
     ok: failures.length === 0,
+    database: identity.database_name,
+    project: identity.project_id,
+    branch: identity.branch_id,
     activeVersions: [...activeVersions.values()].map(({ template_id, id, version_number }) => ({
       templateId: template_id,
       versionId: id,

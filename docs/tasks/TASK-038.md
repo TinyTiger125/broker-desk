@@ -49,11 +49,15 @@
 
 2026-08-23：公司表格库、人工校准、测试确认、发布、案件申请持久化与 v2/v3 输出稳定性已有 Staging 产品证据。此前的 `tenant_selection_required` 已修复并固定为 `41822da`，B-1/B-2 可在选择公司后重新出现。Vercel Preview限流规则已调整为300次/IP/60秒，低频复核未再出现429。版本 `8267ca5` 将 B-1/B-2 详情的“申込書を生成”恢复为绑定当前案件的原生 `<a>`；独立浏览器证据确认鼠标点击、B-1 键盘 Enter及直接地址均进入对应申请页，B 只看到 B-1/B-2，A 直接访问 B-1 得到“页面未找到”且无案件泄露。当前入口交互阻断已关闭；此前快照中的 Durable Private Files 尚未开始，随后已完成实现并取得 Staging 产品证据。
 
-In Progress；当前阶段为 Merge Evidence Closure。七类异常文件被安全拒绝，合法文件上传/草稿恢复、私有文件耐久性与权限、公司表格库人工校准/发布、案件生成与双案件隔离、重复生成幂等及 v2/v3 历史快照均已有 Staging 产品证据。Preview/allowlist 功能门、普通成员编辑拒绝、非 allowlist 拒绝、日文关闭页/返回首页/CropBox 提示和正常频率无 429 已有真实页面证据。当前仍须分别收口 brokerdesk_runtime 的真实租户级资料隔离、TASK-037 旧入口/旧行为保护、publication-state 的等价非生产验证及 product-language 规则的实际展示判定；不得把同租户案件级可见性误写成 TASK-038 的数据库 RLS 门，案件/人物/物件的对象权限仍由 TASK-039 后续阶段和应用授权负责。不得将静态检查单独写成全部产品或 Production 通过。有限实现的普通成员区仍是 TASK-038 专属受控 harness，不替代正式案件页入口。
+In Progress；当前阶段为 Merge Evidence Closure。七类异常文件被安全拒绝，合法文件上传/草稿恢复、私有文件耐久性与权限、公司表格库人工校准/发布、案件生成与双案件隔离、重复生成幂等及 v2/v3 历史快照均已有 Staging 产品证据。Preview/allowlist 功能门、普通成员编辑拒绝、非 allowlist 拒绝、日文关闭页/返回首页/CropBox 提示和正常频率无 429 已有真实页面证据。TASK-037 旧模板的入口、资产指纹和活动版本已用替代证据保护；五套旧模板实际 PDF 回归仍是 Production 前硬门，不能宣称无回归。不得把同租户案件级可见性误写成 TASK-038 的数据库 RLS 门，案件/人物/物件的对象权限仍由 TASK-039 后续阶段和应用授权负责。不得将静态检查单独写成全部产品或 Production 通过。有限实现的普通成员区仍是 TASK-038 专属受控 harness，不替代正式案件页入口。
 
 ### 合并前 RLS 范围
 
 本任务只要求以同一非生产项目、分支、数据库和 `brokerdesk_runtime` 角色证明租户级隔离：A 上下文不能读取 C，缺失或伪造上下文不能读取租户数据，私有文件不能通过普通运行角色跨租户取得，且运行角色不是 SUPERUSER、没有 `BYPASSRLS`、不拥有业务表。当前设计的案件/人物/物件可见范围由应用授权层负责；除非另有数据库契约明确承诺案件级 RLS，不把同公司 A 对 B 私有案件的拒绝扩大为本任务的数据库硬门。页面/API 拒绝证据仍须保留，并由 TASK-039 后续对象可见范围阶段继续收口。
+
+2026-08-23 运行证据：在 `brokerdesk-staging-nonprod` / `br-sparkling-sunset-az98ha2x` / `neondb` 内，以真实 `brokerdesk_runtime` 角色完成事务回滚探针。角色为非 SUPERUSER、无 `BYPASSRLS`、不拥有业务表；A 的合法上下文读取到非生产案件、输出、附件、私有字节、公司表格和蒙板；伪造 C 上下文、缺失身份上下文、失效身份上下文均只得到空结果；非成员身份对有数据经营主体的读取也只得到空结果。当前 C 测试经营主体本身没有案件/文件行，因此 A→C 的零结果同时记录该数据前提，不能被解释为 C 有数据时的样本。整个探针未写入数据库。
+
+`test:guarantee-template-publication-state` 已改为显式接收 `TASK038_PUBLICATION_DATABASE_URL`、目标 Neon project/branch/database 标识，不再读取 `.env.local` 或本机地址；publication-state 的等价 Neon 只读核验已通过。
 
 ## 1. 用户可观察结果
 
