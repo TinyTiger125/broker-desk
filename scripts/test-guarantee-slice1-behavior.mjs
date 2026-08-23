@@ -69,10 +69,10 @@ const expectReject = async (operation, label) => {
   await assert.rejects(operation, label);
 };
 
-assert.doesNotThrow(() => assertGuaranteeSlice1Access({ tenantId, role: "tenant_owner", permission: "admin" }), "administrator permission is allowed");
-assert.doesNotThrow(() => assertGuaranteeSlice1Access({ tenantId, role: "reviewer", permission: "generate" }), "ordinary output member permission is allowed");
-assert.throws(() => assertGuaranteeSlice1Access({ tenantId, role: "reviewer", permission: "admin" }), /guarantee_template_admin_required/, "ordinary member cannot administer masks");
-assert.throws(() => assertGuaranteeSlice1Access({ tenantId: "tenant_other", role: "tenant_owner", permission: "admin" }), /guarantee_slice1_disabled/, "non-allowlisted tenant is denied");
+assert.doesNotThrow(() => assertGuaranteeSlice1Access({ tenantId, capability: "company_owner", permission: "admin" }), "administrator permission is allowed");
+assert.doesNotThrow(() => assertGuaranteeSlice1Access({ tenantId, capability: "ordinary_member", permission: "generate" }), "ordinary output member permission is allowed");
+assert.throws(() => assertGuaranteeSlice1Access({ tenantId, capability: "ordinary_member", permission: "admin" }), /guarantee_template_admin_required/, "ordinary member cannot administer masks");
+assert.throws(() => assertGuaranteeSlice1Access({ tenantId: "tenant_other", capability: "company_owner", permission: "admin" }), /guarantee_slice1_disabled/, "non-allowlisted tenant is denied");
 assert.equal(isGuaranteeSlice1TenantEnabled({ enabled: "true", deploymentEnvironment: "production", tenantId, allowlist: tenantId }), false, "formal production is always disabled");
 assert.equal(isGuaranteeSlice1TenantEnabled({ enabled: "true", deploymentEnvironment: "preview", tenantId, allowlist: tenantId }), true, "preview allowlist is enabled");
 assert.equal(isGuaranteeSlice1TenantEnabled({ enabled: "true", deploymentEnvironment: "staging", tenantId, allowlist: tenantId }), true, "staging allowlist is enabled");

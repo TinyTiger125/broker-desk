@@ -3,6 +3,7 @@ import { isGuaranteeSlice1EnabledForTenant } from "@/lib/guarantee-slice1-gate";
 import { getGuaranteeCompanyMask, getGuaranteeMaskMatch, listGuaranteeBlankForms, listGuaranteeCompanyMaskVersions, listPublishedGuaranteeCompanyMaskVersions } from "@/lib/data";
 import { getTenantCapability, requireTenantSession, TenantSessionError } from "@/lib/tenant-session";
 import { capabilityHasTenantPermission } from "@/lib/tenant-permissions";
+import { getLocale } from "@/lib/locale";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,6 +17,7 @@ type FormRow = {
 export default async function GuaranteeFormsPage() {
   let enabled = false;
   let isAdmin = false;
+  const locale = await getLocale();
   let formRows: FormRow[] = [];
   let errorMessage: string | undefined;
   try {
@@ -49,5 +51,5 @@ export default async function GuaranteeFormsPage() {
     errorMessage = error instanceof TenantSessionError && error.code === "permission_denied" ? "当前身份没有访问公司表格库的权限。" : "请在受控非生产工作区中登录后再访问公司表格库。";
   }
   if (errorMessage) return <main className="mx-auto max-w-3xl px-6 py-12"><h1 className="text-3xl font-semibold text-slate-950">公司表格库</h1><p className="mt-3 text-sm text-slate-600">{errorMessage}</p></main>;
-  return <GuaranteeFormsClient enabled={enabled} isAdmin={isAdmin} forms={formRows} />;
+  return <GuaranteeFormsClient enabled={enabled} isAdmin={isAdmin} forms={formRows} locale={locale} />;
 }

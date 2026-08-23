@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import type { Locale } from "@/lib/locale";
 
 type FormRow = {
   id: string;
@@ -9,33 +10,85 @@ type FormRow = {
   versions: Array<{ id: string; versionNumber: number; status: string; maskVersionId?: string; tested: boolean }>;
 };
 
-type Props = { enabled: boolean; isAdmin: boolean; forms: FormRow[] };
+type UploadErrorCode =
+  | "blank_form_pdf_required"
+  | "blank_form_pdf_rejected"
+  | "blank_form_encrypted_unsupported"
+  | "blank_form_file_too_large"
+  | "slice1_single_page_pdf_required"
+  | "blank_form_rotation_unsupported"
+  | "blank_form_cropbox_unsupported"
+  | "blank_form_page_origin_unsupported"
+  | "blank_form_dimensions_unsupported"
+  | "blank_form_processing_timeout"
+  | "blank_form_preview_unavailable"
+  | "blank_form_declaration_required"
+  | "guarantee_slice1_failed"
+  | "upload_failed";
 
-const UPLOAD_ERROR_MESSAGES: Record<string, string> = {
-  blank_form_pdf_required: "请选择PDF文件。",
-  blank_form_pdf_rejected: "无法读取该PDF。请确认文件未损坏后重新上传。",
-  blank_form_encrypted_unsupported: "暂不支持加密或密码保护的PDF。请解除保护后重新上传空白PDF。",
-  blank_form_file_too_large: "PDF文件不能超过10MB。",
-  slice1_single_page_pdf_required: "第一版仅支持单页PDF。",
-  blank_form_rotation_unsupported: "暂不支持带页面旋转设置的PDF。请导出为方向固定的单页PDF后重试。",
-  blank_form_cropbox_unsupported: "该PDF的页面裁切设置暂不支持。请重新导出为标准单页PDF后重试。",
-  blank_form_page_origin_unsupported: "该PDF的页面裁切设置暂不支持。请重新导出为标准单页PDF后重试。",
-  blank_form_dimensions_unsupported: "该PDF的页面尺寸或结构暂不支持，请重新导出为标准单页PDF后重试。",
-  blank_form_processing_timeout: "PDF处理超时，请稍后重试。",
-  blank_form_preview_unavailable: "无法生成该PDF的校准预览，请更换文件后重试。",
-  blank_form_declaration_required: "请先确认这是空白PDF且本经营主体有权使用。",
-  guarantee_slice1_failed: "上传未完成，请稍后重试。",
-  upload_failed: "上传未完成，请稍后重试。",
+const UPLOAD_ERROR_MESSAGES: Record<Locale, Record<UploadErrorCode, string>> = {
+  ja: {
+    blank_form_pdf_required: "PDFファイルを選択してください。",
+    blank_form_pdf_rejected: "PDFを読み取れません。ファイルが破損していないか確認して、もう一度アップロードしてください。",
+    blank_form_encrypted_unsupported: "暗号化またはパスワード保護されたPDFには対応していません。保護を解除した空白のPDFをもう一度アップロードしてください。",
+    blank_form_file_too_large: "PDFファイルは10MB以下にしてください。",
+    slice1_single_page_pdf_required: "現在は1ページのPDFのみ対応しています。",
+    blank_form_rotation_unsupported: "ページ回転が設定されたPDFには対応していません。向きを固定した1ページのPDFとして書き出してから、もう一度お試しください。",
+    blank_form_cropbox_unsupported: "このPDFのページ裁切設定には対応していません。標準的な1ページのPDFとして書き出してから、もう一度お試しください。",
+    blank_form_page_origin_unsupported: "このPDFのページ裁切設定には対応していません。標準的な1ページのPDFとして書き出してから、もう一度お試しください。",
+    blank_form_dimensions_unsupported: "このPDFのページサイズまたは構造には対応していません。標準的な1ページのPDFとして書き出してから、もう一度お試しください。",
+    blank_form_processing_timeout: "PDFの処理に時間がかかっています。しばらくしてからもう一度お試しください。",
+    blank_form_preview_unavailable: "PDFの校正プレビューを作成できませんでした。別のファイルをお試しください。",
+    blank_form_declaration_required: "空白のPDFであり、この会社が利用する権利を持つことを確認してください。",
+    guarantee_slice1_failed: "アップロードを完了できませんでした。しばらくしてからもう一度お試しください。",
+    upload_failed: "アップロードを完了できませんでした。しばらくしてからもう一度お試しください。",
+  },
+  zh: {
+    blank_form_pdf_required: "请选择PDF文件。",
+    blank_form_pdf_rejected: "无法读取该PDF。请确认文件未损坏后重新上传。",
+    blank_form_encrypted_unsupported: "暂不支持加密或密码保护的PDF。请解除保护后重新上传空白PDF。",
+    blank_form_file_too_large: "PDF文件不能超过10MB。",
+    slice1_single_page_pdf_required: "第一版仅支持单页PDF。",
+    blank_form_rotation_unsupported: "暂不支持带页面旋转设置的PDF。请导出为方向固定的单页PDF后重试。",
+    blank_form_cropbox_unsupported: "该PDF的页面裁切设置暂不支持。请重新导出为标准单页PDF后重试。",
+    blank_form_page_origin_unsupported: "该PDF的页面裁切设置暂不支持。请重新导出为标准单页PDF后重试。",
+    blank_form_dimensions_unsupported: "该PDF的页面尺寸或结构暂不支持，请重新导出为标准单页PDF后重试。",
+    blank_form_processing_timeout: "PDF处理超时，请稍后重试。",
+    blank_form_preview_unavailable: "无法生成该PDF的校准预览，请更换文件后重试。",
+    blank_form_declaration_required: "请先确认这是空白PDF且本经营主体有权使用。",
+    guarantee_slice1_failed: "上传未完成，请稍后重试。",
+    upload_failed: "上传未完成，请稍后重试。",
+  },
+  ko: {
+    blank_form_pdf_required: "PDF 파일을 선택해 주세요.",
+    blank_form_pdf_rejected: "PDF를 읽을 수 없습니다. 파일이 손상되지 않았는지 확인한 후 다시 업로드해 주세요.",
+    blank_form_encrypted_unsupported: "암호화되었거나 비밀번호로 보호된 PDF는 지원하지 않습니다. 보호를 해제한 빈 PDF를 다시 업로드해 주세요.",
+    blank_form_file_too_large: "PDF 파일은 10MB를 초과할 수 없습니다.",
+    slice1_single_page_pdf_required: "현재는 한 페이지 PDF만 지원합니다.",
+    blank_form_rotation_unsupported: "페이지 회전이 설정된 PDF는 지원하지 않습니다. 방향을 고정한 한 페이지 PDF로 내보낸 후 다시 시도해 주세요.",
+    blank_form_cropbox_unsupported: "이 PDF의 페이지 자르기 설정은 지원하지 않습니다. 표준 한 페이지 PDF로 내보낸 후 다시 시도해 주세요.",
+    blank_form_page_origin_unsupported: "이 PDF의 페이지 자르기 설정은 지원하지 않습니다. 표준 한 페이지 PDF로 내보낸 후 다시 시도해 주세요.",
+    blank_form_dimensions_unsupported: "이 PDF의 페이지 크기 또는 구조는 지원하지 않습니다. 표준 한 페이지 PDF로 내보낸 후 다시 시도해 주세요.",
+    blank_form_processing_timeout: "PDF 처리 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.",
+    blank_form_preview_unavailable: "PDF 교정 미리보기를 만들 수 없습니다. 다른 파일을 시도해 주세요.",
+    blank_form_declaration_required: "빈 PDF이며 이 회사가 사용할 권리가 있음을 확인해 주세요.",
+    guarantee_slice1_failed: "업로드를 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+    upload_failed: "업로드를 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+  },
 };
 
-function explainUploadError(error: unknown) {
+function explainUploadError(error: unknown, locale: Locale) {
   const code = error instanceof Error ? error.message : String(error);
-  const message = UPLOAD_ERROR_MESSAGES[code] ?? "上传未完成，请稍后重试。";
+  const messages = UPLOAD_ERROR_MESSAGES[locale] ?? UPLOAD_ERROR_MESSAGES.ja;
+  const message = messages[code as UploadErrorCode] ?? messages.guarantee_slice1_failed;
   const requestId = error instanceof Error && "requestId" in error && typeof error.requestId === "string" ? error.requestId : "";
-  return requestId ? `${message}（请求编号：${requestId}）` : message;
+  const requestLabel = locale === "ja" ? "リクエスト番号" : locale === "ko" ? "요청 번호" : "请求编号";
+  return requestId ? `${message}（${requestLabel}：${requestId}）` : message;
 }
 
-export function GuaranteeFormsClient({ enabled, isAdmin, forms }: Props) {
+type Props = { enabled: boolean; isAdmin: boolean; forms: FormRow[]; locale: Locale };
+
+export function GuaranteeFormsClient({ enabled, isAdmin, forms, locale }: Props) {
   const router = useRouter();
   const [error, setError] = useState("");
   const [uploading, setUploading] = useState(false);
@@ -49,11 +102,11 @@ export function GuaranteeFormsClient({ enabled, isAdmin, forms }: Props) {
     const fileField = formElement.elements.namedItem("file");
     const selectedFile = fileField instanceof HTMLInputElement ? fileField.files?.[0] : undefined;
     if (!selectedFile || selectedFile.type !== "application/pdf") {
-      setError(UPLOAD_ERROR_MESSAGES.blank_form_pdf_required);
+      setError(UPLOAD_ERROR_MESSAGES[locale].blank_form_pdf_required);
       return;
     }
     if (selectedFile.size > 10 * 1024 * 1024) {
-      setError(UPLOAD_ERROR_MESSAGES.blank_form_file_too_large);
+      setError(UPLOAD_ERROR_MESSAGES[locale].blank_form_file_too_large);
       return;
     }
     setUploading(true);
@@ -72,7 +125,7 @@ export function GuaranteeFormsClient({ enabled, isAdmin, forms }: Props) {
       const params = new URLSearchParams({ blankFormVersionId, maskId });
       router.push(`/guarantee-forms/${encodeURIComponent(id)}/edit?${params.toString()}`);
     } catch (caught) {
-      setError(explainUploadError(caught));
+      setError(explainUploadError(caught, locale));
     } finally {
       setUploading(false);
     }
