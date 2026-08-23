@@ -125,6 +125,7 @@ const REQUIRED_PRODUCTION_MIGRATIONS = [
   "20260809_003_private_attachment_blobs.sql",
   "20260809_004_import_job_execution_state.sql",
   "20260809_005_import_worker_claim.sql",
+  "20260819_001_guarantee_slice1_objects.sql",
   "20260819_002_tenant_capabilities_invitation_contract.sql",
   "20260819_003_tenant_owner_create_path.sql",
   "20260819_004_invited_user_bootstrap.sql",

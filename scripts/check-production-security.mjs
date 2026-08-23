@@ -391,6 +391,7 @@ assert(fs.existsSync("db/migrations/20260809_002_force_tenant_template_installs_
 assert(fs.existsSync("db/migrations/20260809_003_private_attachment_blobs.sql"), "private attachment blob migration must exist");
 assert(fs.existsSync("db/migrations/20260809_004_import_job_execution_state.sql"), "import job execution migration must exist");
 assert(fs.existsSync("db/migrations/20260809_005_import_worker_claim.sql"), "import worker claim migration must exist");
+assert(fs.existsSync("db/migrations/20260819_001_guarantee_slice1_objects.sql"), "guarantee slice 1 object migration must exist");
 
 const postgresDataSource = fs.readFileSync("src/lib/data.postgres.ts", "utf8");
 assert(
@@ -440,6 +441,10 @@ assert(
 assert(
   postgresDataSource.includes('"20260809_004_import_job_execution_state.sql"') && postgresDataSource.includes('"20260809_005_import_worker_claim.sql"'),
   "production migration ledger must require import execution and worker claim migrations",
+);
+assert(
+  postgresDataSource.includes('"20260819_001_guarantee_slice1_objects.sql"'),
+  "production migration ledger must require guarantee slice 1 objects migration",
 );
 
 const signUpSource = fs.readFileSync("src/app/sign-up/[[...sign-up]]/page.tsx", "utf8");
