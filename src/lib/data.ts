@@ -393,6 +393,7 @@ export const getGuaranteeCompanyMaskVersion: typeof memory.getGuaranteeCompanyMa
 export const listPublishedGuaranteeCompanyMaskVersions: typeof memory.listPublishedGuaranteeCompanyMaskVersions = (...args) => repo.listPublishedGuaranteeCompanyMaskVersions(...args);
 export const listGuaranteeCompanyMaskVersions: typeof memory.listGuaranteeCompanyMaskVersions = (...args) => repo.listGuaranteeCompanyMaskVersions(...args);
 export const getGuaranteeCompanyMask: typeof memory.getGuaranteeCompanyMask = (...args) => repo.getGuaranteeCompanyMask(...args);
+export const getGuaranteeCompanyMaskForBlankForm: typeof memory.getGuaranteeCompanyMaskForBlankForm = (...args) => repo.getGuaranteeCompanyMaskForBlankForm(...args);
 export const getGuaranteeOutputByCase: typeof memory.getGuaranteeOutputByCase = (...args) => repo.getGuaranteeOutputByCase(...args);
 export const listGuaranteeOutputsByCase: typeof memory.listGuaranteeOutputsByCase = (...args) => repo.listGuaranteeOutputsByCase(...args);
 export const deleteGeneratedOutputForTenant: typeof memory.deleteGeneratedOutputForTenant = (...args) => repo.deleteGeneratedOutputForTenant(...args);

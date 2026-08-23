@@ -3805,6 +3805,11 @@ export async function getGuaranteeCompanyMask(input: { tenantId: string; id: str
   return item ? cloneGuarantee(item) : undefined;
 }
 
+export async function getGuaranteeCompanyMaskForBlankForm(input: { tenantId: string; blankFormId: string }): Promise<GuaranteeCompanyMask | undefined> {
+  const item = db.guaranteeCompanyMasks.find((value) => value.blankFormId === input.blankFormId && value.tenantId === resolveTenantId(input.tenantId));
+  return item ? cloneGuarantee(item) : undefined;
+}
+
 export async function getGuaranteeOutputByCase(input: { tenantId: string; caseId: string; id: string }): Promise<GeneratedOutput | undefined> {
   const item = db.generatedOutputs.find((value) => value.id === input.id && value.tenantId === resolveTenantId(input.tenantId) && value.caseId === input.caseId);
   return item ? { ...item } : undefined;

@@ -7,6 +7,7 @@ import {
   getGuaranteeBlankForm,
   getGuaranteeBlankFormVersion,
   getGuaranteeCompanyMask,
+  getGuaranteeCompanyMaskForBlankForm,
   getGuaranteeCompanyMaskVersion,
   listBrokerageCases,
   listGuaranteeCompanyMaskVersions,
@@ -111,8 +112,11 @@ export default async function GuaranteeFormEditPage({ params, searchParams }: { 
     // Once draft/published data exists for that exact pair, load that version
     // so refresh/reopen does not reset the editor to default fields.
     const selectedVersion = requestedVersion ?? current;
-    const recoveryBlankFormVersionId = selectedVersion?.blankFormVersionId ?? initialBlankFormVersionId;
-    const recoveryMaskId = selectedVersion?.maskId ?? initialMaskId;
+    const fallbackMask = selectedVersion || initialMaskId || !form.activeVersionId
+      ? undefined
+      : await getGuaranteeCompanyMaskForBlankForm({ tenantId: session.tenant.id, blankFormId: form.id });
+    const recoveryBlankFormVersionId = selectedVersion?.blankFormVersionId ?? initialBlankFormVersionId ?? form.activeVersionId;
+    const recoveryMaskId = selectedVersion?.maskId ?? initialMaskId ?? fallbackMask?.id;
     // A brand-new upload has a ready blank-form version and a logical mask,
     // but no mask version yet. Leave that first-load context to the protected
     // client action so the upload response can be restored without an SSR
