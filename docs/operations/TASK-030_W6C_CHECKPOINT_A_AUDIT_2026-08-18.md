@@ -1,9 +1,9 @@
 # TASK-030 / W6-C Checkpoint A 只读审计
 
-日期：2026-08-18（Asia/Tokyo）  
-仓库：`/Users/laineyzhu/Documents/独立开发项目/房产专家/broker-desk-web-dev`  
-Branch：`main`  
-HEAD：`2d3903a05d490caf7a8a4bd7d187a57bcdf9c5d9`  
+日期：2026-08-18（Asia/Tokyo）
+仓库：`/Users/laineyzhu/Documents/独立开发项目/房产专家/broker-desk-web-dev`
+Branch：`main`
+HEAD：`2d3903a05d490caf7a8a4bd7d187a57bcdf9c5d9`
 范围：只读检查 `/properties`、`listHubProperties`、直接数据适配、创建/编辑/归档/关系图/CSV/输出入口边界；不修改业务代码和数据。
 
 ## 0. 审计结论
@@ -202,4 +202,3 @@ Checkpoint A 不修改 API；页面 CSV 是否冻结、未来字段/空选择/�
 ## 13. 结束节点
 
 Checkpoint A 只读审计已完成，TASK-030 保持 `In Progress`。本轮不制作目标结构、不修改 `src/`、不启动实现或审查 Agent。等待产品负责人复审并决定是否批准 Checkpoint B。
-

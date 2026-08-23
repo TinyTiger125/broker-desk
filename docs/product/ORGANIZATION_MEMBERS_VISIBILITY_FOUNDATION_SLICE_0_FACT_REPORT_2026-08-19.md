@@ -1,7 +1,7 @@
 # TASK-039 / W8 Checkpoint A：切片 0 事实报告
 
 日期：2026-08-19  
-状态：只读事实核对完成；TASK-039 继续 `In Progress / Checkpoint A`。  
+状态：只读事实核对完成；TASK-039 继续 `In Progress / Checkpoint A`。
 范围：Clerk 身份、本地用户、经营主体、成员关系、工作区、权限、案件/人物/物件读取、附件/输出读取、公司表格与蒙板基础、TASK-038 接入边界。
 
 本报告不授权实现，不修改 `src/`、数据库、migration、认证配置、权限模型或生产行为。

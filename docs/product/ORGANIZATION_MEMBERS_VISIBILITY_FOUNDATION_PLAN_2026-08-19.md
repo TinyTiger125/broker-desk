@@ -1,7 +1,7 @@
 # 经营主体、成员权限与内部数据可见性依赖计划
 
-日期：2026-08-19  
-任务：TASK-039 / W8  
+日期：2026-08-19
+任务：TASK-039 / W8
 状态：Slice 1 代码与 memory 复核通过，持久化与真实身份运行门未验证，保持 In Progress
 
 切片 0 报告：[TASK-039 / W8 Checkpoint A：切片 0 事实报告](ORGANIZATION_MEMBERS_VISIBILITY_FOUNDATION_SLICE_0_FACT_REPORT_2026-08-19.md)
