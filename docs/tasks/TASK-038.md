@@ -28,7 +28,7 @@
 
 ## 依赖关系
 
-前置为 TASK-037 / G1-SLICE-0。没有当前旧流程 PDF 样本不阻断技术设计或默认关闭、单非生产经营主体隔离的实现；但阻断合并、预发布验收、部署和发布前旧流程回归门。
+前置为 TASK-037 / G1-SLICE-0。没有当前旧流程 PDF 样本不阻断技术设计或默认关闭、单非生产经营主体隔离的实现；旧流程实际 PDF 回归改列为 Production 部署前硬门，不作为本次纯代码合并门。
 
 ## 验收标准
 
@@ -44,7 +44,7 @@
 
 ## 验证命令
 
-`npm run test:guarantee-slice1-contract`、既有七项保证申请书检查、`npm run test:workflow-rules`、typecheck、lint、build、`git diff --check`；旧流程 PDF 样本、双权限上下文和受控运行仍是合并/预发布/发布硬门。
+`npm run test:guarantee-slice1-contract`、既有七项保证申请书检查、`npm run test:workflow-rules`、typecheck、lint、build、`git diff --check`；旧流程 PDF 样本仍是 Production 部署前硬门，双权限上下文和受控运行按本候选审查范围记录。
 
 ## 当前状态
 
@@ -202,7 +202,7 @@ Product Acceptance Passed / Integration Deferred。七类异常文件被安全�
 
 ## 9. 结束条件
 
-TASK-037 / G1-SLICE-0 已通过，TASK-038 已获一次有限实现授权。实现必须能展示上述 A/B/C 三段演示、失败状态和回滚方式；合并、预发布验收、部署和发布前必须在受控环境固定至少一份旧流程基线输出。任务完成不等于 G1 全专题完成，也不授权生产发布。
+TASK-037 / G1-SLICE-0 已通过，TASK-038 已获一次有限实现授权。实现必须能展示上述 A/B/C 三段演示、失败状态和回滚方式；Production 部署前必须在受控环境固定至少一份旧流程基线输出。任务完成不等于 G1 全专题完成，也不授权生产发布。
 
 ## 10. 本轮纠偏状态（2026-08-19）
 
@@ -211,7 +211,7 @@ TASK-038 仍为 `In Progress / Product Acceptance Closure — Locale & Merge Gat
 - 管理员必须在客户 PDF 上拖动放置、移动和调整文本/日期/复选框三个字段；数字输入不能替代叠加校准。测试动作返回实际可查看 PDF；管理员明确查看并确认后才能发布，生成成功不能自动写入 `exact`。发布、活动版本指针和 `exact` 匹配原子完成，失败不改变旧活动版本。
 - `company_option.friends_consent` 是申请书专属补充数据，不是案件事实。普通成员填写本次补充值，预览确认锁定该值；预览与正式生成共用服务端布尔解释，`確認済み` 选中、`未確認` 未选中。
 - `NODE_ENV=production` 不再作为唯一业务环境判断。仅明确 `BROKER_DESK_DEPLOYMENT_ENV=preview|staging`、切片开关开启且租户 allowlist 命中时可用；正式 production 永远关闭。日文渲染使用随应用部署的 SIL OFL `public/fonts/NotoSansJP[wght].ttf`，不依赖 macOS 系统字体。
-- 新增可执行行为检查，静态契约脚本不再被解释成功能测试。旧流程 PDF、两个合法权限上下文、PostgreSQL 实读写和真实浏览器闭环仍为合并/预发布硬门，当前不宣称通过。
+- 新增可执行行为检查，静态契约脚本不再被解释成功能测试。旧流程 PDF 实际回归、两个合法权限上下文、PostgreSQL 实读写和真实浏览器闭环分别按候选审查与 Production 部署前门记录；旧流程 PDF 样本当前仍为 UNVERIFIED，不宣称无回归。
 
 ### 10.1 本轮严格纠偏实施记录
 
