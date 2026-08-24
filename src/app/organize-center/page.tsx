@@ -309,7 +309,7 @@ async function OrganizeCenterContent({ locale, params }: { locale: Locale; param
   let properties;
   try {
     const requestContext = createRequestContext(session);
-    const hubContext = { userId: session.user.id, tenantId: session.tenant.id, lifecycleStatus: lifecycleFilter };
+    const hubContext = { userId: session.user.id, tenantId: session.tenant.id, lifecycleStatus: lifecycleFilter, requestContext };
     [cases, parties, properties] = await Promise.all([
       listBrokerageCasesForContext({ context: requestContext, lifecycleStatus: lifecycleFilter }),
       listHubParties(locale, hubContext),

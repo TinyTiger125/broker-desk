@@ -152,6 +152,35 @@ assert(colleaguePersonList.some((item) => item.client.id === person.id && item.r
 const colleaguePersonDetail = await memory.getClientDetailForContext({ context: colleagueContext, clientId: person.id });
 assert(colleaguePersonDetail.detail && colleaguePersonDetail.resolution.outcome === "company_read", "company_read person direct detail is readable");
 
+const privateReferencedProperty = await memory.addProperty({
+  tenantId: tenant.id,
+  createdByUserId: colleague.id,
+  currentOwnerUserId: colleague.id,
+  name: "W9.2 private referenced property",
+  listingPrice: 1,
+});
+await memory.addQuotation({
+  tenantId: tenant.id,
+  clientId: person.id,
+  propertyId: privateReferencedProperty.id,
+  quoteTitle: "W9.2 hidden quotation",
+  listingPrice: 1,
+  brokerageFee: 0,
+  taxFee: 0,
+  managementFee: 0,
+  repairFee: 0,
+  otherFee: 0,
+  downPayment: 0,
+  interestRate: 0,
+  loanYears: 1,
+  summaryText: "must not leak",
+});
+const ownerDetailWithHiddenPropertyQuote = await memory.getClientDetailForContext({ context: ownerContext, clientId: person.id });
+assert(
+  ownerDetailWithHiddenPropertyQuote.detail && !ownerDetailWithHiddenPropertyQuote.detail.quotations.some((quote) => quote.id && quote.propertyId === privateReferencedProperty.id),
+  "unreadable referenced property removes the entire quotation projection",
+);
+
 const pendingProperty = await memory.addProperty({ tenantId: tenant.id, name: "W9.2 pending property", listingPrice: 1 });
 const pendingResult = await memory.resolvePropertyVisibilityForContext({ context: ownerContext, propertyId: pendingProperty.id });
 assert.equal(pendingResult.resolution.outcome, "not_accessible", "pending is hidden even from owner/admin");

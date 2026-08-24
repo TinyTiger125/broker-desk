@@ -4,9 +4,10 @@ import { addFollowUp, changeTaskStatusAction, rescheduleTaskAction, updateClient
 import { PageFlashBanner } from "@/components/page-flash-banner";
 import { SectionCard } from "@/components/section-card";
 import { formatCurrency, formatDate, formatRelativeDays } from "@/lib/format";
-import { getClientDetail } from "@/lib/data";
+import { getClientDetailForContext } from "@/lib/data";
 import { getLocale } from "@/lib/locale";
 import { requireTenantSession } from "@/lib/tenant-session";
+import { createRequestContext } from "@/lib/visibility-resolver";
 import { buildClientWorkflowGuide, getAllowedStageTargets } from "@/lib/workflow-engine";
 import {
   getAmlCheckStatusLabel,
@@ -256,10 +257,22 @@ export default async function ClientDetailPage({ params, searchParams }: ClientD
 
   const { id } = await params;
   const query = (await searchParams) ?? {};
-  const client = await getClientDetail(id, session.tenant.id);
-
-  if (!client) {
+  const visible = await getClientDetailForContext({ context: createRequestContext(session), clientId: id });
+  if (!visible.detail || !visible.resolution.canRead) {
     notFound();
+  }
+  const client = visible.detail;
+  if (!visible.resolution.canWrite) {
+    const readOnlyText = locale === "zh" ? "公司成员可见／只读" : locale === "ko" ? "회사 구성원 공개 / 읽기 전용" : "会社メンバーに公開／読み取り専用";
+    return (
+      <div className="space-y-6">
+        <header className="flex flex-wrap items-center justify-between gap-3">
+          <div><h1 className="text-3xl font-bold tracking-tight text-slate-900">{client.name}</h1><p className="mt-1 text-sm text-slate-600">{client.phone} · {client.preferredArea ?? text.areaUnset}</p></div>
+          <Link href="/clients" className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700">{locale === "zh" ? "返回客户列表" : locale === "ko" ? "고객 목록으로" : "顧客一覧へ戻る"}</Link>
+        </header>
+        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><p className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">{readOnlyText}</p><dl className="grid gap-y-2 text-sm sm:grid-cols-[120px_minmax(0,1fr)]"><dt className="text-slate-500">{text.line}</dt><dd>{client.lineId ?? text.dash}</dd><dt className="text-slate-500">{text.email}</dt><dd>{client.email ?? text.dash}</dd><dt className="text-slate-500">{text.usage}</dt><dd>{purposeLabel[client.purpose]}</dd></dl></section>
+      </div>
+    );
   }
   const workflowGuide = buildClientWorkflowGuide({
     clientId: client.id,

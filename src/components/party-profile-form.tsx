@@ -58,9 +58,9 @@ export function PartyProfileReadOnly({ defaults, locale }: { defaults: PartyProf
   return (
     <section className="space-y-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm" aria-label={text.readOnly}>
       <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">{text.readOnly}</p>
-      <div className="grid gap-4 md:grid-cols-2">
+      <dl className="grid gap-4 md:grid-cols-2">
         {fields.map(([label, value]) => <div key={label} className="space-y-1"><dt className="text-xs font-bold uppercase tracking-wide text-slate-500">{label}</dt><dd className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900">{value}</dd></div>)}
-      </div>
+      </dl>
     </section>
   );
 }

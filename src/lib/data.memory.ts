@@ -4587,11 +4587,12 @@ export async function getClientDetailForContext(input: {
   if (!resolved.record || !resolved.resolution.canRead) return { detail: null, resolution: resolved.resolution };
   const detail = await getClientDetail(input.clientId, input.context.tenantId);
   if (!detail) return { detail: null, resolution: resolved.resolution };
-  const quotations = await Promise.all(detail.quotations.map(async (quote) => {
+  const quotationResults = await Promise.all(detail.quotations.map(async (quote) => {
     if (!quote.propertyId) return quote;
     const property = await resolvePropertyVisibilityForContext({ context: input.context, propertyId: quote.propertyId });
-    return property.record ? { ...quote, property: property.record } : { ...quote, property: undefined };
+    return property.record ? { ...quote, property: property.record } : null;
   }));
+  const quotations = quotationResults.filter((quote): quote is NonNullable<typeof quote> => quote !== null);
   return { detail: { ...detail, quotations }, resolution: resolved.resolution };
 }
 

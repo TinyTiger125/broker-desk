@@ -21,6 +21,9 @@ const actions = read("src/app/actions.ts");
 const clientStageRoute = read("src/app/api/clients/[id]/stage/route.ts");
 const partiesPage = read("src/app/parties/page.tsx");
 const partyEditPage = read("src/app/parties/[id]/edit/page.tsx");
+const clientDetailPage = read("src/app/clients/[id]/page.tsx");
+const clientEditPage = read("src/app/clients/[id]/edit/page.tsx");
+const partyProfile = read("src/components/party-profile-form.tsx");
 const hub = read("src/lib/hub.ts");
 
 for (const decision of ["owner_write", "company_read", "not_accessible"]) {
@@ -77,8 +80,13 @@ assert(partiesPage.includes("createRequestContext(session)") && partiesPage.incl
 assert(partiesPage.includes("party.readOnly") && partiesPage.includes("party.canWrite"), "company-read people retain read-only UI state");
 assert(partyEditPage.includes("getClientDetailForContext") && partyEditPage.includes("!visible.detail"), "person detail uses uniform not-found for denied records");
 assert(partyEditPage.includes("PartyProfileReadOnly") && partyEditPage.includes("visible.resolution.canWrite"), "company-read person detail is explicitly read-only");
+assert(clientDetailPage.includes("getClientDetailForContext") && clientDetailPage.includes("createRequestContext(session)"), "legacy client detail uses the trusted person resolver");
+assert(clientEditPage.includes("getClientDetailForContext") && clientEditPage.includes("PartyProfileReadOnly") && clientEditPage.includes("visible.resolution.canWrite"), "legacy client edit uses the trusted person resolver and read-only shell");
+assert(partyProfile.includes("<dl") && partyProfile.includes("<dt") && partyProfile.includes("<dd"), "read-only person details use semantic definition-list markup");
 assert(hub.includes("listClientsForContext") && hub.includes("readOnly: !canWrite"), "hub person mapping derives read-only from resolver");
 assert(actions.includes("resolveClientVisibilityForContext") && actions.includes("async function ensureClientOwnership(clientId: string, session"), "person write actions require owner resolver context");
+assert(actions.includes("resolvePropertyVisibilityForContext") && actions.includes("const requestedPropertyId"), "quotation writes re-authorize referenced properties");
+assert(memory.includes("quotationResults") && postgres.includes("quotationResults"), "person detail drops quotations whose referenced property is unreadable");
 assert(memory.includes("currentOwnerUserId === input.userId") && postgres.includes("current_owner_user_id = $2"), "person lifecycle writes use current owner, not legacy owner fallback");
 assert(clientStageRoute.includes("resolveClientVisibilityForContext") && clientStageRoute.includes("visibility.resolution.canWrite"), "person stage API requires owner resolver context");
 

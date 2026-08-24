@@ -69,6 +69,7 @@ import {
   rescheduleTask,
   resolveComplianceAlert,
   resolveClientVisibilityForContext,
+  resolvePropertyVisibilityForContext,
   resolveCaseVisibilityForContext,
   saveBrokerageCaseExtractionReview,
   saveGuaranteeApplicationDraft,
@@ -2592,6 +2593,11 @@ export async function createQuotation(formData: FormData) {
     throw new Error("顧客IDは必須です。");
   }
   await ensureClientOwnership(clientId, session);
+  const requestedPropertyId = String(formData.get("propertyId") ?? "").trim();
+  if (requestedPropertyId) {
+    const property = await resolvePropertyVisibilityForContext({ context: createRequestContext(session), propertyId: requestedPropertyId });
+    if (!property.record || !property.resolution.canRead) throw new Error("物件が見つからないか、参照権限がありません。");
+  }
 
   const summaryMode = String(formData.get("summaryMode") ?? "short").trim();
   const generatedShortSummary = String(formData.get("generatedShortSummary") ?? "").trim();
@@ -2608,7 +2614,7 @@ export async function createQuotation(formData: FormData) {
   const quote = await addQuotation({
     tenantId,
     clientId,
-    propertyId: String(formData.get("propertyId") ?? "").trim() || undefined,
+    propertyId: requestedPropertyId || undefined,
     quoteTitle: String(formData.get("quoteTitle") ?? "提案プラン").trim(),
     listingPrice: parseNumber(formData.get("listingPrice")),
     brokerageFee: parseNumber(formData.get("brokerageFee")),
@@ -2653,6 +2659,10 @@ export async function duplicateQuotationAction(formData: FormData) {
     throw new Error("提案が見つかりません。");
   }
   await ensureClientOwnership(source.client.id, session);
+  if (source.propertyId) {
+    const property = await resolvePropertyVisibilityForContext({ context: createRequestContext(session), propertyId: source.propertyId });
+    if (!property.record || !property.resolution.canRead) throw new Error("物件が見つからないか、参照権限がありません。");
+  }
 
   const duplicated = await duplicateQuotation(quoteId, tenantId);
   if (!duplicated) {

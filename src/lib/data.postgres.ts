@@ -4832,7 +4832,17 @@ export async function listClientsForContext(input: {
       "SELECT * FROM clients WHERE tenant_id = $1 AND owner_resolution_status = 'resolved' AND current_owner_user_id IS NOT NULL",
       [input.context.tenantId],
     );
-    let clients = result.rows.map(mapClient).filter((item) => resolveRecordVisibility(input.context, item).canRead);
+    let clients = result.rows.flatMap((row) => {
+      const item = mapClient(row);
+      const resolution = resolveRecordVisibility(input.context, {
+        ...item,
+        tenantId: row.tenant_id == null ? null : String(row.tenant_id),
+        currentOwnerUserId: row.current_owner_user_id == null ? null : String(row.current_owner_user_id),
+        visibilityScope: row.visibility_scope,
+        ownerResolutionStatus: row.owner_resolution_status,
+      });
+      return resolution.canRead ? [item] : [];
+    });
     if (filter.stage && filter.stage !== "all") clients = clients.filter((item) => item.stage === filter.stage);
     if (filter.purpose && filter.purpose !== "all") clients = clients.filter((item) => item.purpose === filter.purpose);
     if (filter.temperature && filter.temperature !== "all") clients = clients.filter((item) => item.temperature === filter.temperature);
@@ -4948,11 +4958,12 @@ export async function getClientDetailForContext(input: {
   if (!resolved.record || !resolved.resolution.canRead) return { detail: null, resolution: resolved.resolution };
   const detail = await getClientDetail(input.clientId, input.context.tenantId);
   if (!detail) return { detail: null, resolution: resolved.resolution };
-  const quotations = await Promise.all(detail.quotations.map(async (quote) => {
+  const quotationResults = await Promise.all(detail.quotations.map(async (quote) => {
     if (!quote.propertyId) return quote;
     const property = await resolvePropertyVisibilityForContext({ context: input.context, propertyId: quote.propertyId });
-    return property.record ? { ...quote, property: property.record } : { ...quote, property: undefined };
+    return property.record ? { ...quote, property: property.record } : null;
   }));
+  const quotations = quotationResults.filter((quote): quote is NonNullable<typeof quote> => quote !== null);
   return { detail: { ...detail, quotations }, resolution: resolved.resolution };
 }
 
