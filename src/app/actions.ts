@@ -51,7 +51,6 @@ import {
   appendFollowUp,
   createComplianceTaskFromAlert,
   duplicateQuotation,
-  getBrokerageCaseById,
   getBrokerageCaseByImportJobId,
   getClientById,
   getClientDetail,
@@ -69,6 +68,7 @@ import {
   rollbackBrokerageCaseMerge,
   rescheduleTask,
   resolveComplianceAlert,
+  resolveCaseVisibilityForContext,
   saveBrokerageCaseExtractionReview,
   saveGuaranteeApplicationDraft,
   setBrokerageCaseLifecycleStatus,
@@ -124,10 +124,42 @@ import {
   type ImportValidationIssueLevel,
 } from "@/lib/import-mapping";
 import { materializeExtractionReviewValue } from "@/lib/extraction-review-materialization";
-import { assertTenantPermission, requireTenantSession } from "@/lib/tenant-session";
+import { assertTenantPermission, requireTenantSession, type TenantSession } from "@/lib/tenant-session";
+import { createRequestContext } from "@/lib/visibility-resolver";
 import { ACTIVE_TENANT_COOKIE_NAME } from "@/lib/tenant-permissions";
 import { requirePlatformOwnerSession } from "@/lib/platform-session";
 import { isLifecycleStatus, type LifecycleStatus } from "@/lib/record-lifecycle";
+import { FORBIDDEN_RECORD_INPUT_FIELDS } from "@/lib/record-input-guard";
+
+async function rejectForbiddenRecordInput(
+  formData: FormData,
+  session: Awaited<ReturnType<typeof requireTenantSession>>,
+  targetType: "case" | "client" | "property",
+  targetId?: string,
+) {
+  const submittedFields = FORBIDDEN_RECORD_INPUT_FIELDS.filter((field) => formData.has(field));
+  if (submittedFields.length === 0) return;
+
+  await addAuditLog({
+    tenantId: session.tenant.id,
+    userId: session.user.id,
+    action: "security_record_field_rejected",
+    targetType,
+    targetId,
+    message: "请求包含不可由普通资料接口提交的归属字段。",
+    context: { fields: submittedFields },
+  });
+  throw new Error("请求包含不可修改的资料归属字段。");
+}
+
+async function requireWritableCase(session: TenantSession, caseId: string) {
+  const context = createRequestContext(session);
+  const result = await resolveCaseVisibilityForContext({ context, caseId });
+  if (!result.record || !result.resolution.canWrite) {
+    throw new Error("案件が見つかりません。");
+  }
+  return result.record;
+}
 import type { InputFileExtractionResult } from "@/lib/input-file-extractor";
 import { queueExcelImportSource } from "@/lib/excel-import-queue";
 import { queueIdentityImportSources } from "@/lib/identity-import-queue";
@@ -540,6 +572,13 @@ export async function setRecordLifecycleAction(formData: FormData) {
   const entityId = String(formData.get("entityId") ?? "").trim();
   const statusRaw = String(formData.get("status") ?? "");
 
+  await rejectForbiddenRecordInput(
+    formData,
+    session,
+    entityType === "party" ? "client" : entityType === "property" ? "property" : "case",
+    entityId || undefined,
+  );
+
   if (!(entityType === "case" || entityType === "party" || entityType === "property") || !entityId || !isLifecycleStatus(statusRaw)) {
     throw new Error("归档对象或状态无效。");
   }
@@ -547,6 +586,7 @@ export async function setRecordLifecycleAction(formData: FormData) {
   const status = statusRaw as LifecycleStatus;
   let updated: unknown;
   if (entityType === "case") {
+    await requireWritableCase(session, entityId);
     updated = await setBrokerageCaseLifecycleStatus({
       tenantId: session.tenant.id,
       userId: session.user.id,
@@ -835,6 +875,7 @@ async function persistClientForm(
   const tenantId = session.tenant.id;
   const locale = await getLocale();
   const values = clientFormValues(formData);
+  await rejectForbiddenRecordInput(formData, session, "client", values.clientId.trim() || undefined);
   const parsed = parseClientForm(formData, locale, mode, compatibilityDefaults);
   if (Object.keys(parsed.fieldErrors).length > 0) {
     if (previousState) return clientValidationState(parsed.values, parsed.fieldErrors, locale);
@@ -1898,6 +1939,7 @@ export async function createPropertyQuickAction(
   const user = session.user;
   const tenantId = session.tenant.id;
   const locale = await getLocale();
+  await rejectForbiddenRecordInput(formData, session, "property");
 
   const parsed = parsePropertyForm(formData, locale);
   if (Object.keys(parsed.fieldErrors).length > 0) {
@@ -1907,6 +1949,8 @@ export async function createPropertyQuickAction(
 
   const property = await addProperty({
     tenantId,
+    createdByUserId: user.id,
+    currentOwnerUserId: user.id,
     ...parsed.normalized,
   });
 
@@ -1939,6 +1983,7 @@ export async function updatePropertyProfileAction(
   const tenantId = session.tenant.id;
   const locale = await getLocale();
   const propertyId = String(formData.get("propertyId") ?? "").trim();
+  await rejectForbiddenRecordInput(formData, session, "property", propertyId || undefined);
   if (!propertyId) {
     return propertyValidationState(propertyFormValues(formData), {}, locale, tr(locale, {
       ja: "物件IDは必須です。",
@@ -2042,6 +2087,7 @@ export async function createPartyProfileAction(formData: FormData) {
   const user = session.user;
   const tenantId = session.tenant.id;
   const locale = await getLocale();
+  await rejectForbiddenRecordInput(formData, session, "client");
   const today = formatCaseTitleDate(new Date());
   const defaultName = tr(locale, {
     ja: `新規関係者 ${today}`,
@@ -2180,6 +2226,7 @@ export async function updatePartyProfileAction(
   const locale = await getLocale();
   const values = partyFormValues(formData);
   const clientId = values.partyId.trim();
+  await rejectForbiddenRecordInput(formData, session, "client", clientId || undefined);
   if (!clientId) {
     return partyValidationState(values, { partyId: tr(locale, { ja: "関係者IDは必須です。", zh: "主体ID是必填项。", ko: "관계자 ID는 필수입니다." }) }, locale);
   }
@@ -3649,6 +3696,7 @@ export async function createBlankBrokerageCaseAction(formData: FormData) {
   const user = session.user;
   const tenantId = session.tenant.id;
   const locale = await getLocale();
+  await rejectForbiddenRecordInput(formData, session, "case");
   const requestedTitle = String(formData.get("caseTitle") ?? "").trim();
   const primaryPartyId = String(formData.get("primaryPartyId") ?? "").trim();
   const primaryPropertyId = String(formData.get("primaryPropertyId") ?? "").trim();
@@ -3719,9 +3767,9 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
   const tenantId = session.tenant.id;
 
   const caseId = String(formData.get("caseId") ?? "").trim();
+  await rejectForbiddenRecordInput(formData, session, "case", caseId || undefined);
   if (!caseId) throw new Error("案件IDが不正です。");
-  const brokerageCase = await getBrokerageCaseById({ userId: user.id, tenantId, caseId });
-  if (!brokerageCase) throw new Error("案件が見つかりません。");
+  const brokerageCase = await requireWritableCase(session, caseId);
   const [reviewItems, fieldRules] = await Promise.all([
     listExtractionReviewItems({ userId: user.id, tenantId, caseId }),
     listCaseWorkbenchFieldRules(user.id, tenantId),
@@ -3876,9 +3924,9 @@ export async function saveCaseApplicabilityAction(formData: FormData) {
   const tenantId = session.tenant.id;
 
   const caseId = String(formData.get("caseId") ?? "").trim();
+  await rejectForbiddenRecordInput(formData, session, "case", caseId || undefined);
   if (!caseId) throw new Error("案件IDが不正です。");
-  const brokerageCase = await getBrokerageCaseById({ userId: user.id, tenantId, caseId });
-  if (!brokerageCase) throw new Error("案件が見つかりません。");
+  const brokerageCase = await requireWritableCase(session, caseId);
 
   const [reviewItems, fieldRules] = await Promise.all([
     listExtractionReviewItems({ userId: user.id, tenantId, caseId }),
@@ -3953,8 +4001,7 @@ export async function saveGuaranteeApplicationDraftAction(formData: FormData) {
   const template = findGuaranteeCompanyTemplate(templateId);
   if (!template) throw new Error("保証会社テンプレートが見つかりません。");
 
-  const brokerageCase = await getBrokerageCaseById({ userId: user.id, tenantId, caseId });
-  if (!brokerageCase) throw new Error("案件が見つかりません。");
+  const brokerageCase = await requireWritableCase(session, caseId);
 
   const draftDefinitions = getGuaranteeDraftFieldDefinitions(template.id);
   const fieldValuesJson: Record<string, unknown> = {};
@@ -4121,8 +4168,7 @@ async function saveGuaranteeApplicationPreviewWithScope(
   const template = findGuaranteeCompanyTemplate(templateId);
   if (!template) throw new Error("保証会社テンプレートが見つかりません。");
 
-  const brokerageCase = await getBrokerageCaseById({ userId: user.id, tenantId, caseId });
-  if (!brokerageCase) throw new Error("案件が見つかりません。");
+  const brokerageCase = await requireWritableCase(session, caseId);
   const previousDraft = await getGuaranteeApplicationDraft({ userId: user.id, tenantId, caseId, templateId: template.id });
   const previousLayoutOverrides = getFriendsGuaranteeEffectiveLayoutOverrides({
     templateId: template.id,
@@ -4465,8 +4511,7 @@ export async function uploadAndParseExcelAction(formData: FormData) {
   const targetCaseId = String(formData.get("targetCaseId") ?? "").trim();
   const uploadContext = String(formData.get("uploadContext") ?? "").trim();
   if (targetCaseId) {
-    const targetCase = await getBrokerageCaseById({ userId: user.id, tenantId, caseId: targetCaseId });
-    if (!targetCase) throw new Error("追加先の案件が見つかりません。");
+    await requireWritableCase(session, targetCaseId);
   }
   const targetCaseQuery = targetCaseId ? `&targetCaseId=${encodeURIComponent(targetCaseId)}` : "";
   const redirectExcelUploadError = (flash: string): never => {
@@ -4504,8 +4549,7 @@ export async function uploadAndParseIdentityDocumentAction(formData: FormData) {
   const targetCaseId = String(formData.get("targetCaseId") ?? "").trim();
   const uploadContext = String(formData.get("uploadContext") ?? "").trim();
   if (targetCaseId) {
-    const targetCase = await getBrokerageCaseById({ userId: user.id, tenantId, caseId: targetCaseId });
-    if (!targetCase) throw new Error("追加先の案件が見つかりません。");
+    await requireWritableCase(session, targetCaseId);
   }
   const targetCaseQuery = targetCaseId ? `&targetCaseId=${encodeURIComponent(targetCaseId)}` : "";
   const redirectIdentityUploadError = (flash: string): never => {
@@ -4543,6 +4587,7 @@ export async function saveExtractionReviewAction(formData: FormData) {
   const session = await requireTenantSession({ permission: "extract.accept_result" });
   const user = session.user;
   const tenantId = session.tenant.id;
+  await rejectForbiddenRecordInput(formData, session, "case", String(formData.get("targetCaseId") ?? "").trim() || undefined);
 
   const jobId = String(formData.get("jobId") ?? "").trim();
   if (!jobId) throw new Error("ジョブIDが不正です。");
@@ -4624,8 +4669,7 @@ export async function saveExtractionReviewAction(formData: FormData) {
 
   const targetCaseId = String(formData.get("targetCaseId") ?? payload.targetCaseId ?? "").trim();
   if (targetCaseId) {
-    const targetCase = await getBrokerageCaseById({ userId: user.id, tenantId, caseId: targetCaseId });
-    if (!targetCase) throw new Error("追加先の案件が見つかりません。");
+    const targetCase = await requireWritableCase(session, targetCaseId);
 
     const mergedData = mergeConfirmedCaseData({
       existingData: targetCase.confirmedDataJson,
@@ -4705,13 +4749,15 @@ export async function saveExtractionReviewAction(formData: FormData) {
     tenantId,
     importJobId: job.id,
   });
+  if (existingCase) {
+    await requireWritableCase(session, existingCase.id);
+  }
 
   if (mergeTargetCaseId) {
     if (!mergeConfirmed) {
       throw new Error("案件に追加する前に、合併確認にチェックしてください。");
     }
-    const targetCase = await getBrokerageCaseById({ userId: user.id, tenantId, caseId: mergeTargetCaseId });
-    if (!targetCase) throw new Error("合併先の案件が見つかりません。");
+    const targetCase = await requireWritableCase(session, mergeTargetCaseId);
     if (targetCase.sourceImportJobIds.includes(job.id)) {
       throw new Error("この資料はすでに選択した案件に含まれています。");
     }
@@ -4884,14 +4930,14 @@ export async function rollbackCaseMergeAction(formData: FormData) {
   const tenantId = session.tenant.id;
 
   const caseId = String(formData.get("caseId") ?? "").trim();
+  await rejectForbiddenRecordInput(formData, session, "case", caseId || undefined);
   const mergeId = String(formData.get("mergeId") ?? "").trim();
   if (!caseId || !mergeId) throw new Error("分離対象の案件が不正です。");
   if (!parseCheckbox(formData.get("rollbackConfirm"))) {
     throw new Error("分離して戻す前に確認チェックを入れてください。");
   }
 
-  const brokerageCase = await getBrokerageCaseById({ userId: user.id, tenantId, caseId });
-  if (!brokerageCase) throw new Error("案件が見つかりません。");
+  const brokerageCase = await requireWritableCase(session, caseId);
 
   const latestMerge = getLatestActiveCaseMerge(brokerageCase.confirmedDataJson);
   if (!latestMerge || latestMerge.id !== mergeId) {
@@ -4952,6 +4998,7 @@ export async function executePropertyImportAction(formData: FormData) {
   const user = session.user;
   const tenantId = session.tenant.id;
   const locale = await getLocale();
+  await rejectForbiddenRecordInput(formData, session, "property");
 
   const jobId = String(formData.get("jobId") ?? "").trim();
   if (!jobId) throw new Error("ジョブIDが不正です。");
@@ -5022,6 +5069,8 @@ export async function executePropertyImportAction(formData: FormData) {
     try {
       await addProperty({
         tenantId,
+        createdByUserId: user.id,
+        currentOwnerUserId: user.id,
         name,
         area: String(mapped["area"] ?? "").trim() || undefined,
         address: String(mapped["address"] ?? "").trim() || undefined,

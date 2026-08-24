@@ -1,0 +1,79 @@
+{
+  "schema": "task-040.w9.2.visibility-resolver.runtime-probes.v1",
+  "environment": "isolated_nonproduction_disposable_branch",
+  "authEvidence": "database-verified external subject through the production session lookup path with a controlled non-browser Clerk subject shim; not browser E2E",
+  "sessionProvenanceVerified": true,
+  "project": {
+    "name": "broker-desk-staging-nonprod",
+    "id": "restless-sun-37465131",
+    "branchName": "w92-resolver-provenance-20260824",
+    "branchId": "br-dry-salad-az88clup",
+    "database": "neondb",
+    "role": "brokerdesk_runtime",
+    "deploymentClass": "preview",
+    "branchDestroyedAfterVerification": true
+  },
+  "migrationLedger": {
+    "applied": [
+      {
+        "name": "20260824_001_visibility_foundation.sql",
+        "sha256": "b31d04fd67e4982f616e9e3b941c32e5f6580892931cd52cc8c7e2139a1281fb"
+      },
+      {
+        "name": "20260824_002_visibility_record_rls.sql",
+        "sha256": "93ddd41101b31e47d692279b4d9570b225fbc0e2457a2ef7f68a92be1506d2dc"
+      },
+      {
+        "name": "20260824_003_creator_immutability.sql",
+        "sha256": "34b27b0997ba0f31679d5ddfd078edbd29076651211cce4da4057202f66da3f9"
+      }
+    ],
+    "repeatedRun": "not re-applied in this resolver probe; migration ledger was already current",
+    "productionTouched": false
+  },
+  "dataSafety": {
+    "beforeCounts": {
+      "clients": 0,
+      "properties": 0,
+      "brokerage_cases": 3
+    },
+    "afterCounts": {
+      "clients": 1,
+      "properties": 2,
+      "brokerage_cases": 4
+    },
+    "deltaReason": "synthetic resolver probes only: one person, one private property, one pending property and one private case",
+    "existingRowsMutated": false,
+    "runtimeScopeResetToPrivate": true
+  },
+  "cases": {
+    "ownerReadWrite": {
+      "person": { "outcome": "owner_write", "canRead": true, "canWrite": true, "recordReturned": true },
+      "property": { "outcome": "owner_write", "canRead": true, "canWrite": true, "recordReturned": true },
+      "case": { "outcome": "owner_write", "canRead": true, "canWrite": true, "recordReturned": true }
+    },
+    "privatePeer": {
+      "person": { "outcome": "not_accessible", "canRead": false, "canWrite": false, "recordReturned": false },
+      "property": { "outcome": "not_accessible", "canRead": false, "canWrite": false, "recordReturned": false },
+      "case": { "outcome": "not_accessible", "canRead": false, "canWrite": false, "recordReturned": false }
+    },
+    "pending": { "outcome": "not_accessible", "canRead": false, "canWrite": false, "recordReturned": false },
+    "companyRead": { "outcome": "company_read", "canRead": true, "canWrite": false, "recordReturned": true },
+    "companyReadWriteAttempt": { "denied": true },
+    "forgedTenant": { "outcome": "not_accessible", "recordReturned": false },
+    "missingRecord": { "outcome": "not_accessible", "recordReturned": false },
+    "plainSerializedContext": { "outcome": "not_accessible", "recordReturned": false },
+    "suspendedMutationInput": { "untrustedInputDenied": true },
+    "removedMutationInput": { "untrustedInputDenied": true }
+  },
+  "scope": {
+    "pagesWired": false,
+    "listsWired": false,
+    "searchWired": false,
+    "exportsWired": false,
+    "graphsAttachmentsPdfWired": false,
+    "productionTouched": false
+  },
+  "summaryHashAlgorithm": "sha256(JSON.stringify(document with summarySha256 removed))",
+  "summarySha256": "0d0d17dcf7ebc073b356bd94a560514cfffe103e85685019222a4e3bf4c44c9c"
+}

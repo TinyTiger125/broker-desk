@@ -201,6 +201,18 @@ export const listTenantsForUser: typeof memory.listTenantsForUser = (...args) =>
   repo.listTenantsForUser(...args);
 export const listTenantMembers: typeof memory.listTenantMembers = (...args) =>
   repo.listTenantMembers(...args);
+export const listMemberVisibilityDefaults: typeof memory.listMemberVisibilityDefaults = (...args) =>
+  repo.listMemberVisibilityDefaults(...args);
+export const setMemberVisibilityDefault: typeof memory.setMemberVisibilityDefault = (...args) =>
+  repo.setMemberVisibilityDefault(...args);
+export const setRecordVisibilityScope: typeof memory.setRecordVisibilityScope = (...args) =>
+  repo.setRecordVisibilityScope(...args);
+export const resolveClientVisibilityForContext: typeof memory.resolveClientVisibilityForContext = (...args) =>
+  repo.resolveClientVisibilityForContext(...args);
+export const resolvePropertyVisibilityForContext: typeof memory.resolvePropertyVisibilityForContext = (...args) =>
+  repo.resolvePropertyVisibilityForContext(...args);
+export const resolveCaseVisibilityForContext: typeof memory.resolveCaseVisibilityForContext = (...args) =>
+  repo.resolveCaseVisibilityForContext(...args);
 /**
  * Read the current tenant's member list using the identity that already
  * established the page session. This avoids a second Clerk lookup during the
@@ -340,8 +352,12 @@ export const retryImportJobExecution: typeof memory.retryImportJobExecution = (.
   repo.retryImportJobExecution(...args);
 export const listBrokerageCases: typeof memory.listBrokerageCases = (...args) =>
   repo.listBrokerageCases(...args);
+export const listBrokerageCasesForContext: typeof memory.listBrokerageCasesForContext = (...args) =>
+  repo.listBrokerageCasesForContext(...args);
 export const getBrokerageCaseById: typeof memory.getBrokerageCaseById = (...args) =>
   repo.getBrokerageCaseById(...args);
+export const getBrokerageCaseByIdForContext: typeof memory.getBrokerageCaseByIdForContext = (...args) =>
+  repo.getBrokerageCaseByIdForContext(...args);
 export const getBrokerageCaseByImportJobId: typeof memory.getBrokerageCaseByImportJobId = (...args) =>
   repo.getBrokerageCaseByImportJobId(...args);
 export const updateBrokerageCaseConfirmedData: typeof memory.updateBrokerageCaseConfirmedData = (...args) =>

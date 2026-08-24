@@ -53,6 +53,10 @@
     "test:ja-terms": "bash scripts/check-ja-terms.sh",
     "test:product-language": "node scripts/check-product-language-boundary.mjs",
     "test:workflow-rules": "node scripts/check-workflow-rules.mjs",
+    "test:visibility-foundation": "node scripts/check-visibility-foundation.mjs",
+    "test:visibility-foundation-behavior": "node scripts/test-visibility-foundation.mjs",
+    "test:visibility-resolver": "node scripts/check-visibility-resolver-contract.mjs",
+    "test:visibility-resolver-behavior": "node scripts/test-visibility-resolver-behavior.mjs",
     "terms:export": "node scripts/export-ui-terminology.mjs",
     "terms:import": "node scripts/import-ui-terminology.mjs"
   },

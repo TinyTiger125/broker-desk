@@ -567,6 +567,8 @@ export function CaseOverview({
   outputBlockers,
   hasOutputTemplate,
   saveAction,
+  readOnly = false,
+  visibilityLabel,
   flash,
   initialFieldKey,
   initialScrollTop,
@@ -587,6 +589,8 @@ export function CaseOverview({
   outputBlockers: CaseOverviewOutputBlocker[];
   hasOutputTemplate: boolean;
   saveAction: SaveAction;
+  readOnly?: boolean;
+  visibilityLabel?: string;
   flash?: ReactNode;
   initialFieldKey?: string;
   initialScrollTop?: number;
@@ -808,20 +812,30 @@ export function CaseOverview({
         onToggleQueue={() => setQueueOpen((open) => !open)}
           actions={
           <>
-            <a href={`/cases/${encodeURIComponent(caseId)}/guarantee-application`} className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-black text-blue-900 hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300">
-              {locale === "zh" ? "生成申请书" : locale === "ko" ? "신청서 생성" : "申込書を生成"}
-            </a>
-            <Link href={previewHref} className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-900 hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300">
-              <span className="material-symbols-outlined text-[16px]" aria-hidden="true">visibility</span>
-              {locale === "zh" ? "申请书预览" : locale === "ko" ? "신청서 미리보기" : "申込書プレビュー"}
-            </Link>
-            <button type="button" onClick={handleDownload} className="hidden items-center gap-1.5 rounded-lg bg-slate-950 px-3 py-2 text-xs font-black text-white hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 sm:inline-flex">
-              <span className="material-symbols-outlined text-[16px]" aria-hidden="true">download</span>
-              {hasOutputTemplate ? (locale === "zh" ? "下载申请书" : locale === "ko" ? "신청서 다운로드" : "申込書をダウンロード") : (locale === "zh" ? "选择输出模板" : locale === "ko" ? "출력 템플릿 선택" : "出力テンプレートを選ぶ")}
-            </button>
+            {!readOnly ? (
+              <>
+                <a href={`/cases/${encodeURIComponent(caseId)}/guarantee-application`} className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-black text-blue-900 hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300">
+                  {locale === "zh" ? "生成申请书" : locale === "ko" ? "신청서 생성" : "申込書を生成"}
+                </a>
+                <Link href={previewHref} className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-900 hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300">
+                  <span className="material-symbols-outlined text-[16px]" aria-hidden="true">visibility</span>
+                  {locale === "zh" ? "申请书预览" : locale === "ko" ? "신청서 미리보기" : "申込書プレビュー"}
+                </Link>
+                <button type="button" onClick={handleDownload} className="hidden items-center gap-1.5 rounded-lg bg-slate-950 px-3 py-2 text-xs font-black text-white hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 sm:inline-flex">
+                  <span className="material-symbols-outlined text-[16px]" aria-hidden="true">download</span>
+                  {hasOutputTemplate ? (locale === "zh" ? "下载申请书" : locale === "ko" ? "신청서 다운로드" : "申込書をダウンロード") : (locale === "zh" ? "选择输出模板" : locale === "ko" ? "출력模板を選ぶ" : "出力テンプレートを選ぶ")}
+                </button>
+              </>
+            ) : null}
           </>
         }
       />
+
+      {readOnly && visibilityLabel ? (
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700" role="status">
+          {visibilityLabel}
+        </div>
+      ) : null}
 
       {flash}
 
@@ -924,19 +938,21 @@ export function CaseOverview({
                           </details>
                         ) : null}
                       </div>
-                      <button
-                        type="button"
-                        data-field-trigger={fieldAnchor(field.fieldKey)}
-                        onClick={() => openEditor(field)}
-                        onKeyDown={(event) => {
-                          if (event.key !== "Enter" && event.key !== " ") return;
-                          event.preventDefault();
-                          openEditor(field);
-                        }}
-                        className={`inline-flex shrink-0 items-center justify-center rounded-lg border px-3 py-2 text-xs font-black focus:outline-none focus:ring-2 focus:ring-blue-300 ${fieldIssue(field) ? "border-amber-300 bg-white text-amber-900 hover:bg-amber-50" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`}
-                      >
-                        {fieldIssue(field) ? (locale === "zh" ? "处理问题" : locale === "ko" ? "문제 처리" : "要対応") : (locale === "zh" ? "编辑" : locale === "ko" ? "편집" : "編集")}
-                      </button>
+                      {!readOnly ? (
+                        <button
+                          type="button"
+                          data-field-trigger={fieldAnchor(field.fieldKey)}
+                          onClick={() => openEditor(field)}
+                          onKeyDown={(event) => {
+                            if (event.key !== "Enter" && event.key !== " ") return;
+                            event.preventDefault();
+                            openEditor(field);
+                          }}
+                          className={`inline-flex shrink-0 items-center justify-center rounded-lg border px-3 py-2 text-xs font-black focus:outline-none focus:ring-2 focus:ring-blue-300 ${fieldIssue(field) ? "border-amber-300 bg-white text-amber-900 hover:bg-amber-50" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`}
+                        >
+                          {fieldIssue(field) ? (locale === "zh" ? "处理问题" : locale === "ko" ? "문제 처리" : "要対応") : (locale === "zh" ? "编辑" : locale === "ko" ? "편집" : "編集")}
+                        </button>
+                      ) : null}
                     </div>
                   );
 

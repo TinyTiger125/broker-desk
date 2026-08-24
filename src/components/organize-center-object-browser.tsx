@@ -28,6 +28,8 @@ export type OrganizeCenterBrowserItem = {
   updatedLabel: string;
   href: string;
   lifecycleStatus: LifecycleStatus;
+  visibilityLabel?: string;
+  readOnly?: boolean;
 };
 
 type OrganizeCenterObjectBrowserProps = {
@@ -301,6 +303,7 @@ export function OrganizeCenterObjectBrowser({
                   <span className="material-symbols-outlined mt-1 shrink-0 text-[18px] text-slate-400 transition group-hover:translate-x-0.5 group-hover:text-[#3158d8]" aria-hidden="true">arrow_forward</span>
                 </Link>
                 <p className="mt-1 break-words text-xs font-bold text-slate-500">{item.subtitle}</p>
+                {item.visibilityLabel ? <p className="mt-2 inline-flex w-fit rounded-full bg-slate-100 px-2 py-1 text-[11px] font-black text-slate-600">{item.visibilityLabel}</p> : null}
               </div>
 
               <div className="min-w-0 rounded-md bg-slate-50 px-3 py-2">
@@ -317,13 +320,15 @@ export function OrganizeCenterObjectBrowser({
 
               <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 md:col-span-2 xl:col-span-1 xl:flex-col xl:items-end xl:justify-start">
                 <span className="text-xs font-bold tabular-nums text-slate-500">{copy.taskUpdated}: {item.updatedLabel}</span>
-                <ArchiveRecordButton
-                  entityType={item.type}
-                  entityId={item.id}
-                  status={item.lifecycleStatus}
-                  locale={locale}
-                  returnTo={listHref}
-                />
+                {!item.readOnly ? (
+                  <ArchiveRecordButton
+                    entityType={item.type}
+                    entityId={item.id}
+                    status={item.lifecycleStatus}
+                    locale={locale}
+                    returnTo={listHref}
+                  />
+                ) : null}
               </div>
             </article>
           ))}

@@ -1,9 +1,9 @@
 # TASK-038 / G1-SLICE-1：保证公司申请书最小端到端证明
 
 - 所属专题：保证公司申请书 G1
-- 状态: In Progress
-- 产品结论: Product Acceptance Passed / Integration Deferred
-- 当前阶段: 产品验收已完成；尚未合入 main、尚未部署 Production，Production 前门仍有效，不再扩大 TASK-038 产品范围
+- 状态: Done
+- 产品结论: Product Accepted and Integrated / Production Not Released
+- 当前阶段: 产品验收已完成并已合入 main；尚未部署 Production，Production 前门仍有效，不再扩大 TASK-038 产品范围
 - 顺序：1；依赖 TASK-037 / G1-SLICE-0
 - 技术设计：[TASK-038 G1-SLICE-1 技术设计](../product/GUARANTEE_APPLICATION_G1_SLICE_1_TECHNICAL_DESIGN_2026-08-19.md)
 - 最高依据：[第一版产品基线](../product/GUARANTEE_APPLICATION_PRODUCT_BASELINE_V1_2026-08-18.md)
@@ -206,7 +206,7 @@ TASK-037 / G1-SLICE-0 已通过，TASK-038 已获一次有限实现授权。实�
 
 ## 10. 本轮纠偏状态（2026-08-19）
 
-TASK-038 仍为 `In Progress / Product Acceptance Closure — Locale & Merge Gates`。本轮产品复核不通过项已绑定为实现条件：
+TASK-038 已为 `Done / Product Accepted and Integrated / Production Not Released`。产品复核与 Staging 验收已完成；本轮只保留 Production 前门，不再扩大 TASK-038 产品范围：
 
 - 管理员必须在客户 PDF 上拖动放置、移动和调整文本/日期/复选框三个字段；数字输入不能替代叠加校准。测试动作返回实际可查看 PDF；管理员明确查看并确认后才能发布，生成成功不能自动写入 `exact`。发布、活动版本指针和 `exact` 匹配原子完成，失败不改变旧活动版本。
 - `company_option.friends_consent` 是申请书专属补充数据，不是案件事实。普通成员填写本次补充值，预览确认锁定该值；预览与正式生成共用服务端布尔解释，`確認済み` 选中、`未確認` 未选中。

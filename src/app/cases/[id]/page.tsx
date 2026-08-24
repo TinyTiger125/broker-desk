@@ -5,7 +5,7 @@ import { ArchiveRecordButton } from "@/components/archive-record-button";
 import { CaseWorkbenchFieldForm } from "@/components/case-workbench-field-form";
 import { CaseEditPanel, CaseEvidenceSummary, CaseFieldInput, CaseFieldState, CaseFieldValue, CaseIdentityHeader, CaseOverview, type CaseOverviewOutputBlocker, type CaseOverviewSection } from "@/components/case-overview";
 import { PageFlashBanner } from "@/components/page-flash-banner";
-import { getBrokerageCaseById, getGuaranteeApplicationDraft, listCaseWorkbenchFieldRules, listExtractionReviewItems, listTenantGuaranteeTemplateInstalls } from "@/lib/data";
+import { getBrokerageCaseByIdForContext, getGuaranteeApplicationDraft, listCaseWorkbenchFieldRules, listExtractionReviewItems, listTenantGuaranteeTemplateInstalls, resolveClientVisibilityForContext, resolvePropertyVisibilityForContext } from "@/lib/data";
 import type { ExtractionReviewItem, ExtractionReviewStatus } from "@/lib/data";
 import { getCaseFieldAliases, getCaseFieldValue } from "@/lib/case-field-normalization";
 import {
@@ -34,6 +34,7 @@ import { localizeCaseOverviewFieldLabel, localizeCaseOverviewTreeLabel } from "@
 import { formatDate } from "@/lib/format";
 import { getLocale, type Locale } from "@/lib/locale";
 import { requireTenantSession } from "@/lib/tenant-session";
+import { createRequestContext } from "@/lib/visibility-resolver";
 
 export const dynamic = "force-dynamic";
 
@@ -715,24 +716,55 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
   const session = await requireTenantSession({ permission: "case.read_assigned" });
   const user = session.user;
   const tenantId = session.tenant.id;
+  const requestContext = createRequestContext(session);
 
   const [{ id }, query] = await Promise.all([
     params,
     searchParams ?? Promise.resolve({} as { flash?: string; node?: string; field?: string; view?: string; scrollTop?: string }),
   ]);
-  const [brokerageCase, reviewItems, fieldRules, installedGuaranteeTemplates] = await Promise.all([
-    getBrokerageCaseById({ userId: user.id, tenantId, caseId: id }),
-    listExtractionReviewItems({ userId: user.id, tenantId, caseId: id }),
-    listCaseWorkbenchFieldRules(user.id, tenantId),
-    listTenantGuaranteeTemplateInstalls({ tenantId }),
-  ]);
+  const caseVisibility = await getBrokerageCaseByIdForContext({ context: requestContext, caseId: id });
+  let brokerageCase = caseVisibility.brokerageCase;
   if (!brokerageCase) notFound();
+  const canWriteCase = caseVisibility.resolution.outcome === "owner_write";
+  const [reviewItems, fieldRules, installedGuaranteeTemplates] = canWriteCase
+    ? await Promise.all([
+        listExtractionReviewItems({ userId: user.id, tenantId, caseId: id }),
+        listCaseWorkbenchFieldRules(user.id, tenantId),
+        listTenantGuaranteeTemplateInstalls({ tenantId }),
+      ])
+    : [[], [], []] as const;
+  const caseVisibilityLabel = caseVisibility.resolution.outcome === "company_read"
+    ? tr(locale, { ja: "会社メンバーに公開／読み取り専用", zh: "公司成员可见／只读", ko: "회사 멤버 공개／읽기 전용" })
+    : undefined;
+
+  if (!canWriteCase) {
+    const primaryPartyId = typeof brokerageCase.confirmedDataJson.__primaryPartyId === "string" ? brokerageCase.confirmedDataJson.__primaryPartyId : undefined;
+    const primaryPropertyId = brokerageCase.primaryPropertyId || (typeof brokerageCase.confirmedDataJson.__primaryPropertyId === "string" ? brokerageCase.confirmedDataJson.__primaryPropertyId : undefined);
+    const [partyVisibility, propertyVisibility] = await Promise.all([
+      primaryPartyId ? resolveClientVisibilityForContext({ context: requestContext, clientId: primaryPartyId }) : Promise.resolve(null),
+      primaryPropertyId ? resolvePropertyVisibilityForContext({ context: requestContext, propertyId: primaryPropertyId }) : Promise.resolve(null),
+    ]);
+    const nextConfirmedData = { ...brokerageCase.confirmedDataJson };
+    if (!partyVisibility?.record) {
+      Object.keys(nextConfirmedData).filter((key) => key === "tenant.name" || key.startsWith("applicant.") || key.startsWith("emergencyContact.") || key.startsWith("coOccupants.") || key.startsWith("guarantor.")).forEach((key) => delete nextConfirmedData[key]);
+    }
+    if (!propertyVisibility?.record) {
+      Object.keys(nextConfirmedData).filter((key) => key.startsWith("property.")).forEach((key) => delete nextConfirmedData[key]);
+    }
+    delete nextConfirmedData.__primaryPartyId;
+    delete nextConfirmedData.__primaryPropertyId;
+    brokerageCase = {
+      ...brokerageCase,
+      caseTitle: tr(locale, { ja: "案件", zh: "案件", ko: "안건" }),
+      confirmedDataJson: nextConfirmedData,
+    };
+  }
 
   const installedTemplateIds = new Set(installedGuaranteeTemplates.map((install) => install.templateId));
   const outputTemplateId = installedTemplateIds.has(FRIENDS_GUARANTEE_DEFAULT_TEMPLATE_ID)
     ? FRIENDS_GUARANTEE_DEFAULT_TEMPLATE_ID
     : installedGuaranteeTemplates[0]?.templateId;
-  const outputTemplate = findGuaranteeCompanyTemplate(outputTemplateId);
+  const outputTemplate = canWriteCase ? findGuaranteeCompanyTemplate(outputTemplateId) : undefined;
   const outputDraft = outputTemplate
     ? await getGuaranteeApplicationDraft({ userId: user.id, tenantId, caseId: brokerageCase.id, templateId: outputTemplate.id })
     : null;
@@ -896,7 +928,9 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
     readText(brokerageCase.confirmedDataJson, "guarantee.companyName") ||
     tr(locale, { ja: "未選択", zh: "未选择", ko: "미선택" });
   const currentHandlerSummary =
-    readText(brokerageCase.confirmedDataJson, "__assigneeName") || tr(locale, { ja: "現在の担当者", zh: "当前负责人", ko: "현재 담당자" });
+    canWriteCase
+      ? readText(brokerageCase.confirmedDataJson, "__assigneeName") || tr(locale, { ja: "現在の担当者", zh: "当前负责人", ko: "현재 담당자" })
+      : tr(locale, { ja: "担当者", zh: "当前负责人", ko: "현재 담당자" });
   const flashMessage =
     query?.flash === "extraction_review_saved"
       ? tr(locale, {
@@ -1005,6 +1039,32 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
   const parsedScrollTop = query?.scrollTop ? Number(query.scrollTop) : Number.NaN;
   const initialScrollTop = Number.isSafeInteger(parsedScrollTop) && parsedScrollTop >= 0 ? parsedScrollTop : undefined;
   const initialFieldKey = query?.field && allWorkbenchFields.some((field) => field.fieldKey === query.field) ? query.field : undefined;
+
+  if (!canWriteCase) {
+    return (
+      <CaseOverview
+        caseId={brokerageCase.id}
+        caseTitle={brokerageCase.caseTitle}
+        applicantSummary={applicantSummary}
+        propertySummary={propertySummary}
+        guaranteeCompanySummary={guaranteeCompanySummary}
+        currentHandlerSummary={currentHandlerSummary}
+        sections={overviewSections}
+        locale={locale}
+        issueCount={overviewIssueCount}
+        outputHref=""
+        previewHref=""
+        downloadHref={null}
+        dataVersion={brokerageCase.updatedAt.toISOString()}
+        outputBlockers={[]}
+        hasOutputTemplate={false}
+        saveAction={saveCaseWorkbenchAction}
+        readOnly
+        visibilityLabel={caseVisibilityLabel}
+        flash={<PageFlashBanner message={flashMessage} tone={flashTone} />}
+      />
+    );
+  }
 
   if (activeView === "overview") {
     return (

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { searchHubItems } from "@/lib/hub";
 import type { Locale } from "@/lib/locale";
+import { TenantSessionError, requireTenantSession } from "@/lib/tenant-session";
 
 function normalizeLocale(value: string | null): Locale {
   if (value === "zh" || value === "ko" || value === "ja") return value;
@@ -8,15 +9,26 @@ function normalizeLocale(value: string | null): Locale {
 }
 
 export async function GET(request: Request) {
+  let session;
+  try {
+    session = await requireTenantSession({ permission: "record.read" });
+  } catch (error) {
+    if (error instanceof TenantSessionError) {
+      return NextResponse.json({ ok: false, error: error.code }, { status: error.status });
+    }
+    return NextResponse.json({ ok: false, error: "hub_search_unavailable" }, { status: 500 });
+  }
+
   try {
     const url = new URL(request.url);
     const q = url.searchParams.get("q") ?? "";
     const locale = normalizeLocale(url.searchParams.get("locale"));
-    const items = await searchHubItems(locale, q, 6);
+    const items = await searchHubItems(locale, q, 6, {
+      userId: session.user.id,
+      tenantId: session.tenant.id,
+    });
     return NextResponse.json({ items });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "hub search failed";
-    return NextResponse.json({ error: message }, { status: 500 });
+  } catch {
+    return NextResponse.json({ ok: false, error: "hub_search_unavailable" }, { status: 500 });
   }
 }
-

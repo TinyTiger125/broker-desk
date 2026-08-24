@@ -25,6 +25,7 @@ import {
   type TenantPermissionAction,
 } from "@/lib/tenant-permissions";
 import { isProductionRuntime } from "@/lib/auth-mode";
+import { registerTenantSessionProvenance } from "@/lib/tenant-session-provenance";
 
 export class TenantSessionError extends Error {
   constructor(
@@ -38,6 +39,8 @@ export class TenantSessionError extends Error {
 }
 
 export type TenantSession = {
+  /** Clerk/trusted-auth subject used to bind the request-scoped database identity. */
+  externalAuthSubject: string | null;
   user: User;
   tenant: Tenant;
   membership: TenantMembership;
@@ -156,7 +159,17 @@ const resolveTenantSession = cache(async (preferredUserId?: string, requestedTen
     throw new TenantSessionError("Active tenant was not found.", "tenant_not_found");
   }
 
-  return { user: sessionUser, tenant, membership };
+  const resolvedSession = {
+    // A persisted user mapping is not an authentication event. Resolver
+    // contexts must carry only the subject established by the current Clerk
+    // session; demo/development fallbacks stay ineligible for resolver access.
+    externalAuthSubject: clerkSubject ?? null,
+    user: sessionUser,
+    tenant,
+    membership,
+  };
+  registerTenantSessionProvenance(resolvedSession);
+  return resolvedSession;
 });
 
 export const getTenantSessionForNavigation = cache(async (): Promise<TenantSession | null> => {
