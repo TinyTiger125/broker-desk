@@ -85,7 +85,8 @@ assert(clientEditPage.includes("getClientDetailForContext") && clientEditPage.in
 assert(partyProfile.includes("<dl") && partyProfile.includes("<dt") && partyProfile.includes("<dd"), "read-only person details use semantic definition-list markup");
 assert(hub.includes("listClientsForContext") && hub.includes("readOnly: !canWrite"), "hub person mapping derives read-only from resolver");
 assert(actions.includes("resolveClientVisibilityForContext") && actions.includes("async function ensureClientOwnership(clientId: string, session"), "person write actions require owner resolver context");
-assert(actions.includes("resolvePropertyVisibilityForContext") && actions.includes("const requestedPropertyId"), "quotation writes re-authorize referenced properties");
+assert(actions.includes("resolvePropertyVisibilityForContext") && actions.includes("const requestedPropertyId") && actions.includes("property.resolution.canWrite"), "quotation writes require owner access to referenced properties");
+assert(memory.includes("visibleQuotationCount") && postgres.includes("propertyReadable"), "person list counts exclude unreadable referenced quotations");
 assert(memory.includes("quotationResults") && postgres.includes("quotationResults"), "person detail drops quotations whose referenced property is unreadable");
 assert(memory.includes("currentOwnerUserId === input.userId") && postgres.includes("current_owner_user_id = $2"), "person lifecycle writes use current owner, not legacy owner fallback");
 assert(clientStageRoute.includes("resolveClientVisibilityForContext") && clientStageRoute.includes("visibility.resolution.canWrite"), "person stage API requires owner resolver context");

@@ -2596,7 +2596,7 @@ export async function createQuotation(formData: FormData) {
   const requestedPropertyId = String(formData.get("propertyId") ?? "").trim();
   if (requestedPropertyId) {
     const property = await resolvePropertyVisibilityForContext({ context: createRequestContext(session), propertyId: requestedPropertyId });
-    if (!property.record || !property.resolution.canRead) throw new Error("物件が見つからないか、参照権限がありません。");
+    if (!property.record || !property.resolution.canWrite) throw new Error("物件が見つからないか、関連付ける権限がありません。");
   }
 
   const summaryMode = String(formData.get("summaryMode") ?? "short").trim();
@@ -2661,7 +2661,7 @@ export async function duplicateQuotationAction(formData: FormData) {
   await ensureClientOwnership(source.client.id, session);
   if (source.propertyId) {
     const property = await resolvePropertyVisibilityForContext({ context: createRequestContext(session), propertyId: source.propertyId });
-    if (!property.record || !property.resolution.canRead) throw new Error("物件が見つからないか、参照権限がありません。");
+    if (!property.record || !property.resolution.canWrite) throw new Error("物件が見つからないか、関連付ける権限がありません。");
   }
 
   const duplicated = await duplicateQuotation(quoteId, tenantId);

@@ -180,6 +180,8 @@ assert(
   ownerDetailWithHiddenPropertyQuote.detail && !ownerDetailWithHiddenPropertyQuote.detail.quotations.some((quote) => quote.id && quote.propertyId === privateReferencedProperty.id),
   "unreadable referenced property removes the entire quotation projection",
 );
+const ownerPersonListAfterHiddenQuote = await memory.listClientsForContext({ context: ownerContext, filter: { lifecycleStatus: "all" } });
+assert.equal(ownerPersonListAfterHiddenQuote.find((item) => item.client.id === person.id)?._count.quotations, 0, "person list count excludes unreadable referenced quotations");
 
 const pendingProperty = await memory.addProperty({ tenantId: tenant.id, name: "W9.2 pending property", listingPrice: 1 });
 const pendingResult = await memory.resolvePropertyVisibilityForContext({ context: ownerContext, propertyId: pendingProperty.id });

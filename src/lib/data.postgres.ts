@@ -4861,10 +4861,25 @@ export async function listClientsForContext(input: {
     const followCountMap = new Map<string, number>();
     if (ids.length > 0) {
       const [quoteRes, followRes] = await Promise.all([
-        getPool().query("SELECT client_id, COUNT(*)::int AS count FROM quotations WHERE client_id = ANY($1) AND tenant_id = $2 GROUP BY client_id", [ids, input.context.tenantId]),
+        getPool().query("SELECT client_id, property_id FROM quotations WHERE client_id = ANY($1) AND tenant_id = $2", [ids, input.context.tenantId]),
         getPool().query("SELECT client_id, COUNT(*)::int AS count FROM follow_ups WHERE client_id = ANY($1) AND tenant_id = $2 GROUP BY client_id", [ids, input.context.tenantId]),
       ]);
-      quoteRes.rows.forEach((row) => quoteCountMap.set(String(row.client_id), Number(row.count)));
+      const propertyIds = [...new Set(quoteRes.rows.map((row) => row.property_id).filter(Boolean).map(String))];
+      const propertyRes = propertyIds.length > 0
+        ? await getPool().query("SELECT * FROM properties WHERE id = ANY($1) AND tenant_id = $2", [propertyIds, input.context.tenantId])
+        : { rows: [] as Array<Record<string, unknown>> };
+      const propertyById = new Map(propertyRes.rows.map((row) => [String(row.id), row] as const));
+      quoteRes.rows.forEach((row) => {
+        const propertyId = row.property_id ? String(row.property_id) : "";
+        const propertyRow = propertyId ? propertyById.get(propertyId) : undefined;
+        const propertyReadable = !propertyId || Boolean(propertyRow && resolveRecordVisibility(input.context, {
+          tenantId: propertyRow.tenant_id == null ? null : String(propertyRow.tenant_id),
+          currentOwnerUserId: propertyRow.current_owner_user_id == null ? null : String(propertyRow.current_owner_user_id),
+          visibilityScope: propertyRow.visibility_scope,
+          ownerResolutionStatus: propertyRow.owner_resolution_status,
+        }).canRead);
+        if (propertyReadable) quoteCountMap.set(String(row.client_id), (quoteCountMap.get(String(row.client_id)) ?? 0) + 1);
+      });
       followRes.rows.forEach((row) => followCountMap.set(String(row.client_id), Number(row.count)));
     }
     return clients.map((client) => ({

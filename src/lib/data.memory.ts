@@ -4518,13 +4518,20 @@ export async function listClientsForContext(input: {
     return (a.nextFollowUpAt?.getTime() ?? Number.MAX_SAFE_INTEGER) - (b.nextFollowUpAt?.getTime() ?? Number.MAX_SAFE_INTEGER);
   });
 
-  return filtered.map((client) => ({
-    client: { ...client },
-    resolution: resolveRecordVisibility(input.context, client),
-    _count: {
-      quotations: db.quotations.filter((quote) => quote.clientId === client.id && quote.tenantId === scopeTenantId).length,
-      followUps: db.followUps.filter((followUp) => followUp.clientId === client.id && followUp.tenantId === scopeTenantId).length,
-    },
+  return Promise.all(filtered.map(async (client) => {
+    const visibleQuotationCount = db.quotations.filter((quote) => quote.clientId === client.id && quote.tenantId === scopeTenantId).filter((quote) => {
+      if (!quote.propertyId) return true;
+      const property = db.properties.find((item) => item.id === quote.propertyId && item.tenantId === scopeTenantId);
+      return Boolean(property && resolveRecordVisibility(input.context, property).canRead);
+    }).length;
+    return {
+      client: { ...client },
+      resolution: resolveRecordVisibility(input.context, client),
+      _count: {
+        quotations: visibleQuotationCount,
+        followUps: db.followUps.filter((followUp) => followUp.clientId === client.id && followUp.tenantId === scopeTenantId).length,
+      },
+    };
   }));
 }
 
