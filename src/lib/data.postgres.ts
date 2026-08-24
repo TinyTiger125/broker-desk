@@ -146,6 +146,7 @@ const REQUIRED_PRODUCTION_MIGRATIONS = [
   "20260820_012_current_tenant_member_read.sql",
   "20260821_013_fix_removed_invitation_return.sql",
   "20260824_001_visibility_foundation.sql",
+  "20260824_002_visibility_record_rls.sql",
 ] as const;
 
 const OPEN_STAGES: ClientStage[] = ["lead", "contacted", "quoted", "viewing", "negotiating"];
@@ -3707,10 +3708,13 @@ export async function rollbackBrokerageCaseMerge(input: {
     const splitResult = await client.query(
       `INSERT INTO brokerage_cases (
         id, tenant_id, user_id, case_type, case_title, primary_property_id, status,
-        confirmed_data_json, source_import_job_ids, created_at, updated_at
+        confirmed_data_json, source_import_job_ids,
+        created_by_user_id, current_owner_user_id, visibility_scope, owner_resolution_status,
+        created_at, updated_at
        )
        SELECT $1, tenant_id, user_id, case_type, $5, primary_property_id, 'reviewed',
-              $6, $7, NOW(), NOW()
+              $6, $7, created_by_user_id, current_owner_user_id, visibility_scope, owner_resolution_status,
+              NOW(), NOW()
        FROM brokerage_cases
        WHERE id = $2 AND user_id = $3 AND tenant_id = $4
        RETURNING *`,

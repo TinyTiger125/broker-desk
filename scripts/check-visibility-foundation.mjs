@@ -8,6 +8,7 @@ const assert = (condition, message) => {
 };
 
 const migration = read("db/migrations/20260824_001_visibility_foundation.sql");
+const recordRlsMigration = read("db/migrations/20260824_002_visibility_record_rls.sql");
 const memory = read("src/lib/data.memory.ts");
 const postgres = read("src/lib/data.postgres.ts");
 const data = read("src/lib/data.ts");
@@ -34,6 +35,7 @@ for (const field of ["created_by_user_id", "current_owner_user_id", "visibility_
 assert(migration.includes("created_by_user_id, current_owner_user_id") || migration.includes("created_by_user_id TEXT"), "legacy owner backfill is explicit");
 assert(migration.includes("COALESCE(created_by_user_id, owner_user_id)") && migration.includes("COALESCE(created_by_user_id, user_id)"), "legacy owner source columns are explicit");
 assert(postgres.includes('"20260824_001_visibility_foundation.sql"'), "migration readiness includes W9.1 migration");
+assert(postgres.includes('"20260824_002_visibility_record_rls.sql"'), "migration readiness includes record visibility RLS migration");
 assert(data.includes("setMemberVisibilityDefault") && data.includes("setRecordVisibilityScope"), "repository exposes owner-only writes");
 assert(memory.includes('membership.status === "active"') && memory.includes("membership.userId !== input.actorUserId"), "memory default write requires active self membership");
 assert(postgres.includes("m.status = 'active'") && postgres.includes("input.actorUserId !== input.memberUserId"), "postgres default write requires active self membership");
@@ -41,6 +43,15 @@ assert(postgres.includes("databaseActorMatches") && postgres.includes("brokerdes
 assert(memory.includes("actorUserId: string") && postgres.includes("actorUserId: string"), "default reads require an actor identity");
 assert(memory.includes("item.membershipId === membership.id") && postgres.includes("membership_id IN"), "default reads are restricted to the actor membership");
 assert(migration.includes("VALIDATE CONSTRAINT clients_visibility_scope_check") && migration.includes("VALIDATE CONSTRAINT brokerage_cases_owner_resolution_status_check"), "visibility checks are validated after backfill");
+assert(recordRlsMigration.includes("brokerdesk_visibility_select") && recordRlsMigration.includes("brokerdesk_visibility_update"), "record visibility RLS policies exist");
+assert(recordRlsMigration.includes("owner_resolution_status = 'resolved'") && recordRlsMigration.includes("current_owner_user_id = brokerdesk_private.current_user_id()"), "record RLS is fail-closed and owner-bound");
+assert(recordRlsMigration.includes("visibility_scope = 'company_read'"), "company_read is read-only through a separate SELECT policy");
+for (const policy of ["brokerdesk_visibility_select", "brokerdesk_visibility_insert", "brokerdesk_visibility_update", "brokerdesk_visibility_delete"]) {
+  assert(recordRlsMigration.includes(`CREATE POLICY ${policy}`), `record RLS includes ${policy}`);
+}
+assert(recordRlsMigration.includes("DROP POLICY IF EXISTS brokerdesk_tenant_isolation"), "record RLS removes the old tenant-only policy");
+assert(postgres.includes("created_by_user_id, current_owner_user_id, visibility_scope, owner_resolution_status") && postgres.includes("created_by_user_id, current_owner_user_id, visibility_scope, owner_resolution_status,\n              NOW(), NOW()"), "postgres merge rollback preserves visibility ownership fields");
+assert(memory.includes("createdByUserId: item.createdByUserId") && memory.includes("currentOwnerUserId: item.currentOwnerUserId") && memory.includes("visibilityScope: item.visibilityScope") && memory.includes("ownerResolutionStatus: item.ownerResolutionStatus"), "memory merge rollback preserves visibility ownership fields");
 assert(memory.includes('ownerResolutionStatus: input.currentOwnerUserId ? "resolved" : "pending_confirmation"') && postgres.includes('ownerUserId ? "resolved" : "pending_confirmation"'), "unknown ownership is fail-closed");
 assert(actions.includes("createdByUserId: user.id") && actions.includes("currentOwnerUserId: user.id"), "property create/import paths record creator and current owner");
 assert(memory.includes('defaultVisibilityScope(scopeTenantId, input.userId, "case")') && memory.includes('defaultVisibilityScope(scopeTenantId, input.ownerUserId, "person")'), "memory creation inherits object-specific defaults");

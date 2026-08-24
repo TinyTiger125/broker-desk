@@ -3415,6 +3415,10 @@ export async function rollbackBrokerageCaseMerge(input: {
     status: "reviewed",
     confirmedDataJson: { ...input.splitConfirmedDataJson },
     sourceImportJobIds: [...new Set(input.splitSourceImportJobIds)],
+    createdByUserId: item.createdByUserId,
+    currentOwnerUserId: item.currentOwnerUserId,
+    visibilityScope: item.visibilityScope,
+    ownerResolutionStatus: item.ownerResolutionStatus,
     createdAt: nowDate,
     updatedAt: nowDate,
   };
