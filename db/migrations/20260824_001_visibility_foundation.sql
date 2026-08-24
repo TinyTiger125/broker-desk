@@ -39,31 +39,40 @@ ALTER TABLE public.brokerage_cases
 -- Reliable legacy owners are copied from the existing owner columns.  A
 -- property has no trustworthy legacy owner column, so it intentionally stays
 -- pending_confirmation and is never assigned to a tenant owner by guesswork.
+-- Each backfill is independently idempotent: a rerun fills only missing
+-- metadata and never overwrites a previously chosen legal scope.
 UPDATE public.clients
-   SET created_by_user_id = COALESCE(created_by_user_id, owner_user_id),
-       current_owner_user_id = COALESCE(current_owner_user_id, owner_user_id),
-       visibility_scope = 'private',
-       owner_resolution_status = 'resolved'
- WHERE created_by_user_id IS NULL
-    OR current_owner_user_id IS NULL
-    OR visibility_scope IS NULL
-    OR owner_resolution_status IS NULL;
+   SET created_by_user_id = COALESCE(created_by_user_id, owner_user_id)
+ WHERE created_by_user_id IS NULL;
+UPDATE public.clients
+   SET current_owner_user_id = COALESCE(current_owner_user_id, owner_user_id)
+ WHERE current_owner_user_id IS NULL;
+UPDATE public.clients
+   SET visibility_scope = 'private'
+ WHERE visibility_scope IS NULL;
+UPDATE public.clients
+   SET owner_resolution_status = CASE WHEN current_owner_user_id IS NULL THEN 'pending_confirmation' ELSE 'resolved' END
+ WHERE owner_resolution_status IS NULL;
 
 UPDATE public.brokerage_cases
-   SET created_by_user_id = COALESCE(created_by_user_id, user_id),
-       current_owner_user_id = COALESCE(current_owner_user_id, user_id),
-       visibility_scope = 'private',
-       owner_resolution_status = 'resolved'
- WHERE created_by_user_id IS NULL
-    OR current_owner_user_id IS NULL
-    OR visibility_scope IS NULL
-    OR owner_resolution_status IS NULL;
+   SET created_by_user_id = COALESCE(created_by_user_id, user_id)
+ WHERE created_by_user_id IS NULL;
+UPDATE public.brokerage_cases
+   SET current_owner_user_id = COALESCE(current_owner_user_id, user_id)
+ WHERE current_owner_user_id IS NULL;
+UPDATE public.brokerage_cases
+   SET visibility_scope = 'private'
+ WHERE visibility_scope IS NULL;
+UPDATE public.brokerage_cases
+   SET owner_resolution_status = CASE WHEN current_owner_user_id IS NULL THEN 'pending_confirmation' ELSE 'resolved' END
+ WHERE owner_resolution_status IS NULL;
 
 UPDATE public.properties
-   SET visibility_scope = 'private',
-       owner_resolution_status = 'pending_confirmation'
- WHERE current_owner_user_id IS NULL
-    OR owner_resolution_status IS NULL;
+   SET visibility_scope = 'private'
+ WHERE visibility_scope IS NULL;
+UPDATE public.properties
+   SET owner_resolution_status = 'pending_confirmation'
+ WHERE owner_resolution_status IS NULL;
 
 ALTER TABLE public.clients
   DROP CONSTRAINT IF EXISTS clients_visibility_scope_check,
@@ -92,6 +101,13 @@ ALTER TABLE public.brokerage_cases
   ADD CONSTRAINT brokerage_cases_owner_resolution_status_check
     CHECK (owner_resolution_status IN ('resolved', 'pending_confirmation')) NOT VALID;
 
+ALTER TABLE public.clients VALIDATE CONSTRAINT clients_visibility_scope_check;
+ALTER TABLE public.clients VALIDATE CONSTRAINT clients_owner_resolution_status_check;
+ALTER TABLE public.properties VALIDATE CONSTRAINT properties_visibility_scope_check;
+ALTER TABLE public.properties VALIDATE CONSTRAINT properties_owner_resolution_status_check;
+ALTER TABLE public.brokerage_cases VALIDATE CONSTRAINT brokerage_cases_visibility_scope_check;
+ALTER TABLE public.brokerage_cases VALIDATE CONSTRAINT brokerage_cases_owner_resolution_status_check;
+
 CREATE INDEX IF NOT EXISTS idx_clients_tenant_visibility_owner
   ON public.clients (tenant_id, visibility_scope, current_owner_user_id);
 CREATE INDEX IF NOT EXISTS idx_properties_tenant_visibility_owner
@@ -110,13 +126,32 @@ DROP POLICY IF EXISTS brokerdesk_tenant_visibility_defaults_update ON public.ten
 CREATE POLICY brokerdesk_tenant_visibility_defaults_select
   ON public.tenant_member_visibility_defaults
   FOR SELECT
-  USING (brokerdesk_private.can_access_tenant(tenant_id));
+  USING (
+    brokerdesk_private.can_access_tenant(tenant_id)
+    AND member_user_id = brokerdesk_private.current_user_id()
+    AND EXISTS (
+      SELECT 1
+        FROM public.tenant_memberships membership
+       WHERE membership.id = tenant_member_visibility_defaults.membership_id
+         AND membership.tenant_id = tenant_member_visibility_defaults.tenant_id
+         AND membership.user_id = tenant_member_visibility_defaults.member_user_id
+         AND membership.status = 'active'
+    )
+  );
 CREATE POLICY brokerdesk_tenant_visibility_defaults_insert
   ON public.tenant_member_visibility_defaults
   FOR INSERT
   WITH CHECK (
     brokerdesk_private.can_access_tenant(tenant_id)
     AND member_user_id = brokerdesk_private.current_user_id()
+    AND EXISTS (
+      SELECT 1
+        FROM public.tenant_memberships membership
+       WHERE membership.id = tenant_member_visibility_defaults.membership_id
+         AND membership.tenant_id = tenant_member_visibility_defaults.tenant_id
+         AND membership.user_id = tenant_member_visibility_defaults.member_user_id
+         AND membership.status = 'active'
+    )
   );
 CREATE POLICY brokerdesk_tenant_visibility_defaults_update
   ON public.tenant_member_visibility_defaults
@@ -124,10 +159,26 @@ CREATE POLICY brokerdesk_tenant_visibility_defaults_update
   USING (
     brokerdesk_private.can_access_tenant(tenant_id)
     AND member_user_id = brokerdesk_private.current_user_id()
+    AND EXISTS (
+      SELECT 1
+        FROM public.tenant_memberships membership
+       WHERE membership.id = tenant_member_visibility_defaults.membership_id
+         AND membership.tenant_id = tenant_member_visibility_defaults.tenant_id
+         AND membership.user_id = tenant_member_visibility_defaults.member_user_id
+         AND membership.status = 'active'
+    )
   )
   WITH CHECK (
     brokerdesk_private.can_access_tenant(tenant_id)
     AND member_user_id = brokerdesk_private.current_user_id()
+    AND EXISTS (
+      SELECT 1
+        FROM public.tenant_memberships membership
+       WHERE membership.id = tenant_member_visibility_defaults.membership_id
+         AND membership.tenant_id = tenant_member_visibility_defaults.tenant_id
+         AND membership.user_id = tenant_member_visibility_defaults.member_user_id
+         AND membership.status = 'active'
+    )
   );
 
 DO $$

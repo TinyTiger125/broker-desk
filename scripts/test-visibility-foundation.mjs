@@ -46,8 +46,10 @@ await data.setMemberVisibilityDefault({ tenantId: tenantA, memberUserId: user, a
 await data.setMemberVisibilityDefault({ tenantId: tenantA, memberUserId: user, actorUserId: user, objectType: "case", visibilityScope: "private" });
 await data.setMemberVisibilityDefault({ tenantId: tenantA, memberUserId: user, actorUserId: user, objectType: "property", visibilityScope: "company_read" });
 await data.setMemberVisibilityDefault({ tenantId: tenantB, memberUserId: user, actorUserId: user, objectType: "person", visibilityScope: "private" });
-assert.equal((await data.listMemberVisibilityDefaults({ tenantId: tenantA, memberUserId: user })).length, 3);
-assert.equal((await data.listMemberVisibilityDefaults({ tenantId: tenantB, memberUserId: user })).length, 1);
+assert.equal((await data.listMemberVisibilityDefaults({ tenantId: tenantA, actorUserId: user, memberUserId: user })).length, 3);
+assert.equal((await data.listMemberVisibilityDefaults({ tenantId: tenantB, actorUserId: user, memberUserId: user })).length, 1);
+assert.equal((await data.listMemberVisibilityDefaults({ tenantId: tenantA, actorUserId: "user_ops", memberUserId: user })).length, 0, "members cannot enumerate another member's defaults");
+assert.equal((await data.listMemberVisibilityDefaults({ tenantId: tenantA, actorUserId: "user_invited_sato", memberUserId: "user_invited_sato" })).length, 0, "inactive members cannot read defaults");
 
 const clientA = await newClient(tenantA, "TASK-040 person A");
 const clientB = await newClient(tenantB, "TASK-040 person B");

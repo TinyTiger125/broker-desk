@@ -315,6 +315,23 @@ function resolveTenantId(tenantId?: string): string {
   return DEFAULT_TENANT_ID;
 }
 
+/**
+ * Mutations must not trust a caller-provided local user id when PostgreSQL has
+ * already bound the request to a Clerk subject.  Non-production memory-style
+ * harnesses may have no request GUC; production remains fail-closed.
+ */
+async function databaseActorMatches(
+  client: Pool | PoolClient,
+  actorUserId: string,
+): Promise<boolean> {
+  const result = await client.query(
+    "SELECT brokerdesk_private.current_user_id() AS user_id",
+  );
+  const databaseActorId = String(result.rows[0]?.user_id ?? "").trim();
+  if (!databaseActorId) return !isProductionRuntime();
+  return databaseActorId === actorUserId;
+}
+
 async function resolveMemberVisibilityScope(
   tenantId: string,
   memberUserId: string,
@@ -353,16 +370,25 @@ function mapMemberVisibilityDefault(row: Record<string, unknown>): MemberVisibil
 
 export async function listMemberVisibilityDefaults(input: {
   tenantId?: string;
+  actorUserId: string;
   memberUserId?: string;
 }): Promise<MemberVisibilityDefault[]> {
   await ensureSchema();
   const tenantId = resolveTenantId(input.tenantId);
+  const actorUserId = input.actorUserId.trim();
+  if (!actorUserId || (input.memberUserId?.trim() && input.memberUserId.trim() !== actorUserId)) return [];
+  const poolClient = getPool();
+  if (!(await databaseActorMatches(poolClient, actorUserId))) return [];
   const result = await getPool().query(
     `SELECT * FROM tenant_member_visibility_defaults
       WHERE tenant_id = $1
-        AND ($2::text IS NULL OR member_user_id = $2)
+        AND member_user_id = $2
+        AND membership_id IN (
+          SELECT id FROM tenant_memberships
+           WHERE tenant_id = $1 AND user_id = $2 AND status = 'active'
+        )
       ORDER BY object_type`,
-    [tenantId, input.memberUserId?.trim() || null],
+    [tenantId, actorUserId],
   );
   return result.rows.map(mapMemberVisibilityDefault);
 }
@@ -379,6 +405,7 @@ export async function setMemberVisibilityDefault(input: {
   const tenantId = resolveTenantId(input.tenantId);
   const scope = normalizeVisibilityScope(input.visibilityScope);
   return withTransaction(async (client) => {
+    if (!(await databaseActorMatches(client, input.actorUserId))) return null;
     const membership = await client.query(
       `SELECT id FROM tenant_memberships
         WHERE tenant_id = $1 AND user_id = $2 AND status = 'active'
@@ -425,6 +452,7 @@ export async function setRecordVisibilityScope(input: {
   const tenantId = resolveTenantId(input.tenantId);
   const scope = normalizeVisibilityScope(input.visibilityScope);
   return withTransaction(async (client) => {
+    if (!(await databaseActorMatches(client, input.actorUserId))) return null;
     const activeMembership = await client.query(
       "SELECT 1 FROM tenant_memberships WHERE tenant_id = $1 AND user_id = $2 AND status = 'active' LIMIT 1",
       [tenantId, input.actorUserId],

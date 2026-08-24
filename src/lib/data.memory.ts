@@ -690,11 +690,20 @@ function requireActiveOwner(tenantId: string, actorUserId: string, currentOwnerU
 
 export async function listMemberVisibilityDefaults(input: {
   tenantId?: string;
+  actorUserId: string;
   memberUserId?: string;
 }): Promise<MemberVisibilityDefault[]> {
   const tenantId = resolveTenantId(input.tenantId);
+  const actorUserId = input.actorUserId.trim();
+  if (!actorUserId || input.memberUserId?.trim() && input.memberUserId.trim() !== actorUserId) return [];
+  const membership = findActiveMembership(tenantId, actorUserId);
+  if (!membership) return [];
   return db.memberVisibilityDefaults
-    .filter((item) => item.tenantId === tenantId && (!input.memberUserId || item.memberUserId === input.memberUserId))
+    .filter((item) =>
+      item.tenantId === tenantId &&
+      item.membershipId === membership.id &&
+      item.memberUserId === actorUserId,
+    )
     .map((item) => ({ ...item }));
 }
 
