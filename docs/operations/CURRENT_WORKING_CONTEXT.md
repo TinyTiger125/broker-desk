@@ -99,6 +99,7 @@
 - TASK-038 为 `Product Acceptance Passed / Integration Deferred`；不再扩大产品范围，尚未合入 main 或部署 Production。
 - TASK-039 仅经营主体与成员基础阶段验收通过；案件、人物、物件可见范围及后续资料授权继续未完成。
 - 平台候选在 Production 隔离、工程检查和完整独立审查门关闭前保持 `Not Mergeable`；不得合并 main、部署 Production 或执行 Production migration。
+- Main CI 固定不执行认证浏览器回归，也不读取人工 Clerk Cookie；该步骤必须明确记录 `SKIPPED / AUTH TEST ENVIRONMENT NOT CONFIGURED`，不阻断普通代码集成。build、lint、typecheck、公开健康检查和无需登录的确定性回归仍为必跑门。真实 A/B 浏览器回归只在受控 Staging 或明确授权的手工发布检查中执行，Production 发布前不得用 `SKIPPED` 替代有效认证证据。
 
 ## 当前禁止事项
 
