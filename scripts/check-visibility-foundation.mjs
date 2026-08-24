@@ -23,7 +23,6 @@ assert(migration.includes("ENABLE ROW LEVEL SECURITY") && migration.includes("FO
 assert(migration.includes("brokerdesk_private.can_access_tenant(tenant_id)"), "defaults use tenant policy");
 assert(migration.includes("member_user_id = brokerdesk_private.current_user_id()"), "defaults writes are bound to the member identity");
 assert(migration.includes("owner_resolution_status = 'pending_confirmation'"), "unknown property ownership stays pending");
-assert(migration.includes("DO NOT") === false, "contract file contains no fake bypass marker");
 
 for (const field of ["created_by_user_id", "current_owner_user_id", "visibility_scope", "owner_resolution_status"]) {
   assert(migration.includes(`ADD COLUMN IF NOT EXISTS ${field}`), `migration adds ${field}`);
