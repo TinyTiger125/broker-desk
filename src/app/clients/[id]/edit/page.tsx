@@ -6,7 +6,8 @@ import { PartyProfileReadOnly } from "@/components/party-profile-form";
 import { PageFlashBanner } from "@/components/page-flash-banner";
 import { getClientDetailForContext } from "@/lib/data";
 import { getLocale } from "@/lib/locale";
-import { requireTenantSession } from "@/lib/tenant-session";
+import { getTenantCapability, requireTenantSession } from "@/lib/tenant-session";
+import { capabilityHasTenantPermission } from "@/lib/tenant-permissions";
 import { createRequestContext } from "@/lib/visibility-resolver";
 import { extractPartyProfileFromNotes } from "@/lib/party-profile";
 
@@ -54,12 +55,16 @@ export default async function EditClientPage({ params, searchParams }: EditClien
   const query = (await searchParams) ?? {};
   const returnTo = normalizeReturnTo(query.returnTo, client.id);
   const flashMessage = query.flash === "client_updated" ? text.updated : undefined;
-  if (!visible.resolution.canWrite) {
+  const capabilityCanWrite = session.membership.status === "active"
+    && capabilityHasTenantPermission(getTenantCapability(session.membership), "record.update");
+  const canEdit = visible.resolution.canWrite && capabilityCanWrite;
+  if (!canEdit) {
     const profile = extractPartyProfileFromNotes(client.notes);
+    const readOnlyReason = visible.resolution.outcome === "company_read" ? "company_read" : "owner_read_only";
     return (
       <div className="mx-auto max-w-5xl space-y-6 pb-12">
-        <header className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-5"><div><h1 className="text-3xl font-bold tracking-tight text-slate-950">{client.name}</h1><p className="mt-2 text-sm font-medium text-slate-600">{locale === "zh" ? "公司成员可见／只读" : locale === "ko" ? "회사 구성원 공개 / 읽기 전용" : "会社メンバーに公開／読み取り専用"}</p></div><Link href={returnTo} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700">{text.back}</Link></header>
-        <PartyProfileReadOnly locale={locale} defaults={{ name: client.name, phone: client.phone, email: client.email, lineId: client.lineId, partyType: profile.type, partyRole: profile.role }} />
+        <header className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-5"><div><h1 className="text-3xl font-bold tracking-tight text-slate-950">{client.name}</h1><p className="mt-2 text-sm font-medium text-slate-600">{readOnlyReason === "company_read" ? locale === "zh" ? "公司成员可见／只读" : locale === "ko" ? "회사 구성원 공개 / 읽기 전용" : "会社メンバーに公開／読み取り専用" : locale === "zh" ? "当前账号仅可查看。" : locale === "ko" ? "현재 계정은 보기 전용입니다." : "現在のアカウントは閲覧のみです。"}</p></div><Link href={returnTo} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700">{text.back}</Link></header>
+        <PartyProfileReadOnly reason={readOnlyReason} locale={locale} defaults={{ name: client.name, phone: client.phone, email: client.email, lineId: client.lineId, partyType: profile.type, partyRole: profile.role }} />
       </div>
     );
   }

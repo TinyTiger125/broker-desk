@@ -6,7 +6,8 @@ import { listHubParties, type HubPartyItem } from "@/lib/hub";
 import { t } from "@/lib/i18n";
 import { getLocale } from "@/lib/locale";
 import { normalizeLifecycleFilter, type LifecycleFilter } from "@/lib/record-lifecycle";
-import { requireTenantSession } from "@/lib/tenant-session";
+import { getTenantCapability, requireTenantSession } from "@/lib/tenant-session";
+import { capabilityHasTenantPermission } from "@/lib/tenant-permissions";
 import { createRequestContext } from "@/lib/visibility-resolver";
 
 export const dynamic = "force-dynamic";
@@ -86,6 +87,7 @@ const partiesCopy = {
     restoredFeedback: "関係者を復元しました。",
     backToWorkbench: "ワークベンチに戻る",
     readOnly: "会社メンバーに公開／読み取り専用",
+    ownerReadOnly: "現在のアカウントは閲覧のみです。",
   },
   zh: {
     addParty: "新增主体",
@@ -123,6 +125,7 @@ const partiesCopy = {
     restoredFeedback: "主体已恢复。",
     backToWorkbench: "返回工作台",
     readOnly: "公司成员可见／只读",
+    ownerReadOnly: "当前账号仅可查看。",
   },
   ko: {
     addParty: "관계자 추가",
@@ -160,6 +163,7 @@ const partiesCopy = {
     restoredFeedback: "관계자를 복원했습니다.",
     backToWorkbench: "워크벤치로 돌아가기",
     readOnly: "회사 구성원 공개 / 읽기 전용",
+    ownerReadOnly: "현재 계정은 보기 전용입니다.",
   },
 } as const;
 
@@ -178,6 +182,8 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
     requireTenantSession({ permission: "record.read" }),
   ]);
   const copy = partiesCopy[locale];
+  const capabilityCanWrite = session.membership.status === "active"
+    && capabilityHasTenantPermission(getTenantCapability(session.membership), "record.update");
   const params = (await searchParams) ?? {};
   const query = params.q?.trim() ?? "";
   const type = normalizeType(params.type);
@@ -337,6 +343,8 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
         ) : (
           <ul className="divide-y divide-slate-200/80" aria-label={copy.results}>
             {visibleParties.map((party) => {
+              const canWrite = party.canWrite && capabilityCanWrite;
+              const readOnlyMessage = party.readOnly ? copy.readOnly : canWrite ? undefined : copy.ownerReadOnly;
               const typeLabel = party.explicitPartyType === "corporate"
                 ? copy.corporate
                 : party.explicitPartyType === "individual"
@@ -354,17 +362,17 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
                       {party.name}
                     </Link>
                     <p className="mt-1 truncate text-xs font-medium text-slate-500">{contactSummary(party, notSet)}</p>
-                    {party.readOnly ? <p className="mt-1 text-xs font-bold text-slate-600">{copy.readOnly}</p> : null}
+                    {readOnlyMessage ? <p className="mt-1 text-xs font-bold text-slate-600">{readOnlyMessage}</p> : null}
                   </div>
                   <div className="text-sm text-slate-700"><span className="mr-2 text-xs font-bold text-slate-400 lg:hidden">{copy.type}</span>{typeLabel}</div>
                   <div className="text-sm text-slate-700"><span className="mr-2 text-xs font-bold text-slate-400 lg:hidden">{copy.role}</span>{roleLabel}</div>
                   <div className={party.status === "archived" ? "text-sm font-semibold text-slate-500" : "text-sm text-slate-700"}><span className="mr-2 text-xs font-bold text-slate-400 lg:hidden">{copy.status}</span>{statusLabel}</div>
                   <div className="flex flex-wrap items-center justify-start gap-2 lg:justify-end">
-                    {!party.readOnly ? <Link
+                    {canWrite ? <Link
                       href={`/relationship-tree?type=party&id=${encodeURIComponent(party.id)}`}
                       className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]"
                     >{copy.relationTree}</Link> : null}
-                    {party.canWrite ? <ArchiveRecordButton
+                    {canWrite ? <ArchiveRecordButton
                       entityType="party"
                       entityId={party.id}
                       status={party.status}

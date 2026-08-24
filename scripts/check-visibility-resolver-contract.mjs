@@ -66,7 +66,7 @@ assert(memory.includes("listBrokerageCasesForContext") && memory.includes("getBr
 assert(postgres.includes("listBrokerageCasesForContext") && postgres.includes("getBrokerageCaseByIdForContext"), "Postgres exposes context-bound case page reads");
 assert(data.includes("listBrokerageCasesForContext") && data.includes("getBrokerageCaseByIdForContext"), "repository proxy exposes context-bound case page reads");
 assert(organizePage.includes("createRequestContext(session)") && organizePage.includes("listBrokerageCasesForContext"), "case list uses trusted RequestContext resolver");
-assert(organizePage.includes("readOnly: item.readOnly") && organizeBrowser.includes("!item.readOnly"), "company-read list items preserve read-only UI state");
+assert(organizePage.includes("readOnly: item.readOnly") && organizePage.includes('capabilityHasTenantPermission') && organizePage.includes('"record.update"') && organizePage.includes("readOnly: !canWrite") && organizeBrowser.includes("!item.readOnly"), "person list write controls require the record.update capability");
 assert(casePage.includes("getBrokerageCaseByIdForContext") && casePage.includes("createRequestContext(session)"), "case detail uses trusted RequestContext resolver");
 assert(casePage.includes("caseVisibility.resolution.outcome"), "case detail branches on resolver outcome");
 assert(casePage.includes("resolveClientVisibilityForContext") && casePage.includes("resolvePropertyVisibilityForContext"), "case detail rechecks related object visibility");
@@ -77,11 +77,11 @@ assert(memory.includes("listClientsForContext") && memory.includes("getClientDet
 assert(postgres.includes("listClientsForContext") && postgres.includes("getClientDetailForContext"), "Postgres person reads are context-bound");
 assert(data.includes("listClientsForContext") && data.includes("getClientDetailForContext"), "repository proxy exposes context-bound person reads");
 assert(partiesPage.includes("createRequestContext(session)") && partiesPage.includes("requestContext"), "person list uses trusted RequestContext");
-assert(partiesPage.includes("party.readOnly") && partiesPage.includes("party.canWrite"), "company-read people retain read-only UI state");
+assert(partiesPage.includes("party.readOnly") && partiesPage.includes("party.canWrite") && partiesPage.includes('capabilityHasTenantPermission') && partiesPage.includes('"record.update"') && partiesPage.includes("const canWrite = party.canWrite && capabilityCanWrite"), "person list write controls require resolver and record.update");
 assert(partyEditPage.includes("getClientDetailForContext") && partyEditPage.includes("!visible.detail"), "person detail uses uniform not-found for denied records");
-assert(partyEditPage.includes("PartyProfileReadOnly") && partyEditPage.includes("visible.resolution.canWrite"), "company-read person detail is explicitly read-only");
-assert(clientDetailPage.includes("getClientDetailForContext") && clientDetailPage.includes("createRequestContext(session)"), "legacy client detail uses the trusted person resolver");
-assert(clientEditPage.includes("getClientDetailForContext") && clientEditPage.includes("PartyProfileReadOnly") && clientEditPage.includes("visible.resolution.canWrite"), "legacy client edit uses the trusted person resolver and read-only shell");
+assert(partyEditPage.includes("PartyProfileReadOnly") && partyEditPage.includes("visible.resolution.canWrite") && partyEditPage.includes("const canEdit = visible.resolution.canWrite && capabilityCanWrite") && partyEditPage.includes('readOnlyReason'), "person detail distinguishes owner read-only from company-read");
+assert(clientDetailPage.includes("getClientDetailForContext") && clientDetailPage.includes("createRequestContext(session)") && clientDetailPage.includes("const canEdit = visible.resolution.canWrite && capabilityCanWrite"), "legacy client detail hides write controls without record.update");
+assert(clientEditPage.includes("getClientDetailForContext") && clientEditPage.includes("PartyProfileReadOnly") && clientEditPage.includes("visible.resolution.canWrite") && clientEditPage.includes("const canEdit = visible.resolution.canWrite && capabilityCanWrite"), "legacy client edit uses capability-aware read-only shell");
 assert(partyProfile.includes("<dl") && partyProfile.includes("<dt") && partyProfile.includes("<dd"), "read-only person details use semantic definition-list markup");
 assert(hub.includes("listClientsForContext") && hub.includes("readOnly: !canWrite"), "hub person mapping derives read-only from resolver");
 assert(actions.includes("resolveClientVisibilityForContext") && actions.includes("async function ensureClientOwnership(clientId: string, session"), "person write actions require owner resolver context");

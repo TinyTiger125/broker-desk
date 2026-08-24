@@ -6,7 +6,8 @@ import { SectionCard } from "@/components/section-card";
 import { formatCurrency, formatDate, formatRelativeDays } from "@/lib/format";
 import { getClientDetailForContext } from "@/lib/data";
 import { getLocale } from "@/lib/locale";
-import { requireTenantSession } from "@/lib/tenant-session";
+import { getTenantCapability, requireTenantSession } from "@/lib/tenant-session";
+import { capabilityHasTenantPermission } from "@/lib/tenant-permissions";
 import { createRequestContext } from "@/lib/visibility-resolver";
 import { buildClientWorkflowGuide, getAllowedStageTargets } from "@/lib/workflow-engine";
 import {
@@ -262,8 +263,13 @@ export default async function ClientDetailPage({ params, searchParams }: ClientD
     notFound();
   }
   const client = visible.detail;
-  if (!visible.resolution.canWrite) {
-    const readOnlyText = locale === "zh" ? "公司成员可见／只读" : locale === "ko" ? "회사 구성원 공개 / 읽기 전용" : "会社メンバーに公開／読み取り専用";
+  const capabilityCanWrite = session.membership.status === "active"
+    && capabilityHasTenantPermission(getTenantCapability(session.membership), "record.update");
+  const canEdit = visible.resolution.canWrite && capabilityCanWrite;
+  if (!canEdit) {
+    const readOnlyText = visible.resolution.outcome === "company_read"
+      ? locale === "zh" ? "公司成员可见／只读" : locale === "ko" ? "회사 구성원 공개 / 읽기 전용" : "会社メンバーに公開／読み取り専用"
+      : locale === "zh" ? "当前账号仅可查看。" : locale === "ko" ? "현재 계정은 보기 전용입니다." : "現在のアカウントは閲覧のみです。";
     return (
       <div className="space-y-6">
         <header className="flex flex-wrap items-center justify-between gap-3">
