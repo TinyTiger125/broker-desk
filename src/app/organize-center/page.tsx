@@ -381,6 +381,7 @@ async function OrganizeCenterContent({ locale, params }: { locale: Locale; param
     relationLabel: item.relationLabel,
     updatedLabel: item.updatedAt ? formatDate(item.updatedAt, locale) : copy.noDate,
     href: item.href,
+    readOnly: item.readOnly,
   }));
 
   return (

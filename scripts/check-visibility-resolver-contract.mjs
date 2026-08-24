@@ -16,6 +16,7 @@ const data = read("src/lib/data.ts");
 const casePage = read("src/app/cases/[id]/page.tsx");
 const caseApplicationPage = read("src/app/cases/[id]/guarantee-application/page.tsx");
 const organizePage = read("src/app/organize-center/page.tsx");
+const organizeBrowser = read("src/components/organize-center-object-browser.tsx");
 const actions = read("src/app/actions.ts");
 
 for (const decision of ["owner_write", "company_read", "not_accessible"]) {
@@ -58,6 +59,7 @@ assert(memory.includes("listBrokerageCasesForContext") && memory.includes("getBr
 assert(postgres.includes("listBrokerageCasesForContext") && postgres.includes("getBrokerageCaseByIdForContext"), "Postgres exposes context-bound case page reads");
 assert(data.includes("listBrokerageCasesForContext") && data.includes("getBrokerageCaseByIdForContext"), "repository proxy exposes context-bound case page reads");
 assert(organizePage.includes("createRequestContext(session)") && organizePage.includes("listBrokerageCasesForContext"), "case list uses trusted RequestContext resolver");
+assert(organizePage.includes("readOnly: item.readOnly") && organizeBrowser.includes("!item.readOnly"), "company-read list items preserve read-only UI state");
 assert(casePage.includes("getBrokerageCaseByIdForContext") && casePage.includes("createRequestContext(session)"), "case detail uses trusted RequestContext resolver");
 assert(casePage.includes("caseVisibility.resolution.outcome"), "case detail branches on resolver outcome");
 assert(casePage.includes("resolveClientVisibilityForContext") && casePage.includes("resolvePropertyVisibilityForContext"), "case detail rechecks related object visibility");
