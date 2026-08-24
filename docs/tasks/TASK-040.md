@@ -118,6 +118,7 @@ npm run build
 
 - 状态: In Progress
 - 产品结论: Visibility V1 baseline approved / W9.1 Accepted / Runtime Verified
+- 案件页面阶段状态: Product Accepted / Integrated（已合入 main，集成提交 `88428cd2938bbd055492b9f99cf5c4fcebf8887b`）
 - 当前阶段: W9.1已完成独立审查与隔离非生产运行验证；W9.2案件页面读取/写入接入已在精确 Preview `b239ce24873f5062d72be330f20b1708d1e24138` 完成受控产品验收，包含 resolver 接入、company_read 只读界面、案件写 Action owner_write 门、申请书入口保护和关联人物/物件 fail-closed。人物/物件页面、全局搜索/导出、关系图、附件、PDF 来源权限、定向分享、共同编辑和资料接管仍未开始。跨经营主体真实浏览器＋写 Action 组合证据作为最终跨对象回归 P2 保留；TASK-038 不再扩大，TASK-039 整体不标记 Done。
 - W9.2 只读盘点与技术设计已完成；首两个安全硬门及统一可见性解析器已完成隔离非生产运行验证，案件页面接入已取得受控 Staging 产品验收：
   - [事实矩阵](../product/TASK-040_W9.2_FACT_MATRIX_2026-08-24.md)

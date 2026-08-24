@@ -39,7 +39,7 @@
 | TASK-037 | P0 | G1-SLICE-0：保证公司申请书现有行为保护基线 | Done | TASK-036 | [TASK-037](docs/tasks/TASK-037.md) | 五套平台蒙板静态配置、入口、调用关系、隔离机制和回退要求已记录；运行证据为 `UNVERIFIED — Clerk active membership environment unavailable`；未修改代码、数据库或生产行为 |
 | TASK-038 | P0 | G1-SLICE-1：保证公司申请书最小端到端证明 | Done | TASK-037 | [TASK-038](docs/tasks/TASK-038.md) | Product Accepted and Integrated / Production Not Released：产品实现和 Staging 验收完成并已合入 main；五套旧模板实际 PDF 回归仍为 Production 前硬门 |
 | TASK-039 | P0 | W8：经营主体、成员权限与内部数据可见性基础能力 | In Progress | TASK-038 技术设计收口后进入切片 0 | [TASK-039](docs/tasks/TASK-039.md) | Foundation Accepted and Integrated / Visibility Follow-up Pending：经营主体与成员基础阶段已验收并随平台候选集成；案件、人物、物件可见范围和后续资料授权阶段未完成 |
-| TASK-040 | P0 | W9：资料可见范围 V1 | In Progress | TASK-039 基础阶段 | [TASK-040](docs/tasks/TASK-040.md) | W9.1 Accepted / Runtime Verified；W9.2 案件页面读取/写入接入已通过受控 Staging 产品验收；人物、物件页面及关系图、附件、PDF 来源权限仍属后续阶段；跨经营主体浏览器写 Action 组合证据作为最终跨对象回归 P2 保留 |
+| TASK-040 | P0 | W9：资料可见范围 V1 | In Progress | TASK-039 基础阶段 | [TASK-040](docs/tasks/TASK-040.md) | W9.1 Accepted / Runtime Verified；W9.2 案件页面读取/写入接入 Product Accepted / Integrated（`88428cd`）；人物、物件页面及关系图、附件、PDF 来源权限仍属后续阶段；跨经营主体浏览器写 Action 组合证据作为最终跨对象回归 P2 保留 |
 | TASK-003 | P0 | Close the input-material merge completion loop | Proposed | TASK-002 | [TASK-003](docs/tasks/TASK-003.md) | Selection, confirmation, result, failure, and refresh evidence |
 | TASK-004 | P0 | Consolidate template-library and official-template boundaries | Proposed | TASK-002 | [TASK-004](docs/tasks/TASK-004.md) | Role-aware entry, visibility, and installation evidence |
 | TASK-005 | P0 | Separate official template draft and publish states | Proposed | TASK-004 | [TASK-005](docs/tasks/TASK-005.md) | Independent draft save, publish, immutable version, and failure evidence |
