@@ -20,6 +20,7 @@ const organizeBrowser = read("src/components/organize-center-object-browser.tsx"
 const actions = read("src/app/actions.ts");
 const clientStageRoute = read("src/app/api/clients/[id]/stage/route.ts");
 const partiesPage = read("src/app/parties/page.tsx");
+const partyNewPage = read("src/app/parties/new/page.tsx");
 const partyEditPage = read("src/app/parties/[id]/edit/page.tsx");
 const clientDetailPage = read("src/app/clients/[id]/page.tsx");
 const clientEditPage = read("src/app/clients/[id]/edit/page.tsx");
@@ -77,7 +78,8 @@ assert(memory.includes("listClientsForContext") && memory.includes("getClientDet
 assert(postgres.includes("listClientsForContext") && postgres.includes("getClientDetailForContext"), "Postgres person reads are context-bound");
 assert(data.includes("listClientsForContext") && data.includes("getClientDetailForContext"), "repository proxy exposes context-bound person reads");
 assert(partiesPage.includes("createRequestContext(session)") && partiesPage.includes("requestContext"), "person list uses trusted RequestContext");
-assert(partiesPage.includes("party.readOnly") && partiesPage.includes("party.canWrite") && partiesPage.includes('capabilityHasTenantPermission') && partiesPage.includes('"record.update"') && partiesPage.includes("const canWrite = party.canWrite && capabilityCanWrite") && partiesPage.includes('capabilityCanWrite ? <Link') && partiesPage.includes('href="/parties/new"'), "person list create and write controls require capability and resolver");
+assert(partiesPage.includes("party.readOnly") && partiesPage.includes("party.canWrite") && partiesPage.includes('capabilityHasTenantPermission') && partiesPage.includes('"record.update"') && partiesPage.includes("const canWrite = party.canWrite && capabilityCanWrite") && !partiesPage.includes('href="/parties/new"'), "person list hides unavailable creation entry while preserving resolver-gated writes");
+assert(partyNewPage.includes("requireTenantSession") && partyNewPage.includes("notFound()"), "unavailable person creation route is not enterable");
 assert(partyEditPage.includes("getClientDetailForContext") && partyEditPage.includes("!visible.detail"), "person detail uses uniform not-found for denied records");
 assert(partyEditPage.includes("PartyProfileReadOnly") && partyEditPage.includes("visible.resolution.canWrite") && partyEditPage.includes("const canEdit = visible.resolution.canWrite && capabilityCanWrite") && partyEditPage.includes('readOnlyReason'), "person detail distinguishes owner read-only from company-read");
 assert(clientDetailPage.includes("getClientDetailForContext") && clientDetailPage.includes("createRequestContext(session)") && clientDetailPage.includes("const canEdit = visible.resolution.canWrite && capabilityCanWrite"), "legacy client detail hides write controls without record.update");

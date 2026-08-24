@@ -52,7 +52,6 @@ function buildPartiesHref(filters: PartyFilters): string {
 
 const partiesCopy = {
   ja: {
-    addParty: "関係者追加",
     clear: "条件をクリア",
     contact: "連絡先",
     corporate: "法人",
@@ -90,7 +89,6 @@ const partiesCopy = {
     ownerReadOnly: "現在のアカウントは閲覧のみです。",
   },
   zh: {
-    addParty: "新增主体",
     clear: "清除条件",
     contact: "联系方式",
     corporate: "法人",
@@ -128,7 +126,6 @@ const partiesCopy = {
     ownerReadOnly: "当前账号仅可查看。",
   },
   ko: {
-    addParty: "관계자 추가",
     clear: "조건 지우기",
     contact: "연락처",
     corporate: "법인",
@@ -247,13 +244,6 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
           <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">{copy.results}</p>
           <h1 className="text-4xl font-bold tracking-tight text-slate-900">{copy.pageTitle}</h1>
         </div>
-        {capabilityCanWrite ? <Link
-            href="/parties/new"
-            className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-gradient-to-br from-[#001e40] to-[#003366] px-4 text-sm font-semibold text-white shadow-[0_8px_20px_-10px_rgba(0,30,64,0.8)]"
-          >
-            <span className="material-symbols-outlined text-[17px]" aria-hidden="true">add</span>
-            {copy.addParty}
-          </Link> : null}
       </header>
 
       <PageFlashBanner message={flashMessage} />

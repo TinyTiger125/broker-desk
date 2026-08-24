@@ -127,3 +127,4 @@ npm run build
 - 案件页面阶段结果：列表/详情按当前 resolver 过滤 private 与 company_read，company_read 显示本地化只读语义；案件写 Action、生命周期入口、申请书入口均由服务端 owner_write 再校验；关联人物/物件缺少独立访问权时 fail-closed 隐藏。精确 Preview 的独立复核为 P0=0、已验证范围内 P1=0；跨经营主体真实浏览器＋写 Action 组合证据、TASK-038 PDF 生成闭环和主动 429 触发不纳入本阶段通过结论。
 - 首两个硬门的代码增量已完成并通过独立只读审查（P0=0、P1=0）；003 migration、受限运行角色下的直接 SQL、重复执行/失败恢复、Action 级审计和 `/api/hub/search` 受控上下文矩阵已在可销毁非生产分支验证，证据见 [W9.2 运行验证记录](../product/TASK-040_W9.2_RUNTIME_VERIFICATION_2026-08-24.md)。这不等同于真实 Clerk 浏览器端到端回归，也不代表 W9.2 整体完成。
 - 后续阶段：成员资料接管、暂停后的保留/删除和法律留存另立专题。
+- 正式人物创建流程仍是独立后续产品缺口；在该流程成立前，`/parties/new` 不提供可进入的创建入口。
