@@ -32,8 +32,9 @@
 - TASK-036 恢复预检已停止：当前既有 Chrome Development 会话访问 `/workspace` 显示没有可访问工作区，未确认 active membership；当前浏览器未暴露可安全核对的第二既有身份，因此未提出切换请求，也未切换账号。未执行任何差额回归，不重复既有截图或 22 路由冒烟；TASK-036 继续 `Blocked`。
 - 产品决定：TASK-036 剩余真实业务回归延期至服务器端预发布、Preview 或受控内部环境；本地不再继续账号/工作区测试。预发布必须绑定明确 Git SHA、单内部测试身份、单非生产 active workspace、非真实客户资料和可回滚路径；不要求第二账号/第二租户。恢复后只补既定差额，TASK-036 在独立审查和无 Layout System P0/P1 前保持 `Blocked`，输出专题继续冻结。
 - `TASK-037 / G1-SLICE-0` 已 Done：五套现有平台蒙板的静态配置、资产、入口、调用关系、租户/权限门、版本指纹和回退要求已形成证据包。运行边界固定为 `UNVERIFIED — Clerk active membership environment unavailable`；HTTP 404 仅证明 Clerk 身份保护拦截，未进入蒙板或 PDF 逻辑，不得写成蒙板/预览/输出失败。当前无可重复 PDF 样本不阻断 TASK-038 技术设计或本次纯代码合并，但仍是 Production 部署前硬门。证据包为 [`GUARANTEE_APPLICATION_G1_SLICE_0_EVIDENCE_2026-08-19.md`](../product/GUARANTEE_APPLICATION_G1_SLICE_0_EVIDENCE_2026-08-19.md)。
-- `TASK-038 / G1-SLICE-1` 当前为 `Product Acceptance Passed / Integration Deferred`；产品实现和 Staging 验收完成，尚未合入 main 或部署 Production，TASK-037 旧模板实际 PDF 回归仍是 Production 前硬门。
-- `TASK-039 / W8` 当前为 `In Progress / Foundation Accepted — Visibility Follow-up Pending`；经营主体与成员基础阶段验收完成，案件、人物、物件可见范围、资料共享、递归授权、离职接管和停付费保留/删除继续后续阶段。
+- `TASK-038 / G1-SLICE-1` 当前为 `Done / Product Accepted and Integrated / Production Not Released`；产品实现和 Staging 验收完成并已合入 main，TASK-037 旧模板实际 PDF 回归仍是 Production 前硬门。
+- `TASK-039 / W8` 当前为 `Foundation Accepted and Integrated / Visibility Follow-up Pending`；经营主体与成员基础阶段验收完成，案件、人物、物件可见范围、资料共享、递归授权、离职接管和停付费保留/删除继续后续阶段。
+- `TASK-040 / W9` 当前为 `Ready`；资料可见范围 V1 基线已确认：三类资料默认仅自己可见，成员可见只读，单条覆盖留审计，所有读取/导出/附件/API/生成文件统一执行可见性，来源资料权限不足时阻止 PDF 生成。预计 5–10 个工作日；定向分享、共同编辑、复杂团队权限和自动递归公开排除。
 - TASK-038、TASK-039 及后续产品的统一交付顺序固定为：本地设计与实现 → 本地自动检查 → 形成可追溯代码版本 → 部署 Vercel Staging → 独立 Agent 真实产品验收 → 失败则回本地修正 → 产生新版本并重新部署 → 产品验收通过 → 获得明确授权后才允许合并 → Production 发布另行授权。产品代码只在本地工作区和 Git 仓库修改；Vercel 只用于运行和验收；每次 Staging 记录分支与准确版本；构建、部署 Ready、自动测试通过均不等于产品验收通过；Staging 验收通过不自动授权合并，合并也不自动授权 Production 发布。
 - 实现前基线只读核对：`UI_GOV_002B_LAYOUT_FLOORPLAN_MATRIX_2026-08-15.md` 是由 V2 取代的历史兼容入口；`BROKER_DESK_LAYOUT_SYSTEM_V1.md` 是 2026-08-16 Layout System Approved baseline 并指向 V2。二者均已纳入当前 Git 历史；当前不修改、不删除、不把其视为未提交现场。
 - B 锚点证据已覆盖实际滚动容器、动态偏移、IntersectionObserver/ResizeObserver、scroll-margin-top、hash push/popstate、手动滚动、返回顶部、property→contract→back→forward 和带 hash 刷新；390px overview 无横向溢出且首个字段进入首屏，quick 有窄屏“下一项任务”入口。完整外部权限、租户和下载证据前停止，不启动 UI-GOV-002B。
@@ -95,10 +96,10 @@
 
 ## 2026-08-24 当前状态覆盖
 
-- 正式合并基准固定为 `origin/main=aa35b6ad0f45c3731993cbadc0fadca38107f5b2`；旧候选 `28b021782051eb2375a5a2f0e8da82094520e04e` 已标记 `Superseded / Not Mergeable`，当前修正候选以 Staging 分支远端 HEAD 与对应 Vercel 部署记录为准。
-- TASK-038 为 `Product Acceptance Passed / Integration Deferred`；不再扩大产品范围，尚未合入 main 或部署 Production。
-- TASK-039 仅经营主体与成员基础阶段验收通过；案件、人物、物件可见范围及后续资料授权继续未完成。
-- 平台候选在 Production 隔离、工程检查和完整独立审查门关闭前保持 `Not Mergeable`；不得合并 main、部署 Production 或执行 Production migration。
+- 旧候选 `28b021782051eb2375a5a2f0e8da82094520e04e` 已标记 `Superseded / Not Mergeable`；其后仅治理与 CI 收口提交进入 main，精确提交以 GitHub 记录为准。
+- TASK-038 为 `Done / Product Accepted and Integrated / Production Not Released`；不再扩大产品范围，Production 未部署。
+- TASK-039 为 `Foundation Accepted and Integrated / Visibility Follow-up Pending`；案件、人物、物件可见范围及后续资料授权继续未完成。
+- 平台候选已合入 main；`vercel.json` 保持 `git.deploymentEnabled.main=false`，不得部署 Production 或执行 Production migration。
 - Main CI 固定不执行认证浏览器回归，也不读取人工 Clerk Cookie；该步骤必须明确记录 `SKIPPED / AUTH TEST ENVIRONMENT NOT CONFIGURED`，不阻断普通代码集成。build、lint、typecheck、公开健康检查和无需登录的确定性回归仍为必跑门。真实 A/B 浏览器回归只在受控 Staging 或明确授权的手工发布检查中执行，Production 发布前不得用 `SKIPPED` 替代有效认证证据。
 
 ## 当前禁止事项
