@@ -66,4 +66,35 @@ assert.equal(await data.setRecordVisibilityScope({ tenantId: tenantA, objectType
 const updated = await data.setRecordVisibilityScope({ tenantId: tenantA, objectType: "person", recordId: clientA.id, actorUserId: user, visibilityScope: "private" });
 assert.equal(updated?.visibilityScope, "private");
 
+await assert.rejects(
+  () => data.updateClient(clientA.id, { ...clientA, tenantId: tenantA, createdByUserId: "forged_creator" }),
+  /ownership fields are not accepted/,
+  "ordinary person updates reject a forged creator",
+);
+await assert.rejects(
+  () => data.updateProperty(propertyUnknown.id, { ...propertyUnknown, tenantId: tenantA, createdByUserId: "forged_creator" }),
+  /ownership fields are not accepted/,
+  "ordinary property updates reject a forged creator",
+);
+const newCase = await data.saveBrokerageCaseExtractionReview({
+  tenantId: tenantA,
+  userId: user,
+  caseType: "unit_sale",
+  caseTitle: "TASK-040 creator guard case",
+  confirmedDataJson: {},
+  sourceImportJobIds: [],
+  reviewItems: [],
+});
+await assert.rejects(
+  () => data.updateBrokerageCaseConfirmedData({
+    tenantId: tenantA,
+    userId: user,
+    caseId: newCase.id,
+    confirmedDataJson: { forged: true },
+    createdByUserId: "forged_creator",
+  }),
+  /ownership fields are not accepted/,
+  "ordinary case updates reject a forged creator",
+);
+
 console.log("visibility-foundation behavior: PASS");

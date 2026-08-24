@@ -9,10 +9,12 @@ const assert = (condition, message) => {
 
 const migration = read("db/migrations/20260824_001_visibility_foundation.sql");
 const recordRlsMigration = read("db/migrations/20260824_002_visibility_record_rls.sql");
+const creatorMigration = read("db/migrations/20260824_003_creator_immutability.sql");
 const memory = read("src/lib/data.memory.ts");
 const postgres = read("src/lib/data.postgres.ts");
 const data = read("src/lib/data.ts");
 const actions = read("src/app/actions.ts");
+const hubSearchRoute = read("src/app/api/hub/search/route.ts");
 
 for (const value of ["case", "person", "property", "private", "company_read"]) {
   assert(migration.includes(`'${value}'`), `migration includes ${value}`);
@@ -58,4 +60,14 @@ assert(memory.includes('defaultVisibilityScope(scopeTenantId, input.userId, "cas
 assert(postgres.includes('resolveMemberVisibilityScope(tenantId, input.userId, "case"') && postgres.includes('resolveMemberVisibilityScope(scopeTenantId, input.ownerUserId, "person"'), "postgres creation inherits object-specific defaults");
 assert(memory.includes("isVisibilityRecordResolved(item)") && postgres.includes("owner_resolution_status = 'resolved'"), "ordinary reads hide unresolved ownership");
 assert(memory.includes("visibility_scope_changed") && postgres.includes("visibility_scope_changed"), "scope changes are audited");
+assert(postgres.includes('"20260824_003_creator_immutability.sql"'), "migration readiness includes creator immutability migration");
+assert(creatorMigration.includes("prevent_creator_change") && creatorMigration.includes("created_by_user_id IS DISTINCT FROM OLD.created_by_user_id"), "creator changes are rejected by a database trigger");
+for (const table of ["clients", "properties", "brokerage_cases"]) {
+  assert(creatorMigration.includes(`${table}_creator_immutable`), `creator trigger exists for ${table}`);
+}
+assert(creatorMigration.includes("REVOKE UPDATE (created_by_user_id)"), "creator-column revoke is present as defense in depth");
+assert(hubSearchRoute.includes('requireTenantSession({ permission: "record.read" })'), "hub search requires an authenticated tenant session");
+assert(hubSearchRoute.includes("tenantId: session.tenant.id") && hubSearchRoute.includes("userId: session.user.id"), "hub search binds the current user and tenant");
+assert(!hubSearchRoute.includes("getDefaultUser"), "hub search does not use a default-user fallback");
+assert(actions.includes("security_record_field_rejected") && actions.includes("FORBIDDEN_RECORD_INPUT_FIELDS"), "ordinary record requests reject and audit ownership fields");
 console.log("visibility-foundation contract: PASS");

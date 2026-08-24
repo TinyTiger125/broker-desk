@@ -94,6 +94,7 @@ import {
   type VisibilityObjectType,
   type VisibilityScope,
 } from "@/lib/visibility-foundation";
+import { assertNoForbiddenRecordInput } from "@/lib/record-input-guard";
 
 export type TenantSessionLookup = {
   user: User;
@@ -147,6 +148,7 @@ const REQUIRED_PRODUCTION_MIGRATIONS = [
   "20260821_013_fix_removed_invitation_return.sql",
   "20260824_001_visibility_foundation.sql",
   "20260824_002_visibility_record_rls.sql",
+  "20260824_003_creator_immutability.sql",
 ] as const;
 
 const OPEN_STAGES: ClientStage[] = ["lead", "contacted", "quoted", "viewing", "negotiating"];
@@ -3468,6 +3470,7 @@ export async function updateBrokerageCaseConfirmedData(input: {
   caseId: string;
   confirmedDataJson: Record<string, unknown>;
 }): Promise<BrokerageCase | null> {
+  assertNoForbiddenRecordInput(input, { allowTenantId: true });
   await ensureSchema();
   const scopeTenantId = resolveTenantId(input.tenantId);
   const result = await getPool().query(
@@ -5000,6 +5003,7 @@ export async function updateProperty(
     notes?: string;
   },
 ) {
+  assertNoForbiddenRecordInput(input, { allowTenantId: true });
   await ensureSchema();
   const scopeTenantId = resolveTenantId(input.tenantId);
   const result = await getPool().query(
@@ -5217,6 +5221,7 @@ export async function updateClient(
     notes?: string;
   }
 ) {
+  assertNoForbiddenRecordInput(input, { allowTenantId: true });
   await ensureSchema();
   const scopeTenantId = resolveTenantId(input.tenantId);
 

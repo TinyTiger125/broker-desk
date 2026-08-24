@@ -41,6 +41,7 @@ import {
   type VisibilityObjectType,
   type VisibilityScope,
 } from "@/lib/visibility-foundation";
+import { assertNoForbiddenRecordInput } from "@/lib/record-input-guard";
 
 export type { OutputTemplateSettingsInput } from "@/lib/output-doc";
 export type {
@@ -3262,6 +3263,7 @@ export async function updateBrokerageCaseConfirmedData(input: {
   caseId: string;
   confirmedDataJson: Record<string, unknown>;
 }): Promise<BrokerageCase | null> {
+  assertNoForbiddenRecordInput(input, { allowTenantId: true });
   const scopeTenantId = resolveTenantId(input.tenantId);
   const item = db.brokerageCases.find(
     (caseItem) => caseItem.userId === input.userId && caseItem.tenantId === scopeTenantId && caseItem.id === input.caseId,
@@ -4634,6 +4636,7 @@ export async function updateProperty(
     notes?: string;
   }
 ) {
+  assertNoForbiddenRecordInput(input, { allowTenantId: true });
   const scopeTenantId = resolveTenantId(input.tenantId);
   const property = db.properties.find((entry) => entry.id === propertyId && entry.tenantId === scopeTenantId);
   if (!property) return null;
@@ -4782,6 +4785,7 @@ export async function updateClient(
     notes?: string;
   }
 ) {
+  assertNoForbiddenRecordInput(input, { allowTenantId: true });
   const scopeTenantId = resolveTenantId(input.tenantId);
   const client = db.clients.find((entry) => entry.id === clientId && entry.tenantId === scopeTenantId);
   if (!client) return null;
