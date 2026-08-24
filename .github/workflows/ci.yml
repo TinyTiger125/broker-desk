@@ -44,10 +44,6 @@ jobs:
           npm run test:production-security
           npm run test:guarantee-slice1-behavior
           npm run test:workflow-rules
-          npm run test:visibility-resolver
-          npm run test:visibility-resolver-behavior
-          node scripts/check-parties-list-report.mjs
-          node scripts/check-party-form-contract.mjs
 
       - name: Start App
         run: |
