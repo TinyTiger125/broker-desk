@@ -1907,6 +1907,8 @@ export async function createPropertyQuickAction(
 
   const property = await addProperty({
     tenantId,
+    createdByUserId: user.id,
+    currentOwnerUserId: user.id,
     ...parsed.normalized,
   });
 
@@ -5022,6 +5024,8 @@ export async function executePropertyImportAction(formData: FormData) {
     try {
       await addProperty({
         tenantId,
+        createdByUserId: user.id,
+        currentOwnerUserId: user.id,
         name,
         area: String(mapped["area"] ?? "").trim() || undefined,
         address: String(mapped["address"] ?? "").trim() || undefined,

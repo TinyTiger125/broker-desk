@@ -201,6 +201,12 @@ export const listTenantsForUser: typeof memory.listTenantsForUser = (...args) =>
   repo.listTenantsForUser(...args);
 export const listTenantMembers: typeof memory.listTenantMembers = (...args) =>
   repo.listTenantMembers(...args);
+export const listMemberVisibilityDefaults: typeof memory.listMemberVisibilityDefaults = (...args) =>
+  repo.listMemberVisibilityDefaults(...args);
+export const setMemberVisibilityDefault: typeof memory.setMemberVisibilityDefault = (...args) =>
+  repo.setMemberVisibilityDefault(...args);
+export const setRecordVisibilityScope: typeof memory.setRecordVisibilityScope = (...args) =>
+  repo.setRecordVisibilityScope(...args);
 /**
  * Read the current tenant's member list using the identity that already
  * established the page session. This avoids a second Clerk lookup during the

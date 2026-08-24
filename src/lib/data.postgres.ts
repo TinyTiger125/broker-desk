@@ -83,10 +83,17 @@ import type {
   GuaranteeMaskMatch,
   GuaranteePreviewConfirmation,
   GuaranteePreviewOutputInput,
+  MemberVisibilityDefault,
 } from "@/lib/data.memory";
 import type { TenantRole, TenantCapabilityPreset } from "@/lib/tenant-permissions";
 import type { LifecycleFilter, LifecycleStatus } from "@/lib/record-lifecycle";
 import { getTenantDeploymentEnvironment } from "@/lib/tenant-bootstrap-policy";
+import {
+  normalizeOwnerResolutionStatus,
+  normalizeVisibilityScope,
+  type VisibilityObjectType,
+  type VisibilityScope,
+} from "@/lib/visibility-foundation";
 
 export type TenantSessionLookup = {
   user: User;
@@ -138,6 +145,7 @@ const REQUIRED_PRODUCTION_MIGRATIONS = [
   "20260820_011_bind_invited_clerk_identity.sql",
   "20260820_012_current_tenant_member_read.sql",
   "20260821_013_fix_removed_invitation_return.sql",
+  "20260824_001_visibility_foundation.sql",
 ] as const;
 
 const OPEN_STAGES: ClientStage[] = ["lead", "contacted", "quoted", "viewing", "negotiating"];
@@ -307,6 +315,175 @@ function resolveTenantId(tenantId?: string): string {
   return DEFAULT_TENANT_ID;
 }
 
+async function resolveMemberVisibilityScope(
+  tenantId: string,
+  memberUserId: string,
+  objectType: VisibilityObjectType,
+  client: Pool | PoolClient = getPool(),
+): Promise<VisibilityScope> {
+  const result = await client.query(
+    `SELECT d.visibility_scope
+       FROM tenant_memberships m
+       LEFT JOIN tenant_member_visibility_defaults d
+         ON d.tenant_id = m.tenant_id
+        AND d.membership_id = m.id
+        AND d.member_user_id = m.user_id
+        AND d.object_type = $3
+      WHERE m.tenant_id = $1
+        AND m.user_id = $2
+        AND m.status = 'active'
+      LIMIT 1`,
+    [tenantId, memberUserId, objectType],
+  );
+  return normalizeVisibilityScope(result.rows[0]?.visibility_scope);
+}
+
+function mapMemberVisibilityDefault(row: Record<string, unknown>): MemberVisibilityDefault {
+  return {
+    id: String(row.id),
+    tenantId: String(row.tenant_id),
+    membershipId: String(row.membership_id),
+    memberUserId: String(row.member_user_id),
+    objectType: String(row.object_type) as VisibilityObjectType,
+    visibilityScope: normalizeVisibilityScope(row.visibility_scope),
+    createdAt: toDate(row.created_at) ?? new Date(),
+    updatedAt: toDate(row.updated_at) ?? new Date(),
+  };
+}
+
+export async function listMemberVisibilityDefaults(input: {
+  tenantId?: string;
+  memberUserId?: string;
+}): Promise<MemberVisibilityDefault[]> {
+  await ensureSchema();
+  const tenantId = resolveTenantId(input.tenantId);
+  const result = await getPool().query(
+    `SELECT * FROM tenant_member_visibility_defaults
+      WHERE tenant_id = $1
+        AND ($2::text IS NULL OR member_user_id = $2)
+      ORDER BY object_type`,
+    [tenantId, input.memberUserId?.trim() || null],
+  );
+  return result.rows.map(mapMemberVisibilityDefault);
+}
+
+export async function setMemberVisibilityDefault(input: {
+  tenantId?: string;
+  membershipId?: string;
+  memberUserId: string;
+  actorUserId: string;
+  objectType: VisibilityObjectType;
+  visibilityScope: VisibilityScope;
+}): Promise<MemberVisibilityDefault | null> {
+  await ensureSchema();
+  const tenantId = resolveTenantId(input.tenantId);
+  const scope = normalizeVisibilityScope(input.visibilityScope);
+  return withTransaction(async (client) => {
+    const membership = await client.query(
+      `SELECT id FROM tenant_memberships
+        WHERE tenant_id = $1 AND user_id = $2 AND status = 'active'
+          AND ($3::text IS NULL OR id = $3)
+        LIMIT 1`,
+      [tenantId, input.memberUserId, input.membershipId?.trim() || null],
+    );
+    const membershipId = String(membership.rows[0]?.id ?? "");
+    if (!membershipId || input.actorUserId !== input.memberUserId) return null;
+    const result = await client.query(
+      `INSERT INTO tenant_member_visibility_defaults
+         (id, tenant_id, membership_id, member_user_id, object_type, visibility_scope, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,NOW(),NOW())
+       ON CONFLICT (tenant_id, membership_id, member_user_id, object_type)
+       DO UPDATE SET visibility_scope = EXCLUDED.visibility_scope, updated_at = NOW()
+       RETURNING *`,
+      [genId("visibility_default"), tenantId, membershipId, input.memberUserId, input.objectType, scope],
+    );
+    await client.query(
+      `INSERT INTO audit_logs
+        (id, tenant_id, user_id, actor_id, action, target_type, target_id, message, context_json, created_at)
+       VALUES ($1,$2,$3,$3,'visibility_default_changed','tenant_membership',$4,$5,$6::jsonb,NOW())`,
+      [
+        genId("audit"),
+        tenantId,
+        input.actorUserId,
+        membershipId,
+        `资料默认可见范围已更新: ${input.objectType}`,
+        JSON.stringify({ objectType: input.objectType, visibilityScope: scope }),
+      ],
+    );
+    return result.rows[0] ? mapMemberVisibilityDefault(result.rows[0]) : null;
+  });
+}
+
+export async function setRecordVisibilityScope(input: {
+  tenantId?: string;
+  objectType: VisibilityObjectType;
+  recordId: string;
+  actorUserId: string;
+  visibilityScope: VisibilityScope;
+}): Promise<Client | Property | BrokerageCase | null> {
+  await ensureSchema();
+  const tenantId = resolveTenantId(input.tenantId);
+  const scope = normalizeVisibilityScope(input.visibilityScope);
+  return withTransaction(async (client) => {
+    const activeMembership = await client.query(
+      "SELECT 1 FROM tenant_memberships WHERE tenant_id = $1 AND user_id = $2 AND status = 'active' LIMIT 1",
+      [tenantId, input.actorUserId],
+    );
+    if (!activeMembership.rows[0]) return null;
+
+    let result: { rows: Array<Record<string, unknown>> };
+    if (input.objectType === "person") {
+      result = await client.query(
+        `UPDATE clients
+            SET visibility_scope = $4, updated_at = NOW()
+          WHERE id = $1 AND tenant_id = $2
+            AND current_owner_user_id = $3
+            AND owner_resolution_status = 'resolved'
+          RETURNING *`,
+        [input.recordId, tenantId, input.actorUserId, scope],
+      );
+    } else if (input.objectType === "case") {
+      result = await client.query(
+        `UPDATE brokerage_cases
+            SET visibility_scope = $4, updated_at = NOW()
+          WHERE id = $1 AND tenant_id = $2
+            AND current_owner_user_id = $3
+            AND owner_resolution_status = 'resolved'
+          RETURNING *`,
+        [input.recordId, tenantId, input.actorUserId, scope],
+      );
+    } else {
+      result = await client.query(
+        `UPDATE properties
+            SET visibility_scope = $4, updated_at = NOW()
+          WHERE id = $1 AND tenant_id = $2
+            AND current_owner_user_id = $3
+            AND owner_resolution_status = 'resolved'
+          RETURNING *`,
+        [input.recordId, tenantId, input.actorUserId, scope],
+      );
+    }
+    if (!result.rows[0]) return null;
+    await client.query(
+      `INSERT INTO audit_logs
+        (id, tenant_id, user_id, actor_id, action, target_type, target_id, message, context_json, created_at)
+       VALUES ($1,$2,$3,$3,'visibility_scope_changed',$4,$5,$6,$7::jsonb,NOW())`,
+      [
+        genId("audit"),
+        tenantId,
+        input.actorUserId,
+        input.objectType,
+        input.recordId,
+        "资料可见范围已更新",
+        JSON.stringify({ visibilityScope: scope }),
+      ],
+    );
+    if (input.objectType === "person") return mapClient(result.rows[0]);
+    if (input.objectType === "case") return mapBrokerageCase(result.rows[0]);
+    return mapProperty(result.rows[0]);
+  });
+}
+
 /**
  * Invitation RPCs compare their actor argument with current_user_id(), which
  * is derived from the request's Clerk subject inside PostgreSQL. In the
@@ -416,6 +593,10 @@ function mapClient(row: Record<string, unknown>): Client {
     lastContactedAt: toDate(row.last_contacted_at),
     notes: row.notes ? String(row.notes) : undefined,
     ownerUserId: String(row.owner_user_id),
+    createdByUserId: row.created_by_user_id ? String(row.created_by_user_id) : undefined,
+    currentOwnerUserId: row.current_owner_user_id ? String(row.current_owner_user_id) : undefined,
+    visibilityScope: normalizeVisibilityScope(row.visibility_scope),
+    ownerResolutionStatus: normalizeOwnerResolutionStatus(row.owner_resolution_status ?? (row.current_owner_user_id ? "resolved" : "pending_confirmation")),
     createdAt: toDate(row.created_at) ?? new Date(),
     updatedAt: toDate(row.updated_at) ?? new Date(),
     lifecycleStatus: (row.lifecycle_status ?? "active") as LifecycleStatus,
@@ -436,6 +617,10 @@ function mapProperty(row: Record<string, unknown>): Property {
     managementFee: row.management_fee != null ? Number(row.management_fee) : undefined,
     repairFee: row.repair_fee != null ? Number(row.repair_fee) : undefined,
     notes: row.notes ? String(row.notes) : undefined,
+    createdByUserId: row.created_by_user_id ? String(row.created_by_user_id) : undefined,
+    currentOwnerUserId: row.current_owner_user_id ? String(row.current_owner_user_id) : undefined,
+    visibilityScope: normalizeVisibilityScope(row.visibility_scope),
+    ownerResolutionStatus: normalizeOwnerResolutionStatus(row.owner_resolution_status ?? (row.current_owner_user_id ? "resolved" : "pending_confirmation")),
     createdAt: toDate(row.created_at) ?? new Date(),
     lifecycleStatus: (row.lifecycle_status ?? "active") as LifecycleStatus,
     archivedAt: toDate(row.archived_at),
@@ -612,6 +797,10 @@ function mapBrokerageCase(row: Record<string, unknown>): BrokerageCase {
     sourceImportJobIds: Array.isArray(row.source_import_job_ids)
       ? (row.source_import_job_ids as unknown[]).map(String)
       : [],
+    createdByUserId: row.created_by_user_id ? String(row.created_by_user_id) : undefined,
+    currentOwnerUserId: row.current_owner_user_id ? String(row.current_owner_user_id) : undefined,
+    visibilityScope: normalizeVisibilityScope(row.visibility_scope),
+    ownerResolutionStatus: normalizeOwnerResolutionStatus(row.owner_resolution_status ?? (row.current_owner_user_id ? "resolved" : "pending_confirmation")),
     createdAt: toDate(row.created_at) ?? new Date(),
     updatedAt: toDate(row.updated_at) ?? new Date(),
     lifecycleStatus: (row.lifecycle_status ?? "active") as LifecycleStatus,
@@ -3200,6 +3389,8 @@ export async function listBrokerageCases(
   const result = await getPool().query(
     `SELECT * FROM brokerage_cases
      WHERE user_id = $1 AND tenant_id = $2
+       AND owner_resolution_status = 'resolved'
+       AND current_owner_user_id IS NOT NULL
        AND ($3 = 'all' OR lifecycle_status = $3)
      ORDER BY updated_at DESC
      LIMIT $4`,
@@ -3216,7 +3407,7 @@ export async function getBrokerageCaseById(input: {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(input.tenantId);
   const result = await getPool().query(
-    "SELECT * FROM brokerage_cases WHERE id = $1 AND user_id = $2 AND tenant_id = $3 LIMIT 1",
+    "SELECT * FROM brokerage_cases WHERE id = $1 AND user_id = $2 AND tenant_id = $3 AND owner_resolution_status = 'resolved' AND current_owner_user_id IS NOT NULL LIMIT 1",
     [input.caseId, input.userId, scopeTenantId]
   );
   return result.rows[0] ? mapBrokerageCase(result.rows[0]) : null;
@@ -3233,6 +3424,8 @@ export async function getBrokerageCaseByImportJobId(input: {
     `SELECT * FROM brokerage_cases
      WHERE user_id = $1 AND $2 = ANY(source_import_job_ids)
        AND tenant_id = $3
+       AND owner_resolution_status = 'resolved'
+       AND current_owner_user_id IS NOT NULL
      ORDER BY updated_at DESC
      LIMIT 1`,
     [input.userId, input.importJobId, scopeTenantId]
@@ -3276,6 +3469,7 @@ export async function saveBrokerageCaseExtractionReview(input: {
   const tenantId = resolveTenantId(input.tenantId);
   const sourceImportJobIds = [...new Set(input.sourceImportJobIds)];
   const caseResult = await withTransaction(async (client) => {
+    const visibilityScope = await resolveMemberVisibilityScope(tenantId, input.userId, "case", client);
     const existing = input.caseId
       ? await client.query("SELECT id FROM brokerage_cases WHERE id = $1 AND user_id = $2 AND tenant_id = $3 LIMIT 1", [
           input.caseId,
@@ -3306,8 +3500,9 @@ export async function saveBrokerageCaseExtractionReview(input: {
         : await client.query(
             `INSERT INTO brokerage_cases (
               id, tenant_id, user_id, case_type, case_title, primary_property_id, status,
-              confirmed_data_json, source_import_job_ids, created_at, updated_at
-             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW(),NOW())
+              confirmed_data_json, source_import_job_ids, created_by_user_id, current_owner_user_id,
+              visibility_scope, owner_resolution_status, created_at, updated_at
+             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW(),NOW())
              RETURNING *`,
             [
               caseId,
@@ -3319,6 +3514,10 @@ export async function saveBrokerageCaseExtractionReview(input: {
               input.status ?? "reviewed",
               JSON.stringify(input.confirmedDataJson),
               sourceImportJobIds,
+              input.userId,
+              input.userId,
+              visibilityScope,
+              "resolved",
             ]
           );
 
@@ -4441,7 +4640,7 @@ export async function listAuditLogs(userId: string, filter: AuditLogFilter = {})
 export async function listClients(userId: string, filter: ClientListFilter = {}) {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(filter.tenantId);
-  const result = await getPool().query("SELECT * FROM clients WHERE owner_user_id = $1 AND tenant_id = $2", [
+  const result = await getPool().query("SELECT * FROM clients WHERE owner_user_id = $1 AND tenant_id = $2 AND owner_resolution_status = 'resolved' AND current_owner_user_id IS NOT NULL", [
     userId,
     scopeTenantId,
   ]);
@@ -4511,7 +4710,7 @@ export async function listClients(userId: string, filter: ClientListFilter = {})
 export async function getClientById(clientId: string, tenantId?: string) {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(tenantId);
-  const result = await getPool().query("SELECT * FROM clients WHERE id = $1 AND tenant_id = $2 LIMIT 1", [
+  const result = await getPool().query("SELECT * FROM clients WHERE id = $1 AND tenant_id = $2 AND owner_resolution_status = 'resolved' AND current_owner_user_id IS NOT NULL LIMIT 1", [
     clientId,
     scopeTenantId,
   ]);
@@ -4523,7 +4722,7 @@ export async function getClientDetail(clientId: string, tenantId?: string) {
   const scopeTenantId = resolveTenantId(tenantId);
 
   const [clientRes, quoteRes, followRes, taskRes] = await Promise.all([
-    getPool().query("SELECT * FROM clients WHERE id = $1 AND tenant_id = $2 LIMIT 1", [clientId, scopeTenantId]),
+    getPool().query("SELECT * FROM clients WHERE id = $1 AND tenant_id = $2 AND owner_resolution_status = 'resolved' AND current_owner_user_id IS NOT NULL LIMIT 1", [clientId, scopeTenantId]),
     getPool().query("SELECT * FROM quotations WHERE client_id = $1 AND tenant_id = $2 ORDER BY created_at DESC", [
       clientId,
       scopeTenantId,
@@ -4581,7 +4780,7 @@ export async function getBoardData(userId: string, tenantId?: string) {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(tenantId);
   const result = await getPool().query(
-    "SELECT * FROM clients WHERE owner_user_id = $1 AND tenant_id = $2 ORDER BY updated_at DESC",
+    "SELECT * FROM clients WHERE owner_user_id = $1 AND tenant_id = $2 AND owner_resolution_status = 'resolved' AND current_owner_user_id IS NOT NULL ORDER BY updated_at DESC",
     [userId, scopeTenantId],
   );
   const clients = result.rows.map(mapClient);
@@ -4608,11 +4807,11 @@ export async function listQuoteFormData(tenantId?: string, lifecycleStatus: Life
   const scopeTenantId = resolveTenantId(tenantId);
   const [clientsRes, propertiesRes] = await Promise.all([
     getPool().query(
-      "SELECT id, name, lifecycle_status FROM clients WHERE tenant_id = $1 AND ($2 = 'all' OR lifecycle_status = $2) ORDER BY updated_at DESC",
+      "SELECT id, name, lifecycle_status FROM clients WHERE tenant_id = $1 AND owner_resolution_status = 'resolved' AND current_owner_user_id IS NOT NULL AND ($2 = 'all' OR lifecycle_status = $2) ORDER BY updated_at DESC",
       [scopeTenantId, lifecycleStatus],
     ),
     getPool().query(
-      "SELECT id, name, area, listing_price, management_fee, repair_fee, lifecycle_status FROM properties WHERE tenant_id = $1 AND ($2 = 'all' OR lifecycle_status = $2) ORDER BY created_at DESC",
+      "SELECT id, name, area, listing_price, management_fee, repair_fee, lifecycle_status FROM properties WHERE tenant_id = $1 AND owner_resolution_status = 'resolved' AND current_owner_user_id IS NOT NULL AND ($2 = 'all' OR lifecycle_status = $2) ORDER BY created_at DESC",
       [scopeTenantId, lifecycleStatus],
     ),
   ]);
@@ -4702,6 +4901,8 @@ export async function setPropertyLifecycleStatus(input: {
 
 export async function addProperty(input: {
   tenantId?: string;
+  createdByUserId?: string;
+  currentOwnerUserId?: string;
   name: string;
   area?: string;
   address?: string;
@@ -4713,10 +4914,15 @@ export async function addProperty(input: {
 }) {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(input.tenantId);
+  const ownerUserId = input.currentOwnerUserId?.trim() || null;
+  const visibilityScope = ownerUserId
+    ? await resolveMemberVisibilityScope(scopeTenantId, ownerUserId, "property")
+    : "private";
   const result = await getPool().query(
     `INSERT INTO properties (
-      id, tenant_id, name, area, address, listing_price, size_sqm, management_fee, repair_fee, notes
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+      id, tenant_id, name, area, address, listing_price, size_sqm, management_fee, repair_fee, notes,
+      created_by_user_id, current_owner_user_id, visibility_scope, owner_resolution_status
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
     RETURNING *`,
     [
       genId("prop"),
@@ -4729,6 +4935,10 @@ export async function addProperty(input: {
       input.managementFee ?? null,
       input.repairFee ?? null,
       input.notes ?? null,
+      input.createdByUserId?.trim() || null,
+      ownerUserId,
+      visibilityScope,
+      ownerUserId ? "resolved" : "pending_confirmation",
     ]
   );
   return mapProperty(result.rows[0]);
@@ -4738,7 +4948,7 @@ export async function getPropertyById(propertyId: string, tenantId?: string) {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(tenantId);
   const result = await getPool().query(
-    "SELECT * FROM properties WHERE id = $1 AND tenant_id = $2 LIMIT 1",
+    "SELECT * FROM properties WHERE id = $1 AND tenant_id = $2 AND owner_resolution_status = 'resolved' AND current_owner_user_id IS NOT NULL LIMIT 1",
     [propertyId, scopeTenantId],
   );
   return result.rows[0] ? mapProperty(result.rows[0]) : null;
@@ -4895,6 +5105,7 @@ export async function addClient(input: {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(input.tenantId);
   const id = genId("client");
+  const visibilityScope = await resolveMemberVisibilityScope(scopeTenantId, input.ownerUserId, "person");
 
   const result = await getPool().query(
     `INSERT INTO clients (
@@ -4902,8 +5113,9 @@ export async function addClient(input: {
       first_choice_area, second_choice_area, purpose, loan_pre_approval_status, desired_move_in_period,
       stage, temperature, brokerage_contract_type, brokerage_contract_signed_at, brokerage_contract_expires_at,
       important_matters_explained_at, contract_document_delivered_at, personal_info_consent_at, aml_check_status,
-      next_follow_up_at, notes, owner_user_id
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
+      next_follow_up_at, notes, owner_user_id, created_by_user_id, current_owner_user_id,
+      visibility_scope, owner_resolution_status
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31)
     RETURNING *`,
     [
       id,
@@ -4933,6 +5145,10 @@ export async function addClient(input: {
       input.nextFollowUpAt ?? null,
       input.notes ?? null,
       input.ownerUserId,
+      input.ownerUserId,
+      input.ownerUserId,
+      visibilityScope,
+      "resolved",
     ]
   );
 

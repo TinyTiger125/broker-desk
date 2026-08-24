@@ -107,6 +107,7 @@ TASK-039 的经营主体与成员基础阶段已验收并集成，但案件、�
 
 ```text
 npm run test:workflow-rules
+npm run test:visibility-foundation
 npm run typecheck
 npm run build
 ```
@@ -115,7 +116,7 @@ npm run build
 
 ## 当前状态
 
-- 状态: Ready
-- 产品结论: Visibility V1 baseline approved / Implementation not started
-- 当前阶段: 等待项目经理拆分实施切片；TASK-038 不再扩大，TASK-039 整体不标记 Done。
+- 状态: In Progress
+- 产品结论: Visibility V1 baseline approved / W9.1 limited implementation in progress
+- 当前阶段: W9.1仅推进负责人、成员级默认值、旧数据安全默认和跨经营主体隔离基础；未通过独立审查和非生产验证前，不进入W9.2页面读写改造。TASK-038 不再扩大，TASK-039 整体不标记 Done。
 - 后续阶段：成员资料接管、暂停后的保留/删除和法律留存另立专题。

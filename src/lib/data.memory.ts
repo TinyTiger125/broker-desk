@@ -33,6 +33,14 @@ export type { TenantCapabilityPreset } from "@/lib/tenant-permissions";
 import type { LifecycleFilter, LifecycleStatus } from "@/lib/record-lifecycle";
 import { canPublishMaskVersion } from "@/lib/guarantee-slice1-policy.mjs";
 import { getTenantBootstrapStatus } from "@/lib/tenant-bootstrap-policy";
+import {
+  normalizeOwnerResolutionStatus,
+  normalizeVisibilityScope,
+  isVisibilityRecordResolved,
+  type OwnerResolutionStatus,
+  type VisibilityObjectType,
+  type VisibilityScope,
+} from "@/lib/visibility-foundation";
 
 export type { OutputTemplateSettingsInput } from "@/lib/output-doc";
 export type {
@@ -162,6 +170,11 @@ export type Client = {
   lastContactedAt?: Date;
   notes?: string;
   ownerUserId: string;
+  /** W9.1: creator and current owner are deliberately separate concepts. */
+  createdByUserId?: string;
+  currentOwnerUserId?: string;
+  visibilityScope?: VisibilityScope;
+  ownerResolutionStatus?: OwnerResolutionStatus;
   createdAt: Date;
   updatedAt: Date;
   lifecycleStatus?: LifecycleStatus;
@@ -181,6 +194,10 @@ export type Property = {
   repairFee?: number;
   notes?: string;
   createdAt: Date;
+  createdByUserId?: string;
+  currentOwnerUserId?: string;
+  visibilityScope?: VisibilityScope;
+  ownerResolutionStatus?: OwnerResolutionStatus;
   lifecycleStatus?: LifecycleStatus;
   archivedAt?: Date;
   archivedById?: string;
@@ -308,6 +325,10 @@ export type BrokerageCase = {
   status: BrokerageCaseStatus;
   confirmedDataJson: Record<string, unknown>;
   sourceImportJobIds: string[];
+  createdByUserId?: string;
+  currentOwnerUserId?: string;
+  visibilityScope?: VisibilityScope;
+  ownerResolutionStatus?: OwnerResolutionStatus;
   createdAt: Date;
   updatedAt: Date;
   lifecycleStatus?: LifecycleStatus;
@@ -579,11 +600,23 @@ export type TenantGuaranteeTemplateInstall = {
   updatedAt: Date;
 };
 
+export type MemberVisibilityDefault = {
+  id: string;
+  tenantId: string;
+  membershipId: string;
+  memberUserId: string;
+  objectType: VisibilityObjectType;
+  visibilityScope: VisibilityScope;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 type DB = {
   users: User[];
   tenants: Tenant[];
   tenantMemberships: TenantMembership[];
   tenantCreationRequests: TenantCreationRequest[];
+  memberVisibilityDefaults: MemberVisibilityDefault[];
   clients: Client[];
   properties: Property[];
   quotations: Quotation[];
@@ -625,6 +658,128 @@ export function isTenantAccessibleStatus(status: TenantStatus): boolean {
   return status === "trial" || status === "active";
 }
 
+function findActiveMembership(tenantId: string, userId: string, membershipId?: string): TenantMembership | null {
+  return (
+    db.tenantMemberships.find(
+      (membership) =>
+        membership.tenantId === tenantId &&
+        membership.userId === userId &&
+        membership.status === "active" &&
+        (!membershipId || membership.id === membershipId),
+    ) ?? null
+  );
+}
+
+function defaultVisibilityScope(tenantId: string, userId: string, objectType: VisibilityObjectType): VisibilityScope {
+  const membership = findActiveMembership(tenantId, userId);
+  if (!membership) return "private";
+  const setting = db.memberVisibilityDefaults.find(
+    (item) =>
+      item.tenantId === tenantId &&
+      item.membershipId === membership.id &&
+      item.memberUserId === userId &&
+      item.objectType === objectType,
+  );
+  return normalizeVisibilityScope(setting?.visibilityScope);
+}
+
+function requireActiveOwner(tenantId: string, actorUserId: string, currentOwnerUserId?: string, ownerResolutionStatus?: OwnerResolutionStatus) {
+  if (!findActiveMembership(tenantId, actorUserId)) return false;
+  return Boolean(currentOwnerUserId) && currentOwnerUserId === actorUserId && normalizeOwnerResolutionStatus(ownerResolutionStatus) === "resolved";
+}
+
+export async function listMemberVisibilityDefaults(input: {
+  tenantId?: string;
+  memberUserId?: string;
+}): Promise<MemberVisibilityDefault[]> {
+  const tenantId = resolveTenantId(input.tenantId);
+  return db.memberVisibilityDefaults
+    .filter((item) => item.tenantId === tenantId && (!input.memberUserId || item.memberUserId === input.memberUserId))
+    .map((item) => ({ ...item }));
+}
+
+export async function setMemberVisibilityDefault(input: {
+  tenantId?: string;
+  membershipId?: string;
+  memberUserId: string;
+  actorUserId: string;
+  objectType: VisibilityObjectType;
+  visibilityScope: VisibilityScope;
+}): Promise<MemberVisibilityDefault | null> {
+  const tenantId = resolveTenantId(input.tenantId);
+  const membership = findActiveMembership(tenantId, input.memberUserId, input.membershipId);
+  if (!membership || membership.userId !== input.actorUserId) return null;
+  const nowDate = new Date();
+  const existing = db.memberVisibilityDefaults.find(
+    (item) =>
+      item.tenantId === tenantId &&
+      item.membershipId === membership.id &&
+      item.memberUserId === input.memberUserId &&
+      item.objectType === input.objectType,
+  );
+  if (existing) {
+    existing.visibilityScope = normalizeVisibilityScope(input.visibilityScope);
+    existing.updatedAt = nowDate;
+    db.auditLogs.unshift({
+      id: makeId("audit"), tenantId, userId: input.actorUserId, actorId: input.actorUserId,
+      action: "visibility_default_changed", targetType: "member", targetId: membership.id,
+      message: `资料默认可见范围已更新: ${input.objectType}`,
+      context: { objectType: input.objectType, visibilityScope: existing.visibilityScope }, createdAt: nowDate,
+    });
+    return { ...existing };
+  }
+  const created: MemberVisibilityDefault = {
+    id: makeId("visibility_default"),
+    tenantId,
+    membershipId: membership.id,
+    memberUserId: input.memberUserId,
+    objectType: input.objectType,
+    visibilityScope: normalizeVisibilityScope(input.visibilityScope),
+    createdAt: nowDate,
+    updatedAt: nowDate,
+  };
+  db.memberVisibilityDefaults.push(created);
+  db.auditLogs.unshift({
+    id: makeId("audit"), tenantId, userId: input.actorUserId, actorId: input.actorUserId,
+    action: "visibility_default_changed", targetType: "member", targetId: membership.id,
+    message: `资料默认可见范围已更新: ${created.objectType}`,
+    context: { objectType: created.objectType, visibilityScope: created.visibilityScope }, createdAt: nowDate,
+  });
+  return { ...created };
+}
+
+export async function setRecordVisibilityScope(input: {
+  tenantId?: string;
+  objectType: VisibilityObjectType;
+  recordId: string;
+  actorUserId: string;
+  visibilityScope: VisibilityScope;
+}): Promise<Client | Property | BrokerageCase | null> {
+  const tenantId = resolveTenantId(input.tenantId);
+  const scope = normalizeVisibilityScope(input.visibilityScope);
+  if (input.objectType === "person") {
+    const record = db.clients.find((item) => item.id === input.recordId && item.tenantId === tenantId);
+    if (!record || !requireActiveOwner(tenantId, input.actorUserId, record.currentOwnerUserId, record.ownerResolutionStatus)) return null;
+    record.visibilityScope = scope;
+    record.updatedAt = new Date();
+    db.auditLogs.unshift({ id: makeId("audit"), tenantId, userId: input.actorUserId, actorId: input.actorUserId, action: "visibility_scope_changed", targetType: "client", targetId: record.id, message: "资料可见范围已更新", context: { visibilityScope: scope }, createdAt: new Date() });
+    return { ...record };
+  }
+  if (input.objectType === "case") {
+    const record = db.brokerageCases.find((item) => item.id === input.recordId && item.tenantId === tenantId);
+    if (!record || !requireActiveOwner(tenantId, input.actorUserId, record.currentOwnerUserId, record.ownerResolutionStatus)) return null;
+    record.visibilityScope = scope;
+    record.updatedAt = new Date();
+    db.auditLogs.unshift({ id: makeId("audit"), tenantId, userId: input.actorUserId, actorId: input.actorUserId, action: "visibility_scope_changed", targetType: input.objectType, targetId: record.id, message: "资料可见范围已更新", context: { visibilityScope: scope }, createdAt: new Date() });
+    return cloneBrokerageCase(record);
+  }
+  const record = db.properties.find((item) => item.id === input.recordId && item.tenantId === tenantId);
+  if (!record || !requireActiveOwner(tenantId, input.actorUserId, record.currentOwnerUserId, record.ownerResolutionStatus)) return null;
+  record.visibilityScope = scope;
+  db.auditLogs.unshift({ id: makeId("audit"), tenantId, userId: input.actorUserId, actorId: input.actorUserId, action: "visibility_scope_changed", targetType: input.objectType, targetId: record.id, message: "资料可见范围已更新", context: { visibilityScope: scope }, createdAt: new Date() });
+  return { ...record };
+}
+
 function normalizePurchasedSeatCount(value: unknown): number {
   const count = Number(value);
   if (!Number.isFinite(count)) return 1;
@@ -649,6 +804,22 @@ function ensureTenantMembershipDefaults(membership: TenantMembership): TenantMem
   // is deliberately treated as the least-privileged compatibility state by
   // the session layer until an explicit preset is stored.
   return membership;
+}
+
+function ensureVisibilityRecordDefaults(record: {
+  createdByUserId?: string;
+  currentOwnerUserId?: string;
+  visibilityScope?: VisibilityScope;
+  ownerResolutionStatus?: OwnerResolutionStatus;
+}, legacyOwnerUserId?: string) {
+  const resolvedLegacyOwner = legacyOwnerUserId?.trim() || undefined;
+  record.createdByUserId = record.createdByUserId ?? resolvedLegacyOwner;
+  record.currentOwnerUserId = record.currentOwnerUserId ?? resolvedLegacyOwner;
+  record.visibilityScope = normalizeVisibilityScope(record.visibilityScope);
+  record.ownerResolutionStatus = normalizeOwnerResolutionStatus(
+    record.ownerResolutionStatus ?? (record.currentOwnerUserId ? "resolved" : "pending_confirmation"),
+  );
+  if (!record.currentOwnerUserId) record.ownerResolutionStatus = "pending_confirmation";
 }
 
 function toTenantMemberListItem(membership: TenantMembership): TenantMemberListItem | null {
@@ -729,9 +900,13 @@ function backfillTenantScope(dbLike: DB) {
 function withDefaultTenantScope(input: Record<string, unknown>): DB {
   const scopedDb = input as DB;
   scopedDb.caseWorkbenchFieldRules = scopedDb.caseWorkbenchFieldRules ?? [];
+  scopedDb.memberVisibilityDefaults = scopedDb.memberVisibilityDefaults ?? [];
   scopedDb.tenants.forEach(ensureTenantDefaults);
   scopedDb.tenantMemberships.forEach(ensureTenantMembershipDefaults);
   backfillTenantScope(scopedDb);
+  scopedDb.clients.forEach((record) => ensureVisibilityRecordDefaults(record, record.ownerUserId));
+  scopedDb.brokerageCases.forEach((record) => ensureVisibilityRecordDefaults(record, record.userId));
+  scopedDb.properties.forEach((record) => ensureVisibilityRecordDefaults(record));
   return scopedDb;
 }
 
@@ -787,6 +962,7 @@ function cloneDb(input: DB): DB {
     tenants: cloneCollection(input.tenants),
     tenantMemberships: cloneCollection(input.tenantMemberships),
     tenantCreationRequests: cloneCollection(input.tenantCreationRequests),
+    memberVisibilityDefaults: cloneCollection(input.memberVisibilityDefaults),
     clients: cloneCollection(input.clients),
     properties: cloneCollection(input.properties),
     quotations: cloneCollection(input.quotations),
@@ -820,6 +996,7 @@ function qaBusinessDataCounts(): QaBusinessDataCounts {
     tenants: db.tenants.length,
     tenantMemberships: db.tenantMemberships.length,
     tenantCreationRequests: db.tenantCreationRequests.length,
+    memberVisibilityDefaults: db.memberVisibilityDefaults.length,
     clients: db.clients.length,
     properties: db.properties.length,
     quotations: db.quotations.length,
@@ -1321,6 +1498,7 @@ const _freshDb: DB = withDefaultTenantScope({
       createdAt: new Date(now - 1 * 24 * 60 * 60 * 1000),
     },
   ],
+  memberVisibilityDefaults: [],
   guaranteeApplicationDrafts: [
     {
       id: "draft_fixture_friends_guarantee_pdf",
@@ -1369,6 +1547,7 @@ backfillTenantScope(db);
 if (!db.tenants) db.tenants = cloneCollection(_freshDb.tenants);
 db.tenants.forEach(ensureTenantDefaults);
 if (!db.tenantMemberships) db.tenantMemberships = cloneCollection(_freshDb.tenantMemberships);
+if (!db.memberVisibilityDefaults) db.memberVisibilityDefaults = cloneCollection(_freshDb.memberVisibilityDefaults);
 if (!db.tenantCreationRequests) db.tenantCreationRequests = [];
 db.tenantMemberships.forEach(ensureTenantMembershipDefaults);
 if (!db.guaranteeApplicationDrafts) db.guaranteeApplicationDrafts = cloneCollection(_freshDb.guaranteeApplicationDrafts);
@@ -1392,6 +1571,7 @@ export function resetBusinessDataForQa(): QaBusinessDataCounts {
   db.users = cloneCollection(_freshDb.users);
   db.tenants = cloneCollection(_freshDb.tenants);
   db.tenantMemberships = cloneCollection(_freshDb.tenantMemberships);
+  db.memberVisibilityDefaults = cloneCollection(_freshDb.memberVisibilityDefaults);
   db.tenantCreationRequests = [];
   db.clients = [];
   db.properties = [];
@@ -1438,6 +1618,9 @@ export function seedBusinessDataForQa(): QaBusinessDataCounts {
   backfillTenantScope(db);
   db.tenants.forEach(ensureTenantDefaults);
   db.tenantMemberships.forEach(ensureTenantMembershipDefaults);
+  db.memberVisibilityDefaults.forEach((item) => {
+    item.visibilityScope = normalizeVisibilityScope(item.visibilityScope);
+  });
   ensureBaseQuoteData();
   ensureRichDemoData();
   return qaBusinessDataCounts();
@@ -1871,6 +2054,9 @@ function ensureRichDemoData() {
   pushMissingById(db.auditLogs, demoAuditLogs);
   db.tenantMemberships.forEach(ensureTenantMembershipDefaults);
   backfillTenantScope(db);
+  db.clients.forEach((record) => ensureVisibilityRecordDefaults(record, record.ownerUserId));
+  db.brokerageCases.forEach((record) => ensureVisibilityRecordDefaults(record, record.userId));
+  db.properties.forEach((record) => ensureVisibilityRecordDefaults(record));
 }
 
 if (process.env.BROKER_DESK_SEED_MODE === "blank") {
@@ -3027,7 +3213,7 @@ export async function listBrokerageCases(
 ): Promise<BrokerageCase[]> {
   const scopeTenantId = resolveTenantId(tenantId);
   return db.brokerageCases
-    .filter((item) => item.userId === userId && item.tenantId === scopeTenantId)
+    .filter((item) => item.userId === userId && item.tenantId === scopeTenantId && isVisibilityRecordResolved(item))
     .filter((item) => lifecycleStatus === "all" || (item.lifecycleStatus ?? "active") === lifecycleStatus)
     .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
     .slice(0, limit)
@@ -3041,7 +3227,7 @@ export async function getBrokerageCaseById(input: {
 }): Promise<BrokerageCase | null> {
   const scopeTenantId = resolveTenantId(input.tenantId);
   const item = db.brokerageCases.find(
-    (caseItem) => caseItem.userId === input.userId && caseItem.tenantId === scopeTenantId && caseItem.id === input.caseId,
+    (caseItem) => caseItem.userId === input.userId && caseItem.tenantId === scopeTenantId && caseItem.id === input.caseId && isVisibilityRecordResolved(caseItem),
   );
   return item ? cloneBrokerageCase(item) : null;
 }
@@ -3109,6 +3295,10 @@ export async function saveBrokerageCaseExtractionReview(input: {
       status: input.status ?? "reviewed",
       confirmedDataJson: { ...input.confirmedDataJson },
       sourceImportJobIds: [...new Set(input.sourceImportJobIds)],
+      createdByUserId: input.userId,
+      currentOwnerUserId: input.userId,
+      visibilityScope: defaultVisibilityScope(scopeTenantId, input.userId, "case"),
+      ownerResolutionStatus: "resolved",
       createdAt: nowDate,
       updatedAt: nowDate,
     };
@@ -4188,6 +4378,7 @@ export async function listClients(userId: string, filter: ClientListFilter = {})
   const filtered = db.clients
     .filter((item) => item.ownerUserId === userId)
     .filter((item) => item.tenantId === scopeTenantId)
+    .filter((item) => isVisibilityRecordResolved(item))
     .filter((item) =>
       filter.lifecycleStatus === "all" || (item.lifecycleStatus ?? "active") === (filter.lifecycleStatus ?? "active")
     )
@@ -4234,12 +4425,12 @@ export async function listClients(userId: string, filter: ClientListFilter = {})
 
 export async function getClientById(clientId: string, tenantId?: string) {
   const scopeTenantId = resolveTenantId(tenantId);
-  return db.clients.find((item) => item.id === clientId && item.tenantId === scopeTenantId) ?? null;
+  return db.clients.find((item) => item.id === clientId && item.tenantId === scopeTenantId && isVisibilityRecordResolved(item)) ?? null;
 }
 
 export async function getClientDetail(clientId: string, tenantId?: string) {
   const scopeTenantId = resolveTenantId(tenantId);
-  const client = db.clients.find((item) => item.id === clientId && item.tenantId === scopeTenantId);
+  const client = db.clients.find((item) => item.id === clientId && item.tenantId === scopeTenantId && isVisibilityRecordResolved(item));
   if (!client) return null;
 
   const tasks = db.tasks
@@ -4302,10 +4493,12 @@ export async function listQuoteFormData(tenantId?: string, lifecycleStatus: Life
   return {
     clients: db.clients
       .filter((item) => item.tenantId === scopeTenantId)
+      .filter((item) => isVisibilityRecordResolved(item))
       .filter((item) => lifecycleStatus === "all" || (item.lifecycleStatus ?? "active") === lifecycleStatus)
       .map((item) => ({ id: item.id, name: item.name, lifecycleStatus: item.lifecycleStatus ?? "active" as LifecycleStatus })),
     properties: db.properties
       .filter((item) => item.tenantId === scopeTenantId)
+      .filter((item) => isVisibilityRecordResolved(item))
       .filter((item) => lifecycleStatus === "all" || (item.lifecycleStatus ?? "active") === lifecycleStatus)
       .map((item) => ({
       id: item.id,
@@ -4374,6 +4567,8 @@ export async function setPropertyLifecycleStatus(input: {
 
 export async function addProperty(input: {
   tenantId?: string;
+  createdByUserId?: string;
+  currentOwnerUserId?: string;
   name: string;
   area?: string;
   address?: string;
@@ -4395,6 +4590,12 @@ export async function addProperty(input: {
     managementFee: input.managementFee,
     repairFee: input.repairFee,
     notes: input.notes,
+    createdByUserId: input.createdByUserId,
+    currentOwnerUserId: input.currentOwnerUserId,
+    visibilityScope: input.currentOwnerUserId
+      ? defaultVisibilityScope(scopeTenantId, input.currentOwnerUserId, "property")
+      : "private",
+    ownerResolutionStatus: input.currentOwnerUserId ? "resolved" : "pending_confirmation",
     createdAt: new Date(),
   };
   db.properties.unshift(property);
@@ -4403,7 +4604,7 @@ export async function addProperty(input: {
 
 export async function getPropertyById(propertyId: string, tenantId?: string) {
   const scopeTenantId = resolveTenantId(tenantId);
-  return db.properties.find((item) => item.id === propertyId && item.tenantId === scopeTenantId) ?? null;
+  return db.properties.find((item) => item.id === propertyId && item.tenantId === scopeTenantId && isVisibilityRecordResolved(item)) ?? null;
 }
 
 export async function updateProperty(
@@ -4526,6 +4727,10 @@ export async function addClient(input: {
     nextFollowUpAt: input.nextFollowUpAt,
     notes: input.notes,
     ownerUserId: input.ownerUserId,
+    createdByUserId: input.ownerUserId,
+    currentOwnerUserId: input.ownerUserId,
+    visibilityScope: defaultVisibilityScope(scopeTenantId, input.ownerUserId, "person"),
+    ownerResolutionStatus: "resolved",
     createdAt: new Date(),
     updatedAt: new Date(),
   };
