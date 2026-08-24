@@ -18,6 +18,10 @@ const caseApplicationPage = read("src/app/cases/[id]/guarantee-application/page.
 const organizePage = read("src/app/organize-center/page.tsx");
 const organizeBrowser = read("src/components/organize-center-object-browser.tsx");
 const actions = read("src/app/actions.ts");
+const clientStageRoute = read("src/app/api/clients/[id]/stage/route.ts");
+const partiesPage = read("src/app/parties/page.tsx");
+const partyEditPage = read("src/app/parties/[id]/edit/page.tsx");
+const hub = read("src/lib/hub.ts");
 
 for (const decision of ["owner_write", "company_read", "not_accessible"]) {
   assert(resolver.includes(`"${decision}"`), `resolver exposes ${decision}`);
@@ -66,5 +70,16 @@ assert(casePage.includes("resolveClientVisibilityForContext") && casePage.includ
 assert(casePage.includes("primaryPropertyId") && casePage.includes("tenant.name") && casePage.includes('key.startsWith("guarantor.")'), "case detail redacts inaccessible related content and fallback names");
 assert(caseApplicationPage.includes("getBrokerageCaseByIdForContext") && caseApplicationPage.includes('!== "owner_write"') && caseApplicationPage.includes("if (inaccessible) notFound()"), "application entry is owner-write only with uniform not-found");
 assert(actions.includes("async function requireWritableCase") && actions.includes("resolveCaseVisibilityForContext"), "case write actions re-check owner_write server-side");
+assert(memory.includes("listClientsForContext") && memory.includes("getClientDetailForContext"), "memory person reads are context-bound");
+assert(postgres.includes("listClientsForContext") && postgres.includes("getClientDetailForContext"), "Postgres person reads are context-bound");
+assert(data.includes("listClientsForContext") && data.includes("getClientDetailForContext"), "repository proxy exposes context-bound person reads");
+assert(partiesPage.includes("createRequestContext(session)") && partiesPage.includes("requestContext"), "person list uses trusted RequestContext");
+assert(partiesPage.includes("party.readOnly") && partiesPage.includes("party.canWrite"), "company-read people retain read-only UI state");
+assert(partyEditPage.includes("getClientDetailForContext") && partyEditPage.includes("!visible.detail"), "person detail uses uniform not-found for denied records");
+assert(partyEditPage.includes("PartyProfileReadOnly") && partyEditPage.includes("visible.resolution.canWrite"), "company-read person detail is explicitly read-only");
+assert(hub.includes("listClientsForContext") && hub.includes("readOnly: !canWrite"), "hub person mapping derives read-only from resolver");
+assert(actions.includes("resolveClientVisibilityForContext") && actions.includes("async function ensureClientOwnership(clientId: string, session"), "person write actions require owner resolver context");
+assert(memory.includes("currentOwnerUserId === input.userId") && postgres.includes("current_owner_user_id = $2"), "person lifecycle writes use current owner, not legacy owner fallback");
+assert(clientStageRoute.includes("resolveClientVisibilityForContext") && clientStageRoute.includes("visibility.resolution.canWrite"), "person stage API requires owner resolver context");
 
 console.log("visibility-resolver contract: PASS");

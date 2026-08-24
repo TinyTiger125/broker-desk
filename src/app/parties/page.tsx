@@ -7,6 +7,7 @@ import { t } from "@/lib/i18n";
 import { getLocale } from "@/lib/locale";
 import { normalizeLifecycleFilter, type LifecycleFilter } from "@/lib/record-lifecycle";
 import { requireTenantSession } from "@/lib/tenant-session";
+import { createRequestContext } from "@/lib/visibility-resolver";
 
 export const dynamic = "force-dynamic";
 
@@ -84,6 +85,7 @@ const partiesCopy = {
     archivedFeedback: "関係者をアーカイブしました。",
     restoredFeedback: "関係者を復元しました。",
     backToWorkbench: "ワークベンチに戻る",
+    readOnly: "会社メンバーに公開／読み取り専用",
   },
   zh: {
     addParty: "新增主体",
@@ -120,6 +122,7 @@ const partiesCopy = {
     archivedFeedback: "主体已归档。",
     restoredFeedback: "主体已恢复。",
     backToWorkbench: "返回工作台",
+    readOnly: "公司成员可见／只读",
   },
   ko: {
     addParty: "관계자 추가",
@@ -156,6 +159,7 @@ const partiesCopy = {
     archivedFeedback: "관계자를 보관했습니다.",
     restoredFeedback: "관계자를 복원했습니다.",
     backToWorkbench: "워크벤치로 돌아가기",
+    readOnly: "회사 구성원 공개 / 읽기 전용",
   },
 } as const;
 
@@ -184,6 +188,7 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
     userId: session.user.id,
     tenantId: session.tenant.id,
     lifecycleStatus: lifecycle,
+    requestContext: createRequestContext(session),
   };
 
   let parties: HubPartyItem[] = [];
@@ -349,24 +354,23 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
                       {party.name}
                     </Link>
                     <p className="mt-1 truncate text-xs font-medium text-slate-500">{contactSummary(party, notSet)}</p>
+                    {party.readOnly ? <p className="mt-1 text-xs font-bold text-slate-600">{copy.readOnly}</p> : null}
                   </div>
                   <div className="text-sm text-slate-700"><span className="mr-2 text-xs font-bold text-slate-400 lg:hidden">{copy.type}</span>{typeLabel}</div>
                   <div className="text-sm text-slate-700"><span className="mr-2 text-xs font-bold text-slate-400 lg:hidden">{copy.role}</span>{roleLabel}</div>
                   <div className={party.status === "archived" ? "text-sm font-semibold text-slate-500" : "text-sm text-slate-700"}><span className="mr-2 text-xs font-bold text-slate-400 lg:hidden">{copy.status}</span>{statusLabel}</div>
                   <div className="flex flex-wrap items-center justify-start gap-2 lg:justify-end">
-                    <Link
+                    {!party.readOnly ? <Link
                       href={`/relationship-tree?type=party&id=${encodeURIComponent(party.id)}`}
                       className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]"
-                    >
-                      {copy.relationTree}
-                    </Link>
-                    <ArchiveRecordButton
+                    >{copy.relationTree}</Link> : null}
+                    {party.canWrite ? <ArchiveRecordButton
                       entityType="party"
                       entityId={party.id}
                       status={party.status}
                       locale={locale}
                       returnTo={returnTo}
-                    />
+                    /> : null}
                   </div>
                 </li>
               );

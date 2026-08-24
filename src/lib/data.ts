@@ -213,6 +213,10 @@ export const resolvePropertyVisibilityForContext: typeof memory.resolvePropertyV
   repo.resolvePropertyVisibilityForContext(...args);
 export const resolveCaseVisibilityForContext: typeof memory.resolveCaseVisibilityForContext = (...args) =>
   repo.resolveCaseVisibilityForContext(...args);
+export const listClientsForContext: typeof memory.listClientsForContext = (...args) =>
+  repo.listClientsForContext(...args);
+export const getClientDetailForContext: typeof memory.getClientDetailForContext = (...args) =>
+  repo.getClientDetailForContext(...args);
 /**
  * Read the current tenant's member list using the identity that already
  * established the page session. This avoids a second Clerk lookup during the
@@ -460,6 +464,8 @@ export type {
   Client,
   ClientListFilter,
   ClientListSort,
+  VisibleClient,
+  VisibleClientDetail,
   DashboardQuoteItem,
   FollowUp,
   AuditLog,
