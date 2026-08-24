@@ -117,6 +117,6 @@ npm run build
 ## 当前状态
 
 - 状态: In Progress
-- 产品结论: Visibility V1 baseline approved / W9.1 limited implementation in progress
-- 当前阶段: W9.1仅推进负责人、成员级默认值、旧数据安全默认和跨经营主体隔离基础；未通过独立审查和非生产验证前，不进入W9.2页面读写改造。TASK-038 不再扩大，TASK-039 整体不标记 Done。
+- 产品结论: Visibility V1 baseline approved / W9.1 Accepted / Runtime Verified
+- 当前阶段: W9.1已完成独立审查与隔离非生产运行验证，覆盖负责人、成员级默认值、旧数据安全默认和跨经营主体隔离基础；W9.2页面读写改造、定向分享、共同编辑、资料接管和完整来源权限/PDF链路尚未开始。TASK-038 不再扩大，TASK-039 整体不标记 Done。
 - 后续阶段：成员资料接管、暂停后的保留/删除和法律留存另立专题。
