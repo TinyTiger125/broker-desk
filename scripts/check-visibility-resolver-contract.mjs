@@ -13,6 +13,11 @@ const sessionProvenance = read("src/lib/tenant-session-provenance.ts");
 const memory = read("src/lib/data.memory.ts");
 const postgres = read("src/lib/data.postgres.ts");
 const data = read("src/lib/data.ts");
+const casePage = read("src/app/cases/[id]/page.tsx");
+const caseApplicationPage = read("src/app/cases/[id]/guarantee-application/page.tsx");
+const organizePage = read("src/app/organize-center/page.tsx");
+const organizeBrowser = read("src/components/organize-center-object-browser.tsx");
+const actions = read("src/app/actions.ts");
 
 for (const decision of ["owner_write", "company_read", "not_accessible"]) {
   assert(resolver.includes(`"${decision}"`), `resolver exposes ${decision}`);
@@ -50,9 +55,16 @@ assert(postgres.includes("withTransaction(async (client)"), "Postgres resolver r
 assert(postgres.includes("tenant_id = $2"), "Postgres resolver constrains the selected tenant");
 assert(postgres.includes("visibilityScope: row.visibility_scope") && postgres.includes("ownerResolutionStatus: row.owner_resolution_status"), "Postgres resolver preserves unknown raw policy fields for fail-closed evaluation");
 assert(data.includes("resolveClientVisibilityForContext") && data.includes("resolvePropertyVisibilityForContext") && data.includes("resolveCaseVisibilityForContext"), "repository proxy exposes all three probes");
-
-for (const forbidden of ["src/app/clients/page.tsx", "src/app/properties/page.tsx", "src/app/cases/[id]/page.tsx", "src/app/api/hub/search/route.ts"]) {
-  assert(!process.env.VISIBILITY_RESOLVER_CHANGED_FILES || !process.env.VISIBILITY_RESOLVER_CHANGED_FILES.includes(forbidden), `no page wiring: ${forbidden}`);
-}
+assert(memory.includes("listBrokerageCasesForContext") && memory.includes("getBrokerageCaseByIdForContext"), "memory exposes context-bound case page reads");
+assert(postgres.includes("listBrokerageCasesForContext") && postgres.includes("getBrokerageCaseByIdForContext"), "Postgres exposes context-bound case page reads");
+assert(data.includes("listBrokerageCasesForContext") && data.includes("getBrokerageCaseByIdForContext"), "repository proxy exposes context-bound case page reads");
+assert(organizePage.includes("createRequestContext(session)") && organizePage.includes("listBrokerageCasesForContext"), "case list uses trusted RequestContext resolver");
+assert(organizePage.includes("readOnly: item.readOnly") && organizeBrowser.includes("!item.readOnly"), "company-read list items preserve read-only UI state");
+assert(casePage.includes("getBrokerageCaseByIdForContext") && casePage.includes("createRequestContext(session)"), "case detail uses trusted RequestContext resolver");
+assert(casePage.includes("caseVisibility.resolution.outcome"), "case detail branches on resolver outcome");
+assert(casePage.includes("resolveClientVisibilityForContext") && casePage.includes("resolvePropertyVisibilityForContext"), "case detail rechecks related object visibility");
+assert(casePage.includes("primaryPropertyId") && casePage.includes("tenant.name") && casePage.includes('key.startsWith("guarantor.")'), "case detail redacts inaccessible related content and fallback names");
+assert(caseApplicationPage.includes("getBrokerageCaseByIdForContext") && caseApplicationPage.includes('!== "owner_write"') && caseApplicationPage.includes("if (inaccessible) notFound()"), "application entry is owner-write only with uniform not-found");
+assert(actions.includes("async function requireWritableCase") && actions.includes("resolveCaseVisibilityForContext"), "case write actions re-check owner_write server-side");
 
 console.log("visibility-resolver contract: PASS");

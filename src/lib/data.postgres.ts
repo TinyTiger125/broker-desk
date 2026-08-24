@@ -85,6 +85,7 @@ import type {
   GuaranteePreviewOutputInput,
   MemberVisibilityDefault,
 } from "@/lib/data.memory";
+import type { VisibleBrokerageCase } from "@/lib/data.memory";
 import type { TenantRole, TenantCapabilityPreset } from "@/lib/tenant-permissions";
 import type { LifecycleFilter, LifecycleStatus } from "@/lib/record-lifecycle";
 import { getTenantDeploymentEnvironment } from "@/lib/tenant-bootstrap-policy";
@@ -3450,6 +3451,72 @@ export async function getBrokerageCaseById(input: {
   return result.rows[0] ? mapBrokerageCase(result.rows[0]) : null;
 }
 
+/** Case-page read path guarded by the authenticated RequestContext resolver. */
+export async function listBrokerageCasesForContext(input: {
+  context: RequestContext;
+  limit?: number;
+  lifecycleStatus?: LifecycleFilter;
+}): Promise<VisibleBrokerageCase[]> {
+  return withPostgresAuthContext(input.context.externalAuthSubject, async () => {
+    await ensureSchema();
+    const lifecycleStatus = input.lifecycleStatus ?? "active";
+    const limitClause = input.limit === undefined ? "" : " LIMIT $3";
+    const result = await getPool().query(
+      `SELECT * FROM brokerage_cases
+       WHERE tenant_id = $1
+         AND owner_resolution_status = 'resolved'
+         AND current_owner_user_id IS NOT NULL
+         AND ($2 = 'all' OR lifecycle_status = $2)
+       ORDER BY updated_at DESC
+       ${limitClause}`,
+      input.limit === undefined
+        ? [input.context.tenantId, lifecycleStatus]
+        : [input.context.tenantId, lifecycleStatus, Math.max(1, input.limit)],
+    );
+    return result.rows.flatMap((row) => {
+      const brokerageCase = mapBrokerageCase(row);
+      const resolution = resolveRecordVisibility(input.context, {
+        ...brokerageCase,
+        tenantId: row.tenant_id == null ? null : String(row.tenant_id),
+        currentOwnerUserId: row.current_owner_user_id == null ? null : String(row.current_owner_user_id),
+        visibilityScope: row.visibility_scope,
+        ownerResolutionStatus: row.owner_resolution_status,
+      });
+      return resolution.canRead ? [{ brokerageCase, resolution }] : [];
+    });
+  });
+}
+
+export async function getBrokerageCaseByIdForContext(input: {
+  context: RequestContext;
+  caseId: string;
+}): Promise<VisibleBrokerageCase> {
+  return withPostgresAuthContext(input.context.externalAuthSubject, async () => {
+    await ensureSchema();
+    const result = await getPool().query(
+      `SELECT * FROM brokerage_cases
+       WHERE id = $1 AND tenant_id = $2
+         AND owner_resolution_status = 'resolved'
+         AND current_owner_user_id IS NOT NULL
+       LIMIT 1`,
+      [input.caseId, input.context.tenantId],
+    );
+    const row = result.rows[0] as Record<string, unknown> | undefined;
+    const brokerageCase = row ? mapBrokerageCase(row) : null;
+    const resolution = resolveRecordVisibility(input.context, row ? {
+      ...brokerageCase,
+      tenantId: row.tenant_id == null ? null : String(row.tenant_id),
+      currentOwnerUserId: row.current_owner_user_id == null ? null : String(row.current_owner_user_id),
+      visibilityScope: row.visibility_scope,
+      ownerResolutionStatus: row.owner_resolution_status,
+    } : null);
+    return {
+      resolution,
+      brokerageCase: resolution.canRead ? brokerageCase : null,
+    };
+  });
+}
+
 export async function getBrokerageCaseByImportJobId(input: {
   tenantId?: string;
   userId: string;
@@ -3482,7 +3549,8 @@ export async function updateBrokerageCaseConfirmedData(input: {
   const result = await getPool().query(
     `UPDATE brokerage_cases
      SET confirmed_data_json = $3, updated_at = NOW()
-     WHERE id = $1 AND user_id = $2 AND tenant_id = $4
+     WHERE id = $1 AND current_owner_user_id = $2 AND tenant_id = $4
+       AND owner_resolution_status = 'resolved'
      RETURNING *`,
     [input.caseId, input.userId, JSON.stringify(input.confirmedDataJson), scopeTenantId],
   );
@@ -3509,7 +3577,7 @@ export async function saveBrokerageCaseExtractionReview(input: {
   const caseResult = await withTransaction(async (client) => {
     const visibilityScope = await resolveMemberVisibilityScope(tenantId, input.userId, "case", client);
     const existing = input.caseId
-      ? await client.query("SELECT id FROM brokerage_cases WHERE id = $1 AND user_id = $2 AND tenant_id = $3 LIMIT 1", [
+      ? await client.query("SELECT id FROM brokerage_cases WHERE id = $1 AND current_owner_user_id = $2 AND tenant_id = $3 AND owner_resolution_status = 'resolved' LIMIT 1", [
           input.caseId,
           input.userId,
           tenantId,
@@ -3521,7 +3589,8 @@ export async function saveBrokerageCaseExtractionReview(input: {
             `UPDATE brokerage_cases
              SET case_type = $4, case_title = $5, primary_property_id = $6, status = $7,
                  confirmed_data_json = $8, source_import_job_ids = $9, updated_at = NOW()
-             WHERE id = $1 AND user_id = $2 AND tenant_id = $3
+             WHERE id = $1 AND current_owner_user_id = $2 AND tenant_id = $3
+               AND owner_resolution_status = 'resolved'
              RETURNING *`,
             [
               caseId,
@@ -3618,7 +3687,8 @@ export async function mergeBrokerageCaseExtractionReview(input: {
     const result = await client.query(
       `UPDATE brokerage_cases
        SET confirmed_data_json = $3, source_import_job_ids = $4, updated_at = NOW()
-       WHERE id = $1 AND user_id = $2 AND tenant_id = $5
+       WHERE id = $1 AND current_owner_user_id = $2 AND tenant_id = $5
+         AND owner_resolution_status = 'resolved'
        RETURNING *`,
       [input.caseId, input.userId, JSON.stringify(input.confirmedDataJson), sourceImportJobIds, tenantId],
     );
@@ -3694,7 +3764,8 @@ export async function rollbackBrokerageCaseMerge(input: {
     const restoredResult = await client.query(
       `UPDATE brokerage_cases
        SET confirmed_data_json = $3, source_import_job_ids = $4, updated_at = NOW()
-       WHERE id = $1 AND user_id = $2 AND tenant_id = $5
+       WHERE id = $1 AND current_owner_user_id = $2 AND tenant_id = $5
+         AND owner_resolution_status = 'resolved'
        RETURNING *`,
       [
         input.caseId,
@@ -3725,7 +3796,8 @@ export async function rollbackBrokerageCaseMerge(input: {
               $6, $7, created_by_user_id, current_owner_user_id, visibility_scope, owner_resolution_status,
               NOW(), NOW()
        FROM brokerage_cases
-       WHERE id = $2 AND user_id = $3 AND tenant_id = $4
+       WHERE id = $2 AND current_owner_user_id = $3 AND tenant_id = $4
+         AND owner_resolution_status = 'resolved'
        RETURNING *`,
       [
         splitCaseId,
@@ -4890,7 +4962,8 @@ export async function setBrokerageCaseLifecycleStatus(input: {
             archived_at = CASE WHEN $4 = 'archived' THEN NOW() ELSE NULL END,
             archived_by_id = CASE WHEN $4 = 'archived' THEN COALESCE($5, $2) ELSE NULL END,
             updated_at = NOW()
-      WHERE id = $1 AND user_id = $2 AND tenant_id = $3
+      WHERE id = $1 AND current_owner_user_id = $2 AND tenant_id = $3
+        AND owner_resolution_status = 'resolved'
       RETURNING *`,
     [input.caseId, input.userId, scopeTenantId, input.status, input.archivedById ?? null],
   );

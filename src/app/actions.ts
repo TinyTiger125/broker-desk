@@ -51,7 +51,6 @@ import {
   appendFollowUp,
   createComplianceTaskFromAlert,
   duplicateQuotation,
-  getBrokerageCaseById,
   getBrokerageCaseByImportJobId,
   getClientById,
   getClientDetail,
@@ -69,6 +68,7 @@ import {
   rollbackBrokerageCaseMerge,
   rescheduleTask,
   resolveComplianceAlert,
+  resolveCaseVisibilityForContext,
   saveBrokerageCaseExtractionReview,
   saveGuaranteeApplicationDraft,
   setBrokerageCaseLifecycleStatus,
@@ -124,7 +124,8 @@ import {
   type ImportValidationIssueLevel,
 } from "@/lib/import-mapping";
 import { materializeExtractionReviewValue } from "@/lib/extraction-review-materialization";
-import { assertTenantPermission, requireTenantSession } from "@/lib/tenant-session";
+import { assertTenantPermission, requireTenantSession, type TenantSession } from "@/lib/tenant-session";
+import { createRequestContext } from "@/lib/visibility-resolver";
 import { ACTIVE_TENANT_COOKIE_NAME } from "@/lib/tenant-permissions";
 import { requirePlatformOwnerSession } from "@/lib/platform-session";
 import { isLifecycleStatus, type LifecycleStatus } from "@/lib/record-lifecycle";
@@ -149,6 +150,15 @@ async function rejectForbiddenRecordInput(
     context: { fields: submittedFields },
   });
   throw new Error("请求包含不可修改的资料归属字段。");
+}
+
+async function requireWritableCase(session: TenantSession, caseId: string) {
+  const context = createRequestContext(session);
+  const result = await resolveCaseVisibilityForContext({ context, caseId });
+  if (!result.record || !result.resolution.canWrite) {
+    throw new Error("案件が見つかりません。");
+  }
+  return result.record;
 }
 import type { InputFileExtractionResult } from "@/lib/input-file-extractor";
 import { queueExcelImportSource } from "@/lib/excel-import-queue";
@@ -576,6 +586,7 @@ export async function setRecordLifecycleAction(formData: FormData) {
   const status = statusRaw as LifecycleStatus;
   let updated: unknown;
   if (entityType === "case") {
+    await requireWritableCase(session, entityId);
     updated = await setBrokerageCaseLifecycleStatus({
       tenantId: session.tenant.id,
       userId: session.user.id,
@@ -3758,8 +3769,7 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
   const caseId = String(formData.get("caseId") ?? "").trim();
   await rejectForbiddenRecordInput(formData, session, "case", caseId || undefined);
   if (!caseId) throw new Error("案件IDが不正です。");
-  const brokerageCase = await getBrokerageCaseById({ userId: user.id, tenantId, caseId });
-  if (!brokerageCase) throw new Error("案件が見つかりません。");
+  const brokerageCase = await requireWritableCase(session, caseId);
   const [reviewItems, fieldRules] = await Promise.all([
     listExtractionReviewItems({ userId: user.id, tenantId, caseId }),
     listCaseWorkbenchFieldRules(user.id, tenantId),
@@ -3916,8 +3926,7 @@ export async function saveCaseApplicabilityAction(formData: FormData) {
   const caseId = String(formData.get("caseId") ?? "").trim();
   await rejectForbiddenRecordInput(formData, session, "case", caseId || undefined);
   if (!caseId) throw new Error("案件IDが不正です。");
-  const brokerageCase = await getBrokerageCaseById({ userId: user.id, tenantId, caseId });
-  if (!brokerageCase) throw new Error("案件が見つかりません。");
+  const brokerageCase = await requireWritableCase(session, caseId);
 
   const [reviewItems, fieldRules] = await Promise.all([
     listExtractionReviewItems({ userId: user.id, tenantId, caseId }),
@@ -3992,8 +4001,7 @@ export async function saveGuaranteeApplicationDraftAction(formData: FormData) {
   const template = findGuaranteeCompanyTemplate(templateId);
   if (!template) throw new Error("保証会社テンプレートが見つかりません。");
 
-  const brokerageCase = await getBrokerageCaseById({ userId: user.id, tenantId, caseId });
-  if (!brokerageCase) throw new Error("案件が見つかりません。");
+  const brokerageCase = await requireWritableCase(session, caseId);
 
   const draftDefinitions = getGuaranteeDraftFieldDefinitions(template.id);
   const fieldValuesJson: Record<string, unknown> = {};
@@ -4160,8 +4168,7 @@ async function saveGuaranteeApplicationPreviewWithScope(
   const template = findGuaranteeCompanyTemplate(templateId);
   if (!template) throw new Error("保証会社テンプレートが見つかりません。");
 
-  const brokerageCase = await getBrokerageCaseById({ userId: user.id, tenantId, caseId });
-  if (!brokerageCase) throw new Error("案件が見つかりません。");
+  const brokerageCase = await requireWritableCase(session, caseId);
   const previousDraft = await getGuaranteeApplicationDraft({ userId: user.id, tenantId, caseId, templateId: template.id });
   const previousLayoutOverrides = getFriendsGuaranteeEffectiveLayoutOverrides({
     templateId: template.id,
@@ -4504,8 +4511,7 @@ export async function uploadAndParseExcelAction(formData: FormData) {
   const targetCaseId = String(formData.get("targetCaseId") ?? "").trim();
   const uploadContext = String(formData.get("uploadContext") ?? "").trim();
   if (targetCaseId) {
-    const targetCase = await getBrokerageCaseById({ userId: user.id, tenantId, caseId: targetCaseId });
-    if (!targetCase) throw new Error("追加先の案件が見つかりません。");
+    await requireWritableCase(session, targetCaseId);
   }
   const targetCaseQuery = targetCaseId ? `&targetCaseId=${encodeURIComponent(targetCaseId)}` : "";
   const redirectExcelUploadError = (flash: string): never => {
@@ -4543,8 +4549,7 @@ export async function uploadAndParseIdentityDocumentAction(formData: FormData) {
   const targetCaseId = String(formData.get("targetCaseId") ?? "").trim();
   const uploadContext = String(formData.get("uploadContext") ?? "").trim();
   if (targetCaseId) {
-    const targetCase = await getBrokerageCaseById({ userId: user.id, tenantId, caseId: targetCaseId });
-    if (!targetCase) throw new Error("追加先の案件が見つかりません。");
+    await requireWritableCase(session, targetCaseId);
   }
   const targetCaseQuery = targetCaseId ? `&targetCaseId=${encodeURIComponent(targetCaseId)}` : "";
   const redirectIdentityUploadError = (flash: string): never => {
@@ -4664,8 +4669,7 @@ export async function saveExtractionReviewAction(formData: FormData) {
 
   const targetCaseId = String(formData.get("targetCaseId") ?? payload.targetCaseId ?? "").trim();
   if (targetCaseId) {
-    const targetCase = await getBrokerageCaseById({ userId: user.id, tenantId, caseId: targetCaseId });
-    if (!targetCase) throw new Error("追加先の案件が見つかりません。");
+    const targetCase = await requireWritableCase(session, targetCaseId);
 
     const mergedData = mergeConfirmedCaseData({
       existingData: targetCase.confirmedDataJson,
@@ -4745,13 +4749,15 @@ export async function saveExtractionReviewAction(formData: FormData) {
     tenantId,
     importJobId: job.id,
   });
+  if (existingCase) {
+    await requireWritableCase(session, existingCase.id);
+  }
 
   if (mergeTargetCaseId) {
     if (!mergeConfirmed) {
       throw new Error("案件に追加する前に、合併確認にチェックしてください。");
     }
-    const targetCase = await getBrokerageCaseById({ userId: user.id, tenantId, caseId: mergeTargetCaseId });
-    if (!targetCase) throw new Error("合併先の案件が見つかりません。");
+    const targetCase = await requireWritableCase(session, mergeTargetCaseId);
     if (targetCase.sourceImportJobIds.includes(job.id)) {
       throw new Error("この資料はすでに選択した案件に含まれています。");
     }
@@ -4931,8 +4937,7 @@ export async function rollbackCaseMergeAction(formData: FormData) {
     throw new Error("分離して戻す前に確認チェックを入れてください。");
   }
 
-  const brokerageCase = await getBrokerageCaseById({ userId: user.id, tenantId, caseId });
-  if (!brokerageCase) throw new Error("案件が見つかりません。");
+  const brokerageCase = await requireWritableCase(session, caseId);
 
   const latestMerge = getLatestActiveCaseMerge(brokerageCase.confirmedDataJson);
   if (!latestMerge || latestMerge.id !== mergeId) {

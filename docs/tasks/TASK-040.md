@@ -118,11 +118,11 @@ npm run build
 
 - 状态: In Progress
 - 产品结论: Visibility V1 baseline approved / W9.1 Accepted / Runtime Verified
-- 当前阶段: W9.1已完成独立审查与隔离非生产运行验证，覆盖负责人、成员级默认值、旧数据安全默认和跨经营主体隔离基础；W9.2页面读写改造、定向分享、共同编辑、资料接管和完整来源权限/PDF链路尚未开始。TASK-038 不再扩大，TASK-039 整体不标记 Done。
-- W9.2 只读盘点与技术设计已完成；首两个安全硬门已完成隔离非生产运行验证并标记 `Runtime Verified / isolated non-production`，统一可见性解析器和三类页面改造仍未开始：
+- 当前阶段: W9.1已完成独立审查与隔离非生产运行验证；W9.2案件页面读取/写入接入已在精确 Preview `b239ce24873f5062d72be330f20b1708d1e24138` 完成受控产品验收，包含 resolver 接入、company_read 只读界面、案件写 Action owner_write 门、申请书入口保护和关联人物/物件 fail-closed。人物/物件页面、全局搜索/导出、关系图、附件、PDF 来源权限、定向分享、共同编辑和资料接管仍未开始。跨经营主体真实浏览器＋写 Action 组合证据作为最终跨对象回归 P2 保留；TASK-038 不再扩大，TASK-039 整体不标记 Done。
+- W9.2 只读盘点与技术设计已完成；首两个安全硬门及统一可见性解析器已完成隔离非生产运行验证，案件页面接入已取得受控 Staging 产品验收：
   - [事实矩阵](../product/TASK-040_W9.2_FACT_MATRIX_2026-08-24.md)
   - [技术设计](../product/TASK-040_W9.2_TECHNICAL_DESIGN_2026-08-24.md)
   - [一页产品行为摘要](../product/TASK-040_W9.2_PRODUCT_BEHAVIOR_SUMMARY_2026-08-24.md)
-- W9.2 进入有限实现的前置门：先关闭 `/api/hub/search` 认证/当前 tenant/default-user fallback，以及三类对象 `created_by_user_id` 的数据库与服务端不可变门；两项独立审查 P0/P1 已为 0，现进入统一 RequestContext/visibility resolver 基础层。当前候选只提供三类对象的受信上下文、统一 `owner_write`/`company_read`/`not_accessible` 判定和 memory/Postgres foundation probes，不接入页面、列表、详情、搜索、导出、关系图、附件或 PDF。旧 `user_id/owner_user_id` 不得作为运行期授权 fallback；`company_read` 页面必须明确显示只读。
+- 案件页面阶段结果：列表/详情按当前 resolver 过滤 private 与 company_read，company_read 显示本地化只读语义；案件写 Action、生命周期入口、申请书入口均由服务端 owner_write 再校验；关联人物/物件缺少独立访问权时 fail-closed 隐藏。精确 Preview 的独立复核为 P0=0、已验证范围内 P1=0；跨经营主体真实浏览器＋写 Action 组合证据、TASK-038 PDF 生成闭环和主动 429 触发不纳入本阶段通过结论。
 - 首两个硬门的代码增量已完成并通过独立只读审查（P0=0、P1=0）；003 migration、受限运行角色下的直接 SQL、重复执行/失败恢复、Action 级审计和 `/api/hub/search` 受控上下文矩阵已在可销毁非生产分支验证，证据见 [W9.2 运行验证记录](../product/TASK-040_W9.2_RUNTIME_VERIFICATION_2026-08-24.md)。这不等同于真实 Clerk 浏览器端到端回归，也不代表 W9.2 整体完成。
 - 后续阶段：成员资料接管、暂停后的保留/删除和法律留存另立专题。

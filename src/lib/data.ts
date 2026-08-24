@@ -352,8 +352,12 @@ export const retryImportJobExecution: typeof memory.retryImportJobExecution = (.
   repo.retryImportJobExecution(...args);
 export const listBrokerageCases: typeof memory.listBrokerageCases = (...args) =>
   repo.listBrokerageCases(...args);
+export const listBrokerageCasesForContext: typeof memory.listBrokerageCasesForContext = (...args) =>
+  repo.listBrokerageCasesForContext(...args);
 export const getBrokerageCaseById: typeof memory.getBrokerageCaseById = (...args) =>
   repo.getBrokerageCaseById(...args);
+export const getBrokerageCaseByIdForContext: typeof memory.getBrokerageCaseByIdForContext = (...args) =>
+  repo.getBrokerageCaseByIdForContext(...args);
 export const getBrokerageCaseByImportJobId: typeof memory.getBrokerageCaseByImportJobId = (...args) =>
   repo.getBrokerageCaseByImportJobId(...args);
 export const updateBrokerageCaseConfirmedData: typeof memory.updateBrokerageCaseConfirmedData = (...args) =>

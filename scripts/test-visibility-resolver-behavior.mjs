@@ -177,4 +177,20 @@ const legacyOnlyRecord = {
 assert.equal(resolver.resolveRecordVisibility(ownerContext, legacyOnlyRecord).outcome, "owner_write", "legacy fields do not override current owner");
 assert.equal(resolver.resolveRecordVisibility(colleagueContext, legacyOnlyRecord).outcome, "not_accessible", "legacy owner is not an auth fallback");
 
+const ownerCaseList = await memory.listBrokerageCasesForContext({ context: ownerContext, lifecycleStatus: "all" });
+assert(ownerCaseList.some((item) => item.brokerageCase?.id === brokerageCase.id && item.resolution.outcome === "owner_write"), "owner case list includes private case");
+const colleagueCaseList = await memory.listBrokerageCasesForContext({ context: colleagueContext, lifecycleStatus: "all" });
+assert(colleagueCaseList.some((item) => item.brokerageCase?.id === brokerageCase.id && item.resolution.outcome === "company_read"), "company_read case list includes readable case");
+const colleagueCaseLookup = await memory.getBrokerageCaseByIdForContext({ context: colleagueContext, caseId: brokerageCase.id });
+assert.equal(colleagueCaseLookup.resolution.outcome, "company_read", "company_read case direct URL is readable");
+assert.equal(
+  await memory.updateBrokerageCaseConfirmedData({ tenantId: tenant.id, userId: colleague.id, caseId: brokerageCase.id, confirmedDataJson: { forged: true } }),
+  null,
+  "company_read member cannot write a case through the repository",
+);
+assert(
+  await memory.updateBrokerageCaseConfirmedData({ tenantId: tenant.id, userId: owner.id, caseId: brokerageCase.id, confirmedDataJson: { ownerWrite: true } }),
+  "owner can write a company_read case through the repository",
+);
+
 console.log("visibility-resolver behavior: PASS");

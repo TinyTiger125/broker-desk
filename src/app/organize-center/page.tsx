@@ -5,13 +5,14 @@ import {
   type OrganizeCenterBrowserItem,
 } from "@/components/organize-center-object-browser";
 import { MessageStrip, SectionHeader, Surface } from "@/components/ui-foundation";
-import { listBrokerageCases } from "@/lib/data";
+import { listBrokerageCasesForContext } from "@/lib/data";
 import { getCaseFieldValue } from "@/lib/case-field-normalization";
 import { formatDate } from "@/lib/format";
 import { listHubParties, listHubProperties } from "@/lib/hub";
 import { getLocale, type Locale } from "@/lib/locale";
 import { normalizeLifecycleFilter, type LifecycleFilter } from "@/lib/record-lifecycle";
 import { requireTenantSession, TenantSessionError } from "@/lib/tenant-session";
+import { createRequestContext } from "@/lib/visibility-resolver";
 import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
@@ -40,6 +41,8 @@ type WorkObject = {
   updatedAt?: Date;
   href: string;
   lifecycleStatus: "active" | "archived";
+  visibilityLabel?: string;
+  readOnly?: boolean;
 };
 
 const copyByLocale = {
@@ -67,6 +70,7 @@ const copyByLocale = {
     objectCount: "対象",
     continueCheck: "一覧で続けて確認",
     relationCase: "案件内の関係",
+    visibilityLabel: "可視範囲",
     relationParty: "関連先",
     relationProperty: "利用先",
     pageStatus: "表示中",
@@ -118,6 +122,7 @@ const copyByLocale = {
     objectCount: "对象",
     continueCheck: "进入列表继续核对",
     relationCase: "案件关系",
+    visibilityLabel: "可见范围",
     relationParty: "关联对象",
     relationProperty: "使用位置",
     pageStatus: "当前显示",
@@ -169,6 +174,7 @@ const copyByLocale = {
     objectCount: "대상",
     continueCheck: "목록에서 계속 확인",
     relationCase: "안건 관계",
+    visibilityLabel: "공개 범위",
     relationParty: "연결 대상",
     relationProperty: "사용 위치",
     pageStatus: "현재 표시",
@@ -302,30 +308,40 @@ async function OrganizeCenterContent({ locale, params }: { locale: Locale; param
   let parties;
   let properties;
   try {
-    const context = { userId: session.user.id, tenantId: session.tenant.id, lifecycleStatus: lifecycleFilter };
+    const requestContext = createRequestContext(session);
+    const hubContext = { userId: session.user.id, tenantId: session.tenant.id, lifecycleStatus: lifecycleFilter };
     [cases, parties, properties] = await Promise.all([
-      listBrokerageCases(session.user.id, 100, session.tenant.id, lifecycleFilter),
-      listHubParties(locale, context),
-      listHubProperties(locale, context),
+      listBrokerageCasesForContext({ context: requestContext, lifecycleStatus: lifecycleFilter }),
+      listHubParties(locale, hubContext),
+      listHubProperties(locale, hubContext),
     ]);
   } catch {
     return <OrganizeCenterLoadError copy={copy} href={buildListHref(selectedType, query, lifecycleFilter, page)} />;
   }
 
-  const caseItems: WorkObject[] = cases.map((item) => {
-    const applicantName = getCaseFieldValue(item.confirmedDataJson, "applicant.name");
-    const propertyName = getCaseFieldValue(item.confirmedDataJson, "property.name");
-    return {
+  const caseItems: WorkObject[] = cases.flatMap(({ brokerageCase: item, resolution }) => {
+    if (!item) return [];
+    const applicantName = resolution.outcome === "company_read" ? "" : getCaseFieldValue(item.confirmedDataJson, "applicant.name");
+    const propertyName = resolution.outcome === "company_read" ? "" : getCaseFieldValue(item.confirmedDataJson, "property.name");
+    return [{
       id: item.id,
       type: "case",
       lifecycleStatus: item.lifecycleStatus ?? "active",
-      title: item.caseTitle,
+      title: resolution.outcome === "company_read"
+        ? locale === "zh" ? "案件" : locale === "ko" ? "안건" : "案件"
+        : item.caseTitle,
       subtitle: copy.case,
-      relation: `${applicantName || copy.personUnset} / ${propertyName || copy.propertyUnset}`,
-      relationLabel: copy.relationCase,
+      relation: resolution.outcome === "company_read"
+        ? locale === "zh" ? "公司成员可见（只读）" : locale === "ko" ? "회사 멤버 공개（읽기 전용）" : "会社メンバーに公開（読み取り専用）"
+        : `${applicantName || copy.personUnset} / ${propertyName || copy.propertyUnset}`,
+      relationLabel: resolution.outcome === "company_read" ? copy.visibilityLabel : copy.relationCase,
       updatedAt: item.updatedAt,
       href: `/cases/${encodeURIComponent(item.id)}`,
-    };
+      visibilityLabel: resolution.outcome === "company_read"
+        ? locale === "zh" ? "公司成员可见／只读" : locale === "ko" ? "회사 멤버 공개／읽기 전용" : "会社メンバーに公開／読み取り専用"
+        : undefined,
+      readOnly: resolution.outcome === "company_read",
+    }];
   });
 
   const partyItems: WorkObject[] = parties.map((item) => {
@@ -365,6 +381,7 @@ async function OrganizeCenterContent({ locale, params }: { locale: Locale; param
     relationLabel: item.relationLabel,
     updatedLabel: item.updatedAt ? formatDate(item.updatedAt, locale) : copy.noDate,
     href: item.href,
+    readOnly: item.readOnly,
   }));
 
   return (

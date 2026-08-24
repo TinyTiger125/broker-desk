@@ -45,6 +45,7 @@ import { assertNoForbiddenRecordInput } from "@/lib/record-input-guard";
 import {
   resolveRecordVisibility,
   type RequestContext,
+  type VisibilityResolution,
   type VisibilityRecordResult,
 } from "@/lib/visibility-resolver";
 
@@ -340,6 +341,11 @@ export type BrokerageCase = {
   lifecycleStatus?: LifecycleStatus;
   archivedAt?: Date;
   archivedById?: string;
+};
+
+export type VisibleBrokerageCase = {
+  brokerageCase: BrokerageCase | null;
+  resolution: VisibilityResolution;
 };
 
 export type ExtractionReviewItem = {
@@ -3247,6 +3253,41 @@ export async function getBrokerageCaseById(input: {
   return item ? cloneBrokerageCase(item) : null;
 }
 
+/**
+ * Case-page read path. The caller must provide the immutable RequestContext
+ * created from the current authenticated tenant session; legacy user_id is
+ * deliberately not used as an authorization fallback here.
+ */
+export async function listBrokerageCasesForContext(input: {
+  context: RequestContext;
+  limit?: number;
+  lifecycleStatus?: LifecycleFilter;
+}): Promise<VisibleBrokerageCase[]> {
+  const lifecycleStatus = input.lifecycleStatus ?? "active";
+  const visible = db.brokerageCases
+    .filter((item) => item.tenantId === input.context.tenantId && isVisibilityRecordResolved(item))
+    .filter((item) => lifecycleStatus === "all" || (item.lifecycleStatus ?? "active") === lifecycleStatus)
+    .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+    .map((item) => ({
+      brokerageCase: cloneBrokerageCase(item),
+      resolution: resolveRecordVisibility(input.context, item),
+    }))
+    .filter((item) => item.resolution.canRead);
+  return input.limit === undefined ? visible : visible.slice(0, Math.max(1, input.limit));
+}
+
+export async function getBrokerageCaseByIdForContext(input: {
+  context: RequestContext;
+  caseId: string;
+}): Promise<VisibleBrokerageCase> {
+  const item = db.brokerageCases.find((caseItem) => caseItem.id === input.caseId && caseItem.tenantId === input.context.tenantId) ?? null;
+  const resolution = resolveRecordVisibility(input.context, item);
+  return {
+    resolution,
+    brokerageCase: resolution.canRead && item ? cloneBrokerageCase(item) : null,
+  };
+}
+
 export async function getBrokerageCaseByImportJobId(input: {
   tenantId?: string;
   userId: string;
@@ -3271,7 +3312,7 @@ export async function updateBrokerageCaseConfirmedData(input: {
   assertNoForbiddenRecordInput(input, { allowTenantId: true });
   const scopeTenantId = resolveTenantId(input.tenantId);
   const item = db.brokerageCases.find(
-    (caseItem) => caseItem.userId === input.userId && caseItem.tenantId === scopeTenantId && caseItem.id === input.caseId,
+    (caseItem) => caseItem.currentOwnerUserId === input.userId && caseItem.tenantId === scopeTenantId && caseItem.id === input.caseId && caseItem.ownerResolutionStatus === "resolved",
   );
   if (!item) return null;
 
@@ -3296,7 +3337,7 @@ export async function saveBrokerageCaseExtractionReview(input: {
   const scopeTenantId = resolveTenantId(input.tenantId);
   let item = input.caseId
     ? db.brokerageCases.find(
-        (caseItem) => caseItem.userId === input.userId && caseItem.tenantId === scopeTenantId && caseItem.id === input.caseId,
+        (caseItem) => caseItem.currentOwnerUserId === input.userId && caseItem.tenantId === scopeTenantId && caseItem.id === input.caseId && caseItem.ownerResolutionStatus === "resolved",
       )
     : undefined;
 
@@ -3357,7 +3398,7 @@ export async function mergeBrokerageCaseExtractionReview(input: {
 }): Promise<BrokerageCase | null> {
   const scopeTenantId = resolveTenantId(input.tenantId);
   const item = db.brokerageCases.find(
-    (caseItem) => caseItem.userId === input.userId && caseItem.tenantId === scopeTenantId && caseItem.id === input.caseId,
+    (caseItem) => caseItem.currentOwnerUserId === input.userId && caseItem.tenantId === scopeTenantId && caseItem.id === input.caseId && caseItem.ownerResolutionStatus === "resolved",
   );
   if (!item) return null;
 
@@ -3399,7 +3440,7 @@ export async function rollbackBrokerageCaseMerge(input: {
 }): Promise<{ restoredCase: BrokerageCase; splitCase: BrokerageCase } | null> {
   const scopeTenantId = resolveTenantId(input.tenantId);
   const item = db.brokerageCases.find(
-    (caseItem) => caseItem.userId === input.userId && caseItem.tenantId === scopeTenantId && caseItem.id === input.caseId,
+    (caseItem) => caseItem.currentOwnerUserId === input.userId && caseItem.tenantId === scopeTenantId && caseItem.id === input.caseId && caseItem.ownerResolutionStatus === "resolved",
   );
   if (!item) return null;
 
@@ -4541,7 +4582,7 @@ export async function setBrokerageCaseLifecycleStatus(input: {
 }): Promise<BrokerageCase | null> {
   const scopeTenantId = resolveTenantId(input.tenantId);
   const item = db.brokerageCases.find(
-    (caseItem) => caseItem.userId === input.userId && caseItem.tenantId === scopeTenantId && caseItem.id === input.caseId,
+    (caseItem) => caseItem.currentOwnerUserId === input.userId && caseItem.tenantId === scopeTenantId && caseItem.id === input.caseId && caseItem.ownerResolutionStatus === "resolved",
   );
   if (!item) return null;
   item.lifecycleStatus = input.status;
