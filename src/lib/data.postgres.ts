@@ -95,6 +95,12 @@ import {
   type VisibilityScope,
 } from "@/lib/visibility-foundation";
 import { assertNoForbiddenRecordInput } from "@/lib/record-input-guard";
+import {
+  resolveRecordVisibility,
+  type RequestContext,
+  type VisibilityRecord,
+  type VisibilityRecordResult,
+} from "@/lib/visibility-resolver";
 
 export type TenantSessionLookup = {
   user: User;
@@ -6036,6 +6042,72 @@ export async function healthCheckPostgres() {
   // liveness query must not be routed through the business-query scope proxy.
   await getRawPool().query("SELECT 1");
   return { ok: true };
+}
+
+async function resolvePostgresVisibilityForContext<T extends VisibilityRecord>(input: {
+  context: RequestContext;
+  sql: string;
+  values: unknown[];
+  map: (row: Record<string, unknown>) => T;
+}): Promise<VisibilityRecordResult<T>> {
+  return withPostgresAuthContext(input.context.externalAuthSubject, async () => {
+    await ensureSchema();
+    return withTransaction(async (client) => {
+      const result = await client.query(input.sql, input.values);
+      const row = result.rows[0] as Record<string, unknown> | undefined;
+      // Existing mappers intentionally provide legacy compatibility defaults
+      // for older page paths. The resolver cannot inherit those defaults:
+      // unknown scope/owner status must remain unknown and fail closed.
+      const record = row
+        ? {
+            ...input.map(row),
+            tenantId: row.tenant_id == null ? null : String(row.tenant_id),
+            currentOwnerUserId: row.current_owner_user_id == null ? null : String(row.current_owner_user_id),
+            visibilityScope: row.visibility_scope,
+            ownerResolutionStatus: row.owner_resolution_status,
+          } as T
+        : null;
+      const resolution = resolveRecordVisibility(input.context, record);
+      return { resolution, record: resolution.canRead ? record : null };
+    });
+  });
+}
+
+/** Foundation-only probes; no page, list, search, export, attachment or PDF path uses these yet. */
+export async function resolveClientVisibilityForContext(input: {
+  context: RequestContext;
+  clientId: string;
+}): Promise<VisibilityRecordResult<Client>> {
+  return resolvePostgresVisibilityForContext({
+    context: input.context,
+    sql: "SELECT * FROM clients WHERE id = $1 AND tenant_id = $2 LIMIT 1",
+    values: [input.clientId, input.context.tenantId],
+    map: mapClient,
+  });
+}
+
+export async function resolvePropertyVisibilityForContext(input: {
+  context: RequestContext;
+  propertyId: string;
+}): Promise<VisibilityRecordResult<Property>> {
+  return resolvePostgresVisibilityForContext({
+    context: input.context,
+    sql: "SELECT * FROM properties WHERE id = $1 AND tenant_id = $2 LIMIT 1",
+    values: [input.propertyId, input.context.tenantId],
+    map: mapProperty,
+  });
+}
+
+export async function resolveCaseVisibilityForContext(input: {
+  context: RequestContext;
+  caseId: string;
+}): Promise<VisibilityRecordResult<BrokerageCase>> {
+  return resolvePostgresVisibilityForContext({
+    context: input.context,
+    sql: "SELECT * FROM brokerage_cases WHERE id = $1 AND tenant_id = $2 LIMIT 1",
+    values: [input.caseId, input.context.tenantId],
+    map: mapBrokerageCase,
+  });
 }
 
 export type {

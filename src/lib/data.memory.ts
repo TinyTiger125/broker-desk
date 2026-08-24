@@ -42,6 +42,11 @@ import {
   type VisibilityScope,
 } from "@/lib/visibility-foundation";
 import { assertNoForbiddenRecordInput } from "@/lib/record-input-guard";
+import {
+  resolveRecordVisibility,
+  type RequestContext,
+  type VisibilityRecordResult,
+} from "@/lib/visibility-resolver";
 
 export type { OutputTemplateSettingsInput } from "@/lib/output-doc";
 export type {
@@ -5317,4 +5322,35 @@ export async function healthCheckDataDriver() {
     ok: true,
     driver: "memory" as const,
   };
+}
+
+/**
+ * Foundation-only access probes. These do not wire any page or list path;
+ * callers must provide the immutable context produced by createRequestContext.
+ */
+export async function resolveClientVisibilityForContext(input: {
+  context: RequestContext;
+  clientId: string;
+}): Promise<VisibilityRecordResult<Client>> {
+  const record = db.clients.find((item) => item.id === input.clientId) ?? null;
+  const resolution = resolveRecordVisibility(input.context, record);
+  return { resolution, record: resolution.canRead && record ? { ...record } : null };
+}
+
+export async function resolvePropertyVisibilityForContext(input: {
+  context: RequestContext;
+  propertyId: string;
+}): Promise<VisibilityRecordResult<Property>> {
+  const record = db.properties.find((item) => item.id === input.propertyId) ?? null;
+  const resolution = resolveRecordVisibility(input.context, record);
+  return { resolution, record: resolution.canRead && record ? { ...record } : null };
+}
+
+export async function resolveCaseVisibilityForContext(input: {
+  context: RequestContext;
+  caseId: string;
+}): Promise<VisibilityRecordResult<BrokerageCase>> {
+  const record = db.brokerageCases.find((item) => item.id === input.caseId) ?? null;
+  const resolution = resolveRecordVisibility(input.context, record);
+  return { resolution, record: resolution.canRead && record ? cloneBrokerageCase(record) : null };
 }

@@ -123,6 +123,6 @@ npm run build
   - [事实矩阵](../product/TASK-040_W9.2_FACT_MATRIX_2026-08-24.md)
   - [技术设计](../product/TASK-040_W9.2_TECHNICAL_DESIGN_2026-08-24.md)
   - [一页产品行为摘要](../product/TASK-040_W9.2_PRODUCT_BEHAVIOR_SUMMARY_2026-08-24.md)
-- W9.2 进入有限实现的前置门：先关闭 `/api/hub/search` 认证/当前 tenant/default-user fallback，以及三类对象 `created_by_user_id` 的数据库与服务端不可变门；两项独立审查 P0/P1 为 0 后，再建立统一 RequestContext/visibility resolver 并逐类接入。旧 `user_id/owner_user_id` 不得作为运行期授权 fallback；`company_read` 页面必须明确显示只读。
+- W9.2 进入有限实现的前置门：先关闭 `/api/hub/search` 认证/当前 tenant/default-user fallback，以及三类对象 `created_by_user_id` 的数据库与服务端不可变门；两项独立审查 P0/P1 已为 0，现进入统一 RequestContext/visibility resolver 基础层。当前候选只提供三类对象的受信上下文、统一 `owner_write`/`company_read`/`not_accessible` 判定和 memory/Postgres foundation probes，不接入页面、列表、详情、搜索、导出、关系图、附件或 PDF。旧 `user_id/owner_user_id` 不得作为运行期授权 fallback；`company_read` 页面必须明确显示只读。
 - 首两个硬门的代码增量已完成并通过独立只读审查（P0=0、P1=0）；003 migration、受限运行角色下的直接 SQL、重复执行/失败恢复、Action 级审计和 `/api/hub/search` 受控上下文矩阵已在可销毁非生产分支验证，证据见 [W9.2 运行验证记录](../product/TASK-040_W9.2_RUNTIME_VERIFICATION_2026-08-24.md)。这不等同于真实 Clerk 浏览器端到端回归，也不代表 W9.2 整体完成。
 - 后续阶段：成员资料接管、暂停后的保留/删除和法律留存另立专题。
