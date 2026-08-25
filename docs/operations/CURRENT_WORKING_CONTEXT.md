@@ -34,7 +34,7 @@
 - `TASK-037 / G1-SLICE-0` 已 Done：五套现有平台蒙板的静态配置、资产、入口、调用关系、租户/权限门、版本指纹和回退要求已形成证据包。运行边界固定为 `UNVERIFIED — Clerk active membership environment unavailable`；HTTP 404 仅证明 Clerk 身份保护拦截，未进入蒙板或 PDF 逻辑，不得写成蒙板/预览/输出失败。当前无可重复 PDF 样本不阻断 TASK-038 技术设计或本次纯代码合并，但仍是 Production 部署前硬门。证据包为 [`GUARANTEE_APPLICATION_G1_SLICE_0_EVIDENCE_2026-08-19.md`](../product/GUARANTEE_APPLICATION_G1_SLICE_0_EVIDENCE_2026-08-19.md)。
 - `TASK-038 / G1-SLICE-1` 当前为 `Done / Product Accepted and Integrated / Production Not Released`；产品实现和 Staging 验收完成并已合入 main，TASK-037 旧模板实际 PDF 回归仍是 Production 前硬门。
 - `TASK-039 / W8` 当前为 `Foundation Accepted and Integrated / Visibility Follow-up Pending`；经营主体与成员基础阶段验收完成，案件、人物、物件可见范围、资料共享、递归授权、离职接管和停付费保留/删除继续后续阶段。
-- `TASK-040 / W9` 当前为 `In Progress`；W9.1已 `Accepted / Runtime Verified`，案件、人物、物件页面及 Global Visibility Surfaces 已 Product Accepted / Integrated。当前进入 W9.3 `Relations / Attachments / Outputs / PDF Source Permissions — Limited Implementation`：关系树仅支持案件/人物/物件，附件继承唯一父对象，普通输出和保证申请书来源必须通过同一可信 RequestContext 逐项复核，未知来源 fail-closed。关系写入、附件分享、关系图扩展、PDF功能扩建、Production部署和Production migration继续禁止；既有跨对象浏览器组合证据等裁决 P2 不改写为通过。
+- `TASK-040 / W9` 当前为 `In Progress`；W9.1、案件/人物/物件页面、Global Visibility Surfaces 与 W9.3 Relations / Attachments / Outputs / PDF Source Permissions 均已 Product Accepted / Integrated。PR #6 merge `09d003100c82f64788b475514265dd56790567b4` 已进入 main；本次 migration 仅进入代码主线，Production ledger 与待执行范围仍 UNVERIFIED。普通输出生成入口仍为后续独立产品缺口；Production 部署、Production migration、备份恢复、容量/下载成本、法律留存、TASK-037 旧模板 PDF 回归继续作为 Production 前门。
 - TASK-038、TASK-039 及后续产品的统一交付顺序固定为：本地设计与实现 → 本地自动检查 → 形成可追溯代码版本 → 部署 Vercel Staging → 独立 Agent 真实产品验收 → 失败则回本地修正 → 产生新版本并重新部署 → 产品验收通过 → 获得明确授权后才允许合并 → Production 发布另行授权。产品代码只在本地工作区和 Git 仓库修改；Vercel 只用于运行和验收；每次 Staging 记录分支与准确版本；构建、部署 Ready、自动测试通过均不等于产品验收通过；Staging 验收通过不自动授权合并，合并也不自动授权 Production 发布。
 - 实现前基线只读核对：`UI_GOV_002B_LAYOUT_FLOORPLAN_MATRIX_2026-08-15.md` 是由 V2 取代的历史兼容入口；`BROKER_DESK_LAYOUT_SYSTEM_V1.md` 是 2026-08-16 Layout System Approved baseline 并指向 V2。二者均已纳入当前 Git 历史；当前不修改、不删除、不把其视为未提交现场。
 - B 锚点证据已覆盖实际滚动容器、动态偏移、IntersectionObserver/ResizeObserver、scroll-margin-top、hash push/popstate、手动滚动、返回顶部、property→contract→back→forward 和带 hash 刷新；390px overview 无横向溢出且首个字段进入首屏，quick 有窄屏“下一项任务”入口。完整外部权限、租户和下载证据前停止，不启动 UI-GOV-002B。
@@ -94,7 +94,7 @@
 - Git：MIG-001 至 MIG-007 的收口提交可由 Git 历史复查；最终工作区保持干净，`main` 为唯一正式开发基线。
 - TASK-024 最终证据：三项门禁 `3/3`；脱敏副本已持久归档，原始含测试身份的录屏/截图仅限本地审查。独立审查已完成并退出，产品裁决已写入任务卡；TASK-020 仍独立 `Blocked`。
 
-## 2026-08-24 当前状态覆盖
+## 2026-08-25 当前状态覆盖
 
 - 旧候选 `28b021782051eb2375a5a2f0e8da82094520e04e` 已标记 `Superseded / Not Mergeable`；其后仅治理与 CI 收口提交进入 main，精确提交以 GitHub 记录为准。
 - TASK-038 为 `Done / Product Accepted and Integrated / Production Not Released`；不再扩大产品范围，Production 未部署。
