@@ -105,6 +105,14 @@ assert(ownerPersonDetail.detail && ownerPersonDetail.resolution.canWrite, "owner
 const colleaguePrivatePersonDetail = await memory.getClientDetailForContext({ context: colleagueContext, clientId: person.id });
 assert.equal(colleaguePrivatePersonDetail.detail, null, "private person direct detail is uniform not-found");
 const property = await memory.addProperty({ tenantId: tenant.id, createdByUserId: owner.id, currentOwnerUserId: owner.id, name: "W9.2 resolver property", listingPrice: 1 });
+const ownerPropertyList = await memory.listPropertiesForContext({ context: ownerContext, lifecycleStatus: "all" });
+assert(ownerPropertyList.some((item) => item.property.id === property.id && item.resolution.outcome === "owner_write"), "owner property list includes private property");
+const colleaguePrivatePropertyList = await memory.listPropertiesForContext({ context: colleagueContext, lifecycleStatus: "all" });
+assert(!colleaguePrivatePropertyList.some((item) => item.property.id === property.id), "private property is absent from colleague list");
+const ownerPropertyDetail = await memory.getPropertyDetailForContext({ context: ownerContext, propertyId: property.id });
+assert(ownerPropertyDetail.property && ownerPropertyDetail.resolution.canWrite, "owner property detail is writable");
+const colleaguePrivatePropertyDetail = await memory.getPropertyDetailForContext({ context: colleagueContext, propertyId: property.id });
+assert.equal(colleaguePrivatePropertyDetail.property, null, "private property direct detail is uniform not-found");
 const brokerageCase = await memory.saveBrokerageCaseExtractionReview({
   tenantId: tenant.id,
   userId: owner.id,
@@ -147,6 +155,10 @@ for (const [label, probe] of [
   assert.equal(companyResult.resolution.outcome, "company_read", `${label} company_read colleague read`);
   assert.equal(companyResult.resolution.canWrite, false, `${label} company_read colleague write denied`);
 }
+const colleaguePropertyList = await memory.listPropertiesForContext({ context: colleagueContext, lifecycleStatus: "all" });
+assert(colleaguePropertyList.some((item) => item.property.id === property.id && item.resolution.outcome === "company_read" && !item.resolution.canWrite), "company_read property list is readable and read-only");
+const colleaguePropertyDetail = await memory.getPropertyDetailForContext({ context: colleagueContext, propertyId: property.id });
+assert(colleaguePropertyDetail.property && colleaguePropertyDetail.resolution.outcome === "company_read" && !colleaguePropertyDetail.resolution.canWrite, "company_read property detail is readable and read-only");
 const colleaguePersonList = await memory.listClientsForContext({ context: colleagueContext, filter: { lifecycleStatus: "all" } });
 assert(colleaguePersonList.some((item) => item.client.id === person.id && item.resolution.outcome === "company_read" && !item.resolution.canWrite), "company_read person is readable and read-only");
 const colleaguePersonDetail = await memory.getClientDetailForContext({ context: colleagueContext, clientId: person.id });
@@ -186,6 +198,7 @@ assert.equal(ownerPersonListAfterHiddenQuote.find((item) => item.client.id === p
 const pendingProperty = await memory.addProperty({ tenantId: tenant.id, name: "W9.2 pending property", listingPrice: 1 });
 const pendingResult = await memory.resolvePropertyVisibilityForContext({ context: ownerContext, propertyId: pendingProperty.id });
 assert.equal(pendingResult.resolution.outcome, "not_accessible", "pending is hidden even from owner/admin");
+assert(!(await memory.listPropertiesForContext({ context: ownerContext, lifecycleStatus: "all" })).some((item) => item.property.id === pendingProperty.id), "pending property is absent from list");
 
 const forgedTenantContext = Object.freeze({ ...ownerContext, tenantId: "tenant_other" });
 assert.equal(

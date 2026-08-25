@@ -6,7 +6,9 @@ import { formatCurrency } from "@/lib/format";
 import { listHubProperties, type HubPropertyItem } from "@/lib/hub";
 import { getLocale } from "@/lib/locale";
 import { normalizeLifecycleFilter, type LifecycleFilter } from "@/lib/record-lifecycle";
-import { requireTenantSession } from "@/lib/tenant-session";
+import { getTenantCapability, requireTenantSession } from "@/lib/tenant-session";
+import { capabilityHasTenantPermission } from "@/lib/tenant-permissions";
+import { createRequestContext } from "@/lib/visibility-resolver";
 
 export const dynamic = "force-dynamic";
 
@@ -68,6 +70,8 @@ const propertiesCopy = {
     updated: "物件を更新しました。",
     archivedFeedback: "物件をアーカイブしました。",
     restoredFeedback: "物件を復元しました。",
+    companyRead: "会社メンバーに公開／読み取り専用",
+    ownerReadOnly: "現在のアカウントは閲覧のみです。",
   },
   zh: {
     pageTitle: "物件",
@@ -106,6 +110,8 @@ const propertiesCopy = {
     updated: "物件已更新。",
     archivedFeedback: "物件已归档。",
     restoredFeedback: "物件已恢复。",
+    companyRead: "公司成员可见／只读",
+    ownerReadOnly: "当前账号仅可查看。",
   },
   ko: {
     pageTitle: "매물",
@@ -144,6 +150,8 @@ const propertiesCopy = {
     updated: "매물을 업데이트했습니다.",
     archivedFeedback: "매물을 보관했습니다.",
     restoredFeedback: "매물을 복원했습니다.",
+    companyRead: "회사 구성원 공개 / 읽기 전용",
+    ownerReadOnly: "현재 계정은 보기 전용입니다.",
   },
 } as const;
 
@@ -182,6 +190,10 @@ export default async function PropertiesPage({ searchParams }: PropertiesPagePro
     requireTenantSession({ permission: "record.read" }),
   ]);
   const copy = propertiesCopy[locale];
+  const context = createRequestContext(session);
+  const capability = getTenantCapability(session.membership);
+  const canUpdateRecords = session.membership.status === "active" && capabilityHasTenantPermission(capability, "record.update");
+  const canArchiveRecords = session.membership.status === "active" && capabilityHasTenantPermission(capability, "record.archive");
   const params = (await searchParams) ?? {};
   const query = params.q?.trim() ?? "";
   const lifecycle = normalizeLifecycleFilter(params.lifecycle);
@@ -193,9 +205,10 @@ export default async function PropertiesPage({ searchParams }: PropertiesPagePro
   let readError = false;
   try {
     properties = await listHubProperties(locale, {
-      userId: session.user.id,
-      tenantId: session.tenant.id,
+      requestContext: context,
       lifecycleStatus: "all",
+      canUpdateRecords,
+      canArchiveRecords,
     });
   } catch {
     readError = true;
@@ -249,13 +262,15 @@ export default async function PropertiesPage({ searchParams }: PropertiesPagePro
           <h1 className="text-4xl font-bold tracking-tight text-slate-900">{copy.pageTitle}</h1>
           <p className="text-sm font-medium text-slate-600">{copy.description}</p>
         </div>
-        <Link
-          href={createHref}
-          className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-gradient-to-br from-[#001e40] to-[#003366] px-4 text-sm font-semibold text-white shadow-[0_8px_20px_-10px_rgba(0,30,64,0.8)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]"
-        >
-          <span className="material-symbols-outlined text-[17px]" aria-hidden="true">add</span>
-          {copy.addProperty}
-        </Link>
+        {canUpdateRecords ? (
+          <Link
+            href={createHref}
+            className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-gradient-to-br from-[#001e40] to-[#003366] px-4 text-sm font-semibold text-white shadow-[0_8px_20px_-10px_rgba(0,30,64,0.8)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]"
+          >
+            <span className="material-symbols-outlined text-[17px]" aria-hidden="true">add</span>
+            {copy.addProperty}
+          </Link>
+        ) : null}
       </header>
 
       <PageFlashBanner message={flashMessage} />
@@ -351,6 +366,11 @@ export default async function PropertiesPage({ searchParams }: PropertiesPagePro
                       >
                         {property.name}
                       </Link>
+                      {property.readOnly ? (
+                        <p className="mt-1 text-xs font-semibold text-sky-800">
+                          {property.readOnlyReason === "company_read" ? copy.companyRead : copy.ownerReadOnly}
+                        </p>
+                      ) : null}
                     </div>
                     <div role="cell" className="text-sm text-slate-700"><span className="mr-2 text-xs font-bold text-slate-400 lg:hidden">{copy.area}</span>{property.area || copy.notSet}</div>
                     <div role="cell" className="text-sm tabular-nums text-slate-900"><span className="mr-2 text-xs font-bold text-slate-400 lg:hidden">{copy.listingPrice}</span>{formatListingPrice(property, copy.notSet, locale)}</div>
@@ -358,13 +378,15 @@ export default async function PropertiesPage({ searchParams }: PropertiesPagePro
                     <div role="cell" className="text-sm tabular-nums text-slate-700"><span className="mr-2 text-xs font-bold text-slate-400 lg:hidden">{copy.repairFee}</span>{formatFee(property.repairFeeValue, copy.notSet, locale)}</div>
                     <div role="cell" className={property.status === "archived" ? "text-sm font-semibold text-slate-500" : "text-sm text-slate-700"}><span className="mr-2 text-xs font-bold text-slate-400 lg:hidden">{copy.status}</span>{statusLabel}</div>
                     <div role="cell" className="flex items-center justify-start gap-2 lg:justify-end">
-                      <ArchiveRecordButton
-                        entityType="property"
-                        entityId={property.id}
-                        status={property.status}
-                        locale={locale}
-                        returnTo={returnTo}
-                      />
+                      {property.canArchive ? (
+                        <ArchiveRecordButton
+                          entityType="property"
+                          entityId={property.id}
+                          status={property.status}
+                          locale={locale}
+                          returnTo={returnTo}
+                        />
+                      ) : null}
                     </div>
                   </div>
                 );
