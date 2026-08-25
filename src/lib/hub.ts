@@ -1,5 +1,6 @@
 import {
   listAttachments,
+  listBrokerageCasesForContext,
   listGeneratedOutputs,
   getClientDetail,
   getDefaultUser,
@@ -166,7 +167,7 @@ export type HubAttachmentItem = {
   uploadedAt: Date;
 };
 
-export type HubSearchEntity = "property" | "party" | "contract" | "service_request" | "output";
+export type HubSearchEntity = "case" | "property" | "party";
 
 export type HubSearchItem = {
   id: string;
@@ -564,17 +565,38 @@ export async function searchHubItems(
 ): Promise<HubSearchItem[]> {
   const normalized = query.trim().toLowerCase();
   if (!normalized) return [];
+  if (!context.requestContext) return [];
 
-  const [properties, parties, contracts, requests, outputs] = await Promise.all([
+  const [cases, properties, parties] = await Promise.all([
+    listBrokerageCasesForContext({ context: context.requestContext, lifecycleStatus: context.lifecycleStatus ?? "active" }),
     listHubProperties(locale, context),
     listHubParties(locale, context),
-    listHubContracts(locale, context),
-    listHubServiceRequests(context),
-    listHubGeneratedOutputs(locale, context),
   ]);
 
   const includes = (...values: Array<string | undefined>) =>
     values.some((value) => value?.toLowerCase().includes(normalized));
+
+  const caseItems = cases
+    .flatMap((item) => {
+      if (!item.brokerageCase) return [];
+      const title = item.resolution.outcome === "company_read"
+        ? tr(locale, { ja: "案件", zh: "案件", ko: "안건" })
+        : item.brokerageCase.caseTitle;
+      const searchableValues = item.resolution.outcome === "company_read"
+        ? [title, item.brokerageCase.id]
+        : [title, item.brokerageCase.id];
+      return includes(...searchableValues)
+        ? [{
+            id: item.brokerageCase.id,
+            entity: "case" as const,
+            title,
+            subtitle: item.brokerageCase.status,
+            href: `/cases/${encodeURIComponent(item.brokerageCase.id)}`,
+          }]
+        : [];
+    })
+    .slice(0, limitPerEntity)
+    .map<HubSearchItem>((item) => item);
 
   const propertyItems = properties
     .filter((item) => includes(item.name, item.area))
@@ -598,38 +620,5 @@ export async function searchHubItems(
       href: `/parties?focus=${item.id}`,
     }));
 
-  const contractItems = contracts
-    .filter((item) => includes(item.contractNumber, item.relatedProperty, item.relatedParty))
-    .slice(0, limitPerEntity)
-    .map<HubSearchItem>((item) => ({
-      id: item.id,
-      entity: "contract",
-      title: item.contractNumber,
-      subtitle: [item.relatedProperty, item.relatedParty].filter(Boolean).join(" / "),
-      href: `/contracts?focus=${item.id}`,
-    }));
-
-  const requestItems = requests
-    .filter((item) => includes(item.title, item.relatedProperty, item.relatedParty))
-    .slice(0, limitPerEntity)
-    .map<HubSearchItem>((item) => ({
-      id: item.id,
-      entity: "service_request",
-      title: item.title,
-      subtitle: [item.relatedProperty, item.relatedParty].filter(Boolean).join(" / "),
-      href: `/service-requests?focus=${item.id}`,
-    }));
-
-  const outputItems = outputs
-    .filter((item) => includes(item.title, item.relatedProperty, item.relatedParty))
-    .slice(0, limitPerEntity)
-    .map<HubSearchItem>((item) => ({
-      id: item.id,
-      entity: "output",
-      title: item.title,
-      subtitle: [item.relatedProperty, item.relatedParty].filter(Boolean).join(" / "),
-      href: `/api/outputs/${encodeURIComponent(item.id)}/download`,
-    }));
-
-  return [...propertyItems, ...partyItems, ...contractItems, ...requestItems, ...outputItems];
+  return [...caseItems, ...propertyItems, ...partyItems];
 }

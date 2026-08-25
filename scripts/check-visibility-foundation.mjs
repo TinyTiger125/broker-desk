@@ -67,7 +67,7 @@ for (const table of ["clients", "properties", "brokerage_cases"]) {
 }
 assert(creatorMigration.includes("REVOKE UPDATE (created_by_user_id)"), "creator-column revoke is present as defense in depth");
 assert(hubSearchRoute.includes('requireTenantSession({ permission: "record.read" })'), "hub search requires an authenticated tenant session");
-assert(hubSearchRoute.includes("tenantId: session.tenant.id") && hubSearchRoute.includes("userId: session.user.id"), "hub search binds the current user and tenant");
+assert(hubSearchRoute.includes("createRequestContext(session)") && hubSearchRoute.includes("requestContext:"), "hub search binds the trusted current user and tenant context");
 assert(!hubSearchRoute.includes("getDefaultUser"), "hub search does not use a default-user fallback");
 assert(actions.includes("security_record_field_rejected") && actions.includes("FORBIDDEN_RECORD_INPUT_FIELDS"), "ordinary record requests reject and audit ownership fields");
 console.log("visibility-foundation contract: PASS");

@@ -1,8 +1,9 @@
 import { createQuotation } from "@/app/actions";
 import { QuoteForm } from "@/components/quote-form";
-import { listQuoteFormData } from "@/lib/data";
+import { listClientsForContext, listPropertiesForContext } from "@/lib/data";
 import { getLocale } from "@/lib/locale";
 import { requireTenantSession } from "@/lib/tenant-session";
+import { createRequestContext } from "@/lib/visibility-resolver";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +33,21 @@ export default async function NewQuotePage({ searchParams }: NewQuotePageProps) 
   ]);
   const text = texts[locale];
   const params = (await searchParams) ?? {};
-  const { clients, properties } = await listQuoteFormData(session.tenant.id);
+  const requestContext = createRequestContext(session);
+  const [visibleClients, visibleProperties] = await Promise.all([
+    listClientsForContext({ context: requestContext, filter: { lifecycleStatus: "active" } }),
+    listPropertiesForContext({ context: requestContext, lifecycleStatus: "active" }),
+  ]);
+  const clients = visibleClients.filter((item) => item.resolution.canWrite).map((item) => item.client);
+  const properties = visibleProperties
+    .filter((item) => item.resolution.canWrite)
+    .map(({ property }) => ({
+      id: property.id,
+      name: property.name,
+      listingPrice: property.listingPrice,
+      managementFee: property.managementFee ?? null,
+      repairFee: property.repairFee ?? null,
+    }));
   const hasDefaultClient = clients.some((client) => client.id === params.clientId);
 
   return (

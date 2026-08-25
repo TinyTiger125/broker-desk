@@ -57,7 +57,6 @@ import {
   getGuaranteeApplicationDraft,
   getOutputTemplateSettings,
   getQuotationById,
-  listQuoteFormData,
   listClients,
   listCaseWorkbenchFieldRules,
   listExtractionReviewItems,
@@ -3717,9 +3716,19 @@ export async function createBlankBrokerageCaseAction(formData: FormData) {
   const primaryPartyId = String(formData.get("primaryPartyId") ?? "").trim();
   const primaryPropertyId = String(formData.get("primaryPropertyId") ?? "").trim();
   const workflowType = String(formData.get("workflowType") ?? "").trim();
-  const quoteFormData = await listQuoteFormData(tenantId);
-  const primaryParty = quoteFormData.clients.find((item) => item.id === primaryPartyId);
-  const primaryProperty = quoteFormData.properties.find((item) => item.id === primaryPropertyId);
+  const requestContext = createRequestContext(session);
+  const [partyResult, propertyResult] = await Promise.all([
+    primaryPartyId ? resolveClientVisibilityForContext({ context: requestContext, clientId: primaryPartyId }) : null,
+    primaryPropertyId ? resolvePropertyVisibilityForContext({ context: requestContext, propertyId: primaryPropertyId }) : null,
+  ]);
+  if (primaryPartyId && (!partyResult?.record || !partyResult.resolution.canWrite)) {
+    throw new Error("関係者が見つからないか、関連付ける権限がありません。");
+  }
+  if (primaryPropertyId && (!propertyResult?.record || !propertyResult.resolution.canWrite)) {
+    throw new Error("物件が見つからないか、関連付ける権限がありません。");
+  }
+  const primaryParty = partyResult?.record;
+  const primaryProperty = propertyResult?.record;
   const today = formatCaseTitleDate(new Date());
   const defaultTitle = tr(locale, {
     ja: `新規案件 ${today}`,
