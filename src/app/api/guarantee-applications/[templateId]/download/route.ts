@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { pdf2img } from "@pdfme/converter";
 import { PDFDocument } from "pdf-lib";
-import { addAuditLog, addGeneratedOutput, getActiveTenantGuaranteeTemplateInstall, getBrokerageCaseById, getGuaranteeApplicationDraft } from "@/lib/data";
+import { addAuditLog, addGeneratedOutput, getActiveTenantGuaranteeTemplateInstall, getBrokerageCaseByIdForContext, getGuaranteeApplicationDraft } from "@/lib/data";
 import {
   getGuaranteePdfTemplateConfig,
   renderFriendsGuaranteePdf,
@@ -10,6 +10,9 @@ import { resolveGuaranteeTemplateLayout } from "@/lib/guarantee-template-layout-
 import { findGuaranteeCompanyTemplate } from "@/lib/guarantee-application";
 import { evaluateGuaranteeDownloadGate } from "@/lib/guarantee-download-gate";
 import { requireTenantSession, TenantSessionError } from "@/lib/tenant-session";
+import { createRequestContext } from "@/lib/visibility-resolver";
+import { assertCaseSourcesReadable, withW93SourceProvenance } from "@/lib/w93-access";
+import { getRequestId } from "@/lib/operational-logging";
 
 type GuaranteeTemplateDownloadRouteProps = {
   params: Promise<{
@@ -52,6 +55,7 @@ function createGuaranteeDocumentNumber(input: { templateId: string; caseId: stri
 }
 
 export async function GET(request: Request, { params }: GuaranteeTemplateDownloadRouteProps) {
+  const requestId = getRequestId(request);
   const routeParams = await params;
   const template = findGuaranteeCompanyTemplate(routeParams.templateId);
   if (!template) {
@@ -75,8 +79,15 @@ export async function GET(request: Request, { params }: GuaranteeTemplateDownloa
     throw error;
   }
 
-  const brokerageCase = await getBrokerageCaseById({ userId: session.user.id, tenantId: session.tenant.id, caseId });
-  if (!brokerageCase) {
+  const requestContext = createRequestContext(session);
+  const resolvedCase = await getBrokerageCaseByIdForContext({ context: requestContext, caseId });
+  if (!resolvedCase.brokerageCase || !resolvedCase.resolution.canWrite) {
+    return NextResponse.json({ error: "case_not_found" }, { status: 404 });
+  }
+  const brokerageCase = resolvedCase.brokerageCase;
+  try {
+    await assertCaseSourcesReadable(requestContext, brokerageCase);
+  } catch {
     return NextResponse.json({ error: "case_not_found" }, { status: 404 });
   }
   const installedTemplate = await getActiveTenantGuaranteeTemplateInstall({
@@ -172,7 +183,8 @@ export async function GET(request: Request, { params }: GuaranteeTemplateDownloa
         templateVersionId: templateLayout.versionId,
         caseId: brokerageCase.id,
         templateId: template.id,
-        inputDataSnapshot: brokerageCase.confirmedDataJson,
+        inputDataSnapshot: withW93SourceProvenance(brokerageCase),
+        sourceProvenanceVersion: "w93-v1",
         draftValueSnapshot: draft?.fieldValuesJson ?? {},
         fieldMappingSnapshot: {
           templateId: template.id,
@@ -208,13 +220,13 @@ export async function GET(request: Request, { params }: GuaranteeTemplateDownloa
         "cache-control": "no-store",
       },
     });
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       {
         error: "guarantee_pdf_export_failed",
-        message: error instanceof Error ? error.message : "unknown_error",
+        requestId,
       },
-      { status: 500 },
+      { status: 500, headers: { "x-request-id": requestId } },
     );
   }
 }

@@ -514,6 +514,7 @@ export type GeneratedOutput = {
   fieldCatalogVersion?: string;
   previewConfirmationId?: string;
   caseInputSnapshotHash?: string;
+  sourceProvenanceVersion?: string;
 };
 
 export type GuaranteeBlankFormStatus = "uploaded" | "ready" | "rejected" | "archived";
@@ -560,7 +561,7 @@ export type GuaranteePreviewOutputInput = {
   fieldMappingSnapshot?: Record<string, unknown>; layoutSnapshot?: Record<string, unknown>;
   fileAttachmentId?: string; fileSha256?: string; fileSizeBytes?: number; fileMimeType?: string;
   blankFormVersionId?: string; blankFormSha256?: string; companyMaskVersionId?: string;
-  fieldCatalogVersion?: string; previewConfirmationId?: string; caseInputSnapshotHash?: string;
+  fieldCatalogVersion?: string; previewConfirmationId?: string; caseInputSnapshotHash?: string; sourceProvenanceVersion?: string;
 };
 
 export type OutputTemplateVersion = {
@@ -3728,6 +3729,13 @@ export async function getAttachmentById(input: {
   return item ? { ...item } : undefined;
 }
 
+/** W9.3 parent-bound attachment lookup; the caller still checks the parent. */
+export async function getAttachmentByIdForTenant(input: { tenantId?: string; id: string }): Promise<Attachment | undefined> {
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const item = db.attachments.find((attachment) => attachment.id === input.id && attachment.tenantId === scopeTenantId);
+  return item ? { ...item } : undefined;
+}
+
 export async function addAttachment(input: {
   tenantId?: string;
   userId: string;
@@ -3825,6 +3833,21 @@ export async function getGeneratedOutputById(input: {
   return found ? { ...found } : undefined;
 }
 
+export async function listGeneratedOutputsForTenant(input: { tenantId?: string; limit?: number }): Promise<GeneratedOutput[]> {
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  return db.generatedOutputs
+    .filter((item) => item.tenantId === scopeTenantId)
+    .sort((a, b) => b.generatedAt.getTime() - a.generatedAt.getTime())
+    .slice(0, input.limit ?? 200)
+    .map((item) => ({ ...item }));
+}
+
+export async function getGeneratedOutputByIdForTenant(input: { tenantId?: string; id: string }): Promise<GeneratedOutput | undefined> {
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const found = db.generatedOutputs.find((item) => item.id === input.id && item.tenantId === scopeTenantId);
+  return found ? { ...found } : undefined;
+}
+
 export async function addGeneratedOutput(input: {
   tenantId?: string;
   userId: string;
@@ -3855,6 +3878,7 @@ export async function addGeneratedOutput(input: {
   fieldCatalogVersion?: string;
   previewConfirmationId?: string;
   caseInputSnapshotHash?: string;
+  sourceProvenanceVersion?: string;
 }): Promise<GeneratedOutput> {
   const output = buildGeneratedOutput(input);
   db.generatedOutputs.unshift(output);
@@ -3891,6 +3915,7 @@ function buildGeneratedOutput(input: {
   fieldCatalogVersion?: string;
   previewConfirmationId?: string;
   caseInputSnapshotHash?: string;
+  sourceProvenanceVersion?: string;
 }): GeneratedOutput {
   return {
     id: makeId("out"),
@@ -3925,6 +3950,7 @@ function buildGeneratedOutput(input: {
     fieldCatalogVersion: input.fieldCatalogVersion,
     previewConfirmationId: input.previewConfirmationId,
     caseInputSnapshotHash: input.caseInputSnapshotHash,
+    sourceProvenanceVersion: input.sourceProvenanceVersion,
   };
 }
 
@@ -3945,7 +3971,11 @@ export async function finalizeGuaranteePreviewOutput(input: {
   // Keep the commit section synchronous in memory. There is no await between
   // checking the token and writing the output, so two concurrent callers
   // cannot both materialize a file/output pair in this adapter.
-  const output = buildGeneratedOutput({ ...input.output, previewConfirmationId: input.confirmationId });
+  const output = buildGeneratedOutput({
+    ...input.output,
+    previewConfirmationId: input.confirmationId,
+    sourceProvenanceVersion: input.output.outputType === "guarantee_application" ? "w93-v1" : input.output.sourceProvenanceVersion,
+  });
   db.generatedOutputs.unshift(output);
   confirmation.status = "consumed";
   confirmation.generatedOutputId = output.id;
@@ -4826,6 +4856,27 @@ export async function listQuotations(limit?: number, tenantId?: string): Promise
   }
 
   return items;
+}
+
+/** Resolver-bound quotation projection; hidden related records are excluded. */
+export async function listQuotationsForContext(input: { context: RequestContext; limit?: number }): Promise<DashboardQuoteItem[]> {
+  const visibleClients = await listClientsForContext({ context: input.context, filter: { lifecycleStatus: "active", sort: "recent_created" } });
+  const visibleProperties = await listPropertiesForContext({ context: input.context, lifecycleStatus: "active" });
+  const clientIds = new Set(visibleClients.filter((item) => item.resolution.canRead).map((item) => item.client?.id).filter(Boolean));
+  const propertyIds = new Set(visibleProperties.filter((item) => item.resolution.canRead).map((item) => item.property?.id).filter(Boolean));
+  return db.quotations
+    .filter((quote) => quote.tenantId === input.context.tenantId && clientIds.has(quote.clientId) && (!quote.propertyId || propertyIds.has(quote.propertyId)))
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+    .slice(0, input.limit ?? 100)
+    .flatMap((quote) => {
+      const client = db.clients.find((item) => item.id === quote.clientId && item.tenantId === input.context.tenantId);
+      if (!client) return [];
+      return [{
+        ...quote,
+        client: { ...client },
+        property: quote.propertyId ? db.properties.find((item) => item.id === quote.propertyId && item.tenantId === input.context.tenantId) : undefined,
+      }];
+    });
 }
 
 export async function getQuotationById(quoteId: string, tenantId?: string) {

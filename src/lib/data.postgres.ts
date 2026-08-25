@@ -156,6 +156,7 @@ const REQUIRED_PRODUCTION_MIGRATIONS = [
   "20260824_001_visibility_foundation.sql",
   "20260824_002_visibility_record_rls.sql",
   "20260824_003_creator_immutability.sql",
+  "20260825_001_legacy_output_provenance_marker.sql",
 ] as const;
 
 const OPEN_STAGES: ClientStage[] = ["lead", "contacted", "quoted", "viewing", "negotiating"];
@@ -997,6 +998,7 @@ function mapGeneratedOutput(row: Record<string, unknown>): GeneratedOutput {
     fieldCatalogVersion: row.field_catalog_version ? String(row.field_catalog_version) : undefined,
     previewConfirmationId: row.preview_confirmation_id ? String(row.preview_confirmation_id) : undefined,
     caseInputSnapshotHash: row.case_input_snapshot_hash ? String(row.case_input_snapshot_hash) : undefined,
+    sourceProvenanceVersion: row.source_provenance_version ? String(row.source_provenance_version) : undefined,
   };
 }
 
@@ -4186,6 +4188,14 @@ export async function getAttachmentById(input: {
   return result.rows[0] ? mapAttachment(result.rows[0]) : undefined;
 }
 
+/** W9.3 parent-bound attachment lookup; parent visibility is checked by the caller. */
+export async function getAttachmentByIdForTenant(input: { tenantId?: string; id: string }): Promise<Attachment | undefined> {
+  await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const result = await getPool().query(`SELECT * FROM attachments WHERE id = $1 AND tenant_id = $2 LIMIT 1`, [input.id, scopeTenantId]);
+  return result.rows[0] ? mapAttachment(result.rows[0]) : undefined;
+}
+
 export async function addAttachment(input: {
   tenantId?: string;
   userId: string;
@@ -4342,6 +4352,23 @@ export async function getGeneratedOutputById(input: {
   return mapGeneratedOutput(result.rows[0]);
 }
 
+export async function listGeneratedOutputsForTenant(input: { tenantId?: string; limit?: number }): Promise<GeneratedOutput[]> {
+  await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const result = await getPool().query(
+    `SELECT * FROM generated_outputs WHERE tenant_id = $1 ORDER BY generated_at DESC LIMIT $2`,
+    [scopeTenantId, input.limit ?? 200],
+  );
+  return result.rows.map(mapGeneratedOutput);
+}
+
+export async function getGeneratedOutputByIdForTenant(input: { tenantId?: string; id: string }): Promise<GeneratedOutput | undefined> {
+  await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const result = await getPool().query(`SELECT * FROM generated_outputs WHERE id = $1 AND tenant_id = $2 LIMIT 1`, [input.id, scopeTenantId]);
+  return result.rows[0] ? mapGeneratedOutput(result.rows[0]) : undefined;
+}
+
 export async function listGuaranteeOutputsByCase(input: { tenantId: string; caseId: string; limit?: number }): Promise<GeneratedOutput[]> {
   await ensureSchema();
   const result = await getPool().query(
@@ -4396,6 +4423,7 @@ export async function addGeneratedOutput(input: {
   fieldCatalogVersion?: string;
   previewConfirmationId?: string;
   caseInputSnapshotHash?: string;
+  sourceProvenanceVersion?: string;
 }): Promise<GeneratedOutput> {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(input.tenantId);
@@ -4404,8 +4432,8 @@ export async function addGeneratedOutput(input: {
   const result = await getPool().query(
     `INSERT INTO generated_outputs (
       id, tenant_id, user_id, actor_id, quote_id, source_quote_id, property_id, party_id, output_type, output_format, language, title, document_number, template_version_id, case_id, template_id, input_data_snapshot, draft_value_snapshot, field_mapping_snapshot, layout_snapshot,
-      file_attachment_id, file_sha256, file_size_bytes, file_mime_type, file_status, blank_form_version_id, blank_form_sha256, company_mask_version_id, field_catalog_version, preview_confirmation_id, case_input_snapshot_hash, generated_at
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,NOW())
+      file_attachment_id, file_sha256, file_size_bytes, file_mime_type, file_status, blank_form_version_id, blank_form_sha256, company_mask_version_id, field_catalog_version, preview_confirmation_id, case_input_snapshot_hash, source_provenance_version, generated_at
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,NOW())
     RETURNING *`,
     [
       genId("out"),
@@ -4439,6 +4467,7 @@ export async function addGeneratedOutput(input: {
       input.fieldCatalogVersion ?? null,
       input.previewConfirmationId ?? null,
       input.caseInputSnapshotHash ?? null,
+      input.sourceProvenanceVersion ?? (input.outputType === "guarantee_application" && input.inputDataSnapshot?.__w93SourceIds ? "w93-v1" : null),
     ]
   );
   return mapGeneratedOutput(result.rows[0]);
@@ -4464,8 +4493,8 @@ export async function finalizeGuaranteePreviewOutput(input: {
     const result = await client.query(
       `INSERT INTO generated_outputs (
         id, tenant_id, user_id, actor_id, quote_id, source_quote_id, property_id, party_id, output_type, output_format, language, title, document_number, template_version_id, case_id, template_id, input_data_snapshot, draft_value_snapshot, field_mapping_snapshot, layout_snapshot,
-        file_attachment_id, file_sha256, file_size_bytes, file_mime_type, file_status, blank_form_version_id, blank_form_sha256, company_mask_version_id, field_catalog_version, preview_confirmation_id, case_input_snapshot_hash, generated_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,NOW()) RETURNING *`,
+        file_attachment_id, file_sha256, file_size_bytes, file_mime_type, file_status, blank_form_version_id, blank_form_sha256, company_mask_version_id, field_catalog_version, preview_confirmation_id, case_input_snapshot_hash, source_provenance_version, generated_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,NOW()) RETURNING *`,
       [
         outputId, tenantId, outputInput.userId, actorId, outputInput.quoteId ?? null, sourceQuoteId,
         outputInput.propertyId ?? null, outputInput.partyId ?? null, outputInput.outputType, outputInput.outputFormat,
@@ -4479,6 +4508,7 @@ export async function finalizeGuaranteePreviewOutput(input: {
         outputInput.fileMimeType ?? null, outputInput.fileAttachmentId ? "ready" : null,
         outputInput.blankFormVersionId ?? null, outputInput.blankFormSha256 ?? null, outputInput.companyMaskVersionId ?? null,
         outputInput.fieldCatalogVersion ?? null, input.confirmationId, outputInput.caseInputSnapshotHash ?? null,
+        outputInput.outputType === "guarantee_application" ? "w93-v1" : outputInput.sourceProvenanceVersion ?? null,
       ],
     );
     const consumed = await client.query(
@@ -5291,6 +5321,41 @@ export async function listQuotations(limit?: number, tenantId?: string): Promise
     });
   }
   return items;
+}
+
+/** Resolver-bound quotation projection; hidden related records are excluded. */
+export async function listQuotationsForContext(input: { context: RequestContext; limit?: number }): Promise<DashboardQuoteItem[]> {
+  const visibleClients = await listClientsForContext({ context: input.context, filter: { lifecycleStatus: "active", sort: "recent_created" } });
+  const visibleProperties = await listPropertiesForContext({ context: input.context, lifecycleStatus: "active" });
+  const clientIds = new Set(visibleClients.filter((item) => item.resolution.canRead).map((item) => item.client?.id).filter(Boolean));
+  const propertyIds = new Set(visibleProperties.filter((item) => item.resolution.canRead).map((item) => item.property?.id).filter(Boolean));
+  if (clientIds.size === 0) return [];
+  const visibleClientIds = [...clientIds];
+  const visiblePropertyIds = [...propertyIds];
+  const quoteRes = await getPool().query(
+    `SELECT * FROM quotations
+      WHERE tenant_id = $1
+        AND client_id = ANY($2)
+        AND (property_id IS NULL OR property_id = ANY($3))
+      ORDER BY created_at DESC
+      LIMIT $4`,
+    [input.context.tenantId, visibleClientIds, visiblePropertyIds, input.limit ?? 100],
+  );
+  const quotes = quoteRes.rows.map(mapQuotation);
+  if (quotes.length === 0) return [];
+  const [clientRes, propertyRes] = await Promise.all([
+    getPool().query("SELECT * FROM clients WHERE id = ANY($1) AND tenant_id = $2", [visibleClientIds, input.context.tenantId]),
+    visiblePropertyIds.length > 0
+      ? getPool().query("SELECT * FROM properties WHERE id = ANY($1) AND tenant_id = $2", [visiblePropertyIds, input.context.tenantId])
+      : Promise.resolve({ rows: [] as Array<Record<string, unknown>> }),
+  ]);
+  const clients = new Map(clientRes.rows.map((row) => [String(row.id), mapClient(row)] as const));
+  const properties = new Map(propertyRes.rows.map((row) => [String(row.id), mapProperty(row)] as const));
+  return quotes.flatMap((quote) => {
+    const client = clients.get(quote.clientId);
+    if (!client) return [];
+    return [{ ...quote, client, property: quote.propertyId ? properties.get(quote.propertyId) : undefined }];
+  });
 }
 
 export async function getQuotationById(quoteId: string, tenantId?: string) {

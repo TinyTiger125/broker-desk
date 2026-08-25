@@ -7,7 +7,7 @@ import {
 import { FriendsGuaranteeCalibrationPreview } from "@/components/friends-guarantee-calibration-preview";
 import { PageFlashBanner } from "@/components/page-flash-banner";
 import { CASE_FIELD_DEFINITIONS, type CatalogCaseFieldDefinition } from "@/lib/case-field-catalog";
-import { getActiveTenantGuaranteeTemplateInstall, getBrokerageCaseById, getGuaranteeApplicationDraft, listBrokerageCases } from "@/lib/data";
+import { getActiveTenantGuaranteeTemplateInstall, getBrokerageCaseById, getBrokerageCaseByIdForContext, getGuaranteeApplicationDraft, listBrokerageCases, listBrokerageCasesForContext } from "@/lib/data";
 import { formatDate } from "@/lib/format";
 import {
   buildGuaranteeDraftReadiness,
@@ -38,6 +38,8 @@ import { getFriendsOverlayEstimatedTextFit, type FriendsOverlayTextFitStatus } f
 import { evaluateGuaranteeDownloadGate } from "@/lib/guarantee-download-gate";
 import { requireTenantSession } from "@/lib/tenant-session";
 import { requirePlatformOwnerSession } from "@/lib/platform-session";
+import { createRequestContext } from "@/lib/visibility-resolver";
+import { areCaseSourcesReadable } from "@/lib/w93-access";
 
 export const dynamic = "force-dynamic";
 
@@ -154,7 +156,12 @@ export async function GuaranteeApplicationPreviewPage({
   const user = session.user;
   const tenantId = session.tenant.id;
 
-  const cases = await listBrokerageCases(user.id, 50, tenantId);
+  const requestContext = isTemplateAuthoring ? null : createRequestContext(session);
+  const cases = isTemplateAuthoring
+    ? await listBrokerageCases(user.id, 50, tenantId)
+    : (await listBrokerageCasesForContext({ context: requestContext!, limit: 50 })).flatMap((entry) =>
+        entry.brokerageCase && entry.resolution.canWrite ? [entry.brokerageCase] : [],
+      );
   const requestedCaseId = String(params?.caseId ?? "").trim();
   const requestedTemplateId =
     String(lockedTemplateId ?? params?.templateId ?? FRIENDS_GUARANTEE_DEFAULT_TEMPLATE_ID).trim() ||
@@ -172,12 +179,14 @@ export async function GuaranteeApplicationPreviewPage({
     template.id,
     isTemplateAuthoring ? undefined : tenantId,
   );
-  const selectedCase =
-    (requestedCaseId ? await getBrokerageCaseById({ userId: user.id, tenantId, caseId: requestedCaseId }) : null) ??
-    cases.find((item) => item.id === "case_fixture_friends_guarantee_pdf") ??
-    cases.find((item) => item.status === "reviewed") ??
-    cases[0] ??
-    null;
+  const requestedCase = requestedCaseId
+    ? isTemplateAuthoring
+      ? await getBrokerageCaseById({ userId: user.id, tenantId, caseId: requestedCaseId })
+      : (await getBrokerageCaseByIdForContext({ context: requestContext!, caseId: requestedCaseId })).brokerageCase
+    : null;
+  const fallbackCase = cases.find((item) => item.status === "reviewed") ?? cases[0] ?? null;
+  const selectedCase = requestedCase ?? fallbackCase;
+  if (!isTemplateAuthoring && selectedCase && !(await areCaseSourcesReadable(requestContext!, selectedCase))) notFound();
   const draft = selectedCase
     ? await getGuaranteeApplicationDraft({
         userId: user.id,

@@ -5,6 +5,7 @@ import { getTenantCapability, requireTenantSession, TenantSessionError } from "@
 import { capabilityHasTenantPermission } from "@/lib/tenant-permissions";
 import { getCaseFieldValue } from "@/lib/case-field-normalization";
 import { createRequestContext } from "@/lib/visibility-resolver";
+import { areCaseSourcesReadable } from "@/lib/w93-access";
 import { notFound } from "next/navigation";
 
 export const runtime = "nodejs";
@@ -30,6 +31,7 @@ export default async function GuaranteeApplicationPage({ params }: { params: Pro
       inaccessible = true;
     } else {
       brokerageCase = caseVisibility.brokerageCase;
+      const sourceReadable = await areCaseSourcesReadable(context, brokerageCase);
       const caseData = brokerageCase.confirmedDataJson;
       caseFacts = [
         { label: "姓名", value: getCaseFieldValue(caseData, "applicant.name") || getCaseFieldValue(caseData, "tenant.name") },
@@ -55,7 +57,7 @@ export default async function GuaranteeApplicationPage({ params }: { params: Pro
         if (match?.status !== "exact") return undefined;
         return { id: version.id, versionNumber: version.versionNumber, blankFormVersionId: version.blankFormVersionId, formName: form.name };
       }))).filter((version): version is NonNullable<typeof version> => Boolean(version));
-      canGenerate = capabilityHasTenantPermission(getTenantCapability(session.membership), "output.generate_final");
+      canGenerate = sourceReadable && capabilityHasTenantPermission(getTenantCapability(session.membership), "output.generate_final");
     }
   } catch (error) {
     errorMessage = error instanceof TenantSessionError && error.code === "permission_denied" ? "当前身份没有申请书预览权限。" : "请在受控非生产工作区中登录后再访问。";
