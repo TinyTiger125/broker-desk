@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ChangeEvent } from "react";
 import { formatCurrency } from "@/lib/format";
 import type { Locale } from "@/lib/locale";
-import { computeQuote, generateQuoteSummaries, getQuoteWarnings } from "@/lib/quote";
+import { computeQuote, generateQuoteSummaries, getQuoteWarnings, type QuoteInput } from "@/lib/quote";
 
 type ClientOption = {
   id: string;
@@ -137,7 +137,7 @@ const texts = {
 export function QuoteForm({ clients, properties, action, defaultClientId, locale = "ja" }: QuoteFormProps) {
   const text = texts[locale];
 
-  const [draft, setDraft] = useState({
+  const [draft, setDraft] = useState<QuoteInput>({
     listingPrice: 0,
     brokerageFee: 0,
     taxFee: 0,
@@ -148,6 +148,11 @@ export function QuoteForm({ clients, properties, action, defaultClientId, locale
     interestRate: 1.5,
     loanYears: 35,
   });
+
+  const handleNumberChange = (field: keyof QuoteInput) => (event: ChangeEvent<HTMLInputElement>) => {
+    const value = Number(event.currentTarget.value) || 0;
+    setDraft((prev) => ({ ...prev, [field]: value }));
+  };
 
   const computed = useMemo(() => computeQuote(draft), [draft]);
   const summaries = useMemo(() => generateQuoteSummaries({ ...draft, ...computed }, locale), [draft, computed, locale]);
@@ -208,7 +213,7 @@ export function QuoteForm({ clients, properties, action, defaultClientId, locale
               type="number"
               className={numberInputClass}
               value={draft.listingPrice}
-              onChange={(event) => setDraft((prev) => ({ ...prev, listingPrice: Number(event.currentTarget.value) || 0 }))}
+              onChange={handleNumberChange("listingPrice")}
             />
           </label>
         </div>
@@ -221,7 +226,7 @@ export function QuoteForm({ clients, properties, action, defaultClientId, locale
               type="number"
               className={numberInputClass}
               value={draft.brokerageFee}
-              onChange={(event) => setDraft((prev) => ({ ...prev, brokerageFee: Number(event.currentTarget.value) || 0 }))}
+              onChange={handleNumberChange("brokerageFee")}
             />
           </label>
           <label className="text-sm">
@@ -231,7 +236,7 @@ export function QuoteForm({ clients, properties, action, defaultClientId, locale
               type="number"
               className={numberInputClass}
               value={draft.taxFee}
-              onChange={(event) => setDraft((prev) => ({ ...prev, taxFee: Number(event.currentTarget.value) || 0 }))}
+              onChange={handleNumberChange("taxFee")}
             />
           </label>
           <label className="text-sm">
@@ -241,7 +246,7 @@ export function QuoteForm({ clients, properties, action, defaultClientId, locale
               type="number"
               className={numberInputClass}
               value={draft.otherFee}
-              onChange={(event) => setDraft((prev) => ({ ...prev, otherFee: Number(event.currentTarget.value) || 0 }))}
+              onChange={handleNumberChange("otherFee")}
             />
           </label>
         </div>
@@ -254,7 +259,7 @@ export function QuoteForm({ clients, properties, action, defaultClientId, locale
               type="number"
               className={numberInputClass}
               value={draft.managementFee}
-              onChange={(event) => setDraft((prev) => ({ ...prev, managementFee: Number(event.currentTarget.value) || 0 }))}
+              onChange={handleNumberChange("managementFee")}
             />
           </label>
           <label className="text-sm">
@@ -264,7 +269,7 @@ export function QuoteForm({ clients, properties, action, defaultClientId, locale
               type="number"
               className={numberInputClass}
               value={draft.repairFee}
-              onChange={(event) => setDraft((prev) => ({ ...prev, repairFee: Number(event.currentTarget.value) || 0 }))}
+              onChange={handleNumberChange("repairFee")}
             />
           </label>
           <label className="text-sm">
@@ -274,7 +279,7 @@ export function QuoteForm({ clients, properties, action, defaultClientId, locale
               type="number"
               className={numberInputClass}
               value={draft.downPayment}
-              onChange={(event) => setDraft((prev) => ({ ...prev, downPayment: Number(event.currentTarget.value) || 0 }))}
+              onChange={handleNumberChange("downPayment")}
             />
           </label>
         </div>
@@ -288,7 +293,7 @@ export function QuoteForm({ clients, properties, action, defaultClientId, locale
               step="0.01"
               className={numberInputClass}
               value={draft.interestRate}
-              onChange={(event) => setDraft((prev) => ({ ...prev, interestRate: Number(event.currentTarget.value) || 0 }))}
+              onChange={handleNumberChange("interestRate")}
             />
           </label>
           <label className="text-sm">
@@ -298,7 +303,7 @@ export function QuoteForm({ clients, properties, action, defaultClientId, locale
               type="number"
               className={numberInputClass}
               value={draft.loanYears}
-              onChange={(event) => setDraft((prev) => ({ ...prev, loanYears: Number(event.currentTarget.value) || 0 }))}
+              onChange={handleNumberChange("loanYears")}
             />
           </label>
         </div>

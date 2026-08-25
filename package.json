@@ -59,6 +59,7 @@
     "test:visibility-resolver-behavior": "node scripts/test-visibility-resolver-behavior.mjs",
     "test:global-visibility-surfaces": "node scripts/check-global-visibility-surfaces.mjs",
     "test:global-visibility-surfaces-behavior": "node scripts/test-global-visibility-surfaces.mjs",
+    "test:quote-form-contract": "node scripts/check-quote-form-contract.mjs",
     "terms:export": "node scripts/export-ui-terminology.mjs",
     "terms:import": "node scripts/import-ui-terminology.mjs"
   },
