@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { createBlankBrokerageCaseAction } from "@/app/actions";
-import { listQuoteFormData } from "@/lib/data";
+import { listClientsForContext, listPropertiesForContext } from "@/lib/data";
 import { getLocale } from "@/lib/locale";
 import { requireTenantSession } from "@/lib/tenant-session";
+import { createRequestContext } from "@/lib/visibility-resolver";
 
 export const dynamic = "force-dynamic";
 
@@ -80,7 +81,13 @@ export default async function NewCasePage({ searchParams }: NewCasePageProps) {
     searchParams ?? Promise.resolve({} as { from?: string }),
   ]);
   const text = copy[locale];
-  const { clients, properties } = await listQuoteFormData(session.tenant.id);
+  const requestContext = createRequestContext(session);
+  const [visibleClients, visibleProperties] = await Promise.all([
+    listClientsForContext({ context: requestContext, filter: { lifecycleStatus: "active" } }),
+    listPropertiesForContext({ context: requestContext, lifecycleStatus: "active" }),
+  ]);
+  const clients = visibleClients.filter((item) => item.resolution.canWrite).map((item) => item.client);
+  const properties = visibleProperties.filter((item) => item.resolution.canWrite).map((item) => item.property);
   const fromEntry = params.from === "entry";
   const backHref = fromEntry ? "/import-center" : "/organize-center?type=case";
   const backLabel = fromEntry ? text.backEntry : text.back;

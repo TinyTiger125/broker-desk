@@ -2101,15 +2101,6 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                 </div>
               ))}
             </div>
-            <div className="border-t border-slate-200/50 bg-[#edf2fd] p-4">
-              <Link
-                href={`/api/hub/export?scope=import_jobs&locale=${locale}`}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white py-3 text-xs font-black uppercase tracking-widest text-[#001e40] hover:bg-slate-50"
-              >
-                <span className="material-symbols-outlined text-[14px]">download</span>
-                {copy.exportValidationReport}
-              </Link>
-            </div>
           </article>
 
           <article className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200/30">

@@ -6,7 +6,7 @@ import type { Locale } from "@/lib/locale";
 
 type SearchItem = {
   id: string;
-  entity: "property" | "party" | "contract" | "service_request" | "output";
+  entity: "case" | "property" | "party";
   title: string;
   subtitle?: string;
   href: string;
@@ -102,7 +102,7 @@ export function GlobalSearchBox({ locale, placeholder, labels }: GlobalSearchBox
           {loading ? <p className="px-3 py-2 text-xs text-slate-500">{labels.loading}</p> : null}
           {!loading && items.length === 0 ? <p className="px-3 py-2 text-xs text-slate-500">{labels.empty}</p> : null}
           {!loading
-            ? (["property", "party", "contract", "service_request", "output"] as const).map((entity) => {
+            ? (["case", "property", "party"] as const).map((entity) => {
                 const list = grouped.get(entity) ?? [];
                 if (list.length === 0) return null;
                 return (
@@ -132,4 +132,3 @@ export function GlobalSearchBox({ locale, placeholder, labels }: GlobalSearchBox
     </div>
   );
 }
-

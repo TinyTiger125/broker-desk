@@ -738,8 +738,6 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
   } as const;
   const flashKey = String(params?.flash ?? "").trim() as keyof typeof flashMap;
   const flashMessage = flashMap[flashKey]?.[locale];
-  const templateVersionQuery = historyTemplate !== "all" ? `&templateVersion=${encodeURIComponent(historyTemplate)}` : "";
-  const outputsExportHref = `/api/hub/export?scope=outputs&locale=${locale}${historyType !== "all" ? `&type=${historyType}` : ""}${historyLang !== "all" ? `&lang=${historyLang}` : ""}${historyFormat !== "all" ? `&format=${historyFormat}` : ""}${templateVersionQuery}`;
   const documentTreeGroupIds = ["application", "official"] as const;
   type DocumentTreeGroupId = (typeof documentTreeGroupIds)[number];
   type DocumentTreeItem = {
@@ -1516,12 +1514,6 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
           <article className="rounded-xl bg-white p-7 shadow-sm ring-1 ring-slate-200/35">
             <div className="mb-5 flex items-center justify-between">
               <h2 className="text-xs font-black uppercase tracking-widest text-slate-700">{copy.recentOutputs}</h2>
-              <Link
-                href={outputsExportHref}
-                className="text-[11px] font-bold text-[#001e40] hover:underline"
-              >
-                {copy.viewAll}
-              </Link>
             </div>
             <form action="/output-center" method="get" className="mb-4 grid grid-cols-1 gap-2 md:grid-cols-6">
               <input type="hidden" name="docGroup" value={selectedLegacyDocumentGroup} />

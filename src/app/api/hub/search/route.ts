@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createRequestContext } from "@/lib/visibility-resolver";
 import { searchHubItems } from "@/lib/hub";
 import type { Locale } from "@/lib/locale";
 import { TenantSessionError, requireTenantSession } from "@/lib/tenant-session";
@@ -24,8 +25,7 @@ export async function GET(request: Request) {
     const q = url.searchParams.get("q") ?? "";
     const locale = normalizeLocale(url.searchParams.get("locale"));
     const items = await searchHubItems(locale, q, 6, {
-      userId: session.user.id,
-      tenantId: session.tenant.id,
+      requestContext: createRequestContext(session),
     });
     return NextResponse.json({ items });
   } catch {
