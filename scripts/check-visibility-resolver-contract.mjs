@@ -26,6 +26,9 @@ const clientDetailPage = read("src/app/clients/[id]/page.tsx");
 const clientEditPage = read("src/app/clients/[id]/edit/page.tsx");
 const partyProfile = read("src/components/party-profile-form.tsx");
 const hub = read("src/lib/hub.ts");
+const propertyListPage = read("src/app/properties/page.tsx");
+const propertyEditPage = read("src/app/properties/[id]/edit/page.tsx");
+const propertyReadOnly = read("src/components/property-profile-read-only.tsx");
 
 for (const decision of ["owner_write", "company_read", "not_accessible"]) {
   assert(resolver.includes(`"${decision}"`), `resolver exposes ${decision}`);
@@ -67,6 +70,7 @@ assert(memory.includes("listBrokerageCasesForContext") && memory.includes("getBr
 assert(postgres.includes("listBrokerageCasesForContext") && postgres.includes("getBrokerageCaseByIdForContext"), "Postgres exposes context-bound case page reads");
 assert(data.includes("listBrokerageCasesForContext") && data.includes("getBrokerageCaseByIdForContext"), "repository proxy exposes context-bound case page reads");
 assert(organizePage.includes("createRequestContext(session)") && organizePage.includes("listBrokerageCasesForContext"), "case list uses trusted RequestContext resolver");
+assert(organizePage.includes("canArchiveRecords") && organizePage.includes("visibilityLabel: item.readOnly") && organizePage.includes("readOnly: item.readOnly"), "organize center property rows preserve read-only state and archive capability");
 assert(organizePage.includes("readOnly: item.readOnly") && organizePage.includes('capabilityHasTenantPermission') && organizePage.includes('"record.update"') && organizePage.includes("readOnly: !canWrite") && organizeBrowser.includes("!item.readOnly"), "person list write controls require the record.update capability");
 assert(casePage.includes("getBrokerageCaseByIdForContext") && casePage.includes("createRequestContext(session)"), "case detail uses trusted RequestContext resolver");
 assert(casePage.includes("caseVisibility.resolution.outcome"), "case detail branches on resolver outcome");
@@ -77,6 +81,14 @@ assert(actions.includes("async function requireWritableCase") && actions.include
 assert(memory.includes("listClientsForContext") && memory.includes("getClientDetailForContext"), "memory person reads are context-bound");
 assert(postgres.includes("listClientsForContext") && postgres.includes("getClientDetailForContext"), "Postgres person reads are context-bound");
 assert(data.includes("listClientsForContext") && data.includes("getClientDetailForContext"), "repository proxy exposes context-bound person reads");
+assert(memory.includes("listPropertiesForContext") && memory.includes("getPropertyDetailForContext"), "memory property reads are context-bound");
+assert(postgres.includes("listPropertiesForContext") && postgres.includes("getPropertyDetailForContext"), "Postgres property reads are context-bound");
+assert(data.includes("listPropertiesForContext") && data.includes("getPropertyDetailForContext"), "repository proxy exposes context-bound property reads");
+assert(propertyListPage.includes("createRequestContext(session)") && propertyListPage.includes("requestContext") && propertyListPage.includes('capabilityHasTenantPermission') && propertyListPage.includes('"record.update"'), "property list uses trusted RequestContext and capability-gated creation");
+assert(propertyListPage.includes("property.readOnly") && propertyListPage.includes("property.canArchive") && propertyListPage.includes("companyRead") && propertyListPage.includes("ownerReadOnly"), "property list distinguishes read-only records and hides archive controls");
+assert(propertyEditPage.includes("getPropertyDetailForContext") && propertyEditPage.includes("createRequestContext(session)") && propertyEditPage.includes("visible.resolution.canWrite"), "property detail uses trusted RequestContext resolver");
+assert(propertyEditPage.includes("PropertyProfileReadOnly") && propertyEditPage.includes('readOnlyReason'), "property detail renders localized read-only shell");
+assert(propertyReadOnly.includes("companyRead") && propertyReadOnly.includes("ownerReadOnly") && propertyReadOnly.includes("読み取り専用"), "property read-only reasons are localized and explicit");
 assert(partiesPage.includes("createRequestContext(session)") && partiesPage.includes("requestContext"), "person list uses trusted RequestContext");
 assert(partiesPage.includes("party.readOnly") && partiesPage.includes("party.canWrite") && partiesPage.includes('capabilityHasTenantPermission') && partiesPage.includes('"record.update"') && partiesPage.includes("const canWrite = party.canWrite && capabilityCanWrite") && !partiesPage.includes('href="/parties/new"'), "person list hides unavailable creation entry while preserving resolver-gated writes");
 assert(partyNewPage.includes("requireTenantSession") && partyNewPage.includes("notFound()"), "unavailable person creation route is not enterable");
@@ -89,6 +101,7 @@ assert(partyProfile.includes("ownerReadOnly") && partyProfile.includes('reason =
 assert(hub.includes("listClientsForContext") && hub.includes("readOnly: !canWrite"), "hub person mapping derives read-only from resolver");
 assert(actions.includes("resolveClientVisibilityForContext") && actions.includes("async function ensureClientOwnership(clientId: string, session"), "person write actions require owner resolver context");
 assert(actions.includes("resolvePropertyVisibilityForContext") && actions.includes("const requestedPropertyId") && actions.includes("property.resolution.canWrite"), "quotation writes require owner access to referenced properties");
+assert(actions.includes("async function ensurePropertyOwnership(propertyId: string, session") && actions.includes("await ensurePropertyOwnership(entityId, session)") && actions.includes("await ensurePropertyOwnership(propertyId, session)"), "property lifecycle and profile writes require owner resolver context");
 assert(memory.includes("visibleQuotationCount") && postgres.includes("propertyReadable"), "person list counts exclude unreadable referenced quotations");
 assert(memory.includes("quotationResults") && postgres.includes("quotationResults"), "person detail drops quotations whose referenced property is unreadable");
 assert(memory.includes("currentOwnerUserId === input.userId") && postgres.includes("current_owner_user_id = $2"), "person lifecycle writes use current owner, not legacy owner fallback");

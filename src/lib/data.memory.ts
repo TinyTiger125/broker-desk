@@ -4440,6 +4440,11 @@ export type VisibleClient = {
   _count: { quotations: number; followUps: number };
 };
 
+export type VisibleProperty = {
+  property: Property;
+  resolution: VisibilityResolution;
+};
+
 export async function listClients(userId: string, filter: ClientListFilter = {}) {
   const scopeTenantId = resolveTenantId(filter.tenantId);
   const filtered = db.clients
@@ -4533,6 +4538,35 @@ export async function listClientsForContext(input: {
       },
     };
   }));
+}
+
+/** Property list path guarded by the authenticated RequestContext resolver. */
+export async function listPropertiesForContext(input: {
+  context: RequestContext;
+  lifecycleStatus?: LifecycleFilter;
+}): Promise<VisibleProperty[]> {
+  const lifecycleStatus = input.lifecycleStatus ?? "active";
+  return db.properties
+    .filter((item) => item.tenantId === input.context.tenantId)
+    .filter((item) => lifecycleStatus === "all" || (item.lifecycleStatus ?? "active") === lifecycleStatus)
+    .flatMap((item) => {
+      const resolution = resolveRecordVisibility(input.context, item);
+      return resolution.canRead ? [{ property: { ...item }, resolution }] : [];
+    });
+}
+
+export type VisiblePropertyDetail = {
+  property: Property | null;
+  resolution: VisibilityResolution;
+};
+
+/** Property detail path guarded by the authenticated RequestContext resolver. */
+export async function getPropertyDetailForContext(input: {
+  context: RequestContext;
+  propertyId: string;
+}): Promise<VisiblePropertyDetail> {
+  const resolved = await resolvePropertyVisibilityForContext(input);
+  return { property: resolved.record, resolution: resolved.resolution };
 }
 
 export async function getClientById(clientId: string, tenantId?: string) {

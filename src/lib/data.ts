@@ -217,6 +217,10 @@ export const listClientsForContext: typeof memory.listClientsForContext = (...ar
   repo.listClientsForContext(...args);
 export const getClientDetailForContext: typeof memory.getClientDetailForContext = (...args) =>
   repo.getClientDetailForContext(...args);
+export const listPropertiesForContext: typeof memory.listPropertiesForContext = (...args) =>
+  repo.listPropertiesForContext(...args);
+export const getPropertyDetailForContext: typeof memory.getPropertyDetailForContext = (...args) =>
+  repo.getPropertyDetailForContext(...args);
 /**
  * Read the current tenant's member list using the identity that already
  * established the page session. This avoids a second Clerk lookup during the

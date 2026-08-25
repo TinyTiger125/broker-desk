@@ -27,7 +27,7 @@ import {
   type ClientStage,
 } from "@/lib/domain";
 import { revalidatePath } from "next/cache";
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import {
   addAttachment,
@@ -56,7 +56,6 @@ import {
   getClientDetail,
   getGuaranteeApplicationDraft,
   getOutputTemplateSettings,
-  getPropertyById,
   getQuotationById,
   listQuoteFormData,
   listClients,
@@ -606,6 +605,7 @@ export async function setRecordLifecycleAction(formData: FormData) {
       archivedById: session.user.id,
     });
   } else {
+    await ensurePropertyOwnership(entityId, session);
     updated = await setPropertyLifecycleStatus({
       tenantId: session.tenant.id,
       propertyId: entityId,
@@ -638,6 +638,15 @@ async function ensureClientOwnership(clientId: string, session: TenantSession) {
   const resolved = await resolveClientVisibilityForContext({ context, clientId });
   if (!resolved.record || !resolved.resolution.canWrite) {
     throw new Error("顧客が見つかりません。");
+  }
+  return resolved.record;
+}
+
+async function ensurePropertyOwnership(propertyId: string, session: TenantSession) {
+  const context = createRequestContext(session);
+  const resolved = await resolvePropertyVisibilityForContext({ context, propertyId });
+  if (!resolved.record || !resolved.resolution.canWrite) {
+    throw new Error("物件が見つからないか、操作権限がありません。");
   }
   return resolved.record;
 }
@@ -1993,10 +2002,7 @@ export async function updatePropertyProfileAction(
     }));
   }
 
-  const existing = await getPropertyById(propertyId, tenantId);
-  if (!existing) {
-    notFound();
-  }
+  await ensurePropertyOwnership(propertyId, session);
 
   const parsed = parsePropertyForm(formData, locale);
   if (Object.keys(parsed.fieldErrors).length > 0) {

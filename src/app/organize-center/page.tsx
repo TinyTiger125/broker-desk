@@ -313,13 +313,22 @@ async function OrganizeCenterContent({ locale, params }: { locale: Locale; param
 
   const capabilityCanWrite = session.membership.status === "active"
     && capabilityHasTenantPermission(getTenantCapability(session.membership), "record.update");
+  const capabilityCanArchive = session.membership.status === "active"
+    && capabilityHasTenantPermission(getTenantCapability(session.membership), "record.archive");
 
   let cases;
   let parties;
   let properties;
   try {
     const requestContext = createRequestContext(session);
-    const hubContext = { userId: session.user.id, tenantId: session.tenant.id, lifecycleStatus: lifecycleFilter, requestContext };
+    const hubContext = {
+      userId: session.user.id,
+      tenantId: session.tenant.id,
+      lifecycleStatus: lifecycleFilter,
+      requestContext,
+      canUpdateRecords: capabilityCanWrite,
+      canArchiveRecords: capabilityCanArchive,
+    };
     [cases, parties, properties] = await Promise.all([
       listBrokerageCasesForContext({ context: requestContext, lifecycleStatus: lifecycleFilter }),
       listHubParties(locale, hubContext),
@@ -380,6 +389,10 @@ async function OrganizeCenterContent({ locale, params }: { locale: Locale; param
       relation: copy.propertyRelationHint,
       relationLabel: copy.relationProperty,
       href: `/properties/${encodeURIComponent(item.id)}/edit`,
+      visibilityLabel: item.readOnly
+        ? item.readOnlyReason === "company_read" ? copy.companyReadOnly : copy.ownerReadOnly
+        : undefined,
+      readOnly: item.readOnly,
     };
   });
 

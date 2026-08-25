@@ -6,6 +6,7 @@ import {
   listImportJobs,
   listClients,
   listClientsForContext,
+  listPropertiesForContext,
   listOutputTemplateVersions,
   listQuoteFormData,
   listQuotations,
@@ -37,6 +38,8 @@ export type HubQueryContext = {
   tenantId?: string;
   lifecycleStatus?: LifecycleFilter;
   requestContext?: RequestContext;
+  canUpdateRecords?: boolean;
+  canArchiveRecords?: boolean;
 };
 
 export type HubOverview = {
@@ -60,6 +63,10 @@ export type HubPropertyItem = {
   repairFeeValue: number | null;
   attachmentCount: number;
   status: "active" | "archived";
+  canWrite: boolean;
+  canArchive: boolean;
+  readOnly: boolean;
+  readOnlyReason?: "company_read" | "owner_read_only";
 };
 
 export type HubPartyItem = {
@@ -245,6 +252,33 @@ export async function getHubOverview(context: HubQueryContext = {}): Promise<Hub
 }
 
 export async function listHubProperties(locale: Locale = "ja", context: HubQueryContext = {}): Promise<HubPropertyItem[]> {
+  if (context.requestContext) {
+    const visible = await listPropertiesForContext({
+      context: context.requestContext,
+      lifecycleStatus: context.lifecycleStatus,
+    });
+    return visible.map(({ property: rawProperty, resolution }) => {
+      const property = localizeDemoProperty(locale, rawProperty);
+      const propertyArea = typeof property.area === "string" && property.area.trim() ? property.area : "";
+      const canWrite = resolution.canWrite && context.canUpdateRecords !== false;
+      return {
+        id: property.id,
+        name: property.name,
+        area: propertyArea,
+        listingPrice: property.listingPrice,
+        managementFee: property.managementFee ?? 0,
+        repairFee: property.repairFee ?? 0,
+        managementFeeValue: property.managementFee ?? null,
+        repairFeeValue: property.repairFee ?? null,
+        attachmentCount: 0,
+        status: property.lifecycleStatus ?? "active",
+        canWrite,
+        canArchive: canWrite && context.canArchiveRecords === true,
+        readOnly: !canWrite,
+        readOnlyReason: resolution.outcome === "company_read" ? "company_read" : "owner_read_only",
+      };
+    });
+  }
   const resolved = await resolveHubContext(context);
   const attachmentsPromise = resolved
     ? listAttachments({ userId: resolved.userId, tenantId: resolved.tenantId, targetType: "property", limit: 500 })
@@ -271,6 +305,9 @@ export async function listHubProperties(locale: Locale = "ja", context: HubQuery
       repairFeeValue: property.repairFee ?? null,
       attachmentCount: attachmentCountMap.get(property.id) ?? 0,
       status: property.lifecycleStatus ?? "active",
+      canWrite: true,
+      canArchive: true,
+      readOnly: false,
     };
   });
 }

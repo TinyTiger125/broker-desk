@@ -85,7 +85,7 @@ import type {
   GuaranteePreviewOutputInput,
   MemberVisibilityDefault,
 } from "@/lib/data.memory";
-import type { VisibleBrokerageCase } from "@/lib/data.memory";
+import type { VisibleBrokerageCase, VisibleProperty } from "@/lib/data.memory";
 import type { TenantRole, TenantCapabilityPreset } from "@/lib/tenant-permissions";
 import type { LifecycleFilter, LifecycleStatus } from "@/lib/record-lifecycle";
 import { getTenantDeploymentEnvironment } from "@/lib/tenant-bootstrap-policy";
@@ -4888,6 +4888,46 @@ export async function listClientsForContext(input: {
       _count: { quotations: quoteCountMap.get(client.id) ?? 0, followUps: followCountMap.get(client.id) ?? 0 },
     }));
   });
+}
+
+/** Property list path guarded by the authenticated RequestContext resolver. */
+export async function listPropertiesForContext(input: {
+  context: RequestContext;
+  lifecycleStatus?: LifecycleFilter;
+}): Promise<VisibleProperty[]> {
+  return withPostgresAuthContext(input.context.externalAuthSubject, async () => {
+    await ensureSchema();
+    const lifecycleStatus = input.lifecycleStatus ?? "active";
+    const result = await getPool().query(
+      "SELECT * FROM properties WHERE tenant_id = $1 AND ($2 = 'all' OR lifecycle_status = $2) ORDER BY created_at DESC",
+      [input.context.tenantId, lifecycleStatus],
+    );
+    return result.rows.flatMap((row) => {
+      const property = mapProperty(row);
+      const resolution = resolveRecordVisibility(input.context, {
+        ...property,
+        tenantId: row.tenant_id == null ? null : String(row.tenant_id),
+        currentOwnerUserId: row.current_owner_user_id == null ? null : String(row.current_owner_user_id),
+        visibilityScope: row.visibility_scope,
+        ownerResolutionStatus: row.owner_resolution_status,
+      });
+      return resolution.canRead ? [{ property, resolution }] : [];
+    });
+  });
+}
+
+export type VisiblePropertyDetail = {
+  property: Property | null;
+  resolution: import("@/lib/visibility-resolver").VisibilityResolution;
+};
+
+/** Property detail path guarded by the authenticated RequestContext resolver. */
+export async function getPropertyDetailForContext(input: {
+  context: RequestContext;
+  propertyId: string;
+}): Promise<VisiblePropertyDetail> {
+  const resolved = await resolvePropertyVisibilityForContext(input);
+  return { property: resolved.record, resolution: resolved.resolution };
 }
 
 export async function getClientById(clientId: string, tenantId?: string) {
