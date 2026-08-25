@@ -117,16 +117,11 @@ npm run build
 ## 当前状态
 
 - 状态: In Progress
-- 产品结论: Visibility V1 baseline approved / W9.1 Accepted / Runtime Verified
-- 案件页面阶段状态: Product Accepted / Integrated（已合入 main，集成提交 `88428cd2938bbd055492b9f99cf5c4fcebf8887b`）
-- 人物页面阶段状态: Product Accepted / Integrated（已合入 main，候选 `9ea54fc6d2aad46140dd44fc844cc283a6e8ec34`，合并提交 `90dd52b8e24a50d171d31fb263c99570a19dbc8b`）
-- 当前阶段: W9.1已完成独立审查与隔离非生产运行验证；案件、人物、物件页面及全局搜索/导出已完成产品验收并集成 main。W9.3关系树、附件父对象权限、普通输出/历史文件和保证申请书底层来源权限进入有限实现；关系写入、附件分享、关系图扩展、PDF功能扩建、定向分享、共同编辑和资料接管仍排除。跨经营主体真实浏览器＋写 Action 组合证据、敌对重放和切换刷新等已裁决 P2 继续保留；TASK-038 不再扩大，TASK-039 整体不标记 Done。
-- W9.3 当前状态: Limited Implementation / In Progress；统一使用父对象可见性＋动作能力两层判断，所有不明确来源 fail-closed；Production 不连接、不迁移、不部署。
-- W9.2 只读盘点与技术设计已完成；首两个安全硬门及统一可见性解析器已完成隔离非生产运行验证，案件页面接入已取得受控 Staging 产品验收：
-  - [事实矩阵](../product/TASK-040_W9.2_FACT_MATRIX_2026-08-24.md)
-  - [技术设计](../product/TASK-040_W9.2_TECHNICAL_DESIGN_2026-08-24.md)
-  - [一页产品行为摘要](../product/TASK-040_W9.2_PRODUCT_BEHAVIOR_SUMMARY_2026-08-24.md)
-- 案件页面阶段结果：列表/详情按当前 resolver 过滤 private 与 company_read，company_read 显示本地化只读语义；案件写 Action、生命周期入口、申请书入口均由服务端 owner_write 再校验；关联人物/物件缺少独立访问权时 fail-closed 隐藏。精确 Preview 的独立复核为 P0=0、已验证范围内 P1=0；跨经营主体真实浏览器＋写 Action 组合证据、TASK-038 PDF 生成闭环和主动 429 触发不纳入本阶段通过结论。
-- 首两个硬门的代码增量已完成并通过独立只读审查（P0=0、P1=0）；003 migration、受限运行角色下的直接 SQL、重复执行/失败恢复、Action 级审计和 `/api/hub/search` 受控上下文矩阵已在可销毁非生产分支验证，证据见 [W9.2 运行验证记录](../product/TASK-040_W9.2_RUNTIME_VERIFICATION_2026-08-24.md)。这不等同于真实 Clerk 浏览器端到端回归，也不代表 W9.2 整体完成。
-- 后续阶段：成员资料接管、暂停后的保留/删除和法律留存另立专题。
-- 正式人物创建流程仍是独立后续产品缺口；在该流程成立前，`/parties/new` 不提供可进入的创建入口。
+- 产品结论: Visibility V1 — Product Accepted and Integrated / Production Not Released
+- W9.1 状态: Accepted / Runtime Verified / Integrated
+- W9.2 案件、人物、物件页面及 Global Visibility Surfaces: Product Accepted / Integrated
+- W9.3 状态: Product Accepted / Integrated（PR #6，merge `09d003100c82f64788b475514265dd56790567b4`）
+- 本次 migration `20260825_001_legacy_output_provenance_marker.sql` 已进入 main；Staging 已验证，Production ledger 与待执行范围仍 UNVERIFIED；不执行自动 down migration，Git 回退不等同数据库回退。
+- 普通输出生成入口当前不存在，继续 fail-closed，作为后续独立产品缺口，不写成已完成功能。
+- Production 部署、Production migration、备份/PITR、容量/存储/下载成本、法律留存/删除、认证浏览器回归及 TASK-037 旧模板实际 PDF 回归继续是 Production 前门。
+- 已接受的 P2 与生产前认证、备份恢复、容量、存储/下载成本和法律规则继续保留；本任务收口后不自动创建下一张技术任务。
