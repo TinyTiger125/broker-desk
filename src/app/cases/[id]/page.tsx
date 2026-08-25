@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { rollbackCaseMergeAction, saveCaseWorkbenchAction } from "@/app/actions";
+import { createClientFormAction, createPropertyQuickAction, rollbackCaseMergeAction, saveCaseAssociationsAction, saveCaseWorkbenchAction } from "@/app/actions";
 import { ArchiveRecordButton } from "@/components/archive-record-button";
 import { CaseWorkbenchFieldForm } from "@/components/case-workbench-field-form";
+import { CaseAssociationManager } from "@/components/case-association-manager";
 import { CaseEditPanel, CaseEvidenceSummary, CaseFieldInput, CaseFieldState, CaseFieldValue, CaseIdentityHeader, CaseOverview, type CaseOverviewOutputBlocker, type CaseOverviewSection } from "@/components/case-overview";
 import { PageFlashBanner } from "@/components/page-flash-banner";
-import { getBrokerageCaseByIdForContext, getGuaranteeApplicationDraft, listCaseWorkbenchFieldRules, listExtractionReviewItems, listTenantGuaranteeTemplateInstalls, resolveClientVisibilityForContext, resolvePropertyVisibilityForContext } from "@/lib/data";
+import { getBrokerageCaseByIdForContext, getGuaranteeApplicationDraft, listCaseWorkbenchFieldRules, listClientsForContext, listExtractionReviewItems, listPropertiesForContext, listTenantGuaranteeTemplateInstalls, resolveClientVisibilityForContext, resolvePropertyVisibilityForContext } from "@/lib/data";
 import type { ExtractionReviewItem, ExtractionReviewStatus } from "@/lib/data";
 import { getCaseFieldAliases, getCaseFieldValue } from "@/lib/case-field-normalization";
 import {
@@ -35,6 +36,7 @@ import { formatDate } from "@/lib/format";
 import { getLocale, type Locale } from "@/lib/locale";
 import { requireTenantSession } from "@/lib/tenant-session";
 import { createRequestContext } from "@/lib/visibility-resolver";
+import { readCaseAssociationDraft } from "@/lib/case-associations";
 
 export const dynamic = "force-dynamic";
 
@@ -736,6 +738,55 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
   const caseVisibilityLabel = caseVisibility.resolution.outcome === "company_read"
     ? tr(locale, { ja: "会社メンバーに公開／読み取り専用", zh: "公司成员可见／只读", ko: "회사 멤버 공개／읽기 전용" })
     : undefined;
+  const associationDraft = readCaseAssociationDraft(brokerageCase.confirmedDataJson);
+  const [visibleClients, visibleProperties, associatedPartyResults, associatedPropertyResult] = await Promise.all([
+    canWriteCase
+      ? listClientsForContext({ context: requestContext, filter: { lifecycleStatus: "active" } })
+      : Promise.resolve([]),
+    canWriteCase
+      ? listPropertiesForContext({ context: requestContext, lifecycleStatus: "active" })
+      : Promise.resolve([]),
+    Promise.all(associationDraft.parties.map((party) => resolveClientVisibilityForContext({ context: requestContext, clientId: party.partyId }))),
+    associationDraft.primaryPropertyId
+      ? resolvePropertyVisibilityForContext({ context: requestContext, propertyId: associationDraft.primaryPropertyId })
+      : Promise.resolve(null),
+  ]);
+  const associationCandidates = visibleClients
+    .filter((item) => item.resolution.canWrite)
+    .map(({ client }) => ({ id: client.id, name: client.name, searchText: [client.phone, client.email].filter(Boolean).join(" ") }));
+  associatedPartyResults.forEach((result) => {
+    if (result.record && result.resolution.canWrite && !associationCandidates.some((candidate) => candidate.id === result.record?.id)) {
+      associationCandidates.push({ id: result.record.id, name: result.record.name, searchText: [result.record.phone, result.record.email].filter(Boolean).join(" ") });
+    }
+  });
+  const associationProperties = visibleProperties
+    .filter((item) => item.resolution.canWrite)
+    .map(({ property }) => ({ id: property.id, name: property.name, address: property.address }));
+  if (associatedPropertyResult?.record && !associationProperties.some((property) => property.id === associatedPropertyResult.record?.id)) {
+    associationProperties.push({
+      id: associatedPropertyResult.record.id,
+      name: associatedPropertyResult.record.name,
+      address: associatedPropertyResult.record.address,
+    });
+  }
+  const associationParties = associationDraft.parties.flatMap((party, index) => {
+    const record = associatedPartyResults[index]?.record;
+    return record ? [{ ...party, name: record.name }] : [];
+  });
+  const associationPanel = (
+    <CaseAssociationManager
+      locale={locale}
+      caseId={brokerageCase.id}
+      readOnly={!canWriteCase}
+      initialParties={associationParties}
+      initialPrimaryPropertyId={associationDraft.primaryPropertyId}
+      candidates={associationCandidates}
+      properties={associationProperties}
+      saveAction={canWriteCase ? saveCaseAssociationsAction : undefined}
+      createPersonAction={canWriteCase ? createClientFormAction : undefined}
+      createPropertyAction={canWriteCase ? createPropertyQuickAction : undefined}
+    />
+  );
 
   if (!canWriteCase) {
     const primaryPartyId = typeof brokerageCase.confirmedDataJson.__primaryPartyId === "string" ? brokerageCase.confirmedDataJson.__primaryPartyId : undefined;
@@ -944,6 +995,12 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
             zh: "空案件已创建。可以从需要的项目开始填写。",
             ko: "빈 안건을 만들었습니다. 필요한 항목부터 입력할 수 있습니다.",
           })
+        : query?.flash === "case_associations_updated"
+          ? tr(locale, {
+              ja: "案件の関連資料を更新しました。",
+              zh: "案件关联资料已更新。",
+              ko: "안건 연결 자료를 업데이트했습니다.",
+            })
         : query?.flash === "case_workbench_saved"
         ? tr(locale, {
             ja: "情報整理を保存しました。",
@@ -1042,53 +1099,59 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
 
   if (!canWriteCase) {
     return (
-      <CaseOverview
-        caseId={brokerageCase.id}
-        caseTitle={brokerageCase.caseTitle}
-        applicantSummary={applicantSummary}
-        propertySummary={propertySummary}
-        guaranteeCompanySummary={guaranteeCompanySummary}
-        currentHandlerSummary={currentHandlerSummary}
-        sections={overviewSections}
-        locale={locale}
-        issueCount={overviewIssueCount}
-        outputHref=""
-        previewHref=""
-        downloadHref={null}
-        dataVersion={brokerageCase.updatedAt.toISOString()}
-        outputBlockers={[]}
-        hasOutputTemplate={false}
-        saveAction={saveCaseWorkbenchAction}
-        readOnly
-        visibilityLabel={caseVisibilityLabel}
-        flash={<PageFlashBanner message={flashMessage} tone={flashTone} />}
-      />
+      <div className="space-y-6">
+        {associationPanel}
+        <CaseOverview
+          caseId={brokerageCase.id}
+          caseTitle={brokerageCase.caseTitle}
+          applicantSummary={applicantSummary}
+          propertySummary={propertySummary}
+          guaranteeCompanySummary={guaranteeCompanySummary}
+          currentHandlerSummary={currentHandlerSummary}
+          sections={overviewSections}
+          locale={locale}
+          issueCount={overviewIssueCount}
+          outputHref=""
+          previewHref=""
+          downloadHref={null}
+          dataVersion={brokerageCase.updatedAt.toISOString()}
+          outputBlockers={[]}
+          hasOutputTemplate={false}
+          saveAction={saveCaseWorkbenchAction}
+          readOnly
+          visibilityLabel={caseVisibilityLabel}
+          flash={<PageFlashBanner message={flashMessage} tone={flashTone} />}
+        />
+      </div>
     );
   }
 
   if (activeView === "overview") {
     return (
-      <CaseOverview
-        caseId={brokerageCase.id}
-        caseTitle={brokerageCase.caseTitle}
-        applicantSummary={applicantSummary}
-        propertySummary={propertySummary}
-        guaranteeCompanySummary={guaranteeCompanySummary}
-        currentHandlerSummary={currentHandlerSummary}
-        sections={overviewSections}
-        locale={locale}
-        issueCount={overviewIssueCount}
-        outputHref={outputHref}
-        previewHref={overviewPreviewHref}
-        downloadHref={overviewDownloadHref}
-        dataVersion={brokerageCase.updatedAt.toISOString()}
-        outputBlockers={outputBlockers}
-        hasOutputTemplate={overviewHasOutputTemplate}
-        saveAction={saveCaseWorkbenchAction}
-        flash={<PageFlashBanner message={flashMessage} tone={flashTone} />}
-        initialFieldKey={initialFieldKey}
-        initialScrollTop={initialScrollTop}
-      />
+      <div className="space-y-6">
+        {associationPanel}
+        <CaseOverview
+          caseId={brokerageCase.id}
+          caseTitle={brokerageCase.caseTitle}
+          applicantSummary={applicantSummary}
+          propertySummary={propertySummary}
+          guaranteeCompanySummary={guaranteeCompanySummary}
+          currentHandlerSummary={currentHandlerSummary}
+          sections={overviewSections}
+          locale={locale}
+          issueCount={overviewIssueCount}
+          outputHref={outputHref}
+          previewHref={overviewPreviewHref}
+          downloadHref={overviewDownloadHref}
+          dataVersion={brokerageCase.updatedAt.toISOString()}
+          outputBlockers={outputBlockers}
+          hasOutputTemplate={overviewHasOutputTemplate}
+          saveAction={saveCaseWorkbenchAction}
+          flash={<PageFlashBanner message={flashMessage} tone={flashTone} />}
+          initialFieldKey={initialFieldKey}
+          initialScrollTop={initialScrollTop}
+        />
+      </div>
     );
   }
 
@@ -1135,6 +1198,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
         }
       />
       <PageFlashBanner message={flashMessage} tone={flashTone} />
+      {associationPanel}
 
       {selectedWorkbenchField ? (
         <section className="rounded-lg border border-amber-200 bg-amber-50/70 p-3 sm:hidden" aria-label={tr(locale, { ja: "次の対応項目", zh: "下一项任务", ko: "다음 처리 항목" })}>

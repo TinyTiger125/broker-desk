@@ -28,6 +28,7 @@ import {
 } from "@/lib/domain";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { cookies } from "next/headers";
 import {
   addAttachment,
@@ -231,6 +232,13 @@ import { getLocale, type Locale } from "@/lib/locale";
 import { getDefaultOutputTemplateSettings } from "@/lib/output-doc";
 import { type TenantRole } from "@/lib/tenant-permissions";
 import {
+  getPrimaryPartyId,
+  normalizeCaseAssociationDraft,
+  validateCaseAssociationDraft,
+  writeCaseAssociationData,
+  type CaseAssociationDraft,
+} from "@/lib/case-associations";
+import {
   buildPartyProfileNotes,
   inferPurposeFromPartyRole,
   isPartyProfileRole,
@@ -390,6 +398,12 @@ export type PropertyFormActionState = {
   message?: string;
   fieldErrors: Partial<Record<keyof PropertyFormValues, string>>;
   values: PropertyFormValues;
+  createdRecord?: { id: string; name: string };
+};
+
+export type CaseCreationActionState = {
+  status: "idle" | "error";
+  message?: string;
 };
 
 export type ClientFormValues = {
@@ -425,6 +439,7 @@ export type ClientFormActionState = {
   message?: string;
   fieldErrors: Partial<Record<keyof ClientFormValues, string>>;
   values: ClientFormValues;
+  createdRecord?: { id: string; name: string };
 };
 
 export type PartyProfileFormValues = {
@@ -924,6 +939,15 @@ async function persistClientForm(
     targetId: client.id,
     message: mode === "create" ? `顧客を新規登録しました: ${client.name}` : "顧客情報を更新しました。",
   });
+
+  if (mode === "create" && formData.get("caseDraftReturn") === "1") {
+    return {
+      status: "idle",
+      fieldErrors: {},
+      values: parsed.values,
+      createdRecord: { id: client.id, name: client.name },
+    } satisfies ClientFormActionState;
+  }
 
   if (compatibilityDefaults) {
     const afterSave = String(formData.get("afterSave") ?? "detail");
@@ -1980,6 +2004,15 @@ export async function createPropertyQuickAction(
 
   revalidatePath("/properties");
   revalidatePath("/");
+
+  if (formData.get("caseDraftReturn") === "1") {
+    return {
+      status: "idle",
+      fieldErrors: {},
+      values: parsed.values,
+      createdRecord: { id: property.id, name: property.name },
+    } satisfies PropertyFormActionState;
+  }
 
   const destination = `/properties/${encodeURIComponent(property.id)}/edit?returnTo=${encodeURIComponent(returnTo)}`;
   redirect(withFlash(destination, "property_created"));
@@ -3708,28 +3741,51 @@ function formatCaseTitleDate(date: Date) {
   return `${date.getFullYear()}/${String(date.getMonth() + 1).padStart(2, "0")}/${String(date.getDate()).padStart(2, "0")}`;
 }
 
-export async function createBlankBrokerageCaseAction(formData: FormData) {
+export async function createBlankBrokerageCaseAction(
+  _previousState: CaseCreationActionState,
+  formData: FormData,
+): Promise<CaseCreationActionState> {
+  try {
   const session = await requireTenantSession({ permission: "case.create" });
   const user = session.user;
   const tenantId = session.tenant.id;
   const locale = await getLocale();
   await rejectForbiddenRecordInput(formData, session, "case");
   const requestedTitle = String(formData.get("caseTitle") ?? "").trim();
-  const primaryPartyId = String(formData.get("primaryPartyId") ?? "").trim();
-  const primaryPropertyId = String(formData.get("primaryPropertyId") ?? "").trim();
   const workflowType = String(formData.get("workflowType") ?? "").trim();
+  let associationDraft: CaseAssociationDraft;
+  try {
+    const rawDraft = String(formData.get("associationDraftJson") ?? "").trim();
+    associationDraft = rawDraft
+      ? normalizeCaseAssociationDraft(JSON.parse(rawDraft))
+      : normalizeCaseAssociationDraft({
+          parties: String(formData.get("primaryPartyId") ?? "").trim()
+            ? [{ partyId: String(formData.get("primaryPartyId") ?? "").trim(), roles: ["主要申请人"] }]
+            : [],
+          primaryPropertyId: String(formData.get("primaryPropertyId") ?? "").trim() || undefined,
+        });
+  } catch {
+    throw new Error("案件草稿格式不正确，请重新选择资料。");
+  }
+  const associationError = validateCaseAssociationDraft(associationDraft);
+  if (associationError) throw new Error(associationError);
   const requestContext = createRequestContext(session);
-  const [partyResult, propertyResult] = await Promise.all([
-    primaryPartyId ? resolveClientVisibilityForContext({ context: requestContext, clientId: primaryPartyId }) : null,
-    primaryPropertyId ? resolvePropertyVisibilityForContext({ context: requestContext, propertyId: primaryPropertyId }) : null,
-  ]);
-  if (primaryPartyId && (!partyResult?.record || !partyResult.resolution.canWrite)) {
-    throw new Error("関係者が見つからないか、関連付ける権限がありません。");
+  const partyResults = await Promise.all(
+    associationDraft.parties.map((party) => resolveClientVisibilityForContext({ context: requestContext, clientId: party.partyId })),
+  );
+  if (partyResults.some((result) => !result.record || !result.resolution.canWrite)) {
+    throw new Error("选择的人物不存在或当前用户无法使用。");
   }
-  if (primaryPropertyId && (!propertyResult?.record || !propertyResult.resolution.canWrite)) {
-    throw new Error("物件が見つからないか、関連付ける権限がありません。");
+  const propertyResult = associationDraft.primaryPropertyId
+    ? await resolvePropertyVisibilityForContext({ context: requestContext, propertyId: associationDraft.primaryPropertyId })
+    : null;
+  if (associationDraft.primaryPropertyId && (!propertyResult?.record || !propertyResult.resolution.canWrite)) {
+    throw new Error("选择的物件不存在或当前用户无法使用。");
   }
-  const primaryParty = partyResult?.record;
+  const primaryPartyId = getPrimaryPartyId(associationDraft);
+  const primaryParty = primaryPartyId
+    ? partyResults[associationDraft.parties.findIndex((party) => party.partyId === primaryPartyId)]?.record
+    : undefined;
   const primaryProperty = propertyResult?.record;
   const today = formatCaseTitleDate(new Date());
   const defaultTitle = tr(locale, {
@@ -3738,15 +3794,11 @@ export async function createBlankBrokerageCaseAction(formData: FormData) {
     ko: `새 안건 ${today}`,
   });
   const relationshipTitle = [primaryParty?.name, primaryProperty?.name].filter(Boolean).join(" / ");
-  const initialConfirmedData: Record<string, unknown> = {};
-  if (primaryParty) {
-    initialConfirmedData["applicant.name"] = primaryParty.name;
-    initialConfirmedData.__primaryPartyId = primaryParty.id;
-  }
-  if (primaryProperty) {
-    initialConfirmedData["property.name"] = primaryProperty.name;
-    initialConfirmedData.__primaryPropertyId = primaryProperty.id;
-  }
+  const initialConfirmedData = writeCaseAssociationData(
+    {},
+    associationDraft,
+    { primaryPartyName: primaryParty?.name, propertyName: primaryProperty?.name },
+  );
   if (workflowType) {
     initialConfirmedData.__workflowType = workflowType;
   }
@@ -3756,7 +3808,7 @@ export async function createBlankBrokerageCaseAction(formData: FormData) {
     userId: user.id,
     caseType: "unit_sale",
     caseTitle: requestedTitle || relationshipTitle || defaultTitle,
-    primaryPropertyId: primaryProperty?.id,
+    primaryPropertyId: associationDraft.primaryPropertyId,
     status: "draft",
     confirmedDataJson: initialConfirmedData,
     sourceImportJobIds: [],
@@ -3776,8 +3828,9 @@ export async function createBlankBrokerageCaseAction(formData: FormData) {
     }),
     context: {
       source: "case_create_flow",
-      primaryPartyId: primaryParty?.id,
-      primaryPropertyId: primaryProperty?.id,
+      primaryPartyId,
+      primaryPropertyId: associationDraft.primaryPropertyId,
+      associatedPartyIds: associationDraft.parties.map((party) => party.partyId),
       workflowType,
     },
   });
@@ -3785,7 +3838,81 @@ export async function createBlankBrokerageCaseAction(formData: FormData) {
   revalidatePath("/import-center");
   revalidatePath("/organize-center");
   revalidatePath(`/cases/${brokerageCase.id}`);
-  redirect(`/cases/${encodeURIComponent(brokerageCase.id)}?flash=blank_case_created`);
+    redirect(`/cases/${encodeURIComponent(brokerageCase.id)}?flash=blank_case_created`);
+  } catch (error) {
+    if (isRedirectError(error)) throw error;
+    return {
+      status: "error",
+      message: error instanceof Error ? error.message : "案件保存失败，请保留当前草稿后重试。",
+    };
+  }
+}
+
+export async function saveCaseAssociationsAction(formData: FormData) {
+  const session = await requireTenantSession({ permission: "record.update" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
+  const caseId = String(formData.get("caseId") ?? "").trim();
+  await rejectForbiddenRecordInput(formData, session, "case", caseId || undefined);
+  if (!caseId) throw new Error("案件IDが不正です。");
+
+  let associationDraft: CaseAssociationDraft;
+  try {
+    associationDraft = normalizeCaseAssociationDraft(JSON.parse(String(formData.get("associationDraftJson") ?? "{}")));
+  } catch {
+    throw new Error("案件资料草稿格式不正确，请重新操作。");
+  }
+  const associationError = validateCaseAssociationDraft(associationDraft);
+  if (associationError) throw new Error(associationError);
+
+  const brokerageCase = await requireWritableCase(session, caseId);
+  const requestContext = createRequestContext(session);
+  const partyResults = await Promise.all(
+    associationDraft.parties.map((party) => resolveClientVisibilityForContext({ context: requestContext, clientId: party.partyId })),
+  );
+  if (partyResults.some((result) => !result.record || !result.resolution.canWrite)) {
+    throw new Error("选择的人物不存在或当前用户无法使用。");
+  }
+  const propertyResult = associationDraft.primaryPropertyId
+    ? await resolvePropertyVisibilityForContext({ context: requestContext, propertyId: associationDraft.primaryPropertyId })
+    : null;
+  if (associationDraft.primaryPropertyId && (!propertyResult?.record || !propertyResult.resolution.canWrite)) {
+    throw new Error("选择的物件不存在或当前用户无法使用。");
+  }
+
+  const primaryPartyId = getPrimaryPartyId(associationDraft);
+  const primaryParty = primaryPartyId
+    ? partyResults[associationDraft.parties.findIndex((party) => party.partyId === primaryPartyId)]?.record
+    : undefined;
+  const nextConfirmedData = writeCaseAssociationData(
+    brokerageCase.confirmedDataJson,
+    associationDraft,
+    { primaryPartyName: primaryParty?.name, propertyName: propertyResult?.record?.name },
+  );
+  const updatedCase = await updateBrokerageCaseConfirmedData({
+    userId: user.id,
+    tenantId,
+    caseId,
+    confirmedDataJson: nextConfirmedData,
+    primaryPropertyId: associationDraft.primaryPropertyId ?? null,
+  });
+  if (!updatedCase) throw new Error("案件が見つからないか、保存できませんでした。");
+
+  await addAuditLog({
+    tenantId,
+    userId: user.id,
+    action: "case_associations_updated",
+    targetType: "case",
+    targetId: caseId,
+    message: "案件资料关联已更新。",
+    context: {
+      associatedPartyIds: associationDraft.parties.map((party) => party.partyId),
+      primaryPropertyId: associationDraft.primaryPropertyId,
+    },
+  });
+  revalidatePath(`/cases/${encodeURIComponent(caseId)}`);
+  revalidatePath("/organize-center");
+  redirect(`/cases/${encodeURIComponent(caseId)}?flash=case_associations_updated`);
 }
 
 export async function saveCaseWorkbenchAction(formData: FormData) {

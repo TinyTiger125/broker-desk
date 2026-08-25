@@ -3544,17 +3544,20 @@ export async function updateBrokerageCaseConfirmedData(input: {
   userId: string;
   caseId: string;
   confirmedDataJson: Record<string, unknown>;
+  primaryPropertyId?: string | null;
 }): Promise<BrokerageCase | null> {
   assertNoForbiddenRecordInput(input, { allowTenantId: true });
   await ensureSchema();
   const scopeTenantId = resolveTenantId(input.tenantId);
   const result = await getPool().query(
     `UPDATE brokerage_cases
-     SET confirmed_data_json = $3, updated_at = NOW()
+     SET confirmed_data_json = $3,
+         primary_property_id = CASE WHEN $5 THEN $6 ELSE primary_property_id END,
+         updated_at = NOW()
      WHERE id = $1 AND current_owner_user_id = $2 AND tenant_id = $4
        AND owner_resolution_status = 'resolved'
      RETURNING *`,
-    [input.caseId, input.userId, JSON.stringify(input.confirmedDataJson), scopeTenantId],
+    [input.caseId, input.userId, JSON.stringify(input.confirmedDataJson), scopeTenantId, input.primaryPropertyId !== undefined, input.primaryPropertyId ?? null],
   );
   return result.rows[0] ? mapBrokerageCase(result.rows[0]) : null;
 }

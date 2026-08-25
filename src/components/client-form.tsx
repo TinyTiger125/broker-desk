@@ -48,6 +48,7 @@ type ClientFormProps = {
   mode: "create" | "edit";
   locale?: Locale;
   returnTo: string;
+  onCreated?: (record: { id: string; name: string }) => void;
 };
 
 const inputClass = "w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-[#0046ad] focus:ring-2 focus:ring-blue-100";
@@ -102,13 +103,14 @@ function initialValues(defaults?: ClientFormDefaults): ClientFormValues {
   };
 }
 
-export function ClientForm({ action, defaults, mode, locale = "ja", returnTo }: ClientFormProps) {
+export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, onCreated }: ClientFormProps) {
   const text = copy[locale];
   const initial = initialValues(defaults);
   const [values, setValues] = useState<ClientFormValues>(initial);
   const [state, formAction, pending] = useActionState<ClientFormActionState, FormData>(action, { status: "idle", fieldErrors: {}, values: initial });
   const summaryRef = useRef<HTMLDivElement>(null);
   const composingRef = useRef(false);
+  const notifiedCreatedId = useRef<string | undefined>(undefined);
   const budgetTypeOptions = getBudgetTypeOptions(locale);
   const purposeOptions = getPurposeOptions(locale);
   const loanOptions = getLoanPreApprovalOptions(locale);
@@ -122,6 +124,12 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo }: 
     setValues(state.values);
     summaryRef.current?.focus();
   }, [state.status, state.values]);
+  useEffect(() => {
+    const record = state.createdRecord;
+    if (!record || notifiedCreatedId.current === record.id) return;
+    notifiedCreatedId.current = record.id;
+    onCreated?.(record);
+  }, [onCreated, state.createdRecord]);
   const errorEntries = Object.entries(state.fieldErrors) as Array<[keyof ClientFormValues, string]>;
   const errorFor = (field: keyof ClientFormValues) => state.fieldErrors[field];
   const update = (field: keyof ClientFormValues, event: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setValues((current) => ({ ...current, [field]: event.target.value }));
@@ -152,6 +160,7 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo }: 
   return (
     <form action={formAction} noValidate className="space-y-6 pb-10">
       <input type="hidden" name="returnTo" value={returnTo} />
+      {onCreated ? <input type="hidden" name="caseDraftReturn" value="1" /> : null}
       {values.clientId ? <input type="hidden" name="clientId" value={values.clientId} /> : null}
       {state.status === "error" ? <div ref={summaryRef} tabIndex={-1} role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900 outline-none focus-visible:ring-2 focus-visible:ring-rose-500"><p className="font-bold">{state.message ?? text.error}</p><ul className="mt-2 list-disc space-y-1 pl-5">{errorEntries.map(([field, message]) => <li key={field}><a className="underline" href={`#client-${field}`} onClick={(event) => focusField(event, field)}>{message}</a></li>)}</ul></div> : null}
 
