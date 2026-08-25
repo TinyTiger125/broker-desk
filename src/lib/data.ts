@@ -315,6 +315,8 @@ export const setPropertyLifecycleStatus: typeof memory.setPropertyLifecycleStatu
   repo.setPropertyLifecycleStatus(...args);
 export const listQuotations: typeof memory.listQuotations = (limit, tenantId) =>
   resolveQuotations(limit, tenantId);
+export const listQuotationsForContext: typeof memory.listQuotationsForContext = (...args) =>
+  repo.listQuotationsForContext(...args);
 export const getQuotationById: typeof memory.getQuotationById = (...args) =>
   repo.getQuotationById(...args);
 export const addClient: typeof memory.addClient = (...args) => repo.addClient(...args);
@@ -398,6 +400,8 @@ export const listAttachments: typeof memory.listAttachments = (...args) =>
   repo.listAttachments(...args);
 export const getAttachmentById: typeof memory.getAttachmentById = (...args) =>
   repo.getAttachmentById(...args);
+export const getAttachmentByIdForTenant: typeof memory.getAttachmentByIdForTenant = (...args) =>
+  repo.getAttachmentByIdForTenant(...args);
 export const addAttachment: typeof memory.addAttachment = (...args) =>
   repo.addAttachment(...args);
 export const addPrivateAttachment: typeof memory.addPrivateAttachment = (...args) =>
@@ -441,6 +445,10 @@ export const markGeneratedOutputFileUnavailable: typeof memory.markGeneratedOutp
   repo.markGeneratedOutputFileUnavailable(...args);
 export const getGeneratedOutputById: typeof memory.getGeneratedOutputById = (...args) =>
   repo.getGeneratedOutputById(...args);
+export const listGeneratedOutputsForTenant: typeof memory.listGeneratedOutputsForTenant = (...args) =>
+  repo.listGeneratedOutputsForTenant(...args);
+export const getGeneratedOutputByIdForTenant: typeof memory.getGeneratedOutputByIdForTenant = (...args) =>
+  repo.getGeneratedOutputByIdForTenant(...args);
 export const addGeneratedOutput: typeof memory.addGeneratedOutput = (...args) =>
   repo.addGeneratedOutput(...args);
 

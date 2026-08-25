@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { listBrokerageCases } from "@/lib/data";
-import { formatDate } from "@/lib/format";
-import { listHubAttachments, listHubContracts, listHubImportJobs, listHubParties, listHubProperties } from "@/lib/hub";
+import { listBrokerageCasesForContext, type BrokerageCase } from "@/lib/data";
+import { listHubParties, listHubProperties } from "@/lib/hub";
 import { getLocale, type Locale } from "@/lib/locale";
 import { requireTenantSession } from "@/lib/tenant-session";
+import { createRequestContext } from "@/lib/visibility-resolver";
+import { notFound } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +19,7 @@ type RelationNode = {
   title: string;
   subtitle: string;
   href?: string;
-  kind: "case" | "party" | "property" | "source" | "contract" | "attachment";
+  kind: "case" | "party" | "property";
 };
 
 const copyByLocale = {
@@ -30,15 +31,11 @@ const copyByLocale = {
     case: "案件",
     party: "関係者",
     property: "物件",
-    source: "読取資料",
-    contract: "契約・提案",
-    attachment: "添付資料",
     back: "整理情報へ戻る",
     open: "開く",
     empty: "保存済みの明示的な関係はありません。",
     noSelection: "対象を選択すると、確認できる明示的な関係を表示します。",
     noObject: "対象が見つかりません。",
-    sourceDate: "取得日",
   },
   zh: {
     title: "关系探索",
@@ -48,15 +45,11 @@ const copyByLocale = {
     case: "案件",
     party: "主体",
     property: "物件",
-    source: "读取资料",
-    contract: "合同 / 提案",
-    attachment: "附件资料",
     back: "返回整理信息",
     open: "打开",
     empty: "没有可确认的已保存关系。",
     noSelection: "选择对象后，这里会显示可以确认的明确关系。",
     noObject: "没有找到对象。",
-    sourceDate: "获取日期",
   },
   ko: {
     title: "관계 탐색기",
@@ -66,15 +59,11 @@ const copyByLocale = {
     case: "안건",
     party: "관계자",
     property: "매물",
-    source: "읽은 자료",
-    contract: "계약·제안",
-    attachment: "첨부 자료",
     back: "정보 정리로 돌아가기",
     open: "열기",
     empty: "확인할 수 있는 저장된 관계가 없습니다.",
     noSelection: "대상을 선택하면 확인 가능한 명시적 관계가 표시됩니다.",
     noObject: "대상을 찾을 수 없습니다.",
-    sourceDate: "수집일",
   },
 } satisfies Record<Locale, Record<string, string>>;
 
@@ -112,27 +101,25 @@ export default async function RelationshipTreePage({ searchParams }: Relationshi
   const [locale, session] = await Promise.all([getLocale(), requireTenantSession({ permission: "record.read" })]);
   const copy = copyByLocale[locale];
   const params = searchParams ? await searchParams : undefined;
+  if (params?.type && !isTreeType(params.type)) notFound();
   const requestedType = isTreeType(params?.type) ? params.type : undefined;
   const requestedId = String(params?.id ?? "").trim();
-  const context = { userId: session.user.id, tenantId: session.tenant.id };
+  const requestContext = createRequestContext(session);
 
-  const [cases, parties, properties, contracts, attachments, importJobs] = await Promise.all([
-    listBrokerageCases(session.user.id, 100, session.tenant.id),
-    listHubParties(locale, context),
-    listHubProperties(locale, context),
-    listHubContracts(locale, context),
-    listHubAttachments(locale, 200, context),
-    listHubImportJobs(context, locale),
+  const [visibleCases, parties, properties] = await Promise.all([
+    listBrokerageCasesForContext({ context: requestContext, limit: 100 }),
+    listHubParties(locale, { requestContext }),
+    listHubProperties(locale, { requestContext }),
   ]);
+  const caseEntries = new Map(visibleCases.flatMap((entry) => entry.brokerageCase ? [[entry.brokerageCase.id, entry]] as const : []));
+  const cases = visibleCases.flatMap((entry) => (entry.brokerageCase ? [entry.brokerageCase] : []));
+  const displayCaseTitle = (item: BrokerageCase) => caseEntries.get(item.id)?.resolution.canWrite ? item.caseTitle : copy.case;
 
   const selectedCase = requestedType === "case" ? cases.find((item) => item.id === requestedId) : undefined;
   const selectedParty = requestedType === "party" ? parties.find((item) => item.id === requestedId) : undefined;
   const selectedProperty = requestedType === "property" ? properties.find((item) => item.id === requestedId) : undefined;
-  const rootType = selectedCase ? "case" : selectedParty ? "party" : selectedProperty ? "property" : undefined;
-  const rootId = selectedCase?.id ?? selectedParty?.id ?? selectedProperty?.id;
-
   const root: RelationNode | undefined = selectedCase
-    ? { id: selectedCase.id, title: selectedCase.caseTitle, subtitle: copy.case, href: `/cases/${encodeURIComponent(selectedCase.id)}`, kind: "case" }
+    ? { id: selectedCase.id, title: displayCaseTitle(selectedCase), subtitle: copy.case, href: `/cases/${encodeURIComponent(selectedCase.id)}`, kind: "case" }
     : selectedParty
       ? { id: selectedParty.id, title: selectedParty.name, subtitle: copy.party, href: `/parties/${encodeURIComponent(selectedParty.id)}/edit`, kind: "party" }
       : selectedProperty
@@ -150,32 +137,21 @@ export default async function RelationshipTreePage({ searchParams }: Relationshi
       const party = parties.find((item) => item.id === primaryPartyId);
       if (party) relatedNodes.push({ id: party.id, title: party.name, subtitle: copy.party, href: `/parties/${encodeURIComponent(party.id)}/edit`, kind: "party" });
     }
-    for (const importJobId of selectedCase.sourceImportJobIds) {
-      const job = importJobs.find((item) => item.id === importJobId);
-      if (job) relatedNodes.push({ id: job.id, title: job.title, subtitle: `${copy.source} · ${formatDate(job.createdAt, locale)}`, href: `/import-center?job=${encodeURIComponent(job.id)}`, kind: "source" });
-    }
   } else if (selectedParty) {
-    for (const contract of contracts.filter((item) => item.clientId === selectedParty.id)) {
-      relatedNodes.push({ id: contract.id, title: contract.contractNumber, subtitle: copy.contract, kind: "contract" });
-    }
     for (const item of cases) {
       if (getPrimaryPartyId(item.confirmedDataJson) === selectedParty.id) {
-        relatedNodes.push({ id: item.id, title: item.caseTitle, subtitle: copy.case, href: `/cases/${encodeURIComponent(item.id)}`, kind: "case" });
+        relatedNodes.push({ id: item.id, title: displayCaseTitle(item), subtitle: copy.case, href: `/cases/${encodeURIComponent(item.id)}`, kind: "case" });
       }
     }
   } else if (selectedProperty) {
     for (const item of cases) {
       if (item.primaryPropertyId === selectedProperty.id) {
-        relatedNodes.push({ id: item.id, title: item.caseTitle, subtitle: copy.case, href: `/cases/${encodeURIComponent(item.id)}`, kind: "case" });
+        relatedNodes.push({ id: item.id, title: displayCaseTitle(item), subtitle: copy.case, href: `/cases/${encodeURIComponent(item.id)}`, kind: "case" });
       }
     }
   }
 
-  if (rootType && rootId) {
-    for (const item of attachments.filter((attachment) => attachment.targetType === rootType && attachment.targetId === rootId)) {
-      relatedNodes.push({ id: item.id, title: item.fileName, subtitle: `${copy.attachment} · ${formatDate(item.uploadedAt, locale)}`, kind: "attachment" });
-    }
-  }
+  if (requestedType && requestedId && !root) notFound();
 
   const groups = root
     ? [{ label: copy.connections, nodes: relatedNodes }]

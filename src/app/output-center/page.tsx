@@ -3,7 +3,7 @@ import { generateOutputDocumentAction } from "@/app/actions";
 import { FormDraftAssist } from "@/components/form-draft-assist";
 import { GuaranteeTemplateSelector } from "@/components/guarantee-template-selector";
 import { PageFlashBanner } from "@/components/page-flash-banner";
-import { listBrokerageCases, listGuaranteeApplicationDrafts, listQuoteFormData, listQuotations, listTenantGuaranteeTemplateInstalls } from "@/lib/data";
+import { listBrokerageCasesForContext, listGuaranteeApplicationDrafts, listPropertiesForContext, listQuotationsForContext, listTenantGuaranteeTemplateInstalls } from "@/lib/data";
 import { formatCurrency, formatDate } from "@/lib/format";
 import {
   buildGuaranteeApplicationReadiness,
@@ -18,6 +18,7 @@ import { t } from "@/lib/i18n";
 import { getLocale } from "@/lib/locale";
 import { getOutputDocLabel, isOutputDocType, type OutputDocType } from "@/lib/output-doc";
 import { requireTenantSession } from "@/lib/tenant-session";
+import { createRequestContext } from "@/lib/visibility-resolver";
 
 export const dynamic = "force-dynamic";
 
@@ -402,21 +403,27 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
   const copy = outputCenterCopy[locale];
   const user = session.user;
   const tenantId = session.tenant.id;
-  const hubContext = { userId: user.id, tenantId };
-  const quoteDataPromise = listQuoteFormData(tenantId);
-  const quotesPromise = listQuotations(100, tenantId);
+  const requestContext = createRequestContext(session);
+  const hubContext = { requestContext };
+  const propertiesPromise = listPropertiesForContext({ context: requestContext, lifecycleStatus: "active" });
+  const quotesPromise = listQuotationsForContext({ context: requestContext, limit: 100 });
   const partiesPromise = listHubParties(locale, hubContext);
   const outputsPromise = listHubGeneratedOutputs(locale, hubContext);
   const installedGuaranteeTemplatesPromise = listTenantGuaranteeTemplateInstalls({ tenantId });
-  const casesPromise = listBrokerageCases(user.id, 50, tenantId);
-  const [{ properties }, quotes, parties, outputs, installedGuaranteeTemplates, cases] = await Promise.all([
-    quoteDataPromise,
+  const casesPromise = listBrokerageCasesForContext({ context: requestContext, limit: 50 });
+  const [visibleProperties, quotes, parties, outputs, installedGuaranteeTemplates, visibleCases] = await Promise.all([
+    propertiesPromise,
     quotesPromise,
     partiesPromise,
     outputsPromise,
     installedGuaranteeTemplatesPromise,
     casesPromise,
   ]);
+  const properties = visibleProperties.filter((item) => item.resolution.canWrite).map((item) => item.property);
+  const writableParties = parties.filter((item) => item.canWrite);
+  const writableQuotes = quotes.filter((quote) => quote.client.currentOwnerUserId === user.id && (!quote.property || quote.property.currentOwnerUserId === user.id));
+  // Generation is owner-only even though the history list itself is parent-read scoped.
+  const cases = visibleCases.flatMap((item) => (item.brokerageCase && item.resolution.canWrite ? [item.brokerageCase] : []));
   const selectedCaseId = String(params?.caseId ?? "").trim();
   const selectedCase = selectedCaseId
     ? cases.find((item) => item.id === selectedCaseId)
@@ -452,7 +459,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
     guaranteeTemplateDrafts[activeGuaranteeTemplates.findIndex((template) => template.id === selectedGuaranteeTemplate.id)] ?? null;
   const selectedGuaranteeDraftReadiness = buildGuaranteeDraftReadiness(selectedGuaranteeDraft, selectedGuaranteeTemplate.id);
   const selectedPropertyForCandidate = properties[0];
-  const selectedPartyForCandidate = parties[0];
+  const selectedPartyForCandidate = writableParties[0];
   const guaranteeCandidateData: Record<string, unknown> = {
     "property.name": selectedPropertyForCandidate?.name,
     "lease.rent": selectedPropertyForCandidate?.listingPrice,
@@ -595,10 +602,10 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
   const selectedLanguage = params?.lang === "zh" || params?.lang === "ko" || params?.lang === "ja" ? params.lang : locale;
   const selectedZoom = params?.zoom === "75" || params?.zoom === "85" || params?.zoom === "100" ? params.zoom : "85";
   const missingQuoteClientLabel = locale === "zh" ? "客户未确认" : locale === "ko" ? "고객 미확인" : "顧客未確認";
-  const quoteOptionLabel = (quote: (typeof quotes)[number]) => `${quote.quoteTitle} - ${quote.client?.name ?? missingQuoteClientLabel}`;
+  const quoteOptionLabel = (quote: (typeof writableQuotes)[number]) => `${quote.quoteTitle} - ${quote.client?.name ?? missingQuoteClientLabel}`;
   const requestedQuoteId = String(params?.quoteId ?? "").trim();
-  const defaultQuoteId = isPropertyOverview ? requestedQuoteId : requestedQuoteId || latestOutputs[0]?.sourceQuoteId || quotes[0]?.id || "";
-  const selectedQuote = isPropertyOverview ? undefined : quotes.find((quote) => quote.id === defaultQuoteId) ?? quotes[0];
+  const defaultQuoteId = isPropertyOverview ? requestedQuoteId : requestedQuoteId || latestOutputs[0]?.sourceQuoteId || writableQuotes[0]?.id || "";
+  const selectedQuote = isPropertyOverview ? undefined : writableQuotes.find((quote) => quote.id === defaultQuoteId) ?? writableQuotes[0];
   const previewQuoteId = selectedQuote?.id;
   const selectedProperty = isPropertyOverview
     ? properties.find((property) => property.id === requestedPropertyId)
@@ -1351,7 +1358,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                       name="quoteId"
                       defaultValue={selectedQuote?.id ?? ""}
                     >
-                      {quotes.map((quote) => (
+                      {writableQuotes.map((quote) => (
                         <option key={quote.id} value={quote.id}>
                           {quoteOptionLabel(quote)}
                         </option>

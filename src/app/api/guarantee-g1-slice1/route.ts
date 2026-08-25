@@ -16,7 +16,7 @@ import {
   createGuaranteeCompanyMask,
   getGuaranteeMaskMatch,
   createGuaranteePreviewConfirmation,
-  getBrokerageCaseById,
+  getBrokerageCaseByIdForContext,
   getGuaranteeBlankFormVersion,
   getGuaranteeCompanyMask,
   getGuaranteeCompanyMaskVersion,
@@ -38,6 +38,8 @@ import { GUARANTEE_COORDINATE_SYSTEM, serializeMaskLayout } from "@/lib/guarante
 import { GUARANTEE_BLANK_FORM_MAX_BYTES, inspectGuaranteeBlankPdf, withGuaranteePdfTimeout } from "@/lib/guarantee-slice1-pdf.mjs";
 import { resolveGuaranteeFieldValue } from "@/lib/guarantee-slice1-policy.mjs";
 import { getTenantCapability, requireTenantSession, TenantSessionError } from "@/lib/tenant-session";
+import { createRequestContext } from "@/lib/visibility-resolver";
+import { assertCaseSourcesReadable, withW93SourceProvenance } from "@/lib/w93-access";
 
 export const runtime = "nodejs";
 
@@ -200,6 +202,14 @@ async function requireSession(permission: "admin" | "member" | "generate") {
   return session;
 }
 
+async function requireWritableCase(session: Awaited<ReturnType<typeof requireSession>>, caseId: string) {
+  const context = createRequestContext(session);
+  const resolved = await getBrokerageCaseByIdForContext({ context, caseId });
+  if (!resolved.brokerageCase || !resolved.resolution.canWrite) throw new Error("case_not_found");
+  await assertCaseSourcesReadable(context, resolved.brokerageCase);
+  return { context, brokerageCase: resolved.brokerageCase };
+}
+
 async function handleUpload(request: Request) {
   const session = await requireSession("admin");
   const form = await request.formData();
@@ -355,7 +365,7 @@ async function handleTest(request: Request) {
   const version = await getGuaranteeCompanyMaskVersion({ tenantId: session.tenant.id, id: maskVersionId });
   if (!version || version.status !== "draft") throw new Error("mask_test_version_not_found");
   const blank = version ? await getGuaranteeBlankFormVersion({ tenantId: session.tenant.id, id: version.blankFormVersionId }) : undefined;
-  const brokerageCase = await getBrokerageCaseById({ userId: session.user.id, tenantId: session.tenant.id, caseId });
+  const { brokerageCase } = await requireWritableCase(session, caseId);
   if (!blank || blank.status !== "ready") throw new Error("mask_test_blank_form_not_ready");
   if (!brokerageCase) throw new Error("mask_test_case_not_accessible");
   const source = await readPrivateAttachmentContentForTenant({ tenantId: session.tenant.id, id: blank.attachmentId });
@@ -401,7 +411,7 @@ async function handlePreview(request: Request) {
   const session = await requireSession("member");
   const body = asRecord(await request.json()); const caseId = String(body.caseId ?? ""); const blankFormVersionId = String(body.blankFormVersionId ?? ""); const maskVersionId = String(body.maskVersionId ?? "");
   if (!caseId || !blankFormVersionId || !maskVersionId) throw new Error("preview_context_required");
-  const brokerageCase = await getBrokerageCaseById({ userId: session.user.id, tenantId: session.tenant.id, caseId });
+  const { brokerageCase } = await requireWritableCase(session, caseId);
   if (!brokerageCase) throw new Error("case_not_found");
   const { blank, mask } = await loadCurrentPublishedMaskContext(session.tenant.id, maskVersionId);
   if (blank.id !== blankFormVersionId) throw new Error("mask_match_not_exact");
@@ -441,7 +451,7 @@ async function handleSaveApplicationDraft(request: Request) {
   const caseId = String(body.caseId ?? "").trim();
   const maskVersionId = String(body.maskVersionId ?? "").trim();
   if (!caseId || !maskVersionId) throw new Error("application_draft_save_context_required");
-  const brokerageCase = await getBrokerageCaseById({ userId: session.user.id, tenantId: session.tenant.id, caseId });
+  const { brokerageCase } = await requireWritableCase(session, caseId);
   if (!brokerageCase) throw new Error("case_not_found");
   const { mask } = await loadCurrentPublishedMaskContext(session.tenant.id, maskVersionId);
   const supplement = normalizeApplicationSupplement(asRecord(body.supplement));
@@ -473,7 +483,7 @@ async function handleLoadApplicationDraft(request: Request) {
   const caseId = String(body.caseId ?? "").trim();
   const maskVersionId = String(body.maskVersionId ?? "").trim();
   if (!caseId || !maskVersionId) throw new Error("application_draft_context_required");
-  const brokerageCase = await getBrokerageCaseById({ userId: session.user.id, tenantId: session.tenant.id, caseId });
+  const { brokerageCase } = await requireWritableCase(session, caseId);
   if (!brokerageCase) throw new Error("case_not_found");
   // Application supplements are owned by the published company mask (the
   // logical reusable form), not by an individual immutable version. This lets
@@ -502,7 +512,7 @@ async function handleGenerate(request: Request) {
   let attachmentId: string | undefined;
   let outputId: string | undefined;
   try {
-    const brokerageCase = await getBrokerageCaseById({ userId: session.user.id, tenantId: session.tenant.id, caseId: claimed.caseId }); if (!brokerageCase) throw new Error("case_not_found");
+    const { brokerageCase } = await requireWritableCase(session, claimed.caseId);
     if (jsonHash(brokerageCase.confirmedDataJson) !== claimed.caseInputSnapshotHash) throw new Error("preview_stale");
     const blank = await getGuaranteeBlankFormVersion({ tenantId: session.tenant.id, id: claimed.blankFormVersionId }); const mask = await getGuaranteeCompanyMaskVersion({ tenantId: session.tenant.id, id: claimed.companyMaskVersionId });
     const match = blank && mask ? await getGuaranteeMaskMatch({ tenantId: session.tenant.id, blankFormVersionId: blank.id, maskVersionId: mask.id }) : undefined;
@@ -514,7 +524,7 @@ async function handleGenerate(request: Request) {
     const bytes = await renderGuaranteePdf(source, mask, brokerageCase.confirmedDataJson, claimed.supplementSnapshot); const attachment = await addPrivateAttachment({ tenantId: session.tenant.id, userId: session.user.id, targetType: "guarantee_generated_output", targetId: confirmationId, fileName: `guarantee-${claimed.caseId}-${mask.versionNumber}.pdf`, fileType: "application/pdf", content: bytes });
     attachmentId = attachment.id;
     if (!claimed.processingToken) throw new Error("generation_confirmation_claim_token_missing");
-    const finalized = await finalizeGuaranteePreviewOutput({ confirmationId, processingToken: claimed.processingToken, output: { tenantId: session.tenant.id, userId: session.user.id, actorId: session.user.id, outputType: "guarantee_application", outputFormat: "pdf", language: "ja", title: `保証会社申込書 - ${brokerageCase.caseTitle}`, documentNumber: `BD-GA-${Date.now()}-${claimed.caseId}`, caseId: claimed.caseId, templateId: "company_mask", inputDataSnapshot: brokerageCase.confirmedDataJson, draftValueSnapshot: claimed.supplementSnapshot, layoutSnapshot: mask.layoutSnapshot, fileAttachmentId: attachment.id, fileSha256: hash(bytes), fileSizeBytes: bytes.length, fileMimeType: "application/pdf", blankFormVersionId: blank.id, blankFormSha256: blank.sha256, companyMaskVersionId: mask.id, fieldCatalogVersion: mask.fieldCatalogVersion, caseInputSnapshotHash: claimed.caseInputSnapshotHash } });
+    const finalized = await finalizeGuaranteePreviewOutput({ confirmationId, processingToken: claimed.processingToken, output: { tenantId: session.tenant.id, userId: session.user.id, actorId: session.user.id, outputType: "guarantee_application", outputFormat: "pdf", language: "ja", title: `保証会社申込書 - ${brokerageCase.caseTitle}`, documentNumber: `BD-GA-${Date.now()}-${claimed.caseId}`, caseId: claimed.caseId, templateId: "company_mask", inputDataSnapshot: withW93SourceProvenance(brokerageCase), draftValueSnapshot: claimed.supplementSnapshot, layoutSnapshot: mask.layoutSnapshot, fileAttachmentId: attachment.id, fileSha256: hash(bytes), fileSizeBytes: bytes.length, fileMimeType: "application/pdf", blankFormVersionId: blank.id, blankFormSha256: blank.sha256, companyMaskVersionId: mask.id, fieldCatalogVersion: mask.fieldCatalogVersion, caseInputSnapshotHash: claimed.caseInputSnapshotHash } });
     const output = finalized.output;
     outputId = output.id;
     return NextResponse.json({ outputId: output.id, fileSha256: output.fileSha256, fileSizeBytes: output.fileSizeBytes, maskVersion: mask.versionNumber });

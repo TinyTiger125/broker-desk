@@ -4186,6 +4186,14 @@ export async function getAttachmentById(input: {
   return result.rows[0] ? mapAttachment(result.rows[0]) : undefined;
 }
 
+/** W9.3 parent-bound attachment lookup; parent visibility is checked by the caller. */
+export async function getAttachmentByIdForTenant(input: { tenantId?: string; id: string }): Promise<Attachment | undefined> {
+  await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const result = await getPool().query(`SELECT * FROM attachments WHERE id = $1 AND tenant_id = $2 LIMIT 1`, [input.id, scopeTenantId]);
+  return result.rows[0] ? mapAttachment(result.rows[0]) : undefined;
+}
+
 export async function addAttachment(input: {
   tenantId?: string;
   userId: string;
@@ -4340,6 +4348,23 @@ export async function getGeneratedOutputById(input: {
   );
   if (result.rows.length === 0) return undefined;
   return mapGeneratedOutput(result.rows[0]);
+}
+
+export async function listGeneratedOutputsForTenant(input: { tenantId?: string; limit?: number }): Promise<GeneratedOutput[]> {
+  await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const result = await getPool().query(
+    `SELECT * FROM generated_outputs WHERE tenant_id = $1 ORDER BY generated_at DESC LIMIT $2`,
+    [scopeTenantId, input.limit ?? 200],
+  );
+  return result.rows.map(mapGeneratedOutput);
+}
+
+export async function getGeneratedOutputByIdForTenant(input: { tenantId?: string; id: string }): Promise<GeneratedOutput | undefined> {
+  await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const result = await getPool().query(`SELECT * FROM generated_outputs WHERE id = $1 AND tenant_id = $2 LIMIT 1`, [input.id, scopeTenantId]);
+  return result.rows[0] ? mapGeneratedOutput(result.rows[0]) : undefined;
 }
 
 export async function listGuaranteeOutputsByCase(input: { tenantId: string; caseId: string; limit?: number }): Promise<GeneratedOutput[]> {
@@ -5291,6 +5316,41 @@ export async function listQuotations(limit?: number, tenantId?: string): Promise
     });
   }
   return items;
+}
+
+/** Resolver-bound quotation projection; hidden related records are excluded. */
+export async function listQuotationsForContext(input: { context: RequestContext; limit?: number }): Promise<DashboardQuoteItem[]> {
+  const visibleClients = await listClientsForContext({ context: input.context, filter: { lifecycleStatus: "active", sort: "recent_created" } });
+  const visibleProperties = await listPropertiesForContext({ context: input.context, lifecycleStatus: "active" });
+  const clientIds = new Set(visibleClients.filter((item) => item.resolution.canRead).map((item) => item.client?.id).filter(Boolean));
+  const propertyIds = new Set(visibleProperties.filter((item) => item.resolution.canRead).map((item) => item.property?.id).filter(Boolean));
+  if (clientIds.size === 0) return [];
+  const visibleClientIds = [...clientIds];
+  const visiblePropertyIds = [...propertyIds];
+  const quoteRes = await getPool().query(
+    `SELECT * FROM quotations
+      WHERE tenant_id = $1
+        AND client_id = ANY($2)
+        AND (property_id IS NULL OR property_id = ANY($3))
+      ORDER BY created_at DESC
+      LIMIT $4`,
+    [input.context.tenantId, visibleClientIds, visiblePropertyIds, input.limit ?? 100],
+  );
+  const quotes = quoteRes.rows.map(mapQuotation);
+  if (quotes.length === 0) return [];
+  const [clientRes, propertyRes] = await Promise.all([
+    getPool().query("SELECT * FROM clients WHERE id = ANY($1) AND tenant_id = $2", [visibleClientIds, input.context.tenantId]),
+    visiblePropertyIds.length > 0
+      ? getPool().query("SELECT * FROM properties WHERE id = ANY($1) AND tenant_id = $2", [visiblePropertyIds, input.context.tenantId])
+      : Promise.resolve({ rows: [] as Array<Record<string, unknown>> }),
+  ]);
+  const clients = new Map(clientRes.rows.map((row) => [String(row.id), mapClient(row)] as const));
+  const properties = new Map(propertyRes.rows.map((row) => [String(row.id), mapProperty(row)] as const));
+  return quotes.flatMap((quote) => {
+    const client = clients.get(quote.clientId);
+    if (!client) return [];
+    return [{ ...quote, client, property: quote.propertyId ? properties.get(quote.propertyId) : undefined }];
+  });
 }
 
 export async function getQuotationById(quoteId: string, tenantId?: string) {

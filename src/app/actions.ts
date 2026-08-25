@@ -158,12 +158,14 @@ async function requireWritableCase(session: TenantSession, caseId: string) {
   if (!result.record || !result.resolution.canWrite) {
     throw new Error("案件が見つかりません。");
   }
+  await assertCaseSourcesReadable(context, result.record);
   return result.record;
 }
 import type { InputFileExtractionResult } from "@/lib/input-file-extractor";
 import { queueExcelImportSource } from "@/lib/excel-import-queue";
 import { queueIdentityImportSources } from "@/lib/identity-import-queue";
 import { createClerkInvitationForTenantMember } from "@/lib/clerk-invitations";
+import { assertCaseSourcesReadable } from "@/lib/w93-access";
 import { getVerifiedClerkAuthIdentity } from "@/lib/clerk-auth";
 import { isClerkAuthEnabled } from "@/lib/auth-mode";
 import { CASE_FIELD_KEYS, getCaseFieldDefinition, isKnownCaseFieldKey } from "@/lib/case-field-catalog";

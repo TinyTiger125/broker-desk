@@ -1,8 +1,10 @@
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
-import { getBrokerageCaseById, getGuaranteeOutputByCase, markGeneratedOutputFileUnavailable, readPrivateAttachmentContentForTenant } from "@/lib/data";
+import { getBrokerageCaseByIdForContext, getGuaranteeOutputByCase, markGeneratedOutputFileUnavailable, readPrivateAttachmentContentForTenant } from "@/lib/data";
 import { requireTenantSession, TenantSessionError } from "@/lib/tenant-session";
 import { getRequestId } from "@/lib/operational-logging";
+import { createRequestContext } from "@/lib/visibility-resolver";
+import { assertCaseSourcesReadable, assertGeneratedOutputSourcesReadable } from "@/lib/w93-access";
 
 export const runtime = "nodejs";
 
@@ -14,10 +16,21 @@ export async function GET(request: Request, { params }: { params: Promise<{ outp
     const { outputId } = await params;
     const url = new URL(request.url); const caseId = String(url.searchParams.get("caseId") ?? "");
     if (!caseId) return jsonError("case_required", 400);
-    const brokerageCase = await getBrokerageCaseById({ userId: session.user.id, tenantId: session.tenant.id, caseId });
-    if (!brokerageCase) return jsonError("case_not_found", 404);
+    const requestContext = createRequestContext(session);
+    const resolvedCase = await getBrokerageCaseByIdForContext({ context: requestContext, caseId });
+    if (!resolvedCase.brokerageCase || !resolvedCase.resolution.canRead) return jsonError("case_not_found", 404);
+    try {
+      await assertCaseSourcesReadable(requestContext, resolvedCase.brokerageCase);
+    } catch {
+      return jsonError("case_not_found", 404);
+    }
     const output = await getGuaranteeOutputByCase({ tenantId: session.tenant.id, caseId, id: outputId });
     if (!output?.fileAttachmentId) return jsonError("output_file_unavailable", 404);
+    try {
+      await assertGeneratedOutputSourcesReadable(requestContext, output);
+    } catch {
+      return jsonError("output_file_unavailable", 404);
+    }
     if (output.fileStatus !== "ready") {
       await markGeneratedOutputFileUnavailable({ tenantId: session.tenant.id, caseId, id: outputId });
       return jsonError("output_file_unavailable", 404);

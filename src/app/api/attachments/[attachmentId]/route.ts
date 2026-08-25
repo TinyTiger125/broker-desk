@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
-import { getAttachmentById, readPrivateAttachmentContent } from "@/lib/data";
+import { readPrivateAttachmentContentForTenant } from "@/lib/data";
 import {
   isLocalPrivateStoragePath,
   isPostgresPrivateStoragePath,
   readLocalPrivateAttachment,
 } from "@/lib/attachment-storage";
 import { TenantSessionError, requireTenantSession } from "@/lib/tenant-session";
+import { createRequestContext } from "@/lib/visibility-resolver";
+import { getW93AttachmentForContext } from "@/lib/w93-access";
 
 export const dynamic = "force-dynamic";
 
@@ -26,11 +28,8 @@ export async function GET(_request: Request, context: { params: Promise<{ attach
   }
 
   const { attachmentId } = await context.params;
-  const attachment = await getAttachmentById({
-    id: attachmentId,
-    tenantId: session.tenant.id,
-    userId: session.user.id,
-  });
+  const requestContext = createRequestContext(session);
+  const attachment = await getW93AttachmentForContext(requestContext, attachmentId);
   if (!attachment) {
     return NextResponse.json({ ok: false, error: "attachment_not_found" }, { status: 404 });
   }
@@ -39,15 +38,14 @@ export async function GET(_request: Request, context: { params: Promise<{ attach
   }
 
   const content = isLocalPrivateStoragePath(attachment.storagePath)
-    ? await readLocalPrivateAttachment({
+      ? await readLocalPrivateAttachment({
         storagePath: attachment.storagePath!,
         tenantId: session.tenant.id,
       })
-    : isPostgresPrivateStoragePath(attachment.storagePath)
-      ? await readPrivateAttachmentContent({
+      : isPostgresPrivateStoragePath(attachment.storagePath)
+      ? await readPrivateAttachmentContentForTenant({
           id: attachment.id,
           tenantId: session.tenant.id,
-          userId: session.user.id,
         })
       : null;
   if (!content) {

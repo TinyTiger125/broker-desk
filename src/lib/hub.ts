@@ -1,7 +1,7 @@
 import {
   listAttachments,
   listBrokerageCasesForContext,
-  listGeneratedOutputs,
+  listGeneratedOutputsForTenant,
   getClientDetail,
   getDefaultUser,
   listImportJobs,
@@ -27,7 +27,6 @@ import {
 } from "@/lib/party-profile";
 import {
   localizeDemoClient,
-  localizeDemoGeneratedOutput,
   localizeDemoImportJob,
   localizeDemoProperty,
   localizeDemoQuotation,
@@ -444,49 +443,36 @@ export async function listHubGeneratedOutputs(
   locale: Locale = "ja",
   context: HubQueryContext = {},
 ): Promise<HubGeneratedOutputItem[]> {
-  const resolved = await resolveHubContext(context);
-  if (!resolved) return [];
-  const [rawQuotes, rawProperties, parties, templateVersions, rawGeneratedOutputs] = await Promise.all([
-    listQuotations(100, resolved.tenantId),
-    listQuoteFormData(resolved.tenantId),
-    listHubParties(locale, resolved),
-    listOutputTemplateVersions(resolved.userId, 50, resolved.tenantId),
-    listGeneratedOutputs({ userId: resolved.userId, tenantId: resolved.tenantId, limit: 200 }),
-  ]);
-  const quotes = rawQuotes.map((item) => localizeDemoQuotation(locale, item));
-  const quoteMap = new Map(quotes.map((quote) => [quote.id, quote]));
-  const propertyMap = new Map(
-    rawProperties.properties.map((property) => {
-      const localized = localizeDemoProperty(locale, property);
-      return [localized.id, localized.name];
-    }),
-  );
-  const partyMap = new Map(parties.map((party) => [party.id, party.name]));
-  const versionLabelMap = new Map(templateVersions.map((v) => [v.id, v.versionLabel]));
-  const generated = rawGeneratedOutputs
-    .map((item) => localizeDemoGeneratedOutput(locale, item))
-    .filter((item) => ![
-      "property_overview",
-      "proposal",
-      "estimate_sheet",
-      "funding_plan",
-      "assumption_memo",
-    ].includes(item.outputType));
-
-  const contractPrefix = tr(locale, { ja: "売買", zh: "买卖", ko: "매매" });
-
-  if (generated.length > 0) {
-    return generated
+  if (!context.requestContext) return [];
+  {
+    const [visibleCases, rawGeneratedOutputs, templateVersions] = await Promise.all([
+      listBrokerageCasesForContext({ context: context.requestContext, limit: 500 }),
+      listGeneratedOutputsForTenant({ tenantId: context.requestContext.tenantId, limit: 200 }),
+      listOutputTemplateVersions(context.requestContext.userId, 50, context.requestContext.tenantId),
+    ]);
+    const visibleCaseResolution = new Map(visibleCases.flatMap((entry) => entry.brokerageCase ? [[entry.brokerageCase.id, entry.resolution] as const] : []));
+    const visibleCaseIds = new Set(visibleCaseResolution.keys());
+    const versionLabelMap = new Map(templateVersions.map((v) => [v.id, v.versionLabel]));
+    return rawGeneratedOutputs
+      .filter((item) => Boolean(item.caseId && visibleCaseIds.has(item.caseId)))
+      .filter((item) => item.fileStatus !== "unavailable")
+      .filter((item) => !["property_overview", "proposal", "estimate_sheet", "funding_plan", "assumption_memo"].includes(item.outputType))
       .map((item) => {
-        const quote = item.quoteId ? quoteMap.get(item.quoteId) : undefined;
-        const isPropertyOverview = item.outputType === "property_overview";
-        const relatedProperty = item.propertyId ? propertyMap.get(item.propertyId) : quote?.property?.name;
-        const relatedParty = item.partyId ? partyMap.get(item.partyId) : isPropertyOverview ? undefined : quote?.client?.name;
-        const title =
-          localizeDemoText(locale, item.title) ||
-          (isPropertyOverview
-            ? `${getGeneratedOutputTypeLabel(locale, item.outputType)} - ${relatedProperty ?? "N/A"}`
-            : `${getGeneratedOutputTypeLabel(locale, item.outputType)} - ${quote?.client?.name ?? "N/A"}`);
+        const snapshot = item.inputDataSnapshot;
+        const snapshotValue = (...paths: string[]) => {
+          for (const path of paths) {
+            let value: unknown = snapshot;
+            for (const part of path.split(".")) value = value && typeof value === "object" ? (value as Record<string, unknown>)[part] : undefined;
+            if (value !== undefined && value !== null && value !== "") return String(value);
+          }
+          return undefined;
+        };
+        const ownerWrite = item.caseId ? visibleCaseResolution.get(item.caseId)?.canWrite === true : false;
+        const relatedProperty = ownerWrite ? snapshotValue("quote.property.name", "property.name") : undefined;
+        const relatedParty = ownerWrite ? snapshotValue("quote.client.name", "client.name", "applicant.name") : undefined;
+        const title = ownerWrite
+          ? localizeDemoText(locale, item.title) || `${getGeneratedOutputTypeLabel(locale, item.outputType)} - ${relatedParty ?? relatedProperty ?? "N/A"}`
+          : getGeneratedOutputTypeLabel(locale, item.outputType);
         return {
           id: item.id,
           actorId: item.actorId,
@@ -495,12 +481,12 @@ export async function listHubGeneratedOutputs(
           language: item.language,
           title,
           documentNumber: item.documentNumber,
-          propertyId: item.propertyId,
-          partyId: item.partyId,
+          propertyId: ownerWrite ? item.propertyId : undefined,
+          partyId: ownerWrite ? item.partyId : undefined,
           relatedProperty,
           relatedParty,
-          relatedContractHint: item.sourceQuoteId ? `${contractPrefix}-${item.sourceQuoteId.toUpperCase()}` : "-",
-          sourceQuoteId: item.sourceQuoteId,
+          relatedContractHint: ownerWrite && item.sourceQuoteId ? `${tr(locale, { ja: "売買", zh: "买卖", ko: "매매" })}-${item.sourceQuoteId.toUpperCase()}` : "-",
+          sourceQuoteId: ownerWrite ? item.sourceQuoteId : undefined,
           generatedAt: item.generatedAt,
           templateVersionId: item.templateVersionId,
           templateVersionLabel: item.templateVersionId ? versionLabelMap.get(item.templateVersionId) : undefined,
@@ -509,7 +495,6 @@ export async function listHubGeneratedOutputs(
       .sort((a, b) => b.generatedAt.getTime() - a.generatedAt.getTime())
       .slice(0, 30);
   }
-
   return [];
 }
 

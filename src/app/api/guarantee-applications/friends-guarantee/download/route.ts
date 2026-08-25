@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { addAuditLog, addGeneratedOutput, getActiveTenantGuaranteeTemplateInstall, getBrokerageCaseById, getGuaranteeApplicationDraft } from "@/lib/data";
+import { addAuditLog, addGeneratedOutput, getActiveTenantGuaranteeTemplateInstall, getBrokerageCaseByIdForContext, getGuaranteeApplicationDraft } from "@/lib/data";
 import {
   getGuaranteePdfTemplateConfig,
   renderFriendsGuaranteePdf,
@@ -8,6 +8,9 @@ import { resolveGuaranteeTemplateLayout } from "@/lib/guarantee-template-layout-
 import { getGuaranteeCompanyTemplate } from "@/lib/guarantee-application";
 import { evaluateGuaranteeDownloadGate } from "@/lib/guarantee-download-gate";
 import { requireTenantSession, TenantSessionError } from "@/lib/tenant-session";
+import { createRequestContext } from "@/lib/visibility-resolver";
+import { assertCaseSourcesReadable, withW93SourceProvenance } from "@/lib/w93-access";
+import { getRequestId } from "@/lib/operational-logging";
 
 const TEMPLATE_ID = "friends_guarantee_individual_v1";
 
@@ -28,6 +31,7 @@ function createGuaranteeDocumentNumber(input: { caseId: string; generatedAt: Dat
 }
 
 export async function GET(request: Request) {
+  const requestId = getRequestId(request);
   const url = new URL(request.url);
   const caseId = String(url.searchParams.get("caseId") ?? "").trim();
   const mode = String(url.searchParams.get("mode") ?? "").trim();
@@ -45,8 +49,15 @@ export async function GET(request: Request) {
     throw error;
   }
 
-  const brokerageCase = await getBrokerageCaseById({ userId: session.user.id, tenantId: session.tenant.id, caseId });
-  if (!brokerageCase) {
+  const requestContext = createRequestContext(session);
+  const resolvedCase = await getBrokerageCaseByIdForContext({ context: requestContext, caseId });
+  if (!resolvedCase.brokerageCase || !resolvedCase.resolution.canWrite) {
+    return NextResponse.json({ error: "case_not_found" }, { status: 404 });
+  }
+  const brokerageCase = resolvedCase.brokerageCase;
+  try {
+    await assertCaseSourcesReadable(requestContext, brokerageCase);
+  } catch {
     return NextResponse.json({ error: "case_not_found" }, { status: 404 });
   }
   const installedTemplate = await getActiveTenantGuaranteeTemplateInstall({
@@ -115,7 +126,7 @@ export async function GET(request: Request) {
         templateVersionId: templateLayout.versionId,
         caseId: brokerageCase.id,
         templateId: TEMPLATE_ID,
-        inputDataSnapshot: brokerageCase.confirmedDataJson,
+        inputDataSnapshot: withW93SourceProvenance(brokerageCase),
         draftValueSnapshot: draft?.fieldValuesJson ?? {},
         fieldMappingSnapshot: {
           templateId: TEMPLATE_ID,
@@ -151,13 +162,13 @@ export async function GET(request: Request) {
         "cache-control": "no-store",
       },
     });
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       {
         error: "friends_guarantee_pdf_export_failed",
-        message: error instanceof Error ? error.message : "unknown_error",
+        requestId,
       },
-      { status: 500 },
+      { status: 500, headers: { "x-request-id": requestId } },
     );
   }
 }
