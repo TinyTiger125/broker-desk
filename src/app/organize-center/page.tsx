@@ -11,7 +11,8 @@ import { formatDate } from "@/lib/format";
 import { listHubParties, listHubProperties } from "@/lib/hub";
 import { getLocale, type Locale } from "@/lib/locale";
 import { normalizeLifecycleFilter, type LifecycleFilter } from "@/lib/record-lifecycle";
-import { requireTenantSession, TenantSessionError } from "@/lib/tenant-session";
+import { getTenantCapability, requireTenantSession, TenantSessionError } from "@/lib/tenant-session";
+import { capabilityHasTenantPermission } from "@/lib/tenant-permissions";
 import { createRequestContext } from "@/lib/visibility-resolver";
 import { redirect } from "next/navigation";
 
@@ -71,6 +72,8 @@ const copyByLocale = {
     continueCheck: "一覧で続けて確認",
     relationCase: "案件内の関係",
     visibilityLabel: "可視範囲",
+    companyReadOnly: "会社メンバーに公開／読み取り専用",
+    ownerReadOnly: "現在のアカウントは閲覧のみです。",
     relationParty: "関連先",
     relationProperty: "利用先",
     pageStatus: "表示中",
@@ -123,6 +126,8 @@ const copyByLocale = {
     continueCheck: "进入列表继续核对",
     relationCase: "案件关系",
     visibilityLabel: "可见范围",
+    companyReadOnly: "公司成员可见／只读",
+    ownerReadOnly: "当前账号仅可查看。",
     relationParty: "关联对象",
     relationProperty: "使用位置",
     pageStatus: "当前显示",
@@ -175,6 +180,8 @@ const copyByLocale = {
     continueCheck: "목록에서 계속 확인",
     relationCase: "안건 관계",
     visibilityLabel: "공개 범위",
+    companyReadOnly: "회사 구성원 공개 / 읽기 전용",
+    ownerReadOnly: "현재 계정은 보기 전용입니다.",
     relationParty: "연결 대상",
     relationProperty: "사용 위치",
     pageStatus: "현재 표시",
@@ -304,12 +311,15 @@ async function OrganizeCenterContent({ locale, params }: { locale: Locale; param
     return <OrganizeCenterInboxUnavailable copy={copy} />;
   }
 
+  const capabilityCanWrite = session.membership.status === "active"
+    && capabilityHasTenantPermission(getTenantCapability(session.membership), "record.update");
+
   let cases;
   let parties;
   let properties;
   try {
     const requestContext = createRequestContext(session);
-    const hubContext = { userId: session.user.id, tenantId: session.tenant.id, lifecycleStatus: lifecycleFilter };
+    const hubContext = { userId: session.user.id, tenantId: session.tenant.id, lifecycleStatus: lifecycleFilter, requestContext };
     [cases, parties, properties] = await Promise.all([
       listBrokerageCasesForContext({ context: requestContext, lifecycleStatus: lifecycleFilter }),
       listHubParties(locale, hubContext),
@@ -345,6 +355,7 @@ async function OrganizeCenterContent({ locale, params }: { locale: Locale; param
   });
 
   const partyItems: WorkObject[] = parties.map((item) => {
+    const canWrite = item.canWrite && capabilityCanWrite;
     return {
       id: item.id,
       type: "party",
@@ -354,6 +365,8 @@ async function OrganizeCenterContent({ locale, params }: { locale: Locale; param
       relation: item.relatedPropertyHint || copy.noRelation,
       relationLabel: copy.relationParty,
       href: `/parties/${encodeURIComponent(item.id)}/edit`,
+      visibilityLabel: item.readOnly ? copy.companyReadOnly : canWrite ? undefined : copy.ownerReadOnly,
+      readOnly: !canWrite,
     };
   });
 

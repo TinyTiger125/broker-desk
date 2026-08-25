@@ -5,6 +5,7 @@ import {
   getDefaultUser,
   listImportJobs,
   listClients,
+  listClientsForContext,
   listOutputTemplateVersions,
   listQuoteFormData,
   listQuotations,
@@ -17,6 +18,7 @@ import { cache } from "react";
 import type { Locale } from "@/lib/locale";
 import type { LifecycleFilter } from "@/lib/record-lifecycle";
 import { getOutputDocLabel, type OutputDocType } from "@/lib/output-doc";
+import type { RequestContext } from "@/lib/visibility-resolver";
 import {
   extractPartyProfileFromNotes,
   getPartyProfileRoleLabel,
@@ -34,6 +36,7 @@ export type HubQueryContext = {
   userId?: string;
   tenantId?: string;
   lifecycleStatus?: LifecycleFilter;
+  requestContext?: RequestContext;
 };
 
 export type HubOverview = {
@@ -77,6 +80,8 @@ export type HubPartyItem = {
   relatedPropertyHint?: string;
   contractCount: number;
   status: "active" | "archived";
+  canWrite: boolean;
+  readOnly: boolean;
 };
 
 export type HubContractItem = {
@@ -302,11 +307,42 @@ const resolveHubParties = cache(async (
       relatedPropertyHint: client.preferredArea,
       contractCount: countMap.get(client.id) ?? 0,
       status: client.lifecycleStatus ?? "active",
+      canWrite: true,
+      readOnly: false,
     };
   });
 });
 
+function mapVisibleHubParty(locale: Locale, rawClient: Client, canWrite: boolean, contractCount: number): HubPartyItem {
+  const client = localizeDemoClient(locale, rawClient);
+  const profile = extractPartyProfileFromNotes(client.notes);
+  return {
+    id: client.id,
+    name: client.name,
+    phone: client.phone,
+    email: client.email,
+    partyType: mapPartyType(client),
+    explicitPartyType: profile.type,
+    roles: buildRoleTags(client, locale),
+    explicitRoles: profile.role ? [getPartyProfileRoleLabel(profile.role, locale)] : [],
+    partyTypeSource: profile.type ? "explicit" : "compatibility",
+    rolesSource: profile.role ? "explicit" : "compatibility",
+    relatedPropertyHint: client.preferredArea,
+    contractCount,
+    status: client.lifecycleStatus ?? "active",
+    canWrite,
+    readOnly: !canWrite,
+  };
+}
+
 export async function listHubParties(locale: Locale = "ja", context: HubQueryContext = {}): Promise<HubPartyItem[]> {
+  if (context.requestContext) {
+    const visible = await listClientsForContext({
+      context: context.requestContext,
+      filter: { sort: "recent_contact", lifecycleStatus: context.lifecycleStatus },
+    });
+    return visible.map((item) => mapVisibleHubParty(locale, item.client, item.resolution.canWrite, item._count.quotations));
+  }
   const resolved = await resolveHubContext(context);
   if (!resolved) return [];
   return resolveHubParties(locale, resolved.userId, resolved.tenantId, resolved.lifecycleStatus);

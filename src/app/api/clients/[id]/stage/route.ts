@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { isClientStage } from "@/lib/domain";
-import { addAuditLog, getClientById, setClientStageWithLog } from "@/lib/data";
+import { addAuditLog, resolveClientVisibilityForContext, setClientStageWithLog } from "@/lib/data";
 import { isLocale, LOCALE_COOKIE_NAME, type Locale } from "@/lib/locale";
 import { TenantSessionError, requireTenantSession } from "@/lib/tenant-session";
 import { StageTransitionBlockedError } from "@/lib/workflow-engine";
+import { createRequestContext } from "@/lib/visibility-resolver";
 
 type PatchContext = {
   params: Promise<{ id: string }>;
@@ -62,12 +63,10 @@ export async function PATCH(request: Request, context: PatchContext) {
   }
   const user = session.user;
   const tenantId = session.tenant.id;
-  const client = await getClientById(id, tenantId);
-  if (!client) {
+  const contextValue = createRequestContext(session);
+  const visibility = await resolveClientVisibilityForContext({ context: contextValue, clientId: id });
+  if (!visibility.record || !visibility.resolution.canWrite) {
     return NextResponse.json({ error: tx.clientNotFound }, { status: 404 });
-  }
-  if (client.ownerUserId !== user.id) {
-    return NextResponse.json({ error: tx.forbidden }, { status: 403 });
   }
 
   const payload = (await request.json().catch(() => ({}))) as {

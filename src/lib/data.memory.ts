@@ -4434,6 +4434,12 @@ export type ClientListFilter = {
   lifecycleStatus?: LifecycleFilter;
 };
 
+export type VisibleClient = {
+  client: Client;
+  resolution: VisibilityResolution;
+  _count: { quotations: number; followUps: number };
+};
+
 export async function listClients(userId: string, filter: ClientListFilter = {}) {
   const scopeTenantId = resolveTenantId(filter.tenantId);
   const filtered = db.clients
@@ -4484,6 +4490,51 @@ export async function listClients(userId: string, filter: ClientListFilter = {})
   }));
 }
 
+/** Person list path guarded by the authenticated RequestContext resolver. */
+export async function listClientsForContext(input: {
+  context: RequestContext;
+  filter?: ClientListFilter;
+}): Promise<VisibleClient[]> {
+  const filter = input.filter ?? {};
+  const scopeTenantId = input.context.tenantId;
+  const filtered = db.clients
+    .filter((item) => item.tenantId === scopeTenantId)
+    .filter((item) => isVisibilityRecordResolved(item))
+    .filter((item) => resolveRecordVisibility(input.context, item).canRead)
+    .filter((item) => filter.lifecycleStatus === "all" || (item.lifecycleStatus ?? "active") === (filter.lifecycleStatus ?? "active"))
+    .filter((item) => (filter.stage && filter.stage !== "all" ? item.stage === filter.stage : true))
+    .filter((item) => (filter.purpose && filter.purpose !== "all" ? item.purpose === filter.purpose : true))
+    .filter((item) => (filter.temperature && filter.temperature !== "all" ? item.temperature === filter.temperature : true))
+    .filter((item) => {
+      if (!filter.query) return true;
+      const q = filter.query;
+      return item.name.includes(q) || item.phone.includes(q) || (item.preferredArea?.includes(q) ?? false) || (item.firstChoiceArea?.includes(q) ?? false) || (item.secondChoiceArea?.includes(q) ?? false) || (item.notes?.includes(q) ?? false);
+    });
+
+  const sort = filter.sort ?? "follow_up";
+  filtered.sort((a, b) => {
+    if (sort === "recent_created") return b.createdAt.getTime() - a.createdAt.getTime();
+    if (sort === "recent_contact") return (b.lastContactedAt?.getTime() ?? 0) - (a.lastContactedAt?.getTime() ?? 0);
+    return (a.nextFollowUpAt?.getTime() ?? Number.MAX_SAFE_INTEGER) - (b.nextFollowUpAt?.getTime() ?? Number.MAX_SAFE_INTEGER);
+  });
+
+  return Promise.all(filtered.map(async (client) => {
+    const visibleQuotationCount = db.quotations.filter((quote) => quote.clientId === client.id && quote.tenantId === scopeTenantId).filter((quote) => {
+      if (!quote.propertyId) return true;
+      const property = db.properties.find((item) => item.id === quote.propertyId && item.tenantId === scopeTenantId);
+      return Boolean(property && resolveRecordVisibility(input.context, property).canRead);
+    }).length;
+    return {
+      client: { ...client },
+      resolution: resolveRecordVisibility(input.context, client),
+      _count: {
+        quotations: visibleQuotationCount,
+        followUps: db.followUps.filter((followUp) => followUp.clientId === client.id && followUp.tenantId === scopeTenantId).length,
+      },
+    };
+  }));
+}
+
 export async function getClientById(clientId: string, tenantId?: string) {
   const scopeTenantId = resolveTenantId(tenantId);
   return db.clients.find((item) => item.id === clientId && item.tenantId === scopeTenantId && isVisibilityRecordResolved(item)) ?? null;
@@ -4527,6 +4578,29 @@ export async function getClientDetail(clientId: string, tenantId?: string) {
     tasks,
     ownerUser: db.users.find((user) => user.id === client.ownerUserId)!,
   };
+}
+
+export type VisibleClientDetail = {
+  detail: NonNullable<Awaited<ReturnType<typeof getClientDetail>>> | null;
+  resolution: VisibilityResolution;
+};
+
+/** Person detail path with independent authorization for referenced properties. */
+export async function getClientDetailForContext(input: {
+  context: RequestContext;
+  clientId: string;
+}): Promise<VisibleClientDetail> {
+  const resolved = await resolveClientVisibilityForContext(input);
+  if (!resolved.record || !resolved.resolution.canRead) return { detail: null, resolution: resolved.resolution };
+  const detail = await getClientDetail(input.clientId, input.context.tenantId);
+  if (!detail) return { detail: null, resolution: resolved.resolution };
+  const quotationResults = await Promise.all(detail.quotations.map(async (quote) => {
+    if (!quote.propertyId) return quote;
+    const property = await resolvePropertyVisibilityForContext({ context: input.context, propertyId: quote.propertyId });
+    return property.record ? { ...quote, property: property.record } : null;
+  }));
+  const quotations = quotationResults.filter((quote): quote is NonNullable<typeof quote> => quote !== null);
+  return { detail: { ...detail, quotations }, resolution: resolved.resolution };
 }
 
 export async function getBoardData(userId: string, tenantId?: string) {
@@ -4601,7 +4675,7 @@ export async function setClientLifecycleStatus(input: {
 }): Promise<Client | null> {
   const scopeTenantId = resolveTenantId(input.tenantId);
   const item = db.clients.find(
-    (client) => client.ownerUserId === input.userId && client.tenantId === scopeTenantId && client.id === input.clientId,
+    (client) => client.currentOwnerUserId === input.userId && client.ownerResolutionStatus === "resolved" && client.tenantId === scopeTenantId && client.id === input.clientId,
   );
   if (!item) return null;
   item.lifecycleStatus = input.status;

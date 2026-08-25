@@ -4820,6 +4820,76 @@ export async function listClients(userId: string, filter: ClientListFilter = {})
   }));
 }
 
+/** Person list path guarded by the authenticated RequestContext resolver. */
+export async function listClientsForContext(input: {
+  context: RequestContext;
+  filter?: ClientListFilter;
+}): Promise<import("@/lib/data.memory").VisibleClient[]> {
+  return withPostgresAuthContext(input.context.externalAuthSubject, async () => {
+    await ensureSchema();
+    const filter = input.filter ?? {};
+    const result = await getPool().query(
+      "SELECT * FROM clients WHERE tenant_id = $1 AND owner_resolution_status = 'resolved' AND current_owner_user_id IS NOT NULL",
+      [input.context.tenantId],
+    );
+    let clients = result.rows.flatMap((row) => {
+      const item = mapClient(row);
+      const resolution = resolveRecordVisibility(input.context, {
+        ...item,
+        tenantId: row.tenant_id == null ? null : String(row.tenant_id),
+        currentOwnerUserId: row.current_owner_user_id == null ? null : String(row.current_owner_user_id),
+        visibilityScope: row.visibility_scope,
+        ownerResolutionStatus: row.owner_resolution_status,
+      });
+      return resolution.canRead ? [item] : [];
+    });
+    if (filter.stage && filter.stage !== "all") clients = clients.filter((item) => item.stage === filter.stage);
+    if (filter.purpose && filter.purpose !== "all") clients = clients.filter((item) => item.purpose === filter.purpose);
+    if (filter.temperature && filter.temperature !== "all") clients = clients.filter((item) => item.temperature === filter.temperature);
+    if (filter.lifecycleStatus && filter.lifecycleStatus !== "all") clients = clients.filter((item) => (item.lifecycleStatus ?? "active") === filter.lifecycleStatus);
+    if (filter.query) {
+      clients = clients.filter((item) => item.name.includes(filter.query!) || item.phone.includes(filter.query!) || (item.preferredArea?.includes(filter.query!) ?? false) || (item.firstChoiceArea?.includes(filter.query!) ?? false) || (item.secondChoiceArea?.includes(filter.query!) ?? false) || (item.notes?.includes(filter.query!) ?? false));
+    }
+    const sort: ClientListSort = filter.sort ?? "follow_up";
+    clients.sort((a, b) => {
+      if (sort === "recent_created") return b.createdAt.getTime() - a.createdAt.getTime();
+      if (sort === "recent_contact") return (b.lastContactedAt?.getTime() ?? 0) - (a.lastContactedAt?.getTime() ?? 0);
+      return (a.nextFollowUpAt?.getTime() ?? Number.MAX_SAFE_INTEGER) - (b.nextFollowUpAt?.getTime() ?? Number.MAX_SAFE_INTEGER);
+    });
+    const ids = clients.map((item) => item.id);
+    const quoteCountMap = new Map<string, number>();
+    const followCountMap = new Map<string, number>();
+    if (ids.length > 0) {
+      const [quoteRes, followRes] = await Promise.all([
+        getPool().query("SELECT client_id, property_id FROM quotations WHERE client_id = ANY($1) AND tenant_id = $2", [ids, input.context.tenantId]),
+        getPool().query("SELECT client_id, COUNT(*)::int AS count FROM follow_ups WHERE client_id = ANY($1) AND tenant_id = $2 GROUP BY client_id", [ids, input.context.tenantId]),
+      ]);
+      const propertyIds = [...new Set(quoteRes.rows.map((row) => row.property_id).filter(Boolean).map(String))];
+      const propertyRes = propertyIds.length > 0
+        ? await getPool().query("SELECT * FROM properties WHERE id = ANY($1) AND tenant_id = $2", [propertyIds, input.context.tenantId])
+        : { rows: [] as Array<Record<string, unknown>> };
+      const propertyById = new Map(propertyRes.rows.map((row) => [String(row.id), row] as const));
+      quoteRes.rows.forEach((row) => {
+        const propertyId = row.property_id ? String(row.property_id) : "";
+        const propertyRow = propertyId ? propertyById.get(propertyId) : undefined;
+        const propertyReadable = !propertyId || Boolean(propertyRow && resolveRecordVisibility(input.context, {
+          tenantId: propertyRow.tenant_id == null ? null : String(propertyRow.tenant_id),
+          currentOwnerUserId: propertyRow.current_owner_user_id == null ? null : String(propertyRow.current_owner_user_id),
+          visibilityScope: propertyRow.visibility_scope,
+          ownerResolutionStatus: propertyRow.owner_resolution_status,
+        }).canRead);
+        if (propertyReadable) quoteCountMap.set(String(row.client_id), (quoteCountMap.get(String(row.client_id)) ?? 0) + 1);
+      });
+      followRes.rows.forEach((row) => followCountMap.set(String(row.client_id), Number(row.count)));
+    }
+    return clients.map((client) => ({
+      client,
+      resolution: resolveRecordVisibility(input.context, client),
+      _count: { quotations: quoteCountMap.get(client.id) ?? 0, followUps: followCountMap.get(client.id) ?? 0 },
+    }));
+  });
+}
+
 export async function getClientById(clientId: string, tenantId?: string) {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(tenantId);
@@ -4887,6 +4957,29 @@ export async function getClientDetail(clientId: string, tenantId?: string) {
     tasks: taskRes.rows.map(mapTask),
     ownerUser: owner!,
   };
+}
+
+export type VisibleClientDetail = {
+  detail: NonNullable<Awaited<ReturnType<typeof getClientDetail>>> | null;
+  resolution: import("@/lib/visibility-resolver").VisibilityResolution;
+};
+
+/** Person detail path with independent authorization for referenced properties. */
+export async function getClientDetailForContext(input: {
+  context: RequestContext;
+  clientId: string;
+}): Promise<VisibleClientDetail> {
+  const resolved = await resolveClientVisibilityForContext(input);
+  if (!resolved.record || !resolved.resolution.canRead) return { detail: null, resolution: resolved.resolution };
+  const detail = await getClientDetail(input.clientId, input.context.tenantId);
+  if (!detail) return { detail: null, resolution: resolved.resolution };
+  const quotationResults = await Promise.all(detail.quotations.map(async (quote) => {
+    if (!quote.propertyId) return quote;
+    const property = await resolvePropertyVisibilityForContext({ context: input.context, propertyId: quote.propertyId });
+    return property.record ? { ...quote, property: property.record } : null;
+  }));
+  const quotations = quotationResults.filter((quote): quote is NonNullable<typeof quote> => quote !== null);
+  return { detail: { ...detail, quotations }, resolution: resolved.resolution };
 }
 
 export async function getBoardData(userId: string, tenantId?: string) {
@@ -4985,7 +5078,7 @@ export async function setClientLifecycleStatus(input: {
             archived_at = CASE WHEN $4 = 'archived' THEN NOW() ELSE NULL END,
             archived_by_id = CASE WHEN $4 = 'archived' THEN COALESCE($5, $2) ELSE NULL END,
             updated_at = NOW()
-      WHERE id = $1 AND owner_user_id = $2 AND tenant_id = $3
+      WHERE id = $1 AND current_owner_user_id = $2 AND owner_resolution_status = 'resolved' AND tenant_id = $3
       RETURNING *`,
     [input.clientId, input.userId, scopeTenantId, input.status, input.archivedById ?? null],
   );

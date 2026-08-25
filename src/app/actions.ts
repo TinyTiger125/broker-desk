@@ -68,6 +68,8 @@ import {
   rollbackBrokerageCaseMerge,
   rescheduleTask,
   resolveComplianceAlert,
+  resolveClientVisibilityForContext,
+  resolvePropertyVisibilityForContext,
   resolveCaseVisibilityForContext,
   saveBrokerageCaseExtractionReview,
   saveGuaranteeApplicationDraft,
@@ -595,6 +597,7 @@ export async function setRecordLifecycleAction(formData: FormData) {
       archivedById: session.user.id,
     });
   } else if (entityType === "party") {
+    await ensureClientOwnership(entityId, session);
     updated = await setClientLifecycleStatus({
       tenantId: session.tenant.id,
       userId: session.user.id,
@@ -630,15 +633,13 @@ export async function setRecordLifecycleAction(formData: FormData) {
   redirect(safeReturnTo(formData.get("returnTo"), "/organize-center"));
 }
 
-async function ensureClientOwnership(clientId: string, userId: string, tenantId?: string) {
-  const client = await getClientById(clientId, tenantId);
-  if (!client) {
+async function ensureClientOwnership(clientId: string, session: TenantSession) {
+  const context = createRequestContext(session);
+  const resolved = await resolveClientVisibilityForContext({ context, clientId });
+  if (!resolved.record || !resolved.resolution.canWrite) {
     throw new Error("顧客が見つかりません。");
   }
-  if (client.ownerUserId !== userId) {
-    throw new Error("この顧客に対する操作権限がありません。");
-  }
-  return client;
+  return resolved.record;
 }
 
 function clientFormValues(formData: FormData): ClientFormValues {
@@ -893,7 +894,7 @@ async function persistClientForm(
       if (previousState) return clientValidationState(parsed.values, { clientId: "顧客IDは必須です。" }, locale, "顧客IDを確認してください。");
       throw new Error("顧客IDは必須です。");
     }
-    await ensureClientOwnership(clientId, user.id, tenantId);
+    await ensureClientOwnership(clientId, session);
     client = await updateClient(clientId, { tenantId, ...parsed.normalized });
     if (!client) {
       if (previousState) return clientValidationState(parsed.values, {}, locale, "顧客が見つからないか、更新権限がありません。");
@@ -951,7 +952,7 @@ export async function addFollowUp(formData: FormData) {
   if (!clientId || !content) {
     throw new Error("顧客IDと内容は必須です。");
   }
-  await ensureClientOwnership(clientId, user.id, tenantId);
+  await ensureClientOwnership(clientId, session);
 
   const type =
     (String(formData.get("type") ?? FOLLOWUP_TYPES[5]) as FollowUpType) ??
@@ -995,7 +996,7 @@ export async function updateClientStage(formData: FormData) {
   if (!isClientStage(stage)) {
     throw new Error("ステージの値が不正です。");
   }
-  await ensureClientOwnership(clientId, user.id, tenantId);
+  await ensureClientOwnership(clientId, session);
 
   await setClientStageWithLog({
     tenantId,
@@ -1035,7 +1036,7 @@ export async function createComplianceTask(formData: FormData) {
   if (!isComplianceAlertType(alertType)) {
     throw new Error("法定アラート種別の値が不正です。");
   }
-  await ensureClientOwnership(clientId, user.id, tenantId);
+  await ensureClientOwnership(clientId, session);
 
   const task = await createComplianceTaskFromAlert({
     tenantId,
@@ -1071,7 +1072,7 @@ export async function resolveComplianceAlertAction(formData: FormData) {
   if (!isComplianceAlertType(alertType)) {
     throw new Error("法定アラート種別の値が不正です。");
   }
-  await ensureClientOwnership(clientId, user.id, tenantId);
+  await ensureClientOwnership(clientId, session);
 
   const updated = await resolveComplianceAlert({
     tenantId,
@@ -1108,7 +1109,7 @@ export async function changeTaskStatusAction(formData: FormData) {
     throw new Error("タスク状態が不正です。");
   }
   const previousStatus = isTaskStatus(previousStatusRaw) ? previousStatusRaw : undefined;
-  await ensureClientOwnership(clientId, user.id, tenantId);
+  await ensureClientOwnership(clientId, session);
 
   const updated = await updateTaskStatus({
     tenantId,
@@ -1256,7 +1257,7 @@ export async function batchUpdateContractStatusAction(formData: FormData) {
 
   await Promise.all(
     uniqueClientIds.map(async (clientId) => {
-      const client = await ensureClientOwnership(clientId, user.id, tenantId);
+      const client = await ensureClientOwnership(clientId, session);
       await setClientStage(client.id, targetStage, tenantId);
       await addAuditLog({
         tenantId,
@@ -1322,7 +1323,7 @@ export async function undoContractBatchStatusAction(formData: FormData) {
 
   await Promise.all(
     validPairs.map(async ({ clientId, stage }) => {
-      const client = await ensureClientOwnership(clientId, user.id, tenantId);
+      const client = await ensureClientOwnership(clientId, session);
       await setClientStage(client.id, stage, tenantId);
     })
   );
@@ -1358,7 +1359,7 @@ export async function rescheduleTaskAction(formData: FormData) {
   if (!taskId || !clientId || !dueAt) {
     throw new Error("タスクID・顧客ID・新しい期限は必須です。");
   }
-  await ensureClientOwnership(clientId, user.id, tenantId);
+  await ensureClientOwnership(clientId, session);
 
   const updated = await rescheduleTask({
     tenantId,
@@ -1388,7 +1389,7 @@ export async function undoTaskStatusAction(formData: FormData) {
   if (!taskId || !clientId || !isTaskStatus(statusRaw)) {
     throw new Error("元に戻す情報が不足しています。");
   }
-  await ensureClientOwnership(clientId, user.id, tenantId);
+  await ensureClientOwnership(clientId, session);
   const updated = await updateTaskStatus({
     tenantId,
     taskId,
@@ -2230,7 +2231,7 @@ export async function updatePartyProfileAction(
   if (!clientId) {
     return partyValidationState(values, { partyId: tr(locale, { ja: "関係者IDは必須です。", zh: "主体ID是必填项。", ko: "관계자 ID는 필수입니다." }) }, locale);
   }
-  await ensureClientOwnership(clientId, user.id, tenantId);
+  await ensureClientOwnership(clientId, session);
   const existing = await getClientById(clientId, tenantId);
   if (!existing) {
     return partyValidationState(values, {}, locale);
@@ -2325,7 +2326,7 @@ export async function createServiceRequestQuickAction(formData: FormData) {
       })
     );
   }
-  await ensureClientOwnership(clientId, user.id, tenantId);
+  await ensureClientOwnership(clientId, session);
 
   const title =
     String(formData.get("title") ?? "").trim() ||
@@ -2591,7 +2592,12 @@ export async function createQuotation(formData: FormData) {
   if (!clientId) {
     throw new Error("顧客IDは必須です。");
   }
-  await ensureClientOwnership(clientId, user.id, tenantId);
+  await ensureClientOwnership(clientId, session);
+  const requestedPropertyId = String(formData.get("propertyId") ?? "").trim();
+  if (requestedPropertyId) {
+    const property = await resolvePropertyVisibilityForContext({ context: createRequestContext(session), propertyId: requestedPropertyId });
+    if (!property.record || !property.resolution.canWrite) throw new Error("物件が見つからないか、関連付ける権限がありません。");
+  }
 
   const summaryMode = String(formData.get("summaryMode") ?? "short").trim();
   const generatedShortSummary = String(formData.get("generatedShortSummary") ?? "").trim();
@@ -2608,7 +2614,7 @@ export async function createQuotation(formData: FormData) {
   const quote = await addQuotation({
     tenantId,
     clientId,
-    propertyId: String(formData.get("propertyId") ?? "").trim() || undefined,
+    propertyId: requestedPropertyId || undefined,
     quoteTitle: String(formData.get("quoteTitle") ?? "提案プラン").trim(),
     listingPrice: parseNumber(formData.get("listingPrice")),
     brokerageFee: parseNumber(formData.get("brokerageFee")),
@@ -2652,7 +2658,11 @@ export async function duplicateQuotationAction(formData: FormData) {
   if (!source || !source.client) {
     throw new Error("提案が見つかりません。");
   }
-  await ensureClientOwnership(source.client.id, user.id, tenantId);
+  await ensureClientOwnership(source.client.id, session);
+  if (source.propertyId) {
+    const property = await resolvePropertyVisibilityForContext({ context: createRequestContext(session), propertyId: source.propertyId });
+    if (!property.record || !property.resolution.canWrite) throw new Error("物件が見つからないか、関連付ける権限がありません。");
+  }
 
   const duplicated = await duplicateQuotation(quoteId, tenantId);
   if (!duplicated) {
@@ -2691,7 +2701,7 @@ export async function changeQuotationStatus(formData: FormData) {
   if (!quote || !quote.client) {
     throw new Error("提案が見つかりません。");
   }
-  await ensureClientOwnership(quote.client.id, user.id, tenantId);
+  await ensureClientOwnership(quote.client.id, session);
 
   await updateQuotationStatus(quoteId, status, tenantId);
 
