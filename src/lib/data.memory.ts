@@ -514,6 +514,7 @@ export type GeneratedOutput = {
   fieldCatalogVersion?: string;
   previewConfirmationId?: string;
   caseInputSnapshotHash?: string;
+  sourceProvenanceVersion?: string;
 };
 
 export type GuaranteeBlankFormStatus = "uploaded" | "ready" | "rejected" | "archived";
@@ -560,7 +561,7 @@ export type GuaranteePreviewOutputInput = {
   fieldMappingSnapshot?: Record<string, unknown>; layoutSnapshot?: Record<string, unknown>;
   fileAttachmentId?: string; fileSha256?: string; fileSizeBytes?: number; fileMimeType?: string;
   blankFormVersionId?: string; blankFormSha256?: string; companyMaskVersionId?: string;
-  fieldCatalogVersion?: string; previewConfirmationId?: string; caseInputSnapshotHash?: string;
+  fieldCatalogVersion?: string; previewConfirmationId?: string; caseInputSnapshotHash?: string; sourceProvenanceVersion?: string;
 };
 
 export type OutputTemplateVersion = {
@@ -3877,6 +3878,7 @@ export async function addGeneratedOutput(input: {
   fieldCatalogVersion?: string;
   previewConfirmationId?: string;
   caseInputSnapshotHash?: string;
+  sourceProvenanceVersion?: string;
 }): Promise<GeneratedOutput> {
   const output = buildGeneratedOutput(input);
   db.generatedOutputs.unshift(output);
@@ -3913,6 +3915,7 @@ function buildGeneratedOutput(input: {
   fieldCatalogVersion?: string;
   previewConfirmationId?: string;
   caseInputSnapshotHash?: string;
+  sourceProvenanceVersion?: string;
 }): GeneratedOutput {
   return {
     id: makeId("out"),
@@ -3947,6 +3950,7 @@ function buildGeneratedOutput(input: {
     fieldCatalogVersion: input.fieldCatalogVersion,
     previewConfirmationId: input.previewConfirmationId,
     caseInputSnapshotHash: input.caseInputSnapshotHash,
+    sourceProvenanceVersion: input.sourceProvenanceVersion,
   };
 }
 
@@ -3967,7 +3971,11 @@ export async function finalizeGuaranteePreviewOutput(input: {
   // Keep the commit section synchronous in memory. There is no await between
   // checking the token and writing the output, so two concurrent callers
   // cannot both materialize a file/output pair in this adapter.
-  const output = buildGeneratedOutput({ ...input.output, previewConfirmationId: input.confirmationId });
+  const output = buildGeneratedOutput({
+    ...input.output,
+    previewConfirmationId: input.confirmationId,
+    sourceProvenanceVersion: input.output.outputType === "guarantee_application" ? "w93-v1" : input.output.sourceProvenanceVersion,
+  });
   db.generatedOutputs.unshift(output);
   confirmation.status = "consumed";
   confirmation.generatedOutputId = output.id;

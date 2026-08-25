@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -151,8 +152,27 @@ const persistedProvenance = access.withW93SourceProvenance(ownerCase);
 assert.deepEqual(persistedProvenance.__w93SourceIds, { partyIds: [], propertyIds: [], quoteIds: [] }, "generated history persists source provenance");
 const generatedWithProvenance = await memory.addGeneratedOutput({ tenantId: tenant.id, userId: owner.id, actorId: owner.id, outputType: "guarantee_application", outputFormat: "pdf", language: "ja", title: "W93 output", documentNumber: "W93-1", caseId: ownerCase.id, inputDataSnapshot: persistedProvenance });
 assert.equal(await access.areGeneratedOutputSourcesReadable(ownerContext, generatedWithProvenance), true, "new history with provenance remains readable");
-const legacyWithoutProvenance = await memory.addGeneratedOutput({ tenantId: tenant.id, userId: owner.id, actorId: owner.id, outputType: "guarantee_application", outputFormat: "pdf", language: "ja", title: "W93 legacy output", documentNumber: "W93-2", caseId: ownerCase.id, inputDataSnapshot: ownerCase.confirmedDataJson });
-assert.equal(await access.areGeneratedOutputSourcesReadable(ownerContext, legacyWithoutProvenance), false, "legacy history without source provenance fails closed");
+const legacyBytes = Buffer.from("W93 legacy PDF bytes");
+const legacyAttachment = await memory.addPrivateAttachment({ tenantId: tenant.id, userId: owner.id, targetType: "guarantee_generated_output", targetId: "legacy-output", fileName: "legacy.pdf", fileType: "application/pdf", content: legacyBytes });
+const legacyWithoutProvenance = await memory.addGeneratedOutput({
+  tenantId: tenant.id, userId: owner.id, actorId: owner.id, outputType: "guarantee_application", outputFormat: "pdf", language: "ja",
+  title: "W93 legacy output", documentNumber: "W93-2", caseId: ownerCase.id, templateId: "company_mask",
+  inputDataSnapshot: ownerCase.confirmedDataJson, sourceProvenanceVersion: "legacy-v1", fileAttachmentId: legacyAttachment.id,
+  fileSha256: createHash("sha256").update(legacyBytes).digest("hex"), fileSizeBytes: legacyBytes.length, fileMimeType: "application/pdf",
+  blankFormVersionId: "legacy-blank-v1", companyMaskVersionId: "legacy-mask-v1", fieldCatalogVersion: "legacy-fields-v1",
+  previewConfirmationId: "legacy-confirmation", caseInputSnapshotHash: "legacy-case-snapshot",
+});
+assert.equal(await access.areGeneratedOutputSourcesReadable(ownerContext, legacyWithoutProvenance), true, "trusted legacy history remains readable for current owner");
+assert.equal(await access.areGeneratedOutputSourcesReadable(colleagueContext, legacyWithoutProvenance), false, "trusted legacy history remains owner-only");
+const newWithoutProvenance = await memory.addGeneratedOutput({
+  tenantId: tenant.id, userId: owner.id, actorId: owner.id, outputType: "guarantee_application", outputFormat: "pdf", language: "ja",
+  title: "W93 unproven new output", documentNumber: "W93-2-new", caseId: ownerCase.id, templateId: "company_mask",
+  inputDataSnapshot: ownerCase.confirmedDataJson, fileAttachmentId: legacyAttachment.id,
+  fileSha256: createHash("sha256").update(legacyBytes).digest("hex"), fileSizeBytes: legacyBytes.length, fileMimeType: "application/pdf",
+  blankFormVersionId: "new-blank-v1", companyMaskVersionId: "new-mask-v1", fieldCatalogVersion: "new-fields-v1",
+  previewConfirmationId: "new-confirmation", caseInputSnapshotHash: "new-case-snapshot",
+});
+assert.equal(await access.areGeneratedOutputSourcesReadable(ownerContext, newWithoutProvenance), false, "new output without provenance remains fail-closed");
 const legacyMalformedQuote = await memory.addGeneratedOutput({ tenantId: tenant.id, userId: owner.id, actorId: owner.id, outputType: "guarantee_application", outputFormat: "pdf", language: "ja", title: "W93 malformed quote output", documentNumber: "W93-3", caseId: ownerCase.id, inputDataSnapshot: { __primaryQuoteId: "" } });
 assert.equal(await access.areGeneratedOutputSourcesReadable(ownerContext, legacyMalformedQuote), false, "legacy malformed quote provenance fails closed");
 const historicalPrivateQuote = await memory.addGeneratedOutput({

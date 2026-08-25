@@ -4,7 +4,7 @@ import { getBrokerageCaseByIdForContext, getGuaranteeOutputByCase, markGenerated
 import { requireTenantSession, TenantSessionError } from "@/lib/tenant-session";
 import { getRequestId } from "@/lib/operational-logging";
 import { createRequestContext } from "@/lib/visibility-resolver";
-import { assertCaseSourcesReadable, assertGeneratedOutputSourcesReadable } from "@/lib/w93-access";
+import { assertGeneratedOutputSourcesReadable } from "@/lib/w93-access";
 
 export const runtime = "nodejs";
 
@@ -19,11 +19,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ outp
     const requestContext = createRequestContext(session);
     const resolvedCase = await getBrokerageCaseByIdForContext({ context: requestContext, caseId });
     if (!resolvedCase.brokerageCase || !resolvedCase.resolution.canRead) return jsonError("case_not_found", 404);
-    try {
-      await assertCaseSourcesReadable(requestContext, resolvedCase.brokerageCase);
-    } catch {
-      return jsonError("case_not_found", 404);
-    }
     const output = await getGuaranteeOutputByCase({ tenantId: session.tenant.id, caseId, id: outputId });
     if (!output?.fileAttachmentId) return jsonError("output_file_unavailable", 404);
     try {

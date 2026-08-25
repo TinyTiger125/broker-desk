@@ -70,12 +70,18 @@ export async function listW93GeneratedOutputsForContext(context: RequestContext)
 
 export async function areGeneratedOutputSourcesReadable(context: RequestContext, output: GeneratedOutput): Promise<boolean> {
   if (!output.caseId) return false;
-  const brokerageCase = (await getBrokerageCaseByIdForContext({ context, caseId: output.caseId })).brokerageCase;
-  if (!brokerageCase || !(await areCaseSourcesReadable(context, brokerageCase))) return false;
+  const resolvedCase = await getBrokerageCaseByIdForContext({ context, caseId: output.caseId });
+  const brokerageCase = resolvedCase.brokerageCase;
+  if (!brokerageCase || !resolvedCase.resolution.canRead) return false;
 
   const snapshotSources = parseSnapshotSourceProvenance(output.inputDataSnapshot);
   if (!snapshotSources) return false;
-  if (output.outputType === "guarantee_application" && !snapshotSources.hasExplicitProvenance) return false;
+  if (!snapshotSources.hasExplicitProvenance) {
+    return output.sourceProvenanceVersion === "legacy-v1"
+      && resolvedCase.resolution.canWrite
+      && isTrustedLegacyGuaranteeOutput(output);
+  }
+  if (output.sourceProvenanceVersion && output.sourceProvenanceVersion !== "w93-v1") return false;
 
   for (const sourceId of [output.partyId, output.propertyId, output.sourceQuoteId, output.quoteId]) {
     if (sourceId !== undefined && !explicitId(sourceId)) return false;
@@ -93,6 +99,25 @@ export async function areGeneratedOutputSourcesReadable(context: RequestContext,
   if (!propertyChecks.every((result) => result.resolution.canRead)) return false;
   const visibleQuoteIds = new Set(visibleQuotes.map((quote) => quote.id));
   return [...quoteIds].every((quoteId) => visibleQuoteIds.has(quoteId));
+}
+
+function isTrustedLegacyGuaranteeOutput(output: GeneratedOutput): boolean {
+  return output.outputType === "guarantee_application"
+    && output.outputFormat === "pdf"
+    && output.fileStatus === "ready"
+    && Boolean(output.fileAttachmentId)
+    && Boolean(output.fileSha256)
+    && Number.isInteger(output.fileSizeBytes)
+    && Number(output.fileSizeBytes) > 0
+    && output.fileMimeType === "application/pdf"
+    && Boolean(output.blankFormVersionId)
+    && Boolean(output.companyMaskVersionId)
+    && Boolean(output.fieldCatalogVersion)
+    && Boolean(output.previewConfirmationId)
+    && Boolean(output.caseInputSnapshotHash)
+    && Boolean(output.templateId)
+    && Boolean(output.documentNumber)
+    && Boolean(output.inputDataSnapshot);
 }
 
 export async function assertGeneratedOutputSourcesReadable(context: RequestContext, output: GeneratedOutput): Promise<void> {

@@ -127,6 +127,7 @@ export async function GET(request: Request) {
         caseId: brokerageCase.id,
         templateId: TEMPLATE_ID,
         inputDataSnapshot: withW93SourceProvenance(brokerageCase),
+        sourceProvenanceVersion: "w93-v1",
         draftValueSnapshot: draft?.fieldValuesJson ?? {},
         fieldMappingSnapshot: {
           templateId: TEMPLATE_ID,

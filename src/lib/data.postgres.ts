@@ -156,6 +156,7 @@ const REQUIRED_PRODUCTION_MIGRATIONS = [
   "20260824_001_visibility_foundation.sql",
   "20260824_002_visibility_record_rls.sql",
   "20260824_003_creator_immutability.sql",
+  "20260825_001_legacy_output_provenance_marker.sql",
 ] as const;
 
 const OPEN_STAGES: ClientStage[] = ["lead", "contacted", "quoted", "viewing", "negotiating"];
@@ -997,6 +998,7 @@ function mapGeneratedOutput(row: Record<string, unknown>): GeneratedOutput {
     fieldCatalogVersion: row.field_catalog_version ? String(row.field_catalog_version) : undefined,
     previewConfirmationId: row.preview_confirmation_id ? String(row.preview_confirmation_id) : undefined,
     caseInputSnapshotHash: row.case_input_snapshot_hash ? String(row.case_input_snapshot_hash) : undefined,
+    sourceProvenanceVersion: row.source_provenance_version ? String(row.source_provenance_version) : undefined,
   };
 }
 
@@ -4421,6 +4423,7 @@ export async function addGeneratedOutput(input: {
   fieldCatalogVersion?: string;
   previewConfirmationId?: string;
   caseInputSnapshotHash?: string;
+  sourceProvenanceVersion?: string;
 }): Promise<GeneratedOutput> {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(input.tenantId);
@@ -4429,8 +4432,8 @@ export async function addGeneratedOutput(input: {
   const result = await getPool().query(
     `INSERT INTO generated_outputs (
       id, tenant_id, user_id, actor_id, quote_id, source_quote_id, property_id, party_id, output_type, output_format, language, title, document_number, template_version_id, case_id, template_id, input_data_snapshot, draft_value_snapshot, field_mapping_snapshot, layout_snapshot,
-      file_attachment_id, file_sha256, file_size_bytes, file_mime_type, file_status, blank_form_version_id, blank_form_sha256, company_mask_version_id, field_catalog_version, preview_confirmation_id, case_input_snapshot_hash, generated_at
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,NOW())
+      file_attachment_id, file_sha256, file_size_bytes, file_mime_type, file_status, blank_form_version_id, blank_form_sha256, company_mask_version_id, field_catalog_version, preview_confirmation_id, case_input_snapshot_hash, source_provenance_version, generated_at
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,NOW())
     RETURNING *`,
     [
       genId("out"),
@@ -4464,6 +4467,7 @@ export async function addGeneratedOutput(input: {
       input.fieldCatalogVersion ?? null,
       input.previewConfirmationId ?? null,
       input.caseInputSnapshotHash ?? null,
+      input.sourceProvenanceVersion ?? (input.outputType === "guarantee_application" && input.inputDataSnapshot?.__w93SourceIds ? "w93-v1" : null),
     ]
   );
   return mapGeneratedOutput(result.rows[0]);
@@ -4489,8 +4493,8 @@ export async function finalizeGuaranteePreviewOutput(input: {
     const result = await client.query(
       `INSERT INTO generated_outputs (
         id, tenant_id, user_id, actor_id, quote_id, source_quote_id, property_id, party_id, output_type, output_format, language, title, document_number, template_version_id, case_id, template_id, input_data_snapshot, draft_value_snapshot, field_mapping_snapshot, layout_snapshot,
-        file_attachment_id, file_sha256, file_size_bytes, file_mime_type, file_status, blank_form_version_id, blank_form_sha256, company_mask_version_id, field_catalog_version, preview_confirmation_id, case_input_snapshot_hash, generated_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,NOW()) RETURNING *`,
+        file_attachment_id, file_sha256, file_size_bytes, file_mime_type, file_status, blank_form_version_id, blank_form_sha256, company_mask_version_id, field_catalog_version, preview_confirmation_id, case_input_snapshot_hash, source_provenance_version, generated_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,NOW()) RETURNING *`,
       [
         outputId, tenantId, outputInput.userId, actorId, outputInput.quoteId ?? null, sourceQuoteId,
         outputInput.propertyId ?? null, outputInput.partyId ?? null, outputInput.outputType, outputInput.outputFormat,
@@ -4504,6 +4508,7 @@ export async function finalizeGuaranteePreviewOutput(input: {
         outputInput.fileMimeType ?? null, outputInput.fileAttachmentId ? "ready" : null,
         outputInput.blankFormVersionId ?? null, outputInput.blankFormSha256 ?? null, outputInput.companyMaskVersionId ?? null,
         outputInput.fieldCatalogVersion ?? null, input.confirmationId, outputInput.caseInputSnapshotHash ?? null,
+        outputInput.outputType === "guarantee_application" ? "w93-v1" : outputInput.sourceProvenanceVersion ?? null,
       ],
     );
     const consumed = await client.query(

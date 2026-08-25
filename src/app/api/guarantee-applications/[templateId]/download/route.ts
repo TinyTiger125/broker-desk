@@ -184,6 +184,7 @@ export async function GET(request: Request, { params }: GuaranteeTemplateDownloa
         caseId: brokerageCase.id,
         templateId: template.id,
         inputDataSnapshot: withW93SourceProvenance(brokerageCase),
+        sourceProvenanceVersion: "w93-v1",
         draftValueSnapshot: draft?.fieldValuesJson ?? {},
         fieldMappingSnapshot: {
           templateId: template.id,

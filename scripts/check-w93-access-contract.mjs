@@ -29,6 +29,8 @@ assert(access.includes("getGeneratedOutputByIdForTenant") && access.includes("ou
 assert(access.includes("areCaseSourcesReadable") && access.includes("areGeneratedOutputSourcesReadable") && access.includes("listQuotationsForContext"), "generation and history checks every explicit source");
 assert(access.includes("withW93SourceProvenance") && access.includes("__w93SourceIds"), "generated history persists immutable source provenance");
 assert(access.includes("__primaryQuoteId") && access.includes("__quoteId") && access.includes("hasInvalidExplicitSources"), "malformed quote provenance fails closed");
+assert(access.includes("legacy-v1") && access.includes("isTrustedLegacyGuaranteeOutput") && access.includes("sourceProvenanceVersion"), "legacy compatibility is explicitly marked and owner-only");
+assert(fs.existsSync(path.join(root, "db/migrations/20260825_001_legacy_output_provenance_marker.sql")), "legacy compatibility marker migration is present");
 
 assert(attachmentRoute.includes("createRequestContext(session)") && attachmentRoute.includes("getW93AttachmentForContext"), "attachment route checks parent visibility");
 assert(!attachmentRoute.includes("getAttachmentById({"), "attachment route has no id-only legacy lookup");
@@ -40,7 +42,7 @@ assert(!outputCenter.includes("listQuoteFormData") && !outputCenter.includes("li
 assert(hub.includes("if (!context.requestContext) return []") && hub.includes("listGeneratedOutputsForTenant"), "output history fails closed without trusted context");
 assert(guaranteeDownload.includes("getBrokerageCaseByIdForContext") && guaranteeDownload.includes("assertCaseSourcesReadable"), "guarantee generation checks case and sources");
 assert(guaranteeSlice.includes("getBrokerageCaseByIdForContext") && guaranteeSlice.includes("requireWritableCase"), "slice1 actions use owner-write case resolver");
-assert(guaranteeOutput.includes("getBrokerageCaseByIdForContext") && guaranteeOutput.includes("assertCaseSourcesReadable") && guaranteeOutput.includes("assertGeneratedOutputSourcesReadable"), "historical guarantee output checks current case and sources");
+assert(guaranteeOutput.includes("getBrokerageCaseByIdForContext") && guaranteeOutput.includes("assertGeneratedOutputSourcesReadable"), "historical guarantee output checks bound case and source policy");
 assert(guaranteeDownload.includes("getRequestId") && !guaranteeDownload.includes("message: error instanceof Error"), "guarantee errors do not expose internal details");
 
 console.log("w93 access contract: PASS");
