@@ -4,7 +4,7 @@
 
 案件资料关联器 V1：案件草稿、人物角色与主要物件关联
 
-- 状态: Product Accepted / Integrated / Production Not Released
+- 状态: Done
 
 ## 背景和用户结果
 
