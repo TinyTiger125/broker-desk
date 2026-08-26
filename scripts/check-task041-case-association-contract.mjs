@@ -19,9 +19,39 @@ const actions = read("src/app/actions.ts");
 const page = read("src/app/cases/new/page.tsx");
 const task = read("docs/tasks/TASK-041.md");
 
+const approvedJaMappings = [
+  ["案件草稿格式不正确，请重新选择资料。", "案件草稿の形式が正しくありません。資料を選び直してください。"],
+  ["案件资料草稿格式不正确，请重新操作。", "案件資料の下書き形式が正しくありません。もう一度お試しください。"],
+  ["一个案件最多只能有一位主要申请人。", "1案件につき、主たる申込人は1名までです。"],
+  ["人物至少需要一个案件角色。", "人物には案件内の役割を1つ以上指定してください。"],
+  ["选择的人物不存在或当前用户无法使用。", "選択した人物が存在しないか、利用する権限がありません。"],
+  ["选择的物件不存在或当前用户无法使用。", "選択した物件が存在しないか、利用する権限がありません。"],
+  ["案件保存失败，请保留当前草稿后重试。", "案件を保存できませんでした。現在の草稿を残したまま、もう一度お試しください。"],
+  ["案件が見つからないか、保存できませんでした。", "案件が見つからないか、保存できませんでした。"],
+];
+const sourceString = (value) => JSON.stringify(value);
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const readJaMapping = (message) => {
+  const pattern = new RegExp(
+    `${escapeRegExp(sourceString(message))}\\s*:\\s*\\{\\s*ja:\\s*(${escapeRegExp('"')}[^\\n]*?${escapeRegExp('"')})`,
+    "u",
+  );
+  const match = association.match(pattern);
+  return match ? JSON.parse(match[1]) : undefined;
+};
+
 expect(roles.every((role) => association.includes(`"${role}"`)), "approved role set is incomplete");
 expect((association.match(/"主要申请人"/g) ?? []).length >= 3, "primary applicant role is not represented in validation and serialization");
 expect(association.includes("CASE_ASSOCIATION_VERSION = 1"), "association payload version is missing");
+for (const [message, expectedJa] of approvedJaMappings) {
+  const actualJa = readJaMapping(message);
+  expect(actualJa === expectedJa, `ja mapping mismatch for ${message}`);
+  expect(!/(格式|不正确|当前用户|重新|请)/u.test(actualJa ?? ""), `ja mapping contains Chinese syntax for ${message}`);
+}
+expect(association.includes("CASE_ASSOCIATION_ERROR_FALLBACKS"), "locale-specific error fallbacks are missing");
+expect(association.includes("CASE_ASSOCIATION_ERROR_MESSAGES[message]?.[locale] ?? CASE_ASSOCIATION_ERROR_FALLBACKS[locale]"), "unknown errors are not forced through the locale-specific fallback");
+expect(association.includes("ja: \"案件の処理中に問題が発生しました。入力内容を確認して、もう一度お試しください。\""), "ja fallback is not the safe approved message");
+expect(!association.includes("?? message"), "unknown errors can still be exposed verbatim");
 expect(actions.includes("saveBrokerageCaseExtractionReview({") && actions.includes("confirmedDataJson: initialConfirmedData"), "new case does not use the existing atomic case save path");
 expect(actions.includes("associationDraft.parties.map((party) => resolveClientVisibilityForContext"), "new case does not re-check every person candidate on the server");
 expect(actions.includes("associationDraft.primaryPropertyId\n    ? await resolvePropertyVisibilityForContext"), "new case does not re-check the property candidate on the server");
