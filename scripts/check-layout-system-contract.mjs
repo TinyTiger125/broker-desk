@@ -233,8 +233,16 @@ if (bodyStart < 0 || footerStart < 0 || footerStart < bodyStart) {
   failures.push("FocusDialog: footer is not declared after the scrollable body");
 }
 
-requireText(notFound, "getLocale", "not-found locale source");
-for (const locale of ["ja", "zh", "ko"]) requireText(notFound, `${locale}:`, "not-found locale map");
+for (const fragment of [
+  'import { SystemStatePanel } from "@/components/system-state-panel"',
+  'import { getSystemStateCopy } from "@/lib/system-state-copy"',
+  "getLocale",
+  "getSystemStateCopy(locale)",
+  "<SystemStatePanel",
+]) {
+  requireText(notFound, fragment, "not-found shared system state composition");
+}
+if (/\b(?:ja|zh|ko)\s*:/.test(notFound)) failures.push("not-found: locale copy must remain in the shared system-state copy source");
 for (const fragment of ["<PageFrame", "<PageHeader", "<ResponsiveFormShell", "<FormSection", "<StateSurface tone=\"loading\"", "<ActionBar mobileFixed", "getLocale", "ja:", "zh:", "ko:"]) {
   requireText(loading, fragment, "cases/new loading boundary");
 }
@@ -302,4 +310,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("layout-system contract: PASS (composition exports, cases/new integration, organize-center ListReportShell and filtered-empty checks, drawer geometry, error focus, not-found locale)");
+console.log("layout-system contract: PASS (composition exports, cases/new integration, organize-center ListReportShell and filtered-empty checks, drawer geometry, error focus, shared not-found system state)");

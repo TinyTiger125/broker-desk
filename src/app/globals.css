@@ -570,6 +570,13 @@ button:disabled:not([class~="text-white"]):not([class~="!text-white"]) {
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .bd-route-loading-bar {
+    left: 0;
+    animation: none;
+  }
+}
+
 .bd-page > header:first-child,
 .bd-page-header {
   border: 1px solid var(--bd-line);
