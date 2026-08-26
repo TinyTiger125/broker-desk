@@ -162,9 +162,9 @@ function addOrReplaceParty(parties: CaseAssociationParty[], partyId: string, rol
   return roles.length > 0 ? [...next, { partyId, roles }] : next;
 }
 
-export function FocusDialog({ title, closeLabel, onClose, children }: { title: string; closeLabel: string; onClose: () => void; children: ReactNode }) {
+export function FocusDialog({ title, closeLabel, onClose, returnFocusRef, children }: { title: string; closeLabel: string; onClose: () => void; returnFocusRef?: { current: HTMLElement | null }; children: ReactNode }) {
   const dialogRef = useRef<HTMLDivElement>(null);
-  const returnFocusRef = useRef<HTMLElement | null>(null);
+  const focusOriginRef = useRef<HTMLElement | null>(null);
   const onCloseRef = useRef(onClose);
 
   useEffect(() => {
@@ -172,7 +172,8 @@ export function FocusDialog({ title, closeLabel, onClose, children }: { title: s
   }, [onClose]);
 
   useEffect(() => {
-    returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const explicitReturnTarget = returnFocusRef?.current;
+    focusOriginRef.current = explicitReturnTarget ?? document.querySelector<HTMLElement>("[data-case-association-focus-target]:focus") ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     const dialog = dialogRef.current;
     const focusable = dialog?.querySelector<HTMLElement>("button, input, select, textarea, a[href], [tabindex]:not([tabindex='-1'])");
     focusable?.focus();
@@ -199,9 +200,14 @@ export function FocusDialog({ title, closeLabel, onClose, children }: { title: s
     document.addEventListener("keydown", handleKeyDown);
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
-      returnFocusRef.current?.focus();
+      const target = explicitReturnTarget ?? focusOriginRef.current;
+      if (target?.isConnected && !target.hasAttribute("disabled")) {
+        target.focus();
+      } else {
+        document.querySelector<HTMLElement>("[data-case-association-focus-target]:not([disabled])")?.focus();
+      }
     };
-  }, []);
+  }, [returnFocusRef]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-stretch justify-end bg-slate-950/40 p-0 sm:p-4" role="presentation">
@@ -242,6 +248,7 @@ export function CaseAssociationDraft({
   const [selectionError, setSelectionError] = useState<string | undefined>();
   const [quickCreateFeedback, setQuickCreateFeedback] = useState<string | undefined>();
   const [hasIndependentCreatedMaster, setHasIndependentCreatedMaster] = useState(false);
+  const focusReturnRef = useRef<HTMLElement | null>(null);
   const [caseState, caseFormAction, pending] = useActionState(createCaseAction, initialCaseState);
 
   const closeDrawer = () => {
@@ -320,14 +327,14 @@ export function CaseAssociationDraft({
           <div className="flex flex-wrap items-center justify-between gap-3"><h2 id="case-draft-heading" className="text-base font-black text-slate-950">{text.draft}</h2><span className="text-xs font-semibold text-slate-500">{text.draftNote}</span></div>
           <div className="grid gap-4 rounded-lg border border-slate-200 p-4 md:grid-cols-2">
             <div className="space-y-2">
-              <div className="flex items-center justify-between gap-2"><h3 className="text-sm font-black text-slate-900">{text.peopleDraft} ({parties.length})</h3><button type="button" onClick={openPersonDrawer} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0046ad]">{text.selectPerson}</button></div>
+              <div className="flex items-center justify-between gap-2"><h3 className="text-sm font-black text-slate-900">{text.peopleDraft} ({parties.length})</h3><button type="button" data-case-association-focus-target onClick={(event) => { focusReturnRef.current = event.currentTarget; openPersonDrawer(); }} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0046ad]">{text.selectPerson}</button></div>
               {parties.length === 0 ? <p className="text-sm text-slate-500">{text.peopleEmpty}</p> : <div className="space-y-2">{parties.map((party) => <div key={party.partyId} className="flex items-start justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2"><div className="min-w-0"><p className="truncate text-sm font-bold text-slate-900">{candidates.find((candidate) => candidate.id === party.partyId)?.name ?? party.partyId}</p><p className="mt-1 text-xs text-slate-600">{party.roles.map((role) => getCasePersonRoleLabel(locale, role)).join("、")}</p></div><button type="button" onClick={() => removeParty(party.partyId)} className="shrink-0 rounded px-2 py-1 text-xs font-bold text-slate-600 hover:bg-white">{text.removeDraft}</button></div>)}</div>}
-              <button type="button" onClick={() => { openPersonDrawer(); setDrawerView("create"); }} className="text-xs font-bold text-[#0046ad] underline underline-offset-2">{text.quickCreatePerson}</button>
+              <button type="button" data-case-association-focus-target onClick={(event) => { focusReturnRef.current = event.currentTarget; openPersonDrawer(); setDrawerView("create"); }} className="text-xs font-bold text-[#0046ad] underline underline-offset-2">{text.quickCreatePerson}</button>
             </div>
             <div className="space-y-2">
-              <div className="flex items-center justify-between gap-2"><h3 className="text-sm font-black text-slate-900">{text.propertyDraft} ({primaryPropertyId ? 1 : 0})</h3><button type="button" onClick={openPropertyDrawer} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0046ad]">{text.selectProperty}</button></div>
+              <div className="flex items-center justify-between gap-2"><h3 className="text-sm font-black text-slate-900">{text.propertyDraft} ({primaryPropertyId ? 1 : 0})</h3><button type="button" data-case-association-focus-target onClick={(event) => { focusReturnRef.current = event.currentTarget; openPropertyDrawer(); }} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0046ad]">{text.selectProperty}</button></div>
               {primaryPropertyId ? <div className="flex items-start justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2"><p className="min-w-0 truncate text-sm font-bold text-slate-900">{properties.find((property) => property.id === primaryPropertyId)?.name ?? primaryPropertyId}</p><button type="button" onClick={() => setPrimaryPropertyId(undefined)} className="shrink-0 rounded px-2 py-1 text-xs font-bold text-slate-600 hover:bg-white">{text.removeDraft}</button></div> : <p className="text-sm text-slate-500">{text.propertyEmpty}</p>}
-              <button type="button" onClick={() => { openPropertyDrawer(); setDrawerView("create"); }} className="text-xs font-bold text-[#0046ad] underline underline-offset-2">{text.quickCreateProperty}</button>
+              <button type="button" data-case-association-focus-target onClick={(event) => { focusReturnRef.current = event.currentTarget; openPropertyDrawer(); setDrawerView("create"); }} className="text-xs font-bold text-[#0046ad] underline underline-offset-2">{text.quickCreateProperty}</button>
             </div>
           </div>
         </section>
@@ -337,7 +344,7 @@ export function CaseAssociationDraft({
         <div className="sticky bottom-0 z-10 -mx-4 flex justify-end gap-3 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur sm:-mx-5 sm:px-5"><a href={backHref} onClick={confirmLeave} className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0046ad]">{text.cancel}</a><button type="submit" disabled={pending} className="rounded-lg bg-slate-950 px-5 py-2.5 text-sm font-black text-white hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0046ad]">{pending ? text.creating : text.create}</button></div>
       </form>
 
-      {drawer === "person" ? <FocusDialog title={drawerView === "create" ? text.createPerson : text.choosePerson} closeLabel={text.close} onClose={closeDrawer}>
+      {drawer === "person" ? <FocusDialog title={drawerView === "create" ? text.createPerson : text.choosePerson} closeLabel={text.close} onClose={closeDrawer} returnFocusRef={focusReturnRef}>
         {drawerView === "create" ? <ClientForm action={createPersonAction} mode="create" locale={locale} returnTo="/cases/new" onCreated={(record) => { setCandidates((current) => [...current, record]); setParties((current) => addOrReplaceParty(current, record.id, ["其他关联人"])); setHasIndependentCreatedMaster(true); setQuickCreateFeedback(text.quickCreateFeedback); closeDrawer(); }} /> : <div className="space-y-5">
           <div className="flex gap-2"><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder={text.searchPerson} className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:border-[#0046ad] focus:ring-2 focus:ring-blue-100" /><button type="button" onClick={() => setDrawerView("create")} className="shrink-0 rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700">{text.quickCreate}</button></div>
           <div className="space-y-2">{filteredCandidates.map((candidate) => <button type="button" key={candidate.id} onClick={() => selectPerson(candidate.id)} className={`flex w-full items-center justify-between rounded-lg border px-3 py-3 text-left ${selectedPersonId === candidate.id ? "border-blue-700 bg-blue-50" : "border-slate-200 hover:bg-slate-50"}`}><span className="min-w-0 truncate text-sm font-bold text-slate-900">{candidate.name}</span>{parties.some((party) => party.partyId === candidate.id) ? <span className="ml-3 shrink-0 text-xs font-bold text-slate-600">{text.alreadyInDraft}</span> : <span className="ml-3 shrink-0 text-xs font-bold text-[#0046ad]">{text.select}</span>}</button>)}{filteredCandidates.length === 0 ? <p className="text-sm text-slate-500">{text.noCandidates}</p> : null}</div>
@@ -346,7 +353,7 @@ export function CaseAssociationDraft({
         </div>}
       </FocusDialog> : null}
 
-      {drawer === "property" ? <FocusDialog title={drawerView === "create" ? text.createProperty : text.chooseProperty} closeLabel={text.close} onClose={closeDrawer}>
+      {drawer === "property" ? <FocusDialog title={drawerView === "create" ? text.createProperty : text.chooseProperty} closeLabel={text.close} onClose={closeDrawer} returnFocusRef={focusReturnRef}>
         {drawerView === "create" ? <PropertyResponsiveForm action={createPropertyAction} locale={locale} initialValues={{ name: "", area: "", address: "", sizeSqm: "", listingPrice: "", managementFee: "", repairFee: "", notes: "" }} returnTo="/cases/new" onCreated={(record) => { setProperties((current) => [...current, record]); setPrimaryPropertyId(record.id); setHasIndependentCreatedMaster(true); setQuickCreateFeedback(text.quickCreateFeedback); closeDrawer(); }} /> : <div className="space-y-5"><div className="flex gap-2"><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder={text.searchProperty} className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:border-[#0046ad] focus:ring-2 focus:ring-blue-100" /><button type="button" onClick={() => setDrawerView("create")} className="shrink-0 rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700">{text.quickCreate}</button></div><div className="space-y-2">{filteredProperties.map((property) => <button type="button" key={property.id} onClick={() => applyProperty(property.id)} className="flex w-full items-center justify-between rounded-lg border border-slate-200 px-3 py-3 text-left hover:bg-slate-50"><span className="min-w-0"><span className="block truncate text-sm font-bold text-slate-900">{property.name}</span>{property.address ? <span className="mt-1 block truncate text-xs text-slate-500">{property.address}</span> : null}</span><span className="ml-3 shrink-0 text-xs font-bold text-[#0046ad]">{text.select}</span></button>)}{filteredProperties.length === 0 ? <p className="text-sm text-slate-500">{text.noCandidates}</p> : null}</div><div className="flex justify-end border-t border-slate-200 pt-4"><button type="button" onClick={closeDrawer} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700">{text.cancel}</button></div></div>}
       </FocusDialog> : null}
     </div>
