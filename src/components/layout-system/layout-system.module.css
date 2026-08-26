@@ -234,6 +234,63 @@
   min-width: 0;
 }
 
+.listReportShell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "scope scope"
+    "filters filters"
+    "summary pagination"
+    "results results"
+    "state state";
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--bd-line);
+  border-radius: var(--bd-radius-lg);
+  background: var(--bd-surface);
+}
+
+.listReportSlot {
+  min-width: 0;
+}
+
+.listReportScope {
+  grid-area: scope;
+  padding: var(--bd-space-4) var(--bd-space-5);
+  border-bottom: 1px solid var(--bd-line);
+}
+
+.listReportFilters {
+  grid-area: filters;
+  padding: var(--bd-space-4) var(--bd-space-5);
+  border-bottom: 1px solid var(--bd-line);
+}
+
+.listReportSummary {
+  grid-area: summary;
+  padding: var(--bd-space-3) var(--bd-space-5);
+  background: var(--bd-surface-soft);
+}
+
+.listReportResults {
+  grid-area: results;
+  min-width: 0;
+}
+
+.listReportPagination {
+  grid-area: pagination;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: var(--bd-space-3) var(--bd-space-5);
+  background: var(--bd-surface-soft);
+}
+
+.listReportState {
+  grid-area: state;
+  padding: var(--bd-space-4) var(--bd-space-5);
+}
+
 .backLink {
   display: inline-flex;
   min-height: var(--bd-control-height-touch);
@@ -407,6 +464,36 @@
 
   .pageHeaderActions > * {
     max-width: 100%;
+  }
+
+  .listReportShell {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "scope"
+      "filters"
+      "summary"
+      "pagination"
+      "results"
+      "state";
+  }
+
+  .listReportScope,
+  .listReportFilters,
+  .listReportSummary,
+  .listReportPagination,
+  .listReportState {
+    padding-inline: var(--bd-space-4);
+  }
+
+  .listReportPagination {
+    justify-content: stretch;
+  }
+
+  .listReportShell input,
+  .listReportShell select,
+  .listReportShell button,
+  .listReportShell a {
+    min-height: var(--bd-control-height-touch);
   }
 
   .responsiveFormShell {

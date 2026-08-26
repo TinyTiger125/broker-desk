@@ -38,6 +38,29 @@ export function PageHeader({ title, description, backHref, backLabel, onBackClic
   );
 }
 
+export type ListReportShellProps = Omit<HTMLAttributes<HTMLElement>, "children" | "results"> & {
+  scope?: ReactNode;
+  filters?: ReactNode;
+  summary?: ReactNode;
+  results?: ReactNode;
+  pagination?: ReactNode;
+  state?: ReactNode;
+};
+
+/** A slot-only list report composition; query, data, permissions and row behavior stay with the page. */
+export function ListReportShell({ scope, filters, summary, results, pagination, state, className, ...props }: ListReportShellProps) {
+  return (
+    <section {...props} className={cx(styles.listReportShell, className)} data-list-report-shell="true">
+      {scope ? <div className={cx(styles.listReportSlot, styles.listReportScope)} data-list-report-slot="scope">{scope}</div> : null}
+      {filters ? <div className={cx(styles.listReportSlot, styles.listReportFilters)} data-list-report-slot="filters">{filters}</div> : null}
+      {summary ? <div className={cx(styles.listReportSlot, styles.listReportSummary)} data-list-report-slot="summary">{summary}</div> : null}
+      {results ? <div className={cx(styles.listReportSlot, styles.listReportResults)} data-list-report-slot="results">{results}</div> : null}
+      {pagination ? <div className={cx(styles.listReportSlot, styles.listReportPagination)} data-list-report-slot="pagination">{pagination}</div> : null}
+      {state ? <div className={cx(styles.listReportSlot, styles.listReportState)} data-list-report-slot="state">{state}</div> : null}
+    </section>
+  );
+}
+
 export type ResponsiveFormShellProps = FormHTMLAttributes<HTMLFormElement> & {
   children: ReactNode;
 };

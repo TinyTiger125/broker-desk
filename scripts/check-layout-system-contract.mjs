@@ -10,8 +10,10 @@ const clientFormPath = "src/components/client-form.tsx";
 const propertyFormPath = "src/components/property-responsive-form.tsx";
 const submissionLockPath = "src/components/form-submission-lock.ts";
 const focusDialogGuardsPath = "src/components/focus-dialog-guards.ts";
+const organizePagePath = "src/app/organize-center/page.tsx";
+const organizeBrowserPath = "src/components/organize-center-object-browser.tsx";
 
-const [layout, layoutCss, caseDraft, loading, notFound, clientForm, propertyForm, submissionLock, focusDialogGuards] = await Promise.all([
+const [layout, layoutCss, caseDraft, loading, notFound, clientForm, propertyForm, submissionLock, focusDialogGuards, organizePage, organizeBrowser] = await Promise.all([
   readFile(layoutPath, "utf8"),
   readFile(layoutCssPath, "utf8"),
   readFile(casePath, "utf8"),
@@ -21,6 +23,8 @@ const [layout, layoutCss, caseDraft, loading, notFound, clientForm, propertyForm
   readFile(propertyFormPath, "utf8"),
   readFile(submissionLockPath, "utf8"),
   readFile(focusDialogGuardsPath, "utf8"),
+  readFile(organizePagePath, "utf8"),
+  readFile(organizeBrowserPath, "utf8"),
 ]);
 
 const failures = [];
@@ -30,6 +34,20 @@ const requireText = (source, text, label) => {
 
 for (const component of ["PageFrame", "PageHeader", "ResponsiveFormShell", "FormSection", "ActionBar", "StateSurface"]) {
   requireText(layout, `export function ${component}`, "layout exports");
+}
+requireText(layout, "export function ListReportShell", "layout exports");
+requireText(layout, 'Omit<HTMLAttributes<HTMLElement>, "children" | "results">', "ListReportShell native attribute collision guard");
+for (const slot of ["scope", "filters", "summary", "results", "pagination", "state"]) {
+  requireText(layout, `data-list-report-slot=\"${slot}\"`, "ListReportShell slots");
+}
+const listReportStart = layout.indexOf("export function ListReportShell");
+const listReportEnd = layout.indexOf("export type ResponsiveFormShellProps", listReportStart);
+const listReportSource = layout.slice(listReportStart, listReportEnd);
+if (/\b(query|permission|archive|sessionStorage|focus)\b/i.test(listReportSource) || /\bdata\s*[=:]/i.test(listReportSource)) {
+  failures.push("ListReportShell: must not own query, data, permission, archive, sessionStorage or focus concerns");
+}
+if (/PageHeader|ActionBar|new.?CTA|create/i.test(listReportSource)) {
+  failures.push("ListReportShell: must remain a thin slot composition without page header, action bar or create CTA");
 }
 
 const casesCompositionFragments = [
@@ -135,9 +153,58 @@ requireText(layoutCss, "var(--bd-overlay-scrim)", "semantic dialog overlay token
 requireText(layoutCss, "var(--bd-surface-overlay)", "semantic action bar surface token");
 requireText(layoutCss, "@media (prefers-reduced-motion: no-preference)", "loading reduced motion boundary");
 
+for (const fragment of ["<PageFrame className=\"bd-page bd-organize-page", "<PageHeader className=\"bd-page-header\"", "tone=\"loading\"", "tone=\"error\"", "tone=\"permission\""]) {
+  requireText(organizePage, fragment, "organize-center composition");
+}
+requireText(organizeBrowser, "<ListReportShell", "organize-center list-report composition");
+for (const slot of ["scope={", "filters={", "summary={", "results=", "pagination=", "state={"]) {
+  requireText(organizeBrowser, slot, "organize-center list-report slots");
+}
+for (const fragment of [
+  "const LIST_PAGE_SIZE = 6;",
+  "const FOCUS_STORAGE_PREFIX = \"organize-center:focus:\"",
+  "const RETURN_STATE_STORAGE_PREFIX = \"organize-center:return-state:\"",
+  "data-organize-object-link={item.id}",
+  "if (lifecycleFilter !== \"active\") params.set(\"lifecycle\", lifecycleFilter)",
+  "href={buildListHref(selectedType, \"\", lifecycleFilter)}",
+]) {
+  requireText(organizeBrowser, fragment, "organize-center behavior contract");
+}
+for (const copy of [
+  'clear: "キーワードをクリア"',
+  'clearFilters: "キーワードをクリア"',
+  'clear: "清除关键词"',
+  'clearFilters: "清除关键词"',
+  'clear: "키워드 지우기"',
+  'clearFilters: "키워드 지우기"',
+  'clearKeywordHint: "キーワードだけを解除し、記録の状態はそのままにして再検索できます。"',
+  'clearKeywordHint: "可以只清除关键词，记录状态筛选保持不变。"',
+  'clearKeywordHint: "키워드만 지우고 기록 상태 필터는 그대로 둔 채 다시 확인할 수 있습니다."',
+  'noKeyword: "キーワード未設定"',
+  'noKeyword: "未设置关键词"',
+  'noKeyword: "검색어 미설정"',
+]) {
+  requireText(organizePage, copy, "organize-center localized keyword clear copy");
+}
+requireText(organizeBrowser, "const hasKeyword = query.trim().length > 0;", "organize-center keyword-empty condition");
+requireText(organizeBrowser, "description={hasKeyword ? copy.clearKeywordHint : undefined}", "organize-center conditional keyword hint");
+requireText(organizeBrowser, "action={hasKeyword ? <Link", "organize-center conditional clear action");
+requireText(organizePage, "function OrganizeCenterLoading({ copy, params }", "organize-center loading params");
+requireText(organizePage, "<ListReportShell", "organize-center loading list-report shell");
+requireText(organizePage, "const selectedType = isObjectType(params.type) ? params.type : \"all\";", "organize-center loading selected type");
+requireText(organizePage, "const query = String(params.q ?? \"\").trim();", "organize-center loading query");
+requireText(organizePage, "const lifecycleFilter = normalizeLifecycleFilter(params.lifecycle);", "organize-center loading lifecycle");
+requireText(organizePage, "fallback={<OrganizeCenterLoading copy={copy} params={params} />}", "organize-center loading fallback context");
+if (organizeBrowser.includes("const isEmptyData")) failures.push("organize-center: must not infer absolute empty data from the active lifecycle result");
+if (organizeBrowser.includes('title={copy.noResults}\n            description={copy.noResults}')) failures.push("organize-center: filtered-empty state must not repeat the same title and description");
+if (organizeBrowser.includes("copy.emptyData")) failures.push("organize-center: object selector must not claim an absolute empty state from the fetched collection");
+if (organizeBrowser.includes("description={copy.description}")) failures.push("organize-center: page description must not be duplicated inside the object browser");
+if (/min-h-9/.test(organizeBrowser)) failures.push("organize-center: narrow-screen key controls must not use 36px minimum height");
+if (organizePage.includes("animate-pulse")) failures.push("organize-center: loading skeleton must not force motion without a reduced-motion boundary");
+
 if (failures.length > 0) {
   console.error(failures.join("\n"));
   process.exit(1);
 }
 
-console.log("layout-system contract: PASS (composition exports, cases/new integration, drawer geometry, error focus, not-found locale)");
+console.log("layout-system contract: PASS (composition exports, cases/new integration, organize-center ListReportShell and filtered-empty checks, drawer geometry, error focus, not-found locale)");
