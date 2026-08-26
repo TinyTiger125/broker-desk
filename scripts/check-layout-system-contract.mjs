@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 
 const layoutPath = "src/components/layout-system/index.tsx";
 const layoutCssPath = "src/components/layout-system/layout-system.module.css";
+const casePagePath = "src/app/cases/[id]/page.tsx";
+const caseOverviewPath = "src/components/case-overview.tsx";
 const casePath = "src/components/case-association-draft.tsx";
 const loadingPath = "src/app/cases/new/loading.tsx";
 const notFoundPath = "src/app/not-found.tsx";
@@ -13,9 +15,11 @@ const focusDialogGuardsPath = "src/components/focus-dialog-guards.ts";
 const organizePagePath = "src/app/organize-center/page.tsx";
 const organizeBrowserPath = "src/components/organize-center-object-browser.tsx";
 
-const [layout, layoutCss, caseDraft, loading, notFound, clientForm, propertyForm, submissionLock, focusDialogGuards, organizePage, organizeBrowser] = await Promise.all([
+const [layout, layoutCss, casePage, caseOverview, caseDraft, loading, notFound, clientForm, propertyForm, submissionLock, focusDialogGuards, organizePage, organizeBrowser] = await Promise.all([
   readFile(layoutPath, "utf8"),
   readFile(layoutCssPath, "utf8"),
+  readFile(casePagePath, "utf8"),
+  readFile(caseOverviewPath, "utf8"),
   readFile(casePath, "utf8"),
   readFile(loadingPath, "utf8"),
   readFile(notFoundPath, "utf8"),
@@ -48,6 +52,97 @@ if (/\b(query|permission|archive|sessionStorage|focus)\b/i.test(listReportSource
 }
 if (/PageHeader|ActionBar|new.?CTA|create/i.test(listReportSource)) {
   failures.push("ListReportShell: must remain a thin slot composition without page header, action bar or create CTA");
+}
+
+const objectShellStart = layout.indexOf("export type ObjectPageShellProps");
+const objectShellEnd = layout.indexOf("export type PageHeaderProps", objectShellStart);
+const objectShellSource = layout.slice(objectShellStart, objectShellEnd);
+for (const slot of ["header", "feedback", "state", "navigation", "children", "footer"]) {
+  requireText(objectShellSource, slot === "header" || slot === "children" ? `${slot}: ReactNode` : `${slot}?: ReactNode`, "ObjectPageShell structural slots");
+  requireText(objectShellSource, `data-object-page-slot="${slot}"`, "ObjectPageShell semantic slots");
+}
+requireText(objectShellSource, "<div {...props}", "ObjectPageShell stable div root");
+requireText(layoutCss, ".objectPageSlot {\n  display: contents;", "ObjectPageShell non-box slot wrapper");
+for (const slot of ["feedback", "state", "navigation", "footer"]) {
+  requireText(objectShellSource, `{${slot} ? <div`, `ObjectPageShell empty ${slot} slot omission`);
+}
+if (/\.objectPageShell[^{]*\{[^}]*\b(position|overflow|contain|transform)\s*:/s.test(layoutCss) || /\.objectPageSlot[^{]*\{[^}]*\b(position|overflow|contain|transform)\s*:/s.test(layoutCss)) {
+  failures.push("ObjectPageShell: shell and slot wrappers must not establish sticky clipping or containing-block behavior");
+}
+if (objectShellSource.includes("associations") || objectShellSource.includes("output")) {
+  failures.push("ObjectPageShell: must not expose domain-named association or output slots");
+}
+if (/from ["']@\//.test(objectShellSource) || /\b(use[A-Z]|query|permission|case|saveAction|eligib|data\s*[=:])\b/i.test(objectShellSource)) {
+  failures.push("ObjectPageShell: must remain a pure structural composition without app state or domain concerns");
+}
+const objectShellSlotOrder = ["header", "feedback", "state", "navigation", "children", "footer"].map((slot) => objectShellSource.indexOf(`data-object-page-slot=\"${slot}\"`));
+if (objectShellSlotOrder.some((position) => position < 0) || objectShellSlotOrder.some((position, index) => index > 0 && position <= objectShellSlotOrder[index - 1])) {
+  failures.push("ObjectPageShell: structural slot order must be header, feedback, state, navigation, children, footer");
+}
+if ((casePage.match(/<ObjectPageShell\b/g) ?? []).length !== 1 || (casePage.match(/<CaseIdentityHeader\b/g) ?? []).length !== 1) {
+  failures.push("case detail page: quick branch must have exactly one ObjectPageShell and one identity header");
+}
+if ((caseOverview.match(/<ObjectPageShell\b/g) ?? []).length !== 1 || (caseOverview.match(/<CaseIdentityHeader\b/g) ?? []).length !== 1) {
+  failures.push("CaseOverview: read-only/overview branches must share exactly one shell and one identity header");
+}
+const caseOverviewHeaderPosition = caseOverview.indexOf("<CaseIdentityHeader");
+const caseOverviewAssociationPosition = caseOverview.indexOf("{associationPanel}");
+if (caseOverviewHeaderPosition < 0 || caseOverviewAssociationPosition < 0 || caseOverviewAssociationPosition <= caseOverviewHeaderPosition) {
+  failures.push("CaseOverview: association panel must follow its unique identity header");
+}
+requireText(caseOverview, "!compactHeader ?", "identity header compact visibility");
+requireText(caseOverview, "showViewSwitch ? <CaseViewSwitch", "read-only view switch visibility");
+requireText(caseOverview, "<CaseStatusSummary", "read-only status summary retention");
+requireText(caseOverview, "feedback={", "CaseOverview feedback slot");
+requireText(caseOverview, "state={attentionQueue}", "CaseOverview state slot");
+requireText(caseOverview, "{associationPanel}", "CaseOverview association panel child");
+if (caseOverview.includes("navigation={")) failures.push("CaseOverview: navigation must be assembled in children after associationPanel");
+const caseOverviewNavPosition = caseOverview.indexOf("<nav data-case-anchor-nav");
+const caseOverviewFieldsPosition = caseOverview.indexOf("<main className=\"space-y-4\">");
+if (caseOverviewAssociationPosition < 0 || caseOverviewNavPosition < 0 || caseOverviewFieldsPosition < 0 || !(caseOverviewAssociationPosition < caseOverviewNavPosition && caseOverviewNavPosition < caseOverviewFieldsPosition)) {
+  failures.push("CaseOverview: children order must be associationPanel, section navigation, then fields");
+}
+const readOnlyBranchStart = casePage.indexOf("if (!canWriteCase)");
+const overviewBranchStart = casePage.indexOf("if (activeView === \"overview\")");
+const quickBranchStart = casePage.indexOf("return (\n    <div className=\"flex min-w-0 flex-col gap-6\">");
+const readOnlyBranch = casePage.slice(readOnlyBranchStart, overviewBranchStart);
+const overviewBranch = casePage.slice(overviewBranchStart, quickBranchStart);
+if (/^\s*\{associationPanel\}/m.test(readOnlyBranch) || /^\s*\{associationPanel\}/m.test(overviewBranch)) {
+  failures.push("case detail page: read-only/overview branches must not render associationPanel outside CaseOverview");
+}
+requireText(readOnlyBranch, "showViewSwitch={canWriteCase}", "read-only switch decision from page permission result");
+requireText(overviewBranch, "showViewSwitch={canWriteCase}", "overview switch decision from page permission result");
+requireText(readOnlyBranch, "associationPanel={associationPanel}", "read-only association panel handoff");
+requireText(overviewBranch, "associationPanel={associationPanel}", "overview association panel handoff");
+if ((casePage.slice(quickBranchStart).match(/\{associationPanel\}/g) ?? []).length !== 1) {
+  failures.push("case detail page: quick branch must render associationPanel exactly once inside its shell");
+}
+for (const fragment of [
+  "readOnly={!canWriteCase}",
+  "candidates={associationCandidates}",
+  "properties={associationProperties}",
+  "saveAction={canWriteCase ? saveCaseAssociationsAction : undefined}",
+  "createPersonAction={canWriteCase ? createClientFormAction : undefined}",
+  "createPropertyAction={canWriteCase ? createPropertyQuickAction : undefined}",
+  "const activeView = query?.view === \"quick\" || query?.view === \"overview\"",
+  "downloadGate && downloadGate.blockedReasons.length > 0",
+  "flashTone =",
+  "scrollTop?: string",
+]) {
+  requireText(casePage, fragment, "case detail data, gate and return-context preservation");
+}
+for (const fragment of [
+  "!hasOutputTemplate || !downloadHref",
+  "if (hasBlockingOutput)",
+  "setConfirmOpen(true)",
+  "window.location.hash",
+  "initialScrollTop",
+  "scrollToId",
+  "lastTriggerIdRef",
+  "showViewSwitch={showViewSwitch}",
+  "{outputState}",
+]) {
+  requireText(caseOverview, fragment, "CaseOverview output and return-context preservation");
 }
 
 const casesCompositionFragments = [

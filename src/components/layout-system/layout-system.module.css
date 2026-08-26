@@ -192,6 +192,18 @@
   width: 100%;
 }
 
+.objectPageShell {
+  display: grid;
+  gap: var(--bd-space-4);
+  min-width: 0;
+  width: 100%;
+}
+
+.objectPageSlot {
+  display: contents;
+  min-width: 0;
+}
+
 .pageHeader {
   display: flex;
   align-items: flex-start;

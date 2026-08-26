@@ -15,6 +15,29 @@ export function PageFrame({ children, className, ...props }: PageFrameProps) {
   return <div {...props} className={cx(styles.pageFrame, className)}>{children}</div>;
 }
 
+export type ObjectPageShellProps = Omit<HTMLAttributes<HTMLDivElement>, "children"> & {
+  header: ReactNode;
+  feedback?: ReactNode;
+  state?: ReactNode;
+  navigation?: ReactNode;
+  children: ReactNode;
+  footer?: ReactNode;
+};
+
+/** A structural object page composition; state and actions remain with the caller. */
+export function ObjectPageShell({ header, feedback, state, navigation, children, footer, className, ...props }: ObjectPageShellProps) {
+  return (
+    <div {...props} className={cx(styles.objectPageShell, className)} data-object-page-shell="true">
+      <div className={styles.objectPageSlot} data-object-page-slot="header">{header}</div>
+      {feedback ? <div className={styles.objectPageSlot} data-object-page-slot="feedback">{feedback}</div> : null}
+      {state ? <div className={styles.objectPageSlot} data-object-page-slot="state">{state}</div> : null}
+      {navigation ? <div className={styles.objectPageSlot} data-object-page-slot="navigation">{navigation}</div> : null}
+      <div className={styles.objectPageSlot} data-object-page-slot="children">{children}</div>
+      {footer ? <div className={styles.objectPageSlot} data-object-page-slot="footer">{footer}</div> : null}
+    </div>
+  );
+}
+
 export type PageHeaderProps = HTMLAttributes<HTMLElement> & {
   title: ReactNode;
   description?: ReactNode;
