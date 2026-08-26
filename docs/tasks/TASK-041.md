@@ -4,7 +4,7 @@
 
 案件资料关联器 V1：案件草稿、人物角色与主要物件关联
 
-- 状态: In Progress
+- 状态: Product Accepted / Integrated / Production Not Released
 
 ## 背景和用户结果
 
@@ -89,4 +89,4 @@ node scripts/check-task041-case-association-contract.mjs
 
 ## 当前状态
 
-已完成非生产有限实现和本地静态检查；真实 `/cases/new` 桌面/窄屏截图、键盘焦点、草稿失败恢复和权限负向矩阵待 Staging 验收。
+已完成产品验收、独立工程门和固定非生产 Staging 真实验收；PR #8 已合并至 `main`，合并后 GitHub CI 通过。固定 `staging/broker-desk-acceptance` Preview 继续作为唯一验收环境；PR 分支 Preview 因未绑定 `DATABASE_MIGRATION_URL` 失败，记录为非阻断验收基础设施 P2。Production 未发布、未执行 Production migration。
