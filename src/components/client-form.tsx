@@ -48,26 +48,27 @@ type ClientFormProps = {
   mode: "create" | "edit";
   locale?: Locale;
   returnTo: string;
+  onCreated?: (record: { id: string; name: string }) => void;
 };
 
 const inputClass = "w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-[#0046ad] focus:ring-2 focus:ring-blue-100";
 
 const copy = {
   ja: {
-    basic: "基本情報", needs: "需求条件", management: "顧客管理", legal: "契約・法定情報", notes: "備考",
-    name: "顧客名", phone: "電話番号", lineId: "LINE ID", email: "メールアドレス", budgetMin: "予算下限", budgetMax: "予算上限",
+    basic: "基本情報", needs: "希望条件", management: "顧客管理", legal: "契約・法定情報", notes: "備考",
+    name: "顧客名", phone: "電話番号", lineId: "LINE ID", email: "メールアドレス", budgetMin: "予算下限", budgetMax: "予算上限", budgetType: "予算タイプ",
     preferredArea: "意向エリア", firstChoiceArea: "第1希望エリア", secondChoiceArea: "第2希望エリア", purpose: "用途", period: "入居/運用希望時期",
     loan: "ローン事前審査", stage: "ステージ", temperature: "温度感", nextFollowUpAt: "次回フォロー日", brokerage: "媒介契約", signedAt: "媒介契約締結日", expiresAt: "媒介契約満了日", matters35: "重要事項説明日（35条）", matters37: "契約書面交付日（37条）", consent: "個人情報利用目的同意確認日", aml: "本人確認/AML", notesPlaceholder: "顧客の要望や確認事項", save: "顧客を保存", saving: "保存中…", cancel: "キャンセル", back: "戻る", choose: "選択してください", optional: "任意", error: "入力内容を確認してください。", initialState: "作成時のシステム初期状態です。人工的な確認完了を示しません。",
   },
   zh: {
     basic: "基本信息", needs: "需求条件", management: "客户管理", legal: "合同与法定信息", notes: "备注",
-    name: "客户姓名", phone: "电话号码", lineId: "LINE ID", email: "邮箱地址", budgetMin: "预算下限", budgetMax: "预算上限",
+    name: "客户姓名", phone: "电话号码", lineId: "LINE ID", email: "邮箱地址", budgetMin: "预算下限", budgetMax: "预算上限", budgetType: "预算类型",
     preferredArea: "意向区域", firstChoiceArea: "第一意向区域", secondChoiceArea: "第二意向区域", purpose: "用途", period: "入住/运营期望时间",
     loan: "贷款预审", stage: "阶段", temperature: "温度", nextFollowUpAt: "下次跟进日期", brokerage: "媒介合同", signedAt: "媒介合同签订日", expiresAt: "媒介合同到期日", matters35: "重要事项说明日（35条）", matters37: "合同书面交付日（37条）", consent: "个人信息使用同意确认日", aml: "实名/AML", notesPlaceholder: "客户需求和确认事项", save: "保存客户", saving: "保存中…", cancel: "取消", back: "返回", choose: "请选择", optional: "选填", error: "请检查以下输入内容。", initialState: "创建时的系统初始状态，不表示人工核验完成。",
   },
   ko: {
     basic: "기본 정보", needs: "희망 조건", management: "고객 관리", legal: "계약 및 법정 정보", notes: "메모",
-    name: "고객명", phone: "전화번호", lineId: "LINE ID", email: "이메일", budgetMin: "예산 하한", budgetMax: "예산 상한",
+    name: "고객명", phone: "전화번호", lineId: "LINE ID", email: "이메일", budgetMin: "예산 하한", budgetMax: "예산 상한", budgetType: "예산 유형",
     preferredArea: "희망 지역", firstChoiceArea: "1순위 희망 지역", secondChoiceArea: "2순위 희망 지역", purpose: "용도", period: "입주/운용 희망 시기",
     loan: "대출 사전심사", stage: "단계", temperature: "온도", nextFollowUpAt: "다음 후속 날짜", brokerage: "중개 계약", signedAt: "중개 계약 체결일", expiresAt: "중개 계약 만료일", matters35: "중요사항 설명일(35조)", matters37: "계약서 교부일(37조)", consent: "개인정보 이용 동의 확인일", aml: "본인확인/AML", notesPlaceholder: "고객 요청과 확인 사항", save: "고객 저장", saving: "저장 중…", cancel: "취소", back: "돌아가기", choose: "선택해 주세요", optional: "선택", error: "다음 입력 내용을 확인해 주세요.", initialState: "작성 시 시스템 초기 상태이며, 수동 확인 완료를 뜻하지 않습니다.",
   },
@@ -102,13 +103,14 @@ function initialValues(defaults?: ClientFormDefaults): ClientFormValues {
   };
 }
 
-export function ClientForm({ action, defaults, mode, locale = "ja", returnTo }: ClientFormProps) {
+export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, onCreated }: ClientFormProps) {
   const text = copy[locale];
   const initial = initialValues(defaults);
   const [values, setValues] = useState<ClientFormValues>(initial);
   const [state, formAction, pending] = useActionState<ClientFormActionState, FormData>(action, { status: "idle", fieldErrors: {}, values: initial });
   const summaryRef = useRef<HTMLDivElement>(null);
   const composingRef = useRef(false);
+  const notifiedCreatedId = useRef<string | undefined>(undefined);
   const budgetTypeOptions = getBudgetTypeOptions(locale);
   const purposeOptions = getPurposeOptions(locale);
   const loanOptions = getLoanPreApprovalOptions(locale);
@@ -122,6 +124,12 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo }: 
     setValues(state.values);
     summaryRef.current?.focus();
   }, [state.status, state.values]);
+  useEffect(() => {
+    const record = state.createdRecord;
+    if (!record || notifiedCreatedId.current === record.id) return;
+    notifiedCreatedId.current = record.id;
+    onCreated?.(record);
+  }, [onCreated, state.createdRecord]);
   const errorEntries = Object.entries(state.fieldErrors) as Array<[keyof ClientFormValues, string]>;
   const errorFor = (field: keyof ClientFormValues) => state.fieldErrors[field];
   const update = (field: keyof ClientFormValues, event: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setValues((current) => ({ ...current, [field]: event.target.value }));
@@ -152,6 +160,7 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo }: 
   return (
     <form action={formAction} noValidate className="space-y-6 pb-10">
       <input type="hidden" name="returnTo" value={returnTo} />
+      {onCreated ? <input type="hidden" name="caseDraftReturn" value="1" /> : null}
       {values.clientId ? <input type="hidden" name="clientId" value={values.clientId} /> : null}
       {state.status === "error" ? <div ref={summaryRef} tabIndex={-1} role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900 outline-none focus-visible:ring-2 focus-visible:ring-rose-500"><p className="font-bold">{state.message ?? text.error}</p><ul className="mt-2 list-disc space-y-1 pl-5">{errorEntries.map(([field, message]) => <li key={field}><a className="underline" href={`#client-${field}`} onClick={(event) => focusField(event, field)}>{message}</a></li>)}</ul></div> : null}
 
@@ -165,7 +174,7 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo }: 
       <section aria-labelledby="client-needs-heading" className="space-y-4 border-b border-slate-200 pb-6"><h2 id="client-needs-heading" className="text-base font-bold text-slate-950">{text.needs}</h2><div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-1">{label("budgetMin", text.budgetMin)}<input {...fieldProps("budgetMin")} type="number" min="0" step="any" inputMode="decimal" className={inputClass} />{errorText("budgetMin")}</div>
         <div className="space-y-1">{label("budgetMax", text.budgetMax)}<input {...fieldProps("budgetMax")} type="number" min="0" step="any" inputMode="decimal" className={inputClass} />{errorText("budgetMax")}</div>
-        <div className="space-y-1">{label("budgetType", "予算タイプ")}{select("budgetType", budgetTypeOptions)}{errorText("budgetType")}</div>
+        <div className="space-y-1">{label("budgetType", text.budgetType)}{select("budgetType", budgetTypeOptions)}{errorText("budgetType")}</div>
         <div className="space-y-1">{label("preferredArea", text.preferredArea)}<input {...fieldProps("preferredArea")} className={inputClass} />{errorText("preferredArea")}</div>
         <div className="space-y-1">{label("firstChoiceArea", text.firstChoiceArea)}<input {...fieldProps("firstChoiceArea")} className={inputClass} />{errorText("firstChoiceArea")}</div>
         <div className="space-y-1">{label("secondChoiceArea", text.secondChoiceArea)}<input {...fieldProps("secondChoiceArea")} className={inputClass} />{errorText("secondChoiceArea")}</div>

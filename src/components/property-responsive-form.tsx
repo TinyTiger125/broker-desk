@@ -16,6 +16,7 @@ type PropertyResponsiveFormProps = {
   initialValues: PropertyFormValues;
   returnTo: string;
   propertyId?: string;
+  onCreated?: (record: { id: string; name: string }) => void;
 };
 
 const copy = {
@@ -94,18 +95,25 @@ const initialState: PropertyFormActionState = { status: "idle", fieldErrors: {},
   notes: "",
 } };
 
-export function PropertyResponsiveForm({ action, locale, initialValues, returnTo, propertyId }: PropertyResponsiveFormProps) {
+export function PropertyResponsiveForm({ action, locale, initialValues, returnTo, propertyId, onCreated }: PropertyResponsiveFormProps) {
   const text = copy[locale];
   const [values, setValues] = useState<PropertyFormValues>(initialValues);
   const [state, formAction, pending] = useActionState(action, { ...initialState, values: initialValues });
   const summaryRef = useRef<HTMLDivElement>(null);
   const composingRef = useRef(false);
+  const notifiedCreatedId = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     if (state.status === "error") {
       summaryRef.current?.focus();
     }
   }, [state]);
+  useEffect(() => {
+    const record = state.createdRecord;
+    if (!record || notifiedCreatedId.current === record.id) return;
+    notifiedCreatedId.current = record.id;
+    onCreated?.(record);
+  }, [onCreated, state.createdRecord]);
 
   const errorEntries = Object.entries(state.fieldErrors) as Array<[keyof PropertyFormValues, string]>;
   const updateValue = (field: keyof PropertyFormValues, value: string) => {
@@ -138,6 +146,7 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
   return (
     <form action={formAction} noValidate className="space-y-6">
       <input type="hidden" name="returnTo" value={returnTo} />
+      {onCreated ? <input type="hidden" name="caseDraftReturn" value="1" /> : null}
       {propertyId ? <input type="hidden" name="propertyId" value={propertyId} /> : null}
 
       {state.status === "error" ? (

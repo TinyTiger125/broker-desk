@@ -3309,6 +3309,7 @@ export async function updateBrokerageCaseConfirmedData(input: {
   userId: string;
   caseId: string;
   confirmedDataJson: Record<string, unknown>;
+  primaryPropertyId?: string | null;
 }): Promise<BrokerageCase | null> {
   assertNoForbiddenRecordInput(input, { allowTenantId: true });
   const scopeTenantId = resolveTenantId(input.tenantId);
@@ -3318,6 +3319,7 @@ export async function updateBrokerageCaseConfirmedData(input: {
   if (!item) return null;
 
   item.confirmedDataJson = { ...input.confirmedDataJson };
+  if (input.primaryPropertyId !== undefined) item.primaryPropertyId = input.primaryPropertyId ?? undefined;
   item.updatedAt = new Date();
   return cloneBrokerageCase(item);
 }
