@@ -187,3 +187,297 @@
     width: 100%;
   }
 }
+.pageFrame {
+  min-width: 0;
+  width: 100%;
+}
+
+.pageHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--bd-space-4);
+  min-width: 0;
+  padding-bottom: var(--bd-space-5);
+  border-bottom: 1px solid var(--bd-line);
+}
+
+.pageHeaderCopy {
+  min-width: 0;
+}
+
+.pageTitle {
+  margin: 0;
+  color: var(--bd-ink);
+  font-size: var(--bd-text-xl);
+  font-weight: var(--bd-weight-bold);
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.pageDescription {
+  max-width: 72rem;
+  margin: var(--bd-space-2) 0 0;
+  color: var(--bd-muted);
+  font-size: var(--bd-text-sm);
+  font-weight: var(--bd-weight-medium);
+  line-height: var(--bd-leading-relaxed);
+  overflow-wrap: anywhere;
+}
+
+.pageHeaderActions {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--bd-space-2);
+  min-width: 0;
+}
+
+.backLink {
+  display: inline-flex;
+  min-height: var(--bd-control-height-touch);
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--bd-line-strong);
+  border-radius: var(--bd-radius-md);
+  padding: var(--bd-space-2) var(--bd-space-3);
+  color: var(--bd-ink);
+  font-size: var(--bd-text-sm);
+  font-weight: var(--bd-weight-bold);
+  line-height: var(--bd-leading-tight);
+  overflow-wrap: anywhere;
+}
+
+.backLink:hover {
+  background: var(--bd-surface-soft);
+}
+
+.responsiveFormShell {
+  display: grid;
+  gap: var(--bd-space-5);
+  min-width: 0;
+  padding-bottom: var(--bd-space-5);
+}
+
+.formSection {
+  min-width: 0;
+  padding: var(--bd-space-5);
+  border: 1px solid var(--bd-line);
+  border-radius: var(--bd-radius-lg);
+  background: var(--bd-surface);
+}
+
+.actionBar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--bd-space-3);
+  min-width: 0;
+  padding: var(--bd-space-3) var(--bd-space-4) var(--bd-space-4);
+  border: 1px solid var(--bd-line);
+  border-radius: var(--bd-radius-lg);
+  background: var(--bd-surface);
+}
+
+.dialogOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--bd-z-modal);
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-end;
+  padding: 0;
+  background: var(--bd-overlay-scrim);
+}
+
+.dialogSurface {
+  display: flex;
+  width: 100%;
+  max-width: 42rem;
+  height: 100%;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bd-surface);
+  box-shadow: var(--bd-shadow-surface);
+}
+
+.dialogHeader {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bd-space-3);
+  padding: var(--bd-space-3) var(--bd-space-4);
+  border-bottom: 1px solid var(--bd-line);
+}
+
+.dialogClose {
+  min-width: var(--bd-control-height-touch);
+  min-height: var(--bd-control-height-touch);
+  border: 0;
+  border-radius: var(--bd-radius-md);
+  padding: var(--bd-space-2);
+  color: var(--bd-muted);
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.dialogClose:hover {
+  background: var(--bd-surface-soft);
+}
+
+.dialogClose:focus-visible {
+  outline: var(--bd-focus-ring-width) solid var(--bd-focus-ring-color);
+  outline-offset: var(--bd-focus-ring-offset);
+}
+
+.dialogClose:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.dialogBody {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--bd-space-4);
+}
+
+.dialogFooter {
+  flex-shrink: 0;
+  padding: var(--bd-space-4) var(--bd-space-4) calc(var(--bd-space-4) + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--bd-line);
+  background: var(--bd-surface);
+}
+
+.stateSurface {
+  min-width: 0;
+  padding: var(--bd-space-4);
+  border: 1px solid var(--bd-line);
+  border-radius: var(--bd-radius-md);
+  background: var(--bd-surface-soft);
+  color: var(--bd-muted);
+  overflow-wrap: anywhere;
+}
+
+.stateSurfaceError {
+  border-color: var(--bd-danger-line);
+  background: var(--bd-danger-bg);
+  color: var(--bd-danger);
+}
+
+.stateSurfacePermission {
+  border-color: var(--bd-warning-line);
+  background: var(--bd-warning-bg);
+  color: var(--bd-warning);
+}
+
+.stateSurfaceTitle,
+.stateSurfaceDescription {
+  margin: 0;
+}
+
+.stateSurfaceTitle {
+  color: var(--bd-ink);
+  font-size: var(--bd-text-sm);
+  font-weight: var(--bd-weight-bold);
+}
+
+.stateSurfaceDescription {
+  margin-top: var(--bd-space-1);
+  font-size: var(--bd-text-sm);
+  line-height: var(--bd-leading-relaxed);
+}
+
+.stateSurfaceAction {
+  margin-top: var(--bd-space-3);
+}
+
+/* Keep mobile composition overrides after the shared rules so the cascade is deterministic. */
+@media (max-width: 47.9375rem) {
+  .pageHeader {
+    display: grid;
+    gap: var(--bd-space-3);
+  }
+
+  .pageHeaderActions {
+    justify-content: stretch;
+  }
+
+  .pageHeaderActions > * {
+    max-width: 100%;
+  }
+
+  .responsiveFormShell {
+    --bd-action-bar-height: calc(var(--bd-space-3) + var(--bd-control-height-touch) + var(--bd-space-3) + 1px + env(safe-area-inset-bottom));
+    padding-bottom: calc(var(--bd-space-4) + var(--bd-action-bar-height));
+  }
+
+  .formSection {
+    padding: var(--bd-space-4);
+  }
+
+  .actionBar[data-mobile-fixed="true"] {
+    position: fixed;
+    z-index: var(--bd-z-sticky);
+    right: 0;
+    bottom: 0;
+    left: 0;
+    border-inline: 0;
+    border-radius: 0;
+    padding: var(--bd-space-3) var(--bd-space-4) calc(var(--bd-space-3) + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--bd-line);
+    background: var(--bd-surface-overlay);
+    box-shadow: var(--bd-shadow-action-bar);
+    backdrop-filter: blur(8px);
+  }
+
+  .actionBar[data-mobile-fixed="true"] > * {
+    min-height: var(--bd-control-height-touch);
+  }
+
+  .pageActionCancel {
+    display: none;
+  }
+}
+
+@media (min-width: 48rem) {
+  .dialogOverlay {
+    padding: var(--bd-space-4);
+  }
+
+  .dialogSurface {
+    border-radius: var(--bd-radius-lg);
+  }
+
+  .dialogHeader,
+  .dialogBody,
+  .dialogFooter {
+    padding-inline: var(--bd-space-6);
+  }
+}
+
+.stateSurfaceLoading::before {
+  display: inline-block;
+  width: 0.75rem;
+  height: 0.75rem;
+  margin-inline-end: var(--bd-space-2);
+  border: 2px solid var(--bd-line-strong);
+  border-top-color: var(--bd-accent);
+  border-radius: 50%;
+  content: "";
+  vertical-align: -0.1em;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .stateSurfaceLoading::before {
+    animation: state-surface-spin 0.9s linear infinite;
+  }
+}
+
+@keyframes state-surface-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

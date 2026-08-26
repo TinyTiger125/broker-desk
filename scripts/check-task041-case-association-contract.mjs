@@ -67,7 +67,7 @@ expect(manager.includes("解除主要物件"), "primary property removal action 
 expect(!manager.match(/owner_write|company_read|private/i), "existing-case association UI exposes internal permission terminology");
 expect(newCase.includes("explicitReturnTarget = returnFocusRef?.current") && newCase.includes("target?.isConnected") && newCase.includes("target.focus()"), "FocusDialog must restore focus to a connected origin or safe fallback");
 expect(newCase.includes("data-case-association-focus-target") && manager.includes("data-case-association-focus-target"), "case association dialog triggers must provide a predictable focus fallback");
-expect(newCase.includes('if (event.key === "Escape")') && newCase.includes("onCloseRef.current()"), "FocusDialog Escape close path is missing");
+expect(newCase.includes("handleFocusDialogEscape(event, closeDisabledRef ?? fallbackCloseDisabledRef, onCloseRef.current)"), "FocusDialog Escape close path is missing");
 expect(task.includes("不部署 Production，不执行 Production migration") && task.includes("不新增数据库表或 migration"), "task boundary does not preserve the production and migration gate");
 
 if (!process.exitCode) console.log("TASK-041 case association contract: PASS");

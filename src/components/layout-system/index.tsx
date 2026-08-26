@@ -1,8 +1,86 @@
-import { forwardRef, type HTMLAttributes, type ReactNode } from "react";
+import Link from "next/link";
+import { forwardRef, type FormHTMLAttributes, type HTMLAttributes, type MouseEventHandler, type ReactNode } from "react";
 import styles from "./layout-system.module.css";
 
 function cx(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
+}
+
+export type PageFrameProps = HTMLAttributes<HTMLDivElement> & {
+  children: ReactNode;
+};
+
+/** Page-level composition only. Authentication, tenant and domain data remain outside this layer. */
+export function PageFrame({ children, className, ...props }: PageFrameProps) {
+  return <div {...props} className={cx(styles.pageFrame, className)}>{children}</div>;
+}
+
+export type PageHeaderProps = HTMLAttributes<HTMLElement> & {
+  title: ReactNode;
+  description?: ReactNode;
+  backHref?: string;
+  backLabel?: ReactNode;
+  onBackClick?: MouseEventHandler<HTMLAnchorElement>;
+  children?: ReactNode;
+};
+
+export function PageHeader({ title, description, backHref, backLabel, onBackClick, children, className, ...props }: PageHeaderProps) {
+  return (
+    <header {...props} className={cx(styles.pageHeader, className)}>
+      <div className={styles.pageHeaderCopy}>
+        <h1 className={styles.pageTitle}>{title}</h1>
+        {description ? <p className={styles.pageDescription}>{description}</p> : null}
+      </div>
+      <div className={styles.pageHeaderActions}>
+        {children ?? (backHref && backLabel ? <Link href={backHref} onClick={onBackClick} className={styles.backLink}>{backLabel}</Link> : null)}
+      </div>
+    </header>
+  );
+}
+
+export type ResponsiveFormShellProps = FormHTMLAttributes<HTMLFormElement> & {
+  children: ReactNode;
+};
+
+export function ResponsiveFormShell({ children, className, ...props }: ResponsiveFormShellProps) {
+  return <form {...props} className={cx(styles.responsiveFormShell, className)}>{children}</form>;
+}
+
+export type FormSectionProps = HTMLAttributes<HTMLElement> & {
+  children: ReactNode;
+};
+
+/** A page-level surface for one coherent form section; it owns no domain state. */
+export function FormSection({ children, className, ...props }: FormSectionProps) {
+  return <section {...props} className={cx(styles.formSection, className)}>{children}</section>;
+}
+
+export type ActionBarProps = HTMLAttributes<HTMLDivElement> & {
+  children: ReactNode;
+  mobileFixed?: boolean;
+};
+
+export function ActionBar({ children, mobileFixed = false, className, ...props }: ActionBarProps) {
+  return <div {...props} className={cx(styles.actionBar, className)} data-mobile-fixed={mobileFixed || undefined}>{children}</div>;
+}
+
+export type StateSurfaceProps = HTMLAttributes<HTMLElement> & {
+  children?: ReactNode;
+  tone?: "empty" | "loading" | "error" | "permission";
+  title?: ReactNode;
+  description?: ReactNode;
+  action?: ReactNode;
+};
+
+export function StateSurface({ children, tone = "empty", title, description, action, className, ...props }: StateSurfaceProps) {
+  return (
+    <section {...props} aria-busy={tone === "loading" || undefined} data-state-tone={tone} className={cx(styles.stateSurface, styles[`stateSurface${tone[0].toUpperCase()}${tone.slice(1)}`], className)}>
+      {title ? <h3 className={styles.stateSurfaceTitle}>{title}</h3> : null}
+      {description ? <p className={styles.stateSurfaceDescription}>{description}</p> : null}
+      {children}
+      {action ? <div className={styles.stateSurfaceAction}>{action}</div> : null}
+    </section>
+  );
 }
 
 export type ResponsiveFormLayoutProps = HTMLAttributes<HTMLElement> & {

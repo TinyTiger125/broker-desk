@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent, type MouseEvent } from "react";
+import { useActionState, useEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent, type MouseEvent } from "react";
 import type { ClientFormActionState, ClientFormValues } from "@/app/actions";
+import { endSubmission, handleFormSubmit, type SubmissionLock } from "@/components/form-submission-lock";
 import type { Locale } from "@/lib/locale";
 import {
   getAmlCheckStatusOptions,
@@ -49,9 +50,13 @@ type ClientFormProps = {
   locale?: Locale;
   returnTo: string;
   onCreated?: (record: { id: string; name: string }) => void;
+  formId?: string;
+  hideActions?: boolean;
+  onPendingChange?: (pending: boolean) => void;
+  onSubmitStart?: () => void;
 };
 
-const inputClass = "w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-[#0046ad] focus:ring-2 focus:ring-blue-100";
+const inputClass = "w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base text-slate-900 outline-none transition focus:border-[#0046ad] focus:ring-2 focus:ring-blue-100 sm:text-sm";
 
 const copy = {
   ja: {
@@ -103,7 +108,7 @@ function initialValues(defaults?: ClientFormDefaults): ClientFormValues {
   };
 }
 
-export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, onCreated }: ClientFormProps) {
+export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, onCreated, formId, hideActions = false, onPendingChange, onSubmitStart }: ClientFormProps) {
   const text = copy[locale];
   const initial = initialValues(defaults);
   const [values, setValues] = useState<ClientFormValues>(initial);
@@ -111,6 +116,7 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, on
   const summaryRef = useRef<HTMLDivElement>(null);
   const composingRef = useRef(false);
   const notifiedCreatedId = useRef<string | undefined>(undefined);
+  const submissionLockRef = useRef<SubmissionLock>({ current: false });
   const budgetTypeOptions = getBudgetTypeOptions(locale);
   const purposeOptions = getPurposeOptions(locale);
   const loanOptions = getLoanPreApprovalOptions(locale);
@@ -130,6 +136,10 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, on
     notifiedCreatedId.current = record.id;
     onCreated?.(record);
   }, [onCreated, state.createdRecord]);
+  useEffect(() => {
+    if (!pending) endSubmission(submissionLockRef.current);
+    onPendingChange?.(pending);
+  }, [onPendingChange, pending]);
   const errorEntries = Object.entries(state.fieldErrors) as Array<[keyof ClientFormValues, string]>;
   const errorFor = (field: keyof ClientFormValues) => state.fieldErrors[field];
   const update = (field: keyof ClientFormValues, event: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setValues((current) => ({ ...current, [field]: event.target.value }));
@@ -156,9 +166,12 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, on
     </select>
   );
   const initialNote = mode === "create" ? <p className="mt-1 text-xs text-slate-500">{text.initialState}</p> : null;
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    handleFormSubmit(event, submissionLockRef.current, onSubmitStart);
+  };
 
   return (
-    <form action={formAction} noValidate className="space-y-6 pb-10">
+    <form id={formId} action={formAction} onSubmit={handleSubmit} noValidate className="space-y-6 pb-10">
       <input type="hidden" name="returnTo" value={returnTo} />
       {onCreated ? <input type="hidden" name="caseDraftReturn" value="1" /> : null}
       {values.clientId ? <input type="hidden" name="clientId" value={values.clientId} /> : null}
@@ -197,7 +210,7 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, on
 
       <section aria-labelledby="client-notes-heading" className="space-y-3"><h2 id="client-notes-heading" className="text-base font-bold text-slate-950">{text.notes}</h2>{label("notes", text.notes)}<textarea {...fieldProps("notes")} rows={5} placeholder={text.notesPlaceholder} className={`${inputClass} resize-y`} />{errorText("notes")}</section>
 
-      <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-200 pt-5"><Link href={returnTo} className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">{text.cancel}</Link><button type="submit" disabled={pending} className="rounded-lg bg-slate-950 px-5 py-2.5 text-sm font-bold text-white hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">{pending ? text.saving : text.save}</button></div>
+      {hideActions ? null : <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-200 pt-5"><Link href={returnTo} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">{text.cancel}</Link><button type="submit" disabled={pending} className="min-h-11 rounded-lg bg-slate-950 px-5 py-2.5 text-sm font-bold text-white hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">{pending ? text.saving : text.save}</button></div>}
       <div className="sr-only" aria-live="polite">{pending ? text.saving : ""}</div>
     </form>
   );
