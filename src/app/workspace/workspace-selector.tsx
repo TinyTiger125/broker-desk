@@ -23,6 +23,13 @@ export function WorkspaceSelector({ items, copy, returnTo = "/" }: WorkspaceSele
   const [pendingTenantId, setPendingTenantId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const pendingRef = useRef(false);
+  const failedTenantIdRef = useRef<string | null>(null);
+  const optionRefs = useRef(new Map<string, HTMLButtonElement>());
+
+  useEffect(() => {
+    if (!error || !failedTenantIdRef.current) return;
+    optionRefs.current.get(failedTenantIdRef.current)?.focus();
+  }, [error]);
 
   useEffect(() => {
     const blockPendingNavigation = (event: MouseEvent) => {
@@ -45,7 +52,9 @@ export function WorkspaceSelector({ items, copy, returnTo = "/" }: WorkspaceSele
 
   const chooseWorkspace = useCallback(
     async (tenantId: string) => {
+      if (pendingRef.current) return;
       setError("");
+      failedTenantIdRef.current = null;
       pendingRef.current = true;
       setPendingTenantId(tenantId);
       const controller = new AbortController();
@@ -66,6 +75,7 @@ export function WorkspaceSelector({ items, copy, returnTo = "/" }: WorkspaceSele
         // navigation reads the cookie on the next server render.
         window.location.replace(returnTo);
       } catch {
+        failedTenantIdRef.current = tenantId;
         pendingRef.current = false;
         setPendingTenantId(null);
         setError(copy.error);
@@ -77,22 +87,27 @@ export function WorkspaceSelector({ items, copy, returnTo = "/" }: WorkspaceSele
   );
 
   return (
-    <div className="grid gap-3">
+    <div className="grid gap-3" aria-busy={pendingTenantId !== null || undefined}>
       {items.map((item) => {
         const pending = pendingTenantId === item.tenantId;
         return (
           <button
             key={item.tenantId}
+            ref={(node) => {
+              if (node) optionRefs.current.set(item.tenantId, node);
+              else optionRefs.current.delete(item.tenantId);
+            }}
             type="button"
             onClick={() => void chooseWorkspace(item.tenantId)}
             disabled={pendingTenantId !== null}
+            data-workspace-tenant-id={item.tenantId}
             className="grid min-h-24 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border border-slate-200 bg-white px-5 py-4 text-left transition hover:border-[#1960a3] hover:bg-[#f4f8ff] disabled:cursor-wait disabled:opacity-70"
           >
             <span className="min-w-0">
-              <span className="block truncate text-base font-black text-slate-950">{item.name}</span>
+              <span className="block break-words text-base font-black text-slate-950">{item.name}</span>
               <span className="mt-1 block text-sm text-slate-600">{item.accountLabel}</span>
             </span>
-            <span className="inline-flex min-w-20 items-center justify-center border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700">
+            <span className="inline-flex min-h-11 min-w-20 shrink-0 items-center justify-center border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700">
               {pending ? copy.loading : item.roleLabel}
             </span>
           </button>

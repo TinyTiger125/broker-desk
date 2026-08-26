@@ -3,6 +3,7 @@ import { getDefaultUser, getTenantById, isTenantAccessibleStatus, listPendingTen
 import { getLocale, type Locale } from "@/lib/locale";
 import { isClerkAuthEnabled } from "@/lib/auth-mode";
 import { getClerkAuthSubject } from "@/lib/clerk-auth";
+import { PageFrame, PageHeader, StateSurface } from "@/components/layout-system";
 import { WorkspaceSelector, type WorkspaceOption } from "./workspace-selector";
 import { WorkspaceSignOutButton } from "./sign-out-button";
 
@@ -157,16 +158,21 @@ export default async function WorkspacePage({ searchParams }: WorkspacePageProps
       accountLabel: tenant!.accountType === "individual" ? text.individual : text.company,
       roleLabel: text.role,
     })) satisfies WorkspaceOption[];
+  const noWorkspaceTitle = memberships.some((item) => item.status === "suspended")
+    ? text.statusSuspended
+    : memberships.some((item) => item.status === "removed")
+      ? text.statusRemoved
+      : pendingActivation
+        ? text.statusPendingActivation
+        : pendingInvitations.length > 0
+          ? text.invitationPending
+          : text.emptyTitle;
 
   return (
-    <section className="broker-desk-auth-route flex min-h-screen items-center bg-[#f8f9ff] px-5 py-10 sm:px-8 lg:px-12">
-      <div className="mx-auto grid w-full max-w-4xl gap-10 lg:grid-cols-[minmax(0,0.72fr)_minmax(22rem,1fr)] lg:gap-16">
-        <div className="self-start lg:pt-6">
-          <p className="text-sm font-black uppercase tracking-[0.14em] text-[#1960a3]">{text.eyebrow}</p>
-          <h1 className="mt-3 text-3xl font-black text-slate-950 sm:text-4xl">{text.title}</h1>
-          <p className="mt-4 max-w-md text-base leading-7 text-slate-600">{text.description}</p>
-        </div>
-        <div className="border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+    <section className="broker-desk-auth-route min-h-screen bg-[#f8f9ff] px-5 py-10 sm:px-8 lg:px-12">
+      <PageFrame className="mx-auto flex w-full max-w-3xl flex-col gap-8">
+        <PageHeader title={text.title} description={text.description} />
+        <section aria-label={text.title} className="w-full border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
           {selectionRequired ? (
             <div role="alert" className="mb-5 border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
               <p className="font-bold">{text.selectionRequiredTitle}</p>
@@ -176,44 +182,40 @@ export default async function WorkspacePage({ searchParams }: WorkspacePageProps
           {items.length > 0 ? (
             <WorkspaceSelector items={items} copy={text} returnTo={returnTo} />
           ) : sessionLookupFailed ? (
-            <div>
-              <h2 className="text-lg font-black text-slate-950">{text.loadErrorTitle}</h2>
-              <p className="mt-3 text-sm leading-6 text-slate-600">{text.loadErrorDescription}</p>
-              <Link href="/workspace" className="mt-7 inline-flex min-h-11 items-center justify-center border border-slate-950 bg-slate-950 px-4 text-sm font-bold text-white transition hover:bg-slate-800">
-                {text.retry}
-              </Link>
-            </div>
+            <StateSurface
+              tone="error"
+              title={text.loadErrorTitle}
+              description={text.loadErrorDescription}
+              action={(
+                <Link href="/workspace" className="inline-flex min-h-11 items-center justify-center border border-slate-950 bg-slate-950 px-4 text-sm font-bold text-white transition hover:bg-slate-800">
+                  {text.retry}
+                </Link>
+              )}
+            />
           ) : (
-            <div>
-              <h2 className="text-lg font-black text-slate-950">
-                {memberships.some((item) => item.status === "suspended")
-                  ? text.statusSuspended
-                  : memberships.some((item) => item.status === "removed")
-                    ? text.statusRemoved
-                  : pendingActivation
-                    ? text.statusPendingActivation
-                    : pendingInvitations.length > 0
-                      ? text.invitationPending
-                      : text.emptyTitle}
-              </h2>
-              <p className="mt-3 text-sm leading-6 text-slate-600">{text.emptyDescription}</p>
-              <div className="mt-7 flex flex-wrap gap-3">
-                <Link href="/workspace/create" className="inline-flex min-h-11 items-center justify-center border border-slate-950 bg-slate-950 px-4 text-sm font-bold text-white transition hover:bg-slate-800">
-                  {text.createCompany}
-                </Link>
-                <Link href="/workspace/invitations" className="inline-flex min-h-11 items-center justify-center border border-slate-300 bg-white px-4 text-sm font-bold text-slate-900 transition hover:bg-slate-50">
-                  {text.viewInvitations}
-                </Link>
-                {isClerkAuthEnabled() ? <WorkspaceSignOutButton label={text.back} /> : (
-                  <Link href="/sign-in" className="inline-flex min-h-11 items-center justify-center border border-slate-300 bg-white px-4 text-sm font-bold text-slate-900 transition hover:bg-slate-50">
-                    {text.back}
+            <StateSurface
+              tone="empty"
+              title={noWorkspaceTitle}
+              description={text.emptyDescription}
+              action={(
+                <div className="flex flex-wrap gap-3">
+                  <Link href="/workspace/create" className="inline-flex min-h-11 items-center justify-center border border-slate-950 bg-slate-950 px-4 text-sm font-bold text-white transition hover:bg-slate-800">
+                    {text.createCompany}
                   </Link>
-                )}
-              </div>
-            </div>
+                  <Link href="/workspace/invitations" className="inline-flex min-h-11 items-center justify-center border border-slate-300 bg-white px-4 text-sm font-bold text-slate-900 transition hover:bg-slate-50">
+                    {text.viewInvitations}
+                  </Link>
+                  {isClerkAuthEnabled() ? <WorkspaceSignOutButton label={text.back} /> : (
+                    <Link href="/sign-in" className="inline-flex min-h-11 items-center justify-center border border-slate-300 bg-white px-4 text-sm font-bold text-slate-900 transition hover:bg-slate-50">
+                      {text.back}
+                    </Link>
+                  )}
+                </div>
+              )}
+            />
           )}
-        </div>
-      </div>
+        </section>
+      </PageFrame>
     </section>
   );
 }
