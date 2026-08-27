@@ -17,7 +17,7 @@ export function PageFlashBanner({ message, tone = "success" }: PageFlashBannerPr
     <div
       role="status"
       aria-live="polite"
-      className={`rounded-xl border px-4 py-3 text-sm font-medium shadow-sm ${toneClass}`}
+      className={`rounded-xl border px-4 py-3 text-sm font-medium ${toneClass}`}
     >
       {message}
     </div>

@@ -15,8 +15,10 @@ const submissionLockPath = "src/components/form-submission-lock.ts";
 const focusDialogGuardsPath = "src/components/focus-dialog-guards.ts";
 const organizePagePath = "src/app/organize-center/page.tsx";
 const organizeBrowserPath = "src/components/organize-center-object-browser.tsx";
+const propertiesPagePath = "src/app/properties/page.tsx";
+const propertiesLoadingPath = "src/app/properties/loading.tsx";
 
-const [layout, layoutCss, casePage, caseOverview, caseDraft, loading, notFound, clientForm, propertyForm, submissionLock, focusDialogGuards, organizePage, organizeBrowser] = await Promise.all([
+const [layout, layoutCss, casePage, caseOverview, caseDraft, loading, notFound, clientForm, propertyForm, submissionLock, focusDialogGuards, organizePage, organizeBrowser, propertiesPage, propertiesLoading] = await Promise.all([
   readFile(layoutPath, "utf8"),
   readFile(layoutCssPath, "utf8"),
   readFile(casePagePath, "utf8"),
@@ -30,6 +32,8 @@ const [layout, layoutCss, casePage, caseOverview, caseDraft, loading, notFound, 
   readFile(focusDialogGuardsPath, "utf8"),
   readFile(organizePagePath, "utf8"),
   readFile(organizeBrowserPath, "utf8"),
+  readFile(propertiesPagePath, "utf8"),
+  readFile(propertiesLoadingPath, "utf8"),
 ]);
 
 const failures = [];
@@ -342,6 +346,13 @@ for (const fragment of [
   requireText(organizeBrowser, fragment, "organize-center behavior contract");
 }
 checkOrganizeSharedReturn();
+
+for (const fragment of ["<PageFrame", "<PageHeader", "<ListReturnState", "<ListReportShell", "<StateSurface"]) {
+  requireText(propertiesPage, fragment, "properties List Report composition");
+}
+for (const fragment of ["<PageFrame", "<PageHeader", "<ListReportShell", "<StateSurface", 'tone="loading"', 'aria-busy="true"']) {
+  requireText(propertiesLoading, fragment, "properties loading List Report composition");
+}
 for (const retired of [
   "FOCUS_STORAGE_PREFIX",
   "RETURN_STATE_STORAGE_PREFIX",
