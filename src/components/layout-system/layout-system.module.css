@@ -303,6 +303,47 @@
   padding: var(--bd-space-4) var(--bd-space-5);
 }
 
+.worklistShell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    "controls"
+    "summary"
+    "items"
+    "state";
+  min-width: 0;
+  border: 1px solid var(--bd-line);
+  border-radius: var(--bd-radius-lg);
+  background: var(--bd-surface);
+}
+
+.worklistSlot {
+  min-width: 0;
+}
+
+.worklistControls {
+  grid-area: controls;
+  padding: var(--bd-space-5);
+  border-bottom: 1px solid var(--bd-line);
+}
+
+.worklistSummary {
+  grid-area: summary;
+  padding: var(--bd-space-3) var(--bd-space-5);
+  border-bottom: 1px solid var(--bd-line);
+  background: var(--bd-surface-soft);
+}
+
+.worklistItems {
+  grid-area: items;
+  min-width: 0;
+}
+
+.worklistState {
+  grid-area: state;
+  padding: var(--bd-space-5);
+}
+
 .backLink {
   display: inline-flex;
   min-height: var(--bd-control-height-touch);
@@ -505,6 +546,19 @@
   .listReportShell select,
   .listReportShell button,
   .listReportShell a {
+    min-height: var(--bd-control-height-touch);
+  }
+
+  .worklistControls,
+  .worklistSummary,
+  .worklistState {
+    padding-inline: var(--bd-space-4);
+  }
+
+  .worklistShell input,
+  .worklistShell select,
+  .worklistShell button,
+  .worklistShell a {
     min-height: var(--bd-control-height-touch);
   }
 
