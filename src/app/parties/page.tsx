@@ -179,8 +179,11 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
     requireTenantSession({ permission: "record.read" }),
   ]);
   const copy = partiesCopy[locale];
+  const capability = getTenantCapability(session.membership);
   const capabilityCanWrite = session.membership.status === "active"
-    && capabilityHasTenantPermission(getTenantCapability(session.membership), "record.update");
+    && capabilityHasTenantPermission(capability, "record.update");
+  const capabilityCanArchive = session.membership.status === "active"
+    && capabilityHasTenantPermission(capability, "record.archive");
   const params = (await searchParams) ?? {};
   const query = params.q?.trim() ?? "";
   const type = normalizeType(params.type);
@@ -190,8 +193,10 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
   const context = {
     userId: session.user.id,
     tenantId: session.tenant.id,
-    lifecycleStatus: lifecycle,
+    lifecycleStatus: "all" as const,
     requestContext: createRequestContext(session),
+    canUpdateRecords: capabilityCanWrite,
+    canArchiveRecords: capabilityCanArchive,
   };
 
   let parties: HubPartyItem[] = [];
@@ -202,8 +207,11 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
     readError = true;
   }
 
+  const lifecycleFiltered = lifecycle === "all"
+    ? parties
+    : parties.filter((party) => party.status === lifecycle);
   const searched = query
-    ? parties.filter((party) => {
+    ? lifecycleFiltered.filter((party) => {
         const normalized = query.toLowerCase();
         return (
           party.name.toLowerCase().includes(normalized) ||
@@ -212,7 +220,7 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
           party.explicitRoles.some((role) => role.toLowerCase().includes(normalized))
         );
       })
-    : parties;
+    : lifecycleFiltered;
   const filtered = searched.filter((party) => {
     const matchesType = type === "all" || party.explicitPartyType === type;
     return matchesType;
@@ -334,7 +342,12 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
           <ul className="divide-y divide-slate-200/80" aria-label={copy.results}>
             {visibleParties.map((party) => {
               const canWrite = party.canWrite && capabilityCanWrite;
-              const readOnlyMessage = party.readOnly ? copy.readOnly : canWrite ? undefined : copy.ownerReadOnly;
+              const canArchive = party.canArchive;
+              const readOnlyMessage = party.readOnlyReason === "company_read"
+                ? copy.readOnly
+                : party.readOnlyReason === "owner_read_only" || !canWrite
+                  ? copy.ownerReadOnly
+                  : undefined;
               const typeLabel = party.explicitPartyType === "corporate"
                 ? copy.corporate
                 : party.explicitPartyType === "individual"
@@ -346,7 +359,7 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
                 <li key={party.id} className="grid gap-4 px-5 py-4 transition hover:bg-slate-50 lg:grid-cols-[minmax(12rem,1.3fr)_minmax(7rem,0.7fr)_minmax(9rem,1fr)_minmax(6rem,0.6fr)_auto] lg:items-center">
                   <div className="min-w-0">
                     <Link
-                      href={`/parties/${encodeURIComponent(party.id)}/edit`}
+                      href={`/parties/${encodeURIComponent(party.id)}/edit?returnTo=${encodeURIComponent(returnTo)}`}
                       className="block truncate text-sm font-bold text-slate-900 underline-offset-4 hover:text-[#002fa7] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]"
                     >
                       {party.name}
@@ -362,7 +375,7 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
                       href={`/relationship-tree?type=party&id=${encodeURIComponent(party.id)}`}
                       className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]"
                     >{copy.relationTree}</Link> : null}
-                    {canWrite ? <ArchiveRecordButton
+                    {canArchive ? <ArchiveRecordButton
                       entityType="party"
                       entityId={party.id}
                       status={party.status}

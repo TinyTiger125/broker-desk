@@ -88,7 +88,9 @@ export type HubPartyItem = {
   contractCount: number;
   status: "active" | "archived";
   canWrite: boolean;
+  canArchive: boolean;
   readOnly: boolean;
+  readOnlyReason?: "company_read" | "owner_read_only";
 };
 
 export type HubContractItem = {
@@ -345,12 +347,20 @@ const resolveHubParties = cache(async (
       contractCount: countMap.get(client.id) ?? 0,
       status: client.lifecycleStatus ?? "active",
       canWrite: true,
+      canArchive: true,
       readOnly: false,
     };
   });
 });
 
-function mapVisibleHubParty(locale: Locale, rawClient: Client, canWrite: boolean, contractCount: number): HubPartyItem {
+function mapVisibleHubParty(
+  locale: Locale,
+  rawClient: Client,
+  canWrite: boolean,
+  canArchive: boolean,
+  readOnlyReason: HubPartyItem["readOnlyReason"],
+  contractCount: number,
+): HubPartyItem {
   const client = localizeDemoClient(locale, rawClient);
   const profile = extractPartyProfileFromNotes(client.notes);
   return {
@@ -368,7 +378,9 @@ function mapVisibleHubParty(locale: Locale, rawClient: Client, canWrite: boolean
     contractCount,
     status: client.lifecycleStatus ?? "active",
     canWrite,
+    canArchive,
     readOnly: !canWrite,
+    readOnlyReason,
   };
 }
 
@@ -378,7 +390,16 @@ export async function listHubParties(locale: Locale = "ja", context: HubQueryCon
       context: context.requestContext,
       filter: { sort: "recent_contact", lifecycleStatus: context.lifecycleStatus },
     });
-    return visible.map((item) => mapVisibleHubParty(locale, item.client, item.resolution.canWrite, item._count.quotations));
+    return visible.map((item) => {
+      const canWrite = item.resolution.canWrite && context.canUpdateRecords !== false;
+      const canArchive = canWrite && context.canArchiveRecords === true;
+      const readOnlyReason = canWrite
+        ? undefined
+        : item.resolution.outcome === "company_read"
+          ? "company_read"
+          : "owner_read_only";
+      return mapVisibleHubParty(locale, item.client, canWrite, canArchive, readOnlyReason, item._count.quotations);
+    });
   }
   const resolved = await resolveHubContext(context);
   if (!resolved) return [];
