@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArchiveRecordButton } from "@/components/archive-record-button";
+import { ListReturnState } from "@/components/list-return-state";
 import { PageFlashBanner } from "@/components/page-flash-banner";
 import { formatCurrency } from "@/lib/format";
 import { listHubProperties, type HubPropertyItem } from "@/lib/hub";
@@ -311,7 +312,8 @@ export default async function PropertiesPage({ searchParams }: PropertiesPagePro
         </form>
       </section>
 
-      <section className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200/40" aria-labelledby="properties-results-heading">
+      <ListReturnState scope="properties" listUrl={returnTo}>
+      <section tabIndex={-1} data-list-return-fallback className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200/40" aria-labelledby="properties-results-heading">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/80 px-5 py-4">
           <div>
             <h2 id="properties-results-heading" className="text-lg font-bold text-slate-900">{copy.results}</h2>
@@ -362,6 +364,7 @@ export default async function PropertiesPage({ searchParams }: PropertiesPagePro
                     <div role="cell" className="min-w-0">
                       <Link
                         href={`/properties/${encodeURIComponent(property.id)}/edit?returnTo=${encodeURIComponent(returnTo)}`}
+                        data-list-return-trigger={`property:${property.id}`}
                         className="block truncate text-sm font-bold text-slate-900 underline-offset-4 hover:text-[#002fa7] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]"
                       >
                         {property.name}
@@ -395,6 +398,7 @@ export default async function PropertiesPage({ searchParams }: PropertiesPagePro
           </div>
         )}
       </section>
+      </ListReturnState>
     </div>
   );
 }

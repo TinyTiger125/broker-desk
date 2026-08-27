@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArchiveRecordButton } from "@/components/archive-record-button";
+import { ListReturnState } from "@/components/list-return-state";
 import { PageFlashBanner } from "@/components/page-flash-banner";
 import { listHubParties, type HubPartyItem } from "@/lib/hub";
 import { t } from "@/lib/i18n";
@@ -293,7 +294,8 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
         </form>
       </section>
 
-      <section className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200/40" aria-labelledby="parties-results-heading">
+      <ListReturnState scope="parties" listUrl={returnTo}>
+      <section tabIndex={-1} data-list-return-fallback className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200/40" aria-labelledby="parties-results-heading">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/80 px-5 py-4">
           <div>
             <h2 id="parties-results-heading" className="text-lg font-bold text-slate-900">{copy.results}</h2>
@@ -360,6 +362,7 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
                   <div className="min-w-0">
                     <Link
                       href={`/parties/${encodeURIComponent(party.id)}/edit?returnTo=${encodeURIComponent(returnTo)}`}
+                      data-list-return-trigger={`party:${party.id}`}
                       className="block truncate text-sm font-bold text-slate-900 underline-offset-4 hover:text-[#002fa7] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]"
                     >
                       {party.name}
@@ -389,6 +392,7 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
           </ul>
         )}
       </section>
+      </ListReturnState>
     </div>
   );
 }
