@@ -5,6 +5,7 @@ import {
   type OrganizeCenterBrowserItem,
 } from "@/components/organize-center-object-browser";
 import { ListReportShell, PageFrame, PageHeader, StateSurface } from "@/components/layout-system";
+import { PageFlashBanner } from "@/components/page-flash-banner";
 import { listBrokerageCasesForContext } from "@/lib/data";
 import { getCaseFieldValue } from "@/lib/case-field-normalization";
 import { formatDate } from "@/lib/format";
@@ -19,7 +20,7 @@ import { redirect } from "next/navigation";
 export const dynamic = "force-dynamic";
 
 type OrganizeCenterPageProps = {
-  searchParams?: Promise<{ type?: string; q?: string; lifecycle?: string; page?: string }>;
+  searchParams?: Promise<OrganizeCenterQuery>;
 };
 
 type ReliableObjectType = "case" | "party" | "property";
@@ -30,6 +31,7 @@ type OrganizeCenterQuery = {
   q?: string;
   lifecycle?: string;
   page?: string;
+  flash?: string;
 };
 
 type WorkObject = {
@@ -102,6 +104,8 @@ const copyByLocale = {
     inboxUnavailableTitle: "資料の帰属一覧は現在利用できません",
     inboxUnavailableBody: "具体的な対象への帰属を確実に判断できるデータがありません。資料入力で処理状況を確認してください。",
     openImportCenter: "資料入力を開く",
+    recordArchived: "記録を保管しました。",
+    recordRestored: "記録を復元しました。",
   },
   zh: {
     title: "整理信息",
@@ -157,6 +161,8 @@ const copyByLocale = {
     inboxUnavailableTitle: "待归属资料列表暂不可用",
     inboxUnavailableBody: "当前没有可靠的具体对象归属数据。请在录入资料中查看资料处理状态。",
     openImportCenter: "打开录入资料",
+    recordArchived: "记录已归档。",
+    recordRestored: "记录已恢复。",
   },
   ko: {
     title: "정보 정리",
@@ -212,6 +218,8 @@ const copyByLocale = {
     inboxUnavailableTitle: "미분류 자료 목록을 현재 사용할 수 없습니다",
     inboxUnavailableBody: "현재 구체적인 대상 귀속을 신뢰할 수 있는 데이터가 없습니다. 자료 입력에서 처리 상태를 확인하세요.",
     openImportCenter: "자료 입력 열기",
+    recordArchived: "기록을 보관했습니다.",
+    recordRestored: "기록을 복원했습니다.",
   },
 } satisfies Record<Locale, Record<string, string>>;
 
@@ -468,10 +476,16 @@ export default async function OrganizeCenterPage({ searchParams }: OrganizeCente
     searchParams ?? Promise.resolve({} as OrganizeCenterQuery),
   ]);
   const copy = copyByLocale[locale];
+  const flashMessage = params.flash === "record_archived"
+    ? copy.recordArchived
+    : params.flash === "record_restored"
+      ? copy.recordRestored
+      : undefined;
 
   return (
     <PageFrame className="bd-page bd-organize-page space-y-6 pb-16">
       <PageHeader className="bd-page-header" title={copy.title} description={copy.description} />
+      <PageFlashBanner message={flashMessage} />
 
       <Suspense fallback={<OrganizeCenterLoading copy={copy} params={params} />}>
         <OrganizeCenterContent locale={locale} params={params} />

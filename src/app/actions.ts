@@ -646,7 +646,10 @@ export async function setRecordLifecycleAction(formData: FormData) {
   revalidatePath("/parties");
   revalidatePath("/properties");
   revalidatePath("/");
-  redirect(safeReturnTo(formData.get("returnTo"), "/organize-center"));
+  redirect(withFlash(
+    safeReturnTo(formData.get("returnTo"), "/organize-center"),
+    status === "archived" ? "record_archived" : "record_restored",
+  ));
 }
 
 async function ensureClientOwnership(clientId: string, session: TenantSession) {

@@ -385,6 +385,8 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
                       status={party.status}
                       locale={locale}
                       returnTo={returnTo}
+                      returnStateScope={"parties"}
+                      returnFocusKey={`party:${party.id}`}
                     /> : null}
                   </div>
                 </li>

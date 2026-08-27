@@ -389,6 +389,8 @@ export default async function PropertiesPage({ searchParams }: PropertiesPagePro
                           status={property.status}
                           locale={locale}
                           returnTo={returnTo}
+                          returnStateScope={"properties"}
+                          returnFocusKey={`property:${property.id}`}
                         />
                       ) : null}
                     </div>

@@ -46,8 +46,10 @@ const WORKBENCH_FIELD_STATUS_KEY = "__workbenchFieldStatuses";
 
 type CasePageProps = {
   params: Promise<{ id: string }>;
-  searchParams?: Promise<{ flash?: string; node?: string; field?: string; view?: string; scrollTop?: string }>;
+  searchParams?: Promise<CasePageQuery>;
 };
+
+type CasePageQuery = { flash?: string; node?: string; field?: string; view?: string; scrollTop?: string; returnTo?: string };
 
 type WorkbenchTrustState =
   | "confirmed"
@@ -117,6 +119,41 @@ const workbenchGroups = CASE_FIELD_CATALOG_GROUPS.map((group) => ({
 
 function tr(locale: Locale, messages: Record<Locale, string>) {
   return messages[locale];
+}
+
+function normalizeCaseArchiveReturnTo(value: string | null | undefined): string {
+  const fallback = "/organize-center?type=case";
+  const path = (value ?? "").trim();
+  if (!path.startsWith("/") || path.startsWith("//") || path.includes("\\")) return fallback;
+  let parsed: URL;
+  try {
+    parsed = new URL(path, "http://broker-desk.local");
+  } catch {
+    return fallback;
+  }
+  const decodedSegments = parsed.pathname.split("/").map((segment) => {
+    try {
+      return decodeURIComponent(segment);
+    } catch {
+      return "..";
+    }
+  });
+  const keys = [...new Set(parsed.searchParams.keys())];
+  const lifecycle = parsed.searchParams.get("lifecycle");
+  const page = parsed.searchParams.get("page");
+  if (
+    parsed.origin !== "http://broker-desk.local"
+    || parsed.hash
+    || parsed.pathname !== "/organize-center"
+    || decodedSegments.some((segment) => segment === "." || segment === ".." || segment.includes("\\"))
+    || parsed.searchParams.get("type") !== "case"
+    || parsed.searchParams.getAll("type").length !== 1
+    || keys.some((key) => parsed.searchParams.getAll(key).length !== 1)
+    || keys.some((key) => !["type", "q", "lifecycle", "page"].includes(key))
+    || (lifecycle !== null && !["active", "archived", "all"].includes(lifecycle))
+    || (page !== null && (!/^\d+$/.test(page) || Number(page) < 1))
+  ) return fallback;
+  return `${parsed.pathname}${parsed.search}`;
 }
 
 function getReviewQueueLabel(locale: Locale, count: number) {
@@ -511,8 +548,9 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
 
   const [{ id }, query] = await Promise.all([
     params,
-    searchParams ?? Promise.resolve({} as { flash?: string; node?: string; field?: string; view?: string; scrollTop?: string }),
+    searchParams ?? Promise.resolve({} as CasePageQuery),
   ]);
+  const caseArchiveReturnTo = normalizeCaseArchiveReturnTo(query.returnTo);
   const caseVisibility = await getBrokerageCaseByIdForContext({ context: requestContext, caseId: id });
   let brokerageCase = caseVisibility.brokerageCase;
   if (!brokerageCase) notFound();
@@ -974,7 +1012,10 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                     recordLabel={brokerageCase.caseTitle}
                     status={brokerageCase.lifecycleStatus ?? "active"}
                     locale={locale}
-                    returnTo="/organize-center?type=case"
+                    returnTo={caseArchiveReturnTo}
+                    returnStateScope={"organize"}
+                    returnFocusKey={`case:${brokerageCase.id}`}
+                    preserveExistingReturnState={true}
                   />
                 </span> : null}
               </>

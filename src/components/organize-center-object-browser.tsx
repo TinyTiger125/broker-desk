@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect } from "react";
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
 import { ArchiveRecordButton } from "@/components/archive-record-button";
 import { ListReportShell, StateSurface } from "@/components/layout-system";
+import { ListReturnState } from "@/components/list-return-state";
 import {
   Button,
   SectionHeader,
@@ -44,8 +43,6 @@ type OrganizeCenterObjectBrowserProps = {
 };
 
 const LIST_PAGE_SIZE = 6;
-const FOCUS_STORAGE_PREFIX = "organize-center:focus:";
-const RETURN_STATE_STORAGE_PREFIX = "organize-center:return-state:";
 
 function getTypeLabel(type: ObjectType, copy: Record<string, string>) {
   if (type === "case") return copy.case;
@@ -84,35 +81,6 @@ function buildListHref(type: ObjectType, query: string, lifecycleFilter: Lifecyc
   return search ? `/organize-center?${search}` : "/organize-center";
 }
 
-function focusStorageKey(listUrl: string) {
-  return `${FOCUS_STORAGE_PREFIX}${listUrl}`;
-}
-
-function returnStateStorageKey(listUrl: string) {
-  return `${RETURN_STATE_STORAGE_PREFIX}${listUrl}`;
-}
-
-function clearListReturnState(listUrl: string) {
-  try {
-    window.sessionStorage.removeItem(focusStorageKey(listUrl));
-    window.sessionStorage.removeItem(returnStateStorageKey(listUrl));
-  } catch {
-    // Private browsing must not block rendering when session storage is unavailable.
-  }
-}
-
-function rememberListReturnState(listUrl: string, itemId: string) {
-  try {
-    window.sessionStorage.setItem(focusStorageKey(listUrl), itemId);
-    window.sessionStorage.setItem(
-      returnStateStorageKey(listUrl),
-      JSON.stringify({ itemId, scrollY: window.scrollY }),
-    );
-  } catch {
-    // Focus restoration is an enhancement; private browsing must not block navigation.
-  }
-}
-
 export function OrganizeCenterObjectBrowser({
   items,
   selectedType,
@@ -122,35 +90,6 @@ export function OrganizeCenterObjectBrowser({
   locale,
   page,
 }: OrganizeCenterObjectBrowserProps) {
-  const pathname = usePathname() ?? "/organize-center";
-  const searchParams = useSearchParams();
-  const currentListUrl = `${pathname}${searchParams.toString() ? `?${searchParams.toString()}` : ""}`;
-
-  useEffect(() => {
-    let frame = 0;
-    try {
-      const storedState = window.sessionStorage.getItem(returnStateStorageKey(currentListUrl));
-      const parsedState = storedState ? (JSON.parse(storedState) as { itemId?: unknown; scrollY?: unknown }) : undefined;
-      const itemId = parsedState?.itemId ?? window.sessionStorage.getItem(focusStorageKey(currentListUrl));
-      const scrollY = parsedState?.scrollY;
-      if (typeof itemId !== "string" || !itemId) return undefined;
-      frame = window.requestAnimationFrame(() => {
-        if (typeof scrollY === "number" && Number.isFinite(scrollY)) {
-          window.scrollTo({ top: scrollY, behavior: "auto" });
-        }
-        const link = Array.from(document.querySelectorAll<HTMLElement>("[data-organize-object-link]")).find(
-          (candidate) => candidate.dataset.organizeObjectLink === itemId,
-        );
-        if (link) link.focus({ preventScroll: true });
-        clearListReturnState(currentListUrl);
-      });
-    } catch {
-      clearListReturnState(currentListUrl);
-      return undefined;
-    }
-    return () => window.cancelAnimationFrame(frame);
-  }, [currentListUrl]);
-
   if (selectedType === "all") {
     const countByType = new Map<Exclude<ObjectType, "all">, number>([
       ["case", 0],
@@ -216,7 +155,14 @@ export function OrganizeCenterObjectBrowser({
   const hasKeyword = query.trim().length > 0;
 
   return (
-    <ListReportShell
+    <ListReturnState scope={"organize"} listUrl={listHref}>
+      <section
+        tabIndex={-1}
+        data-list-return-fallback
+        aria-label={`${getTypeLabel(selectedType, copy)} ${copy.objectCenter}`}
+        className="rounded-lg focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]"
+      >
+        <ListReportShell
       className="organize-object-browser"
       scope={
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -264,13 +210,16 @@ export function OrganizeCenterObjectBrowser({
       }
       results={filteredItems.length > 0 ? (
         <div className="divide-y divide-slate-200">
-          {visibleItems.map((item) => (
+          {visibleItems.map((item) => {
+            const itemHref = item.type === "case"
+              ? `${item.href}?returnTo=${encodeURIComponent(listHref)}`
+              : item.href;
+            return (
             <article key={`${item.type}:${item.id}`} className="grid gap-4 px-4 py-5 transition hover:bg-[#f9fbff] sm:px-5 md:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)] xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1.45fr)_auto]">
               <div className="min-w-0">
                 <Link
-                  href={item.href}
-                  data-organize-object-link={item.id}
-                  onClick={() => rememberListReturnState(currentListUrl, item.id)}
+                  href={itemHref}
+                  data-list-return-trigger={`${item.type}:${item.id}`}
                   className="group inline-flex max-w-full items-start gap-2 rounded-md text-base font-black leading-6 text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3158d8] focus-visible:ring-offset-2"
                 >
                   <span className="min-w-0 break-words">{item.title}</span>
@@ -302,11 +251,14 @@ export function OrganizeCenterObjectBrowser({
                     status={item.lifecycleStatus}
                     locale={locale}
                     returnTo={listHref}
+                    returnStateScope={"organize"}
+                    returnFocusKey={`${item.type}:${item.id}`}
                   />
                 ) : null}
               </div>
             </article>
-          ))}
+            );
+          })}
         </div>
       ) : null}
       pagination={
@@ -335,6 +287,8 @@ export function OrganizeCenterObjectBrowser({
           />
         ) : null
       }
-    />
+        />
+      </section>
+    </ListReturnState>
   );
 }

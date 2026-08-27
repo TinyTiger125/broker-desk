@@ -2,6 +2,7 @@
 
 import { useTransition } from "react";
 import { setRecordLifecycleAction } from "@/app/actions";
+import { rememberListReturnIntent, type ListReturnScope } from "@/components/list-return-state";
 import { Button } from "@/components/ui-foundation";
 import type { Locale } from "@/lib/locale";
 import type { LifecycleStatus } from "@/lib/record-lifecycle";
@@ -13,6 +14,9 @@ type ArchiveRecordButtonProps = {
   status: LifecycleStatus;
   locale: Locale;
   returnTo: string;
+  returnStateScope: ListReturnScope;
+  returnFocusKey: string;
+  preserveExistingReturnState?: boolean;
 };
 
 const labels: Record<Locale, {
@@ -65,7 +69,17 @@ const labels: Record<Locale, {
   },
 };
 
-export function ArchiveRecordButton({ entityType, entityId, recordLabel, status, locale, returnTo }: ArchiveRecordButtonProps) {
+export function ArchiveRecordButton({
+  entityType,
+  entityId,
+  recordLabel,
+  status,
+  locale,
+  returnTo,
+  returnStateScope,
+  returnFocusKey,
+  preserveExistingReturnState = false,
+}: ArchiveRecordButtonProps) {
   const [isPending, startTransition] = useTransition();
   const copy = labels[locale];
   const isArchived = status === "archived";
@@ -83,6 +97,12 @@ export function ArchiveRecordButton({ entityType, entityId, recordLabel, status,
         event.stopPropagation();
         const confirmMessage = (isArchived ? copy.confirmRestore : copy.confirmArchive).replace("{recordLabel}", recordLabel);
         if (!window.confirm(confirmMessage)) return;
+        rememberListReturnIntent({
+          listUrl: returnTo,
+          scope: returnStateScope,
+          triggerKey: returnFocusKey,
+          preserveExisting: preserveExistingReturnState,
+        });
         const formData = new FormData();
         formData.set("entityType", entityType);
         formData.set("entityId", entityId);

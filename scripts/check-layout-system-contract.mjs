@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
+import ts from "typescript";
 
 const layoutPath = "src/components/layout-system/index.tsx";
 const layoutCssPath = "src/components/layout-system/layout-system.module.css";
@@ -35,6 +36,62 @@ const failures = [];
 const requireText = (source, text, label) => {
   if (!source.includes(text)) failures.push(`${label}: missing ${text}`);
 };
+
+const parseTsx = (file, source) => ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+const walkTsx = (node, predicate, out = []) => {
+  if (predicate(node)) out.push(node);
+  node.forEachChild((child) => { walkTsx(child, predicate, out); });
+  return out;
+};
+const unwrapExpression = (node) => {
+  let current = node;
+  while (current && (ts.isParenthesizedExpression(current) || ts.isAsExpression(current) || ts.isSatisfiesExpression(current))) current = current.expression;
+  return current;
+};
+const staticallyTerminates = (statement) => {
+  if (ts.isReturnStatement(statement) || ts.isThrowStatement(statement)) return true;
+  if (ts.isBlock(statement)) return statement.statements.length > 0 && staticallyTerminates(statement.statements.at(-1));
+  if (ts.isIfStatement(statement)) {
+    const condition = unwrapExpression(statement.expression).kind;
+    if (condition === ts.SyntaxKind.TrueKeyword) return staticallyTerminates(statement.thenStatement);
+    if (condition === ts.SyntaxKind.FalseKeyword) return Boolean(statement.elseStatement && staticallyTerminates(statement.elseStatement));
+    return Boolean(statement.elseStatement && staticallyTerminates(statement.thenStatement) && staticallyTerminates(statement.elseStatement));
+  }
+  return false;
+};
+const jsxAttribute = (opening, name) => opening.attributes.properties.find((item) => ts.isJsxAttribute(item) && item.name.getText() === name);
+
+function checkOrganizeSharedReturn() {
+  const sf = parseTsx(organizeBrowserPath, organizeBrowser);
+  const fn = sf.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === "OrganizeCenterObjectBrowser");
+  if (!fn?.body) {
+    failures.push("organize-center shared return: missing live OrganizeCenterObjectBrowser function");
+    return;
+  }
+  const finalReturn = fn.body.statements.at(-1);
+  if (!finalReturn || !ts.isReturnStatement(finalReturn) || !finalReturn.expression) {
+    failures.push("organize-center shared return: final statement must be the selected-list return");
+    return;
+  }
+  if (fn.body.statements.slice(0, -1).some(staticallyTerminates)) {
+    failures.push("organize-center shared return: selected-list return follows a static terminator");
+    return;
+  }
+  const openings = walkTsx(finalReturn.expression, (node) => ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node));
+  const shared = openings.filter((node) => node.tagName.getText(sf) === "ListReturnState");
+  if (shared.length !== 1) failures.push("organize-center shared return: expected one final-reachable ListReturnState");
+  const scope = shared[0] && jsxAttribute(shared[0], "scope");
+  const listUrl = shared[0] && jsxAttribute(shared[0], "listUrl");
+  if (!scope?.getText(sf).includes('"organize"') || listUrl?.getText(sf) !== "listUrl={listHref}") failures.push("organize-center shared return: shared scope/listUrl mismatch");
+  const triggers = openings.filter((node) => jsxAttribute(node, "data-list-return-trigger"));
+  if (triggers.length !== 1 || jsxAttribute(triggers[0], "data-list-return-trigger")?.getText(sf) !== 'data-list-return-trigger={`${item.type}:${item.id}`}') {
+    failures.push("organize-center shared return: stable shared trigger mismatch");
+  }
+  const fallbacks = openings.filter((node) => jsxAttribute(node, "data-list-return-fallback"));
+  if (fallbacks.length !== 1 || !jsxAttribute(fallbacks[0], "tabIndex") || !jsxAttribute(fallbacks[0], "aria-label")) {
+    failures.push("organize-center shared return: accessible focus fallback missing");
+  }
+}
 
 for (const component of ["PageFrame", "PageHeader", "ResponsiveFormShell", "FormSection", "ActionBar", "StateSurface"]) {
   requireText(layout, `export function ${component}`, "layout exports");
@@ -279,13 +336,18 @@ for (const slot of ["scope={", "filters={", "summary={", "results=", "pagination
 }
 for (const fragment of [
   "const LIST_PAGE_SIZE = 6;",
-  "const FOCUS_STORAGE_PREFIX = \"organize-center:focus:\"",
-  "const RETURN_STATE_STORAGE_PREFIX = \"organize-center:return-state:\"",
-  "data-organize-object-link={item.id}",
   "if (lifecycleFilter !== \"active\") params.set(\"lifecycle\", lifecycleFilter)",
   "href={buildListHref(selectedType, \"\", lifecycleFilter)}",
 ]) {
   requireText(organizeBrowser, fragment, "organize-center behavior contract");
+}
+checkOrganizeSharedReturn();
+for (const retired of [
+  "FOCUS_STORAGE_PREFIX",
+  "RETURN_STATE_STORAGE_PREFIX",
+  "data-organize-object-link",
+]) {
+  if (organizeBrowser.includes(retired)) failures.push(`organize-center shared return: retired private restorer remains: ${retired}`);
 }
 for (const copy of [
   'clear: "キーワードをクリア"',

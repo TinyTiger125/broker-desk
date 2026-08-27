@@ -5,7 +5,16 @@ import { useEffect, useRef, type ReactNode } from "react";
 type ListReturnStateProps = {
   children: ReactNode;
   listUrl: string;
-  scope: "parties" | "properties";
+  scope: ListReturnScope;
+};
+
+export type ListReturnScope = "organize" | "parties" | "properties";
+
+export type ListReturnIntent = {
+  listUrl: string;
+  preserveExisting?: boolean;
+  scope: ListReturnScope;
+  triggerKey: string;
 };
 
 type StoredListReturnState = {
@@ -93,6 +102,17 @@ function writeStoredState(key: string, state: StoredListReturnState): boolean {
   } catch {
     return false;
   }
+}
+
+export function rememberListReturnIntent({ listUrl, preserveExisting = false, scope, triggerKey }: ListReturnIntent): boolean {
+  const canonicalUrl = canonicalListUrl(listUrl);
+  if (!canonicalUrl || !triggerKey) return false;
+  const key = storageKey(scope, canonicalUrl);
+  const existing = preserveExisting ? readStoredState(key) : undefined;
+  return writeStoredState(key, {
+    scrollY: existing?.triggerKey === triggerKey ? existing.scrollY : preserveExisting ? 0 : window.scrollY,
+    triggerKey,
+  });
 }
 
 function topOcclusionBoundary() {
