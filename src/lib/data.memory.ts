@@ -1064,7 +1064,12 @@ cherryOutputTemplate.postalAddress = "東京都港区六本木3-2-1 Cherryビル
 cherryOutputTemplate.phone = "03-6234-5678";
 cherryOutputTemplate.email = "info@cherry-investment.co.jp";
 
-const _g = globalThis as typeof globalThis & { __brokerDb?: DB };
+type BrokerDbHolder = { current: DB };
+
+const _g = globalThis as typeof globalThis & {
+  __brokerDb?: DB;
+  __brokerDbHolder?: BrokerDbHolder;
+};
 
 const _freshDb: DB = withDefaultTenantScope({
   users: [
@@ -1563,8 +1568,25 @@ const _freshDb: DB = withDefaultTenantScope({
   guaranteePreviewConfirmations: [],
 });
 
-if (!_g.__brokerDb) _g.__brokerDb = cloneDb(_freshDb);
-const db: DB = _g.__brokerDb;
+const dbHolder: BrokerDbHolder = _g.__brokerDbHolder ?? { current: _g.__brokerDb ?? cloneDb(_freshDb) };
+_g.__brokerDbHolder = dbHolder;
+Object.defineProperty(_g, "__brokerDb", {
+  configurable: true,
+  enumerable: true,
+  get: () => dbHolder.current,
+  set: (nextDb: DB) => {
+    dbHolder.current = nextDb;
+  },
+});
+const db: DB = new Proxy({} as DB, {
+  get: (_target, property) => Reflect.get(dbHolder.current, property),
+  set: (_target, property, value) => Reflect.set(dbHolder.current, property, value),
+  ownKeys: () => Reflect.ownKeys(dbHolder.current),
+  getOwnPropertyDescriptor: (_target, property) => {
+    const descriptor = Reflect.getOwnPropertyDescriptor(dbHolder.current, property);
+    return descriptor ? { ...descriptor, configurable: true } : undefined;
+  },
+});
 backfillTenantScope(db);
 if (!db.tenants) db.tenants = cloneCollection(_freshDb.tenants);
 db.tenants.forEach(ensureTenantDefaults);
@@ -4764,6 +4786,97 @@ export async function setPropertyLifecycleStatus(input: {
   item.archivedAt = input.status === "archived" ? new Date() : undefined;
   item.archivedById = input.status === "archived" ? input.archivedById : undefined;
   return { ...item };
+}
+
+export type RecordLifecycleEntityType = "case" | "party" | "property";
+
+export type SetRecordLifecycleWithAuditInput = {
+  tenantId?: string;
+  userId: string;
+  entityType: RecordLifecycleEntityType;
+  entityId: string;
+  status: LifecycleStatus;
+  archivedById?: string;
+};
+
+export async function setRecordLifecycleWithAudit(
+  input: SetRecordLifecycleWithAuditInput,
+): Promise<BrokerageCase | Client | Property | null> {
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const nowDate = new Date();
+  const targetType: AuditLog["targetType"] = input.entityType === "party" ? "client" : input.entityType;
+  const auditId = makeId("audit");
+  const log: AuditLog = {
+    id: auditId,
+    tenantId: scopeTenantId,
+    actorId: input.userId,
+    userId: input.userId,
+    action: input.status === "archived" ? "record_archived" : "record_restored",
+    targetType,
+    targetId: input.entityId,
+    message: input.status === "archived" ? "记录已归档。" : "记录已恢复。",
+    createdAt: nowDate,
+  };
+
+  if (input.entityType === "case") {
+    const item = db.brokerageCases.find(
+      (caseItem) =>
+        caseItem.currentOwnerUserId === input.userId &&
+        caseItem.tenantId === scopeTenantId &&
+        caseItem.id === input.entityId &&
+        caseItem.ownerResolutionStatus === "resolved",
+    );
+    if (!item) return null;
+    const updated: BrokerageCase = {
+      ...item,
+      lifecycleStatus: input.status,
+      archivedAt: input.status === "archived" ? nowDate : undefined,
+      archivedById: input.status === "archived" ? input.archivedById ?? input.userId : undefined,
+      updatedAt: nowDate,
+    };
+    const brokerageCases = db.brokerageCases.map((entry) => (entry.id === item.id ? updated : entry));
+    const result = cloneBrokerageCase(updated);
+    const nextDb: DB = { ...db, brokerageCases, auditLogs: [log, ...db.auditLogs] };
+    _g.__brokerDb = nextDb;
+    return result;
+  }
+
+  if (input.entityType === "party") {
+    const item = db.clients.find(
+      (client) =>
+        client.currentOwnerUserId === input.userId &&
+        client.ownerResolutionStatus === "resolved" &&
+        client.tenantId === scopeTenantId &&
+        client.id === input.entityId,
+    );
+    if (!item) return null;
+    const updated: Client = {
+      ...item,
+      lifecycleStatus: input.status,
+      archivedAt: input.status === "archived" ? nowDate : undefined,
+      archivedById: input.status === "archived" ? input.archivedById ?? input.userId : undefined,
+      updatedAt: nowDate,
+    };
+    const clients = db.clients.map((entry) => (entry.id === item.id ? updated : entry));
+    const result = { ...updated };
+    const nextDb: DB = { ...db, clients, auditLogs: [log, ...db.auditLogs] };
+    _g.__brokerDb = nextDb;
+    return result;
+  }
+
+  const item = db.properties.find((property) => property.tenantId === scopeTenantId && property.id === input.entityId);
+  if (!item) return null;
+  const updated: Property = {
+    ...item,
+    lifecycleStatus: input.status,
+    archivedAt: input.status === "archived" ? nowDate : undefined,
+    archivedById: input.status === "archived" ? input.archivedById : undefined,
+  };
+  const properties = db.properties.map((entry) => (entry.id === item.id ? updated : entry));
+  const result = { ...updated };
+  const nextDb: DB = { ...db, properties, auditLogs: [log, ...db.auditLogs] };
+  _g.__brokerDb = nextDb;
+  return result;
 }
 
 export async function addProperty(input: {

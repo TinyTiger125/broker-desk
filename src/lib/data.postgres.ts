@@ -84,6 +84,7 @@ import type {
   GuaranteePreviewConfirmation,
   GuaranteePreviewOutputInput,
   MemberVisibilityDefault,
+  SetRecordLifecycleWithAuditInput,
 } from "@/lib/data.memory";
 import type { VisibleBrokerageCase, VisibleProperty } from "@/lib/data.memory";
 import type { TenantRole, TenantCapabilityPreset } from "@/lib/tenant-permissions";
@@ -5177,6 +5178,76 @@ export async function setPropertyLifecycleStatus(input: {
     [input.propertyId, scopeTenantId, input.status, input.archivedById ?? null],
   );
   return result.rows[0] ? mapProperty(result.rows[0]) : null;
+}
+
+export async function setRecordLifecycleWithAudit(input: SetRecordLifecycleWithAuditInput) {
+  await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
+
+  return withTransaction(async (client) => {
+    let updatedRow: Record<string, unknown> | undefined;
+    if (input.entityType === "case") {
+      const updateResult = await client.query(
+        `UPDATE brokerage_cases
+            SET lifecycle_status = $4,
+                archived_at = CASE WHEN $4 = 'archived' THEN NOW() ELSE NULL END,
+                archived_by_id = CASE WHEN $4 = 'archived' THEN COALESCE($5, $2) ELSE NULL END,
+                updated_at = NOW()
+          WHERE id = $1 AND current_owner_user_id = $2 AND tenant_id = $3
+            AND owner_resolution_status = 'resolved'
+          RETURNING *`,
+        [input.entityId, input.userId, scopeTenantId, input.status, input.archivedById ?? null],
+      );
+      updatedRow = updateResult.rows[0];
+    } else if (input.entityType === "party") {
+      const updateResult = await client.query(
+        `UPDATE clients
+            SET lifecycle_status = $4,
+                archived_at = CASE WHEN $4 = 'archived' THEN NOW() ELSE NULL END,
+                archived_by_id = CASE WHEN $4 = 'archived' THEN COALESCE($5, $2) ELSE NULL END,
+                updated_at = NOW()
+          WHERE id = $1 AND current_owner_user_id = $2 AND owner_resolution_status = 'resolved' AND tenant_id = $3
+          RETURNING *`,
+        [input.entityId, input.userId, scopeTenantId, input.status, input.archivedById ?? null],
+      );
+      updatedRow = updateResult.rows[0];
+    } else {
+      const updateResult = await client.query(
+        `UPDATE properties
+            SET lifecycle_status = $3,
+                updated_at = NOW(),
+                archived_at = CASE WHEN $3 = 'archived' THEN NOW() ELSE NULL END,
+                archived_by_id = CASE WHEN $3 = 'archived' THEN $4 ELSE NULL END
+          WHERE id = $1 AND tenant_id = $2
+          RETURNING *`,
+        [input.entityId, scopeTenantId, input.status, input.archivedById ?? null],
+      );
+      updatedRow = updateResult.rows[0];
+    }
+
+    if (!updatedRow) return null;
+
+    await client.query(
+      `INSERT INTO audit_logs (
+        id, tenant_id, user_id, actor_id, action, target_type, target_id, message, context_json
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)`,
+      [
+        genId("audit"),
+        scopeTenantId,
+        input.userId,
+        input.userId,
+        input.status === "archived" ? "record_archived" : "record_restored",
+        input.entityType === "party" ? "client" : input.entityType,
+        input.entityId,
+        input.status === "archived" ? "记录已归档。" : "记录已恢复。",
+        JSON.stringify({}),
+      ],
+    );
+
+    if (input.entityType === "case") return mapBrokerageCase(updatedRow);
+    if (input.entityType === "party") return mapClient(updatedRow);
+    return mapProperty(updatedRow);
+  });
 }
 
 export async function addProperty(input: {

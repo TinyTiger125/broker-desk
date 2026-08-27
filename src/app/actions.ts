@@ -72,9 +72,7 @@ import {
   resolveCaseVisibilityForContext,
   saveBrokerageCaseExtractionReview,
   saveGuaranteeApplicationDraft,
-  setBrokerageCaseLifecycleStatus,
-  setClientLifecycleStatus,
-  setPropertyLifecycleStatus,
+  setRecordLifecycleWithAudit,
   setClientStageWithLog,
   setClientStage,
   updateImportJobMapping,
@@ -601,46 +599,24 @@ export async function setRecordLifecycleAction(formData: FormData) {
   }
 
   const status = statusRaw as LifecycleStatus;
-  let updated: unknown;
   if (entityType === "case") {
     await requireWritableCase(session, entityId);
-    updated = await setBrokerageCaseLifecycleStatus({
-      tenantId: session.tenant.id,
-      userId: session.user.id,
-      caseId: entityId,
-      status,
-      archivedById: session.user.id,
-    });
   } else if (entityType === "party") {
     await ensureClientOwnership(entityId, session);
-    updated = await setClientLifecycleStatus({
-      tenantId: session.tenant.id,
-      userId: session.user.id,
-      clientId: entityId,
-      status,
-      archivedById: session.user.id,
-    });
   } else {
     await ensurePropertyOwnership(entityId, session);
-    updated = await setPropertyLifecycleStatus({
-      tenantId: session.tenant.id,
-      propertyId: entityId,
-      status,
-      archivedById: session.user.id,
-    });
   }
 
-  if (!updated) throw new Error("对象不存在或无权操作。");
-
-  const targetType: "case" | "client" | "property" = entityType === "party" ? "client" : entityType;
-  await addAuditLog({
-    actorId: session.user.id,
+  const updated = await setRecordLifecycleWithAudit({
     tenantId: session.tenant.id,
-    action: status === "archived" ? "record_archived" : "record_restored",
-    targetType,
-    targetId: entityId,
-    message: status === "archived" ? "记录已归档。" : "记录已恢复。",
+    userId: session.user.id,
+    entityType,
+    entityId,
+    status,
+    archivedById: session.user.id,
   });
+
+  if (!updated) throw new Error("对象不存在或无权操作。");
 
   revalidatePath("/organize-center");
   revalidatePath("/parties");
