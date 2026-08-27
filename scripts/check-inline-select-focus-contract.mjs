@@ -11,6 +11,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const sharedFrameClass = "bd-inline-select-frame";
 const globals = readFileSync(resolve(root, "src/app/globals.css"), "utf8");
 const builtCssMode = process.argv.includes("--built-css");
+const touchHeightToken = "--bd-control-height-touch";
 
 function parse(source, filename) {
   const tree = ts.createSourceFile(filename, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
@@ -161,6 +162,18 @@ function analyzeSingleSelectComponent(path, functionName) {
   analyzeSingleSelectComponentSource(readFileSync(resolve(root, path), "utf8"), path, functionName);
 }
 
+function analyzeSharedFrameCss(source, label) {
+  const baseRules = [...source.matchAll(/\.bd-inline-select-frame\s*\{([^}]*)\}/g)];
+  assert.equal(baseRules.length, 1, `${label} must retain one base inline-select frame rule`);
+  const baseBody = baseRules[0][1];
+  assert.match(baseBody, new RegExp(`min-height:\\s*var\\(${touchHeightToken}\\)\\s*;?`), `${label} base frame must use the touch control-height token`);
+  assert.doesNotMatch(baseBody, /--bd-control-height-(?:compact|regular)|min-height:\s*(?:1\.75|2|2\.25|2\.5|2\.75)rem|min-height:\s*(?:28|32|36|40|44)px/, `${label} must not replace the touch token with a compact or hardcoded height`);
+
+  const focusRules = [...source.matchAll(/\.bd-inline-select-frame:focus-within\s*\{([^}]*)\}/g)];
+  assert.equal(focusRules.length, 1, `${label} must retain one inline-select focus rule`);
+  assert.doesNotMatch(focusRules[0][1], /min-height\s*:/, `${label} height must not appear only while focused`);
+}
+
 function jsxComponentOpenings(container, tree, componentName) {
   return visit(container, (node) => {
     if (ts.isJsxSelfClosingElement(node)) return node.tagName.getText(tree) === componentName;
@@ -205,6 +218,7 @@ function analyzeAppNavMounts(path) {
   analyzeAppNavMountsSource(readFileSync(resolve(root, path), "utf8"), path);
 }
 
+analyzeSharedFrameCss(globals, "source CSS");
 assert.match(globals, /\.bd-inline-select-frame:focus-within\s*\{[^}]*outline:\s*var\(--bd-focus-ring-width\)\s+solid\s+var\(--bd-focus-ring-color\);[^}]*outline-offset:\s*var\(--bd-focus-ring-offset\);[^}]*\}/s, "shared inline select frame must use the three global focus tokens");
 analyzePageCaller("src/app/parties/page.tsx", "PartiesPage", "type");
 analyzePageCaller("src/app/parties/page.tsx", "PartiesPage", "lifecycle");
@@ -214,10 +228,11 @@ analyzeSingleSelectComponent("src/components/language-switcher.tsx", "LanguageSw
 analyzeSingleSelectComponent("src/components/actor-switcher.tsx", "ActorSwitcher");
 analyzeAppNavMounts("src/components/app-nav.tsx");
 
+const syntheticTouchClass = ["min", "h", "11"].join("-");
 const validSynthetic = `
   function LanguageSwitcher() {
     return (
-      <label className="${sharedFrameClass} inline-flex min-h-11">
+      <label className="${sharedFrameClass} inline-flex ${syntheticTouchClass}">
         <select className="bg-transparent outline-none"><option>日本語</option></select>
       </label>
     );
@@ -231,7 +246,7 @@ const invalidSyntheticCases = [
   ["constant-false caller", `
     function LanguageSwitcher() {
       return (<>{false && (
-        <label className="${sharedFrameClass} inline-flex min-h-11">
+        <label className="${sharedFrameClass} inline-flex ${syntheticTouchClass}">
           <select className="bg-transparent outline-none"><option>日本語</option></select>
         </label>
       )}</>);
@@ -283,8 +298,26 @@ for (const [label, source] of invalidAppNavCases) {
   assert.throws(() => analyzeAppNavMountsSource(source, `synthetic-app-nav-${label}.tsx`), `${label} must fail the AppNav mount contract`);
 }
 
+const validFrameCssSynthetic = `
+  .bd-inline-select-frame { min-height: var(--bd-control-height-touch); }
+  .bd-inline-select-frame:focus-within {
+    outline: var(--bd-focus-ring-width) solid var(--bd-focus-ring-color);
+    outline-offset: var(--bd-focus-ring-offset);
+  }
+`;
+analyzeSharedFrameCss(validFrameCssSynthetic, "synthetic valid CSS");
+const invalidFrameCssCases = [
+  ["focus-only height", validFrameCssSynthetic.replace(".bd-inline-select-frame { min-height: var(--bd-control-height-touch); }", "").replace("outline:", "min-height: var(--bd-control-height-touch); outline:")],
+  ["compact token", validFrameCssSynthetic.replace("--bd-control-height-touch", "--bd-control-height-compact")],
+  ["regular token", validFrameCssSynthetic.replace("--bd-control-height-touch", "--bd-control-height-regular")],
+  ["hardcoded pixels", validFrameCssSynthetic.replace("var(--bd-control-height-touch)", "44px")],
+];
+for (const [label, source] of invalidFrameCssCases) {
+  assert.throws(() => analyzeSharedFrameCss(source, `synthetic ${label}`), `${label} must fail the shared height contract`);
+}
+
 const partiesSource = readFileSync(resolve(root, "src/app/parties/page.tsx"), "utf8");
-const lifecycleFrame = '<label className="bd-inline-select-frame flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700">\n            <span className="sr-only">{copy.lifecycle}</span>';
+const lifecycleFrame = `<label className="bd-inline-select-frame flex ${syntheticTouchClass} items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700">\n            <span className="sr-only">{copy.lifecycle}</span>`;
 assert(partiesSource.includes(lifecycleFrame), "the lifecycle synthetic target must match the live caller");
 assert.throws(
   () => analyzePageCallerSource(partiesSource.replace(lifecycleFrame, lifecycleFrame.replace(`${sharedFrameClass} `, "")), "synthetic-parties-one-missed.tsx", "PartiesPage", "lifecycle"),
@@ -293,6 +326,7 @@ assert.throws(
 
 const contractCandidates = new Set(new Scanner({ sources: [] }).scanFiles([{ content: readFileSync(fileURLToPath(import.meta.url), "utf8"), extension: "mjs" }]));
 assert.equal([...contractCandidates].filter((candidate) => candidate.startsWith(`${["focus", "within"].join("-")}:`)).length, 0, "the checker must not inject Tailwind focus-within utility candidates");
+assert.equal([...contractCandidates].filter((candidate) => candidate === syntheticTouchClass || candidate.startsWith(`${["min", "h"].join("-")}-[`)).length, 0, "the checker must not inject a Tailwind class that could satisfy the shared height contract");
 
 if (builtCssMode) {
   const cssDirectory = resolve(root, ".next/static/css");
@@ -300,6 +334,7 @@ if (builtCssMode) {
     .filter((name) => name.endsWith(".css"))
     .map((name) => readFileSync(resolve(cssDirectory, name), "utf8"))
     .join("\n");
+  analyzeSharedFrameCss(builtCss, "built CSS");
   assert.match(builtCss, /\.bd-inline-select-frame:focus-within\s*\{[^}]*outline:\s*var\(--bd-focus-ring-width\)\s+solid\s+var\(--bd-focus-ring-color\);?[^}]*outline-offset:\s*var\(--bd-focus-ring-offset\);?[^}]*\}/s, "built CSS must retain the tokenized inline-select focus rule");
 }
 

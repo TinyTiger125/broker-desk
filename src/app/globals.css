@@ -233,6 +233,10 @@ textarea:disabled {
   border-color: #cbd5e1;
 }
 
+.bd-inline-select-frame {
+  min-height: var(--bd-control-height-touch);
+}
+
 .bd-inline-select-frame:focus-within {
   outline: var(--bd-focus-ring-width) solid var(--bd-focus-ring-color);
   outline-offset: var(--bd-focus-ring-offset);
