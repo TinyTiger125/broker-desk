@@ -289,7 +289,7 @@ export default async function PropertiesPage({ searchParams }: PropertiesPagePro
             placeholder={copy.queryPlaceholder}
             className="min-h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none focus:border-[#0046ad] focus:ring-2 focus:ring-blue-100"
           />
-          <label className="flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700">
+          <label className="bd-inline-select-frame flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700">
             <span className="sr-only">{copy.lifecycle}</span>
             <select name="lifecycle" defaultValue={lifecycle} className="min-w-32 bg-transparent outline-none">
               <option value="active">{copy.lifecycle}: {copy.active}</option>
@@ -297,7 +297,7 @@ export default async function PropertiesPage({ searchParams }: PropertiesPagePro
               <option value="all">{copy.lifecycle}: {copy.all}</option>
             </select>
           </label>
-          <label className="flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700">
+          <label className="bd-inline-select-frame flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700">
             <span className="sr-only">{copy.sort}</span>
             <select name="sort" defaultValue={sort} className="min-w-36 bg-transparent outline-none">
               <option value="default">{copy.sort}: {copy.defaultSort}</option>

@@ -233,6 +233,11 @@ textarea:disabled {
   border-color: #cbd5e1;
 }
 
+.bd-inline-select-frame:focus-within {
+  outline: var(--bd-focus-ring-width) solid var(--bd-focus-ring-color);
+  outline-offset: var(--bd-focus-ring-offset);
+}
+
 button[class~="text-white"],
 button[class~="!text-white"],
 a[class~="text-white"],

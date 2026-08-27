@@ -270,7 +270,7 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
             placeholder={copy.searchPlaceholder}
             className="min-h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none focus:border-[#0046ad] focus:ring-2 focus:ring-blue-100"
           />
-          <label className="flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700">
+          <label className="bd-inline-select-frame flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700">
             <span className="sr-only">{copy.type}</span>
             <select name="type" defaultValue={type} className="min-w-28 bg-transparent outline-none">
               <option value="all">{copy.type}: {copy.all}</option>
@@ -278,7 +278,7 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
               <option value="corporate">{copy.corporate}</option>
             </select>
           </label>
-          <label className="flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700">
+          <label className="bd-inline-select-frame flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700">
             <span className="sr-only">{copy.lifecycle}</span>
             <select name="lifecycle" defaultValue={lifecycle} className="min-w-32 bg-transparent outline-none">
               <option value="active">{copy.lifecycle}: {copy.active}</option>

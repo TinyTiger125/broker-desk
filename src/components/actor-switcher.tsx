@@ -23,7 +23,7 @@ export function ActorSwitcher({ currentActorId, options, label }: ActorSwitcherP
   }
 
   return (
-    <label className="inline-flex min-w-[11rem] items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-700">
+    <label className="bd-inline-select-frame inline-flex min-w-[11rem] items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-700">
       <span className="whitespace-nowrap">{label}</span>
       <select
         value={currentActorId ?? options[0]?.id}
