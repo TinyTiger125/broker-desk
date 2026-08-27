@@ -381,6 +381,7 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
                     {canArchive ? <ArchiveRecordButton
                       entityType="party"
                       entityId={party.id}
+                      recordLabel={party.name}
                       status={party.status}
                       locale={locale}
                       returnTo={returnTo}

@@ -30,6 +30,7 @@ export type OrganizeCenterBrowserItem = {
   lifecycleStatus: LifecycleStatus;
   visibilityLabel?: string;
   readOnly?: boolean;
+  canArchive: boolean;
 };
 
 type OrganizeCenterObjectBrowserProps = {
@@ -293,10 +294,11 @@ export function OrganizeCenterObjectBrowser({
 
               <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 md:col-span-2 xl:col-span-1 xl:flex-col xl:items-end xl:justify-start">
                 <span className="text-xs font-bold tabular-nums text-slate-500">{copy.taskUpdated}: {item.updatedLabel}</span>
-                {!item.readOnly ? (
+                {item.canArchive ? (
                   <ArchiveRecordButton
                     entityType={item.type}
                     entityId={item.id}
+                    recordLabel={item.title}
                     status={item.lifecycleStatus}
                     locale={locale}
                     returnTo={listHref}

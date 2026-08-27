@@ -199,11 +199,13 @@
 .buttonToneWarning:hover {
   border-color: var(--bd-warning);
   background: var(--bd-warning-line);
+  color: var(--bd-ink);
 }
 
 .buttonToneWarning:active,
 .buttonToneWarning[aria-pressed="true"] {
   background: var(--bd-warning);
+  color: var(--bd-surface);
 }
 
 .buttonToneQuiet {

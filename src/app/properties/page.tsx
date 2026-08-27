@@ -385,6 +385,7 @@ export default async function PropertiesPage({ searchParams }: PropertiesPagePro
                         <ArchiveRecordButton
                           entityType="property"
                           entityId={property.id}
+                          recordLabel={property.name}
                           status={property.status}
                           locale={locale}
                           returnTo={returnTo}

@@ -34,7 +34,8 @@ import { FRIENDS_GUARANTEE_DEFAULT_TEMPLATE_ID } from "@/lib/friends-guarantee-p
 import { localizeCaseOverviewFieldLabel, localizeCaseOverviewTreeLabel } from "@/lib/case-overview-localization";
 import { formatDate } from "@/lib/format";
 import { getLocale, type Locale } from "@/lib/locale";
-import { requireTenantSession } from "@/lib/tenant-session";
+import { getTenantCapability, requireTenantSession } from "@/lib/tenant-session";
+import { capabilityHasTenantPermission } from "@/lib/tenant-permissions";
 import { createRequestContext } from "@/lib/visibility-resolver";
 import { readCaseAssociationDraft } from "@/lib/case-associations";
 import { ObjectPageShell } from "@/components/layout-system";
@@ -516,6 +517,9 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
   let brokerageCase = caseVisibility.brokerageCase;
   if (!brokerageCase) notFound();
   const canWriteCase = caseVisibility.resolution.outcome === "owner_write";
+  const canArchiveCase = canWriteCase
+    && session.membership.status === "active"
+    && capabilityHasTenantPermission(getTenantCapability(session.membership), "record.archive");
   const [reviewItems, fieldRules, installedGuaranteeTemplates] = canWriteCase
     ? await Promise.all([
         listExtractionReviewItems({ userId: user.id, tenantId, caseId: id }),
@@ -963,15 +967,16 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                 <a href={`/cases/${encodeURIComponent(brokerageCase.id)}/guarantee-application`} className="inline-flex items-center rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-900 hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300">
                   {tr(locale, { ja: "申込書を生成", zh: "生成申请书", ko: "신청서 생성" })}
                 </a>
-                <span className="hidden sm:inline-flex">
+                {canArchiveCase ? <span className="hidden sm:inline-flex">
                   <ArchiveRecordButton
                     entityType="case"
                     entityId={brokerageCase.id}
+                    recordLabel={brokerageCase.caseTitle}
                     status={brokerageCase.lifecycleStatus ?? "active"}
                     locale={locale}
                     returnTo="/organize-center?type=case"
                   />
-                </span>
+                </span> : null}
               </>
             }
           />

@@ -44,6 +44,7 @@ type WorkObject = {
   lifecycleStatus: "active" | "archived";
   visibilityLabel?: string;
   readOnly?: boolean;
+  canArchive: boolean;
 };
 
 const copyByLocale = {
@@ -393,6 +394,7 @@ async function OrganizeCenterContent({ locale, params }: { locale: Locale; param
         ? locale === "zh" ? "公司成员可见／只读" : locale === "ko" ? "회사 멤버 공개／읽기 전용" : "会社メンバーに公開／読み取り専用"
         : undefined,
       readOnly: resolution.outcome === "company_read",
+      canArchive: resolution.outcome === "owner_write" && capabilityCanArchive,
     }];
   });
 
@@ -409,6 +411,7 @@ async function OrganizeCenterContent({ locale, params }: { locale: Locale; param
       href: `/parties/${encodeURIComponent(item.id)}/edit`,
       visibilityLabel: item.readOnly ? copy.companyReadOnly : canWrite ? undefined : copy.ownerReadOnly,
       readOnly: !canWrite,
+      canArchive: item.canArchive,
     };
   });
 
@@ -426,6 +429,7 @@ async function OrganizeCenterContent({ locale, params }: { locale: Locale; param
         ? item.readOnlyReason === "company_read" ? copy.companyReadOnly : copy.ownerReadOnly
         : undefined,
       readOnly: item.readOnly,
+      canArchive: item.canArchive,
     };
   });
 
@@ -440,6 +444,7 @@ async function OrganizeCenterContent({ locale, params }: { locale: Locale; param
     relationLabel: item.relationLabel,
     updatedLabel: item.updatedAt ? formatDate(item.updatedAt, locale) : copy.noDate,
     href: item.href,
+    canArchive: item.canArchive,
     readOnly: item.readOnly,
   }));
 

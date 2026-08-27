@@ -29,6 +29,7 @@ const hub = read("src/lib/hub.ts");
 const propertyListPage = read("src/app/properties/page.tsx");
 const propertyEditPage = read("src/app/properties/[id]/edit/page.tsx");
 const propertyReadOnly = read("src/components/property-profile-read-only.tsx");
+const tenantPermissions = read("src/lib/tenant-permissions.ts");
 
 for (const decision of ["owner_write", "company_read", "not_accessible"]) {
   assert(resolver.includes(`"${decision}"`), `resolver exposes ${decision}`);
@@ -71,7 +72,21 @@ assert(postgres.includes("listBrokerageCasesForContext") && postgres.includes("g
 assert(data.includes("listBrokerageCasesForContext") && data.includes("getBrokerageCaseByIdForContext"), "repository proxy exposes context-bound case page reads");
 assert(organizePage.includes("createRequestContext(session)") && organizePage.includes("listBrokerageCasesForContext"), "case list uses trusted RequestContext resolver");
 assert(organizePage.includes("canArchiveRecords") && organizePage.includes("visibilityLabel: item.readOnly") && organizePage.includes("readOnly: item.readOnly"), "organize center property rows preserve read-only state and archive capability");
-assert(organizePage.includes("readOnly: item.readOnly") && organizePage.includes('capabilityHasTenantPermission') && organizePage.includes('"record.update"') && organizePage.includes("readOnly: !canWrite") && organizeBrowser.includes("!item.readOnly"), "person list write controls require the record.update capability");
+assert(organizePage.includes("readOnly: item.readOnly") && organizePage.includes('capabilityHasTenantPermission') && organizePage.includes('"record.update"') && organizePage.includes("readOnly: !canWrite"), "person edit and relationship controls require the record.update capability");
+assert(organizePage.includes('capabilityHasTenantPermission') && organizePage.includes('"record.archive"') && organizePage.includes('canArchive: resolution.outcome === "owner_write" && capabilityCanArchive') && organizePage.match(/canArchive:\s*item\.canArchive/g)?.length === 3, "organize archive authority preserves record.archive plus object write eligibility");
+assert(organizeBrowser.includes("item.canArchive ?") && !organizeBrowser.includes("!item.readOnly ?"), "organize archive control uses explicit archive authority rather than the update/read-only proxy");
+
+const capabilitySection = (name, next) => tenantPermissions.slice(tenantPermissions.indexOf(`${name}: [`), next ? tenantPermissions.indexOf(`${next}: [`) : undefined);
+const capabilityCanArchive = {
+  company_owner: capabilitySection("company_owner", "company_form_admin").includes("FULL_TENANT_ACTIONS"),
+  company_form_admin: capabilitySection("company_form_admin", "ordinary_member").includes('"record.archive"'),
+  ordinary_member: capabilitySection("ordinary_member").includes('"record.archive"'),
+};
+const canShowArchive = (preset, objectCanWrite) => capabilityCanArchive[preset] && objectCanWrite;
+assert(!canShowArchive("ordinary_member", true), "ordinary_member record.update must not imply archive authority");
+assert(!canShowArchive("company_owner", false), "owner capability must not archive an object that is read-only");
+assert(!canShowArchive("company_form_admin", false), "form admin capability must not archive an object that is read-only");
+assert(canShowArchive("company_owner", true) && canShowArchive("company_form_admin", true), "archive-capable presets may archive writable objects");
 assert(casePage.includes("getBrokerageCaseByIdForContext") && casePage.includes("createRequestContext(session)"), "case detail uses trusted RequestContext resolver");
 assert(casePage.includes("caseVisibility.resolution.outcome"), "case detail branches on resolver outcome");
 assert(casePage.includes("resolveClientVisibilityForContext") && casePage.includes("resolvePropertyVisibilityForContext"), "case detail rechecks related object visibility");
