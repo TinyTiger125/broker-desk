@@ -14,24 +14,40 @@ const loading = readFileSync(loadingPath, "utf8");
 
 const expectedCopy = {
   ja: {
+    subtitle: "出力する文書を選び、必要な確認やプレビューへ進みます。公式原本はそのまま閲覧できます。",
     taskCategory: "出力タスク",
     chooseTaskTitle: "出力する文書を選択してください",
     chooseTaskDescription: "タスク一覧から文書を選ぶと、必要な確認と次の操作が表示されます。",
   },
   zh: {
+    subtitle: "选择要处理的文书，查看所需确认并进入预览；官方原件可直接打开。",
     taskCategory: "输出任务",
     chooseTaskTitle: "请选择需要输出的文书",
     chooseTaskDescription: "从任务列表选择文书后，这里会显示所需确认和下一步操作。",
   },
   ko: {
+    subtitle: "처리할 문서를 선택해 필요한 확인과 미리보기로 이동합니다. 공식 원본은 바로 열 수 있습니다.",
     taskCategory: "출력 작업",
     chooseTaskTitle: "출력할 문서를 선택해 주세요",
     chooseTaskDescription: "작업 목록에서 문서를 선택하면 필요한 확인과 다음 작업이 표시됩니다.",
   },
 };
+const expectedWorklistPolishCopy = {
+  ja: { externalHint: "新しいタブで開く", templateMissing: "テンプレート未設定", templateRequired: "テンプレートが必要です" },
+  zh: { externalHint: "在新标签页打开", templateMissing: "模板未设置", templateRequired: "需要先设置模板" },
+  ko: { externalHint: "새 탭에서 열기", templateMissing: "템플릿 미설정", templateRequired: "템플릿 설정이 필요합니다" },
+};
 const expectedBlockedTaskHref = "/output-center?docGroup=application&doc=guarantee_application";
 const expectedTemplateRecoveryHref = "/templates";
 const expectedCreateCaseHref = "/cases/new?from=output";
+const expectedOfficialDocumentHrefs = [
+  "/official-forms/mlit-important-matters-example-2026-04-01.pdf",
+  "/official-forms/mlit-rental-management-important-matters-2021-04-23.pdf",
+  "/official-forms/mlit-standard-brokerage-agreement-terms-2024-04-01.pdf",
+  "/official-forms/mlit-standard-rental-management-agreement-2021-04-23.pdf",
+  "/official-forms/mlit-standard-residential-lease-joint-guarantor-2018.pdf",
+  "/official-forms/mlit-standard-residential-lease-rent-guarantee-2018.pdf",
+];
 const longCjkLabelSamples = {
   ja: ["保証会社申込書と契約関連書類の出力グループ", "保証会社申込書と契約関連書類の作成タスク"],
   zh: ["保证公司申请书与合同相关文书输出分组", "保证公司申请书与合同相关文书创建任务"],
@@ -151,6 +167,27 @@ function objectProperty(objectNode, name) {
   const property = object.properties.find((entry) => ts.isPropertyAssignment(entry) && entry.name.getText().replaceAll('"', "") === name);
   assert(property && ts.isPropertyAssignment(property), `${name} must be an explicit property assignment`);
   return property.initializer;
+}
+
+function assertLocaleTernary(node, expected, tree, label) {
+  const zhBranch = unwrapExpression(node);
+  assert(ts.isConditionalExpression(zhBranch), `${label} must use an explicit locale conditional`);
+  assert.equal(zhBranch.condition.getText(tree), 'locale === "zh"', `${label} must select zh first`);
+  assert(ts.isStringLiteral(zhBranch.whenTrue), `${label} zh branch must be a direct string`);
+  assert.equal(zhBranch.whenTrue.text, expected.zh, `${label} zh copy must match the independent expectation`);
+  const koBranch = unwrapExpression(zhBranch.whenFalse);
+  assert(ts.isConditionalExpression(koBranch), `${label} must provide a ko fallback branch`);
+  assert.equal(koBranch.condition.getText(tree), 'locale === "ko"', `${label} must select ko second`);
+  assert(ts.isStringLiteral(koBranch.whenTrue), `${label} ko branch must be a direct string`);
+  assert.equal(koBranch.whenTrue.text, expected.ko, `${label} ko copy must match the independent expectation`);
+  assert(ts.isStringLiteral(koBranch.whenFalse), `${label} ja branch must be a direct string`);
+  assert.equal(koBranch.whenFalse.text, expected.ja, `${label} ja copy must match the independent expectation`);
+}
+
+function assertSemanticFocusClass(classText, label) {
+  for (const token of ["--bd-focus-ring-width", "--bd-focus-ring-color", "--bd-focus-ring-offset"]) {
+    assert(classText.includes(token), `${label} must use the global semantic focus ${token}`);
+  }
 }
 
 function jsxName(node, tree) {
@@ -292,11 +329,38 @@ function analyzeLiveWorklist(source, filename) {
   assertNaturalCjkWrapping(taskDescription, tree, "document task description");
   assertNaturalCjkWrapping(groupStatus, tree, "document group status");
   assertNaturalCjkWrapping(taskStatus, tree, "document task status");
+  assert(staticClassText(groupStatus, tree, "document group status").includes("text-xs"), "group status badges must use at least 12px text");
+  assert(staticClassText(taskStatus, tree, "document task status").includes("text-xs"), "task status badges must use at least 12px text");
   ancestorWithClass(groupTitle, groupMaps[0], tree, "flex-wrap", "document group row");
   ancestorWithClass(taskLabel, itemMaps[0], tree, "flex-wrap", "document task row");
   assert(!/\bshrink-0\b/.test(staticClassText(groupStatus, tree, "document group status")), "group status must not squeeze the group title");
   assert(!/\bshrink-0\b/.test(staticClassText(taskStatus, tree, "document task status")), "task status must not squeeze the task label");
-  return { tree, pageFunction, returnExpression, guaranteeTask: guaranteeTasks[0], groupMap: groupMaps[0], itemMap: itemMaps[0] };
+
+  const groupLinks = visit(groupMaps[0], (node) => jsxName(node, tree) === "Link" && jsxAttributeExpression(node, "href", tree).getText(tree) === "documentTreeGroupHref(group.id)");
+  assert.equal(groupLinks.length, 1, "live group renderer must own one category link");
+  const groupClass = staticClassText(groupLinks[0], tree, "document group link");
+  assertSemanticFocusClass(groupClass, "document group link");
+  assert(groupClass.includes("border-blue-200") && groupClass.includes("bg-blue-50/50"), "selected group must use the approved restrained category treatment");
+  assert(!groupClass.includes('selected ? "border-[#002FA7]'), "selected group must remain weaker than an exact task selection");
+
+  const itemClassBindings = visit(itemMaps[0], (node) => ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.name.text === "itemClass");
+  assert.equal(itemClassBindings.length, 1, "live task renderer must define one itemClass");
+  const itemClassText = itemClassBindings[0].initializer?.getText(tree) ?? "";
+  assertSemanticFocusClass(itemClassText, "document task link");
+  assert(itemClassText.includes('item.selected') && itemClassText.includes('border-[#002FA7]') && itemClassText.includes("shadow-sm"), "exact task selection must retain the stronger task treatment");
+
+  const externalHints = visit(itemMaps[0], (node) => ts.isJsxExpression(node) && node.expression?.getText(tree) === "documentTreeCopy.externalHint");
+  assert.equal(externalHints.length, 1, "external task rows must render one visible localized new-tab hint");
+  const externalHintElement = renderedExpressionElement(itemMaps[0], "documentTreeCopy.externalHint", tree, "external new-tab hint");
+  assert(staticClassText(externalHintElement, tree, "external new-tab hint").includes("text-xs"), "external new-tab hint must remain visibly readable");
+  const externalIcons = visit(itemMaps[0], (node) => ts.isJsxElement(node) && node.children.some((child) => ts.isJsxText(child) && child.text.trim() === "open_in_new"));
+  assert.equal(externalIcons.length, 1, "external hint must have one decorative new-tab icon");
+  const hiddenIcon = jsxAttribute(externalIcons[0], "aria-hidden");
+  assert(hiddenIcon?.initializer && hiddenIcon.initializer.getText(tree) === '"true"', "external new-tab icon must be hidden from assistive technology");
+  const externalAnchors = visit(itemMaps[0], (node) => jsxName(node, tree) === "a" && jsxAttribute(node, "target")?.initializer?.getText(tree) === '"_blank"');
+  assert.equal(externalAnchors.length, 1, "external task branch must retain one real new-tab anchor");
+  assert.equal(jsxAttribute(externalAnchors[0], "rel")?.initializer?.getText(tree), '"noreferrer"', "external task links must retain noreferrer");
+  return { tree, pageFunction, returnExpression, guaranteeTask: guaranteeTasks[0], groupMap: groupMaps[0], itemMap: itemMaps[0], groupLink: groupLinks[0], itemClassText };
 }
 
 function analyzeLivePageCurrent(source, filename) {
@@ -344,6 +408,10 @@ const analysis = analyzeLiveWorklist(page, pagePath);
 const { tree: pageTree, pageFunction, returnExpression: pageReturn, guaranteeTask } = analysis;
 analyzeLivePageCurrent(page, pagePath);
 assertSelectedCaseSummary(page, pagePath);
+const activeGroupStatusElement = renderedExpressionElement(pageReturn, "activeDocumentTreeGroup.status", pageTree, "active group category badge");
+const activeGroupStatusClass = staticClassText(activeGroupStatusElement, pageTree, "active group category badge");
+assert(activeGroupStatusClass.includes("bg-slate-100") && activeGroupStatusClass.includes("text-slate-600"), "active group category badge must use the approved neutral treatment");
+assert(!activeGroupStatusClass.includes("bg-slate-950") && !activeGroupStatusClass.includes("text-white"), "active group category badge must not compete with the exact task selection");
 
 const currentStateMatrix = [
   { name: "official group-only", selectedGroup: true, groupHasSelectedTask: false, selectedTask: false, expected: ["group"] },
@@ -403,6 +471,17 @@ for (const [locale, fields] of Object.entries(expectedCopy)) {
     assert.equal(value.text, expected, `${locale}.${key} must match the independently approved worklist copy`);
   }
 }
+const pageHeaders = visit(pageReturn, (node) => jsxName(node, pageTree) === "PageHeader");
+assert.equal(pageHeaders.length, 1, "live output page must render one PageHeader");
+assert.equal(jsxAttributeExpression(pageHeaders[0], "description", pageTree).getText(pageTree), "copy.subtitle", "PageHeader must render the approved neutral locale subtitle");
+
+const documentTreeCopyDeclaration = directVariable(pageFunction, "documentTreeCopy");
+assert(documentTreeCopyDeclaration.initializer && ts.isObjectLiteralExpression(unwrapExpression(documentTreeCopyDeclaration.initializer)), "documentTreeCopy must remain an explicit live object");
+for (const key of ["externalHint", "templateMissing", "templateRequired"]) {
+  const expected = Object.fromEntries(Object.entries(expectedWorklistPolishCopy).map(([locale, fields]) => [locale, fields[key]]));
+  const value = objectProperty(documentTreeCopyDeclaration.initializer, key);
+  assertLocaleTernary(value, expected, pageTree, `documentTreeCopy.${key}`);
+}
 
 const sessionBinding = pageFunction.body.statements
   .filter(ts.isVariableStatement)
@@ -432,6 +511,31 @@ const guaranteeHref = guaranteeTask.properties.find((property) => ts.isPropertyA
 assert(guaranteeHref && ts.isPropertyAssignment(guaranteeHref) && ts.isConditionalExpression(guaranteeHref.initializer), "guarantee task href must branch only on installed-template availability");
 assert.equal(guaranteeHref.initializer.condition.getText(pageTree), "hasInstalledGuaranteeTemplates", "guarantee task href must retain its real availability condition");
 assert(ts.isStringLiteral(guaranteeHref.initializer.whenFalse) && guaranteeHref.initializer.whenFalse.text === expectedBlockedTaskHref, "blocked task must select the real Worklist row before recovery");
+const documentGroupsInitializer = directVariable(pageFunction, "documentTreeGroups").initializer;
+const applicationGroups = visit(documentGroupsInitializer, (node) => ts.isObjectLiteralExpression(node) && (() => {
+  const id = node.properties.find((property) => ts.isPropertyAssignment(property) && property.name.getText(pageTree) === "id");
+  return Boolean(id && ts.isPropertyAssignment(id) && ts.isStringLiteral(id.initializer) && id.initializer.text === "application");
+})());
+assert.equal(applicationGroups.length, 1, "document tree must define one application category");
+assert.equal(objectProperty(applicationGroups[0], "status").getText(pageTree), "documentTreeCopy.taskCategory", "application group status must describe only its category");
+const guaranteeStatus = directVariable(pageFunction, "guaranteeDocumentStatus");
+const guaranteeStatusExpression = unwrapExpression(guaranteeStatus.initializer);
+assert(ts.isConditionalExpression(guaranteeStatusExpression) && guaranteeStatusExpression.condition.getText(pageTree) === "!hasInstalledGuaranteeTemplates", "guarantee task status must branch on the existing template availability fact");
+assert.equal(guaranteeStatusExpression.whenTrue.getText(pageTree), "documentTreeCopy.templateMissing", "blocked guarantee task must state that its template is not configured");
+const officialGroups = visit(documentGroupsInitializer, (node) => ts.isObjectLiteralExpression(node) && (() => {
+  const id = node.properties.find((property) => ts.isPropertyAssignment(property) && property.name.getText(pageTree) === "id");
+  return Boolean(id && ts.isPropertyAssignment(id) && ts.isStringLiteral(id.initializer) && id.initializer.text === "official");
+})());
+assert.equal(officialGroups.length, 1, "document tree must define one official category");
+const officialItems = unwrapExpression(objectProperty(officialGroups[0], "items"));
+assert(ts.isArrayLiteralExpression(officialItems) && officialItems.elements.length === 6, "official category must retain all six source documents");
+for (const [index, item] of officialItems.elements.entries()) {
+  assert(ts.isObjectLiteralExpression(item), `official item ${index} must remain explicit data`);
+  assert.equal(objectProperty(item, "external").kind, ts.SyntaxKind.TrueKeyword, `official item ${index} must retain its external-link contract`);
+  const href = objectProperty(item, "href");
+  assert(ts.isStringLiteral(href), `official item ${index} href must remain a direct string`);
+  assert.equal(href.text, expectedOfficialDocumentHrefs[index], `official item ${index} must retain its independently expected PDF path`);
+}
 const selectedAssignments = visit(directVariable(pageFunction, "documentTreeGroups").initializer, (node) => ts.isPropertyAssignment(node) && node.name.getText(pageTree) === "selected");
 assert.equal(selectedAssignments.length, 1, "document task data must define only one selectable current row");
 assert.equal(selectedAssignments[0].initializer.getText(pageTree), "isGuaranteeDocumentSelected", "the sole selected task must use the real URL-derived guarantee selection state");
@@ -441,6 +545,12 @@ const templateRecoveryLinks = visit(pageReturn, (node) => jsxName(node, pageTree
   return Boolean(href?.initializer && ts.isStringLiteral(href.initializer) && href.initializer.text === expectedTemplateRecoveryHref);
 })());
 assert.equal(templateRecoveryLinks.length, 1, "blocked detail must expose one real template-library recovery action");
+assertSemanticFocusClass(staticClassText(templateRecoveryLinks[0], pageTree, "template recovery action"), "template recovery action");
+let blockedState = templateRecoveryLinks[0].parent;
+while (blockedState && jsxName(blockedState, pageTree) !== "StateSurface") blockedState = blockedState.parent;
+assert(blockedState, "template recovery action must belong to the blocked StateSurface");
+assert.equal(jsxAttributeExpression(blockedState, "title", pageTree).getText(pageTree), "documentTreeCopy.templateRequired", "blocked detail must use the approved recovery title");
+assert.equal(jsxAttributeExpression(blockedState, "description", pageTree).getText(pageTree), "copy.guaranteeLibraryRequired", "blocked detail must retain the real template reason");
 
 const outputNextLinks = visit(pageReturn, (node) => jsxName(node, pageTree) === "Link" && (() => {
   const href = jsxAttribute(node, "href");
@@ -479,6 +589,25 @@ assert(legacyDeclaration.initializer?.kind === ts.SyntaxKind.FalseKeyword, "lega
 const legacyBranches = visit(pageReturn, (node) => ts.isConditionalExpression(node) && node.condition.getText(pageTree) === "shouldShowLegacyOutputFlow");
 assert.equal(legacyBranches.length, 1, "legacy area must have one explicit rendered guard");
 assert(visit(legacyBranches[0].whenTrue, (node) => ts.isJsxAttribute(node) && node.name.text === "id" && node.initializer && ts.isJsxExpression(node.initializer) && node.initializer.expression?.getText(pageTree) === "legacySectionId").length === 1, "legacy content must remain entirely inside its false guard");
+const livePrimaryLinks = visit(pageReturn, (node) => ["Link", "a"].includes(jsxName(node, pageTree)) && jsxAttribute(node, "href"))
+  .filter((node) => !containsNode(legacyBranches[0].whenTrue, node));
+assert(livePrimaryLinks.length >= 10, "visible output workflow must retain its full set of primary links");
+for (const [index, link] of livePrimaryLinks.entries()) {
+  const classAttribute = jsxAttribute(link, "className");
+  assert(classAttribute?.initializer, `live primary link ${index} must provide a focusable class`);
+  if (ts.isJsxExpression(classAttribute.initializer) && classAttribute.initializer.expression?.getText(pageTree) === "itemClass") continue;
+  assertSemanticFocusClass(staticClassText(link, pageTree, `live primary link ${index}`), `live primary link ${index}`);
+}
+const undersizedLiveBadges = visit(pageReturn, (node) => {
+  if (!ts.isJsxAttribute(node) || node.name.text !== "className" || !node.initializer) return false;
+  const classText = ts.isStringLiteral(node.initializer)
+    ? node.initializer.text
+    : ts.isJsxExpression(node.initializer) && node.initializer.expression
+      ? node.initializer.expression.getText(pageTree)
+      : "";
+  return classText.includes("text-[10px]");
+}).filter((attribute) => !containsNode(legacyBranches[0].whenTrue, attribute));
+assert.equal(undersizedLiveBadges.length, 0, "visible output status badges must not fall below 12px");
 const singleLineClasses = visit(pageReturn, (node) => {
   if (!ts.isJsxAttribute(node) || node.name.text !== "className" || !node.initializer) return false;
   const classText = ts.isStringLiteral(node.initializer)
@@ -512,8 +641,17 @@ for (const component of ["PageFrame", "PageHeader", "WorklistShell", "StateSurfa
 }
 assert.equal(visit(loadingReturn, (node) => ts.isStringLiteral(node) && ["caseId", "templateId", "missingCount", "downloadHref", "canDownload"].includes(node.text)).length, 0, "loading boundary must not fabricate domain state or eligibility");
 
-const validSynthetic = `async function OutputCenterPage(){const documentTreeGroups=[{title:"group",status:"status",items:[{id:"guarantee_application",label:"task",description:"description",status:"status"}]}];const activeDocumentTreeGroup=documentTreeGroups[0];return <WorklistShell items={<>{documentTreeGroups.map((group)=><div className="flex flex-wrap"><span className="break-words leading-5 [overflow-wrap:anywhere]">{group.title}</span><span className="break-words leading-4 [overflow-wrap:anywhere]">{group.status}</span></div>)}{activeDocumentTreeGroup.items.map((item)=><div className="flex flex-wrap"><span className="break-words leading-5 [overflow-wrap:anywhere]">{item.label}</span><span className="break-words leading-5 [overflow-wrap:anywhere]">{item.description}</span><span className="break-words leading-4 [overflow-wrap:anywhere]">{item.status}</span></div>)}</>} detail={<StateSurface/>}/>;}`;
+const validSynthetic = `async function OutputCenterPage(){const documentTreeCopy={externalHint:"hint"};const documentTreeGroupHref=()=>"/group";const documentTreeGroups=[{title:"group",status:"status",items:[{id:"guarantee_application",label:"task",description:"description",status:"status",selected:true,external:true}]}];const activeDocumentTreeGroup=documentTreeGroups[0];return <WorklistShell items={<>{documentTreeGroups.map((group)=><Link href={documentTreeGroupHref(group.id)} className={\`flex flex-wrap border-blue-200 bg-blue-50/50 focus-visible:outline-[var(--bd-focus-ring-width)_solid_var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]\`}><span className="break-words leading-5 [overflow-wrap:anywhere]">{group.title}</span><span className="break-words text-xs leading-4 [overflow-wrap:anywhere]">{group.status}</span></Link>)}{activeDocumentTreeGroup.items.map((item)=>{const itemClass=\`focus-visible:outline-[var(--bd-focus-ring-width)_solid_var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)] \${item.selected?"border-[#002FA7] bg-blue-50 shadow-sm":"border-slate-200"}\`;return <a href="/official.pdf" target="_blank" rel="noreferrer" className={itemClass}><div className="flex flex-wrap"><span className="break-words leading-5 [overflow-wrap:anywhere]">{item.label}</span><span className="break-words leading-5 [overflow-wrap:anywhere]">{item.description}</span><span className="break-words text-xs leading-4 [overflow-wrap:anywhere]">{item.status}</span>{item.external?<span className="text-xs">{documentTreeCopy.externalHint}<span aria-hidden="true">open_in_new</span></span>:null}</div></a>})}</>} detail={<StateSurface/>}/>;}`;
 assert.doesNotThrow(() => analyzeLiveWorklist(validSynthetic, "valid-synthetic.tsx"), "live semantic Worklist fixture must pass the analyzer");
+for (const [name, invalid] of [
+  ["missing semantic focus", validSynthetic.replaceAll("var(--bd-focus-ring-color)", "red")],
+  ["strong group treatment", validSynthetic.replace("border-blue-200 bg-blue-50/50", "border-[#002FA7] bg-blue-50")],
+  ["undersized task status", validSynthetic.replace('break-words text-xs leading-4 [overflow-wrap:anywhere]">{item.status}', 'break-words text-[10px] leading-4 [overflow-wrap:anywhere]">{item.status}')],
+  ["missing external hint", validSynthetic.replace("{documentTreeCopy.externalHint}", "")],
+  ["exposed decorative icon", validSynthetic.replace('aria-hidden="true"', 'aria-hidden="false"')],
+]) {
+  assert.throws(() => analyzeLiveWorklist(invalid, `invalid-polish-${name}.tsx`), `${name} must fail the Worklist polish analyzer`);
+}
 const invalidSynthetics = [
   `// WorklistShell documentTreeGroups.map activeDocumentTreeGroup.items.map guarantee_application\nasync function OutputCenterPage(){return <div/>;}`,
   `async function OutputCenterPage(){const documentTreeGroups=[{items:[{id:"guarantee_application"}]}];const activeDocumentTreeGroup=documentTreeGroups[0];function unused(){return <WorklistShell items={<>{documentTreeGroups.map(()=>null)}{activeDocumentTreeGroup.items.map(()=>null)}</>} detail={<StateSurface/>}/>;}return <div/>;}`,
