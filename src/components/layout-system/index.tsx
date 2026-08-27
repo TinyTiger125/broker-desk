@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { forwardRef, type FormHTMLAttributes, type HTMLAttributes, type MouseEventHandler, type ReactNode } from "react";
+import { Children, Fragment, forwardRef, isValidElement, type FormHTMLAttributes, type HTMLAttributes, type MouseEventHandler, type ReactNode } from "react";
 import styles from "./layout-system.module.css";
 
 function cx(...values: Array<string | false | null | undefined>) {
@@ -47,16 +47,33 @@ export type PageHeaderProps = HTMLAttributes<HTMLElement> & {
   children?: ReactNode;
 };
 
+function normalizePageHeaderActions(node: ReactNode): ReactNode[] {
+  return Children.toArray(node).flatMap((child) => {
+    if (typeof child === "string" && child.trim().length === 0) return [];
+    if (typeof child === "number" && child === 0) return [];
+    if (isValidElement<{ children?: ReactNode }>(child) && child.type === Fragment) {
+      return normalizePageHeaderActions(child.props.children);
+    }
+    return [child];
+  });
+}
+
 export function PageHeader({ title, description, backHref, backLabel, onBackClick, children, className, ...props }: PageHeaderProps) {
+  const childActions = normalizePageHeaderActions(children);
+  let actions: ReactNode = childActions.length > 0 ? childActions : null;
+  if (actions === null && backHref) {
+    const normalizedBackLabel = normalizePageHeaderActions(backLabel);
+    if (normalizedBackLabel.length > 0) {
+      actions = <Link href={backHref} onClick={onBackClick} className={styles.backLink}>{normalizedBackLabel}</Link>;
+    }
+  }
   return (
     <header {...props} className={cx(styles.pageHeader, className)}>
       <div className={styles.pageHeaderCopy}>
         <h1 className={styles.pageTitle}>{title}</h1>
         {description ? <p className={styles.pageDescription}>{description}</p> : null}
       </div>
-      <div className={styles.pageHeaderActions}>
-        {children ?? (backHref && backLabel ? <Link href={backHref} onClick={onBackClick} className={styles.backLink}>{backLabel}</Link> : null)}
-      </div>
+      {actions ? <div className={styles.pageHeaderActions}>{actions}</div> : null}
     </header>
   );
 }

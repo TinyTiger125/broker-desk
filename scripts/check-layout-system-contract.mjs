@@ -1,6 +1,11 @@
+import assert from "node:assert/strict";
+import { createRequire } from "node:module";
 import { readFile } from "node:fs/promises";
-import { readFileSync } from "node:fs";
-import ts from "typescript";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+
+const require = createRequire(import.meta.url);
+const ts = require("typescript");
+const React = require("react");
 
 const layoutPath = "src/components/layout-system/index.tsx";
 const layoutCssPath = "src/components/layout-system/layout-system.module.css";
@@ -17,8 +22,10 @@ const organizePagePath = "src/app/organize-center/page.tsx";
 const organizeBrowserPath = "src/components/organize-center-object-browser.tsx";
 const propertiesPagePath = "src/app/properties/page.tsx";
 const propertiesLoadingPath = "src/app/properties/loading.tsx";
+const partiesPagePath = "src/app/parties/page.tsx";
+const partiesLoadingPath = "src/app/parties/loading.tsx";
 
-const [layout, layoutCss, casePage, caseOverview, caseDraft, loading, notFound, clientForm, propertyForm, submissionLock, focusDialogGuards, organizePage, organizeBrowser, propertiesPage, propertiesLoading] = await Promise.all([
+const [layout, layoutCss, casePage, caseOverview, caseDraft, loading, notFound, clientForm, propertyForm, submissionLock, focusDialogGuards, organizePage, organizeBrowser, propertiesPage, propertiesLoading, partiesPage, partiesLoading] = await Promise.all([
   readFile(layoutPath, "utf8"),
   readFile(layoutCssPath, "utf8"),
   readFile(casePagePath, "utf8"),
@@ -34,6 +41,8 @@ const [layout, layoutCss, casePage, caseOverview, caseDraft, loading, notFound, 
   readFile(organizeBrowserPath, "utf8"),
   readFile(propertiesPagePath, "utf8"),
   readFile(propertiesLoadingPath, "utf8"),
+  readFile(partiesPagePath, "utf8"),
+  readFile(partiesLoadingPath, "utf8"),
 ]);
 
 const failures = [];
@@ -64,6 +73,126 @@ const staticallyTerminates = (statement) => {
   return false;
 };
 const jsxAttribute = (opening, name) => opening.attributes.properties.find((item) => ts.isJsxAttribute(item) && item.name.getText() === name);
+
+function directFunction(sourceFile, name) {
+  const fn = sourceFile.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === name);
+  assert(fn?.body, `${name} must remain a top-level function`);
+  return fn;
+}
+
+function directInitializer(block, name) {
+  for (const statement of block.statements) {
+    if (!ts.isVariableStatement(statement)) continue;
+    for (const declaration of statement.declarationList.declarations) {
+      if (ts.isIdentifier(declaration.name) && declaration.name.text === name) {
+        assert(declaration.initializer, `${name} must have a direct initializer`);
+        return unwrapExpression(declaration.initializer);
+      }
+    }
+  }
+  assert.fail(`${name} must be declared directly in its authoritative function`);
+}
+
+function evaluatePageHeaderPresence(source) {
+  const sf = parseTsx("layout-system.tsx", source);
+  const helper = directFunction(sf, "normalizePageHeaderActions");
+  const helperText = helper.getText(sf);
+  const output = ts.transpileModule(helperText, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+  const evaluate = Function("Children", "Fragment", "isValidElement", `${output}; return normalizePageHeaderActions;`)(React.Children, React.Fragment, React.isValidElement);
+  const fragment = (children) => React.createElement(React.Fragment, null, children);
+  const element = React.createElement("button", null, "Action");
+  function* emptyGenerator() {}
+  function* absentGenerator() { yield false; yield fragment(null); }
+  for (const absent of [undefined, null, false, true, 0, "", "   ", [], [false, null, 0, ""], fragment(undefined), fragment([false, 0, ""]), new Set(), new Set([false, fragment(null)]), emptyGenerator(), absentGenerator(), new Set([new Set(), fragment(new Set())])]) {
+    assert.equal(evaluate(absent).length, 0, "empty PageHeader action values must not create an actions grid row");
+  }
+  function* actionGenerator() { yield element; }
+  for (const present of ["Action", 1, element, [null, element], fragment(element), fragment("Back"), new Set([element]), actionGenerator(), new Set([new Set([element])])]) {
+    assert(evaluate(present).length > 0, "renderable PageHeader action values must retain the actions grid row");
+  }
+}
+
+function assertPageHeaderOptionalActions(source) {
+  const sf = parseTsx("layout-system.tsx", source);
+  assert.equal(sf.parseDiagnostics.length, 0, "layout system must parse");
+  evaluatePageHeaderPresence(source);
+  const fn = directFunction(sf, "PageHeader");
+  const childActions = directInitializer(fn.body, "childActions");
+  assert.equal(childActions.getText(sf), "normalizePageHeaderActions(children)", "children must be normalized exactly once before rendering");
+  const actions = directInitializer(fn.body, "actions");
+  assert(ts.isConditionalExpression(actions), "PageHeader actions must use an explicit children-first conditional");
+  assert.equal(actions.condition.getText(sf), "childActions.length > 0", "renderable children must decide the primary actions slot");
+  assert.equal(actions.whenTrue.getText(sf), "childActions", "the once-normalized children must be rendered without consuming iterators again");
+  assert.equal(actions.whenFalse.kind, ts.SyntaxKind.NullKeyword, "PageHeader must initially use null when children are absent");
+  const fallbackGuard = fn.body.statements.find((statement) => ts.isIfStatement(statement) && statement.expression.getText(sf) === "actions === null && backHref");
+  assert(fallbackGuard && ts.isBlock(fallbackGuard.thenStatement), "back label normalization must be lazy behind the no-children/backHref guard");
+  const normalizedBackLabel = directInitializer(fallbackGuard.thenStatement, "normalizedBackLabel");
+  assert.equal(normalizedBackLabel.getText(sf), "normalizePageHeaderActions(backLabel)", "back label must use the same renderable-node policy only in the fallback path");
+  const labelGuard = fallbackGuard.thenStatement.statements.find((statement) => ts.isIfStatement(statement));
+  assert(labelGuard && labelGuard.expression.getText(sf) === "normalizedBackLabel.length > 0" && ts.isBlock(labelGuard.thenStatement), "back-link fallback requires a renderable normalized label");
+  const assignment = labelGuard.thenStatement.statements.find((statement) => ts.isExpressionStatement(statement) && ts.isBinaryExpression(statement.expression));
+  assert(assignment && assignment.expression.left.getText(sf) === "actions" && assignment.expression.operatorToken.kind === ts.SyntaxKind.EqualsToken, "fallback must assign the resolved actions value directly");
+  const fallbackLink = unwrapExpression(assignment.expression.right);
+  assert(ts.isJsxElement(fallbackLink) && fallbackLink.openingElement.tagName.getText(sf) === "Link", "back-link fallback must remain the shared Link");
+  const finalReturn = fn.body.statements.at(-1);
+  assert(finalReturn && ts.isReturnStatement(finalReturn) && finalReturn.expression, "PageHeader must end in one reachable JSX return");
+  assert(!fn.body.statements.slice(0, -1).some(staticallyTerminates), "PageHeader return must not follow a guaranteed terminator");
+  const openings = walkTsx(finalReturn.expression, (node) => ts.isJsxOpeningElement(node));
+  const actionContainers = openings.filter((node) => jsxAttribute(node, "className")?.getText(sf) === "className={styles.pageHeaderActions}");
+  assert.equal(actionContainers.length, 1, "PageHeader must have one actions container in live JSX");
+  const conditional = actionContainers[0].parent?.parent;
+  assert(conditional && ts.isConditionalExpression(conditional), "actions container must be conditionally omitted from the DOM");
+  assert.equal(conditional.condition.getText(sf), "actions", "actions container must be gated by the resolved renderable action");
+  assert.equal(conditional.whenFalse.kind, ts.SyntaxKind.NullKeyword, "missing actions must render no grid item");
+}
+
+function executePageHeader(source) {
+  const sf = parseTsx("layout-system.tsx", source);
+  const helper = directFunction(sf, "normalizePageHeaderActions").getText(sf);
+  const component = directFunction(sf, "PageHeader").getText(sf).replace(/^export\s+/, "");
+  const output = ts.transpileModule(`${helper}\n${component}`, {
+    compilerOptions: { module: ts.ModuleKind.None, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React },
+  }).outputText;
+  const styles = new Proxy({}, { get: (_target, key) => String(key) });
+  const cx = (...values) => values.filter(Boolean).join(" ");
+  const Link = (props) => React.createElement("a", props, props.children);
+  return Function("React", "Children", "Fragment", "isValidElement", "styles", "cx", "Link", `${output}; return PageHeader;`)(React, React.Children, React.Fragment, React.isValidElement, styles, cx, Link);
+}
+
+const ExecutablePageHeader = executePageHeader(layout);
+let backPulls = 0;
+function* countedBackLabel() { backPulls += 1; yield "Back"; }
+const reusableBackLabel = countedBackLabel();
+ExecutablePageHeader({ title: "Title", backHref: "/back", backLabel: reusableBackLabel, children: React.createElement("button", null, "Action") });
+assert.equal(backPulls, 0, "real children must not consume the fallback backLabel iterable");
+const fallbackTree = ExecutablePageHeader({ title: "Title", backHref: "/back", backLabel: reusableBackLabel });
+assert.equal(backPulls, 1, "the backLabel iterable must be consumed exactly once when fallback is selected");
+assert(JSON.stringify(fallbackTree).includes("Back"), "the unconsumed backLabel iterable must render when children disappear");
+
+assertPageHeaderOptionalActions(layout);
+for (const mutate of [
+  (source) => source.replace('if (typeof child === "number" && child === 0) return [];', 'if (typeof child === "number" && false) return [];'),
+  (source) => source.replace("child.type === Fragment", "false"),
+  (source) => source.replace("return Children.toArray(node).flatMap", "return [node].flatMap"),
+  (source) => source.replace("  let actions: ReactNode = childActions.length > 0 ? childActions : null;", "  const normalizedBackLabel = normalizePageHeaderActions(backLabel);\n  let actions: ReactNode = childActions.length > 0 ? childActions : normalizedBackLabel;"),
+  (source) => source.replace("{actions ? <div className={styles.pageHeaderActions}>{actions}</div> : null}", "<div className={styles.pageHeaderActions}>{actions}</div>"),
+]) {
+  const broken = mutate(layout);
+  assert.notEqual(broken, layout, "PageHeader synthetic must mutate its target");
+  assert.throws(() => assertPageHeaderOptionalActions(broken), "PageHeader action-row regression must fail the layout contract");
+}
+
+function sourceFilesUnder(directory) {
+  return readdirSync(directory).flatMap((entry) => {
+    const path = `${directory}/${entry}`;
+    return statSync(path).isDirectory() ? sourceFilesUnder(path) : /\.(?:ts|tsx|css)$/.test(entry) ? [path] : [];
+  });
+}
+for (const path of sourceFilesUnder("src")) {
+  if (path === layoutPath || path === layoutCssPath) continue;
+  const source = readFileSync(path, "utf8");
+  if (source.includes("pageHeaderActions")) failures.push(`PageHeader callers must not depend on the private empty actions container: ${path}`);
+}
 
 function checkOrganizeSharedReturn() {
   const sf = parseTsx(organizeBrowserPath, organizeBrowser);
@@ -352,6 +481,12 @@ for (const fragment of ["<PageFrame", "<PageHeader", "<ListReturnState", "<ListR
 }
 for (const fragment of ["<PageFrame", "<PageHeader", "<ListReportShell", "<StateSurface", 'tone="loading"', 'aria-busy="true"']) {
   requireText(propertiesLoading, fragment, "properties loading List Report composition");
+}
+for (const fragment of ["<PageFrame", "<PageHeader", "<ListReturnState", "<ListReportShell", "<StateSurface"]) {
+  requireText(partiesPage, fragment, "parties List Report composition");
+}
+for (const fragment of ["<PageFrame", "<PageHeader", "<ListReportShell", "<StateSurface", 'tone="loading"', 'aria-busy="true"']) {
+  requireText(partiesLoading, fragment, "parties loading List Report composition");
 }
 for (const retired of [
   "FOCUS_STORAGE_PREFIX",

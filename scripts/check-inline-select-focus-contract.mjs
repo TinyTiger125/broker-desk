@@ -317,10 +317,34 @@ for (const [label, source] of invalidFrameCssCases) {
 }
 
 const partiesSource = readFileSync(resolve(root, "src/app/parties/page.tsx"), "utf8");
-const lifecycleFrame = `<label className="bd-inline-select-frame flex ${syntheticTouchClass} items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700">\n            <span className="sr-only">{copy.lifecycle}</span>`;
-assert(partiesSource.includes(lifecycleFrame), "the lifecycle synthetic target must match the live caller");
+const indentationOnlyParties = partiesSource.replace(/^[ \t]+(<span className="sr-only">\{copy\.lifecycle\}<\/span>)$/m, "\t\t$1");
+assert.notEqual(indentationOnlyParties, partiesSource, "the lifecycle indentation synthetic must hit its live label text");
+analyzePageCallerSource(indentationOnlyParties, "synthetic-parties-indentation-only.tsx", "PartiesPage", "lifecycle");
+
+const missingLifecycleCaller = partiesSource.replace('name="lifecycle"', 'name="lifecycle-disabled"');
+assert.notEqual(missingLifecycleCaller, partiesSource, "the missing lifecycle caller synthetic must hit its live select");
 assert.throws(
-  () => analyzePageCallerSource(partiesSource.replace(lifecycleFrame, lifecycleFrame.replace(`${sharedFrameClass} `, "")), "synthetic-parties-one-missed.tsx", "PartiesPage", "lifecycle"),
+  () => analyzePageCallerSource(missingLifecycleCaller, "synthetic-parties-missing-lifecycle.tsx", "PartiesPage", "lifecycle"),
+  "removing the live parties lifecycle caller must fail",
+);
+
+function removeLifecycleFrameClass(source) {
+  const tree = parse(source, "synthetic-parties-one-missed.tsx");
+  const fn = directFunction(tree, "PartiesPage");
+  const liveReturn = assertFinalReturn(fn, "PartiesPage");
+  const select = visit(liveReturn, (node) => ts.isJsxOpeningElement(node) && node.tagName.getText(tree) === "select" && jsxAttribute(node, "name")?.initializer?.text === "lifecycle")[0];
+  assert(select, "the lifecycle frame mutation must find the live select by AST");
+  let label = select.parent?.parent;
+  while (label && !ts.isJsxElement(label)) label = label.parent;
+  assert(label && label.openingElement.tagName.getText(tree) === "label", "the lifecycle frame mutation must find its nearest live label");
+  const opening = label.openingElement;
+  const openingText = opening.getText(tree);
+  const brokenOpening = openingText.replace(`${sharedFrameClass} `, "");
+  assert.notEqual(brokenOpening, openingText, "the lifecycle frame mutation must remove the shared class from the live label");
+  return `${source.slice(0, opening.getStart(tree))}${brokenOpening}${source.slice(opening.end)}`;
+}
+assert.throws(
+  () => analyzePageCallerSource(removeLifecycleFrameClass(partiesSource), "synthetic-parties-one-missed.tsx", "PartiesPage", "lifecycle"),
   "fixing only one parties select must fail",
 );
 

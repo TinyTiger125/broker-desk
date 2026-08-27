@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArchiveRecordButton } from "@/components/archive-record-button";
+import { ListReportShell, PageFrame, PageHeader, StateSurface } from "@/components/layout-system";
 import { ListReturnState } from "@/components/list-return-state";
 import { PageFlashBanner } from "@/components/page-flash-banner";
 import { listHubParties, type HubPartyItem } from "@/lib/hub";
@@ -53,7 +54,9 @@ function buildPartiesHref(filters: PartyFilters): string {
 
 const partiesCopy = {
   ja: {
+    description: "関係者を検索し、連絡先・役割・状態を確認します。",
     clear: "条件をクリア",
+    viewAll: "すべての関係者を表示",
     contact: "連絡先",
     corporate: "法人",
     individual: "個人",
@@ -65,6 +68,7 @@ const partiesCopy = {
     noParties: "登録されている関係者はまだありません。",
     noResult: "条件に一致する関係者がいません。",
     noResultHint: "条件を変更するか、すべての条件をクリアしてください。",
+    archivedOnlyHint: "すべての関係者を表示すると、アーカイブ済みの記録を確認できます。",
     retry: "再試行",
     readError: "関係者を読み込めませんでした。",
     results: "関係者一覧",
@@ -90,7 +94,9 @@ const partiesCopy = {
     ownerReadOnly: "現在のアカウントは閲覧のみです。",
   },
   zh: {
+    description: "搜索相关主体，查看联系方式、角色和状态。",
     clear: "清除条件",
+    viewAll: "查看全部主体",
     contact: "联系方式",
     corporate: "法人",
     individual: "个人",
@@ -102,6 +108,7 @@ const partiesCopy = {
     noParties: "当前还没有已登记的主体。",
     noResult: "没有符合条件的主体。",
     noResultHint: "请调整条件或清除全部筛选。",
+    archivedOnlyHint: "查看全部主体后，可确认已归档的记录。",
     retry: "重试",
     readError: "无法读取主体列表。",
     results: "主体列表",
@@ -127,7 +134,9 @@ const partiesCopy = {
     ownerReadOnly: "当前账号仅可查看。",
   },
   ko: {
+    description: "관계자를 검색하고 연락처, 역할, 상태를 확인합니다.",
     clear: "조건 지우기",
+    viewAll: "전체 관계자 보기",
     contact: "연락처",
     corporate: "법인",
     individual: "개인",
@@ -139,6 +148,7 @@ const partiesCopy = {
     noParties: "아직 등록된 관계자가 없습니다.",
     noResult: "조건에 맞는 관계자가 없습니다.",
     noResultHint: "조건을 변경하거나 모든 필터를 지워 주세요.",
+    archivedOnlyHint: "전체 관계자를 보면 보관된 기록을 확인할 수 있습니다.",
     retry: "다시 시도",
     readError: "관계자 목록을 읽을 수 없습니다.",
     results: "관계자 목록",
@@ -237,6 +247,18 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
   const rangeEnd = Math.min(filtered.length, safePage * PARTIES_PAGE_SIZE);
   const returnTo = buildPartiesHref({ ...filters, page: safePage });
   const clearHref = buildPartiesHref({ query: "", type: "all", lifecycle: "active" });
+  const allPartiesHref = buildPartiesHref({ query: "", type: "all", lifecycle: "all" });
+  const hasNonDefaultFilters = query.length > 0 || type !== "all" || lifecycle !== "active";
+  const activePartyCount = parties.filter((party) => party.status === "active").length;
+  const archivedPartyCount = parties.filter((party) => party.status === "archived").length;
+  const hasArchivedOnlyAtDefault =
+    !readError
+    && query.length === 0
+    && type === "all"
+    && lifecycle === "active"
+    && activePartyCount === 0
+    && archivedPartyCount > 0;
+  const emptyRecoveryHref = hasArchivedOnlyAtDefault ? allPartiesHref : clearHref;
   const flashMap = {
     party_created: copy.created,
     party_updated: copy.updated,
@@ -247,155 +269,159 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
   const notSet = t(locale, "common.notSet");
 
   return (
-    <div className="space-y-6 pb-12">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div className="space-y-1">
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">{copy.results}</p>
-          <h1 className="text-4xl font-bold tracking-tight text-slate-900">{copy.pageTitle}</h1>
-        </div>
-      </header>
+    <PageFrame className="space-y-6 pb-12">
+      <PageHeader title={copy.pageTitle} description={copy.description} />
 
       <PageFlashBanner message={flashMessage} />
 
-      <section className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200/35" aria-labelledby="parties-filter-heading">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <h2 id="parties-filter-heading" className="text-lg font-bold text-slate-900">{copy.searchLabel}</h2>
-          <Link href={clearHref} className="text-sm font-bold text-slate-700 hover:text-[#002fa7]">{copy.clear}</Link>
-        </div>
-        <form action="/parties" method="get" className="grid gap-3 lg:grid-cols-[minmax(240px,1fr)_auto_auto_auto]">
-          <label className="sr-only" htmlFor="party-query">{copy.searchLabel}</label>
-          <input
-            id="party-query"
-            name="q"
-            defaultValue={query}
-            placeholder={copy.searchPlaceholder}
-            className="min-h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none focus:border-[#0046ad] focus:ring-2 focus:ring-blue-100"
-          />
-          <label className="bd-inline-select-frame flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700">
-            <span className="sr-only">{copy.type}</span>
-            <select name="type" defaultValue={type} className="min-w-28 bg-transparent outline-none">
-              <option value="all">{copy.type}: {copy.all}</option>
-              <option value="individual">{copy.individual}</option>
-              <option value="corporate">{copy.corporate}</option>
-            </select>
-          </label>
-          <label className="bd-inline-select-frame flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700">
-            <span className="sr-only">{copy.lifecycle}</span>
-            <select name="lifecycle" defaultValue={lifecycle} className="min-w-32 bg-transparent outline-none">
-              <option value="active">{copy.lifecycle}: {copy.active}</option>
-              <option value="archived">{copy.archived}</option>
-              <option value="all">{copy.all}</option>
-            </select>
-          </label>
-          <button type="submit" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-[#001e40] px-4 text-sm font-bold text-white">
-            <span className="material-symbols-outlined text-[17px]" aria-hidden="true">search</span>
-            {copy.filter}
-          </button>
-        </form>
-      </section>
-
       <ListReturnState scope="parties" listUrl={returnTo}>
-      <section tabIndex={-1} data-list-return-fallback className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200/40" aria-labelledby="parties-results-heading">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/80 px-5 py-4">
-          <div>
-            <h2 id="parties-results-heading" className="text-lg font-bold text-slate-900">{copy.results}</h2>
-            <p className="mt-1 text-xs font-medium text-slate-500">{copy.resultRange(rangeStart, rangeEnd, filtered.length)}</p>
-          </div>
-          {pageCount > 1 && !readError ? (
-            <nav aria-label={copy.results} className="flex items-center gap-2 text-sm font-bold">
-              {safePage > 1 ? <Link href={buildPartiesHref({ ...filters, page: safePage - 1 })} className="rounded-md border border-slate-200 px-3 py-2 text-slate-700 hover:bg-slate-50">{copy.previous}</Link> : null}
-              <span className="px-2 text-slate-500">{copy.page(safePage, pageCount)}</span>
-              {safePage < pageCount ? <Link href={buildPartiesHref({ ...filters, page: safePage + 1 })} className="rounded-md border border-slate-200 px-3 py-2 text-slate-700 hover:bg-slate-50">{copy.next}</Link> : null}
-            </nav>
-          ) : null}
-        </div>
-
-        {!readError && filtered.length > 0 ? (
-          <div className="hidden gap-4 border-b border-slate-200/80 bg-slate-50/70 px-5 py-2 text-xs font-bold uppercase tracking-wide text-slate-500 lg:grid lg:grid-cols-[minmax(12rem,1.3fr)_minmax(7rem,0.7fr)_minmax(9rem,1fr)_minmax(6rem,0.6fr)_auto] lg:items-center" aria-hidden="true">
-            <span>{copy.name}</span>
-            <span>{copy.type}</span>
-            <span>{copy.role}</span>
-            <span>{copy.status}</span>
-            <span className="text-right">{copy.actions}</span>
-          </div>
-        ) : null}
-
-        {readError ? (
-          <div className="space-y-3 px-5 py-12 text-center">
-            <p className="text-sm font-semibold text-rose-700">{copy.readError}</p>
-            <div className="flex flex-wrap justify-center gap-3">
-              <Link href={returnTo} className="rounded-lg bg-[#001e40] px-4 py-2 text-sm font-bold text-white">{copy.retry}</Link>
-              <Link href="/organize-center" className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700">{copy.backToWorkbench}</Link>
-            </div>
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="space-y-3 px-5 py-12 text-center">
-            <p className="text-sm font-semibold text-slate-700">{parties.length === 0 ? copy.noParties : copy.noResult}</p>
-            {parties.length === 0 ? (
-              null
-            ) : (
-              <div className="space-y-2">
-                <p className="text-sm text-slate-500">{copy.noResultHint}</p>
-                <Link href={clearHref} className="inline-flex rounded-lg border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700">{copy.clear}</Link>
-              </div>
+        <section
+          tabIndex={-1}
+          data-list-return-fallback
+          aria-labelledby="parties-results-heading"
+          className="rounded-lg focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]"
+        >
+          <ListReportShell
+            scope={<h2 id="parties-results-heading" className="m-0 text-lg font-bold text-slate-900">{copy.results}</h2>}
+            filters={(
+              <section aria-labelledby="parties-filter-heading">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                  <h2 id="parties-filter-heading" className="text-lg font-bold text-slate-900">{copy.searchLabel}</h2>
+                  {hasNonDefaultFilters ? (
+                    <Link href={clearHref} className="inline-flex min-h-11 items-center text-sm font-bold text-slate-700 hover:text-[#002fa7] focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]">{copy.clear}</Link>
+                  ) : null}
+                </div>
+                <form action="/parties" method="get" className="grid gap-3 lg:grid-cols-[minmax(240px,1fr)_auto_auto_auto]">
+                  <label className="sr-only" htmlFor="party-query">{copy.searchLabel}</label>
+                  <input
+                    id="party-query"
+                    name="q"
+                    defaultValue={query}
+                    placeholder={copy.searchPlaceholder}
+                    className="min-h-11 rounded-lg border border-slate-200 bg-white px-3 text-base font-medium text-slate-800 outline-none focus:border-[var(--bd-focus-ring-color)] focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)] sm:text-sm"
+                  />
+                  <label className="bd-inline-select-frame flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700">
+                    <span className="sr-only">{copy.type}</span>
+                    <select name="type" defaultValue={type} className="min-w-28 bg-transparent text-base outline-none sm:text-sm">
+                      <option value="all">{copy.type}: {copy.all}</option>
+                      <option value="individual">{copy.individual}</option>
+                      <option value="corporate">{copy.corporate}</option>
+                    </select>
+                  </label>
+                  <label className="bd-inline-select-frame flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700">
+                    <span className="sr-only">{copy.lifecycle}</span>
+                    <select name="lifecycle" defaultValue={lifecycle} className="min-w-32 bg-transparent text-base outline-none sm:text-sm">
+                      <option value="active">{copy.lifecycle}: {copy.active}</option>
+                      <option value="archived">{copy.archived}</option>
+                      <option value="all">{copy.all}</option>
+                    </select>
+                  </label>
+                  <button type="submit" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-[var(--bd-ink)] px-4 text-sm font-bold text-white focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]">
+                    <span className="material-symbols-outlined text-[17px]" aria-hidden="true">search</span>
+                    {copy.filter}
+                  </button>
+                </form>
+              </section>
             )}
-          </div>
-        ) : (
-          <ul className="divide-y divide-slate-200/80" aria-label={copy.results}>
-            {visibleParties.map((party) => {
-              const canWrite = party.canWrite && capabilityCanWrite;
-              const canArchive = party.canArchive;
-              const readOnlyMessage = party.readOnlyReason === "company_read"
-                ? copy.readOnly
-                : party.readOnlyReason === "owner_read_only" || !canWrite
-                  ? copy.ownerReadOnly
-                  : undefined;
-              const typeLabel = party.explicitPartyType === "corporate"
-                ? copy.corporate
-                : party.explicitPartyType === "individual"
-                  ? copy.individual
-                  : notSet;
-              const roleLabel = party.explicitRoles.join(" / ") || notSet;
-              const statusLabel = party.status === "archived" ? copy.archived : copy.active;
-              return (
-                <li key={party.id} className="grid gap-4 px-5 py-4 transition hover:bg-slate-50 lg:grid-cols-[minmax(12rem,1.3fr)_minmax(7rem,0.7fr)_minmax(9rem,1fr)_minmax(6rem,0.6fr)_auto] lg:items-center">
-                  <div className="min-w-0">
-                    <Link
-                      href={`/parties/${encodeURIComponent(party.id)}/edit?returnTo=${encodeURIComponent(returnTo)}`}
-                      data-list-return-trigger={`party:${party.id}`}
-                      className="block truncate text-sm font-bold text-slate-900 underline-offset-4 hover:text-[#002fa7] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]"
-                    >
-                      {party.name}
-                    </Link>
-                    <p className="mt-1 truncate text-xs font-medium text-slate-500">{contactSummary(party, notSet)}</p>
-                    {readOnlyMessage ? <p className="mt-1 text-xs font-bold text-slate-600">{readOnlyMessage}</p> : null}
+            summary={!readError ? <p className="m-0 text-xs font-medium text-slate-500">{copy.resultRange(rangeStart, rangeEnd, filtered.length)}</p> : undefined}
+            pagination={pageCount > 1 && !readError ? (
+              <nav aria-label={copy.results} className="flex items-center gap-2 text-sm font-bold">
+                {safePage > 1 ? <Link href={buildPartiesHref({ ...filters, page: safePage - 1 })} className="inline-flex min-h-11 items-center rounded-md border border-slate-200 px-3 py-2 text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]">{copy.previous}</Link> : null}
+                <span className="px-2 text-slate-500">{copy.page(safePage, pageCount)}</span>
+                {safePage < pageCount ? <Link href={buildPartiesHref({ ...filters, page: safePage + 1 })} className="inline-flex min-h-11 items-center rounded-md border border-slate-200 px-3 py-2 text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]">{copy.next}</Link> : null}
+              </nav>
+            ) : undefined}
+            state={readError ? (
+              <StateSurface
+                tone="error"
+                title={copy.readError}
+                action={(
+                  <div className="flex flex-wrap justify-center gap-3">
+                    <Link href={returnTo} className="inline-flex min-h-11 items-center rounded-lg bg-[var(--bd-ink)] px-4 text-sm font-bold text-white focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]">{copy.retry}</Link>
+                    <Link href="/organize-center" className="inline-flex min-h-11 items-center rounded-lg border border-slate-200 px-4 text-sm font-bold text-slate-700 focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]">{copy.backToWorkbench}</Link>
                   </div>
-                  <div className="text-sm text-slate-700"><span className="mr-2 text-xs font-bold text-slate-400 lg:hidden">{copy.type}</span>{typeLabel}</div>
-                  <div className="text-sm text-slate-700"><span className="mr-2 text-xs font-bold text-slate-400 lg:hidden">{copy.role}</span>{roleLabel}</div>
-                  <div className={party.status === "archived" ? "text-sm font-semibold text-slate-500" : "text-sm text-slate-700"}><span className="mr-2 text-xs font-bold text-slate-400 lg:hidden">{copy.status}</span>{statusLabel}</div>
-                  <div className="flex flex-wrap items-center justify-start gap-2 lg:justify-end">
-                    {canWrite ? <Link
-                      href={`/relationship-tree?type=party&id=${encodeURIComponent(party.id)}`}
-                      className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]"
-                    >{copy.relationTree}</Link> : null}
-                    {canArchive ? <ArchiveRecordButton
-                      entityType="party"
-                      entityId={party.id}
-                      recordLabel={party.name}
-                      status={party.status}
-                      locale={locale}
-                      returnTo={returnTo}
-                      returnStateScope={"parties"}
-                      returnFocusKey={`party:${party.id}`}
-                    /> : null}
+                )}
+              />
+            ) : filtered.length === 0 ? (
+              <StateSurface
+                tone="empty"
+                title={parties.length === 0 ? copy.noParties : copy.noResult}
+                description={parties.length === 0 ? undefined : hasArchivedOnlyAtDefault ? copy.archivedOnlyHint : copy.noResultHint}
+                action={parties.length === 0 ? undefined : (
+                  <Link href={emptyRecoveryHref} className="inline-flex min-h-11 items-center rounded-lg border border-slate-200 px-4 text-sm font-bold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]">{hasArchivedOnlyAtDefault ? copy.viewAll : copy.clear}</Link>
+                )}
+              />
+            ) : undefined}
+            results={!readError && filtered.length > 0 ? (
+              <div role="table" aria-label={copy.results}>
+                <div role="rowgroup">
+                  <div role="row" className="hidden gap-4 border-b border-slate-200/80 bg-slate-50/70 px-5 py-2 text-xs font-bold uppercase tracking-wide text-slate-500 lg:grid lg:grid-cols-[minmax(12rem,1.2fr)_minmax(11rem,1fr)_minmax(7rem,.65fr)_minmax(9rem,.9fr)_minmax(6rem,.55fr)_auto] lg:items-center">
+                    <span role="columnheader">{copy.name}</span>
+                    <span role="columnheader">{copy.contact}</span>
+                    <span role="columnheader">{copy.type}</span>
+                    <span role="columnheader">{copy.role}</span>
+                    <span role="columnheader">{copy.status}</span>
+                    <span role="columnheader" className="text-right">{copy.actions}</span>
                   </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
+                </div>
+                <div role="rowgroup" className="divide-y divide-slate-200/80">
+                  {visibleParties.map((party) => {
+                    const canWrite = party.canWrite && capabilityCanWrite;
+                    const canArchive = party.canArchive;
+                    const readOnlyMessage = party.readOnlyReason === "company_read"
+                      ? copy.readOnly
+                      : party.readOnlyReason === "owner_read_only" || !canWrite
+                        ? copy.ownerReadOnly
+                        : undefined;
+                    const typeLabel = party.explicitPartyType === "corporate"
+                      ? copy.corporate
+                      : party.explicitPartyType === "individual"
+                        ? copy.individual
+                        : notSet;
+                    const roleLabel = party.explicitRoles.join(" / ") || notSet;
+                    const statusLabel = party.status === "archived" ? copy.archived : copy.active;
+                    return (
+                      <div key={party.id} role="row" className="grid gap-4 px-5 py-4 transition hover:bg-slate-50 lg:grid-cols-[minmax(12rem,1.2fr)_minmax(11rem,1fr)_minmax(7rem,.65fr)_minmax(9rem,.9fr)_minmax(6rem,.55fr)_auto] lg:items-center">
+                        <div role="cell" className="min-w-0">
+                          <Link
+                            href={`/parties/${encodeURIComponent(party.id)}/edit?returnTo=${encodeURIComponent(returnTo)}`}
+                            data-list-return-trigger={`party:${party.id}`}
+                            className="inline-flex min-h-11 max-w-full items-center break-words text-sm font-bold leading-relaxed text-slate-900 underline-offset-4 [overflow-wrap:anywhere] hover:text-[#002fa7] hover:underline focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]"
+                          >
+                            {party.name}
+                          </Link>
+                          {readOnlyMessage ? <p className="mt-1 text-xs font-bold leading-relaxed text-slate-600 [overflow-wrap:anywhere]">{readOnlyMessage}</p> : null}
+                        </div>
+                        <div role="cell" className="break-words text-sm leading-relaxed text-slate-700 [overflow-wrap:anywhere]"><span className="mr-2 text-xs font-bold text-slate-400 lg:hidden">{copy.contact}</span>{contactSummary(party, notSet)}</div>
+                        <div role="cell" className="text-sm text-slate-700"><span className="mr-2 text-xs font-bold text-slate-400 lg:hidden">{copy.type}</span>{typeLabel}</div>
+                        <div role="cell" className="break-words text-sm leading-relaxed text-slate-700 [overflow-wrap:anywhere]"><span className="mr-2 text-xs font-bold text-slate-400 lg:hidden">{copy.role}</span>{roleLabel}</div>
+                        <div role="cell" className={party.status === "archived" ? "text-sm font-semibold text-slate-500" : "text-sm text-slate-700"}><span className="mr-2 text-xs font-bold text-slate-400 lg:hidden">{copy.status}</span>{statusLabel}</div>
+                        <div role="cell" className="flex flex-wrap items-center justify-start gap-2 lg:justify-end">
+                          {canWrite ? <Link
+                            href={`/relationship-tree?type=party&id=${encodeURIComponent(party.id)}`}
+                            data-list-return-trigger={`party:${party.id}:relationship`}
+                            className="inline-flex min-h-11 items-center rounded-md border border-slate-200 px-3 text-xs font-semibold text-slate-600 hover:bg-slate-50 focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]"
+                          >{copy.relationTree}</Link> : null}
+                          {canArchive ? <ArchiveRecordButton
+                            entityType="party"
+                            entityId={party.id}
+                            recordLabel={party.name}
+                            status={party.status}
+                            locale={locale}
+                            returnTo={returnTo}
+                            returnStateScope={"parties"}
+                            returnFocusKey={`party:${party.id}`}
+                          /> : null}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : undefined}
+          />
+        </section>
       </ListReturnState>
-    </div>
+    </PageFrame>
   );
 }

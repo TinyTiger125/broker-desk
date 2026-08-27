@@ -118,6 +118,16 @@ function finalReturn(fn, label) {
   return result.expression;
 }
 
+function insertBeforeFinalDirectReturn(source, filename, functionName, statement) {
+  const tree = parse(source, filename);
+  const fn = directFunction(tree, functionName);
+  const returns = fn.body.statements.filter(ts.isReturnStatement);
+  assert.equal(returns.length, 1, `${functionName} mutation target must have one direct return`);
+  const target = returns[0];
+  assert.equal(fn.body.statements.at(-1), target, `${functionName} mutation target must be the final direct return`);
+  return `${source.slice(0, target.getStart(tree))}${statement}${source.slice(target.getStart(tree))}`;
+}
+
 function directVariable(block, name, label) {
   assert(ts.isBlock(block), `${label} must have a block body`);
   for (const statement of block.statements) {
@@ -633,7 +643,33 @@ const partyWithoutWrapper = replaceOnce(sources.parties, '<ListReturnState scope
   .replace("</ListReturnState>", "</div>");
 expectFailure(() => analyzePage(partyWithoutWrapper, pageSpecs[0]), "party without live wrapper");
 expectReplacementFailure(sources.parties, "data-list-return-trigger={`party:${party.id}`}", "data-list-return-trigger={`party:${party.name}`}", "party unstable id", (source) => analyzePage(source, pageSpecs[0]), "party trigger using visible text");
-expectReplacementFailure(sources.parties, "  return (\n    <div className=\"space-y-6 pb-12\">", "  if (true) return <div />;\n  return (\n    <div className=\"space-y-6 pb-12\">", "party dead final return", (source) => analyzePage(source, pageSpecs[0]), "party live JSX after guaranteed return");
+const partyDeadFinalReturn = insertBeforeFinalDirectReturn(
+  sources.parties,
+  pageSpecs[0].filename,
+  pageSpecs[0].functionName,
+  "if (true) return <div />;\n  ",
+);
+expectFailure(() => analyzePage(partyDeadFinalReturn, pageSpecs[0]), "party live JSX after guaranteed return");
+
+const reformattedParties = sources.parties.split("\n").map((line) => line.length > 0 ? `  ${line}` : line).join("\n");
+const reformattedPartyDeadFinalReturn = insertBeforeFinalDirectReturn(
+  reformattedParties,
+  pageSpecs[0].filename,
+  pageSpecs[0].functionName,
+  "if (true) return <div />;\n    ",
+);
+expectFailure(() => analyzePage(reformattedPartyDeadFinalReturn, pageSpecs[0]), "reformatted party live JSX after guaranteed return");
+
+const partyWithWrongReturnTarget = insertBeforeFinalDirectReturn(
+  sources.parties,
+  pageSpecs[0].filename,
+  pageSpecs[0].functionName,
+  "return <div />;\n  ",
+);
+expectFailure(
+  () => insertBeforeFinalDirectReturn(partyWithWrongReturnTarget, pageSpecs[0].filename, pageSpecs[0].functionName, "if (true) return <div />;\n  "),
+  "party mutation helper with a non-unique direct return target",
+);
 expectReplacementFailure(sources.properties, "data-list-return-trigger={`property:${property.id}`}", "data-list-return-trigger={`property:${property.name}`}", "property unstable id", (source) => analyzePage(source, pageSpecs[1]), "property trigger using visible text");
 
 console.log("list return state contract: PASS");
