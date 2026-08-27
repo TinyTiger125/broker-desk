@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useActionState, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import type { Locale } from "@/lib/locale";
 import type { PropertyFormActionState, PropertyFormValues } from "@/app/actions";
+import { endSubmission, handleFormSubmit, type SubmissionLock } from "@/components/form-submission-lock";
 
 type PropertyFormAction = (
   previousState: PropertyFormActionState,
@@ -17,6 +18,10 @@ type PropertyResponsiveFormProps = {
   returnTo: string;
   propertyId?: string;
   onCreated?: (record: { id: string; name: string }) => void;
+  formId?: string;
+  hideActions?: boolean;
+  onPendingChange?: (pending: boolean) => void;
+  onSubmitStart?: () => void;
 };
 
 const copy = {
@@ -83,7 +88,7 @@ const copy = {
 } as const;
 
 const inputClass =
-  "w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-[#0046ad] focus:ring-2 focus:ring-blue-100";
+  "w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base text-slate-900 outline-none transition focus:border-[#0046ad] focus:ring-2 focus:ring-blue-100 sm:text-sm";
 const initialState: PropertyFormActionState = { status: "idle", fieldErrors: {}, values: {
   name: "",
   area: "",
@@ -95,13 +100,14 @@ const initialState: PropertyFormActionState = { status: "idle", fieldErrors: {},
   notes: "",
 } };
 
-export function PropertyResponsiveForm({ action, locale, initialValues, returnTo, propertyId, onCreated }: PropertyResponsiveFormProps) {
+export function PropertyResponsiveForm({ action, locale, initialValues, returnTo, propertyId, onCreated, formId, hideActions = false, onPendingChange, onSubmitStart }: PropertyResponsiveFormProps) {
   const text = copy[locale];
   const [values, setValues] = useState<PropertyFormValues>(initialValues);
   const [state, formAction, pending] = useActionState(action, { ...initialState, values: initialValues });
   const summaryRef = useRef<HTMLDivElement>(null);
   const composingRef = useRef(false);
   const notifiedCreatedId = useRef<string | undefined>(undefined);
+  const submissionLockRef = useRef<SubmissionLock>({ current: false });
 
   useEffect(() => {
     if (state.status === "error") {
@@ -114,6 +120,10 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
     notifiedCreatedId.current = record.id;
     onCreated?.(record);
   }, [onCreated, state.createdRecord]);
+  useEffect(() => {
+    if (!pending) endSubmission(submissionLockRef.current);
+    onPendingChange?.(pending);
+  }, [onPendingChange, pending]);
 
   const errorEntries = Object.entries(state.fieldErrors) as Array<[keyof PropertyFormValues, string]>;
   const updateValue = (field: keyof PropertyFormValues, value: string) => {
@@ -142,9 +152,12 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
     "aria-invalid": Boolean(fieldError(field)) || undefined,
     "aria-describedby": fieldError(field) ? `${id}-error` : undefined,
   });
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    handleFormSubmit(event, submissionLockRef.current, onSubmitStart);
+  };
 
   return (
-    <form action={formAction} noValidate className="space-y-6">
+    <form id={formId} action={formAction} onSubmit={handleSubmit} noValidate className="space-y-6">
       <input type="hidden" name="returnTo" value={returnTo} />
       {onCreated ? <input type="hidden" name="caseDraftReturn" value="1" /> : null}
       {propertyId ? <input type="hidden" name="propertyId" value={propertyId} /> : null}
@@ -202,7 +215,7 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
               <div key={field} className="space-y-1">
                 <label htmlFor={id} className="text-sm font-semibold text-slate-700">{label}</label>
                 <div className="flex items-center rounded-lg border border-slate-300 bg-white focus-within:border-[#0046ad] focus-within:ring-2 focus-within:ring-blue-100">
-                  <input {...fieldProps(field, id)} type="number" inputMode="decimal" step="any" className="min-w-0 flex-1 rounded-lg border-0 bg-transparent px-3 py-2.5 text-sm text-slate-900 outline-none" />
+                  <input {...fieldProps(field, id)} type="number" inputMode="decimal" step="any" className="min-h-11 min-w-0 flex-1 rounded-lg border-0 bg-transparent px-3 py-2.5 text-base text-slate-900 outline-none sm:text-sm" />
                   <span className="pr-3 text-xs font-semibold text-slate-500">{text.yen}</span>
                 </div>
                 {fieldError(field) ? <p id={`${id}-error`} className="text-xs font-semibold text-rose-700">{fieldError(field)}</p> : null}
@@ -218,7 +231,7 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
           <div className="space-y-1">
             <label htmlFor="property-sizeSqm" className="text-sm font-semibold text-slate-700">{text.sizeSqm} <span className="text-xs font-normal text-slate-500">({text.optional})</span></label>
             <div className="flex items-center rounded-lg border border-slate-300 bg-white focus-within:border-[#0046ad] focus-within:ring-2 focus-within:ring-blue-100">
-              <input {...fieldProps("sizeSqm", "property-sizeSqm")} type="number" inputMode="decimal" step="0.01" className="min-w-0 flex-1 rounded-lg border-0 bg-transparent px-3 py-2.5 text-sm text-slate-900 outline-none" />
+              <input {...fieldProps("sizeSqm", "property-sizeSqm")} type="number" inputMode="decimal" step="0.01" className="min-h-11 min-w-0 flex-1 rounded-lg border-0 bg-transparent px-3 py-2.5 text-base text-slate-900 outline-none sm:text-sm" />
               <span className="pr-3 text-xs font-semibold text-slate-500">{text.sqm}</span>
             </div>
             {fieldError("sizeSqm") ? <p id="property-sizeSqm-error" className="text-xs font-semibold text-rose-700">{fieldError("sizeSqm")}</p> : null}
@@ -231,12 +244,12 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
         </div>
       </section>
 
-      <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-200 pt-5">
-        <Link href={returnTo} className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">{text.cancel}</Link>
-        <button type="submit" disabled={pending} className="rounded-lg bg-slate-950 px-5 py-2.5 text-sm font-bold text-white hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">
+      {hideActions ? null : <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-200 pt-5">
+        <Link href={returnTo} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">{text.cancel}</Link>
+        <button type="submit" disabled={pending} className="min-h-11 rounded-lg bg-slate-950 px-5 py-2.5 text-sm font-bold text-white hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">
           {pending ? text.saving : text.save}
         </button>
-      </div>
+      </div>}
       <div className="sr-only" aria-live="polite">{pending ? text.saving : ""}</div>
     </form>
   );

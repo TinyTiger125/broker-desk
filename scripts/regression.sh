@@ -11,6 +11,8 @@ QA_CURL_HEADERS=()
 if [ -n "${BROKER_DESK_QA_TOKEN:-}" ]; then
   QA_CURL_HEADERS=(-H "x-broker-desk-qa-token: ${BROKER_DESK_QA_TOKEN}")
 fi
+case_workbench_contract_file=""
+normalization_tmp_dir=""
 
 curl() {
   command curl -H "Cookie: brokerdesk_locale=${REGRESSION_LOCALE}; ${BROKER_DESK_REGRESSION_COOKIE}" "$@"
@@ -34,6 +36,12 @@ qa_post() {
 
 cleanup_business_data() {
   qa_post "${BASE_URL}/api/qa/reset-business-data" >/dev/null 2>&1 || true
+  if [ -n "$case_workbench_contract_file" ]; then
+    rm -f -- "$case_workbench_contract_file"
+  fi
+  if [ -n "$normalization_tmp_dir" ]; then
+    rm -rf -- "$normalization_tmp_dir"
+  fi
 }
 
 trap cleanup_business_data EXIT
@@ -231,7 +239,78 @@ echo "$case_workbench_html" | grep '資料を追加' >/dev/null || fail "case wo
 echo "$case_workbench_html" | grep '確認範囲' >/dev/null || fail "case workbench missing review scope summary"
 echo "$case_workbench_html" | grep '要確認' >/dev/null || fail "case workbench missing review status"
 echo "$case_workbench_html" | grep '確認済み' >/dev/null || fail "case workbench missing confirmed status"
-echo "$case_workbench_html" | grep 'id="case-main-editor"' >/dev/null || fail "case workbench missing main editor anchor"
+case_workbench_contract_file="$(mktemp)"
+printf '%s' "$case_workbench_html" >"$case_workbench_contract_file"
+CASE_WORKBENCH_HTML_FILE="$case_workbench_contract_file" node <<'NODE' || fail "case workbench visible-anchor contract failed"
+const fs = require("node:fs");
+
+const html = fs.readFileSync(process.env.CASE_WORKBENCH_HTML_FILE, "utf8");
+const voidTags = new Set(["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"]);
+const stack = [];
+const anchors = new Map();
+const tagPattern = /<!--[\s\S]*?-->|<![^>]*>|<\/?[A-Za-z][^>]*>/g;
+const attributePattern = /([^\s=/>]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g;
+
+function parseAttributes(tagText) {
+  const attributes = {};
+  const attributeText = tagText.replace(/^<\/?[A-Za-z]+|\/?>(?:\s*)$/g, "");
+  let match;
+  while ((match = attributePattern.exec(attributeText)) !== null) {
+    attributes[match[1]] = match[2] ?? match[3] ?? match[4] ?? "";
+  }
+  return attributes;
+}
+
+function hasClass(element, className) {
+  return (element.attributes.class ?? "").split(/\s+/).includes(className);
+}
+
+let match;
+while ((match = tagPattern.exec(html)) !== null) {
+  const token = match[0];
+  if (token.startsWith("<!--") || token.startsWith("<!")) continue;
+
+  if (token.startsWith("</")) {
+    const closingTag = token.match(/^<\/([A-Za-z][^\s>]*)/)?.[1];
+    if (!closingTag) throw new Error(`could not parse closing tag: ${token}`);
+    const openElement = stack.pop();
+    if (!openElement || openElement.tag !== closingTag) {
+      throw new Error(`unbalanced HTML around </${closingTag}>`);
+    }
+    continue;
+  }
+
+  const tag = token.match(/^<([A-Za-z][^\s/>]*)/)?.[1];
+  if (!tag) throw new Error(`could not parse opening tag: ${token}`);
+  const element = { tag, attributes: parseAttributes(token), ancestors: stack.slice() };
+  stack.push(element);
+  const id = element.attributes.id;
+  if (id) {
+    const existing = anchors.get(id) ?? [];
+    existing.push(element);
+    anchors.set(id, existing);
+  }
+  if (voidTags.has(tag.toLowerCase()) || /\/\s*>$/.test(token)) stack.pop();
+}
+
+function requireSingleAnchor(id) {
+  const matches = anchors.get(id) ?? [];
+  if (matches.length !== 1) throw new Error(`${id} must occur exactly once, got ${matches.length}`);
+  return matches[0];
+}
+
+const reviewDesk = requireSingleAnchor("case-review-desk");
+const mainEditor = requireSingleAnchor("case-main-editor");
+if (!mainEditor.ancestors.includes(reviewDesk)) {
+  throw new Error("case-main-editor must be nested in the visible case-review-desk workbench");
+}
+if (hasClass(reviewDesk, "hidden") || hasClass(mainEditor, "hidden") || mainEditor.ancestors.some((element) => hasClass(element, "hidden"))) {
+  throw new Error("case-main-editor must not be inside a hidden ancestor");
+}
+console.log("[PASS] case-main-editor is uniquely nested in visible case-review-desk and has no hidden ancestor");
+NODE
+echo "$case_workbench_html" | grep "href=\"/import-center?targetCaseId=${friends_fixture_case_id}\"" >/dev/null || fail "case workbench import-center href changed"
+echo "$case_workbench_html" | grep "href=\"/output-center?caseId=${friends_fixture_case_id}\"" >/dev/null || fail "case workbench output-center href changed"
 echo "$case_workbench_html" | grep '文書出力' >/dev/null || fail "case workbench missing output handoff"
 echo "$case_workbench_html" | grep '項目設定' >/dev/null || fail "case workbench missing field requirement settings link"
 case_property_node_html="$(curl -fsS "${BASE_URL}/cases/${friends_fixture_case_id}?node=property_basic")" || fail "case workbench property node page unreachable"

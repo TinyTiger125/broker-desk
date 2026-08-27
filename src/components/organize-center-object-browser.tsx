@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect } from "react";
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
 import { ArchiveRecordButton } from "@/components/archive-record-button";
+import { ListReportShell, StateSurface } from "@/components/layout-system";
+import { ListReturnState } from "@/components/list-return-state";
 import {
   Button,
-  MessageStrip,
   SectionHeader,
   SelectInput,
   StatusBadge,
@@ -30,6 +29,7 @@ export type OrganizeCenterBrowserItem = {
   lifecycleStatus: LifecycleStatus;
   visibilityLabel?: string;
   readOnly?: boolean;
+  canArchive: boolean;
 };
 
 type OrganizeCenterObjectBrowserProps = {
@@ -43,8 +43,6 @@ type OrganizeCenterObjectBrowserProps = {
 };
 
 const LIST_PAGE_SIZE = 6;
-const FOCUS_STORAGE_PREFIX = "organize-center:focus:";
-const RETURN_STATE_STORAGE_PREFIX = "organize-center:return-state:";
 
 function getTypeLabel(type: ObjectType, copy: Record<string, string>) {
   if (type === "case") return copy.case;
@@ -83,35 +81,6 @@ function buildListHref(type: ObjectType, query: string, lifecycleFilter: Lifecyc
   return search ? `/organize-center?${search}` : "/organize-center";
 }
 
-function focusStorageKey(listUrl: string) {
-  return `${FOCUS_STORAGE_PREFIX}${listUrl}`;
-}
-
-function returnStateStorageKey(listUrl: string) {
-  return `${RETURN_STATE_STORAGE_PREFIX}${listUrl}`;
-}
-
-function clearListReturnState(listUrl: string) {
-  try {
-    window.sessionStorage.removeItem(focusStorageKey(listUrl));
-    window.sessionStorage.removeItem(returnStateStorageKey(listUrl));
-  } catch {
-    // Private browsing must not block rendering when session storage is unavailable.
-  }
-}
-
-function rememberListReturnState(listUrl: string, itemId: string) {
-  try {
-    window.sessionStorage.setItem(focusStorageKey(listUrl), itemId);
-    window.sessionStorage.setItem(
-      returnStateStorageKey(listUrl),
-      JSON.stringify({ itemId, scrollY: window.scrollY }),
-    );
-  } catch {
-    // Focus restoration is an enhancement; private browsing must not block navigation.
-  }
-}
-
 export function OrganizeCenterObjectBrowser({
   items,
   selectedType,
@@ -121,35 +90,6 @@ export function OrganizeCenterObjectBrowser({
   locale,
   page,
 }: OrganizeCenterObjectBrowserProps) {
-  const pathname = usePathname() ?? "/organize-center";
-  const searchParams = useSearchParams();
-  const currentListUrl = `${pathname}${searchParams.toString() ? `?${searchParams.toString()}` : ""}`;
-
-  useEffect(() => {
-    let frame = 0;
-    try {
-      const storedState = window.sessionStorage.getItem(returnStateStorageKey(currentListUrl));
-      const parsedState = storedState ? (JSON.parse(storedState) as { itemId?: unknown; scrollY?: unknown }) : undefined;
-      const itemId = parsedState?.itemId ?? window.sessionStorage.getItem(focusStorageKey(currentListUrl));
-      const scrollY = parsedState?.scrollY;
-      if (typeof itemId !== "string" || !itemId) return undefined;
-      frame = window.requestAnimationFrame(() => {
-        if (typeof scrollY === "number" && Number.isFinite(scrollY)) {
-          window.scrollTo({ top: scrollY, behavior: "auto" });
-        }
-        const link = Array.from(document.querySelectorAll<HTMLElement>("[data-organize-object-link]")).find(
-          (candidate) => candidate.dataset.organizeObjectLink === itemId,
-        );
-        if (link) link.focus({ preventScroll: true });
-        clearListReturnState(currentListUrl);
-      });
-    } catch {
-      clearListReturnState(currentListUrl);
-      return undefined;
-    }
-    return () => window.cancelAnimationFrame(frame);
-  }, [currentListUrl]);
-
   if (selectedType === "all") {
     const countByType = new Map<Exclude<ObjectType, "all">, number>([
       ["case", 0],
@@ -171,7 +111,7 @@ export function OrganizeCenterObjectBrowser({
 
     return (
       <Surface as="section" className="p-4 sm:p-5">
-        <SectionHeader title={copy.objectCenter} description={copy.description} />
+        <SectionHeader title={copy.objectCenter} />
         <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {branchCards.map((card) => (
             <Link
@@ -192,7 +132,7 @@ export function OrganizeCenterObjectBrowser({
               <p className="mt-2 flex-1 text-sm font-semibold leading-6 text-slate-500">{card.description}</p>
               <div className="mt-5 flex items-end justify-between gap-3 border-t border-slate-100 pt-4">
                 <span className="text-xs font-bold leading-5 text-slate-600">
-                  {card.total === 0 ? copy.emptyData : copy.continueCheck}
+                  {copy.continueCheck}
                 </span>
                 <span className="material-symbols-outlined shrink-0 text-[18px] text-slate-400 transition group-hover:translate-x-0.5 group-hover:text-[#002FA7]" aria-hidden="true">
                   arrow_forward
@@ -212,18 +152,26 @@ export function OrganizeCenterObjectBrowser({
   const rangeStart = filteredItems.length === 0 ? 0 : (safePage - 1) * LIST_PAGE_SIZE + 1;
   const rangeEnd = Math.min(filteredItems.length, safePage * LIST_PAGE_SIZE);
   const listHref = buildListHref(selectedType, query, lifecycleFilter, safePage);
-  const isEmptyData = items.length === 0 && !query;
+  const hasKeyword = query.trim().length > 0;
 
   return (
-    <Surface as="section" className="overflow-hidden">
-      <div className="border-b border-slate-200 p-4 sm:p-5">
+    <ListReturnState scope={"organize"} listUrl={listHref}>
+      <section
+        tabIndex={-1}
+        data-list-return-fallback
+        aria-label={`${getTypeLabel(selectedType, copy)} ${copy.objectCenter}`}
+        className="rounded-lg focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]"
+      >
+        <ListReportShell
+      className="organize-object-browser"
+      scope={
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <Link href="/organize-center" className="inline-flex min-h-9 items-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3158d8]">
+            <Link href="/organize-center" className="inline-flex min-h-[var(--bd-control-height-touch)] items-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3158d8]">
               {copy.backToSelector}
             </Link>
             <div className="mt-4">
-              <SectionHeader level="h2" title={getTypeLabel(selectedType, copy)} description={copy.description} />
+              <SectionHeader level="h2" title={getTypeLabel(selectedType, copy)} />
             </div>
           </div>
           <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-700">
@@ -231,8 +179,9 @@ export function OrganizeCenterObjectBrowser({
             {getTypeLabel(selectedType, copy)}
           </span>
         </div>
-
-        <form action="/organize-center" method="get" className="mt-5 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(12rem,0.42fr)_auto_auto] md:items-end">
+      }
+      filters={
+        <form action="/organize-center" method="get" className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(12rem,0.42fr)_auto_auto] md:items-end">
           <input type="hidden" name="type" value={selectedType} />
           <TextInput
             id="organize-center-query"
@@ -247,56 +196,30 @@ export function OrganizeCenterObjectBrowser({
             <option value="archived">{copy.archivedRecords}</option>
             <option value="all">{copy.allRecords}</option>
           </SelectInput>
-          <Button type="submit" tone="primary" controlSize="regular">{copy.filter}</Button>
-          <Link href={buildListHref(selectedType, "", lifecycleFilter)} className="inline-flex min-h-[var(--bd-control-height-regular)] items-center justify-center rounded-md border border-slate-300 bg-white px-4 text-sm font-bold text-slate-800 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3158d8]">
+          <Button type="submit" tone="primary" controlSize="touch">{copy.filter}</Button>
+          <Link href={buildListHref(selectedType, "", lifecycleFilter)} className="inline-flex min-h-[var(--bd-control-height-touch)] items-center justify-center rounded-md border border-slate-300 bg-white px-4 text-sm font-bold text-slate-800 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3158d8]">
             {copy.clear}
           </Link>
         </form>
-      </div>
-
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50/70 px-4 py-3 sm:px-5">
+      }
+      summary={
         <p className="m-0 text-sm font-bold text-slate-700">
           {copy.pageStatus} {rangeStart}-{rangeEnd} / {filteredItems.length}
           <span className="ml-2 text-xs font-semibold text-slate-500">{copy.pageOf} {safePage} / {pageCount}</span>
         </p>
-        {pageCount > 1 ? (
-          <nav aria-label={copy.pageStatus} className="flex items-center gap-2">
-            {safePage > 1 ? (
-              <Link href={buildListHref(selectedType, query, lifecycleFilter, safePage - 1)} data-testid="organize-page-previous" className="inline-flex min-h-9 items-center rounded-md border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3158d8]">
-                {copy.previousPage}
-              </Link>
-            ) : null}
-            {safePage < pageCount ? (
-              <Link href={buildListHref(selectedType, query, lifecycleFilter, safePage + 1)} data-testid="organize-page-next" className="inline-flex min-h-9 items-center rounded-md border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3158d8]">
-                {copy.nextPage}
-              </Link>
-            ) : null}
-          </nav>
-        ) : null}
-      </div>
-
-      {isEmptyData ? (
-        <div className="p-4 sm:p-5">
-          <MessageStrip tone="info" title={copy.emptyData}>{copy.emptyData}</MessageStrip>
-        </div>
-      ) : filteredItems.length === 0 ? (
-        <div className="p-4 sm:p-5">
-          <MessageStrip tone="info" title={copy.noResults}>
-            <p>{copy.noResults}</p>
-            <Link href={buildListHref(selectedType, "", lifecycleFilter)} className="mt-3 inline-flex rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-800 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3158d8]">
-              {copy.clearFilters}
-            </Link>
-          </MessageStrip>
-        </div>
-      ) : (
+      }
+      results={filteredItems.length > 0 ? (
         <div className="divide-y divide-slate-200">
-          {visibleItems.map((item) => (
+          {visibleItems.map((item) => {
+            const itemHref = item.type === "case"
+              ? `${item.href}?returnTo=${encodeURIComponent(listHref)}`
+              : item.href;
+            return (
             <article key={`${item.type}:${item.id}`} className="grid gap-4 px-4 py-5 transition hover:bg-[#f9fbff] sm:px-5 md:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)] xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1.45fr)_auto]">
               <div className="min-w-0">
                 <Link
-                  href={item.href}
-                  data-organize-object-link={item.id}
-                  onClick={() => rememberListReturnState(currentListUrl, item.id)}
+                  href={itemHref}
+                  data-list-return-trigger={`${item.type}:${item.id}`}
                   className="group inline-flex max-w-full items-start gap-2 rounded-md text-base font-black leading-6 text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3158d8] focus-visible:ring-offset-2"
                 >
                   <span className="min-w-0 break-words">{item.title}</span>
@@ -320,20 +243,52 @@ export function OrganizeCenterObjectBrowser({
 
               <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 md:col-span-2 xl:col-span-1 xl:flex-col xl:items-end xl:justify-start">
                 <span className="text-xs font-bold tabular-nums text-slate-500">{copy.taskUpdated}: {item.updatedLabel}</span>
-                {!item.readOnly ? (
+                {item.canArchive ? (
                   <ArchiveRecordButton
                     entityType={item.type}
                     entityId={item.id}
+                    recordLabel={item.title}
                     status={item.lifecycleStatus}
                     locale={locale}
                     returnTo={listHref}
+                    returnStateScope={"organize"}
+                    returnFocusKey={`${item.type}:${item.id}`}
                   />
                 ) : null}
               </div>
             </article>
-          ))}
+            );
+          })}
         </div>
-      )}
-    </Surface>
+      ) : null}
+      pagination={
+        pageCount > 1 ? (
+          <nav aria-label={copy.pageStatus} className="flex items-center gap-2">
+            {safePage > 1 ? (
+              <Link href={buildListHref(selectedType, query, lifecycleFilter, safePage - 1)} data-testid="organize-page-previous" className="inline-flex min-h-[var(--bd-control-height-touch)] items-center rounded-md border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3158d8]">
+                {copy.previousPage}
+              </Link>
+            ) : null}
+            {safePage < pageCount ? (
+              <Link href={buildListHref(selectedType, query, lifecycleFilter, safePage + 1)} data-testid="organize-page-next" className="inline-flex min-h-[var(--bd-control-height-touch)] items-center rounded-md border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3158d8]">
+                {copy.nextPage}
+              </Link>
+            ) : null}
+          </nav>
+        ) : null
+      }
+      state={
+        filteredItems.length === 0 ? (
+          <StateSurface
+            tone="empty"
+            title={copy.noResults}
+            description={hasKeyword ? copy.clearKeywordHint : undefined}
+            action={hasKeyword ? <Link href={buildListHref(selectedType, "", lifecycleFilter)} className="inline-flex min-h-[var(--bd-control-height-touch)] items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-800 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3158d8]">{copy.clearFilters}</Link> : undefined}
+          />
+        ) : null
+      }
+        />
+      </section>
+    </ListReturnState>
   );
 }

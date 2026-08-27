@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArchiveRecordButton } from "@/components/archive-record-button";
+import { ListReportShell, PageFrame, PageHeader, StateSurface } from "@/components/layout-system";
+import { ListReturnState } from "@/components/list-return-state";
 import { PageFlashBanner } from "@/components/page-flash-banner";
 import { formatCurrency } from "@/lib/format";
 import { listHubProperties, type HubPropertyItem } from "@/lib/hub";
@@ -48,6 +50,7 @@ const propertiesCopy = {
     priceHigh: "価格の高い順",
     search: "検索",
     clear: "条件をクリア",
+    viewAll: "すべての物件を表示",
     results: "物件一覧",
     resultRange: (start: number, end: number, total: number) => `${start}–${end} / ${total}件`,
     name: "物件名",
@@ -88,6 +91,7 @@ const propertiesCopy = {
     priceHigh: "价格从高到低",
     search: "搜索",
     clear: "清除条件",
+    viewAll: "显示全部物件",
     results: "物件列表",
     resultRange: (start: number, end: number, total: number) => `${start}–${end} / 共 ${total} 条`,
     name: "物件名称",
@@ -128,6 +132,7 @@ const propertiesCopy = {
     priceHigh: "가격 높은 순",
     search: "검색",
     clear: "조건 지우기",
+    viewAll: "모든 매물 보기",
     results: "매물 목록",
     resultRange: (start: number, end: number, total: number) => `${start}–${end} / ${total}건`,
     name: "매물명",
@@ -247,6 +252,16 @@ export default async function PropertiesPage({ searchParams }: PropertiesPagePro
   const returnTo = buildPropertiesHref({ ...filters, page: safePage });
   const createHref = `/properties/new?returnTo=${encodeURIComponent(returnTo)}`;
   const clearHref = buildPropertiesHref({ query: "", lifecycle: "active", sort: "default" });
+  const allPropertiesHref = buildPropertiesHref({ query: "", lifecycle: "all", sort: "default" });
+  const hasNonDefaultFilters = query.length > 0 || lifecycle !== "active" || sort !== "default";
+  const hasArchivedOnlyAtDefault =
+    !readError &&
+    query.length === 0 &&
+    lifecycle === "active" &&
+    sort === "default" &&
+    properties.length > 0 &&
+    sorted.length === 0;
+  const emptyRecoveryHref = hasArchivedOnlyAtDefault ? allPropertiesHref : clearHref;
   const flashMap = {
     property_created: copy.created,
     property_updated: copy.updated,
@@ -256,93 +271,93 @@ export default async function PropertiesPage({ searchParams }: PropertiesPagePro
   const flashMessage = flashMap[String(params.flash ?? "").trim() as keyof typeof flashMap];
 
   return (
-    <div className="space-y-6 pb-12">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div className="space-y-1">
-          <h1 className="text-4xl font-bold tracking-tight text-slate-900">{copy.pageTitle}</h1>
-          <p className="text-sm font-medium text-slate-600">{copy.description}</p>
-        </div>
+    <PageFrame className="space-y-6 pb-12">
+      <PageHeader title={copy.pageTitle} description={copy.description}>
         {canUpdateRecords ? (
           <Link
             href={createHref}
-            className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-gradient-to-br from-[#001e40] to-[#003366] px-4 text-sm font-semibold text-white shadow-[0_8px_20px_-10px_rgba(0,30,64,0.8)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]"
+            className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[var(--bd-ink)] px-4 text-sm font-semibold text-white focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]"
           >
             <span className="material-symbols-outlined text-[17px]" aria-hidden="true">add</span>
             {copy.addProperty}
           </Link>
         ) : null}
-      </header>
+      </PageHeader>
 
       <PageFlashBanner message={flashMessage} />
 
-      <section className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200/35" aria-labelledby="properties-filter-heading">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <h2 id="properties-filter-heading" className="text-lg font-bold text-slate-900">{copy.searchLabel}</h2>
-          <Link href={clearHref} className="text-sm font-bold text-slate-700 hover:text-[#002fa7] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">{copy.clear}</Link>
-        </div>
-        <form action="/properties" method="get" className="grid gap-3 lg:grid-cols-[minmax(240px,1fr)_auto_auto_auto]">
-          <label className="sr-only" htmlFor="property-query">{copy.searchLabel}</label>
-          <input
-            id="property-query"
-            name="q"
-            defaultValue={query}
-            placeholder={copy.queryPlaceholder}
-            className="min-h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none focus:border-[#0046ad] focus:ring-2 focus:ring-blue-100"
-          />
-          <label className="flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700">
-            <span className="sr-only">{copy.lifecycle}</span>
-            <select name="lifecycle" defaultValue={lifecycle} className="min-w-32 bg-transparent outline-none">
-              <option value="active">{copy.lifecycle}: {copy.active}</option>
-              <option value="archived">{copy.archived}</option>
-              <option value="all">{copy.lifecycle}: {copy.all}</option>
-            </select>
-          </label>
-          <label className="flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700">
-            <span className="sr-only">{copy.sort}</span>
-            <select name="sort" defaultValue={sort} className="min-w-36 bg-transparent outline-none">
-              <option value="default">{copy.sort}: {copy.defaultSort}</option>
-              <option value="price">{copy.priceHigh}</option>
-            </select>
-          </label>
-          <button type="submit" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-[#001e40] px-4 text-sm font-bold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">
-            <span className="material-symbols-outlined text-[17px]" aria-hidden="true">search</span>
-            {copy.search}
-          </button>
-        </form>
-      </section>
-
-      <section className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200/40" aria-labelledby="properties-results-heading">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/80 px-5 py-4">
-          <div>
-            <h2 id="properties-results-heading" className="text-lg font-bold text-slate-900">{copy.results}</h2>
-            <p className="mt-1 text-xs font-medium text-slate-500">{copy.resultRange(rangeStart, rangeEnd, sorted.length)}</p>
-          </div>
-          {pageCount > 1 && !readError ? (
-            <nav aria-label={copy.results} className="flex items-center gap-2 text-sm font-bold">
-              {safePage > 1 ? <Link href={buildPropertiesHref({ ...filters, page: safePage - 1 })} className="rounded-md border border-slate-200 px-3 py-2 text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">{copy.previous}</Link> : null}
-              <span className="px-2 text-slate-500">{copy.page(safePage, pageCount)}</span>
-              {safePage < pageCount ? <Link href={buildPropertiesHref({ ...filters, page: safePage + 1 })} className="rounded-md border border-slate-200 px-3 py-2 text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">{copy.next}</Link> : null}
-            </nav>
-          ) : null}
-        </div>
-
-        {readError ? (
-          <div className="space-y-3 px-5 py-12 text-center">
-            <p className="text-sm font-semibold text-rose-700">{copy.readError}</p>
-            <Link href={returnTo} className="inline-flex rounded-lg bg-[#001e40] px-4 py-2 text-sm font-bold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">{copy.retry}</Link>
-          </div>
-        ) : sorted.length === 0 ? (
-          <div className="space-y-3 px-5 py-12 text-center">
-            <p className="text-sm font-semibold text-slate-700">{properties.length === 0 ? copy.noProperties : copy.noResult}</p>
-            {properties.length === 0 ? null : (
-              <div className="space-y-2">
-                <p className="text-sm text-slate-500">{copy.noResultHint}</p>
-                <Link href={clearHref} className="inline-flex rounded-lg border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">{copy.clear}</Link>
-              </div>
+      <ListReturnState scope="properties" listUrl={returnTo}>
+        <section
+          tabIndex={-1}
+          data-list-return-fallback
+          aria-labelledby="properties-results-heading"
+          className="rounded-lg focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]"
+        >
+          <ListReportShell
+            scope={<h2 id="properties-results-heading" className="m-0 text-lg font-bold text-slate-900">{copy.results}</h2>}
+            filters={(
+              <section aria-labelledby="properties-filter-heading">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                  <h2 id="properties-filter-heading" className="text-lg font-bold text-slate-900">{copy.searchLabel}</h2>
+                  {hasNonDefaultFilters ? (
+                    <Link href={clearHref} className="inline-flex min-h-11 items-center text-sm font-bold text-slate-700 hover:text-[#002fa7] focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]">{copy.clear}</Link>
+                  ) : null}
+                </div>
+                <form action="/properties" method="get" className="grid gap-3 lg:grid-cols-[minmax(240px,1fr)_auto_auto_auto]">
+                  <label className="sr-only" htmlFor="property-query">{copy.searchLabel}</label>
+                  <input
+                    id="property-query"
+                    name="q"
+                    defaultValue={query}
+                    placeholder={copy.queryPlaceholder}
+                    className="min-h-11 rounded-lg border border-slate-200 bg-white px-3 text-base font-medium text-slate-800 outline-none focus:border-[var(--bd-focus-ring-color)] focus:ring-2 focus:ring-blue-100 sm:text-sm"
+                  />
+                  <label className="bd-inline-select-frame flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700">
+                    <span className="sr-only">{copy.lifecycle}</span>
+                    <select name="lifecycle" defaultValue={lifecycle} className="min-w-32 bg-transparent text-base outline-none sm:text-sm">
+                      <option value="active">{copy.lifecycle}: {copy.active}</option>
+                      <option value="archived">{copy.archived}</option>
+                      <option value="all">{copy.lifecycle}: {copy.all}</option>
+                    </select>
+                  </label>
+                  <label className="bd-inline-select-frame flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700">
+                    <span className="sr-only">{copy.sort}</span>
+                    <select name="sort" defaultValue={sort} className="min-w-36 bg-transparent text-base outline-none sm:text-sm">
+                      <option value="default">{copy.sort}: {copy.defaultSort}</option>
+                      <option value="price">{copy.priceHigh}</option>
+                    </select>
+                  </label>
+                  <button type="submit" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-[#001e40] px-4 text-sm font-bold text-white focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]">
+                    <span className="material-symbols-outlined text-[17px]" aria-hidden="true">search</span>
+                    {copy.search}
+                  </button>
+                </form>
+              </section>
             )}
-          </div>
-        ) : (
-          <div role="table" aria-label={copy.results}>
+            summary={!readError ? <p className="m-0 text-xs font-medium text-slate-500">{copy.resultRange(rangeStart, rangeEnd, sorted.length)}</p> : undefined}
+            pagination={pageCount > 1 && !readError ? (
+            <nav aria-label={copy.results} className="flex items-center gap-2 text-sm font-bold">
+              {safePage > 1 ? <Link href={buildPropertiesHref({ ...filters, page: safePage - 1 })} className="inline-flex min-h-11 items-center rounded-md border border-slate-200 px-3 py-2 text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]">{copy.previous}</Link> : null}
+              <span className="px-2 text-slate-500">{copy.page(safePage, pageCount)}</span>
+              {safePage < pageCount ? <Link href={buildPropertiesHref({ ...filters, page: safePage + 1 })} className="inline-flex min-h-11 items-center rounded-md border border-slate-200 px-3 py-2 text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]">{copy.next}</Link> : null}
+            </nav>
+            ) : undefined}
+            state={readError ? (
+            <StateSurface
+              tone="error"
+              title={copy.readError}
+              action={<Link href={returnTo} className="inline-flex min-h-11 items-center rounded-lg bg-[#001e40] px-4 text-sm font-bold text-white focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]">{copy.retry}</Link>}
+            />
+          ) : sorted.length === 0 ? (
+            <StateSurface
+              tone="empty"
+              title={properties.length === 0 ? copy.noProperties : copy.noResult}
+              description={properties.length === 0 ? undefined : copy.noResultHint}
+              action={properties.length === 0 ? undefined : <Link href={emptyRecoveryHref} className="inline-flex min-h-11 items-center rounded-lg border border-slate-200 px-4 text-sm font-bold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]">{hasArchivedOnlyAtDefault ? copy.viewAll : copy.clear}</Link>}
+            />
+            ) : undefined}
+            results={!readError && sorted.length > 0 ? (
+              <div role="table" aria-label={copy.results}>
             <div role="rowgroup">
               <div role="row" className="hidden gap-4 border-b border-slate-200/80 bg-slate-50/70 px-5 py-2 text-xs font-bold uppercase tracking-wide text-slate-500 lg:grid lg:grid-cols-[minmax(12rem,1.3fr)_minmax(8rem,.8fr)_minmax(8rem,.8fr)_minmax(8rem,.8fr)_minmax(8rem,.8fr)_minmax(6rem,.6fr)_auto] lg:items-center">
                 <span role="columnheader">{copy.name}</span>
@@ -362,7 +377,8 @@ export default async function PropertiesPage({ searchParams }: PropertiesPagePro
                     <div role="cell" className="min-w-0">
                       <Link
                         href={`/properties/${encodeURIComponent(property.id)}/edit?returnTo=${encodeURIComponent(returnTo)}`}
-                        className="block truncate text-sm font-bold text-slate-900 underline-offset-4 hover:text-[#002fa7] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]"
+                        data-list-return-trigger={`property:${property.id}`}
+                        className="inline-flex min-h-11 max-w-full items-center break-words text-sm font-bold leading-relaxed text-slate-900 underline-offset-4 [overflow-wrap:anywhere] hover:text-[#002fa7] hover:underline focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]"
                       >
                         {property.name}
                       </Link>
@@ -382,9 +398,12 @@ export default async function PropertiesPage({ searchParams }: PropertiesPagePro
                         <ArchiveRecordButton
                           entityType="property"
                           entityId={property.id}
+                          recordLabel={property.name}
                           status={property.status}
                           locale={locale}
                           returnTo={returnTo}
+                          returnStateScope={"properties"}
+                          returnFocusKey={`property:${property.id}`}
                         />
                       ) : null}
                     </div>
@@ -392,9 +411,11 @@ export default async function PropertiesPage({ searchParams }: PropertiesPagePro
                 );
               })}
             </div>
-          </div>
-        )}
-      </section>
-    </div>
+              </div>
+            ) : undefined}
+          />
+        </section>
+      </ListReturnState>
+    </PageFrame>
   );
 }

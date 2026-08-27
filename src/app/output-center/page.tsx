@@ -2,6 +2,7 @@ import Link from "next/link";
 import { generateOutputDocumentAction } from "@/app/actions";
 import { FormDraftAssist } from "@/components/form-draft-assist";
 import { GuaranteeTemplateSelector } from "@/components/guarantee-template-selector";
+import { PageFrame, PageHeader, StateSurface, WorklistShell } from "@/components/layout-system";
 import { PageFlashBanner } from "@/components/page-flash-banner";
 import { listBrokerageCasesForContext, listGuaranteeApplicationDrafts, listPropertiesForContext, listQuotationsForContext, listTenantGuaranteeTemplateInstalls } from "@/lib/data";
 import { formatCurrency, formatDate } from "@/lib/format";
@@ -25,7 +26,10 @@ export const dynamic = "force-dynamic";
 const outputTypes: OutputDocType[] = ["property_overview", "proposal", "estimate_sheet", "funding_plan", "assumption_memo"];
 const outputCenterCopy = {
   ja: {
-    subtitle: "対象案件を選択し、出力テンプレートとプレビューへ進みます。",
+    subtitle: "出力する文書を選び、必要な確認やプレビューへ進みます。公式原本はそのまま閲覧できます。",
+    taskCategory: "出力タスク",
+    chooseTaskTitle: "出力する文書を選択してください",
+    chooseTaskDescription: "タスク一覧から文書を選ぶと、必要な確認と次の操作が表示されます。",
     recentActivity: "最近の更新",
     newBatchOutput: "提案データを作成",
     selected: "選択中",
@@ -130,7 +134,10 @@ const outputCenterCopy = {
     guaranteeLegacyDesc: "物件概要書、提案書、費用明細などを確認できます。",
   },
   zh: {
-    subtitle: "选择目标案件和输出范本，然后进入预览或下载。",
+    subtitle: "选择要处理的文书，查看所需确认并进入预览；官方原件可直接打开。",
+    taskCategory: "输出任务",
+    chooseTaskTitle: "请选择需要输出的文书",
+    chooseTaskDescription: "从任务列表选择文书后，这里会显示所需确认和下一步操作。",
     recentActivity: "最近动态",
     newBatchOutput: "创建提案数据",
     selected: "已选择",
@@ -235,7 +242,10 @@ const outputCenterCopy = {
     guaranteeLegacyDesc: "可继续查看物件概要书、提案书、费用明细等文书。",
   },
   ko: {
-    subtitle: "대상 안건을 선택하고 출력 템플릿과 미리보기로 이동합니다.",
+    subtitle: "처리할 문서를 선택해 필요한 확인과 미리보기로 이동합니다. 공식 원본은 바로 열 수 있습니다.",
+    taskCategory: "출력 작업",
+    chooseTaskTitle: "출력할 문서를 선택해 주세요",
+    chooseTaskDescription: "작업 목록에서 문서를 선택하면 필요한 확인과 다음 작업이 표시됩니다.",
     recentActivity: "최근 활동",
     newBatchOutput: "제안 데이터 작성",
     selected: "선택됨",
@@ -767,9 +777,12 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
       : locale === "ko"
         ? "열람 및 다운로드용입니다. 필요한 설정 확인 전에는 자동 생성 서식으로 사용하지 않습니다."
         : "閲覧・ダウンロード用です。必要な設定が確認されるまでは自動作成に使用しません。",
-    mainFlow: locale === "zh" ? "可生成" : locale === "ko" ? "생성 가능" : "作成可能",
+    taskCategory: copy.taskCategory,
     officialSource: locale === "zh" ? "官方原件" : locale === "ko" ? "공식 원본" : "公式原本",
+    externalHint: locale === "zh" ? "在新标签页打开" : locale === "ko" ? "새 탭에서 열기" : "新しいタブで開く",
     templateLibrary: locale === "zh" ? "先添加模板" : locale === "ko" ? "템플릿 추가 필요" : "テンプレートを追加",
+    templateMissing: locale === "zh" ? "模板未设置" : locale === "ko" ? "템플릿 미설정" : "テンプレート未設定",
+    templateRequired: locale === "zh" ? "需要先设置模板" : locale === "ko" ? "템플릿 설정이 필요합니다" : "テンプレートが必要です",
     chooseCase: locale === "zh" ? "先选案件" : locale === "ko" ? "안건 선택" : "案件選択",
     readyToPreview: locale === "zh" ? "可预览" : locale === "ko" ? "미리보기 가능" : "プレビュー可",
     needsInput: locale === "zh" ? "项待补齐" : locale === "ko" ? "항목 보완 필요" : "項目不足",
@@ -791,7 +804,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
   const shouldShowGuaranteeFlow = isGuaranteeDocumentSelected && hasInstalledGuaranteeTemplates;
   const shouldShowLegacyOutputFlow = false;
   const guaranteeDocumentStatus = !hasInstalledGuaranteeTemplates
-    ? documentTreeCopy.templateLibrary
+    ? documentTreeCopy.templateMissing
     : !selectedCase
     ? documentTreeCopy.chooseCase
     : selectedGuaranteeMissingCount > 0
@@ -810,7 +823,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
       icon: "verified_user",
       title: documentTreeCopy.application,
       description: "",
-      status: hasInstalledGuaranteeTemplates ? documentTreeCopy.mainFlow : documentTreeCopy.templateLibrary,
+      status: documentTreeCopy.taskCategory,
       items: [
         {
           id: "guarantee_application",
@@ -822,7 +835,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
             ? selectedCase
               ? `/output-center?docGroup=application&doc=guarantee_application&caseId=${encodeURIComponent(selectedCase.id)}&guaranteeTemplate=${encodeURIComponent(selectedGuaranteeTemplate.id)}`
               : "/output-center?docGroup=application&doc=guarantee_application#guarantee-case-selector"
-            : "/templates",
+            : "/output-center?docGroup=application&doc=guarantee_application",
           selected: isGuaranteeDocumentSelected,
           status: guaranteeDocumentStatus,
         },
@@ -898,10 +911,8 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
   };
 
   return (
-    <div className="bd-page bd-output-page space-y-6">
-      <header className="bd-page-header">
-        <h1 className="text-3xl font-black tracking-tight text-slate-950">{copy.outputCenterTitle}</h1>
-      </header>
+    <PageFrame className="bd-page bd-output-page space-y-6">
+      <PageHeader title={copy.outputCenterTitle} description={copy.subtitle} />
       <PageFlashBanner message={flashMessage} />
       {issueMessages.length > 0 ? (
         <section className="rounded border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
@@ -923,7 +934,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                 <Link
                   key={link.id}
                   href={link.href}
-                  className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100"
+                  className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]"
                 >
                   <span className="material-symbols-outlined text-[14px]">build</span>
                   {link.label}
@@ -934,40 +945,43 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
         </section>
       ) : null}
 
-      <section className="rounded border border-slate-300 bg-white">
-        <div className="border-b border-slate-200 p-4">
-          <h2 className="text-base font-black text-slate-950">{documentTreeCopy.title}</h2>
-        </div>
-        <div className="grid min-w-0 2xl:grid-cols-[minmax(14rem,17rem)_minmax(0,1fr)]">
-          <aside className="border-b border-slate-200 p-4 2xl:border-b-0 2xl:border-r">
+      <WorklistShell
+        aria-labelledby="output-task-heading"
+        controls={<h2 id="output-task-heading" className="text-base font-black text-slate-950">{documentTreeCopy.title}</h2>}
+        items={(
+          <section className="min-w-0">
+            <div className="grid min-w-0">
+          <nav aria-label={documentTreeCopy.title} className="border-b border-slate-200 p-4">
             <div className="grid gap-2">
               {documentTreeGroups.map((group) => {
                 const selected = group.id === selectedDocumentTreeGroupId;
+                const groupOwnsCurrent = selected && !group.items.some((item) => item.selected);
                 return (
                   <Link
                     key={`document-tree-nav-${group.id}`}
                     href={documentTreeGroupHref(group.id)}
-                    className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-3 transition ${
-                      selected ? "border-[#002FA7] bg-blue-50 text-slate-950" : "border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:bg-slate-50"
+                    aria-current={groupOwnsCurrent ? "page" : undefined}
+                    className={`flex min-h-11 flex-wrap items-start justify-between gap-3 rounded-lg border px-3 py-3 transition focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)] ${
+                      selected ? "border-blue-200 bg-blue-50/50 text-slate-950" : "border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:bg-slate-50"
                     }`}
                   >
-                    <span className="flex min-w-0 items-center gap-2">
-                      <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${selected ? "bg-[#002FA7] text-white" : "bg-slate-100 text-[#002FA7]"}`}>
+                    <span className="flex min-w-0 flex-1 items-start gap-2">
+                      <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${selected ? "bg-blue-100 text-[#002FA7]" : "bg-slate-100 text-[#002FA7]"}`}>
                         <span className="material-symbols-outlined text-[18px]" aria-hidden="true">{group.icon}</span>
                       </span>
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-black">{group.title}</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block break-words text-sm font-black leading-5 [overflow-wrap:anywhere]">{group.title}</span>
                         <span className="mt-0.5 block text-[11px] font-semibold text-slate-500">{group.items.length}</span>
                       </span>
                     </span>
-                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${selected ? "bg-slate-950 text-white" : "bg-slate-100 text-slate-600"}`}>
+                    <span className={`max-w-full break-words rounded-full px-2 py-0.5 text-xs font-black leading-4 [overflow-wrap:anywhere] ${selected ? "bg-blue-100 text-[#002FA7]" : "bg-slate-100 text-slate-600"}`}>
                       {group.status}
                     </span>
                   </Link>
                 );
               })}
             </div>
-          </aside>
+          </nav>
           <div className="min-w-0 space-y-5 p-4">
             {activeDocumentTreeGroup ? (
               <section key={`document-tree-group-${activeDocumentTreeGroup.id}`} id={`document-tree-${activeDocumentTreeGroup.id}`} className="scroll-mt-24">
@@ -975,16 +989,14 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                   <div>
                     <h3 className="text-sm font-black text-slate-950">{activeDocumentTreeGroup.title}</h3>
                   </div>
-                  <span className={`mt-1 w-fit rounded-full px-2 py-0.5 text-[10px] font-black ${
-                    activeDocumentTreeGroup.id === selectedDocumentTreeGroupId ? "bg-slate-950 text-white" : "bg-slate-100 text-slate-600"
-                  }`}>
+                  <span className="mt-1 w-fit rounded-full bg-slate-100 px-2 py-0.5 text-xs font-black text-slate-600">
                     {activeDocumentTreeGroup.status}
                   </span>
                 </div>
                 <div className="relative mt-3 grid gap-2 pl-5">
                   <span aria-hidden="true" className="absolute bottom-4 left-[7px] top-4 w-px bg-slate-200" />
                   {activeDocumentTreeGroup.items.map((item) => {
-                    const itemClass = `relative block rounded-lg border px-3 py-3 transition ${
+                    const itemClass = `relative block rounded-lg border px-3 py-3 transition focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)] ${
                       item.selected
                         ? "border-[#002FA7] bg-blue-50 shadow-sm"
                         : item.disabled
@@ -1004,15 +1016,23 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                     const itemBody = (
                       <>
                         <span aria-hidden="true" className={markerClass} />
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-black text-slate-950">{item.label}</p>
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0 flex-[1_1_12rem]">
+                            <p className="break-words text-sm font-black leading-5 text-slate-950 [overflow-wrap:anywhere]">{item.label}</p>
                             {item.description ? (
-                              <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-slate-500">{item.description}</p>
+                              <p className="mt-1 break-words text-xs font-semibold leading-5 text-slate-500 [overflow-wrap:anywhere]">{item.description}</p>
                             ) : null}
                           </div>
-                          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-black ${statusClass}`}>
-                            {item.status}
+                          <span className="flex max-w-full flex-col items-end gap-1.5 sm:items-start">
+                            <span className={`max-w-full break-words rounded-full px-2 py-0.5 text-xs font-black leading-4 [overflow-wrap:anywhere] ${statusClass}`}>
+                              {item.status}
+                            </span>
+                            {item.external ? (
+                              <span className="inline-flex items-center gap-1 break-words text-xs font-semibold leading-4 text-slate-600 [overflow-wrap:anywhere]">
+                                {documentTreeCopy.externalHint}
+                                <span aria-hidden="true" className="material-symbols-outlined text-[16px]">open_in_new</span>
+                              </span>
+                            ) : null}
                           </span>
                         </div>
                       </>
@@ -1022,7 +1042,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                         {itemBody}
                       </a>
                     ) : item.href && !item.disabled ? (
-                      <Link key={item.id} href={item.href} className={itemClass}>
+                      <Link key={item.id} href={item.href} className={itemClass} aria-current={item.selected ? "page" : undefined}>
                         {itemBody}
                       </Link>
                     ) : (
@@ -1035,19 +1055,31 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
               </section>
             ) : null}
           </div>
-        </div>
-      </section>
+            </div>
+          </section>
+        )}
+        detail={(
+          <div className="space-y-6">
+            {!isGuaranteeDocumentSelected ? (
+              <StateSurface
+                tone="empty"
+                title={copy.chooseTaskTitle}
+                description={copy.chooseTaskDescription}
+              />
+            ) : null}
 
       {isGuaranteeDocumentSelected && !hasInstalledGuaranteeTemplates ? (
-        <section className="border border-blue-200 bg-[#edf2fd] px-5 py-5">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <p className="max-w-2xl text-sm leading-6 text-slate-700">{copy.guaranteeLibraryRequired}</p>
-            <Link href="/templates" className="inline-flex shrink-0 items-center justify-center gap-2 rounded bg-slate-950 px-4 py-2 text-sm font-black text-white hover:bg-slate-800">
+        <StateSurface
+          tone="empty"
+          title={documentTreeCopy.templateRequired}
+          description={copy.guaranteeLibraryRequired}
+          action={(
+            <Link href="/templates" className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded bg-slate-950 px-4 py-2 text-sm font-black text-white hover:bg-slate-800 focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]">
               <span aria-hidden="true" className="material-symbols-outlined text-[18px]">library_books</span>
               {copy.guaranteeLibraryAction}
             </Link>
-          </div>
-        </section>
+          )}
+        />
       ) : null}
 
       {shouldShowGuaranteeFlow ? (
@@ -1055,7 +1087,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <p className="text-xs font-black text-[#002FA7]">{copy.guaranteeCase}</p>
-            <h2 className="mt-1 text-xl font-black text-slate-950">
+            <h2 className="mt-1 break-words text-xl font-black leading-7 text-slate-950 [overflow-wrap:anywhere]">
               {selectedCase?.caseTitle ?? (hasAvailableCases ? copy.guaranteeSelectCaseFirst : copy.guaranteeNoCase)}
             </h2>
             {selectedCase ? (
@@ -1069,14 +1101,14 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
             ) : null}
           </div>
           <div className="grid gap-2 lg:min-w-[13rem]">
-            {selectedCase || !hasAvailableCases ? (
-              <Link href={outputNextHref} className="inline-flex items-center justify-center gap-2 rounded bg-slate-950 px-4 py-3 text-sm font-black text-white hover:bg-slate-800">
+            {selectedCase ? (
+              <Link href={outputNextHref} className="inline-flex items-center justify-center gap-2 rounded bg-slate-950 px-4 py-3 text-sm font-black text-white hover:bg-slate-800 focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]">
                 <span className="material-symbols-outlined text-[18px]">{outputNextIcon}</span>
                 {outputNextLabel}
               </Link>
             ) : null}
             {selectedGuaranteeCanDownload ? (
-              <Link href={selectedGuaranteeDownloadHref} className="inline-flex items-center justify-center gap-2 rounded border border-slate-300 bg-white px-4 py-2 text-sm font-black text-slate-900 hover:bg-slate-50">
+              <Link href={selectedGuaranteeDownloadHref} className="inline-flex items-center justify-center gap-2 rounded border border-slate-300 bg-white px-4 py-2 text-sm font-black text-slate-900 hover:bg-slate-50 focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]">
                 <span className="material-symbols-outlined text-[18px]">download</span>
                 {copy.download}
               </Link>
@@ -1098,19 +1130,19 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                 <Link
                   key={caseItem.id}
                   href={`/output-center?caseId=${encodeURIComponent(caseItem.id)}&guaranteeTemplate=${encodeURIComponent(selectedGuaranteeTemplate.id)}`}
-                  className="min-h-32 rounded border border-slate-200 bg-white p-4 hover:border-[#002FA7] hover:bg-slate-50"
+                  className="min-h-32 rounded border border-slate-200 bg-white p-4 hover:border-[#002FA7] hover:bg-slate-50 focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]"
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="text-xs font-black text-[#002FA7]">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <span className="min-w-0 flex-[1_1_12rem] break-words text-xs font-black leading-5 text-[#002FA7] [overflow-wrap:anywhere]">
                       {copy.caseCardUpdated}: {formatDate(caseItem.updatedAt, locale)}
                     </span>
-                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-black ${
+                    <span className={`max-w-full break-words rounded-full px-2 py-0.5 text-xs font-black leading-4 [overflow-wrap:anywhere] ${
                       missingCount > 0 ? "bg-rose-100 text-rose-700" : "bg-emerald-100 text-emerald-800"
                     }`}>
                       {missingCount > 0 ? `${copy.caseMissingItems}: ${missingCount}` : copy.caseReadyForPreview}
                     </span>
                   </div>
-                  <span className="mt-2 block truncate text-base font-black text-slate-950">{caseItem.caseTitle}</span>
+                  <span className="mt-2 block break-words text-base font-black leading-6 text-slate-950 [overflow-wrap:anywhere]">{caseItem.caseTitle}</span>
                   <span className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-slate-600">
                     <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
                     {copy.chooseThisCase}
@@ -1119,9 +1151,16 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
               ))}
             </div>
           ) : (
-            <div className="p-4">
-              <p className="text-sm font-semibold text-slate-600">{copy.guaranteeNoCase}</p>
-            </div>
+            <StateSurface
+              tone="empty"
+              title={copy.guaranteeNoCase}
+              description={copy.guaranteeSelectCaseFirst}
+              action={(
+                <Link href={outputNextHref} className="inline-flex min-h-11 items-center justify-center rounded bg-slate-950 px-4 py-2 text-sm font-black text-white hover:bg-slate-800 focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]">
+                  {copy.guaranteeCreateCase}
+                </Link>
+              )}
+            />
           )}
         </section>
       ) : null}
@@ -1168,7 +1207,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                     ? previewHrefForGuaranteeField({ caseId: selectedCase.id, templateId: selectedGuaranteeTemplate.id, fieldKey: field.fieldKey })
                     : caseWorkbenchHrefForGuaranteeField({ caseId: selectedCase.id, templateId: selectedGuaranteeTemplate.id, fieldKey: field.fieldKey })
                 }
-                className="flex items-center gap-2 text-sm text-slate-800 hover:text-[#1960a3] hover:underline"
+                className="flex items-center gap-2 text-sm text-slate-800 hover:text-[#1960a3] hover:underline focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]"
               >
                 <span className="material-symbols-outlined text-[16px] text-red-700">error</span>
                 {field.label}
@@ -1179,7 +1218,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
               <Link
                 key={`primary-draft-missing-${field.fieldKey}`}
                 href={selectedCaseDraftHref}
-                className="flex items-center gap-2 text-sm text-slate-800 hover:text-[#1960a3] hover:underline"
+                className="flex items-center gap-2 text-sm text-slate-800 hover:text-[#1960a3] hover:underline focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]"
               >
                 <span className="material-symbols-outlined text-[16px] text-red-700">edit_note</span>
                 {field.label}
@@ -1194,8 +1233,11 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
 
       {shouldShowGuaranteeFlow && selectedCase ? (
       <section className="rounded border border-slate-300 bg-white p-4">
-        <details>
-          <summary className="cursor-pointer text-sm font-bold text-slate-900">{copy.guaranteeDetailToggle}</summary>
+        <details className="group">
+          <summary className="inline-flex min-h-11 w-full cursor-pointer items-center gap-2 rounded px-3 py-2 text-sm font-bold leading-5 text-slate-900 [overflow-wrap:anywhere] focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]">
+            <span aria-hidden="true" className="material-symbols-outlined text-[18px] transition-transform group-open:rotate-180 motion-reduce:transition-none">expand_more</span>
+            <span className="min-w-0 break-words">{copy.guaranteeDetailToggle}</span>
+          </summary>
         <div className="mt-4 min-w-0 space-y-4">
             {selectedGuaranteeDraftReadiness.fields.length > 0 ? (
               <section className="rounded-xl border border-emerald-200 bg-white">
@@ -1211,13 +1253,13 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                       {selectedCase ? (
                         <Link
                           href={selectedCaseDraftHref}
-                          className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-white px-2 py-1 text-[11px] font-bold text-emerald-800 hover:bg-emerald-50"
+                          className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-white px-2 py-1 text-[11px] font-bold text-emerald-800 hover:bg-emerald-50 focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]"
                         >
                           <span className="material-symbols-outlined text-[14px]">edit_note</span>
                           {copy.guaranteeFillInDraft}
                         </Link>
                       ) : null}
-                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${selectedGuaranteeDraftReadiness.status === "ready" ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"}`}>
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${selectedGuaranteeDraftReadiness.status === "ready" ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"}`}>
                         {selectedGuaranteeDraftReadiness.status === "ready" ? copy.guaranteeDraftReady : copy.guaranteeDraftMissing}
                       </span>
                     </div>
@@ -1234,7 +1276,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                           </p>
                           <p className="mt-0.5 text-[11px] text-slate-500">{field.source === "draft" ? copy.guaranteeSourceDraft : copy.guaranteeSourceMissing}</p>
                         </div>
-                        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${readinessClass(field.status)}`}>
+                        <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-bold ${readinessClass(field.status)}`}>
                           {field.status === "available" ? copy.guaranteeReady : copy.guaranteeMissing}
                         </span>
                       </div>
@@ -1242,7 +1284,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                       {field.status !== "available" ? (
                         <Link
                           href={selectedCaseDraftHref}
-                          className="mt-3 inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-white px-2 py-1 text-[11px] font-bold text-emerald-800 hover:bg-emerald-50"
+                          className="mt-3 inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-white px-2 py-1 text-[11px] font-bold text-emerald-800 hover:bg-emerald-50 focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]"
                         >
                           <span className="material-symbols-outlined text-[14px]">edit_note</span>
                           {selectedCase ? copy.guaranteeFillInDraft : copy.guaranteeSelectCaseFirst}
@@ -1263,7 +1305,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                 <section key={group.id} className={group.id === "unresolved" ? "bg-rose-50/50 px-4 py-4" : "px-4 py-4"}>
                   <div className="mb-3 flex items-center justify-between gap-3">
                     <h4 className="text-sm font-bold text-slate-900">{group.label}</h4>
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-600">
                       {group.fields.filter((field) => field.status === "available").length} / {group.fields.length}
                     </span>
                   </div>
@@ -1294,7 +1336,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                                 <p className="text-sm font-semibold text-slate-900">{field.label}</p>
                                 <p className="mt-0.5 text-[11px] text-slate-500">{sourceLabel}</p>
                               </div>
-                              <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${readinessClass(field.status)}`}>
+                              <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-bold ${readinessClass(field.status)}`}>
                                 {statusLabel}
                               </span>
                             </div>
@@ -1310,7 +1352,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                                       : caseWorkbenchHrefForGuaranteeField({ caseId: selectedCase.id, templateId: selectedGuaranteeTemplate.id, fieldKey: field.fieldKey })
                                     : "#guarantee-case-selector"
                                 }
-                                className="mt-3 inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-white px-2 py-1 text-[11px] font-bold text-indigo-800 hover:bg-indigo-50"
+                                className="mt-3 inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-white px-2 py-1 text-[11px] font-bold text-indigo-800 hover:bg-indigo-50 focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]"
                               >
                                 <span className="material-symbols-outlined text-[14px]">
                                   {isOutputSpecificGuaranteeField(field.fieldKey) ? "edit_note" : "fact_check"}
@@ -1337,6 +1379,10 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
         </details>
       </section>
       ) : null}
+
+          </div>
+        )}
+      />
 
       {shouldShowLegacyOutputFlow ? (
       <section id={legacySectionId} className="grid gap-8 2xl:grid-cols-12">
@@ -1752,6 +1798,6 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
         </div>
       </section>
       ) : null}
-    </div>
+    </PageFrame>
   );
 }

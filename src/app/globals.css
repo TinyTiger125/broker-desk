@@ -51,6 +51,9 @@
   --bd-radius-pill: 999px;
   --bd-shadow-control: 0 1px 2px rgb(23 32 51 / 6%);
   --bd-shadow-surface: 0 8px 24px rgb(23 32 51 / 8%);
+  --bd-shadow-action-bar: 0 -4px 16px rgb(23 32 51 / 8%);
+  --bd-overlay-scrim: rgb(23 32 51 / 40%);
+  --bd-surface-overlay: rgb(255 255 255 / 96%);
   --bd-control-height-compact: 2.25rem;
   --bd-control-height-regular: 2.5rem;
   --bd-control-height-touch: 2.75rem;
@@ -228,6 +231,15 @@ select:disabled,
 textarea:disabled {
   background-color: #f1f5f9;
   border-color: #cbd5e1;
+}
+
+.bd-inline-select-frame {
+  min-height: var(--bd-control-height-touch);
+}
+
+.bd-inline-select-frame:focus-within {
+  outline: var(--bd-focus-ring-width) solid var(--bd-focus-ring-color);
+  outline-offset: var(--bd-focus-ring-offset);
 }
 
 button[class~="text-white"],
@@ -564,6 +576,13 @@ button:disabled:not([class~="text-white"]):not([class~="!text-white"]) {
 
   to {
     left: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bd-route-loading-bar {
+    left: 0;
+    animation: none;
   }
 }
 

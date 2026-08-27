@@ -4,7 +4,8 @@ import {
   OrganizeCenterObjectBrowser,
   type OrganizeCenterBrowserItem,
 } from "@/components/organize-center-object-browser";
-import { MessageStrip, SectionHeader, Surface } from "@/components/ui-foundation";
+import { ListReportShell, PageFrame, PageHeader, StateSurface } from "@/components/layout-system";
+import { PageFlashBanner } from "@/components/page-flash-banner";
 import { listBrokerageCasesForContext } from "@/lib/data";
 import { getCaseFieldValue } from "@/lib/case-field-normalization";
 import { formatDate } from "@/lib/format";
@@ -19,7 +20,7 @@ import { redirect } from "next/navigation";
 export const dynamic = "force-dynamic";
 
 type OrganizeCenterPageProps = {
-  searchParams?: Promise<{ type?: string; q?: string; lifecycle?: string; page?: string }>;
+  searchParams?: Promise<OrganizeCenterQuery>;
 };
 
 type ReliableObjectType = "case" | "party" | "property";
@@ -30,6 +31,7 @@ type OrganizeCenterQuery = {
   q?: string;
   lifecycle?: string;
   page?: string;
+  flash?: string;
 };
 
 type WorkObject = {
@@ -44,6 +46,7 @@ type WorkObject = {
   lifecycleStatus: "active" | "archived";
   visibilityLabel?: string;
   readOnly?: boolean;
+  canArchive: boolean;
 };
 
 const copyByLocale = {
@@ -58,16 +61,16 @@ const copyByLocale = {
     lifecycle: "記録の状態",
     searchPlaceholder: "名前、物件、案件、資料名で検索",
     filter: "絞り込む",
-    clear: "条件をクリア",
+    clear: "キーワードをクリア",
     backToSelector: "対象選択へ戻る",
     all: "すべて",
     case: "案件",
     party: "関係者",
     property: "物件",
     taskUpdated: "更新",
-    emptyData: "この種類の対象はまだありません。",
     noResults: "現在の条件に一致する対象はありません。",
-    clearFilters: "検索と絞り込みをクリア",
+    clearFilters: "キーワードをクリア",
+    clearKeywordHint: "キーワードだけを解除し、記録の状態はそのままにして再検索できます。",
     objectCount: "対象",
     continueCheck: "一覧で続けて確認",
     relationCase: "案件内の関係",
@@ -83,6 +86,7 @@ const copyByLocale = {
     activeRecords: "有効な記録",
     archivedRecords: "保管済み",
     allRecords: "すべての記録",
+    noKeyword: "キーワード未設定",
     noRelation: "未紐付け",
     noDate: "-",
     personUnset: "関係者未設定",
@@ -100,6 +104,8 @@ const copyByLocale = {
     inboxUnavailableTitle: "資料の帰属一覧は現在利用できません",
     inboxUnavailableBody: "具体的な対象への帰属を確実に判断できるデータがありません。資料入力で処理状況を確認してください。",
     openImportCenter: "資料入力を開く",
+    recordArchived: "記録を保管しました。",
+    recordRestored: "記録を復元しました。",
   },
   zh: {
     title: "整理信息",
@@ -112,16 +118,16 @@ const copyByLocale = {
     lifecycle: "记录状态",
     searchPlaceholder: "搜索姓名、物件、案件、资料名",
     filter: "筛选",
-    clear: "清除条件",
+    clear: "清除关键词",
     backToSelector: "返回对象选择",
     all: "全部",
     case: "案件",
     party: "主体",
     property: "物件",
     taskUpdated: "更新",
-    emptyData: "当前还没有这一类对象。",
     noResults: "当前条件没有结果。",
-    clearFilters: "清除搜索和筛选",
+    clearFilters: "清除关键词",
+    clearKeywordHint: "可以只清除关键词，记录状态筛选保持不变。",
     objectCount: "对象",
     continueCheck: "进入列表继续核对",
     relationCase: "案件关系",
@@ -137,6 +143,7 @@ const copyByLocale = {
     activeRecords: "有效记录",
     archivedRecords: "已归档",
     allRecords: "全部记录",
+    noKeyword: "未设置关键词",
     noRelation: "未关联",
     noDate: "-",
     personUnset: "主体未设置",
@@ -154,6 +161,8 @@ const copyByLocale = {
     inboxUnavailableTitle: "待归属资料列表暂不可用",
     inboxUnavailableBody: "当前没有可靠的具体对象归属数据。请在录入资料中查看资料处理状态。",
     openImportCenter: "打开录入资料",
+    recordArchived: "记录已归档。",
+    recordRestored: "记录已恢复。",
   },
   ko: {
     title: "정보 정리",
@@ -166,16 +175,16 @@ const copyByLocale = {
     lifecycle: "기록 상태",
     searchPlaceholder: "이름, 매물, 안건, 자료명 검색",
     filter: "필터",
-    clear: "조건 지우기",
+    clear: "키워드 지우기",
     backToSelector: "정리 대상 선택으로 돌아가기",
     all: "전체",
     case: "안건",
     party: "관계자",
     property: "매물",
     taskUpdated: "업데이트",
-    emptyData: "이 유형의 대상이 아직 없습니다.",
     noResults: "현재 조건에 맞는 결과가 없습니다.",
-    clearFilters: "검색과 필터 지우기",
+    clearFilters: "키워드 지우기",
+    clearKeywordHint: "키워드만 지우고 기록 상태 필터는 그대로 둔 채 다시 확인할 수 있습니다.",
     objectCount: "대상",
     continueCheck: "목록에서 계속 확인",
     relationCase: "안건 관계",
@@ -191,6 +200,7 @@ const copyByLocale = {
     activeRecords: "활성 기록",
     archivedRecords: "보관된 기록",
     allRecords: "전체 기록",
+    noKeyword: "검색어 미설정",
     noRelation: "미연결",
     noDate: "-",
     personUnset: "관계자 미설정",
@@ -208,6 +218,8 @@ const copyByLocale = {
     inboxUnavailableTitle: "미분류 자료 목록을 현재 사용할 수 없습니다",
     inboxUnavailableBody: "현재 구체적인 대상 귀속을 신뢰할 수 있는 데이터가 없습니다. 자료 입력에서 처리 상태를 확인하세요.",
     openImportCenter: "자료 입력 열기",
+    recordArchived: "기록을 보관했습니다.",
+    recordRestored: "기록을 복원했습니다.",
   },
 } satisfies Record<Locale, Record<string, string>>;
 
@@ -237,53 +249,83 @@ function compareWorkObjects(a: WorkObject, b: WorkObject) {
   return a.title.localeCompare(b.title);
 }
 
-function OrganizeCenterLoading({ copy }: { copy: Record<string, string> }) {
+function getLoadingTypeLabel(type: ObjectType, copy: Record<string, string>) {
+  if (type === "case") return copy.case;
+  if (type === "party") return copy.party;
+  if (type === "property") return copy.property;
+  if (type === "inbox") return copy.inboxUnavailableTitle;
+  return copy.all;
+}
+
+function getLoadingLifecycleLabel(lifecycleFilter: LifecycleFilter, copy: Record<string, string>) {
+  if (lifecycleFilter === "archived") return copy.archivedRecords;
+  if (lifecycleFilter === "all") return copy.allRecords;
+  return copy.activeRecords;
+}
+
+function OrganizeCenterLoading({ copy, params }: { copy: Record<string, string>; params: OrganizeCenterQuery }) {
+  const selectedType = isObjectType(params.type) ? params.type : "all";
+  const query = String(params.q ?? "").trim();
+  const lifecycleFilter = normalizeLifecycleFilter(params.lifecycle);
+
   return (
-    <Surface as="section" className="p-5" aria-busy="true" aria-live="polite">
-      <SectionHeader title={copy.loadingTitle} description={copy.loadingBody} />
-      <div className="mt-4 h-24 animate-pulse rounded-lg bg-slate-100" />
-    </Surface>
+    <ListReportShell
+      className="organize-object-browser"
+      scope={
+        <div>
+          <p className="m-0 text-sm font-bold text-slate-700">{copy.objectCenter}</p>
+          <p className="mt-1 text-lg font-black text-slate-950">{getLoadingTypeLabel(selectedType, copy)}</p>
+        </div>
+      }
+      filters={
+        <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm font-semibold text-slate-600" aria-label={copy.objectCenter}>
+          <span>{copy.keyword}: {query || copy.noKeyword}</span>
+          <span>{copy.lifecycle}: {getLoadingLifecycleLabel(lifecycleFilter, copy)}</span>
+        </div>
+      }
+      state={
+        <StateSurface tone="loading" title={copy.loadingTitle} description={copy.loadingBody} aria-live="polite">
+          <div className="mt-4 h-24 rounded-lg bg-slate-100" />
+        </StateSurface>
+      }
+    />
   );
 }
 
 function OrganizeCenterLoadError({ copy, href }: { copy: Record<string, string>; href: string }) {
   return (
-    <Surface as="section" className="p-5">
-      <MessageStrip tone="danger" title={copy.loadErrorTitle}>
-        <p>{copy.loadErrorBody}</p>
-        <Link href={href} className="mt-3 inline-flex rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-800 hover:bg-slate-50">
-          {copy.retry}
-        </Link>
-      </MessageStrip>
-    </Surface>
+    <StateSurface
+      tone="error"
+      title={copy.loadErrorTitle}
+      description={copy.loadErrorBody}
+      action={<Link href={href} className="inline-flex min-h-[var(--bd-control-height-touch)] items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-800 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3158d8]">{copy.retry}</Link>}
+    />
   );
 }
 
 function OrganizeCenterPermissionError({ copy }: { copy: Record<string, string> }) {
   return (
-    <Surface as="section" className="p-5">
-      <MessageStrip tone="danger" title={copy.permissionDeniedTitle}>
-        {copy.permissionDeniedBody}
-      </MessageStrip>
-    </Surface>
+    <StateSurface tone="permission" title={copy.permissionDeniedTitle} description={copy.permissionDeniedBody} />
   );
 }
 
 function OrganizeCenterInboxUnavailable({ copy }: { copy: Record<string, string> }) {
   return (
-    <Surface as="section" className="p-5">
-      <MessageStrip tone="info" title={copy.inboxUnavailableTitle}>
-        <p>{copy.inboxUnavailableBody}</p>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <Link href="/import-center" className="inline-flex rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-800 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3158d8]">
+    <StateSurface
+      tone="empty"
+      title={copy.inboxUnavailableTitle}
+      description={copy.inboxUnavailableBody}
+      action={
+        <div className="flex flex-wrap gap-2">
+          <Link href="/import-center" className="inline-flex min-h-[var(--bd-control-height-touch)] items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-800 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3158d8]">
             {copy.openImportCenter}
           </Link>
-          <Link href="/organize-center" className="inline-flex rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-800 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3158d8]">
+          <Link href="/organize-center" className="inline-flex min-h-[var(--bd-control-height-touch)] items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-800 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3158d8]">
             {copy.backToSelector}
           </Link>
         </div>
-      </MessageStrip>
-    </Surface>
+      }
+    />
   );
 }
 
@@ -360,6 +402,7 @@ async function OrganizeCenterContent({ locale, params }: { locale: Locale; param
         ? locale === "zh" ? "公司成员可见／只读" : locale === "ko" ? "회사 멤버 공개／읽기 전용" : "会社メンバーに公開／読み取り専用"
         : undefined,
       readOnly: resolution.outcome === "company_read",
+      canArchive: resolution.outcome === "owner_write" && capabilityCanArchive,
     }];
   });
 
@@ -376,6 +419,7 @@ async function OrganizeCenterContent({ locale, params }: { locale: Locale; param
       href: `/parties/${encodeURIComponent(item.id)}/edit`,
       visibilityLabel: item.readOnly ? copy.companyReadOnly : canWrite ? undefined : copy.ownerReadOnly,
       readOnly: !canWrite,
+      canArchive: item.canArchive,
     };
   });
 
@@ -393,6 +437,7 @@ async function OrganizeCenterContent({ locale, params }: { locale: Locale; param
         ? item.readOnlyReason === "company_read" ? copy.companyReadOnly : copy.ownerReadOnly
         : undefined,
       readOnly: item.readOnly,
+      canArchive: item.canArchive,
     };
   });
 
@@ -407,6 +452,7 @@ async function OrganizeCenterContent({ locale, params }: { locale: Locale; param
     relationLabel: item.relationLabel,
     updatedLabel: item.updatedAt ? formatDate(item.updatedAt, locale) : copy.noDate,
     href: item.href,
+    canArchive: item.canArchive,
     readOnly: item.readOnly,
   }));
 
@@ -430,17 +476,20 @@ export default async function OrganizeCenterPage({ searchParams }: OrganizeCente
     searchParams ?? Promise.resolve({} as OrganizeCenterQuery),
   ]);
   const copy = copyByLocale[locale];
+  const flashMessage = params.flash === "record_archived"
+    ? copy.recordArchived
+    : params.flash === "record_restored"
+      ? copy.recordRestored
+      : undefined;
 
   return (
-    <div className="bd-page bd-organize-page space-y-6 pb-16">
-      <header className="bd-page-header">
-        <h1 className="text-3xl font-black tracking-tight text-slate-950">{copy.title}</h1>
-        <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-slate-600">{copy.description}</p>
-      </header>
+    <PageFrame className="bd-page bd-organize-page space-y-6 pb-16">
+      <PageHeader className="bd-page-header" title={copy.title} description={copy.description} />
+      <PageFlashBanner message={flashMessage} />
 
-      <Suspense fallback={<OrganizeCenterLoading copy={copy} />}>
+      <Suspense fallback={<OrganizeCenterLoading copy={copy} params={params} />}>
         <OrganizeCenterContent locale={locale} params={params} />
       </Suspense>
-    </div>
+    </PageFrame>
   );
 }

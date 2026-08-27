@@ -313,6 +313,8 @@ export const setClientLifecycleStatus: typeof memory.setClientLifecycleStatus = 
   repo.setClientLifecycleStatus(...args);
 export const setPropertyLifecycleStatus: typeof memory.setPropertyLifecycleStatus = (...args) =>
   repo.setPropertyLifecycleStatus(...args);
+export const setRecordLifecycleWithAudit: typeof memory.setRecordLifecycleWithAudit = (...args) =>
+  repo.setRecordLifecycleWithAudit(...args);
 export const listQuotations: typeof memory.listQuotations = (limit, tenantId) =>
   resolveQuotations(limit, tenantId);
 export const listQuotationsForContext: typeof memory.listQuotationsForContext = (...args) =>

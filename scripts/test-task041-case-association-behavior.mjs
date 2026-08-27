@@ -34,6 +34,8 @@ require.extensions[".ts"] = compileTypeScript;
 require.extensions[".tsx"] = compileTypeScript;
 
 const { localizeCaseAssociationError } = require(resolve(root, "src/lib/case-associations.ts"));
+const { endSubmission, handleFormSubmit } = require(resolve(root, "src/components/form-submission-lock.ts"));
+const { handleFocusDialogEscape, requestFocusDialogClose } = require(resolve(root, "src/components/focus-dialog-guards.ts"));
 const approvedJaMappings = [
   ["案件草稿格式不正确，请重新选择资料。", "案件草稿の形式が正しくありません。資料を選び直してください。"],
   ["案件资料草稿格式不正确，请重新操作。", "案件資料の下書き形式が正しくありません。もう一度お試しください。"],
@@ -98,5 +100,65 @@ assert.notEqual(fallback.ja, fallback.zh, "ja and zh fallbacks are isolated");
 assert.notEqual(fallback.ja, fallback.ko, "ja and ko fallbacks are isolated");
 assert.notEqual(fallback.zh, fallback.ko, "zh and ko fallbacks are isolated");
 assert.equal(localizeCaseAssociationError("ja", undefined, "caller fallback"), "caller fallback", "empty message preserves caller fallback");
+
+const submissionLock = { current: false };
+let submitStarts = 0;
+let preventedSubmits = 0;
+handleFormSubmit({ preventDefault: () => { preventedSubmits += 1; } }, submissionLock, () => { submitStarts += 1; });
+assert.equal(submissionLock.current, true, "submit lock is synchronous");
+handleFormSubmit({ preventDefault: () => { preventedSubmits += 1; } }, submissionLock, () => { submitStarts += 1; });
+assert.equal(preventedSubmits, 1, "duplicate submit is blocked at the form event");
+assert.equal(submitStarts, 1, "duplicate submit does not invoke start callback");
+endSubmission(submissionLock);
+assert.equal(submissionLock.current, false, "submit lock releases after action settles");
+handleFormSubmit({ preventDefault: () => { preventedSubmits += 1; } }, submissionLock);
+assert.equal(submissionLock.current, true, "submit can retry after failure release");
+
+const dialogCloseDisabledRef = { current: true };
+let dialogCloses = 0;
+let preventedEscapes = 0;
+assert.equal(requestFocusDialogClose(dialogCloseDisabledRef, () => { dialogCloses += 1; }), false, "header close guard blocks while pending");
+assert.equal(dialogCloses, 0, "header close does not fire while pending");
+const pendingEscape = { key: "Escape", preventDefault: () => { preventedEscapes += 1; } };
+assert.equal(handleFocusDialogEscape(pendingEscape, dialogCloseDisabledRef, () => { dialogCloses += 1; }), true, "pending Escape is handled");
+assert.equal(dialogCloses, 0, "pending Escape does not close dialog");
+dialogCloseDisabledRef.current = false;
+assert.equal(requestFocusDialogClose(dialogCloseDisabledRef, () => { dialogCloses += 1; }), true, "header close guard releases after pending");
+assert.equal(dialogCloses, 1, "header close fires after pending");
+assert.equal(handleFocusDialogEscape({ key: "Escape", preventDefault: () => { preventedEscapes += 1; } }, dialogCloseDisabledRef, () => { dialogCloses += 1; }), true, "enabled Escape is handled");
+assert.equal(dialogCloses, 2, "released Escape closes dialog");
+assert.equal(preventedEscapes, 2, "Escape default is always prevented");
+
+const sameEventCloseDisabledRef = { current: false };
+let sameEventDialogCloses = 0;
+handleFormSubmit(
+  { preventDefault: () => { preventedSubmits += 1; } },
+  { current: false },
+  () => { sameEventCloseDisabledRef.current = true; },
+);
+assert.equal(sameEventCloseDisabledRef.current, true, "form start synchronously locks dialog close");
+assert.equal(
+  handleFocusDialogEscape(
+    { key: "Escape", preventDefault: () => { preventedEscapes += 1; } },
+    sameEventCloseDisabledRef,
+    () => { sameEventDialogCloses += 1; },
+  ),
+  true,
+  "Escape is handled during the submit event cycle",
+);
+assert.equal(sameEventDialogCloses, 0, "Escape cannot close during the synchronous submit lock");
+sameEventCloseDisabledRef.current = false;
+assert.equal(
+  handleFocusDialogEscape(
+    { key: "Escape", preventDefault: () => { preventedEscapes += 1; } },
+    sameEventCloseDisabledRef,
+    () => { sameEventDialogCloses += 1; },
+  ),
+  true,
+  "Escape is handled after the action settles",
+);
+assert.equal(sameEventDialogCloses, 1, "Escape closes after the synchronous submit lock releases");
+assert.equal(requestFocusDialogClose(sameEventCloseDisabledRef, () => { sameEventDialogCloses += 1; }, true), true, "force close is allowed after successful creation");
+assert.equal(sameEventDialogCloses, 2, "force close invokes the dialog close path");
 
 console.log("TASK-041 case association behavior: PASS");

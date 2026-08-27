@@ -1,0 +1,535 @@
+import assert from "node:assert/strict";
+import { createRequire } from "node:module";
+import { readFile } from "node:fs/promises";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+
+const require = createRequire(import.meta.url);
+const ts = require("typescript");
+const React = require("react");
+
+const layoutPath = "src/components/layout-system/index.tsx";
+const layoutCssPath = "src/components/layout-system/layout-system.module.css";
+const casePagePath = "src/app/cases/[id]/page.tsx";
+const caseOverviewPath = "src/components/case-overview.tsx";
+const casePath = "src/components/case-association-draft.tsx";
+const loadingPath = "src/app/cases/new/loading.tsx";
+const notFoundPath = "src/app/not-found.tsx";
+const clientFormPath = "src/components/client-form.tsx";
+const propertyFormPath = "src/components/property-responsive-form.tsx";
+const submissionLockPath = "src/components/form-submission-lock.ts";
+const focusDialogGuardsPath = "src/components/focus-dialog-guards.ts";
+const organizePagePath = "src/app/organize-center/page.tsx";
+const organizeBrowserPath = "src/components/organize-center-object-browser.tsx";
+const propertiesPagePath = "src/app/properties/page.tsx";
+const propertiesLoadingPath = "src/app/properties/loading.tsx";
+const partiesPagePath = "src/app/parties/page.tsx";
+const partiesLoadingPath = "src/app/parties/loading.tsx";
+
+const [layout, layoutCss, casePage, caseOverview, caseDraft, loading, notFound, clientForm, propertyForm, submissionLock, focusDialogGuards, organizePage, organizeBrowser, propertiesPage, propertiesLoading, partiesPage, partiesLoading] = await Promise.all([
+  readFile(layoutPath, "utf8"),
+  readFile(layoutCssPath, "utf8"),
+  readFile(casePagePath, "utf8"),
+  readFile(caseOverviewPath, "utf8"),
+  readFile(casePath, "utf8"),
+  readFile(loadingPath, "utf8"),
+  readFile(notFoundPath, "utf8"),
+  readFile(clientFormPath, "utf8"),
+  readFile(propertyFormPath, "utf8"),
+  readFile(submissionLockPath, "utf8"),
+  readFile(focusDialogGuardsPath, "utf8"),
+  readFile(organizePagePath, "utf8"),
+  readFile(organizeBrowserPath, "utf8"),
+  readFile(propertiesPagePath, "utf8"),
+  readFile(propertiesLoadingPath, "utf8"),
+  readFile(partiesPagePath, "utf8"),
+  readFile(partiesLoadingPath, "utf8"),
+]);
+
+const failures = [];
+const requireText = (source, text, label) => {
+  if (!source.includes(text)) failures.push(`${label}: missing ${text}`);
+};
+
+const parseTsx = (file, source) => ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+const walkTsx = (node, predicate, out = []) => {
+  if (predicate(node)) out.push(node);
+  node.forEachChild((child) => { walkTsx(child, predicate, out); });
+  return out;
+};
+const unwrapExpression = (node) => {
+  let current = node;
+  while (current && (ts.isParenthesizedExpression(current) || ts.isAsExpression(current) || ts.isSatisfiesExpression(current))) current = current.expression;
+  return current;
+};
+const staticallyTerminates = (statement) => {
+  if (ts.isReturnStatement(statement) || ts.isThrowStatement(statement)) return true;
+  if (ts.isBlock(statement)) return statement.statements.length > 0 && staticallyTerminates(statement.statements.at(-1));
+  if (ts.isIfStatement(statement)) {
+    const condition = unwrapExpression(statement.expression).kind;
+    if (condition === ts.SyntaxKind.TrueKeyword) return staticallyTerminates(statement.thenStatement);
+    if (condition === ts.SyntaxKind.FalseKeyword) return Boolean(statement.elseStatement && staticallyTerminates(statement.elseStatement));
+    return Boolean(statement.elseStatement && staticallyTerminates(statement.thenStatement) && staticallyTerminates(statement.elseStatement));
+  }
+  return false;
+};
+const jsxAttribute = (opening, name) => opening.attributes.properties.find((item) => ts.isJsxAttribute(item) && item.name.getText() === name);
+
+function directFunction(sourceFile, name) {
+  const fn = sourceFile.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === name);
+  assert(fn?.body, `${name} must remain a top-level function`);
+  return fn;
+}
+
+function directInitializer(block, name) {
+  for (const statement of block.statements) {
+    if (!ts.isVariableStatement(statement)) continue;
+    for (const declaration of statement.declarationList.declarations) {
+      if (ts.isIdentifier(declaration.name) && declaration.name.text === name) {
+        assert(declaration.initializer, `${name} must have a direct initializer`);
+        return unwrapExpression(declaration.initializer);
+      }
+    }
+  }
+  assert.fail(`${name} must be declared directly in its authoritative function`);
+}
+
+function evaluatePageHeaderPresence(source) {
+  const sf = parseTsx("layout-system.tsx", source);
+  const helper = directFunction(sf, "normalizePageHeaderActions");
+  const helperText = helper.getText(sf);
+  const output = ts.transpileModule(helperText, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+  const evaluate = Function("Children", "Fragment", "isValidElement", `${output}; return normalizePageHeaderActions;`)(React.Children, React.Fragment, React.isValidElement);
+  const fragment = (children) => React.createElement(React.Fragment, null, children);
+  const element = React.createElement("button", null, "Action");
+  function* emptyGenerator() {}
+  function* absentGenerator() { yield false; yield fragment(null); }
+  for (const absent of [undefined, null, false, true, 0, "", "   ", [], [false, null, 0, ""], fragment(undefined), fragment([false, 0, ""]), new Set(), new Set([false, fragment(null)]), emptyGenerator(), absentGenerator(), new Set([new Set(), fragment(new Set())])]) {
+    assert.equal(evaluate(absent).length, 0, "empty PageHeader action values must not create an actions grid row");
+  }
+  function* actionGenerator() { yield element; }
+  for (const present of ["Action", 1, element, [null, element], fragment(element), fragment("Back"), new Set([element]), actionGenerator(), new Set([new Set([element])])]) {
+    assert(evaluate(present).length > 0, "renderable PageHeader action values must retain the actions grid row");
+  }
+}
+
+function assertPageHeaderOptionalActions(source) {
+  const sf = parseTsx("layout-system.tsx", source);
+  assert.equal(sf.parseDiagnostics.length, 0, "layout system must parse");
+  evaluatePageHeaderPresence(source);
+  const fn = directFunction(sf, "PageHeader");
+  const childActions = directInitializer(fn.body, "childActions");
+  assert.equal(childActions.getText(sf), "normalizePageHeaderActions(children)", "children must be normalized exactly once before rendering");
+  const actions = directInitializer(fn.body, "actions");
+  assert(ts.isConditionalExpression(actions), "PageHeader actions must use an explicit children-first conditional");
+  assert.equal(actions.condition.getText(sf), "childActions.length > 0", "renderable children must decide the primary actions slot");
+  assert.equal(actions.whenTrue.getText(sf), "childActions", "the once-normalized children must be rendered without consuming iterators again");
+  assert.equal(actions.whenFalse.kind, ts.SyntaxKind.NullKeyword, "PageHeader must initially use null when children are absent");
+  const fallbackGuard = fn.body.statements.find((statement) => ts.isIfStatement(statement) && statement.expression.getText(sf) === "actions === null && backHref");
+  assert(fallbackGuard && ts.isBlock(fallbackGuard.thenStatement), "back label normalization must be lazy behind the no-children/backHref guard");
+  const normalizedBackLabel = directInitializer(fallbackGuard.thenStatement, "normalizedBackLabel");
+  assert.equal(normalizedBackLabel.getText(sf), "normalizePageHeaderActions(backLabel)", "back label must use the same renderable-node policy only in the fallback path");
+  const labelGuard = fallbackGuard.thenStatement.statements.find((statement) => ts.isIfStatement(statement));
+  assert(labelGuard && labelGuard.expression.getText(sf) === "normalizedBackLabel.length > 0" && ts.isBlock(labelGuard.thenStatement), "back-link fallback requires a renderable normalized label");
+  const assignment = labelGuard.thenStatement.statements.find((statement) => ts.isExpressionStatement(statement) && ts.isBinaryExpression(statement.expression));
+  assert(assignment && assignment.expression.left.getText(sf) === "actions" && assignment.expression.operatorToken.kind === ts.SyntaxKind.EqualsToken, "fallback must assign the resolved actions value directly");
+  const fallbackLink = unwrapExpression(assignment.expression.right);
+  assert(ts.isJsxElement(fallbackLink) && fallbackLink.openingElement.tagName.getText(sf) === "Link", "back-link fallback must remain the shared Link");
+  const finalReturn = fn.body.statements.at(-1);
+  assert(finalReturn && ts.isReturnStatement(finalReturn) && finalReturn.expression, "PageHeader must end in one reachable JSX return");
+  assert(!fn.body.statements.slice(0, -1).some(staticallyTerminates), "PageHeader return must not follow a guaranteed terminator");
+  const openings = walkTsx(finalReturn.expression, (node) => ts.isJsxOpeningElement(node));
+  const actionContainers = openings.filter((node) => jsxAttribute(node, "className")?.getText(sf) === "className={styles.pageHeaderActions}");
+  assert.equal(actionContainers.length, 1, "PageHeader must have one actions container in live JSX");
+  const conditional = actionContainers[0].parent?.parent;
+  assert(conditional && ts.isConditionalExpression(conditional), "actions container must be conditionally omitted from the DOM");
+  assert.equal(conditional.condition.getText(sf), "actions", "actions container must be gated by the resolved renderable action");
+  assert.equal(conditional.whenFalse.kind, ts.SyntaxKind.NullKeyword, "missing actions must render no grid item");
+}
+
+function executePageHeader(source) {
+  const sf = parseTsx("layout-system.tsx", source);
+  const helper = directFunction(sf, "normalizePageHeaderActions").getText(sf);
+  const component = directFunction(sf, "PageHeader").getText(sf).replace(/^export\s+/, "");
+  const output = ts.transpileModule(`${helper}\n${component}`, {
+    compilerOptions: { module: ts.ModuleKind.None, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React },
+  }).outputText;
+  const styles = new Proxy({}, { get: (_target, key) => String(key) });
+  const cx = (...values) => values.filter(Boolean).join(" ");
+  const Link = (props) => React.createElement("a", props, props.children);
+  return Function("React", "Children", "Fragment", "isValidElement", "styles", "cx", "Link", `${output}; return PageHeader;`)(React, React.Children, React.Fragment, React.isValidElement, styles, cx, Link);
+}
+
+const ExecutablePageHeader = executePageHeader(layout);
+let backPulls = 0;
+function* countedBackLabel() { backPulls += 1; yield "Back"; }
+const reusableBackLabel = countedBackLabel();
+ExecutablePageHeader({ title: "Title", backHref: "/back", backLabel: reusableBackLabel, children: React.createElement("button", null, "Action") });
+assert.equal(backPulls, 0, "real children must not consume the fallback backLabel iterable");
+const fallbackTree = ExecutablePageHeader({ title: "Title", backHref: "/back", backLabel: reusableBackLabel });
+assert.equal(backPulls, 1, "the backLabel iterable must be consumed exactly once when fallback is selected");
+assert(JSON.stringify(fallbackTree).includes("Back"), "the unconsumed backLabel iterable must render when children disappear");
+
+assertPageHeaderOptionalActions(layout);
+for (const mutate of [
+  (source) => source.replace('if (typeof child === "number" && child === 0) return [];', 'if (typeof child === "number" && false) return [];'),
+  (source) => source.replace("child.type === Fragment", "false"),
+  (source) => source.replace("return Children.toArray(node).flatMap", "return [node].flatMap"),
+  (source) => source.replace("  let actions: ReactNode = childActions.length > 0 ? childActions : null;", "  const normalizedBackLabel = normalizePageHeaderActions(backLabel);\n  let actions: ReactNode = childActions.length > 0 ? childActions : normalizedBackLabel;"),
+  (source) => source.replace("{actions ? <div className={styles.pageHeaderActions}>{actions}</div> : null}", "<div className={styles.pageHeaderActions}>{actions}</div>"),
+]) {
+  const broken = mutate(layout);
+  assert.notEqual(broken, layout, "PageHeader synthetic must mutate its target");
+  assert.throws(() => assertPageHeaderOptionalActions(broken), "PageHeader action-row regression must fail the layout contract");
+}
+
+function sourceFilesUnder(directory) {
+  return readdirSync(directory).flatMap((entry) => {
+    const path = `${directory}/${entry}`;
+    return statSync(path).isDirectory() ? sourceFilesUnder(path) : /\.(?:ts|tsx|css)$/.test(entry) ? [path] : [];
+  });
+}
+for (const path of sourceFilesUnder("src")) {
+  if (path === layoutPath || path === layoutCssPath) continue;
+  const source = readFileSync(path, "utf8");
+  if (source.includes("pageHeaderActions")) failures.push(`PageHeader callers must not depend on the private empty actions container: ${path}`);
+}
+
+function checkOrganizeSharedReturn() {
+  const sf = parseTsx(organizeBrowserPath, organizeBrowser);
+  const fn = sf.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === "OrganizeCenterObjectBrowser");
+  if (!fn?.body) {
+    failures.push("organize-center shared return: missing live OrganizeCenterObjectBrowser function");
+    return;
+  }
+  const finalReturn = fn.body.statements.at(-1);
+  if (!finalReturn || !ts.isReturnStatement(finalReturn) || !finalReturn.expression) {
+    failures.push("organize-center shared return: final statement must be the selected-list return");
+    return;
+  }
+  if (fn.body.statements.slice(0, -1).some(staticallyTerminates)) {
+    failures.push("organize-center shared return: selected-list return follows a static terminator");
+    return;
+  }
+  const openings = walkTsx(finalReturn.expression, (node) => ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node));
+  const shared = openings.filter((node) => node.tagName.getText(sf) === "ListReturnState");
+  if (shared.length !== 1) failures.push("organize-center shared return: expected one final-reachable ListReturnState");
+  const scope = shared[0] && jsxAttribute(shared[0], "scope");
+  const listUrl = shared[0] && jsxAttribute(shared[0], "listUrl");
+  if (!scope?.getText(sf).includes('"organize"') || listUrl?.getText(sf) !== "listUrl={listHref}") failures.push("organize-center shared return: shared scope/listUrl mismatch");
+  const triggers = openings.filter((node) => jsxAttribute(node, "data-list-return-trigger"));
+  if (triggers.length !== 1 || jsxAttribute(triggers[0], "data-list-return-trigger")?.getText(sf) !== 'data-list-return-trigger={`${item.type}:${item.id}`}') {
+    failures.push("organize-center shared return: stable shared trigger mismatch");
+  }
+  const fallbacks = openings.filter((node) => jsxAttribute(node, "data-list-return-fallback"));
+  if (fallbacks.length !== 1 || !jsxAttribute(fallbacks[0], "tabIndex") || !jsxAttribute(fallbacks[0], "aria-label")) {
+    failures.push("organize-center shared return: accessible focus fallback missing");
+  }
+}
+
+for (const component of ["PageFrame", "PageHeader", "ResponsiveFormShell", "FormSection", "ActionBar", "StateSurface"]) {
+  requireText(layout, `export function ${component}`, "layout exports");
+}
+requireText(layout, "export function ListReportShell", "layout exports");
+requireText(layout, 'Omit<HTMLAttributes<HTMLElement>, "children" | "results">', "ListReportShell native attribute collision guard");
+for (const slot of ["scope", "filters", "summary", "results", "pagination", "state"]) {
+  requireText(layout, `data-list-report-slot=\"${slot}\"`, "ListReportShell slots");
+}
+const listReportStart = layout.indexOf("export function ListReportShell");
+const listReportEnd = layout.indexOf("export type ResponsiveFormShellProps", listReportStart);
+const listReportSource = layout.slice(listReportStart, listReportEnd);
+if (/\b(query|permission|archive|sessionStorage|focus)\b/i.test(listReportSource) || /\bdata\s*[=:]/i.test(listReportSource)) {
+  failures.push("ListReportShell: must not own query, data, permission, archive, sessionStorage or focus concerns");
+}
+if (/PageHeader|ActionBar|new.?CTA|create/i.test(listReportSource)) {
+  failures.push("ListReportShell: must remain a thin slot composition without page header, action bar or create CTA");
+}
+
+const worklistStart = layout.indexOf("export type WorklistShellProps");
+const worklistEnd = layout.indexOf("export type ResponsiveFormShellProps", worklistStart);
+const worklistSource = layout.slice(worklistStart, worklistEnd);
+for (const slot of ["controls", "summary", "items", "detail", "state"]) {
+  requireText(worklistSource, `${slot}?: ReactNode`, "WorklistShell structural slots");
+  requireText(worklistSource, `data-worklist-slot=\"${slot}\"`, "WorklistShell rendered slots");
+}
+requireText(worklistSource, 'data-has-detail={detail ? "true" : undefined}', "WorklistShell optional detail layout signal");
+requireText(layoutCss, '.worklistShell[data-has-detail="true"]', "WorklistShell detail layout variant");
+requireText(layoutCss, 'grid-template-columns: minmax(17rem, 0.8fr) minmax(0, 1.7fr);', "WorklistShell desktop task/detail columns");
+if (/from ["']@\//.test(worklistSource) || /\b(query|permission|eligib|download|template|history|case|taskData|selectedId)\b/i.test(worklistSource)) {
+  failures.push("WorklistShell: must remain a pure slot composition without domain data, selection, permission or eligibility concerns");
+}
+
+const objectShellStart = layout.indexOf("export type ObjectPageShellProps");
+const objectShellEnd = layout.indexOf("export type PageHeaderProps", objectShellStart);
+const objectShellSource = layout.slice(objectShellStart, objectShellEnd);
+for (const slot of ["header", "feedback", "state", "navigation", "children", "footer"]) {
+  requireText(objectShellSource, slot === "header" || slot === "children" ? `${slot}: ReactNode` : `${slot}?: ReactNode`, "ObjectPageShell structural slots");
+  requireText(objectShellSource, `data-object-page-slot="${slot}"`, "ObjectPageShell semantic slots");
+}
+requireText(objectShellSource, "<div {...props}", "ObjectPageShell stable div root");
+requireText(layoutCss, ".objectPageSlot {\n  display: contents;", "ObjectPageShell non-box slot wrapper");
+for (const slot of ["feedback", "state", "navigation", "footer"]) {
+  requireText(objectShellSource, `{${slot} ? <div`, `ObjectPageShell empty ${slot} slot omission`);
+}
+if (/\.objectPageShell[^{]*\{[^}]*\b(position|overflow|contain|transform)\s*:/s.test(layoutCss) || /\.objectPageSlot[^{]*\{[^}]*\b(position|overflow|contain|transform)\s*:/s.test(layoutCss)) {
+  failures.push("ObjectPageShell: shell and slot wrappers must not establish sticky clipping or containing-block behavior");
+}
+if (objectShellSource.includes("associations") || objectShellSource.includes("output")) {
+  failures.push("ObjectPageShell: must not expose domain-named association or output slots");
+}
+if (/from ["']@\//.test(objectShellSource) || /\b(use[A-Z]|query|permission|case|saveAction|eligib|data\s*[=:])\b/i.test(objectShellSource)) {
+  failures.push("ObjectPageShell: must remain a pure structural composition without app state or domain concerns");
+}
+const objectShellSlotOrder = ["header", "feedback", "state", "navigation", "children", "footer"].map((slot) => objectShellSource.indexOf(`data-object-page-slot=\"${slot}\"`));
+if (objectShellSlotOrder.some((position) => position < 0) || objectShellSlotOrder.some((position, index) => index > 0 && position <= objectShellSlotOrder[index - 1])) {
+  failures.push("ObjectPageShell: structural slot order must be header, feedback, state, navigation, children, footer");
+}
+if ((casePage.match(/<ObjectPageShell\b/g) ?? []).length !== 1 || (casePage.match(/<CaseIdentityHeader\b/g) ?? []).length !== 1) {
+  failures.push("case detail page: quick branch must have exactly one ObjectPageShell and one identity header");
+}
+if ((caseOverview.match(/<ObjectPageShell\b/g) ?? []).length !== 1 || (caseOverview.match(/<CaseIdentityHeader\b/g) ?? []).length !== 1) {
+  failures.push("CaseOverview: read-only/overview branches must share exactly one shell and one identity header");
+}
+const caseOverviewHeaderPosition = caseOverview.indexOf("<CaseIdentityHeader");
+const caseOverviewAssociationPosition = caseOverview.indexOf("{associationPanel}");
+if (caseOverviewHeaderPosition < 0 || caseOverviewAssociationPosition < 0 || caseOverviewAssociationPosition <= caseOverviewHeaderPosition) {
+  failures.push("CaseOverview: association panel must follow its unique identity header");
+}
+requireText(caseOverview, "!compactHeader ?", "identity header compact visibility");
+requireText(caseOverview, "showViewSwitch ? <CaseViewSwitch", "read-only view switch visibility");
+requireText(caseOverview, "<CaseStatusSummary", "read-only status summary retention");
+requireText(caseOverview, "feedback={", "CaseOverview feedback slot");
+requireText(caseOverview, "state={attentionQueue}", "CaseOverview state slot");
+requireText(caseOverview, "{associationPanel}", "CaseOverview association panel child");
+if (caseOverview.includes("navigation={")) failures.push("CaseOverview: navigation must be assembled in children after associationPanel");
+const caseOverviewNavPosition = caseOverview.indexOf("<nav data-case-anchor-nav");
+const caseOverviewFieldsPosition = caseOverview.indexOf("<main className=\"space-y-4\">");
+if (caseOverviewAssociationPosition < 0 || caseOverviewNavPosition < 0 || caseOverviewFieldsPosition < 0 || !(caseOverviewAssociationPosition < caseOverviewNavPosition && caseOverviewNavPosition < caseOverviewFieldsPosition)) {
+  failures.push("CaseOverview: children order must be associationPanel, section navigation, then fields");
+}
+const readOnlyBranchStart = casePage.indexOf("if (!canWriteCase)");
+const overviewBranchStart = casePage.indexOf("if (activeView === \"overview\")");
+const quickBranchStart = casePage.indexOf("return (\n    <div className=\"flex min-w-0 flex-col gap-6\">");
+const readOnlyBranch = casePage.slice(readOnlyBranchStart, overviewBranchStart);
+const overviewBranch = casePage.slice(overviewBranchStart, quickBranchStart);
+if (/^\s*\{associationPanel\}/m.test(readOnlyBranch) || /^\s*\{associationPanel\}/m.test(overviewBranch)) {
+  failures.push("case detail page: read-only/overview branches must not render associationPanel outside CaseOverview");
+}
+requireText(readOnlyBranch, "showViewSwitch={canWriteCase}", "read-only switch decision from page permission result");
+requireText(overviewBranch, "showViewSwitch={canWriteCase}", "overview switch decision from page permission result");
+requireText(readOnlyBranch, "associationPanel={associationPanel}", "read-only association panel handoff");
+requireText(overviewBranch, "associationPanel={associationPanel}", "overview association panel handoff");
+if ((casePage.slice(quickBranchStart).match(/\{associationPanel\}/g) ?? []).length !== 1) {
+  failures.push("case detail page: quick branch must render associationPanel exactly once inside its shell");
+}
+for (const fragment of [
+  "readOnly={!canWriteCase}",
+  "candidates={associationCandidates}",
+  "properties={associationProperties}",
+  "saveAction={canWriteCase ? saveCaseAssociationsAction : undefined}",
+  "createPersonAction={canWriteCase ? createClientFormAction : undefined}",
+  "createPropertyAction={canWriteCase ? createPropertyQuickAction : undefined}",
+  "const activeView = query?.view === \"quick\" || query?.view === \"overview\"",
+  "downloadGate && downloadGate.blockedReasons.length > 0",
+  "flashTone =",
+  "scrollTop?: string",
+]) {
+  requireText(casePage, fragment, "case detail data, gate and return-context preservation");
+}
+for (const fragment of [
+  "!hasOutputTemplate || !downloadHref",
+  "if (hasBlockingOutput)",
+  "setConfirmOpen(true)",
+  "window.location.hash",
+  "initialScrollTop",
+  "scrollToId",
+  "lastTriggerIdRef",
+  "showViewSwitch={showViewSwitch}",
+  "{outputState}",
+]) {
+  requireText(caseOverview, fragment, "CaseOverview output and return-context preservation");
+}
+
+const casesCompositionFragments = [
+  "<PageFrame className=\"space-y-5\">",
+  "<PageHeader title={text.title}",
+  "<ResponsiveFormShell action={caseFormAction}>",
+  "<FormSection className=\"space-y-3\">",
+  "<ActionBar mobileFixed>",
+  "<StateSurface tone=\"empty\">",
+];
+for (const fragment of casesCompositionFragments) requireText(caseDraft, fragment, "cases/new composition");
+requireText(caseDraft, "layoutStyles.pageActionCancel", "CSS Module page cancel binding");
+if (/className=\"pageActionCancel/.test(caseDraft)) failures.push("cases/new: pageActionCancel is not CSS Module bound");
+
+for (const element of ["<div", "<header", "<form", "<section"]) requireText(layout, element, "layout element boundary");
+if (layout.match(/from ["']@\//) || layout.match(/use(ActionState|Effect|Ref|State)/)) {
+  failures.push("layout-system: composition layer imports application modules or owns state");
+}
+
+requireText(layoutCss, ".actionBar[data-mobile-fixed=\"true\"]", "mobile action bar");
+requireText(layoutCss, "--bd-action-bar-height: calc(var(--bd-space-3) + var(--bd-control-height-touch) + var(--bd-space-3)", "action bar height token");
+requireText(layoutCss, "padding-bottom: calc(var(--bd-space-4) + var(--bd-action-bar-height))", "mobile form safe space");
+requireText(layoutCss, "padding-bottom: var(--bd-space-5)", "desktop form safe space");
+requireText(layoutCss, ".pageActionCancel", "mobile action bar secondary action separation");
+requireText(layoutCss, ".dialogOverlay", "dialog overlay layer");
+requireText(layoutCss, "z-index: var(--bd-z-modal)", "dialog z-index token");
+requireText(layoutCss, ".dialogFooter", "dialog footer safe area");
+requireText(layoutCss, "env(safe-area-inset-bottom)", "dialog safe area");
+requireText(layoutCss, ".stateSurfaceLoading::before", "loading state visual");
+requireText(layout, "aria-busy={tone === \"loading\" || undefined}", "loading state semantics");
+requireText(caseDraft, "data-case-association-case-error", "case error focus target");
+requireText(caseDraft, "scrollIntoView", "case error visibility");
+requireText(caseDraft, "const error = errorRef.current", "case error uses scoped ref");
+requireText(caseDraft, "}, [caseState, locale, text.caseSaveError]);", "case error reacts to each action result");
+requireText(caseDraft, "document.body.style.overflow = \"hidden\"", "dialog background scroll lock");
+requireText(caseDraft, "form=\"case-association-person-create\"", "person create dialog footer");
+requireText(caseDraft, "form=\"case-association-property-create\"", "property create dialog footer");
+requireText(caseDraft, "formId=\"case-association-person-create\" hideActions", "person create form footer contract");
+requireText(caseDraft, "formId=\"case-association-property-create\" hideActions", "property create form footer contract");
+requireText(caseDraft, "disabled={personCreatePending}", "person create pending guard");
+requireText(caseDraft, "disabled={propertyCreatePending}", "property create pending guard");
+requireText(caseDraft, "onPendingChange={updatePersonCreatePending}", "person pending bridge");
+requireText(caseDraft, "onPendingChange={updatePropertyCreatePending}", "property pending bridge");
+requireText(caseDraft, "closeDisabled={drawerView === \"create\" && personCreatePending}", "person create close lock");
+requireText(caseDraft, "closeDisabled={drawerView === \"create\" && propertyCreatePending}", "property create close lock");
+requireText(caseDraft, "closeDisabledRef={personCreatePendingRef}", "person live dialog close lock ref");
+requireText(caseDraft, "closeDisabledRef={propertyCreatePendingRef}", "property live dialog close lock ref");
+requireText(caseDraft, "handleFocusDialogEscape(event, closeDisabledRef ?? fallbackCloseDisabledRef, onCloseRef.current)", "escape reads synchronous dialog close lock");
+requireText(caseDraft, "requestFocusDialogClose(activeCloseDisabledRef, onCloseRef.current)", "header close reads synchronous dialog close lock");
+requireText(caseDraft, "onSubmitStart={startPersonCreate}", "person submit start lock");
+requireText(caseDraft, "onSubmitStart={startPropertyCreate}", "property submit start lock");
+requireText(caseDraft, "text.draftSessionOnly", "page-session draft boundary");
+requireText(caseDraft, "disabled={personCreatePending}", "person create cancel lock");
+requireText(caseDraft, "disabled={propertyCreatePending}", "property create cancel lock");
+requireText(caseDraft, "const draftPeopleCount", "current session draft summary");
+requireText(caseDraft, "text.guaranteeRequirementsMissing", "draft output eligibility summary");
+requireText(caseDraft, "text.draftPrimaryApplicant", "draft applicant summary");
+requireText(caseDraft, "text.draftPrimaryProperty", "draft property summary");
+for (const control of ["min-h-11", "text-base sm:text-sm", "scrollIntoView"]) requireText(caseDraft, control, "cases/new responsive interaction contract");
+if (/owner_write|company_read|private/i.test(caseDraft)) failures.push("cases/new: internal permission terminology is present");
+requireText(caseDraft, "input:not([type='hidden'])", "dialog visible focus order");
+if ((caseDraft.match(/footer=\{drawerView === \"create\"/g) ?? []).length < 2) {
+  failures.push("FocusDialog: both create and select views must expose a persistent footer");
+}
+
+for (const [source, label] of [[clientForm, "ClientForm"], [propertyForm, "PropertyResponsiveForm"]]) {
+  for (const fragment of ["formId?: string", "hideActions?: boolean", "onPendingChange?: (pending: boolean) => void", "onSubmitStart?: () => void", "id={formId}", "onPendingChange?.(pending)", "submissionLockRef", "handleFormSubmit", "endSubmission", "onSubmit={handleSubmit}"]) {
+    requireText(source, fragment, `${label} pending bridge`);
+  }
+  requireText(source, "hideActions ? null", `${label} footer ownership`);
+}
+
+for (const fragment of ["beginSubmission", "endSubmission", "handleFormSubmit", "event.preventDefault()", "if (lock.current) return false"]) {
+  requireText(submissionLock, fragment, "synchronous form submission lock");
+}
+for (const fragment of ["event.key !== \"Escape\"", "event.preventDefault()", "closeDisabledRef.current", "requestFocusDialogClose(closeDisabledRef, onClose)"]) {
+  requireText(focusDialogGuards, fragment, "synchronous dialog close guard");
+}
+const overlayStart = caseDraft.indexOf("className={layoutStyles.dialogOverlay}");
+const surfaceStart = caseDraft.indexOf("className={layoutStyles.dialogSurface}", overlayStart);
+if (overlayStart >= 0 && surfaceStart > overlayStart && caseDraft.slice(overlayStart, surfaceStart).includes("onClick")) {
+  failures.push("FocusDialog: backdrop must not close the dialog during submission");
+}
+
+const bodyStart = caseDraft.indexOf("className={layoutStyles.dialogBody}");
+const footerStart = caseDraft.indexOf("className={layoutStyles.dialogFooter}", bodyStart);
+if (bodyStart < 0 || footerStart < 0 || footerStart < bodyStart) {
+  failures.push("FocusDialog: footer is not declared after the scrollable body");
+}
+
+for (const fragment of [
+  'import { SystemStatePanel } from "@/components/system-state-panel"',
+  'import { getSystemStateCopy } from "@/lib/system-state-copy"',
+  "getLocale",
+  "getSystemStateCopy(locale)",
+  "<SystemStatePanel",
+]) {
+  requireText(notFound, fragment, "not-found shared system state composition");
+}
+if (/\b(?:ja|zh|ko)\s*:/.test(notFound)) failures.push("not-found: locale copy must remain in the shared system-state copy source");
+for (const fragment of ["<PageFrame", "<PageHeader", "<ResponsiveFormShell", "<FormSection", "<StateSurface tone=\"loading\"", "<ActionBar mobileFixed", "getLocale", "ja:", "zh:", "ko:"]) {
+  requireText(loading, fragment, "cases/new loading boundary");
+}
+if (loading.includes("backHref=") || loading.includes("/organize-center?type=case")) failures.push("cases/new loading: loading boundary must not assume a source return path");
+if (/owner_write|company_read|private/i.test(loading)) failures.push("cases/new loading: internal permission terminology is present");
+for (const fragment of ["TenantSessionError", "tenant_selection_required", "permission_denied", "tenant_forbidden", "tenant_not_found", "user_not_found", "returnTo", "notFound()", "redirect(`/workspace?reason=tenant_selection_required"]) {
+  requireText(readFileSync("src/app/cases/new/page.tsx", "utf8"), fragment, "cases/new route access boundary");
+}
+requireText(layoutCss, "var(--bd-shadow-action-bar)", "semantic action bar shadow token");
+requireText(layoutCss, "var(--bd-overlay-scrim)", "semantic dialog overlay token");
+requireText(layoutCss, "var(--bd-surface-overlay)", "semantic action bar surface token");
+requireText(layoutCss, "@media (prefers-reduced-motion: no-preference)", "loading reduced motion boundary");
+
+for (const fragment of ["<PageFrame className=\"bd-page bd-organize-page", "<PageHeader className=\"bd-page-header\"", "tone=\"loading\"", "tone=\"error\"", "tone=\"permission\""]) {
+  requireText(organizePage, fragment, "organize-center composition");
+}
+requireText(organizeBrowser, "<ListReportShell", "organize-center list-report composition");
+for (const slot of ["scope={", "filters={", "summary={", "results=", "pagination=", "state={"]) {
+  requireText(organizeBrowser, slot, "organize-center list-report slots");
+}
+for (const fragment of [
+  "const LIST_PAGE_SIZE = 6;",
+  "if (lifecycleFilter !== \"active\") params.set(\"lifecycle\", lifecycleFilter)",
+  "href={buildListHref(selectedType, \"\", lifecycleFilter)}",
+]) {
+  requireText(organizeBrowser, fragment, "organize-center behavior contract");
+}
+checkOrganizeSharedReturn();
+
+for (const fragment of ["<PageFrame", "<PageHeader", "<ListReturnState", "<ListReportShell", "<StateSurface"]) {
+  requireText(propertiesPage, fragment, "properties List Report composition");
+}
+for (const fragment of ["<PageFrame", "<PageHeader", "<ListReportShell", "<StateSurface", 'tone="loading"', 'aria-busy="true"']) {
+  requireText(propertiesLoading, fragment, "properties loading List Report composition");
+}
+for (const fragment of ["<PageFrame", "<PageHeader", "<ListReturnState", "<ListReportShell", "<StateSurface"]) {
+  requireText(partiesPage, fragment, "parties List Report composition");
+}
+for (const fragment of ["<PageFrame", "<PageHeader", "<ListReportShell", "<StateSurface", 'tone="loading"', 'aria-busy="true"']) {
+  requireText(partiesLoading, fragment, "parties loading List Report composition");
+}
+for (const retired of [
+  "FOCUS_STORAGE_PREFIX",
+  "RETURN_STATE_STORAGE_PREFIX",
+  "data-organize-object-link",
+]) {
+  if (organizeBrowser.includes(retired)) failures.push(`organize-center shared return: retired private restorer remains: ${retired}`);
+}
+for (const copy of [
+  'clear: "キーワードをクリア"',
+  'clearFilters: "キーワードをクリア"',
+  'clear: "清除关键词"',
+  'clearFilters: "清除关键词"',
+  'clear: "키워드 지우기"',
+  'clearFilters: "키워드 지우기"',
+  'clearKeywordHint: "キーワードだけを解除し、記録の状態はそのままにして再検索できます。"',
+  'clearKeywordHint: "可以只清除关键词，记录状态筛选保持不变。"',
+  'clearKeywordHint: "키워드만 지우고 기록 상태 필터는 그대로 둔 채 다시 확인할 수 있습니다."',
+  'noKeyword: "キーワード未設定"',
+  'noKeyword: "未设置关键词"',
+  'noKeyword: "검색어 미설정"',
+]) {
+  requireText(organizePage, copy, "organize-center localized keyword clear copy");
+}
+requireText(organizeBrowser, "const hasKeyword = query.trim().length > 0;", "organize-center keyword-empty condition");
+requireText(organizeBrowser, "description={hasKeyword ? copy.clearKeywordHint : undefined}", "organize-center conditional keyword hint");
+requireText(organizeBrowser, "action={hasKeyword ? <Link", "organize-center conditional clear action");
+requireText(organizePage, "function OrganizeCenterLoading({ copy, params }", "organize-center loading params");
+requireText(organizePage, "<ListReportShell", "organize-center loading list-report shell");
+requireText(organizePage, "const selectedType = isObjectType(params.type) ? params.type : \"all\";", "organize-center loading selected type");
+requireText(organizePage, "const query = String(params.q ?? \"\").trim();", "organize-center loading query");
+requireText(organizePage, "const lifecycleFilter = normalizeLifecycleFilter(params.lifecycle);", "organize-center loading lifecycle");
+requireText(organizePage, "fallback={<OrganizeCenterLoading copy={copy} params={params} />}", "organize-center loading fallback context");
+if (organizeBrowser.includes("const isEmptyData")) failures.push("organize-center: must not infer absolute empty data from the active lifecycle result");
+if (organizeBrowser.includes('title={copy.noResults}\n            description={copy.noResults}')) failures.push("organize-center: filtered-empty state must not repeat the same title and description");
+if (organizeBrowser.includes("copy.emptyData")) failures.push("organize-center: object selector must not claim an absolute empty state from the fetched collection");
+if (organizeBrowser.includes("description={copy.description}")) failures.push("organize-center: page description must not be duplicated inside the object browser");
+if (/min-h-9/.test(organizeBrowser)) failures.push("organize-center: narrow-screen key controls must not use 36px minimum height");
+if (organizePage.includes("animate-pulse")) failures.push("organize-center: loading skeleton must not force motion without a reduced-motion boundary");
+
+if (failures.length > 0) {
+  console.error(failures.join("\n"));
+  process.exit(1);
+}
+
+console.log("layout-system contract: PASS (composition exports, cases/new integration, organize-center ListReportShell and filtered-empty checks, drawer geometry, error focus, shared not-found system state)");

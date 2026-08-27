@@ -72,9 +72,7 @@ import {
   resolveCaseVisibilityForContext,
   saveBrokerageCaseExtractionReview,
   saveGuaranteeApplicationDraft,
-  setBrokerageCaseLifecycleStatus,
-  setClientLifecycleStatus,
-  setPropertyLifecycleStatus,
+  setRecordLifecycleWithAudit,
   setClientStageWithLog,
   setClientStage,
   updateImportJobMapping,
@@ -583,7 +581,12 @@ function safePropertyReturnTo(value: FormDataEntryValue | null): string {
   return fallback;
 }
 
-export async function setRecordLifecycleAction(formData: FormData) {
+export type RecordLifecycleActionFailure = {
+  status: "error";
+  code: "update_failed" | "not_found";
+};
+
+export async function setRecordLifecycleAction(formData: FormData): Promise<RecordLifecycleActionFailure> {
   const session = await requireTenantSession({ permission: "record.archive" });
   const entityType = String(formData.get("entityType") ?? "");
   const entityId = String(formData.get("entityId") ?? "").trim();
@@ -601,52 +604,38 @@ export async function setRecordLifecycleAction(formData: FormData) {
   }
 
   const status = statusRaw as LifecycleStatus;
-  let updated: unknown;
   if (entityType === "case") {
     await requireWritableCase(session, entityId);
-    updated = await setBrokerageCaseLifecycleStatus({
-      tenantId: session.tenant.id,
-      userId: session.user.id,
-      caseId: entityId,
-      status,
-      archivedById: session.user.id,
-    });
   } else if (entityType === "party") {
     await ensureClientOwnership(entityId, session);
-    updated = await setClientLifecycleStatus({
-      tenantId: session.tenant.id,
-      userId: session.user.id,
-      clientId: entityId,
-      status,
-      archivedById: session.user.id,
-    });
   } else {
     await ensurePropertyOwnership(entityId, session);
-    updated = await setPropertyLifecycleStatus({
+  }
+
+  let updated: Awaited<ReturnType<typeof setRecordLifecycleWithAudit>>;
+  try {
+    updated = await setRecordLifecycleWithAudit({
       tenantId: session.tenant.id,
-      propertyId: entityId,
+      userId: session.user.id,
+      entityType,
+      entityId,
       status,
       archivedById: session.user.id,
     });
+  } catch {
+    return { status: "error", code: "update_failed" };
   }
 
-  if (!updated) throw new Error("对象不存在或无权操作。");
-
-  const targetType: "case" | "client" | "property" = entityType === "party" ? "client" : entityType;
-  await addAuditLog({
-    actorId: session.user.id,
-    tenantId: session.tenant.id,
-    action: status === "archived" ? "record_archived" : "record_restored",
-    targetType,
-    targetId: entityId,
-    message: status === "archived" ? "记录已归档。" : "记录已恢复。",
-  });
+  if (!updated) return { status: "error", code: "not_found" };
 
   revalidatePath("/organize-center");
   revalidatePath("/parties");
   revalidatePath("/properties");
   revalidatePath("/");
-  redirect(safeReturnTo(formData.get("returnTo"), "/organize-center"));
+  redirect(withFlash(
+    safeReturnTo(formData.get("returnTo"), "/organize-center"),
+    status === "archived" ? "record_archived" : "record_restored",
+  ));
 }
 
 async function ensureClientOwnership(clientId: string, session: TenantSession) {

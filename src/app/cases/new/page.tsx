@@ -6,8 +6,9 @@ import {
 import { CaseAssociationDraft } from "@/components/case-association-draft";
 import { listClientsForContext, listPropertiesForContext } from "@/lib/data";
 import { getLocale } from "@/lib/locale";
-import { requireTenantSession } from "@/lib/tenant-session";
+import { TenantSessionError, requireTenantSession } from "@/lib/tenant-session";
 import { createRequestContext } from "@/lib/visibility-resolver";
+import { notFound, redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
@@ -46,11 +47,23 @@ const copy = {
 } as const;
 
 export default async function NewCasePage({ searchParams }: NewCasePageProps) {
-  const [locale, session, params] = await Promise.all([
+  const [locale, params] = await Promise.all([
     getLocale(),
-    requireTenantSession({ permission: "case.create" }),
     searchParams ?? Promise.resolve({} as { from?: string }),
   ]);
+  const returnTo = params.from === "entry" ? "/cases/new?from=entry" : "/cases/new";
+  let session;
+  try {
+    session = await requireTenantSession({ permission: "case.create" });
+  } catch (error) {
+    if (error instanceof TenantSessionError && error.code === "tenant_selection_required") {
+      redirect(`/workspace?reason=tenant_selection_required&returnTo=${encodeURIComponent(returnTo)}`);
+    }
+    if (error instanceof TenantSessionError && ["permission_denied", "tenant_forbidden", "tenant_not_found", "user_not_found"].includes(error.code)) {
+      notFound();
+    }
+    throw error;
+  }
   const text = copy[locale];
   const requestContext = createRequestContext(session);
   const [visibleClients, visibleProperties] = await Promise.all([

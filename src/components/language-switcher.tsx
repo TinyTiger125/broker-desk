@@ -26,7 +26,7 @@ export function LanguageSwitcher({ locale, labels, label }: LanguageSwitcherProp
 
   return (
     <label
-      className={`inline-flex min-w-[9rem] items-center gap-2 rounded-lg border px-2 py-1 text-xs ${
+      className={`bd-inline-select-frame inline-flex min-w-[9rem] items-center gap-2 rounded-lg border px-2 py-1 text-xs ${
         failed ? "border-rose-200 bg-rose-50 text-rose-700" : "border-slate-200 bg-slate-50 text-slate-700"
       }`}
       title={failed ? "Language switch failed. Please try again." : undefined}

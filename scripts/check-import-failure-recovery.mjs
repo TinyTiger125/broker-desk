@@ -34,6 +34,7 @@ assert(processor.includes("requestId"), "failed import UI must display the opaqu
 assert(processor.includes("setStatus(\"submitting\")"), "failed import UI must provide a retry transition");
 assert(processor.includes("statusOnly"), "failed recovery must support a read-only status rehydration");
 assert(processor.includes("readOnlyStatus"), "status rehydration must not POST before an explicit retry");
-assert(notFound.includes("返回工作台"), "missing pages must provide a product recovery route");
+assert(notFound.includes("SystemStatePanel"), "missing pages must use the shared system-state panel");
+assert(notFound.includes('href="/"'), "missing pages must provide a product recovery route");
 
 console.log("[PASS] import failures stay in product recovery states with retry and request references");

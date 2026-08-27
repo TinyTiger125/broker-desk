@@ -108,6 +108,13 @@
 - 不把 WIP 整体合入，不单独提取会破坏完整用户流程的 hunk；不把生产 503、外部数据库失败或真实隧道行为伪称为通过。
 - TASK-003 的 A 和 TASK-004 前台流程 B 本地运行门禁已通过；不得把 B 扩展到 TASK-005～008。真实 OCR、生产认证、外部服务、生产数据库、双租户真实浏览器隔离和隧道仍由 TASK-019 验证；在这些检查前不得开放隧道。149 项专业分类、TASK-005～008 不得顺手迁入。
 
+## 2026-08-27 UI/UX Wave 0/1 当前状态
+
+- 当前唯一实施任务为 [`TASK-042`](../tasks/TASK-042.md)，唯一设计计划为 [`UIUX_DESIGN_SYSTEM_WAVE_0_1_PLAN_2026-08-26.md`](UIUX_DESIGN_SYSTEM_WAVE_0_1_PLAN_2026-08-26.md)。不再创建页面拆分任务或平行计划。
+- Wave 1 第一切片已在隔离工作树实现页面级组合层与 `/cases/new` 模板；TASK-041 业务合同保持为回归基线。当前仍未进入 `/cases/[id]` 或其他页面迁移。
+- 候选 `380101e` 已标记为 Superseded / Not Deployed；当前仅恢复 workflow 正式基线，并由 `package.json` 的 `prebuild` 消费 Layout 合同门。上一轮同步提交锁、Escape 实时锁、页面会话说明、loading 来源与路由拒绝合同均已收口，待新候选工程门和独立只读复核。真实 1440/768/390 浏览器证据尚未取得，不能将本地门等同于 Preview 或产品验收通过。
+- Production、Production migration、数据库内容和正式 main 均未操作；脏 checkout、`AGENTS.md` 自动生成块和历史未跟踪文件未纳入写集。
+
 ## Agent状态
 
 - MIG-005 按顺序使用 1 个实现 Agent 和 1 个独立审查 Agent，均已退出；MIG-007 检查点 A 和 B 均按顺序各使用 1 个实现 Agent 和 1 个独立审查 Agent，均已退出；TASK-023 最终证据审核复用 1 个独立审查 Agent，已退出；当前活跃 Agent 数量为 0。
