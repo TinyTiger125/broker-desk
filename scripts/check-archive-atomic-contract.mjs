@@ -849,8 +849,17 @@ function assertAction(text) {
   });
 
   const updated = declaration("updated");
-  assert(updated.initializer && ts.isAwaitExpression(updated.initializer), "composite lifecycle write is awaited");
-  const composite = updated.initializer.expression;
+  assert(!updated.initializer && updated.type?.getText(file) === "Awaited<ReturnType<typeof setRecordLifecycleWithAudit>>", "composite result has one typed predeclared binding");
+  const repositoryTry = statements.find(ts.isTryStatement);
+  assert(repositoryTry?.catchClause && !repositoryTry.finallyBlock, "composite lifecycle write has one bounded failure catch");
+  assert.equal(repositoryTry.tryBlock.statements.length, 1, "repository try contains only the composite assignment");
+  const compositeStatement = repositoryTry.tryBlock.statements[0];
+  assert(ts.isExpressionStatement(compositeStatement)
+    && ts.isBinaryExpression(compositeStatement.expression)
+    && compositeStatement.expression.operatorToken.kind === ts.SyntaxKind.EqualsToken
+    && compositeStatement.expression.left.getText(file) === "updated"
+    && ts.isAwaitExpression(compositeStatement.expression.right), "composite lifecycle write is assigned and awaited");
+  const composite = compositeStatement.expression.right.expression;
   assert(ts.isCallExpression(composite) && composite.expression.getText(file) === "setRecordLifecycleWithAudit", "action uses the composite primitive directly");
   assert.equal(composite.arguments.length, 1);
   const input = composite.arguments[0];
@@ -868,14 +877,14 @@ function assertAction(text) {
     status: "status",
     archivedById: "session.user.id",
   }, "composite receives the validated tenant, actor, entity and lifecycle values");
-  const compositeStatement = directStatement(fn.body, updated);
-  assertReachableStatement(fn.body, compositeStatement, "composite lifecycle write");
+  assertReachableStatement(fn.body, repositoryTry, "composite lifecycle write");
 
   const nullGuard = statements.find((statement) => ts.isIfStatement(statement) && nodeText(statement.expression, file) === "!updated");
   assert(nullGuard, "action keeps not-found guard after composite write");
-  assert(directThrow(nullGuard.thenStatement), "action not-found guard directly throws");
+  assert(ts.isReturnStatement(nullGuard.thenStatement)
+    && nullGuard.thenStatement.expression?.getText(file) === '{ status: "error", code: "not_found" }', "action not-found guard directly returns the typed safe failure");
   const nullGuardIndex = statements.indexOf(nullGuard);
-  assert(statements.indexOf(compositeStatement) < nullGuardIndex, "composite write precedes not-found guard");
+  assert(statements.indexOf(repositoryTry) < nullGuardIndex, "composite write precedes not-found guard");
   assertReachableStatement(fn.body, nullGuard, "not-found guard");
 
   const revalidations = statements.filter(
@@ -931,7 +940,13 @@ function assertAction(text) {
   const splitWriterReferences = allDescendants(fn.body, (node) => ts.isIdentifier(node) && splitWriterNames.has(node.text));
   assert.equal(splitWriterReferences.length, 0, "action cannot directly, indirectly or through an alias reference split lifecycle/audit writers");
   const actionMutations = allDescendants(fn.body, isMutationExpression);
-  assert.equal(actionMutations.length, 0, "action performs no assignment, compound, increment, delete or destructuring mutation of its authorized inputs");
+  const resultAssignments = actionMutations.filter((mutation) => ts.isBinaryExpression(mutation)
+    && mutation.operatorToken.kind === ts.SyntaxKind.EqualsToken
+    && mutation.left.getText(file) === "updated"
+    && ts.isAwaitExpression(mutation.right)
+    && mutation.right.expression === liveCalls[0]);
+  assert.equal(resultAssignments.length, 1, "action has one direct assignment for the awaited composite result");
+  assert.equal(actionMutations.length, 1, "action performs no assignment, compound, increment, delete or destructuring mutation beyond its result binding");
   assert(ts.isAwaitExpression(liveCalls[0].parent) && liveCalls[0].parent.expression === liveCalls[0], "action's unique composite write is directly awaited");
 }
 
@@ -1145,27 +1160,27 @@ const splitAction = actionBody.replace("setRecordLifecycleWithAudit({", "setClie
 assert.notEqual(splitAction, actionBody, "action split mutation must hit");
 assert.throws(() => assertAction(splitAction), /composite primitive|split lifecycle/);
 
-const actionEarlyReturn = actionBody.replace("export async function setRecordLifecycleAction(formData: FormData) {", "export async function setRecordLifecycleAction(formData: FormData) {\n  if (true) return;");
+const actionEarlyReturn = actionBody.replace("export async function setRecordLifecycleAction(formData: FormData): Promise<RecordLifecycleActionFailure> {", "export async function setRecordLifecycleAction(formData: FormData): Promise<RecordLifecycleActionFailure> {\n  if (true) return;");
 assert.notEqual(actionEarlyReturn, actionBody, "action early-return mutation must hit");
 assert.throws(() => assertAction(actionEarlyReturn), /always-terminating/);
 
-const actionUnawaited = actionBody.replace("const updated = await setRecordLifecycleWithAudit({", "const updated = setRecordLifecycleWithAudit({");
+const actionUnawaited = actionBody.replace("updated = await setRecordLifecycleWithAudit({", "updated = setRecordLifecycleWithAudit({");
 assert.notEqual(actionUnawaited, actionBody, "action unawaited mutation must hit");
-assert.throws(() => assertAction(actionUnawaited), /composite lifecycle write is awaited/);
+assert.throws(() => assertAction(actionUnawaited), /composite lifecycle write is assigned and awaited/);
 
 const actionWrongArgument = actionBody.replace("    entityId,", '    entityId: "wrong",');
 assert.notEqual(actionWrongArgument, actionBody, "action wrong-argument mutation must hit");
 assert.throws(() => assertAction(actionWrongArgument), /validated tenant, actor, entity/);
 
-const actionFalseBranch = actionBody.replace("const updated = await setRecordLifecycleWithAudit({", "const updated = false && await setRecordLifecycleWithAudit({");
+const actionFalseBranch = actionBody.replace("updated = await setRecordLifecycleWithAudit({", "updated = false && await setRecordLifecycleWithAudit({");
 assert.notEqual(actionFalseBranch, actionBody, "action false-branch mutation must hit");
-assert.throws(() => assertAction(actionFalseBranch), /composite lifecycle write is awaited/);
+assert.throws(() => assertAction(actionFalseBranch), /composite lifecycle write is assigned and awaited/);
 
-const actionCompositeStatement = actionBody.match(/  const updated = await setRecordLifecycleWithAudit\(\{[\s\S]*?\n  \}\);/)?.[0];
+const actionCompositeStatement = actionBody.match(/    updated = await setRecordLifecycleWithAudit\(\{[\s\S]*?\n    \}\);/)?.[0];
 assert(actionCompositeStatement, "action dead-helper mutation source must exist");
-const actionDeadHelper = actionBody.replace(actionCompositeStatement, `  const dead = async () => ${actionCompositeStatement.trimStart().replace("const updated = ", "")};\n  const updated = null;`);
+const actionDeadHelper = actionBody.replace(actionCompositeStatement, `    const dead = async () => ${actionCompositeStatement.trimStart().replace("updated = ", "")};\n    updated = null;`);
 assert.notEqual(actionDeadHelper, actionBody, "action dead-helper mutation must hit");
-assert.throws(() => assertAction(actionDeadHelper), /composite lifecycle write is awaited/);
+assert.throws(() => assertAction(actionDeadHelper), /composite lifecycle write is assigned and awaited|repository try contains only/);
 
 const validationCondition = '!(entityType === "case" || entityType === "party" || entityType === "property") || !entityId || !isLifecycleStatus(statusRaw)';
 const validationStatement = `if (${validationCondition}) {\n    throw new Error("归档对象或状态无效。");\n  }`;
@@ -1222,7 +1237,7 @@ for (const [label, insertion] of [
 ]) {
   const mutated = actionBody.replace(actionCompositeStatement, `${actionCompositeStatement}\n${insertion}`);
   assert.notEqual(mutated, actionBody, `action ${label} mutation must hit`);
-  assert.throws(() => assertAction(mutated), /live query cannot hide|action calls only|cannot directly, indirectly|unique composite write/);
+  assert.throws(() => assertAction(mutated), /repository try contains only|live query cannot hide|action calls only|cannot directly, indirectly|unique composite write/);
 }
 
 const deadCorrectLiveSplit = actionBody.replace(
@@ -1230,7 +1245,7 @@ const deadCorrectLiveSplit = actionBody.replace(
   `  const deadCorrectComposite = async () => { ${actionCompositeStatement.trim()} };\n  const updated = await addAuditLog({});`,
 );
 assert.notEqual(deadCorrectLiveSplit, actionBody, "action dead-correct live-split mutation must hit");
-assert.throws(() => assertAction(deadCorrectLiveSplit), /live query cannot hide|composite primitive|action calls only|cannot directly, indirectly/);
+assert.throws(() => assertAction(deadCorrectLiveSplit), /repository try contains only|live query cannot hide|composite primitive|action calls only|cannot directly, indirectly/);
 
 for (const [label, mutation] of [
   ["tenant assignment", '  session.tenant.id = "tenant_other";'],
@@ -1242,7 +1257,7 @@ for (const [label, mutation] of [
 ]) {
   const mutated = actionBody.replace(actionCompositeStatement, `${mutation}\n${actionCompositeStatement}`);
   assert.notEqual(mutated, actionBody, `action ${label} mutation must hit`);
-  assert.throws(() => assertAction(mutated), /performs no assignment, compound, increment, delete or destructuring mutation/);
+  assert.throws(() => assertAction(mutated), /repository try contains only|performs no assignment, compound, increment, delete or destructuring mutation/);
 }
 
 const deadCorrectLiveSessionMutation = actionBody.replace(
@@ -1250,19 +1265,19 @@ const deadCorrectLiveSessionMutation = actionBody.replace(
   `  const deadCorrectIdentity = () => session.tenant.id;\n  session.tenant.id = "tenant_other";\n${actionCompositeStatement}`,
 );
 assert.notEqual(deadCorrectLiveSessionMutation, actionBody, "action dead-correct live-mutation source must hit");
-assert.throws(() => assertAction(deadCorrectLiveSessionMutation), /live query cannot hide|performs no assignment, compound, increment, delete or destructuring mutation/);
+assert.throws(() => assertAction(deadCorrectLiveSessionMutation), /repository try contains only|live query cannot hide|performs no assignment, compound, increment, delete or destructuring mutation/);
 
-const actionNullGuard = 'if (!updated) throw new Error("对象不存在或无权操作。");';
+const actionNullGuard = 'if (!updated) return { status: "error", code: "not_found" };';
 assert(actionBody.includes(actionNullGuard), "action not-found mutation source must exist");
 for (const [label, replacement] of [
   ["empty", "if (!updated) {}"],
-  ["nonthrow", "if (!updated) return;"],
-  ["reverse", 'if (updated) throw new Error("对象不存在或无权操作。");'],
+  ["undefined", "if (!updated) return;"],
+  ["reverse", 'if (updated) return { status: "error", code: "not_found" };'],
   ["dead correct live wrong", `const deadNullGuard = () => { ${actionNullGuard} };\n  if (!updated) {}`],
 ]) {
   const mutated = actionBody.replace(actionNullGuard, replacement);
   assert.notEqual(mutated, actionBody, `action not-found ${label} mutation must hit`);
-  assert.throws(() => assertAction(mutated), /not-found guard|directly throws|always-terminating/);
+  assert.throws(() => assertAction(mutated), /not-found guard|typed safe failure|always-terminating/);
 }
 
 const earlyMutation = memoryBody.replace('const auditId = makeId("audit");', 'item.lifecycleStatus = input.status;\n  const auditId = makeId("audit");');

@@ -581,7 +581,12 @@ function safePropertyReturnTo(value: FormDataEntryValue | null): string {
   return fallback;
 }
 
-export async function setRecordLifecycleAction(formData: FormData) {
+export type RecordLifecycleActionFailure = {
+  status: "error";
+  code: "update_failed" | "not_found";
+};
+
+export async function setRecordLifecycleAction(formData: FormData): Promise<RecordLifecycleActionFailure> {
   const session = await requireTenantSession({ permission: "record.archive" });
   const entityType = String(formData.get("entityType") ?? "");
   const entityId = String(formData.get("entityId") ?? "").trim();
@@ -607,16 +612,21 @@ export async function setRecordLifecycleAction(formData: FormData) {
     await ensurePropertyOwnership(entityId, session);
   }
 
-  const updated = await setRecordLifecycleWithAudit({
-    tenantId: session.tenant.id,
-    userId: session.user.id,
-    entityType,
-    entityId,
-    status,
-    archivedById: session.user.id,
-  });
+  let updated: Awaited<ReturnType<typeof setRecordLifecycleWithAudit>>;
+  try {
+    updated = await setRecordLifecycleWithAudit({
+      tenantId: session.tenant.id,
+      userId: session.user.id,
+      entityType,
+      entityId,
+      status,
+      archivedById: session.user.id,
+    });
+  } catch {
+    return { status: "error", code: "update_failed" };
+  }
 
-  if (!updated) throw new Error("对象不存在或无权操作。");
+  if (!updated) return { status: "error", code: "not_found" };
 
   revalidatePath("/organize-center");
   revalidatePath("/parties");

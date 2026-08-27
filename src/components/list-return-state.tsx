@@ -115,6 +115,14 @@ export function rememberListReturnIntent({ listUrl, preserveExisting = false, sc
   });
 }
 
+export function clearListReturnIntent({ listUrl, scope }: Pick<ListReturnIntent, "listUrl" | "scope">): boolean {
+  const canonicalUrl = canonicalListUrl(listUrl);
+  if (!canonicalUrl) return false;
+  const key = storageKey(scope, canonicalUrl);
+  clearStoredState(key);
+  return true;
+}
+
 function topOcclusionBoundary() {
   let bottom = 0;
   for (const candidate of document.querySelectorAll<HTMLElement>(TOP_OCCLUDER_SELECTOR)) {

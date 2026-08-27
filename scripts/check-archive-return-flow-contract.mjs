@@ -510,21 +510,21 @@ assert.notEqual(deadFlash, actions, "success redirect mutation target must exist
 assert.throws(() => assertLifecycleSuccessRedirect(deadFlash), /success redirect|withFlash/);
 
 const buttonSource = read("src/components/archive-record-button.tsx");
-const rememberBlock = `        rememberListReturnIntent({
-          listUrl: returnTo,
-          scope: returnStateScope,
-          triggerKey: returnFocusKey,
-          preserveExisting: preserveExistingReturnState,
-        });`;
+const rememberBlock = `          rememberListReturnIntent({
+            listUrl: returnTo,
+            scope: returnStateScope,
+            triggerKey: returnFocusKey,
+            preserveExisting: preserveExistingReturnState,
+          });`;
 assert.ok(buttonSource.includes(rememberBlock), "button intent mutation target must exist");
 assert.throws(() => assertArchiveButtonIntent(buttonSource.replace(rememberBlock, `{false && (() => { ${rememberBlock.trim()} })()}`)), /one direct live/);
-const movedBeforeConfirm = buttonSource.replace(rememberBlock, "").replace("        if (!window.confirm(confirmMessage)) return;", `${rememberBlock}\n        if (!window.confirm(confirmMessage)) return;`);
+const movedBeforeConfirm = buttonSource.replace(rememberBlock, "").replace("          if (!window.confirm(confirmMessage)) return;", `${rememberBlock}\n          if (!window.confirm(confirmMessage)) return;`);
 assert.throws(() => assertArchiveButtonIntent(movedBeforeConfirm), /after confirmation/);
-const afterConfirmReturn = buttonSource.replace("        if (!window.confirm(confirmMessage)) return;", "        if (!window.confirm(confirmMessage)) return;\n        if (true) return;");
+const afterConfirmReturn = buttonSource.replace("          if (!window.confirm(confirmMessage)) return;", "          if (!window.confirm(confirmMessage)) return;\n          if (true) return;");
 assert.throws(() => assertArchiveButtonIntent(afterConfirmReturn), /return intent cannot follow a static terminator/);
-const afterConfirmThrow = buttonSource.replace("        if (!window.confirm(confirmMessage)) return;", '        if (!window.confirm(confirmMessage)) return;\n        throw new Error("synthetic stop");');
+const afterConfirmThrow = buttonSource.replace("          if (!window.confirm(confirmMessage)) return;", '          if (!window.confirm(confirmMessage)) return;\n          throw new Error("synthetic stop");');
 assert.throws(() => assertArchiveButtonIntent(afterConfirmThrow), /return intent cannot follow a static terminator/);
-const afterConfirmBothTerminate = buttonSource.replace("        if (!window.confirm(confirmMessage)) return;", '        if (!window.confirm(confirmMessage)) return;\n        if (syntheticCondition) return; else throw new Error("synthetic stop");');
+const afterConfirmBothTerminate = buttonSource.replace("          if (!window.confirm(confirmMessage)) return;", '          if (!window.confirm(confirmMessage)) return;\n          if (syntheticCondition) return; else throw new Error("synthetic stop");');
 assert.throws(() => assertArchiveButtonIntent(afterConfirmBothTerminate), /return intent cannot follow a static terminator/);
 assert.throws(() => assertArchiveButtonIntent(injectStaticEarlyReturn("src/components/archive-record-button.tsx", buttonSource, "ArchiveRecordButton")), /static terminator/);
 
