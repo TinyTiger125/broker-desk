@@ -28,7 +28,7 @@ const expectedCopy = {
     loading: "読み込んでいます",
     requestId: "リクエスト番号",
     retry: "再試行",
-    back: "ワークスペースに戻る",
+    back: "ワークスペース選択に戻る",
   },
   zh: {
     notFoundTitle: "页面未找到",
@@ -40,7 +40,7 @@ const expectedCopy = {
     loading: "正在加载",
     requestId: "请求编号",
     retry: "重试",
-    back: "返回工作台",
+    back: "返回工作区选择",
   },
   ko: {
     notFoundTitle: "페이지를 찾을 수 없습니다",
@@ -52,7 +52,7 @@ const expectedCopy = {
     loading: "불러오는 중입니다",
     requestId: "요청 번호",
     retry: "다시 시도",
-    back: "워크스페이스로 돌아가기",
+    back: "워크스페이스 선택으로 돌아가기",
   },
 };
 
@@ -180,7 +180,7 @@ for (const [key, kind] of [["routeError", "route"], ["globalError", "global"]]) 
   const resets = jsxElements(tree, "button").filter((node) => attributeText(node, "onClick").includes("reset"));
   assert.equal(resets.length, 1, `${kind} error must expose one reset action`);
   assert(hasTouchTarget(resets[0]), `${kind} reset action must provide a 44px touch target`);
-  const backLinks = jsxElements(tree, "Link").filter((node) => attributeText(node, "href") === '"/"');
+  const backLinks = jsxElements(tree, "Link").filter((node) => attributeText(node, "href") === '"/workspace"');
   assert.equal(backLinks.length, 1, `${kind} error must expose one workspace recovery link`);
   assert(hasTouchTarget(backLinks[0]), `${kind} back action must provide a 44px touch target`);
   if (key === "routeError") assert.equal(jsxElements(tree, "main").length, 0, "route error must not nest a main landmark inside RootLayout");
@@ -195,7 +195,7 @@ for (const [key, kind] of [["routeError", "route"], ["globalError", "global"]]) 
 const notFoundTree = parseTsx("notFound");
 assert.equal(jsxElements(notFoundTree, "SystemStatePanel").length, 1, "not-found must use one shared system-state shell");
 assert.equal(jsxElements(notFoundTree, "main").length, 0, "not-found must not nest a main landmark inside RootLayout");
-const notFoundBackLinks = jsxElements(notFoundTree, "Link").filter((node) => attributeText(node, "href") === '"/"');
+const notFoundBackLinks = jsxElements(notFoundTree, "Link").filter((node) => attributeText(node, "href") === '"/workspace"');
 assert.equal(notFoundBackLinks.length, 1, "not-found must expose one workspace recovery link");
 assert(hasTouchTarget(notFoundBackLinks[0]), "not-found recovery action must provide a 44px touch target");
 

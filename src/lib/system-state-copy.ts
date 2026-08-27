@@ -40,7 +40,7 @@ export const SYSTEM_STATE_COPY: Record<SystemStateLocale, SystemStateCopy> = {
     loading: "読み込んでいます",
     requestId: "リクエスト番号",
     retry: "再試行",
-    back: "ワークスペースに戻る",
+    back: "ワークスペース選択に戻る",
   },
   zh: {
     notFoundTitle: "页面未找到",
@@ -52,7 +52,7 @@ export const SYSTEM_STATE_COPY: Record<SystemStateLocale, SystemStateCopy> = {
     loading: "正在加载",
     requestId: "请求编号",
     retry: "重试",
-    back: "返回工作台",
+    back: "返回工作区选择",
   },
   ko: {
     notFoundTitle: "페이지를 찾을 수 없습니다",
@@ -64,7 +64,7 @@ export const SYSTEM_STATE_COPY: Record<SystemStateLocale, SystemStateCopy> = {
     loading: "불러오는 중입니다",
     requestId: "요청 번호",
     retry: "다시 시도",
-    back: "워크스페이스로 돌아가기",
+    back: "워크스페이스 선택으로 돌아가기",
   },
 };
 

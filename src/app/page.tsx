@@ -3,7 +3,9 @@ import { listBrokerageCases } from "@/lib/data";
 import { formatDate } from "@/lib/format";
 import { listHubImportJobs, type HubImportJobItem } from "@/lib/hub";
 import { getLocale, type Locale } from "@/lib/locale";
-import { requireTenantSession } from "@/lib/tenant-session";
+import { getHomeTenantSelectionRecoveryPath } from "@/lib/tenant-recovery";
+import { requireTenantSession, TenantSessionError } from "@/lib/tenant-session";
+import { redirect } from "next/navigation";
 import { localizeDemoBrokerageCase } from "@/lib/demo-localization";
 
 export const dynamic = "force-dynamic";
@@ -146,11 +148,20 @@ function sourceJobHref(item: HubImportJobItem, cases: Array<{ id: string; source
 }
 
 export default async function HomePage({ searchParams }: HomePageProps) {
-  const [params, locale, session] = await Promise.all([
+  const [params, locale] = await Promise.all([
     searchParams ? searchParams : Promise.resolve(undefined),
     getLocale(),
-    requireTenantSession({ permission: "tenant.read" }),
   ]);
+  let session;
+  try {
+    session = await requireTenantSession({ permission: "tenant.read" });
+  } catch (error) {
+    if (error instanceof TenantSessionError) {
+      const recoveryPath = getHomeTenantSelectionRecoveryPath(error.code);
+      if (recoveryPath) redirect(recoveryPath);
+    }
+    throw error;
+  }
   const copy = copyByLocale[locale];
   const searchQuery = params?.q?.trim() ?? "";
   const context = { userId: session.user.id, tenantId: session.tenant.id };

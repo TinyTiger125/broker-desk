@@ -47,7 +47,7 @@ export default function RouteError({ error, reset }: RouteErrorProps) {
             {view.retry}
           </button>
           <Link
-            href="/"
+            href="/workspace"
             className="inline-flex min-h-11 items-center rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
           >
             {view.back}
