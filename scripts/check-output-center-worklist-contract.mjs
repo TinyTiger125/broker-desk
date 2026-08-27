@@ -3,14 +3,45 @@ import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { compile } from "tailwindcss";
 
 const require = createRequire(import.meta.url);
 const ts = require("typescript");
+const { Scanner } = require("@tailwindcss/oxide");
 const root = fileURLToPath(new URL("..", import.meta.url));
 const pagePath = resolve(root, "src/app/output-center/page.tsx");
 const loadingPath = resolve(root, "src/app/output-center/loading.tsx");
 const page = readFileSync(pagePath, "utf8");
 const loading = readFileSync(loadingPath, "utf8");
+
+const focusVariant = ["focus", "visible"].join("-");
+const outlineUtility = ["out", "line"].join("");
+const semanticFocusClasses = [
+  `${focusVariant}:${outlineUtility}`,
+  `${focusVariant}:${outlineUtility}-[${["length", "var"].join(":")}(--bd-focus-ring-width)]`,
+  `${focusVariant}:${outlineUtility}-[${["color", "var"].join(":")}(--bd-focus-ring-color)]`,
+  `${focusVariant}:${outlineUtility}-offset-[var(--bd-focus-ring-offset)]`,
+];
+const semanticFocusClassText = semanticFocusClasses.join(" ");
+const invalidFocusShorthandClass = [
+  "focus-visible:outline-[var(--bd-focus-ring-width)",
+  "_solid_var(--bd-focus-ring-color)]",
+].join("");
+const focusCompiler = await compile("@tailwind utilities;", { base: root, onDependency() {} });
+const semanticFocusCss = focusCompiler.build(semanticFocusClasses);
+assert.match(semanticFocusCss, /outline-style:\s*var\(--tw-outline-style\)/, "compiled semantic focus utilities must set outline style");
+assert.match(semanticFocusCss, /outline-width:\s*var\(--bd-focus-ring-width\)/, "compiled semantic focus utilities must set tokenized outline width");
+assert.match(semanticFocusCss, /outline-color:\s*var\(--bd-focus-ring-color\)/, "compiled semantic focus utilities must set tokenized outline color");
+assert.match(semanticFocusCss, /outline-offset:\s*var\(--bd-focus-ring-offset\)/, "compiled semantic focus utilities must set tokenized outline offset");
+assert(
+  semanticFocusCss.lastIndexOf("outline-width: var(--bd-focus-ring-width)") > semanticFocusCss.lastIndexOf("outline-width: 1px"),
+  "compiled tokenized outline width must override the base outline utility width",
+);
+const testFileCandidates = new Set(new Scanner({ sources: [] }).scanFiles([{ content: readFileSync(fileURLToPath(import.meta.url), "utf8"), extension: "mjs" }]));
+for (const candidate of semanticFocusClasses) {
+  assert(!testFileCandidates.has(candidate), "the contract source must not inject a production focus candidate into the Tailwind scan");
+}
+assert(!page.includes(invalidFocusShorthandClass), "output-center must not use the ambiguous invalid outline shorthand utility");
 
 const expectedCopy = {
   ja: {
@@ -185,8 +216,9 @@ function assertLocaleTernary(node, expected, tree, label) {
 }
 
 function assertSemanticFocusClass(classText, label) {
-  for (const token of ["--bd-focus-ring-width", "--bd-focus-ring-color", "--bd-focus-ring-offset"]) {
-    assert(classText.includes(token), `${label} must use the global semantic focus ${token}`);
+  assert(!classText.includes(invalidFocusShorthandClass), `${label} must reject the ambiguous invalid outline shorthand utility`);
+  for (const className of semanticFocusClasses) {
+    assert(classText.includes(className), `${label} must use compiled semantic focus utility ${className}`);
   }
 }
 
@@ -641,7 +673,7 @@ for (const component of ["PageFrame", "PageHeader", "WorklistShell", "StateSurfa
 }
 assert.equal(visit(loadingReturn, (node) => ts.isStringLiteral(node) && ["caseId", "templateId", "missingCount", "downloadHref", "canDownload"].includes(node.text)).length, 0, "loading boundary must not fabricate domain state or eligibility");
 
-const validSynthetic = `async function OutputCenterPage(){const documentTreeCopy={externalHint:"hint"};const documentTreeGroupHref=()=>"/group";const documentTreeGroups=[{title:"group",status:"status",items:[{id:"guarantee_application",label:"task",description:"description",status:"status",selected:true,external:true}]}];const activeDocumentTreeGroup=documentTreeGroups[0];return <WorklistShell items={<>{documentTreeGroups.map((group)=><Link href={documentTreeGroupHref(group.id)} className={\`flex flex-wrap border-blue-200 bg-blue-50/50 focus-visible:outline-[var(--bd-focus-ring-width)_solid_var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]\`}><span className="break-words leading-5 [overflow-wrap:anywhere]">{group.title}</span><span className="break-words text-xs leading-4 [overflow-wrap:anywhere]">{group.status}</span></Link>)}{activeDocumentTreeGroup.items.map((item)=>{const itemClass=\`focus-visible:outline-[var(--bd-focus-ring-width)_solid_var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)] \${item.selected?"border-[#002FA7] bg-blue-50 shadow-sm":"border-slate-200"}\`;return <a href="/official.pdf" target="_blank" rel="noreferrer" className={itemClass}><div className="flex flex-wrap"><span className="break-words leading-5 [overflow-wrap:anywhere]">{item.label}</span><span className="break-words leading-5 [overflow-wrap:anywhere]">{item.description}</span><span className="break-words text-xs leading-4 [overflow-wrap:anywhere]">{item.status}</span>{item.external?<span className="text-xs">{documentTreeCopy.externalHint}<span aria-hidden="true">open_in_new</span></span>:null}</div></a>})}</>} detail={<StateSurface/>}/>;}`;
+const validSynthetic = `async function OutputCenterPage(){const documentTreeCopy={externalHint:"hint"};const documentTreeGroupHref=()=>"/group";const documentTreeGroups=[{title:"group",status:"status",items:[{id:"guarantee_application",label:"task",description:"description",status:"status",selected:true,external:true}]}];const activeDocumentTreeGroup=documentTreeGroups[0];return <WorklistShell items={<>{documentTreeGroups.map((group)=><Link href={documentTreeGroupHref(group.id)} className={\`flex flex-wrap border-blue-200 bg-blue-50/50 ${semanticFocusClassText}\`}><span className="break-words leading-5 [overflow-wrap:anywhere]">{group.title}</span><span className="break-words text-xs leading-4 [overflow-wrap:anywhere]">{group.status}</span></Link>)}{activeDocumentTreeGroup.items.map((item)=>{const itemClass=\`${semanticFocusClassText} \${item.selected?"border-[#002FA7] bg-blue-50 shadow-sm":"border-slate-200"}\`;return <a href="/official.pdf" target="_blank" rel="noreferrer" className={itemClass}><div className="flex flex-wrap"><span className="break-words leading-5 [overflow-wrap:anywhere]">{item.label}</span><span className="break-words leading-5 [overflow-wrap:anywhere]">{item.description}</span><span className="break-words text-xs leading-4 [overflow-wrap:anywhere]">{item.status}</span>{item.external?<span className="text-xs">{documentTreeCopy.externalHint}<span aria-hidden="true">open_in_new</span></span>:null}</div></a>})}</>} detail={<StateSurface/>}/>;}`;
 assert.doesNotThrow(() => analyzeLiveWorklist(validSynthetic, "valid-synthetic.tsx"), "live semantic Worklist fixture must pass the analyzer");
 for (const [name, invalid] of [
   ["missing semantic focus", validSynthetic.replaceAll("var(--bd-focus-ring-color)", "red")],
@@ -666,7 +698,7 @@ for (const [index, invalid] of invalidSynthetics.entries()) {
 }
 const duplicatePageCurrentSynthetic = `async function OutputCenterPage(){const documentTreeGroups=[];const activeDocumentTreeGroup={items:[]};return <WorklistShell items={<>{documentTreeGroups.map((group)=><Link aria-current={group.selected?"page":undefined}/>)}{activeDocumentTreeGroup.items.map((item)=><Link aria-current={item.selected?"page":undefined}/>)}</>} detail={<StateSurface/>}/>;}`;
 assert.throws(() => analyzeLivePageCurrent(duplicatePageCurrentSynthetic, "duplicate-page-current.tsx"), "selected group plus selected task must fail the mutually exclusive current gate");
-const validSummarySynthetic = `async function OutputCenterPage(){const shouldShowGuaranteeFlow=true;const selectedCase={};const copy={guaranteeDetailToggle:"details"};return <>{shouldShowGuaranteeFlow && selectedCase ? <details><summary className="inline-flex min-h-11 items-center px-3 py-2 leading-5 focus-visible:outline-[var(--bd-focus-ring-width)_solid_var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]"><span className="group-open:rotate-180 motion-reduce:transition-none"/><span className="break-words">{copy.guaranteeDetailToggle}</span></summary></details> : null}</>;}`;
+const validSummarySynthetic = `async function OutputCenterPage(){const shouldShowGuaranteeFlow=true;const selectedCase={};const copy={guaranteeDetailToggle:"details"};return <>{shouldShowGuaranteeFlow && selectedCase ? <details><summary className="inline-flex min-h-11 items-center px-3 py-2 leading-5 ${semanticFocusClassText}"><span className="group-open:rotate-180 motion-reduce:transition-none"/><span className="break-words">{copy.guaranteeDetailToggle}</span></summary></details> : null}</>;}`;
 assert.doesNotThrow(() => assertSelectedCaseSummary(validSummarySynthetic, "valid-summary.tsx"), "complete selected-case disclosure fixture must pass");
 for (const [index, invalidSummary] of [
   validSummarySynthetic.replace(" min-h-11", ""),

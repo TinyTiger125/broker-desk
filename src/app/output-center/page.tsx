@@ -934,7 +934,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                 <Link
                   key={link.id}
                   href={link.href}
-                  className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 focus-visible:outline-[var(--bd-focus-ring-width)_solid_var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]"
+                  className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]"
                 >
                   <span className="material-symbols-outlined text-[14px]">build</span>
                   {link.label}
@@ -961,7 +961,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                     key={`document-tree-nav-${group.id}`}
                     href={documentTreeGroupHref(group.id)}
                     aria-current={groupOwnsCurrent ? "page" : undefined}
-                    className={`flex min-h-11 flex-wrap items-start justify-between gap-3 rounded-lg border px-3 py-3 transition focus-visible:outline-[var(--bd-focus-ring-width)_solid_var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)] ${
+                    className={`flex min-h-11 flex-wrap items-start justify-between gap-3 rounded-lg border px-3 py-3 transition focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)] ${
                       selected ? "border-blue-200 bg-blue-50/50 text-slate-950" : "border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:bg-slate-50"
                     }`}
                   >
@@ -996,7 +996,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                 <div className="relative mt-3 grid gap-2 pl-5">
                   <span aria-hidden="true" className="absolute bottom-4 left-[7px] top-4 w-px bg-slate-200" />
                   {activeDocumentTreeGroup.items.map((item) => {
-                    const itemClass = `relative block rounded-lg border px-3 py-3 transition focus-visible:outline-[var(--bd-focus-ring-width)_solid_var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)] ${
+                    const itemClass = `relative block rounded-lg border px-3 py-3 transition focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)] ${
                       item.selected
                         ? "border-[#002FA7] bg-blue-50 shadow-sm"
                         : item.disabled
@@ -1074,7 +1074,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
           title={documentTreeCopy.templateRequired}
           description={copy.guaranteeLibraryRequired}
           action={(
-            <Link href="/templates" className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded bg-slate-950 px-4 py-2 text-sm font-black text-white hover:bg-slate-800 focus-visible:outline-[var(--bd-focus-ring-width)_solid_var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]">
+            <Link href="/templates" className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded bg-slate-950 px-4 py-2 text-sm font-black text-white hover:bg-slate-800 focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]">
               <span aria-hidden="true" className="material-symbols-outlined text-[18px]">library_books</span>
               {copy.guaranteeLibraryAction}
             </Link>
@@ -1102,13 +1102,13 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
           </div>
           <div className="grid gap-2 lg:min-w-[13rem]">
             {selectedCase ? (
-              <Link href={outputNextHref} className="inline-flex items-center justify-center gap-2 rounded bg-slate-950 px-4 py-3 text-sm font-black text-white hover:bg-slate-800 focus-visible:outline-[var(--bd-focus-ring-width)_solid_var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]">
+              <Link href={outputNextHref} className="inline-flex items-center justify-center gap-2 rounded bg-slate-950 px-4 py-3 text-sm font-black text-white hover:bg-slate-800 focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]">
                 <span className="material-symbols-outlined text-[18px]">{outputNextIcon}</span>
                 {outputNextLabel}
               </Link>
             ) : null}
             {selectedGuaranteeCanDownload ? (
-              <Link href={selectedGuaranteeDownloadHref} className="inline-flex items-center justify-center gap-2 rounded border border-slate-300 bg-white px-4 py-2 text-sm font-black text-slate-900 hover:bg-slate-50 focus-visible:outline-[var(--bd-focus-ring-width)_solid_var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]">
+              <Link href={selectedGuaranteeDownloadHref} className="inline-flex items-center justify-center gap-2 rounded border border-slate-300 bg-white px-4 py-2 text-sm font-black text-slate-900 hover:bg-slate-50 focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]">
                 <span className="material-symbols-outlined text-[18px]">download</span>
                 {copy.download}
               </Link>
@@ -1130,7 +1130,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                 <Link
                   key={caseItem.id}
                   href={`/output-center?caseId=${encodeURIComponent(caseItem.id)}&guaranteeTemplate=${encodeURIComponent(selectedGuaranteeTemplate.id)}`}
-                  className="min-h-32 rounded border border-slate-200 bg-white p-4 hover:border-[#002FA7] hover:bg-slate-50 focus-visible:outline-[var(--bd-focus-ring-width)_solid_var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]"
+                  className="min-h-32 rounded border border-slate-200 bg-white p-4 hover:border-[#002FA7] hover:bg-slate-50 focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <span className="min-w-0 flex-[1_1_12rem] break-words text-xs font-black leading-5 text-[#002FA7] [overflow-wrap:anywhere]">
@@ -1156,7 +1156,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
               title={copy.guaranteeNoCase}
               description={copy.guaranteeSelectCaseFirst}
               action={(
-                <Link href={outputNextHref} className="inline-flex min-h-11 items-center justify-center rounded bg-slate-950 px-4 py-2 text-sm font-black text-white hover:bg-slate-800 focus-visible:outline-[var(--bd-focus-ring-width)_solid_var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]">
+                <Link href={outputNextHref} className="inline-flex min-h-11 items-center justify-center rounded bg-slate-950 px-4 py-2 text-sm font-black text-white hover:bg-slate-800 focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]">
                   {copy.guaranteeCreateCase}
                 </Link>
               )}
@@ -1207,7 +1207,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                     ? previewHrefForGuaranteeField({ caseId: selectedCase.id, templateId: selectedGuaranteeTemplate.id, fieldKey: field.fieldKey })
                     : caseWorkbenchHrefForGuaranteeField({ caseId: selectedCase.id, templateId: selectedGuaranteeTemplate.id, fieldKey: field.fieldKey })
                 }
-                className="flex items-center gap-2 text-sm text-slate-800 hover:text-[#1960a3] hover:underline focus-visible:outline-[var(--bd-focus-ring-width)_solid_var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]"
+                className="flex items-center gap-2 text-sm text-slate-800 hover:text-[#1960a3] hover:underline focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]"
               >
                 <span className="material-symbols-outlined text-[16px] text-red-700">error</span>
                 {field.label}
@@ -1218,7 +1218,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
               <Link
                 key={`primary-draft-missing-${field.fieldKey}`}
                 href={selectedCaseDraftHref}
-                className="flex items-center gap-2 text-sm text-slate-800 hover:text-[#1960a3] hover:underline focus-visible:outline-[var(--bd-focus-ring-width)_solid_var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]"
+                className="flex items-center gap-2 text-sm text-slate-800 hover:text-[#1960a3] hover:underline focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]"
               >
                 <span className="material-symbols-outlined text-[16px] text-red-700">edit_note</span>
                 {field.label}
@@ -1234,7 +1234,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
       {shouldShowGuaranteeFlow && selectedCase ? (
       <section className="rounded border border-slate-300 bg-white p-4">
         <details className="group">
-          <summary className="inline-flex min-h-11 w-full cursor-pointer items-center gap-2 rounded px-3 py-2 text-sm font-bold leading-5 text-slate-900 [overflow-wrap:anywhere] focus-visible:outline-[var(--bd-focus-ring-width)_solid_var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]">
+          <summary className="inline-flex min-h-11 w-full cursor-pointer items-center gap-2 rounded px-3 py-2 text-sm font-bold leading-5 text-slate-900 [overflow-wrap:anywhere] focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]">
             <span aria-hidden="true" className="material-symbols-outlined text-[18px] transition-transform group-open:rotate-180 motion-reduce:transition-none">expand_more</span>
             <span className="min-w-0 break-words">{copy.guaranteeDetailToggle}</span>
           </summary>
@@ -1253,7 +1253,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                       {selectedCase ? (
                         <Link
                           href={selectedCaseDraftHref}
-                          className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-white px-2 py-1 text-[11px] font-bold text-emerald-800 hover:bg-emerald-50 focus-visible:outline-[var(--bd-focus-ring-width)_solid_var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]"
+                          className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-white px-2 py-1 text-[11px] font-bold text-emerald-800 hover:bg-emerald-50 focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]"
                         >
                           <span className="material-symbols-outlined text-[14px]">edit_note</span>
                           {copy.guaranteeFillInDraft}
@@ -1284,7 +1284,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                       {field.status !== "available" ? (
                         <Link
                           href={selectedCaseDraftHref}
-                          className="mt-3 inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-white px-2 py-1 text-[11px] font-bold text-emerald-800 hover:bg-emerald-50 focus-visible:outline-[var(--bd-focus-ring-width)_solid_var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]"
+                          className="mt-3 inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-white px-2 py-1 text-[11px] font-bold text-emerald-800 hover:bg-emerald-50 focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]"
                         >
                           <span className="material-symbols-outlined text-[14px]">edit_note</span>
                           {selectedCase ? copy.guaranteeFillInDraft : copy.guaranteeSelectCaseFirst}
@@ -1352,7 +1352,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                                       : caseWorkbenchHrefForGuaranteeField({ caseId: selectedCase.id, templateId: selectedGuaranteeTemplate.id, fieldKey: field.fieldKey })
                                     : "#guarantee-case-selector"
                                 }
-                                className="mt-3 inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-white px-2 py-1 text-[11px] font-bold text-indigo-800 hover:bg-indigo-50 focus-visible:outline-[var(--bd-focus-ring-width)_solid_var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]"
+                                className="mt-3 inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-white px-2 py-1 text-[11px] font-bold text-indigo-800 hover:bg-indigo-50 focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]"
                               >
                                 <span className="material-symbols-outlined text-[14px]">
                                   {isOutputSpecificGuaranteeField(field.fieldKey) ? "edit_note" : "fact_check"}
