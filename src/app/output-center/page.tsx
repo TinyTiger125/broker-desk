@@ -2,6 +2,7 @@ import Link from "next/link";
 import { generateOutputDocumentAction } from "@/app/actions";
 import { FormDraftAssist } from "@/components/form-draft-assist";
 import { GuaranteeTemplateSelector } from "@/components/guarantee-template-selector";
+import { PageFrame, PageHeader, StateSurface, WorklistShell } from "@/components/layout-system";
 import { PageFlashBanner } from "@/components/page-flash-banner";
 import { listBrokerageCasesForContext, listGuaranteeApplicationDrafts, listPropertiesForContext, listQuotationsForContext, listTenantGuaranteeTemplateInstalls } from "@/lib/data";
 import { formatCurrency, formatDate } from "@/lib/format";
@@ -26,6 +27,9 @@ const outputTypes: OutputDocType[] = ["property_overview", "proposal", "estimate
 const outputCenterCopy = {
   ja: {
     subtitle: "対象案件を選択し、出力テンプレートとプレビューへ進みます。",
+    taskCategory: "出力タスク",
+    chooseTaskTitle: "出力する文書を選択してください",
+    chooseTaskDescription: "タスク一覧から文書を選ぶと、必要な確認と次の操作が表示されます。",
     recentActivity: "最近の更新",
     newBatchOutput: "提案データを作成",
     selected: "選択中",
@@ -131,6 +135,9 @@ const outputCenterCopy = {
   },
   zh: {
     subtitle: "选择目标案件和输出范本，然后进入预览或下载。",
+    taskCategory: "输出任务",
+    chooseTaskTitle: "请选择需要输出的文书",
+    chooseTaskDescription: "从任务列表选择文书后，这里会显示所需确认和下一步操作。",
     recentActivity: "最近动态",
     newBatchOutput: "创建提案数据",
     selected: "已选择",
@@ -236,6 +243,9 @@ const outputCenterCopy = {
   },
   ko: {
     subtitle: "대상 안건을 선택하고 출력 템플릿과 미리보기로 이동합니다.",
+    taskCategory: "출력 작업",
+    chooseTaskTitle: "출력할 문서를 선택해 주세요",
+    chooseTaskDescription: "작업 목록에서 문서를 선택하면 필요한 확인과 다음 작업이 표시됩니다.",
     recentActivity: "최근 활동",
     newBatchOutput: "제안 데이터 작성",
     selected: "선택됨",
@@ -767,7 +777,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
       : locale === "ko"
         ? "열람 및 다운로드용입니다. 필요한 설정 확인 전에는 자동 생성 서식으로 사용하지 않습니다."
         : "閲覧・ダウンロード用です。必要な設定が確認されるまでは自動作成に使用しません。",
-    mainFlow: locale === "zh" ? "可生成" : locale === "ko" ? "생성 가능" : "作成可能",
+    taskCategory: copy.taskCategory,
     officialSource: locale === "zh" ? "官方原件" : locale === "ko" ? "공식 원본" : "公式原本",
     templateLibrary: locale === "zh" ? "先添加模板" : locale === "ko" ? "템플릿 추가 필요" : "テンプレートを追加",
     chooseCase: locale === "zh" ? "先选案件" : locale === "ko" ? "안건 선택" : "案件選択",
@@ -810,7 +820,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
       icon: "verified_user",
       title: documentTreeCopy.application,
       description: "",
-      status: hasInstalledGuaranteeTemplates ? documentTreeCopy.mainFlow : documentTreeCopy.templateLibrary,
+      status: hasInstalledGuaranteeTemplates ? documentTreeCopy.taskCategory : documentTreeCopy.templateLibrary,
       items: [
         {
           id: "guarantee_application",
@@ -822,7 +832,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
             ? selectedCase
               ? `/output-center?docGroup=application&doc=guarantee_application&caseId=${encodeURIComponent(selectedCase.id)}&guaranteeTemplate=${encodeURIComponent(selectedGuaranteeTemplate.id)}`
               : "/output-center?docGroup=application&doc=guarantee_application#guarantee-case-selector"
-            : "/templates",
+            : "/output-center?docGroup=application&doc=guarantee_application",
           selected: isGuaranteeDocumentSelected,
           status: guaranteeDocumentStatus,
         },
@@ -898,10 +908,8 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
   };
 
   return (
-    <div className="bd-page bd-output-page space-y-6">
-      <header className="bd-page-header">
-        <h1 className="text-3xl font-black tracking-tight text-slate-950">{copy.outputCenterTitle}</h1>
-      </header>
+    <PageFrame className="bd-page bd-output-page space-y-6">
+      <PageHeader title={copy.outputCenterTitle} description={copy.subtitle} />
       <PageFlashBanner message={flashMessage} />
       {issueMessages.length > 0 ? (
         <section className="rounded border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
@@ -934,40 +942,43 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
         </section>
       ) : null}
 
-      <section className="rounded border border-slate-300 bg-white">
-        <div className="border-b border-slate-200 p-4">
-          <h2 className="text-base font-black text-slate-950">{documentTreeCopy.title}</h2>
-        </div>
-        <div className="grid min-w-0 2xl:grid-cols-[minmax(14rem,17rem)_minmax(0,1fr)]">
-          <aside className="border-b border-slate-200 p-4 2xl:border-b-0 2xl:border-r">
+      <WorklistShell
+        aria-labelledby="output-task-heading"
+        controls={<h2 id="output-task-heading" className="text-base font-black text-slate-950">{documentTreeCopy.title}</h2>}
+        items={(
+          <section className="min-w-0">
+            <div className="grid min-w-0">
+          <nav aria-label={documentTreeCopy.title} className="border-b border-slate-200 p-4">
             <div className="grid gap-2">
               {documentTreeGroups.map((group) => {
                 const selected = group.id === selectedDocumentTreeGroupId;
+                const groupOwnsCurrent = selected && !group.items.some((item) => item.selected);
                 return (
                   <Link
                     key={`document-tree-nav-${group.id}`}
                     href={documentTreeGroupHref(group.id)}
-                    className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-3 transition ${
+                    aria-current={groupOwnsCurrent ? "page" : undefined}
+                    className={`flex min-h-11 flex-wrap items-start justify-between gap-3 rounded-lg border px-3 py-3 transition ${
                       selected ? "border-[#002FA7] bg-blue-50 text-slate-950" : "border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:bg-slate-50"
                     }`}
                   >
-                    <span className="flex min-w-0 items-center gap-2">
+                    <span className="flex min-w-0 flex-1 items-start gap-2">
                       <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${selected ? "bg-[#002FA7] text-white" : "bg-slate-100 text-[#002FA7]"}`}>
                         <span className="material-symbols-outlined text-[18px]" aria-hidden="true">{group.icon}</span>
                       </span>
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-black">{group.title}</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block break-words text-sm font-black leading-5 [overflow-wrap:anywhere]">{group.title}</span>
                         <span className="mt-0.5 block text-[11px] font-semibold text-slate-500">{group.items.length}</span>
                       </span>
                     </span>
-                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${selected ? "bg-slate-950 text-white" : "bg-slate-100 text-slate-600"}`}>
+                    <span className={`max-w-full break-words rounded-full px-2 py-0.5 text-[10px] font-black leading-4 [overflow-wrap:anywhere] ${selected ? "bg-slate-950 text-white" : "bg-slate-100 text-slate-600"}`}>
                       {group.status}
                     </span>
                   </Link>
                 );
               })}
             </div>
-          </aside>
+          </nav>
           <div className="min-w-0 space-y-5 p-4">
             {activeDocumentTreeGroup ? (
               <section key={`document-tree-group-${activeDocumentTreeGroup.id}`} id={`document-tree-${activeDocumentTreeGroup.id}`} className="scroll-mt-24">
@@ -1004,14 +1015,14 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                     const itemBody = (
                       <>
                         <span aria-hidden="true" className={markerClass} />
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-black text-slate-950">{item.label}</p>
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0 flex-[1_1_12rem]">
+                            <p className="break-words text-sm font-black leading-5 text-slate-950 [overflow-wrap:anywhere]">{item.label}</p>
                             {item.description ? (
-                              <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-slate-500">{item.description}</p>
+                              <p className="mt-1 break-words text-xs font-semibold leading-5 text-slate-500 [overflow-wrap:anywhere]">{item.description}</p>
                             ) : null}
                           </div>
-                          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-black ${statusClass}`}>
+                          <span className={`max-w-full break-words rounded-full px-2 py-0.5 text-[10px] font-black leading-4 [overflow-wrap:anywhere] ${statusClass}`}>
                             {item.status}
                           </span>
                         </div>
@@ -1022,7 +1033,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                         {itemBody}
                       </a>
                     ) : item.href && !item.disabled ? (
-                      <Link key={item.id} href={item.href} className={itemClass}>
+                      <Link key={item.id} href={item.href} className={itemClass} aria-current={item.selected ? "page" : undefined}>
                         {itemBody}
                       </Link>
                     ) : (
@@ -1035,19 +1046,31 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
               </section>
             ) : null}
           </div>
-        </div>
-      </section>
+            </div>
+          </section>
+        )}
+        detail={(
+          <div className="space-y-6">
+            {!isGuaranteeDocumentSelected ? (
+              <StateSurface
+                tone="empty"
+                title={copy.chooseTaskTitle}
+                description={copy.chooseTaskDescription}
+              />
+            ) : null}
 
       {isGuaranteeDocumentSelected && !hasInstalledGuaranteeTemplates ? (
-        <section className="border border-blue-200 bg-[#edf2fd] px-5 py-5">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <p className="max-w-2xl text-sm leading-6 text-slate-700">{copy.guaranteeLibraryRequired}</p>
-            <Link href="/templates" className="inline-flex shrink-0 items-center justify-center gap-2 rounded bg-slate-950 px-4 py-2 text-sm font-black text-white hover:bg-slate-800">
+        <StateSurface
+          tone="empty"
+          title={documentTreeCopy.templateLibrary}
+          description={copy.guaranteeLibraryRequired}
+          action={(
+            <Link href="/templates" className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded bg-slate-950 px-4 py-2 text-sm font-black text-white hover:bg-slate-800">
               <span aria-hidden="true" className="material-symbols-outlined text-[18px]">library_books</span>
               {copy.guaranteeLibraryAction}
             </Link>
-          </div>
-        </section>
+          )}
+        />
       ) : null}
 
       {shouldShowGuaranteeFlow ? (
@@ -1055,7 +1078,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <p className="text-xs font-black text-[#002FA7]">{copy.guaranteeCase}</p>
-            <h2 className="mt-1 text-xl font-black text-slate-950">
+            <h2 className="mt-1 break-words text-xl font-black leading-7 text-slate-950 [overflow-wrap:anywhere]">
               {selectedCase?.caseTitle ?? (hasAvailableCases ? copy.guaranteeSelectCaseFirst : copy.guaranteeNoCase)}
             </h2>
             {selectedCase ? (
@@ -1069,7 +1092,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
             ) : null}
           </div>
           <div className="grid gap-2 lg:min-w-[13rem]">
-            {selectedCase || !hasAvailableCases ? (
+            {selectedCase ? (
               <Link href={outputNextHref} className="inline-flex items-center justify-center gap-2 rounded bg-slate-950 px-4 py-3 text-sm font-black text-white hover:bg-slate-800">
                 <span className="material-symbols-outlined text-[18px]">{outputNextIcon}</span>
                 {outputNextLabel}
@@ -1100,17 +1123,17 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                   href={`/output-center?caseId=${encodeURIComponent(caseItem.id)}&guaranteeTemplate=${encodeURIComponent(selectedGuaranteeTemplate.id)}`}
                   className="min-h-32 rounded border border-slate-200 bg-white p-4 hover:border-[#002FA7] hover:bg-slate-50"
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="text-xs font-black text-[#002FA7]">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <span className="min-w-0 flex-[1_1_12rem] break-words text-xs font-black leading-5 text-[#002FA7] [overflow-wrap:anywhere]">
                       {copy.caseCardUpdated}: {formatDate(caseItem.updatedAt, locale)}
                     </span>
-                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-black ${
+                    <span className={`max-w-full break-words rounded-full px-2 py-0.5 text-[10px] font-black leading-4 [overflow-wrap:anywhere] ${
                       missingCount > 0 ? "bg-rose-100 text-rose-700" : "bg-emerald-100 text-emerald-800"
                     }`}>
                       {missingCount > 0 ? `${copy.caseMissingItems}: ${missingCount}` : copy.caseReadyForPreview}
                     </span>
                   </div>
-                  <span className="mt-2 block truncate text-base font-black text-slate-950">{caseItem.caseTitle}</span>
+                  <span className="mt-2 block break-words text-base font-black leading-6 text-slate-950 [overflow-wrap:anywhere]">{caseItem.caseTitle}</span>
                   <span className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-slate-600">
                     <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
                     {copy.chooseThisCase}
@@ -1119,9 +1142,16 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
               ))}
             </div>
           ) : (
-            <div className="p-4">
-              <p className="text-sm font-semibold text-slate-600">{copy.guaranteeNoCase}</p>
-            </div>
+            <StateSurface
+              tone="empty"
+              title={copy.guaranteeNoCase}
+              description={copy.guaranteeSelectCaseFirst}
+              action={(
+                <Link href={outputNextHref} className="inline-flex min-h-11 items-center justify-center rounded bg-slate-950 px-4 py-2 text-sm font-black text-white hover:bg-slate-800">
+                  {copy.guaranteeCreateCase}
+                </Link>
+              )}
+            />
           )}
         </section>
       ) : null}
@@ -1194,8 +1224,11 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
 
       {shouldShowGuaranteeFlow && selectedCase ? (
       <section className="rounded border border-slate-300 bg-white p-4">
-        <details>
-          <summary className="cursor-pointer text-sm font-bold text-slate-900">{copy.guaranteeDetailToggle}</summary>
+        <details className="group">
+          <summary className="inline-flex min-h-11 w-full cursor-pointer items-center gap-2 rounded px-3 py-2 text-sm font-bold leading-5 text-slate-900 [overflow-wrap:anywhere] focus-visible:outline-[var(--bd-focus-ring-width)_solid_var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]">
+            <span aria-hidden="true" className="material-symbols-outlined text-[18px] transition-transform group-open:rotate-180 motion-reduce:transition-none">expand_more</span>
+            <span className="min-w-0 break-words">{copy.guaranteeDetailToggle}</span>
+          </summary>
         <div className="mt-4 min-w-0 space-y-4">
             {selectedGuaranteeDraftReadiness.fields.length > 0 ? (
               <section className="rounded-xl border border-emerald-200 bg-white">
@@ -1337,6 +1370,10 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
         </details>
       </section>
       ) : null}
+
+          </div>
+        )}
+      />
 
       {shouldShowLegacyOutputFlow ? (
       <section id={legacySectionId} className="grid gap-8 2xl:grid-cols-12">
@@ -1752,6 +1789,6 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
         </div>
       </section>
       ) : null}
-    </div>
+    </PageFrame>
   );
 }

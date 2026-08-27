@@ -88,16 +88,18 @@ export type WorklistShellProps = Omit<HTMLAttributes<HTMLElement>, "children"> &
   controls?: ReactNode;
   summary?: ReactNode;
   items?: ReactNode;
+  detail?: ReactNode;
   state?: ReactNode;
 };
 
 /** A slot-only worklist composition; task data, permissions and actions remain with the caller. */
-export function WorklistShell({ controls, summary, items, state, className, ...props }: WorklistShellProps) {
+export function WorklistShell({ controls, summary, items, detail, state, className, ...props }: WorklistShellProps) {
   return (
-    <section {...props} className={cx(styles.worklistShell, className)} data-worklist-shell="true">
+    <section {...props} className={cx(styles.worklistShell, className)} data-worklist-shell="true" data-has-detail={detail ? "true" : undefined}>
       {controls ? <div className={cx(styles.worklistSlot, styles.worklistControls)} data-worklist-slot="controls">{controls}</div> : null}
       {summary ? <div className={cx(styles.worklistSlot, styles.worklistSummary)} data-worklist-slot="summary">{summary}</div> : null}
       {items ? <div className={cx(styles.worklistSlot, styles.worklistItems)} data-worklist-slot="items">{items}</div> : null}
+      {detail ? <div className={cx(styles.worklistSlot, styles.worklistDetail)} data-worklist-slot="detail">{detail}</div> : null}
       {state ? <div className={cx(styles.worklistSlot, styles.worklistState)} data-worklist-slot="state">{state}</div> : null}
     </section>
   );

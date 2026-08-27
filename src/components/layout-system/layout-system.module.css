@@ -310,6 +310,7 @@
     "controls"
     "summary"
     "items"
+    "detail"
     "state";
   min-width: 0;
   border: 1px solid var(--bd-line);
@@ -339,9 +340,35 @@
   min-width: 0;
 }
 
+.worklistDetail {
+  grid-area: detail;
+  min-width: 0;
+  padding: var(--bd-space-5);
+  border-top: 1px solid var(--bd-line);
+}
+
 .worklistState {
   grid-area: state;
   padding: var(--bd-space-5);
+}
+
+@media (min-width: 64rem) {
+  .worklistShell[data-has-detail="true"] {
+    grid-template-columns: minmax(17rem, 0.8fr) minmax(0, 1.7fr);
+    grid-template-areas:
+      "controls controls"
+      "summary summary"
+      "items detail"
+      "state state";
+  }
+
+  .worklistShell[data-has-detail="true"] .worklistItems {
+    border-inline-end: 1px solid var(--bd-line);
+  }
+
+  .worklistShell[data-has-detail="true"] .worklistDetail {
+    border-top: 0;
+  }
 }
 
 .backLink {

@@ -54,6 +54,20 @@ if (/PageHeader|ActionBar|new.?CTA|create/i.test(listReportSource)) {
   failures.push("ListReportShell: must remain a thin slot composition without page header, action bar or create CTA");
 }
 
+const worklistStart = layout.indexOf("export type WorklistShellProps");
+const worklistEnd = layout.indexOf("export type ResponsiveFormShellProps", worklistStart);
+const worklistSource = layout.slice(worklistStart, worklistEnd);
+for (const slot of ["controls", "summary", "items", "detail", "state"]) {
+  requireText(worklistSource, `${slot}?: ReactNode`, "WorklistShell structural slots");
+  requireText(worklistSource, `data-worklist-slot=\"${slot}\"`, "WorklistShell rendered slots");
+}
+requireText(worklistSource, 'data-has-detail={detail ? "true" : undefined}', "WorklistShell optional detail layout signal");
+requireText(layoutCss, '.worklistShell[data-has-detail="true"]', "WorklistShell detail layout variant");
+requireText(layoutCss, 'grid-template-columns: minmax(17rem, 0.8fr) minmax(0, 1.7fr);', "WorklistShell desktop task/detail columns");
+if (/from ["']@\//.test(worklistSource) || /\b(query|permission|eligib|download|template|history|case|taskData|selectedId)\b/i.test(worklistSource)) {
+  failures.push("WorklistShell: must remain a pure slot composition without domain data, selection, permission or eligibility concerns");
+}
+
 const objectShellStart = layout.indexOf("export type ObjectPageShellProps");
 const objectShellEnd = layout.indexOf("export type PageHeaderProps", objectShellStart);
 const objectShellSource = layout.slice(objectShellStart, objectShellEnd);
