@@ -1042,27 +1042,6 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
   const showPostProcessingContent = wizardStep !== "processing" && wizardStep !== "failed";
   const inputTaskJob = xlsxJob ?? (requestedJob && isInputFileExtractionJob(requestedJob) ? requestedJob : undefined);
   const failedInputJob = inputTaskJob?.status === "failed" ? inputTaskJob : undefined;
-  const creationCards: Array<
-    {
-      id: string;
-      href: string;
-      icon: string;
-      label: string;
-    }
-  > = [
-    {
-      id: "case-materials",
-      href: "/import-center?flow=case#source-upload",
-      icon: "badge",
-      label: locale === "zh" ? "案件资料" : locale === "ko" ? "案件 자료" : "案件資料",
-    },
-    {
-      id: "excel-ledger",
-      href: "/import-center?flow=ledger#source-upload",
-      icon: "table_view",
-      label: locale === "zh" ? "Excel 批量台账" : locale === "ko" ? "Excel 일괄 대장" : "Excel 一括台帳",
-    },
-  ];
   return (
     <div className="bd-page bd-import-page space-y-6">
       <section>
@@ -1190,94 +1169,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
         </section>
       ) : null}
 
-      {wizardStep === "select" && !flowIntent && !requestedJob ? (
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div>
-          <div>
-            <p className="text-[11px] font-black uppercase tracking-wider text-blue-700">
-              {locale === "zh" ? "录入资料" : locale === "ko" ? "자료 입력" : "情報入力"}
-            </p>
-            <h2 className="mt-1 text-base font-bold text-slate-950">
-              {locale === "zh" ? "选择录入方式" : locale === "ko" ? "입력 방식 선택" : "入力方法を選ぶ"}
-            </h2>
-          </div>
-        </div>
-        <div className="mt-4 grid gap-3 lg:grid-cols-2">
-          {creationCards.map((item) => {
-            const isPrimary = item.id === "case-materials";
-            const cardClassName =
-              "group block w-full rounded-xl border p-4 text-left transition hover:bg-white " +
-              (isPrimary
-                ? "border-emerald-300 bg-emerald-50/50 hover:border-emerald-500"
-                : "border-slate-200 bg-slate-50 hover:border-[#001e40]");
-            const cardContent = (
-              <div className="flex items-start gap-3">
-                <span className={`material-symbols-outlined text-[22px] ${isPrimary ? "text-emerald-700" : "text-slate-500"}`}>{item.icon}</span>
-                <div>
-                  <p className="text-[11px] font-black uppercase tracking-wider text-slate-500">
-                    {isPrimary
-                      ? locale === "zh" ? "主入口" : locale === "ko" ? "주요 입구" : "主入口"
-                      : locale === "zh" ? "次入口" : locale === "ko" ? "보조 입구" : "副入口"}
-                  </p>
-                  <p className="mt-1 text-sm font-bold text-slate-950">{item.label}</p>
-                </div>
-              </div>
-            );
-            return (
-              <Link key={item.id} href={item.href} className={cardClassName}>
-                {cardContent}
-              </Link>
-            );
-          })}
-        </div>
-        <p className="mt-4 text-xs text-slate-500">
-          {locale === "zh" ? "没有资料文件？" : locale === "ko" ? "자료 파일이 없나요?" : "資料ファイルがない場合は"} {" "}
-          <Link href="/cases/new?from=entry" className="font-bold text-blue-700 underline underline-offset-4 hover:text-blue-900">
-            {locale === "zh" ? "改为手动创建" : locale === "ko" ? "수동 생성으로 전환" : "手動作成へ切り替え"}
-          </Link>
-        </p>
-        {isExistingIntake ? (
-          <div id="existing-case-list" className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
-            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h3 className="text-sm font-bold text-slate-950">
-                  {locale === "zh" ? "已有案件" : locale === "ko" ? "기존 안건" : "既存案件"}
-                </h3>
-                <p className="mt-1 text-xs text-slate-500">
-                  {locale === "zh"
-                    ? "进入案件可查看已有资料；读取后的核对结果会先等待确认，再追加到案件。"
-                    : locale === "ko"
-                      ? "안건에서 기존 자료를 확인할 수 있습니다. 읽은 뒤 확인 결과는 검토 후 안건에 추가됩니다."
-                      : "案件で既存資料を確認できます。読取後の確認結果は確認後に案件へ追加します。"}
-                </p>
-              </div>
-              <Link href="/organize-center" className="text-xs font-bold text-blue-700 hover:underline">
-                {locale === "zh" ? "全部案件" : locale === "ko" ? "전체 안건" : "全案件"}
-              </Link>
-            </div>
-            <div className="mt-3 grid gap-2 md:grid-cols-3">
-              {cases.slice(0, 3).map((caseItem) => (
-                <Link
-                  key={caseItem.id}
-                  href={`/import-center?intake=existing&targetCaseId=${encodeURIComponent(caseItem.id)}#source-upload`}
-                  className="rounded-lg border border-slate-200 bg-white p-3 hover:border-blue-300 hover:bg-blue-50/40"
-                >
-                  <p className="truncate text-sm font-bold text-slate-950">{caseItem.caseTitle}</p>
-                  <p className="mt-1 text-[11px] text-slate-500">{formatDate(caseItem.updatedAt, locale)}</p>
-                </Link>
-              ))}
-              {cases.length === 0 ? (
-                <p className="rounded-lg border border-dashed border-slate-200 bg-white p-3 text-sm text-slate-500">
-                  {locale === "zh" ? "还没有可选择的案件。" : locale === "ko" ? "선택할 안건이 없습니다." : "選択できる案件はまだありません。"}
-                </p>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
-      </section>
-      ) : null}
-
-      {(Boolean(requestedJob) || (wizardStep === "select" && Boolean(flowIntent))) ? (
+      {(Boolean(requestedJob) || wizardStep === "select") ? (
       <section id="source-upload" className="scroll-mt-24 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-100 p-5">
           <p className="text-[11px] font-black uppercase tracking-wider text-blue-700">
@@ -1286,22 +1178,17 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
           <h2 className="text-base font-bold text-slate-950">
             {wizardStep !== "select"
               ? locale === "zh" ? "当前导入任务" : locale === "ko" ? "현재 가져오기 작업" : "現在の取込タスク"
-              : flowIntent === "case"
-              ? locale === "zh" ? "案件资料路径" : locale === "ko" ? "案件 자료 경로" : "案件資料の経路"
-              : isLedgerFlow
-                ? locale === "zh" ? "Excel 批量台账路径" : locale === "ko" ? "Excel 일괄 대장 경로" : "Excel 一括台帳の経路"
-                : locale === "zh" ? "选择资料路径" : locale === "ko" ? "자료 경로 선택" : "資料経路を選択"}
+              : targetCaseId
+                ? locale === "zh" ? "向当前案件追加资料" : locale === "ko" ? "현재 안건에 자료 추가" : "現在の案件に資料を追加"
+                : isLedgerFlow
+                  ? locale === "zh" ? "读取 Excel 批量台账" : locale === "ko" ? "Excel 일괄 대장 읽기" : "Excel 一括台帳を読み取る"
+                  : locale === "zh" ? "选择要读取的资料" : locale === "ko" ? "읽을 자료 선택" : "読み取る資料を選ぶ"}
           </h2>
-          {wizardStep === "select" && flowIntent ? (
-            <Link href={targetCaseId ? `/import-center?intake=existing&flow=case&targetCaseId=${encodeURIComponent(targetCaseId)}#source-upload` : "/import-center"} className="mt-2 inline-flex text-xs font-bold text-blue-700 hover:underline">
-              {locale === "zh" ? "更换路径" : locale === "ko" ? "경로 변경" : "経路を変更"}
-            </Link>
-          ) : null}
         </div>
 
-        {wizardStep === "select" && !requestedJob && flowIntent ? (
-        <div className="grid gap-4 p-5 xl:grid-cols-2">
-          {flowIntent === "case" ? (
+        {wizardStep === "select" && !requestedJob ? (
+        <div className={isLedgerFlow ? "grid gap-4 p-5" : "grid gap-4 p-5 xl:grid-cols-2"}>
+          {!isLedgerFlow ? (
           <section id="case-material-upload" className="flex min-h-96 flex-col rounded-2xl border border-emerald-200 bg-emerald-50/40 p-5">
             <div>
               <div className="flex items-center gap-2">
@@ -1333,13 +1220,22 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
               <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-blue-700">table_view</span>
                 <h2 className="text-base font-bold text-blue-950">
-                  {flowIntent === "case"
+                  {targetCaseId || requestedFlow === "case"
                     ? locale === "zh" ? "案件申请 Excel" : locale === "ko" ? "案件 신청 Excel" : "案件申込 Excel"
                     : isLedgerFlow
                       ? locale === "zh" ? "Excel 批量台账" : locale === "ko" ? "Excel 일괄 대장" : "Excel 一括台帳"
-                      : locale === "zh" ? "案件资料 Excel" : locale === "ko" ? "案件 자료 Excel" : "案件資料 Excel"}
+                      : locale === "zh" ? "Excel 资料" : locale === "ko" ? "Excel 자료" : "Excel資料"}
                 </h2>
               </div>
+              {!targetCaseId && !requestedFlow ? (
+                <p className="mt-1 text-xs text-slate-600">
+                  {locale === "zh"
+                    ? "支持案件申请表和批量台账（.xlsx）。"
+                    : locale === "ko"
+                      ? "안건 신청서와 일괄 대장(.xlsx)을 지원합니다."
+                      : "案件申込書と一括台帳（.xlsx）に対応します。"}
+                </p>
+              ) : null}
             </div>
             <div className="mt-auto pt-5">
               {!xlsxJob ? (
@@ -1356,6 +1252,54 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
               )}
             </div>
           </section>
+
+          {!targetCaseId ? (
+            <p className="text-xs text-slate-500 xl:col-span-2">
+              {locale === "zh" ? "没有资料文件？" : locale === "ko" ? "자료 파일이 없나요?" : "資料ファイルがない場合は"} {" "}
+              <Link href="/cases/new?from=entry" className="font-bold text-blue-700 underline underline-offset-4 hover:text-blue-900">
+                {locale === "zh" ? "改为手动创建" : locale === "ko" ? "수동 생성으로 전환" : "手動作成へ切り替え"}
+              </Link>
+            </p>
+          ) : null}
+
+          {isExistingIntake && !targetCaseId ? (
+            <div id="existing-case-list" className="rounded-xl border border-slate-200 bg-slate-50 p-4 xl:col-span-2">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-950">
+                    {locale === "zh" ? "已有案件" : locale === "ko" ? "기존 안건" : "既存案件"}
+                  </h3>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {locale === "zh"
+                      ? "进入案件可查看已有资料；读取后的核对结果会先等待确认，再追加到案件。"
+                      : locale === "ko"
+                        ? "안건에서 기존 자료를 확인할 수 있습니다. 읽은 뒤 확인 결과는 검토 후 안건에 추가됩니다."
+                        : "案件で既存資料を確認できます。読取後の確認結果は確認後に案件へ追加します。"}
+                  </p>
+                </div>
+                <Link href="/organize-center" className="text-xs font-bold text-blue-700 hover:underline">
+                  {locale === "zh" ? "全部案件" : locale === "ko" ? "전체 안건" : "全案件"}
+                </Link>
+              </div>
+              <div className="mt-3 grid gap-2 md:grid-cols-3">
+                {cases.slice(0, 3).map((caseItem) => (
+                  <Link
+                    key={caseItem.id}
+                    href={`/import-center?intake=existing&targetCaseId=${encodeURIComponent(caseItem.id)}#source-upload`}
+                    className="rounded-lg border border-slate-200 bg-white p-3 hover:border-blue-300 hover:bg-blue-50/40"
+                  >
+                    <p className="truncate text-sm font-bold text-slate-950">{caseItem.caseTitle}</p>
+                    <p className="mt-1 text-[11px] text-slate-500">{formatDate(caseItem.updatedAt, locale)}</p>
+                  </Link>
+                ))}
+                {cases.length === 0 ? (
+                  <p className="rounded-lg border border-dashed border-slate-200 bg-white p-3 text-sm text-slate-500">
+                    {locale === "zh" ? "还没有可选择的案件。" : locale === "ko" ? "선택할 안건이 없습니다." : "選択できる案件はまだありません。"}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
         </div>
         ) : null}
 

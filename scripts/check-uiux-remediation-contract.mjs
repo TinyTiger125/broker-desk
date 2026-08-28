@@ -3,13 +3,14 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 
-const [layoutCss, globalsCss, caseOverview, casePage, seedSource, mainNavLinks] = await Promise.all([
+const [layoutCss, globalsCss, caseOverview, casePage, seedSource, mainNavLinks, importCenter] = await Promise.all([
   readFile("src/components/layout-system/layout-system.module.css", "utf8"),
   readFile("src/app/globals.css", "utf8"),
   readFile("src/components/case-overview.tsx", "utf8"),
   readFile("src/app/cases/[id]/page.tsx", "utf8"),
   readFile("scripts/uiux-demo-data.mjs", "utf8"),
   readFile("src/components/main-nav-links.tsx", "utf8"),
+  readFile("src/app/import-center/page.tsx", "utf8"),
 ]);
 
 function requireMatch(source, pattern, message) {
@@ -67,6 +68,17 @@ function assertMainNavigationPerformanceContract(source) {
   requireMatch(source, /pending \? "progress_activity" : icon/, "pending main navigation must replace the static icon with an immediate progress indicator");
   requireMatch(source, /pending \? "inline-block animate-spin text-\[20px\] motion-reduce:animate-none"/, "pending feedback must remain visible in both desktop and compact navigation");
   assert.doesNotMatch(source, /\bprefetch(?:=\{true\})?(?:\s|>)/, "main navigation must not force full prefetch of every authenticated dynamic route");
+}
+
+function assertDirectImportEntryContract(source) {
+  assert.doesNotMatch(source, /选择录入方式|入力方法を選ぶ|입력 방식 선택/, "the import landing page must not insert a route-choice screen before upload");
+  assert.doesNotMatch(source, /主入口|副入口|주요 입구|보조 입구/, "users must not see internal primary/secondary entry labels");
+  assert.doesNotMatch(source, /案件资料路径|案件資料の経路|案件 자료 경로|Excel 批量台账路径|Excel 一括台帳の経路|Excel 일괄 대장 경로|更换路径|経路を変更|경로 변경/, "users must not see internal path terminology");
+  requireMatch(source, /\{wizardStep === "select" && !requestedJob \? \([\s\S]*?<IdentityDocumentUploadForm[\s\S]*?<ExcelDocumentUploadForm/, "the import landing page must directly expose file and Excel upload actions");
+  requireMatch(source, /const isLedgerFlow = flowIntent === "ledger";[\s\S]*?\{!isLedgerFlow \? \([\s\S]*?<IdentityDocumentUploadForm/, "legacy ledger deep links must continue to open the Excel-only intake without an extra route screen");
+  requireMatch(source, /<IdentityDocumentUploadForm[\s\S]*?targetCaseId=\{targetCaseId \|\| undefined\}[\s\S]*?<ExcelDocumentUploadForm[\s\S]*?targetCaseId=\{targetCaseId \|\| undefined\}/, "both direct upload actions must preserve the selected case target");
+  requireMatch(source, /className=\{isLedgerFlow \? "grid gap-4 p-5" : "grid gap-4 p-5 xl:grid-cols-2"\}/, "the Excel-only legacy deep link must not leave an empty desktop grid column");
+  requireMatch(source, /\{isExistingIntake && !targetCaseId \? \(/, "the existing-case chooser must disappear once its target case is selected");
 }
 
 function seedHelpers(source) {
@@ -212,12 +224,14 @@ assertFieldGridContract(layoutCss, caseOverview);
 assertMobileMenuContract(globalsCss);
 assertQuickWorkbenchNavigationContract(casePage);
 assertMainNavigationPerformanceContract(mainNavLinks);
+assertDirectImportEntryContract(importCenter);
 await assertSeedContract(seedSource);
 
 assert.throws(() => assertFieldGridContract(layoutCss.replace("align-items: stretch;", "align-items: start;"), caseOverview), /stretch/);
 assert.throws(() => assertMobileMenuContract(globalsCss.replace("right: 0.5rem;", "right: -0.5rem;")), /safe margin/);
 assert.throws(() => assertQuickWorkbenchNavigationContract(casePage.replace('params.set("view", "quick");', "")), /preserve view=quick/);
 assert.throws(() => assertMainNavigationPerformanceContract(mainNavLinks.replace('href={href}', 'href={href} prefetch={true}')), /must not force full prefetch/);
+assert.throws(() => assertDirectImportEntryContract(importCenter.replace('{!isLedgerFlow ? (', '{false ? (')), /legacy ledger deep links/);
 await assert.rejects(assertSeedContract(seedSource.replace("${token}_${String(index).padStart(2, \"0\")}", "${String(index).padStart(2, \"0\")}")), /tenant-scoped/);
 await assert.rejects(assertSeedContract(seedSource.replace("clients.tenant_id = EXCLUDED.tenant_id", "$2 = $2")), /clients upserts/);
 await assert.rejects(assertSeedContract(seedSource.replace("DELETE FROM properties WHERE tenant_id = $1", "DELETE FROM properties WHERE TRUE")), /properties cleanup/);
