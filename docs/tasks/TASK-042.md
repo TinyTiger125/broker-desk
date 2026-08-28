@@ -24,10 +24,11 @@ UI/UX Design System Wave 0/1：页面级组合层与 `/cases/new` 首个模板
 - 首个正式模板：`/cases/new`，保持 Case Thread、当前页面会话草稿摘要、低装饰分区、来源感知返回、局部状态、焦点与响应式合同。
 - 已批准的 404 locale 最小切片：仅 `not-found`，不扩展到 `error` 或 `global-error`。
 - 现有人物/物件创建表单的外部 footer 仍消费真实 pending，避免重复提交；业务 Action、权限、数据与保存合同不变。
+- MVP 性能稳定化切片：将 Vercel Functions 固定到与非生产 Neon 数据库相同的新加坡区域，先消除页面导航中跨美东/新加坡的数据库往返；不改变权限、查询语义或数据结构。
 
 ## 明确不做什么
 
-- 不修改数据库、migration、Production、生产配置或测试基线数据。
+- 不修改数据库、migration、Production deployment 或测试基线数据；区域配置只进入非生产 Preview 验证，Production 仍需独立发布授权。
 - 不进入 `/cases/[id]` 或其他页面迁移，直到本任务的独立审查、工程门和真实 Staging 证据满足计划要求。
 - 不扩大到案件生命周期、Calendar、提醒、共同编辑、附件、关系图、AI 或输出业务。
 - `AGENTS.md` 自动生成块、历史未跟踪文件和无关 workflow 差异不纳入写集；Layout 合同门由保留的 `test:layout-system` 与 `package.json` 的 `prebuild` 接线消费，不修改 workflow。
@@ -58,6 +59,8 @@ UI/UX Design System Wave 0/1：页面级组合层与 `/cases/new` 首个模板
 - `docs/tasks/TASK-042.md`
 - `BACKLOG.md`
 - `docs/operations/CURRENT_WORKING_CONTEXT.md`
+- `vercel.json`
+- `scripts/check-production-security.mjs`
 
 ## 验收标准
 
@@ -66,6 +69,7 @@ UI/UX Design System Wave 0/1：页面级组合层与 `/cases/new` 首个模板
 - `/cases/new` loading 边界保留 PageFrame、PageHeader、案件字段、案件草稿身份，并使用 Broker Desk 自身三语 StateSurface；permission/not-found 由服务端路由边界分别定义，不以全局 loading 冒充。
 - loading boundary 不显示可点击返回动作，避免在无法读取来源时误导；真实页面解析来源后才显示准确返回。页面内 loading/empty 与路由级拒绝分开：`case.create` 权限失败在渲染前 fail-closed，`tenant_selection_required` 按既有路径重定向工作区并保留 returnTo，其余租户/认证拒绝走安全 not-found。
 - P0/P1 为零且工程门通过后，才可考虑下一模板；Production 仍禁止。
+- 性能切片以真实 Staging 点击耗时为准：与约 3.6 秒基线比较；区域修复若已取得主要收益，不为追求极限继续扩大数据库重构。
 
 ## 预计涉及的模块
 
