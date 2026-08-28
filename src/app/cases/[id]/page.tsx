@@ -788,6 +788,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
     : null;
   const caseWorkbenchHref = (options?: { node?: string; field?: string; hash?: string }) => {
     const params = new URLSearchParams();
+    params.set("view", "quick");
     if (options?.node) params.set("node", options.node);
     if (options?.field) params.set("field", options.field);
     const queryString = params.toString();

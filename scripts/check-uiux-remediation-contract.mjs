@@ -3,10 +3,11 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 
-const [layoutCss, globalsCss, caseOverview, seedSource] = await Promise.all([
+const [layoutCss, globalsCss, caseOverview, casePage, seedSource] = await Promise.all([
   readFile("src/components/layout-system/layout-system.module.css", "utf8"),
   readFile("src/app/globals.css", "utf8"),
   readFile("src/components/case-overview.tsx", "utf8"),
+  readFile("src/app/cases/[id]/page.tsx", "utf8"),
   readFile("scripts/uiux-demo-data.mjs", "utf8"),
 ]);
 
@@ -29,6 +30,30 @@ function assertMobileMenuContract(css) {
   requireMatch(narrowViewport, /top:\s*3\.5rem;/, "narrow header panels must remain below the sticky header");
   requireMatch(narrowViewport, /right:\s*0\.5rem;/, "narrow header panels must keep the viewport safe margin");
   requireMatch(narrowViewport, /margin-top:\s*0;/, "fixed panels must not retain trigger-relative offset");
+}
+
+function assertQuickWorkbenchNavigationContract(source) {
+  const match = source.match(/const caseWorkbenchHref = \(options\?: \{ node\?: string; field\?: string; hash\?: string \}\) => \{[\s\S]*?\n  \};/);
+  assert(match, "case quick-completion links must use one shared URL builder");
+  const context = vm.createContext({ URLSearchParams });
+  const executableHelper = match[0].replace(
+    "(options?: { node?: string; field?: string; hash?: string })",
+    "(options)",
+  );
+  vm.runInContext(
+    `const brokerageCase = { id: "case_probe" };\n${executableHelper}\nglobalThis.caseWorkbenchHref = caseWorkbenchHref;`,
+    context,
+  );
+  assert.equal(
+    context.caseWorkbenchHref({ node: "contract_terms" }),
+    "/cases/case_probe?view=quick&node=contract_terms",
+    "quick-completion category navigation must preserve view=quick",
+  );
+  assert.equal(
+    context.caseWorkbenchHref({ node: "participants", field: "applicant.name", hash: "case-review-desk" }),
+    "/cases/case_probe?view=quick&node=participants&field=applicant.name#case-review-desk",
+    "quick-completion field navigation must preserve view=quick with the selected category, field, and hash",
+  );
 }
 
 function seedHelpers(source) {
@@ -172,10 +197,12 @@ async function assertSeedContract(source) {
 
 assertFieldGridContract(layoutCss, caseOverview);
 assertMobileMenuContract(globalsCss);
+assertQuickWorkbenchNavigationContract(casePage);
 await assertSeedContract(seedSource);
 
 assert.throws(() => assertFieldGridContract(layoutCss.replace("align-items: stretch;", "align-items: start;"), caseOverview), /stretch/);
 assert.throws(() => assertMobileMenuContract(globalsCss.replace("right: 0.5rem;", "right: -0.5rem;")), /safe margin/);
+assert.throws(() => assertQuickWorkbenchNavigationContract(casePage.replace('params.set("view", "quick");', "")), /preserve view=quick/);
 await assert.rejects(assertSeedContract(seedSource.replace("${token}_${String(index).padStart(2, \"0\")}", "${String(index).padStart(2, \"0\")}")), /tenant-scoped/);
 await assert.rejects(assertSeedContract(seedSource.replace("clients.tenant_id = EXCLUDED.tenant_id", "$2 = $2")), /clients upserts/);
 await assert.rejects(assertSeedContract(seedSource.replace("DELETE FROM properties WHERE tenant_id = $1", "DELETE FROM properties WHERE TRUE")), /properties cleanup/);
@@ -192,4 +219,4 @@ await assert.rejects(assertSeedContract(seedSource.replace('enableChannelBinding
 await assert.rejects(assertSeedContract(seedSource.replace('return { ...poolConfig, ssl: { rejectUnauthorized: true } };', "return poolConfig;")), /valid JSON|force certificate-verified TLS/);
 await assert.rejects(assertSeedContract(seedSource.replace('${config.protocol}\\n${config.host}\\n${config.database}\\n${config.port}', '${config.protocol}\\n${config.host}\\n${config.database}')), /different port/);
 
-console.log("uiux remediation contract: PASS (field-row geometry, narrow menu viewport, and tenant-isolated demo data)");
+console.log("uiux remediation contract: PASS (field-row geometry, quick-view navigation, narrow menu viewport, and tenant-isolated demo data)");
