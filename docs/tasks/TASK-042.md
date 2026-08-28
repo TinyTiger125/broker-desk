@@ -106,7 +106,7 @@ git diff --check
 - 前次独立复核提出的移动物件输入门、任务卡治理章节和桌面/768 fixed 栏预留问题已修正；针对最新 P1 的同步提交锁、Escape 实时锁、页面会话说明和 `/cases/new` loading 边界已收口，行为测试已覆盖同一提交事件周期的关闭阻断。当前等待新一轮独立只读复核；真实浏览器证据仍未取得。
 - 真实提交、错误恢复、390/768/1440 浏览器运行证据仍未完成，不能将本地门等同于 Preview 或产品验收通过。
 - 候选 `380101e` 已标记为 Superseded / Not Deployed；当前重打包候选只撤回 workflow 差异并新增 prebuild 接线。等待工程门与独立只读复核后再进入 Preview；Production 保持禁止。
-- 区域候选 `27d57be` 已在固定 Staging READY 并把约 3.6 秒完整导航降至约 3.1 秒；Vercel 运行日志仍显示主导航触发多个动态页面的并发 cache MISS。下一最小性能切片只收敛该强制预取请求放大并补即时反馈，不在本任务内启用共享权限缓存、实验性 `staleTimes`、全局 Cache Components 或新的客户端数据层。
+- 区域候选 `27d57be` 已在固定 Staging READY 并把约 3.6 秒完整导航降至约 3.1 秒。首个导航收敛候选 `6ea302b` 仅恢复框架默认预取，但真实日志仍显示四个主页面同秒 cache MISS，完整导航约 3.13 秒，不能算关闭请求放大。后续严格采用用户意图预取：默认 `prefetch=false`，仅在单一链接 hover/focus 后交还框架分段预取；不在本任务内启用共享权限缓存、实验性 `staleTimes`、全局 Cache Components 或新的客户端数据层。
 
 ## 回退
 

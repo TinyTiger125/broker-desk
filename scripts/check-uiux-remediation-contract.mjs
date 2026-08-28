@@ -59,6 +59,10 @@ function assertQuickWorkbenchNavigationContract(source) {
 
 function assertMainNavigationPerformanceContract(source) {
   requireMatch(source, /import Link, \{ useLinkStatus \} from "next\/link";/, "main navigation must expose immediate pending feedback through the framework link status");
+  requireMatch(source, /const \[hasNavigationIntent, setHasNavigationIntent\] = useState\(false\);/, "main navigation must start without speculative full-route requests");
+  requireMatch(source, /prefetch=\{hasNavigationIntent \? null : false\}/, "main navigation may only enable framework prefetch after explicit user intent");
+  requireMatch(source, /onMouseEnter=\{\(\) => setHasNavigationIntent\(true\)\}/, "pointer intent must enable bounded prefetch for one link");
+  requireMatch(source, /onFocus=\{\(\) => setHasNavigationIntent\(true\)\}/, "keyboard intent must enable bounded prefetch for one link");
   requireMatch(source, /const \{ pending \} = useLinkStatus\(\);/, "each main navigation link must observe its own pending navigation state");
   requireMatch(source, /pending \? "progress_activity" : icon/, "pending main navigation must replace the static icon with an immediate progress indicator");
   requireMatch(source, /pending \? "inline-block animate-spin text-\[20px\] motion-reduce:animate-none"/, "pending feedback must remain visible in both desktop and compact navigation");
@@ -213,7 +217,7 @@ await assertSeedContract(seedSource);
 assert.throws(() => assertFieldGridContract(layoutCss.replace("align-items: stretch;", "align-items: start;"), caseOverview), /stretch/);
 assert.throws(() => assertMobileMenuContract(globalsCss.replace("right: 0.5rem;", "right: -0.5rem;")), /safe margin/);
 assert.throws(() => assertQuickWorkbenchNavigationContract(casePage.replace('params.set("view", "quick");', "")), /preserve view=quick/);
-assert.throws(() => assertMainNavigationPerformanceContract(mainNavLinks.replace('href={link.href}', 'href={link.href} prefetch={true}')), /must not force full prefetch/);
+assert.throws(() => assertMainNavigationPerformanceContract(mainNavLinks.replace('href={href}', 'href={href} prefetch={true}')), /must not force full prefetch/);
 await assert.rejects(assertSeedContract(seedSource.replace("${token}_${String(index).padStart(2, \"0\")}", "${String(index).padStart(2, \"0\")}")), /tenant-scoped/);
 await assert.rejects(assertSeedContract(seedSource.replace("clients.tenant_id = EXCLUDED.tenant_id", "$2 = $2")), /clients upserts/);
 await assert.rejects(assertSeedContract(seedSource.replace("DELETE FROM properties WHERE tenant_id = $1", "DELETE FROM properties WHERE TRUE")), /properties cleanup/);
