@@ -43,6 +43,7 @@ import {
   createTenantAccountForUser,
   acceptTenantInvitation,
   getDefaultUser,
+  getDefaultUserForVerifiedClerkIdentity,
   applyOutputTemplateVersion,
   addQuotation,
   createOutputTemplateVersion,
@@ -2986,7 +2987,9 @@ export async function acceptTenantInvitationAction(
     if (isClerkAuthEnabled() && !identity?.email) {
       return { status: "error", message: "email_verification_required" };
     }
-    const user = await getDefaultUser();
+    const user = identity
+      ? await getDefaultUserForVerifiedClerkIdentity(identity)
+      : await getDefaultUser();
     if (!user) {
       return { status: "error", message: "invitation_identity_not_bound" };
     }

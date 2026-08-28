@@ -861,6 +861,7 @@ const read = (path) => fs.readFileSync(path, "utf8");
 const service = read("src/lib/tenant-service.ts");
 const memory = read("src/lib/data.memory.ts");
 const postgres = read("src/lib/data.postgres.ts");
+const dataFacade = read("src/lib/data.ts");
 const migration = read("db/migrations/20260828_001_tenant_service_period.sql");
 const runtimeRoles = read("docs/engineering/postgres_runtime_roles.sql");
 const forceRlsMigration = read("db/migrations/20260729_002_force_tenant_rls.sql");
@@ -1142,6 +1143,20 @@ assertNegativeSynthetic(
 );
 assertInvitationAcceptanceBoundary({ sqlSource: acceptInvitationFunction, postgresSource: postgres });
 assertInvitationAcceptanceAtomicity({ memorySource: memoryAcceptInvitation, sqlSource: acceptInvitationFunction, migrationSource: migration, actionSource: acceptInvitationAction, forceRlsSource: forceRlsMigration });
+function assertInvitationVerifiedIdentitySeam(actionSource, dataSource) {
+  assert(actionSource.includes("const identity = await getVerifiedClerkAuthIdentity();"), "acceptance must read one verified Clerk identity");
+  assert(actionSource.includes("await getDefaultUserForVerifiedClerkIdentity(identity)"), "acceptance must resolve the local user from that same verified identity");
+  assert(dataSource.includes("export async function getDefaultUserForVerifiedClerkIdentity(identity: ClerkAuthIdentity)"), "data facade must expose the verified-identity resolver");
+  assert(dataSource.includes("return resolveDefaultUser(undefined, identity);"), "verified-identity resolver must pass the exact identity into default-user resolution");
+  assert(dataSource.includes("const subject = verifiedClerkIdentity?.subject.trim() || (await getClerkAuthSubject());"), "provided verified subject must take precedence over a second auth lookup");
+  assert(dataSource.includes("const verifiedIdentity = verifiedClerkIdentity ?? (await getVerifiedClerkAuthIdentity());"), "provided verified email must be reused for pending-invitation binding");
+}
+assertInvitationVerifiedIdentitySeam(acceptInvitationAction, dataFacade);
+assertNegativeSynthetic(
+  (source) => assertInvitationVerifiedIdentitySeam(source, dataFacade),
+  replaceRequired(acceptInvitationAction, "await getDefaultUserForVerifiedClerkIdentity(identity)", "await getDefaultUser()", "verified identity seam"),
+  "restoring an independent default-user lookup must fail the acceptance contract",
+);
 assertInvitationActionLocaleContract({ actionSource: acceptInvitationActionLocaleSource, formSource: invitationForm, pageSource: invitationPage });
 for (const [label, candidate] of [
   ["acceptance service guard", {
