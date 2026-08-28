@@ -20,7 +20,8 @@ import {
   MEMBERSHIP_STATUS_LABELS,
 } from "@/lib/member-management-copy";
 import { capabilityHasTenantPermission } from "@/lib/tenant-permissions";
-import { getTenantCapability, requireTenantSession, TenantSessionError } from "@/lib/tenant-session";
+import { getTenantCapability, requireTenantReadOnlySession, TenantSessionError } from "@/lib/tenant-session";
+import { countTenantSeatUsage, getTenantServiceStatusLabel, isTenantServiceOperational } from "@/lib/tenant-service";
 
 export const dynamic = "force-dynamic";
 
@@ -69,7 +70,7 @@ export default async function TenantMembersPage({ searchParams }: MembersPagePro
   const localePromise = getLocale();
   let session;
   try {
-    session = await requireTenantSession();
+    session = await requireTenantReadOnlySession();
   } catch (error) {
     if (error instanceof TenantSessionError && error.code === "tenant_selection_required") redirect("/workspace");
     throw error;
@@ -78,6 +79,7 @@ export default async function TenantMembersPage({ searchParams }: MembersPagePro
   const locale = await localePromise;
   const ui = getMemberManagementCopy(locale);
   const currentCapability = getTenantCapability(session.membership);
+  const subscriptionOperational = isTenantServiceOperational(session.serviceState);
   const canManageMembers = capabilityHasTenantPermission(currentCapability, "member.invite");
 
   if (!canManageMembers) {
@@ -98,7 +100,7 @@ export default async function TenantMembersPage({ searchParams }: MembersPagePro
   const feedback = getMemberManagementFlash(locale, params?.flash);
   const failedFeedbackKeys = new Set(["member_invitation_failed", "invitation_failed", "last_owner_protected"]);
   const feedbackFailed = params?.flash ? failedFeedbackKeys.has(params.flash) : false;
-  const neutralFeedbackKeys = new Set(["member_invited_pending", "invitation_pending"]);
+  const neutralFeedbackKeys = new Set(["member_invited_pending", "invitation_pending", "invitation_delivery_uncertain"]);
   const feedbackPending = params?.flash ? neutralFeedbackKeys.has(params.flash) : false;
   let members: Awaited<ReturnType<typeof listTenantMembersForAuthenticatedTenant>> = [];
   let membersLoadFailed = false;
@@ -108,12 +110,13 @@ export default async function TenantMembersPage({ searchParams }: MembersPagePro
     membersLoadFailed = true;
   }
 
-  const canInvite = capabilityHasTenantPermission(currentCapability, "member.invite");
-  const canUpdateRole = capabilityHasTenantPermission(currentCapability, "member.update_role");
-  const canRemove = capabilityHasTenantPermission(currentCapability, "member.remove");
+  const canInvite = subscriptionOperational && capabilityHasTenantPermission(currentCapability, "member.invite");
+  const canUpdateRole = subscriptionOperational && capabilityHasTenantPermission(currentCapability, "member.update_role");
+  const canRemove = subscriptionOperational && capabilityHasTenantPermission(currentCapability, "member.remove");
   const activeOwnerCount = members.filter(isActiveCompanyOwner).length;
   const isCurrentMember = (member: (typeof members)[number]) => member.id === session.membership.id || member.user.id === session.user.id;
   const currentPreset = capabilityForMember(session.membership);
+  const usedSeatCount = countTenantSeatUsage(members);
 
   const invitePanel = (
     <section aria-labelledby="member-invite-title" className="space-y-4">
@@ -133,7 +136,7 @@ export default async function TenantMembersPage({ searchParams }: MembersPagePro
           </label>
           <button className="min-h-11 rounded-lg bg-slate-950 px-4 py-2 text-sm font-bold text-white">{ui.invite}</button>
         </form>
-      ) : <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">{ui.noPermission}</p>}
+      ) : <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">{subscriptionOperational ? ui.noPermission : ui.serviceBlocked}</p>}
       <CapabilityGuide locale={locale} title={ui.permissionGuide} />
     </section>
   );
@@ -206,6 +209,11 @@ export default async function TenantMembersPage({ searchParams }: MembersPagePro
       <PageHeader title={ui.title} description={ui.subtitle}>
         <div className="max-w-xl border-l-2 border-blue-300 pl-3 text-left"><div className="text-sm font-bold text-slate-900">{MEMBER_CAPABILITY_LABELS[currentPreset][locale]}</div><p className="mt-1 break-words text-xs leading-5 text-slate-600">{MEMBER_CAPABILITY_DESCRIPTIONS[currentPreset][locale]}</p></div>
       </PageHeader>
+      <section aria-label={ui.subscriptionSummary} className="grid gap-3 border border-slate-200 bg-white p-4 sm:grid-cols-3">
+        <div><p className="text-xs font-bold text-slate-500">{ui.subscriptionSummary}</p><p className="mt-1 font-black">{getTenantServiceStatusLabel(session.serviceState.status, locale)}</p></div>
+        <div><p className="text-xs font-bold text-slate-500">{ui.purchasedSeats}</p><p className="mt-1 font-black">{usedSeatCount} / {session.tenant.purchasedSeatCount} ({Math.max(0, session.tenant.purchasedSeatCount - usedSeatCount)} {locale === "zh" ? "剩余" : locale === "ko" ? "남음" : "残"})</p></div>
+        <div><p className="text-xs font-bold text-slate-500">{ui.servicePeriod}</p><p className="mt-1 font-black">{session.tenant.serviceStartAt ?? "-"} — {session.tenant.serviceEndAt ?? "-"}</p></div>
+      </section>
       {feedback ? <div role={feedbackFailed ? "alert" : "status"} aria-live={feedbackFailed ? "assertive" : "polite"} className={`rounded-lg border px-4 py-3 text-sm font-semibold ${feedbackFailed ? "border-rose-200 bg-rose-50 text-rose-800" : feedbackPending ? "border-amber-200 bg-amber-50 text-amber-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>{feedback}</div> : null}
       <WorklistShell aria-label={ui.memberList} controls={invitePanel} summary={!membersLoadFailed ? <p className="text-sm font-bold text-slate-700">{ui.memberCount(members.length)}</p> : undefined} items={memberItems} state={state} />
     </PageFrame>

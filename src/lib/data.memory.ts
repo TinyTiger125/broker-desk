@@ -11,6 +11,7 @@ import {
   type Temperature,
 } from "@/lib/domain";
 import { randomUUID } from "node:crypto";
+import { countTenantSeatUsage, deriveTenantServiceState, isTenantServiceOperational, membershipOccupiesSeat, validateTenantServicePeriod } from "@/lib/tenant-service";
 import { buildFollowUpPriorityList } from "@/lib/followup-priority";
 import type { Locale } from "@/lib/locale";
 import { getStageLabel } from "@/lib/options";
@@ -85,6 +86,8 @@ export type Tenant = {
   accountType: TenantAccountType;
   status: TenantStatus;
   purchasedSeatCount: number;
+  serviceStartAt?: string;
+  serviceEndAt?: string;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -137,6 +140,11 @@ export type TenantMemberListItem = TenantMembership & {
   user: Pick<User, "id" | "name" | "email" | "externalAuthSubject" | "createdAt">;
 };
 
+export type TenantInvitationDeliveryContext = TenantMemberListItem & {
+  tenant: Tenant;
+  member: TenantMemberListItem;
+};
+
 export type TenantAccountMemberSummary = TenantMemberListItem & {
   isBoundToExternalAuth: boolean;
 };
@@ -144,6 +152,7 @@ export type TenantAccountMemberSummary = TenantMemberListItem & {
 export type TenantAccountSummary = Tenant & {
   activeSeatCount: number;
   invitedSeatCount: number;
+  suspendedSeatCount: number;
   usedSeatCount: number;
   availableSeatCount: number;
   ownerMembers: TenantAccountMemberSummary[];
@@ -809,14 +818,18 @@ function normalizePurchasedSeatCount(value: unknown): number {
   return Math.max(1, Math.floor(count));
 }
 
-function countUsedSeats(tenantId: string): { activeSeatCount: number; invitedSeatCount: number; usedSeatCount: number } {
+function countUsedSeats(tenantId: string, now = new Date()): { activeSeatCount: number; invitedSeatCount: number; suspendedSeatCount: number; usedSeatCount: number } {
   const members = db.tenantMemberships.filter((membership) => membership.tenantId === tenantId);
   const activeSeatCount = members.filter((membership) => membership.status === "active").length;
-  const invitedSeatCount = members.filter((membership) => membership.status === "invited").length;
+  const invitedSeatCount = members.filter(
+    (membership) => membership.status === "invited" && membershipOccupiesSeat(membership, now),
+  ).length;
+  const suspendedSeatCount = members.filter((membership) => membership.status === "suspended").length;
   return {
     activeSeatCount,
     invitedSeatCount,
-    usedSeatCount: activeSeatCount + invitedSeatCount,
+    suspendedSeatCount,
+    usedSeatCount: countTenantSeatUsage(members, now),
   };
 }
 
@@ -845,12 +858,23 @@ function ensureVisibilityRecordDefaults(record: {
   if (!record.currentOwnerUserId) record.ownerResolutionStatus = "pending_confirmation";
 }
 
-function toTenantMemberListItem(membership: TenantMembership): TenantMemberListItem | null {
+function deriveMembershipInvitationStatus(membership: TenantMembership, now: Date): TenantInvitationStatus {
+  return membership.status === "invited"
+    && membership.invitationStatus !== "revoked"
+    && membership.invitationStatus !== "expired"
+    && membership.invitationExpiresAt
+    && membership.invitationExpiresAt.getTime() <= now.getTime()
+    ? "expired"
+    : membership.invitationStatus;
+}
+
+function toTenantMemberListItem(membership: TenantMembership, now = new Date()): TenantMemberListItem | null {
   ensureTenantMembershipDefaults(membership);
   const user = db.users.find((item) => item.id === membership.userId);
   if (!user) return null;
   return {
     ...membership,
+    invitationStatus: deriveMembershipInvitationStatus(membership, now),
     user: {
       id: user.id,
       name: user.name,
@@ -862,10 +886,11 @@ function toTenantMemberListItem(membership: TenantMembership): TenantMemberListI
 }
 
 function toTenantAccountSummary(tenant: Tenant): TenantAccountSummary {
-  const seats = countUsedSeats(tenant.id);
+  const now = new Date();
+  const seats = countUsedSeats(tenant.id, now);
   const ownerMembers = db.tenantMemberships
     .filter((membership) => membership.tenantId === tenant.id && membership.role === "tenant_owner")
-    .map(toTenantMemberListItem)
+    .map((membership) => toTenantMemberListItem(membership, now))
     .filter((membership): membership is TenantMemberListItem => Boolean(membership))
     .map((membership) => ({
       ...membership,
@@ -2249,7 +2274,7 @@ export async function bindCurrentClerkIdentityToPendingInvitation(
       }
       const tenant = db.tenants.find((candidate) => candidate.id === membership.tenantId);
       return (
-        (tenant?.status === "trial" || tenant?.status === "active") &&
+        Boolean(tenant && isTenantServiceOperational(deriveTenantServiceState(tenant))) &&
         (!membership.invitationExpiresAt || membership.invitationExpiresAt.getTime() > Date.now())
       );
     });
@@ -2268,14 +2293,21 @@ export async function suspendUserForExternalAuthSubject(subject: string): Promis
   if (!normalized) return { suspendedMembershipCount: 0 };
   const user = db.users.find((item) => item.externalAuthSubject === normalized);
   if (!user) return { suspendedMembershipCount: 0 };
+  const nowDate = new Date();
   user.externalAuthSubject = undefined;
   let suspendedMembershipCount = 0;
   db.tenantMemberships
-    .filter((membership) => membership.userId === user.id && membership.status !== "suspended")
+    .filter((membership) =>
+      membership.userId === user.id
+      && (
+        membership.status === "active"
+        || (membership.status === "invited" && membershipOccupiesSeat(membership, nowDate))
+      )
+    )
     .forEach((membership) => {
       membership.status = "suspended";
       membership.invitationStatus = "revoked";
-      membership.updatedAt = new Date();
+      membership.updatedAt = nowDate;
       suspendedMembershipCount += 1;
     });
   return { userId: user.id, suspendedMembershipCount };
@@ -2310,14 +2342,69 @@ function slugifyTenantName(value: string): string {
   return slug || `tenant-${Date.now().toString(36)}`;
 }
 
-function assertTenantHasSeatCapacity(tenantId: string, nextStatus: TenantMembershipStatus) {
-  if (nextStatus === "suspended") return;
-  const tenant = db.tenants.find((item) => item.id === tenantId);
-  if (!tenant) throw new Error("tenant not found");
-  const seats = countUsedSeats(tenantId);
-  if (seats.usedSeatCount >= tenant.purchasedSeatCount) {
-    throw new Error("purchased seat count exceeded");
+function assertTenantInvitationActorAuthorized(database: DB, tenantId: string, actorUserId?: string) {
+  const tenant = database.tenants.find((item) => item.id === tenantId);
+  if (!tenant || !isTenantServiceOperational(deriveTenantServiceState(tenant))) {
+    throw new Error("tenant service is unavailable for invitations");
   }
+  const normalizedActorUserId = actorUserId?.trim();
+  const authorized = Boolean(normalizedActorUserId) && database.tenantMemberships.some((membership) =>
+    membership.userId === normalizedActorUserId
+    && membership.status === "active"
+    && (
+      membership.role === "platform_owner"
+      || (membership.tenantId === tenantId && membership.capability === "company_owner")
+    )
+  );
+  if (!authorized) throw new Error("member invite permission required");
+}
+
+function selectTenantIdentityMembership(database: DB, tenantId: string, userId: string): TenantMembership | undefined {
+  return database.tenantMemberships
+    .filter((membership) => membership.tenantId === tenantId && membership.userId === userId)
+    .sort((left, right) => {
+      const leftRemoved = left.status === "removed" ? 1 : 0;
+      const rightRemoved = right.status === "removed" ? 1 : 0;
+      if (leftRemoved !== rightRemoved) return leftRemoved - rightRemoved;
+      const updatedDifference = right.updatedAt.getTime() - left.updatedAt.getTime();
+      return updatedDifference || right.createdAt.getTime() - left.createdAt.getTime();
+    })[0];
+}
+
+function assertActiveCompanyOwnerActor(database: DB, tenantId: string, actorUserId?: string): string {
+  const normalizedActorUserId = actorUserId?.trim();
+  const actorIsCompanyOwner = Boolean(normalizedActorUserId) && database.tenantMemberships.some((membership) =>
+    membership.tenantId === tenantId
+    && membership.userId === normalizedActorUserId
+    && membership.status === "active"
+    && membership.capability === "company_owner"
+  );
+  if (!normalizedActorUserId || !actorIsCompanyOwner) throw new Error("company owner capability required");
+  return normalizedActorUserId;
+}
+
+function countActiveCompanyOwners(database: DB, tenantId: string): number {
+  return database.tenantMemberships.filter((membership) =>
+    membership.tenantId === tenantId
+    && membership.status === "active"
+    && membership.role === "tenant_owner"
+    && membership.capability === "company_owner"
+  ).length;
+}
+
+function assertActivePlatformOwnerActor(database: DB, actorUserId: string): void {
+  const authorized = database.tenantMemberships.some((membership) =>
+    membership.userId === actorUserId
+    && membership.status === "active"
+    && membership.role === "platform_owner"
+  );
+  if (!authorized) throw new Error("active platform owner membership required");
+}
+
+function isCanonicalTenantMemberCapability(role: TenantRole, capability: TenantCapabilityPreset): boolean {
+  return (role === "tenant_owner" && capability === "company_owner")
+    || (role === "manager" && capability === "company_form_admin")
+    || (role === "broker" && capability === "ordinary_member");
 }
 
 export async function createTenantAccount(input: {
@@ -2326,22 +2413,31 @@ export async function createTenantAccount(input: {
   accountType: TenantAccountType;
   status?: TenantStatus;
   purchasedSeatCount: number;
+  serviceStartAt?: string;
+  serviceEndAt?: string;
+  actorUserId: string;
   ownerName: string;
   ownerEmail: string;
 }): Promise<TenantAccountSummary> {
   const name = input.name.trim();
   const ownerEmail = input.ownerEmail.trim().toLowerCase();
+  const actorUserId = input.actorUserId.trim();
   if (!name) throw new Error("tenant name is required");
   if (!ownerEmail) throw new Error("owner email is required");
+  if (!actorUserId) throw new Error("tenant creation actor is required");
+  const dates = validateTenantServicePeriod(input);
+  const nextDb = cloneDb(db);
+  assertActivePlatformOwnerActor(nextDb, actorUserId);
 
   const baseSlug = slugifyTenantName(input.slug || name);
   let slug = baseSlug;
   let suffix = 2;
-  while (db.tenants.some((tenant) => tenant.slug === slug)) {
+  while (nextDb.tenants.some((tenant) => tenant.slug === slug)) {
     slug = `${baseSlug}-${suffix}`;
     suffix += 1;
   }
 
+  const nowDate = new Date();
   const tenant: Tenant = {
     id: makeId("tenant"),
     name,
@@ -2349,37 +2445,77 @@ export async function createTenantAccount(input: {
     accountType: input.accountType,
     status: input.status ?? "trial",
     purchasedSeatCount: normalizePurchasedSeatCount(input.purchasedSeatCount),
-    createdAt: new Date(),
-    updatedAt: new Date(),
+    serviceStartAt: dates.serviceStartAt,
+    serviceEndAt: dates.serviceEndAt,
+    createdAt: nowDate,
+    updatedAt: nowDate,
   };
-  db.tenants.push(tenant);
 
-  let owner = db.users.find((item) => item.email.toLowerCase() === ownerEmail);
-  if (!owner) {
-    owner = {
+  const existingOwner = nextDb.users.find((item) => item.email.toLowerCase() === ownerEmail);
+  const owner: User = existingOwner
+    ? { ...existingOwner }
+    : {
       id: makeId("user"),
       name: input.ownerName.trim() || ownerEmail,
       email: ownerEmail,
       passwordHash: "platform_invited_user",
       externalAuthSubject: undefined,
-      createdAt: new Date(),
+      createdAt: nowDate,
     };
-    db.users.push(owner);
-  }
-
-  db.tenantMemberships.push({
+  const ownerMembership: TenantMembership = {
     id: makeId("membership"),
     tenantId: tenant.id,
     userId: owner.id,
     role: "tenant_owner",
+    capability: "company_owner",
     status: "invited",
     invitationProvider: "none",
     invitationStatus: "not_sent",
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  });
-
-  return toTenantAccountSummary(tenant);
+    createdAt: nowDate,
+    updatedAt: nowDate,
+  };
+  const audit: AuditLog = {
+    id: makeId("audit"),
+    tenantId: tenant.id,
+    userId: actorUserId,
+    actorId: actorUserId,
+    action: "tenant_account_created",
+    targetType: "tenant",
+    targetId: tenant.id,
+    message: "客户账户与订阅台账已创建。",
+    context: {
+      status: tenant.status,
+      purchasedSeatCount: tenant.purchasedSeatCount,
+      serviceStartAt: tenant.serviceStartAt ?? null,
+      serviceEndAt: tenant.serviceEndAt ?? null,
+    },
+    createdAt: nowDate,
+  };
+  const result: TenantAccountSummary = {
+    ...tenant,
+    activeSeatCount: 0,
+    invitedSeatCount: 1,
+    suspendedSeatCount: 0,
+    usedSeatCount: 1,
+    availableSeatCount: Math.max(0, tenant.purchasedSeatCount - 1),
+    ownerMembers: [{
+      ...ownerMembership,
+      user: {
+        id: owner.id,
+        name: owner.name,
+        email: owner.email,
+        externalAuthSubject: owner.externalAuthSubject,
+        createdAt: owner.createdAt,
+      },
+      isBoundToExternalAuth: Boolean(owner.externalAuthSubject),
+    }],
+  };
+  nextDb.tenants.push(tenant);
+  if (!existingOwner) nextDb.users.push(owner);
+  nextDb.tenantMemberships.push(ownerMembership);
+  nextDb.auditLogs.unshift(audit);
+  _g.__brokerDb = nextDb;
+  return result;
 }
 
 /** Creates a company for the already-authenticated local user. */
@@ -2469,13 +2605,22 @@ export async function updateTenantAccountLifecycle(input: {
   tenantId: string;
   status?: TenantStatus;
   purchasedSeatCount?: number;
+  serviceStartAt?: string;
+  serviceEndAt?: string;
+  actorUserId: string;
 }): Promise<TenantAccountSummary | null> {
-  const tenant = db.tenants.find((item) => item.id === input.tenantId);
+  const normalizedActorUserId = input.actorUserId.trim();
+  if (!normalizedActorUserId) throw new Error("active platform owner membership required");
+  const nextDb = cloneDb(db);
+  assertActivePlatformOwnerActor(nextDb, normalizedActorUserId);
+  const nowDate = new Date();
+  const tenant = nextDb.tenants.find((item) => item.id === input.tenantId);
   if (!tenant) return null;
+  const dates = validateTenantServicePeriod(input);
 
   if (input.purchasedSeatCount != null) {
     const nextSeatCount = normalizePurchasedSeatCount(input.purchasedSeatCount);
-    const used = countUsedSeats(tenant.id).usedSeatCount;
+    const used = countTenantSeatUsage(nextDb.tenantMemberships.filter((membership) => membership.tenantId === tenant.id), nowDate);
     if (nextSeatCount < used) {
       throw new Error("purchased seat count cannot be lower than used seats");
     }
@@ -2484,8 +2629,62 @@ export async function updateTenantAccountLifecycle(input: {
   if (input.status) {
     tenant.status = input.status;
   }
-  tenant.updatedAt = new Date();
-  return toTenantAccountSummary(tenant);
+  tenant.serviceStartAt = dates.serviceStartAt;
+  tenant.serviceEndAt = dates.serviceEndAt;
+  tenant.updatedAt = nowDate;
+  const audit: AuditLog = {
+    id: makeId("audit"),
+    tenantId: tenant.id,
+    userId: normalizedActorUserId,
+    actorId: normalizedActorUserId,
+    action: "tenant_subscription_updated",
+    targetType: "tenant",
+    targetId: tenant.id,
+    message: "客户订阅台账已更新。",
+    context: {
+      status: tenant.status,
+      purchasedSeatCount: tenant.purchasedSeatCount,
+      serviceStartAt: tenant.serviceStartAt ?? null,
+      serviceEndAt: tenant.serviceEndAt ?? null,
+    },
+    createdAt: nowDate,
+  };
+  nextDb.auditLogs.unshift(audit);
+
+  const tenantMembers = nextDb.tenantMemberships.filter((membership) => membership.tenantId === tenant.id);
+  const activeSeatCount = tenantMembers.filter((membership) => membership.status === "active").length;
+  const invitedSeatCount = tenantMembers.filter((membership) => membership.status === "invited" && membershipOccupiesSeat(membership, nowDate)).length;
+  const suspendedSeatCount = tenantMembers.filter((membership) => membership.status === "suspended").length;
+  const usedSeatCount = countTenantSeatUsage(tenantMembers, nowDate);
+  const ownerMembers = tenantMembers
+    .filter((membership) => membership.role === "tenant_owner")
+    .flatMap((membership) => {
+      const user = nextDb.users.find((item) => item.id === membership.userId);
+      if (!user) return [];
+      return [{
+        ...membership,
+        invitationStatus: deriveMembershipInvitationStatus(membership, nowDate),
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          externalAuthSubject: user.externalAuthSubject,
+          createdAt: user.createdAt,
+        },
+        isBoundToExternalAuth: Boolean(user.externalAuthSubject),
+      }];
+    });
+  const result: TenantAccountSummary = {
+    ...tenant,
+    activeSeatCount,
+    invitedSeatCount,
+    suspendedSeatCount,
+    usedSeatCount,
+    availableSeatCount: Math.max(0, tenant.purchasedSeatCount - usedSeatCount),
+    ownerMembers,
+  };
+  _g.__brokerDb = nextDb;
+  return result;
 }
 
 export async function listTenantMemberships(userId: string): Promise<TenantMembership[]> {
@@ -2501,11 +2700,10 @@ export async function listPendingTenantInvitations(userId: string): Promise<Tena
     .filter((item) => {
       if (item.userId !== userId || item.status !== "invited" || item.invitationStatus !== "pending") return false;
       if (item.invitationExpiresAt && item.invitationExpiresAt.getTime() <= now) {
-        item.invitationStatus = "expired";
-        item.updatedAt = new Date();
         return false;
       }
-      return true;
+      const tenant = db.tenants.find((candidate) => candidate.id === item.tenantId);
+      return Boolean(tenant && isTenantServiceOperational(deriveTenantServiceState(tenant)));
     })
     .flatMap((item): TenantMemberListItem[] => {
       const mapped = toTenantMemberListItem(item);
@@ -2520,12 +2718,16 @@ export async function acceptTenantInvitation(input: {
   membershipId: string;
   invitationToken: string;
 }): Promise<TenantMemberListItem | null> {
-  const user = db.users.find((item) => item.id === input.userId);
-  const membership = db.tenantMemberships.find(
+  const nextDb = cloneDb(db);
+  const user = nextDb.users.find((item) => item.id === input.userId);
+  const tenant = nextDb.tenants.find((item) => item.id === input.tenantId);
+  const membership = nextDb.tenantMemberships.find(
     (item) => item.id === input.membershipId && item.tenantId === input.tenantId && item.userId === input.userId,
   );
   if (
     !user ||
+    !tenant ||
+    !isTenantServiceOperational(deriveTenantServiceState(tenant)) ||
     !membership ||
     membership.status !== "invited" ||
     membership.invitationStatus !== "pending" ||
@@ -2536,18 +2738,45 @@ export async function acceptTenantInvitation(input: {
   ) {
     return null;
   }
-  if (membership.invitationExpiresAt && membership.invitationExpiresAt.getTime() <= Date.now()) {
-    membership.invitationStatus = "expired";
-    membership.updatedAt = new Date();
-    return null;
-  }
   const nowDate = new Date();
-  membership.status = "active";
-  membership.invitationStatus = "accepted";
-  membership.invitationAcceptedAt = nowDate;
-  membership.invitationError = undefined;
-  membership.updatedAt = nowDate;
-  return toTenantMemberListItem(membership);
+  let result: TenantMemberListItem | null = null;
+  if (membership.invitationExpiresAt && membership.invitationExpiresAt.getTime() <= nowDate.getTime()) {
+    membership.invitationStatus = "expired";
+    membership.updatedAt = nowDate;
+  } else {
+    membership.status = "active";
+    membership.invitationStatus = "accepted";
+    membership.invitationAcceptedAt = nowDate;
+    membership.invitationError = undefined;
+    membership.updatedAt = nowDate;
+    const audit: AuditLog = {
+      id: makeId("audit"),
+      tenantId: tenant.id,
+      userId: user.id,
+      actorId: user.id,
+      action: "tenant_invitation_accepted",
+      targetType: "member",
+      targetId: membership.id,
+      message: "成员已接受经营主体邀请。",
+      context: { membershipId: membership.id, role: membership.role },
+      createdAt: nowDate,
+    };
+    nextDb.auditLogs.unshift(audit);
+    ensureTenantMembershipDefaults(membership);
+    result = {
+      ...membership,
+      invitationStatus: deriveMembershipInvitationStatus(membership, nowDate),
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        externalAuthSubject: user.externalAuthSubject,
+        createdAt: user.createdAt,
+      },
+    };
+  }
+  _g.__brokerDb = nextDb;
+  return result;
 }
 
 export async function getTenantMembership(input: { userId: string; tenantId: string }): Promise<TenantMembership | null> {
@@ -2595,6 +2824,7 @@ export async function updateTenantMemberInvitation(input: {
   tenantId?: string;
   membershipId: string;
   actorUserId?: string;
+  memberContext: TenantMemberListItem;
   invitationProvider: TenantInvitationProvider;
   invitationStatus: TenantInvitationStatus;
   providerInvitationId?: string;
@@ -2604,11 +2834,46 @@ export async function updateTenantMemberInvitation(input: {
   acceptedAt?: Date;
   expiresAt?: Date;
 }): Promise<TenantMemberListItem | null> {
+  const nextDb = cloneDb(db);
   const scopeTenantId = resolveTenantId(input.tenantId);
-  const membership = db.tenantMemberships.find(
+  const allowedProviders: readonly string[] = ["none", "manual", "clerk"];
+  const allowedStatuses: readonly string[] = ["pending", "failed", "not_sent", "revoked", "expired"];
+  if (!allowedProviders.includes(input.invitationProvider) || !allowedStatuses.includes(input.invitationStatus)) {
+    throw new Error("unsupported invitation delivery state");
+  }
+  const membership = nextDb.tenantMemberships.find(
     (item) => item.id === input.membershipId && item.tenantId === scopeTenantId,
   );
-  if (!membership) return null;
+  if (!membership || membership.status !== "invited") return null;
+  const actorUserId = input.actorUserId?.trim();
+  assertTenantInvitationActorAuthorized(nextDb, scopeTenantId, actorUserId);
+  if (input.invitationProvider === "clerk" && (membership.invitationStatus === "revoked" || membership.invitationStatus === "expired")) return null;
+  const isDuplicateDeliveryFinalization = input.invitationProvider === "clerk" && (
+    (input.invitationStatus === "pending"
+      && Boolean(input.providerInvitationId)
+      && membership.invitationProvider === "clerk"
+      && membership.invitationStatus === "pending"
+      && membership.providerInvitationId === input.providerInvitationId)
+    || (input.invitationStatus === "failed"
+      && membership.invitationProvider === "clerk"
+      && membership.invitationStatus === "failed"
+      && membership.invitationError === input.invitationError)
+  );
+  if (isDuplicateDeliveryFinalization) {
+    return toTenantMemberListItem(membership);
+  }
+  const nowDate = new Date();
+  const nextInvitationExpiresAt = input.expiresAt ?? membership.invitationExpiresAt;
+  const currentlyOccupiesSeat = membershipOccupiesSeat(membership, nowDate);
+  const nextOccupiesSeat = membershipOccupiesSeat({ ...membership, invitationStatus: input.invitationStatus, invitationExpiresAt: nextInvitationExpiresAt }, nowDate);
+  if (!currentlyOccupiesSeat && nextOccupiesSeat) {
+    const tenant = nextDb.tenants.find((item) => item.id === scopeTenantId);
+    if (!tenant) return null;
+    const usedSeatCount = countTenantSeatUsage(nextDb.tenantMemberships.filter((candidate) => candidate.tenantId === scopeTenantId), nowDate);
+    if (usedSeatCount >= tenant.purchasedSeatCount) throw new Error("purchased seat count exceeded");
+  }
+  const user = nextDb.users.find((item) => item.id === membership.userId);
+  if (!user) return null;
   membership.invitationProvider = input.invitationProvider;
   membership.invitationStatus = input.invitationStatus;
   membership.providerInvitationId = input.providerInvitationId;
@@ -2616,30 +2881,92 @@ export async function updateTenantMemberInvitation(input: {
   membership.invitationError = input.invitationError;
   membership.invitationSentAt = input.sentAt ?? membership.invitationSentAt;
   membership.invitationAcceptedAt = input.acceptedAt ?? membership.invitationAcceptedAt;
-  membership.invitationExpiresAt = input.expiresAt ?? membership.invitationExpiresAt;
-  membership.updatedAt = new Date();
-  return toTenantMemberListItem(membership);
+  membership.invitationExpiresAt = nextInvitationExpiresAt;
+  membership.updatedAt = nowDate;
+  const auditAction = input.invitationProvider === "clerk" && input.invitationStatus === "pending"
+    ? "member_invitation_sent"
+    : input.invitationProvider === "clerk" && input.invitationStatus === "failed"
+      ? "member_invitation_failed"
+      : null;
+  if (auditAction) {
+    const audit: AuditLog = {
+      id: makeId("audit"),
+      tenantId: scopeTenantId,
+      userId: actorUserId!,
+      actorId: actorUserId!,
+      action: auditAction,
+      targetType: "member",
+      targetId: membership.id,
+      message: auditAction === "member_invitation_sent" ? "成员邀请已发送。" : "成员邀请发送失败。",
+      context: {
+        membershipId: membership.id,
+        provider: input.invitationProvider,
+        providerInvitationId: input.providerInvitationId,
+        reason: input.invitationError,
+      },
+      createdAt: nowDate,
+    };
+    nextDb.auditLogs.unshift(audit);
+  }
+  const result: TenantMemberListItem = {
+    ...membership,
+    invitationStatus: deriveMembershipInvitationStatus(membership, nowDate),
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      externalAuthSubject: user.externalAuthSubject,
+      createdAt: user.createdAt,
+    },
+  };
+  _g.__brokerDb = nextDb;
+  return result;
 }
 
 export async function refreshTenantMemberInvitation(input: {
   tenantId?: string;
   membershipId: string;
   invitedByUserId?: string;
-}): Promise<TenantMemberListItem | null> {
+}): Promise<TenantInvitationDeliveryContext | null> {
+  const nextDb = cloneDb(db);
   const scopeTenantId = resolveTenantId(input.tenantId);
-  const membership = db.tenantMemberships.find(
+  const tenant = nextDb.tenants.find((item) => item.id === scopeTenantId);
+  const membership = nextDb.tenantMemberships.find(
     (item) => item.id === input.membershipId && item.tenantId === scopeTenantId,
   );
-  if (!membership || membership.status !== "invited") return null;
+  const user = membership ? nextDb.users.find((item) => item.id === membership.userId) : undefined;
+  if (!tenant || !membership || membership.status !== "invited" || !user) return null;
+  assertTenantInvitationActorAuthorized(nextDb, scopeTenantId, input.invitedByUserId);
   const nowDate = new Date();
+  const nextInvitationExpiresAt = new Date(nowDate.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const currentlyOccupiesSeat = membershipOccupiesSeat(membership, nowDate);
+  const nextOccupiesSeat = membershipOccupiesSeat({ ...membership, invitationStatus: "pending", invitationExpiresAt: nextInvitationExpiresAt }, nowDate);
+  if (!currentlyOccupiesSeat && nextOccupiesSeat) {
+    const usedSeatCount = countTenantSeatUsage(nextDb.tenantMemberships.filter((candidate) => candidate.tenantId === scopeTenantId), nowDate);
+    if (usedSeatCount >= tenant.purchasedSeatCount) throw new Error("purchased seat count exceeded");
+  }
   membership.invitationStatus = "pending";
   membership.invitationToken = randomUUID();
-  membership.invitationExpiresAt = new Date(nowDate.getTime() + 7 * 24 * 60 * 60 * 1000);
+  membership.invitationExpiresAt = nextInvitationExpiresAt;
   membership.invitedByUserId = input.invitedByUserId ?? membership.invitedByUserId;
   membership.invitationSentAt = nowDate;
   membership.invitationError = undefined;
   membership.updatedAt = nowDate;
-  return toTenantMemberListItem(membership);
+  const member: TenantMemberListItem = {
+    ...membership,
+    invitationStatus: deriveMembershipInvitationStatus(membership, nowDate),
+    tenantName: tenant.name,
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      externalAuthSubject: user.externalAuthSubject,
+      createdAt: user.createdAt,
+    },
+  };
+  const result: TenantInvitationDeliveryContext = { ...member, tenant: { ...tenant }, member };
+  _g.__brokerDb = nextDb;
+  return result;
 }
 
 export async function inviteTenantMember(input: {
@@ -2651,12 +2978,41 @@ export async function inviteTenantMember(input: {
   capability?: TenantCapabilityPreset;
   invitedByUserId?: string;
 }): Promise<TenantMemberListItem> {
+  const nextDb = cloneDb(db);
   const scopeTenantId = resolveTenantId(input.tenantId);
   const email = input.email.trim().toLowerCase();
   const name = input.name.trim() || email;
   if (!email) throw new Error("member email is required");
+  if ((input.status ?? "invited") !== "invited") {
+    throw new Error("Memory invitations must start in invited state");
+  }
+  const tenant = nextDb.tenants.find((item) => item.id === scopeTenantId);
+  if (!tenant || !isTenantServiceOperational(deriveTenantServiceState(tenant))) {
+    throw new Error("tenant service is unavailable for invitations");
+  }
+  const actorUserId = assertActiveCompanyOwnerActor(nextDb, scopeTenantId, input.invitedByUserId);
+  const capability = input.capability ?? "ordinary_member";
+  if (!isCanonicalTenantMemberCapability(input.role, capability)) {
+    throw new Error("company capability and legacy role do not match");
+  }
+  const nowDate = new Date();
 
-  let user = db.users.find((item) => item.email.toLowerCase() === email);
+  const existingUser = nextDb.users.find((item) => item.email.toLowerCase() === email);
+  const existingMembership = existingUser
+    ? selectTenantIdentityMembership(nextDb, scopeTenantId, existingUser.id)
+    : undefined;
+  const existingOccupiesSeat = Boolean(existingMembership && membershipOccupiesSeat(existingMembership, nowDate));
+  if (!existingOccupiesSeat) {
+    const usedSeatCount = countTenantSeatUsage(
+      nextDb.tenantMemberships.filter((membership) => membership.tenantId === scopeTenantId),
+      nowDate,
+    );
+    if (usedSeatCount >= tenant.purchasedSeatCount) {
+      throw new Error("purchased seat count exceeded");
+    }
+  }
+
+  let user = existingUser;
   if (!user) {
     user = {
       id: makeId("user"),
@@ -2664,70 +3020,53 @@ export async function inviteTenantMember(input: {
       email,
       passwordHash: "local_invited_user",
       externalAuthSubject: undefined,
-      createdAt: new Date(),
+      createdAt: nowDate,
     };
-    db.users.push(user);
+    nextDb.users.push(user);
   }
 
-  const existing = db.tenantMemberships.find(
-    (membership) => membership.tenantId === scopeTenantId && membership.userId === user.id,
-  );
+  const existing = existingMembership ?? selectTenantIdentityMembership(nextDb, scopeTenantId, user.id);
+  let membership: TenantMembership;
   if (existing && existing.status !== "removed") {
-    const nextStatus = input.status ?? "invited";
-    if (existing.status === "active" && nextStatus === "invited") {
+    if (existing.status === "active") {
       throw new Error("active member cannot be changed back to invited");
     }
-    if (existing.status === "suspended" && nextStatus !== "suspended") {
+    if (existing.status === "suspended") {
       throw new Error("suspended member must be explicitly reactivated, not re-invited");
     }
     existing.role = input.role;
-    existing.capability = input.capability ?? existing.capability ?? "ordinary_member";
-    existing.status = nextStatus;
+    existing.capability = capability;
+    existing.status = "invited";
     existing.invitedEmail = email;
-    existing.invitedByUserId = input.invitedByUserId;
-    existing.invitationProvider = existing.invitationProvider ?? "none";
-    if (nextStatus === "active") {
-      existing.invitationStatus = "accepted";
-      existing.invitationAcceptedAt = existing.invitationAcceptedAt ?? new Date();
-    } else {
-      existing.invitationStatus = "pending";
-      existing.invitationToken = randomUUID();
-      existing.invitationExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-    }
-    existing.updatedAt = new Date();
-    return {
-      ...existing,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        externalAuthSubject: user.externalAuthSubject,
-        createdAt: user.createdAt,
-      },
+    existing.invitedByUserId = actorUserId;
+    existing.invitationProvider = "none";
+    existing.invitationStatus = "pending";
+    existing.invitationToken = randomUUID();
+    existing.invitationExpiresAt = new Date(nowDate.getTime() + 7 * 24 * 60 * 60 * 1000);
+    existing.invitationAcceptedAt = undefined;
+    existing.updatedAt = nowDate;
+    membership = existing;
+  } else {
+    membership = {
+      id: makeId("membership"),
+      tenantId: scopeTenantId,
+      userId: user.id,
+      role: input.role,
+      capability,
+      status: "invited",
+      invitationProvider: "none",
+      invitationStatus: "pending",
+      invitedEmail: email,
+      invitedByUserId: actorUserId,
+      invitationToken: randomUUID(),
+      invitationExpiresAt: new Date(nowDate.getTime() + 7 * 24 * 60 * 60 * 1000),
+      invitationAcceptedAt: undefined,
+      createdAt: nowDate,
+      updatedAt: nowDate,
     };
+    nextDb.tenantMemberships.push(membership);
   }
-
-  const nextStatus = input.status ?? "invited";
-  const nowDate = new Date();
-  const membership: TenantMembership = {
-    id: makeId("membership"),
-    tenantId: scopeTenantId,
-    userId: user.id,
-    role: input.role,
-    capability: input.capability ?? "ordinary_member",
-    status: nextStatus,
-    invitationProvider: nextStatus === "active" ? "manual" : "none",
-    invitationStatus: nextStatus === "active" ? "accepted" : "pending",
-    invitedEmail: email,
-    invitedByUserId: input.invitedByUserId,
-    invitationToken: nextStatus === "active" ? undefined : randomUUID(),
-    invitationExpiresAt: nextStatus === "active" ? undefined : new Date(nowDate.getTime() + 7 * 24 * 60 * 60 * 1000),
-    invitationAcceptedAt: nextStatus === "active" ? nowDate : undefined,
-    createdAt: nowDate,
-    updatedAt: nowDate,
-  };
-  db.tenantMemberships.push(membership);
-  return {
+  const result: TenantMemberListItem = {
     ...membership,
     user: {
       id: user.id,
@@ -2737,6 +3076,8 @@ export async function inviteTenantMember(input: {
       createdAt: user.createdAt,
     },
   };
+  _g.__brokerDb = nextDb;
+  return result;
 }
 
 export async function updateTenantMemberRole(input: {
@@ -2746,17 +3087,36 @@ export async function updateTenantMemberRole(input: {
   capability?: TenantCapabilityPreset;
   actorUserId?: string;
 }): Promise<TenantMemberListItem | null> {
+  const nextDb = cloneDb(db);
   const scopeTenantId = resolveTenantId(input.tenantId);
-  const membership = db.tenantMemberships.find(
+  const tenant = nextDb.tenants.find((item) => item.id === scopeTenantId);
+  if (!tenant || !isTenantServiceOperational(deriveTenantServiceState(tenant))) {
+    throw new Error("tenant service is unavailable for member management");
+  }
+  assertActiveCompanyOwnerActor(nextDb, scopeTenantId, input.actorUserId);
+  const capability = input.capability;
+  if (!capability || !isCanonicalTenantMemberCapability(input.role, capability)) {
+    throw new Error("company capability and legacy role do not match");
+  }
+  const membership = nextDb.tenantMemberships.find(
     (item) => item.id === input.membershipId && item.tenantId === scopeTenantId,
   );
   if (!membership) return null;
-  membership.role = input.role;
-  if (input.capability) membership.capability = input.capability;
-  membership.updatedAt = new Date();
-  const user = db.users.find((item) => item.id === membership.userId);
+  const user = nextDb.users.find((item) => item.id === membership.userId);
   if (!user) return null;
-  return {
+  const activeCompanyOwnerCount = countActiveCompanyOwners(nextDb, scopeTenantId);
+  if (membership.status === "active"
+      && membership.role === "tenant_owner"
+      && membership.capability === "company_owner"
+      && activeCompanyOwnerCount <= 1
+      && (input.role !== "tenant_owner" || capability !== "company_owner")) {
+    throw new Error("last active company owner cannot be downgraded");
+  }
+  const nowDate = new Date();
+  membership.role = input.role;
+  membership.capability = capability;
+  membership.updatedAt = nowDate;
+  const result: TenantMemberListItem = {
     ...membership,
     user: {
       id: user.id,
@@ -2766,6 +3126,8 @@ export async function updateTenantMemberRole(input: {
       createdAt: user.createdAt,
     },
   };
+  _g.__brokerDb = nextDb;
+  return result;
 }
 
 export async function updateTenantMemberStatus(input: {
@@ -2774,27 +3136,48 @@ export async function updateTenantMemberStatus(input: {
   status: TenantMembershipStatus;
   actorUserId?: string;
 }): Promise<TenantMemberListItem | null> {
+  const nextDb = cloneDb(db);
   const scopeTenantId = resolveTenantId(input.tenantId);
-  const membership = db.tenantMemberships.find(
+  const tenant = nextDb.tenants.find((item) => item.id === scopeTenantId);
+  if (!tenant || !isTenantServiceOperational(deriveTenantServiceState(tenant))) {
+    throw new Error("tenant service is unavailable for member management");
+  }
+  assertActiveCompanyOwnerActor(nextDb, scopeTenantId, input.actorUserId);
+  const membership = nextDb.tenantMemberships.find(
     (item) => item.id === input.membershipId && item.tenantId === scopeTenantId,
   );
   if (!membership) return null;
-  if (membership.status === "removed" && input.status === "active") {
+  const nowDate = new Date();
+  if (membership.status === "removed" && (input.status === "active" || input.status === "suspended")) {
     throw new Error("removed membership requires a new invitation");
   }
-  if (membership.status === "invited" && input.status === "active") {
+  if (membership.status === "invited" && (input.status === "active" || input.status === "suspended")) {
     throw new Error("invited membership requires explicit token acceptance");
   }
-  const previousStatus = membership.status;
-  membership.status = input.status;
-  if (input.status === "active" && previousStatus === "invited") {
-    membership.invitationStatus = "accepted";
-    membership.invitationAcceptedAt = new Date();
+  if (((membership.status === "active" && input.status === "suspended")
+      || (membership.status === "suspended" && input.status === "active"))
+      && membership.invitationStatus !== "accepted") {
+    throw new Error("only accepted members can be suspended or reactivated");
   }
-  membership.updatedAt = new Date();
-  const user = db.users.find((item) => item.id === membership.userId);
+  const currentlyOccupiesSeat = membershipOccupiesSeat(membership, nowDate);
+  const nextOccupiesSeat = membershipOccupiesSeat({ ...membership, status: input.status }, nowDate);
+  if (!currentlyOccupiesSeat && nextOccupiesSeat) {
+    const usedSeatCount = countTenantSeatUsage(nextDb.tenantMemberships.filter((candidate) => candidate.tenantId === scopeTenantId), nowDate);
+    if (usedSeatCount >= tenant.purchasedSeatCount) throw new Error("purchased seat count exceeded");
+  }
+  const user = nextDb.users.find((item) => item.id === membership.userId);
   if (!user) return null;
-  return {
+  const activeCompanyOwnerCount = countActiveCompanyOwners(nextDb, scopeTenantId);
+  if (membership.status === "active"
+      && membership.role === "tenant_owner"
+      && membership.capability === "company_owner"
+      && activeCompanyOwnerCount <= 1
+      && input.status !== "active") {
+    throw new Error("last active company owner cannot be suspended or removed");
+  }
+  membership.status = input.status;
+  membership.updatedAt = nowDate;
+  const result: TenantMemberListItem = {
     ...membership,
     user: {
       id: user.id,
@@ -2804,6 +3187,8 @@ export async function updateTenantMemberStatus(input: {
       createdAt: user.createdAt,
     },
   };
+  _g.__brokerDb = nextDb;
+  return result;
 }
 
 export async function listCaseWorkbenchFieldRules(userId: string, tenantId?: string): Promise<CaseWorkbenchFieldRule[]> {

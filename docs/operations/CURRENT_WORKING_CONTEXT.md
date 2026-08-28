@@ -108,13 +108,14 @@
 - 不把 WIP 整体合入，不单独提取会破坏完整用户流程的 hunk；不把生产 503、外部数据库失败或真实隧道行为伪称为通过。
 - TASK-003 的 A 和 TASK-004 前台流程 B 本地运行门禁已通过；不得把 B 扩展到 TASK-005～008。真实 OCR、生产认证、外部服务、生产数据库、双租户真实浏览器隔离和隧道仍由 TASK-019 验证；在这些检查前不得开放隧道。149 项专业分类、TASK-005～008 不得顺手迁入。
 
-## 2026-08-27 UI/UX Wave 0/1 当前状态
+## 2026-08-28 订阅台账当前状态
 
-- 当前唯一实施任务为 [`TASK-042`](../tasks/TASK-042.md)，唯一设计计划为 [`UIUX_DESIGN_SYSTEM_WAVE_0_1_PLAN_2026-08-26.md`](UIUX_DESIGN_SYSTEM_WAVE_0_1_PLAN_2026-08-26.md)。不再创建页面拆分任务或平行计划。
-- Wave 1 第一切片已在隔离工作树实现页面级组合层与 `/cases/new` 模板；TASK-041 业务合同保持为回归基线。当前仍未进入 `/cases/[id]` 或其他页面迁移。
-- 候选 `380101e` 已标记为 Superseded / Not Deployed；当前仅恢复 workflow 正式基线，并由 `package.json` 的 `prebuild` 消费 Layout 合同门。上一轮同步提交锁、Escape 实时锁、页面会话说明、loading 来源与路由拒绝合同均已收口，待新候选工程门和独立只读复核。真实 1440/768/390 浏览器证据尚未取得，不能将本地门等同于 Preview 或产品验收通过。
-- Production、Production migration、数据库内容和正式 main 均未操作；脏 checkout、`AGENTS.md` 自动生成块和历史未跟踪文件未纳入写集。
+- `TASK-042` 已随 PR #10 正常合并收口：固定 Staging `1e668bf97575381097ad9187352b57127e3daeff` 进入 main merge `f2955701003f90b0b6cf1c331edfd5e943d53967`；PR CI 与合并后 main CI 均通过，GitHub 未记录 merge SHA deployment，Production migration 未执行。
+- 当前唯一实施任务为 [`TASK-043`](../tasks/TASK-043.md)：客户订阅台账、席位、服务有效期、30 天提醒、到期业务拦截、审计与 platform owner 入口同源。隔离工作树为 `/private/tmp/broker-desk-platform-subscriptions-20260828`，分支 `task043-platform-subscription-ledger`，基线为 `f295570`。
+- 当前测试 Clerk 身份直接访问 `/platform/accounts` 被真实 `requirePlatformOwnerSession` 拒绝；后续只允许既有 bootstrap 或持久化 active `platform_owner` membership，不根据邮箱或环境猜测身份。
+- Production deployment、Production migration、支付、发票、邮件与套餐扩建继续禁止；独立代码审查 GO 前不得执行非生产 migration。
+- TASK-043 实现 Agent 已完成授权写集内本地实现，当前进入独立只读审查交接；本地确定性合同覆盖 Tokyo 日期边界、席位/邀请释放与容量、商业更新审计和会话/入口合同。数据库、migration、Staging、真实三身份浏览器与 Production 均未操作。
 
 ## Agent状态
 
-- MIG-005 按顺序使用 1 个实现 Agent 和 1 个独立审查 Agent，均已退出；MIG-007 检查点 A 和 B 均按顺序各使用 1 个实现 Agent 和 1 个独立审查 Agent，均已退出；TASK-023 最终证据审核复用 1 个独立审查 Agent，已退出；当前活跃 Agent 数量为 0。
+- TASK-043 实现 Agent 完成后必须退出，再启动 1 个独立审查 Agent；不得并行修改同一写集。当前下一步仅为独立只读审查，不得先执行 migration 或部署。

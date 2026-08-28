@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { cache } from "react";
 import {
   getDefaultUser,
@@ -26,17 +27,21 @@ import {
 } from "@/lib/tenant-permissions";
 import { isProductionRuntime } from "@/lib/auth-mode";
 import { registerTenantSessionProvenance } from "@/lib/tenant-session-provenance";
+import { deriveTenantServiceState, isTenantServiceOperational, type TenantServiceState } from "@/lib/tenant-service";
 
 export class TenantSessionError extends Error {
   constructor(
     message: string,
     public readonly code: "user_not_found" | "tenant_not_found" | "tenant_selection_required" | "tenant_forbidden" | "permission_denied",
     public readonly status: 401 | 403 | 404 = code === "user_not_found" ? 401 : code === "tenant_not_found" ? 404 : 403,
+    public readonly reason?: "service_unavailable",
   ) {
     super(message);
     this.name = "TenantSessionError";
   }
 }
+
+export const TENANT_SERVICE_UNAVAILABLE_REASON = "service_unavailable" as const;
 
 export type TenantSession = {
   /** Clerk/trusted-auth subject used to bind the request-scoped database identity. */
@@ -44,6 +49,7 @@ export type TenantSession = {
   user: User;
   tenant: Tenant;
   membership: TenantMembership;
+  serviceState: TenantServiceState;
 };
 
 /**
@@ -155,7 +161,7 @@ const resolveTenantSession = cache(async (preferredUserId?: string, requestedTen
 
   const tenant = sessionLookups.find((item) => item.membership.id === membership.id)?.tenant
     ?? await getTenantById(membership.tenantId);
-  if (!tenant || !isTenantAccessibleStatus(tenant.status)) {
+  if (!tenant) {
     throw new TenantSessionError("Active tenant was not found.", "tenant_not_found");
   }
 
@@ -167,6 +173,7 @@ const resolveTenantSession = cache(async (preferredUserId?: string, requestedTen
     user: sessionUser,
     tenant,
     membership,
+    serviceState: deriveTenantServiceState(tenant),
   };
   registerTenantSessionProvenance(resolvedSession);
   return resolvedSession;
@@ -182,6 +189,14 @@ export const getTenantSessionForNavigation = cache(async (): Promise<TenantSessi
   }
 });
 
+/** Restricted resolver for workspace selection and the read-only service notice. */
+export async function requireTenantReadOnlySession(options: {
+  preferredUserId?: string;
+  requestedTenantId?: string;
+} = {}): Promise<TenantSession> {
+  return resolveTenantSession(options.preferredUserId, options.requestedTenantId);
+}
+
 export async function requireTenantSession(options: {
   preferredUserId?: string;
   requestedTenantId?: string;
@@ -189,6 +204,9 @@ export async function requireTenantSession(options: {
   permissions?: readonly TenantPermissionAction[];
 } = {}): Promise<TenantSession> {
   const session = await resolveTenantSession(options.preferredUserId, options.requestedTenantId);
+  if (!isTenantServiceOperational(session.serviceState)) {
+    redirect("/service-status");
+  }
   const requiredPermissions = [
     ...(options.permission ? [options.permission] : []),
     ...(options.permissions ?? []),

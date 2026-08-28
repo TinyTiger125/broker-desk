@@ -159,8 +159,13 @@ assert(
   "AppNav must resolve current membership capability so Clerk users without member-management permission do not see the members link",
 );
 assert(
-  appNavSource.includes("Protected pages") && appNavSource.includes("their own authorization"),
-  "AppNav must leave actual tenant authorization to protected pages",
+  appNavSource.includes("getPlatformOwnerSession") &&
+    !appNavSource.includes("clerkEnabled || hasPlatformAccess"),
+  "AppNav platform entry must use the same authorization resolver as the protected platform page",
+);
+assert(
+  tenantSessionSource.includes("requireTenantReadOnlySession") && tenantSessionSource.includes('"service_unavailable"'),
+  "tenant session must keep one explicit restricted read-only resolver and fail closed at the business boundary",
 );
 
 const dataSource = fs.readFileSync("src/lib/data.ts", "utf8");

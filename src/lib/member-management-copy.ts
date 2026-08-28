@@ -46,6 +46,10 @@ export const INVITATION_STATUS_LABELS: Record<TenantInvitationStatus, Record<Loc
 export function getMemberManagementCopy(locale: Locale) {
   return {
     title: locale === "zh" ? "公司成员与权限" : locale === "ko" ? "회사 멤버와 권한" : "会社メンバーと権限",
+    subscriptionSummary: locale === "zh" ? "订阅摘要" : locale === "ko" ? "구독 요약" : "契約概要",
+    purchasedSeats: locale === "zh" ? "总席位" : locale === "ko" ? "전체 좌석" : "総席数",
+    servicePeriod: locale === "zh" ? "服务期间" : locale === "ko" ? "서비스 기간" : "サービス期間",
+    serviceBlocked: locale === "zh" ? "当前服务状态只允许查看摘要和成员；业务操作与成员变更已暂停。" : locale === "ko" ? "현재 서비스 상태에서는 요약과 멤버만 볼 수 있으며 업무 작업과 멤버 변경은 중지됩니다." : "現在のサービス状態では概要とメンバーのみ閲覧でき、業務操作とメンバー変更は停止されています。",
     subtitle:
       locale === "zh"
         ? "管理当前工作区的成员、邀请状态和可执行操作。"
@@ -143,6 +147,11 @@ export function getMemberManagementFlash(locale: Locale, flash?: string) {
     invitation_sent: { ja: "招待を再送信しました。", zh: "已重新发送邀请。", ko: "초대를 다시 보냈습니다." },
     invitation_pending: { ja: "招待は送信待ちとして保持されています。", zh: "邀请已保留为待发送状态。", ko: "초대가 발송 대기 상태로 유지되었습니다." },
     invitation_failed: { ja: "招待の再送信に失敗しました。", zh: "重新发送邀请失败。", ko: "초대 재전송에 실패했습니다." },
+    invitation_delivery_uncertain: {
+      ja: "招待は送信された可能性がありますが、記録を確定できませんでした。むやみに再送せず、Clerk と現在の招待状態を先に確認してください。",
+      zh: "邀请可能已发送，但记录未能确认。请勿盲目重发，请先核对 Clerk 与当前邀请状态。",
+      ko: "초대가 전송되었을 수 있지만 기록을 확정하지 못했습니다. 무작정 다시 보내지 말고 Clerk와 현재 초대 상태를 먼저 확인해 주세요.",
+    },
     invitation_revoked: { ja: "招待を取り消しました。", zh: "已撤销邀请。", ko: "초대를 취소했습니다." },
     member_role_updated: { ja: "メンバーの権限を更新しました。", zh: "已更新成员权限。", ko: "멤버 권한을 업데이트했습니다." },
     member_suspended: { ja: "メンバーを停止しました。", zh: "已暂停成员。", ko: "멤버를 중지했습니다." },

@@ -4,7 +4,7 @@
 
 UI/UX Design System Wave 0/1：页面级组合层与 `/cases/new` 首个模板
 
-- 状态: In Progress
+- 状态: Done
 
 ## 权威依据
 
@@ -111,6 +111,12 @@ git diff --check
 ```
 
 ## 当前状态
+
+- 最终固定 Staging 候选 `1e668bf97575381097ad9187352b57127e3daeff` 已完成候选级独立审查与集中非生产验收，P0/P1 为零。
+- 正常 PR [#10](https://github.com/TinyTiger125/broker-desk/pull/10) 已于 2026-08-28 合并为 `main` 提交 `f2955701003f90b0b6cf1c331edfd5e943d53967`；PR CI 与合并后 main CI 均通过。
+- GitHub 对 merge SHA 未记录 deployment；Production deployment 与 Production migration 均未执行。本任务到此收口，不再承载后续商业账户能力。
+
+### 收口前历史记录（不覆盖上述最终状态）
 
 - 本轮最新重跑顺序为 workflow → product-language → layout contract → TASK-041 contract/behavior → typecheck → lint → build（含 prebuild 先执行）→ diff check；本地门均通过。并行首轮 typecheck 曾因 `.next` 生成时序读到不完整目录，构建完成后串行重跑已通过。
 - lint：0 errors；4 个 warning 均为既有文件/既有代码 warning。

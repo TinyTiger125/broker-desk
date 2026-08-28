@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { getDefaultUser, getTenantById, isTenantAccessibleStatus, listPendingTenantInvitations, listTenantMemberships, listTenantSessionLookupsByExternalAuthSubject } from "@/lib/data";
+import { getDefaultUser, getTenantById, listPendingTenantInvitations, listTenantMemberships, listTenantSessionLookupsByExternalAuthSubject } from "@/lib/data";
 import { getLocale, type Locale } from "@/lib/locale";
 import { isClerkAuthEnabled } from "@/lib/auth-mode";
 import { getClerkAuthSubject } from "@/lib/clerk-auth";
 import { PageFrame, PageHeader, StateSurface } from "@/components/layout-system";
 import { WorkspaceSelector, type WorkspaceOption } from "./workspace-selector";
 import { WorkspaceSignOutButton } from "./sign-out-button";
+import { deriveTenantServiceState, getTenantServiceStatusLabel, isTenantServiceOperational } from "@/lib/tenant-service";
 
 function safeWorkspaceReturnTo(value: string | undefined): string {
   const candidate = String(value ?? "").trim();
@@ -137,27 +138,27 @@ export default async function WorkspacePage({ searchParams }: WorkspacePageProps
     if (clerkSubject) return sessionLookups.find((lookup) => lookup.membership.id === membership.id)?.tenant ?? null;
     return getTenantById(membership.tenantId);
   };
-  const pendingActivation = user
-    ? (await Promise.all(
-        memberships
-          .filter((membership) => membership.status === "active")
-          .map(tenantForMembership),
-      )).some((tenant) => tenant?.status === "pending_activation")
-    : false;
-  const items = (
+  const resolvedMemberships = (
     await Promise.all(
       memberships
         .filter((membership) => membership.status === "active")
         .map(async (membership) => ({ membership, tenant: await tenantForMembership(membership) })),
     )
   )
-    .filter((item) => item.tenant && isTenantAccessibleStatus(item.tenant.status))
+    .filter((item) => item.tenant)
+    .map((item) => ({ ...item, serviceState: deriveTenantServiceState(item.tenant!) }));
+  const items = resolvedMemberships
+    .filter((item) => isTenantServiceOperational(item.serviceState))
     .map(({ tenant }) => ({
       tenantId: tenant!.id,
       name: tenant!.name,
       accountLabel: tenant!.accountType === "individual" ? text.individual : text.company,
       roleLabel: text.role,
     })) satisfies WorkspaceOption[];
+  const unavailableItems = resolvedMemberships.filter(
+    (item) => !isTenantServiceOperational(item.serviceState),
+  );
+  const pendingActivation = unavailableItems.some((item) => item.serviceState.status === "pending");
   const noWorkspaceTitle = memberships.some((item) => item.status === "suspended")
     ? text.statusSuspended
     : memberships.some((item) => item.status === "removed")
@@ -179,8 +180,23 @@ export default async function WorkspacePage({ searchParams }: WorkspacePageProps
               <p className="mt-1 leading-6">{text.selectionRequiredDescription}</p>
             </div>
           ) : null}
-          {items.length > 0 ? (
-            <WorkspaceSelector items={items} copy={text} returnTo={returnTo} />
+          {items.length > 0 || unavailableItems.length > 0 ? (
+            <div className="grid gap-4">
+              {items.length > 0 ? <WorkspaceSelector items={items} copy={text} returnTo={returnTo} /> : null}
+              {unavailableItems.map(({ tenant, serviceState }) => (
+                <Link
+                  key={tenant!.id}
+                  href={`/service-status?tenantId=${encodeURIComponent(tenant!.id)}`}
+                  className="grid min-h-24 grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border border-amber-300 bg-amber-50 px-5 py-4"
+                >
+                  <span>
+                    <span className="block font-black text-slate-950">{tenant!.name}</span>
+                    <span className="mt-1 block text-sm text-amber-900">{getTenantServiceStatusLabel(serviceState.status, locale)}</span>
+                  </span>
+                  <span className="text-sm font-bold text-amber-900">{locale === "zh" ? "查看说明" : locale === "ko" ? "안내 보기" : "案内を見る"}</span>
+                </Link>
+              ))}
+            </div>
           ) : sessionLookupFailed ? (
             <StateSurface
               tone="error"
