@@ -129,6 +129,7 @@ export type HubImportJobItem = {
   mappingJson?: Record<string, string>;
   validationMessage?: string;
   createdAt: Date;
+  updatedAt: Date;
 };
 
 export type HubGeneratedOutputItem = {
@@ -458,7 +459,10 @@ export async function listHubServiceRequests(context: HubQueryContext = {}): Pro
 export async function listHubImportJobs(context: HubQueryContext = {}, locale: Locale = "ja"): Promise<HubImportJobItem[]> {
   const resolved = await resolveHubContext(context);
   if (!resolved) return [];
-  return (await listImportJobs(resolved.userId, 100, resolved.tenantId)).map((item) => localizeDemoImportJob(locale, item));
+  return (await listImportJobs(resolved.userId, 100, resolved.tenantId)).map((item) => ({
+    ...localizeDemoImportJob(locale, item),
+    updatedAt: item.updatedAt,
+  }));
 }
 
 export async function listHubGeneratedOutputs(

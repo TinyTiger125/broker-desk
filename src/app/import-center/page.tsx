@@ -1,7 +1,6 @@
 import Link from "next/link";
 import {
   autoMapImportJobAction,
-  createImportJobAction,
   executePropertyImportAction,
   registerAttachmentAction,
   retryImportJobAction,
@@ -521,6 +520,7 @@ type ImportCenterPageProps = {
     intake?: string;
     targetCaseId?: string;
     flow?: string;
+    object?: string;
   }>;
 };
 
@@ -910,6 +910,11 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
       zh: "核对结果已保存为案件。",
       ko: "확인 결과를 안건으로 저장했습니다.",
     },
+    client_created: {
+      ja: "関係者を登録しました。",
+      zh: "人物资料已创建。",
+      ko: "관계자 자료를 만들었습니다.",
+    },
     attachment_registered: {
       ja: "添付を登録しました。",
       zh: "附件已登记。",
@@ -1014,6 +1019,11 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
   const requestedFlow = params?.flow === "ledger" || params?.flow === "case" ? params.flow : undefined;
   const flowIntent: "case" | "ledger" | undefined = targetCaseId ? "case" : requestedFlow;
   const isLedgerFlow = flowIntent === "ledger";
+  const selectedObject = params?.object === "case" || params?.object === "person" || params?.object === "property"
+    ? params.object
+    : undefined;
+  const showIdentityReader = flowIntent === "case" ? true : !selectedObject || selectedObject === "case" || selectedObject === "person";
+  const showExcelReader = isLedgerFlow ? true : !selectedObject || selectedObject === "case" || selectedObject === "property";
   const hasPendingExceptions = hasPendingExtractionException(inputExtractionPreview);
   const hasAdvancedBatchPayload = hasBatchMappingPayload(xlsxPayload);
   const hasCompletedBatchResult = Boolean(
@@ -1039,6 +1049,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
               ? "review"
               : "confirm"
             : "review";
+  const showObjectSelection = wizardStep === "select" && !flowIntent && !requestedJob && !targetCaseId && !selectedObject;
   const showPostProcessingContent = wizardStep !== "processing" && wizardStep !== "failed";
   const inputTaskJob = xlsxJob ?? (requestedJob && isInputFileExtractionJob(requestedJob) ? requestedJob : undefined);
   const failedInputJob = inputTaskJob?.status === "failed" ? inputTaskJob : undefined;
@@ -1139,10 +1150,10 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                       ? `이 자료는 「${requestedJobCase.caseTitle}」 안건에 연결되어 있습니다. 이미지, PDF, 수동 자료는 Excel 열 매핑이 필요하지 않으며 안건에서 판독값과 누락 항목을 확인합니다.`
                       : `この資料は「${requestedJobCase.caseTitle}」に紐づいています。画像・PDF・手入力資料に Excel の列対応は不要です。案件で読取値と未入力項目を確認します。`
                   : locale === "zh"
-                    ? "这条历史记录尚未连接案件，也没有可继续核对的读取值。可以重新读取原文件，或先建立归属。"
+                    ? "这条历史记录没有可继续核对的读取值。可以重新读取原文件，或前往整理信息。"
                     : locale === "ko"
-                      ? "이 기존 기록은 아직 안건과 연결되지 않았고 계속 확인할 판독값도 없습니다. 원본 파일을 다시 읽거나 먼저 귀속을 지정하세요."
-                      : "この旧記録はまだ案件に紐づいておらず、続けて確認できる読取値もありません。元ファイルを読み直すか、先に割当先を決めてください。"}
+                      ? "이 기존 기록에는 계속 확인할 판독값이 없습니다. 원본 파일을 다시 읽거나 정보 정리로 이동하세요."
+                      : "この旧記録には続けて確認できる読取値がありません。元ファイルを読み直すか、情報整理へ進んでください。"}
               </p>
             </div>
             <div className="flex shrink-0 flex-wrap gap-2">
@@ -1160,7 +1171,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                     {locale === "zh" ? "重新读取" : locale === "ko" ? "다시 읽기" : "読み直す"}
                   </Link>
                   <Link href="/organize-center" className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-black text-slate-700 hover:bg-slate-50">
-                    {locale === "zh" ? "设置归属" : locale === "ko" ? "귀속 설정" : "割当先を設定"}
+                    {locale === "zh" ? "前往整理信息" : locale === "ko" ? "정보 정리로 이동" : "情報整理へ進む"}
                   </Link>
                 </>
               )}
@@ -1180,95 +1191,59 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
               ? locale === "zh" ? "当前导入任务" : locale === "ko" ? "현재 가져오기 작업" : "現在の取込タスク"
               : targetCaseId
                 ? locale === "zh" ? "向当前案件追加资料" : locale === "ko" ? "현재 안건에 자료 추가" : "現在の案件に資料を追加"
-                : isLedgerFlow
-                  ? locale === "zh" ? "读取 Excel 批量台账" : locale === "ko" ? "Excel 일괄 대장 읽기" : "Excel 一括台帳を読み取る"
-                  : locale === "zh" ? "选择要读取的资料" : locale === "ko" ? "읽을 자료 선택" : "読み取る資料を選ぶ"}
+                : showObjectSelection
+                  ? locale === "zh" ? "选择资料对象" : locale === "ko" ? "자료 대상 선택" : "資料の対象を選ぶ"
+                  : locale === "zh" ? "选择要读取的文件" : locale === "ko" ? "읽을 파일 선택" : "読み取るファイルを選ぶ"}
           </h2>
         </div>
 
         {wizardStep === "select" && !requestedJob ? (
+        showObjectSelection ? (
+          <div className="grid gap-4 p-5">
+            {([
+              { key: "case", icon: "business_center", iconClass: "bg-blue-50 text-blue-700", title: locale === "zh" ? "案件资料" : locale === "ko" ? "안건 자료" : "案件資料", desc: locale === "zh" ? "创建或读取案件相关资料。" : locale === "ko" ? "안건 관련 자료를 만들거나 읽습니다." : "案件に関する資料を作成・読取します。", manualHref: "/cases/new?from=entry" },
+              { key: "person", icon: "group", iconClass: "bg-emerald-50 text-emerald-700", title: locale === "zh" ? "人物资料" : locale === "ko" ? "관계자 자료" : "関係者資料", desc: locale === "zh" ? "创建或读取人物相关资料。" : locale === "ko" ? "관계자 자료를 만들거나 읽습니다." : "関係者に関する資料を作成・読取します。", manualHref: "/parties/new?from=entry" },
+              { key: "property", icon: "apartment", iconClass: "bg-violet-50 text-violet-700", title: locale === "zh" ? "物件资料" : locale === "ko" ? "매물 자료" : "物件資料", desc: locale === "zh" ? "创建或读取物件相关资料。" : locale === "ko" ? "매물 관련 자료를 만들거나 읽습니다." : "物件に関する資料を作成・読取します。", manualHref: "/properties/new?from=entry" },
+            ] as const).map((object) => (
+              <section key={object.key} data-import-object={object.key} className="grid gap-4 rounded-xl border border-slate-200 bg-white p-5 md:grid-cols-[minmax(15rem,1fr)_minmax(0,2fr)] md:items-center">
+                <div className="flex items-center gap-4">
+                  <span className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-xl ${object.iconClass}`} aria-hidden="true"><span className="material-symbols-outlined text-[28px]">{object.icon}</span></span>
+                  <div><h3 className="text-lg font-black text-slate-950">{object.title}</h3><p className="mt-1 text-sm font-semibold text-slate-500">{object.desc}</p></div>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Link data-import-action="manual" href={object.manualHref} className="inline-flex min-h-14 items-center justify-between rounded-lg border border-slate-200 px-4 text-sm font-black text-slate-900 hover:border-blue-300 hover:bg-blue-50/40">
+                    <span className="inline-flex items-center gap-2"><span className="material-symbols-outlined text-blue-700">edit</span>{locale === "zh" ? "手动创建" : locale === "ko" ? "수동 생성" : "手動作成"}</span><span aria-hidden="true">›</span>
+                  </Link>
+                  <Link data-import-action="file" href={`/import-center?object=${object.key}#source-upload`} className="inline-flex min-h-14 items-center justify-between rounded-lg border border-slate-200 px-4 text-sm font-black text-slate-900 hover:border-emerald-300 hover:bg-emerald-50/40">
+                    <span className="inline-flex items-center gap-2"><span className="material-symbols-outlined text-emerald-700">upload_file</span>{locale === "zh" ? "文件读取" : locale === "ko" ? "파일 읽기" : "ファイル読取"}</span><span aria-hidden="true">›</span>
+                  </Link>
+                </div>
+              </section>
+            ))}
+          </div>
+        ) : (
         <div className={isLedgerFlow ? "grid gap-4 p-5" : "grid gap-4 p-5 xl:grid-cols-2"}>
           {!isLedgerFlow ? (
-          <section id="case-material-upload" className="flex min-h-96 flex-col rounded-2xl border border-emerald-200 bg-emerald-50/40 p-5">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-emerald-700">badge</span>
-                <h2 className="text-base font-bold text-emerald-950">
-                  {locale === "zh" ? "本人资料" : locale === "ko" ? "본인 자료" : "本人資料"}
-                </h2>
-              </div>
-            </div>
-            <div className="mt-auto pt-5">
-              {!isIdentityExtractionOnly ? (
-                <IdentityDocumentUploadForm
-                  action={uploadAndParseIdentityDocumentAction}
-                  locale={locale}
-                  targetCaseId={targetCaseId || undefined}
-                  uploadContext={targetCaseId ? "case" : "import"}
-                />
-              ) : (
-                <a href="/import-center" className="flex h-12 items-center justify-center rounded-lg border border-emerald-300 bg-white px-4 text-sm font-bold text-emerald-900 hover:bg-emerald-50">
-                  {locale === "zh" ? "重新选择文件" : locale === "ko" ? "파일 다시 선택" : "ファイルを選び直す"}
-                </a>
-              )}
-            </div>
+          showIdentityReader ? (
+          <section id="identity-document-upload" className={selectedObject === "person" ? "flex min-h-80 flex-col rounded-xl border border-emerald-200 bg-emerald-50/40 p-5 xl:col-span-2" : "flex min-h-80 flex-col rounded-xl border border-emerald-200 bg-emerald-50/40 p-5"}>
+            <h3 className="text-base font-bold text-emerald-950">{locale === "zh" ? "身份证明文件" : locale === "ko" ? "신원 확인 파일" : "本人確認ファイル"}</h3>
+            <div className="mt-auto pt-5">{!isIdentityExtractionOnly ? <IdentityDocumentUploadForm action={uploadAndParseIdentityDocumentAction} locale={locale} targetCaseId={targetCaseId || undefined} uploadContext={targetCaseId ? "case" : "import"} /> : <a href="/import-center" className="flex h-12 items-center justify-center rounded-lg border border-emerald-300 bg-white px-4 text-sm font-bold text-emerald-900">{locale === "zh" ? "重新选择文件" : locale === "ko" ? "파일 다시 선택" : "ファイルを選び直す"}</a>}</div>
           </section>
+          ) : null
           ) : null}
-
-          <section id="excel-ledger-upload" className="flex min-h-96 flex-col rounded-2xl border border-blue-200 bg-blue-50/40 p-5">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-blue-700">table_view</span>
-                <h2 className="text-base font-bold text-blue-950">
-                  {targetCaseId || requestedFlow === "case"
-                    ? locale === "zh" ? "案件申请 Excel" : locale === "ko" ? "案件 신청 Excel" : "案件申込 Excel"
-                    : isLedgerFlow
-                      ? locale === "zh" ? "Excel 批量台账" : locale === "ko" ? "Excel 일괄 대장" : "Excel 一括台帳"
-                      : locale === "zh" ? "Excel 资料" : locale === "ko" ? "Excel 자료" : "Excel資料"}
-                </h2>
-              </div>
-              {!targetCaseId && !requestedFlow ? (
-                <p className="mt-1 text-xs text-slate-600">
-                  {locale === "zh"
-                    ? "支持案件申请表和批量台账（.xlsx）。"
-                    : locale === "ko"
-                      ? "안건 신청서와 일괄 대장(.xlsx)을 지원합니다."
-                      : "案件申込書と一括台帳（.xlsx）に対応します。"}
-                </p>
-              ) : null}
-            </div>
-            <div className="mt-auto pt-5">
-              {!xlsxJob ? (
-                <ExcelDocumentUploadForm
-                  action={uploadAndParseExcelAction}
-                  locale={locale}
-                  targetCaseId={targetCaseId || undefined}
-                  uploadContext={targetCaseId ? "case" : "import"}
-                />
-              ) : (
-                <a href="/import-center" className="flex h-12 items-center justify-center rounded-lg border border-blue-300 bg-white px-4 text-sm font-bold text-blue-900 hover:bg-blue-50">
-                  {locale === "zh" ? "重新选择文件" : locale === "ko" ? "파일 다시 선택" : "ファイルを選び直す"}
-                </a>
-              )}
-            </div>
+          {showExcelReader ? (
+          <section id="excel-document-upload" className={selectedObject === "property" ? "flex min-h-80 flex-col rounded-xl border border-blue-200 bg-blue-50/40 p-5 xl:col-span-2" : "flex min-h-80 flex-col rounded-xl border border-blue-200 bg-blue-50/40 p-5"}>
+            <h3 className="text-base font-bold text-blue-950">{locale === "zh" ? "Excel 文件" : locale === "ko" ? "Excel 파일" : "Excel ファイル"}</h3>
+            <div className="mt-auto pt-5">{!xlsxJob ? <ExcelDocumentUploadForm action={uploadAndParseExcelAction} locale={locale} targetCaseId={targetCaseId || undefined} uploadContext={targetCaseId ? "case" : "import"} /> : <a href="/import-center" className="flex h-12 items-center justify-center rounded-lg border border-blue-300 bg-white px-4 text-sm font-bold text-blue-900">{locale === "zh" ? "重新选择文件" : locale === "ko" ? "파일 다시 선택" : "ファイルを選び直す"}</a>}</div>
           </section>
-
-          {!targetCaseId ? (
-            <p className={isLedgerFlow ? "text-xs text-slate-500" : "text-xs text-slate-500 xl:col-span-2"}>
-              {locale === "zh" ? "没有资料文件？" : locale === "ko" ? "자료 파일이 없나요?" : "資料ファイルがない場合は"} {" "}
-              <Link href="/cases/new?from=entry" className="font-bold text-blue-700 underline underline-offset-4 hover:text-blue-900">
-                {locale === "zh" ? "改为手动创建" : locale === "ko" ? "수동 생성으로 전환" : "手動作成へ切り替え"}
-              </Link>
-            </p>
           ) : null}
 
           {isExistingIntake && !targetCaseId ? (
             <div
               id="existing-case-list"
-              className={isLedgerFlow
-                ? "rounded-xl border border-slate-200 bg-slate-50 p-4"
-                : "rounded-xl border border-slate-200 bg-slate-50 p-4 xl:col-span-2"}
+                className={isLedgerFlow ? "text-xs text-slate-500" : "text-xs text-slate-500 xl:col-span-2"}
             >
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
               <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h3 className="text-sm font-bold text-slate-950">
@@ -1303,10 +1278,11 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                   </p>
                 ) : null}
               </div>
+              </div>
             </div>
           ) : null}
         </div>
-        ) : null}
+        )) : null}
 
         {inputTaskJob && (inputTaskJob.status === "queued" || inputTaskJob.status === "processing") ? (
           <ExcelImportQueueProcessor jobId={inputTaskJob.id} locale={locale} targetCaseId={targetCaseId || undefined} />
@@ -1442,10 +1418,10 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
         {wizardStep === "mapping" && hasAdvancedBatchPayload && !showAdvanced && xlsxJob ? (
           <div className="border-t border-blue-100 bg-blue-50/60 p-5">
             <p className="text-sm font-bold text-blue-950">
-              {locale === "zh" ? "这份 Excel 被识别为批量台账" : locale === "ko" ? "이 Excel은 일괄 대장으로 인식되었습니다" : "この Excel は一括台帳として識別されました"}
+              {locale === "zh" ? "这份 Excel 需要确认字段对应" : locale === "ko" ? "이 Excel은 필드 매핑 확인이 필요합니다" : "この Excel は列対応の確認が必要です"}
             </p>
             <p className="mt-1 text-xs leading-5 text-slate-700">
-              {locale === "zh" ? "字段映射属于高级批量路径。打开后继续确认，不会把它伪装成案件资料复核。" : locale === "ko" ? "필드 매핑은 고급 일괄 경로입니다. 열어 확인을 계속하며案件 자료 확인으로 가장하지 않습니다." : "列対応は高度な一括経路です。開いて確認を続け、案件資料の確認として扱いません。"}
+              {locale === "zh" ? "打开详细恢复路径，继续确认原有字段对应。" : locale === "ko" ? "상세 복구 경로를 열어 기존 필드 매핑을 계속 확인합니다." : "詳細な復旧経路を開き、既存の列対応を確認します。"}
             </p>
             <Link href={`/import-center?xlsxJob=${encodeURIComponent(xlsxJob.id)}&advanced=1#job-mapping`} className="mt-3 inline-flex rounded-lg bg-blue-700 px-3 py-2 text-xs font-bold text-white hover:bg-blue-800">
               {locale === "zh" ? "进入字段映射" : locale === "ko" ? "필드 매핑 열기" : "列対応を開く"}
@@ -1672,10 +1648,10 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
             </h2>
             <p className="mt-1 text-xs text-slate-500">
               {locale === "zh"
-                ? "批量保存、检查记录、附件登记。"
+                ? "旧资料恢复、检查记录、附件登记。"
                 : locale === "ko"
-                  ? "일괄 저장, 확인 기록, 첨부 등록."
-                  : "一括保存、確認記録、添付登録。"}
+                  ? "기존 자료 복구, 확인 기록, 첨부 등록."
+                  : "旧資料の復旧、確認記録、添付登録。"}
             </p>
           </div>
           {!showAdvanced ? (
@@ -1690,98 +1666,6 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
         </div>
         {showAdvanced ? (
         <div className="mt-5 space-y-6">
-      <section className="grid gap-4 lg:grid-cols-3">
-        <article className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200/40">
-          <h2 className="text-base font-bold text-[#001e40]">{copy.cardExcelTitle}</h2>
-          <p className="mb-4 text-xs text-slate-500">{copy.cardExcelSubtitle}</p>
-          <form id="import-job-excel-form" action={createImportJobAction} className="space-y-2.5">
-            <input type="hidden" name="sourceType" value="excel" />
-            <input type="hidden" name="targetEntity" value="properties" />
-            <input
-              name="title"
-              placeholder={copy.phExcelJob}
-              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm"
-              required
-            />
-            <input
-              name="notes"
-              placeholder={copy.phMemoExcel}
-              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm"
-            />
-            <button className="w-full rounded-lg bg-[#001e40] py-2 text-xs font-bold text-white">{copy.btnCreateExcelJob}</button>
-          </form>
-          <FormDraftAssist
-            formId="import-job-excel-form"
-            storageKey="draft:import-center:create-job:excel"
-            fieldNames={["title", "notes"]}
-            reuseKey="import-center:create-job"
-            reuseFields={["title", "notes"]}
-            locale={locale}
-            className="mt-2"
-          />
-        </article>
-
-        <article className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200/40">
-          <h2 className="text-base font-bold text-[#001e40]">{copy.cardPdfTitle}</h2>
-          <p className="mb-4 text-xs text-slate-500">{copy.cardPdfSubtitle}</p>
-          <form id="import-job-pdf-form" action={createImportJobAction} className="space-y-2.5">
-            <input type="hidden" name="sourceType" value="pdf" />
-            <input type="hidden" name="targetEntity" value="contracts" />
-            <input
-              name="title"
-              placeholder={copy.phPdfJob}
-              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm"
-              required
-            />
-            <input
-              name="notes"
-              placeholder={copy.phMemoPdf}
-              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm"
-            />
-            <button className="w-full rounded-lg bg-[#001e40] py-2 text-xs font-bold text-white">{copy.btnCreatePdfJob}</button>
-          </form>
-          <FormDraftAssist
-            formId="import-job-pdf-form"
-            storageKey="draft:import-center:create-job:pdf"
-            fieldNames={["title", "notes"]}
-            reuseKey="import-center:create-job"
-            reuseFields={["title", "notes"]}
-            locale={locale}
-            className="mt-2"
-          />
-        </article>
-
-        <article className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200/40">
-          <h2 className="text-base font-bold text-[#001e40]">{copy.cardManualTitle}</h2>
-          <p className="mb-4 text-xs text-slate-500">{copy.cardManualSubtitle}</p>
-          <form id="import-job-manual-form" action={createImportJobAction} className="space-y-2.5">
-            <input type="hidden" name="sourceType" value="manual" />
-            <input type="hidden" name="targetEntity" value="service_requests" />
-            <input
-              name="title"
-              placeholder={copy.phManualJob}
-              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm"
-              required
-            />
-            <input
-              name="notes"
-              placeholder={copy.phMemoManual}
-              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm"
-            />
-            <button className="w-full rounded-lg bg-[#001e40] py-2 text-xs font-bold text-white">{copy.btnCreateManualJob}</button>
-          </form>
-          <FormDraftAssist
-            formId="import-job-manual-form"
-            storageKey="draft:import-center:create-job:manual"
-            fieldNames={["title", "notes"]}
-            reuseKey="import-center:create-job"
-            reuseFields={["title", "notes"]}
-            locale={locale}
-            className="mt-2"
-          />
-        </article>
-	      </section>
-
 	      {showAdvanced &&
         defaultJob &&
         focusedMappingJob &&
