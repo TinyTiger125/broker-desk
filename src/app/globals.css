@@ -379,6 +379,10 @@ button:disabled:not([class~="text-white"]):not([class~="!text-white"]) {
 .app-header-menu-panel {
   position: absolute;
   z-index: 60;
+  max-width: calc(100vw - 1rem);
+  max-height: calc(100dvh - 4rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   border: 1px solid #cbd5e1;
   border-radius: 0.5rem;
   background: #ffffff;

@@ -554,22 +554,42 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
   const caseVisibility = await getBrokerageCaseByIdForContext({ context: requestContext, caseId: id });
   let brokerageCase = caseVisibility.brokerageCase;
   if (!brokerageCase) notFound();
+  const initiallyVisibleCase = brokerageCase;
   const canWriteCase = caseVisibility.resolution.outcome === "owner_write";
   const canArchiveCase = canWriteCase
     && session.membership.status === "active"
     && capabilityHasTenantPermission(getTenantCapability(session.membership), "record.archive");
-  const [reviewItems, fieldRules, installedGuaranteeTemplates] = canWriteCase
-    ? await Promise.all([
-        listExtractionReviewItems({ userId: user.id, tenantId, caseId: id }),
-        listCaseWorkbenchFieldRules(user.id, tenantId),
-        listTenantGuaranteeTemplateInstalls({ tenantId }),
-      ])
-    : [[], [], []] as const;
   const caseVisibilityLabel = caseVisibility.resolution.outcome === "company_read"
     ? tr(locale, { ja: "会社メンバーに公開／読み取り専用", zh: "公司成员可见／只读", ko: "회사 멤버 공개／읽기 전용" })
     : undefined;
   const associationDraft = readCaseAssociationDraft(brokerageCase.confirmedDataJson);
-  const [visibleClients, visibleProperties, associatedPartyResults, associatedPropertyResult] = await Promise.all([
+  const installedGuaranteeTemplatesPromise = canWriteCase
+    ? listTenantGuaranteeTemplateInstalls({ tenantId })
+    : Promise.resolve([]);
+  const outputStatePromise = installedGuaranteeTemplatesPromise.then(async (installedGuaranteeTemplates) => {
+    const installedTemplateIds = new Set(installedGuaranteeTemplates.map((install) => install.templateId));
+    const outputTemplateId = installedTemplateIds.has(FRIENDS_GUARANTEE_DEFAULT_TEMPLATE_ID)
+      ? FRIENDS_GUARANTEE_DEFAULT_TEMPLATE_ID
+      : installedGuaranteeTemplates[0]?.templateId;
+    const outputTemplate = canWriteCase ? findGuaranteeCompanyTemplate(outputTemplateId) : undefined;
+    const outputDraft = outputTemplate
+      ? await getGuaranteeApplicationDraft({ userId: user.id, tenantId, caseId: initiallyVisibleCase.id, templateId: outputTemplate.id })
+      : null;
+    return {
+      outputTemplate,
+      downloadGate: outputTemplate
+        ? evaluateGuaranteeDownloadGate({ brokerageCase: initiallyVisibleCase, template: outputTemplate, draft: outputDraft })
+        : null,
+    };
+  });
+  const [reviewItems, fieldRules, outputState, visibleClients, visibleProperties, associatedPartyResults, associatedPropertyResult] = await Promise.all([
+    canWriteCase
+      ? listExtractionReviewItems({ userId: user.id, tenantId, caseId: id })
+      : Promise.resolve([]),
+    canWriteCase
+      ? listCaseWorkbenchFieldRules(user.id, tenantId)
+      : Promise.resolve([]),
+    outputStatePromise,
     canWriteCase
       ? listClientsForContext({ context: requestContext, filter: { lifecycleStatus: "active" } })
       : Promise.resolve([]),
@@ -581,6 +601,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
       ? resolvePropertyVisibilityForContext({ context: requestContext, propertyId: associationDraft.primaryPropertyId })
       : Promise.resolve(null),
   ]);
+  const { downloadGate, outputTemplate } = outputState;
   const associationCandidates = visibleClients
     .filter((item) => item.resolution.canWrite)
     .map(({ client }) => ({ id: client.id, name: client.name, searchText: [client.phone, client.email].filter(Boolean).join(" ") }));
@@ -640,18 +661,6 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
       confirmedDataJson: nextConfirmedData,
     };
   }
-
-  const installedTemplateIds = new Set(installedGuaranteeTemplates.map((install) => install.templateId));
-  const outputTemplateId = installedTemplateIds.has(FRIENDS_GUARANTEE_DEFAULT_TEMPLATE_ID)
-    ? FRIENDS_GUARANTEE_DEFAULT_TEMPLATE_ID
-    : installedGuaranteeTemplates[0]?.templateId;
-  const outputTemplate = canWriteCase ? findGuaranteeCompanyTemplate(outputTemplateId) : undefined;
-  const outputDraft = outputTemplate
-    ? await getGuaranteeApplicationDraft({ userId: user.id, tenantId, caseId: brokerageCase.id, templateId: outputTemplate.id })
-    : null;
-  const downloadGate = outputTemplate
-    ? evaluateGuaranteeDownloadGate({ brokerageCase, template: outputTemplate, draft: outputDraft })
-    : null;
 
   const mergeHistory = getCaseMergeHistory(brokerageCase.confirmedDataJson);
   const latestActiveMerge = getLatestActiveCaseMerge(brokerageCase.confirmedDataJson);

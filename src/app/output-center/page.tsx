@@ -4,6 +4,7 @@ import { FormDraftAssist } from "@/components/form-draft-assist";
 import { GuaranteeTemplateSelector } from "@/components/guarantee-template-selector";
 import { PageFrame, PageHeader, StateSurface, WorklistShell } from "@/components/layout-system";
 import { PageFlashBanner } from "@/components/page-flash-banner";
+import { OutputNavigationFeedback } from "@/components/output-navigation-feedback";
 import { listBrokerageCasesForContext, listGuaranteeApplicationDrafts, listPropertiesForContext, listQuotationsForContext, listTenantGuaranteeTemplateInstalls } from "@/lib/data";
 import { formatCurrency, formatDate } from "@/lib/format";
 import {
@@ -415,10 +416,15 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
   const tenantId = session.tenant.id;
   const requestContext = createRequestContext(session);
   const hubContext = { requestContext };
+  const shouldShowLegacyOutputFlow = false;
   const propertiesPromise = listPropertiesForContext({ context: requestContext, lifecycleStatus: "active" });
-  const quotesPromise = listQuotationsForContext({ context: requestContext, limit: 100 });
+  const quotesPromise = shouldShowLegacyOutputFlow
+    ? listQuotationsForContext({ context: requestContext, limit: 100 })
+    : Promise.resolve([]);
   const partiesPromise = listHubParties(locale, hubContext);
-  const outputsPromise = listHubGeneratedOutputs(locale, hubContext);
+  const outputsPromise = shouldShowLegacyOutputFlow
+    ? listHubGeneratedOutputs(locale, hubContext)
+    : Promise.resolve([]);
   const installedGuaranteeTemplatesPromise = listTenantGuaranteeTemplateInstalls({ tenantId });
   const casesPromise = listBrokerageCasesForContext({ context: requestContext, limit: 50 });
   const [visibleProperties, quotes, parties, outputs, installedGuaranteeTemplates, visibleCases] = await Promise.all([
@@ -802,7 +808,6 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
     Boolean(selectedCaseId || String(params?.guaranteeTemplate ?? "").trim())
   );
   const shouldShowGuaranteeFlow = isGuaranteeDocumentSelected && hasInstalledGuaranteeTemplates;
-  const shouldShowLegacyOutputFlow = false;
   const guaranteeDocumentStatus = !hasInstalledGuaranteeTemplates
     ? documentTreeCopy.templateMissing
     : !selectedCase
@@ -961,22 +966,24 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                     key={`document-tree-nav-${group.id}`}
                     href={documentTreeGroupHref(group.id)}
                     aria-current={groupOwnsCurrent ? "page" : undefined}
-                    className={`flex min-h-11 flex-wrap items-start justify-between gap-3 rounded-lg border px-3 py-3 transition focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)] ${
+                    className={`relative flex min-h-11 flex-wrap items-start justify-between gap-3 rounded-lg border px-3 py-3 transition focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)] ${
                       selected ? "border-blue-200 bg-blue-50/50 text-slate-950" : "border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:bg-slate-50"
                     }`}
                   >
-                    <span className="flex min-w-0 flex-1 items-start gap-2">
-                      <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${selected ? "bg-blue-100 text-[#002FA7]" : "bg-slate-100 text-[#002FA7]"}`}>
-                        <span className="material-symbols-outlined text-[18px]" aria-hidden="true">{group.icon}</span>
+                    <OutputNavigationFeedback pendingLabel={locale === "zh" ? "正在打开文书分类" : locale === "ko" ? "문서 분류를 여는 중" : "文書分類を開いています"}>
+                      <span className="flex min-w-0 flex-1 items-start gap-2">
+                        <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${selected ? "bg-blue-100 text-[#002FA7]" : "bg-slate-100 text-[#002FA7]"}`}>
+                          <span className="material-symbols-outlined text-[18px]" aria-hidden="true">{group.icon}</span>
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block break-words text-sm font-black leading-5 [overflow-wrap:anywhere]">{group.title}</span>
+                          <span className="mt-0.5 block text-[11px] font-semibold text-slate-500">{group.items.length}</span>
+                        </span>
                       </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block break-words text-sm font-black leading-5 [overflow-wrap:anywhere]">{group.title}</span>
-                        <span className="mt-0.5 block text-[11px] font-semibold text-slate-500">{group.items.length}</span>
+                      <span className={`max-w-full break-words rounded-full px-2 py-0.5 text-xs font-black leading-4 [overflow-wrap:anywhere] ${selected ? "bg-blue-100 text-[#002FA7]" : "bg-slate-100 text-slate-600"}`}>
+                        {group.status}
                       </span>
-                    </span>
-                    <span className={`max-w-full break-words rounded-full px-2 py-0.5 text-xs font-black leading-4 [overflow-wrap:anywhere] ${selected ? "bg-blue-100 text-[#002FA7]" : "bg-slate-100 text-slate-600"}`}>
-                      {group.status}
-                    </span>
+                    </OutputNavigationFeedback>
                   </Link>
                 );
               })}
@@ -1043,7 +1050,9 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                       </a>
                     ) : item.href && !item.disabled ? (
                       <Link key={item.id} href={item.href} className={itemClass} aria-current={item.selected ? "page" : undefined}>
-                        {itemBody}
+                        <OutputNavigationFeedback pendingLabel={locale === "zh" ? "正在打开文书" : locale === "ko" ? "문서를 여는 중" : "文書を開いています"}>
+                          {itemBody}
+                        </OutputNavigationFeedback>
                       </Link>
                     ) : (
                       <div key={item.id} className={itemClass} aria-disabled="true">

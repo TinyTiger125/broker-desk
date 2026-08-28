@@ -42,6 +42,7 @@ const copyByLocale: Record<Locale, {
   status: string;
   created: string;
   goToOrganize: string;
+  openPendingItem: string;
 }> = {
   ja: {
     title: "ホーム",
@@ -62,7 +63,8 @@ const copyByLocale: Record<Locale, {
     sourceFiles: "資料",
     status: "状態",
     created: "作成",
-    goToOrganize: "情報整理を開く",
+    goToOrganize: "対応項目をすべて見る",
+    openPendingItem: "この項目を続ける",
   },
   zh: {
     title: "工作台",
@@ -83,7 +85,8 @@ const copyByLocale: Record<Locale, {
     sourceFiles: "资料",
     status: "状态",
     created: "创建",
-    goToOrganize: "进入整理信息",
+    goToOrganize: "查看全部待处理项目",
+    openPendingItem: "继续处理此项",
   },
   ko: {
     title: "홈",
@@ -104,7 +107,8 @@ const copyByLocale: Record<Locale, {
     sourceFiles: "자료",
     status: "상태",
     created: "생성",
-    goToOrganize: "정보 정리 열기",
+    goToOrganize: "처리 항목 모두 보기",
+    openPendingItem: "이 항목 계속하기",
   },
 };
 
@@ -242,7 +246,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
                   <p className="truncate text-sm font-black text-slate-900">{item.title}</p>
                   <p className="mt-1 text-xs font-semibold text-slate-500">{item.detail}{item.date ? ` · ${formatDate(item.date, locale)}` : ""}</p>
                 </div>
-                <Link href={item.href} className="shrink-0 text-sm font-black text-[#002FA7] hover:underline">{copy.open}</Link>
+                <Link href={item.href} className="inline-flex min-h-11 shrink-0 items-center text-sm font-black text-[#002FA7] hover:underline">{copy.openPendingItem}</Link>
               </li>
             ))}
           </ul>

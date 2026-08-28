@@ -1208,7 +1208,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
             const cardClassName =
               "group block w-full rounded-xl border p-4 text-left transition hover:bg-white " +
               (isPrimary
-                ? "border-emerald-300 bg-emerald-50/50 lg:col-span-2 lg:p-5 hover:border-emerald-500"
+                ? "border-emerald-300 bg-emerald-50/50 hover:border-emerald-500"
                 : "border-slate-200 bg-slate-50 hover:border-[#001e40]");
             const cardContent = (
               <div className="flex items-start gap-3">
