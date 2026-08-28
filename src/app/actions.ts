@@ -2990,6 +2990,19 @@ export async function acceptTenantInvitationAction(
     const user = identity
       ? await getDefaultUserForVerifiedClerkIdentity(identity)
       : await getDefaultUser();
+    if (process.env.BROKER_DESK_DEPLOYMENT_ENV === "staging" && process.env.VERCEL_ENV === "preview") {
+      const identityEmail = identity?.email?.trim().toLowerCase() ?? "";
+      const userEmail = user?.email?.trim().toLowerCase() ?? "";
+      console.info("[TASK043_ACCEPT_DIAG]", {
+        identityEmailPresent: Boolean(identityEmail),
+        identityEmailLength: identityEmail.length,
+        userEmailPresent: Boolean(userEmail),
+        userEmailLength: userEmail.length,
+        normalizedEmailEqual: Boolean(identityEmail && userEmail && identityEmail === userEmail),
+        subjectPresent: Boolean(identity?.subject),
+        subjectEqual: Boolean(identity?.subject && user?.externalAuthSubject && identity.subject === user.externalAuthSubject),
+      });
+    }
     if (!user) {
       return { status: "error", message: "invitation_identity_not_bound" };
     }
