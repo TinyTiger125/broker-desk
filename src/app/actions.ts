@@ -43,7 +43,6 @@ import {
   createTenantAccountForUser,
   acceptTenantInvitation,
   getDefaultUser,
-  getDefaultUserForVerifiedClerkIdentity,
   applyOutputTemplateVersion,
   addQuotation,
   createOutputTemplateVersion,
@@ -2987,22 +2986,7 @@ export async function acceptTenantInvitationAction(
     if (isClerkAuthEnabled() && !identity?.email) {
       return { status: "error", message: "email_verification_required" };
     }
-    const user = identity
-      ? await getDefaultUserForVerifiedClerkIdentity(identity)
-      : await getDefaultUser();
-    if (process.env.BROKER_DESK_DEPLOYMENT_ENV === "staging" && process.env.VERCEL_ENV === "preview") {
-      const identityEmail = identity?.email?.trim().toLowerCase() ?? "";
-      const userEmail = user?.email?.trim().toLowerCase() ?? "";
-      console.info("[TASK043_ACCEPT_DIAG]", {
-        identityEmailPresent: Boolean(identityEmail),
-        identityEmailLength: identityEmail.length,
-        userEmailPresent: Boolean(userEmail),
-        userEmailLength: userEmail.length,
-        normalizedEmailEqual: Boolean(identityEmail && userEmail && identityEmail === userEmail),
-        subjectPresent: Boolean(identity?.subject),
-        subjectEqual: Boolean(identity?.subject && user?.externalAuthSubject && identity.subject === user.externalAuthSubject),
-      });
-    }
+    const user = await getDefaultUser();
     if (!user) {
       return { status: "error", message: "invitation_identity_not_bound" };
     }

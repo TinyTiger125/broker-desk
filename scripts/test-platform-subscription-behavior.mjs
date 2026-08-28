@@ -193,6 +193,7 @@ for (const [slug, status, startOffset, endOffset, shouldAccept] of invitationAcc
     ownerName: `${slug} Acceptance Owner`,
     ownerEmail: `task043-acceptance-${slug}-owner@example.test`,
   });
+  assert(acceptanceAccount.ownerMembers[0]?.invitedEmail === `task043-acceptance-${slug}-owner@example.test`, `${slug} platform-created owner must persist normalized invitedEmail`);
   const acceptanceOwnerId = activatePlatformCreatedOwner(acceptanceAccount);
   const acceptanceInvite = await data.inviteTenantMember({
     tenantId: acceptanceAccount.id,
@@ -225,6 +226,23 @@ for (const [slug, status, startOffset, endOffset, shouldAccept] of invitationAcc
     assert(beforeSeats === afterSeats, `${slug} rejection must preserve seat usage`);
   }
 }
+
+const legacyNullAccount = await data.createTenantAccount({ name: "TASK043 Legacy NULL Acceptance", slug: "task043-legacy-null-acceptance", accountType: "company", status: "active", purchasedSeatCount: 2, serviceStartAt: shiftCalendarDate(tokyoToday, -1), serviceEndAt: shiftCalendarDate(tokyoToday, 31), actorUserId: "actor_task043", ownerName: "Legacy NULL Owner", ownerEmail: "task043-legacy-null-owner@example.test" });
+const legacyNullOwnerId = activatePlatformCreatedOwner(legacyNullAccount);
+const legacyNullInvite = await data.inviteTenantMember({ tenantId: legacyNullAccount.id, name: "Legacy NULL Member", email: "TASK043-Legacy-Null-Member@Example.Test", role: "broker", status: "invited", capability: "ordinary_member", invitedByUserId: legacyNullOwnerId });
+const legacyNullMembership = globalThis.__brokerDb.tenantMemberships.find((item) => item.id === legacyNullInvite.id);
+const legacyNullUser = globalThis.__brokerDb.users.find((item) => item.id === legacyNullInvite.userId);
+assert(legacyNullMembership && legacyNullUser, "legacy NULL acceptance fixture must exist");
+legacyNullMembership.invitedEmail = undefined;
+const legacyNullUnboundReference = globalThis.__brokerDb;
+const legacyNullUnboundMembership = JSON.stringify(legacyNullMembership);
+const legacyNullUnboundResult = await data.acceptTenantInvitation({ userId: legacyNullInvite.userId, tenantId: legacyNullAccount.id, membershipId: legacyNullInvite.id, invitationToken: legacyNullInvite.invitationToken });
+assert(legacyNullUnboundResult === null, "unbound legacy NULL invitation must remain unavailable");
+assert(globalThis.__brokerDb === legacyNullUnboundReference && JSON.stringify(legacyNullMembership) === legacyNullUnboundMembership, "unbound legacy NULL rejection must publish no state");
+legacyNullUser.externalAuthSubject = "clerk_subject_legacy_null";
+const legacyNullAccepted = await data.acceptTenantInvitation({ userId: legacyNullInvite.userId, tenantId: legacyNullAccount.id, membershipId: legacyNullInvite.id, invitationToken: legacyNullInvite.invitationToken });
+assert(legacyNullAccepted?.status === "active" && legacyNullAccepted.invitationStatus === "accepted", "bound legacy NULL invitation must accept without manual resend");
+assert(legacyNullAccepted.invitedEmail === "task043-legacy-null-member@example.test", "legacy NULL acceptance must atomically backfill the normalized bound user email");
 
 const expiredTokenAccount = await data.createTenantAccount({ name: "TASK043 Expired Acceptance Token", slug: "task043-expired-acceptance-token", accountType: "company", status: "active", purchasedSeatCount: 2, serviceStartAt: shiftCalendarDate(tokyoToday, -1), serviceEndAt: shiftCalendarDate(tokyoToday, 31), actorUserId: "actor_task043", ownerName: "Expired Token Owner", ownerEmail: "task043-expired-token-owner@example.test" });
 const expiredTokenOwnerId = activatePlatformCreatedOwner(expiredTokenAccount);

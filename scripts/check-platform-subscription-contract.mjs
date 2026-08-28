@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import fs from "node:fs";
+import { createHash } from "node:crypto";
 import ts from "typescript";
 
 function assert(condition, message) {
@@ -47,6 +48,7 @@ function assertPlatformCommercialAuthority({ sessionSource, memorySource, memory
 
 function assertPlatformCreatedOwnerCapability({ memorySource, postgresSource }) {
   assert(memorySource.includes('role: "tenant_owner"') && memorySource.includes('capability: "company_owner"'), "memory platform creation must persist an explicit company_owner owner membership");
+  assert(memorySource.includes("invitedEmail: ownerEmail"), "memory platform creation must persist the normalized invited owner email");
   assert(memorySource.includes("ownerMembers: [{\n      ...ownerMembership,"), "memory platform creation summary must return the persisted owner membership capability");
   assert(postgresSource.includes("brokerdesk_private.create_platform_tenant_account("), "PostgreSQL platform creation must delegate owner persistence and summary to the database primitive");
   assert(!memorySource.includes("tenantRoleForCapabilityPreset") && !postgresSource.includes("tenantRoleForCapabilityPreset"), "platform-created owner capability must not depend on runtime role inference");
@@ -523,6 +525,7 @@ function assertInvitationAcceptanceAtomicity({ memorySource, sqlSource, migratio
   assert(memorySource.split("_g.__brokerDb = nextDb").length === 2, "memory invitation acceptance must publish exactly one database reference");
   assert(memorySource.slice(memoryPublish).trim() === "_g.__brokerDb = nextDb;\n  return result;\n}", "memory invitation acceptance must only return its preconstructed result after publishing");
   assert(memorySource.includes('action: "tenant_invitation_accepted"') && memorySource.includes('targetType: "member"') && memorySource.includes("targetId: membership.id") && memorySource.includes("tenantId: tenant.id") && memorySource.includes("userId: user.id") && memorySource.includes("actorId: user.id"), "memory acceptance audit must bind the current invitee, tenant, and membership target");
+  assert(memorySource.includes(": !user.externalAuthSubject") && memorySource.includes("membership.invitedEmail ??= user.email.trim().toLowerCase()"), "memory legacy NULL repair must require an already-bound target user and backfill its normalized email only in the acceptance clone");
   assert(!memorySource.includes("db.auditLogs") && !memorySource.includes("toTenantMemberListItem"), "memory invitation acceptance must not write or reread published state during the atomic primitive");
 
   const acceptanceUpdate = sqlSource.indexOf("UPDATE public.tenant_memberships AS memberships\n  SET status = 'active'");
@@ -857,18 +860,68 @@ function assertNegativeSynthetic(check, source, message) {
   assert(rejected, message);
 }
 
+function assertPlatformOwnerInvitedEmailFollowup(source) {
+  const signatures = new Map([
+    ["create_platform_tenant_account", { ddl: "TEXT, TEXT, TEXT, TEXT, TEXT, INTEGER, DATE, DATE, TEXT, TEXT", registry: "text,text,text,text,text,integer,date,date,text,text" }],
+    ["prepare_tenant_invitation_delivery", { ddl: "TEXT, TEXT, TEXT, TEXT", registry: "text,text,text,text" }],
+    ["refresh_tenant_invitation", { ddl: "TEXT, TEXT, TEXT, TEXT", registry: "text,text,text,text" }],
+    ["accept_tenant_invitation", { ddl: "TEXT, TEXT, TEXT, TEXT", registry: "text,text,text,text" }],
+  ]);
+  for (const [functionName, signature] of signatures) {
+    const guardSource = `IF pg_catalog.to_regprocedure('brokerdesk_private.${functionName}_task043_legacy(${signature.registry})') IS NULL THEN`;
+    const guard = source.indexOf(guardSource);
+    const rename = source.indexOf(`RENAME TO ${functionName}_task043_legacy;`, guard);
+    const guardEnd = source.indexOf("END IF;", rename);
+    assert(guard >= 0 && rename > guard && guardEnd > rename, `${functionName} legacy rename must be enclosed by its exact idempotence guard`);
+    assert(source.split(`RENAME TO ${functionName}_task043_legacy;`).length === 2, `${functionName} legacy rename must occur only once`);
+    assert(source.includes(`CREATE OR REPLACE FUNCTION brokerdesk_private.${functionName}(`), `${functionName} original runtime signature must be restored by the follow-up`);
+    assert(source.includes(`REVOKE ALL ON FUNCTION brokerdesk_private.${functionName}_task043_legacy`), `${functionName} legacy primitive must remain unavailable to runtime callers`);
+    assert(source.includes(`REVOKE ALL ON FUNCTION brokerdesk_private.${functionName}_task043_legacy(${signature.ddl}) FROM brokerdesk_runtime`), `${functionName} legacy primitive must revoke the runtime role explicitly`);
+    assert(source.includes(`REVOKE ALL ON FUNCTION brokerdesk_private.${functionName}(${signature.ddl}) FROM PUBLIC`), `${functionName} wrapper must remain unavailable to PUBLIC`);
+    assert(source.includes(`GRANT EXECUTE ON FUNCTION brokerdesk_private.${functionName}(${signature.ddl}) TO brokerdesk_runtime`), `${functionName} wrapper must restore only the runtime execution grant`);
+  }
+  assert(source.split("SECURITY DEFINER").length === 5 && source.split("SET search_path = public, pg_temp").length === 5, "all four follow-up wrappers must preserve fixed SECURITY DEFINER boundaries");
+  assert(source.includes("create_platform_tenant_account_task043_legacy") && source.includes("SET invited_email = lower(trim(users.email))"), "platform creation wrapper must persist the normalized owner invited email in the same transaction");
+  assert(source.includes("prepare_tenant_invitation_delivery_task043_legacy") && source.includes("jsonb_build_object('membership', to_jsonb(memberships), 'user', to_jsonb(users))"), "prepare wrapper must return the repaired locked member context");
+  assert(source.includes("refresh_tenant_invitation_task043_legacy") && source.includes("FOR UPDATE OF users"), "refresh wrapper must lock the target user before repair");
+  const acceptStart = source.indexOf("CREATE OR REPLACE FUNCTION brokerdesk_private.accept_tenant_invitation(");
+  const acceptSource = source.slice(acceptStart);
+  const firstLegacyCall = acceptSource.indexOf("accept_tenant_invitation_task043_legacy(");
+  const boundLookup = acceptSource.indexOf("users.external_auth_subject IS NOT NULL", firstLegacyCall);
+  const tokenGuard = acceptSource.indexOf("memberships.invitation_token = trim", firstLegacyCall);
+  const expiryGuard = acceptSource.indexOf("memberships.invitation_expires_at > NOW()", firstLegacyCall);
+  const repair = acceptSource.indexOf("SET invited_email = bound_user_email", firstLegacyCall);
+  const secondLegacyCall = acceptSource.indexOf("accept_tenant_invitation_task043_legacy(", firstLegacyCall + 1);
+  assert(firstLegacyCall >= 0 && boundLookup > firstLegacyCall && tokenGuard > firstLegacyCall && expiryGuard > firstLegacyCall && repair > boundLookup && repair > tokenGuard && repair > expiryGuard && secondLegacyCall > repair, "legacy NULL acceptance must run the original guards, verify bound user/token/expiry, repair, then re-enter atomic acceptance");
+}
+
 const read = (path) => fs.readFileSync(path, "utf8");
 const service = read("src/lib/tenant-service.ts");
 const memory = read("src/lib/data.memory.ts");
 const postgres = read("src/lib/data.postgres.ts");
-const dataFacade = read("src/lib/data.ts");
 const migration = read("db/migrations/20260828_001_tenant_service_period.sql");
+const invitedEmailFollowupMigration = read("db/migrations/20260829_001_platform_owner_invited_email.sql");
+const clerkAuth = read("src/lib/clerk-auth.ts");
+assert(createHash("sha256").update(migration).digest("hex") === "bfc0815e633f58f5596bfcce62d754161d7291231c620dd8fe1fde77559348d3", "already-applied 20260828 migration checksum must remain exact");
+assertPlatformOwnerInvitedEmailFollowup(invitedEmailFollowupMigration);
+for (const [needle, replacement, label] of [
+  ["IF pg_catalog.to_regprocedure('brokerdesk_private.accept_tenant_invitation_task043_legacy(text,text,text,text)') IS NULL THEN", "IF TRUE THEN", "idempotent legacy rename"],
+  ["users.external_auth_subject IS NOT NULL", "TRUE", "bound target identity"],
+  ["memberships.invitation_token = trim", "memberships.invitation_token <> trim", "legacy token guard"],
+  ["memberships.invitation_expires_at > NOW()", "memberships.invitation_expires_at < NOW()", "legacy expiry guard"],
+  ["SET invited_email = bound_user_email", "SET invited_email = NULL", "legacy invited email repair"],
+  ["REVOKE ALL ON FUNCTION brokerdesk_private.accept_tenant_invitation_task043_legacy(TEXT, TEXT, TEXT, TEXT) FROM brokerdesk_runtime", "GRANT EXECUTE ON FUNCTION brokerdesk_private.accept_tenant_invitation_task043_legacy(TEXT, TEXT, TEXT, TEXT) TO brokerdesk_runtime", "legacy runtime ACL"],
+  ["REVOKE ALL ON FUNCTION brokerdesk_private.accept_tenant_invitation(TEXT, TEXT, TEXT, TEXT) FROM PUBLIC", "GRANT EXECUTE ON FUNCTION brokerdesk_private.accept_tenant_invitation(TEXT, TEXT, TEXT, TEXT) TO PUBLIC", "wrapper public ACL"],
+]) {
+  assertNegativeSynthetic(assertPlatformOwnerInvitedEmailFollowup, replaceRequired(invitedEmailFollowupMigration, needle, replacement, label), `${label} mutation must fail`);
+}
 const runtimeRoles = read("docs/engineering/postgres_runtime_roles.sql");
 const forceRlsMigration = read("db/migrations/20260729_002_force_tenant_rls.sql");
 const session = read("src/lib/tenant-session.ts");
 const platformSession = read("src/lib/platform-session.ts");
 const nav = read("src/components/app-nav.tsx");
 const actions = read("src/app/actions.ts");
+assert(!actions.includes("[TASK043_ACCEPT_DIAG]") && !clerkAuth.includes("[TASK043_ACCEPT_DIAG]"), "temporary acceptance diagnostics must not remain in the final tree");
 const platformPage = read("src/app/platform/accounts/page.tsx");
 const membersPage = read("src/app/settings/members/page.tsx");
 const memberManagementCopy = read("src/lib/member-management-copy.ts");
@@ -1001,6 +1054,8 @@ assertNegativeSynthetic(
   "restoring a composite record plus scalar multi-item INTO must be rejected",
 );
 assertPlatformInvitationDeliveryBoundary({ actionSource: invitationSender, postgresPrepareSource: postgresInvitationPrepare, postgresRecordSource: postgresInvitationDelivery, sqlSource: prepareInvitationFunction });
+assert(invitedEmailFollowupMigration.includes("prepare_tenant_invitation_delivery_task043_legacy") && invitedEmailFollowupMigration.includes("memberships.invited_email IS NULL"), "platform invitation prepare follow-up must backfill a legacy NULL invited email from the locked target user");
+assert(invitedEmailFollowupMigration.includes("refresh_tenant_invitation_task043_legacy") && invitedEmailFollowupMigration.includes("FOR UPDATE OF users"), "invitation refresh follow-up must lock the target user before legacy NULL email repair");
 assertPlatformInvitationRuntimeProbe(task043);
 assertInvitationDeliveryAuditAtomicity({ senderSource: invitationSender, actionSource: actions, memorySource: memoryInvitationDelivery, sqlSource: recordInvitationFunction, migrationSource: migration, memberCopySource: memberManagementCopy, membersPageSource: membersPage });
 for (const [label, candidate] of [
@@ -1143,20 +1198,6 @@ assertNegativeSynthetic(
 );
 assertInvitationAcceptanceBoundary({ sqlSource: acceptInvitationFunction, postgresSource: postgres });
 assertInvitationAcceptanceAtomicity({ memorySource: memoryAcceptInvitation, sqlSource: acceptInvitationFunction, migrationSource: migration, actionSource: acceptInvitationAction, forceRlsSource: forceRlsMigration });
-function assertInvitationVerifiedIdentitySeam(actionSource, dataSource) {
-  assert(actionSource.includes("const identity = await getVerifiedClerkAuthIdentity();"), "acceptance must read one verified Clerk identity");
-  assert(actionSource.includes("await getDefaultUserForVerifiedClerkIdentity(identity)"), "acceptance must resolve the local user from that same verified identity");
-  assert(dataSource.includes("export async function getDefaultUserForVerifiedClerkIdentity(identity: ClerkAuthIdentity)"), "data facade must expose the verified-identity resolver");
-  assert(dataSource.includes("return resolveDefaultUser(undefined, identity);"), "verified-identity resolver must pass the exact identity into default-user resolution");
-  assert(dataSource.includes("const subject = verifiedClerkIdentity?.subject.trim() || (await getClerkAuthSubject());"), "provided verified subject must take precedence over a second auth lookup");
-  assert(dataSource.includes("const verifiedIdentity = verifiedClerkIdentity ?? (await getVerifiedClerkAuthIdentity());"), "provided verified email must be reused for pending-invitation binding");
-}
-assertInvitationVerifiedIdentitySeam(acceptInvitationAction, dataFacade);
-assertNegativeSynthetic(
-  (source) => assertInvitationVerifiedIdentitySeam(source, dataFacade),
-  replaceRequired(acceptInvitationAction, "await getDefaultUserForVerifiedClerkIdentity(identity)", "await getDefaultUser()", "verified identity seam"),
-  "restoring an independent default-user lookup must fail the acceptance contract",
-);
 assertInvitationActionLocaleContract({ actionSource: acceptInvitationActionLocaleSource, formSource: invitationForm, pageSource: invitationPage });
 for (const [label, candidate] of [
   ["acceptance service guard", {

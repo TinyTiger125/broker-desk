@@ -56,15 +56,6 @@ export const getVerifiedClerkAuthIdentity = cache(async (): Promise<ClerkAuthIde
   );
   if (!verified) return null;
 
-  if (process.env.BROKER_DESK_DEPLOYMENT_ENV === "staging" && process.env.VERCEL_ENV === "preview") {
-    const verifiedAddresses = (user?.emailAddresses ?? []).filter((item) => item.verification?.status === "verified");
-    console.info("[TASK043_ACCEPT_DIAG]", {
-      verifiedEmailPresent: Boolean(verified.emailAddress.trim()),
-      verifiedEmailIsPrimary: verified.id === user?.primaryEmailAddressId,
-      verifiedEmailCount: verifiedAddresses.length,
-    });
-  }
-
   const name = [user?.firstName, user?.lastName].filter(Boolean).join(" ").trim() || user?.username || undefined;
   return {
     subject,

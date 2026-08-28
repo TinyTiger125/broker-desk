@@ -2471,6 +2471,7 @@ export async function createTenantAccount(input: {
     status: "invited",
     invitationProvider: "none",
     invitationStatus: "not_sent",
+    invitedEmail: ownerEmail,
     createdAt: nowDate,
     updatedAt: nowDate,
   };
@@ -2733,8 +2734,9 @@ export async function acceptTenantInvitation(input: {
     membership.invitationStatus !== "pending" ||
     !membership.invitationToken ||
     membership.invitationToken !== input.invitationToken.trim() ||
-    !membership.invitedEmail ||
-    membership.invitedEmail.toLowerCase() !== user.email.toLowerCase()
+    (membership.invitedEmail
+      ? membership.invitedEmail.toLowerCase() !== user.email.toLowerCase()
+      : !user.externalAuthSubject)
   ) {
     return null;
   }
@@ -2744,6 +2746,7 @@ export async function acceptTenantInvitation(input: {
     membership.invitationStatus = "expired";
     membership.updatedAt = nowDate;
   } else {
+    membership.invitedEmail ??= user.email.trim().toLowerCase();
     membership.status = "active";
     membership.invitationStatus = "accepted";
     membership.invitationAcceptedAt = nowDate;
@@ -2946,6 +2949,7 @@ export async function refreshTenantMemberInvitation(input: {
     if (usedSeatCount >= tenant.purchasedSeatCount) throw new Error("purchased seat count exceeded");
   }
   membership.invitationStatus = "pending";
+  membership.invitedEmail = user.email.trim().toLowerCase();
   membership.invitationToken = randomUUID();
   membership.invitationExpiresAt = nextInvitationExpiresAt;
   membership.invitedByUserId = input.invitedByUserId ?? membership.invitedByUserId;

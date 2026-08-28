@@ -13,7 +13,7 @@ import {
   isTrustedHeaderAuthEnabled,
   readTrustedHeaderAuthIdentity,
 } from "@/lib/auth-mode";
-import { getClerkAuthIdentity, getClerkAuthSubject, getVerifiedClerkAuthIdentity, type ClerkAuthIdentity } from "@/lib/clerk-auth";
+import { getClerkAuthIdentity, getClerkAuthSubject, getVerifiedClerkAuthIdentity } from "@/lib/clerk-auth";
 import { headers } from "next/headers";
 import { cache } from "react";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -92,9 +92,9 @@ const resolveTenantSessionLookupsByExternalAuthSubject = cache(
   },
 );
 
-const resolveDefaultUser = cache(async (preferredUserId?: string, verifiedClerkIdentity?: ClerkAuthIdentity) => {
+const resolveDefaultUser = cache(async (preferredUserId?: string) => {
   if (isClerkAuthEnabled()) {
-    const subject = verifiedClerkIdentity?.subject.trim() || (await getClerkAuthSubject());
+    const subject = await getClerkAuthSubject();
     if (!subject) return null;
 
     // A user can exist before their first workspace membership is assigned.
@@ -105,7 +105,7 @@ const resolveDefaultUser = cache(async (preferredUserId?: string, verifiedClerkI
     // An invited Clerk user starts as an email-only local placeholder. Bind
     // that placeholder only when the current identity exactly matches a valid
     // pending invitation; never use this path for arbitrary provisioning.
-    const verifiedIdentity = verifiedClerkIdentity ?? (await getVerifiedClerkAuthIdentity());
+    const verifiedIdentity = await getVerifiedClerkAuthIdentity();
     if (verifiedIdentity?.email) {
       const invitedUser = await repo.bindCurrentClerkIdentityToPendingInvitation(verifiedIdentity);
       if (invitedUser) return invitedUser;
@@ -121,7 +121,7 @@ const resolveDefaultUser = cache(async (preferredUserId?: string, verifiedClerkI
     // falling back to an owner-capable database role.
     if (isProductionRuntime()) return null;
 
-    const identity = verifiedClerkIdentity ?? (await getClerkAuthIdentity());
+    const identity = await getClerkAuthIdentity();
     if (!identity) return null;
     return repo.ensureUserForExternalAuth(identity);
   }
@@ -139,11 +139,6 @@ const resolveDefaultUser = cache(async (preferredUserId?: string, verifiedClerkI
 
 export async function getDefaultUser(preferredUserId?: string) {
   return resolveDefaultUser(preferredUserId);
-}
-
-/** Resolve the local invitation user from the exact verified identity already read by the accepting Action. */
-export async function getDefaultUserForVerifiedClerkIdentity(identity: ClerkAuthIdentity) {
-  return resolveDefaultUser(undefined, identity);
 }
 
 // These values are immutable for the duration of a server render. The app
