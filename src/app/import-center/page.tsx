@@ -1254,7 +1254,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
           </section>
 
           {!targetCaseId ? (
-            <p className="text-xs text-slate-500 xl:col-span-2">
+            <p className={isLedgerFlow ? "text-xs text-slate-500" : "text-xs text-slate-500 xl:col-span-2"}>
               {locale === "zh" ? "没有资料文件？" : locale === "ko" ? "자료 파일이 없나요?" : "資料ファイルがない場合は"} {" "}
               <Link href="/cases/new?from=entry" className="font-bold text-blue-700 underline underline-offset-4 hover:text-blue-900">
                 {locale === "zh" ? "改为手动创建" : locale === "ko" ? "수동 생성으로 전환" : "手動作成へ切り替え"}
@@ -1263,7 +1263,12 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
           ) : null}
 
           {isExistingIntake && !targetCaseId ? (
-            <div id="existing-case-list" className="rounded-xl border border-slate-200 bg-slate-50 p-4 xl:col-span-2">
+            <div
+              id="existing-case-list"
+              className={isLedgerFlow
+                ? "rounded-xl border border-slate-200 bg-slate-50 p-4"
+                : "rounded-xl border border-slate-200 bg-slate-50 p-4 xl:col-span-2"}
+            >
               <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h3 className="text-sm font-bold text-slate-950">

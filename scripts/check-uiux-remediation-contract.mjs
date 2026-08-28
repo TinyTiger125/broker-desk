@@ -78,6 +78,7 @@ function assertDirectImportEntryContract(source) {
   requireMatch(source, /const isLedgerFlow = flowIntent === "ledger";[\s\S]*?\{!isLedgerFlow \? \([\s\S]*?<IdentityDocumentUploadForm/, "legacy ledger deep links must continue to open the Excel-only intake without an extra route screen");
   requireMatch(source, /<IdentityDocumentUploadForm[\s\S]*?targetCaseId=\{targetCaseId \|\| undefined\}[\s\S]*?<ExcelDocumentUploadForm[\s\S]*?targetCaseId=\{targetCaseId \|\| undefined\}/, "both direct upload actions must preserve the selected case target");
   requireMatch(source, /className=\{isLedgerFlow \? "grid gap-4 p-5" : "grid gap-4 p-5 xl:grid-cols-2"\}/, "the Excel-only legacy deep link must not leave an empty desktop grid column");
+  requireMatch(source, /className=\{isLedgerFlow \? "text-xs text-slate-500" : "text-xs text-slate-500 xl:col-span-2"\}/, "the manual fallback must not recreate an implicit second ledger column");
   requireMatch(source, /\{isExistingIntake && !targetCaseId \? \(/, "the existing-case chooser must disappear once its target case is selected");
 }
 
