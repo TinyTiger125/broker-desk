@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 
 type NavLink = {
@@ -17,6 +17,22 @@ function isActive(pathname: string, href: string) {
   const hrefPath = href.split(/[?#]/)[0] || "/";
   if (hrefPath === "/") return pathname === "/";
   return pathname === hrefPath || pathname.startsWith(`${hrefPath}/`);
+}
+
+function MainNavLinkContent({ icon, label, isRow }: { icon: string; label: string; isRow: boolean }) {
+  const { pending } = useLinkStatus();
+
+  return (
+    <>
+      <span
+        aria-hidden="true"
+        className={`material-symbols-outlined app-nav-link-icon ${pending ? "inline-block animate-spin text-[20px] motion-reduce:animate-none" : isRow ? "hidden" : "inline-block text-[20px]"}`}
+      >
+        {pending ? "progress_activity" : icon}
+      </span>
+      <span className={isRow ? "" : "app-nav-link-label"}>{label}</span>
+    </>
+  );
 }
 
 export function MainNavLinks({ links, orientation = "row" }: MainNavLinksProps) {
@@ -61,13 +77,9 @@ export function MainNavLinks({ links, orientation = "row" }: MainNavLinksProps) 
           <Link
             key={`${link.label}:${link.href}`}
             href={link.href}
-            prefetch
             className={`${base} ${tone} ${isRow ? "justify-center" : "flex items-center gap-3"}`}
           >
-            <span aria-hidden="true" className={`material-symbols-outlined app-nav-link-icon ${isRow ? "hidden" : "inline-block text-[20px]"}`}>
-              {icon}
-            </span>
-            <span className={isRow ? "" : "app-nav-link-label"}>{link.label}</span>
+            <MainNavLinkContent icon={icon} label={link.label} isRow={isRow} />
           </Link>
         );
       })}

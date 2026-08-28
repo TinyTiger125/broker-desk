@@ -25,6 +25,7 @@ UI/UX Design System Wave 0/1：页面级组合层与 `/cases/new` 首个模板
 - 已批准的 404 locale 最小切片：仅 `not-found`，不扩展到 `error` 或 `global-error`。
 - 现有人物/物件创建表单的外部 footer 仍消费真实 pending，避免重复提交；业务 Action、权限、数据与保存合同不变。
 - MVP 性能稳定化切片：将 Vercel Functions 固定到与非生产 Neon 数据库相同的新加坡区域，先消除页面导航中跨美东/新加坡的数据库往返；不改变权限、查询语义或数据结构。
+- MVP 导航请求收敛切片：主导航不再强制完整预取所有动态认证页面，恢复 Next.js 对动态路由的默认分段预取策略，并为真实导航提供即时 pending 反馈；不引入客户端数据缓存框架，不缓存身份、租户或权限结果。
 
 ## 明确不做什么
 
@@ -61,6 +62,8 @@ UI/UX Design System Wave 0/1：页面级组合层与 `/cases/new` 首个模板
 - `docs/operations/CURRENT_WORKING_CONTEXT.md`
 - `vercel.json`
 - `scripts/check-production-security.mjs`
+- `src/components/main-nav-links.tsx`
+- `scripts/check-uiux-remediation-contract.mjs`
 
 ## 验收标准
 
@@ -70,6 +73,7 @@ UI/UX Design System Wave 0/1：页面级组合层与 `/cases/new` 首个模板
 - loading boundary 不显示可点击返回动作，避免在无法读取来源时误导；真实页面解析来源后才显示准确返回。页面内 loading/empty 与路由级拒绝分开：`case.create` 权限失败在渲染前 fail-closed，`tenant_selection_required` 按既有路径重定向工作区并保留 returnTo，其余租户/认证拒绝走安全 not-found。
 - P0/P1 为零且工程门通过后，才可考虑下一模板；Production 仍禁止。
 - 性能切片以真实 Staging 点击耗时为准：与约 3.6 秒基线比较；区域修复若已取得主要收益，不为追求极限继续扩大数据库重构。
+- 主导航不得使用 `prefetch={true}` 强制完整预取动态认证页面；运行日志不得再出现仅因主导航可见而并发完整请求全部主页面的请求放大。导航点击必须立即显示 pending 状态，完整页面数据仍由服务端按既有身份、租户和权限边界读取。
 
 ## 预计涉及的模块
 
@@ -102,6 +106,7 @@ git diff --check
 - 前次独立复核提出的移动物件输入门、任务卡治理章节和桌面/768 fixed 栏预留问题已修正；针对最新 P1 的同步提交锁、Escape 实时锁、页面会话说明和 `/cases/new` loading 边界已收口，行为测试已覆盖同一提交事件周期的关闭阻断。当前等待新一轮独立只读复核；真实浏览器证据仍未取得。
 - 真实提交、错误恢复、390/768/1440 浏览器运行证据仍未完成，不能将本地门等同于 Preview 或产品验收通过。
 - 候选 `380101e` 已标记为 Superseded / Not Deployed；当前重打包候选只撤回 workflow 差异并新增 prebuild 接线。等待工程门与独立只读复核后再进入 Preview；Production 保持禁止。
+- 区域候选 `27d57be` 已在固定 Staging READY 并把约 3.6 秒完整导航降至约 3.1 秒；Vercel 运行日志仍显示主导航触发多个动态页面的并发 cache MISS。下一最小性能切片只收敛该强制预取请求放大并补即时反馈，不在本任务内启用共享权限缓存、实验性 `staleTimes`、全局 Cache Components 或新的客户端数据层。
 
 ## 回退
 

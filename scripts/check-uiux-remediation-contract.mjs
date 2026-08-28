@@ -3,12 +3,13 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 
-const [layoutCss, globalsCss, caseOverview, casePage, seedSource] = await Promise.all([
+const [layoutCss, globalsCss, caseOverview, casePage, seedSource, mainNavLinks] = await Promise.all([
   readFile("src/components/layout-system/layout-system.module.css", "utf8"),
   readFile("src/app/globals.css", "utf8"),
   readFile("src/components/case-overview.tsx", "utf8"),
   readFile("src/app/cases/[id]/page.tsx", "utf8"),
   readFile("scripts/uiux-demo-data.mjs", "utf8"),
+  readFile("src/components/main-nav-links.tsx", "utf8"),
 ]);
 
 function requireMatch(source, pattern, message) {
@@ -54,6 +55,14 @@ function assertQuickWorkbenchNavigationContract(source) {
     "/cases/case_probe?view=quick&node=participants&field=applicant.name#case-review-desk",
     "quick-completion field navigation must preserve view=quick with the selected category, field, and hash",
   );
+}
+
+function assertMainNavigationPerformanceContract(source) {
+  requireMatch(source, /import Link, \{ useLinkStatus \} from "next\/link";/, "main navigation must expose immediate pending feedback through the framework link status");
+  requireMatch(source, /const \{ pending \} = useLinkStatus\(\);/, "each main navigation link must observe its own pending navigation state");
+  requireMatch(source, /pending \? "progress_activity" : icon/, "pending main navigation must replace the static icon with an immediate progress indicator");
+  requireMatch(source, /pending \? "inline-block animate-spin text-\[20px\] motion-reduce:animate-none"/, "pending feedback must remain visible in both desktop and compact navigation");
+  assert.doesNotMatch(source, /\bprefetch(?:=\{true\})?(?:\s|>)/, "main navigation must not force full prefetch of every authenticated dynamic route");
 }
 
 function seedHelpers(source) {
@@ -198,11 +207,13 @@ async function assertSeedContract(source) {
 assertFieldGridContract(layoutCss, caseOverview);
 assertMobileMenuContract(globalsCss);
 assertQuickWorkbenchNavigationContract(casePage);
+assertMainNavigationPerformanceContract(mainNavLinks);
 await assertSeedContract(seedSource);
 
 assert.throws(() => assertFieldGridContract(layoutCss.replace("align-items: stretch;", "align-items: start;"), caseOverview), /stretch/);
 assert.throws(() => assertMobileMenuContract(globalsCss.replace("right: 0.5rem;", "right: -0.5rem;")), /safe margin/);
 assert.throws(() => assertQuickWorkbenchNavigationContract(casePage.replace('params.set("view", "quick");', "")), /preserve view=quick/);
+assert.throws(() => assertMainNavigationPerformanceContract(mainNavLinks.replace('href={link.href}', 'href={link.href} prefetch={true}')), /must not force full prefetch/);
 await assert.rejects(assertSeedContract(seedSource.replace("${token}_${String(index).padStart(2, \"0\")}", "${String(index).padStart(2, \"0\")}")), /tenant-scoped/);
 await assert.rejects(assertSeedContract(seedSource.replace("clients.tenant_id = EXCLUDED.tenant_id", "$2 = $2")), /clients upserts/);
 await assert.rejects(assertSeedContract(seedSource.replace("DELETE FROM properties WHERE tenant_id = $1", "DELETE FROM properties WHERE TRUE")), /properties cleanup/);
@@ -219,4 +230,4 @@ await assert.rejects(assertSeedContract(seedSource.replace('enableChannelBinding
 await assert.rejects(assertSeedContract(seedSource.replace('return { ...poolConfig, ssl: { rejectUnauthorized: true } };', "return poolConfig;")), /valid JSON|force certificate-verified TLS/);
 await assert.rejects(assertSeedContract(seedSource.replace('${config.protocol}\\n${config.host}\\n${config.database}\\n${config.port}', '${config.protocol}\\n${config.host}\\n${config.database}')), /different port/);
 
-console.log("uiux remediation contract: PASS (field-row geometry, quick-view navigation, narrow menu viewport, and tenant-isolated demo data)");
+console.log("uiux remediation contract: PASS (field-row geometry, quick-view navigation, bounded main-nav prefetch, narrow menu viewport, and tenant-isolated demo data)");
