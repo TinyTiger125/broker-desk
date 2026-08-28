@@ -1662,33 +1662,8 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
       </section>
       ) : null}
 
-      {wizardStep !== "processing" && wizardStep !== "failed" ? (
-      <section data-import-ledger-section="true" className="rounded-xl border border-slate-200 bg-white p-5">
-        <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-          <div>
-            <h2 className="text-sm font-bold text-slate-900">
-              {locale === "zh" ? "台账与附件" : locale === "ko" ? "대장과 첨부" : "台帳と添付"}
-            </h2>
-            <p className="mt-1 text-xs text-slate-500">
-              {locale === "zh"
-                ? "旧资料恢复、检查记录、附件登记。"
-                : locale === "ko"
-                  ? "기존 자료 복구, 확인 기록, 첨부 등록."
-                  : "旧資料の復旧、確認記録、添付登録。"}
-            </p>
-          </div>
-          {!showAdvanced ? (
-            <Link href="/import-center?advanced=1" className="inline-flex items-center justify-center rounded-lg border border-slate-300 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">
-              {locale === "zh" ? "打开详细设置" : locale === "ko" ? "상세 설정 열기" : "詳細設定を開く"}
-            </Link>
-          ) : (
-            <Link href="/import-center" className="inline-flex items-center justify-center rounded-lg border border-slate-300 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">
-              {locale === "zh" ? "收起详细设置" : locale === "ko" ? "상세 설정 닫기" : "詳細設定を閉じる"}
-            </Link>
-          )}
-        </div>
-        {showAdvanced ? (
-        <div className="mt-5 space-y-6">
+      {wizardStep !== "processing" && wizardStep !== "failed" && showAdvanced ? (
+      <section data-import-advanced-section="true" className="space-y-6">
 	      {showAdvanced &&
         defaultJob &&
         focusedMappingJob &&
@@ -2061,8 +2036,6 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
         </aside>
       </section>
       )}
-        </div>
-        ) : null}
       </section>
       ) : null}
     </div>

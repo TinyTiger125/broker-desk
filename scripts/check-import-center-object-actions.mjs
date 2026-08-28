@@ -42,9 +42,12 @@ const layoutStart = page.indexOf('data-import-layout="object-recent"');
 const objectChannels = page.indexOf('data-import-object-channels="true"', layoutStart);
 const recentSlot = page.indexOf('data-import-recent-slot="true"', layoutStart);
 const layoutEnd = page.indexOf('data-import-layout-end="object-recent"', layoutStart);
-const ledgerSection = page.indexOf('data-import-ledger-section="true"', layoutEnd);
 assert(layoutStart >= 0 && objectChannels > layoutStart && recentSlot > objectChannels && layoutEnd > recentSlot, "desktop landing must keep object channels left and recent imports right in one ordered layout");
-assert(ledgerSection > layoutEnd, "ledger and attachments must follow the primary object/recent task area");
+assert(!page.includes('data-import-ledger-section="true"'), "the empty ledger-and-attachments landing module must be removed");
+for (const obsoleteLandingCopy of ["台账与附件", "台帳と添付", "대장과 첨부", "打开详细设置", "詳細設定を開く", "상세 설정 열기"]) {
+  assert(!page.includes(obsoleteLandingCopy), `obsolete landing module copy must be removed: ${obsoleteLandingCopy}`);
+}
+assert(page.includes('showAdvanced ? (\n      <section data-import-advanced-section="true"'), "legacy recovery content must remain available only for explicit advanced routes");
 const layoutOpening = page.slice(layoutStart, objectChannels);
 assert(layoutOpening.includes("lg:grid-cols-[minmax(0,1fr)_20rem]"), "desktop lg layout must use a main column and bounded recent sidebar");
 assert(!layoutOpening.includes("md:grid-cols") && !layoutOpening.includes("sm:grid-cols"), "390px and 768px layouts must remain single-column");
