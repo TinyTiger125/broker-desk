@@ -3,8 +3,9 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 
-const [layoutCss, caseOverview, seedSource] = await Promise.all([
+const [layoutCss, globalsCss, caseOverview, seedSource] = await Promise.all([
   readFile("src/components/layout-system/layout-system.module.css", "utf8"),
+  readFile("src/app/globals.css", "utf8"),
   readFile("src/components/case-overview.tsx", "utf8"),
   readFile("scripts/uiux-demo-data.mjs", "utf8"),
 ]);
@@ -19,6 +20,15 @@ function assertFieldGridContract(css, overview) {
   requireMatch(desktop, /\.formRow\s*>\s*\.formField\s*\{[\s\S]*?height:\s*100%;/, "each field article must fill the stretched row");
   requireMatch(overview, /const renderField = \(field: CaseOverviewField\) => \(\s*<div className="[^"]*h-full[^"]*sm:flex-row[^"]*sm:items-start/, "field content must fill its article and align value/action from the same top baseline");
   requireMatch(overview, /data-field-trigger=\{fieldAnchor\(field\.fieldKey\)\}[\s\S]*?className=\{`[^`]*min-h-11[^`]*sm:min-w-24/, "field actions must keep one stable touch target and desktop action column");
+}
+
+function assertMobileMenuContract(css) {
+  const narrowViewport = css.match(/@media \(max-width: 30rem\) \{([\s\S]*?)\n\}/)?.[1] ?? "";
+  requireMatch(narrowViewport, /\.app-mobile-header\s+\.app-header-menu-panel\s*\{/, "narrow header panels must use a shared viewport-safe rule");
+  requireMatch(narrowViewport, /position:\s*fixed;/, "narrow header panels must escape clipping ancestors");
+  requireMatch(narrowViewport, /top:\s*3\.5rem;/, "narrow header panels must remain below the sticky header");
+  requireMatch(narrowViewport, /right:\s*0\.5rem;/, "narrow header panels must keep the viewport safe margin");
+  requireMatch(narrowViewport, /margin-top:\s*0;/, "fixed panels must not retain trigger-relative offset");
 }
 
 function seedHelpers(source) {
@@ -56,11 +66,13 @@ function assertSeedContract(source) {
 }
 
 assertFieldGridContract(layoutCss, caseOverview);
+assertMobileMenuContract(globalsCss);
 assertSeedContract(seedSource);
 
 assert.throws(() => assertFieldGridContract(layoutCss.replace("align-items: stretch;", "align-items: start;"), caseOverview), /stretch/);
+assert.throws(() => assertMobileMenuContract(globalsCss.replace("right: 0.5rem;", "right: -0.5rem;")), /safe margin/);
 assert.throws(() => assertSeedContract(seedSource.replace("${token}_${String(index).padStart(2, \"0\")}", "${String(index).padStart(2, \"0\")}")), /tenant-scoped/);
 assert.throws(() => assertSeedContract(seedSource.replace("clients.tenant_id = EXCLUDED.tenant_id", "$2 = $2")), /clients upserts/);
 assert.throws(() => assertSeedContract(seedSource.replace("DELETE FROM properties WHERE tenant_id = $1", "DELETE FROM properties WHERE TRUE")), /properties cleanup/);
 
-console.log("uiux remediation contract: PASS (field-row geometry and tenant-isolated demo data)");
+console.log("uiux remediation contract: PASS (field-row geometry, narrow menu viewport, and tenant-isolated demo data)");

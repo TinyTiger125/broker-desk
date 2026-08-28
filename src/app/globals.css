@@ -389,6 +389,15 @@ button:disabled:not([class~="text-white"]):not([class~="!text-white"]) {
   box-shadow: 0 12px 24px rgb(15 23 42 / 12%);
 }
 
+@media (max-width: 30rem) {
+  .app-mobile-header .app-header-menu-panel {
+    position: fixed;
+    top: 3.5rem;
+    right: 0.5rem;
+    margin-top: 0;
+  }
+}
+
 .app-header-menu-panel .app-nav-link {
   padding: 0.625rem 0.625rem;
   color: #475569;
