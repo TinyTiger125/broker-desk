@@ -43,9 +43,16 @@ function buildPoolConfig(connectionString) {
     database,
     user: decodeURIComponent(target.username),
     password: decodeURIComponent(target.password),
-    ssl: sslmode ? {} : undefined,
+    ssl: sslmode ? { rejectUnauthorized: true } : undefined,
     enableChannelBinding: channelBinding === "prefer" ? true : channelBinding === "disable" ? false : undefined,
   };
+}
+
+function enforceFixedStagingPoolConfig(poolConfig) {
+  if (poolConfig.port !== 5432) {
+    throw new Error("fixed Staging database must use the approved port");
+  }
+  return { ...poolConfig, ssl: { rejectUnauthorized: true } };
 }
 
 async function main() {
@@ -69,16 +76,18 @@ const localBridge = new Set(["127.0.0.1", "localhost"]).has(poolConfig.host)
 const remoteFingerprint = createHash("sha256")
   .update(`${poolConfig.host}\n/${poolConfig.database}`)
   .digest("hex");
-const fixedStagingPreview = remoteFingerprint === REMOTE_DATABASE_FINGERPRINT
-  && poolConfig.port === 5432
-  && poolConfig.ssl !== undefined
+const fixedStagingTarget = remoteFingerprint === REMOTE_DATABASE_FINGERPRINT
   && process.env.BROKER_DESK_DEPLOYMENT_ENV === "staging";
+const effectivePoolConfig = fixedStagingTarget ? enforceFixedStagingPoolConfig(poolConfig) : poolConfig;
+const fixedStagingPreview = fixedStagingTarget
+  && effectivePoolConfig.port === 5432
+  && effectivePoolConfig.ssl?.rejectUnauthorized === true;
 if (!localBridge && !fixedStagingPreview) {
   throw new Error("UI/UX demo data is locked to the local QA bridge or the fixed Staging Preview database fingerprint");
 }
 
 const { Pool } = pg;
-const pool = new Pool({ ...poolConfig, max: 1, connectionTimeoutMillis: 10_000 });
+const pool = new Pool({ ...effectivePoolConfig, max: 1, connectionTimeoutMillis: 10_000 });
 
 function tenantToken(tenantId) {
   return createHash("sha256").update(`broker-desk-uiux-demo:${tenantId}`).digest("hex").slice(0, 16);
