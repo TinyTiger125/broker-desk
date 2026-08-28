@@ -5,7 +5,7 @@ import pg from "pg";
 const MARKER = "UIUX-DEMO-20260828";
 const REQUIRED_ACK = `${MARKER}:NONPROD`;
 const REMOTE_WORKSPACE_NAME = "TASK-039 Duplicate Guard Probe 1787271641750";
-const REMOTE_DATABASE_FINGERPRINT = "f0b906198ebf2e9ddd5a29c3c3204c9bb366ed03d39b80b72a81dcfa775e6da4";
+const REMOTE_TARGET_FINGERPRINT = "aaf14cc84744d48e626ff90cea8e67be03707f73a55b6368e545a0b094ab545a";
 const mode = process.argv[2];
 const workspaceArg = process.argv.find((value) => value.startsWith("--workspace="));
 const workspaceName = workspaceArg?.slice("--workspace=".length).trim();
@@ -38,6 +38,7 @@ function buildPoolConfig(connectionString) {
     throw new Error("incomplete database connection target");
   }
   return {
+    protocol: target.protocol,
     host: target.hostname,
     port,
     database,
@@ -49,10 +50,13 @@ function buildPoolConfig(connectionString) {
 }
 
 function enforceFixedStagingPoolConfig(poolConfig) {
-  if (poolConfig.port !== 5432) {
-    throw new Error("fixed Staging database must use the approved port");
-  }
   return { ...poolConfig, ssl: { rejectUnauthorized: true } };
+}
+
+function targetFingerprint(config) {
+  return createHash("sha256")
+    .update(`${config.protocol}\n${config.host}\n${config.database}\n${config.port}`)
+    .digest("hex");
 }
 
 async function main() {
@@ -70,17 +74,15 @@ if (workspaceName !== REMOTE_WORKSPACE_NAME) {
 }
 const connectionString = process.env.DATABASE_ADMIN_URL?.trim();
 if (!connectionString) throw new Error("DATABASE_ADMIN_URL is required; runtime DATABASE_URL is intentionally not accepted");
-const poolConfig = buildPoolConfig(connectionString);
+const validatedConfig = buildPoolConfig(connectionString);
+const { protocol: databaseProtocol, ...poolConfig } = validatedConfig;
 const localBridge = new Set(["127.0.0.1", "localhost"]).has(poolConfig.host)
   && poolConfig.database === "broker_desk_task039";
-const remoteFingerprint = createHash("sha256")
-  .update(`${poolConfig.host}\n/${poolConfig.database}`)
-  .digest("hex");
-const fixedStagingTarget = remoteFingerprint === REMOTE_DATABASE_FINGERPRINT
+const remoteFingerprint = targetFingerprint({ protocol: databaseProtocol, ...poolConfig });
+const fixedStagingTarget = remoteFingerprint === REMOTE_TARGET_FINGERPRINT
   && process.env.BROKER_DESK_DEPLOYMENT_ENV === "staging";
 const effectivePoolConfig = fixedStagingTarget ? enforceFixedStagingPoolConfig(poolConfig) : poolConfig;
 const fixedStagingPreview = fixedStagingTarget
-  && effectivePoolConfig.port === 5432
   && effectivePoolConfig.ssl?.rejectUnauthorized === true;
 if (!localBridge && !fixedStagingPreview) {
   throw new Error("UI/UX demo data is locked to the local QA bridge or the fixed Staging Preview database fingerprint");

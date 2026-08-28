@@ -77,7 +77,7 @@ function assertExplicitPoolTargetContract(source) {
   const config = context.buildPoolConfig("postgres://qa:secret@db.staging.example:5432/staging_db?sslmode=require&channel_binding=prefer");
   assert.deepEqual(
     JSON.parse(JSON.stringify(config)),
-    { host: "db.staging.example", port: 5432, database: "staging_db", user: "qa", password: "secret", ssl: { rejectUnauthorized: true }, enableChannelBinding: true },
+    { protocol: "postgres:", host: "db.staging.example", port: 5432, database: "staging_db", user: "qa", password: "secret", ssl: { rejectUnauthorized: true }, enableChannelBinding: true },
     "Pool config must use the validated authority and database exactly",
   );
   for (const unsafe of [
@@ -119,16 +119,18 @@ function assertExplicitPoolTargetContract(source) {
   assert.equal(enforcedRemote.port, 5432, "an omitted remote port must resolve to 5432");
   assert.deepEqual(JSON.parse(JSON.stringify(enforcedRemote.ssl)), { rejectUnauthorized: true }, "fixed Staging must force certificate-verified TLS even without sslmode");
   assert.throws(
-    () => context.enforceFixedStagingPoolConfig(context.buildPoolConfig("postgres://qa:secret@db.staging.example:6543/staging_db")),
-    /approved port/,
-    "an explicit non-approved remote port must be rejected",
-  );
-  assert.throws(
     () => context.buildPoolConfig("postgres://qa:secret@db.staging.example/staging_db?sslmode=disable"),
     /unsupported database ssl mode/,
     "TLS disable must be rejected",
   );
-  requireMatch(source, /const poolConfig = buildPoolConfig\(connectionString\);[\s\S]*?remoteFingerprint = createHash\("sha256"\)[\s\S]*?poolConfig\.host[\s\S]*?poolConfig\.database[\s\S]*?effectivePoolConfig = fixedStagingTarget \? enforceFixedStagingPoolConfig\(poolConfig\) : poolConfig[\s\S]*?new Pool\(\{ \.\.\.effectivePoolConfig, max: 1, connectionTimeoutMillis: 10_000 \}\)/, "the fingerprint, Staging policy, and Pool must consume one explicit validated effective config");
+  const fingerprintMatch = source.match(/function targetFingerprint\(config\) \{[\s\S]*?\n\}/);
+  assert(fingerprintMatch, "fixed Staging must fingerprint the complete effective target");
+  const fingerprintContext = vm.createContext({ createHash });
+  vm.runInContext(`${fingerprintMatch[0]}\nglobalThis.targetFingerprint = targetFingerprint;`, fingerprintContext);
+  const defaultPortFingerprint = fingerprintContext.targetFingerprint(remoteWithoutOptions);
+  const otherPortFingerprint = fingerprintContext.targetFingerprint(context.buildPoolConfig("postgres://qa:secret@db.staging.example:6543/staging_db"));
+  assert.notEqual(defaultPortFingerprint, otherPortFingerprint, "any explicit different port must produce a rejected target fingerprint");
+  requireMatch(source, /const validatedConfig = buildPoolConfig\(connectionString\);[\s\S]*?protocol: databaseProtocol[\s\S]*?remoteFingerprint = targetFingerprint\(\{ protocol: databaseProtocol, \.\.\.poolConfig \}\)[\s\S]*?effectivePoolConfig = fixedStagingTarget \? enforceFixedStagingPoolConfig\(poolConfig\) : poolConfig[\s\S]*?new Pool\(\{ \.\.\.effectivePoolConfig, max: 1, connectionTimeoutMillis: 10_000 \}\)/, "the full fingerprint, Staging policy, and Pool must consume one explicit validated effective config");
 }
 
 async function assertSeedContract(source) {
@@ -147,8 +149,8 @@ async function assertSeedContract(source) {
   assert.throws(() => helpers.assertOwnedMarkerWrite({ rowCount: 0 }, "party", "foreign"), /outside the target tenant\/marker boundary/);
 
   requireMatch(source, /const REMOTE_WORKSPACE_NAME = "TASK-039 Duplicate Guard Probe 1787271641750";/, "remote writes must be locked to the accepted QA workspace");
-  requireMatch(source, /const REMOTE_DATABASE_FINGERPRINT = "f0b906198ebf2e9ddd5a29c3c3204c9bb366ed03d39b80b72a81dcfa775e6da4";/, "remote writes must be locked to the trusted database fingerprint");
-  requireMatch(source, /remoteFingerprint === REMOTE_DATABASE_FINGERPRINT[\s\S]*?BROKER_DESK_DEPLOYMENT_ENV === "staging"[\s\S]*?effectivePoolConfig\.port === 5432[\s\S]*?effectivePoolConfig\.ssl\?\.rejectUnauthorized === true/, "remote writes must require the fingerprint, explicit Staging environment, effective fixed port, and verified TLS");
+  requireMatch(source, /const REMOTE_TARGET_FINGERPRINT = "aaf14cc84744d48e626ff90cea8e67be03707f73a55b6368e545a0b094ab545a";/, "remote writes must be locked to the trusted full target fingerprint");
+  requireMatch(source, /remoteFingerprint === REMOTE_TARGET_FINGERPRINT[\s\S]*?BROKER_DESK_DEPLOYMENT_ENV === "staging"[\s\S]*?effectivePoolConfig\.ssl\?\.rejectUnauthorized === true/, "remote writes must require the full target fingerprint, explicit Staging environment, and verified TLS");
   requireMatch(source, /NODE_ENV === "production" \|\| process\.env\.VERCEL_ENV === "production"/, "Production must remain rejected");
 
   for (const [table, markerColumn] of [["clients", "notes"], ["properties", "notes"], ["brokerage_cases", "case_title"]]) {
@@ -178,10 +180,9 @@ await assert.rejects(assertSeedContract(seedSource.replace("${token}_${String(in
 await assert.rejects(assertSeedContract(seedSource.replace("clients.tenant_id = EXCLUDED.tenant_id", "$2 = $2")), /clients upserts/);
 await assert.rejects(assertSeedContract(seedSource.replace("DELETE FROM properties WHERE tenant_id = $1", "DELETE FROM properties WHERE TRUE")), /properties cleanup/);
 await assert.rejects(assertSeedContract(seedSource.replace("BROKER_DESK_DEPLOYMENT_ENV === \"staging\"", "BROKER_DESK_DEPLOYMENT_ENV === \"preview\"")), /deployment environment|explicit Staging environment/);
-await assert.rejects(assertSeedContract(seedSource.replace("effectivePoolConfig.port === 5432", "effectivePoolConfig.port > 0")), /fixed port/);
 await assert.rejects(assertSeedContract(seedSource.replace("effectivePoolConfig.ssl?.rejectUnauthorized === true", "true")), /verified TLS/);
 await assert.rejects(assertSeedContract(seedSource.replace("TASK-039 Duplicate Guard Probe 1787271641750", "TASK-039")), /accepted QA workspace/);
-await assert.rejects(assertSeedContract(seedSource.replace("f0b906198ebf2e9ddd5a29c3c3204c9bb366ed03d39b80b72a81dcfa775e6da4", "0".repeat(64))), /trusted database fingerprint/);
+await assert.rejects(assertSeedContract(seedSource.replace("aaf14cc84744d48e626ff90cea8e67be03707f73a55b6368e545a0b094ab545a", "0".repeat(64))), /trusted full target fingerprint/);
 await assert.rejects(assertSeedContract(seedSource.replace("assertProtectedSnapshotUnchanged(protectedBefore, protectedAfter);", "assertProtectedSnapshotUnchanged(protectedAfter, protectedAfter);")), /baselines must be captured/);
 await assert.rejects(assertSeedContract(seedSource.replace("await main().catch(reportSafeFailure);", "await main();")), /safe reporter/);
 await assert.rejects(assertSeedContract(seedSource.replace("function reportSafeFailure() {", "function reportSafeFailure(error) {").replace('process.stderr.write("UIUX_DEMO_DATA_FAILED\\n");', "process.stderr.write(error.message);")), /fixed safe reporter|must not inspect/);
@@ -189,5 +190,6 @@ await assert.rejects(assertSeedContract(seedSource.replace('const allowedOptions
 await assert.rejects(assertSeedContract(seedSource.replace("new Pool({ ...effectivePoolConfig, max: 1, connectionTimeoutMillis: 10_000 })", "new Pool({ connectionString, max: 1, connectionTimeoutMillis: 10_000 })")), /raw connection string|same explicit validated effective config/);
 await assert.rejects(assertSeedContract(seedSource.replace('enableChannelBinding: channelBinding === "prefer" ? true : channelBinding === "disable" ? false : undefined', "channel_binding: channelBinding || undefined")), /Pool config|legacy channel_binding|real node-postgres boolean key/);
 await assert.rejects(assertSeedContract(seedSource.replace('return { ...poolConfig, ssl: { rejectUnauthorized: true } };', "return poolConfig;")), /valid JSON|force certificate-verified TLS/);
+await assert.rejects(assertSeedContract(seedSource.replace('${config.protocol}\\n${config.host}\\n${config.database}\\n${config.port}', '${config.protocol}\\n${config.host}\\n${config.database}')), /different port/);
 
 console.log("uiux remediation contract: PASS (field-row geometry, narrow menu viewport, and tenant-isolated demo data)");
