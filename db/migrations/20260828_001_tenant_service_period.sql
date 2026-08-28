@@ -1332,16 +1332,18 @@ BEGIN
     RAISE EXCEPTION 'invitation actor does not match authenticated user' USING ERRCODE = '42501';
   END IF;
 
-  SELECT tenant_account, tenant_account.purchased_seat_count, tenant_account.status,
-         tenant_account.service_start_at, tenant_account.service_end_at
-  INTO tenant_row, purchased_seat_count, tenant_status,
-       tenant_service_start_at, tenant_service_end_at
+  SELECT tenant_account.*
+  INTO tenant_row
   FROM public.tenants AS tenant_account
   WHERE tenant_account.id = p_tenant_id
   FOR UPDATE;
   IF NOT FOUND THEN
     RETURN;
   END IF;
+  purchased_seat_count := tenant_row.purchased_seat_count;
+  tenant_status := tenant_row.status;
+  tenant_service_start_at := tenant_row.service_start_at;
+  tenant_service_end_at := tenant_row.service_end_at;
   IF tenant_status IN ('suspended', 'cancelled')
      OR (tenant_service_start_at IS NULL AND tenant_service_end_at IS NULL AND tenant_status = 'pending_activation')
      OR (tenant_service_start_at IS NOT NULL AND tenant_service_start_at > tokyo_today)

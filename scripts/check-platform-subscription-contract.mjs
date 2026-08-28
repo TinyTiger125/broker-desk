@@ -322,7 +322,10 @@ function assertInvitationTenantLockAuthorityOrder(source, functionName, allowPla
     : source.indexOf("FROM public.tenant_memberships AS target_membership", actorFailure);
   assert(tenantSource >= 0 && tenantLock > tenantSource, `${functionName} must acquire the tenant row lock`);
   const tenantLockRead = source.slice(0, tenantLock);
-  assert(tenantLockRead.includes("tenant_account.purchased_seat_count") && tenantLockRead.includes("tenant_account.status") && tenantLockRead.includes("tenant_account.service_start_at") && tenantLockRead.includes("tenant_account.service_end_at"), `${functionName} tenant lock read must capture seats and the complete service snapshot`);
+  const postLockSnapshot = source.slice(tenantLock, serviceFailure);
+  const capturesScalarSnapshot = tenantLockRead.includes("tenant_account.purchased_seat_count") && tenantLockRead.includes("tenant_account.status") && tenantLockRead.includes("tenant_account.service_start_at") && tenantLockRead.includes("tenant_account.service_end_at");
+  const capturesTypedRowSnapshot = tenantLockRead.includes("SELECT tenant_account.*") && postLockSnapshot.includes("purchased_seat_count := tenant_row.purchased_seat_count;") && postLockSnapshot.includes("tenant_status := tenant_row.status;") && postLockSnapshot.includes("tenant_service_start_at := tenant_row.service_start_at;") && postLockSnapshot.includes("tenant_service_end_at := tenant_row.service_end_at;");
+  assert(capturesScalarSnapshot || capturesTypedRowSnapshot, `${functionName} tenant lock read must capture seats and the complete service snapshot`);
   assert(serviceFailure > tenantLock && actorSource > serviceFailure && actorLock > actorSource && actorFailure > actorLock && identityOrTargetSource > actorFailure, `${functionName} must lock tenant, reject service, lock/recheck actor authority, then lock identity or target membership`);
   assert(source.indexOf("FROM public.tenant_memberships AS authorized_actor_memberships") === actorSource, `${functionName} must not read actor authority before the tenant service lock boundary`);
   const actorBoundary = source.slice(actorSource, actorLock);
@@ -385,6 +388,24 @@ function assertPlatformInvitationDeliveryBoundary({ actionSource, postgresPrepar
   assert(targetSource > actorLock && targetLock > targetSource && userSource > targetLock && userLock > userSource && capacity > userLock && update > capacity && fullReturn > update, "prepare delivery must lock target membership and user, check capacity, update refresh state, then return full context");
   assert(sqlSource.includes("to_jsonb(tenant_row)") && sqlSource.includes("tenant_record") && sqlSource.includes("member_record"), "prepare delivery must return complete tenant, membership, and user delivery context");
   assert(sqlSource.includes("REVOKE ALL ON FUNCTION brokerdesk_private.prepare_tenant_invitation_delivery(TEXT, TEXT, TEXT, TEXT) FROM PUBLIC") && sqlSource.includes("GRANT EXECUTE ON FUNCTION brokerdesk_private.prepare_tenant_invitation_delivery(TEXT, TEXT, TEXT, TEXT) TO brokerdesk_runtime"), "prepare delivery context must retain runtime-only execution ACL");
+}
+
+function assertPlpgsqlCompositeIntoShape(migrationSource) {
+  const rowVariables = [...migrationSource.matchAll(/\b([a-z_][a-z0-9_]*)\s+public\.[a-z_][a-z0-9_]*%ROWTYPE;/gi)].map((match) => match[1]);
+  assert(rowVariables.includes("tenant_row"), "prepare invitation must retain its typed tenant row variable");
+  for (const rowVariable of rowVariables) {
+    const illegalCompositeMultiInto = new RegExp(`SELECT\\b(?:(?!;)[\\s\\S])*?\\bINTO\\s+${rowVariable}\\s*,(?:(?!;)[\\s\\S])*?;`, "i");
+    assert(!illegalCompositeMultiInto.test(migrationSource), `PL/pgSQL composite ${rowVariable} must not be the first target of a multi-item INTO list`);
+  }
+  const prepareStart = migrationSource.indexOf("CREATE OR REPLACE FUNCTION brokerdesk_private.prepare_tenant_invitation_delivery");
+  const prepareEnd = migrationSource.indexOf("REVOKE ALL ON FUNCTION brokerdesk_private.prepare_tenant_invitation_delivery", prepareStart);
+  const prepare = prepareStart >= 0 && prepareEnd > prepareStart ? migrationSource.slice(prepareStart, prepareEnd) : "";
+  assert(prepare.includes("SELECT tenant_account.*\n  INTO tenant_row") && prepare.includes("purchased_seat_count := tenant_row.purchased_seat_count;") && prepare.includes("tenant_status := tenant_row.status;") && prepare.includes("tenant_service_start_at := tenant_row.service_start_at;") && prepare.includes("tenant_service_end_at := tenant_row.service_end_at;"), "prepare invitation must select one complete tenant row and derive scalar service fields afterward");
+  const tenantLock = prepare.indexOf("FOR UPDATE;");
+  const notFound = prepare.indexOf("IF NOT FOUND THEN", tenantLock);
+  const scalarAssignments = prepare.indexOf("purchased_seat_count := tenant_row.purchased_seat_count;", notFound);
+  const serviceGuard = prepare.indexOf("IF tenant_status IN ('suspended', 'cancelled')", scalarAssignments);
+  assert(tenantLock >= 0 && notFound > tenantLock && scalarAssignments > notFound && serviceGuard > scalarAssignments, "prepare invitation must preserve tenant lock, existence check, scalar derivation, then Tokyo service guard order");
 }
 
 function assertPlatformInvitationRuntimeProbe(taskSource) {
@@ -967,6 +988,17 @@ assertMemoryMemberMutationBoundary({ roleSource: memoryMemberRole, statusSource:
 assertInvitationCreationBoundary({ memorySource: memoryInvite, memoryFullSource: memory, postgresSource: postgresInvite, sqlSource: createInvitationFunction });
 assertMemberStatusAcceptanceBoundary({ actionSource: memberStatusAction, memorySource: memoryMemberStatus, postgresSource: postgresMemberStatus, sqlSource: memberMutationStatusFunction });
 assertInvitationDeliveryBoundary({ memorySource: memoryInvitationDelivery, postgresSource: postgresInvitationDelivery, sqlSource: recordInvitationFunction });
+assertPlpgsqlCompositeIntoShape(migration);
+assertNegativeSynthetic(
+  assertPlpgsqlCompositeIntoShape,
+  replaceRequired(
+    migration,
+    "  SELECT tenant_account.*\n  INTO tenant_row\n  FROM public.tenants AS tenant_account",
+    "  SELECT tenant_account, tenant_account.purchased_seat_count, tenant_account.status,\n         tenant_account.service_start_at, tenant_account.service_end_at\n  INTO tenant_row, purchased_seat_count, tenant_status,\n       tenant_service_start_at, tenant_service_end_at\n  FROM public.tenants AS tenant_account",
+    "illegal composite multi-item INTO",
+  ),
+  "restoring a composite record plus scalar multi-item INTO must be rejected",
+);
 assertPlatformInvitationDeliveryBoundary({ actionSource: invitationSender, postgresPrepareSource: postgresInvitationPrepare, postgresRecordSource: postgresInvitationDelivery, sqlSource: prepareInvitationFunction });
 assertPlatformInvitationRuntimeProbe(task043);
 assertInvitationDeliveryAuditAtomicity({ senderSource: invitationSender, actionSource: actions, memorySource: memoryInvitationDelivery, sqlSource: recordInvitationFunction, migrationSource: migration, memberCopySource: memberManagementCopy, membersPageSource: membersPage });
