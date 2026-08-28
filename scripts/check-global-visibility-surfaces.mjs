@@ -44,7 +44,7 @@ for (const file of [newCase, newQuote]) {
   assert(!file.includes("listQuoteFormData"), "candidate page does not use tenant-wide legacy options");
 }
 assert(actions.includes("const requestContext = createRequestContext(session)"), "case creation action creates trusted RequestContext");
-assert(actions.includes("partyResult.resolution.canWrite") && actions.includes("propertyResult.resolution.canWrite"), "case creation rechecks candidate ownership server-side");
+assert(actions.includes("partyResults.some((result) => !result.record || !result.resolution.canWrite)") && actions.includes("!propertyResult?.record || !propertyResult.resolution.canWrite"), "case creation rechecks candidate ownership server-side");
 assert(actions.includes("property.resolution.canWrite"), "quotation creation keeps server-side property owner-write check");
 
 console.log("global-visibility surfaces contract: PASS");

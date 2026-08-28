@@ -4499,6 +4499,68 @@ export type VisibleProperty = {
   resolution: VisibilityResolution;
 };
 
+export type VisibleRecordSearchHit = {
+  entity: "case" | "property" | "party";
+  id: string;
+  title: string;
+  subtitle: string;
+  resolution: VisibilityResolution;
+};
+
+export async function searchVisibleRecordsForContext(input: {
+  context: RequestContext;
+  query: string;
+  redactedCaseLabel: string;
+  limitPerEntity?: number;
+  lifecycleStatus?: LifecycleFilter;
+}): Promise<VisibleRecordSearchHit[]> {
+  const normalized = input.query.trim().toLocaleLowerCase();
+  if (!normalized) return [];
+  const lifecycleStatus = input.lifecycleStatus ?? "active";
+  const limit = Math.min(Math.max(Math.trunc(input.limitPerEntity ?? 5), 1), 25);
+  const includes = (...values: Array<string | undefined>) =>
+    values.some((value) => value?.toLocaleLowerCase().includes(normalized));
+
+  const caseHits = db.brokerageCases
+    .filter((item) => item.tenantId === input.context.tenantId)
+    .filter((item) => lifecycleStatus === "all" || (item.lifecycleStatus ?? "active") === lifecycleStatus)
+    .flatMap((item) => {
+      const resolution = resolveRecordVisibility(input.context, item);
+      if (!resolution.canRead) return [];
+      const title = resolution.outcome === "company_read" ? input.redactedCaseLabel : item.caseTitle;
+      return includes(title, item.id) ? [{ entity: "case" as const, id: item.id, title, subtitle: item.status, resolution, updatedAt: item.updatedAt }] : [];
+    })
+    .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+    .slice(0, limit)
+    .map((item) => ({ entity: item.entity, id: item.id, title: item.title, subtitle: item.subtitle, resolution: item.resolution }));
+
+  const propertyHits = db.properties
+    .filter((item) => item.tenantId === input.context.tenantId)
+    .filter((item) => lifecycleStatus === "all" || (item.lifecycleStatus ?? "active") === lifecycleStatus)
+    .flatMap((item) => {
+      const resolution = resolveRecordVisibility(input.context, item);
+      if (!resolution.canRead || !includes(item.name, item.area)) return [];
+      return [{ entity: "property" as const, id: item.id, title: item.name, subtitle: item.area ?? "", resolution, createdAt: item.createdAt }];
+    })
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+    .slice(0, limit)
+    .map((item) => ({ entity: item.entity, id: item.id, title: item.title, subtitle: item.subtitle, resolution: item.resolution }));
+
+  const partyHits = db.clients
+    .filter((item) => item.tenantId === input.context.tenantId)
+    .filter((item) => lifecycleStatus === "all" || (item.lifecycleStatus ?? "active") === lifecycleStatus)
+    .flatMap((item) => {
+      const resolution = resolveRecordVisibility(input.context, item);
+      if (!resolution.canRead || !includes(item.name, item.phone, item.email, item.preferredArea)) return [];
+      return [{ entity: "party" as const, id: item.id, title: item.name, subtitle: item.phone, resolution, sortAt: item.lastContactedAt ?? item.createdAt }];
+    })
+    .sort((a, b) => b.sortAt.getTime() - a.sortAt.getTime())
+    .slice(0, limit)
+    .map((item) => ({ entity: item.entity, id: item.id, title: item.title, subtitle: item.subtitle, resolution: item.resolution }));
+
+  return [...caseHits, ...propertyHits, ...partyHits];
+}
+
 export async function listClients(userId: string, filter: ClientListFilter = {}) {
   const scopeTenantId = resolveTenantId(filter.tenantId);
   const filtered = db.clients

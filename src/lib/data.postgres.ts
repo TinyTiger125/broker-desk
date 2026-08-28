@@ -85,6 +85,7 @@ import type {
   GuaranteePreviewOutputInput,
   MemberVisibilityDefault,
   SetRecordLifecycleWithAuditInput,
+  VisibleRecordSearchHit,
 } from "@/lib/data.memory";
 import type { VisibleBrokerageCase, VisibleProperty } from "@/lib/data.memory";
 import type { TenantRole, TenantCapabilityPreset } from "@/lib/tenant-permissions";
@@ -3486,6 +3487,120 @@ export async function listBrokerageCasesForContext(input: {
         ownerResolutionStatus: row.owner_resolution_status,
       });
       return resolution.canRead ? [{ brokerageCase, resolution }] : [];
+    });
+  });
+}
+
+function escapeSearchPattern(value: string): string {
+  return value.replace(/[!%_]/g, (character) => `!${character}`);
+}
+
+/**
+ * Bounded search projection for the three globally searchable record types.
+ * RLS remains the primary visibility filter; the projected owner fields are
+ * resolved again before returning a hit so memory and Postgres fail closed in
+ * the same way. One auth transaction replaces three complete-list reads.
+ */
+export async function searchVisibleRecordsForContext(input: {
+  context: RequestContext;
+  query: string;
+  redactedCaseLabel: string;
+  limitPerEntity?: number;
+  lifecycleStatus?: LifecycleFilter;
+}): Promise<VisibleRecordSearchHit[]> {
+  const normalized = input.query.trim();
+  if (!normalized) return [];
+  const lifecycleStatus = input.lifecycleStatus ?? "active";
+  const limit = Math.min(Math.max(Math.trunc(input.limitPerEntity ?? 5), 1), 25);
+  const pattern = `%${escapeSearchPattern(normalized)}%`;
+
+  return withPostgresAuthContext(input.context.externalAuthSubject, async () => {
+    await ensureSchema();
+    const result = await getPool().query(
+      `WITH case_hits AS (
+         SELECT 1 AS entity_order, 'case'::text AS entity, id,
+                CASE WHEN current_owner_user_id = $2 THEN case_title ELSE $6 END AS title,
+                status::text AS subtitle, tenant_id, current_owner_user_id,
+                visibility_scope, owner_resolution_status, updated_at AS sort_at
+         FROM brokerage_cases
+         WHERE tenant_id = $1
+           AND owner_resolution_status = 'resolved'
+           AND current_owner_user_id IS NOT NULL
+           AND (current_owner_user_id = $2 OR visibility_scope = 'company_read')
+           AND ($3 = 'all' OR lifecycle_status = $3)
+           AND (
+             id ILIKE $5 ESCAPE '!'
+             OR (current_owner_user_id = $2 AND case_title ILIKE $5 ESCAPE '!')
+             OR (current_owner_user_id <> $2 AND visibility_scope = 'company_read' AND $6 ILIKE $5 ESCAPE '!')
+           )
+         ORDER BY updated_at DESC
+         LIMIT $4
+       ), property_hits AS (
+         SELECT 2 AS entity_order, 'property'::text AS entity, id,
+                name AS title, COALESCE(area, '') AS subtitle, tenant_id,
+                current_owner_user_id, visibility_scope, owner_resolution_status,
+                created_at AS sort_at
+         FROM properties
+         WHERE tenant_id = $1
+           AND owner_resolution_status = 'resolved'
+           AND current_owner_user_id IS NOT NULL
+           AND (current_owner_user_id = $2 OR visibility_scope = 'company_read')
+           AND ($3 = 'all' OR lifecycle_status = $3)
+           AND (name ILIKE $5 ESCAPE '!' OR COALESCE(area, '') ILIKE $5 ESCAPE '!')
+         ORDER BY created_at DESC
+         LIMIT $4
+       ), party_hits AS (
+         SELECT 3 AS entity_order, 'party'::text AS entity, id,
+                name AS title, phone AS subtitle, tenant_id,
+                current_owner_user_id, visibility_scope, owner_resolution_status,
+                COALESCE(last_contacted_at, created_at) AS sort_at
+         FROM clients
+         WHERE tenant_id = $1
+           AND owner_resolution_status = 'resolved'
+           AND current_owner_user_id IS NOT NULL
+           AND (current_owner_user_id = $2 OR visibility_scope = 'company_read')
+           AND ($3 = 'all' OR lifecycle_status = $3)
+           AND (
+             name ILIKE $5 ESCAPE '!'
+             OR phone ILIKE $5 ESCAPE '!'
+             OR COALESCE(email, '') ILIKE $5 ESCAPE '!'
+             OR COALESCE(preferred_area, '') ILIKE $5 ESCAPE '!'
+           )
+         ORDER BY COALESCE(last_contacted_at, created_at) DESC
+         LIMIT $4
+       )
+       SELECT entity_order, entity, id, title, subtitle, tenant_id,
+              current_owner_user_id, visibility_scope, owner_resolution_status, sort_at
+       FROM case_hits
+       UNION ALL
+       SELECT entity_order, entity, id, title, subtitle, tenant_id,
+              current_owner_user_id, visibility_scope, owner_resolution_status, sort_at
+       FROM property_hits
+       UNION ALL
+       SELECT entity_order, entity, id, title, subtitle, tenant_id,
+              current_owner_user_id, visibility_scope, owner_resolution_status, sort_at
+       FROM party_hits
+       ORDER BY entity_order, sort_at DESC`,
+      [input.context.tenantId, input.context.userId, lifecycleStatus, limit, pattern, input.redactedCaseLabel],
+    );
+
+    return result.rows.flatMap((row) => {
+      const resolution = resolveRecordVisibility(input.context, {
+        tenantId: row.tenant_id == null ? null : String(row.tenant_id),
+        currentOwnerUserId: row.current_owner_user_id == null ? null : String(row.current_owner_user_id),
+        visibilityScope: row.visibility_scope,
+        ownerResolutionStatus: row.owner_resolution_status,
+      });
+      if (!resolution.canRead) return [];
+      const entity = String(row.entity);
+      if (entity !== "case" && entity !== "property" && entity !== "party") return [];
+      return [{
+        entity,
+        id: String(row.id),
+        title: String(row.title ?? ""),
+        subtitle: String(row.subtitle ?? ""),
+        resolution,
+      }];
     });
   });
 }

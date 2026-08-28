@@ -10,6 +10,7 @@ function normalizeLocale(value: string | null): Locale {
 }
 
 export async function GET(request: Request) {
+  const requestStartedAt = performance.now();
   let session;
   try {
     session = await requireTenantSession({ permission: "record.read" });
@@ -24,10 +25,15 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const q = url.searchParams.get("q") ?? "";
     const locale = normalizeLocale(url.searchParams.get("locale"));
+    const searchStartedAt = performance.now();
     const items = await searchHubItems(locale, q, 6, {
       requestContext: createRequestContext(session),
     });
-    return NextResponse.json({ items });
+    const response = NextResponse.json({ items });
+    const searchDuration = performance.now() - searchStartedAt;
+    const totalDuration = performance.now() - requestStartedAt;
+    response.headers.set("Server-Timing", `search;dur=${searchDuration.toFixed(1)}, total;dur=${totalDuration.toFixed(1)}`);
+    return response;
   } catch {
     return NextResponse.json({ ok: false, error: "hub_search_unavailable" }, { status: 500 });
   }
