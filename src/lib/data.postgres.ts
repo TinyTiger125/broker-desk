@@ -2313,31 +2313,6 @@ function slugifyTenantName(value: string): string {
   return slug || `tenant-${Date.now().toString(36)}`;
 }
 
-async function assertTenantHasSeatCapacity(
-  client: Pool | PoolClient,
-  tenantId: string,
-) {
-  const locked = await client.query("SELECT id FROM tenants WHERE id = $1 FOR UPDATE", [tenantId]);
-  if (!locked.rows[0]) throw new Error("tenant not found");
-  const result = await client.query(
-    `SELECT tenants.purchased_seat_count,
-            COUNT(*) FILTER (
-              WHERE tenant_memberships.status IN ('active', 'suspended')
-                 OR (tenant_memberships.status = 'invited' AND tenant_memberships.invitation_status NOT IN ('revoked', 'expired') AND (tenant_memberships.invitation_expires_at IS NULL OR tenant_memberships.invitation_expires_at > NOW()))
-            )::int AS used_seat_count
-     FROM tenants
-     LEFT JOIN tenant_memberships ON tenant_memberships.tenant_id = tenants.id
-     WHERE tenants.id = $1
-     GROUP BY tenants.id`,
-    [tenantId],
-  );
-  const row = result.rows[0];
-  if (!row) throw new Error("tenant not found");
-  if (Number(row.used_seat_count ?? 0) >= Number(row.purchased_seat_count ?? 1)) {
-    throw new Error("purchased seat count exceeded");
-  }
-}
-
 export async function createTenantAccount(input: {
   name: string;
   slug?: string;
@@ -2662,27 +2637,6 @@ export async function inviteTenantMember(input: {
   const actorUserId = await getAuthenticatedInvitationActorId(input.invitedByUserId);
 
   return withTransaction(async (client) => {
-    const existing = await client.query(
-      `SELECT memberships.status, memberships.invitation_status, memberships.invitation_expires_at
-       FROM users
-       JOIN tenant_memberships AS memberships ON memberships.user_id = users.id
-       WHERE memberships.tenant_id = $1 AND lower(users.email) = lower($2)
-       ORDER BY CASE WHEN memberships.status = 'removed' THEN 1 ELSE 0 END ASC,
-                memberships.updated_at DESC,
-                memberships.created_at DESC
-       LIMIT 1`,
-      [scopeTenantId, email],
-    );
-    const existingOccupiesSeat = Boolean(existing.rows[0] && (
-      existing.rows[0].status === "active" ||
-      existing.rows[0].status === "suspended" ||
-      (existing.rows[0].status === "invited"
-        && !["revoked", "expired"].includes(String(existing.rows[0].invitation_status))
-        && (!existing.rows[0].invitation_expires_at || new Date(existing.rows[0].invitation_expires_at).getTime() > Date.now()))
-    ));
-    if (!existingOccupiesSeat) {
-      await assertTenantHasSeatCapacity(client, scopeTenantId);
-    }
     const userResult = await client.query(
       `SELECT * FROM brokerdesk_private.create_tenant_invitation($1, $2, $3, $4, $5, $6)`,
       [scopeTenantId, actorUserId, email, name, input.role, capability],

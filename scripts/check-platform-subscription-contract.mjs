@@ -702,6 +702,12 @@ function assertInvitationCreationBoundary({ memorySource, memoryFullSource, post
   }
   assert(postgresSource.indexOf("if (!canonicalPair)") < postgresSource.indexOf("getAuthenticatedInvitationActorId") && postgresSource.indexOf("if (!canonicalPair)") < postgresSource.indexOf("withTransaction"), "PostgreSQL invitation facade must reject noncanonical input before authentication and transactional writes");
   assert(postgresInvitedOnlyIndex < postgresSource.indexOf("const capability") && postgresInvitedOnlyIndex < postgresSource.indexOf("getAuthenticatedInvitationActorId") && postgresInvitedOnlyIndex < postgresSource.indexOf("withTransaction"), "PostgreSQL invited-only validation must precede capability, actor, and transaction work");
+  assert(postgresSource.includes("return withTransaction(async (client) =>"), "PostgreSQL invitation facade must retain the request-scoped transaction boundary");
+  assert(postgresSource.split("client.query(").length === 2, "PostgreSQL invitation facade must issue exactly one database call inside its request-scoped transaction");
+  assert(postgresSource.includes("SELECT * FROM brokerdesk_private.create_tenant_invitation($1, $2, $3, $4, $5, $6)"), "PostgreSQL invitation facade must delegate its only capacity and write boundary to create_tenant_invitation");
+  for (const forbidden of ["FROM users", "JOIN tenant_memberships", "FROM tenants", "assertTenantHasSeatCapacity", "existingOccupiesSeat", "purchased_seat_count"]) {
+    assert(!postgresSource.includes(forbidden), `PostgreSQL invitation facade must not raw-preflight ${forbidden} outside its SECURITY DEFINER RPC`);
+  }
   assert(postgresSource.includes("[scopeTenantId, actorUserId, email, name, input.role, capability]"), "PostgreSQL invitation facade must pass its validated canonical capability to SQL");
 
   for (const pair of [
@@ -834,7 +840,7 @@ function assertMemberStatusSeatExpiry(source) {
 
 function assertPostgresSeatExpiryFacade(source, platformMigrationSource) {
   assert(platformMigrationSource.split("seats.invitation_expires_at IS NULL OR seats.invitation_expires_at > NOW()").length >= 3, "PostgreSQL platform list and lifecycle database boundaries must share natural expiry SQL");
-  assert(source.includes("memberships.invitation_expires_at") && source.includes("existing.rows[0].invitation_expires_at"), "PostgreSQL invitation facade must load and evaluate current invitation expiry");
+  assert(!source.includes("async function assertTenantHasSeatCapacity"), "PostgreSQL invitation facade must not retain a raw RLS capacity helper outside its SECURITY DEFINER RPC");
 }
 
 function replaceRequired(source, from, to, label) {
@@ -1040,6 +1046,28 @@ assertRestrictedMemberRosterRead(rosterReadFunction);
 assertMemoryLifecycleAtomicity(memory);
 assertMemoryMemberMutationBoundary({ roleSource: memoryMemberRole, statusSource: memoryMemberStatus, fullSource: memory });
 assertInvitationCreationBoundary({ memorySource: memoryInvite, memoryFullSource: memory, postgresSource: postgresInvite, sqlSource: createInvitationFunction });
+for (const [label, mutatedPostgresInvite] of [
+  [
+    "raw tenant capacity preflight",
+    postgresInvite.replace(
+      "  return withTransaction(async (client) => {",
+      '  return withTransaction(async (client) => {\n    await client.query("SELECT id FROM tenants WHERE id = $1 FOR UPDATE", [scopeTenantId]);',
+    ),
+  ],
+  [
+    "raw membership preflight",
+    postgresInvite.replace(
+      "  return withTransaction(async (client) => {",
+      '  return withTransaction(async (client) => {\n    await client.query("SELECT status FROM tenant_memberships WHERE tenant_id = $1", [scopeTenantId]);',
+    ),
+  ],
+]) {
+  assertNegativeSynthetic(
+    (candidate) => assertInvitationCreationBoundary({ memorySource: memoryInvite, memoryFullSource: memory, postgresSource: candidate, sqlSource: createInvitationFunction }),
+    mutatedPostgresInvite,
+    `PostgreSQL ${label} mutation must be rejected`,
+  );
+}
 assertMemberStatusAcceptanceBoundary({ actionSource: memberStatusAction, memorySource: memoryMemberStatus, postgresSource: postgresMemberStatus, sqlSource: memberMutationStatusFunction });
 assertInvitationDeliveryBoundary({ memorySource: memoryInvitationDelivery, postgresSource: postgresInvitationDelivery, sqlSource: recordInvitationFunction });
 assertPlpgsqlCompositeIntoShape(migration);
@@ -1446,7 +1474,7 @@ assert(!invitationGuard.includes("'pending_activation', 'suspended'"), "configur
 assert(invitationGuard.includes("tenant_row.service_start_at IS NULL") && invitationGuard.includes("tenant_row.service_end_at IS NULL") && invitationGuard.includes("tenant_row.status = 'pending_activation'"), "undated pending_activation must remain compatibility-pending");
 assert(invitationGuard.includes("tenant_row.service_start_at > tokyo_today") && invitationGuard.includes("tenant_row.service_end_at < tokyo_today"), "SQL invitation guard must enforce Tokyo start and inclusive end dates");
 assert(memory.includes("membership.status === \"suspended\""), "memory seat count must include suspended memberships");
-assert(migration.includes("seats.status = 'suspended'") && postgres.includes("tenant_memberships.status IN ('active', 'suspended')"), "PostgreSQL platform and member seat counts must include suspended memberships");
+assert(migration.includes("seats.status = 'suspended'") && migration.includes("seats.status IN ('active', 'suspended')"), "PostgreSQL platform summary and invitation RPC seat counts must include suspended memberships");
 assert(service.includes("invitationExpiresAt?: Date") && service.includes("membership.invitationExpiresAt.getTime() > now.getTime()"), "shared seat predicate must release invitations at the deterministic expiry boundary");
 assert(service.includes("countTenantSeatUsage") && service.includes("membershipOccupiesSeat(membership, now)"), "shared seat count must evaluate every membership against one deterministic now");
 assert(memory.includes("deriveMembershipInvitationStatus") && memory.includes('invitationStatus: deriveMembershipInvitationStatus(membership, now)'), "memory member lists must present naturally expired invitations as derived expired without persistence");
@@ -1467,7 +1495,7 @@ for (const [label, source] of [["role", memoryMemberRole], ["status", memoryMemb
   assert(source.indexOf("tenant service is unavailable for member management") < source.indexOf("membership."), `memory member ${label} facade must check service before published membership mutation`);
 }
 assert(memory.includes("selectTenantIdentityMembership") && memory.includes('left.status === "removed" ? 1 : 0') && memory.includes("right.updatedAt.getTime() - left.updatedAt.getTime()"), "memory invitation facade must prefer current membership over removed history deterministically");
-assert(postgres.includes("ORDER BY CASE WHEN memberships.status = 'removed' THEN 1 ELSE 0 END ASC") && postgres.includes("memberships.updated_at DESC") && postgres.includes("memberships.created_at DESC"), "PostgreSQL invitation facade must prefer current membership over removed history deterministically");
+assert(createInvitationFunction.includes("ORDER BY CASE WHEN memberships.status = 'removed' THEN 1 ELSE 0 END ASC") && createInvitationFunction.includes("memberships.updated_at DESC") && createInvitationFunction.includes("memberships.created_at DESC"), "PostgreSQL invitation RPC must prefer current membership over removed history deterministically");
 const memberStatusFunctionStart = migration.indexOf("CREATE OR REPLACE FUNCTION brokerdesk_private.update_tenant_member_status");
 assert(memberStatusFunctionStart >= 0, "TASK-043 migration must replace the member-status SECURITY DEFINER function without editing history");
 const memberStatusFunction = migration.slice(memberStatusFunctionStart);
@@ -1894,11 +1922,6 @@ assertNegativeSynthetic(
   assertMemberStatusSeatExpiry,
   replaceRequired(memberStatusFunction, "seats.invitation_expires_at IS NULL OR seats.invitation_expires_at > NOW()", "TRUE", "member status capacity natural expiry"),
   "member status capacity natural expiry mutation must be rejected",
-);
-assertNegativeSynthetic(
-  assertPostgresSeatExpiryFacade,
-  postgres.replaceAll("tenant_memberships.invitation_expires_at IS NULL OR tenant_memberships.invitation_expires_at > NOW()", "TRUE"),
-  "PostgreSQL facade natural expiry mutation must be rejected",
 );
 assertNegativeSynthetic(
   assertExternalAuthProfileSyncBoundary,

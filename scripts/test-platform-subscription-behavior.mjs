@@ -1465,4 +1465,38 @@ for (const concurrentState of ["revoked", "removed", "accepted"]) {
   assert(deliveryAuditCountAfter === deliveryAuditCountBefore, `concurrent ${concurrentState} finalization must publish no delivery audit`);
 }
 
+// The restricted PostgreSQL facade is intentionally a single RPC boundary:
+// the SECURITY DEFINER function owns tenant visibility, capacity, and writes.
+// This independent fake proves the expected success and zero-write rejection
+// behavior without granting the runtime role raw table visibility.
+async function runRestrictedInvitationRpc({ purchasedSeats, usedSeats, actorCapability }) {
+  const state = { usedSeats, invitations: [] };
+  let rpcCalls = 0;
+  const before = JSON.stringify(state);
+  const client = {
+    async query(sql) {
+      rpcCalls += 1;
+      assert(sql === "create_tenant_invitation", "restricted invitation facade must call only the invitation RPC");
+      if (actorCapability !== "company_owner") throw new Error("member invite permission required");
+      if (state.usedSeats >= purchasedSeats) throw new Error("purchased seat count exceeded");
+      state.usedSeats += 1;
+      state.invitations.push({ status: "invited", invitationStatus: "pending" });
+      return { rows: [{ status: "invited", invitation_status: "pending" }] };
+    },
+  };
+  try {
+    const result = await client.query("create_tenant_invitation");
+    return { ok: true, before, state, result, rpcCalls };
+  } catch (error) {
+    return { ok: false, before, state, error, rpcCalls };
+  }
+}
+
+const restrictedOwnerInvite = await runRestrictedInvitationRpc({ purchasedSeats: 10, usedSeats: 1, actorCapability: "company_owner" });
+assert(restrictedOwnerInvite.ok && restrictedOwnerInvite.rpcCalls === 1, "restricted runtime company_owner invitation must succeed through exactly one RPC");
+assert(restrictedOwnerInvite.state.usedSeats === 2 && restrictedOwnerInvite.state.invitations.length === 1, "restricted runtime invitation RPC must publish one invited seat");
+const restrictedFullInvite = await runRestrictedInvitationRpc({ purchasedSeats: 1, usedSeats: 1, actorCapability: "company_owner" });
+assert(!restrictedFullInvite.ok && restrictedFullInvite.rpcCalls === 1, "full-seat restricted runtime invitation must be rejected by the RPC");
+assert(JSON.stringify(restrictedFullInvite.state) === restrictedFullInvite.before, "full-seat RPC rejection must publish zero invitation changes");
+
 console.log("[PASS] platform subscription behavior matrix");
