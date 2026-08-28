@@ -38,6 +38,17 @@ for (const feedback of ["関係者を登録しました。", "人物资料已创
 }
 assert(actions.includes("createCompletion.href.startsWith(`${IMPORT_CENTER_RETURN_PATH}?`)"), "create action must use the safe completion policy only for the allowed import-center source");
 
+const layoutStart = page.indexOf('data-import-layout="object-recent"');
+const objectChannels = page.indexOf('data-import-object-channels="true"', layoutStart);
+const recentSlot = page.indexOf('data-import-recent-slot="true"', layoutStart);
+const layoutEnd = page.indexOf('data-import-layout-end="object-recent"', layoutStart);
+const ledgerSection = page.indexOf('data-import-ledger-section="true"', layoutEnd);
+assert(layoutStart >= 0 && objectChannels > layoutStart && recentSlot > objectChannels && layoutEnd > recentSlot, "desktop landing must keep object channels left and recent imports right in one ordered layout");
+assert(ledgerSection > layoutEnd, "ledger and attachments must follow the primary object/recent task area");
+const layoutOpening = page.slice(layoutStart, objectChannels);
+assert(layoutOpening.includes("lg:grid-cols-[minmax(0,1fr)_20rem]"), "desktop lg layout must use a main column and bounded recent sidebar");
+assert(!layoutOpening.includes("md:grid-cols") && !layoutOpening.includes("sm:grid-cols"), "390px and 768px layouts must remain single-column");
+
 assert.deepEqual([...page.matchAll(/\{ key: "(case|person|property)"/g)].map((match) => match[1]), ["case", "person", "property"], "initial import center must expose exactly three material objects");
 assert.equal(occurrences(page, 'data-import-action="manual"'), 1, "the three-object renderer must expose one manual-create action per object");
 assert.equal(occurrences(page, 'data-import-action="file"'), 1, "the three-object renderer must expose one file-read action per object");

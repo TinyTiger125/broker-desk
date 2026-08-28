@@ -1053,6 +1053,11 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
   const showPostProcessingContent = wizardStep !== "processing" && wizardStep !== "failed";
   const inputTaskJob = xlsxJob ?? (requestedJob && isInputFileExtractionJob(requestedJob) ? requestedJob : undefined);
   const failedInputJob = inputTaskJob?.status === "failed" ? inputTaskJob : undefined;
+  const materialObjects = [
+    { key: "case", icon: "business_center", iconClass: "bg-blue-50 text-blue-700", title: locale === "zh" ? "案件资料" : locale === "ko" ? "안건 자료" : "案件資料", desc: locale === "zh" ? "创建或读取案件相关资料。" : locale === "ko" ? "안건 관련 자료를 만들거나 읽습니다." : "案件に関する資料を作成・読取します。", manualHref: "/cases/new?from=entry" },
+    { key: "person", icon: "group", iconClass: "bg-emerald-50 text-emerald-700", title: locale === "zh" ? "人物资料" : locale === "ko" ? "관계자 자료" : "関係者資料", desc: locale === "zh" ? "创建或读取人物相关资料。" : locale === "ko" ? "관계자 자료를 만들거나 읽습니다." : "関係者に関する資料を作成・読取します。", manualHref: "/parties/new?from=entry" },
+    { key: "property", icon: "apartment", iconClass: "bg-violet-50 text-violet-700", title: locale === "zh" ? "物件资料" : locale === "ko" ? "매물 자료" : "物件資料", desc: locale === "zh" ? "创建或读取物件相关资料。" : locale === "ko" ? "매물 관련 자료를 만들거나 읽습니다." : "物件に関する資料を作成・読取します。", manualHref: "/properties/new?from=entry" },
+  ] as const;
   return (
     <div className="bd-page bd-import-page space-y-6">
       <section>
@@ -1180,7 +1185,49 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
         </section>
       ) : null}
 
-      {(Boolean(requestedJob) || wizardStep === "select") ? (
+      {showObjectSelection ? (
+        <div data-import-layout="object-recent" className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
+          <section data-import-object-channels="true" className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+            <div className="border-b border-slate-100 p-5">
+              <p className="text-[11px] font-black uppercase tracking-wider text-blue-700">{locale === "zh" ? "录入资料" : locale === "ko" ? "자료 입력" : "資料入力"}</p>
+              <h2 className="text-base font-bold text-slate-950">{locale === "zh" ? "选择资料对象" : locale === "ko" ? "자료 대상 선택" : "資料の対象を選ぶ"}</h2>
+            </div>
+            <div className="grid gap-4 p-5">
+              {materialObjects.map((object) => (
+                <section key={object.key} data-import-object={object.key} className="grid gap-4 rounded-xl border border-slate-200 bg-white p-5 md:grid-cols-[minmax(15rem,1fr)_minmax(0,2fr)] md:items-center">
+                  <div className="flex items-center gap-4">
+                    <span className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-xl ${object.iconClass}`} aria-hidden="true"><span className="material-symbols-outlined text-[28px]">{object.icon}</span></span>
+                    <div><h3 className="text-lg font-black text-slate-950">{object.title}</h3><p className="mt-1 text-sm font-semibold text-slate-500">{object.desc}</p></div>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Link data-import-action="manual" href={object.manualHref} className="inline-flex min-h-14 items-center justify-between rounded-lg border border-slate-200 px-4 text-sm font-black text-slate-900 hover:border-blue-300 hover:bg-blue-50/40">
+                      <span className="inline-flex items-center gap-2"><span className="material-symbols-outlined text-blue-700">edit</span>{locale === "zh" ? "手动创建" : locale === "ko" ? "수동 생성" : "手動作成"}</span><span aria-hidden="true">›</span>
+                    </Link>
+                    <Link data-import-action="file" href={`/import-center?object=${object.key}#source-upload`} className="inline-flex min-h-14 items-center justify-between rounded-lg border border-slate-200 px-4 text-sm font-black text-slate-900 hover:border-emerald-300 hover:bg-emerald-50/40">
+                      <span className="inline-flex items-center gap-2"><span className="material-symbols-outlined text-emerald-700">upload_file</span>{locale === "zh" ? "文件读取" : locale === "ko" ? "파일 읽기" : "ファイル読取"}</span><span aria-hidden="true">›</span>
+                    </Link>
+                  </div>
+                </section>
+              ))}
+            </div>
+          </section>
+          <aside data-import-recent-slot="true" className="rounded-2xl border border-slate-200 bg-white p-5 lg:min-h-[34rem]">
+            <h2 className="text-base font-bold text-slate-950">{locale === "zh" ? "最近录入" : locale === "ko" ? "최근 입력" : "最近の入力"}</h2>
+            <div className="mt-4 space-y-2">
+              {jobs.slice(0, 3).map((job) => (
+                <Link key={`landing-recent-${job.id}`} href={recentJobHref(job)} className="block rounded-lg border border-slate-200 bg-slate-50 p-3 hover:border-blue-300 hover:bg-blue-50/40">
+                  <p className="truncate text-sm font-bold text-slate-900">{job.title}</p>
+                  <p className="mt-1 text-xs text-slate-500">{formatDate(job.updatedAt, locale)} / {statusLabel[job.status]}</p>
+                </Link>
+              ))}
+              {jobs.length === 0 ? <p className="rounded-lg border border-dashed border-slate-200 px-3 py-10 text-center text-sm text-slate-500">{locale === "zh" ? "暂无最近录入记录。" : locale === "ko" ? "최근 입력 기록이 없습니다." : "最近の入力履歴はありません。"}</p> : null}
+            </div>
+          </aside>
+          <span data-import-layout-end="object-recent" className="hidden" />
+        </div>
+      ) : null}
+
+      {(Boolean(requestedJob) || (wizardStep === "select" && !showObjectSelection)) ? (
       <section id="source-upload" className="scroll-mt-24 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-100 p-5">
           <p className="text-[11px] font-black uppercase tracking-wider text-blue-700">
@@ -1198,30 +1245,6 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
         </div>
 
         {wizardStep === "select" && !requestedJob ? (
-        showObjectSelection ? (
-          <div className="grid gap-4 p-5">
-            {([
-              { key: "case", icon: "business_center", iconClass: "bg-blue-50 text-blue-700", title: locale === "zh" ? "案件资料" : locale === "ko" ? "안건 자료" : "案件資料", desc: locale === "zh" ? "创建或读取案件相关资料。" : locale === "ko" ? "안건 관련 자료를 만들거나 읽습니다." : "案件に関する資料を作成・読取します。", manualHref: "/cases/new?from=entry" },
-              { key: "person", icon: "group", iconClass: "bg-emerald-50 text-emerald-700", title: locale === "zh" ? "人物资料" : locale === "ko" ? "관계자 자료" : "関係者資料", desc: locale === "zh" ? "创建或读取人物相关资料。" : locale === "ko" ? "관계자 자료를 만들거나 읽습니다." : "関係者に関する資料を作成・読取します。", manualHref: "/parties/new?from=entry" },
-              { key: "property", icon: "apartment", iconClass: "bg-violet-50 text-violet-700", title: locale === "zh" ? "物件资料" : locale === "ko" ? "매물 자료" : "物件資料", desc: locale === "zh" ? "创建或读取物件相关资料。" : locale === "ko" ? "매물 관련 자료를 만들거나 읽습니다." : "物件に関する資料を作成・読取します。", manualHref: "/properties/new?from=entry" },
-            ] as const).map((object) => (
-              <section key={object.key} data-import-object={object.key} className="grid gap-4 rounded-xl border border-slate-200 bg-white p-5 md:grid-cols-[minmax(15rem,1fr)_minmax(0,2fr)] md:items-center">
-                <div className="flex items-center gap-4">
-                  <span className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-xl ${object.iconClass}`} aria-hidden="true"><span className="material-symbols-outlined text-[28px]">{object.icon}</span></span>
-                  <div><h3 className="text-lg font-black text-slate-950">{object.title}</h3><p className="mt-1 text-sm font-semibold text-slate-500">{object.desc}</p></div>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <Link data-import-action="manual" href={object.manualHref} className="inline-flex min-h-14 items-center justify-between rounded-lg border border-slate-200 px-4 text-sm font-black text-slate-900 hover:border-blue-300 hover:bg-blue-50/40">
-                    <span className="inline-flex items-center gap-2"><span className="material-symbols-outlined text-blue-700">edit</span>{locale === "zh" ? "手动创建" : locale === "ko" ? "수동 생성" : "手動作成"}</span><span aria-hidden="true">›</span>
-                  </Link>
-                  <Link data-import-action="file" href={`/import-center?object=${object.key}#source-upload`} className="inline-flex min-h-14 items-center justify-between rounded-lg border border-slate-200 px-4 text-sm font-black text-slate-900 hover:border-emerald-300 hover:bg-emerald-50/40">
-                    <span className="inline-flex items-center gap-2"><span className="material-symbols-outlined text-emerald-700">upload_file</span>{locale === "zh" ? "文件读取" : locale === "ko" ? "파일 읽기" : "ファイル読取"}</span><span aria-hidden="true">›</span>
-                  </Link>
-                </div>
-              </section>
-            ))}
-          </div>
-        ) : (
         <div className={isLedgerFlow ? "grid gap-4 p-5" : "grid gap-4 p-5 xl:grid-cols-2"}>
           {!isLedgerFlow ? (
           showIdentityReader ? (
@@ -1282,7 +1305,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
             </div>
           ) : null}
         </div>
-        )) : null}
+        ) : null}
 
         {inputTaskJob && (inputTaskJob.status === "queued" || inputTaskJob.status === "processing") ? (
           <ExcelImportQueueProcessor jobId={inputTaskJob.id} locale={locale} targetCaseId={targetCaseId || undefined} />
@@ -1590,7 +1613,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
       </section>
       ) : null}
 
-      {!requestedJob && wizardStep === "select" ? (
+      {!requestedJob && wizardStep === "select" && !showObjectSelection ? (
       <section id={!showAdvanced ? "source-history" : undefined} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
           <div>
@@ -1640,7 +1663,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
       ) : null}
 
       {wizardStep !== "processing" && wizardStep !== "failed" ? (
-      <section className="rounded-xl border border-slate-200 bg-white p-5">
+      <section data-import-ledger-section="true" className="rounded-xl border border-slate-200 bg-white p-5">
         <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
           <div>
             <h2 className="text-sm font-bold text-slate-900">
