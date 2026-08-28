@@ -4,10 +4,51 @@ import pg from "pg";
 
 const MARKER = "UIUX-DEMO-20260828";
 const REQUIRED_ACK = `${MARKER}:NONPROD`;
+const REMOTE_WORKSPACE_NAME = "TASK-039 Duplicate Guard Probe 1787271641750";
+const REMOTE_DATABASE_FINGERPRINT = "f0b906198ebf2e9ddd5a29c3c3204c9bb366ed03d39b80b72a81dcfa775e6da4";
 const mode = process.argv[2];
 const workspaceArg = process.argv.find((value) => value.startsWith("--workspace="));
 const workspaceName = workspaceArg?.slice("--workspace=".length).trim();
 
+function buildPoolConfig(connectionString) {
+  const target = new URL(connectionString);
+  if (!new Set(["postgres:", "postgresql:"]).has(target.protocol)) {
+    throw new Error("unsupported database protocol");
+  }
+  const allowedOptions = new Set(["sslmode", "channel_binding"]);
+  const seenOptions = new Set();
+  for (const rawKey of target.searchParams.keys()) {
+    const key = rawKey.toLowerCase();
+    if (!allowedOptions.has(key) || seenOptions.has(key)) {
+      throw new Error("unsupported or repeated database connection option");
+    }
+    seenOptions.add(key);
+  }
+  const sslmode = target.searchParams.get("sslmode");
+  if (sslmode && !new Set(["require", "verify-full"]).has(sslmode)) {
+    throw new Error("unsupported database ssl mode");
+  }
+  const channelBinding = target.searchParams.get("channel_binding");
+  if (channelBinding && !new Set(["disable", "prefer"]).has(channelBinding)) {
+    throw new Error("unsupported database channel binding mode");
+  }
+  const port = target.port ? Number(target.port) : 5432;
+  const database = decodeURIComponent(target.pathname.slice(1));
+  if (!target.hostname || !target.username || !database || !Number.isInteger(port) || port < 1 || port > 65_535) {
+    throw new Error("incomplete database connection target");
+  }
+  return {
+    host: target.hostname,
+    port,
+    database,
+    user: decodeURIComponent(target.username),
+    password: decodeURIComponent(target.password),
+    ssl: sslmode ? {} : undefined,
+    enableChannelBinding: channelBinding === "prefer" ? true : channelBinding === "disable" ? false : undefined,
+  };
+}
+
+async function main() {
 if (!new Set(["seed", "status", "cleanup"]).has(mode) || !workspaceName) {
   throw new Error(`usage: node scripts/uiux-demo-data.mjs <seed|status|cleanup> --workspace="<exact non-production workspace name>"`);
 }
@@ -17,15 +58,27 @@ if (process.env.BROKER_DESK_UIUX_DEMO_ACK !== REQUIRED_ACK) {
 if (process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production") {
   throw new Error("UI/UX demo data is forbidden in Production");
 }
+if (workspaceName !== REMOTE_WORKSPACE_NAME) {
+  throw new Error(`UI/UX demo data is locked to workspace ${JSON.stringify(REMOTE_WORKSPACE_NAME)}`);
+}
 const connectionString = process.env.DATABASE_ADMIN_URL?.trim();
 if (!connectionString) throw new Error("DATABASE_ADMIN_URL is required; runtime DATABASE_URL is intentionally not accepted");
-const databaseTarget = new URL(connectionString);
-if (!new Set(["127.0.0.1", "localhost"]).has(databaseTarget.hostname) || databaseTarget.pathname !== "/broker_desk_task039") {
-  throw new Error("UI/UX demo data is locked to the local non-production broker_desk_task039 bridge");
+const poolConfig = buildPoolConfig(connectionString);
+const localBridge = new Set(["127.0.0.1", "localhost"]).has(poolConfig.host)
+  && poolConfig.database === "broker_desk_task039";
+const remoteFingerprint = createHash("sha256")
+  .update(`${poolConfig.host}\n/${poolConfig.database}`)
+  .digest("hex");
+const fixedStagingPreview = remoteFingerprint === REMOTE_DATABASE_FINGERPRINT
+  && poolConfig.port === 5432
+  && poolConfig.ssl !== undefined
+  && process.env.BROKER_DESK_DEPLOYMENT_ENV === "staging";
+if (!localBridge && !fixedStagingPreview) {
+  throw new Error("UI/UX demo data is locked to the local QA bridge or the fixed Staging Preview database fingerprint");
 }
 
 const { Pool } = pg;
-const pool = new Pool({ connectionString, max: 1, connectionTimeoutMillis: 10_000 });
+const pool = new Pool({ ...poolConfig, max: 1, connectionTimeoutMillis: 10_000 });
 
 function tenantToken(tenantId) {
   return createHash("sha256").update(`broker-desk-uiux-demo:${tenantId}`).digest("hex").slice(0, 16);
@@ -83,6 +136,25 @@ async function readStatus(client, tenantId) {
   ]);
   const summarize = (rows) => Object.fromEntries(rows.map((row) => [row.lifecycle_status, row.count]));
   return { marker: MARKER, workspace: workspaceName, parties: summarize(clients.rows), properties: summarize(properties.rows), cases: summarize(cases.rows) };
+}
+
+async function readProtectedSnapshot(client, tenantId) {
+  const [memberships, templateInstalls, generatedOutputs] = await Promise.all([
+    client.query("SELECT count(*)::int AS count FROM tenant_memberships WHERE tenant_id = $1", [tenantId]),
+    client.query("SELECT count(*)::int AS count FROM tenant_guarantee_template_installs WHERE tenant_id = $1", [tenantId]),
+    client.query("SELECT count(*)::int AS count FROM generated_outputs WHERE tenant_id = $1", [tenantId]),
+  ]);
+  return {
+    memberships: memberships.rows[0].count,
+    templateInstalls: templateInstalls.rows[0].count,
+    generatedOutputs: generatedOutputs.rows[0].count,
+  };
+}
+
+function assertProtectedSnapshotUnchanged(before, after) {
+  if (JSON.stringify(before) !== JSON.stringify(after)) {
+    throw new Error("seed attempted to change protected membership, template, or output-history counts");
+  }
 }
 
 async function seed(client, tenantId, ownerUserId) {
@@ -193,11 +265,15 @@ const client = await pool.connect();
 try {
   await client.query("BEGIN");
   const { tenantId, ownerUserId } = await resolveTarget(client);
+  const protectedBefore = await readProtectedSnapshot(client, tenantId);
+  const markerBefore = await readStatus(client, tenantId);
   if (mode === "seed") await seed(client, tenantId, ownerUserId);
   if (mode === "cleanup") await cleanup(client, tenantId);
-  const status = await readStatus(client, tenantId);
+  const protectedAfter = await readProtectedSnapshot(client, tenantId);
+  assertProtectedSnapshotUnchanged(protectedBefore, protectedAfter);
+  const markerAfter = await readStatus(client, tenantId);
   await client.query(mode === "status" ? "ROLLBACK" : "COMMIT");
-  process.stdout.write(`${JSON.stringify({ ok: true, mode, ...status })}\n`);
+  process.stdout.write(`${JSON.stringify({ ok: true, mode, protected: protectedAfter, before: markerBefore, after: markerAfter })}\n`);
 } catch (error) {
   await client.query("ROLLBACK").catch(() => undefined);
   throw error;
@@ -205,3 +281,11 @@ try {
   client.release();
   await pool.end();
 }
+}
+
+function reportSafeFailure() {
+  process.stderr.write("UIUX_DEMO_DATA_FAILED\n");
+  process.exitCode = 1;
+}
+
+await main().catch(reportSafeFailure);
