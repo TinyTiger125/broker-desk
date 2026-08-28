@@ -62,6 +62,8 @@ async function trustedSession(subject) {
 const ownerContext = resolver.createRequestContext(await trustedSession(owner.externalAuthSubject));
 const colleagueContext = resolver.createRequestContext(await trustedSession(colleague.externalAuthSubject));
 assert.deepEqual(await hub.searchHubItems("ja", "Global visibility", 10, {}), [], "search without a trusted context fails closed");
+const ownerBaselineCounts = await memory.countVisibleRecordsForContext({ context: ownerContext, lifecycleStatus: "all" });
+const colleagueBaselineCounts = await memory.countVisibleRecordsForContext({ context: colleagueContext, lifecycleStatus: "all" });
 
 const privatePerson = await memory.addClient({
   tenantId: tenant.id,
@@ -125,11 +127,70 @@ await memory.setRecordVisibilityScope({ tenantId: tenant.id, objectType: "person
 await memory.setRecordVisibilityScope({ tenantId: tenant.id, objectType: "property", recordId: sharedProperty.id, actorUserId: owner.id, visibilityScope: "company_read" });
 await memory.setRecordVisibilityScope({ tenantId: tenant.id, objectType: "case", recordId: sharedCase.id, actorUserId: owner.id, visibilityScope: "company_read" });
 const pendingProperty = await memory.addProperty({ tenantId: tenant.id, name: "Global visibility pending property", listingPrice: 1 });
+const localizedLabelPerson = await memory.addClient({
+  tenantId: tenant.id,
+  ownerUserId: owner.id,
+  name: "運用担当 佐伯 Performance",
+  phone: "000-0000-0012",
+  budgetType: "total_price",
+  purpose: "buy",
+  loanPreApprovalStatus: "not_applied",
+  stage: "lead",
+  temperature: "cold",
+  brokerageContractType: "none",
+  amlCheckStatus: "not_required",
+});
+const literalSearchPerson = await memory.addClient({
+  tenantId: tenant.id,
+  ownerUserId: owner.id,
+  name: "Literal %_! token",
+  phone: "000-0000-0013",
+  budgetType: "total_price",
+  purpose: "buy",
+  loanPreApprovalStatus: "not_applied",
+  stage: "lead",
+  temperature: "cold",
+  brokerageContractType: "none",
+  amlCheckStatus: "not_required",
+});
+const limitVisibilitySharedPerson = await memory.addClient({
+  tenantId: tenant.id,
+  ownerUserId: owner.id,
+  name: "Limit visibility shared",
+  phone: "000-0000-0014",
+  budgetType: "total_price",
+  purpose: "buy",
+  loanPreApprovalStatus: "not_applied",
+  stage: "lead",
+  temperature: "cold",
+  brokerageContractType: "none",
+  amlCheckStatus: "not_required",
+});
+await memory.setRecordVisibilityScope({ tenantId: tenant.id, objectType: "person", recordId: limitVisibilitySharedPerson.id, actorUserId: owner.id, visibilityScope: "company_read" });
+for (let index = 0; index < 4; index += 1) {
+  await memory.addClient({
+    tenantId: tenant.id,
+    ownerUserId: owner.id,
+    name: `Limit visibility private ${index}`,
+    phone: `000-0000-002${index}`,
+    budgetType: "total_price",
+    purpose: "buy",
+    loanPreApprovalStatus: "not_applied",
+    stage: "lead",
+    temperature: "cold",
+    brokerageContractType: "none",
+    amlCheckStatus: "not_required",
+  });
+}
 
 const ownerSearch = await hub.searchHubItems("ja", "Global visibility", 10, { requestContext: ownerContext, lifecycleStatus: "all" });
 const colleagueSearch = await hub.searchHubItems("ja", "Global visibility", 10, { requestContext: colleagueContext, lifecycleStatus: "all" });
 const colleagueCaseSearch = await hub.searchHubItems("ja", "案件", 10, { requestContext: colleagueContext, lifecycleStatus: "all" });
 const colleagueSecretTitleSearch = await hub.searchHubItems("ja", "Global visibility shared case", 10, { requestContext: colleagueContext, lifecycleStatus: "all" });
+const boundedOwnerSearch = await hub.searchHubItems("ja", "Global visibility", 1, { requestContext: ownerContext, lifecycleStatus: "all" });
+const zhStoredLabelSearch = await hub.searchHubItems("zh", "運用担当", 10, { requestContext: ownerContext, lifecycleStatus: "all" });
+const literalSearch = await hub.searchHubItems("ja", "%_!", 10, { requestContext: ownerContext, lifecycleStatus: "all" });
+const boundedColleagueSearch = await hub.searchHubItems("ja", "Limit visibility", 1, { requestContext: colleagueContext, lifecycleStatus: "all" });
 assert(ownerSearch.some((item) => item.id === privatePerson.id && item.entity === "party"), "owner search includes private person");
 assert(ownerSearch.some((item) => item.id === privateProperty.id && item.entity === "property"), "owner search includes private property");
 assert(ownerSearch.some((item) => item.id === privateCase.id && item.entity === "case"), "owner search includes private case");
@@ -140,6 +201,20 @@ assert(colleagueCaseSearch.some((item) => item.id === sharedCase.id && item.enti
 assert(colleagueCaseSearch.find((item) => item.id === sharedCase.id)?.title === "案件", "company_read case title is redacted in search");
 assert(!colleagueSecretTitleSearch.some((item) => item.id === sharedCase.id || item.title.includes("Global visibility shared case")), "company_read secret title is not searchable or returned");
 assert(!ownerSearch.some((item) => item.id === pendingProperty.id), "pending property is absent from search");
+for (const entity of ["case", "property", "party"]) {
+  assert(boundedOwnerSearch.filter((item) => item.entity === entity).length <= 1, `search bounds ${entity} results before returning`);
+}
+assert(zhStoredLabelSearch.some((item) => item.id === localizedLabelPerson.id && item.title === "運用担当 佐伯 Performance"), "search and displayed title use the same stored value in zh");
+assert(literalSearch.some((item) => item.id === literalSearchPerson.id), "search treats percent underscore and escape marker as literal text");
+assert(boundedColleagueSearch.some((item) => item.id === limitVisibilitySharedPerson.id), "visibility is resolved before the per-entity limit");
+const ownerFinalCounts = await memory.countVisibleRecordsForContext({ context: ownerContext, lifecycleStatus: "all" });
+const colleagueFinalCounts = await memory.countVisibleRecordsForContext({ context: colleagueContext, lifecycleStatus: "all" });
+assert.equal(ownerFinalCounts.case - ownerBaselineCounts.case, 2, "owner organize count includes both new cases");
+assert.equal(ownerFinalCounts.property - ownerBaselineCounts.property, 2, "owner organize count excludes unresolved property");
+assert.equal(ownerFinalCounts.party - ownerBaselineCounts.party, 9, "owner organize count includes owned people");
+assert.equal(colleagueFinalCounts.case - colleagueBaselineCounts.case, 1, "colleague organize count includes only shared case");
+assert.equal(colleagueFinalCounts.property - colleagueBaselineCounts.property, 1, "colleague organize count includes only shared property");
+assert.equal(colleagueFinalCounts.party - colleagueBaselineCounts.party, 2, "colleague organize count includes only shared people");
 
 const ownerProperties = await hub.listHubProperties("ja", { requestContext: ownerContext, lifecycleStatus: "all" });
 const colleagueProperties = await hub.listHubProperties("ja", { requestContext: colleagueContext, lifecycleStatus: "all" });

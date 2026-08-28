@@ -381,6 +381,15 @@ assert(schemaSql.includes("provider_invitation_id TEXT"), "schema must include p
 assert(schemaSql.includes("CREATE TABLE IF NOT EXISTS case_workbench_field_rules"), "schema must include tenant case workbench field rules");
 
 const packageJson = JSON.parse(fs.readFileSync("package.json", "utf8"));
+const vercelConfig = JSON.parse(fs.readFileSync("vercel.json", "utf8"));
+assert(
+  Array.isArray(vercelConfig.regions) && vercelConfig.regions.length === 1 && vercelConfig.regions[0] === "sin1",
+  "Vercel Functions must stay colocated with the Singapore Neon database",
+);
+assert(
+  vercelConfig.git?.deploymentEnabled?.main === false,
+  "main must remain disabled for automatic Vercel deployments",
+);
 assert(packageJson.dependencies?.["@clerk/nextjs"], "package must include @clerk/nextjs");
 assert(packageJson.scripts?.["db:migrate"] === "node scripts/run-postgres-migrations.mjs", "package must provide the checked migration runner");
 assert(fs.existsSync("db/migrations/20260727_000_baseline_schema.sql"), "baseline schema migration must exist");

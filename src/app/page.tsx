@@ -1,25 +1,19 @@
 import Link from "next/link";
-import { listBrokerageCases } from "@/lib/data";
+import { listBrokerageCasesForContext } from "@/lib/data";
 import { formatDate } from "@/lib/format";
-import { listHubImportJobs, type HubImportJobItem } from "@/lib/hub";
+import { listHubImportJobs } from "@/lib/hub";
+import { buildHomeResumableWork } from "@/lib/home-resumable-work";
 import { getLocale, type Locale } from "@/lib/locale";
 import { getHomeTenantSelectionRecoveryPath } from "@/lib/tenant-recovery";
 import { requireTenantSession, TenantSessionError } from "@/lib/tenant-session";
 import { redirect } from "next/navigation";
+import { createRequestContext } from "@/lib/visibility-resolver";
 import { localizeDemoBrokerageCase } from "@/lib/demo-localization";
 
 export const dynamic = "force-dynamic";
 
 type HomePageProps = {
   searchParams?: Promise<{ q?: string }>;
-};
-
-type WorkItem = {
-  id: string;
-  title: string;
-  detail: string;
-  href: string;
-  date?: Date;
 };
 
 const copyByLocale: Record<Locale, {
@@ -33,15 +27,11 @@ const copyByLocale: Record<Locale, {
   intakeDesc: string;
   organizeTitle: string;
   organizeDesc: string;
-  pendingTitle: string;
-  pendingDesc: string;
-  noPending: string;
+  resumableTitle: string;
+  resumableDesc: string;
+  noResumable: string;
   open: string;
-  cases: string;
-  sourceFiles: string;
-  status: string;
-  created: string;
-  goToOrganize: string;
+  continueItem: string;
 }> = {
   ja: {
     title: "ホーム",
@@ -54,15 +44,11 @@ const copyByLocale: Record<Locale, {
     intakeDesc: "画像、PDF、Excelなどの資料を読み取り、現在の案件整理へ進みます。",
     organizeTitle: "情報を整理する",
     organizeDesc: "確認が必要な項目だけを開き、対象と内容を整理します。",
-    pendingTitle: "対応が必要な項目",
-    pendingDesc: "保存されている処理状態から、次に開く項目だけを表示します。",
-    noPending: "今すぐ対応が必要な項目はありません。",
+    resumableTitle: "最近の未完了項目",
+    resumableDesc: "保存済みで再開できる案件と資料を、更新順に表示します。",
+    noResumable: "再開できる未完了項目はありません。",
     open: "開く",
-    cases: "案件",
-    sourceFiles: "資料",
-    status: "状態",
-    created: "作成",
-    goToOrganize: "情報整理を開く",
+    continueItem: "続ける",
   },
   zh: {
     title: "工作台",
@@ -75,15 +61,11 @@ const copyByLocale: Record<Locale, {
     intakeDesc: "读取图片、PDF、Excel 等资料，并进入当前案件整理流程。",
     organizeTitle: "整理信息",
     organizeDesc: "只打开需要处理的项目，确认归属并整理信息。",
-    pendingTitle: "需要处理的项目",
-    pendingDesc: "依据已保存的处理状态，显示下一步可直接打开的项目。",
-    noPending: "当前没有需要立即处理的项目。",
+    resumableTitle: "最近未完成项目",
+    resumableDesc: "按更新时间显示已保存且可以继续的案件和资料。",
+    noResumable: "当前没有可以继续的未完成项目。",
     open: "打开",
-    cases: "案件",
-    sourceFiles: "资料",
-    status: "状态",
-    created: "创建",
-    goToOrganize: "进入整理信息",
+    continueItem: "继续",
   },
   ko: {
     title: "홈",
@@ -96,56 +78,13 @@ const copyByLocale: Record<Locale, {
     intakeDesc: "이미지, PDF, Excel 자료를 읽고 현재 안건 정리로 이동합니다.",
     organizeTitle: "정보 정리",
     organizeDesc: "처리가 필요한 항목만 열어 대상과 내용을 정리합니다.",
-    pendingTitle: "처리가 필요한 항목",
-    pendingDesc: "저장된 처리 상태를 기준으로 바로 열 수 있는 항목만 표시합니다.",
-    noPending: "지금 바로 처리할 항목이 없습니다.",
+    resumableTitle: "최근 미완료 항목",
+    resumableDesc: "저장되어 다시 시작할 수 있는 안건과 자료를 업데이트 순으로 표시합니다.",
+    noResumable: "계속할 수 있는 미완료 항목이 없습니다.",
     open: "열기",
-    cases: "안건",
-    sourceFiles: "자료",
-    status: "상태",
-    created: "생성",
-    goToOrganize: "정보 정리 열기",
+    continueItem: "계속",
   },
 };
-
-function sourceStatusLabel(locale: Locale, item: HubImportJobItem) {
-  if (item.status === "queued") return locale === "zh" ? "排队中" : locale === "ko" ? "대기 중" : "待機中";
-  if (item.status === "processing") return locale === "zh" ? "处理中" : locale === "ko" ? "처리 중" : "処理中";
-  if (item.status === "failed") return locale === "zh" ? "处理失败" : locale === "ko" ? "처리 실패" : "処理失敗";
-  return item.status;
-}
-
-function caseStatusLabel(locale: Locale, status: string) {
-  if (status === "reviewed") return locale === "zh" ? "已检查" : locale === "ko" ? "검토 완료" : "確認済み";
-  if (status === "draft") return locale === "zh" ? "草稿" : locale === "ko" ? "초안" : "下書き";
-  return status;
-}
-
-function getImportPayloadKind(item: HubImportJobItem) {
-  if (!item.notes) return undefined;
-  try {
-    const firstLine = item.notes.trim().split(/\r?\n/, 1)[0] || item.notes;
-    const payload = JSON.parse(firstLine) as { kind?: string };
-    return payload.kind;
-  } catch {
-    return undefined;
-  }
-}
-
-function sourceJobHref(item: HubImportJobItem, cases: Array<{ id: string; sourceImportJobIds: string[] }>) {
-  const id = encodeURIComponent(item.id);
-  const kind = getImportPayloadKind(item);
-  const isInputFileExtraction = kind === "input_file_extraction" || kind === "identity_import_source";
-  const isBatchMapping = item.sourceType === "excel" && !isInputFileExtraction && item.status !== "queued" && item.status !== "processing";
-  if (kind === "property_row_import" || isInputFileExtraction) return `/import-center?xlsxJob=${id}#source-upload`;
-  if (item.sourceType === "excel" && (item.status === "queued" || item.status === "processing" || item.status === "failed")) {
-    return `/import-center?xlsxJob=${id}#source-upload`;
-  }
-  if (isBatchMapping) return `/import-center?job=${id}&advanced=1#job-mapping`;
-  const linkedCase = cases.find((itemCase) => itemCase.sourceImportJobIds.includes(item.id));
-  if (linkedCase) return `/cases/${encodeURIComponent(linkedCase.id)}#case-main-editor`;
-  return `/import-center?job=${id}#source-review-summary`;
-}
 
 export default async function HomePage({ searchParams }: HomePageProps) {
   const [params, locale] = await Promise.all([
@@ -164,34 +103,17 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   }
   const copy = copyByLocale[locale];
   const searchQuery = params?.q?.trim() ?? "";
-  const context = { userId: session.user.id, tenantId: session.tenant.id };
-  const [rawCases, importJobs] = await Promise.all([
-    listBrokerageCases(session.user.id, 50, session.tenant.id),
-    listHubImportJobs(context, locale),
+  const requestContext = createRequestContext(session);
+  const [visibleCases, importJobs] = await Promise.all([
+    listBrokerageCasesForContext({ context: requestContext, limit: 50 }),
+    listHubImportJobs({ userId: session.user.id, tenantId: session.tenant.id }, locale),
   ]);
-  const cases = rawCases.map((item) => localizeDemoBrokerageCase(locale, item));
-  const pendingCases: WorkItem[] = cases
-    .filter((item) => item.status !== "reviewed")
-    .map((item) => ({
-      id: `case:${item.id}`,
-      title: item.caseTitle,
-      detail: `${copy.cases} · ${copy.status}: ${caseStatusLabel(locale, item.status)}`,
-      href: `/cases/${item.id}`,
-      date: item.updatedAt,
-    }));
-  const pendingSources: WorkItem[] = importJobs
-    .filter((item) => item.status !== "completed")
-    .map((item) => ({
-      id: `source:${item.id}`,
-      title: item.title,
-      detail: `${copy.sourceFiles} · ${copy.status}: ${sourceStatusLabel(locale, item)}`,
-      href: sourceJobHref(item, cases),
-      date: item.createdAt,
-    }));
-  const pendingItems = [...pendingCases, ...pendingSources]
-    .filter((item) => !searchQuery || `${item.title} ${item.detail}`.toLocaleLowerCase().includes(searchQuery.toLocaleLowerCase()))
-    .sort((a, b) => (b.date?.getTime() ?? 0) - (a.date?.getTime() ?? 0))
-    .slice(0, 8);
+  const cases = visibleCases.flatMap((entry) => {
+    if (!entry.brokerageCase) return [];
+    const item = localizeDemoBrokerageCase(locale, entry.brokerageCase);
+    return [{ id: item.id, title: item.caseTitle, status: item.status, updatedAt: item.updatedAt, sourceImportJobIds: item.sourceImportJobIds }];
+  });
+  const resumableItems = buildHomeResumableWork({ locale, query: searchQuery, cases, importJobs });
 
   return (
     <main className="bd-page bd-home-page space-y-6">
@@ -229,24 +151,23 @@ export default async function HomePage({ searchParams }: HomePageProps) {
       <section className="rounded-lg border border-slate-200 bg-white p-5">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h2 className="text-lg font-black text-slate-950">{copy.pendingTitle}</h2>
-            <p className="mt-1 text-sm font-semibold text-slate-600">{copy.pendingDesc}</p>
+            <h2 className="text-lg font-black text-slate-950">{copy.resumableTitle}</h2>
+            <p className="mt-1 text-sm font-semibold text-slate-600">{copy.resumableDesc}</p>
           </div>
-          <Link href="/organize-center" className="text-sm font-black text-[#002FA7] hover:underline">{copy.goToOrganize}</Link>
         </div>
-        {pendingItems.length > 0 ? (
+        {resumableItems.length > 0 ? (
           <ul className="mt-4 divide-y divide-slate-100">
-            {pendingItems.map((item) => (
+            {resumableItems.map((item) => (
               <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-black text-slate-900">{item.title}</p>
-                  <p className="mt-1 text-xs font-semibold text-slate-500">{item.detail}{item.date ? ` · ${formatDate(item.date, locale)}` : ""}</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-500">{item.reason} · {formatDate(item.updatedAt, locale)}</p>
                 </div>
-                <Link href={item.href} className="shrink-0 text-sm font-black text-[#002FA7] hover:underline">{copy.open}</Link>
+                <Link href={item.href} className="inline-flex min-h-11 shrink-0 items-center text-sm font-black text-[#002FA7] hover:underline">{copy.continueItem}</Link>
               </li>
             ))}
           </ul>
-        ) : <p className="mt-4 rounded-md bg-slate-50 px-4 py-6 text-center text-sm font-semibold text-slate-500">{copy.noPending}</p>}
+        ) : <p className="mt-4 rounded-md bg-slate-50 px-4 py-6 text-center text-sm font-semibold text-slate-500">{copy.noResumable}</p>}
       </section>
     </main>
   );

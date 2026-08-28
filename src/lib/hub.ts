@@ -8,6 +8,7 @@ import {
   listClients,
   listClientsForContext,
   listPropertiesForContext,
+  searchVisibleRecordsForContext,
   listOutputTemplateVersions,
   listQuoteFormData,
   listQuotations,
@@ -128,6 +129,7 @@ export type HubImportJobItem = {
   mappingJson?: Record<string, string>;
   validationMessage?: string;
   createdAt: Date;
+  updatedAt: Date;
 };
 
 export type HubGeneratedOutputItem = {
@@ -457,7 +459,10 @@ export async function listHubServiceRequests(context: HubQueryContext = {}): Pro
 export async function listHubImportJobs(context: HubQueryContext = {}, locale: Locale = "ja"): Promise<HubImportJobItem[]> {
   const resolved = await resolveHubContext(context);
   if (!resolved) return [];
-  return (await listImportJobs(resolved.userId, 100, resolved.tenantId)).map((item) => localizeDemoImportJob(locale, item));
+  return (await listImportJobs(resolved.userId, 100, resolved.tenantId)).map((item) => ({
+    ...localizeDemoImportJob(locale, item),
+    updatedAt: item.updatedAt,
+  }));
 }
 
 export async function listHubGeneratedOutputs(
@@ -573,58 +578,35 @@ export async function searchHubItems(
   if (!normalized) return [];
   if (!context.requestContext) return [];
 
-  const [cases, properties, parties] = await Promise.all([
-    listBrokerageCasesForContext({ context: context.requestContext, lifecycleStatus: context.lifecycleStatus ?? "active" }),
-    listHubProperties(locale, context),
-    listHubParties(locale, context),
-  ]);
+  const hits = await searchVisibleRecordsForContext({
+    context: context.requestContext,
+    query: normalized,
+    redactedCaseLabel: tr(locale, { ja: "案件", zh: "案件", ko: "안건" }),
+    limitPerEntity,
+    lifecycleStatus: context.lifecycleStatus ?? "active",
+  });
 
-  const includes = (...values: Array<string | undefined>) =>
-    values.some((value) => value?.toLowerCase().includes(normalized));
-
-  const caseItems = cases
-    .flatMap((item) => {
-      if (!item.brokerageCase) return [];
-      const title = item.resolution.outcome === "company_read"
-        ? tr(locale, { ja: "案件", zh: "案件", ko: "안건" })
-        : item.brokerageCase.caseTitle;
-      const searchableValues = item.resolution.outcome === "company_read"
-        ? [title, item.brokerageCase.id]
-        : [title, item.brokerageCase.id];
-      return includes(...searchableValues)
-        ? [{
-            id: item.brokerageCase.id,
-            entity: "case" as const,
-            title,
-            subtitle: item.brokerageCase.status,
-            href: `/cases/${encodeURIComponent(item.brokerageCase.id)}`,
-          }]
-        : [];
-    })
-    .slice(0, limitPerEntity)
-    .map<HubSearchItem>((item) => item);
-
-  const propertyItems = properties
-    .filter((item) => includes(item.name, item.area))
-    .slice(0, limitPerEntity)
-    .map<HubSearchItem>((item) => ({
-      id: item.id,
-      entity: "property",
-      title: item.name,
-      subtitle: item.area,
-      href: `/properties?focus=${item.id}`,
-    }));
-
-  const partyItems = parties
-    .filter((item) => includes(item.name, item.phone, item.email, item.relatedPropertyHint))
-    .slice(0, limitPerEntity)
-    .map<HubSearchItem>((item) => ({
-      id: item.id,
-      entity: "party",
-      title: item.name,
-      subtitle: item.phone,
-      href: `/parties?focus=${item.id}`,
-    }));
+  const caseItems = hits.filter((item) => item.entity === "case").map<HubSearchItem>((item) => ({
+    id: item.id,
+    entity: "case",
+    title: item.title,
+    subtitle: item.subtitle,
+    href: `/cases/${encodeURIComponent(item.id)}`,
+  }));
+  const propertyItems = hits.filter((item) => item.entity === "property").map<HubSearchItem>((item) => ({
+    id: item.id,
+    entity: "property",
+    title: item.title,
+    subtitle: item.subtitle,
+    href: `/properties?focus=${item.id}`,
+  }));
+  const partyItems = hits.filter((item) => item.entity === "party").map<HubSearchItem>((item) => ({
+    id: item.id,
+    entity: "party",
+    title: item.title,
+    subtitle: item.subtitle,
+    href: `/parties?focus=${item.id}`,
+  }));
 
   return [...caseItems, ...propertyItems, ...partyItems];
 }

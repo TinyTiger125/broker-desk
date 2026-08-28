@@ -1,7 +1,8 @@
 "use client";
 
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
+import { useState } from "react";
 
 type NavLink = {
   href: string;
@@ -17,6 +18,49 @@ function isActive(pathname: string, href: string) {
   const hrefPath = href.split(/[?#]/)[0] || "/";
   if (hrefPath === "/") return pathname === "/";
   return pathname === hrefPath || pathname.startsWith(`${hrefPath}/`);
+}
+
+function MainNavLinkContent({ icon, label, isRow }: { icon: string; label: string; isRow: boolean }) {
+  const { pending } = useLinkStatus();
+
+  return (
+    <>
+      <span
+        aria-hidden="true"
+        className={`material-symbols-outlined app-nav-link-icon ${pending ? "inline-block animate-spin text-[20px] motion-reduce:animate-none" : isRow ? "hidden" : "inline-block text-[20px]"}`}
+      >
+        {pending ? "progress_activity" : icon}
+      </span>
+      <span className={isRow ? "" : "app-nav-link-label"}>{label}</span>
+    </>
+  );
+}
+
+function MainNavLink({ href, label, icon, active, isRow }: NavLink & { icon: string; active: boolean; isRow: boolean }) {
+  const [hasNavigationIntent, setHasNavigationIntent] = useState(false);
+  const base = isRow
+    ? "ui-nav-stable rounded-md px-3 py-2 text-sm font-semibold transition"
+    : "app-nav-link rounded-md px-3 py-2.5 text-sm font-semibold transition";
+  const tone = active
+    ? isRow
+      ? "bg-[#e7edff] text-[#173b9f]"
+      : "bg-[#3158d8] text-white"
+    : isRow
+      ? "text-slate-600 hover:bg-slate-200/60 hover:text-slate-950"
+      : "text-slate-300 hover:bg-[#263149] hover:text-white";
+
+  return (
+    <Link
+      href={href}
+      prefetch={hasNavigationIntent ? null : false}
+      onMouseEnter={() => setHasNavigationIntent(true)}
+      onMouseLeave={() => setHasNavigationIntent(false)}
+      onFocus={() => setHasNavigationIntent(true)}
+      className={`${base} ${tone} ${isRow ? "justify-center" : "flex items-center gap-3"}`}
+    >
+      <MainNavLinkContent icon={icon} label={label} isRow={isRow} />
+    </Link>
+  );
 }
 
 export function MainNavLinks({ links, orientation = "row" }: MainNavLinksProps) {
@@ -44,31 +88,17 @@ export function MainNavLinks({ links, orientation = "row" }: MainNavLinksProps) 
     <nav className={isRow ? "flex min-w-max items-center gap-1 pb-1" : "flex flex-col gap-1"}>
       {links.map((link) => {
         const active = isActive(pathname, link.href);
-        const base = isRow
-          ? "ui-nav-stable rounded-md px-3 py-2 text-sm font-semibold transition"
-          : "app-nav-link rounded-md px-3 py-2.5 text-sm font-semibold transition";
-        const tone = active
-          ? isRow
-            ? "bg-[#e7edff] text-[#173b9f]"
-            : "bg-[#3158d8] text-white"
-          : isRow
-            ? "text-slate-600 hover:bg-slate-200/60 hover:text-slate-950"
-            : "text-slate-300 hover:bg-[#263149] hover:text-white";
         const hrefPath = link.href.split(/[?#]/)[0] || "/";
         const icon = iconByHref[hrefPath] ?? (hrefPath.startsWith("/cases/") ? "fact_check" : "circle");
 
         return (
-          <Link
+          <MainNavLink
             key={`${link.label}:${link.href}`}
-            href={link.href}
-            prefetch
-            className={`${base} ${tone} ${isRow ? "justify-center" : "flex items-center gap-3"}`}
-          >
-            <span aria-hidden="true" className={`material-symbols-outlined app-nav-link-icon ${isRow ? "hidden" : "inline-block text-[20px]"}`}>
-              {icon}
-            </span>
-            <span className={isRow ? "" : "app-nav-link-label"}>{link.label}</span>
-          </Link>
+            {...link}
+            icon={icon}
+            active={active}
+            isRow={isRow}
+          />
         );
       })}
     </nav>

@@ -848,7 +848,9 @@ function clientValidationState(values: ClientFormValues, fieldErrors: ClientForm
   };
 }
 
-function safeClientReturnTo(value: FormDataEntryValue | null, fallback: string, currentClientId?: string): string {
+const IMPORT_CENTER_RETURN_PATH = "/import-center";
+
+function safeClientReturnTo(value: FormDataEntryValue | null, fallback: string, currentClientId?: string, allowImportCenter = false): string {
   const path = String(value ?? "").trim();
   if (!path || !path.startsWith("/") || path.startsWith("//") || path.includes("\\")) return fallback;
   const rawPathname = path.split(/[?#]/, 1)[0];
@@ -875,8 +877,35 @@ function safeClientReturnTo(value: FormDataEntryValue | null, fallback: string, 
     if (parsed.searchParams.get("type") !== "client" || keys.some((key) => !["type", "q", "lifecycle", "page"].includes(key))) return fallback;
     return `${parsed.pathname}${parsed.search}`;
   }
+  if (allowImportCenter && parsed.pathname === IMPORT_CENTER_RETURN_PATH && keys.length === 0 && !parsed.hash) return parsed.pathname;
   if (currentClientId && parsed.pathname === `/clients/${encodeURIComponent(currentClientId)}` && keys.length === 0) return parsed.pathname;
   return fallback;
+}
+
+function getClientCreateCompletion(input: {
+  returnTo: string;
+  clientId: string;
+  clientName: string;
+  values: ClientFormValues;
+  caseDraftReturn: boolean;
+}) {
+  if (input.caseDraftReturn) {
+    return {
+      kind: "state" as const,
+      state: {
+        status: "idle" as const,
+        fieldErrors: {},
+        values: input.values,
+        createdRecord: { id: input.clientId, name: input.clientName },
+      },
+    };
+  }
+  return {
+    kind: "redirect" as const,
+    href: input.returnTo === IMPORT_CENTER_RETURN_PATH
+      ? `${IMPORT_CENTER_RETURN_PATH}?flash=client_created`
+      : `/clients/${encodeURIComponent(input.clientId)}?flash=client_created`,
+  };
 }
 
 async function persistClientForm(
@@ -899,7 +928,7 @@ async function persistClientForm(
 
   const clientId = values.clientId.trim();
   const fallback = mode === "create" || !clientId ? "/clients" : `/clients/${encodeURIComponent(clientId)}`;
-  const returnTo = safeClientReturnTo(formData.get("returnTo"), fallback, mode === "edit" ? clientId : undefined);
+  const returnTo = safeClientReturnTo(formData.get("returnTo"), fallback, mode === "edit" ? clientId : undefined, mode === "create");
   let client;
   if (mode === "create") {
     client = await addClient({ tenantId, ownerUserId: user.id, ...parsed.normalized });
@@ -929,20 +958,21 @@ async function persistClientForm(
     message: mode === "create" ? `顧客を新規登録しました: ${client.name}` : "顧客情報を更新しました。",
   });
 
-  if (mode === "create" && formData.get("caseDraftReturn") === "1") {
-    return {
-      status: "idle",
-      fieldErrors: {},
-      values: parsed.values,
-      createdRecord: { id: client.id, name: client.name },
-    } satisfies ClientFormActionState;
-  }
+  const createCompletion = mode === "create" ? getClientCreateCompletion({
+    returnTo,
+    clientId: client.id,
+    clientName: client.name,
+    values: parsed.values,
+    caseDraftReturn: formData.get("caseDraftReturn") === "1",
+  }) : undefined;
+  if (createCompletion?.kind === "state") return createCompletion.state satisfies ClientFormActionState;
 
   if (compatibilityDefaults) {
     const afterSave = String(formData.get("afterSave") ?? "detail");
     if (afterSave === "quote") redirect(`/quotes/new?clientId=${client.id}`);
     if (afterSave === "list") redirect("/clients");
   }
+  if (createCompletion?.kind === "redirect" && createCompletion.href.startsWith(`${IMPORT_CENTER_RETURN_PATH}?`)) redirect(createCompletion.href);
   if (mode === "create") redirect(`/clients/${client.id}?flash=client_created`);
   redirect(withFlash(`/clients/${client.id}/edit?returnTo=${encodeURIComponent(returnTo)}`, "client_updated"));
 }

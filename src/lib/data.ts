@@ -219,6 +219,10 @@ export const getClientDetailForContext: typeof memory.getClientDetailForContext 
   repo.getClientDetailForContext(...args);
 export const listPropertiesForContext: typeof memory.listPropertiesForContext = (...args) =>
   repo.listPropertiesForContext(...args);
+export const countVisibleRecordsForContext: typeof memory.countVisibleRecordsForContext = (...args) =>
+  repo.countVisibleRecordsForContext(...args);
+export const searchVisibleRecordsForContext: typeof memory.searchVisibleRecordsForContext = (...args) =>
+  repo.searchVisibleRecordsForContext(...args);
 export const getPropertyDetailForContext: typeof memory.getPropertyDetailForContext = (...args) =>
   repo.getPropertyDetailForContext(...args);
 /**

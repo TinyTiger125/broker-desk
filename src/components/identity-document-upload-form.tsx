@@ -156,7 +156,7 @@ export function IdentityDocumentUploadForm({ action, locale = "ja", targetCaseId
     <form
       action={action}
       noValidate
-      className="w-full space-y-4 rounded-2xl border-2 border-dashed border-emerald-200 bg-emerald-50 p-5 lg:max-w-xl"
+      className="w-full space-y-4 rounded-2xl border-2 border-dashed border-emerald-200 bg-emerald-50 p-5"
       onSubmit={(event) => {
         const input = event.currentTarget.elements.namedItem("identityDocumentFile");
         const files = input instanceof HTMLInputElement && input.files ? Array.from(input.files) : [];

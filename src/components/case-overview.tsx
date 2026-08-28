@@ -939,7 +939,7 @@ export function CaseOverview({
                     const applicantChild = isApplicantChild(child);
                     const childEditing = Boolean(editingApplicantField && child.fields.some((field) => field.fieldKey === editingField?.fieldKey));
                     const renderField = (field: CaseOverviewField) => (
-                      <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="flex h-full min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div className="min-w-0 flex-1">
                           <CaseFieldValue label={field.label} value={field.displayValue} required={field.required} />
                           {fieldIssue(field) ? <CaseFieldState issueLabel={field.issueLabel} normalLabel={locale === "zh" ? "已填写" : locale === "ko" ? "입력됨" : "入力済み"} /> : null}
@@ -962,7 +962,7 @@ export function CaseOverview({
                               event.preventDefault();
                               openEditor(field);
                             }}
-                            className={`inline-flex shrink-0 items-center justify-center rounded-lg border px-3 py-2 text-xs font-black focus:outline-none focus:ring-2 focus:ring-blue-300 ${fieldIssue(field) ? "border-amber-300 bg-white text-amber-900 hover:bg-amber-50" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`}
+                            className={`inline-flex min-h-11 shrink-0 items-center justify-center rounded-lg border px-3 py-2 text-xs font-black focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)] sm:min-w-24 ${fieldIssue(field) ? "border-amber-300 bg-white text-amber-900 hover:bg-amber-50" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`}
                           >
                             {fieldIssue(field) ? (locale === "zh" ? "处理问题" : locale === "ko" ? "문제 처리" : "要対応") : (locale === "zh" ? "编辑" : locale === "ko" ? "편집" : "編集")}
                           </button>
