@@ -62,6 +62,8 @@ async function trustedSession(subject) {
 const ownerContext = resolver.createRequestContext(await trustedSession(owner.externalAuthSubject));
 const colleagueContext = resolver.createRequestContext(await trustedSession(colleague.externalAuthSubject));
 assert.deepEqual(await hub.searchHubItems("ja", "Global visibility", 10, {}), [], "search without a trusted context fails closed");
+const ownerBaselineCounts = await memory.countVisibleRecordsForContext({ context: ownerContext, lifecycleStatus: "all" });
+const colleagueBaselineCounts = await memory.countVisibleRecordsForContext({ context: colleagueContext, lifecycleStatus: "all" });
 
 const privatePerson = await memory.addClient({
   tenantId: tenant.id,
@@ -205,6 +207,14 @@ for (const entity of ["case", "property", "party"]) {
 assert(zhStoredLabelSearch.some((item) => item.id === localizedLabelPerson.id && item.title === "運用担当 佐伯 Performance"), "search and displayed title use the same stored value in zh");
 assert(literalSearch.some((item) => item.id === literalSearchPerson.id), "search treats percent underscore and escape marker as literal text");
 assert(boundedColleagueSearch.some((item) => item.id === limitVisibilitySharedPerson.id), "visibility is resolved before the per-entity limit");
+const ownerFinalCounts = await memory.countVisibleRecordsForContext({ context: ownerContext, lifecycleStatus: "all" });
+const colleagueFinalCounts = await memory.countVisibleRecordsForContext({ context: colleagueContext, lifecycleStatus: "all" });
+assert.equal(ownerFinalCounts.case - ownerBaselineCounts.case, 2, "owner organize count includes both new cases");
+assert.equal(ownerFinalCounts.property - ownerBaselineCounts.property, 2, "owner organize count excludes unresolved property");
+assert.equal(ownerFinalCounts.party - ownerBaselineCounts.party, 9, "owner organize count includes owned people");
+assert.equal(colleagueFinalCounts.case - colleagueBaselineCounts.case, 1, "colleague organize count includes only shared case");
+assert.equal(colleagueFinalCounts.property - colleagueBaselineCounts.property, 1, "colleague organize count includes only shared property");
+assert.equal(colleagueFinalCounts.party - colleagueBaselineCounts.party, 2, "colleague organize count includes only shared people");
 
 const ownerProperties = await hub.listHubProperties("ja", { requestContext: ownerContext, lifecycleStatus: "all" });
 const colleagueProperties = await hub.listHubProperties("ja", { requestContext: colleagueContext, lifecycleStatus: "all" });

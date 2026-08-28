@@ -6,7 +6,7 @@ import {
 } from "@/components/organize-center-object-browser";
 import { ListReportShell, PageFrame, PageHeader, StateSurface } from "@/components/layout-system";
 import { PageFlashBanner } from "@/components/page-flash-banner";
-import { listBrokerageCasesForContext } from "@/lib/data";
+import { countVisibleRecordsForContext, listBrokerageCasesForContext } from "@/lib/data";
 import { getCaseFieldValue } from "@/lib/case-field-normalization";
 import { formatDate } from "@/lib/format";
 import { listHubParties, listHubProperties } from "@/lib/hub";
@@ -358,9 +358,10 @@ async function OrganizeCenterContent({ locale, params }: { locale: Locale; param
   const capabilityCanArchive = session.membership.status === "active"
     && capabilityHasTenantPermission(getTenantCapability(session.membership), "record.archive");
 
-  let cases;
-  let parties;
-  let properties;
+  let cases: Awaited<ReturnType<typeof listBrokerageCasesForContext>> = [];
+  let parties: Awaited<ReturnType<typeof listHubParties>> = [];
+  let properties: Awaited<ReturnType<typeof listHubProperties>> = [];
+  let counts = { case: 0, party: 0, property: 0 };
   try {
     const requestContext = createRequestContext(session);
     const hubContext = {
@@ -371,11 +372,18 @@ async function OrganizeCenterContent({ locale, params }: { locale: Locale; param
       canUpdateRecords: capabilityCanWrite,
       canArchiveRecords: capabilityCanArchive,
     };
-    [cases, parties, properties] = await Promise.all([
-      listBrokerageCasesForContext({ context: requestContext, lifecycleStatus: lifecycleFilter }),
-      listHubParties(locale, hubContext),
-      listHubProperties(locale, hubContext),
-    ]);
+    if (selectedType === "all") {
+      counts = await countVisibleRecordsForContext({
+        context: requestContext,
+        lifecycleStatus: lifecycleFilter,
+      });
+    } else if (selectedType === "case") {
+      cases = await listBrokerageCasesForContext({ context: requestContext, lifecycleStatus: lifecycleFilter });
+    } else if (selectedType === "party") {
+      parties = await listHubParties(locale, hubContext);
+    } else if (selectedType === "property") {
+      properties = await listHubProperties(locale, hubContext);
+    }
   } catch {
     return <OrganizeCenterLoadError copy={copy} href={buildListHref(selectedType, query, lifecycleFilter, page)} />;
   }
@@ -460,6 +468,7 @@ async function OrganizeCenterContent({ locale, params }: { locale: Locale; param
     <OrganizeCenterObjectBrowser
       key={`${selectedType}:${query}:${lifecycleFilter}:${page}`}
       items={browserItems}
+      counts={counts}
       selectedType={selectedType}
       query={query}
       copy={copy}

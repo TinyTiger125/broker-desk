@@ -45,6 +45,7 @@ import { assertNoForbiddenRecordInput } from "@/lib/record-input-guard";
 import {
   resolveRecordVisibility,
   type RequestContext,
+  type VisibilityRecord,
   type VisibilityResolution,
   type VisibilityRecordResult,
 } from "@/lib/visibility-resolver";
@@ -4506,6 +4507,28 @@ export type VisibleRecordSearchHit = {
   subtitle: string;
   resolution: VisibilityResolution;
 };
+
+export type VisibleRecordCounts = {
+  case: number;
+  property: number;
+  party: number;
+};
+
+export async function countVisibleRecordsForContext(input: {
+  context: RequestContext;
+  lifecycleStatus?: LifecycleFilter;
+}): Promise<VisibleRecordCounts> {
+  const lifecycleStatus = input.lifecycleStatus ?? "active";
+  const matchesLifecycle = (status: LifecycleStatus | undefined) =>
+    lifecycleStatus === "all" || (status ?? "active") === lifecycleStatus;
+  const canRead = (item: VisibilityRecord) => resolveRecordVisibility(input.context, item).canRead;
+
+  return {
+    case: db.brokerageCases.filter((item) => item.tenantId === input.context.tenantId && matchesLifecycle(item.lifecycleStatus) && canRead(item)).length,
+    property: db.properties.filter((item) => item.tenantId === input.context.tenantId && matchesLifecycle(item.lifecycleStatus) && canRead(item)).length,
+    party: db.clients.filter((item) => item.tenantId === input.context.tenantId && matchesLifecycle(item.lifecycleStatus) && canRead(item)).length,
+  };
+}
 
 export async function searchVisibleRecordsForContext(input: {
   context: RequestContext;

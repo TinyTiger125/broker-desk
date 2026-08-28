@@ -34,6 +34,7 @@ export type OrganizeCenterBrowserItem = {
 
 type OrganizeCenterObjectBrowserProps = {
   items: OrganizeCenterBrowserItem[];
+  counts: Record<Exclude<ObjectType, "all">, number>;
   selectedType: ObjectType;
   query: string;
   copy: Record<string, string>;
@@ -83,6 +84,7 @@ function buildListHref(type: ObjectType, query: string, lifecycleFilter: Lifecyc
 
 export function OrganizeCenterObjectBrowser({
   items,
+  counts,
   selectedType,
   query,
   copy,
@@ -91,13 +93,6 @@ export function OrganizeCenterObjectBrowser({
   page,
 }: OrganizeCenterObjectBrowserProps) {
   if (selectedType === "all") {
-    const countByType = new Map<Exclude<ObjectType, "all">, number>([
-      ["case", 0],
-      ["party", 0],
-      ["property", 0],
-    ]);
-    for (const item of items) countByType.set(item.type, (countByType.get(item.type) ?? 0) + 1);
-
     const branchCards = ([
       { type: "case" as const, icon: "work", title: copy.case, description: copy.branchCaseDesc },
       { type: "party" as const, icon: "person", title: copy.party, description: copy.branchPartyDesc },
@@ -105,7 +100,7 @@ export function OrganizeCenterObjectBrowser({
     ]).map((card) => {
       return {
         ...card,
-        total: countByType.get(card.type) ?? 0,
+        total: counts[card.type],
       };
     });
 

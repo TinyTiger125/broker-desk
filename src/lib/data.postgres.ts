@@ -85,6 +85,7 @@ import type {
   GuaranteePreviewOutputInput,
   MemberVisibilityDefault,
   SetRecordLifecycleWithAuditInput,
+  VisibleRecordCounts,
   VisibleRecordSearchHit,
 } from "@/lib/data.memory";
 import type { VisibleBrokerageCase, VisibleProperty } from "@/lib/data.memory";
@@ -3493,6 +3494,45 @@ export async function listBrokerageCasesForContext(input: {
 
 function escapeSearchPattern(value: string): string {
   return value.replace(/[!%_]/g, (character) => `!${character}`);
+}
+
+/** One projected row replaces three complete-list reads on the organize selector. */
+export async function countVisibleRecordsForContext(input: {
+  context: RequestContext;
+  lifecycleStatus?: LifecycleFilter;
+}): Promise<VisibleRecordCounts> {
+  const lifecycleStatus = input.lifecycleStatus ?? "active";
+  return withPostgresAuthContext(input.context.externalAuthSubject, async () => {
+    await ensureSchema();
+    const result = await getPool().query(
+      `SELECT
+         (SELECT COUNT(*)::int FROM brokerage_cases
+          WHERE tenant_id = $1
+            AND owner_resolution_status = 'resolved'
+            AND current_owner_user_id IS NOT NULL
+            AND (current_owner_user_id = $2 OR visibility_scope = 'company_read')
+            AND ($3 = 'all' OR lifecycle_status = $3)) AS case_count,
+         (SELECT COUNT(*)::int FROM properties
+          WHERE tenant_id = $1
+            AND owner_resolution_status = 'resolved'
+            AND current_owner_user_id IS NOT NULL
+            AND (current_owner_user_id = $2 OR visibility_scope = 'company_read')
+            AND ($3 = 'all' OR lifecycle_status = $3)) AS property_count,
+         (SELECT COUNT(*)::int FROM clients
+          WHERE tenant_id = $1
+            AND owner_resolution_status = 'resolved'
+            AND current_owner_user_id IS NOT NULL
+            AND (current_owner_user_id = $2 OR visibility_scope = 'company_read')
+            AND ($3 = 'all' OR lifecycle_status = $3)) AS party_count`,
+      [input.context.tenantId, input.context.userId, lifecycleStatus],
+    );
+    const row = result.rows[0] ?? {};
+    return {
+      case: Number(row.case_count ?? 0),
+      property: Number(row.property_count ?? 0),
+      party: Number(row.party_count ?? 0),
+    };
+  });
 }
 
 /**
