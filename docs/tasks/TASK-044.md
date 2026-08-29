@@ -2,7 +2,7 @@
 
 ## 状态与基线
 
-- 状态：In Review / Code GO / Staging Pending
+- 状态：Product Accepted / Awaiting Integration
 - 基线：`main` `3e6f07419a58d67cc9a1ce901369edf7d36c24c7`
 - 隔离分支：`task044-platform-navigation`
 
@@ -51,4 +51,7 @@
 
 - 顺序工程门全部通过；lint 为 0 error、2 个既有 warning。
 - 独立只读复核：P0=0、Product P1=0、Engineering P1=0；代码级 GO。
-- 真实 Staging 身份与 390/桌面导航矩阵仍待 exact Preview，未在代码级证据中冒充通过。
+- fixed Staging 提交：`1aa616d18d3a06e3fc234b4820ebf0342422b787`。
+- Git-integrated Preview：`dpl_2MnmNMxdxhRybs4tvpM7AbMP7j3Y`，状态 READY；实际提交与 fixed Staging HEAD 一致。
+- 真实 persisted platform owner：1440 桌面侧栏与 390 窄屏设置菜单均显示独立平台分组、账户管理与官方模板工厂；两路由标题与 active 状态正确，390 无横向溢出。
+- 既有普通合成身份通过 Clerk Development 官方短时会话验证：桌面与 390 均不显示平台分组；直接访问 `/platform/templates` 被服务端拒绝，页面不暴露模板工厂内容。会话未持久保存，未写业务数据。
