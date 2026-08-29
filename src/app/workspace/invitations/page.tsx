@@ -32,6 +32,7 @@ export default async function WorkspaceInvitationsPage() {
                 tenantId={invitation.tenantId}
                 membershipId={invitation.id}
                 invitationToken={invitation.invitationToken ?? ""}
+                locale={locale}
                 acceptLabel={accept}
                 pendingLabel={accepting}
               />

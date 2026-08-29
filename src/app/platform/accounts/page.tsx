@@ -6,6 +6,7 @@ import {
 import { listPlatformTenantAccounts, type TenantAccountSummary, type TenantInvitationStatus, type TenantStatus } from "@/lib/data";
 import { getLocale, type Locale } from "@/lib/locale";
 import { PlatformSessionError, requirePlatformOwnerSession } from "@/lib/platform-session";
+import { deriveTenantServiceState, getTenantServiceStatusLabel, type TenantServiceStatus } from "@/lib/tenant-service";
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +35,64 @@ const invitationLabels: Record<TenantInvitationStatus, Record<Locale, string>> =
   failed: { ja: "送信失敗", zh: "发送失败", ko: "전송 실패" },
 };
 
+const PLATFORM_ACCOUNT_FLASH_COPY = {
+  tenant_created: {
+    tone: "success",
+    ja: "アカウントを作成しました。",
+    zh: "账户已创建。",
+    ko: "계정이 생성되었습니다.",
+  },
+  tenant_updated: {
+    tone: "success",
+    ja: "アカウントの契約情報を更新しました。",
+    zh: "账户订阅信息已更新。",
+    ko: "계정 구독 정보가 업데이트되었습니다.",
+  },
+  invitation_sent: {
+    tone: "success",
+    ja: "招待を送信しました。",
+    zh: "邀请已发送。",
+    ko: "초대를 전송했습니다.",
+  },
+  invitation_failed: {
+    tone: "error",
+    ja: "招待を送信できませんでした。既存のアカウントから再試行してください。",
+    zh: "邀请发送失败。请从现有账户重试。",
+    ko: "초대를 전송하지 못했습니다. 기존 계정에서 다시 시도해 주세요.",
+  },
+  invitation_delivery_uncertain: {
+    tone: "warning",
+    ja: "アカウントは作成済みです。招待は送信された可能性がありますが、記録を確定できませんでした。むやみに再送せず、Clerk と既存アカウントの招待状態を先に確認してください。",
+    zh: "账户已存在；邀请可能已发送，但记录未能确认。请勿盲目重发，请先核对 Clerk 与现有账户的邀请状态。",
+    ko: "계정은 이미 존재합니다. 초대가 전송되었을 수 있지만 기록을 확정하지 못했습니다. 무작정 다시 보내지 말고 Clerk와 기존 계정의 초대 상태를 먼저 확인해 주세요.",
+  },
+  tenant_created_invitation_failed: {
+    tone: "warning",
+    ja: "アカウントは作成済みですが、初期オーナーへの招待送信に失敗しました。アカウントを重複作成せず、既存のアカウントから招待を再送してください。",
+    zh: "账户已创建，但初始负责人邀请发送失败。请勿重复创建账户，请从现有账户重试邀请。",
+    ko: "계정은 생성되었지만 초기 책임자 초대 전송에 실패했습니다. 계정을 중복 생성하지 말고 기존 계정에서 초대를 다시 시도해 주세요.",
+  },
+} as const;
+
+const PLATFORM_ACCOUNT_FLASH_TONE_CLASSES = {
+  success: "border-emerald-200 bg-emerald-50 text-emerald-800",
+  warning: "border-amber-200 bg-amber-50 text-amber-900",
+  error: "border-rose-200 bg-rose-50 text-rose-900",
+} as const;
+
+type PlatformAccountFlashToken = keyof typeof PLATFORM_ACCOUNT_FLASH_COPY;
+
+function resolvePlatformAccountFlash(token: string | undefined, locale: Locale) {
+  if (!token || !Object.prototype.hasOwnProperty.call(PLATFORM_ACCOUNT_FLASH_COPY, token)) {
+    return null;
+  }
+  const entry = PLATFORM_ACCOUNT_FLASH_COPY[token as PlatformAccountFlashToken];
+  return {
+    message: entry[locale],
+    className: PLATFORM_ACCOUNT_FLASH_TONE_CLASSES[entry.tone],
+  };
+}
+
 function copy(locale: Locale) {
   return {
     title: locale === "zh" ? "平台账户生命周期" : locale === "ko" ? "플랫폼 계정 라이프사이클" : "プラットフォームアカウント管理",
@@ -60,6 +119,10 @@ function copy(locale: Locale) {
     used: locale === "zh" ? "已用" : locale === "ko" ? "사용" : "使用中",
     invited: locale === "zh" ? "邀请中" : locale === "ko" ? "초대 중" : "招待中",
     available: locale === "zh" ? "剩余" : locale === "ko" ? "잔여" : "残",
+    suspendedSeats: locale === "zh" ? "暂停成员" : locale === "ko" ? "중지 멤버" : "停止メンバー",
+    serviceStart: locale === "zh" ? "服务开始" : locale === "ko" ? "서비스 시작" : "サービス開始",
+    serviceEnd: locale === "zh" ? "服务结束" : locale === "ko" ? "서비스 종료" : "サービス終了",
+    remaining: locale === "zh" ? "剩余天数" : locale === "ko" ? "남은 일수" : "残日数",
     owner: locale === "zh" ? "负责人" : locale === "ko" ? "책임자" : "オーナー",
     bound: locale === "zh" ? "已绑定" : locale === "ko" ? "연동됨" : "外部ID連携済み",
     unbound: locale === "zh" ? "未绑定" : locale === "ko" ? "미연동" : "外部ID未連携",
@@ -68,10 +131,10 @@ function copy(locale: Locale) {
   };
 }
 
-function statusTone(status: TenantStatus) {
+function statusTone(status: TenantServiceStatus) {
   if (status === "active") return "bg-emerald-100 text-emerald-800";
-  if (status === "trial") return "bg-sky-100 text-sky-800";
-  if (status === "suspended") return "bg-amber-100 text-amber-800";
+  if (status === "expiring" || status === "pending" || status === "suspended") return "bg-amber-100 text-amber-800";
+  if (status === "expired" || status === "cancelled") return "bg-rose-100 text-rose-800";
   return "bg-slate-200 text-slate-700";
 }
 
@@ -93,6 +156,7 @@ export default async function PlatformAccountsPage({ searchParams }: PlatformAcc
   const locale = await getLocale();
   const params = searchParams ? await searchParams : undefined;
   const ui = copy(locale);
+  const flashMessage = resolvePlatformAccountFlash(params?.flash, locale);
 
   let platformUserName = "";
   try {
@@ -122,9 +186,9 @@ export default async function PlatformAccountsPage({ searchParams }: PlatformAcc
         </div>
       </header>
 
-      {params?.flash ? (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
-          {params.flash}
+      {flashMessage ? (
+        <div className={`rounded-lg border px-4 py-3 text-sm font-semibold ${flashMessage.className}`}>
+          {flashMessage.message}
         </div>
       ) : null}
 
@@ -155,6 +219,8 @@ export default async function PlatformAccountsPage({ searchParams }: PlatformAcc
             aria-label={ui.purchasedSeats}
             className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
           />
+          <input name="serviceStartAt" type="date" aria-label={ui.serviceStart} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+          <input name="serviceEndAt" type="date" aria-label={ui.serviceEnd} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
           <input name="ownerName" placeholder={ui.ownerName} className="rounded-lg border border-slate-300 px-3 py-2 text-sm lg:col-span-2" />
           <input name="ownerEmail" required type="email" placeholder={ui.ownerEmail} className="rounded-lg border border-slate-300 px-3 py-2 text-sm lg:col-span-2" />
           <button className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-bold text-white lg:col-span-2">{ui.submitCreate}</button>
@@ -196,18 +262,22 @@ export default async function PlatformAccountsPage({ searchParams }: PlatformAcc
                 {account.accountType === "company" ? ui.company : ui.individual}
               </span>
               <div className="lg:hidden text-xs font-semibold text-slate-500">{ui.status}</div>
-              <span className={`w-fit rounded-full px-2 py-1 text-xs font-bold ${statusTone(account.status)}`}>
-                {statusLabels[account.status][locale]}
-              </span>
+              <div className="space-y-2">
+                <span className={`inline-flex w-fit rounded-full px-2 py-1 text-xs font-bold ${statusTone(deriveTenantServiceState(account).status)}`}>
+                  {getTenantServiceStatusLabel(deriveTenantServiceState(account).status, locale)}
+                </span>
+                <p className="text-xs leading-5 text-slate-500">{ui.serviceStart}: {account.serviceStartAt ?? "-"}<br />{ui.serviceEnd}: {account.serviceEndAt ?? "-"}<br />{ui.remaining}: {deriveTenantServiceState(account).remainingDays == null ? "-" : Math.max(0, deriveTenantServiceState(account).remainingDays!)}</p>
+              </div>
               <div className="lg:hidden text-xs font-semibold text-slate-500">{ui.seats}</div>
               <div className="text-xs font-semibold text-slate-600">
-                <p>{ui.used} {account.activeSeatCount} / {account.purchasedSeatCount}</p>
+                <p>{ui.used} {account.usedSeatCount} / {account.purchasedSeatCount}</p>
                 <p>{ui.invited} {account.invitedSeatCount}</p>
+                <p>{ui.suspendedSeats} {account.suspendedSeatCount}</p>
                 <p className={seatTone(account)}>{ui.available} {account.availableSeatCount}</p>
               </div>
               <div className="space-y-2">
                 <div className="lg:hidden text-xs font-semibold text-slate-500">{ui.update}</div>
-                <form action={updateTenantAccountLifecycleAction} className="grid grid-cols-[1fr_96px_auto] gap-2">
+                <form action={updateTenantAccountLifecycleAction} className="grid gap-2 sm:grid-cols-2">
                   <input type="hidden" name="tenantId" value={account.id} />
                   <select name="status" defaultValue={account.status} className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
                     {tenantStatuses.map((status) => (
@@ -225,6 +295,8 @@ export default async function PlatformAccountsPage({ searchParams }: PlatformAcc
                     aria-label={ui.purchasedSeats}
                     className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
                   />
+                  <input name="serviceStartAt" type="date" defaultValue={account.serviceStartAt} aria-label={ui.serviceStart} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+                  <input name="serviceEndAt" type="date" defaultValue={account.serviceEndAt} aria-label={ui.serviceEnd} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
                   <button className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">
                     {ui.update}
                   </button>

@@ -5,12 +5,12 @@ const read = (path) => fs.readFileSync(new URL(path, import.meta.url), "utf8");
 const checks = [
   {
     file: "../src/app/settings/members/page.tsx",
-    required: ["listTenantMembers", "inviteTenantMemberAction", "updateTenantMemberRoleAction", "updateTenantMemberStatusAction", "lg:grid-cols"],
+    required: ["listTenantMembers", "inviteTenantMemberAction", "updateTenantMemberRoleAction", "updateTenantMemberStatusAction", "subscriptionSummary", "lg:grid-cols"],
     forbidden: ["min-w-[760px]", "overflow-x-auto"],
   },
   {
     file: "../src/app/platform/accounts/page.tsx",
-    required: ["requirePlatformOwnerSession", "listPlatformTenantAccounts", "createTenantAccountAction", "updateTenantAccountLifecycleAction", "lg:grid-cols"],
+    required: ["requirePlatformOwnerSession", "listPlatformTenantAccounts", "createTenantAccountAction", "updateTenantAccountLifecycleAction", "serviceStartAt", "remainingDays", "lg:grid-cols"],
     forbidden: ["/platform/templates", "min-w-[980px]", "overflow-x-auto"],
   },
   {

@@ -129,6 +129,7 @@ import { ACTIVE_TENANT_COOKIE_NAME } from "@/lib/tenant-permissions";
 import { requirePlatformOwnerSession } from "@/lib/platform-session";
 import { isLifecycleStatus, type LifecycleStatus } from "@/lib/record-lifecycle";
 import { FORBIDDEN_RECORD_INPUT_FIELDS } from "@/lib/record-input-guard";
+import { deriveTenantServiceState, isTenantServiceOperational, validateTenantServicePeriod } from "@/lib/tenant-service";
 
 async function rejectForbiddenRecordInput(
   formData: FormData,
@@ -2811,14 +2812,13 @@ async function sendTenantMemberInvitation(input: {
   actorId: string;
   recordSkippedAsFailure: boolean;
 }) {
-  let member = await getTenantMemberById({ tenantId: input.tenantId, membershipId: input.membershipId });
-  if (!member) throw new Error("招待対象メンバーが見つかりません。");
-  if (member.status !== "invited") throw new Error("只有邀请中的成员可以发送或重发邀请。");
-  member = (await refreshTenantMemberInvitation({
+  const prepared = await refreshTenantMemberInvitation({
     tenantId: input.tenantId,
     membershipId: input.membershipId,
     invitedByUserId: input.actorId,
-  })) ?? member;
+  });
+  if (!prepared) throw new Error("招待対象メンバーが見つかりません。");
+  const member = prepared.member;
 
   const result = await createClerkInvitationForTenantMember(member).catch((error) => ({
     ok: false as const,
@@ -2826,55 +2826,43 @@ async function sendTenantMemberInvitation(input: {
     reason: error instanceof Error ? error.message : String(error),
   }));
   if (result.ok) {
-    const updated = await updateTenantMemberInvitation({
-      tenantId: input.tenantId,
-      membershipId: input.membershipId,
-      invitationProvider: "clerk",
-      invitationStatus: "pending",
-      providerInvitationId: result.providerInvitationId,
-      invitationUrl: result.invitationUrl,
-      sentAt: result.sentAt,
-      actorUserId: input.actorId,
-    });
-    await addAuditLog({
-      tenantId: input.tenantId,
-      userId: input.actorId,
-      action: "member_invitation_sent",
-      targetType: "member",
-      targetId: input.membershipId,
-      message: `Clerk 招待を送信しました: ${member.user.email}`,
-      context: {
-        memberUserId: member.userId,
-        role: member.role,
+    try {
+      const updated = await updateTenantMemberInvitation({
+        tenantId: input.tenantId,
+        membershipId: input.membershipId,
+        memberContext: member,
+        invitationProvider: "clerk",
+        invitationStatus: "pending",
         providerInvitationId: result.providerInvitationId,
-      },
-    });
-    return { member: updated ?? member, sent: true, skipped: false };
+        invitationUrl: result.invitationUrl,
+        sentAt: result.sentAt,
+        actorUserId: input.actorId,
+      });
+      if (!updated) return { member, sent: false, skipped: false, uncertain: true };
+      return { member: updated, sent: true, skipped: false, uncertain: false };
+    } catch {
+      // Clerk succeeded, but the atomic delivery+audit finalization did not.
+      // Do not encourage a blind resend of an invitation that may exist.
+      return { member, sent: false, skipped: false, uncertain: true };
+    }
   }
 
   if (input.recordSkippedAsFailure || !result.skipped) {
-    const updated = await updateTenantMemberInvitation({
-      tenantId: input.tenantId,
-      membershipId: input.membershipId,
-      invitationProvider: "clerk",
-      invitationStatus: "failed",
-      invitationError: result.reason,
-      actorUserId: input.actorId,
-    });
-    await addAuditLog({
-      tenantId: input.tenantId,
-      userId: input.actorId,
-      action: "member_invitation_failed",
-      targetType: "member",
-      targetId: input.membershipId,
-      message: `Clerk 招待を送信できませんでした: ${member.user.email} / ${result.reason}`,
-      context: {
-        memberUserId: member.userId,
-        role: member.role,
-        reason: result.reason,
-      },
-    });
-    return { member: updated ?? member, sent: false, skipped: result.skipped };
+    try {
+      const updated = await updateTenantMemberInvitation({
+        tenantId: input.tenantId,
+        membershipId: input.membershipId,
+        memberContext: member,
+        invitationProvider: "clerk",
+        invitationStatus: "failed",
+        invitationError: result.reason,
+        actorUserId: input.actorId,
+      });
+      if (!updated) return { member, sent: false, skipped: false, uncertain: true };
+      return { member: updated, sent: false, skipped: result.skipped, uncertain: false };
+    } catch {
+      return { member, sent: false, skipped: false, uncertain: true };
+    }
   }
 
   // Local/non-Clerk environments still expose the explicit acceptance path.
@@ -2883,13 +2871,15 @@ async function sendTenantMemberInvitation(input: {
   const pending = await updateTenantMemberInvitation({
     tenantId: input.tenantId,
     membershipId: input.membershipId,
+    memberContext: member,
     invitationProvider: "manual",
     invitationStatus: "pending",
     invitationError: result.reason,
     sentAt: new Date(),
     actorUserId: input.actorId,
   });
-  return { member: pending ?? member, sent: false, skipped: true };
+  if (!pending) return { member, sent: false, skipped: false, uncertain: true };
+  return { member: pending, sent: false, skipped: true, uncertain: false };
 }
 
 export type CreateTenantActionState = {
@@ -2969,9 +2959,18 @@ export async function createTenantForCurrentUserFormAction(
   redirect("/");
 }
 
+export type TenantInvitationActionMessageToken =
+  | "email_verification_required"
+  | "invitation_identity_not_bound"
+  | "invitation_email_mismatch"
+  | "invitation_payload_invalid"
+  | "invitation_unavailable"
+  | "accepted_workspace_switch_failed"
+  | "invitation_accept_failed";
+
 export type TenantInvitationActionState = {
   status: "idle" | "error";
-  message?: string;
+  message?: TenantInvitationActionMessageToken;
 };
 
 /** Explicitly accept one pending invitation after the Clerk identity has been bound by email. */
@@ -2981,44 +2980,40 @@ export async function acceptTenantInvitationAction(
 ): Promise<TenantInvitationActionState> {
   let tenantId = "";
   let membershipId = "";
+  let invitationAccepted = false;
   try {
     const identity = await getVerifiedClerkAuthIdentity();
     if (isClerkAuthEnabled() && !identity?.email) {
-      return { status: "error", message: "请先验证当前登录邮箱，再接受公司邀请。" };
+      return { status: "error", message: "email_verification_required" };
     }
     const user = await getDefaultUser();
     if (!user) {
-      return { status: "error", message: "当前登录身份尚未完成邀请绑定，请确认使用受邀邮箱登录。" };
+      return { status: "error", message: "invitation_identity_not_bound" };
     }
     if (identity?.email && identity.email.toLowerCase() !== user.email.toLowerCase()) {
-      return { status: "error", message: "当前登录邮箱与受邀邮箱不一致。" };
+      return { status: "error", message: "invitation_email_mismatch" };
     }
     tenantId = String(formData.get("tenantId") ?? "").trim();
     membershipId = String(formData.get("membershipId") ?? "").trim();
     const invitationToken = String(formData.get("invitationToken") ?? "").trim();
     if (!tenantId || !membershipId || !invitationToken) {
-      return { status: "error", message: "邀请信息不完整，请刷新后重试。" };
+      return { status: "error", message: "invitation_payload_invalid" };
     }
 
     const member = await acceptTenantInvitation({ userId: user.id, tenantId, membershipId, invitationToken });
     if (!member) {
-      return { status: "error", message: "邀请已撤销、已过期，或当前登录邮箱与受邀邮箱不一致。" };
+      return { status: "error", message: "invitation_unavailable" };
     }
+    invitationAccepted = true;
     const store = await cookies();
     store.set(ACTIVE_TENANT_COOKIE_NAME, tenantId, { httpOnly: true, sameSite: "lax", path: "/" });
-    await addAuditLog({
-      tenantId,
-      userId: user.id,
-      action: "tenant_invitation_accepted",
-      targetType: "member",
-      targetId: membershipId,
-      message: "成员已接受经营主体邀请。",
-      context: { membershipId, role: member.role },
-    });
     revalidatePath("/workspace");
     revalidatePath("/workspace/invitations");
   } catch {
-    return { status: "error", message: "邀请暂时无法接受，请检查登录身份后重试。" };
+    if (invitationAccepted) {
+      return { status: "error", message: "accepted_workspace_switch_failed" };
+    }
+    return { status: "error", message: "invitation_accept_failed" };
   }
   redirect("/");
 }
@@ -3030,6 +3025,10 @@ export async function createTenantAccountAction(formData: FormData) {
   const accountType = parseTenantAccountType(formData.get("accountType"));
   const status = parseTenantLifecycleStatus(formData.get("status"));
   const purchasedSeatCount = parseNumber(formData.get("purchasedSeatCount"), 1);
+  const serviceDates = validateTenantServicePeriod({
+    serviceStartAt: String(formData.get("serviceStartAt") ?? "").trim() || undefined,
+    serviceEndAt: String(formData.get("serviceEndAt") ?? "").trim() || undefined,
+  });
   const ownerName = String(formData.get("ownerName") ?? "").trim();
   const ownerEmail = String(formData.get("ownerEmail") ?? "").trim();
 
@@ -3045,35 +3044,30 @@ export async function createTenantAccountAction(formData: FormData) {
     accountType,
     status,
     purchasedSeatCount,
+    ...serviceDates,
+    actorUserId: session.user.id,
     ownerName,
     ownerEmail,
   });
-
-  await addAuditLog({
-    tenantId: account.id,
-    userId: session.user.id,
-    action: "tenant_account_created",
-    targetType: "tenant",
-    targetId: account.id,
-    message: `テナントアカウントを作成しました: ${account.name} / ${account.purchasedSeatCount} seats`,
-    context: {
-      accountType: account.accountType,
-      status: account.status,
-      purchasedSeatCount: account.purchasedSeatCount,
-      ownerEmail,
-    },
-  });
   const ownerMembership = account.ownerMembers[0];
-  if (ownerMembership) {
-    await sendTenantMemberInvitation({
-      tenantId: account.id,
-      membershipId: ownerMembership.id,
-      actorId: session.user.id,
-      recordSkippedAsFailure: false,
-    });
+  let invitationFailed = false;
+  let deliveryUncertain = false;
+  if (ownerMembership && isTenantServiceOperational(deriveTenantServiceState(account))) {
+    try {
+      const delivery = await sendTenantMemberInvitation({
+        tenantId: account.id,
+        membershipId: ownerMembership.id,
+        actorId: session.user.id,
+        recordSkippedAsFailure: false,
+      });
+      invitationFailed = !delivery.sent && !delivery.skipped;
+      deliveryUncertain = delivery.uncertain;
+    } catch {
+      invitationFailed = true;
+    }
   }
   revalidatePath("/platform/accounts");
-  redirect("/platform/accounts?flash=tenant_created");
+  redirect(`/platform/accounts?flash=${deliveryUncertain ? "invitation_delivery_uncertain" : invitationFailed ? "tenant_created_invitation_failed" : "tenant_created"}`);
 }
 
 export async function updateTenantAccountLifecycleAction(formData: FormData) {
@@ -3081,6 +3075,10 @@ export async function updateTenantAccountLifecycleAction(formData: FormData) {
   const tenantId = String(formData.get("tenantId") ?? "").trim();
   const status = parseTenantLifecycleStatus(formData.get("status"));
   const purchasedSeatCount = parseNumber(formData.get("purchasedSeatCount"), 1);
+  const serviceDates = validateTenantServicePeriod({
+    serviceStartAt: String(formData.get("serviceStartAt") ?? "").trim() || undefined,
+    serviceEndAt: String(formData.get("serviceEndAt") ?? "").trim() || undefined,
+  });
   if (!tenantId) throw new Error("テナントIDが不正です。");
   if (!Number.isInteger(purchasedSeatCount) || purchasedSeatCount < 1) {
     throw new Error("購入席数は 1 以上の整数で指定してください。");
@@ -3090,23 +3088,11 @@ export async function updateTenantAccountLifecycleAction(formData: FormData) {
     tenantId,
     status,
     purchasedSeatCount,
+    ...serviceDates,
+    actorUserId: session.user.id,
   });
   if (!account) throw new Error("テナントが見つかりません。");
 
-  await addAuditLog({
-    tenantId: account.id,
-    userId: session.user.id,
-    action: "tenant_account_lifecycle_updated",
-    targetType: "tenant",
-    targetId: account.id,
-    message: `テナント状態を更新しました: ${account.name} / ${account.status} / ${account.purchasedSeatCount} seats`,
-    context: {
-      status: account.status,
-      purchasedSeatCount: account.purchasedSeatCount,
-      usedSeatCount: account.usedSeatCount,
-      availableSeatCount: account.availableSeatCount,
-    },
-  });
   revalidatePath("/platform/accounts");
   redirect("/platform/accounts?flash=tenant_updated");
 }
@@ -3116,14 +3102,14 @@ export async function sendPlatformTenantMemberInvitationAction(formData: FormDat
   const tenantId = String(formData.get("tenantId") ?? "").trim();
   const membershipId = String(formData.get("membershipId") ?? "").trim();
   if (!tenantId || !membershipId) throw new Error("招待対象が不正です。");
-  await sendTenantMemberInvitation({
+  const invitation = await sendTenantMemberInvitation({
     tenantId,
     membershipId,
     actorId: session.user.id,
     recordSkippedAsFailure: true,
   });
   revalidatePath("/platform/accounts");
-  redirect("/platform/accounts?flash=invitation_sent");
+  redirect(`/platform/accounts?flash=${invitation.uncertain ? "invitation_delivery_uncertain" : invitation.sent ? "invitation_sent" : "invitation_failed"}`);
 }
 
 export async function sendTenantMemberInvitationAction(formData: FormData) {
@@ -3137,7 +3123,7 @@ export async function sendTenantMemberInvitationAction(formData: FormData) {
     recordSkippedAsFailure: true,
   });
   revalidatePath("/settings/members");
-  redirect(`/settings/members?flash=${invitation.sent ? "invitation_sent" : "invitation_failed"}`);
+  redirect(`/settings/members?flash=${invitation.uncertain ? "invitation_delivery_uncertain" : invitation.sent ? "invitation_sent" : "invitation_failed"}`);
 }
 
 export async function inviteTenantMemberAction(formData: FormData) {
@@ -3164,6 +3150,7 @@ export async function inviteTenantMemberAction(formData: FormData) {
     actorId: session.user.id,
     recordSkippedAsFailure: false,
   });
+  if (invitation.uncertain) redirect("/settings/members?flash=invitation_delivery_uncertain");
   await addAuditLog({
     tenantId,
     userId: session.user.id,
@@ -3239,10 +3226,21 @@ export async function updateTenantMemberStatusAction(formData: FormData) {
   const rawStatus = String(formData.get("status") ?? "").trim();
   const status = rawStatus === "active" || rawStatus === "suspended" || rawStatus === "removed" ? rawStatus : undefined;
   if (!membershipId || !status) throw new Error("メンバー状態が不正です。");
-  if (status === "active") {
+  if (status === "active" || status === "suspended") {
     const target = await getTenantMemberById({ tenantId, membershipId });
-    if (target?.status === "invited" || target?.status === "removed") {
+    if (target?.status === "removed" && status === "suspended") {
+      throw new Error("已移除成员必须重新邀请，不能直接转为停用成员。");
+    }
+    if (target?.status === "invited") {
+      throw new Error("邀请成员必须使用邀请凭证明确接受，不能直接启用或停用。");
+    }
+    if (status === "active" && target?.status === "removed") {
       throw new Error("邀请成员必须使用邀请凭证明确接受；已移除成员必须重新邀请。");
+    }
+    if (((target?.status === "active" && status === "suspended")
+        || (target?.status === "suspended" && status === "active"))
+        && target.invitationStatus !== "accepted") {
+      throw new Error("只有已接受邀请的成员可以停用或重新启用。");
     }
   }
   if (membershipId === session.membership.id && status !== "active") {
@@ -3285,6 +3283,7 @@ export async function revokeTenantMemberInvitationAction(formData: FormData) {
   await updateTenantMemberInvitation({
     tenantId: session.tenant.id,
     membershipId,
+    memberContext: member,
     invitationProvider: member.invitationProvider,
     invitationStatus: "revoked",
     invitationError: "revoked_by_company_owner",

@@ -13,11 +13,10 @@ import { isClerkAuthEnabled } from "@/lib/auth-mode";
 import { localizeDemoText } from "@/lib/demo-localization";
 import { t } from "@/lib/i18n";
 import { getLocale, type Locale } from "@/lib/locale";
-import {
-  isConfiguredPlatformOwnerUser,
-} from "@/lib/platform-owner";
+import { getPlatformOwnerSession } from "@/lib/platform-session";
 import { capabilityHasTenantPermission } from "@/lib/tenant-permissions";
 import { getTenantCapability, getTenantSessionForNavigation } from "@/lib/tenant-session";
+import { isTenantServiceOperational } from "@/lib/tenant-service";
 
 function getLinks(locale: Locale) {
   const organizeLabel = locale === "zh" ? "整理信息" : locale === "ko" ? "정보 정리" : "情報整理";
@@ -74,26 +73,30 @@ export async function AppNav() {
   // account is the actor, so loading the entire demo user list on every page
   // only adds a remote database round trip and can leave an empty switcher.
   const actorSwitchingAvailable = actorSwitchingEnabled && !clerkEnabled;
-  const [users, tenantSession] = await Promise.all([
+  const [users, tenantSession, platformSession] = await Promise.all([
     actorSwitchingAvailable ? listUsers(20) : Promise.resolve([]),
     // Resolve the current membership so company-management navigation can be
     // hidden for ordinary members and form administrators. Protected pages
     // still perform their own authorization before returning data.
     getTenantSessionForNavigation(),
+    getPlatformOwnerSession(),
   ]);
-  const links = getLinks(locale);
+  const serviceOperational = Boolean(tenantSession && isTenantServiceOperational(tenantSession.serviceState));
+  const links = serviceOperational
+    ? getLinks(locale)
+    : [{ href: "/service-status", label: locale === "zh" ? "服务状态" : locale === "ko" ? "서비스 상태" : "サービス状態" }];
   // The page and shell share one request-scoped tenant resolution, avoiding a
   // second remote database round trip on every protected navigation.
   const currentActor = tenantSession?.user ?? null;
   const currentCapability = tenantSession ? getTenantCapability(tenantSession.membership) : null;
   const canManageMembers = Boolean(currentCapability && capabilityHasTenantPermission(currentCapability, "member.invite"));
-  const hasPlatformAccess = Boolean(currentActor && isConfiguredPlatformOwnerUser(currentActor));
+  const hasPlatformAccess = Boolean(platformSession);
   const adminLinks = [
-    ...getAdminLinks(locale).filter((link) => link.href !== "/settings/members" || canManageMembers),
-    // The destination performs the real PlatformOwner check. Keeping this
-    // link in the workspace menu avoids a database lookup on every page just
-    // to decide whether an admin-only destination should be visible.
-    ...(clerkEnabled || hasPlatformAccess
+    ...getAdminLinks(locale).filter((link) => serviceOperational && (link.href !== "/settings/members" || canManageMembers)),
+    ...(!serviceOperational && tenantSession && canManageMembers
+      ? [{ href: "/settings/members", label: locale === "zh" ? "订阅与成员" : locale === "ko" ? "구독 및 멤버" : "契約・ユーザー" }]
+      : []),
+    ...(hasPlatformAccess
       ? [{ href: "/platform/accounts", label: locale === "zh" ? "账户管理" : locale === "ko" ? "계정 관리" : "アカウント管理" }]
       : []),
   ];
