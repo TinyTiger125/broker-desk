@@ -482,8 +482,10 @@ assert(dataSource.includes("assertProductionDataStoreReady"), "data layer must r
 assert(dataSource.includes("withPostgresAuthContext"), "data layer must bind Clerk identity before calling the Postgres repository");
 
 const platformSessionSource = fs.readFileSync("src/lib/platform-session.ts", "utf8");
-assert(platformSessionSource.includes("isConfiguredPlatformOwnerUser"), "platform owner access must use centralized owner-id checks");
-assert(platformSessionSource.includes("hasActivePlatformOwnerMembership"), "platform owner access must accept only active database platform-owner memberships");
+assert(!platformSessionSource.includes("isConfiguredPlatformOwnerUser"), "configured platform-owner ids must not authorize the daily platform session");
+assert(platformSessionSource.includes('import { hasActivePlatformOwnerMembership } from "@/lib/platform-owner";'), "platform owner access must use the centralized persisted-membership predicate");
+assert(platformSessionSource.includes("const memberships = await listTenantMemberships(user.id);"), "platform owner access must load the authenticated user's persisted memberships");
+assert(platformSessionSource.includes("if (!hasActivePlatformOwnerMembership(memberships))"), "platform owner access must reject users without an active persisted platform-owner membership");
 
 const platformOwnerSource = fs.readFileSync("src/lib/platform-owner.ts", "utf8");
 assert(platformOwnerSource.includes("externalAuthSubject"), "platform owner access must support external auth subjects such as Clerk user ids");

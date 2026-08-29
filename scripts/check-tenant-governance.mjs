@@ -62,27 +62,70 @@ assert(permissions.roleHasAllTenantPermissions("tenant_owner", ["member.invite",
 
 const tenantId = "tenant_cherry";
 const suffix = Date.now().toString(36);
+const tenantOwnerActorId = "user_demo";
+const platformOwnerActorId = `platform_governance_${suffix}`;
+const platformOwnerNow = new Date();
+assert(globalThis.__brokerDb, "tenant governance requires the published memory database");
+globalThis.__brokerDb.users.push({
+  id: platformOwnerActorId,
+  name: "Governance Platform Owner",
+  email: `platform-governance-${suffix}@example.test`,
+  passwordHash: "test",
+  createdAt: platformOwnerNow,
+});
+globalThis.__brokerDb.tenantMemberships.push({
+  id: `membership_${platformOwnerActorId}`,
+  tenantId,
+  userId: platformOwnerActorId,
+  role: "platform_owner",
+  capability: "ordinary_member",
+  status: "active",
+  invitationProvider: "manual",
+  invitationStatus: "accepted",
+  invitationAcceptedAt: platformOwnerNow,
+  createdAt: platformOwnerNow,
+  updatedAt: platformOwnerNow,
+});
 const invited = await data.inviteTenantMember({
   tenantId,
   name: `Governance Test ${suffix}`,
   email: `governance-${suffix}@example.test`,
   role: "broker",
-  status: "active",
+  status: "invited",
+  capability: "ordinary_member",
+  invitedByUserId: tenantOwnerActorId,
 });
-assert(invited.status === "active", "local invite should create active membership");
+assert(invited.status === "invited", "local invite must start as invited");
 assert(invited.role === "broker", "local invite should keep requested role");
+const governanceSubject = `clerk_governance_${suffix}`;
+const governanceUser = await data.bindCurrentClerkIdentityToPendingInvitation({
+  subject: governanceSubject,
+  email: invited.user.email,
+  name: invited.user.name,
+});
+assert(governanceUser?.externalAuthSubject === governanceSubject, "invited governance identity should bind before acceptance");
+const accepted = await data.acceptTenantInvitation({
+  userId: governanceUser.id,
+  tenantId,
+  membershipId: invited.id,
+  invitationToken: invited.invitationToken,
+});
+assert(accepted?.status === "active" && accepted.invitationStatus === "accepted", "explicit token acceptance should activate the invited membership");
 
 const updated = await data.updateTenantMemberRole({
   tenantId,
   membershipId: invited.id,
-  role: "viewer",
+  role: "manager",
+  capability: "company_form_admin",
+  actorUserId: tenantOwnerActorId,
 });
-assert(updated?.role === "viewer", "member role update should persist");
+assert(updated?.role === "manager" && updated.capability === "company_form_admin", "member role update should persist the canonical capability mapping");
 
 const suspended = await data.updateTenantMemberStatus({
   tenantId,
   membershipId: invited.id,
   status: "suspended",
+  actorUserId: tenantOwnerActorId,
 });
 assert(suspended?.status === "suspended", "member suspension should persist");
 
@@ -94,6 +137,7 @@ const seatAccount = await data.createTenantAccount({
   accountType: "company",
   status: "active",
   purchasedSeatCount: 1,
+  actorUserId: platformOwnerActorId,
   ownerName: "Seat Owner",
   ownerEmail: `seat-owner-${suffix}@example.test`,
 });
@@ -106,38 +150,36 @@ const expandedSeatAccount = await data.updateTenantAccountLifecycle({
   tenantId: seatAccount.id,
   status: "active",
   purchasedSeatCount: 2,
+  actorUserId: platformOwnerActorId,
 });
 assert(expandedSeatAccount?.purchasedSeatCount === 2, "platform lifecycle update should increase purchased seats");
 const shrunkSeatAccount = await data.updateTenantAccountLifecycle({
   tenantId: seatAccount.id,
   status: "trial",
   purchasedSeatCount: 1,
+  actorUserId: platformOwnerActorId,
 });
 assert(shrunkSeatAccount?.status === "trial", "tenant lifecycle should support trial status");
 assert(data.isTenantAccessibleStatus(shrunkSeatAccount.status), "trial tenants should remain accessible");
 
 const loginOwnerEmail = `login-owner-${suffix}@example.test`;
-const platformOwnerEmail = `platform-owner-${suffix}@example.test`;
 const loginAccount = await data.createTenantAccount({
   name: `Login Test ${suffix}`,
   accountType: "individual",
   status: "trial",
   purchasedSeatCount: 2,
-  ownerName: "Platform Owner",
-  ownerEmail: platformOwnerEmail,
+  actorUserId: platformOwnerActorId,
+  ownerName: "Login Owner",
+  ownerEmail: loginOwnerEmail,
 });
-const invitation = await data.inviteTenantMember({
-  tenantId: loginAccount.id,
-  name: "Login Owner",
-  email: loginOwnerEmail,
-  role: "broker",
-});
-assert(invitation.status === "invited", "new member invitation should start as invited");
+const invitation = loginAccount.ownerMembers[0];
+assert(invitation?.status === "invited" && invitation.role === "tenant_owner", "platform-created owner must start as an invited company owner");
 
 const externalSubject = `clerk_user_${suffix}`;
 const pendingOwner = await data.refreshTenantMemberInvitation({
   tenantId: loginAccount.id,
   membershipId: invitation.id,
+  invitedByUserId: platformOwnerActorId,
 });
 assert(pendingOwner?.invitationStatus === "pending", "owner invitation should be pending before acceptance");
 const linkedUser = await data.bindCurrentClerkIdentityToPendingInvitation({
