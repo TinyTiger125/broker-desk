@@ -23,6 +23,26 @@ function assertTenantCreateActionAtomicity(source) {
   assert(!source.includes("await addAuditLog("), "platform create Action must not split tenant creation from its audit writer");
 }
 
+function assertPlatformNavigation({ navSource, mainNavSource, routeTitleSource, accountsPageSource, templatesPageSource }) {
+  assert(navSource.split("getPlatformOwnerSession()").length === 2, "AppNav must reuse exactly one platform-session resolution");
+  assert(navSource.includes("const hasPlatformAccess = Boolean(platformSession)"), "platform navigation visibility must derive only from the shared platform session");
+  assert(!navSource.includes("clerkEnabled || hasPlatformAccess") && !navSource.includes("isConfiguredPlatformOwnerUser"), "platform navigation must not use Clerk/configured-only authority");
+  assert(navSource.includes('href: "/platform/accounts"') && navSource.includes('href: "/platform/templates"'), "platform navigation must expose accounts and official template factory links");
+  for (const text of ["プラットフォーム管理", "平台管理", "플랫폼 관리", "アカウント管理", "账户管理", "계정 관리", "公式テンプレート工場", "官方模板工厂", "공식 템플릿 공장"]) {
+    assert(navSource.includes(text), `platform navigation locale copy must include ${text}`);
+  }
+  assert(navSource.includes("const platformLinks = hasPlatformAccess ? getPlatformLinks(locale) : []"), "platform links must be absent without persisted platform access");
+  assert(navSource.split('data-platform-admin-group').length === 5, "platform group must render once in each desktop/mobile sidebar and settings surface");
+  assert(navSource.includes("platformLinks.length > 0 ?"), "all platform navigation groups must remain guarded by the shared access result");
+
+  assert(mainNavSource.includes('"/platform/accounts": "admin_panel_settings"') && mainNavSource.includes('"/platform/templates": "dashboard_customize"'), "platform navigation links must have stable icons and active-link callers");
+  assert(routeTitleSource.includes('pathname.startsWith("/platform/accounts")') && routeTitleSource.includes('pathname.startsWith("/platform/templates")'), "platform routes must have explicit route-title branches");
+  for (const text of ["プラットフォーム管理", "平台管理", "플랫폼 관리", "アカウント管理", "账户管理", "계정 관리", "公式テンプレート工場", "官方模板工厂", "공식 템플릿 공장"]) {
+    assert(routeTitleSource.includes(text), `platform route-title locale copy must include ${text}`);
+  }
+  assert(accountsPageSource.includes("requirePlatformOwnerSession()") && templatesPageSource.includes("requirePlatformOwnerSession()"), "both platform destinations must retain server-side platform-owner authorization");
+}
+
 function assertPlatformCommercialAuthority({ sessionSource, memorySource, memoryFullSource, postgresSource, actionSource, pageSource }) {
   assert(sessionSource.includes("hasActivePlatformOwnerMembership(memberships)") && !sessionSource.includes("isConfiguredPlatformOwnerUser"), "platform session and navigation authority must require persisted active platform_owner membership, never configured-only allowlist identity");
 
@@ -926,9 +946,12 @@ const forceRlsMigration = read("db/migrations/20260729_002_force_tenant_rls.sql"
 const session = read("src/lib/tenant-session.ts");
 const platformSession = read("src/lib/platform-session.ts");
 const nav = read("src/components/app-nav.tsx");
+const mainNav = read("src/components/main-nav-links.tsx");
+const routeTitle = read("src/components/app-route-title.tsx");
 const actions = read("src/app/actions.ts");
 assert(!actions.includes("[TASK043_ACCEPT_DIAG]") && !clerkAuth.includes("[TASK043_ACCEPT_DIAG]"), "temporary acceptance diagnostics must not remain in the final tree");
 const platformPage = read("src/app/platform/accounts/page.tsx");
+const platformTemplatesPage = read("src/app/platform/templates/page.tsx");
 const membersPage = read("src/app/settings/members/page.tsx");
 const memberManagementCopy = read("src/lib/member-management-copy.ts");
 const servicePage = read("src/app/service-status/page.tsx");
@@ -1510,6 +1533,28 @@ assert(postgres.includes("return withTransaction(async (client)") && postgres.in
 assert(session.includes('"service_unavailable"') && session.includes("requireTenantReadOnlySession"), "tenant session must separate business and restricted read-only access");
 assert(platformSession.includes("getPlatformOwnerSession"), "platform authorization must expose one shared resolver");
 assert(nav.includes("getPlatformOwnerSession") && !nav.includes("clerkEnabled || hasPlatformAccess"), "platform navigation must use the real shared authorization result");
+assertPlatformNavigation({ navSource: nav, mainNavSource: mainNav, routeTitleSource: routeTitle, accountsPageSource: platformPage, templatesPageSource: platformTemplatesPage });
+for (const [label, sources] of [
+  ["configured-only platform navigation", { navSource: replaceRequired(nav, "const hasPlatformAccess = Boolean(platformSession)", "const hasPlatformAccess = clerkEnabled || Boolean(platformSession)", "configured-only platform navigation") }],
+  ["missing official template link", { navSource: replaceRequired(nav, 'href: "/platform/templates"', 'href: "/templates"', "missing official template link") }],
+  ["missing platform group", { navSource: replaceRequired(nav, "data-platform-admin-group", "data-workspace-admin-group", "missing platform group") }],
+  ["wrong template route title", { routeTitleSource: replaceRequired(routeTitle, 'pathname.startsWith("/platform/templates")', 'pathname.startsWith("/templates")', "wrong template route title") }],
+  ["missing template icon", { mainNavSource: replaceRequired(mainNav, '"/platform/templates": "dashboard_customize"', '"/templates": "dashboard_customize"', "missing template icon") }],
+]) {
+  let failed = false;
+  try {
+    assertPlatformNavigation({
+      navSource: sources.navSource ?? nav,
+      mainNavSource: sources.mainNavSource ?? mainNav,
+      routeTitleSource: sources.routeTitleSource ?? routeTitle,
+      accountsPageSource: platformPage,
+      templatesPageSource: platformTemplatesPage,
+    });
+  } catch {
+    failed = true;
+  }
+  assert(failed, `${label} mutation must fail`);
+}
 assert(actions.includes("serviceStartAt") && actions.includes("serviceEndAt"), "platform action must accept service dates");
 assertTenantCreateActionAtomicity(createAction);
 assertPlatformCommercialAuthority({ sessionSource: platformSession, memorySource: memoryCreate, memoryFullSource: memory, postgresSource: postgresCreate, actionSource: createAction, pageSource: platformPage });

@@ -37,11 +37,19 @@ function getAdminLinks(locale: Locale) {
   ];
 }
 
+function getPlatformLinks(locale: Locale) {
+  return [
+    { href: "/platform/accounts", label: locale === "zh" ? "账户管理" : locale === "ko" ? "계정 관리" : "アカウント管理" },
+    { href: "/platform/templates", label: locale === "zh" ? "官方模板工厂" : locale === "ko" ? "공식 템플릿 공장" : "公式テンプレート工場" },
+  ];
+}
+
 function getHeaderMenuCopy(locale: Locale) {
   if (locale === "zh") {
     return {
       workspace: "工作区设置",
       workspaceHint: "模板、成员和工作区规则",
+      platform: "平台管理",
       account: "账号菜单",
       currentAccount: "当前账号",
       signOut: "退出登录",
@@ -51,6 +59,7 @@ function getHeaderMenuCopy(locale: Locale) {
     return {
       workspace: "워크스페이스 설정",
       workspaceHint: "템플릿, 팀, 워크스페이스 규칙",
+      platform: "플랫폼 관리",
       account: "계정 메뉴",
       currentAccount: "현재 계정",
       signOut: "로그아웃",
@@ -59,6 +68,7 @@ function getHeaderMenuCopy(locale: Locale) {
   return {
     workspace: "ワークスペース設定",
     workspaceHint: "テンプレート、メンバー、ワークスペース規則",
+    platform: "プラットフォーム管理",
     account: "アカウントメニュー",
     currentAccount: "現在のアカウント",
     signOut: "ログアウト",
@@ -96,10 +106,8 @@ export async function AppNav() {
     ...(!serviceOperational && tenantSession && canManageMembers
       ? [{ href: "/settings/members", label: locale === "zh" ? "订阅与成员" : locale === "ko" ? "구독 및 멤버" : "契約・ユーザー" }]
       : []),
-    ...(hasPlatformAccess
-      ? [{ href: "/platform/accounts", label: locale === "zh" ? "账户管理" : locale === "ko" ? "계정 관리" : "アカウント管理" }]
-      : []),
   ];
+  const platformLinks = hasPlatformAccess ? getPlatformLinks(locale) : [];
   const appTitle = t(locale, "app.title");
   const actorLabel = locale === "zh" ? "执行账号" : locale === "ko" ? "작업 계정" : "実行担当";
   const menuCopy = getHeaderMenuCopy(locale);
@@ -126,6 +134,12 @@ export async function AppNav() {
               <div className="app-header-menu-panel right-0 mt-2 w-64 p-2">
                 <p className="px-2 pb-2 text-xs font-bold text-slate-900">{menuCopy.workspace}</p>
                 <MainNavLinks links={adminLinks} orientation="column" />
+                {platformLinks.length > 0 ? (
+                  <div data-platform-admin-group className="mt-2 border-t border-slate-200 pt-2">
+                    <p className="px-2 pb-2 text-xs font-bold text-slate-900">{menuCopy.platform}</p>
+                    <MainNavLinks links={platformLinks} orientation="column" />
+                  </div>
+                ) : null}
               </div>
             </details>
             <details className="app-header-menu relative">
@@ -184,6 +198,12 @@ export async function AppNav() {
             </summary>
             <div className="mt-2 overflow-x-auto">
               <MainNavLinks links={adminLinks} />
+              {platformLinks.length > 0 ? (
+                <div data-platform-admin-group className="mt-2 border-t border-slate-200 pt-2">
+                  <p className="px-1 pb-2 text-xs font-bold text-slate-600">{menuCopy.platform}</p>
+                  <MainNavLinks links={platformLinks} />
+                </div>
+              ) : null}
             </div>
           </details>
         </div>
@@ -211,6 +231,12 @@ export async function AppNav() {
 
         <div className="mt-5 flex-1 overflow-y-auto pr-1">
           <MainNavLinks links={links} orientation="column" />
+          {platformLinks.length > 0 ? (
+            <div data-platform-admin-group className="mt-5 border-t border-slate-700 pt-4">
+              <p className="app-nav-expanded-only px-3 pb-2 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">{menuCopy.platform}</p>
+              <MainNavLinks links={platformLinks} orientation="column" />
+            </div>
+          ) : null}
         </div>
       </aside>
 
@@ -230,6 +256,12 @@ export async function AppNav() {
               <p className="px-2 pb-2 text-xs font-bold text-slate-900">{menuCopy.workspace}</p>
               <p className="px-2 pb-2 text-xs text-slate-500">{menuCopy.workspaceHint}</p>
               <MainNavLinks links={adminLinks} orientation="column" />
+              {platformLinks.length > 0 ? (
+                <div data-platform-admin-group className="mt-2 border-t border-slate-200 pt-2">
+                  <p className="px-2 pb-2 text-xs font-bold text-slate-900">{menuCopy.platform}</p>
+                  <MainNavLinks links={platformLinks} orientation="column" />
+                </div>
+              ) : null}
             </div>
           </details>
           <details className="app-header-menu relative">
