@@ -82,6 +82,7 @@ export function MainNavLinks({ links, orientation = "row" }: MainNavLinksProps) 
     "/settings/case-workbench-fields": "rule",
     "/settings/output-templates": "edit_document",
     "/platform/accounts": "admin_panel_settings",
+    "/platform/templates": "dashboard_customize",
   };
 
   return (

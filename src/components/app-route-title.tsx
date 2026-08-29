@@ -19,6 +19,9 @@ const labels = {
     required: "必填项目",
     documentHeader: "文书抬头",
     settings: "工作区设置",
+    platform: "平台管理",
+    platformAccounts: "账户管理",
+    platformTemplates: "官方模板工厂",
   },
   ja: {
     home: "ホーム",
@@ -35,6 +38,9 @@ const labels = {
     required: "必須項目",
     documentHeader: "書類情報",
     settings: "設定",
+    platform: "プラットフォーム管理",
+    platformAccounts: "アカウント管理",
+    platformTemplates: "公式テンプレート工場",
   },
   ko: {
     home: "작업대",
@@ -51,6 +57,9 @@ const labels = {
     required: "필수 항목",
     documentHeader: "문서 정보",
     settings: "설정",
+    platform: "플랫폼 관리",
+    platformAccounts: "계정 관리",
+    platformTemplates: "공식 템플릿 공장",
   },
 } satisfies Record<Locale, Record<string, string>>;
 
@@ -89,6 +98,8 @@ export function AppRouteTitle({ locale }: { locale: Locale }) {
   if (pathname.startsWith("/settings/case-workbench-fields")) return <span>{joinPath([l.settings, l.required])}</span>;
   if (pathname.startsWith("/settings/output-templates")) return <span>{joinPath([l.settings, l.documentHeader])}</span>;
   if (pathname.startsWith("/settings")) return <span>{l.settings}</span>;
+  if (pathname.startsWith("/platform/accounts")) return <span>{joinPath([l.platform, l.platformAccounts])}</span>;
+  if (pathname.startsWith("/platform/templates")) return <span>{joinPath([l.platform, l.platformTemplates])}</span>;
 
   return <span>{joinPath([l.home, l.organize])}</span>;
 }
