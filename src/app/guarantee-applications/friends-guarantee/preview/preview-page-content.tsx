@@ -5,6 +5,7 @@ import {
   saveGuaranteeApplicationTemplateCalibrationAction,
 } from "@/app/actions";
 import { FriendsGuaranteeCalibrationPreview } from "@/components/friends-guarantee-calibration-preview";
+import { OfficialTemplateSaveButton } from "@/components/official-template-save-button";
 import { PageFlashBanner } from "@/components/page-flash-banner";
 import { CASE_FIELD_DEFINITIONS, type CatalogCaseFieldDefinition } from "@/lib/case-field-catalog";
 import { getActiveTenantGuaranteeTemplateInstall, getBrokerageCaseById, getBrokerageCaseByIdForContext, getGuaranteeApplicationDraft, listBrokerageCases, listBrokerageCasesForContext } from "@/lib/data";
@@ -436,6 +437,8 @@ export async function GuaranteeApplicationPreviewPage({
             message={
               params?.flash === "template_layout_saved"
                 ? "テンプレート位置を保存しました。次の案件にもこの位置が反映されます。"
+                : params?.flash === "template_layout_unchanged"
+                  ? "保存するテンプレート変更はありません。"
                 : params?.flash === "preview_saved"
                   ? "プレビュー用の入力内容を保存しました。左のPDFを確認してください。"
                   : undefined
@@ -505,10 +508,15 @@ export async function GuaranteeApplicationPreviewPage({
                 </p>
               </section>
               <div className="sticky bottom-3 rounded-xl border border-violet-200 bg-white/95 p-3 shadow-lg backdrop-blur">
-                <button type="submit" className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-violet-800 px-4 py-3 text-sm font-black !text-white shadow-sm hover:bg-violet-700 [&_.material-symbols-outlined]:!text-white">
-                  <span className="material-symbols-outlined text-[18px] !text-white">save</span>
-                  公式テンプレートを保存
-                </button>
+                <OfficialTemplateSaveButton
+                  initialFeedback={
+                    params?.flash === "template_layout_saved"
+                      ? "saved"
+                      : params?.flash === "template_layout_unchanged"
+                        ? "unchanged"
+                        : undefined
+                  }
+                />
               </div>
             </form>
           ) : selectedCase ? (

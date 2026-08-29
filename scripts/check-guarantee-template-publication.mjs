@@ -10,6 +10,8 @@ const friendsGuaranteeFingerprintRepair = readFileSync(join(root, "db/migrations
 const tenantInstallMigration = readFileSync(join(root, "db/migrations/20260805_004_tenant_guarantee_template_installs.sql"), "utf8");
 const runtime = readFileSync(join(root, "src/lib/guarantee-template-layout-runtime.ts"), "utf8");
 const preview = readFileSync(join(root, "src/app/guarantee-applications/friends-guarantee/preview/preview-page-content.tsx"), "utf8");
+const actions = readFileSync(join(root, "src/app/actions.ts"), "utf8");
+const saveButton = readFileSync(join(root, "src/components/official-template-save-button.tsx"), "utf8");
 const genericDownload = readFileSync(join(root, "src/app/api/guarantee-applications/[templateId]/download/route.ts"), "utf8");
 const friendsDownload = readFileSync(join(root, "src/app/api/guarantee-applications/friends-guarantee/download/route.ts"), "utf8");
 const outputCenter = readFileSync(join(root, "src/app/output-center/page.tsx"), "utf8");
@@ -84,6 +86,16 @@ if (!templateLibrary.includes("Template Library") && !templateLibrary.includes("
 if (!preview.includes("getActiveTenantGuaranteeTemplateInstall")) failures.push("broker preview does not deny uninstalled templates");
 if (!genericDownload.includes('error: "template_not_installed"')) failures.push("generic download does not deny uninstalled templates");
 if (!friendsDownload.includes('error: "template_not_installed"')) failures.push("Friends download does not deny uninstalled templates");
+const unchangedGuardIndex = actions.indexOf('flash=template_layout_unchanged');
+const templatePublishIndex = actions.indexOf("publishGuaranteeTemplateLayoutVersion({", unchangedGuardIndex);
+if (unchangedGuardIndex < 0 || templatePublishIndex < 0 || unchangedGuardIndex > templatePublishIndex) {
+  failures.push("template save does not reject unchanged submissions before publication");
+}
+if (!preview.includes('initialFeedback=')) failures.push("template editor does not expose saved feedback beside the save control");
+for (const feedback of ["保存中…", "保存しました", "保存する変更はありません", "aria-live=\"polite\""]) {
+  if (!saveButton.includes(feedback)) failures.push(`template save feedback is missing: ${feedback}`);
+}
+if (!saveButton.includes('namedItem("layoutDirty")')) failures.push("template save control does not stop unchanged client submissions");
 
 for (const role of ["manager", "broker", "data_operator", "reviewer", "viewer"]) {
   const roleBlock = tenantPermissions.match(new RegExp(`\\n  ${role}: \\[([\\s\\S]*?)\\n  \\],`))?.[1] ?? "";

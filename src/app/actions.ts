@@ -4417,7 +4417,10 @@ async function saveGuaranteeApplicationPreviewWithScope(
 
   if (layoutSaveScope === "template") {
     const layoutDirty = formData.get("layoutDirty") === "true";
-    if (typeof layoutOverridesInput === "string" && (layoutDirty || customFieldsSubmitted)) {
+    if (!layoutDirty) {
+      redirect(`/platform/templates/${encodeURIComponent(template.id)}?caseId=${encodeURIComponent(caseId)}&flash=template_layout_unchanged`);
+    }
+    if (typeof layoutOverridesInput === "string") {
       const baselineSnapshot = (await resolveGuaranteeTemplateLayout(template.id)).snapshot;
       const published = await publishGuaranteeTemplateLayoutVersion({
         templateId: template.id,
