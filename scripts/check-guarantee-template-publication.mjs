@@ -84,9 +84,18 @@ if (!outputCenter.includes("listTenantGuaranteeTemplateInstalls")) failures.push
 if (!outputCenter.includes("hasInstalledGuaranteeTemplates")) failures.push("output center has no empty-template boundary");
 if (!templateLibrary.includes("Template Library") && !templateLibrary.includes("模板库")) failures.push("broker template library is missing");
 if (!preview.includes("getActiveTenantGuaranteeTemplateInstall")) failures.push("broker preview does not deny uninstalled templates");
+if (!preview.includes("selectedCase || isTemplateAuthoring")) {
+  failures.push("official template canvas is hidden when no calibration case is selected");
+}
+if (preview.includes("selectedCase && isTemplateAuthoring")) {
+  failures.push("official template save form still requires a calibration case");
+}
+if (!actions.includes('if (!caseId && saveMode !== "template")')) {
+  failures.push("official template save action still requires a writable calibration case");
+}
 if (!genericDownload.includes('error: "template_not_installed"')) failures.push("generic download does not deny uninstalled templates");
 if (!friendsDownload.includes('error: "template_not_installed"')) failures.push("Friends download does not deny uninstalled templates");
-const unchangedGuardIndex = actions.indexOf('flash=template_layout_unchanged');
+const unchangedGuardIndex = actions.indexOf("if (!layoutDirty)");
 const templatePublishIndex = actions.indexOf("publishGuaranteeTemplateLayoutVersion({", unchangedGuardIndex);
 if (unchangedGuardIndex < 0 || templatePublishIndex < 0 || unchangedGuardIndex > templatePublishIndex) {
   failures.push("template save does not reject unchanged submissions before publication");

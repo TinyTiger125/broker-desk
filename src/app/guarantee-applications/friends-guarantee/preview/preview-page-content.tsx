@@ -266,7 +266,7 @@ export async function GuaranteeApplicationPreviewPage({
   };
   const filledCount =
     overlayFields.filter((field) => {
-      if (!selectedCase) return false;
+      if (!selectedCase && !isTemplateAuthoring) return false;
       if (field.custom) return Boolean(getCustomFieldRawValue(field));
       return Boolean(getCustomFieldRawValue(field));
     }).length +
@@ -406,9 +406,9 @@ export async function GuaranteeApplicationPreviewPage({
 
       <div className="grid min-w-0 gap-4 p-4 2xl:grid-cols-[minmax(0,1fr)_minmax(22rem,26rem)]">
         <section className="min-h-[calc(100vh-132px)] rounded-xl border border-slate-200 bg-white shadow-sm">
-          {selectedCase ? (
+          {selectedCase || isTemplateAuthoring ? (
             <FriendsGuaranteeCalibrationPreview
-              key={`${selectedCase.id}:${template.id}:${JSON.stringify(layoutOverrides)}:${[...deletedOverlayFieldKeys].join(",")}`}
+              key={`${selectedCase?.id ?? "blank-template"}:${template.id}:${JSON.stringify(layoutOverrides)}:${[...deletedOverlayFieldKeys].join(",")}`}
               fields={overlayFields}
               prematchReferenceFields={templateConfig.overlayFields.filter((field) => !isFriendsOverlayFieldNeverPrinted(field))}
               fieldValues={previewFieldValues}
@@ -448,8 +448,8 @@ export async function GuaranteeApplicationPreviewPage({
           <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-xs font-bold text-slate-500">{isTemplateAuthoring ? "校正用案件" : "対象案件"}</p>
-                <h2 className="mt-1 text-base font-black text-slate-950">{selectedCase?.caseTitle ?? "未選択"}</h2>
+                <p className="text-xs font-bold text-slate-500">{isTemplateAuthoring ? "参照案件" : "対象案件"}</p>
+                <h2 className="mt-1 text-base font-black text-slate-950">{selectedCase?.caseTitle ?? (isTemplateAuthoring ? "参照案件なし" : "未選択")}</h2>
                 <p className="mt-1 text-xs font-bold text-slate-500">{template.companyLegalName}</p>
               </div>
               <span className={`rounded-full px-2 py-1 text-[11px] font-bold ${isTemplateAuthoring ? "bg-violet-100 text-violet-800" : downloadGate?.canDownload ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"}`}>
@@ -458,7 +458,9 @@ export async function GuaranteeApplicationPreviewPage({
             </div>
             {isTemplateAuthoring ? (
               <div className="mt-3 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-bold text-violet-900">
-                この案件の値は確認用の参照です。案件資料や申込書追加情報はここでは変更しません。
+                {selectedCase
+                  ? "この案件の値は確認用の参照です。案件資料や申込書追加情報はここでは変更しません。"
+                  : "案件を選ばなくても公式テンプレートを編集・保存できます。入力値の収まりを確認するときだけ参照案件を使用してください。"}
               </div>
             ) : (
               <div className="mt-3 grid grid-cols-2 gap-2">
@@ -497,9 +499,9 @@ export async function GuaranteeApplicationPreviewPage({
             </div>
           </section>
 
-          {selectedCase && isTemplateAuthoring ? (
+          {isTemplateAuthoring ? (
             <form id="guarantee-application-preview-form" action={saveGuaranteeApplicationTemplateCalibrationAction} className="space-y-4">
-              <input type="hidden" name="caseId" value={selectedCase.id} />
+              {selectedCase ? <input type="hidden" name="caseId" value={selectedCase.id} /> : null}
               <input type="hidden" name="templateId" value={template.id} />
               <section className="rounded-xl border border-violet-200 bg-violet-50 p-4">
                 <p className="text-sm font-black text-violet-950">公式テンプレートの変更</p>

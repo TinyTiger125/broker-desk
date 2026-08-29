@@ -4335,42 +4335,55 @@ async function saveGuaranteeApplicationPreviewWithScope(
   const tenantId = session.tenant.id;
 
   const caseId = String(formData.get("caseId") ?? "").trim();
-  if (!caseId) throw new Error("案件IDが不正です。");
+  if (!caseId && saveMode !== "template") throw new Error("案件IDが不正です。");
   const templateId = String(formData.get("templateId") ?? FRIENDS_GUARANTEE_DEFAULT_TEMPLATE_ID).trim() || FRIENDS_GUARANTEE_DEFAULT_TEMPLATE_ID;
   const template = findGuaranteeCompanyTemplate(templateId);
   if (!template) throw new Error("保証会社テンプレートが見つかりません。");
+  const getTemplateEditorRedirectHref = (flash: "template_layout_unchanged" | "template_layout_saved") => {
+    const redirectParams = new URLSearchParams({ flash });
+    if (caseId) redirectParams.set("caseId", caseId);
+    return `/platform/templates/${encodeURIComponent(template.id)}?${redirectParams.toString()}`;
+  };
 
-  const brokerageCase = await requireWritableCase(session, caseId);
-  const previousDraft = await getGuaranteeApplicationDraft({ userId: user.id, tenantId, caseId, templateId: template.id });
-  const previousLayoutOverrides = getFriendsGuaranteeEffectiveLayoutOverrides({
-    templateId: template.id,
-    confirmedDataJson: brokerageCase.confirmedDataJson,
-  });
-  const previousCustomOverlayFields = getFriendsGuaranteeCustomOverlayFields({
-    templateId: template.id,
-    confirmedDataJson: brokerageCase.confirmedDataJson,
-  });
+  const brokerageCase = caseId ? await requireWritableCase(session, caseId) : null;
+  const previousDraft = brokerageCase
+    ? await getGuaranteeApplicationDraft({ userId: user.id, tenantId, caseId, templateId: template.id })
+    : null;
+  const previousLayoutOverrides = brokerageCase
+    ? getFriendsGuaranteeEffectiveLayoutOverrides({
+        templateId: template.id,
+        confirmedDataJson: brokerageCase.confirmedDataJson,
+      })
+    : {};
+  const previousCustomOverlayFields = brokerageCase
+    ? getFriendsGuaranteeCustomOverlayFields({
+        templateId: template.id,
+        confirmedDataJson: brokerageCase.confirmedDataJson,
+      })
+    : [];
 
-  const nextConfirmedData: Record<string, unknown> = { ...brokerageCase.confirmedDataJson };
+  const nextConfirmedData: Record<string, unknown> = brokerageCase ? { ...brokerageCase.confirmedDataJson } : {};
   const existingStatusMap =
     nextConfirmedData[WORKBENCH_FIELD_STATUS_KEY] && typeof nextConfirmedData[WORKBENCH_FIELD_STATUS_KEY] === "object"
       ? { ...(nextConfirmedData[WORKBENCH_FIELD_STATUS_KEY] as Record<string, string>) }
       : {};
 
-  const submittedPreviewCaseFieldKeys = getSubmittedGuaranteePreviewCaseFieldKeys(formData);
-  submittedPreviewCaseFieldKeys.forEach((fieldKey) => {
-    const previousValue = getCaseFieldValue(brokerageCase.confirmedDataJson, fieldKey);
-    const nextValue = String(formData.get(`field:${fieldKey}`) ?? "").trim();
-    if (nextValue) {
-      nextConfirmedData[fieldKey] = nextValue;
-      if (nextValue !== previousValue) {
-        existingStatusMap[fieldKey] = previousValue ? "edited" : "confirmed";
+  const submittedPreviewCaseFieldKeys = brokerageCase ? getSubmittedGuaranteePreviewCaseFieldKeys(formData) : [];
+  if (brokerageCase) {
+    submittedPreviewCaseFieldKeys.forEach((fieldKey) => {
+      const previousValue = getCaseFieldValue(brokerageCase.confirmedDataJson, fieldKey);
+      const nextValue = String(formData.get(`field:${fieldKey}`) ?? "").trim();
+      if (nextValue) {
+        nextConfirmedData[fieldKey] = nextValue;
+        if (nextValue !== previousValue) {
+          existingStatusMap[fieldKey] = previousValue ? "edited" : "confirmed";
+        }
+      } else {
+        clearCaseFieldValueAliases(nextConfirmedData, fieldKey);
+        delete existingStatusMap[fieldKey];
       }
-    } else {
-      clearCaseFieldValueAliases(nextConfirmedData, fieldKey);
-      delete existingStatusMap[fieldKey];
-    }
-  });
+    });
+  }
   const postalCompletionResult = applyJapanesePostalCodeAddressCompletions({
     confirmedData: nextConfirmedData,
     statusMap: existingStatusMap,
@@ -4418,7 +4431,7 @@ async function saveGuaranteeApplicationPreviewWithScope(
   if (layoutSaveScope === "template") {
     const layoutDirty = formData.get("layoutDirty") === "true";
     if (!layoutDirty) {
-      redirect(`/platform/templates/${encodeURIComponent(template.id)}?caseId=${encodeURIComponent(caseId)}&flash=template_layout_unchanged`);
+      redirect(getTemplateEditorRedirectHref("template_layout_unchanged"));
     }
     if (typeof layoutOverridesInput === "string") {
       const baselineSnapshot = (await resolveGuaranteeTemplateLayout(template.id)).snapshot;
@@ -4472,8 +4485,10 @@ async function saveGuaranteeApplicationPreviewWithScope(
     revalidatePath(`/platform/templates/${template.id}`);
     revalidatePath("/platform/templates");
     revalidatePath(`/guarantee-applications/${template.id}/preview`);
-    redirect(`/platform/templates/${encodeURIComponent(template.id)}?caseId=${encodeURIComponent(caseId)}&flash=template_layout_saved`);
+    redirect(getTemplateEditorRedirectHref("template_layout_saved"));
   }
+
+  if (!brokerageCase || !caseId) throw new Error("案件IDが不正です。");
 
   const nextCaseCustomOverlayFields = setFriendsGuaranteeCaseCustomOverlayFields({
     currentValue: nextConfirmedData[FRIENDS_GUARANTEE_CUSTOM_FIELDS_KEY],
