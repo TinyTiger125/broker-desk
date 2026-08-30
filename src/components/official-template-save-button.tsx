@@ -38,6 +38,7 @@ export function OfficialTemplateSaveButton({ initialFeedback }: OfficialTemplate
       <button
         type="submit"
         disabled={pending || isSaved}
+        aria-busy={pending || undefined}
         onClick={(event) => {
           const layoutDirty = event.currentTarget.form?.elements.namedItem("layoutDirty");
           if (!(layoutDirty instanceof HTMLInputElement) || layoutDirty.value !== "true") {

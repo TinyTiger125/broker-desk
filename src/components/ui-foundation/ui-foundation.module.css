@@ -134,7 +134,28 @@
   font-size: var(--bd-text-sm);
   font-weight: var(--bd-weight-bold);
   line-height: var(--bd-leading-tight);
-  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
+  transition: transform 150ms ease-out, background-color 150ms ease-out, border-color 150ms ease-out, color 150ms ease-out, box-shadow 150ms ease-out, filter 150ms ease-out;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .button:not(:disabled):not([aria-busy="true"]):hover,
+  .iconButton:not(:disabled):not([aria-busy="true"]):hover {
+    transform: translateY(-1px);
+    box-shadow: 0 3px 10px rgb(15 23 42 / 10%);
+  }
+}
+
+.button:not(:disabled):active,
+.iconButton:not(:disabled):active {
+  transform: translateY(0) scale(0.98);
+  box-shadow: 0 1px 3px rgb(15 23 42 / 12%);
+  transition-duration: 70ms;
+}
+
+.button[aria-busy="true"],
+.iconButton[aria-busy="true"] {
+  cursor: wait;
+  filter: saturate(0.82);
 }
 
 .buttonLabel {
@@ -616,5 +637,12 @@
   .spinner {
     transition: none;
     animation: none;
+  }
+
+  .button:hover,
+  .button:active,
+  .iconButton:hover,
+  .iconButton:active {
+    transform: none;
   }
 }

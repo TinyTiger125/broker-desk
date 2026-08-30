@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useFormStatus } from "react-dom";
+import { Button } from "@/components/ui-foundation";
 import type { EffectiveCaseWorkbenchFieldRule, CaseFieldRequirement } from "@/lib/case-workbench-field-rules";
 import type { Locale } from "@/lib/locale";
 
@@ -90,13 +91,16 @@ function groupBranches(rules: EffectiveCaseWorkbenchFieldRule[]) {
 function SaveButton({ label, savingLabel }: { label: string; savingLabel: string }) {
   const { pending } = useFormStatus();
   return (
-    <button
+    <Button
       type="submit"
-      disabled={pending}
-      className="rounded-lg bg-slate-950 px-5 py-3 text-sm font-black text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+      tone="primary"
+      controlSize="touch"
+      loading={pending}
+      aria-live="polite"
+      className="px-5"
     >
       {pending ? savingLabel : label}
-    </button>
+    </Button>
   );
 }
 

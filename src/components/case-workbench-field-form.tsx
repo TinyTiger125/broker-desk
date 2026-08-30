@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
+import { Button } from "@/components/ui-foundation";
 import { isValidJapanesePostalCode } from "@/lib/japanese-postal-code-validation";
 
 type CaseWorkbenchFieldFormProps = {
@@ -37,13 +38,16 @@ function FieldSaveButton({
   return (
     <div className={`overflow-hidden transition-all duration-200 ${visible ? "mt-4 max-h-12 opacity-100" : "mt-0 max-h-0 opacity-0"}`}>
       <div className="flex justify-end">
-        <button
+        <Button
           type="submit"
-          disabled={pending}
-          className="rounded-lg bg-slate-950 px-4 py-2 text-xs font-black text-white transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+          tone="primary"
+          controlSize="regular"
+          loading={pending}
+          aria-live="polite"
+          className="text-xs"
         >
           {pending ? savingLabel : saveLabel}
-        </button>
+        </Button>
       </div>
     </div>
   );

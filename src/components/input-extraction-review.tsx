@@ -219,6 +219,8 @@ function SaveReviewButton({
     <button
       type="submit"
       disabled={pending || disabled}
+      aria-busy={pending || undefined}
+      aria-live="polite"
       className="inline-flex min-w-48 items-center justify-center gap-2 rounded-lg bg-indigo-700 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-indigo-800 disabled:cursor-not-allowed disabled:bg-indigo-300"
     >
       {pending ? <span aria-hidden="true" className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/35 border-t-white" /> : null}
