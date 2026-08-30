@@ -167,6 +167,7 @@ const REQUIRED_PRODUCTION_MIGRATIONS = [
   "20260825_001_legacy_output_provenance_marker.sql",
   "20260828_001_tenant_service_period.sql",
   "20260830_001_object_attachment_links.sql",
+  "20260830_002_object_attachment_runtime_grant.sql",
 ] as const;
 
 const OPEN_STAGES: ClientStage[] = ["lead", "contacted", "quoted", "viewing", "negotiating"];

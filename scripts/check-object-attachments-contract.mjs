@@ -5,6 +5,7 @@ const read = (path) => fs.readFileSync(path, "utf8");
 const memory = read("src/lib/data.memory.ts");
 const postgres = read("src/lib/data.postgres.ts");
 const migration = read("db/migrations/20260830_001_object_attachment_links.sql");
+const runtimeGrant = read("db/migrations/20260830_002_object_attachment_runtime_grant.sql");
 const objectAttachments = read("src/lib/object-attachments.ts");
 const actions = read("src/app/actions.ts");
 const api = read("src/lib/w93-access.ts");
@@ -18,6 +19,8 @@ const pages = [
 assert.match(migration, /UNIQUE \(tenant_id, attachment_id, target_type, target_id\)/, "one file/object link must be idempotent");
 assert.match(migration, /CHECK \(target_type IN \('case', 'party', 'property'\)\)/, "link targets must stay bounded");
 assert.match(migration, /ENABLE ROW LEVEL SECURITY[\s\S]*FORCE ROW LEVEL SECURITY/, "attachment links require forced tenant RLS");
+assert.match(runtimeGrant, /GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public\.attachment_links TO brokerdesk_runtime/, "runtime role must receive explicit attachment-link table access");
+assert.match(postgres, /20260830_002_object_attachment_runtime_grant\.sql/, "runtime grant must remain a required deployment migration");
 assert.match(postgres, /ON CONFLICT \(tenant_id, attachment_id, target_type, target_id\)/, "postgres link writes must be idempotent");
 assert.match(memory, /const existing = db\.attachmentLinks\.find/, "memory link writes must be idempotent");
 assert.match(objectAttachments, /linkImportJobAttachmentsToObject/, "import source files need an object-link operation");

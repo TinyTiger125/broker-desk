@@ -44,6 +44,7 @@
 ## 预计涉及的模块
 
 - `db/migrations/20260830_001_object_attachment_links.sql`
+- `db/migrations/20260830_002_object_attachment_runtime_grant.sql`
 - `src/lib/data.memory.ts`
 - `src/lib/data.postgres.ts`
 - `src/lib/data.ts`
@@ -64,6 +65,7 @@
 - 附件只建立元数据关联，不复制原文件；下载仍必须经过租户与父对象权限解析。
 - 若实现要求自动拆分批量 Excel、放宽父对象权限或改写人物/物件 OCR 建档，应停止而不是扩大本任务。
 - 新 migration 只能随候选进入非生产环境；Production migration 与 Production 部署禁止。
+- 固定 Staging 首次运行发现 `brokerdesk_runtime` 缺少新表权限；跟进 migration 必须显式授权并由专项合同锁定。
 
 ## 验证命令
 
