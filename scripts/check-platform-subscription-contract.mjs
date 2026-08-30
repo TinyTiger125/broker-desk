@@ -386,7 +386,7 @@ function assertInvitationConcurrencyProbe(taskSource) {
 function assertPlatformInvitationDeliveryBoundary({ actionSource, postgresPrepareSource, postgresRecordSource, sqlSource }) {
   assert(!actionSource.includes("getTenantById") && !actionSource.includes("getTenantMemberById"), "platform/customer invitation sender must not use ordinary tenant RLS pre/post reads");
   const prepareCall = actionSource.indexOf("await refreshTenantMemberInvitation(");
-  const externalDelivery = actionSource.indexOf("await createClerkInvitationForTenantMember(member)", prepareCall);
+  const externalDelivery = actionSource.indexOf("await createClerkInvitationForTenantMember(prepared)", prepareCall);
   const recordDelivery = actionSource.indexOf("await updateTenantMemberInvitation({", externalDelivery);
   assert(prepareCall >= 0 && externalDelivery > prepareCall && recordDelivery > externalDelivery, "invitation sender must prepare guarded context before Clerk and record delivery afterward");
   assert(actionSource.includes("const member = prepared.member") && actionSource.split("memberContext: member").length === 4, "all delivery outcomes must reuse the guarded prepared member context without an ordinary reread");

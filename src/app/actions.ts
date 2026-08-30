@@ -2827,7 +2827,7 @@ async function sendTenantMemberInvitation(input: {
   if (!prepared) throw new Error("招待対象メンバーが見つかりません。");
   const member = prepared.member;
 
-  const result = await createClerkInvitationForTenantMember(member).catch((error) => ({
+  const result = await createClerkInvitationForTenantMember(prepared).catch((error) => ({
     ok: false as const,
     skipped: false,
     reason: error instanceof Error ? error.message : String(error),

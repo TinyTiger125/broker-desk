@@ -500,6 +500,7 @@ export type {
   TenantAccountMemberSummary,
   TenantInvitationProvider,
   TenantInvitationStatus,
+  TenantInvitationDeliveryContext,
   TenantMembership,
   TenantMemberListItem,
   TenantCapabilityPreset,

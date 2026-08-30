@@ -1,0 +1,7 @@
+{
+  "name": "Broker Desk company invitation",
+  "subject": "【Broker Desk】{{invitation.public_metadata.brokerDeskTenantName}} へのご招待",
+  "fromEmailName": "invitations",
+  "deliveredByClerk": true,
+  "bodyFile": "invitation-email.ja.html"
+}
