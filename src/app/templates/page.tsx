@@ -1,10 +1,13 @@
 import Image from "next/image";
 import Link from "next/link";
-import { installGuaranteeTemplateForTenantAction } from "@/app/actions";
+import { copyOfficialGuaranteeTemplateToCompanyAction, installGuaranteeTemplateForTenantAction } from "@/app/actions";
 import { listTenantGuaranteeTemplateInstalls } from "@/lib/data";
 import { guaranteeCompanyTemplates } from "@/lib/guarantee-application";
 import { getLocale, type Locale } from "@/lib/locale";
-import { requireTenantSession } from "@/lib/tenant-session";
+import { isGuaranteeSlice1EnabledForTenant } from "@/lib/guarantee-slice1-gate";
+import { getTenantCapability, requireTenantSession } from "@/lib/tenant-session";
+import { capabilityHasTenantPermission } from "@/lib/tenant-permissions";
+import { TemplateCopyButton } from "./template-copy-button";
 
 export const dynamic = "force-dynamic";
 
@@ -50,6 +53,9 @@ const copyByLocale = {
     sourceVersion: "追加元の公式版",
     preview: "書式プレビュー",
     installedMessage: "テンプレートをワークスペースに追加しました。書類出力で選択できます。",
+    copyForCompany: "会社テンプレートとして編集",
+    copyForCompanyDesc: "公式版を会社専用の草稿へコピーし、座標を調整してテスト・公開します。公式版は変更されません。",
+    copyingForCompany: "会社テンプレートを作成中…",
   },
   zh: {
     eyebrow: "模板库",
@@ -71,6 +77,9 @@ const copyByLocale = {
     sourceVersion: "来源官方版本",
     preview: "格式预览",
     installedMessage: "模板已添加到当前工作区，可以在输出文件中选择。",
+    copyForCompany: "复制为公司模板并编辑",
+    copyForCompanyDesc: "复制官方版本及其坐标为公司草稿，再进行调整、测试和发布；官方版本不会被修改。",
+    copyingForCompany: "正在创建公司模板…",
   },
   ko: {
     eyebrow: "템플릿 라이브러리",
@@ -92,6 +101,9 @@ const copyByLocale = {
     sourceVersion: "원본 공식판",
     preview: "서식 미리보기",
     installedMessage: "템플릿을 현재 워크스페이스에 추가했습니다. 문서 출력에서 선택할 수 있습니다.",
+    copyForCompany: "회사 템플릿으로 복사해 편집",
+    copyForCompanyDesc: "공식 버전과 좌표를 회사 초안으로 복사한 뒤 조정·테스트·게시합니다. 공식 버전은 변경되지 않습니다.",
+    copyingForCompany: "회사 템플릿을 만드는 중…",
   },
 } as const;
 
@@ -111,6 +123,9 @@ export default async function TemplatesPage({ searchParams }: TemplatesPageProps
   const selectedTemplate = templates.find((template) => template.id === selectedTemplateId) ?? templates[0];
   const installedTemplates = await listTenantGuaranteeTemplateInstalls({ tenantId: session.tenant.id });
   const installedByTemplateId = new Map(installedTemplates.map((item) => [item.templateId, item]));
+  const canEditCompanyTemplates =
+    isGuaranteeSlice1EnabledForTenant(session.tenant.id) &&
+    capabilityHasTenantPermission(getTenantCapability(session.membership), "template.edit_draft");
 
   if (!selectedTemplate) return null;
 
@@ -218,6 +233,12 @@ export default async function TemplatesPage({ searchParams }: TemplatesPageProps
             {selectedInstall ? (
               <div className="flex flex-col items-stretch gap-2 sm:flex-row">
                 <span className="inline-flex items-center justify-center rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-black text-emerald-800">{copy.added}</span>
+                {canEditCompanyTemplates ? (
+                  <form action={copyOfficialGuaranteeTemplateToCompanyAction}>
+                    <input type="hidden" name="templateId" value={selectedTemplate.id} />
+                    <TemplateCopyButton idleLabel={copy.copyForCompany} pendingLabel={copy.copyingForCompany} />
+                  </form>
+                ) : null}
                 <Link href={`/output-center?docGroup=application&doc=guarantee_application&guaranteeTemplate=${encodeURIComponent(selectedTemplate.id)}`} className="inline-flex items-center justify-center gap-2 rounded bg-slate-950 px-4 py-2 text-sm font-black text-white hover:bg-slate-800">
                   <span aria-hidden="true" className="material-symbols-outlined text-[18px]">print</span>
                   {copy.useInOutput}
@@ -248,6 +269,7 @@ export default async function TemplatesPage({ searchParams }: TemplatesPageProps
             </div>
             <div className="self-start border border-slate-200 bg-white p-4">
               <p className="text-sm leading-6 text-slate-600">{copy.addDescription}</p>
+              {canEditCompanyTemplates ? <p className="mt-3 border-l-2 border-blue-500 pl-3 text-sm leading-6 text-slate-600">{copy.copyForCompanyDesc}</p> : null}
               <dl className="mt-5 divide-y divide-slate-200 border-y border-slate-200 text-sm">
                 <div className="flex items-center justify-between gap-3 py-3">
                   <dt className="font-semibold text-slate-500">{copy.application}</dt>

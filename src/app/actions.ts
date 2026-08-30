@@ -32,6 +32,8 @@ import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { cookies } from "next/headers";
 import {
   addAttachment,
+  addGuaranteeBlankFormVersion,
+  addGuaranteeCompanyMaskVersion,
   addPrivateAttachment,
   addCorrectionEvents,
   addAuditLog,
@@ -41,6 +43,8 @@ import {
   addTask,
   createTenantAccount,
   createTenantAccountForUser,
+  createGuaranteeBlankForm,
+  createGuaranteeCompanyMask,
   acceptTenantInvitation,
   getDefaultUser,
   applyOutputTemplateVersion,
@@ -62,6 +66,7 @@ import {
   listCaseWorkbenchFieldRules,
   listExtractionReviewItems,
   listImportJobs,
+  listGuaranteeCompanyMaskVersions,
   listTenantMembers,
   mergeBrokerageCaseExtractionReview,
   rollbackBrokerageCaseMerge,
@@ -215,6 +220,8 @@ import {
   sanitizeFriendsGuaranteeLayoutOverrides,
 } from "@/lib/friends-guarantee-pdf";
 import { resolveGuaranteeTemplateLayout } from "@/lib/guarantee-template-layout-runtime";
+import { buildOfficialTemplateCompanyCopy } from "@/lib/official-template-company-copy";
+import { isGuaranteeSlice1EnabledForTenant } from "@/lib/guarantee-slice1-gate";
 import {
   CASE_MERGE_MIN_CONFIDENCE,
   createCaseMergeHistoryItem,
@@ -4319,6 +4326,107 @@ export async function installGuaranteeTemplateForTenantAction(formData: FormData
   revalidatePath("/output-center");
   revalidatePath(`/guarantee-applications/${template.id}/preview`);
   redirect(`/templates?template=${encodeURIComponent(template.id)}&flash=template_installed`);
+}
+
+export async function copyOfficialGuaranteeTemplateToCompanyAction(formData: FormData) {
+  const session = await requireTenantSession({ permissions: ["template.copy_official", "template.edit_draft"] });
+  if (!isGuaranteeSlice1EnabledForTenant(session.tenant.id)) {
+    throw new Error("会社テンプレート編集はこのワークスペースで有効になっていません。");
+  }
+  const templateId = String(formData.get("templateId") ?? "").trim();
+  const template = findGuaranteeCompanyTemplate(templateId);
+  if (!template || template.outputStatus !== "active") {
+    throw new Error("利用可能な公式テンプレートが見つかりません。");
+  }
+
+  const source = await resolveGuaranteeTemplateLayout(template.id);
+  if (source.source !== "published" && isProductionRuntime()) {
+    throw new Error("公式テンプレートの公開版が未設定です。");
+  }
+  const sourcePlatformMaskId = `official:${template.id}:${source.versionId}`;
+  const existing = (await listGuaranteeCompanyMaskVersions({ tenantId: session.tenant.id }))
+    .find((version) => version.sourcePlatformMaskId === sourcePlatformMaskId);
+  if (existing) {
+    redirect(`/guarantee-forms/${encodeURIComponent(existing.blankFormId)}/edit?blankFormVersionId=${encodeURIComponent(existing.blankFormVersionId)}&maskId=${encodeURIComponent(existing.maskId)}&flash=official_template_copy_reused`);
+  }
+
+  const companyCopy = await buildOfficialTemplateCompanyCopy({
+    templateId: template.id,
+    layout: source.snapshot,
+  });
+  const blankForm = await createGuaranteeBlankForm({
+    tenantId: session.tenant.id,
+    userId: session.user.id,
+    name: `${template.companyDisplayName} ${template.templateDisplayName}（公司副本）`,
+    recipientOrPurpose: `官方模板 ${template.id} v${source.versionNumber} 的公司编辑副本`,
+  });
+  const attachment = await addPrivateAttachment({
+    tenantId: session.tenant.id,
+    userId: session.user.id,
+    targetType: "guarantee_blank_form",
+    targetId: blankForm.id,
+    fileName: `${template.id}-company-copy.pdf`,
+    fileType: "application/pdf",
+    content: companyCopy.pdfBytes,
+  });
+  const blankVersion = await addGuaranteeBlankFormVersion({
+    tenantId: session.tenant.id,
+    blankFormId: blankForm.id,
+    attachmentId: attachment.id,
+    uploadedByUserId: session.user.id,
+    sha256: companyCopy.sha256,
+    fileSizeBytes: companyCopy.pdfBytes.length,
+    pageCount: 1,
+    pageWidth: companyCopy.pageWidth,
+    pageHeight: companyCopy.pageHeight,
+    status: "ready",
+  });
+  const mask = await createGuaranteeCompanyMask({
+    tenantId: session.tenant.id,
+    blankFormId: blankForm.id,
+    userId: session.user.id,
+  });
+  const maskVersion = await addGuaranteeCompanyMaskVersion({
+    tenantId: session.tenant.id,
+    maskId: mask.id,
+    blankFormVersionId: blankVersion.id,
+    userId: session.user.id,
+    fieldCatalogVersion: "official-company-copy-v1",
+    layoutSnapshot: {
+      coordinateSystem: "pdf_points_bottom_left_v1",
+      fields: companyCopy.fields,
+      provenance: {
+        sourceType: "official_template",
+        templateId: template.id,
+        sourceVersionId: source.versionId,
+        sourceVersionNumber: source.versionNumber,
+      },
+    },
+    status: "draft",
+    sourcePlatformMaskId,
+  });
+
+  await addAuditLog({
+    tenantId: session.tenant.id,
+    userId: session.user.id,
+    action: "official_template_copied_to_company",
+    targetType: "template",
+    targetId: maskVersion.id,
+    message: `${template.companyDisplayName}の公式テンプレート v${source.versionNumber} を会社テンプレート草稿へコピーしました。`,
+    context: {
+      templateId: template.id,
+      sourceVersionId: source.versionId,
+      sourceVersionNumber: source.versionNumber,
+      blankFormId: blankForm.id,
+      maskId: mask.id,
+      maskVersionId: maskVersion.id,
+      copiedFieldCount: companyCopy.fields.length,
+    },
+  });
+
+  revalidatePath("/templates");
+  revalidatePath("/guarantee-forms");
+  redirect(`/guarantee-forms/${encodeURIComponent(blankForm.id)}/edit?blankFormVersionId=${encodeURIComponent(blankVersion.id)}&maskId=${encodeURIComponent(mask.id)}&flash=official_template_copied`);
 }
 
 async function saveGuaranteeApplicationPreviewWithScope(

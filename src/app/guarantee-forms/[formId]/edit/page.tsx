@@ -84,7 +84,7 @@ async function loadInitialAdminContext(tenantId: string, formId: string, maskVer
   }
 }
 
-export default async function GuaranteeFormEditPage({ params, searchParams }: { params: Promise<{ formId: string }>; searchParams?: Promise<{ blankFormVersionId?: string; maskId?: string }> }) {
+export default async function GuaranteeFormEditPage({ params, searchParams }: { params: Promise<{ formId: string }>; searchParams?: Promise<{ blankFormVersionId?: string; maskId?: string; flash?: string }> }) {
   const { formId } = await params;
   const requestedContext = (await searchParams) ?? {};
   const initialBlankFormVersionId = String(requestedContext.blankFormVersionId ?? "").trim() || undefined;
@@ -125,7 +125,15 @@ export default async function GuaranteeFormEditPage({ params, searchParams }: { 
       ? await loadInitialAdminContext(session.tenant.id, form.id, selectedVersion.id, recoveryBlankFormVersionId, recoveryMaskId)
       : undefined;
     const clientBlankFormId = selectedVersion || (recoveryBlankFormVersionId && recoveryMaskId) ? form.id : undefined;
-    return <GuaranteeSlice1Client enabled={enabled} isAdmin={capabilityHasTenantPermission(getTenantCapability(session.membership), "template.edit_draft")} cases={testCases.map(toGuaranteeTestCaseSummary)} publishedVersions={[]} initialMaskVersionId={selectedVersion?.id} initialBlankFormId={clientBlankFormId} initialBlankFormVersionId={recoveryBlankFormVersionId} initialMaskId={recoveryMaskId} initialAdminContext={initialAdminContext} adminOnly showUpload={false} heading={`编辑公司表格：${form.name}`} />;
+    const copyNotice = requestedContext.flash === "official_template_copied"
+      ? "官方模板已复制为公司草稿。请检查坐标、生成测试 PDF 并确认后再发布。"
+      : requestedContext.flash === "official_template_copy_reused"
+        ? "该官方版本已经复制过，已打开现有公司草稿，未重复创建。"
+        : undefined;
+    return <>
+      {copyNotice ? <p className="border-b border-emerald-200 bg-emerald-50 px-6 py-3 text-sm font-semibold text-emerald-900" role="status">{copyNotice}</p> : null}
+      <GuaranteeSlice1Client enabled={enabled} isAdmin={capabilityHasTenantPermission(getTenantCapability(session.membership), "template.edit_draft")} cases={testCases.map(toGuaranteeTestCaseSummary)} publishedVersions={[]} initialMaskVersionId={selectedVersion?.id} initialBlankFormId={clientBlankFormId} initialBlankFormVersionId={recoveryBlankFormVersionId} initialMaskId={recoveryMaskId} initialAdminContext={initialAdminContext} adminOnly showUpload={false} heading={`编辑公司表格：${form.name}`} />
+    </>;
   } catch (error) {
     const message = error instanceof TenantSessionError && error.code === "permission_denied" ? "只有公司表格管理员可以编辑蒙板。" : "请在受控非生产工作区中登录后再访问。";
     return <main className="mx-auto max-w-3xl px-6 py-12"><h1 className="text-2xl font-semibold text-slate-950">公司表格编辑</h1><p className="mt-3 text-sm text-slate-600">{message}</p><a href="/guarantee-forms" className="mt-4 inline-block text-sm text-blue-700 underline">返回公司表格库</a></main>;
