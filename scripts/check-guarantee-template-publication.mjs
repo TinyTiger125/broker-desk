@@ -17,6 +17,7 @@ const friendsDownload = readFileSync(join(root, "src/app/api/guarantee-applicati
 const outputCenter = readFileSync(join(root, "src/app/output-center/page.tsx"), "utf8");
 const templateLibrary = readFileSync(join(root, "src/app/templates/page.tsx"), "utf8");
 const tenantPermissions = readFileSync(join(root, "src/lib/tenant-permissions.ts"), "utf8");
+const guaranteePdfRenderer = readFileSync(join(root, "src/lib/friends-guarantee-pdf.ts"), "utf8");
 
 const templates = [
   ["zenhoren_individual_v1", "zenhoren-v1-hd.png", 2400, 1697, 1190.55, 841.89],
@@ -27,6 +28,12 @@ const templates = [
 ];
 
 const failures = [];
+if (!guaranteePdfRenderer.includes('join(process.cwd(), "public", "fonts", "NotoSansJP[wght].ttf")')) {
+  failures.push("PDF renderer does not prefer the packaged Japanese font in server runtimes");
+}
+if (!readFileSync(join(root, "public/fonts/NotoSansJP[wght].ttf")).length) {
+  failures.push("packaged Japanese PDF font is missing or empty");
+}
 for (const [templateId, imageName, imageWidth, imageHeight, pageWidth, pageHeight] of templates) {
   const image = readFileSync(join(root, "public/guarantee-templates", imageName));
   const fingerprint = `sha256:${createHash("sha256").update(image).digest("hex")}:image:${imageWidth}x${imageHeight}:page:${pageWidth}x${pageHeight}`;

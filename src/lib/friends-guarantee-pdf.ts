@@ -12,6 +12,7 @@ import { getCaseFieldDefinition } from "@/lib/case-field-catalog";
 import { getCaseFieldValue } from "@/lib/case-field-normalization";
 
 const JAPANESE_FONT_CANDIDATES = [
+  join(process.cwd(), "public", "fonts", "NotoSansJP[wght].ttf"),
   "/System/Library/AssetsV2/com_apple_MobileAsset_Font8/ee89e7987a76cc8cfdff36c96bd7bc77655b343e.asset/AssetData/YuGothic-Medium.otf",
   "/System/Library/AssetsV2/com_apple_MobileAsset_Font8/0b5bb0a7f7e82279e049e3c943133f4b186ff8a2.asset/AssetData/Osaka.ttf",
   "/System/Library/Fonts/Supplemental/AppleGothic.ttf",
