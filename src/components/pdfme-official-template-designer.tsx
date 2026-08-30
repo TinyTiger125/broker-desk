@@ -236,7 +236,7 @@ export function PdfmeOfficialTemplateDesigner({
   const customOverlayFieldsValue = useMemo(() => JSON.stringify(customOverlayFields), [customOverlayFields]);
 
   return (
-    <div className="flex h-[calc(100vh-132px)] flex-col">
+    <div data-bd-button-surface="editor" className="flex h-[calc(100vh-132px)] flex-col">
       <input form={formId} type="hidden" name="layoutOverrides" value={layoutOverridesValue} readOnly />
       <input form={formId} type="hidden" name="customOverlayFields" value={customOverlayFieldsValue} readOnly />
       <input form={formId} type="hidden" name="layoutDirty" value={dirty ? "true" : "false"} readOnly />

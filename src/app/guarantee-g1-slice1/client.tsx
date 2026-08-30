@@ -484,7 +484,7 @@ export function GuaranteeSlice1Client({ enabled, isAdmin, cases, publishedVersio
   }
 
   return (
-    <main className="mx-auto max-w-5xl px-6 py-10">
+    <main data-bd-button-surface="editor" className="mx-auto max-w-5xl px-6 py-10">
       <header className="border-b border-slate-200 pb-6">
         <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">受控 Preview/Staging · TASK-038</p>
         <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">{heading ?? "保证公司申请书最小闭环"}</h1>

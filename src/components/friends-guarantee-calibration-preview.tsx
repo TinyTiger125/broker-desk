@@ -2134,7 +2134,7 @@ export function FriendsGuaranteeCalibrationPreview({
   };
 
   return (
-    <div className="flex h-[calc(100vh-132px)] flex-col">
+    <div data-bd-button-surface="editor" className="flex h-[calc(100vh-132px)] flex-col">
       <input form={formId} type="hidden" name="layoutOverrides" value={layoutOverrideValue} readOnly />
       <input form={formId} type="hidden" name="deletedOverlayFields" value={deletedOverlayFieldsValue} readOnly />
       <input form={formId} type="hidden" name="customOverlayFields" value={customOverlayFieldsValue} readOnly />

@@ -250,6 +250,92 @@ button[aria-busy="true"],
   filter: saturate(0.82);
 }
 
+/*
+ * Product-wide business button appearance.
+ * This layer deliberately changes presentation only. Existing elements,
+ * handlers, form semantics, permissions and pending logic stay untouched.
+ * Canvas/editor surfaces opt out because their resize and placement handles
+ * are tools rather than business actions.
+ */
+button:not([data-bd-button-appearance="status"]):not(:where([data-bd-button-surface="editor"] button)),
+a.ui-button-stable,
+a[class*="min-h-"]:not(:where([data-bd-button-surface="editor"] a)),
+a[class~="inline-flex"][class*="px-"]:not(:where([data-bd-button-surface="editor"] a)) {
+  border-radius: var(--bd-radius-md);
+  font-family: inherit;
+  font-size: var(--bd-text-sm);
+  font-weight: var(--bd-weight-medium);
+  line-height: 1.25rem;
+  letter-spacing: 0;
+}
+
+button:not([class*="h-"]):not([data-bd-button-appearance="status"]):not(:where([data-bd-button-surface="editor"] button)),
+a.ui-button-stable:not([class*="h-"]),
+a[class*="min-h-"]:not(:where([data-bd-button-surface="editor"] a)),
+a[class~="inline-flex"][class*="px-"]:not([class*="h-"]):not(:where([data-bd-button-surface="editor"] a)) {
+  min-height: var(--bd-control-height-regular);
+}
+
+button[class~="h-9"]:not(:where([data-bd-button-surface="editor"] button)),
+button[class~="min-h-9"]:not(:where([data-bd-button-surface="editor"] button)) {
+  min-height: var(--bd-control-height-compact);
+}
+
+button[class~="h-11"]:not(:where([data-bd-button-surface="editor"] button)),
+button[class~="min-h-11"]:not(:where([data-bd-button-surface="editor"] button)),
+button[class~="min-h-12"]:not(:where([data-bd-button-surface="editor"] button)),
+a[class~="h-11"]:not(:where([data-bd-button-surface="editor"] a)),
+a[class~="min-h-11"]:not(:where([data-bd-button-surface="editor"] a)),
+a[class~="min-h-12"]:not(:where([data-bd-button-surface="editor"] a)) {
+  min-height: var(--bd-control-height-touch);
+}
+
+button[class~="border-slate-300"]:not([aria-pressed="true"]):not(:where([data-bd-button-surface="editor"] button)),
+a[class~="border-slate-300"]:not([aria-current="page"]):not(:where([data-bd-button-surface="editor"] a)) {
+  border-color: var(--bd-line-strong);
+  color: var(--bd-ink);
+}
+
+button[class~="bg-slate-950"]:not([data-bd-button-appearance="status"]):not(:where([data-bd-button-surface="editor"] button)),
+button[class~="bg-slate-900"]:not([data-bd-button-appearance="status"]):not(:where([data-bd-button-surface="editor"] button)),
+button[class~="bg-[#001e40]"]:not([data-bd-button-appearance="status"]):not(:where([data-bd-button-surface="editor"] button)),
+button[class~="bg-[#002FA7]"]:not([data-bd-button-appearance="status"]):not(:where([data-bd-button-surface="editor"] button)),
+button[class~="bg-blue-600"]:not([data-bd-button-appearance="status"]):not(:where([data-bd-button-surface="editor"] button)),
+button[class~="bg-blue-700"]:not([data-bd-button-appearance="status"]):not(:where([data-bd-button-surface="editor"] button)),
+button[class~="bg-indigo-700"]:not([data-bd-button-appearance="status"]):not(:where([data-bd-button-surface="editor"] button)),
+button[class~="bg-emerald-600"]:not([data-bd-button-appearance="status"]):not(:where([data-bd-button-surface="editor"] button)),
+button[class~="bg-emerald-700"]:not([data-bd-button-appearance="status"]):not(:where([data-bd-button-surface="editor"] button)),
+a[class~="bg-slate-950"]:not(:where([data-bd-button-surface="editor"] a)),
+a[class~="bg-slate-900"]:not(:where([data-bd-button-surface="editor"] a)),
+a[class~="bg-[#001e40]"]:not(:where([data-bd-button-surface="editor"] a)),
+a[class~="bg-[#002FA7]"]:not(:where([data-bd-button-surface="editor"] a)),
+a[class~="bg-blue-700"]:not(:where([data-bd-button-surface="editor"] a)) {
+  border-color: var(--bd-ink);
+  background-color: var(--bd-ink);
+  color: var(--bd-surface) !important;
+  -webkit-text-fill-color: var(--bd-surface);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  button[class~="bg-slate-950"]:not(:disabled):not([data-bd-button-appearance="status"]):not(:where([data-bd-button-surface="editor"] button)):hover,
+  button[class~="bg-slate-900"]:not(:disabled):not([data-bd-button-appearance="status"]):not(:where([data-bd-button-surface="editor"] button)):hover,
+  button[class~="bg-[#001e40]"]:not(:disabled):not([data-bd-button-appearance="status"]):not(:where([data-bd-button-surface="editor"] button)):hover,
+  button[class~="bg-[#002FA7]"]:not(:disabled):not([data-bd-button-appearance="status"]):not(:where([data-bd-button-surface="editor"] button)):hover,
+  button[class~="bg-blue-600"]:not(:disabled):not([data-bd-button-appearance="status"]):not(:where([data-bd-button-surface="editor"] button)):hover,
+  button[class~="bg-blue-700"]:not(:disabled):not([data-bd-button-appearance="status"]):not(:where([data-bd-button-surface="editor"] button)):hover,
+  button[class~="bg-indigo-700"]:not(:disabled):not([data-bd-button-appearance="status"]):not(:where([data-bd-button-surface="editor"] button)):hover,
+  button[class~="bg-emerald-600"]:not(:disabled):not([data-bd-button-appearance="status"]):not(:where([data-bd-button-surface="editor"] button)):hover,
+  button[class~="bg-emerald-700"]:not(:disabled):not([data-bd-button-appearance="status"]):not(:where([data-bd-button-surface="editor"] button)):hover,
+  a[class~="bg-slate-950"]:not(:where([data-bd-button-surface="editor"] a)):hover,
+  a[class~="bg-slate-900"]:not(:where([data-bd-button-surface="editor"] a)):hover,
+  a[class~="bg-[#001e40]"]:not(:where([data-bd-button-surface="editor"] a)):hover,
+  a[class~="bg-[#002FA7]"]:not(:where([data-bd-button-surface="editor"] a)):hover,
+  a[class~="bg-blue-700"]:not(:where([data-bd-button-surface="editor"] a)):hover {
+    border-color: var(--bd-accent-dark);
+    background-color: var(--bd-accent-dark);
+  }
+}
+
 input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
 select,
 textarea {

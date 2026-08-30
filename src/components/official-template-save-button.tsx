@@ -37,6 +37,7 @@ export function OfficialTemplateSaveButton({ initialFeedback }: OfficialTemplate
     <>
       <button
         type="submit"
+        data-bd-button-appearance="status"
         disabled={pending || isSaved}
         aria-busy={pending || undefined}
         onClick={(event) => {
