@@ -23,6 +23,7 @@
 - `product/`：产品主题资料。
 - `engineering/`：运行、数据和工程主题资料。
 - `operations/`：运营、合规、术语和流程资料。
+- `operations/BRAND_ASSET_REGISTRY.md`：品牌名称、域名、认证邮件与视觉资产的当前登记和统一切换门。
 - `acceptance/`：验收证据和测试记录。
 - `agents/`：Agent辅助资料；只有任务或角色明确需要时读取。
 
