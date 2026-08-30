@@ -240,7 +240,7 @@ export async function AppNav() {
         </div>
       </aside>
 
-      <header data-app-shell-top-occluder className="app-desktop-header fixed right-0 top-0 z-30 hidden h-16 items-center justify-between border-b border-slate-300 bg-[#f3f4f6]/95 px-8 backdrop-blur lg:flex">
+      <header data-app-shell-top-occluder className="app-desktop-header fixed right-0 top-0 z-40 hidden h-16 items-center justify-between border-b border-slate-300 bg-[#f3f4f6]/95 px-8 backdrop-blur lg:flex">
         <div className="flex items-center gap-3 text-sm font-bold text-slate-900">
           <span aria-hidden="true" className="material-symbols-outlined text-[18px] text-[#1960a3]">task_alt</span>
           <AppRouteTitle locale={locale} />

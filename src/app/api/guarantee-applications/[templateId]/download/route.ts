@@ -129,8 +129,10 @@ export async function GET(request: Request, { params }: GuaranteeTemplateDownloa
     );
   }
 
+  let exportStage = "resolve_layout";
   try {
     const templateLayout = await resolveGuaranteeTemplateLayout(template.id, session.tenant.id);
+    exportStage = "render_pdf";
     const bytes = await renderFriendsGuaranteePdf({
       confirmedDataJson: brokerageCase.confirmedDataJson,
       draftFieldValuesJson: draft?.fieldValuesJson,
@@ -139,6 +141,7 @@ export async function GET(request: Request, { params }: GuaranteeTemplateDownloa
       templateLayoutSnapshot: templateLayout.snapshot,
     });
     if (mode === "preview" && format === "preview-info") {
+      exportStage = "read_page_count";
       return NextResponse.json(
         { pageCount: await getPdfPageCount(bytes) },
         { headers: { "cache-control": "no-store" } },
@@ -146,6 +149,7 @@ export async function GET(request: Request, { params }: GuaranteeTemplateDownloa
     }
 
     if (mode === "preview" && format === "png") {
+      exportStage = "read_page_count";
       const pageCount = await getPdfPageCount(bytes);
       const requestedPage = Number.parseInt(url.searchParams.get("page") ?? "1", 10);
       const page = Number.isFinite(requestedPage)
@@ -153,6 +157,7 @@ export async function GET(request: Request, { params }: GuaranteeTemplateDownloa
         : 1;
       const requestedResolution = Number.parseInt(url.searchParams.get("resolution") ?? "144", 10);
       const resolution = requestedResolution >= 200 ? 216 : 144;
+      exportStage = "render_preview_png";
       const preview = await renderPdfPageAsPng(bytes, page, resolution);
       return new NextResponse(Uint8Array.from(preview).buffer, {
         status: 200,
@@ -220,7 +225,16 @@ export async function GET(request: Request, { params }: GuaranteeTemplateDownloa
         "cache-control": "no-store",
       },
     });
-  } catch {
+  } catch (error) {
+    console.error("guarantee_pdf_export_failed", {
+      requestId,
+      templateId: template.id,
+      mode: mode || "download",
+      format: format || "pdf",
+      stage: exportStage,
+      errorName: error instanceof Error ? error.name : "UnknownError",
+      errorMessage: error instanceof Error ? error.message : "Unknown guarantee export failure",
+    });
     return NextResponse.json(
       {
         error: "guarantee_pdf_export_failed",

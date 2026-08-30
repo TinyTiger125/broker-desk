@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 
-const [layoutCss, globalsCss, caseOverview, casePage, seedSource, mainNavLinks, importCenter] = await Promise.all([
+const [layoutCss, globalsCss, caseOverview, casePage, seedSource, mainNavLinks, importCenter, appNav] = await Promise.all([
   readFile("src/components/layout-system/layout-system.module.css", "utf8"),
   readFile("src/app/globals.css", "utf8"),
   readFile("src/components/case-overview.tsx", "utf8"),
@@ -11,6 +11,7 @@ const [layoutCss, globalsCss, caseOverview, casePage, seedSource, mainNavLinks, 
   readFile("scripts/uiux-demo-data.mjs", "utf8"),
   readFile("src/components/main-nav-links.tsx", "utf8"),
   readFile("src/app/import-center/page.tsx", "utf8"),
+  readFile("src/components/app-nav.tsx", "utf8"),
 ]);
 
 function requireMatch(source, pattern, message) {
@@ -32,6 +33,14 @@ function assertMobileMenuContract(css) {
   requireMatch(narrowViewport, /top:\s*3\.5rem;/, "narrow header panels must remain below the sticky header");
   requireMatch(narrowViewport, /right:\s*0\.5rem;/, "narrow header panels must keep the viewport safe margin");
   requireMatch(narrowViewport, /margin-top:\s*0;/, "fixed panels must not retain trigger-relative offset");
+}
+
+function assertGlobalHeaderLayerContract(source) {
+  requireMatch(
+    source,
+    /data-app-shell-top-occluder className="app-desktop-header[^\"]*\bz-40\b/,
+    "the global desktop header must remain above page-local sticky headers",
+  );
 }
 
 function assertQuickWorkbenchNavigationContract(source) {
@@ -223,6 +232,7 @@ async function assertSeedContract(source) {
 
 assertFieldGridContract(layoutCss, caseOverview);
 assertMobileMenuContract(globalsCss);
+assertGlobalHeaderLayerContract(appNav);
 assertQuickWorkbenchNavigationContract(casePage);
 assertMainNavigationPerformanceContract(mainNavLinks);
 assertDirectImportEntryContract(importCenter);
@@ -230,6 +240,7 @@ await assertSeedContract(seedSource);
 
 assert.throws(() => assertFieldGridContract(layoutCss.replace("align-items: stretch;", "align-items: start;"), caseOverview), /stretch/);
 assert.throws(() => assertMobileMenuContract(globalsCss.replace("right: 0.5rem;", "right: -0.5rem;")), /safe margin/);
+assert.throws(() => assertGlobalHeaderLayerContract(appNav.replace("z-40 hidden h-16", "z-30 hidden h-16")), /above page-local sticky headers/);
 assert.throws(() => assertQuickWorkbenchNavigationContract(casePage.replace('params.set("view", "quick");', "")), /preserve view=quick/);
 assert.throws(() => assertMainNavigationPerformanceContract(mainNavLinks.replace('href={href}', 'href={href} prefetch={true}')), /must not force full prefetch/);
 assert.throws(() => assertDirectImportEntryContract(importCenter.replace('{!isLedgerFlow ? (', '{false ? (')), /legacy ledger deep links/);
