@@ -4,11 +4,13 @@ import { updatePropertyProfileAction, type PropertyFormValues } from "@/app/acti
 import { PropertyProfileReadOnly } from "@/components/property-profile-read-only";
 import { PropertyResponsiveForm } from "@/components/property-responsive-form";
 import { PageFlashBanner } from "@/components/page-flash-banner";
+import { ObjectAttachmentSection } from "@/components/object-attachment-section";
 import { getPropertyDetailForContext } from "@/lib/data";
 import { getLocale } from "@/lib/locale";
 import { capabilityHasTenantPermission } from "@/lib/tenant-permissions";
 import { getTenantCapability, requireTenantSession } from "@/lib/tenant-session";
 import { createRequestContext } from "@/lib/visibility-resolver";
+import { listLinkedObjectAttachments } from "@/lib/object-attachments";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +29,7 @@ const copy = {
     relationTree: "関係を確認",
     updated: "物件を更新しました。",
     created: "物件を作成しました。内容を確認してください。",
+    attachmentUploaded: "添付資料を追加しました。",
     companyRead: "会社メンバーに公開／読み取り専用",
     ownerReadOnly: "現在のアカウントは閲覧のみです。",
   },
@@ -39,6 +42,7 @@ const copy = {
     relationTree: "查看关系",
     updated: "物件已更新。",
     created: "物件已创建，请确认内容。",
+    attachmentUploaded: "附件已添加。",
     companyRead: "公司成员可见／只读",
     ownerReadOnly: "当前账号仅可查看。",
   },
@@ -51,6 +55,7 @@ const copy = {
     relationTree: "관계 확인",
     updated: "매물을 업데이트했습니다.",
     created: "매물을 생성했습니다. 내용을 확인해 주세요.",
+    attachmentUploaded: "첨부 자료를 추가했습니다.",
     companyRead: "회사 구성원 공개 / 읽기 전용",
     ownerReadOnly: "현재 계정은 보기 전용입니다.",
   },
@@ -115,7 +120,10 @@ export default async function EditPropertyPage({ params, searchParams }: EditPro
     ? text.updated
     : query.flash === "property_created"
       ? text.created
+      : query.flash === "object_attachment_uploaded"
+        ? text.attachmentUploaded
       : undefined;
+  const attachments = await listLinkedObjectAttachments({ tenantId: session.tenant.id, targetType: "property", targetId: property.id });
   const initialValues: PropertyFormValues = {
     name: property.name,
     area: property.area ?? "",
@@ -151,6 +159,7 @@ export default async function EditPropertyPage({ params, searchParams }: EditPro
       ) : (
         <PropertyProfileReadOnly locale={locale} reason={readOnlyReason} property={property} />
       )}
+      <ObjectAttachmentSection locale={locale} targetType="property" targetId={property.id} items={attachments} canWrite={canEdit} />
     </div>
   );
 }

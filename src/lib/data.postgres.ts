@@ -35,7 +35,10 @@ import {
 } from "@/lib/production-readiness";
 import type {
   Attachment,
+  AttachmentLink,
   AttachmentTargetType,
+  ObjectAttachmentCategory,
+  ObjectAttachmentTargetType,
   Client,
   AuditLogFilter,
   ClientListFilter,
@@ -163,6 +166,7 @@ const REQUIRED_PRODUCTION_MIGRATIONS = [
   "20260824_003_creator_immutability.sql",
   "20260825_001_legacy_output_provenance_marker.sql",
   "20260828_001_tenant_service_period.sql",
+  "20260830_001_object_attachment_links.sql",
 ] as const;
 
 const OPEN_STAGES: ClientStage[] = ["lead", "contacted", "quoted", "viewing", "negotiating"];
@@ -991,6 +995,20 @@ function mapAttachment(row: Record<string, unknown>): Attachment {
   };
 }
 
+function mapAttachmentLink(row: Record<string, unknown>): AttachmentLink {
+  return {
+    id: String(row.id),
+    tenantId: String(row.tenant_id ?? DEFAULT_TENANT_ID),
+    attachmentId: String(row.attachment_id),
+    targetType: String(row.target_type) as ObjectAttachmentTargetType,
+    targetId: String(row.target_id),
+    category: String(row.category ?? "other") as ObjectAttachmentCategory,
+    sourceImportJobId: row.source_import_job_id ? String(row.source_import_job_id) : undefined,
+    createdByUserId: String(row.created_by_user_id),
+    createdAt: toDate(row.created_at) ?? new Date(),
+  };
+}
+
 function mapGeneratedOutput(row: Record<string, unknown>): GeneratedOutput {
   const actorId = row.actor_id ? String(row.actor_id) : String(row.user_id);
   const quoteId = row.quote_id ? String(row.quote_id) : undefined;
@@ -1532,6 +1550,19 @@ async function ensureSchemaLegacyForUnversionedDevelopment() {
       uploaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    CREATE TABLE IF NOT EXISTS attachment_links (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      attachment_id TEXT NOT NULL REFERENCES attachments(id) ON DELETE CASCADE,
+      target_type TEXT NOT NULL,
+      target_id TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'other',
+      source_import_job_id TEXT,
+      created_by_user_id TEXT NOT NULL REFERENCES users(id),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (tenant_id, attachment_id, target_type, target_id)
+    );
+
     CREATE TABLE IF NOT EXISTS generated_outputs (
       id TEXT PRIMARY KEY,
       tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry',
@@ -1648,6 +1679,8 @@ async function ensureSchemaLegacyForUnversionedDevelopment() {
     CREATE INDEX IF NOT EXISTS idx_ai_experience_drafts_scope ON ai_experience_drafts(scope_candidate, template_id, field_key);
     CREATE INDEX IF NOT EXISTS idx_attachments_user_target ON attachments(user_id, target_type, target_id);
     CREATE INDEX IF NOT EXISTS idx_attachments_tenant_user_target ON attachments(tenant_id, user_id, target_type, target_id);
+    CREATE INDEX IF NOT EXISTS idx_attachment_links_target ON attachment_links(tenant_id, target_type, target_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_attachment_links_attachment ON attachment_links(tenant_id, attachment_id);
     CREATE INDEX IF NOT EXISTS idx_generated_outputs_user_created ON generated_outputs(user_id, generated_at DESC);
     CREATE INDEX IF NOT EXISTS idx_generated_outputs_tenant_user_created ON generated_outputs(tenant_id, user_id, generated_at DESC);
     CREATE INDEX IF NOT EXISTS idx_generated_outputs_actor_created ON generated_outputs(actor_id, generated_at DESC);
@@ -4339,6 +4372,58 @@ export async function getAttachmentByIdForTenant(input: { tenantId?: string; id:
   const scopeTenantId = resolveTenantId(input.tenantId);
   const result = await getPool().query(`SELECT * FROM attachments WHERE id = $1 AND tenant_id = $2 LIMIT 1`, [input.id, scopeTenantId]);
   return result.rows[0] ? mapAttachment(result.rows[0]) : undefined;
+}
+
+export async function listAttachmentLinks(input: {
+  tenantId?: string;
+  attachmentId?: string;
+  targetType?: ObjectAttachmentTargetType;
+  targetId?: string;
+  limit?: number;
+}): Promise<AttachmentLink[]> {
+  await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const filters = ["tenant_id = $1"];
+  const values: Array<string | number> = [scopeTenantId];
+  if (input.attachmentId) { values.push(input.attachmentId); filters.push(`attachment_id = $${values.length}`); }
+  if (input.targetType) { values.push(input.targetType); filters.push(`target_type = $${values.length}`); }
+  if (input.targetId) { values.push(input.targetId); filters.push(`target_id = $${values.length}`); }
+  values.push(input.limit ?? 100);
+  const result = await getPool().query(
+    `SELECT * FROM attachment_links WHERE ${filters.join(" AND ")} ORDER BY created_at DESC LIMIT $${values.length}`,
+    values,
+  );
+  return result.rows.map(mapAttachmentLink);
+}
+
+export async function linkAttachmentToObject(input: {
+  tenantId?: string;
+  attachmentId: string;
+  targetType: ObjectAttachmentTargetType;
+  targetId: string;
+  category: ObjectAttachmentCategory;
+  sourceImportJobId?: string;
+  createdByUserId: string;
+}): Promise<AttachmentLink> {
+  await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const result = await getPool().query(
+    `INSERT INTO attachment_links (
+       id, tenant_id, attachment_id, target_type, target_id, category,
+       source_import_job_id, created_by_user_id, created_at
+     )
+     SELECT $1,$2,attachment.id,$3,$4,$5,$6,$7,NOW()
+       FROM attachments AS attachment
+      WHERE attachment.id=$8 AND attachment.tenant_id=$2
+     ON CONFLICT (tenant_id, attachment_id, target_type, target_id)
+     DO UPDATE SET category=EXCLUDED.category,
+       source_import_job_id=COALESCE(EXCLUDED.source_import_job_id, attachment_links.source_import_job_id)
+     RETURNING *`,
+    [genId("attlink"), scopeTenantId, input.targetType, input.targetId.trim(), input.category,
+      input.sourceImportJobId?.trim() || null, input.createdByUserId, input.attachmentId],
+  );
+  if (!result.rows[0]) throw new Error("attachment_not_found");
+  return mapAttachmentLink(result.rows[0]);
 }
 
 export async function addAttachment(input: {

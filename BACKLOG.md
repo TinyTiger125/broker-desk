@@ -44,6 +44,7 @@
 | TASK-042 | P0 | UI/UX Design System Wave 0/1：页面级组合层与 `/cases/new` 首个模板 | Done | TASK-041 | [TASK-042](docs/tasks/TASK-042.md) | Product Accepted and Integrated / Production Not Released；固定 Staging `1e668bf` 经 PR #10 合并为 main `f295570`，PR 与 main CI 通过，无 Production deployment/migration |
 | TASK-043 | P0 | 客户订阅台账、席位、服务有效期与到期拦截 | In Review | TASK-042 | [TASK-043](docs/tasks/TASK-043.md) | 授权写集内实现与本地确定性门完成；等待独立只读审查，未执行 migration、部署、推送或提交 |
 | TASK-044 | P0 | 平台管理导航入口：账户管理与官方模板工厂 | Done | TASK-043 | [TASK-044](docs/tasks/TASK-044.md) | Product Accepted / Awaiting Integration；固定 Staging 真实 platform owner 与普通 tenant 身份矩阵通过，PR #12 等待正式 CI；Production 禁止 |
+| TASK-045 | P0 | 对象附件 V1：OCR 原件留存、对象绑定与基础分类 | In Review | TASK-040、现有导入链路 | [TASK-045](docs/tasks/TASK-045.md) | 本地工程门通过，等待固定 Staging 运行验收；不扩展为文档管理系统，不执行 Production migration/deploy |
 | TASK-003 | P0 | Close the input-material merge completion loop | Proposed | TASK-002 | [TASK-003](docs/tasks/TASK-003.md) | Selection, confirmation, result, failure, and refresh evidence |
 | TASK-004 | P0 | Consolidate template-library and official-template boundaries | Proposed | TASK-002 | [TASK-004](docs/tasks/TASK-004.md) | Role-aware entry, visibility, and installation evidence |
 | TASK-005 | P0 | Separate official template draft and publish states | Proposed | TASK-004 | [TASK-005](docs/tasks/TASK-005.md) | Independent draft save, publish, immutable version, and failure evidence |

@@ -35,6 +35,8 @@ import {
   addGuaranteeBlankFormVersion,
   addGuaranteeCompanyMaskVersion,
   addPrivateAttachment,
+  deletePrivateAttachmentForTenant,
+  linkAttachmentToObject,
   addCorrectionEvents,
   addAuditLog,
   addClient,
@@ -237,6 +239,11 @@ import { draftAiExperiencesFromRecentCorrections } from "@/lib/ai-experience-job
 import { getLocale, type Locale } from "@/lib/locale";
 import { getDefaultOutputTemplateSettings } from "@/lib/output-doc";
 import { type TenantRole } from "@/lib/tenant-permissions";
+import {
+  isObjectAttachmentCategory,
+  isObjectAttachmentTargetType,
+  linkImportJobAttachmentsToObject,
+} from "@/lib/object-attachments";
 import {
   getPrimaryPartyId,
   normalizeCaseAssociationDraft,
@@ -1991,6 +1998,78 @@ export async function registerAttachmentAction(formData: FormData) {
   revalidatePath("/contracts");
   revalidatePath("/service-requests");
   redirect(withFlash("/import-center", "attachment_registered"));
+}
+
+export async function uploadObjectAttachmentAction(formData: FormData) {
+  const session = await requireTenantSession({ permission: "source.upload" });
+  assertTenantPermission(session, "record.update");
+  const targetType = String(formData.get("targetType") ?? "").trim();
+  const targetId = String(formData.get("targetId") ?? "").trim();
+  const category = String(formData.get("category") ?? "other").trim();
+  const upload = formData.get("attachmentFile");
+  if (!isObjectAttachmentTargetType(targetType) || !targetId || !isObjectAttachmentCategory(category)) {
+    throw new Error("添付先または分類が不正です。");
+  }
+  if (!(upload instanceof File) || upload.size <= 0) throw new Error("ファイルを選択してください。");
+  if (!/^(application\/pdf|image\/(jpeg|png|webp|heic)|application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet)$/.test(upload.type)) {
+    throw new Error("PDF、画像、Excel ファイルのみ登録できます。");
+  }
+  if (targetType === "case") await requireWritableCase(session, targetId);
+  if (targetType === "party") await ensureClientOwnership(targetId, session);
+  if (targetType === "property") await ensurePropertyOwnership(targetId, session);
+  assertProductionAttachmentStorageReady();
+  const storageMode = getAttachmentStorageMode();
+  let attachment;
+  if (storageMode === "local_private") {
+    const persisted = await persistAttachmentToLocalPrivate(upload, session.tenant.id);
+    attachment = await addAttachment({
+      tenantId: session.tenant.id,
+      userId: session.user.id,
+      targetType,
+      targetId,
+      ...persisted,
+    });
+  } else if (storageMode === "postgres_private") {
+    if (upload.size > getPostgresPrivateAttachmentLimitBytes()) {
+      throw new Error("公测环境中单个附件不能超过 10 MB。");
+    }
+    attachment = await addPrivateAttachment({
+      tenantId: session.tenant.id,
+      userId: session.user.id,
+      targetType,
+      targetId,
+      fileName: upload.name || "attachment.bin",
+      fileType: upload.type,
+      content: Buffer.from(await upload.arrayBuffer()),
+    });
+  } else {
+    throw new Error("この環境では対象資料への直接添付を利用できません。");
+  }
+  try {
+    await linkAttachmentToObject({
+      tenantId: session.tenant.id,
+      attachmentId: attachment.id,
+      targetType,
+      targetId,
+      category,
+      createdByUserId: session.user.id,
+    });
+  } catch (error) {
+    await deletePrivateAttachmentForTenant({ tenantId: session.tenant.id, id: attachment.id });
+    throw error;
+  }
+  await addAuditLog({
+    tenantId: session.tenant.id,
+    userId: session.user.id,
+    action: "object_attachment_uploaded",
+    targetType,
+    targetId,
+    message: `対象資料へ添付しました: ${attachment.fileName}`,
+    context: { attachmentId: attachment.id, category },
+  });
+  const targetPath = targetType === "case" ? `/cases/${targetId}` : targetType === "party" ? `/parties/${targetId}/edit` : `/properties/${targetId}/edit`;
+  revalidatePath(targetPath);
+  redirect(`${targetPath}?flash=object_attachment_uploaded#object-attachments`);
 }
 
 export async function createPropertyQuickAction(
@@ -5005,6 +5084,10 @@ export async function saveExtractionReviewAction(formData: FormData) {
       reviewItems,
     });
     if (!brokerageCase) throw new Error("案件への追加保存に失敗しました。");
+    await linkImportJobAttachmentsToObject({
+      tenantId, userId: user.id, importJobId: job.id, targetType: "case", targetId: brokerageCase.id,
+      documentType: payload.inputExtraction.documentType,
+    });
 
     const correctionEvents = await addCorrectionEvents({
       userId: user.id,
@@ -5101,6 +5184,10 @@ export async function saveExtractionReviewAction(formData: FormData) {
       reviewItems,
     });
     if (!brokerageCase) throw new Error("案件の合併保存に失敗しました。");
+    await linkImportJobAttachmentsToObject({
+      tenantId, userId: user.id, importJobId: job.id, targetType: "case", targetId: brokerageCase.id,
+      documentType: payload.inputExtraction.documentType,
+    });
     const correctionEvents = await addCorrectionEvents({
       userId: user.id,
       tenantId,
@@ -5167,6 +5254,10 @@ export async function saveExtractionReviewAction(formData: FormData) {
       reviewItems,
     });
   }
+  await linkImportJobAttachmentsToObject({
+    tenantId, userId: user.id, importJobId: job.id, targetType: "case", targetId: brokerageCase.id,
+    documentType: payload.inputExtraction.documentType,
+  });
   const correctionEvents = await addCorrectionEvents({
     userId: user.id,
     tenantId,

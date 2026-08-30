@@ -526,6 +526,7 @@ export async function listHubGeneratedOutputs(
 
 function getAttachmentTargetLabel(locale: Locale): Record<AttachmentTargetType, string> {
   return {
+    case: tr(locale, { ja: "案件", zh: "案件", ko: "사건" }),
     property: tr(locale, { ja: "物件", zh: "物件", ko: "매물" }),
     party: tr(locale, { ja: "関係者", zh: "主体", ko: "관계자" }),
     contract: tr(locale, { ja: "契約", zh: "合同", ko: "계약" }),

@@ -39,6 +39,8 @@ import { capabilityHasTenantPermission } from "@/lib/tenant-permissions";
 import { createRequestContext } from "@/lib/visibility-resolver";
 import { readCaseAssociationDraft } from "@/lib/case-associations";
 import { ObjectPageShell } from "@/components/layout-system";
+import { ObjectAttachmentSection } from "@/components/object-attachment-section";
+import { listLinkedObjectAttachments } from "@/lib/object-attachments";
 
 export const dynamic = "force-dynamic";
 
@@ -850,6 +852,12 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                 zh: "资料已追加到既有案件。可在合并历史中确认或拆分回退。",
                 ko: "자료를 기존 안건에 추가했습니다. 합병 이력에서 확인하거나 분리할 수 있습니다.",
               })
+            : query?.flash === "object_attachment_uploaded"
+              ? tr(locale, {
+                  ja: "添付資料を追加しました。",
+                  zh: "附件已添加。",
+                  ko: "첨부 자료를 추가했습니다.",
+                })
             : query?.flash === "case_merge_rolled_back"
               ? tr(locale, {
                   ja: "最新の合併を分離して戻しました。分離した資料は別案件として残っています。",
@@ -921,6 +929,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
   const parsedScrollTop = query?.scrollTop ? Number(query.scrollTop) : Number.NaN;
   const initialScrollTop = Number.isSafeInteger(parsedScrollTop) && parsedScrollTop >= 0 ? parsedScrollTop : undefined;
   const initialFieldKey = query?.field && allWorkbenchFields.some((field) => field.fieldKey === query.field) ? query.field : undefined;
+  const objectAttachments = await listLinkedObjectAttachments({ tenantId, targetType: "case", targetId: brokerageCase.id });
 
   if (!canWriteCase) {
     return (
@@ -948,6 +957,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
           visibilityLabel={caseVisibilityLabel}
           flash={<PageFlashBanner message={flashMessage} tone={flashTone} />}
         />
+        <ObjectAttachmentSection locale={locale} targetType="case" targetId={brokerageCase.id} items={objectAttachments} canWrite={false} />
       </div>
     );
   }
@@ -978,6 +988,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
           initialFieldKey={initialFieldKey}
           initialScrollTop={initialScrollTop}
         />
+        <ObjectAttachmentSection locale={locale} targetType="case" targetId={brokerageCase.id} items={objectAttachments} canWrite={canWriteCase} />
       </div>
     );
   }
@@ -1035,6 +1046,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
         feedback={<PageFlashBanner message={flashMessage} tone={flashTone} />}
       >
         {associationPanel}
+        <ObjectAttachmentSection locale={locale} targetType="case" targetId={brokerageCase.id} items={objectAttachments} canWrite={canWriteCase} />
 
         {selectedWorkbenchField ? (
           <section className="rounded-lg border border-amber-200 bg-amber-50/70 p-3 sm:hidden" aria-label={tr(locale, { ja: "次の対応項目", zh: "下一项任务", ko: "다음 처리 항목" })}>

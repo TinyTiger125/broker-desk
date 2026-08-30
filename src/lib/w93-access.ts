@@ -10,6 +10,7 @@ import {
   type BrokerageCase,
   type GeneratedOutput,
   listQuotationsForContext,
+  listAttachmentLinks,
 } from "@/lib/data";
 import type { RequestContext, VisibilityResolution } from "@/lib/visibility-resolver";
 
@@ -44,9 +45,16 @@ export async function getW93AttachmentForContext(context: RequestContext, attach
   const attachment = await getAttachmentByIdForTenant({ tenantId: context.tenantId, id: attachmentId });
   if (!attachment) return null;
   const parentType = attachmentParentType(attachment.targetType);
-  if (!parentType) return null;
-  const parentResolution = await resolveW93Parent(context, parentType, attachment.targetId);
-  return parentResolution.canRead ? attachment : null;
+  if (parentType) {
+    const parentResolution = await resolveW93Parent(context, parentType, attachment.targetId);
+    if (parentResolution.canRead) return attachment;
+  }
+  const links = await listAttachmentLinks({ tenantId: context.tenantId, attachmentId, limit: 100 });
+  for (const link of links) {
+    const resolution = await resolveW93Parent(context, link.targetType, link.targetId);
+    if (resolution.canRead) return attachment;
+  }
+  return null;
 }
 
 /** History is indexed by case; current case visibility is checked before metadata is returned. */

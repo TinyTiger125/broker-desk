@@ -3,12 +3,14 @@ import { notFound } from "next/navigation";
 import { updatePartyProfileAction } from "@/app/actions";
 import { PartyProfileForm, PartyProfileReadOnly } from "@/components/party-profile-form";
 import { PageFlashBanner } from "@/components/page-flash-banner";
+import { ObjectAttachmentSection } from "@/components/object-attachment-section";
 import { getClientDetailForContext } from "@/lib/data";
 import { getLocale, type Locale } from "@/lib/locale";
 import { extractPartyProfileFromNotes, normalizePartyReturnTo } from "@/lib/party-profile";
 import { getTenantCapability, requireTenantSession } from "@/lib/tenant-session";
 import { capabilityHasTenantPermission } from "@/lib/tenant-permissions";
 import { createRequestContext } from "@/lib/visibility-resolver";
+import { listLinkedObjectAttachments } from "@/lib/object-attachments";
 
 export const dynamic = "force-dynamic";
 
@@ -18,9 +20,9 @@ type EditPartyPageProps = {
 };
 
 const copy = {
-  ja: { eyebrow: "関係者を管理", back: "関係者一覧へ戻る", relationTree: "関係を確認", updated: "関係者を更新しました。", title: "関係者を編集", readOnly: "会社メンバーに公開／読み取り専用", ownerReadOnly: "現在のアカウントは閲覧のみです。" },
-  zh: { eyebrow: "维护主体", back: "返回主体列表", relationTree: "查看关系", updated: "主体已更新。", title: "编辑主体", readOnly: "公司成员可见／只读", ownerReadOnly: "当前账号仅可查看。" },
-  ko: { eyebrow: "관계자 관리", back: "관계자 목록으로", relationTree: "관계 확인", updated: "관계자를 업데이트했습니다.", title: "관계자 편집", readOnly: "회사 구성원 공개 / 읽기 전용", ownerReadOnly: "현재 계정은 보기 전용입니다." },
+  ja: { eyebrow: "関係者を管理", back: "関係者一覧へ戻る", relationTree: "関係を確認", updated: "関係者を更新しました。", attachmentUploaded: "添付資料を追加しました。", title: "関係者を編集", readOnly: "会社メンバーに公開／読み取り専用", ownerReadOnly: "現在のアカウントは閲覧のみです。" },
+  zh: { eyebrow: "维护主体", back: "返回主体列表", relationTree: "查看关系", updated: "主体已更新。", attachmentUploaded: "附件已添加。", title: "编辑主体", readOnly: "公司成员可见／只读", ownerReadOnly: "当前账号仅可查看。" },
+  ko: { eyebrow: "관계자 관리", back: "관계자 목록으로", relationTree: "관계 확인", updated: "관계자를 업데이트했습니다.", attachmentUploaded: "첨부 자료를 추가했습니다.", title: "관계자 편집", readOnly: "회사 구성원 공개 / 읽기 전용", ownerReadOnly: "현재 계정은 보기 전용입니다." },
 } as const;
 
 export default async function EditPartyPage({ params, searchParams }: EditPartyPageProps) {
@@ -41,7 +43,8 @@ export default async function EditPartyPage({ params, searchParams }: EditPartyP
   const returnTo = normalizePartyReturnTo(query.returnTo);
   const text = copy[locale];
   const meta = extractPartyProfileFromNotes(client.notes);
-  const flashMessage = query.flash === "party_updated" ? text.updated : undefined;
+  const flashMessage = query.flash === "party_updated" ? text.updated : query.flash === "object_attachment_uploaded" ? text.attachmentUploaded : undefined;
+  const attachments = await listLinkedObjectAttachments({ tenantId: session.tenant.id, targetType: "party", targetId: client.id });
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 pb-12">
@@ -79,6 +82,7 @@ export default async function EditPartyPage({ params, searchParams }: EditPartyP
             partyRole: meta.role,
           }}
         />}
+      <ObjectAttachmentSection locale={locale as Locale} targetType="party" targetId={client.id} items={attachments} canWrite={canEdit} />
     </div>
   );
 }

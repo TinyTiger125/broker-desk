@@ -412,6 +412,10 @@ export const addAttachment: typeof memory.addAttachment = (...args) =>
   repo.addAttachment(...args);
 export const addPrivateAttachment: typeof memory.addPrivateAttachment = (...args) =>
   repo.addPrivateAttachment(...args);
+export const listAttachmentLinks: typeof memory.listAttachmentLinks = (...args) =>
+  repo.listAttachmentLinks(...args);
+export const linkAttachmentToObject: typeof memory.linkAttachmentToObject = (...args) =>
+  repo.linkAttachmentToObject(...args);
 export const readPrivateAttachmentContent: typeof memory.readPrivateAttachmentContent = (...args) =>
   repo.readPrivateAttachmentContent(...args);
 export const listGeneratedOutputs: typeof memory.listGeneratedOutputs = (...args) =>
@@ -489,7 +493,10 @@ export type {
   AuditLog,
   AuditLogFilter,
   Attachment,
+  AttachmentLink,
   AttachmentTargetType,
+  ObjectAttachmentCategory,
+  ObjectAttachmentTargetType,
   GeneratedOutput,
   CaseFieldRequirement,
   CaseWorkbenchFieldRule,

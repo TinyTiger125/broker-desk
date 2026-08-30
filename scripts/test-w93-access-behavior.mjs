@@ -192,6 +192,13 @@ assert.equal(await access.areGeneratedOutputSourcesReadable(ownerContext, histor
 const ownerAttachment = await memory.addPrivateAttachment({ tenantId: tenant.id, userId: owner.id, targetType: "property", targetId: privateProperty.id, fileName: "w93.txt", content: Buffer.from("private") });
 assert(await access.getW93AttachmentForContext(ownerContext, ownerAttachment.id), "owner attachment is readable");
 assert.equal(await access.getW93AttachmentForContext(colleagueContext, ownerAttachment.id), null, "colleague attachment is hidden with its parent");
+const importedAttachment = await memory.addPrivateAttachment({ tenantId: tenant.id, userId: owner.id, targetType: "import_job", targetId: "w93-import-job", fileName: "residence-card.pdf", fileType: "application/pdf", content: Buffer.from("linked source") });
+assert.equal(await access.getW93AttachmentForContext(ownerContext, importedAttachment.id), null, "unlinked import source is not exposed as an object attachment");
+const firstLink = await memory.linkAttachmentToObject({ tenantId: tenant.id, attachmentId: importedAttachment.id, targetType: "property", targetId: sharedProperty.id, category: "identity", sourceImportJobId: "w93-import-job", createdByUserId: owner.id });
+const duplicateLink = await memory.linkAttachmentToObject({ tenantId: tenant.id, attachmentId: importedAttachment.id, targetType: "property", targetId: sharedProperty.id, category: "identity", sourceImportJobId: "w93-import-job", createdByUserId: owner.id });
+assert.equal(duplicateLink.id, firstLink.id, "repeated object links are idempotent");
+assert.equal((await memory.listAttachmentLinks({ tenantId: tenant.id, attachmentId: importedAttachment.id })).length, 1, "idempotent linking creates one association");
+assert(await access.getW93AttachmentForContext(colleagueContext, importedAttachment.id), "a linked source follows its readable object parent");
 assert.equal((await access.listW93GeneratedOutputsForContext(colleagueContext)).length, 0, "history outputs without visible cases are excluded");
 
 console.log("w93 access behavior: PASS");

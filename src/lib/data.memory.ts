@@ -458,7 +458,7 @@ export type AiExperienceDraft = {
   updatedAt: Date;
 };
 
-export type AttachmentTargetType = "property" | "party" | "contract" | "service_request" | "import_job" | "quote" | "guarantee_blank_form" | "guarantee_generated_output";
+export type AttachmentTargetType = "case" | "property" | "party" | "contract" | "service_request" | "import_job" | "quote" | "guarantee_blank_form" | "guarantee_generated_output";
 
 export type Attachment = {
   id: string;
@@ -471,6 +471,32 @@ export type Attachment = {
   fileSizeBytes?: number;
   storagePath?: string;
   uploadedAt: Date;
+};
+
+export type ObjectAttachmentTargetType = "case" | "party" | "property";
+export type ObjectAttachmentCategory =
+  | "identity"
+  | "address"
+  | "income_employment"
+  | "property_registry"
+  | "floor_plan"
+  | "photo"
+  | "contract"
+  | "application"
+  | "correspondence"
+  | "output"
+  | "other";
+
+export type AttachmentLink = {
+  id: string;
+  tenantId: string;
+  attachmentId: string;
+  targetType: ObjectAttachmentTargetType;
+  targetId: string;
+  category: ObjectAttachmentCategory;
+  sourceImportJobId?: string;
+  createdByUserId: string;
+  createdAt: Date;
 };
 
 export type PrivateAttachmentInput = {
@@ -658,6 +684,7 @@ type DB = {
   correctionEvents: CorrectionEvent[];
   aiExperienceDrafts: AiExperienceDraft[];
   attachments: Attachment[];
+  attachmentLinks: AttachmentLink[];
   generatedOutputs: GeneratedOutput[];
   guaranteeBlankForms: GuaranteeBlankForm[];
   guaranteeBlankFormVersions: GuaranteeBlankFormVersion[];
@@ -1029,6 +1056,7 @@ function cloneDb(input: DB): DB {
     correctionEvents: cloneCollection(input.correctionEvents),
     aiExperienceDrafts: cloneCollection(input.aiExperienceDrafts),
     attachments: cloneCollection(input.attachments),
+    attachmentLinks: cloneCollection(input.attachmentLinks ?? []),
     generatedOutputs: cloneCollection(input.generatedOutputs),
     guaranteeBlankForms: cloneCollection(input.guaranteeBlankForms),
     guaranteeBlankFormVersions: cloneCollection(input.guaranteeBlankFormVersions),
@@ -1058,6 +1086,7 @@ function qaBusinessDataCounts(): QaBusinessDataCounts {
     correctionEvents: db.correctionEvents.length,
     aiExperienceDrafts: db.aiExperienceDrafts.length,
     attachments: db.attachments.length,
+    attachmentLinks: db.attachmentLinks.length,
     generatedOutputs: db.generatedOutputs.length,
     guaranteeBlankForms: db.guaranteeBlankForms.length,
     guaranteeBlankFormVersions: db.guaranteeBlankFormVersions.length,
@@ -1585,6 +1614,7 @@ const _freshDb: DB = withDefaultTenantScope({
     { id: "att_prop_minato_floor", userId: "user_demo", targetType: "property", targetId: "prop_minato_tower", fileName: "港区グランドタワー_間取り図.pdf", fileType: "application/pdf", fileSizeBytes: 924800, storagePath: "demo/property/prop_minato_tower/floorplan.pdf", uploadedAt: new Date(now - 3 * 24 * 60 * 60 * 1000) },
     { id: "att_contract_yamada", userId: "user_demo", targetType: "contract", targetId: "quote_yamada_b", fileName: "売買契約書ドラフト_山田様.pdf", fileType: "application/pdf", fileSizeBytes: 1105920, storagePath: "demo/contracts/quote_yamada_b/draft.pdf", uploadedAt: new Date(now - 2 * 24 * 60 * 60 * 1000) },
   ],
+  attachmentLinks: [],
   generatedOutputs: [],
   guaranteeBlankForms: [],
   guaranteeBlankFormVersions: [],
@@ -4148,6 +4178,55 @@ export async function getAttachmentByIdForTenant(input: { tenantId?: string; id:
   const scopeTenantId = resolveTenantId(input.tenantId);
   const item = db.attachments.find((attachment) => attachment.id === input.id && attachment.tenantId === scopeTenantId);
   return item ? { ...item } : undefined;
+}
+
+export async function listAttachmentLinks(input: {
+  tenantId?: string;
+  attachmentId?: string;
+  targetType?: ObjectAttachmentTargetType;
+  targetId?: string;
+  limit?: number;
+}): Promise<AttachmentLink[]> {
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  return db.attachmentLinks
+    .filter((item) => item.tenantId === scopeTenantId)
+    .filter((item) => input.attachmentId ? item.attachmentId === input.attachmentId : true)
+    .filter((item) => input.targetType ? item.targetType === input.targetType : true)
+    .filter((item) => input.targetId ? item.targetId === input.targetId : true)
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+    .slice(0, input.limit ?? 100)
+    .map((item) => ({ ...item }));
+}
+
+export async function linkAttachmentToObject(input: {
+  tenantId?: string;
+  attachmentId: string;
+  targetType: ObjectAttachmentTargetType;
+  targetId: string;
+  category: ObjectAttachmentCategory;
+  sourceImportJobId?: string;
+  createdByUserId: string;
+}): Promise<AttachmentLink> {
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const attachment = db.attachments.find((item) => item.id === input.attachmentId && item.tenantId === scopeTenantId);
+  if (!attachment) throw new Error("attachment_not_found");
+  const existing = db.attachmentLinks.find((item) =>
+    item.tenantId === scopeTenantId && item.attachmentId === input.attachmentId
+      && item.targetType === input.targetType && item.targetId === input.targetId,
+  );
+  if (existing) {
+    existing.category = input.category;
+    existing.sourceImportJobId = input.sourceImportJobId?.trim() || existing.sourceImportJobId;
+    return { ...existing };
+  }
+  const link: AttachmentLink = {
+    id: makeId("attlink"), tenantId: scopeTenantId, attachmentId: input.attachmentId,
+    targetType: input.targetType, targetId: input.targetId.trim(), category: input.category,
+    sourceImportJobId: input.sourceImportJobId?.trim() || undefined,
+    createdByUserId: input.createdByUserId, createdAt: new Date(),
+  };
+  db.attachmentLinks.unshift(link);
+  return { ...link };
 }
 
 export async function addAttachment(input: {
