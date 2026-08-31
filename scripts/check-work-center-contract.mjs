@@ -16,8 +16,14 @@ for (const marker of ["getWorkCenterSnapshotForContext", "listBrokerageCasesForC
 }
 assert.ok(fs.existsSync("src/app/service-requests/page.tsx"), "existing service-request task route must remain available");
 assert.doesNotMatch(page, /\/tasks/, "Work Center must not expose the retired /tasks route");
-const openActions = [...page.matchAll(/<Link href="(\/service-requests|\/clients)" className="([^"]+)">\{copy\.open\}<\/Link>/g)];
-assert.deepEqual(openActions.map((match) => match[1]), ["/service-requests", "/clients"]);
+const todayStart = page.indexOf('aria-labelledby="work-center-today"');
+const waitingStart = page.indexOf('aria-labelledby="work-center-waiting"');
+assert.ok(todayStart >= 0 && waitingStart > todayStart, "today and waiting sections must remain distinct");
+const todaySection = page.slice(todayStart, waitingStart);
+assert.doesNotMatch(todaySection, /href="\/(?:tasks|service-requests)"/, "today heading must not expose an invalid global task entry point");
+assert.match(page, /href=\{`\/clients\/\$\{encodeURIComponent\(client\.id\)\}#client-tasks`\}/, "task rows must retain client task deep links");
+const openActions = [...page.matchAll(/<Link href="(\/clients)" className="([^"]+)">\{copy\.open\}<\/Link>/g)];
+assert.deepEqual(openActions.map((match) => match[1]), ["/clients"]);
 for (const [, , className] of openActions) {
   assert.match(className, /(^| )min-h-11( |$)/);
   assert.match(className, /(^| )min-w-11( |$)/);
