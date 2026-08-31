@@ -5,7 +5,7 @@
 
 ## 当前任务
 
-- `TASK-047` 当前为 `In Progress / Engineering Gates Pass / Awaiting Staging`：以固定 Staging `5d7dd85` 为基线，搭建工作中枢 V1；仅聚合现有真实任务、跟进、案件草稿与资料记录，提供今日事项、七日议程、等待跟进和周度检查，不新增数据库 schema，不实现邮箱客户端、AI 邮件或外部日历同步。独立只读审查工具连续无返回，按流程 P2 记录，未宣称独立审查通过；真实浏览器验收尚未开始。
+- `TASK-047` 当前为 `Product Accepted / Awaiting Integration / Production Not Released`：固定 Preview 已完成真实 Work Center 验收，R2 合成回归任务 `SR-N85D` 已通过正常产品路径建立并保留；P2 为 readOnly 实跑、独立审查 Agent 无返回、资料上传证据未验证。仅聚合现有任务、跟进、案件草稿与资料记录，不新增数据库 schema，不实现邮箱客户端、AI 邮件或外部日历同步。
 
 - `TASK-046` 当前为 `Done / Fixed Staging Integrated / Production Not Released`：以固定 Staging `8a2f6b2` 为隔离基线，已移除 3,219 行固定不可达旧普通输出、退役打印路由和确认孤儿实现；完整工程门与独立复核通过（P0/P1=0），并以普通快进方式合入固定 Staging。保证申请书、数据模型、数据库、Production 与用户未跟踪文件保持冻结。
 
