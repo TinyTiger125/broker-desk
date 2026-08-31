@@ -48,7 +48,12 @@ assert.match(page, /signals\.map\(\(\{ followUp, client \}\)/, "communication si
 const communicationStart = page.indexOf("function CommunicationSignals");
 const communicationEnd = page.indexOf("export default async function HomePage", communicationStart);
 assert.ok(communicationStart >= 0 && communicationEnd > communicationStart, "communication signal renderer must remain a local component");
-assert.match(page.slice(communicationStart, communicationEnd), /#client-follow-ups/, "communication signals must retain the client follow-up deep link");
+const communicationSource = page.slice(communicationStart, communicationEnd);
+assert.match(communicationSource, /#client-follow-ups/, "communication signals must retain the client follow-up deep link");
+assert.match(communicationSource, /className="[^"]*min-h-11[^"]*min-w-11[^"]*items-center[^"]*justify-center[^"]*"[^>]*>\{copy\.open\}/, "communication signal open action must expose a 44px touch target");
+assert.match(page, /<Link href=\{item\.href\} className="[^"]*min-h-11[^"]*min-w-11[^"]*items-center[^"]*justify-center[^"]*">\{copy\.continueItem\}<\/Link>/, "saved-item continue action must expose a 44px touch target");
+const taskAction = fs.readFileSync("src/components/work-center-task-action.tsx", "utf8");
+assert.match(taskAction, /className="[^"]*min-h-11[^"]*min-w-11[^"]*items-center[^"]*justify-center[^"]*"/, "task completion action must expose a 44px touch target");
 assert.match(page, /buildHomeResumableWork\(\{ locale, query: searchQuery, cases, importJobs \}\)/, "import jobs must remain available to recovery work");
 const openActions = [...page.matchAll(/<Link href="(\/clients)" className="([^"]+)">\{copy\.open\}<\/Link>/g)];
 assert.deepEqual(openActions.map((match) => match[1]), ["/clients"]);
