@@ -37,7 +37,6 @@ expect(foundationComponent.includes('aria-busy={loading || undefined}'), "Founda
 expect(read("src/components/official-template-save-button.tsx").includes('data-bd-button-appearance="status"'), "Stateful save feedback must retain its status colors.");
 
 for (const editorSource of [
-  "src/components/pdfme-official-template-designer.tsx",
   "src/components/friends-guarantee-calibration-preview.tsx",
   "src/app/guarantee-g1-slice1/client.tsx",
 ].map(read)) {

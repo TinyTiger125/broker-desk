@@ -5,6 +5,8 @@
 
 ## 当前任务
 
+- `TASK-046` 当前为 `Done / Local Candidate Ready / Production Not Released`：以固定 Staging `8a2f6b2` 为隔离基线，已移除 3,219 行固定不可达旧普通输出、退役打印路由和确认孤儿实现；完整工程门与独立复核通过（P0/P1=0）。保证申请书、数据模型、数据库、Production 与用户未跟踪文件保持冻结。
+
 - `TASK-045` 当前为 `In Review / Production Not Released`：OCR/直接上传原件的对象绑定、基础分类、对象详情查看下载与既有可见范围复用已通过本地工程门，等待固定 Staging 运行验收；不做文件夹、标签、全文检索、批量 Excel 自动分发或人物/物件 OCR 建档重写。
 
 - `PM-HANDOFF-001` 接管验证已通过；下一阶段项目经理已正式接管。

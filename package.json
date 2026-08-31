@@ -77,6 +77,7 @@
     "test:import-center-object-actions": "node scripts/check-import-center-object-actions.mjs",
     "test:settings-members-shell": "node scripts/check-settings-members-shell-contract.mjs",
     "test:output-center-worklist": "node scripts/check-output-center-worklist-contract.mjs",
+    "test:code-asset-cleanup": "node scripts/check-code-asset-cleanup-contract.mjs",
     "test:inline-select-focus": "node scripts/check-inline-select-focus-contract.mjs",
     "test:list-return-state": "node scripts/check-list-return-state-contract.mjs",
     "test:visibility-foundation": "node scripts/check-visibility-foundation.mjs",

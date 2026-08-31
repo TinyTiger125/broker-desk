@@ -45,6 +45,7 @@
 | TASK-043 | P0 | 客户订阅台账、席位、服务有效期与到期拦截 | In Review | TASK-042 | [TASK-043](docs/tasks/TASK-043.md) | 授权写集内实现与本地确定性门完成；等待独立只读审查，未执行 migration、部署、推送或提交 |
 | TASK-044 | P0 | 平台管理导航入口：账户管理与官方模板工厂 | Done | TASK-043 | [TASK-044](docs/tasks/TASK-044.md) | Product Accepted / Awaiting Integration；固定 Staging 真实 platform owner 与普通 tenant 身份矩阵通过，PR #12 等待正式 CI；Production 禁止 |
 | TASK-045 | P0 | 对象附件 V1：OCR 原件留存、对象绑定与基础分类 | In Review | TASK-040、现有导入链路 | [TASK-045](docs/tasks/TASK-045.md) | 本地工程门通过，等待固定 Staging 运行验收；不扩展为文档管理系统，不执行 Production migration/deploy |
+| TASK-046 | P1 | 退役普通输出实现与确认孤儿代码一次性清理 | Done | TASK-045 固定 Staging 基线 | [TASK-046](docs/tasks/TASK-046.md) | 独立复核 GO：P0/P1=0，3,219 行清理与完整工程门通过；不改保证申请书、数据模型、数据库或 Production |
 | TASK-003 | P0 | Close the input-material merge completion loop | Proposed | TASK-002 | [TASK-003](docs/tasks/TASK-003.md) | Selection, confirmation, result, failure, and refresh evidence |
 | TASK-004 | P0 | Consolidate template-library and official-template boundaries | Proposed | TASK-002 | [TASK-004](docs/tasks/TASK-004.md) | Role-aware entry, visibility, and installation evidence |
 | TASK-005 | P0 | Separate official template draft and publish states | Proposed | TASK-004 | [TASK-005](docs/tasks/TASK-005.md) | Independent draft save, publish, immutable version, and failure evidence |

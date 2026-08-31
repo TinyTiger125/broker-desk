@@ -528,7 +528,7 @@ assert.equal(permissionCalls[0].arguments[0]?.getText(pageTree), '{ permission: 
 
 const requestContext = directVariable(pageFunction, "requestContext");
 assert.equal(requestContext.initializer?.getText(pageTree), "createRequestContext(session)", "visibility must derive from the live tenant session");
-for (const name of ["propertiesPromise", "quotesPromise", "partiesPromise", "outputsPromise", "installedGuaranteeTemplatesPromise", "casesPromise"]) {
+for (const name of ["propertiesPromise", "partiesPromise", "installedGuaranteeTemplatesPromise", "casesPromise"]) {
   const dataRead = directVariable(pageFunction, name);
   assert(dataRead.initializer && visit(dataRead.initializer, ts.isCallExpression).length > 0, `${name} must remain a live top-level data read`);
 }
@@ -616,13 +616,7 @@ const downloadConditions = visit(pageReturn, (node) => ts.isConditionalExpressio
 assert.equal(downloadConditions.length, 1, "download action must remain guarded by selectedGuaranteeCanDownload");
 assert(visit(downloadConditions[0].whenTrue, (node) => jsxName(node, pageTree) === "Link" && jsxAttributeExpression(node, "href", pageTree).getText(pageTree) === "selectedGuaranteeDownloadHref").length === 1, "download gate must render only the existing derived download URL");
 
-const legacyDeclaration = directVariable(pageFunction, "shouldShowLegacyOutputFlow");
-assert(legacyDeclaration.initializer?.kind === ts.SyntaxKind.FalseKeyword, "legacy output/history/595px preview flow must remain hard disabled");
-const legacyBranches = visit(pageReturn, (node) => ts.isConditionalExpression(node) && node.condition.getText(pageTree) === "shouldShowLegacyOutputFlow");
-assert.equal(legacyBranches.length, 1, "legacy area must have one explicit rendered guard");
-assert(visit(legacyBranches[0].whenTrue, (node) => ts.isJsxAttribute(node) && node.name.text === "id" && node.initializer && ts.isJsxExpression(node.initializer) && node.initializer.expression?.getText(pageTree) === "legacySectionId").length === 1, "legacy content must remain entirely inside its false guard");
-const livePrimaryLinks = visit(pageReturn, (node) => ["Link", "a"].includes(jsxName(node, pageTree)) && jsxAttribute(node, "href"))
-  .filter((node) => !containsNode(legacyBranches[0].whenTrue, node));
+const livePrimaryLinks = visit(pageReturn, (node) => ["Link", "a"].includes(jsxName(node, pageTree)) && jsxAttribute(node, "href"));
 assert(livePrimaryLinks.length >= 10, "visible output workflow must retain its full set of primary links");
 for (const [index, link] of livePrimaryLinks.entries()) {
   const classAttribute = jsxAttribute(link, "className");
@@ -638,7 +632,7 @@ const undersizedLiveBadges = visit(pageReturn, (node) => {
       ? node.initializer.expression.getText(pageTree)
       : "";
   return classText.includes("text-[10px]");
-}).filter((attribute) => !containsNode(legacyBranches[0].whenTrue, attribute));
+});
 assert.equal(undersizedLiveBadges.length, 0, "visible output status badges must not fall below 12px");
 const singleLineClasses = visit(pageReturn, (node) => {
   if (!ts.isJsxAttribute(node) || node.name.text !== "className" || !node.initializer) return false;
@@ -649,9 +643,7 @@ const singleLineClasses = visit(pageReturn, (node) => {
       : "";
   return /\btruncate\b|\bline-clamp-|\bwhitespace-nowrap\b/.test(classText);
 });
-for (const classAttribute of singleLineClasses) {
-  assert(containsNode(legacyBranches[0].whenTrue, classAttribute), "visible Worklist flow must not truncate or clamp dynamic identity text; any remaining legacy class must stay behind the hard-off guard");
-}
+assert.equal(singleLineClasses.length, 0, "visible Worklist flow must not truncate or clamp dynamic identity text");
 
 for (const fixtureMarker of ["task-suzuki", "prototype-template-setup", "selected-ready", "selected-blocked"]) {
   assert(!page.includes(fixtureMarker), `formal output center must not include prototype fixture marker ${fixtureMarker}`);

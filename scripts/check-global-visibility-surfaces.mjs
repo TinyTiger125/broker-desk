@@ -10,7 +10,6 @@ const assert = (condition, message) => {
 const searchRoute = read("src/app/api/hub/search/route.ts");
 const exportRoute = read("src/app/api/hub/export/route.ts");
 const hub = read("src/lib/hub.ts");
-const globalSearch = read("src/components/global-search-box.tsx");
 const newCase = read("src/app/cases/new/page.tsx");
 const newQuote = read("src/app/quotes/new/page.tsx");
 const actions = read("src/app/actions.ts");
@@ -25,7 +24,6 @@ assert(hub.includes("if (!context.requestContext) return []"), "search fails clo
 assert(hub.includes("return [...caseItems, ...propertyItems, ...partyItems]"), "search is limited to cases, properties, and parties");
 assert(!hub.slice(hub.indexOf("export async function searchHubItems")).includes("listHubContracts"), "search does not include legacy contracts");
 assert(!hub.slice(hub.indexOf("export async function searchHubItems")).includes("listHubGeneratedOutputs"), "search does not include legacy outputs");
-assert(globalSearch.includes('"case", "property", "party"'), "search UI renders only supported entities");
 
 assert(exportRoute.includes('const supportedScopes = ["cases", "properties", "parties", "audit_logs"]'), "export scope is explicit and narrow");
 assert(exportRoute.includes("unsupported_scope"), "unsupported export scopes are rejected");
