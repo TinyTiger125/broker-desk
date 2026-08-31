@@ -46,7 +46,7 @@
 | TASK-044 | P0 | 平台管理导航入口：账户管理与官方模板工厂 | Done | TASK-043 | [TASK-044](docs/tasks/TASK-044.md) | Product Accepted / Awaiting Integration；固定 Staging 真实 platform owner 与普通 tenant 身份矩阵通过，PR #12 等待正式 CI；Production 禁止 |
 | TASK-045 | P0 | 对象附件 V1：OCR 原件留存、对象绑定与基础分类 | In Review | TASK-040、现有导入链路 | [TASK-045](docs/tasks/TASK-045.md) | 本地工程门通过，等待固定 Staging 运行验收；不扩展为文档管理系统，不执行 Production migration/deploy |
 | TASK-046 | P1 | 退役普通输出实现与确认孤儿代码一次性清理 | Done | TASK-045 固定 Staging 基线 | [TASK-046](docs/tasks/TASK-046.md) | 独立复核 GO：P0/P1=0，3,219 行清理与完整工程门通过并快进固定 Staging；不改保证申请书、数据模型、数据库或 Production |
-| TASK-047 | P0 | 工作中枢 V1：今日事项、七日议程、等待跟进与周度检查 | Done | TASK-046 固定 Staging 基线 | [TASK-047](docs/tasks/TASK-047.md) | Product Accepted / Awaiting Integration / Production Not Released；固定 Preview 真实验收通过并保留 R2 合成回归任务；P2：readOnly 实跑、独立审查返回、资料上传证据未验证 |
+| TASK-047 | P0 | 工作中枢 V1：今日事项、七日议程、等待跟进与周度检查 | Done | TASK-046 固定 Staging 基线 | [TASK-047](docs/tasks/TASK-047.md) | Product Accepted / Integrated / Production Not Released；固定 Preview 真实验收通过并保留 R2 合成回归任务；P2：readOnly 实跑、独立审查返回、资料上传证据未验证 |
 | TASK-003 | P0 | Close the input-material merge completion loop | Proposed | TASK-002 | [TASK-003](docs/tasks/TASK-003.md) | Selection, confirmation, result, failure, and refresh evidence |
 | TASK-004 | P0 | Consolidate template-library and official-template boundaries | Proposed | TASK-002 | [TASK-004](docs/tasks/TASK-004.md) | Role-aware entry, visibility, and installation evidence |
 | TASK-005 | P0 | Separate official template draft and publish states | Proposed | TASK-004 | [TASK-005](docs/tasks/TASK-005.md) | Independent draft save, publish, immutable version, and failure evidence |

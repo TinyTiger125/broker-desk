@@ -4,7 +4,7 @@
 
 今日事项、七日议程、等待跟进与周度检查的最小真实闭环
 
-- 状态: Product Accepted / Awaiting Integration / Production Not Released
+- 状态: Done
 - 基线: `origin/staging/broker-desk-acceptance` `5d7dd85b757d132faae6370430cff1918944bc06`
 - 隔离分支: `feature/work-center-v1-20260831`
 
@@ -85,6 +85,6 @@
 
 ## 当前状态
 
-`Product Accepted / Awaiting Integration / Production Not Released`。固定 Preview 已完成真实 Work Center 验收：邮件信号、任务/案件草稿深链、任务完成持久化、空态、搜索、390/768/1440 无横向溢出及行级触控均通过；完成任务状态保持不变，并已通过正常产品路径创建长期回归任务 `TASK-047 ACCEPTANCE Today Task R2`（`SR-N85D`，客户 `client_nuh4dv5j`）。
+`Product Accepted / Integrated / Production Not Released`。固定 Preview 已完成真实 Work Center 验收：邮件信号、任务/案件草稿深链、任务完成持久化、空态、搜索、390/768/1440 无横向溢出及行级触控均通过；完成任务状态保持不变，并已通过正常产品路径创建长期回归任务 `TASK-047 ACCEPTANCE Today Task R2`（`SR-N85D`，客户 `client_nuh4dv5j`）。
 
-保留 P2：没有第二个只读测试身份，readOnly 真实运行矩阵未验证；独立审查 Agent 无返回；资料上传记录未因本机浏览器上传权限建立。以上不改写为已验证，不阻断本次 Product Accepted；候选与治理状态待正常集成 main 后更新为 Integrated。未执行 Production deployment 或 migration。
+保留 P2：没有第二个只读测试身份，readOnly 真实运行矩阵未验证；独立审查 Agent 无返回；资料上传记录未因本机浏览器上传权限建立。以上不改写为已验证，不阻断本次 Product Accepted。未执行 Production deployment 或 migration。
