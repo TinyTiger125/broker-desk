@@ -4,7 +4,7 @@
 
 今日事项、七日议程、等待跟进与周度检查的最小真实闭环
 
-- 状态: In Progress / Engineering Gates Pass / Awaiting Staging
+- 状态: In Progress
 - 基线: `origin/staging/broker-desk-acceptance` `5d7dd85b757d132faae6370430cff1918944bc06`
 - 隔离分支: `feature/work-center-v1-20260831`
 

@@ -14,6 +14,14 @@ for (const label of ["今日の重点", "今日の重点", "今日重点", "오�
 for (const marker of ["getWorkCenterSnapshotForContext", "listBrokerageCasesForContext", "listHubImportJobs", "changeTaskStatusAction", "buildWorkCenterModel", "buildHomeResumableWork", "/clients/", "/import-center"]) {
   assert.match(page, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), `missing work-center marker: ${marker}`);
 }
+const openActions = [...page.matchAll(/<Link href="(\/tasks|\/clients)" className="([^"]+)">\{copy\.open\}<\/Link>/g)];
+assert.deepEqual(openActions.map((match) => match[1]), ["/tasks", "/clients"]);
+for (const [, , className] of openActions) {
+  assert.match(className, /(^| )min-h-11( |$)/);
+  assert.match(className, /(^| )min-w-11( |$)/);
+  assert.match(className, /(^| )items-center( |$)/);
+  assert.match(className, /(^| )justify-center( |$)/);
+}
 assert.match(memory, /tenantId === input\.context\.tenantId/);
 assert.match(memory, /resolveRecordVisibility\(input\.context/);
 assert.match(memory, /taskLimit = 100/);

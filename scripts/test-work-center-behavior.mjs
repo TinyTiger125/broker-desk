@@ -29,4 +29,7 @@ assert.match(page, /model\.truncated \? copy\.more/);
 assert.match(page, /canWrite \? <form action=\{changeTaskStatusAction\}/);
 assert.match(page, /WorkCenterTaskSubmitButton/);
 assert.match(page, /name="status" value="done"/);
+const openActions = [...page.matchAll(/<Link href="(\/tasks|\/clients)" className="([^"]+)">\{copy\.open\}<\/Link>/g)];
+assert.deepEqual(openActions.map((match) => match[1]), ["/tasks", "/clients"]);
+assert.ok(openActions.every(([, , className]) => /(^| )min-h-11( |$)/.test(className) && /(^| )min-w-11( |$)/.test(className)), "mobile open actions must have a 44px minimum box");
 console.log("Work Center behavior: PASS");
