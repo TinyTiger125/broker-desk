@@ -5,6 +5,8 @@
 
 ## 当前任务
 
+- `TASK-047` 当前为 `In Progress / Engineering Gates Pass / Awaiting Staging`：以固定 Staging `5d7dd85` 为基线，搭建工作中枢 V1；仅聚合现有真实任务、跟进、案件草稿与资料记录，提供今日事项、七日议程、等待跟进和周度检查，不新增数据库 schema，不实现邮箱客户端、AI 邮件或外部日历同步。独立只读审查工具连续无返回，按流程 P2 记录，未宣称独立审查通过；真实浏览器验收尚未开始。
+
 - `TASK-046` 当前为 `Done / Fixed Staging Integrated / Production Not Released`：以固定 Staging `8a2f6b2` 为隔离基线，已移除 3,219 行固定不可达旧普通输出、退役打印路由和确认孤儿实现；完整工程门与独立复核通过（P0/P1=0），并以普通快进方式合入固定 Staging。保证申请书、数据模型、数据库、Production 与用户未跟踪文件保持冻结。
 
 - `TASK-045` 当前为 `In Review / Production Not Released`：OCR/直接上传原件的对象绑定、基础分类、对象详情查看下载与既有可见范围复用已通过本地工程门，等待固定 Staging 运行验收；不做文件夹、标签、全文检索、批量 Excel 自动分发或人物/物件 OCR 建档重写。

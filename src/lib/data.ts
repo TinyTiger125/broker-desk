@@ -215,6 +215,8 @@ export const resolveCaseVisibilityForContext: typeof memory.resolveCaseVisibilit
   repo.resolveCaseVisibilityForContext(...args);
 export const listClientsForContext: typeof memory.listClientsForContext = (...args) =>
   repo.listClientsForContext(...args);
+export const getWorkCenterSnapshotForContext: typeof memory.getWorkCenterSnapshotForContext = (...args) =>
+  repo.getWorkCenterSnapshotForContext(...args);
 export const getClientDetailForContext: typeof memory.getClientDetailForContext = (...args) =>
   repo.getClientDetailForContext(...args);
 export const listPropertiesForContext: typeof memory.listPropertiesForContext = (...args) =>
@@ -534,6 +536,11 @@ export type {
   GuaranteeApplicationDraftStatus,
   OutputTemplateVersion,
   Task,
+  WorkCenterClientSummary,
+  WorkCenterTaskItem,
+  WorkCenterFollowUpItem,
+  WorkCenterClientItem,
+  WorkCenterSnapshot,
   User,
   OutputTemplateSettingsInput,
 } from "@/lib/data.memory";

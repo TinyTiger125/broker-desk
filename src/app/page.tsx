@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { listBrokerageCasesForContext } from "@/lib/data";
+import { changeTaskStatusAction } from "@/app/actions";
+import { listBrokerageCasesForContext, getWorkCenterSnapshotForContext } from "@/lib/data";
 import { formatDate } from "@/lib/format";
-import { listHubImportJobs } from "@/lib/hub";
+import { listHubImportJobs, type HubImportJobItem } from "@/lib/hub";
 import { buildHomeResumableWork } from "@/lib/home-resumable-work";
 import { getLocale, type Locale } from "@/lib/locale";
 import { getHomeTenantSelectionRecoveryPath } from "@/lib/tenant-recovery";
@@ -9,166 +10,67 @@ import { requireTenantSession, TenantSessionError } from "@/lib/tenant-session";
 import { redirect } from "next/navigation";
 import { createRequestContext } from "@/lib/visibility-resolver";
 import { localizeDemoBrokerageCase } from "@/lib/demo-localization";
+import { buildWorkCenterModel, type WorkCenterModel } from "@/lib/work-center";
+import { WorkCenterTaskSubmitButton } from "@/components/work-center-task-action";
 
 export const dynamic = "force-dynamic";
 
-type HomePageProps = {
-  searchParams?: Promise<{ q?: string }>;
-};
+type HomePageProps = { searchParams?: Promise<{ q?: string }> };
+type HomeCopy = Record<string, string>;
 
-const copyByLocale: Record<Locale, {
-  title: string;
-  subtitle: string;
-  tenant: string;
-  searchPlaceholder: string;
-  search: string;
-  clear: string;
-  intakeTitle: string;
-  intakeDesc: string;
-  organizeTitle: string;
-  organizeDesc: string;
-  resumableTitle: string;
-  resumableDesc: string;
-  noResumable: string;
-  open: string;
-  continueItem: string;
-}> = {
+const copyByLocale: Record<Locale, HomeCopy> = {
   ja: {
-    title: "ホーム",
-    subtitle: "今日の作業を選び、詳細は各ページで進めます。",
-    tenant: "ワークスペース",
-    searchPlaceholder: "案件、資料を検索",
-    search: "検索",
-    clear: "クリア",
-    intakeTitle: "資料を読み込む",
-    intakeDesc: "画像、PDF、Excelなどの資料を読み取り、現在の案件整理へ進みます。",
-    organizeTitle: "情報を整理する",
-    organizeDesc: "確認が必要な項目だけを開き、対象と内容を整理します。",
-    resumableTitle: "最近の未完了項目",
-    resumableDesc: "保存済みで再開できる案件と資料を、更新順に表示します。",
-    noResumable: "再開できる未完了項目はありません。",
-    open: "開く",
-    continueItem: "続ける",
+    title: "作業センター", subtitle: "今日の重点、今後7日間の予定、確認待ちの案件をひとつの画面で確認します。", tenant: "ワークスペース", today: "今日の重点", agenda: "七日間の予定", waiting: "フォロー待ち", weekly: "週次チェック", overdue: "期限超過", dueToday: "今日", nextSevenDays: "今後7日間", unscheduled: "日付未設定", noItems: "該当する項目はありません。", open: "開く", complete: "完了にする", completing: "更新中…", readOnly: "閲覧のみ", more: "表示できる件数に上限があります。続きは各一覧で確認してください。", recent: "保存済みの案件・資料", recentDesc: "途中から再開できる既存の案件と資料を表示します。", continueItem: "続ける", noRecent: "再開できる保存済み項目はありません。", intake: "資料を読み込む", intakeDesc: "画像、PDF、Excelなどの資料を読み取り、確認を続けます。", organize: "情報を整理する", organizeDesc: "確認が必要な項目を開き、対象と内容を整理します。", emailSignal: "メールのフォロー信号", nextAction: "次の対応", noNextAction: "次の対応が未設定", stale: "しばらく更新されていません", limited: "一部のみ表示しています。", emptySubtitle: "既存データが追加されると、ここに表示されます。", searchPlaceholder: "案件、資料を検索", search: "検索", clear: "クリア",
   },
   zh: {
-    title: "工作台",
-    subtitle: "选择今天要开始的工作，具体处理在对应页面完成。",
-    tenant: "当前工作区",
-    searchPlaceholder: "搜索案件、资料",
-    search: "搜索",
-    clear: "清除",
-    intakeTitle: "录入资料",
-    intakeDesc: "读取图片、PDF、Excel 等资料，并进入当前案件整理流程。",
-    organizeTitle: "整理信息",
-    organizeDesc: "只打开需要处理的项目，确认归属并整理信息。",
-    resumableTitle: "最近未完成项目",
-    resumableDesc: "按更新时间显示已保存且可以继续的案件和资料。",
-    noResumable: "当前没有可以继续的未完成项目。",
-    open: "打开",
-    continueItem: "继续",
+    title: "工作中枢", subtitle: "在一个页面查看今日重点、未来七日安排和等待跟进的项目。", tenant: "当前工作区", today: "今日重点", agenda: "七日议程", waiting: "等待跟进", weekly: "周度检查", overdue: "已逾期", dueToday: "今天", nextSevenDays: "未来七日", unscheduled: "未安排日期", noItems: "当前没有符合条件的项目。", open: "打开", complete: "标记完成", completing: "更新中…", readOnly: "仅可查看", more: "当前结果有数量上限，更多内容请到对应列表查看。", recent: "已保存的案件和资料", recentDesc: "显示可以从中断位置继续的既有案件和资料。", continueItem: "继续", noRecent: "当前没有可以继续的已保存项目。", intake: "录入资料", intakeDesc: "读取图片、PDF、Excel 等资料，继续确认流程。", organize: "整理信息", organizeDesc: "打开需要处理的项目，确认归属并整理内容。", emailSignal: "邮件跟进信号", nextAction: "下一步", noNextAction: "尚未设置下一步", stale: "一段时间未更新", limited: "当前仅显示部分结果。", emptySubtitle: "有新的既有数据后，会显示在这里。", searchPlaceholder: "搜索案件、资料", search: "搜索", clear: "清除",
   },
   ko: {
-    title: "홈",
-    subtitle: "오늘 시작할 작업을 고르고, 상세 처리는 각 페이지에서 진행합니다.",
-    tenant: "현재 워크스페이스",
-    searchPlaceholder: "안건, 자료 검색",
-    search: "검색",
-    clear: "지우기",
-    intakeTitle: "자료 입력",
-    intakeDesc: "이미지, PDF, Excel 자료를 읽고 현재 안건 정리로 이동합니다.",
-    organizeTitle: "정보 정리",
-    organizeDesc: "처리가 필요한 항목만 열어 대상과 내용을 정리합니다.",
-    resumableTitle: "최근 미완료 항목",
-    resumableDesc: "저장되어 다시 시작할 수 있는 안건과 자료를 업데이트 순으로 표시합니다.",
-    noResumable: "계속할 수 있는 미완료 항목이 없습니다.",
-    open: "열기",
-    continueItem: "계속",
+    title: "업무 센터", subtitle: "오늘의 주요 업무, 향후 7일 일정, 후속 연락 대상을 한곳에서 확인합니다.", tenant: "현재 워크스페이스", today: "오늘의 주요 업무", agenda: "7일 일정", waiting: "후속 연락 대기", weekly: "주간 점검", overdue: "기한 초과", dueToday: "오늘", nextSevenDays: "향후 7일", unscheduled: "날짜 미정", noItems: "조건에 맞는 항목이 없습니다.", open: "열기", complete: "완료로 표시", completing: "업데이트 중…", readOnly: "보기만 가능", more: "표시 수에 제한이 있습니다. 나머지는 해당 목록에서 확인해 주세요.", recent: "저장된 안건과 자료", recentDesc: "중단한 지점부터 다시 시작할 수 있는 기존 안건과 자료를 표시합니다.", continueItem: "계속", noRecent: "다시 시작할 저장된 항목이 없습니다.", intake: "자료 입력", intakeDesc: "이미지, PDF, Excel 자료를 읽고 확인을 계속합니다.", organize: "정보 정리", organizeDesc: "처리가 필요한 항목을 열어 대상과 내용을 정리합니다.", emailSignal: "이메일 후속 연락 신호", nextAction: "다음 조치", noNextAction: "다음 조치가 설정되지 않음", stale: "한동안 업데이트되지 않음", limited: "일부 결과만 표시합니다.", emptySubtitle: "기존 데이터가 추가되면 이곳에 표시됩니다.", searchPlaceholder: "안건, 자료 검색", search: "검색", clear: "지우기",
   },
 };
 
+function dateLabel(value: Date | undefined, locale: Locale) { return value ? formatDate(value, locale) : "—"; }
+
+function TaskRows({ model, copy, locale }: { model: WorkCenterModel; copy: HomeCopy; locale: Locale }) {
+  const sections = [{ title: copy.overdue, items: model.overdueTasks }, { title: copy.dueToday, items: model.todayTasks }, { title: copy.nextSevenDays, items: model.upcomingTasks }, { title: copy.unscheduled, items: model.unscheduledTasks }].filter((section) => section.items.length > 0);
+  if (sections.length === 0) return <p className="rounded-md bg-slate-50 px-4 py-6 text-center text-sm font-semibold text-slate-500">{copy.noItems}<span className="mt-1 block font-normal text-slate-400">{copy.emptySubtitle}</span></p>;
+  return <div className="space-y-5">{sections.map((section) => <section key={section.title} aria-label={section.title}><h3 className="text-sm font-black text-slate-700">{section.title}</h3><ul className="mt-2 divide-y divide-slate-100">{section.items.map(({ task, client, canWrite }) => <li key={task.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0"><div className="min-w-0"><Link href={`/clients/${encodeURIComponent(client.id)}#client-tasks`} className="font-bold text-slate-900 hover:text-[#002FA7] hover:underline">{task.title}</Link><p className="mt-1 text-xs font-semibold text-slate-500">{client.name} · {dateLabel(task.dueAt, locale)}</p></div>{canWrite ? <form action={changeTaskStatusAction} className="shrink-0"><input type="hidden" name="taskId" value={task.id} /><input type="hidden" name="clientId" value={client.id} /><input type="hidden" name="status" value="done" /><input type="hidden" name="previousStatus" value={task.status} /><input type="hidden" name="returnTo" value="/" /><WorkCenterTaskSubmitButton idleLabel={copy.complete} pendingLabel={copy.completing} /></form> : <span className="text-xs font-semibold text-slate-500">{copy.readOnly}</span>}</li>)}</ul></section>)}</div>;
+}
+
+function WaitingRows({ model, copy, locale }: { model: WorkCenterModel; copy: HomeCopy; locale: Locale }) {
+  const items = [...model.waitingClients, ...model.noNextActionClients, ...model.staleClients].filter((item, index, all) => all.findIndex((candidate) => candidate.client.id === item.client.id) === index).slice(0, 12);
+  if (items.length === 0) return <p className="rounded-md bg-slate-50 px-4 py-6 text-center text-sm font-semibold text-slate-500">{copy.noItems}<span className="mt-1 block font-normal text-slate-400">{copy.emptySubtitle}</span></p>;
+  return <ul className="divide-y divide-slate-100">{items.map(({ client, canWrite }) => <li key={client.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0"><div className="min-w-0"><Link href={`/clients/${encodeURIComponent(client.id)}#client-follow-ups`} className="font-bold text-slate-900 hover:text-[#002FA7] hover:underline">{client.name}</Link><p className="mt-1 text-xs font-semibold text-slate-500">{client.nextFollowUpAt ? `${copy.nextAction}: ${dateLabel(client.nextFollowUpAt, locale)}` : copy.noNextAction}{!client.lastContactedAt ? ` · ${copy.stale}` : ""}</p></div><span className="text-xs font-semibold text-slate-500">{canWrite ? copy.open : copy.readOnly}</span></li>)}</ul>;
+}
+
+function WeeklyRows({ model, copy, locale }: { model: WorkCenterModel; copy: HomeCopy; locale: Locale }) {
+  const days = model.days.filter((day) => day.tasks.length > 0 || day.followUps.length > 0);
+  if (days.length === 0) return <p className="rounded-md bg-slate-50 px-4 py-6 text-center text-sm font-semibold text-slate-500">{copy.noItems}<span className="mt-1 block font-normal text-slate-400">{copy.emptySubtitle}</span></p>;
+  return <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{days.map((day) => <li key={day.key} className="rounded-md border border-slate-200 bg-slate-50 p-3"><p className="text-sm font-black text-slate-800">{dateLabel(day.date, locale)}</p><p className="mt-1 text-xs font-semibold text-slate-500">{day.tasks.length} · {day.followUps.length}</p></li>)}</ul>;
+}
+
+function RecentWork({ copy, items }: { copy: HomeCopy; items: ReturnType<typeof buildHomeResumableWork> }) {
+  if (items.length === 0) return <p className="mt-4 rounded-md bg-slate-50 px-4 py-6 text-center text-sm font-semibold text-slate-500">{copy.noRecent}</p>;
+  return <ul className="mt-4 divide-y divide-slate-100">{items.map((item) => <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0"><div className="min-w-0"><p className="truncate text-sm font-black text-slate-900">{item.title}</p><p className="mt-1 text-xs font-semibold text-slate-500">{item.reason}</p></div><Link href={item.href} className="inline-flex min-h-11 shrink-0 items-center text-sm font-black text-[#002FA7] hover:underline">{copy.continueItem}</Link></li>)}</ul>;
+}
+
+function ImportSignals({ jobs, copy, locale }: { jobs: HubImportJobItem[]; copy: HomeCopy; locale: Locale }) {
+  const signals = jobs.filter((job) => job.status !== "completed").slice(0, 8);
+  if (signals.length === 0) return <p className="text-sm font-semibold text-slate-500">{copy.noItems}</p>;
+  return <ul className="divide-y divide-slate-100">{signals.map((job) => <li key={job.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0"><div className="min-w-0"><p className="truncate text-sm font-bold text-slate-900">{job.title}</p><p className="mt-1 text-xs font-semibold text-slate-500">{copy.emailSignal} · {dateLabel(job.updatedAt, locale)}</p></div><Link href={`/import-center?job=${encodeURIComponent(job.id)}#source-review-summary`} className="inline-flex min-h-11 items-center text-sm font-black text-[#002FA7] hover:underline">{copy.open}</Link></li>)}</ul>;
+}
+
 export default async function HomePage({ searchParams }: HomePageProps) {
-  const [params, locale] = await Promise.all([
-    searchParams ? searchParams : Promise.resolve(undefined),
-    getLocale(),
-  ]);
+  const [params, locale] = await Promise.all([searchParams ?? Promise.resolve(undefined), getLocale()]);
   let session;
-  try {
-    session = await requireTenantSession({ permission: "tenant.read" });
-  } catch (error) {
-    if (error instanceof TenantSessionError) {
-      const recoveryPath = getHomeTenantSelectionRecoveryPath(error.code);
-      if (recoveryPath) redirect(recoveryPath);
-    }
-    throw error;
-  }
+  try { session = await requireTenantSession({ permission: "tenant.read" }); } catch (error) { if (error instanceof TenantSessionError) { const recoveryPath = getHomeTenantSelectionRecoveryPath(error.code); if (recoveryPath) redirect(recoveryPath); } throw error; }
   const copy = copyByLocale[locale];
   const searchQuery = params?.q?.trim() ?? "";
   const requestContext = createRequestContext(session);
-  const [visibleCases, importJobs] = await Promise.all([
-    listBrokerageCasesForContext({ context: requestContext, limit: 50 }),
-    listHubImportJobs({ userId: session.user.id, tenantId: session.tenant.id }, locale),
-  ]);
-  const cases = visibleCases.flatMap((entry) => {
-    if (!entry.brokerageCase) return [];
-    const item = localizeDemoBrokerageCase(locale, entry.brokerageCase);
-    return [{ id: item.id, title: item.caseTitle, status: item.status, updatedAt: item.updatedAt, sourceImportJobIds: item.sourceImportJobIds }];
-  });
-  const resumableItems = buildHomeResumableWork({ locale, query: searchQuery, cases, importJobs });
-
-  return (
-    <main className="bd-page bd-home-page space-y-6">
-      <header className="bd-page-header px-6 py-6 sm:px-8">
-        <div className="grid min-w-0 gap-5 2xl:grid-cols-[minmax(0,1fr)_minmax(22rem,28rem)] 2xl:items-end">
-          <div className="min-w-0">
-            <p className="text-xs font-black text-[#002FA7]">{copy.tenant}: {session.tenant.name}</p>
-            <h1 className="mt-2 text-3xl font-black leading-tight tracking-normal text-slate-950 sm:text-4xl">{copy.title}</h1>
-            <p className="mt-3 max-w-3xl text-sm font-semibold leading-6 text-slate-600">{copy.subtitle}</p>
-          </div>
-          <form action="/" className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-            <label className="sr-only" htmlFor="home-search">{copy.search}</label>
-            <input id="home-search" name="q" defaultValue={searchQuery} placeholder={copy.searchPlaceholder} className="h-11 min-w-0 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 outline-none focus:border-[#002FA7] focus:ring-2 focus:ring-blue-100" />
-            <button className="h-11 rounded-md border border-slate-300 bg-white px-4 text-sm font-black text-slate-800 hover:border-[#002FA7] hover:text-[#002FA7]" type="submit">{copy.search}</button>
-            {searchQuery ? <Link href="/" className="flex h-10 items-center justify-center rounded-md border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 hover:bg-slate-50 sm:col-span-2">{copy.clear}</Link> : null}
-          </form>
-        </div>
-      </header>
-
-      <section className="grid gap-3 md:grid-cols-2" aria-label={copy.title}>
-        <Link href="/import-center" className="bd-action-card bd-action-card-primary group">
-          <span className="flex h-11 w-11 items-center justify-center rounded-md bg-white/10"><span aria-hidden="true" className="material-symbols-outlined text-[22px]">upload_file</span></span>
-          <h2 className="mt-5 text-2xl font-black leading-tight">{copy.intakeTitle}</h2>
-          <p className="mt-2 text-sm font-semibold leading-6 text-white/75">{copy.intakeDesc}</p>
-          <span className="mt-5 inline-flex text-sm font-black">{copy.open} <span aria-hidden="true" className="material-symbols-outlined ml-1 text-[18px]">arrow_forward</span></span>
-        </Link>
-        <Link href="/organize-center" className="bd-action-card border-amber-200 bg-[#fffaf0] text-slate-950 hover:border-amber-400 hover:bg-[#fff6df] group">
-          <span className="flex h-11 w-11 items-center justify-center rounded-md bg-white text-amber-700"><span aria-hidden="true" className="material-symbols-outlined text-[22px]">fact_check</span></span>
-          <h2 className="mt-5 text-2xl font-black leading-tight">{copy.organizeTitle}</h2>
-          <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">{copy.organizeDesc}</p>
-          <span className="mt-5 inline-flex text-sm font-black text-amber-800">{copy.open} <span aria-hidden="true" className="material-symbols-outlined ml-1 text-[18px]">arrow_forward</span></span>
-        </Link>
-      </section>
-
-      <section className="rounded-lg border border-slate-200 bg-white p-5">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-black text-slate-950">{copy.resumableTitle}</h2>
-            <p className="mt-1 text-sm font-semibold text-slate-600">{copy.resumableDesc}</p>
-          </div>
-        </div>
-        {resumableItems.length > 0 ? (
-          <ul className="mt-4 divide-y divide-slate-100">
-            {resumableItems.map((item) => (
-              <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-black text-slate-900">{item.title}</p>
-                  <p className="mt-1 text-xs font-semibold text-slate-500">{item.reason} · {formatDate(item.updatedAt, locale)}</p>
-                </div>
-                <Link href={item.href} className="inline-flex min-h-11 shrink-0 items-center text-sm font-black text-[#002FA7] hover:underline">{copy.continueItem}</Link>
-              </li>
-            ))}
-          </ul>
-        ) : <p className="mt-4 rounded-md bg-slate-50 px-4 py-6 text-center text-sm font-semibold text-slate-500">{copy.noResumable}</p>}
-      </section>
-    </main>
-  );
+  const [snapshot, visibleCases, importJobs] = await Promise.all([getWorkCenterSnapshotForContext({ context: requestContext }), listBrokerageCasesForContext({ context: requestContext, limit: 50 }), listHubImportJobs({ userId: session.user.id, tenantId: session.tenant.id }, locale)]);
+  const model = buildWorkCenterModel(snapshot);
+  const cases = visibleCases.flatMap((entry) => { if (!entry.brokerageCase) return []; const item = localizeDemoBrokerageCase(locale, entry.brokerageCase); return [{ id: item.id, title: item.caseTitle, status: item.status, updatedAt: item.updatedAt, sourceImportJobIds: item.sourceImportJobIds }]; });
+  const recentItems = buildHomeResumableWork({ locale, query: searchQuery, cases, importJobs });
+  return <main className="bd-page bd-home-page space-y-6"><header className="bd-page-header px-6 py-6 sm:px-8"><div className="min-w-0"><p className="text-xs font-black text-[#002FA7]">{copy.tenant}: {session.tenant.name}</p><h1 className="mt-2 text-3xl font-black leading-tight tracking-normal text-slate-950 sm:text-4xl">{copy.title}</h1><p className="mt-3 max-w-3xl text-sm font-semibold leading-6 text-slate-600">{copy.subtitle}</p></div><form action="/" className="mt-5 grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_auto]"><label className="sr-only" htmlFor="home-search">{copy.search}</label><input id="home-search" name="q" defaultValue={searchQuery} placeholder={copy.searchPlaceholder} className="h-11 min-w-0 rounded-md border border-slate-300 bg-white px-3 text-base font-semibold text-slate-900 outline-none focus:border-[#002FA7] focus:ring-2 focus:ring-blue-100 sm:text-sm" /><button className="min-h-11 rounded-md border border-slate-300 bg-white px-4 text-sm font-black text-slate-800 hover:border-[#002FA7] hover:text-[#002FA7]" type="submit">{copy.search}</button>{searchQuery ? <Link href="/" className="flex min-h-11 items-center justify-center rounded-md border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 hover:bg-slate-50 sm:col-span-2">{copy.clear}</Link> : null}</form></header><section className="grid min-w-0 gap-4 xl:grid-cols-2" aria-label={copy.today}><section className="min-w-0 rounded-lg border border-slate-200 bg-white p-5" aria-labelledby="work-center-today"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 id="work-center-today" className="text-xl font-black text-slate-950">{copy.today}</h2><p className="mt-1 text-sm font-semibold text-slate-600">{copy.overdue} · {copy.dueToday}</p></div><Link href="/tasks" className="inline-flex min-h-11 items-center text-sm font-black text-[#002FA7]">{copy.open}</Link></div><div className="mt-5"><TaskRows model={model} copy={copy} locale={locale} /></div></section><section className="min-w-0 rounded-lg border border-slate-200 bg-white p-5" aria-labelledby="work-center-waiting"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 id="work-center-waiting" className="text-xl font-black text-slate-950">{copy.waiting}</h2><p className="mt-1 text-sm font-semibold text-slate-600">{copy.nextAction}</p></div><Link href="/clients" className="inline-flex min-h-11 items-center text-sm font-black text-[#002FA7]">{copy.open}</Link></div><div className="mt-5"><WaitingRows model={model} copy={copy} locale={locale} /></div></section></section><section className="min-w-0 rounded-lg border border-slate-200 bg-white p-5" aria-labelledby="work-center-agenda"><h2 id="work-center-agenda" className="text-xl font-black text-slate-950">{copy.agenda}</h2><p className="mt-1 text-sm font-semibold text-slate-600">{copy.nextSevenDays}</p><div className="mt-5"><WeeklyRows model={model} copy={copy} locale={locale} /></div></section><section className="min-w-0 rounded-lg border border-slate-200 bg-white p-5" aria-labelledby="work-center-weekly"><h2 id="work-center-weekly" className="text-xl font-black text-slate-950">{copy.weekly}</h2><p className="mt-1 text-sm font-semibold text-slate-600">{copy.emailSignal}</p><div className="mt-5"><ImportSignals jobs={importJobs} copy={copy} locale={locale} /></div></section>{model.truncated || importJobs.length > 8 ? <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">{model.truncated ? copy.more : copy.limited}</p> : null}<section className="grid min-w-0 gap-3 md:grid-cols-2" aria-label={copy.intake}><Link href="/import-center" className="bd-action-card bd-action-card-primary group min-w-0"><span className="flex h-11 w-11 items-center justify-center rounded-md bg-white/10"><span aria-hidden="true" className="material-symbols-outlined text-[22px]">upload_file</span></span><h2 className="mt-5 text-2xl font-black leading-tight">{copy.intake}</h2><p className="mt-2 text-sm font-semibold leading-6 text-white/75">{copy.intakeDesc}</p></Link><Link href="/organize-center" className="bd-action-card min-w-0 border-amber-200 bg-[#fffaf0] text-slate-950 hover:border-amber-400 hover:bg-[#fff6df] group"><span className="flex h-11 w-11 items-center justify-center rounded-md bg-white text-amber-700"><span aria-hidden="true" className="material-symbols-outlined text-[22px]">fact_check</span></span><h2 className="mt-5 text-2xl font-black leading-tight">{copy.organize}</h2><p className="mt-2 text-sm font-semibold leading-6 text-slate-600">{copy.organizeDesc}</p></Link></section><section className="min-w-0 rounded-lg border border-slate-200 bg-white p-5" aria-labelledby="work-center-recent"><h2 id="work-center-recent" className="text-xl font-black text-slate-950">{copy.recent}</h2><p className="mt-1 text-sm font-semibold text-slate-600">{copy.recentDesc}</p><RecentWork copy={copy} items={recentItems} /></section></main>;
 }

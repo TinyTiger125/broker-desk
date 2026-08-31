@@ -91,6 +91,8 @@ import type {
   SetRecordLifecycleWithAuditInput,
   VisibleRecordCounts,
   VisibleRecordSearchHit,
+  WorkCenterClientSummary,
+  WorkCenterSnapshot,
 } from "@/lib/data.memory";
 import type { VisibleBrokerageCase, VisibleProperty } from "@/lib/data.memory";
 import type { TenantRole, TenantCapabilityPreset } from "@/lib/tenant-permissions";
@@ -5148,6 +5150,89 @@ export async function listClientsForContext(input: {
       resolution: resolveRecordVisibility(input.context, client),
       _count: { quotations: quoteCountMap.get(client.id) ?? 0, followUps: followCountMap.get(client.id) ?? 0 },
     }));
+  });
+}
+
+/** Bounded, tenant-scoped work-center read model assembled in three queries. */
+export async function getWorkCenterSnapshotForContext(input: {
+  context: RequestContext;
+}): Promise<WorkCenterSnapshot> {
+  return withPostgresAuthContext(input.context.externalAuthSubject, async () => {
+    await ensureSchema();
+    const taskLimit = 100;
+    const followUpLimit = 60;
+    const clientLimit = 120;
+    const visibilitySql = "c.owner_resolution_status = 'resolved' AND c.current_owner_user_id IS NOT NULL AND (c.current_owner_user_id = $2 OR c.visibility_scope = 'company_read')";
+    const clientColumns = `
+      c.id AS wc_client_id,
+      c.name AS wc_client_name,
+      c.stage AS wc_client_stage,
+      c.next_follow_up_at AS wc_client_next_follow_up_at,
+      c.last_contacted_at AS wc_client_last_contacted_at,
+      c.updated_at AS wc_client_updated_at,
+      c.tenant_id AS wc_client_tenant_id,
+      c.current_owner_user_id AS wc_client_owner_id,
+      c.visibility_scope AS wc_client_visibility_scope,
+      c.owner_resolution_status AS wc_client_owner_resolution_status`;
+    const [taskRes, followUpRes, clientRes] = await Promise.all([
+      getPool().query(
+        `SELECT t.*, ${clientColumns}
+           FROM tasks t
+           JOIN clients c ON c.id = t.client_id AND c.tenant_id = t.tenant_id
+          WHERE t.tenant_id = $1 AND t.status = 'pending'
+            AND COALESCE(c.lifecycle_status, 'active') = 'active'
+            AND ${visibilitySql}
+          ORDER BY t.due_at ASC NULLS LAST, t.created_at DESC
+          LIMIT $3`,
+        [input.context.tenantId, input.context.userId, taskLimit + 1],
+      ),
+      getPool().query(
+        `SELECT f.*, ${clientColumns}
+           FROM follow_ups f
+           JOIN clients c ON c.id = f.client_id AND c.tenant_id = f.tenant_id
+          WHERE f.tenant_id = $1
+            AND (f.type = 'email' OR f.next_follow_up_at IS NOT NULL)
+            AND COALESCE(c.lifecycle_status, 'active') = 'active'
+            AND ${visibilitySql}
+          ORDER BY f.created_at DESC
+          LIMIT $3`,
+        [input.context.tenantId, input.context.userId, followUpLimit + 1],
+      ),
+      getPool().query(
+        `SELECT c.*, ${clientColumns}
+           FROM clients c
+          WHERE c.tenant_id = $1
+            AND c.stage = ANY($4::text[])
+            AND COALESCE(c.lifecycle_status, 'active') = 'active'
+            AND ${visibilitySql}
+          ORDER BY c.next_follow_up_at ASC NULLS LAST, c.updated_at DESC
+          LIMIT $3`,
+        [input.context.tenantId, input.context.userId, clientLimit + 1, OPEN_STAGES],
+      ),
+    ]);
+    const summarize = (row: Record<string, unknown>): WorkCenterClientSummary => ({
+      id: String(row.wc_client_id),
+      name: String(row.wc_client_name),
+      stage: String(row.wc_client_stage) as ClientStage,
+      nextFollowUpAt: toDate(row.wc_client_next_follow_up_at),
+      lastContactedAt: toDate(row.wc_client_last_contacted_at),
+      updatedAt: toDate(row.wc_client_updated_at) ?? new Date(),
+    });
+    const canWrite = (row: Record<string, unknown>) => resolveRecordVisibility(input.context, {
+      tenantId: String(row.wc_client_tenant_id),
+      currentOwnerUserId: String(row.wc_client_owner_id),
+      visibilityScope: row.wc_client_visibility_scope,
+      ownerResolutionStatus: row.wc_client_owner_resolution_status,
+    }).canWrite;
+
+    return {
+      tasks: taskRes.rows.slice(0, taskLimit).map((row) => ({ task: mapTask(row), client: summarize(row), canWrite: canWrite(row) })),
+      followUps: followUpRes.rows.slice(0, followUpLimit).map((row) => ({ followUp: mapFollowUp(row), client: summarize(row), canWrite: canWrite(row) })),
+      clients: clientRes.rows.slice(0, clientLimit).map((row) => ({ client: summarize(row), canWrite: canWrite(row) })),
+      hasMoreTasks: taskRes.rows.length > taskLimit,
+      hasMoreFollowUps: followUpRes.rows.length > followUpLimit,
+      hasMoreClients: clientRes.rows.length > clientLimit,
+    };
   });
 }
 

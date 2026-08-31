@@ -74,6 +74,8 @@
     "test:system-state": "node scripts/check-system-state-contract.mjs",
     "test:home-tenant-recovery": "node scripts/test-home-tenant-recovery.mjs",
     "test:home-resumable-work": "node scripts/test-home-resumable-work.mjs",
+    "test:work-center-contract": "node scripts/check-work-center-contract.mjs",
+    "test:work-center-behavior": "node scripts/test-work-center-behavior.mjs",
     "test:import-center-object-actions": "node scripts/check-import-center-object-actions.mjs",
     "test:settings-members-shell": "node scripts/check-settings-members-shell-contract.mjs",
     "test:output-center-worklist": "node scripts/check-output-center-worklist-contract.mjs",

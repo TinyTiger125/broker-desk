@@ -268,6 +268,37 @@ export type Task = {
   createdAt: Date;
 };
 
+export type WorkCenterClientSummary = Pick<
+  Client,
+  "id" | "name" | "stage" | "nextFollowUpAt" | "lastContactedAt" | "updatedAt"
+>;
+
+export type WorkCenterTaskItem = {
+  task: Task;
+  client: WorkCenterClientSummary;
+  canWrite: boolean;
+};
+
+export type WorkCenterFollowUpItem = {
+  followUp: FollowUp;
+  client: WorkCenterClientSummary;
+  canWrite: boolean;
+};
+
+export type WorkCenterClientItem = {
+  client: WorkCenterClientSummary;
+  canWrite: boolean;
+};
+
+export type WorkCenterSnapshot = {
+  tasks: WorkCenterTaskItem[];
+  followUps: WorkCenterFollowUpItem[];
+  clients: WorkCenterClientItem[];
+  hasMoreTasks: boolean;
+  hasMoreFollowUps: boolean;
+  hasMoreClients: boolean;
+};
+
 export type AuditLog = {
   id: string;
   tenantId?: string;
@@ -5145,6 +5176,60 @@ export async function listClientsForContext(input: {
       },
     };
   }));
+}
+
+/** Bounded, tenant-scoped work-center read model. Domain edits remain on their existing pages/actions. */
+export async function getWorkCenterSnapshotForContext(input: {
+  context: RequestContext;
+}): Promise<WorkCenterSnapshot> {
+  const taskLimit = 100;
+  const followUpLimit = 60;
+  const clientLimit = 120;
+  const visibleClients = db.clients
+    .filter((item) => item.tenantId === input.context.tenantId)
+    .filter((item) => (item.lifecycleStatus ?? "active") === "active")
+    .filter((item) => isVisibilityRecordResolved(item))
+    .flatMap((client) => {
+      const resolution = resolveRecordVisibility(input.context, client);
+      return resolution.canRead ? [{ client, canWrite: resolution.canWrite }] : [];
+    });
+  const clientById = new Map(visibleClients.map((item) => [item.client.id, item] as const));
+  const summarize = (client: Client): WorkCenterClientSummary => ({
+    id: client.id,
+    name: client.name,
+    stage: client.stage,
+    nextFollowUpAt: client.nextFollowUpAt,
+    lastContactedAt: client.lastContactedAt,
+    updatedAt: client.updatedAt,
+  });
+
+  const taskCandidates = db.tasks
+    .filter((task) => task.tenantId === input.context.tenantId && task.status === "pending" && Boolean(task.clientId))
+    .flatMap((task) => {
+      const entry = task.clientId ? clientById.get(task.clientId) : undefined;
+      return entry ? [{ task: { ...task }, client: summarize(entry.client), canWrite: entry.canWrite }] : [];
+    })
+    .sort((a, b) => (a.task.dueAt?.getTime() ?? Number.MAX_SAFE_INTEGER) - (b.task.dueAt?.getTime() ?? Number.MAX_SAFE_INTEGER));
+  const followUpCandidates = db.followUps
+    .filter((followUp) => followUp.tenantId === input.context.tenantId && (followUp.type === "email" || Boolean(followUp.nextFollowUpAt)))
+    .flatMap((followUp) => {
+      const entry = clientById.get(followUp.clientId);
+      return entry ? [{ followUp: { ...followUp }, client: summarize(entry.client), canWrite: entry.canWrite }] : [];
+    })
+    .sort((a, b) => b.followUp.createdAt.getTime() - a.followUp.createdAt.getTime());
+  const clientCandidates = visibleClients
+    .filter((entry) => OPEN_STAGES.includes(entry.client.stage))
+    .sort((a, b) => (a.client.nextFollowUpAt?.getTime() ?? Number.MAX_SAFE_INTEGER) - (b.client.nextFollowUpAt?.getTime() ?? Number.MAX_SAFE_INTEGER))
+    .map((entry) => ({ client: summarize(entry.client), canWrite: entry.canWrite }));
+
+  return {
+    tasks: taskCandidates.slice(0, taskLimit),
+    followUps: followUpCandidates.slice(0, followUpLimit),
+    clients: clientCandidates.slice(0, clientLimit),
+    hasMoreTasks: taskCandidates.length > taskLimit,
+    hasMoreFollowUps: followUpCandidates.length > followUpLimit,
+    hasMoreClients: clientCandidates.length > clientLimit,
+  };
 }
 
 /** Property list path guarded by the authenticated RequestContext resolver. */
