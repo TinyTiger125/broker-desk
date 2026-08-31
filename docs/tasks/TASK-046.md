@@ -97,4 +97,4 @@ git diff --check
 - 3,219 行退役/孤儿实现已从候选移除；cleanup、Output Center、button、visibility、product-language、workflow、build、typecheck、lint 与 diff-check 均通过，lint 仅 2 个既有 warning。
 - 独立只读审查结论：GO，P0=0、Product P1=0、Engineering P1=0、P2=1。
 - P2：cleanup checker 目前只核对目标文件不存在并检查少量关键字符串，尚不是全仓 import/route/contract 自动扫描；本候选已由独立全仓反查与 production build 覆盖，不阻断本任务。
-- 尚未执行 Production deployment 或 migration。
+- 已以普通快进方式合入固定 Staging；尚未执行 Production deployment 或 migration。
