@@ -229,7 +229,7 @@ assert(postgresSource.includes("brokerdesk_private.create_tenant_invitation($1, 
 assert(removedInvitationFixMigration.includes("memberships.status = 'invited'"), "removed-member re-invite must return only the new invited membership");
 assert(removedInvitationFixMigration.includes("WHEN 'removed' THEN 3"), "removed-member re-invite must rank historical removed rows after usable memberships");
 assert(removedInvitationFixMigration.includes("CREATE OR REPLACE FUNCTION brokerdesk_private.create_tenant_invitation"), "removed-member re-invite must use an append-only function replacement");
-assert(postgresSource.includes("brokerdesk_private.refresh_tenant_invitation($1, $2, $3, $4)"), "Postgres refresh path must call the restricted function");
+assert(postgresSource.includes("brokerdesk_private.prepare_tenant_invitation_delivery($1, $2, $3, $4)"), "Postgres refresh path must call the restricted delivery-preparation function");
 assert(postgresSource.includes("brokerdesk_private.record_tenant_invitation_delivery("), "Postgres delivery path must call the restricted function");
 assert(postgresSource.includes("brokerdesk_private.accept_tenant_invitation($1, $2, $3, $4)"), "Postgres acceptance path must call the restricted function");
 assert(postgresSource.includes("brokerdesk_private.list_pending_tenant_invitations_for_current_user()"), "Postgres pending invitation path must call the current-user function");
