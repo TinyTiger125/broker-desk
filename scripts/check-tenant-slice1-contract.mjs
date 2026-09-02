@@ -399,6 +399,8 @@ const invited = await memory.inviteTenantMember({
 await memory.updateTenantMemberInvitation({
   tenantId: created.tenant.id,
   membershipId: invited.id,
+  actorUserId: owner.id,
+  memberContext: invited,
   invitationProvider: "manual",
   invitationStatus: "pending",
   sentAt: new Date(),
@@ -445,6 +447,7 @@ const activeMember = await memory.inviteTenantMember({
   email: `slice1-active-${Date.now()}@example.test`,
   role: "broker",
   status: "active",
+  invitedByUserId: owner.id,
 });
 let activeDowngradeRejected = false;
 try {
@@ -454,6 +457,7 @@ try {
     email: activeMember.user.email,
     role: "broker",
     status: "invited",
+    invitedByUserId: owner.id,
   });
 } catch {
   activeDowngradeRejected = true;
@@ -484,10 +488,13 @@ const expiring = await memory.inviteTenantMember({
   role: "broker",
   status: "invited",
   capability: "ordinary_member",
+  invitedByUserId: owner.id,
 });
 await memory.updateTenantMemberInvitation({
   tenantId: created.tenant.id,
   membershipId: expiring.id,
+  actorUserId: owner.id,
+  memberContext: expiring,
   invitationProvider: "manual",
   invitationStatus: "pending",
   expiresAt: new Date(Date.now() - 1),
@@ -514,10 +521,13 @@ const revoked = await memory.inviteTenantMember({
   role: "broker",
   status: "invited",
   capability: "ordinary_member",
+  invitedByUserId: owner.id,
 });
 await memory.updateTenantMemberInvitation({
   tenantId: created.tenant.id,
   membershipId: revoked.id,
+  actorUserId: owner.id,
+  memberContext: revoked,
   invitationProvider: "manual",
   invitationStatus: "revoked",
 });
@@ -556,6 +566,7 @@ const replacement = await memory.inviteTenantMember({
   role: "broker",
   status: "invited",
   capability: "ordinary_member",
+  invitedByUserId: owner.id,
 });
 assert(replacement.id !== activeMember.id && replacement.status === "invited", "removed membership must be replaced by a new invitation");
 console.log("[PASS] TASK-039 Slice 1 memory identity, invitation, and capability contract");
