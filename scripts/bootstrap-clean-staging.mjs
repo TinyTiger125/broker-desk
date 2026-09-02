@@ -3,6 +3,7 @@
 export const BOOTSTRAP_DATABASE_NAME = "broker_desk_internal_alpha";
 export const BOOTSTRAP_ENVIRONMENT = "staging";
 export const BOOTSTRAP_MARKER = "BROKER_DESK_CLEAN_STAGING_V1";
+export const BOOTSTRAP_NONPROD_MARKER = "broker-desk-staging-nonprod";
 export const INTERNAL_TENANT = Object.freeze({
   id: "tenant_broker_desk_internal",
   name: "Broker Desk 内部工作区",
@@ -278,6 +279,22 @@ async function insertIfAbsent(client, id, sql, values, existingIds) {
   return true;
 }
 
+async function establishBootstrapSessionMarkers(client, plan) {
+  await client.query(`
+    SELECT pg_catalog.set_config('app.broker_desk_nonprod_marker', $1, true),
+           pg_catalog.set_config('app.broker_desk_deployment_env', $2, true)
+  `, [BOOTSTRAP_NONPROD_MARKER, plan.environment]);
+  const markerResult = await client.query(`
+    SELECT current_setting('app.broker_desk_nonprod_marker', true) AS nonprod_marker,
+           current_setting('app.broker_desk_deployment_env', true) AS deployment_environment
+  `);
+  const markerRow = markerResult.rows[0];
+  if (markerRow?.nonprod_marker !== BOOTSTRAP_NONPROD_MARKER
+    || markerRow?.deployment_environment !== plan.environment) {
+    throw new Error("bootstrap session marker verification failed");
+  }
+}
+
 async function writeBootstrap(client, plan, platformUserId, snapshot) {
   const userIds = new Set(snapshot.users.map((row) => row.id));
   const tenantIds = new Set(snapshot.tenants.map((row) => row.id));
@@ -343,6 +360,7 @@ function safeResult(plan, writes, dryRun, state) {
 export async function runBootstrap({ client, plan, dryRun = false }) {
   await client.query(dryRun ? "BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE READ ONLY" : "BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE");
   try {
+    await establishBootstrapSessionMarkers(client, plan);
     if (!dryRun) {
       await client.query("SELECT pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended($1, 0))", [plan.marker]);
       await client.query("LOCK TABLE public.users, public.tenants, public.tenant_memberships IN SHARE ROW EXCLUSIVE MODE");

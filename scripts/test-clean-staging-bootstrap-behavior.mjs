@@ -37,7 +37,11 @@ const fakeClient = {
     readOnlyQueries.push(sql);
     if (sql.startsWith("BEGIN")) return { rows: [] };
     if (sql === "ROLLBACK") return { rows: [] };
+    if (sql.includes("set_config")) return { rows: [] };
     if (sql.includes("current_database()")) return { rows: [{ database_name: freshSnapshot.databaseName, nonprod_marker: freshSnapshot.nonprodMarker, deployment_environment: freshSnapshot.deploymentEnvironment }] };
+    if (sql.includes("current_setting('app.broker_desk_nonprod_marker'")) {
+      return { rows: [{ nonprod_marker: freshSnapshot.nonprodMarker, deployment_environment: freshSnapshot.deploymentEnvironment }] };
+    }
     if (sql.includes("pg_roles")) return { rows: [{ rolsuper: true, rolbypassrls: false, audit_force_rls: true }] };
     if (sql.includes("external_auth_bound")) return { rows: freshSnapshot.users };
     if (sql.includes("purchased_seat_count")) return { rows: freshSnapshot.tenants };
@@ -50,7 +54,32 @@ const dryRunResult = await runBootstrap({ client: fakeClient, plan: expected, dr
 assert.equal(dryRunResult.status, "dry-run");
 assert.deepEqual(dryRunResult.expectedWrites, { users: 2, tenants: 2, memberships: 3 });
 assert.equal(readOnlyQueries.some((query) => /\b(INSERT|UPDATE|DELETE|TRUNCATE)\b/i.test(query)), false);
+const markerSetupIndex = readOnlyQueries.findIndex((query) => query.includes("set_config"));
+assert.notEqual(markerSetupIndex, -1, "bootstrap must establish transaction-local environment markers before snapshot validation");
+assert.match(readOnlyQueries[markerSetupIndex], /app\.broker_desk_nonprod_marker/);
+assert.match(readOnlyQueries[markerSetupIndex], /app\.broker_desk_deployment_env/);
+assert.match(readOnlyQueries[markerSetupIndex], /true/);
+const snapshotIndex = readOnlyQueries.findIndex((query) => query.includes("current_database()"));
+assert.ok(markerSetupIndex < snapshotIndex, "marker setup must precede the target snapshot query");
 assert.equal(readOnlyQueries.at(-1), "ROLLBACK");
+
+const wrongMarkerQueries = [];
+const wrongMarkerClient = {
+  async query(sql) {
+    wrongMarkerQueries.push(sql);
+    if (sql.startsWith("BEGIN") || sql.includes("set_config")) return { rows: [] };
+    if (sql.includes("current_setting('app.broker_desk_nonprod_marker'")) {
+      return { rows: [{ nonprod_marker: "production", deployment_environment: "production" }] };
+    }
+    if (sql === "ROLLBACK") return { rows: [] };
+    throw new Error(`unexpected wrong-marker query: ${sql}`);
+  },
+};
+await assert.rejects(
+  runBootstrap({ client: wrongMarkerClient, plan: expected, dryRun: true }),
+  /bootstrap session marker verification failed/,
+);
+assert.equal(wrongMarkerQueries.at(-1), "ROLLBACK");
 
 const finalSnapshot = {
   ...freshSnapshot,
