@@ -26,7 +26,13 @@ const { getHomeTenantSelectionRecoveryPath } = require(helperPath);
 
 const expectedRecovery = "/workspace?reason=tenant_selection_required&returnTo=%2F";
 assert.equal(getHomeTenantSelectionRecoveryPath("tenant_selection_required"), expectedRecovery, "multiple active memberships without a cookie must recover through workspace selection");
-for (const code of ["user_not_found", "tenant_not_found", "tenant_forbidden", "permission_denied"]) {
+const expectedStaleTenantRecovery = "/workspace?reason=tenant_forbidden&returnTo=%2F";
+assert.equal(getHomeTenantSelectionRecoveryPath("tenant_forbidden"), expectedStaleTenantRecovery, "a stale or unauthorized home tenant must recover through workspace selection without probing that tenant");
+const staleTenantRecoveryUrl = new URL(expectedStaleTenantRecovery, "https://brokerdesk.invalid");
+assert.equal(staleTenantRecoveryUrl.pathname, "/workspace", "stale tenant recovery must use the canonical workspace selector");
+assert.equal(staleTenantRecoveryUrl.searchParams.get("reason"), "tenant_forbidden", "stale tenant recovery must preserve the forbidden-tenant reason without probing it");
+assert.equal(staleTenantRecoveryUrl.searchParams.get("returnTo"), "/", "stale tenant recovery must return to the home route");
+for (const code of ["user_not_found", "tenant_not_found", "permission_denied"]) {
   assert.equal(getHomeTenantSelectionRecoveryPath(code), null, `${code} must retain its original error behavior`);
 }
 const recoveryUrl = new URL(expectedRecovery, "https://brokerdesk.invalid");

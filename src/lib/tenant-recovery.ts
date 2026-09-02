@@ -6,7 +6,7 @@ export type TenantRecoveryCode =
   | "permission_denied";
 
 export function getHomeTenantSelectionRecoveryPath(code: TenantRecoveryCode): string | null {
-  return code === "tenant_selection_required"
-    ? "/workspace?reason=tenant_selection_required&returnTo=%2F"
-    : null;
+  if (code === "tenant_selection_required") return "/workspace?reason=tenant_selection_required&returnTo=%2F";
+  if (code === "tenant_forbidden") return "/workspace?reason=tenant_forbidden&returnTo=%2F";
+  return null;
 }
