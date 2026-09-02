@@ -42,6 +42,7 @@ function assert(condition, message) {
 
 const memory = loadTsModule("src/lib/data.memory.ts");
 const bootstrapPolicy = loadTsModule("src/lib/tenant-bootstrap-policy.ts");
+const { isFormalProductionDeployment } = loadTsModule("src/lib/production-readiness.ts");
 const bootstrapMigration = fs.readFileSync(path.resolve("db/migrations/20260819_003_tenant_owner_create_path.sql"), "utf8");
 const invitedUserMigration = fs.readFileSync(path.resolve("db/migrations/20260819_004_invited_user_bootstrap.sql"), "utf8");
 const pendingInvitationReadMigration = fs.readFileSync(path.resolve("db/migrations/20260819_005_pending_invitations_read_function.sql"), "utf8");
@@ -77,6 +78,24 @@ const workspaceSelectorSource = fs.readFileSync(path.resolve("src/app/workspace/
 const organizeCenterSource = fs.readFileSync(path.resolve("src/app/organize-center/page.tsx"), "utf8");
 const workspaceRouteSource = fs.readFileSync(path.resolve("src/app/api/workspace/route.ts"), "utf8");
 const workspaceResetSource = fs.readFileSync(path.resolve("src/app/workspace/reset/route.ts"), "utf8");
+
+assert(
+  dataSource.includes("if (isFormalProductionDeployment()) return null;"),
+  "only formal production must block unmapped Clerk self-provisioning; Preview/Staging must remain eligible",
+);
+const originalNodeEnv = process.env.NODE_ENV;
+const originalDeploymentEnv = process.env.BROKER_DESK_DEPLOYMENT_ENV;
+process.env.NODE_ENV = "production";
+process.env.BROKER_DESK_DEPLOYMENT_ENV = "preview";
+assert(!isFormalProductionDeployment(), "Preview must not be classified as formal production in the optimized runtime");
+process.env.BROKER_DESK_DEPLOYMENT_ENV = "staging";
+assert(!isFormalProductionDeployment(), "Staging must not be classified as formal production in the optimized runtime");
+process.env.BROKER_DESK_DEPLOYMENT_ENV = "production";
+assert(isFormalProductionDeployment(), "formal production must remain fail-closed for unmapped Clerk self-provisioning");
+if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
+else process.env.NODE_ENV = originalNodeEnv;
+if (originalDeploymentEnv === undefined) delete process.env.BROKER_DESK_DEPLOYMENT_ENV;
+else process.env.BROKER_DESK_DEPLOYMENT_ENV = originalDeploymentEnv;
 
 assert(bootstrapMigration.includes("SECURITY DEFINER"), "tenant bootstrap must use a SECURITY DEFINER function");
 assert(bootstrapMigration.includes("brokerdesk_private.current_user_id()"), "tenant bootstrap must bind the current authenticated local user");

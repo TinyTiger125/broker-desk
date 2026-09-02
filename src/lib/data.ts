@@ -2,6 +2,7 @@ import * as memory from "@/lib/data.memory";
 import * as postgres from "@/lib/data.postgres";
 import {
   assertProductionDataStoreReady,
+  isFormalProductionDeployment,
   isProductionRuntime,
   isPostgresDataStoreConfigured,
   ProductionReadinessError,
@@ -119,7 +120,7 @@ const resolveDefaultUser = cache(async (preferredUserId?: string) => {
     // Production provisioning is webhook-owned and uses a narrowly scoped
     // management connection. A tenant request must never self-provision by
     // falling back to an owner-capable database role.
-    if (isProductionRuntime()) return null;
+    if (isFormalProductionDeployment()) return null;
 
     const identity = await getClerkAuthIdentity();
     if (!identity) return null;
