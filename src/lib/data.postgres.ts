@@ -27,6 +27,7 @@ import {
   type OutputTemplateSettingsInput,
 } from "@/lib/output-doc";
 import { DEFAULT_TENANT_ID } from "@/lib/tenant-constants";
+import { buildHealthFailureCause } from "@/lib/health-diagnostics";
 import {
   assertProductionDataStoreReady,
   isProductionRuntime,
@@ -1141,7 +1142,14 @@ async function assertProductionMigrationsApplied(db: Pool) {
     }
   } catch (error) {
     if (error instanceof ProductionReadinessError) throw error;
-    throw new ProductionReadinessError("production_migrations_required");
+    const readinessError = new ProductionReadinessError("production_migrations_required");
+    Object.defineProperty(readinessError, "cause", {
+      value: buildHealthFailureCause(error, "ledger_query"),
+      enumerable: false,
+      configurable: false,
+      writable: false,
+    });
+    throw readinessError;
   }
 }
 

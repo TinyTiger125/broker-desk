@@ -29,6 +29,7 @@ const SAFE_APPLICATION_ERROR_CODES = new Set([
 const SQL_STATE_PATTERN = /^[0-9A-Z]{5}$/;
 
 type HealthFailurePhase = "readiness" | "data_driver" | "liveness";
+type HealthFailureCausePhase = "ledger_query" | "required_set_compare";
 
 type HealthFailureDetailInput = {
   requestId: string;
@@ -43,22 +44,75 @@ export type HealthFailureDetail = {
   sqlState?: string;
   appErrorCode?: string;
   digest: string;
+  causeErrorClass?: string;
+  causePhase?: HealthFailureCausePhase;
+  causeSqlState?: string;
+  causeAppErrorCode?: string;
 };
 
-function readErrorProperty(error: unknown, property: "name" | "code") {
+export type HealthFailureCause = {
+  errorClass: string;
+  phase: HealthFailureCausePhase;
+  sqlState?: string;
+  appErrorCode?: string;
+};
+
+function readErrorProperty(error: unknown, property: string) {
   if (!error || typeof error !== "object") return undefined;
   const value = (error as Record<string, unknown>)[property];
   return typeof value === "string" ? value : undefined;
 }
 
-export function buildHealthFailureDetail({ requestId, phase, error }: HealthFailureDetailInput): HealthFailureDetail {
-  const errorName = readErrorProperty(error, "name");
+function normalizeErrorClass(error: unknown) {
+  const errorName = readErrorProperty(error, "name") ?? readErrorProperty(error, "errorClass");
+  return errorName && SAFE_ERROR_CLASSES.has(errorName) ? errorName : "UnknownError";
+}
+
+function normalizeCausePhase(error: unknown, fallback: HealthFailureCausePhase) {
+  const phase = readErrorProperty(error, "phase");
+  return phase === "ledger_query" || phase === "required_set_compare" ? phase : fallback;
+}
+
+export function buildHealthFailureCause(
+  error: unknown,
+  fallbackPhase: HealthFailureCausePhase = "ledger_query"
+): HealthFailureCause {
   const errorCode = readErrorProperty(error, "code");
-  const errorClass = errorName && SAFE_ERROR_CLASSES.has(errorName) ? errorName : "UnknownError";
+  const explicitSqlState = readErrorProperty(error, "sqlState");
+  const explicitAppErrorCode = readErrorProperty(error, "appErrorCode");
+  const sqlStateCandidate = errorCode && SQL_STATE_PATTERN.test(errorCode) ? errorCode : explicitSqlState;
+  const sqlState = sqlStateCandidate && SQL_STATE_PATTERN.test(sqlStateCandidate) ? sqlStateCandidate : undefined;
+  const appErrorCandidate = errorCode && SAFE_APPLICATION_ERROR_CODES.has(errorCode) ? errorCode : explicitAppErrorCode;
+  const appErrorCode = appErrorCandidate && SAFE_APPLICATION_ERROR_CODES.has(appErrorCandidate)
+    ? appErrorCandidate
+    : undefined;
+
+  return {
+    errorClass: normalizeErrorClass(error),
+    phase: normalizeCausePhase(error, fallbackPhase),
+    ...(sqlState ? { sqlState } : {}),
+    ...(appErrorCode ? { appErrorCode } : {}),
+  };
+}
+
+export function buildHealthFailureDetail({ requestId, phase, error }: HealthFailureDetailInput): HealthFailureDetail {
+  const errorCode = readErrorProperty(error, "code");
+  const errorClass = normalizeErrorClass(error);
   const sqlState = errorCode && SQL_STATE_PATTERN.test(errorCode) ? errorCode : undefined;
   const appErrorCode = errorCode && SAFE_APPLICATION_ERROR_CODES.has(errorCode) ? errorCode : undefined;
+  const rawCause = error && typeof error === "object" ? (error as Record<string, unknown>).cause : undefined;
+  const cause = rawCause && typeof rawCause === "object" ? buildHealthFailureCause(rawCause) : undefined;
   const digest = createHash("sha256")
-    .update([phase, errorClass, sqlState ?? "", appErrorCode ?? ""].join("|"))
+    .update([
+      phase,
+      errorClass,
+      sqlState ?? "",
+      appErrorCode ?? "",
+      cause?.errorClass ?? "",
+      cause?.phase ?? "",
+      cause?.sqlState ?? "",
+      cause?.appErrorCode ?? "",
+    ].join("|"))
     .digest("hex")
     .slice(0, 16);
 
@@ -68,6 +122,10 @@ export function buildHealthFailureDetail({ requestId, phase, error }: HealthFail
     errorClass,
     ...(sqlState ? { sqlState } : {}),
     ...(appErrorCode ? { appErrorCode } : {}),
+    ...(cause ? { causeErrorClass: cause.errorClass } : {}),
+    ...(cause ? { causePhase: cause.phase } : {}),
+    ...(cause?.sqlState ? { causeSqlState: cause.sqlState } : {}),
+    ...(cause?.appErrorCode ? { causeAppErrorCode: cause.appErrorCode } : {}),
     digest,
   };
 }
