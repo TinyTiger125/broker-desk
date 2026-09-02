@@ -411,6 +411,80 @@ assert(
   "runtime migration-ledger grant must be limited to brokerdesk_runtime SELECT",
 );
 
+const runtimeAclBaselinePath = "db/migrations/20260902_003_runtime_acl_baseline.sql";
+assert(fs.existsSync(runtimeAclBaselinePath), "runtime ACL baseline migration must exist");
+const runtimeAclBaseline = fs.readFileSync(runtimeAclBaselinePath, "utf8").replace(/\s+/g, " ").trim();
+const runtimeTableGrants = new Map([
+  ["users", ["SELECT"]],
+  ["tenants", ["SELECT"]],
+  ["tenant_memberships", ["SELECT"]],
+  ["tenant_member_visibility_defaults", ["SELECT", "INSERT", "UPDATE"]],
+  ["case_workbench_field_rules", ["SELECT", "INSERT", "UPDATE"]],
+  ["clients", ["SELECT", "INSERT", "UPDATE"]],
+  ["properties", ["SELECT", "INSERT", "UPDATE"]],
+  ["brokerage_cases", ["SELECT", "INSERT", "UPDATE"]],
+  ["tasks", ["SELECT", "INSERT", "UPDATE"]],
+  ["follow_ups", ["SELECT", "INSERT"]],
+  ["quotations", ["SELECT", "INSERT", "UPDATE"]],
+  ["audit_logs", ["SELECT", "INSERT"]],
+  ["output_template_settings", ["SELECT", "INSERT", "UPDATE"]],
+  ["output_template_versions", ["SELECT", "INSERT", "UPDATE"]],
+  ["import_jobs", ["SELECT", "INSERT", "UPDATE"]],
+  ["ai_experience_drafts", ["SELECT", "INSERT", "UPDATE"]],
+  ["correction_events", ["SELECT", "INSERT"]],
+  ["extraction_review_items", ["SELECT", "INSERT", "DELETE"]],
+  ["guarantee_application_drafts", ["SELECT", "INSERT", "UPDATE"]],
+  ["guarantee_blank_forms", ["SELECT", "INSERT", "UPDATE", "DELETE"]],
+  ["guarantee_blank_form_versions", ["SELECT", "INSERT", "DELETE"]],
+  ["guarantee_company_masks", ["SELECT", "INSERT", "UPDATE"]],
+  ["guarantee_company_mask_versions", ["SELECT", "INSERT", "UPDATE"]],
+  ["guarantee_mask_matches", ["SELECT", "INSERT"]],
+  ["guarantee_preview_confirmations", ["SELECT", "INSERT", "UPDATE"]],
+  ["tenant_guarantee_template_installs", ["SELECT", "INSERT", "UPDATE"]],
+  ["generated_outputs", ["SELECT", "INSERT", "UPDATE", "DELETE"]],
+  ["attachments", ["SELECT", "INSERT", "DELETE"]],
+  ["private_attachment_blobs", ["SELECT", "INSERT", "DELETE"]],
+  ["attachment_links", ["SELECT", "INSERT", "UPDATE"]],
+  ["guarantee_template_layout_versions", ["SELECT"]],
+  ["broker_desk_schema_migrations", ["SELECT"]],
+]);
+const runtimeRevokeBlock = runtimeAclBaseline.match(/REVOKE ALL PRIVILEGES ON TABLE (.*?) FROM brokerdesk_runtime;/)?.[1] ?? "";
+const runtimeGrantStatements = runtimeAclBaseline.split(";").filter((statement) => /GRANT\s+[^;]+\s+ON TABLE\s+/i.test(statement));
+for (const [table, privileges] of runtimeTableGrants) {
+  assert(
+    runtimeRevokeBlock.includes(`public.${table}`),
+    `runtime ACL baseline must clear stale grants for ${table}`,
+  );
+  assert(
+    runtimeGrantStatements.some((statement) =>
+      statement.includes(`GRANT ${privileges.join(", ")} ON TABLE`) &&
+      statement.includes(`public.${table}`) &&
+      statement.trim().endsWith("TO brokerdesk_runtime"),
+    ),
+    `runtime ACL baseline must grant only the ${privileges.join(", ")} surface for ${table}`,
+  );
+}
+assert(
+  runtimeAclBaseline.includes("GRANT USAGE ON SCHEMA brokerdesk_private TO brokerdesk_runtime;") &&
+    runtimeAclBaseline.includes("REVOKE ALL PRIVILEGES ON FUNCTION brokerdesk_private.current_user_id() FROM PUBLIC;") &&
+    runtimeAclBaseline.includes("GRANT EXECUTE ON FUNCTION brokerdesk_private.current_user_id() TO brokerdesk_runtime;"),
+  "runtime actor checks must use the existing narrow current_user_id security facade",
+);
+assert(!runtimeAclBaseline.includes("GRANT EXECUTE ON FUNCTION brokerdesk_private.current_external_auth_subject() TO brokerdesk_runtime;"), "runtime must not receive the raw external subject helper");
+for (const forbiddenFunction of [
+  "sync_external_auth_user(text, text, text)",
+  "suspend_external_auth_user(text)",
+  "claim_next_import_jobs(integer)",
+]) {
+  assert(!runtimeAclBaseline.includes(`GRANT EXECUTE ON FUNCTION brokerdesk_private.${forbiddenFunction} TO brokerdesk_runtime;`), `runtime must not receive ${forbiddenFunction}`);
+}
+assert(!/GRANT\s+[^;]*\bTO\s+(?:PUBLIC|authenticated)\b/i.test(runtimeAclBaseline), "runtime ACL baseline must not grant PUBLIC or authenticated");
+assert(!/GRANT\s+[^;]*\b(?:UPDATE|DELETE|INSERT|TRUNCATE)\b[^;]*guarantee_template_layout_versions/i.test(runtimeAclBaseline), "platform-owned template layouts must not be writable by runtime");
+assert(!/GRANT\s+[^;]*\b(?:UPDATE|DELETE|TRUNCATE)\b[^;]*audit_logs/i.test(runtimeAclBaseline), "audit logs must not be mutable by runtime");
+assert(!/GRANT\s+[^;]*\b(?:INSERT|UPDATE|DELETE|TRUNCATE)\b[^;]*broker_desk_schema_migrations/i.test(runtimeAclBaseline), "migration ledger must remain read-only");
+assert(!/GRANT\s+[^;]*\bUPDATE\b[^;]*private_attachment_blobs/i.test(runtimeAclBaseline), "private attachment blobs must not receive runtime UPDATE");
+assert(!runtimeAclBaseline.includes("BYPASSRLS") && !runtimeAclBaseline.includes("ALTER TABLE"), "runtime ACL baseline must not alter RLS or bypass policy enforcement");
+
 const postgresDataSource = fs.readFileSync("src/lib/data.postgres.ts", "utf8");
 assert(
   postgresDataSource.includes('"20260729_002_force_tenant_rls.sql"'),
