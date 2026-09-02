@@ -15,6 +15,7 @@ import {
   readTrustedHeaderAuthIdentity,
 } from "@/lib/auth-mode";
 import { getClerkAuthIdentity, getClerkAuthSubject, getVerifiedClerkAuthIdentity } from "@/lib/clerk-auth";
+import { isEmailOnStagingAllowlist, isStagingAllowlistEnforced } from "@/lib/staging-access-policy";
 import { headers } from "next/headers";
 import { cache } from "react";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -80,6 +81,17 @@ const resolveTenantSessionLookupsByExternalAuthSubject = cache(
     const normalized = subject.trim();
     if (!normalized) return [];
 
+    if (isClerkAuthEnabled()) {
+      const identity = await getClerkAuthIdentity();
+      if (
+        !identity ||
+        identity.subject !== normalized ||
+        (isStagingAllowlistEnforced() && !isEmailOnStagingAllowlist(identity.email))
+      ) {
+        return [];
+      }
+    }
+
     if (usePostgres) return repo.listTenantSessionLookupsByExternalAuthSubject(normalized);
 
     const user = await repo.getUserByExternalAuthSubject(normalized);
@@ -95,8 +107,10 @@ const resolveTenantSessionLookupsByExternalAuthSubject = cache(
 
 const resolveDefaultUser = cache(async (preferredUserId?: string) => {
   if (isClerkAuthEnabled()) {
-    const subject = await getClerkAuthSubject();
-    if (!subject) return null;
+    const identity = await getClerkAuthIdentity();
+    if (!identity) return null;
+    if (isStagingAllowlistEnforced() && !isEmailOnStagingAllowlist(identity.email)) return null;
+    const subject = identity.subject;
 
     // A user can exist before their first workspace membership is assigned.
     // Keep that state readable so the workspace selector can explain it.
@@ -122,8 +136,6 @@ const resolveDefaultUser = cache(async (preferredUserId?: string) => {
     // falling back to an owner-capable database role.
     if (isFormalProductionDeployment()) return null;
 
-    const identity = await getClerkAuthIdentity();
-    if (!identity) return null;
     return repo.ensureUserForExternalAuth(identity);
   }
 
