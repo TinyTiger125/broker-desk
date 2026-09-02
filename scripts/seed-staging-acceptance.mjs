@@ -39,8 +39,8 @@ if (environment !== "staging") {
   fail("writes require --confirm-nonprod after the non-production target has been checked");
 } else if (mode === "reset" && !flags.has("--confirm-reset")) {
   fail("reset requires --confirm-reset");
-} else if (!dryRun && !databaseUrl) {
-  fail("writes require BROKER_DESK_STAGING_SEED_DATABASE_URL; no implicit database URL is accepted");
+} else if (!databaseUrl) {
+  fail("dry-run and writes require BROKER_DESK_STAGING_SEED_DATABASE_URL; no implicit database URL is accepted");
 }
 
 if (process.exitCode) process.exit(process.exitCode);
@@ -118,16 +118,27 @@ const plan = {
   scenarios: fixture.cases.map((item) => item.title),
 };
 
-if (dryRun) {
-  console.log(JSON.stringify(plan, null, 2));
-  process.exit(0);
-}
-
 const pool = new Pool({ connectionString: databaseUrl, max: 1, application_name: `brokerdesk-staging-seed-${digest}` });
 const client = await pool.connect();
 
 async function one(sql, values = []) {
   return client.query(sql, values);
+}
+
+async function establishSeedSessionMarkers() {
+  await one(
+    `SELECT set_config('app.broker_desk_nonprod_marker', $1, true),
+            set_config('app.broker_desk_deployment_env', $2, true)`,
+    ["broker-desk-staging-nonprod", "staging"],
+  );
+  const result = await one(`
+    SELECT current_setting('app.broker_desk_nonprod_marker', true) AS nonprod_marker,
+           current_setting('app.broker_desk_deployment_env', true) AS deployment_env
+  `);
+  const markerState = result.rows[0];
+  if (markerState.nonprod_marker !== "broker-desk-staging-nonprod" || markerState.deployment_env !== "staging") {
+    throw new Error("transaction-local non-production marker verification failed");
+  }
 }
 
 async function assertTarget() {
@@ -199,6 +210,105 @@ async function assertNoUnmarkedRows() {
     [tenantId, marker],
   );
   if (Number(caseResult.rows[0].count) > 0) throw new Error("target tenant contains unmarked brokerage case rows; seed stopped before writes");
+}
+
+const expectedFixtureCounts = {
+  clients: 3,
+  properties: 3,
+  brokerage_cases: 3,
+  tasks: 2,
+  follow_ups: 2,
+  import_jobs: 1,
+  attachments: 1,
+  private_attachment_blobs: 1,
+};
+
+async function readFixtureCounts() {
+  const countQueries = {
+    clients: [
+      `SELECT COUNT(*)::int AS count FROM clients WHERE tenant_id = $1 AND notes LIKE $2`,
+      [tenantId, `${marker}%`],
+    ],
+    properties: [
+      `SELECT COUNT(*)::int AS count FROM properties WHERE tenant_id = $1 AND notes LIKE $2`,
+      [tenantId, `${marker}%`],
+    ],
+    brokerage_cases: [
+      `SELECT COUNT(*)::int AS count FROM brokerage_cases WHERE tenant_id = $1 AND confirmed_data_json->>'fixtureMarker' = $2`,
+      [tenantId, marker],
+    ],
+    tasks: [
+      `SELECT COUNT(*)::int AS count FROM tasks WHERE tenant_id = $1 AND title LIKE $2`,
+      [tenantId, `${marker}%`],
+    ],
+    follow_ups: [
+      `SELECT COUNT(*)::int AS count FROM follow_ups WHERE tenant_id = $1 AND content LIKE $2`,
+      [tenantId, `${marker}%`],
+    ],
+    import_jobs: [
+      `SELECT COUNT(*)::int AS count FROM import_jobs WHERE tenant_id = $1 AND notes LIKE $2`,
+      [tenantId, `${marker}%`],
+    ],
+    attachments: [
+      `SELECT COUNT(*)::int AS count FROM attachments WHERE tenant_id = $1 AND file_name LIKE $2`,
+      [tenantId, `${marker}%`],
+    ],
+    private_attachment_blobs: [
+      `SELECT COUNT(*)::int AS count FROM private_attachment_blobs WHERE tenant_id = $1 AND attachment_id = $2`,
+      [tenantId, id("attachment_complete")],
+    ],
+  };
+  const counts = {};
+  for (const [name, [sql, values]] of Object.entries(countQueries)) {
+    const result = await one(sql, values);
+    counts[name] = Number(result.rows[0].count);
+  }
+
+  const linkTable = await one(`SELECT to_regclass('public.attachment_links') AS attachment_links`);
+  if (linkTable.rows[0].attachment_links) {
+    const result = await one(
+      `SELECT COUNT(*)::int AS count
+         FROM attachment_links
+        WHERE tenant_id = $1 AND id = $2`,
+      [tenantId, id("attachment_link")],
+    );
+    counts.attachment_links = Number(result.rows[0].count);
+    expectedFixtureCounts.attachment_links = 1;
+  }
+
+  if (templateId) {
+    const result = await one(
+      `SELECT COUNT(*)::int AS count
+         FROM guarantee_application_drafts
+        WHERE tenant_id = $1 AND id = $2`,
+      [tenantId, id("guarantee_draft")],
+    );
+    counts.guarantee_application_drafts = Number(result.rows[0].count);
+    expectedFixtureCounts.guarantee_application_drafts = 1;
+  }
+
+  return counts;
+}
+
+function fixtureState(counts) {
+  const names = Object.keys(expectedFixtureCounts);
+  const fresh = names.every((name) => (counts[name] ?? 0) === 0);
+  const initialized = names.every((name) => counts[name] === expectedFixtureCounts[name]);
+  if (!fresh && !initialized) throw new Error("target tenant contains a partial fixture state; seed stopped before writes");
+  return initialized ? "initialized" : "fresh";
+}
+
+function expectedWritesForState(counts, state) {
+  return Object.fromEntries(Object.entries(expectedFixtureCounts).map(([name, expected]) => [
+    name,
+    state === "fresh" ? expected : Math.max(expected - (counts[name] ?? 0), 0),
+  ]));
+}
+
+async function assertFinalFixtureState() {
+  const counts = await readFixtureCounts();
+  if (fixtureState(counts) !== "initialized") throw new Error("seed did not produce the complete fixture state");
+  return counts;
 }
 
 async function seedRows() {
@@ -343,15 +453,26 @@ async function resetRows() {
 }
 
 try {
+  await one("BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE" + (dryRun ? " READ ONLY" : ""));
+  await establishSeedSessionMarkers();
   await assertTarget();
   if (mode === "seed") {
     await assertNoUnmarkedRows();
   }
-  await one("BEGIN");
-  if (mode === "reset") await resetRows();
-  else await seedRows();
-  await one("COMMIT");
-  console.log(JSON.stringify({ ...plan, status: mode === "reset" ? "reset" : "seeded", counts: { scenarios: 3, clients: 3, properties: 3, cases: 3, tasks: 2, followUps: 2, attachments: 1, outputDrafts: templateId ? 1 : 0 } }, null, 2));
+  const beforeCounts = mode === "seed" ? await readFixtureCounts() : {};
+  const beforeState = mode === "seed" ? fixtureState(beforeCounts) : "not-applicable";
+  const expectedWrites = mode === "seed" ? expectedWritesForState(beforeCounts, beforeState) : {};
+  if (dryRun) {
+    await one("ROLLBACK");
+    console.log(JSON.stringify({ ...plan, status: "planned", state: beforeState, expectedWrites }, null, 2));
+  } else {
+    if (mode === "seed" && beforeState !== "fresh") throw new Error("formal seed requires a fresh target; use dry-run to confirm zero incremental writes");
+    if (mode === "reset") await resetRows();
+    else await seedRows();
+    const finalCounts = mode === "seed" ? await assertFinalFixtureState() : {};
+    await one("COMMIT");
+    console.log(JSON.stringify({ ...plan, status: mode === "reset" ? "reset" : "seeded", counts: { scenarios: 3, clients: 3, properties: 3, cases: 3, tasks: 2, followUps: 2, attachments: 1, outputDrafts: templateId ? 1 : 0 }, finalCounts }, null, 2));
+  }
 } catch (error) {
   try { await one("ROLLBACK"); } catch {}
   console.error(`Staging acceptance seed stopped: ${error instanceof Error ? error.message : "unknown error"}`);
