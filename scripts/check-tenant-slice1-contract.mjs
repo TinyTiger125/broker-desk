@@ -325,6 +325,33 @@ const creationKey = `slice1-create-${Date.now()}`;
 const created = await memory.createTenantAccountForUser({ userId: owner.id, name: creationName, idempotencyKey: creationKey });
 assert(created.membership.status === "active", "company creation must create an active owner membership");
 assert(created.membership.role === "tenant_owner", "company creator must become tenant_owner");
+const fixtureNow = new Date();
+globalThis.__brokerDb.users.push({
+  id: "slice1-test-platform-owner",
+  name: "Slice 1 Test Platform Owner",
+  email: "slice1-test-platform-owner@example.test",
+  passwordHash: "test",
+  createdAt: fixtureNow,
+});
+globalThis.__brokerDb.tenantMemberships.push({
+  id: "membership_slice1_test_platform_owner",
+  tenantId: "tenant_cherry",
+  userId: "slice1-test-platform-owner",
+  role: "platform_owner",
+  capability: "ordinary_member",
+  status: "active",
+  invitationProvider: "manual",
+  invitationStatus: "accepted",
+  createdAt: fixtureNow,
+  updatedAt: fixtureNow,
+});
+const preparedSeatAccount = await memory.updateTenantAccountLifecycle({
+  tenantId: created.tenant.id,
+  purchasedSeatCount: 2,
+  actorUserId: "slice1-test-platform-owner",
+});
+assert(preparedSeatAccount?.purchasedSeatCount === 2, "test tenant fixture must explicitly prepare two purchased seats");
+assert(preparedSeatAccount?.usedSeatCount === 1 && preparedSeatAccount.availableSeatCount === 1, "test tenant fixture must prove owner uses one seat and one remains before invitation");
 
 const retried = await memory.createTenantAccountForUser({ userId: owner.id, name: creationName, idempotencyKey: creationKey });
 assert(retried.tenant.id === created.tenant.id, "retrying the same creation key must return the original tenant");
