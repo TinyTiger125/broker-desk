@@ -100,9 +100,19 @@ export async function AppNav() {
   const currentActor = tenantSession?.user ?? null;
   const currentCapability = tenantSession ? getTenantCapability(tenantSession.membership) : null;
   const canManageMembers = Boolean(currentCapability && capabilityHasTenantPermission(currentCapability, "member.invite"));
+  const canManageOutputTemplates = Boolean(
+    currentCapability &&
+      capabilityHasTenantPermission(currentCapability, "template.edit_draft") &&
+      capabilityHasTenantPermission(currentCapability, "template.publish"),
+  );
   const hasPlatformAccess = Boolean(platformSession);
   const adminLinks = [
-    ...getAdminLinks(locale).filter((link) => serviceOperational && (link.href !== "/settings/members" || canManageMembers)),
+    ...getAdminLinks(locale).filter(
+      (link) =>
+        serviceOperational &&
+        (link.href !== "/settings/members" || canManageMembers) &&
+        (link.href !== "/settings/output-templates" || canManageOutputTemplates),
+    ),
     ...(!serviceOperational && tenantSession && canManageMembers
       ? [{ href: "/settings/members", label: locale === "zh" ? "订阅与成员" : locale === "ko" ? "구독 및 멤버" : "契約・ユーザー" }]
       : []),

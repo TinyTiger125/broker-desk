@@ -68,6 +68,7 @@ const createWorkspaceFormSource = fs.readFileSync(path.resolve("src/app/workspac
 const invitationPageSource = fs.readFileSync(path.resolve("src/app/workspace/invitations/page.tsx"), "utf8");
 const acceptInvitationFormSource = fs.readFileSync(path.resolve("src/app/workspace/invitations/accept-invitation-form.tsx"), "utf8");
 const membersPageSource = fs.readFileSync(path.resolve("src/app/settings/members/page.tsx"), "utf8");
+const outputTemplatePageSource = fs.readFileSync(path.resolve("src/app/settings/output-templates/page.tsx"), "utf8");
 const dataSource = fs.readFileSync(path.resolve("src/lib/data.ts"), "utf8");
 const actionsSource = fs.readFileSync(path.resolve("src/app/actions.ts"), "utf8");
 const appNavSource = fs.readFileSync(path.resolve("src/components/app-nav.tsx"), "utf8");
@@ -187,6 +188,28 @@ assert(tenantSessionSource.includes('An active tenant must be selected.", "tenan
 assert(membersPageSource.includes('redirect("/workspace")'), "member management page must return multi-tenant users to the canonical workspace selector");
 assert(dataSource.includes("postgres.withPostgresAuthContext(subject"), "authenticated member read must bind the established Clerk subject at the adapter boundary");
 assert(appNavSource.includes("link.href !== \"/settings/members\" || canManageMembers"), "member management navigation must be hidden without member-management capability");
+assert(appNavSource.includes("link.href !== \"/settings/output-templates\" || canManageOutputTemplates"), "output template navigation must be hidden without company-admin capability");
+assert(appNavSource.includes('capabilityHasTenantPermission(currentCapability, "template.edit_draft")'), "output template navigation must require draft-edit capability");
+assert(appNavSource.includes('capabilityHasTenantPermission(currentCapability, "template.publish")'), "output template navigation must require publish capability");
+const outputTemplatePageFunction = outputTemplatePageSource.slice(outputTemplatePageSource.indexOf("export default async function OutputTemplateSettingsPage"));
+const outputTemplateRuntime = outputTemplatePageFunction.slice(outputTemplatePageFunction.indexOf("const [locale, session]"));
+const outputTemplateReadBoundary = outputTemplateRuntime.slice(0, outputTemplateRuntime.indexOf("const [settings, versions]"));
+assert(outputTemplateReadBoundary.includes('requireTenantSession({ permissions: ["template.view", "template.edit_draft", "template.publish"] })'), "output template page must require company-admin read capability before loading settings");
+const outputTemplateReadIndex = outputTemplateReadBoundary.indexOf("getOutputTemplateSettings");
+assert(
+  outputTemplateReadBoundary.indexOf("requireTenantSession") >= 0 &&
+    (outputTemplateReadIndex < 0 || outputTemplateReadBoundary.indexOf("requireTenantSession") < outputTemplateReadIndex),
+  "output template page must authorize before reading company settings",
+);
+const outputTemplateUpdateAction = actionsSource.slice(actionsSource.indexOf("export async function updateOutputTemplateSettingsAction"), actionsSource.indexOf("export async function updateCaseWorkbenchFieldRulesAction"));
+assert(outputTemplateUpdateAction.includes('requireTenantSession({ permissions: ["template.edit_draft", "template.publish"] })'), "output template save and reset action must retain server-side company-admin authorization");
+assert(outputTemplateUpdateAction.indexOf("requireTenantSession") < outputTemplateUpdateAction.indexOf("getOutputTemplateSettings"), "output template save and reset must authorize before reading current settings");
+assert(!memory.capabilityHasTenantPermission("ordinary_member", "template.edit_draft"), "ordinary member must not edit output template settings");
+assert(!memory.capabilityHasTenantPermission("ordinary_member", "template.publish"), "ordinary member must not publish output template settings");
+assert(memory.capabilityHasTenantPermission("company_owner", "template.edit_draft"), "company owner must retain output template editing");
+assert(memory.capabilityHasTenantPermission("company_owner", "template.publish"), "company owner must retain output template publishing");
+assert(memory.capabilityHasTenantPermission("company_form_admin", "template.edit_draft"), "company form admin must retain output template editing");
+assert(memory.capabilityHasTenantPermission("company_form_admin", "template.publish"), "company form admin must retain output template publishing");
 assert(workspacePageSource.includes("listTenantSessionLookupsByExternalAuthSubject"), "workspace page must use current Clerk subject membership state lookup");
 assert(workspacePageSource.includes("sessionLookups.map((lookup) => lookup.membership)"), "workspace page must derive status branches from current subject memberships");
 assert(workspacePageSource.includes("sessionLookups[0]?.user"), "workspace page must prefer the user returned by the current-subject lookup");
