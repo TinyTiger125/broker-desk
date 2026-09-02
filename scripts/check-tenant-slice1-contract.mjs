@@ -441,14 +441,7 @@ assert(
   "a second acceptance must not create or alter another membership",
 );
 
-const activeMember = await memory.inviteTenantMember({
-  tenantId: created.tenant.id,
-  name: "Active Member",
-  email: `slice1-active-${Date.now()}@example.test`,
-  role: "broker",
-  status: "active",
-  invitedByUserId: owner.id,
-});
+const activeMember = accepted;
 let activeDowngradeRejected = false;
 try {
   await memory.inviteTenantMember({
@@ -459,10 +452,10 @@ try {
     status: "invited",
     invitedByUserId: owner.id,
   });
-} catch {
-  activeDowngradeRejected = true;
+} catch (error) {
+  activeDowngradeRejected = error instanceof Error && error.message === "active member cannot be changed back to invited";
 }
-assert(activeDowngradeRejected, "re-inviting an active member must not downgrade it to invited");
+assert(activeDowngradeRejected, "re-inviting an active member must reject the downgrade with the active-member error");
 
 const other = await memory.ensureUserForExternalAuth({ subject: `slice1-other-${Date.now()}`, email: `other-${Date.now()}@example.test` });
 assert(other, "second identity should be provisioned");
@@ -542,23 +535,48 @@ assert(
 
 let directAcceptRejected = false;
 try {
-  await memory.updateTenantMemberStatus({ tenantId: created.tenant.id, membershipId: revoked.id, status: "active" });
-} catch {
-  directAcceptRejected = true;
+  await memory.updateTenantMemberStatus({
+    tenantId: created.tenant.id,
+    membershipId: revoked.id,
+    status: "active",
+    actorUserId: owner.id,
+  });
+} catch (error) {
+  directAcceptRejected = error instanceof Error && error.message === "invited membership requires explicit token acceptance";
 }
-assert(directAcceptRejected, "invited membership must not be activated by a status action");
+assert(directAcceptRejected, "invited membership must reject direct activation with the explicit-acceptance error");
 
-await memory.updateTenantMemberStatus({ tenantId: created.tenant.id, membershipId: activeMember.id, status: "suspended" });
-const resumed = await memory.updateTenantMemberStatus({ tenantId: created.tenant.id, membershipId: activeMember.id, status: "active" });
+await memory.updateTenantMemberStatus({
+  tenantId: created.tenant.id,
+  membershipId: activeMember.id,
+  status: "suspended",
+  actorUserId: owner.id,
+});
+const resumed = await memory.updateTenantMemberStatus({
+  tenantId: created.tenant.id,
+  membershipId: activeMember.id,
+  status: "active",
+  actorUserId: owner.id,
+});
 assert(resumed?.status === "active", "suspended membership should be recoverable");
-await memory.updateTenantMemberStatus({ tenantId: created.tenant.id, membershipId: activeMember.id, status: "removed" });
+await memory.updateTenantMemberStatus({
+  tenantId: created.tenant.id,
+  membershipId: activeMember.id,
+  status: "removed",
+  actorUserId: owner.id,
+});
 let removedReactivationRejected = false;
 try {
-  await memory.updateTenantMemberStatus({ tenantId: created.tenant.id, membershipId: activeMember.id, status: "active" });
-} catch {
-  removedReactivationRejected = true;
+  await memory.updateTenantMemberStatus({
+    tenantId: created.tenant.id,
+    membershipId: activeMember.id,
+    status: "active",
+    actorUserId: owner.id,
+  });
+} catch (error) {
+  removedReactivationRejected = error instanceof Error && error.message === "removed membership requires a new invitation";
 }
-assert(removedReactivationRejected, "removed membership must require a new invitation");
+assert(removedReactivationRejected, "removed membership must reject reactivation with the new-invitation error");
 const replacement = await memory.inviteTenantMember({
   tenantId: created.tenant.id,
   name: activeMember.user.name,
