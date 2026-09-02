@@ -347,11 +347,11 @@ globalThis.__brokerDb.tenantMemberships.push({
 });
 const preparedSeatAccount = await memory.updateTenantAccountLifecycle({
   tenantId: created.tenant.id,
-  purchasedSeatCount: 2,
+  purchasedSeatCount: 3,
   actorUserId: "slice1-test-platform-owner",
 });
-assert(preparedSeatAccount?.purchasedSeatCount === 2, "test tenant fixture must explicitly prepare two purchased seats");
-assert(preparedSeatAccount?.usedSeatCount === 1 && preparedSeatAccount.availableSeatCount === 1, "test tenant fixture must prove owner uses one seat and one remains before invitation");
+assert(preparedSeatAccount?.purchasedSeatCount === 3, "test tenant fixture must explicitly prepare three purchased seats");
+assert(preparedSeatAccount?.usedSeatCount === 1 && preparedSeatAccount.availableSeatCount === 2, "test tenant fixture must prove owner uses one seat and two remain before invitation");
 
 const retried = await memory.createTenantAccountForUser({ userId: owner.id, name: creationName, idempotencyKey: creationKey });
 assert(retried.tenant.id === created.tenant.id, "retrying the same creation key must return the original tenant");
