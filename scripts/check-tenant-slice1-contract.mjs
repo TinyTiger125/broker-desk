@@ -177,7 +177,7 @@ assert(actionsSource.includes("invitation.sent ? \"invitation_sent\""), "member 
 assert(actionsSource.includes("invitation.sent ? \"invitation_sent\" : \"invitation_failed\""), "member resend must report skipped provider delivery as failed when persistence marks it failed");
 assert(membersPageSource.includes("feedbackPending"), "member pending feedback must use a neutral state presentation");
 const membersReadBoundary = membersPageSource.slice(0, membersPageSource.indexOf("const members = await listTenantMembers"));
-assert(membersReadBoundary.includes("requireTenantSession()"), "member management page must establish session without broad read permission");
+assert(membersReadBoundary.includes("requireTenantReadOnlySession()"), "member management page must establish session without broad read permission");
 assert(membersPageSource.includes("listTenantMembersForAuthenticatedTenant"), "member management page must read with the established authenticated session identity");
 assert(membersPageSource.includes("membersLoadFailed"), "member management page must expose a retryable member-read failure state");
 const tenantSessionSource = fs.readFileSync(path.resolve("src/lib/tenant-session.ts"), "utf8");
