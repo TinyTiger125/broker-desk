@@ -21,6 +21,15 @@ assert.match(script, /set_config\('app\.broker_desk_nonprod_marker', \$1, true\)
 assert.match(script, /set_config\('app\.broker_desk_deployment_env', \$2, true\)/);
 assert.match(script, /current_setting\('app\.broker_desk_nonprod_marker', true\)/);
 assert.match(script, /bootstrap session marker verification failed/);
+assert.match(script, /brokerdesk_admin/);
+assert.match(script, /rolsuper/);
+assert.match(script, /rolbypassrls/);
+assert.match(script, /has_table_privilege/);
+assert.match(script, /target_tables/);
+assert.match(script, /audit_logs must retain FORCE ROW LEVEL SECURITY/);
+assert.match(script, /security boundary is invalid/);
+assert.doesNotMatch(script, /GRANT\s+ALL/i);
+assert.doesNotMatch(script, /CREATE\s+ROLE[^;]*BYPASSRLS/i);
 assert.doesNotMatch(script, /--(?:email|tenant-id|actor-user-id|database-name)/);
 assert.doesNotMatch(script, /fetch\s*\(/);
 assert.doesNotMatch(script, /process\.env\.[A-Z_]*(PASSWORD|OTP)|--password|--otp|createExternalUser|sendExternalEmail/i);

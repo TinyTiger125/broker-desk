@@ -23,13 +23,57 @@ const freshSnapshot = {
   databaseName: "broker_desk_internal_alpha",
   nonprodMarker: "broker-desk-staging-nonprod",
   deploymentEnvironment: "staging",
-  authority: { rolsuper: true, rolbypassrls: false, auditForceRls: true },
+  authority: { roleName: "brokerdesk_admin", rolsuper: false, rolbypassrls: false, auditForceRls: true, targetTables: [] },
   users: [{ id: "user_platform", email: "neoyu0125@gmail.com", external_auth_bound: true, invited_password_sentinel: false }],
   tenants: [],
   memberships: [],
   creationRequestCount: 0,
 };
-assert.equal(validateBootstrapSnapshot(freshSnapshot, expected).state, "fresh");
+const minimalAdminTables = ["users", "tenants", "tenant_memberships"].map((name) => ({
+  name,
+  exists: true,
+  owner: "neondb_owner",
+  isCurrentOwner: false,
+  rowSecurity: true,
+  forceRowSecurity: false,
+  select: true,
+  insert: true,
+  update: false,
+  delete: false,
+}));
+const minimalAdminSnapshot = {
+  ...freshSnapshot,
+  authority: {
+    roleName: "brokerdesk_admin",
+    rolsuper: false,
+    rolbypassrls: false,
+    auditForceRls: true,
+    targetTables: minimalAdminTables,
+  },
+};
+assert.equal(validateBootstrapSnapshot(minimalAdminSnapshot, expected).state, "fresh");
+
+assert.throws(
+  () => validateBootstrapSnapshot({ ...minimalAdminSnapshot, authority: { ...minimalAdminSnapshot.authority, rolsuper: true } }, expected),
+  /must not be superuser or BYPASSRLS/,
+);
+assert.throws(
+  () => validateBootstrapSnapshot({ ...minimalAdminSnapshot, authority: { ...minimalAdminSnapshot.authority, rolbypassrls: true } }, expected),
+  /must not be superuser or BYPASSRLS/,
+);
+assert.throws(
+  () => validateBootstrapSnapshot({ ...minimalAdminSnapshot, authority: { ...minimalAdminSnapshot.authority, roleName: "neondb_owner" } }, expected),
+  /fixed brokerdesk_admin role/,
+);
+assert.throws(
+  () => validateBootstrapSnapshot({ ...minimalAdminSnapshot, authority: { ...minimalAdminSnapshot.authority, targetTables: minimalAdminTables.map((row) => row.name === "users" ? { ...row, insert: false } : row) } }, expected),
+  /security boundary is invalid for users/,
+);
+assert.throws(
+  () => validateBootstrapSnapshot({ ...minimalAdminSnapshot, authority: { ...minimalAdminSnapshot.authority, targetTables: minimalAdminTables.map((row) => row.name === "tenants" ? { ...row, forceRowSecurity: true } : row) } }, expected),
+  /security boundary is invalid for tenants/,
+);
+assert.equal(validateBootstrapSnapshot(minimalAdminSnapshot, expected).state, "fresh");
 
 const readOnlyQueries = [];
 const fakeClient = {
@@ -42,7 +86,7 @@ const fakeClient = {
     if (sql.includes("current_setting('app.broker_desk_nonprod_marker'")) {
       return { rows: [{ nonprod_marker: freshSnapshot.nonprodMarker, deployment_environment: freshSnapshot.deploymentEnvironment }] };
     }
-    if (sql.includes("pg_roles")) return { rows: [{ rolsuper: true, rolbypassrls: false, audit_force_rls: true }] };
+    if (sql.includes("pg_roles")) return { rows: [{ role_name: minimalAdminSnapshot.authority.roleName, rolsuper: false, rolbypassrls: false, audit_force_rls: true, target_tables: minimalAdminTables }] };
     if (sql.includes("external_auth_bound")) return { rows: freshSnapshot.users };
     if (sql.includes("purchased_seat_count")) return { rows: freshSnapshot.tenants };
     if (sql.includes("invitation_provider")) return { rows: freshSnapshot.memberships };
@@ -53,7 +97,7 @@ const fakeClient = {
 const dryRunResult = await runBootstrap({ client: fakeClient, plan: expected, dryRun: true });
 assert.equal(dryRunResult.status, "dry-run");
 assert.deepEqual(dryRunResult.expectedWrites, { users: 2, tenants: 2, memberships: 3 });
-assert.equal(readOnlyQueries.some((query) => /\b(INSERT|UPDATE|DELETE|TRUNCATE)\b/i.test(query)), false);
+assert.equal(readOnlyQueries.some((query) => /^\s*(INSERT|UPDATE|DELETE|TRUNCATE)\b/i.test(query)), false);
 const markerSetupIndex = readOnlyQueries.findIndex((query) => query.includes("set_config"));
 assert.notEqual(markerSetupIndex, -1, "bootstrap must establish transaction-local environment markers before snapshot validation");
 assert.match(readOnlyQueries[markerSetupIndex], /app\.broker_desk_nonprod_marker/);
@@ -83,6 +127,7 @@ assert.equal(wrongMarkerQueries.at(-1), "ROLLBACK");
 
 const finalSnapshot = {
   ...freshSnapshot,
+  authority: minimalAdminSnapshot.authority,
   users: [
     ...freshSnapshot.users,
     { id: "user_clean_staging_company_owner_invite", email: "rikiyoaki@gmail.com", external_auth_bound: false, invited_password_sentinel: true },
@@ -110,6 +155,7 @@ assert.throws(() => validateBootstrapSnapshot(wrongRoleSnapshot, expected), /mem
 
 const partialSnapshot = {
   ...freshSnapshot,
+  authority: minimalAdminSnapshot.authority,
   tenants: [{ id: "tenant_broker_desk_internal", name: "Broker Desk 内部工作区", slug: "broker-desk-internal", account_type: "company", status: "active", purchased_seat_count: 1, service_start_at: null, service_end_at: null }],
 };
 assert.throws(() => validateBootstrapSnapshot(partialSnapshot, expected), /exactly match/);

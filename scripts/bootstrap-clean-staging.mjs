@@ -4,6 +4,11 @@ export const BOOTSTRAP_DATABASE_NAME = "broker_desk_internal_alpha";
 export const BOOTSTRAP_ENVIRONMENT = "staging";
 export const BOOTSTRAP_MARKER = "BROKER_DESK_CLEAN_STAGING_V1";
 export const BOOTSTRAP_NONPROD_MARKER = "broker-desk-staging-nonprod";
+export const BOOTSTRAP_AUTHORITY_TABLES = Object.freeze([
+  Object.freeze({ name: "users", expectedForceRowSecurity: false }),
+  Object.freeze({ name: "tenants", expectedForceRowSecurity: false }),
+  Object.freeze({ name: "tenant_memberships", expectedForceRowSecurity: false }),
+]);
 export const INTERNAL_TENANT = Object.freeze({
   id: "tenant_broker_desk_internal",
   name: "Broker Desk 内部工作区",
@@ -115,10 +120,33 @@ export function validateBootstrapSnapshot(snapshot, plan, phase = "preflight") {
   if (snapshot.databaseName !== plan.databaseName) throw new Error("bootstrap target database does not match the fixed Clean Staging database");
   if (snapshot.nonprodMarker !== "broker-desk-staging-nonprod") throw new Error("bootstrap target lacks the non-production marker");
   if (snapshot.deploymentEnvironment !== plan.environment) throw new Error("bootstrap target is not marked staging");
-  if (!snapshot.authority || (snapshot.authority.rolsuper !== true && snapshot.authority.rolbypassrls !== true)) {
-    throw new Error("bootstrap requires a privileged initialization connection");
+  if (!snapshot.authority || snapshot.authority.roleName !== "brokerdesk_admin") {
+    throw new Error("bootstrap requires the fixed brokerdesk_admin role");
+  }
+  if (snapshot.authority.rolsuper === true || snapshot.authority.rolbypassrls === true) {
+    throw new Error("bootstrap admin role must not be superuser or BYPASSRLS");
   }
   if (snapshot.authority.auditForceRls !== true) throw new Error("audit_logs must retain FORCE ROW LEVEL SECURITY");
+  const authorityTables = Array.isArray(snapshot.authority.targetTables) ? snapshot.authority.targetTables : [];
+  const authorityTableMap = new Map(authorityTables.map((table) => [table.name, table]));
+  if (authorityTables.length !== BOOTSTRAP_AUTHORITY_TABLES.length
+    || BOOTSTRAP_AUTHORITY_TABLES.some(({ name }) => !authorityTableMap.has(name))) {
+    throw new Error("bootstrap target table authority boundary is invalid");
+  }
+  for (const expectedTable of BOOTSTRAP_AUTHORITY_TABLES) {
+    const table = authorityTableMap.get(expectedTable.name);
+    const minimalExplicitPrivileges = table.owner === "neondb_owner"
+      && table.select === true
+      && table.insert === true
+      && table.update === false
+      && table.delete === false;
+    const controlledOwnerPrivileges = table.isCurrentOwner === true;
+    if (table.exists !== true || table.rowSecurity !== true
+      || table.forceRowSecurity !== expectedTable.expectedForceRowSecurity
+      || (!controlledOwnerPrivileges && !minimalExplicitPrivileges)) {
+      throw new Error(`bootstrap target table security boundary is invalid for ${expectedTable.name}`);
+    }
+  }
   if (snapshot.creationRequestCount !== 0) throw new Error("tenant creation requests must be empty for clean bootstrap");
 
   const platformUsers = snapshot.users.filter((row) => row.email === plan.emails.platform);
@@ -228,13 +256,42 @@ async function readSnapshot(client) {
            current_setting('app.broker_desk_deployment_env', true) AS deployment_environment
   `);
   const authority = await client.query(`
-    SELECT roles.rolsuper, roles.rolbypassrls,
-           audit_table.relforcerowsecurity AS audit_force_rls
+    WITH required_tables(table_name, expected_force_rls) AS (
+      VALUES
+        ('users'::text, false),
+        ('tenants'::text, false),
+        ('tenant_memberships'::text, false)
+    )
+    SELECT roles.rolname AS role_name,
+           roles.rolsuper,
+           roles.rolbypassrls,
+           audit_table.relforcerowsecurity AS audit_force_rls,
+           COALESCE(json_agg(json_build_object(
+             'name', required.table_name,
+             'exists', table_info.oid IS NOT NULL,
+             'owner', table_owner.rolname,
+             'isCurrentOwner', table_owner.rolname = current_user,
+             'rowSecurity', table_info.relrowsecurity,
+             'forceRowSecurity', table_info.relforcerowsecurity,
+             'select', CASE WHEN table_info.oid IS NOT NULL THEN has_table_privilege(current_user, table_info.oid, 'SELECT') ELSE false END,
+             'insert', CASE WHEN table_info.oid IS NOT NULL THEN has_table_privilege(current_user, table_info.oid, 'INSERT') ELSE false END,
+             'update', CASE WHEN table_info.oid IS NOT NULL THEN has_table_privilege(current_user, table_info.oid, 'update') ELSE false END,
+             'delete', CASE WHEN table_info.oid IS NOT NULL THEN has_table_privilege(current_user, table_info.oid, 'delete') ELSE false END
+           ) ORDER BY required.table_name), '[]'::json) AS target_tables
       FROM pg_catalog.pg_roles AS roles
+      CROSS JOIN required_tables AS required
+      LEFT JOIN pg_catalog.pg_class AS table_info
+        ON table_info.relname = required.table_name
+      LEFT JOIN pg_catalog.pg_namespace AS table_schema
+        ON table_schema.oid = table_info.relnamespace AND table_schema.nspname = 'public'
+      LEFT JOIN pg_catalog.pg_roles AS table_owner
+        ON table_owner.oid = table_info.relowner
       JOIN pg_catalog.pg_class AS audit_table ON audit_table.relname = 'audit_logs'
       JOIN pg_catalog.pg_namespace AS audit_schema
         ON audit_schema.oid = audit_table.relnamespace AND audit_schema.nspname = 'public'
      WHERE roles.rolname = current_user
+       AND (table_schema.oid IS NOT NULL OR table_info.oid IS NULL)
+     GROUP BY roles.rolname, roles.rolsuper, roles.rolbypassrls, audit_table.relforcerowsecurity
   `);
   const users = await client.query(`
     SELECT id, lower(trim(email)) AS email,
@@ -262,9 +319,11 @@ async function readSnapshot(client) {
     nonprodMarker: target.rows[0]?.nonprod_marker,
     deploymentEnvironment: target.rows[0]?.deployment_environment,
     authority: {
+      roleName: authority.rows[0]?.role_name,
       rolsuper: authority.rows[0]?.rolsuper === true,
       rolbypassrls: authority.rows[0]?.rolbypassrls === true,
       auditForceRls: authority.rows[0]?.audit_force_rls === true,
+      targetTables: authority.rows[0]?.target_tables ?? [],
     },
     users: users.rows,
     tenants: tenants.rows,
