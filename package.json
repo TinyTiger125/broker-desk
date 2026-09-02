@@ -48,6 +48,8 @@
     "test:staging-allowlist": "node scripts/test-staging-allowlist-behavior.mjs",
     "test:staging-access-contract": "node scripts/check-staging-access-contract.mjs",
     "test:staging-seed-contract": "node scripts/check-staging-seed-contract.mjs",
+    "test:clean-staging-bootstrap": "node scripts/check-clean-staging-bootstrap-contract.mjs && node scripts/test-clean-staging-bootstrap-behavior.mjs",
+    "staging:bootstrap": "node scripts/bootstrap-clean-staging.mjs",
     "test:health-diagnostics": "node scripts/test-health-diagnostics-behavior.mjs",
     "test:tenant-slice1-contract": "node scripts/check-tenant-slice1-contract.mjs",
     "test:production-security": "node scripts/check-production-security.mjs",
