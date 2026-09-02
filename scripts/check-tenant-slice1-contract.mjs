@@ -54,6 +54,10 @@ const tenantCreationIdempotencyMigration = fs.readFileSync(path.resolve("db/migr
 const invitedIdentityBindingMigration = fs.readFileSync(path.resolve("db/migrations/20260820_011_bind_invited_clerk_identity.sql"), "utf8");
 const tenantMemberReadMigration = fs.readFileSync(path.resolve("db/migrations/20260820_012_current_tenant_member_read.sql"), "utf8");
 const removedInvitationFixMigration = fs.readFileSync(path.resolve("db/migrations/20260821_013_fix_removed_invitation_return.sql"), "utf8");
+const externalAuthBootstrapMigration = fs.readFileSync(
+  path.resolve("db/migrations/20260902_001_current_external_auth_user_bootstrap.sql"),
+  "utf8",
+);
 const postgresSource = fs.readFileSync(path.resolve("src/lib/data.postgres.ts"), "utf8");
 const requestScopeQueryExecutor = postgresSource.slice(
   postgresSource.indexOf("async function queryWithinRequestScope"),
@@ -78,6 +82,47 @@ const workspaceSelectorSource = fs.readFileSync(path.resolve("src/app/workspace/
 const organizeCenterSource = fs.readFileSync(path.resolve("src/app/organize-center/page.tsx"), "utf8");
 const workspaceRouteSource = fs.readFileSync(path.resolve("src/app/api/workspace/route.ts"), "utf8");
 const workspaceResetSource = fs.readFileSync(path.resolve("src/app/workspace/reset/route.ts"), "utf8");
+const ensureExternalAuthUserSource = postgresSource.slice(
+  postgresSource.indexOf("export async function ensureUserForExternalAuth"),
+  postgresSource.indexOf("/**", postgresSource.indexOf("export async function ensureUserForExternalAuth")),
+);
+const externalAuthBootstrapBody = externalAuthBootstrapMigration.slice(
+  externalAuthBootstrapMigration.indexOf("AS $$") + "AS $$".length,
+  externalAuthBootstrapMigration.indexOf("$$;", externalAuthBootstrapMigration.indexOf("AS $$")),
+);
+
+assert(
+  externalAuthBootstrapMigration.includes("CREATE OR REPLACE FUNCTION brokerdesk_private.ensure_current_external_auth_user("),
+  "external auth bootstrap must use a dedicated current-subject function",
+);
+assert(externalAuthBootstrapMigration.includes("current_external_auth_subject()"), "external auth bootstrap must read the subject from the request context");
+assert(!externalAuthBootstrapMigration.includes("p_subject"), "external auth bootstrap must not accept a caller-supplied subject");
+assert(externalAuthBootstrapMigration.includes("deployment_environment IN ('development', 'preview', 'staging')"), "external auth bootstrap must allow only non-production deployment environments");
+assert(externalAuthBootstrapMigration.includes("deployment_environment IS NULL"), "external auth bootstrap must reject a missing deployment environment");
+assert(externalAuthBootstrapMigration.includes("ERRCODE = '42501'"), "external auth bootstrap must fail closed for missing or disallowed context");
+assert(externalAuthBootstrapMigration.includes("pg_advisory_xact_lock"), "external auth bootstrap must serialize concurrent subject retries");
+assert(externalAuthBootstrapMigration.includes("SECURITY DEFINER"), "external auth bootstrap must run with a narrowly scoped definer privilege");
+assert(externalAuthBootstrapMigration.includes("SET search_path = public, pg_temp"), "external auth bootstrap must pin its definer search path");
+assert(externalAuthBootstrapMigration.includes("current_setting('app.broker_desk_deployment_env', true)"), "external auth bootstrap must use the trusted deployment classification");
+assert(externalAuthBootstrapMigration.includes("email is already linked to another external identity"), "external auth bootstrap must reject an email bound to another subject");
+assert(externalAuthBootstrapMigration.includes("email is already reserved by an existing local user"), "external auth bootstrap must not claim an unbound existing email");
+assert(externalAuthBootstrapBody.includes("FOR UPDATE"), "external auth bootstrap must lock existing identity rows while checking uniqueness");
+assert(externalAuthBootstrapBody.includes("lower(users.email) = effective_email"), "external auth bootstrap must check normalized email ownership");
+assert(externalAuthBootstrapBody.includes("INSERT INTO public.users"), "external auth bootstrap must be the only user-write path for this runtime flow");
+assert(!externalAuthBootstrapBody.includes("UPDATE public.users"), "external auth bootstrap must not rebind an existing local user");
+assert(!externalAuthBootstrapBody.includes("tenant_memberships"), "external auth bootstrap must not create or activate memberships");
+assert(!externalAuthBootstrapBody.includes("sync_external_auth_user"), "runtime bootstrap must not call the admin synchronizer");
+assert(!externalAuthBootstrapMigration.includes("ALTER TABLE public.users"), "external auth bootstrap must not change users RLS");
+assert(!externalAuthBootstrapMigration.includes("CREATE POLICY"), "external auth bootstrap must not add a users policy");
+assert(!externalAuthBootstrapMigration.includes("GRANT EXECUTE ON FUNCTION brokerdesk_private.ensure_current_external_auth_user(TEXT, TEXT) TO authenticated"), "external auth bootstrap must not grant authenticated execution");
+assert(externalAuthBootstrapMigration.includes("REVOKE ALL ON FUNCTION brokerdesk_private.ensure_current_external_auth_user"), "external auth bootstrap must revoke public execution");
+assert(externalAuthBootstrapMigration.includes("GRANT EXECUTE ON FUNCTION brokerdesk_private.ensure_current_external_auth_user(TEXT, TEXT) TO brokerdesk_runtime"), "external auth bootstrap must grant only the runtime role");
+assert(postgresSource.includes("20260902_001_current_external_auth_user_bootstrap.sql"), "required migrations must include current external auth bootstrap");
+assert(ensureExternalAuthUserSource.includes("brokerdesk_private.ensure_current_external_auth_user($1, $2)"), "Postgres adapter must use the restricted current-subject bootstrap RPC");
+assert(ensureExternalAuthUserSource.includes("set_config('app.broker_desk_deployment_env', $1, true)"), "Postgres adapter must pass the trusted deployment classification in the request transaction");
+assert(ensureExternalAuthUserSource.includes("[email, name]"), "Postgres adapter must pass only profile fields to the current-subject bootstrap");
+assert(!ensureExternalAuthUserSource.includes("INSERT INTO users"), "Postgres adapter must not insert users directly under RLS");
+assert(!ensureExternalAuthUserSource.includes("UPDATE users"), "Postgres adapter must not update users directly under RLS");
 
 assert(
   dataSource.includes("if (isFormalProductionDeployment()) return null;"),
