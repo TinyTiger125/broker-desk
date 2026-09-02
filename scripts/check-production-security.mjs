@@ -401,6 +401,15 @@ assert(fs.existsSync("db/migrations/20260809_003_private_attachment_blobs.sql"),
 assert(fs.existsSync("db/migrations/20260809_004_import_job_execution_state.sql"), "import job execution migration must exist");
 assert(fs.existsSync("db/migrations/20260809_005_import_worker_claim.sql"), "import worker claim migration must exist");
 assert(fs.existsSync("db/migrations/20260819_001_guarantee_slice1_objects.sql"), "guarantee slice 1 object migration must exist");
+const runtimeMigrationLedgerGrantMigration = fs.readFileSync(
+  "db/migrations/20260902_002_runtime_migration_ledger_read.sql",
+  "utf8",
+).trim();
+assert(
+  runtimeMigrationLedgerGrantMigration ===
+    "REVOKE ALL PRIVILEGES ON TABLE public.broker_desk_schema_migrations FROM brokerdesk_runtime;\nGRANT SELECT ON TABLE public.broker_desk_schema_migrations TO brokerdesk_runtime;",
+  "runtime migration-ledger grant must be limited to brokerdesk_runtime SELECT",
+);
 
 const postgresDataSource = fs.readFileSync("src/lib/data.postgres.ts", "utf8");
 assert(
@@ -454,6 +463,10 @@ assert(
 assert(
   postgresDataSource.includes('"20260819_001_guarantee_slice1_objects.sql"'),
   "production migration ledger must require guarantee slice 1 objects migration",
+);
+assert(
+  postgresDataSource.includes('"20260902_002_runtime_migration_ledger_read.sql"'),
+  "production migration ledger must require the runtime migration-ledger read grant",
 );
 
 const signUpSource = fs.readFileSync("src/app/sign-up/[[...sign-up]]/page.tsx", "utf8");

@@ -172,6 +172,7 @@ const REQUIRED_PRODUCTION_MIGRATIONS = [
   "20260830_001_object_attachment_links.sql",
   "20260830_002_object_attachment_runtime_grant.sql",
   "20260902_001_current_external_auth_user_bootstrap.sql",
+  "20260902_002_runtime_migration_ledger_read.sql",
 ] as const;
 
 const OPEN_STAGES: ClientStage[] = ["lead", "contacted", "quoted", "viewing", "negotiating"];
