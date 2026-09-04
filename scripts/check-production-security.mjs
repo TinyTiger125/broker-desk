@@ -414,6 +414,9 @@ assert(
 const runtimeAclBaselinePath = "db/migrations/20260902_003_runtime_acl_baseline.sql";
 assert(fs.existsSync(runtimeAclBaselinePath), "runtime ACL baseline migration must exist");
 const runtimeAclBaseline = fs.readFileSync(runtimeAclBaselinePath, "utf8").replace(/\s+/g, " ").trim();
+const runtimeExternalSubjectGrantPath = "db/migrations/20260904_001_runtime_external_auth_subject_execute.sql";
+assert(fs.existsSync(runtimeExternalSubjectGrantPath), "runtime external subject execute migration must exist");
+const runtimeExternalSubjectGrant = fs.readFileSync(runtimeExternalSubjectGrantPath, "utf8").replace(/\s+/g, " ").trim();
 const runtimeTableGrants = new Map([
   ["users", ["SELECT"]],
   ["tenants", ["SELECT"]],
@@ -484,6 +487,26 @@ assert(!/GRANT\s+[^;]*\b(?:UPDATE|DELETE|TRUNCATE)\b[^;]*audit_logs/i.test(runti
 assert(!/GRANT\s+[^;]*\b(?:INSERT|UPDATE|DELETE|TRUNCATE)\b[^;]*broker_desk_schema_migrations/i.test(runtimeAclBaseline), "migration ledger must remain read-only");
 assert(!/GRANT\s+[^;]*\bUPDATE\b[^;]*private_attachment_blobs/i.test(runtimeAclBaseline), "private attachment blobs must not receive runtime UPDATE");
 assert(!runtimeAclBaseline.includes("BYPASSRLS") && !runtimeAclBaseline.includes("ALTER TABLE"), "runtime ACL baseline must not alter RLS or bypass policy enforcement");
+assert(
+  runtimeExternalSubjectGrant.includes("REVOKE ALL PRIVILEGES ON FUNCTION brokerdesk_private.current_external_auth_subject() FROM PUBLIC") &&
+    runtimeExternalSubjectGrant.includes("GRANT EXECUTE ON FUNCTION brokerdesk_private.current_external_auth_subject() TO brokerdesk_runtime") &&
+    runtimeExternalSubjectGrant.includes("REVOKE ALL PRIVILEGES ON FUNCTION brokerdesk_private.current_external_auth_subject() FROM authenticated"),
+  "runtime external subject access must be runtime-only and explicitly closed to PUBLIC/authenticated",
+);
+assert(
+  runtimeExternalSubjectGrant.includes("current_external_auth_subject()") &&
+    !runtimeExternalSubjectGrant.includes("current_external_auth_subject(TEXT)") &&
+    !runtimeExternalSubjectGrant.includes("set_config") &&
+    !runtimeExternalSubjectGrant.includes("BYPASSRLS") &&
+    !runtimeExternalSubjectGrant.includes("CREATE ROLE") &&
+    !runtimeExternalSubjectGrant.includes("ALTER ROLE"),
+  "runtime external subject access must not accept or set a caller-supplied subject or widen authority",
+);
+assert(
+  (runtimeExternalSubjectGrant.match(/GRANT\s+EXECUTE\s+ON\s+FUNCTION/gi) ?? []).length === 1 &&
+    (runtimeExternalSubjectGrant.match(/GRANT\s+[^;]+\s+ON\s+(?:TABLE|SCHEMA)/gi) ?? []).length === 0,
+  "runtime external subject migration must grant only the single identity function",
+);
 
 const postgresDataSource = fs.readFileSync("src/lib/data.postgres.ts", "utf8");
 assert(
@@ -541,6 +564,10 @@ assert(
 assert(
   postgresDataSource.includes('"20260902_002_runtime_migration_ledger_read.sql"'),
   "production migration ledger must require the runtime migration-ledger read grant",
+);
+assert(
+  postgresDataSource.includes('"20260904_001_runtime_external_auth_subject_execute.sql"'),
+  "production migration ledger must require the runtime external subject execute grant",
 );
 
 const signUpSource = fs.readFileSync("src/app/sign-up/[[...sign-up]]/page.tsx", "utf8");

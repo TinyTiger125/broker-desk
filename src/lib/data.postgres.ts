@@ -174,6 +174,7 @@ const REQUIRED_PRODUCTION_MIGRATIONS = [
   "20260902_001_current_external_auth_user_bootstrap.sql",
   "20260902_002_runtime_migration_ledger_read.sql",
   "20260902_003_runtime_acl_baseline.sql",
+  "20260904_001_runtime_external_auth_subject_execute.sql",
 ] as const;
 
 const OPEN_STAGES: ClientStage[] = ["lead", "contacted", "quoted", "viewing", "negotiating"];
