@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -59,6 +60,49 @@ for (const forbidden of [
 ]) {
   if (source.includes(forbidden)) throw new Error(`seed must not mutate ${forbidden}`);
 }
+
+const assertNoUnmarkedRowsStart = source.indexOf("async function assertNoUnmarkedRows() {");
+const assertNoUnmarkedRowsEnd = source.indexOf("\n}\n\nconst expectedFixtureCounts", assertNoUnmarkedRowsStart) + 2;
+if (assertNoUnmarkedRowsStart < 0 || assertNoUnmarkedRowsEnd <= assertNoUnmarkedRowsStart) {
+  throw new Error("unmarked-row guard is missing or could not be isolated for behavior verification");
+}
+
+const assertNoUnmarkedRowsSource = source.slice(assertNoUnmarkedRowsStart, assertNoUnmarkedRowsEnd);
+const duplicateSqlArgumentSource = assertNoUnmarkedRowsSource.replace(
+  "      `SELECT COUNT(*)::int AS count FROM ${table} WHERE tenant_id = $1 AND COALESCE(${column}, '') NOT LIKE $2`,\n      [tenantId, `${marker}%`],",
+  "      `SELECT COUNT(*)::int AS count FROM ${table} WHERE tenant_id = $1 AND COALESCE(${column}, '') NOT LIKE $2`,\n      `SELECT COUNT(*)::int AS count FROM ${table} WHERE tenant_id = $1 AND COALESCE(${column}, '') NOT LIKE $2`,\n      [tenantId, `${marker}%`],",
+);
+if (duplicateSqlArgumentSource === assertNoUnmarkedRowsSource) {
+  throw new Error("parameter regression fixture could not be constructed");
+}
+
+async function runUnmarkedRowsBehavior(functionSource) {
+  const calls = [];
+  const one = async (...args) => {
+    if (args.length !== 2) throw new Error("one(sql, values) must receive exactly two arguments");
+    const [sql, values] = args;
+    if (!Array.isArray(values)) throw new Error("unmarked-row query parameters must be an array");
+    calls.push({ sql, values });
+    return { rows: [{ count: 0 }] };
+  };
+  const load = Function("one", "tenantId", "marker", `${functionSource}; return assertNoUnmarkedRows;`);
+  await load(one, "tenant_behavior", "TASK-047-ACCEPTANCE-BEHAVIOR")();
+  assert.equal(calls.length, 7, "unmarked-row guard must check all six marker columns and cases");
+  for (const call of calls.slice(0, 6)) {
+    assert.deepEqual(call.values, ["tenant_behavior", "TASK-047-ACCEPTANCE-BEHAVIOR%"], "marker-column query must pass tenant and marker parameters as an array");
+  }
+  assert.deepEqual(calls[6].values, ["tenant_behavior", "TASK-047-ACCEPTANCE-BEHAVIOR"], "case query must pass tenant and marker parameters as an array");
+}
+
+let oldImplementationRejected = false;
+try {
+  await runUnmarkedRowsBehavior(duplicateSqlArgumentSource);
+} catch (error) {
+  oldImplementationRejected = true;
+  assert.match(String(error?.message), /exactly two arguments/);
+}
+assert(oldImplementationRejected, "behavior test must fail for the duplicate SQL-argument regression");
+await runUnmarkedRowsBehavior(assertNoUnmarkedRowsSource);
 
 const result = spawnSync(process.execPath, [seedPath, "--dry-run", "--environment", "staging"], {
   cwd: root,
