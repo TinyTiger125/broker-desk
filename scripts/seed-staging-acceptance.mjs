@@ -28,6 +28,9 @@ const marker = option("--marker", "BROKER_DESK_STAGING_SEED_MARKER");
 const databaseName = option("--database-name", "BROKER_DESK_STAGING_SEED_DATABASE_NAME");
 const templateId = option("--template-id", "BROKER_DESK_STAGING_SEED_TEMPLATE_ID");
 const databaseUrl = process.env.BROKER_DESK_STAGING_SEED_DATABASE_URL;
+const CLEAN_STAGING_DATABASE_NAME = "broker_desk_internal_alpha";
+const CLEAN_STAGING_TENANT_ID = "tenant_68d4f3676778";
+const CLEAN_STAGING_TENANT_NAME = "LIYU株式会社";
 
 if (environment !== "staging") {
   fail("--environment must be staging; production, preview, and unknown environments are rejected for database writes");
@@ -41,6 +44,10 @@ if (environment !== "staging") {
   fail("reset requires --confirm-reset");
 } else if (!databaseUrl) {
   fail("dry-run and writes require BROKER_DESK_STAGING_SEED_DATABASE_URL; no implicit database URL is accepted");
+} else if (databaseName !== CLEAN_STAGING_DATABASE_NAME) {
+  fail(`database name must be ${CLEAN_STAGING_DATABASE_NAME}`);
+} else if (tenantId !== CLEAN_STAGING_TENANT_ID) {
+  fail(`tenant id must be the approved LIYU staging tenant ${CLEAN_STAGING_TENANT_ID}`);
 }
 
 if (process.exitCode) process.exit(process.exitCode);
@@ -157,24 +164,37 @@ async function assertTarget() {
     [tenantId],
   );
   const tenant = tenantResult.rows[0];
-  if (!tenant || tenant.name !== "INTERNAL ALPHA / TEST" || tenant.status !== "active") {
-    throw new Error("target tenant must be the active INTERNAL ALPHA / TEST synthetic tenant");
+  if (!tenant || tenant.name !== CLEAN_STAGING_TENANT_NAME || tenant.status !== "active") {
+    throw new Error("target tenant must be the approved active LIYU synthetic tenant");
   }
 
   const actorResult = await one(
-    `SELECT u.id
+    `SELECT u.id, u.external_auth_subject
        FROM users u
+       JOIN tenant_memberships m ON m.user_id = u.id
       WHERE u.id = $1
-        AND EXISTS (
-          SELECT 1 FROM tenant_memberships m
-           WHERE m.user_id = u.id
-             AND m.role = 'platform_owner'
-             AND m.status = 'active'
-        )
+        AND m.tenant_id = $2
+        AND m.role = 'tenant_owner'
+        AND m.capability = 'company_owner'
+        AND m.status = 'active'
+        AND m.invitation_status = 'accepted'
       LIMIT 1`,
-    [actorUserId],
+    [actorUserId, tenantId],
   );
-  if (!actorResult.rowCount) throw new Error("seed actor must be an existing active platform owner; the tool never creates or changes identities");
+  const actor = actorResult.rows[0];
+  if (!actor || !actor.external_auth_subject) {
+    throw new Error("seed actor must be the existing active LIYU company owner with a bound external identity");
+  }
+  await one("SELECT set_config('app.external_auth_subject', $1, true)", [actor.external_auth_subject]);
+  const actorContext = await one(
+    `SELECT brokerdesk_private.current_user_id() AS current_user_id,
+            brokerdesk_private.can_access_tenant($1) AS can_access_tenant`,
+    [tenantId],
+  );
+  const context = actorContext.rows[0];
+  if (context?.current_user_id !== actorUserId || context.can_access_tenant !== true) {
+    throw new Error("current_user_id must match the tenant owner actor and active LIYU tenant scope");
+  }
 
   const requiredTables = ["clients", "properties", "brokerage_cases", "tasks", "follow_ups", "import_jobs", "attachments", "private_attachment_blobs"];
   const schemaResult = await one(

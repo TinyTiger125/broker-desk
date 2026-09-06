@@ -35,8 +35,20 @@ for (const required of [
   "partial fixture state",
   "formal seed requires a fresh target",
   "tenant_guarantee_template_installs",
+  "tenant_68d4f3676778",
+  "LIYU株式会社",
+  "company_owner",
+  "brokerdesk_private.current_user_id()",
+  "set_config('app.external_auth_subject', $1, true)",
+  "current_user_id must match the tenant owner actor",
 ]) {
   if (!source.includes(required)) throw new Error(`seed contract missing ${required}`);
+}
+for (const forbidden of [
+  "INTERNAL ALPHA / TEST",
+  "seed actor must be an existing active platform owner",
+]) {
+  if (source.includes(forbidden)) throw new Error(`seed must not retain the obsolete ${forbidden} contract`);
 }
 for (const forbidden of [
   "INSERT INTO users",
