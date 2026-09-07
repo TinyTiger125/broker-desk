@@ -154,7 +154,7 @@ export function assertProductionDocumentReaderReady() {
 }
 
 export function assertProductionImportWorkerReady() {
-  if (!isProductionRuntime()) return;
+  if (!isProductionRuntime() || !isFormalProductionDeployment()) return;
 
   // Requests only persist source files and enqueue jobs. A production system
   // must have a separate authenticated worker/scheduler to claim those jobs;

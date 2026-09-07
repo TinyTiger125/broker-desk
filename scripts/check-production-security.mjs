@@ -244,6 +244,32 @@ withEnv({ NODE_ENV: "production" }, () => {
   );
 });
 
+for (const deploymentEnvironment of ["preview", "staging"]) {
+  withEnv(
+    {
+      NODE_ENV: "production",
+      BROKER_DESK_DEPLOYMENT_ENV: deploymentEnvironment,
+    },
+    () => {
+      readiness.assertProductionImportWorkerReady();
+    },
+  );
+}
+
+withEnv(
+  {
+    NODE_ENV: "production",
+    BROKER_DESK_DEPLOYMENT_ENV: "unknown",
+  },
+  () => {
+    assertThrowsCode(
+      readiness.assertProductionImportWorkerReady,
+      "production_import_worker_required",
+      "unknown deployment classifications must not default to a local import worker path",
+    );
+  },
+);
+
 withEnv(
   {
     NODE_ENV: "production",
