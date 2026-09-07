@@ -27,7 +27,12 @@ import {
   type OutputTemplateSettingsInput,
 } from "@/lib/output-doc";
 import { DEFAULT_TENANT_ID } from "@/lib/tenant-constants";
-import { buildHealthFailureCause } from "@/lib/health-diagnostics";
+import {
+  buildHealthBindingDetail,
+  buildHealthFailureCause,
+  parseHealthBindingTarget,
+  type HealthBindingDetail,
+} from "@/lib/health-diagnostics";
 import {
   assertProductionDataStoreReady,
   isProductionRuntime,
@@ -6668,13 +6673,37 @@ export async function updateQuotationStatus(quoteId: string, status: QuoteStatus
   return result.rows[0] ? mapQuotation(result.rows[0]) : null;
 }
 
-export async function healthCheckPostgres() {
+async function getHealthBindingDiagnostics(): Promise<HealthBindingDetail | undefined> {
+  const target = parseHealthBindingTarget(process.env.DATABASE_URL ?? "");
+  if (!target) return undefined;
+
+  try {
+    const result = await getRawPool().query(
+      "SELECT current_database() AS database_name, current_user AS role_name",
+    );
+    const row = result.rows[0] as Record<string, unknown> | undefined;
+    if (typeof row?.database_name !== "string" || typeof row.role_name !== "string") return undefined;
+
+    return buildHealthBindingDetail({
+      target,
+      databaseName: row.database_name,
+      roleName: row.role_name,
+    });
+  } catch {
+    // Binding diagnostics are evidence-only. A failed optional probe must not
+    // turn a healthy liveness check into a new failure surface.
+    return undefined;
+  }
+}
+
+export async function healthCheckPostgres(includeBindingDiagnostics = false) {
   await ensureSchema();
   // Health probes have no Clerk request scope by design. The readiness work
   // above still checks migrations and the restricted runtime role; this final
   // liveness query must not be routed through the business-query scope proxy.
   await getRawPool().query("SELECT 1");
-  return { ok: true };
+  const binding = includeBindingDiagnostics ? await getHealthBindingDiagnostics() : undefined;
+  return { ok: true, ...(binding ? { binding } : {}) };
 }
 
 async function resolvePostgresVisibilityForContext<T extends VisibilityRecord>(input: {

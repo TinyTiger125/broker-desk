@@ -8,8 +8,8 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   const requestId = getRequestId(request);
   try {
-    await healthCheckDataDriver();
-    logOperationalEvent({ event: "data_health_check", requestId, outcome: "ready" });
+    const health = await healthCheckDataDriver();
+    logOperationalEvent({ event: "data_health_check", requestId, outcome: "ready", detail: health.binding });
     return NextResponse.json(
       {
         ok: true,

@@ -28,6 +28,28 @@ const SAFE_APPLICATION_ERROR_CODES = new Set([
 
 const SQL_STATE_PATTERN = /^[0-9A-Z]{5}$/;
 
+type HealthBindingEnvironment = {
+  NODE_ENV?: string;
+  BROKER_DESK_DEPLOYMENT_ENV?: string;
+};
+
+export type HealthBindingTarget = {
+  host: string;
+  port: string;
+  database: string;
+  user: string;
+};
+
+export type HealthBindingDetail = {
+  version: "v1";
+  source: "runtime_database_url";
+  urlTargetFingerprint: string;
+  runtimeDatabaseFingerprint: string;
+  runtimeRoleFingerprint: string;
+  databaseTargetMatches: boolean;
+  roleTargetMatches: boolean;
+};
+
 type HealthFailurePhase = "readiness" | "data_driver" | "liveness";
 type HealthFailureCausePhase = "ledger_query" | "required_set_compare";
 
@@ -56,6 +78,49 @@ export type HealthFailureCause = {
   sqlState?: string;
   appErrorCode?: string;
 };
+
+export function isHealthBindingDiagnosticsEnabled(environment: HealthBindingEnvironment = process.env) {
+  if (environment.NODE_ENV !== "production") return false;
+  const deploymentEnvironment = environment.BROKER_DESK_DEPLOYMENT_ENV?.trim().toLowerCase();
+  return deploymentEnvironment === "preview" || deploymentEnvironment === "staging";
+}
+
+export function parseHealthBindingTarget(connectionString: string): HealthBindingTarget | undefined {
+  try {
+    const url = new URL(connectionString);
+    if (url.protocol !== "postgres:" && url.protocol !== "postgresql:") return undefined;
+    const host = url.hostname.trim().toLowerCase();
+    const port = url.port.trim() || "default";
+    const database = decodeURIComponent(url.pathname.replace(/^\/+/, "")).trim();
+    const user = decodeURIComponent(url.username).trim();
+    if (!host || !database || !user) return undefined;
+    return { host, port, database, user };
+  } catch {
+    return undefined;
+  }
+}
+
+export function buildHealthBindingDetail(input: {
+  target: HealthBindingTarget;
+  databaseName: string;
+  roleName: string;
+}): HealthBindingDetail {
+  const fingerprint = (namespace: string, value: string) =>
+    createHash("sha256").update(`broker-desk-health-binding:v1:${namespace}:${value}`).digest("hex");
+
+  return {
+    version: "v1",
+    source: "runtime_database_url",
+    urlTargetFingerprint: fingerprint(
+      "url-target",
+      [input.target.host, input.target.port, input.target.database, input.target.user].join("|"),
+    ),
+    runtimeDatabaseFingerprint: fingerprint("runtime-database", input.databaseName),
+    runtimeRoleFingerprint: fingerprint("runtime-role", input.roleName),
+    databaseTargetMatches: input.target.database === input.databaseName,
+    roleTargetMatches: input.target.user === input.roleName,
+  };
+}
 
 function readErrorProperty(error: unknown, property: string) {
   if (!error || typeof error !== "object") return undefined;

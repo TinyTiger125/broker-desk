@@ -1,5 +1,6 @@
 import * as memory from "@/lib/data.memory";
 import * as postgres from "@/lib/data.postgres";
+import { isHealthBindingDiagnosticsEnabled } from "@/lib/health-diagnostics";
 import {
   assertProductionDataStoreReady,
   isFormalProductionDeployment,
@@ -487,14 +488,18 @@ export type DataDriver = typeof activeDataDriver;
 export async function healthCheckDataDriver() {
   assertProductionDataStoreReady();
   if (usePostgres) {
-    await postgres.healthCheckPostgres();
+    const postgresHealth = await postgres.healthCheckPostgres(isHealthBindingDiagnosticsEnabled());
     return {
       ok: true,
       driver: "postgres" as const,
+      binding: postgresHealth.binding,
     };
   }
 
-  return memory.healthCheckDataDriver();
+  return {
+    ...(await memory.healthCheckDataDriver()),
+    binding: undefined,
+  };
 }
 
 export type {
