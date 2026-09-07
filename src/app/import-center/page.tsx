@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { notFound, redirect } from "next/navigation";
 import {
   autoMapImportJobAction,
   executePropertyImportAction,
@@ -29,7 +30,7 @@ import {
 } from "@/lib/import-mapping";
 import { getLocale, type Locale } from "@/lib/locale";
 import { listHubAttachments, listHubImportJobs, type HubImportJobItem } from "@/lib/hub";
-import { requireTenantSession } from "@/lib/tenant-session";
+import { requireTenantSession, TenantSessionError } from "@/lib/tenant-session";
 
 export const dynamic = "force-dynamic";
 
@@ -589,12 +590,31 @@ type ExtractedInputFieldWithDecision = InputFileExtractionResult["fields"][numbe
 };
 
 export default async function ImportCenterPage({ searchParams }: ImportCenterPageProps) {
-  const [locale, session] = await Promise.all([
+  const [locale, params] = await Promise.all([
     getLocale(),
-    requireTenantSession({ permission: "source.read" }),
+    searchParams ?? Promise.resolve(undefined),
   ]);
+  let session;
+  try {
+    session = await requireTenantSession({ permission: "source.read" });
+  } catch (error) {
+    if (error instanceof TenantSessionError && error.code === "tenant_selection_required") {
+      // Reconstruct only this route's declared query keys; never accept a
+      // caller-supplied returnTo. Workspace applies its existing URL guard.
+      const query = new URLSearchParams();
+      for (const key of ["job", "flash", "xlsxJob", "advanced", "intake", "targetCaseId", "flow", "object"] as const) {
+        const value = params?.[key];
+        if (typeof value === "string") query.set(key, value);
+      }
+      const returnTo = `/import-center${query.size ? `?${query.toString()}` : ""}`;
+      redirect(`/workspace?reason=tenant_selection_required&returnTo=${encodeURIComponent(returnTo)}`);
+    }
+    if (error instanceof TenantSessionError && ["tenant_forbidden", "permission_denied", "tenant_not_found", "user_not_found"].includes(error.code)) {
+      notFound();
+    }
+    throw error;
+  }
   const copy = getCopy(locale);
-  const params = searchParams ? await searchParams : undefined;
   const showAdvanced = params?.advanced === "1";
   const user = session.user;
   const tenantId = session.tenant.id;

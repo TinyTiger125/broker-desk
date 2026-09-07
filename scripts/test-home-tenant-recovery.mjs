@@ -238,3 +238,73 @@ assert.equal(callbackReplacements.length, 1, "chooseWorkspace must not navigate 
 assert(fetchCall === callbackFetches[0] && replacementCall === callbackReplacements[0], "verified persistence and navigation must be the only chooseWorkspace path");
 
 console.log("home tenant recovery behavior: PASS");
+
+// Execute the real import page up to its session/data boundary; do not infer
+// recovery from a matching source string or perform a network/database call.
+const { runInNewContext } = await import("node:vm");
+const importPagePath = resolve(root, "src/app/import-center/page.tsx");
+const importPageJs = ts.transpileModule(readFileSync(importPagePath, "utf8"), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
+  fileName: importPagePath,
+}).outputText;
+class SessionFailure extends Error { constructor(code) { super(code); this.code = code; } }
+const navigation = (kind, path) => { throw Object.assign(new Error(kind), { kind, path }); };
+async function runImportPage(failure, params = {}) {
+  const module = { exports: {} };
+  let dataReads = 0;
+  const dependency = new Proxy({}, { get: () => () => { dataReads++; throw new Error("unexpected data read"); } });
+  runInNewContext(importPageJs, {
+    exports: module.exports, module, URL, URLSearchParams,
+    require: (name) => {
+      if (name === "@/lib/tenant-session") return {
+        TenantSessionError: SessionFailure,
+        requireTenantSession: async (options) => {
+          assert.equal(options.permission, "source.read");
+          throw failure;
+        },
+      };
+      if (name === "@/lib/locale") return { getLocale: async () => "ja" };
+      if (name === "next/navigation") return { redirect: (path) => navigation("redirect", path), notFound: () => navigation("notFound") };
+      return dependency;
+    },
+  });
+  try { await module.exports.default({ searchParams: Promise.resolve(params) }); }
+  catch (error) { assert.equal(dataReads, 0, "session failure must precede all job/data reads"); return error; }
+  assert.fail("session failure must not render import content");
+}
+const selectedRecovery = await runImportPage(new SessionFailure("tenant_selection_required"), { xlsxJob: "import_fixture", advanced: "1", object: "property" });
+assert.equal(selectedRecovery.kind, "redirect", "import page must recover a selection-required session through workspace");
+const selectedUrl = new URL(selectedRecovery.path, "https://brokerdesk.invalid");
+assert.equal(selectedUrl.pathname, "/workspace");
+assert.equal(selectedUrl.searchParams.get("reason"), "tenant_selection_required");
+assert.equal(selectedUrl.searchParams.get("returnTo"), "/import-center?xlsxJob=import_fixture&advanced=1&object=property");
+console.log("import tenant recovery selection behavior: PASS");
+const returnGuardNode = workspaceTree.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === "safeWorkspaceReturnTo");
+assert(returnGuardNode, "workspace return URL guard must remain present");
+const workspaceReturnGuard = runInNewContext(ts.transpileModule(`${returnGuardNode.getText(workspaceTree)}; safeWorkspaceReturnTo;`, {
+  compilerOptions: { target: ts.ScriptTarget.ES2022 },
+}).outputText, { URL });
+assert.equal(workspaceReturnGuard(selectedUrl.searchParams.get("returnTo")), selectedUrl.searchParams.get("returnTo"));
+for (const malicious of ["https://outside.invalid/", "//outside.invalid/", "/\\outside.invalid/", "/workspace/create", "javascript:alert(1)"]) {
+  assert.equal(workspaceReturnGuard(malicious), "/", "canonical workspace guard must reject unsafe destinations");
+  const result = await runImportPage(new SessionFailure("tenant_selection_required"), {
+    returnTo: malicious, xlsxJob: malicious, tenantId: "unauthorized", next: malicious,
+  });
+  assert.equal(result.kind, "redirect");
+  const recovery = new URL(result.path, "https://brokerdesk.invalid");
+  const returned = recovery.searchParams.get("returnTo");
+  assert.equal(workspaceReturnGuard(returned), returned);
+  const destination = new URL(returned, "https://brokerdesk.invalid");
+  assert.equal(destination.origin, "https://brokerdesk.invalid");
+  assert.equal(destination.pathname, "/import-center");
+  assert.deepEqual([...destination.searchParams.keys()], ["xlsxJob"], "unknown return/tenant parameters must not survive recovery");
+  assert.equal(destination.searchParams.get("xlsxJob"), malicious, "encoded data must remain data, not become a redirect");
+}
+for (const code of ["tenant_forbidden", "permission_denied", "tenant_not_found", "user_not_found"]) {
+  const outcome = await runImportPage(new SessionFailure(code), { xlsxJob: "import_private" });
+  assert.equal(outcome.kind, "notFound", `${code} must fail closed without revealing job existence`);
+}
+for (const failure of [new Error("unexpected"), Object.assign(new Error("not canonical"), { code: "tenant_selection_required" }), new SessionFailure("unknown")]) {
+  assert.equal(await runImportPage(failure), failure, "unknown errors must retain the original exception");
+}
+console.log("import tenant recovery safe-return/refusal/rethrow behavior: PASS");

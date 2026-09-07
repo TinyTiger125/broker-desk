@@ -35,6 +35,6 @@ assert(processor.includes("setStatus(\"submitting\")"), "failed import UI must p
 assert(processor.includes("statusOnly"), "failed recovery must support a read-only status rehydration");
 assert(processor.includes("readOnlyStatus"), "status rehydration must not POST before an explicit retry");
 assert(notFound.includes("SystemStatePanel"), "missing pages must use the shared system-state panel");
-assert(notFound.includes('href="/"'), "missing pages must provide a product recovery route");
+assert(notFound.includes('href="/workspace"'), "missing pages must provide the canonical workspace recovery route");
 
 console.log("[PASS] import failures stay in product recovery states with retry and request references");
