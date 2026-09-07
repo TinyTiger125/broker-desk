@@ -14,7 +14,17 @@ let currentSubject = "";
 
 Module._load = function (request, parent, ...rest) {
   if (request === "@clerk/nextjs/server") {
-    return { auth: async () => ({ userId: currentSubject }), currentUser: async () => null };
+    return {
+      auth: async () => ({ userId: currentSubject }),
+      currentUser: async () => {
+        const emailAddress = currentSubject === "demo:user_demo"
+          ? "lijieming@cherry-investment.co.jp"
+          : currentSubject === "demo:user_ops" ? "ops@brokerdesk.local" : undefined;
+        if (!emailAddress) return null;
+        const primary = { id: "primary", emailAddress, verification: { status: "verified" } };
+        return { primaryEmailAddress: primary, primaryEmailAddressId: primary.id, emailAddresses: [primary] };
+      },
+    };
   }
   return originalLoad.call(this, request, parent, ...rest);
 };
@@ -40,6 +50,7 @@ require.extensions[".tsx"] = compileTypeScript;
 
 process.env.BROKER_DESK_DEPLOYMENT_ENV = "preview";
 process.env.BROKER_DESK_AUTH_MODE = "clerk";
+process.env.BROKER_DESK_STAGING_AUTH_ALLOWLIST = "lijieming@cherry-investment.co.jp,ops@brokerdesk.local";
 const memory = require(resolve(root, "src/lib/data.memory.ts"));
 const resolver = require(resolve(root, "src/lib/visibility-resolver.ts"));
 const hub = require(resolve(root, "src/lib/hub.ts"));

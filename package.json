@@ -92,6 +92,7 @@
     "test:visibility-foundation-behavior": "node scripts/test-visibility-foundation.mjs",
     "test:visibility-resolver": "node scripts/check-visibility-resolver-contract.mjs",
     "test:visibility-resolver-behavior": "node scripts/test-visibility-resolver-behavior.mjs",
+    "test:clients-visibility-consistency": "node scripts/check-clients-visibility-consistency.mjs",
     "test:object-attachments": "node scripts/check-object-attachments-contract.mjs",
     "test:global-visibility-surfaces": "node scripts/check-global-visibility-surfaces.mjs",
     "test:global-visibility-surfaces-behavior": "node scripts/test-global-visibility-surfaces.mjs",

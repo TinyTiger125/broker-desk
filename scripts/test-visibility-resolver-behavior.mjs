@@ -13,7 +13,17 @@ const originalLoad = Module._load;
 let currentSubject = "";
 Module._load = function (request, parent, ...rest) {
   if (request === "@clerk/nextjs/server") {
-    return { auth: async () => ({ userId: currentSubject }), currentUser: async () => null };
+    return {
+      auth: async () => ({ userId: currentSubject }),
+      currentUser: async () => {
+        const emailAddress = currentSubject === "demo:user_demo"
+          ? "lijieming@cherry-investment.co.jp"
+          : currentSubject === "demo:user_ops" ? "ops@brokerdesk.local" : undefined;
+        if (!emailAddress) return null;
+        const primary = { id: "primary", emailAddress, verification: { status: "verified" } };
+        return { primaryEmailAddress: primary, primaryEmailAddressId: primary.id, emailAddresses: [primary] };
+      },
+    };
   }
   return originalLoad.call(this, request, parent, ...rest);
 };
@@ -39,6 +49,7 @@ require.extensions[".tsx"] = compileTypeScript;
 
 process.env.BROKER_DESK_DEPLOYMENT_ENV = "preview";
 process.env.BROKER_DESK_AUTH_MODE = "clerk";
+process.env.BROKER_DESK_STAGING_AUTH_ALLOWLIST = "lijieming@cherry-investment.co.jp,ops@brokerdesk.local";
 const memory = require(resolve(root, "src/lib/data.memory.ts"));
 const resolver = require(resolve(root, "src/lib/visibility-resolver.ts"));
 const tenantSessionPath = resolve(root, "src/lib/tenant-session.ts");
@@ -161,8 +172,30 @@ const colleaguePropertyDetail = await memory.getPropertyDetailForContext({ conte
 assert(colleaguePropertyDetail.property && colleaguePropertyDetail.resolution.outcome === "company_read" && !colleaguePropertyDetail.resolution.canWrite, "company_read property detail is readable and read-only");
 const colleaguePersonList = await memory.listClientsForContext({ context: colleagueContext, filter: { lifecycleStatus: "all" } });
 assert(colleaguePersonList.some((item) => item.client.id === person.id && item.resolution.outcome === "company_read" && !item.resolution.canWrite), "company_read person is readable and read-only");
+const companyReadRow = colleaguePersonList.find((item) => item.client.id === person.id);
+assert(companyReadRow && companyReadRow.resolution.canRead && !companyReadRow.resolution.canWrite, "company_read list row permits detail without owner-only actions");
+const authorizedClientIds = colleaguePersonList.map((item) => item.client.id);
+const pageSize = 12;
+const authorizedPage = authorizedClientIds.slice(0, pageSize);
+assert.equal(authorizedPage.length, Math.min(authorizedClientIds.length, pageSize), "client pagination slices the authorized collection");
+assert.equal(authorizedClientIds.length, colleaguePersonList.length, "client result count matches the authorized list");
 const colleaguePersonDetail = await memory.getClientDetailForContext({ context: colleagueContext, clientId: person.id });
 assert(colleaguePersonDetail.detail && colleaguePersonDetail.resolution.outcome === "company_read", "company_read person direct detail is readable");
+
+await memory.setRecordVisibilityScope({ tenantId: tenant.id, objectType: "person", recordId: person.id, actorUserId: owner.id, visibilityScope: "private" });
+const colleaguePersonListAfterRevocation = await memory.listClientsForContext({ context: colleagueContext, filter: { lifecycleStatus: "all" } });
+assert(!colleaguePersonListAfterRevocation.some((item) => item.client.id === person.id), "revoked company_read person disappears from the list immediately");
+assert.equal((await memory.getClientDetailForContext({ context: colleagueContext, clientId: person.id })).detail, null, "revoked company_read person direct detail is denied immediately");
+await memory.setRecordVisibilityScope({ tenantId: tenant.id, objectType: "person", recordId: person.id, actorUserId: owner.id, visibilityScope: "company_read" });
+
+const foreignPerson = await memory.addClient({ tenantId: "tenant_visibility_other", ownerUserId: owner.id, ...commonInput, name: "W9.2 foreign person" });
+const colleagueListWithForeignFixture = await memory.listClientsForContext({ context: colleagueContext, filter: { lifecycleStatus: "all" } });
+assert(!colleagueListWithForeignFixture.some((item) => item.client.id === foreignPerson.id), "cross-tenant person never enters the client list");
+assert.equal(
+  resolver.resolveRecordVisibility(colleagueContext, { ...person, tenantId: "tenant_visibility_other", visibilityScope: "company_read" }).outcome,
+  "not_accessible",
+  "cross-tenant company_read person remains inaccessible",
+);
 
 const privateReferencedProperty = await memory.addProperty({
   tenantId: tenant.id,
