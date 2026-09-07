@@ -53,6 +53,7 @@
     "test:health-diagnostics": "node scripts/test-health-diagnostics-behavior.mjs",
     "test:tenant-slice1-contract": "node scripts/check-tenant-slice1-contract.mjs",
     "test:production-security": "node scripts/check-production-security.mjs",
+    "test:import-deployment-dispatch": "node scripts/test-import-deployment-dispatch.mjs",
     "test:public-beta-gate": "node scripts/check-public-beta-readiness.mjs",
     "verify:public-beta": "npm run lint && npm run typecheck && npm run test:production-security && npm run test:public-beta-gate && npm run test:tenant-session && npm run test:tenant-data-access && npm run test:tenant-governance && npm run test:tenant-auth-lifecycle-state && npm run test:postgres-rls && npm run test:import-worker-authorization && npm run test:upload-validation && npm run test:import-failure-recovery && npm run test:request-rate-limit && npm run test:guarantee-template-publication && npm run test:guarantee-template-publication-state && npm run test:guarantee-template-reproducibility && npm run test:guarantee-template-coverage && npm run test:guarantee-calibration && npm run test:guarantee-print-fit && npm run test:guarantee-download-gate && npm run test:guarantee-autofill-policy && npm run test:ja-terms && npm run test:product-language && npm run build",
     "test:postgres-rls": "node scripts/check-postgres-rls-readiness.mjs",

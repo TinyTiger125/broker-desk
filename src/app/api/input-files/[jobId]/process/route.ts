@@ -6,7 +6,7 @@ import { getRequestId, logOperationalEvent } from "@/lib/operational-logging";
 import {
   assertProductionDocumentReaderReady,
   assertProductionImportWorkerReady,
-  isProductionRuntime,
+  isFormalProductionDeployment,
   ProductionReadinessError,
 } from "@/lib/production-readiness";
 import { TenantSessionError, requireTenantSession } from "@/lib/tenant-session";
@@ -64,7 +64,7 @@ export async function POST(request: Request, context: { params: Promise<{ jobId:
     if (job.sourceType !== "scan" && job.sourceType !== "excel") {
       return NextResponse.json({ ok: false, error: "unsupported_import_source", jobId, requestId }, { status: 422 });
     }
-    if (isProductionRuntime()) {
+    if (isFormalProductionDeployment()) {
       logOperationalEvent({
         event: "import_job_queued_for_worker",
         requestId,
