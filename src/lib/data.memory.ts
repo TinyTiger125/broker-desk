@@ -43,6 +43,7 @@ import {
   type VisibilityScope,
 } from "@/lib/visibility-foundation";
 import { assertNoForbiddenRecordInput } from "@/lib/record-input-guard";
+import { mayDeletePreimportUpload, mayStartPropertyImport } from "@/lib/preimport-upload-lifecycle";
 import {
   resolveRecordVisibility,
   type RequestContext,
@@ -353,6 +354,9 @@ export type ImportJob = {
   errorCode?: string;
   errorSummary?: string;
   idempotencyKey?: string;
+  uploadLifecycleVersion?: number;
+  finalImportStartedAt?: Date;
+  sourceReferencedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -2217,7 +2221,7 @@ function isValidImportStatusTransition(from: ImportJobStatus, to: ImportJobStatu
   if (allowRetry && from === "failed" && to === "queued") return true;
   if (from === "queued" && to === "failed") return true;
   if (from === "queued" && to === "processing") return true;
-  if (from === "processing" && (to === "mapped" || to === "failed")) return true;
+  if (from === "processing" && (to === "mapped" || to === "failed" || to === "completed")) return true;
   if (from === "mapped" && (to === "queued" || to === "completed" || to === "failed")) return true;
   return false;
 }
@@ -3574,6 +3578,7 @@ export async function addImportJob(input: {
   status?: ImportJobStatus;
   notes?: string;
   idempotencyKey?: string;
+  uploadLifecycleVersion?: 1;
 }): Promise<ImportJob> {
   const sourceLabel: Record<ImportSourceType, string> = {
     excel: "Excel",
@@ -3598,12 +3603,34 @@ export async function addImportJob(input: {
     status: input.status ?? "queued",
     notes: input.notes?.trim() || undefined,
     idempotencyKey: input.idempotencyKey?.trim() || undefined,
+    uploadLifecycleVersion: input.uploadLifecycleVersion ?? 0,
     attemptCount: 0,
     createdAt: nowDate,
     updatedAt: nowDate,
   };
   db.importJobs.unshift(job);
   return job;
+}
+
+export async function claimPropertyRowImport(input: { tenantId: string; userId: string; jobId: string }): Promise<boolean> {
+  const job = db.importJobs.find((item) => item.id === input.jobId && item.tenantId === input.tenantId && item.userId === input.userId);
+  const tenant = db.tenants.find((item) => item.id === input.tenantId);
+  const member = db.tenantMemberships.find((item) => item.tenantId === input.tenantId && item.userId === input.userId && item.status === "active");
+  if (!job || !member || !tenant || !isTenantServiceOperational(deriveTenantServiceState(tenant)) || !mayStartPropertyImport(job)) return false;
+  // No await between checking and permanently claiming; competing callers cannot both win.
+  job.finalImportStartedAt = new Date();
+  job.status = "processing";
+  job.updatedAt = new Date();
+  return true;
+}
+
+export async function deletePreimportPropertyUpload(input: { tenantId: string; userId: string; jobId: string }): Promise<boolean> {
+  const job = db.importJobs.find((item) => item.id === input.jobId && item.tenantId === input.tenantId && item.userId === input.userId);
+  const tenant = db.tenants.find((item) => item.id === input.tenantId);
+  const member = db.tenantMemberships.find((item) => item.tenantId === input.tenantId && item.userId === input.userId && item.status === "active");
+  if (!job || !member || !tenant || !isTenantServiceOperational(deriveTenantServiceState(tenant)) || !mayDeletePreimportUpload(job, member)) return false;
+  // Memory has no durable postgres-private blob store: fail closed instead of simulating a deletion.
+  return false;
 }
 
 export async function updateImportJobMapping(input: {
@@ -3615,12 +3642,18 @@ export async function updateImportJobMapping(input: {
   notes?: string;
   status?: ImportJobStatus;
   allowRetry?: boolean;
+  beforeFinalImport?: boolean;
 }): Promise<ImportJob | null> {
   const scopeTenantId = resolveTenantId(input.tenantId);
   const job = db.importJobs.find(
     (item) => item.userId === input.userId && item.tenantId === scopeTenantId && item.id === input.jobId,
   );
   if (!job) return null;
+  if (input.beforeFinalImport && job.finalImportStartedAt) return null;
+
+  if (job.finalImportStartedAt && input.status && !["processing", "completed", "failed"].includes(input.status)) {
+    throw new Error("import_execution_started");
+  }
 
   job.mappingJson = input.mappingJson;
   job.validationMessage = input.validationMessage?.trim() || undefined;
@@ -3645,12 +3678,14 @@ export async function updateImportJobExecution(input: {
   errorCode?: string;
   errorSummary?: string;
   allowRetry?: boolean;
+  beforeFinalImport?: boolean;
 }): Promise<ImportJob | null> {
   const scopeTenantId = resolveTenantId(input.tenantId);
   const job = db.importJobs.find(
     (item) => item.userId === input.userId && item.tenantId === scopeTenantId && item.id === input.jobId,
   );
   if (!job) return null;
+  if (input.beforeFinalImport && job.finalImportStartedAt) return null;
   if (!isValidImportStatusTransition(job.status, input.status, Boolean(input.allowRetry))) {
     throw new Error(`資料読取記録の状態変更が不正です: ${job.status} -> ${input.status}`);
   }
@@ -3682,6 +3717,7 @@ export async function retryImportJobExecution(input: {
     (item) => item.userId === input.userId && item.tenantId === scopeTenantId && item.id === input.jobId,
   );
   if (!job) return null;
+  if (job.finalImportStartedAt) throw new Error("import_execution_started");
   if (job.status !== "failed") return { ...job };
 
   job.status = "queued";

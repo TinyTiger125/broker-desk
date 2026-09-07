@@ -42,6 +42,7 @@ import {
   addClient,
   addProperty,
   addImportJob,
+  claimPropertyRowImport,
   addTask,
   createTenantAccount,
   createTenantAccountForUser,
@@ -5206,6 +5207,13 @@ export async function executePropertyImportAction(formData: FormData) {
     status: "mapped",
   });
 
+  const claimed = await claimPropertyRowImport({ tenantId, userId: user.id, jobId: job.id });
+  if (!claimed) throw new Error(tr(locale, {
+    ja: "この取込は開始済み、または開始できない状態です。再実行は行いません。",
+    zh: "此导入已开始，或当前状态不允许开始。不会重复执行。",
+    ko: "이미 시작했거나 시작할 수 없는 가져오기입니다. 다시 실행하지 않습니다.",
+  }));
+
   let successCount = 0;
   const skipped: { row: number; code: "import_row_missing_name" | "import_row_invalid_listing_price" | "import_row_unknown_error"; reason: string }[] = [];
 
@@ -5258,7 +5266,7 @@ export async function executePropertyImportAction(formData: FormData) {
     }
   }
 
-  const nextStatus = successCount > 0 ? "completed" : "mapped";
+  const nextStatus = successCount > 0 ? "completed" : "failed";
   const skippedByCode = skipped.reduce<Record<string, number>>((acc, item) => {
     acc[item.code] = (acc[item.code] ?? 0) + 1;
     return acc;
@@ -5269,13 +5277,13 @@ export async function executePropertyImportAction(formData: FormData) {
       createImportValidationIssue({
         code: "import_zero_success",
         level: "critical",
-        action: "retry",
+        action: "resolve_now",
         message:
           locale === "zh"
-            ? "保存成功数为 0，请修正保存位置或源数据后重试。"
+            ? "保存成功数为 0。已保留导入记录，请先核对结果；不能重复执行或删除原件。"
             : locale === "ko"
-              ? "저장 성공 건수가 0건입니다. 저장 위치 또는 원본 데이터를 수정 후 다시 시도하세요."
-              : "保存成功件数が 0 件です。保存先または元データを修正して再試行してください。",
+              ? "저장된 항목이 없습니다. 기록을 확인해 주세요. 다시 실행하거나 원본을 삭제할 수 없습니다."
+              : "保存成功件数は0件です。記録を確認してください。再実行や原本削除はできません。",
       })
     );
   }
@@ -5380,14 +5388,6 @@ export async function executePropertyImportAction(formData: FormData) {
     jobId: job.id,
     mappingJson: mapping,
     validationMessage,
-    notes:
-      successCount > 0
-        ? undefined
-        : tr(locale, {
-            ja: "保存件数が0件のため、再試行が必要です。",
-            zh: "成功保存为0，请修复后重试。",
-            ko: "저장 성공 건수가 0건이므로 수정 후 다시 시도해야 합니다.",
-          }),
     status: nextStatus,
   });
 

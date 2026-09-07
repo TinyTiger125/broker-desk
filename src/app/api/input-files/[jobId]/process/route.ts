@@ -51,6 +51,9 @@ export async function POST(request: Request, context: { params: Promise<{ jobId:
     if (!job) {
       return NextResponse.json({ ok: false, error: "import_job_not_found", jobId, requestId }, { status: 404 });
     }
+    if (job.finalImportStartedAt) {
+      return NextResponse.json({ ok: false, error: "import_execution_started", jobId, requestId }, { status: 409 });
+    }
     if (job.status === "failed") {
       await retryImportJobExecution({
         tenantId: session.tenant.id,
@@ -98,7 +101,7 @@ export async function POST(request: Request, context: { params: Promise<{ jobId:
       outcome: result.ok ? "ready" : "failed",
     });
     return NextResponse.json({ ...result, jobId, requestId }, {
-      status: result.ok ? 200 : result.error === "import_job_not_found" ? 404 : 422,
+      status: result.ok ? 200 : result.error === "import_job_not_found" ? 404 : result.error === "import_execution_started" ? 409 : 422,
       headers: { "x-request-id": requestId },
     });
   } catch (error) {

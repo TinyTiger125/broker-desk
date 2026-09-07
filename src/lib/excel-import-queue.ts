@@ -50,6 +50,7 @@ export async function queueExcelImportSource(input: {
       targetEntity: "properties",
       title: input.file.name,
       status: "queued",
+      uploadLifecycleVersion: 1,
       idempotencyKey,
       notes: JSON.stringify({ targetCaseId: input.targetCaseId || undefined }),
     });

@@ -32,7 +32,8 @@ export type ExcelImportPayload = {
 
 export type ExcelImportProcessResult =
   | { ok: true; status: "mapped"; fieldCount: number; documentType: string; documentTypeLabel: string; fingerprintConfidence: number }
-  | { ok: false; status: "failed"; error: "import_job_not_found" | "source_attachment_missing" | "excel_extraction_failed" };
+  | { ok: false; status: "failed"; error: "import_job_not_found" | "source_attachment_missing" | "excel_extraction_failed" }
+  | { ok: false; error: "import_execution_started" };
 
 /**
  * Processes a persisted Excel source file. The caller is still scoped to the
@@ -46,6 +47,7 @@ export async function processExcelImportJob(input: {
   const jobs = await listImportJobs(input.userId, 500, input.tenantId);
   const job = jobs.find((item) => item.id === input.jobId && item.sourceType === "excel");
   if (!job) return { ok: false, status: "failed", error: "import_job_not_found" };
+  if (job.finalImportStartedAt) return { ok: false, error: "import_execution_started" };
 
   if (job.status === "mapped" || job.status === "completed") {
     const payload = parsePayload(job.notes);
@@ -70,7 +72,7 @@ export async function processExcelImportJob(input: {
     isLocalPrivateStoragePath(attachment.storagePath) || isPostgresPrivateStoragePath(attachment.storagePath),
   );
   if (!source) {
-    await markFailed(input, "source_attachment_missing", "找不到已保存的原始 Excel 文件，请重新上传。");
+    if (!await markFailed(input, "source_attachment_missing", "找不到已保存的原始 Excel 文件，请重新上传。")) return { ok: false, error: "import_execution_started" };
     return { ok: false, status: "failed", error: "source_attachment_missing" };
   }
 
@@ -80,19 +82,21 @@ export async function processExcelImportJob(input: {
     id: source.id,
   });
   if (!content) {
-    await markFailed(input, "source_attachment_missing", "原始 Excel 文件不可读取，请重新上传。");
+    if (!await markFailed(input, "source_attachment_missing", "原始 Excel 文件不可读取，请重新上传。")) return { ok: false, error: "import_execution_started" };
     return { ok: false, status: "failed", error: "source_attachment_missing" };
   }
 
   try {
     if (job.status !== "processing") {
-      await updateImportJobExecution({
+      const processingJob = await updateImportJobExecution({
         tenantId: input.tenantId,
         userId: input.userId,
         jobId: input.jobId,
         status: "processing",
         allowRetry: job.status === "failed",
+        beforeFinalImport: true,
       });
+      if (!processingJob) return { ok: false, error: "import_execution_started" };
     }
     await validateExcelZip(content);
     const workbook = await readExcelWorkbook(content);
@@ -141,8 +145,9 @@ export async function processExcelImportJob(input: {
       mappingJson: {},
       notes: JSON.stringify(payload),
       status: "mapped",
+      beforeFinalImport: true,
     });
-    if (!mappedJob) throw new Error("import_job_not_found_after_processing");
+    if (!mappedJob) return { ok: false, error: "import_execution_started" };
 
     await addAuditLog({
       tenantId: input.tenantId,
@@ -163,11 +168,12 @@ export async function processExcelImportJob(input: {
     };
   } catch (error) {
     const validationError = error instanceof ExcelImportValidationError ? error : null;
-    await markFailed(
+    const failedJob = await markFailed(
       input,
       validationError?.code ?? "excel_extraction_failed",
       validationError?.message ?? "文件已接收，但内容无法读取。请检查是否为有效的 Excel 文件。",
     );
+    if (!failedJob) return { ok: false, error: "import_execution_started" };
     return { ok: false, status: "failed", error: "excel_extraction_failed" };
   }
 }
@@ -203,14 +209,16 @@ async function markFailed(
   errorCode: string,
   errorSummary: string,
 ) {
-  await updateImportJobExecution({
+  const failedJob = await updateImportJobExecution({
     tenantId: input.tenantId,
     userId: input.userId,
     jobId: input.jobId,
     status: "failed",
     errorCode,
     errorSummary,
+    beforeFinalImport: true,
   });
+  if (!failedJob) return false;
   await addAuditLog({
     tenantId: input.tenantId,
     userId: input.userId,
@@ -220,4 +228,5 @@ async function markFailed(
     message: "Excel 资料读取失败",
     context: { errorCode },
   });
+  return true;
 }

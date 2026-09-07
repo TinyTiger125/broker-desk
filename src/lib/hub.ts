@@ -128,6 +128,9 @@ export type HubImportJobItem = {
   notes?: string;
   mappingJson?: Record<string, string>;
   validationMessage?: string;
+  uploadLifecycleVersion?: number;
+  finalImportStartedAt?: Date;
+  sourceReferencedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 };

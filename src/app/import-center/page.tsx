@@ -15,6 +15,8 @@ import { ExcelImportQueueProcessor } from "@/components/excel-import-queue-proce
 import { IdentityDocumentUploadForm } from "@/components/identity-document-upload-form";
 import { InputExtractionReview } from "@/components/input-extraction-review";
 import { PageFlashBanner } from "@/components/page-flash-banner";
+import { PreimportUploadDelete } from "@/components/preimport-upload-delete";
+import { mayDeletePreimportUpload } from "@/lib/preimport-upload-lifecycle";
 import { listBrokerageCases } from "@/lib/data";
 import { formatDate } from "@/lib/format";
 import { t } from "@/lib/i18n";
@@ -1052,7 +1054,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
   const showObjectSelection = wizardStep === "select" && !flowIntent && !requestedJob && !targetCaseId && !selectedObject;
   const showPostProcessingContent = wizardStep !== "processing" && wizardStep !== "failed";
   const inputTaskJob = xlsxJob ?? (requestedJob && isInputFileExtractionJob(requestedJob) ? requestedJob : undefined);
-  const failedInputJob = inputTaskJob?.status === "failed" ? inputTaskJob : undefined;
+  const failedInputJob = inputTaskJob?.status === "failed" && !inputTaskJob.finalImportStartedAt ? inputTaskJob : undefined;
   const materialObjects = [
     { key: "case", icon: "business_center", iconClass: "bg-blue-50 text-blue-700", title: locale === "zh" ? "案件资料" : locale === "ko" ? "안건 자료" : "案件資料", desc: locale === "zh" ? "创建或读取案件相关资料。" : locale === "ko" ? "안건 관련 자료를 만들거나 읽습니다." : "案件に関する資料を作成・読取します。", manualHref: "/cases/new?from=entry" },
     { key: "person", icon: "group", iconClass: "bg-emerald-50 text-emerald-700", title: locale === "zh" ? "人物资料" : locale === "ko" ? "관계자 자료" : "関係者資料", desc: locale === "zh" ? "创建或读取人物相关资料。" : locale === "ko" ? "관계자 자료를 만들거나 읽습니다." : "関係者に関する資料を作成・読取します。", manualHref: "/parties/new?from=entry" },
@@ -1307,7 +1309,18 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
         </div>
         ) : null}
 
-        {inputTaskJob && (inputTaskJob.status === "queued" || inputTaskJob.status === "processing") ? (
+        {requestedJob && mayDeletePreimportUpload(requestedJob, session.membership) ? (
+          <PreimportUploadDelete jobId={requestedJob.id} locale={locale} />
+        ) : null}
+        {requestedJob?.finalImportStartedAt ? (
+          <p role="status" className="border-t border-slate-200 p-5 text-sm text-slate-600">
+            {locale === "zh" ? "物件导入已开始，原件及读取记录已保留。为避免重复写入，不能重新执行或删除原件。"
+              : locale === "ko" ? "매물 가져오기를 시작하여 원본과 읽기 기록을 보관합니다. 중복 저장을 방지하기 위해 다시 실행하거나 원본을 삭제할 수 없습니다."
+                : "物件取込は開始済みです。原本と読取記録を保持し、重複登録を防ぐため再実行・原本削除はできません。"}
+          </p>
+        ) : null}
+
+        {inputTaskJob && !inputTaskJob.finalImportStartedAt && (inputTaskJob.status === "queued" || inputTaskJob.status === "processing") ? (
           <ExcelImportQueueProcessor jobId={inputTaskJob.id} locale={locale} targetCaseId={targetCaseId || undefined} />
         ) : null}
 
@@ -1921,7 +1934,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                       </button>
                     </form>
                   ) : null}
-                  {item.operation === "retry" || item.level === "critical" ? (
+                  {(item.operation === "retry" || item.level === "critical") && !jobs.find((job) => job.id === item.jobId)?.finalImportStartedAt ? (
                     <form action={retryImportJobAction} className="mt-2">
                       <input type="hidden" name="jobId" value={item.jobId} />
                       <button className="rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5 text-[10px] font-bold text-slate-700 hover:bg-slate-100">

@@ -180,6 +180,7 @@ const REQUIRED_PRODUCTION_MIGRATIONS = [
   "20260902_002_runtime_migration_ledger_read.sql",
   "20260902_003_runtime_acl_baseline.sql",
   "20260904_001_runtime_external_auth_subject_execute.sql",
+  "20260908_001_preimport_upload_lifecycle.sql",
 ] as const;
 
 const OPEN_STAGES: ClientStage[] = ["lead", "contacted", "quoted", "viewing", "negotiating"];
@@ -862,6 +863,9 @@ function mapImportJob(row: Record<string, unknown>): ImportJob {
     errorCode: row.error_code ? String(row.error_code) : undefined,
     errorSummary: row.error_summary ? String(row.error_summary) : undefined,
     idempotencyKey: row.idempotency_key ? String(row.idempotency_key) : undefined,
+    uploadLifecycleVersion: Number(row.upload_lifecycle_version ?? 0),
+    finalImportStartedAt: toDate(row.final_import_started_at),
+    sourceReferencedAt: toDate(row.source_referenced_at),
     createdAt: toDate(row.created_at) ?? new Date(),
     updatedAt: toDate(row.updated_at) ?? new Date(),
   };
@@ -2108,7 +2112,7 @@ function isValidImportStatusTransition(from: ImportJobStatus, to: ImportJobStatu
   if (allowRetry && from === "failed" && to === "queued") return true;
   if (from === "queued" && to === "failed") return true;
   if (from === "queued" && to === "processing") return true;
-  if (from === "processing" && (to === "mapped" || to === "failed")) return true;
+  if (from === "processing" && (to === "mapped" || to === "failed" || to === "completed")) return true;
   if (from === "mapped" && (to === "queued" || to === "completed" || to === "failed")) return true;
   return false;
 }
@@ -3278,6 +3282,7 @@ export async function addImportJob(input: {
   status?: ImportJobStatus;
   notes?: string;
   idempotencyKey?: string;
+  uploadLifecycleVersion?: 1;
 }): Promise<ImportJob> {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(input.tenantId);
@@ -3295,8 +3300,8 @@ export async function addImportJob(input: {
   };
   const result = await getPool().query(
     `INSERT INTO import_jobs (
-      id, tenant_id, user_id, source_type, title, target_entity, status, notes, mapping_json, validation_message, idempotency_key, created_at, updated_at
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULL,NULL,$9,NOW(),NOW())
+      id, tenant_id, user_id, source_type, title, target_entity, status, notes, mapping_json, validation_message, idempotency_key, upload_lifecycle_version, created_at, updated_at
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULL,NULL,$9,$10,NOW(),NOW())
     RETURNING *`,
     [
       genId("import"),
@@ -3308,9 +3313,29 @@ export async function addImportJob(input: {
       input.status ?? "queued",
       input.notes?.trim() || null,
       input.idempotencyKey?.trim() || null,
+      input.uploadLifecycleVersion ?? 0,
     ]
   );
   return mapImportJob(result.rows[0]);
+}
+
+export async function claimPropertyRowImport(input: { tenantId: string; userId: string; jobId: string }): Promise<boolean> {
+  await ensureSchema();
+  const result = await getPool().query(
+    "SELECT brokerdesk_private.claim_property_row_import($1, $2) AS claimed",
+    [input.tenantId, input.jobId],
+  );
+  return result.rows[0]?.claimed === true;
+}
+
+export async function deletePreimportPropertyUpload(input: { tenantId: string; userId: string; jobId: string }): Promise<boolean> {
+  await ensureSchema();
+  // The function derives actor identity from the authenticated database scope, never from form input.
+  const result = await getPool().query(
+    "SELECT brokerdesk_private.delete_preimport_property_upload($1, $2) AS deleted",
+    [input.tenantId, input.jobId],
+  );
+  return result.rows[0]?.deleted === true;
 }
 
 export async function updateImportJobMapping(input: {
@@ -3322,15 +3347,17 @@ export async function updateImportJobMapping(input: {
   notes?: string;
   status?: ImportJobStatus;
   allowRetry?: boolean;
+  beforeFinalImport?: boolean;
 }): Promise<ImportJob | null> {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(input.tenantId);
 
   const currentRes = await getPool().query(
-    "SELECT status FROM import_jobs WHERE id = $1 AND user_id = $2 AND tenant_id = $3 LIMIT 1",
+    "SELECT status, final_import_started_at FROM import_jobs WHERE id = $1 AND user_id = $2 AND tenant_id = $3 LIMIT 1",
     [input.jobId, input.userId, scopeTenantId]
   );
   if (!currentRes.rows[0]) return null;
+  if (input.beforeFinalImport && currentRes.rows[0].final_import_started_at) return null;
   const currentStatus = String(currentRes.rows[0].status) as ImportJobStatus;
   if (input.status && !isValidImportStatusTransition(currentStatus, input.status, Boolean(input.allowRetry))) {
     throw new Error(`資料読取記録の状態変更が不正です: ${currentStatus} -> ${input.status}`);
@@ -3345,6 +3372,7 @@ export async function updateImportJobMapping(input: {
       status = COALESCE($6, status),
       updated_at = NOW()
      WHERE id = $1 AND user_id = $2 AND tenant_id = $7
+       AND (NOT $8::boolean OR final_import_started_at IS NULL)
      RETURNING *`,
     [
       input.jobId,
@@ -3354,6 +3382,7 @@ export async function updateImportJobMapping(input: {
       input.notes?.trim() || null,
       input.status ?? null,
       scopeTenantId,
+      Boolean(input.beforeFinalImport),
     ]
   );
   return result.rows[0] ? mapImportJob(result.rows[0]) : null;
@@ -3367,14 +3396,16 @@ export async function updateImportJobExecution(input: {
   errorCode?: string;
   errorSummary?: string;
   allowRetry?: boolean;
+  beforeFinalImport?: boolean;
 }): Promise<ImportJob | null> {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(input.tenantId);
   const currentRes = await getPool().query(
-    "SELECT status FROM import_jobs WHERE id = $1 AND user_id = $2 AND tenant_id = $3 LIMIT 1",
+    "SELECT status, final_import_started_at FROM import_jobs WHERE id = $1 AND user_id = $2 AND tenant_id = $3 LIMIT 1",
     [input.jobId, input.userId, scopeTenantId],
   );
   if (!currentRes.rows[0]) return null;
+  if (input.beforeFinalImport && currentRes.rows[0].final_import_started_at) return null;
   const currentStatus = String(currentRes.rows[0].status) as ImportJobStatus;
   if (!isValidImportStatusTransition(currentStatus, input.status, Boolean(input.allowRetry))) {
     throw new Error(`資料読取記録の状態変更が不正です: ${currentStatus} -> ${input.status}`);
@@ -3391,8 +3422,9 @@ export async function updateImportJobExecution(input: {
          error_summary = CASE WHEN $4 = 'failed' THEN $6 ELSE NULL END,
          updated_at = NOW()
      WHERE id = $1 AND user_id = $2 AND tenant_id = $3
+       AND (NOT $7::boolean OR final_import_started_at IS NULL)
      RETURNING *`,
-    [input.jobId, input.userId, scopeTenantId, input.status, input.errorCode?.trim() || "import_failed", input.errorSummary?.trim() || "資料を読み取れませんでした。"],
+    [input.jobId, input.userId, scopeTenantId, input.status, input.errorCode?.trim() || "import_failed", input.errorSummary?.trim() || "資料を読み取れませんでした。", Boolean(input.beforeFinalImport)],
   );
   return result.rows[0] ? mapImportJob(result.rows[0]) : null;
 }
@@ -3411,7 +3443,7 @@ export async function retryImportJobExecution(input: {
          error_code = NULL,
          error_summary = NULL,
          updated_at = NOW()
-     WHERE id = $1 AND user_id = $2 AND tenant_id = $3 AND status = 'failed'
+     WHERE id = $1 AND user_id = $2 AND tenant_id = $3 AND status = 'failed' AND final_import_started_at IS NULL
      RETURNING *`,
     [input.jobId, input.userId, scopeTenantId],
   );

@@ -376,6 +376,10 @@ export const getImportJobByIdempotencyKey: typeof memory.getImportJobByIdempoten
   repo.getImportJobByIdempotencyKey(...args);
 export const addImportJob: typeof memory.addImportJob = (...args) =>
   repo.addImportJob(...args);
+export const claimPropertyRowImport: typeof memory.claimPropertyRowImport = (...args) =>
+  repo.claimPropertyRowImport(...args);
+export const deletePreimportPropertyUpload: typeof memory.deletePreimportPropertyUpload = (...args) =>
+  repo.deletePreimportPropertyUpload(...args);
 export const updateImportJobMapping: typeof memory.updateImportJobMapping = (...args) =>
   repo.updateImportJobMapping(...args);
 export const updateImportJobExecution: typeof memory.updateImportJobExecution = (...args) =>
