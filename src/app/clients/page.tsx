@@ -25,7 +25,8 @@ import {
   getTemperatureLabel,
   getTemperatureOptions,
 } from "@/lib/options";
-import { requireTenantSession } from "@/lib/tenant-session";
+import { getTenantCapability, requireTenantSession } from "@/lib/tenant-session";
+import { capabilityHasTenantPermission } from "@/lib/tenant-permissions";
 import { createRequestContext } from "@/lib/visibility-resolver";
 
 export const dynamic = "force-dynamic";
@@ -253,6 +254,9 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
   const loanPreApprovalLabel = getLoanPreApprovalLabel(locale);
   const clientSortOptions = getClientSortOptions(locale);
   const requestContext = createRequestContext(session);
+  const canCreateClient = session.membership.status === "active"
+    && getTenantCapability(session.membership) !== "ordinary_member"
+    && capabilityHasTenantPermission(getTenantCapability(session.membership), "record.update");
 
   const params = (await searchParams) ?? {};
   const query = params.q?.trim() ?? "";
@@ -489,31 +493,33 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
         </section>
       </ClientsListReturnState>
 
-      <details className={styles.quickDetails}>
-        <summary className={styles.quickSummary}>
-          <span className={styles.quickSummaryText}>
-            <span className={styles.quickTitle}>{text.quickTitle}</span>
-            <span className={styles.quickDesc}>{text.quickDesc}</span>
-          </span>
-          <span className={styles.quickOpen}>{text.quickOpen}</span>
-        </summary>
-        <div className={styles.quickBody}>
-          <form action={createClient} className={styles.quickForm}>
-            <input name="name" required placeholder={text.name} aria-label={text.name} className={styles.control} />
-            <input name="phone" required placeholder={text.phone} aria-label={text.phone} className={styles.control} />
-            <input name="preferredArea" placeholder={text.area} aria-label={text.area} className={styles.control} />
-            <input name="budgetMax" type="number" placeholder={text.budgetMax} aria-label={text.budgetMax} className={styles.control} />
-            <select name="stage" defaultValue="lead" aria-label={text.stage} className={styles.control}>
-              {stageOptions.map((item) => (
-                <option key={item.value} value={item.value}>{item.label}</option>
-              ))}
-            </select>
-            <button type="submit" name="afterSave" value="list" className={styles.primaryButton}>
-              {text.quickSave}
-            </button>
-          </form>
-        </div>
-      </details>
+      {canCreateClient ? (
+        <details className={styles.quickDetails}>
+          <summary className={styles.quickSummary}>
+            <span className={styles.quickSummaryText}>
+              <span className={styles.quickTitle}>{text.quickTitle}</span>
+              <span className={styles.quickDesc}>{text.quickDesc}</span>
+            </span>
+            <span className={styles.quickOpen}>{text.quickOpen}</span>
+          </summary>
+          <div className={styles.quickBody}>
+            <form action={createClient} className={styles.quickForm}>
+              <input name="name" required placeholder={text.name} aria-label={text.name} className={styles.control} />
+              <input name="phone" required placeholder={text.phone} aria-label={text.phone} className={styles.control} />
+              <input name="preferredArea" placeholder={text.area} aria-label={text.area} className={styles.control} />
+              <input name="budgetMax" type="number" placeholder={text.budgetMax} aria-label={text.budgetMax} className={styles.control} />
+              <select name="stage" defaultValue="lead" aria-label={text.stage} className={styles.control}>
+                {stageOptions.map((item) => (
+                  <option key={item.value} value={item.value}>{item.label}</option>
+                ))}
+              </select>
+              <button type="submit" name="afterSave" value="list" className={styles.primaryButton}>
+                {text.quickSave}
+              </button>
+            </form>
+          </div>
+        </details>
+      ) : null}
     </div>
   );
 }

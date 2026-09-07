@@ -59,6 +59,11 @@ assert(filterProperty.initializer.properties.some((item) => ts.isPropertyAssignm
 
 const clients = variableInitializer(page, "clients");
 assert(ts.isAwaitExpression(clients) && clients.expression === reader, "authorized reader result must be the sole clients collection");
+const canCreateClient = variableInitializer(page, "canCreateClient");
+const canCreateClientSource = canCreateClient.getText(tree);
+assert(canCreateClientSource.includes('session.membership.status === "active"'), "client quick-create must require an active membership");
+assert(canCreateClientSource.includes('capabilityHasTenantPermission') && canCreateClientSource.includes('"record.update"'), "client quick-create must retain the existing record.update permission gate");
+assert(canCreateClientSource.includes('getTenantCapability(session.membership) !== "ordinary_member"'), "ordinary members must not receive the client quick-create surface");
 const visibleClients = variableInitializer(page, "visibleClients");
 assert(ts.isCallExpression(visibleClients) && visibleClients.expression.getText(tree) === "clients.slice", "pagination must slice the authorized clients collection");
 
@@ -77,5 +82,12 @@ const writeGate = rowConditionals.find((node) => node.condition.getText(tree) ==
 assert(writeGate, "owner-only row actions must be gated by resolver canWrite");
 assert(writeGate.whenTrue.getText(tree).includes("#timeline") && writeGate.whenTrue.getText(tree).includes("/quotes/new"), "write gate must own the follow-up and quotation actions");
 assert(writeGate.whenFalse.getText(tree).includes("text.readOnly"), "company-read rows must expose an explicit localized read-only state");
+
+const quickDetails = visit(page.body, (node) => ts.isJsxElement(node) && node.openingElement.attributes.properties.some((attribute) => ts.isJsxAttribute(attribute) && attribute.name.getText(tree) === "className" && attribute.initializer?.getText(tree) === "{styles.quickDetails}"));
+assert.equal(quickDetails.length, 1, "clients page must retain exactly one quick-create surface");
+const quickCreateGate = visit(page.body, (node) => ts.isConditionalExpression(node) && node.condition.getText(tree) === "canCreateClient");
+assert.equal(quickCreateGate.length, 1, "client quick-create must be conditionally rendered by canCreateClient");
+assert(quickCreateGate[0].whenTrue === quickDetails[0] || quickCreateGate[0].whenTrue.getText(tree).includes("styles.quickDetails"), "canCreateClient must own the complete quick-create surface");
+assert.equal(quickCreateGate[0].whenFalse.kind, ts.SyntaxKind.NullKeyword, "unauthorized users must receive no quick-create DOM");
 
 console.log("clients visibility consistency contract: PASS");
