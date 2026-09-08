@@ -277,6 +277,40 @@ export default async function ClientDetailPage({ params, searchParams }: ClientD
           <Link href="/clients" className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700">{locale === "zh" ? "返回客户列表" : locale === "ko" ? "고객 목록으로" : "顧客一覧へ戻る"}</Link>
         </header>
         <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><p className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">{readOnlyText}</p><dl className="grid gap-y-2 text-sm sm:grid-cols-[120px_minmax(0,1fr)]"><dt className="text-slate-500">{text.line}</dt><dd>{client.lineId ?? text.dash}</dd><dt className="text-slate-500">{text.email}</dt><dd>{client.email ?? text.dash}</dd><dt className="text-slate-500">{text.usage}</dt><dd>{purposeLabel[client.purpose]}</dd></dl></section>
+        <div id="client-tasks" className="scroll-mt-24 break-words">
+          <SectionCard title={text.weeklyTasks}>
+            <p className="mb-3 text-sm text-slate-600">
+              {locale === "zh" ? "仅可查看任务和跟进，不能完成、延期或修改。" : locale === "ko" ? "작업과 후속 연락은 조회만 가능하며 완료, 연기 또는 수정할 수 없습니다." : "タスクとフォローは閲覧のみです。完了・延期・変更はできません。"}
+            </p>
+            <ul className="space-y-3">
+              {client.tasks.length === 0 ? <li className="text-sm text-slate-500">{text.noTasks}</li> : null}
+              {client.tasks.map((task) => (
+                <li key={task.id} className="border-b border-slate-200 pb-3 last:border-0">
+                  <p className="font-medium text-slate-900">{task.title}</p>
+                  <p className="mt-1 text-sm text-slate-600">
+                    {taskStatusLabel[task.status]} · {text.due} {formatDate(task.dueAt, locale)}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </SectionCard>
+        </div>
+        <div id="client-follow-ups" className="scroll-mt-24 break-words">
+          <SectionCard title={text.timeline}>
+            <ul className="space-y-3">
+              {client.followUps.length === 0 ? <li className="text-sm text-slate-500">{text.noFollow}</li> : null}
+              {client.followUps.map((item) => (
+                <li key={item.id} className="border-b border-slate-200 pb-3 last:border-0">
+                  <p className="text-sm font-medium text-slate-900">{followTypeLabel[item.type]} · {formatDate(item.createdAt, locale)}</p>
+                  <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">{item.content}</p>
+                  <p className="mt-1 text-sm text-slate-600">
+                    {text.nextAction}：{item.nextAction ?? text.dash} · {text.nextFollow} {formatDate(item.nextFollowUpAt, locale)}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </SectionCard>
+        </div>
       </div>
     );
   }
@@ -378,47 +412,50 @@ export default async function ClientDetailPage({ params, searchParams }: ClientD
             </dl>
           </SectionCard>
 
-          <SectionCard title={text.timeline} subtitle={text.timelineSub}>
-            <form id="timeline" action={addFollowUp} className="mb-4 space-y-2 rounded-xl border border-slate-200 p-3">
-              <input type="hidden" name="clientId" value={client.id} />
-              <div className="grid grid-cols-2 gap-2">
-                <select name="type" defaultValue="note" className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
-                  {followTypeOptions.map((item) => (
-                    <option key={item.value} value={item.value}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
-                <input name="nextFollowUpAt" type="date" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-              </div>
-              <textarea
-                name="content"
-                rows={3}
-                required
-                placeholder={text.followContentPlaceholder}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-              />
-              <input name="nextAction" placeholder={text.nextActionPlaceholder} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-              <button type="submit" className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">
-                {text.addFollow}
-              </button>
-            </form>
+          <div id="client-follow-ups" className="scroll-mt-24">
+            <SectionCard title={text.timeline} subtitle={text.timelineSub}>
+              <form id="timeline" action={addFollowUp} className="mb-4 space-y-2 rounded-xl border border-slate-200 p-3">
+                <input type="hidden" name="clientId" value={client.id} />
+                <div className="grid grid-cols-2 gap-2">
+                  <select name="type" defaultValue="note" className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                    {followTypeOptions.map((item) => (
+                      <option key={item.value} value={item.value}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </select>
+                  <input name="nextFollowUpAt" type="date" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+                </div>
+                <textarea
+                  name="content"
+                  rows={3}
+                  required
+                  placeholder={text.followContentPlaceholder}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                />
+                <input name="nextAction" placeholder={text.nextActionPlaceholder} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+                <button type="submit" className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">
+                  {text.addFollow}
+                </button>
+              </form>
 
-            <ul className="space-y-3">
-              {client.followUps.length === 0 ? <li className="text-sm text-slate-500">{text.noFollow}</li> : null}
-              {client.followUps.map((item) => (
-                <li key={item.id} className="rounded-xl border border-slate-200 p-3">
-                  <p className="text-sm font-medium text-slate-900">
-                    {followTypeLabel[item.type]} · {formatDate(item.createdAt, locale)}
-                  </p>
-                  <p className="mt-1 text-sm text-slate-700">{item.content}</p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {text.nextAction}：{item.nextAction ?? text.dash} · {text.nextFollow} {formatDate(item.nextFollowUpAt, locale)}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          </SectionCard>
+              <ul className="space-y-3">
+                {client.followUps.length === 0 ? <li className="text-sm text-slate-500">{text.noFollow}</li> : null}
+                {client.followUps.map((item) => (
+                  <li key={item.id} className="rounded-xl border border-slate-200 p-3">
+                    <p className="text-sm font-medium text-slate-900">
+                      {followTypeLabel[item.type]} · {formatDate(item.createdAt, locale)}
+                    </p>
+                    <p className="mt-1 text-sm text-slate-700">{item.content}</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {text.nextAction}：{item.nextAction ?? text.dash} · {text.nextFollow} {formatDate(item.nextFollowUpAt, locale)}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </SectionCard>
+
+          </div>
 
           <SectionCard title={text.quotes} subtitle={`${client.quotations.length}${locale === "zh" ? "条" : locale === "ko" ? "건" : "件"}`}>
             <ul className="space-y-3">
@@ -490,63 +527,65 @@ export default async function ClientDetailPage({ params, searchParams }: ClientD
             </form>
           </SectionCard>
 
-          <SectionCard title={text.weeklyTasks}>
-            <ul className="space-y-2">
-              {client.tasks.length === 0 ? <li className="text-sm text-slate-500">{text.noTasks}</li> : null}
-              {client.tasks.map((task) => (
-                <li key={task.id} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="font-medium text-slate-800">{task.title}</p>
-                    <span className={`ui-tag-stable rounded-md border px-2 py-0.5 text-xs ${taskStatusBadgeClass[task.status]}`}>
-                      {taskStatusLabel[task.status]}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {text.due} {formatDate(task.dueAt, locale)} · {text.created} {formatDate(task.createdAt, locale)}
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <form action={changeTaskStatusAction}>
-                      <input type="hidden" name="taskId" value={task.id} />
-                      <input type="hidden" name="clientId" value={client.id} />
-                      <input type="hidden" name="status" value="done" />
-                      <input type="hidden" name="previousStatus" value={task.status} />
-                      <input type="hidden" name="returnTo" value={`/clients/${client.id}`} />
-                      <button
-                        type="submit"
-                        disabled={task.status === "done"}
-                        className="ui-button-stable rounded-md border border-emerald-300 px-2 py-1 text-xs text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {text.complete}
-                      </button>
-                    </form>
-                    <form action={changeTaskStatusAction}>
-                      <input type="hidden" name="taskId" value={task.id} />
-                      <input type="hidden" name="clientId" value={client.id} />
-                      <input type="hidden" name="status" value="canceled" />
-                      <input type="hidden" name="previousStatus" value={task.status} />
-                      <input type="hidden" name="returnTo" value={`/clients/${client.id}`} />
-                      <button
-                        type="submit"
-                        disabled={task.status === "canceled"}
-                        className="ui-button-stable rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {text.cancel}
-                      </button>
-                    </form>
-                    <form action={rescheduleTaskAction} className="flex items-center gap-1">
-                      <input type="hidden" name="taskId" value={task.id} />
-                      <input type="hidden" name="clientId" value={client.id} />
-                      <input type="hidden" name="returnTo" value={`/clients/${client.id}`} />
-                      <input type="date" name="dueAt" required className="rounded-md border border-slate-300 px-2 py-1 text-xs" />
-                      <button type="submit" className="ui-button-stable rounded-md border border-blue-300 px-2 py-1 text-xs text-blue-700">
-                        {text.postpone}
-                      </button>
-                    </form>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </SectionCard>
+          <div id="client-tasks" className="scroll-mt-24">
+            <SectionCard title={text.weeklyTasks}>
+              <ul className="space-y-2">
+                {client.tasks.length === 0 ? <li className="text-sm text-slate-500">{text.noTasks}</li> : null}
+                {client.tasks.map((task) => (
+                  <li key={task.id} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-medium text-slate-800">{task.title}</p>
+                      <span className={`ui-tag-stable rounded-md border px-2 py-0.5 text-xs ${taskStatusBadgeClass[task.status]}`}>
+                        {taskStatusLabel[task.status]}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {text.due} {formatDate(task.dueAt, locale)} · {text.created} {formatDate(task.createdAt, locale)}
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <form action={changeTaskStatusAction}>
+                        <input type="hidden" name="taskId" value={task.id} />
+                        <input type="hidden" name="clientId" value={client.id} />
+                        <input type="hidden" name="status" value="done" />
+                        <input type="hidden" name="previousStatus" value={task.status} />
+                        <input type="hidden" name="returnTo" value={`/clients/${client.id}`} />
+                        <button
+                          type="submit"
+                          disabled={task.status === "done"}
+                          className="ui-button-stable rounded-md border border-emerald-300 px-2 py-1 text-xs text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {text.complete}
+                        </button>
+                      </form>
+                      <form action={changeTaskStatusAction}>
+                        <input type="hidden" name="taskId" value={task.id} />
+                        <input type="hidden" name="clientId" value={client.id} />
+                        <input type="hidden" name="status" value="canceled" />
+                        <input type="hidden" name="previousStatus" value={task.status} />
+                        <input type="hidden" name="returnTo" value={`/clients/${client.id}`} />
+                        <button
+                          type="submit"
+                          disabled={task.status === "canceled"}
+                          className="ui-button-stable rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {text.cancel}
+                        </button>
+                      </form>
+                      <form action={rescheduleTaskAction} className="flex items-center gap-1">
+                        <input type="hidden" name="taskId" value={task.id} />
+                        <input type="hidden" name="clientId" value={client.id} />
+                        <input type="hidden" name="returnTo" value={`/clients/${client.id}`} />
+                        <input type="date" name="dueAt" required className="rounded-md border border-slate-300 px-2 py-1 text-xs" />
+                        <button type="submit" className="ui-button-stable rounded-md border border-blue-300 px-2 py-1 text-xs text-blue-700">
+                          {text.postpone}
+                        </button>
+                      </form>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </SectionCard>
+          </div>
         </aside>
       </section>
     </div>
