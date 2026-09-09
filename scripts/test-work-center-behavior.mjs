@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
+import "./test-task-status-idempotency.mjs";
+import "./test-task-client-binding.mjs";
 
 const page = fs.readFileSync("src/app/page.tsx", "utf8");
 const modelSource = fs.readFileSync("src/lib/work-center.ts", "utf8");

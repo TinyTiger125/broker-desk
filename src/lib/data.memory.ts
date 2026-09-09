@@ -6022,12 +6022,16 @@ export async function resolveComplianceAlert(input: {
 export async function updateTaskStatus(input: {
   tenantId?: string;
   taskId: string;
+  expectedClientId: string;
   status: TaskStatus;
   updatedById: string;
 }) {
   const scopeTenantId = resolveTenantId(input.tenantId);
-  const task = db.tasks.find((entry) => entry.id === input.taskId && entry.tenantId === scopeTenantId);
+  if (!input.expectedClientId) return null;
+  const task = db.tasks.find((entry) =>
+    entry.id === input.taskId && entry.tenantId === scopeTenantId && entry.clientId === input.expectedClientId);
   if (!task) return null;
+  if (task.status === input.status) return task;
   task.status = input.status;
   const statusLabel = input.status === "done" ? "完了" : input.status === "canceled" ? "取消" : "未着手";
 
@@ -6057,11 +6061,14 @@ export async function updateTaskStatus(input: {
 export async function rescheduleTask(input: {
   tenantId?: string;
   taskId: string;
+  expectedClientId: string;
   dueAt: Date;
   updatedById: string;
 }) {
   const scopeTenantId = resolveTenantId(input.tenantId);
-  const task = db.tasks.find((entry) => entry.id === input.taskId && entry.tenantId === scopeTenantId);
+  if (!input.expectedClientId) return null;
+  const task = db.tasks.find((entry) =>
+    entry.id === input.taskId && entry.tenantId === scopeTenantId && entry.clientId === input.expectedClientId);
   if (!task) return null;
   task.dueAt = input.dueAt;
   task.status = "pending";

@@ -1183,6 +1183,7 @@ export async function changeTaskStatusAction(formData: FormData) {
   const updated = await updateTaskStatus({
     tenantId,
     taskId,
+    expectedClientId: clientId,
     status,
     updatedById: user.id,
   });
@@ -1230,9 +1231,15 @@ export async function batchUpdateServiceRequestStatusAction(formData: FormData) 
 
   const clients = await listClients(user.id, { sort: "follow_up", tenantId });
   const details = await Promise.all(clients.map((client) => getClientDetail(client.id, tenantId)));
-  const allowedTaskIds = new Set<string>();
-  details.forEach((detail) => detail?.tasks.forEach((task) => allowedTaskIds.add(task.id)));
-  const targetIds = taskIds.filter((id) => allowedTaskIds.has(id));
+  const allowedTaskClients = new Map<string, string>();
+  details.forEach((detail) => detail?.tasks.forEach((task) => {
+    if (task.clientId === detail.id) allowedTaskClients.set(task.id, detail.id);
+  }));
+  const targets = taskIds.flatMap((taskId) => {
+    const expectedClientId = allowedTaskClients.get(taskId);
+    return expectedClientId ? [{ taskId, expectedClientId }] : [];
+  });
+  const targetIds = targets.map((target) => target.taskId);
   if (targetIds.length === 0) {
     throw new Error(
       tr(locale, {
@@ -1243,7 +1250,10 @@ export async function batchUpdateServiceRequestStatusAction(formData: FormData) 
     );
   }
 
-  await Promise.all(targetIds.map((taskId) => updateTaskStatus({ tenantId, taskId, status, updatedById: user.id })));
+  await Promise.all([...new Set(targets.map((target) => target.expectedClientId))]
+    .map((clientId) => ensureClientOwnership(clientId, session)));
+  await Promise.all(targets.map(({ taskId, expectedClientId }) =>
+    updateTaskStatus({ tenantId, taskId, expectedClientId, status, updatedById: user.id })));
 
   await addAuditLog({
     tenantId,
@@ -1433,6 +1443,7 @@ export async function rescheduleTaskAction(formData: FormData) {
   const updated = await rescheduleTask({
     tenantId,
     taskId,
+    expectedClientId: clientId,
     dueAt,
     updatedById: user.id,
   });
@@ -1462,6 +1473,7 @@ export async function undoTaskStatusAction(formData: FormData) {
   const updated = await updateTaskStatus({
     tenantId,
     taskId,
+    expectedClientId: clientId,
     status: statusRaw,
     updatedById: user.id,
   });

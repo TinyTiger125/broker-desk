@@ -6245,6 +6245,7 @@ export async function resolveComplianceAlert(input: {
 export async function updateTaskStatus(input: {
   tenantId?: string;
   taskId: string;
+  expectedClientId: string;
   status: TaskStatus;
   updatedById: string;
 }) {
@@ -6253,17 +6254,22 @@ export async function updateTaskStatus(input: {
   const statusLabel = input.status === "done" ? "完了" : input.status === "canceled" ? "取消" : "未着手";
 
   return withTransaction(async (client) => {
-    const taskRes = await client.query("SELECT * FROM tasks WHERE id = $1 AND tenant_id = $2 LIMIT 1 FOR UPDATE", [
+    if (!input.expectedClientId) return null;
+    const taskRes = await client.query("SELECT * FROM tasks WHERE id = $1 AND tenant_id = $2 AND client_id = $3 LIMIT 1 FOR UPDATE", [
       input.taskId,
       scopeTenantId,
+      input.expectedClientId,
     ]);
     if (!taskRes.rows[0]) return null;
     const task = mapTask(taskRes.rows[0]);
 
+    if (task.status === input.status) return task;
+
     const updatedRes = await client.query(
-      "UPDATE tasks SET status = $2 WHERE id = $1 AND tenant_id = $3 RETURNING *",
-      [input.taskId, input.status, scopeTenantId]
+      "UPDATE tasks SET status = $2 WHERE id = $1 AND tenant_id = $3 AND client_id = $4 RETURNING *",
+      [input.taskId, input.status, scopeTenantId, input.expectedClientId]
     );
+    if (!updatedRes.rows[0]) return null;
 
     if (task.clientId) {
       await client.query(
@@ -6304,6 +6310,7 @@ export async function updateTaskStatus(input: {
 export async function rescheduleTask(input: {
   tenantId?: string;
   taskId: string;
+  expectedClientId: string;
   dueAt: Date;
   updatedById: string;
 }) {
@@ -6311,17 +6318,20 @@ export async function rescheduleTask(input: {
   const scopeTenantId = resolveTenantId(input.tenantId);
 
   return withTransaction(async (client) => {
-    const taskRes = await client.query("SELECT * FROM tasks WHERE id = $1 AND tenant_id = $2 LIMIT 1 FOR UPDATE", [
+    if (!input.expectedClientId) return null;
+    const taskRes = await client.query("SELECT * FROM tasks WHERE id = $1 AND tenant_id = $2 AND client_id = $3 LIMIT 1 FOR UPDATE", [
       input.taskId,
       scopeTenantId,
+      input.expectedClientId,
     ]);
     if (!taskRes.rows[0]) return null;
     const task = mapTask(taskRes.rows[0]);
 
     const updatedRes = await client.query(
-      "UPDATE tasks SET due_at = $2, status = 'pending' WHERE id = $1 AND tenant_id = $3 RETURNING *",
-      [input.taskId, input.dueAt, scopeTenantId]
+      "UPDATE tasks SET due_at = $2, status = 'pending' WHERE id = $1 AND tenant_id = $3 AND client_id = $4 RETURNING *",
+      [input.taskId, input.dueAt, scopeTenantId, input.expectedClientId]
     );
+    if (!updatedRes.rows[0]) return null;
 
     if (task.clientId) {
       await client.query(
