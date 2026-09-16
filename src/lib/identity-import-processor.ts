@@ -1,3 +1,5 @@
+import { persistObjectImportJobExtraction, markObjectImportJobFailed } from "@/lib/object-import-processor-adapter";
+import { parseObjectImportNotes, type ObjectImportMetadata } from "@/lib/object-import-contract";
 import {
   addAuditLog,
   listAttachments,
@@ -20,6 +22,7 @@ type IdentityImportPayload = {
   totalRows: number;
   inputExtraction: InputFileExtractionResult;
   targetCaseId?: string;
+  objectImport?: ObjectImportMetadata;
 };
 
 export type IdentityImportProcessResult =
@@ -91,6 +94,11 @@ export async function processIdentityImportJob(input: {
       inputExtraction,
       targetCaseId: parseQueuedMetadata(job.notes).targetCaseId,
     };
+    const objectImport = parseObjectImportNotes(job.notes);
+    if (objectImport) {
+      payload.objectImport = objectImport;
+      await persistObjectImportJobExtraction({ job, ...input, fields: inputExtraction.fields });
+    }
     const mappedJob = await updateImportJobMapping({
       tenantId: input.tenantId,
       userId: input.userId,
@@ -170,6 +178,7 @@ async function markFailed(
     errorCode,
     errorSummary,
   });
+  await markObjectImportJobFailed(input, errorCode, errorSummary);
   await addAuditLog({
     tenantId: input.tenantId,
     userId: input.userId,

@@ -78,6 +78,7 @@ import {
   resolveClientVisibilityForContext,
   resolvePropertyVisibilityForContext,
   resolveCaseVisibilityForContext,
+  saveCaseWorkbenchWithObjectReview,
   saveBrokerageCaseExtractionReview,
   saveGuaranteeApplicationDraft,
   setRecordLifecycleWithAudit,
@@ -3831,6 +3832,15 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
   await rejectForbiddenRecordInput(formData, session, "case", caseId || undefined);
   if (!caseId) throw new Error("案件IDが不正です。");
   const brokerageCase = await requireWritableCase(session, caseId);
+  const objectReviewRaw = String(formData.get("objectImportReviewJson") ?? "").trim();
+  let parsedObjectReview: { targetId?: unknown; fieldId?: unknown; expectedVersion?: unknown; expectedCandidateValue?: unknown; caseFieldKey?: unknown } | undefined;
+  if (objectReviewRaw) {
+    try {
+      parsedObjectReview = JSON.parse(objectReviewRaw) as typeof parsedObjectReview;
+    } catch {
+      throw new Error("object_import_review_invalid");
+    }
+  }
   const [reviewItems, fieldRules] = await Promise.all([
     listExtractionReviewItems({ userId: user.id, tenantId, caseId }),
     listCaseWorkbenchFieldRules(user.id, tenantId),
@@ -3942,13 +3952,28 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
     reviewItems,
   });
 
-  const updatedCase = await updateBrokerageCaseConfirmedData({
-    userId: user.id,
-    tenantId,
+  const updatedResult = await saveCaseWorkbenchWithObjectReview({
+    context: createRequestContext(session),
     caseId,
     confirmedDataJson: nextConfirmedData,
+    objectReview: parsedObjectReview
+      ? {
+          context: createRequestContext(session),
+          targetId: String(parsedObjectReview.targetId ?? ""),
+          fieldId: String(parsedObjectReview.fieldId ?? ""),
+          expectedVersion: String(parsedObjectReview.expectedVersion ?? ""),
+          expectedCandidateValue: String(parsedObjectReview.expectedCandidateValue ?? ""),
+          decision: "confirm",
+          value: getCaseWorkbenchSubmittedValue(formData, String(parsedObjectReview.caseFieldKey ?? "").trim()),
+          caseFieldValue: getCaseFieldValue(nextConfirmedData, String(parsedObjectReview.caseFieldKey ?? "").trim()),
+        }
+      : undefined,
   });
-  if (!updatedCase) throw new Error("案件の保存に失敗しました。");
+  if (!updatedResult.ok) {
+    if (updatedResult.reason === "case_not_writable") throw new Error("案件の保存に失敗しました。");
+    throw new Error(`object_import_review_${updatedResult.reason}`);
+  }
+  const updatedCase = updatedResult.brokerageCase;
 
   const correctionEvents = await addCorrectionEvents({
     userId: user.id,

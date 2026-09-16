@@ -1,12 +1,14 @@
+import { ensureObjectImportTask } from "@/lib/object-import-processor-adapter";
 import { createHash } from "node:crypto";
 import { addAuditLog, addImportJob, addPrivateAttachment, getImportJobByIdempotencyKey, updateImportJobExecution } from "@/lib/data";
 import { getAttachmentStorageMode, getPostgresPrivateAttachmentLimitBytes } from "@/lib/attachment-storage";
 import { MAX_EXCEL_UPLOAD_BYTES, validateExcelZip } from "@/lib/excel-workbook";
 import { isZipContainer } from "@/lib/upload-validation";
+import { assertObjectImportMetadata, buildObjectImportIdempotencyKey, serializeObjectImportNotes, type ObjectImportTargetType } from "@/lib/object-import-contract";
 
 export type QueueExcelImportResult =
   | { ok: true; jobId: string; status: "queued" | "processing" | "failed" | "mapped" | "completed"; deduplicated: boolean }
-  | { ok: false; error: "file_required" | "xlsx_required" | "file_too_large" | "invalid_xlsx" | "source_persistence_failed"; maxBytes?: number };
+  | { ok: false; error: "file_required" | "xlsx_required" | "file_too_large" | "invalid_xlsx" | "source_persistence_failed" | "object_target_invalid"; maxBytes?: number };
 
 export function getExcelUploadLimitBytes() {
   const attachmentLimit = getAttachmentStorageMode() === "postgres_private"
@@ -21,6 +23,11 @@ export async function queueExcelImportSource(input: {
   userId: string;
   file: File;
   targetCaseId?: string;
+  targetObjectType?: ObjectImportTargetType;
+  caseId?: string;
+  targetObjectId?: string;
+  targetVersion?: string;
+  sourceAttachmentId?: string;
 }): Promise<QueueExcelImportResult> {
   const maxBytes = getExcelUploadLimitBytes();
   if (input.file.size === 0) return { ok: false, error: "file_required" };
@@ -36,10 +43,23 @@ export async function queueExcelImportSource(input: {
   }
 
   const sourceFileHash = createHash("sha256").update(content).digest("hex");
+  let objectTarget = null;
+  try {
+    objectTarget = input.targetObjectType
+      ? assertObjectImportMetadata({ caseId: input.caseId, targetObjectType: input.targetObjectType, targetObjectId: input.targetObjectId, targetVersion: input.targetVersion, sourceAttachmentId: input.sourceAttachmentId })
+      : null;
+  } catch {
+    return { ok: false, error: "object_target_invalid" };
+  }
   const targetKey = input.targetCaseId?.trim() || "unassigned";
-  const idempotencyKey = `excel:${sourceFileHash}:${targetKey}`;
+  const idempotencyKey = objectTarget
+    ? buildObjectImportIdempotencyKey({ tenantId: input.tenantId, target: objectTarget, sourceHash: sourceFileHash })
+    : `excel:${sourceFileHash}:${targetKey}`;
   const existing = await getImportJobByIdempotencyKey({ tenantId: input.tenantId, userId: input.userId, idempotencyKey });
-  if (existing) return { ok: true, jobId: existing.id, status: existing.status, deduplicated: true };
+  if (existing) {
+    await ensureObjectImportTask(existing, input);
+    return { ok: true, jobId: existing.id, status: existing.status, deduplicated: true };
+  }
 
   let job;
   try {
@@ -52,11 +72,12 @@ export async function queueExcelImportSource(input: {
       status: "queued",
       uploadLifecycleVersion: 1,
       idempotencyKey,
-      notes: JSON.stringify({ targetCaseId: input.targetCaseId || undefined }),
+      notes: objectTarget ? serializeObjectImportNotes(objectTarget) : JSON.stringify({ targetCaseId: input.targetCaseId || undefined }),
     });
   } catch (error) {
     const concurrent = await getImportJobByIdempotencyKey({ tenantId: input.tenantId, userId: input.userId, idempotencyKey });
     if (!concurrent) throw error;
+    await ensureObjectImportTask(concurrent, input);
     return { ok: true, jobId: concurrent.id, status: concurrent.status, deduplicated: true };
   }
 
@@ -79,6 +100,7 @@ export async function queueExcelImportSource(input: {
       message: `Excel 资料已保存，等待读取: ${input.file.name}`,
       context: { sourceFileHash, bytes: input.file.size, targetCaseId: input.targetCaseId },
     });
+    await ensureObjectImportTask(job, input);
     return { ok: true, jobId: job.id, status: "queued", deduplicated: false };
   } catch {
     await updateImportJobExecution({

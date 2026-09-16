@@ -41,6 +41,9 @@ import { readCaseAssociationDraft } from "@/lib/case-associations";
 import { ObjectPageShell } from "@/components/layout-system";
 import { ObjectAttachmentSection } from "@/components/object-attachment-section";
 import { listLinkedObjectAttachments } from "@/lib/object-attachments";
+import { uploadObjectImportAction } from "@/app/object-import-actions";
+import { listObjectImportCandidates, listObjectImportTargets } from "@/lib/data";
+import type { ObjectImportCandidateRecord, ObjectImportTargetRecord } from "@/lib/object-import-repository";
 
 export const dynamic = "force-dynamic";
 
@@ -626,6 +629,31 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
     const record = associatedPartyResults[index]?.record;
     return record ? [{ ...party, name: record.name }] : [];
   });
+  const objectImportTargets = await listObjectImportTargets({ tenantId, userId: user.id, caseId: brokerageCase.id });
+  const objectImportViews = await Promise.all(objectImportTargets.map(async (target: ObjectImportTargetRecord) => ({
+    target,
+    fields: await listObjectImportCandidates({ tenantId, userId: user.id, targetId: target.id }) as ObjectImportCandidateRecord[],
+  })));
+  const objectImportFieldBindings: Record<string, { targetId: string; fieldId: string; expectedVersion: string; expectedCandidateValue: string; candidateValue: string }> = {};
+  const applicantPartyId = associationDraft.parties[0]?.partyId;
+  for (const view of objectImportViews) {
+    const fieldMap = view.target.targetType === "property"
+      ? { name: "property.name", address: "property.address" }
+      : view.target.targetId === applicantPartyId
+        ? { name: "applicant.name", phone: "applicant.phone", email: "applicant.email" }
+        : {};
+    for (const field of view.fields) {
+      const caseFieldKey = fieldMap[field.fieldKey as keyof typeof fieldMap];
+      if (!caseFieldKey || !field.candidateValue || ["confirmed", "rejected", "conflict", "failed"].includes(field.status)) continue;
+      objectImportFieldBindings[caseFieldKey] ??= {
+        targetId: view.target.id,
+        fieldId: field.id,
+        expectedVersion: view.target.targetVersion,
+        expectedCandidateValue: field.candidateValue,
+        candidateValue: field.candidateValue,
+      };
+    }
+  }
   const associationPanel = (
     <CaseAssociationManager
       locale={locale}
@@ -638,6 +666,8 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
       saveAction={canWriteCase ? saveCaseAssociationsAction : undefined}
       createPersonAction={canWriteCase ? createClientFormAction : undefined}
       createPropertyAction={canWriteCase ? createPropertyQuickAction : undefined}
+      objectImportViews={objectImportViews}
+      objectImportUploadAction={canWriteCase ? uploadObjectImportAction : undefined}
     />
   );
 
@@ -738,7 +768,6 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
     selectedChapterFields[0];
   const dossierProgressPercent = caseProgressSnapshot.reviewPercent;
   const outputHref = `/output-center?caseId=${encodeURIComponent(brokerageCase.id)}`;
-  const supplementHref = `/import-center?targetCaseId=${encodeURIComponent(brokerageCase.id)}`;
   const overviewSections: CaseOverviewSection[] = dossierTopNodes.map((node) => {
     const childNodes = (node.children ?? []).filter((child) => applicableWorkbenchFields.some((field) => fieldMatchesTreeNode(field, child)));
     const effectiveChildren = childNodes.length > 0 ? childNodes : [node];
@@ -1022,22 +1051,6 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
             issueCount={overviewIssueCount}
             actions={
               <>
-                <span className="hidden sm:inline-flex">
-                  <Link href={supplementHref} className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300">
-                    {tr(locale, { ja: "資料を追加", zh: "补充资料", ko: "자료 추가" })}
-                  </Link>
-                </span>
-                <span className="hidden sm:inline-flex">
-                  <Link href={`/relationship-tree?type=case&id=${encodeURIComponent(brokerageCase.id)}`} className="inline-flex items-center rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-[#002FA7] hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus:ring-blue-300">
-                    {tr(locale, { ja: "関係を確認", zh: "查看关系", ko: "관계 확인" })}
-                  </Link>
-                </span>
-                <Link href={outputHref} className="inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800 hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300">
-                  {tr(locale, { ja: "文書出力", zh: "输出文件", ko: "서류 출력" })}
-                </Link>
-                <a href={`/cases/${encodeURIComponent(brokerageCase.id)}/guarantee-application`} className="inline-flex items-center rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-900 hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300">
-                  {tr(locale, { ja: "申込書を生成", zh: "生成申请书", ko: "신청서 생성" })}
-                </a>
                 {canArchiveCase ? <span className="hidden sm:inline-flex">
                   <ArchiveRecordButton
                     entityType="case"
@@ -1074,58 +1087,6 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
             </div>
           </section>
         ) : null}
-
-        <section className="rounded-lg border border-slate-200 bg-white">
-          <div className="grid min-w-0 divide-y divide-slate-200 md:grid-cols-2 md:divide-x 2xl:grid-cols-[1.2fr_1.2fr_1.2fr_1fr_0.7fr_0.7fr_0.9fr] 2xl:divide-y-0">
-            {[
-              {
-                icon: "person",
-                label: tr(locale, { ja: "申込人", zh: "申请人", ko: "신청인" }),
-                value: applicantSummary,
-              },
-              {
-                icon: "apartment",
-                label: tr(locale, { ja: "物件", zh: "物件", ko: "물건" }),
-                value: propertySummary,
-              },
-              {
-                icon: "verified_user",
-                label: tr(locale, { ja: "保証会社", zh: "保证公司", ko: "보증 회사" }),
-                value: guaranteeCompanySummary,
-              },
-              {
-                icon: "assignment_ind",
-                label: tr(locale, { ja: "担当", zh: "负责人", ko: "담당" }),
-                value: currentHandlerSummary,
-              },
-            ].map((item) => (
-              <div key={item.label} className="flex min-w-0 items-center gap-3 p-4">
-                <span className="material-symbols-outlined h-10 w-10 shrink-0 rounded-lg bg-slate-50 p-0 text-[20px] text-slate-700" aria-hidden="true">
-                  {item.icon}
-                </span>
-                <div className="min-w-0">
-                  <p className="text-[11px] font-bold text-slate-500">{item.label}</p>
-                  <p className="mt-1 truncate text-sm font-black text-slate-950">{item.value}</p>
-                </div>
-              </div>
-            ))}
-            <div className="p-4">
-              <p className="text-[11px] font-bold text-slate-500">{tr(locale, { ja: "要確認", zh: "待核对", ko: "확인 필요" })}</p>
-              <p className="mt-1 text-2xl font-black tabular-nums text-rose-600">{caseProgressSnapshot.reviewOpen}</p>
-            </div>
-            <div className="p-4">
-              <p className="text-[11px] font-bold text-slate-500">{tr(locale, { ja: "確認済み", zh: "已确认", ko: "확인됨" })}</p>
-              <p className="mt-1 text-2xl font-black tabular-nums text-emerald-700">{caseProgressSnapshot.reviewCompleted}</p>
-            </div>
-            <div className="p-4">
-              <p className="text-[11px] font-bold text-slate-500">{tr(locale, { ja: "全体", zh: "总进度", ko: "전체" })}</p>
-              <p className="mt-1 text-2xl font-black tabular-nums text-slate-950">{dossierProgressPercent}%</p>
-              <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
-                <div className="h-full rounded-full bg-blue-700" style={{ width: `${dossierProgressPercent}%` }} />
-              </div>
-            </div>
-          </div>
-        </section>
 
         <section id="case-review-desk" className="scroll-mt-24 rounded-xl border border-slate-200 bg-white">
           <div className="grid min-w-0 2xl:grid-cols-[minmax(17rem,20rem)_minmax(0,1fr)]">
@@ -1263,13 +1224,14 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                       <div className="divide-y divide-slate-100 2xl:max-h-[calc(100vh-23rem)] 2xl:overflow-y-auto">
                         {selectedChapterFields.map((field) => {
                           const selected = selectedWorkbenchField?.fieldKey === field.fieldKey;
+                          const objectImportBinding = objectImportFieldBindings[field.fieldKey];
                           return (
                             <CaseWorkbenchFieldForm
                               key={field.fieldKey}
                               action={saveCaseWorkbenchAction}
                               caseId={brokerageCase.id}
                               fieldKey={field.fieldKey}
-                              initialValue={field.value}
+                              initialValue={objectImportBinding?.candidateValue ?? field.value}
                               returnNode={selectedChapterNode?.id}
                               returnField={field.fieldKey}
                               returnAnchor="case-main-editor"
@@ -1299,12 +1261,13 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                               <span className="min-w-0">
                                 <CaseFieldInput
                                   name={`field:${field.fieldKey}`}
-                                  value={field.value}
+                                  value={objectImportBinding?.candidateValue ?? field.value}
                                   label={field.label}
                                   inputSpec={field.inputSpec}
                                   locale={locale}
                                   tone={fieldNeedsAttention(field) ? "attention" : "default"}
                                 />
+                                {objectImportBinding ? <input type="hidden" name="objectImportReviewJson" value={JSON.stringify({ ...objectImportBinding, caseFieldKey: field.fieldKey })} readOnly /> : null}
                                 <details className="mt-2 text-[11px]">
                                   <summary className="cursor-pointer font-bold text-blue-700">{tr(locale, { ja: "資料候補・判定", zh: "资料候选与判定", ko: "자료 후보 및 판정" })}</summary>
                                   <div className="mt-2 space-y-2">

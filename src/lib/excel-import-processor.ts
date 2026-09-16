@@ -1,3 +1,5 @@
+import { persistObjectImportJobExtraction, markObjectImportJobFailed } from "@/lib/object-import-processor-adapter";
+import { parseObjectImportNotes, type ObjectImportMetadata } from "@/lib/object-import-contract";
 import { createHash } from "node:crypto";
 import {
   addAuditLog,
@@ -28,6 +30,7 @@ export type ExcelImportPayload = {
   totalRows: number;
   inputExtraction?: InputFileExtractionResult;
   targetCaseId?: string;
+  objectImport?: ObjectImportMetadata;
 };
 
 export type ExcelImportProcessResult =
@@ -117,7 +120,7 @@ export async function processExcelImportJob(input: {
     const rows = rawRows.slice(1)
       .filter((row) => row.some((cell) => String(cell ?? "").trim() !== ""))
       .map((row) => Object.fromEntries(headers.map((header, index) => [header, row[index] ?? ""])));
-    const payload: ExcelImportPayload = inputExtraction.extractionStatus === "recognized" || headers.length === 0
+    const payload: ExcelImportPayload = Boolean(parseObjectImportNotes(job.notes)) || inputExtraction.extractionStatus === "recognized" || headers.length === 0
       ? {
           kind: "input_file_extraction",
           headers: [],
@@ -138,6 +141,11 @@ export async function processExcelImportJob(input: {
           inputExtraction,
           targetCaseId: queuedMetadata.targetCaseId,
         };
+    const objectImport = parseObjectImportNotes(job.notes);
+    if (objectImport) {
+      payload.objectImport = objectImport;
+      await persistObjectImportJobExtraction({ job, ...input, fields: inputExtraction.fields });
+    }
     const mappedJob = await updateImportJobMapping({
       tenantId: input.tenantId,
       userId: input.userId,
@@ -219,6 +227,7 @@ async function markFailed(
     beforeFinalImport: true,
   });
   if (!failedJob) return false;
+  await markObjectImportJobFailed(input, errorCode, errorSummary);
   await addAuditLog({
     tenantId: input.tenantId,
     userId: input.userId,

@@ -1,3 +1,8 @@
+import { validateObjectImportReview, type ObjectImportReviewInput, type ObjectImportReviewResult } from "@/lib/object-import-review";
+import { buildObjectVersionFingerprint } from "@/lib/object-import-contract";
+import { readCaseAssociationDraft } from "@/lib/case-associations";
+import { MemoryObjectImportRepository } from "@/lib/object-import-repository.memory";
+import type { ObjectImportTargetRecord, ObjectImportCandidateRecord } from "@/lib/object-import-repository";
 import {
   type AmlCheckStatus,
   type BrokerageContractType,
@@ -713,6 +718,8 @@ type DB = {
   guaranteeTemplateLayoutVersions: GuaranteeTemplateLayoutVersion[];
   tenantGuaranteeTemplateInstalls: TenantGuaranteeTemplateInstall[];
   importJobs: ImportJob[];
+  objectImportTargets: ObjectImportTargetRecord[];
+  objectImportCandidates: ObjectImportCandidateRecord[];
   brokerageCases: BrokerageCase[];
   extractionReviewItems: ExtractionReviewItem[];
   guaranteeApplicationDrafts: GuaranteeApplicationDraft[];
@@ -1085,6 +1092,8 @@ function cloneDb(input: DB): DB {
     guaranteeTemplateLayoutVersions: cloneCollection(input.guaranteeTemplateLayoutVersions),
     tenantGuaranteeTemplateInstalls: cloneCollection(input.tenantGuaranteeTemplateInstalls),
     importJobs: cloneCollection(input.importJobs),
+    objectImportTargets: cloneCollection(input.objectImportTargets ?? []),
+    objectImportCandidates: cloneCollection(input.objectImportCandidates ?? []),
     brokerageCases: cloneCollection(input.brokerageCases),
     extractionReviewItems: cloneCollection(input.extractionReviewItems),
     guaranteeApplicationDrafts: cloneCollection(input.guaranteeApplicationDrafts),
@@ -1115,6 +1124,8 @@ function qaBusinessDataCounts(): QaBusinessDataCounts {
     tasks: db.tasks.length,
     auditLogs: db.auditLogs.length,
     importJobs: db.importJobs.length,
+    objectImportTargets: db.objectImportTargets.length,
+    objectImportCandidates: db.objectImportCandidates.length,
     brokerageCases: db.brokerageCases.length,
     extractionReviewItems: db.extractionReviewItems.length,
     guaranteeApplicationDrafts: db.guaranteeApplicationDrafts.length,
@@ -1522,6 +1533,8 @@ const _freshDb: DB = withDefaultTenantScope({
   ],
   guaranteeTemplateLayoutVersions: [],
   tenantGuaranteeTemplateInstalls: [],
+  objectImportTargets: [],
+  objectImportCandidates: [],
   importJobs: [
     { id: "import_001", userId: "user_demo", sourceType: "excel", title: "物件台帳_2026Q1.xlsx", targetEntity: "properties", status: "completed", notes: "物件5件を保存", mappingJson: { 物件名: "name", 所在地: "address", エリア: "area", 売出価格: "listing_price" }, validationMessage: "必須項目を充足（4/4）", createdAt: new Date(now - 4 * 24 * 60 * 60 * 1000), updatedAt: new Date(now - 4 * 24 * 60 * 60 * 1000) },
     { id: "import_002", userId: "user_demo", sourceType: "pdf", title: "旧契約書一括登録（3件）", targetEntity: "contracts", status: "mapped", notes: "契約種別の確認待ち", mappingJson: { 契約番号: "contract_number", 契約種別: "contract_type", 物件ID: "property_id" }, validationMessage: "必須項目が不足（署名日）", createdAt: new Date(now - 2 * 24 * 60 * 60 * 1000), updatedAt: new Date(now - 2 * 24 * 60 * 60 * 1000) },
@@ -1679,6 +1692,8 @@ const db: DB = new Proxy({} as DB, {
   },
 });
 backfillTenantScope(db);
+if (!db.objectImportTargets) db.objectImportTargets = [];
+if (!db.objectImportCandidates) db.objectImportCandidates = [];
 if (!db.tenants) db.tenants = cloneCollection(_freshDb.tenants);
 db.tenants.forEach(ensureTenantDefaults);
 if (!db.tenantMemberships) db.tenantMemberships = cloneCollection(_freshDb.tenantMemberships);
@@ -1730,6 +1745,8 @@ export function resetBusinessDataForQa(): QaBusinessDataCounts {
     },
   ];
   db.importJobs = [];
+  db.objectImportTargets = [];
+  db.objectImportCandidates = [];
   db.brokerageCases = [];
   db.extractionReviewItems = [];
   db.guaranteeApplicationDrafts = [];
@@ -3832,6 +3849,17 @@ export async function updateBrokerageCaseConfirmedData(input: {
   item.updatedAt = new Date();
   return cloneBrokerageCase(item);
 }
+
+export type SaveCaseWorkbenchWithObjectReviewInput = {
+  context: RequestContext;
+  caseId: string;
+  confirmedDataJson: Record<string, unknown>;
+  objectReview?: ObjectImportReviewInput & { caseFieldValue?: string };
+};
+
+export type SaveCaseWorkbenchWithObjectReviewResult =
+  | { ok: true; brokerageCase: BrokerageCase; objectReview?: Extract<ObjectImportReviewResult, { ok: true }> }
+  | { ok: false; reason: "case_not_writable" | "not_writable" | "conflict" | "invalid_value" | "already_reviewed" | "unsupported_target" };
 
 export async function saveBrokerageCaseExtractionReview(input: {
   tenantId?: string;
@@ -6349,4 +6377,147 @@ export async function resolveCaseVisibilityForContext(input: {
   const record = db.brokerageCases.find((item) => item.id === input.caseId) ?? null;
   const resolution = resolveRecordVisibility(input.context, record);
   return { resolution, record: resolution.canRead && record ? cloneBrokerageCase(record) : null };
+}
+
+function objectImportRepository() {
+  return new MemoryObjectImportRepository(db.objectImportTargets, db.objectImportCandidates);
+}
+export const getObjectImportTarget = (input: Parameters<MemoryObjectImportRepository["getTarget"]>[0]) => objectImportRepository().getTarget(input);
+export const getObjectImportTargetByJob = (input: Parameters<MemoryObjectImportRepository["getTargetByJob"]>[0]) => objectImportRepository().getTargetByJob(input);
+export const listObjectImportTargets = (input: Parameters<MemoryObjectImportRepository["listTargets"]>[0]) => objectImportRepository().listTargets(input);
+export const createObjectImportTarget = (input: Parameters<MemoryObjectImportRepository["createTarget"]>[0]) => objectImportRepository().createTarget(input);
+export const updateObjectImportTarget = (input: Parameters<MemoryObjectImportRepository["updateTarget"]>[0]) => objectImportRepository().updateTarget(input);
+export const upsertObjectImportCandidate = (input: Parameters<MemoryObjectImportRepository["upsertCandidate"]>[0]) => objectImportRepository().upsertCandidate(input);
+export const listObjectImportCandidates = (input: Parameters<MemoryObjectImportRepository["listCandidates"]>[0]) => objectImportRepository().listCandidates(input);
+
+/** No await between checking the version and mutating the shared memory holder. */
+export async function reviewObjectImportCandidate(input: ObjectImportReviewInput): Promise<ObjectImportReviewResult> {
+  const { context } = input;
+  const target = db.objectImportTargets.find((item) => item.id === input.targetId && item.tenantId === context.tenantId && item.userId === context.userId);
+  const field = db.objectImportCandidates.find((item) => item.id === input.fieldId && item.targetId === input.targetId && item.tenantId === context.tenantId);
+  if (!target || !field) return { ok: false, reason: "not_writable" };
+  const caseItem = db.brokerageCases.find((item) => item.id === target.caseId && item.tenantId === context.tenantId);
+  const person = (target.targetType === "party" ? db.clients : db.properties).find((item) => item.id === target.targetId && item.tenantId === context.tenantId);
+  const membership = db.tenantMemberships.find((item) => item.id === context.membershipId && item.userId === context.userId && item.tenantId === context.tenantId && item.status === "active");
+  if (!membership || !caseItem || !person || caseItem.lifecycleStatus === "archived" || person.lifecycleStatus === "archived" || !resolveRecordVisibility(context, caseItem).canWrite || !resolveRecordVisibility(context, person).canWrite || !(target.targetType === "party" ? readCaseAssociationDraft(caseItem.confirmedDataJson).parties.some((item) => item.partyId === person.id) : readCaseAssociationDraft(caseItem.confirmedDataJson).primaryPropertyId === person.id)) return { ok: false, reason: "not_writable" };
+  const validated = validateObjectImportReview(input, target, field, person as unknown as Record<string, unknown>);
+  if (!validated.ok) return validated;
+  const mutableRecord = person as unknown as Record<string, unknown>;
+  const before = mutableRecord[validated.key];
+  const date = new Date();
+  if (input.decision === "confirm") { mutableRecord[validated.key] = validated.recordValue; if ("updatedAt" in person) person.updatedAt = date; }
+  field.finalValue = input.decision === "confirm" ? validated.value : undefined;
+  field.finalSource = "human";
+  field.status = input.decision === "confirm" ? "confirmed" : "rejected";
+  field.confirmedByUserId = context.userId;
+  field.confirmedAt = date;
+  target.targetVersion = buildObjectVersionFingerprint(person as unknown as Record<string, unknown>);
+  target.updatedAt = date;
+  target.status = db.objectImportCandidates.filter((item) => item.targetId === target.id && item.tenantId === context.tenantId).every((item) => item.finalSource === "human") ? "completed" : "needs_review";
+  db.auditLogs.unshift({ id: makeId("audit"), tenantId: context.tenantId, userId: context.userId, actorId: context.userId, action: `object_import_${input.decision}`, targetType: target.targetType === "party" ? "client" : "property", targetId: person.id, message: "Object import field reviewed", context: { importTargetId: target.id, fieldKey: validated.key, before: before ?? null, after: input.decision === "confirm" ? validated.recordValue : before ?? null }, createdAt: date });
+  return { ok: true, caseId: target.caseId, targetVersion: target.targetVersion };
+}
+
+export async function saveCaseWorkbenchWithObjectReview(
+  input: SaveCaseWorkbenchWithObjectReviewInput,
+): Promise<SaveCaseWorkbenchWithObjectReviewResult> {
+  const { context } = input;
+  const caseItem = db.brokerageCases.find(
+    (item) =>
+      item.id === input.caseId &&
+      item.tenantId === context.tenantId &&
+      item.currentOwnerUserId === context.userId &&
+      item.ownerResolutionStatus === "resolved",
+  );
+  if (!caseItem || !resolveRecordVisibility(context, caseItem).canWrite) return { ok: false, reason: "case_not_writable" };
+
+  let reviewData:
+    | { target: ObjectImportTargetRecord; field: ObjectImportCandidateRecord; person: Client | Property; validated: Extract<ReturnType<typeof validateObjectImportReview>, { ok: true }> }
+    | undefined;
+  if (input.objectReview) {
+    const review = input.objectReview;
+    const target = db.objectImportTargets.find(
+      (item) => item.id === review.targetId && item.tenantId === context.tenantId && item.userId === context.userId,
+    );
+    const field = db.objectImportCandidates.find(
+      (item) => item.id === review.fieldId && item.targetId === review.targetId && item.tenantId === context.tenantId,
+    );
+    const person = target
+      ? (target.targetType === "party" ? db.clients : db.properties).find((item) => item.id === target.targetId && item.tenantId === context.tenantId)
+      : undefined;
+    const membership = db.tenantMemberships.find(
+      (item) => item.id === context.membershipId && item.userId === context.userId && item.tenantId === context.tenantId && item.status === "active",
+    );
+    if (!target || !field || !person || !membership || target.caseId !== input.caseId || person.lifecycleStatus === "archived" || caseItem.lifecycleStatus === "archived") {
+      return { ok: false, reason: "not_writable" };
+    }
+    if (!resolveRecordVisibility(context, person).canWrite || !(target.targetType === "party"
+      ? readCaseAssociationDraft(caseItem.confirmedDataJson).parties.some((item) => item.partyId === person.id)
+      : readCaseAssociationDraft(caseItem.confirmedDataJson).primaryPropertyId === person.id)) {
+      return { ok: false, reason: "not_writable" };
+    }
+    const validated = validateObjectImportReview(review, target, field, person as unknown as Record<string, unknown>);
+    if (!validated.ok) return validated;
+    if (review.caseFieldValue !== undefined && review.caseFieldValue.trim() !== validated.value) return { ok: false, reason: "invalid_value" };
+    reviewData = { target, field, person, validated };
+  }
+
+  const caseBefore = structuredClone(caseItem);
+  const personBefore = reviewData ? structuredClone(reviewData.person) : undefined;
+  const fieldBefore = reviewData ? structuredClone(reviewData.field) : undefined;
+  const targetBefore = reviewData ? structuredClone(reviewData.target) : undefined;
+  const auditBefore = db.auditLogs.slice();
+  try {
+    caseItem.confirmedDataJson = { ...input.confirmedDataJson };
+    caseItem.updatedAt = new Date();
+    let objectReview: Extract<ObjectImportReviewResult, { ok: true }> | undefined;
+    if (reviewData) {
+      const { target, field, person, validated } = reviewData;
+      const mutableRecord = person as unknown as Record<string, unknown>;
+      if (input.objectReview?.decision === "confirm") {
+        mutableRecord[validated.key] = validated.recordValue;
+        if ("updatedAt" in person) person.updatedAt = new Date();
+      }
+      field.finalValue = input.objectReview?.decision === "confirm" ? validated.value : undefined;
+      field.finalSource = "human";
+      field.status = input.objectReview?.decision === "confirm" ? "confirmed" : "rejected";
+      field.confirmedByUserId = context.userId;
+      field.confirmedAt = new Date();
+      target.targetVersion = buildObjectVersionFingerprint(mutableRecord);
+      target.updatedAt = new Date();
+      target.status = db.objectImportCandidates
+        .filter((item) => item.targetId === target.id && item.tenantId === context.tenantId)
+        .every((item) => item.finalSource === "human")
+        ? "completed"
+        : "needs_review";
+      db.auditLogs.unshift({
+        id: makeId("audit"),
+        tenantId: context.tenantId,
+        userId: context.userId,
+        actorId: context.userId,
+        action: `object_import_${input.objectReview?.decision}`,
+        targetType: target.targetType === "party" ? "client" : "property",
+        targetId: person.id,
+        message: "Object import field reviewed",
+        context: {
+          importTargetId: target.id,
+          fieldKey: validated.key,
+          before: personBefore ? (personBefore as unknown as Record<string, unknown>)[validated.key] ?? null : null,
+          after: input.objectReview?.decision === "confirm" ? validated.recordValue : null,
+        },
+        createdAt: new Date(),
+      });
+      objectReview = { ok: true, caseId: target.caseId, targetVersion: target.targetVersion };
+    }
+    return { ok: true, brokerageCase: cloneBrokerageCase(caseItem), objectReview };
+  } catch (error) {
+    Object.assign(caseItem, caseBefore);
+    if (reviewData && personBefore && fieldBefore && targetBefore) {
+      Object.assign(reviewData.person, personBefore);
+      Object.assign(reviewData.field, fieldBefore);
+      Object.assign(reviewData.target, targetBefore);
+    }
+    db.auditLogs = auditBefore;
+    throw error;
+  }
 }

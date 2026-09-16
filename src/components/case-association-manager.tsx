@@ -7,10 +7,14 @@ import { PropertyResponsiveForm } from "@/components/property-responsive-form";
 import type { ClientFormActionState, PropertyFormActionState } from "@/app/actions";
 import { CASE_PERSON_ROLES, getCasePersonRoleLabel, type CaseAssociationParty, type CasePersonRole } from "@/lib/case-associations";
 import type { Locale } from "@/lib/locale";
+import type { ObjectImportCandidateRecord, ObjectImportKind, ObjectImportTargetRecord } from "@/lib/object-import-repository";
+import { ObjectImportStatusBadge } from "@/components/object-import-status-badge";
+import { ObjectImportUpload } from "@/components/object-import-upload";
 
 type Candidate = { id: string; name: string; address?: string; searchText?: string };
 type CreateAction<State> = (previousState: State, formData: FormData) => Promise<State>;
 type SaveAction = (formData: FormData) => Promise<void>;
+type ObjectImportView = { target: ObjectImportTargetRecord; fields: ObjectImportCandidateRecord[] };
 
 type CaseAssociationManagerProps = {
   locale: Locale;
@@ -23,6 +27,8 @@ type CaseAssociationManagerProps = {
   saveAction?: SaveAction;
   createPersonAction?: CreateAction<ClientFormActionState>;
   createPropertyAction?: CreateAction<PropertyFormActionState>;
+  objectImportViews?: ObjectImportView[];
+  objectImportUploadAction?: (formData: FormData) => Promise<void>;
 };
 
 const copy = {
@@ -147,6 +153,8 @@ export function CaseAssociationManager({
   saveAction,
   createPersonAction,
   createPropertyAction,
+  objectImportViews = [],
+  objectImportUploadAction,
 }: CaseAssociationManagerProps) {
   const text = copy[locale];
   const [parties, setParties] = useState(initialParties);
@@ -230,6 +238,19 @@ export function CaseAssociationManager({
     return () => window.clearTimeout(timer);
   }, [autoSave, draftJson, saveAction]);
   const currentProperty = properties.find((property) => property.id === primaryPropertyId);
+  const importViewFor = (targetType: ObjectImportKind, targetId: string) => objectImportViews.find((view) => view.target.targetType === targetType && view.target.targetId === targetId);
+  const renderObjectImport = (targetType: ObjectImportKind, targetId: string) => {
+    const view = importViewFor(targetType, targetId);
+    if (!view && !objectImportUploadAction) return null;
+    const fields = view?.fields ?? [];
+    return (
+      <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-2" data-object-import-target={`${targetType}:${targetId}`}>
+        {view ? <div className="flex items-center gap-2 text-[11px] font-bold text-slate-600"><ObjectImportStatusBadge status={view.target.status} /><span>{fields.length} {locale === "zh" ? "个候选字段" : locale === "ja" ? "候補項目" : "후보 항목"}</span></div> : null}
+        {fields.map((field) => <div key={field.id} className={`mt-1 flex flex-wrap items-center gap-1.5 text-xs ${field.status === "conflict" ? "text-rose-700" : field.status === "low_confidence" ? "text-amber-700" : "text-slate-700"}`}><span className="font-bold">{field.fieldKey}</span>{field.candidateValue ? <span className="truncate">{field.candidateValue}</span> : null}{field.status === "conflict" ? <span className="font-bold">{locale === "zh" ? "资料不同" : "資料が一致しません"}</span> : field.status === "low_confidence" ? <span className="font-bold">{locale === "zh" ? "需要核对" : "確認してください"}</span> : null}</div>)}
+        {objectImportUploadAction && !readOnly ? <ObjectImportUpload action={objectImportUploadAction} caseId={caseId} targetType={targetType} targetId={targetId} /> : null}
+      </div>
+    );
+  };
   const visibleCandidates = candidates.filter((candidate) => `${candidate.name} ${candidate.id} ${candidate.searchText ?? ""}`.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
   const visibleProperties = properties.filter((property) => `${property.name} ${property.address ?? ""}`.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
 
@@ -237,8 +258,8 @@ export function CaseAssociationManager({
     <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5" aria-labelledby="case-association-heading">
       <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 id="case-association-heading" className="text-base font-black text-slate-950">{text.title}</h2><p className="mt-1 text-xs font-semibold text-slate-500">{text.description}</p></div>{!readOnly ? <button type="button" data-case-association-focus-target onClick={(event) => { focusReturnRef.current = event.currentTarget; openPersonDrawer(); }} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0046ad]">{text.addPerson}</button> : null}</div>
       <div className="mt-4 grid items-stretch gap-5 md:grid-cols-2">
-        <div className="flex min-w-0 flex-col gap-3"><div className="flex min-h-11 items-center"><h3 className="text-sm font-black text-slate-900">{text.people} ({parties.length})</h3></div>{parties.length === 0 ? <p className="min-h-20 rounded-lg bg-slate-50 px-3 py-3 text-sm text-slate-500">{text.peopleEmpty}</p> : <div className="space-y-2">{parties.map((party) => <div key={party.partyId} className="flex min-h-20 items-start justify-between gap-3 rounded-lg border border-slate-200 px-3 py-3"><div className="min-w-0"><p className="break-words text-sm font-bold text-slate-900 [overflow-wrap:anywhere]">{party.name}</p><div className="mt-1 flex flex-wrap gap-1.5">{party.roles.map((role) => <span key={role} className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-700">{getCasePersonRoleLabel(locale, role)}</span>)}</div></div>{!readOnly ? <button type="button" data-case-association-focus-target onClick={(event) => { focusReturnRef.current = event.currentTarget; editPerson(party); }} className="inline-flex min-h-11 shrink-0 items-center rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700">{text.editRoles}</button> : null}</div>)}</div>}</div>
-        <div className="flex min-w-0 flex-col gap-3"><div className="flex min-h-11 items-center justify-between gap-2"><h3 className="text-sm font-black text-slate-900">{text.property} ({primaryPropertyId ? 1 : 0})</h3>{!readOnly ? <button type="button" data-case-association-focus-target onClick={(event) => { focusReturnRef.current = event.currentTarget; setDrawer("property"); setDrawerView("select"); setSelectionError(undefined); }} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-3 py-2 text-xs font-black text-slate-700">{primaryPropertyId ? text.changeProperty : text.setProperty}</button> : null}</div>{currentProperty ? <div className="flex min-h-20 items-start justify-between gap-3 rounded-lg border border-slate-200 px-3 py-3"><div className="min-w-0"><p className="break-words text-sm font-bold text-slate-900 [overflow-wrap:anywhere]">{currentProperty.name}</p>{currentProperty.address ? <p className="mt-1 break-words text-xs text-slate-500 [overflow-wrap:anywhere]">{currentProperty.address}</p> : null}</div>{!readOnly ? <button type="button" onClick={removeProperty} className="inline-flex min-h-11 shrink-0 items-center rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700">{text.removeProperty}</button> : null}</div> : <p className="min-h-20 rounded-lg bg-slate-50 px-3 py-3 text-sm text-slate-500">{text.propertyEmpty}</p>}</div>
+        <div className="flex min-w-0 flex-col gap-3"><div className="flex min-h-11 items-center"><h3 className="text-sm font-black text-slate-900">{text.people} ({parties.length})</h3></div>{parties.length === 0 ? <p className="min-h-20 rounded-lg bg-slate-50 px-3 py-3 text-sm text-slate-500">{text.peopleEmpty}</p> : <div className="space-y-2">{parties.map((party) => <div key={party.partyId} className="flex min-h-20 items-start justify-between gap-3 rounded-lg border border-slate-200 px-3 py-3"><div className="min-w-0"><p className="break-words text-sm font-bold text-slate-900 [overflow-wrap:anywhere]">{party.name}</p><div className="mt-1 flex flex-wrap gap-1.5">{party.roles.map((role) => <span key={role} className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-700">{getCasePersonRoleLabel(locale, role)}</span>)}</div>{renderObjectImport("party", party.partyId)}</div>{!readOnly ? <button type="button" data-case-association-focus-target onClick={(event) => { focusReturnRef.current = event.currentTarget; editPerson(party); }} className="inline-flex min-h-11 shrink-0 items-center rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700">{text.editRoles}</button> : null}</div>)}</div>}</div>
+        <div className="flex min-w-0 flex-col gap-3"><div className="flex min-h-11 items-center justify-between gap-2"><h3 className="text-sm font-black text-slate-900">{text.property} ({primaryPropertyId ? 1 : 0})</h3>{!readOnly ? <button type="button" data-case-association-focus-target onClick={(event) => { focusReturnRef.current = event.currentTarget; setDrawer("property"); setDrawerView("select"); setSelectionError(undefined); }} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-3 py-2 text-xs font-black text-slate-700">{primaryPropertyId ? text.changeProperty : text.setProperty}</button> : null}</div>{currentProperty ? <div className="flex min-h-20 items-start justify-between gap-3 rounded-lg border border-slate-200 px-3 py-3"><div className="min-w-0"><p className="break-words text-sm font-bold text-slate-900 [overflow-wrap:anywhere]">{currentProperty.name}</p>{currentProperty.address ? <p className="mt-1 break-words text-xs text-slate-500 [overflow-wrap:anywhere]">{currentProperty.address}</p> : null}{renderObjectImport("property", currentProperty.id)}</div>{!readOnly ? <button type="button" onClick={removeProperty} className="inline-flex min-h-11 shrink-0 items-center rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700">{text.removeProperty}</button> : null}</div> : <p className="min-h-20 rounded-lg bg-slate-50 px-3 py-3 text-sm text-slate-500">{text.propertyEmpty}</p>}</div>
       </div>
       <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">{text.outputBlocker}</p>
       {quickCreateFeedback ? <p role="status" className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-900">{quickCreateFeedback}</p> : null}

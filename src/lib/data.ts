@@ -398,6 +398,8 @@ export const getBrokerageCaseByImportJobId: typeof memory.getBrokerageCaseByImpo
   repo.getBrokerageCaseByImportJobId(...args);
 export const updateBrokerageCaseConfirmedData: typeof memory.updateBrokerageCaseConfirmedData = (...args) =>
   repo.updateBrokerageCaseConfirmedData(...args);
+export const saveCaseWorkbenchWithObjectReview: typeof memory.saveCaseWorkbenchWithObjectReview = (...args) =>
+  repo.saveCaseWorkbenchWithObjectReview(...args);
 export const saveBrokerageCaseExtractionReview: typeof memory.saveBrokerageCaseExtractionReview = (...args) =>
   repo.saveBrokerageCaseExtractionReview(...args);
 export const mergeBrokerageCaseExtractionReview: typeof memory.mergeBrokerageCaseExtractionReview = (...args) =>
@@ -567,3 +569,13 @@ export type {
   OutputTemplateSettingsInput,
 } from "@/lib/data.memory";
 export type { OutputTemplateSettings } from "@/lib/output-doc";
+
+export const getObjectImportTarget: typeof memory.getObjectImportTarget = (...args) => repo.getObjectImportTarget(...args);
+export const getObjectImportTargetByJob: typeof memory.getObjectImportTargetByJob = (...args) => repo.getObjectImportTargetByJob(...args);
+export const listObjectImportTargets: typeof memory.listObjectImportTargets = (...args) => repo.listObjectImportTargets(...args);
+export const createObjectImportTarget: typeof memory.createObjectImportTarget = (...args) => repo.createObjectImportTarget(...args);
+export const updateObjectImportTarget: typeof memory.updateObjectImportTarget = (...args) => repo.updateObjectImportTarget(...args);
+export const upsertObjectImportCandidate: typeof memory.upsertObjectImportCandidate = (...args) => repo.upsertObjectImportCandidate(...args);
+export const listObjectImportCandidates: typeof memory.listObjectImportCandidates = (...args) => repo.listObjectImportCandidates(...args);
+
+export const reviewObjectImportCandidate: typeof memory.reviewObjectImportCandidate = (...args) => repo.reviewObjectImportCandidate(...args);
