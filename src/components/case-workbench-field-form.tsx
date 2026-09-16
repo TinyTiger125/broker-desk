@@ -5,6 +5,7 @@ import { useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { Button } from "@/components/ui-foundation";
 import { isValidJapanesePostalCode } from "@/lib/japanese-postal-code-validation";
+import { getCaseContactValidationError } from "@/lib/case-contact-validation";
 
 type CaseWorkbenchFieldFormProps = {
   action: (formData: FormData) => void | Promise<void>;
@@ -79,11 +80,17 @@ export function CaseWorkbenchFieldForm({
         if (target instanceof HTMLInputElement && target.dataset.caseValidation === "japanese-postal-code") {
           target.setCustomValidity("");
         }
+        if (target instanceof HTMLInputElement && (target.dataset.caseFieldKind === "tel" || target.dataset.caseFieldKind === "email")) {
+          target.setCustomValidity("");
+        }
       }}
       onInput={(event) => {
         setDirty(true);
         const target = event.target;
         if (target instanceof HTMLInputElement && target.dataset.caseValidation === "japanese-postal-code") {
+          target.setCustomValidity("");
+        }
+        if (target instanceof HTMLInputElement && (target.dataset.caseFieldKind === "tel" || target.dataset.caseFieldKind === "email")) {
           target.setCustomValidity("");
         }
       }}
@@ -93,6 +100,19 @@ export function CaseWorkbenchFieldForm({
         }
       }}
       onSubmit={(event) => {
+        const contactInput = Array.from(event.currentTarget.querySelectorAll<HTMLInputElement>('input[data-case-field-kind="tel"], input[data-case-field-kind="email"]')).find((input) => {
+          const fieldKey = input.name.startsWith("field:") ? input.name.slice("field:".length) : "";
+          const error = getCaseContactValidationError(fieldKey, input.value, "ja");
+          if (!error) return false;
+          input.setCustomValidity(input.dataset.caseContactValidationMessage || error);
+          input.reportValidity();
+          input.focus();
+          return true;
+        });
+        if (contactInput) {
+          event.preventDefault();
+          return;
+        }
         const postalInput = event.currentTarget.querySelector<HTMLInputElement>('input[data-case-validation="japanese-postal-code"]');
         if (postalInput && postalInput.value.trim() && !isValidJapanesePostalCode(postalInput.value)) {
           event.preventDefault();

@@ -809,6 +809,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
     canWriteCase
       ? readText(brokerageCase.confirmedDataJson, "__assigneeName") || tr(locale, { ja: "現在の担当者", zh: "当前负责人", ko: "현재 담당자" })
       : tr(locale, { ja: "担当者", zh: "当前负责人", ko: "현재 담당자" });
+  const invalidFieldKey = String(query?.field ?? "").trim();
   const flashMessage =
     query?.flash === "extraction_review_saved"
       ? tr(locale, {
@@ -835,11 +836,23 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
             ko: "정보 정리를 저장했습니다.",
           })
         : query?.flash === "case_field_invalid"
-          ? tr(locale, {
-              ja: "郵便番号は7桁で入力してください。変更は保存されていません。",
-              zh: "日本邮政编码必须为7位数字，修改未保存。",
-              ko: "일본 우편번호는 7자리여야 하며 변경 사항은 저장되지 않았습니다.",
-            })
+          ? invalidFieldKey.endsWith(".email")
+            ? tr(locale, {
+                ja: "有効なメールアドレスを入力してください。変更は保存されていません。",
+                zh: "请输入有效的邮箱地址，修改未保存。",
+                ko: "유효한 이메일 주소를 입력해 주세요. 변경 사항은 저장되지 않았습니다.",
+              })
+            : invalidFieldKey.endsWith(".phone") || invalidFieldKey.includes("Phone") || invalidFieldKey.includes("phone") || invalidFieldKey.endsWith(".fax") || invalidFieldKey.endsWith("Fax")
+              ? tr(locale, {
+                  ja: "有効な電話番号（数字7～15桁）を入力してください。変更は保存されていません。",
+                  zh: "请输入有效的电话号码（至少7位数字），修改未保存。",
+                  ko: "유효한 전화번호(숫자 7~15자리)를 입력해 주세요. 변경 사항은 저장되지 않았습니다.",
+                })
+              : tr(locale, {
+                  ja: "郵便番号は7桁で入力してください。変更は保存されていません。",
+                  zh: "日本邮政编码必须为7位数字，修改未保存。",
+                  ko: "일본 우편번호는 7자리여야 하며 변경 사항은 저장되지 않았습니다.",
+                })
           : query?.flash === "case_applicability_saved"
             ? tr(locale, {
                 ja: "保存しました。",

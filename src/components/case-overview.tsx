@@ -7,6 +7,7 @@ import { CaseWorkbenchFieldForm } from "@/components/case-workbench-field-form";
 import { ObjectPageShell, ResponsiveFormEditorSlot, ResponsiveFormField, ResponsiveFormLayout, ResponsiveFormRow } from "@/components/layout-system";
 import type { Locale } from "@/lib/locale";
 import layoutStyles from "@/components/layout-system/layout-system.module.css";
+import { getCaseContactValidationError } from "@/lib/case-contact-validation";
 
 export type CaseFieldInputSpec = {
   kind: "text" | "textarea" | "tel" | "email" | "money" | "number" | "date" | "select";
@@ -437,6 +438,8 @@ export function CaseFieldInput({
         inputMode={spec.inputMode}
         aria-label={label}
         data-case-validation={spec.validation?.replaceAll("_", "-")}
+        data-case-field-kind={spec.kind}
+        data-case-contact-validation-message={spec.kind === "email" ? getCaseContactValidationError("field.email", "invalid", locale) ?? undefined : spec.kind === "tel" ? getCaseContactValidationError("field.phone", "abc", locale) ?? undefined : undefined}
         data-validation-message={spec.validation === "japanese_postal_code" ? locale === "zh" ? "日本邮政编码必须为7位数字。" : locale === "ko" ? "일본 우편번호는 7자리로 입력해 주세요." : "日本の郵便番号は7桁で入力してください。" : undefined}
         defaultValue={value}
         placeholder={placeholder}

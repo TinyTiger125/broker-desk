@@ -191,6 +191,7 @@ import {
 } from "@/lib/case-field-applicability";
 import { getCaseWorkbenchProgressSnapshot } from "@/lib/case-workbench-progress";
 import { applyJapanesePostalCodeAddressCompletions, isValidJapanesePostalCode } from "@/lib/japan-postal-code";
+import { getCaseContactValidationError } from "@/lib/case-contact-validation";
 import {
   buildExtractionReviewCorrectionEvents,
   buildGuaranteeDraftCorrectionEvents,
@@ -3852,6 +3853,24 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
     const nextValue = (fieldKey === useCandidateFieldKey || shouldBatchUseCandidates) && candidateValue ? candidateValue : rawValue;
     return Boolean(nextValue) && !isValidJapanesePostalCode(nextValue);
   });
+  const locale = await getLocale();
+  const invalidContactFieldKey = fieldKeysToSave.find((fieldKey) => {
+    const rawValue = String(formData.get(`field:${fieldKey}`) ?? "").trim();
+    const candidateValue = String(formData.get(`candidate:${fieldKey}`) ?? "").trim();
+    const nextValue = (fieldKey === useCandidateFieldKey || shouldBatchUseCandidates) && candidateValue ? candidateValue : rawValue;
+    let decision = getCaseWorkbenchFieldDecision(formData, fieldKey);
+    if (fieldKey === useCandidateFieldKey || shouldBatchUseCandidates) decision = "confirmed";
+    if (decision === "unknown" || decision === "not_applicable" || decision === "rejected") return false;
+    return Boolean(getCaseContactValidationError(fieldKey, nextValue, locale));
+  });
+  if (invalidContactFieldKey) {
+    const invalidParams = new URLSearchParams();
+    if (returnView) invalidParams.set("view", returnView);
+    invalidParams.set("flash", "case_field_invalid");
+    invalidParams.set("field", invalidContactFieldKey);
+    if (returnScrollTop) invalidParams.set("scrollTop", returnScrollTop);
+    redirect(`/cases/${caseId}?${invalidParams.toString()}${returnAnchor ? `#${returnAnchor}` : ""}`);
+  }
   if (invalidPostalFieldKey) {
     const invalidParams = new URLSearchParams();
     if (returnView) invalidParams.set("view", returnView);
