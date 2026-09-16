@@ -122,6 +122,15 @@ export function CaseWorkbenchFieldForm({
         }
       }}
       onSubmit={(event) => {
+        // Form actions serialize the form after this handler runs. Read the
+        // live control at the last possible moment so programmatic fills or
+        // a remount cannot leave the snapshot behind the value on screen.
+        const fieldControl = Array.from(event.currentTarget.elements).find((element): element is HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement => {
+          return (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement) && element.name === `field:${fieldKey}`;
+        });
+        if (fieldControl && fieldValueSnapshotRef.current) {
+          fieldValueSnapshotRef.current.value = fieldControl.value;
+        }
         const contactInput = Array.from(event.currentTarget.querySelectorAll<HTMLInputElement>('input[data-case-field-kind="tel"], input[data-case-field-kind="email"]')).find((input) => {
           const fieldKey = input.name.startsWith("field:") ? input.name.slice("field:".length) : "";
           const error = getCaseContactValidationError(fieldKey, input.value, "ja");
