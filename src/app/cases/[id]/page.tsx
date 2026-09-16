@@ -1292,6 +1292,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                   {selectedWorkbenchField ? (
                     <CaseEditPanel title={getShortWorkbenchFieldLabel(selectedWorkbenchField)} context={selectedChapterNode?.label ?? tr(locale, { ja: "項目確認", zh: "项目核对", ko: "항목 확인" })} issueLabel={fieldNeedsAttention(selectedWorkbenchField) ? getWorkbenchFieldIssueLabel(locale, selectedWorkbenchField) : undefined}>
                       <CaseWorkbenchFieldForm
+                        key={selectedWorkbenchField.fieldKey}
                         action={saveCaseWorkbenchAction}
                         caseId={brokerageCase.id}
                         fieldKey={selectedWorkbenchField.fieldKey}
