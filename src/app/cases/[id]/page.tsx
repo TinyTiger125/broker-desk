@@ -4,7 +4,7 @@ import { createClientFormAction, createPropertyQuickAction, rollbackCaseMergeAct
 import { ArchiveRecordButton } from "@/components/archive-record-button";
 import { CaseWorkbenchFieldForm } from "@/components/case-workbench-field-form";
 import { CaseAssociationManager } from "@/components/case-association-manager";
-import { CaseEditPanel, CaseEvidenceSummary, CaseFieldInput, CaseFieldState, CaseFieldValue, CaseIdentityHeader, CaseOverview, type CaseOverviewOutputBlocker, type CaseOverviewSection } from "@/components/case-overview";
+import { CaseEvidenceSummary, CaseFieldInput, CaseFieldState, CaseFieldValue, CaseIdentityHeader, CaseOverview, type CaseOverviewOutputBlocker, type CaseOverviewSection } from "@/components/case-overview";
 import { PageFlashBanner } from "@/components/page-flash-banner";
 import { getBrokerageCaseByIdForContext, getGuaranteeApplicationDraft, listCaseWorkbenchFieldRules, listClientsForContext, listExtractionReviewItems, listPropertiesForContext, listTenantGuaranteeTemplateInstalls, resolveClientVisibilityForContext, resolvePropertyVisibilityForContext } from "@/lib/data";
 import type { ExtractionReviewItem, ExtractionReviewStatus } from "@/lib/data";
@@ -736,7 +736,6 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
     selectedChapterFields.find((field) => field.fieldKey === query?.field) ??
     selectedChapterFields.find(fieldNeedsAttention) ??
     selectedChapterFields[0];
-  const selectedWorkbenchFieldEvidence = selectedWorkbenchField ? getPrimaryEvidence(selectedWorkbenchField) : undefined;
   const dossierProgressPercent = caseProgressSnapshot.reviewPercent;
   const outputHref = `/output-center?caseId=${encodeURIComponent(brokerageCase.id)}`;
   const supplementHref = `/import-center?targetCaseId=${encodeURIComponent(brokerageCase.id)}`;
@@ -1252,8 +1251,8 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                 </div>
               </div>
 
-              <div className="grid min-w-0 2xl:grid-cols-[minmax(0,1fr)_minmax(20rem,24rem)]">
-                <div className="min-w-0 border-b border-slate-200 2xl:border-b-0 2xl:border-r">
+              <div className="min-w-0">
+                <div className="min-w-0 border-b border-slate-200 2xl:border-b-0">
                   <div className="min-w-0">
                       <div className="grid grid-cols-[4rem_minmax(0,1fr)_minmax(0,1.15fr)_auto] gap-2 border-b border-slate-100 bg-slate-50 px-3 py-3 text-[11px] font-black text-slate-500 sm:grid-cols-[5.5rem_minmax(0,1fr)_minmax(0,1.15fr)_auto] sm:gap-3 sm:px-5">
                         <span>{tr(locale, { ja: "状態", zh: "状态", ko: "상태" })}</span>
@@ -1265,11 +1264,22 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                         {selectedChapterFields.map((field) => {
                           const selected = selectedWorkbenchField?.fieldKey === field.fieldKey;
                           return (
-                            <Link
+                            <CaseWorkbenchFieldForm
                               key={field.fieldKey}
-                              href={caseWorkbenchHref({ node: selectedChapterNode?.id, field: field.fieldKey })}
-                              scroll={false}
-                              className={`grid grid-cols-[4rem_minmax(0,1fr)_minmax(0,1.15fr)_auto] gap-2 px-3 py-4 transition sm:grid-cols-[5.5rem_minmax(0,1fr)_minmax(0,1.15fr)_auto] sm:gap-3 sm:px-5 ${
+                              action={saveCaseWorkbenchAction}
+                              caseId={brokerageCase.id}
+                              fieldKey={field.fieldKey}
+                              returnNode={selectedChapterNode?.id}
+                              returnField={field.fieldKey}
+                              returnAnchor="case-main-editor"
+                              returnView="quick"
+                              showSaveWhenPristine
+                              saveLabel={tr(locale, { ja: "確認", zh: "确认", ko: "확인" })}
+                              savingLabel={tr(locale, { ja: "保存中", zh: "保存中", ko: "저장 중" })}
+                              saveButtonAriaLabel={`${getShortWorkbenchFieldLabel(field)}を確認して保存`}
+                              saveButtonWrapperClassName="col-start-4 row-start-1 mt-0 max-h-12 self-center opacity-100"
+                              saveButtonClassName="min-w-[3.5rem] rounded-md px-3 py-2 text-xs font-black"
+                              className={`grid grid-cols-[4rem_minmax(0,1fr)_minmax(0,1.35fr)_auto] items-start gap-2 px-3 py-3 transition sm:grid-cols-[5.5rem_minmax(0,1fr)_minmax(0,1.35fr)_auto] sm:items-center sm:gap-3 sm:px-5 ${
                                 selected ? "bg-blue-50 ring-1 ring-inset ring-blue-700" : "hover:bg-slate-50"
                               }`}
                             >
@@ -1286,10 +1296,23 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                                 <span className="mt-1 block break-words text-[11px] font-semibold text-slate-500">{field.treePath.join(" / ")}</span>
                               </span>
                               <span className="min-w-0">
-                                <CaseFieldValue value={getWorkbenchFieldDisplayValue(field)} />
+                                <CaseFieldInput
+                                  name={`field:${field.fieldKey}`}
+                                  value={field.value}
+                                  label={field.label}
+                                  inputSpec={field.inputSpec}
+                                  locale={locale}
+                                  tone={fieldNeedsAttention(field) ? "attention" : "default"}
+                                />
+                                <details className="mt-2 text-[11px]">
+                                  <summary className="cursor-pointer font-bold text-blue-700">{tr(locale, { ja: "資料候補・判定", zh: "资料候选与判定", ko: "자료 후보 및 판정" })}</summary>
+                                  <div className="mt-2 space-y-2">
+                                    <CaseEvidenceSummary locale={locale} title={tr(locale, { ja: "資料内容", zh: "资料内容", ko: "자료 내용" })} evidenceItems={field.evidenceItems} currentValue={field.value} candidateFieldKey={field.fieldKey} />
+                                    <WorkbenchDecisionSelect locale={locale} field={field} flush />
+                                  </div>
+                                </details>
                               </span>
-                              <span className="self-center text-right text-xs font-black text-blue-700">{getWorkbenchFieldActionLabel(locale, field)}</span>
-                            </Link>
+                            </CaseWorkbenchFieldForm>
                           );
                         })}
                         {selectedChapterFields.length === 0 ? (
@@ -1301,59 +1324,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                   </div>
                 </div>
 
-                <aside id="case-field-editor" className="scroll-mt-24 bg-white p-4 2xl:sticky 2xl:top-20 2xl:max-h-[calc(100vh-6rem)] 2xl:self-start 2xl:overflow-y-auto">
-                  {selectedWorkbenchField ? (
-                    <CaseEditPanel title={getShortWorkbenchFieldLabel(selectedWorkbenchField)} context={selectedChapterNode?.label ?? tr(locale, { ja: "項目確認", zh: "项目核对", ko: "항목 확인" })} issueLabel={fieldNeedsAttention(selectedWorkbenchField) ? getWorkbenchFieldIssueLabel(locale, selectedWorkbenchField) : undefined}>
-                      <CaseWorkbenchFieldForm
-                        key={selectedWorkbenchField.fieldKey}
-                        action={saveCaseWorkbenchAction}
-                        caseId={brokerageCase.id}
-                        fieldKey={selectedWorkbenchField.fieldKey}
-                        returnNode={selectedChapterNode?.id}
-                        returnField={selectedWorkbenchField.fieldKey}
-                        returnAnchor="case-field-editor"
-                        showSaveWhenPristine
-                        saveLabel={tr(locale, { ja: "確認して保存", zh: "确认并保存", ko: "확인하고 저장" })}
-                        savingLabel={tr(locale, { ja: "保存中", zh: "保存中", ko: "저장 중" })}
-                        className="mt-4 space-y-4"
-                      >
-                      {selectedWorkbenchFieldEvidence ? (
-                        <input type="hidden" name={`candidate:${selectedWorkbenchField.fieldKey}`} value={selectedWorkbenchFieldEvidence.value} />
-                      ) : null}
-                      <div className="space-y-3">
-                        <CaseEvidenceSummary
-                          locale={locale}
-                          title={tr(locale, { ja: "資料内容", zh: "资料内容", ko: "자료 내용" })}
-                          evidenceItems={selectedWorkbenchField.evidenceItems}
-                          currentValue={selectedWorkbenchField.value}
-                          candidateFieldKey={selectedWorkbenchField.fieldKey}
-                        />
 
-                        <div className="rounded-lg border border-slate-200 bg-white p-3">
-                          <p className="text-[11px] font-bold text-slate-500">{tr(locale, { ja: "確認内容", zh: "确认内容", ko: "확인 내용" })}</p>
-                          <div className="mt-2">
-                            <CaseFieldInput
-                              name={`field:${selectedWorkbenchField.fieldKey}`}
-                              value={selectedWorkbenchField.value}
-                              label={selectedWorkbenchField.label}
-                              inputSpec={selectedWorkbenchField.inputSpec}
-                              locale={locale}
-                              tone={fieldNeedsAttention(selectedWorkbenchField) ? "attention" : "default"}
-                            />
-                          </div>
-                          <div className="mt-2">
-                            <WorkbenchDecisionSelect locale={locale} field={selectedWorkbenchField} flush />
-                          </div>
-                        </div>
-                      </div>
-                      </CaseWorkbenchFieldForm>
-                    </CaseEditPanel>
-                  ) : (
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-5 text-sm font-semibold text-slate-500">
-                      {tr(locale, { ja: "項目を選択してください。", zh: "请选择一个项目。", ko: "항목을 선택해 주세요." })}
-                    </div>
-                  )}
-                </aside>
               </div>
             </div>
           </div>

@@ -17,6 +17,9 @@ type CaseWorkbenchFieldFormProps = {
   returnView?: "quick" | "overview";
   showSaveWhenPristine?: boolean;
   className?: string;
+  saveButtonWrapperClassName?: string;
+  saveButtonClassName?: string;
+  saveButtonAriaLabel?: string;
   saveLabel: string;
   savingLabel: string;
   children: ReactNode;
@@ -27,17 +30,23 @@ function FieldSaveButton({
   saveLabel,
   savingLabel,
   showWhenPristine = false,
+  wrapperClassName = "",
+  buttonClassName = "text-xs",
+  buttonAriaLabel,
 }: {
   dirty: boolean;
   saveLabel: string;
   savingLabel: string;
   showWhenPristine?: boolean;
+  wrapperClassName?: string;
+  buttonClassName?: string;
+  buttonAriaLabel?: string;
 }) {
   const { pending } = useFormStatus();
   const visible = showWhenPristine || dirty || pending;
 
   return (
-    <div className={`overflow-hidden transition-all duration-200 ${visible ? "mt-4 max-h-12 opacity-100" : "mt-0 max-h-0 opacity-0"}`}>
+    <div className={`overflow-hidden transition-all duration-200 ${visible ? "mt-4 max-h-12 opacity-100" : "mt-0 max-h-0 opacity-0"} ${wrapperClassName}`}>
       <div className="flex justify-end">
         <Button
           type="submit"
@@ -45,7 +54,8 @@ function FieldSaveButton({
           controlSize="regular"
           loading={pending}
           aria-live="polite"
-          className="text-xs"
+          aria-label={buttonAriaLabel}
+          className={buttonClassName}
         >
           {pending ? savingLabel : saveLabel}
         </Button>
@@ -64,6 +74,9 @@ export function CaseWorkbenchFieldForm({
   returnView,
   showSaveWhenPristine = false,
   className,
+  saveButtonWrapperClassName,
+  saveButtonClassName,
+  saveButtonAriaLabel,
   saveLabel,
   savingLabel,
   children,
@@ -137,7 +150,7 @@ export function CaseWorkbenchFieldForm({
       {returnNode ? <input type="hidden" name="returnNode" value={returnNode} /> : null}
       {returnField ? <input type="hidden" name="returnField" value={returnField} /> : null}
       {children}
-      <FieldSaveButton dirty={dirty} saveLabel={saveLabel} savingLabel={savingLabel} showWhenPristine={showSaveWhenPristine} />
+      <FieldSaveButton dirty={dirty} saveLabel={saveLabel} savingLabel={savingLabel} showWhenPristine={showSaveWhenPristine} wrapperClassName={saveButtonWrapperClassName} buttonClassName={saveButtonClassName} buttonAriaLabel={saveButtonAriaLabel} />
     </form>
   );
 }
