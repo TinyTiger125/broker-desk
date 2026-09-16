@@ -11,6 +11,7 @@ type CaseWorkbenchFieldFormProps = {
   action: (formData: FormData) => void | Promise<void>;
   caseId: string;
   fieldKey: string;
+  initialValue?: string;
   returnNode?: string;
   returnField?: string;
   returnAnchor?: string;
@@ -68,6 +69,7 @@ export function CaseWorkbenchFieldForm({
   action,
   caseId,
   fieldKey,
+  initialValue = "",
   returnNode,
   returnField,
   returnAnchor = "case-main-editor",
@@ -83,6 +85,7 @@ export function CaseWorkbenchFieldForm({
 }: CaseWorkbenchFieldFormProps) {
   const [dirty, setDirty] = useState(false);
   const scrollTopRef = useRef<HTMLInputElement>(null);
+  const fieldValueSnapshotRef = useRef<HTMLInputElement>(null);
 
   return (
     <form
@@ -90,6 +93,9 @@ export function CaseWorkbenchFieldForm({
       onChange={(event) => {
         setDirty(true);
         const target = event.target;
+        if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) {
+          if (target.name === `field:${fieldKey}` && fieldValueSnapshotRef.current) fieldValueSnapshotRef.current.value = target.value;
+        }
         if (target instanceof HTMLInputElement && target.dataset.caseValidation === "japanese-postal-code") {
           target.setCustomValidity("");
         }
@@ -100,6 +106,9 @@ export function CaseWorkbenchFieldForm({
       onInput={(event) => {
         setDirty(true);
         const target = event.target;
+        if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) {
+          if (target.name === `field:${fieldKey}` && fieldValueSnapshotRef.current) fieldValueSnapshotRef.current.value = target.value;
+        }
         if (target instanceof HTMLInputElement && target.dataset.caseValidation === "japanese-postal-code") {
           target.setCustomValidity("");
         }
@@ -144,6 +153,7 @@ export function CaseWorkbenchFieldForm({
     >
       <input type="hidden" name="caseId" value={caseId} />
       <input type="hidden" name="presentFieldKeysJson" value={JSON.stringify([fieldKey])} />
+      <input type="hidden" name="fieldValueSnapshot" ref={fieldValueSnapshotRef} defaultValue={initialValue} readOnly />
       <input type="hidden" name="returnAnchor" value={returnAnchor} />
       <input type="hidden" name="returnScrollTop" ref={scrollTopRef} value="" readOnly />
       {returnView ? <input type="hidden" name="returnView" value={returnView} /> : null}

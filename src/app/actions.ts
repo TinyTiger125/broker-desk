@@ -3465,6 +3465,15 @@ function getCaseWorkbenchFieldDecision(formData: FormData, fieldKey: string): "c
   return "confirmed";
 }
 
+function getCaseWorkbenchSubmittedValue(formData: FormData, fieldKey: string): string {
+  const rawValue = String(formData.get(`field:${fieldKey}`) ?? "").trim();
+  if (rawValue) return rawValue;
+  // The row snapshot is updated from the same visible control on input. It
+  // preserves a non-empty value if a client rerender drops the native value
+  // immediately before the server action serializes the form.
+  return String(formData.get("fieldValueSnapshot") ?? "").trim();
+}
+
 function safeHashAnchor(value: FormDataEntryValue | null): string {
   const anchor = String(value ?? "").trim();
   return /^[a-zA-Z0-9_-]+$/.test(anchor) ? anchor : "";
@@ -3848,14 +3857,14 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
   const returnScrollTop = safeScrollTop(formData.get("returnScrollTop"));
   const invalidPostalFieldKey = fieldKeysToSave.find((fieldKey) => {
     if (getCaseFieldDefinition(fieldKey)?.valueKind !== "postal_code") return false;
-    const rawValue = String(formData.get(`field:${fieldKey}`) ?? "").trim();
+    const rawValue = getCaseWorkbenchSubmittedValue(formData, fieldKey);
     const candidateValue = String(formData.get(`candidate:${fieldKey}`) ?? "").trim();
     const nextValue = (fieldKey === useCandidateFieldKey || shouldBatchUseCandidates) && candidateValue ? candidateValue : rawValue;
     return Boolean(nextValue) && !isValidJapanesePostalCode(nextValue);
   });
   const locale = await getLocale();
   const invalidContactFieldKey = fieldKeysToSave.find((fieldKey) => {
-    const rawValue = String(formData.get(`field:${fieldKey}`) ?? "").trim();
+    const rawValue = getCaseWorkbenchSubmittedValue(formData, fieldKey);
     const candidateValue = String(formData.get(`candidate:${fieldKey}`) ?? "").trim();
     const nextValue = (fieldKey === useCandidateFieldKey || shouldBatchUseCandidates) && candidateValue ? candidateValue : rawValue;
     let decision = getCaseWorkbenchFieldDecision(formData, fieldKey);
@@ -3881,7 +3890,7 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
   }
   fieldKeysToSave.forEach((fieldKey) => {
     const previousValue = getCaseFieldValue(brokerageCase.confirmedDataJson, fieldKey);
-    let nextValue = String(formData.get(`field:${fieldKey}`) ?? "").trim();
+    let nextValue = getCaseWorkbenchSubmittedValue(formData, fieldKey);
     let decision = getCaseWorkbenchFieldDecision(formData, fieldKey);
     if (fieldKey === useCandidateFieldKey || shouldBatchUseCandidates) {
       const candidateValue = String(formData.get(`candidate:${fieldKey}`) ?? "").trim();

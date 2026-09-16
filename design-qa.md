@@ -24,4 +24,10 @@ Reviewed the annotated desktop reference supplied at `/var/folders/hk/679p0p853n
 
 Full keyboard traversal (Tab/Enter/Shift+Tab), 1440 viewport, and source-sized viewport comparison were not completed after the P1 persistence failure; they cannot change the no-go decision.
 
-## final result: blocked (P1 persistence)
+## Local narrow repair
+
+- Root cause evidence: browser automation filled the visible control, but the row rerender could leave the native control value empty at serialization; the server action then treated the empty `field:<key>` entry as a clear while still marking the row confirmed and emitting a success redirect.
+- Repair: each row now mirrors its visible control value into `fieldValueSnapshot`; the server resolves the submitted value from the same field first and the snapshot only when the field entry is empty. An explicit clear updates both to empty and remains a clear.
+- Regression: `npm run test:inline-field-payload` covers direct value, remount snapshot, and explicit clear; inline/contact contracts remain green.
+
+## final result: blocked (requires new Preview re-verification)

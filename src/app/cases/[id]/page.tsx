@@ -1269,6 +1269,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                               action={saveCaseWorkbenchAction}
                               caseId={brokerageCase.id}
                               fieldKey={field.fieldKey}
+                              initialValue={field.value}
                               returnNode={selectedChapterNode?.id}
                               returnField={field.fieldKey}
                               returnAnchor="case-main-editor"

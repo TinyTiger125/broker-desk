@@ -36,6 +36,7 @@
     "test:case-field-switch": "node scripts/check-case-field-switch-contract.mjs",
     "test:case-contact-validation": "node scripts/check-case-contact-validation-contract.mjs",
     "test:inline-field-editing": "node scripts/check-inline-field-editing-contract.mjs",
+    "test:inline-field-payload": "node scripts/test-inline-field-payload.mjs",
     "test:case-applicability": "node scripts/check-case-applicability.cjs",
     "test:case-workbench-assistant": "node scripts/check-case-workbench-assistant.cjs",
     "test:tenant-session": "node scripts/check-tenant-session.mjs",
