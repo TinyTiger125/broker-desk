@@ -89,7 +89,8 @@
 
 - 现有 Chrome 会话已认证；`/import-center`、`/cases/new` 可打开。首页仅见两张主操作卡；人物/物件的既存选择与快速创建输入布局对称，这些为观察级 PASS。
 - 两个合成案件页均返回“このページを一時的に開けません”，请求编号 `1959907781`；浏览器控制台记录 Minified React error `#441`。实际模型读取、候选审核、主输入保存、刷新/重开、来源鉴权、归属隔离、并发和失败恢复均未完成。
-- 本地诊断发现迁移仅向 `authenticated` 授予对象导入表权限，未向 `brokerdesk_runtime` 授权；运行时在读取对象表时可能失败。新增 `has_table_privilege` 探针与 `permissions_incomplete` fail-closed 分支，使案件页在 ACL 不足时跳过对象表读取并禁用上传，避免路由崩溃或伪成功。
+- Neon SQL Editor 只读 catalog 现已确认 `brokerdesk_runtime`：`rolsuper=false`、`rolbypassrls=false`、`rolinherit=false`、`member_of={}`，schema USAGE 为 true，但两张对象表的 SELECT/INSERT/UPDATE/DELETE 均为 false；两表仍为 `relrowsecurity=true`、`relforcerowsecurity=true`，无显式 relacl。Preview 控制台只记录通用 React #441 与路由错误，没有 SQLSTATE，因此“权限导致路由失败”是高置信因果推断，不冒充直接日志根因。
+- 本地诊断发现迁移仅向 `authenticated` 授予对象导入表权限，未向 `brokerdesk_runtime` 授权；新增 `has_table_privilege` 探针与 `permissions_incomplete` fail-closed 分支，仅要求当前运行路径所需的 SELECT/INSERT/UPDATE（没有 DELETE 业务路径），使案件页在 ACL 不足时跳过对象表读取并禁用上传，避免路由崩溃或伪成功。
 - 本地修复提交为 `0c17923`；`npm run build`、`npx tsc --noEmit --incremental false`、readiness/pipeline 测试和 `git diff --check` 均通过。尚未对真实 `brokerdesk_runtime` 做数据库 ACL 反例或在 Preview 部署修复后复验；后续 Preview 更新由 Tifa 接手。
 
 ## 待执行验证

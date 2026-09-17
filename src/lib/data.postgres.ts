@@ -6965,12 +6965,10 @@ export async function getObjectImportFeatureReadiness(): Promise<ObjectImportFea
     SELECT
       has_table_privilege(current_user, 'public.object_import_targets', 'SELECT')
         AND has_table_privilege(current_user, 'public.object_import_targets', 'INSERT')
-        AND has_table_privilege(current_user, 'public.object_import_targets', 'UPDATE')
-        AND has_table_privilege(current_user, 'public.object_import_targets', 'DELETE') AS targets_table_writable,
+        AND has_table_privilege(current_user, 'public.object_import_targets', 'UPDATE') AS targets_table_writable,
       has_table_privilege(current_user, 'public.object_import_fields', 'SELECT')
         AND has_table_privilege(current_user, 'public.object_import_fields', 'INSERT')
-        AND has_table_privilege(current_user, 'public.object_import_fields', 'UPDATE')
-        AND has_table_privilege(current_user, 'public.object_import_fields', 'DELETE') AS fields_table_writable
+        AND has_table_privilege(current_user, 'public.object_import_fields', 'UPDATE') AS fields_table_writable
   `);
   return resolveObjectImportFeatureReadiness({
     migrationApplied: migration.rows.length > 0,
