@@ -75,8 +75,15 @@
 
 - 新增 `scripts/postgres-migration-runner-utils.mjs` 的 `stripEmbeddedTransaction()`；runner 仍按原文件字节计算 checksum，只移除最外层事务包装后执行，使 runner 的单一事务覆盖迁移体与 ledger insert。函数体内的字面量不会被处理。
 - 新增 `scripts/test-postgres-migration-runner-utils.mjs`，覆盖有/无包装及 `$$`/字符串字面量场景；该测试与 pipeline、target contract、readiness、data-driver、diff-check 均通过。
-- 当前本地候选已生成精确提交 `85e3b31`，相对远端 `6d42a4f` 共 21 个文件；工作树干净，未推送、未部署。候选包含来源附件 `NOT NULL`/`RESTRICT`、readiness gate、runner 事务修正及本例外记录。
-- 远端旧 Preview 仍运行 `6d42a4f`，其代码与已执行数据库的 `source_attachment_id NOT NULL` 约束不匹配；必须先取得一次 Preview 更新批准，才能进行完整认证验收。
+- 历史预执行记录中的本地候选 `85e3b31` 已被后续精确提交 `fe690521e0aac26beb829df10e2853d81efe4ed9` supersede；当前分支推送与 Preview 状态见下节。
+- 远端旧 Preview 曾运行 `6d42a4f`，其代码与已执行数据库的新 `source_attachment_id NOT NULL` 约束不匹配；本轮已获一次 Preview 更新授权并生成新部署，但完整认证验收仍受登录阻塞。
+
+### 本轮 Preview 生成与综合验收边界（2026-09-17）
+
+- `staging/broker-desk-acceptance` 已从 `6d42a4f` 快进至 `fe690521e0aac26beb829df10e2853d81efe4ed9`；Vercel deployment `D1rzyeHBKHyRviHCEytDpCMaSdwZ` 状态为 `Ready`，Preview URL 为 `https://broker-desk-staging-gm0du98rr-neos-projects-d66edfc8.vercel.app`。
+- Preview 环境变量页面只读确认 `DATABASE_URL`、`DATABASE_MIGRATION_URL`、`DATABASE_ADMIN_URL`、Neon 生成的数据库变量均作用于 Preview + `staging/broker-desk-acceptance`；值未读取。测试资源仍为 `broker-desk-staging-nonprod`。
+- 访问 Preview 根路径立即转到 Clerk 登录页；当前浏览器没有获准测试账号或认证会话，未输入、索取或传输任何凭据。健康端点可返回 HTTP 200，但不能证明业务认证读回或 runtime 角色对应关系。
+- 因认证缺失，标题/入口、人物与物件上传对称、模型读取、候选低置信/冲突、保存刷新重开、来源鉴权/归属、隔离并发及失败恢复全部保持 `UNVERIFIED`。最小阻塞是产品方提供已认证 Preview 会话或在浏览器完成登录后交接；不得自行换路径。
 
 ## 待执行验证
 
