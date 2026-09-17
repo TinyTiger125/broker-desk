@@ -244,11 +244,13 @@ const postgresSource = readFileSync(resolve(root, "src/lib/data.postgres.ts"), "
 const migrationSource = readFileSync(resolve(root, "db/migrations/20260917_001_object_import_targets.sql"), "utf8");
 assert.match(migrationSource, /source_attachment_id TEXT NOT NULL REFERENCES attachments\(id\) ON DELETE RESTRICT/);
 assert.match(migrationSource, /FOREIGN KEY \(tenant_id, object_import_target_id\) REFERENCES object_import_targets\(tenant_id, id\)/);
-assert(postgresSource.includes("FOR SHARE OF a,b"));
-assert(postgresSource.includes("a.target_id=$4"));
+assert(postgresSource.includes("brokerdesk_private.lock_case_review_source($1,$2,$3,$4)"));
+const lockMigration = readFileSync(resolve(root, "db/migrations/20260917_002_case_review_locks.sql"), "utf8");
+assert(lockMigration.includes("a.target_id = p_import_job_id"));
+assert(lockMigration.includes("FOR SHARE OF a, b"));
 assert.equal((postgresSource.match(/if \(!await hasObjectImportSource\(client, target, field\)\)/g) ?? []).length, 2);
 const reviewSource = postgresSource.slice(postgresSource.indexOf("export async function reviewObjectImportCandidate"));
-for (const marker of ["withTransaction", "databaseActorMatches", "FOR UPDATE", "FOR SHARE", "resolveRecordVisibility", "validateObjectImportReview", "INSERT INTO audit_logs"]) assert(reviewSource.includes(marker), `missing PostgreSQL review boundary: ${marker}`);
+for (const marker of ["withTransaction", "databaseActorMatches", "FOR UPDATE", "lock_case_review_membership", "resolveRecordVisibility", "validateObjectImportReview", "INSERT INTO audit_logs"]) assert(reviewSource.includes(marker), `missing PostgreSQL review boundary: ${marker}`);
 const combinedSource = postgresSource.slice(postgresSource.indexOf("export async function saveCaseWorkbenchWithObjectReview"));
 for (const marker of ["withTransaction", "FOR UPDATE", "UPDATE object_import_fields", "UPDATE object_import_targets", "UPDATE brokerage_cases", "RETURNING *"]) assert(combinedSource.includes(marker), `missing PostgreSQL atomic save boundary: ${marker}`);
 console.log("PASS: upload/queue/processor/public pipeline; association and tenant rejection; dedupe and metadata retention; synthetic extractor; review CAS exactly once with stale/forged guards; property four-field CAS/audit; atomic main-input save normal/conflict/non-writable rollback coverage");

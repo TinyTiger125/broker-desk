@@ -3771,13 +3771,11 @@ export async function saveCaseWorkbenchWithObjectReview(
   const { context } = input;
   return withTransaction(async (client) => {
     if (!(await databaseActorMatches(client, context.userId))) return { ok: false, reason: "case_not_writable" };
-    // Ordinary field saves must work with the baseline SELECT-only membership ACL.
-    // Keep the existing review lock until its wider locking/privilege contract is resolved.
     const membership = await client.query(
-      `SELECT 1 FROM tenant_memberships WHERE id=$1 AND tenant_id=$2 AND user_id=$3 AND status='active'${input.objectReview ? " FOR SHARE" : ""}`,
+      "SELECT brokerdesk_private.lock_case_review_membership($1,$2,$3) AS allowed",
       [context.membershipId, context.tenantId, context.userId],
     );
-    if (!membership.rows.length) return { ok: false, reason: "case_not_writable" };
+    if (!membership.rows[0]?.allowed) return { ok: false, reason: "case_not_writable" };
     const caseRows = await client.query(
       "SELECT * FROM brokerage_cases WHERE id=$1 AND tenant_id=$2 AND current_owner_user_id=$3 AND owner_resolution_status='resolved' FOR UPDATE",
       [input.caseId, context.tenantId, context.userId],
@@ -3845,7 +3843,8 @@ export async function saveCaseWorkbenchWithObjectReview(
        RETURNING *`,
       [input.caseId, context.tenantId, JSON.stringify(input.confirmedDataJson), context.userId],
     );
-    if (!result.rows[0]) return { ok: false, reason: "case_not_writable" };
+    // A rejected final write must roll back earlier object/candidate/audit writes.
+    if (!result.rows[0]) throw new Error("case_workbench_write_not_applied");
     return { ok: true, brokerageCase: mapBrokerageCase(result.rows[0]), objectReview };
   });
 }
@@ -6970,8 +6969,18 @@ export async function getObjectImportFeatureReadiness(): Promise<ObjectImportFea
         AND has_table_privilege(current_user, 'public.object_import_targets', 'UPDATE') AS targets_table_writable,
       has_table_privilege(current_user, 'public.object_import_fields', 'SELECT')
         AND has_table_privilege(current_user, 'public.object_import_fields', 'INSERT')
-        AND has_table_privilege(current_user, 'public.object_import_fields', 'UPDATE') AS fields_table_writable
+        AND has_table_privilege(current_user, 'public.object_import_fields', 'UPDATE') AS fields_table_writable,
+      to_regprocedure('brokerdesk_private.lock_case_review_membership(text,text,text)') AS membership_lock,
+      to_regprocedure('brokerdesk_private.lock_case_review_source(text,text,text,text)') AS source_lock
   `);
+  if (!privileges.rows[0]?.membership_lock || !privileges.rows[0]?.source_lock) {
+    return { ready: false, reason: "migration_required" };
+  }
+  const helperPrivileges = await db.query(`SELECT
+    has_function_privilege(current_user, 'brokerdesk_private.lock_case_review_membership(text,text,text)', 'EXECUTE')
+      AND has_function_privilege(current_user, 'brokerdesk_private.lock_case_review_source(text,text,text,text)', 'EXECUTE') AS allowed
+  `);
+  if (!helperPrivileges.rows[0]?.allowed) return { ready: false, reason: "permissions_incomplete" };
   return resolveObjectImportFeatureReadiness({
     migrationApplied: migration.rows.length > 0,
     targetsTablePresent,
@@ -6992,8 +7001,7 @@ export const listObjectImportCandidates = (input: Parameters<PostgresObjectImpor
 
 async function hasObjectImportSource(client: PoolClient, target: ReturnType<typeof mapObjectImportTarget>, field: ReturnType<typeof mapObjectImportCandidate>): Promise<boolean> {
   if (!target.sourceAttachmentId || field.provenance.sourceAttachmentId !== target.sourceAttachmentId) return false;
-  const source = await client.query(`SELECT b.sha256 FROM attachments a JOIN private_attachment_blobs b ON b.attachment_id=a.id AND b.tenant_id=a.tenant_id
-    WHERE a.id=$1 AND a.tenant_id=$2 AND a.user_id=$3 AND a.target_type='import_job' AND a.target_id=$4 AND octet_length(b.content)>0 FOR SHARE OF a,b`, [target.sourceAttachmentId,target.tenantId,target.userId,target.importJobId]);
+  const source = await client.query("SELECT brokerdesk_private.lock_case_review_source($1,$2,$3,$4) AS sha256", [target.sourceAttachmentId,target.tenantId,target.userId,target.importJobId]);
   return Boolean(source.rows[0] && source.rows[0].sha256 === field.provenance.sourceFileHash);
 }
 
@@ -7001,13 +7009,18 @@ export async function reviewObjectImportCandidate(input: ObjectImportReviewInput
   const { context } = input;
   return withTransaction(async (client) => {
     if (!await databaseActorMatches(client, context.userId)) return { ok: false, reason: "not_writable" };
-    const membership = await client.query("SELECT 1 FROM tenant_memberships WHERE id=$1 AND tenant_id=$2 AND user_id=$3 AND status='active' FOR SHARE", [context.membershipId, context.tenantId, context.userId]);
-    if (!membership.rows.length) return { ok: false, reason: "not_writable" };
+    const membership = await client.query("SELECT brokerdesk_private.lock_case_review_membership($1,$2,$3) AS allowed", [context.membershipId, context.tenantId, context.userId]);
+    if (!membership.rows[0]?.allowed) return { ok: false, reason: "not_writable" };
+    // Match the combined-save lock order: membership → case → target → object → field → source.
+    const targetHint = await client.query("SELECT case_id FROM object_import_targets WHERE id=$1 AND tenant_id=$2 AND user_id=$3", [input.targetId, context.tenantId, context.userId]);
+    if (!targetHint.rows[0]) return { ok: false, reason: "not_writable" };
+    const caseRows = await client.query("SELECT * FROM brokerage_cases WHERE id=$1 AND tenant_id=$2 FOR UPDATE", [targetHint.rows[0].case_id, context.tenantId]);
+    if (!caseRows.rows[0]) return { ok: false, reason: "not_writable" };
     const targetRows = await client.query("SELECT * FROM object_import_targets WHERE id=$1 AND tenant_id=$2 AND user_id=$3 FOR UPDATE", [input.targetId, context.tenantId, context.userId]);
     if (!targetRows.rows[0]) return { ok: false, reason: "not_writable" };
     const target = mapObjectImportTarget(targetRows.rows[0]);
+    if (target.caseId !== targetHint.rows[0].case_id) return { ok: false, reason: "not_writable" };
     if (target.targetType !== "party" && target.targetType !== "property") return { ok: false, reason: "unsupported_target" };
-    const caseRows = await client.query("SELECT * FROM brokerage_cases WHERE id=$1 AND tenant_id=$2 FOR SHARE", [target.caseId, context.tenantId]);
     const table = target.targetType === "party" ? "clients" : "properties";
     const personRows = await client.query(`SELECT * FROM ${table} WHERE id=$1 AND tenant_id=$2 FOR UPDATE`, [target.targetId, context.tenantId]);
     const fieldRows = await client.query("SELECT * FROM object_import_fields WHERE id=$1 AND object_import_target_id=$2 AND tenant_id=$3 FOR UPDATE", [input.fieldId, target.id, context.tenantId]);
