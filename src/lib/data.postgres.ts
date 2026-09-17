@@ -3771,8 +3771,10 @@ export async function saveCaseWorkbenchWithObjectReview(
   const { context } = input;
   return withTransaction(async (client) => {
     if (!(await databaseActorMatches(client, context.userId))) return { ok: false, reason: "case_not_writable" };
+    // Ordinary field saves must work with the baseline SELECT-only membership ACL.
+    // Keep the existing review lock until its wider locking/privilege contract is resolved.
     const membership = await client.query(
-      "SELECT 1 FROM tenant_memberships WHERE id=$1 AND tenant_id=$2 AND user_id=$3 AND status='active' FOR SHARE",
+      `SELECT 1 FROM tenant_memberships WHERE id=$1 AND tenant_id=$2 AND user_id=$3 AND status='active'${input.objectReview ? " FOR SHARE" : ""}`,
       [context.membershipId, context.tenantId, context.userId],
     );
     if (!membership.rows.length) return { ok: false, reason: "case_not_writable" };
