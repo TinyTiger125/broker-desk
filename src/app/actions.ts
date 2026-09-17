@@ -3695,6 +3695,9 @@ export async function createBlankBrokerageCaseAction(
   const primaryParty = primaryPartyId
     ? partyResults[associationDraft.parties.findIndex((party) => party.partyId === primaryPartyId)]?.record
     : undefined;
+  if (primaryPartyId && !primaryParty?.name?.trim()) {
+    throw new Error("主要申请人资料缺少姓名，无法保存关联。");
+  }
   const primaryProperty = propertyResult?.record;
   const today = formatCaseTitleDate(new Date());
   const defaultTitle = tr(locale, {

@@ -178,6 +178,7 @@ function getBusinessFieldLabel(locale: Locale, fieldKey: string) {
 function getOutputBlockerLabel(locale: Locale, code: string) {
   const labels: Record<string, Record<Locale, string>> = {
     required_fields_missing: { ja: "必須情報が未入力", zh: "必填信息未填写", ko: "필수 정보가 비어 있음" },
+    associations_missing: { ja: "案件の関連付けが未完了", zh: "案件关联未完成", ko: "안건 연결이 완료되지 않음" },
     draft_required_missing: { ja: "申込書の追加情報が未入力", zh: "申请书追加信息未填写", ko: "신청서 추가 정보가 비어 있음" },
     template_not_verified: { ja: "テンプレートの確認が必要", zh: "模板仍需确认", ko: "템플릿 확인 필요" },
     candidate_fields_unconfirmed: { ja: "候補入力の確認が必要", zh: "候选输入仍需处理", ko: "후보 입력 확인 필요" },
@@ -190,6 +191,7 @@ function getOutputBlockerLabel(locale: Locale, code: string) {
 function getOutputBlockerMessage(locale: Locale, code: string) {
   const messages: Record<string, Record<Locale, string>> = {
     required_fields_missing: { ja: "案件の必須情報を補ってください。", zh: "请补齐案件必填信息。", ko: "안건의 필수 정보를 보완해 주세요." },
+    associations_missing: { ja: "主たる申込人と主たる物件を案件で確認してください。", zh: "请在案件中确认主要申请人和主要物件关联。", ko: "안건에서 주요 신청인과 주요 매물 연결을 확인해 주세요." },
     draft_required_missing: { ja: "申込書の追加情報を補ってください。", zh: "请补齐申请书追加信息。", ko: "신청서 추가 정보를 보완해 주세요." },
     template_not_verified: { ja: "テンプレートを確認してから出力してください。", zh: "请先确认模板，再进行输出。", ko: "템플릿을 확인한 뒤 출력해 주세요." },
     candidate_fields_unconfirmed: { ja: "候補入力を申込書プレビューで確認してください。", zh: "请在申请书预览中处理候选输入。", ko: "신청서 미리보기에서 후보 입력을 확인해 주세요." },

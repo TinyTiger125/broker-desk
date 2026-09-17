@@ -34,6 +34,11 @@ require.extensions[".ts"] = compileTypeScript;
 require.extensions[".tsx"] = compileTypeScript;
 
 const { writeCaseAssociationData } = require(resolve(root, "src/lib/case-associations.ts"));
+const actionsSource = readFileSync(resolve(root, "src/app/actions.ts"), "utf8");
+assert(
+  actionsSource.includes('if (primaryPartyId && !primaryParty?.name?.trim())'),
+  "association action rejects a primary party with an empty name instead of retaining the old name",
+);
 
 const party = (partyId, roles) => ({ partyId, roles });
 

@@ -15,9 +15,11 @@ import {
   type GuaranteeCompanyTemplate,
   type GuaranteeReadinessField,
 } from "@/lib/guarantee-application";
+import { readCaseAssociationDraft, getPrimaryPartyId } from "@/lib/case-associations";
 
 export type GuaranteeDownloadBlockedReasonCode =
   | "required_fields_missing"
+  | "associations_missing"
   | "draft_required_missing"
   | "template_not_verified"
   | "candidate_fields_unconfirmed"
@@ -231,7 +233,34 @@ export function evaluateGuaranteeDownloadGate(input: {
           status: template.qualityStatus,
           actionUrl: previewUrl,
           destination: "preview",
-        }];
+      }];
+
+  const associationDraft = readCaseAssociationDraft(brokerageCase.confirmedDataJson);
+  const hasAssociationPayload = [
+    "__caseAssociationVersion",
+    "__associatedParties",
+    "__primaryPartyId",
+    "__primaryPropertyId",
+  ].some((key) => Object.prototype.hasOwnProperty.call(brokerageCase.confirmedDataJson, key));
+  const associationFields: GuaranteeDownloadFieldIssue[] = [];
+  if (hasAssociationPayload && !getPrimaryPartyId(associationDraft)) {
+    associationFields.push({
+      fieldKey: "__primaryPartyId",
+      label: "主要申请人关联",
+      status: "missing",
+      actionUrl: workbenchUrl,
+      destination: "workbench",
+    });
+  }
+  if (hasAssociationPayload && !(associationDraft.primaryPropertyId || brokerageCase.primaryPropertyId)) {
+    associationFields.push({
+      fieldKey: "__primaryPropertyId",
+      label: "主要物件关联",
+      status: "missing",
+      actionUrl: workbenchUrl,
+      destination: "workbench",
+    });
+  }
 
   const blockedReasons = [
     makeReason({
@@ -240,6 +269,13 @@ export function evaluateGuaranteeDownloadGate(input: {
       message: "案件ワークベンチで共通の必須項目を補ってください。",
       actionUrl: workbenchUrl,
       fields: caseRequiredFields,
+    }),
+    makeReason({
+      code: "associations_missing",
+      label: "案件关联未完成",
+      message: "请在案件中确认主要申请人和主要物件关联。",
+      actionUrl: workbenchUrl,
+      fields: associationFields,
     }),
     makeReason({
       code: "draft_required_missing",
