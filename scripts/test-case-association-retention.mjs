@@ -35,9 +35,14 @@ require.extensions[".tsx"] = compileTypeScript;
 
 const { writeCaseAssociationData } = require(resolve(root, "src/lib/case-associations.ts"));
 const actionsSource = readFileSync(resolve(root, "src/app/actions.ts"), "utf8");
+const associationActionSource = actionsSource.slice(actionsSource.indexOf("export async function saveCaseAssociationsAction"));
 assert(
-  actionsSource.includes('if (primaryPartyId && !primaryParty?.name?.trim())'),
+  associationActionSource.includes('if (primaryPartyId && !primaryParty?.name?.trim())'),
   "association action rejects a primary party with an empty name instead of retaining the old name",
+);
+assert(
+  associationActionSource.indexOf('if (primaryPartyId && !primaryParty?.name?.trim())') < associationActionSource.indexOf("updateBrokerageCaseConfirmedData"),
+  "empty-name rejection occurs before the association update write",
 );
 
 const party = (partyId, roles) => ({ partyId, roles });

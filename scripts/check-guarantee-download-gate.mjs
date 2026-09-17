@@ -180,6 +180,7 @@ const summaries = guaranteeCompanyTemplates
     });
     assert(!associationIncompleteGate.canDownload, `${template.id}: missing primary association must block download`);
     assert(associationIncompleteGate.blockedReasons.some((reason) => reason.code === "associations_missing"), `${template.id}: missing primary association should be visible`);
+    assert(associationIncompleteGate.missingFields.some((field) => field.fieldKey === "__primaryPartyId"), `${template.id}: association blocker should be included in API missing fields`);
 
     const associationCompleteGate = evaluateGuaranteeDownloadGate({
       brokerageCase: baseCase({

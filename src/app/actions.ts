@@ -3796,6 +3796,9 @@ export async function saveCaseAssociationsAction(formData: FormData) {
   const primaryParty = primaryPartyId
     ? partyResults[associationDraft.parties.findIndex((party) => party.partyId === primaryPartyId)]?.record
     : undefined;
+  if (primaryPartyId && !primaryParty?.name?.trim()) {
+    throw new Error("主要申请人资料缺少姓名，无法保存关联。");
+  }
   const previousPrimaryPartyId = getPrimaryPartyId(readCaseAssociationDraft(brokerageCase.confirmedDataJson));
   const previousPrimaryPartyResult = previousPrimaryPartyId && previousPrimaryPartyId !== primaryPartyId
     ? await resolveClientVisibilityForContext({ context: requestContext, clientId: previousPrimaryPartyId })

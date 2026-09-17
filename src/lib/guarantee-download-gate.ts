@@ -317,7 +317,7 @@ export function evaluateGuaranteeDownloadGate(input: {
   return {
     canDownload: blockedReasons.length === 0,
     blockedReasons,
-    missingFields: [...caseRequiredFields, ...draftRequiredFields],
+    missingFields: [...caseRequiredFields, ...draftRequiredFields, ...associationFields],
     previewUrl,
     workbenchUrl,
     draftUrl,
