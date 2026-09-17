@@ -13,7 +13,8 @@ if (!page.includes("initialValue={objectImportBinding?.candidateValue ?? field.v
 if (!page.includes("value={objectImportBinding?.candidateValue ?? field.value}")) throw new Error("row input must display the candidate or saved value");
 if (!page.includes('saveButtonAriaLabel={`${getShortWorkbenchFieldLabel(field)}を確認して保存`}')) throw new Error("row confirm action needs an explicit accessible save label");
 if (!page.includes('saveButtonWrapperClassName="col-start-4 row-start-1')) throw new Error("row save action must stay in the operation column");
-if (!page.includes("<WorkbenchDecisionSelect locale={locale} field={field} flush />")) throw new Error("secondary decision controls must remain available per row");
+if (page.includes("资料候补・判定") || page.includes("<WorkbenchDecisionSelect")) throw new Error("row editing must not render a second candidate decision panel");
+if (!page.includes("fieldNeedsAttention(field)")) throw new Error("low-confidence and conflict fields must retain their inline state marker");
 if (!form.includes("saveButtonAriaLabel")) throw new Error("field form must expose an accessible save label");
 if (!form.includes('name="fieldValueSnapshot"')) throw new Error("field form must carry a same-control value snapshot");
 if (!form.includes("fieldValueSnapshotRef.current.value = target.value")) throw new Error("value snapshot must follow input events");

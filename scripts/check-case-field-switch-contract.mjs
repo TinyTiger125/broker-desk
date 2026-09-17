@@ -12,11 +12,11 @@ if (!pageSource.includes("initialValue={objectImportBinding?.candidateValue ?? f
 if (!pageSource.includes("value={objectImportBinding?.candidateValue ?? field.value}")) {
   throw new Error("the visible main input must use the candidate-or-saved-value contract");
 }
-if (!pageSource.includes("<WorkbenchDecisionSelect locale={locale} field={field} flush />")) {
-  throw new Error("low-confidence and conflict fields must retain an inline decision control");
+if (pageSource.includes("资料候补・判定") || pageSource.includes("<WorkbenchDecisionSelect")) {
+  throw new Error("the field row must not render a second candidate decision panel");
 }
-if (!pageSource.includes("<CaseEvidenceSummary") || !pageSource.includes("field.evidenceItems")) {
-  throw new Error("field evidence must remain visible beside the main input");
+if (!pageSource.includes("fieldNeedsAttention(field)")) {
+  throw new Error("low-confidence and conflict fields must retain their inline state marker");
 }
 
 if (!pageSource.includes('fieldKey.endsWith(".email")')) {

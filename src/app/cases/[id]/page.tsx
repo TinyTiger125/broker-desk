@@ -4,7 +4,7 @@ import { createClientFormAction, createPropertyQuickAction, rollbackCaseMergeAct
 import { ArchiveRecordButton } from "@/components/archive-record-button";
 import { CaseWorkbenchFieldForm } from "@/components/case-workbench-field-form";
 import { CaseAssociationManager } from "@/components/case-association-manager";
-import { CaseEvidenceSummary, CaseFieldInput, CaseFieldState, CaseFieldValue, CaseIdentityHeader, CaseOverview, type CaseOverviewOutputBlocker, type CaseOverviewSection } from "@/components/case-overview";
+import { CaseFieldInput, CaseFieldState, CaseFieldValue, CaseIdentityHeader, CaseOverview, type CaseOverviewOutputBlocker, type CaseOverviewSection } from "@/components/case-overview";
 import { PageFlashBanner } from "@/components/page-flash-banner";
 import { getBrokerageCaseByIdForContext, getGuaranteeApplicationDraft, listCaseWorkbenchFieldRules, listClientsForContext, listExtractionReviewItems, listPropertiesForContext, listTenantGuaranteeTemplateInstalls, resolveClientVisibilityForContext, resolvePropertyVisibilityForContext } from "@/lib/data";
 import type { ExtractionReviewItem, ExtractionReviewStatus } from "@/lib/data";
@@ -197,16 +197,6 @@ function getOutputBlockerMessage(locale: Locale, code: string) {
     print_fit_blocked: { ja: "長い文字列や桁数超過をプレビューで調整してください。", zh: "请在预览中调整过长文字或超出位数。", ko: "미리보기에서 긴 문자열이나 자릿수 초과를 조정해 주세요." },
   };
   return messages[code]?.[locale] ?? tr(locale, { ja: "対応してからダウンロードしてください。", zh: "请处理后再下载。", ko: "처리한 뒤 다운로드해 주세요." });
-}
-
-function getWorkbenchDecisionLabel(locale: Locale, decision: WorkbenchFieldDecision) {
-  const labels: Record<WorkbenchFieldDecision, Record<Locale, string>> = {
-    confirmed: { ja: "確認済みにする", zh: "确认无误", ko: "확인 완료" },
-    unknown: { ja: "確認できない", zh: "暂时无法确认", ko: "확인 불가" },
-    rejected: { ja: "使わない", zh: "不采用", ko: "사용 안 함" },
-    not_applicable: { ja: "該当なし", zh: "不适用", ko: "해당 없음" },
-  };
-  return labels[decision][locale];
 }
 
 function getWorkbenchFieldInputSpec(fieldKey: string): WorkbenchFieldInputSpec {
@@ -444,22 +434,6 @@ function buildWorkbenchField(input: {
     requirement,
     inputSpec: getWorkbenchFieldInputSpec(input.fieldKey),
   };
-}
-
-function WorkbenchDecisionSelect({ locale, field, flush = false }: { locale: Locale; field: WorkbenchField; flush?: boolean }) {
-  return (
-    <select
-      name={`status:${field.fieldKey}`}
-      defaultValue={field.decision}
-      className={`${flush ? "" : "mt-3"} h-12 w-full rounded-md border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100`}
-    >
-      {(["confirmed", "unknown", "not_applicable", "rejected"] as WorkbenchFieldDecision[]).map((decision) => (
-        <option key={decision} value={decision}>
-          {getWorkbenchDecisionLabel(locale, decision)}
-        </option>
-      ))}
-    </select>
-  );
 }
 
 function getPrimaryEvidence(field: WorkbenchField) {
@@ -1272,13 +1246,6 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                                   tone={fieldNeedsAttention(field) ? "attention" : "default"}
                                 />
                                 {objectImportBinding ? <input type="hidden" name="objectImportReviewJson" value={JSON.stringify({ ...objectImportBinding, caseFieldKey: field.fieldKey })} readOnly /> : null}
-                                <details className="mt-2 text-[11px]">
-                                  <summary className="cursor-pointer font-bold text-blue-700">{tr(locale, { ja: "資料候補・判定", zh: "资料候选与判定", ko: "자료 후보 및 판정" })}</summary>
-                                  <div className="mt-2 space-y-2">
-                                    <CaseEvidenceSummary locale={locale} title={tr(locale, { ja: "資料内容", zh: "资料内容", ko: "자료 내용" })} evidenceItems={field.evidenceItems} currentValue={field.value} candidateFieldKey={field.fieldKey} />
-                                    <WorkbenchDecisionSelect locale={locale} field={field} flush />
-                                  </div>
-                                </details>
                               </span>
                             </CaseWorkbenchFieldForm>
                           );
