@@ -1,4 +1,5 @@
-import { createObjectImportTarget, getObjectImportTargetByJob, upsertObjectImportCandidate, updateObjectImportTarget } from "@/lib/data";
+import { createHash } from "node:crypto";
+import { listAttachments, readPrivateAttachmentContent, createObjectImportTarget, getObjectImportTargetByJob, upsertObjectImportCandidate, updateObjectImportTarget } from "@/lib/data";
 import type { ImportJob } from "@/lib/data";
 import type { ObjectImportCandidateRecord, ObjectImportRepository } from "@/lib/object-import-repository";
 import { parseObjectImportNotes, normalizeObjectImportFieldKey } from "@/lib/object-import-contract";
@@ -14,6 +15,12 @@ export async function ensureObjectImportTask(job: ImportJob, scope: { tenantId: 
   const metadata = parseObjectImportNotes(job.notes);
   if (!metadata) return null;
   if (job.tenantId !== scope.tenantId || job.userId !== scope.userId) throw new Error("object_import_job_scope_mismatch");
+  const sources = await listAttachments({ ...scope, targetType: "import_job", targetId: job.id, limit: 2 });
+  if (sources.length !== 1) throw new Error("object_import_source_attachment_required");
+  const source = sources[0];
+  if (metadata.sourceAttachmentId && metadata.sourceAttachmentId !== source.id) throw new Error("object_import_source_attachment_mismatch");
+  const content = await readPrivateAttachmentContent({ ...scope, id: source.id });
+  if (!content?.length) throw new Error("object_import_source_attachment_unreadable");
   const existing = await getObjectImportTargetByJob({ ...scope, importJobId: job.id });
   if (existing) {
     // Object metadata is immutable once the upload target exists. Generic
@@ -24,7 +31,7 @@ export async function ensureObjectImportTask(job: ImportJob, scope: { tenantId: 
       existing.targetType !== metadata.targetObjectType ||
       existing.targetId !== metadata.targetObjectId ||
       existing.targetVersion !== metadata.targetVersion ||
-      existing.sourceAttachmentId !== metadata.sourceAttachmentId
+      existing.sourceAttachmentId !== source.id
     ) {
       throw new Error("object_import_metadata_mutated");
     }
@@ -34,17 +41,18 @@ export async function ensureObjectImportTask(job: ImportJob, scope: { tenantId: 
   return createObjectImportTarget({
     ...scope, id: `object_${job.id}`, caseId: metadata.caseId, importJobId: job.id,
     targetType: metadata.targetObjectType, targetId: metadata.targetObjectId, targetVersion: metadata.targetVersion,
-    sourceAttachmentId: metadata.sourceAttachmentId, status: "queued", idempotencyKey: job.idempotencyKey ?? `job:${job.id}`,
+    sourceAttachmentId: source.id, status: "queued", idempotencyKey: job.idempotencyKey ?? `job:${job.id}`,
     attemptCount: 0, createdAt: date, updatedAt: date,
   });
 }
 
-export async function persistObjectExtraction(input: { repository?: Pick<ObjectImportRepository, "upsertCandidate">; target: { id: string; tenantId: string }; fields: ExtractedObjectField[] }) {
+export async function persistObjectExtraction(input: { repository?: Pick<ObjectImportRepository, "upsertCandidate">; target: { id: string; tenantId: string; sourceAttachmentId: string }; sourceFileHash: string; fields: ExtractedObjectField[] }) {
+  if (!input.target.sourceAttachmentId || !input.sourceFileHash) throw new Error("object_import_source_attachment_required");
   const candidates = input.fields.map((field): ObjectImportCandidateRecord => ({
     id: `candidate_${input.target.id}_${field.fieldKey}`,
     tenantId: input.target.tenantId, targetId: input.target.id, fieldKey: field.fieldKey,
     candidateValue: field.normalizedValue ?? field.value, confidence: field.confidence,
-    provenance: { sourceSheet: field.sourceSheet, sourceCell: field.sourceCell, sourceRange: field.sourceRange, method: field.method, sourceFileHash: field.sourceFileHash, templateVersion: field.templateVersion },
+    provenance: { sourceAttachmentId: input.target.sourceAttachmentId, sourceSheet: field.sourceSheet, sourceCell: field.sourceCell, sourceRange: field.sourceRange, method: field.method, sourceFileHash: input.sourceFileHash, templateVersion: field.templateVersion },
     finalValue: field.normalizedValue ?? field.value, finalSource: "model_draft",
     status: field.confidence < 0.8 ? "low_confidence" : "draft",
   }));
@@ -56,6 +64,10 @@ export async function persistObjectExtraction(input: { repository?: Pick<ObjectI
 export async function persistObjectImportJobExtraction(input: { job: ImportJob; tenantId: string; userId: string; fields: ExtractedObjectField[] }) {
   const target = await ensureObjectImportTask(input.job, input);
   if (!target) return null; // Existing non-object imports retain their original path.
+  if (!target.sourceAttachmentId) throw new Error("object_import_source_attachment_required");
+  const content = await readPrivateAttachmentContent({ tenantId: input.tenantId, userId: input.userId, id: target.sourceAttachmentId });
+  if (!content?.length) throw new Error("object_import_source_attachment_unreadable");
+  const sourceFileHash = createHash("sha256").update(content).digest("hex");
   const selected = input.fields.flatMap((field) => {
     // A document may contain several people. Only applicant fields belong to this identity source.
     const prefix = field.fieldKey.includes(".") ? field.fieldKey.split(".")[0] : null;
@@ -64,7 +76,7 @@ export async function persistObjectImportJobExtraction(input: { job: ImportJob; 
   });
   if (new Set(selected.map((field) => field.fieldKey)).size !== selected.length) throw new Error("object_import_ambiguous_fields");
   await updateObjectImportTarget({ tenantId: input.tenantId, userId: input.userId, id: target.id, status: "processing", attemptCount: target.attemptCount + 1 });
-  const candidates = await persistObjectExtraction({ target, fields: selected });
+  const candidates = await persistObjectExtraction({ target: { ...target, sourceAttachmentId: target.sourceAttachmentId }, sourceFileHash, fields: selected });
   await updateObjectImportTarget({ tenantId: input.tenantId, userId: input.userId, id: target.id, status: candidates.length ? candidates.every((field) => field.finalSource === "human") ? "completed" : "needs_review" : "failed", errorCode: candidates.length ? undefined : "object_import_no_supported_fields", errorSummary: candidates.length ? undefined : "No supported fields were extracted." });
   return candidates;
 }

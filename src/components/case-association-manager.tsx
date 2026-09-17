@@ -29,6 +29,7 @@ type CaseAssociationManagerProps = {
   createPropertyAction?: CreateAction<PropertyFormActionState>;
   objectImportViews?: ObjectImportView[];
   objectImportUploadAction?: (formData: FormData) => Promise<void>;
+  objectImportUnavailable?: boolean;
 };
 
 const copy = {
@@ -67,6 +68,7 @@ const copy = {
     replacePropertyConfirm: "この案件の主たる物件を変更しますか？",
     removePropertyConfirm: "主たる物件を解除すると、案件に主たる物件がない状態になります。続けますか？",
     quickCreateFeedback: "主資料を作成し、案件に追加しました。",
+    objectImportUnavailable: "オブジェクト資料の解析はまだ利用できません。既存の案件資料は引き続き編集できます。",
   },
   zh: {
     close: "关闭",
@@ -103,6 +105,7 @@ const copy = {
     replacePropertyConfirm: "更换本案件的主要物件？",
     removePropertyConfirm: "解除主要物件后，案件暂时没有主要物件。继续吗？",
     quickCreateFeedback: "主资料已创建，并已加入案件。",
+    objectImportUnavailable: "对象资料解析暂不可用；现有案件资料仍可继续编辑。",
   },
   ko: {
     close: "닫기",
@@ -139,6 +142,7 @@ const copy = {
     replacePropertyConfirm: "이 안건의 주요 매물을 변경할까요?",
     removePropertyConfirm: "주요 매물을 해제하면 안건에 주요 매물이 없는 상태가 됩니다. 계속할까요?",
     quickCreateFeedback: "기본 자료를 만들고 안건에 추가했습니다.",
+    objectImportUnavailable: "객체 자료 분석을 아직 사용할 수 없습니다. 기존 안건 자료는 계속 편집할 수 있습니다.",
   },
 } as const;
 
@@ -155,6 +159,7 @@ export function CaseAssociationManager({
   createPropertyAction,
   objectImportViews = [],
   objectImportUploadAction,
+  objectImportUnavailable = false,
 }: CaseAssociationManagerProps) {
   const text = copy[locale];
   const [parties, setParties] = useState(initialParties);
@@ -245,7 +250,7 @@ export function CaseAssociationManager({
     const fields = view?.fields ?? [];
     return (
       <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-2" data-object-import-target={`${targetType}:${targetId}`}>
-        {view ? <div className="flex items-center gap-2 text-[11px] font-bold text-slate-600"><ObjectImportStatusBadge status={view.target.status} /><span>{fields.length} {locale === "zh" ? "个候选字段" : locale === "ja" ? "候補項目" : "후보 항목"}</span></div> : null}
+        {view ? <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold text-slate-600"><ObjectImportStatusBadge status={view.target.status} /><span>{fields.length} {locale === "zh" ? "个候选字段" : locale === "ja" ? "候補項目" : "후보 항목"}</span>{view.target.sourceAttachmentId ? <a href={`/api/attachments/${encodeURIComponent(view.target.sourceAttachmentId)}`} target="_blank" rel="noreferrer" className="text-[#0046ad] underline">{locale === "zh" ? "查看来源" : locale === "ja" ? "出典を見る" : "출처 보기"}</a> : null}</div> : null}
         {fields.map((field) => <div key={field.id} className={`mt-1 flex flex-wrap items-center gap-1.5 text-xs ${field.status === "conflict" ? "text-rose-700" : field.status === "low_confidence" ? "text-amber-700" : "text-slate-700"}`}><span className="font-bold">{field.fieldKey}</span>{field.candidateValue ? <span className="truncate">{field.candidateValue}</span> : null}{field.status === "conflict" ? <span className="font-bold">{locale === "zh" ? "资料不同" : "資料が一致しません"}</span> : field.status === "low_confidence" ? <span className="font-bold">{locale === "zh" ? "需要核对" : "確認してください"}</span> : null}</div>)}
         {objectImportUploadAction && !readOnly ? <ObjectImportUpload action={objectImportUploadAction} caseId={caseId} targetType={targetType} targetId={targetId} /> : null}
       </div>
@@ -257,6 +262,7 @@ export function CaseAssociationManager({
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5" aria-labelledby="case-association-heading">
       <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 id="case-association-heading" className="text-base font-black text-slate-950">{text.title}</h2><p className="mt-1 text-xs font-semibold text-slate-500">{text.description}</p></div>{!readOnly ? <button type="button" data-case-association-focus-target onClick={(event) => { focusReturnRef.current = event.currentTarget; openPersonDrawer(); }} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0046ad]">{text.addPerson}</button> : null}</div>
+      {objectImportUnavailable ? <p role="status" className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">{text.objectImportUnavailable}</p> : null}
       <div className="mt-4 grid items-stretch gap-5 md:grid-cols-2">
         <div className="flex min-w-0 flex-col gap-3"><div className="flex min-h-11 items-center"><h3 className="text-sm font-black text-slate-900">{text.people} ({parties.length})</h3></div>{parties.length === 0 ? <p className="min-h-20 rounded-lg bg-slate-50 px-3 py-3 text-sm text-slate-500">{text.peopleEmpty}</p> : <div className="space-y-2">{parties.map((party) => <div key={party.partyId} className="flex min-h-20 items-start justify-between gap-3 rounded-lg border border-slate-200 px-3 py-3"><div className="min-w-0"><p className="break-words text-sm font-bold text-slate-900 [overflow-wrap:anywhere]">{party.name}</p><div className="mt-1 flex flex-wrap gap-1.5">{party.roles.map((role) => <span key={role} className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-700">{getCasePersonRoleLabel(locale, role)}</span>)}</div>{renderObjectImport("party", party.partyId)}</div>{!readOnly ? <button type="button" data-case-association-focus-target onClick={(event) => { focusReturnRef.current = event.currentTarget; editPerson(party); }} className="inline-flex min-h-11 shrink-0 items-center rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700">{text.editRoles}</button> : null}</div>)}</div>}</div>
         <div className="flex min-w-0 flex-col gap-3"><div className="flex min-h-11 items-center justify-between gap-2"><h3 className="text-sm font-black text-slate-900">{text.property} ({primaryPropertyId ? 1 : 0})</h3>{!readOnly ? <button type="button" data-case-association-focus-target onClick={(event) => { focusReturnRef.current = event.currentTarget; setDrawer("property"); setDrawerView("select"); setSelectionError(undefined); }} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-3 py-2 text-xs font-black text-slate-700">{primaryPropertyId ? text.changeProperty : text.setProperty}</button> : null}</div>{currentProperty ? <div className="flex min-h-20 items-start justify-between gap-3 rounded-lg border border-slate-200 px-3 py-3"><div className="min-w-0"><p className="break-words text-sm font-bold text-slate-900 [overflow-wrap:anywhere]">{currentProperty.name}</p>{currentProperty.address ? <p className="mt-1 break-words text-xs text-slate-500 [overflow-wrap:anywhere]">{currentProperty.address}</p> : null}{renderObjectImport("property", currentProperty.id)}</div>{!readOnly ? <button type="button" onClick={removeProperty} className="inline-flex min-h-11 shrink-0 items-center rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700">{text.removeProperty}</button> : null}</div> : <p className="min-h-20 rounded-lg bg-slate-50 px-3 py-3 text-sm text-slate-500">{text.propertyEmpty}</p>}</div>

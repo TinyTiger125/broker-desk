@@ -1,5 +1,5 @@
 import { validateObjectImportReview, type ObjectImportReviewInput, type ObjectImportReviewResult } from "@/lib/object-import-review";
-import { buildObjectVersionFingerprint } from "@/lib/object-import-contract";
+import { buildObjectVersionFingerprint, type ObjectImportFeatureReadiness } from "@/lib/object-import-contract";
 import { readCaseAssociationDraft } from "@/lib/case-associations";
 import { MemoryObjectImportRepository } from "@/lib/object-import-repository.memory";
 import type { ObjectImportTargetRecord, ObjectImportCandidateRecord } from "@/lib/object-import-repository";
@@ -15,7 +15,7 @@ import {
   type TaskStatus,
   type Temperature,
 } from "@/lib/domain";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import { countTenantSeatUsage, deriveTenantServiceState, isTenantServiceOperational, membershipOccupiesSeat, validateTenantServicePeriod } from "@/lib/tenant-service";
 import { buildFollowUpPriorityList } from "@/lib/followup-priority";
 import type { Locale } from "@/lib/locale";
@@ -6382,6 +6382,9 @@ export async function resolveCaseVisibilityForContext(input: {
 function objectImportRepository() {
   return new MemoryObjectImportRepository(db.objectImportTargets, db.objectImportCandidates);
 }
+export async function getObjectImportFeatureReadiness(): Promise<ObjectImportFeatureReadiness> {
+  return { ready: true };
+}
 export const getObjectImportTarget = (input: Parameters<MemoryObjectImportRepository["getTarget"]>[0]) => objectImportRepository().getTarget(input);
 export const getObjectImportTargetByJob = (input: Parameters<MemoryObjectImportRepository["getTargetByJob"]>[0]) => objectImportRepository().getTargetByJob(input);
 export const listObjectImportTargets = (input: Parameters<MemoryObjectImportRepository["listTargets"]>[0]) => objectImportRepository().listTargets(input);
@@ -6389,6 +6392,12 @@ export const createObjectImportTarget = (input: Parameters<MemoryObjectImportRep
 export const updateObjectImportTarget = (input: Parameters<MemoryObjectImportRepository["updateTarget"]>[0]) => objectImportRepository().updateTarget(input);
 export const upsertObjectImportCandidate = (input: Parameters<MemoryObjectImportRepository["upsertCandidate"]>[0]) => objectImportRepository().upsertCandidate(input);
 export const listObjectImportCandidates = (input: Parameters<MemoryObjectImportRepository["listCandidates"]>[0]) => objectImportRepository().listCandidates(input);
+
+function hasObjectImportSource(target: ObjectImportTargetRecord, field: ObjectImportCandidateRecord): boolean {
+  const attachment = db.attachments.find((item) => item.id === target.sourceAttachmentId && item.tenantId === target.tenantId && item.userId === target.userId && item.targetType === "import_job" && item.targetId === target.importJobId);
+  const content = attachment ? privateAttachmentContents.get(attachment.id) : undefined;
+  return Boolean(attachment && content?.length && field.provenance.sourceAttachmentId === attachment.id && field.provenance.sourceFileHash === createHash("sha256").update(content).digest("hex"));
+}
 
 /** No await between checking the version and mutating the shared memory holder. */
 export async function reviewObjectImportCandidate(input: ObjectImportReviewInput): Promise<ObjectImportReviewResult> {
@@ -6400,6 +6409,7 @@ export async function reviewObjectImportCandidate(input: ObjectImportReviewInput
   const person = (target.targetType === "party" ? db.clients : db.properties).find((item) => item.id === target.targetId && item.tenantId === context.tenantId);
   const membership = db.tenantMemberships.find((item) => item.id === context.membershipId && item.userId === context.userId && item.tenantId === context.tenantId && item.status === "active");
   if (!membership || !caseItem || !person || caseItem.lifecycleStatus === "archived" || person.lifecycleStatus === "archived" || !resolveRecordVisibility(context, caseItem).canWrite || !resolveRecordVisibility(context, person).canWrite || !(target.targetType === "party" ? readCaseAssociationDraft(caseItem.confirmedDataJson).parties.some((item) => item.partyId === person.id) : readCaseAssociationDraft(caseItem.confirmedDataJson).primaryPropertyId === person.id)) return { ok: false, reason: "not_writable" };
+  if (!hasObjectImportSource(target, field)) return { ok: false, reason: "not_writable" };
   const validated = validateObjectImportReview(input, target, field, person as unknown as Record<string, unknown>);
   if (!validated.ok) return validated;
   const mutableRecord = person as unknown as Record<string, unknown>;
@@ -6456,6 +6466,7 @@ export async function saveCaseWorkbenchWithObjectReview(
       : readCaseAssociationDraft(caseItem.confirmedDataJson).primaryPropertyId === person.id)) {
       return { ok: false, reason: "not_writable" };
     }
+    if (!hasObjectImportSource(target, field)) return { ok: false, reason: "not_writable" };
     const validated = validateObjectImportReview(review, target, field, person as unknown as Record<string, unknown>);
     if (!validated.ok) return validated;
     if (review.caseFieldValue !== undefined && review.caseFieldValue.trim() !== validated.value) return { ok: false, reason: "invalid_value" };

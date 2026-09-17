@@ -42,7 +42,7 @@ import { ObjectPageShell } from "@/components/layout-system";
 import { ObjectAttachmentSection } from "@/components/object-attachment-section";
 import { listLinkedObjectAttachments } from "@/lib/object-attachments";
 import { uploadObjectImportAction } from "@/app/object-import-actions";
-import { listObjectImportCandidates, listObjectImportTargets } from "@/lib/data";
+import { getObjectImportFeatureReadiness, listObjectImportCandidates, listObjectImportTargets } from "@/lib/data";
 import type { ObjectImportCandidateRecord, ObjectImportTargetRecord } from "@/lib/object-import-repository";
 
 export const dynamic = "force-dynamic";
@@ -629,7 +629,10 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
     const record = associatedPartyResults[index]?.record;
     return record ? [{ ...party, name: record.name }] : [];
   });
-  const objectImportTargets = await listObjectImportTargets({ tenantId, userId: user.id, caseId: brokerageCase.id });
+  const objectImportReadiness = await getObjectImportFeatureReadiness();
+  const objectImportTargets = objectImportReadiness.ready
+    ? await listObjectImportTargets({ tenantId, userId: user.id, caseId: brokerageCase.id })
+    : [];
   const objectImportViews = await Promise.all(objectImportTargets.map(async (target: ObjectImportTargetRecord) => ({
     target,
     fields: await listObjectImportCandidates({ tenantId, userId: user.id, targetId: target.id }) as ObjectImportCandidateRecord[],
@@ -667,7 +670,8 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
       createPersonAction={canWriteCase ? createClientFormAction : undefined}
       createPropertyAction={canWriteCase ? createPropertyQuickAction : undefined}
       objectImportViews={objectImportViews}
-      objectImportUploadAction={canWriteCase ? uploadObjectImportAction : undefined}
+      objectImportUploadAction={canWriteCase && objectImportReadiness.ready ? uploadObjectImportAction : undefined}
+      objectImportUnavailable={!objectImportReadiness.ready}
     />
   );
 

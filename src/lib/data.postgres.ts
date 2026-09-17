@@ -1,5 +1,5 @@
 import { validateObjectImportReview, type ObjectImportReviewInput, type ObjectImportReviewResult } from "@/lib/object-import-review";
-import { buildObjectVersionFingerprint } from "@/lib/object-import-contract";
+import { buildObjectVersionFingerprint, resolveObjectImportFeatureReadiness, type ObjectImportFeatureReadiness } from "@/lib/object-import-contract";
 import { readCaseAssociationDraft } from "@/lib/case-associations";
 import { PostgresObjectImportRepository, mapObjectImportTarget, mapObjectImportCandidate } from "@/lib/object-import-repository.postgres";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -3810,6 +3810,7 @@ export async function saveCaseWorkbenchWithObjectReview(
           ? readCaseAssociationDraft(caseItem.confirmedDataJson).parties.some((item) => item.partyId === person.id)
           : readCaseAssociationDraft(caseItem.confirmedDataJson).primaryPropertyId === person.id)
       ) return { ok: false, reason: "not_writable" };
+      if (!await hasObjectImportSource(client, target, field)) return { ok: false, reason: "not_writable" };
       const validated = validateObjectImportReview(review, target, field, person as unknown as Record<string, unknown>);
       if (!validated.ok) return validated;
       if (review.caseFieldValue !== undefined && review.caseFieldValue.trim() !== validated.value) return { ok: false, reason: "invalid_value" };
@@ -6941,6 +6942,23 @@ export type {
   GuaranteePreviewConfirmation,
 };
 
+export async function getObjectImportFeatureReadiness(): Promise<ObjectImportFeatureReadiness> {
+  await ensureSchema();
+  const db = getPool();
+  const migration = await db.query(
+    "SELECT 1 FROM broker_desk_schema_migrations WHERE name=$1 LIMIT 1",
+    ["20260917_001_object_import_targets.sql"],
+  );
+  const tables = await db.query(
+    "SELECT to_regclass('public.object_import_targets') AS targets_table, to_regclass('public.object_import_fields') AS fields_table",
+  );
+  return resolveObjectImportFeatureReadiness({
+    migrationApplied: migration.rows.length > 0,
+    targetsTablePresent: Boolean(tables.rows[0]?.targets_table),
+    fieldsTablePresent: Boolean(tables.rows[0]?.fields_table),
+  });
+}
+
 // Use the existing scoped query proxy; never expose the raw pool to callers.
 export const getObjectImportTarget = (input: Parameters<PostgresObjectImportRepository["getTarget"]>[0]) => new PostgresObjectImportRepository(getPool()).getTarget(input);
 export const getObjectImportTargetByJob = (input: Parameters<PostgresObjectImportRepository["getTargetByJob"]>[0]) => new PostgresObjectImportRepository(getPool()).getTargetByJob(input);
@@ -6949,6 +6967,13 @@ export const createObjectImportTarget = (input: Parameters<PostgresObjectImportR
 export const updateObjectImportTarget = (input: Parameters<PostgresObjectImportRepository["updateTarget"]>[0]) => new PostgresObjectImportRepository(getPool()).updateTarget(input);
 export const upsertObjectImportCandidate = (input: Parameters<PostgresObjectImportRepository["upsertCandidate"]>[0]) => new PostgresObjectImportRepository(getPool()).upsertCandidate(input);
 export const listObjectImportCandidates = (input: Parameters<PostgresObjectImportRepository["listCandidates"]>[0]) => new PostgresObjectImportRepository(getPool()).listCandidates(input);
+
+async function hasObjectImportSource(client: PoolClient, target: ReturnType<typeof mapObjectImportTarget>, field: ReturnType<typeof mapObjectImportCandidate>): Promise<boolean> {
+  if (!target.sourceAttachmentId || field.provenance.sourceAttachmentId !== target.sourceAttachmentId) return false;
+  const source = await client.query(`SELECT b.sha256 FROM attachments a JOIN private_attachment_blobs b ON b.attachment_id=a.id AND b.tenant_id=a.tenant_id
+    WHERE a.id=$1 AND a.tenant_id=$2 AND a.user_id=$3 AND a.target_type='import_job' AND a.target_id=$4 AND octet_length(b.content)>0 FOR SHARE OF a,b`, [target.sourceAttachmentId,target.tenantId,target.userId,target.importJobId]);
+  return Boolean(source.rows[0] && source.rows[0].sha256 === field.provenance.sourceFileHash);
+}
 
 export async function reviewObjectImportCandidate(input: ObjectImportReviewInput): Promise<ObjectImportReviewResult> {
   const { context } = input;
@@ -6969,6 +6994,7 @@ export async function reviewObjectImportCandidate(input: ObjectImportReviewInput
     const person = target.targetType === "party" ? mapClient(personRows.rows[0]) : mapProperty(personRows.rows[0]);
     const field = mapObjectImportCandidate(fieldRows.rows[0]);
     if (caseItem.lifecycleStatus === "archived" || person.lifecycleStatus === "archived" || !resolveRecordVisibility(context, caseItem).canWrite || !resolveRecordVisibility(context, person).canWrite || !(target.targetType === "party" ? readCaseAssociationDraft(caseItem.confirmedDataJson).parties.some((item) => item.partyId === person.id) : readCaseAssociationDraft(caseItem.confirmedDataJson).primaryPropertyId === person.id)) return { ok: false, reason: "not_writable" };
+    if (!await hasObjectImportSource(client, target, field)) return { ok: false, reason: "not_writable" };
     const validated = validateObjectImportReview(input, target, field, person as unknown as Record<string, unknown>);
     if (!validated.ok) return validated;
     const mutableRecord = person as unknown as Record<string, unknown>;

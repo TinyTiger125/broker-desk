@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS object_import_targets (
   target_type TEXT NOT NULL CHECK (target_type IN ('party', 'property')),
   target_id TEXT NOT NULL,
   target_version TEXT NOT NULL,
-  source_attachment_id TEXT REFERENCES attachments(id) ON DELETE SET NULL,
+  source_attachment_id TEXT NOT NULL REFERENCES attachments(id) ON DELETE RESTRICT,
   status TEXT NOT NULL CHECK (status IN ('queued', 'processing', 'needs_review', 'completed', 'failed', 'conflict')),
   idempotency_key TEXT NOT NULL,
   attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
@@ -17,7 +17,8 @@ CREATE TABLE IF NOT EXISTS object_import_targets (
   error_summary TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE (tenant_id, idempotency_key)
+  UNIQUE (tenant_id, idempotency_key),
+  UNIQUE (tenant_id, id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_object_import_targets_case
@@ -28,7 +29,7 @@ CREATE INDEX IF NOT EXISTS idx_object_import_targets_job
 CREATE TABLE IF NOT EXISTS object_import_fields (
   id TEXT PRIMARY KEY,
   tenant_id TEXT NOT NULL,
-  object_import_target_id TEXT NOT NULL REFERENCES object_import_targets(id) ON DELETE CASCADE,
+  object_import_target_id TEXT NOT NULL,
   field_key TEXT NOT NULL,
   model_value TEXT,
   model_confidence NUMERIC,
@@ -38,6 +39,7 @@ CREATE TABLE IF NOT EXISTS object_import_fields (
   status TEXT NOT NULL CHECK (status IN ('draft', 'confirmed', 'rejected', 'low_confidence', 'conflict', 'failed')),
   confirmed_by_user_id TEXT REFERENCES users(id),
   confirmed_at TIMESTAMPTZ,
+  FOREIGN KEY (tenant_id, object_import_target_id) REFERENCES object_import_targets(tenant_id, id) ON DELETE CASCADE,
   UNIQUE (object_import_target_id, field_key)
 );
 
@@ -67,13 +69,11 @@ BEGIN
   IF target_tenant IS DISTINCT FROM NEW.tenant_id THEN
     RAISE EXCEPTION 'Object import target tenant mismatch' USING ERRCODE = '23514';
   END IF;
-  IF NEW.source_attachment_id IS NOT NULL THEN
-    SELECT target_id INTO attachment_job FROM attachments
-      WHERE id = NEW.source_attachment_id AND tenant_id = NEW.tenant_id
-        AND target_type = 'import_job';
-    IF attachment_job IS DISTINCT FROM NEW.import_job_id THEN
-      RAISE EXCEPTION 'Object import attachment must belong to import job' USING ERRCODE = '23514';
-    END IF;
+  SELECT target_id INTO attachment_job FROM attachments
+    WHERE id = NEW.source_attachment_id AND tenant_id = NEW.tenant_id
+      AND target_type = 'import_job';
+  IF attachment_job IS DISTINCT FROM NEW.import_job_id THEN
+    RAISE EXCEPTION 'Object import attachment must belong to import job' USING ERRCODE = '23514';
   END IF;
   RETURN NEW;
 END;

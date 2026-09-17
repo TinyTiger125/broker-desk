@@ -1,4 +1,4 @@
-import { persistObjectImportJobExtraction, markObjectImportJobFailed } from "@/lib/object-import-processor-adapter";
+import { persistObjectImportJobExtraction, markObjectImportJobFailed, ensureObjectImportTask } from "@/lib/object-import-processor-adapter";
 import { parseObjectImportNotes, type ObjectImportMetadata } from "@/lib/object-import-contract";
 import {
   addAuditLog,
@@ -50,6 +50,7 @@ export async function processIdentityImportJob(input: {
     };
   }
 
+  const objectTarget = await ensureObjectImportTask(job, input);
   const attachments = await listAttachments({
     tenantId: input.tenantId,
     userId: input.userId,
@@ -58,7 +59,7 @@ export async function processIdentityImportJob(input: {
     limit: 10,
   });
   const sourceFiles = await Promise.all(attachments
-    .filter((attachment) => isLocalPrivateStoragePath(attachment.storagePath) || isPostgresPrivateStoragePath(attachment.storagePath))
+    .filter((attachment) => (!objectTarget || attachment.id === objectTarget.sourceAttachmentId) && (isLocalPrivateStoragePath(attachment.storagePath) || isPostgresPrivateStoragePath(attachment.storagePath)))
     .map(async (attachment) => {
       const content = await readPrivateAttachmentContent({
         tenantId: input.tenantId,

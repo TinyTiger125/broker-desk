@@ -3,6 +3,20 @@ import { createHash } from "node:crypto";
 export const OBJECT_IMPORT_TARGET_TYPES = ["party", "property"] as const;
 export type ObjectImportTargetType = (typeof OBJECT_IMPORT_TARGET_TYPES)[number];
 export type ObjectImportStatus = "queued" | "processing" | "needs_review" | "completed" | "failed" | "conflict";
+export type ObjectImportFeatureReadiness =
+  | { ready: true }
+  | { ready: false; reason: "migration_required" | "schema_incomplete" };
+
+export function resolveObjectImportFeatureReadiness(input: {
+  migrationApplied: boolean;
+  targetsTablePresent: boolean;
+  fieldsTablePresent: boolean;
+}): ObjectImportFeatureReadiness {
+  if (!input.migrationApplied) return { ready: false, reason: "migration_required" };
+  if (!input.targetsTablePresent || !input.fieldsTablePresent) return { ready: false, reason: "schema_incomplete" };
+  return { ready: true };
+}
+
 export function isObjectImportStatusTransitionAllowed(from: ObjectImportStatus, to: ObjectImportStatus) {
   return from === to || (from === "queued" && to === "processing") || (from === "processing" && ["needs_review", "completed", "failed", "conflict"].includes(to)) || (from === "failed" && to === "queued");
 }

@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 const source = readFileSync(new URL("../src/lib/object-import-target-service.ts", import.meta.url), "utf8");
 const adapter = readFileSync(new URL("../src/lib/object-import-processor-adapter.ts", import.meta.url), "utf8");
 const workbench = readFileSync(new URL("../src/app/actions.ts", import.meta.url), "utf8");
+const association = readFileSync(new URL("../src/components/case-association-manager.tsx", import.meta.url), "utf8");
+const attachmentRoute = readFileSync(new URL("../src/app/api/attachments/[attachmentId]/route.ts", import.meta.url), "utf8");
 const required = [
   'targetType: ObjectImportTargetType',
   'reason: "case_not_writable" | "not_associated" | "object_not_writable"',
@@ -21,3 +23,7 @@ for (const marker of ["objectImportReviewJson", "saveCaseWorkbenchWithObjectRevi
   if (!workbench.includes(marker)) throw new Error(`missing main-input review binding: ${marker}`);
 }
 console.log("object import main-input contract: PASS (same workbench save invokes object CAS)");
+if (!association.includes("sourceAttachmentId") || !association.includes("/api/attachments/") || !attachmentRoute.includes('source.download_original')) {
+  throw new Error("missing source attachment traceability contract");
+}
+console.log("object import source contract: PASS (sourceAttachmentId uses authenticated attachment route)");

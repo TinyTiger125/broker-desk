@@ -4,6 +4,7 @@ import { existsSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { Client } from "pg";
+import { stripEmbeddedTransaction } from "./postgres-migration-runner-utils.mjs";
 
 // Node parses dotenv values correctly, including DATABASE_URL query strings.
 // Do not source .env.local in a shell: '&' in a connection string becomes a
@@ -65,7 +66,11 @@ try {
 
     await client.query("BEGIN");
     try {
-      await client.query(sql);
+      // Some historical migrations contain their own BEGIN/COMMIT. Strip only
+      // that outer wrapper so the runner owns one transaction for both the
+      // migration body and its ledger insert. The checksum remains based on
+      // the original file bytes.
+      await client.query(stripEmbeddedTransaction(sql));
       await client.query(
         "INSERT INTO broker_desk_schema_migrations (name, checksum) VALUES ($1, $2)",
         [name, checksum],

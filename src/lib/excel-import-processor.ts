@@ -1,4 +1,4 @@
-import { persistObjectImportJobExtraction, markObjectImportJobFailed } from "@/lib/object-import-processor-adapter";
+import { persistObjectImportJobExtraction, markObjectImportJobFailed, ensureObjectImportTask } from "@/lib/object-import-processor-adapter";
 import { parseObjectImportNotes, type ObjectImportMetadata } from "@/lib/object-import-contract";
 import { createHash } from "node:crypto";
 import {
@@ -64,6 +64,7 @@ export async function processExcelImportJob(input: {
     };
   }
 
+  const objectTarget = await ensureObjectImportTask(job, input);
   const attachments = await listAttachments({
     tenantId: input.tenantId,
     userId: input.userId,
@@ -71,7 +72,7 @@ export async function processExcelImportJob(input: {
     targetId: input.jobId,
     limit: 10,
   });
-  const source = attachments.find((attachment) =>
+  const source = attachments.filter((attachment) => !objectTarget || attachment.id === objectTarget.sourceAttachmentId).find((attachment) =>
     isLocalPrivateStoragePath(attachment.storagePath) || isPostgresPrivateStoragePath(attachment.storagePath),
   );
   if (!source) {

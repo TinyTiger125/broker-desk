@@ -76,6 +76,13 @@ assert.equal(extractCalls, 0);
 assert.equal((await processIdentityImportJob({ ...scope, jobId: target.importJobId })).ok, true);
 const candidates = await data.listObjectImportCandidates({ ...scope, targetId: target.id });
 assert.equal(candidates.length, 2);
+const originalSource = await data.getAttachmentById({ ...scope, id: target.sourceAttachmentId });
+assert(originalSource && originalSource.targetType === "import_job" && originalSource.targetId === target.importJobId);
+const { createHash } = require("node:crypto");
+for (const candidate of candidates) {
+  assert.equal(candidate.provenance.sourceAttachmentId, target.sourceAttachmentId);
+  assert.equal(candidate.provenance.sourceFileHash, createHash("sha256").update(Buffer.from("%PDF-synthetic")).digest("hex"));
+}
 assert.equal(candidates.find((item) => item.fieldKey === "name").candidateValue, "Extracted name");
 assert.equal(candidates.find((item) => item.fieldKey === "phone").status, "low_confidence");
 assert.equal((await data.getObjectImportTarget({ ...scope, id: target.id })).status, "needs_review");
@@ -114,6 +121,9 @@ personBeforeConflict.name = "Externally changed";
 assert.deepEqual(await data.reviewObjectImportCandidate(reviewInput), { ok: false, reason: "conflict" });
 assert.equal(personBeforeConflict.name, "Externally changed");
 personBeforeConflict.name = originalName;
+await data.upsertObjectImportCandidate({ ...nameField, provenance: { ...nameField.provenance, sourceAttachmentId: "forged-source" } });
+assert.deepEqual(await data.reviewObjectImportCandidate(reviewInput), { ok: false, reason: "not_writable" });
+await data.upsertObjectImportCandidate(nameField);
 const competing = await Promise.all([data.reviewObjectImportCandidate(reviewInput), data.reviewObjectImportCandidate(reviewInput)]);
 assert.equal(competing.filter((item) => item.ok).length, 1);
 assert.equal(competing.filter((item) => !item.ok && item.reason === "already_reviewed").length, 1);
@@ -149,6 +159,7 @@ await data.updateBrokerageCaseConfirmedData({ ...scope, caseId: brokerageCase.id
 const { buildObjectVersionFingerprint } = require(resolve(root, "src/lib/object-import-contract.ts"));
 const { persistObjectImportJobExtraction } = require(resolve(root, "src/lib/object-import-processor-adapter.ts"));
 const propertyJob = await data.addImportJob({ ...scope, sourceType: "excel", targetEntity: "properties", title: "Synthetic property", status: "queued", idempotencyKey: "property-test", notes: JSON.stringify({ objectImport: { caseId: brokerageCase.id, targetObjectType: "property", targetObjectId: property.id, targetVersion: buildObjectVersionFingerprint(property) } }) });
+const propertySource = await data.addPrivateAttachment({ ...scope, targetType: "import_job", targetId: propertyJob.id, fileName: "synthetic.xlsx", content: Buffer.from("synthetic workbook") });
 await persistObjectImportJobExtraction({ ...scope, job: propertyJob, fields: [field("property.name", "New property"), field("property.area", "New area"), field("property.address", "New address"), field("property.listing_price", "2000")] });
 const propertyTask = await data.getObjectImportTargetByJob({ ...scope, importJobId: propertyJob.id });
 const propertyFields = await data.listObjectImportCandidates({ ...scope, targetId: propertyTask.id });
@@ -181,6 +192,7 @@ assert.equal(audits.filter((item) => item.targetType === "property" && item.targ
 const atomicPerson = await data.addClient({ ...scope, ownerUserId: user.id, name: "Atomic original", phone: "000-1111-2222", budgetType: "total_price", purpose: "buy", loanPreApprovalStatus: "not_applied", stage: "lead", temperature: "cold", brokerageContractType: "none", amlCheckStatus: "not_required" });
 const atomicCase = await data.saveBrokerageCaseExtractionReview({ ...scope, caseType: "unit_sale", caseTitle: "Atomic save", confirmedDataJson: writeCaseAssociationData({}, { parties: [{ partyId: atomicPerson.id, roles: ["主要申请人"] }] }, {}), sourceImportJobIds: [], reviewItems: [] });
 const atomicJob = await data.addImportJob({ ...scope, sourceType: "identity", targetEntity: "clients", title: "Atomic identity", status: "queued", idempotencyKey: "atomic-test", notes: JSON.stringify({ objectImport: { caseId: atomicCase.id, targetObjectType: "party", targetObjectId: atomicPerson.id, targetVersion: buildObjectVersionFingerprint(atomicPerson) } }) });
+const atomicSource = await data.addPrivateAttachment({ ...scope, targetType: "import_job", targetId: atomicJob.id, fileName: "atomic.pdf", content: Buffer.from("%PDF-synthetic-atomic") });
 await persistObjectImportJobExtraction({ ...scope, job: atomicJob, fields: [field("applicant.name", "Atomic candidate"), field("applicant.phone", "090-9999-8888")] });
 const atomicTarget = await data.getObjectImportTargetByJob({ ...scope, importJobId: atomicJob.id });
 const atomicFields = await data.listObjectImportCandidates({ ...scope, targetId: atomicTarget.id });
@@ -214,7 +226,27 @@ const invalidAtomicCase = await data.saveCaseWorkbenchWithObjectReview({
 });
 assert.deepEqual(invalidAtomicCase, { ok: false, reason: "case_not_writable" });
 assert.equal((await data.getClientById(atomicPerson.id, tenant.id)).phone, "000-1111-2222");
+// Missing, cross-job and ambiguous sources cannot create usable object candidates.
+const badJob = await data.addImportJob({ ...scope, sourceType: "scan", targetEntity: "parties", title: "Missing source", status: "queued", idempotencyKey: "source-negative", notes: atomicJob.notes });
+await assert.rejects(ensureObjectImportTask(badJob, scope), /source_attachment_required/);
+await data.addPrivateAttachment({ ...scope, targetType: "import_job", targetId: badJob.id, fileName: "source.pdf", content: Buffer.from("%PDF-bad-job") });
+await assert.rejects(ensureObjectImportTask({ ...badJob, notes: JSON.stringify({ objectImport: { ...JSON.parse(badJob.notes).objectImport, sourceAttachmentId: propertySource.id } }) }, scope), /source_attachment_mismatch/);
+await data.addPrivateAttachment({ ...scope, targetType: "import_job", targetId: badJob.id, fileName: "source2.pdf", content: Buffer.from("%PDF-second") });
+await assert.rejects(ensureObjectImportTask(badJob, scope), /source_attachment_required/);
+const beforeMissingSource = await data.getBrokerageCaseById({ ...scope, caseId: atomicCase.id });
+await data.deletePrivateAttachmentForTenant({ tenantId: tenant.id, id: atomicSource.id });
+const missingSourceReview = { context, targetId: atomicTarget.id, fieldId: atomicPhone.id, expectedVersion: (await data.getObjectImportTarget({ ...scope, id: atomicTarget.id })).targetVersion, expectedCandidateValue: atomicPhone.candidateValue, decision: "confirm", value: "090-9999-8888" };
+assert.deepEqual(await data.reviewObjectImportCandidate(missingSourceReview), { ok: false, reason: "not_writable" });
+assert.deepEqual(await data.saveCaseWorkbenchWithObjectReview({ context, caseId: atomicCase.id, confirmedDataJson: { ...beforeMissingSource.confirmedDataJson, "applicant.phone": "090-9999-8888" }, objectReview: missingSourceReview }), { ok: false, reason: "not_writable" });
+assert.deepEqual(await data.getBrokerageCaseById({ ...scope, caseId: atomicCase.id }), beforeMissingSource);
+assert.equal((await data.getClientById(atomicPerson.id, tenant.id)).phone, "000-1111-2222");
 const postgresSource = readFileSync(resolve(root, "src/lib/data.postgres.ts"), "utf8");
+const migrationSource = readFileSync(resolve(root, "db/migrations/20260917_001_object_import_targets.sql"), "utf8");
+assert.match(migrationSource, /source_attachment_id TEXT NOT NULL REFERENCES attachments\(id\) ON DELETE RESTRICT/);
+assert.match(migrationSource, /FOREIGN KEY \(tenant_id, object_import_target_id\) REFERENCES object_import_targets\(tenant_id, id\)/);
+assert(postgresSource.includes("FOR SHARE OF a,b"));
+assert(postgresSource.includes("a.target_id=$4"));
+assert.equal((postgresSource.match(/if \(!await hasObjectImportSource\(client, target, field\)\)/g) ?? []).length, 2);
 const reviewSource = postgresSource.slice(postgresSource.indexOf("export async function reviewObjectImportCandidate"));
 for (const marker of ["withTransaction", "databaseActorMatches", "FOR UPDATE", "FOR SHARE", "resolveRecordVisibility", "validateObjectImportReview", "INSERT INTO audit_logs"]) assert(reviewSource.includes(marker), `missing PostgreSQL review boundary: ${marker}`);
 const combinedSource = postgresSource.slice(postgresSource.indexOf("export async function saveCaseWorkbenchWithObjectReview"));

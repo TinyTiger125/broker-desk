@@ -1,6 +1,6 @@
 "use server";
 
-import { reviewObjectImportCandidate } from "@/lib/data";
+import { getObjectImportFeatureReadiness, reviewObjectImportCandidate } from "@/lib/data";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireTenantSession } from "@/lib/tenant-session";
@@ -11,6 +11,8 @@ import { queueIdentityImportSources } from "@/lib/identity-import-queue";
 
 export async function uploadObjectImportAction(formData: FormData) {
   const session = await requireTenantSession({ permission: "source.upload" });
+  const readiness = await getObjectImportFeatureReadiness();
+  if (!readiness.ready) throw new Error(`object_import_feature_unavailable:${readiness.reason}`);
   const caseId = String(formData.get("caseId") ?? "").trim();
   const targetType = String(formData.get("targetType") ?? "").trim();
   const targetId = String(formData.get("targetId") ?? "").trim();

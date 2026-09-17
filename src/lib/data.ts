@@ -569,7 +569,9 @@ export type {
   OutputTemplateSettingsInput,
 } from "@/lib/data.memory";
 export type { OutputTemplateSettings } from "@/lib/output-doc";
+export type { ObjectImportFeatureReadiness } from "@/lib/object-import-contract";
 
+export const getObjectImportFeatureReadiness: typeof memory.getObjectImportFeatureReadiness = (...args) => repo.getObjectImportFeatureReadiness(...args);
 export const getObjectImportTarget: typeof memory.getObjectImportTarget = (...args) => repo.getObjectImportTarget(...args);
 export const getObjectImportTargetByJob: typeof memory.getObjectImportTargetByJob = (...args) => repo.getObjectImportTargetByJob(...args);
 export const listObjectImportTargets: typeof memory.listObjectImportTargets = (...args) => repo.listObjectImportTargets(...args);

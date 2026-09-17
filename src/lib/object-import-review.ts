@@ -15,6 +15,7 @@ export type ObjectImportReviewResult =
 type ReviewValue = { ok: true; key: "name" | "phone" | "email" | "area" | "address" | "listingPrice"; value: string; recordValue: string | number };
 export function validateObjectImportReview(input: ObjectImportReviewInput, target: ObjectImportTargetRecord, field: ObjectImportCandidateRecord, record: Record<string, unknown>): ReviewValue | Exclude<ObjectImportReviewResult, { ok: true }> {
   if (target.targetType !== "party" && target.targetType !== "property") return { ok: false, reason: "unsupported_target" };
+  if (!target.sourceAttachmentId || field.provenance.sourceAttachmentId !== target.sourceAttachmentId || typeof field.provenance.sourceFileHash !== "string" || !field.provenance.sourceFileHash) return { ok: false, reason: "not_writable" };
   if (field.finalSource === "human" || field.status === "confirmed" || field.status === "rejected") return { ok: false, reason: "already_reviewed" };
   if (target.status !== "needs_review" || target.targetVersion !== input.expectedVersion || buildObjectVersionFingerprint(record) !== input.expectedVersion || (field.candidateValue ?? "") !== input.expectedCandidateValue) return { ok: false, reason: "conflict" };
   let fieldKey: string;

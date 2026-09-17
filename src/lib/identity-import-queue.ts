@@ -54,6 +54,7 @@ export async function queueIdentityImportSources(input: {
   sourceAttachmentId?: string;
 }): Promise<QueueIdentityImportResult> {
   const maxFileBytes = getIdentityDocumentUploadLimitBytes();
+  if (input.targetObjectType && input.files.length !== 1) return { ok: false, error: "object_target_invalid" };
   if (input.files.length === 0) return { ok: false, error: "file_required" };
   if (input.files.length > MAX_IDENTITY_DOCUMENT_FILES) {
     return { ok: false, error: "too_many_files", maxFiles: MAX_IDENTITY_DOCUMENT_FILES };
