@@ -9,13 +9,14 @@ const parsed = ts.createSourceFile("data.ts", source, ts.ScriptTarget.Latest, tr
 const declaration = parsed.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === "saveCaseWorkbenchWithObjectReview");
 assert(declaration);
 const functionSource = (name) => parsed.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === name).getText(parsed);
-const compiled = ts.transpileModule([declaration.getText(parsed), functionSource("withTransaction"), functionSource("hasObjectImportSource"), functionSource("reviewObjectImportCandidate")].join("\n"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+const compiled = ts.transpileModule([declaration.getText(parsed), functionSource("withTransaction"), functionSource("hasObjectImportSource"), functionSource("lockCaseReviewMembership"), functionSource("reviewObjectImportCandidate")].join("\n"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 const context = { membershipId: "membership-a", tenantId: "tenant-a", userId: "user-a" };
 const input = { context, caseId: "case-a", confirmedDataJson: { applicant: { name: "Neo Test Manual" } } };
 
 // Runs the actual function with a narrow SQL adapter modelling the committed ACL.
 // This is not a live PostgreSQL/RLS or Preview test.
 async function run(overrides = {}, options = {}) {
+  const requestContext = overrides.context ?? context;
   const queries = [];
   let writes = 0;
   let stored = null;
@@ -27,20 +28,25 @@ async function run(overrides = {}, options = {}) {
     if (sql === "BEGIN") return { rows: [] };
     if (sql === "COMMIT") { committed = true; return { rows: [] }; }
     if (sql === "ROLLBACK") { state.writes = 0; rolledBack = true; return { rows: [] }; }
-    if (sql.includes("FROM tenant_memberships") || sql.includes("FOR SHARE OF a,b")) {
+    if (sql.includes("FROM tenant_memberships") && sql.includes("FOR SHARE")) {
       throw Object.assign(new Error("baseline ACL rejects raw row locking"), { code: "42501" });
     }
+    if (sql.includes("FROM tenant_memberships")) return {
+      rows: !options.inactive && params[0] === context.membershipId && params[1] === context.tenantId && params[2] === context.userId ? [{ id: context.membershipId }] : [],
+    };
     if (sql.includes("lock_case_review_membership")) {
+      if (options.missingHelpers) throw Object.assign(new Error("undefined function"), { code: "42883" });
       return { rows: [{ allowed: !options.inactive && params[0] === context.membershipId && params[1] === context.tenantId && params[2] === context.userId }] };
     }
     if (sql.includes("lock_case_review_source")) {
+      if (options.missingHelpers) throw Object.assign(new Error("undefined function"), { code: "42883" });
       assert.deepEqual(Array.from(params), ["attachment-a", context.tenantId, context.userId, "job-a"]);
       return { rows: [{ sha256: options.unreadableSource ? null : options.wrongHash ? "wrong" : "hash-a" }] };
     }
     if (sql.startsWith("SELECT * FROM brokerage_cases")) {
       assert.match(sql, /FOR UPDATE/);
       if (!options.standalone) assert.match(sql, /current_owner_user_id=\$3 AND owner_resolution_status='resolved'/);
-      return { rows: !options.wrongOwner && params[0] === input.caseId && params[1] === context.tenantId && (options.standalone || params[2] === context.userId) ? [{ lifecycleStatus: options.archived ? "archived" : "active" }] : [] };
+      return { rows: !options.wrongOwner && params[0] === input.caseId && params[1] === requestContext.tenantId && (options.standalone || params[2] === requestContext.userId) ? [{ lifecycleStatus: options.archived ? "archived" : "active" }] : [] };
     }
     if (sql.includes("UPDATE brokerage_cases")) {
       assert.match(sql, /tenant_id=\$2 AND current_owner_user_id=\$4 AND owner_resolution_status='resolved'/);
@@ -80,6 +86,7 @@ assert.equal(saved.committed, true);
 assert.equal(saved.writes, 1);
 assert.deepEqual(saved.stored, input.confirmedDataJson);
 assert(!saved.queries.some((sql) => sql.includes("object_import")));
+assert(!saved.queries.some((sql) => sql.includes("lock_case_review_membership")), "ordinary saves must not require the helper migration");
 for (const options of [{ inactive: true }, { wrongOwner: true }, { archived: true }, { actorMismatch: true }, { readOnly: true }]) {
   const denied = await run({}, options);
   assert.equal(denied.result.reason, "case_not_writable");
@@ -102,9 +109,13 @@ console.log("PASS: actual save and transaction functions use helper EXECUTE unde
 const objectReview = { targetId: "target-a", fieldId: "field-a", decision: "confirm" };
 const reviewed = await run({ objectReview }, {});
 assert.equal(reviewed.result.ok, true);
+assert(reviewed.queries.some((sql) => sql.includes("lock_case_review_membership")));
 const unavailable = await run({ objectReview }, { unreadableSource: true });
 assert.equal(unavailable.result.reason, "not_writable");
 assert.equal(unavailable.writes, 0);
+const missingHelper = await run({ objectReview }, { missingHelpers: true });
+assert.equal(missingHelper.result.reason, "case_not_writable");
+assert.equal(missingHelper.writes, 0);
 for (const failure of [{ finalWriteMissing: true }, { auditFailure: true }]) {
   const state = { writes: 0 };
   await assert.rejects(run({ objectReview }, { ...failure, state }), /case_workbench_write_not_applied|audit_insert_failed/);

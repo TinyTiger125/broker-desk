@@ -3771,11 +3771,17 @@ export async function saveCaseWorkbenchWithObjectReview(
   const { context } = input;
   return withTransaction(async (client) => {
     if (!(await databaseActorMatches(client, context.userId))) return { ok: false, reason: "case_not_writable" };
-    const membership = await client.query(
-      "SELECT brokerdesk_private.lock_case_review_membership($1,$2,$3) AS allowed",
-      [context.membershipId, context.tenantId, context.userId],
-    );
-    if (!membership.rows[0]?.allowed) return { ok: false, reason: "case_not_writable" };
+    if (input.objectReview) {
+      if (!await lockCaseReviewMembership(client, context)) return { ok: false, reason: "case_not_writable" };
+    } else {
+      // Ordinary field saves remain compatible with the baseline SELECT-only
+      // membership ACL; review locks are isolated behind the helper migration.
+      const membership = await client.query(
+        "SELECT 1 FROM tenant_memberships WHERE id=$1 AND tenant_id=$2 AND user_id=$3 AND status='active'",
+        [context.membershipId, context.tenantId, context.userId],
+      );
+      if (!membership.rows.length) return { ok: false, reason: "case_not_writable" };
+    }
     const caseRows = await client.query(
       "SELECT * FROM brokerage_cases WHERE id=$1 AND tenant_id=$2 AND current_owner_user_id=$3 AND owner_resolution_status='resolved' FOR UPDATE",
       [input.caseId, context.tenantId, context.userId],
@@ -7001,16 +7007,36 @@ export const listObjectImportCandidates = (input: Parameters<PostgresObjectImpor
 
 async function hasObjectImportSource(client: PoolClient, target: ReturnType<typeof mapObjectImportTarget>, field: ReturnType<typeof mapObjectImportCandidate>): Promise<boolean> {
   if (!target.sourceAttachmentId || field.provenance.sourceAttachmentId !== target.sourceAttachmentId) return false;
-  const source = await client.query("SELECT brokerdesk_private.lock_case_review_source($1,$2,$3,$4) AS sha256", [target.sourceAttachmentId,target.tenantId,target.userId,target.importJobId]);
-  return Boolean(source.rows[0] && source.rows[0].sha256 === field.provenance.sourceFileHash);
+  try {
+    const source = await client.query("SELECT brokerdesk_private.lock_case_review_source($1,$2,$3,$4) AS sha256", [target.sourceAttachmentId,target.tenantId,target.userId,target.importJobId]);
+    return Boolean(source.rows[0] && source.rows[0].sha256 === field.provenance.sourceFileHash);
+  } catch (error) {
+    // Missing helper or EXECUTE is a safe unavailable-review result while the
+    // migration is pending; unrelated database failures must still surface.
+    const code = (error as { code?: string })?.code;
+    if (code === "42883" || code === "42501") return false;
+    throw error;
+  }
+}
+
+async function lockCaseReviewMembership(client: PoolClient, context: RequestContext): Promise<boolean> {
+  try {
+    const membership = await client.query("SELECT brokerdesk_private.lock_case_review_membership($1,$2,$3) AS allowed", [context.membershipId, context.tenantId, context.userId]);
+    return Boolean(membership.rows[0]?.allowed);
+  } catch (error) {
+    // Review must fail closed until the helper migration and EXECUTE grant are
+    // present; ordinary field saves do not use this path.
+    const code = (error as { code?: string })?.code;
+    if (code === "42883" || code === "42501") return false;
+    throw error;
+  }
 }
 
 export async function reviewObjectImportCandidate(input: ObjectImportReviewInput): Promise<ObjectImportReviewResult> {
   const { context } = input;
   return withTransaction(async (client) => {
     if (!await databaseActorMatches(client, context.userId)) return { ok: false, reason: "not_writable" };
-    const membership = await client.query("SELECT brokerdesk_private.lock_case_review_membership($1,$2,$3) AS allowed", [context.membershipId, context.tenantId, context.userId]);
-    if (!membership.rows[0]?.allowed) return { ok: false, reason: "not_writable" };
+    if (!await lockCaseReviewMembership(client, context)) return { ok: false, reason: "not_writable" };
     // Match the combined-save lock order: membership → case → target → object → field → source.
     const targetHint = await client.query("SELECT case_id FROM object_import_targets WHERE id=$1 AND tenant_id=$2 AND user_id=$3", [input.targetId, context.tenantId, context.userId]);
     if (!targetHint.rows[0]) return { ok: false, reason: "not_writable" };
