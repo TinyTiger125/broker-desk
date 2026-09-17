@@ -250,6 +250,7 @@ import {
 import {
   getPrimaryPartyId,
   normalizeCaseAssociationDraft,
+  readCaseAssociationDraft,
   validateCaseAssociationDraft,
   writeCaseAssociationData,
   type CaseAssociationDraft,
@@ -3792,10 +3793,18 @@ export async function saveCaseAssociationsAction(formData: FormData) {
   const primaryParty = primaryPartyId
     ? partyResults[associationDraft.parties.findIndex((party) => party.partyId === primaryPartyId)]?.record
     : undefined;
+  const previousPrimaryPartyId = getPrimaryPartyId(readCaseAssociationDraft(brokerageCase.confirmedDataJson));
+  const previousPrimaryPartyResult = previousPrimaryPartyId && previousPrimaryPartyId !== primaryPartyId
+    ? await resolveClientVisibilityForContext({ context: requestContext, clientId: previousPrimaryPartyId })
+    : undefined;
   const nextConfirmedData = writeCaseAssociationData(
     brokerageCase.confirmedDataJson,
     associationDraft,
-    { primaryPartyName: primaryParty?.name, propertyName: propertyResult?.record?.name },
+    {
+      primaryPartyName: primaryParty?.name,
+      propertyName: propertyResult?.record?.name,
+      previousPrimaryPartyName: previousPrimaryPartyResult?.record?.name,
+    },
   );
   const updatedCase = await updateBrokerageCaseConfirmedData({
     userId: user.id,
