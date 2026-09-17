@@ -85,6 +85,13 @@
 - 访问 Preview 根路径立即转到 Clerk 登录页；当前浏览器没有获准测试账号或认证会话，未输入、索取或传输任何凭据。健康端点可返回 HTTP 200，但不能证明业务认证读回或 runtime 角色对应关系。
 - 因认证缺失，标题/入口、人物与物件上传对称、模型读取、候选低置信/冲突、保存刷新重开、来源鉴权/归属、隔离并发及失败恢复全部保持 `UNVERIFIED`。最小阻塞是产品方提供已认证 Preview 会话或在浏览器完成登录后交接；不得自行换路径。
 
+### 认证 Preview 复验与运行时 P1（2026-09-17）
+
+- 现有 Chrome 会话已认证；`/import-center`、`/cases/new` 可打开。首页仅见两张主操作卡；人物/物件的既存选择与快速创建输入布局对称，这些为观察级 PASS。
+- 两个合成案件页均返回“このページを一時的に開けません”，请求编号 `1959907781`；浏览器控制台记录 Minified React error `#441`。实际模型读取、候选审核、主输入保存、刷新/重开、来源鉴权、归属隔离、并发和失败恢复均未完成。
+- 本地诊断发现迁移仅向 `authenticated` 授予对象导入表权限，未向 `brokerdesk_runtime` 授权；运行时在读取对象表时可能失败。新增 `has_table_privilege` 探针与 `permissions_incomplete` fail-closed 分支，使案件页在 ACL 不足时跳过对象表读取并禁用上传，避免路由崩溃或伪成功。
+- 本地修复提交为 `0c17923`；`npm run build`、`npx tsc --noEmit --incremental false`、readiness/pipeline 测试和 `git diff --check` 均通过。尚未对真实 `brokerdesk_runtime` 做数据库 ACL 反例或在 Preview 部署修复后复验；后续 Preview 更新由 Tifa 接手。
+
 ## 待执行验证
 
 1. 在隔离非生产数据库执行迁移，并核对两表 `relrowsecurity=true`、`relforcerowsecurity=true`、FK、触发器和策略。
