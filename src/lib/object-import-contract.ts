@@ -5,15 +5,18 @@ export type ObjectImportTargetType = (typeof OBJECT_IMPORT_TARGET_TYPES)[number]
 export type ObjectImportStatus = "queued" | "processing" | "needs_review" | "completed" | "failed" | "conflict";
 export type ObjectImportFeatureReadiness =
   | { ready: true }
-  | { ready: false; reason: "migration_required" | "schema_incomplete" };
+  | { ready: false; reason: "migration_required" | "schema_incomplete" | "permissions_incomplete" };
 
 export function resolveObjectImportFeatureReadiness(input: {
   migrationApplied: boolean;
   targetsTablePresent: boolean;
   fieldsTablePresent: boolean;
+  targetsTableWritable?: boolean;
+  fieldsTableWritable?: boolean;
 }): ObjectImportFeatureReadiness {
   if (!input.migrationApplied) return { ready: false, reason: "migration_required" };
   if (!input.targetsTablePresent || !input.fieldsTablePresent) return { ready: false, reason: "schema_incomplete" };
+  if (input.targetsTableWritable === false || input.fieldsTableWritable === false) return { ready: false, reason: "permissions_incomplete" };
   return { ready: true };
 }
 

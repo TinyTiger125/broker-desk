@@ -6952,10 +6952,32 @@ export async function getObjectImportFeatureReadiness(): Promise<ObjectImportFea
   const tables = await db.query(
     "SELECT to_regclass('public.object_import_targets') AS targets_table, to_regclass('public.object_import_fields') AS fields_table",
   );
+  const targetsTablePresent = Boolean(tables.rows[0]?.targets_table);
+  const fieldsTablePresent = Boolean(tables.rows[0]?.fields_table);
+  if (!targetsTablePresent || !fieldsTablePresent) {
+    return resolveObjectImportFeatureReadiness({
+      migrationApplied: migration.rows.length > 0,
+      targetsTablePresent,
+      fieldsTablePresent,
+    });
+  }
+  const privileges = await db.query(`
+    SELECT
+      has_table_privilege(current_user, 'public.object_import_targets', 'SELECT')
+        AND has_table_privilege(current_user, 'public.object_import_targets', 'INSERT')
+        AND has_table_privilege(current_user, 'public.object_import_targets', 'UPDATE')
+        AND has_table_privilege(current_user, 'public.object_import_targets', 'DELETE') AS targets_table_writable,
+      has_table_privilege(current_user, 'public.object_import_fields', 'SELECT')
+        AND has_table_privilege(current_user, 'public.object_import_fields', 'INSERT')
+        AND has_table_privilege(current_user, 'public.object_import_fields', 'UPDATE')
+        AND has_table_privilege(current_user, 'public.object_import_fields', 'DELETE') AS fields_table_writable
+  `);
   return resolveObjectImportFeatureReadiness({
     migrationApplied: migration.rows.length > 0,
-    targetsTablePresent: Boolean(tables.rows[0]?.targets_table),
-    fieldsTablePresent: Boolean(tables.rows[0]?.fields_table),
+    targetsTablePresent,
+    fieldsTablePresent,
+    targetsTableWritable: Boolean(privileges.rows[0]?.targets_table_writable),
+    fieldsTableWritable: Boolean(privileges.rows[0]?.fields_table_writable),
   });
 }
 

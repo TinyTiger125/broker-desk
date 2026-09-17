@@ -27,6 +27,7 @@ require.extensions[".ts"] = function (module, filename) {
 const { resolveObjectImportFeatureReadiness } = require(resolve(root, "src/lib/object-import-contract.ts"));
 assert.deepEqual(resolveObjectImportFeatureReadiness({ migrationApplied: false, targetsTablePresent: false, fieldsTablePresent: false }), { ready: false, reason: "migration_required" });
 assert.deepEqual(resolveObjectImportFeatureReadiness({ migrationApplied: true, targetsTablePresent: false, fieldsTablePresent: false }), { ready: false, reason: "schema_incomplete" });
+assert.deepEqual(resolveObjectImportFeatureReadiness({ migrationApplied: true, targetsTablePresent: true, fieldsTablePresent: true, targetsTableWritable: false, fieldsTableWritable: true }), { ready: false, reason: "permissions_incomplete" });
 assert.deepEqual(resolveObjectImportFeatureReadiness({ migrationApplied: true, targetsTablePresent: true, fieldsTablePresent: true }), { ready: true });
 
 const page = readFileSync(resolve(root, "src/app/cases/[id]/page.tsx"), "utf8");
