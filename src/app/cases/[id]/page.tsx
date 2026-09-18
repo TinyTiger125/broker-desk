@@ -39,7 +39,6 @@ import { capabilityHasTenantPermission } from "@/lib/tenant-permissions";
 import { createRequestContext } from "@/lib/visibility-resolver";
 import { readCaseAssociationDraft } from "@/lib/case-associations";
 import { ObjectPageShell } from "@/components/layout-system";
-import { ObjectAttachmentSection } from "@/components/object-attachment-section";
 import { listLinkedObjectAttachments } from "@/lib/object-attachments";
 import { uploadObjectImportAction } from "@/app/object-import-actions";
 import { getObjectImportFeatureReadiness, listObjectImportCandidates, listObjectImportTargets } from "@/lib/data";
@@ -606,6 +605,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
     return record ? [{ ...party, name: record.name }] : [];
   });
   const objectImportReadiness = await getObjectImportFeatureReadiness();
+  const objectAttachments = await listLinkedObjectAttachments({ tenantId, targetType: "case", targetId: brokerageCase.id });
   const objectImportTargets = objectImportReadiness.ready
     ? await listObjectImportTargets({ tenantId, userId: user.id, caseId: brokerageCase.id })
     : [];
@@ -659,6 +659,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
       objectImportViews={objectImportViews}
       objectImportUploadAction={canWriteCase && objectImportReadiness.ready ? uploadObjectImportAction : undefined}
       objectImportUnavailable={!objectImportReadiness.ready}
+      caseAttachments={objectAttachments}
     />
   );
 
@@ -961,7 +962,6 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
   const parsedScrollTop = query?.scrollTop ? Number(query.scrollTop) : Number.NaN;
   const initialScrollTop = Number.isSafeInteger(parsedScrollTop) && parsedScrollTop >= 0 ? parsedScrollTop : undefined;
   const initialFieldKey = query?.field && allWorkbenchFields.some((field) => field.fieldKey === query.field) ? query.field : undefined;
-  const objectAttachments = await listLinkedObjectAttachments({ tenantId, targetType: "case", targetId: brokerageCase.id });
 
   if (!canWriteCase) {
     return (
@@ -989,7 +989,6 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
           visibilityLabel={caseVisibilityLabel}
           flash={<PageFlashBanner message={flashMessage} tone={flashTone} />}
         />
-        <ObjectAttachmentSection locale={locale} targetType="case" targetId={brokerageCase.id} items={objectAttachments} canWrite={false} />
       </div>
     );
   }
@@ -1020,7 +1019,6 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
           initialFieldKey={initialFieldKey}
           initialScrollTop={initialScrollTop}
         />
-        <ObjectAttachmentSection locale={locale} targetType="case" targetId={brokerageCase.id} items={objectAttachments} canWrite={canWriteCase} />
       </div>
     );
   }
@@ -1062,7 +1060,6 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
         feedback={<PageFlashBanner message={flashMessage} tone={flashTone} />}
       >
         {associationPanel}
-        <ObjectAttachmentSection locale={locale} targetType="case" targetId={brokerageCase.id} items={objectAttachments} canWrite={canWriteCase} />
 
         {selectedWorkbenchField ? (
           <section className="rounded-lg border border-amber-200 bg-amber-50/70 p-3 sm:hidden" aria-label={tr(locale, { ja: "次の対応項目", zh: "下一项任务", ko: "다음 처리 항목" })}>

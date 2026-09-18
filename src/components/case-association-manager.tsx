@@ -10,6 +10,8 @@ import type { Locale } from "@/lib/locale";
 import type { ObjectImportCandidateRecord, ObjectImportKind, ObjectImportTargetRecord } from "@/lib/object-import-repository";
 import { ObjectImportStatusBadge } from "@/components/object-import-status-badge";
 import { ObjectImportUpload } from "@/components/object-import-upload";
+import { ObjectAttachmentList } from "@/components/object-attachment-list";
+import type { ObjectAttachmentItem } from "@/lib/object-attachments";
 
 type Candidate = { id: string; name: string; address?: string; searchText?: string };
 type CreateAction<State> = (previousState: State, formData: FormData) => Promise<State>;
@@ -30,6 +32,7 @@ type CaseAssociationManagerProps = {
   objectImportViews?: ObjectImportView[];
   objectImportUploadAction?: (formData: FormData) => Promise<void>;
   objectImportUnavailable?: boolean;
+  caseAttachments?: ObjectAttachmentItem[];
 };
 
 const copy = {
@@ -69,6 +72,8 @@ const copy = {
     removePropertyConfirm: "主たる物件を解除すると、案件に主たる物件がない状態になります。続けますか？",
     quickCreateFeedback: "主資料を作成し、案件に追加しました。",
     objectImportUnavailable: "オブジェクト資料の解析はまだ利用できません。既存の案件資料は引き続き編集できます。",
+    otherAttachments: "案件関連のその他添付",
+    otherAttachmentsDescription: "案件に関連するその他の添付資料です。",
   },
   zh: {
     close: "关闭",
@@ -106,6 +111,8 @@ const copy = {
     removePropertyConfirm: "解除主要物件后，案件暂时没有主要物件。继续吗？",
     quickCreateFeedback: "主资料已创建，并已加入案件。",
     objectImportUnavailable: "对象资料解析暂不可用；现有案件资料仍可继续编辑。",
+    otherAttachments: "案件相关的其他附件",
+    otherAttachmentsDescription: "与案件相关的其他附件资料。",
   },
   ko: {
     close: "닫기",
@@ -143,6 +150,8 @@ const copy = {
     removePropertyConfirm: "주요 매물을 해제하면 안건에 주요 매물이 없는 상태가 됩니다. 계속할까요?",
     quickCreateFeedback: "기본 자료를 만들고 안건에 추가했습니다.",
     objectImportUnavailable: "객체 자료 분석을 아직 사용할 수 없습니다. 기존 안건 자료는 계속 편집할 수 있습니다.",
+    otherAttachments: "안건 관련 기타 첨부",
+    otherAttachmentsDescription: "안건과 관련된 기타 첨부 자료입니다.",
   },
 } as const;
 
@@ -160,6 +169,7 @@ export function CaseAssociationManager({
   objectImportViews = [],
   objectImportUploadAction,
   objectImportUnavailable = false,
+  caseAttachments = [],
 }: CaseAssociationManagerProps) {
   const text = copy[locale];
   const [parties, setParties] = useState(initialParties);
@@ -267,6 +277,15 @@ export function CaseAssociationManager({
         <div className="flex min-w-0 flex-col gap-3"><div className="flex min-h-11 items-center"><h3 className="text-sm font-black text-slate-900">{text.people} ({parties.length})</h3></div>{parties.length === 0 ? <p className="min-h-20 rounded-lg bg-slate-50 px-3 py-3 text-sm text-slate-500">{text.peopleEmpty}</p> : <div className="space-y-2">{parties.map((party) => <div key={party.partyId} className="flex min-h-20 items-start justify-between gap-3 rounded-lg border border-slate-200 px-3 py-3"><div className="min-w-0"><p className="break-words text-sm font-bold text-slate-900 [overflow-wrap:anywhere]">{party.name}</p><div className="mt-1 flex flex-wrap gap-1.5">{party.roles.map((role) => <span key={role} className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-700">{getCasePersonRoleLabel(locale, role)}</span>)}</div>{renderObjectImport("party", party.partyId)}</div>{!readOnly ? <button type="button" data-case-association-focus-target onClick={(event) => { focusReturnRef.current = event.currentTarget; editPerson(party); }} className="inline-flex min-h-11 shrink-0 items-center rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700">{text.editRoles}</button> : null}</div>)}</div>}</div>
         <div className="flex min-w-0 flex-col gap-3"><div className="flex min-h-11 items-center justify-between gap-2"><h3 className="text-sm font-black text-slate-900">{text.property} ({primaryPropertyId ? 1 : 0})</h3>{!readOnly ? <button type="button" data-case-association-focus-target onClick={(event) => { focusReturnRef.current = event.currentTarget; setDrawer("property"); setDrawerView("select"); setSelectionError(undefined); }} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-3 py-2 text-xs font-black text-slate-700">{primaryPropertyId ? text.changeProperty : text.setProperty}</button> : null}</div>{currentProperty ? <div className="flex min-h-20 items-start justify-between gap-3 rounded-lg border border-slate-200 px-3 py-3"><div className="min-w-0"><p className="break-words text-sm font-bold text-slate-900 [overflow-wrap:anywhere]">{currentProperty.name}</p>{currentProperty.address ? <p className="mt-1 break-words text-xs text-slate-500 [overflow-wrap:anywhere]">{currentProperty.address}</p> : null}{renderObjectImport("property", currentProperty.id)}</div>{!readOnly ? <button type="button" onClick={removeProperty} className="inline-flex min-h-11 shrink-0 items-center rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700">{text.removeProperty}</button> : null}</div> : <p className="min-h-20 rounded-lg bg-slate-50 px-3 py-3 text-sm text-slate-500">{text.propertyEmpty}</p>}</div>
       </div>
+      {caseAttachments.length > 0 ? (
+        <section className="mt-5 overflow-hidden rounded-lg border border-slate-200 bg-slate-50/60" aria-labelledby="case-other-attachments-heading">
+          <div className="border-b border-slate-200 px-4 py-3">
+            <h3 id="case-other-attachments-heading" className="text-sm font-black text-slate-900">{text.otherAttachments}</h3>
+            <p className="mt-1 text-xs font-semibold text-slate-500">{text.otherAttachmentsDescription}</p>
+          </div>
+          <ObjectAttachmentList locale={locale} items={caseAttachments} />
+        </section>
+      ) : null}
       <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">{text.outputBlocker}</p>
       {quickCreateFeedback ? <p role="status" className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-900">{quickCreateFeedback}</p> : null}
       {!readOnly && saveAction ? <form ref={associationFormRef} action={saveAction} className="mt-4 flex justify-end border-t border-slate-200 pt-4"><input type="hidden" name="caseId" value={caseId} /><input type="hidden" name="associationDraftJson" value={draftJson} /><button type="submit" className="rounded-lg bg-slate-950 px-4 py-2.5 text-sm font-black text-white hover:bg-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0046ad]">{text.save}</button></form> : null}
