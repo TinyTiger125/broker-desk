@@ -6470,6 +6470,10 @@ export async function saveCaseWorkbenchWithObjectReview(
     const validated = validateObjectImportReview(review, target, field, person as unknown as Record<string, unknown>);
     if (!validated.ok) return validated;
     if (review.caseFieldValue !== undefined && review.caseFieldValue.trim() !== validated.value) return { ok: false, reason: "invalid_value" };
+    if (validated.scope === "case") {
+      const existingCaseValue = typeof caseItem.confirmedDataJson[validated.key] === "string" ? String(caseItem.confirmedDataJson[validated.key]).trim() : "";
+      if (existingCaseValue && existingCaseValue !== validated.value) return { ok: false, reason: "conflict" };
+    }
     reviewData = { target, field, person, validated };
   }
 
@@ -6485,7 +6489,7 @@ export async function saveCaseWorkbenchWithObjectReview(
     if (reviewData) {
       const { target, field, person, validated } = reviewData;
       const mutableRecord = person as unknown as Record<string, unknown>;
-      if (input.objectReview?.decision === "confirm") {
+      if (input.objectReview?.decision === "confirm" && validated.scope === "object") {
         mutableRecord[validated.key] = validated.recordValue;
         if ("updatedAt" in person) person.updatedAt = new Date();
       }
@@ -6494,7 +6498,7 @@ export async function saveCaseWorkbenchWithObjectReview(
       field.status = input.objectReview?.decision === "confirm" ? "confirmed" : "rejected";
       field.confirmedByUserId = context.userId;
       field.confirmedAt = new Date();
-      target.targetVersion = buildObjectVersionFingerprint(mutableRecord);
+      target.targetVersion = validated.scope === "object" ? buildObjectVersionFingerprint(mutableRecord) : target.targetVersion;
       target.updatedAt = new Date();
       target.status = db.objectImportCandidates
         .filter((item) => item.targetId === target.id && item.tenantId === context.tenantId)
@@ -6507,13 +6511,13 @@ export async function saveCaseWorkbenchWithObjectReview(
         userId: context.userId,
         actorId: context.userId,
         action: `object_import_${input.objectReview?.decision}`,
-        targetType: target.targetType === "party" ? "client" : "property",
-        targetId: person.id,
+        targetType: validated.scope === "case" ? "case" : target.targetType === "party" ? "client" : "property",
+        targetId: validated.scope === "case" ? target.caseId : person.id,
         message: "Object import field reviewed",
         context: {
           importTargetId: target.id,
           fieldKey: validated.key,
-          before: personBefore ? (personBefore as unknown as Record<string, unknown>)[validated.key] ?? null : null,
+          before: validated.scope === "case" ? caseBefore.confirmedDataJson[validated.key] ?? null : personBefore ? (personBefore as unknown as Record<string, unknown>)[validated.key] ?? null : null,
           after: input.objectReview?.decision === "confirm" ? validated.recordValue : null,
         },
         createdAt: new Date(),

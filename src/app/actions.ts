@@ -3979,6 +3979,7 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
           expectedVersion: String(parsedObjectReview.expectedVersion ?? ""),
           expectedCandidateValue: String(parsedObjectReview.expectedCandidateValue ?? ""),
           decision: "confirm",
+          caseFieldKey: String(parsedObjectReview.caseFieldKey ?? "").trim(),
           value: getCaseWorkbenchSubmittedValue(formData, String(parsedObjectReview.caseFieldKey ?? "").trim()),
           caseFieldValue: getCaseFieldValue(nextConfirmedData, String(parsedObjectReview.caseFieldKey ?? "").trim()),
         }

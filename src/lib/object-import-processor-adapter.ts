@@ -3,11 +3,23 @@ import { listAttachments, readPrivateAttachmentContent, createObjectImportTarget
 import type { ImportJob } from "@/lib/data";
 import type { ObjectImportCandidateRecord, ObjectImportRepository } from "@/lib/object-import-repository";
 import { parseObjectImportNotes, normalizeObjectImportFieldKey } from "@/lib/object-import-contract";
+import { selectSingleObjectReaderCandidates } from "@/lib/object-reader-attribution";
+import type { ObjectReaderResponse } from "@/lib/object-reader-contract";
 
 export type ExtractedObjectField = {
   fieldKey: string; value: string; normalizedValue?: string; confidence: number;
   sourceSheet?: string; sourceCell?: string; sourceRange?: string; method?: string;
   sourceFileHash?: string; templateVersion?: string;
+};
+
+export type ExtractedObjectReaderField = {
+  fieldKey: string;
+  value: string;
+  pageNumber: number;
+  sourceText: string;
+  uncertainty: "clear" | "unclear" | "conflict" | "not_found";
+  subjectKey: string;
+  subjectLabel: string;
 };
 
 /** Called only with the persisted, tenant-scoped import job; never browser metadata. */
@@ -79,6 +91,77 @@ export async function persistObjectImportJobExtraction(input: { job: ImportJob; 
   const candidates = await persistObjectExtraction({ target: { ...target, sourceAttachmentId: target.sourceAttachmentId }, sourceFileHash, fields: selected });
   await updateObjectImportTarget({ tenantId: input.tenantId, userId: input.userId, id: target.id, status: candidates.length ? candidates.every((field) => field.finalSource === "human") ? "completed" : "needs_review" : "failed", errorCode: candidates.length ? undefined : "object_import_no_supported_fields", errorSummary: candidates.length ? undefined : "No supported fields were extracted." });
   return candidates;
+}
+
+/** Persist the guarded PDF/image object-reader result without routing it through identity fields. */
+export async function persistObjectReaderJobExtraction(input: {
+  job: ImportJob;
+  tenantId: string;
+  userId: string;
+  response: ObjectReaderResponse;
+}) {
+  const target = await ensureObjectImportTask(input.job, input);
+  if (!target) return null;
+  if (target.targetType !== "property") throw new Error("object_reader_target_must_be_property");
+  if (!target.sourceAttachmentId) throw new Error("object_import_source_attachment_required");
+  const content = await readPrivateAttachmentContent({ tenantId: input.tenantId, userId: input.userId, id: target.sourceAttachmentId });
+  if (!content?.length) throw new Error("object_import_source_attachment_unreadable");
+  const sourceFileHash = createHash("sha256").update(content).digest("hex");
+  const attribution = selectSingleObjectReaderCandidates(input.response.candidates);
+  if (attribution.status !== "single_object") {
+    await updateObjectImportTarget({ tenantId: input.tenantId, userId: input.userId, id: target.id, status: "conflict", attemptCount: target.attemptCount + 1, errorCode: "object_reader_ambiguous_subject", errorSummary: "资料中存在多个物件或无法确认物件归属。" });
+    return { target: await getObjectImportTargetByJob({ ...input, importJobId: input.job.id }), candidates: [], attribution: attribution.status };
+  }
+  const fields: ExtractedObjectReaderField[] = attribution.candidates;
+  const extracted = fields.map((field) => ({
+    fieldKey: field.fieldKey,
+    value: field.uncertainty === "not_found" ? "" : field.value,
+    normalizedValue: field.uncertainty === "not_found" ? "" : field.value,
+    confidence: field.uncertainty === "clear" ? 0.95 : field.uncertainty === "unclear" ? 0.55 : field.uncertainty === "conflict" ? 0.2 : 0,
+    sourceFileHash,
+    method: "object_reader",
+    pageNumber: field.pageNumber,
+    sourceText: field.sourceText,
+    uncertainty: field.uncertainty,
+    subjectKey: field.subjectKey,
+    subjectLabel: field.subjectLabel,
+  }));
+  await updateObjectImportTarget({ tenantId: input.tenantId, userId: input.userId, id: target.id, status: "processing", attemptCount: target.attemptCount + 1, errorCode: undefined, errorSummary: undefined });
+  const candidates = await persistObjectReaderExtraction({ target: { ...target, sourceAttachmentId: target.sourceAttachmentId }, sourceFileHash, fields: extracted });
+  await updateObjectImportTarget({ tenantId: input.tenantId, userId: input.userId, id: target.id, status: candidates.length ? "needs_review" : "failed", errorCode: candidates.length ? undefined : "object_import_no_supported_fields", errorSummary: candidates.length ? undefined : "No supported object fields were extracted." });
+  return { target: await getObjectImportTargetByJob({ ...input, importJobId: input.job.id }), candidates, attribution: attribution.status };
+}
+
+async function persistObjectReaderExtraction(input: {
+  target: { id: string; tenantId: string; sourceAttachmentId: string };
+  sourceFileHash: string;
+  fields: Array<ExtractedObjectReaderField & { normalizedValue: string; confidence: number; method: string }>;
+  repository?: Pick<ObjectImportRepository, "upsertCandidate">;
+}) {
+  const candidates = input.fields.map((field): ObjectImportCandidateRecord => ({
+    id: `candidate_${input.target.id}_${field.fieldKey}`,
+    tenantId: input.target.tenantId,
+    targetId: input.target.id,
+    fieldKey: field.fieldKey,
+    candidateValue: field.normalizedValue || undefined,
+    confidence: field.confidence,
+    provenance: {
+      sourceAttachmentId: input.target.sourceAttachmentId,
+      sourceFileHash: input.sourceFileHash,
+      method: field.method,
+      pageNumber: field.pageNumber,
+      sourceText: field.sourceText,
+      uncertainty: field.uncertainty,
+      subjectKey: field.subjectKey,
+      subjectLabel: field.subjectLabel,
+    },
+    finalValue: field.normalizedValue || undefined,
+    finalSource: "model_draft",
+    status: field.uncertainty === "conflict" ? "conflict" : field.uncertainty === "unclear" ? "low_confidence" : field.uncertainty === "not_found" ? "failed" : "draft",
+  }));
+  const saved = [];
+  for (const candidate of candidates) saved.push(await (input.repository?.upsertCandidate(candidate) ?? upsertObjectImportCandidate(candidate)));
+  return saved;
 }
 
 export async function markObjectImportJobFailed(input: { tenantId: string; userId: string; jobId: string }, errorCode: string, errorSummary: string) {

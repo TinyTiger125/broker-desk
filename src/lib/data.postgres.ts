@@ -3820,10 +3820,14 @@ export async function saveCaseWorkbenchWithObjectReview(
       const validated = validateObjectImportReview(review, target, field, person as unknown as Record<string, unknown>);
       if (!validated.ok) return validated;
       if (review.caseFieldValue !== undefined && review.caseFieldValue.trim() !== validated.value) return { ok: false, reason: "invalid_value" };
-      const column = validated.key === "listingPrice" ? "listing_price" : validated.key;
+      if (validated.scope === "case") {
+        const existingCaseValue = typeof caseItem.confirmedDataJson[validated.key] === "string" ? String(caseItem.confirmedDataJson[validated.key]).trim() : "";
+        if (existingCaseValue && existingCaseValue !== validated.value) return { ok: false, reason: "conflict" };
+      }
+      const column = validated.scope === "object" ? (validated.key === "listingPrice" ? "listing_price" : validated.key) : undefined;
       const mutableRecord = person as unknown as Record<string, unknown>;
-      const before = mutableRecord[validated.key];
-      if (review.decision === "confirm") {
+      const before = validated.scope === "case" ? caseItem.confirmedDataJson[validated.key] : mutableRecord[validated.key];
+      if (review.decision === "confirm" && validated.scope === "object") {
         await client.query(`UPDATE ${table} SET ${column}=$1${target.targetType === "party" ? ",updated_at=NOW()" : ""} WHERE id=$2 AND tenant_id=$3`, [validated.recordValue, person.id, context.tenantId]);
         mutableRecord[validated.key] = validated.recordValue;
       }
@@ -3831,14 +3835,14 @@ export async function saveCaseWorkbenchWithObjectReview(
         "UPDATE object_import_fields SET final_value=$1,final_source='human',status=$2,confirmed_by_user_id=$3,confirmed_at=NOW() WHERE id=$4 AND tenant_id=$5",
         [review.decision === "confirm" ? validated.value : null, review.decision === "confirm" ? "confirmed" : "rejected", context.userId, field.id, context.tenantId],
       );
-      const targetVersion = buildObjectVersionFingerprint(mutableRecord);
+      const targetVersion = validated.scope === "object" ? buildObjectVersionFingerprint(mutableRecord) : target.targetVersion;
       await client.query(
         "UPDATE object_import_targets SET target_version=$1,status=CASE WHEN EXISTS (SELECT 1 FROM object_import_fields WHERE object_import_target_id=$2 AND tenant_id=$3 AND final_source IS DISTINCT FROM 'human') THEN 'needs_review' ELSE 'completed' END,updated_at=NOW() WHERE id=$2 AND tenant_id=$3",
         [targetVersion, target.id, context.tenantId],
       );
       await client.query(
         "INSERT INTO audit_logs (id,tenant_id,user_id,actor_id,action,target_type,target_id,message,context_json,created_at) VALUES ($1,$2,$3,$3,$4,$8,$5,$6,$7::jsonb,NOW())",
-        [genId("audit"), context.tenantId, context.userId, `object_import_${review.decision}`, person.id, "Object import field reviewed", JSON.stringify({ importTargetId: target.id, fieldKey: validated.key, before: before ?? null, after: review.decision === "confirm" ? validated.recordValue : before ?? null }), target.targetType === "party" ? "client" : "property"],
+        [genId("audit"), context.tenantId, context.userId, `object_import_${review.decision}`, validated.scope === "case" ? target.caseId : person.id, "Object import field reviewed", JSON.stringify({ importTargetId: target.id, fieldKey: validated.key, before: before ?? null, after: review.decision === "confirm" ? validated.recordValue : before ?? null }), validated.scope === "case" ? "case" : target.targetType === "party" ? "client" : "property"],
       );
       objectReview = { ok: true, caseId: target.caseId, targetVersion };
     }

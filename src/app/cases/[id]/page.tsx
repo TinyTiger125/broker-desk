@@ -613,11 +613,17 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
     target,
     fields: await listObjectImportCandidates({ tenantId, userId: user.id, targetId: target.id }) as ObjectImportCandidateRecord[],
   })));
-  const objectImportFieldBindings: Record<string, { targetId: string; fieldId: string; expectedVersion: string; expectedCandidateValue: string; candidateValue: string }> = {};
+  const objectImportFieldBindings: Record<string, { targetId: string; fieldId: string; expectedVersion: string; expectedCandidateValue: string; candidateValue: string; status: string; sourceEvidence?: string }> = {};
   const applicantPartyId = associationDraft.parties[0]?.partyId;
   for (const view of objectImportViews) {
     const fieldMap = view.target.targetType === "property"
-      ? { name: "property.name", address: "property.address" }
+      ? {
+          "property.name": "property.name", "property.address": "property.address",
+          "property.roomNumber": "property.roomNumber", "property.postalCode": "property.postalCode", "property.usage": "property.usage",
+          "lease.contractType": "lease.contractType", "lease.contractStartDate": "lease.contractStartDate", "lease.contractEndDate": "lease.contractEndDate", "lease.moveInDate": "lease.moveInDate",
+          "lease.rent": "lease.rent", "lease.commonFee": "lease.commonFee", "lease.parkingFee": "lease.parkingFee", "lease.waterTownFee": "lease.waterTownFee", "lease.otherMonthlyFee": "lease.otherMonthlyFee", "lease.monthlyRentTotal": "lease.monthlyRentTotal",
+          "lease.deposit": "lease.deposit", "lease.keyMoney": "lease.keyMoney", "lease.insuranceFee": "lease.insuranceFee", "lease.keyExchangeFee": "lease.keyExchangeFee", "lease.cancellationDeduction": "lease.cancellationDeduction", "lease.initialCostTotal": "lease.initialCostTotal", "lease.paymentMethod": "lease.paymentMethod", "lease.rentPaymentDay": "lease.rentPaymentDay",
+        }
       : view.target.targetId === applicantPartyId
         ? { name: "applicant.name", phone: "applicant.phone", email: "applicant.email" }
         : {};
@@ -630,6 +636,10 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
         expectedVersion: view.target.targetVersion,
         expectedCandidateValue: field.candidateValue,
         candidateValue: field.candidateValue,
+        status: field.status,
+        sourceEvidence: typeof field.provenance.sourceText === "string" && typeof field.provenance.pageNumber === "number"
+          ? `p.${field.provenance.pageNumber}: ${field.provenance.sourceText}`
+          : undefined,
       };
     }
   }
@@ -1205,13 +1215,15 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                         {selectedChapterFields.map((field) => {
                           const selected = selectedWorkbenchField?.fieldKey === field.fieldKey;
                           const objectImportBinding = objectImportFieldBindings[field.fieldKey];
+                          const preserveExistingObjectValue = Boolean(objectImportBinding && field.value.trim());
+                          const candidateValue = objectImportBinding && !preserveExistingObjectValue ? objectImportBinding.candidateValue : field.value;
                           return (
                             <CaseWorkbenchFieldForm
                               key={field.fieldKey}
                               action={saveCaseWorkbenchAction}
                               caseId={brokerageCase.id}
                               fieldKey={field.fieldKey}
-                              initialValue={objectImportBinding?.candidateValue ?? field.value}
+                              initialValue={candidateValue}
                               returnNode={selectedChapterNode?.id}
                               returnField={field.fieldKey}
                               returnAnchor="case-main-editor"
@@ -1241,13 +1253,14 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                               <span className="min-w-0">
                                 <CaseFieldInput
                                   name={`field:${field.fieldKey}`}
-                                  value={objectImportBinding?.candidateValue ?? field.value}
+                                  value={candidateValue}
                                   label={field.label}
                                   inputSpec={field.inputSpec}
                                   locale={locale}
-                                  tone={fieldNeedsAttention(field) ? "attention" : "default"}
+                                  tone={fieldNeedsAttention(field) || Boolean(objectImportBinding?.status === "low_confidence") ? "attention" : "default"}
                                 />
-                                {objectImportBinding ? <input type="hidden" name="objectImportReviewJson" value={JSON.stringify({ ...objectImportBinding, caseFieldKey: field.fieldKey })} readOnly /> : null}
+                                {objectImportBinding ? <p className="mt-1 text-[11px] font-semibold text-amber-700">{preserveExistingObjectValue ? `已有值优先；候选 ${objectImportBinding.candidateValue} 保留待核对` : objectImportBinding.status === "low_confidence" ? "来源清晰度不足，确认前请核对" : "资料候选，确认后写入"}{objectImportBinding.sourceEvidence ? `（${objectImportBinding.sourceEvidence}）` : ""}</p> : null}
+                                {objectImportBinding && !preserveExistingObjectValue ? <input type="hidden" name="objectImportReviewJson" value={JSON.stringify({ ...objectImportBinding, caseFieldKey: field.fieldKey })} readOnly /> : null}
                               </span>
                             </CaseWorkbenchFieldForm>
                           );
