@@ -108,11 +108,12 @@ export async function persistObjectReaderJobExtraction(input: {
   if (!content?.length) throw new Error("object_import_source_attachment_unreadable");
   const sourceFileHash = createHash("sha256").update(content).digest("hex");
   const attribution = selectSingleObjectReaderCandidates(input.response.candidates);
-  if (attribution.status !== "single_object") {
+  const allNotFound = input.response.candidates.length > 0 && input.response.candidates.every((field) => field.uncertainty === "not_found");
+  if (attribution.status !== "single_object" && !allNotFound) {
     await updateObjectImportTarget({ tenantId: input.tenantId, userId: input.userId, id: target.id, status: "conflict", attemptCount: target.attemptCount + 1, errorCode: "object_reader_ambiguous_subject", errorSummary: "资料中存在多个物件或无法确认物件归属。" });
     return { target: await getObjectImportTargetByJob({ ...input, importJobId: input.job.id }), candidates: [], attribution: attribution.status };
   }
-  const fields: ExtractedObjectReaderField[] = attribution.candidates;
+  const fields: ExtractedObjectReaderField[] = allNotFound ? input.response.candidates : attribution.candidates;
   const extracted = fields.map((field) => ({
     fieldKey: field.fieldKey,
     value: field.uncertainty === "not_found" ? "" : field.value,
@@ -128,7 +129,8 @@ export async function persistObjectReaderJobExtraction(input: {
   }));
   await updateObjectImportTarget({ tenantId: input.tenantId, userId: input.userId, id: target.id, status: "processing", attemptCount: target.attemptCount + 1, errorCode: undefined, errorSummary: undefined });
   const candidates = await persistObjectReaderExtraction({ target: { ...target, sourceAttachmentId: target.sourceAttachmentId }, sourceFileHash, fields: extracted });
-  await updateObjectImportTarget({ tenantId: input.tenantId, userId: input.userId, id: target.id, status: candidates.length ? "needs_review" : "failed", errorCode: candidates.length ? undefined : "object_import_no_supported_fields", errorSummary: candidates.length ? undefined : "No supported object fields were extracted." });
+  const hasReadableCandidate = extracted.some((field) => field.uncertainty !== "not_found" && field.value.trim());
+  await updateObjectImportTarget({ tenantId: input.tenantId, userId: input.userId, id: target.id, status: candidates.length && hasReadableCandidate ? "needs_review" : "failed", errorCode: candidates.length && hasReadableCandidate ? undefined : "object_reader_no_readable_fields", errorSummary: candidates.length && hasReadableCandidate ? undefined : "No readable object fields were extracted." });
   return { target: await getObjectImportTargetByJob({ ...input, importJobId: input.job.id }), candidates, attribution: attribution.status };
 }
 

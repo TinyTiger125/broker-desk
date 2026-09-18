@@ -618,6 +618,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
   for (const view of objectImportViews) {
     const fieldMap = view.target.targetType === "property"
       ? {
+          name: "property.name", address: "property.address",
           "property.name": "property.name", "property.address": "property.address",
           "property.roomNumber": "property.roomNumber", "property.postalCode": "property.postalCode", "property.usage": "property.usage",
           "lease.contractType": "lease.contractType", "lease.contractStartDate": "lease.contractStartDate", "lease.contractEndDate": "lease.contractEndDate", "lease.moveInDate": "lease.moveInDate",
@@ -1259,7 +1260,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                                   locale={locale}
                                   tone={fieldNeedsAttention(field) || Boolean(objectImportBinding?.status === "low_confidence") ? "attention" : "default"}
                                 />
-                                {objectImportBinding ? <p className="mt-1 text-[11px] font-semibold text-amber-700">{preserveExistingObjectValue ? `已有值优先；候选 ${objectImportBinding.candidateValue} 保留待核对` : objectImportBinding.status === "low_confidence" ? "来源清晰度不足，确认前请核对" : "资料候选，确认后写入"}{objectImportBinding.sourceEvidence ? `（${objectImportBinding.sourceEvidence}）` : ""}</p> : null}
+                                {objectImportBinding ? <p className="mt-1 text-[11px] font-semibold text-amber-700">{preserveExistingObjectValue ? tr(locale, { ja: `既存値を優先。候補「${objectImportBinding.candidateValue}」は確認待ち`, zh: `已有值优先；候选「${objectImportBinding.candidateValue}」待核对`, ko: `기존 값을 우선합니다. 후보「${objectImportBinding.candidateValue}」는 확인 대기` }) : objectImportBinding.status === "low_confidence" ? tr(locale, { ja: "根拠が弱いため、確認前に出典を確認してください", zh: "来源清晰度不足，确认前请核对", ko: "근거가 약하므로 확인 전에 출처를 확인하세요" }) : tr(locale, { ja: "資料候補。確認すると保存します", zh: "资料候选，确认后写入", ko: "자료 후보입니다. 확인하면 저장합니다" })}{objectImportBinding.sourceEvidence ? tr(locale, { ja: `（${objectImportBinding.sourceEvidence}）`, zh: `（${objectImportBinding.sourceEvidence}）`, ko: `（${objectImportBinding.sourceEvidence}）` }) : ""}</p> : null}
                                 {objectImportBinding && !preserveExistingObjectValue ? <input type="hidden" name="objectImportReviewJson" value={JSON.stringify({ ...objectImportBinding, caseFieldKey: field.fieldKey })} readOnly /> : null}
                               </span>
                             </CaseWorkbenchFieldForm>
