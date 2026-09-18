@@ -26,7 +26,7 @@ export type ExtractedInputField = {
   sourceSheet: string;
   sourceCell?: string;
   sourceRange?: string;
-  method: "rule" | "ocr";
+  method: "rule" | "ocr" | "ai";
   confidence: number;
   reviewStatus: InputExtractionReviewStatus;
   sourceFileHash: string;

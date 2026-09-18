@@ -1,11 +1,11 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
-import { claimQueuedImportJobs } from "@/lib/data.admin.postgres";
+import { claimQueuedImportJob, claimQueuedImportJobs } from "@/lib/data.admin.postgres";
 import { addAuditLog, updateImportJobExecution, withWorkerRepositoryIdentity } from "@/lib/data";
 import { processExcelImportJob } from "@/lib/excel-import-processor";
 import { processIdentityImportJob } from "@/lib/identity-import-processor";
 import { getRequestId, logOperationalEvent } from "@/lib/operational-logging";
-import { assertProductionDocumentReaderReady, assertProductionImportWorkerReady, ProductionReadinessError } from "@/lib/production-readiness";
+import { assertProductionImportWorkerReady, ProductionReadinessError } from "@/lib/production-readiness";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,13 +33,15 @@ export async function POST(request: Request) {
   try {
     assertProductionImportWorkerReady();
     const body = await request.json().catch(() => ({}));
-    const jobs = await claimQueuedImportJobs(normalizedLimit(body?.limit));
+    const hasRequestedJobId = typeof body?.jobId === "string";
+    const requestedJobId = hasRequestedJobId ? body.jobId.trim() : "";
+    const singleJob = requestedJobId ? await claimQueuedImportJob(requestedJobId) : null;
+    const jobs = hasRequestedJobId ? (singleJob ? [singleJob] : []) : await claimQueuedImportJobs(normalizedLimit(body?.limit));
     let completed = 0;
     let failed = 0;
 
     for (const job of jobs) {
       try {
-        if (job.sourceType === "scan") assertProductionDocumentReaderReady();
         const result = job.sourceType === "scan"
           ? await withWorkerRepositoryIdentity(job.externalAuthSubject, () =>
             processIdentityImportJob({ tenantId: job.tenantId, userId: job.userId, jobId: job.jobId }),

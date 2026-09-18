@@ -107,6 +107,9 @@ function getMethodLabel(locale: Locale, method: ExtractedInputField["method"]) {
   if (method === "ocr") {
     return tr(locale, { ja: "画像の読取", zh: "图片读取", ko: "이미지 읽기" });
   }
+  if (method === "ai") {
+    return tr(locale, { ja: "AI候補", zh: "AI 候选", ko: "AI 후보" });
+  }
   return method;
 }
 

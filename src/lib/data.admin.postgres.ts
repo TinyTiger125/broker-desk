@@ -102,6 +102,24 @@ export async function claimQueuedImportJobs(limit = 3): Promise<ClaimedImportJob
   });
 }
 
+/**
+ * Claims exactly one named job for a controlled diagnostic run. The database
+ * function applies the same tenant service-period, source-type and
+ * external-auth checks as the bounded batch claim, while never selecting a
+ * different job.
+ */
+export async function claimQueuedImportJob(jobId: string): Promise<ClaimedImportJob | null> {
+  const normalizedJobId = jobId.trim();
+  if (!normalizedJobId) return null;
+  await assertAdminRoleSafe();
+  const result = await getAdminPool().query<{
+    job_id: string; tenant_id: string; user_id: string; external_auth_subject: string; source_type: string;
+  }>("SELECT * FROM brokerdesk_private.claim_import_job_by_id($1)", [normalizedJobId]);
+  const row = result.rows[0];
+  if (!row || !row.job_id || !row.tenant_id || !row.user_id || !row.external_auth_subject || (row.source_type !== "excel" && row.source_type !== "scan")) return null;
+  return { jobId: row.job_id, tenantId: row.tenant_id, userId: row.user_id, externalAuthSubject: row.external_auth_subject, sourceType: row.source_type };
+}
+
 export async function suspendExternalAuthUser(subject: string): Promise<{ userId?: string; suspendedMembershipCount: number }> {
   const normalized = subject.trim();
   if (!normalized) return { suspendedMembershipCount: 0 };

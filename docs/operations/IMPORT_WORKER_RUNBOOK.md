@@ -43,6 +43,27 @@ npm run worker:import
 
 脚本向 `POST /api/internal/import-jobs/drain` 发送 worker bearer token。该接口不接受浏览器会话替代 worker token，并以恒定时间比较 token。每次执行领取有限批次；失败记录标准错误码和摘要，而不是把堆栈或原始证件内容返回给用户。
 
+### 正常点击解析的触发边界
+
+`ExcelImportQueueProcessor` 在用户点击解析后只发起一次
+`POST /api/input-files/{jobId}/process`，随后以只读 GET 轮询同一 job 的状态；它不
+在浏览器内携带 worker token，也不替代后台调度器。非正式生产运行可在这次 POST
+内直接执行处理器；正式生产部署只持久化 `queued` 并返回 202，必须由已审查的
+worker 调用 drain，浏览器轮询只负责把 `mapped` 或 `failed` 呈现给用户。
+
+因此“点击后自动获得结果或明确失败”的可靠交付条件是：同一部署的 reader readiness
+已通过、队列消费者有可观测的受保护触发、job 状态能在约定时限内进入 `mapped/failed`。
+单次手动 drain 只能诊断消费者，不能代替正式自动触发；无托管 scheduler 的情况下
+不得把前端轮询描述成后台执行保证。
+
+### 单任务诊断
+
+受控诊断可以在同一接口的请求体中传入 `{ "jobId": "..." }`。该分支仍要求
+worker bearer token，并通过 `claim_import_job_by_id` 在数据库事务内锁定且只领取
+指定的 `queued` job；租户、用户、外部认证主体、服务期和来源类型均从数据库记录
+派生，调用方不能提交租户身份。未找到可领取的指定 job 时返回 `claimed: 0`，不会
+领取其他任务。普通调度不传 `jobId`，继续使用有界批量领取。
+
 ## 运维检查
 
 1. 确认 worker 最近一次运行时间和已领取/完成/失败数量。

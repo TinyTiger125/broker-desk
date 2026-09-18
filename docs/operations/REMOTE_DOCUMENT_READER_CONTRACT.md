@@ -9,13 +9,15 @@ Broker Desk 只向已配置且处于 `DOCUMENT_READING_ALLOWED_HOSTS` 的 HTTPS 
 ```json
 {
   "document": {
-    "name": "identity-card.jpg",
-    "mimeType": "image/jpeg",
-    "base64": "..."
-  },
-  "jobId": "import_job_..."
+    "filename": "identity-card.jpg",
+    "contentBase64": "..."
+  }
 }
 ```
+
+The adapter keeps job and tenant identity inside Broker Desk. The remote
+reader receives only the source document payload and returns OCR lines; it
+does not receive or write Broker Desk job IDs.
 
 ## 响应要求
 
@@ -25,17 +27,33 @@ Broker Desk 只向已配置且处于 `DOCUMENT_READING_ALLOWED_HOSTS` 的 HTTPS 
 
 ```json
 {
-  "candidates": [
+  "pages": [
     {
-      "fieldKey": "applicant.name",
-      "value": "山田 太郎",
-      "confidence": 0.94,
-      "source": { "page": 1, "region": "name" },
-      "extractorVersion": "reader-2026-08-01"
+      "pageNumber": 1,
+      "lines": ["氏名 山田 太郎", "生年月日 1990年1月1日"]
     }
   ]
 }
 ```
+
+Broker Desk derives field candidates from these OCR lines and records the
+source page, confidence, and parser version. An empty `pages` array, pages
+whose lines are all blank, malformed JSON, non-2xx responses, and timeouts are
+failures; they never become successful candidates.
+
+## OpenAI Responses API 适配候选
+
+项目已有 OpenAI Responses API 客户端。`DOCUMENT_READING_PROVIDER=openai_responses`
+时，非生产运行可直接把私有 PDF 作为 `input_file`、图片作为 `input_image`
+的 Base64 data URL 发送给 `identity_document_extraction_assist` 任务路由，要求
+Structured Outputs 返回 `documentType`、分页原文行和带 `pageNumber`、短引文及
+`uncertainty` 的候选。候选会映射为 Broker Desk 的 `method=ai` 草稿，`sourceRange`
+保留页码、证据引文和不确定性；`clear`/`unclear`/`conflict` 是复核分层，不是模型
+自报概率。空值不填充，`not_found` 保持缺失。
+
+当前生产 readiness 仍拒绝该 provider；这是本地/非生产适配与评测路径，不代表已
+批准把身份证件发送至 OpenAI。正式开启前必须单独确认数据处理目的、区域与保留、
+账户费用、密钥作用域和部署环境；不能仅凭 `OPENAI_API_KEY` 存在就放行生产。
 
 ## 安全与数据处理要求
 

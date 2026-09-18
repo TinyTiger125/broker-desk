@@ -71,6 +71,7 @@ GRANT USAGE ON SCHEMA brokerdesk_private TO brokerdesk_admin;
 GRANT EXECUTE ON FUNCTION brokerdesk_private.sync_external_auth_user(TEXT, TEXT, TEXT) TO brokerdesk_admin;
 GRANT EXECUTE ON FUNCTION brokerdesk_private.suspend_external_auth_user(TEXT) TO brokerdesk_admin;
 GRANT EXECUTE ON FUNCTION brokerdesk_private.claim_next_import_jobs(INTEGER) TO brokerdesk_admin;
+GRANT EXECUTE ON FUNCTION brokerdesk_private.claim_import_job_by_id(TEXT) TO brokerdesk_admin;
 
 -- New tables must be added explicitly in a migration with RLS and grants.
 -- Do not add blanket ALTER DEFAULT PRIVILEGES grants here: safe failure is

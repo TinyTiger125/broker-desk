@@ -12,6 +12,7 @@ import { isLocalPrivateStoragePath, isPostgresPrivateStoragePath } from "@/lib/a
 import { extractIdentityDocumentsFromFiles } from "@/lib/identity-document-extractor";
 import type { InputFileExtractionResult } from "@/lib/input-file-extractor";
 import { ProductionReadinessError } from "@/lib/production-readiness";
+import { RemoteDocumentReaderError } from "@/lib/identity-reader-contract";
 
 type IdentityImportPayload = {
   kind: "input_file_extraction";
@@ -132,7 +133,14 @@ export async function processIdentityImportJob(input: {
       fingerprintConfidence: inputExtraction.fingerprintConfidence,
     };
   } catch (error) {
-    if (error instanceof ProductionReadinessError) throw error;
+    if (error instanceof ProductionReadinessError) {
+      await markFailed(input, error.code, "资料读取服务尚未就绪，请联系管理员。");
+      throw error;
+    }
+    if (error instanceof RemoteDocumentReaderError) {
+      await markFailed(input, `remote_document_reader_${error.code}`, "远程资料读取失败，请稍后重试或改为手动录入。");
+      return { ok: false, status: "failed", error: "identity_extraction_failed" };
+    }
     await markFailed(
       input,
       "identity_extraction_failed",
