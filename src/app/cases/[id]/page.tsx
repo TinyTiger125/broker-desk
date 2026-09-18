@@ -630,7 +630,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
         : {};
     for (const field of view.fields) {
       const caseFieldKey = fieldMap[field.fieldKey as keyof typeof fieldMap];
-      if (!caseFieldKey || !field.candidateValue || ["confirmed", "rejected", "conflict", "failed"].includes(field.status)) continue;
+      if (!caseFieldKey || !field.candidateValue || ["confirmed", "rejected", "failed"].includes(field.status)) continue;
       objectImportFieldBindings[caseFieldKey] ??= {
         targetId: view.target.id,
         fieldId: field.id,
@@ -1258,10 +1258,10 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                                   label={field.label}
                                   inputSpec={field.inputSpec}
                                   locale={locale}
-                                  tone={fieldNeedsAttention(field) || Boolean(objectImportBinding?.status === "low_confidence") ? "attention" : "default"}
+                                  tone={fieldNeedsAttention(field) || Boolean(objectImportBinding?.status === "low_confidence" || objectImportBinding?.status === "conflict") ? "attention" : "default"}
                                 />
-                                {objectImportBinding ? <p className="mt-1 text-[11px] font-semibold text-amber-700">{preserveExistingObjectValue ? tr(locale, { ja: `既存値を優先。候補「${objectImportBinding.candidateValue}」は確認待ち`, zh: `已有值优先；候选「${objectImportBinding.candidateValue}」待核对`, ko: `기존 값을 우선합니다. 후보「${objectImportBinding.candidateValue}」는 확인 대기` }) : objectImportBinding.status === "low_confidence" ? tr(locale, { ja: "根拠が弱いため、確認前に出典を確認してください", zh: "来源清晰度不足，确认前请核对", ko: "근거가 약하므로 확인 전에 출처를 확인하세요" }) : tr(locale, { ja: "資料候補。確認すると保存します", zh: "资料候选，确认后写入", ko: "자료 후보입니다. 확인하면 저장합니다" })}{objectImportBinding.sourceEvidence ? tr(locale, { ja: `（${objectImportBinding.sourceEvidence}）`, zh: `（${objectImportBinding.sourceEvidence}）`, ko: `（${objectImportBinding.sourceEvidence}）` }) : ""}</p> : null}
-                                {objectImportBinding && !preserveExistingObjectValue ? <input type="hidden" name="objectImportReviewJson" value={JSON.stringify({ ...objectImportBinding, caseFieldKey: field.fieldKey })} readOnly /> : null}
+                                {objectImportBinding ? <p className="mt-1 text-[11px] font-semibold text-amber-700">{preserveExistingObjectValue ? tr(locale, { ja: `既存値を優先。候補「${objectImportBinding.candidateValue}」は確認待ち`, zh: `已有值优先；候选「${objectImportBinding.candidateValue}」待核对`, ko: `기존 값을 우선합니다. 후보「${objectImportBinding.candidateValue}」는 확인 대기` }) : objectImportBinding.status === "conflict" ? tr(locale, { ja: "資料間で不一致があります。内容を確認して保存してください", zh: "资料存在冲突，请核对后保存", ko: "자료가 서로 다릅니다. 확인 후 저장하세요" }) : objectImportBinding.status === "low_confidence" ? tr(locale, { ja: "根拠が弱いため、確認前に出典を確認してください", zh: "来源清晰度不足，确认前请核对", ko: "근거가 약하므로 확인 전에 출처를 확인하세요" }) : tr(locale, { ja: "資料候補。確認すると保存します", zh: "资料候选，确认后写入", ko: "자료 후보입니다. 확인하면 저장합니다" })}{objectImportBinding.sourceEvidence ? tr(locale, { ja: `（${objectImportBinding.sourceEvidence}）`, zh: `（${objectImportBinding.sourceEvidence}）`, ko: `（${objectImportBinding.sourceEvidence}）` }) : ""}</p> : null}
+                                {objectImportBinding ? <input type="hidden" name="objectImportReviewJson" value={JSON.stringify({ ...objectImportBinding, preserveExisting: preserveExistingObjectValue, caseFieldKey: field.fieldKey })} readOnly /> : null}
                               </span>
                             </CaseWorkbenchFieldForm>
                           );

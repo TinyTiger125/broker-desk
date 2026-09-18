@@ -78,8 +78,12 @@ const afterLease = await data.getBrokerageCaseById({ caseId: brokerageCase.id, t
 assert.equal(afterLease.confirmedDataJson["lease.rent"], "120000");
 assert.equal((await data.listObjectImportCandidates({ ...scope, targetId: target.id })).find((item) => item.id === rent.id).status, "confirmed");
 const targetAfterLease = await data.getObjectImportTarget({ ...scope, id: target.id });
-const conflict = await data.saveCaseWorkbenchWithObjectReview({ context, caseId: brokerageCase.id, confirmedDataJson: { ...afterLease.confirmedDataJson, "property.name": "New reader name" }, objectReview: { context, targetId: target.id, fieldId: name.id, expectedVersion: targetAfterLease.targetVersion, expectedCandidateValue: name.candidateValue, decision: "confirm", value: "New reader name", caseFieldKey: "property.name", caseFieldValue: "New reader name" } });
-assert.deepEqual(conflict, { ok: false, reason: "conflict" });
+const explicitEdit = await data.saveCaseWorkbenchWithObjectReview({ context, caseId: brokerageCase.id, confirmedDataJson: { ...afterLease.confirmedDataJson, "property.name": "Manual property name" }, objectReview: { context, targetId: target.id, fieldId: name.id, expectedVersion: targetAfterLease.targetVersion, expectedCandidateValue: name.candidateValue, decision: "confirm", value: "Manual property name", caseFieldKey: "property.name", caseFieldValue: "Manual property name" } });
+assert.equal(explicitEdit.ok, true);
+assert.equal((await data.getPropertyById(property.id, tenant.id)).name, "Manual property name");
+assert.equal((await data.listObjectImportCandidates({ ...scope, targetId: target.id })).find((item) => item.id === name.id).status, "confirmed");
+assert.equal((await processIdentityImportJob({ ...scope, jobId: target.importJobId })).ok, true);
+assert.equal(readerCalls, 1);
 
 const secondProperty = await data.addProperty({ tenantId: tenant.id, createdByUserId: user.id, currentOwnerUserId: user.id, name: "Second property", listingPrice: 200000 });
 const secondCase = await data.saveBrokerageCaseExtractionReview({ tenantId: tenant.id, userId: user.id, caseType: "rental", caseTitle: "Ambiguous object reader", confirmedDataJson: writeCaseAssociationData({}, { parties: [], primaryPropertyId: secondProperty.id }, { propertyName: secondProperty.name }), sourceImportJobIds: [], reviewItems: [] });

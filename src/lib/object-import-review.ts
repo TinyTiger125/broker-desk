@@ -41,8 +41,6 @@ export function validateObjectImportReview(input: ObjectImportReviewInput, targe
   if (input.decision === "confirm") {
     if (!value || (target.targetType === "party" && getCaseContactValidationError(`applicant.${key}`, value, "ja"))) return { ok: false, reason: "invalid_value" };
     if (key === "listingPrice" && (!/^\d+$/.test(value) || !Number.isSafeInteger(recordValue) || Number(recordValue) <= 0 || Number(recordValue) > 2147483647)) return { ok: false, reason: "invalid_value" };
-    const existingObjectValue = typeof record[key] === "string" || typeof record[key] === "number" ? String(record[key]).trim() : "";
-    if (field.provenance.method === "object_reader" && existingObjectValue && existingObjectValue !== value) return { ok: false, reason: "conflict" };
   }
   return { ok: true, scope: "object", key, value, recordValue };
 }

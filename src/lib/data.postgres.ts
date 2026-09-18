@@ -3822,7 +3822,7 @@ export async function saveCaseWorkbenchWithObjectReview(
       if (review.caseFieldValue !== undefined && review.caseFieldValue.trim() !== validated.value) return { ok: false, reason: "invalid_value" };
       if (validated.scope === "case") {
         const existingCaseValue = typeof caseItem.confirmedDataJson[validated.key] === "string" ? String(caseItem.confirmedDataJson[validated.key]).trim() : "";
-        if (existingCaseValue && existingCaseValue !== validated.value) return { ok: false, reason: "conflict" };
+        if (review.decision === "confirm" && existingCaseValue && existingCaseValue !== validated.value) return { ok: false, reason: "conflict" };
       }
       const column = validated.scope === "object" ? (validated.key === "listingPrice" ? "listing_price" : validated.key) : undefined;
       const mutableRecord = person as unknown as Record<string, unknown>;

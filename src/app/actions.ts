@@ -3848,7 +3848,7 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
   if (!caseId) throw new Error("案件IDが不正です。");
   const brokerageCase = await requireWritableCase(session, caseId);
   const objectReviewRaw = String(formData.get("objectImportReviewJson") ?? "").trim();
-  let parsedObjectReview: { targetId?: unknown; fieldId?: unknown; expectedVersion?: unknown; expectedCandidateValue?: unknown; caseFieldKey?: unknown } | undefined;
+  let parsedObjectReview: { targetId?: unknown; fieldId?: unknown; expectedVersion?: unknown; expectedCandidateValue?: unknown; caseFieldKey?: unknown; preserveExisting?: unknown } | undefined;
   if (objectReviewRaw) {
     try {
       parsedObjectReview = JSON.parse(objectReviewRaw) as typeof parsedObjectReview;
@@ -3967,6 +3967,11 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
     reviewItems,
   });
 
+  const objectReviewFieldKey = String(parsedObjectReview?.caseFieldKey ?? "").trim();
+  const objectReviewSubmittedValue = objectReviewFieldKey ? getCaseWorkbenchSubmittedValue(formData, objectReviewFieldKey) : "";
+  const objectReviewExistingValue = objectReviewFieldKey ? getCaseFieldValue(brokerageCase.confirmedDataJson, objectReviewFieldKey) : "";
+  const preserveExistingObjectReview = parsedObjectReview?.preserveExisting === true || parsedObjectReview?.preserveExisting === "true";
+  const objectReviewDecision = preserveExistingObjectReview && objectReviewSubmittedValue.trim() === objectReviewExistingValue.trim() ? "reject" : "confirm";
   const updatedResult = await saveCaseWorkbenchWithObjectReview({
     context: createRequestContext(session),
     caseId,
@@ -3978,10 +3983,10 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
           fieldId: String(parsedObjectReview.fieldId ?? ""),
           expectedVersion: String(parsedObjectReview.expectedVersion ?? ""),
           expectedCandidateValue: String(parsedObjectReview.expectedCandidateValue ?? ""),
-          decision: "confirm",
-          caseFieldKey: String(parsedObjectReview.caseFieldKey ?? "").trim(),
-          value: getCaseWorkbenchSubmittedValue(formData, String(parsedObjectReview.caseFieldKey ?? "").trim()),
-          caseFieldValue: getCaseFieldValue(nextConfirmedData, String(parsedObjectReview.caseFieldKey ?? "").trim()),
+          decision: objectReviewDecision,
+          caseFieldKey: objectReviewFieldKey,
+          value: objectReviewDecision === "confirm" ? objectReviewSubmittedValue : undefined,
+          caseFieldValue: objectReviewDecision === "confirm" ? getCaseFieldValue(nextConfirmedData, objectReviewFieldKey) : undefined,
         }
       : undefined,
   });

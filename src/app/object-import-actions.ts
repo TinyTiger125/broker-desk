@@ -36,6 +36,7 @@ export async function reviewObjectImportAction(formData: FormData) {
     context: createRequestContext(session), targetId: String(formData.get("importTargetId") ?? ""),
     fieldId: String(formData.get("fieldId") ?? ""), expectedVersion: String(formData.get("expectedVersion") ?? ""),
     expectedCandidateValue: String(formData.get("expectedCandidateValue") ?? ""), decision,
+    caseFieldKey: String(formData.get("caseFieldKey") ?? "").trim() || undefined,
     value: formData.has("value") ? String(formData.get("value")) : undefined,
   });
   if (!result.ok) throw new Error(`object_import_review_${result.reason}`);

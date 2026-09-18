@@ -55,6 +55,17 @@ export async function processIdentityImportJob(input: {
   }
 
   const objectTarget = await ensureObjectImportTask(job, input);
+  if (objectTarget && ["needs_review", "completed", "conflict"].includes(objectTarget.status)) {
+    const payload = parsePayload(job.notes);
+    return {
+      ok: true,
+      status: "mapped",
+      fieldCount: payload?.inputExtraction?.fields.length ?? payload?.objectReader?.candidates.length ?? 0,
+      documentType: payload?.inputExtraction?.documentType ?? payload?.objectReader?.documentType ?? "unknown_property_document",
+      documentTypeLabel: payload?.inputExtraction?.documentTypeLabel ?? (payload?.objectReader ? "物件・賃貸資料" : "本人確認資料"),
+      fingerprintConfidence: payload?.inputExtraction?.fingerprintConfidence ?? (payload?.objectReader ? 1 : 0),
+    };
+  }
   const attachments = await listAttachments({
     tenantId: input.tenantId,
     userId: input.userId,
@@ -165,7 +176,7 @@ function parsePayload(value: string | undefined): IdentityImportPayload | null {
   if (!value) return null;
   try {
     const parsed = JSON.parse(value) as Partial<IdentityImportPayload>;
-    return parsed.kind === "input_file_extraction" && parsed.inputExtraction
+    return parsed.kind === "input_file_extraction" && (parsed.inputExtraction || parsed.objectReader)
       ? (parsed as IdentityImportPayload)
       : null;
   } catch {
