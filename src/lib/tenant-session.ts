@@ -12,7 +12,7 @@ import {
   type TenantMembership,
   type User,
 } from "@/lib/data";
-import { isClerkAuthEnabled, isTrustedHeaderAuthEnabled } from "@/lib/auth-mode";
+import { isClerkAuthEnabled, isDemoAuthEnabled, isTrustedHeaderAuthEnabled } from "@/lib/auth-mode";
 import { getClerkAuthSubject } from "@/lib/clerk-auth";
 import {
   isConfiguredPlatformOwnerUser,
@@ -100,6 +100,14 @@ async function selectDevelopmentPlatformOwnerTenantMembership(input: {
   for (const tenantId of candidateTenantIds) {
     const tenant = await getTenantById(tenantId);
     if (tenant && isTenantAccessibleStatus(tenant.status)) {
+      if (input.user.id === dataUser.id) {
+        const existingMembership = (await listTenantMemberships(dataUser.id)).find(
+          (membership) => membership.tenantId === tenant.id && membership.status === "active",
+        );
+        if (existingMembership) {
+          return { user: dataUser, membership: existingMembership };
+        }
+      }
       const now = new Date();
       return {
         user: dataUser,
@@ -167,9 +175,11 @@ const resolveTenantSession = cache(async (preferredUserId?: string, requestedTen
 
   const resolvedSession = {
     // A persisted user mapping is not an authentication event. Resolver
-    // contexts must carry only the subject established by the current Clerk
-    // session; demo/development fallbacks stay ineligible for resolver access.
-    externalAuthSubject: clerkSubject ?? null,
+    // contexts use the current Clerk subject; demo mode is the explicit local
+    // exception and uses the memory repository's synthetic identity.
+    externalAuthSubject: clerkSubject ?? (
+      isDemoAuthEnabled() ? sessionUser.externalAuthSubject ?? null : null
+    ),
     user: sessionUser,
     tenant,
     membership,

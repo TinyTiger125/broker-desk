@@ -549,7 +549,13 @@ export type PrivateAttachmentInput = {
   content: Buffer;
 };
 
-const privateAttachmentContents = new Map<string, Buffer>();
+type PrivateAttachmentContentsHolder = { current: Map<string, Buffer> };
+const privateAttachmentContentsGlobal = globalThis as typeof globalThis & {
+  __brokerDeskPrivateAttachmentContentsHolder?: PrivateAttachmentContentsHolder;
+};
+const privateAttachmentContentsHolder = privateAttachmentContentsGlobal.__brokerDeskPrivateAttachmentContentsHolder ?? { current: new Map<string, Buffer>() };
+privateAttachmentContentsGlobal.__brokerDeskPrivateAttachmentContentsHolder = privateAttachmentContentsHolder;
+const privateAttachmentContents = privateAttachmentContentsHolder.current;
 
 export type GeneratedOutput = {
   id: string;

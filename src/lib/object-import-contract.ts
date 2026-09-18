@@ -47,7 +47,9 @@ export const OBJECT_IMPORT_WRITABLE_FIELDS = {
   property: new Set(["name", "area", "address", "listing_price"]),
 } as const;
 export function normalizeObjectImportFieldKey(targetType: ObjectImportTargetType, fieldKey: string): string {
-  const key = fieldKey.includes(".") ? fieldKey.split(".").at(-1) ?? "" : fieldKey;
+  const key = targetType === "property" && fieldKey === "property_name"
+    ? "name"
+    : fieldKey.includes(".") ? fieldKey.split(".").at(-1) ?? "" : fieldKey;
   if (!OBJECT_IMPORT_WRITABLE_FIELDS[targetType].has(key as never)) throw new Error("object_import_field_not_writable");
   return key;
 }

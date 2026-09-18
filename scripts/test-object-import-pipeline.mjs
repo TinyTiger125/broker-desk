@@ -160,7 +160,7 @@ const { buildObjectVersionFingerprint } = require(resolve(root, "src/lib/object-
 const { persistObjectImportJobExtraction } = require(resolve(root, "src/lib/object-import-processor-adapter.ts"));
 const propertyJob = await data.addImportJob({ ...scope, sourceType: "excel", targetEntity: "properties", title: "Synthetic property", status: "queued", idempotencyKey: "property-test", notes: JSON.stringify({ objectImport: { caseId: brokerageCase.id, targetObjectType: "property", targetObjectId: property.id, targetVersion: buildObjectVersionFingerprint(property) } }) });
 const propertySource = await data.addPrivateAttachment({ ...scope, targetType: "import_job", targetId: propertyJob.id, fileName: "synthetic.xlsx", content: Buffer.from("synthetic workbook") });
-await persistObjectImportJobExtraction({ ...scope, job: propertyJob, fields: [field("property.name", "New property"), field("property.area", "New area"), field("property.address", "New address"), field("property.listing_price", "2000")] });
+await persistObjectImportJobExtraction({ ...scope, job: propertyJob, fields: [field("property_name", "New property"), field("property.area", "New area"), field("property.address", "New address"), field("property.listing_price", "2000")] });
 const propertyTask = await data.getObjectImportTargetByJob({ ...scope, importJobId: propertyJob.id });
 const propertyFields = await data.listObjectImportCandidates({ ...scope, targetId: propertyTask.id });
 assert.equal(propertyFields.length, 4);
