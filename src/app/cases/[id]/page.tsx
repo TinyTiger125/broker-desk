@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { createClientFormAction, createPropertyQuickAction, rollbackCaseMergeAction, saveCaseAssociationsAction, saveCaseWorkbenchAction } from "@/app/actions";
+import { createClientFormAction, createPropertyQuickAction, refreshObjectImportReviewAction, rollbackCaseMergeAction, saveCaseAssociationsAction, saveCaseWorkbenchAction } from "@/app/actions";
 import { ArchiveRecordButton } from "@/components/archive-record-button";
 import { CaseWorkbenchFieldForm } from "@/components/case-workbench-field-form";
 import { CaseAssociationManager } from "@/components/case-association-manager";
@@ -45,6 +45,7 @@ import { getObjectImportFeatureReadiness, listObjectImportCandidates, listObject
 import type { ObjectImportCandidateRecord, ObjectImportTargetRecord } from "@/lib/object-import-repository";
 import { getImportRuntimeDiagnostics } from "@/lib/production-readiness";
 import { ExcelImportQueueProcessor } from "@/components/excel-import-queue-processor";
+import { buildObjectVersionFingerprint } from "@/lib/object-import-contract";
 
 export const dynamic = "force-dynamic";
 
@@ -626,7 +627,12 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
     target,
     fields: await listObjectImportCandidates({ tenantId, userId: user.id, targetId: target.id }) as ObjectImportCandidateRecord[],
   })));
-  const objectImportFieldBindings: Record<string, { targetId: string; fieldId: string; expectedVersion: string; expectedCandidateValue: string; candidateValue: string; status: string; sourceEvidence?: string }> = {};
+  const objectImportViewForJob = objectImportViews.find((view) => view.target.importJobId === objectImportJobId);
+  const objectImportCandidateCountForJob = objectImportViewForJob?.fields.length ?? 0;
+  const objectImportCompletionFlash = objectImportJobId &&
+    (query?.flash === undefined || query.flash === "input_extraction_queued" || query.flash === "object_import_processed") &&
+    objectImportTargetForJob?.status === "needs_review";
+  const objectImportFieldBindings: Record<string, { targetId: string; fieldId: string; importJobId: string; expectedVersion: string; observedVersion?: string; expectedCandidateValue: string; candidateValue: string; status: string; sourceEvidence?: string }> = {};
   const applicantPartyId = associationDraft.parties[0]?.partyId;
   for (const view of objectImportViews) {
     const fieldMap = view.target.targetType === "property"
@@ -644,10 +650,15 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
     for (const field of view.fields) {
       const caseFieldKey = fieldMap[field.fieldKey as keyof typeof fieldMap];
       if (!caseFieldKey || !field.candidateValue || ["confirmed", "rejected", "failed"].includes(field.status)) continue;
+      const currentObject = view.target.targetType === "property"
+        ? associatedPropertyResult?.record?.id === view.target.targetId ? associatedPropertyResult.record : undefined
+        : associatedPartyResults.find((result) => result.record?.id === view.target.targetId)?.record;
       objectImportFieldBindings[caseFieldKey] ??= {
         targetId: view.target.id,
         fieldId: field.id,
+        importJobId: view.target.importJobId,
         expectedVersion: view.target.targetVersion,
+        observedVersion: currentObject ? buildObjectVersionFingerprint(currentObject as unknown as Record<string, unknown>) : undefined,
         expectedCandidateValue: field.candidateValue,
         candidateValue: field.candidateValue,
         status: field.status,
@@ -689,7 +700,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                 targetCaseId={stableCaseId}
                 statusOnly={target.status === "processing"}
                 objectRecoveryHref={`/cases/${encodeURIComponent(stableCaseId)}?objectImportJob=${encodeURIComponent(target.importJobId)}#case-review-desk`}
-                successHref={`/cases/${encodeURIComponent(stableCaseId)}?flash=object_import_processed#case-review-desk`}
+                successHref={`/cases/${encodeURIComponent(stableCaseId)}?flash=object_import_processed&objectImportJob=${encodeURIComponent(target.importJobId)}#case-review-desk`}
               />
             ))
         : null}
@@ -869,6 +880,30 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
         zh: "未能读取可填写的受支持内容，案件资料未更新。请重新选择受支持的资料。",
         ko: "입력 가능한 지원 항목을 읽지 못했습니다. 안건 자료는 업데이트되지 않았습니다. 지원되는 자료를 다시 선택해 주세요.",
       })
+    : query?.flash === "object_import_review_conflict"
+      ? tr(locale, {
+          ja: "資料が別の画面で更新されました。案件ページを再読み込みして現在の資料と候補をもう一度確認してください。今回の変更は保存されておらず、確認時も最新バージョンを検証します。",
+          zh: "资料已在其他页面更新，请刷新案件页面，重新核对当前资料和候选；本次修改未保存，确认时仍会校验最新版本。",
+          ko: "자료가 다른 화면에서 업데이트되었습니다. 안건 페이지를 새로 고쳐 현재 자료와 후보를 다시 확인해 주세요. 이번 변경 사항은 저장되지 않았으며 확인 시에도 최신 버전을 검증합니다.",
+        })
+    : query?.flash === "object_import_review_rebased"
+      ? tr(locale, {
+          ja: "最新の物件資料を読み直しました。現在値と既存の資料候補をもう一度確認してから確定してください。まだ保存していません。",
+          zh: "已重新读取最新物件资料。请再次核对当前值和原有资料候选后确认；目前尚未保存。",
+          ko: "최신 매물 자료를 다시 읽었습니다. 현재 값과 기존 자료 후보를 다시 확인한 뒤 확정해 주세요. 아직 저장되지 않았습니다.",
+        })
+      : query?.flash === "object_import_review_already_reviewed"
+        ? tr(locale, {
+            ja: "この候補は別の画面ですでに確認済みです。案件を再読み込みして確定済みの値を確認してください。今回の変更は保存されていません。",
+            zh: "该候选已在其他页面处理完成，请刷新案件查看已确认值。本次修改未保存。",
+            ko: "이 후보는 다른 화면에서 이미 처리되었습니다. 안건을 새로 고쳐 확정된 값을 확인해 주세요. 이번 변경 사항은 저장되지 않았습니다.",
+          })
+    : objectImportCompletionFlash
+      ? tr(locale, {
+          ja: `資料を読み取りました。${objectImportCandidateCountForJob}件の候補を確認してから反映してください。主資料はまだ更新されていません。`,
+          zh: `已读取 ${objectImportCandidateCountForJob} 项对象候选，请确认后再写入。主资料尚未更新。`,
+          ko: `자료를 읽었습니다. ${objectImportCandidateCountForJob}개의 객체 후보를 확인한 뒤 반영해 주세요. 원본 자료는 아직 업데이트되지 않았습니다.`,
+        })
     : query?.flash === "extraction_review_saved"
       ? tr(locale, {
           ja: "確認結果を案件に保存しました。必要な項目を続けて整理できます。",
@@ -1003,7 +1038,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
 	                              })
 	              : undefined;
   const flashTone =
-    objectImportNoSupportedFieldsFailed || query?.flash?.startsWith("excel_upload_") || query?.flash?.startsWith("identity_upload_") || query?.flash === "case_required_field_missing" || query?.flash === "case_field_invalid" ? "error" : undefined;
+    objectImportNoSupportedFieldsFailed || query?.flash === "object_import_review_conflict" || query?.flash === "object_import_review_already_reviewed" || query?.flash?.startsWith("excel_upload_") || query?.flash?.startsWith("identity_upload_") || query?.flash === "case_required_field_missing" || query?.flash === "case_field_invalid" ? "error" : undefined;
   const activeView = query?.view === "quick" || query?.view === "overview"
     ? query.view
     : downloadGate && downloadGate.blockedReasons.length > 0
@@ -1281,9 +1316,13 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                           const objectImportBinding = objectImportFieldBindings[field.fieldKey];
                           const preserveExistingObjectValue = Boolean(objectImportBinding && field.value.trim());
                           const candidateValue = objectImportBinding && !preserveExistingObjectValue ? objectImportBinding.candidateValue : field.value;
+                          const canRefreshObjectImport = query?.flash === "object_import_review_conflict" &&
+                            invalidFieldKey === field.fieldKey &&
+                            objectImportBinding?.importJobId === objectImportJobId &&
+                            Boolean(objectImportBinding?.observedVersion);
                           return (
+                            <div key={field.fieldKey} className={`grid grid-cols-[4rem_minmax(0,1fr)_minmax(0,1.35fr)_auto] items-start gap-2 px-3 py-3 transition sm:grid-cols-[5.5rem_minmax(0,1fr)_minmax(0,1.35fr)_auto] sm:items-center sm:gap-3 sm:px-5 ${selected ? "bg-blue-50 ring-1 ring-inset ring-blue-700" : "hover:bg-slate-50"}`}>
                             <CaseWorkbenchFieldForm
-                              key={field.fieldKey}
                               action={saveCaseWorkbenchAction}
                               caseId={brokerageCase.id}
                               fieldKey={field.fieldKey}
@@ -1298,9 +1337,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                               saveButtonAriaLabel={`${getShortWorkbenchFieldLabel(field)}を確認して保存`}
                               saveButtonWrapperClassName="col-start-4 row-start-1 mt-0 max-h-12 self-center opacity-100"
                               saveButtonClassName="min-w-[3.5rem] rounded-md px-3 py-2 text-xs font-black"
-                              className={`grid grid-cols-[4rem_minmax(0,1fr)_minmax(0,1.35fr)_auto] items-start gap-2 px-3 py-3 transition sm:grid-cols-[5.5rem_minmax(0,1fr)_minmax(0,1.35fr)_auto] sm:items-center sm:gap-3 sm:px-5 ${
-                                selected ? "bg-blue-50 ring-1 ring-inset ring-blue-700" : "hover:bg-slate-50"
-                              }`}
+                              className="contents"
                             >
                               <span>
                                 <CaseFieldState
@@ -1327,6 +1364,25 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                                 {objectImportBinding ? <input type="hidden" name="objectImportReviewJson" value={JSON.stringify({ ...objectImportBinding, preserveExisting: preserveExistingObjectValue, caseFieldKey: field.fieldKey })} readOnly /> : null}
                               </span>
                             </CaseWorkbenchFieldForm>
+                            {canRefreshObjectImport ? (
+                              <form action={refreshObjectImportReviewAction} className="col-start-3 row-start-2 mt-1 sm:col-start-3">
+                                <input type="hidden" name="importTargetId" value={objectImportBinding.targetId} />
+                                <input type="hidden" name="fieldId" value={objectImportBinding.fieldId} />
+                                <input type="hidden" name="importJobId" value={objectImportBinding.importJobId} />
+                                <input type="hidden" name="expectedVersion" value={objectImportBinding.expectedVersion} />
+                                <input type="hidden" name="observedVersion" value={objectImportBinding.observedVersion} />
+                                <input type="hidden" name="expectedCandidateValue" value={objectImportBinding.expectedCandidateValue} />
+                                <input type="hidden" name="field" value={field.fieldKey} />
+                                <input type="hidden" name="returnNode" value={selectedChapterNode?.id ?? ""} />
+                                <input type="hidden" name="returnField" value={field.fieldKey} />
+                                <input type="hidden" name="returnView" value="quick" />
+                                <input type="hidden" name="returnAnchor" value="case-main-editor" />
+                                <button type="submit" className="text-xs font-bold text-amber-800 underline underline-offset-2">
+                                  {tr(locale, { ja: "最新の資料を再確認", zh: "重新核对最新资料", ko: "최신 자료 다시 확인" })}
+                                </button>
+                              </form>
+                            ) : null}
+                            </div>
                           );
                         })}
                         {selectedChapterFields.length === 0 ? (

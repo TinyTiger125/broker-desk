@@ -1,6 +1,11 @@
 import type { ObjectImportStatus } from "@/lib/object-import-repository";
 import type { Locale } from "@/lib/locale";
-export function ObjectImportStatusBadge({ status }: { status: ObjectImportStatus }) { return <span className="rounded bg-slate-100 px-2 py-0.5 text-[11px] font-bold">{status}</span>; }
+const statusCopy = {
+  ja: { queued: "受付済み", processing: "読取中", needs_review: "確認待ち", completed: "確認済み", failed: "失敗", conflict: "要確認" },
+  zh: { queued: "已提交", processing: "读取中", needs_review: "待确认", completed: "已确认", failed: "失败", conflict: "存在冲突" },
+  ko: { queued: "접수됨", processing: "읽는 중", needs_review: "확인 대기", completed: "확인됨", failed: "실패", conflict: "확인 필요" },
+} as const;
+export function ObjectImportStatusBadge({ locale = "ja", status }: { locale?: Locale; status: ObjectImportStatus }) { return <span className="rounded bg-slate-100 px-2 py-0.5 text-[11px] font-bold">{statusCopy[locale][status]}</span>; }
 export function ObjectImportFailureNotice({ locale, errorCode }: { locale: Locale; errorCode?: string | null }) {
   if (errorCode !== "object_import_no_supported_fields" && errorCode !== "object_reader_no_readable_fields") return null;
   const message = locale === "zh"

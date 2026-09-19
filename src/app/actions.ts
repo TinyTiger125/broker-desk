@@ -78,6 +78,8 @@ import {
   resolveClientVisibilityForContext,
   resolvePropertyVisibilityForContext,
   resolveCaseVisibilityForContext,
+  refreshObjectImportReview,
+  getObjectImportTarget,
   saveCaseWorkbenchWithObjectReview,
   saveBrokerageCaseExtractionReview,
   saveGuaranteeApplicationDraft,
@@ -3839,6 +3841,40 @@ export async function saveCaseAssociationsAction(formData: FormData) {
   redirect(`/cases/${encodeURIComponent(caseId)}?flash=case_associations_updated`);
 }
 
+export async function refreshObjectImportReviewAction(formData: FormData) {
+  const session = await requireTenantSession({ permission: "extract.accept_result" });
+  const targetId = String(formData.get("importTargetId") ?? "").trim();
+  const fieldId = String(formData.get("fieldId") ?? "").trim();
+  const expectedVersion = String(formData.get("expectedVersion") ?? "").trim();
+  const observedVersion = String(formData.get("observedVersion") ?? "").trim();
+  const expectedCandidateValue = String(formData.get("expectedCandidateValue") ?? "");
+  if (!targetId || !fieldId || !expectedVersion || !observedVersion) throw new Error("object_import_review_refresh_invalid");
+  const result = await refreshObjectImportReview({
+    context: createRequestContext(session), targetId, fieldId, expectedVersion, observedVersion, expectedCandidateValue,
+  });
+  if (!result.ok && result.reason !== "conflict" && result.reason !== "already_reviewed") {
+    throw new Error(`object_import_review_refresh_${result.reason}`);
+  }
+  const target = await getObjectImportTarget({ tenantId: session.tenant.id, userId: session.user.id, id: targetId });
+  const caseId = result.ok ? result.caseId : target?.caseId;
+  if (!caseId) throw new Error(`object_import_review_refresh_${"reason" in result ? result.reason : "conflict"}`);
+  const params = new URLSearchParams();
+  const importJobId = String(formData.get("importJobId") ?? target?.importJobId ?? "").trim();
+  const field = String(formData.get("field") ?? "").trim();
+  const returnNode = safeQueryToken(formData.get("returnNode"));
+  const returnView = safeQueryToken(formData.get("returnView"));
+  const returnScrollTop = safeScrollTop(formData.get("returnScrollTop"));
+  const returnAnchor = safeHashAnchor(formData.get("returnAnchor"));
+  if (returnNode) params.set("node", returnNode);
+  if (returnView) params.set("view", returnView);
+  if (returnScrollTop) params.set("scrollTop", returnScrollTop);
+  if (importJobId) params.set("objectImportJob", importJobId);
+  if (field) params.set("field", field);
+  params.set("flash", result.ok ? "object_import_review_rebased" : result.reason === "already_reviewed" ? "object_import_review_already_reviewed" : "object_import_review_conflict");
+  revalidatePath(`/cases/${caseId}`);
+  redirect(`/cases/${encodeURIComponent(caseId)}?${params.toString()}${returnAnchor ? `#${returnAnchor}` : ""}`);
+}
+
 export async function saveCaseWorkbenchAction(formData: FormData) {
   const session = await requireTenantSession({ permission: "record.update" });
   const user = session.user;
@@ -3849,7 +3885,7 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
   if (!caseId) throw new Error("案件IDが不正です。");
   const brokerageCase = await requireWritableCase(session, caseId);
   const objectReviewRaw = String(formData.get("objectImportReviewJson") ?? "").trim();
-  let parsedObjectReview: { targetId?: unknown; fieldId?: unknown; expectedVersion?: unknown; expectedCandidateValue?: unknown; caseFieldKey?: unknown; preserveExisting?: unknown } | undefined;
+  let parsedObjectReview: { targetId?: unknown; fieldId?: unknown; expectedVersion?: unknown; expectedCandidateValue?: unknown; caseFieldKey?: unknown; preserveExisting?: unknown; importJobId?: unknown } | undefined;
   if (objectReviewRaw) {
     try {
       parsedObjectReview = JSON.parse(objectReviewRaw) as typeof parsedObjectReview;
@@ -3881,6 +3917,9 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
   const returnAnchor = safeHashAnchor(formData.get("returnAnchor"));
   const returnView = safeQueryToken(formData.get("returnView"));
   const returnScrollTop = safeScrollTop(formData.get("returnScrollTop"));
+  const guaranteeTemplate = safeQueryToken(formData.get("guaranteeTemplate"));
+  const returnNode = safeQueryToken(formData.get("returnNode"));
+  const returnField = safeWorkbenchFieldToken(formData.get("returnField"));
   const requiredMissingFieldKey = fieldKeysToSave.find((fieldKey) => {
     const decision = getCaseWorkbenchFieldDecision(formData, fieldKey);
     if (decision !== "confirmed") return false;
@@ -4012,6 +4051,19 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
   });
   if (!updatedResult.ok) {
     if (updatedResult.reason === "case_not_writable") throw new Error("案件の保存に失敗しました。");
+    if (updatedResult.reason === "conflict" || updatedResult.reason === "already_reviewed") {
+      const reviewConflictParams = new URLSearchParams();
+      if (guaranteeTemplate) reviewConflictParams.set("guaranteeTemplate", guaranteeTemplate);
+      if (returnNode) reviewConflictParams.set("node", returnNode);
+      if (returnView) reviewConflictParams.set("view", returnView);
+      if (returnScrollTop) reviewConflictParams.set("scrollTop", returnScrollTop);
+      const objectReviewJobId = safeQueryToken(String(parsedObjectReview?.importJobId ?? ""));
+      if (objectReviewJobId) reviewConflictParams.set("objectImportJob", objectReviewJobId);
+      reviewConflictParams.set("flash", updatedResult.reason === "already_reviewed" ? "object_import_review_already_reviewed" : "object_import_review_conflict");
+      const reviewFieldKey = objectReviewFieldKey || returnField;
+      if (reviewFieldKey) reviewConflictParams.set("field", reviewFieldKey);
+      redirect(`/cases/${caseId}?${reviewConflictParams.toString()}${returnAnchor ? `#${returnAnchor}` : ""}`);
+    }
     throw new Error(`object_import_review_${updatedResult.reason}`);
   }
   const updatedCase = updatedResult.brokerageCase;
@@ -4046,9 +4098,6 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
 
   revalidatePath(`/cases/${caseId}`);
   revalidatePath("/output-center");
-  const guaranteeTemplate = safeQueryToken(formData.get("guaranteeTemplate"));
-  const returnNode = safeQueryToken(formData.get("returnNode"));
-  const returnField = safeWorkbenchFieldToken(formData.get("returnField"));
   const redirectParams = new URLSearchParams();
   if (guaranteeTemplate) redirectParams.set("guaranteeTemplate", guaranteeTemplate);
   if (returnNode) redirectParams.set("node", returnNode);

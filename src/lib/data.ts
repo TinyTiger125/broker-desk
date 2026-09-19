@@ -400,6 +400,8 @@ export const updateBrokerageCaseConfirmedData: typeof memory.updateBrokerageCase
   repo.updateBrokerageCaseConfirmedData(...args);
 export const saveCaseWorkbenchWithObjectReview: typeof memory.saveCaseWorkbenchWithObjectReview = (...args) =>
   repo.saveCaseWorkbenchWithObjectReview(...args);
+export const refreshObjectImportReview: typeof memory.refreshObjectImportReview = (...args) =>
+  repo.refreshObjectImportReview(...args);
 export const saveBrokerageCaseExtractionReview: typeof memory.saveBrokerageCaseExtractionReview = (...args) =>
   repo.saveBrokerageCaseExtractionReview(...args);
 export const mergeBrokerageCaseExtractionReview: typeof memory.mergeBrokerageCaseExtractionReview = (...args) =>

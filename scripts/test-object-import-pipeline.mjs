@@ -138,10 +138,18 @@ assert.equal(competing.filter((item) => item.ok).length, 1);
 assert.equal(competing.filter((item) => !item.ok && item.reason === "already_reviewed").length, 1);
 assert.equal((await data.getClientById(person.id, tenant.id)).name, "Human confirmed");
 assert.equal((await data.getClientById(person.id, tenant.id)).phone, "000-0000-0000");
+const duplicateReviewForm = new FormData();
+duplicateReviewForm.set("importTargetId", target.id); duplicateReviewForm.set("fieldId", nameField.id);
+duplicateReviewForm.set("expectedVersion", target.targetVersion); duplicateReviewForm.set("expectedCandidateValue", nameField.candidateValue); duplicateReviewForm.set("decision", "confirm");
+await assert.rejects(reviewObjectImportAction(duplicateReviewForm), /REDIRECT:/);
+assert.match(lastRedirectUrl, /flash=object_import_review_already_reviewed/);
 const rejectForm = new FormData();
 rejectForm.set("importTargetId", target.id); rejectForm.set("fieldId", phoneField.id);
 rejectForm.set("expectedVersion", target.targetVersion); rejectForm.set("expectedCandidateValue", phoneField.candidateValue); rejectForm.set("decision", "reject");
-await assert.rejects(reviewObjectImportAction(rejectForm), /object_import_review_conflict/);
+await assert.rejects(reviewObjectImportAction(rejectForm), /REDIRECT:/);
+assert.match(lastRedirectUrl, new RegExp(`/cases/${brokerageCase.id}\\?`));
+assert.match(lastRedirectUrl, /flash=object_import_review_conflict/);
+assert.match(lastRedirectUrl, new RegExp(`objectImportJob=${target.importJobId}`));
 const refreshed = await data.getObjectImportTarget({ ...scope, id: target.id });
 rejectForm.set("expectedVersion", refreshed.targetVersion);
 await assert.rejects(reviewObjectImportAction(rejectForm), /REDIRECT:/);
@@ -333,6 +341,160 @@ const atomicConflict = await data.saveCaseWorkbenchWithObjectReview({
 assert.deepEqual(atomicConflict, { ok: false, reason: "conflict" });
 assert.deepEqual(await data.getBrokerageCaseById({ userId: user.id, tenantId: tenant.id, caseId: atomicCase.id }), atomicCaseBeforeConflict);
 assert.equal((await data.getClientById(atomicPerson.id, tenant.id)).phone, "000-1111-2222");
+// The server action must turn a stale CAS result into a contextual case redirect;
+// it must not swallow the conflict or retry with the old expected version.
+const actionLoad = Module._load;
+const actionRedirects = [];
+Module._load = function(request, parent, ...rest) {
+  if (request === "next/navigation") return { redirect: (url) => { actionRedirects.push(String(url)); throw new Error(`REDIRECT:${url}`); } };
+  if (request === "next/cache") return { revalidatePath: () => {} };
+  if (request === "next/headers") return { cookies: async () => ({ get: () => undefined }) };
+  if (request === "next/dist/client/components/redirect-error") return { isRedirectError: () => false };
+  if (request === "@/lib/tenant-session" && parent?.filename.endsWith("/src/app/actions.ts")) return { requireTenantSession: async () => session, assertTenantPermission: () => {} };
+  if (request === "@/lib/locale" && parent?.filename.endsWith("/src/app/actions.ts")) return { getLocale: async () => "zh" };
+  return actionLoad.call(this, request, parent, ...rest);
+};
+const { refreshObjectImportReviewAction, saveCaseWorkbenchAction, updatePropertyProfileAction } = require(resolve(root, "src/app/actions.ts"));
+Module._load = actionLoad;
+// A normal property edit changes the current record fingerprint but must not
+// mutate the upload snapshot stored on the pending object-import target.
+// This is the real stale-review sequence: old pending token -> ordinary UI
+// update -> old review conflict -> page re-read -> old snapshot still rejects.
+const rebaseProperty = await data.addProperty({ ...scope, name: "Rebase original", area: "rebase", address: "Rebase address", sizeSqm: 70, listingPrice: 2500, notes: "Original note", createdByUserId: user.id, currentOwnerUserId: user.id });
+const rebaseCase = await data.saveBrokerageCaseExtractionReview({ ...scope, caseType: "unit_sale", caseTitle: "Protected re-read", confirmedDataJson: writeCaseAssociationData({}, { parties: [], primaryPropertyId: rebaseProperty.id }, {}), sourceImportJobIds: [], reviewItems: [] });
+const rebaseJob = await data.addImportJob({ ...scope, sourceType: "excel", targetEntity: "properties", title: "Protected re-read", status: "queued", idempotencyKey: "protected-reread", notes: JSON.stringify({ objectImport: { caseId: rebaseCase.id, targetObjectType: "property", targetObjectId: rebaseProperty.id, targetVersion: buildObjectVersionFingerprint(rebaseProperty) } }) });
+await data.addPrivateAttachment({ ...scope, targetType: "import_job", targetId: rebaseJob.id, fileName: "protected-reread.xlsx", content: Buffer.from("synthetic protected reread") });
+await persistObjectImportJobExtraction({ ...scope, job: rebaseJob, fields: [field("property_name", "Rebase candidate")] });
+const rebaseTarget = await data.getObjectImportTargetByJob({ ...scope, importJobId: rebaseJob.id });
+const rebaseCandidate = (await data.listObjectImportCandidates({ ...scope, targetId: rebaseTarget.id }))[0];
+assert(rebaseTarget && rebaseCandidate && rebaseTarget.status === "needs_review");
+const rebaseOldVersion = rebaseTarget.targetVersion;
+const rebaseOldCandidate = rebaseCandidate.candidateValue;
+assert.deepEqual(await data.refreshObjectImportReview({ context, targetId: rebaseTarget.id, fieldId: atomicPhone.id, expectedVersion: rebaseOldVersion, observedVersion: rebaseOldVersion, expectedCandidateValue: atomicPhone.candidateValue }), { ok: false, reason: "not_writable" }, "a party candidate must not be reused for a property target");
+const externalEditForm = new FormData();
+externalEditForm.set("propertyId", rebaseProperty.id);
+externalEditForm.set("name", rebaseProperty.name);
+externalEditForm.set("area", rebaseProperty.area ?? "");
+externalEditForm.set("address", rebaseProperty.address ?? "");
+externalEditForm.set("sizeSqm", String(rebaseProperty.sizeSqm ?? ""));
+externalEditForm.set("listingPrice", String(rebaseProperty.listingPrice ?? ""));
+externalEditForm.set("managementFee", String(rebaseProperty.managementFee ?? ""));
+externalEditForm.set("repairFee", String(rebaseProperty.repairFee ?? ""));
+externalEditForm.set("notes", "External visible edit");
+externalEditForm.set("returnTo", `/properties/${rebaseProperty.id}/edit`);
+await assert.rejects(updatePropertyProfileAction({}, externalEditForm), /REDIRECT:/, "the normal property profile action must complete the external edit");
+const externallyEditedProperty = (await data.resolvePropertyVisibilityForContext({ context, propertyId: rebaseProperty.id })).record;
+assert(externallyEditedProperty);
+assert.equal(externallyEditedProperty.notes, "External visible edit");
+assert.notEqual(buildObjectVersionFingerprint(externallyEditedProperty), rebaseOldVersion, "the ordinary visible edit must change the current object fingerprint");
+assert.equal((await data.getObjectImportTarget({ ...scope, id: rebaseTarget.id })).targetVersion, rebaseOldVersion, "ordinary property editing must not rewrite the pending upload snapshot");
+const rebaseCaseBeforeConflict = await data.getBrokerageCaseById({ ...scope, caseId: rebaseCase.id });
+function rebaseWorkbenchReviewForm(expectedVersion, expectedCandidateValue) {
+  const form = new FormData();
+  form.set("caseId", rebaseCase.id);
+  form.set("presentFieldKeysJson", JSON.stringify(["property.name"]));
+  form.set("field:property.name", expectedCandidateValue);
+  form.set("fieldValueSnapshot", expectedCandidateValue);
+  form.set("returnNode", "property");
+  form.set("returnField", "property.name");
+  form.set("returnView", "quick");
+  form.set("returnAnchor", "case-main-editor");
+  form.set("objectImportReviewJson", JSON.stringify({ targetId: rebaseTarget.id, fieldId: rebaseCandidate.id, importJobId: rebaseJob.id, expectedVersion, expectedCandidateValue, caseFieldKey: "property.name" }));
+  return form;
+}
+await assert.rejects(saveCaseWorkbenchAction(rebaseWorkbenchReviewForm(rebaseOldVersion, rebaseOldCandidate)), /REDIRECT:/, "the retained old token must be rejected after a normal property edit");
+assert.match(actionRedirects.at(-1), /flash=object_import_review_conflict/);
+assert.match(actionRedirects.at(-1), new RegExp(`objectImportJob=${rebaseJob.id}`));
+const rereadProperty = (await data.resolvePropertyVisibilityForContext({ context, propertyId: rebaseProperty.id })).record;
+const [rereadTarget] = await data.listObjectImportTargets({ ...scope, caseId: rebaseCase.id });
+const [rereadCandidate] = await data.listObjectImportCandidates({ ...scope, targetId: rereadTarget.id });
+assert(rereadProperty && rereadTarget && rereadCandidate);
+assert.equal(rereadTarget.targetVersion, rebaseOldVersion, "a normal case-page re-read retains the pending upload snapshot");
+assert.equal(rereadCandidate.candidateValue, rebaseOldCandidate, "a normal case-page re-read retains the original candidate");
+assert.notEqual(buildObjectVersionFingerprint(rereadProperty), rereadTarget.targetVersion, "the re-read exposes the version drift instead of manufacturing a fresh token");
+await assert.rejects(saveCaseWorkbenchAction(rebaseWorkbenchReviewForm(rereadTarget.targetVersion, rereadCandidate.candidateValue)), /REDIRECT:/, "refreshing the case page alone must not bypass the stale object CAS");
+assert.match(actionRedirects.at(-1), /flash=object_import_review_conflict/);
+assert.equal((await data.getObjectImportTarget({ ...scope, id: rebaseTarget.id })).targetVersion, rebaseOldVersion, "the blocked re-read path must preserve the old target snapshot");
+assert.equal((await data.resolvePropertyVisibilityForContext({ context, propertyId: rebaseProperty.id })).record.notes, "External visible edit", "conflict retries must preserve the external visible edit");
+assert.deepEqual(await data.getBrokerageCaseById({ ...scope, caseId: rebaseCase.id }), rebaseCaseBeforeConflict, "stale conflict retries must not partially write the case");
+function rebaseRefreshForm(expectedVersion, observedVersion, expectedCandidateValue) {
+  const form = new FormData();
+  form.set("importTargetId", rebaseTarget.id);
+  form.set("fieldId", rebaseCandidate.id);
+  form.set("importJobId", rebaseJob.id);
+  form.set("expectedVersion", expectedVersion);
+  form.set("observedVersion", observedVersion);
+  form.set("expectedCandidateValue", expectedCandidateValue);
+  form.set("field", "property.name");
+  form.set("returnNode", "property");
+  form.set("returnField", "property.name");
+  form.set("returnView", "quick");
+  form.set("returnAnchor", "case-main-editor");
+  return form;
+}
+const rereadVersion = buildObjectVersionFingerprint(rereadProperty);
+await assert.rejects(refreshObjectImportReviewAction(rebaseRefreshForm(rebaseOldVersion, `${rereadVersion}-stale-observation`, rereadCandidate.candidateValue)), /REDIRECT:/, "a forged observed fingerprint must not rebase the review");
+assert.match(actionRedirects.at(-1), /flash=object_import_review_conflict/);
+assert.equal((await data.getObjectImportTarget({ ...scope, id: rebaseTarget.id })).targetVersion, rebaseOldVersion);
+await assert.rejects(refreshObjectImportReviewAction(rebaseRefreshForm(rebaseOldVersion, rereadVersion, rereadCandidate.candidateValue)), /REDIRECT:/, "an explicit re-read must use the server-observed record fingerprint");
+assert.match(actionRedirects.at(-1), /flash=object_import_review_rebased/);
+const rebasedTarget = await data.getObjectImportTarget({ ...scope, id: rebaseTarget.id });
+assert.equal(rebasedTarget.targetVersion, rereadVersion, "re-read must atomically advance only the review baseline");
+assert.equal(rebasedTarget.sourceAttachmentId, rebaseTarget.sourceAttachmentId, "re-read must preserve the original source attachment");
+assert.equal((await data.listObjectImportCandidates({ ...scope, targetId: rebaseTarget.id }))[0].candidateValue, rebaseOldCandidate, "re-read must preserve the extracted candidate");
+assert.equal((await data.resolvePropertyVisibilityForContext({ context, propertyId: rebaseProperty.id })).record.notes, "External visible edit", "re-read must preserve the object");
+await assert.rejects(refreshObjectImportReviewAction(rebaseRefreshForm(rebaseOldVersion, rereadVersion, rereadCandidate.candidateValue)), /REDIRECT:/, "the old review action must not re-open after a successful re-read");
+assert.match(actionRedirects.at(-1), /flash=object_import_review_conflict/);
+externalEditForm.set("notes", "Changed after re-read");
+await assert.rejects(updatePropertyProfileAction({}, externalEditForm), /REDIRECT:/, "a normal edit after re-read must complete before the next CAS attempt");
+const postRebaseProperty = (await data.resolvePropertyVisibilityForContext({ context, propertyId: rebaseProperty.id })).record;
+const postRebaseVersion = buildObjectVersionFingerprint(postRebaseProperty);
+await assert.rejects(saveCaseWorkbenchAction(rebaseWorkbenchReviewForm(rebasedTarget.targetVersion, rebaseCandidate.candidateValue)), /REDIRECT:/, "a post-re-read object edit must still be rejected by CAS");
+assert.match(actionRedirects.at(-1), /flash=object_import_review_conflict/);
+await assert.rejects(refreshObjectImportReviewAction(rebaseRefreshForm(rebasedTarget.targetVersion, postRebaseVersion, rebaseCandidate.candidateValue)), /REDIRECT:/, "the user must explicitly re-read again after the second external edit");
+assert.match(actionRedirects.at(-1), /flash=object_import_review_rebased/);
+const finalRebasedTarget = await data.getObjectImportTarget({ ...scope, id: rebaseTarget.id });
+await assert.rejects(saveCaseWorkbenchAction(rebaseWorkbenchReviewForm(finalRebasedTarget.targetVersion, rebaseCandidate.candidateValue)), /REDIRECT:/, "the refreshed binding must still require the normal explicit confirmation");
+assert.match(actionRedirects.at(-1), /flash=case_workbench_saved/);
+assert.equal((await data.resolvePropertyVisibilityForContext({ context, propertyId: rebaseProperty.id })).record.name, "Rebase candidate", "the explicit confirmation must use the rebased CAS version");
+assert.equal((await data.getObjectImportTarget({ ...scope, id: rebaseTarget.id })).status, "completed");
+const finalProperty = (await data.resolvePropertyVisibilityForContext({ context, propertyId: rebaseProperty.id })).record;
+await assert.rejects(refreshObjectImportReviewAction(rebaseRefreshForm(finalRebasedTarget.targetVersion, buildObjectVersionFingerprint(finalProperty), rebaseCandidate.candidateValue)), /REDIRECT:/, "a confirmed target must not be re-opened by the re-read action");
+assert.match(actionRedirects.at(-1), /flash=object_import_review_already_reviewed/);
+function workbenchReviewForm(expectedVersion, expectedCandidateValue, value = "090-9999-8888") {
+  const form = new FormData();
+  form.set("caseId", atomicCase.id);
+  form.set("presentFieldKeysJson", JSON.stringify(["applicant.phone"]));
+  form.set("field:applicant.phone", value);
+  form.set("fieldValueSnapshot", value);
+  form.set("returnNode", "applicant");
+  form.set("returnField", "applicant.phone");
+  form.set("returnView", "quick");
+  form.set("returnAnchor", "case-main-editor");
+  form.set("objectImportReviewJson", JSON.stringify({ targetId: atomicTarget.id, fieldId: atomicPhone.id, importJobId: atomicJob.id, expectedVersion, expectedCandidateValue, caseFieldKey: "applicant.phone" }));
+  return form;
+}
+const staleActionForm = workbenchReviewForm("stale-version", atomicPhone.candidateValue);
+await assert.rejects(saveCaseWorkbenchAction(staleActionForm), /REDIRECT:/);
+assert.match(actionRedirects.at(-1), new RegExp(`/cases/${atomicCase.id}\\?`));
+assert.match(actionRedirects.at(-1), /flash=object_import_review_conflict/);
+assert.match(actionRedirects.at(-1), new RegExp(`objectImportJob=${atomicJob.id}`));
+assert.match(actionRedirects.at(-1), /field=applicant.phone/);
+assert.match(actionRedirects.at(-1), /view=quick/);
+assert.match(actionRedirects.at(-1), /#case-main-editor$/);
+assert.deepEqual(await data.getBrokerageCaseById({ userId: user.id, tenantId: tenant.id, caseId: atomicCase.id }), atomicCaseBeforeConflict, "stale action conflict must preserve case data");
+assert.equal((await data.getClientById(atomicPerson.id, tenant.id)).phone, "000-1111-2222", "stale action conflict must preserve object data");
+const refreshedAtomicTarget = await data.getObjectImportTarget({ ...scope, id: atomicTarget.id });
+const refreshedAtomicPhone = (await data.listObjectImportCandidates({ ...scope, targetId: atomicTarget.id })).find((item) => item.id === atomicPhone.id);
+assert(refreshedAtomicPhone);
+assert.equal(refreshedAtomicTarget.targetVersion, buildObjectVersionFingerprint(await data.getClientById(atomicPerson.id, tenant.id)), "refresh must use the current object version for the next CAS");
+await assert.rejects(saveCaseWorkbenchAction(workbenchReviewForm(refreshedAtomicTarget.targetVersion, refreshedAtomicPhone.candidateValue)), /REDIRECT:/, "fresh target/candidate versions must allow the normal action redirect");
+assert.match(actionRedirects.at(-1), /flash=case_workbench_saved/);
+assert.equal((await data.getClientById(atomicPerson.id, tenant.id)).phone, "090-9999-8888", "a refreshed review must apply the confirmed object value");
+const duplicateActionForm = workbenchReviewForm(refreshedAtomicTarget.targetVersion, refreshedAtomicPhone.candidateValue);
+await assert.rejects(saveCaseWorkbenchAction(duplicateActionForm), /REDIRECT:/, "a duplicate review must return through the action redirect");
+assert.match(actionRedirects.at(-1), /flash=object_import_review_already_reviewed/);
+assert.equal((await data.getClientById(atomicPerson.id, tenant.id)).phone, "090-9999-8888", "duplicate review must preserve the confirmed value");
 const invalidAtomicCase = await data.saveCaseWorkbenchWithObjectReview({
   context,
   caseId: "missing-case",
@@ -340,7 +502,7 @@ const invalidAtomicCase = await data.saveCaseWorkbenchWithObjectReview({
   objectReview: { context, targetId: atomicTarget.id, fieldId: atomicPhone.id, expectedVersion: (await data.getObjectImportTarget({ ...scope, id: atomicTarget.id })).targetVersion, expectedCandidateValue: atomicPhone.candidateValue, decision: "confirm", value: "090-9999-8888", caseFieldValue: "090-9999-8888" },
 });
 assert.deepEqual(invalidAtomicCase, { ok: false, reason: "case_not_writable" });
-assert.equal((await data.getClientById(atomicPerson.id, tenant.id)).phone, "000-1111-2222");
+assert.equal((await data.getClientById(atomicPerson.id, tenant.id)).phone, "090-9999-8888");
 // Missing, cross-job and ambiguous sources cannot create usable object candidates.
 const badJob = await data.addImportJob({ ...scope, sourceType: "scan", targetEntity: "parties", title: "Missing source", status: "queued", idempotencyKey: "source-negative", notes: atomicJob.notes });
 await assert.rejects(ensureObjectImportTask(badJob, scope), /source_attachment_required/);
@@ -354,10 +516,16 @@ const missingSourceReview = { context, targetId: atomicTarget.id, fieldId: atomi
 assert.deepEqual(await data.reviewObjectImportCandidate(missingSourceReview), { ok: false, reason: "not_writable" });
 assert.deepEqual(await data.saveCaseWorkbenchWithObjectReview({ context, caseId: atomicCase.id, confirmedDataJson: { ...beforeMissingSource.confirmedDataJson, "applicant.phone": "090-9999-8888" }, objectReview: missingSourceReview }), { ok: false, reason: "not_writable" });
 assert.deepEqual(await data.getBrokerageCaseById({ ...scope, caseId: atomicCase.id }), beforeMissingSource);
-assert.equal((await data.getClientById(atomicPerson.id, tenant.id)).phone, "000-1111-2222");
+assert.equal((await data.getClientById(atomicPerson.id, tenant.id)).phone, "090-9999-8888");
 const postgresSource = readFileSync(resolve(root, "src/lib/data.postgres.ts"), "utf8");
+const actionSource = readFileSync(resolve(root, "src/app/actions.ts"), "utf8");
+const objectActionsSource = readFileSync(resolve(root, "src/app/object-import-actions.ts"), "utf8");
 const casePageSource = readFileSync(resolve(root, "src/app/cases/[id]/page.tsx"), "utf8");
 const queueProcessorSource = readFileSync(resolve(root, "src/components/excel-import-queue-processor.tsx"), "utf8");
+const uploadFormSource = readFileSync(resolve(root, "src/components/excel-document-upload-form.tsx"), "utf8");
+const importCenterSource = readFileSync(resolve(root, "src/app/import-center/page.tsx"), "utf8");
+const objectUploadSource = readFileSync(resolve(root, "src/components/object-import-upload.tsx"), "utf8");
+const statusBadgeSource = readFileSync(resolve(root, "src/components/object-import-status-badge.tsx"), "utf8");
 const { ObjectImportFailureNotice } = require(resolve(root, "src/components/object-import-status-badge.tsx"));
 const currentNoFieldsTarget = await data.getObjectImportTarget({ ...scope, id: noFieldsTarget.id });
 assert.equal(currentNoFieldsTarget.status, "failed");
@@ -393,18 +561,91 @@ const renderedAssociationFailure = renderToStaticMarkup(React.createElement(Case
 }));
 assert.match(renderedAssociationFailure, /未能读取可填写的受支持内容，案件资料未更新/);
 assert.match(renderedAssociationFailure, /data-object-import-target="party:[^"]+"/);
+const { ObjectImportUpload } = require(resolve(root, "src/components/object-import-upload.tsx"));
+const renderedObjectUpload = renderToStaticMarkup(React.createElement(ObjectImportUpload, { action: async () => {}, caseId: brokerageCase.id, targetType: "property", targetId: supportedH034Property.id, locale: "zh" }));
+assert.match(renderedObjectUpload, /name="caseId"/);
+assert.match(renderedObjectUpload, /name="targetType" value="property"/);
+assert.match(renderedObjectUpload, /name="targetId"/);
+assert.match(renderedObjectUpload, />解析<\/button>/, "object card upload must expose its actual localized submit button");
+assert.doesNotMatch(renderedObjectUpload, /正在读取/, "idle object upload must not claim processing before submission");
+const objectUploadModulePath = resolve(root, "src/components/object-import-upload.tsx");
+const pendingObjectUploadLoad = Module._load;
+Module._load = function(request, parent, ...rest) {
+  if (request === "react-dom" && parent?.filename === objectUploadModulePath) return { useFormStatus: () => ({ pending: true }) };
+  return pendingObjectUploadLoad.call(this, request, parent, ...rest);
+};
+delete require.cache[objectUploadModulePath];
+const { ObjectImportUpload: PendingObjectImportUpload } = require(objectUploadModulePath);
+Module._load = pendingObjectUploadLoad;
+const renderedPendingObjectUpload = renderToStaticMarkup(React.createElement(PendingObjectImportUpload, { action: async () => {}, caseId: brokerageCase.id, targetType: "property", targetId: supportedH034Property.id, locale: "zh" }));
+assert.match(renderedPendingObjectUpload, /disabled=""/, "object card upload must disable controls while the server action is pending");
+assert.match(renderedPendingObjectUpload, /aria-busy="true"/, "object card upload must expose pending state while the server action is pending");
+assert.match(renderedPendingObjectUpload, /正在读取…/, "object card upload must show processing feedback while pending");
+const renderedAssociationSuccess = renderToStaticMarkup(React.createElement(CaseAssociationManager, {
+  locale: "zh",
+  caseId: brokerageCase.id,
+  initialParties: [{ partyId: person.id, name: "Synthetic person", roles: [] }],
+  candidates: [],
+  properties: [{ id: supportedH034Property.id, name: "H034 supported original", address: "H034 supported address" }],
+  initialPrimaryPropertyId: supportedH034Property.id,
+  objectImportViews: [{ target: supportedH034Target, fields: supportedH034Candidates }],
+}));
+assert.match(renderedAssociationSuccess, /待确认/, "object card must show a localized review-pending state");
+assert.match(renderedAssociationSuccess, /H034 Local CAS Candidate 20260919/, "object card must show the reviewable candidate");
+assert.doesNotMatch(renderedAssociationSuccess, /needs_review|completed|failed/, "object card must not expose technical object status names");
+const renderedAssociationCompleted = renderToStaticMarkup(React.createElement(CaseAssociationManager, {
+  locale: "zh",
+  caseId: brokerageCase.id,
+  initialParties: [{ partyId: person.id, name: "Synthetic person", roles: [] }],
+  candidates: [],
+  properties: [],
+  objectImportViews: [{ target: olderCompletedTarget, fields: [] }],
+}));
+assert.match(renderedAssociationCompleted, /已确认/, "object card must show a localized completed state");
 assert.match(casePageSource, /<ExcelImportQueueProcessor[\s\S]*jobId=\{target\.importJobId\}/, "case object upload must mount the protected process continuation for queued targets");
 assert.match(casePageSource, /target\.importJobId === objectImportJobId/, "case page must filter continuation to the redirect job");
 assert.match(casePageSource, /objectImportNoSupportedFieldsFailed/, "case page must surface a failed current job even when an older target is completed");
+assert.match(actionSource, /object_import_review_conflict/, "stale object review must return through a dedicated conflict flash");
+assert.match(actionSource, /object_import_review_already_reviewed/, "duplicate object review must return through a dedicated already-reviewed flash");
+assert.match(actionSource, /reviewFieldKey = objectReviewFieldKey \|\| returnField/, "review conflict redirect must preserve the current case field context");
+assert.match(actionSource, /objectImportJob/, "review conflict redirect must preserve the current object import job context");
+assert.match(actionSource, /export async function refreshObjectImportReviewAction/, "review conflict must expose an explicit protected re-read action");
+assert.match(actionSource, /observedVersion/, "re-read action must bind the user-observed object fingerprint");
+assert.match(objectActionsSource, /object_import_review_conflict/, "standalone object review must return through the same conflict flash");
+assert.match(objectActionsSource, /getObjectImportTarget/, "standalone object review must resolve the protected case before returning after a known conflict");
+assert.match(casePageSource, /资料已在其他页面更新，请刷新案件页面，重新核对当前资料和候选；本次修改未保存，确认时仍会校验最新版本/, "case page must explain stale object review without promising that refresh creates a fresh token");
+assert.match(casePageSource, /该候选已在其他页面处理完成，请刷新案件查看已确认值/, "case page must explain duplicate review while preserving the confirmed result");
 assert.match(casePageSource, /objectImportTargetsForView = \[\.\.\.objectImportTargets\]\.sort/, "case page must prioritize the queried job when rendering multiple target attempts");
+assert.match(casePageSource, /重新核对最新资料/, "the conflict field must offer an explicit re-read action");
+assert.match(casePageSource, /name=\"observedVersion\"/, "the re-read action must submit the rendered object fingerprint");
 assert.match(casePageSource, /statusOnly=\{target\.status === "processing"\}/, "processing jobs must use status-only polling and avoid a duplicate POST");
 assert.match(casePageSource, /successHref=\{`\/cases\/\$\{encodeURIComponent\(stableCaseId\)\}/, "case object processing must return to the same case workbench");
+assert.match(casePageSource, /successHref=\{`[^`]*objectImportJob=\$\{encodeURIComponent\(target\.importJobId\)\}/, "completion return must retain the processed object job for an unambiguous result");
+assert.match(casePageSource, /objectImportCandidateCountForJob = objectImportViewForJob\?\.fields\.length/, "object completion feedback must count object candidates rather than extracted input fields");
+assert.match(casePageSource, /已读取 \$\{objectImportCandidateCountForJob\} 项对象候选，请确认后再写入/, "object completion feedback must distinguish reviewable candidates from committed data");
 assert.match(queueProcessorSource, /method: "POST"/, "the protected continuation must start processing through the process API");
 assert.match(queueProcessorSource, /successHref\)/, "the protected continuation must honor the case return target");
+assert.match(queueProcessorSource, /正在读取资料，完成后会返回确认结果/, "processing status must describe extraction rather than only task submission");
+assert.match(queueProcessorSource, /type ImportProcessStatus = "submitting" \| "queued" \| "processing" \| "failed"/, "processing status must remain distinct from queued admission");
+assert.match(queueProcessorSource, /setStatus\(payload\.status\)/, "queue polling must surface the server processing stage");
 assert.match(queueProcessorSource, /noSupportedFields/, "zero-field object failures must use explicit user guidance");
 assert.match(queueProcessorSource, /errorKind !== "noSupportedFields"/, "technical zero-field error summaries must not be exposed");
 assert.match(queueProcessorSource, /objectRecoveryHref/, "object zero-field recovery must accept an object-specific case return target");
 assert.match(casePageSource, /objectRecoveryHref=\{`\/cases\/\$\{encodeURIComponent\(stableCaseId\)\}\?objectImportJob=/, "object zero-field recovery must return to the current case association area");
+assert.match(uploadFormSource, /const \[pending, setPending\] = useState\(false\)/, "upload form must track a single pending submission");
+assert.match(uploadFormSource, /disabled=\{pending\}/, "upload form must disable duplicate submissions while pending");
+assert.match(uploadFormSource, /aria-busy=\{pending\}/, "upload form must expose its pending state accessibly");
+assert.match(uploadFormSource, /pending \? text\.processing : text\.submit/, "upload form must show a localized processing label while pending");
+assert.match(objectUploadSource, /useFormStatus/, "object card upload must read the real form pending state");
+assert.match(objectUploadSource, /disabled=\{pending\}/, "object card upload must disable the file and submit controls while pending");
+assert.match(objectUploadSource, /aria-busy=\{pending\}/, "object card upload must expose pending state accessibly");
+assert.match(objectUploadSource, /role="status" aria-live="polite"/, "object card upload must expose a processing status");
+assert.match(objectUploadSource, /读取中|読み取り中|읽는 중/, "object card upload must have localized processing copy");
+assert.match(statusBadgeSource, /needs_review: "待确认"/, "object card status must avoid exposing technical English status names");
+assert.match(importCenterSource, /未能读取可填写内容，案件资料未更新。请重新选择受支持的资料。/, "empty extraction must explain that no case data was updated and give a neutral recovery instruction");
+assert.match(importCenterSource, /targetCaseId\s*\?/, "import center must distinguish case-scoped empty extraction from the global ordinary import path");
+assert.match(importCenterSource, /未能读取可填写内容。请重新选择受支持的资料。/, "global empty extraction must use neutral guidance without claiming a case or ledger update");
+assert.doesNotMatch(importCenterSource, /普通物件台账可继续保存|一般 매물 대장은 계속 저장할 수 있습니다|通常の物件台帳は続けて保存できます/, "empty extraction must not imply that an unrelated object ledger was updated or is the recovery path");
 const migrationSource = readFileSync(resolve(root, "db/migrations/20260917_001_object_import_targets.sql"), "utf8");
 assert.match(migrationSource, /source_attachment_id TEXT NOT NULL REFERENCES attachments\(id\) ON DELETE RESTRICT/);
 assert.match(migrationSource, /FOREIGN KEY \(tenant_id, object_import_target_id\) REFERENCES object_import_targets\(tenant_id, id\)/);

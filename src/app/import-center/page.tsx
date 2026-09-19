@@ -1461,11 +1461,17 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
               />
             ) : (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-                {locale === "zh"
-                  ? "没有识别为支持的申请资料格式。普通物件台账可继续保存。"
-                  : locale === "ko"
-                    ? "신청 자료 형식과 일치하지 않습니다. 일반 매물 대장은 계속 저장할 수 있습니다."
-                    : "申込資料の形式と一致しません。通常の物件台帳は続けて保存できます。"}
+                {targetCaseId
+                  ? locale === "zh"
+                    ? "未能读取可填写内容，案件资料未更新。请重新选择受支持的资料。"
+                    : locale === "ko"
+                      ? "입력 가능한 내용을 읽지 못했습니다. 안건 자료는 업데이트되지 않았습니다. 지원되는 자료를 다시 선택해 주세요."
+                      : "入力可能な内容を読み取れませんでした。案件資料は更新されていません。対応する資料を選び直してください。"
+                  : locale === "zh"
+                    ? "未能读取可填写内容。请重新选择受支持的资料。"
+                    : locale === "ko"
+                      ? "입력 가능한 내용을 읽지 못했습니다. 지원되는 자료를 다시 선택해 주세요."
+                      : "入力可能な内容を読み取れませんでした。対応する資料を選び直してください。"}
               </div>
             )}
           </div>

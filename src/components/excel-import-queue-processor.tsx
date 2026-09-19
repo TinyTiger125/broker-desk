@@ -29,7 +29,7 @@ const copy = {
     unknown: "原因を特定できない処理エラーです。受付番号を添えて確認してください。",
   },
   zh: {
-    processing: "正在提交资料读取任务。",
+    processing: "正在读取资料，完成后会返回确认结果。",
     queued: "资料已提交后台读取。完成后本页会自动更新，期间可以离开。",
     failed: "资料处理未能完成。",
     request: "如需协助，请提供本次请求编号。",
@@ -44,7 +44,7 @@ const copy = {
     unknown: "无法可靠判断失败原因。请保留 request ID 后联系支持。",
   },
   ko: {
-    processing: "자료 읽기 작업을 제출하고 있습니다.",
+    processing: "자료를 읽고 있습니다. 완료되면 확인 결과를 보여 드립니다.",
     queued: "자료 읽기가 접수되었습니다. 완료되면 이 화면이 자동으로 갱신됩니다.",
     failed: "자료 처리를 완료하지 못했습니다.",
     request: "도움이 필요하면 이 요청 번호를 알려 주세요.",
@@ -60,7 +60,7 @@ const copy = {
   },
 } as const;
 
-type ImportProcessStatus = "submitting" | "queued" | "failed";
+type ImportProcessStatus = "submitting" | "queued" | "processing" | "failed";
 type ImportErrorKind = "retryable" | "unsupported" | "noSupportedFields" | "needsFix" | "unavailable" | "auth" | "notFound" | "unknown";
 
 type ImportProcessResponse = {
@@ -87,7 +87,7 @@ function classifyImportError(errorCode: string | null | undefined, httpStatus?: 
 export function ExcelImportQueueProcessor({ jobId, locale, targetCaseId, statusOnly = false, successHref, objectRecoveryHref }: ExcelImportQueueProcessorProps) {
   const started = useRef(false);
   const [readOnlyStatus, setReadOnlyStatus] = useState(statusOnly);
-  const [status, setStatus] = useState<ImportProcessStatus>(statusOnly ? "queued" : "submitting");
+  const [status, setStatus] = useState<ImportProcessStatus>(statusOnly ? "processing" : "submitting");
   const [retryKey, setRetryKey] = useState(0);
   const [requestId, setRequestId] = useState<string | null>(null);
   const [errorKind, setErrorKind] = useState<ImportErrorKind>("unknown");
@@ -127,7 +127,7 @@ export function ExcelImportQueueProcessor({ jobId, locale, targetCaseId, statusO
           throw new Error("excel_import_process_failed");
         }
         if (payload.status === "queued" || payload.status === "processing") {
-          setStatus("queued");
+          setStatus(payload.status);
           return;
         }
         if (payload.status === "failed") {
@@ -153,7 +153,7 @@ export function ExcelImportQueueProcessor({ jobId, locale, targetCaseId, statusO
   }, [jobId, openReview, readOnlyStatus, retryKey]);
 
   useEffect(() => {
-    if (status !== "queued") return;
+    if (status !== "queued" && status !== "processing") return;
     let cancelled = false;
 
     async function pollJob() {
@@ -172,7 +172,10 @@ export function ExcelImportQueueProcessor({ jobId, locale, targetCaseId, statusO
           classifiedError = true;
           throw new Error("excel_import_status_failed");
         }
-        if (payload.status === "queued" || payload.status === "processing") return;
+        if (payload.status === "queued" || payload.status === "processing") {
+          setStatus(payload.status);
+          return;
+        }
         if (payload.status === "mapped" || payload.status === "completed") {
           openReview();
           return;

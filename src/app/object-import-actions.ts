@@ -1,6 +1,6 @@
 "use server";
 
-import { getObjectImportFeatureReadiness, reviewObjectImportCandidate } from "@/lib/data";
+import { getObjectImportFeatureReadiness, getObjectImportTarget, reviewObjectImportCandidate } from "@/lib/data";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireTenantSession } from "@/lib/tenant-session";
@@ -41,7 +41,20 @@ export async function reviewObjectImportAction(formData: FormData) {
     caseFieldKey: String(formData.get("caseFieldKey") ?? "").trim() || undefined,
     value: formData.has("value") ? String(formData.get("value")) : undefined,
   });
-  if (!result.ok) throw new Error(`object_import_review_${result.reason}`);
+  if (!result.ok) {
+    if (result.reason === "conflict" || result.reason === "already_reviewed") {
+      const target = await getObjectImportTarget({ tenantId: session.tenant.id, userId: session.user.id, id: String(formData.get("importTargetId") ?? "") });
+      if (target) {
+        const params = new URLSearchParams();
+        params.set("flash", result.reason === "already_reviewed" ? "object_import_review_already_reviewed" : "object_import_review_conflict");
+        params.set("objectImportJob", target.importJobId);
+        const fieldKey = String(formData.get("caseFieldKey") ?? "").trim();
+        if (fieldKey) params.set("field", fieldKey);
+        redirect(`/cases/${encodeURIComponent(target.caseId)}?${params.toString()}#case-review-desk`);
+      }
+    }
+    throw new Error(`object_import_review_${result.reason}`);
+  }
   revalidatePath(`/cases/${result.caseId}`);
   revalidatePath("/parties");
   revalidatePath("/properties");

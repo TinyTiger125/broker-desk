@@ -3867,6 +3867,45 @@ export type SaveCaseWorkbenchWithObjectReviewResult =
   | { ok: true; brokerageCase: BrokerageCase; objectReview?: Extract<ObjectImportReviewResult, { ok: true }> }
   | { ok: false; reason: "case_not_writable" | "not_writable" | "conflict" | "invalid_value" | "already_reviewed" | "unsupported_target" };
 
+export type RefreshObjectImportReviewInput = {
+  context: RequestContext;
+  targetId: string;
+  fieldId: string;
+  expectedVersion: string;
+  observedVersion: string;
+  expectedCandidateValue: string;
+};
+
+export type RefreshObjectImportReviewResult =
+  | { ok: true; caseId: string; targetVersion: string }
+  | { ok: false; reason: "not_writable" | "conflict" | "already_reviewed" | "unsupported_target" };
+
+export async function refreshObjectImportReview(input: RefreshObjectImportReviewInput): Promise<RefreshObjectImportReviewResult> {
+  const { context } = input;
+  const target = db.objectImportTargets.find((item) => item.id === input.targetId && item.tenantId === context.tenantId && item.userId === context.userId);
+  const field = db.objectImportCandidates.find((item) => item.id === input.fieldId && item.targetId === input.targetId && item.tenantId === context.tenantId);
+  if (!target || !field) return { ok: false, reason: "not_writable" };
+  if (target.targetType !== "party" && target.targetType !== "property") return { ok: false, reason: "unsupported_target" };
+  if (target.targetVersion !== input.expectedVersion || target.status !== "needs_review") {
+    return { ok: false, reason: field.finalSource === "human" || field.status === "confirmed" || field.status === "rejected" ? "already_reviewed" : "conflict" };
+  }
+  if ((field.candidateValue ?? "") !== input.expectedCandidateValue || field.finalSource === "human" || ["confirmed", "rejected"].includes(field.status)) return { ok: false, reason: field.finalSource === "human" || ["confirmed", "rejected"].includes(field.status) ? "already_reviewed" : "conflict" };
+  const caseItem = db.brokerageCases.find((item) => item.id === target.caseId && item.tenantId === context.tenantId);
+  const person = (target.targetType === "party" ? db.clients : db.properties).find((item) => item.id === target.targetId && item.tenantId === context.tenantId);
+  const membership = db.tenantMemberships.find((item) => item.id === context.membershipId && item.userId === context.userId && item.tenantId === context.tenantId && item.status === "active");
+  if (!membership || !caseItem || caseItem.lifecycleStatus === "archived" || !person || person.lifecycleStatus === "archived" || !resolveRecordVisibility(context, caseItem).canWrite || !resolveRecordVisibility(context, person).canWrite) return { ok: false, reason: "not_writable" };
+  const associated = target.targetType === "party"
+    ? readCaseAssociationDraft(caseItem.confirmedDataJson).parties.some((item) => item.partyId === person.id)
+    : readCaseAssociationDraft(caseItem.confirmedDataJson).primaryPropertyId === person.id;
+  if (!associated || !hasObjectImportSource(target, field)) return { ok: false, reason: "not_writable" };
+  const currentVersion = buildObjectVersionFingerprint(person as unknown as Record<string, unknown>);
+  if (currentVersion !== input.observedVersion || currentVersion === target.targetVersion || !input.observedVersion.trim()) return { ok: false, reason: "conflict" };
+  target.targetVersion = currentVersion;
+  target.updatedAt = new Date();
+  db.auditLogs.unshift({ id: makeId("audit"), tenantId: context.tenantId, userId: context.userId, actorId: context.userId, action: "object_import_review_rebased", targetType: target.targetType === "party" ? "client" : "property", targetId: person.id, message: "Object import review baseline refreshed", context: { importTargetId: target.id, fieldId: field.id, previousVersion: input.expectedVersion, targetVersion: currentVersion }, createdAt: new Date() });
+  return { ok: true, caseId: target.caseId, targetVersion: currentVersion };
+}
+
 export async function saveBrokerageCaseExtractionReview(input: {
   tenantId?: string;
   userId: string;

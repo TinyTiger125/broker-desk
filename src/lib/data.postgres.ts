@@ -105,6 +105,8 @@ import type {
   WorkCenterSnapshot,
   SaveCaseWorkbenchWithObjectReviewInput,
   SaveCaseWorkbenchWithObjectReviewResult,
+  RefreshObjectImportReviewInput,
+  RefreshObjectImportReviewResult,
 } from "@/lib/data.memory";
 import type { VisibleBrokerageCase, VisibleProperty } from "@/lib/data.memory";
 import type { TenantRole, TenantCapabilityPreset } from "@/lib/tenant-permissions";
@@ -3762,6 +3764,42 @@ export async function updateBrokerageCaseConfirmedData(input: {
     [input.caseId, input.userId, JSON.stringify(input.confirmedDataJson), scopeTenantId, input.primaryPropertyId !== undefined, input.primaryPropertyId ?? null],
   );
   return result.rows[0] ? mapBrokerageCase(result.rows[0]) : null;
+}
+
+export async function refreshObjectImportReview(input: RefreshObjectImportReviewInput): Promise<RefreshObjectImportReviewResult> {
+  await ensureSchema();
+  const { context } = input;
+  return withTransaction(async (client) => {
+    if (!(await databaseActorMatches(client, context.userId)) || !await lockCaseReviewMembership(client, context)) return { ok: false, reason: "not_writable" };
+    const targetHint = await client.query("SELECT case_id FROM object_import_targets WHERE id=$1 AND tenant_id=$2 AND user_id=$3", [input.targetId, context.tenantId, context.userId]);
+    if (!targetHint.rows[0]) return { ok: false, reason: "not_writable" };
+    const caseRows = await client.query("SELECT * FROM brokerage_cases WHERE id=$1 AND tenant_id=$2 AND current_owner_user_id=$3 AND owner_resolution_status='resolved' FOR UPDATE", [targetHint.rows[0].case_id, context.tenantId, context.userId]);
+    const targetRows = await client.query("SELECT * FROM object_import_targets WHERE id=$1 AND tenant_id=$2 AND user_id=$3 FOR UPDATE", [input.targetId, context.tenantId, context.userId]);
+    if (!caseRows.rows[0] || !targetRows.rows[0]) return { ok: false, reason: "not_writable" };
+    const caseItem = mapBrokerageCase(caseRows.rows[0]);
+    const target = mapObjectImportTarget(targetRows.rows[0]);
+    if (caseItem.lifecycleStatus === "archived" || !resolveRecordVisibility(context, caseItem).canWrite || target.targetType !== "party" && target.targetType !== "property") return { ok: false, reason: target.targetType !== "party" && target.targetType !== "property" ? "unsupported_target" : "not_writable" };
+    const table = target.targetType === "party" ? "clients" : "properties";
+    const objectRows = await client.query(`SELECT * FROM ${table} WHERE id=$1 AND tenant_id=$2 FOR UPDATE`, [target.targetId, context.tenantId]);
+    const fieldRows = await client.query("SELECT * FROM object_import_fields WHERE id=$1 AND object_import_target_id=$2 AND tenant_id=$3 FOR UPDATE", [input.fieldId, target.id, context.tenantId]);
+    if (!objectRows.rows[0] || !fieldRows.rows[0]) return { ok: false, reason: "not_writable" };
+    const person = target.targetType === "party" ? mapClient(objectRows.rows[0]) : mapProperty(objectRows.rows[0]);
+    const field = mapObjectImportCandidate(fieldRows.rows[0]);
+    if (person.lifecycleStatus === "archived" || !resolveRecordVisibility(context, person).canWrite) return { ok: false, reason: "not_writable" };
+    const associated = target.targetType === "party"
+      ? readCaseAssociationDraft(caseItem.confirmedDataJson).parties.some((item) => item.partyId === person.id)
+      : readCaseAssociationDraft(caseItem.confirmedDataJson).primaryPropertyId === person.id;
+    if (!associated || !await hasObjectImportSource(client, target, field)) return { ok: false, reason: "not_writable" };
+    if (target.targetVersion !== input.expectedVersion || target.status !== "needs_review" || (field.candidateValue ?? "") !== input.expectedCandidateValue || field.finalSource === "human" || ["confirmed", "rejected"].includes(field.status)) {
+      return { ok: false, reason: field.finalSource === "human" || ["confirmed", "rejected"].includes(field.status) ? "already_reviewed" : "conflict" };
+    }
+    const currentVersion = buildObjectVersionFingerprint(person as unknown as Record<string, unknown>);
+    if (!input.observedVersion.trim() || currentVersion !== input.observedVersion || currentVersion === target.targetVersion) return { ok: false, reason: "conflict" };
+    const updated = await client.query("UPDATE object_import_targets SET target_version=$1,updated_at=NOW() WHERE id=$2 AND tenant_id=$3 AND user_id=$4 AND status='needs_review' AND target_version=$5 RETURNING *", [currentVersion, target.id, context.tenantId, context.userId, input.expectedVersion]);
+    if (!updated.rows[0]) return { ok: false, reason: "conflict" };
+    await client.query("INSERT INTO audit_logs (id,tenant_id,user_id,actor_id,action,target_type,target_id,message,context_json,created_at) VALUES ($1,$2,$3,$3,'object_import_review_rebased',$4,$5,$6,$7::jsonb,NOW())", [genId("audit"), context.tenantId, context.userId, target.targetType === "party" ? "client" : "property", person.id, "Object import review baseline refreshed", JSON.stringify({ importTargetId: target.id, fieldId: field.id, previousVersion: input.expectedVersion, targetVersion: currentVersion })]);
+    return { ok: true, caseId: target.caseId, targetVersion: currentVersion };
+  });
 }
 
 export async function saveCaseWorkbenchWithObjectReview(
