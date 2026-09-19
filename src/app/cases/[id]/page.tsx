@@ -43,6 +43,7 @@ import { listLinkedObjectAttachments } from "@/lib/object-attachments";
 import { uploadObjectImportAction } from "@/app/object-import-actions";
 import { getObjectImportFeatureReadiness, listObjectImportCandidates, listObjectImportTargets } from "@/lib/data";
 import type { ObjectImportCandidateRecord, ObjectImportTargetRecord } from "@/lib/object-import-repository";
+import { getImportRuntimeDiagnostics } from "@/lib/production-readiness";
 
 export const dynamic = "force-dynamic";
 
@@ -605,6 +606,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
     return record ? [{ ...party, name: record.name }] : [];
   });
   const objectImportReadiness = await getObjectImportFeatureReadiness();
+  const importRuntimeDiagnostics = getImportRuntimeDiagnostics();
   const objectAttachments = await listLinkedObjectAttachments({ tenantId, targetType: "case", targetId: brokerageCase.id });
   const objectImportTargets = objectImportReadiness.ready
     ? await listObjectImportTargets({ tenantId, userId: user.id, caseId: brokerageCase.id })
@@ -965,7 +967,13 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
 
   if (!canWriteCase) {
     return (
-      <div className="space-y-6">
+      <div
+        className="space-y-6"
+        data-import-processing-mode={importRuntimeDiagnostics.processingMode}
+        data-import-required-capability={importRuntimeDiagnostics.requiredCapability}
+        data-import-required-capability-status={importRuntimeDiagnostics.requiredCapabilityStatus}
+        data-import-deployment-version={importRuntimeDiagnostics.deploymentVersion}
+      >
         <CaseOverview
           caseId={brokerageCase.id}
           caseTitle={brokerageCase.caseTitle}
@@ -995,7 +1003,13 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
 
   if (activeView === "overview") {
     return (
-      <div className="space-y-6">
+      <div
+        className="space-y-6"
+        data-import-processing-mode={importRuntimeDiagnostics.processingMode}
+        data-import-required-capability={importRuntimeDiagnostics.requiredCapability}
+        data-import-required-capability-status={importRuntimeDiagnostics.requiredCapabilityStatus}
+        data-import-deployment-version={importRuntimeDiagnostics.deploymentVersion}
+      >
         <CaseOverview
           caseId={brokerageCase.id}
           caseTitle={brokerageCase.caseTitle}
@@ -1026,6 +1040,10 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
   return (
     <div className="flex min-w-0 flex-col gap-6">
       <ObjectPageShell
+        data-import-processing-mode={importRuntimeDiagnostics.processingMode}
+        data-import-required-capability={importRuntimeDiagnostics.requiredCapability}
+        data-import-required-capability-status={importRuntimeDiagnostics.requiredCapabilityStatus}
+        data-import-deployment-version={importRuntimeDiagnostics.deploymentVersion}
         header={
           <CaseIdentityHeader
             caseId={brokerageCase.id}

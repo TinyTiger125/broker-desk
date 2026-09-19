@@ -40,6 +40,46 @@ export function isFormalProductionDeployment() {
   return deploymentEnvironment !== "preview" && deploymentEnvironment !== "staging";
 }
 
+export type ImportProcessingMode = "sync" | "worker_queue";
+export type ImportRuntimeCapabilityStatus = "ready" | "missing" | "not_required";
+export type ImportRuntimeDiagnostics = {
+  processingMode: ImportProcessingMode;
+  requiredCapability: "import_worker" | "none";
+  requiredCapabilityStatus: ImportRuntimeCapabilityStatus;
+  deploymentVersion: string;
+};
+
+/**
+ * Safe, non-sensitive runtime facts for an already authenticated diagnostic
+ * surface. The mode deliberately follows the same formal-production gate as
+ * the import process route; environment values and credentials never leave
+ * this module.
+ */
+export function getImportRuntimeDiagnostics(): ImportRuntimeDiagnostics {
+  const queuedForWorker = isFormalProductionDeployment();
+  let requiredCapabilityStatus: ImportRuntimeCapabilityStatus = "not_required";
+  if (queuedForWorker) {
+    try {
+      assertProductionImportWorkerReady();
+      requiredCapabilityStatus = "ready";
+    } catch (error) {
+      if (!(error instanceof ProductionReadinessError)) throw error;
+      requiredCapabilityStatus = "missing";
+    }
+  }
+
+  const candidateDeploymentVersion = process.env.VERCEL_GIT_COMMIT_SHA?.trim() ?? "";
+  const deploymentVersion = /^[0-9a-f]{7,64}$/i.test(candidateDeploymentVersion)
+    ? candidateDeploymentVersion
+    : "unavailable";
+  return {
+    processingMode: queuedForWorker ? "worker_queue" : "sync",
+    requiredCapability: queuedForWorker ? "import_worker" : "none",
+    requiredCapabilityStatus,
+    deploymentVersion,
+  };
+}
+
 /**
  * Preview/Staging runs use NODE_ENV=production on Vercel, but older managed
  * deployments may not have carried the non-sensitive DATA_DRIVER switch. A
