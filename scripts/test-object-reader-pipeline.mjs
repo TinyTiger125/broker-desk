@@ -99,6 +99,7 @@ assert.equal((await data.getObjectImportTarget({ ...scope, id: ambiguousTarget.i
 assert.equal((await data.listObjectImportCandidates({ ...scope, targetId: ambiguousTarget.id })).length, 0);
 
 const thirdProperty = await data.addProperty({ tenantId: tenant.id, createdByUserId: user.id, currentOwnerUserId: user.id, name: "Third property", listingPrice: 300000 });
+const thirdPropertyBefore = await data.getPropertyById(thirdProperty.id, tenant.id);
 const thirdCase = await data.saveBrokerageCaseExtractionReview({ tenantId: tenant.id, userId: user.id, caseType: "rental", caseTitle: "Not found object reader", confirmedDataJson: writeCaseAssociationData({}, { parties: [], primaryPropertyId: thirdProperty.id }, { propertyName: thirdProperty.name }), sourceImportJobIds: [], reviewItems: [] });
 readerResponse = { documentType: "unknown_property_document", pages: [{ pageNumber: 1, lines: ["空白资料"] }], candidates: [
   { fieldKey: "property.name", value: "", pageNumber: 1, sourceText: "", uncertainty: "not_found", subjectKey: "property-1", subjectLabel: "物件" },
@@ -106,7 +107,11 @@ readerResponse = { documentType: "unknown_property_document", pages: [{ pageNumb
 const notFoundForm = new FormData(); notFoundForm.set("caseId", thirdCase.id); notFoundForm.set("targetType", "property"); notFoundForm.set("targetId", thirdProperty.id); notFoundForm.set("uploadFile", new File(["%PDF-not-found"], "not-found.pdf", { type: "application/pdf" }));
 await assert.rejects(uploadObjectImportAction(notFoundForm), /REDIRECT:/);
 const [notFoundTarget] = await data.listObjectImportTargets({ ...scope, caseId: thirdCase.id });
-assert.equal((await processIdentityImportJob({ ...scope, jobId: notFoundTarget.importJobId })).ok, true);
-assert.equal((await data.getObjectImportTarget({ ...scope, id: notFoundTarget.id })).status, "failed");
+assert.deepEqual(await processIdentityImportJob({ ...scope, jobId: notFoundTarget.importJobId }), { ok: false, status: "failed", error: "object_reader_no_readable_fields" });
+const notFoundAfter = await data.getObjectImportTarget({ ...scope, id: notFoundTarget.id });
+assert.equal(notFoundAfter.status, "failed");
+assert.equal(notFoundAfter.errorCode, "object_reader_no_readable_fields");
+assert.equal((await data.listImportJobs(user.id, 500, tenant.id)).find((item) => item.id === notFoundTarget.importJobId).status, "failed");
+assert.deepEqual(await data.getPropertyById(thirdProperty.id, tenant.id), thirdPropertyBefore, "unreadable object reader input must preserve the whole property record");
 
 console.log("test-object-reader-pipeline: PASS");

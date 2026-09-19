@@ -614,7 +614,15 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
   const objectImportTargets = objectImportReadiness.ready
     ? await listObjectImportTargets({ tenantId, userId: user.id, caseId: brokerageCase.id })
     : [];
-  const objectImportViews = await Promise.all(objectImportTargets.map(async (target: ObjectImportTargetRecord) => ({
+  const objectImportTargetForJob = objectImportTargets.find((target) => target.importJobId === objectImportJobId);
+  const objectImportNoSupportedFieldsFailed = objectImportTargetForJob?.status === "failed" &&
+    (objectImportTargetForJob.errorCode === "object_import_no_supported_fields" || objectImportTargetForJob.errorCode === "object_reader_no_readable_fields");
+  const objectImportTargetsForView = [...objectImportTargets].sort((left, right) =>
+    Number(right.importJobId === objectImportJobId) - Number(left.importJobId === objectImportJobId) ||
+    right.createdAt.getTime() - left.createdAt.getTime() ||
+    right.id.localeCompare(left.id),
+  );
+  const objectImportViews = await Promise.all(objectImportTargetsForView.map(async (target: ObjectImportTargetRecord) => ({
     target,
     fields: await listObjectImportCandidates({ tenantId, userId: user.id, targetId: target.id }) as ObjectImportCandidateRecord[],
   })));
@@ -680,6 +688,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                 locale={locale}
                 targetCaseId={stableCaseId}
                 statusOnly={target.status === "processing"}
+                objectRecoveryHref={`/cases/${encodeURIComponent(stableCaseId)}?objectImportJob=${encodeURIComponent(target.importJobId)}#case-review-desk`}
                 successHref={`/cases/${encodeURIComponent(stableCaseId)}?flash=object_import_processed#case-review-desk`}
               />
             ))
@@ -854,8 +863,13 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
       ? readText(brokerageCase.confirmedDataJson, "__assigneeName") || tr(locale, { ja: "現在の担当者", zh: "当前负责人", ko: "현재 담당자" })
       : tr(locale, { ja: "担当者", zh: "当前负责人", ko: "현재 담당자" });
   const invalidFieldKey = String(query?.field ?? "").trim();
-  const flashMessage =
-    query?.flash === "extraction_review_saved"
+  const flashMessage = objectImportNoSupportedFieldsFailed
+    ? tr(locale, {
+        ja: "入力可能な対応項目を読み取れませんでした。案件資料は更新されていません。対応する資料を選び直してください。",
+        zh: "未能读取可填写的受支持内容，案件资料未更新。请重新选择受支持的资料。",
+        ko: "입력 가능한 지원 항목을 읽지 못했습니다. 안건 자료는 업데이트되지 않았습니다. 지원되는 자료를 다시 선택해 주세요.",
+      })
+    : query?.flash === "extraction_review_saved"
       ? tr(locale, {
           ja: "確認結果を案件に保存しました。必要な項目を続けて整理できます。",
           zh: "核对结果已保存到案件。可以继续整理需要的项目。",
@@ -989,7 +1003,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
 	                              })
 	              : undefined;
   const flashTone =
-    query?.flash?.startsWith("excel_upload_") || query?.flash?.startsWith("identity_upload_") || query?.flash === "case_required_field_missing" || query?.flash === "case_field_invalid" ? "error" : undefined;
+    objectImportNoSupportedFieldsFailed || query?.flash?.startsWith("excel_upload_") || query?.flash?.startsWith("identity_upload_") || query?.flash === "case_required_field_missing" || query?.flash === "case_field_invalid" ? "error" : undefined;
   const activeView = query?.view === "quick" || query?.view === "overview"
     ? query.view
     : downloadGate && downloadGate.blockedReasons.length > 0

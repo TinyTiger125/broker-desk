@@ -8,7 +8,7 @@ import type { ClientFormActionState, PropertyFormActionState } from "@/app/actio
 import { CASE_PERSON_ROLES, getCasePersonRoleLabel, type CaseAssociationParty, type CasePersonRole } from "@/lib/case-associations";
 import type { Locale } from "@/lib/locale";
 import type { ObjectImportCandidateRecord, ObjectImportKind, ObjectImportTargetRecord } from "@/lib/object-import-repository";
-import { ObjectImportStatusBadge } from "@/components/object-import-status-badge";
+import { ObjectImportFailureNotice, ObjectImportStatusBadge } from "@/components/object-import-status-badge";
 import { ObjectImportUpload } from "@/components/object-import-upload";
 import { ObjectAttachmentList } from "@/components/object-attachment-list";
 import type { ObjectAttachmentItem } from "@/lib/object-attachments";
@@ -261,6 +261,7 @@ export function CaseAssociationManager({
     return (
       <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-2" data-object-import-target={`${targetType}:${targetId}`}>
         {view ? <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold text-slate-600"><ObjectImportStatusBadge status={view.target.status} /><span>{fields.length} {locale === "zh" ? "个候选字段" : locale === "ja" ? "候補項目" : "후보 항목"}</span>{view.target.sourceAttachmentId ? <a href={`/api/attachments/${encodeURIComponent(view.target.sourceAttachmentId)}`} target="_blank" rel="noreferrer" className="text-[#0046ad] underline">{locale === "zh" ? "查看来源" : locale === "ja" ? "出典を見る" : "출처 보기"}</a> : null}</div> : null}
+        <ObjectImportFailureNotice locale={locale} errorCode={view?.target.errorCode} />
         {fields.map((field) => <div key={field.id} className={`mt-1 flex flex-wrap items-center gap-1.5 text-xs ${field.status === "conflict" ? "text-rose-700" : field.status === "low_confidence" ? "text-amber-700" : "text-slate-700"}`}><span className="font-bold">{field.fieldKey}</span>{field.candidateValue ? <span className="truncate">{field.candidateValue}</span> : null}{field.status === "conflict" ? <span className="font-bold">{locale === "zh" ? "资料不同" : "資料が一致しません"}</span> : field.status === "low_confidence" ? <span className="font-bold">{locale === "zh" ? "需要核对" : "確認してください"}</span> : null}</div>)}
         {objectImportUploadAction && !readOnly ? <ObjectImportUpload action={objectImportUploadAction} caseId={caseId} targetType={targetType} targetId={targetId} /> : null}
       </div>

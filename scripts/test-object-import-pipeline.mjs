@@ -7,6 +7,8 @@ import { fileURLToPath } from "node:url";
 const require = createRequire(import.meta.url);
 const Module = require("module");
 const typescript = require("typescript");
+const React = require("react");
+const { renderToStaticMarkup } = require("react-dom/server");
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const originalResolve = Module._resolveFilename;
 function resolveCandidate(value) {
@@ -18,13 +20,15 @@ Module._resolveFilename = function (request, parent, ...rest) {
   const relative = request.startsWith(".") && parent?.filename ? resolve(dirname(parent.filename), request) : mapped;
   return resolveCandidate(relative) ?? originalResolve.call(this, request, parent, ...rest);
 };
-require.extensions[".ts"] = function (module, filename) {
+const compileTypescript = function (module, filename) {
   const result = typescript.transpileModule(readFileSync(filename, "utf8"), {
-    compilerOptions: { module: typescript.ModuleKind.CommonJS, target: typescript.ScriptTarget.ES2022, esModuleInterop: true },
+    compilerOptions: { module: typescript.ModuleKind.CommonJS, target: typescript.ScriptTarget.ES2022, jsx: typescript.JsxEmit.ReactJSX, esModuleInterop: true },
     fileName: filename,
   });
   module._compile(result.outputText, filename);
 };
+require.extensions[".ts"] = compileTypescript;
+require.extensions[".tsx"] = compileTypescript;
 
 
 // Only framework/auth boundaries are stubbed; public data proxy and memory driver execute.
@@ -55,19 +59,20 @@ const brokerageCase = await data.saveBrokerageCaseExtractionReview({ tenantId: t
 const frameworkLoad = Module._load;
 const field = (fieldKey, value, confidence = 0.95) => ({ fieldKey, value, normalizedValue: value, confidence, sourceSheet: "page 1", method: "ocr", sourceFileHash: "synthetic-hash", templateVersion: "test" });
 let extractCalls = 0;
+let extractionFields = [field("applicant.name", "Extracted name"), field("applicant.phone", "090-1234-5678", 0.6), field("guarantor.name", "Must not leak"), field("applicant.residenceCardNumber", "Must not persist")];
 let lastRedirectUrl = "";
 Module._load = function(request, parent, ...rest) {
   if (request === "@/lib/tenant-session" && parent?.filename.endsWith("/src/app/object-import-actions.ts")) return { requireTenantSession: async ({ permission }) => { assert(["source.upload", "extract.accept_result"].includes(permission)); return session; } };
   if (request === "next/navigation") return { redirect: (url) => { lastRedirectUrl = String(url); throw new Error(`REDIRECT:${url}`); } };
   if (request === "next/cache") return { revalidatePath: () => {} };
-  if (request === "@/lib/identity-document-extractor") return { extractIdentityDocumentsFromFiles: async (sources) => { extractCalls++; assert.equal(sources.length, 1); return { schemaVersion: "v1", documentType: "identity_residence_card", documentTypeLabel: "Test", extractionStatus: "recognized", fields: [field("applicant.name", "Extracted name"), field("applicant.phone", "090-1234-5678", 0.6), field("guarantor.name", "Must not leak"), field("applicant.residenceCardNumber", "Must not persist")], fingerprintConfidence: 0.9 }; } };
+  if (request === "@/lib/identity-document-extractor") return { extractIdentityDocumentsFromFiles: async (sources) => { extractCalls++; assert.equal(sources.length, 1); return { schemaVersion: "v1", documentType: "identity_residence_card", documentTypeLabel: "Test", extractionStatus: "recognized", fields: extractionFields, fingerprintConfidence: 0.9 }; } };
   return frameworkLoad.call(this, request, parent, ...rest);
 };
 const { uploadObjectImportAction } = require(resolve(root, "src/app/object-import-actions.ts"));
 const { processIdentityImportJob } = require(resolve(root, "src/lib/identity-import-processor.ts"));
 const { processExcelImportJob } = require(resolve(root, "src/lib/excel-import-processor.ts"));
 const { ensureObjectImportTask } = require(resolve(root, "src/lib/object-import-processor-adapter.ts"));
-function form(targetId = person.id) { const f = new FormData(); f.set("caseId", brokerageCase.id); f.set("targetType", "party"); f.set("targetId", targetId); f.set("uploadFile", new File(["%PDF-synthetic"], "synthetic.pdf", { type: "application/pdf" })); return f; }
+function form(targetId = person.id, content = "%PDF-synthetic", filename = "synthetic.pdf") { const f = new FormData(); f.set("caseId", brokerageCase.id); f.set("targetType", "party"); f.set("targetId", targetId); f.set("uploadFile", new File([content], filename, { type: "application/pdf" })); return f; }
 await assert.rejects(uploadObjectImportAction(form("unassociated")), /not_associated/);
 assert.equal((await data.listImportJobs(user.id, 500, tenant.id)).length, 0);
 await assert.rejects(uploadObjectImportAction(form()), /REDIRECT:/);
@@ -147,6 +152,21 @@ const completedTarget = await data.getObjectImportTarget({ ...scope, id: target.
 const originalJobMetadata = JSON.parse(jobs[0].notes).objectImport;
 assert.notEqual(completedTarget.targetVersion, originalJobMetadata.targetVersion, "human review must advance the object version while the job snapshot stays unchanged");
 assert.deepEqual(await ensureObjectImportTask(jobs[0], scope), completedTarget, "a completed target may be re-entered with its upload-time version snapshot");
+// A second upload for the same case/target must surface a zero-supported-field
+// failure without replacing the already confirmed value or letting the older
+// completed target hide the new failed target.
+const beforeNoFields = await data.getClientById(person.id, tenant.id);
+extractionFields = [];
+await assert.rejects(uploadObjectImportAction(form(person.id, "%PDF-no-supported-fields", "empty.pdf")), /REDIRECT:/);
+const noFieldsTarget = (await data.listObjectImportTargets({ ...scope, caseId: brokerageCase.id })).find((item) => item.id !== target.id);
+assert(noFieldsTarget && noFieldsTarget.status === "queued");
+const noFieldsResult = await processIdentityImportJob({ ...scope, jobId: noFieldsTarget.importJobId });
+assert.deepEqual(noFieldsResult, { ok: false, status: "failed", error: "object_import_no_supported_fields" });
+assert.equal((await data.getObjectImportTarget({ ...scope, id: noFieldsTarget.id })).status, "failed");
+assert.equal((await data.getObjectImportTarget({ ...scope, id: target.id })).status, "completed");
+assert.equal((await data.getClientById(person.id, tenant.id)).name, beforeNoFields.name, "zero-field failure must preserve the existing object value");
+assert.equal((await data.listImportJobs(user.id, 500, tenant.id)).find((item) => item.id === noFieldsTarget.importJobId).status, "failed");
+extractionFields = [field("applicant.name", "Extracted name"), field("applicant.phone", "090-1234-5678", 0.6), field("guarantor.name", "Must not leak"), field("applicant.residenceCardNumber", "Must not persist")];
 for (const mutation of [
   { mutation: { caseId: "forged-case" }, error: /metadata_mutated/ },
   { mutation: { targetObjectType: "property" }, error: /metadata_mutated/ },
@@ -175,6 +195,10 @@ const property = await data.addProperty({ tenantId: tenant.id, createdByUserId: 
 await data.updateBrokerageCaseConfirmedData({ ...scope, caseId: brokerageCase.id, confirmedDataJson: writeCaseAssociationData(brokerageCase.confirmedDataJson, { parties: [{ partyId: person.id, roles: ["主要申请人"] }], primaryPropertyId: property.id }, {}) });
 const { buildObjectVersionFingerprint, buildObjectImportIdempotencyKey } = require(resolve(root, "src/lib/object-import-contract.ts"));
 const { persistObjectImportJobExtraction } = require(resolve(root, "src/lib/object-import-processor-adapter.ts"));
+const fixtureDirectory = resolve(root, "scripts/fixtures/object-import");
+assert(existsSync(resolve(fixtureDirectory, "h034-invalid.xlsx")) && existsSync(resolve(fixtureDirectory, "h034-supported.xlsx")), "controlled H034 fixtures must remain in the repository");
+const invalidH034Workbook = readFileSync(resolve(fixtureDirectory, "h034-invalid.xlsx"));
+const supportedH034Workbook = readFileSync(resolve(fixtureDirectory, "h034-supported.xlsx"));
 // A worker can re-enter after object review advanced the target version while
 // the persisted job still carries its upload-time metadata snapshot.
 const reentryPerson = await data.addClient({ ...scope, ownerUserId: user.id, name: "Reentry original", phone: "000-2222-3333", budgetType: "total_price", purpose: "buy", loanPreApprovalStatus: "not_applied", stage: "lead", temperature: "cold", brokerageContractType: "none", amlCheckStatus: "not_required" });
@@ -253,6 +277,32 @@ assert.equal((await data.getObjectImportTarget({ ...scope, id: propertyTask.id }
 assert.equal((await data.resolvePropertyVisibilityForContext({ context, propertyId: property.id })).record.name, "New property", "Excel re-entry must preserve the human-confirmed property value");
 const auditsAfterPropertyReentry = await data.listAuditLogs(user.id, { tenantId: tenant.id });
 assert.equal(auditsAfterPropertyReentry.filter((item) => item.targetType === "property" && item.targetId === property.id && item.action.startsWith("object_import_")).length, 4, "Excel re-entry must not duplicate object review audits");
+// Exercise the real Excel reader and extractor with the project H034 fixtures:
+// the old CAS workbook has no supported template fields, while the supported
+// local-condition workbook must produce a reviewable property-name candidate.
+const invalidH034Property = await data.addProperty({ ...scope, name: "H034 invalid original", area: "80", address: "H034 invalid address", listingPrice: 3000, createdByUserId: user.id, currentOwnerUserId: user.id });
+const invalidH034Before = await data.resolvePropertyVisibilityForContext({ context, propertyId: invalidH034Property.id });
+const invalidH034Job = await data.addImportJob({ ...scope, sourceType: "excel", targetEntity: "properties", title: "H034 invalid CAS", status: "queued", idempotencyKey: "h034-invalid-real", notes: JSON.stringify({ objectImport: { caseId: brokerageCase.id, targetObjectType: "property", targetObjectId: invalidH034Property.id, targetVersion: buildObjectVersionFingerprint(invalidH034Property) } }) });
+await data.addPrivateAttachment({ ...scope, targetType: "import_job", targetId: invalidH034Job.id, fileName: "h034-invalid.xlsx", content: invalidH034Workbook });
+const invalidH034Result = await processExcelImportJob({ ...scope, jobId: invalidH034Job.id });
+assert.deepEqual(invalidH034Result, { ok: false, status: "failed", error: "object_import_no_supported_fields" }, "the original H034 workbook must fail as an object import");
+const invalidH034Target = await data.getObjectImportTargetByJob({ ...scope, importJobId: invalidH034Job.id });
+assert(invalidH034Target && invalidH034Target.status === "failed");
+assert.deepEqual(await data.listObjectImportCandidates({ ...scope, targetId: invalidH034Target.id }), [], "unsupported H034 workbook must not create candidates");
+assert.deepEqual((await data.listImportJobs(user.id, 500, tenant.id)).find((item) => item.id === invalidH034Job.id).status, "failed");
+assert.deepEqual(await data.resolvePropertyVisibilityForContext({ context, propertyId: invalidH034Property.id }), invalidH034Before, "unsupported H034 workbook must preserve the complete property visibility record");
+
+const supportedH034Property = await data.addProperty({ ...scope, name: "H034 supported original", area: "81", address: "H034 supported address", listingPrice: 3100, createdByUserId: user.id, currentOwnerUserId: user.id });
+const supportedH034Before = await data.resolvePropertyVisibilityForContext({ context, propertyId: supportedH034Property.id });
+const supportedH034Job = await data.addImportJob({ ...scope, sourceType: "excel", targetEntity: "properties", title: "H034 supported format", status: "queued", idempotencyKey: "h034-supported-real", notes: JSON.stringify({ objectImport: { caseId: brokerageCase.id, targetObjectType: "property", targetObjectId: supportedH034Property.id, targetVersion: buildObjectVersionFingerprint(supportedH034Property) } }) });
+await data.addPrivateAttachment({ ...scope, targetType: "import_job", targetId: supportedH034Job.id, fileName: "h034-supported.xlsx", content: supportedH034Workbook });
+const supportedH034Result = await processExcelImportJob({ ...scope, jobId: supportedH034Job.id });
+assert.equal(supportedH034Result.ok, true, "supported H034 workbook must complete extraction");
+const supportedH034Target = await data.getObjectImportTargetByJob({ ...scope, importJobId: supportedH034Job.id });
+assert(supportedH034Target && supportedH034Target.status === "needs_review");
+const supportedH034Candidates = await data.listObjectImportCandidates({ ...scope, targetId: supportedH034Target.id });
+assert.equal(supportedH034Candidates.find((item) => item.fieldKey === "name")?.candidateValue, "H034 Local CAS Candidate 20260919");
+assert.deepEqual(await data.resolvePropertyVisibilityForContext({ context, propertyId: supportedH034Property.id }), supportedH034Before, "supported extraction must not write before review");
 // Main-input save commits the object CAS and case field as one data-layer operation.
 const atomicPerson = await data.addClient({ ...scope, ownerUserId: user.id, name: "Atomic original", phone: "000-1111-2222", budgetType: "total_price", purpose: "buy", loanPreApprovalStatus: "not_applied", stage: "lead", temperature: "cold", brokerageContractType: "none", amlCheckStatus: "not_required" });
 const atomicCase = await data.saveBrokerageCaseExtractionReview({ ...scope, caseType: "unit_sale", caseTitle: "Atomic save", confirmedDataJson: writeCaseAssociationData({}, { parties: [{ partyId: atomicPerson.id, roles: ["主要申请人"] }] }, {}), sourceImportJobIds: [], reviewItems: [] });
@@ -308,12 +358,53 @@ assert.equal((await data.getClientById(atomicPerson.id, tenant.id)).phone, "000-
 const postgresSource = readFileSync(resolve(root, "src/lib/data.postgres.ts"), "utf8");
 const casePageSource = readFileSync(resolve(root, "src/app/cases/[id]/page.tsx"), "utf8");
 const queueProcessorSource = readFileSync(resolve(root, "src/components/excel-import-queue-processor.tsx"), "utf8");
+const { ObjectImportFailureNotice } = require(resolve(root, "src/components/object-import-status-badge.tsx"));
+const currentNoFieldsTarget = await data.getObjectImportTarget({ ...scope, id: noFieldsTarget.id });
+assert.equal(currentNoFieldsTarget.status, "failed");
+const olderCompletedTarget = await data.getObjectImportTarget({ ...scope, id: target.id });
+assert.equal(olderCompletedTarget.status, "completed", "the older completed target remains alongside the current failed target");
+const renderedCurrentFailure = renderToStaticMarkup(React.createElement(ObjectImportFailureNotice, { locale: "zh", errorCode: currentNoFieldsTarget.errorCode }));
+assert.match(renderedCurrentFailure, /未能读取可填写的受支持内容，案件资料未更新/);
+assert.doesNotMatch(renderedCurrentFailure, /object_import_no_supported_fields|No supported fields/);
+const pipelineLoad = Module._load;
+Module._load = function(request, parent, ...rest) {
+  if (parent?.filename.endsWith("/src/components/case-association-manager.tsx")) {
+    if (request === "@/components/client-form") return { ClientForm: () => null };
+    if (request === "@/components/case-association-draft") return { FocusDialog: () => null };
+    if (request === "@/components/property-responsive-form") return { PropertyResponsiveForm: () => null };
+    if (request === "@/components/object-import-upload") return { ObjectImportUpload: () => null };
+    if (request === "@/components/object-attachment-list") return { ObjectAttachmentList: () => null };
+    if (request === "@/app/actions") return {};
+  }
+  return pipelineLoad.call(this, request, parent, ...rest);
+};
+const { CaseAssociationManager } = require(resolve(root, "src/components/case-association-manager.tsx"));
+Module._load = pipelineLoad;
+const renderedAssociationFailure = renderToStaticMarkup(React.createElement(CaseAssociationManager, {
+  locale: "zh",
+  caseId: brokerageCase.id,
+  initialParties: [{ partyId: person.id, name: "Synthetic person", roles: [] }],
+  candidates: [],
+  properties: [],
+  objectImportViews: [
+    { target: currentNoFieldsTarget, fields: [] },
+    { target: olderCompletedTarget, fields: [] },
+  ],
+}));
+assert.match(renderedAssociationFailure, /未能读取可填写的受支持内容，案件资料未更新/);
+assert.match(renderedAssociationFailure, /data-object-import-target="party:[^"]+"/);
 assert.match(casePageSource, /<ExcelImportQueueProcessor[\s\S]*jobId=\{target\.importJobId\}/, "case object upload must mount the protected process continuation for queued targets");
 assert.match(casePageSource, /target\.importJobId === objectImportJobId/, "case page must filter continuation to the redirect job");
+assert.match(casePageSource, /objectImportNoSupportedFieldsFailed/, "case page must surface a failed current job even when an older target is completed");
+assert.match(casePageSource, /objectImportTargetsForView = \[\.\.\.objectImportTargets\]\.sort/, "case page must prioritize the queried job when rendering multiple target attempts");
 assert.match(casePageSource, /statusOnly=\{target\.status === "processing"\}/, "processing jobs must use status-only polling and avoid a duplicate POST");
 assert.match(casePageSource, /successHref=\{`\/cases\/\$\{encodeURIComponent\(stableCaseId\)\}/, "case object processing must return to the same case workbench");
 assert.match(queueProcessorSource, /method: "POST"/, "the protected continuation must start processing through the process API");
 assert.match(queueProcessorSource, /successHref\)/, "the protected continuation must honor the case return target");
+assert.match(queueProcessorSource, /noSupportedFields/, "zero-field object failures must use explicit user guidance");
+assert.match(queueProcessorSource, /errorKind !== "noSupportedFields"/, "technical zero-field error summaries must not be exposed");
+assert.match(queueProcessorSource, /objectRecoveryHref/, "object zero-field recovery must accept an object-specific case return target");
+assert.match(casePageSource, /objectRecoveryHref=\{`\/cases\/\$\{encodeURIComponent\(stableCaseId\)\}\?objectImportJob=/, "object zero-field recovery must return to the current case association area");
 const migrationSource = readFileSync(resolve(root, "db/migrations/20260917_001_object_import_targets.sql"), "utf8");
 assert.match(migrationSource, /source_attachment_id TEXT NOT NULL REFERENCES attachments\(id\) ON DELETE RESTRICT/);
 assert.match(migrationSource, /FOREIGN KEY \(tenant_id, object_import_target_id\) REFERENCES object_import_targets\(tenant_id, id\)/);
@@ -326,4 +417,4 @@ const reviewSource = postgresSource.slice(postgresSource.indexOf("export async f
 for (const marker of ["withTransaction", "databaseActorMatches", "FOR UPDATE", "lockCaseReviewMembership", "resolveRecordVisibility", "validateObjectImportReview", "INSERT INTO audit_logs"]) assert(reviewSource.includes(marker), `missing PostgreSQL review boundary: ${marker}`);
 const combinedSource = postgresSource.slice(postgresSource.indexOf("export async function saveCaseWorkbenchWithObjectReview"));
 for (const marker of ["withTransaction", "FOR UPDATE", "UPDATE object_import_fields", "UPDATE object_import_targets", "UPDATE brokerage_cases", "RETURNING *"]) assert(combinedSource.includes(marker), `missing PostgreSQL atomic save boundary: ${marker}`);
-console.log("PASS: upload/queue/processor/public pipeline; association and tenant rejection; dedupe and metadata retention; synthetic extractor; review CAS exactly once with stale/forged guards; property four-field CAS/audit; atomic main-input save normal/conflict/non-writable rollback coverage");
+console.log("PASS: upload/queue/processor/public pipeline; real H034 invalid/support Excel processing; zero-field failure and rendered UI guidance; association and tenant rejection; dedupe and metadata retention; synthetic extractor; review CAS exactly once with stale/forged guards; property four-field CAS/audit; atomic main-input save normal/conflict/non-writable rollback coverage");

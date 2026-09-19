@@ -31,7 +31,7 @@ type IdentityImportPayload = {
 
 export type IdentityImportProcessResult =
   | { ok: true; status: "mapped"; fieldCount: number; documentType: string; documentTypeLabel: string; fingerprintConfidence: number }
-  | { ok: false; status: "failed"; error: "import_job_not_found" | "source_attachment_missing" | "identity_extraction_failed" };
+  | { ok: false; status: "failed"; error: "import_job_not_found" | "source_attachment_missing" | "identity_extraction_failed" | "object_import_no_supported_fields" | "object_reader_no_readable_fields" };
 
 export async function processIdentityImportJob(input: {
   tenantId: string;
@@ -118,9 +118,20 @@ export async function processIdentityImportJob(input: {
       payload.objectImport = objectImport;
       if (objectReader) {
         payload.objectReader = objectReader;
-        await persistObjectReaderJobExtraction({ job, ...input, response: objectReader });
+        const persisted = await persistObjectReaderJobExtraction({ job, ...input, response: objectReader });
+        if (persisted?.target?.status === "failed") {
+          const errorCode = persisted.target.errorCode === "object_reader_no_readable_fields"
+            ? "object_reader_no_readable_fields"
+            : "object_import_no_supported_fields";
+          await markFailed(input, errorCode, "资料中没有可填写的受支持内容，案件资料未更新。请使用受支持的物件或租赁格式后重新选择资料。");
+          return { ok: false, status: "failed", error: errorCode };
+        }
       } else if (inputExtraction) {
-        await persistObjectImportJobExtraction({ job, ...input, fields: inputExtraction.fields });
+        const candidates = await persistObjectImportJobExtraction({ job, ...input, fields: inputExtraction.fields });
+        if (candidates && candidates.length === 0) {
+          await markFailed(input, "object_import_no_supported_fields", "资料中没有可填写的受支持内容，案件资料未更新。请使用受支持的物件或租赁格式后重新选择资料。");
+          return { ok: false, status: "failed", error: "object_import_no_supported_fields" };
+        }
       }
     }
     const mappedJob = await updateImportJobMapping({

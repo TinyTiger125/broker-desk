@@ -35,7 +35,7 @@ export type ExcelImportPayload = {
 
 export type ExcelImportProcessResult =
   | { ok: true; status: "mapped"; fieldCount: number; documentType: string; documentTypeLabel: string; fingerprintConfidence: number }
-  | { ok: false; status: "failed"; error: "import_job_not_found" | "source_attachment_missing" | "excel_extraction_failed" }
+  | { ok: false; status: "failed"; error: "import_job_not_found" | "source_attachment_missing" | "excel_extraction_failed" | "object_import_no_supported_fields" }
   | { ok: false; error: "import_execution_started" };
 
 /**
@@ -156,7 +156,12 @@ export async function processExcelImportJob(input: {
     const objectImport = parseObjectImportNotes(job.notes);
     if (objectImport) {
       payload.objectImport = objectImport;
-      await persistObjectImportJobExtraction({ job, ...input, fields: inputExtraction.fields });
+      const candidates = await persistObjectImportJobExtraction({ job, ...input, fields: inputExtraction.fields });
+      if (candidates && candidates.length === 0) {
+        const failedJob = await markFailed(input, "object_import_no_supported_fields", "资料中没有可填写的受支持内容，案件资料未更新。请使用受支持的物件或租赁格式后重新选择资料。");
+        if (!failedJob) return { ok: false, error: "import_execution_started" };
+        return { ok: false, status: "failed", error: "object_import_no_supported_fields" };
+      }
     }
     const mappedJob = await updateImportJobMapping({
       tenantId: input.tenantId,
