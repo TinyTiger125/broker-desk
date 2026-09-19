@@ -846,9 +846,6 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
     })),
   })) ?? [];
   const overviewHasOutputTemplate = Boolean(outputTemplate);
-  const overviewPreviewHref = outputTemplate
-    ? `/guarantee-applications/${encodeURIComponent(outputTemplate.id)}/preview?caseId=${encodeURIComponent(brokerageCase.id)}`
-    : outputHref;
   const overviewDownloadHref = outputTemplate
     ? `/api/guarantee-applications/${encodeURIComponent(outputTemplate.id)}/download?caseId=${encodeURIComponent(brokerageCase.id)}`
     : null;
@@ -1068,7 +1065,6 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
           locale={locale}
           issueCount={overviewIssueCount}
           outputHref=""
-          previewHref=""
           downloadHref={null}
           dataVersion={brokerageCase.updatedAt.toISOString()}
           outputBlockers={[]}
@@ -1104,7 +1100,6 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
           locale={locale}
           issueCount={overviewIssueCount}
           outputHref={outputHref}
-          previewHref={overviewPreviewHref}
           downloadHref={overviewDownloadHref}
           dataVersion={brokerageCase.updatedAt.toISOString()}
           outputBlockers={outputBlockers}

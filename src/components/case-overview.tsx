@@ -566,7 +566,6 @@ export function CaseOverview({
   locale,
   issueCount,
   outputHref,
-  previewHref,
   downloadHref,
   dataVersion,
   outputBlockers,
@@ -590,7 +589,6 @@ export function CaseOverview({
   locale: Locale;
   issueCount: number;
   outputHref: string;
-  previewHref: string;
   downloadHref: string | null;
   dataVersion: string;
   outputBlockers: CaseOverviewOutputBlocker[];
@@ -761,6 +759,7 @@ export function CaseOverview({
     }
     setConfirmOpen(true);
   };
+  void handleDownload;
 
   const visibleAnchors = sections.slice(0, 4);
   const overflowAnchors = sections.slice(4);
@@ -867,25 +866,7 @@ export function CaseOverview({
             issueCount={issueCount}
             queueOpen={queueOpen}
             onToggleQueue={() => setQueueOpen((open) => !open)}
-            actions={
-              <>
-                {!readOnly ? (
-                  <>
-                    <a href={`/cases/${encodeURIComponent(caseId)}/guarantee-application`} className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-black text-blue-900 hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300">
-                      {locale === "zh" ? "生成申请书" : locale === "ko" ? "신청서 생성" : "申込書を生成"}
-                    </a>
-                    <Link href={previewHref} className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-900 hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300">
-                      <span className="material-symbols-outlined text-[16px]" aria-hidden="true">visibility</span>
-                      {locale === "zh" ? "申请书预览" : locale === "ko" ? "신청서 미리보기" : "申込書プレビュー"}
-                    </Link>
-                    <button type="button" onClick={handleDownload} className="hidden items-center gap-1.5 rounded-lg bg-slate-950 px-3 py-2 text-xs font-black text-white hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 sm:inline-flex">
-                      <span className="material-symbols-outlined text-[16px]" aria-hidden="true">download</span>
-                      {hasOutputTemplate ? (locale === "zh" ? "下载申请书" : locale === "ko" ? "신청서 다운로드" : "申込書をダウンロード") : (locale === "zh" ? "选择输出模板" : locale === "ko" ? "출력模板を選ぶ" : "出力テンプレートを選ぶ")}
-                    </button>
-                  </>
-                ) : null}
-              </>
-            }
+            actions={null}
           />
         }
         feedback={
