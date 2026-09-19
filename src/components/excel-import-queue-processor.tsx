@@ -8,6 +8,7 @@ type ExcelImportQueueProcessorProps = {
   locale: Locale;
   targetCaseId?: string;
   statusOnly?: boolean;
+  successHref?: string;
 };
 
 const copy = {
@@ -78,7 +79,7 @@ function classifyImportError(errorCode: string | null | undefined, httpStatus?: 
 }
 
 /** Starts one import, then waits for the worker before opening the review screen. */
-export function ExcelImportQueueProcessor({ jobId, locale, targetCaseId, statusOnly = false }: ExcelImportQueueProcessorProps) {
+export function ExcelImportQueueProcessor({ jobId, locale, targetCaseId, statusOnly = false, successHref }: ExcelImportQueueProcessorProps) {
   const started = useRef(false);
   const [readOnlyStatus, setReadOnlyStatus] = useState(statusOnly);
   const [status, setStatus] = useState<ImportProcessStatus>(statusOnly ? "queued" : "submitting");
@@ -88,9 +89,13 @@ export function ExcelImportQueueProcessor({ jobId, locale, targetCaseId, statusO
   const [errorSummary, setErrorSummary] = useState<string | null>(null);
 
   const openReview = useCallback(() => {
+    if (successHref) {
+      window.location.replace(successHref);
+      return;
+    }
     const target = targetCaseId ? `&targetCaseId=${encodeURIComponent(targetCaseId)}` : "";
     window.location.replace(`/import-center?xlsxJob=${encodeURIComponent(jobId)}&flash=input_extraction_ready${target}`);
-  }, [jobId, targetCaseId]);
+  }, [jobId, targetCaseId, successHref]);
 
   useEffect(() => {
     if (started.current) return;

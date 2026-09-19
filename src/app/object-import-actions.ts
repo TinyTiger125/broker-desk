@@ -24,8 +24,10 @@ export async function uploadObjectImportAction(formData: FormData) {
     ? await queueExcelImportSource({ tenantId: session.tenant.id, userId: session.user.id, file, caseId, targetObjectType: targetType, targetObjectId: targetId, targetVersion: resolved.targetVersion })
     : await queueIdentityImportSources({ tenantId: session.tenant.id, userId: session.user.id, files: [file], uploadMode: "same_person", caseId, targetObjectType: targetType, targetObjectId: targetId, targetVersion: resolved.targetVersion });
   if (!result.ok) throw new Error(`object_import_upload_failed:${result.error}`);
+  const jobId = "jobId" in result ? result.jobId : result.jobIds[0];
+  if (!jobId) throw new Error("object_import_job_missing");
   revalidatePath(`/cases/${caseId}`);
-  redirect(`/cases/${encodeURIComponent(caseId)}?flash=input_extraction_queued#case-review-desk`);
+  redirect(`/cases/${encodeURIComponent(caseId)}?flash=input_extraction_queued&objectImportJob=${encodeURIComponent(jobId)}#case-review-desk`);
 }
 
 export async function reviewObjectImportAction(formData: FormData) {

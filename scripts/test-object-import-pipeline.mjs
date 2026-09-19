@@ -55,9 +55,10 @@ const brokerageCase = await data.saveBrokerageCaseExtractionReview({ tenantId: t
 const frameworkLoad = Module._load;
 const field = (fieldKey, value, confidence = 0.95) => ({ fieldKey, value, normalizedValue: value, confidence, sourceSheet: "page 1", method: "ocr", sourceFileHash: "synthetic-hash", templateVersion: "test" });
 let extractCalls = 0;
+let lastRedirectUrl = "";
 Module._load = function(request, parent, ...rest) {
   if (request === "@/lib/tenant-session" && parent?.filename.endsWith("/src/app/object-import-actions.ts")) return { requireTenantSession: async ({ permission }) => { assert(["source.upload", "extract.accept_result"].includes(permission)); return session; } };
-  if (request === "next/navigation") return { redirect: (url) => { throw new Error(`REDIRECT:${url}`); } };
+  if (request === "next/navigation") return { redirect: (url) => { lastRedirectUrl = String(url); throw new Error(`REDIRECT:${url}`); } };
   if (request === "next/cache") return { revalidatePath: () => {} };
   if (request === "@/lib/identity-document-extractor") return { extractIdentityDocumentsFromFiles: async (sources) => { extractCalls++; assert.equal(sources.length, 1); return { schemaVersion: "v1", documentType: "identity_residence_card", documentTypeLabel: "Test", extractionStatus: "recognized", fields: [field("applicant.name", "Extracted name"), field("applicant.phone", "090-1234-5678", 0.6), field("guarantor.name", "Must not leak"), field("applicant.residenceCardNumber", "Must not persist")], fingerprintConfidence: 0.9 }; } };
   return frameworkLoad.call(this, request, parent, ...rest);
@@ -71,6 +72,7 @@ await assert.rejects(uploadObjectImportAction(form()), /REDIRECT:/);
 const scope = { tenantId: tenant.id, userId: user.id };
 const [target] = await data.listObjectImportTargets({ ...scope, caseId: brokerageCase.id });
 assert(target && target.targetId === person.id && target.status === "queued");
+assert.match(lastRedirectUrl, new RegExp(`objectImportJob=${target.importJobId}`), "object upload redirect must identify only the newly queued job");
 assert.equal((await processIdentityImportJob({ ...scope, tenantId: "foreign", jobId: target.importJobId })).ok, false);
 assert.equal(extractCalls, 0);
 assert.equal((await processIdentityImportJob({ ...scope, jobId: target.importJobId })).ok, true);
@@ -241,6 +243,14 @@ assert.deepEqual(await data.saveCaseWorkbenchWithObjectReview({ context, caseId:
 assert.deepEqual(await data.getBrokerageCaseById({ ...scope, caseId: atomicCase.id }), beforeMissingSource);
 assert.equal((await data.getClientById(atomicPerson.id, tenant.id)).phone, "000-1111-2222");
 const postgresSource = readFileSync(resolve(root, "src/lib/data.postgres.ts"), "utf8");
+const casePageSource = readFileSync(resolve(root, "src/app/cases/[id]/page.tsx"), "utf8");
+const queueProcessorSource = readFileSync(resolve(root, "src/components/excel-import-queue-processor.tsx"), "utf8");
+assert.match(casePageSource, /<ExcelImportQueueProcessor[\s\S]*jobId=\{target\.importJobId\}/, "case object upload must mount the protected process continuation for queued targets");
+assert.match(casePageSource, /target\.importJobId === objectImportJobId/, "case page must filter continuation to the redirect job");
+assert.match(casePageSource, /statusOnly=\{target\.status === "processing"\}/, "processing jobs must use status-only polling and avoid a duplicate POST");
+assert.match(casePageSource, /successHref=\{`\/cases\/\$\{encodeURIComponent\(stableCaseId\)\}/, "case object processing must return to the same case workbench");
+assert.match(queueProcessorSource, /method: "POST"/, "the protected continuation must start processing through the process API");
+assert.match(queueProcessorSource, /successHref\)/, "the protected continuation must honor the case return target");
 const migrationSource = readFileSync(resolve(root, "db/migrations/20260917_001_object_import_targets.sql"), "utf8");
 assert.match(migrationSource, /source_attachment_id TEXT NOT NULL REFERENCES attachments\(id\) ON DELETE RESTRICT/);
 assert.match(migrationSource, /FOREIGN KEY \(tenant_id, object_import_target_id\) REFERENCES object_import_targets\(tenant_id, id\)/);

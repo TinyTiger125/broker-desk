@@ -44,6 +44,7 @@ import { uploadObjectImportAction } from "@/app/object-import-actions";
 import { getObjectImportFeatureReadiness, listObjectImportCandidates, listObjectImportTargets } from "@/lib/data";
 import type { ObjectImportCandidateRecord, ObjectImportTargetRecord } from "@/lib/object-import-repository";
 import { getImportRuntimeDiagnostics } from "@/lib/production-readiness";
+import { ExcelImportQueueProcessor } from "@/components/excel-import-queue-processor";
 
 export const dynamic = "force-dynamic";
 
@@ -54,7 +55,7 @@ type CasePageProps = {
   searchParams?: Promise<CasePageQuery>;
 };
 
-type CasePageQuery = { flash?: string; node?: string; field?: string; view?: string; scrollTop?: string; returnTo?: string };
+type CasePageQuery = { flash?: string; node?: string; field?: string; view?: string; scrollTop?: string; returnTo?: string; objectImportJob?: string };
 
 type WorkbenchTrustState =
   | "confirmed"
@@ -605,6 +606,8 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
     const record = associatedPartyResults[index]?.record;
     return record ? [{ ...party, name: record.name }] : [];
   });
+  const stableCaseId = brokerageCase.id;
+  const objectImportJobId = String(query?.objectImportJob ?? "").trim();
   const objectImportReadiness = await getObjectImportFeatureReadiness();
   const importRuntimeDiagnostics = getImportRuntimeDiagnostics();
   const objectAttachments = await listLinkedObjectAttachments({ tenantId, targetType: "case", targetId: brokerageCase.id });
@@ -647,22 +650,41 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
     }
   }
   const associationPanel = (
-    <CaseAssociationManager
-      locale={locale}
-      caseId={brokerageCase.id}
-      readOnly={!canWriteCase}
-      initialParties={associationParties}
-      initialPrimaryPropertyId={associationDraft.primaryPropertyId}
-      candidates={associationCandidates}
-      properties={associationProperties}
-      saveAction={canWriteCase ? saveCaseAssociationsAction : undefined}
-      createPersonAction={canWriteCase ? createClientFormAction : undefined}
-      createPropertyAction={canWriteCase ? createPropertyQuickAction : undefined}
-      objectImportViews={objectImportViews}
-      objectImportUploadAction={canWriteCase && objectImportReadiness.ready ? uploadObjectImportAction : undefined}
-      objectImportUnavailable={!objectImportReadiness.ready}
-      caseAttachments={objectAttachments}
-    />
+    <>
+      <CaseAssociationManager
+        locale={locale}
+        caseId={brokerageCase.id}
+        readOnly={!canWriteCase}
+        initialParties={associationParties}
+        initialPrimaryPropertyId={associationDraft.primaryPropertyId}
+        candidates={associationCandidates}
+        properties={associationProperties}
+        saveAction={canWriteCase ? saveCaseAssociationsAction : undefined}
+        createPersonAction={canWriteCase ? createClientFormAction : undefined}
+        createPropertyAction={canWriteCase ? createPropertyQuickAction : undefined}
+        objectImportViews={objectImportViews}
+        objectImportUploadAction={canWriteCase && objectImportReadiness.ready ? uploadObjectImportAction : undefined}
+        objectImportUnavailable={!objectImportReadiness.ready}
+        caseAttachments={objectAttachments}
+      />
+      {canWriteCase && objectImportReadiness.ready
+        ? objectImportTargets
+            .filter((target) =>
+              target.importJobId === objectImportJobId &&
+              (target.status === "queued" || target.status === "processing"),
+            )
+            .map((target) => (
+              <ExcelImportQueueProcessor
+                key={`object-import-process-${target.importJobId}`}
+                jobId={target.importJobId}
+                locale={locale}
+                targetCaseId={stableCaseId}
+                statusOnly={target.status === "processing"}
+                successHref={`/cases/${encodeURIComponent(stableCaseId)}?flash=object_import_processed#case-review-desk`}
+              />
+            ))
+        : null}
+    </>
   );
 
   if (!canWriteCase) {
@@ -857,6 +879,12 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
             zh: "信息整理已保存。",
             ko: "정보 정리를 저장했습니다.",
           })
+        : query?.flash === "object_import_processed"
+          ? tr(locale, {
+              ja: "資料の読取が完了しました。候補項目を案件の入力欄で確認できます。",
+              zh: "资料读取完成，可在案件输入栏确认候选项目。",
+              ko: "자료 읽기가 완료되었습니다. 안건 입력란에서 후보 항목을 확인할 수 있습니다.",
+            })
         : query?.flash === "case_field_invalid"
           ? invalidFieldKey.endsWith(".email")
             ? tr(locale, {

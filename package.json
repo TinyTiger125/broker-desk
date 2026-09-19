@@ -114,7 +114,8 @@
     "test:quote-form-contract": "node scripts/check-quote-form-contract.mjs",
     "terms:export": "node scripts/export-ui-terminology.mjs",
     "terms:import": "node scripts/import-ui-terminology.mjs",
-    "test:object-reader-pipeline": "node scripts/test-object-reader-pipeline.mjs"
+    "test:object-reader-pipeline": "node scripts/test-object-reader-pipeline.mjs",
+    "test:object-import-pipeline": "node scripts/test-object-import-pipeline.mjs"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.7.1",
