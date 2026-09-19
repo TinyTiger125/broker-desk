@@ -37,12 +37,17 @@ export async function ensureObjectImportTask(job: ImportJob, scope: { tenantId: 
   if (existing) {
     // Object metadata is immutable once the upload target exists. Generic
     // import-center mapping actions may edit job notes, so fail closed if the
-    // persisted job no longer describes the original target.
+    // persisted job no longer describes the original target. A completed
+    // target is different: human review updates its current object-version
+    // fingerprint, while the job notes intentionally retain the upload-time
+    // snapshot. That version drift is safe after completion because completed
+    // targets are not reprocessed; identity, type, case, and source scope
+    // remain immutable checks.
     if (
       existing.caseId !== metadata.caseId ||
       existing.targetType !== metadata.targetObjectType ||
       existing.targetId !== metadata.targetObjectId ||
-      existing.targetVersion !== metadata.targetVersion ||
+      (existing.status !== "completed" && existing.targetVersion !== metadata.targetVersion) ||
       existing.sourceAttachmentId !== source.id
     ) {
       throw new Error("object_import_metadata_mutated");

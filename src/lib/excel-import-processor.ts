@@ -65,6 +65,17 @@ export async function processExcelImportJob(input: {
   }
 
   const objectTarget = await ensureObjectImportTask(job, input);
+  if (objectTarget && ["needs_review", "completed", "conflict"].includes(objectTarget.status)) {
+    const payload = parsePayload(job.notes);
+    return {
+      ok: true,
+      status: "mapped",
+      fieldCount: payload?.inputExtraction?.fields.length ?? 0,
+      documentType: payload?.inputExtraction?.documentType ?? "property_ledger",
+      documentTypeLabel: payload?.inputExtraction?.documentTypeLabel ?? "物件台账",
+      fingerprintConfidence: payload?.inputExtraction?.fingerprintConfidence ?? 0,
+    };
+  }
   const attachments = await listAttachments({
     tenantId: input.tenantId,
     userId: input.userId,

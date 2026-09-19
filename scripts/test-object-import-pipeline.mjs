@@ -65,6 +65,8 @@ Module._load = function(request, parent, ...rest) {
 };
 const { uploadObjectImportAction } = require(resolve(root, "src/app/object-import-actions.ts"));
 const { processIdentityImportJob } = require(resolve(root, "src/lib/identity-import-processor.ts"));
+const { processExcelImportJob } = require(resolve(root, "src/lib/excel-import-processor.ts"));
+const { ensureObjectImportTask } = require(resolve(root, "src/lib/object-import-processor-adapter.ts"));
 function form(targetId = person.id) { const f = new FormData(); f.set("caseId", brokerageCase.id); f.set("targetType", "party"); f.set("targetId", targetId); f.set("uploadFile", new File(["%PDF-synthetic"], "synthetic.pdf", { type: "application/pdf" })); return f; }
 await assert.rejects(uploadObjectImportAction(form("unassociated")), /not_associated/);
 assert.equal((await data.listImportJobs(user.id, 500, tenant.id)).length, 0);
@@ -141,9 +143,22 @@ await assert.rejects(reviewObjectImportAction(rejectForm), /REDIRECT:/);
 assert.equal((await data.getClientById(person.id, tenant.id)).phone, "000-0000-0000");
 assert.equal((await data.getObjectImportTarget({ ...scope, id: target.id })).status, "completed");
 assert.equal((await data.listObjectImportCandidates({ ...scope, targetId: target.id })).find((item) => item.id === phoneField.id).status, "rejected");
+const completedTarget = await data.getObjectImportTarget({ ...scope, id: target.id });
+const originalJobMetadata = JSON.parse(jobs[0].notes).objectImport;
+assert.notEqual(completedTarget.targetVersion, originalJobMetadata.targetVersion, "human review must advance the object version while the job snapshot stays unchanged");
+assert.deepEqual(await ensureObjectImportTask(jobs[0], scope), completedTarget, "a completed target may be re-entered with its upload-time version snapshot");
+for (const mutation of [
+  { mutation: { caseId: "forged-case" }, error: /metadata_mutated/ },
+  { mutation: { targetObjectType: "property" }, error: /metadata_mutated/ },
+  { mutation: { targetObjectId: "forged-target" }, error: /metadata_mutated/ },
+  { mutation: { sourceAttachmentId: "forged-source" }, error: /source_attachment_mismatch/ },
+]) {
+  const mutatedMetadata = { ...originalJobMetadata, ...mutation.mutation };
+  const mutatedCompletedJob = { ...jobs[0], notes: JSON.stringify({ objectImport: mutatedMetadata }) };
+  await assert.rejects(ensureObjectImportTask(mutatedCompletedJob, scope), mutation.error);
+}
 await data.upsertObjectImportCandidate({ ...phoneField, candidateValue: "new model suggestion", finalValue: "new model suggestion" });
 assert.equal((await data.listObjectImportCandidates({ ...scope, targetId: target.id })).find((item) => item.id === phoneField.id).status, "rejected");
-const { ensureObjectImportTask } = require(resolve(root, "src/lib/object-import-processor-adapter.ts"));
 await assert.rejects(ensureObjectImportTask(jobs[0], { ...scope, tenantId: "foreign" }), /scope_mismatch/);
 await data.updateImportJobMapping({
   tenantId: tenant.id,
@@ -158,8 +173,49 @@ await assert.rejects(ensureObjectImportTask(mutatedJob, scope), /metadata_mutate
 // Property review uses the same CAS operation, with a numeric listingPrice mapping.
 const property = await data.addProperty({ tenantId: tenant.id, createdByUserId: user.id, currentOwnerUserId: user.id, name: "Original property", area: "Original area", address: "Original address", listingPrice: 1000 });
 await data.updateBrokerageCaseConfirmedData({ ...scope, caseId: brokerageCase.id, confirmedDataJson: writeCaseAssociationData(brokerageCase.confirmedDataJson, { parties: [{ partyId: person.id, roles: ["主要申请人"] }], primaryPropertyId: property.id }, {}) });
-const { buildObjectVersionFingerprint } = require(resolve(root, "src/lib/object-import-contract.ts"));
+const { buildObjectVersionFingerprint, buildObjectImportIdempotencyKey } = require(resolve(root, "src/lib/object-import-contract.ts"));
 const { persistObjectImportJobExtraction } = require(resolve(root, "src/lib/object-import-processor-adapter.ts"));
+// A worker can re-enter after object review advanced the target version while
+// the persisted job still carries its upload-time metadata snapshot.
+const reentryPerson = await data.addClient({ ...scope, ownerUserId: user.id, name: "Reentry original", phone: "000-2222-3333", budgetType: "total_price", purpose: "buy", loanPreApprovalStatus: "not_applied", stage: "lead", temperature: "cold", brokerageContractType: "none", amlCheckStatus: "not_required" });
+const reentryCase = await data.saveBrokerageCaseExtractionReview({ ...scope, caseType: "unit_sale", caseTitle: "Completed target re-entry", confirmedDataJson: writeCaseAssociationData({}, { parties: [{ partyId: reentryPerson.id, roles: ["主要申请人"] }] }, {}), sourceImportJobIds: [], reviewItems: [] });
+const reentryVersion = buildObjectVersionFingerprint(reentryPerson);
+const reentryContent = Buffer.from("%PDF-synthetic-reentry");
+const reentryHash = createHash("sha256").update(reentryContent).digest("hex");
+const reentryJob = await data.addImportJob({ ...scope, sourceType: "scan", targetEntity: "parties", title: "Reentry identity", status: "processing", idempotencyKey: buildObjectImportIdempotencyKey({ tenantId: tenant.id, target: { caseId: reentryCase.id, targetObjectType: "party", targetObjectId: reentryPerson.id, targetVersion: reentryVersion }, sourceHash: `same_person:${reentryHash}` }), notes: JSON.stringify({ objectImport: { caseId: reentryCase.id, targetObjectType: "party", targetObjectId: reentryPerson.id, targetVersion: reentryVersion } }) });
+const reentrySource = await data.addPrivateAttachment({ ...scope, targetType: "import_job", targetId: reentryJob.id, fileName: "reentry.pdf", content: reentryContent });
+await persistObjectImportJobExtraction({ ...scope, job: reentryJob, fields: [field("applicant.name", "Reentry candidate")] });
+const reentryTarget = await data.getObjectImportTargetByJob({ ...scope, importJobId: reentryJob.id });
+const reentryField = (await data.listObjectImportCandidates({ ...scope, targetId: reentryTarget.id }))[0];
+assert.equal((await data.reviewObjectImportCandidate({ context, targetId: reentryTarget.id, fieldId: reentryField.id, expectedVersion: reentryTarget.targetVersion, expectedCandidateValue: reentryField.candidateValue, decision: "confirm", value: "Reentry candidate" })).ok, true);
+const completedReentryTarget = await data.getObjectImportTarget({ ...scope, id: reentryTarget.id });
+assert.equal(completedReentryTarget.status, "completed");
+assert.notEqual(completedReentryTarget.targetVersion, reentryVersion);
+const extractCallsBeforeCompletedReentry = extractCalls;
+const completedReentry = await processIdentityImportJob({ ...scope, jobId: reentryJob.id });
+assert.equal(completedReentry.ok, true, "a processing job with a completed object target must resume without throwing");
+assert.equal(completedReentry.status, "mapped");
+assert.equal(extractCalls, extractCallsBeforeCompletedReentry, "completed target re-entry must not run extraction again");
+assert.equal((await data.getClientById(reentryPerson.id, tenant.id)).name, "Reentry candidate");
+const reentryTargetAfter = await data.getObjectImportTarget({ ...scope, id: reentryTarget.id });
+assert.equal(reentryTargetAfter.status, "completed");
+assert.equal(reentryTargetAfter.sourceAttachmentId, reentrySource.id, "completed target re-entry must preserve its original source");
+const reentryCandidateAfter = (await data.listObjectImportCandidates({ ...scope, targetId: reentryTarget.id }))[0];
+assert.equal(reentryCandidateAfter.provenance.sourceAttachmentId, reentrySource.id);
+assert.equal(reentryCandidateAfter.provenance.sourceFileHash, reentryHash);
+const reentryAudits = await data.listAuditLogs(user.id, { tenantId: tenant.id });
+assert.equal(reentryAudits.filter((item) => item.targetId === reentryPerson.id && item.action === "object_import_confirm").length, 1, "re-entry must not duplicate the human confirmation audit");
+await data.updateClient(reentryPerson.id, { tenantId: tenant.id, name: "Reentry original", phone: "000-2222-3333", budgetType: "total_price", purpose: "buy", loanPreApprovalStatus: "not_applied", stage: "lead", temperature: "cold", brokerageContractType: "none", amlCheckStatus: "not_required" });
+assert.equal(buildObjectVersionFingerprint(await data.getClientById(reentryPerson.id, tenant.id)), reentryVersion, "restoring the reviewed object must restore the upload-time version used by the idempotency key");
+const jobsBeforeActionReentry = await data.listImportJobs(user.id, 500, tenant.id);
+const sourcesBeforeActionReentry = await data.listAttachments({ ...scope, targetType: "import_job", targetId: reentryJob.id, limit: 10 });
+const reentryForm = new FormData();
+reentryForm.set("caseId", reentryCase.id); reentryForm.set("targetType", "party"); reentryForm.set("targetId", reentryPerson.id); reentryForm.set("uploadFile", new File([reentryContent], "reentry.pdf", { type: "application/pdf" }));
+await assert.rejects(uploadObjectImportAction(reentryForm), /REDIRECT:/, "the protected upload action must deduplicate a completed target after object-version drift");
+assert.equal((await data.listImportJobs(user.id, 500, tenant.id)).length, jobsBeforeActionReentry.length, "completed target re-entry must not create a second import job");
+assert.equal((await data.listAttachments({ ...scope, targetType: "import_job", targetId: reentryJob.id, limit: 10 })).length, sourcesBeforeActionReentry.length, "completed target re-entry must not duplicate its source attachment");
+assert.equal((await data.getObjectImportTarget({ ...scope, id: reentryTarget.id })).status, "completed");
+assert.equal((await data.getClientById(reentryPerson.id, tenant.id)).name, "Reentry original", "dedupe must preserve the restored human value");
 const propertyJob = await data.addImportJob({ ...scope, sourceType: "excel", targetEntity: "properties", title: "Synthetic property", status: "queued", idempotencyKey: "property-test", notes: JSON.stringify({ objectImport: { caseId: brokerageCase.id, targetObjectType: "property", targetObjectId: property.id, targetVersion: buildObjectVersionFingerprint(property) } }) });
 const propertySource = await data.addPrivateAttachment({ ...scope, targetType: "import_job", targetId: propertyJob.id, fileName: "synthetic.xlsx", content: Buffer.from("synthetic workbook") });
 await persistObjectImportJobExtraction({ ...scope, job: propertyJob, fields: [field("property_name", "New property"), field("property.area", "New area"), field("property.address", "New address"), field("property.listing_price", "2000")] });
@@ -190,6 +246,13 @@ assert.equal(propertyAfter.name, "New property"); assert.equal(propertyAfter.are
 assert.equal((await data.getObjectImportTarget({ ...scope, id: propertyTask.id })).status, "completed");
 const audits = await data.listAuditLogs(user.id, { tenantId: tenant.id });
 assert.equal(audits.filter((item) => item.targetType === "property" && item.targetId === property.id && item.action.startsWith("object_import_")).length, 4);
+const propertyReentry = await processExcelImportJob({ ...scope, jobId: propertyJob.id });
+assert.equal(propertyReentry.ok, true, "a queued Excel job with a completed object target must resume without throwing");
+assert.equal(propertyReentry.status, "mapped");
+assert.equal((await data.getObjectImportTarget({ ...scope, id: propertyTask.id })).status, "completed");
+assert.equal((await data.resolvePropertyVisibilityForContext({ context, propertyId: property.id })).record.name, "New property", "Excel re-entry must preserve the human-confirmed property value");
+const auditsAfterPropertyReentry = await data.listAuditLogs(user.id, { tenantId: tenant.id });
+assert.equal(auditsAfterPropertyReentry.filter((item) => item.targetType === "property" && item.targetId === property.id && item.action.startsWith("object_import_")).length, 4, "Excel re-entry must not duplicate object review audits");
 // Main-input save commits the object CAS and case field as one data-layer operation.
 const atomicPerson = await data.addClient({ ...scope, ownerUserId: user.id, name: "Atomic original", phone: "000-1111-2222", budgetType: "total_price", purpose: "buy", loanPreApprovalStatus: "not_applied", stage: "lead", temperature: "cold", brokerageContractType: "none", amlCheckStatus: "not_required" });
 const atomicCase = await data.saveBrokerageCaseExtractionReview({ ...scope, caseType: "unit_sale", caseTitle: "Atomic save", confirmedDataJson: writeCaseAssociationData({}, { parties: [{ partyId: atomicPerson.id, roles: ["主要申请人"] }] }, {}), sourceImportJobIds: [], reviewItems: [] });
