@@ -462,7 +462,6 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
   const selectedPartyForCandidate = writableParties[0];
   const guaranteeCandidateData: Record<string, unknown> = {
     "property.name": selectedPropertyForCandidate?.name,
-    "lease.rent": selectedPropertyForCandidate?.listingPrice,
     "lease.commonFee": selectedPropertyForCandidate?.managementFee,
     "applicant.name": selectedPartyForCandidate?.name,
     "applicant.phone": selectedPartyForCandidate?.phone,

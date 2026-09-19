@@ -1,6 +1,8 @@
 import {
   getAttachmentByIdForTenant,
+  getBrokerageCaseByImportJobId,
   getBrokerageCaseByIdForContext,
+  getObjectImportTargetByJob,
   getGeneratedOutputByIdForTenant,
   listBrokerageCasesForContext,
   listGeneratedOutputsForTenant,
@@ -40,6 +42,25 @@ function attachmentParentType(targetType: string): W93ParentType | null {
   return null;
 }
 
+async function resolveImportJobAttachmentCase(context: RequestContext, importJobId: string): Promise<BrokerageCase | null> {
+  if (!importJobId.trim()) return null;
+  const objectTarget = await getObjectImportTargetByJob({
+    tenantId: context.tenantId,
+    userId: context.userId,
+    importJobId,
+  });
+  const brokerageCase = objectTarget
+    ? (await getBrokerageCaseByIdForContext({ context, caseId: objectTarget.caseId })).brokerageCase
+    : await getBrokerageCaseByImportJobId({
+        tenantId: context.tenantId,
+        userId: context.userId,
+        importJobId,
+      });
+  if (!brokerageCase) return null;
+  const resolved = await getBrokerageCaseByIdForContext({ context, caseId: brokerageCase.id });
+  return resolved.resolution.canRead ? brokerageCase : null;
+}
+
 /** Resolves the unique parent before exposing any attachment metadata or bytes. */
 export async function getW93AttachmentForContext(context: RequestContext, attachmentId: string): Promise<Attachment | null> {
   const attachment = await getAttachmentByIdForTenant({ tenantId: context.tenantId, id: attachmentId });
@@ -48,6 +69,9 @@ export async function getW93AttachmentForContext(context: RequestContext, attach
   if (parentType) {
     const parentResolution = await resolveW93Parent(context, parentType, attachment.targetId);
     if (parentResolution.canRead) return attachment;
+  }
+  if (attachment.targetType === "import_job" && await resolveImportJobAttachmentCase(context, attachment.targetId)) {
+    return attachment;
   }
   const links = await listAttachmentLinks({ tenantId: context.tenantId, attachmentId, limit: 100 });
   for (const link of links) {

@@ -903,6 +903,12 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                   zh: "日本邮政编码必须为7位数字，修改未保存。",
                   ko: "일본 우편번호는 7자리여야 하며 변경 사항은 저장되지 않았습니다.",
                 })
+          : query?.flash === "case_required_field_missing"
+            ? tr(locale, {
+                ja: `必須項目「${getBusinessFieldLabel(locale, invalidFieldKey)}」を入力してください。変更は保存されていません。`,
+                zh: `请填写必填项“${getBusinessFieldLabel(locale, invalidFieldKey)}”。修改未保存。`,
+                ko: `필수 항목 "${getBusinessFieldLabel(locale, invalidFieldKey)}"을(를) 입력해 주세요. 변경 사항은 저장되지 않았습니다.`,
+              })
           : query?.flash === "case_applicability_saved"
             ? tr(locale, {
                 ja: "保存しました。",
@@ -983,7 +989,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
 	                              })
 	              : undefined;
   const flashTone =
-    query?.flash?.startsWith("excel_upload_") || query?.flash?.startsWith("identity_upload_") ? "error" : undefined;
+    query?.flash?.startsWith("excel_upload_") || query?.flash?.startsWith("identity_upload_") || query?.flash === "case_required_field_missing" || query?.flash === "case_field_invalid" ? "error" : undefined;
   const activeView = query?.view === "quick" || query?.view === "overview"
     ? query.view
     : downloadGate && downloadGate.blockedReasons.length > 0

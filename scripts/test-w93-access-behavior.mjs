@@ -194,6 +194,33 @@ assert(await access.getW93AttachmentForContext(ownerContext, ownerAttachment.id)
 assert.equal(await access.getW93AttachmentForContext(colleagueContext, ownerAttachment.id), null, "colleague attachment is hidden with its parent");
 const importedAttachment = await memory.addPrivateAttachment({ tenantId: tenant.id, userId: owner.id, targetType: "import_job", targetId: "w93-import-job", fileName: "residence-card.pdf", fileType: "application/pdf", content: Buffer.from("linked source") });
 assert.equal(await access.getW93AttachmentForContext(ownerContext, importedAttachment.id), null, "unlinked import source is not exposed as an object attachment");
+const importedCase = await memory.saveBrokerageCaseExtractionReview({
+  tenantId: tenant.id,
+  userId: owner.id,
+  caseType: "unit_sale",
+  caseTitle: "W93 import source case",
+  confirmedDataJson: {},
+  sourceImportJobIds: [],
+  reviewItems: [],
+});
+await memory.createObjectImportTarget({
+  id: "w93-object-import-target",
+  tenantId: tenant.id,
+  userId: owner.id,
+  caseId: importedCase.id,
+  importJobId: "w93-import-job",
+  targetType: "property",
+  targetId: privateProperty.id,
+  targetVersion: "v1",
+  sourceAttachmentId: importedAttachment.id,
+  status: "queued",
+  idempotencyKey: "w93-object-import",
+  attemptCount: 0,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+});
+assert(await access.getW93AttachmentForContext(ownerContext, importedAttachment.id), "a source attachment follows its readable import-job case parent");
+assert.equal(await access.getW93AttachmentForContext(colleagueContext, importedAttachment.id), null, "an import-job source remains hidden when its case is not readable");
 const firstLink = await memory.linkAttachmentToObject({ tenantId: tenant.id, attachmentId: importedAttachment.id, targetType: "property", targetId: sharedProperty.id, category: "identity", sourceImportJobId: "w93-import-job", createdByUserId: owner.id });
 const duplicateLink = await memory.linkAttachmentToObject({ tenantId: tenant.id, attachmentId: importedAttachment.id, targetType: "property", targetId: sharedProperty.id, category: "identity", sourceImportJobId: "w93-import-job", createdByUserId: owner.id });
 assert.equal(duplicateLink.id, firstLink.id, "repeated object links are idempotent");

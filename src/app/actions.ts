@@ -177,12 +177,13 @@ import { createClerkInvitationForTenantMember } from "@/lib/clerk-invitations";
 import { assertCaseSourcesReadable } from "@/lib/w93-access";
 import { getVerifiedClerkAuthIdentity } from "@/lib/clerk-auth";
 import { isClerkAuthEnabled } from "@/lib/auth-mode";
-import { CASE_FIELD_KEYS, getCaseFieldDefinition, isKnownCaseFieldKey } from "@/lib/case-field-catalog";
+import { CASE_FIELD_KEYS, getCaseFieldDefinition, getCaseFieldInformation, isKnownCaseFieldKey } from "@/lib/case-field-catalog";
 import {
   CASE_WORKBENCH_FIELD_KEYS,
   buildCaseWorkbenchRuleMap,
   isCaseWorkbenchFieldKey,
   normalizeCaseFieldRequirement,
+  resolveCaseWorkbenchFieldRequirement,
 } from "@/lib/case-workbench-field-rules";
 import { canonicalizeCaseFieldKey, clearCaseFieldValueAliases, getCaseFieldValue } from "@/lib/case-field-normalization";
 import {
@@ -3468,8 +3469,8 @@ function getCaseWorkbenchFieldDecision(formData: FormData, fieldKey: string): "c
 }
 
 function getCaseWorkbenchSubmittedValue(formData: FormData, fieldKey: string): string {
-  const rawValue = String(formData.get(`field:${fieldKey}`) ?? "").trim();
-  if (rawValue) return rawValue;
+  const submittedFieldName = `field:${fieldKey}`;
+  if (formData.has(submittedFieldName)) return String(formData.get(submittedFieldName) ?? "").trim();
   // The row snapshot is updated from the same visible control on input. It
   // preserves a non-empty value if a client rerender drops the native value
   // immediately before the server action serializes the form.
@@ -3880,6 +3881,25 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
   const returnAnchor = safeHashAnchor(formData.get("returnAnchor"));
   const returnView = safeQueryToken(formData.get("returnView"));
   const returnScrollTop = safeScrollTop(formData.get("returnScrollTop"));
+  const requiredMissingFieldKey = fieldKeysToSave.find((fieldKey) => {
+    const decision = getCaseWorkbenchFieldDecision(formData, fieldKey);
+    if (decision !== "confirmed") return false;
+    const definition = getCaseFieldDefinition(fieldKey);
+    const information = definition ? getCaseFieldInformation(definition) : undefined;
+    if (!information || resolveCaseWorkbenchFieldRequirement(fieldKey, information.importance, ruleMap) !== "required") return false;
+    const rawValue = getCaseWorkbenchSubmittedValue(formData, fieldKey);
+    const candidateValue = String(formData.get(`candidate:${fieldKey}`) ?? "").trim();
+    const nextValue = (fieldKey === useCandidateFieldKey || shouldBatchUseCandidates) && candidateValue ? candidateValue : rawValue;
+    return !nextValue;
+  });
+  if (requiredMissingFieldKey) {
+    const requiredParams = new URLSearchParams();
+    if (returnView) requiredParams.set("view", returnView);
+    requiredParams.set("flash", "case_required_field_missing");
+    requiredParams.set("field", requiredMissingFieldKey);
+    if (returnScrollTop) requiredParams.set("scrollTop", returnScrollTop);
+    redirect(`/cases/${caseId}?${requiredParams.toString()}${returnAnchor ? `#${returnAnchor}` : ""}`);
+  }
   const invalidPostalFieldKey = fieldKeysToSave.find((fieldKey) => {
     if (getCaseFieldDefinition(fieldKey)?.valueKind !== "postal_code") return false;
     const rawValue = getCaseWorkbenchSubmittedValue(formData, fieldKey);

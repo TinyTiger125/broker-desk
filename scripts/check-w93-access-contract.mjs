@@ -24,7 +24,7 @@ assert(relation.includes("listHubParties(locale, { requestContext })") && relati
 assert(!relation.includes("listHubAttachments") && !relation.includes("listHubContracts") && !relation.includes("listHubImportJobs"), "unsupported legacy nodes are not exposed");
 assert(relation.includes("notFound()"), "hidden direct nodes use a uniform unavailable result");
 
-assert(access.includes("getAttachmentByIdForTenant") && access.includes("resolveW93Parent"), "attachments require tenant lookup plus parent resolution");
+assert(access.includes("getAttachmentByIdForTenant") && access.includes("resolveW93Parent") && access.includes("getObjectImportTargetByJob"), "attachments require tenant lookup plus parent resolution");
 assert(access.includes("getGeneratedOutputByIdForTenant") && access.includes("output.caseId"), "history output is bound to its case");
 assert(access.includes("areCaseSourcesReadable") && access.includes("areGeneratedOutputSourcesReadable") && access.includes("listQuotationsForContext"), "generation and history checks every explicit source");
 assert(access.includes("withW93SourceProvenance") && access.includes("__w93SourceIds"), "generated history persists immutable source provenance");
@@ -37,7 +37,7 @@ assert(!attachmentRoute.includes("getAttachmentById({"), "attachment route has n
 assert(outputRoute.includes("getW93GeneratedOutputForContext") && outputRoute.includes("fileStatus !== \"ready\"") && outputRoute.includes("readPrivateAttachmentContentForTenant"), "ordinary output download uses immutable stored bytes and parent visibility");
 assert(outputRoute.includes("isOutputDocType") && outputRoute.includes("fileAttachmentId") && outputRoute.includes("createHash"), "ordinary output download fails closed on unknown or invalid files");
 assert(!outputRoute.includes("getQuotationById") && !outputRoute.includes("listQuoteFormData"), "ordinary output download does not recompose tenant-wide data");
-assert(outputCenter.includes("listPropertiesForContext") && outputCenter.includes("listQuotationsForContext") && outputCenter.includes("requestContext"), "output center uses context-bound projections");
+assert(outputCenter.includes("listPropertiesForContext") && outputCenter.includes("listHubParties") && outputCenter.includes("requestContext"), "output center uses context-bound projections");
 assert(!outputCenter.includes("listQuoteFormData") && !outputCenter.includes("listQuotations(100"), "output center has no tenant-wide source fallback");
 assert(hub.includes("if (!context.requestContext) return []") && hub.includes("listGeneratedOutputsForTenant"), "output history fails closed without trusted context");
 assert(guaranteeDownload.includes("getBrokerageCaseByIdForContext") && guaranteeDownload.includes("assertCaseSourcesReadable"), "guarantee generation checks case and sources");
