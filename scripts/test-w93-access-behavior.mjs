@@ -14,6 +14,7 @@ const originalLoad = Module._load;
 let currentSubject = "";
 Module._load = function (request, parent, ...rest) {
   if (request === "@clerk/nextjs/server") return { auth: async () => ({ userId: currentSubject }), currentUser: async () => null };
+  if (request === "react") return { ...originalLoad.call(this, request, parent, ...rest), cache: (fn) => fn };
   return originalLoad.call(this, request, parent, ...rest);
 };
 function resolveCandidate(value) {
@@ -41,8 +42,7 @@ process.env.BROKER_DESK_AUTH_MODE = "clerk";
 const memory = require(resolve(root, "src/lib/data.memory.ts"));
 const resolver = require(resolve(root, "src/lib/visibility-resolver.ts"));
 const access = require(resolve(root, "src/lib/w93-access.ts"));
-const tenantSessionPath = resolve(root, "src/lib/tenant-session.ts");
-const clerkAuthPath = resolve(root, "src/lib/clerk-auth.ts");
+const sessionProvenance = require(resolve(root, "src/lib/tenant-session-provenance.ts"));
 
 const tenant = await memory.getTenantById("tenant_cherry");
 const owner = await memory.getUserById("user_demo");
@@ -50,10 +50,13 @@ const colleague = await memory.getUserById("user_ops");
 assert(tenant && owner && colleague && owner.externalAuthSubject && colleague.externalAuthSubject, "memory identities exist");
 async function trustedSession(subject) {
   currentSubject = subject;
-  delete require.cache[tenantSessionPath];
-  delete require.cache[clerkAuthPath];
-  const tenantSession = require(tenantSessionPath);
-  return tenantSession.requireTenantSession({ requestedTenantId: tenant.id });
+  const user = await memory.getUserByExternalAuthSubject(subject);
+  assert(user, `memory user exists for ${subject}`);
+  const membership = (await memory.listTenantMemberships(user.id)).find((item) => item.tenantId === tenant.id && item.status === "active");
+  assert(membership, `active membership exists for ${subject}`);
+  const session = { externalAuthSubject: subject, user, membership, tenant, serviceState: { state: "operational" } };
+  sessionProvenance.registerTenantSessionProvenance(session);
+  return session;
 }
 const ownerContext = resolver.createRequestContext(await trustedSession(owner.externalAuthSubject));
 const colleagueContext = resolver.createRequestContext(await trustedSession(colleague.externalAuthSubject));
