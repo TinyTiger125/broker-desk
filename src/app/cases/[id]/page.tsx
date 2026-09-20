@@ -1330,7 +1330,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                               savingLabel={tr(locale, { ja: "保存中", zh: "保存中", ko: "저장 중" })}
                               saveButtonAriaLabel={`${getShortWorkbenchFieldLabel(field)}を確認して保存`}
                               saveButtonWrapperClassName="col-start-4 row-start-1 mt-0 max-h-12 self-start opacity-100"
-                              saveButtonClassName="min-w-[3.5rem] rounded-md px-3 py-2 text-xs font-black"
+                              saveButtonClassName="min-h-11 min-w-[3.5rem] rounded-md px-3 py-2 text-xs font-black"
                               className="contents"
                             >
                               <span>
