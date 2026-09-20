@@ -11,8 +11,8 @@ const relation = read("src/app/relationship-tree/page.tsx");
 const access = read("src/lib/w93-access.ts");
 const attachmentRoute = read("src/app/api/attachments/[attachmentId]/route.ts");
 const outputRoute = read("src/app/api/outputs/[id]/download/route.ts");
-const outputCenter = read("src/app/output-center/page.tsx");
 const hub = read("src/lib/hub.ts");
+const outputCenter = read("src/app/output-center/page.tsx");
 const guaranteeDownload = read("src/app/api/guarantee-applications/[templateId]/download/route.ts");
 const guaranteeSlice = read("src/app/api/guarantee-g1-slice1/route.ts");
 const guaranteeOutput = read("src/app/api/guarantee-g1-slice1/output/[outputId]/route.ts");
@@ -26,6 +26,7 @@ assert(relation.includes("notFound()"), "hidden direct nodes use a uniform unava
 
 assert(access.includes("getAttachmentByIdForTenant") && access.includes("resolveW93Parent") && access.includes("getObjectImportTargetByJob"), "attachments require tenant lookup plus parent resolution");
 assert(access.includes("getGeneratedOutputByIdForTenant") && access.includes("output.caseId"), "history output is bound to its case");
+assert(access.includes('parentType === "quote"') && access.includes('targetType === "quote"'), "quote attachments reuse related person/property visibility");
 assert(access.includes("areCaseSourcesReadable") && access.includes("areGeneratedOutputSourcesReadable") && access.includes("listQuotationsForContext"), "generation and history checks every explicit source");
 assert(access.includes("withW93SourceProvenance") && access.includes("__w93SourceIds"), "generated history persists immutable source provenance");
 assert(access.includes("__primaryQuoteId") && access.includes("__quoteId") && access.includes("hasInvalidExplicitSources"), "malformed quote provenance fails closed");
@@ -35,6 +36,7 @@ assert(fs.existsSync(path.join(root, "db/migrations/20260825_001_legacy_output_p
 assert(attachmentRoute.includes("createRequestContext(session)") && attachmentRoute.includes("getW93AttachmentForContext"), "attachment route checks parent visibility");
 assert(!attachmentRoute.includes("getAttachmentById({"), "attachment route has no id-only legacy lookup");
 assert(outputRoute.includes("getW93GeneratedOutputForContext") && outputRoute.includes("fileStatus !== \"ready\"") && outputRoute.includes("readPrivateAttachmentContentForTenant"), "ordinary output download uses immutable stored bytes and parent visibility");
+assert(hub.includes("getW93AttachmentForContext") && hub.includes("getQuotationByIdForContext"), "attachment list filters parent-bound metadata with context");
 assert(outputRoute.includes("isOutputDocType") && outputRoute.includes("fileAttachmentId") && outputRoute.includes("createHash"), "ordinary output download fails closed on unknown or invalid files");
 assert(!outputRoute.includes("getQuotationById") && !outputRoute.includes("listQuoteFormData"), "ordinary output download does not recompose tenant-wide data");
 assert(outputCenter.includes("listPropertiesForContext") && outputCenter.includes("listHubParties") && outputCenter.includes("requestContext"), "output center uses context-bound projections");

@@ -341,6 +341,8 @@ export const listQuotationsForContext: typeof memory.listQuotationsForContext = 
   repo.listQuotationsForContext(...args);
 export const getQuotationById: typeof memory.getQuotationById = (...args) =>
   repo.getQuotationById(...args);
+export const getQuotationByIdForContext: typeof memory.getQuotationByIdForContext = (...args) =>
+  repo.getQuotationByIdForContext(...args);
 export const addClient: typeof memory.addClient = (...args) => repo.addClient(...args);
 export const updateClient: typeof memory.updateClient = (...args) =>
   repo.updateClient(...args);

@@ -8,6 +8,7 @@ import {
   listGeneratedOutputsForTenant,
   resolveClientVisibilityForContext,
   resolvePropertyVisibilityForContext,
+  getQuotationById,
   type Attachment,
   type BrokerageCase,
   type GeneratedOutput,
@@ -16,13 +17,25 @@ import {
 } from "@/lib/data";
 import type { RequestContext, VisibilityResolution } from "@/lib/visibility-resolver";
 
-export type W93ParentType = "case" | "party" | "property";
+export type W93ParentType = "case" | "party" | "property" | "quote" | "contract";
 
 export type W93SourceProvenance = {
   partyIds: string[];
   propertyIds: string[];
   quoteIds: string[];
 };
+
+async function resolveQuoteRelatedParent(context: RequestContext, quoteId: string): Promise<VisibilityResolution> {
+  const quote = await getQuotationById(quoteId, context.tenantId);
+  if (!quote?.client) return { outcome: "not_accessible", canRead: false, canWrite: false };
+  const client = await resolveClientVisibilityForContext({ context, clientId: quote.client.id });
+  if (!client.resolution.canRead) return { outcome: "not_accessible", canRead: false, canWrite: false };
+  if (!quote.propertyId) return client.resolution;
+  const property = await resolvePropertyVisibilityForContext({ context, propertyId: quote.propertyId });
+  if (!property.resolution.canRead) return { outcome: "not_accessible", canRead: false, canWrite: false };
+  if (client.resolution.canWrite && property.resolution.canWrite) return { outcome: "owner_write", canRead: true, canWrite: true };
+  return { outcome: "company_read", canRead: true, canWrite: false };
+}
 
 export async function resolveW93Parent(
   context: RequestContext,
@@ -32,13 +45,17 @@ export async function resolveW93Parent(
   if (!parentId.trim()) return { outcome: "not_accessible", canRead: false, canWrite: false };
   if (parentType === "case") return (await getBrokerageCaseByIdForContext({ context, caseId: parentId })).resolution;
   if (parentType === "party") return (await resolveClientVisibilityForContext({ context, clientId: parentId })).resolution;
-  return (await resolvePropertyVisibilityForContext({ context, propertyId: parentId })).resolution;
+  if (parentType === "property") return (await resolvePropertyVisibilityForContext({ context, propertyId: parentId })).resolution;
+  if (parentType === "quote" || parentType === "contract") return resolveQuoteRelatedParent(context, parentId);
+  return { outcome: "not_accessible", canRead: false, canWrite: false };
 }
 
 function attachmentParentType(targetType: string): W93ParentType | null {
   if (targetType === "case" || targetType === "brokerage_case") return "case";
   if (targetType === "party") return "party";
   if (targetType === "property") return "property";
+  if (targetType === "quote") return "quote";
+  if (targetType === "contract") return "contract";
   return null;
 }
 
@@ -70,14 +87,26 @@ export async function getW93AttachmentForContext(context: RequestContext, attach
     const parentResolution = await resolveW93Parent(context, parentType, attachment.targetId);
     if (parentResolution.canRead) return attachment;
   }
-  if (attachment.targetType === "import_job" && await resolveImportJobAttachmentCase(context, attachment.targetId)) {
-    return attachment;
+  if (attachment.targetType === "import_job") {
+    const objectTarget = await getObjectImportTargetByJob({
+      tenantId: context.tenantId,
+      userId: context.userId,
+      importJobId: attachment.targetId,
+    });
+    const linkedCase = await getBrokerageCaseByImportJobId({
+      tenantId: context.tenantId,
+      userId: context.userId,
+      importJobId: attachment.targetId,
+    });
+    if (await resolveImportJobAttachmentCase(context, attachment.targetId)) return attachment;
+    if (objectTarget || linkedCase) return null;
   }
   const links = await listAttachmentLinks({ tenantId: context.tenantId, attachmentId, limit: 100 });
   for (const link of links) {
     const resolution = await resolveW93Parent(context, link.targetType, link.targetId);
     if (resolution.canRead) return attachment;
   }
+  if (attachment.targetType === "import_job" && attachment.userId === context.userId && links.length === 0) return attachment;
   return null;
 }
 

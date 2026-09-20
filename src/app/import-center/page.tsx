@@ -32,6 +32,7 @@ import {
 import { getLocale, type Locale } from "@/lib/locale";
 import { listHubAttachments, listHubImportJobs, type HubImportJobItem } from "@/lib/hub";
 import { requireTenantSession, TenantSessionError } from "@/lib/tenant-session";
+import { createRequestContext } from "@/lib/visibility-resolver";
 
 export const dynamic = "force-dynamic";
 
@@ -619,7 +620,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
   const showAdvanced = params?.advanced === "1";
   const user = session.user;
   const tenantId = session.tenant.id;
-  const hubContext = { userId: user.id, tenantId };
+  const hubContext = { userId: user.id, tenantId, requestContext: createRequestContext(session) };
   const [jobs, attachments, cases] = await Promise.all([
     listHubImportJobs(hubContext),
     listHubAttachments(locale, 30, hubContext),

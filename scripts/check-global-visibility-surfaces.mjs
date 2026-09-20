@@ -15,6 +15,8 @@ const newQuote = read("src/app/quotes/new/page.tsx");
 const actions = read("src/app/actions.ts");
 const outputCenter = read("src/app/output-center/page.tsx");
 const importCenter = read("src/app/import-center/page.tsx");
+const quotes = read("src/app/quotes/page.tsx");
+const quoteDetail = read("src/app/quotes/[id]/page.tsx");
 
 assert(searchRoute.includes("createRequestContext(session)"), "search route creates a trusted RequestContext");
 assert(searchRoute.includes("requestContext: createRequestContext(session)"), "search passes context instead of user and tenant parameters");
@@ -34,6 +36,12 @@ assert(!exportRoute.includes("getDefaultUser") && !exportRoute.includes("userId:
 assert(exportRoute.includes('scope === "audit_logs" ? "audit.view" : "record.read"'), "audit export retains its independent audit.view gate");
 assert(!outputCenter.includes("scope=outputs"), "unsupported output export has no active UI entry");
 assert(!importCenter.includes("scope=import_jobs"), "unsupported import-job export has no active UI entry");
+assert(importCenter.includes("requestContext: createRequestContext(session)"), "import center passes trusted context to attachment reads");
+assert(actions.includes("if (targetType === \"property\") await ensurePropertyOwnership(targetId, session)") && actions.includes("if (targetType === \"party\") await ensureClientOwnership(targetId, session)"), "manual attachment registration checks object ownership");
+assert(actions.includes("getQuotationByIdForContext") && actions.includes("提案の関連資料に添付する権限がありません"), "manual quote attachment registration checks context-bound quote ownership");
+assert(quotes.includes("createRequestContext(session)") && quotes.includes("listQuotationsForContext"), "quote list uses resolver-bound quotation reads");
+assert(quoteDetail.includes("createRequestContext(session)") && quoteDetail.includes("getQuotationByIdForContext"), "quote detail uses resolver-bound quotation reads");
+assert(quoteDetail.includes("clientAccess.resolution") && quoteDetail.includes("propertyResolution"), "quote detail derives write state from related object visibility");
 
 for (const file of [newCase, newQuote]) {
   assert(file.includes("createRequestContext(session)"), "candidate page creates trusted RequestContext");

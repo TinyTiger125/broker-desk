@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { listQuotations } from "@/lib/data";
+import { listQuotationsForContext } from "@/lib/data";
 import { getLocale } from "@/lib/locale";
 import { getQuoteStatusLabel } from "@/lib/options";
 import { requireTenantSession } from "@/lib/tenant-session";
+import { createRequestContext } from "@/lib/visibility-resolver";
 
 export const dynamic = "force-dynamic";
 
@@ -65,7 +66,7 @@ export default async function QuoteListPage() {
   ]);
   const text = texts[locale];
   const quoteStatusLabel = getQuoteStatusLabel(locale);
-  const quotes = await listQuotations(undefined, session.tenant.id);
+  const quotes = await listQuotationsForContext({ context: createRequestContext(session) });
 
   return (
     <div className="space-y-6">

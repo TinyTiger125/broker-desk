@@ -5722,8 +5722,11 @@ export async function listQuotations(limit?: number, tenantId?: string): Promise
 
 /** Resolver-bound quotation projection; hidden related records are excluded. */
 export async function listQuotationsForContext(input: { context: RequestContext; limit?: number }): Promise<DashboardQuoteItem[]> {
-  const visibleClients = await listClientsForContext({ context: input.context, filter: { lifecycleStatus: "active", sort: "recent_created" } });
-  const visibleProperties = await listPropertiesForContext({ context: input.context, lifecycleStatus: "active" });
+  // Quote history preserves the legacy all-lifecycle list contract. Archived
+  // person/property records remain readable to authorized users, so list and
+  // detail/count must apply the same lifecycle semantics.
+  const visibleClients = await listClientsForContext({ context: input.context, filter: { lifecycleStatus: "all", sort: "recent_created" } });
+  const visibleProperties = await listPropertiesForContext({ context: input.context, lifecycleStatus: "all" });
   const clientIds = new Set(visibleClients.filter((item) => item.resolution.canRead).map((item) => item.client?.id).filter(Boolean));
   const propertyIds = new Set(visibleProperties.filter((item) => item.resolution.canRead).map((item) => item.property?.id).filter(Boolean));
   return db.quotations
@@ -5751,6 +5754,18 @@ export async function getQuotationById(quoteId: string, tenantId?: string) {
     client: db.clients.find((item) => item.id === quote.clientId && item.tenantId === scopeTenantId),
     property: quote.propertyId ? db.properties.find((item) => item.id === quote.propertyId && item.tenantId === scopeTenantId) : undefined,
   };
+}
+
+/** Resolver-bound quotation detail; both related records must be readable. */
+export async function getQuotationByIdForContext(input: { context: RequestContext; quoteId: string }): Promise<DashboardQuoteItem | null> {
+  const quote = db.quotations.find((item) => item.id === input.quoteId && item.tenantId === input.context.tenantId);
+  if (!quote) return null;
+  const client = await resolveClientVisibilityForContext({ context: input.context, clientId: quote.clientId });
+  if (!client.record) return null;
+  if (!quote.propertyId) return { ...quote, client: client.record, property: undefined };
+  const property = await resolvePropertyVisibilityForContext({ context: input.context, propertyId: quote.propertyId });
+  if (!property.record) return null;
+  return { ...quote, client: client.record, property: property.record };
 }
 
 export async function addClient(input: {

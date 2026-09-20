@@ -12,6 +12,7 @@ import {
   listOutputTemplateVersions,
   listQuoteFormData,
   listQuotations,
+  getQuotationByIdForContext,
   type AttachmentTargetType,
   type Client,
   type GeneratedOutput,
@@ -22,6 +23,7 @@ import type { Locale } from "@/lib/locale";
 import type { LifecycleFilter } from "@/lib/record-lifecycle";
 import { getOutputDocLabel, type OutputDocType } from "@/lib/output-doc";
 import type { RequestContext } from "@/lib/visibility-resolver";
+import { getW93AttachmentForContext } from "@/lib/w93-access";
 import {
   extractPartyProfileFromNotes,
   getPartyProfileRoleLabel,
@@ -547,10 +549,22 @@ export async function listHubAttachments(
   context: HubQueryContext = {},
 ): Promise<HubAttachmentItem[]> {
   const resolved = await resolveHubContext(context);
-  if (!resolved) return [];
-  const list = await listAttachments({ userId: resolved.userId, tenantId: resolved.tenantId, limit });
+  if (!resolved || !context.requestContext) return [];
+  const list = await listAttachments({ userId: resolved.userId, tenantId: resolved.tenantId, limit: Math.max(limit * 4, limit) });
   const attachmentTargetLabel = getAttachmentTargetLabel(locale);
-  return list.map((item) => ({
+  const visible = await Promise.all(list.map(async (item) => {
+    if (item.targetType === "import_job") {
+      return await getW93AttachmentForContext(context.requestContext!, item.id) ? item : null;
+    }
+    if (item.targetType === "case" || item.targetType === "party" || item.targetType === "property" || item.targetType === "contract") {
+      return await getW93AttachmentForContext(context.requestContext!, item.id) ? item : null;
+    }
+    if (item.targetType === "quote") {
+      return await getQuotationByIdForContext({ context: context.requestContext!, quoteId: item.targetId }) ? item : null;
+    }
+    return null;
+  }));
+  return visible.flatMap((item) => item ? [{
     id: item.id,
     fileName: item.fileName,
     fileType: item.fileType,
@@ -560,7 +574,7 @@ export async function listHubAttachments(
     targetId: item.targetId,
     targetLabel: attachmentTargetLabel[item.targetType],
     uploadedAt: item.uploadedAt,
-  }));
+  }] : []).slice(0, limit);
 }
 
 export async function listHubOutputsByTemplateVersion(

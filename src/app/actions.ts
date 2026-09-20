@@ -65,6 +65,7 @@ import {
   getGuaranteeApplicationDraft,
   getOutputTemplateSettings,
   getQuotationById,
+  getQuotationByIdForContext,
   listClients,
   listCaseWorkbenchFieldRules,
   listExtractionReviewItems,
@@ -1938,6 +1939,28 @@ export async function registerAttachmentAction(formData: FormData) {
   }
   if (!targetId) {
     throw new Error("対象IDは必須です。");
+  }
+
+  const requestContext = createRequestContext(session);
+  if (targetType === "property") await ensurePropertyOwnership(targetId, session);
+  if (targetType === "party") await ensureClientOwnership(targetId, session);
+  if (targetType === "contract") {
+    const quote = await getQuotationById(targetId, session.tenant.id);
+    const client = quote?.client?.id
+      ? await resolveClientVisibilityForContext({ context: requestContext, clientId: quote.client.id })
+      : null;
+    if (!client?.resolution.canWrite) throw new Error("合同の関連資料に添付する権限がありません。");
+  }
+  if (targetType === "quote") {
+    const quote = await getQuotationByIdForContext({ context: requestContext, quoteId: targetId });
+    if (!quote?.client) throw new Error("提案が見つかりません。");
+    const client = await resolveClientVisibilityForContext({ context: requestContext, clientId: quote.client.id });
+    const property = quote.propertyId
+      ? await resolvePropertyVisibilityForContext({ context: requestContext, propertyId: quote.propertyId })
+      : null;
+    if (!client.resolution.canWrite || (quote.propertyId && !property?.resolution.canWrite)) {
+      throw new Error("提案の関連資料に添付する権限がありません。");
+    }
   }
 
   let fileName = fileNameInput;
