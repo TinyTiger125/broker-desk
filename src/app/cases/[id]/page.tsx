@@ -1315,7 +1315,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                             objectImportBinding?.importJobId === objectImportJobId &&
                             Boolean(objectImportBinding?.observedVersion);
                           return (
-                            <div key={field.fieldKey} className={`grid grid-cols-[4rem_minmax(0,1fr)_minmax(0,1.35fr)_auto] items-start gap-2 px-3 py-3 transition sm:grid-cols-[5.5rem_minmax(0,1fr)_minmax(0,1.35fr)_auto] sm:items-center sm:gap-3 sm:px-5 ${selected ? "bg-blue-50 ring-1 ring-inset ring-blue-700" : "hover:bg-slate-50"}`}>
+                            <div key={field.fieldKey} className={`grid grid-cols-[4rem_minmax(0,1fr)_minmax(0,1.35fr)_auto] items-start gap-2 px-3 py-3 transition sm:grid-cols-[5.5rem_minmax(0,1fr)_minmax(0,1.35fr)_auto] sm:items-start sm:gap-3 sm:px-5 ${selected ? "bg-blue-50 ring-1 ring-inset ring-blue-700" : "hover:bg-slate-50"}`}>
                             <CaseWorkbenchFieldForm
                               action={saveCaseWorkbenchAction}
                               caseId={brokerageCase.id}
@@ -1329,7 +1329,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                               saveLabel={tr(locale, { ja: "確認", zh: "确认", ko: "확인" })}
                               savingLabel={tr(locale, { ja: "保存中", zh: "保存中", ko: "저장 중" })}
                               saveButtonAriaLabel={`${getShortWorkbenchFieldLabel(field)}を確認して保存`}
-                              saveButtonWrapperClassName="col-start-4 row-start-1 mt-0 max-h-12 self-center opacity-100"
+                              saveButtonWrapperClassName="col-start-4 row-start-1 mt-0 max-h-12 self-start opacity-100"
                               saveButtonClassName="min-w-[3.5rem] rounded-md px-3 py-2 text-xs font-black"
                               className="contents"
                             >
