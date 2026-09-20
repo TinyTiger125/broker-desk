@@ -74,6 +74,7 @@ const copy = {
     searchPerson: "氏名、電話番号、またはIDで検索",
     searchProperty: "物件名、所在地、またはIDで検索",
     quickCreate: "クイック作成",
+    quickCreateRoles: "作成後の案件内役割",
     noCandidates: "関連付け可能な資料がありません。",
     select: "選択",
     alreadyInDraft: "この草稿に追加済み",
@@ -126,6 +127,7 @@ const copy = {
     searchPerson: "搜索姓名、电话或编号",
     searchProperty: "搜索物件名、地址或编号",
     quickCreate: "快速创建",
+    quickCreateRoles: "创建后作为本案角色",
     noCandidates: "没有可建立关联的资料。",
     select: "选择",
     alreadyInDraft: "已在本次草稿",
@@ -178,6 +180,7 @@ const copy = {
     searchPerson: "이름, 전화번호 또는 ID 검색",
     searchProperty: "매물명, 주소 또는 ID 검색",
     quickCreate: "빠른 생성",
+    quickCreateRoles: "생성 후 안건 역할",
     noCandidates: "연결할 수 있는 자료가 없습니다.",
     select: "선택",
     alreadyInDraft: "이 안건 초안에 이미 추가됨",
@@ -302,6 +305,7 @@ export function CaseAssociationDraft({
   const [query, setQuery] = useState("");
   const [selectedPersonId, setSelectedPersonId] = useState("");
   const [selectedRoles, setSelectedRoles] = useState<CasePersonRole[]>([]);
+  const [personCreateRoles, setPersonCreateRoles] = useState<CasePersonRole[]>([]);
   const [selectionError, setSelectionError] = useState<string | undefined>();
   const [quickCreateFeedback, setQuickCreateFeedback] = useState<string | undefined>();
   const [hasIndependentCreatedMaster, setHasIndependentCreatedMaster] = useState(false);
@@ -310,6 +314,7 @@ export function CaseAssociationDraft({
   const focusReturnRef = useRef<HTMLElement | null>(null);
   const errorRef = useRef<HTMLDivElement>(null);
   const personCreatePendingRef = useRef(false);
+  const personCreateRolesRef = useRef<CasePersonRole[]>([]);
   const propertyCreatePendingRef = useRef(false);
   const [caseState, caseFormAction, pending] = useActionState(createCaseAction, initialCaseState);
   const caseError = caseState.status === "error" ? localizeCaseAssociationError(locale, caseState.message, text.caseSaveError) : undefined;
@@ -317,8 +322,12 @@ export function CaseAssociationDraft({
   const updatePersonCreatePending = useCallback((next: boolean) => {
     personCreatePendingRef.current = next;
     setPersonCreatePending(next);
+    if (!next) personCreateRolesRef.current = [];
   }, []);
-  const startPersonCreate = useCallback(() => updatePersonCreatePending(true), [updatePersonCreatePending]);
+  const startPersonCreate = useCallback(() => {
+    personCreateRolesRef.current = [...personCreateRoles];
+    updatePersonCreatePending(true);
+  }, [personCreateRoles, updatePersonCreatePending]);
   const updatePropertyCreatePending = useCallback((next: boolean) => {
     propertyCreatePendingRef.current = next;
     setPropertyCreatePending(next);
@@ -349,6 +358,22 @@ export function CaseAssociationDraft({
     setSelectedPersonId("");
     setSelectedRoles([]);
     setSelectionError(undefined);
+  };
+  const openPersonCreate = () => {
+    setDrawerView("create");
+    setPersonCreateRoles(parties.some((party) => party.roles.includes("主要申请人")) ? ["其他关联人"] : ["主要申请人"]);
+    setSelectionError(undefined);
+  };
+  const validatePersonCreate = () => {
+    if (personCreateRoles.length === 0) {
+      setSelectionError(text.roleRequired);
+      return false;
+    }
+    if (personCreateRoles.includes("主要申请人") && parties.some((party) => party.roles.includes("主要申请人"))) {
+      setSelectionError(text.primaryApplicantUnique);
+      return false;
+    }
+    return true;
   };
   const openPropertyDrawer = () => {
     setDrawer("property");
@@ -382,6 +407,10 @@ export function CaseAssociationDraft({
     closeDrawer();
   };
   const confirmLeave = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    if (personCreatePendingRef.current) {
+      event.preventDefault();
+      return;
+    }
     if (hasIndependentCreatedMaster && !window.confirm(text.cancelCaseConfirm)) event.preventDefault();
   };
   const removeParty = (partyId: string) => setParties((current) => current.filter((party) => party.partyId !== partyId));
@@ -432,7 +461,7 @@ export function CaseAssociationDraft({
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2"><h3 className="text-sm font-black text-slate-900">{text.peopleDraft} ({parties.length})</h3><button type="button" data-case-association-focus-target onClick={(event) => { focusReturnRef.current = event.currentTarget; openPersonDrawer(); }} className="min-h-11 rounded-lg border border-slate-300 px-3 py-2 text-sm font-black text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0046ad]">{text.selectPerson}</button></div>
               {parties.length === 0 ? <p className="text-sm text-slate-500">{text.peopleEmpty}</p> : <div className="space-y-2">{parties.map((party) => <div key={party.partyId} className="flex items-start justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2"><div className="min-w-0"><p className="truncate text-sm font-bold text-slate-900">{candidates.find((candidate) => candidate.id === party.partyId)?.name ?? party.partyId}</p><p className="mt-1 text-xs text-slate-600">{party.roles.map((role) => getCasePersonRoleLabel(locale, role)).join("、")}</p></div><button type="button" onClick={() => removeParty(party.partyId)} className="shrink-0 min-h-11 rounded px-2 py-1 text-sm font-bold text-slate-600 hover:bg-white">{text.removeDraft}</button></div>)}</div>}
-              <button type="button" data-case-association-focus-target onClick={(event) => { focusReturnRef.current = event.currentTarget; openPersonDrawer(); setDrawerView("create"); }} className="inline-flex min-h-11 items-center text-sm font-bold text-[#0046ad] underline underline-offset-2">{text.quickCreatePerson}</button>
+              <button type="button" data-case-association-focus-target onClick={(event) => { focusReturnRef.current = event.currentTarget; openPersonDrawer(); openPersonCreate(); }} className="inline-flex min-h-11 items-center text-sm font-bold text-[#0046ad] underline underline-offset-2">{text.quickCreatePerson}</button>
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2"><h3 className="text-sm font-black text-slate-900">{text.propertyDraft} ({primaryPropertyId ? 1 : 0})</h3><button type="button" data-case-association-focus-target onClick={(event) => { focusReturnRef.current = event.currentTarget; openPropertyDrawer(); }} className="min-h-11 rounded-lg border border-slate-300 px-3 py-2 text-sm font-black text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0046ad]">{text.selectProperty}</button></div>
@@ -450,9 +479,9 @@ export function CaseAssociationDraft({
         </ActionBar>
       </ResponsiveFormShell>
 
-      {drawer === "person" ? <FocusDialog title={drawerView === "create" ? text.createPerson : text.choosePerson} closeLabel={text.close} closeDisabled={drawerView === "create" && personCreatePending} closeDisabledRef={personCreatePendingRef} onClose={closeDrawer} returnFocusRef={focusReturnRef} footer={drawerView === "create" ? <div className="flex justify-end gap-3"><button type="button" onClick={() => closeDrawer()} disabled={personCreatePending} className="min-h-11 rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700 disabled:cursor-wait disabled:opacity-60">{text.cancel}</button><button type="submit" form="case-association-person-create" disabled={personCreatePending} aria-busy={personCreatePending || undefined} className="min-h-11 rounded-lg bg-slate-950 px-4 py-2 text-sm font-black text-white disabled:cursor-wait disabled:opacity-60">{personCreatePending ? text.creating : text.createPerson}</button></div> : <div className="flex justify-end gap-3"><button type="button" onClick={() => closeDrawer()} className="min-h-11 rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700">{text.cancel}</button><button type="button" onClick={applyPerson} className="min-h-11 rounded-lg bg-slate-950 px-4 py-2 text-sm font-black text-white">{text.addToDraft}</button></div>}>
-        {drawerView === "create" ? <ClientForm action={createPersonAction} mode="create" locale={locale} returnTo="/cases/new" formId="case-association-person-create" hideActions onSubmitStart={startPersonCreate} onPendingChange={updatePersonCreatePending} onCreated={(record) => { setCandidates((current) => [...current, record]); setParties((current) => addOrReplaceParty(current, record.id, ["其他关联人"])); setHasIndependentCreatedMaster(true); setQuickCreateFeedback(text.quickCreateFeedback); closeDrawer(true); }} /> : <div className="space-y-5">
-          <div className="flex gap-2"><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder={text.searchPerson} className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2.5 text-base sm:text-sm focus:border-[#0046ad] focus:ring-2 focus:ring-blue-100" /><button type="button" onClick={() => setDrawerView("create")} className="shrink-0 min-h-11 rounded-lg border border-slate-300 px-3 py-2 text-sm font-bold text-slate-700">{text.quickCreate}</button></div>
+      {drawer === "person" ? <FocusDialog title={drawerView === "create" ? text.createPerson : text.choosePerson} closeLabel={text.close} closeDisabled={drawerView === "create" && personCreatePending} closeDisabledRef={personCreatePendingRef} onClose={closeDrawer} returnFocusRef={focusReturnRef} footer={drawerView === "create" ? <div className="flex justify-end gap-3"><button type="button" onClick={() => closeDrawer()} disabled={personCreatePending} className="min-h-11 rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700 disabled:cursor-wait disabled:opacity-60">{text.cancel}</button><button type="submit" form="case-association-person-create" disabled={personCreatePending} aria-busy={personCreatePending || undefined} onClick={(event) => { if (!validatePersonCreate()) event.preventDefault(); }} className="min-h-11 rounded-lg bg-slate-950 px-4 py-2 text-sm font-black text-white disabled:cursor-wait disabled:opacity-60">{personCreatePending ? text.creating : text.createPerson}</button></div> : <div className="flex justify-end gap-3"><button type="button" onClick={() => closeDrawer()} className="min-h-11 rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700">{text.cancel}</button><button type="button" onClick={applyPerson} className="min-h-11 rounded-lg bg-slate-950 px-4 py-2 text-sm font-black text-white">{text.addToDraft}</button></div>}>
+        {drawerView === "create" ? <div onSubmitCapture={(event) => { if (!validatePersonCreate()) { event.preventDefault(); event.stopPropagation(); } }}><div className="mb-4 space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4"><h3 className="text-sm font-black text-slate-900">{text.quickCreateRoles}</h3><div className="grid gap-2 sm:grid-cols-2">{CASE_PERSON_ROLES.map((role) => <label key={role} className="flex min-h-11 items-center gap-2 text-sm font-semibold text-slate-700"><input type="checkbox" checked={personCreateRoles.includes(role)} disabled={personCreatePending} onChange={(event) => { setPersonCreateRoles((current) => event.target.checked ? [...current, role] : current.filter((item) => item !== role)); setSelectionError(undefined); }} />{getCasePersonRoleLabel(locale, role)}</label>)}</div>{selectionError ? <p role="alert" className="text-xs font-bold text-rose-700">{selectionError}</p> : null}</div><ClientForm action={createPersonAction} mode="create" locale={locale} returnTo="/cases/new" formId="case-association-person-create" hideActions onSubmitStart={startPersonCreate} onPendingChange={updatePersonCreatePending} onCreated={(record) => { const roles = [...personCreateRolesRef.current]; updatePersonCreatePending(false); personCreateRolesRef.current = []; setCandidates((current) => [...current, record]); setParties((current) => addOrReplaceParty(current, record.id, roles)); setHasIndependentCreatedMaster(true); setQuickCreateFeedback(text.quickCreateFeedback); closeDrawer(true); }} /></div> : <div className="space-y-5">
+          <div className="flex gap-2"><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder={text.searchPerson} className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2.5 text-base sm:text-sm focus:border-[#0046ad] focus:ring-2 focus:ring-blue-100" /><button type="button" onClick={openPersonCreate} className="shrink-0 min-h-11 rounded-lg border border-slate-300 px-3 py-2 text-sm font-bold text-slate-700">{text.quickCreate}</button></div>
           <div className="space-y-2">{filteredCandidates.map((candidate) => <button type="button" key={candidate.id} onClick={() => selectPerson(candidate.id)} className={`flex min-h-11 w-full items-center justify-between rounded-lg border px-3 py-3 text-left ${selectedPersonId === candidate.id ? "border-blue-700 bg-blue-50" : "border-slate-200 hover:bg-slate-50"}`}><span className="min-w-0 truncate text-sm font-bold text-slate-900">{candidate.name}</span>{parties.some((party) => party.partyId === candidate.id) ? <span className="ml-3 shrink-0 text-xs font-bold text-slate-600">{text.alreadyInDraft}</span> : <span className="ml-3 shrink-0 text-xs font-bold text-[#0046ad]">{text.select}</span>}</button>)}{filteredCandidates.length === 0 ? <StateSurface tone="empty">{text.noCandidates}</StateSurface> : null}</div>
           {selectedPersonId ? <div className="space-y-3 rounded-lg border border-slate-200 p-4"><h3 className="text-sm font-black text-slate-900">{text.roles}</h3><div className="grid gap-2 sm:grid-cols-2">{CASE_PERSON_ROLES.map((role) => <label key={role} className="flex min-h-11 items-center gap-2 text-sm font-semibold text-slate-700"><input type="checkbox" checked={selectedRoles.includes(role)} onChange={(event) => setSelectedRoles((current) => event.target.checked ? [...current, role] : current.filter((item) => item !== role))} />{getCasePersonRoleLabel(locale, role)}</label>)}</div>{selectionError ? <p role="alert" className="text-xs font-bold text-rose-700">{selectionError}</p> : null}</div> : null}
         </div>}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { ClientForm } from "@/components/client-form";
 import { FocusDialog } from "@/components/case-association-draft";
 import { PropertyResponsiveForm } from "@/components/property-responsive-form";
@@ -62,6 +62,7 @@ const copy = {
     searchPerson: "氏名、電話番号、またはIDで検索",
     searchProperty: "物件名、所在地、またはIDで検索",
     quickCreate: "クイック作成",
+    quickCreateRoles: "作成後の案件内役割",
     noCandidates: "関連付け可能な資料がありません。",
     select: "選択",
     associated: "関連済み",
@@ -101,6 +102,7 @@ const copy = {
     searchPerson: "搜索姓名、电话或编号",
     searchProperty: "搜索物件名、地址或编号",
     quickCreate: "快速创建",
+    quickCreateRoles: "创建后作为本案角色",
     noCandidates: "没有可建立关联的资料。",
     select: "选择",
     associated: "已关联",
@@ -140,6 +142,7 @@ const copy = {
     searchPerson: "이름, 전화번호 또는 ID 검색",
     searchProperty: "매물명, 주소 또는 ID 검색",
     quickCreate: "빠른 생성",
+    quickCreateRoles: "생성 후 안건 역할",
     noCandidates: "연결할 수 있는 자료가 없습니다.",
     select: "선택",
     associated: "연결됨",
@@ -187,14 +190,29 @@ export function CaseAssociationManager({
   const [drawerView, setDrawerView] = useState<"select" | "create">("select");
   const [selectedPersonId, setSelectedPersonId] = useState("");
   const [selectedRoles, setSelectedRoles] = useState<CasePersonRole[]>([]);
+  const [personCreateRoles, setPersonCreateRoles] = useState<CasePersonRole[]>([]);
+  const [personCreatePending, setPersonCreatePending] = useState(false);
   const [query, setQuery] = useState("");
   const [selectionError, setSelectionError] = useState<string | undefined>();
   const [quickCreateFeedback, setQuickCreateFeedback] = useState<string | undefined>();
   const [autoSave, setAutoSave] = useState(false);
   const associationFormRef = useRef<HTMLFormElement>(null);
   const focusReturnRef = useRef<HTMLElement | null>(null);
+  const personCreatePendingRef = useRef(false);
+  const personCreateRolesRef = useRef<CasePersonRole[]>([]);
 
-  const closeDrawer = () => {
+  const updatePersonCreatePending = (next: boolean) => {
+    personCreatePendingRef.current = next;
+    setPersonCreatePending(next);
+    if (!next) personCreateRolesRef.current = [];
+  };
+  const startPersonCreate = () => {
+    personCreateRolesRef.current = [...personCreateRoles];
+    updatePersonCreatePending(true);
+  };
+  const closeDrawer = (forceOrEvent: boolean | object = false) => {
+    const force = forceOrEvent === true;
+    if (!force && personCreatePendingRef.current) return;
     setDrawer(null);
     setDrawerView("select");
     setQuery("");
@@ -202,10 +220,32 @@ export function CaseAssociationManager({
     setSelectedRoles([]);
     setSelectionError(undefined);
   };
+  const guardPersonCreateCancel = (event: MouseEvent<HTMLDivElement>) => {
+    if (personCreatePendingRef.current && event.target instanceof HTMLAnchorElement && event.target.getAttribute("href") === `/cases/${caseId}`) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  };
   const openPersonDrawer = () => {
     setDrawer("person");
     setDrawerView("select");
     setSelectionError(undefined);
+  };
+  const openPersonCreate = () => {
+    setDrawerView("create");
+    setPersonCreateRoles(parties.some((party) => party.roles.includes("主要申请人")) ? ["其他关联人"] : ["主要申请人"]);
+    setSelectionError(undefined);
+  };
+  const validatePersonCreate = () => {
+    if (personCreateRoles.length === 0) {
+      setSelectionError(text.roleRequired);
+      return false;
+    }
+    if (personCreateRoles.includes("主要申请人") && parties.some((party) => party.roles.includes("主要申请人"))) {
+      setSelectionError(text.primaryApplicantUnique);
+      return false;
+    }
+    return true;
   };
   const editPerson = (party: CaseAssociationParty) => {
     setSelectedPersonId(party.partyId);
@@ -306,7 +346,7 @@ export function CaseAssociationManager({
       {quickCreateFeedback ? <p role="status" className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-900">{quickCreateFeedback}</p> : null}
       {!readOnly && saveAction ? <form ref={associationFormRef} action={saveAction} className="mt-4 flex justify-end border-t border-slate-200 pt-4"><input type="hidden" name="caseId" value={caseId} /><input type="hidden" name="associationDraftJson" value={draftJson} /><button type="submit" className="rounded-lg bg-slate-950 px-4 py-2.5 text-sm font-black text-white hover:bg-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0046ad]">{text.save}</button></form> : null}
 
-      {drawer === "person" ? <FocusDialog title={drawerView === "create" ? text.createPerson : text.choosePerson} closeLabel={text.close} onClose={closeDrawer}>{drawerView === "create" && createPersonAction ? <ClientForm action={createPersonAction} mode="create" locale={locale} returnTo={`/cases/${caseId}`} onCreated={(record) => { setCandidates((current) => [...current, record]); setParties((current) => [...current, { partyId: record.id, name: record.name, roles: ["其他关联人"] }]); setAutoSave(true); setQuickCreateFeedback(text.quickCreateFeedback); closeDrawer(); }} /> : <div className="space-y-4"><div className="flex gap-2"><input autoFocus value={query} onChange={(event) => { setQuery(event.target.value); setSelectionError(undefined); }} placeholder={text.searchPerson} className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2.5 text-sm" />{createPersonAction ? <button type="button" onClick={() => setDrawerView("create")} className="shrink-0 rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold">{text.quickCreate}</button> : null}</div><div className="space-y-2">{visibleCandidates.map((candidate) => <button type="button" key={candidate.id} onClick={() => { setSelectedPersonId(candidate.id); setSelectedRoles(parties.find((party) => party.partyId === candidate.id)?.roles ?? []); setSelectionError(undefined); }} className={`flex w-full items-center justify-between rounded-lg border px-3 py-3 text-left ${selectedPersonId === candidate.id ? "border-blue-700 bg-blue-50" : "border-slate-200"}`}><span className="truncate text-sm font-bold">{candidate.name}</span>{parties.some((party) => party.partyId === candidate.id) ? <span className="text-xs font-bold text-slate-600">{text.associated}</span> : <span className="text-xs font-bold text-[#0046ad]">{text.select}</span>}</button>)}</div>{visibleCandidates.length === 0 ? <p className="text-sm text-slate-500">{text.noCandidates}</p> : null}{selectionError ? <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-900">{selectionError}</p> : null}{selectedPersonId ? <div className="space-y-3 rounded-lg border border-slate-200 p-4"><h3 className="text-sm font-black">{text.roles}</h3><div className="grid gap-2 sm:grid-cols-2">{CASE_PERSON_ROLES.map((role) => <label key={role} className="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={selectedRoles.includes(role)} onChange={(event) => changeRole(role, event.target.checked)} />{getCasePersonRoleLabel(locale, role)}</label>)}</div><div className="flex justify-end gap-3 border-t border-slate-200 pt-3"><button type="button" onClick={closeDrawer} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold">{text.cancel}</button><button type="button" onClick={applyPerson} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-black text-white">{text.saveRoles}</button></div></div> : null}</div>}</FocusDialog> : null}
+      {drawer === "person" ? <FocusDialog title={drawerView === "create" ? text.createPerson : text.choosePerson} closeLabel={text.close} closeDisabled={drawerView === "create" && personCreatePending} closeDisabledRef={personCreatePendingRef} onClose={closeDrawer}>{drawerView === "create" && createPersonAction ? <div onClickCapture={guardPersonCreateCancel} onSubmitCapture={(event) => { if (!validatePersonCreate()) { event.preventDefault(); event.stopPropagation(); } }}><div className="mb-4 space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4"><h3 className="text-sm font-black text-slate-900">{text.quickCreateRoles}</h3><div className="grid gap-2 sm:grid-cols-2">{CASE_PERSON_ROLES.map((role) => <label key={role} className="flex min-h-11 items-center gap-2 text-sm font-semibold text-slate-700"><input type="checkbox" checked={personCreateRoles.includes(role)} disabled={personCreatePending} onChange={(event) => { setPersonCreateRoles((current) => event.target.checked ? [...current, role] : current.filter((item) => item !== role)); setSelectionError(undefined); }} />{getCasePersonRoleLabel(locale, role)}</label>)}</div>{selectionError ? <p role="alert" className="text-xs font-bold text-rose-700">{selectionError}</p> : null}</div><ClientForm action={createPersonAction} mode="create" locale={locale} returnTo={`/cases/${caseId}`} onSubmitStart={startPersonCreate} onPendingChange={updatePersonCreatePending} onCreated={(record) => { const roles = [...personCreateRolesRef.current]; updatePersonCreatePending(false); personCreateRolesRef.current = []; setCandidates((current) => [...current, record]); setParties((current) => [...current, { partyId: record.id, name: record.name, roles }]); setAutoSave(true); setQuickCreateFeedback(text.quickCreateFeedback); closeDrawer(true); }} /></div> : <div className="space-y-4"><div className="flex gap-2"><input autoFocus value={query} onChange={(event) => { setQuery(event.target.value); setSelectionError(undefined); }} placeholder={text.searchPerson} className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2.5 text-sm" />{createPersonAction ? <button type="button" onClick={openPersonCreate} className="shrink-0 rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold">{text.quickCreate}</button> : null}</div><div className="space-y-2">{visibleCandidates.map((candidate) => <button type="button" key={candidate.id} onClick={() => { setSelectedPersonId(candidate.id); setSelectedRoles(parties.find((party) => party.partyId === candidate.id)?.roles ?? []); setSelectionError(undefined); }} className={`flex w-full items-center justify-between rounded-lg border px-3 py-3 text-left ${selectedPersonId === candidate.id ? "border-blue-700 bg-blue-50" : "border-slate-200"}`}><span className="truncate text-sm font-bold">{candidate.name}</span>{parties.some((party) => party.partyId === candidate.id) ? <span className="text-xs font-bold text-slate-600">{text.associated}</span> : <span className="text-xs font-bold text-[#0046ad]">{text.select}</span>}</button>)}</div>{visibleCandidates.length === 0 ? <p className="text-sm text-slate-500">{text.noCandidates}</p> : null}{selectionError ? <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-900">{selectionError}</p> : null}{selectedPersonId ? <div className="space-y-3 rounded-lg border border-slate-200 p-4"><h3 className="text-sm font-black">{text.roles}</h3><div className="grid gap-2 sm:grid-cols-2">{CASE_PERSON_ROLES.map((role) => <label key={role} className="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={selectedRoles.includes(role)} onChange={(event) => changeRole(role, event.target.checked)} />{getCasePersonRoleLabel(locale, role)}</label>)}</div><div className="flex justify-end gap-3 border-t border-slate-200 pt-3"><button type="button" onClick={closeDrawer} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold">{text.cancel}</button><button type="button" onClick={applyPerson} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-black text-white">{text.saveRoles}</button></div></div> : null}</div>}</FocusDialog> : null}
       {drawer === "property" ? <FocusDialog title={drawerView === "create" ? text.createProperty : text.chooseProperty} closeLabel={text.close} onClose={closeDrawer}>{drawerView === "create" && createPropertyAction ? <PropertyResponsiveForm action={createPropertyAction} locale={locale} initialValues={{ name: "", area: "", address: "", sizeSqm: "", listingPrice: "", managementFee: "", repairFee: "", notes: "" }} returnTo={`/cases/${caseId}`} onCreated={(record) => { setProperties((current) => [...current, record]); setPrimaryPropertyId(record.id); setAutoSave(true); setQuickCreateFeedback(text.quickCreateFeedback); closeDrawer(); }} /> : <div className="space-y-4"><div className="flex gap-2"><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder={text.searchProperty} className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2.5 text-sm" />{createPropertyAction ? <button type="button" onClick={() => setDrawerView("create")} className="shrink-0 rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold">{text.quickCreate}</button> : null}</div><div className="space-y-2">{visibleProperties.map((property) => <button type="button" key={property.id} onClick={() => chooseProperty(property.id)} className="flex w-full items-center justify-between rounded-lg border border-slate-200 px-3 py-3 text-left"><span className="min-w-0"><span className="block truncate text-sm font-bold">{property.name}</span>{property.address ? <span className="mt-1 block truncate text-xs text-slate-500">{property.address}</span> : null}</span><span className="text-xs font-bold text-[#0046ad]">{text.select}</span></button>)}</div>{visibleProperties.length === 0 ? <p className="text-sm text-slate-500">{text.noCandidates}</p> : null}<div className="flex justify-end border-t border-slate-200 pt-3"><button type="button" onClick={closeDrawer} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold">{text.cancel}</button></div></div>}</FocusDialog> : null}
     </section>
   );
