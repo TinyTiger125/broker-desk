@@ -12,6 +12,7 @@ import { ObjectImportFailureNotice, ObjectImportStatusBadge } from "@/components
 import { ObjectImportUpload } from "@/components/object-import-upload";
 import { ObjectAttachmentList } from "@/components/object-attachment-list";
 import type { ObjectAttachmentItem } from "@/lib/object-attachments";
+import { resolveCasePropertyAddressPresentation } from "@/lib/case-property-address-presentation";
 
 type Candidate = { id: string; name: string; address?: string; searchText?: string };
 type CreateAction<State> = (previousState: State, formData: FormData) => Promise<State>;
@@ -24,6 +25,7 @@ type CaseAssociationManagerProps = {
   readOnly?: boolean;
   initialParties: Array<CaseAssociationParty & { name: string }>;
   initialPrimaryPropertyId?: string;
+  savedPrimaryPropertyId?: string;
   candidates: Candidate[];
   properties: Candidate[];
   saveAction?: SaveAction;
@@ -33,6 +35,8 @@ type CaseAssociationManagerProps = {
   objectImportUploadAction?: (formData: FormData) => Promise<void>;
   objectImportUnavailable?: boolean;
   caseAttachments?: ObjectAttachmentItem[];
+  caseAddress?: string;
+  caseAddressConfirmed?: boolean;
 };
 
 const copy = {
@@ -161,6 +165,7 @@ export function CaseAssociationManager({
   readOnly = false,
   initialParties,
   initialPrimaryPropertyId,
+  savedPrimaryPropertyId,
   candidates: initialCandidates,
   properties: initialProperties,
   saveAction,
@@ -170,6 +175,8 @@ export function CaseAssociationManager({
   objectImportUploadAction,
   objectImportUnavailable = false,
   caseAttachments = [],
+  caseAddress,
+  caseAddressConfirmed = false,
 }: CaseAssociationManagerProps) {
   const text = copy[locale];
   const [parties, setParties] = useState(initialParties);
@@ -253,6 +260,14 @@ export function CaseAssociationManager({
     return () => window.clearTimeout(timer);
   }, [autoSave, draftJson, saveAction]);
   const currentProperty = properties.find((property) => property.id === primaryPropertyId);
+  const addressPresentation = resolveCasePropertyAddressPresentation({
+    locale,
+    savedPrimaryPropertyId,
+    propertyId: currentProperty?.id,
+    propertyAddress: currentProperty?.address,
+    caseAddress,
+    caseAddressConfirmed,
+  });
   const importViewFor = (targetType: ObjectImportKind, targetId: string) => objectImportViews.find((view) => view.target.targetType === targetType && view.target.targetId === targetId);
   const renderObjectImport = (targetType: ObjectImportKind, targetId: string) => {
     const view = importViewFor(targetType, targetId);
@@ -276,7 +291,7 @@ export function CaseAssociationManager({
       {objectImportUnavailable ? <p role="status" className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">{text.objectImportUnavailable}</p> : null}
       <div className="mt-4 grid items-stretch gap-5 md:grid-cols-2">
         <div className="flex min-w-0 flex-col gap-3"><div className="flex min-h-11 items-center justify-between gap-2"><h3 className="text-sm font-black text-slate-900">{text.people} ({parties.length})</h3>{!readOnly ? <button type="button" data-case-association-focus-target onClick={(event) => { focusReturnRef.current = event.currentTarget; openPersonDrawer(); }} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0046ad]">{text.addPerson}</button> : null}</div>{parties.length === 0 ? <p className="min-h-20 rounded-lg bg-slate-50 px-3 py-3 text-sm text-slate-500">{text.peopleEmpty}</p> : <div className="space-y-2">{parties.map((party) => <div key={party.partyId} className="flex min-h-20 items-start justify-between gap-3 rounded-lg border border-slate-200 px-4 py-3"><div className="min-w-0 flex-1"><p className="truncate text-sm font-bold text-slate-900" title={party.name} aria-label={party.name}>{party.name}</p>{renderObjectImport("party", party.partyId)}<div className="mt-1 flex flex-wrap gap-1.5">{party.roles.map((role) => <span key={role} className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-700">{getCasePersonRoleLabel(locale, role)}</span>)}</div></div>{!readOnly ? <button type="button" data-case-association-focus-target onClick={(event) => { focusReturnRef.current = event.currentTarget; editPerson(party); }} className="inline-flex min-h-11 shrink-0 self-start items-center rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700">{text.editRoles}</button> : null}</div>)}</div>}</div>
-        <div className="flex min-w-0 flex-col gap-3"><div className="flex min-h-11 items-center justify-between gap-2"><h3 className="text-sm font-black text-slate-900">{text.property} ({primaryPropertyId ? 1 : 0})</h3>{!readOnly ? <button type="button" data-case-association-focus-target onClick={(event) => { focusReturnRef.current = event.currentTarget; setDrawer("property"); setDrawerView("select"); setSelectionError(undefined); }} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-3 py-2 text-xs font-black text-slate-700">{primaryPropertyId ? text.changeProperty : text.setProperty}</button> : null}</div>{currentProperty ? <div className="flex min-h-20 items-start justify-between gap-3 rounded-lg border border-slate-200 px-4 py-3"><div className="min-w-0 flex-1"><p className="truncate text-sm font-bold text-slate-900" title={currentProperty.name} aria-label={currentProperty.name}>{currentProperty.name}</p>{renderObjectImport("property", currentProperty.id)}{currentProperty.address ? <p className="mt-1 break-words text-xs text-slate-500 [overflow-wrap:anywhere]">{currentProperty.address}</p> : null}</div>{!readOnly ? <button type="button" onClick={removeProperty} className="inline-flex min-h-11 shrink-0 self-start items-center rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700">{text.removeProperty}</button> : null}</div> : <p className="min-h-20 rounded-lg bg-slate-50 px-3 py-3 text-sm text-slate-500">{text.propertyEmpty}</p>}</div>
+        <div className="flex min-w-0 flex-col gap-3"><div className="flex min-h-11 items-center justify-between gap-2"><h3 className="text-sm font-black text-slate-900">{text.property} ({primaryPropertyId ? 1 : 0})</h3>{!readOnly ? <button type="button" data-case-association-focus-target onClick={(event) => { focusReturnRef.current = event.currentTarget; setDrawer("property"); setDrawerView("select"); setSelectionError(undefined); }} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-3 py-2 text-xs font-black text-slate-700">{primaryPropertyId ? text.changeProperty : text.setProperty}</button> : null}</div>{currentProperty ? <div className="flex min-h-20 items-start justify-between gap-3 rounded-lg border border-slate-200 px-4 py-3"><div className="min-w-0 flex-1"><p className="truncate text-sm font-bold text-slate-900" title={currentProperty.name} aria-label={currentProperty.name}>{currentProperty.name}</p>{renderObjectImport("property", currentProperty.id)}{currentProperty.address ? <div className="mt-2"><p className="text-[11px] font-bold text-slate-500">{addressPresentation.propertyAddressLabel}</p><p className="mt-0.5 break-words text-xs text-slate-600 [overflow-wrap:anywhere]">{currentProperty.address}</p></div> : null}{addressPresentation.differenceNotice ? <p role="note" data-case-property-address-difference className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs font-semibold leading-5 text-amber-900">{addressPresentation.differenceNotice}</p> : null}</div>{!readOnly ? <button type="button" onClick={removeProperty} className="inline-flex min-h-11 shrink-0 self-start items-center rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700">{text.removeProperty}</button> : null}</div> : <p className="min-h-20 rounded-lg bg-slate-50 px-3 py-3 text-sm text-slate-500">{text.propertyEmpty}</p>}</div>
       </div>
       {caseAttachments.length > 0 ? (
         <section className="mt-5 overflow-hidden rounded-lg border border-slate-200 bg-slate-50/60" aria-labelledby="case-other-attachments-heading">

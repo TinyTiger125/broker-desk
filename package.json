@@ -35,6 +35,7 @@
     "test:case-field-catalog": "node scripts/check-case-field-catalog.mjs",
     "test:case-field-switch": "node scripts/check-case-field-switch-contract.mjs",
     "test:case-contact-validation": "node scripts/check-case-contact-validation-contract.mjs",
+    "test:case-property-address-presentation": "node scripts/test-case-property-address-presentation.mjs",
     "test:inline-field-editing": "node scripts/check-inline-field-editing-contract.mjs",
     "test:inline-field-payload": "node scripts/test-inline-field-payload.mjs",
     "test:case-applicability": "node scripts/check-case-applicability.cjs",

@@ -47,6 +47,7 @@ import { getImportRuntimeDiagnostics } from "@/lib/production-readiness";
 import { ExcelImportQueueProcessor } from "@/components/excel-import-queue-processor";
 import { getObjectImportTargetFeedbackMessage } from "@/lib/import-feedback";
 import { buildObjectVersionFingerprint } from "@/lib/object-import-contract";
+import { resolveCasePropertyAddressPresentation } from "@/lib/case-property-address-presentation";
 
 export const dynamic = "force-dynamic";
 
@@ -450,6 +451,13 @@ function getShortWorkbenchFieldLabel(field: WorkbenchField) {
   return pieces[pieces.length - 1] || field.label;
 }
 
+function getCaseAddressDisplayLabel(locale: Locale, field: WorkbenchField) {
+  if (field.fieldKey === "property.address") {
+    return resolveCasePropertyAddressPresentation({ locale }).caseAddressLabel;
+  }
+  return undefined;
+}
+
 function getWorkbenchFieldDisplayValue(field: WorkbenchField) {
   const evidence = getPrimaryEvidence(field);
   return field.value || evidence?.value || "-";
@@ -671,45 +679,6 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
       };
     }
   }
-  const associationPanel = (
-    <>
-      <CaseAssociationManager
-        locale={locale}
-        caseId={brokerageCase.id}
-        readOnly={!canWriteCase}
-        initialParties={associationParties}
-        initialPrimaryPropertyId={associationDraft.primaryPropertyId}
-        candidates={associationCandidates}
-        properties={associationProperties}
-        saveAction={canWriteCase ? saveCaseAssociationsAction : undefined}
-        createPersonAction={canWriteCase ? createClientFormAction : undefined}
-        createPropertyAction={canWriteCase ? createPropertyQuickAction : undefined}
-        objectImportViews={objectImportViews}
-        objectImportUploadAction={canWriteCase && objectImportReadiness.ready ? uploadObjectImportAction : undefined}
-        objectImportUnavailable={!objectImportReadiness.ready}
-        caseAttachments={objectAttachments}
-      />
-      {canWriteCase && objectImportReadiness.ready
-        ? objectImportTargets
-            .filter((target) =>
-              target.importJobId === objectImportJobId &&
-              (target.status === "queued" || target.status === "processing"),
-            )
-            .map((target) => (
-              <ExcelImportQueueProcessor
-                key={`object-import-process-${target.importJobId}`}
-                jobId={target.importJobId}
-                locale={locale}
-                targetCaseId={stableCaseId}
-                statusOnly={target.status === "processing"}
-                objectRecoveryHref={`/cases/${encodeURIComponent(stableCaseId)}?objectImportJob=${encodeURIComponent(target.importJobId)}#case-review-desk`}
-                successHref={`/cases/${encodeURIComponent(stableCaseId)}?flash=object_import_processed&objectImportJob=${encodeURIComponent(target.importJobId)}#case-review-desk`}
-              />
-            ))
-        : null}
-    </>
-  );
-
   if (!canWriteCase) {
     const primaryPartyId = typeof brokerageCase.confirmedDataJson.__primaryPartyId === "string" ? brokerageCase.confirmedDataJson.__primaryPartyId : undefined;
     const primaryPropertyId = brokerageCase.primaryPropertyId || (typeof brokerageCase.confirmedDataJson.__primaryPropertyId === "string" ? brokerageCase.confirmedDataJson.__primaryPropertyId : undefined);
@@ -770,6 +739,48 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
   const allWorkbenchFields = workbenchFieldGroups.flatMap((group) =>
     group.fields.map((field) => ({ ...field, groupId: group.id, label: `${group.label} / ${field.label}` })),
   );
+  const caseAddressField = allWorkbenchFields.find((field) => field.fieldKey === "property.address");
+  const associationPanel = (
+    <>
+      <CaseAssociationManager
+        locale={locale}
+        caseId={brokerageCase.id}
+        readOnly={!canWriteCase}
+        initialParties={associationParties}
+        initialPrimaryPropertyId={associationDraft.primaryPropertyId}
+        savedPrimaryPropertyId={associationDraft.primaryPropertyId}
+        candidates={associationCandidates}
+        properties={associationProperties}
+        saveAction={canWriteCase ? saveCaseAssociationsAction : undefined}
+        createPersonAction={canWriteCase ? createClientFormAction : undefined}
+        createPropertyAction={canWriteCase ? createPropertyQuickAction : undefined}
+        objectImportViews={objectImportViews}
+        objectImportUploadAction={canWriteCase && objectImportReadiness.ready ? uploadObjectImportAction : undefined}
+        objectImportUnavailable={!objectImportReadiness.ready}
+        caseAttachments={objectAttachments}
+        caseAddress={caseAddressField?.value}
+        caseAddressConfirmed={caseAddressField?.state === "confirmed" || caseAddressField?.state === "edited"}
+      />
+      {canWriteCase && objectImportReadiness.ready
+        ? objectImportTargets
+            .filter((target) =>
+              target.importJobId === objectImportJobId &&
+              (target.status === "queued" || target.status === "processing"),
+            )
+            .map((target) => (
+              <ExcelImportQueueProcessor
+                key={`object-import-process-${target.importJobId}`}
+                jobId={target.importJobId}
+                locale={locale}
+                targetCaseId={stableCaseId}
+                statusOnly={target.status === "processing"}
+                objectRecoveryHref={`/cases/${encodeURIComponent(stableCaseId)}?objectImportJob=${encodeURIComponent(target.importJobId)}#case-review-desk`}
+                successHref={`/cases/${encodeURIComponent(stableCaseId)}?flash=object_import_processed&objectImportJob=${encodeURIComponent(target.importJobId)}#case-review-desk`}
+              />
+            ))
+        : null}
+    </>
+  );
   const applicableWorkbenchFields = allWorkbenchFields.filter((field) => field.applicable);
   const dossierTreeNodes = CASE_INFORMATION_TREE.filter((node) => node.id !== "output_draft" && node.id !== "source_evidence") as readonly CaseInformationTreeNode[];
   const dossierTopNodes = dossierTreeNodes.filter((node) => applicableWorkbenchFields.some((field) => fieldMatchesTreeNode(field, node)));
@@ -820,7 +831,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
           .filter((field) => fieldMatchesTreeNode(field, child))
           .map((field) => ({
             fieldKey: field.fieldKey,
-            label: localizeCaseOverviewFieldLabel(locale, getShortWorkbenchFieldLabel(field)),
+            label: getCaseAddressDisplayLabel(locale, field) ?? localizeCaseOverviewFieldLabel(locale, getShortWorkbenchFieldLabel(field)),
             value: field.value,
             displayValue: getWorkbenchFieldDisplayValue(field),
             required: field.required,
@@ -1161,7 +1172,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-[11px] font-black text-amber-900">{tr(locale, { ja: "次の対応項目", zh: "下一项任务", ko: "다음 처리 항목" })}</p>
-                <CaseFieldValue label={getShortWorkbenchFieldLabel(selectedWorkbenchField)} value={getWorkbenchFieldDisplayValue(selectedWorkbenchField)} />
+                <CaseFieldValue label={getCaseAddressDisplayLabel(locale, selectedWorkbenchField) ?? getShortWorkbenchFieldLabel(selectedWorkbenchField)} value={getWorkbenchFieldDisplayValue(selectedWorkbenchField)} />
                 <CaseFieldState issueLabel={fieldNeedsAttention(selectedWorkbenchField) ? getWorkbenchFieldIssueLabel(locale, selectedWorkbenchField) : undefined} />
               </div>
               <Link href={caseWorkbenchHref({ node: selectedChapterNode?.id, field: selectedWorkbenchField.fieldKey })} scroll={false} className="shrink-0 rounded-lg bg-slate-950 px-3 py-2 text-xs font-black text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300">
@@ -1328,7 +1339,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                               showSaveWhenPristine
                               saveLabel={tr(locale, { ja: "確認", zh: "确认", ko: "확인" })}
                               savingLabel={tr(locale, { ja: "保存中", zh: "保存中", ko: "저장 중" })}
-                              saveButtonAriaLabel={`${getShortWorkbenchFieldLabel(field)}を確認して保存`}
+                              saveButtonAriaLabel={`${getCaseAddressDisplayLabel(locale, field) ?? getShortWorkbenchFieldLabel(field)}を確認して保存`}
                               saveButtonWrapperClassName="col-start-4 row-start-1 mt-0 max-h-12 self-start opacity-100"
                               saveButtonClassName="min-h-11 min-w-[3.5rem] rounded-md px-3 py-2 text-xs font-black"
                               className="contents"
@@ -1340,7 +1351,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                               </span>
                               <span className="min-w-0">
                                 <span className="block break-words text-sm font-black text-slate-950">
-                                  {getShortWorkbenchFieldLabel(field)}
+                                  {getCaseAddressDisplayLabel(locale, field) ?? getShortWorkbenchFieldLabel(field)}
                                   {field.required ? <span className="ml-1 text-slate-400" aria-label={tr(locale, { ja: "必須", zh: "必填", ko: "필수" })}>*</span> : null}
                                 </span>
                                 <span className="mt-1 block break-words text-[11px] font-semibold text-slate-500">{field.treePath.join(" / ")}</span>
@@ -1349,7 +1360,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                                 <CaseFieldInput
                                   name={`field:${field.fieldKey}`}
                                   value={candidateValue}
-                                  label={field.label}
+                                  label={getCaseAddressDisplayLabel(locale, field) ?? field.label}
                                   inputSpec={field.inputSpec}
                                   locale={locale}
                                   tone={fieldNeedsAttention(field) || Boolean(objectImportBinding?.status === "low_confidence" || objectImportBinding?.status === "conflict") ? "attention" : "default"}
