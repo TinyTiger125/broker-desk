@@ -41,6 +41,7 @@ type OrganizeCenterObjectBrowserProps = {
   lifecycleFilter: LifecycleFilter;
   locale: Locale;
   page: number;
+  canCreateCase: boolean;
 };
 
 const LIST_PAGE_SIZE = 6;
@@ -91,6 +92,7 @@ export function OrganizeCenterObjectBrowser({
   lifecycleFilter,
   locale,
   page,
+  canCreateCase,
 }: OrganizeCenterObjectBrowserProps) {
   if (selectedType === "all") {
     const branchCards = ([
@@ -169,10 +171,13 @@ export function OrganizeCenterObjectBrowser({
               <SectionHeader level="h2" title={getTypeLabel(selectedType, copy)} />
             </div>
           </div>
-          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-700">
-            <span className="material-symbols-outlined text-[16px] text-[#3158d8]" aria-hidden="true">{getTypeIcon(selectedType)}</span>
-            {getTypeLabel(selectedType, copy)}
-          </span>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {selectedType === "case" && canCreateCase ? <Link href="/cases/new" data-testid="organize-create-case" className="inline-flex min-h-[var(--bd-control-height-touch)] items-center justify-center rounded-md bg-slate-950 px-4 text-sm font-bold text-white hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3158d8]">{copy.createCase}</Link> : null}
+            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-700">
+              <span className="material-symbols-outlined text-[16px] text-[#3158d8]" aria-hidden="true">{getTypeIcon(selectedType)}</span>
+              {getTypeLabel(selectedType, copy)}
+            </span>
+          </div>
         </div>
       }
       filters={
