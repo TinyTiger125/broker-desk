@@ -521,9 +521,10 @@ const postgresSource = readFileSync(resolve(root, "src/lib/data.postgres.ts"), "
 const actionSource = readFileSync(resolve(root, "src/app/actions.ts"), "utf8");
 const objectActionsSource = readFileSync(resolve(root, "src/app/object-import-actions.ts"), "utf8");
 const casePageSource = readFileSync(resolve(root, "src/app/cases/[id]/page.tsx"), "utf8");
+const importFeedbackSource = readFileSync(resolve(root, "src/lib/import-feedback.ts"), "utf8");
+const importCenterSource = readFileSync(resolve(root, "src/app/import-center/page.tsx"), "utf8");
 const queueProcessorSource = readFileSync(resolve(root, "src/components/excel-import-queue-processor.tsx"), "utf8");
 const uploadFormSource = readFileSync(resolve(root, "src/components/excel-document-upload-form.tsx"), "utf8");
-const importCenterSource = readFileSync(resolve(root, "src/app/import-center/page.tsx"), "utf8");
 const objectUploadSource = readFileSync(resolve(root, "src/components/object-import-upload.tsx"), "utf8");
 const statusBadgeSource = readFileSync(resolve(root, "src/components/object-import-status-badge.tsx"), "utf8");
 const { ObjectImportFailureNotice } = require(resolve(root, "src/components/object-import-status-badge.tsx"));
@@ -622,7 +623,13 @@ assert.match(casePageSource, /statusOnly=\{target\.status === "processing"\}/, "
 assert.match(casePageSource, /successHref=\{`\/cases\/\$\{encodeURIComponent\(stableCaseId\)\}/, "case object processing must return to the same case workbench");
 assert.match(casePageSource, /successHref=\{`[^`]*objectImportJob=\$\{encodeURIComponent\(target\.importJobId\)\}/, "completion return must retain the processed object job for an unambiguous result");
 assert.match(casePageSource, /objectImportCandidateCountForJob = objectImportViewForJob\?\.fields\.length/, "object completion feedback must count object candidates rather than extracted input fields");
-assert.match(casePageSource, /已读取 \$\{objectImportCandidateCountForJob\} 项对象候选，请确认后再写入/, "object completion feedback must distinguish reviewable candidates from committed data");
+assert.match(casePageSource, /getObjectImportTargetFeedbackMessage/, "case page must derive object-import feedback from the actual target status");
+assert.match(importCenterSource, /getImportJobFeedbackMessage\(locale, xlsxJob\?\.status\)/, "import center must derive flash feedback from the actual job status with an unknown-job fallback");
+assert.match(importCenterSource, /flashKey === "input_extraction_queued" && xlsxJob\?\.status === "failed"/, "failed extraction feedback must use the error tone");
+assert.match(importFeedbackSource, /已读取 \$\{count\} 项对象候选，请确认后再写入/, "reviewable object candidates must remain distinct from committed data");
+assert.match(importFeedbackSource, /这份资料已处理，可查看读取结果/, "completed reused jobs must not be described as starting to read");
+assert.match(importFeedbackSource, /本次上传未更改主资料/, "completed reused jobs must describe only this upload's write boundary");
+assert.doesNotMatch(importFeedbackSource, /completed[\s\S]{0,240}正在开始读取/, "completed jobs must never reuse the queued start-reading copy");
 assert.match(queueProcessorSource, /method: "POST"/, "the protected continuation must start processing through the process API");
 assert.match(queueProcessorSource, /successHref\)/, "the protected continuation must honor the case return target");
 assert.match(queueProcessorSource, /正在读取资料，完成后会返回确认结果/, "processing status must describe extraction rather than only task submission");

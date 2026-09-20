@@ -16,6 +16,7 @@ import { ExcelImportQueueProcessor } from "@/components/excel-import-queue-proce
 import { IdentityDocumentUploadForm } from "@/components/identity-document-upload-form";
 import { InputExtractionReview } from "@/components/input-extraction-review";
 import { PageFlashBanner } from "@/components/page-flash-banner";
+import { getImportJobFeedbackMessage } from "@/lib/import-feedback";
 import { PreimportUploadDelete } from "@/components/preimport-upload-delete";
 import { mayDeletePreimportUpload } from "@/lib/preimport-upload-lifecycle";
 import { listBrokerageCases } from "@/lib/data";
@@ -944,13 +945,20 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
     },
   } as const;
   const flashKey = String(params?.flash ?? "").trim() as keyof typeof flashMap;
-  const flashMessage = flashMap[flashKey]?.[locale];
-  const flashTone =
-    String(flashKey).includes("upload_") || String(flashKey).includes("missing") ? "error" : "success";
-
-  // ── Excel 物件保存 state ──────────────────────────────────────────
   const xlsxJobId = String(params?.xlsxJob ?? "").trim();
   const xlsxJob = xlsxJobId ? jobs.find((j) => j.id === xlsxJobId) : undefined;
+  const flashTone =
+    (flashKey === "input_extraction_queued" && xlsxJob?.status === "failed") ||
+    String(flashKey).includes("upload_") ||
+    String(flashKey).includes("missing")
+      ? "error"
+      : "success";
+
+  // ── Excel 物件保存 state ──────────────────────────────────────────
+  const flashMessage =
+    flashKey === "input_extraction_queued"
+      ? getImportJobFeedbackMessage(locale, xlsxJob?.status)
+      : flashMap[flashKey]?.[locale];
 
   let xlsxPayload: ExcelImportPayload | null = null;
   let xlsxResult: ExcelImportResult | null = null;

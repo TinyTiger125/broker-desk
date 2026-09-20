@@ -45,6 +45,7 @@ import { getObjectImportFeatureReadiness, listObjectImportCandidates, listObject
 import type { ObjectImportCandidateRecord, ObjectImportTargetRecord } from "@/lib/object-import-repository";
 import { getImportRuntimeDiagnostics } from "@/lib/production-readiness";
 import { ExcelImportQueueProcessor } from "@/components/excel-import-queue-processor";
+import { getObjectImportTargetFeedbackMessage } from "@/lib/import-feedback";
 import { buildObjectVersionFingerprint } from "@/lib/object-import-contract";
 
 export const dynamic = "force-dynamic";
@@ -629,9 +630,11 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
   })));
   const objectImportViewForJob = objectImportViews.find((view) => view.target.importJobId === objectImportJobId);
   const objectImportCandidateCountForJob = objectImportViewForJob?.fields.length ?? 0;
-  const objectImportCompletionFlash = objectImportJobId &&
+  const objectImportStatusFlash = objectImportJobId &&
     (query?.flash === undefined || query.flash === "input_extraction_queued" || query.flash === "object_import_processed") &&
-    objectImportTargetForJob?.status === "needs_review";
+    objectImportTargetForJob
+    ? getObjectImportTargetFeedbackMessage(locale, objectImportTargetForJob.status, objectImportCandidateCountForJob)
+    : undefined;
   const objectImportFieldBindings: Record<string, { targetId: string; fieldId: string; importJobId: string; expectedVersion: string; observedVersion?: string; expectedCandidateValue: string; candidateValue: string; status: string; sourceEvidence?: string }> = {};
   const applicantPartyId = associationDraft.parties[0]?.partyId;
   for (const view of objectImportViews) {
@@ -895,13 +898,9 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
             zh: "该候选已在其他页面处理完成，请刷新案件查看已确认值。本次修改未保存。",
             ko: "이 후보는 다른 화면에서 이미 처리되었습니다. 안건을 새로 고쳐 확정된 값을 확인해 주세요. 이번 변경 사항은 저장되지 않았습니다.",
           })
-    : objectImportCompletionFlash
-      ? tr(locale, {
-          ja: `資料を読み取りました。${objectImportCandidateCountForJob}件の候補を確認してから反映してください。主資料はまだ更新されていません。`,
-          zh: `已读取 ${objectImportCandidateCountForJob} 项对象候选，请确认后再写入。主资料尚未更新。`,
-          ko: `자료를 읽었습니다. ${objectImportCandidateCountForJob}개의 객체 후보를 확인한 뒤 반영해 주세요. 원본 자료는 아직 업데이트되지 않았습니다.`,
-        })
-    : query?.flash === "extraction_review_saved"
+    : objectImportStatusFlash
+      ? objectImportStatusFlash
+      : query?.flash === "extraction_review_saved"
       ? tr(locale, {
           ja: "確認結果を案件に保存しました。必要な項目を続けて整理できます。",
           zh: "核对结果已保存到案件。可以继续整理需要的项目。",
