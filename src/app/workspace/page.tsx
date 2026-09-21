@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { getDefaultUser, getTenantById, listPendingTenantInvitations, listTenantMemberships, listTenantSessionLookupsByExternalAuthSubject } from "@/lib/data";
 import { getLocale, type Locale } from "@/lib/locale";
-import { isClerkAuthEnabled } from "@/lib/auth-mode";
-import { getClerkAuthSubject } from "@/lib/clerk-auth";
+import { isExternalAuthEnabled } from "@/lib/auth-mode";
+import { getAuthSubject } from "@/lib/auth-provider";
 import { PageFrame, PageHeader, StateSurface } from "@/components/layout-system";
 import { WorkspaceSelector, type WorkspaceOption } from "./workspace-selector";
 import { WorkspaceSignOutButton } from "./sign-out-button";
@@ -114,28 +114,28 @@ export default async function WorkspacePage({ searchParams }: WorkspacePageProps
   const params = (await searchParams) ?? {};
   const returnTo = safeWorkspaceReturnTo(params.returnTo);
   const selectionRequired = params.reason === "tenant_selection_required";
-  const clerkSubject = isClerkAuthEnabled() ? await getClerkAuthSubject() : null;
-  // In Clerk mode this reads the current identity's complete membership
+  const externalAuthSubject = isExternalAuthEnabled() ? await getAuthSubject() : null;
+  // In external-auth mode this reads the current identity's complete membership
   // state, including suspended/removed rows that tenant RLS hides from the
   // ordinary active-member listing. The RPC itself is current-user-bound.
   let sessionLookups: Awaited<ReturnType<typeof listTenantSessionLookupsByExternalAuthSubject>> = [];
   let sessionLookupFailed = false;
-  if (clerkSubject) {
+  if (externalAuthSubject) {
     try {
-      sessionLookups = await listTenantSessionLookupsByExternalAuthSubject(clerkSubject);
+      sessionLookups = await listTenantSessionLookupsByExternalAuthSubject(externalAuthSubject);
     } catch {
       sessionLookupFailed = true;
     }
   }
   const user = sessionLookups[0]?.user ?? (sessionLookupFailed ? null : await getDefaultUser());
-  const memberships = clerkSubject
+  const memberships = externalAuthSubject
     ? sessionLookups.map((lookup) => lookup.membership)
     : user
       ? await listTenantMemberships(user.id)
       : [];
   const pendingInvitations = user ? await listPendingTenantInvitations(user.id) : [];
   const tenantForMembership = async (membership: (typeof memberships)[number]) => {
-    if (clerkSubject) return sessionLookups.find((lookup) => lookup.membership.id === membership.id)?.tenant ?? null;
+    if (externalAuthSubject) return sessionLookups.find((lookup) => lookup.membership.id === membership.id)?.tenant ?? null;
     return getTenantById(membership.tenantId);
   };
   const resolvedMemberships = (
@@ -221,7 +221,7 @@ export default async function WorkspacePage({ searchParams }: WorkspacePageProps
                   <Link href="/workspace/invitations" className="inline-flex min-h-11 items-center justify-center border border-slate-300 bg-white px-4 text-sm font-bold text-slate-900 transition hover:bg-slate-50">
                     {text.viewInvitations}
                   </Link>
-                  {isClerkAuthEnabled() ? <WorkspaceSignOutButton label={text.back} /> : (
+                  {isExternalAuthEnabled() ? <WorkspaceSignOutButton label={text.back} /> : (
                     <Link href="/sign-in" className="inline-flex min-h-11 items-center justify-center border border-slate-300 bg-white px-4 text-sm font-bold text-slate-900 transition hover:bg-slate-50">
                       {text.back}
                     </Link>

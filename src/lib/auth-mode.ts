@@ -1,4 +1,5 @@
-export type BrokerDeskAuthMode = "demo" | "trusted_header" | "clerk" | "disabled";
+export type BrokerDeskAuthMode = "demo" | "trusted_header" | "clerk" | "supabase" | "disabled";
+export type ExternalAuthProviderId = "clerk" | "supabase";
 
 export type TrustedHeaderAuthIdentity = {
   subject: string;
@@ -26,16 +27,53 @@ export function isProductionRuntime() {
   return process.env.NODE_ENV === "production";
 }
 
-export function getAuthMode(): BrokerDeskAuthMode {
-  const configured = process.env.BROKER_DESK_AUTH_MODE?.trim().toLowerCase();
-  if (configured === "demo" || configured === "trusted_header" || configured === "clerk" || configured === "disabled") {
+export function resolveBrokerDeskAuthMode(input: {
+  configuredMode?: string;
+  configuredProvider?: string;
+  clerkConfigured?: boolean;
+}): BrokerDeskAuthMode {
+  const configured = input.configuredMode?.trim().toLowerCase();
+  const provider = input.configuredProvider?.trim().toLowerCase();
+  if (provider && provider !== "clerk" && provider !== "supabase") {
+    throw new Error("unsupported_auth_provider");
+  }
+  if (
+    configured &&
+    configured !== "demo" &&
+    configured !== "trusted_header" &&
+    configured !== "clerk" &&
+    configured !== "supabase" &&
+    configured !== "disabled"
+  ) {
+    throw new Error("unsupported_auth_mode");
+  }
+  if (
+    configured === "demo" ||
+    configured === "trusted_header" ||
+    configured === "clerk" ||
+    configured === "supabase" ||
+    configured === "disabled"
+  ) {
+    if (provider && configured && configured !== provider) {
+      throw new Error("auth_mode_provider_mismatch");
+    }
     return configured;
   }
+  if (provider === "supabase") return "supabase";
+  if (provider === "clerk") return "clerk";
   // A real Clerk configuration is sufficient to opt into the real account path.
   // Demo access must always be chosen explicitly so a copied checkout cannot
   // silently expose a workspace without authentication.
-  if (isClerkAuthConfigured()) return "clerk";
+  if (input.clerkConfigured) return "clerk";
   return "disabled";
+}
+
+export function getAuthMode(): BrokerDeskAuthMode {
+  return resolveBrokerDeskAuthMode({
+    configuredMode: process.env.BROKER_DESK_AUTH_MODE,
+    configuredProvider: process.env.BROKER_DESK_AUTH_PROVIDER,
+    clerkConfigured: isClerkAuthConfigured(),
+  });
 }
 
 export function isDemoAuthEnabled() {
@@ -48,6 +86,20 @@ export function isTrustedHeaderAuthEnabled() {
 
 export function isClerkAuthEnabled() {
   return getAuthMode() === "clerk";
+}
+
+export function isSupabaseAuthEnabled() {
+  return getAuthMode() === "supabase";
+}
+
+export function isExternalAuthEnabled() {
+  const mode = getAuthMode();
+  return mode === "clerk" || mode === "supabase";
+}
+
+export function getConfiguredAuthProviderId(): ExternalAuthProviderId | null {
+  const mode = getAuthMode();
+  return mode === "clerk" || mode === "supabase" ? mode : null;
 }
 
 export function isClerkAuthConfigured() {

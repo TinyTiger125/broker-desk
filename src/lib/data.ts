@@ -10,12 +10,13 @@ import {
 } from "@/lib/production-readiness";
 import { getActorIdFromCookie } from "@/lib/actor";
 import {
-  isClerkAuthEnabled,
+  getConfiguredAuthProviderId,
+  isExternalAuthEnabled,
   isDemoAuthEnabled,
   isTrustedHeaderAuthEnabled,
   readTrustedHeaderAuthIdentity,
 } from "@/lib/auth-mode";
-import { getClerkAuthIdentity, getClerkAuthSubject, getVerifiedClerkAuthIdentity } from "@/lib/clerk-auth";
+import { getAuthIdentity, getAuthSubject, getVerifiedAuthIdentity } from "@/lib/auth-provider";
 import { isEmailOnStagingAllowlist, isStagingAllowlistEnforced } from "@/lib/staging-access-policy";
 import { headers } from "next/headers";
 import { cache } from "react";
@@ -46,7 +47,7 @@ async function withRepositoryIdentity<T>(operation: () => Promise<T>): Promise<T
     return operation();
   }
 
-  const subject = workerRepositorySubject.getStore() ?? (await getClerkAuthSubject());
+  const subject = workerRepositorySubject.getStore() ?? (await getAuthSubject());
   if (!subject) {
     throw new ProductionReadinessError("production_tenant_scope_required");
   }
@@ -82,8 +83,8 @@ const resolveTenantSessionLookupsByExternalAuthSubject = cache(
     const normalized = subject.trim();
     if (!normalized) return [];
 
-    if (isClerkAuthEnabled()) {
-      const identity = await getClerkAuthIdentity();
+    if (isExternalAuthEnabled()) {
+      const identity = await getAuthIdentity();
       if (
         !identity ||
         identity.subject !== normalized ||
@@ -107,8 +108,8 @@ const resolveTenantSessionLookupsByExternalAuthSubject = cache(
 );
 
 const resolveDefaultUser = cache(async (preferredUserId?: string) => {
-  if (isClerkAuthEnabled()) {
-    const identity = await getClerkAuthIdentity();
+  if (isExternalAuthEnabled()) {
+    const identity = await getAuthIdentity();
     if (!identity) return null;
     if (isStagingAllowlistEnforced() && !isEmailOnStagingAllowlist(identity.email)) return null;
     const subject = identity.subject;
@@ -121,8 +122,8 @@ const resolveDefaultUser = cache(async (preferredUserId?: string) => {
     // An invited Clerk user starts as an email-only local placeholder. Bind
     // that placeholder only when the current identity exactly matches a valid
     // pending invitation; never use this path for arbitrary provisioning.
-    const verifiedIdentity = await getVerifiedClerkAuthIdentity();
-    if (verifiedIdentity?.email) {
+    const verifiedIdentity = await getVerifiedAuthIdentity();
+    if (getConfiguredAuthProviderId() === "clerk" && verifiedIdentity?.email) {
       const invitedUser = await repo.bindCurrentClerkIdentityToPendingInvitation(verifiedIdentity);
       if (invitedUser) return invitedUser;
     }
