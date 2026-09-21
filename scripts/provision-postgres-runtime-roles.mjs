@@ -49,14 +49,31 @@ try {
   // this process avoids ever printing them or placing them in a shell command.
   await client.query(`ALTER ROLE brokerdesk_runtime LOGIN PASSWORD '${runtimePassword}'`);
   await client.query(`ALTER ROLE brokerdesk_admin LOGIN PASSWORD '${adminPassword}'`);
+  await client.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public'
+          AND c.relname IN ('import_jobs', 'attachments', 'private_attachment_blobs', 'attachment_links', 'audit_logs')
+          AND (pg_get_userbyid(c.relowner) <> 'brokerdesk_admin' OR NOT c.relrowsecurity OR NOT c.relforcerowsecurity)
+      ) THEN
+        RAISE EXCEPTION 'runtime role setup requires brokerdesk_admin ownership and FORCE RLS on preimport tables' USING ERRCODE = '42501';
+      END IF;
+    END
+    $$;
+  `);
   await client.query("REVOKE ALL ON SCHEMA public FROM brokerdesk_runtime, brokerdesk_admin");
   await client.query("REVOKE ALL ON ALL TABLES IN SCHEMA public FROM brokerdesk_runtime, brokerdesk_admin");
   await client.query("REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM brokerdesk_runtime, brokerdesk_admin");
+  // Reuse the immutable ACL baseline instead of a blanket table grant. This
+  // keeps the programmatic provisioner aligned with the reviewed SQL role
+  // setup and preserves identity reads plus tenant-scoped RLS boundaries.
+  const aclBaseline = readFileSync(resolve(process.cwd(), "db/migrations/20260902_003_runtime_acl_baseline.sql"), "utf8");
+  await client.query(aclBaseline);
   await client.query("GRANT USAGE ON SCHEMA public TO brokerdesk_runtime");
-  await client.query(`
-    GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO brokerdesk_runtime
-  `);
-  await client.query("GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO brokerdesk_runtime");
   await client.query("GRANT USAGE ON SCHEMA brokerdesk_private TO brokerdesk_runtime, brokerdesk_admin");
   await client.query("GRANT EXECUTE ON FUNCTION brokerdesk_private.current_external_auth_subject() TO brokerdesk_runtime");
   await client.query("GRANT EXECUTE ON FUNCTION brokerdesk_private.current_user_id() TO brokerdesk_runtime");

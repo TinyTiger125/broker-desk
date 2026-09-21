@@ -17,6 +17,8 @@ const tenantSession = await source("src/lib/tenant-session.ts");
 const migration = await source("db/migrations/20260921_001_supabase_auth_lifecycle.sql");
 const rollback = await source("db/migrations/rollback/20260921_001_supabase_auth_lifecycle.sql");
 const supabaseBootstrap = await source("scripts/bootstrap-initial-supabase-owner.mjs");
+const runtimeRoles = await source("docs/engineering/postgres_runtime_roles.sql");
+const runtimeProvisioner = await source("scripts/provision-postgres-runtime-roles.mjs");
 
 assert.match(actions, /isSupabaseAuthEnabled\(\)/, "member invitation/status actions must branch for Supabase");
 assert.match(actions, /invitationProvider: result\.provider/, "Supabase invitation must finalize through the existing delivery action");
@@ -46,6 +48,12 @@ assert.match(supabaseBootstrap, /DATABASE_MIGRATION_URL/, "Supabase owner bootst
 assert.match(supabaseBootstrap, /DATABASE_MIGRATION_CA_CERT_PATH/, "Supabase owner bootstrap must require the dedicated CA path");
 assert.match(supabaseBootstrap, /runSupabaseOwnerPreflight/, "Supabase owner bootstrap must expose a read-only preflight");
 assert.match(supabaseBootstrap, /rejectUnauthorized: true/, "Supabase owner bootstrap must keep verified TLS");
+assert.match(runtimeRoles, /public\.users,[\s\S]*public\.tenants,[\s\S]*public\.tenant_memberships[\s\S]*TO brokerdesk_runtime/, "runtime roles must retain identity reads");
+assert.match(runtimeRoles, /brokerdesk_admin ownership and FORCE RLS/, "runtime roles must fail closed when migration ownership is wrong");
+assert.doesNotMatch(runtimeProvisioner, /GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES/, "programmatic role provisioner must not grant every table");
+assert.match(runtimeProvisioner, /20260902_003_runtime_acl_baseline\.sql/, "programmatic role provisioner must reuse the reviewed ACL baseline");
+assert.match(runtimeProvisioner, /GRANT USAGE ON SCHEMA public TO brokerdesk_runtime/, "programmatic role provisioner must retain public schema usage");
+assert.match(runtimeProvisioner, /brokerdesk_admin ownership and FORCE RLS/, "programmatic role provisioner must fail closed on migration ownership");
 
 const { resolveExplicitSupabaseUser, bootstrapInitialSupabaseOwner, buildSupabasePoolConfig, SUPABASE_PROJECT_REF, SUPABASE_POOLER_HOST } = await import("../scripts/bootstrap-initial-supabase-owner.mjs");
 const admin = { auth: { admin: { async getUserById(id) { return { data: { user: { id, email: "owner@example.com" } }, error: null }; } } } };
