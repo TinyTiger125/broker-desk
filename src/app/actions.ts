@@ -3202,7 +3202,6 @@ export async function updateTenantMemberStatusAction(formData: FormData) {
     }),
   });
   if (!lifecycle.ok) throw new Error(lifecycle.reason);
-  const member = lifecycle.member;
   revalidatePath("/settings/members");
   const flash = lifecycle.warning ? "member_access_updated_audit_pending" : status === "active" ? "member_reactivated" : status === "removed" ? "member_removed" : "member_suspended";
   redirect(`/settings/members?flash=${flash}`);
