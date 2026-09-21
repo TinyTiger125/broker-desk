@@ -63,6 +63,7 @@ assert.match(runtimeRoles, /GRANT INSERT ON TABLE public\.audit_logs TO brokerde
 assert.match(runtimeProvisioner, /GRANT SELECT, INSERT, UPDATE ON TABLE public\.users TO brokerdesk_admin/, "programmatic admin matrix must cover identity synchronization");
 assert.match(runtimeProvisioner, /GRANT SELECT, DELETE ON TABLE public\.private_attachment_blobs TO brokerdesk_admin/, "programmatic admin matrix must cover blob cascade cleanup");
 assert.match(runtimeRoles, /GRANT REFERENCES ON TABLE public\.users, public\.tenants TO brokerdesk_admin/, "admin matrix must cover bootstrap foreign-key key-share checks");
+assert.match(runtimeRoles, /GRANT UPDATE \(updated_at\) ON TABLE public\.tenants TO brokerdesk_admin/, "admin matrix must use a narrow tenant row-lock column grant");
 assert.match(await source("db/migrations/20260921_002_import_worker_rls_admin_policy.sql"), /TO brokerdesk_admin[\s\S]*current_user = 'brokerdesk_admin'/, "import worker must have a role-scoped RLS policy for cross-tenant claims");
 assert.match(await source("db/migrations/rollback/20260921_002_import_worker_rls_admin_policy.sql"), /DROP POLICY IF EXISTS brokerdesk_import_worker_claim_select/, "import worker RLS policy must have an explicit rollback");
 

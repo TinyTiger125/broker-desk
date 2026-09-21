@@ -87,6 +87,7 @@ try {
   await client.query("GRANT SELECT ON TABLE public.attachment_links TO brokerdesk_admin");
   await client.query("GRANT INSERT ON TABLE public.audit_logs TO brokerdesk_admin");
   await client.query("GRANT REFERENCES ON TABLE public.users, public.tenants TO brokerdesk_admin");
+  await client.query("GRANT UPDATE (updated_at) ON TABLE public.tenants TO brokerdesk_admin");
   await client.query("GRANT USAGE ON SCHEMA brokerdesk_private TO brokerdesk_runtime, brokerdesk_admin");
   await client.query("GRANT EXECUTE ON FUNCTION brokerdesk_private.current_external_auth_subject() TO brokerdesk_runtime");
   await client.query("GRANT EXECUTE ON FUNCTION brokerdesk_private.current_user_id() TO brokerdesk_runtime");

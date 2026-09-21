@@ -109,6 +109,10 @@ GRANT INSERT ON TABLE public.audit_logs TO brokerdesk_admin;
 -- Foreign-key checks in the owner-controlled bootstrap/membership and audit
 -- paths issue FOR KEY SHARE against referenced identity rows.
 GRANT REFERENCES ON TABLE public.users, public.tenants TO brokerdesk_admin;
+-- PostgreSQL FK checks use FOR KEY SHARE on tenants; this requires SELECT
+-- plus UPDATE privilege on at least one column. Keep the write surface to the
+-- non-key timestamp column used for lifecycle bookkeeping.
+GRANT UPDATE (updated_at) ON TABLE public.tenants TO brokerdesk_admin;
 
 -- The runtime must resolve its own active user and membership through the
 -- security-definer helpers. It does not receive direct global table access.
