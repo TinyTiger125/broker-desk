@@ -17,6 +17,7 @@ function copy(locale: Locale) {
       passwordLabel: "密码",
       signInLabel: "登录",
       signInError: "登录失败，请检查邮箱和密码。",
+      callbackError: "登录链接已失效或无法验证，请重新登录或申请新的链接。",
     };
   }
   if (locale === "ko") {
@@ -32,6 +33,7 @@ function copy(locale: Locale) {
       passwordLabel: "비밀번호",
       signInLabel: "로그인",
       signInError: "로그인에 실패했습니다. 이메일과 비밀번호를 확인하세요.",
+      callbackError: "로그인 링크가 만료되었거나 확인되지 않았습니다. 다시 로그인하거나 새 링크를 요청해 주세요.",
     };
   }
   return {
@@ -46,12 +48,18 @@ function copy(locale: Locale) {
     passwordLabel: "パスワード",
     signInLabel: "ログイン",
     signInError: "ログインできませんでした。メールアドレスとパスワードをご確認ください。",
+    callbackError: "ログイン用リンクが期限切れか確認できませんでした。再度ログインするか、新しいリンクを申請してください。",
   };
 }
 
-export default async function SignInPage() {
+export default async function SignInPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string | string[] }>;
+}) {
   const locale = await getLocale();
   const text = copy(locale);
+  const callbackFailed = (await searchParams).error === "auth_callback_failed";
 
   if (!isClerkAuthEnabled() && !isSupabaseAuthEnabled()) {
     return (
@@ -85,13 +93,16 @@ export default async function SignInPage() {
             </div>
           </div>
           <div className="flex items-center justify-center lg:justify-end">
-            <SupabaseSignInForm
-              emailLabel={text.emailLabel}
-              passwordLabel={text.passwordLabel}
-              submitLabel={text.signInLabel}
-              errorLabel={text.signInError}
-              forgotPasswordLabel={locale === "zh" ? "忘记密码" : locale === "ko" ? "비밀번호를 잊으셨나요" : "パスワードを忘れた場合"}
-            />
+            <div className="w-full">
+              {callbackFailed ? <p role="alert" className="mb-4 border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{text.callbackError}</p> : null}
+              <SupabaseSignInForm
+                emailLabel={text.emailLabel}
+                passwordLabel={text.passwordLabel}
+                submitLabel={text.signInLabel}
+                errorLabel={text.signInError}
+                forgotPasswordLabel={locale === "zh" ? "忘记密码" : locale === "ko" ? "비밀번호를 잊으셨나요" : "パスワードを忘れた場合"}
+              />
+            </div>
           </div>
         </div>
       </section>

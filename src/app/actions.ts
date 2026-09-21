@@ -184,7 +184,7 @@ import { queueIdentityImportSources } from "@/lib/identity-import-queue";
 import { createClerkInvitationForTenantMember } from "@/lib/clerk-invitations";
 import { inviteSupabaseUserByEmail } from "@/lib/supabase/admin";
 import { assertCaseSourcesReadable } from "@/lib/w93-access";
-import { getVerifiedClerkAuthIdentity } from "@/lib/clerk-auth";
+import { getVerifiedAuthIdentity } from "@/lib/auth-provider";
 import { isClerkAuthEnabled, isSupabaseAuthEnabled } from "@/lib/auth-mode";
 import { persistTenantMembershipStatus } from "@/lib/supabase/membership-lifecycle";
 import { CASE_FIELD_KEYS, getCaseFieldDefinition, getCaseFieldInformation, isKnownCaseFieldKey } from "@/lib/case-field-catalog";
@@ -2905,7 +2905,7 @@ export type TenantInvitationActionState = {
   message?: TenantInvitationActionMessageToken;
 };
 
-/** Explicitly accept one pending invitation after the Clerk identity has been bound by email. */
+/** Explicitly accept one pending invitation for the verified, bound identity. */
 export async function acceptTenantInvitationAction(
   _previousState: TenantInvitationActionState,
   formData: FormData,
@@ -2913,16 +2913,21 @@ export async function acceptTenantInvitationAction(
   let tenantId = "";
   let membershipId = "";
   let invitationAccepted = false;
+  const identityNotBoundError = { status: "error", message: "invitation_identity_not_bound" } as const;
   try {
-    const identity = await getVerifiedClerkAuthIdentity();
-    if (isClerkAuthEnabled() && !identity?.email) {
+    const identity = await getVerifiedAuthIdentity();
+    const externalAuthEnabled = isClerkAuthEnabled() || isSupabaseAuthEnabled();
+    if (externalAuthEnabled && (!identity?.subject || !identity.email)) {
       return { status: "error", message: "email_verification_required" };
     }
     const user = await getDefaultUser();
     if (!user) {
-      return { status: "error", message: "invitation_identity_not_bound" };
+      return identityNotBoundError;
     }
-    if (identity?.email && identity.email.toLowerCase() !== user.email.toLowerCase()) {
+    if (externalAuthEnabled && user.externalAuthSubject !== identity?.subject) {
+      return identityNotBoundError;
+    }
+    if (identity?.email && identity.email.trim().toLowerCase() !== user.email.trim().toLowerCase()) {
       return { status: "error", message: "invitation_email_mismatch" };
     }
     tenantId = String(formData.get("tenantId") ?? "").trim();
@@ -2933,7 +2938,7 @@ export async function acceptTenantInvitationAction(
     }
 
     const member = await acceptTenantInvitation({ userId: user.id, tenantId, membershipId, invitationToken });
-    if (!member) {
+    if (!member || member.id !== membershipId || member.tenantId !== tenantId || member.user.id !== user.id) {
       return { status: "error", message: "invitation_unavailable" };
     }
     invitationAccepted = true;
