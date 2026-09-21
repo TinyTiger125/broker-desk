@@ -12,6 +12,9 @@ const supabaseSignIn = await readFile(new URL("../src/components/supabase-sign-i
 const supabaseClient = await readFile(new URL("../src/lib/supabase/client.ts", import.meta.url), "utf8");
 const accountSignOut = await readFile(new URL("../src/components/account-sign-out-button.tsx", import.meta.url), "utf8");
 const workspaceSignOut = await readFile(new URL("../src/app/workspace/sign-out-button.tsx", import.meta.url), "utf8");
+const accountLifecycle = await readFile(new URL("../src/lib/supabase/account-lifecycle.ts", import.meta.url), "utf8");
+const supabaseAdmin = await readFile(new URL("../src/lib/supabase/admin.ts", import.meta.url), "utf8");
+const signUp = await readFile(new URL("../src/app/sign-up/[[...sign-up]]/page.tsx", import.meta.url), "utf8");
 
 const checks = [
   ["provider-neutral subject facade", provider.includes("export const getAuthSubject")],
@@ -34,6 +37,11 @@ const checks = [
   ["Supabase proxy claim boundary", supabaseProxy.includes("validateSupabaseClaims") && supabaseProxy.includes("hasValidClaims")],
   ["Supabase account sign-out failure state", accountSignOut.includes("signOutError") && accountSignOut.includes("disabled={pending}") && accountSignOut.includes('role="alert"')],
   ["Supabase workspace sign-out failure state", workspaceSignOut.includes("signOutError") && workspaceSignOut.includes("disabled={pending}") && workspaceSignOut.includes('role="alert"')],
+  ["Supabase lifecycle bootstrap policy", accountLifecycle.includes("planPlatformOwnerBootstrap") && accountLifecycle.includes("kind: \"idempotent\"")],
+  ["Supabase lifecycle invitation scope", accountLifecycle.includes("validateMemberInvitation") && accountLifecycle.includes("cannot grant platform owner")],
+  ["Supabase lifecycle reset/revocation policy", accountLifecycle.includes("planPasswordReset") && accountLifecycle.includes("revokeExistingSessions") && accountLifecycle.includes("canUseSupabaseSession")],
+  ["Supabase admin key server boundary", supabaseAdmin.includes('import "server-only"') && supabaseAdmin.includes("SUPABASE_SERVICE_ROLE_KEY") && supabaseAdmin.includes("inviteUserByEmail") && supabaseAdmin.includes("updateUserById")],
+  ["Public self-signup remains closed", signUp.includes("邀请制") && !signUp.includes("createBrowserClient")],
 ];
 
 const failed = checks.filter(([, ok]) => !ok).map(([label]) => label);
