@@ -24,11 +24,8 @@ export function assertNoPgEnvironment(environment = process.env) {
 function assertControlledOptions({ email, useLatestClerkUser, deploymentEnvironment, vercelEnvironment, supabaseIdentity = false, explicitApproval = false }) {
   if (supabaseIdentity) {
     if (!explicitApproval) throw new Error("Supabase owner bootstrap requires explicit approval");
-    const validEnvironment = (deploymentEnvironment === "staging" && vercelEnvironment === "preview")
-      || (deploymentEnvironment === "preview" && vercelEnvironment === "preview")
-      || (deploymentEnvironment === "production" && vercelEnvironment === "production")
-      || (deploymentEnvironment === "development" && (!vercelEnvironment || vercelEnvironment === "development"));
-    if (!validEnvironment) throw new Error("Supabase owner bootstrap requires an explicit preview/staging or production environment");
+    const validEnvironment = deploymentEnvironment === "staging" && vercelEnvironment === "preview";
+    if (!validEnvironment) throw new Error("Supabase owner bootstrap requires the fixed Staging Preview environment");
     if (!email || !email.includes("@") || useLatestClerkUser) {
       throw new Error("Supabase owner bootstrap requires explicit email and never accepts latest-user discovery");
     }

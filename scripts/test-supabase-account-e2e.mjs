@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import assert from "node:assert/strict";
 
 const root = new URL("..", import.meta.url);
@@ -42,10 +43,33 @@ assert.match(rollback, /none', 'manual', 'clerk/, "rollback must restore the pre
 assert.match(supabaseBootstrap, /BROKER_DESK_SUPABASE_OWNER_BOOTSTRAP_APPROVED/, "Supabase owner bootstrap must require an explicit approval gate");
 assert.doesNotMatch(supabaseBootstrap, /process\.loadEnvFile\([^)]*\.env\.local/, "Supabase owner bootstrap must never auto-load the old .env.local");
 assert.match(supabaseBootstrap, /DATABASE_MIGRATION_URL/, "Supabase owner bootstrap must use the explicit migration connection");
+assert.match(supabaseBootstrap, /DATABASE_MIGRATION_CA_CERT_PATH/, "Supabase owner bootstrap must require the dedicated CA path");
+assert.match(supabaseBootstrap, /runSupabaseOwnerPreflight/, "Supabase owner bootstrap must expose a read-only preflight");
+assert.match(supabaseBootstrap, /rejectUnauthorized: true/, "Supabase owner bootstrap must keep verified TLS");
 
-const { resolveExplicitSupabaseUser } = await import("../scripts/bootstrap-initial-supabase-owner.mjs");
+const { resolveExplicitSupabaseUser, bootstrapInitialSupabaseOwner, buildSupabasePoolConfig, SUPABASE_PROJECT_REF, SUPABASE_POOLER_HOST } = await import("../scripts/bootstrap-initial-supabase-owner.mjs");
 const admin = { auth: { admin: { async getUserById(id) { return { data: { user: { id, email: "owner@example.com" } }, error: null }; } } } };
 const authUserId = "11111111-1111-4111-8111-111111111111";
 assert.deepEqual(await resolveExplicitSupabaseUser({ admin, userId: authUserId, email: "OWNER@example.com" }), { authUserId, email: "owner@example.com" });
 await assert.rejects(() => resolveExplicitSupabaseUser({ admin, userId: authUserId, email: "other@example.com" }), /mismatch/);
+await assert.rejects(
+  () => bootstrapInitialSupabaseOwner({ admin, client: { query: async () => ({ rows: [] }) }, userId: authUserId, email: "owner@example.com", explicitApproval: true, deploymentEnvironment: "production", vercelEnvironment: "production" }),
+  /fixed Staging Preview environment/,
+);
+
+const caPath = process.env.DATABASE_MIGRATION_CA_CERT_PATH ?? "/Users/laineyzhu/Documents/独立开发项目/房产专家/东京环境验证/supabase-prod-ca-2021.crt";
+if (existsSync(caPath)) {
+  const validDatabaseUrl = `postgresql://postgres.${SUPABASE_PROJECT_REF}:secret@${SUPABASE_POOLER_HOST}:5432/postgres`;
+  const config = buildSupabasePoolConfig({
+    connectionString: validDatabaseUrl,
+    supabaseUrl: `https://${SUPABASE_PROJECT_REF}.supabase.co`,
+    caPath,
+  });
+  assert.equal(config.host, SUPABASE_POOLER_HOST);
+  assert.equal(config.ssl.rejectUnauthorized, true);
+  assert.ok(Buffer.isBuffer(config.ssl.ca), "Tokyo Supabase pool config must carry the pinned CA");
+  assert.throws(() => buildSupabasePoolConfig({ connectionString: validDatabaseUrl, supabaseUrl: "https://wrong-project.supabase.co", caPath }), /fixed Tokyo validation project/);
+  assert.throws(() => buildSupabasePoolConfig({ connectionString: `${validDatabaseUrl}?sslmode=require`, supabaseUrl: `https://${SUPABASE_PROJECT_REF}.supabase.co`, caPath }), /fixed Tokyo pooler/);
+  assert.throws(() => buildSupabasePoolConfig({ connectionString: validDatabaseUrl.replace(`postgres.${SUPABASE_PROJECT_REF}`, "postgres.otherref"), supabaseUrl: `https://${SUPABASE_PROJECT_REF}.supabase.co`, caPath }), /fixed Tokyo project/);
+}
 console.log("Supabase account end-to-end contract: PASS");
