@@ -30,8 +30,19 @@ export async function resolveExplicitSupabaseUser({ admin, userId, email }) {
 
 export async function bootstrapInitialSupabaseOwner({ admin, client, userId, email, deploymentEnvironment, vercelEnvironment }) {
   const user = await resolveExplicitSupabaseUser({ admin, userId, email });
+  const expectedSubject = `supabase:${user.authUserId}`;
+  const scopedClient = {
+    query: async (...args) => {
+      const result = await client.query(...args);
+      const sql = typeof args[0] === "string" ? args[0] : args[0]?.text;
+      if (sql?.includes("/* bootstrap:resolve-user */") && result.rows.some((row) => row.external_auth_subject !== expectedSubject)) {
+        throw new Error("Supabase bootstrap database mapping does not match the explicit Auth user");
+      }
+      return result;
+    },
+  };
   return bootstrapInitialPlatformOwner({
-    client,
+    client: scopedClient,
     email: user.email,
     deploymentEnvironment,
     vercelEnvironment,
