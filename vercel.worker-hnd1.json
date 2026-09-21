@@ -1,0 +1,10 @@
+{
+  "buildCommand": "npm run build",
+  "regions": ["hnd1"],
+  "crons": [
+    {
+      "path": "/api/internal/import-jobs/cron",
+      "schedule": "* * * * *"
+    }
+  ]
+}
