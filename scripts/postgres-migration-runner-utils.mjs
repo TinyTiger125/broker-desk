@@ -1,12 +1,16 @@
-const TRANSACTION_CONTROL_WORDS = new Set(["BEGIN", "COMMIT", "ROLLBACK", "START"]);
+const TRANSACTION_CONTROL_WORDS = new Set(["BEGIN", "COMMIT", "END", "ROLLBACK", "ABORT", "START"]);
 
 function isWhitespace(char) {
   return typeof char === "string" && /\s/.test(char);
 }
 
-function skipQuotedString(sql, start, quote) {
+function skipQuotedString(sql, start, quote, backslashEscapes = false) {
   let index = start + 1;
   while (index < sql.length) {
+    if (backslashEscapes && sql[index] === "\\") {
+      index += 2;
+      continue;
+    }
     if (sql[index] === quote) {
       if (sql[index + 1] === quote) {
         index += 2;
@@ -71,7 +75,14 @@ function scanTopLevelStatements(sql) {
       continue;
     }
     if (char === "'" || char === '"') {
-      index = skipQuotedString(sql, index, char);
+      // PostgreSQL E'...' and U&'...' literals can escape a quote with a
+      // backslash. A premature quote close could hide a later END/COMMIT.
+      const previous = sql[index - 1];
+      const escapedPrefix = (previous === "E" || previous === "e")
+        && (index < 2 || !/[A-Za-z0-9_$]/.test(sql[index - 2]));
+      const unicodePrefix = previous === "&" && /[Uu]/.test(sql[index - 2] ?? "")
+        && (index < 3 || !/[A-Za-z0-9_$]/.test(sql[index - 3]));
+      index = skipQuotedString(sql, index, char, char === "'" && (escapedPrefix || unicodePrefix));
       continue;
     }
     const dollarTag = readDollarTag(sql, index);

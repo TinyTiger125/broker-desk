@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { Client } from "pg";
@@ -11,6 +10,7 @@ import {
 
 export const DEFAULT_CONNECTION_TIMEOUT_MS = 10_000;
 export const DEFAULT_LOCK_TIMEOUT_MS = 10_000;
+export const DEFAULT_STATEMENT_TIMEOUT_MS = 60_000;
 const MIGRATION_LEDGER_SQL = `
   CREATE TABLE IF NOT EXISTS broker_desk_schema_migrations (
     name TEXT PRIMARY KEY,
@@ -69,23 +69,28 @@ async function runPrerequisiteTransaction(client, sql, name) {
 export async function runPostgresMigrations({
   Client: ClientConstructor = Client,
   databaseUrl,
+  clientConfig = null,
   migrationsDirectory = path.resolve("db/migrations"),
   stopAfter = null,
   connectionTimeoutMillis = DEFAULT_CONNECTION_TIMEOUT_MS,
   lockTimeoutMillis = DEFAULT_LOCK_TIMEOUT_MS,
+  statementTimeoutMillis = DEFAULT_STATEMENT_TIMEOUT_MS,
   prepareEmptyDatabase = false,
   log = console.log,
 } = {}) {
-  if (!databaseUrl) throw new Error("DATABASE_MIGRATION_URL or DATABASE_DEVELOPMENT_URL is required to run database migrations.");
+  if (!databaseUrl && !clientConfig) throw new Error("An explicit migration database connection is required.");
   assertTimeout("connectionTimeoutMillis", connectionTimeoutMillis);
   assertTimeout("lockTimeoutMillis", lockTimeoutMillis);
+  assertTimeout("statementTimeoutMillis", statementTimeoutMillis);
 
   const migrationNames = (await readdir(migrationsDirectory))
     .filter((name) => /^\d{8}_\d{3}_.+\.sql$/.test(name))
     .sort();
   if (migrationNames.length === 0) throw new Error("No SQL migrations were found in db/migrations.");
 
-  const client = new ClientConstructor({ connectionString: databaseUrl, connectionTimeoutMillis });
+  const client = new ClientConstructor(clientConfig
+    ? { ...clientConfig, connectionTimeoutMillis }
+    : { connectionString: databaseUrl, connectionTimeoutMillis });
   let lockAcquired = false;
   let primaryError = null;
   let cleanupError = null;
@@ -93,9 +98,9 @@ export async function runPostgresMigrations({
   try {
     await client.connect();
     await client.query(`SET lock_timeout = '${lockTimeoutMillis}ms'`);
+    await client.query(`SET statement_timeout = '${statementTimeoutMillis}ms'`);
     await client.query("SELECT pg_advisory_lock(hashtext('broker-desk-schema-migrations'))");
     lockAcquired = true;
-    await client.query("SET lock_timeout = '0'");
     await client.query(MIGRATION_LEDGER_SQL);
 
     if (prepareEmptyDatabase) {
@@ -184,12 +189,8 @@ function readOption(name) {
 }
 
 async function runFromCommandLine() {
-  // Node parses dotenv values correctly, including DATABASE_URL query strings.
-  // Do not source .env.local in a shell: '&' in a connection string becomes a
-  // shell control character and can silently break a migration command.
-  if (!process.env.DATABASE_URL && !process.env.DATABASE_MIGRATION_URL && !process.env.DATABASE_DEVELOPMENT_URL && existsSync(path.resolve(".env.local"))) {
-    process.loadEnvFile(path.resolve(".env.local"));
-  }
+  // Migration targets must be supplied explicitly. An ambient .env.local can
+  // point at a different database and is never loaded by this command.
   if (process.env.NODE_ENV === "production" && process.env.BROKER_DESK_RUN_MIGRATIONS !== "true") {
     throw new Error("Set BROKER_DESK_RUN_MIGRATIONS=true before running production migrations.");
   }
@@ -198,11 +199,19 @@ async function runFromCommandLine() {
   if (prepareEmptyDatabase && process.env.BROKER_DESK_PREPARE_EMPTY_DB !== "true") {
     throw new Error("Pass BROKER_DESK_PREPARE_EMPTY_DB=true to explicitly enable empty-database prerequisite writes.");
   }
+  const databaseUrl = process.env.DATABASE_MIGRATION_URL ?? process.env.DATABASE_DEVELOPMENT_URL;
+  if (databaseUrl) {
+    const hostname = new URL(databaseUrl).hostname;
+    if (hostname === "supabase.com" || hostname.endsWith(".supabase.com")) {
+      throw new Error("Use db:migrate:tokyo for the pinned Supabase migration target and verified CA");
+    }
+  }
   await runPostgresMigrations({
-    databaseUrl: process.env.DATABASE_MIGRATION_URL ?? process.env.DATABASE_DEVELOPMENT_URL,
+    databaseUrl,
     stopAfter,
     connectionTimeoutMillis: Number(process.env.BROKER_DESK_MIGRATION_CONNECTION_TIMEOUT_MS ?? DEFAULT_CONNECTION_TIMEOUT_MS),
     lockTimeoutMillis: Number(process.env.BROKER_DESK_MIGRATION_LOCK_TIMEOUT_MS ?? DEFAULT_LOCK_TIMEOUT_MS),
+    statementTimeoutMillis: Number(process.env.BROKER_DESK_MIGRATION_STATEMENT_TIMEOUT_MS ?? DEFAULT_STATEMENT_TIMEOUT_MS),
     prepareEmptyDatabase,
   });
 }

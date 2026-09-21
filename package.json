@@ -13,7 +13,7 @@
     "test:postgres-migration-runner": "node scripts/test-postgres-migration-runner.mjs && node scripts/test-postgres-migration-runner-utils.mjs",
     "test:postgres-migration-runner-postgres": "node scripts/test-postgres-migration-runner-postgres.mjs",
     "test:postgres-migration-runner-full": "node scripts/test-postgres-migration-runner-full.mjs",
-    "db:prepare-empty-migration-prerequisites": "node scripts/prepare-empty-database-migration-prerequisites.mjs",
+    "db:migrate:tokyo": "node scripts/run-tokyo-supabase-migrations.mjs",
     "db:provision-runtime-roles": "node scripts/provision-postgres-runtime-roles.mjs",
     "worker:import": "node scripts/run-import-worker.mjs",
     "smoke:friends-guarantee-pdf": "node scripts/friends-guarantee-pdf-fidelity.mjs",

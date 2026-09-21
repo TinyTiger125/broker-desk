@@ -50,7 +50,7 @@ class FakeClient {
   async query(text, params = []) {
     const sql = String(text).replace(/\s+/g, " ").trim();
     if (sql.startsWith("SET lock_timeout") && FakeClient.mode.lockError) throw Object.assign(new Error("lock timeout"), { code: "55P03" });
-    if (sql.startsWith("SET lock_timeout")) return { rows: [], rowCount: 0 };
+    if (sql.startsWith("SET lock_timeout") || sql.startsWith("SET statement_timeout")) return { rows: [], rowCount: 0 };
     if (sql.includes("pg_advisory_lock")) return { rows: [], rowCount: 0 };
     if (sql.includes("pg_advisory_unlock")) {
       this.unlockCount += 1;

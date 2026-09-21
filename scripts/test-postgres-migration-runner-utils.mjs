@@ -10,4 +10,19 @@ assert.equal(stripEmbeddedTransaction(unwrapped), unwrapped);
 const literal = "BEGIN;\nDO $$BEGIN RAISE NOTICE 'COMMIT;'; END$$;\nCOMMIT;";
 assert.equal(stripEmbeddedTransaction(literal), "DO $$BEGIN RAISE NOTICE 'COMMIT;'; END$$;");
 
+for (const terminator of ["END", "ABORT", "ROLLBACK"]) {
+  assert.throws(
+    () => stripEmbeddedTransaction(`BEGIN;\nSELECT 1;\n${terminator};\nSELECT 2;\nCOMMIT;`),
+    /transaction boundary is not safely recognized/,
+  );
+}
+assert.equal(
+  stripEmbeddedTransaction("BEGIN;\nSELECT E'escaped \\' quote; END; still literal';\nSELECT 1;\nCOMMIT;"),
+  "SELECT E'escaped \\' quote; END; still literal';\nSELECT 1;",
+);
+assert.throws(
+  () => stripEmbeddedTransaction("BEGIN;\nSELECT E'escaped \\' quote';\nEND;\nCOMMIT;"),
+  /transaction boundary is not safely recognized/,
+);
+
 console.log("PASS: migration runner strips only an outer embedded transaction wrapper and preserves SQL literals");
