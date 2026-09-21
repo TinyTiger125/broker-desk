@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { validateSupabaseClaims } from "@/lib/supabase/identity";
 
 function getSupabaseConfig() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
@@ -8,8 +9,8 @@ function getSupabaseConfig() {
   return { url, key };
 }
 
-function copySupabaseResponseState(source: NextResponse, target: NextResponse) {
-  for (const cookie of source.cookies.getAll()) target.cookies.set(cookie.name, cookie.value);
+export function copySupabaseResponseState(source: NextResponse, target: NextResponse) {
+  for (const cookie of source.cookies.getAll()) target.cookies.set(cookie);
   for (const header of ["cache-control", "expires", "pragma"]) {
     const value = source.headers.get(header);
     if (value) target.headers.set(header, value);
@@ -25,15 +26,24 @@ export async function updateSupabaseSession(request: NextRequest, options: { req
       getAll() {
         return request.cookies.getAll();
       },
-      setAll(cookiesToSet) {
+      setAll(cookiesToSet, headers) {
         cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
         response = NextResponse.next({ request });
         cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
+        Object.entries(headers).forEach(([name, value]) => response.headers.set(name, value));
       },
     },
   });
   const { data, error } = await supabase.auth.getClaims();
-  if (options.requireAuth && (error || !data?.claims?.sub)) {
+  const claims = data?.claims as Record<string, unknown> | undefined;
+  const projectUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+  const hasValidClaims = Boolean(
+    !error &&
+      claims &&
+      projectUrl &&
+      validateSupabaseClaims(claims, projectUrl),
+  );
+  if (options.requireAuth && !hasValidClaims) {
     if (request.nextUrl.pathname.startsWith("/api/")) {
       return copySupabaseResponseState(response, NextResponse.json({ ok: false, error: "authentication_required" }, { status: 401 }));
     }

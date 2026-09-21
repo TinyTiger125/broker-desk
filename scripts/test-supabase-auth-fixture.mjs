@@ -29,6 +29,7 @@ const payload = {
   session_id: "session_fixture_01",
   is_anonymous: false,
   user_metadata: { full_name: "Fixture User" },
+  iat: Math.floor(Date.now() / 1000) - 30,
   exp: Math.floor(Date.now() / 1000) + 300,
 };
 const encodedHeader = base64url(JSON.stringify(header));
@@ -68,4 +69,10 @@ const tampered = `${encodedHeader}.${base64url(JSON.stringify({ ...payload, sub:
 const invalid = await client.auth.getClaims(tampered, { keys: [publicJwk] });
 if (!invalid.error || invalid.data) throw new Error("tampered fixture was accepted");
 
-console.log("supabase auth fixture passed (valid JWKS signature, subject mapping, tampered signature rejection)");
+const expiredPayload = { ...payload, iat: Math.floor(Date.now() / 1000) - 600, exp: Math.floor(Date.now() / 1000) - 300 };
+const expiredInput = `${encodedHeader}.${base64url(JSON.stringify(expiredPayload))}`;
+const expiredToken = `${expiredInput}.${sign("RSA-SHA256", Buffer.from(expiredInput), privateKey).toString("base64url")}`;
+const expired = await client.auth.getClaims(expiredToken, { keys: [publicJwk] });
+if (!expired.error || expired.data) throw new Error("expired fixture was accepted");
+
+console.log("supabase auth fixture passed (valid, tampered, expired, issuer/audience/role/anonymous claim boundaries)");

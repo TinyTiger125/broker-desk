@@ -10,6 +10,8 @@ const supabaseAuth = await readFile(new URL("../src/lib/supabase/auth.ts", impor
 const supabaseProxy = await readFile(new URL("../src/lib/supabase/proxy.ts", import.meta.url), "utf8");
 const supabaseSignIn = await readFile(new URL("../src/components/supabase-sign-in-form.tsx", import.meta.url), "utf8");
 const supabaseClient = await readFile(new URL("../src/lib/supabase/client.ts", import.meta.url), "utf8");
+const accountSignOut = await readFile(new URL("../src/components/account-sign-out-button.tsx", import.meta.url), "utf8");
+const workspaceSignOut = await readFile(new URL("../src/app/workspace/sign-out-button.tsx", import.meta.url), "utf8");
 
 const checks = [
   ["provider-neutral subject facade", provider.includes("export const getAuthSubject")],
@@ -27,8 +29,11 @@ const checks = [
   ["Supabase proxy refresh", supabaseProxy.includes("auth.getClaims()") && proxy.includes("updateSupabaseSession")],
   ["Supabase sign-in path", signIn.includes("SupabaseSignInForm") && supabaseSignIn.includes("signInWithPassword")],
   ["Supabase browser client", supabaseClient.includes("createBrowserClient")],
-  ["Supabase response cookie propagation", supabaseProxy.includes("copySupabaseResponseState") && supabaseProxy.includes("source.cookies.getAll") && supabaseProxy.includes("target.cookies.set")],
+  ["Supabase response cookie propagation", supabaseProxy.includes("copySupabaseResponseState") && supabaseProxy.includes("source.cookies.getAll") && supabaseProxy.includes("target.cookies.set(cookie)") && supabaseProxy.includes("Object.entries(headers)" )],
   ["Supabase claim boundary", supabaseAuth.includes("validateSupabaseClaims")],
+  ["Supabase proxy claim boundary", supabaseProxy.includes("validateSupabaseClaims") && supabaseProxy.includes("hasValidClaims")],
+  ["Supabase account sign-out failure state", accountSignOut.includes("signOutError") && accountSignOut.includes("disabled={pending}") && accountSignOut.includes('role="alert"')],
+  ["Supabase workspace sign-out failure state", workspaceSignOut.includes("signOutError") && workspaceSignOut.includes("disabled={pending}") && workspaceSignOut.includes('role="alert"')],
 ];
 
 const failed = checks.filter(([, ok]) => !ok).map(([label]) => label);
