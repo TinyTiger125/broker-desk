@@ -135,10 +135,15 @@ import {
   type ImportValidationIssueLevel,
 } from "@/lib/import-mapping";
 import { materializeExtractionReviewValue } from "@/lib/extraction-review-materialization";
-import { assertTenantPermission, requireTenantSession, type TenantSession } from "@/lib/tenant-session";
+import {
+  assertTenantPermission,
+  requireTenantSession,
+  TenantSessionError,
+  type TenantSession,
+} from "@/lib/tenant-session";
 import { createRequestContext } from "@/lib/visibility-resolver";
 import { ACTIVE_TENANT_COOKIE_NAME } from "@/lib/tenant-permissions";
-import { requirePlatformOwnerSession } from "@/lib/platform-session";
+import { PlatformSessionError, requirePlatformOwnerSession } from "@/lib/platform-session";
 import { isLifecycleStatus, type LifecycleStatus } from "@/lib/record-lifecycle";
 import { FORBIDDEN_RECORD_INPUT_FIELDS } from "@/lib/record-input-guard";
 import { deriveTenantServiceState, isTenantServiceOperational, validateTenantServicePeriod } from "@/lib/tenant-service";
@@ -4471,18 +4476,29 @@ async function saveGuaranteeApplicationPreviewWithScope(
   formData: FormData,
   saveMode: GuaranteePreviewSaveMode,
 ) {
-  const session = await requireTenantSession({ permission: "output.update_draft" });
-  if (saveMode === "template") {
-    await requirePlatformOwnerSession();
-    assertTenantPermission(session, "template.edit_draft");
-    assertTenantPermission(session, "template.publish");
+  const caseId = String(formData.get("caseId") ?? "").trim();
+  if (!caseId && saveMode !== "template") throw new Error("案件IDが不正です。");
+  const templateId = String(formData.get("templateId") ?? FRIENDS_GUARANTEE_DEFAULT_TEMPLATE_ID).trim() || FRIENDS_GUARANTEE_DEFAULT_TEMPLATE_ID;
+  let session: Awaited<ReturnType<typeof requireTenantSession>>;
+  try {
+    // Official template layout is a platform resource. Its write authority is
+    // the platform-owner membership, independent of the active tenant's case
+    // draft capability. Case-scoped saves retain the tenant output permission.
+    session = await requireTenantSession(saveMode === "template" ? {} : { permission: "output.update_draft" });
+    if (saveMode === "template") await requirePlatformOwnerSession();
+  } catch (error) {
+    if (
+      saveMode === "template" &&
+      ((error instanceof TenantSessionError && error.code === "permission_denied") ||
+        (error instanceof PlatformSessionError && error.code === "platform_forbidden"))
+    ) {
+      redirect(`/platform/templates/${encodeURIComponent(templateId)}?flash=template_layout_forbidden`);
+    }
+    throw error;
   }
   const user = session.user;
   const tenantId = session.tenant.id;
 
-  const caseId = String(formData.get("caseId") ?? "").trim();
-  if (!caseId && saveMode !== "template") throw new Error("案件IDが不正です。");
-  const templateId = String(formData.get("templateId") ?? FRIENDS_GUARANTEE_DEFAULT_TEMPLATE_ID).trim() || FRIENDS_GUARANTEE_DEFAULT_TEMPLATE_ID;
   const template = findGuaranteeCompanyTemplate(templateId);
   if (!template) throw new Error("保証会社テンプレートが見つかりません。");
   const getTemplateEditorRedirectHref = (flash: "template_layout_unchanged" | "template_layout_saved") => {
@@ -4491,7 +4507,7 @@ async function saveGuaranteeApplicationPreviewWithScope(
     return `/platform/templates/${encodeURIComponent(template.id)}?${redirectParams.toString()}`;
   };
 
-  const brokerageCase = caseId ? await requireWritableCase(session, caseId) : null;
+  const brokerageCase = saveMode === "case" && caseId ? await requireWritableCase(session, caseId) : null;
   const previousDraft = brokerageCase
     ? await getGuaranteeApplicationDraft({ userId: user.id, tenantId, caseId, templateId: template.id })
     : null;

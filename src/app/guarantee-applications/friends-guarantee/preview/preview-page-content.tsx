@@ -37,8 +37,9 @@ import {
 import { resolveGuaranteeTemplateLayout } from "@/lib/guarantee-template-layout-runtime";
 import { getFriendsOverlayEstimatedTextFit, type FriendsOverlayTextFitStatus } from "@/lib/friends-guarantee-fit";
 import { evaluateGuaranteeDownloadGate } from "@/lib/guarantee-download-gate";
+import { getLocale, type Locale } from "@/lib/locale";
 import { requireTenantSession } from "@/lib/tenant-session";
-import { requirePlatformOwnerSession } from "@/lib/platform-session";
+import { PlatformSessionError, requirePlatformOwnerSession } from "@/lib/platform-session";
 import { createRequestContext } from "@/lib/visibility-resolver";
 import { areCaseSourcesReadable } from "@/lib/w93-access";
 
@@ -85,6 +86,28 @@ function getDraftValue(draftValues: Record<string, unknown>, fieldKey: string) {
   if (typeof value === "string") return value;
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
   return "";
+}
+
+function templateAccessCopy(locale: Locale) {
+  if (locale === "zh") {
+    return {
+      title: "官方模板工厂",
+      denied: "需要平台管理员权限。当前账号无法编辑或发布官方模板。",
+      saveDenied: "当前账号没有保存官方模板的权限。未保存任何修改；离开页面后未保存的编辑内容可能丢失。",
+    };
+  }
+  if (locale === "ko") {
+    return {
+      title: "공식 템플릿 공장",
+      denied: "플랫폼 관리자 권한이 필요합니다. 현재 계정은 공식 템플릿을 편집하거나 게시할 수 없습니다.",
+      saveDenied: "현재 계정에는 공식 템플릿 저장 권한이 없습니다. 변경 사항은 저장되지 않았으며 페이지를 떠나면 저장하지 않은 편집 내용이 사라질 수 있습니다.",
+    };
+  }
+  return {
+    title: "公式テンプレート工場",
+    denied: "プラットフォーム管理者権限が必要です。現在のアカウントでは公式テンプレートを編集・公開できません。",
+    saveDenied: "現在のアカウントには公式テンプレートの保存権限がありません。変更は保存されておらず、ページを離れると未保存の編集内容が失われる可能性があります。",
+  };
 }
 
 function previewFieldId(fieldKey: string) {
@@ -151,9 +174,27 @@ export async function GuaranteeApplicationPreviewPage({
   templateId: lockedTemplateId,
 }: SharedGuaranteeApplicationPreviewPageProps) {
   const params = searchParams ? await searchParams : undefined;
-  const session = await requireTenantSession({ permission: "output.preview" });
   const isTemplateAuthoring = mode === "authoring";
-  if (isTemplateAuthoring) await requirePlatformOwnerSession();
+  const locale = await getLocale();
+  const accessCopy = templateAccessCopy(locale);
+  const session = await requireTenantSession(isTemplateAuthoring ? {} : { permission: "output.preview" });
+  if (isTemplateAuthoring) {
+    try {
+      await requirePlatformOwnerSession();
+    } catch (error) {
+      if (error instanceof PlatformSessionError && error.code === "platform_forbidden") {
+        return (
+          <main className="mx-auto max-w-3xl p-6">
+            <section className="rounded-xl border border-rose-200 bg-rose-50 p-6 text-rose-900">
+              <h1 className="text-xl font-black">{accessCopy.title}</h1>
+              <p className="mt-2 text-sm font-semibold">{accessCopy.denied}</p>
+            </section>
+          </main>
+        );
+      }
+      throw error;
+    }
+  }
   const user = session.user;
   const tenantId = session.tenant.id;
 
@@ -434,11 +475,14 @@ export async function GuaranteeApplicationPreviewPage({
 
         <aside className="space-y-4">
           <PageFlashBanner
+            tone={params?.flash === "template_layout_forbidden" ? "error" : "success"}
             message={
               params?.flash === "template_layout_saved"
                 ? "テンプレート位置を保存しました。次の案件にもこの位置が反映されます。"
                 : params?.flash === "template_layout_unchanged"
                   ? "保存するテンプレート変更はありません。"
+                  : params?.flash === "template_layout_forbidden"
+                    ? accessCopy.saveDenied
                 : params?.flash === "preview_saved"
                   ? "プレビュー用の入力内容を保存しました。左のPDFを確認してください。"
                   : undefined
