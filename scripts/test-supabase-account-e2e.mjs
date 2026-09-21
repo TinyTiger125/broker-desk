@@ -54,6 +54,14 @@ assert.doesNotMatch(runtimeProvisioner, /GRANT SELECT, INSERT, UPDATE, DELETE ON
 assert.match(runtimeProvisioner, /20260902_003_runtime_acl_baseline\.sql/, "programmatic role provisioner must reuse the reviewed ACL baseline");
 assert.match(runtimeProvisioner, /GRANT USAGE ON SCHEMA public TO brokerdesk_runtime/, "programmatic role provisioner must retain public schema usage");
 assert.match(runtimeProvisioner, /brokerdesk_admin ownership and FORCE RLS/, "programmatic role provisioner must fail closed on migration ownership");
+assert.match(runtimeRoles, /GRANT USAGE ON SCHEMA public TO brokerdesk_admin/, "admin lifecycle owner must retain public schema usage");
+assert.match(runtimeRoles, /GRANT SELECT, INSERT, UPDATE ON TABLE public\.users TO brokerdesk_admin/, "admin matrix must cover identity synchronization");
+assert.match(runtimeRoles, /GRANT SELECT, UPDATE ON TABLE public\.tenant_memberships TO brokerdesk_admin/, "admin matrix must cover membership synchronization and access checks");
+assert.match(runtimeRoles, /GRANT SELECT, UPDATE ON TABLE public\.import_jobs TO brokerdesk_admin/, "admin matrix must cover import claim and preimport locks");
+assert.match(runtimeRoles, /GRANT SELECT, DELETE ON TABLE public\.attachments TO brokerdesk_admin/, "admin matrix must cover preimport source deletion");
+assert.match(runtimeRoles, /GRANT INSERT ON TABLE public\.audit_logs TO brokerdesk_admin/, "admin matrix must cover deletion audit evidence");
+assert.match(runtimeProvisioner, /GRANT SELECT, INSERT, UPDATE ON TABLE public\.users TO brokerdesk_admin/, "programmatic admin matrix must cover identity synchronization");
+assert.match(runtimeProvisioner, /GRANT SELECT, DELETE ON TABLE public\.private_attachment_blobs TO brokerdesk_admin/, "programmatic admin matrix must cover blob cascade cleanup");
 
 const { resolveExplicitSupabaseUser, bootstrapInitialSupabaseOwner, buildSupabasePoolConfig, SUPABASE_PROJECT_REF, SUPABASE_POOLER_HOST } = await import("../scripts/bootstrap-initial-supabase-owner.mjs");
 const admin = { auth: { admin: { async getUserById(id) { return { data: { user: { id, email: "owner@example.com" } }, error: null }; } } } };

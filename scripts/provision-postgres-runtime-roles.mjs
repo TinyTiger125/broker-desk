@@ -74,6 +74,18 @@ try {
   const aclBaseline = readFileSync(resolve(process.cwd(), "db/migrations/20260902_003_runtime_acl_baseline.sql"), "utf8");
   await client.query(aclBaseline);
   await client.query("GRANT USAGE ON SCHEMA public TO brokerdesk_runtime");
+  // The lifecycle SECURITY DEFINER owner needs schema visibility plus only
+  // the explicit relations touched by its current identity, import-claim,
+  // synchronization, and preimport-delete paths. Keep this matrix narrow.
+  await client.query("GRANT USAGE ON SCHEMA public TO brokerdesk_admin");
+  await client.query("GRANT SELECT, INSERT, UPDATE ON TABLE public.users TO brokerdesk_admin");
+  await client.query("GRANT SELECT ON TABLE public.tenants TO brokerdesk_admin");
+  await client.query("GRANT SELECT, UPDATE ON TABLE public.tenant_memberships TO brokerdesk_admin");
+  await client.query("GRANT SELECT, UPDATE ON TABLE public.import_jobs TO brokerdesk_admin");
+  await client.query("GRANT SELECT, DELETE ON TABLE public.attachments TO brokerdesk_admin");
+  await client.query("GRANT SELECT, DELETE ON TABLE public.private_attachment_blobs TO brokerdesk_admin");
+  await client.query("GRANT SELECT ON TABLE public.attachment_links TO brokerdesk_admin");
+  await client.query("GRANT INSERT ON TABLE public.audit_logs TO brokerdesk_admin");
   await client.query("GRANT USAGE ON SCHEMA brokerdesk_private TO brokerdesk_runtime, brokerdesk_admin");
   await client.query("GRANT EXECUTE ON FUNCTION brokerdesk_private.current_external_auth_subject() TO brokerdesk_runtime");
   await client.query("GRANT EXECUTE ON FUNCTION brokerdesk_private.current_user_id() TO brokerdesk_runtime");

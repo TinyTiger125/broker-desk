@@ -91,6 +91,22 @@ GRANT SELECT ON TABLE public.guarantee_template_layout_versions TO brokerdesk_ru
 GRANT SELECT ON TABLE public.broker_desk_schema_migrations TO brokerdesk_runtime;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO brokerdesk_runtime;
 
+-- brokerdesk_admin is the owner of the SECURITY DEFINER lifecycle helpers and
+-- their FORCE-RLS preimport tables.  Keep this matrix explicit: it covers
+-- only the relations read or written by current_user_id/can_access_*,
+-- external-auth synchronization, import claims, and preimport deletion.
+-- This is a server-only background capability; it is not an application
+-- session role and remains NOSUPERUSER/NOBYPASSRLS.
+GRANT USAGE ON SCHEMA public TO brokerdesk_admin;
+GRANT SELECT, INSERT, UPDATE ON TABLE public.users TO brokerdesk_admin;
+GRANT SELECT ON TABLE public.tenants TO brokerdesk_admin;
+GRANT SELECT, UPDATE ON TABLE public.tenant_memberships TO brokerdesk_admin;
+GRANT SELECT, UPDATE ON TABLE public.import_jobs TO brokerdesk_admin;
+GRANT SELECT, DELETE ON TABLE public.attachments TO brokerdesk_admin;
+GRANT SELECT, DELETE ON TABLE public.private_attachment_blobs TO brokerdesk_admin;
+GRANT SELECT ON TABLE public.attachment_links TO brokerdesk_admin;
+GRANT INSERT ON TABLE public.audit_logs TO brokerdesk_admin;
+
 -- The runtime must resolve its own active user and membership through the
 -- security-definer helpers. It does not receive direct global table access.
 GRANT USAGE ON SCHEMA brokerdesk_private TO brokerdesk_runtime;
@@ -99,9 +115,9 @@ GRANT EXECUTE ON FUNCTION brokerdesk_private.current_user_id() TO brokerdesk_run
 GRANT EXECUTE ON FUNCTION brokerdesk_private.can_access_tenant(TEXT) TO brokerdesk_runtime;
 GRANT EXECUTE ON FUNCTION brokerdesk_private.can_access_user(TEXT) TO brokerdesk_runtime;
 
--- The administrative worker receives no explicit business-table grants. The
--- migration owner relationship required by 20260908 is checked above and is
--- limited to definer/trigger execution; runtime access remains RLS-scoped.
+-- The administrative worker receives only the explicit lifecycle matrix above.
+-- It is a server-only background capability; ordinary runtime access remains
+-- RLS-scoped and the role retains NOSUPERUSER/NOBYPASSRLS.
 GRANT USAGE ON SCHEMA brokerdesk_private TO brokerdesk_admin;
 GRANT EXECUTE ON FUNCTION brokerdesk_private.sync_external_auth_user(TEXT, TEXT, TEXT) TO brokerdesk_admin;
 GRANT EXECUTE ON FUNCTION brokerdesk_private.suspend_external_auth_user(TEXT) TO brokerdesk_admin;
