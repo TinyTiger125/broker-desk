@@ -32,16 +32,21 @@ export async function inviteSupabaseUserByEmail(input: { email: string; redirect
   return { providerInvitationId: data.user.id, sentAt: new Date() };
 }
 
+/** Server-only global account ban. Use only for an explicit platform-account lifecycle action. */
 export async function setSupabaseUserDisabled(userId: string, disabled: boolean) {
   const normalized = userId.trim();
   if (!normalized) throw new Error("supabase_user_id_required");
   const admin = createSupabaseAdminClient().auth.admin;
   const { error } = await admin.updateUserById(normalized, { ban_duration: disabled ? "876000h" : "none" });
   if (error) throw new Error(disabled ? "supabase_user_disable_failed" : "supabase_user_enable_failed");
-  if (disabled) {
-    const revoke = await admin.signOut(normalized, "global");
-    if (revoke.error) throw new Error("supabase_user_session_revoke_failed");
-  }
 }
 
 export const disableSupabaseUser = (userId: string) => setSupabaseUserDisabled(userId, true);
+
+/** Supabase's admin signOut accepts a JWT, never a user id. Do not persist or log this token. */
+export async function revokeSupabaseSessionsWithAccessToken(accessToken: string) {
+  const token = accessToken.trim();
+  if (!token) throw new Error("supabase_access_token_required");
+  const { error } = await createSupabaseAdminClient().auth.admin.signOut(token, "global");
+  if (error) throw new Error("supabase_user_session_revoke_failed");
+}

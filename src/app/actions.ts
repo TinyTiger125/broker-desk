@@ -182,10 +182,11 @@ import type { InputFileExtractionResult } from "@/lib/input-file-extractor";
 import { queueExcelImportSource } from "@/lib/excel-import-queue";
 import { queueIdentityImportSources } from "@/lib/identity-import-queue";
 import { createClerkInvitationForTenantMember } from "@/lib/clerk-invitations";
-import { inviteSupabaseUserByEmail, setSupabaseUserDisabled } from "@/lib/supabase/admin";
+import { inviteSupabaseUserByEmail } from "@/lib/supabase/admin";
 import { assertCaseSourcesReadable } from "@/lib/w93-access";
 import { getVerifiedClerkAuthIdentity } from "@/lib/clerk-auth";
 import { isClerkAuthEnabled, isSupabaseAuthEnabled } from "@/lib/auth-mode";
+import { persistTenantMembershipStatus } from "@/lib/supabase/membership-lifecycle";
 import { CASE_FIELD_KEYS, getCaseFieldDefinition, getCaseFieldInformation, isKnownCaseFieldKey } from "@/lib/case-field-catalog";
 import {
   CASE_WORKBENCH_FIELD_KEYS,
@@ -3186,30 +3187,25 @@ export async function updateTenantMemberStatusAction(formData: FormData) {
     }
     throw error;
   }
-  const targetBeforeUpdate = await getTenantMemberById({ tenantId, membershipId });
-  if (!targetBeforeUpdate) throw new Error("メンバーが見つかりません。");
-  if (isSupabaseAuthEnabled()) {
-    const externalSubject = targetBeforeUpdate.user.externalAuthSubject?.trim() ?? "";
-    if (!externalSubject.startsWith("supabase:")) throw new Error("Supabase メンバーの外部認証紐付けがありません。");
-    await setSupabaseUserDisabled(externalSubject.slice("supabase:".length), status !== "active");
-  }
-  const member = await updateTenantMemberStatus({ tenantId, membershipId, status, actorUserId: session.user.id });
-  if (!member) throw new Error("メンバーが見つかりません。");
-  await addAuditLog({
-    tenantId,
-    userId: session.user.id,
-    action: status === "active" ? "member_reactivated" : status === "removed" ? "member_removed" : "member_suspended",
-    targetType: "member",
-    targetId: member.id,
-    message: `テナントメンバー状態を更新しました: ${member.user.email} / ${member.status}`,
-    context: {
-      memberUserId: member.userId,
-      role: member.role,
-      status: member.status,
-    },
+  const lifecycle = await persistTenantMembershipStatus({
+    targetTenantId: tenantId,
+    status,
+    updateLocal: () => updateTenantMemberStatus({ tenantId, membershipId, status, actorUserId: session.user.id }),
+    recordAudit: async (member) => addAuditLog({
+      tenantId,
+      userId: session.user.id,
+      action: status === "active" ? "member_reactivated" : status === "removed" ? "member_removed" : "member_suspended",
+      targetType: "member",
+      targetId: member.id,
+      message: `テナントメンバー状态已更新: ${member.user.email} / ${member.status}`,
+      context: { memberUserId: member.userId, role: member.role, status: member.status, supabaseAccess: isSupabaseAuthEnabled() ? "local_membership_gate" : "provider_default" },
+    }),
   });
+  if (!lifecycle.ok) throw new Error(lifecycle.reason);
+  const member = lifecycle.member;
   revalidatePath("/settings/members");
-  redirect(`/settings/members?flash=${status === "active" ? "member_reactivated" : status === "removed" ? "member_removed" : "member_suspended"}`);
+  const flash = lifecycle.warning ? "member_access_updated_audit_pending" : status === "active" ? "member_reactivated" : status === "removed" ? "member_removed" : "member_suspended";
+  redirect(`/settings/members?flash=${flash}`);
 }
 
 export async function revokeTenantMemberInvitationAction(formData: FormData) {

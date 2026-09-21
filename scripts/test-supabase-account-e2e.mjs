@@ -10,13 +10,16 @@ const postgres = await source("src/lib/data.postgres.ts");
 const route = await source("src/app/auth/callback/route.ts");
 const forgot = await source("src/components/supabase-forgot-password-form.tsx");
 const reset = await source("src/components/supabase-reset-password-form.tsx");
+const adminSource = await source("src/lib/supabase/admin.ts");
+const lifecycle = await source("src/lib/supabase/membership-lifecycle.ts");
 const tenantSession = await source("src/lib/tenant-session.ts");
 const migration = await source("db/migrations/20260921_001_supabase_auth_lifecycle.sql");
 const rollback = await source("db/migrations/rollback/20260921_001_supabase_auth_lifecycle.sql");
 
 assert.match(actions, /isSupabaseAuthEnabled\(\)/, "member invitation/status actions must branch for Supabase");
 assert.match(actions, /invitationProvider: result\.provider/, "Supabase invitation must finalize through the existing delivery action");
-assert.match(actions, /setSupabaseUserDisabled/, "member status action must call the server-only disable/revoke adapter");
+assert.match(actions, /persistTenantMembershipStatus/, "member status action must persist local membership state through the lifecycle service");
+assert.doesNotMatch(actions, /setSupabaseUserDisabled/, "tenant membership action must not globally ban a user across companies");
 assert.match(invitation, /"supabase"/, "memory delivery state must accept Supabase provider");
 assert.match(dataFacade, /bindCurrentSupabaseIdentityToPendingInvitation/, "provider facade must bind Supabase invited identities");
 assert.match(postgres, /bind_current_supabase_identity_to_pending_invitation/, "PostgreSQL facade must call the Supabase binding function");
@@ -24,6 +27,9 @@ assert.match(forgot, /resetPasswordForEmail/, "forgot-password must use the publ
 assert.match(forgot, /如果邮箱对应有效账户/, "forgot-password must use generic anti-enumeration success");
 assert.doesNotMatch(forgot, /actionLink|service.?role/i, "browser reset request must not expose provider links or admin secrets");
 assert.match(reset, /auth\.updateUser\(\{ password \}\)/, "recovery landing must update the authenticated password");
+assert.match(adminSource, /signOut\(token, "global"\)/, "global sign-out must receive an access JWT, never a user id");
+assert.doesNotMatch(adminSource, /signOut\(normalized/, "admin sign-out must not pass a UUID as JWT");
+assert.match(lifecycle, /local_membership_update_failed/, "tenant membership lifecycle must fail closed on local persistence failure");
 assert.match(route, /exchangeCodeForSession/, "callback must exchange the recovery code server-side");
 assert.match(route, /startsWith\("\/\/"\)/, "callback must reject protocol-relative redirect targets");
 assert.match(route, /includes\("\\\\"\)/, "callback must reject backslash redirect targets");
