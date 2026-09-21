@@ -10,6 +10,7 @@ const forgot = await source("src/components/supabase-forgot-password-form.tsx");
 const reset = await source("src/components/supabase-reset-password-form.tsx");
 const tenantSession = await source("src/lib/tenant-session.ts");
 const migration = await source("db/migrations/20260921_001_supabase_auth_lifecycle.sql");
+const rollback = await source("db/migrations/rollback/20260921_001_supabase_auth_lifecycle.sql");
 
 assert.match(actions, /isSupabaseAuthEnabled\(\)/, "member invitation/status actions must branch for Supabase");
 assert.match(actions, /invitationProvider: result\.provider/, "Supabase invitation must finalize through the existing delivery action");
@@ -24,6 +25,7 @@ assert.match(route, /startsWith\("\/\/"\)/, "callback must reject protocol-relat
 assert.match(tenantSession, /status === "active"/, "business resolver must select only active memberships");
 assert.match(migration, /'supabase'/, "unexecuted migration must allow Supabase invitation delivery");
 assert.match(migration, /Rollback:/, "migration must carry a rollback note");
+assert.match(rollback, /none', 'manual', 'clerk/, "rollback must restore the pre-Supabase provider boundary");
 
 const { resolveExplicitSupabaseUser } = await import("../scripts/bootstrap-initial-supabase-owner.mjs");
 const admin = { auth: { admin: { async getUserById(id) { return { data: { user: { id, email: "owner@example.com" } }, error: null }; } } } };
