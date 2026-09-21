@@ -26,6 +26,16 @@ try {
   const identity = (await client.query("SELECT current_database() AS database, current_schema() AS schema, current_user AS user_name, current_setting('transaction_read_only') AS transaction_read_only")).rows[0];
   if (identity.schema !== "public" || identity.transaction_read_only !== "off") throw new Error("empty-database prerequisites require a writable public-schema migration connection");
 
+  const ledgerExists = (await client.query("SELECT to_regclass('public.broker_desk_schema_migrations') AS ledger")).rows[0].ledger;
+  if (!ledgerExists) throw new Error("run through 20260830_002_object_attachment_runtime_grant.sql before the empty-database prerequisite step");
+  const ledger = (await client.query("SELECT name FROM broker_desk_schema_migrations")).rows;
+  if (!ledger.some(({ name }) => name === "20260830_002_object_attachment_runtime_grant.sql")) {
+    throw new Error("empty-database prerequisite step requires 20260830_002_object_attachment_runtime_grant.sql in the migration ledger");
+  }
+  if (ledger.some(({ name }) => name >= "20260908_001_preimport_upload_lifecycle.sql")) {
+    throw new Error("empty-database prerequisite step must run before 20260908_001_preimport_upload_lifecycle.sql");
+  }
+
   const currentRole = (await client.query("SELECT rolsuper, rolcreaterole, rolbypassrls FROM pg_roles WHERE rolname = current_user")).rows[0];
   if (!currentRole?.rolsuper && !currentRole?.rolcreaterole) throw new Error("migration connection cannot create constrained roles");
 

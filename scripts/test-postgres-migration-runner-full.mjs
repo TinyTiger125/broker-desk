@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import pg from "pg";
@@ -36,6 +36,7 @@ try {
   assert.ok(owners.every((row) => row.owner === "brokerdesk_admin" && row.force_rls === true));
   await verify.end();
   const evidence = { postgres: "16", appliedCount: result.appliedCount, ledgerCount, owners };
+  mkdirSync("/private/tmp/broker-desk-evidence", { recursive: true, mode: 0o700 });
   writeFileSync("/private/tmp/broker-desk-evidence/20260921-migration-runner-full-44-prereq.log", `${JSON.stringify(evidence, null, 2)}\n`, { mode: 0o600 });
   console.log(JSON.stringify(evidence));
 } finally {
