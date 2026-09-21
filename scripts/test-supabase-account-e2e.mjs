@@ -15,6 +15,7 @@ const lifecycle = await source("src/lib/supabase/membership-lifecycle.ts");
 const tenantSession = await source("src/lib/tenant-session.ts");
 const migration = await source("db/migrations/20260921_001_supabase_auth_lifecycle.sql");
 const rollback = await source("db/migrations/rollback/20260921_001_supabase_auth_lifecycle.sql");
+const supabaseBootstrap = await source("scripts/bootstrap-initial-supabase-owner.mjs");
 
 assert.match(actions, /isSupabaseAuthEnabled\(\)/, "member invitation/status actions must branch for Supabase");
 assert.match(actions, /invitationProvider: result\.provider/, "Supabase invitation must finalize through the existing delivery action");
@@ -38,9 +39,13 @@ assert.match(migration, /'supabase'/, "unexecuted migration must allow Supabase 
 assert.match(migration, /bind_current_supabase_identity_to_pending_invitation/, "migration must define the Supabase pending-invitation binding function");
 assert.match(migration, /Rollback:/, "migration must carry a rollback note");
 assert.match(rollback, /none', 'manual', 'clerk/, "rollback must restore the pre-Supabase provider boundary");
+assert.match(supabaseBootstrap, /BROKER_DESK_SUPABASE_OWNER_BOOTSTRAP_APPROVED/, "Supabase owner bootstrap must require an explicit approval gate");
+assert.doesNotMatch(supabaseBootstrap, /process\.loadEnvFile\([^)]*\.env\.local/, "Supabase owner bootstrap must never auto-load the old .env.local");
+assert.match(supabaseBootstrap, /DATABASE_MIGRATION_URL/, "Supabase owner bootstrap must use the explicit migration connection");
 
 const { resolveExplicitSupabaseUser } = await import("../scripts/bootstrap-initial-supabase-owner.mjs");
 const admin = { auth: { admin: { async getUserById(id) { return { data: { user: { id, email: "owner@example.com" } }, error: null }; } } } };
-assert.deepEqual(await resolveExplicitSupabaseUser({ admin, userId: "supabase-owner-1", email: "OWNER@example.com" }), { authUserId: "supabase-owner-1", email: "owner@example.com" });
-await assert.rejects(() => resolveExplicitSupabaseUser({ admin, userId: "supabase-owner-1", email: "other@example.com" }), /mismatch/);
+const authUserId = "11111111-1111-4111-8111-111111111111";
+assert.deepEqual(await resolveExplicitSupabaseUser({ admin, userId: authUserId, email: "OWNER@example.com" }), { authUserId, email: "owner@example.com" });
+await assert.rejects(() => resolveExplicitSupabaseUser({ admin, userId: authUserId, email: "other@example.com" }), /mismatch/);
 console.log("Supabase account end-to-end contract: PASS");
