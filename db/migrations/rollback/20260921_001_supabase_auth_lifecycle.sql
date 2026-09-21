@@ -205,3 +205,5 @@ BEGIN
     GRANT EXECUTE ON FUNCTION brokerdesk_private.record_tenant_invitation_delivery(TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TIMESTAMPTZ, TIMESTAMPTZ, TIMESTAMPTZ) TO brokerdesk_runtime;
   END IF;
 END $$;
+
+DROP FUNCTION IF EXISTS brokerdesk_private.bind_current_supabase_identity_to_pending_invitation(TEXT, TEXT, TEXT);

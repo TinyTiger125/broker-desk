@@ -2376,6 +2376,13 @@ export async function bindCurrentClerkIdentityToPendingInvitation(
   return { ...candidates[0] };
 }
 
+/** Bind a Supabase identity using the same pending-invitation fail-closed rules. */
+export async function bindCurrentSupabaseIdentityToPendingInvitation(
+  input: ExternalAuthUserInput,
+): Promise<User | null> {
+  return bindCurrentClerkIdentityToPendingInvitation(input);
+}
+
 export async function suspendUserForExternalAuthSubject(subject: string): Promise<{ userId?: string; suspendedMembershipCount: number }> {
   const normalized = subject.trim();
   if (!normalized) return { suspendedMembershipCount: 0 };

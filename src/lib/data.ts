@@ -123,8 +123,12 @@ const resolveDefaultUser = cache(async (preferredUserId?: string) => {
     // that placeholder only when the current identity exactly matches a valid
     // pending invitation; never use this path for arbitrary provisioning.
     const verifiedIdentity = await getVerifiedAuthIdentity();
-    if (getConfiguredAuthProviderId() === "clerk" && verifiedIdentity?.email) {
+    if (verifiedIdentity?.email && getConfiguredAuthProviderId() === "clerk") {
       const invitedUser = await repo.bindCurrentClerkIdentityToPendingInvitation(verifiedIdentity);
+      if (invitedUser) return invitedUser;
+    }
+    if (verifiedIdentity?.email && getConfiguredAuthProviderId() === "supabase") {
+      const invitedUser = await repo.bindCurrentSupabaseIdentityToPendingInvitation(verifiedIdentity);
       if (invitedUser) return invitedUser;
     }
 
@@ -188,6 +192,8 @@ export const ensureUserForExternalAuth: typeof memory.ensureUserForExternalAuth 
   repo.ensureUserForExternalAuth(...args);
 export const bindCurrentClerkIdentityToPendingInvitation: typeof memory.bindCurrentClerkIdentityToPendingInvitation = (...args) =>
   repo.bindCurrentClerkIdentityToPendingInvitation(...args);
+export const bindCurrentSupabaseIdentityToPendingInvitation: typeof memory.bindCurrentSupabaseIdentityToPendingInvitation = (...args) =>
+  repo.bindCurrentSupabaseIdentityToPendingInvitation(...args);
 export const suspendUserForExternalAuthSubject: typeof memory.suspendUserForExternalAuthSubject = (...args) =>
   repo.suspendUserForExternalAuthSubject(...args);
 export const getTenantById: typeof memory.getTenantById = (...args) =>

@@ -5,6 +5,8 @@ const root = new URL("..", import.meta.url);
 const source = async (path) => readFile(new URL(path, root), "utf8");
 const actions = await source("src/app/actions.ts");
 const invitation = await source("src/lib/data.memory.ts");
+const dataFacade = await source("src/lib/data.ts");
+const postgres = await source("src/lib/data.postgres.ts");
 const route = await source("src/app/auth/callback/route.ts");
 const forgot = await source("src/components/supabase-forgot-password-form.tsx");
 const reset = await source("src/components/supabase-reset-password-form.tsx");
@@ -16,14 +18,18 @@ assert.match(actions, /isSupabaseAuthEnabled\(\)/, "member invitation/status act
 assert.match(actions, /invitationProvider: result\.provider/, "Supabase invitation must finalize through the existing delivery action");
 assert.match(actions, /setSupabaseUserDisabled/, "member status action must call the server-only disable/revoke adapter");
 assert.match(invitation, /"supabase"/, "memory delivery state must accept Supabase provider");
+assert.match(dataFacade, /bindCurrentSupabaseIdentityToPendingInvitation/, "provider facade must bind Supabase invited identities");
+assert.match(postgres, /bind_current_supabase_identity_to_pending_invitation/, "PostgreSQL facade must call the Supabase binding function");
 assert.match(forgot, /resetPasswordForEmail/, "forgot-password must use the public reset request");
 assert.match(forgot, /如果邮箱对应有效账户/, "forgot-password must use generic anti-enumeration success");
 assert.doesNotMatch(forgot, /actionLink|service.?role/i, "browser reset request must not expose provider links or admin secrets");
 assert.match(reset, /auth\.updateUser\(\{ password \}\)/, "recovery landing must update the authenticated password");
 assert.match(route, /exchangeCodeForSession/, "callback must exchange the recovery code server-side");
 assert.match(route, /startsWith\("\/\/"\)/, "callback must reject protocol-relative redirect targets");
+assert.match(route, /includes\("\\\\"\)/, "callback must reject backslash redirect targets");
 assert.match(tenantSession, /status === "active"/, "business resolver must select only active memberships");
 assert.match(migration, /'supabase'/, "unexecuted migration must allow Supabase invitation delivery");
+assert.match(migration, /bind_current_supabase_identity_to_pending_invitation/, "migration must define the Supabase pending-invitation binding function");
 assert.match(migration, /Rollback:/, "migration must carry a rollback note");
 assert.match(rollback, /none', 'manual', 'clerk/, "rollback must restore the pre-Supabase provider boundary");
 

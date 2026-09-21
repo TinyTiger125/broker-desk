@@ -189,6 +189,7 @@ const REQUIRED_PRODUCTION_MIGRATIONS = [
   "20260902_003_runtime_acl_baseline.sql",
   "20260904_001_runtime_external_auth_subject_execute.sql",
   "20260908_001_preimport_upload_lifecycle.sql",
+  "20260921_001_supabase_auth_lifecycle.sql",
 ] as const;
 
 const OPEN_STAGES: ClientStage[] = ["lead", "contacted", "quoted", "viewing", "negotiating"];
@@ -2200,6 +2201,28 @@ export async function bindCurrentClerkIdentityToPendingInvitation(input: {
     // applied migration set. Until it is applied, retain the honest
     // no-binding result rather than turning an unconfigured invite path into
     // a generic page failure.
+    if ((error as { code?: string })?.code === "42883") return null;
+    throw error;
+  }
+}
+
+export async function bindCurrentSupabaseIdentityToPendingInvitation(input: {
+  subject: string;
+  email?: string;
+  name?: string;
+}): Promise<User | null> {
+  await ensureSchema();
+  const subject = input.subject.trim();
+  const email = input.email?.trim().toLowerCase();
+  if (!subject || !email) return null;
+  try {
+    const result = await getPool().query(
+      `SELECT brokerdesk_private.bind_current_supabase_identity_to_pending_invitation($1, $2, $3) AS user_id`,
+      [subject, email, input.name?.trim() || null],
+    );
+    if (!result.rows[0]?.user_id) return null;
+    return getUserByExternalAuthSubject(subject);
+  } catch (error) {
     if ((error as { code?: string })?.code === "42883") return null;
     throw error;
   }

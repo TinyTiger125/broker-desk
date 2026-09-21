@@ -55,8 +55,8 @@ function readOption(name) {
 }
 
 async function runFromCommandLine() {
-  assertNoPgEnvironment();
   if (existsSync(".env.local")) process.loadEnvFile(".env.local");
+  assertNoPgEnvironment();
   const databaseUrl = process.env.DATABASE_MIGRATION_URL;
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();

@@ -617,7 +617,7 @@ for (const header of ["X-Content-Type-Options", "X-Frame-Options", "Referrer-Pol
 const dataSource = fs.readFileSync("src/lib/data.ts", "utf8");
 assert(dataSource.includes("ensureUserForExternalAuth"), "data layer must map external auth subjects to local users");
 assert(dataSource.includes("suspendUserForExternalAuthSubject"), "data layer must suspend deleted external identities");
-assert(dataSource.includes("getClerkAuthIdentity"), "data layer must read Clerk identity in clerk mode");
+assert(dataSource.includes("getAuthIdentity"), "data layer must read provider-neutral verified identity in the configured auth mode");
 assert(dataSource.includes("assertProductionDataStoreReady"), "data layer must reject production memory fallback");
 assert(dataSource.includes("withPostgresAuthContext"), "data layer must bind Clerk identity before calling the Postgres repository");
 
