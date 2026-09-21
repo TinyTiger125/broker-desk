@@ -32,23 +32,16 @@ export async function inviteSupabaseUserByEmail(input: { email: string; redirect
   return { providerInvitationId: data.user.id, sentAt: new Date() };
 }
 
-export async function generateSupabasePasswordResetLink(input: { email: string; redirectTo: string }) {
-  const email = input.email.trim().toLowerCase();
-  if (!email || !input.redirectTo.startsWith("/")) throw new Error("supabase_password_reset_request_invalid");
-  const { data, error } = await createSupabaseAdminClient().auth.admin.generateLink({
-    type: "recovery",
-    email,
-    options: { redirectTo: input.redirectTo },
-  });
-  if (error || !data.properties?.action_link) throw new Error("supabase_password_reset_failed");
-  return { actionLink: data.properties.action_link };
-}
-
-export async function disableSupabaseUser(userId: string) {
+export async function setSupabaseUserDisabled(userId: string, disabled: boolean) {
   const normalized = userId.trim();
   if (!normalized) throw new Error("supabase_user_id_required");
-  const { error } = await createSupabaseAdminClient().auth.admin.updateUserById(normalized, {
-    ban_duration: "876000h",
-  });
-  if (error) throw new Error("supabase_user_disable_failed");
+  const admin = createSupabaseAdminClient().auth.admin;
+  const { error } = await admin.updateUserById(normalized, { ban_duration: disabled ? "876000h" : "none" });
+  if (error) throw new Error(disabled ? "supabase_user_disable_failed" : "supabase_user_enable_failed");
+  if (disabled) {
+    const revoke = await admin.signOut(normalized, "global");
+    if (revoke.error) throw new Error("supabase_user_session_revoke_failed");
+  }
 }
+
+export const disableSupabaseUser = (userId: string) => setSupabaseUserDisabled(userId, true);

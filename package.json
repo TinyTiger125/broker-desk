@@ -55,6 +55,7 @@
     "test:supabase-auth-fixture": "node scripts/test-supabase-auth-fixture.mjs",
     "test:supabase-proxy-fixture": "node scripts/test-supabase-proxy-fixture.mjs",
     "test:supabase-account-lifecycle-fixture": "node scripts/test-supabase-account-lifecycle-fixture.mjs",
+    "test:supabase-account-e2e": "node scripts/test-supabase-account-e2e.mjs",
     "test:staging-allowlist": "node scripts/test-staging-allowlist-behavior.mjs",
     "test:staging-access-contract": "node scripts/check-staging-access-contract.mjs",
     "test:staging-seed-contract": "node scripts/check-staging-seed-contract.mjs",

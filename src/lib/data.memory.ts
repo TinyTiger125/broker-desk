@@ -82,7 +82,7 @@ export type ExternalAuthUserInput = {
 export type TenantStatus = "trial" | "active" | "pending_activation" | "suspended" | "cancelled";
 export type TenantAccountType = "individual" | "company";
 export type TenantMembershipStatus = "active" | "invited" | "suspended" | "removed";
-export type TenantInvitationProvider = "none" | "manual" | "clerk";
+export type TenantInvitationProvider = "none" | "manual" | "clerk" | "supabase";
 export type TenantInvitationStatus = "not_sent" | "pending" | "accepted" | "revoked" | "expired" | "failed";
 
 export type Tenant = {
@@ -2927,7 +2927,7 @@ export async function updateTenantMemberInvitation(input: {
 }): Promise<TenantMemberListItem | null> {
   const nextDb = cloneDb(db);
   const scopeTenantId = resolveTenantId(input.tenantId);
-  const allowedProviders: readonly string[] = ["none", "manual", "clerk"];
+  const allowedProviders: readonly string[] = ["none", "manual", "clerk", "supabase"];
   const allowedStatuses: readonly string[] = ["pending", "failed", "not_sent", "revoked", "expired"];
   if (!allowedProviders.includes(input.invitationProvider) || !allowedStatuses.includes(input.invitationStatus)) {
     throw new Error("unsupported invitation delivery state");
@@ -2938,15 +2938,15 @@ export async function updateTenantMemberInvitation(input: {
   if (!membership || membership.status !== "invited") return null;
   const actorUserId = input.actorUserId?.trim();
   assertTenantInvitationActorAuthorized(nextDb, scopeTenantId, actorUserId);
-  if (input.invitationProvider === "clerk" && (membership.invitationStatus === "revoked" || membership.invitationStatus === "expired")) return null;
-  const isDuplicateDeliveryFinalization = input.invitationProvider === "clerk" && (
+  if ((input.invitationProvider === "clerk" || input.invitationProvider === "supabase") && (membership.invitationStatus === "revoked" || membership.invitationStatus === "expired")) return null;
+  const isDuplicateDeliveryFinalization = (input.invitationProvider === "clerk" || input.invitationProvider === "supabase") && (
     (input.invitationStatus === "pending"
       && Boolean(input.providerInvitationId)
-      && membership.invitationProvider === "clerk"
+      && membership.invitationProvider === input.invitationProvider
       && membership.invitationStatus === "pending"
       && membership.providerInvitationId === input.providerInvitationId)
     || (input.invitationStatus === "failed"
-      && membership.invitationProvider === "clerk"
+      && membership.invitationProvider === input.invitationProvider
       && membership.invitationStatus === "failed"
       && membership.invitationError === input.invitationError)
   );
@@ -2974,9 +2974,9 @@ export async function updateTenantMemberInvitation(input: {
   membership.invitationAcceptedAt = input.acceptedAt ?? membership.invitationAcceptedAt;
   membership.invitationExpiresAt = nextInvitationExpiresAt;
   membership.updatedAt = nowDate;
-  const auditAction = input.invitationProvider === "clerk" && input.invitationStatus === "pending"
+  const auditAction = (input.invitationProvider === "clerk" || input.invitationProvider === "supabase") && input.invitationStatus === "pending"
     ? "member_invitation_sent"
-    : input.invitationProvider === "clerk" && input.invitationStatus === "failed"
+    : (input.invitationProvider === "clerk" || input.invitationProvider === "supabase") && input.invitationStatus === "failed"
       ? "member_invitation_failed"
       : null;
   if (auditAction) {

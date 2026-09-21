@@ -9,11 +9,13 @@ export function SupabaseSignInForm({
   passwordLabel,
   submitLabel,
   errorLabel,
+  forgotPasswordLabel = "パスワードを忘れた場合",
 }: {
   emailLabel: string;
   passwordLabel: string;
   submitLabel: string;
   errorLabel: string;
+  forgotPasswordLabel?: string;
 }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -73,6 +75,9 @@ export function SupabaseSignInForm({
       >
         {pending ? "…" : submitLabel}
       </button>
+      <a href="/forgot-password" className="text-center text-sm font-bold text-[#1960a3] underline underline-offset-4">
+        {forgotPasswordLabel}
+      </a>
     </form>
   );
 }

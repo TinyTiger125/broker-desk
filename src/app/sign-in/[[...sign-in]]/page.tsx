@@ -90,6 +90,7 @@ export default async function SignInPage() {
               passwordLabel={text.passwordLabel}
               submitLabel={text.signInLabel}
               errorLabel={text.signInError}
+              forgotPasswordLabel={locale === "zh" ? "忘记密码" : locale === "ko" ? "비밀번호를 잊으셨나요" : "パスワードを忘れた場合"}
             />
           </div>
         </div>

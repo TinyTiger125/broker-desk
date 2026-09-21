@@ -182,9 +182,10 @@ import type { InputFileExtractionResult } from "@/lib/input-file-extractor";
 import { queueExcelImportSource } from "@/lib/excel-import-queue";
 import { queueIdentityImportSources } from "@/lib/identity-import-queue";
 import { createClerkInvitationForTenantMember } from "@/lib/clerk-invitations";
+import { inviteSupabaseUserByEmail, setSupabaseUserDisabled } from "@/lib/supabase/admin";
 import { assertCaseSourcesReadable } from "@/lib/w93-access";
 import { getVerifiedClerkAuthIdentity } from "@/lib/clerk-auth";
-import { isClerkAuthEnabled } from "@/lib/auth-mode";
+import { isClerkAuthEnabled, isSupabaseAuthEnabled } from "@/lib/auth-mode";
 import { CASE_FIELD_KEYS, getCaseFieldDefinition, getCaseFieldInformation, isKnownCaseFieldKey } from "@/lib/case-field-catalog";
 import {
   CASE_WORKBENCH_FIELD_KEYS,
@@ -2735,21 +2736,36 @@ async function sendTenantMemberInvitation(input: {
   if (!prepared) throw new Error("招待対象メンバーが見つかりません。");
   const member = prepared.member;
 
-  const result = await createClerkInvitationForTenantMember(prepared).catch((error) => ({
-    ok: false as const,
-    skipped: false,
-    reason: error instanceof Error ? error.message : String(error),
-  }));
+  let result:
+    | ({ ok: true; provider: "supabase"; skipped: false; providerInvitationId: string; sentAt: Date })
+    | ({ ok: true; provider: "clerk"; providerInvitationId: string; invitationUrl?: string; sentAt: Date; skipped?: boolean })
+    | { ok: false; skipped: boolean; reason: string };
+  try {
+    if (isSupabaseAuthEnabled()) {
+      const value = await inviteSupabaseUserByEmail({
+        email: member.user.email,
+        redirectTo: process.env.BROKER_DESK_SUPABASE_INVITE_REDIRECT_URL?.trim() || undefined,
+      });
+      result = { ...value, provider: "supabase", ok: true, skipped: false };
+    } else {
+      const value = await createClerkInvitationForTenantMember(prepared);
+      result = value.ok
+        ? { ...value, provider: "clerk" }
+        : { ok: false, skipped: value.skipped, reason: value.reason };
+    }
+  } catch (error) {
+    result = { ok: false, skipped: false, reason: error instanceof Error ? error.message : String(error) };
+  }
   if (result.ok) {
     try {
       const updated = await updateTenantMemberInvitation({
         tenantId: input.tenantId,
         membershipId: input.membershipId,
         memberContext: member,
-        invitationProvider: "clerk",
+        invitationProvider: result.provider,
         invitationStatus: "pending",
         providerInvitationId: result.providerInvitationId,
-        invitationUrl: result.invitationUrl,
+        invitationUrl: "invitationUrl" in result ? result.invitationUrl : undefined,
         sentAt: result.sentAt,
         actorUserId: input.actorId,
       });
@@ -2768,7 +2784,7 @@ async function sendTenantMemberInvitation(input: {
         tenantId: input.tenantId,
         membershipId: input.membershipId,
         memberContext: member,
-        invitationProvider: "clerk",
+        invitationProvider: isSupabaseAuthEnabled() ? "supabase" : "clerk",
         invitationStatus: "failed",
         invitationError: result.reason,
         actorUserId: input.actorId,
@@ -3169,6 +3185,13 @@ export async function updateTenantMemberStatusAction(formData: FormData) {
       redirect("/settings/members?flash=last_owner_protected");
     }
     throw error;
+  }
+  const targetBeforeUpdate = await getTenantMemberById({ tenantId, membershipId });
+  if (!targetBeforeUpdate) throw new Error("メンバーが見つかりません。");
+  if (isSupabaseAuthEnabled()) {
+    const externalSubject = targetBeforeUpdate.user.externalAuthSubject?.trim() ?? "";
+    if (!externalSubject.startsWith("supabase:")) throw new Error("Supabase メンバーの外部認証紐付けがありません。");
+    await setSupabaseUserDisabled(externalSubject.slice("supabase:".length), status !== "active");
   }
   const member = await updateTenantMemberStatus({ tenantId, membershipId, status, actorUserId: session.user.id });
   if (!member) throw new Error("メンバーが見つかりません。");

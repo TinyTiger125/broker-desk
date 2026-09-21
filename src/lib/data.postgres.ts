@@ -2599,7 +2599,7 @@ export async function updateTenantMemberInvitation(input: {
   acceptedAt?: Date;
   expiresAt?: Date;
 }): Promise<TenantMemberListItem | null> {
-  const allowedProviders: readonly string[] = ["none", "manual", "clerk"];
+  const allowedProviders: readonly string[] = ["none", "manual", "clerk", "supabase"];
   const allowedStatuses: readonly string[] = ["pending", "failed", "not_sent", "revoked", "expired"];
   if (!allowedProviders.includes(input.invitationProvider) || !allowedStatuses.includes(input.invitationStatus)) {
     throw new Error("unsupported invitation delivery state");

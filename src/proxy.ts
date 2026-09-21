@@ -8,6 +8,8 @@ import { updateSupabaseSession } from "@/lib/supabase/proxy";
 const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
   "/sign-up(.*)",
+  "/forgot-password(.*)",
+  "/auth/callback(.*)",
   "/api/health/data(.*)",
   "/api/locale(.*)",
   "/api/webhooks/clerk(.*)",
