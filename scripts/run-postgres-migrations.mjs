@@ -68,6 +68,7 @@ async function runPrerequisiteTransaction(client, sql, name) {
 
 export async function runPostgresMigrations({
   Client: ClientConstructor = Client,
+  client: providedClient = null,
   databaseUrl,
   clientConfig = null,
   migrationsDirectory = path.resolve("db/migrations"),
@@ -88,7 +89,8 @@ export async function runPostgresMigrations({
     .sort();
   if (migrationNames.length === 0) throw new Error("No SQL migrations were found in db/migrations.");
 
-  const client = new ClientConstructor(clientConfig
+  const ownsClient = !providedClient;
+  const client = providedClient ?? new ClientConstructor(clientConfig
     ? { ...clientConfig, connectionTimeoutMillis }
     : { connectionString: databaseUrl, connectionTimeoutMillis });
   let lockAcquired = false;
@@ -96,7 +98,7 @@ export async function runPostgresMigrations({
   let cleanupError = null;
   const result = { appliedCount: 0, skippedCount: 0, stoppedAfter: null };
   try {
-    await client.connect();
+    if (ownsClient) await client.connect();
     await client.query(`SET lock_timeout = '${lockTimeoutMillis}ms'`);
     await client.query(`SET statement_timeout = '${statementTimeoutMillis}ms'`);
     await client.query("SELECT pg_advisory_lock(hashtext('broker-desk-schema-migrations'))");
@@ -175,7 +177,7 @@ export async function runPostgresMigrations({
       cleanupError = error;
     }
     try {
-      await client.end();
+      if (ownsClient) await client.end();
     } catch (error) {
       cleanupError ??= error;
     }
