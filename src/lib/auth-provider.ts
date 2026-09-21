@@ -5,6 +5,7 @@ import {
   getVerifiedClerkAuthIdentity,
 } from "@/lib/clerk-auth";
 import { getConfiguredAuthProviderId } from "@/lib/auth-mode";
+import { getSupabaseAuthIdentity, getVerifiedSupabaseAuthIdentity } from "@/lib/supabase/auth";
 
 /**
  * Provider-neutral identity contract. The local authorization model must only
@@ -39,18 +40,22 @@ const clerkProvider: AuthProviderAdapter = {
   },
 };
 
+const supabaseProvider: AuthProviderAdapter = {
+  id: "supabase",
+  getSubject: async () => (await getSupabaseAuthIdentity())?.subject ?? null,
+  getIdentity: getSupabaseAuthIdentity,
+  getVerifiedIdentity: getVerifiedSupabaseAuthIdentity,
+};
+
 /**
- * Supabase Auth is intentionally fail-closed until its session/JWT adapter,
- * invite flow, and lifecycle hooks have been implemented and reviewed. This
- * prevents a partially configured production environment from silently
- * falling back to demo or tenant-owner behavior.
+ * Supabase Auth is only selected explicitly. Missing configuration or an
+ * invalid session fails closed; it never falls back to Clerk, demo, or a
+ * tenant-owner recovery path.
  */
 export function getAuthProvider(): AuthProviderAdapter {
   const configured = getConfiguredAuthProviderId();
   if (!configured || configured === "clerk") return clerkProvider;
-  if (configured === "supabase") {
-    throw new Error("supabase_auth_provider_not_ready");
-  }
+  if (configured === "supabase") return supabaseProvider;
   throw new Error("unsupported_auth_provider");
 }
 

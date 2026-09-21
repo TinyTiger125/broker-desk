@@ -9,7 +9,7 @@ import { isActorSwitchingEnabled } from "@/lib/actor";
 import {
   listUsers,
 } from "@/lib/data";
-import { isClerkAuthEnabled } from "@/lib/auth-mode";
+import { getConfiguredAuthProviderId, isExternalAuthEnabled, isClerkAuthEnabled } from "@/lib/auth-mode";
 import { localizeDemoText } from "@/lib/demo-localization";
 import { t } from "@/lib/i18n";
 import { getLocale, type Locale } from "@/lib/locale";
@@ -79,10 +79,12 @@ export async function AppNav() {
   const locale = await getLocale();
   const actorSwitchingEnabled = isActorSwitchingEnabled();
   const clerkEnabled = isClerkAuthEnabled();
+  const externalAuthEnabled = isExternalAuthEnabled();
+  const authProvider = getConfiguredAuthProviderId() ?? "clerk";
   // Actor switching is a demo-only workflow. In Clerk mode the signed-in
   // account is the actor, so loading the entire demo user list on every page
   // only adds a remote database round trip and can leave an empty switcher.
-  const actorSwitchingAvailable = actorSwitchingEnabled && !clerkEnabled;
+  const actorSwitchingAvailable = actorSwitchingEnabled && !externalAuthEnabled;
   const [users, tenantSession, platformSession] = await Promise.all([
     actorSwitchingAvailable ? listUsers(20) : Promise.resolve([]),
     // Resolve the current membership so company-management navigation can be
@@ -173,7 +175,7 @@ export async function AppNav() {
                       ko: t(locale, "locale.ko"),
                     }}
                   />
-                  {clerkEnabled ? <AccountSignOutButton label={menuCopy.signOut} /> : null}
+                  {externalAuthEnabled ? <AccountSignOutButton provider={authProvider} label={menuCopy.signOut} /> : null}
                 </div>
               </div>
             </details>
@@ -199,7 +201,7 @@ export async function AppNav() {
                   ko: t(locale, "locale.ko"),
                 }}
               />
-              {clerkEnabled ? <AccountSignOutButton label={menuCopy.signOut} /> : null}
+              {externalAuthEnabled ? <AccountSignOutButton provider={authProvider} label={menuCopy.signOut} /> : null}
             </div>
           </details>
           <details className="mt-2 border-t border-slate-200 pt-2">
@@ -295,7 +297,7 @@ export async function AppNav() {
                     ko: t(locale, "locale.ko"),
                   }}
                 />
-                {clerkEnabled ? <AccountSignOutButton label={menuCopy.signOut} /> : null}
+                {externalAuthEnabled ? <AccountSignOutButton provider={authProvider} label={menuCopy.signOut} /> : null}
               </div>
             </div>
           </details>

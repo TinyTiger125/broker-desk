@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getDefaultUser, getTenantById, listPendingTenantInvitations, listTenantMemberships, listTenantSessionLookupsByExternalAuthSubject } from "@/lib/data";
 import { getLocale, type Locale } from "@/lib/locale";
-import { isExternalAuthEnabled } from "@/lib/auth-mode";
+import { getConfiguredAuthProviderId, isExternalAuthEnabled } from "@/lib/auth-mode";
 import { getAuthSubject } from "@/lib/auth-provider";
 import { PageFrame, PageHeader, StateSurface } from "@/components/layout-system";
 import { WorkspaceSelector, type WorkspaceOption } from "./workspace-selector";
@@ -221,7 +221,7 @@ export default async function WorkspacePage({ searchParams }: WorkspacePageProps
                   <Link href="/workspace/invitations" className="inline-flex min-h-11 items-center justify-center border border-slate-300 bg-white px-4 text-sm font-bold text-slate-900 transition hover:bg-slate-50">
                     {text.viewInvitations}
                   </Link>
-                  {isExternalAuthEnabled() ? <WorkspaceSignOutButton label={text.back} /> : (
+                  {isExternalAuthEnabled() ? <WorkspaceSignOutButton provider={getConfiguredAuthProviderId() ?? "clerk"} label={text.back} /> : (
                     <Link href="/sign-in" className="inline-flex min-h-11 items-center justify-center border border-slate-300 bg-white px-4 text-sm font-bold text-slate-900 transition hover:bg-slate-50">
                       {text.back}
                     </Link>
