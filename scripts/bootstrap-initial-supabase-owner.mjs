@@ -27,7 +27,7 @@ function parseSupabaseProjectUrl(supabaseUrl) {
   } catch {
     throw new Error("invalid Supabase project URL");
   }
-  if (parsed.protocol !== "https:" || parsed.hostname !== `${SUPABASE_PROJECT_REF}.supabase.co` || (parsed.pathname !== "" && parsed.pathname !== "/") || parsed.search || parsed.hash) {
+  if (parsed.protocol !== "https:" || parsed.hostname !== `${SUPABASE_PROJECT_REF}.supabase.co` || parsed.username || parsed.password || (parsed.port && parsed.port !== "443") || (parsed.pathname !== "" && parsed.pathname !== "/") || parsed.search || parsed.hash) {
     throw new Error("Supabase project URL does not match the fixed Tokyo validation project");
   }
   return parsed;
@@ -85,6 +85,8 @@ export function buildSupabasePoolConfig({ connectionString, supabaseUrl, caPath 
     options: "-c search_path=pg_catalog,public",
     replication: "false",
     application_name: "broker-desk-supabase-owner-bootstrap",
+    connectionTimeoutMillis: 8_000,
+    query_timeout: 8_000,
     max: 1,
   };
 }

@@ -68,7 +68,11 @@ if (existsSync(caPath)) {
   assert.equal(config.host, SUPABASE_POOLER_HOST);
   assert.equal(config.ssl.rejectUnauthorized, true);
   assert.ok(Buffer.isBuffer(config.ssl.ca), "Tokyo Supabase pool config must carry the pinned CA");
+  assert.equal(config.connectionTimeoutMillis, 8_000);
+  assert.equal(config.query_timeout, 8_000);
   assert.throws(() => buildSupabasePoolConfig({ connectionString: validDatabaseUrl, supabaseUrl: "https://wrong-project.supabase.co", caPath }), /fixed Tokyo validation project/);
+  assert.throws(() => buildSupabasePoolConfig({ connectionString: validDatabaseUrl, supabaseUrl: `https://user:pass@${SUPABASE_PROJECT_REF}.supabase.co`, caPath }), /fixed Tokyo validation project/);
+  assert.throws(() => buildSupabasePoolConfig({ connectionString: validDatabaseUrl, supabaseUrl: `https://${SUPABASE_PROJECT_REF}.supabase.co:8443`, caPath }), /fixed Tokyo validation project/);
   assert.throws(() => buildSupabasePoolConfig({ connectionString: `${validDatabaseUrl}?sslmode=require`, supabaseUrl: `https://${SUPABASE_PROJECT_REF}.supabase.co`, caPath }), /fixed Tokyo pooler/);
   assert.throws(() => buildSupabasePoolConfig({ connectionString: validDatabaseUrl.replace(`postgres.${SUPABASE_PROJECT_REF}`, "postgres.otherref"), supabaseUrl: `https://${SUPABASE_PROJECT_REF}.supabase.co`, caPath }), /fixed Tokyo project/);
 }
