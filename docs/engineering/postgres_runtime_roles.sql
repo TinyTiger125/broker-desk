@@ -106,6 +106,9 @@ GRANT SELECT, DELETE ON TABLE public.attachments TO brokerdesk_admin;
 GRANT SELECT, DELETE ON TABLE public.private_attachment_blobs TO brokerdesk_admin;
 GRANT SELECT ON TABLE public.attachment_links TO brokerdesk_admin;
 GRANT INSERT ON TABLE public.audit_logs TO brokerdesk_admin;
+-- Foreign-key checks in the owner-controlled bootstrap/membership and audit
+-- paths issue FOR KEY SHARE against referenced identity rows.
+GRANT REFERENCES ON TABLE public.users, public.tenants TO brokerdesk_admin;
 
 -- The runtime must resolve its own active user and membership through the
 -- security-definer helpers. It does not receive direct global table access.
