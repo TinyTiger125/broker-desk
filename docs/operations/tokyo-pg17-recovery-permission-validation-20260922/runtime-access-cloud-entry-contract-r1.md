@@ -34,13 +34,15 @@
 4. TLS 为 `verify-full`，启用证书校验，SNI 匹配 host，CA 文件 SHA-256 匹配固定值。
 5. 逻辑角色必须属于白名单，且路由配置不得携带密码字段。
 
+前置门禁失败时，入口只关闭管理连接并记录 `preflight_rejected_no_write`/`cleanup_not_run`；不会执行 `NOLOGIN` 或 `PASSWORD NULL`，也不会清除未被本轮尝试触及的基线凭据。每个角色都记录 `passwordWriteAttempted/Confirmed`、`loginWriteAttempted/Confirmed` 和 `loginProbeAttempted`。helper 或 SQL 提交结果不确定时，`Attempted=true`，该角色进入收尾。
+
 ## 写入前无网络检查
 
 ```sh
 node docs/operations/tokyo-pg17-recovery-permission-validation-20260922/runtime-access-cloud-entry.mjs --self-test
 ```
 
-该检查不打开 socket。它逐一证明裸角色名、错误 project ref、未授权角色、错误 host/port/database、关闭 TLS 校验和错误 CA hash 均在写入门禁前拒绝；输出 `writesBeforeGate=0`。本地证据见 [runtime-access-cloud-entry-self-test-20260922.json](./runtime-access-cloud-entry-self-test-20260922.json)。
+该检查不打开 socket。它逐一证明裸角色名、错误 project ref、未授权角色、错误 host/port/database、关闭 TLS 校验和错误 CA hash 均在写入门禁前拒绝；直接调用实际写入门禁断言基线失败时写入回调调用数为 `0`，基线通过时才调用一次。它还验证部分写入的角色收尾集合和认证探针分类（明确认证拒绝为 `verified`，XX000/超时/TLS 为 `unverified`）。`writesBeforeGate=0` 只是结果字段，不能替代上述调用断言。本地证据见 [runtime-access-cloud-entry-self-test-20260922.json](./runtime-access-cloud-entry-self-test-20260922.json)。
 
 ## 云端执行顺序
 
@@ -49,8 +51,14 @@ node docs/operations/tokyo-pg17-recovery-permission-validation-20260922/runtime-
 3. 通过 `runtime-password-helper.c` 为两个裸 SQL 角色设置临时密码；helper 只接受白名单角色，conninfo 与密码通过匿名 stdin 帧传递。
 4. 执行 `ALTER ROLE brokerdesk_runtime LOGIN`、`ALTER ROLE brokerdesk_admin LOGIN`。
 5. 分别用带 project ref 的 pooler 用户名登录，并断言 `current_user`、`session_user`、database 与裸角色一致。
-6. 成功或异常均进入统一收尾：关闭本轮连接 → 两角色 `NOLOGIN` → 用仍在内存的临时密码验证新连接被拒 → 查询本轮会话为零 → 两角色 `PASSWORD NULL` → 只读核对角色、密码状态和会话 → 释放内存凭据 → 记录最终 `finishedAtUtc`。
+6. 仅对已开始或可能开始写入的角色进入统一收尾：关闭本轮连接 → `NOLOGIN` → 用仍在内存的临时密码探测新连接。只有明确认证拒绝 SQLSTATE（`28000`、`28P01`、`28P02`、`28001`）才记为 `verified`；`XX000`、超时、TLS 或其他连接错误均记为 `unverified`，但继续执行安全的 `PASSWORD NULL` 收尾。随后查询本轮会话为零，清空密码，只读核对，释放内存凭据，并分别记录 `cleanupResult` 与 `probeResult`。
 7. 管理连接失效或收尾失败时只记录最后确认状态及可能残留，不宣称清理完成，不自动重试。
+
+## 登录后权限探针
+
+- runtime 连接执行三个事务内探针：public `CREATE TABLE`、持久 `import_jobs` DDL、`SET ROLE brokerdesk_admin`。预期 SQLSTATE 为 `42501`；每次无论成功或失败都 `ROLLBACK`。意外允许立即记为失败，但不留下对象或表结构变化。
+- admin 连接只读核验既有 worker 能力：读取 `import_jobs`/`attachments` 的 owner、RLS/FORCE RLS、SELECT/UPDATE 能力及两个 worker policy。该核验不宣称 admin 仅能调用 worker，也不扩大权限。
+- 只有权限探针和登录身份均通过、且最终收尾的拒绝探针为 `verified`，入口才输出 `result=pass`。
 
 ## 证据边界
 

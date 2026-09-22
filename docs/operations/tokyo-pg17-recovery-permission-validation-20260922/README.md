@@ -94,7 +94,7 @@ node docs/operations/tokyo-pg17-recovery-permission-validation-20260922/validate
 - 云端执行 evidence SHA-256：`cloud-runtime-access-20260922.json`=`1429c751c79f1285e750ef62e9f4730cc086b501dcffd4a5aa06bb724bd5c285`；helper 源码 SHA-256=`929ba56e5422b93aa9a37c584f4c946b87e88df871e9655047a3df8be0b147e2`。
 - 本轮文件 SHA-256：fixture=`51ea10276372e917f5c5159cead5626242a1e124b94e20ed20366057742bd055`；正常 evidence=`180e26e7cc5dc69524ba51ff7eb67054b754c37fc3b0d98d033fc2dbe7ba1122`；异常 evidence=`de00c2cef196e1b01fc6ddcee894aeeb4f47575cd35048c95d593a7206687642`；诊断=`6f9df07ef1f4968449427eac094c2ac572954856f06a4962c0af652d5f7fe752`；plan=`4a2274f76b9b70069cc3c510f34037c0c6e06cacb32d51bc57868f3659e3edf0`。
 - 本轮云端入口候选哈希在提交前由 `runtime-access-cloud-entry.sha256` 固定；self-test 是本轮唯一新验证证据。此前 [cloud-runtime-access-20260922.json](./cloud-runtime-access-20260922.json) 明确标记为“错误裸路由用户名的历史失败归档”，不是本轮成功证据。
-- 当前入口候选哈希：entry=`df839317118e8440c230ada79dead0bad375eba2fe71d882dde6c94acc2b4ab8`；contract=`65563edae8e64fdfc72e96fe787ab09b67811cd51dc9bc3fd9a768b42d1c2641`；self-test=`edb1e1df7e965a2f03bdbb4c14f75d534f798160d0abdda4097cbaa042e29d20`；helper=`929ba56e5422b93aa9a37c584f4c946b87e88df871e9655047a3df8be0b147e2`。
+- 当前入口候选哈希：entry=`1a7acd7ed50ebd8f306406c988fc657cdbaa05a476b980d7a7f3eb7d07c77d4f`；contract=`d920c81e4883dddaf5dfc5e61a9bfdfdfba55c7a4afc7f2ce263c00d1cb2becc`；self-test=`03885f40f637192486cef845ff52b30e415df47cae876ff7650b6c0118483906`；helper=`929ba56e5422b93aa9a37c584f4c946b87e88df871e9655047a3df8be0b147e2`。
 - [cloud-readonly-20260922.json](./cloud-readonly-20260922.json)：云端只读事实。
 - [independent-review.md](./independent-review.md)：独立审查原文。
 - [results-r2.json](./results-r2.json)、[events-r2.stderr](./events-r2.stderr)：上一轮旧夹具证据，已被 r3 取代，仅保留历史对照。
@@ -120,6 +120,8 @@ node docs/operations/tokyo-pg17-recovery-permission-validation-20260922/validate
 
 - 已将一次性编排固化为 [runtime-access-cloud-entry.mjs](./runtime-access-cloud-entry.mjs)。入口先校验管理连接和两份角色连接的 host、port、database、路由用户名、TLS/SNI 和 CA hash，之后才允许密码设置或 LOGIN。
 - 入口的 `--self-test` 不联网；实际输出证明裸角色用户名、错误 project ref、错误角色、错误 host/port/database、TLS 或 CA 均在写入前拒绝。未执行 `--execute-cloud`，本轮没有云端写入或登录重试。
+- 当前入口将前置门禁与执行后收尾分开：基线失败时只关闭管理连接，不执行 NOLOGIN/PASSWORD NULL；每个角色记录密码/LOGIN 尝试与确认状态，提交不确定的角色才进入收尾。拒绝探针只有明确认证拒绝 SQLSTATE 才记为 verified，XX000、超时、TLS 错误均保持 unverified，但仍继续安全清理。
+- 登录成功后接入 runtime 的事务回滚 CREATE/DDL/SET ROLE 拒绝探针，以及 admin 的只读 worker owner/RLS/SELECT/UPDATE/policy 核验；任何意外放行都会回滚并使入口失败。
 - `cloud-runtime-access-20260922.json` 仍是历史失败尝试，不能与本轮 self-test 混称为成功；下一次云端验证必须以新入口和新执行证据为准。
 
 ## r3 历史权限边界（不影响已完成恢复）
