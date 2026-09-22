@@ -7,6 +7,7 @@
 - 历史 migration 未改动。没有执行云端 `GRANT`、撤销、迁移续跑、部署或其他外部写入。
 - `results-r3.json` 是本轮准确 owner/ACL 夹具下的最终结果；`results-r2.json` 保留上一轮旧夹具证据，不作为当前模型结论。
 - 本 README、`results-r3.json`、`events-r3.stderr` 和 r3 独立审查是当前唯一操作依据；r2 夹具与旧平台支持材料仅作历史留档，已被 r3 取代。
+- 真实云端执行归档见 `cloud-execution-20260922-final.json`、`cloud-execution-20260922-summary.json` 和 `cloud-execution-20260922.sha256`；执行版本为 `f5a3210aa1c5025c4ad9b593274fb66dca09abf8`，结果为 `complete/44`，临时权限已清理。
 
 云端只读查询时间：`2026-09-22T10:19:31.676Z`。事实包括 PostgreSQL 17.6、database owner=`postgres`、public owner=`pg_database_owner`、private owner=`postgres`；`postgres` 为非 superuser，但有 `CREATEROLE/CREATEDB/BYPASSRLS/LOGIN`。现有两条 membership 的 `admin=true, inherit=false, set=false`。`brokerdesk_admin` 没有 private CREATE，也没有四张表的 REFERENCES；public CREATE 由数据库 owner 能力生效，不代表存在可转授的 grant option。
 
@@ -78,14 +79,52 @@ node docs/operations/tokyo-pg17-recovery-permission-validation-20260922/validate
 - [validate.mjs](./validate.mjs)：准确 owner/ACL 夹具、postgres 授权与撤销、真实 Tokyo 成功/失败入口。
 - [results-r3.json](./results-r3.json)：最终结构化结果、owner/ACL、membership、marker、ledger、角色和分类。
 - [events-r3.stderr](./events-r3.stderr)：最终原始阶段事件。
+- [cloud-execution-20260922-final.json](./cloud-execution-20260922-final.json)：脱敏真实云端执行日志、权限前后差异和最终只读结果。
+- [cloud-execution-20260922-summary.json](./cloud-execution-20260922-summary.json)：脱敏执行摘要。
+- [cloud-execution-20260922.sha256](./cloud-execution-20260922.sha256)：上述真实执行日志 SHA-256 清单。
+- [runtime-connection-access-plan-r1.md](./runtime-connection-access-plan-r1.md)：临时内存凭据登录验证合同；本轮执行结果见下方云端记录。
+- [runtime-password-helper.c](./runtime-password-helper.c)：本地 libpq `PQchangePassword` API 证明器，conninfo/角色/密码均走匿名 stdin 帧；不是生产 Keychain writer。
+- [runtime-access-local-fixture.mjs](./runtime-access-local-fixture.mjs)：PG17 隔离内存随机凭据登录、错误脱敏、拒绝与统一异常收尾入口；本轮只做该入口的定向回归。
+- [runtime-access-local-evidence.json](./runtime-access-local-evidence.json)：正常路径脱敏事件证据；不含密码或验证值。
+- [runtime-access-local-exception-evidence-20260922.json](./runtime-access-local-exception-evidence-20260922.json)：注入登录后异常的脱敏事件证据；故意以非零退出结束，但统一收尾完成。
+- [runtime-access-cloud-entry.mjs](./runtime-access-cloud-entry.mjs)：持久云端入口；Session pooler 登录用户名固定为 `<role>.ilujuwuzaqwcbpnqixen`，SQL 目标和身份断言仍使用裸角色名。
+- [runtime-access-cloud-entry-contract-r1.md](./runtime-access-cloud-entry-contract-r1.md)：云端入口输入、写入前门禁、登录断言和统一收尾合同。
+- [runtime-access-cloud-entry-self-test-20260922.json](./runtime-access-cloud-entry-self-test-20260922.json)：无网络定向证据；证明裸用户名、错误 ref/角色、错误连接/TLS/CA 配置均在写入前拒绝，`writesBeforeGate=0`。
+- 本地定向验证：PostgreSQL `17.11`、Node `v20.19.5`、`pg` `8.20.0`、Apple clang `17.0.0`；helper 源码 SHA-256=`929ba56e5422b93aa9a37c584f4c946b87e88df871e9655047a3df8be0b147e2`。正常路径在 `2026-09-22T14:39:06.320Z` 完成；异常路径在 `2026-09-22T14:38:56.221Z` 完成。两条路径均证明：关闭连接→NOLOGIN→仍持内存凭据执行拒绝探针（SQLSTATE `28000`）→会话为零→`PASSWORD NULL`→扫描服务端日志→擦除内存 Map/数组→记录 `cleanup_completed.finishedAt`。非超级用户 `fixture_manager` 读取 `pg_authid.rolpassword` 被 SQLSTATE `42501` 拒绝，直接密码为空状态仍是平台可见性缺口。
+- 云端执行 evidence SHA-256：`cloud-runtime-access-20260922.json`=`1429c751c79f1285e750ef62e9f4730cc086b501dcffd4a5aa06bb724bd5c285`；helper 源码 SHA-256=`929ba56e5422b93aa9a37c584f4c946b87e88df871e9655047a3df8be0b147e2`。
+- 本轮文件 SHA-256：fixture=`51ea10276372e917f5c5159cead5626242a1e124b94e20ed20366057742bd055`；正常 evidence=`180e26e7cc5dc69524ba51ff7eb67054b754c37fc3b0d98d033fc2dbe7ba1122`；异常 evidence=`de00c2cef196e1b01fc6ddcee894aeeb4f47575cd35048c95d593a7206687642`；诊断=`6f9df07ef1f4968449427eac094c2ac572954856f06a4962c0af652d5f7fe752`；plan=`4a2274f76b9b70069cc3c510f34037c0c6e06cacb32d51bc57868f3659e3edf0`。
+- 本轮云端入口候选哈希在提交前由 `runtime-access-cloud-entry.sha256` 固定；self-test 是本轮唯一新验证证据。此前 [cloud-runtime-access-20260922.json](./cloud-runtime-access-20260922.json) 明确标记为“错误裸路由用户名的历史失败归档”，不是本轮成功证据。
+- 当前入口候选哈希：entry=`df839317118e8440c230ada79dead0bad375eba2fe71d882dde6c94acc2b4ab8`；contract=`65563edae8e64fdfc72e96fe787ab09b67811cd51dc9bc3fd9a768b42d1c2641`；self-test=`edb1e1df7e965a2f03bdbb4c14f75d534f798160d0abdda4097cbaa042e29d20`；helper=`929ba56e5422b93aa9a37c584f4c946b87e88df871e9655047a3df8be0b147e2`。
 - [cloud-readonly-20260922.json](./cloud-readonly-20260922.json)：云端只读事实。
 - [independent-review.md](./independent-review.md)：独立审查原文。
 - [results-r2.json](./results-r2.json)、[events-r2.stderr](./events-r2.stderr)：上一轮旧夹具证据，已被 r3 取代，仅保留历史对照。
 - [platform-support-question-20260922.md](./platform-support-question-20260922.md)：旧平台支持材料，已被 r3 执行顺序与权限模型取代；其中 SQL 未执行，不能作为当前操作依据。
 
-## 当前阻断
+### 云端临时登录验证（2026-09-22）
 
-云端仍未获得本轮权限变更授权。云端 `brokerdesk_private CREATE` 与所需 REFERENCES 仍需产品/平台明确授予路径；本地已证明在准确 owner 模型下由 `postgres` 完成临时闭环，不据此宣称云端可直接执行。若平台不能确认 `postgres` 对 private schema 与所需 referenced tables 的受支持授权能力，恢复必须停止并只读回报。
+- 执行版本为 `f5a3210aa1c5025c4ad9b593274fb66dca09abf8`，目标 `ilujuwuzaqwcbpnqixen / postgres`。前置核对通过：marker=`complete`、ledger=44、全部 checksum 匹配、`password_encryption=scram-sha-256`、两角色基线为 NOLOGIN，原 membership（grantor=`supabase_admin`、ADMIN=true、INHERIT=false、SET=false）保留。
+- 管理连接使用固定 CA 与客户端 `verify-full`：CA SHA-256=`700723581420dd1ac98fd7e9ac529f0ef210eadcaf87fc868a3ad7d114c2f3b7`，客户端 socket 为已认证 TLSv1.3；Supavisor 后端 `pg_stat_ssl` 显示明文是池化层事实，不作为客户端 TLS 失败依据。
+- 两个临时密码均由 OS CSPRNG 生成，经 `PQchangePassword` 匿名 stdin 帧提交；未进入 argv、环境、文件或证据。两角色 LOGIN 提交后，首个角色验证阶段返回 SQLSTATE=`XX000`，按合同停止，未重试登录。
+- 失败状态只读确认两角色仍 LOGIN、密码非空、会话数为 0；随后按失败收尾提交两角色 `NOLOGIN` 与 `PASSWORD NULL`。最终只读确认两角色 NOLOGIN、`rolpassword IS NULL`、会话数为 0、原 membership 保留、marker=`complete`、ledger=44。由于验证失败后内存凭据已释放，NOLOGIN 后的拒绝探针未再执行，因此本轮不是“登录链路 PASS”，而是“写入后停止并完成清理”。
+- [cloud-runtime-access-20260922.json](./cloud-runtime-access-20260922.json)：脱敏执行、停止原因、清理与最终只读核对；SHA-256=`1429c751c79f1285e750ef62e9f4730cc086b501dcffd4a5aa06bb724bd5c285`。
+- [cloud-runtime-access-20260922.sha256](./cloud-runtime-access-20260922.sha256)：云端 runtime 证据校验清单。
+
+### 登录失败定向诊断（2026-09-22）
+
+- 首个角色的实际验证路由来自一次性编排脚本：host=`aws-0-ap-northeast-1.pooler.supabase.com`、port=`5432`、database=`postgres`、TLS=`verify-full`、SNI=同一 host、CA 已配置；但用户名是裸的 `brokerdesk_runtime`。共享 Session pooler 的预期自定义角色路由是 `brokerdesk_runtime.ilujuwuzaqwcbpnqixen`，因此当前证据支持“角色用户名缺少 project ref”的本地配置错误。管理连接本身使用的是 `postgres.ilujuwuzaqwcbpnqixen`，不能代替首个角色路由核对。
+- Supabase 官方连接合同说明共享 pooler 使用 `:5432` Session mode，且自定义角色用户名带 `[ROLE].[PROJECT-REF]`：[Connect to your database](https://supabase.com/docs/guides/database/connecting-to-postgres)。官方排障说明把缺少 project ref 的路由归入 tenant/user 路由问题：[Tenant or user not found when connecting through shared pooler](https://supabase.com/docs/guides/troubleshooting/tenant-or-user-not-found)。因此本次不把 XX000 猜成密码错误、缓存延迟或平台限制；平台内部 XX000 的具体类别仍未被日志证实。
+- 平台日志仅查询 `2026-09-22T14:00:04Z–14:01:55Z`（Dashboard 显示为 `23:00:04–23:01:55 Asia/Tokyo`）。可见 ALTER USER 密码提交、两次 ClientHandler/DbHandler authenticated、两次 LOGIN 和一次 client terminate；必要记录中未找到 XX000、detail、hint 或 correlation ID，且没有重新登录制造日志。完整脱敏记录见 [runtime-access-diagnosis-20260922.json](./runtime-access-diagnosis-20260922.json)。
+- 本地收尾修复保留内存凭据直到 NOLOGIN 拒绝探针结束，再清空数据库密码并释放凭据；异常路径由同一清理函数接管，最终结束时间写在 `cleanup_completed.finishedAt` 之后。正常与注入异常两条证据分别见 [runtime-access-local-evidence.json](./runtime-access-local-evidence.json) 和 [runtime-access-local-exception-evidence-20260922.json](./runtime-access-local-exception-evidence-20260922.json)。云端当前仍为两角色 NOLOGIN/PASSWORD NULL，本轮没有重试登录、改权限或切换连接方式。
+
+### 云端入口收口（本轮）
+
+- 已将一次性编排固化为 [runtime-access-cloud-entry.mjs](./runtime-access-cloud-entry.mjs)。入口先校验管理连接和两份角色连接的 host、port、database、路由用户名、TLS/SNI 和 CA hash，之后才允许密码设置或 LOGIN。
+- 入口的 `--self-test` 不联网；实际输出证明裸角色用户名、错误 project ref、错误角色、错误 host/port/database、TLS 或 CA 均在写入前拒绝。未执行 `--execute-cloud`，本轮没有云端写入或登录重试。
+- `cloud-runtime-access-20260922.json` 仍是历史失败尝试，不能与本轮 self-test 混称为成功；下一次云端验证必须以新入口和新执行证据为准。
+
+## r3 历史权限边界（不影响已完成恢复）
+
+本节保留 r3 执行前的权限边界说明；真实恢复已按 `cloud-execution-20260922-final.json` 归档为 `complete/44`。后续 runtime 登录验证不得把本节旧的“未获授权”措辞当作当前云端状态。
 
 ## r3 哈希清单
 
