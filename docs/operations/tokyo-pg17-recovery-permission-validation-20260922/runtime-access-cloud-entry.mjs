@@ -448,6 +448,7 @@ async function runCloud(input) {
   let managementClient = null;
   let cleanupCompleted = false;
   let tempRoot = null;
+  let baselinePass = false;
   try {
     const ca = readAndVerifyCa(input.management);
     for (const role of ROLES) {
@@ -471,6 +472,7 @@ async function runCloud(input) {
     const classification = await classifyTokyoInitialization(migrationState, MIGRATIONS_DIRECTORY);
     const baseline = await readBaseline(managementClient);
     assertReadyForWrites({ baseline, classification: { phase: classification.phase, appliedCount: migrationState.ledgerRows.length } });
+    baselinePass = true;
     record("baseline_pass", { commit: TARGET.commit, marker: "complete", ledger: 44, checksumMatch: true });
     tempRoot = mkdtempSync(join(tmpdir(), "brokerdesk-runtime-entry-"));
     const helper = compileHelper(tempRoot);
@@ -534,8 +536,12 @@ async function runCloud(input) {
       } catch (error) {
         record("exception_cleanup_failure", { sqlstate: safeSqlState(error) });
       }
-    } else if (managementClient && !cleanupCompleted) {
-      record("cleanup_not_run", { reason: "preflight_failed_before_any_password_or_login_write", roles: [] });
+    } else if (!cleanupCompleted && rolesToClean.length === 0) {
+      record(baselinePass ? "pre_write_stop_no_write" : "preflight_rejected_no_write", {
+        reason: baselinePass ? "stopped_before_first_password_or_login_write" : "baseline_or_connection_gate_failed",
+        roles: [],
+      });
+      if (managementClient) record("cleanup_not_run", { reason: "no_role_write_attempt_recorded", roles: [] });
     }
     record("role_attempt_state", { roleAttempts, rolesToClean });
     if (managementClient) await managementClient.end().catch(() => undefined);

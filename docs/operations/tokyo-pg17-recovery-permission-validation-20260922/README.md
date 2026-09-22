@@ -94,7 +94,7 @@ node docs/operations/tokyo-pg17-recovery-permission-validation-20260922/validate
 - 云端执行 evidence SHA-256：`cloud-runtime-access-20260922.json`=`1429c751c79f1285e750ef62e9f4730cc086b501dcffd4a5aa06bb724bd5c285`；helper 源码 SHA-256=`929ba56e5422b93aa9a37c584f4c946b87e88df871e9655047a3df8be0b147e2`。
 - 本轮文件 SHA-256：fixture=`51ea10276372e917f5c5159cead5626242a1e124b94e20ed20366057742bd055`；正常 evidence=`180e26e7cc5dc69524ba51ff7eb67054b754c37fc3b0d98d033fc2dbe7ba1122`；异常 evidence=`de00c2cef196e1b01fc6ddcee894aeeb4f47575cd35048c95d593a7206687642`；诊断=`6f9df07ef1f4968449427eac094c2ac572954856f06a4962c0af652d5f7fe752`；plan=`4a2274f76b9b70069cc3c510f34037c0c6e06cacb32d51bc57868f3659e3edf0`。
 - 本轮云端入口候选哈希在提交前由 `runtime-access-cloud-entry.sha256` 固定；self-test 是本轮唯一新验证证据。此前 [cloud-runtime-access-20260922.json](./cloud-runtime-access-20260922.json) 明确标记为“错误裸路由用户名的历史失败归档”，不是本轮成功证据。
-- 当前入口候选哈希：entry=`1a7acd7ed50ebd8f306406c988fc657cdbaa05a476b980d7a7f3eb7d07c77d4f`；contract=`d920c81e4883dddaf5dfc5e61a9bfdfdfba55c7a4afc7f2ce263c00d1cb2becc`；self-test=`03885f40f637192486cef845ff52b30e415df47cae876ff7650b6c0118483906`；helper=`929ba56e5422b93aa9a37c584f4c946b87e88df871e9655047a3df8be0b147e2`。
+- 当前入口候选哈希：entry=`638442d30966d259a736f044aff59de85f93197fdee9ab0142ad8323425b38d5`；contract=`d920c81e4883dddaf5dfc5e61a9bfdfdfba55c7a4afc7f2ce263c00d1cb2becc`；self-test=`03885f40f637192486cef845ff52b30e415df47cae876ff7650b6c0118483906`；helper=`929ba56e5422b93aa9a37c584f4c946b87e88df871e9655047a3df8be0b147e2`。
 - [cloud-readonly-20260922.json](./cloud-readonly-20260922.json)：云端只读事实。
 - [independent-review.md](./independent-review.md)：独立审查原文。
 - [results-r2.json](./results-r2.json)、[events-r2.stderr](./events-r2.stderr)：上一轮旧夹具证据，已被 r3 取代，仅保留历史对照。
