@@ -21,6 +21,16 @@ const FIRST_COLUMNS = ["final_import_started_at", "source_referenced_at", "uploa
 const FIRST_FUNCTIONS = ["claim_property_row_import", "delete_preimport_property_upload", "guard_preimport_source_reference", "guard_preimport_upload_lifecycle"];
 const FIRST_TRIGGERS = ["attachment_links_preimport_source_reference_guard", "attachments_preimport_source_reference_guard", "import_jobs_preimport_upload_lifecycle_guard"];
 const FINAL_POLICIES = ["brokerdesk_import_worker_claim_select", "brokerdesk_import_worker_claim_update"];
+const TOKYO_MIGRATION_EXECUTION_ROLE = "brokerdesk_admin";
+// Fixed, reviewed set. Future migration filenames do not inherit role
+// switching; expanding this set requires a new review.
+const TOKYO_ROLE_SWITCH_MIGRATIONS = Object.freeze([
+  "20260908_001_preimport_upload_lifecycle.sql",
+  "20260917_001_object_import_targets.sql",
+  "20260917_002_case_review_locks.sql",
+  "20260918_001_import_job_single_claim.sql",
+  "20260921_002_import_worker_rls_admin_policy.sql",
+]);
 const MARKER_TABLE = "public.broker_desk_initialization_control";
 const INITIALIZATION_LOCK_SQL = "SELECT pg_advisory_lock(hashtext('broker-desk-initialization-control'))";
 const INITIALIZATION_UNLOCK_SQL = "SELECT pg_advisory_unlock(hashtext('broker-desk-initialization-control'))";
@@ -198,6 +208,9 @@ export async function executeTokyoMigrations({
       clientConfig: config,
       migrationsDirectory,
       prepareEmptyDatabase: initialMode && classification.prepareEmptyDatabase,
+      prepareEmptyDatabaseRole: initialMode && classification.prepareEmptyDatabase ? TOKYO_MIGRATION_EXECUTION_ROLE : null,
+      migrationExecutionRole: TOKYO_MIGRATION_EXECUTION_ROLE,
+      roleSwitchMigrations: TOKYO_ROLE_SWITCH_MIGRATIONS,
       connectionTimeoutMillis: DEFAULT_CONNECTION_TIMEOUT_MS,
       lockTimeoutMillis: DEFAULT_LOCK_TIMEOUT_MS,
       statementTimeoutMillis: DEFAULT_STATEMENT_TIMEOUT_MS,

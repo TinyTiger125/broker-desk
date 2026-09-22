@@ -19,7 +19,6 @@ const MIGRATION_LEDGER_SQL = `
   )
 `;
 const EMPTY_DATABASE_BOUNDARY = "20260908_001_preimport_upload_lifecycle.sql";
-
 export class MigrationOutcomeUncertainError extends Error {
   constructor(name, cause) {
     super(`Migration outcome is uncertain for ${name}; inspect the migration ledger before retrying.`);
@@ -77,6 +76,9 @@ export async function runPostgresMigrations({
   lockTimeoutMillis = DEFAULT_LOCK_TIMEOUT_MS,
   statementTimeoutMillis = DEFAULT_STATEMENT_TIMEOUT_MS,
   prepareEmptyDatabase = false,
+  prepareEmptyDatabaseRole = null,
+  migrationExecutionRole = null,
+  roleSwitchMigrations = [],
   log = console.log,
 } = {}) {
   if (!databaseUrl && !clientConfig) throw new Error("An explicit migration database connection is required.");
@@ -88,6 +90,15 @@ export async function runPostgresMigrations({
     .filter((name) => /^\d{8}_\d{3}_.+\.sql$/.test(name))
     .sort();
   if (migrationNames.length === 0) throw new Error("No SQL migrations were found in db/migrations.");
+  if (!Array.isArray(roleSwitchMigrations) || roleSwitchMigrations.some((name) => typeof name !== "string" || !migrationNames.includes(name))) {
+    throw new Error("roleSwitchMigrations must name only migrations in the selected directory");
+  }
+  if (roleSwitchMigrations.length && (!migrationExecutionRole || !/^[a-z_][a-z0-9_]*$/i.test(migrationExecutionRole))) {
+    throw new Error("migrationExecutionRole is required for roleSwitchMigrations");
+  }
+  if (prepareEmptyDatabaseRole !== null && !/^[a-z_][a-z0-9_]*$/i.test(prepareEmptyDatabaseRole)) {
+    throw new Error("prepareEmptyDatabaseRole must be a plain PostgreSQL role identifier");
+  }
 
   const ownsClient = !providedClient;
   const client = providedClient ?? new ClientConstructor(clientConfig
@@ -110,7 +121,7 @@ export async function runPostgresMigrations({
       if (ledger.rows.some(({ name }) => name >= EMPTY_DATABASE_BOUNDARY)) {
         throw new Error(`--prepare-empty-db is only allowed before ${EMPTY_DATABASE_BOUNDARY} has been applied.`);
       }
-      const { createRoles } = buildEmptyDatabasePrerequisiteSql();
+      const { createRoles } = buildEmptyDatabasePrerequisiteSql({ ownershipRole: prepareEmptyDatabaseRole });
       await runPrerequisiteTransaction(client, createRoles, "empty database role prerequisites");
       log("Prepared brokerdesk_runtime and brokerdesk_admin role prerequisites.");
     }
@@ -136,7 +147,7 @@ export async function runPostgresMigrations({
       }
 
       if (prepareEmptyDatabase && name === EMPTY_DATABASE_BOUNDARY) {
-        const { ownership } = buildEmptyDatabasePrerequisiteSql();
+        const { ownership } = buildEmptyDatabasePrerequisiteSql({ ownershipRole: prepareEmptyDatabaseRole });
         await runPrerequisiteTransaction(client, ownership, "empty database table ownership prerequisites");
         log("Prepared 20260908 preimport table ownership and FORCE RLS prerequisites.");
       }
@@ -144,8 +155,17 @@ export async function runPostgresMigrations({
       const executionSql = assertSafeMigrationSql(sql, name);
       await client.query("BEGIN");
       let commitAttempted = false;
+      let roleSwitched = false;
       try {
+        if (roleSwitchMigrations.includes(name)) {
+          await client.query(`SET ROLE ${migrationExecutionRole}`);
+          roleSwitched = true;
+        }
         await client.query(executionSql);
+        if (roleSwitched) {
+          await client.query("RESET ROLE");
+          roleSwitched = false;
+        }
         await client.query(
           "INSERT INTO broker_desk_schema_migrations (name, checksum) VALUES ($1, $2)",
           [name, checksum],
@@ -153,6 +173,10 @@ export async function runPostgresMigrations({
         commitAttempted = true;
         await client.query("COMMIT");
       } catch (error) {
+        if (roleSwitched) {
+          await client.query("RESET ROLE").catch(() => undefined);
+          roleSwitched = false;
+        }
         if (commitAttempted || isConnectionUncertain(error)) {
           throw new MigrationOutcomeUncertainError(name, error);
         }

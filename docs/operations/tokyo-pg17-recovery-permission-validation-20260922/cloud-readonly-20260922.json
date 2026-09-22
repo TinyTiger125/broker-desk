@@ -1,0 +1,1067 @@
+{
+  "queriedAtUtc": "2026-09-22T10:19:31.676Z",
+  "target": {
+    "ref": "ilujuwuzaqwcbpnqixen",
+    "database": "postgres",
+    "host": "aws-0-ap-northeast-1.pooler.supabase.com",
+    "port": 5432,
+    "user": "postgres.ilujuwuzaqwcbpnqixen"
+  },
+  "configNote": "management env URL was absent/invalid; fixed ref URL used without changing connection target",
+  "checks": {
+    "identity": {
+      "version": "PostgreSQL 17.6 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 15.2.0, 64-bit",
+      "database": "postgres",
+      "session_user": "postgres",
+      "current_user": "postgres",
+      "schema": "pg_catalog",
+      "sslmode": null,
+      "transaction_read_only": "off"
+    },
+    "databaseOwner": {
+      "datname": "postgres",
+      "database_owner": "postgres",
+      "current_database_create": true
+    },
+    "roles": [
+      {
+        "rolname": "brokerdesk_admin",
+        "rolsuper": false,
+        "rolcreaterole": false,
+        "rolcreatedb": false,
+        "rolcanlogin": false,
+        "rolbypassrls": false,
+        "rolinherit": true
+      },
+      {
+        "rolname": "brokerdesk_runtime",
+        "rolsuper": false,
+        "rolcreaterole": false,
+        "rolcreatedb": false,
+        "rolcanlogin": false,
+        "rolbypassrls": false,
+        "rolinherit": true
+      },
+      {
+        "rolname": "postgres",
+        "rolsuper": false,
+        "rolcreaterole": true,
+        "rolcreatedb": true,
+        "rolcanlogin": true,
+        "rolbypassrls": true,
+        "rolinherit": true
+      },
+      {
+        "rolname": "supabase_admin",
+        "rolsuper": true,
+        "rolcreaterole": true,
+        "rolcreatedb": true,
+        "rolcanlogin": true,
+        "rolbypassrls": true,
+        "rolinherit": true
+      }
+    ],
+    "memberships": [
+      {
+        "member": "postgres",
+        "role": "brokerdesk_admin",
+        "grantor": "supabase_admin",
+        "admin_option": true,
+        "inherit_option": false,
+        "set_option": false
+      },
+      {
+        "member": "postgres",
+        "role": "brokerdesk_runtime",
+        "grantor": "supabase_admin",
+        "admin_option": true,
+        "inherit_option": false,
+        "set_option": false
+      }
+    ],
+    "schemaAcl": [
+      {
+        "schema_name": "brokerdesk_private",
+        "schema_owner": "postgres",
+        "nspacl": "{postgres=UC/postgres,authenticated=U/postgres,brokerdesk_admin=U/postgres,brokerdesk_runtime=U/postgres}",
+        "acl": [
+          {
+            "grantee": "authenticated",
+            "privilege_type": "USAGE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "brokerdesk_admin",
+            "privilege_type": "USAGE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "brokerdesk_runtime",
+            "privilege_type": "USAGE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "postgres",
+            "privilege_type": "CREATE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "postgres",
+            "privilege_type": "USAGE",
+            "grantor": "postgres",
+            "is_grantable": false
+          }
+        ]
+      },
+      {
+        "schema_name": "public",
+        "schema_owner": "pg_database_owner",
+        "nspacl": "{pg_database_owner=UC/pg_database_owner,=U/pg_database_owner,postgres=U/pg_database_owner,anon=U/pg_database_owner,authenticated=U/pg_database_owner,service_role=U/pg_database_owner}",
+        "acl": [
+          {
+            "grantee": "-",
+            "privilege_type": "USAGE",
+            "grantor": "pg_database_owner",
+            "is_grantable": false
+          },
+          {
+            "grantee": "anon",
+            "privilege_type": "USAGE",
+            "grantor": "pg_database_owner",
+            "is_grantable": false
+          },
+          {
+            "grantee": "authenticated",
+            "privilege_type": "USAGE",
+            "grantor": "pg_database_owner",
+            "is_grantable": false
+          },
+          {
+            "grantee": "pg_database_owner",
+            "privilege_type": "CREATE",
+            "grantor": "pg_database_owner",
+            "is_grantable": false
+          },
+          {
+            "grantee": "pg_database_owner",
+            "privilege_type": "USAGE",
+            "grantor": "pg_database_owner",
+            "is_grantable": false
+          },
+          {
+            "grantee": "postgres",
+            "privilege_type": "USAGE",
+            "grantor": "pg_database_owner",
+            "is_grantable": false
+          },
+          {
+            "grantee": "service_role",
+            "privilege_type": "USAGE",
+            "grantor": "pg_database_owner",
+            "is_grantable": false
+          }
+        ]
+      }
+    ],
+    "privileges": [
+      {
+        "role": "brokerdesk_admin",
+        "public_usage": true,
+        "public_create": false,
+        "private_usage": true,
+        "private_create": false,
+        "member_admin": true,
+        "set_admin": true
+      },
+      {
+        "role": "brokerdesk_runtime",
+        "public_usage": true,
+        "public_create": false,
+        "private_usage": true,
+        "private_create": false,
+        "member_admin": false,
+        "set_admin": false
+      },
+      {
+        "role": "postgres",
+        "public_usage": true,
+        "public_create": true,
+        "private_usage": true,
+        "private_create": true,
+        "member_admin": true,
+        "set_admin": false
+      }
+    ],
+    "references": [
+      {
+        "table_name": "users",
+        "brokerdesk_admin_references": false,
+        "acl": [
+          {
+            "grantee": "anon",
+            "privilege_type": "DELETE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "anon",
+            "privilege_type": "INSERT",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "anon",
+            "privilege_type": "MAINTAIN",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "anon",
+            "privilege_type": "REFERENCES",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "anon",
+            "privilege_type": "SELECT",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "anon",
+            "privilege_type": "TRIGGER",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "anon",
+            "privilege_type": "TRUNCATE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "anon",
+            "privilege_type": "UPDATE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "authenticated",
+            "privilege_type": "DELETE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "authenticated",
+            "privilege_type": "INSERT",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "authenticated",
+            "privilege_type": "MAINTAIN",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "authenticated",
+            "privilege_type": "REFERENCES",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "authenticated",
+            "privilege_type": "SELECT",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "authenticated",
+            "privilege_type": "TRIGGER",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "authenticated",
+            "privilege_type": "TRUNCATE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "authenticated",
+            "privilege_type": "UPDATE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "brokerdesk_runtime",
+            "privilege_type": "SELECT",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "postgres",
+            "privilege_type": "DELETE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "postgres",
+            "privilege_type": "INSERT",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "postgres",
+            "privilege_type": "MAINTAIN",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "postgres",
+            "privilege_type": "REFERENCES",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "postgres",
+            "privilege_type": "SELECT",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "postgres",
+            "privilege_type": "TRIGGER",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "postgres",
+            "privilege_type": "TRUNCATE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "postgres",
+            "privilege_type": "UPDATE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "service_role",
+            "privilege_type": "DELETE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "service_role",
+            "privilege_type": "INSERT",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "service_role",
+            "privilege_type": "MAINTAIN",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "service_role",
+            "privilege_type": "REFERENCES",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "service_role",
+            "privilege_type": "SELECT",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "service_role",
+            "privilege_type": "TRIGGER",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "service_role",
+            "privilege_type": "TRUNCATE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "service_role",
+            "privilege_type": "UPDATE",
+            "grantor": "postgres",
+            "is_grantable": false
+          }
+        ]
+      },
+      {
+        "table_name": "brokerage_cases",
+        "brokerdesk_admin_references": false,
+        "acl": [
+          {
+            "grantee": "anon",
+            "privilege_type": "DELETE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "anon",
+            "privilege_type": "INSERT",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "anon",
+            "privilege_type": "MAINTAIN",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "anon",
+            "privilege_type": "REFERENCES",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "anon",
+            "privilege_type": "SELECT",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "anon",
+            "privilege_type": "TRIGGER",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "anon",
+            "privilege_type": "TRUNCATE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "anon",
+            "privilege_type": "UPDATE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "authenticated",
+            "privilege_type": "DELETE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "authenticated",
+            "privilege_type": "INSERT",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "authenticated",
+            "privilege_type": "MAINTAIN",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "authenticated",
+            "privilege_type": "REFERENCES",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "authenticated",
+            "privilege_type": "SELECT",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "authenticated",
+            "privilege_type": "TRIGGER",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "authenticated",
+            "privilege_type": "TRUNCATE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "authenticated",
+            "privilege_type": "UPDATE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "brokerdesk_runtime",
+            "privilege_type": "INSERT",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "brokerdesk_runtime",
+            "privilege_type": "SELECT",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "brokerdesk_runtime",
+            "privilege_type": "UPDATE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "postgres",
+            "privilege_type": "DELETE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "postgres",
+            "privilege_type": "INSERT",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "postgres",
+            "privilege_type": "MAINTAIN",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "postgres",
+            "privilege_type": "REFERENCES",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "postgres",
+            "privilege_type": "SELECT",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "postgres",
+            "privilege_type": "TRIGGER",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "postgres",
+            "privilege_type": "TRUNCATE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "postgres",
+            "privilege_type": "UPDATE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "service_role",
+            "privilege_type": "DELETE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "service_role",
+            "privilege_type": "INSERT",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "service_role",
+            "privilege_type": "MAINTAIN",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "service_role",
+            "privilege_type": "REFERENCES",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "service_role",
+            "privilege_type": "SELECT",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "service_role",
+            "privilege_type": "TRIGGER",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "service_role",
+            "privilege_type": "TRUNCATE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "service_role",
+            "privilege_type": "UPDATE",
+            "grantor": "postgres",
+            "is_grantable": false
+          }
+        ]
+      },
+      {
+        "table_name": "import_jobs",
+        "brokerdesk_admin_references": false,
+        "acl": [
+          {
+            "grantee": "anon",
+            "privilege_type": "DELETE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "anon",
+            "privilege_type": "INSERT",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "anon",
+            "privilege_type": "MAINTAIN",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "anon",
+            "privilege_type": "REFERENCES",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "anon",
+            "privilege_type": "SELECT",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "anon",
+            "privilege_type": "TRIGGER",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "anon",
+            "privilege_type": "TRUNCATE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "anon",
+            "privilege_type": "UPDATE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "authenticated",
+            "privilege_type": "DELETE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "authenticated",
+            "privilege_type": "INSERT",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "authenticated",
+            "privilege_type": "MAINTAIN",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "authenticated",
+            "privilege_type": "REFERENCES",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "authenticated",
+            "privilege_type": "SELECT",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "authenticated",
+            "privilege_type": "TRIGGER",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "authenticated",
+            "privilege_type": "TRUNCATE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "authenticated",
+            "privilege_type": "UPDATE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "brokerdesk_runtime",
+            "privilege_type": "INSERT",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "brokerdesk_runtime",
+            "privilege_type": "SELECT",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "brokerdesk_runtime",
+            "privilege_type": "UPDATE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "postgres",
+            "privilege_type": "DELETE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "postgres",
+            "privilege_type": "INSERT",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "postgres",
+            "privilege_type": "MAINTAIN",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "postgres",
+            "privilege_type": "REFERENCES",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "postgres",
+            "privilege_type": "SELECT",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "postgres",
+            "privilege_type": "TRIGGER",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "postgres",
+            "privilege_type": "TRUNCATE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "postgres",
+            "privilege_type": "UPDATE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "service_role",
+            "privilege_type": "DELETE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "service_role",
+            "privilege_type": "INSERT",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "service_role",
+            "privilege_type": "MAINTAIN",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "service_role",
+            "privilege_type": "REFERENCES",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "service_role",
+            "privilege_type": "SELECT",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "service_role",
+            "privilege_type": "TRIGGER",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "service_role",
+            "privilege_type": "TRUNCATE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "service_role",
+            "privilege_type": "UPDATE",
+            "grantor": "postgres",
+            "is_grantable": false
+          }
+        ]
+      },
+      {
+        "table_name": "attachments",
+        "brokerdesk_admin_references": false,
+        "acl": [
+          {
+            "grantee": "anon",
+            "privilege_type": "DELETE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "anon",
+            "privilege_type": "INSERT",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "anon",
+            "privilege_type": "MAINTAIN",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "anon",
+            "privilege_type": "REFERENCES",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "anon",
+            "privilege_type": "SELECT",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "anon",
+            "privilege_type": "TRIGGER",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "anon",
+            "privilege_type": "TRUNCATE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "anon",
+            "privilege_type": "UPDATE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "authenticated",
+            "privilege_type": "DELETE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "authenticated",
+            "privilege_type": "INSERT",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "authenticated",
+            "privilege_type": "MAINTAIN",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "authenticated",
+            "privilege_type": "REFERENCES",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "authenticated",
+            "privilege_type": "SELECT",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "authenticated",
+            "privilege_type": "TRIGGER",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "authenticated",
+            "privilege_type": "TRUNCATE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "authenticated",
+            "privilege_type": "UPDATE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "brokerdesk_runtime",
+            "privilege_type": "DELETE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "brokerdesk_runtime",
+            "privilege_type": "INSERT",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "brokerdesk_runtime",
+            "privilege_type": "SELECT",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "postgres",
+            "privilege_type": "DELETE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "postgres",
+            "privilege_type": "INSERT",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "postgres",
+            "privilege_type": "MAINTAIN",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "postgres",
+            "privilege_type": "REFERENCES",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "postgres",
+            "privilege_type": "SELECT",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "postgres",
+            "privilege_type": "TRIGGER",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "postgres",
+            "privilege_type": "TRUNCATE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "postgres",
+            "privilege_type": "UPDATE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "service_role",
+            "privilege_type": "DELETE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "service_role",
+            "privilege_type": "INSERT",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "service_role",
+            "privilege_type": "MAINTAIN",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "service_role",
+            "privilege_type": "REFERENCES",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "service_role",
+            "privilege_type": "SELECT",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "service_role",
+            "privilege_type": "TRIGGER",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "service_role",
+            "privilege_type": "TRUNCATE",
+            "grantor": "postgres",
+            "is_grantable": false
+          },
+          {
+            "grantee": "service_role",
+            "privilege_type": "UPDATE",
+            "grantor": "postgres",
+            "is_grantable": false
+          }
+        ]
+      }
+    ],
+    "functionOwnership": [
+      {
+        "private_function_count": 30,
+        "admin_owned": 0,
+        "postgres_owned": 30,
+        "supabase_admin_owned": 0
+      }
+    ]
+  },
+  "conclusion": {
+    "publicGrantPath": "supported-path-visible",
+    "privatePrerequisites": "missing",
+    "referencesPrerequisites": "missing"
+  }
+}

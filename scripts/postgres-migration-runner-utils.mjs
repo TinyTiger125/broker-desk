@@ -182,10 +182,20 @@ export const EMPTY_DATABASE_PREREQUISITE_TABLES = Object.freeze([
   "audit_logs",
 ]);
 
-export function buildEmptyDatabasePrerequisiteSql() {
+export function buildEmptyDatabasePrerequisiteSql({ ownershipRole = null } = {}) {
+  if (ownershipRole !== null && !/^[a-z_][a-z0-9_]*$/i.test(ownershipRole)) {
+    throw new Error("ownershipRole must be a plain PostgreSQL role identifier");
+  }
+  const ownershipRoleSql = ownershipRole ? ` TO ${ownershipRole}` : " TO brokerdesk_admin";
   const ownership = EMPTY_DATABASE_PREREQUISITE_TABLES
-    .map((table) => `ALTER TABLE public.${table} OWNER TO brokerdesk_admin;\nALTER TABLE public.${table} ENABLE ROW LEVEL SECURITY;\nALTER TABLE public.${table} FORCE ROW LEVEL SECURITY;`)
+    .map((table) => ownershipRole
+      ? `ALTER TABLE public.${table} OWNER${ownershipRoleSql};`
+      : `ALTER TABLE public.${table} OWNER${ownershipRoleSql};\nALTER TABLE public.${table} ENABLE ROW LEVEL SECURITY;\nALTER TABLE public.${table} FORCE ROW LEVEL SECURITY;`)
     .join("\n");
+  const rowSecurity = EMPTY_DATABASE_PREREQUISITE_TABLES
+    .map((table) => `ALTER TABLE public.${table} ENABLE ROW LEVEL SECURITY;\nALTER TABLE public.${table} FORCE ROW LEVEL SECURITY;`)
+    .join("\n");
+  const ownershipSql = ownershipRole ? `${ownership}\nSET ROLE ${ownershipRole};\n${rowSecurity}\nRESET ROLE;` : ownership;
   return {
     createRoles: `DO $$
 DECLARE
@@ -204,6 +214,6 @@ BEGIN
   END LOOP;
 END
 $$;`,
-    ownership,
+    ownership: ownershipSql,
   };
 }

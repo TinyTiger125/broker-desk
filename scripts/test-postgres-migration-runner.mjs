@@ -33,6 +33,7 @@ class FakeClient {
     this.rollbackCount = 0;
     this.unlockCount = 0;
     this.endCount = 0;
+    this.roleCommands = [];
     FakeClient.instances.push(this);
   }
 
@@ -51,6 +52,10 @@ class FakeClient {
     const sql = String(text).replace(/\s+/g, " ").trim();
     if (sql.startsWith("SET lock_timeout") && FakeClient.mode.lockError) throw Object.assign(new Error("lock timeout"), { code: "55P03" });
     if (sql.startsWith("SET lock_timeout") || sql.startsWith("SET statement_timeout")) return { rows: [], rowCount: 0 };
+    if (sql.startsWith("SET ROLE") || sql === "RESET ROLE") {
+      this.roleCommands.push(sql);
+      return { rows: [], rowCount: 0 };
+    }
     if (sql.includes("pg_advisory_lock")) return { rows: [], rowCount: 0 };
     if (sql.includes("pg_advisory_unlock")) {
       this.unlockCount += 1;
@@ -115,6 +120,18 @@ assert.deepEqual(FakeClient.state.body, ["20260908", "20260921"]);
 assert.equal(FakeClient.instances[0].config.connectionTimeoutMillis, 10_000);
 assert.equal(FakeClient.instances[0].unlockCount, 1);
 assert.equal(FakeClient.instances[0].endCount, 1);
+assert.deepEqual(FakeClient.instances[0].roleCommands, [], "generic runner must not switch roles by default");
+
+FakeClient.reset();
+await runPostgresMigrations({
+  Client: FakeClient,
+  databaseUrl: "postgres://migration:test@example.test/db",
+  migrationsDirectory,
+  migrationExecutionRole: "brokerdesk_admin",
+  roleSwitchMigrations: [wrappedMigrations[0][0]],
+  log: () => {},
+});
+assert.deepEqual(FakeClient.instances[0].roleCommands, ["SET ROLE brokerdesk_admin", "RESET ROLE"], "explicit role set must be narrow");
 
 const second = await runPostgresMigrations({ Client: FakeClient, databaseUrl: "postgres://migration:test@example.test/db", migrationsDirectory, log: () => {} });
 assert.deepEqual(second, { appliedCount: 0, skippedCount: 2, stoppedAfter: null });
@@ -187,5 +204,8 @@ for (const table of EMPTY_DATABASE_PREREQUISITE_TABLES) {
 }
 assert.match(prerequisiteSql.createRoles, /CREATE ROLE brokerdesk_runtime NOLOGIN/);
 assert.match(prerequisiteSql.createRoles, /CREATE ROLE brokerdesk_admin NOLOGIN/);
+assert.doesNotMatch(prerequisiteSql.ownership, /SET ROLE brokerdesk_admin/);
+const tokyoPrerequisiteSql = buildEmptyDatabasePrerequisiteSql({ ownershipRole: "brokerdesk_admin" });
+assert.match(tokyoPrerequisiteSql.ownership, /SET ROLE brokerdesk_admin/);
 
 console.log("PASS: migration runner transaction, checksum, failure cleanup, lock timeout and uncertainty scenarios");

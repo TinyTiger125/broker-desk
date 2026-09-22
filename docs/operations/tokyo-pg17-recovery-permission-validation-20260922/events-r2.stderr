@@ -1,0 +1,26 @@
+stage:scenario success
+stage:startCluster
+stage:initdb /var/folders/hk/679p0p853nj4cvd3q93mj5b40000gn/T/broker-desk-pg17-vrgKOS/data
+stage:initdbDone 0
+stage:clusterStarted 55629
+stage:setupFixture
+stage:seeded {
+  appliedCount: 38,
+  skippedCount: 0,
+  stoppedAfter: '20260904_001_runtime_external_auth_subject_execute.sql'
+}
+stage:fixtureReady
+stage:setupPermissions
+stage:scenario failure
+stage:startCluster
+stage:initdb /var/folders/hk/679p0p853nj4cvd3q93mj5b40000gn/T/broker-desk-pg17-px5H3s/data
+stage:initdbDone 0
+stage:clusterStarted 55531
+stage:setupFixture
+stage:seeded {
+  appliedCount: 38,
+  skippedCount: 0,
+  stoppedAfter: '20260904_001_runtime_external_auth_subject_execute.sql'
+}
+stage:fixtureReady
+stage:setupPermissions
