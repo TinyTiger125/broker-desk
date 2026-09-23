@@ -1,3 +1,5 @@
+import { getAuthMode, isSupabaseAuthConfigured } from "@/lib/auth-mode";
+
 type ProductionReadinessCode =
   | "production_database_required"
   | "production_release_not_approved"
@@ -117,15 +119,23 @@ export function assertProductionDataStoreReady() {
 export function assertProductionTenantScopeBindingReady() {
   if (!isProductionRuntime()) return;
 
-  // The Postgres repository binds the immutable Clerk subject on the same
-  // connection as every business query. Its runtime role is verified by the
-  // repository before the first production request.
+  // The Postgres repository binds the immutable external-auth subject on the
+  // same connection as every business query. Its runtime role is verified by
+  // the repository before the first production request.
 }
 
 export function assertProductionAuthReady() {
   if (!isProductionRuntime()) return;
 
-  if (process.env.BROKER_DESK_AUTH_MODE !== "clerk" || !process.env.CLERK_SECRET_KEY) {
+  const authMode = getAuthMode();
+  if (authMode === "supabase") {
+    if (!isSupabaseAuthConfigured()) {
+      throw new ProductionReadinessError("production_auth_required");
+    }
+    return;
+  }
+
+  if (authMode !== "clerk" || !process.env.CLERK_SECRET_KEY) {
     throw new ProductionReadinessError("production_auth_required");
   }
 }

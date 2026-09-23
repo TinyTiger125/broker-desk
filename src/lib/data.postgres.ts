@@ -5,7 +5,7 @@ import { PostgresObjectImportRepository, mapObjectImportTarget, mapObjectImportC
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
 import { Pool, type PoolClient } from "pg";
-import { normalizeDatabaseConnectionString } from "@/lib/database-connection";
+import { buildDatabasePoolConnectionConfig } from "@/lib/database-connection";
 import { cache } from "react";
 import { computeQuote } from "@/lib/quote";
 import {
@@ -211,9 +211,9 @@ function getRawPool(): Pool {
     const rawConnectionString = isProductionRuntime()
       ? process.env.DATABASE_URL
       : process.env.DATABASE_DEVELOPMENT_URL ?? process.env.DATABASE_URL;
-    const connectionString = normalizeDatabaseConnectionString(rawConnectionString);
+    const connectionConfig = buildDatabasePoolConnectionConfig(rawConnectionString);
     pool = new Pool({
-      connectionString,
+      ...connectionConfig,
       // Neon connection setup is materially slower than a normal indexed read.
       // Keep a small number of authenticated sessions alive so each route does
       // not fan out into a new cold connection for every independent query.
@@ -223,11 +223,6 @@ function getRawPool(): Pool {
       min: process.env.NODE_ENV === "development" ? 1 : 0,
       idleTimeoutMillis: process.env.NODE_ENV === "development" ? 15 * 60 * 1000 : 60 * 1000,
       connectionTimeoutMillis: 10 * 1000,
-      ssl: connectionString?.includes("supabase.co")
-        ? {
-            rejectUnauthorized: false,
-          }
-        : undefined,
     });
     brokerDeskGlobal.__brokerDeskPostgresPool = pool;
     // node-postgres emits this when the database closes an idle client. The

@@ -49,6 +49,9 @@ function withEnv(nextEnv, fn) {
     "BROKER_DESK_AUTH_TRUSTED_HEADER_SECRET",
     "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
     "CLERK_SECRET_KEY",
+    "NEXT_PUBLIC_SUPABASE_URL",
+    "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
+    "BROKER_DESK_AUTH_PROVIDER",
     "DATA_DRIVER",
     "DATABASE_URL",
     "DATABASE_ADMIN_URL",
@@ -189,6 +192,33 @@ withEnv(
   },
   () => {
     assert(authMode.isClerkAuthConfigured(), "clerk auth should be configured only when both keys are present");
+  },
+);
+
+withEnv(
+  {
+    NODE_ENV: "production",
+    BROKER_DESK_AUTH_MODE: "supabase",
+    NEXT_PUBLIC_SUPABASE_URL: "https://tokyo-validation.supabase.co",
+    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "publishable-fixture",
+  },
+  () => {
+    readiness.assertProductionAuthReady();
+  },
+);
+
+withEnv(
+  {
+    NODE_ENV: "production",
+    BROKER_DESK_AUTH_MODE: "supabase",
+    NEXT_PUBLIC_SUPABASE_URL: "https://tokyo-validation.supabase.co",
+  },
+  () => {
+    assertThrowsCode(
+      readiness.assertProductionAuthReady,
+      "production_auth_required",
+      "Supabase production auth must require both public URL and publishable key",
+    );
   },
 );
 

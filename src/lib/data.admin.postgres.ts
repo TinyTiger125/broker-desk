@@ -1,7 +1,7 @@
 import "server-only";
 
 import { Pool } from "pg";
-import { normalizeDatabaseConnectionString } from "@/lib/database-connection";
+import { buildDatabasePoolConnectionConfig } from "@/lib/database-connection";
 import { isProductionRuntime, ProductionReadinessError } from "@/lib/production-readiness";
 
 type AdminGlobal = typeof globalThis & {
@@ -12,7 +12,7 @@ const adminGlobal = globalThis as AdminGlobal;
 let pool: Pool | null = adminGlobal.__brokerDeskPostgresAdminPool ?? null;
 let roleCheck: Promise<void> | null = null;
 
-function getAdminConnectionString(): string {
+function getAdminConnectionConfig() {
   const connectionString = (
     process.env.DATABASE_ADMIN_URL ??
     (isProductionRuntime() ? "" : process.env.DATABASE_DEVELOPMENT_URL ?? process.env.DATABASE_URL) ??
@@ -21,13 +21,13 @@ function getAdminConnectionString(): string {
   if (!connectionString) {
     throw new ProductionReadinessError("production_admin_database_required");
   }
-  return normalizeDatabaseConnectionString(connectionString) ?? connectionString;
+  return buildDatabasePoolConnectionConfig(connectionString);
 }
 
 function getAdminPool(): Pool {
   if (!pool) {
     pool = new Pool({
-      connectionString: getAdminConnectionString(),
+      ...getAdminConnectionConfig(),
       max: 2,
       min: 0,
       idleTimeoutMillis: 60_000,
