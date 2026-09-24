@@ -5,7 +5,7 @@ import { PostgresObjectImportRepository, mapObjectImportTarget, mapObjectImportC
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
 import { Pool, type PoolClient } from "pg";
-import { buildDatabasePoolConnectionConfig } from "@/lib/database-connection";
+import { buildDatabasePoolConnectionConfig, getDatabasePoolMax } from "@/lib/database-connection";
 import { cache } from "react";
 import { computeQuote } from "@/lib/quote";
 import {
@@ -217,7 +217,7 @@ function getRawPool(): Pool {
       // Neon connection setup is materially slower than a normal indexed read.
       // Keep a small number of authenticated sessions alive so each route does
       // not fan out into a new cold connection for every independent query.
-      max: 4,
+      max: getDatabasePoolMax(4),
       // Keep one development connection available while the local app is being
       // tested. Production can scale idle connections back to zero.
       min: process.env.NODE_ENV === "development" ? 1 : 0,

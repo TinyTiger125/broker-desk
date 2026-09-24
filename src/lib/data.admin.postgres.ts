@@ -1,7 +1,7 @@
 import "server-only";
 
 import { Pool } from "pg";
-import { buildDatabasePoolConnectionConfig } from "@/lib/database-connection";
+import { buildDatabasePoolConnectionConfig, getDatabasePoolMax } from "@/lib/database-connection";
 import { isProductionRuntime, ProductionReadinessError } from "@/lib/production-readiness";
 
 type AdminGlobal = typeof globalThis & {
@@ -28,7 +28,7 @@ function getAdminPool(): Pool {
   if (!pool) {
     pool = new Pool({
       ...getAdminConnectionConfig(),
-      max: 2,
+      max: getDatabasePoolMax(2),
       min: 0,
       idleTimeoutMillis: 60_000,
       connectionTimeoutMillis: 10_000,

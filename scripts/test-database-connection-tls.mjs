@@ -18,7 +18,29 @@ const modulePath = join(dirname(fileURLToPath(import.meta.url)), ".database-conn
 await writeFile(modulePath, ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
 }).outputText);
-const { buildDatabasePoolConnectionConfig } = await import(`file://${modulePath}`);
+const { buildDatabasePoolConnectionConfig, getDatabasePoolMax } = await import(`file://${modulePath}`);
+
+// Verify the scoped capacity policy without opening any database connection.
+for (const profile of [undefined, "", "other", "tokyo", " TOKYO "]) {
+  for (const environment of [undefined, "", "development", "production", "preview"]) {
+    if (profile === undefined) delete process.env.BROKER_DESK_RUNTIME_TLS_PROFILE;
+    else process.env.BROKER_DESK_RUNTIME_TLS_PROFILE = profile;
+    if (environment === undefined) delete process.env.VERCEL_ENV;
+    else process.env.VERCEL_ENV = environment;
+    const limited = profile?.trim().toLowerCase() === "tokyo" && environment === "preview";
+    for (const defaultMax of [4, 2]) {
+      if (getDatabasePoolMax(defaultMax) !== (limited ? 1 : defaultMax)) {
+        throw new Error(`unexpected pool capacity: ${profile}/${environment}/${defaultMax}`);
+      }
+    }
+  }
+}
+for (const [label, poolSource, defaultMax] of [["runtime", runtimePoolSource, 4], ["admin", adminPoolSource, 2]]) {
+  if (!poolSource.includes(`max: getDatabasePoolMax(${defaultMax})`)) {
+    throw new Error(`${label} pool does not use the shared capacity policy`);
+  }
+}
+console.log("database pool capacity passed (50 profile/environment/pool cases; both application pools wired)");
 
 const assertThrows = (fn, expectedCode, label) => {
   try {

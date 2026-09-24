@@ -11,6 +11,11 @@ function isTokyoTlsProfile() {
   return process.env.BROKER_DESK_RUNTIME_TLS_PROFILE?.trim().toLowerCase() === "tokyo";
 }
 
+/** Per warm instance and per pool, not a deployment-wide connection limit. */
+export function getDatabasePoolMax(defaultMax: number): number {
+  return isTokyoTlsProfile() && process.env.VERCEL_ENV === "preview" ? 1 : defaultMax;
+}
+
 function getRuntimeCaCertificate() {
   const ca = process.env.DATABASE_RUNTIME_CA_CERT?.trim();
   if (isTokyoTlsProfile() && !ca) throw new Error("database_runtime_ca_required");
