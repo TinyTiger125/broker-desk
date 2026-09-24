@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
@@ -18,6 +18,8 @@ export function SupabaseSignInForm({
   forgotPasswordLabel?: string;
 }) {
   const router = useRouter();
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => { setHydrated(true); }, []);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -44,7 +46,7 @@ export function SupabaseSignInForm({
   }
 
   return (
-    <form onSubmit={submit} className="grid w-full gap-4 border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+    <form data-auth-hydrated={hydrated} onSubmit={submit} className="grid w-full gap-4 border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
       <label className="grid gap-2 text-sm font-bold text-slate-900">
         <span>{emailLabel}</span>
         <input
@@ -70,7 +72,7 @@ export function SupabaseSignInForm({
       {error ? <p role="alert" className="text-sm font-bold text-red-700">{error}</p> : null}
       <button
         type="submit"
-        disabled={pending}
+        disabled={!hydrated || pending}
         className="min-h-11 border border-slate-950 bg-slate-950 px-4 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60"
       >
         {pending ? "…" : submitLabel}
