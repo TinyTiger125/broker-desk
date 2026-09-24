@@ -191,6 +191,7 @@ const REQUIRED_PRODUCTION_MIGRATIONS = [
   "20260908_001_preimport_upload_lifecycle.sql",
   "20260921_001_supabase_auth_lifecycle.sql",
   "20260924_001_admin_preimport_helper_execute.sql",
+  "20260924_002_admin_worker_identity_read.sql",
 ] as const;
 
 const OPEN_STAGES: ClientStage[] = ["lead", "contacted", "quoted", "viewing", "negotiating"];

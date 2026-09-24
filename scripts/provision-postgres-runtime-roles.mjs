@@ -78,8 +78,8 @@ try {
   // the explicit relations touched by its current identity, import-claim,
   // synchronization, and preimport-delete paths. Keep this matrix narrow.
   await client.query("GRANT USAGE ON SCHEMA public TO brokerdesk_admin");
-  await client.query("GRANT SELECT, INSERT, UPDATE ON TABLE public.users TO brokerdesk_admin");
-  await client.query("GRANT SELECT ON TABLE public.tenants TO brokerdesk_admin");
+  await client.query("GRANT SELECT (id, external_auth_subject) ON public.users TO brokerdesk_admin");
+  await client.query("GRANT SELECT (id, status, service_start_at, service_end_at) ON public.tenants TO brokerdesk_admin");
   await client.query("GRANT SELECT, UPDATE ON TABLE public.tenant_memberships TO brokerdesk_admin");
   await client.query("GRANT SELECT, UPDATE ON TABLE public.import_jobs TO brokerdesk_admin");
   await client.query("GRANT SELECT, DELETE ON TABLE public.attachments TO brokerdesk_admin");
@@ -97,6 +97,7 @@ try {
   // Preserve the forward migration grants when resetting the admin function ACL.
   await client.query("GRANT EXECUTE ON FUNCTION brokerdesk_private.can_access_tenant(TEXT) TO brokerdesk_admin");
   await client.query("GRANT EXECUTE ON FUNCTION brokerdesk_private.current_user_id() TO brokerdesk_admin");
+  await client.query("GRANT EXECUTE ON FUNCTION brokerdesk_private.can_access_user(TEXT) TO brokerdesk_admin");
   await client.query("GRANT EXECUTE ON FUNCTION brokerdesk_private.sync_external_auth_user(TEXT, TEXT, TEXT) TO brokerdesk_admin");
   await client.query("GRANT EXECUTE ON FUNCTION brokerdesk_private.suspend_external_auth_user(TEXT) TO brokerdesk_admin");
   await client.query("GRANT EXECUTE ON FUNCTION brokerdesk_private.claim_next_import_jobs(INTEGER) TO brokerdesk_admin");

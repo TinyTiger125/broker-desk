@@ -84,7 +84,7 @@ try {
     await assert.rejects(scoped(() => runtime.query(`SELECT brokerdesk_private.${fn}('tenant-a','red')`)), error => error.code === '42501' && /current_user_id/.test(error.message));
   }
   evidence.checks.push('baseline claim/delete both reject missing current_user_id EXECUTE');
-  const applied = await runPostgresMigrations({ client: db, clientConfig: { host: root, port: 55447, database: 'postgres', user: 'postgres' }, log: () => {} });
+  const applied = await runPostgresMigrations({ client: db, clientConfig: { host: root, port: 55447, database: 'postgres', user: 'postgres' }, stopAfter: '20260924_001_admin_preimport_helper_execute.sql', log: () => {} });
   assert.equal(applied.appliedCount,1); assert.equal(applied.skippedCount,44);
   evidence.after = await acl();
   for (const row of evidence.after) assert.equal(row.allowed, row.proname !== 'current_external_auth_subject');
@@ -118,7 +118,7 @@ try {
   assert.equal(Number((await db.query("SELECT count(*) FROM private_attachment_blobs WHERE attachment_id='source-delete'")).rows[0].count),1);
   assert.equal(Number((await db.query("SELECT count(*) FROM audit_logs WHERE target_id='delete' AND action='preimport_property_upload_deleted'")).rows[0].count),0);
   evidence.checks.push('claim succeeds with current_user_id; foreign claim/delete denied; local delete false leaves job/blob intact and creates no deletion audit');
-  const rerun = await runPostgresMigrations({ client: db, clientConfig: { host: root, port: 55447, database: 'postgres', user: 'postgres' }, log: () => {} });
+  const rerun = await runPostgresMigrations({ client: db, clientConfig: { host: root, port: 55447, database: 'postgres', user: 'postgres' }, stopAfter: '20260924_001_admin_preimport_helper_execute.sql', log: () => {} });
   assert.equal(rerun.appliedCount,0); assert.equal(rerun.skippedCount,45);
   evidence.pass = true;
 } catch (error) {

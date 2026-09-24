@@ -98,8 +98,8 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO brokerdesk_runtime;
 -- This is a server-only background capability; it is not an application
 -- session role and remains NOSUPERUSER/NOBYPASSRLS.
 GRANT USAGE ON SCHEMA public TO brokerdesk_admin;
-GRANT SELECT, INSERT, UPDATE ON TABLE public.users TO brokerdesk_admin;
-GRANT SELECT ON TABLE public.tenants TO brokerdesk_admin;
+GRANT SELECT (id, external_auth_subject) ON public.users TO brokerdesk_admin;
+GRANT SELECT (id, status, service_start_at, service_end_at) ON public.tenants TO brokerdesk_admin;
 GRANT SELECT, UPDATE ON TABLE public.tenant_memberships TO brokerdesk_admin;
 GRANT SELECT, UPDATE ON TABLE public.import_jobs TO brokerdesk_admin;
 GRANT SELECT, DELETE ON TABLE public.attachments TO brokerdesk_admin;
@@ -126,6 +126,9 @@ GRANT EXECUTE ON FUNCTION brokerdesk_private.can_access_user(TEXT) TO brokerdesk
 -- It is a server-only background capability; ordinary runtime access remains
 -- RLS-scoped and the role retains NOSUPERUSER/NOBYPASSRLS.
 GRANT USAGE ON SCHEMA brokerdesk_private TO brokerdesk_admin;
+GRANT EXECUTE ON FUNCTION brokerdesk_private.can_access_tenant(TEXT) TO brokerdesk_admin;
+GRANT EXECUTE ON FUNCTION brokerdesk_private.current_user_id() TO brokerdesk_admin;
+GRANT EXECUTE ON FUNCTION brokerdesk_private.can_access_user(TEXT) TO brokerdesk_admin;
 GRANT EXECUTE ON FUNCTION brokerdesk_private.sync_external_auth_user(TEXT, TEXT, TEXT) TO brokerdesk_admin;
 GRANT EXECUTE ON FUNCTION brokerdesk_private.suspend_external_auth_user(TEXT) TO brokerdesk_admin;
 GRANT EXECUTE ON FUNCTION brokerdesk_private.claim_next_import_jobs(INTEGER) TO brokerdesk_admin;

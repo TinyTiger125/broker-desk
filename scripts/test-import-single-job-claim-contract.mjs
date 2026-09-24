@@ -42,12 +42,13 @@ for (const [, sql] of provision.matchAll(/await client\.query\("([^"\n]+)"\)/g))
 assert(adminRevokeSeen, "admin provisioning must retain its deny-by-default function reset");
 assert.deepEqual([...adminFunctionGrants].sort(), [
   "can_access_tenant(TEXT)",
+  "can_access_user(TEXT)",
   "claim_import_job_by_id(TEXT)",
   "claim_next_import_jobs(INTEGER)",
   "current_user_id()",
   "suspend_external_auth_user(TEXT)",
   "sync_external_auth_user(TEXT, TEXT, TEXT)",
-].sort(), "reprovisioning must restore exactly the existing four entrypoints and two preimport helpers, without raw-subject access");
+].sort(), "reprovisioning must restore exactly the existing four entrypoints and three RLS helpers, without raw-subject access");
 assert(roleSql.includes("GRANT EXECUTE ON FUNCTION brokerdesk_private.claim_import_job_by_id(TEXT) TO brokerdesk_admin"), "role setup SQL must include the single-job worker grant");
 assert(route.includes("claimQueuedImportJob"), "drain route must support the exact-id claim");
 assert(route.includes("typeof body?.jobId === \"string\""), "drain route must validate the diagnostic job id type");
@@ -55,3 +56,9 @@ assert(route.includes("const hasRequestedJobId"), "an empty diagnostic job id mu
 assert(route.includes("hasValidWorkerToken"), "single-job path must retain worker bearer authentication");
 assert(runbook.includes('`{ "jobId": "..." }`'), "runbook must document the controlled single-job path");
 console.log("PASS: single-job worker claim retains bearer auth, tenant-derived identity, atomic SKIP LOCKED state transition and no batch fallback");
+
+for (const setup of [provision, roleSql]) {
+  assert(setup.includes("GRANT SELECT (id, external_auth_subject) ON public.users TO brokerdesk_admin"));
+  assert(setup.includes("GRANT SELECT (id, status, service_start_at, service_end_at) ON public.tenants TO brokerdesk_admin"));
+  assert(!/GRANT SELECT(?:, INSERT, UPDATE)? ON (?:TABLE )?public\.(?:users|tenants) TO brokerdesk_admin/.test(setup));
+}

@@ -141,3 +141,15 @@ workId：`TOKYO-BUSINESS-PREVIEW-LIVE-20260924`。本节仅更新操作文档，
 删除成功路径仍 **UNVERIFIED / 延期**：该本地夹具的 tenants / tenant_memberships 为 postgres owner，现有 SELECT-only RLS 使 admin 锁 tenant 行返回零行，delete 返回 false，断言 job/blob 保留且无删除 audit。云端两表 owner 未由此测试确定，因此不推断云端同样失败；本轮不新增 delete policy，也不宣称完整删除回归通过。后续角色重配必须使用本次更新后的 `scripts/provision-postgres-runtime-roles.mjs`：在 admin private 函数 EXECUTE 全撤后，精确恢复上述两个 helper 和原有四个入口，不授予 raw subject helper。既有单 job 静态回归按 SQL 语句顺序验证最终六项授权集合；这是源码契约验证，不代表执行了角色重配，也不能代替本 forward migration。PG17 红绿夹具独立建立已观察的旧 44 权限，不调用 provisioning 入口。
 
 后续执行顺序（本文不执行）：独立审查本地候选后绑定**新提交**；获授权后先受控应用唯一新增 migration，再按新提交生成独立干净上传包并部署 Preview。新包应包含新 required migration 对应 SQL，核对应用 gate 与清单，禁止旧 source 混入。旧候选 `94a4501` 的 333 文件 manifest 和 `/tmp/tokyo-preview-upload-4gtbmuml` 保留为失败部署证据，不覆盖或复用。文档修正不代表已部署源码或已应用云端 migration。
+
+## 10. 2026-09-24 worker identity join 第 46 条候选（仅本地）
+
+第 45 条已应用后的目标只读证据 `tokyo-worker-claim-acl-result.json` 显示：admin-owned `claim_import_job_by_id` 可执行，但 postgres-owned、RLS 开启的 users/tenants 对 admin 缺少 join 列读取权限。唯一新增 `20260924_002_admin_worker_identity_read.sql` 授予 users 的 id/external_auth_subject 与 tenants 的 id/status/service_start_at/service_end_at 六列 SELECT；两条仅 TO brokerdesk_admin 的 SELECT policy 使用 `current_user='brokerdesk_admin'`；额外授予 `can_access_user(TEXT)` EXECUTE。没有新增整表 SELECT、INSERT/UPDATE、raw subject EXECUTE、BYPASSRLS、superuser 或 owner 变更。
+
+PG17.11 定向测试 `scripts/test-admin-worker-identity-read.mjs` 复现 45 的 users 42501，46 后仅指定 queued job 被 claim。users.email/name、tenants.name 列外读取为 42501；runtime 跨 tenant 读取仍不可见、runtime 无 worker 函数权限，普通角色无身份表读取。缺 job 用户 subject、suspended/cancelled/pending 无服务期、未来开始及过期均不领取。移除任一列授权或第三 helper 恢复 42501；移除任一新增 policy 恢复 0 claimed。前置探针还证明仅列授权加两 policy 仍因 can_access_user EXECUTE 缺失而 42501，第三 helper 不可省。
+
+权限合同：admin 是受 worker token 保护的后台跨 tenant 身份；指定 A 不消费 B，但明确指定 B 可领取，包括请求 subject 为 A 或缺失。不能将它描述为同 tenant 请求隔离。RLS policy 与列 ACL 是两个独立门，新增 policy 不向 runtime 或其它角色开放；raw subject helper 仍禁授。此轮数据库 claim 证据不代表 worker mapped/payload/audit 或浏览器保存重开通过。
+
+provisioner 与角色 SQL 将旧 users 整表 SELECT/INSERT/UPDATE、tenants 整表 SELECT 替换成上述列 SELECT；private 函数撤权后恢复三 helper 与原四入口。既有静态合同同步验证七函数集合和窄列授权。required migration gate 加入 46。仅审查后的新提交/新干净包可进入后续受控云流程；当前未应用 46、未领取云端 job、未部署，也未触碰持活 TTY 73812。历史失败 job 和证据保留。PG17 结果：`/tmp/tokyo-worker46-pg17-result.json`；阶段性必要性探针：`/tmp/tokyo-worker46-probe.json`。
+
+收窄重配权限的必要回归：同一 PG17 夹具确认 `sync_external_auth_user` / `suspend_external_auth_user` 均为 postgres-owned SECURITY DEFINER；admin 无 users INSERT/UPDATE 时，实际创建身份、同身份幂等复用、占位身份绑定 UPDATE，以及 suspend 清空 subject/挂起一条 membership 全部通过。此证据限定本地 owner 模型，不是云端生命周期调用回执。旧 44→45 helper 回归仅为两次后续 runner 加 `stopAfter=20260924_001_admin_preimport_helper_execute.sql`，防止吞入新增 46，原红绿及重复跳过语义保持。
