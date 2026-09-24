@@ -1,0 +1,59 @@
+{
+  "recordedAtUtc": "2026-09-23",
+  "scope": "local-only shared runtime/admin PostgreSQL TLS configuration and Node TLS verification; not Preview pool acceptance",
+  "candidate": "fc27b739e21d35a1ffa8f9f19cda8f6fd34a054b",
+  "cloudWrites": false,
+  "configuration": {
+    "profileVariable": "BROKER_DESK_RUNTIME_TLS_PROFILE=tokyo",
+    "caVariable": "DATABASE_RUNTIME_CA_CERT",
+    "caDelivery": "server-only Preview variable containing the public CA PEM chain; no local path and no migration URL/CA variable",
+    "runtimeSource": "DATABASE_URL",
+    "adminSource": "DATABASE_ADMIN_URL",
+    "sharedBuilder": "src/lib/database-connection.ts:buildDatabasePoolConnectionConfig",
+    "effectiveTls": {
+      "rejectUnauthorized": true,
+      "servername": "the database URL hostname",
+      "urlTlsParameters": "sslmode/sslcert/sslkey/sslrootcert removed after validation so URL parameters cannot override explicit TLS"
+    }
+  },
+  "negativeGuards": [
+    {"case": "Tokyo profile without DATABASE_RUNTIME_CA_CERT", "result": "database_runtime_ca_required"},
+    {"case": "sslmode=prefer, require or verify-ca", "result": "database_tls_verify_full_required"},
+    {"case": "malformed CA content", "result": "database_runtime_ca_invalid"},
+    {"case": "untrusted certificate", "result": "TLS handshake rejected"},
+    {"case": "hostname mismatch", "result": "TLS handshake rejected"}
+  ],
+  "handshakeEvidence": {
+    "fixture": "shared pool configuration exercised against isolated local TLS servers with OpenSSL-generated short-lived test CA/certificates; no external network",
+    "sharedConfigRuntime": ["trusted CA success", "untrusted CA rejection", "hostname mismatch rejection"],
+    "sharedConfigAdmin": ["trusted CA success", "untrusted CA rejection", "hostname mismatch rejection"],
+    "localDevelopmentBoundary": "without Tokyo profile and without SSL URL parameters, localhost retains the existing non-TLS local connection path",
+    "command": "node scripts/test-database-connection-tls.mjs",
+    "result": "PASS"
+  },
+  "boundaryEvidence": {
+    "tokyoEmptyConnection": "database_connection_required",
+    "tokyoInvalidConnection": "database_connection_invalid",
+    "tokyoNonPostgresProtocol": "database_protocol_invalid",
+    "tokyoMissingCa": "database_runtime_ca_required",
+    "nonTokyoLegacySslModes": "prefer/require/verify-ca each upgraded to explicit rejectUnauthorized=true TLS with sslmode removed before pg",
+    "actualPgParsing": "pg.Client.connectionParameters retained explicit CA, rejectUnauthorized=true and servername for both runtime/admin; URL sslmode did not override"
+  },
+  "relatedAuthRegression": [
+    "node scripts/check-production-security.mjs: PASS",
+    "node scripts/test-supabase-proxy-fixture.mjs: PASS",
+    "npm run typecheck: PASS",
+    "npx eslint src/lib/database-connection.ts src/lib/data.postgres.ts src/lib/data.admin.postgres.ts scripts/test-database-connection-tls.mjs: PASS after warning cleanup"
+  ],
+  "fileHashes": {
+    "src/lib/database-connection.ts": "9de0635bdf23ff1bc707e9bda985b92e93bb51b2fd9be3e7576c0916ab3ea087",
+    "src/lib/data.postgres.ts": "8c0924a48faff68d07edd3c57bce7236900f62aad0e2710751e9a75145dd4ddd",
+    "src/lib/data.admin.postgres.ts": "2b87e8e5fdacd2b90cbc2fd59f5cc3d7d7f6fd66ac46b623004f048a40cc0a52",
+    "scripts/test-database-connection-tls.mjs": "eed49337f206a92c83a218d3b3627e6c52791f5fd0a9d9df970a1e17a1fd5e39"
+  },
+  "notProven": [
+    "The evidence is shared configuration plus Node TLS/pg parsing only; actual application connection-pool handshake in Tokyo Preview remains reserved for Preview acceptance.",
+    "No Tokyo Preview deployment or cloud TLS handshake was performed in this turn.",
+    "No LOGIN, password, identity, Preview variable or migration operation was performed."
+  ]
+}

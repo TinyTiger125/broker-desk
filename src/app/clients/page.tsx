@@ -12,7 +12,7 @@ import {
   type Temperature,
 } from "@/lib/domain";
 import { formatCurrency, formatDate, formatRelativeDays } from "@/lib/format";
-import { listClients, type ClientListSort } from "@/lib/data";
+import { listClientsForContext, type ClientListSort } from "@/lib/data";
 import { getLocale } from "@/lib/locale";
 import {
   getBudgetTypeLabel,
@@ -25,7 +25,9 @@ import {
   getTemperatureLabel,
   getTemperatureOptions,
 } from "@/lib/options";
-import { requireTenantSession } from "@/lib/tenant-session";
+import { getTenantCapability, requireTenantSession } from "@/lib/tenant-session";
+import { capabilityHasTenantPermission } from "@/lib/tenant-permissions";
+import { createRequestContext } from "@/lib/visibility-resolver";
 
 export const dynamic = "force-dynamic";
 
@@ -130,6 +132,7 @@ const texts = {
     detail: "詳細を開く",
     addFollow: "フォロー追加",
     createQuote: "提案作成",
+    readOnly: "読み取り専用",
     dash: "-",
     noResult: "条件に一致する顧客がいません。",
     quickTitle: "クイック登録",
@@ -175,6 +178,7 @@ const texts = {
     detail: "打开详情",
     addFollow: "添加跟进",
     createQuote: "创建提案",
+    readOnly: "只读",
     dash: "-",
     noResult: "没有符合条件的客户。",
     quickTitle: "快速创建",
@@ -220,6 +224,7 @@ const texts = {
     detail: "상세 열기",
     addFollow: "후속 대응 추가",
     createQuote: "제안 작성",
+    readOnly: "읽기 전용",
     dash: "-",
     noResult: "조건에 맞는 고객이 없습니다.",
     quickTitle: "빠른 등록",
@@ -248,6 +253,10 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
   const budgetTypeLabel = getBudgetTypeLabel(locale);
   const loanPreApprovalLabel = getLoanPreApprovalLabel(locale);
   const clientSortOptions = getClientSortOptions(locale);
+  const requestContext = createRequestContext(session);
+  const canCreateClient = session.membership.status === "active"
+    && getTenantCapability(session.membership) !== "ordinary_member"
+    && capabilityHasTenantPermission(getTenantCapability(session.membership), "record.update");
 
   const params = (await searchParams) ?? {};
   const query = params.q?.trim() ?? "";
@@ -267,13 +276,16 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
   const sort = isSort(sortParam) ? sortParam : "follow_up";
   const filters = { query, stage, purpose, temperature, sort } satisfies Omit<ClientFilters, "page">;
 
-  const clients = await listClients(session.user.id, {
-    query: query || undefined,
-    stage,
-    purpose,
-    temperature,
-    sort,
-    tenantId: session.tenant.id,
+  const clients = await listClientsForContext({
+    context: requestContext,
+    filter: {
+      query: query || undefined,
+      stage,
+      purpose,
+      temperature,
+      sort,
+      lifecycleStatus: "active",
+    },
   });
 
   const pageCount = Math.max(1, Math.ceil(clients.length / CLIENTS_PAGE_SIZE));
@@ -402,9 +414,9 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
                   </tr>
                 </thead>
                 <tbody>
-                  {visibleClients.map((client) => (
+                  {visibleClients.map(({ client, resolution }) => (
                     <tr key={client.id} className={styles.resultRow}>
-                        <td className={styles.clientCell}>
+                      <td className={styles.clientCell}>
                         <Link
                           href={`/clients/${client.id}`}
                           data-client-link={`name:${client.id}`}
@@ -449,24 +461,28 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
                         </p>
                       </td>
                       <td className={styles.actionsCell}>
-                        <div className={styles.secondaryActions}>
-                          <Link
-                            href={`/clients/${client.id}#timeline`}
-                            data-client-link={`follow:${client.id}`}
-                            aria-label={`${text.addFollow}: ${client.name}`}
-                            className={styles.secondaryLink}
-                          >
-                            {text.addFollow}
-                          </Link>
-                          <Link
-                            href={`/quotes/new?clientId=${client.id}`}
-                            data-client-link={`quote:${client.id}`}
-                            aria-label={`${text.createQuote}: ${client.name}`}
-                            className={styles.secondaryLink}
-                          >
-                            {text.createQuote}
-                          </Link>
-                        </div>
+                        {resolution.canWrite ? (
+                          <div className={styles.secondaryActions}>
+                            <Link
+                              href={`/clients/${client.id}#timeline`}
+                              data-client-link={`follow:${client.id}`}
+                              aria-label={`${text.addFollow}: ${client.name}`}
+                              className={styles.secondaryLink}
+                            >
+                              {text.addFollow}
+                            </Link>
+                            <Link
+                              href={`/quotes/new?clientId=${client.id}`}
+                              data-client-link={`quote:${client.id}`}
+                              aria-label={`${text.createQuote}: ${client.name}`}
+                              className={styles.secondaryLink}
+                            >
+                              {text.createQuote}
+                            </Link>
+                          </div>
+                        ) : (
+                          <span className={styles.pageStatus}>{text.readOnly}</span>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -477,31 +493,33 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
         </section>
       </ClientsListReturnState>
 
-      <details className={styles.quickDetails}>
-        <summary className={styles.quickSummary}>
-          <span className={styles.quickSummaryText}>
-            <span className={styles.quickTitle}>{text.quickTitle}</span>
-            <span className={styles.quickDesc}>{text.quickDesc}</span>
-          </span>
-          <span className={styles.quickOpen}>{text.quickOpen}</span>
-        </summary>
-        <div className={styles.quickBody}>
-          <form action={createClient} className={styles.quickForm}>
-            <input name="name" required placeholder={text.name} aria-label={text.name} className={styles.control} />
-            <input name="phone" required placeholder={text.phone} aria-label={text.phone} className={styles.control} />
-            <input name="preferredArea" placeholder={text.area} aria-label={text.area} className={styles.control} />
-            <input name="budgetMax" type="number" placeholder={text.budgetMax} aria-label={text.budgetMax} className={styles.control} />
-            <select name="stage" defaultValue="lead" aria-label={text.stage} className={styles.control}>
-              {stageOptions.map((item) => (
-                <option key={item.value} value={item.value}>{item.label}</option>
-              ))}
-            </select>
-            <button type="submit" name="afterSave" value="list" className={styles.primaryButton}>
-              {text.quickSave}
-            </button>
-          </form>
-        </div>
-      </details>
+      {canCreateClient ? (
+        <details className={styles.quickDetails}>
+          <summary className={styles.quickSummary}>
+            <span className={styles.quickSummaryText}>
+              <span className={styles.quickTitle}>{text.quickTitle}</span>
+              <span className={styles.quickDesc}>{text.quickDesc}</span>
+            </span>
+            <span className={styles.quickOpen}>{text.quickOpen}</span>
+          </summary>
+          <div className={styles.quickBody}>
+            <form action={createClient} className={styles.quickForm}>
+              <input name="name" required placeholder={text.name} aria-label={text.name} className={styles.control} />
+              <input name="phone" required placeholder={text.phone} aria-label={text.phone} className={styles.control} />
+              <input name="preferredArea" placeholder={text.area} aria-label={text.area} className={styles.control} />
+              <input name="budgetMax" type="number" placeholder={text.budgetMax} aria-label={text.budgetMax} className={styles.control} />
+              <select name="stage" defaultValue="lead" aria-label={text.stage} className={styles.control}>
+                {stageOptions.map((item) => (
+                  <option key={item.value} value={item.value}>{item.label}</option>
+                ))}
+              </select>
+              <button type="submit" name="afterSave" value="list" className={styles.primaryButton}>
+                {text.quickSave}
+              </button>
+            </form>
+          </div>
+        </details>
+      ) : null}
     </div>
   );
 }

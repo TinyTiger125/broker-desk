@@ -10,8 +10,10 @@ const objectAttachments = read("src/lib/object-attachments.ts");
 const actions = read("src/app/actions.ts");
 const api = read("src/lib/w93-access.ts");
 const component = read("src/components/object-attachment-section.tsx");
+const attachmentList = read("src/components/object-attachment-list.tsx");
+const associationManager = read("src/components/case-association-manager.tsx");
+const casePage = read("src/app/cases/[id]/page.tsx");
 const pages = [
-  read("src/app/cases/[id]/page.tsx"),
   read("src/app/parties/[id]/edit/page.tsx"),
   read("src/app/properties/[id]/edit/page.tsx"),
 ];
@@ -30,7 +32,14 @@ assert.match(actions, /isObjectAttachmentTargetType[\s\S]*isObjectAttachmentCate
 assert.match(api, /listAttachmentLinks[\s\S]*resolveW93Parent/, "downloads must resolve a readable linked parent");
 assert.match(component, /attachmentFile/, "shared object UI must accept a file upload");
 assert.match(component, /OBJECT_ATTACHMENT_CATEGORIES/, "shared object UI must expose the bounded category set");
-assert.match(component, /\/api\/attachments\//, "shared object UI must expose authorized downloads");
-for (const page of pages) assert.match(page, /<ObjectAttachmentSection/, "all three object pages must render the shared attachment section");
+assert.match(attachmentList, /\/api\/attachments\//, "shared object UI must expose authorized downloads");
+assert.match(associationManager, /ObjectAttachmentList/, "case association management must retain the attachment list");
+assert.match(associationManager, /caseAttachments/, "case association management must receive case attachments");
+assert.match(associationManager, /caseAttachments\.length > 0/, "empty case attachment lists must not create a large empty panel");
+assert.match(casePage, /caseAttachments=\{objectAttachments\}/, "case page must place case attachments in association management");
+assert.doesNotMatch(casePage, /<ObjectAttachmentSection/, "case page must not render a second standalone generic upload form");
+assert.equal((casePage.match(/associationPanel=\{associationPanel\}/g) ?? []).length, 2, "read-only and overview branches must retain the association panel");
+assert.match(casePage, /\{associationPanel\}/, "quick case branch must retain the association panel");
+for (const page of pages) assert.match(page, /<ObjectAttachmentSection/, "party and property pages must render the shared attachment section");
 
 console.log("object attachments contract: PASS");

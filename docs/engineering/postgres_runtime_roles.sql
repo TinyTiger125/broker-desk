@@ -26,6 +26,24 @@ BEGIN
 END
 $$;
 
+-- 20260908 preimport lifecycle functions execute under brokerdesk_admin and
+-- require that role to own these FORCE-RLS tables.  Ownership is an explicit
+-- migration prerequisite; do not replace it with broad grants or BYPASSRLS.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public'
+      AND c.relname IN ('import_jobs', 'attachments', 'private_attachment_blobs', 'attachment_links', 'audit_logs')
+      AND (pg_get_userbyid(c.relowner) <> 'brokerdesk_admin' OR NOT c.relrowsecurity OR NOT c.relforcerowsecurity)
+  ) THEN
+    RAISE EXCEPTION 'runtime role setup requires brokerdesk_admin ownership and FORCE RLS on preimport tables' USING ERRCODE = '42501';
+  END IF;
+END
+$$;
+
 ALTER ROLE brokerdesk_runtime LOGIN PASSWORD :'runtime_password';
 ALTER ROLE brokerdesk_admin LOGIN PASSWORD :'admin_password';
 
@@ -34,28 +52,68 @@ REVOKE ALL ON ALL TABLES IN SCHEMA public FROM brokerdesk_runtime, brokerdesk_ad
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM brokerdesk_runtime, brokerdesk_admin;
 
 GRANT USAGE ON SCHEMA public TO brokerdesk_runtime;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
-  public.clients,
-  public.properties,
-  public.quotations,
-  public.follow_ups,
-  public.tasks,
-  public.audit_logs,
-  public.output_template_settings,
-  public.output_template_versions,
-  public.generated_outputs,
-  public.import_jobs,
-  public.attachments,
-  public.private_attachment_blobs,
-  public.brokerage_cases,
-  public.extraction_review_items,
-  public.guarantee_application_drafts,
-  public.correction_events,
-  public.ai_experience_drafts,
-  public.case_workbench_field_rules,
-  public.tenant_guarantee_template_installs
+-- Keep this list aligned with 20260902_003_runtime_acl_baseline.sql. Identity
+-- tables are readable for tenant/session resolution; writes remain behind
+-- security-definer or owner actions.
+GRANT SELECT ON TABLE
+  public.users,
+  public.tenants,
+  public.tenant_memberships
 TO brokerdesk_runtime;
+GRANT SELECT, INSERT, UPDATE ON TABLE public.tenant_member_visibility_defaults TO brokerdesk_runtime;
+GRANT SELECT, INSERT, UPDATE ON TABLE public.case_workbench_field_rules TO brokerdesk_runtime;
+GRANT SELECT, INSERT, UPDATE ON TABLE public.clients TO brokerdesk_runtime;
+GRANT SELECT, INSERT, UPDATE ON TABLE public.properties TO brokerdesk_runtime;
+GRANT SELECT, INSERT, UPDATE ON TABLE public.brokerage_cases TO brokerdesk_runtime;
+GRANT SELECT, INSERT, UPDATE ON TABLE public.tasks TO brokerdesk_runtime;
+GRANT SELECT, INSERT ON TABLE public.follow_ups TO brokerdesk_runtime;
+GRANT SELECT, INSERT, UPDATE ON TABLE public.quotations TO brokerdesk_runtime;
+GRANT SELECT, INSERT ON TABLE public.audit_logs TO brokerdesk_runtime;
+GRANT SELECT, INSERT, UPDATE ON TABLE public.output_template_settings TO brokerdesk_runtime;
+GRANT SELECT, INSERT, UPDATE ON TABLE public.output_template_versions TO brokerdesk_runtime;
+GRANT SELECT, INSERT, UPDATE ON TABLE public.import_jobs TO brokerdesk_runtime;
+GRANT SELECT (tenant_id, user_id, import_job_id, case_id) ON public.object_import_targets TO brokerdesk_runtime;
+GRANT SELECT, INSERT, UPDATE ON TABLE public.ai_experience_drafts TO brokerdesk_runtime;
+GRANT SELECT, INSERT ON TABLE public.correction_events TO brokerdesk_runtime;
+GRANT SELECT, INSERT, DELETE ON TABLE public.extraction_review_items TO brokerdesk_runtime;
+GRANT SELECT, INSERT, UPDATE ON TABLE public.guarantee_application_drafts TO brokerdesk_runtime;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.guarantee_blank_forms TO brokerdesk_runtime;
+GRANT SELECT, INSERT, DELETE ON TABLE public.guarantee_blank_form_versions TO brokerdesk_runtime;
+GRANT SELECT, INSERT, UPDATE ON TABLE public.guarantee_company_masks TO brokerdesk_runtime;
+GRANT SELECT, INSERT, UPDATE ON TABLE public.guarantee_company_mask_versions TO brokerdesk_runtime;
+GRANT SELECT, INSERT ON TABLE public.guarantee_mask_matches TO brokerdesk_runtime;
+GRANT SELECT, INSERT, UPDATE ON TABLE public.guarantee_preview_confirmations TO brokerdesk_runtime;
+GRANT SELECT, INSERT, UPDATE ON TABLE public.tenant_guarantee_template_installs TO brokerdesk_runtime;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.generated_outputs TO brokerdesk_runtime;
+GRANT SELECT, INSERT, DELETE ON TABLE public.attachments TO brokerdesk_runtime;
+GRANT SELECT, INSERT, DELETE ON TABLE public.private_attachment_blobs TO brokerdesk_runtime;
+GRANT SELECT, INSERT, UPDATE ON TABLE public.attachment_links TO brokerdesk_runtime;
+GRANT SELECT ON TABLE public.guarantee_template_layout_versions TO brokerdesk_runtime;
+GRANT SELECT ON TABLE public.broker_desk_schema_migrations TO brokerdesk_runtime;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO brokerdesk_runtime;
+
+-- brokerdesk_admin is the owner of the SECURITY DEFINER lifecycle helpers and
+-- their FORCE-RLS preimport tables.  Keep this matrix explicit: it covers
+-- only the relations read or written by current_user_id/can_access_*,
+-- external-auth synchronization, import claims, and preimport deletion.
+-- This is a server-only background capability; it is not an application
+-- session role and remains NOSUPERUSER/NOBYPASSRLS.
+GRANT USAGE ON SCHEMA public TO brokerdesk_admin;
+GRANT SELECT (id, external_auth_subject) ON public.users TO brokerdesk_admin;
+GRANT SELECT (id, status, service_start_at, service_end_at) ON public.tenants TO brokerdesk_admin;
+GRANT SELECT, UPDATE ON TABLE public.tenant_memberships TO brokerdesk_admin;
+GRANT SELECT, UPDATE ON TABLE public.import_jobs TO brokerdesk_admin;
+GRANT SELECT, DELETE ON TABLE public.attachments TO brokerdesk_admin;
+GRANT SELECT, DELETE ON TABLE public.private_attachment_blobs TO brokerdesk_admin;
+GRANT SELECT ON TABLE public.attachment_links TO brokerdesk_admin;
+GRANT INSERT ON TABLE public.audit_logs TO brokerdesk_admin;
+-- Foreign-key checks in the owner-controlled bootstrap/membership and audit
+-- paths issue FOR KEY SHARE against referenced identity rows.
+GRANT REFERENCES ON TABLE public.users, public.tenants TO brokerdesk_admin;
+-- PostgreSQL FK checks use FOR KEY SHARE on tenants; this requires SELECT
+-- plus UPDATE privilege on at least one column. Keep the write surface to the
+-- non-key timestamp column used for lifecycle bookkeeping.
+GRANT UPDATE (updated_at) ON TABLE public.tenants TO brokerdesk_admin;
 
 -- The runtime must resolve its own active user and membership through the
 -- security-definer helpers. It does not receive direct global table access.
@@ -65,12 +123,17 @@ GRANT EXECUTE ON FUNCTION brokerdesk_private.current_user_id() TO brokerdesk_run
 GRANT EXECUTE ON FUNCTION brokerdesk_private.can_access_tenant(TEXT) TO brokerdesk_runtime;
 GRANT EXECUTE ON FUNCTION brokerdesk_private.can_access_user(TEXT) TO brokerdesk_runtime;
 
--- The administrative worker owns no business-table permission. It can only
--- call audited lifecycle functions and atomically claim import work.
+-- The administrative worker receives only the explicit lifecycle matrix above.
+-- It is a server-only background capability; ordinary runtime access remains
+-- RLS-scoped and the role retains NOSUPERUSER/NOBYPASSRLS.
 GRANT USAGE ON SCHEMA brokerdesk_private TO brokerdesk_admin;
+GRANT EXECUTE ON FUNCTION brokerdesk_private.can_access_tenant(TEXT) TO brokerdesk_admin;
+GRANT EXECUTE ON FUNCTION brokerdesk_private.current_user_id() TO brokerdesk_admin;
+GRANT EXECUTE ON FUNCTION brokerdesk_private.can_access_user(TEXT) TO brokerdesk_admin;
 GRANT EXECUTE ON FUNCTION brokerdesk_private.sync_external_auth_user(TEXT, TEXT, TEXT) TO brokerdesk_admin;
 GRANT EXECUTE ON FUNCTION brokerdesk_private.suspend_external_auth_user(TEXT) TO brokerdesk_admin;
 GRANT EXECUTE ON FUNCTION brokerdesk_private.claim_next_import_jobs(INTEGER) TO brokerdesk_admin;
+GRANT EXECUTE ON FUNCTION brokerdesk_private.claim_import_job_by_id(TEXT) TO brokerdesk_admin;
 
 -- New tables must be added explicitly in a migration with RLS and grants.
 -- Do not add blanket ALTER DEFAULT PRIVILEGES grants here: safe failure is

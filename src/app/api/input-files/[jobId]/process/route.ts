@@ -6,7 +6,7 @@ import { getRequestId, logOperationalEvent } from "@/lib/operational-logging";
 import {
   assertProductionDocumentReaderReady,
   assertProductionImportWorkerReady,
-  isProductionRuntime,
+  isFormalProductionDeployment,
   ProductionReadinessError,
 } from "@/lib/production-readiness";
 import { TenantSessionError, requireTenantSession } from "@/lib/tenant-session";
@@ -51,6 +51,9 @@ export async function POST(request: Request, context: { params: Promise<{ jobId:
     if (!job) {
       return NextResponse.json({ ok: false, error: "import_job_not_found", jobId, requestId }, { status: 404 });
     }
+    if (job.finalImportStartedAt) {
+      return NextResponse.json({ ok: false, error: "import_execution_started", jobId, requestId }, { status: 409 });
+    }
     if (job.status === "failed") {
       await retryImportJobExecution({
         tenantId: session.tenant.id,
@@ -64,7 +67,7 @@ export async function POST(request: Request, context: { params: Promise<{ jobId:
     if (job.sourceType !== "scan" && job.sourceType !== "excel") {
       return NextResponse.json({ ok: false, error: "unsupported_import_source", jobId, requestId }, { status: 422 });
     }
-    if (isProductionRuntime()) {
+    if (isFormalProductionDeployment()) {
       logOperationalEvent({
         event: "import_job_queued_for_worker",
         requestId,
@@ -98,7 +101,7 @@ export async function POST(request: Request, context: { params: Promise<{ jobId:
       outcome: result.ok ? "ready" : "failed",
     });
     return NextResponse.json({ ...result, jobId, requestId }, {
-      status: result.ok ? 200 : result.error === "import_job_not_found" ? 404 : 422,
+      status: result.ok ? 200 : result.error === "import_job_not_found" ? 404 : result.error === "import_execution_started" ? 409 : 422,
       headers: { "x-request-id": requestId },
     });
   } catch (error) {

@@ -1,0 +1,289 @@
+{
+  "postgres": "16",
+  "port": 55449,
+  "scenarios": {
+    "processLockInterrupt": {
+      "firstAppliedName": "Applied 20260727_000_baseline_schema.sql",
+      "terminatedBackendPid": 48537,
+      "terminated": true,
+      "childExit": {
+        "code": 1,
+        "signal": null
+      },
+      "interruptedState": {
+        "marker": [
+          {
+            "project_ref": "ilujuwuzaqwcbpnqixen",
+            "phase": "initializing"
+          }
+        ],
+        "ledger": 3
+      },
+      "recoveredState": {
+        "marker": [
+          {
+            "project_ref": "ilujuwuzaqwcbpnqixen",
+            "phase": "complete"
+          }
+        ],
+        "ledger": 44
+      },
+      "recoveredRequiredTables": [
+        {
+          "relname": "attachment_links",
+          "owner": "brokerdesk_admin",
+          "rls": true,
+          "force_rls": true
+        },
+        {
+          "relname": "attachments",
+          "owner": "brokerdesk_admin",
+          "rls": true,
+          "force_rls": true
+        },
+        {
+          "relname": "audit_logs",
+          "owner": "brokerdesk_admin",
+          "rls": true,
+          "force_rls": true
+        },
+        {
+          "relname": "import_jobs",
+          "owner": "brokerdesk_admin",
+          "rls": true,
+          "force_rls": true
+        },
+        {
+          "relname": "private_attachment_blobs",
+          "owner": "brokerdesk_admin",
+          "rls": true,
+          "force_rls": true
+        }
+      ],
+      "childStdout": "{\"preflight\":{\"database\":\"postgres\",\"routeUser\":\"postgres.ilujuwuzaqwcbpnqixen\",\"executionUser\":\"postgres\",\"phase\":\"new\",\"appliedCount\":0}}\nPrepared brokerdesk_runtime and brokerdesk_admin role prerequisites.\nApplied 20260727_000_baseline_schema.sql\nApplied 20260727_001_tenant_rls.sql\nApplied 20260729_002_force_tenant_rls.sql\n",
+      "childStderr": "node:events:502\n      throw er; // Unhandled 'error' event\n      ^\n\nError: Connection terminated unexpectedly\n    at Connection.<anonymous> (/private/tmp/broker-desk-vertical/node_modules/pg/lib/client.js:180:73)\n    at Object.onceWrapper (node:events:638:28)\n    at Connection.emit (node:events:524:28)\n    at Socket.<anonymous> (/private/tmp/broker-desk-vertical/node_modules/pg/lib/connection.js:61:12)\n    at Socket.emit (node:events:524:28)\n    at TCP.<anonymous> (node:net:343:12)\nEmitted 'error' event on Client instance at:\n    at Client._handleErrorEvent (/private/tmp/broker-desk-vertical/node_modules/pg/lib/client.js:393:10)\n    at Connection.<anonymous> (/private/tmp/broker-desk-vertical/node_modules/pg/lib/client.js:198:16)\n    at Object.onceWrapper (node:events:638:28)\n    [... lines matching original stack trace ...]\n    at TCP.<anonymous> (node:net:343:12)\n\nNode.js v20.19.5\n"
+    },
+    "completeBeforeMarkerInterrupt": {
+      "terminatedBackendPid": 48550,
+      "terminated": true,
+      "childExit": {
+        "code": 1,
+        "signal": null
+      },
+      "interruptedState": {
+        "marker": [
+          {
+            "project_ref": "ilujuwuzaqwcbpnqixen",
+            "phase": "initializing"
+          }
+        ],
+        "ledger": 44
+      },
+      "recoveredState": {
+        "marker": [
+          {
+            "project_ref": "ilujuwuzaqwcbpnqixen",
+            "phase": "complete"
+          }
+        ],
+        "ledger": 44
+      },
+      "childStdout": "{\"preflight\":{\"database\":\"postgres\",\"routeUser\":\"postgres.ilujuwuzaqwcbpnqixen\",\"executionUser\":\"postgres\",\"phase\":\"new\",\"appliedCount\":0}}\nPrepared brokerdesk_runtime and brokerdesk_admin role prerequisites.\nApplied 20260727_000_baseline_schema.sql\nApplied 20260727_001_tenant_rls.sql\nApplied 20260729_002_force_tenant_rls.sql\nApplied 20260805_003_guarantee_template_layout_versions.sql\nApplied 20260805_004_tenant_guarantee_template_installs.sql\nApplied 20260808_001_record_lifecycle.sql\nApplied 20260809_001_external_auth_lifecycle_functions.sql\nApplied 20260809_002_force_tenant_template_installs_rls.sql\nApplied 20260809_003_private_attachment_blobs.sql\nApplied 20260809_004_import_job_execution_state.sql\nApplied 20260809_005_import_worker_claim.sql\nApplied 20260810_001_repair_nihon_safety_template_fingerprint.sql\nApplied 20260810_002_repair_friends_guarantee_template_fingerprint.sql\nApplied 20260819_001_guarantee_slice1_objects.sql\nApplied 20260819_002_tenant_capabilities_invitation_contract.sql\nApplied 20260819_003_tenant_owner_create_path.sql\nApplied 20260819_004_invited_user_bootstrap.sql\nApplied 20260819_005_pending_invitations_read_function.sql\nApplied 20260819_006_fix_invitation_acceptance_scope.sql\nApplied 20260819_007_tenant_member_lifecycle_functions.sql\nApplied 20260819_008_current_user_membership_state_function.sql\nApplied 20260819_009_tenant_owner_lifecycle_lock.sql\nApplied 20260820_010_tenant_creation_idempotency.sql\nApplied 20260820_011_bind_invited_clerk_identity.sql\nApplied 20260820_012_current_tenant_member_read.sql\nApplied 20260821_013_fix_removed_invitation_return.sql\nApplied 20260824_001_visibility_foundation.sql\nApplied 20260824_002_visibility_record_rls.sql\nApplied 20260824_003_creator_immutability.sql\nApplied 20260825_001_legacy_output_provenance_marker.sql\nApplied 20260828_001_tenant_service_period.sql\nApplied 20260829_001_platform_owner_invited_email.sql\nApplied 20260830_001_object_attachment_links.sql\nApplied 20260830_002_object_attachment_runtime_grant.sql\nApplied 20260902_001_current_external_auth_user_bootstrap.sql\nApplied 20260902_002_runtime_migration_ledger_read.sql\nApplied 20260902_003_runtime_acl_baseline.sql\nApplied 20260904_001_runtime_external_auth_subject_execute.sql\nPrepared 20260908 preimport table ownership and FORCE RLS prerequisites.\nApplied 20260908_001_preimport_upload_lifecycle.sql\nApplied 20260917_001_object_import_targets.sql\nApplied 20260917_002_case_review_locks.sql\nApplied 20260918_001_import_job_single_claim.sql\nApplied 20260921_001_supabase_auth_lifecycle.sql\nApplied 20260921_002_import_worker_rls_admin_policy.sql\nMigration check complete: 44 applied, 0 already current.\n",
+      "childStderr": "node:events:502\n      throw er; // Unhandled 'error' event\n      ^\n\nError: Connection terminated unexpectedly\n    at Connection.<anonymous> (/private/tmp/broker-desk-vertical/node_modules/pg/lib/client.js:180:73)\n    at Object.onceWrapper (node:events:638:28)\n    at Connection.emit (node:events:524:28)\n    at Socket.<anonymous> (/private/tmp/broker-desk-vertical/node_modules/pg/lib/connection.js:61:12)\n    at Socket.emit (node:events:524:28)\n    at TCP.<anonymous> (node:net:343:12)\nEmitted 'error' event on Client instance at:\n    at Client._handleErrorEvent (/private/tmp/broker-desk-vertical/node_modules/pg/lib/client.js:393:10)\n    at Connection.<anonymous> (/private/tmp/broker-desk-vertical/node_modules/pg/lib/client.js:198:16)\n    at Object.onceWrapper (node:events:638:28)\n    [... lines matching original stack trace ...]\n    at TCP.<anonymous> (node:net:343:12)\n\nNode.js v20.19.5\n"
+    },
+    "lockConnectionInterrupted": {
+      "terminated": true,
+      "firstEntry": "rejected",
+      "firstEntryState": {
+        "marker": [],
+        "ledger": 0
+      },
+      "recovery": {
+        "marker": [
+          {
+            "project_ref": "ilujuwuzaqwcbpnqixen",
+            "phase": "complete"
+          }
+        ],
+        "ledger": 44,
+        "requiredTables": [
+          {
+            "relname": "attachment_links",
+            "owner": "brokerdesk_admin",
+            "rls": true,
+            "force_rls": true
+          },
+          {
+            "relname": "attachments",
+            "owner": "brokerdesk_admin",
+            "rls": true,
+            "force_rls": true
+          },
+          {
+            "relname": "audit_logs",
+            "owner": "brokerdesk_admin",
+            "rls": true,
+            "force_rls": true
+          },
+          {
+            "relname": "import_jobs",
+            "owner": "brokerdesk_admin",
+            "rls": true,
+            "force_rls": true
+          },
+          {
+            "relname": "private_attachment_blobs",
+            "owner": "brokerdesk_admin",
+            "rls": true,
+            "force_rls": true
+          }
+        ],
+        "finalPolicies": [
+          "brokerdesk_import_worker_claim_select",
+          "brokerdesk_import_worker_claim_update"
+        ]
+      },
+      "events": [
+        {
+          "label": "interrupted",
+          "event": "lock_acquired",
+          "pid": 48570
+        },
+        {
+          "label": "interrupted",
+          "event": "lock_connection_error",
+          "code": "57P01"
+        }
+      ]
+    },
+    "markerCommitUncertain": {
+      "stopped": true,
+      "markerOnlySafeRolesAccepted": true,
+      "markerOnlySafeRoles": [
+        {
+          "rolname": "brokerdesk_admin",
+          "rolsuper": false,
+          "rolcreaterole": false,
+          "rolbypassrls": false,
+          "rolcanlogin": false
+        },
+        {
+          "rolname": "brokerdesk_runtime",
+          "rolsuper": false,
+          "rolcreaterole": false,
+          "rolbypassrls": false,
+          "rolcanlogin": false
+        }
+      ],
+      "startRecovery": {
+        "marker": [
+          {
+            "project_ref": "ilujuwuzaqwcbpnqixen",
+            "phase": "complete"
+          }
+        ],
+        "ledger": 44
+      },
+      "completionStopped": {
+        "marker": [
+          {
+            "project_ref": "ilujuwuzaqwcbpnqixen",
+            "phase": "complete"
+          }
+        ],
+        "ledger": 44
+      },
+      "completionRerun": {
+        "rejected": true,
+        "reason": "Tokyo initialization is already complete",
+        "final": {
+          "marker": [
+            {
+              "project_ref": "ilujuwuzaqwcbpnqixen",
+              "phase": "complete"
+            }
+          ],
+          "ledger": 44
+        }
+      }
+    },
+    "concurrentStart": {
+      "fulfilled": 1,
+      "rejected": 1,
+      "rejectedReason": "Tokyo initialization is already complete",
+      "executionOrder": [
+        {
+          "label": "A",
+          "event": "lock_acquired",
+          "pid": 48586
+        },
+        {
+          "label": "A",
+          "event": "runner_start"
+        },
+        {
+          "label": "A",
+          "event": "runner_end"
+        },
+        {
+          "label": "A",
+          "event": "lock_released"
+        },
+        {
+          "label": "B",
+          "event": "lock_acquired",
+          "pid": 48587
+        },
+        {
+          "label": "B",
+          "event": "lock_released"
+        }
+      ],
+      "final": {
+        "marker": [
+          {
+            "project_ref": "ilujuwuzaqwcbpnqixen",
+            "phase": "complete"
+          }
+        ],
+        "ledger": 44
+      }
+    },
+    "ledgerCompleteMarkerIncomplete": {
+      "resumed": {
+        "appliedCount": 0,
+        "skippedCount": 44,
+        "stoppedAfter": null
+      },
+      "final": {
+        "marker": [
+          {
+            "project_ref": "ilujuwuzaqwcbpnqixen",
+            "phase": "complete"
+          }
+        ],
+        "ledger": 44
+      },
+      "inconsistentRejected": true
+    },
+    "repeatableReadSnapshot": {
+      "observedBeforeMutation": {
+        "phase": "resume",
+        "prepareEmptyDatabase": false,
+        "appliedCount": 44
+      },
+      "finalDbAfterMutation": {
+        "marker": [
+          {
+            "project_ref": "ilujuwuzaqwcbpnqixen",
+            "phase": "complete"
+          }
+        ],
+        "ledger": 43
+      },
+      "changedSnapshotRejected": true,
+      "migrationRunnerInvokedAfterChange": false
+    }
+  },
+  "scope": "isolated local PostgreSQL; actual migration runner and Tokyo entrypoint; no cloud writes"
+}

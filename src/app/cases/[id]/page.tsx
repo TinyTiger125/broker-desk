@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { createClientFormAction, createPropertyQuickAction, rollbackCaseMergeAction, saveCaseAssociationsAction, saveCaseWorkbenchAction } from "@/app/actions";
+import { createClientFormAction, createPropertyQuickAction, refreshObjectImportReviewAction, rollbackCaseMergeAction, saveCaseAssociationsAction, saveCaseWorkbenchAction } from "@/app/actions";
 import { ArchiveRecordButton } from "@/components/archive-record-button";
 import { CaseWorkbenchFieldForm } from "@/components/case-workbench-field-form";
 import { CaseAssociationManager } from "@/components/case-association-manager";
-import { CaseEditPanel, CaseEvidenceSummary, CaseFieldInput, CaseFieldState, CaseFieldValue, CaseIdentityHeader, CaseOverview, type CaseOverviewOutputBlocker, type CaseOverviewSection } from "@/components/case-overview";
+import { CaseFieldInput, CaseFieldState, CaseFieldValue, CaseIdentityHeader, CaseOverview, type CaseOverviewOutputBlocker, type CaseOverviewSection } from "@/components/case-overview";
 import { PageFlashBanner } from "@/components/page-flash-banner";
 import { getBrokerageCaseByIdForContext, getGuaranteeApplicationDraft, listCaseWorkbenchFieldRules, listClientsForContext, listExtractionReviewItems, listPropertiesForContext, listTenantGuaranteeTemplateInstalls, resolveClientVisibilityForContext, resolvePropertyVisibilityForContext } from "@/lib/data";
 import type { ExtractionReviewItem, ExtractionReviewStatus } from "@/lib/data";
@@ -39,8 +39,15 @@ import { capabilityHasTenantPermission } from "@/lib/tenant-permissions";
 import { createRequestContext } from "@/lib/visibility-resolver";
 import { readCaseAssociationDraft } from "@/lib/case-associations";
 import { ObjectPageShell } from "@/components/layout-system";
-import { ObjectAttachmentSection } from "@/components/object-attachment-section";
 import { listLinkedObjectAttachments } from "@/lib/object-attachments";
+import { uploadObjectImportAction } from "@/app/object-import-actions";
+import { getObjectImportFeatureReadiness, listObjectImportCandidates, listObjectImportTargets } from "@/lib/data";
+import type { ObjectImportCandidateRecord, ObjectImportTargetRecord } from "@/lib/object-import-repository";
+import { getImportRuntimeDiagnostics } from "@/lib/production-readiness";
+import { ExcelImportQueueProcessor } from "@/components/excel-import-queue-processor";
+import { getObjectImportTargetFeedbackMessage } from "@/lib/import-feedback";
+import { buildObjectVersionFingerprint } from "@/lib/object-import-contract";
+import { resolveCasePropertyAddressPresentation } from "@/lib/case-property-address-presentation";
 
 export const dynamic = "force-dynamic";
 
@@ -51,7 +58,7 @@ type CasePageProps = {
   searchParams?: Promise<CasePageQuery>;
 };
 
-type CasePageQuery = { flash?: string; node?: string; field?: string; view?: string; scrollTop?: string; returnTo?: string };
+type CasePageQuery = { flash?: string; node?: string; field?: string; view?: string; scrollTop?: string; returnTo?: string; objectImportJob?: string };
 
 type WorkbenchTrustState =
   | "confirmed"
@@ -175,6 +182,7 @@ function getBusinessFieldLabel(locale: Locale, fieldKey: string) {
 function getOutputBlockerLabel(locale: Locale, code: string) {
   const labels: Record<string, Record<Locale, string>> = {
     required_fields_missing: { ja: "必須情報が未入力", zh: "必填信息未填写", ko: "필수 정보가 비어 있음" },
+    associations_missing: { ja: "案件の関連付けが未完了", zh: "案件关联未完成", ko: "안건 연결이 완료되지 않음" },
     draft_required_missing: { ja: "申込書の追加情報が未入力", zh: "申请书追加信息未填写", ko: "신청서 추가 정보가 비어 있음" },
     template_not_verified: { ja: "テンプレートの確認が必要", zh: "模板仍需确认", ko: "템플릿 확인 필요" },
     candidate_fields_unconfirmed: { ja: "候補入力の確認が必要", zh: "候选输入仍需处理", ko: "후보 입력 확인 필요" },
@@ -187,6 +195,7 @@ function getOutputBlockerLabel(locale: Locale, code: string) {
 function getOutputBlockerMessage(locale: Locale, code: string) {
   const messages: Record<string, Record<Locale, string>> = {
     required_fields_missing: { ja: "案件の必須情報を補ってください。", zh: "请补齐案件必填信息。", ko: "안건의 필수 정보를 보완해 주세요." },
+    associations_missing: { ja: "主たる申込人と主たる物件を案件で確認してください。", zh: "请在案件中确认主要申请人和主要物件关联。", ko: "안건에서 주요 신청인과 주요 매물 연결을 확인해 주세요." },
     draft_required_missing: { ja: "申込書の追加情報を補ってください。", zh: "请补齐申请书追加信息。", ko: "신청서 추가 정보를 보완해 주세요." },
     template_not_verified: { ja: "テンプレートを確認してから出力してください。", zh: "请先确认模板，再进行输出。", ko: "템플릿을 확인한 뒤 출력해 주세요." },
     candidate_fields_unconfirmed: { ja: "候補入力を申込書プレビューで確認してください。", zh: "请在申请书预览中处理候选输入。", ko: "신청서 미리보기에서 후보 입력을 확인해 주세요." },
@@ -194,16 +203,6 @@ function getOutputBlockerMessage(locale: Locale, code: string) {
     print_fit_blocked: { ja: "長い文字列や桁数超過をプレビューで調整してください。", zh: "请在预览中调整过长文字或超出位数。", ko: "미리보기에서 긴 문자열이나 자릿수 초과를 조정해 주세요." },
   };
   return messages[code]?.[locale] ?? tr(locale, { ja: "対応してからダウンロードしてください。", zh: "请处理后再下载。", ko: "처리한 뒤 다운로드해 주세요." });
-}
-
-function getWorkbenchDecisionLabel(locale: Locale, decision: WorkbenchFieldDecision) {
-  const labels: Record<WorkbenchFieldDecision, Record<Locale, string>> = {
-    confirmed: { ja: "確認済みにする", zh: "确认无误", ko: "확인 완료" },
-    unknown: { ja: "確認できない", zh: "暂时无法确认", ko: "확인 불가" },
-    rejected: { ja: "使わない", zh: "不采用", ko: "사용 안 함" },
-    not_applicable: { ja: "該当なし", zh: "不适用", ko: "해당 없음" },
-  };
-  return labels[decision][locale];
 }
 
 function getWorkbenchFieldInputSpec(fieldKey: string): WorkbenchFieldInputSpec {
@@ -443,22 +442,6 @@ function buildWorkbenchField(input: {
   };
 }
 
-function WorkbenchDecisionSelect({ locale, field, flush = false }: { locale: Locale; field: WorkbenchField; flush?: boolean }) {
-  return (
-    <select
-      name={`status:${field.fieldKey}`}
-      defaultValue={field.decision}
-      className={`${flush ? "" : "mt-3"} h-12 w-full rounded-md border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100`}
-    >
-      {(["confirmed", "unknown", "not_applicable", "rejected"] as WorkbenchFieldDecision[]).map((decision) => (
-        <option key={decision} value={decision}>
-          {getWorkbenchDecisionLabel(locale, decision)}
-        </option>
-      ))}
-    </select>
-  );
-}
-
 function getPrimaryEvidence(field: WorkbenchField) {
   return field.evidenceItems[0];
 }
@@ -466,6 +449,29 @@ function getPrimaryEvidence(field: WorkbenchField) {
 function getShortWorkbenchFieldLabel(field: WorkbenchField) {
   const pieces = field.label.split(" / ");
   return pieces[pieces.length - 1] || field.label;
+}
+
+function getCaseAddressDisplayLabel(locale: Locale, field: WorkbenchField) {
+  if (field.fieldKey === "property.address") {
+    return resolveCasePropertyAddressPresentation({ locale }).caseAddressLabel;
+  }
+  return undefined;
+}
+
+function getCaseOverviewFieldLabel(locale: Locale, field: WorkbenchField) {
+  return getCaseAddressDisplayLabel(locale, field) ?? localizeCaseOverviewFieldLabel(locale, getShortWorkbenchFieldLabel(field));
+}
+
+function getCaseOverviewFieldPath(locale: Locale, field: WorkbenchField) {
+  return field.treePath.map((path) => localizeCaseOverviewTreeLabel(locale, path)).join(" / ");
+}
+
+function getCaseWorkbenchSaveAriaLabel(locale: Locale, fieldLabel: string) {
+  return locale === "zh"
+    ? `确认并保存：${fieldLabel}`
+    : locale === "ko"
+      ? `${fieldLabel} 확인 후 저장`
+      : `${fieldLabel}を確認して保存`;
 }
 
 function getWorkbenchFieldDisplayValue(field: WorkbenchField) {
@@ -626,21 +632,69 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
     const record = associatedPartyResults[index]?.record;
     return record ? [{ ...party, name: record.name }] : [];
   });
-  const associationPanel = (
-    <CaseAssociationManager
-      locale={locale}
-      caseId={brokerageCase.id}
-      readOnly={!canWriteCase}
-      initialParties={associationParties}
-      initialPrimaryPropertyId={associationDraft.primaryPropertyId}
-      candidates={associationCandidates}
-      properties={associationProperties}
-      saveAction={canWriteCase ? saveCaseAssociationsAction : undefined}
-      createPersonAction={canWriteCase ? createClientFormAction : undefined}
-      createPropertyAction={canWriteCase ? createPropertyQuickAction : undefined}
-    />
+  const stableCaseId = brokerageCase.id;
+  const objectImportJobId = String(query?.objectImportJob ?? "").trim();
+  const objectImportReadiness = await getObjectImportFeatureReadiness();
+  const importRuntimeDiagnostics = getImportRuntimeDiagnostics();
+  const objectAttachments = await listLinkedObjectAttachments({ tenantId, targetType: "case", targetId: brokerageCase.id });
+  const objectImportTargets = objectImportReadiness.ready
+    ? await listObjectImportTargets({ tenantId, userId: user.id, caseId: brokerageCase.id })
+    : [];
+  const objectImportTargetForJob = objectImportTargets.find((target) => target.importJobId === objectImportJobId);
+  const objectImportNoSupportedFieldsFailed = objectImportTargetForJob?.status === "failed" &&
+    (objectImportTargetForJob.errorCode === "object_import_no_supported_fields" || objectImportTargetForJob.errorCode === "object_reader_no_readable_fields");
+  const objectImportTargetsForView = [...objectImportTargets].sort((left, right) =>
+    Number(right.importJobId === objectImportJobId) - Number(left.importJobId === objectImportJobId) ||
+    right.createdAt.getTime() - left.createdAt.getTime() ||
+    right.id.localeCompare(left.id),
   );
-
+  const objectImportViews = await Promise.all(objectImportTargetsForView.map(async (target: ObjectImportTargetRecord) => ({
+    target,
+    fields: await listObjectImportCandidates({ tenantId, userId: user.id, targetId: target.id }) as ObjectImportCandidateRecord[],
+  })));
+  const objectImportViewForJob = objectImportViews.find((view) => view.target.importJobId === objectImportJobId);
+  const objectImportCandidateCountForJob = objectImportViewForJob?.fields.length ?? 0;
+  const objectImportStatusFlash = objectImportJobId &&
+    (query?.flash === undefined || query.flash === "input_extraction_queued" || query.flash === "object_import_processed") &&
+    objectImportTargetForJob
+    ? getObjectImportTargetFeedbackMessage(locale, objectImportTargetForJob.status, objectImportCandidateCountForJob)
+    : undefined;
+  const objectImportFieldBindings: Record<string, { targetId: string; fieldId: string; importJobId: string; expectedVersion: string; observedVersion?: string; expectedCandidateValue: string; candidateValue: string; status: string; sourceEvidence?: string }> = {};
+  const applicantPartyId = associationDraft.parties[0]?.partyId;
+  for (const view of objectImportViews) {
+    const fieldMap = view.target.targetType === "property"
+      ? {
+          name: "property.name", address: "property.address",
+          "property.name": "property.name", "property.address": "property.address",
+          "property.roomNumber": "property.roomNumber", "property.postalCode": "property.postalCode", "property.usage": "property.usage",
+          "lease.contractType": "lease.contractType", "lease.contractStartDate": "lease.contractStartDate", "lease.contractEndDate": "lease.contractEndDate", "lease.moveInDate": "lease.moveInDate",
+          "lease.rent": "lease.rent", "lease.commonFee": "lease.commonFee", "lease.parkingFee": "lease.parkingFee", "lease.waterTownFee": "lease.waterTownFee", "lease.otherMonthlyFee": "lease.otherMonthlyFee", "lease.monthlyRentTotal": "lease.monthlyRentTotal",
+          "lease.deposit": "lease.deposit", "lease.keyMoney": "lease.keyMoney", "lease.insuranceFee": "lease.insuranceFee", "lease.keyExchangeFee": "lease.keyExchangeFee", "lease.cancellationDeduction": "lease.cancellationDeduction", "lease.initialCostTotal": "lease.initialCostTotal", "lease.paymentMethod": "lease.paymentMethod", "lease.rentPaymentDay": "lease.rentPaymentDay",
+        }
+      : view.target.targetId === applicantPartyId
+        ? { name: "applicant.name", phone: "applicant.phone", email: "applicant.email" }
+        : {};
+    for (const field of view.fields) {
+      const caseFieldKey = fieldMap[field.fieldKey as keyof typeof fieldMap];
+      if (!caseFieldKey || !field.candidateValue || ["confirmed", "rejected", "failed"].includes(field.status)) continue;
+      const currentObject = view.target.targetType === "property"
+        ? associatedPropertyResult?.record?.id === view.target.targetId ? associatedPropertyResult.record : undefined
+        : associatedPartyResults.find((result) => result.record?.id === view.target.targetId)?.record;
+      objectImportFieldBindings[caseFieldKey] ??= {
+        targetId: view.target.id,
+        fieldId: field.id,
+        importJobId: view.target.importJobId,
+        expectedVersion: view.target.targetVersion,
+        observedVersion: currentObject ? buildObjectVersionFingerprint(currentObject as unknown as Record<string, unknown>) : undefined,
+        expectedCandidateValue: field.candidateValue,
+        candidateValue: field.candidateValue,
+        status: field.status,
+        sourceEvidence: typeof field.provenance.sourceText === "string" && typeof field.provenance.pageNumber === "number"
+          ? `p.${field.provenance.pageNumber}: ${field.provenance.sourceText}`
+          : undefined,
+      };
+    }
+  }
   if (!canWriteCase) {
     const primaryPartyId = typeof brokerageCase.confirmedDataJson.__primaryPartyId === "string" ? brokerageCase.confirmedDataJson.__primaryPartyId : undefined;
     const primaryPropertyId = brokerageCase.primaryPropertyId || (typeof brokerageCase.confirmedDataJson.__primaryPropertyId === "string" ? brokerageCase.confirmedDataJson.__primaryPropertyId : undefined);
@@ -701,6 +755,48 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
   const allWorkbenchFields = workbenchFieldGroups.flatMap((group) =>
     group.fields.map((field) => ({ ...field, groupId: group.id, label: `${group.label} / ${field.label}` })),
   );
+  const caseAddressField = allWorkbenchFields.find((field) => field.fieldKey === "property.address");
+  const associationPanel = (
+    <>
+      <CaseAssociationManager
+        locale={locale}
+        caseId={brokerageCase.id}
+        readOnly={!canWriteCase}
+        initialParties={associationParties}
+        initialPrimaryPropertyId={associationDraft.primaryPropertyId}
+        savedPrimaryPropertyId={associationDraft.primaryPropertyId}
+        candidates={associationCandidates}
+        properties={associationProperties}
+        saveAction={canWriteCase ? saveCaseAssociationsAction : undefined}
+        createPersonAction={canWriteCase ? createClientFormAction : undefined}
+        createPropertyAction={canWriteCase ? createPropertyQuickAction : undefined}
+        objectImportViews={objectImportViews}
+        objectImportUploadAction={canWriteCase && objectImportReadiness.ready ? uploadObjectImportAction : undefined}
+        objectImportUnavailable={!objectImportReadiness.ready}
+        caseAttachments={objectAttachments}
+        caseAddress={caseAddressField?.value}
+        caseAddressConfirmed={caseAddressField?.state === "confirmed" || caseAddressField?.state === "edited"}
+      />
+      {canWriteCase && objectImportReadiness.ready
+        ? objectImportTargets
+            .filter((target) =>
+              target.importJobId === objectImportJobId &&
+              (target.status === "queued" || target.status === "processing"),
+            )
+            .map((target) => (
+              <ExcelImportQueueProcessor
+                key={`object-import-process-${target.importJobId}`}
+                jobId={target.importJobId}
+                locale={locale}
+                targetCaseId={stableCaseId}
+                statusOnly={target.status === "processing"}
+                objectRecoveryHref={`/cases/${encodeURIComponent(stableCaseId)}?objectImportJob=${encodeURIComponent(target.importJobId)}#case-review-desk`}
+                successHref={`/cases/${encodeURIComponent(stableCaseId)}?flash=object_import_processed&objectImportJob=${encodeURIComponent(target.importJobId)}#case-review-desk`}
+              />
+            ))
+        : null}
+    </>
+  );
   const applicableWorkbenchFields = allWorkbenchFields.filter((field) => field.applicable);
   const dossierTreeNodes = CASE_INFORMATION_TREE.filter((node) => node.id !== "output_draft" && node.id !== "source_evidence") as readonly CaseInformationTreeNode[];
   const dossierTopNodes = dossierTreeNodes.filter((node) => applicableWorkbenchFields.some((field) => fieldMatchesTreeNode(field, node)));
@@ -736,10 +832,8 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
     selectedChapterFields.find((field) => field.fieldKey === query?.field) ??
     selectedChapterFields.find(fieldNeedsAttention) ??
     selectedChapterFields[0];
-  const selectedWorkbenchFieldEvidence = selectedWorkbenchField ? getPrimaryEvidence(selectedWorkbenchField) : undefined;
   const dossierProgressPercent = caseProgressSnapshot.reviewPercent;
   const outputHref = `/output-center?caseId=${encodeURIComponent(brokerageCase.id)}`;
-  const supplementHref = `/import-center?targetCaseId=${encodeURIComponent(brokerageCase.id)}`;
   const overviewSections: CaseOverviewSection[] = dossierTopNodes.map((node) => {
     const childNodes = (node.children ?? []).filter((child) => applicableWorkbenchFields.some((field) => fieldMatchesTreeNode(field, child)));
     const effectiveChildren = childNodes.length > 0 ? childNodes : [node];
@@ -753,7 +847,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
           .filter((field) => fieldMatchesTreeNode(field, child))
           .map((field) => ({
             fieldKey: field.fieldKey,
-            label: localizeCaseOverviewFieldLabel(locale, getShortWorkbenchFieldLabel(field)),
+            label: getCaseOverviewFieldLabel(locale, field),
             value: field.value,
             displayValue: getWorkbenchFieldDisplayValue(field),
             required: field.required,
@@ -782,9 +876,6 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
     })),
   })) ?? [];
   const overviewHasOutputTemplate = Boolean(outputTemplate);
-  const overviewPreviewHref = outputTemplate
-    ? `/guarantee-applications/${encodeURIComponent(outputTemplate.id)}/preview?caseId=${encodeURIComponent(brokerageCase.id)}`
-    : outputHref;
   const overviewDownloadHref = outputTemplate
     ? `/api/guarantee-applications/${encodeURIComponent(outputTemplate.id)}/download?caseId=${encodeURIComponent(brokerageCase.id)}`
     : null;
@@ -809,8 +900,34 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
     canWriteCase
       ? readText(brokerageCase.confirmedDataJson, "__assigneeName") || tr(locale, { ja: "現在の担当者", zh: "当前负责人", ko: "현재 담당자" })
       : tr(locale, { ja: "担当者", zh: "当前负责人", ko: "현재 담당자" });
-  const flashMessage =
-    query?.flash === "extraction_review_saved"
+  const invalidFieldKey = String(query?.field ?? "").trim();
+  const flashMessage = objectImportNoSupportedFieldsFailed
+    ? tr(locale, {
+        ja: "入力可能な対応項目を読み取れませんでした。案件資料は更新されていません。対応する資料を選び直してください。",
+        zh: "未能读取可填写的受支持内容，案件资料未更新。请重新选择受支持的资料。",
+        ko: "입력 가능한 지원 항목을 읽지 못했습니다. 안건 자료는 업데이트되지 않았습니다. 지원되는 자료를 다시 선택해 주세요.",
+      })
+    : query?.flash === "object_import_review_conflict"
+      ? tr(locale, {
+          ja: "資料が別の画面で更新されました。案件ページを再読み込みして現在の資料と候補をもう一度確認してください。今回の変更は保存されておらず、確認時も最新バージョンを検証します。",
+          zh: "资料已在其他页面更新，请刷新案件页面，重新核对当前资料和候选；本次修改未保存，确认时仍会校验最新版本。",
+          ko: "자료가 다른 화면에서 업데이트되었습니다. 안건 페이지를 새로 고쳐 현재 자료와 후보를 다시 확인해 주세요. 이번 변경 사항은 저장되지 않았으며 확인 시에도 최신 버전을 검증합니다.",
+        })
+    : query?.flash === "object_import_review_rebased"
+      ? tr(locale, {
+          ja: "最新の物件資料を読み直しました。現在値と既存の資料候補をもう一度確認してから確定してください。まだ保存していません。",
+          zh: "已重新读取最新物件资料。请再次核对当前值和原有资料候选后确认；目前尚未保存。",
+          ko: "최신 매물 자료를 다시 읽었습니다. 현재 값과 기존 자료 후보를 다시 확인한 뒤 확정해 주세요. 아직 저장되지 않았습니다.",
+        })
+      : query?.flash === "object_import_review_already_reviewed"
+        ? tr(locale, {
+            ja: "この候補は別の画面ですでに確認済みです。案件を再読み込みして確定済みの値を確認してください。今回の変更は保存されていません。",
+            zh: "该候选已在其他页面处理完成，请刷新案件查看已确认值。本次修改未保存。",
+            ko: "이 후보는 다른 화면에서 이미 처리되었습니다. 안건을 새로 고쳐 확정된 값을 확인해 주세요. 이번 변경 사항은 저장되지 않았습니다.",
+          })
+    : objectImportStatusFlash
+      ? objectImportStatusFlash
+      : query?.flash === "extraction_review_saved"
       ? tr(locale, {
           ja: "確認結果を案件に保存しました。必要な項目を続けて整理できます。",
           zh: "核对结果已保存到案件。可以继续整理需要的项目。",
@@ -834,12 +951,36 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
             zh: "信息整理已保存。",
             ko: "정보 정리를 저장했습니다.",
           })
-        : query?.flash === "case_field_invalid"
+        : query?.flash === "object_import_processed"
           ? tr(locale, {
-              ja: "郵便番号は7桁で入力してください。変更は保存されていません。",
-              zh: "日本邮政编码必须为7位数字，修改未保存。",
-              ko: "일본 우편번호는 7자리여야 하며 변경 사항은 저장되지 않았습니다.",
+              ja: "資料の読取が完了しました。候補項目を案件の入力欄で確認できます。",
+              zh: "资料读取完成，可在案件输入栏确认候选项目。",
+              ko: "자료 읽기가 완료되었습니다. 안건 입력란에서 후보 항목을 확인할 수 있습니다.",
             })
+        : query?.flash === "case_field_invalid"
+          ? invalidFieldKey.endsWith(".email")
+            ? tr(locale, {
+                ja: "有効なメールアドレスを入力してください。変更は保存されていません。",
+                zh: "请输入有效的邮箱地址，修改未保存。",
+                ko: "유효한 이메일 주소를 입력해 주세요. 변경 사항은 저장되지 않았습니다.",
+              })
+            : invalidFieldKey.endsWith(".phone") || invalidFieldKey.includes("Phone") || invalidFieldKey.includes("phone") || invalidFieldKey.endsWith(".fax") || invalidFieldKey.endsWith("Fax")
+              ? tr(locale, {
+                  ja: "有効な電話番号（数字7～15桁）を入力してください。変更は保存されていません。",
+                  zh: "请输入有效的电话号码（至少7位数字），修改未保存。",
+                  ko: "유효한 전화번호(숫자 7~15자리)를 입력해 주세요. 변경 사항은 저장되지 않았습니다.",
+                })
+              : tr(locale, {
+                  ja: "郵便番号は7桁で入力してください。変更は保存されていません。",
+                  zh: "日本邮政编码必须为7位数字，修改未保存。",
+                  ko: "일본 우편번호는 7자리여야 하며 변경 사항은 저장되지 않았습니다.",
+                })
+          : query?.flash === "case_required_field_missing"
+            ? tr(locale, {
+                ja: `必須項目「${getBusinessFieldLabel(locale, invalidFieldKey)}」を入力してください。変更は保存されていません。`,
+                zh: `请填写必填项“${getBusinessFieldLabel(locale, invalidFieldKey)}”。修改未保存。`,
+                ko: `필수 항목 "${getBusinessFieldLabel(locale, invalidFieldKey)}"을(를) 입력해 주세요. 변경 사항은 저장되지 않았습니다.`,
+              })
           : query?.flash === "case_applicability_saved"
             ? tr(locale, {
                 ja: "保存しました。",
@@ -920,7 +1061,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
 	                              })
 	              : undefined;
   const flashTone =
-    query?.flash?.startsWith("excel_upload_") || query?.flash?.startsWith("identity_upload_") ? "error" : undefined;
+    objectImportNoSupportedFieldsFailed || query?.flash === "object_import_review_conflict" || query?.flash === "object_import_review_already_reviewed" || query?.flash?.startsWith("excel_upload_") || query?.flash?.startsWith("identity_upload_") || query?.flash === "case_required_field_missing" || query?.flash === "case_field_invalid" ? "error" : undefined;
   const activeView = query?.view === "quick" || query?.view === "overview"
     ? query.view
     : downloadGate && downloadGate.blockedReasons.length > 0
@@ -929,11 +1070,16 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
   const parsedScrollTop = query?.scrollTop ? Number(query.scrollTop) : Number.NaN;
   const initialScrollTop = Number.isSafeInteger(parsedScrollTop) && parsedScrollTop >= 0 ? parsedScrollTop : undefined;
   const initialFieldKey = query?.field && allWorkbenchFields.some((field) => field.fieldKey === query.field) ? query.field : undefined;
-  const objectAttachments = await listLinkedObjectAttachments({ tenantId, targetType: "case", targetId: brokerageCase.id });
 
   if (!canWriteCase) {
     return (
-      <div className="space-y-6">
+      <div
+        className="space-y-6"
+        data-import-processing-mode={importRuntimeDiagnostics.processingMode}
+        data-import-required-capability={importRuntimeDiagnostics.requiredCapability}
+        data-import-required-capability-status={importRuntimeDiagnostics.requiredCapabilityStatus}
+        data-import-deployment-version={importRuntimeDiagnostics.deploymentVersion}
+      >
         <CaseOverview
           caseId={brokerageCase.id}
           caseTitle={brokerageCase.caseTitle}
@@ -945,7 +1091,6 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
           locale={locale}
           issueCount={overviewIssueCount}
           outputHref=""
-          previewHref=""
           downloadHref={null}
           dataVersion={brokerageCase.updatedAt.toISOString()}
           outputBlockers={[]}
@@ -957,14 +1102,19 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
           visibilityLabel={caseVisibilityLabel}
           flash={<PageFlashBanner message={flashMessage} tone={flashTone} />}
         />
-        <ObjectAttachmentSection locale={locale} targetType="case" targetId={brokerageCase.id} items={objectAttachments} canWrite={false} />
       </div>
     );
   }
 
   if (activeView === "overview") {
     return (
-      <div className="space-y-6">
+      <div
+        className="space-y-6"
+        data-import-processing-mode={importRuntimeDiagnostics.processingMode}
+        data-import-required-capability={importRuntimeDiagnostics.requiredCapability}
+        data-import-required-capability-status={importRuntimeDiagnostics.requiredCapabilityStatus}
+        data-import-deployment-version={importRuntimeDiagnostics.deploymentVersion}
+      >
         <CaseOverview
           caseId={brokerageCase.id}
           caseTitle={brokerageCase.caseTitle}
@@ -976,7 +1126,6 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
           locale={locale}
           issueCount={overviewIssueCount}
           outputHref={outputHref}
-          previewHref={overviewPreviewHref}
           downloadHref={overviewDownloadHref}
           dataVersion={brokerageCase.updatedAt.toISOString()}
           outputBlockers={outputBlockers}
@@ -988,7 +1137,6 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
           initialFieldKey={initialFieldKey}
           initialScrollTop={initialScrollTop}
         />
-        <ObjectAttachmentSection locale={locale} targetType="case" targetId={brokerageCase.id} items={objectAttachments} canWrite={canWriteCase} />
       </div>
     );
   }
@@ -996,6 +1144,10 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
   return (
     <div className="flex min-w-0 flex-col gap-6">
       <ObjectPageShell
+        data-import-processing-mode={importRuntimeDiagnostics.processingMode}
+        data-import-required-capability={importRuntimeDiagnostics.requiredCapability}
+        data-import-required-capability-status={importRuntimeDiagnostics.requiredCapabilityStatus}
+        data-import-deployment-version={importRuntimeDiagnostics.deploymentVersion}
         header={
           <CaseIdentityHeader
             caseId={brokerageCase.id}
@@ -1010,22 +1162,6 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
             issueCount={overviewIssueCount}
             actions={
               <>
-                <span className="hidden sm:inline-flex">
-                  <Link href={supplementHref} className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300">
-                    {tr(locale, { ja: "資料を追加", zh: "补充资料", ko: "자료 추가" })}
-                  </Link>
-                </span>
-                <span className="hidden sm:inline-flex">
-                  <Link href={`/relationship-tree?type=case&id=${encodeURIComponent(brokerageCase.id)}`} className="inline-flex items-center rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-[#002FA7] hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus:ring-blue-300">
-                    {tr(locale, { ja: "関係を確認", zh: "查看关系", ko: "관계 확인" })}
-                  </Link>
-                </span>
-                <Link href={outputHref} className="inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800 hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300">
-                  {tr(locale, { ja: "文書出力", zh: "输出文件", ko: "서류 출력" })}
-                </Link>
-                <a href={`/cases/${encodeURIComponent(brokerageCase.id)}/guarantee-application`} className="inline-flex items-center rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-900 hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300">
-                  {tr(locale, { ja: "申込書を生成", zh: "生成申请书", ko: "신청서 생성" })}
-                </a>
                 {canArchiveCase ? <span className="hidden sm:inline-flex">
                   <ArchiveRecordButton
                     entityType="case"
@@ -1046,14 +1182,13 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
         feedback={<PageFlashBanner message={flashMessage} tone={flashTone} />}
       >
         {associationPanel}
-        <ObjectAttachmentSection locale={locale} targetType="case" targetId={brokerageCase.id} items={objectAttachments} canWrite={canWriteCase} />
 
         {selectedWorkbenchField ? (
           <section className="rounded-lg border border-amber-200 bg-amber-50/70 p-3 sm:hidden" aria-label={tr(locale, { ja: "次の対応項目", zh: "下一项任务", ko: "다음 처리 항목" })}>
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-[11px] font-black text-amber-900">{tr(locale, { ja: "次の対応項目", zh: "下一项任务", ko: "다음 처리 항목" })}</p>
-                <CaseFieldValue label={getShortWorkbenchFieldLabel(selectedWorkbenchField)} value={getWorkbenchFieldDisplayValue(selectedWorkbenchField)} />
+                <CaseFieldValue label={getCaseOverviewFieldLabel(locale, selectedWorkbenchField)} value={getWorkbenchFieldDisplayValue(selectedWorkbenchField)} />
                 <CaseFieldState issueLabel={fieldNeedsAttention(selectedWorkbenchField) ? getWorkbenchFieldIssueLabel(locale, selectedWorkbenchField) : undefined} />
               </div>
               <Link href={caseWorkbenchHref({ node: selectedChapterNode?.id, field: selectedWorkbenchField.fieldKey })} scroll={false} className="shrink-0 rounded-lg bg-slate-950 px-3 py-2 text-xs font-black text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300">
@@ -1062,58 +1197,6 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
             </div>
           </section>
         ) : null}
-
-        <section className="rounded-lg border border-slate-200 bg-white">
-          <div className="grid min-w-0 divide-y divide-slate-200 md:grid-cols-2 md:divide-x 2xl:grid-cols-[1.2fr_1.2fr_1.2fr_1fr_0.7fr_0.7fr_0.9fr] 2xl:divide-y-0">
-            {[
-              {
-                icon: "person",
-                label: tr(locale, { ja: "申込人", zh: "申请人", ko: "신청인" }),
-                value: applicantSummary,
-              },
-              {
-                icon: "apartment",
-                label: tr(locale, { ja: "物件", zh: "物件", ko: "물건" }),
-                value: propertySummary,
-              },
-              {
-                icon: "verified_user",
-                label: tr(locale, { ja: "保証会社", zh: "保证公司", ko: "보증 회사" }),
-                value: guaranteeCompanySummary,
-              },
-              {
-                icon: "assignment_ind",
-                label: tr(locale, { ja: "担当", zh: "负责人", ko: "담당" }),
-                value: currentHandlerSummary,
-              },
-            ].map((item) => (
-              <div key={item.label} className="flex min-w-0 items-center gap-3 p-4">
-                <span className="material-symbols-outlined h-10 w-10 shrink-0 rounded-lg bg-slate-50 p-0 text-[20px] text-slate-700" aria-hidden="true">
-                  {item.icon}
-                </span>
-                <div className="min-w-0">
-                  <p className="text-[11px] font-bold text-slate-500">{item.label}</p>
-                  <p className="mt-1 truncate text-sm font-black text-slate-950">{item.value}</p>
-                </div>
-              </div>
-            ))}
-            <div className="p-4">
-              <p className="text-[11px] font-bold text-slate-500">{tr(locale, { ja: "要確認", zh: "待核对", ko: "확인 필요" })}</p>
-              <p className="mt-1 text-2xl font-black tabular-nums text-rose-600">{caseProgressSnapshot.reviewOpen}</p>
-            </div>
-            <div className="p-4">
-              <p className="text-[11px] font-bold text-slate-500">{tr(locale, { ja: "確認済み", zh: "已确认", ko: "확인됨" })}</p>
-              <p className="mt-1 text-2xl font-black tabular-nums text-emerald-700">{caseProgressSnapshot.reviewCompleted}</p>
-            </div>
-            <div className="p-4">
-              <p className="text-[11px] font-bold text-slate-500">{tr(locale, { ja: "全体", zh: "总进度", ko: "전체" })}</p>
-              <p className="mt-1 text-2xl font-black tabular-nums text-slate-950">{dossierProgressPercent}%</p>
-              <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
-                <div className="h-full rounded-full bg-blue-700" style={{ width: `${dossierProgressPercent}%` }} />
-              </div>
-            </div>
-          </div>
-        </section>
 
         <section id="case-review-desk" className="scroll-mt-24 rounded-xl border border-slate-200 bg-white">
           <div className="grid min-w-0 2xl:grid-cols-[minmax(17rem,20rem)_minmax(0,1fr)]">
@@ -1155,7 +1238,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                         }`}
                       >
                         <span className="flex items-center justify-between gap-3">
-                          <span className="truncate text-sm font-black">{node.label}</span>
+                          <span className="truncate text-sm font-black">{localizeCaseOverviewTreeLabel(locale, node.label)}</span>
                           <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-black ${selected ? status.reviewOpen > 0 ? "bg-rose-400/25 text-rose-100 ring-1 ring-rose-300/50" : "bg-white/15 text-white" : status.reviewOpen > 0 ? "bg-rose-100 text-rose-800 ring-1 ring-rose-200" : "bg-emerald-50 text-emerald-800"}`}>
                             {status.reviewOpen > 0
                               ? getReviewQueueLabel(locale, status.reviewOpen)
@@ -1178,7 +1261,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                 {selectedChildTreeNodes.length > 0 ? (
                   <div className="mt-4 border-t border-slate-100 pt-4">
                     <div className="flex items-center justify-between gap-2 px-1">
-                      <p className="text-[11px] font-black text-slate-500">{selectedTopTreeNode?.label}</p>
+                      <p className="text-[11px] font-black text-slate-500">{selectedTopTreeNode ? localizeCaseOverviewTreeLabel(locale, selectedTopTreeNode.label) : null}</p>
                       <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black text-slate-600">{selectedChildTreeNodes.length}</span>
                     </div>
                     <div className="mt-2 max-h-[260px] space-y-1.5 overflow-y-auto pr-1">
@@ -1197,7 +1280,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                             }`}
                           >
                             <span className="flex items-center justify-between gap-3">
-                              <span className="truncate text-xs font-black text-slate-950">{node.label}</span>
+                              <span className="truncate text-xs font-black text-slate-950">{localizeCaseOverviewTreeLabel(locale, node.label)}</span>
                               <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-black ${status.reviewOpen > 0 ? "bg-rose-100 text-rose-800 ring-1 ring-rose-200" : "bg-emerald-50 text-emerald-800"}`}>
                                 {status.reviewOpen > 0
                                   ? getReviewQueueLabel(locale, status.reviewOpen)
@@ -1225,8 +1308,8 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
               <div className="border-b border-slate-200 px-5 py-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-xs font-bold text-blue-700">{selectedTopTreeNode?.label ?? tr(locale, { ja: "確認項目", zh: "核对项目", ko: "확인 항목" })}</p>
-                    <h2 className="mt-1 text-xl font-black text-slate-950">{selectedChapterNode?.label ?? "-"}</h2>
+                    <p className="text-xs font-bold text-blue-700">{selectedTopTreeNode ? localizeCaseOverviewTreeLabel(locale, selectedTopTreeNode.label) : tr(locale, { ja: "確認項目", zh: "核对项目", ko: "확인 항목" })}</p>
+                    <h2 className="mt-1 text-xl font-black text-slate-950">{selectedChapterNode ? localizeCaseOverviewTreeLabel(locale, selectedChapterNode.label) : "-"}</h2>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 text-xs font-black">
                     <span className="rounded-full bg-rose-50 px-3 py-1 text-rose-800 ring-1 ring-rose-200">
@@ -1239,8 +1322,8 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                 </div>
               </div>
 
-              <div className="grid min-w-0 2xl:grid-cols-[minmax(0,1fr)_minmax(20rem,24rem)]">
-                <div className="min-w-0 border-b border-slate-200 2xl:border-b-0 2xl:border-r">
+              <div className="min-w-0">
+                <div className="min-w-0 border-b border-slate-200 2xl:border-b-0">
                   <div className="min-w-0">
                       <div className="grid grid-cols-[4rem_minmax(0,1fr)_minmax(0,1.15fr)_auto] gap-2 border-b border-slate-100 bg-slate-50 px-3 py-3 text-[11px] font-black text-slate-500 sm:grid-cols-[5.5rem_minmax(0,1fr)_minmax(0,1.15fr)_auto] sm:gap-3 sm:px-5">
                         <span>{tr(locale, { ja: "状態", zh: "状态", ko: "상태" })}</span>
@@ -1251,14 +1334,31 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                       <div className="divide-y divide-slate-100 2xl:max-h-[calc(100vh-23rem)] 2xl:overflow-y-auto">
                         {selectedChapterFields.map((field) => {
                           const selected = selectedWorkbenchField?.fieldKey === field.fieldKey;
+                          const objectImportBinding = objectImportFieldBindings[field.fieldKey];
+                          const preserveExistingObjectValue = Boolean(objectImportBinding && field.value.trim());
+                          const candidateValue = objectImportBinding && !preserveExistingObjectValue ? objectImportBinding.candidateValue : field.value;
+                          const canRefreshObjectImport = query?.flash === "object_import_review_conflict" &&
+                            invalidFieldKey === field.fieldKey &&
+                            objectImportBinding?.importJobId === objectImportJobId &&
+                            Boolean(objectImportBinding?.observedVersion);
                           return (
-                            <Link
-                              key={field.fieldKey}
-                              href={caseWorkbenchHref({ node: selectedChapterNode?.id, field: field.fieldKey })}
-                              scroll={false}
-                              className={`grid grid-cols-[4rem_minmax(0,1fr)_minmax(0,1.15fr)_auto] gap-2 px-3 py-4 transition sm:grid-cols-[5.5rem_minmax(0,1fr)_minmax(0,1.15fr)_auto] sm:gap-3 sm:px-5 ${
-                                selected ? "bg-blue-50 ring-1 ring-inset ring-blue-700" : "hover:bg-slate-50"
-                              }`}
+                            <div key={field.fieldKey} className={`grid grid-cols-[4rem_minmax(0,1fr)_minmax(0,1.35fr)_auto] items-start gap-2 px-3 py-3 transition sm:grid-cols-[5.5rem_minmax(0,1fr)_minmax(0,1.35fr)_auto] sm:items-start sm:gap-3 sm:px-5 ${selected ? "bg-blue-50 ring-1 ring-inset ring-blue-700" : "hover:bg-slate-50"}`}>
+                            <CaseWorkbenchFieldForm
+                              action={saveCaseWorkbenchAction}
+                              caseId={brokerageCase.id}
+                              fieldKey={field.fieldKey}
+                              initialValue={candidateValue}
+                              returnNode={selectedChapterNode?.id}
+                              returnField={field.fieldKey}
+                              returnAnchor="case-main-editor"
+                              returnView="quick"
+                              showSaveWhenPristine
+                              saveLabel={tr(locale, { ja: "確認", zh: "确认", ko: "확인" })}
+                              savingLabel={tr(locale, { ja: "保存中", zh: "保存中", ko: "저장 중" })}
+                              saveButtonAriaLabel={getCaseWorkbenchSaveAriaLabel(locale, getCaseOverviewFieldLabel(locale, field))}
+                              saveButtonWrapperClassName="col-start-4 row-start-1 mt-0 max-h-12 self-start opacity-100"
+                              saveButtonClassName="min-h-11 min-w-[3.5rem] rounded-md px-3 py-2 text-xs font-black"
+                              className="contents"
                             >
                               <span>
                                 <CaseFieldState
@@ -1267,16 +1367,43 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                               </span>
                               <span className="min-w-0">
                                 <span className="block break-words text-sm font-black text-slate-950">
-                                  {getShortWorkbenchFieldLabel(field)}
+                                  {getCaseOverviewFieldLabel(locale, field)}
                                   {field.required ? <span className="ml-1 text-slate-400" aria-label={tr(locale, { ja: "必須", zh: "必填", ko: "필수" })}>*</span> : null}
                                 </span>
-                                <span className="mt-1 block break-words text-[11px] font-semibold text-slate-500">{field.treePath.join(" / ")}</span>
+                                <span className="mt-1 block break-words text-[11px] font-semibold text-slate-500">{getCaseOverviewFieldPath(locale, field)}</span>
                               </span>
                               <span className="min-w-0">
-                                <CaseFieldValue value={getWorkbenchFieldDisplayValue(field)} />
+                                <CaseFieldInput
+                                  name={`field:${field.fieldKey}`}
+                                  value={candidateValue}
+                                  label={getCaseAddressDisplayLabel(locale, field) ?? field.label}
+                                  inputSpec={field.inputSpec}
+                                  locale={locale}
+                                  tone={fieldNeedsAttention(field) || Boolean(objectImportBinding?.status === "low_confidence" || objectImportBinding?.status === "conflict") ? "attention" : "default"}
+                                />
+                                {objectImportBinding ? <p className="mt-1 text-[11px] font-semibold text-amber-700">{preserveExistingObjectValue ? tr(locale, { ja: `既存値を優先。候補「${objectImportBinding.candidateValue}」は確認待ち`, zh: `已有值优先；候选「${objectImportBinding.candidateValue}」待核对`, ko: `기존 값을 우선합니다. 후보「${objectImportBinding.candidateValue}」는 확인 대기` }) : objectImportBinding.status === "conflict" ? tr(locale, { ja: "資料間で不一致があります。内容を確認して保存してください", zh: "资料存在冲突，请核对后保存", ko: "자료가 서로 다릅니다. 확인 후 저장하세요" }) : objectImportBinding.status === "low_confidence" ? tr(locale, { ja: "根拠が弱いため、確認前に出典を確認してください", zh: "来源清晰度不足，确认前请核对", ko: "근거가 약하므로 확인 전에 출처를 확인하세요" }) : tr(locale, { ja: "資料候補。確認すると保存します", zh: "资料候选，确认后写入", ko: "자료 후보입니다. 확인하면 저장합니다" })}{objectImportBinding.sourceEvidence ? tr(locale, { ja: `（${objectImportBinding.sourceEvidence}）`, zh: `（${objectImportBinding.sourceEvidence}）`, ko: `（${objectImportBinding.sourceEvidence}）` }) : ""}</p> : null}
+                                {objectImportBinding ? <input type="hidden" name="objectImportReviewJson" value={JSON.stringify({ ...objectImportBinding, preserveExisting: preserveExistingObjectValue, caseFieldKey: field.fieldKey })} readOnly /> : null}
                               </span>
-                              <span className="self-center text-right text-xs font-black text-blue-700">{getWorkbenchFieldActionLabel(locale, field)}</span>
-                            </Link>
+                            </CaseWorkbenchFieldForm>
+                            {canRefreshObjectImport ? (
+                              <form action={refreshObjectImportReviewAction} className="col-start-3 row-start-2 mt-1 sm:col-start-3">
+                                <input type="hidden" name="importTargetId" value={objectImportBinding.targetId} />
+                                <input type="hidden" name="fieldId" value={objectImportBinding.fieldId} />
+                                <input type="hidden" name="importJobId" value={objectImportBinding.importJobId} />
+                                <input type="hidden" name="expectedVersion" value={objectImportBinding.expectedVersion} />
+                                <input type="hidden" name="observedVersion" value={objectImportBinding.observedVersion} />
+                                <input type="hidden" name="expectedCandidateValue" value={objectImportBinding.expectedCandidateValue} />
+                                <input type="hidden" name="field" value={field.fieldKey} />
+                                <input type="hidden" name="returnNode" value={selectedChapterNode?.id ?? ""} />
+                                <input type="hidden" name="returnField" value={field.fieldKey} />
+                                <input type="hidden" name="returnView" value="quick" />
+                                <input type="hidden" name="returnAnchor" value="case-main-editor" />
+                                <button type="submit" className="text-xs font-bold text-amber-800 underline underline-offset-2">
+                                  {tr(locale, { ja: "最新の資料を再確認", zh: "重新核对最新资料", ko: "최신 자료 다시 확인" })}
+                                </button>
+                              </form>
+                            ) : null}
+                            </div>
                           );
                         })}
                         {selectedChapterFields.length === 0 ? (
@@ -1288,58 +1415,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
                   </div>
                 </div>
 
-                <aside id="case-field-editor" className="scroll-mt-24 bg-white p-4 2xl:sticky 2xl:top-20 2xl:max-h-[calc(100vh-6rem)] 2xl:self-start 2xl:overflow-y-auto">
-                  {selectedWorkbenchField ? (
-                    <CaseEditPanel title={getShortWorkbenchFieldLabel(selectedWorkbenchField)} context={selectedChapterNode?.label ?? tr(locale, { ja: "項目確認", zh: "项目核对", ko: "항목 확인" })} issueLabel={fieldNeedsAttention(selectedWorkbenchField) ? getWorkbenchFieldIssueLabel(locale, selectedWorkbenchField) : undefined}>
-                      <CaseWorkbenchFieldForm
-                        action={saveCaseWorkbenchAction}
-                        caseId={brokerageCase.id}
-                        fieldKey={selectedWorkbenchField.fieldKey}
-                        returnNode={selectedChapterNode?.id}
-                        returnField={selectedWorkbenchField.fieldKey}
-                        returnAnchor="case-field-editor"
-                        showSaveWhenPristine
-                        saveLabel={tr(locale, { ja: "確認して保存", zh: "确认并保存", ko: "확인하고 저장" })}
-                        savingLabel={tr(locale, { ja: "保存中", zh: "保存中", ko: "저장 중" })}
-                        className="mt-4 space-y-4"
-                      >
-                      {selectedWorkbenchFieldEvidence ? (
-                        <input type="hidden" name={`candidate:${selectedWorkbenchField.fieldKey}`} value={selectedWorkbenchFieldEvidence.value} />
-                      ) : null}
-                      <div className="space-y-3">
-                        <CaseEvidenceSummary
-                          locale={locale}
-                          title={tr(locale, { ja: "資料内容", zh: "资料内容", ko: "자료 내용" })}
-                          evidenceItems={selectedWorkbenchField.evidenceItems}
-                          currentValue={selectedWorkbenchField.value}
-                          candidateFieldKey={selectedWorkbenchField.fieldKey}
-                        />
 
-                        <div className="rounded-lg border border-slate-200 bg-white p-3">
-                          <p className="text-[11px] font-bold text-slate-500">{tr(locale, { ja: "確認内容", zh: "确认内容", ko: "확인 내용" })}</p>
-                          <div className="mt-2">
-                            <CaseFieldInput
-                              name={`field:${selectedWorkbenchField.fieldKey}`}
-                              value={selectedWorkbenchField.value}
-                              label={selectedWorkbenchField.label}
-                              inputSpec={selectedWorkbenchField.inputSpec}
-                              locale={locale}
-                              tone={fieldNeedsAttention(selectedWorkbenchField) ? "attention" : "default"}
-                            />
-                          </div>
-                          <div className="mt-2">
-                            <WorkbenchDecisionSelect locale={locale} field={selectedWorkbenchField} flush />
-                          </div>
-                        </div>
-                      </div>
-                      </CaseWorkbenchFieldForm>
-                    </CaseEditPanel>
-                  ) : (
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-5 text-sm font-semibold text-slate-500">
-                      {tr(locale, { ja: "項目を選択してください。", zh: "请选择一个项目。", ko: "항목을 선택해 주세요." })}
-                    </div>
-                  )}
-                </aside>
               </div>
             </div>
           </div>

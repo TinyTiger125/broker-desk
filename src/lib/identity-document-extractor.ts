@@ -10,6 +10,15 @@ import {
   isProductionRuntime,
   ProductionReadinessError,
 } from "@/lib/production-readiness";
+import {
+  buildRemoteDocumentReaderRequest,
+  parseRemoteDocumentReaderResponse,
+  RemoteDocumentReaderError,
+} from "@/lib/identity-reader-contract";
+import { readIdentityDocumentWithOpenAi } from "@/lib/openai-identity-reader";
+import type { OpenAiIdentityReaderCandidate } from "@/lib/identity-reader-contract";
+import { resolveIdentityReaderCandidate } from "@/lib/identity-reader-evidence";
+import { selectPrimaryIdentityReaderCandidates } from "@/lib/identity-reader-attribution";
 
 const execFileAsync = promisify(execFile);
 
@@ -20,6 +29,8 @@ type OcrPage = {
 
 type OcrResult = {
   pages: OcrPage[];
+  documentType?: InputDocumentType;
+  candidates?: OpenAiIdentityReaderCandidate[];
 };
 
 const DOCUMENT_LABELS: Record<InputDocumentType, string> = {
@@ -104,6 +115,8 @@ function addField(fields: FieldDraft[], input: {
   page: OcrPage;
   source: string;
   confidence: number;
+  method?: FieldDraft["method"];
+  sourceRange?: string;
 }) {
   fields.push({
     fieldKey: input.fieldKey,
@@ -111,8 +124,9 @@ function addField(fields: FieldDraft[], input: {
     value: clean(input.value ?? ""),
     normalizedValue: clean(input.value ?? ""),
     sourceSheet: input.source,
-    sourceRange: `page ${input.page.pageNumber}`,
+    sourceRange: input.sourceRange ?? `page ${input.page.pageNumber}`,
     confidence: input.confidence,
+    method: input.method,
   });
 }
 
@@ -310,32 +324,6 @@ function detectDocumentType(hasResidenceCard: boolean, hasDriverLicense: boolean
 }
 
 const REMOTE_READER_TIMEOUT_MS = 60_000;
-const MAX_REMOTE_READER_PAGES = 20;
-const MAX_REMOTE_READER_LINES_PER_PAGE = 500;
-const MAX_REMOTE_READER_LINE_LENGTH = 1_000;
-
-function parseRemoteOcrResult(value: unknown): OcrResult {
-  if (!value || typeof value !== "object" || !("pages" in value) || !Array.isArray(value.pages)) {
-    throw new Error("remote_document_reader_invalid_response");
-  }
-
-  const pages = value.pages.slice(0, MAX_REMOTE_READER_PAGES).map((page, index) => {
-    if (!page || typeof page !== "object" || !Array.isArray((page as { lines?: unknown }).lines)) {
-      throw new Error("remote_document_reader_invalid_page");
-    }
-    const pageNumber = Number((page as { pageNumber?: unknown }).pageNumber);
-    const lines = (page as { lines: unknown[] }).lines
-      .slice(0, MAX_REMOTE_READER_LINES_PER_PAGE)
-      .map((line) => String(line).slice(0, MAX_REMOTE_READER_LINE_LENGTH));
-    return {
-      pageNumber: Number.isInteger(pageNumber) && pageNumber > 0 ? pageNumber : index + 1,
-      lines,
-    };
-  });
-
-  return { pages };
-}
-
 async function runRemoteOcr(buffer: Buffer, filename: string): Promise<OcrResult> {
   assertProductionDocumentReaderReady();
   const endpoint = process.env.DOCUMENT_READING_ENDPOINT?.trim();
@@ -357,23 +345,82 @@ async function runRemoteOcr(buffer: Buffer, filename: string): Promise<OcrResult
         accept: "application/json",
         "x-broker-desk-reader-version": "v1",
       },
-      body: JSON.stringify({
-        document: {
-          filename,
-          contentBase64: buffer.toString("base64"),
-        },
-      }),
+      body: JSON.stringify(buildRemoteDocumentReaderRequest(buffer, filename)),
     });
-    if (!response.ok) throw new Error(`remote_document_reader_http_${response.status}`);
-    return parseRemoteOcrResult(await response.json());
+    if (!response.ok) throw new RemoteDocumentReaderError("http_error", { status: response.status });
+    return parseRemoteDocumentReaderResponse(await response.json());
+  } catch (error) {
+    if (error instanceof RemoteDocumentReaderError) throw error;
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new RemoteDocumentReaderError("timeout");
+    }
+    throw new RemoteDocumentReaderError("request_failed");
   } finally {
     clearTimeout(timer);
   }
 }
 
+const MODEL_FIELD_LABELS: Record<string, string> = {
+  "applicant.name": "氏名",
+  "applicant.birthDate": "生年月日",
+  "applicant.gender": "性別",
+  "applicant.currentAddress": "現住所",
+  "applicant.nationality": "国籍",
+  "applicant.residenceStatus": "在留資格",
+  "applicant.residencePeriod": "在留期間",
+  "applicant.residenceCardExpiry": "在留カード有効期限",
+  "applicant.residenceCardNumber": "在留カード番号",
+  "applicant.workRestriction": "就労制限",
+  "applicant.driverLicenseNumber": "免許証番号",
+  "applicant.driverLicenseExpiry": "免許証有効期限",
+  "applicant.driverLicenseConditions": "免許条件",
+};
+
+function addModelCandidates(fields: FieldDraft[], candidates: OpenAiIdentityReaderCandidate[], pages: OcrPage[]) {
+  const attribution = selectPrimaryIdentityReaderCandidates(candidates);
+  if (attribution.status !== "single_applicant") {
+    for (const field of fields) {
+      if (MODEL_FIELD_LABELS[field.fieldKey]) {
+        field.sourceRange = `${field.sourceRange ?? ""}; model_attribution_blocked=${attribution.status}`.replace(/^;\s*/, "");
+      }
+    }
+    return;
+  }
+  for (const candidate of attribution.candidates) {
+    const label = MODEL_FIELD_LABELS[candidate.fieldKey];
+    if (!label) continue;
+    const existing = fields.find((field) => field.fieldKey === candidate.fieldKey && field.value);
+    const decision = resolveIdentityReaderCandidate({ existingValue: existing?.value, candidateValue: candidate.value, uncertainty: candidate.uncertainty });
+    const evidence = `page ${candidate.pageNumber}; evidence=${candidate.sourceText}; uncertainty=${decision.effectiveUncertainty}`;
+    if (existing) {
+      existing.sourceRange = `${existing.sourceRange ?? `page ${candidate.pageNumber}`}; model_${evidence}`;
+      if (decision.effectiveUncertainty !== "clear") existing.confidence = Math.min(existing.confidence, decision.reviewScore);
+      continue;
+    }
+    if (!candidate.value || candidate.uncertainty === "not_found") continue;
+    const page = pages.find((item) => item.pageNumber === candidate.pageNumber) ?? { pageNumber: candidate.pageNumber, lines: [] };
+    addField(fields, {
+      fieldKey: candidate.fieldKey,
+      label,
+      value: candidate.value,
+      page,
+      source: "OpenAI Responses API",
+      confidence: decision.reviewScore,
+      method: "ai",
+      sourceRange: evidence,
+    });
+  }
+}
+
 async function runOcr(buffer: Buffer, filename: string): Promise<OcrResult> {
-  // The local Swift helper is development-only. Production must use a remote,
-  // auditable reader rather than silently running a machine-specific fallback.
+  const provider = process.env.DOCUMENT_READING_PROVIDER?.trim().toLowerCase();
+  if (provider === "openai_responses") {
+    if (isProductionRuntime()) throw new ProductionReadinessError("production_document_reader_required");
+    return readIdentityDocumentWithOpenAi({ buffer, filename });
+  }
+  // The local Swift helper is development-only. Production must use an
+  // auditable remote reader rather than silently running a machine-specific
+  // fallback.
   if (isProductionRuntime()) {
     return runRemoteOcr(buffer, filename);
   }
@@ -403,7 +450,13 @@ export async function extractIdentityDocumentFromBuffer(input: {
   try {
     ocr = await runOcr(input.buffer, input.filename);
   } catch (error) {
-    if (isProductionRuntime() || error instanceof ProductionReadinessError) {
+    const configuredProvider = process.env.DOCUMENT_READING_PROVIDER?.trim().toLowerCase();
+    if (
+      isProductionRuntime()
+      || configuredProvider === "remote"
+      || configuredProvider === "openai_responses"
+      || error instanceof ProductionReadinessError
+    ) {
       throw error;
     }
     ocr = { pages: [] };
@@ -412,12 +465,16 @@ export async function extractIdentityDocumentFromBuffer(input: {
   const pages = ocr.pages.filter((page) => Array.isArray(page.lines));
   const residencePages = pages.filter(isResidenceCardPage);
   const driverLicensePages = pages.filter(isDriverLicensePage);
-  const documentType = detectDocumentType(residencePages.length > 0, driverLicensePages.length > 0);
-  const templateVersion = `identity_document:${documentType}:vision_ocr_v1`;
+  const detectedDocumentType = detectDocumentType(residencePages.length > 0, driverLicensePages.length > 0);
+  const documentType = ocr.documentType && ocr.documentType !== "unknown_identity_scan"
+    ? ocr.documentType
+    : detectedDocumentType;
+  const templateVersion = `identity_document:${documentType}:${process.env.DOCUMENT_READING_PROVIDER?.trim().toLowerCase() === "openai_responses" ? "vision_ai_v1" : "vision_ocr_v1"}`;
   const fields: FieldDraft[] = [];
 
   residencePages.forEach((page) => extractResidenceCardFields(page, fields));
   driverLicensePages.forEach((page) => extractDriverLicenseFields(page, fields));
+  if (ocr.candidates) addModelCandidates(fields, ocr.candidates, pages);
   const firstEvidencePage = residencePages[0] ?? driverLicensePages[0] ?? pages[0] ?? { pageNumber: 1, lines: [] };
   if (documentType !== "unknown_identity_scan") {
     const label = documentType === "identity_residence_card_or_driver_license"

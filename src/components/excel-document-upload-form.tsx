@@ -17,6 +17,7 @@ const textByLocale = {
     dropHint: "Excelファイルをここに置くか、クリックして選択",
     fileLabel: ".xlsx",
     submit: "資料を読み取る",
+    processing: "資料読取を送信しています…",
     selected: "選択中",
     fileRequired: ".xlsx ファイルを選択してください。",
     fileType: ".xlsx ファイルを選択してください。",
@@ -25,6 +26,7 @@ const textByLocale = {
     dropHint: "把 Excel 文件拖到这里，或点击选择",
     fileLabel: ".xlsx",
     submit: "读取申请资料",
+    processing: "正在提交资料读取任务…",
     selected: "已选择",
     fileRequired: "请选择 .xlsx 文件。",
     fileType: "请选择 .xlsx 文件。",
@@ -33,6 +35,7 @@ const textByLocale = {
     dropHint: "Excel 파일을 여기에 놓거나 클릭해서 선택",
     fileLabel: ".xlsx",
     submit: "자료 읽기",
+    processing: "자료 읽기를 제출하고 있습니다…",
     selected: "선택됨",
     fileRequired: ".xlsx 파일을 선택해 주세요.",
     fileType: ".xlsx 파일을 선택해 주세요.",
@@ -55,9 +58,11 @@ export function ExcelDocumentUploadForm({ action, locale = "ja", targetCaseId, u
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [pending, setPending] = useState(false);
   const compact = density === "compact";
 
   function updateFileState(files: File[]) {
+    setPending(false);
     const selectedFiles = files.slice(0, 1);
     const validationError = validateExcelFile(selectedFiles);
     setError(validationError ? text[validationError] : null);
@@ -104,8 +109,11 @@ export function ExcelDocumentUploadForm({ action, locale = "ja", targetCaseId, u
         const files = input instanceof HTMLInputElement && input.files ? Array.from(input.files) : [];
         if (updateFileState(files)) {
           event.preventDefault();
+          return;
         }
+        setPending(true);
       }}
+      aria-busy={pending}
     >
       {targetCaseId ? <input type="hidden" name="targetCaseId" value={targetCaseId} /> : null}
       {uploadContext ? <input type="hidden" name="uploadContext" value={uploadContext} /> : null}
@@ -139,8 +147,8 @@ export function ExcelDocumentUploadForm({ action, locale = "ja", targetCaseId, u
           onChange={(event) => updateFileState(Array.from(event.currentTarget.files ?? []))}
         />
       </label>
-      <button type="submit" className={`${compact ? "h-9 text-xs" : "h-10 text-sm"} w-full rounded-md bg-blue-700 px-4 font-bold text-white hover:bg-blue-800`}>
-        {text.submit}
+      <button type="submit" disabled={pending} aria-disabled={pending} className={`${compact ? "h-9 text-xs" : "h-10 text-sm"} w-full rounded-md bg-blue-700 px-4 font-bold text-white hover:bg-blue-800 disabled:cursor-wait disabled:opacity-60`}>
+        {pending ? text.processing : text.submit}
       </button>
       {summary ? <p className="text-[11px] font-semibold text-blue-900">{summary}</p> : null}
       {error ? <p className="text-[11px] font-bold text-red-700" role="alert">{error}</p> : null}

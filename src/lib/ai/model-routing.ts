@@ -3,6 +3,7 @@ export type AiTaskId =
   | "document_type_classification"
   | "template_family_prefilter"
   | "identity_document_extraction_assist"
+  | "property_lease_document_extraction_assist"
   | "template_field_prematch"
   | "workbench_review_guidance"
   | "conflict_explanation"
@@ -85,6 +86,14 @@ export const AI_TASK_ROUTES: Record<AiTaskId, AiTaskRouteDefinition> = {
     textVerbosity: "low",
     requiresHumanConfirmation: true,
     notes: "Residence card and driver license fields are candidates until reviewed.",
+  },
+  property_lease_document_extraction_assist: {
+    taskId: "property_lease_document_extraction_assist",
+    modelTier: "highAccuracy",
+    reasoningEffort: "medium",
+    textVerbosity: "low",
+    requiresHumanConfirmation: true,
+    notes: "Property identity and lease terms are separate reviewable candidates; never overwrite saved case facts.",
   },
   template_field_prematch: {
     taskId: "template_field_prematch",

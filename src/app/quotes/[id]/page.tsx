@@ -3,11 +3,12 @@ import { notFound } from "next/navigation";
 import { changeQuotationStatus, duplicateQuotationAction } from "@/app/actions";
 import { CopyTextButton } from "@/components/copy-text-button";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { getClientDetail, getQuotationById } from "@/lib/data";
+import { getClientDetailForContext, getQuotationByIdForContext, resolvePropertyVisibilityForContext } from "@/lib/data";
 import { getLocale } from "@/lib/locale";
 import { getQuoteStatusLabel, getQuoteStatusOptions } from "@/lib/options";
 import { generateQuoteSummaries } from "@/lib/quote";
 import { requireTenantSession } from "@/lib/tenant-session";
+import { createRequestContext } from "@/lib/visibility-resolver";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +43,7 @@ const texts = {
     monthlyPayment: "月々返済額（試算）",
     monthlyTotal: "月次固定支出",
     updateStatus: "ステータス更新",
+    readOnly: "この提案は読み取り専用です。",
     update: "更新",
     outputs: "標準出力テンプレート",
     outputsDesc: "日本市場向けの定型フォーマットで印刷できます。",
@@ -78,6 +80,7 @@ const texts = {
     monthlyPayment: "月供（试算）",
     monthlyTotal: "每月固定支出",
     updateStatus: "更新状态",
+    readOnly: "此提案为只读。",
     update: "更新",
     outputs: "标准输出模板",
     outputsDesc: "可按日本市场标准格式打印输出。",
@@ -114,6 +117,7 @@ const texts = {
     monthlyPayment: "월 상환액(예상)",
     monthlyTotal: "월 고정지출",
     updateStatus: "상태 업데이트",
+    readOnly: "이 제안은 읽기 전용입니다.",
     update: "업데이트",
     outputs: "표준 출력 템플릿",
     outputsDesc: "일본 시장 표준 포맷으로 인쇄할 수 있습니다.",
@@ -138,8 +142,8 @@ export default async function QuoteDetailPage({ params, searchParams }: QuoteDet
 
   const { id } = await params;
   const query = (await searchParams) ?? {};
-  const tenantId = session.tenant.id;
-  const quote = await getQuotationById(id, tenantId);
+  const requestContext = createRequestContext(session);
+  const quote = await getQuotationByIdForContext({ context: requestContext, quoteId: id });
 
   if (!quote || !quote.client) {
     notFound();
@@ -163,8 +167,13 @@ export default async function QuoteDetailPage({ params, searchParams }: QuoteDet
     locale
   );
   const compareMode = query.compare === "1";
-  const clientDetail = await getClientDetail(quote.client.id, tenantId);
-  const clientQuotes = (clientDetail?.quotations ?? []).slice(0, 5);
+  const clientAccess = await getClientDetailForContext({ context: requestContext, clientId: quote.client.id });
+  const clientQuotes = (clientAccess.detail?.quotations ?? []).slice(0, 5);
+  const clientResolution = clientAccess.resolution;
+  const propertyResolution = quote.propertyId
+    ? await resolvePropertyVisibilityForContext({ context: requestContext, propertyId: quote.propertyId })
+    : null;
+  const canWrite = Boolean(clientResolution?.canWrite && (!quote.propertyId || propertyResolution?.resolution.canWrite));
 
   return (
     <div className="space-y-6">
@@ -186,12 +195,12 @@ export default async function QuoteDetailPage({ params, searchParams }: QuoteDet
             {compareMode ? text.compareOff : text.compareOn}
           </Link>
           <CopyTextButton text={quote.summaryText} locale={locale} className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100" />
-          <form action={duplicateQuotationAction}>
+          {canWrite ? <form action={duplicateQuotationAction}>
             <input type="hidden" name="quoteId" value={quote.id} />
             <button type="submit" className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700">
               {text.duplicate}
             </button>
-          </form>
+          </form> : null}
         </div>
       </header>
 
@@ -252,7 +261,7 @@ export default async function QuoteDetailPage({ params, searchParams }: QuoteDet
 
           <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-semibold text-slate-900">{text.updateStatus}</h2>
-            <form action={changeQuotationStatus} className="mt-3 flex gap-2">
+            {canWrite ? <form action={changeQuotationStatus} className="mt-3 flex gap-2">
               <input type="hidden" name="quoteId" value={quote.id} />
               <select name="status" defaultValue={quote.status} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
                 {quoteStatusOptions.map((item) => (
@@ -264,7 +273,7 @@ export default async function QuoteDetailPage({ params, searchParams }: QuoteDet
               <button type="submit" className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">
                 {text.update}
               </button>
-            </form>
+            </form> : <p className="mt-3 text-sm text-slate-600">{text.readOnly}</p>}
           </article>
 
           <Link href={`/clients/${quote.client.id}`} className="inline-flex rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100">

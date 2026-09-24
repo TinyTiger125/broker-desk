@@ -1,3 +1,4 @@
+import { ensureObjectImportTask } from "@/lib/object-import-processor-adapter";
 import { createHash } from "node:crypto";
 import {
   addAuditLog,
@@ -8,6 +9,7 @@ import {
 } from "@/lib/data";
 import { getAttachmentStorageMode, getPostgresPrivateAttachmentLimitBytes } from "@/lib/attachment-storage";
 import { detectIdentityDocumentKind } from "@/lib/upload-validation";
+import { assertObjectImportMetadata, buildObjectImportIdempotencyKey, serializeObjectImportNotes, type ObjectImportTargetType } from "@/lib/object-import-contract";
 
 export const MAX_IDENTITY_DOCUMENT_FILES = 6;
 const MAX_IDENTITY_DOCUMENT_FILE_BYTES = 25 * 1024 * 1024;
@@ -19,7 +21,7 @@ export type QueueIdentityImportResult =
   | { ok: true; jobIds: string[]; deduplicated: boolean }
   | {
       ok: false;
-      error: "file_required" | "too_many_files" | "file_too_large" | "files_too_large" | "invalid_identity_document" | "source_persistence_failed";
+      error: "file_required" | "too_many_files" | "file_too_large" | "files_too_large" | "invalid_identity_document" | "source_persistence_failed" | "object_target_invalid";
       maxBytes?: number;
       maxFiles?: number;
     };
@@ -45,8 +47,14 @@ export async function queueIdentityImportSources(input: {
   files: File[];
   uploadMode: IdentityImportUploadMode;
   targetCaseId?: string;
+  targetObjectType?: ObjectImportTargetType;
+  caseId?: string;
+  targetObjectId?: string;
+  targetVersion?: string;
+  sourceAttachmentId?: string;
 }): Promise<QueueIdentityImportResult> {
   const maxFileBytes = getIdentityDocumentUploadLimitBytes();
+  if (input.targetObjectType && input.files.length !== 1) return { ok: false, error: "object_target_invalid" };
   if (input.files.length === 0) return { ok: false, error: "file_required" };
   if (input.files.length > MAX_IDENTITY_DOCUMENT_FILES) {
     return { ok: false, error: "too_many_files", maxFiles: MAX_IDENTITY_DOCUMENT_FILES };
@@ -73,14 +81,25 @@ export async function queueIdentityImportSources(input: {
 
   for (const group of groups) {
     const sourceHash = createHash("sha256").update(Buffer.concat(group.map((file) => file.buffer))).digest("hex");
+    let objectTarget = null;
+    try {
+      objectTarget = input.targetObjectType
+        ? assertObjectImportMetadata({ caseId: input.caseId, targetObjectType: input.targetObjectType, targetObjectId: input.targetObjectId, targetVersion: input.targetVersion, sourceAttachmentId: input.sourceAttachmentId })
+        : null;
+    } catch {
+      return { ok: false, error: "object_target_invalid" };
+    }
     const targetKey = input.targetCaseId?.trim() || "unassigned";
-    const idempotencyKey = `identity:${input.uploadMode}:${sourceHash}:${targetKey}`;
+    const idempotencyKey = objectTarget
+      ? buildObjectImportIdempotencyKey({ tenantId: input.tenantId, target: objectTarget, sourceHash: `${input.uploadMode}:${sourceHash}` })
+      : `identity:${input.uploadMode}:${sourceHash}:${targetKey}`;
     const existing = await getImportJobByIdempotencyKey({
       tenantId: input.tenantId,
       userId: input.userId,
       idempotencyKey,
     });
     if (existing) {
+      await ensureObjectImportTask(existing, input);
       jobIds.push(existing.id);
       continue;
     }
@@ -95,7 +114,7 @@ export async function queueIdentityImportSources(input: {
         title: identityUploadTitle(group),
         status: "queued",
         idempotencyKey,
-        notes: JSON.stringify({ kind: "identity_import_source", targetCaseId: input.targetCaseId || undefined }),
+        notes: objectTarget ? serializeObjectImportNotes(objectTarget) : JSON.stringify({ kind: "identity_import_source", targetCaseId: input.targetCaseId || undefined }),
       });
     } catch (error) {
       const concurrent = await getImportJobByIdempotencyKey({
@@ -104,6 +123,7 @@ export async function queueIdentityImportSources(input: {
         idempotencyKey,
       });
       if (!concurrent) throw error;
+      await ensureObjectImportTask(concurrent, input);
       jobIds.push(concurrent.id);
       continue;
     }
@@ -129,6 +149,7 @@ export async function queueIdentityImportSources(input: {
         message: `本人確認資料を保存し、読み取り待ちにしました: ${job.title}`,
         context: { sourceHash, fileCount: group.length, bytes: group.reduce((sum, file) => sum + file.size, 0), targetCaseId: input.targetCaseId },
       });
+      await ensureObjectImportTask(job, input);
       jobIds.push(job.id);
       deduplicated = false;
     } catch {

@@ -1,0 +1,1666 @@
+{
+  "success": {
+    "queriedAtUtc": "2026-09-22T10:11:21.772Z",
+    "postgresVersion": "17.11",
+    "failing": false,
+    "permissionAuthority": {
+      "before": {
+        "schema": [
+          {
+            "schema_name": "public",
+            "schema_owner": "pg_database_owner",
+            "admin_usage": true,
+            "admin_create": false,
+            "postgres_usage": true,
+            "postgres_create": true,
+            "nspacl": "{pg_database_owner=UC/pg_database_owner,=U/pg_database_owner,brokerdesk_admin=U/pg_database_owner,postgres=C/pg_database_owner}",
+            "acl": [
+              {
+                "grantee": "-",
+                "privilege_type": "USAGE",
+                "grantor": "pg_database_owner",
+                "is_grantable": false
+              },
+              {
+                "grantee": "brokerdesk_admin",
+                "privilege_type": "USAGE",
+                "grantor": "pg_database_owner",
+                "is_grantable": false
+              },
+              {
+                "grantee": "pg_database_owner",
+                "privilege_type": "CREATE",
+                "grantor": "pg_database_owner",
+                "is_grantable": false
+              },
+              {
+                "grantee": "pg_database_owner",
+                "privilege_type": "USAGE",
+                "grantor": "pg_database_owner",
+                "is_grantable": false
+              },
+              {
+                "grantee": "postgres",
+                "privilege_type": "CREATE",
+                "grantor": "pg_database_owner",
+                "is_grantable": false
+              }
+            ]
+          }
+        ],
+        "privateSchema": [
+          {
+            "schema_name": "brokerdesk_private",
+            "schema_owner": "postgres",
+            "admin_usage": true,
+            "admin_create": true,
+            "nspacl": "{postgres=UC/postgres,brokerdesk_admin=UC/postgres,brokerdesk_runtime=U/postgres}",
+            "acl": [
+              {
+                "grantee": "brokerdesk_admin",
+                "privilege_type": "CREATE",
+                "grantor": "postgres",
+                "is_grantable": false
+              },
+              {
+                "grantee": "brokerdesk_admin",
+                "privilege_type": "USAGE",
+                "grantor": "postgres",
+                "is_grantable": false
+              },
+              {
+                "grantee": "brokerdesk_runtime",
+                "privilege_type": "USAGE",
+                "grantor": "postgres",
+                "is_grantable": false
+              },
+              {
+                "grantee": "postgres",
+                "privilege_type": "CREATE",
+                "grantor": "postgres",
+                "is_grantable": false
+              },
+              {
+                "grantee": "postgres",
+                "privilege_type": "USAGE",
+                "grantor": "postgres",
+                "is_grantable": false
+              }
+            ]
+          }
+        ],
+        "prerequisiteReferences": [
+          {
+            "table_name": "users",
+            "admin_references": true
+          },
+          {
+            "table_name": "brokerage_cases",
+            "admin_references": true
+          },
+          {
+            "table_name": "import_jobs",
+            "admin_references": true
+          },
+          {
+            "table_name": "attachments",
+            "admin_references": true
+          }
+        ],
+        "memberships": [
+          {
+            "member": "postgres",
+            "role": "brokerdesk_admin",
+            "grantor": "platform_bootstrap",
+            "admin": true,
+            "inherit": false,
+            "set_option": false
+          },
+          {
+            "member": "postgres",
+            "role": "brokerdesk_runtime",
+            "grantor": "platform_bootstrap",
+            "admin": true,
+            "inherit": false,
+            "set_option": false
+          }
+        ],
+        "roles": [
+          {
+            "rolname": "brokerdesk_admin",
+            "rolsuper": false,
+            "rolcreaterole": false,
+            "rolcanlogin": false,
+            "rolbypassrls": false
+          },
+          {
+            "rolname": "brokerdesk_runtime",
+            "rolsuper": false,
+            "rolcreaterole": false,
+            "rolcanlogin": false,
+            "rolbypassrls": false
+          },
+          {
+            "rolname": "postgres",
+            "rolsuper": false,
+            "rolcreaterole": true,
+            "rolcanlogin": true,
+            "rolbypassrls": true
+          }
+        ]
+      },
+      "selfGrantError": null,
+      "selfGrantNotices": [
+        {
+          "message": "no privileges were granted for \"public\"",
+          "code": "01007",
+          "detail": null,
+          "hint": null
+        }
+      ],
+      "afterSelfGrant": {
+        "schema": [
+          {
+            "schema_name": "public",
+            "schema_owner": "pg_database_owner",
+            "admin_usage": true,
+            "admin_create": false,
+            "postgres_usage": true,
+            "postgres_create": true,
+            "nspacl": "{pg_database_owner=UC/pg_database_owner,=U/pg_database_owner,brokerdesk_admin=U/pg_database_owner,postgres=C/pg_database_owner}",
+            "acl": [
+              {
+                "grantee": "-",
+                "privilege_type": "USAGE",
+                "grantor": "pg_database_owner",
+                "is_grantable": false
+              },
+              {
+                "grantee": "brokerdesk_admin",
+                "privilege_type": "USAGE",
+                "grantor": "pg_database_owner",
+                "is_grantable": false
+              },
+              {
+                "grantee": "pg_database_owner",
+                "privilege_type": "CREATE",
+                "grantor": "pg_database_owner",
+                "is_grantable": false
+              },
+              {
+                "grantee": "pg_database_owner",
+                "privilege_type": "USAGE",
+                "grantor": "pg_database_owner",
+                "is_grantable": false
+              },
+              {
+                "grantee": "postgres",
+                "privilege_type": "CREATE",
+                "grantor": "pg_database_owner",
+                "is_grantable": false
+              }
+            ]
+          }
+        ],
+        "privateSchema": [
+          {
+            "schema_name": "brokerdesk_private",
+            "schema_owner": "postgres",
+            "admin_usage": true,
+            "admin_create": true,
+            "nspacl": "{postgres=UC/postgres,brokerdesk_admin=UC/postgres,brokerdesk_runtime=U/postgres}",
+            "acl": [
+              {
+                "grantee": "brokerdesk_admin",
+                "privilege_type": "CREATE",
+                "grantor": "postgres",
+                "is_grantable": false
+              },
+              {
+                "grantee": "brokerdesk_admin",
+                "privilege_type": "USAGE",
+                "grantor": "postgres",
+                "is_grantable": false
+              },
+              {
+                "grantee": "brokerdesk_runtime",
+                "privilege_type": "USAGE",
+                "grantor": "postgres",
+                "is_grantable": false
+              },
+              {
+                "grantee": "postgres",
+                "privilege_type": "CREATE",
+                "grantor": "postgres",
+                "is_grantable": false
+              },
+              {
+                "grantee": "postgres",
+                "privilege_type": "USAGE",
+                "grantor": "postgres",
+                "is_grantable": false
+              }
+            ]
+          }
+        ],
+        "prerequisiteReferences": [
+          {
+            "table_name": "users",
+            "admin_references": true
+          },
+          {
+            "table_name": "brokerage_cases",
+            "admin_references": true
+          },
+          {
+            "table_name": "import_jobs",
+            "admin_references": true
+          },
+          {
+            "table_name": "attachments",
+            "admin_references": true
+          }
+        ],
+        "memberships": [
+          {
+            "member": "postgres",
+            "role": "brokerdesk_admin",
+            "grantor": "platform_bootstrap",
+            "admin": true,
+            "inherit": false,
+            "set_option": false
+          },
+          {
+            "member": "postgres",
+            "role": "brokerdesk_runtime",
+            "grantor": "platform_bootstrap",
+            "admin": true,
+            "inherit": false,
+            "set_option": false
+          }
+        ],
+        "roles": [
+          {
+            "rolname": "brokerdesk_admin",
+            "rolsuper": false,
+            "rolcreaterole": false,
+            "rolcanlogin": false,
+            "rolbypassrls": false
+          },
+          {
+            "rolname": "brokerdesk_runtime",
+            "rolsuper": false,
+            "rolcreaterole": false,
+            "rolcanlogin": false,
+            "rolbypassrls": false
+          },
+          {
+            "rolname": "postgres",
+            "rolsuper": false,
+            "rolcreaterole": true,
+            "rolcanlogin": true,
+            "rolbypassrls": true
+          }
+        ]
+      },
+      "after": {
+        "schema": [
+          {
+            "schema_name": "public",
+            "schema_owner": "pg_database_owner",
+            "admin_usage": true,
+            "admin_create": true,
+            "postgres_usage": true,
+            "postgres_create": true,
+            "nspacl": "{pg_database_owner=UC/pg_database_owner,=U/pg_database_owner,brokerdesk_admin=UC/pg_database_owner,postgres=C/pg_database_owner}",
+            "acl": [
+              {
+                "grantee": "-",
+                "privilege_type": "USAGE",
+                "grantor": "pg_database_owner",
+                "is_grantable": false
+              },
+              {
+                "grantee": "brokerdesk_admin",
+                "privilege_type": "CREATE",
+                "grantor": "pg_database_owner",
+                "is_grantable": false
+              },
+              {
+                "grantee": "brokerdesk_admin",
+                "privilege_type": "USAGE",
+                "grantor": "pg_database_owner",
+                "is_grantable": false
+              },
+              {
+                "grantee": "pg_database_owner",
+                "privilege_type": "CREATE",
+                "grantor": "pg_database_owner",
+                "is_grantable": false
+              },
+              {
+                "grantee": "pg_database_owner",
+                "privilege_type": "USAGE",
+                "grantor": "pg_database_owner",
+                "is_grantable": false
+              },
+              {
+                "grantee": "postgres",
+                "privilege_type": "CREATE",
+                "grantor": "pg_database_owner",
+                "is_grantable": false
+              }
+            ]
+          }
+        ],
+        "privateSchema": [
+          {
+            "schema_name": "brokerdesk_private",
+            "schema_owner": "postgres",
+            "admin_usage": true,
+            "admin_create": true,
+            "nspacl": "{postgres=UC/postgres,brokerdesk_admin=UC/postgres,brokerdesk_runtime=U/postgres}",
+            "acl": [
+              {
+                "grantee": "brokerdesk_admin",
+                "privilege_type": "CREATE",
+                "grantor": "postgres",
+                "is_grantable": false
+              },
+              {
+                "grantee": "brokerdesk_admin",
+                "privilege_type": "USAGE",
+                "grantor": "postgres",
+                "is_grantable": false
+              },
+              {
+                "grantee": "brokerdesk_runtime",
+                "privilege_type": "USAGE",
+                "grantor": "postgres",
+                "is_grantable": false
+              },
+              {
+                "grantee": "postgres",
+                "privilege_type": "CREATE",
+                "grantor": "postgres",
+                "is_grantable": false
+              },
+              {
+                "grantee": "postgres",
+                "privilege_type": "USAGE",
+                "grantor": "postgres",
+                "is_grantable": false
+              }
+            ]
+          }
+        ],
+        "prerequisiteReferences": [
+          {
+            "table_name": "users",
+            "admin_references": true
+          },
+          {
+            "table_name": "brokerage_cases",
+            "admin_references": true
+          },
+          {
+            "table_name": "import_jobs",
+            "admin_references": true
+          },
+          {
+            "table_name": "attachments",
+            "admin_references": true
+          }
+        ],
+        "memberships": [
+          {
+            "member": "postgres",
+            "role": "brokerdesk_admin",
+            "grantor": "platform_bootstrap",
+            "admin": true,
+            "inherit": false,
+            "set_option": false
+          },
+          {
+            "member": "postgres",
+            "role": "brokerdesk_admin",
+            "grantor": "postgres",
+            "admin": false,
+            "inherit": false,
+            "set_option": true
+          },
+          {
+            "member": "postgres",
+            "role": "brokerdesk_runtime",
+            "grantor": "platform_bootstrap",
+            "admin": true,
+            "inherit": false,
+            "set_option": false
+          }
+        ],
+        "roles": [
+          {
+            "rolname": "brokerdesk_admin",
+            "rolsuper": false,
+            "rolcreaterole": false,
+            "rolcanlogin": false,
+            "rolbypassrls": false
+          },
+          {
+            "rolname": "brokerdesk_runtime",
+            "rolsuper": false,
+            "rolcreaterole": false,
+            "rolcanlogin": false,
+            "rolbypassrls": false
+          },
+          {
+            "rolname": "postgres",
+            "rolsuper": false,
+            "rolcreaterole": true,
+            "rolcanlogin": true,
+            "rolbypassrls": true
+          }
+        ]
+      }
+    },
+    "runResult": {
+      "appliedCount": 6,
+      "skippedCount": 38,
+      "stoppedAfter": null
+    },
+    "runError": null,
+    "marker": [
+      {
+        "project_ref": "ilujuwuzaqwcbpnqixen",
+        "phase": "complete"
+      }
+    ],
+    "ledgerCount": 44,
+    "ledgerTail": [
+      {
+        "name": "20260918_001_import_job_single_claim.sql",
+        "checksum": "dd59353c7af377ec4f8bf6088ce68f343cef5bfecf0bef69c4ded13845eb4be5"
+      },
+      {
+        "name": "20260921_001_supabase_auth_lifecycle.sql",
+        "checksum": "0d913d25afc97e411d58dd08a801a96ab3a8bfa5375045924ebeba79b437d431"
+      },
+      {
+        "name": "20260921_002_import_worker_rls_admin_policy.sql",
+        "checksum": "67a17b53c93223862f2136af9781f299824e854b39c5d5ab24764e4d59191e0a"
+      }
+    ],
+    "tables": [
+      {
+        "relname": "attachment_links",
+        "owner": "brokerdesk_admin",
+        "rls": true,
+        "force_rls": true
+      },
+      {
+        "relname": "attachments",
+        "owner": "brokerdesk_admin",
+        "rls": true,
+        "force_rls": true
+      },
+      {
+        "relname": "audit_logs",
+        "owner": "brokerdesk_admin",
+        "rls": true,
+        "force_rls": true
+      },
+      {
+        "relname": "import_jobs",
+        "owner": "brokerdesk_admin",
+        "rls": true,
+        "force_rls": true
+      },
+      {
+        "relname": "private_attachment_blobs",
+        "owner": "brokerdesk_admin",
+        "rls": true,
+        "force_rls": true
+      }
+    ],
+    "policies": [
+      {
+        "polname": "brokerdesk_import_worker_claim_select"
+      },
+      {
+        "polname": "brokerdesk_import_worker_claim_update"
+      }
+    ],
+    "cleanup": {
+      "final": {
+        "schema": [
+          {
+            "schema_name": "public",
+            "schema_owner": "pg_database_owner",
+            "admin_usage": true,
+            "admin_create": false,
+            "postgres_usage": true,
+            "postgres_create": true,
+            "nspacl": "{pg_database_owner=UC/pg_database_owner,=U/pg_database_owner,brokerdesk_admin=U/pg_database_owner,postgres=C/pg_database_owner}",
+            "acl": [
+              {
+                "grantee": "-",
+                "privilege_type": "USAGE",
+                "grantor": "pg_database_owner",
+                "is_grantable": false
+              },
+              {
+                "grantee": "brokerdesk_admin",
+                "privilege_type": "USAGE",
+                "grantor": "pg_database_owner",
+                "is_grantable": false
+              },
+              {
+                "grantee": "pg_database_owner",
+                "privilege_type": "CREATE",
+                "grantor": "pg_database_owner",
+                "is_grantable": false
+              },
+              {
+                "grantee": "pg_database_owner",
+                "privilege_type": "USAGE",
+                "grantor": "pg_database_owner",
+                "is_grantable": false
+              },
+              {
+                "grantee": "postgres",
+                "privilege_type": "CREATE",
+                "grantor": "pg_database_owner",
+                "is_grantable": false
+              }
+            ]
+          }
+        ],
+        "privateSchema": [
+          {
+            "schema_name": "brokerdesk_private",
+            "schema_owner": "postgres",
+            "admin_usage": true,
+            "admin_create": true,
+            "nspacl": "{postgres=UC/postgres,brokerdesk_admin=UC/postgres,brokerdesk_runtime=U/postgres}",
+            "acl": [
+              {
+                "grantee": "brokerdesk_admin",
+                "privilege_type": "CREATE",
+                "grantor": "postgres",
+                "is_grantable": false
+              },
+              {
+                "grantee": "brokerdesk_admin",
+                "privilege_type": "USAGE",
+                "grantor": "postgres",
+                "is_grantable": false
+              },
+              {
+                "grantee": "brokerdesk_runtime",
+                "privilege_type": "USAGE",
+                "grantor": "postgres",
+                "is_grantable": false
+              },
+              {
+                "grantee": "postgres",
+                "privilege_type": "CREATE",
+                "grantor": "postgres",
+                "is_grantable": false
+              },
+              {
+                "grantee": "postgres",
+                "privilege_type": "USAGE",
+                "grantor": "postgres",
+                "is_grantable": false
+              }
+            ]
+          }
+        ],
+        "prerequisiteReferences": [
+          {
+            "table_name": "users",
+            "admin_references": true
+          },
+          {
+            "table_name": "brokerage_cases",
+            "admin_references": true
+          },
+          {
+            "table_name": "import_jobs",
+            "admin_references": true
+          },
+          {
+            "table_name": "attachments",
+            "admin_references": true
+          }
+        ],
+        "memberships": [
+          {
+            "member": "postgres",
+            "role": "brokerdesk_admin",
+            "grantor": "platform_bootstrap",
+            "admin": true,
+            "inherit": false,
+            "set_option": false
+          },
+          {
+            "member": "postgres",
+            "role": "brokerdesk_runtime",
+            "grantor": "platform_bootstrap",
+            "admin": true,
+            "inherit": false,
+            "set_option": false
+          }
+        ],
+        "roles": [
+          {
+            "rolname": "brokerdesk_admin",
+            "rolsuper": false,
+            "rolcreaterole": false,
+            "rolcanlogin": false,
+            "rolbypassrls": false
+          },
+          {
+            "rolname": "brokerdesk_runtime",
+            "rolsuper": false,
+            "rolcreaterole": false,
+            "rolcanlogin": false,
+            "rolbypassrls": false
+          },
+          {
+            "rolname": "postgres",
+            "rolsuper": false,
+            "rolcreaterole": true,
+            "rolcanlogin": true,
+            "rolbypassrls": true
+          }
+        ]
+      },
+      "setRoleError": {
+        "message": "permission denied to set role \"brokerdesk_admin\"",
+        "code": "42501",
+        "detail": null,
+        "hint": null
+      }
+    },
+    "postCleanup": {
+      "schema": [
+        {
+          "schema_name": "public",
+          "schema_owner": "pg_database_owner",
+          "admin_usage": true,
+          "admin_create": false,
+          "postgres_usage": true,
+          "postgres_create": true,
+          "nspacl": "{pg_database_owner=UC/pg_database_owner,=U/pg_database_owner,brokerdesk_admin=U/pg_database_owner,postgres=C/pg_database_owner}",
+          "acl": [
+            {
+              "grantee": "-",
+              "privilege_type": "USAGE",
+              "grantor": "pg_database_owner",
+              "is_grantable": false
+            },
+            {
+              "grantee": "brokerdesk_admin",
+              "privilege_type": "USAGE",
+              "grantor": "pg_database_owner",
+              "is_grantable": false
+            },
+            {
+              "grantee": "pg_database_owner",
+              "privilege_type": "CREATE",
+              "grantor": "pg_database_owner",
+              "is_grantable": false
+            },
+            {
+              "grantee": "pg_database_owner",
+              "privilege_type": "USAGE",
+              "grantor": "pg_database_owner",
+              "is_grantable": false
+            },
+            {
+              "grantee": "postgres",
+              "privilege_type": "CREATE",
+              "grantor": "pg_database_owner",
+              "is_grantable": false
+            }
+          ]
+        }
+      ],
+      "privateSchema": [
+        {
+          "schema_name": "brokerdesk_private",
+          "schema_owner": "postgres",
+          "admin_usage": true,
+          "admin_create": true,
+          "nspacl": "{postgres=UC/postgres,brokerdesk_admin=UC/postgres,brokerdesk_runtime=U/postgres}",
+          "acl": [
+            {
+              "grantee": "brokerdesk_admin",
+              "privilege_type": "CREATE",
+              "grantor": "postgres",
+              "is_grantable": false
+            },
+            {
+              "grantee": "brokerdesk_admin",
+              "privilege_type": "USAGE",
+              "grantor": "postgres",
+              "is_grantable": false
+            },
+            {
+              "grantee": "brokerdesk_runtime",
+              "privilege_type": "USAGE",
+              "grantor": "postgres",
+              "is_grantable": false
+            },
+            {
+              "grantee": "postgres",
+              "privilege_type": "CREATE",
+              "grantor": "postgres",
+              "is_grantable": false
+            },
+            {
+              "grantee": "postgres",
+              "privilege_type": "USAGE",
+              "grantor": "postgres",
+              "is_grantable": false
+            }
+          ]
+        }
+      ],
+      "prerequisiteReferences": [
+        {
+          "table_name": "users",
+          "admin_references": true
+        },
+        {
+          "table_name": "brokerage_cases",
+          "admin_references": true
+        },
+        {
+          "table_name": "import_jobs",
+          "admin_references": true
+        },
+        {
+          "table_name": "attachments",
+          "admin_references": true
+        }
+      ],
+      "memberships": [
+        {
+          "member": "postgres",
+          "role": "brokerdesk_admin",
+          "grantor": "platform_bootstrap",
+          "admin": true,
+          "inherit": false,
+          "set_option": false
+        },
+        {
+          "member": "postgres",
+          "role": "brokerdesk_runtime",
+          "grantor": "platform_bootstrap",
+          "admin": true,
+          "inherit": false,
+          "set_option": false
+        }
+      ],
+      "roles": [
+        {
+          "rolname": "brokerdesk_admin",
+          "rolsuper": false,
+          "rolcreaterole": false,
+          "rolcanlogin": false,
+          "rolbypassrls": false
+        },
+        {
+          "rolname": "brokerdesk_runtime",
+          "rolsuper": false,
+          "rolcreaterole": false,
+          "rolcanlogin": false,
+          "rolbypassrls": false
+        },
+        {
+          "rolname": "postgres",
+          "rolsuper": false,
+          "rolcreaterole": true,
+          "rolcanlogin": true,
+          "rolbypassrls": true
+        }
+      ]
+    },
+    "classification": {
+      "phase": "complete",
+      "prepareEmptyDatabase": false,
+      "appliedCount": 44
+    }
+  },
+  "failure": {
+    "queriedAtUtc": "2026-09-22T10:11:22.741Z",
+    "postgresVersion": "17.11",
+    "failing": true,
+    "permissionAuthority": {
+      "before": {
+        "schema": [
+          {
+            "schema_name": "public",
+            "schema_owner": "pg_database_owner",
+            "admin_usage": true,
+            "admin_create": false,
+            "postgres_usage": true,
+            "postgres_create": true,
+            "nspacl": "{pg_database_owner=UC/pg_database_owner,=U/pg_database_owner,brokerdesk_admin=U/pg_database_owner,postgres=C/pg_database_owner}",
+            "acl": [
+              {
+                "grantee": "-",
+                "privilege_type": "USAGE",
+                "grantor": "pg_database_owner",
+                "is_grantable": false
+              },
+              {
+                "grantee": "brokerdesk_admin",
+                "privilege_type": "USAGE",
+                "grantor": "pg_database_owner",
+                "is_grantable": false
+              },
+              {
+                "grantee": "pg_database_owner",
+                "privilege_type": "CREATE",
+                "grantor": "pg_database_owner",
+                "is_grantable": false
+              },
+              {
+                "grantee": "pg_database_owner",
+                "privilege_type": "USAGE",
+                "grantor": "pg_database_owner",
+                "is_grantable": false
+              },
+              {
+                "grantee": "postgres",
+                "privilege_type": "CREATE",
+                "grantor": "pg_database_owner",
+                "is_grantable": false
+              }
+            ]
+          }
+        ],
+        "privateSchema": [
+          {
+            "schema_name": "brokerdesk_private",
+            "schema_owner": "postgres",
+            "admin_usage": true,
+            "admin_create": true,
+            "nspacl": "{postgres=UC/postgres,brokerdesk_admin=UC/postgres,brokerdesk_runtime=U/postgres}",
+            "acl": [
+              {
+                "grantee": "brokerdesk_admin",
+                "privilege_type": "CREATE",
+                "grantor": "postgres",
+                "is_grantable": false
+              },
+              {
+                "grantee": "brokerdesk_admin",
+                "privilege_type": "USAGE",
+                "grantor": "postgres",
+                "is_grantable": false
+              },
+              {
+                "grantee": "brokerdesk_runtime",
+                "privilege_type": "USAGE",
+                "grantor": "postgres",
+                "is_grantable": false
+              },
+              {
+                "grantee": "postgres",
+                "privilege_type": "CREATE",
+                "grantor": "postgres",
+                "is_grantable": false
+              },
+              {
+                "grantee": "postgres",
+                "privilege_type": "USAGE",
+                "grantor": "postgres",
+                "is_grantable": false
+              }
+            ]
+          }
+        ],
+        "prerequisiteReferences": [
+          {
+            "table_name": "users",
+            "admin_references": true
+          },
+          {
+            "table_name": "brokerage_cases",
+            "admin_references": true
+          },
+          {
+            "table_name": "import_jobs",
+            "admin_references": true
+          },
+          {
+            "table_name": "attachments",
+            "admin_references": true
+          }
+        ],
+        "memberships": [
+          {
+            "member": "postgres",
+            "role": "brokerdesk_admin",
+            "grantor": "platform_bootstrap",
+            "admin": true,
+            "inherit": false,
+            "set_option": false
+          },
+          {
+            "member": "postgres",
+            "role": "brokerdesk_runtime",
+            "grantor": "platform_bootstrap",
+            "admin": true,
+            "inherit": false,
+            "set_option": false
+          }
+        ],
+        "roles": [
+          {
+            "rolname": "brokerdesk_admin",
+            "rolsuper": false,
+            "rolcreaterole": false,
+            "rolcanlogin": false,
+            "rolbypassrls": false
+          },
+          {
+            "rolname": "brokerdesk_runtime",
+            "rolsuper": false,
+            "rolcreaterole": false,
+            "rolcanlogin": false,
+            "rolbypassrls": false
+          },
+          {
+            "rolname": "postgres",
+            "rolsuper": false,
+            "rolcreaterole": true,
+            "rolcanlogin": true,
+            "rolbypassrls": true
+          }
+        ]
+      },
+      "selfGrantError": null,
+      "selfGrantNotices": [
+        {
+          "message": "no privileges were granted for \"public\"",
+          "code": "01007",
+          "detail": null,
+          "hint": null
+        }
+      ],
+      "afterSelfGrant": {
+        "schema": [
+          {
+            "schema_name": "public",
+            "schema_owner": "pg_database_owner",
+            "admin_usage": true,
+            "admin_create": false,
+            "postgres_usage": true,
+            "postgres_create": true,
+            "nspacl": "{pg_database_owner=UC/pg_database_owner,=U/pg_database_owner,brokerdesk_admin=U/pg_database_owner,postgres=C/pg_database_owner}",
+            "acl": [
+              {
+                "grantee": "-",
+                "privilege_type": "USAGE",
+                "grantor": "pg_database_owner",
+                "is_grantable": false
+              },
+              {
+                "grantee": "brokerdesk_admin",
+                "privilege_type": "USAGE",
+                "grantor": "pg_database_owner",
+                "is_grantable": false
+              },
+              {
+                "grantee": "pg_database_owner",
+                "privilege_type": "CREATE",
+                "grantor": "pg_database_owner",
+                "is_grantable": false
+              },
+              {
+                "grantee": "pg_database_owner",
+                "privilege_type": "USAGE",
+                "grantor": "pg_database_owner",
+                "is_grantable": false
+              },
+              {
+                "grantee": "postgres",
+                "privilege_type": "CREATE",
+                "grantor": "pg_database_owner",
+                "is_grantable": false
+              }
+            ]
+          }
+        ],
+        "privateSchema": [
+          {
+            "schema_name": "brokerdesk_private",
+            "schema_owner": "postgres",
+            "admin_usage": true,
+            "admin_create": true,
+            "nspacl": "{postgres=UC/postgres,brokerdesk_admin=UC/postgres,brokerdesk_runtime=U/postgres}",
+            "acl": [
+              {
+                "grantee": "brokerdesk_admin",
+                "privilege_type": "CREATE",
+                "grantor": "postgres",
+                "is_grantable": false
+              },
+              {
+                "grantee": "brokerdesk_admin",
+                "privilege_type": "USAGE",
+                "grantor": "postgres",
+                "is_grantable": false
+              },
+              {
+                "grantee": "brokerdesk_runtime",
+                "privilege_type": "USAGE",
+                "grantor": "postgres",
+                "is_grantable": false
+              },
+              {
+                "grantee": "postgres",
+                "privilege_type": "CREATE",
+                "grantor": "postgres",
+                "is_grantable": false
+              },
+              {
+                "grantee": "postgres",
+                "privilege_type": "USAGE",
+                "grantor": "postgres",
+                "is_grantable": false
+              }
+            ]
+          }
+        ],
+        "prerequisiteReferences": [
+          {
+            "table_name": "users",
+            "admin_references": true
+          },
+          {
+            "table_name": "brokerage_cases",
+            "admin_references": true
+          },
+          {
+            "table_name": "import_jobs",
+            "admin_references": true
+          },
+          {
+            "table_name": "attachments",
+            "admin_references": true
+          }
+        ],
+        "memberships": [
+          {
+            "member": "postgres",
+            "role": "brokerdesk_admin",
+            "grantor": "platform_bootstrap",
+            "admin": true,
+            "inherit": false,
+            "set_option": false
+          },
+          {
+            "member": "postgres",
+            "role": "brokerdesk_runtime",
+            "grantor": "platform_bootstrap",
+            "admin": true,
+            "inherit": false,
+            "set_option": false
+          }
+        ],
+        "roles": [
+          {
+            "rolname": "brokerdesk_admin",
+            "rolsuper": false,
+            "rolcreaterole": false,
+            "rolcanlogin": false,
+            "rolbypassrls": false
+          },
+          {
+            "rolname": "brokerdesk_runtime",
+            "rolsuper": false,
+            "rolcreaterole": false,
+            "rolcanlogin": false,
+            "rolbypassrls": false
+          },
+          {
+            "rolname": "postgres",
+            "rolsuper": false,
+            "rolcreaterole": true,
+            "rolcanlogin": true,
+            "rolbypassrls": true
+          }
+        ]
+      },
+      "after": {
+        "schema": [
+          {
+            "schema_name": "public",
+            "schema_owner": "pg_database_owner",
+            "admin_usage": true,
+            "admin_create": true,
+            "postgres_usage": true,
+            "postgres_create": true,
+            "nspacl": "{pg_database_owner=UC/pg_database_owner,=U/pg_database_owner,brokerdesk_admin=UC/pg_database_owner,postgres=C/pg_database_owner}",
+            "acl": [
+              {
+                "grantee": "-",
+                "privilege_type": "USAGE",
+                "grantor": "pg_database_owner",
+                "is_grantable": false
+              },
+              {
+                "grantee": "brokerdesk_admin",
+                "privilege_type": "CREATE",
+                "grantor": "pg_database_owner",
+                "is_grantable": false
+              },
+              {
+                "grantee": "brokerdesk_admin",
+                "privilege_type": "USAGE",
+                "grantor": "pg_database_owner",
+                "is_grantable": false
+              },
+              {
+                "grantee": "pg_database_owner",
+                "privilege_type": "CREATE",
+                "grantor": "pg_database_owner",
+                "is_grantable": false
+              },
+              {
+                "grantee": "pg_database_owner",
+                "privilege_type": "USAGE",
+                "grantor": "pg_database_owner",
+                "is_grantable": false
+              },
+              {
+                "grantee": "postgres",
+                "privilege_type": "CREATE",
+                "grantor": "pg_database_owner",
+                "is_grantable": false
+              }
+            ]
+          }
+        ],
+        "privateSchema": [
+          {
+            "schema_name": "brokerdesk_private",
+            "schema_owner": "postgres",
+            "admin_usage": true,
+            "admin_create": true,
+            "nspacl": "{postgres=UC/postgres,brokerdesk_admin=UC/postgres,brokerdesk_runtime=U/postgres}",
+            "acl": [
+              {
+                "grantee": "brokerdesk_admin",
+                "privilege_type": "CREATE",
+                "grantor": "postgres",
+                "is_grantable": false
+              },
+              {
+                "grantee": "brokerdesk_admin",
+                "privilege_type": "USAGE",
+                "grantor": "postgres",
+                "is_grantable": false
+              },
+              {
+                "grantee": "brokerdesk_runtime",
+                "privilege_type": "USAGE",
+                "grantor": "postgres",
+                "is_grantable": false
+              },
+              {
+                "grantee": "postgres",
+                "privilege_type": "CREATE",
+                "grantor": "postgres",
+                "is_grantable": false
+              },
+              {
+                "grantee": "postgres",
+                "privilege_type": "USAGE",
+                "grantor": "postgres",
+                "is_grantable": false
+              }
+            ]
+          }
+        ],
+        "prerequisiteReferences": [
+          {
+            "table_name": "users",
+            "admin_references": true
+          },
+          {
+            "table_name": "brokerage_cases",
+            "admin_references": true
+          },
+          {
+            "table_name": "import_jobs",
+            "admin_references": true
+          },
+          {
+            "table_name": "attachments",
+            "admin_references": true
+          }
+        ],
+        "memberships": [
+          {
+            "member": "postgres",
+            "role": "brokerdesk_admin",
+            "grantor": "platform_bootstrap",
+            "admin": true,
+            "inherit": false,
+            "set_option": false
+          },
+          {
+            "member": "postgres",
+            "role": "brokerdesk_admin",
+            "grantor": "postgres",
+            "admin": false,
+            "inherit": false,
+            "set_option": true
+          },
+          {
+            "member": "postgres",
+            "role": "brokerdesk_runtime",
+            "grantor": "platform_bootstrap",
+            "admin": true,
+            "inherit": false,
+            "set_option": false
+          }
+        ],
+        "roles": [
+          {
+            "rolname": "brokerdesk_admin",
+            "rolsuper": false,
+            "rolcreaterole": false,
+            "rolcanlogin": false,
+            "rolbypassrls": false
+          },
+          {
+            "rolname": "brokerdesk_runtime",
+            "rolsuper": false,
+            "rolcreaterole": false,
+            "rolcanlogin": false,
+            "rolbypassrls": false
+          },
+          {
+            "rolname": "postgres",
+            "rolsuper": false,
+            "rolcreaterole": true,
+            "rolcanlogin": true,
+            "rolbypassrls": true
+          }
+        ]
+      }
+    },
+    "runResult": null,
+    "runError": {
+      "message": "division by zero",
+      "code": "22012",
+      "detail": null,
+      "hint": null
+    },
+    "marker": [
+      {
+        "project_ref": "ilujuwuzaqwcbpnqixen",
+        "phase": "initializing"
+      }
+    ],
+    "ledgerCount": 43,
+    "ledgerTail": [
+      {
+        "name": "20260917_002_case_review_locks.sql",
+        "checksum": "363d27209c5b8d3ae3dad30a13970ed37862b28a69fa4c9cb64087b42b41e892"
+      },
+      {
+        "name": "20260918_001_import_job_single_claim.sql",
+        "checksum": "dd59353c7af377ec4f8bf6088ce68f343cef5bfecf0bef69c4ded13845eb4be5"
+      },
+      {
+        "name": "20260921_001_supabase_auth_lifecycle.sql",
+        "checksum": "0d913d25afc97e411d58dd08a801a96ab3a8bfa5375045924ebeba79b437d431"
+      }
+    ],
+    "tables": [
+      {
+        "relname": "attachment_links",
+        "owner": "brokerdesk_admin",
+        "rls": true,
+        "force_rls": true
+      },
+      {
+        "relname": "attachments",
+        "owner": "brokerdesk_admin",
+        "rls": true,
+        "force_rls": true
+      },
+      {
+        "relname": "audit_logs",
+        "owner": "brokerdesk_admin",
+        "rls": true,
+        "force_rls": true
+      },
+      {
+        "relname": "import_jobs",
+        "owner": "brokerdesk_admin",
+        "rls": true,
+        "force_rls": true
+      },
+      {
+        "relname": "private_attachment_blobs",
+        "owner": "brokerdesk_admin",
+        "rls": true,
+        "force_rls": true
+      }
+    ],
+    "policies": [],
+    "cleanup": {
+      "final": {
+        "schema": [
+          {
+            "schema_name": "public",
+            "schema_owner": "pg_database_owner",
+            "admin_usage": true,
+            "admin_create": false,
+            "postgres_usage": true,
+            "postgres_create": true,
+            "nspacl": "{pg_database_owner=UC/pg_database_owner,=U/pg_database_owner,brokerdesk_admin=U/pg_database_owner,postgres=C/pg_database_owner}",
+            "acl": [
+              {
+                "grantee": "-",
+                "privilege_type": "USAGE",
+                "grantor": "pg_database_owner",
+                "is_grantable": false
+              },
+              {
+                "grantee": "brokerdesk_admin",
+                "privilege_type": "USAGE",
+                "grantor": "pg_database_owner",
+                "is_grantable": false
+              },
+              {
+                "grantee": "pg_database_owner",
+                "privilege_type": "CREATE",
+                "grantor": "pg_database_owner",
+                "is_grantable": false
+              },
+              {
+                "grantee": "pg_database_owner",
+                "privilege_type": "USAGE",
+                "grantor": "pg_database_owner",
+                "is_grantable": false
+              },
+              {
+                "grantee": "postgres",
+                "privilege_type": "CREATE",
+                "grantor": "pg_database_owner",
+                "is_grantable": false
+              }
+            ]
+          }
+        ],
+        "privateSchema": [
+          {
+            "schema_name": "brokerdesk_private",
+            "schema_owner": "postgres",
+            "admin_usage": true,
+            "admin_create": true,
+            "nspacl": "{postgres=UC/postgres,brokerdesk_admin=UC/postgres,brokerdesk_runtime=U/postgres}",
+            "acl": [
+              {
+                "grantee": "brokerdesk_admin",
+                "privilege_type": "CREATE",
+                "grantor": "postgres",
+                "is_grantable": false
+              },
+              {
+                "grantee": "brokerdesk_admin",
+                "privilege_type": "USAGE",
+                "grantor": "postgres",
+                "is_grantable": false
+              },
+              {
+                "grantee": "brokerdesk_runtime",
+                "privilege_type": "USAGE",
+                "grantor": "postgres",
+                "is_grantable": false
+              },
+              {
+                "grantee": "postgres",
+                "privilege_type": "CREATE",
+                "grantor": "postgres",
+                "is_grantable": false
+              },
+              {
+                "grantee": "postgres",
+                "privilege_type": "USAGE",
+                "grantor": "postgres",
+                "is_grantable": false
+              }
+            ]
+          }
+        ],
+        "prerequisiteReferences": [
+          {
+            "table_name": "users",
+            "admin_references": true
+          },
+          {
+            "table_name": "brokerage_cases",
+            "admin_references": true
+          },
+          {
+            "table_name": "import_jobs",
+            "admin_references": true
+          },
+          {
+            "table_name": "attachments",
+            "admin_references": true
+          }
+        ],
+        "memberships": [
+          {
+            "member": "postgres",
+            "role": "brokerdesk_admin",
+            "grantor": "platform_bootstrap",
+            "admin": true,
+            "inherit": false,
+            "set_option": false
+          },
+          {
+            "member": "postgres",
+            "role": "brokerdesk_runtime",
+            "grantor": "platform_bootstrap",
+            "admin": true,
+            "inherit": false,
+            "set_option": false
+          }
+        ],
+        "roles": [
+          {
+            "rolname": "brokerdesk_admin",
+            "rolsuper": false,
+            "rolcreaterole": false,
+            "rolcanlogin": false,
+            "rolbypassrls": false
+          },
+          {
+            "rolname": "brokerdesk_runtime",
+            "rolsuper": false,
+            "rolcreaterole": false,
+            "rolcanlogin": false,
+            "rolbypassrls": false
+          },
+          {
+            "rolname": "postgres",
+            "rolsuper": false,
+            "rolcreaterole": true,
+            "rolcanlogin": true,
+            "rolbypassrls": true
+          }
+        ]
+      },
+      "setRoleError": {
+        "message": "permission denied to set role \"brokerdesk_admin\"",
+        "code": "42501",
+        "detail": null,
+        "hint": null
+      }
+    },
+    "postCleanup": {
+      "schema": [
+        {
+          "schema_name": "public",
+          "schema_owner": "pg_database_owner",
+          "admin_usage": true,
+          "admin_create": false,
+          "postgres_usage": true,
+          "postgres_create": true,
+          "nspacl": "{pg_database_owner=UC/pg_database_owner,=U/pg_database_owner,brokerdesk_admin=U/pg_database_owner,postgres=C/pg_database_owner}",
+          "acl": [
+            {
+              "grantee": "-",
+              "privilege_type": "USAGE",
+              "grantor": "pg_database_owner",
+              "is_grantable": false
+            },
+            {
+              "grantee": "brokerdesk_admin",
+              "privilege_type": "USAGE",
+              "grantor": "pg_database_owner",
+              "is_grantable": false
+            },
+            {
+              "grantee": "pg_database_owner",
+              "privilege_type": "CREATE",
+              "grantor": "pg_database_owner",
+              "is_grantable": false
+            },
+            {
+              "grantee": "pg_database_owner",
+              "privilege_type": "USAGE",
+              "grantor": "pg_database_owner",
+              "is_grantable": false
+            },
+            {
+              "grantee": "postgres",
+              "privilege_type": "CREATE",
+              "grantor": "pg_database_owner",
+              "is_grantable": false
+            }
+          ]
+        }
+      ],
+      "privateSchema": [
+        {
+          "schema_name": "brokerdesk_private",
+          "schema_owner": "postgres",
+          "admin_usage": true,
+          "admin_create": true,
+          "nspacl": "{postgres=UC/postgres,brokerdesk_admin=UC/postgres,brokerdesk_runtime=U/postgres}",
+          "acl": [
+            {
+              "grantee": "brokerdesk_admin",
+              "privilege_type": "CREATE",
+              "grantor": "postgres",
+              "is_grantable": false
+            },
+            {
+              "grantee": "brokerdesk_admin",
+              "privilege_type": "USAGE",
+              "grantor": "postgres",
+              "is_grantable": false
+            },
+            {
+              "grantee": "brokerdesk_runtime",
+              "privilege_type": "USAGE",
+              "grantor": "postgres",
+              "is_grantable": false
+            },
+            {
+              "grantee": "postgres",
+              "privilege_type": "CREATE",
+              "grantor": "postgres",
+              "is_grantable": false
+            },
+            {
+              "grantee": "postgres",
+              "privilege_type": "USAGE",
+              "grantor": "postgres",
+              "is_grantable": false
+            }
+          ]
+        }
+      ],
+      "prerequisiteReferences": [
+        {
+          "table_name": "users",
+          "admin_references": true
+        },
+        {
+          "table_name": "brokerage_cases",
+          "admin_references": true
+        },
+        {
+          "table_name": "import_jobs",
+          "admin_references": true
+        },
+        {
+          "table_name": "attachments",
+          "admin_references": true
+        }
+      ],
+      "memberships": [
+        {
+          "member": "postgres",
+          "role": "brokerdesk_admin",
+          "grantor": "platform_bootstrap",
+          "admin": true,
+          "inherit": false,
+          "set_option": false
+        },
+        {
+          "member": "postgres",
+          "role": "brokerdesk_runtime",
+          "grantor": "platform_bootstrap",
+          "admin": true,
+          "inherit": false,
+          "set_option": false
+        }
+      ],
+      "roles": [
+        {
+          "rolname": "brokerdesk_admin",
+          "rolsuper": false,
+          "rolcreaterole": false,
+          "rolcanlogin": false,
+          "rolbypassrls": false
+        },
+        {
+          "rolname": "brokerdesk_runtime",
+          "rolsuper": false,
+          "rolcreaterole": false,
+          "rolcanlogin": false,
+          "rolbypassrls": false
+        },
+        {
+          "rolname": "postgres",
+          "rolsuper": false,
+          "rolcreaterole": true,
+          "rolcanlogin": true,
+          "rolbypassrls": true
+        }
+      ]
+    },
+    "classification": {
+      "phase": "resume",
+      "prepareEmptyDatabase": false,
+      "appliedCount": 43
+    }
+  }
+}

@@ -49,6 +49,9 @@ function withEnv(nextEnv, fn) {
     "BROKER_DESK_AUTH_TRUSTED_HEADER_SECRET",
     "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
     "CLERK_SECRET_KEY",
+    "NEXT_PUBLIC_SUPABASE_URL",
+    "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
+    "BROKER_DESK_AUTH_PROVIDER",
     "DATA_DRIVER",
     "DATABASE_URL",
     "DATABASE_ADMIN_URL",
@@ -192,6 +195,33 @@ withEnv(
   },
 );
 
+withEnv(
+  {
+    NODE_ENV: "production",
+    BROKER_DESK_AUTH_MODE: "supabase",
+    NEXT_PUBLIC_SUPABASE_URL: "https://tokyo-validation.supabase.co",
+    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "publishable-fixture",
+  },
+  () => {
+    readiness.assertProductionAuthReady();
+  },
+);
+
+withEnv(
+  {
+    NODE_ENV: "production",
+    BROKER_DESK_AUTH_MODE: "supabase",
+    NEXT_PUBLIC_SUPABASE_URL: "https://tokyo-validation.supabase.co",
+  },
+  () => {
+    assertThrowsCode(
+      readiness.assertProductionAuthReady,
+      "production_auth_required",
+      "Supabase production auth must require both public URL and publishable key",
+    );
+  },
+);
+
 withEnv({ NODE_ENV: "production", BROKER_DESK_AUTH_MODE: "trusted_header" }, () => {
   const result = authMode.readTrustedHeaderAuthIdentity(new Headers());
   assert(result.ok === false && result.error === "trusted_header_auth_disabled", "trusted header auth must be disabled in production");
@@ -243,6 +273,32 @@ withEnv({ NODE_ENV: "production" }, () => {
     "production runtime must reject a missing import worker",
   );
 });
+
+for (const deploymentEnvironment of ["preview", "staging"]) {
+  withEnv(
+    {
+      NODE_ENV: "production",
+      BROKER_DESK_DEPLOYMENT_ENV: deploymentEnvironment,
+    },
+    () => {
+      readiness.assertProductionImportWorkerReady();
+    },
+  );
+}
+
+withEnv(
+  {
+    NODE_ENV: "production",
+    BROKER_DESK_DEPLOYMENT_ENV: "unknown",
+  },
+  () => {
+    assertThrowsCode(
+      readiness.assertProductionImportWorkerReady,
+      "production_import_worker_required",
+      "unknown deployment classifications must not default to a local import worker path",
+    );
+  },
+);
 
 withEnv(
   {
@@ -383,8 +439,8 @@ assert(schemaSql.includes("CREATE TABLE IF NOT EXISTS case_workbench_field_rules
 const packageJson = JSON.parse(fs.readFileSync("package.json", "utf8"));
 const vercelConfig = JSON.parse(fs.readFileSync("vercel.json", "utf8"));
 assert(
-  Array.isArray(vercelConfig.regions) && vercelConfig.regions.length === 1 && vercelConfig.regions[0] === "sin1",
-  "Vercel Functions must stay colocated with the Singapore Neon database",
+  Array.isArray(vercelConfig.regions) && vercelConfig.regions.length === 1 && vercelConfig.regions[0] === "hnd1",
+  "Vercel Functions must stay in the Tokyo hnd1 region",
 );
 assert(
   vercelConfig.git?.deploymentEnabled?.main === false,
@@ -401,6 +457,112 @@ assert(fs.existsSync("db/migrations/20260809_003_private_attachment_blobs.sql"),
 assert(fs.existsSync("db/migrations/20260809_004_import_job_execution_state.sql"), "import job execution migration must exist");
 assert(fs.existsSync("db/migrations/20260809_005_import_worker_claim.sql"), "import worker claim migration must exist");
 assert(fs.existsSync("db/migrations/20260819_001_guarantee_slice1_objects.sql"), "guarantee slice 1 object migration must exist");
+const runtimeMigrationLedgerGrantMigration = fs.readFileSync(
+  "db/migrations/20260902_002_runtime_migration_ledger_read.sql",
+  "utf8",
+).trim();
+assert(
+  runtimeMigrationLedgerGrantMigration ===
+    "REVOKE ALL PRIVILEGES ON TABLE public.broker_desk_schema_migrations FROM brokerdesk_runtime;\nGRANT SELECT ON TABLE public.broker_desk_schema_migrations TO brokerdesk_runtime;",
+  "runtime migration-ledger grant must be limited to brokerdesk_runtime SELECT",
+);
+
+const runtimeAclBaselinePath = "db/migrations/20260902_003_runtime_acl_baseline.sql";
+assert(fs.existsSync(runtimeAclBaselinePath), "runtime ACL baseline migration must exist");
+const runtimeAclBaseline = fs.readFileSync(runtimeAclBaselinePath, "utf8").replace(/\s+/g, " ").trim();
+const runtimeExternalSubjectGrantPath = "db/migrations/20260904_001_runtime_external_auth_subject_execute.sql";
+assert(fs.existsSync(runtimeExternalSubjectGrantPath), "runtime external subject execute migration must exist");
+const runtimeExternalSubjectGrant = fs.readFileSync(runtimeExternalSubjectGrantPath, "utf8").replace(/\s+/g, " ").trim();
+const runtimeTableGrants = new Map([
+  ["users", ["SELECT"]],
+  ["tenants", ["SELECT"]],
+  ["tenant_memberships", ["SELECT"]],
+  ["tenant_member_visibility_defaults", ["SELECT", "INSERT", "UPDATE"]],
+  ["case_workbench_field_rules", ["SELECT", "INSERT", "UPDATE"]],
+  ["clients", ["SELECT", "INSERT", "UPDATE"]],
+  ["properties", ["SELECT", "INSERT", "UPDATE"]],
+  ["brokerage_cases", ["SELECT", "INSERT", "UPDATE"]],
+  ["tasks", ["SELECT", "INSERT", "UPDATE"]],
+  ["follow_ups", ["SELECT", "INSERT"]],
+  ["quotations", ["SELECT", "INSERT", "UPDATE"]],
+  ["audit_logs", ["SELECT", "INSERT"]],
+  ["output_template_settings", ["SELECT", "INSERT", "UPDATE"]],
+  ["output_template_versions", ["SELECT", "INSERT", "UPDATE"]],
+  ["import_jobs", ["SELECT", "INSERT", "UPDATE"]],
+  ["ai_experience_drafts", ["SELECT", "INSERT", "UPDATE"]],
+  ["correction_events", ["SELECT", "INSERT"]],
+  ["extraction_review_items", ["SELECT", "INSERT", "DELETE"]],
+  ["guarantee_application_drafts", ["SELECT", "INSERT", "UPDATE"]],
+  ["guarantee_blank_forms", ["SELECT", "INSERT", "UPDATE", "DELETE"]],
+  ["guarantee_blank_form_versions", ["SELECT", "INSERT", "DELETE"]],
+  ["guarantee_company_masks", ["SELECT", "INSERT", "UPDATE"]],
+  ["guarantee_company_mask_versions", ["SELECT", "INSERT", "UPDATE"]],
+  ["guarantee_mask_matches", ["SELECT", "INSERT"]],
+  ["guarantee_preview_confirmations", ["SELECT", "INSERT", "UPDATE"]],
+  ["tenant_guarantee_template_installs", ["SELECT", "INSERT", "UPDATE"]],
+  ["generated_outputs", ["SELECT", "INSERT", "UPDATE", "DELETE"]],
+  ["attachments", ["SELECT", "INSERT", "DELETE"]],
+  ["private_attachment_blobs", ["SELECT", "INSERT", "DELETE"]],
+  ["attachment_links", ["SELECT", "INSERT", "UPDATE"]],
+  ["guarantee_template_layout_versions", ["SELECT"]],
+  ["broker_desk_schema_migrations", ["SELECT"]],
+]);
+const runtimeRevokeBlock = runtimeAclBaseline.match(/REVOKE ALL PRIVILEGES ON TABLE (.*?) FROM brokerdesk_runtime;/)?.[1] ?? "";
+const runtimeGrantStatements = runtimeAclBaseline.split(";").filter((statement) => /GRANT\s+[^;]+\s+ON TABLE\s+/i.test(statement));
+for (const [table, privileges] of runtimeTableGrants) {
+  assert(
+    runtimeRevokeBlock.includes(`public.${table}`),
+    `runtime ACL baseline must clear stale grants for ${table}`,
+  );
+  assert(
+    runtimeGrantStatements.some((statement) =>
+      statement.includes(`GRANT ${privileges.join(", ")} ON TABLE`) &&
+      statement.includes(`public.${table}`) &&
+      statement.trim().endsWith("TO brokerdesk_runtime"),
+    ),
+    `runtime ACL baseline must grant only the ${privileges.join(", ")} surface for ${table}`,
+  );
+}
+assert(
+  runtimeAclBaseline.includes("GRANT USAGE ON SCHEMA brokerdesk_private TO brokerdesk_runtime;") &&
+    runtimeAclBaseline.includes("REVOKE ALL PRIVILEGES ON FUNCTION brokerdesk_private.current_user_id() FROM PUBLIC;") &&
+    runtimeAclBaseline.includes("GRANT EXECUTE ON FUNCTION brokerdesk_private.current_user_id() TO brokerdesk_runtime;"),
+  "runtime actor checks must use the existing narrow current_user_id security facade",
+);
+assert(!runtimeAclBaseline.includes("GRANT EXECUTE ON FUNCTION brokerdesk_private.current_external_auth_subject() TO brokerdesk_runtime;"), "runtime must not receive the raw external subject helper");
+for (const forbiddenFunction of [
+  "sync_external_auth_user(text, text, text)",
+  "suspend_external_auth_user(text)",
+  "claim_next_import_jobs(integer)",
+]) {
+  assert(!runtimeAclBaseline.includes(`GRANT EXECUTE ON FUNCTION brokerdesk_private.${forbiddenFunction} TO brokerdesk_runtime;`), `runtime must not receive ${forbiddenFunction}`);
+}
+assert(!/GRANT\s+[^;]*\bTO\s+(?:PUBLIC|authenticated)\b/i.test(runtimeAclBaseline), "runtime ACL baseline must not grant PUBLIC or authenticated");
+assert(!/GRANT\s+[^;]*\b(?:UPDATE|DELETE|INSERT|TRUNCATE)\b[^;]*guarantee_template_layout_versions/i.test(runtimeAclBaseline), "platform-owned template layouts must not be writable by runtime");
+assert(!/GRANT\s+[^;]*\b(?:UPDATE|DELETE|TRUNCATE)\b[^;]*audit_logs/i.test(runtimeAclBaseline), "audit logs must not be mutable by runtime");
+assert(!/GRANT\s+[^;]*\b(?:INSERT|UPDATE|DELETE|TRUNCATE)\b[^;]*broker_desk_schema_migrations/i.test(runtimeAclBaseline), "migration ledger must remain read-only");
+assert(!/GRANT\s+[^;]*\bUPDATE\b[^;]*private_attachment_blobs/i.test(runtimeAclBaseline), "private attachment blobs must not receive runtime UPDATE");
+assert(!runtimeAclBaseline.includes("BYPASSRLS") && !runtimeAclBaseline.includes("ALTER TABLE"), "runtime ACL baseline must not alter RLS or bypass policy enforcement");
+assert(
+  runtimeExternalSubjectGrant.includes("REVOKE ALL PRIVILEGES ON FUNCTION brokerdesk_private.current_external_auth_subject() FROM PUBLIC") &&
+    runtimeExternalSubjectGrant.includes("GRANT EXECUTE ON FUNCTION brokerdesk_private.current_external_auth_subject() TO brokerdesk_runtime") &&
+    runtimeExternalSubjectGrant.includes("REVOKE ALL PRIVILEGES ON FUNCTION brokerdesk_private.current_external_auth_subject() FROM authenticated"),
+  "runtime external subject access must be runtime-only and explicitly closed to PUBLIC/authenticated",
+);
+assert(
+  runtimeExternalSubjectGrant.includes("current_external_auth_subject()") &&
+    !runtimeExternalSubjectGrant.includes("current_external_auth_subject(TEXT)") &&
+    !runtimeExternalSubjectGrant.includes("set_config") &&
+    !runtimeExternalSubjectGrant.includes("BYPASSRLS") &&
+    !runtimeExternalSubjectGrant.includes("CREATE ROLE") &&
+    !runtimeExternalSubjectGrant.includes("ALTER ROLE"),
+  "runtime external subject access must not accept or set a caller-supplied subject or widen authority",
+);
+assert(
+  (runtimeExternalSubjectGrant.match(/GRANT\s+EXECUTE\s+ON\s+FUNCTION/gi) ?? []).length === 1 &&
+    (runtimeExternalSubjectGrant.match(/GRANT\s+[^;]+\s+ON\s+(?:TABLE|SCHEMA)/gi) ?? []).length === 0,
+  "runtime external subject migration must grant only the single identity function",
+);
 
 const postgresDataSource = fs.readFileSync("src/lib/data.postgres.ts", "utf8");
 assert(
@@ -455,6 +617,14 @@ assert(
   postgresDataSource.includes('"20260819_001_guarantee_slice1_objects.sql"'),
   "production migration ledger must require guarantee slice 1 objects migration",
 );
+assert(
+  postgresDataSource.includes('"20260902_002_runtime_migration_ledger_read.sql"'),
+  "production migration ledger must require the runtime migration-ledger read grant",
+);
+assert(
+  postgresDataSource.includes('"20260904_001_runtime_external_auth_subject_execute.sql"'),
+  "production migration ledger must require the runtime external subject execute grant",
+);
 
 const signUpSource = fs.readFileSync("src/app/sign-up/[[...sign-up]]/page.tsx", "utf8");
 assert(!signUpSource.includes("@clerk/nextjs") && !signUpSource.includes("<SignUp"), "app-level public Clerk sign-up route must remain closed");
@@ -477,7 +647,7 @@ for (const header of ["X-Content-Type-Options", "X-Frame-Options", "Referrer-Pol
 const dataSource = fs.readFileSync("src/lib/data.ts", "utf8");
 assert(dataSource.includes("ensureUserForExternalAuth"), "data layer must map external auth subjects to local users");
 assert(dataSource.includes("suspendUserForExternalAuthSubject"), "data layer must suspend deleted external identities");
-assert(dataSource.includes("getClerkAuthIdentity"), "data layer must read Clerk identity in clerk mode");
+assert(dataSource.includes("getAuthIdentity"), "data layer must read provider-neutral verified identity in the configured auth mode");
 assert(dataSource.includes("assertProductionDataStoreReady"), "data layer must reject production memory fallback");
 assert(dataSource.includes("withPostgresAuthContext"), "data layer must bind Clerk identity before calling the Postgres repository");
 

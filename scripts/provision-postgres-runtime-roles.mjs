@@ -49,23 +49,60 @@ try {
   // this process avoids ever printing them or placing them in a shell command.
   await client.query(`ALTER ROLE brokerdesk_runtime LOGIN PASSWORD '${runtimePassword}'`);
   await client.query(`ALTER ROLE brokerdesk_admin LOGIN PASSWORD '${adminPassword}'`);
+  await client.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public'
+          AND c.relname IN ('import_jobs', 'attachments', 'private_attachment_blobs', 'attachment_links', 'audit_logs')
+          AND (pg_get_userbyid(c.relowner) <> 'brokerdesk_admin' OR NOT c.relrowsecurity OR NOT c.relforcerowsecurity)
+      ) THEN
+        RAISE EXCEPTION 'runtime role setup requires brokerdesk_admin ownership and FORCE RLS on preimport tables' USING ERRCODE = '42501';
+      END IF;
+    END
+    $$;
+  `);
   await client.query("REVOKE ALL ON SCHEMA public FROM brokerdesk_runtime, brokerdesk_admin");
   await client.query("REVOKE ALL ON ALL TABLES IN SCHEMA public FROM brokerdesk_runtime, brokerdesk_admin");
   await client.query("REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM brokerdesk_runtime, brokerdesk_admin");
+  // Reuse the immutable ACL baseline instead of a blanket table grant. This
+  // keeps the programmatic provisioner aligned with the reviewed SQL role
+  // setup and preserves identity reads plus tenant-scoped RLS boundaries.
+  const aclBaseline = readFileSync(resolve(process.cwd(), "db/migrations/20260902_003_runtime_acl_baseline.sql"), "utf8");
+  await client.query(aclBaseline);
+  await client.query("GRANT SELECT (tenant_id, user_id, import_job_id, case_id) ON public.object_import_targets TO brokerdesk_runtime");
   await client.query("GRANT USAGE ON SCHEMA public TO brokerdesk_runtime");
-  await client.query(`
-    GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO brokerdesk_runtime
-  `);
-  await client.query("GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO brokerdesk_runtime");
+  // The lifecycle SECURITY DEFINER owner needs schema visibility plus only
+  // the explicit relations touched by its current identity, import-claim,
+  // synchronization, and preimport-delete paths. Keep this matrix narrow.
+  await client.query("GRANT USAGE ON SCHEMA public TO brokerdesk_admin");
+  await client.query("GRANT SELECT (id, external_auth_subject) ON public.users TO brokerdesk_admin");
+  await client.query("GRANT SELECT (id, status, service_start_at, service_end_at) ON public.tenants TO brokerdesk_admin");
+  await client.query("GRANT SELECT, UPDATE ON TABLE public.tenant_memberships TO brokerdesk_admin");
+  await client.query("GRANT SELECT, UPDATE ON TABLE public.import_jobs TO brokerdesk_admin");
+  await client.query("GRANT SELECT, DELETE ON TABLE public.attachments TO brokerdesk_admin");
+  await client.query("GRANT SELECT, DELETE ON TABLE public.private_attachment_blobs TO brokerdesk_admin");
+  await client.query("GRANT SELECT ON TABLE public.attachment_links TO brokerdesk_admin");
+  await client.query("GRANT INSERT ON TABLE public.audit_logs TO brokerdesk_admin");
+  await client.query("GRANT REFERENCES ON TABLE public.users, public.tenants TO brokerdesk_admin");
+  await client.query("GRANT UPDATE (updated_at) ON TABLE public.tenants TO brokerdesk_admin");
   await client.query("GRANT USAGE ON SCHEMA brokerdesk_private TO brokerdesk_runtime, brokerdesk_admin");
   await client.query("GRANT EXECUTE ON FUNCTION brokerdesk_private.current_external_auth_subject() TO brokerdesk_runtime");
   await client.query("GRANT EXECUTE ON FUNCTION brokerdesk_private.current_user_id() TO brokerdesk_runtime");
   await client.query("GRANT EXECUTE ON FUNCTION brokerdesk_private.can_access_tenant(TEXT) TO brokerdesk_runtime");
   await client.query("GRANT EXECUTE ON FUNCTION brokerdesk_private.can_access_user(TEXT) TO brokerdesk_runtime");
   await client.query("REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA brokerdesk_private FROM brokerdesk_admin");
+  // Preserve the forward migration grants when resetting the admin function ACL.
+  await client.query("GRANT EXECUTE ON FUNCTION brokerdesk_private.can_access_tenant(TEXT) TO brokerdesk_admin");
+  await client.query("GRANT EXECUTE ON FUNCTION brokerdesk_private.current_user_id() TO brokerdesk_admin");
+  await client.query("GRANT EXECUTE ON FUNCTION brokerdesk_private.can_access_user(TEXT) TO brokerdesk_admin");
   await client.query("GRANT EXECUTE ON FUNCTION brokerdesk_private.sync_external_auth_user(TEXT, TEXT, TEXT) TO brokerdesk_admin");
   await client.query("GRANT EXECUTE ON FUNCTION brokerdesk_private.suspend_external_auth_user(TEXT) TO brokerdesk_admin");
   await client.query("GRANT EXECUTE ON FUNCTION brokerdesk_private.claim_next_import_jobs(INTEGER) TO brokerdesk_admin");
+  await client.query("GRANT EXECUTE ON FUNCTION brokerdesk_private.claim_import_job_by_id(TEXT) TO brokerdesk_admin");
   await client.query("COMMIT");
 
   const url = new URL(ownerConnectionString);

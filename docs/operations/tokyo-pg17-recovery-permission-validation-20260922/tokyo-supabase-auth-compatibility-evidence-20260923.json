@@ -1,0 +1,109 @@
+{
+  "recordedAtUtc": "2026-09-23",
+  "scope": "local-only Supabase Auth compatibility and Preview integration trace",
+  "status": "historical-auth-compatibility-snapshot-before-tls-r2",
+  "execution": {
+    "candidate": "fc27b739e21d35a1ffa8f9f19cda8f6fd34a054b",
+    "databaseBaseline": "f5a3210aa1c5025c4ad9b593274fb66dca09abf8",
+    "cloudWrites": false,
+    "identitiesCreated": false,
+    "previewVariablesWritten": false,
+    "deploymentCreated": false
+  },
+  "gateDiagnosis": {
+    "beforeFix": {
+      "observed": "production_auth_required",
+      "scenario": "NODE_ENV=production, BROKER_DESK_AUTH_MODE=supabase, valid NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
+      "classification": "real compatibility blocker",
+      "evidenceBoundary": "prior local direct invocation recorded before this candidate change"
+    },
+    "afterFix": {
+      "scenario": "same explicit Supabase mode and both public configuration values",
+      "result": "assertProductionAuthReady returns normally",
+      "classification": "locally verified"
+    },
+    "missingConfiguration": {
+      "scenario": "Supabase mode with URL but no publishable key",
+      "result": "production_auth_required",
+      "classification": "fail closed"
+    },
+    "invalidProviderOrMode": {
+      "result": "unsupported provider/mode or production_auth_required",
+      "classification": "fail closed; no demo fallback"
+    }
+  },
+  "callChain": [
+    {"path": "src/proxy.ts", "lines": "55-89", "role": "production readiness gate, then Supabase session branch"},
+    {"path": "src/lib/production-readiness.ts", "lines": "125-141", "role": "explicit Supabase readiness compatibility; URL and publishable key required"},
+    {"path": "src/lib/supabase/proxy.ts", "lines": "18-55", "role": "refresh cookie session, validate issuer/audience/role/anonymous boundaries, redirect or 401"},
+    {"path": "src/lib/supabase/auth.ts", "lines": "5-31", "role": "server claims and confirmed-user verification"},
+    {"path": "src/lib/auth-provider.ts", "lines": "31-61", "role": "provider-neutral Supabase adapter"},
+    {"path": "src/lib/tenant-session.ts", "lines": "143-187", "role": "external subject lookup, active membership and requested tenant enforcement"},
+    {"path": "src/lib/data.ts", "lines": "45-63,81-107", "role": "subject-bound Postgres context and tenant lookup; no demo recovery under external auth"},
+    {"path": "src/app/sign-in/[[...sign-in]]/page.tsx", "lines": "82-100", "role": "Supabase sign-in form selected when Supabase mode is explicit"},
+    {"path": "src/components/supabase-sign-in-form.tsx", "lines": "26-43", "role": "browser signInWithPassword then workspace redirect"},
+    {"path": "src/app/auth/callback/route.ts", "lines": "8-23", "role": "exchangeCodeForSession with safe next path"},
+    {"path": "src/app/api/input-files/upload/route.ts", "lines": "17-35", "role": "production worker gate plus source.upload tenant permission, Excel queue"},
+    {"path": "src/app/api/input-files/[jobId]/process/route.ts", "lines": "18-106", "role": "same tenant permission; Preview/Staging sync path, formal production queue path"},
+    {"path": "src/app/import-center/actions.ts", "lines": "10-42", "role": "protected synthetic-data deletion path; delete while the test identity remains usable"}
+  ],
+  "supportClassification": {
+    "supportedLocally": [
+      "explicit Supabase mode selection",
+      "Supabase browser password login and server callback",
+      "cookie claim validation and confirmed-user verification",
+      "external subject to user/membership/tenant binding",
+      "tenant permission enforcement on upload and job status/process routes",
+      "invalid/tampered/expired/wrong issuer/audience/role/anonymous sessions fail closed"
+    ],
+    "realBlockers": [
+      "Before this patch assertProductionAuthReady rejected every production Supabase configuration as Clerk-only.",
+      "Runtime Postgres pool reads DATABASE_URL in production and DATABASE_DEVELOPMENT_URL or DATABASE_URL locally; for URLs containing supabase.co it explicitly sets ssl.rejectUnauthorized=false. This is not a verify-full/CA proof and must be resolved or separately approved before Preview deployment.",
+      "DATABASE_MIGRATION_URL and DATABASE_MIGRATION_CA_CERT_PATH are migration-only inputs and are not automatically consumed by the application pool."
+    ],
+    "unverified": [
+      "Real cloud Supabase Auth login, cookie refresh, Auth-to-tenant mapping and upload behavior on the Tokyo Preview deployment.",
+      "Platform TLS/CA behavior after the application pool configuration is corrected or explicitly approved.",
+      "End-to-end worker claim, audit and page read-back in a deployed Preview."
+    ]
+  },
+  "runtimeVariables": {
+    "auth": {
+      "BROKER_DESK_AUTH_MODE": "server/runtime; set to supabase",
+      "BROKER_DESK_AUTH_PROVIDER": "optional server/runtime compatibility selector; must agree with mode if set",
+      "NEXT_PUBLIC_SUPABASE_URL": "browser and server public project URL; not a secret",
+      "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY": "browser and server public publishable key; not a service-role secret",
+      "SUPABASE_SERVICE_ROLE_KEY": "server-only; only for explicitly approved Auth admin lifecycle actions, never client or browser"
+    },
+    "dataAndWorker": {
+      "DATA_DRIVER": "server/runtime; explicit postgres is recommended in Preview",
+      "DATABASE_URL": "server-only application pool; restricted runtime role",
+      "DATABASE_ADMIN_URL": "server-only admin/worker repository path; not a page credential",
+      "BROKER_DESK_DEPLOYMENT_ENV": "server/runtime; preview or staging to keep Preview processing synchronous",
+      "BROKER_DESK_IMPORT_WORKER_TOKEN": "server-only internal drain token, only when worker validation is approved",
+      "CRON_SECRET": "server-only route secret for manual cron endpoint; no Vercel Cron is configured",
+      "BROKER_DESK_IMPORT_WORKER_ENABLED": "formal-production worker gate only; not required for Preview sync mode",
+      "BROKER_DESK_IMPORT_WORKER_SCHEDULE": "formal-production worker gate only; do not carry a per-minute Cron into Tokyo Preview"
+    },
+    "migrationOnly": {
+      "DATABASE_MIGRATION_URL": "migration runner only",
+      "DATABASE_MIGRATION_CA_CERT_PATH": "migration runner CA input only; does not configure DATABASE_URL or DATABASE_ADMIN_URL"
+    },
+    "tlsObservation": "src/lib/database-connection.ts normalizes sslmode prefer/require/verify-ca to verify-full, but src/lib/data.postgres.ts then supplies rejectUnauthorized:false for supabase.co URLs. The effective runtime behavior must be treated as not verified for CA validation until corrected; no deployment is authorized in this turn."
+  },
+  "localValidation": [
+    "node scripts/check-production-security.mjs: PASS",
+    "node scripts/test-supabase-proxy-fixture.mjs: PASS valid plus tampered/expired/issuer/audience/role/anonymous boundaries",
+    "node scripts/test-supabase-auth-fixture.mjs: PASS valid plus tampered/expired/issuer/audience/role/anonymous boundaries",
+    "node scripts/test-auth-provider-behavior.mjs: PASS 7 valid plus 4 fail-closed cases",
+    "node scripts/check-auth-provider-contract.mjs: PASS 25 checks",
+    "node scripts/test-supabase-auth-callback-invitation.mjs: PASS success/failure/expiry/identity/tenant/repeat",
+    "npm run typecheck: PASS",
+    "npx eslint src/lib/production-readiness.ts scripts/check-production-security.mjs: PASS"
+  ],
+  "fileHashes": {
+    "src/lib/production-readiness.ts": "551e81401ed0002da8d583c1ca972c2db793b999b5b7f7385686618028933bed",
+    "scripts/check-production-security.mjs": "3bc3bb36b310ecdaa0adc184f59d01d4f21656449368cc18486304221b7c28aa",
+    "entryBaseline": "638442d30966d259a736f044aff59de85f93197fdee9ab0142ad8323425b38d5"
+  }
+}

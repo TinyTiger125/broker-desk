@@ -65,6 +65,7 @@ const copyByLocale = {
     backToSelector: "対象選択へ戻る",
     all: "すべて",
     case: "案件",
+    createCase: "案件を新規作成",
     party: "関係者",
     property: "物件",
     taskUpdated: "更新",
@@ -122,6 +123,7 @@ const copyByLocale = {
     backToSelector: "返回对象选择",
     all: "全部",
     case: "案件",
+    createCase: "新建案件",
     party: "主体",
     property: "物件",
     taskUpdated: "更新",
@@ -179,6 +181,7 @@ const copyByLocale = {
     backToSelector: "정리 대상 선택으로 돌아가기",
     all: "전체",
     case: "안건",
+    createCase: "안건 새로 만들기",
     party: "관계자",
     property: "매물",
     taskUpdated: "업데이트",
@@ -355,6 +358,8 @@ async function OrganizeCenterContent({ locale, params }: { locale: Locale; param
 
   const capabilityCanWrite = session.membership.status === "active"
     && capabilityHasTenantPermission(getTenantCapability(session.membership), "record.update");
+  const capabilityCanCreateCase = session.membership.status === "active"
+    && capabilityHasTenantPermission(getTenantCapability(session.membership), "case.create");
   const capabilityCanArchive = session.membership.status === "active"
     && capabilityHasTenantPermission(getTenantCapability(session.membership), "record.archive");
 
@@ -475,6 +480,7 @@ async function OrganizeCenterContent({ locale, params }: { locale: Locale; param
       lifecycleFilter={lifecycleFilter}
       locale={locale}
       page={page}
+      canCreateCase={capabilityCanCreateCase}
     />
   );
 }

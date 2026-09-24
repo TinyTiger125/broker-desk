@@ -1,19 +1,23 @@
 import * as memory from "@/lib/data.memory";
 import * as postgres from "@/lib/data.postgres";
+import { isHealthBindingDiagnosticsEnabled } from "@/lib/health-diagnostics";
 import {
   assertProductionDataStoreReady,
+  isFormalProductionDeployment,
   isProductionRuntime,
   isPostgresDataStoreConfigured,
   ProductionReadinessError,
 } from "@/lib/production-readiness";
 import { getActorIdFromCookie } from "@/lib/actor";
 import {
-  isClerkAuthEnabled,
+  getConfiguredAuthProviderId,
+  isExternalAuthEnabled,
   isDemoAuthEnabled,
   isTrustedHeaderAuthEnabled,
   readTrustedHeaderAuthIdentity,
 } from "@/lib/auth-mode";
-import { getClerkAuthIdentity, getClerkAuthSubject, getVerifiedClerkAuthIdentity } from "@/lib/clerk-auth";
+import { getAuthIdentity, getAuthSubject, getVerifiedAuthIdentity } from "@/lib/auth-provider";
+import { isEmailOnStagingAllowlist, isStagingAllowlistEnforced } from "@/lib/staging-access-policy";
 import { headers } from "next/headers";
 import { cache } from "react";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -43,7 +47,7 @@ async function withRepositoryIdentity<T>(operation: () => Promise<T>): Promise<T
     return operation();
   }
 
-  const subject = workerRepositorySubject.getStore() ?? (await getClerkAuthSubject());
+  const subject = workerRepositorySubject.getStore() ?? (await getAuthSubject());
   if (!subject) {
     throw new ProductionReadinessError("production_tenant_scope_required");
   }
@@ -79,6 +83,17 @@ const resolveTenantSessionLookupsByExternalAuthSubject = cache(
     const normalized = subject.trim();
     if (!normalized) return [];
 
+    if (isExternalAuthEnabled()) {
+      const identity = await getAuthIdentity();
+      if (
+        !identity ||
+        identity.subject !== normalized ||
+        (isStagingAllowlistEnforced() && !isEmailOnStagingAllowlist(identity.email))
+      ) {
+        return [];
+      }
+    }
+
     if (usePostgres) return repo.listTenantSessionLookupsByExternalAuthSubject(normalized);
 
     const user = await repo.getUserByExternalAuthSubject(normalized);
@@ -93,9 +108,11 @@ const resolveTenantSessionLookupsByExternalAuthSubject = cache(
 );
 
 const resolveDefaultUser = cache(async (preferredUserId?: string) => {
-  if (isClerkAuthEnabled()) {
-    const subject = await getClerkAuthSubject();
-    if (!subject) return null;
+  if (isExternalAuthEnabled()) {
+    const identity = await getAuthIdentity();
+    if (!identity) return null;
+    if (isStagingAllowlistEnforced() && !isEmailOnStagingAllowlist(identity.email)) return null;
+    const subject = identity.subject;
 
     // A user can exist before their first workspace membership is assigned.
     // Keep that state readable so the workspace selector can explain it.
@@ -105,9 +122,13 @@ const resolveDefaultUser = cache(async (preferredUserId?: string) => {
     // An invited Clerk user starts as an email-only local placeholder. Bind
     // that placeholder only when the current identity exactly matches a valid
     // pending invitation; never use this path for arbitrary provisioning.
-    const verifiedIdentity = await getVerifiedClerkAuthIdentity();
-    if (verifiedIdentity?.email) {
+    const verifiedIdentity = await getVerifiedAuthIdentity();
+    if (verifiedIdentity?.email && getConfiguredAuthProviderId() === "clerk") {
       const invitedUser = await repo.bindCurrentClerkIdentityToPendingInvitation(verifiedIdentity);
+      if (invitedUser) return invitedUser;
+    }
+    if (verifiedIdentity?.email && getConfiguredAuthProviderId() === "supabase") {
+      const invitedUser = await repo.bindCurrentSupabaseIdentityToPendingInvitation(verifiedIdentity);
       if (invitedUser) return invitedUser;
     }
 
@@ -119,10 +140,8 @@ const resolveDefaultUser = cache(async (preferredUserId?: string) => {
     // Production provisioning is webhook-owned and uses a narrowly scoped
     // management connection. A tenant request must never self-provision by
     // falling back to an owner-capable database role.
-    if (isProductionRuntime()) return null;
+    if (isFormalProductionDeployment()) return null;
 
-    const identity = await getClerkAuthIdentity();
-    if (!identity) return null;
     return repo.ensureUserForExternalAuth(identity);
   }
 
@@ -173,6 +192,8 @@ export const ensureUserForExternalAuth: typeof memory.ensureUserForExternalAuth 
   repo.ensureUserForExternalAuth(...args);
 export const bindCurrentClerkIdentityToPendingInvitation: typeof memory.bindCurrentClerkIdentityToPendingInvitation = (...args) =>
   repo.bindCurrentClerkIdentityToPendingInvitation(...args);
+export const bindCurrentSupabaseIdentityToPendingInvitation: typeof memory.bindCurrentSupabaseIdentityToPendingInvitation = (...args) =>
+  repo.bindCurrentSupabaseIdentityToPendingInvitation(...args);
 export const suspendUserForExternalAuthSubject: typeof memory.suspendUserForExternalAuthSubject = (...args) =>
   repo.suspendUserForExternalAuthSubject(...args);
 export const getTenantById: typeof memory.getTenantById = (...args) =>
@@ -327,6 +348,8 @@ export const listQuotationsForContext: typeof memory.listQuotationsForContext = 
   repo.listQuotationsForContext(...args);
 export const getQuotationById: typeof memory.getQuotationById = (...args) =>
   repo.getQuotationById(...args);
+export const getQuotationByIdForContext: typeof memory.getQuotationByIdForContext = (...args) =>
+  repo.getQuotationByIdForContext(...args);
 export const addClient: typeof memory.addClient = (...args) => repo.addClient(...args);
 export const updateClient: typeof memory.updateClient = (...args) =>
   repo.updateClient(...args);
@@ -362,6 +385,10 @@ export const getImportJobByIdempotencyKey: typeof memory.getImportJobByIdempoten
   repo.getImportJobByIdempotencyKey(...args);
 export const addImportJob: typeof memory.addImportJob = (...args) =>
   repo.addImportJob(...args);
+export const claimPropertyRowImport: typeof memory.claimPropertyRowImport = (...args) =>
+  repo.claimPropertyRowImport(...args);
+export const deletePreimportPropertyUpload: typeof memory.deletePreimportPropertyUpload = (...args) =>
+  repo.deletePreimportPropertyUpload(...args);
 export const updateImportJobMapping: typeof memory.updateImportJobMapping = (...args) =>
   repo.updateImportJobMapping(...args);
 export const updateImportJobExecution: typeof memory.updateImportJobExecution = (...args) =>
@@ -380,6 +407,10 @@ export const getBrokerageCaseByImportJobId: typeof memory.getBrokerageCaseByImpo
   repo.getBrokerageCaseByImportJobId(...args);
 export const updateBrokerageCaseConfirmedData: typeof memory.updateBrokerageCaseConfirmedData = (...args) =>
   repo.updateBrokerageCaseConfirmedData(...args);
+export const saveCaseWorkbenchWithObjectReview: typeof memory.saveCaseWorkbenchWithObjectReview = (...args) =>
+  repo.saveCaseWorkbenchWithObjectReview(...args);
+export const refreshObjectImportReview: typeof memory.refreshObjectImportReview = (...args) =>
+  repo.refreshObjectImportReview(...args);
 export const saveBrokerageCaseExtractionReview: typeof memory.saveBrokerageCaseExtractionReview = (...args) =>
   repo.saveBrokerageCaseExtractionReview(...args);
 export const mergeBrokerageCaseExtractionReview: typeof memory.mergeBrokerageCaseExtractionReview = (...args) =>
@@ -474,14 +505,18 @@ export type DataDriver = typeof activeDataDriver;
 export async function healthCheckDataDriver() {
   assertProductionDataStoreReady();
   if (usePostgres) {
-    await postgres.healthCheckPostgres();
+    const postgresHealth = await postgres.healthCheckPostgres(isHealthBindingDiagnosticsEnabled());
     return {
       ok: true,
       driver: "postgres" as const,
+      binding: postgresHealth.binding,
     };
   }
 
-  return memory.healthCheckDataDriver();
+  return {
+    ...(await memory.healthCheckDataDriver()),
+    binding: undefined,
+  };
 }
 
 export type {
@@ -545,3 +580,16 @@ export type {
   OutputTemplateSettingsInput,
 } from "@/lib/data.memory";
 export type { OutputTemplateSettings } from "@/lib/output-doc";
+export type { ObjectImportFeatureReadiness } from "@/lib/object-import-contract";
+
+export const getObjectImportFeatureReadiness: typeof memory.getObjectImportFeatureReadiness = (...args) => repo.getObjectImportFeatureReadiness(...args);
+export const getObjectImportTarget: typeof memory.getObjectImportTarget = (...args) => repo.getObjectImportTarget(...args);
+export const getObjectImportTargetByJob: typeof memory.getObjectImportTargetByJob = (...args) => repo.getObjectImportTargetByJob(...args);
+export const getObjectImportCaseIdByJob: typeof memory.getObjectImportCaseIdByJob = (...args) => repo.getObjectImportCaseIdByJob(...args);
+export const listObjectImportTargets: typeof memory.listObjectImportTargets = (...args) => repo.listObjectImportTargets(...args);
+export const createObjectImportTarget: typeof memory.createObjectImportTarget = (...args) => repo.createObjectImportTarget(...args);
+export const updateObjectImportTarget: typeof memory.updateObjectImportTarget = (...args) => repo.updateObjectImportTarget(...args);
+export const upsertObjectImportCandidate: typeof memory.upsertObjectImportCandidate = (...args) => repo.upsertObjectImportCandidate(...args);
+export const listObjectImportCandidates: typeof memory.listObjectImportCandidates = (...args) => repo.listObjectImportCandidates(...args);
+
+export const reviewObjectImportCandidate: typeof memory.reviewObjectImportCandidate = (...args) => repo.reviewObjectImportCandidate(...args);

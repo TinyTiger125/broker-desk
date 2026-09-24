@@ -87,6 +87,7 @@ const outputCenterCopy = {
     guaranteePrimaryDesc: "案件を選び、不足項目を確認してから申込書を出します。",
     guaranteeNextAction: "次にやること",
     guaranteeChecklist: "確認が必要な項目",
+    guaranteeChecklistHint: "グループ別の進捗は案件資料の完全度を示すもので、この申込書の必須項目の完了度とは異なります。申込書に表示された必須の不足項目を補ってください。",
     outputPathCase: "案件",
     outputPathTemplate: "保証会社",
     outputPathPreview: "プレビュー",
@@ -195,6 +196,7 @@ const outputCenterCopy = {
     guaranteePrimaryDesc: "确认当前案件，只补齐缺失项，然后输出所选保证会社申请书。",
     guaranteeNextAction: "下一步",
     guaranteeChecklist: "剩余确认项",
+    guaranteeChecklistHint: "分组进度反映案件资料完整度，不等同于本申请书的必填完成度。请按本申请书列出的必填缺项补充。",
     outputPathCase: "案件",
     outputPathTemplate: "保证会社",
     outputPathPreview: "预览",
@@ -303,6 +305,7 @@ const outputCenterCopy = {
     guaranteePrimaryDesc: "현재 안건을 확인하고 부족한 항목만 보완한 뒤 선택한 보증회사 신청서를 출력합니다.",
     guaranteeNextAction: "다음 작업",
     guaranteeChecklist: "남은 확인 항목",
+    guaranteeChecklistHint: "그룹별 진행률은 안건 자료의 완성도를 나타내며, 이 신청서의 필수 항목 완료도와는 다릅니다. 신청서에 표시된 필수 누락 항목을 보완해 주세요.",
     outputPathCase: "안건",
     outputPathTemplate: "보증회사",
     outputPathPreview: "미리보기",
@@ -462,7 +465,6 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
   const selectedPartyForCandidate = writableParties[0];
   const guaranteeCandidateData: Record<string, unknown> = {
     "property.name": selectedPropertyForCandidate?.name,
-    "lease.rent": selectedPropertyForCandidate?.listingPrice,
     "lease.commonFee": selectedPropertyForCandidate?.managementFee,
     "applicant.name": selectedPartyForCandidate?.name,
     "applicant.phone": selectedPartyForCandidate?.phone,
@@ -971,6 +973,12 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
           <span className="material-symbols-outlined text-[20px]">{selectedGuaranteeMissingCount > 0 ? "warning" : "check_circle"}</span>
           {copy.guaranteeChecklist}
         </h3>
+        <p className="mt-2 text-xs font-semibold leading-5 text-slate-600">{copy.guaranteeChecklistHint}</p>
+        {selectedGuaranteeMissingCount === 0 ? (
+          <p className="mt-1 text-xs font-semibold leading-5 text-emerald-800">
+            {locale === "zh" ? "本申请书的必填资料已齐备。" : locale === "ko" ? "이 신청서의 필수 자료가 모두 갖추어졌습니다." : "この申込書の必須資料はそろっています。"}
+          </p>
+        ) : null}
         <div className="mt-3 space-y-2">
           {guaranteeBlockingFields.length > 0 ? (
             guaranteeBlockingFields.slice(0, 5).map((field) => (

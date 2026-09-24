@@ -1,3 +1,5 @@
+import { persistObjectImportJobExtraction, markObjectImportJobFailed, ensureObjectImportTask } from "@/lib/object-import-processor-adapter";
+import { parseObjectImportNotes, type ObjectImportMetadata } from "@/lib/object-import-contract";
 import { createHash } from "node:crypto";
 import {
   addAuditLog,
@@ -28,11 +30,13 @@ export type ExcelImportPayload = {
   totalRows: number;
   inputExtraction?: InputFileExtractionResult;
   targetCaseId?: string;
+  objectImport?: ObjectImportMetadata;
 };
 
 export type ExcelImportProcessResult =
   | { ok: true; status: "mapped"; fieldCount: number; documentType: string; documentTypeLabel: string; fingerprintConfidence: number }
-  | { ok: false; status: "failed"; error: "import_job_not_found" | "source_attachment_missing" | "excel_extraction_failed" };
+  | { ok: false; status: "failed"; error: "import_job_not_found" | "source_attachment_missing" | "excel_extraction_failed" | "object_import_no_supported_fields" }
+  | { ok: false; error: "import_execution_started" };
 
 /**
  * Processes a persisted Excel source file. The caller is still scoped to the
@@ -46,6 +50,7 @@ export async function processExcelImportJob(input: {
   const jobs = await listImportJobs(input.userId, 500, input.tenantId);
   const job = jobs.find((item) => item.id === input.jobId && item.sourceType === "excel");
   if (!job) return { ok: false, status: "failed", error: "import_job_not_found" };
+  if (job.finalImportStartedAt) return { ok: false, error: "import_execution_started" };
 
   if (job.status === "mapped" || job.status === "completed") {
     const payload = parsePayload(job.notes);
@@ -59,6 +64,18 @@ export async function processExcelImportJob(input: {
     };
   }
 
+  const objectTarget = await ensureObjectImportTask(job, input);
+  if (objectTarget && ["needs_review", "completed", "conflict"].includes(objectTarget.status)) {
+    const payload = parsePayload(job.notes);
+    return {
+      ok: true,
+      status: "mapped",
+      fieldCount: payload?.inputExtraction?.fields.length ?? 0,
+      documentType: payload?.inputExtraction?.documentType ?? "property_ledger",
+      documentTypeLabel: payload?.inputExtraction?.documentTypeLabel ?? "物件台账",
+      fingerprintConfidence: payload?.inputExtraction?.fingerprintConfidence ?? 0,
+    };
+  }
   const attachments = await listAttachments({
     tenantId: input.tenantId,
     userId: input.userId,
@@ -66,11 +83,11 @@ export async function processExcelImportJob(input: {
     targetId: input.jobId,
     limit: 10,
   });
-  const source = attachments.find((attachment) =>
+  const source = attachments.filter((attachment) => !objectTarget || attachment.id === objectTarget.sourceAttachmentId).find((attachment) =>
     isLocalPrivateStoragePath(attachment.storagePath) || isPostgresPrivateStoragePath(attachment.storagePath),
   );
   if (!source) {
-    await markFailed(input, "source_attachment_missing", "找不到已保存的原始 Excel 文件，请重新上传。");
+    if (!await markFailed(input, "source_attachment_missing", "找不到已保存的原始 Excel 文件，请重新上传。")) return { ok: false, error: "import_execution_started" };
     return { ok: false, status: "failed", error: "source_attachment_missing" };
   }
 
@@ -80,19 +97,21 @@ export async function processExcelImportJob(input: {
     id: source.id,
   });
   if (!content) {
-    await markFailed(input, "source_attachment_missing", "原始 Excel 文件不可读取，请重新上传。");
+    if (!await markFailed(input, "source_attachment_missing", "原始 Excel 文件不可读取，请重新上传。")) return { ok: false, error: "import_execution_started" };
     return { ok: false, status: "failed", error: "source_attachment_missing" };
   }
 
   try {
     if (job.status !== "processing") {
-      await updateImportJobExecution({
+      const processingJob = await updateImportJobExecution({
         tenantId: input.tenantId,
         userId: input.userId,
         jobId: input.jobId,
         status: "processing",
         allowRetry: job.status === "failed",
+        beforeFinalImport: true,
       });
+      if (!processingJob) return { ok: false, error: "import_execution_started" };
     }
     await validateExcelZip(content);
     const workbook = await readExcelWorkbook(content);
@@ -113,7 +132,7 @@ export async function processExcelImportJob(input: {
     const rows = rawRows.slice(1)
       .filter((row) => row.some((cell) => String(cell ?? "").trim() !== ""))
       .map((row) => Object.fromEntries(headers.map((header, index) => [header, row[index] ?? ""])));
-    const payload: ExcelImportPayload = inputExtraction.extractionStatus === "recognized" || headers.length === 0
+    const payload: ExcelImportPayload = Boolean(parseObjectImportNotes(job.notes)) || inputExtraction.extractionStatus === "recognized" || headers.length === 0
       ? {
           kind: "input_file_extraction",
           headers: [],
@@ -134,6 +153,16 @@ export async function processExcelImportJob(input: {
           inputExtraction,
           targetCaseId: queuedMetadata.targetCaseId,
         };
+    const objectImport = parseObjectImportNotes(job.notes);
+    if (objectImport) {
+      payload.objectImport = objectImport;
+      const candidates = await persistObjectImportJobExtraction({ job, ...input, fields: inputExtraction.fields });
+      if (candidates && candidates.length === 0) {
+        const failedJob = await markFailed(input, "object_import_no_supported_fields", "资料中没有可填写的受支持内容，案件资料未更新。请使用受支持的物件或租赁格式后重新选择资料。");
+        if (!failedJob) return { ok: false, error: "import_execution_started" };
+        return { ok: false, status: "failed", error: "object_import_no_supported_fields" };
+      }
+    }
     const mappedJob = await updateImportJobMapping({
       tenantId: input.tenantId,
       userId: input.userId,
@@ -141,8 +170,9 @@ export async function processExcelImportJob(input: {
       mappingJson: {},
       notes: JSON.stringify(payload),
       status: "mapped",
+      beforeFinalImport: true,
     });
-    if (!mappedJob) throw new Error("import_job_not_found_after_processing");
+    if (!mappedJob) return { ok: false, error: "import_execution_started" };
 
     await addAuditLog({
       tenantId: input.tenantId,
@@ -163,11 +193,12 @@ export async function processExcelImportJob(input: {
     };
   } catch (error) {
     const validationError = error instanceof ExcelImportValidationError ? error : null;
-    await markFailed(
+    const failedJob = await markFailed(
       input,
       validationError?.code ?? "excel_extraction_failed",
       validationError?.message ?? "文件已接收，但内容无法读取。请检查是否为有效的 Excel 文件。",
     );
+    if (!failedJob) return { ok: false, error: "import_execution_started" };
     return { ok: false, status: "failed", error: "excel_extraction_failed" };
   }
 }
@@ -203,14 +234,17 @@ async function markFailed(
   errorCode: string,
   errorSummary: string,
 ) {
-  await updateImportJobExecution({
+  const failedJob = await updateImportJobExecution({
     tenantId: input.tenantId,
     userId: input.userId,
     jobId: input.jobId,
     status: "failed",
     errorCode,
     errorSummary,
+    beforeFinalImport: true,
   });
+  if (!failedJob) return false;
+  await markObjectImportJobFailed(input, errorCode, errorSummary);
   await addAuditLog({
     tenantId: input.tenantId,
     userId: input.userId,
@@ -220,4 +254,5 @@ async function markFailed(
     message: "Excel 资料读取失败",
     context: { errorCode },
   });
+  return true;
 }

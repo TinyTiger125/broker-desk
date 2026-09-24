@@ -207,7 +207,7 @@ function formatDateTime(date: Date, locale: Locale): string {
 export default async function OutputTemplateSettingsPage({ searchParams }: OutputTemplateSettingsPageProps) {
   const [locale, session] = await Promise.all([
     getLocale(),
-    requireTenantSession({ permission: "template.view" }),
+    requireTenantSession({ permissions: ["template.view", "template.edit_draft", "template.publish"] }),
   ]);
   const copy = getCopy(locale);
   const templateFieldLabels = getTemplateFieldLabels(locale);

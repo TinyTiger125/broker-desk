@@ -1,12 +1,15 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
-import { isClerkAuthConfigured, isClerkAuthEnabled, isDemoAuthEnabled, isProductionRuntime } from "@/lib/auth-mode";
+import { isClerkAuthConfigured, isClerkAuthEnabled, isDemoAuthEnabled, isProductionRuntime, isSupabaseAuthConfigured, isSupabaseAuthEnabled } from "@/lib/auth-mode";
 import { assertProductionAuthReady, assertProductionRateLimitReady } from "@/lib/production-readiness";
 import { checkRequestRateLimit } from "@/lib/request-rate-limit";
+import { updateSupabaseSession } from "@/lib/supabase/proxy";
 
 const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
   "/sign-up(.*)",
+  "/forgot-password(.*)",
+  "/auth/callback(.*)",
   "/api/health/data(.*)",
   "/api/locale(.*)",
   "/api/webhooks/clerk(.*)",
@@ -62,6 +65,10 @@ export default function proxy(req: Parameters<typeof clerkProxy>[0], event: Para
     return NextResponse.json({ ok: false, error: "invalid_request_origin" }, { status: 403 });
   }
   if (!isClerkAuthEnabled()) {
+    if (isSupabaseAuthEnabled()) {
+      if (!isSupabaseAuthConfigured()) return new NextResponse("Supabase Auth is not configured.", { status: 503 });
+      return updateSupabaseSession(req, { requireAuth: !isPublicRoute(req) });
+    }
     if (isDemoAuthEnabled()) return NextResponse.next();
     if (isPublicRoute(req)) return NextResponse.next();
     if (req.nextUrl.pathname.startsWith("/api/")) {

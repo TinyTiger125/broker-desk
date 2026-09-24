@@ -1,3 +1,5 @@
+import { persistObjectImportJobExtraction, persistObjectReaderJobExtraction, markObjectImportJobFailed, ensureObjectImportTask } from "@/lib/object-import-processor-adapter";
+import { parseObjectImportNotes, type ObjectImportMetadata } from "@/lib/object-import-contract";
 import {
   addAuditLog,
   listAttachments,
@@ -10,6 +12,9 @@ import { isLocalPrivateStoragePath, isPostgresPrivateStoragePath } from "@/lib/a
 import { extractIdentityDocumentsFromFiles } from "@/lib/identity-document-extractor";
 import type { InputFileExtractionResult } from "@/lib/input-file-extractor";
 import { ProductionReadinessError } from "@/lib/production-readiness";
+import { RemoteDocumentReaderError } from "@/lib/identity-reader-contract";
+import { readObjectDocumentWithOpenAi } from "@/lib/openai-object-reader";
+import type { ObjectReaderResponse } from "@/lib/object-reader-contract";
 
 type IdentityImportPayload = {
   kind: "input_file_extraction";
@@ -18,13 +23,15 @@ type IdentityImportPayload = {
   rows: Record<string, unknown>[];
   originalFilename: string;
   totalRows: number;
-  inputExtraction: InputFileExtractionResult;
+  inputExtraction?: InputFileExtractionResult;
   targetCaseId?: string;
+  objectImport?: ObjectImportMetadata;
+  objectReader?: ObjectReaderResponse;
 };
 
 export type IdentityImportProcessResult =
   | { ok: true; status: "mapped"; fieldCount: number; documentType: string; documentTypeLabel: string; fingerprintConfidence: number }
-  | { ok: false; status: "failed"; error: "import_job_not_found" | "source_attachment_missing" | "identity_extraction_failed" };
+  | { ok: false; status: "failed"; error: "import_job_not_found" | "source_attachment_missing" | "identity_extraction_failed" | "object_import_no_supported_fields" | "object_reader_no_readable_fields" };
 
 export async function processIdentityImportJob(input: {
   tenantId: string;
@@ -40,13 +47,25 @@ export async function processIdentityImportJob(input: {
     return {
       ok: true,
       status: "mapped",
-      fieldCount: payload?.inputExtraction.fields.length ?? 0,
-      documentType: payload?.inputExtraction.documentType ?? "identity_document",
-      documentTypeLabel: payload?.inputExtraction.documentTypeLabel ?? "本人確認資料",
-      fingerprintConfidence: payload?.inputExtraction.fingerprintConfidence ?? 0,
+      fieldCount: payload?.inputExtraction?.fields.length ?? payload?.objectReader?.candidates.length ?? 0,
+      documentType: payload?.inputExtraction?.documentType ?? payload?.objectReader?.documentType ?? "identity_document",
+      documentTypeLabel: payload?.inputExtraction?.documentTypeLabel ?? (payload?.objectReader ? "物件・賃貸資料" : "本人確認資料"),
+      fingerprintConfidence: payload?.inputExtraction?.fingerprintConfidence ?? (payload?.objectReader ? 1 : 0),
     };
   }
 
+  const objectTarget = await ensureObjectImportTask(job, input);
+  if (objectTarget && ["needs_review", "completed", "conflict"].includes(objectTarget.status)) {
+    const payload = parsePayload(job.notes);
+    return {
+      ok: true,
+      status: "mapped",
+      fieldCount: payload?.inputExtraction?.fields.length ?? payload?.objectReader?.candidates.length ?? 0,
+      documentType: payload?.inputExtraction?.documentType ?? payload?.objectReader?.documentType ?? "unknown_property_document",
+      documentTypeLabel: payload?.inputExtraction?.documentTypeLabel ?? (payload?.objectReader ? "物件・賃貸資料" : "本人確認資料"),
+      fingerprintConfidence: payload?.inputExtraction?.fingerprintConfidence ?? (payload?.objectReader ? 1 : 0),
+    };
+  }
   const attachments = await listAttachments({
     tenantId: input.tenantId,
     userId: input.userId,
@@ -55,7 +74,7 @@ export async function processIdentityImportJob(input: {
     limit: 10,
   });
   const sourceFiles = await Promise.all(attachments
-    .filter((attachment) => isLocalPrivateStoragePath(attachment.storagePath) || isPostgresPrivateStoragePath(attachment.storagePath))
+    .filter((attachment) => (!objectTarget || attachment.id === objectTarget.sourceAttachmentId) && (isLocalPrivateStoragePath(attachment.storagePath) || isPostgresPrivateStoragePath(attachment.storagePath)))
     .map(async (attachment) => {
       const content = await readPrivateAttachmentContent({
         tenantId: input.tenantId,
@@ -80,7 +99,11 @@ export async function processIdentityImportJob(input: {
         allowRetry: job.status === "failed",
       });
     }
-    const inputExtraction = await extractIdentityDocumentsFromFiles(readableSources);
+    const objectImport = parseObjectImportNotes(job.notes);
+    const objectReader = objectImport?.targetObjectType === "property"
+      ? await readObjectDocumentWithOpenAi({ buffer: readableSources[0].buffer, filename: readableSources[0].filename })
+      : undefined;
+    const inputExtraction = objectReader ? undefined : await extractIdentityDocumentsFromFiles(readableSources);
     const payload: IdentityImportPayload = {
       kind: "input_file_extraction",
       headers: [],
@@ -91,6 +114,26 @@ export async function processIdentityImportJob(input: {
       inputExtraction,
       targetCaseId: parseQueuedMetadata(job.notes).targetCaseId,
     };
+    if (objectImport) {
+      payload.objectImport = objectImport;
+      if (objectReader) {
+        payload.objectReader = objectReader;
+        const persisted = await persistObjectReaderJobExtraction({ job, ...input, response: objectReader });
+        if (persisted?.target?.status === "failed") {
+          const errorCode = persisted.target.errorCode === "object_reader_no_readable_fields"
+            ? "object_reader_no_readable_fields"
+            : "object_import_no_supported_fields";
+          await markFailed(input, errorCode, "资料中没有可填写的受支持内容，案件资料未更新。请使用受支持的物件或租赁格式后重新选择资料。");
+          return { ok: false, status: "failed", error: errorCode };
+        }
+      } else if (inputExtraction) {
+        const candidates = await persistObjectImportJobExtraction({ job, ...input, fields: inputExtraction.fields });
+        if (candidates && candidates.length === 0) {
+          await markFailed(input, "object_import_no_supported_fields", "资料中没有可填写的受支持内容，案件资料未更新。请使用受支持的物件或租赁格式后重新选择资料。");
+          return { ok: false, status: "failed", error: "object_import_no_supported_fields" };
+        }
+      }
+    }
     const mappedJob = await updateImportJobMapping({
       tenantId: input.tenantId,
       userId: input.userId,
@@ -108,22 +151,29 @@ export async function processIdentityImportJob(input: {
       targetId: input.jobId,
       message: `本人確認資料の読み取り完了: ${job.title}`,
       context: {
-        documentType: inputExtraction.documentType,
-        fieldCount: inputExtraction.fields.length,
-        extractionStatus: inputExtraction.extractionStatus,
+        documentType: objectReader?.documentType ?? inputExtraction?.documentType,
+        fieldCount: objectReader?.candidates.length ?? inputExtraction?.fields.length ?? 0,
+        extractionStatus: inputExtraction?.extractionStatus ?? "recognized",
         fileCount: readableSources.length,
       },
     });
     return {
       ok: true,
       status: "mapped",
-      fieldCount: inputExtraction.fields.length,
-      documentType: inputExtraction.documentType,
-      documentTypeLabel: inputExtraction.documentTypeLabel,
-      fingerprintConfidence: inputExtraction.fingerprintConfidence,
+      fieldCount: objectReader?.candidates.length ?? inputExtraction?.fields.length ?? 0,
+      documentType: objectReader?.documentType ?? inputExtraction?.documentType ?? "unknown_property_document",
+      documentTypeLabel: objectReader ? "物件・賃貸资料" : inputExtraction?.documentTypeLabel ?? "本人確認資料",
+      fingerprintConfidence: inputExtraction?.fingerprintConfidence ?? 1,
     };
   } catch (error) {
-    if (error instanceof ProductionReadinessError) throw error;
+    if (error instanceof ProductionReadinessError) {
+      await markFailed(input, error.code, "资料读取服务尚未就绪，请联系管理员。");
+      throw error;
+    }
+    if (error instanceof RemoteDocumentReaderError) {
+      await markFailed(input, `remote_document_reader_${error.code}`, "远程资料读取失败，请稍后重试或改为手动录入。");
+      return { ok: false, status: "failed", error: "identity_extraction_failed" };
+    }
     await markFailed(
       input,
       "identity_extraction_failed",
@@ -137,7 +187,7 @@ function parsePayload(value: string | undefined): IdentityImportPayload | null {
   if (!value) return null;
   try {
     const parsed = JSON.parse(value) as Partial<IdentityImportPayload>;
-    return parsed.kind === "input_file_extraction" && parsed.inputExtraction
+    return parsed.kind === "input_file_extraction" && (parsed.inputExtraction || parsed.objectReader)
       ? (parsed as IdentityImportPayload)
       : null;
   } catch {
@@ -170,6 +220,7 @@ async function markFailed(
     errorCode,
     errorSummary,
   });
+  await markObjectImportJobFailed(input, errorCode, errorSummary);
   await addAuditLog({
     tenantId: input.tenantId,
     userId: input.userId,

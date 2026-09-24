@@ -167,6 +167,33 @@ const summaries = guaranteeCompanyTemplates
       `${template.id}: confirmed preview fields should allow download, blocked=${confirmedGate.blockedReasons.map((reason) => reason.code).join(",")}`,
     );
 
+    const associationIncompleteData = {
+      ...confirmedDataJson,
+      __caseAssociationVersion: 1,
+      __associatedParties: [{ partyId: "party_gate", roles: ["其他关联人"] }],
+      __primaryPropertyId: "property_gate",
+    };
+    const associationIncompleteGate = evaluateGuaranteeDownloadGate({
+      brokerageCase: baseCase({ confirmedDataJson: associationIncompleteData }),
+      template,
+      draft: readyDraft,
+    });
+    assert(!associationIncompleteGate.canDownload, `${template.id}: missing primary association must block download`);
+    assert(associationIncompleteGate.blockedReasons.some((reason) => reason.code === "associations_missing"), `${template.id}: missing primary association should be visible`);
+    assert(associationIncompleteGate.missingFields.some((field) => field.fieldKey === "__primaryPartyId"), `${template.id}: association blocker should be included in API missing fields`);
+
+    const associationCompleteGate = evaluateGuaranteeDownloadGate({
+      brokerageCase: baseCase({
+        confirmedDataJson: {
+          ...associationIncompleteData,
+          __associatedParties: [{ partyId: "party_gate", roles: ["主要申请人"] }],
+        },
+      }),
+      template,
+      draft: readyDraft,
+    });
+    assert(!associationCompleteGate.blockedReasons.some((reason) => reason.code === "associations_missing"), `${template.id}: complete primary association should clear association blocker`);
+
     return {
       template: template.id,
       missingBlockedReasons: missingGate.blockedReasons.map((reason) => reason.code),

@@ -1,7 +1,7 @@
 import "server-only";
 
 import { Pool } from "pg";
-import { normalizeDatabaseConnectionString } from "@/lib/database-connection";
+import { buildDatabasePoolConnectionConfig, getDatabasePoolMax } from "@/lib/database-connection";
 import { isProductionRuntime, ProductionReadinessError } from "@/lib/production-readiness";
 
 type AdminGlobal = typeof globalThis & {
@@ -12,7 +12,7 @@ const adminGlobal = globalThis as AdminGlobal;
 let pool: Pool | null = adminGlobal.__brokerDeskPostgresAdminPool ?? null;
 let roleCheck: Promise<void> | null = null;
 
-function getAdminConnectionString(): string {
+function getAdminConnectionConfig() {
   const connectionString = (
     process.env.DATABASE_ADMIN_URL ??
     (isProductionRuntime() ? "" : process.env.DATABASE_DEVELOPMENT_URL ?? process.env.DATABASE_URL) ??
@@ -21,14 +21,14 @@ function getAdminConnectionString(): string {
   if (!connectionString) {
     throw new ProductionReadinessError("production_admin_database_required");
   }
-  return normalizeDatabaseConnectionString(connectionString) ?? connectionString;
+  return buildDatabasePoolConnectionConfig(connectionString);
 }
 
 function getAdminPool(): Pool {
   if (!pool) {
     pool = new Pool({
-      connectionString: getAdminConnectionString(),
-      max: 2,
+      ...getAdminConnectionConfig(),
+      max: getDatabasePoolMax(2),
       min: 0,
       idleTimeoutMillis: 60_000,
       connectionTimeoutMillis: 10_000,
@@ -100,6 +100,24 @@ export async function claimQueuedImportJobs(limit = 3): Promise<ClaimedImportJob
     if (!row.job_id || !row.tenant_id || !row.user_id || !row.external_auth_subject || (row.source_type !== "excel" && row.source_type !== "scan")) return [];
     return [{ jobId: row.job_id, tenantId: row.tenant_id, userId: row.user_id, externalAuthSubject: row.external_auth_subject, sourceType: row.source_type }];
   });
+}
+
+/**
+ * Claims exactly one named job for a controlled diagnostic run. The database
+ * function applies the same tenant service-period, source-type and
+ * external-auth checks as the bounded batch claim, while never selecting a
+ * different job.
+ */
+export async function claimQueuedImportJob(jobId: string): Promise<ClaimedImportJob | null> {
+  const normalizedJobId = jobId.trim();
+  if (!normalizedJobId) return null;
+  await assertAdminRoleSafe();
+  const result = await getAdminPool().query<{
+    job_id: string; tenant_id: string; user_id: string; external_auth_subject: string; source_type: string;
+  }>("SELECT * FROM brokerdesk_private.claim_import_job_by_id($1)", [normalizedJobId]);
+  const row = result.rows[0];
+  if (!row || !row.job_id || !row.tenant_id || !row.user_id || !row.external_auth_subject || (row.source_type !== "excel" && row.source_type !== "scan")) return null;
+  return { jobId: row.job_id, tenantId: row.tenant_id, userId: row.user_id, externalAuthSubject: row.external_auth_subject, sourceType: row.source_type };
 }
 
 export async function suspendExternalAuthUser(subject: string): Promise<{ userId?: string; suspendedMembershipCount: number }> {

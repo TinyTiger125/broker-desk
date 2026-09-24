@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { healthCheckDataDriver } from "@/lib/data";
+import { buildHealthFailureDetail } from "@/lib/health-diagnostics";
 import { getRequestId, logOperationalEvent } from "@/lib/operational-logging";
 
 export const dynamic = "force-dynamic";
@@ -7,8 +8,8 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   const requestId = getRequestId(request);
   try {
-    await healthCheckDataDriver();
-    logOperationalEvent({ event: "data_health_check", requestId, outcome: "ready" });
+    const health = await healthCheckDataDriver();
+    logOperationalEvent({ event: "data_health_check", requestId, outcome: "ready", detail: health.binding });
     return NextResponse.json(
       {
         ok: true,
@@ -18,8 +19,13 @@ export async function GET(request: Request) {
       },
       { status: 200, headers: { "x-request-id": requestId } }
     );
-  } catch {
-    logOperationalEvent({ event: "data_health_check", requestId, outcome: "failed" });
+  } catch (error) {
+    logOperationalEvent({
+      event: "data_health_check",
+      requestId,
+      outcome: "failed",
+      detail: buildHealthFailureDetail({ requestId, phase: "data_driver", error }),
+    });
     return NextResponse.json(
       {
         ok: false,

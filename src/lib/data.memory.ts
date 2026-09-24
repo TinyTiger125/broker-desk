@@ -1,3 +1,8 @@
+import { validateObjectImportReview, type ObjectImportReviewInput, type ObjectImportReviewResult } from "@/lib/object-import-review";
+import { buildObjectVersionFingerprint, type ObjectImportFeatureReadiness } from "@/lib/object-import-contract";
+import { readCaseAssociationDraft } from "@/lib/case-associations";
+import { MemoryObjectImportRepository } from "@/lib/object-import-repository.memory";
+import type { ObjectImportTargetRecord, ObjectImportCandidateRecord } from "@/lib/object-import-repository";
 import {
   type AmlCheckStatus,
   type BrokerageContractType,
@@ -10,7 +15,7 @@ import {
   type TaskStatus,
   type Temperature,
 } from "@/lib/domain";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import { countTenantSeatUsage, deriveTenantServiceState, isTenantServiceOperational, membershipOccupiesSeat, validateTenantServicePeriod } from "@/lib/tenant-service";
 import { buildFollowUpPriorityList } from "@/lib/followup-priority";
 import type { Locale } from "@/lib/locale";
@@ -43,6 +48,7 @@ import {
   type VisibilityScope,
 } from "@/lib/visibility-foundation";
 import { assertNoForbiddenRecordInput } from "@/lib/record-input-guard";
+import { mayDeletePreimportUpload, mayStartPropertyImport } from "@/lib/preimport-upload-lifecycle";
 import {
   resolveRecordVisibility,
   type RequestContext,
@@ -76,7 +82,7 @@ export type ExternalAuthUserInput = {
 export type TenantStatus = "trial" | "active" | "pending_activation" | "suspended" | "cancelled";
 export type TenantAccountType = "individual" | "company";
 export type TenantMembershipStatus = "active" | "invited" | "suspended" | "removed";
-export type TenantInvitationProvider = "none" | "manual" | "clerk";
+export type TenantInvitationProvider = "none" | "manual" | "clerk" | "supabase";
 export type TenantInvitationStatus = "not_sent" | "pending" | "accepted" | "revoked" | "expired" | "failed";
 
 export type Tenant = {
@@ -353,6 +359,9 @@ export type ImportJob = {
   errorCode?: string;
   errorSummary?: string;
   idempotencyKey?: string;
+  uploadLifecycleVersion?: number;
+  finalImportStartedAt?: Date;
+  sourceReferencedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -540,7 +549,13 @@ export type PrivateAttachmentInput = {
   content: Buffer;
 };
 
-const privateAttachmentContents = new Map<string, Buffer>();
+type PrivateAttachmentContentsHolder = { current: Map<string, Buffer> };
+const privateAttachmentContentsGlobal = globalThis as typeof globalThis & {
+  __brokerDeskPrivateAttachmentContentsHolder?: PrivateAttachmentContentsHolder;
+};
+const privateAttachmentContentsHolder = privateAttachmentContentsGlobal.__brokerDeskPrivateAttachmentContentsHolder ?? { current: new Map<string, Buffer>() };
+privateAttachmentContentsGlobal.__brokerDeskPrivateAttachmentContentsHolder = privateAttachmentContentsHolder;
+const privateAttachmentContents = privateAttachmentContentsHolder.current;
 
 export type GeneratedOutput = {
   id: string;
@@ -709,6 +724,8 @@ type DB = {
   guaranteeTemplateLayoutVersions: GuaranteeTemplateLayoutVersion[];
   tenantGuaranteeTemplateInstalls: TenantGuaranteeTemplateInstall[];
   importJobs: ImportJob[];
+  objectImportTargets: ObjectImportTargetRecord[];
+  objectImportCandidates: ObjectImportCandidateRecord[];
   brokerageCases: BrokerageCase[];
   extractionReviewItems: ExtractionReviewItem[];
   guaranteeApplicationDrafts: GuaranteeApplicationDraft[];
@@ -1081,6 +1098,8 @@ function cloneDb(input: DB): DB {
     guaranteeTemplateLayoutVersions: cloneCollection(input.guaranteeTemplateLayoutVersions),
     tenantGuaranteeTemplateInstalls: cloneCollection(input.tenantGuaranteeTemplateInstalls),
     importJobs: cloneCollection(input.importJobs),
+    objectImportTargets: cloneCollection(input.objectImportTargets ?? []),
+    objectImportCandidates: cloneCollection(input.objectImportCandidates ?? []),
     brokerageCases: cloneCollection(input.brokerageCases),
     extractionReviewItems: cloneCollection(input.extractionReviewItems),
     guaranteeApplicationDrafts: cloneCollection(input.guaranteeApplicationDrafts),
@@ -1111,6 +1130,8 @@ function qaBusinessDataCounts(): QaBusinessDataCounts {
     tasks: db.tasks.length,
     auditLogs: db.auditLogs.length,
     importJobs: db.importJobs.length,
+    objectImportTargets: db.objectImportTargets.length,
+    objectImportCandidates: db.objectImportCandidates.length,
     brokerageCases: db.brokerageCases.length,
     extractionReviewItems: db.extractionReviewItems.length,
     guaranteeApplicationDrafts: db.guaranteeApplicationDrafts.length,
@@ -1518,6 +1539,8 @@ const _freshDb: DB = withDefaultTenantScope({
   ],
   guaranteeTemplateLayoutVersions: [],
   tenantGuaranteeTemplateInstalls: [],
+  objectImportTargets: [],
+  objectImportCandidates: [],
   importJobs: [
     { id: "import_001", userId: "user_demo", sourceType: "excel", title: "物件台帳_2026Q1.xlsx", targetEntity: "properties", status: "completed", notes: "物件5件を保存", mappingJson: { 物件名: "name", 所在地: "address", エリア: "area", 売出価格: "listing_price" }, validationMessage: "必須項目を充足（4/4）", createdAt: new Date(now - 4 * 24 * 60 * 60 * 1000), updatedAt: new Date(now - 4 * 24 * 60 * 60 * 1000) },
     { id: "import_002", userId: "user_demo", sourceType: "pdf", title: "旧契約書一括登録（3件）", targetEntity: "contracts", status: "mapped", notes: "契約種別の確認待ち", mappingJson: { 契約番号: "contract_number", 契約種別: "contract_type", 物件ID: "property_id" }, validationMessage: "必須項目が不足（署名日）", createdAt: new Date(now - 2 * 24 * 60 * 60 * 1000), updatedAt: new Date(now - 2 * 24 * 60 * 60 * 1000) },
@@ -1675,6 +1698,8 @@ const db: DB = new Proxy({} as DB, {
   },
 });
 backfillTenantScope(db);
+if (!db.objectImportTargets) db.objectImportTargets = [];
+if (!db.objectImportCandidates) db.objectImportCandidates = [];
 if (!db.tenants) db.tenants = cloneCollection(_freshDb.tenants);
 db.tenants.forEach(ensureTenantDefaults);
 if (!db.tenantMemberships) db.tenantMemberships = cloneCollection(_freshDb.tenantMemberships);
@@ -1726,6 +1751,8 @@ export function resetBusinessDataForQa(): QaBusinessDataCounts {
     },
   ];
   db.importJobs = [];
+  db.objectImportTargets = [];
+  db.objectImportCandidates = [];
   db.brokerageCases = [];
   db.extractionReviewItems = [];
   db.guaranteeApplicationDrafts = [];
@@ -2217,7 +2244,7 @@ function isValidImportStatusTransition(from: ImportJobStatus, to: ImportJobStatu
   if (allowRetry && from === "failed" && to === "queued") return true;
   if (from === "queued" && to === "failed") return true;
   if (from === "queued" && to === "processing") return true;
-  if (from === "processing" && (to === "mapped" || to === "failed")) return true;
+  if (from === "processing" && (to === "mapped" || to === "failed" || to === "completed")) return true;
   if (from === "mapped" && (to === "queued" || to === "completed" || to === "failed")) return true;
   return false;
 }
@@ -2347,6 +2374,13 @@ export async function bindCurrentClerkIdentityToPendingInvitation(
   }
   candidates[0].externalAuthSubject = subject;
   return { ...candidates[0] };
+}
+
+/** Bind a Supabase identity using the same pending-invitation fail-closed rules. */
+export async function bindCurrentSupabaseIdentityToPendingInvitation(
+  input: ExternalAuthUserInput,
+): Promise<User | null> {
+  return bindCurrentClerkIdentityToPendingInvitation(input);
 }
 
 export async function suspendUserForExternalAuthSubject(subject: string): Promise<{ userId?: string; suspendedMembershipCount: number }> {
@@ -2900,7 +2934,7 @@ export async function updateTenantMemberInvitation(input: {
 }): Promise<TenantMemberListItem | null> {
   const nextDb = cloneDb(db);
   const scopeTenantId = resolveTenantId(input.tenantId);
-  const allowedProviders: readonly string[] = ["none", "manual", "clerk"];
+  const allowedProviders: readonly string[] = ["none", "manual", "clerk", "supabase"];
   const allowedStatuses: readonly string[] = ["pending", "failed", "not_sent", "revoked", "expired"];
   if (!allowedProviders.includes(input.invitationProvider) || !allowedStatuses.includes(input.invitationStatus)) {
     throw new Error("unsupported invitation delivery state");
@@ -2911,15 +2945,15 @@ export async function updateTenantMemberInvitation(input: {
   if (!membership || membership.status !== "invited") return null;
   const actorUserId = input.actorUserId?.trim();
   assertTenantInvitationActorAuthorized(nextDb, scopeTenantId, actorUserId);
-  if (input.invitationProvider === "clerk" && (membership.invitationStatus === "revoked" || membership.invitationStatus === "expired")) return null;
-  const isDuplicateDeliveryFinalization = input.invitationProvider === "clerk" && (
+  if ((input.invitationProvider === "clerk" || input.invitationProvider === "supabase") && (membership.invitationStatus === "revoked" || membership.invitationStatus === "expired")) return null;
+  const isDuplicateDeliveryFinalization = (input.invitationProvider === "clerk" || input.invitationProvider === "supabase") && (
     (input.invitationStatus === "pending"
       && Boolean(input.providerInvitationId)
-      && membership.invitationProvider === "clerk"
+      && membership.invitationProvider === input.invitationProvider
       && membership.invitationStatus === "pending"
       && membership.providerInvitationId === input.providerInvitationId)
     || (input.invitationStatus === "failed"
-      && membership.invitationProvider === "clerk"
+      && membership.invitationProvider === input.invitationProvider
       && membership.invitationStatus === "failed"
       && membership.invitationError === input.invitationError)
   );
@@ -2947,9 +2981,9 @@ export async function updateTenantMemberInvitation(input: {
   membership.invitationAcceptedAt = input.acceptedAt ?? membership.invitationAcceptedAt;
   membership.invitationExpiresAt = nextInvitationExpiresAt;
   membership.updatedAt = nowDate;
-  const auditAction = input.invitationProvider === "clerk" && input.invitationStatus === "pending"
+  const auditAction = (input.invitationProvider === "clerk" || input.invitationProvider === "supabase") && input.invitationStatus === "pending"
     ? "member_invitation_sent"
-    : input.invitationProvider === "clerk" && input.invitationStatus === "failed"
+    : (input.invitationProvider === "clerk" || input.invitationProvider === "supabase") && input.invitationStatus === "failed"
       ? "member_invitation_failed"
       : null;
   if (auditAction) {
@@ -3574,6 +3608,7 @@ export async function addImportJob(input: {
   status?: ImportJobStatus;
   notes?: string;
   idempotencyKey?: string;
+  uploadLifecycleVersion?: 1;
 }): Promise<ImportJob> {
   const sourceLabel: Record<ImportSourceType, string> = {
     excel: "Excel",
@@ -3598,12 +3633,34 @@ export async function addImportJob(input: {
     status: input.status ?? "queued",
     notes: input.notes?.trim() || undefined,
     idempotencyKey: input.idempotencyKey?.trim() || undefined,
+    uploadLifecycleVersion: input.uploadLifecycleVersion ?? 0,
     attemptCount: 0,
     createdAt: nowDate,
     updatedAt: nowDate,
   };
   db.importJobs.unshift(job);
   return job;
+}
+
+export async function claimPropertyRowImport(input: { tenantId: string; userId: string; jobId: string }): Promise<boolean> {
+  const job = db.importJobs.find((item) => item.id === input.jobId && item.tenantId === input.tenantId && item.userId === input.userId);
+  const tenant = db.tenants.find((item) => item.id === input.tenantId);
+  const member = db.tenantMemberships.find((item) => item.tenantId === input.tenantId && item.userId === input.userId && item.status === "active");
+  if (!job || !member || !tenant || !isTenantServiceOperational(deriveTenantServiceState(tenant)) || !mayStartPropertyImport(job)) return false;
+  // No await between checking and permanently claiming; competing callers cannot both win.
+  job.finalImportStartedAt = new Date();
+  job.status = "processing";
+  job.updatedAt = new Date();
+  return true;
+}
+
+export async function deletePreimportPropertyUpload(input: { tenantId: string; userId: string; jobId: string }): Promise<boolean> {
+  const job = db.importJobs.find((item) => item.id === input.jobId && item.tenantId === input.tenantId && item.userId === input.userId);
+  const tenant = db.tenants.find((item) => item.id === input.tenantId);
+  const member = db.tenantMemberships.find((item) => item.tenantId === input.tenantId && item.userId === input.userId && item.status === "active");
+  if (!job || !member || !tenant || !isTenantServiceOperational(deriveTenantServiceState(tenant)) || !mayDeletePreimportUpload(job, member)) return false;
+  // Memory has no durable postgres-private blob store: fail closed instead of simulating a deletion.
+  return false;
 }
 
 export async function updateImportJobMapping(input: {
@@ -3615,12 +3672,18 @@ export async function updateImportJobMapping(input: {
   notes?: string;
   status?: ImportJobStatus;
   allowRetry?: boolean;
+  beforeFinalImport?: boolean;
 }): Promise<ImportJob | null> {
   const scopeTenantId = resolveTenantId(input.tenantId);
   const job = db.importJobs.find(
     (item) => item.userId === input.userId && item.tenantId === scopeTenantId && item.id === input.jobId,
   );
   if (!job) return null;
+  if (input.beforeFinalImport && job.finalImportStartedAt) return null;
+
+  if (job.finalImportStartedAt && input.status && !["processing", "completed", "failed"].includes(input.status)) {
+    throw new Error("import_execution_started");
+  }
 
   job.mappingJson = input.mappingJson;
   job.validationMessage = input.validationMessage?.trim() || undefined;
@@ -3645,12 +3708,14 @@ export async function updateImportJobExecution(input: {
   errorCode?: string;
   errorSummary?: string;
   allowRetry?: boolean;
+  beforeFinalImport?: boolean;
 }): Promise<ImportJob | null> {
   const scopeTenantId = resolveTenantId(input.tenantId);
   const job = db.importJobs.find(
     (item) => item.userId === input.userId && item.tenantId === scopeTenantId && item.id === input.jobId,
   );
   if (!job) return null;
+  if (input.beforeFinalImport && job.finalImportStartedAt) return null;
   if (!isValidImportStatusTransition(job.status, input.status, Boolean(input.allowRetry))) {
     throw new Error(`資料読取記録の状態変更が不正です: ${job.status} -> ${input.status}`);
   }
@@ -3682,6 +3747,7 @@ export async function retryImportJobExecution(input: {
     (item) => item.userId === input.userId && item.tenantId === scopeTenantId && item.id === input.jobId,
   );
   if (!job) return null;
+  if (job.finalImportStartedAt) throw new Error("import_execution_started");
   if (job.status !== "failed") return { ...job };
 
   job.status = "queued";
@@ -3795,6 +3861,56 @@ export async function updateBrokerageCaseConfirmedData(input: {
   if (input.primaryPropertyId !== undefined) item.primaryPropertyId = input.primaryPropertyId ?? undefined;
   item.updatedAt = new Date();
   return cloneBrokerageCase(item);
+}
+
+export type SaveCaseWorkbenchWithObjectReviewInput = {
+  context: RequestContext;
+  caseId: string;
+  confirmedDataJson: Record<string, unknown>;
+  objectReview?: ObjectImportReviewInput & { caseFieldValue?: string };
+};
+
+export type SaveCaseWorkbenchWithObjectReviewResult =
+  | { ok: true; brokerageCase: BrokerageCase; objectReview?: Extract<ObjectImportReviewResult, { ok: true }> }
+  | { ok: false; reason: "case_not_writable" | "not_writable" | "conflict" | "invalid_value" | "already_reviewed" | "unsupported_target" };
+
+export type RefreshObjectImportReviewInput = {
+  context: RequestContext;
+  targetId: string;
+  fieldId: string;
+  expectedVersion: string;
+  observedVersion: string;
+  expectedCandidateValue: string;
+};
+
+export type RefreshObjectImportReviewResult =
+  | { ok: true; caseId: string; targetVersion: string }
+  | { ok: false; reason: "not_writable" | "conflict" | "already_reviewed" | "unsupported_target" };
+
+export async function refreshObjectImportReview(input: RefreshObjectImportReviewInput): Promise<RefreshObjectImportReviewResult> {
+  const { context } = input;
+  const target = db.objectImportTargets.find((item) => item.id === input.targetId && item.tenantId === context.tenantId && item.userId === context.userId);
+  const field = db.objectImportCandidates.find((item) => item.id === input.fieldId && item.targetId === input.targetId && item.tenantId === context.tenantId);
+  if (!target || !field) return { ok: false, reason: "not_writable" };
+  if (target.targetType !== "party" && target.targetType !== "property") return { ok: false, reason: "unsupported_target" };
+  if (target.targetVersion !== input.expectedVersion || target.status !== "needs_review") {
+    return { ok: false, reason: field.finalSource === "human" || field.status === "confirmed" || field.status === "rejected" ? "already_reviewed" : "conflict" };
+  }
+  if ((field.candidateValue ?? "") !== input.expectedCandidateValue || field.finalSource === "human" || ["confirmed", "rejected"].includes(field.status)) return { ok: false, reason: field.finalSource === "human" || ["confirmed", "rejected"].includes(field.status) ? "already_reviewed" : "conflict" };
+  const caseItem = db.brokerageCases.find((item) => item.id === target.caseId && item.tenantId === context.tenantId);
+  const person = (target.targetType === "party" ? db.clients : db.properties).find((item) => item.id === target.targetId && item.tenantId === context.tenantId);
+  const membership = db.tenantMemberships.find((item) => item.id === context.membershipId && item.userId === context.userId && item.tenantId === context.tenantId && item.status === "active");
+  if (!membership || !caseItem || caseItem.lifecycleStatus === "archived" || !person || person.lifecycleStatus === "archived" || !resolveRecordVisibility(context, caseItem).canWrite || !resolveRecordVisibility(context, person).canWrite) return { ok: false, reason: "not_writable" };
+  const associated = target.targetType === "party"
+    ? readCaseAssociationDraft(caseItem.confirmedDataJson).parties.some((item) => item.partyId === person.id)
+    : readCaseAssociationDraft(caseItem.confirmedDataJson).primaryPropertyId === person.id;
+  if (!associated || !hasObjectImportSource(target, field)) return { ok: false, reason: "not_writable" };
+  const currentVersion = buildObjectVersionFingerprint(person as unknown as Record<string, unknown>);
+  if (currentVersion !== input.observedVersion || currentVersion === target.targetVersion || !input.observedVersion.trim()) return { ok: false, reason: "conflict" };
+  target.targetVersion = currentVersion;
+  target.updatedAt = new Date();
+  db.auditLogs.unshift({ id: makeId("audit"), tenantId: context.tenantId, userId: context.userId, actorId: context.userId, action: "object_import_review_rebased", targetType: target.targetType === "party" ? "client" : "property", targetId: person.id, message: "Object import review baseline refreshed", context: { importTargetId: target.id, fieldId: field.id, previousVersion: input.expectedVersion, targetVersion: currentVersion }, createdAt: new Date() });
+  return { ok: true, caseId: target.caseId, targetVersion: currentVersion };
 }
 
 export async function saveBrokerageCaseExtractionReview(input: {
@@ -5613,8 +5729,11 @@ export async function listQuotations(limit?: number, tenantId?: string): Promise
 
 /** Resolver-bound quotation projection; hidden related records are excluded. */
 export async function listQuotationsForContext(input: { context: RequestContext; limit?: number }): Promise<DashboardQuoteItem[]> {
-  const visibleClients = await listClientsForContext({ context: input.context, filter: { lifecycleStatus: "active", sort: "recent_created" } });
-  const visibleProperties = await listPropertiesForContext({ context: input.context, lifecycleStatus: "active" });
+  // Quote history preserves the legacy all-lifecycle list contract. Archived
+  // person/property records remain readable to authorized users, so list and
+  // detail/count must apply the same lifecycle semantics.
+  const visibleClients = await listClientsForContext({ context: input.context, filter: { lifecycleStatus: "all", sort: "recent_created" } });
+  const visibleProperties = await listPropertiesForContext({ context: input.context, lifecycleStatus: "all" });
   const clientIds = new Set(visibleClients.filter((item) => item.resolution.canRead).map((item) => item.client?.id).filter(Boolean));
   const propertyIds = new Set(visibleProperties.filter((item) => item.resolution.canRead).map((item) => item.property?.id).filter(Boolean));
   return db.quotations
@@ -5642,6 +5761,18 @@ export async function getQuotationById(quoteId: string, tenantId?: string) {
     client: db.clients.find((item) => item.id === quote.clientId && item.tenantId === scopeTenantId),
     property: quote.propertyId ? db.properties.find((item) => item.id === quote.propertyId && item.tenantId === scopeTenantId) : undefined,
   };
+}
+
+/** Resolver-bound quotation detail; both related records must be readable. */
+export async function getQuotationByIdForContext(input: { context: RequestContext; quoteId: string }): Promise<DashboardQuoteItem | null> {
+  const quote = db.quotations.find((item) => item.id === input.quoteId && item.tenantId === input.context.tenantId);
+  if (!quote) return null;
+  const client = await resolveClientVisibilityForContext({ context: input.context, clientId: quote.clientId });
+  if (!client.record) return null;
+  if (!quote.propertyId) return { ...quote, client: client.record, property: undefined };
+  const property = await resolvePropertyVisibilityForContext({ context: input.context, propertyId: quote.propertyId });
+  if (!property.record) return null;
+  return { ...quote, client: client.record, property: property.record };
 }
 
 export async function addClient(input: {
@@ -5986,12 +6117,16 @@ export async function resolveComplianceAlert(input: {
 export async function updateTaskStatus(input: {
   tenantId?: string;
   taskId: string;
+  expectedClientId: string;
   status: TaskStatus;
   updatedById: string;
 }) {
   const scopeTenantId = resolveTenantId(input.tenantId);
-  const task = db.tasks.find((entry) => entry.id === input.taskId && entry.tenantId === scopeTenantId);
+  if (!input.expectedClientId) return null;
+  const task = db.tasks.find((entry) =>
+    entry.id === input.taskId && entry.tenantId === scopeTenantId && entry.clientId === input.expectedClientId);
   if (!task) return null;
+  if (task.status === input.status) return task;
   task.status = input.status;
   const statusLabel = input.status === "done" ? "完了" : input.status === "canceled" ? "取消" : "未着手";
 
@@ -6021,11 +6156,14 @@ export async function updateTaskStatus(input: {
 export async function rescheduleTask(input: {
   tenantId?: string;
   taskId: string;
+  expectedClientId: string;
   dueAt: Date;
   updatedById: string;
 }) {
   const scopeTenantId = resolveTenantId(input.tenantId);
-  const task = db.tasks.find((entry) => entry.id === input.taskId && entry.tenantId === scopeTenantId);
+  if (!input.expectedClientId) return null;
+  const task = db.tasks.find((entry) =>
+    entry.id === input.taskId && entry.tenantId === scopeTenantId && entry.clientId === input.expectedClientId);
   if (!task) return null;
   task.dueAt = input.dueAt;
   task.status = "pending";
@@ -6306,4 +6444,166 @@ export async function resolveCaseVisibilityForContext(input: {
   const record = db.brokerageCases.find((item) => item.id === input.caseId) ?? null;
   const resolution = resolveRecordVisibility(input.context, record);
   return { resolution, record: resolution.canRead && record ? cloneBrokerageCase(record) : null };
+}
+
+function objectImportRepository() {
+  return new MemoryObjectImportRepository(db.objectImportTargets, db.objectImportCandidates);
+}
+export async function getObjectImportFeatureReadiness(): Promise<ObjectImportFeatureReadiness> {
+  return { ready: true };
+}
+export const getObjectImportTarget = (input: Parameters<MemoryObjectImportRepository["getTarget"]>[0]) => objectImportRepository().getTarget(input);
+export const getObjectImportTargetByJob = (input: Parameters<MemoryObjectImportRepository["getTargetByJob"]>[0]) => objectImportRepository().getTargetByJob(input);
+export async function getObjectImportCaseIdByJob(input: { tenantId: string; userId: string; importJobId: string }): Promise<string | null> {
+  return (await objectImportRepository().getTargetByJob(input))?.caseId ?? null;
+}
+
+export const listObjectImportTargets = (input: Parameters<MemoryObjectImportRepository["listTargets"]>[0]) => objectImportRepository().listTargets(input);
+export const createObjectImportTarget = (input: Parameters<MemoryObjectImportRepository["createTarget"]>[0]) => objectImportRepository().createTarget(input);
+export const updateObjectImportTarget = (input: Parameters<MemoryObjectImportRepository["updateTarget"]>[0]) => objectImportRepository().updateTarget(input);
+export const upsertObjectImportCandidate = (input: Parameters<MemoryObjectImportRepository["upsertCandidate"]>[0]) => objectImportRepository().upsertCandidate(input);
+export const listObjectImportCandidates = (input: Parameters<MemoryObjectImportRepository["listCandidates"]>[0]) => objectImportRepository().listCandidates(input);
+
+function hasObjectImportSource(target: ObjectImportTargetRecord, field: ObjectImportCandidateRecord): boolean {
+  const attachment = db.attachments.find((item) => item.id === target.sourceAttachmentId && item.tenantId === target.tenantId && item.userId === target.userId && item.targetType === "import_job" && item.targetId === target.importJobId);
+  const content = attachment ? privateAttachmentContents.get(attachment.id) : undefined;
+  return Boolean(attachment && content?.length && field.provenance.sourceAttachmentId === attachment.id && field.provenance.sourceFileHash === createHash("sha256").update(content).digest("hex"));
+}
+
+/** No await between checking the version and mutating the shared memory holder. */
+export async function reviewObjectImportCandidate(input: ObjectImportReviewInput): Promise<ObjectImportReviewResult> {
+  const { context } = input;
+  const target = db.objectImportTargets.find((item) => item.id === input.targetId && item.tenantId === context.tenantId && item.userId === context.userId);
+  const field = db.objectImportCandidates.find((item) => item.id === input.fieldId && item.targetId === input.targetId && item.tenantId === context.tenantId);
+  if (!target || !field) return { ok: false, reason: "not_writable" };
+  const caseItem = db.brokerageCases.find((item) => item.id === target.caseId && item.tenantId === context.tenantId);
+  const person = (target.targetType === "party" ? db.clients : db.properties).find((item) => item.id === target.targetId && item.tenantId === context.tenantId);
+  const membership = db.tenantMemberships.find((item) => item.id === context.membershipId && item.userId === context.userId && item.tenantId === context.tenantId && item.status === "active");
+  if (!membership || !caseItem || !person || caseItem.lifecycleStatus === "archived" || person.lifecycleStatus === "archived" || !resolveRecordVisibility(context, caseItem).canWrite || !resolveRecordVisibility(context, person).canWrite || !(target.targetType === "party" ? readCaseAssociationDraft(caseItem.confirmedDataJson).parties.some((item) => item.partyId === person.id) : readCaseAssociationDraft(caseItem.confirmedDataJson).primaryPropertyId === person.id)) return { ok: false, reason: "not_writable" };
+  if (!hasObjectImportSource(target, field)) return { ok: false, reason: "not_writable" };
+  const validated = validateObjectImportReview(input, target, field, person as unknown as Record<string, unknown>);
+  if (!validated.ok) return validated;
+  const mutableRecord = person as unknown as Record<string, unknown>;
+  const before = mutableRecord[validated.key];
+  const date = new Date();
+  if (input.decision === "confirm") { mutableRecord[validated.key] = validated.recordValue; if ("updatedAt" in person) person.updatedAt = date; }
+  field.finalValue = input.decision === "confirm" ? validated.value : undefined;
+  field.finalSource = "human";
+  field.status = input.decision === "confirm" ? "confirmed" : "rejected";
+  field.confirmedByUserId = context.userId;
+  field.confirmedAt = date;
+  target.targetVersion = buildObjectVersionFingerprint(person as unknown as Record<string, unknown>);
+  target.updatedAt = date;
+  target.status = db.objectImportCandidates.filter((item) => item.targetId === target.id && item.tenantId === context.tenantId).every((item) => item.finalSource === "human") ? "completed" : "needs_review";
+  db.auditLogs.unshift({ id: makeId("audit"), tenantId: context.tenantId, userId: context.userId, actorId: context.userId, action: `object_import_${input.decision}`, targetType: target.targetType === "party" ? "client" : "property", targetId: person.id, message: "Object import field reviewed", context: { importTargetId: target.id, fieldKey: validated.key, before: before ?? null, after: input.decision === "confirm" ? validated.recordValue : before ?? null }, createdAt: date });
+  return { ok: true, caseId: target.caseId, targetVersion: target.targetVersion };
+}
+
+export async function saveCaseWorkbenchWithObjectReview(
+  input: SaveCaseWorkbenchWithObjectReviewInput,
+): Promise<SaveCaseWorkbenchWithObjectReviewResult> {
+  const { context } = input;
+  const caseItem = db.brokerageCases.find(
+    (item) =>
+      item.id === input.caseId &&
+      item.tenantId === context.tenantId &&
+      item.currentOwnerUserId === context.userId &&
+      item.ownerResolutionStatus === "resolved",
+  );
+  if (!caseItem || !resolveRecordVisibility(context, caseItem).canWrite) return { ok: false, reason: "case_not_writable" };
+
+  let reviewData:
+    | { target: ObjectImportTargetRecord; field: ObjectImportCandidateRecord; person: Client | Property; validated: Extract<ReturnType<typeof validateObjectImportReview>, { ok: true }> }
+    | undefined;
+  if (input.objectReview) {
+    const review = input.objectReview;
+    const target = db.objectImportTargets.find(
+      (item) => item.id === review.targetId && item.tenantId === context.tenantId && item.userId === context.userId,
+    );
+    const field = db.objectImportCandidates.find(
+      (item) => item.id === review.fieldId && item.targetId === review.targetId && item.tenantId === context.tenantId,
+    );
+    const person = target
+      ? (target.targetType === "party" ? db.clients : db.properties).find((item) => item.id === target.targetId && item.tenantId === context.tenantId)
+      : undefined;
+    const membership = db.tenantMemberships.find(
+      (item) => item.id === context.membershipId && item.userId === context.userId && item.tenantId === context.tenantId && item.status === "active",
+    );
+    if (!target || !field || !person || !membership || target.caseId !== input.caseId || person.lifecycleStatus === "archived" || caseItem.lifecycleStatus === "archived") {
+      return { ok: false, reason: "not_writable" };
+    }
+    if (!resolveRecordVisibility(context, person).canWrite || !(target.targetType === "party"
+      ? readCaseAssociationDraft(caseItem.confirmedDataJson).parties.some((item) => item.partyId === person.id)
+      : readCaseAssociationDraft(caseItem.confirmedDataJson).primaryPropertyId === person.id)) {
+      return { ok: false, reason: "not_writable" };
+    }
+    if (!hasObjectImportSource(target, field)) return { ok: false, reason: "not_writable" };
+    const validated = validateObjectImportReview(review, target, field, person as unknown as Record<string, unknown>);
+    if (!validated.ok) return validated;
+    if (review.caseFieldValue !== undefined && review.caseFieldValue.trim() !== validated.value) return { ok: false, reason: "invalid_value" };
+    if (validated.scope === "case") {
+      const existingCaseValue = typeof caseItem.confirmedDataJson[validated.key] === "string" ? String(caseItem.confirmedDataJson[validated.key]).trim() : "";
+      if (input.objectReview?.decision === "confirm" && existingCaseValue && existingCaseValue !== validated.value) return { ok: false, reason: "conflict" };
+    }
+    reviewData = { target, field, person, validated };
+  }
+
+  const caseBefore = structuredClone(caseItem);
+  const personBefore = reviewData ? structuredClone(reviewData.person) : undefined;
+  const fieldBefore = reviewData ? structuredClone(reviewData.field) : undefined;
+  const targetBefore = reviewData ? structuredClone(reviewData.target) : undefined;
+  const auditBefore = db.auditLogs.slice();
+  try {
+    caseItem.confirmedDataJson = { ...input.confirmedDataJson };
+    caseItem.updatedAt = new Date();
+    let objectReview: Extract<ObjectImportReviewResult, { ok: true }> | undefined;
+    if (reviewData) {
+      const { target, field, person, validated } = reviewData;
+      const mutableRecord = person as unknown as Record<string, unknown>;
+      if (input.objectReview?.decision === "confirm" && validated.scope === "object") {
+        mutableRecord[validated.key] = validated.recordValue;
+        if ("updatedAt" in person) person.updatedAt = new Date();
+      }
+      field.finalValue = input.objectReview?.decision === "confirm" ? validated.value : undefined;
+      field.finalSource = "human";
+      field.status = input.objectReview?.decision === "confirm" ? "confirmed" : "rejected";
+      field.confirmedByUserId = context.userId;
+      field.confirmedAt = new Date();
+      target.targetVersion = validated.scope === "object" ? buildObjectVersionFingerprint(mutableRecord) : target.targetVersion;
+      target.updatedAt = new Date();
+      target.status = db.objectImportCandidates
+        .filter((item) => item.targetId === target.id && item.tenantId === context.tenantId)
+        .every((item) => item.finalSource === "human")
+        ? "completed"
+        : "needs_review";
+      db.auditLogs.unshift({
+        id: makeId("audit"),
+        tenantId: context.tenantId,
+        userId: context.userId,
+        actorId: context.userId,
+        action: `object_import_${input.objectReview?.decision}`,
+        targetType: validated.scope === "case" ? "case" : target.targetType === "party" ? "client" : "property",
+        targetId: validated.scope === "case" ? target.caseId : person.id,
+        message: "Object import field reviewed",
+        context: {
+          importTargetId: target.id,
+          fieldKey: validated.key,
+          before: validated.scope === "case" ? caseBefore.confirmedDataJson[validated.key] ?? null : personBefore ? (personBefore as unknown as Record<string, unknown>)[validated.key] ?? null : null,
+          after: input.objectReview?.decision === "confirm" ? validated.recordValue : null,
+        },
+        createdAt: new Date(),
+      });
+      objectReview = { ok: true, caseId: target.caseId, targetVersion: target.targetVersion };
+    }
+    return { ok: true, brokerageCase: cloneBrokerageCase(caseItem), objectReview };
+  } catch (error) {
+    Object.assign(caseItem, caseBefore);
+    if (reviewData && personBefore && fieldBefore && targetBefore) {
+      Object.assign(reviewData.person, personBefore);
+      Object.assign(reviewData.field, fieldBefore);
+      Object.assign(reviewData.target, targetBefore);
+    }
+    db.auditLogs = auditBefore;
+    throw error;
+  }
 }

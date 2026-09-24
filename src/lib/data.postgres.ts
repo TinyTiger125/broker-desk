@@ -1,7 +1,11 @@
+import { validateObjectImportReview, type ObjectImportReviewInput, type ObjectImportReviewResult } from "@/lib/object-import-review";
+import { buildObjectVersionFingerprint, resolveObjectImportFeatureReadiness, type ObjectImportFeatureReadiness } from "@/lib/object-import-contract";
+import { readCaseAssociationDraft } from "@/lib/case-associations";
+import { PostgresObjectImportRepository, mapObjectImportTarget, mapObjectImportCandidate } from "@/lib/object-import-repository.postgres";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
 import { Pool, type PoolClient } from "pg";
-import { normalizeDatabaseConnectionString } from "@/lib/database-connection";
+import { buildDatabasePoolConnectionConfig, getDatabasePoolMax } from "@/lib/database-connection";
 import { cache } from "react";
 import { computeQuote } from "@/lib/quote";
 import {
@@ -27,6 +31,12 @@ import {
   type OutputTemplateSettingsInput,
 } from "@/lib/output-doc";
 import { DEFAULT_TENANT_ID } from "@/lib/tenant-constants";
+import {
+  buildHealthBindingDetail,
+  buildHealthFailureCause,
+  parseHealthBindingTarget,
+  type HealthBindingDetail,
+} from "@/lib/health-diagnostics";
 import {
   assertProductionDataStoreReady,
   isProductionRuntime,
@@ -93,6 +103,10 @@ import type {
   VisibleRecordSearchHit,
   WorkCenterClientSummary,
   WorkCenterSnapshot,
+  SaveCaseWorkbenchWithObjectReviewInput,
+  SaveCaseWorkbenchWithObjectReviewResult,
+  RefreshObjectImportReviewInput,
+  RefreshObjectImportReviewResult,
 } from "@/lib/data.memory";
 import type { VisibleBrokerageCase, VisibleProperty } from "@/lib/data.memory";
 import type { TenantRole, TenantCapabilityPreset } from "@/lib/tenant-permissions";
@@ -170,6 +184,15 @@ const REQUIRED_PRODUCTION_MIGRATIONS = [
   "20260828_001_tenant_service_period.sql",
   "20260830_001_object_attachment_links.sql",
   "20260830_002_object_attachment_runtime_grant.sql",
+  "20260902_001_current_external_auth_user_bootstrap.sql",
+  "20260902_002_runtime_migration_ledger_read.sql",
+  "20260902_003_runtime_acl_baseline.sql",
+  "20260904_001_runtime_external_auth_subject_execute.sql",
+  "20260908_001_preimport_upload_lifecycle.sql",
+  "20260921_001_supabase_auth_lifecycle.sql",
+  "20260924_001_admin_preimport_helper_execute.sql",
+  "20260924_002_admin_worker_identity_read.sql",
+  "20260924_003_runtime_object_import_case_lookup.sql",
 ] as const;
 
 const OPEN_STAGES: ClientStage[] = ["lead", "contacted", "quoted", "viewing", "negotiating"];
@@ -191,23 +214,18 @@ function getRawPool(): Pool {
     const rawConnectionString = isProductionRuntime()
       ? process.env.DATABASE_URL
       : process.env.DATABASE_DEVELOPMENT_URL ?? process.env.DATABASE_URL;
-    const connectionString = normalizeDatabaseConnectionString(rawConnectionString);
+    const connectionConfig = buildDatabasePoolConnectionConfig(rawConnectionString);
     pool = new Pool({
-      connectionString,
+      ...connectionConfig,
       // Neon connection setup is materially slower than a normal indexed read.
       // Keep a small number of authenticated sessions alive so each route does
       // not fan out into a new cold connection for every independent query.
-      max: 4,
+      max: getDatabasePoolMax(4),
       // Keep one development connection available while the local app is being
       // tested. Production can scale idle connections back to zero.
       min: process.env.NODE_ENV === "development" ? 1 : 0,
       idleTimeoutMillis: process.env.NODE_ENV === "development" ? 15 * 60 * 1000 : 60 * 1000,
       connectionTimeoutMillis: 10 * 1000,
-      ssl: connectionString?.includes("supabase.co")
-        ? {
-            rejectUnauthorized: false,
-          }
-        : undefined,
     });
     brokerDeskGlobal.__brokerDeskPostgresPool = pool;
     // node-postgres emits this when the database closes an idle client. The
@@ -852,6 +870,9 @@ function mapImportJob(row: Record<string, unknown>): ImportJob {
     errorCode: row.error_code ? String(row.error_code) : undefined,
     errorSummary: row.error_summary ? String(row.error_summary) : undefined,
     idempotencyKey: row.idempotency_key ? String(row.idempotency_key) : undefined,
+    uploadLifecycleVersion: Number(row.upload_lifecycle_version ?? 0),
+    finalImportStartedAt: toDate(row.final_import_started_at),
+    sourceReferencedAt: toDate(row.source_referenced_at),
     createdAt: toDate(row.created_at) ?? new Date(),
     updatedAt: toDate(row.updated_at) ?? new Date(),
   };
@@ -1140,7 +1161,14 @@ async function assertProductionMigrationsApplied(db: Pool) {
     }
   } catch (error) {
     if (error instanceof ProductionReadinessError) throw error;
-    throw new ProductionReadinessError("production_migrations_required");
+    const readinessError = new ProductionReadinessError("production_migrations_required");
+    Object.defineProperty(readinessError, "cause", {
+      value: buildHealthFailureCause(error, "ledger_query"),
+      enumerable: false,
+      configurable: false,
+      writable: false,
+    });
+    throw readinessError;
   }
 }
 
@@ -2086,12 +2114,17 @@ async function withTransaction<T>(fn: (client: PoolClient) => Promise<T>) {
   }
 }
 
+/** Narrow transaction seam for object-import CAS; general writers remain private. */
+export async function runObjectImportTransaction<T>(fn: (client: PoolClient) => Promise<T>) {
+  return withTransaction(fn);
+}
+
 function isValidImportStatusTransition(from: ImportJobStatus, to: ImportJobStatus, allowRetry: boolean): boolean {
   if (from === to) return true;
   if (allowRetry && from === "failed" && to === "queued") return true;
   if (from === "queued" && to === "failed") return true;
   if (from === "queued" && to === "processing") return true;
-  if (from === "processing" && (to === "mapped" || to === "failed")) return true;
+  if (from === "processing" && (to === "mapped" || to === "failed" || to === "completed")) return true;
   if (from === "mapped" && (to === "queued" || to === "completed" || to === "failed")) return true;
   return false;
 }
@@ -2116,11 +2149,6 @@ export async function getUserByExternalAuthSubject(subject: string): Promise<Use
   return result.rows[0] ? mapUser(result.rows[0]) : null;
 }
 
-function fallbackEmailForExternalSubject(subject: string): string {
-  const safeSubject = subject.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "user";
-  return `external-${safeSubject}@brokerdesk.local`;
-}
-
 export async function ensureUserForExternalAuth(input: {
   subject: string;
   email?: string;
@@ -2130,47 +2158,16 @@ export async function ensureUserForExternalAuth(input: {
   const subject = input.subject.trim();
   if (!subject) return null;
 
-  const email = input.email?.trim().toLowerCase();
-  const fallbackEmail = fallbackEmailForExternalSubject(subject);
+  const email = input.email?.trim().toLowerCase() || null;
   const name = input.name?.trim() || email || subject;
 
   return withTransaction(async (client) => {
-    const bySubject = await client.query("SELECT * FROM users WHERE external_auth_subject = $1 LIMIT 1", [subject]);
-    if (bySubject.rows[0]) {
-      const user = mapUser(bySubject.rows[0]);
-      return user;
-    }
-
-    if (email) {
-      const byEmail = await client.query("SELECT * FROM users WHERE lower(email) = lower($1) LIMIT 1", [email]);
-      if (byEmail.rows[0]) {
-        const user = mapUser(byEmail.rows[0]);
-        if (user.externalAuthSubject && user.externalAuthSubject !== subject) {
-          throw new Error("email is already linked to another external identity");
-        }
-        const linked = await client.query(
-          `UPDATE users
-           SET external_auth_subject = $1,
-               name = CASE WHEN trim(name) = '' THEN $2 ELSE name END
-           WHERE id = $3
-           RETURNING *`,
-          [subject, name, user.id],
-        );
-        const linkedUser = mapUser(linked.rows[0]);
-        return linkedUser;
-      }
-    }
-
-    const inserted = await client.query(
-      `INSERT INTO users (id, name, email, password_hash, external_auth_subject)
-       VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT (external_auth_subject) DO UPDATE SET
-         name = CASE WHEN trim(users.name) = '' THEN EXCLUDED.name ELSE users.name END
-      RETURNING *`,
-      [genId("user"), name, email || fallbackEmail, "external_auth_user", subject],
+    await client.query("SELECT set_config('app.broker_desk_deployment_env', $1, true)", [getTenantDeploymentEnvironment()]);
+    const result = await client.query(
+      `SELECT * FROM brokerdesk_private.ensure_current_external_auth_user($1, $2)`,
+      [email, name],
     );
-    const user = mapUser(inserted.rows[0]);
-    return user;
+    return result.rows[0] ? mapUser(result.rows[0]) : null;
   });
 }
 
@@ -2202,6 +2199,28 @@ export async function bindCurrentClerkIdentityToPendingInvitation(input: {
     // applied migration set. Until it is applied, retain the honest
     // no-binding result rather than turning an unconfigured invite path into
     // a generic page failure.
+    if ((error as { code?: string })?.code === "42883") return null;
+    throw error;
+  }
+}
+
+export async function bindCurrentSupabaseIdentityToPendingInvitation(input: {
+  subject: string;
+  email?: string;
+  name?: string;
+}): Promise<User | null> {
+  await ensureSchema();
+  const subject = input.subject.trim();
+  const email = input.email?.trim().toLowerCase();
+  if (!subject || !email) return null;
+  try {
+    const result = await getPool().query(
+      `SELECT brokerdesk_private.bind_current_supabase_identity_to_pending_invitation($1, $2, $3) AS user_id`,
+      [subject, email, input.name?.trim() || null],
+    );
+    if (!result.rows[0]?.user_id) return null;
+    return getUserByExternalAuthSubject(subject);
+  } catch (error) {
     if ((error as { code?: string })?.code === "42883") return null;
     throw error;
   }
@@ -2601,7 +2620,7 @@ export async function updateTenantMemberInvitation(input: {
   acceptedAt?: Date;
   expiresAt?: Date;
 }): Promise<TenantMemberListItem | null> {
-  const allowedProviders: readonly string[] = ["none", "manual", "clerk"];
+  const allowedProviders: readonly string[] = ["none", "manual", "clerk", "supabase"];
   const allowedStatuses: readonly string[] = ["pending", "failed", "not_sent", "revoked", "expired"];
   if (!allowedProviders.includes(input.invitationProvider) || !allowedStatuses.includes(input.invitationStatus)) {
     throw new Error("unsupported invitation delivery state");
@@ -3297,6 +3316,7 @@ export async function addImportJob(input: {
   status?: ImportJobStatus;
   notes?: string;
   idempotencyKey?: string;
+  uploadLifecycleVersion?: 1;
 }): Promise<ImportJob> {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(input.tenantId);
@@ -3314,8 +3334,8 @@ export async function addImportJob(input: {
   };
   const result = await getPool().query(
     `INSERT INTO import_jobs (
-      id, tenant_id, user_id, source_type, title, target_entity, status, notes, mapping_json, validation_message, idempotency_key, created_at, updated_at
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULL,NULL,$9,NOW(),NOW())
+      id, tenant_id, user_id, source_type, title, target_entity, status, notes, mapping_json, validation_message, idempotency_key, upload_lifecycle_version, created_at, updated_at
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULL,NULL,$9,$10,NOW(),NOW())
     RETURNING *`,
     [
       genId("import"),
@@ -3327,9 +3347,29 @@ export async function addImportJob(input: {
       input.status ?? "queued",
       input.notes?.trim() || null,
       input.idempotencyKey?.trim() || null,
+      input.uploadLifecycleVersion ?? 0,
     ]
   );
   return mapImportJob(result.rows[0]);
+}
+
+export async function claimPropertyRowImport(input: { tenantId: string; userId: string; jobId: string }): Promise<boolean> {
+  await ensureSchema();
+  const result = await getPool().query(
+    "SELECT brokerdesk_private.claim_property_row_import($1, $2) AS claimed",
+    [input.tenantId, input.jobId],
+  );
+  return result.rows[0]?.claimed === true;
+}
+
+export async function deletePreimportPropertyUpload(input: { tenantId: string; userId: string; jobId: string }): Promise<boolean> {
+  await ensureSchema();
+  // The function derives actor identity from the authenticated database scope, never from form input.
+  const result = await getPool().query(
+    "SELECT brokerdesk_private.delete_preimport_property_upload($1, $2) AS deleted",
+    [input.tenantId, input.jobId],
+  );
+  return result.rows[0]?.deleted === true;
 }
 
 export async function updateImportJobMapping(input: {
@@ -3341,15 +3381,17 @@ export async function updateImportJobMapping(input: {
   notes?: string;
   status?: ImportJobStatus;
   allowRetry?: boolean;
+  beforeFinalImport?: boolean;
 }): Promise<ImportJob | null> {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(input.tenantId);
 
   const currentRes = await getPool().query(
-    "SELECT status FROM import_jobs WHERE id = $1 AND user_id = $2 AND tenant_id = $3 LIMIT 1",
+    "SELECT status, final_import_started_at FROM import_jobs WHERE id = $1 AND user_id = $2 AND tenant_id = $3 LIMIT 1",
     [input.jobId, input.userId, scopeTenantId]
   );
   if (!currentRes.rows[0]) return null;
+  if (input.beforeFinalImport && currentRes.rows[0].final_import_started_at) return null;
   const currentStatus = String(currentRes.rows[0].status) as ImportJobStatus;
   if (input.status && !isValidImportStatusTransition(currentStatus, input.status, Boolean(input.allowRetry))) {
     throw new Error(`資料読取記録の状態変更が不正です: ${currentStatus} -> ${input.status}`);
@@ -3364,6 +3406,7 @@ export async function updateImportJobMapping(input: {
       status = COALESCE($6, status),
       updated_at = NOW()
      WHERE id = $1 AND user_id = $2 AND tenant_id = $7
+       AND (NOT $8::boolean OR final_import_started_at IS NULL)
      RETURNING *`,
     [
       input.jobId,
@@ -3373,6 +3416,7 @@ export async function updateImportJobMapping(input: {
       input.notes?.trim() || null,
       input.status ?? null,
       scopeTenantId,
+      Boolean(input.beforeFinalImport),
     ]
   );
   return result.rows[0] ? mapImportJob(result.rows[0]) : null;
@@ -3386,14 +3430,16 @@ export async function updateImportJobExecution(input: {
   errorCode?: string;
   errorSummary?: string;
   allowRetry?: boolean;
+  beforeFinalImport?: boolean;
 }): Promise<ImportJob | null> {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(input.tenantId);
   const currentRes = await getPool().query(
-    "SELECT status FROM import_jobs WHERE id = $1 AND user_id = $2 AND tenant_id = $3 LIMIT 1",
+    "SELECT status, final_import_started_at FROM import_jobs WHERE id = $1 AND user_id = $2 AND tenant_id = $3 LIMIT 1",
     [input.jobId, input.userId, scopeTenantId],
   );
   if (!currentRes.rows[0]) return null;
+  if (input.beforeFinalImport && currentRes.rows[0].final_import_started_at) return null;
   const currentStatus = String(currentRes.rows[0].status) as ImportJobStatus;
   if (!isValidImportStatusTransition(currentStatus, input.status, Boolean(input.allowRetry))) {
     throw new Error(`資料読取記録の状態変更が不正です: ${currentStatus} -> ${input.status}`);
@@ -3410,8 +3456,9 @@ export async function updateImportJobExecution(input: {
          error_summary = CASE WHEN $4 = 'failed' THEN $6 ELSE NULL END,
          updated_at = NOW()
      WHERE id = $1 AND user_id = $2 AND tenant_id = $3
+       AND (NOT $7::boolean OR final_import_started_at IS NULL)
      RETURNING *`,
-    [input.jobId, input.userId, scopeTenantId, input.status, input.errorCode?.trim() || "import_failed", input.errorSummary?.trim() || "資料を読み取れませんでした。"],
+    [input.jobId, input.userId, scopeTenantId, input.status, input.errorCode?.trim() || "import_failed", input.errorSummary?.trim() || "資料を読み取れませんでした。", Boolean(input.beforeFinalImport)],
   );
   return result.rows[0] ? mapImportJob(result.rows[0]) : null;
 }
@@ -3430,7 +3477,7 @@ export async function retryImportJobExecution(input: {
          error_code = NULL,
          error_summary = NULL,
          updated_at = NOW()
-     WHERE id = $1 AND user_id = $2 AND tenant_id = $3 AND status = 'failed'
+     WHERE id = $1 AND user_id = $2 AND tenant_id = $3 AND status = 'failed' AND final_import_started_at IS NULL
      RETURNING *`,
     [input.jobId, input.userId, scopeTenantId],
   );
@@ -3738,6 +3785,137 @@ export async function updateBrokerageCaseConfirmedData(input: {
     [input.caseId, input.userId, JSON.stringify(input.confirmedDataJson), scopeTenantId, input.primaryPropertyId !== undefined, input.primaryPropertyId ?? null],
   );
   return result.rows[0] ? mapBrokerageCase(result.rows[0]) : null;
+}
+
+export async function refreshObjectImportReview(input: RefreshObjectImportReviewInput): Promise<RefreshObjectImportReviewResult> {
+  await ensureSchema();
+  const { context } = input;
+  return withTransaction(async (client) => {
+    if (!(await databaseActorMatches(client, context.userId)) || !await lockCaseReviewMembership(client, context)) return { ok: false, reason: "not_writable" };
+    const targetHint = await client.query("SELECT case_id FROM object_import_targets WHERE id=$1 AND tenant_id=$2 AND user_id=$3", [input.targetId, context.tenantId, context.userId]);
+    if (!targetHint.rows[0]) return { ok: false, reason: "not_writable" };
+    const caseRows = await client.query("SELECT * FROM brokerage_cases WHERE id=$1 AND tenant_id=$2 AND current_owner_user_id=$3 AND owner_resolution_status='resolved' FOR UPDATE", [targetHint.rows[0].case_id, context.tenantId, context.userId]);
+    const targetRows = await client.query("SELECT * FROM object_import_targets WHERE id=$1 AND tenant_id=$2 AND user_id=$3 FOR UPDATE", [input.targetId, context.tenantId, context.userId]);
+    if (!caseRows.rows[0] || !targetRows.rows[0]) return { ok: false, reason: "not_writable" };
+    const caseItem = mapBrokerageCase(caseRows.rows[0]);
+    const target = mapObjectImportTarget(targetRows.rows[0]);
+    if (caseItem.lifecycleStatus === "archived" || !resolveRecordVisibility(context, caseItem).canWrite || target.targetType !== "party" && target.targetType !== "property") return { ok: false, reason: target.targetType !== "party" && target.targetType !== "property" ? "unsupported_target" : "not_writable" };
+    const table = target.targetType === "party" ? "clients" : "properties";
+    const objectRows = await client.query(`SELECT * FROM ${table} WHERE id=$1 AND tenant_id=$2 FOR UPDATE`, [target.targetId, context.tenantId]);
+    const fieldRows = await client.query("SELECT * FROM object_import_fields WHERE id=$1 AND object_import_target_id=$2 AND tenant_id=$3 FOR UPDATE", [input.fieldId, target.id, context.tenantId]);
+    if (!objectRows.rows[0] || !fieldRows.rows[0]) return { ok: false, reason: "not_writable" };
+    const person = target.targetType === "party" ? mapClient(objectRows.rows[0]) : mapProperty(objectRows.rows[0]);
+    const field = mapObjectImportCandidate(fieldRows.rows[0]);
+    if (person.lifecycleStatus === "archived" || !resolveRecordVisibility(context, person).canWrite) return { ok: false, reason: "not_writable" };
+    const associated = target.targetType === "party"
+      ? readCaseAssociationDraft(caseItem.confirmedDataJson).parties.some((item) => item.partyId === person.id)
+      : readCaseAssociationDraft(caseItem.confirmedDataJson).primaryPropertyId === person.id;
+    if (!associated || !await hasObjectImportSource(client, target, field)) return { ok: false, reason: "not_writable" };
+    if (target.targetVersion !== input.expectedVersion || target.status !== "needs_review" || (field.candidateValue ?? "") !== input.expectedCandidateValue || field.finalSource === "human" || ["confirmed", "rejected"].includes(field.status)) {
+      return { ok: false, reason: field.finalSource === "human" || ["confirmed", "rejected"].includes(field.status) ? "already_reviewed" : "conflict" };
+    }
+    const currentVersion = buildObjectVersionFingerprint(person as unknown as Record<string, unknown>);
+    if (!input.observedVersion.trim() || currentVersion !== input.observedVersion || currentVersion === target.targetVersion) return { ok: false, reason: "conflict" };
+    const updated = await client.query("UPDATE object_import_targets SET target_version=$1,updated_at=NOW() WHERE id=$2 AND tenant_id=$3 AND user_id=$4 AND status='needs_review' AND target_version=$5 RETURNING *", [currentVersion, target.id, context.tenantId, context.userId, input.expectedVersion]);
+    if (!updated.rows[0]) return { ok: false, reason: "conflict" };
+    await client.query("INSERT INTO audit_logs (id,tenant_id,user_id,actor_id,action,target_type,target_id,message,context_json,created_at) VALUES ($1,$2,$3,$3,'object_import_review_rebased',$4,$5,$6,$7::jsonb,NOW())", [genId("audit"), context.tenantId, context.userId, target.targetType === "party" ? "client" : "property", person.id, "Object import review baseline refreshed", JSON.stringify({ importTargetId: target.id, fieldId: field.id, previousVersion: input.expectedVersion, targetVersion: currentVersion })]);
+    return { ok: true, caseId: target.caseId, targetVersion: currentVersion };
+  });
+}
+
+export async function saveCaseWorkbenchWithObjectReview(
+  input: SaveCaseWorkbenchWithObjectReviewInput,
+): Promise<SaveCaseWorkbenchWithObjectReviewResult> {
+  await ensureSchema();
+  const { context } = input;
+  return withTransaction(async (client) => {
+    if (!(await databaseActorMatches(client, context.userId))) return { ok: false, reason: "case_not_writable" };
+    if (input.objectReview) {
+      if (!await lockCaseReviewMembership(client, context)) return { ok: false, reason: "case_not_writable" };
+    } else {
+      // Ordinary field saves remain compatible with the baseline SELECT-only
+      // membership ACL; review locks are isolated behind the helper migration.
+      const membership = await client.query(
+        "SELECT 1 FROM tenant_memberships WHERE id=$1 AND tenant_id=$2 AND user_id=$3 AND status='active'",
+        [context.membershipId, context.tenantId, context.userId],
+      );
+      if (!membership.rows.length) return { ok: false, reason: "case_not_writable" };
+    }
+    const caseRows = await client.query(
+      "SELECT * FROM brokerage_cases WHERE id=$1 AND tenant_id=$2 AND current_owner_user_id=$3 AND owner_resolution_status='resolved' FOR UPDATE",
+      [input.caseId, context.tenantId, context.userId],
+    );
+    if (!caseRows.rows[0]) return { ok: false, reason: "case_not_writable" };
+    const caseItem = mapBrokerageCase(caseRows.rows[0]);
+    if (caseItem.lifecycleStatus === "archived" || !resolveRecordVisibility(context, caseItem).canWrite) return { ok: false, reason: "case_not_writable" };
+
+    let objectReview: Extract<ObjectImportReviewResult, { ok: true }> | undefined;
+    if (input.objectReview) {
+      const review = input.objectReview;
+      const targetRows = await client.query(
+        "SELECT * FROM object_import_targets WHERE id=$1 AND tenant_id=$2 AND user_id=$3 FOR UPDATE",
+        [review.targetId, context.tenantId, context.userId],
+      );
+      if (!targetRows.rows[0]) return { ok: false, reason: "not_writable" };
+      const target = mapObjectImportTarget(targetRows.rows[0]);
+      if (target.caseId !== input.caseId || (target.targetType !== "party" && target.targetType !== "property")) return { ok: false, reason: "not_writable" };
+      const table = target.targetType === "party" ? "clients" : "properties";
+      const personRows = await client.query(`SELECT * FROM ${table} WHERE id=$1 AND tenant_id=$2 FOR UPDATE`, [target.targetId, context.tenantId]);
+      const fieldRows = await client.query(
+        "SELECT * FROM object_import_fields WHERE id=$1 AND object_import_target_id=$2 AND tenant_id=$3 FOR UPDATE",
+        [review.fieldId, target.id, context.tenantId],
+      );
+      if (!personRows.rows[0] || !fieldRows.rows[0]) return { ok: false, reason: "not_writable" };
+      const person = target.targetType === "party" ? mapClient(personRows.rows[0]) : mapProperty(personRows.rows[0]);
+      const field = mapObjectImportCandidate(fieldRows.rows[0]);
+      if (
+        person.lifecycleStatus === "archived" ||
+        !resolveRecordVisibility(context, person).canWrite ||
+        !(target.targetType === "party"
+          ? readCaseAssociationDraft(caseItem.confirmedDataJson).parties.some((item) => item.partyId === person.id)
+          : readCaseAssociationDraft(caseItem.confirmedDataJson).primaryPropertyId === person.id)
+      ) return { ok: false, reason: "not_writable" };
+      if (!await hasObjectImportSource(client, target, field)) return { ok: false, reason: "not_writable" };
+      const validated = validateObjectImportReview(review, target, field, person as unknown as Record<string, unknown>);
+      if (!validated.ok) return validated;
+      if (review.caseFieldValue !== undefined && review.caseFieldValue.trim() !== validated.value) return { ok: false, reason: "invalid_value" };
+      if (validated.scope === "case") {
+        const existingCaseValue = typeof caseItem.confirmedDataJson[validated.key] === "string" ? String(caseItem.confirmedDataJson[validated.key]).trim() : "";
+        if (review.decision === "confirm" && existingCaseValue && existingCaseValue !== validated.value) return { ok: false, reason: "conflict" };
+      }
+      const column = validated.scope === "object" ? (validated.key === "listingPrice" ? "listing_price" : validated.key) : undefined;
+      const mutableRecord = person as unknown as Record<string, unknown>;
+      const before = validated.scope === "case" ? caseItem.confirmedDataJson[validated.key] : mutableRecord[validated.key];
+      if (review.decision === "confirm" && validated.scope === "object") {
+        await client.query(`UPDATE ${table} SET ${column}=$1${target.targetType === "party" ? ",updated_at=NOW()" : ""} WHERE id=$2 AND tenant_id=$3`, [validated.recordValue, person.id, context.tenantId]);
+        mutableRecord[validated.key] = validated.recordValue;
+      }
+      await client.query(
+        "UPDATE object_import_fields SET final_value=$1,final_source='human',status=$2,confirmed_by_user_id=$3,confirmed_at=NOW() WHERE id=$4 AND tenant_id=$5",
+        [review.decision === "confirm" ? validated.value : null, review.decision === "confirm" ? "confirmed" : "rejected", context.userId, field.id, context.tenantId],
+      );
+      const targetVersion = validated.scope === "object" ? buildObjectVersionFingerprint(mutableRecord) : target.targetVersion;
+      await client.query(
+        "UPDATE object_import_targets SET target_version=$1,status=CASE WHEN EXISTS (SELECT 1 FROM object_import_fields WHERE object_import_target_id=$2 AND tenant_id=$3 AND final_source IS DISTINCT FROM 'human') THEN 'needs_review' ELSE 'completed' END,updated_at=NOW() WHERE id=$2 AND tenant_id=$3",
+        [targetVersion, target.id, context.tenantId],
+      );
+      await client.query(
+        "INSERT INTO audit_logs (id,tenant_id,user_id,actor_id,action,target_type,target_id,message,context_json,created_at) VALUES ($1,$2,$3,$3,$4,$8,$5,$6,$7::jsonb,NOW())",
+        [genId("audit"), context.tenantId, context.userId, `object_import_${review.decision}`, validated.scope === "case" ? target.caseId : person.id, "Object import field reviewed", JSON.stringify({ importTargetId: target.id, fieldKey: validated.key, before: before ?? null, after: review.decision === "confirm" ? validated.recordValue : before ?? null }), validated.scope === "case" ? "case" : target.targetType === "party" ? "client" : "property"],
+      );
+      objectReview = { ok: true, caseId: target.caseId, targetVersion };
+    }
+
+    const result = await client.query(
+      `UPDATE brokerage_cases SET confirmed_data_json=$3, updated_at=NOW()
+       WHERE id=$1 AND tenant_id=$2 AND current_owner_user_id=$4 AND owner_resolution_status='resolved'
+       RETURNING *`,
+      [input.caseId, context.tenantId, JSON.stringify(input.confirmedDataJson), context.userId],
+    );
+    // A rejected final write must roll back earlier object/candidate/audit writes.
+    if (!result.rows[0]) throw new Error("case_workbench_write_not_applied");
+    return { ok: true, brokerageCase: mapBrokerageCase(result.rows[0]), objectReview };
+  });
 }
 
 export async function saveBrokerageCaseExtractionReview(input: {
@@ -5711,8 +5889,11 @@ export async function listQuotations(limit?: number, tenantId?: string): Promise
 
 /** Resolver-bound quotation projection; hidden related records are excluded. */
 export async function listQuotationsForContext(input: { context: RequestContext; limit?: number }): Promise<DashboardQuoteItem[]> {
-  const visibleClients = await listClientsForContext({ context: input.context, filter: { lifecycleStatus: "active", sort: "recent_created" } });
-  const visibleProperties = await listPropertiesForContext({ context: input.context, lifecycleStatus: "active" });
+  // Quote history preserves the legacy all-lifecycle list contract. Archived
+  // person/property records remain readable to authorized users, so list and
+  // detail/count must apply the same lifecycle semantics.
+  const visibleClients = await listClientsForContext({ context: input.context, filter: { lifecycleStatus: "all", sort: "recent_created" } });
+  const visibleProperties = await listPropertiesForContext({ context: input.context, lifecycleStatus: "all" });
   const clientIds = new Set(visibleClients.filter((item) => item.resolution.canRead).map((item) => item.client?.id).filter(Boolean));
   const propertyIds = new Set(visibleProperties.filter((item) => item.resolution.canRead).map((item) => item.property?.id).filter(Boolean));
   if (clientIds.size === 0) return [];
@@ -5771,6 +5952,18 @@ export async function getQuotationById(quoteId: string, tenantId?: string) {
     client: clientRes.rows[0] ? mapClient(clientRes.rows[0]) : undefined,
     property: propertyRes.rows[0] ? mapProperty(propertyRes.rows[0]) : undefined,
   };
+}
+
+/** Resolver-bound quotation detail; both related records must be readable. */
+export async function getQuotationByIdForContext(input: { context: RequestContext; quoteId: string }): Promise<DashboardQuoteItem | null> {
+  const quote = await getQuotationById(input.quoteId, input.context.tenantId);
+  if (!quote?.client) return null;
+  const client = await resolveClientVisibilityForContext({ context: input.context, clientId: quote.client.id });
+  if (!client.record) return null;
+  if (!quote.propertyId) return { ...quote, client: client.record, property: undefined };
+  const property = await resolvePropertyVisibilityForContext({ context: input.context, propertyId: quote.propertyId });
+  if (!property.record) return null;
+  return { ...quote, client: client.record, property: property.record };
 }
 
 export async function addClient(input: {
@@ -6232,6 +6425,7 @@ export async function resolveComplianceAlert(input: {
 export async function updateTaskStatus(input: {
   tenantId?: string;
   taskId: string;
+  expectedClientId: string;
   status: TaskStatus;
   updatedById: string;
 }) {
@@ -6240,17 +6434,22 @@ export async function updateTaskStatus(input: {
   const statusLabel = input.status === "done" ? "完了" : input.status === "canceled" ? "取消" : "未着手";
 
   return withTransaction(async (client) => {
-    const taskRes = await client.query("SELECT * FROM tasks WHERE id = $1 AND tenant_id = $2 LIMIT 1 FOR UPDATE", [
+    if (!input.expectedClientId) return null;
+    const taskRes = await client.query("SELECT * FROM tasks WHERE id = $1 AND tenant_id = $2 AND client_id = $3 LIMIT 1 FOR UPDATE", [
       input.taskId,
       scopeTenantId,
+      input.expectedClientId,
     ]);
     if (!taskRes.rows[0]) return null;
     const task = mapTask(taskRes.rows[0]);
 
+    if (task.status === input.status) return task;
+
     const updatedRes = await client.query(
-      "UPDATE tasks SET status = $2 WHERE id = $1 AND tenant_id = $3 RETURNING *",
-      [input.taskId, input.status, scopeTenantId]
+      "UPDATE tasks SET status = $2 WHERE id = $1 AND tenant_id = $3 AND client_id = $4 RETURNING *",
+      [input.taskId, input.status, scopeTenantId, input.expectedClientId]
     );
+    if (!updatedRes.rows[0]) return null;
 
     if (task.clientId) {
       await client.query(
@@ -6291,6 +6490,7 @@ export async function updateTaskStatus(input: {
 export async function rescheduleTask(input: {
   tenantId?: string;
   taskId: string;
+  expectedClientId: string;
   dueAt: Date;
   updatedById: string;
 }) {
@@ -6298,17 +6498,20 @@ export async function rescheduleTask(input: {
   const scopeTenantId = resolveTenantId(input.tenantId);
 
   return withTransaction(async (client) => {
-    const taskRes = await client.query("SELECT * FROM tasks WHERE id = $1 AND tenant_id = $2 LIMIT 1 FOR UPDATE", [
+    if (!input.expectedClientId) return null;
+    const taskRes = await client.query("SELECT * FROM tasks WHERE id = $1 AND tenant_id = $2 AND client_id = $3 LIMIT 1 FOR UPDATE", [
       input.taskId,
       scopeTenantId,
+      input.expectedClientId,
     ]);
     if (!taskRes.rows[0]) return null;
     const task = mapTask(taskRes.rows[0]);
 
     const updatedRes = await client.query(
-      "UPDATE tasks SET due_at = $2, status = 'pending' WHERE id = $1 AND tenant_id = $3 RETURNING *",
-      [input.taskId, input.dueAt, scopeTenantId]
+      "UPDATE tasks SET due_at = $2, status = 'pending' WHERE id = $1 AND tenant_id = $3 AND client_id = $4 RETURNING *",
+      [input.taskId, input.dueAt, scopeTenantId, input.expectedClientId]
     );
+    if (!updatedRes.rows[0]) return null;
 
     if (task.clientId) {
       await client.query(
@@ -6692,13 +6895,37 @@ export async function updateQuotationStatus(quoteId: string, status: QuoteStatus
   return result.rows[0] ? mapQuotation(result.rows[0]) : null;
 }
 
-export async function healthCheckPostgres() {
+async function getHealthBindingDiagnostics(): Promise<HealthBindingDetail | undefined> {
+  const target = parseHealthBindingTarget(process.env.DATABASE_URL ?? "");
+  if (!target) return undefined;
+
+  try {
+    const result = await getRawPool().query(
+      "SELECT current_database() AS database_name, current_user AS role_name",
+    );
+    const row = result.rows[0] as Record<string, unknown> | undefined;
+    if (typeof row?.database_name !== "string" || typeof row.role_name !== "string") return undefined;
+
+    return buildHealthBindingDetail({
+      target,
+      databaseName: row.database_name,
+      roleName: row.role_name,
+    });
+  } catch {
+    // Binding diagnostics are evidence-only. A failed optional probe must not
+    // turn a healthy liveness check into a new failure surface.
+    return undefined;
+  }
+}
+
+export async function healthCheckPostgres(includeBindingDiagnostics = false) {
   await ensureSchema();
   // Health probes have no Clerk request scope by design. The readiness work
   // above still checks migrations and the restricted runtime role; this final
   // liveness query must not be routed through the business-query scope proxy.
   await getRawPool().query("SELECT 1");
-  return { ok: true };
+  const binding = includeBindingDiagnostics ? await getHealthBindingDiagnostics() : undefined;
+  return { ok: true, ...(binding ? { binding } : {}) };
 }
 
 async function resolvePostgresVisibilityForContext<T extends VisibilityRecord>(input: {
@@ -6799,3 +7026,137 @@ export type {
   GuaranteeMaskMatch,
   GuaranteePreviewConfirmation,
 };
+
+export async function getObjectImportFeatureReadiness(): Promise<ObjectImportFeatureReadiness> {
+  await ensureSchema();
+  const db = getPool();
+  const migration = await db.query(
+    "SELECT 1 FROM broker_desk_schema_migrations WHERE name=$1 LIMIT 1",
+    ["20260917_001_object_import_targets.sql"],
+  );
+  const tables = await db.query(
+    "SELECT to_regclass('public.object_import_targets') AS targets_table, to_regclass('public.object_import_fields') AS fields_table",
+  );
+  const targetsTablePresent = Boolean(tables.rows[0]?.targets_table);
+  const fieldsTablePresent = Boolean(tables.rows[0]?.fields_table);
+  if (!targetsTablePresent || !fieldsTablePresent) {
+    return resolveObjectImportFeatureReadiness({
+      migrationApplied: migration.rows.length > 0,
+      targetsTablePresent,
+      fieldsTablePresent,
+    });
+  }
+  const privileges = await db.query(`
+    SELECT
+      has_table_privilege(current_user, 'public.object_import_targets', 'SELECT')
+        AND has_table_privilege(current_user, 'public.object_import_targets', 'INSERT')
+        AND has_table_privilege(current_user, 'public.object_import_targets', 'UPDATE') AS targets_table_writable,
+      has_table_privilege(current_user, 'public.object_import_fields', 'SELECT')
+        AND has_table_privilege(current_user, 'public.object_import_fields', 'INSERT')
+        AND has_table_privilege(current_user, 'public.object_import_fields', 'UPDATE') AS fields_table_writable,
+      to_regprocedure('brokerdesk_private.lock_case_review_membership(text,text,text)') AS membership_lock,
+      to_regprocedure('brokerdesk_private.lock_case_review_source(text,text,text,text)') AS source_lock
+  `);
+  if (!privileges.rows[0]?.membership_lock || !privileges.rows[0]?.source_lock) {
+    return { ready: false, reason: "migration_required" };
+  }
+  const helperPrivileges = await db.query(`SELECT
+    has_function_privilege(current_user, 'brokerdesk_private.lock_case_review_membership(text,text,text)', 'EXECUTE')
+      AND has_function_privilege(current_user, 'brokerdesk_private.lock_case_review_source(text,text,text,text)', 'EXECUTE') AS allowed
+  `);
+  if (!helperPrivileges.rows[0]?.allowed) return { ready: false, reason: "permissions_incomplete" };
+  return resolveObjectImportFeatureReadiness({
+    migrationApplied: migration.rows.length > 0,
+    targetsTablePresent,
+    fieldsTablePresent,
+    targetsTableWritable: Boolean(privileges.rows[0]?.targets_table_writable),
+    fieldsTableWritable: Boolean(privileges.rows[0]?.fields_table_writable),
+  });
+}
+
+// Use the existing scoped query proxy; never expose the raw pool to callers.
+export const getObjectImportTarget = (input: Parameters<PostgresObjectImportRepository["getTarget"]>[0]) => new PostgresObjectImportRepository(getPool()).getTarget(input);
+export const getObjectImportTargetByJob = (input: Parameters<PostgresObjectImportRepository["getTargetByJob"]>[0]) => new PostgresObjectImportRepository(getPool()).getTargetByJob(input);
+// Attachment authorization only needs the parent id, not the complete import target.
+export async function getObjectImportCaseIdByJob(input: { tenantId: string; userId: string; importJobId: string }): Promise<string | null> {
+  const result = await getPool().query<{ case_id: string }>(
+    "SELECT case_id FROM object_import_targets WHERE tenant_id=$1 AND user_id=$2 AND import_job_id=$3 LIMIT 1",
+    [input.tenantId, input.userId, input.importJobId],
+  );
+  return result.rows[0]?.case_id ?? null;
+}
+
+export const listObjectImportTargets = (input: Parameters<PostgresObjectImportRepository["listTargets"]>[0]) => new PostgresObjectImportRepository(getPool()).listTargets(input);
+export const createObjectImportTarget = (input: Parameters<PostgresObjectImportRepository["createTarget"]>[0]) => new PostgresObjectImportRepository(getPool()).createTarget(input);
+export const updateObjectImportTarget = (input: Parameters<PostgresObjectImportRepository["updateTarget"]>[0]) => new PostgresObjectImportRepository(getPool()).updateTarget(input);
+export const upsertObjectImportCandidate = (input: Parameters<PostgresObjectImportRepository["upsertCandidate"]>[0]) => new PostgresObjectImportRepository(getPool()).upsertCandidate(input);
+export const listObjectImportCandidates = (input: Parameters<PostgresObjectImportRepository["listCandidates"]>[0]) => new PostgresObjectImportRepository(getPool()).listCandidates(input);
+
+async function hasObjectImportSource(client: PoolClient, target: ReturnType<typeof mapObjectImportTarget>, field: ReturnType<typeof mapObjectImportCandidate>): Promise<boolean> {
+  if (!target.sourceAttachmentId || field.provenance.sourceAttachmentId !== target.sourceAttachmentId) return false;
+  try {
+    const source = await client.query("SELECT brokerdesk_private.lock_case_review_source($1,$2,$3,$4) AS sha256", [target.sourceAttachmentId,target.tenantId,target.userId,target.importJobId]);
+    return Boolean(source.rows[0] && source.rows[0].sha256 === field.provenance.sourceFileHash);
+  } catch (error) {
+    // Missing helper or EXECUTE is a safe unavailable-review result while the
+    // migration is pending; unrelated database failures must still surface.
+    const code = (error as { code?: string })?.code;
+    if (code === "42883" || code === "42501") return false;
+    throw error;
+  }
+}
+
+async function lockCaseReviewMembership(client: PoolClient, context: RequestContext): Promise<boolean> {
+  try {
+    const membership = await client.query("SELECT brokerdesk_private.lock_case_review_membership($1,$2,$3) AS allowed", [context.membershipId, context.tenantId, context.userId]);
+    return Boolean(membership.rows[0]?.allowed);
+  } catch (error) {
+    // Review must fail closed until the helper migration and EXECUTE grant are
+    // present; ordinary field saves do not use this path.
+    const code = (error as { code?: string })?.code;
+    if (code === "42883" || code === "42501") return false;
+    throw error;
+  }
+}
+
+export async function reviewObjectImportCandidate(input: ObjectImportReviewInput): Promise<ObjectImportReviewResult> {
+  const { context } = input;
+  return withTransaction(async (client) => {
+    if (!await databaseActorMatches(client, context.userId)) return { ok: false, reason: "not_writable" };
+    if (!await lockCaseReviewMembership(client, context)) return { ok: false, reason: "not_writable" };
+    // Match the combined-save lock order: membership → case → target → object → field → source.
+    const targetHint = await client.query("SELECT case_id FROM object_import_targets WHERE id=$1 AND tenant_id=$2 AND user_id=$3", [input.targetId, context.tenantId, context.userId]);
+    if (!targetHint.rows[0]) return { ok: false, reason: "not_writable" };
+    const caseRows = await client.query("SELECT * FROM brokerage_cases WHERE id=$1 AND tenant_id=$2 FOR UPDATE", [targetHint.rows[0].case_id, context.tenantId]);
+    if (!caseRows.rows[0]) return { ok: false, reason: "not_writable" };
+    const targetRows = await client.query("SELECT * FROM object_import_targets WHERE id=$1 AND tenant_id=$2 AND user_id=$3 FOR UPDATE", [input.targetId, context.tenantId, context.userId]);
+    if (!targetRows.rows[0]) return { ok: false, reason: "not_writable" };
+    const target = mapObjectImportTarget(targetRows.rows[0]);
+    if (target.caseId !== targetHint.rows[0].case_id) return { ok: false, reason: "not_writable" };
+    if (target.targetType !== "party" && target.targetType !== "property") return { ok: false, reason: "unsupported_target" };
+    const table = target.targetType === "party" ? "clients" : "properties";
+    const personRows = await client.query(`SELECT * FROM ${table} WHERE id=$1 AND tenant_id=$2 FOR UPDATE`, [target.targetId, context.tenantId]);
+    const fieldRows = await client.query("SELECT * FROM object_import_fields WHERE id=$1 AND object_import_target_id=$2 AND tenant_id=$3 FOR UPDATE", [input.fieldId, target.id, context.tenantId]);
+    if (!caseRows.rows[0] || !personRows.rows[0] || !fieldRows.rows[0]) return { ok: false, reason: "not_writable" };
+    const caseItem = mapBrokerageCase(caseRows.rows[0]);
+    const person = target.targetType === "party" ? mapClient(personRows.rows[0]) : mapProperty(personRows.rows[0]);
+    const field = mapObjectImportCandidate(fieldRows.rows[0]);
+    if (caseItem.lifecycleStatus === "archived" || person.lifecycleStatus === "archived" || !resolveRecordVisibility(context, caseItem).canWrite || !resolveRecordVisibility(context, person).canWrite || !(target.targetType === "party" ? readCaseAssociationDraft(caseItem.confirmedDataJson).parties.some((item) => item.partyId === person.id) : readCaseAssociationDraft(caseItem.confirmedDataJson).primaryPropertyId === person.id)) return { ok: false, reason: "not_writable" };
+    if (!await hasObjectImportSource(client, target, field)) return { ok: false, reason: "not_writable" };
+    const validated = validateObjectImportReview(input, target, field, person as unknown as Record<string, unknown>);
+    if (!validated.ok) return validated;
+    const mutableRecord = person as unknown as Record<string, unknown>;
+    const before = mutableRecord[validated.key];
+    if (input.decision === "confirm") {
+      // Table and column names come only from the fixed allowlist, never form input.
+      const column = validated.key === "listingPrice" ? "listing_price" : validated.key;
+      await client.query(`UPDATE ${table} SET ${column}=$1${target.targetType === "party" ? ",updated_at=NOW()" : ""} WHERE id=$2 AND tenant_id=$3`, [validated.recordValue, person.id, context.tenantId]);
+      mutableRecord[validated.key] = validated.recordValue;
+    }
+    await client.query("UPDATE object_import_fields SET final_value=$1,final_source='human',status=$2,confirmed_by_user_id=$3,confirmed_at=NOW() WHERE id=$4 AND tenant_id=$5", [input.decision === "confirm" ? validated.value : null, input.decision === "confirm" ? "confirmed" : "rejected", context.userId, field.id, context.tenantId]);
+    const targetVersion = buildObjectVersionFingerprint(person as unknown as Record<string, unknown>);
+    await client.query("UPDATE object_import_targets SET target_version=$1,status=CASE WHEN EXISTS (SELECT 1 FROM object_import_fields WHERE object_import_target_id=$2 AND tenant_id=$3 AND final_source IS DISTINCT FROM 'human') THEN 'needs_review' ELSE 'completed' END,updated_at=NOW() WHERE id=$2 AND tenant_id=$3", [targetVersion, target.id, context.tenantId]);
+    await client.query("INSERT INTO audit_logs (id,tenant_id,user_id,actor_id,action,target_type,target_id,message,context_json,created_at) VALUES ($1,$2,$3,$3,$4,$8,$5,$6,$7::jsonb,NOW())", [genId("audit"),context.tenantId,context.userId,`object_import_${input.decision}`,person.id,"Object import field reviewed",JSON.stringify({ importTargetId: target.id, fieldKey: validated.key, before: before ?? null, after: input.decision === "confirm" ? validated.recordValue : before ?? null }),target.targetType === "party" ? "client" : "property"]);
+    return { ok: true, caseId: target.caseId, targetVersion };
+  });
+}

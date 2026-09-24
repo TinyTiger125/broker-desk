@@ -7,6 +7,7 @@ import { CaseWorkbenchFieldForm } from "@/components/case-workbench-field-form";
 import { ObjectPageShell, ResponsiveFormEditorSlot, ResponsiveFormField, ResponsiveFormLayout, ResponsiveFormRow } from "@/components/layout-system";
 import type { Locale } from "@/lib/locale";
 import layoutStyles from "@/components/layout-system/layout-system.module.css";
+import { getCaseContactValidationError } from "@/lib/case-contact-validation";
 
 export type CaseFieldInputSpec = {
   kind: "text" | "textarea" | "tel" | "email" | "money" | "number" | "date" | "select";
@@ -392,8 +393,8 @@ function getStickyOffset() {
 
 function inputClass(tone: "default" | "attention") {
   return tone === "attention"
-    ? "w-full rounded-lg border border-rose-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-950 outline-none transition focus:border-slate-950 focus:ring-2 focus:ring-rose-100"
-    : "w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-950 outline-none transition focus:border-slate-950 focus:ring-2 focus:ring-blue-100";
+    ? "min-h-11 w-full rounded-lg border border-rose-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-950 outline-none transition focus:border-slate-950 focus:ring-2 focus:ring-rose-100"
+    : "min-h-11 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-950 outline-none transition focus:border-slate-950 focus:ring-2 focus:ring-blue-100";
 }
 
 export function CaseFieldInput({
@@ -437,6 +438,8 @@ export function CaseFieldInput({
         inputMode={spec.inputMode}
         aria-label={label}
         data-case-validation={spec.validation?.replaceAll("_", "-")}
+        data-case-field-kind={spec.kind}
+        data-case-contact-validation-message={spec.kind === "email" ? getCaseContactValidationError("field.email", "invalid", locale) ?? undefined : spec.kind === "tel" ? getCaseContactValidationError("field.phone", "abc", locale) ?? undefined : undefined}
         data-validation-message={spec.validation === "japanese_postal_code" ? locale === "zh" ? "日本邮政编码必须为7位数字。" : locale === "ko" ? "일본 우편번호는 7자리로 입력해 주세요." : "日本の郵便番号は7桁で入力してください。" : undefined}
         defaultValue={value}
         placeholder={placeholder}
@@ -563,7 +566,6 @@ export function CaseOverview({
   locale,
   issueCount,
   outputHref,
-  previewHref,
   downloadHref,
   dataVersion,
   outputBlockers,
@@ -587,7 +589,6 @@ export function CaseOverview({
   locale: Locale;
   issueCount: number;
   outputHref: string;
-  previewHref: string;
   downloadHref: string | null;
   dataVersion: string;
   outputBlockers: CaseOverviewOutputBlocker[];
@@ -758,6 +759,7 @@ export function CaseOverview({
     }
     setConfirmOpen(true);
   };
+  void handleDownload;
 
   const visibleAnchors = sections.slice(0, 4);
   const overflowAnchors = sections.slice(4);
@@ -864,25 +866,7 @@ export function CaseOverview({
             issueCount={issueCount}
             queueOpen={queueOpen}
             onToggleQueue={() => setQueueOpen((open) => !open)}
-            actions={
-              <>
-                {!readOnly ? (
-                  <>
-                    <a href={`/cases/${encodeURIComponent(caseId)}/guarantee-application`} className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-black text-blue-900 hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300">
-                      {locale === "zh" ? "生成申请书" : locale === "ko" ? "신청서 생성" : "申込書を生成"}
-                    </a>
-                    <Link href={previewHref} className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-900 hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300">
-                      <span className="material-symbols-outlined text-[16px]" aria-hidden="true">visibility</span>
-                      {locale === "zh" ? "申请书预览" : locale === "ko" ? "신청서 미리보기" : "申込書プレビュー"}
-                    </Link>
-                    <button type="button" onClick={handleDownload} className="hidden items-center gap-1.5 rounded-lg bg-slate-950 px-3 py-2 text-xs font-black text-white hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 sm:inline-flex">
-                      <span className="material-symbols-outlined text-[16px]" aria-hidden="true">download</span>
-                      {hasOutputTemplate ? (locale === "zh" ? "下载申请书" : locale === "ko" ? "신청서 다운로드" : "申込書をダウンロード") : (locale === "zh" ? "选择输出模板" : locale === "ko" ? "출력模板を選ぶ" : "出力テンプレートを選ぶ")}
-                    </button>
-                  </>
-                ) : null}
-              </>
-            }
+            actions={null}
           />
         }
         feedback={

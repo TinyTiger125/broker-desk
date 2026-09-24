@@ -1,3 +1,5 @@
+import { getAuthMode, isSupabaseAuthConfigured } from "@/lib/auth-mode";
+
 type ProductionReadinessCode =
   | "production_database_required"
   | "production_release_not_approved"
@@ -40,6 +42,46 @@ export function isFormalProductionDeployment() {
   return deploymentEnvironment !== "preview" && deploymentEnvironment !== "staging";
 }
 
+export type ImportProcessingMode = "sync" | "worker_queue";
+export type ImportRuntimeCapabilityStatus = "ready" | "missing" | "not_required";
+export type ImportRuntimeDiagnostics = {
+  processingMode: ImportProcessingMode;
+  requiredCapability: "import_worker" | "none";
+  requiredCapabilityStatus: ImportRuntimeCapabilityStatus;
+  deploymentVersion: string;
+};
+
+/**
+ * Safe, non-sensitive runtime facts for an already authenticated diagnostic
+ * surface. The mode deliberately follows the same formal-production gate as
+ * the import process route; environment values and credentials never leave
+ * this module.
+ */
+export function getImportRuntimeDiagnostics(): ImportRuntimeDiagnostics {
+  const queuedForWorker = isFormalProductionDeployment();
+  let requiredCapabilityStatus: ImportRuntimeCapabilityStatus = "not_required";
+  if (queuedForWorker) {
+    try {
+      assertProductionImportWorkerReady();
+      requiredCapabilityStatus = "ready";
+    } catch (error) {
+      if (!(error instanceof ProductionReadinessError)) throw error;
+      requiredCapabilityStatus = "missing";
+    }
+  }
+
+  const candidateDeploymentVersion = process.env.VERCEL_GIT_COMMIT_SHA?.trim() ?? "";
+  const deploymentVersion = /^[0-9a-f]{7,64}$/i.test(candidateDeploymentVersion)
+    ? candidateDeploymentVersion
+    : "unavailable";
+  return {
+    processingMode: queuedForWorker ? "worker_queue" : "sync",
+    requiredCapability: queuedForWorker ? "import_worker" : "none",
+    requiredCapabilityStatus,
+    deploymentVersion,
+  };
+}
+
 /**
  * Preview/Staging runs use NODE_ENV=production on Vercel, but older managed
  * deployments may not have carried the non-sensitive DATA_DRIVER switch. A
@@ -77,15 +119,23 @@ export function assertProductionDataStoreReady() {
 export function assertProductionTenantScopeBindingReady() {
   if (!isProductionRuntime()) return;
 
-  // The Postgres repository binds the immutable Clerk subject on the same
-  // connection as every business query. Its runtime role is verified by the
-  // repository before the first production request.
+  // The Postgres repository binds the immutable external-auth subject on the
+  // same connection as every business query. Its runtime role is verified by
+  // the repository before the first production request.
 }
 
 export function assertProductionAuthReady() {
   if (!isProductionRuntime()) return;
 
-  if (process.env.BROKER_DESK_AUTH_MODE !== "clerk" || !process.env.CLERK_SECRET_KEY) {
+  const authMode = getAuthMode();
+  if (authMode === "supabase") {
+    if (!isSupabaseAuthConfigured()) {
+      throw new ProductionReadinessError("production_auth_required");
+    }
+    return;
+  }
+
+  if (authMode !== "clerk" || !process.env.CLERK_SECRET_KEY) {
     throw new ProductionReadinessError("production_auth_required");
   }
 }
@@ -154,7 +204,7 @@ export function assertProductionDocumentReaderReady() {
 }
 
 export function assertProductionImportWorkerReady() {
-  if (!isProductionRuntime()) return;
+  if (!isProductionRuntime() || !isFormalProductionDeployment()) return;
 
   // Requests only persist source files and enqueue jobs. A production system
   // must have a separate authenticated worker/scheduler to claim those jobs;

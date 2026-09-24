@@ -42,6 +42,7 @@ function assert(condition, message) {
 
 const memory = loadTsModule("src/lib/data.memory.ts");
 const bootstrapPolicy = loadTsModule("src/lib/tenant-bootstrap-policy.ts");
+const { isFormalProductionDeployment } = loadTsModule("src/lib/production-readiness.ts");
 const bootstrapMigration = fs.readFileSync(path.resolve("db/migrations/20260819_003_tenant_owner_create_path.sql"), "utf8");
 const invitedUserMigration = fs.readFileSync(path.resolve("db/migrations/20260819_004_invited_user_bootstrap.sql"), "utf8");
 const pendingInvitationReadMigration = fs.readFileSync(path.resolve("db/migrations/20260819_005_pending_invitations_read_function.sql"), "utf8");
@@ -53,6 +54,10 @@ const tenantCreationIdempotencyMigration = fs.readFileSync(path.resolve("db/migr
 const invitedIdentityBindingMigration = fs.readFileSync(path.resolve("db/migrations/20260820_011_bind_invited_clerk_identity.sql"), "utf8");
 const tenantMemberReadMigration = fs.readFileSync(path.resolve("db/migrations/20260820_012_current_tenant_member_read.sql"), "utf8");
 const removedInvitationFixMigration = fs.readFileSync(path.resolve("db/migrations/20260821_013_fix_removed_invitation_return.sql"), "utf8");
+const externalAuthBootstrapMigration = fs.readFileSync(
+  path.resolve("db/migrations/20260902_001_current_external_auth_user_bootstrap.sql"),
+  "utf8",
+);
 const postgresSource = fs.readFileSync(path.resolve("src/lib/data.postgres.ts"), "utf8");
 const requestScopeQueryExecutor = postgresSource.slice(
   postgresSource.indexOf("async function queryWithinRequestScope"),
@@ -68,6 +73,7 @@ const createWorkspaceFormSource = fs.readFileSync(path.resolve("src/app/workspac
 const invitationPageSource = fs.readFileSync(path.resolve("src/app/workspace/invitations/page.tsx"), "utf8");
 const acceptInvitationFormSource = fs.readFileSync(path.resolve("src/app/workspace/invitations/accept-invitation-form.tsx"), "utf8");
 const membersPageSource = fs.readFileSync(path.resolve("src/app/settings/members/page.tsx"), "utf8");
+const outputTemplatePageSource = fs.readFileSync(path.resolve("src/app/settings/output-templates/page.tsx"), "utf8");
 const dataSource = fs.readFileSync(path.resolve("src/lib/data.ts"), "utf8");
 const actionsSource = fs.readFileSync(path.resolve("src/app/actions.ts"), "utf8");
 const appNavSource = fs.readFileSync(path.resolve("src/components/app-nav.tsx"), "utf8");
@@ -76,6 +82,65 @@ const workspaceSelectorSource = fs.readFileSync(path.resolve("src/app/workspace/
 const organizeCenterSource = fs.readFileSync(path.resolve("src/app/organize-center/page.tsx"), "utf8");
 const workspaceRouteSource = fs.readFileSync(path.resolve("src/app/api/workspace/route.ts"), "utf8");
 const workspaceResetSource = fs.readFileSync(path.resolve("src/app/workspace/reset/route.ts"), "utf8");
+const ensureExternalAuthUserSource = postgresSource.slice(
+  postgresSource.indexOf("export async function ensureUserForExternalAuth"),
+  postgresSource.indexOf("/**", postgresSource.indexOf("export async function ensureUserForExternalAuth")),
+);
+const externalAuthBootstrapBody = externalAuthBootstrapMigration.slice(
+  externalAuthBootstrapMigration.indexOf("AS $$") + "AS $$".length,
+  externalAuthBootstrapMigration.indexOf("$$;", externalAuthBootstrapMigration.indexOf("AS $$")),
+);
+
+assert(
+  externalAuthBootstrapMigration.includes("CREATE OR REPLACE FUNCTION brokerdesk_private.ensure_current_external_auth_user("),
+  "external auth bootstrap must use a dedicated current-subject function",
+);
+assert(externalAuthBootstrapMigration.includes("current_external_auth_subject()"), "external auth bootstrap must read the subject from the request context");
+assert(!externalAuthBootstrapMigration.includes("p_subject"), "external auth bootstrap must not accept a caller-supplied subject");
+assert(externalAuthBootstrapMigration.includes("deployment_environment IN ('development', 'preview', 'staging')"), "external auth bootstrap must allow only non-production deployment environments");
+assert(externalAuthBootstrapMigration.includes("deployment_environment IS NULL"), "external auth bootstrap must reject a missing deployment environment");
+assert(externalAuthBootstrapMigration.includes("ERRCODE = '42501'"), "external auth bootstrap must fail closed for missing or disallowed context");
+assert(externalAuthBootstrapMigration.includes("pg_advisory_xact_lock"), "external auth bootstrap must serialize concurrent subject retries");
+assert(externalAuthBootstrapMigration.includes("SECURITY DEFINER"), "external auth bootstrap must run with a narrowly scoped definer privilege");
+assert(externalAuthBootstrapMigration.includes("SET search_path = public, pg_temp"), "external auth bootstrap must pin its definer search path");
+assert(externalAuthBootstrapMigration.includes("current_setting('app.broker_desk_deployment_env', true)"), "external auth bootstrap must use the trusted deployment classification");
+assert(externalAuthBootstrapMigration.includes("email is already linked to another external identity"), "external auth bootstrap must reject an email bound to another subject");
+assert(externalAuthBootstrapMigration.includes("email is already reserved by an existing local user"), "external auth bootstrap must not claim an unbound existing email");
+assert(externalAuthBootstrapBody.includes("FOR UPDATE"), "external auth bootstrap must lock existing identity rows while checking uniqueness");
+assert(externalAuthBootstrapBody.includes("lower(users.email) = effective_email"), "external auth bootstrap must check normalized email ownership");
+assert(externalAuthBootstrapBody.includes("INSERT INTO public.users"), "external auth bootstrap must be the only user-write path for this runtime flow");
+assert(!externalAuthBootstrapBody.includes("UPDATE public.users"), "external auth bootstrap must not rebind an existing local user");
+assert(!externalAuthBootstrapBody.includes("tenant_memberships"), "external auth bootstrap must not create or activate memberships");
+assert(!externalAuthBootstrapBody.includes("sync_external_auth_user"), "runtime bootstrap must not call the admin synchronizer");
+assert(!externalAuthBootstrapMigration.includes("ALTER TABLE public.users"), "external auth bootstrap must not change users RLS");
+assert(!externalAuthBootstrapMigration.includes("CREATE POLICY"), "external auth bootstrap must not add a users policy");
+assert(!externalAuthBootstrapMigration.includes("GRANT EXECUTE ON FUNCTION brokerdesk_private.ensure_current_external_auth_user(TEXT, TEXT) TO authenticated"), "external auth bootstrap must not grant authenticated execution");
+assert(externalAuthBootstrapMigration.includes("REVOKE ALL ON FUNCTION brokerdesk_private.ensure_current_external_auth_user"), "external auth bootstrap must revoke public execution");
+assert(externalAuthBootstrapMigration.includes("GRANT EXECUTE ON FUNCTION brokerdesk_private.ensure_current_external_auth_user(TEXT, TEXT) TO brokerdesk_runtime"), "external auth bootstrap must grant only the runtime role");
+assert(postgresSource.includes("20260902_001_current_external_auth_user_bootstrap.sql"), "required migrations must include current external auth bootstrap");
+assert(ensureExternalAuthUserSource.includes("brokerdesk_private.ensure_current_external_auth_user($1, $2)"), "Postgres adapter must use the restricted current-subject bootstrap RPC");
+assert(ensureExternalAuthUserSource.includes("set_config('app.broker_desk_deployment_env', $1, true)"), "Postgres adapter must pass the trusted deployment classification in the request transaction");
+assert(ensureExternalAuthUserSource.includes("[email, name]"), "Postgres adapter must pass only profile fields to the current-subject bootstrap");
+assert(!ensureExternalAuthUserSource.includes("INSERT INTO users"), "Postgres adapter must not insert users directly under RLS");
+assert(!ensureExternalAuthUserSource.includes("UPDATE users"), "Postgres adapter must not update users directly under RLS");
+
+assert(
+  dataSource.includes("if (isFormalProductionDeployment()) return null;"),
+  "only formal production must block unmapped Clerk self-provisioning; Preview/Staging must remain eligible",
+);
+const originalNodeEnv = process.env.NODE_ENV;
+const originalDeploymentEnv = process.env.BROKER_DESK_DEPLOYMENT_ENV;
+process.env.NODE_ENV = "production";
+process.env.BROKER_DESK_DEPLOYMENT_ENV = "preview";
+assert(!isFormalProductionDeployment(), "Preview must not be classified as formal production in the optimized runtime");
+process.env.BROKER_DESK_DEPLOYMENT_ENV = "staging";
+assert(!isFormalProductionDeployment(), "Staging must not be classified as formal production in the optimized runtime");
+process.env.BROKER_DESK_DEPLOYMENT_ENV = "production";
+assert(isFormalProductionDeployment(), "formal production must remain fail-closed for unmapped Clerk self-provisioning");
+if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
+else process.env.NODE_ENV = originalNodeEnv;
+if (originalDeploymentEnv === undefined) delete process.env.BROKER_DESK_DEPLOYMENT_ENV;
+else process.env.BROKER_DESK_DEPLOYMENT_ENV = originalDeploymentEnv;
 
 assert(bootstrapMigration.includes("SECURITY DEFINER"), "tenant bootstrap must use a SECURITY DEFINER function");
 assert(bootstrapMigration.includes("brokerdesk_private.current_user_id()"), "tenant bootstrap must bind the current authenticated local user");
@@ -177,7 +242,7 @@ assert(actionsSource.includes("invitation.sent ? \"invitation_sent\""), "member 
 assert(actionsSource.includes("invitation.sent ? \"invitation_sent\" : \"invitation_failed\""), "member resend must report skipped provider delivery as failed when persistence marks it failed");
 assert(membersPageSource.includes("feedbackPending"), "member pending feedback must use a neutral state presentation");
 const membersReadBoundary = membersPageSource.slice(0, membersPageSource.indexOf("const members = await listTenantMembers"));
-assert(membersReadBoundary.includes("requireTenantSession()"), "member management page must establish session without broad read permission");
+assert(membersReadBoundary.includes("requireTenantReadOnlySession()"), "member management page must establish session without broad read permission");
 assert(membersPageSource.includes("listTenantMembersForAuthenticatedTenant"), "member management page must read with the established authenticated session identity");
 assert(membersPageSource.includes("membersLoadFailed"), "member management page must expose a retryable member-read failure state");
 const tenantSessionSource = fs.readFileSync(path.resolve("src/lib/tenant-session.ts"), "utf8");
@@ -187,6 +252,28 @@ assert(tenantSessionSource.includes('An active tenant must be selected.", "tenan
 assert(membersPageSource.includes('redirect("/workspace")'), "member management page must return multi-tenant users to the canonical workspace selector");
 assert(dataSource.includes("postgres.withPostgresAuthContext(subject"), "authenticated member read must bind the established Clerk subject at the adapter boundary");
 assert(appNavSource.includes("link.href !== \"/settings/members\" || canManageMembers"), "member management navigation must be hidden without member-management capability");
+assert(appNavSource.includes("link.href !== \"/settings/output-templates\" || canManageOutputTemplates"), "output template navigation must be hidden without company-admin capability");
+assert(appNavSource.includes('capabilityHasTenantPermission(currentCapability, "template.edit_draft")'), "output template navigation must require draft-edit capability");
+assert(appNavSource.includes('capabilityHasTenantPermission(currentCapability, "template.publish")'), "output template navigation must require publish capability");
+const outputTemplatePageFunction = outputTemplatePageSource.slice(outputTemplatePageSource.indexOf("export default async function OutputTemplateSettingsPage"));
+const outputTemplateRuntime = outputTemplatePageFunction.slice(outputTemplatePageFunction.indexOf("const [locale, session]"));
+const outputTemplateReadBoundary = outputTemplateRuntime.slice(0, outputTemplateRuntime.indexOf("const [settings, versions]"));
+assert(outputTemplateReadBoundary.includes('requireTenantSession({ permissions: ["template.view", "template.edit_draft", "template.publish"] })'), "output template page must require company-admin read capability before loading settings");
+const outputTemplateReadIndex = outputTemplateReadBoundary.indexOf("getOutputTemplateSettings");
+assert(
+  outputTemplateReadBoundary.indexOf("requireTenantSession") >= 0 &&
+    (outputTemplateReadIndex < 0 || outputTemplateReadBoundary.indexOf("requireTenantSession") < outputTemplateReadIndex),
+  "output template page must authorize before reading company settings",
+);
+const outputTemplateUpdateAction = actionsSource.slice(actionsSource.indexOf("export async function updateOutputTemplateSettingsAction"), actionsSource.indexOf("export async function updateCaseWorkbenchFieldRulesAction"));
+assert(outputTemplateUpdateAction.includes('requireTenantSession({ permissions: ["template.edit_draft", "template.publish"] })'), "output template save and reset action must retain server-side company-admin authorization");
+assert(outputTemplateUpdateAction.indexOf("requireTenantSession") < outputTemplateUpdateAction.indexOf("getOutputTemplateSettings"), "output template save and reset must authorize before reading current settings");
+assert(!memory.capabilityHasTenantPermission("ordinary_member", "template.edit_draft"), "ordinary member must not edit output template settings");
+assert(!memory.capabilityHasTenantPermission("ordinary_member", "template.publish"), "ordinary member must not publish output template settings");
+assert(memory.capabilityHasTenantPermission("company_owner", "template.edit_draft"), "company owner must retain output template editing");
+assert(memory.capabilityHasTenantPermission("company_owner", "template.publish"), "company owner must retain output template publishing");
+assert(memory.capabilityHasTenantPermission("company_form_admin", "template.edit_draft"), "company form admin must retain output template editing");
+assert(memory.capabilityHasTenantPermission("company_form_admin", "template.publish"), "company form admin must retain output template publishing");
 assert(workspacePageSource.includes("listTenantSessionLookupsByExternalAuthSubject"), "workspace page must use current Clerk subject membership state lookup");
 assert(workspacePageSource.includes("sessionLookups.map((lookup) => lookup.membership)"), "workspace page must derive status branches from current subject memberships");
 assert(workspacePageSource.includes("sessionLookups[0]?.user"), "workspace page must prefer the user returned by the current-subject lookup");
@@ -229,7 +316,7 @@ assert(postgresSource.includes("brokerdesk_private.create_tenant_invitation($1, 
 assert(removedInvitationFixMigration.includes("memberships.status = 'invited'"), "removed-member re-invite must return only the new invited membership");
 assert(removedInvitationFixMigration.includes("WHEN 'removed' THEN 3"), "removed-member re-invite must rank historical removed rows after usable memberships");
 assert(removedInvitationFixMigration.includes("CREATE OR REPLACE FUNCTION brokerdesk_private.create_tenant_invitation"), "removed-member re-invite must use an append-only function replacement");
-assert(postgresSource.includes("brokerdesk_private.refresh_tenant_invitation($1, $2, $3, $4)"), "Postgres refresh path must call the restricted function");
+assert(postgresSource.includes("brokerdesk_private.prepare_tenant_invitation_delivery($1, $2, $3, $4)"), "Postgres refresh path must call the restricted delivery-preparation function");
 assert(postgresSource.includes("brokerdesk_private.record_tenant_invitation_delivery("), "Postgres delivery path must call the restricted function");
 assert(postgresSource.includes("brokerdesk_private.accept_tenant_invitation($1, $2, $3, $4)"), "Postgres acceptance path must call the restricted function");
 assert(postgresSource.includes("brokerdesk_private.list_pending_tenant_invitations_for_current_user()"), "Postgres pending invitation path must call the current-user function");
@@ -325,6 +412,33 @@ const creationKey = `slice1-create-${Date.now()}`;
 const created = await memory.createTenantAccountForUser({ userId: owner.id, name: creationName, idempotencyKey: creationKey });
 assert(created.membership.status === "active", "company creation must create an active owner membership");
 assert(created.membership.role === "tenant_owner", "company creator must become tenant_owner");
+const fixtureNow = new Date();
+globalThis.__brokerDb.users.push({
+  id: "slice1-test-platform-owner",
+  name: "Slice 1 Test Platform Owner",
+  email: "slice1-test-platform-owner@example.test",
+  passwordHash: "test",
+  createdAt: fixtureNow,
+});
+globalThis.__brokerDb.tenantMemberships.push({
+  id: "membership_slice1_test_platform_owner",
+  tenantId: "tenant_cherry",
+  userId: "slice1-test-platform-owner",
+  role: "platform_owner",
+  capability: "ordinary_member",
+  status: "active",
+  invitationProvider: "manual",
+  invitationStatus: "accepted",
+  createdAt: fixtureNow,
+  updatedAt: fixtureNow,
+});
+const preparedSeatAccount = await memory.updateTenantAccountLifecycle({
+  tenantId: created.tenant.id,
+  purchasedSeatCount: 3,
+  actorUserId: "slice1-test-platform-owner",
+});
+assert(preparedSeatAccount?.purchasedSeatCount === 3, "test tenant fixture must explicitly prepare three purchased seats");
+assert(preparedSeatAccount?.usedSeatCount === 1 && preparedSeatAccount.availableSeatCount === 2, "test tenant fixture must prove owner uses one seat and two remain before invitation");
 
 const retried = await memory.createTenantAccountForUser({ userId: owner.id, name: creationName, idempotencyKey: creationKey });
 assert(retried.tenant.id === created.tenant.id, "retrying the same creation key must return the original tenant");
@@ -372,6 +486,8 @@ const invited = await memory.inviteTenantMember({
 await memory.updateTenantMemberInvitation({
   tenantId: created.tenant.id,
   membershipId: invited.id,
+  actorUserId: owner.id,
+  memberContext: invited,
   invitationProvider: "manual",
   invitationStatus: "pending",
   sentAt: new Date(),
@@ -412,13 +528,7 @@ assert(
   "a second acceptance must not create or alter another membership",
 );
 
-const activeMember = await memory.inviteTenantMember({
-  tenantId: created.tenant.id,
-  name: "Active Member",
-  email: `slice1-active-${Date.now()}@example.test`,
-  role: "broker",
-  status: "active",
-});
+const activeMember = accepted;
 let activeDowngradeRejected = false;
 try {
   await memory.inviteTenantMember({
@@ -427,11 +537,12 @@ try {
     email: activeMember.user.email,
     role: "broker",
     status: "invited",
+    invitedByUserId: owner.id,
   });
-} catch {
-  activeDowngradeRejected = true;
+} catch (error) {
+  activeDowngradeRejected = error instanceof Error && error.message === "active member cannot be changed back to invited";
 }
-assert(activeDowngradeRejected, "re-inviting an active member must not downgrade it to invited");
+assert(activeDowngradeRejected, "re-inviting an active member must reject the downgrade with the active-member error");
 
 const other = await memory.ensureUserForExternalAuth({ subject: `slice1-other-${Date.now()}`, email: `other-${Date.now()}@example.test` });
 assert(other, "second identity should be provisioned");
@@ -457,10 +568,13 @@ const expiring = await memory.inviteTenantMember({
   role: "broker",
   status: "invited",
   capability: "ordinary_member",
+  invitedByUserId: owner.id,
 });
 await memory.updateTenantMemberInvitation({
   tenantId: created.tenant.id,
   membershipId: expiring.id,
+  actorUserId: owner.id,
+  memberContext: expiring,
   invitationProvider: "manual",
   invitationStatus: "pending",
   expiresAt: new Date(Date.now() - 1),
@@ -487,10 +601,13 @@ const revoked = await memory.inviteTenantMember({
   role: "broker",
   status: "invited",
   capability: "ordinary_member",
+  invitedByUserId: owner.id,
 });
 await memory.updateTenantMemberInvitation({
   tenantId: created.tenant.id,
   membershipId: revoked.id,
+  actorUserId: owner.id,
+  memberContext: revoked,
   invitationProvider: "manual",
   invitationStatus: "revoked",
 });
@@ -505,23 +622,48 @@ assert(
 
 let directAcceptRejected = false;
 try {
-  await memory.updateTenantMemberStatus({ tenantId: created.tenant.id, membershipId: revoked.id, status: "active" });
-} catch {
-  directAcceptRejected = true;
+  await memory.updateTenantMemberStatus({
+    tenantId: created.tenant.id,
+    membershipId: revoked.id,
+    status: "active",
+    actorUserId: owner.id,
+  });
+} catch (error) {
+  directAcceptRejected = error instanceof Error && error.message === "invited membership requires explicit token acceptance";
 }
-assert(directAcceptRejected, "invited membership must not be activated by a status action");
+assert(directAcceptRejected, "invited membership must reject direct activation with the explicit-acceptance error");
 
-await memory.updateTenantMemberStatus({ tenantId: created.tenant.id, membershipId: activeMember.id, status: "suspended" });
-const resumed = await memory.updateTenantMemberStatus({ tenantId: created.tenant.id, membershipId: activeMember.id, status: "active" });
+await memory.updateTenantMemberStatus({
+  tenantId: created.tenant.id,
+  membershipId: activeMember.id,
+  status: "suspended",
+  actorUserId: owner.id,
+});
+const resumed = await memory.updateTenantMemberStatus({
+  tenantId: created.tenant.id,
+  membershipId: activeMember.id,
+  status: "active",
+  actorUserId: owner.id,
+});
 assert(resumed?.status === "active", "suspended membership should be recoverable");
-await memory.updateTenantMemberStatus({ tenantId: created.tenant.id, membershipId: activeMember.id, status: "removed" });
+await memory.updateTenantMemberStatus({
+  tenantId: created.tenant.id,
+  membershipId: activeMember.id,
+  status: "removed",
+  actorUserId: owner.id,
+});
 let removedReactivationRejected = false;
 try {
-  await memory.updateTenantMemberStatus({ tenantId: created.tenant.id, membershipId: activeMember.id, status: "active" });
-} catch {
-  removedReactivationRejected = true;
+  await memory.updateTenantMemberStatus({
+    tenantId: created.tenant.id,
+    membershipId: activeMember.id,
+    status: "active",
+    actorUserId: owner.id,
+  });
+} catch (error) {
+  removedReactivationRejected = error instanceof Error && error.message === "removed membership requires a new invitation";
 }
-assert(removedReactivationRejected, "removed membership must require a new invitation");
+assert(removedReactivationRejected, "removed membership must reject reactivation with the new-invitation error");
 const replacement = await memory.inviteTenantMember({
   tenantId: created.tenant.id,
   name: activeMember.user.name,
@@ -529,6 +671,7 @@ const replacement = await memory.inviteTenantMember({
   role: "broker",
   status: "invited",
   capability: "ordinary_member",
+  invitedByUserId: owner.id,
 });
 assert(replacement.id !== activeMember.id && replacement.status === "invited", "removed membership must be replaced by a new invitation");
 console.log("[PASS] TASK-039 Slice 1 memory identity, invitation, and capability contract");

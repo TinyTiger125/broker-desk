@@ -133,8 +133,8 @@ assertMutationRejected(`${source}\nconst legacy = process.env.DATABASE_DEVELOPME
 assertMutationRejected(`${source}\nconst leaked = { connectionString: databaseUrl };`, "raw URL Pool fallback");
 assertMutationRejected(source.replace("export function assertNoPgEnvironment", "function removedPgEnvironmentGuard"), "PG environment guard");
 assertMutationRejected(source.replace('options: "-c search_path=pg_catalog,public"', 'options: ""'), "fixed search path option");
-assertMutationRejected(source.replace("public.users", "users"), "users schema qualifier");
-assertMutationRejected(source.replace("public.tenant_memberships", "tenant_memberships"), "membership schema qualifier");
+assertMutationRejected(source.replaceAll("public.users", "users"), "users schema qualifier");
+assertMutationRejected(source.replaceAll("public.tenant_memberships", "tenant_memberships"), "membership schema qualifier");
 assertMutationRejected(source.replace("!parsed.password", "false"), "required URL password");
 
 const { bootstrapInitialPlatformOwner, assertNoPgEnvironment, buildPoolConfig, main, runBootstrapWithPool } = await import(`../scripts/bootstrap-initial-platform-owner.mjs?contract=${Date.now()}`);
@@ -178,6 +178,22 @@ class FakeClient {
     }
     if (normalized.includes("bootstrap:advisory-lock")) return { rows: [{ pg_advisory_xact_lock: null }], rowCount: 1 };
     if (normalized.includes("bootstrap:identity-tables-lock")) return { rows: [], rowCount: 0 };
+    if (normalized.includes("bootstrap:supabase-user-lock")) {
+      const rows = this.state.users
+        .filter((user) => user.id === params[0] || user.external_auth_subject === params[1] || user.email.toLowerCase() === String(params[2]).toLowerCase())
+        .sort((a, b) => a.id.localeCompare(b.id));
+      return { rows: clone(rows), rowCount: rows.length };
+    }
+    if (normalized.includes("bootstrap:supabase-user-insert")) {
+      this.state.users.push({ id: params[0], name: params[1], email: params[2], password_hash: params[3], external_auth_subject: params[4], created_at: "2026-09-21T00:00:00.000Z" });
+      return { rows: [], rowCount: 1 };
+    }
+    if (normalized.includes("bootstrap:supabase-user-bind")) {
+      const user = this.state.users.find((item) => item.id === params[0] && !item.external_auth_subject);
+      if (!user) return { rows: [], rowCount: 0 };
+      user.external_auth_subject = params[1];
+      return { rows: [], rowCount: 1 };
+    }
     if (normalized.includes("bootstrap:resolve-user")) {
       const users = this.state.users
         .filter((user) => user.external_auth_subject && !user.email.endsWith("@brokerdesk.local"))
@@ -261,6 +277,16 @@ class FakePool {
 const baseUser = { id: "user_clerk", email: "owner@example.test", external_auth_subject: "user_clerk_subject", created_at: "2026-08-28T00:00:00.000Z" };
 const emptyState = () => ({ users: [baseUser], tenants: [], memberships: [], audits: [] });
 const run = (client, options = {}) => bootstrapInitialPlatformOwner({ client, email: "owner@example.test", deploymentEnvironment: "staging", vercelEnvironment: "preview", ...options });
+const supabaseAuthUserId = "11111111-1111-4111-8111-111111111111";
+const runSupabase = (client, options = {}) => bootstrapInitialPlatformOwner({
+  client,
+  email: "owner@example.test",
+  supabaseIdentity: { authUserId: supabaseAuthUserId, email: "owner@example.test" },
+  explicitApproval: true,
+  deploymentEnvironment: "staging",
+  vercelEnvironment: "preview",
+  ...options,
+});
 
 const rejectedAuthorities = [
   [],
@@ -293,6 +319,37 @@ assert.equal(initial.state.memberships.length, 1, "repeat must not duplicate mem
 assert.equal(initial.state.audits.length, 1, "repeat must audit exactly once");
 assert.equal(initial.state.audits[0].message, "Initial platform owner bootstrap completed");
 assert.deepEqual(initial.state.audits[0].context_json, { source: "scripts/bootstrap-initial-platform-owner.mjs", mode: "controlled-nonproduction" });
+
+const supabaseEmpty = new FakeClient({ users: [], tenants: [], memberships: [], audits: [] });
+const supabaseCreated = await runSupabase(supabaseEmpty);
+assert.equal(supabaseCreated.userId, `user_supabase_${supabaseAuthUserId}`);
+assert.equal(supabaseEmpty.state.users.length, 1, "Supabase bootstrap must create the exact mapped local user when absent");
+assert.equal(supabaseEmpty.state.users[0].external_auth_subject, `supabase:${supabaseAuthUserId}`);
+assert.equal(supabaseEmpty.state.memberships.length, 1);
+const supabaseRepeat = structuredClone(supabaseEmpty.state);
+await runSupabase(new FakeClient(supabaseRepeat));
+assert.deepEqual(supabaseRepeat, supabaseEmpty.state, "Supabase bootstrap repeat must be exactly idempotent");
+
+const supabaseUnbound = new FakeClient({ users: [{ id: "user_reserved", name: "", email: "owner@example.test", external_auth_subject: null, created_at: "2026-08-01T00:00:00.000Z" }], tenants: [], memberships: [], audits: [] });
+await runSupabase(supabaseUnbound);
+assert.equal(supabaseUnbound.state.users[0].external_auth_subject, `supabase:${supabaseAuthUserId}`, "an exact unbound email row may be bound atomically");
+
+for (const conflictUsers of [
+  [{ id: "user_other_subject", email: "owner@example.test", external_auth_subject: "supabase:other", created_at: "2026-08-01T00:00:00.000Z" }],
+  [{ id: `user_supabase_${supabaseAuthUserId}`, email: "other@example.test", external_auth_subject: `supabase:${supabaseAuthUserId}`, created_at: "2026-08-01T00:00:00.000Z" }],
+]) {
+  const conflictState = { users: conflictUsers, tenants: [], memberships: [], audits: [] };
+  const conflictClient = new FakeClient(conflictState);
+  await assert.rejects(runSupabase(conflictClient), /Supabase bootstrap (identity|email|subject) conflict/);
+  assert.deepEqual(conflictClient.state, conflictState, "Supabase identity conflict must rollback without owner writes");
+}
+const supabaseAuditFailure = new FakeClient({ users: [], tenants: [], memberships: [], audits: [] }, { failTag: "audit-insert" });
+await assert.rejects(runSupabase(supabaseAuditFailure), /injected audit-insert failure/);
+assert.deepEqual(supabaseAuditFailure.state, { users: [], tenants: [], memberships: [], audits: [] }, "Supabase mapping must roll back with owner transaction");
+await assert.rejects(
+  bootstrapInitialPlatformOwner({ client: new FakeClient({ users: [], tenants: [], memberships: [], audits: [] }), email: "owner@example.test", supabaseIdentity: { authUserId: supabaseAuthUserId, email: "owner@example.test" }, deploymentEnvironment: "staging", vercelEnvironment: "preview" }),
+  /explicit approval/,
+);
 
 const exactAuditState = clone(initial.state);
 const exactAuditRepeat = new FakeClient(exactAuditState);

@@ -42,6 +42,7 @@ import {
   addClient,
   addProperty,
   addImportJob,
+  claimPropertyRowImport,
   addTask,
   createTenantAccount,
   createTenantAccountForUser,
@@ -64,6 +65,7 @@ import {
   getGuaranteeApplicationDraft,
   getOutputTemplateSettings,
   getQuotationById,
+  getQuotationByIdForContext,
   listClients,
   listCaseWorkbenchFieldRules,
   listExtractionReviewItems,
@@ -77,6 +79,9 @@ import {
   resolveClientVisibilityForContext,
   resolvePropertyVisibilityForContext,
   resolveCaseVisibilityForContext,
+  refreshObjectImportReview,
+  getObjectImportTarget,
+  saveCaseWorkbenchWithObjectReview,
   saveBrokerageCaseExtractionReview,
   saveGuaranteeApplicationDraft,
   setRecordLifecycleWithAudit,
@@ -130,10 +135,15 @@ import {
   type ImportValidationIssueLevel,
 } from "@/lib/import-mapping";
 import { materializeExtractionReviewValue } from "@/lib/extraction-review-materialization";
-import { assertTenantPermission, requireTenantSession, type TenantSession } from "@/lib/tenant-session";
+import {
+  assertTenantPermission,
+  requireTenantSession,
+  TenantSessionError,
+  type TenantSession,
+} from "@/lib/tenant-session";
 import { createRequestContext } from "@/lib/visibility-resolver";
 import { ACTIVE_TENANT_COOKIE_NAME } from "@/lib/tenant-permissions";
-import { requirePlatformOwnerSession } from "@/lib/platform-session";
+import { PlatformSessionError, requirePlatformOwnerSession } from "@/lib/platform-session";
 import { isLifecycleStatus, type LifecycleStatus } from "@/lib/record-lifecycle";
 import { FORBIDDEN_RECORD_INPUT_FIELDS } from "@/lib/record-input-guard";
 import { deriveTenantServiceState, isTenantServiceOperational, validateTenantServicePeriod } from "@/lib/tenant-service";
@@ -172,15 +182,18 @@ import type { InputFileExtractionResult } from "@/lib/input-file-extractor";
 import { queueExcelImportSource } from "@/lib/excel-import-queue";
 import { queueIdentityImportSources } from "@/lib/identity-import-queue";
 import { createClerkInvitationForTenantMember } from "@/lib/clerk-invitations";
+import { inviteSupabaseUserByEmail } from "@/lib/supabase/admin";
 import { assertCaseSourcesReadable } from "@/lib/w93-access";
-import { getVerifiedClerkAuthIdentity } from "@/lib/clerk-auth";
-import { isClerkAuthEnabled } from "@/lib/auth-mode";
-import { CASE_FIELD_KEYS, getCaseFieldDefinition, isKnownCaseFieldKey } from "@/lib/case-field-catalog";
+import { getVerifiedAuthIdentity } from "@/lib/auth-provider";
+import { isClerkAuthEnabled, isSupabaseAuthEnabled } from "@/lib/auth-mode";
+import { persistTenantMembershipStatus } from "@/lib/supabase/membership-lifecycle";
+import { CASE_FIELD_KEYS, getCaseFieldDefinition, getCaseFieldInformation, isKnownCaseFieldKey } from "@/lib/case-field-catalog";
 import {
   CASE_WORKBENCH_FIELD_KEYS,
   buildCaseWorkbenchRuleMap,
   isCaseWorkbenchFieldKey,
   normalizeCaseFieldRequirement,
+  resolveCaseWorkbenchFieldRequirement,
 } from "@/lib/case-workbench-field-rules";
 import { canonicalizeCaseFieldKey, clearCaseFieldValueAliases, getCaseFieldValue } from "@/lib/case-field-normalization";
 import {
@@ -190,6 +203,7 @@ import {
 } from "@/lib/case-field-applicability";
 import { getCaseWorkbenchProgressSnapshot } from "@/lib/case-workbench-progress";
 import { applyJapanesePostalCodeAddressCompletions, isValidJapanesePostalCode } from "@/lib/japan-postal-code";
+import { getCaseContactValidationError } from "@/lib/case-contact-validation";
 import {
   buildExtractionReviewCorrectionEvents,
   buildGuaranteeDraftCorrectionEvents,
@@ -247,6 +261,7 @@ import {
 import {
   getPrimaryPartyId,
   normalizeCaseAssociationDraft,
+  readCaseAssociationDraft,
   validateCaseAssociationDraft,
   writeCaseAssociationData,
   type CaseAssociationDraft,
@@ -1182,6 +1197,7 @@ export async function changeTaskStatusAction(formData: FormData) {
   const updated = await updateTaskStatus({
     tenantId,
     taskId,
+    expectedClientId: clientId,
     status,
     updatedById: user.id,
   });
@@ -1229,9 +1245,15 @@ export async function batchUpdateServiceRequestStatusAction(formData: FormData) 
 
   const clients = await listClients(user.id, { sort: "follow_up", tenantId });
   const details = await Promise.all(clients.map((client) => getClientDetail(client.id, tenantId)));
-  const allowedTaskIds = new Set<string>();
-  details.forEach((detail) => detail?.tasks.forEach((task) => allowedTaskIds.add(task.id)));
-  const targetIds = taskIds.filter((id) => allowedTaskIds.has(id));
+  const allowedTaskClients = new Map<string, string>();
+  details.forEach((detail) => detail?.tasks.forEach((task) => {
+    if (task.clientId === detail.id) allowedTaskClients.set(task.id, detail.id);
+  }));
+  const targets = taskIds.flatMap((taskId) => {
+    const expectedClientId = allowedTaskClients.get(taskId);
+    return expectedClientId ? [{ taskId, expectedClientId }] : [];
+  });
+  const targetIds = targets.map((target) => target.taskId);
   if (targetIds.length === 0) {
     throw new Error(
       tr(locale, {
@@ -1242,7 +1264,10 @@ export async function batchUpdateServiceRequestStatusAction(formData: FormData) 
     );
   }
 
-  await Promise.all(targetIds.map((taskId) => updateTaskStatus({ tenantId, taskId, status, updatedById: user.id })));
+  await Promise.all([...new Set(targets.map((target) => target.expectedClientId))]
+    .map((clientId) => ensureClientOwnership(clientId, session)));
+  await Promise.all(targets.map(({ taskId, expectedClientId }) =>
+    updateTaskStatus({ tenantId, taskId, expectedClientId, status, updatedById: user.id })));
 
   await addAuditLog({
     tenantId,
@@ -1432,6 +1457,7 @@ export async function rescheduleTaskAction(formData: FormData) {
   const updated = await rescheduleTask({
     tenantId,
     taskId,
+    expectedClientId: clientId,
     dueAt,
     updatedById: user.id,
   });
@@ -1461,6 +1487,7 @@ export async function undoTaskStatusAction(formData: FormData) {
   const updated = await updateTaskStatus({
     tenantId,
     taskId,
+    expectedClientId: clientId,
     status: statusRaw,
     updatedById: user.id,
   });
@@ -1520,8 +1547,8 @@ export async function updateImportJobMappingAction(formData: FormData) {
 
   const jobId = String(formData.get("jobId") ?? "").trim();
   const targetEntity = String(formData.get("targetEntity") ?? "").trim();
-  const sourceColumnsText = (formData.getAll("sourceColumn") as string[]).filter(Boolean).join(",");
-  const targetFieldsText = (formData.getAll("targetField") as string[]).filter(Boolean).join(",");
+  const sourceColumns = formData.getAll("sourceColumn").map((value) => typeof value === "string" ? value : "");
+  const targetFields = formData.getAll("targetField").map((value) => typeof value === "string" ? value : "");
   const notes = String(formData.get("notes") ?? "").trim();
 
   if (!jobId) {
@@ -1531,8 +1558,6 @@ export async function updateImportJobMappingAction(formData: FormData) {
     throw new Error("保存先が不正です。");
   }
 
-  const sourceColumns = parseCommaList(sourceColumnsText);
-  const targetFields = parseCommaList(targetFieldsText);
   if (sourceColumns.length === 0 || targetFields.length === 0) {
     throw new Error("元列とマッピング先項目を入力してください。");
   }
@@ -1626,7 +1651,7 @@ export async function updateImportJobMappingAction(formData: FormData) {
 
   revalidatePath("/");
   revalidatePath("/import-center");
-  redirect(withFlash(`/import-center?job=${updated.id}`, "import_mapping_saved"));
+  redirect(withFlash(`/import-center?job=${updated.id}&advanced=1`, "import_mapping_saved"));
 }
 
 export async function autoMapImportJobAction(formData: FormData) {
@@ -1919,6 +1944,28 @@ export async function registerAttachmentAction(formData: FormData) {
   }
   if (!targetId) {
     throw new Error("対象IDは必須です。");
+  }
+
+  const requestContext = createRequestContext(session);
+  if (targetType === "property") await ensurePropertyOwnership(targetId, session);
+  if (targetType === "party") await ensureClientOwnership(targetId, session);
+  if (targetType === "contract") {
+    const quote = await getQuotationById(targetId, session.tenant.id);
+    const client = quote?.client?.id
+      ? await resolveClientVisibilityForContext({ context: requestContext, clientId: quote.client.id })
+      : null;
+    if (!client?.resolution.canWrite) throw new Error("合同の関連資料に添付する権限がありません。");
+  }
+  if (targetType === "quote") {
+    const quote = await getQuotationByIdForContext({ context: requestContext, quoteId: targetId });
+    if (!quote?.client) throw new Error("提案が見つかりません。");
+    const client = await resolveClientVisibilityForContext({ context: requestContext, clientId: quote.client.id });
+    const property = quote.propertyId
+      ? await resolvePropertyVisibilityForContext({ context: requestContext, propertyId: quote.propertyId })
+      : null;
+    if (!client.resolution.canWrite || (quote.propertyId && !property?.resolution.canWrite)) {
+      throw new Error("提案の関連資料に添付する権限がありません。");
+    }
   }
 
   let fileName = fileNameInput;
@@ -2688,21 +2735,36 @@ async function sendTenantMemberInvitation(input: {
   if (!prepared) throw new Error("招待対象メンバーが見つかりません。");
   const member = prepared.member;
 
-  const result = await createClerkInvitationForTenantMember(prepared).catch((error) => ({
-    ok: false as const,
-    skipped: false,
-    reason: error instanceof Error ? error.message : String(error),
-  }));
+  let result:
+    | ({ ok: true; provider: "supabase"; skipped: false; providerInvitationId: string; sentAt: Date })
+    | ({ ok: true; provider: "clerk"; providerInvitationId: string; invitationUrl?: string; sentAt: Date; skipped?: boolean })
+    | { ok: false; skipped: boolean; reason: string };
+  try {
+    if (isSupabaseAuthEnabled()) {
+      const value = await inviteSupabaseUserByEmail({
+        email: member.user.email,
+        redirectTo: process.env.BROKER_DESK_SUPABASE_INVITE_REDIRECT_URL?.trim() || undefined,
+      });
+      result = { ...value, provider: "supabase", ok: true, skipped: false };
+    } else {
+      const value = await createClerkInvitationForTenantMember(prepared);
+      result = value.ok
+        ? { ...value, provider: "clerk" }
+        : { ok: false, skipped: value.skipped, reason: value.reason };
+    }
+  } catch (error) {
+    result = { ok: false, skipped: false, reason: error instanceof Error ? error.message : String(error) };
+  }
   if (result.ok) {
     try {
       const updated = await updateTenantMemberInvitation({
         tenantId: input.tenantId,
         membershipId: input.membershipId,
         memberContext: member,
-        invitationProvider: "clerk",
+        invitationProvider: result.provider,
         invitationStatus: "pending",
         providerInvitationId: result.providerInvitationId,
-        invitationUrl: result.invitationUrl,
+        invitationUrl: "invitationUrl" in result ? result.invitationUrl : undefined,
         sentAt: result.sentAt,
         actorUserId: input.actorId,
       });
@@ -2721,7 +2783,7 @@ async function sendTenantMemberInvitation(input: {
         tenantId: input.tenantId,
         membershipId: input.membershipId,
         memberContext: member,
-        invitationProvider: "clerk",
+        invitationProvider: isSupabaseAuthEnabled() ? "supabase" : "clerk",
         invitationStatus: "failed",
         invitationError: result.reason,
         actorUserId: input.actorId,
@@ -2841,7 +2903,7 @@ export type TenantInvitationActionState = {
   message?: TenantInvitationActionMessageToken;
 };
 
-/** Explicitly accept one pending invitation after the Clerk identity has been bound by email. */
+/** Explicitly accept one pending invitation for the verified, bound identity. */
 export async function acceptTenantInvitationAction(
   _previousState: TenantInvitationActionState,
   formData: FormData,
@@ -2849,16 +2911,21 @@ export async function acceptTenantInvitationAction(
   let tenantId = "";
   let membershipId = "";
   let invitationAccepted = false;
+  const identityNotBoundError = { status: "error", message: "invitation_identity_not_bound" } as const;
   try {
-    const identity = await getVerifiedClerkAuthIdentity();
-    if (isClerkAuthEnabled() && !identity?.email) {
+    const identity = await getVerifiedAuthIdentity();
+    const externalAuthEnabled = isClerkAuthEnabled() || isSupabaseAuthEnabled();
+    if (externalAuthEnabled && (!identity?.subject || !identity.email)) {
       return { status: "error", message: "email_verification_required" };
     }
     const user = await getDefaultUser();
     if (!user) {
-      return { status: "error", message: "invitation_identity_not_bound" };
+      return identityNotBoundError;
     }
-    if (identity?.email && identity.email.toLowerCase() !== user.email.toLowerCase()) {
+    if (externalAuthEnabled && user.externalAuthSubject !== identity?.subject) {
+      return identityNotBoundError;
+    }
+    if (identity?.email && identity.email.trim().toLowerCase() !== user.email.trim().toLowerCase()) {
       return { status: "error", message: "invitation_email_mismatch" };
     }
     tenantId = String(formData.get("tenantId") ?? "").trim();
@@ -2869,7 +2936,7 @@ export async function acceptTenantInvitationAction(
     }
 
     const member = await acceptTenantInvitation({ userId: user.id, tenantId, membershipId, invitationToken });
-    if (!member) {
+    if (!member || member.id !== membershipId || member.tenantId !== tenantId || member.user.id !== user.id) {
       return { status: "error", message: "invitation_unavailable" };
     }
     invitationAccepted = true;
@@ -3123,23 +3190,24 @@ export async function updateTenantMemberStatusAction(formData: FormData) {
     }
     throw error;
   }
-  const member = await updateTenantMemberStatus({ tenantId, membershipId, status, actorUserId: session.user.id });
-  if (!member) throw new Error("メンバーが見つかりません。");
-  await addAuditLog({
-    tenantId,
-    userId: session.user.id,
-    action: status === "active" ? "member_reactivated" : status === "removed" ? "member_removed" : "member_suspended",
-    targetType: "member",
-    targetId: member.id,
-    message: `テナントメンバー状態を更新しました: ${member.user.email} / ${member.status}`,
-    context: {
-      memberUserId: member.userId,
-      role: member.role,
-      status: member.status,
-    },
+  const lifecycle = await persistTenantMembershipStatus({
+    targetTenantId: tenantId,
+    status,
+    updateLocal: () => updateTenantMemberStatus({ tenantId, membershipId, status, actorUserId: session.user.id }),
+    recordAudit: async (member) => addAuditLog({
+      tenantId,
+      userId: session.user.id,
+      action: status === "active" ? "member_reactivated" : status === "removed" ? "member_removed" : "member_suspended",
+      targetType: "member",
+      targetId: member.id,
+      message: `テナントメンバー状态已更新: ${member.user.email} / ${member.status}`,
+      context: { memberUserId: member.userId, role: member.role, status: member.status, supabaseAccess: isSupabaseAuthEnabled() ? "local_membership_gate" : "provider_default" },
+    }),
   });
+  if (!lifecycle.ok) throw new Error(lifecycle.reason);
   revalidatePath("/settings/members");
-  redirect(`/settings/members?flash=${status === "active" ? "member_reactivated" : status === "removed" ? "member_removed" : "member_suspended"}`);
+  const flash = lifecycle.warning ? "member_access_updated_audit_pending" : status === "active" ? "member_reactivated" : status === "removed" ? "member_removed" : "member_suspended";
+  redirect(`/settings/members?flash=${flash}`);
 }
 
 export async function revokeTenantMemberInvitationAction(formData: FormData) {
@@ -3451,6 +3519,15 @@ function getCaseWorkbenchFieldDecision(formData: FormData, fieldKey: string): "c
   return "confirmed";
 }
 
+function getCaseWorkbenchSubmittedValue(formData: FormData, fieldKey: string): string {
+  const submittedFieldName = `field:${fieldKey}`;
+  if (formData.has(submittedFieldName)) return String(formData.get(submittedFieldName) ?? "").trim();
+  // The row snapshot is updated from the same visible control on input. It
+  // preserves a non-empty value if a client rerender drops the native value
+  // immediately before the server action serializes the form.
+  return String(formData.get("fieldValueSnapshot") ?? "").trim();
+}
+
 function safeHashAnchor(value: FormDataEntryValue | null): string {
   const anchor = String(value ?? "").trim();
   return /^[a-zA-Z0-9_-]+$/.test(anchor) ? anchor : "";
@@ -3670,6 +3747,9 @@ export async function createBlankBrokerageCaseAction(
   const primaryParty = primaryPartyId
     ? partyResults[associationDraft.parties.findIndex((party) => party.partyId === primaryPartyId)]?.record
     : undefined;
+  if (primaryPartyId && !primaryParty?.name?.trim()) {
+    throw new Error("主要申请人资料缺少姓名，无法保存关联。");
+  }
   const primaryProperty = propertyResult?.record;
   const today = formatCaseTitleDate(new Date());
   const defaultTitle = tr(locale, {
@@ -3768,10 +3848,21 @@ export async function saveCaseAssociationsAction(formData: FormData) {
   const primaryParty = primaryPartyId
     ? partyResults[associationDraft.parties.findIndex((party) => party.partyId === primaryPartyId)]?.record
     : undefined;
+  if (primaryPartyId && !primaryParty?.name?.trim()) {
+    throw new Error("主要申请人资料缺少姓名，无法保存关联。");
+  }
+  const previousPrimaryPartyId = getPrimaryPartyId(readCaseAssociationDraft(brokerageCase.confirmedDataJson));
+  const previousPrimaryPartyResult = previousPrimaryPartyId && previousPrimaryPartyId !== primaryPartyId
+    ? await resolveClientVisibilityForContext({ context: requestContext, clientId: previousPrimaryPartyId })
+    : undefined;
   const nextConfirmedData = writeCaseAssociationData(
     brokerageCase.confirmedDataJson,
     associationDraft,
-    { primaryPartyName: primaryParty?.name, propertyName: propertyResult?.record?.name },
+    {
+      primaryPartyName: primaryParty?.name,
+      propertyName: propertyResult?.record?.name,
+      previousPrimaryPartyName: previousPrimaryPartyResult?.record?.name,
+    },
   );
   const updatedCase = await updateBrokerageCaseConfirmedData({
     userId: user.id,
@@ -3799,6 +3890,40 @@ export async function saveCaseAssociationsAction(formData: FormData) {
   redirect(`/cases/${encodeURIComponent(caseId)}?flash=case_associations_updated`);
 }
 
+export async function refreshObjectImportReviewAction(formData: FormData) {
+  const session = await requireTenantSession({ permission: "extract.accept_result" });
+  const targetId = String(formData.get("importTargetId") ?? "").trim();
+  const fieldId = String(formData.get("fieldId") ?? "").trim();
+  const expectedVersion = String(formData.get("expectedVersion") ?? "").trim();
+  const observedVersion = String(formData.get("observedVersion") ?? "").trim();
+  const expectedCandidateValue = String(formData.get("expectedCandidateValue") ?? "");
+  if (!targetId || !fieldId || !expectedVersion || !observedVersion) throw new Error("object_import_review_refresh_invalid");
+  const result = await refreshObjectImportReview({
+    context: createRequestContext(session), targetId, fieldId, expectedVersion, observedVersion, expectedCandidateValue,
+  });
+  if (!result.ok && result.reason !== "conflict" && result.reason !== "already_reviewed") {
+    throw new Error(`object_import_review_refresh_${result.reason}`);
+  }
+  const target = await getObjectImportTarget({ tenantId: session.tenant.id, userId: session.user.id, id: targetId });
+  const caseId = result.ok ? result.caseId : target?.caseId;
+  if (!caseId) throw new Error(`object_import_review_refresh_${"reason" in result ? result.reason : "conflict"}`);
+  const params = new URLSearchParams();
+  const importJobId = String(formData.get("importJobId") ?? target?.importJobId ?? "").trim();
+  const field = String(formData.get("field") ?? "").trim();
+  const returnNode = safeQueryToken(formData.get("returnNode"));
+  const returnView = safeQueryToken(formData.get("returnView"));
+  const returnScrollTop = safeScrollTop(formData.get("returnScrollTop"));
+  const returnAnchor = safeHashAnchor(formData.get("returnAnchor"));
+  if (returnNode) params.set("node", returnNode);
+  if (returnView) params.set("view", returnView);
+  if (returnScrollTop) params.set("scrollTop", returnScrollTop);
+  if (importJobId) params.set("objectImportJob", importJobId);
+  if (field) params.set("field", field);
+  params.set("flash", result.ok ? "object_import_review_rebased" : result.reason === "already_reviewed" ? "object_import_review_already_reviewed" : "object_import_review_conflict");
+  revalidatePath(`/cases/${caseId}`);
+  redirect(`/cases/${encodeURIComponent(caseId)}?${params.toString()}${returnAnchor ? `#${returnAnchor}` : ""}`);
+}
+
 export async function saveCaseWorkbenchAction(formData: FormData) {
   const session = await requireTenantSession({ permission: "record.update" });
   const user = session.user;
@@ -3808,6 +3933,15 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
   await rejectForbiddenRecordInput(formData, session, "case", caseId || undefined);
   if (!caseId) throw new Error("案件IDが不正です。");
   const brokerageCase = await requireWritableCase(session, caseId);
+  const objectReviewRaw = String(formData.get("objectImportReviewJson") ?? "").trim();
+  let parsedObjectReview: { targetId?: unknown; fieldId?: unknown; expectedVersion?: unknown; expectedCandidateValue?: unknown; caseFieldKey?: unknown; preserveExisting?: unknown; importJobId?: unknown } | undefined;
+  if (objectReviewRaw) {
+    try {
+      parsedObjectReview = JSON.parse(objectReviewRaw) as typeof parsedObjectReview;
+    } catch {
+      throw new Error("object_import_review_invalid");
+    }
+  }
   const [reviewItems, fieldRules] = await Promise.all([
     listExtractionReviewItems({ userId: user.id, tenantId, caseId }),
     listCaseWorkbenchFieldRules(user.id, tenantId),
@@ -3832,13 +3966,53 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
   const returnAnchor = safeHashAnchor(formData.get("returnAnchor"));
   const returnView = safeQueryToken(formData.get("returnView"));
   const returnScrollTop = safeScrollTop(formData.get("returnScrollTop"));
+  const guaranteeTemplate = safeQueryToken(formData.get("guaranteeTemplate"));
+  const returnNode = safeQueryToken(formData.get("returnNode"));
+  const returnField = safeWorkbenchFieldToken(formData.get("returnField"));
+  const requiredMissingFieldKey = fieldKeysToSave.find((fieldKey) => {
+    const decision = getCaseWorkbenchFieldDecision(formData, fieldKey);
+    if (decision !== "confirmed") return false;
+    const definition = getCaseFieldDefinition(fieldKey);
+    const information = definition ? getCaseFieldInformation(definition) : undefined;
+    if (!information || resolveCaseWorkbenchFieldRequirement(fieldKey, information.importance, ruleMap) !== "required") return false;
+    const rawValue = getCaseWorkbenchSubmittedValue(formData, fieldKey);
+    const candidateValue = String(formData.get(`candidate:${fieldKey}`) ?? "").trim();
+    const nextValue = (fieldKey === useCandidateFieldKey || shouldBatchUseCandidates) && candidateValue ? candidateValue : rawValue;
+    return !nextValue;
+  });
+  if (requiredMissingFieldKey) {
+    const requiredParams = new URLSearchParams();
+    if (returnView) requiredParams.set("view", returnView);
+    requiredParams.set("flash", "case_required_field_missing");
+    requiredParams.set("field", requiredMissingFieldKey);
+    if (returnScrollTop) requiredParams.set("scrollTop", returnScrollTop);
+    redirect(`/cases/${caseId}?${requiredParams.toString()}${returnAnchor ? `#${returnAnchor}` : ""}`);
+  }
   const invalidPostalFieldKey = fieldKeysToSave.find((fieldKey) => {
     if (getCaseFieldDefinition(fieldKey)?.valueKind !== "postal_code") return false;
-    const rawValue = String(formData.get(`field:${fieldKey}`) ?? "").trim();
+    const rawValue = getCaseWorkbenchSubmittedValue(formData, fieldKey);
     const candidateValue = String(formData.get(`candidate:${fieldKey}`) ?? "").trim();
     const nextValue = (fieldKey === useCandidateFieldKey || shouldBatchUseCandidates) && candidateValue ? candidateValue : rawValue;
     return Boolean(nextValue) && !isValidJapanesePostalCode(nextValue);
   });
+  const locale = await getLocale();
+  const invalidContactFieldKey = fieldKeysToSave.find((fieldKey) => {
+    const rawValue = getCaseWorkbenchSubmittedValue(formData, fieldKey);
+    const candidateValue = String(formData.get(`candidate:${fieldKey}`) ?? "").trim();
+    const nextValue = (fieldKey === useCandidateFieldKey || shouldBatchUseCandidates) && candidateValue ? candidateValue : rawValue;
+    let decision = getCaseWorkbenchFieldDecision(formData, fieldKey);
+    if (fieldKey === useCandidateFieldKey || shouldBatchUseCandidates) decision = "confirmed";
+    if (decision === "unknown" || decision === "not_applicable" || decision === "rejected") return false;
+    return Boolean(getCaseContactValidationError(fieldKey, nextValue, locale));
+  });
+  if (invalidContactFieldKey) {
+    const invalidParams = new URLSearchParams();
+    if (returnView) invalidParams.set("view", returnView);
+    invalidParams.set("flash", "case_field_invalid");
+    invalidParams.set("field", invalidContactFieldKey);
+    if (returnScrollTop) invalidParams.set("scrollTop", returnScrollTop);
+    redirect(`/cases/${caseId}?${invalidParams.toString()}${returnAnchor ? `#${returnAnchor}` : ""}`);
+  }
   if (invalidPostalFieldKey) {
     const invalidParams = new URLSearchParams();
     if (returnView) invalidParams.set("view", returnView);
@@ -3849,7 +4023,7 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
   }
   fieldKeysToSave.forEach((fieldKey) => {
     const previousValue = getCaseFieldValue(brokerageCase.confirmedDataJson, fieldKey);
-    let nextValue = String(formData.get(`field:${fieldKey}`) ?? "").trim();
+    let nextValue = getCaseWorkbenchSubmittedValue(formData, fieldKey);
     let decision = getCaseWorkbenchFieldDecision(formData, fieldKey);
     if (fieldKey === useCandidateFieldKey || shouldBatchUseCandidates) {
       const candidateValue = String(formData.get(`candidate:${fieldKey}`) ?? "").trim();
@@ -3901,13 +4075,47 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
     reviewItems,
   });
 
-  const updatedCase = await updateBrokerageCaseConfirmedData({
-    userId: user.id,
-    tenantId,
+  const objectReviewFieldKey = String(parsedObjectReview?.caseFieldKey ?? "").trim();
+  const objectReviewSubmittedValue = objectReviewFieldKey ? getCaseWorkbenchSubmittedValue(formData, objectReviewFieldKey) : "";
+  const objectReviewExistingValue = objectReviewFieldKey ? getCaseFieldValue(brokerageCase.confirmedDataJson, objectReviewFieldKey) : "";
+  const preserveExistingObjectReview = parsedObjectReview?.preserveExisting === true || parsedObjectReview?.preserveExisting === "true";
+  const objectReviewDecision = preserveExistingObjectReview && objectReviewSubmittedValue.trim() === objectReviewExistingValue.trim() ? "reject" : "confirm";
+  const updatedResult = await saveCaseWorkbenchWithObjectReview({
+    context: createRequestContext(session),
     caseId,
     confirmedDataJson: nextConfirmedData,
+    objectReview: parsedObjectReview
+      ? {
+          context: createRequestContext(session),
+          targetId: String(parsedObjectReview.targetId ?? ""),
+          fieldId: String(parsedObjectReview.fieldId ?? ""),
+          expectedVersion: String(parsedObjectReview.expectedVersion ?? ""),
+          expectedCandidateValue: String(parsedObjectReview.expectedCandidateValue ?? ""),
+          decision: objectReviewDecision,
+          caseFieldKey: objectReviewFieldKey,
+          value: objectReviewDecision === "confirm" ? objectReviewSubmittedValue : undefined,
+          caseFieldValue: objectReviewDecision === "confirm" ? getCaseFieldValue(nextConfirmedData, objectReviewFieldKey) : undefined,
+        }
+      : undefined,
   });
-  if (!updatedCase) throw new Error("案件の保存に失敗しました。");
+  if (!updatedResult.ok) {
+    if (updatedResult.reason === "case_not_writable") throw new Error("案件の保存に失敗しました。");
+    if (updatedResult.reason === "conflict" || updatedResult.reason === "already_reviewed") {
+      const reviewConflictParams = new URLSearchParams();
+      if (guaranteeTemplate) reviewConflictParams.set("guaranteeTemplate", guaranteeTemplate);
+      if (returnNode) reviewConflictParams.set("node", returnNode);
+      if (returnView) reviewConflictParams.set("view", returnView);
+      if (returnScrollTop) reviewConflictParams.set("scrollTop", returnScrollTop);
+      const objectReviewJobId = safeQueryToken(String(parsedObjectReview?.importJobId ?? ""));
+      if (objectReviewJobId) reviewConflictParams.set("objectImportJob", objectReviewJobId);
+      reviewConflictParams.set("flash", updatedResult.reason === "already_reviewed" ? "object_import_review_already_reviewed" : "object_import_review_conflict");
+      const reviewFieldKey = objectReviewFieldKey || returnField;
+      if (reviewFieldKey) reviewConflictParams.set("field", reviewFieldKey);
+      redirect(`/cases/${caseId}?${reviewConflictParams.toString()}${returnAnchor ? `#${returnAnchor}` : ""}`);
+    }
+    throw new Error(`object_import_review_${updatedResult.reason}`);
+  }
+  const updatedCase = updatedResult.brokerageCase;
 
   const correctionEvents = await addCorrectionEvents({
     userId: user.id,
@@ -3939,9 +4147,6 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
 
   revalidatePath(`/cases/${caseId}`);
   revalidatePath("/output-center");
-  const guaranteeTemplate = safeQueryToken(formData.get("guaranteeTemplate"));
-  const returnNode = safeQueryToken(formData.get("returnNode"));
-  const returnField = safeWorkbenchFieldToken(formData.get("returnField"));
   const redirectParams = new URLSearchParams();
   if (guaranteeTemplate) redirectParams.set("guaranteeTemplate", guaranteeTemplate);
   if (returnNode) redirectParams.set("node", returnNode);
@@ -4292,18 +4497,29 @@ async function saveGuaranteeApplicationPreviewWithScope(
   formData: FormData,
   saveMode: GuaranteePreviewSaveMode,
 ) {
-  const session = await requireTenantSession({ permission: "output.update_draft" });
-  if (saveMode === "template") {
-    await requirePlatformOwnerSession();
-    assertTenantPermission(session, "template.edit_draft");
-    assertTenantPermission(session, "template.publish");
+  const caseId = String(formData.get("caseId") ?? "").trim();
+  if (!caseId && saveMode !== "template") throw new Error("案件IDが不正です。");
+  const templateId = String(formData.get("templateId") ?? FRIENDS_GUARANTEE_DEFAULT_TEMPLATE_ID).trim() || FRIENDS_GUARANTEE_DEFAULT_TEMPLATE_ID;
+  let session: Awaited<ReturnType<typeof requireTenantSession>>;
+  try {
+    // Official template layout is a platform resource. Its write authority is
+    // the platform-owner membership, independent of the active tenant's case
+    // draft capability. Case-scoped saves retain the tenant output permission.
+    session = await requireTenantSession(saveMode === "template" ? {} : { permission: "output.update_draft" });
+    if (saveMode === "template") await requirePlatformOwnerSession();
+  } catch (error) {
+    if (
+      saveMode === "template" &&
+      ((error instanceof TenantSessionError && error.code === "permission_denied") ||
+        (error instanceof PlatformSessionError && error.code === "platform_forbidden"))
+    ) {
+      redirect(`/platform/templates/${encodeURIComponent(templateId)}?flash=template_layout_forbidden`);
+    }
+    throw error;
   }
   const user = session.user;
   const tenantId = session.tenant.id;
 
-  const caseId = String(formData.get("caseId") ?? "").trim();
-  if (!caseId && saveMode !== "template") throw new Error("案件IDが不正です。");
-  const templateId = String(formData.get("templateId") ?? FRIENDS_GUARANTEE_DEFAULT_TEMPLATE_ID).trim() || FRIENDS_GUARANTEE_DEFAULT_TEMPLATE_ID;
   const template = findGuaranteeCompanyTemplate(templateId);
   if (!template) throw new Error("保証会社テンプレートが見つかりません。");
   const getTemplateEditorRedirectHref = (flash: "template_layout_unchanged" | "template_layout_saved") => {
@@ -4312,7 +4528,7 @@ async function saveGuaranteeApplicationPreviewWithScope(
     return `/platform/templates/${encodeURIComponent(template.id)}?${redirectParams.toString()}`;
   };
 
-  const brokerageCase = caseId ? await requireWritableCase(session, caseId) : null;
+  const brokerageCase = saveMode === "case" && caseId ? await requireWritableCase(session, caseId) : null;
   const previousDraft = brokerageCase
     ? await getGuaranteeApplicationDraft({ userId: user.id, tenantId, caseId, templateId: template.id })
     : null;
@@ -5206,6 +5422,13 @@ export async function executePropertyImportAction(formData: FormData) {
     status: "mapped",
   });
 
+  const claimed = await claimPropertyRowImport({ tenantId, userId: user.id, jobId: job.id });
+  if (!claimed) throw new Error(tr(locale, {
+    ja: "この取込は開始済み、または開始できない状態です。再実行は行いません。",
+    zh: "此导入已开始，或当前状态不允许开始。不会重复执行。",
+    ko: "이미 시작했거나 시작할 수 없는 가져오기입니다. 다시 실행하지 않습니다.",
+  }));
+
   let successCount = 0;
   const skipped: { row: number; code: "import_row_missing_name" | "import_row_invalid_listing_price" | "import_row_unknown_error"; reason: string }[] = [];
 
@@ -5258,7 +5481,7 @@ export async function executePropertyImportAction(formData: FormData) {
     }
   }
 
-  const nextStatus = successCount > 0 ? "completed" : "mapped";
+  const nextStatus = successCount > 0 ? "completed" : "failed";
   const skippedByCode = skipped.reduce<Record<string, number>>((acc, item) => {
     acc[item.code] = (acc[item.code] ?? 0) + 1;
     return acc;
@@ -5269,13 +5492,13 @@ export async function executePropertyImportAction(formData: FormData) {
       createImportValidationIssue({
         code: "import_zero_success",
         level: "critical",
-        action: "retry",
+        action: "resolve_now",
         message:
           locale === "zh"
-            ? "保存成功数为 0，请修正保存位置或源数据后重试。"
+            ? "保存成功数为 0。已保留导入记录，请先核对结果；不能重复执行或删除原件。"
             : locale === "ko"
-              ? "저장 성공 건수가 0건입니다. 저장 위치 또는 원본 데이터를 수정 후 다시 시도하세요."
-              : "保存成功件数が 0 件です。保存先または元データを修正して再試行してください。",
+              ? "저장된 항목이 없습니다. 기록을 확인해 주세요. 다시 실행하거나 원본을 삭제할 수 없습니다."
+              : "保存成功件数は0件です。記録を確認してください。再実行や原本削除はできません。",
       })
     );
   }
@@ -5380,14 +5603,6 @@ export async function executePropertyImportAction(formData: FormData) {
     jobId: job.id,
     mappingJson: mapping,
     validationMessage,
-    notes:
-      successCount > 0
-        ? undefined
-        : tr(locale, {
-            ja: "保存件数が0件のため、再試行が必要です。",
-            zh: "成功保存为0，请修复后重试。",
-            ko: "저장 성공 건수가 0건이므로 수정 후 다시 시도해야 합니다.",
-          }),
     status: nextStatus,
   });
 

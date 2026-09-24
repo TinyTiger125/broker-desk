@@ -169,9 +169,18 @@ export function validateCaseAssociationDraft(draft: CaseAssociationDraft): strin
 export function writeCaseAssociationData(
   confirmedData: Record<string, unknown>,
   draft: CaseAssociationDraft,
-  names: { primaryPartyName?: string; propertyName?: string },
+  names: {
+    primaryPartyName?: string;
+    propertyName?: string;
+    previousPrimaryPartyName?: string;
+  },
 ): Record<string, unknown> {
   const next = { ...confirmedData };
+  const previousPrimaryPartyId = getPrimaryPartyId(readCaseAssociationDraft(confirmedData));
+  const workbenchStatuses = confirmedData["__workbenchFieldStatuses"];
+  const applicantNameWasEdited = workbenchStatuses && typeof workbenchStatuses === "object"
+    ? (workbenchStatuses as Record<string, unknown>)["applicant.name"] === "edited"
+    : false;
   next[ASSOCIATION_VERSION_KEY] = CASE_ASSOCIATION_VERSION;
   next[ASSOCIATED_PARTIES_KEY] = draft.parties.map((party) => ({ partyId: party.partyId, roles: [...party.roles] }));
   if (draft.primaryPropertyId) {
@@ -184,10 +193,23 @@ export function writeCaseAssociationData(
   const primaryParty = draft.parties.find((party) => party.roles.includes("主要申请人"));
   if (primaryParty) {
     next[PRIMARY_PARTY_KEY] = primaryParty.partyId;
-    if (names.primaryPartyName) next["applicant.name"] = names.primaryPartyName;
+    // Case-field edits are independent from association edits. Populate the
+    // canonical master-data name only when a new primary party is assigned;
+    // changing only the property or another role must retain the case value.
+    if (previousPrimaryPartyId !== primaryParty.partyId && names.primaryPartyName) {
+      next["applicant.name"] = names.primaryPartyName;
+    }
   } else {
     delete next[PRIMARY_PARTY_KEY];
-    delete next["applicant.name"];
+    // Remove an association-derived name only when it still exactly matches
+    // the previous primary party. Independently edited case values survive.
+    if (
+      names.previousPrimaryPartyName &&
+      !applicantNameWasEdited &&
+      next["applicant.name"] === names.previousPrimaryPartyName
+    ) {
+      delete next["applicant.name"];
+    }
   }
   return next;
 }

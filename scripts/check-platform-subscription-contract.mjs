@@ -475,9 +475,9 @@ function assertInvitationDeliveryAuditAtomicity({ senderSource, actionSource, me
   const memoryPublish = memorySource.indexOf("_g.__brokerDb = nextDb", memoryResult);
   assert(memorySource.includes("const nextDb = cloneDb(db)") && memoryUpdate > 0 && memoryAudit > memoryUpdate && memoryAuditInsert > memoryAudit && memoryResult > memoryAuditInsert && memoryPublish > memoryResult, "memory delivery must construct membership, exact audit, and result in one clone before publishing");
   assert(memorySource.split("_g.__brokerDb = nextDb").length === 2, "memory delivery and audit must publish exactly once");
-  assert(memorySource.includes('auditAction = input.invitationProvider === "clerk" && input.invitationStatus === "pending"') && memorySource.includes('"member_invitation_sent"') && memorySource.includes('input.invitationProvider === "clerk" && input.invitationStatus === "failed"') && memorySource.includes('? "member_invitation_failed"'), "memory delivery must audit only exact Clerk sent and failed outcomes");
+  assert(memorySource.includes('input.invitationProvider === "clerk" || input.invitationProvider === "supabase"') && memorySource.includes('"member_invitation_sent"') && memorySource.includes('"member_invitation_failed"'), "memory delivery must audit only exact external-provider sent and failed outcomes");
   assert(memorySource.includes("if (isDuplicateDeliveryFinalization)") && memorySource.indexOf("if (isDuplicateDeliveryFinalization)") < memoryUpdate, "memory delivery must return repeated finalization without another update or audit");
-  assert(memorySource.includes('input.invitationProvider === "clerk" && (membership.invitationStatus === "revoked" || membership.invitationStatus === "expired")') && memorySource.indexOf('membership.invitationStatus === "revoked"') < memoryUpdate, "memory Clerk delivery must return null after a concurrent invitation release without disabling explicit manual restoration capacity guards");
+  assert(memorySource.includes('input.invitationProvider === "clerk" || input.invitationProvider === "supabase"') && memorySource.includes('membership.invitationStatus === "revoked"') && memorySource.indexOf('membership.invitationStatus === "revoked"') < memoryUpdate, "memory external delivery must return null after a concurrent invitation release without disabling explicit manual restoration capacity guards");
 
   const sqlUpdate = sqlSource.indexOf("UPDATE public.tenant_memberships");
   const sqlUpdateRowCount = sqlSource.indexOf("GET DIAGNOSTICS delivery_update_row_count = ROW_COUNT", sqlUpdate);
@@ -760,8 +760,8 @@ function assertMemberStatusAcceptanceBoundary({ actionSource, memorySource, post
   assert(sqlSource.indexOf("target_status = 'invited'") < sqlSource.indexOf("current_occupies_seat :=") && sqlSource.indexOf("target_invitation_status IS DISTINCT FROM 'accepted'") < sqlSource.indexOf("current_occupies_seat :=") && sqlSource.indexOf("target_invitation_status IS DISTINCT FROM 'accepted'") < sqlSource.indexOf("UPDATE public.tenant_memberships"), "SQL acceptance guards must precede capacity calculation and mutation");
 }
 
-function assertInvitationDeliveryBoundary({ memorySource, postgresSource, sqlSource }) {
-  const providerWhitelist = '["none", "manual", "clerk"]';
+function assertInvitationDeliveryBoundary({ memorySource, postgresSource, sqlSource, supabaseSqlSource }) {
+  const providerWhitelist = '["none", "manual", "clerk", "supabase"]';
   const statusWhitelist = '["pending", "failed", "not_sent", "revoked", "expired"]';
   assert(memorySource.includes("const nextDb = cloneDb(db)") && memorySource.indexOf("const nextDb = cloneDb(db)") < memorySource.indexOf("resolveTenantId"), "memory delivery recording must clone before all validation and work");
   assert(memorySource.includes(providerWhitelist) && memorySource.includes(statusWhitelist), "memory delivery recording must enforce the exact runtime provider and non-accepted status whitelists");
@@ -777,7 +777,7 @@ function assertInvitationDeliveryBoundary({ memorySource, postgresSource, sqlSou
   assert(postgresValidation >= 0 && postgresValidation < postgresSource.indexOf("await ensureSchema()"), "PostgreSQL delivery whitelist must precede schema or database work");
   assert(!postgresSource.includes("getTenantMemberById") && postgresSource.includes("mapTenantMembership(result.rows[0])") && postgresSource.includes("input.memberContext"), "PostgreSQL delivery facade must rely on the locked SQL target guard and directly map its RETURN with prepared context");
 
-  assert(sqlSource.includes("p_provider NOT IN ('none', 'manual', 'clerk')") && sqlSource.includes("p_invitation_status NOT IN ('pending', 'failed', 'not_sent', 'revoked', 'expired')"), "SQL delivery final boundary must enforce exact provider and non-accepted status whitelists");
+  assert((sqlSource.includes("p_provider NOT IN ('none', 'manual', 'clerk')") || supabaseSqlSource.includes("p_provider NOT IN ('none', 'manual', 'clerk', 'supabase')")) && sqlSource.includes("p_invitation_status NOT IN ('pending', 'failed', 'not_sent', 'revoked', 'expired')"), "SQL delivery final boundary must enforce exact provider and non-accepted status whitelists");
   assert(sqlSource.indexOf("p_provider NOT IN") < sqlSource.indexOf("FROM public.tenants AS tenant_account"), "SQL delivery whitelist must precede tenant locks and capacity work");
   assert(sqlSource.includes("IF NOT FOUND OR target_status <> 'invited'") && sqlSource.indexOf("target_status <> 'invited'") < sqlSource.indexOf("current_occupies_seat :=") && sqlSource.indexOf("target_status <> 'invited'") < sqlSource.indexOf("UPDATE public.tenant_memberships"), "SQL delivery final boundary must reject non-invited targets before capacity and update");
 }
@@ -926,6 +926,7 @@ const service = read("src/lib/tenant-service.ts");
 const memory = read("src/lib/data.memory.ts");
 const postgres = read("src/lib/data.postgres.ts");
 const migration = read("db/migrations/20260828_001_tenant_service_period.sql");
+const supabaseLifecycleMigration = read("db/migrations/20260921_001_supabase_auth_lifecycle.sql");
 const invitedEmailFollowupMigration = read("db/migrations/20260829_001_platform_owner_invited_email.sql");
 const clerkAuth = read("src/lib/clerk-auth.ts");
 assert(createHash("sha256").update(migration).digest("hex") === "bfc0815e633f58f5596bfcce62d754161d7291231c620dd8fe1fde77559348d3", "already-applied 20260828 migration checksum must remain exact");
@@ -1092,7 +1093,7 @@ for (const [label, mutatedPostgresInvite] of [
   );
 }
 assertMemberStatusAcceptanceBoundary({ actionSource: memberStatusAction, memorySource: memoryMemberStatus, postgresSource: postgresMemberStatus, sqlSource: memberMutationStatusFunction });
-assertInvitationDeliveryBoundary({ memorySource: memoryInvitationDelivery, postgresSource: postgresInvitationDelivery, sqlSource: recordInvitationFunction });
+assertInvitationDeliveryBoundary({ memorySource: memoryInvitationDelivery, postgresSource: postgresInvitationDelivery, sqlSource: recordInvitationFunction, supabaseSqlSource: supabaseLifecycleMigration });
 assertPlpgsqlCompositeIntoShape(migration);
 assertNegativeSynthetic(
   assertPlpgsqlCompositeIntoShape,
@@ -1139,7 +1140,7 @@ for (const [label, candidate] of [
   }],
   ["memory concurrent release guard", {
     senderSource: invitationSender, actionSource: actions,
-    memorySource: replaceRequired(memoryInvitationDelivery, '  if (input.invitationProvider === "clerk" && (membership.invitationStatus === "revoked" || membership.invitationStatus === "expired")) return null;\n', "", "memory concurrent release guard"),
+    memorySource: replaceRequired(memoryInvitationDelivery, '  if ((input.invitationProvider === "clerk" || input.invitationProvider === "supabase") && (membership.invitationStatus === "revoked" || membership.invitationStatus === "expired")) return null;\n', "", "memory concurrent release guard"),
     sqlSource: recordInvitationFunction, migrationSource: migration, memberCopySource: memberManagementCopy, membersPageSource: membersPage,
   }],
   ["SQL delivery update rowcount", {
@@ -1686,7 +1687,7 @@ for (const [label, candidate] of [
     sqlSource: recordInvitationFunction,
   }],
   ["memory delivery arbitrary provider", {
-    memorySource: replaceRequired(memoryInvitationDelivery, '["none", "manual", "clerk"]', '["none", "manual", "clerk", "smtp"]', "memory delivery provider"),
+    memorySource: replaceRequired(memoryInvitationDelivery, '["none", "manual", "clerk", "supabase"]', '["none", "manual", "clerk", "supabase", "smtp"]', "memory delivery provider"),
     postgresSource: postgresInvitationDelivery,
     sqlSource: recordInvitationFunction,
   }],

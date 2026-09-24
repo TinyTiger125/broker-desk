@@ -1,0 +1,17 @@
+Source: collaboration task /root/quick_person_role_independent_review, FINAL_ANSWER
+
+最终复核：PASS。新增“ledger=44、marker 完成被行锁阻塞时终止同一 backend”与共享连接生命周期结论一致。
+
+证据：
+
+- Tokyo 入口将预检、marker 写入和 runner 全部复用 lockClient：scripts/run-tokyo-supabase-migrations.mjs:152-169, 181-206
+- runner 接收外部 client，迁移和 marker completion 不再创建第二连接：scripts/run-postgres-migrations.mjs:69-105, 173-184
+- 子进程测试在 marker 为 initializing 时持有 SELECT ... FOR UPDATE 行锁，等待 ledger=44，再终止子进程 backend：scripts/test-tokyo-migration-entry-postgres.mjs:197-252
+- 真实结果为 child code=1、marker 仍 initializing、ledger=44；第二入口恢复为 complete/44：/private/tmp/broker-desk-evidence/20260921-tokyo-migration-entry-real.log:66-90
+- 先前“首个迁移提交后终止 backend”场景仍证明中断时 ledger=3、marker 未完成，之后可恢复到 44：日志 :5-30
+
+残余缺口：
+
+- 测试没有直接断言被终止 backend 当时处于 UPDATE marker 的等待状态（例如检查 pg_locks/wait_event）；当前通过“行锁持有 + ledger=44 + marker 仍 initializing + 同 backend 终止”间接证明。
+- 子进程被终止时仍有 pg 未处理 error 事件堆栈；这是故障退出的日志质量问题，不影响恢复状态结论。
+- 仍限于隔离 PostgreSQL，不等同于 Supabase Pooler 实网验证。

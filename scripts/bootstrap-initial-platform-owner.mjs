@@ -21,7 +21,16 @@ export function assertNoPgEnvironment(environment = process.env) {
   }
 }
 
-function assertControlledOptions({ email, useLatestClerkUser, deploymentEnvironment, vercelEnvironment }) {
+function assertControlledOptions({ email, useLatestClerkUser, deploymentEnvironment, vercelEnvironment, supabaseIdentity = false, explicitApproval = false }) {
+  if (supabaseIdentity) {
+    if (!explicitApproval) throw new Error("Supabase owner bootstrap requires explicit approval");
+    const validEnvironment = deploymentEnvironment === "staging" && vercelEnvironment === "preview";
+    if (!validEnvironment) throw new Error("Supabase owner bootstrap requires the fixed Staging Preview environment");
+    if (!email || !email.includes("@") || useLatestClerkUser) {
+      throw new Error("Supabase owner bootstrap requires explicit email and never accepts latest-user discovery");
+    }
+    return;
+  }
   if (deploymentEnvironment !== "staging" || vercelEnvironment !== "preview") {
     throw new Error("Controlled platform-owner bootstrap requires the fixed Staging Preview environment");
   }
@@ -135,9 +144,57 @@ function isExactInternalTenant(tenant) {
     && tenant.account_type === "company";
 }
 
-export async function bootstrapInitialPlatformOwner({ client, email, useLatestClerkUser = false, deploymentEnvironment, vercelEnvironment }) {
+function deterministicSupabaseLocalUserId(authUserId) {
+  return `user_supabase_${authUserId}`;
+}
+
+async function resolveOrCreateSupabaseBootstrapUser(client, { authUserId, email }) {
+  const normalizedEmail = email.trim().toLowerCase();
+  const expectedSubject = `supabase:${authUserId}`;
+  const localUserId = deterministicSupabaseLocalUserId(authUserId);
+  const userResult = await client.query(
+    `/* bootstrap:supabase-user-lock */
+     SELECT id, email, external_auth_subject, created_at FROM public.users
+     WHERE id = $1 OR external_auth_subject = $2 OR lower(email) = lower($3)
+     ORDER BY id ASC FOR UPDATE`,
+    [localUserId, expectedSubject, normalizedEmail],
+  );
+  if (userResult.rows.length > 1) throw new Error("Supabase bootstrap identity conflict");
+  if (userResult.rows.length === 0) {
+    const insertResult = await client.query(
+      `/* bootstrap:supabase-user-insert */ INSERT INTO public.users
+         (id, name, email, password_hash, external_auth_subject)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [localUserId, normalizedEmail, normalizedEmail, "external_auth_user", expectedSubject],
+    );
+    if (insertResult.rowCount !== 1) throw new Error("Supabase local user insert did not affect exactly one row");
+    return { id: localUserId, email: normalizedEmail, external_auth_subject: expectedSubject };
+  }
+  const user = userResult.rows[0];
+  if (user.email.trim().toLowerCase() !== normalizedEmail) throw new Error("Supabase bootstrap email conflict");
+  if (user.external_auth_subject && user.external_auth_subject !== expectedSubject) throw new Error("Supabase bootstrap subject conflict");
+  if (!user.external_auth_subject) {
+    const bindResult = await client.query(
+      `/* bootstrap:supabase-user-bind */ UPDATE public.users
+       SET external_auth_subject = $2
+       WHERE id = $1 AND external_auth_subject IS NULL`,
+      [user.id, expectedSubject],
+    );
+    if (bindResult.rowCount !== 1) throw new Error("Supabase local user binding did not affect exactly one row");
+  }
+  return { ...user, email: normalizedEmail, external_auth_subject: expectedSubject };
+}
+
+export async function bootstrapInitialPlatformOwner({ client, email, useLatestClerkUser = false, supabaseIdentity, explicitApproval = false, deploymentEnvironment, vercelEnvironment }) {
   const normalizedEmail = email?.trim().toLowerCase();
-  assertControlledOptions({ email: normalizedEmail, useLatestClerkUser, deploymentEnvironment, vercelEnvironment });
+  assertControlledOptions({
+    email: normalizedEmail,
+    useLatestClerkUser,
+    supabaseIdentity: Boolean(supabaseIdentity),
+    explicitApproval,
+    deploymentEnvironment,
+    vercelEnvironment,
+  });
   await client.query("BEGIN");
   try {
     await client.query("/* bootstrap:advisory-lock */ SELECT pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtext('broker-desk-initial-platform-owner'))");
@@ -160,7 +217,7 @@ export async function bootstrapInitialPlatformOwner({ client, email, useLatestCl
       throw new Error("Bootstrap requires a privileged migration/admin connection that can atomically audit through FORCE RLS");
     }
 
-    const userResult = normalizedEmail
+    const userResult = supabaseIdentity ? null : normalizedEmail
       ? await client.query(
         `/* bootstrap:resolve-user */
          SELECT id, email, external_auth_subject, created_at FROM public.users
@@ -176,10 +233,10 @@ export async function bootstrapInitialPlatformOwner({ client, email, useLatestCl
          ORDER BY created_at DESC, id ASC
          LIMIT 2 FOR UPDATE`,
       );
-    if (userResult.rows.length !== 1) {
+    const user = supabaseIdentity ? await resolveOrCreateSupabaseBootstrapUser(client, supabaseIdentity) : userResult.rows[0];
+    if (!supabaseIdentity && userResult.rows.length !== 1) {
       throw new Error(useLatestClerkUser ? "Controlled bootstrap requires exactly one real Clerk user" : "Explicit bootstrap email must resolve to exactly one existing Clerk user");
     }
-    const user = userResult.rows[0];
 
     const activeOwnerResult = await client.query(
       `/* bootstrap:active-owner-lock */

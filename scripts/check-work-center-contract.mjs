@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 
 const page = fs.readFileSync("src/app/page.tsx", "utf8");
 const memory = fs.readFileSync("src/lib/data.memory.ts", "utf8");
@@ -64,4 +65,33 @@ assert.match(actionButton, /useFormStatus/);
 assert.match(actionButton, /disabled=\{pending\}/);
 assert.doesNotMatch(page, /Gmail|Outlook|sendEmail|aiWrite/);
 assert.doesNotMatch(page, /company_read|owner_write|private/);
+const ts = createRequire(import.meta.url)("typescript");
+const destination = fs.readFileSync("src/app/clients/[id]/page.tsx", "utf8");
+const tree = ts.createSourceFile("page.tsx", destination, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+assert.equal(tree.parseDiagnostics.length, 0, "task destination must parse");
+const route = tree.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === "ClientDetailPage");
+assert(route?.body);
+const guards = route.body.statements.filter(ts.isIfStatement);
+const denied = guards.find((node) => node.expression.getText(tree).includes("!visible.resolution.canRead"));
+const readonly = guards.find((node) => node.expression.getText(tree) === "!canEdit");
+assert(denied && readonly && denied.pos < readonly.pos, "read authorization must precede display branches");
+assert(denied.thenStatement.getText(tree).includes("notFound()"), "unreadable client stays fail-closed");
+function descendants(node, predicate, found = []) {
+  if (predicate(node)) found.push(node);
+  ts.forEachChild(node, (child) => { descendants(child, predicate, found); });
+  return found;
+}
+const readonlySource = readonly.thenStatement.getText(tree);
+const readonlyTags = descendants(readonly.thenStatement, (node) => ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node));
+assert(!readonlyTags.some((node) => ["form", "button", "input", "select", "textarea"].includes(node.tagName.getText(tree))), "read-only branch cannot contain write controls");
+assert(!descendants(readonly.thenStatement, ts.isJsxAttribute).some((node) => ["action", "formAction", "onSubmit"].includes(node.name.getText(tree))), "read-only branch cannot bind a mutation");
+for (const collection of ["client.tasks.map", "client.followUps.map"]) {
+  assert(descendants(readonly.thenStatement, ts.isCallExpression).some((node) => node.expression.getText(tree) === collection), `read-only route must render ${collection}`);
+}
+for (const anchor of ["client-tasks", "client-follow-ups"]) {
+  const element = readonlyTags.find((node) => node.attributes.properties.some((attribute) => ts.isJsxAttribute(attribute) && attribute.name.text === "id" && attribute.initializer?.text === anchor));
+  assert(element && element.parent.getText(tree).includes("<SectionCard"), `${anchor} must wrap visible content, not an empty anchor`);
+  assert(!element.attributes.properties.some((attribute) => ts.isJsxAttribute(attribute) && attribute.name.text === "hidden"));
+}
+assert(!readonlySource.includes("client.quotations"), "task repair must not expand shared quotation display");
 console.log("Work Center contract: PASS");

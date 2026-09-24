@@ -701,4 +701,7 @@ for (const [index, invalidSummary] of [
   assert.throws(() => assertSelectedCaseSummary(invalidSummary, `invalid-summary-${index}.tsx`), `incomplete disclosure fixture ${index} must fail`);
 }
 
+assert(!page.includes('"lease.rent": selectedPropertyForCandidate?.listingPrice'), "sale listing price must not be presented as a lease rent candidate");
+assert(page.includes('"lease.commonFee": selectedPropertyForCandidate?.managementFee'), "property management fee candidate remains explicitly mapped");
+
 console.log("Output center Worklist contract check passed.");

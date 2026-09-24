@@ -1,6 +1,7 @@
 import { SignIn } from "@clerk/nextjs";
-import { isClerkAuthEnabled } from "@/lib/auth-mode";
+import { isClerkAuthEnabled, isSupabaseAuthEnabled } from "@/lib/auth-mode";
 import { getLocale, type Locale } from "@/lib/locale";
+import { SupabaseSignInForm } from "@/components/supabase-sign-in-form";
 
 function copy(locale: Locale) {
   if (locale === "zh") {
@@ -12,6 +13,11 @@ function copy(locale: Locale) {
       invitationDescription: "Broker Desk 采用邀请制。请联系贵公司的管理员或平台管理员开通席位。",
       setupTitle: "登录服务尚未配置",
       setupDescription: "此环境未配置账号登录服务。为保护工作区数据，暂不能直接进入业务页面。",
+      emailLabel: "邮箱",
+      passwordLabel: "密码",
+      signInLabel: "登录",
+      signInError: "登录失败，请检查邮箱和密码。",
+      callbackError: "登录链接已失效或无法验证，请重新登录或申请新的链接。",
     };
   }
   if (locale === "ko") {
@@ -23,6 +29,11 @@ function copy(locale: Locale) {
       invitationDescription: "Broker Desk는 초대제로 운영됩니다. 회사 관리자 또는 플랫폼 관리자에게 좌석 개설을 요청하세요.",
       setupTitle: "로그인 서비스가 설정되지 않았습니다",
       setupDescription: "이 환경에는 계정 로그인 서비스가 설정되어 있지 않습니다. 워크스페이스 데이터를 보호하기 위해 업무 화면으로 바로 들어갈 수 없습니다.",
+      emailLabel: "이메일",
+      passwordLabel: "비밀번호",
+      signInLabel: "로그인",
+      signInError: "로그인에 실패했습니다. 이메일과 비밀번호를 확인하세요.",
+      callbackError: "로그인 링크가 만료되었거나 확인되지 않았습니다. 다시 로그인하거나 새 링크를 요청해 주세요.",
     };
   }
   return {
@@ -33,14 +44,24 @@ function copy(locale: Locale) {
     invitationDescription: "Broker Desk は招待制です。ご利用の際は、社内管理者またはプラットフォーム管理者に席の発行をご依頼ください。",
     setupTitle: "ログインサービスが未設定です",
     setupDescription: "この環境にはアカウントログインサービスが設定されていません。ワークスペースのデータを保護するため、業務画面には直接入れません。",
+    emailLabel: "メールアドレス",
+    passwordLabel: "パスワード",
+    signInLabel: "ログイン",
+    signInError: "ログインできませんでした。メールアドレスとパスワードをご確認ください。",
+    callbackError: "ログイン用リンクが期限切れか確認できませんでした。再度ログインするか、新しいリンクを申請してください。",
   };
 }
 
-export default async function SignInPage() {
+export default async function SignInPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string | string[] }>;
+}) {
   const locale = await getLocale();
   const text = copy(locale);
+  const callbackFailed = (await searchParams).error === "auth_callback_failed";
 
-  if (!isClerkAuthEnabled()) {
+  if (!isClerkAuthEnabled() && !isSupabaseAuthEnabled()) {
     return (
       <section className="broker-desk-auth-route min-h-screen bg-[#f8f9ff] px-5 py-10 sm:px-8 lg:px-12">
         <div className="mx-auto grid min-h-[calc(100vh-5rem)] max-w-5xl content-center gap-10 lg:grid-cols-[minmax(0,0.82fr)_minmax(22rem,0.7fr)] lg:gap-20">
@@ -52,6 +73,36 @@ export default async function SignInPage() {
           <div className="border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
             <p className="text-base font-black text-slate-950">{text.setupTitle}</p>
             <p className="mt-3 text-sm leading-6 text-slate-600">{text.setupDescription}</p>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  if (isSupabaseAuthEnabled()) {
+    return (
+      <section className="broker-desk-auth-route min-h-screen bg-[#f8f9ff] px-5 py-10 sm:px-8 lg:px-12">
+        <div className="mx-auto grid min-h-[calc(100vh-5rem)] max-w-5xl content-center gap-10 lg:grid-cols-[minmax(0,0.82fr)_minmax(22rem,0.7fr)] lg:gap-20">
+          <div className="self-center">
+            <p className="text-sm font-black uppercase tracking-[0.14em] text-[#1960a3]">{text.eyebrow}</p>
+            <h1 className="mt-3 text-3xl font-black tracking-normal text-slate-950 sm:text-4xl">{text.title}</h1>
+            <p className="mt-4 max-w-md text-base leading-7 text-slate-600">{text.description}</p>
+            <div className="mt-8 border-l-2 border-[#1960a3] pl-4">
+              <p className="text-sm font-bold text-slate-900">{text.invitationTitle}</p>
+              <p className="mt-1 text-sm leading-6 text-slate-600">{text.invitationDescription}</p>
+            </div>
+          </div>
+          <div className="flex items-center justify-center lg:justify-end">
+            <div className="w-full">
+              {callbackFailed ? <p role="alert" className="mb-4 border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{text.callbackError}</p> : null}
+              <SupabaseSignInForm
+                emailLabel={text.emailLabel}
+                passwordLabel={text.passwordLabel}
+                submitLabel={text.signInLabel}
+                errorLabel={text.signInError}
+                forgotPasswordLabel={locale === "zh" ? "忘记密码" : locale === "ko" ? "비밀번호를 잊으셨나요" : "パスワードを忘れた場合"}
+              />
+            </div>
           </div>
         </div>
       </section>

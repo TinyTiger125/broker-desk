@@ -14,6 +14,7 @@ const originalLoad = Module._load;
 let currentSubject = "";
 Module._load = function (request, parent, ...rest) {
   if (request === "@clerk/nextjs/server") return { auth: async () => ({ userId: currentSubject }), currentUser: async () => null };
+  if (request === "react") return { ...originalLoad.call(this, request, parent, ...rest), cache: (fn) => fn };
   return originalLoad.call(this, request, parent, ...rest);
 };
 function resolveCandidate(value) {
@@ -41,19 +42,23 @@ process.env.BROKER_DESK_AUTH_MODE = "clerk";
 const memory = require(resolve(root, "src/lib/data.memory.ts"));
 const resolver = require(resolve(root, "src/lib/visibility-resolver.ts"));
 const access = require(resolve(root, "src/lib/w93-access.ts"));
-const tenantSessionPath = resolve(root, "src/lib/tenant-session.ts");
-const clerkAuthPath = resolve(root, "src/lib/clerk-auth.ts");
+const hub = require(resolve(root, "src/lib/hub.ts"));
+const sessionProvenance = require(resolve(root, "src/lib/tenant-session-provenance.ts"));
 
+memory.seedBusinessDataForQa();
 const tenant = await memory.getTenantById("tenant_cherry");
 const owner = await memory.getUserById("user_demo");
 const colleague = await memory.getUserById("user_ops");
 assert(tenant && owner && colleague && owner.externalAuthSubject && colleague.externalAuthSubject, "memory identities exist");
 async function trustedSession(subject) {
   currentSubject = subject;
-  delete require.cache[tenantSessionPath];
-  delete require.cache[clerkAuthPath];
-  const tenantSession = require(tenantSessionPath);
-  return tenantSession.requireTenantSession({ requestedTenantId: tenant.id });
+  const user = await memory.getUserByExternalAuthSubject(subject);
+  assert(user, `memory user exists for ${subject}`);
+  const membership = (await memory.listTenantMemberships(user.id)).find((item) => item.tenantId === tenant.id && item.status === "active");
+  assert(membership, `active membership exists for ${subject}`);
+  const session = { externalAuthSubject: subject, user, membership, tenant, serviceState: { state: "operational" } };
+  sessionProvenance.registerTenantSessionProvenance(session);
+  return session;
 }
 const ownerContext = resolver.createRequestContext(await trustedSession(owner.externalAuthSubject));
 const colleagueContext = resolver.createRequestContext(await trustedSession(colleague.externalAuthSubject));
@@ -116,6 +121,32 @@ const inaccessibleQuote = await memory.addQuotation({
   loanYears: 1,
   summaryText: "private",
 });
+const quoteAttachment = await memory.addPrivateAttachment({ tenantId: tenant.id, userId: colleague.id, targetType: "quote", targetId: inaccessibleQuote.id, fileName: "quote.pdf", fileType: "application/pdf", content: Buffer.from("quote") });
+assert.equal(await access.getW93AttachmentForContext(ownerContext, quoteAttachment.id), null, "non-owner cannot download private quote attachment");
+assert(await access.getW93AttachmentForContext(colleagueContext, quoteAttachment.id), "quote owner can download private quote attachment");
+assert(!(await hub.listHubAttachments("ja", 30, { userId: colleague.id, tenantId: tenant.id, requestContext: ownerContext })).some((item) => item.id === quoteAttachment.id), "non-owner quote attachment is absent from list metadata");
+assert((await memory.listQuotationsForContext({ context: colleagueContext })).some((quote) => quote.id === inaccessibleQuote.id), "quote owner sees private quote in context-bound list");
+assert(!(await memory.listQuotationsForContext({ context: ownerContext })).some((quote) => quote.id === inaccessibleQuote.id), "non-owner cannot see private quote in context-bound list");
+assert(await memory.getQuotationByIdForContext({ context: colleagueContext, quoteId: inaccessibleQuote.id }), "quote owner sees private quote detail");
+assert.equal(await memory.getQuotationByIdForContext({ context: ownerContext, quoteId: inaccessibleQuote.id }), null, "non-owner cannot open private quote detail");
+await memory.setRecordVisibilityScope({ tenantId: tenant.id, objectType: "person", recordId: colleaguePrivateParty.id, actorUserId: colleague.id, visibilityScope: "company_read" });
+await memory.setRecordVisibilityScope({ tenantId: tenant.id, objectType: "property", recordId: colleaguePrivateProperty.id, actorUserId: colleague.id, visibilityScope: "company_read" });
+assert((await memory.listQuotationsForContext({ context: ownerContext })).some((quote) => quote.id === inaccessibleQuote.id), "company_read quote is visible to another active member");
+assert((await memory.getQuotationByIdForContext({ context: ownerContext, quoteId: inaccessibleQuote.id }))?.id === inaccessibleQuote.id, "company_read quote detail is visible to another active member");
+assert(await access.getW93AttachmentForContext(ownerContext, quoteAttachment.id), "company_read quote attachment remains downloadable");
+await memory.setRecordVisibilityScope({ tenantId: tenant.id, objectType: "person", recordId: colleaguePrivateParty.id, actorUserId: colleague.id, visibilityScope: "private" });
+await memory.setRecordVisibilityScope({ tenantId: tenant.id, objectType: "property", recordId: colleaguePrivateProperty.id, actorUserId: colleague.id, visibilityScope: "private" });
+assert.equal(await access.getW93AttachmentForContext(ownerContext, quoteAttachment.id), null, "revoked quote attachment download is denied");
+await memory.setPropertyLifecycleStatus({ tenantId: tenant.id, propertyId: inaccessibleQuote.propertyId, status: "archived", archivedById: colleague.id });
+assert((await memory.listQuotationsForContext({ context: colleagueContext })).some((quote) => quote.id === inaccessibleQuote.id), "archived property quote remains in authorized quote list");
+assert((await memory.getQuotationByIdForContext({ context: colleagueContext, quoteId: inaccessibleQuote.id }))?.id === inaccessibleQuote.id, "archived property quote detail remains readable");
+await memory.setPropertyLifecycleStatus({ tenantId: tenant.id, propertyId: inaccessibleQuote.propertyId, status: "active", archivedById: colleague.id });
+const unknownQuoteAttachment = await memory.addPrivateAttachment({ tenantId: tenant.id, userId: owner.id, targetType: "quote", targetId: "quote_missing", fileName: "unknown-quote.pdf", fileType: "application/pdf", content: Buffer.from("unknown") });
+assert.equal(await access.getW93AttachmentForContext(ownerContext, unknownQuoteAttachment.id), null, "unknown quote attachment fails closed");
+const foreignPerson = await memory.addClient({ tenantId: "tenant_visibility_other", ownerUserId: owner.id, name: "W93 foreign quote person", phone: "003", budgetType: "total_price", purpose: "buy", loanPreApprovalStatus: "not_applied", stage: "lead", temperature: "cold", brokerageContractType: "none", amlCheckStatus: "not_required" });
+const foreignQuote = await memory.addQuotation({ tenantId: "tenant_visibility_other", clientId: foreignPerson.id, quoteTitle: "W93 foreign quote", listingPrice: 1, brokerageFee: 1, taxFee: 1, managementFee: 1, repairFee: 1, otherFee: 1, downPayment: 1, interestRate: 1, loanYears: 1, summaryText: "foreign" });
+const foreignQuoteAttachment = await memory.addPrivateAttachment({ tenantId: "tenant_visibility_other", userId: owner.id, targetType: "quote", targetId: foreignQuote.id, fileName: "foreign-quote.pdf", fileType: "application/pdf", content: Buffer.from("foreign") });
+assert.equal(await access.getW93AttachmentForContext(ownerContext, foreignQuoteAttachment.id), null, "cross-tenant quote attachment fails closed");
 const malformedEmptyQuoteCase = await memory.saveBrokerageCaseExtractionReview({
   tenantId: tenant.id,
   userId: owner.id,
@@ -192,13 +223,81 @@ assert.equal(await access.areGeneratedOutputSourcesReadable(ownerContext, histor
 const ownerAttachment = await memory.addPrivateAttachment({ tenantId: tenant.id, userId: owner.id, targetType: "property", targetId: privateProperty.id, fileName: "w93.txt", content: Buffer.from("private") });
 assert(await access.getW93AttachmentForContext(ownerContext, ownerAttachment.id), "owner attachment is readable");
 assert.equal(await access.getW93AttachmentForContext(colleagueContext, ownerAttachment.id), null, "colleague attachment is hidden with its parent");
+assert((await hub.listHubAttachments("ja", 30, { userId: owner.id, tenantId: tenant.id, requestContext: ownerContext })).some((item) => item.id === ownerAttachment.id), "owner attachment list includes readable parent");
+assert(!(await hub.listHubAttachments("ja", 30, { userId: owner.id, tenantId: tenant.id, requestContext: colleagueContext })).some((item) => item.id === ownerAttachment.id), "attachment list hides unreadable parent metadata");
+const seededContractAttachment = await access.getW93AttachmentForContext(ownerContext, "att_contract_yamada");
+assert.equal(seededContractAttachment, null, "legacy contract with unresolved property fails closed");
+const contractQuote = await memory.addQuotation({
+  tenantId: tenant.id,
+  clientId: privateParty.id,
+  propertyId: privateProperty.id,
+  quoteTitle: "W93 contract quote",
+  listingPrice: 1,
+  brokerageFee: 1,
+  taxFee: 1,
+  managementFee: 1,
+  repairFee: 1,
+  otherFee: 1,
+  downPayment: 1,
+  interestRate: 1,
+  loanYears: 1,
+  summaryText: "contract",
+});
+const contractAttachment = await memory.addPrivateAttachment({ tenantId: tenant.id, userId: owner.id, targetType: "contract", targetId: contractQuote.id, fileName: "contract.pdf", fileType: "application/pdf", content: Buffer.from("contract") });
+assert(await access.getW93AttachmentForContext(ownerContext, contractAttachment.id), "contract owner can retrieve contract with readable person and property");
+assert.equal(await access.getW93AttachmentForContext(colleagueContext, contractAttachment.id), null, "non-owner cannot retrieve private contract");
+await memory.setRecordVisibilityScope({ tenantId: tenant.id, objectType: "person", recordId: privateParty.id, actorUserId: owner.id, visibilityScope: "company_read" });
+assert.equal(await access.getW93AttachmentForContext(colleagueContext, contractAttachment.id), null, "company-read person cannot expose contract when property is private");
+await memory.setRecordVisibilityScope({ tenantId: tenant.id, objectType: "property", recordId: privateProperty.id, actorUserId: owner.id, visibilityScope: "company_read" });
+assert(await access.getW93AttachmentForContext(colleagueContext, contractAttachment.id), "contract follows readable person and property intersection");
+await memory.setRecordVisibilityScope({ tenantId: tenant.id, objectType: "person", recordId: privateParty.id, actorUserId: owner.id, visibilityScope: "private" });
+assert.equal(await access.getW93AttachmentForContext(colleagueContext, contractAttachment.id), null, "private person revokes contract despite shared property");
+await memory.setRecordVisibilityScope({ tenantId: tenant.id, objectType: "property", recordId: privateProperty.id, actorUserId: owner.id, visibilityScope: "private" });
 const importedAttachment = await memory.addPrivateAttachment({ tenantId: tenant.id, userId: owner.id, targetType: "import_job", targetId: "w93-import-job", fileName: "residence-card.pdf", fileType: "application/pdf", content: Buffer.from("linked source") });
-assert.equal(await access.getW93AttachmentForContext(ownerContext, importedAttachment.id), null, "unlinked import source is not exposed as an object attachment");
+assert(await access.getW93AttachmentForContext(ownerContext, importedAttachment.id), "owner can retrieve an unlinked personal import source");
+assert.equal(await access.getW93AttachmentForContext(colleagueContext, importedAttachment.id), null, "another member cannot retrieve an unlinked personal import source");
+assert((await hub.listHubAttachments("ja", 30, { userId: owner.id, tenantId: tenant.id, requestContext: ownerContext })).some((item) => item.id === importedAttachment.id), "owner attachment list includes unlinked personal import source");
+const foreignImportAttachment = await memory.addPrivateAttachment({ tenantId: "tenant_visibility_other", userId: owner.id, targetType: "import_job", targetId: "foreign-import-job", fileName: "foreign-source.pdf", fileType: "application/pdf", content: Buffer.from("foreign source") });
+assert.equal(await access.getW93AttachmentForContext(ownerContext, foreignImportAttachment.id), null, "cross-tenant unlinked import source fails closed");
+const unreadableLinkedImport = await memory.addPrivateAttachment({ tenantId: tenant.id, userId: owner.id, targetType: "import_job", targetId: "unreadable-linked-import", fileName: "unreadable-linked.pdf", fileType: "application/pdf", content: Buffer.from("unreadable linked") });
+await memory.linkAttachmentToObject({ tenantId: tenant.id, attachmentId: unreadableLinkedImport.id, targetType: "property", targetId: colleaguePrivateProperty.id, category: "identity", createdByUserId: owner.id });
+assert.equal(await access.getW93AttachmentForContext(ownerContext, unreadableLinkedImport.id), null, "uploader cannot fallback through an unreadable attachment link");
+assert(!(await hub.listHubAttachments("ja", 30, { userId: owner.id, tenantId: tenant.id, requestContext: ownerContext })).some((item) => item.id === unreadableLinkedImport.id), "attachment list follows W93 denial for unreadable linked import source");
+const importedCase = await memory.saveBrokerageCaseExtractionReview({
+  tenantId: tenant.id,
+  userId: owner.id,
+  caseType: "unit_sale",
+  caseTitle: "W93 import source case",
+  confirmedDataJson: {},
+  sourceImportJobIds: [],
+  reviewItems: [],
+});
+await memory.createObjectImportTarget({
+  id: "w93-object-import-target",
+  tenantId: tenant.id,
+  userId: owner.id,
+  caseId: importedCase.id,
+  importJobId: "w93-import-job",
+  targetType: "property",
+  targetId: privateProperty.id,
+  targetVersion: "v1",
+  sourceAttachmentId: importedAttachment.id,
+  status: "queued",
+  idempotencyKey: "w93-object-import",
+  attemptCount: 0,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+});
+assert(await access.getW93AttachmentForContext(ownerContext, importedAttachment.id), "a source attachment follows its readable import-job case parent");
+assert.equal(await access.getW93AttachmentForContext(colleagueContext, importedAttachment.id), null, "an import-job source remains hidden when its case is not readable");
+assert((await hub.listHubAttachments("ja", 30, { userId: owner.id, tenantId: tenant.id, requestContext: ownerContext })).some((item) => item.id === importedAttachment.id), "owner attachment list includes linked import source");
+assert(!(await hub.listHubAttachments("ja", 30, { userId: owner.id, tenantId: tenant.id, requestContext: colleagueContext })).some((item) => item.id === importedAttachment.id), "attachment list hides import source with unreadable case parent");
 const firstLink = await memory.linkAttachmentToObject({ tenantId: tenant.id, attachmentId: importedAttachment.id, targetType: "property", targetId: sharedProperty.id, category: "identity", sourceImportJobId: "w93-import-job", createdByUserId: owner.id });
 const duplicateLink = await memory.linkAttachmentToObject({ tenantId: tenant.id, attachmentId: importedAttachment.id, targetType: "property", targetId: sharedProperty.id, category: "identity", sourceImportJobId: "w93-import-job", createdByUserId: owner.id });
 assert.equal(duplicateLink.id, firstLink.id, "repeated object links are idempotent");
 assert.equal((await memory.listAttachmentLinks({ tenantId: tenant.id, attachmentId: importedAttachment.id })).length, 1, "idempotent linking creates one association");
 assert(await access.getW93AttachmentForContext(colleagueContext, importedAttachment.id), "a linked source follows its readable object parent");
+assert((await hub.listHubAttachments("ja", 30, { userId: owner.id, tenantId: tenant.id, requestContext: colleagueContext })).some((item) => item.id === importedAttachment.id), "attachment list follows a readable linked object parent");
 assert.equal((await access.listW93GeneratedOutputsForContext(colleagueContext)).length, 0, "history outputs without visible cases are excluded");
 
 console.log("w93 access behavior: PASS");

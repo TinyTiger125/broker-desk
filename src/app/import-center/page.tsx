@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { notFound, redirect } from "next/navigation";
 import {
   autoMapImportJobAction,
   executePropertyImportAction,
@@ -15,6 +16,10 @@ import { ExcelImportQueueProcessor } from "@/components/excel-import-queue-proce
 import { IdentityDocumentUploadForm } from "@/components/identity-document-upload-form";
 import { InputExtractionReview } from "@/components/input-extraction-review";
 import { PageFlashBanner } from "@/components/page-flash-banner";
+import { getImportMappingFormRows, getPropertyRowMappingPayload } from "@/lib/import-mapping-form";
+import { getImportJobFeedbackMessage } from "@/lib/import-feedback";
+import { PreimportUploadDelete } from "@/components/preimport-upload-delete";
+import { mayDeletePreimportUpload } from "@/lib/preimport-upload-lifecycle";
 import { listBrokerageCases } from "@/lib/data";
 import { formatDate } from "@/lib/format";
 import { t } from "@/lib/i18n";
@@ -27,16 +32,10 @@ import {
 } from "@/lib/import-mapping";
 import { getLocale, type Locale } from "@/lib/locale";
 import { listHubAttachments, listHubImportJobs, type HubImportJobItem } from "@/lib/hub";
-import { requireTenantSession } from "@/lib/tenant-session";
+import { requireTenantSession, TenantSessionError } from "@/lib/tenant-session";
+import { createRequestContext } from "@/lib/visibility-resolver";
 
 export const dynamic = "force-dynamic";
-
-const mappingPlaceholders = {
-  properties: "name,address,area,listing_price",
-  parties: "name,phone,email,party_type",
-  contracts: "contract_number,contract_type,property_id,party_id,signed_at",
-  service_requests: "title,property_id,party_id,occurred_at,status",
-} as const;
 
 const targetFieldOptions: Record<string, string[]> = {
   properties: ["name", "address", "area", "listing_price"],
@@ -126,34 +125,6 @@ const targetFieldCopy: Record<
   },
 };
 
-const sourceColumnExamplesByLocale: Record<
-  Locale,
-  {
-    properties: string;
-    parties: string;
-    contracts: string;
-    service_requests: string;
-  }
-> = {
-  ja: {
-    properties: "物件名,所在地,エリア,価格,管理費,修繕積立金",
-    parties: "氏名,電話番号,メール,関係者種別,役割,備考",
-    contracts: "契約番号,契約種別,物件ID,関係者ID,署名日,状態",
-    service_requests: "件名,物件ID,関係者ID,内容,発生日,状態,費用",
-  },
-  zh: {
-    properties: "物件名称,地址,区域,价格,管理费,修缮基金",
-    parties: "主体名称,电话号码,邮箱,主体类型,角色,备注",
-    contracts: "合同编号,合同类型,物件ID,主体ID,签署日期,状态",
-    service_requests: "标题,物件ID,主体ID,内容,发生日期,状态,费用",
-  },
-  ko: {
-    properties: "매물명,소재지,지역,가격,관리비,수선적립금",
-    parties: "관계자명,전화번호,이메일,관계자유형,역할,비고",
-    contracts: "계약번호,계약유형,매물ID,관계자ID,서명일,상태",
-    service_requests: "제목,매물ID,관계자ID,내용,발생일,상태,비용",
-  },
-};
 
 function getTargetFieldLabel(locale: Locale, field: string) {
   return targetFieldCopy[field]?.label[locale] ?? (locale === "zh" ? "其他保存项" : locale === "ko" ? "기타 저장 항목" : "その他の保存項目");
@@ -550,7 +521,7 @@ function isBatchMappingJob(job: HubImportJobItem) {
   return (
     job.sourceType === "excel" &&
     !isInputFileExtractionJob(job) &&
-    job.status !== "queued" &&
+    (job.status !== "queued" || getPropertyRowMappingPayload(job.notes) !== null) &&
     job.status !== "processing"
   );
 }
@@ -587,16 +558,35 @@ type ExtractedInputFieldWithDecision = InputFileExtractionResult["fields"][numbe
 };
 
 export default async function ImportCenterPage({ searchParams }: ImportCenterPageProps) {
-  const [locale, session] = await Promise.all([
+  const [locale, params] = await Promise.all([
     getLocale(),
-    requireTenantSession({ permission: "source.read" }),
+    searchParams ?? Promise.resolve(undefined),
   ]);
+  let session;
+  try {
+    session = await requireTenantSession({ permission: "source.read" });
+  } catch (error) {
+    if (error instanceof TenantSessionError && error.code === "tenant_selection_required") {
+      // Reconstruct only this route's declared query keys; never accept a
+      // caller-supplied returnTo. Workspace applies its existing URL guard.
+      const query = new URLSearchParams();
+      for (const key of ["job", "flash", "xlsxJob", "advanced", "intake", "targetCaseId", "flow", "object"] as const) {
+        const value = params?.[key];
+        if (typeof value === "string") query.set(key, value);
+      }
+      const returnTo = `/import-center${query.size ? `?${query.toString()}` : ""}`;
+      redirect(`/workspace?reason=tenant_selection_required&returnTo=${encodeURIComponent(returnTo)}`);
+    }
+    if (error instanceof TenantSessionError && ["tenant_forbidden", "permission_denied", "tenant_not_found", "user_not_found"].includes(error.code)) {
+      notFound();
+    }
+    throw error;
+  }
   const copy = getCopy(locale);
-  const params = searchParams ? await searchParams : undefined;
   const showAdvanced = params?.advanced === "1";
   const user = session.user;
   const tenantId = session.tenant.id;
-  const hubContext = { userId: user.id, tenantId };
+  const hubContext = { userId: user.id, tenantId, requestContext: createRequestContext(session) };
   const [jobs, attachments, cases] = await Promise.all([
     listHubImportJobs(hubContext),
     listHubAttachments(locale, 30, hubContext),
@@ -635,45 +625,28 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
     { value: "party", label: copy.optionParty },
   ] as const;
 
-  const sourceColumnExamples = sourceColumnExamplesByLocale[locale];
   const focusJobId = String(params?.job ?? "").trim();
   const mappingJobs = jobs.filter(isBatchMappingJob);
   const focusedJob = focusJobId ? jobs.find((job) => job.id === focusJobId) : undefined;
   const focusedMappingJob = focusedJob && isBatchMappingJob(focusedJob) ? focusedJob : undefined;
-  const defaultJob = focusedMappingJob ?? mappingJobs[0];
+  const defaultJob = focusJobId ? focusedMappingJob : mappingJobs[0];
   const hasDefaultJob = Boolean(defaultJob);
   const defaultTarget = defaultJob?.targetEntity ?? "properties";
-  const defaultSourceColumns =
-    defaultJob?.mappingJson && Object.keys(defaultJob.mappingJson).length > 0
-      ? Object.keys(defaultJob.mappingJson).join(",")
-      : sourceColumnExamples[defaultTarget];
-  const defaultTargetFields =
-    defaultJob?.mappingJson && Object.values(defaultJob.mappingJson).length > 0
-      ? Object.values(defaultJob.mappingJson).join(",")
-      : mappingPlaceholders[defaultTarget];
+  const mappingFormRows = getImportMappingFormRows(defaultJob);
+  const hasEditableMapping = hasDefaultJob && mappingFormRows.length > 0;
+  const defaultSourceColumns = mappingFormRows.map((row) => row.source).join(",");
   const mappedJobCount = jobs.filter((job) => job.status === "mapped").length;
   const completedJobCount = jobs.filter((job) => job.status === "completed").length;
-  const previewSourceColumns = defaultSourceColumns
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean)
-    .slice(0, 6);
-  const previewTargetFields = defaultTargetFields
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean)
-    .slice(0, 6);
-  const mappingTargetOptions = Array.from(new Set([...(targetFieldOptions[defaultTarget] ?? []), ...previewTargetFields])).filter(Boolean);
-  const previewRows = previewSourceColumns.map((source, index) => {
-    const target = previewTargetFields[index];
-    return {
-      source,
-      target,
-      targetLabel: target ? getTargetFieldLabel(locale, target) : copy.unmapped,
-      targetHelper: target ? getTargetFieldHelper(locale, target) : copy.unmapped,
-      confirmation: getMappingConfirmation(locale, source, target),
-    };
-  });
+  const mappingTargetOptions = Array.from(new Set([
+    ...(targetFieldOptions[defaultTarget] ?? []), ...mappingFormRows.map((row) => row.target),
+  ])).filter(Boolean);
+  const previewRows = mappingFormRows.map(({ source, target }) => ({
+    source,
+    target,
+    targetLabel: target ? getTargetFieldLabel(locale, target) : copy.unmapped,
+    targetHelper: target ? getTargetFieldHelper(locale, target) : copy.unmapped,
+    confirmation: getMappingConfirmation(locale, source, target),
+  }));
   const actionLabelByOperation: Record<ImportValidationIssueAction, string> = {
     resolve_now: copy.actionResolveNow,
     auto_fix: copy.actionAutoFix,
@@ -922,13 +895,20 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
     },
   } as const;
   const flashKey = String(params?.flash ?? "").trim() as keyof typeof flashMap;
-  const flashMessage = flashMap[flashKey]?.[locale];
-  const flashTone =
-    String(flashKey).includes("upload_") || String(flashKey).includes("missing") ? "error" : "success";
-
-  // ── Excel 物件保存 state ──────────────────────────────────────────
   const xlsxJobId = String(params?.xlsxJob ?? "").trim();
   const xlsxJob = xlsxJobId ? jobs.find((j) => j.id === xlsxJobId) : undefined;
+  const flashTone =
+    (flashKey === "input_extraction_queued" && xlsxJob?.status === "failed") ||
+    String(flashKey).includes("upload_") ||
+    String(flashKey).includes("missing")
+      ? "error"
+      : "success";
+
+  // ── Excel 物件保存 state ──────────────────────────────────────────
+  const flashMessage =
+    flashKey === "input_extraction_queued"
+      ? getImportJobFeedbackMessage(locale, xlsxJob?.status)
+      : flashMap[flashKey]?.[locale];
 
   let xlsxPayload: ExcelImportPayload | null = null;
   let xlsxResult: ExcelImportResult | null = null;
@@ -989,12 +969,21 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
   const isExistingIntake = intakeMode === "existing";
   const requestedJobId = xlsxJobId || focusJobId;
   const requestedJob = xlsxJob ?? focusedJob;
+  const isExtractedQueuedMapping = Boolean(
+    requestedJob?.sourceType === "excel" && requestedJob.status === "queued" &&
+    getPropertyRowMappingPayload(requestedJob.notes),
+  );
+  const needsMappingRedirect = isExtractedQueuedMapping && (!showAdvanced || Boolean(xlsxJobId));
+  if (needsMappingRedirect && requestedJob) {
+    redirect(`/import-center?job=${encodeURIComponent(requestedJob.id)}&advanced=1#job-mapping`);
+  }
   const missingRequestedJob = Boolean(requestedJobId && !requestedJob);
   const caseByImportJobId = new Map(
     cases.flatMap((caseItem) => caseItem.sourceImportJobIds.map((importJobId) => [importJobId, caseItem] as const)),
   );
   const requestedJobCase = requestedJob ? caseByImportJobId.get(requestedJob.id) : undefined;
   const recentJobHref = (job: HubImportJobItem) => {
+    if (job.status === "queued" && isBatchMappingJob(job)) return `/import-center?job=${encodeURIComponent(job.id)}&advanced=1#job-mapping`;
     if (isModernExcelImportJob(job)) return `/import-center?xlsxJob=${encodeURIComponent(job.id)}#source-upload`;
     if (job.sourceType === "excel" && (job.status === "queued" || job.status === "processing" || job.status === "failed")) {
       return `/import-center?xlsxJob=${encodeURIComponent(job.id)}#source-upload`;
@@ -1036,7 +1025,9 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
   );
   const wizardStep = !requestedJob
     ? "select"
-    : requestedJob.status === "queued" || requestedJob.status === "processing"
+    : isExtractedQueuedMapping
+      ? "mapping"
+      : requestedJob.status === "queued" || requestedJob.status === "processing"
       ? "processing"
       : requestedJob.status === "failed"
         ? "failed"
@@ -1051,8 +1042,8 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
             : "review";
   const showObjectSelection = wizardStep === "select" && !flowIntent && !requestedJob && !targetCaseId && !selectedObject;
   const showPostProcessingContent = wizardStep !== "processing" && wizardStep !== "failed";
-  const inputTaskJob = xlsxJob ?? (requestedJob && isInputFileExtractionJob(requestedJob) ? requestedJob : undefined);
-  const failedInputJob = inputTaskJob?.status === "failed" ? inputTaskJob : undefined;
+  const inputTaskJob = isExtractedQueuedMapping ? undefined : xlsxJob ?? (requestedJob && isInputFileExtractionJob(requestedJob) ? requestedJob : undefined);
+  const failedInputJob = inputTaskJob?.status === "failed" && !inputTaskJob.finalImportStartedAt ? inputTaskJob : undefined;
   const materialObjects = [
     { key: "case", icon: "business_center", iconClass: "bg-blue-50 text-blue-700", title: locale === "zh" ? "案件资料" : locale === "ko" ? "안건 자료" : "案件資料", desc: locale === "zh" ? "创建或读取案件相关资料。" : locale === "ko" ? "안건 관련 자료를 만들거나 읽습니다." : "案件に関する資料を作成・読取します。", manualHref: "/cases/new?from=entry" },
     { key: "person", icon: "group", iconClass: "bg-emerald-50 text-emerald-700", title: locale === "zh" ? "人物资料" : locale === "ko" ? "관계자 자료" : "関係者資料", desc: locale === "zh" ? "创建或读取人物相关资料。" : locale === "ko" ? "관계자 자료를 만들거나 읽습니다." : "関係者に関する資料を作成・読取します。", manualHref: "/parties/new?from=entry" },
@@ -1307,7 +1298,18 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
         </div>
         ) : null}
 
-        {inputTaskJob && (inputTaskJob.status === "queued" || inputTaskJob.status === "processing") ? (
+        {requestedJob && mayDeletePreimportUpload(requestedJob, session.membership) ? (
+          <PreimportUploadDelete jobId={requestedJob.id} locale={locale} />
+        ) : null}
+        {requestedJob?.finalImportStartedAt ? (
+          <p role="status" className="border-t border-slate-200 p-5 text-sm text-slate-600">
+            {locale === "zh" ? "物件导入已开始，原件及读取记录已保留。为避免重复写入，不能重新执行或删除原件。"
+              : locale === "ko" ? "매물 가져오기를 시작하여 원본과 읽기 기록을 보관합니다. 중복 저장을 방지하기 위해 다시 실행하거나 원본을 삭제할 수 없습니다."
+                : "物件取込は開始済みです。原本と読取記録を保持し、重複登録を防ぐため再実行・原本削除はできません。"}
+          </p>
+        ) : null}
+
+        {inputTaskJob && !inputTaskJob.finalImportStartedAt && (inputTaskJob.status === "queued" || inputTaskJob.status === "processing") ? (
           <ExcelImportQueueProcessor jobId={inputTaskJob.id} locale={locale} targetCaseId={targetCaseId || undefined} />
         ) : null}
 
@@ -1428,11 +1430,17 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
               />
             ) : (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-                {locale === "zh"
-                  ? "没有识别为支持的申请资料格式。普通物件台账可继续保存。"
-                  : locale === "ko"
-                    ? "신청 자료 형식과 일치하지 않습니다. 일반 매물 대장은 계속 저장할 수 있습니다."
-                    : "申込資料の形式と一致しません。通常の物件台帳は続けて保存できます。"}
+                {targetCaseId
+                  ? locale === "zh"
+                    ? "未能读取可填写内容，案件资料未更新。请重新选择受支持的资料。"
+                    : locale === "ko"
+                      ? "입력 가능한 내용을 읽지 못했습니다. 안건 자료는 업데이트되지 않았습니다. 지원되는 자료를 다시 선택해 주세요."
+                      : "入力可能な内容を読み取れませんでした。案件資料は更新されていません。対応する資料を選び直してください。"
+                  : locale === "zh"
+                    ? "未能读取可填写内容。请重新选择受支持的资料。"
+                    : locale === "ko"
+                      ? "입력 가능한 내용을 읽지 못했습니다. 지원되는 자료를 다시 선택해 주세요."
+                      : "入力可能な内容を読み取れませんでした。対応する資料を選び直してください。"}
               </div>
             )}
           </div>
@@ -1684,7 +1692,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                   <input type="hidden" name="targetEntity" value={defaultTarget} />
                   <input type="hidden" name="sourceColumns" value={defaultSourceColumns} />
                   <button
-                    disabled={!hasDefaultJob}
+                    disabled={!hasEditableMapping}
                     className="rounded-lg px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {copy.saveDraft}
@@ -1693,7 +1701,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                 <button
                   type="submit"
                   form="mapping-form"
-                  disabled={!hasDefaultJob}
+                  disabled={!hasEditableMapping}
                   className="rounded-lg bg-gradient-to-br from-[#001e40] to-[#003366] px-5 py-2 text-xs font-bold text-white shadow-md disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {copy.continueValidation}
@@ -1921,7 +1929,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                       </button>
                     </form>
                   ) : null}
-                  {item.operation === "retry" || item.level === "critical" ? (
+                  {(item.operation === "retry" || item.level === "critical") && !jobs.find((job) => job.id === item.jobId)?.finalImportStartedAt ? (
                     <form action={retryImportJobAction} className="mt-2">
                       <input type="hidden" name="jobId" value={item.jobId} />
                       <button className="rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5 text-[10px] font-bold text-slate-700 hover:bg-slate-100">
