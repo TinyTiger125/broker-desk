@@ -24,6 +24,30 @@ assert(admin.includes("export async function claimQueuedImportJob"), "admin data
 assert(admin.includes("claim_import_job_by_id($1)"), "admin data layer must call the exact-id SQL function");
 assert(admin.includes("process.env.DATABASE_ADMIN_URL"), "admin data layer must use the dedicated admin connection in production");
 assert(provision.includes("GRANT EXECUTE ON FUNCTION brokerdesk_private.claim_import_job_by_id(TEXT) TO brokerdesk_admin"), "runtime role provisioning must retain the single-job worker grant after revoke-all");
+// Model the explicit admin function ACL statements in their provisioning order.
+// This source-only check must never execute the provisioner or read credentials.
+const adminFunctionGrants = new Set();
+let adminRevokeSeen = false;
+for (const [, sql] of provision.matchAll(/await client\.query\("([^"\n]+)"\)/g)) {
+  if (sql === "REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA brokerdesk_private FROM brokerdesk_admin") {
+    adminFunctionGrants.clear();
+    adminRevokeSeen = true;
+  }
+  const grant = sql.match(/^GRANT EXECUTE ON FUNCTION brokerdesk_private\.(.+) TO brokerdesk_admin$/);
+  if (grant) {
+    assert(adminRevokeSeen, "admin function grants must follow revoke-all");
+    adminFunctionGrants.add(grant[1]);
+  }
+}
+assert(adminRevokeSeen, "admin provisioning must retain its deny-by-default function reset");
+assert.deepEqual([...adminFunctionGrants].sort(), [
+  "can_access_tenant(TEXT)",
+  "claim_import_job_by_id(TEXT)",
+  "claim_next_import_jobs(INTEGER)",
+  "current_user_id()",
+  "suspend_external_auth_user(TEXT)",
+  "sync_external_auth_user(TEXT, TEXT, TEXT)",
+].sort(), "reprovisioning must restore exactly the existing four entrypoints and two preimport helpers, without raw-subject access");
 assert(roleSql.includes("GRANT EXECUTE ON FUNCTION brokerdesk_private.claim_import_job_by_id(TEXT) TO brokerdesk_admin"), "role setup SQL must include the single-job worker grant");
 assert(route.includes("claimQueuedImportJob"), "drain route must support the exact-id claim");
 assert(route.includes("typeof body?.jobId === \"string\""), "drain route must validate the diagnostic job id type");

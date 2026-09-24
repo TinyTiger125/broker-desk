@@ -138,6 +138,6 @@ workId：`TOKYO-BUSINESS-PREVIEW-LIVE-20260924`。本节仅更新操作文档，
 
 定向脚本 `scripts/test-admin-preimport-helper-execute.mjs` 使用本地 PG17.11、Unix socket、44 个历史 migration 建立相关 owner/ACL 前提：修复前 source 事务报 42501 `can_access_tenant`，claim/delete 报 `current_user_id`；修复后 runtime 有效 subject 下 source 附件和 private blob 同事务成功，跨 tenant 与空 subject 拒绝，claim 成功。结果与命令输出在 `/tmp/tokyo-p1-helper-pg17-result.json`、`/tmp/tokyo-p1-helper-pg17.log`。此为本地数据库证据，不是云端应用验收。
 
-删除成功路径仍 **UNVERIFIED / 延期**：该本地夹具的 tenants / tenant_memberships 为 postgres owner，现有 SELECT-only RLS 使 admin 锁 tenant 行返回零行，delete 返回 false，断言 job/blob 保留且无删除 audit。云端两表 owner 未由此测试确定，因此不推断云端同样失败；本轮不新增 delete policy，也不宣称完整删除回归通过。重复运行旧角色 provisioning 会重置 private helper ACL，操作前必须审查其撤权逻辑，不能以它代替本 forward migration。
+删除成功路径仍 **UNVERIFIED / 延期**：该本地夹具的 tenants / tenant_memberships 为 postgres owner，现有 SELECT-only RLS 使 admin 锁 tenant 行返回零行，delete 返回 false，断言 job/blob 保留且无删除 audit。云端两表 owner 未由此测试确定，因此不推断云端同样失败；本轮不新增 delete policy，也不宣称完整删除回归通过。后续角色重配必须使用本次更新后的 `scripts/provision-postgres-runtime-roles.mjs`：在 admin private 函数 EXECUTE 全撤后，精确恢复上述两个 helper 和原有四个入口，不授予 raw subject helper。既有单 job 静态回归按 SQL 语句顺序验证最终六项授权集合；这是源码契约验证，不代表执行了角色重配，也不能代替本 forward migration。PG17 红绿夹具独立建立已观察的旧 44 权限，不调用 provisioning 入口。
 
 后续执行顺序（本文不执行）：独立审查本地候选后绑定**新提交**；获授权后先受控应用唯一新增 migration，再按新提交生成独立干净上传包并部署 Preview。新包应包含新 required migration 对应 SQL，核对应用 gate 与清单，禁止旧 source 混入。旧候选 `94a4501` 的 333 文件 manifest 和 `/tmp/tokyo-preview-upload-4gtbmuml` 保留为失败部署证据，不覆盖或复用。文档修正不代表已部署源码或已应用云端 migration。
