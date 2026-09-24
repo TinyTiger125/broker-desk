@@ -447,6 +447,10 @@ assert(
   "main automatic Vercel deployments must remain enabled",
 );
 assert(
+  vercelConfig.buildCommand === "npm run build",
+  "Production deployments must use the application build command without automatic migrations",
+);
+assert(
   !Object.prototype.hasOwnProperty.call(vercelConfig, "crons"),
   "the primary Production app must not define Cron jobs",
 );
