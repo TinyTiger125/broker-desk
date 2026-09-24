@@ -1,6 +1,6 @@
-# Tokyo Preview 运行时接入方案 r3 — Direct 本地候选（2026-09-24）
+# Tokyo Preview 运行时接入方案 r4 — Direct Preview 接入漏项修正（2026-09-24）
 
-workId：`TOKYO-DIRECT-PREVIEW-R1`。本轮只收口本地候选；未进行云端操作、购买、LOGIN、变量写入或部署。03:15 UTC 的既有双角色 Direct 探针已通过并完成 NOLOGIN/PASSWORD NULL 清理，不重跑。数据库初始化验收沿用 `f5a3210aa1c5025c4ad9b593274fb66dca09abf8` 的既有 complete/44 基线，本轮不重跑。
+r3 历史阶段（第1–7节）：workId `TOKYO-DIRECT-PREVIEW-R1`，当时只收口本地候选；未进行云端操作、购买、LOGIN、变量写入或部署。03:15 UTC 的既有双角色 Direct 探针已通过并完成 NOLOGIN/PASSWORD NULL 清理，不重跑。数据库初始化验收沿用 `f5a3210aa1c5025c4ad9b593274fb66dca09abf8` 的既有 complete/44 基线，本轮不重跑。
 
 沿用的 Auth/TLS 基线证据（2026-09-23）：[Supabase Auth 兼容与调用链证据](tokyo-pg17-recovery-permission-validation-20260922/tokyo-supabase-auth-compatibility-evidence-20260923.json)、[Tokyo runtime/admin TLS 证据](tokyo-pg17-recovery-permission-validation-20260922/tokyo-runtime-tls-evidence-20260923.json)。
 
@@ -91,10 +91,53 @@ workId：`TOKYO-DIRECT-PREVIEW-R1`。本轮只收口本地候选；未进行云�
 
 部署或验收失败时：停止公共流量、worker 和后续验收写入 → 在受控合成身份及连接仍可用时按上述顺序清理 synthetic 数据；不能安全清理则保留并标记残留 → 停用合成身份 → 关闭本轮页面/worker 连接并核对会话 → 仅对本轮确认变更的数据库角色执行 NOLOGIN/PASSWORD NULL → 删除本轮新增的 Preview server-only 变量，既有值按受控备份恢复。若凭据泄露等情形必须先撤销，则优先撤销并记录待清理数据，不再声称已清理。连接失效、提交不确定或清理不确定时，报告最后确认状态和残留，不重试、不终止无关会话。
 
-## 7. 当前结论
+## 7. r3 本地候选阶段结论（历史记录）
 
 - Supabase Auth 代码支持和 Clerk-only readiness 阻断已在本地收敛；无效会话、缺配置、未知 mode/provider 仍拒绝。
 - 运行时 TLS/CA 窄修已完成：runtime/admin 共用 CA PEM 和显式主机名校验；本地已验证共享配置经 Node TLS 的可信证书成功、不受信证书拒绝、主机名不匹配拒绝，并用实际 `pg.Client` 检查解析结果。真实应用连接池在 Tokyo Preview 的握手仍待 Preview 验收。
 - 本轮未执行真实云端身份、Preview 变量、部署、页面同步和 worker 端到端；过往部署尝试不视为本 Direct 候选验收。本方案不把本地构建或既有 Direct 探针写成 Vercel/业务通过。
 
-本方案只交付审批，不执行任何云端写入、LOGIN、凭据生成、身份创建或部署。
+以上为 r3 当时的审批交付范围，不代表后续已授权执行的当前状态。后续接入修正见第8节；最终部署与业务结果以对应执行回执为准。
+
+
+## 8. 2026-09-24 实际接入漏项修正
+
+workId：`TOKYO-BUSINESS-PREVIEW-LIVE-20260924`。本节仅更新操作文档，不修改应用代码、迁移或部署源码；已冻结的部署候选仍为 `94a450160ca0620a5f6e7177a150b469b9e1a862`。本次文档修正不属于该提交，也不能称为已部署源码变更。第1–7节中的“未购买、未部署、NOLOGIN”等状态属于 r3 历史快照，不应直接用作续跑现状。
+
+### Preview 限流：真实规则与应用声明同时存在
+
+- 固定项目、Team 不变。真实 WAF 规则 ID 为 `rule_tokyo_preview_request_limit_20260924_T7oUWf`，条件严格为 `environment = preview`，每 IP 每60秒最多600次，`fixed_window`；不得扩大到 Production。
+- 本轮发布回执 [`/tmp/tokyo-live-firewall-published.json`](/tmp/tokyo-live-firewall-published.json) 记录该规则 `active=true`、`valid=true`、`_status=live`，`hasDraft=false`、`pendingChanges=0`。这是已读取的发布回执，不等于本次文档编辑重新核对了云端现状。
+- 同一 Preview 部署必须具备 `BROKER_DESK_EDGE_RATE_LIMIT_ENFORCED=true` 与 `BROKER_DESK_EDGE_RATE_LIMIT_POLICY_ID=rule_tokyo_preview_request_limit_20260924_T7oUWf`。声明变量不能替代真实 WAF；真实规则也不能替代应用变量门禁。缺少声明会使应用在身份查询前返回配置错误。
+- 补变量后须使新部署读取对应配置，记录新 deployment ID、源码版本、原始 `target` 与 Preview 判定、实际 `hnd1`；不能把旧部署 READY 当成配置已更新。部署保护保持启用。
+
+### 单一合成邮箱白名单与规范化身份
+
+- `BROKER_DESK_DEPLOYMENT_ENV=staging` 或 `preview` 均强制应用登录白名单。必须仅在 Preview 配置 `BROKER_DESK_STAGING_AUTH_ALLOWLIST=tokyo-preview-eaca68f-20260923@invalid.example`；不能改成宽泛域名、任意邮箱或关闭白名单门禁。
+- `src/lib/staging-access-policy.ts` 对空名单拒绝；`src/lib/data.ts` 会在数据库 session 查询前返回空结果，默认用户同样返回 null，最终呈现 `401 user_not_found`。因此合法 OTP 与正确数据库映射仍不足以证明应用登录可用，应先核对当前 deployment 的白名单配置再判断 RLS。
+- Supabase JWT 的 `sub` 是裸 UUID；`src/lib/supabase/identity.ts` 将其规范化为 `supabase:UUID`。该合成身份在 `public.users.external_auth_subject` 应精确为 `supabase:735ffcd2-26d0-400c-8fcd-35848e42b775`，不是裸 UUID，也不是双重 `supabase:` 前缀。数据库请求范围与保存值必须一致，不通过放宽 RLS 补偿不一致。
+- [`/tmp/tokyo-fixture-1790223205082-9c13e92e.json`](/tmp/tokyo-fixture-1790223205082-9c13e92e.json) 记录确切合成用户 `user_tokyo_eaca_20260923` 的该字段事务修正 `affectedRows=1`；随后请求仍为 `401 user_not_found`。该回执证明字段修正与当次失败，不证明白名单补齐后的登录、tenant、worker 或保存重开通过。
+- 不重置未知旧密码，不创建替代身份；只有当前明确授权的该合成用户可恢复。当前部署配置和数据库修正完成后，认证仍需按单次、有明确依据的方式验证，失败先定位，不连续重试。
+
+### 精确上传清单与本地项目关联
+
+- 本轮实际上传白名单为333个文件、26,741,476 bytes，清单为 [`/tmp/tokyo-upload-allowlist.json`](/tmp/tokyo-upload-allowlist.json)，绑定提交 `94a450160ca0620a5f6e7177a150b469b9e1a862`。上传目录为 `/tmp/tokyo-preview-upload-4gtbmuml`；逐文件 SHA-256 匹配后使用，不以全仓库 `git archive` 替代已审核白名单。
+- 清单 SHA-256 为 `3419eadecc034e75e6d0383cb210646e9e199bc34e70d03d0c9159d63d411c5f`；`vercel.tokyo-preview.json` SHA-256 为 `47a91d64773f3c912f31eadb3e6265e58bd9ecd7fc4e5856691915add0c3eadf`。
+- 目录额外的 `.vercel/project.json` 只用于本地 CLI 关联固定 Project/Team，不是上传源码，不纳入333个上传文件。检查本地目录可能读到334个文件，不能据此将其描述为334个上传文件。保持 CLI 对 `.vercel` 的上传排除，不将本地关联元数据当作业务资产。
+- 白名单是本轮已审查文件集合，不等于任意历史文档、凭据文件或整个 `db/`、`docs/` 可上传；新增文件须重新核对清单。
+
+### 续跑与结果边界
+
+已有 READY Preview 及已启用角色时，不能为补缺失变量重跑角色初始化入口。只对当前授权的缺失变量和已确认属于本轮的 worker token ID 操作；保留旧 READY 部署，失败停止并汇报最后确认状态。后续应用 POST 必须携带与目标部署一致的 Origin；worker 只发送本轮入队的明确 jobId，不能使用空 body 触发批量 claim。
+
+验收分别记录：部署与区域、合成身份/tenant、单个正常样本 queued→worker→mapped、指定 tenant/job 的审计、人工修正保存与刷新重开。缺少任一业务证据，不因本节补全、HTTP 200、OTP 成功或 deployment READY 宣布完整业务验收通过。本节不记录任何密码、cookie、JWT、worker token 或服务密钥。
+
+## 9. 2026-09-24 P1 source persistence 候选修正（仅本地，待审查与云端授权）
+
+真实 Preview 上传返回 `source_persistence_failed` 后，目标只读 ACL 回执确认 postgres-owned `can_access_tenant(text)` / `current_user_id()` 对 `brokerdesk_admin` 不可执行，而附件 source guard 为 admin-owned SECURITY DEFINER 并启用 row_security。新增唯一 forward migration `20260924_001_admin_preimport_helper_execute.sql` 只授予这两个函数 EXECUTE；应用 required migration 清单同步要求该文件。不修改历史 migration、角色、表权限或 RLS policy。raw subject helper 由 postgres-owned 外层 helper 内部调用，未新增其 admin EXECUTE。
+
+定向脚本 `scripts/test-admin-preimport-helper-execute.mjs` 使用本地 PG17.11、Unix socket、44 个历史 migration 建立相关 owner/ACL 前提：修复前 source 事务报 42501 `can_access_tenant`，claim/delete 报 `current_user_id`；修复后 runtime 有效 subject 下 source 附件和 private blob 同事务成功，跨 tenant 与空 subject 拒绝，claim 成功。结果与命令输出在 `/tmp/tokyo-p1-helper-pg17-result.json`、`/tmp/tokyo-p1-helper-pg17.log`。此为本地数据库证据，不是云端应用验收。
+
+删除成功路径仍 **UNVERIFIED / 延期**：该本地夹具的 tenants / tenant_memberships 为 postgres owner，现有 SELECT-only RLS 使 admin 锁 tenant 行返回零行，delete 返回 false，断言 job/blob 保留且无删除 audit。云端两表 owner 未由此测试确定，因此不推断云端同样失败；本轮不新增 delete policy，也不宣称完整删除回归通过。重复运行旧角色 provisioning 会重置 private helper ACL，操作前必须审查其撤权逻辑，不能以它代替本 forward migration。
+
+后续执行顺序（本文不执行）：独立审查本地候选后绑定**新提交**；获授权后先受控应用唯一新增 migration，再按新提交生成独立干净上传包并部署 Preview。新包应包含新 required migration 对应 SQL，核对应用 gate 与清单，禁止旧 source 混入。旧候选 `94a4501` 的 333 文件 manifest 和 `/tmp/tokyo-preview-upload-4gtbmuml` 保留为失败部署证据，不覆盖或复用。文档修正不代表已部署源码或已应用云端 migration。
