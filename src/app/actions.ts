@@ -1547,8 +1547,8 @@ export async function updateImportJobMappingAction(formData: FormData) {
 
   const jobId = String(formData.get("jobId") ?? "").trim();
   const targetEntity = String(formData.get("targetEntity") ?? "").trim();
-  const sourceColumnsText = (formData.getAll("sourceColumn") as string[]).filter(Boolean).join(",");
-  const targetFieldsText = (formData.getAll("targetField") as string[]).filter(Boolean).join(",");
+  const sourceColumns = formData.getAll("sourceColumn").map((value) => typeof value === "string" ? value : "");
+  const targetFields = formData.getAll("targetField").map((value) => typeof value === "string" ? value : "");
   const notes = String(formData.get("notes") ?? "").trim();
 
   if (!jobId) {
@@ -1558,8 +1558,6 @@ export async function updateImportJobMappingAction(formData: FormData) {
     throw new Error("保存先が不正です。");
   }
 
-  const sourceColumns = parseCommaList(sourceColumnsText);
-  const targetFields = parseCommaList(targetFieldsText);
   if (sourceColumns.length === 0 || targetFields.length === 0) {
     throw new Error("元列とマッピング先項目を入力してください。");
   }
@@ -1653,7 +1651,7 @@ export async function updateImportJobMappingAction(formData: FormData) {
 
   revalidatePath("/");
   revalidatePath("/import-center");
-  redirect(withFlash(`/import-center?job=${updated.id}`, "import_mapping_saved"));
+  redirect(withFlash(`/import-center?job=${updated.id}&advanced=1`, "import_mapping_saved"));
 }
 
 export async function autoMapImportJobAction(formData: FormData) {

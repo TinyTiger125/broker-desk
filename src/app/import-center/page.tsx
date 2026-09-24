@@ -16,6 +16,7 @@ import { ExcelImportQueueProcessor } from "@/components/excel-import-queue-proce
 import { IdentityDocumentUploadForm } from "@/components/identity-document-upload-form";
 import { InputExtractionReview } from "@/components/input-extraction-review";
 import { PageFlashBanner } from "@/components/page-flash-banner";
+import { getImportMappingFormRows, getPropertyRowMappingPayload } from "@/lib/import-mapping-form";
 import { getImportJobFeedbackMessage } from "@/lib/import-feedback";
 import { PreimportUploadDelete } from "@/components/preimport-upload-delete";
 import { mayDeletePreimportUpload } from "@/lib/preimport-upload-lifecycle";
@@ -35,13 +36,6 @@ import { requireTenantSession, TenantSessionError } from "@/lib/tenant-session";
 import { createRequestContext } from "@/lib/visibility-resolver";
 
 export const dynamic = "force-dynamic";
-
-const mappingPlaceholders = {
-  properties: "name,address,area,listing_price",
-  parties: "name,phone,email,party_type",
-  contracts: "contract_number,contract_type,property_id,party_id,signed_at",
-  service_requests: "title,property_id,party_id,occurred_at,status",
-} as const;
 
 const targetFieldOptions: Record<string, string[]> = {
   properties: ["name", "address", "area", "listing_price"],
@@ -131,34 +125,6 @@ const targetFieldCopy: Record<
   },
 };
 
-const sourceColumnExamplesByLocale: Record<
-  Locale,
-  {
-    properties: string;
-    parties: string;
-    contracts: string;
-    service_requests: string;
-  }
-> = {
-  ja: {
-    properties: "物件名,所在地,エリア,価格,管理費,修繕積立金",
-    parties: "氏名,電話番号,メール,関係者種別,役割,備考",
-    contracts: "契約番号,契約種別,物件ID,関係者ID,署名日,状態",
-    service_requests: "件名,物件ID,関係者ID,内容,発生日,状態,費用",
-  },
-  zh: {
-    properties: "物件名称,地址,区域,价格,管理费,修缮基金",
-    parties: "主体名称,电话号码,邮箱,主体类型,角色,备注",
-    contracts: "合同编号,合同类型,物件ID,主体ID,签署日期,状态",
-    service_requests: "标题,物件ID,主体ID,内容,发生日期,状态,费用",
-  },
-  ko: {
-    properties: "매물명,소재지,지역,가격,관리비,수선적립금",
-    parties: "관계자명,전화번호,이메일,관계자유형,역할,비고",
-    contracts: "계약번호,계약유형,매물ID,관계자ID,서명일,상태",
-    service_requests: "제목,매물ID,관계자ID,내용,발생일,상태,비용",
-  },
-};
 
 function getTargetFieldLabel(locale: Locale, field: string) {
   return targetFieldCopy[field]?.label[locale] ?? (locale === "zh" ? "其他保存项" : locale === "ko" ? "기타 저장 항목" : "その他の保存項目");
@@ -555,7 +521,7 @@ function isBatchMappingJob(job: HubImportJobItem) {
   return (
     job.sourceType === "excel" &&
     !isInputFileExtractionJob(job) &&
-    job.status !== "queued" &&
+    (job.status !== "queued" || getPropertyRowMappingPayload(job.notes) !== null) &&
     job.status !== "processing"
   );
 }
@@ -659,45 +625,28 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
     { value: "party", label: copy.optionParty },
   ] as const;
 
-  const sourceColumnExamples = sourceColumnExamplesByLocale[locale];
   const focusJobId = String(params?.job ?? "").trim();
   const mappingJobs = jobs.filter(isBatchMappingJob);
   const focusedJob = focusJobId ? jobs.find((job) => job.id === focusJobId) : undefined;
   const focusedMappingJob = focusedJob && isBatchMappingJob(focusedJob) ? focusedJob : undefined;
-  const defaultJob = focusedMappingJob ?? mappingJobs[0];
+  const defaultJob = focusJobId ? focusedMappingJob : mappingJobs[0];
   const hasDefaultJob = Boolean(defaultJob);
   const defaultTarget = defaultJob?.targetEntity ?? "properties";
-  const defaultSourceColumns =
-    defaultJob?.mappingJson && Object.keys(defaultJob.mappingJson).length > 0
-      ? Object.keys(defaultJob.mappingJson).join(",")
-      : sourceColumnExamples[defaultTarget];
-  const defaultTargetFields =
-    defaultJob?.mappingJson && Object.values(defaultJob.mappingJson).length > 0
-      ? Object.values(defaultJob.mappingJson).join(",")
-      : mappingPlaceholders[defaultTarget];
+  const mappingFormRows = getImportMappingFormRows(defaultJob);
+  const hasEditableMapping = hasDefaultJob && mappingFormRows.length > 0;
+  const defaultSourceColumns = mappingFormRows.map((row) => row.source).join(",");
   const mappedJobCount = jobs.filter((job) => job.status === "mapped").length;
   const completedJobCount = jobs.filter((job) => job.status === "completed").length;
-  const previewSourceColumns = defaultSourceColumns
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean)
-    .slice(0, 6);
-  const previewTargetFields = defaultTargetFields
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean)
-    .slice(0, 6);
-  const mappingTargetOptions = Array.from(new Set([...(targetFieldOptions[defaultTarget] ?? []), ...previewTargetFields])).filter(Boolean);
-  const previewRows = previewSourceColumns.map((source, index) => {
-    const target = previewTargetFields[index];
-    return {
-      source,
-      target,
-      targetLabel: target ? getTargetFieldLabel(locale, target) : copy.unmapped,
-      targetHelper: target ? getTargetFieldHelper(locale, target) : copy.unmapped,
-      confirmation: getMappingConfirmation(locale, source, target),
-    };
-  });
+  const mappingTargetOptions = Array.from(new Set([
+    ...(targetFieldOptions[defaultTarget] ?? []), ...mappingFormRows.map((row) => row.target),
+  ])).filter(Boolean);
+  const previewRows = mappingFormRows.map(({ source, target }) => ({
+    source,
+    target,
+    targetLabel: target ? getTargetFieldLabel(locale, target) : copy.unmapped,
+    targetHelper: target ? getTargetFieldHelper(locale, target) : copy.unmapped,
+    confirmation: getMappingConfirmation(locale, source, target),
+  }));
   const actionLabelByOperation: Record<ImportValidationIssueAction, string> = {
     resolve_now: copy.actionResolveNow,
     auto_fix: copy.actionAutoFix,
@@ -1020,12 +969,21 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
   const isExistingIntake = intakeMode === "existing";
   const requestedJobId = xlsxJobId || focusJobId;
   const requestedJob = xlsxJob ?? focusedJob;
+  const isExtractedQueuedMapping = Boolean(
+    requestedJob?.sourceType === "excel" && requestedJob.status === "queued" &&
+    getPropertyRowMappingPayload(requestedJob.notes),
+  );
+  const needsMappingRedirect = isExtractedQueuedMapping && (!showAdvanced || Boolean(xlsxJobId));
+  if (needsMappingRedirect && requestedJob) {
+    redirect(`/import-center?job=${encodeURIComponent(requestedJob.id)}&advanced=1#job-mapping`);
+  }
   const missingRequestedJob = Boolean(requestedJobId && !requestedJob);
   const caseByImportJobId = new Map(
     cases.flatMap((caseItem) => caseItem.sourceImportJobIds.map((importJobId) => [importJobId, caseItem] as const)),
   );
   const requestedJobCase = requestedJob ? caseByImportJobId.get(requestedJob.id) : undefined;
   const recentJobHref = (job: HubImportJobItem) => {
+    if (job.status === "queued" && isBatchMappingJob(job)) return `/import-center?job=${encodeURIComponent(job.id)}&advanced=1#job-mapping`;
     if (isModernExcelImportJob(job)) return `/import-center?xlsxJob=${encodeURIComponent(job.id)}#source-upload`;
     if (job.sourceType === "excel" && (job.status === "queued" || job.status === "processing" || job.status === "failed")) {
       return `/import-center?xlsxJob=${encodeURIComponent(job.id)}#source-upload`;
@@ -1067,7 +1025,9 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
   );
   const wizardStep = !requestedJob
     ? "select"
-    : requestedJob.status === "queued" || requestedJob.status === "processing"
+    : isExtractedQueuedMapping
+      ? "mapping"
+      : requestedJob.status === "queued" || requestedJob.status === "processing"
       ? "processing"
       : requestedJob.status === "failed"
         ? "failed"
@@ -1082,7 +1042,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
             : "review";
   const showObjectSelection = wizardStep === "select" && !flowIntent && !requestedJob && !targetCaseId && !selectedObject;
   const showPostProcessingContent = wizardStep !== "processing" && wizardStep !== "failed";
-  const inputTaskJob = xlsxJob ?? (requestedJob && isInputFileExtractionJob(requestedJob) ? requestedJob : undefined);
+  const inputTaskJob = isExtractedQueuedMapping ? undefined : xlsxJob ?? (requestedJob && isInputFileExtractionJob(requestedJob) ? requestedJob : undefined);
   const failedInputJob = inputTaskJob?.status === "failed" && !inputTaskJob.finalImportStartedAt ? inputTaskJob : undefined;
   const materialObjects = [
     { key: "case", icon: "business_center", iconClass: "bg-blue-50 text-blue-700", title: locale === "zh" ? "案件资料" : locale === "ko" ? "안건 자료" : "案件資料", desc: locale === "zh" ? "创建或读取案件相关资料。" : locale === "ko" ? "안건 관련 자료를 만들거나 읽습니다." : "案件に関する資料を作成・読取します。", manualHref: "/cases/new?from=entry" },
@@ -1732,7 +1692,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                   <input type="hidden" name="targetEntity" value={defaultTarget} />
                   <input type="hidden" name="sourceColumns" value={defaultSourceColumns} />
                   <button
-                    disabled={!hasDefaultJob}
+                    disabled={!hasEditableMapping}
                     className="rounded-lg px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {copy.saveDraft}
@@ -1741,7 +1701,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                 <button
                   type="submit"
                   form="mapping-form"
-                  disabled={!hasDefaultJob}
+                  disabled={!hasEditableMapping}
                   className="rounded-lg bg-gradient-to-br from-[#001e40] to-[#003366] px-5 py-2 text-xs font-bold text-white shadow-md disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {copy.continueValidation}
