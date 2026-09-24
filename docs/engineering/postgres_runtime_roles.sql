@@ -72,6 +72,7 @@ GRANT SELECT, INSERT ON TABLE public.audit_logs TO brokerdesk_runtime;
 GRANT SELECT, INSERT, UPDATE ON TABLE public.output_template_settings TO brokerdesk_runtime;
 GRANT SELECT, INSERT, UPDATE ON TABLE public.output_template_versions TO brokerdesk_runtime;
 GRANT SELECT, INSERT, UPDATE ON TABLE public.import_jobs TO brokerdesk_runtime;
+GRANT SELECT (tenant_id, user_id, import_job_id, case_id) ON public.object_import_targets TO brokerdesk_runtime;
 GRANT SELECT, INSERT, UPDATE ON TABLE public.ai_experience_drafts TO brokerdesk_runtime;
 GRANT SELECT, INSERT ON TABLE public.correction_events TO brokerdesk_runtime;
 GRANT SELECT, INSERT, DELETE ON TABLE public.extraction_review_items TO brokerdesk_runtime;

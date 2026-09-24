@@ -6454,6 +6454,10 @@ export async function getObjectImportFeatureReadiness(): Promise<ObjectImportFea
 }
 export const getObjectImportTarget = (input: Parameters<MemoryObjectImportRepository["getTarget"]>[0]) => objectImportRepository().getTarget(input);
 export const getObjectImportTargetByJob = (input: Parameters<MemoryObjectImportRepository["getTargetByJob"]>[0]) => objectImportRepository().getTargetByJob(input);
+export async function getObjectImportCaseIdByJob(input: { tenantId: string; userId: string; importJobId: string }): Promise<string | null> {
+  return (await objectImportRepository().getTargetByJob(input))?.caseId ?? null;
+}
+
 export const listObjectImportTargets = (input: Parameters<MemoryObjectImportRepository["listTargets"]>[0]) => objectImportRepository().listTargets(input);
 export const createObjectImportTarget = (input: Parameters<MemoryObjectImportRepository["createTarget"]>[0]) => objectImportRepository().createTarget(input);
 export const updateObjectImportTarget = (input: Parameters<MemoryObjectImportRepository["updateTarget"]>[0]) => objectImportRepository().updateTarget(input);

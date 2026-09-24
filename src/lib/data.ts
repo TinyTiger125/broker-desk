@@ -585,6 +585,7 @@ export type { ObjectImportFeatureReadiness } from "@/lib/object-import-contract"
 export const getObjectImportFeatureReadiness: typeof memory.getObjectImportFeatureReadiness = (...args) => repo.getObjectImportFeatureReadiness(...args);
 export const getObjectImportTarget: typeof memory.getObjectImportTarget = (...args) => repo.getObjectImportTarget(...args);
 export const getObjectImportTargetByJob: typeof memory.getObjectImportTargetByJob = (...args) => repo.getObjectImportTargetByJob(...args);
+export const getObjectImportCaseIdByJob: typeof memory.getObjectImportCaseIdByJob = (...args) => repo.getObjectImportCaseIdByJob(...args);
 export const listObjectImportTargets: typeof memory.listObjectImportTargets = (...args) => repo.listObjectImportTargets(...args);
 export const createObjectImportTarget: typeof memory.createObjectImportTarget = (...args) => repo.createObjectImportTarget(...args);
 export const updateObjectImportTarget: typeof memory.updateObjectImportTarget = (...args) => repo.updateObjectImportTarget(...args);

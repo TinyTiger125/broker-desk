@@ -2,7 +2,7 @@ import {
   getAttachmentByIdForTenant,
   getBrokerageCaseByImportJobId,
   getBrokerageCaseByIdForContext,
-  getObjectImportTargetByJob,
+  getObjectImportCaseIdByJob,
   getGeneratedOutputByIdForTenant,
   listBrokerageCasesForContext,
   listGeneratedOutputsForTenant,
@@ -61,13 +61,13 @@ function attachmentParentType(targetType: string): W93ParentType | null {
 
 async function resolveImportJobAttachmentCase(context: RequestContext, importJobId: string): Promise<BrokerageCase | null> {
   if (!importJobId.trim()) return null;
-  const objectTarget = await getObjectImportTargetByJob({
+  const objectTargetCaseId = await getObjectImportCaseIdByJob({
     tenantId: context.tenantId,
     userId: context.userId,
     importJobId,
   });
-  const brokerageCase = objectTarget
-    ? (await getBrokerageCaseByIdForContext({ context, caseId: objectTarget.caseId })).brokerageCase
+  const brokerageCase = objectTargetCaseId !== null
+    ? (await getBrokerageCaseByIdForContext({ context, caseId: objectTargetCaseId })).brokerageCase
     : await getBrokerageCaseByImportJobId({
         tenantId: context.tenantId,
         userId: context.userId,
@@ -88,7 +88,7 @@ export async function getW93AttachmentForContext(context: RequestContext, attach
     if (parentResolution.canRead) return attachment;
   }
   if (attachment.targetType === "import_job") {
-    const objectTarget = await getObjectImportTargetByJob({
+    const objectTargetCaseId = await getObjectImportCaseIdByJob({
       tenantId: context.tenantId,
       userId: context.userId,
       importJobId: attachment.targetId,
@@ -99,7 +99,7 @@ export async function getW93AttachmentForContext(context: RequestContext, attach
       importJobId: attachment.targetId,
     });
     if (await resolveImportJobAttachmentCase(context, attachment.targetId)) return attachment;
-    if (objectTarget || linkedCase) return null;
+    if (objectTargetCaseId !== null || linkedCase) return null;
   }
   const links = await listAttachmentLinks({ tenantId: context.tenantId, attachmentId, limit: 100 });
   for (const link of links) {

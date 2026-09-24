@@ -192,6 +192,7 @@ const REQUIRED_PRODUCTION_MIGRATIONS = [
   "20260921_001_supabase_auth_lifecycle.sql",
   "20260924_001_admin_preimport_helper_execute.sql",
   "20260924_002_admin_worker_identity_read.sql",
+  "20260924_003_runtime_object_import_case_lookup.sql",
 ] as const;
 
 const OPEN_STAGES: ClientStage[] = ["lead", "contacted", "quoted", "viewing", "negotiating"];
@@ -7076,6 +7077,15 @@ export async function getObjectImportFeatureReadiness(): Promise<ObjectImportFea
 // Use the existing scoped query proxy; never expose the raw pool to callers.
 export const getObjectImportTarget = (input: Parameters<PostgresObjectImportRepository["getTarget"]>[0]) => new PostgresObjectImportRepository(getPool()).getTarget(input);
 export const getObjectImportTargetByJob = (input: Parameters<PostgresObjectImportRepository["getTargetByJob"]>[0]) => new PostgresObjectImportRepository(getPool()).getTargetByJob(input);
+// Attachment authorization only needs the parent id, not the complete import target.
+export async function getObjectImportCaseIdByJob(input: { tenantId: string; userId: string; importJobId: string }): Promise<string | null> {
+  const result = await getPool().query<{ case_id: string }>(
+    "SELECT case_id FROM object_import_targets WHERE tenant_id=$1 AND user_id=$2 AND import_job_id=$3 LIMIT 1",
+    [input.tenantId, input.userId, input.importJobId],
+  );
+  return result.rows[0]?.case_id ?? null;
+}
+
 export const listObjectImportTargets = (input: Parameters<PostgresObjectImportRepository["listTargets"]>[0]) => new PostgresObjectImportRepository(getPool()).listTargets(input);
 export const createObjectImportTarget = (input: Parameters<PostgresObjectImportRepository["createTarget"]>[0]) => new PostgresObjectImportRepository(getPool()).createTarget(input);
 export const updateObjectImportTarget = (input: Parameters<PostgresObjectImportRepository["updateTarget"]>[0]) => new PostgresObjectImportRepository(getPool()).updateTarget(input);

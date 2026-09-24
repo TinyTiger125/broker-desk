@@ -60,7 +60,7 @@ try {
   await db.query('SET LOCAL ROLE brokerdesk_admin');
   await assert.rejects(db.query("SELECT * FROM brokerdesk_private.claim_import_job_by_id('job-a')"),e=>e.code==='42501'&&/can_access_user/.test(e.message));
   await db.query('ROLLBACK');
-  const applied=await runPostgresMigrations({client:db,clientConfig:{host:root},log:()=>{}});
+  const applied=await runPostgresMigrations({client:db,clientConfig:{host:root},stopAfter:'20260924_002_admin_worker_identity_read.sql',log:()=>{}});
   assert.equal(applied.appliedCount,1);assert.equal(applied.skippedCount,45);
   assert.equal((await db.query("SELECT has_function_privilege('brokerdesk_admin','brokerdesk_private.current_external_auth_subject()','EXECUTE') AS allowed")).rows[0].allowed,false);
   for(const table of ['users','tenants']) assert.equal((await db.query('SELECT has_table_privilege($1,$2,$3) AS allowed',['brokerdesk_admin',table,'SELECT'])).rows[0].allowed,false);

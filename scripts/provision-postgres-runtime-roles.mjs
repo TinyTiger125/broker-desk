@@ -73,6 +73,7 @@ try {
   // setup and preserves identity reads plus tenant-scoped RLS boundaries.
   const aclBaseline = readFileSync(resolve(process.cwd(), "db/migrations/20260902_003_runtime_acl_baseline.sql"), "utf8");
   await client.query(aclBaseline);
+  await client.query("GRANT SELECT (tenant_id, user_id, import_job_id, case_id) ON public.object_import_targets TO brokerdesk_runtime");
   await client.query("GRANT USAGE ON SCHEMA public TO brokerdesk_runtime");
   // The lifecycle SECURITY DEFINER owner needs schema visibility plus only
   // the explicit relations touched by its current identity, import-claim,
