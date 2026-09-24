@@ -123,6 +123,8 @@ GRANT EXECUTE ON FUNCTION brokerdesk_private.current_user_id() TO brokerdesk_run
 GRANT EXECUTE ON FUNCTION brokerdesk_private.can_access_tenant(TEXT) TO brokerdesk_runtime;
 GRANT EXECUTE ON FUNCTION brokerdesk_private.can_access_user(TEXT) TO brokerdesk_runtime;
 
+GRANT EXECUTE ON FUNCTION brokerdesk_private.publish_official_template_layout(TEXT,TEXT,TEXT,TEXT,JSONB,TEXT) TO brokerdesk_runtime;
+
 -- The administrative worker receives only the explicit lifecycle matrix above.
 -- It is a server-only background capability; ordinary runtime access remains
 -- RLS-scoped and the role retains NOSUPERUSER/NOBYPASSRLS.

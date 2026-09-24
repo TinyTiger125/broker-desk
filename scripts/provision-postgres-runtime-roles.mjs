@@ -94,6 +94,7 @@ try {
   await client.query("GRANT EXECUTE ON FUNCTION brokerdesk_private.current_user_id() TO brokerdesk_runtime");
   await client.query("GRANT EXECUTE ON FUNCTION brokerdesk_private.can_access_tenant(TEXT) TO brokerdesk_runtime");
   await client.query("GRANT EXECUTE ON FUNCTION brokerdesk_private.can_access_user(TEXT) TO brokerdesk_runtime");
+  await client.query("GRANT EXECUTE ON FUNCTION brokerdesk_private.publish_official_template_layout(TEXT,TEXT,TEXT,TEXT,JSONB,TEXT) TO brokerdesk_runtime");
   await client.query("REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA brokerdesk_private FROM brokerdesk_admin");
   // Preserve the forward migration grants when resetting the admin function ACL.
   await client.query("GRANT EXECUTE ON FUNCTION brokerdesk_private.can_access_tenant(TEXT) TO brokerdesk_admin");

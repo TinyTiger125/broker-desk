@@ -1,3 +1,4 @@
+import { getGuaranteeCompanyTemplate } from "@/lib/guarantee-application";
 import { validateObjectImportReview, type ObjectImportReviewInput, type ObjectImportReviewResult } from "@/lib/object-import-review";
 import { buildObjectVersionFingerprint, type ObjectImportFeatureReadiness } from "@/lib/object-import-contract";
 import { readCaseAssociationDraft } from "@/lib/case-associations";
@@ -3432,6 +3433,7 @@ export async function listGuaranteeTemplateLayoutVersions(
 }
 
 export async function publishGuaranteeTemplateLayoutVersion(input: {
+  tenantId: string;
   templateId: string;
   baselineVersion: string;
   assetFingerprint: string;
@@ -3459,6 +3461,20 @@ export async function publishGuaranteeTemplateLayoutVersion(input: {
     publishedAt: now,
   };
   db.guaranteeTemplateLayoutVersions.unshift(version);
+  const companyName = getGuaranteeCompanyTemplate(input.templateId).companyDisplayName;
+  await addAuditLog({ tenantId: input.tenantId, userId: input.publishedByUserId,
+    action: "guarantee_template_layout_published", targetType: "official_template", targetId: version.id,
+    message: `${companyName}の公式テンプレート配置 v${versionNumber} を公開しました。`,
+    context: { templateId: input.templateId, versionNumber, assetFingerprint: input.assetFingerprint } });
+  await addAuditLog({ tenantId: input.tenantId, userId: input.publishedByUserId,
+    action: "guarantee_template_layout_saved", targetType: "official_template", targetId: input.templateId,
+    message: `${companyName}の公式テンプレート配置を公開しました。`,
+    context: { templateId: input.templateId,
+      layoutOverrideCount: Object.keys(input.layoutSnapshot.layoutOverrides ?? {}).length,
+      deletedOverlayFieldCount: Array.isArray(input.layoutSnapshot.deletedOverlayFieldKeys) ? input.layoutSnapshot.deletedOverlayFieldKeys.length : 0,
+      customOverlayFieldCount: Array.isArray(input.layoutSnapshot.customOverlayFields) ? input.layoutSnapshot.customOverlayFields.length : 0,
+      layoutDirty: true } });
+
   return { ...version, layoutSnapshot: { ...version.layoutSnapshot } };
 }
 

@@ -443,8 +443,12 @@ assert(
   "Vercel Functions must stay in the Tokyo hnd1 region",
 );
 assert(
-  vercelConfig.git?.deploymentEnabled?.main === false,
-  "main must remain disabled for automatic Vercel deployments",
+  vercelConfig.git?.deploymentEnabled?.main !== false,
+  "main automatic Vercel deployments must remain enabled",
+);
+assert(
+  !Object.prototype.hasOwnProperty.call(vercelConfig, "crons"),
+  "the primary Production app must not define Cron jobs",
 );
 assert(packageJson.dependencies?.["@clerk/nextjs"], "package must include @clerk/nextjs");
 assert(packageJson.scripts?.["db:migrate"] === "node scripts/run-postgres-migrations.mjs", "package must provide the checked migration runner");

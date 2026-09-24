@@ -4618,7 +4618,8 @@ async function saveGuaranteeApplicationPreviewWithScope(
     }
     if (typeof layoutOverridesInput === "string") {
       const baselineSnapshot = (await resolveGuaranteeTemplateLayout(template.id)).snapshot;
-      const published = await publishGuaranteeTemplateLayoutVersion({
+      await publishGuaranteeTemplateLayoutVersion({
+        tenantId,
         templateId: template.id,
         baselineVersion: baselineSnapshot.baselineVersion,
         assetFingerprint: baselineSnapshot.assetFingerprint ?? "",
@@ -4634,36 +4635,7 @@ async function saveGuaranteeApplicationPreviewWithScope(
         changeNote: `公式配置を更新 (${Object.keys(layoutOverrides).length}枠)`,
       });
 
-      await addAuditLog({
-        tenantId,
-        userId: user.id,
-        action: "guarantee_template_layout_published",
-        targetType: "official_template",
-        targetId: published.id,
-        message: `${template.companyDisplayName}の公式テンプレート配置 v${published.versionNumber} を公開しました。`,
-        context: {
-          templateId: template.id,
-          versionNumber: published.versionNumber,
-          assetFingerprint: published.assetFingerprint,
-        },
-      });
     }
-
-    await addAuditLog({
-      tenantId,
-      userId: user.id,
-      action: "guarantee_template_layout_saved",
-      targetType: "official_template",
-      targetId: template.id,
-      message: `${template.companyDisplayName}の公式テンプレート配置を公開しました。`,
-      context: {
-        templateId: template.id,
-        layoutOverrideCount: Object.keys(layoutOverrides).length,
-        deletedOverlayFieldCount: deletedOverlayFieldKeys.length,
-        customOverlayFieldCount: customOverlayFields.length,
-        layoutDirty,
-      },
-    });
 
     revalidatePath(`/platform/templates/${template.id}`);
     revalidatePath("/platform/templates");

@@ -193,6 +193,7 @@ const REQUIRED_PRODUCTION_MIGRATIONS = [
   "20260924_001_admin_preimport_helper_execute.sql",
   "20260924_002_admin_worker_identity_read.sql",
   "20260924_003_runtime_object_import_case_lookup.sql",
+  "20260924_004_official_template_publish.sql",
 ] as const;
 
 const OPEN_STAGES: ClientStage[] = ["lead", "contacted", "quoted", "viewing", "negotiating"];
@@ -3049,6 +3050,7 @@ export async function listGuaranteeTemplateLayoutVersions(
 }
 
 export async function publishGuaranteeTemplateLayoutVersion(input: {
+  tenantId: string;
   templateId: string;
   baselineVersion: string;
   assetFingerprint: string;
@@ -3057,36 +3059,14 @@ export async function publishGuaranteeTemplateLayoutVersion(input: {
   changeNote?: string;
 }): Promise<GuaranteeTemplateLayoutVersion> {
   await ensureSchema();
+  // Preserve transaction-local request scope in development and production.
   return withTransaction(async (client) => {
-    const nextResult = await client.query(
-      `SELECT COALESCE(MAX(version_number), 0)::int + 1 AS next
-       FROM guarantee_template_layout_versions
-       WHERE template_id = $1`,
-      [input.templateId],
+    const result = await client.query(
+      "SELECT * FROM brokerdesk_private.publish_official_template_layout($1,$2,$3,$4,$5::jsonb,$6)",
+      [input.tenantId, input.templateId, input.baselineVersion, input.assetFingerprint,
+        JSON.stringify(input.layoutSnapshot), input.changeNote?.trim() || null],
     );
-    const versionNumber = Number(nextResult.rows[0]?.next ?? 1);
-    await client.query(
-      "UPDATE guarantee_template_layout_versions SET is_active = FALSE WHERE template_id = $1 AND is_active = TRUE",
-      [input.templateId],
-    );
-    const inserted = await client.query(
-      `INSERT INTO guarantee_template_layout_versions (
-        id, template_id, version_number, baseline_version, asset_fingerprint,
-        layout_snapshot, change_note, published_by_user_id, is_active, created_at, published_at
-      ) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,TRUE,NOW(),NOW())
-      RETURNING *`,
-      [
-        genId("guarantee_layout"),
-        input.templateId,
-        versionNumber,
-        input.baselineVersion,
-        input.assetFingerprint,
-        JSON.stringify(input.layoutSnapshot),
-        input.changeNote?.trim() || null,
-        input.publishedByUserId,
-      ],
-    );
-    return mapGuaranteeTemplateLayoutVersion(inserted.rows[0]);
+    return mapGuaranteeTemplateLayoutVersion(result.rows[0]);
   });
 }
 
