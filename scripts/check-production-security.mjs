@@ -439,8 +439,8 @@ assert(schemaSql.includes("CREATE TABLE IF NOT EXISTS case_workbench_field_rules
 const packageJson = JSON.parse(fs.readFileSync("package.json", "utf8"));
 const vercelConfig = JSON.parse(fs.readFileSync("vercel.json", "utf8"));
 assert(
-  Array.isArray(vercelConfig.regions) && vercelConfig.regions.length === 1 && vercelConfig.regions[0] === "sin1",
-  "Vercel Functions must stay colocated with the Singapore Neon database",
+  Array.isArray(vercelConfig.regions) && vercelConfig.regions.length === 1 && vercelConfig.regions[0] === "hnd1",
+  "Vercel Functions must stay in the Tokyo hnd1 region",
 );
 assert(
   vercelConfig.git?.deploymentEnabled?.main === false,
