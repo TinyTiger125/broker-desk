@@ -56,7 +56,7 @@
 ## 2026-09-30 本轮复核：重复身份策略与工程门
 
 - `8f63f46` 的同名同地址唯一键策略已确认过窄：当前 `Property` 模型没有房号/单位或来源业务身份字段，不能证明同名同地址就是同一物件。本轮改为同文件完全相同行使用 `import_row_exact_duplicate` 分类并保留原始行；同名同地址但内容不同使用 `import_row_suspected_duplicate` 警告，原始行/原因写入导入记录并在结果页可展开查看，仍新增且不覆盖既有数据。
-- 复核写集：`src/lib/import-row-policy.ts`、`src/lib/import-mapping.ts`、`src/app/actions.ts`、`src/app/import-center/page.tsx`、`scripts/check-v1-import-row-policy.mjs`。未修改数据库 schema、RLS、权限配置或现有非本轮脏文件。
+- 复核写集：`src/lib/import-row-policy.ts`、`src/lib/import-mapping.ts`、`src/app/actions.ts`、`src/app/import-center/page.tsx`、`src/lib/identity-document-extractor.ts`、`scripts/check-v1-import-row-policy.mjs`。未修改数据库 schema、RLS、权限配置或现有非本轮脏文件。
 - 本轮工程门：针对性 Excel/复核/失败恢复/导入中心检查通过；在可恢复改名 `/tmp/broker-desk-next-before-isolated-20260930` 后，`npm run typecheck` 通过，随后干净 `npm run build` 通过，`npm run lint` 仅保留既有 2 个 warning。原 `.next` 未删除，必要时可恢复。
 - 浏览器证据状态：本轮已启动本地 demo 并打开 `/import-center?locale=zh&object=property#source-upload`；合成 Excel 已生成于 `/tmp/broker-desk-synthetic-v1-import.xlsx`。上传动作被浏览器工具中断，尚未取得“选择文件→映射→保存→刷新/重开”的有效浏览器证据，不得写成通过。身份仅取得本地 mock OCR 解析证据，尚未取得真实图片、浏览器保存/重开、Preview 或生产 OCR 证据；禁止外部收费 OCR/API。
 
