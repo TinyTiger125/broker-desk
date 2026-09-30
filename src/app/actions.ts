@@ -70,6 +70,7 @@ import {
   listCaseWorkbenchFieldRules,
   listExtractionReviewItems,
   listImportJobs,
+  listPropertiesForContext,
   listGuaranteeCompanyMaskVersions,
   listTenantMembers,
   mergeBrokerageCaseExtractionReview,
@@ -135,6 +136,7 @@ import {
   type ImportValidationIssueLevel,
 } from "@/lib/import-mapping";
 import { materializeExtractionReviewValue } from "@/lib/extraction-review-materialization";
+import { buildPropertyImportKey, normalizeImportCellValue } from "@/lib/import-row-policy";
 import {
   assertTenantPermission,
   requireTenantSession,
@@ -5401,8 +5403,17 @@ export async function executePropertyImportAction(formData: FormData) {
     ko: "이미 시작했거나 시작할 수 없는 가져오기입니다. 다시 실행하지 않습니다.",
   }));
 
+  const visibleProperties = await listPropertiesForContext({
+    context: createRequestContext(session),
+    lifecycleStatus: "all",
+  });
+  const knownPropertyKeys = new Set(
+    visibleProperties
+      .map(({ property }) => buildPropertyImportKey(property.name, property.address))
+      .filter((key): key is string => Boolean(key)),
+  );
   let successCount = 0;
-  const skipped: { row: number; code: "import_row_missing_name" | "import_row_invalid_listing_price" | "import_row_unknown_error"; reason: string }[] = [];
+  const skipped: { row: number; code: "import_row_missing_name" | "import_row_invalid_listing_price" | "import_row_duplicate" | "import_row_unknown_error"; reason: string }[] = [];
 
   for (let i = 0; i < payload.rows.length; i++) {
     const row = payload.rows[i];
@@ -5411,7 +5422,7 @@ export async function executePropertyImportAction(formData: FormData) {
       mapped[targetField] = row[srcCol];
     }
 
-    const name = String(mapped["name"] ?? "").trim();
+    const name = normalizeImportCellValue(mapped["name"]);
     if (!name) {
       skipped.push({ row: i + 2, code: "import_row_missing_name", reason: "name（物件名）が空です" });
       continue;
@@ -5427,6 +5438,16 @@ export async function executePropertyImportAction(formData: FormData) {
       continue;
     }
 
+    const propertyKey = buildPropertyImportKey(name, mapped["address"]);
+    if (propertyKey && knownPropertyKeys.has(propertyKey)) {
+      skipped.push({
+        row: i + 2,
+        code: "import_row_duplicate",
+        reason: "同名・同所在地の既存物件があるため、既存データを上書きせずスキップしました。",
+      });
+      continue;
+    }
+
     const managementFeeRaw = parsePrice(mapped["management_fee"]);
     const repairFeeRaw = parsePrice(mapped["repair_fee"]);
 
@@ -5436,13 +5457,14 @@ export async function executePropertyImportAction(formData: FormData) {
         createdByUserId: user.id,
         currentOwnerUserId: user.id,
         name,
-        area: String(mapped["area"] ?? "").trim() || undefined,
-        address: String(mapped["address"] ?? "").trim() || undefined,
+        area: normalizeImportCellValue(mapped["area"]) || undefined,
+        address: normalizeImportCellValue(mapped["address"]) || undefined,
         listingPrice,
         managementFee: managementFeeRaw > 0 ? managementFeeRaw : undefined,
         repairFee: repairFeeRaw > 0 ? repairFeeRaw : undefined,
-        notes: String(mapped["notes"] ?? "").trim() || undefined,
+        notes: normalizeImportCellValue(mapped["notes"]) || undefined,
       });
+      if (propertyKey) knownPropertyKeys.add(propertyKey);
       successCount++;
     } catch (e) {
       skipped.push({
@@ -5503,6 +5525,22 @@ export async function executePropertyImportAction(formData: FormData) {
               ? "가격 필드를 숫자로 변환할 수 없는 행이 있습니다."
               : "価格フィールドを数値化できない行があります。",
         count: skippedByCode.import_row_invalid_listing_price,
+      })
+    );
+  }
+  if ((skippedByCode.import_row_duplicate ?? 0) > 0) {
+    executionIssues.push(
+      createImportValidationIssue({
+        code: "import_row_duplicate",
+        level: "warning",
+        action: "resolve_now",
+        message:
+          locale === "zh"
+            ? "存在重复物件行或已存在的同名同地址物件；本次导入未覆盖原有数据。"
+            : locale === "ko"
+              ? "중복 매물 행 또는 동일한 이름·주소의 기존 매물이 있어 기존 데이터를 덮어쓰지 않았습니다."
+              : "重複行または同名・同所在地の既存物件があるため、既存データは上書きしていません。",
+        count: skippedByCode.import_row_duplicate,
       })
     );
   }

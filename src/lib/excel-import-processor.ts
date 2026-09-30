@@ -16,9 +16,11 @@ import {
   MAX_EXCEL_SHEETS,
   readExcelWorkbook,
   validateExcelZip,
+  worksheetToRows,
 } from "@/lib/excel-workbook";
 import { extractInputFileFromWorkbook, type InputFileExtractionResult } from "@/lib/input-file-extractor";
 import { suggestImportMapping } from "@/lib/import-mapping";
+import { normalizeImportCellValue } from "@/lib/import-row-policy";
 import { isLocalPrivateStoragePath, isPostgresPrivateStoragePath } from "@/lib/attachment-storage";
 
 export type ExcelImportPayload = {
@@ -127,10 +129,11 @@ export async function processExcelImportJob(input: {
     const inputExtraction = extractInputFileFromWorkbook(workbook, source.fileName, sourceFileHash);
     const queuedMetadata = parseQueuedMetadata(job.notes);
     const firstSheet = workbook.worksheets[0];
-    const rawRows = firstSheet?.data ?? [];
-    const headers = rawRows[0]?.map((cell) => String(cell ?? "").trim()).filter(Boolean) ?? [];
+    const rawRows = firstSheet ? worksheetToRows(firstSheet) : [];
+    const headers = rawRows[0]?.map(normalizeImportCellValue).filter(Boolean) ?? [];
     const rows = rawRows.slice(1)
-      .filter((row) => row.some((cell) => String(cell ?? "").trim() !== ""))
+      .map((row) => row.map(normalizeImportCellValue))
+      .filter((row) => row.some((cell) => cell !== ""))
       .map((row) => Object.fromEntries(headers.map((header, index) => [header, row[index] ?? ""])));
     const payload: ExcelImportPayload = Boolean(parseObjectImportNotes(job.notes)) || inputExtraction.extractionStatus === "recognized" || headers.length === 0
       ? {

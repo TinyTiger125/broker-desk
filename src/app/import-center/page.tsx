@@ -662,6 +662,8 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
       locale === "zh" ? "存在空名称行" : locale === "ko" ? "매물명 누락 행 있음" : "物件名未入力行あり",
     import_row_invalid_listing_price:
       locale === "zh" ? "价格格式异常" : locale === "ko" ? "가격 형식 오류" : "価格フィールド異常",
+    import_row_duplicate:
+      locale === "zh" ? "重复物件未覆盖" : locale === "ko" ? "중복 매물은 덮어쓰지 않음" : "重複物件は上書きしない",
     import_row_unknown_error:
       locale === "zh" ? "保存处理异常" : locale === "ko" ? "저장 처리 오류" : "保存処理エラー",
     import_partial_completed:
