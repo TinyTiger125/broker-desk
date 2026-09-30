@@ -61,6 +61,15 @@ function executeModule(source, globals = {}, dependencies = {}) {
 }
 const parsed = ts.createSourceFile("actions.ts", actions, ts.ScriptTarget.Latest, true);
 const finalFunction = parsed.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === "executePropertyImportAction").getText(parsed);
+// The action is extracted below to isolate its claim/write ordering. Inject
+// the same pure import-row helpers used by production and a minimal visibility
+// context/list stub; otherwise a missing imported symbol would be reported as
+// a false zero-write concurrency failure before addProperty is reached.
+const importRowPolicyModule = { exports: {} };
+vm.runInNewContext(ts.transpileModule(read("src/lib/import-row-policy.ts"), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+}).outputText, { module: importRowPolicyModule, exports: importRowPolicyModule.exports });
+const importRowPolicy = importRowPolicyModule.exports;
 for (const scenario of ["claim-denied", "success", "write-failed"]) {
   let claimed = false;
   let propertyWrites = 0;
@@ -70,6 +79,9 @@ for (const scenario of ["claim-denied", "success", "write-failed"]) {
     requireTenantSession: async () => ({ user: { id: "owner" }, tenant: { id: "tenant-a" } }),
     getLocale: async () => "ja", rejectForbiddenRecordInput: async () => {},
     listImportJobs: async () => [fixture], tr: (_locale, c) => c.ja,
+    listPropertiesForContext: async () => [],
+    createRequestContext: (session) => ({ tenantId: session.tenant.id, userId: session.user.id }),
+    ...importRowPolicy,
     updateImportJobMapping: async (input) => {
       if (claimed && input.status === "mapped") throw new Error("import_execution_started");
       status = input.status;
@@ -133,6 +145,12 @@ for (const scenario of ["already-started", "already-completed", "claim-during-pa
   let audits = 0;
   const processor = executeModule(read("src/lib/excel-import-processor.ts"), { Buffer }, {
     "node:crypto": { createHash: () => ({ update() { return this; }, digest: () => "test-hash" }) },
+    "@/lib/object-import-processor-adapter": {
+      ensureObjectImportTask: async () => null,
+      persistObjectImportJobExtraction: async () => [],
+      markObjectImportJobFailed: async () => null,
+    },
+    "@/lib/object-import-contract": { parseObjectImportNotes: () => null },
     "@/lib/data": {
       listImportJobs: async () => [{ ...job, id: "test-job", status: state, finalImportStartedAt: started ? new Date() : undefined }],
       listAttachments: async () => [{ id: "test-source", storagePath: "postgres-private://test/source", fileName: "test.xlsx" }],
@@ -156,9 +174,11 @@ for (const scenario of ["already-started", "already-completed", "claim-during-pa
         return { worksheets: [{ data: [["name"], ["synthetic row"]] }] };
       },
       getWorkbookSheetNames: () => ["sheet"], countWorkbookCells: () => 2,
+      worksheetToRows: (worksheet) => worksheet.data,
     },
     "@/lib/input-file-extractor": { extractInputFileFromWorkbook: () => ({ extractionStatus: "unknown", fields: [] }) },
     "@/lib/import-mapping": { suggestImportMapping: () => ({}) },
+    "@/lib/import-row-policy": { normalizeImportCellValue: (value) => String(value ?? "").trim() },
     "@/lib/attachment-storage": { isLocalPrivateStoragePath: () => false, isPostgresPrivateStoragePath: () => true },
   });
   const results = await Promise.all([1, 2].map(() => processor.processExcelImportJob({ tenantId: "tenant-a", userId: "owner", jobId: "test-job" })));
