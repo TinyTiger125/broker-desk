@@ -50,7 +50,7 @@
 - 修改文件：`src/lib/import-row-policy.ts`、`src/lib/excel-import-processor.ts`、`src/lib/import-mapping.ts`、`src/app/actions.ts`、`src/app/import-center/page.tsx`，以及定向检查 `scripts/check-v1-import-row-policy.mjs`。既有未提交业务改动和未跟踪证据未清理、未覆盖。
 - 前后行为：Excel 行现在通过 `worksheetToRows` 和统一值规范化处理，日期稳定为 `YYYY-MM-DD`，空单元格为空字符串，换行/多余空白不会改变映射；属性导入对文件内完全相同的重复行报告 `import_row_exact_duplicate` 并跳过，对同名同所在地但内容不同的行报告 `import_row_suspected_duplicate`，保留原始行并新增、不覆盖原有数据。未来是否允许显式覆盖仍是独立产品决定，本轮不默认覆盖。
 - 已通过：`node scripts/check-v1-import-row-policy.mjs`、`node scripts/test-import-mapping-form.mjs`、`npm run test:import-review-decisions`、`npm run test:import-failure-recovery`、`npm run test:import-center-object-actions`、`npm run lint`（仅既有 2 个 warning）、`npm run build`（含 prebuild/postbuild）。
-- 未通过/未取得：直接 `npm run typecheck` 被现有 `.next/types/cache-life.d 2.ts` 与 `.next/types/routes.d 2.ts` 的重复生成文件阻断；未删除或覆盖 `.next`。本轮没有浏览器、Preview、真实数据库、真实证件、外部 OCR/API 或 Production 证据；构建通过不等于 V1 产品验收通过。
+- 第一切片当时未通过/未取得：直接 `npm run typecheck` 被现有 `.next/types/cache-life.d 2.ts` 与 `.next/types/routes.d 2.ts` 的重复生成文件阻断；当时未删除或覆盖 `.next`。该历史状态已在本轮通过可恢复隔离生成目录重新验证；第一切片本身没有浏览器、Preview、真实数据库、真实证件、外部 OCR/API 或 Production 证据。
 - 下一步仍需独立切片：用合成 Excel 与在留卡/驾照样本做本地或受控 Preview 的上传、复核编辑/确认、不采用、刷新重开和进入案件/保证申请书流程；PDF 偏移、窄视口导航、邀请/删除权限不并入本切片。
 
 ## 2026-09-30 本轮复核：重复身份策略与工程门
@@ -58,7 +58,7 @@
 - `8f63f46` 的同名同地址唯一键策略已确认过窄：当前 `Property` 模型没有房号/单位或来源业务身份字段，不能证明同名同地址就是同一物件。本轮改为同文件完全相同行使用 `import_row_exact_duplicate` 分类并保留原始行；同名同地址但内容不同使用 `import_row_suspected_duplicate` 警告，原始行/原因写入导入记录并在结果页可展开查看，仍新增且不覆盖既有数据。
 - 复核写集：`src/lib/import-row-policy.ts`、`src/lib/import-mapping.ts`、`src/app/actions.ts`、`src/app/import-center/page.tsx`、`scripts/check-v1-import-row-policy.mjs`。未修改数据库 schema、RLS、权限配置或现有非本轮脏文件。
 - 本轮工程门：针对性 Excel/复核/失败恢复/导入中心检查通过；在可恢复改名 `/tmp/broker-desk-next-before-isolated-20260930` 后，`npm run typecheck` 通过，随后干净 `npm run build` 通过，`npm run lint` 仅保留既有 2 个 warning。原 `.next` 未删除，必要时可恢复。
-- 浏览器证据状态：本轮已启动本地 demo 并打开 `/import-center?locale=zh&object=property#source-upload`；合成 Excel 已生成于 `/tmp/broker-desk-synthetic-v1-import.xlsx`。上传动作被浏览器工具中断，尚未取得“选择文件→映射→保存→刷新/重开”的有效浏览器证据，不得写成通过。身份 OCR 同样未取得运行证据；继续使用合成输入或本地 mock，禁止外部收费 OCR/API。
+- 浏览器证据状态：本轮已启动本地 demo 并打开 `/import-center?locale=zh&object=property#source-upload`；合成 Excel 已生成于 `/tmp/broker-desk-synthetic-v1-import.xlsx`。上传动作被浏览器工具中断，尚未取得“选择文件→映射→保存→刷新/重开”的有效浏览器证据，不得写成通过。身份仅取得本地 mock OCR 解析证据，尚未取得真实图片、浏览器保存/重开、Preview 或生产 OCR 证据；禁止外部收费 OCR/API。
 
 ## 当前任务
 
