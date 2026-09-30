@@ -1030,10 +1030,7 @@ function withDefaultTenantScope(input: Record<string, unknown>): DB {
   backfillTenantScope(scopedDb);
   scopedDb.clients.forEach((record) => ensureVisibilityRecordDefaults(record, record.ownerUserId));
   scopedDb.brokerageCases.forEach((record) => ensureVisibilityRecordDefaults(record, record.userId));
-  // Memory fixtures represent the local demo workspace owned by user_demo.
-  // Keep property sources readable for W9.3/PDF checks after the visibility
-  // resolver stops accepting unowned legacy fixture rows.
-  scopedDb.properties.forEach((record) => ensureVisibilityRecordDefaults(record, "user_demo"));
+  scopedDb.properties.forEach((record) => ensureVisibilityRecordDefaults(record));
   return scopedDb;
 }
 
@@ -1253,6 +1250,20 @@ const _freshDb: DB = withDefaultTenantScope({
       managementFee: 44000,
       repairFee: 18000,
       notes: "タワーマンション、眺望良好、駅徒歩4分",
+      createdAt: new Date(now - 20 * 24 * 60 * 60 * 1000),
+    },
+    {
+      id: "prop_fixture_friends_guarantee_pdf",
+      name: "港区グランドタワー 8F（PDF検証用）",
+      area: "港区",
+      address: "東京都港区麻布台2-3-5",
+      listingPrice: 135000000,
+      sizeSqm: 82.4,
+      managementFee: 44000,
+      repairFee: 18000,
+      notes: "合成PDF検証専用のローカル物件",
+      createdByUserId: "user_demo",
+      currentOwnerUserId: "user_demo",
       createdAt: new Date(now - 20 * 24 * 60 * 60 * 1000),
     },
     {
@@ -1556,7 +1567,7 @@ const _freshDb: DB = withDefaultTenantScope({
       userId: "user_demo",
       caseType: "unit_sale",
       caseTitle: "港区グランドタワー 8F 保証会社申込書",
-      primaryPropertyId: "prop_minato_tower",
+      primaryPropertyId: "prop_fixture_friends_guarantee_pdf",
       status: "reviewed",
       confirmedDataJson: { ...COMPLETE_CASE_FIELD_DEFAULTS },
       sourceImportJobIds: [],
@@ -2218,7 +2229,7 @@ function ensureRichDemoData() {
   backfillTenantScope(db);
   db.clients.forEach((record) => ensureVisibilityRecordDefaults(record, record.ownerUserId));
   db.brokerageCases.forEach((record) => ensureVisibilityRecordDefaults(record, record.userId));
-  db.properties.forEach((record) => ensureVisibilityRecordDefaults(record, "user_demo"));
+  db.properties.forEach((record) => ensureVisibilityRecordDefaults(record));
 }
 
 if (process.env.BROKER_DESK_SEED_MODE === "blank") {
