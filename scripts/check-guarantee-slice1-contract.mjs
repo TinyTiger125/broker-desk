@@ -23,6 +23,7 @@ const formsEditPage = read("src/app/guarantee-forms/[formId]/edit/page.tsx");
 const actions = read("src/app/actions.ts");
 const templatesPage = read("src/app/templates/page.tsx");
 const templateCopyButton = read("src/app/templates/template-copy-button.tsx");
+const uiFoundation = read("src/components/ui-foundation/index.tsx");
 const officialCompanyCopy = read("src/lib/official-template-company-copy.ts");
 const dataMemory = read("src/lib/data.memory.ts");
 const testCaseSummary = read("src/lib/guarantee-test-case-summary.ts");
@@ -69,7 +70,8 @@ mustInclude(route, ["blank_form_encrypted_unsupported", "/encrypted|password|enc
 mustInclude(formsEditPage, ["requireTenantSession", "template.edit_draft", "GuaranteeSlice1Client", "listBrokerageCases", "initialMaskVersionId", "initialBlankFormVersionId", "initialMaskId", "requestedVersion", "recoveryBlankFormVersionId", "recoveryMaskId", "selectedVersion", "no matching saved version exists", "loadInitialAdminContext", "readPrivateAttachmentContentForTenant", "blankPagePngBase64", "表格恢复失败，请稍后重试", "randomUUID", "if (!enabled)", "既有申请书路径不受影响", "activeVersionId !== blankVersion.id", "getGuaranteeCompanyMaskForBlankForm", "const initialAdminContext = selectedVersion", "const clientBlankFormId = selectedVersion || (recoveryBlankFormVersionId && recoveryMaskId) ? form.id : undefined"], "formal editor access contract");
 mustInclude(actions, ["copyOfficialGuaranteeTemplateToCompanyAction", 'permissions: ["template.copy_official", "template.edit_draft"]', "isGuaranteeSlice1EnabledForTenant", "sourcePlatformMaskId", "listGuaranteeCompanyMaskVersions", "official_template_copy_reused", "buildOfficialTemplateCompanyCopy", "official_template_copied_to_company"], "official-to-company copy action");
 mustInclude(templatesPage, ["copyOfficialGuaranteeTemplateToCompanyAction", "capabilityHasTenantPermission", "template.edit_draft", "isGuaranteeSlice1EnabledForTenant", "复制为公司模板并编辑", "官方版本不会被修改"], "official-to-company copy UI");
-mustInclude(templateCopyButton, ["useFormStatus", "disabled={pending}", "progress_activity", "pendingLabel"], "official-to-company copy pending feedback");
+mustInclude(templateCopyButton, ["useFormStatus", "loading={pending}", "aria-live=\"polite\"", "pendingLabel"], "official-to-company copy pending feedback");
+mustInclude(uiFoundation, ["disabled={disabled || loading}", "aria-busy={loading || undefined}"], "shared Button loading semantics");
 mustInclude(officialCompanyCopy, ["PDFDocument.create", "embedPng", "getGuaranteePdfTemplateConfig", "applyFriendsGuaranteeLayoutOverrides", "getFriendsOverlayFieldBox", "getCaseFieldDefinition", "GUARANTEE_COORDINATE_SYSTEM", "official_template_has_no_editable_fields"], "official-to-company copy geometry");
 if (templatesPage.includes("下载官方蒙板") || templatesPage.includes("downloadOfficialMask")) throw new Error("official mask raw export must not replace the governed company-copy flow");
 mustInclude(dataMemory, ["getGuaranteeCompanyMaskForBlankForm", "value.blankFormId === input.blankFormId", "value.tenantId === resolveTenantId(input.tenantId)"], "memory fallback lookup contract");
