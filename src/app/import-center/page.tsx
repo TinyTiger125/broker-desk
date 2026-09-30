@@ -479,7 +479,8 @@ type ExcelImportPayload = {
 
 type ExcelImportResult = {
   successCount: number;
-  skipped: { row: number; reason: string }[];
+  skipped: { row: number; reason: string; originalRow?: Record<string, unknown> }[];
+  suspectedDuplicates?: { row: number; reason: string; originalRow?: Record<string, unknown> }[];
 };
 
 type ImportCenterPageProps = {
@@ -662,8 +663,10 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
       locale === "zh" ? "存在空名称行" : locale === "ko" ? "매물명 누락 행 있음" : "物件名未入力行あり",
     import_row_invalid_listing_price:
       locale === "zh" ? "价格格式异常" : locale === "ko" ? "가격 형식 오류" : "価格フィールド異常",
-    import_row_duplicate:
-      locale === "zh" ? "重复物件未覆盖" : locale === "ko" ? "중복 매물은 덮어쓰지 않음" : "重複物件は上書きしない",
+    import_row_exact_duplicate:
+      locale === "zh" ? "文件内完全重复行已跳过" : locale === "ko" ? "파일 내 완전 중복 행 건너뜀" : "同一ファイル内の完全重複行をスキップ",
+    import_row_suspected_duplicate:
+      locale === "zh" ? "疑似重复行待确认" : locale === "ko" ? "의심 중복 행 확인 필요" : "疑似重複行を要確認",
     import_row_unknown_error:
       locale === "zh" ? "保存处理异常" : locale === "ko" ? "저장 처리 오류" : "保存処理エラー",
     import_partial_completed:
@@ -944,11 +947,15 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
       if (payload) {
         const successCount = Number(payload.metrics?.successCount ?? 0);
         const skippedRows = Array.isArray(payload.details?.skippedRows)
-          ? (payload.details?.skippedRows as Array<{ row: number; reason: string }>)
+          ? (payload.details?.skippedRows as Array<{ row: number; reason: string; originalRow?: Record<string, unknown> }>)
+          : [];
+        const suspectedDuplicateRows = Array.isArray(payload.details?.suspectedDuplicateRows)
+          ? (payload.details?.suspectedDuplicateRows as Array<{ row: number; reason: string; originalRow?: Record<string, unknown> }>)
           : [];
         xlsxResult = {
           successCount,
           skipped: skippedRows,
+          suspectedDuplicates: suspectedDuplicateRows,
         };
       } else {
         xlsxResult = JSON.parse(xlsxJob.validationMessage) as ExcelImportResult;
@@ -1571,7 +1578,28 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
               <ul className="space-y-1 rounded-lg border border-amber-200 bg-amber-50 p-3">
                 {xlsxResult.skipped.map((s, index) => (
                   <li key={`skip-${s.row}-${index}`} className="text-xs text-amber-800">
-                    {locale === "zh" ? `第 ${s.row} 行` : locale === "ko" ? `${s.row}행` : `${s.row} 行目`}: {s.reason}
+                    <span>{locale === "zh" ? `第 ${s.row} 行` : locale === "ko" ? `${s.row}행` : `${s.row} 行目`}: {s.reason}</span>
+                    {s.originalRow ? (
+                      <details className="mt-1 text-[11px]">
+                        <summary className="cursor-pointer underline">{locale === "zh" ? "查看原始行" : locale === "ko" ? "원본 행 보기" : "元行を表示"}</summary>
+                        <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap rounded bg-white/70 p-2">{JSON.stringify(s.originalRow, null, 2)}</pre>
+                      </details>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {xlsxResult && xlsxResult.suspectedDuplicates && xlsxResult.suspectedDuplicates.length > 0 && (
+              <ul className="space-y-1 rounded-lg border border-orange-200 bg-orange-50 p-3">
+                {xlsxResult.suspectedDuplicates.map((s, index) => (
+                  <li key={`suspected-duplicate-${s.row}-${index}`} className="text-xs text-orange-900">
+                    <span>{locale === "zh" ? `第 ${s.row} 行疑似重复` : locale === "ko" ? `${s.row}행 의심 중복` : `${s.row} 行目の疑似重複`}: {s.reason}</span>
+                    {s.originalRow ? (
+                      <details className="mt-1 text-[11px]">
+                        <summary className="cursor-pointer underline">{locale === "zh" ? "查看原始行" : locale === "ko" ? "원본 행 보기" : "元行を表示"}</summary>
+                        <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap rounded bg-white/70 p-2">{JSON.stringify(s.originalRow, null, 2)}</pre>
+                      </details>
+                    ) : null}
                   </li>
                 ))}
               </ul>

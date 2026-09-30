@@ -248,9 +248,13 @@ function extractDriverLicenseFields(page: OcrPage, fields: FieldDraft[]) {
   const nameIndex = lines.findIndex((line) => line === "氏名" || line.startsWith("氏名 "));
   if (nameIndex >= 0) {
     const inlineName = lines[nameIndex].replace(/^氏名\s*/, "").trim();
+    const followingLines = lines.slice(nameIndex + 1);
+    const nameStopIndex = followingLines.findIndex((line) => /住所|生年月日|本籍|交付|有効/.test(line));
     const nameParts = inlineName
       ? [inlineName]
-      : lines.slice(nameIndex + 1).filter((line) => !line.includes("生") && !line.includes("住所")).slice(0, 2);
+      : (nameStopIndex >= 0 ? followingLines.slice(0, nameStopIndex) : followingLines)
+        .filter((line) => !line.includes("生") && !line.includes("住所"))
+        .slice(0, 2);
     const name = nameParts.join(" ");
     if (name) addField(fields, { fieldKey: "applicant.name", label: "氏名", value: name, page, source, confidence: 0.68 });
   }

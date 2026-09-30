@@ -18,7 +18,7 @@ const load = (filePath) => {
   return module.exports;
 };
 
-const { buildPropertyImportKey, normalizeImportCellValue } = load("src/lib/import-row-policy.ts");
+const { buildPropertyImportKey, buildPropertyImportRowFingerprint, normalizeImportCellValue } = load("src/lib/import-row-policy.ts");
 
 assert.equal(normalizeImportCellValue(null), "", "null Excel cells must remain empty");
 assert.equal(normalizeImportCellValue(undefined), "", "missing Excel cells must remain empty");
@@ -30,6 +30,11 @@ assert.equal(
   "property duplicate keys must normalize case and whitespace",
 );
 assert.equal(buildPropertyImportKey("", "Tokyo"), undefined, "rows without a property name cannot be duplicate keys");
+assert.equal(
+  buildPropertyImportRowFingerprint({ name: "Test", address: "Tokyo", price: 100 }),
+  buildPropertyImportRowFingerprint({ price: "100", address: " Tokyo ", name: " Test " }),
+  "exact row fingerprints must normalize all source values and key order",
+);
 
 const processor = read("src/lib/excel-import-processor.ts");
 assert(processor.includes("worksheetToRows(firstSheet)"), "generic Excel rows must use the stable worksheet value conversion");
@@ -37,12 +42,14 @@ assert(processor.includes("normalizeImportCellValue"), "generic Excel rows must 
 
 const actions = read("src/app/actions.ts");
 assert(actions.includes("listPropertiesForContext"), "property import must inspect only visible existing properties");
-assert(actions.includes('code: "import_row_duplicate"'), "duplicate rows must be reported instead of silently saved");
-assert(actions.includes("既存データを上書きせずスキップしました"), "duplicate policy must be explicit and non-destructive");
+assert(actions.includes('code: "import_row_exact_duplicate"'), "exact duplicate rows must be reported separately");
+assert(actions.includes('code: "import_row_suspected_duplicate"'), "same name/address rows must remain visible as suspected duplicates");
+assert(actions.includes("疑似重複として確認してください"), "suspected duplicates must not be silently discarded");
 
 const mapping = read("src/lib/import-mapping.ts");
 const page = read("src/app/import-center/page.tsx");
-assert(mapping.includes('"import_row_duplicate"'), "duplicate issue must be part of the validation contract");
-assert(page.includes("重複物件は上書きしない"), "duplicate issue must be visible in the import result title");
+assert(mapping.includes('"import_row_exact_duplicate"'), "exact duplicate issue must be part of the validation contract");
+assert(mapping.includes('"import_row_suspected_duplicate"'), "suspected duplicate issue must be part of the validation contract");
+assert(page.includes("疑似重复行待确认"), "suspected duplicate issue must be visible in the import result title");
 
 console.log("[PASS] V1 Excel values are normalized and duplicate imports remain explicit, visible, and non-destructive");

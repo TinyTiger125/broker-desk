@@ -136,7 +136,7 @@ import {
   type ImportValidationIssueLevel,
 } from "@/lib/import-mapping";
 import { materializeExtractionReviewValue } from "@/lib/extraction-review-materialization";
-import { buildPropertyImportKey, normalizeImportCellValue } from "@/lib/import-row-policy";
+import { buildPropertyImportKey, buildPropertyImportRowFingerprint, normalizeImportCellValue } from "@/lib/import-row-policy";
 import {
   assertTenantPermission,
   requireTenantSession,
@@ -5413,7 +5413,19 @@ export async function executePropertyImportAction(formData: FormData) {
       .filter((key): key is string => Boolean(key)),
   );
   let successCount = 0;
-  const skipped: { row: number; code: "import_row_missing_name" | "import_row_invalid_listing_price" | "import_row_duplicate" | "import_row_unknown_error"; reason: string }[] = [];
+  const skipped: {
+    row: number;
+    code: "import_row_missing_name" | "import_row_invalid_listing_price" | "import_row_exact_duplicate" | "import_row_unknown_error";
+    reason: string;
+    originalRow?: Record<string, unknown>;
+  }[] = [];
+  const suspectedDuplicates: {
+    row: number;
+    code: "import_row_suspected_duplicate";
+    reason: string;
+    originalRow: Record<string, unknown>;
+  }[] = [];
+  const seenRowFingerprints = new Set<string>();
 
   for (let i = 0; i < payload.rows.length; i++) {
     const row = payload.rows[i];
@@ -5424,7 +5436,7 @@ export async function executePropertyImportAction(formData: FormData) {
 
     const name = normalizeImportCellValue(mapped["name"]);
     if (!name) {
-      skipped.push({ row: i + 2, code: "import_row_missing_name", reason: "name（物件名）が空です" });
+      skipped.push({ row: i + 2, code: "import_row_missing_name", reason: "name（物件名）が空です", originalRow: row });
       continue;
     }
 
@@ -5434,18 +5446,31 @@ export async function executePropertyImportAction(formData: FormData) {
         row: i + 2,
         code: "import_row_invalid_listing_price",
         reason: `listing_price を数値に変換できません: "${String(mapped["listing_price"] ?? "")}"`,
+        originalRow: row,
       });
       continue;
     }
 
-    const propertyKey = buildPropertyImportKey(name, mapped["address"]);
-    if (propertyKey && knownPropertyKeys.has(propertyKey)) {
+    const rowFingerprint = buildPropertyImportRowFingerprint(row);
+    if (seenRowFingerprints.has(rowFingerprint)) {
       skipped.push({
         row: i + 2,
-        code: "import_row_duplicate",
-        reason: "同名・同所在地の既存物件があるため、既存データを上書きせずスキップしました。",
+        code: "import_row_exact_duplicate",
+        reason: "同じファイル内に完全に同じ行があるため、この行だけスキップしました。元の行データは記録に残しています。",
+        originalRow: row,
       });
       continue;
+    }
+    seenRowFingerprints.add(rowFingerprint);
+
+    const propertyKey = buildPropertyImportKey(name, mapped["address"]);
+    if (propertyKey && knownPropertyKeys.has(propertyKey)) {
+      suspectedDuplicates.push({
+        row: i + 2,
+        code: "import_row_suspected_duplicate",
+        reason: "同名・同所在地の既存または同一ファイル内の物件があるため、疑似重複として確認してください。房号・单位或业务对象字段尚未纳入此导入模型；本行仍会新增，且不会覆盖原有数据。",
+        originalRow: row,
+      });
     }
 
     const managementFeeRaw = parsePrice(mapped["management_fee"]);
@@ -5528,19 +5553,35 @@ export async function executePropertyImportAction(formData: FormData) {
       })
     );
   }
-  if ((skippedByCode.import_row_duplicate ?? 0) > 0) {
+  if ((skippedByCode.import_row_exact_duplicate ?? 0) > 0) {
     executionIssues.push(
       createImportValidationIssue({
-        code: "import_row_duplicate",
+        code: "import_row_exact_duplicate",
         level: "warning",
         action: "resolve_now",
         message:
           locale === "zh"
-            ? "存在重复物件行或已存在的同名同地址物件；本次导入未覆盖原有数据。"
+            ? "文件内存在完全相同的重复行；仅跳过重复行，原始行和原因已保留。"
             : locale === "ko"
-              ? "중복 매물 행 또는 동일한 이름·주소의 기존 매물이 있어 기존 데이터를 덮어쓰지 않았습니다."
-              : "重複行または同名・同所在地の既存物件があるため、既存データは上書きしていません。",
-        count: skippedByCode.import_row_duplicate,
+              ? "파일 안에 완전히 같은 중복 행이 있어 중복 행만 건너뛰고 원본 행과 이유를 남겼습니다."
+              : "同一ファイル内に完全一致する重複行があるため、重複行のみスキップし、元行と理由を保存しました。",
+        count: skippedByCode.import_row_exact_duplicate,
+      })
+    );
+  }
+  if (suspectedDuplicates.length > 0) {
+    executionIssues.push(
+      createImportValidationIssue({
+        code: "import_row_suspected_duplicate",
+        level: "warning",
+        action: "resolve_now",
+        message:
+          locale === "zh"
+            ? "发现同名同地址的疑似重复行；由于当前模型没有房号/单位等唯一业务身份字段，本行仍保留并新增，未覆盖原有数据，请人工确认。"
+            : locale === "ko"
+              ? "동일한 이름·주소의 의심 중복 행이 있습니다. 현재 모델에 호실/단위 같은 업무 식별자가 없어 행을 보존해 새로 저장했으며 기존 데이터는 덮어쓰지 않았습니다. 확인해 주세요."
+              : "同名・同所在地の疑似重複行があります。現在のモデルに号室・単位などの業務識別子がないため、元行を残して新規保存し、既存データは上書きしていません。確認してください。",
+        count: suspectedDuplicates.length,
       })
     );
   }
@@ -5560,7 +5601,7 @@ export async function executePropertyImportAction(formData: FormData) {
       })
     );
   }
-  if (successCount > 0 && skipped.length > 0) {
+  if (successCount > 0 && (skipped.length > 0 || suspectedDuplicates.length > 0)) {
     executionIssues.push(
       createImportValidationIssue({
         code: "import_partial_completed",
@@ -5575,7 +5616,7 @@ export async function executePropertyImportAction(formData: FormData) {
       })
     );
   }
-  if (successCount > 0 && skipped.length === 0) {
+  if (successCount > 0 && skipped.length === 0 && suspectedDuplicates.length === 0) {
     executionIssues.push(
       createImportValidationIssue({
         code: "import_completed",
@@ -5594,10 +5635,10 @@ export async function executePropertyImportAction(formData: FormData) {
     source: "import_execution",
     summary:
       locale === "zh"
-        ? `保存完成：成功 ${successCount} 条，跳过 ${skipped.length} 条`
+        ? `保存完成：成功 ${successCount} 条，跳过 ${skipped.length} 条，疑似重复 ${suspectedDuplicates.length} 条`
         : locale === "ko"
-          ? `저장 완료: 성공 ${successCount}건, 건너뜀 ${skipped.length}건`
-          : `保存完了: 成功 ${successCount} 件、スキップ ${skipped.length} 件`,
+          ? `저장 완료: 성공 ${successCount}건, 건너뜀 ${skipped.length}건, 의심 중복 ${suspectedDuplicates.length}건`
+          : `保存完了: 成功 ${successCount} 件、スキップ ${skipped.length} 件、疑似重複 ${suspectedDuplicates.length} 件`,
     issues: executionIssues,
     metrics: {
       successCount,
@@ -5605,6 +5646,7 @@ export async function executePropertyImportAction(formData: FormData) {
     },
     details: {
       skippedRows: skipped,
+      suspectedDuplicateRows: suspectedDuplicates,
     },
   });
   await updateImportJobMapping({

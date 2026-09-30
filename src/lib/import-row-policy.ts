@@ -15,13 +15,25 @@ export function normalizeImportCellValue(value: unknown): string {
 }
 
 /**
- * Property row imports are additive. A duplicate key is deliberately based on
- * the existing visible name/address pair; no hidden record is inspected and
- * no existing record is overwritten by the import action.
+ * Property name/address is only a candidate identity signal. The current
+ * Property model has no room/unit or source-business identity field, so this
+ * pair must never be treated as a unique key that drops a row.
  */
 export function buildPropertyImportKey(name: unknown, address: unknown): string | undefined {
   const normalizedName = normalizeImportCellValue(name).toLocaleLowerCase();
   if (!normalizedName) return undefined;
   const normalizedAddress = normalizeImportCellValue(address).toLocaleLowerCase();
   return `${normalizedName}\u001f${normalizedAddress}`;
+}
+
+/**
+ * Exact duplicate detection is deliberately limited to the raw row within
+ * one uploaded file. It is not compared to existing business records.
+ */
+export function buildPropertyImportRowFingerprint(row: Record<string, unknown>): string {
+  return JSON.stringify(
+    Object.keys(row)
+      .sort()
+      .map((key) => [key, normalizeImportCellValue(row[key])]),
+  );
 }
