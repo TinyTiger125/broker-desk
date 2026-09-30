@@ -1030,7 +1030,10 @@ function withDefaultTenantScope(input: Record<string, unknown>): DB {
   backfillTenantScope(scopedDb);
   scopedDb.clients.forEach((record) => ensureVisibilityRecordDefaults(record, record.ownerUserId));
   scopedDb.brokerageCases.forEach((record) => ensureVisibilityRecordDefaults(record, record.userId));
-  scopedDb.properties.forEach((record) => ensureVisibilityRecordDefaults(record));
+  // Memory fixtures represent the local demo workspace owned by user_demo.
+  // Keep property sources readable for W9.3/PDF checks after the visibility
+  // resolver stops accepting unowned legacy fixture rows.
+  scopedDb.properties.forEach((record) => ensureVisibilityRecordDefaults(record, "user_demo"));
   return scopedDb;
 }
 
@@ -2215,7 +2218,7 @@ function ensureRichDemoData() {
   backfillTenantScope(db);
   db.clients.forEach((record) => ensureVisibilityRecordDefaults(record, record.ownerUserId));
   db.brokerageCases.forEach((record) => ensureVisibilityRecordDefaults(record, record.userId));
-  db.properties.forEach((record) => ensureVisibilityRecordDefaults(record));
+  db.properties.forEach((record) => ensureVisibilityRecordDefaults(record, "user_demo"));
 }
 
 if (process.env.BROKER_DESK_SEED_MODE === "blank") {
