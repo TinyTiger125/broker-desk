@@ -4,7 +4,11 @@ import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import type { FriendsCustomOverlayField, FriendsOverlayField, FriendsOverlayLayoutOverrides } from "@/lib/friends-guarantee-pdf";
-import { getFriendsOverlayEstimatedTextFit } from "@/lib/friends-guarantee-fit";
+import {
+  getFriendsOverlayEstimatedTextFit,
+  getFriendsOverlayMaxLines,
+  isFriendsAddressOverlayField,
+} from "@/lib/friends-guarantee-fit";
 
 type PageSize = {
   width: number;
@@ -491,6 +495,9 @@ function getPreviewInputFontSize(input: {
     ? input.field.size
     : Math.max(minSize, Math.min(input.field.size, Math.max(4, input.box.height - 2) * 0.72));
   const baseSize = Math.min(CUSTOM_FONT_SIZE_MAX, Math.max(CUSTOM_FONT_SIZE_MIN, heightLimitedSize));
+  if (input.fit.status === "wrapped" && input.fit.resolvedSize) {
+    return Math.max(minSize, Math.min(baseSize, input.fit.resolvedSize));
+  }
   if (input.fit.status !== "shrinks" && input.fit.status !== "overflows") return baseSize;
   const ratio = input.fit.printableWidth / Math.max(1, input.fit.estimatedWidth);
   return Math.max(minSize, Math.min(baseSize, baseSize * ratio * 1.1));
@@ -777,6 +784,7 @@ function hasSegmentOverflow(value: string, segment: NonNullable<FriendsOverlayFi
 function fitStatusLabel(status: ReturnType<typeof getFriendsOverlayEstimatedTextFit>["status"]) {
   if (status === "overflows") return "長すぎ";
   if (status === "segment_overflows") return "桁数超過";
+  if (status === "wrapped") return "自動折行";
   if (status === "shrinks") return "縮小印字";
   return "";
 }
@@ -2807,7 +2815,8 @@ export function FriendsGuaranteeCalibrationPreview({
             const segmentOverflow = field.segment ? hasSegmentOverflow(value, field.segment) : false;
             const textFit = getFriendsOverlayEstimatedTextFit({ field: previewField, value, box });
             const textOverflow = textFit.status === "overflows" || textFit.status === "segment_overflows";
-            const textShrink = textFit.status === "shrinks";
+            const textShrink = textFit.status === "shrinks" || textFit.status === "wrapped";
+            const addressField = isFriendsAddressOverlayField(previewField);
             const previewFontSize = getPreviewInputFontSize({ field: previewField, box, fit: textFit });
             const inputClass = missing
               ? "border-rose-500 bg-rose-50/95 text-rose-950 placeholder:text-rose-400 ring-2 ring-rose-300"
@@ -2935,6 +2944,28 @@ export function FriendsGuaranteeCalibrationPreview({
                       </span>
                     ) : null}
                   </>
+                ) : addressField ? (
+                  <textarea
+                    form={formId}
+                    name={`field:${field.fieldKey}`}
+                    value={value}
+                    onChange={(event) => {
+                      setDraftFieldValues((current) => ({ ...current, [field.fieldKey]: event.target.value }));
+                      setDirty(true);
+                    }}
+                    placeholder={missing ? "入力" : ""}
+                    aria-label={field.label}
+                    readOnly={calibrationMode}
+                    rows={getFriendsOverlayMaxLines(previewField, box, previewFontSize)}
+                    onFocus={() => setActiveFieldKey(field.fieldKey)}
+                    className={`h-full w-full resize-none overflow-hidden rounded-sm border px-1 text-[11px] font-bold outline-none transition focus:border-[#001e40] focus:bg-white focus:ring-2 focus:ring-[#001e40]/30 ${
+                      field.align === "right" ? "text-right" : field.align === "center" ? "text-center" : ""
+                    } ${calibrationMode ? "pointer-events-none select-none" : ""} ${active ? "ring-2 ring-[#001e40]" : groupSelected ? "ring-2 ring-cyan-500" : ""} ${inputClass}`}
+                    style={{
+                      fontSize: `${previewFontSize}px`,
+                      lineHeight: 1.15,
+                    }}
+                  />
                 ) : (
                   <input
                     form={formId}

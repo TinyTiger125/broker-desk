@@ -35,6 +35,7 @@
     "test:guarantee-template-reproducibility": "node scripts/check-guarantee-template-reproducibility.mjs",
     "test:guarantee-template-coverage": "node scripts/check-guarantee-template-coverage.mjs",
     "test:guarantee-print-fit": "node scripts/check-guarantee-print-fit.mjs",
+    "test:guarantee-address-fit": "node scripts/test-guarantee-address-fit.mjs",
     "test:guarantee-slice1-contract": "node scripts/check-guarantee-slice1-contract.mjs",
     "test:guarantee-slice1-behavior": "node scripts/test-guarantee-slice1-behavior.mjs",
     "test:case-field-catalog": "node scripts/check-case-field-catalog.mjs",

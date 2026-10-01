@@ -10,6 +10,11 @@ import {
 } from "@/lib/guarantee-application";
 import { getCaseFieldDefinition } from "@/lib/case-field-catalog";
 import { getCaseFieldValue } from "@/lib/case-field-normalization";
+import {
+  FRIENDS_OVERLAY_TEXT_LINE_HEIGHT,
+  getFriendsOverlayMaxLines,
+  isFriendsAddressOverlayField,
+} from "@/lib/friends-guarantee-fit";
 
 const JAPANESE_FONT_CANDIDATES = [
   join(process.cwd(), "public", "fonts", "NotoSansJP[wght].ttf"),
@@ -1677,6 +1682,15 @@ function normalizePdfValue(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
+function normalizePdfValueWithLineBreaks(value: string): string {
+  return value
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => line.replace(/[ \t\f\v]+/g, " ").trim())
+    .join("\n")
+    .trim();
+}
+
 function isPostalCodeOverlayField(field: Pick<FriendsOverlayField, "fieldKey" | "sourceFieldKey">): boolean {
   const key = `${field.sourceFieldKey ?? ""} ${field.fieldKey}`.toLowerCase();
   return key.includes("postalcode") || key.includes("postal_code");
@@ -1753,6 +1767,67 @@ function trimToMeasuredWidth(input: {
   return `${chars.slice(0, low).join("")}${marker}`;
 }
 
+function wrapMeasuredText(input: {
+  font: Awaited<ReturnType<PDFDocument["embedFont"]>>;
+  value: string;
+  size: number;
+  maxWidth: number;
+}) {
+  const lines: string[] = [];
+  let current = "";
+  let fits = true;
+  for (const char of input.value) {
+    if (char === "\n") {
+      lines.push(current);
+      current = "";
+      continue;
+    }
+    const candidate = `${current}${char}`;
+    if (current && input.font.widthOfTextAtSize(candidate, input.size) > input.maxWidth) {
+      lines.push(current);
+      current = char;
+    } else {
+      current = candidate;
+    }
+    if (input.font.widthOfTextAtSize(char, input.size) > input.maxWidth) fits = false;
+  }
+  lines.push(current);
+  return { lines, fits };
+}
+
+function fitWrappedAddressText(input: {
+  font: Awaited<ReturnType<PDFDocument["embedFont"]>>;
+  field: FriendsOverlayField;
+  value: string;
+}) {
+  const box = input.field.box ?? getFriendsOverlayFieldBox(input.field);
+  const minSize = typeof input.field.minSize === "number" ? input.field.minSize : Math.max(5, input.field.size * 0.8);
+  const maxWidth = Math.max(1, box.width - 6);
+  const normalized = normalizePdfValueWithLineBreaks(input.value);
+  const startSize = getHeightLimitedTextSize(input.field.size, minSize, box, {
+    custom: input.field.custom,
+    sizeOverride: input.field.sizeOverride,
+  });
+  for (let size = startSize; size >= minSize; size -= 0.25) {
+    const wrapped = wrapMeasuredText({ font: input.font, value: normalized, size, maxWidth });
+    if (wrapped.fits && wrapped.lines.length <= getFriendsOverlayMaxLines(input.field, box, size)) {
+      return { lines: wrapped.lines, size, overflow: false, box, maxWidth };
+    }
+  }
+
+  const wrapped = wrapMeasuredText({ font: input.font, value: normalized, size: minSize, maxWidth });
+  const visibleLines = wrapped.lines.slice(0, getFriendsOverlayMaxLines(input.field, box, minSize));
+  const lastLine = visibleLines.length > 0 ? visibleLines[visibleLines.length - 1] : "";
+  const markedLastLine = trimToMeasuredWidth({
+    font: input.font,
+    value: `${lastLine}…`,
+    size: minSize,
+    maxWidth,
+  });
+  if (visibleLines.length > 0) visibleLines[visibleLines.length - 1] = markedLastLine || "…";
+  return { lines: visibleLines, size: minSize, overflow: true, box, maxWidth };
+}
+
 function fitSingleLineText(input: {
   font: Awaited<ReturnType<PDFDocument["embedFont"]>>;
   field: FriendsOverlayField;
@@ -1804,6 +1879,10 @@ function canPrintAutoFieldWithoutAdjustment(input: {
   const fieldValue = formatOverlayValue(input.field, input.value);
   if (!fieldValue) return false;
 
+  if (isFriendsAddressOverlayField(input.field)) {
+    return !fitWrappedAddressText({ font: input.font, field: input.field, value: fieldValue }).overflow;
+  }
+
   if (input.field.segment) {
     const chars = segmentValue(fieldValue, input.field.segment);
     const cells = getSegmentCellBoxes(input.field);
@@ -1819,7 +1898,7 @@ function canPrintAutoFieldWithoutAdjustment(input: {
 }
 
 export function formatFriendsOverlayValue(field: FriendsOverlayField, value: string): string {
-  const normalized = normalizePdfValue(value);
+  const normalized = isFriendsAddressOverlayField(field) ? normalizePdfValueWithLineBreaks(value) : normalizePdfValue(value);
   if (field.valuePart && isPostalCodeOverlayField(field)) {
     return formatJapanesePostalCodePart(normalized, field.valuePart);
   }
@@ -2046,6 +2125,31 @@ function drawFieldValue(input: {
         font,
         color: rgb(0.05, 0.08, 0.12),
         maxWidth: Math.max(1, cell.width),
+      });
+    });
+    return;
+  }
+
+  if (isFriendsAddressOverlayField(field)) {
+    const fitted = fitWrappedAddressText({ font, field, value: fieldValue });
+    const lineHeight = fitted.size * FRIENDS_OVERLAY_TEXT_LINE_HEIGHT;
+    const totalHeight = fitted.lines.length * lineHeight;
+    const firstY = fitted.box.y + Math.max(0, (fitted.box.height - totalHeight) / 2) + (fitted.lines.length - 1) * lineHeight + fitted.size * 0.1;
+    fitted.lines.forEach((line, index) => {
+      const textWidth = font.widthOfTextAtSize(line, fitted.size);
+      const x =
+        field.align === "right"
+          ? fitted.box.x + Math.max(0, fitted.box.width - textWidth - 3)
+          : field.align === "center"
+            ? fitted.box.x + 3 + Math.max(0, (fitted.maxWidth - textWidth) / 2)
+            : fitted.box.x + 3;
+      page.drawText(line, {
+        x,
+        y: firstY - index * lineHeight,
+        size: fitted.size,
+        font,
+        color: rgb(0.05, 0.08, 0.12),
+        maxWidth: fitted.maxWidth,
       });
     });
     return;
