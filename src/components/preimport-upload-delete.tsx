@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useRef } from "react";
 import { deletePreimportUploadAction } from "@/app/import-center/actions";
 import type { Locale } from "@/lib/locale";
+import { Button } from "@/components/ui-foundation";
 
 const copy = {
   ja: {
@@ -46,9 +47,9 @@ export function PreimportUploadDelete({ jobId, locale }: { jobId: string; locale
           {c.confirm}
         </label>
         {state.error ? <p role="alert" aria-live="assertive" aria-atomic="true" tabIndex={-1} ref={errorRef} className="text-sm text-red-700">{state.error}</p> : null}
-        <button type="submit" disabled={pending} className="ui-button-stable min-h-11 min-w-11 justify-self-start rounded-lg border border-red-300 px-4 text-sm font-semibold text-red-700 disabled:opacity-50">
+        <Button type="submit" loading={pending} className="ui-button-stable min-h-11 min-w-11 justify-self-start rounded-lg border border-red-300 px-4 text-sm font-semibold text-red-700 disabled:opacity-50">
           {pending ? c.pending : c.submit}
-        </button>
+        </Button>
       </form>
     </details>
   );

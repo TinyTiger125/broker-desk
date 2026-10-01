@@ -1,1 +1,2 @@
-export { default, dynamic } from "./preview-page-content";
+export { default } from "./preview-page-content";
+export const dynamic = "force-dynamic";

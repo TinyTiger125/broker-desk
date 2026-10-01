@@ -526,6 +526,10 @@ button:disabled:not([class~="text-white"]):not([class~="!text-white"]) {
   box-shadow: 0 12px 24px rgb(15 23 42 / 12%);
 }
 
+.app-header-menu-panel {
+  margin-top: 0.25rem;
+}
+
 @media (max-width: 30rem) {
   .app-mobile-header .app-header-menu-panel {
     position: fixed;
@@ -758,6 +762,33 @@ button:disabled:not([class~="text-white"]):not([class~="!text-white"]) {
   border-radius: 8px;
   background: var(--bd-surface);
   padding: 1.25rem 1.5rem;
+}
+
+.bd-back-to-parent {
+  margin-bottom: 1rem;
+}
+
+.bd-back-to-parent-link {
+  display: inline-flex;
+  min-height: var(--bd-control-height-touch);
+  align-items: center;
+  gap: 0.375rem;
+  border: 1px solid var(--bd-line-strong);
+  border-radius: var(--bd-radius-md);
+  padding: 0.5rem 0.75rem;
+  color: var(--bd-ink);
+  font-size: var(--bd-text-sm);
+  font-weight: var(--bd-weight-bold);
+  line-height: var(--bd-leading-tight);
+}
+
+.bd-back-to-parent-link:hover {
+  background: var(--bd-surface-soft);
+}
+
+.bd-back-to-parent-link:focus-visible {
+  outline: var(--bd-focus-ring-width) solid var(--bd-focus-ring-color);
+  outline-offset: var(--bd-focus-ring-offset);
 }
 
 .bd-page h1 {

@@ -8,6 +8,7 @@ import {
   updateTenantMemberStatusAction,
 } from "@/app/actions";
 import { PageFrame, PageHeader, StateSurface, WorklistShell } from "@/components/layout-system";
+import { InvitationSubmitButton } from "@/components/invitation-submit-button";
 import { listTenantMembersForAuthenticatedTenant, type TenantInvitationStatus, type TenantCapabilityPreset } from "@/lib/data";
 import { getLocale, type Locale } from "@/lib/locale";
 import {
@@ -186,7 +187,7 @@ export default async function TenantMembersPage({ searchParams }: MembersPagePro
 
               <div className="flex min-w-0 flex-wrap gap-2">
                 <span className="basis-full text-xs font-semibold text-slate-500 lg:hidden">{ui.actions}</span>
-                {canInvite && member.status === "invited" ? <form action={sendTenantMemberInvitationAction}><input type="hidden" name="membershipId" value={member.id} /><button aria-label={`${ui.sendInvite}: ${member.user.name} (${member.user.email})`} className="min-h-11 rounded-lg border border-slate-300 px-3 py-2 text-sm font-bold text-slate-700">{ui.sendInvite}</button></form> : null}
+                {canInvite && member.status === "invited" ? <form action={sendTenantMemberInvitationAction}><input type="hidden" name="membershipId" value={member.id} /><InvitationSubmitButton ariaLabel={`${ui.sendInvite}: ${member.user.name} (${member.user.email})`} label={ui.sendInvite} pendingLabel={ui.sendingInvite} className="min-h-11 rounded-lg border border-slate-300 px-3 py-2 text-sm font-bold text-slate-700 disabled:cursor-wait disabled:opacity-60" /></form> : null}
                 {canRemove && member.status === "invited" ? <form action={revokeTenantMemberInvitationAction}><input type="hidden" name="membershipId" value={member.id} /><button aria-label={`${ui.revokeInvite}: ${member.user.name} (${member.user.email})`} className="min-h-11 rounded-lg border border-rose-200 px-3 py-2 text-sm font-bold text-rose-700">{ui.revokeInvite}</button></form> : null}
                 {canRemove && member.status === "active" && member.id !== session.membership.id ? <form action={updateTenantMemberStatusAction}><input type="hidden" name="membershipId" value={member.id} /><input type="hidden" name="status" value="removed" /><button aria-label={`${ui.remove}: ${member.user.name} (${member.user.email})`} className="min-h-11 rounded-lg border border-rose-200 px-3 py-2 text-sm font-bold text-rose-700">{ui.remove}</button></form> : null}
                 {canRemove && (member.status === "active" || member.status === "suspended") ? (

@@ -75,6 +75,7 @@ export function getMemberManagementCopy(locale: Locale) {
     suspend: locale === "zh" ? "停用" : locale === "ko" ? "중지" : "停止",
     reactivate: locale === "zh" ? "恢复" : locale === "ko" ? "재활성화" : "再有効化",
     sendInvite: locale === "zh" ? "发送邀请" : locale === "ko" ? "초대 보내기" : "招待送信",
+    sendingInvite: locale === "zh" ? "发送中…" : locale === "ko" ? "전송 중…" : "送信中…",
     revokeInvite: locale === "zh" ? "撤销邀请" : locale === "ko" ? "초대 취소" : "招待を取り消す",
     remove: locale === "zh" ? "移除成员" : locale === "ko" ? "멤버 제거" : "メンバーを削除",
     soleOwnerLocked:
