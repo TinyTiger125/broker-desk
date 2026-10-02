@@ -227,19 +227,24 @@ if (process.argv.includes("--browser")) {
   const root = fs.mkdtempSync("/private/tmp/preimport-focus-test-");
   let browser, server, socket;
   try {
-    const source = read("src/components/preimport-upload-delete.tsx").replace(
-      'import { deletePreimportUploadAction } from "@/app/import-center/actions";',
-      `const deletePreimportUploadAction = async () => {
+    const source = read("src/components/preimport-upload-delete.tsx")
+      .replace(
+        'import { deletePreimportUploadAction } from "@/app/import-center/actions";',
+        `const deletePreimportUploadAction = async () => {
         window.__submits = (window.__submits || 0) + 1;
         return new Promise(resolve => { window.__fail = () => resolve({ error: "Synthetic failure", attempt: window.__submits }); });
       };`,
-    );
+      )
+      .replace(
+        'import { Button } from "@/components/ui-foundation";',
+        'const Button = ({ children, ...props }) => <button {...props}>{children}</button>;',
+      );
     const entry = ts.transpileModule(source, { compilerOptions: {
       module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX,
     } }).outputText + '\nimport {createRoot} from "react-dom/client"; import {createElement} from "react"; createRoot(document.getElementById("root")).render(createElement(PreimportUploadDelete,{jobId:"synthetic-local-only",locale:"ja"}));';
     await new Promise((done, fail) => {
       const compiler = webpack({ mode: "development", devtool: false, entry: `data:text/javascript,${encodeURIComponent(entry)}`,
-        output: { path: root, filename: "bundle.js" }, resolve: { modules: [resolve("node_modules")] } });
+        output: { path: root, filename: "bundle.js" }, resolve: { alias: { "@": resolve("src") }, extensions: [".tsx", ".ts", ".jsx", ".js", ".json"], modules: [resolve("node_modules")] } });
       compiler.run((error, stats) => compiler.close(() => error || stats.hasErrors() ? fail(error || new Error(stats.toString({ all: false, errors: true }))) : done()));
     });
     server = createServer((request, response) => {

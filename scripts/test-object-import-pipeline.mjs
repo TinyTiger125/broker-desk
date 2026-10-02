@@ -34,6 +34,7 @@ require.extensions[".tsx"] = compileTypescript;
 // Only framework/auth boundaries are stubbed; public data proxy and memory driver execute.
 const originalLoad = Module._load;
 Module._load = function(request, parent, ...rest) {
+  if (request === "server-only") return {};
   if (parent?.filename === resolve(root, "src/lib/data.ts")) {
     if (request === "@/lib/data.postgres") return {};
     if (request === "react") return { cache: (fn) => fn };
