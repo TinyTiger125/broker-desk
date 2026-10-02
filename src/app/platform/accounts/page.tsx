@@ -5,6 +5,7 @@ import {
 } from "@/app/actions";
 import { listPlatformTenantAccounts, type TenantAccountSummary, type TenantInvitationStatus, type TenantStatus } from "@/lib/data";
 import { getLocale, type Locale } from "@/lib/locale";
+import { INVITATION_DELIVERY_STATE_LABELS } from "@/lib/member-management-copy";
 import { PlatformSessionError, requirePlatformOwnerSession } from "@/lib/platform-session";
 import { deriveTenantServiceState, getTenantServiceStatusLabel, type TenantServiceStatus } from "@/lib/tenant-service";
 
@@ -50,9 +51,9 @@ const PLATFORM_ACCOUNT_FLASH_COPY = {
   },
   invitation_sent: {
     tone: "success",
-    ja: "招待を送信しました。",
-    zh: "邀请已发送。",
-    ko: "초대를 전송했습니다.",
+    ja: "Clerk が招待作成を受け付けました。受信箱への到達は確認されていません。",
+    zh: "Clerk 已受理邀请创建请求，尚未确认收件箱到达。",
+    ko: "Clerk가 초대 생성 요청을 접수했습니다. 받은편지함 도착은 확인되지 않았습니다.",
   },
   invitation_failed: {
     tone: "error",
@@ -62,9 +63,15 @@ const PLATFORM_ACCOUNT_FLASH_COPY = {
   },
   invitation_delivery_uncertain: {
     tone: "warning",
-    ja: "アカウントは作成済みです。招待は送信された可能性がありますが、記録を確定できませんでした。むやみに再送せず、Clerk と既存アカウントの招待状態を先に確認してください。",
-    zh: "账户已存在；邀请可能已发送，但记录未能确认。请勿盲目重发，请先核对 Clerk 与现有账户的邀请状态。",
-    ko: "계정은 이미 존재합니다. 초대가 전송되었을 수 있지만 기록을 확정하지 못했습니다. 무작정 다시 보내지 말고 Clerk와 기존 계정의 초대 상태를 먼저 확인해 주세요.",
+    ja: "アカウントは作成済みです。Clerk が招待作成を受け付けた可能性がありますが、結果と受信箱への到達を確認できませんでした。むやみに再送せず、Clerk と既存アカウントの招待状態を先に確認してください。",
+    zh: "账户已存在；Clerk 可能已受理邀请创建，但结果和收件箱到达未能确认。请勿盲目重发，先核对 Clerk 与现有账户的邀请状态。",
+    ko: "계정은 이미 존재합니다. Clerk가 초대 생성을 접수했을 수 있지만 결과와 받은편지함 도착을 확인하지 못했습니다. 무작정 다시 보내지 말고 Clerk와 기존 계정의 초대 상태를 먼저 확인해 주세요.",
+  },
+  invitation_delivery_in_progress: {
+    tone: "warning",
+    ja: "別の招待送信が進行中です。完了するまで再送せず、状態を更新してください。",
+    zh: "另一个邀请发送请求正在处理中。请等待状态更新，不要重复发送。",
+    ko: "다른 초대 발송이 진행 중입니다. 상태가 갱신될 때까지 다시 보내지 마세요.",
   },
   tenant_created_invitation_failed: {
     tone: "warning",
@@ -78,6 +85,18 @@ const PLATFORM_ACCOUNT_FLASH_TONE_CLASSES = {
   success: "border-emerald-200 bg-emerald-50 text-emerald-800",
   warning: "border-amber-200 bg-amber-50 text-amber-900",
   error: "border-rose-200 bg-rose-50 text-rose-900",
+} as const;
+
+const INVITATION_DELIVERY_RECOVERY_COPY = {
+  ja: "Clerk の状態を確認し、必要なら遠端招待を手動で取り消してからローカル記録を停止してください。",
+  zh: "请先核对 Clerk；必要时手动撤销远端邀请，再停止本地记录。",
+  ko: "먼저 Clerk 상태를 확인하고 필요하면 원격 초대를 수동 취소한 뒤 로컬 기록을 중지하세요.",
+} as const;
+
+const INVITATION_DELIVERY_IN_PROGRESS_COPY = {
+  ja: "完了を待ってください。長時間変わらない場合は Clerk を確認し、ローカル記録を停止してください（遠端招待は自動取消されません）。",
+  zh: "请先等待完成；若长时间不变，请核对 Clerk 后停止本地记录（不会自动撤销远端邀请）。",
+  ko: "완료될 때까지 기다리세요. 오래 변하지 않으면 Clerk를 확인한 뒤 로컬 기록을 중지하세요(원격 초대는 자동 취소되지 않음).",
 } as const;
 
 type PlatformAccountFlashToken = keyof typeof PLATFORM_ACCOUNT_FLASH_COPY;
@@ -302,13 +321,21 @@ export default async function PlatformAccountsPage({ searchParams }: PlatformAcc
                   </button>
                 </form>
                 {account.ownerMembers.map((owner) => (
-                  <form key={owner.id} action={sendPlatformTenantMemberInvitationAction} className="flex justify-end">
-                    <input type="hidden" name="tenantId" value={account.id} />
-                    <input type="hidden" name="membershipId" value={owner.id} />
-                    <button className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">
-                      {ui.sendInvite}
-                    </button>
-                  </form>
+                  <div key={owner.id} className="flex flex-col items-end gap-1">
+                    <div className="flex items-center justify-end gap-2">
+                      <span className={`rounded-full px-2 py-1 text-[11px] font-bold ${owner.invitationDeliveryState === "unknown" ? "bg-amber-100 text-amber-900" : owner.invitationDeliveryState === "sending" ? "bg-blue-100 text-blue-800" : "bg-slate-100 text-slate-700"}`}>
+                        {INVITATION_DELIVERY_STATE_LABELS[owner.invitationDeliveryState ?? "ready"][locale]}
+                      </span>
+                      {owner.invitationDeliveryState === "sending" || owner.invitationDeliveryState === "unknown" ? null : (
+                        <form action={sendPlatformTenantMemberInvitationAction}>
+                          <input type="hidden" name="tenantId" value={account.id} />
+                          <input type="hidden" name="membershipId" value={owner.id} />
+                          <button className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">{ui.sendInvite}</button>
+                        </form>
+                      )}
+                    </div>
+                    {owner.invitationDeliveryState === "unknown" ? <span className="max-w-xs text-right text-[11px] font-semibold text-amber-800">{INVITATION_DELIVERY_RECOVERY_COPY[locale]}</span> : owner.invitationDeliveryState === "sending" ? <span className="max-w-xs text-right text-[11px] font-semibold text-blue-800">{INVITATION_DELIVERY_IN_PROGRESS_COPY[locale]}</span> : null}
+                  </div>
                 ))}
               </div>
             </div>
