@@ -544,6 +544,7 @@ export type {
   TenantAccountMemberSummary,
   TenantInvitationProvider,
   TenantInvitationStatus,
+  TenantInvitationDeliveryState,
   TenantInvitationDeliveryContext,
   TenantMembership,
   TenantMemberListItem,

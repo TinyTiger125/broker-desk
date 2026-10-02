@@ -13,6 +13,7 @@ import { getLocale, type Locale } from "@/lib/locale";
 import {
   getMemberManagementCopy,
   getMemberManagementFlash,
+  INVITATION_DELIVERY_STATE_LABELS,
   INVITATION_STATUS_LABELS,
   MEMBER_CAPABILITY_DESCRIPTIONS,
   MEMBER_CAPABILITY_LABELS,
@@ -100,7 +101,7 @@ export default async function TenantMembersPage({ searchParams }: MembersPagePro
   const feedback = getMemberManagementFlash(locale, params?.flash);
   const failedFeedbackKeys = new Set(["member_invitation_failed", "invitation_failed", "last_owner_protected"]);
   const feedbackFailed = params?.flash ? failedFeedbackKeys.has(params.flash) : false;
-  const neutralFeedbackKeys = new Set(["member_invited_pending", "invitation_pending", "invitation_delivery_uncertain"]);
+  const neutralFeedbackKeys = new Set(["member_invited_pending", "invitation_pending", "invitation_delivery_uncertain", "invitation_delivery_in_progress"]);
   const feedbackPending = params?.flash ? neutralFeedbackKeys.has(params.flash) : false;
   let members: Awaited<ReturnType<typeof listTenantMembersForAuthenticatedTenant>> = [];
   let membersLoadFailed = false;
@@ -150,6 +151,8 @@ export default async function TenantMembersPage({ searchParams }: MembersPagePro
       <div className="divide-y divide-slate-200">
         {members.map((member) => {
           const preset = capabilityForMember(member);
+          const deliveryState = member.invitationDeliveryState ?? "ready";
+          const deliveryBlocked = deliveryState === "sending" || deliveryState === "unknown";
           return (
             <article key={member.id} className="grid min-w-0 gap-4 px-4 py-5 lg:grid-cols-[minmax(0,1.25fr)_minmax(16rem,1.25fr)_minmax(0,1fr)_minmax(15rem,1.1fr)] lg:items-start lg:px-5">
               <div className="min-w-0">
@@ -181,12 +184,14 @@ export default async function TenantMembersPage({ searchParams }: MembersPagePro
                 <span className="basis-full text-xs font-semibold text-slate-500 lg:hidden">{ui.status}</span>
                 <span className={`break-words rounded-full px-2 py-1 ${statusTone(member.status)}`}>{ui.membershipStatus}: {MEMBERSHIP_STATUS_LABELS[member.status][locale]}</span>
                 <span className={`break-words rounded-full px-2 py-1 ${invitationTone(member.invitationStatus)}`}>{ui.invitationStatus}: {INVITATION_STATUS_LABELS[member.invitationStatus][locale]}</span>
+                <span className={`break-words rounded-full px-2 py-1 ${deliveryState === "unknown" ? "bg-amber-100 text-amber-900" : deliveryState === "sending" ? "bg-blue-100 text-blue-800" : deliveryState === "provider_accepted" ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-700"}`}>{ui.invitationDeliveryState}: {INVITATION_DELIVERY_STATE_LABELS[deliveryState][locale]}</span>
+                {deliveryState === "unknown" ? <span className="basis-full break-words text-xs font-semibold text-amber-800">{ui.invitationDeliveryRecovery}</span> : deliveryState === "sending" ? <span className="basis-full break-words text-xs font-semibold text-blue-800">{ui.invitationDeliveryInProgressRecovery}</span> : null}
                 <span className={`break-words rounded-full px-2 py-1 ${member.user.externalAuthSubject ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-700"}`}>{member.user.externalAuthSubject ? ui.bound : ui.unbound}</span>
               </div>
 
               <div className="flex min-w-0 flex-wrap gap-2">
                 <span className="basis-full text-xs font-semibold text-slate-500 lg:hidden">{ui.actions}</span>
-                {canInvite && member.status === "invited" ? <form action={sendTenantMemberInvitationAction}><input type="hidden" name="membershipId" value={member.id} /><button aria-label={`${ui.sendInvite}: ${member.user.name} (${member.user.email})`} className="min-h-11 rounded-lg border border-slate-300 px-3 py-2 text-sm font-bold text-slate-700">{ui.sendInvite}</button></form> : null}
+                {canInvite && member.status === "invited" && !deliveryBlocked ? <form action={sendTenantMemberInvitationAction}><input type="hidden" name="membershipId" value={member.id} /><button aria-label={`${ui.sendInvite}: ${member.user.name} (${member.user.email})`} className="min-h-11 rounded-lg border border-slate-300 px-3 py-2 text-sm font-bold text-slate-700">{ui.sendInvite}</button></form> : null}
                 {canRemove && member.status === "invited" ? <form action={revokeTenantMemberInvitationAction}><input type="hidden" name="membershipId" value={member.id} /><button aria-label={`${ui.revokeInvite}: ${member.user.name} (${member.user.email})`} className="min-h-11 rounded-lg border border-rose-200 px-3 py-2 text-sm font-bold text-rose-700">{ui.revokeInvite}</button></form> : null}
                 {canRemove && member.status === "active" && member.id !== session.membership.id ? <form action={updateTenantMemberStatusAction}><input type="hidden" name="membershipId" value={member.id} /><input type="hidden" name="status" value="removed" /><button aria-label={`${ui.remove}: ${member.user.name} (${member.user.email})`} className="min-h-11 rounded-lg border border-rose-200 px-3 py-2 text-sm font-bold text-rose-700">{ui.remove}</button></form> : null}
                 {canRemove && (member.status === "active" || member.status === "suspended") ? (

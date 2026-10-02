@@ -108,6 +108,7 @@ import type {
   RefreshObjectImportReviewInput,
   RefreshObjectImportReviewResult,
 } from "@/lib/data.memory";
+import { normalizeInvitationDeliveryState } from "@/lib/invitation-delivery-state";
 import type { VisibleBrokerageCase, VisibleProperty } from "@/lib/data.memory";
 import type { TenantRole, TenantCapabilityPreset } from "@/lib/tenant-permissions";
 import type { LifecycleFilter, LifecycleStatus } from "@/lib/record-lifecycle";
@@ -194,6 +195,7 @@ const REQUIRED_PRODUCTION_MIGRATIONS = [
   "20260924_002_admin_worker_identity_read.sql",
   "20260924_003_runtime_object_import_case_lookup.sql",
   "20260924_004_official_template_publish.sql",
+  "20261002_001_invitation_delivery_claim.sql",
 ] as const;
 
 const OPEN_STAGES: ClientStage[] = ["lead", "contacted", "quoted", "viewing", "negotiating"];
@@ -644,6 +646,11 @@ function mapTenantMembership(row: Record<string, unknown>): TenantMembership {
     status,
     invitationProvider: String(row.invitation_provider ?? (row.status === "active" ? "manual" : "none")) as TenantMembership["invitationProvider"],
     invitationStatus,
+    invitationDeliveryState: normalizeInvitationDeliveryState(row.invitation_delivery_state, {
+      invitationStatus: rawInvitationStatus,
+      providerInvitationId: row.provider_invitation_id ? String(row.provider_invitation_id) : undefined,
+      invitationError: row.invitation_error ? String(row.invitation_error) : undefined,
+    }),
     providerInvitationId: row.provider_invitation_id ? String(row.provider_invitation_id) : undefined,
     invitationUrl: row.invitation_url ? String(row.invitation_url) : undefined,
     invitationSentAt: toDate(row.invitation_sent_at),
@@ -1852,14 +1859,14 @@ async function ensureSchemaLegacyForUnversionedDevelopment() {
         ($6, $7, $8, $9, $10)`,
       [
         "user_demo",
-        "デモ担当者",
-        "demo@brokerdesk.local",
-        "demo_password_hash",
+        "QA Demo User 01",
+        "qa-demo-user-01@example.test",
+        "fixture-password-hash-01",
         "demo:user_demo",
         "user_ops",
-        "運用担当 佐伯",
-        "ops@brokerdesk.local",
-        "ops_demo_password_hash",
+        "QA Ops User",
+        "qa-ops-user@example.test",
+        "fixture-password-hash-02",
         "demo:user_ops",
       ]
     );
@@ -1870,7 +1877,7 @@ async function ensureSchemaLegacyForUnversionedDevelopment() {
      VALUES ($1, $2, $3, $4, $5)
      ON CONFLICT (id) DO UPDATE SET
       external_auth_subject = COALESCE(users.external_auth_subject, EXCLUDED.external_auth_subject)`,
-    ["user_ops", "運用担当 佐伯", "ops@brokerdesk.local", "ops_demo_password_hash", "demo:user_ops"]
+    ["user_ops", "QA Ops User", "qa-ops-user@example.test", "fixture-password-hash-02", "demo:user_ops"]
   );
 
   await db.query(
@@ -2335,9 +2342,17 @@ function mapTenantMemberJoinedRow(row: Record<string, unknown>): TenantMemberLis
 
 function mapTenantInvitationDeliveryContext(row: Record<string, unknown>): TenantInvitationDeliveryContext {
   const tenant = mapTenant(row.tenant_record as Record<string, unknown>);
-  const record = row.member_record as { membership: Record<string, unknown>; user: Record<string, unknown> };
+  const record = row.member_record as { membership: Record<string, unknown>; user: Record<string, unknown>; delivery_blocked?: unknown };
   const membership = mapTenantMembership(record.membership);
   const user = mapUser(record.user);
+  const deliveryMarker = record.delivery_blocked === "sending" || record.delivery_blocked === "unknown"
+    ? record.delivery_blocked
+    : undefined;
+  const invitationDeliveryBlocked = Object.prototype.hasOwnProperty.call(record, "delivery_blocked")
+    ? deliveryMarker
+    : membership.invitationDeliveryState === "sending" || membership.invitationDeliveryState === "unknown"
+      ? membership.invitationDeliveryState
+      : undefined;
   const member: TenantMemberListItem = {
     ...membership,
     tenantName: tenant.name,
@@ -2349,7 +2364,12 @@ function mapTenantInvitationDeliveryContext(row: Record<string, unknown>): Tenan
       createdAt: user.createdAt,
     },
   };
-  return { ...member, tenant, member };
+  return {
+    ...member,
+    tenant,
+    member,
+    invitationDeliveryBlocked,
+  };
 }
 
 export async function listPlatformTenantAccounts(): Promise<TenantAccountSummary[]> {

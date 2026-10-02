@@ -51,6 +51,12 @@ import {
 import { assertNoForbiddenRecordInput } from "@/lib/record-input-guard";
 import { mayDeletePreimportUpload, mayStartPropertyImport } from "@/lib/preimport-upload-lifecycle";
 import {
+  deliveryStateAfterFinalization,
+  normalizeInvitationDeliveryState,
+  type TenantInvitationDeliveryState,
+} from "@/lib/invitation-delivery-state";
+export type { TenantInvitationDeliveryState } from "@/lib/invitation-delivery-state";
+import {
   resolveRecordVisibility,
   type RequestContext,
   type VisibilityRecord,
@@ -109,6 +115,7 @@ export type TenantMembership = {
   status: TenantMembershipStatus;
   invitationProvider: TenantInvitationProvider;
   invitationStatus: TenantInvitationStatus;
+  invitationDeliveryState?: TenantInvitationDeliveryState;
   providerInvitationId?: string;
   invitationUrl?: string;
   invitationSentAt?: Date;
@@ -150,6 +157,7 @@ export type TenantMemberListItem = TenantMembership & {
 export type TenantInvitationDeliveryContext = TenantMemberListItem & {
   tenant: Tenant;
   member: TenantMemberListItem;
+  invitationDeliveryBlocked?: "sending" | "unknown";
 };
 
 export type TenantAccountMemberSummary = TenantMemberListItem & {
@@ -912,6 +920,7 @@ function countUsedSeats(tenantId: string, now = new Date()): { activeSeatCount: 
 function ensureTenantMembershipDefaults(membership: TenantMembership): TenantMembership {
   membership.invitationProvider = membership.invitationProvider ?? (membership.status === "active" ? "manual" : "none");
   membership.invitationStatus = membership.invitationStatus ?? (membership.status === "active" ? "accepted" : "not_sent");
+  membership.invitationDeliveryState = normalizeInvitationDeliveryState(membership.invitationDeliveryState, membership);
   // Do not derive elevated capabilities from legacy roles. Missing capability
   // is deliberately treated as the least-privileged compatibility state by
   // the session layer until an explicit preset is stored.
@@ -1169,8 +1178,8 @@ cherryOutputTemplate.department = "不動産仲介部";
 cherryOutputTemplate.representative = "李 杰明";
 cherryOutputTemplate.licenseNumber = "宅地建物取引業免許番号 東京都知事(2)第98765号";
 cherryOutputTemplate.postalAddress = "東京都港区六本木3-2-1 CherryビルXF";
-cherryOutputTemplate.phone = "03-6234-5678";
-cherryOutputTemplate.email = "info@cherry-investment.co.jp";
+cherryOutputTemplate.phone = "+1 202-555-0100";
+cherryOutputTemplate.email = "qa-fixture-9@example.test";
 
 type BrokerDbHolder = { current: DB };
 
@@ -1184,7 +1193,7 @@ const _freshDb: DB = withDefaultTenantScope({
     {
       id: "user_demo",
       name: "李 杰明",
-      email: "lijieming@cherry-investment.co.jp",
+      email: "qa-fixture-10@example.test",
       passwordHash: "demo_password_hash",
       externalAuthSubject: "demo:user_demo",
       createdAt: new Date(now - 60 * 24 * 60 * 60 * 1000),
@@ -1192,7 +1201,7 @@ const _freshDb: DB = withDefaultTenantScope({
     {
       id: "user_ops",
       name: "運用担当 佐伯",
-      email: "ops@brokerdesk.local",
+      email: "qa-fixture-11@example.test",
       passwordHash: "ops_demo_password_hash",
       externalAuthSubject: "demo:user_ops",
       createdAt: new Date(now - 45 * 24 * 60 * 60 * 1000),
@@ -1305,9 +1314,9 @@ const _freshDb: DB = withDefaultTenantScope({
     {
       id: "client_yamada",
       name: "山田 健太 様",
-      phone: "090-1234-5001",
+      phone: "+1 202-555-0101",
       lineId: "yamada_kenta_inv",
-      email: "yamada.kenta@example.jp",
+      email: "qa-fixture-12@example.test",
       budgetMin: 120000000,
       budgetMax: 145000000,
       budgetType: "total_price",
@@ -1336,7 +1345,7 @@ const _freshDb: DB = withDefaultTenantScope({
     {
       id: "client_li_meiling",
       name: "李 美玲 様",
-      phone: "090-1234-5002",
+      phone: "+1 202-555-0102",
       lineId: "li_meiling_home",
       budgetMin: 80000000,
       budgetMax: 95000000,
@@ -1366,7 +1375,7 @@ const _freshDb: DB = withDefaultTenantScope({
     {
       id: "client_tamura",
       name: "田村 翔太 様",
-      phone: "090-1234-5003",
+      phone: "+1 202-555-0103",
       budgetMin: 65000000,
       budgetMax: 78000000,
       budgetType: "total_price",
@@ -1395,7 +1404,7 @@ const _freshDb: DB = withDefaultTenantScope({
     {
       id: "client_wang_haoran",
       name: "王 浩然 様",
-      phone: "090-1234-5004",
+      phone: "+1 202-555-0104",
       lineId: "wang_haoran_inv",
       budgetMin: 42000000,
       budgetMax: 55000000,
@@ -1425,8 +1434,8 @@ const _freshDb: DB = withDefaultTenantScope({
     {
       id: "client_nakamura",
       name: "中村 恵子 様",
-      phone: "090-1234-5005",
-      email: "nakamura.keiko@example.jp",
+      phone: "+1 202-555-0105",
+      email: "qa-fixture-13@example.test",
       budgetMin: 88000000,
       budgetMax: 100000000,
       budgetType: "total_price",
@@ -1455,7 +1464,7 @@ const _freshDb: DB = withDefaultTenantScope({
     {
       id: "client_matsushita",
       name: "松下 大輝 様",
-      phone: "090-1234-5006",
+      phone: "+1 202-555-0106",
       budgetMin: 55000000,
       budgetMax: 70000000,
       budgetType: "total_price",
@@ -1478,7 +1487,7 @@ const _freshDb: DB = withDefaultTenantScope({
     {
       id: "client_zhang_shufen",
       name: "張 淑芬 様",
-      phone: "090-1234-5007",
+      phone: "+1 202-555-0107",
       lineId: "zhang_shufen",
       budgetMin: 60000000,
       budgetMax: 80000000,
@@ -1578,13 +1587,13 @@ const _freshDb: DB = withDefaultTenantScope({
         rent_total: "171000",
         buyer_name: "佐藤 健一",
         buyer_furigana: "サトウ ケンイチ",
-        buyer_phone: "090-1111-2222",
+        buyer_phone: "+1 202-555-0108",
         buyer_address: "東京都目黒区中目黒4-5-6",
         workplace_name: "さくら貿易株式会社",
         guarantor_name: "佐藤 直子",
-        guarantor_phone: "080-1111-2222",
+        guarantor_phone: "+1 202-555-0109",
         broker_a_company_name: "Cherry Investment株式会社",
-        broker_a_phone: "03-1111-2222",
+        broker_a_phone: "+1 202-555-0110",
       },
       sourceImportJobIds: ["import_003"],
       createdAt: new Date(now - 1 * 24 * 60 * 60 * 1000),
@@ -1895,7 +1904,7 @@ function ensureRichDemoData() {
     {
       id: "user_broker_mori",
       name: "森 拓也",
-      email: "mori@cherry-investment.co.jp",
+      email: "qa-fixture-14@example.test",
       passwordHash: "demo_password_hash",
       externalAuthSubject: "demo:user_broker_mori",
       createdAt: dateAgo(32),
@@ -1903,7 +1912,7 @@ function ensureRichDemoData() {
     {
       id: "user_reviewer_kim",
       name: "金 美佳",
-      email: "kim@cherry-investment.co.jp",
+      email: "qa-fixture-15@example.test",
       passwordHash: "demo_password_hash",
       externalAuthSubject: "demo:user_reviewer_kim",
       createdAt: dateAgo(22),
@@ -1911,7 +1920,7 @@ function ensureRichDemoData() {
     {
       id: "user_invited_sato",
       name: "佐藤 招待中",
-      email: "sato.invited@cherry-investment.co.jp",
+      email: "qa-fixture-16@example.test",
       passwordHash: "invited_demo_password_hash",
       createdAt: dateAgo(2),
     },
@@ -1978,24 +1987,24 @@ function ensureRichDemoData() {
     [`主体类型: ${type === "individual" ? "个人" : "法人/公司"}`, `主体角色: ${role}`, `建档状态: ${status}`, note ? `备注: ${note}` : ""].filter(Boolean).join("\n");
 
   const demoClients = [
-    { id: "client_sato_kenichi", tenantId: DEFAULT_TENANT_ID, name: "佐藤 健一 様", phone: "090-6612-1101", lineId: "sato_home_2026", email: "kenichi.sato@example.jp", budgetMin: 90000000, budgetMax: 120000000, budgetType: "total_price", preferredArea: "豊洲 / 勝どき", firstChoiceArea: "豊洲", secondChoiceArea: "勝どき", purpose: "self_use", loanPreApprovalStatus: "screening", desiredMoveInPeriod: "2026年8月入居希望", stage: "viewing", temperature: "high", brokerageContractType: "exclusive", brokerageContractSignedAt: dateAgo(12), brokerageContractExpiresAt: dateFromNow(78), personalInfoConsentAt: dateAgo(12), amlCheckStatus: "verified", nextFollowUpAt: dateFromNow(0, 5), lastContactedAt: dateAgo(0, 5), notes: profile("individual", "买方", "正式", "豊洲ベイサイド内見済み。家族4名。"), ownerUserId: "user_demo", createdAt: dateAgo(18), updatedAt: dateAgo(0, 5) },
-    { id: "client_chen_liang", tenantId: DEFAULT_TENANT_ID, name: "陳 亮 様", phone: "080-7711-2244", lineId: "chen_tokyo", email: "liang.chen@example.com", budgetMin: 110000000, budgetMax: 150000000, budgetType: "total_price", preferredArea: "中目黒 / 恵比寿", firstChoiceArea: "中目黒", secondChoiceArea: "恵比寿", purpose: "investment", loanPreApprovalStatus: "approved", desiredMoveInPeriod: "2026年夏までに運用開始", stage: "negotiating", temperature: "high", brokerageContractType: "general", brokerageContractSignedAt: dateAgo(16), brokerageContractExpiresAt: dateFromNow(60), personalInfoConsentAt: dateAgo(16), amlCheckStatus: "pending", nextFollowUpAt: dateFromNow(1), lastContactedAt: dateAgo(1), notes: profile("individual", "买方", "正式", "中目黒デュープレックスで価格交渉中。"), ownerUserId: "user_demo", createdAt: dateAgo(21), updatedAt: dateAgo(1) },
-    { id: "client_kobayashi_owner", tenantId: DEFAULT_TENANT_ID, name: "小林 洋子 様", phone: "090-8820-3011", lineId: "kobayashi_owner", email: "yoko.kobayashi@example.jp", budgetMin: 0, budgetMax: 0, budgetType: "total_price", preferredArea: "勝どき", firstChoiceArea: "勝どき", purpose: "investment", loanPreApprovalStatus: "not_applied", desiredMoveInPeriod: "賃貸募集開始済み", stage: "quoted", temperature: "medium", brokerageContractType: "exclusive_exclusive", brokerageContractSignedAt: dateAgo(23), brokerageContractExpiresAt: dateFromNow(67), personalInfoConsentAt: dateAgo(23), amlCheckStatus: "verified", nextFollowUpAt: dateFromNow(2), lastContactedAt: dateAgo(2), notes: profile("individual", "业主", "正式", "勝どきリバーサイドの貸主。保証会社審査中。"), ownerUserId: "user_demo", createdAt: dateAgo(24), updatedAt: dateAgo(2) },
-    { id: "client_garcia_maria", tenantId: DEFAULT_TENANT_ID, name: "マリア ガルシア 様", phone: "080-4433-9088", lineId: "maria_rent_tokyo", email: "maria.garcia@example.com", budgetMin: 240000, budgetMax: 310000, budgetType: "monthly_payment", preferredArea: "港区 / 渋谷区", firstChoiceArea: "港区", secondChoiceArea: "渋谷区", purpose: "self_use", loanPreApprovalStatus: "not_applied", desiredMoveInPeriod: "2026年7月中旬", stage: "quoted", temperature: "medium", brokerageContractType: "none", personalInfoConsentAt: dateAgo(3), amlCheckStatus: "not_required", nextFollowUpAt: dateFromNow(0, 2), lastContactedAt: dateAgo(0, 8), notes: profile("individual", "租客/入居者", "建档中", "在留カード表裏を再提出予定。"), ownerUserId: "user_demo", createdAt: dateAgo(8), updatedAt: dateAgo(0, 8) },
-    { id: "client_okada_parent", tenantId: DEFAULT_TENANT_ID, name: "岡田 一郎 様", phone: "090-1188-7722", lineId: "okada_parent", email: "ichiro.okada@example.jp", budgetMin: 0, budgetMax: 0, budgetType: "total_price", preferredArea: "港区", firstChoiceArea: "港区", secondChoiceArea: "品川区", purpose: "self_use", loanPreApprovalStatus: "not_applied", stage: "contacted", temperature: "medium", brokerageContractType: "none", personalInfoConsentAt: dateAgo(5), amlCheckStatus: "not_required", nextFollowUpAt: dateFromNow(3), lastContactedAt: dateAgo(3), notes: profile("individual", "连带保证人", "正式", "申込者の父。勤務先情報確認済み。"), ownerUserId: "user_demo", createdAt: dateAgo(9), updatedAt: dateAgo(3) },
-    { id: "client_tokyo_asset", tenantId: DEFAULT_TENANT_ID, name: "東京アセット管理株式会社", phone: "03-6421-2200", lineId: "tokyo_asset_pm", email: "pm@tokyo-asset.example.jp", budgetMin: 0, budgetMax: 0, budgetType: "total_price", preferredArea: "港区 / 中央区", purpose: "investment", loanPreApprovalStatus: "not_applied", stage: "contacted", temperature: "low", brokerageContractType: "general", brokerageContractSignedAt: dateAgo(35), brokerageContractExpiresAt: dateFromNow(55), amlCheckStatus: "verified", nextFollowUpAt: dateFromNow(6), lastContactedAt: dateAgo(7), notes: profile("corporate", "管理公司", "正式", "管理会社。修繕積立金と管理費の確認窓口。"), ownerUserId: "user_demo", createdAt: dateAgo(35), updatedAt: dateAgo(7) },
-    { id: "client_minato_realty", tenantId: DEFAULT_TENANT_ID, name: "港区リアルティ株式会社", phone: "03-5545-8100", lineId: "minato_realty", email: "sales@minato-realty.example.jp", budgetMin: 0, budgetMax: 0, budgetType: "total_price", preferredArea: "港区", purpose: "investment", loanPreApprovalStatus: "not_applied", stage: "contacted", temperature: "medium", brokerageContractType: "general", amlCheckStatus: "verified", nextFollowUpAt: dateFromNow(4), lastContactedAt: dateAgo(4), notes: profile("corporate", "仲介公司", "正式", "共同仲介。申込書類の原本確認担当。"), ownerUserId: "user_demo", createdAt: dateAgo(14), updatedAt: dateAgo(4) },
-    { id: "client_yoon_seojun", tenantId: DEFAULT_TENANT_ID, name: "ユン ソジュン 様", phone: "080-9292-6140", lineId: "yoon_invest", email: "seojun.yoon@example.kr", budgetMin: 70000000, budgetMax: 90000000, budgetType: "total_price", preferredArea: "横浜 / 川崎", firstChoiceArea: "横浜", secondChoiceArea: "川崎", purpose: "investment", loanPreApprovalStatus: "screening", desiredMoveInPeriod: "2026年Q4", stage: "lead", temperature: "low", brokerageContractType: "none", amlCheckStatus: "pending", nextFollowUpAt: dateFromNow(5), lastContactedAt: dateAgo(6), notes: profile("individual", "买方", "建档中", "海外送金の予定時期を確認中。"), ownerUserId: "user_demo", createdAt: dateAgo(6), updatedAt: dateAgo(6) },
-    { id: "client_nagata_rent", tenantId: DEFAULT_TENANT_ID, name: "永田 沙織 様", phone: "090-3344-6789", lineId: "nagata_rent", email: "saori.nagata@example.jp", budgetMin: 180000, budgetMax: 230000, budgetType: "monthly_payment", preferredArea: "新宿区 / 文京区", firstChoiceArea: "新宿区", secondChoiceArea: "文京区", purpose: "self_use", loanPreApprovalStatus: "not_applied", desiredMoveInPeriod: "2026年9月", stage: "lead", temperature: "medium", brokerageContractType: "none", amlCheckStatus: "not_required", nextFollowUpAt: dateFromNow(7), lastContactedAt: dateAgo(5), notes: profile("individual", "租客/入居者", "建档中", "勤務先証明を未受領。"), ownerUserId: "user_demo", createdAt: dateAgo(5), updatedAt: dateAgo(5) },
-    { id: "client_lu_corporate", tenantId: DEFAULT_TENANT_ID, name: "Lu Trading合同会社", phone: "03-6888-7711", lineId: "lu_trading", email: "office@lu-trading.example.com", budgetMin: 350000, budgetMax: 550000, budgetType: "monthly_payment", preferredArea: "新宿区", purpose: "investment", loanPreApprovalStatus: "not_applied", desiredMoveInPeriod: "2026年8月開業", stage: "viewing", temperature: "high", brokerageContractType: "none", amlCheckStatus: "verified", nextFollowUpAt: dateFromNow(2, 3), lastContactedAt: dateAgo(1, 2), notes: profile("corporate", "申请人", "正式", "新宿御苑前オフィスの法人申込。代表者本人確認済み。"), ownerUserId: "user_demo", createdAt: dateAgo(11), updatedAt: dateAgo(1, 2) },
-    { id: "client_mori_rina", tenantId: DEFAULT_TENANT_ID, name: "森 梨奈 様", phone: "090-4412-8830", lineId: "mori_asakusa", email: "rina.mori@example.jp", budgetMin: 145000, budgetMax: 185000, budgetType: "monthly_payment", preferredArea: "浅草 / 上野", firstChoiceArea: "浅草", secondChoiceArea: "上野", purpose: "self_use", loanPreApprovalStatus: "not_applied", desiredMoveInPeriod: "2026年7月下旬", stage: "quoted", temperature: "high", brokerageContractType: "none", personalInfoConsentAt: dateAgo(2), amlCheckStatus: "not_required", nextFollowUpAt: dateFromNow(0, 4), lastContactedAt: dateAgo(0, 3), notes: profile("individual", "租客/入居者", "建档中", "勤務先電話と緊急連絡先を補完予定。"), ownerUserId: "user_demo", createdAt: dateAgo(4), updatedAt: dateAgo(0, 3) },
-    { id: "client_ito_guarantor", tenantId: DEFAULT_TENANT_ID, name: "伊藤 修 様", phone: "080-5400-7712", lineId: "ito_emergency", email: "osamu.ito@example.jp", budgetMin: 0, budgetMax: 0, budgetType: "total_price", preferredArea: "台東区", purpose: "self_use", loanPreApprovalStatus: "not_applied", stage: "contacted", temperature: "medium", brokerageContractType: "none", personalInfoConsentAt: dateAgo(2), amlCheckStatus: "not_required", nextFollowUpAt: dateFromNow(1), lastContactedAt: dateAgo(1), notes: profile("individual", "緊急連絡先", "建档中", "森様の叔父。住所確認待ち。"), ownerUserId: "user_demo", createdAt: dateAgo(4), updatedAt: dateAgo(1) },
-    { id: "client_orion_corp", tenantId: DEFAULT_TENANT_ID, name: "オリオン商事株式会社", phone: "06-6123-4400", lineId: "orion_umeda", email: "admin@orion-shoji.example.jp", budgetMin: 420000, budgetMax: 620000, budgetType: "monthly_payment", preferredArea: "梅田 / 淀屋橋", firstChoiceArea: "梅田", secondChoiceArea: "淀屋橋", purpose: "investment", loanPreApprovalStatus: "not_applied", desiredMoveInPeriod: "2026年8月事務所移転", stage: "negotiating", temperature: "high", brokerageContractType: "none", amlCheckStatus: "pending", nextFollowUpAt: dateFromNow(0, 6), lastContactedAt: dateAgo(0, 7), notes: profile("corporate", "法人申込者", "建档中", "登記簿は受領済み。代表者住所を確認中。"), ownerUserId: "user_demo", createdAt: dateAgo(5), updatedAt: dateAgo(0, 7) },
-    { id: "client_tanaka_owner", tenantId: DEFAULT_TENANT_ID, name: "田中 由美 様", phone: "090-2110-7844", lineId: "tanaka_owner", email: "yumi.tanaka@example.jp", budgetMin: 0, budgetMax: 0, budgetType: "total_price", preferredArea: "世田谷区", purpose: "investment", loanPreApprovalStatus: "not_applied", stage: "contacted", temperature: "medium", brokerageContractType: "exclusive", brokerageContractSignedAt: dateAgo(18), brokerageContractExpiresAt: dateFromNow(72), personalInfoConsentAt: dateAgo(18), amlCheckStatus: "verified", nextFollowUpAt: dateFromNow(3), lastContactedAt: dateAgo(2), notes: profile("individual", "貸主", "正式", "世田谷ガーデンテラスの貸主。条件確定済み。"), ownerUserId: "user_demo", createdAt: dateAgo(18), updatedAt: dateAgo(2) },
-    { id: "client_sakura_management", tenantId: DEFAULT_TENANT_ID, name: "さくら管理株式会社", phone: "03-6670-2300", lineId: "sakura_pm", email: "pm@sakura-kanri.example.jp", budgetMin: 0, budgetMax: 0, budgetType: "total_price", preferredArea: "世田谷区 / 渋谷区", purpose: "investment", loanPreApprovalStatus: "not_applied", stage: "contacted", temperature: "low", brokerageContractType: "general", amlCheckStatus: "verified", nextFollowUpAt: dateFromNow(6), lastContactedAt: dateAgo(6), notes: profile("corporate", "管理会社", "正式", "費用更新と入居審査書類の窓口。"), ownerUserId: "user_demo", createdAt: dateAgo(20), updatedAt: dateAgo(6) },
-    { id: "client_park_jisoo", tenantId: DEFAULT_TENANT_ID, name: "パク ジス 様", phone: "080-1900-5531", lineId: "park_sharehouse", email: "jisoo.park@example.kr", budgetMin: 85000, budgetMax: 120000, budgetType: "monthly_payment", preferredArea: "池袋 / 高田馬場", firstChoiceArea: "池袋", secondChoiceArea: "高田馬場", purpose: "self_use", loanPreApprovalStatus: "not_applied", desiredMoveInPeriod: "2026年7月中", stage: "quoted", temperature: "medium", brokerageContractType: "none", personalInfoConsentAt: dateAgo(1), amlCheckStatus: "not_required", nextFollowUpAt: dateFromNow(0, 3), lastContactedAt: dateAgo(0, 2), notes: profile("individual", "租客/入居者", "建档中", "在留カード画像の再提出待ち。"), ownerUserId: "user_demo", createdAt: dateAgo(3), updatedAt: dateAgo(0, 2) },
-    { id: "client_nakamura_family", tenantId: DEFAULT_TENANT_ID, name: "中村 直人 様", phone: "090-8033-1010", lineId: "nakamura_family", email: "naoto.nakamura@example.jp", budgetMin: 260000, budgetMax: 340000, budgetType: "monthly_payment", preferredArea: "世田谷区 / 目黒区", firstChoiceArea: "世田谷区", secondChoiceArea: "目黒区", purpose: "self_use", loanPreApprovalStatus: "not_applied", desiredMoveInPeriod: "2026年8月上旬", stage: "negotiating", temperature: "high", brokerageContractType: "none", personalInfoConsentAt: dateAgo(4), amlCheckStatus: "not_required", nextFollowUpAt: dateFromNow(1, 2), lastContactedAt: dateAgo(0, 10), notes: profile("individual", "租客/入居者", "正式", "世田谷ガーデンテラス申込。家族3名。"), ownerUserId: "user_demo", createdAt: dateAgo(7), updatedAt: dateAgo(0, 10) },
-    { id: "client_huang_investor", tenantId: DEFAULT_TENANT_ID, name: "黄 文博 様", phone: "080-8876-2401", lineId: "huang_invest", email: "wenbo.huang@example.com", budgetMin: 120000000, budgetMax: 170000000, budgetType: "total_price", preferredArea: "広尾 / 恵比寿", firstChoiceArea: "広尾", secondChoiceArea: "恵比寿", purpose: "investment", loanPreApprovalStatus: "approved", desiredMoveInPeriod: "2026年Q3", stage: "viewing", temperature: "high", brokerageContractType: "general", brokerageContractSignedAt: dateAgo(9), brokerageContractExpiresAt: dateFromNow(81), personalInfoConsentAt: dateAgo(9), amlCheckStatus: "verified", nextFollowUpAt: dateFromNow(2), lastContactedAt: dateAgo(1, 5), notes: profile("individual", "投資家", "正式", "広尾レジデンスを高額賃貸用に検討。"), ownerUserId: "user_demo", createdAt: dateAgo(10), updatedAt: dateAgo(1, 5) },
+    { id: "client_sato_kenichi", tenantId: DEFAULT_TENANT_ID, name: "佐藤 健一 様", phone: "+1 202-555-0111", lineId: "sato_home_2026", email: "qa-fixture-17@example.test", budgetMin: 90000000, budgetMax: 120000000, budgetType: "total_price", preferredArea: "豊洲 / 勝どき", firstChoiceArea: "豊洲", secondChoiceArea: "勝どき", purpose: "self_use", loanPreApprovalStatus: "screening", desiredMoveInPeriod: "2026年8月入居希望", stage: "viewing", temperature: "high", brokerageContractType: "exclusive", brokerageContractSignedAt: dateAgo(12), brokerageContractExpiresAt: dateFromNow(78), personalInfoConsentAt: dateAgo(12), amlCheckStatus: "verified", nextFollowUpAt: dateFromNow(0, 5), lastContactedAt: dateAgo(0, 5), notes: profile("individual", "买方", "正式", "豊洲ベイサイド内見済み。家族4名。"), ownerUserId: "user_demo", createdAt: dateAgo(18), updatedAt: dateAgo(0, 5) },
+    { id: "client_chen_liang", tenantId: DEFAULT_TENANT_ID, name: "陳 亮 様", phone: "+1 202-555-0112", lineId: "chen_tokyo", email: "qa-fixture-18@example.test", budgetMin: 110000000, budgetMax: 150000000, budgetType: "total_price", preferredArea: "中目黒 / 恵比寿", firstChoiceArea: "中目黒", secondChoiceArea: "恵比寿", purpose: "investment", loanPreApprovalStatus: "approved", desiredMoveInPeriod: "2026年夏までに運用開始", stage: "negotiating", temperature: "high", brokerageContractType: "general", brokerageContractSignedAt: dateAgo(16), brokerageContractExpiresAt: dateFromNow(60), personalInfoConsentAt: dateAgo(16), amlCheckStatus: "pending", nextFollowUpAt: dateFromNow(1), lastContactedAt: dateAgo(1), notes: profile("individual", "买方", "正式", "中目黒デュープレックスで価格交渉中。"), ownerUserId: "user_demo", createdAt: dateAgo(21), updatedAt: dateAgo(1) },
+    { id: "client_kobayashi_owner", tenantId: DEFAULT_TENANT_ID, name: "小林 洋子 様", phone: "+1 202-555-0113", lineId: "kobayashi_owner", email: "qa-fixture-19@example.test", budgetMin: 0, budgetMax: 0, budgetType: "total_price", preferredArea: "勝どき", firstChoiceArea: "勝どき", purpose: "investment", loanPreApprovalStatus: "not_applied", desiredMoveInPeriod: "賃貸募集開始済み", stage: "quoted", temperature: "medium", brokerageContractType: "exclusive_exclusive", brokerageContractSignedAt: dateAgo(23), brokerageContractExpiresAt: dateFromNow(67), personalInfoConsentAt: dateAgo(23), amlCheckStatus: "verified", nextFollowUpAt: dateFromNow(2), lastContactedAt: dateAgo(2), notes: profile("individual", "业主", "正式", "勝どきリバーサイドの貸主。保証会社審査中。"), ownerUserId: "user_demo", createdAt: dateAgo(24), updatedAt: dateAgo(2) },
+    { id: "client_garcia_maria", tenantId: DEFAULT_TENANT_ID, name: "マリア ガルシア 様", phone: "+1 202-555-0114", lineId: "maria_rent_tokyo", email: "qa-fixture-20@example.test", budgetMin: 240000, budgetMax: 310000, budgetType: "monthly_payment", preferredArea: "港区 / 渋谷区", firstChoiceArea: "港区", secondChoiceArea: "渋谷区", purpose: "self_use", loanPreApprovalStatus: "not_applied", desiredMoveInPeriod: "2026年7月中旬", stage: "quoted", temperature: "medium", brokerageContractType: "none", personalInfoConsentAt: dateAgo(3), amlCheckStatus: "not_required", nextFollowUpAt: dateFromNow(0, 2), lastContactedAt: dateAgo(0, 8), notes: profile("individual", "租客/入居者", "建档中", "在留カード表裏を再提出予定。"), ownerUserId: "user_demo", createdAt: dateAgo(8), updatedAt: dateAgo(0, 8) },
+    { id: "client_okada_parent", tenantId: DEFAULT_TENANT_ID, name: "岡田 一郎 様", phone: "+1 202-555-0115", lineId: "okada_parent", email: "qa-fixture-21@example.test", budgetMin: 0, budgetMax: 0, budgetType: "total_price", preferredArea: "港区", firstChoiceArea: "港区", secondChoiceArea: "品川区", purpose: "self_use", loanPreApprovalStatus: "not_applied", stage: "contacted", temperature: "medium", brokerageContractType: "none", personalInfoConsentAt: dateAgo(5), amlCheckStatus: "not_required", nextFollowUpAt: dateFromNow(3), lastContactedAt: dateAgo(3), notes: profile("individual", "连带保证人", "正式", "申込者の父。勤務先情報確認済み。"), ownerUserId: "user_demo", createdAt: dateAgo(9), updatedAt: dateAgo(3) },
+    { id: "client_tokyo_asset", tenantId: DEFAULT_TENANT_ID, name: "東京アセット管理株式会社", phone: "+1 202-555-0116", lineId: "tokyo_asset_pm", email: "qa-fixture-22@example.test", budgetMin: 0, budgetMax: 0, budgetType: "total_price", preferredArea: "港区 / 中央区", purpose: "investment", loanPreApprovalStatus: "not_applied", stage: "contacted", temperature: "low", brokerageContractType: "general", brokerageContractSignedAt: dateAgo(35), brokerageContractExpiresAt: dateFromNow(55), amlCheckStatus: "verified", nextFollowUpAt: dateFromNow(6), lastContactedAt: dateAgo(7), notes: profile("corporate", "管理公司", "正式", "管理会社。修繕積立金と管理費の確認窓口。"), ownerUserId: "user_demo", createdAt: dateAgo(35), updatedAt: dateAgo(7) },
+    { id: "client_minato_realty", tenantId: DEFAULT_TENANT_ID, name: "港区リアルティ株式会社", phone: "+1 202-555-0117", lineId: "minato_realty", email: "qa-fixture-23@example.test", budgetMin: 0, budgetMax: 0, budgetType: "total_price", preferredArea: "港区", purpose: "investment", loanPreApprovalStatus: "not_applied", stage: "contacted", temperature: "medium", brokerageContractType: "general", amlCheckStatus: "verified", nextFollowUpAt: dateFromNow(4), lastContactedAt: dateAgo(4), notes: profile("corporate", "仲介公司", "正式", "共同仲介。申込書類の原本確認担当。"), ownerUserId: "user_demo", createdAt: dateAgo(14), updatedAt: dateAgo(4) },
+    { id: "client_yoon_seojun", tenantId: DEFAULT_TENANT_ID, name: "ユン ソジュン 様", phone: "+1 202-555-0118", lineId: "yoon_invest", email: "qa-fixture-24@example.test", budgetMin: 70000000, budgetMax: 90000000, budgetType: "total_price", preferredArea: "横浜 / 川崎", firstChoiceArea: "横浜", secondChoiceArea: "川崎", purpose: "investment", loanPreApprovalStatus: "screening", desiredMoveInPeriod: "2026年Q4", stage: "lead", temperature: "low", brokerageContractType: "none", amlCheckStatus: "pending", nextFollowUpAt: dateFromNow(5), lastContactedAt: dateAgo(6), notes: profile("individual", "买方", "建档中", "海外送金の予定時期を確認中。"), ownerUserId: "user_demo", createdAt: dateAgo(6), updatedAt: dateAgo(6) },
+    { id: "client_nagata_rent", tenantId: DEFAULT_TENANT_ID, name: "永田 沙織 様", phone: "+1 202-555-0119", lineId: "nagata_rent", email: "qa-fixture-25@example.test", budgetMin: 180000, budgetMax: 230000, budgetType: "monthly_payment", preferredArea: "新宿区 / 文京区", firstChoiceArea: "新宿区", secondChoiceArea: "文京区", purpose: "self_use", loanPreApprovalStatus: "not_applied", desiredMoveInPeriod: "2026年9月", stage: "lead", temperature: "medium", brokerageContractType: "none", amlCheckStatus: "not_required", nextFollowUpAt: dateFromNow(7), lastContactedAt: dateAgo(5), notes: profile("individual", "租客/入居者", "建档中", "勤務先証明を未受領。"), ownerUserId: "user_demo", createdAt: dateAgo(5), updatedAt: dateAgo(5) },
+    { id: "client_lu_corporate", tenantId: DEFAULT_TENANT_ID, name: "Lu Trading合同会社", phone: "+1 202-555-0120", lineId: "lu_trading", email: "qa-fixture-26@example.test", budgetMin: 350000, budgetMax: 550000, budgetType: "monthly_payment", preferredArea: "新宿区", purpose: "investment", loanPreApprovalStatus: "not_applied", desiredMoveInPeriod: "2026年8月開業", stage: "viewing", temperature: "high", brokerageContractType: "none", amlCheckStatus: "verified", nextFollowUpAt: dateFromNow(2, 3), lastContactedAt: dateAgo(1, 2), notes: profile("corporate", "申请人", "正式", "新宿御苑前オフィスの法人申込。代表者本人確認済み。"), ownerUserId: "user_demo", createdAt: dateAgo(11), updatedAt: dateAgo(1, 2) },
+    { id: "client_mori_rina", tenantId: DEFAULT_TENANT_ID, name: "森 梨奈 様", phone: "+1 202-555-0121", lineId: "mori_asakusa", email: "qa-fixture-27@example.test", budgetMin: 145000, budgetMax: 185000, budgetType: "monthly_payment", preferredArea: "浅草 / 上野", firstChoiceArea: "浅草", secondChoiceArea: "上野", purpose: "self_use", loanPreApprovalStatus: "not_applied", desiredMoveInPeriod: "2026年7月下旬", stage: "quoted", temperature: "high", brokerageContractType: "none", personalInfoConsentAt: dateAgo(2), amlCheckStatus: "not_required", nextFollowUpAt: dateFromNow(0, 4), lastContactedAt: dateAgo(0, 3), notes: profile("individual", "租客/入居者", "建档中", "勤務先電話と緊急連絡先を補完予定。"), ownerUserId: "user_demo", createdAt: dateAgo(4), updatedAt: dateAgo(0, 3) },
+    { id: "client_ito_guarantor", tenantId: DEFAULT_TENANT_ID, name: "伊藤 修 様", phone: "+1 202-555-0122", lineId: "ito_emergency", email: "qa-fixture-28@example.test", budgetMin: 0, budgetMax: 0, budgetType: "total_price", preferredArea: "台東区", purpose: "self_use", loanPreApprovalStatus: "not_applied", stage: "contacted", temperature: "medium", brokerageContractType: "none", personalInfoConsentAt: dateAgo(2), amlCheckStatus: "not_required", nextFollowUpAt: dateFromNow(1), lastContactedAt: dateAgo(1), notes: profile("individual", "緊急連絡先", "建档中", "森様の叔父。住所確認待ち。"), ownerUserId: "user_demo", createdAt: dateAgo(4), updatedAt: dateAgo(1) },
+    { id: "client_orion_corp", tenantId: DEFAULT_TENANT_ID, name: "オリオン商事株式会社", phone: "+1 202-555-0123", lineId: "orion_umeda", email: "qa-fixture-29@example.test", budgetMin: 420000, budgetMax: 620000, budgetType: "monthly_payment", preferredArea: "梅田 / 淀屋橋", firstChoiceArea: "梅田", secondChoiceArea: "淀屋橋", purpose: "investment", loanPreApprovalStatus: "not_applied", desiredMoveInPeriod: "2026年8月事務所移転", stage: "negotiating", temperature: "high", brokerageContractType: "none", amlCheckStatus: "pending", nextFollowUpAt: dateFromNow(0, 6), lastContactedAt: dateAgo(0, 7), notes: profile("corporate", "法人申込者", "建档中", "登記簿は受領済み。代表者住所を確認中。"), ownerUserId: "user_demo", createdAt: dateAgo(5), updatedAt: dateAgo(0, 7) },
+    { id: "client_tanaka_owner", tenantId: DEFAULT_TENANT_ID, name: "田中 由美 様", phone: "+1 202-555-0124", lineId: "tanaka_owner", email: "qa-fixture-30@example.test", budgetMin: 0, budgetMax: 0, budgetType: "total_price", preferredArea: "世田谷区", purpose: "investment", loanPreApprovalStatus: "not_applied", stage: "contacted", temperature: "medium", brokerageContractType: "exclusive", brokerageContractSignedAt: dateAgo(18), brokerageContractExpiresAt: dateFromNow(72), personalInfoConsentAt: dateAgo(18), amlCheckStatus: "verified", nextFollowUpAt: dateFromNow(3), lastContactedAt: dateAgo(2), notes: profile("individual", "貸主", "正式", "世田谷ガーデンテラスの貸主。条件確定済み。"), ownerUserId: "user_demo", createdAt: dateAgo(18), updatedAt: dateAgo(2) },
+    { id: "client_sakura_management", tenantId: DEFAULT_TENANT_ID, name: "さくら管理株式会社", phone: "+1 202-555-0125", lineId: "sakura_pm", email: "qa-fixture-31@example.test", budgetMin: 0, budgetMax: 0, budgetType: "total_price", preferredArea: "世田谷区 / 渋谷区", purpose: "investment", loanPreApprovalStatus: "not_applied", stage: "contacted", temperature: "low", brokerageContractType: "general", amlCheckStatus: "verified", nextFollowUpAt: dateFromNow(6), lastContactedAt: dateAgo(6), notes: profile("corporate", "管理会社", "正式", "費用更新と入居審査書類の窓口。"), ownerUserId: "user_demo", createdAt: dateAgo(20), updatedAt: dateAgo(6) },
+    { id: "client_park_jisoo", tenantId: DEFAULT_TENANT_ID, name: "パク ジス 様", phone: "+1 202-555-0126", lineId: "park_sharehouse", email: "qa-fixture-32@example.test", budgetMin: 85000, budgetMax: 120000, budgetType: "monthly_payment", preferredArea: "池袋 / 高田馬場", firstChoiceArea: "池袋", secondChoiceArea: "高田馬場", purpose: "self_use", loanPreApprovalStatus: "not_applied", desiredMoveInPeriod: "2026年7月中", stage: "quoted", temperature: "medium", brokerageContractType: "none", personalInfoConsentAt: dateAgo(1), amlCheckStatus: "not_required", nextFollowUpAt: dateFromNow(0, 3), lastContactedAt: dateAgo(0, 2), notes: profile("individual", "租客/入居者", "建档中", "在留カード画像の再提出待ち。"), ownerUserId: "user_demo", createdAt: dateAgo(3), updatedAt: dateAgo(0, 2) },
+    { id: "client_nakamura_family", tenantId: DEFAULT_TENANT_ID, name: "中村 直人 様", phone: "+1 202-555-0127", lineId: "nakamura_family", email: "qa-fixture-33@example.test", budgetMin: 260000, budgetMax: 340000, budgetType: "monthly_payment", preferredArea: "世田谷区 / 目黒区", firstChoiceArea: "世田谷区", secondChoiceArea: "目黒区", purpose: "self_use", loanPreApprovalStatus: "not_applied", desiredMoveInPeriod: "2026年8月上旬", stage: "negotiating", temperature: "high", brokerageContractType: "none", personalInfoConsentAt: dateAgo(4), amlCheckStatus: "not_required", nextFollowUpAt: dateFromNow(1, 2), lastContactedAt: dateAgo(0, 10), notes: profile("individual", "租客/入居者", "正式", "世田谷ガーデンテラス申込。家族3名。"), ownerUserId: "user_demo", createdAt: dateAgo(7), updatedAt: dateAgo(0, 10) },
+    { id: "client_huang_investor", tenantId: DEFAULT_TENANT_ID, name: "黄 文博 様", phone: "+1 202-555-0128", lineId: "huang_invest", email: "qa-fixture-34@example.test", budgetMin: 120000000, budgetMax: 170000000, budgetType: "total_price", preferredArea: "広尾 / 恵比寿", firstChoiceArea: "広尾", secondChoiceArea: "恵比寿", purpose: "investment", loanPreApprovalStatus: "approved", desiredMoveInPeriod: "2026年Q3", stage: "viewing", temperature: "high", brokerageContractType: "general", brokerageContractSignedAt: dateAgo(9), brokerageContractExpiresAt: dateFromNow(81), personalInfoConsentAt: dateAgo(9), amlCheckStatus: "verified", nextFollowUpAt: dateFromNow(2), lastContactedAt: dateAgo(1, 5), notes: profile("individual", "投資家", "正式", "広尾レジデンスを高額賃貸用に検討。"), ownerUserId: "user_demo", createdAt: dateAgo(10), updatedAt: dateAgo(1, 5) },
   ] satisfies Client[];
 
   const demoQuotations = [
@@ -2010,16 +2019,16 @@ function ensureRichDemoData() {
     demoQuote({ id: "quote_matsushita_roppongi", clientId: "client_matsushita", propertyId: "prop_roppongi_hills_west", quoteTitle: "松下様 六本木ヒルズウェスト 高層階案", listingPrice: 188000000, brokerageFee: 5800000, taxFee: 1980000, managementFee: 62000, repairFee: 24000, otherFee: 980000, downPayment: 48000000, interestRate: 1.58, loanYears: 30, summaryText: "富裕層向け。資金証明確認後に再提示。", status: "sent", createdAt: dateAgo(7), updatedAt: dateAgo(2) }),
   ];
 
-  const caseMinato = caseData({ "property.name": "港区グランドタワー", "property.roomNumber": "802", "applicant.name": "ガルシア マリア", "applicant.furigana": "ガルシア マリア", "applicant.birthDate": "1994年9月12日", "applicant.phone": "080-4433-9088", "applicant.currentAddress": "東京都港区芝浦3-8-10", "applicant.employerName": "Global Design株式会社", "applicant.annualIncome": "520" });
-  const caseKachidoki = caseData({ "property.name": "勝どきリバーサイド", "property.roomNumber": "1503", "property.postalCode": "1040054", "property.address": "東京都中央区勝どき4-8-2", "lease.rent": "198000", "lease.commonFee": "18000", "lease.monthlyRentTotal": "216000", "applicant.name": "永田 沙織", "applicant.furigana": "ナガタ サオリ", "applicant.phone": "090-3344-6789", "applicant.employerName": "新宿医療法人", "applicant.annualIncome": "430" });
-  const caseShinjuku = caseData({ "property.name": "新宿御苑前オフィス", "property.roomNumber": "5F", "property.postalCode": "1600022", "property.address": "東京都新宿区新宿1-7-10", "property.usage": "事務所", "lease.rent": "390000", "lease.commonFee": "45000", "lease.monthlyRentTotal": "435000", "applicant.name": "Lu Trading合同会社", "applicant.furigana": "ルートレーディング", "applicant.phone": "03-6888-7711", "applicant.employerName": "Lu Trading合同会社", "applicant.annualIncome": "1200" });
-  const caseYokohama = caseData({ "property.name": "横浜みなとみらいレジデンス", "property.roomNumber": "1102", "property.postalCode": "2200012", "property.address": "神奈川県横浜市西区みなとみらい4-6-2", "applicant.name": "ユン ソジュン", "applicant.furigana": "ユン ソジュン", "applicant.phone": "080-9292-6140", "applicant.currentAddress": "東京都新宿区西新宿2-3-1", "applicant.employerName": "K-Bridge株式会社", "applicant.annualIncome": "780" });
-  const caseAsakusa = caseData({ "property.name": "浅草スカイコート", "property.furigana": "アサクサスカイコート", "property.roomNumber": "1201", "property.postalCode": "1110032", "property.address": "東京都台東区浅草2-18-9", "property.usage": "住居", "lease.moveInDate": "2026年7月25日", "lease.rent": "168000", "lease.commonFee": "12000", "lease.monthlyRentTotal": "180000", "lease.deposit": "168000", "lease.keyMoney": "168000", "applicant.name": "森 梨奈", "applicant.furigana": "モリ リナ", "applicant.birthDate": "1997年3月18日", "applicant.phone": "090-4412-8830", "applicant.currentAddress": "", "applicant.residenceYears": "", "applicant.employerName": "上野デンタルクリニック", "applicant.employerPhone": "", "applicant.annualIncome": "410", "emergencyContact.name": "伊藤 修", "emergencyContact.relationship": "叔父", "emergencyContact.phone": "080-5400-7712", "emergencyContact.address": "", "guarantor.name": "", "guarantor.relationship": "", "guarantor.phone": "" });
-  const caseOrion = caseData({ "property.name": "梅田センタービル", "property.furigana": "ウメダセンタービル", "property.roomNumber": "8F", "property.postalCode": "5300001", "property.address": "大阪府大阪市北区梅田1-11-4", "property.usage": "事務所", "lease.moveInDate": "2026年8月1日", "lease.rent": "480000", "lease.commonFee": "52000", "lease.monthlyRentTotal": "532000", "lease.deposit": "2880000", "lease.keyMoney": "480000", "applicant.name": "オリオン商事株式会社", "applicant.furigana": "オリオンショウジ", "applicant.phone": "06-6123-4400", "applicant.currentAddress": "大阪府大阪市中央区本町2-8-1", "applicant.employerName": "オリオン商事株式会社", "applicant.annualIncome": "3600", "emergencyContact.name": "", "emergencyContact.phone": "", "management.companyName": "梅田センター管理株式会社", "management.phone": "06-6000-1000" });
-  const caseSetagaya = caseData({ "property.name": "世田谷ガーデンテラス", "property.furigana": "セタガヤガーデンテラス", "property.roomNumber": "302", "property.postalCode": "1580097", "property.address": "東京都世田谷区用賀3-12-5", "property.usage": "住居", "lease.moveInDate": "2026年8月5日", "lease.rent": "298000", "lease.commonFee": "22000", "lease.monthlyRentTotal": "320000", "lease.deposit": "596000", "lease.keyMoney": "298000", "applicant.name": "中村 直人", "applicant.furigana": "ナカムラ ナオト", "applicant.birthDate": "1988年11月2日", "applicant.phone": "090-8033-1010", "applicant.currentAddress": "東京都目黒区碑文谷4-2-8", "applicant.employerName": "青山プロダクト株式会社", "applicant.employerPhone": "03-5400-7100", "applicant.annualIncome": "880", "emergencyContact.name": "中村 恵", "emergencyContact.relationship": "妻", "emergencyContact.phone": "080-9012-3311", "management.companyName": "さくら管理株式会社", "management.phone": "03-6670-2300" });
-  const casePark = caseData({ "property.name": "池袋シェアハウス", "property.furigana": "イケブクロシェアハウス", "property.roomNumber": "205", "property.postalCode": "1710014", "property.address": "東京都豊島区池袋3-24-6", "property.usage": "住居", "lease.moveInDate": "2026年7月18日", "lease.rent": "88000", "lease.commonFee": "12000", "lease.monthlyRentTotal": "100000", "lease.deposit": "0", "lease.keyMoney": "88000", "applicant.name": "パク ジス", "applicant.furigana": "パク ジス", "applicant.birthDate": "2001年2月6日", "applicant.phone": "080-1900-5531", "applicant.currentAddress": "東京都新宿区高田馬場1-20-2", "applicant.residenceCardExpiry": "", "applicant.employerName": "", "applicant.employerPhone": "", "applicant.annualIncome": "", "emergencyContact.name": "キム ミナ", "emergencyContact.relationship": "友人", "emergencyContact.phone": "" });
-  const caseHiroo = caseData({ "property.name": "広尾レジデンス", "property.furigana": "ヒロオレジデンス", "property.roomNumber": "602", "property.postalCode": "1500012", "property.address": "東京都渋谷区広尾5-9-12", "property.usage": "住居", "lease.moveInDate": "2026年8月15日", "lease.rent": "420000", "lease.commonFee": "30000", "lease.monthlyRentTotal": "450000", "lease.deposit": "840000", "lease.keyMoney": "420000", "applicant.name": "黄 文博", "applicant.furigana": "コウ ブンハク", "applicant.birthDate": "1985年6月30日", "applicant.phone": "080-8876-2401", "applicant.currentAddress": "東京都港区南麻布4-10-5", "applicant.employerName": "Huang Capital Pte. Ltd.", "applicant.employerPhone": "03-5500-9012", "applicant.annualIncome": "2200", "emergencyContact.name": "黄 麗", "emergencyContact.relationship": "配偶者", "emergencyContact.phone": "080-7710-1144" });
-  const caseKawasaki = caseData({ "property.name": "川崎スタジオレジデンス", "property.furigana": "カワサキスタジオレジデンス", "property.roomNumber": "706", "property.postalCode": "2120014", "property.address": "神奈川県川崎市幸区大宮町14-5", "property.usage": "住居", "lease.moveInDate": "", "lease.rent": "112000", "lease.commonFee": "9000", "lease.monthlyRentTotal": "121000", "lease.deposit": "112000", "lease.keyMoney": "0", "applicant.name": "佐々木 悠斗", "applicant.furigana": "ササキ ユウト", "applicant.birthDate": "1999年10月8日", "applicant.phone": "090-7001-6600", "applicant.currentAddress": "神奈川県横浜市鶴見区豊岡町12-3", "applicant.employerName": "川崎物流サービス株式会社", "applicant.employerAddress": "", "applicant.employerPhone": "044-900-2211", "applicant.annualIncome": "360", "emergencyContact.name": "佐々木 智子", "emergencyContact.relationship": "母", "emergencyContact.phone": "090-3000-8811" });
+  const caseMinato = caseData({ "property.name": "港区グランドタワー", "property.roomNumber": "802", "applicant.name": "ガルシア マリア", "applicant.furigana": "ガルシア マリア", "applicant.birthDate": "1994年9月12日", "applicant.phone": "+1 202-555-0114", "applicant.currentAddress": "東京都港区芝浦3-8-10", "applicant.employerName": "Global Design株式会社", "applicant.annualIncome": "520" });
+  const caseKachidoki = caseData({ "property.name": "勝どきリバーサイド", "property.roomNumber": "1503", "property.postalCode": "1040054", "property.address": "東京都中央区勝どき4-8-2", "lease.rent": "198000", "lease.commonFee": "18000", "lease.monthlyRentTotal": "216000", "applicant.name": "永田 沙織", "applicant.furigana": "ナガタ サオリ", "applicant.phone": "+1 202-555-0119", "applicant.employerName": "新宿医療法人", "applicant.annualIncome": "430" });
+  const caseShinjuku = caseData({ "property.name": "新宿御苑前オフィス", "property.roomNumber": "5F", "property.postalCode": "1600022", "property.address": "東京都新宿区新宿1-7-10", "property.usage": "事務所", "lease.rent": "390000", "lease.commonFee": "45000", "lease.monthlyRentTotal": "435000", "applicant.name": "Lu Trading合同会社", "applicant.furigana": "ルートレーディング", "applicant.phone": "+1 202-555-0120", "applicant.employerName": "Lu Trading合同会社", "applicant.annualIncome": "1200" });
+  const caseYokohama = caseData({ "property.name": "横浜みなとみらいレジデンス", "property.roomNumber": "1102", "property.postalCode": "2200012", "property.address": "神奈川県横浜市西区みなとみらい4-6-2", "applicant.name": "ユン ソジュン", "applicant.furigana": "ユン ソジュン", "applicant.phone": "+1 202-555-0118", "applicant.currentAddress": "東京都新宿区西新宿2-3-1", "applicant.employerName": "K-Bridge株式会社", "applicant.annualIncome": "780" });
+  const caseAsakusa = caseData({ "property.name": "浅草スカイコート", "property.furigana": "アサクサスカイコート", "property.roomNumber": "1201", "property.postalCode": "1110032", "property.address": "東京都台東区浅草2-18-9", "property.usage": "住居", "lease.moveInDate": "2026年7月25日", "lease.rent": "168000", "lease.commonFee": "12000", "lease.monthlyRentTotal": "180000", "lease.deposit": "168000", "lease.keyMoney": "168000", "applicant.name": "森 梨奈", "applicant.furigana": "モリ リナ", "applicant.birthDate": "1997年3月18日", "applicant.phone": "+1 202-555-0121", "applicant.currentAddress": "", "applicant.residenceYears": "", "applicant.employerName": "上野デンタルクリニック", "applicant.employerPhone": "", "applicant.annualIncome": "410", "emergencyContact.name": "伊藤 修", "emergencyContact.relationship": "叔父", "emergencyContact.phone": "+1 202-555-0122", "emergencyContact.address": "", "guarantor.name": "", "guarantor.relationship": "", "guarantor.phone": "" });
+  const caseOrion = caseData({ "property.name": "梅田センタービル", "property.furigana": "ウメダセンタービル", "property.roomNumber": "8F", "property.postalCode": "5300001", "property.address": "大阪府大阪市北区梅田1-11-4", "property.usage": "事務所", "lease.moveInDate": "2026年8月1日", "lease.rent": "480000", "lease.commonFee": "52000", "lease.monthlyRentTotal": "532000", "lease.deposit": "2880000", "lease.keyMoney": "480000", "applicant.name": "オリオン商事株式会社", "applicant.furigana": "オリオンショウジ", "applicant.phone": "+1 202-555-0123", "applicant.currentAddress": "大阪府大阪市中央区本町2-8-1", "applicant.employerName": "オリオン商事株式会社", "applicant.annualIncome": "3600", "emergencyContact.name": "", "emergencyContact.phone": "", "management.companyName": "梅田センター管理株式会社", "management.phone": "+1 202-555-0129" });
+  const caseSetagaya = caseData({ "property.name": "世田谷ガーデンテラス", "property.furigana": "セタガヤガーデンテラス", "property.roomNumber": "302", "property.postalCode": "1580097", "property.address": "東京都世田谷区用賀3-12-5", "property.usage": "住居", "lease.moveInDate": "2026年8月5日", "lease.rent": "298000", "lease.commonFee": "22000", "lease.monthlyRentTotal": "320000", "lease.deposit": "596000", "lease.keyMoney": "298000", "applicant.name": "中村 直人", "applicant.furigana": "ナカムラ ナオト", "applicant.birthDate": "1988年11月2日", "applicant.phone": "+1 202-555-0127", "applicant.currentAddress": "東京都目黒区碑文谷4-2-8", "applicant.employerName": "青山プロダクト株式会社", "applicant.employerPhone": "+1 202-555-0130", "applicant.annualIncome": "880", "emergencyContact.name": "中村 恵", "emergencyContact.relationship": "妻", "emergencyContact.phone": "+1 202-555-0131", "management.companyName": "さくら管理株式会社", "management.phone": "+1 202-555-0125" });
+  const casePark = caseData({ "property.name": "池袋シェアハウス", "property.furigana": "イケブクロシェアハウス", "property.roomNumber": "205", "property.postalCode": "1710014", "property.address": "東京都豊島区池袋3-24-6", "property.usage": "住居", "lease.moveInDate": "2026年7月18日", "lease.rent": "88000", "lease.commonFee": "12000", "lease.monthlyRentTotal": "100000", "lease.deposit": "0", "lease.keyMoney": "88000", "applicant.name": "パク ジス", "applicant.furigana": "パク ジス", "applicant.birthDate": "2001年2月6日", "applicant.phone": "+1 202-555-0126", "applicant.currentAddress": "東京都新宿区高田馬場1-20-2", "applicant.residenceCardExpiry": "", "applicant.employerName": "", "applicant.employerPhone": "", "applicant.annualIncome": "", "emergencyContact.name": "キム ミナ", "emergencyContact.relationship": "友人", "emergencyContact.phone": "" });
+  const caseHiroo = caseData({ "property.name": "広尾レジデンス", "property.furigana": "ヒロオレジデンス", "property.roomNumber": "602", "property.postalCode": "1500012", "property.address": "東京都渋谷区広尾5-9-12", "property.usage": "住居", "lease.moveInDate": "2026年8月15日", "lease.rent": "420000", "lease.commonFee": "30000", "lease.monthlyRentTotal": "450000", "lease.deposit": "840000", "lease.keyMoney": "420000", "applicant.name": "黄 文博", "applicant.furigana": "コウ ブンハク", "applicant.birthDate": "1985年6月30日", "applicant.phone": "+1 202-555-0128", "applicant.currentAddress": "東京都港区南麻布4-10-5", "applicant.employerName": "Huang Capital Pte. Ltd.", "applicant.employerPhone": "+1 202-555-0132", "applicant.annualIncome": "2200", "emergencyContact.name": "黄 麗", "emergencyContact.relationship": "配偶者", "emergencyContact.phone": "+1 202-555-0133" });
+  const caseKawasaki = caseData({ "property.name": "川崎スタジオレジデンス", "property.furigana": "カワサキスタジオレジデンス", "property.roomNumber": "706", "property.postalCode": "2120014", "property.address": "神奈川県川崎市幸区大宮町14-5", "property.usage": "住居", "lease.moveInDate": "", "lease.rent": "112000", "lease.commonFee": "9000", "lease.monthlyRentTotal": "121000", "lease.deposit": "112000", "lease.keyMoney": "0", "applicant.name": "佐々木 悠斗", "applicant.furigana": "ササキ ユウト", "applicant.birthDate": "1999年10月8日", "applicant.phone": "+1 202-555-0134", "applicant.currentAddress": "神奈川県横浜市鶴見区豊岡町12-3", "applicant.employerName": "川崎物流サービス株式会社", "applicant.employerAddress": "", "applicant.employerPhone": "+1 202-555-0135", "applicant.annualIncome": "360", "emergencyContact.name": "佐々木 智子", "emergencyContact.relationship": "母", "emergencyContact.phone": "+1 202-555-0136" });
 
   const demoExtractionField = (
     fieldKey: string,
@@ -2064,7 +2073,7 @@ function ensureRichDemoData() {
         demoExtractionField("applicant.currentAddress", "現住所", "東京都新宿区高田馬場1-20-2", 0.82, "front:address"),
         demoExtractionField("applicant.residenceCardNumber", "在留カード番号", "AB12345678CD", 0.74, "front:card_number"),
         demoExtractionField("applicant.residenceCardExpiry", "在留カード有効期限", "2026年7月31日", 0.54, "front:expiry"),
-        demoExtractionField("applicant.phone", "電話番号", "080-1900-5531", 0.88, "application:phone"),
+        demoExtractionField("applicant.phone", "電話番号", "+1 202-555-0126", 0.88, "application:phone"),
         demoExtractionField("applicant.employerName", "勤務先名", "", 0.12, "application:employer_name"),
         demoExtractionField("applicant.employerPhone", "勤務先電話", "", 0.1, "application:employer_phone"),
         demoExtractionField("emergencyContact.name", "緊急連絡先氏名", "キム ミナ", 0.79, "application:emergency_name"),
@@ -2176,10 +2185,10 @@ function ensureRichDemoData() {
   ] satisfies Attachment[];
 
   const demoOutputs = [
-    { id: "out_demo_kachidoki_nihon_pdf", tenantId: DEFAULT_TENANT_ID, actorId: "user_demo", userId: "user_demo", outputType: "guarantee_application", outputFormat: "pdf", language: "ja", title: "日本セーフティー申込書 - 勝どきリバーサイド 1503", documentNumber: "GUA-20260622-001", propertyId: "prop_kachidoki_rent", partyId: "client_nagata_rent", caseId: "case_demo_kachidoki_rent", templateId: "nihon_safety_individual_v1", draftValueSnapshot: draftAllValues, generatedAt: dateAgo(0, 4) },
-    { id: "out_demo_shinjuku_insure_pdf", tenantId: DEFAULT_TENANT_ID, actorId: "user_demo", userId: "user_demo", outputType: "guarantee_application", outputFormat: "pdf", language: "ja", title: "インシュア申込書 - 新宿御苑前オフィス", documentNumber: "GUA-20260621-004", propertyId: "prop_shinjuku_office", partyId: "client_lu_corporate", caseId: "case_demo_shinjuku_office", templateId: "insure_individual_v1", draftValueSnapshot: draftAllValues, generatedAt: dateAgo(1) },
-    { id: "out_demo_setagaya_friends_pdf", tenantId: DEFAULT_TENANT_ID, actorId: "user_demo", userId: "user_demo", outputType: "guarantee_application", outputFormat: "pdf", language: "ja", title: "フレンズ保証申込書 - 世田谷ガーデンテラス 302", documentNumber: "GUA-20260701-002", propertyId: "prop_setagaya_garden", partyId: "client_nakamura_family", caseId: "case_demo_setagaya_family", templateId: "friends_guarantee_individual_v1", draftValueSnapshot: draftAllValues, generatedAt: dateAgo(0, 8) },
-    { id: "out_demo_hiroo_nihon_pdf", tenantId: DEFAULT_TENANT_ID, actorId: "user_demo", userId: "user_demo", outputType: "guarantee_application", outputFormat: "pdf", language: "ja", title: "日本セーフティー申込書 - 広尾レジデンス 602", documentNumber: "GUA-20260701-003", propertyId: "prop_hiroo_residence", partyId: "client_huang_investor", caseId: "case_demo_hiroo_huang_rent", templateId: "nihon_safety_individual_v1", draftValueSnapshot: draftAllValues, generatedAt: dateAgo(1) },
+    { id: "out_demo_kachidoki_nihon_pdf", tenantId: DEFAULT_TENANT_ID, actorId: "user_demo", userId: "user_demo", outputType: "guarantee_application", outputFormat: "pdf", language: "ja", title: "日本セーフティー申込書 - 勝どきリバーサイド 1503", documentNumber: "GUA-+1 202-555-0137", propertyId: "prop_kachidoki_rent", partyId: "client_nagata_rent", caseId: "case_demo_kachidoki_rent", templateId: "nihon_safety_individual_v1", draftValueSnapshot: draftAllValues, generatedAt: dateAgo(0, 4) },
+    { id: "out_demo_shinjuku_insure_pdf", tenantId: DEFAULT_TENANT_ID, actorId: "user_demo", userId: "user_demo", outputType: "guarantee_application", outputFormat: "pdf", language: "ja", title: "インシュア申込書 - 新宿御苑前オフィス", documentNumber: "GUA-+1 202-555-0138", propertyId: "prop_shinjuku_office", partyId: "client_lu_corporate", caseId: "case_demo_shinjuku_office", templateId: "insure_individual_v1", draftValueSnapshot: draftAllValues, generatedAt: dateAgo(1) },
+    { id: "out_demo_setagaya_friends_pdf", tenantId: DEFAULT_TENANT_ID, actorId: "user_demo", userId: "user_demo", outputType: "guarantee_application", outputFormat: "pdf", language: "ja", title: "フレンズ保証申込書 - 世田谷ガーデンテラス 302", documentNumber: "GUA-+1 202-555-0139", propertyId: "prop_setagaya_garden", partyId: "client_nakamura_family", caseId: "case_demo_setagaya_family", templateId: "friends_guarantee_individual_v1", draftValueSnapshot: draftAllValues, generatedAt: dateAgo(0, 8) },
+    { id: "out_demo_hiroo_nihon_pdf", tenantId: DEFAULT_TENANT_ID, actorId: "user_demo", userId: "user_demo", outputType: "guarantee_application", outputFormat: "pdf", language: "ja", title: "日本セーフティー申込書 - 広尾レジデンス 602", documentNumber: "GUA-+1 202-555-0140", propertyId: "prop_hiroo_residence", partyId: "client_huang_investor", caseId: "case_demo_hiroo_huang_rent", templateId: "nihon_safety_individual_v1", draftValueSnapshot: draftAllValues, generatedAt: dateAgo(1) },
   ] satisfies GeneratedOutput[];
 
   const demoAuditLogs = [
@@ -2975,6 +2984,7 @@ export async function updateTenantMemberInvitation(input: {
   if (!user) return null;
   membership.invitationProvider = input.invitationProvider;
   membership.invitationStatus = input.invitationStatus;
+  membership.invitationDeliveryState = deliveryStateAfterFinalization(input);
   membership.providerInvitationId = input.providerInvitationId;
   membership.invitationUrl = input.invitationUrl;
   membership.invitationError = input.invitationError;
@@ -2996,7 +3006,7 @@ export async function updateTenantMemberInvitation(input: {
       action: auditAction,
       targetType: "member",
       targetId: membership.id,
-      message: auditAction === "member_invitation_sent" ? "成员邀请已发送。" : "成员邀请发送失败。",
+      message: auditAction === "member_invitation_sent" ? "Clerk 已受理邀请创建请求；收件箱到达未确认。" : "成员邀请发送失败。",
       context: {
         membershipId: membership.id,
         provider: input.invitationProvider,
@@ -3036,6 +3046,31 @@ export async function refreshTenantMemberInvitation(input: {
   const user = membership ? nextDb.users.find((item) => item.id === membership.userId) : undefined;
   if (!tenant || !membership || membership.status !== "invited" || !user) return null;
   assertTenantInvitationActorAuthorized(nextDb, scopeTenantId, input.invitedByUserId);
+  const currentDeliveryState = normalizeInvitationDeliveryState(membership.invitationDeliveryState, membership);
+  const memberContext = (): TenantInvitationDeliveryContext => {
+    const member: TenantMemberListItem = {
+      ...membership,
+      invitationDeliveryState: currentDeliveryState,
+      invitationStatus: deriveMembershipInvitationStatus(membership, new Date()),
+      tenantName: tenant.name,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        externalAuthSubject: user.externalAuthSubject,
+        createdAt: user.createdAt,
+      },
+    };
+    return {
+      ...member,
+      tenant: { ...tenant },
+      member,
+      invitationDeliveryBlocked: currentDeliveryState === "sending" || currentDeliveryState === "unknown"
+        ? currentDeliveryState
+        : undefined,
+    };
+  };
+  if (currentDeliveryState === "sending" || currentDeliveryState === "unknown") return memberContext();
   const nowDate = new Date();
   const nextInvitationExpiresAt = new Date(nowDate.getTime() + 7 * 24 * 60 * 60 * 1000);
   const currentlyOccupiesSeat = membershipOccupiesSeat(membership, nowDate);
@@ -3045,6 +3080,7 @@ export async function refreshTenantMemberInvitation(input: {
     if (usedSeatCount >= tenant.purchasedSeatCount) throw new Error("purchased seat count exceeded");
   }
   membership.invitationStatus = "pending";
+  membership.invitationDeliveryState = "sending";
   membership.invitedEmail = user.email.trim().toLowerCase();
   membership.invitationToken = randomUUID();
   membership.invitationExpiresAt = nextInvitationExpiresAt;
@@ -3141,6 +3177,7 @@ export async function inviteTenantMember(input: {
     existing.invitedByUserId = actorUserId;
     existing.invitationProvider = "none";
     existing.invitationStatus = "pending";
+    existing.invitationDeliveryState = "ready";
     existing.invitationToken = randomUUID();
     existing.invitationExpiresAt = new Date(nowDate.getTime() + 7 * 24 * 60 * 60 * 1000);
     existing.invitationAcceptedAt = undefined;
@@ -3156,6 +3193,7 @@ export async function inviteTenantMember(input: {
       status: "invited",
       invitationProvider: "none",
       invitationStatus: "pending",
+      invitationDeliveryState: "ready",
       invitedEmail: email,
       invitedByUserId: actorUserId,
       invitationToken: randomUUID(),
