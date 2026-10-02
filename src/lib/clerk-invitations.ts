@@ -25,16 +25,19 @@ export type ClerkInvitationFailure = {
 };
 
 /**
- * A 4xx Clerk response is an explicit provider rejection. A network failure,
- * SDK failure, or 5xx response cannot prove that Clerk did not create the
- * invitation before the response was lost, so it must remain uncertain.
+ * The invitation endpoint is a POST. Clerk's SDK exposes the HTTP status and
+ * error codes, but neither the SDK nor the endpoint contract proves that an
+ * API response with an error status did not reach the create side effect.
+ * This is especially important for timeout/rate-limit responses, so every
+ * Clerk API response remains outcome-unknown until a persisted provider
+ * result or an explicit manual recovery is recorded.
  */
 export function classifyClerkInvitationError(error: unknown): ClerkInvitationFailure {
   if (isClerkAPIResponseError(error)) {
     const status = Number.isInteger(error.status) ? error.status : 0;
     const codes = error.errors.map(({ code }) => code).filter(Boolean).slice(0, 3).join(",");
     return {
-      uncertain: status < 400 || status >= 500,
+      uncertain: true,
       reason: `clerk_invitation_api_${status || "error"}${codes ? `:${codes}` : ""}`,
     };
   }

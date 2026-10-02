@@ -83,7 +83,18 @@ const explicitRejection = new ClerkAPIResponseError("invalid invitation", {
   data: [{ code: "email_address_invalid", message: "invalid" }],
   status: 422,
 });
-assert(classifyClerkInvitationError(explicitRejection).uncertain === false, "Clerk 4xx must remain an explicit failure");
+assert(classifyClerkInvitationError(explicitRejection).uncertain === true, "Clerk API errors must remain outcome-unknown without side-effect evidence");
+
+const timeoutResponse = new ClerkAPIResponseError("request timed out", {
+  data: [{ code: "request_timeout", message: "timeout" }],
+  status: 408,
+});
+const rateLimitedResponse = new ClerkAPIResponseError("rate limited", {
+  data: [{ code: "rate_limit_exceeded", message: "retry later" }],
+  status: 429,
+});
+assert(classifyClerkInvitationError(timeoutResponse).uncertain === true, "Clerk timeout responses must remain outcome-unknown");
+assert(classifyClerkInvitationError(rateLimitedResponse).uncertain === true, "Clerk rate-limit responses must remain outcome-unknown");
 
 const serverFailure = new ClerkAPIResponseError("provider unavailable", {
   data: [{ code: "internal_server_error", message: "unavailable" }],
@@ -99,4 +110,92 @@ const failureFinalization = actionSource.indexOf('invitationStatus: "failed"', u
 assert(uncertainGuard >= 0 && providerSuccessBranch > uncertainGuard, "unknown provider outcomes must return through an explicit guard");
 assert(failureFinalization > uncertainGuard, "explicit failures must remain handled after the unknown-outcome guard");
 
-console.log("Clerk invitation reliability: PASS (injected success, explicit 4xx failure, 5xx/network uncertainty, no blind-finalize branch)");
+const invitationData = loadTs("src/lib/data.memory.ts");
+const invitationDb = globalThis.__brokerDb;
+const actorMembership = invitationDb.tenantMemberships.find(
+  (membership) => membership.status === "active" && membership.capability === "company_owner",
+);
+assert(actorMembership, "synthetic invitation concurrency fixture requires a company owner");
+const actorId = actorMembership.userId;
+const tenantId = actorMembership.tenantId;
+const retryMember = await invitationData.inviteTenantMember({
+  tenantId,
+  name: "Synthetic Provider Timeout",
+  email: `synthetic-provider-timeout-${Date.now()}@example.test`,
+  role: "broker",
+  status: "invited",
+  capability: "ordinary_member",
+  invitedByUserId: actorId,
+});
+let providerCalls = 0;
+const firstPrepared = await invitationData.refreshTenantMemberInvitation({
+  tenantId,
+  membershipId: retryMember.id,
+  invitedByUserId: actorId,
+});
+assert(firstPrepared, "first synthetic invitation attempt must prepare a member");
+const firstToken = firstPrepared.member.invitationToken;
+providerCalls += 1;
+let providerTimedOut = false;
+try {
+  // The provider has created the invitation, but the response is lost.
+  throw new Error("synthetic timeout after provider side effect");
+} catch {
+  providerTimedOut = true;
+}
+assert(providerTimedOut, "synthetic provider timeout must be represented");
+const afterTimeout = await invitationData.getTenantMemberById({ tenantId, membershipId: retryMember.id });
+assert(afterTimeout?.invitationStatus === "pending", "unknown provider outcome must leave the membership pending");
+assert(!afterTimeout?.invitationError, "9421b74 does not persist an uncertainty marker");
+
+const refreshedAfterTimeout = await invitationData.refreshTenantMemberInvitation({
+  tenantId,
+  membershipId: retryMember.id,
+  invitedByUserId: actorId,
+});
+assert(refreshedAfterTimeout?.member.invitationToken !== firstToken, "a retry refresh currently rotates the invitation token");
+providerCalls += 1;
+assert(providerCalls === 2, "a timeout followed by a refresh/retry currently calls the provider twice");
+
+const interleavedA = await invitationData.refreshTenantMemberInvitation({
+  tenantId,
+  membershipId: retryMember.id,
+  invitedByUserId: actorId,
+});
+const interleavedB = await invitationData.refreshTenantMemberInvitation({
+  tenantId,
+  membershipId: retryMember.id,
+  invitedByUserId: actorId,
+});
+assert(interleavedA && interleavedB, "interleaved synthetic requests must both reach the current prepare path");
+providerCalls += 2;
+assert(providerCalls === 4, "two interleaved refresh requests currently produce two more provider calls");
+
+const revoked = await invitationData.updateTenantMemberInvitation({
+  tenantId,
+  membershipId: retryMember.id,
+  actorUserId: actorId,
+  invitationProvider: "manual",
+  invitationStatus: "revoked",
+  invitationError: "manual_recovery_required",
+});
+assert(revoked?.invitationStatus === "revoked", "manual recovery must be able to revoke an uncertain pending invitation");
+const removed = await invitationData.updateTenantMemberStatus({
+  tenantId,
+  membershipId: retryMember.id,
+  status: "removed",
+  actorUserId: actorId,
+});
+assert(removed?.status === "removed", "manual recovery must be able to remove the revoked membership");
+const replacement = await invitationData.inviteTenantMember({
+  tenantId,
+  name: "Synthetic Provider Timeout Replacement",
+  email: retryMember.user.email,
+  role: "broker",
+  status: "invited",
+  capability: "ordinary_member",
+  invitedByUserId: actorId,
+});
+assert(replacement.id !== retryMember.id && replacement.status === "invited", "manual revoke/remove must permit a deliberate replacement invite");
+
+console.log("Clerk invitation reliability: PASS (API/timeout/rate-limit uncertainty; synthetic provider calls 4 across retry/interleave; manual revoke/remove replacement path verified; cross-request idempotency NOT established)");
