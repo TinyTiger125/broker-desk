@@ -186,6 +186,7 @@ import { queueIdentityImportSources } from "@/lib/identity-import-queue";
 import { classifyClerkInvitationError, createClerkInvitationForTenantMember } from "@/lib/clerk-invitations";
 import { makeInvitationDeliveryUnknownError } from "@/lib/invitation-delivery-state";
 import { inviteSupabaseUserByEmail } from "@/lib/supabase/admin";
+import { classifySupabaseInvitationError } from "@/lib/supabase-invitations";
 import { assertCaseSourcesReadable } from "@/lib/w93-access";
 import { getVerifiedAuthIdentity } from "@/lib/auth-provider";
 import { isClerkAuthEnabled, isSupabaseAuthEnabled } from "@/lib/auth-mode";
@@ -2769,7 +2770,7 @@ async function sendTenantMemberInvitation(input: {
     }
   } catch (error) {
     const failure = supabaseAuthEnabled
-      ? { uncertain: false, reason: error instanceof Error ? error.message : String(error) }
+      ? classifySupabaseInvitationError(error)
       : classifyClerkInvitationError(error);
     providerOutcomeUncertain = failure.uncertain;
     result = { ok: false, skipped: false, reason: failure.reason };

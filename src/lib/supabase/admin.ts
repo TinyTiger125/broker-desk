@@ -2,6 +2,15 @@ import "server-only";
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
+export type SupabaseInvitationCreate = (
+  email: string,
+  options?: { redirectTo?: string },
+) => ReturnType<SupabaseClient["auth"]["admin"]["inviteUserByEmail"]>;
+
+export type SupabaseInvitationDependencies = {
+  inviteUserByEmail?: SupabaseInvitationCreate;
+};
+
 let adminClient: SupabaseClient | null = null;
 
 function getSupabaseAdminConfig() {
@@ -22,13 +31,19 @@ export function createSupabaseAdminClient(): SupabaseClient {
   return adminClient;
 }
 
-export async function inviteSupabaseUserByEmail(input: { email: string; redirectTo?: string }) {
+export async function inviteSupabaseUserByEmail(
+  input: { email: string; redirectTo?: string },
+  dependencies: SupabaseInvitationDependencies = {},
+) {
   const email = input.email.trim().toLowerCase();
   if (!email) throw new Error("supabase_invitation_email_required");
-  const { data, error } = await createSupabaseAdminClient().auth.admin.inviteUserByEmail(email, {
+  const inviteUserByEmail = dependencies.inviteUserByEmail
+    ?? ((inviteEmail, options) => createSupabaseAdminClient().auth.admin.inviteUserByEmail(inviteEmail, options));
+  const { data, error } = await inviteUserByEmail(email, {
     redirectTo: input.redirectTo,
   });
-  if (error || !data.user?.id) throw new Error("supabase_invitation_failed");
+  if (error) throw error;
+  if (!data.user?.id) throw new Error("supabase_invitation_missing_user");
   return { providerInvitationId: data.user.id, sentAt: new Date() };
 }
 

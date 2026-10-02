@@ -30,7 +30,10 @@ function loadTs(sourcePath) {
   mod.paths = Module._nodeModulePaths(process.cwd());
   cache.set(sourcePath, mod.exports);
   const originalRequire = mod.require.bind(mod);
-  mod.require = (request) => request.startsWith("@/lib/") ? loadTs(resolveAlias(request)) : originalRequire(request);
+  mod.require = (request) => {
+    if (request === "server-only") return {};
+    return request.startsWith("@/lib/") ? loadTs(resolveAlias(request)) : originalRequire(request);
+  };
   mod._compile(output, sourcePath);
   cache.set(sourcePath, mod.exports);
   return mod.exports;
@@ -48,6 +51,8 @@ const {
   classifyClerkInvitationError,
   createClerkInvitationForTenantMember,
 } = loadTs("src/lib/clerk-invitations.ts");
+const { classifySupabaseInvitationError } = loadTs("src/lib/supabase-invitations.ts");
+const { inviteSupabaseUserByEmail } = loadTs("src/lib/supabase/admin.ts");
 const { makeInvitationDeliveryUnknownError } = loadTs("src/lib/invitation-delivery-state.ts");
 
 const context = {
@@ -109,6 +114,38 @@ const serverFailure = new ClerkAPIResponseError("provider unavailable", {
 });
 assert(classifyClerkInvitationError(serverFailure).uncertain === true, "Clerk 5xx must remain outcome-unknown");
 assert(classifyClerkInvitationError(new Error("fetch failed")).uncertain === true, "network failure must remain outcome-unknown");
+
+const supabaseParamsSeen = [];
+const supabaseSuccess = await inviteSupabaseUserByEmail({
+  email: "Supabase.Invite@Example.TEST",
+  redirectTo: "https://example.test/auth/callback",
+}, {
+  inviteUserByEmail: async (email, options) => {
+    supabaseParamsSeen.push({ email, options });
+    return { data: { user: { id: "supabase_inv_mock" } }, error: null };
+  },
+});
+assert(supabaseSuccess.providerInvitationId === "supabase_inv_mock", "Supabase adapter must return the provider user id");
+assert(
+  supabaseParamsSeen.length === 1
+    && supabaseParamsSeen[0].email === "supabase.invite@example.test"
+    && supabaseParamsSeen[0].options.redirectTo === "https://example.test/auth/callback",
+  "Supabase adapter must normalize email and pass the invite redirect",
+);
+assert(
+  classifySupabaseInvitationError({ status: 422, code: "email_address_invalid" }).uncertain === false,
+  "known Supabase email validation failure must remain safely retryable",
+);
+assert(
+  classifySupabaseInvitationError({ status: 422, code: "unknown_invitation_rejection" }).uncertain === true,
+  "unknown Supabase 4xx codes must remain outcome-unknown",
+);
+assert(
+  classifySupabaseInvitationError({ status: 408, code: "request_timeout" }).uncertain === true
+    && classifySupabaseInvitationError({ status: 429, code: "over_email_send_rate_limit" }).uncertain === true
+    && classifySupabaseInvitationError(new Error("fetch failed")).uncertain === true,
+  "Supabase timeout, rate-limit, and transport failures must remain outcome-unknown",
+);
 
 const actionSource = fs.readFileSync(path.join(root, "src/app/actions.ts"), "utf8");
 const claimMigration = fs.readFileSync(path.join(root, "db/migrations/20261002_001_invitation_delivery_claim.sql"), "utf8");
@@ -264,19 +301,20 @@ const actionSenderOutput = ts.transpileModule(
   { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } },
 ).outputText;
 
-function loadActionSender(createProvider) {
+function loadActionSender(createProvider, options = {}) {
   const senderModule = { exports: {} };
   vm.runInNewContext(actionSenderOutput, {
     module: senderModule,
     exports: senderModule.exports,
     refreshTenantMemberInvitation: invitationData.refreshTenantMemberInvitation,
     updateTenantMemberInvitation: invitationData.updateTenantMemberInvitation,
-    isSupabaseAuthEnabled: () => false,
-    inviteSupabaseUserByEmail: async () => {
-      throw new Error("the Clerk reliability harness must not call Supabase");
-    },
+    isSupabaseAuthEnabled: () => options.supabaseEnabled === true,
+    inviteSupabaseUserByEmail: options.supabaseProvider ?? (async () => {
+      throw new Error("the invitation reliability harness must not call Supabase");
+    }),
     createClerkInvitationForTenantMember: createProvider,
     classifyClerkInvitationError,
+    classifySupabaseInvitationError,
     makeInvitationDeliveryUnknownError,
     console,
     process,
@@ -312,6 +350,30 @@ async function runActionWithProvider(member, providerBehavior) {
     },
   });
   const sender = loadActionSender(actionModuleProvider);
+  const result = await sender({
+    tenantId,
+    membershipId: member.id,
+    actorId,
+    recordSkippedAsFailure: true,
+  });
+  return {
+    result,
+    getProviderCalls: () => providerCalls,
+    sender,
+  };
+}
+
+async function runActionWithSupabaseProvider(member, providerBehavior) {
+  let providerCalls = 0;
+  const sender = loadActionSender(async () => {
+    throw new Error("the Supabase reliability harness must not call Clerk");
+  }, {
+    supabaseEnabled: true,
+    supabaseProvider: async (input) => {
+      providerCalls += 1;
+      return providerBehavior({ input, providerCalls });
+    },
+  });
   const result = await sender({
     tenantId,
     membershipId: member.id,
@@ -400,4 +462,48 @@ assert(actionSuccess.result.sent === true && !actionSuccess.result.uncertain && 
 const actionSuccessState = await invitationData.getTenantMemberById({ tenantId, membershipId: actionSuccessMember.id });
 assert(actionSuccessState?.invitationDeliveryState === "provider_accepted", "normal Action success must persist provider-accepted state");
 
-console.log("Clerk invitation reliability: PASS (safe 4xx retry classification; memory adapter and Action provider call count stay at one after timeout and concurrent retry; known validation failure retries; success persists provider_accepted without claiming inbox delivery; manual local recovery is explicitly remote-agnostic)");
+const actionSupabaseTimeoutMember = await createActionTestMember("Supabase Timeout");
+const actionSupabaseTimeout = await runActionWithSupabaseProvider(actionSupabaseTimeoutMember, async () => {
+  throw { status: 408, code: "request_timeout" };
+});
+assert(
+  actionSupabaseTimeout.result.uncertain && actionSupabaseTimeout.result.deliveryBlocked === "unknown",
+  "Supabase timeout must persist and expose an unknown outcome",
+);
+const actionSupabaseTimeoutRetry = await actionSupabaseTimeout.sender({
+  tenantId,
+  membershipId: actionSupabaseTimeoutMember.id,
+  actorId,
+  recordSkippedAsFailure: true,
+});
+assert(
+  actionSupabaseTimeoutRetry.deliveryBlocked === "unknown" && actionSupabaseTimeout.getProviderCalls() === 1,
+  "Supabase timeout followed by refresh must not invoke the provider twice",
+);
+
+const actionSupabaseValidationMember = await createActionTestMember("Supabase Validation");
+const actionSupabaseValidation = await runActionWithSupabaseProvider(actionSupabaseValidationMember, async ({ providerCalls: calls }) => {
+  if (calls === 1) throw { status: 422, code: "email_address_invalid" };
+  return { providerInvitationId: "supabase_action_validated", sentAt: new Date() };
+});
+assert(
+  !actionSupabaseValidation.result.uncertain && actionSupabaseValidation.result.sent === false,
+  "known Supabase validation failure must be a confirmed failure",
+);
+const actionSupabaseValidationRetry = await actionSupabaseValidation.sender({
+  tenantId,
+  membershipId: actionSupabaseValidationMember.id,
+  actorId,
+  recordSkippedAsFailure: true,
+});
+assert(
+  actionSupabaseValidation.getProviderCalls() === 2 && actionSupabaseValidationRetry.sent === true,
+  "known Supabase validation failure must permit one corrected retry",
+);
+const actionSupabaseValidationState = await invitationData.getTenantMemberById({ tenantId, membershipId: actionSupabaseValidationMember.id });
+assert(
+  actionSupabaseValidationState?.invitationDeliveryState === "provider_accepted",
+  "corrected Supabase retry must persist provider-accepted state",
+);
+
+console.log("Invitation reliability: PASS (Clerk and Supabase adapters classify safe 4xx vs unknown timeout/transport outcomes; Action provider call count stays at one after timeout and concurrent retry; known validation failures retry; success persists provider_accepted without claiming inbox delivery; manual local recovery is explicitly remote-agnostic)");
