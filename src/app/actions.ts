@@ -183,7 +183,7 @@ async function requireWritableCase(session: TenantSession, caseId: string) {
 import type { InputFileExtractionResult } from "@/lib/input-file-extractor";
 import { queueExcelImportSource } from "@/lib/excel-import-queue";
 import { queueIdentityImportSources } from "@/lib/identity-import-queue";
-import { createClerkInvitationForTenantMember } from "@/lib/clerk-invitations";
+import { classifyClerkInvitationError, createClerkInvitationForTenantMember } from "@/lib/clerk-invitations";
 import { inviteSupabaseUserByEmail } from "@/lib/supabase/admin";
 import { assertCaseSourcesReadable } from "@/lib/w93-access";
 import { getVerifiedAuthIdentity } from "@/lib/auth-provider";
@@ -2741,8 +2741,11 @@ async function sendTenantMemberInvitation(input: {
     | ({ ok: true; provider: "supabase"; skipped: false; providerInvitationId: string; sentAt: Date })
     | ({ ok: true; provider: "clerk"; providerInvitationId: string; invitationUrl?: string; sentAt: Date; skipped?: boolean })
     | { ok: false; skipped: boolean; reason: string };
+  let providerOutcomeUncertain = false;
+  let supabaseAuthEnabled = false;
   try {
-    if (isSupabaseAuthEnabled()) {
+    supabaseAuthEnabled = isSupabaseAuthEnabled();
+    if (supabaseAuthEnabled) {
       const value = await inviteSupabaseUserByEmail({
         email: member.user.email,
         redirectTo: process.env.BROKER_DESK_SUPABASE_INVITE_REDIRECT_URL?.trim() || undefined,
@@ -2755,7 +2758,18 @@ async function sendTenantMemberInvitation(input: {
         : { ok: false, skipped: value.skipped, reason: value.reason };
     }
   } catch (error) {
-    result = { ok: false, skipped: false, reason: error instanceof Error ? error.message : String(error) };
+    const failure = supabaseAuthEnabled
+      ? { uncertain: false, reason: error instanceof Error ? error.message : String(error) }
+      : classifyClerkInvitationError(error);
+    providerOutcomeUncertain = failure.uncertain;
+    result = { ok: false, skipped: false, reason: failure.reason };
+  }
+  if (providerOutcomeUncertain) {
+    // refreshTenantMemberInvitation already left the membership pending. Do
+    // not overwrite it with failed: the provider may have created an
+    // invitation before the response was lost, so blind retry could duplicate
+    // the email. The caller exposes the existing uncertain warning instead.
+    return { member, sent: false, skipped: false, uncertain: true };
   }
   if (result.ok) {
     try {

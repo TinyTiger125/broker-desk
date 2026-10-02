@@ -48,6 +48,7 @@
     "test:case-workbench-assistant": "node scripts/check-case-workbench-assistant.cjs",
     "test:tenant-session": "node scripts/check-tenant-session.mjs",
     "test:platform-subscription": "node scripts/check-platform-subscription-contract.mjs && node scripts/test-platform-subscription-behavior.mjs && node scripts/check-platform-owner-bootstrap-contract.mjs && node scripts/check-clerk-invitation-template.mjs",
+    "test:clerk-invitation-reliability": "node scripts/test-clerk-invitation-reliability.mjs",
     "test:invitation-submit": "node scripts/check-invitation-submit-contract.mjs",
     "clerk:invitation-template:check": "node scripts/sync-clerk-invitation-template.mjs",
     "clerk:invitation-template:preview": "node scripts/sync-clerk-invitation-template.mjs --preview",

@@ -456,7 +456,7 @@ const MEMBER_INVITATION_UNCERTAIN_COPY = {
 
 function assertInvitationDeliveryAuditAtomicity({ senderSource, actionSource, memorySource, sqlSource, migrationSource, memberCopySource, membersPageSource }) {
   assert(!senderSource.includes("addAuditLog") && !senderSource.includes('action: "member_invitation_sent"') && !senderSource.includes('action: "member_invitation_failed"'), "invitation sender must not split sent/failed audit persistence from delivery finalization");
-  assert(actionSource.includes("let deliveryUncertain = false") && actionSource.includes("deliveryUncertain = delivery.uncertain") && senderSource.includes("uncertain: true") && senderSource.indexOf("uncertain: true") > senderSource.indexOf("invitationStatus: \"pending\""), "sender must distinguish irreversible Clerk success with failed database finalization");
+  assert(actionSource.includes("let deliveryUncertain = false") && actionSource.includes("deliveryUncertain = delivery.uncertain") && senderSource.includes("providerOutcomeUncertain = failure.uncertain") && senderSource.includes("uncertain: true") && senderSource.indexOf("if (providerOutcomeUncertain)") < senderSource.indexOf("if (result.ok)"), "sender must preserve unknown provider outcomes and distinguish irreversible Clerk success with failed database finalization");
   assert((actionSource.match(/invitation\.uncertain \? "invitation_delivery_uncertain"/g) ?? []).length === 2 && actionSource.includes('if (invitation.uncertain) redirect("/settings/members?flash=invitation_delivery_uncertain")') && actionSource.includes('deliveryUncertain ? "invitation_delivery_uncertain"'), "platform resend, company resend, invite creation, and newly created account must expose the stable uncertain token");
   assert(!senderSource.includes("updated ?? member"), "delivery finalization must never report sent or confirmed failure when the database returns null");
   assert((senderSource.match(/if \(!updated\) return \{ member, sent: false, skipped: false, uncertain: true \};/g) ?? []).length === 2, "both Clerk success and Clerk failure must map null finalization to uncertain");
@@ -1116,7 +1116,7 @@ for (const [label, candidate] of [
     actionSource: actions, memorySource: memoryInvitationDelivery, sqlSource: recordInvitationFunction, migrationSource: migration, memberCopySource: memberManagementCopy, membersPageSource: membersPage,
   }],
   ["delivery uncertain outcome", {
-    senderSource: replaceRequired(invitationSender, "uncertain: true", "uncertain: false", "delivery uncertain outcome"),
+    senderSource: replaceRequired(invitationSender, "providerOutcomeUncertain = failure.uncertain;", "providerOutcomeUncertain = false;", "delivery uncertain outcome"),
     actionSource: actions, memorySource: memoryInvitationDelivery, sqlSource: recordInvitationFunction, migrationSource: migration, memberCopySource: memberManagementCopy, membersPageSource: membersPage,
   }],
   ["delivery null success fallback", {
