@@ -219,6 +219,7 @@ console.log("[PASS] actual repository late-write SQL binding; real PostgreSQL ex
 if (process.argv.includes("--browser")) {
   const { createRequire } = await import("node:module");
   const require = createRequire(import.meta.url);
+  const { WebSocket } = require("next/dist/compiled/ws");
   const webpackPackage = require("next/dist/compiled/webpack/webpack");
   const { webpack } = webpackPackage;
   const { spawn } = await import("node:child_process");
@@ -237,7 +238,7 @@ if (process.argv.includes("--browser")) {
       )
       .replace(
         'import { Button } from "@/components/ui-foundation";',
-        'const Button = ({ children, ...props }) => <button {...props}>{children}</button>;',
+        'const Button = ({ children, loading = false, disabled, ...props }) => <button {...props} disabled={disabled || loading} aria-busy={loading || undefined}>{children}</button>;',
       );
     const entry = ts.transpileModule(source, { compilerOptions: {
       module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX,
