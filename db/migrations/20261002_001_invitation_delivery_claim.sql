@@ -125,7 +125,8 @@ BEGIN
   -- rotating the token or allowing another provider call.
   IF target_membership_row.invitation_delivery_state IN ('sending', 'unknown') THEN
     RETURN QUERY SELECT to_jsonb(tenant_row),
-      jsonb_build_object('membership', to_jsonb(target_membership_row), 'user', to_jsonb(invited_user_row));
+      jsonb_build_object('membership', to_jsonb(target_membership_row), 'user', to_jsonb(invited_user_row))
+        || jsonb_build_object('delivery_blocked', target_membership_row.invitation_delivery_state);
     RETURN;
   END IF;
 
@@ -168,7 +169,8 @@ BEGIN
   END IF;
 
   RETURN QUERY SELECT to_jsonb(tenant_row),
-    jsonb_build_object('membership', to_jsonb(updated_membership), 'user', to_jsonb(invited_user_row));
+    jsonb_build_object('membership', to_jsonb(updated_membership), 'user', to_jsonb(invited_user_row))
+      || jsonb_build_object('delivery_blocked', NULL::TEXT);
 END;
 $$;
 

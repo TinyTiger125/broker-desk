@@ -2342,9 +2342,17 @@ function mapTenantMemberJoinedRow(row: Record<string, unknown>): TenantMemberLis
 
 function mapTenantInvitationDeliveryContext(row: Record<string, unknown>): TenantInvitationDeliveryContext {
   const tenant = mapTenant(row.tenant_record as Record<string, unknown>);
-  const record = row.member_record as { membership: Record<string, unknown>; user: Record<string, unknown> };
+  const record = row.member_record as { membership: Record<string, unknown>; user: Record<string, unknown>; delivery_blocked?: unknown };
   const membership = mapTenantMembership(record.membership);
   const user = mapUser(record.user);
+  const deliveryMarker = record.delivery_blocked === "sending" || record.delivery_blocked === "unknown"
+    ? record.delivery_blocked
+    : undefined;
+  const invitationDeliveryBlocked = Object.prototype.hasOwnProperty.call(record, "delivery_blocked")
+    ? deliveryMarker
+    : membership.invitationDeliveryState === "sending" || membership.invitationDeliveryState === "unknown"
+      ? membership.invitationDeliveryState
+      : undefined;
   const member: TenantMemberListItem = {
     ...membership,
     tenantName: tenant.name,
@@ -2360,10 +2368,7 @@ function mapTenantInvitationDeliveryContext(row: Record<string, unknown>): Tenan
     ...member,
     tenant,
     member,
-    invitationDeliveryBlocked:
-      membership.invitationDeliveryState === "sending" || membership.invitationDeliveryState === "unknown"
-        ? membership.invitationDeliveryState
-        : undefined,
+    invitationDeliveryBlocked,
   };
 }
 

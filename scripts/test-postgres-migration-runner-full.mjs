@@ -1,13 +1,19 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
+import Module from "node:module";
 import { tmpdir } from "node:os";
+import path from "node:path";
 import { join } from "node:path";
 import pg from "pg";
+import ts from "typescript";
+import vm from "node:vm";
 import { runPostgresMigrations } from "./run-postgres-migrations.mjs";
 
 const { Client } = pg;
+const nodeRequire = Module.createRequire(import.meta.url);
+const { ClerkAPIResponseError } = nodeRequire("@clerk/backend/errors");
 const postgresBin = "/opt/homebrew/opt/postgresql@16/bin";
 const root = mkdtempSync(join(tmpdir(), "brokerdesk-full-runner-"));
 const data = join(root, "data");
@@ -68,7 +74,7 @@ try {
   );
   await verify.query(
     `INSERT INTO tenants (id, name, slug, account_type, status, purchased_seat_count)
-     VALUES ($1, 'PG claim fixture', 'pg-claim-fixture', 'company', 'active', 4)`,
+     VALUES ($1, 'PG claim fixture', 'pg-claim-fixture', 'company', 'active', 10)`,
     [fixtureIds.tenant],
   );
   await verify.query(
@@ -101,6 +107,7 @@ try {
     await clientA.query("BEGIN");
     firstPrepared = (await prepare(clientA, fixtureIds.membership)).rows[0];
     assert.equal(firstPrepared.member_record.membership.invitation_delivery_state, "sending");
+    assert.equal(firstPrepared.member_record.delivery_blocked, null, "the first prepare must mark that its sending claim was acquired by this caller");
     const firstToken = firstPrepared.member_record.membership.invitation_token;
     let secondSettled = false;
     const secondPromise = prepare(clientB, fixtureIds.membership).then((result) => {
@@ -112,6 +119,7 @@ try {
     await clientA.query("COMMIT");
     secondPrepared = (await secondPromise).rows[0];
     assert.equal(secondPrepared.member_record.membership.invitation_delivery_state, "sending");
+    assert.equal(secondPrepared.member_record.delivery_blocked, "sending", "a blocked concurrent prepare must identify the existing sending claim");
     assert.equal(secondPrepared.member_record.membership.invitation_token, firstToken, "the blocked prepare must not rotate the invitation token");
 
     await clientB.query(
@@ -129,6 +137,7 @@ try {
 
     const blockedUnknown = (await prepare(clientB, fixtureIds.membership)).rows[0];
     assert.equal(blockedUnknown.member_record.membership.invitation_delivery_state, "unknown");
+    assert.equal(blockedUnknown.member_record.delivery_blocked, "unknown", "an unknown recovery block must be distinguished from a newly acquired claim");
     assert.equal(blockedUnknown.member_record.membership.invitation_token, firstToken, "unknown recovery must remain persistently blocked without rotating the token");
   } finally {
     await clientA.query("ROLLBACK").catch(() => undefined);
@@ -155,12 +164,235 @@ try {
   )).rows[0];
   assert.deepEqual(providerAccepted, { invitation_delivery_state: "provider_accepted", provider_invitation_id: "pg-provider-invitation" });
 
+  let postgresAdapterActionComposition;
+  const adapterEnvKeys = [
+    "NODE_ENV",
+    "BROKER_DESK_DEPLOYMENT_ENV",
+    "DATA_DRIVER",
+    "DATABASE_URL",
+    "DATABASE_DEVELOPMENT_URL",
+    "BROKER_DESK_AUTH_MODE",
+    "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
+    "CLERK_SECRET_KEY",
+  ];
+  const adapterEnvSnapshot = new Map(adapterEnvKeys.map((key) => [key, process.env[key]]));
+  let postgresAdapter;
+  try {
+    // Run the real PostgreSQL adapter in the same ephemeral database. The
+    // temporary runtime role is made LOGIN-only for this process and restored
+    // before the cluster is removed; no shared credentials or database are used.
+    await verify.query("ALTER ROLE brokerdesk_runtime LOGIN");
+    process.env.NODE_ENV = "production";
+    process.env.BROKER_DESK_DEPLOYMENT_ENV = "staging";
+    process.env.DATA_DRIVER = "postgres";
+    process.env.DATABASE_URL = `postgresql://brokerdesk_runtime@127.0.0.1:${port}/broker_desk_runner_test`;
+    delete process.env.DATABASE_DEVELOPMENT_URL;
+    process.env.BROKER_DESK_AUTH_MODE = "clerk";
+    process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY = "pk_test_isolated_pg";
+    process.env.CLERK_SECRET_KEY = "sk_test_isolated_pg";
+
+    const moduleCache = new Map();
+    const resolveAlias = (request) => {
+      const relative = request.slice(2);
+      const candidates = [".ts", ".tsx", ".mjs", ".js", ".cjs"].map((extension) => path.resolve("src", `${relative}${extension}`));
+      return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0];
+    };
+    const loadTs = (sourcePath) => {
+      const absolutePath = path.resolve(sourcePath);
+      if (moduleCache.has(absolutePath)) return moduleCache.get(absolutePath).exports;
+      const compiled = ts.transpileModule(readFileSync(absolutePath, "utf8"), {
+        fileName: absolutePath,
+        compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
+      }).outputText;
+      const module = new Module(absolutePath);
+      module.filename = absolutePath;
+      module.paths = Module._nodeModulePaths(process.cwd());
+      moduleCache.set(absolutePath, module);
+      const originalRequire = module.require.bind(module);
+      module.require = (request) => request.startsWith("@/") ? loadTs(resolveAlias(request)) : originalRequire(request);
+      module._compile(compiled, absolutePath);
+      return module.exports;
+    };
+
+    postgresAdapter = loadTs("src/lib/data.postgres.ts");
+    const { classifyClerkInvitationError } = loadTs("src/lib/clerk-invitations.ts");
+    const { makeInvitationDeliveryUnknownError } = loadTs("src/lib/invitation-delivery-state.ts");
+    const actionSource = readFileSync(path.resolve("src/app/actions.ts"), "utf8");
+    const actionAst = ts.createSourceFile("actions.ts", actionSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    const actionSenderNode = actionAst.statements.find(
+      (statement) => ts.isFunctionDeclaration(statement) && statement.name?.text === "sendTenantMemberInvitation",
+    );
+    assert(actionSenderNode, "the PostgreSQL composition harness must find the Action sender");
+    const actionSenderOutput = ts.transpileModule(
+      `module.exports = ${actionSource.slice(actionSenderNode.getStart(actionAst), actionSenderNode.end)};`,
+      { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } },
+    ).outputText;
+    const pgSubject = "pg-claim-actor-subject";
+    const refreshWithPostgresAdapter = (input) => postgresAdapter.withPostgresAuthContext(
+      pgSubject,
+      () => postgresAdapter.refreshTenantMemberInvitation(input),
+    );
+    const updateWithPostgresAdapter = (input) => postgresAdapter.withPostgresAuthContext(
+      pgSubject,
+      () => postgresAdapter.updateTenantMemberInvitation(input),
+    );
+    const loadActionSender = (providerBehavior) => {
+      let providerCalls = 0;
+      const senderModule = { exports: {} };
+      vm.runInNewContext(actionSenderOutput, {
+        module: senderModule,
+        exports: senderModule.exports,
+        refreshTenantMemberInvitation: refreshWithPostgresAdapter,
+        updateTenantMemberInvitation: updateWithPostgresAdapter,
+        isSupabaseAuthEnabled: () => false,
+        inviteSupabaseUserByEmail: async () => { throw new Error("isolated PostgreSQL Clerk harness must not call Supabase"); },
+        createClerkInvitationForTenantMember: async (prepared) => {
+          providerCalls += 1;
+          return providerBehavior({ prepared, providerCalls });
+        },
+        classifyClerkInvitationError,
+        makeInvitationDeliveryUnknownError,
+        console,
+        process,
+        setTimeout,
+        clearTimeout,
+      }, { filename: "src/app/actions.ts" });
+      assert.equal(typeof senderModule.exports, "function", "the extracted Action sender must be callable against the PostgreSQL adapter");
+      return { sender: senderModule.exports, getProviderCalls: () => providerCalls };
+    };
+    const actionInput = (membershipId) => ({
+      tenantId: fixtureIds.tenant,
+      membershipId,
+      actorId: fixtureIds.actor,
+      recordSkippedAsFailure: true,
+    });
+    const readState = async (membershipId) => (await verify.query(
+      `SELECT invitation_delivery_state, invitation_status, provider_invitation_id, invitation_error
+       FROM tenant_memberships WHERE id = $1`,
+      [membershipId],
+    )).rows[0];
+    const addCompositionMember = async (label) => {
+      const userId = `pg_composition_user_${label}`;
+      const membershipId = `pg_composition_membership_${label}`;
+      await verify.query(
+        `INSERT INTO users (id, name, email, password_hash, external_auth_subject)
+         VALUES ($1, $2, $3, 'synthetic', NULL)`,
+        [userId, `PG composition ${label}`, `pg-composition-${label}@example.invalid`],
+      );
+      await verify.query(
+        `INSERT INTO tenant_memberships
+          (id, tenant_id, user_id, role, capability, status, invitation_provider, invitation_status,
+           invitation_delivery_state, invited_email, invited_by_user_id)
+         VALUES ($1, $2, $3, 'broker', 'ordinary_member', 'invited', 'none', 'pending', 'ready', 'pg-composition@example.invalid', $4)`,
+        [membershipId, fixtureIds.tenant, userId, fixtureIds.actor],
+      );
+      return membershipId;
+    };
+    const invoke = (sender, membershipId) => sender(actionInput(membershipId));
+
+    const timeoutMembershipId = await addCompositionMember("timeout");
+    const timeoutSender = loadActionSender(async () => {
+      throw new Error("synthetic provider timeout after side effect");
+    });
+    const timeoutResult = await invoke(timeoutSender.sender, timeoutMembershipId);
+    assert(timeoutResult.uncertain && timeoutResult.deliveryBlocked === "unknown", "PostgreSQL adapter timeout must persist and expose unknown");
+    assert.equal(timeoutSender.getProviderCalls(), 1, "PostgreSQL adapter timeout must call the provider once");
+    const timeoutRetry = await invoke(timeoutSender.sender, timeoutMembershipId);
+    assert.equal(timeoutRetry.deliveryBlocked, "unknown", "PostgreSQL adapter unknown state must block retry");
+    assert.equal(timeoutSender.getProviderCalls(), 1, "PostgreSQL adapter timeout retry must not call the provider again");
+    assert.equal((await readState(timeoutMembershipId)).invitation_delivery_state, "unknown");
+
+    const concurrentMembershipId = await addCompositionMember("concurrent");
+    let releaseConcurrentProvider;
+    const concurrentProviderRelease = new Promise((resolve) => { releaseConcurrentProvider = resolve; });
+    const concurrentSender = loadActionSender(async () => {
+      await concurrentProviderRelease;
+      throw new Error("synthetic concurrent provider timeout after side effect");
+    });
+    const firstConcurrentAction = invoke(concurrentSender.sender, concurrentMembershipId);
+    for (let attempt = 0; attempt < 250 && concurrentSender.getProviderCalls() === 0; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.equal(concurrentSender.getProviderCalls(), 1, "PostgreSQL adapter first concurrent Action must reach provider once after claim");
+    const secondConcurrentResult = await invoke(concurrentSender.sender, concurrentMembershipId);
+    assert.equal(secondConcurrentResult.deliveryBlocked, "sending", "PostgreSQL adapter concurrent Action must see persisted sending claim");
+    assert.equal(concurrentSender.getProviderCalls(), 1, "PostgreSQL adapter concurrent Action must not call provider twice");
+    releaseConcurrentProvider?.();
+    const firstConcurrentResult = await firstConcurrentAction;
+    assert(firstConcurrentResult.uncertain && firstConcurrentResult.deliveryBlocked === "unknown", "PostgreSQL adapter concurrent provider failure must finalize unknown");
+    assert.equal((await readState(concurrentMembershipId)).invitation_delivery_state, "unknown");
+
+    const validationMembershipId = await addCompositionMember("validation");
+    const validationSender = loadActionSender(async ({ providerCalls }) => {
+      if (providerCalls === 1) {
+        throw new ClerkAPIResponseError("invalid invitation", {
+          data: [{ code: "email_address_invalid", message: "invalid" }],
+          status: 422,
+        });
+      }
+      return { ok: true, providerInvitationId: "pg-composition-validation", invitationUrl: "https://example.invalid/validation", sentAt: new Date() };
+    });
+    const validationFailure = await invoke(validationSender.sender, validationMembershipId);
+    assert(!validationFailure.uncertain && validationFailure.sent === false, "PostgreSQL adapter known validation failure must be confirmed");
+    assert.equal((await readState(validationMembershipId)).invitation_delivery_state, "ready");
+    const validationSuccess = await invoke(validationSender.sender, validationMembershipId);
+    assert(validationSuccess.sent && !validationSuccess.uncertain, "PostgreSQL adapter corrected validation retry must succeed");
+    assert.equal(validationSender.getProviderCalls(), 2, "PostgreSQL adapter validation retry must call provider twice total");
+    assert.equal((await readState(validationMembershipId)).invitation_delivery_state, "provider_accepted");
+
+    const acceptedMembershipId = await addCompositionMember("accepted");
+    const acceptedSender = loadActionSender(async ({ providerCalls }) => ({
+      ok: true,
+      providerInvitationId: `pg-composition-accepted-${providerCalls}`,
+      invitationUrl: `https://example.invalid/accepted-${providerCalls}`,
+      sentAt: new Date(),
+    }));
+    const acceptedFirst = await invoke(acceptedSender.sender, acceptedMembershipId);
+    assert(acceptedFirst.sent && !acceptedFirst.uncertain, "PostgreSQL adapter normal provider acceptance must succeed");
+    assert.equal(acceptedSender.getProviderCalls(), 1);
+    assert.equal((await readState(acceptedMembershipId)).invitation_delivery_state, "provider_accepted");
+    const acceptedRepeat = await invoke(acceptedSender.sender, acceptedMembershipId);
+    assert(acceptedRepeat.sent && !acceptedRepeat.uncertain, "provider_accepted must permit an explicit resend request");
+    assert.equal(acceptedSender.getProviderCalls(), 2, "explicit resend after provider acceptance must make exactly one additional provider call");
+    const acceptedRepeatState = await readState(acceptedMembershipId);
+    assert.equal(acceptedRepeatState.invitation_delivery_state, "provider_accepted");
+    assert.equal(acceptedRepeatState.provider_invitation_id, "pg-composition-accepted-2");
+
+    const compositionAuditCounts = (await verify.query(
+      `SELECT target_id, COUNT(*)::INTEGER AS count
+       FROM audit_logs
+       WHERE target_id IN ($1, $2, $3) AND action IN ('member_invitation_sent', 'member_invitation_failed')
+       GROUP BY target_id ORDER BY target_id`,
+      [validationMembershipId, acceptedMembershipId, concurrentMembershipId],
+    )).rows;
+    assert.deepEqual(compositionAuditCounts, [
+      { target_id: acceptedMembershipId, count: 2 },
+      { target_id: validationMembershipId, count: 2 },
+    ], "PostgreSQL adapter finalization must persist one audit per known provider outcome and none for unknown");
+    postgresAdapterActionComposition = {
+      timeout: { providerCalls: timeoutSender.getProviderCalls(), state: "unknown", retryBlocked: true },
+      concurrent: { providerCalls: concurrentSender.getProviderCalls(), finalState: "unknown", secondActionBlocked: "sending" },
+      knownValidationFailure: { providerCalls: validationSender.getProviderCalls(), finalState: "provider_accepted", retryAllowed: true },
+      providerAcceptedRepeat: { providerCalls: acceptedSender.getProviderCalls(), finalState: acceptedRepeatState.invitation_delivery_state, explicitResendCalls: 2 },
+      auditCounts: compositionAuditCounts,
+    };
+    console.log(JSON.stringify({ postgresAdapterActionComposition }));
+  } finally {
+    await globalThis.__brokerDeskPostgresPool?.end().catch(() => undefined);
+    await verify.query("ALTER ROLE brokerdesk_runtime NOLOGIN").catch(() => undefined);
+    for (const [key, value] of adapterEnvSnapshot) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+
   await verify.end();
   const evidence = {
     postgres: "16",
     appliedCount: result.appliedCount,
     ledgerCount,
     owners,
+    postgresAdapterActionComposition,
     invitationClaim: {
       lockWait: "second prepare remained pending until first transaction committed",
       tokenStableAcrossConcurrentPrepare: true,
