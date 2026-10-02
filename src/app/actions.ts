@@ -184,6 +184,7 @@ import type { InputFileExtractionResult } from "@/lib/input-file-extractor";
 import { queueExcelImportSource } from "@/lib/excel-import-queue";
 import { queueIdentityImportSources } from "@/lib/identity-import-queue";
 import { classifyClerkInvitationError, createClerkInvitationForTenantMember } from "@/lib/clerk-invitations";
+import { makeInvitationDeliveryUnknownError } from "@/lib/invitation-delivery-state";
 import { inviteSupabaseUserByEmail } from "@/lib/supabase/admin";
 import { assertCaseSourcesReadable } from "@/lib/w93-access";
 import { getVerifiedAuthIdentity } from "@/lib/auth-provider";
@@ -2736,6 +2737,15 @@ async function sendTenantMemberInvitation(input: {
   });
   if (!prepared) throw new Error("招待対象メンバーが見つかりません。");
   const member = prepared.member;
+  if (prepared.invitationDeliveryBlocked) {
+    return {
+      member,
+      sent: false,
+      skipped: false,
+      uncertain: prepared.invitationDeliveryBlocked === "unknown",
+      deliveryBlocked: prepared.invitationDeliveryBlocked,
+    };
+  }
 
   let result:
     | ({ ok: true; provider: "supabase"; skipped: false; providerInvitationId: string; sentAt: Date })
@@ -2765,11 +2775,24 @@ async function sendTenantMemberInvitation(input: {
     result = { ok: false, skipped: false, reason: failure.reason };
   }
   if (providerOutcomeUncertain) {
-    // refreshTenantMemberInvitation already left the membership pending. Do
-    // not overwrite it with failed: the provider may have created an
-    // invitation before the response was lost, so blind retry could duplicate
-    // the email. The caller exposes the existing uncertain warning instead.
-    return { member, sent: false, skipped: false, uncertain: true };
+    // Persist an explicit unknown delivery state. It is distinct from the
+    // ordinary pending/accepted state and makes the prepare primitive reject
+    // later sends until an operator performs the documented recovery path.
+    try {
+      const updated = await updateTenantMemberInvitation({
+        tenantId: input.tenantId,
+        membershipId: input.membershipId,
+        memberContext: member,
+        invitationProvider: supabaseAuthEnabled ? "supabase" : "clerk",
+        invitationStatus: "pending",
+        invitationError: makeInvitationDeliveryUnknownError("reason" in result ? result.reason : "provider outcome unknown"),
+        actorUserId: input.actorId,
+      });
+      if (!updated) return { member, sent: false, skipped: false, uncertain: true, deliveryBlocked: "unknown" as const };
+      return { member: updated, sent: false, skipped: false, uncertain: true, deliveryBlocked: "unknown" as const };
+    } catch {
+      return { member, sent: false, skipped: false, uncertain: true };
+    }
   }
   if (result.ok) {
     try {
@@ -3003,6 +3026,7 @@ export async function createTenantAccountAction(formData: FormData) {
   const ownerMembership = account.ownerMembers[0];
   let invitationFailed = false;
   let deliveryUncertain = false;
+  let deliveryInProgress = false;
   if (ownerMembership && isTenantServiceOperational(deriveTenantServiceState(account))) {
     try {
       const delivery = await sendTenantMemberInvitation({
@@ -3013,12 +3037,13 @@ export async function createTenantAccountAction(formData: FormData) {
       });
       invitationFailed = !delivery.sent && !delivery.skipped;
       deliveryUncertain = delivery.uncertain;
+      deliveryInProgress = delivery.deliveryBlocked === "sending";
     } catch {
       invitationFailed = true;
     }
   }
   revalidatePath("/platform/accounts");
-  redirect(`/platform/accounts?flash=${deliveryUncertain ? "invitation_delivery_uncertain" : invitationFailed ? "tenant_created_invitation_failed" : "tenant_created"}`);
+  redirect(`/platform/accounts?flash=${deliveryUncertain ? "invitation_delivery_uncertain" : deliveryInProgress ? "invitation_delivery_in_progress" : invitationFailed ? "tenant_created_invitation_failed" : "tenant_created"}`);
 }
 
 export async function updateTenantAccountLifecycleAction(formData: FormData) {
@@ -3060,7 +3085,7 @@ export async function sendPlatformTenantMemberInvitationAction(formData: FormDat
     recordSkippedAsFailure: true,
   });
   revalidatePath("/platform/accounts");
-  redirect(`/platform/accounts?flash=${invitation.uncertain ? "invitation_delivery_uncertain" : invitation.sent ? "invitation_sent" : "invitation_failed"}`);
+  redirect(`/platform/accounts?flash=${invitation.uncertain ? "invitation_delivery_uncertain" : invitation.deliveryBlocked === "sending" ? "invitation_delivery_in_progress" : invitation.sent ? "invitation_sent" : "invitation_failed"}`);
 }
 
 export async function sendTenantMemberInvitationAction(formData: FormData) {
@@ -3074,7 +3099,7 @@ export async function sendTenantMemberInvitationAction(formData: FormData) {
     recordSkippedAsFailure: true,
   });
   revalidatePath("/settings/members");
-  redirect(`/settings/members?flash=${invitation.uncertain ? "invitation_delivery_uncertain" : invitation.sent ? "invitation_sent" : "invitation_failed"}`);
+  redirect(`/settings/members?flash=${invitation.uncertain ? "invitation_delivery_uncertain" : invitation.deliveryBlocked === "sending" ? "invitation_delivery_in_progress" : invitation.sent ? "invitation_sent" : "invitation_failed"}`);
 }
 
 export async function inviteTenantMemberAction(formData: FormData) {
@@ -3102,6 +3127,7 @@ export async function inviteTenantMemberAction(formData: FormData) {
     recordSkippedAsFailure: false,
   });
   if (invitation.uncertain) redirect("/settings/members?flash=invitation_delivery_uncertain");
+  if (invitation.deliveryBlocked === "sending") redirect("/settings/members?flash=invitation_delivery_in_progress");
   await addAuditLog({
     tenantId,
     userId: session.user.id,

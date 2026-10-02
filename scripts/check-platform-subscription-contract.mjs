@@ -89,9 +89,9 @@ const PLATFORM_FLASH_EXPECTATIONS = {
   },
   invitation_sent: {
     tone: "success",
-    ja: "招待を送信しました。",
-    zh: "邀请已发送。",
-    ko: "초대를 전송했습니다.",
+    ja: "Clerk が招待作成を受け付けました。受信箱への到達は確認されていません。",
+    zh: "Clerk 已受理邀请创建请求，尚未确认收件箱到达。",
+    ko: "Clerk가 초대 생성 요청을 접수했습니다. 받은편지함 도착은 확인되지 않았습니다.",
   },
   invitation_failed: {
     tone: "error",
@@ -101,9 +101,15 @@ const PLATFORM_FLASH_EXPECTATIONS = {
   },
   invitation_delivery_uncertain: {
     tone: "warning",
-    ja: "アカウントは作成済みです。招待は送信された可能性がありますが、記録を確定できませんでした。むやみに再送せず、Clerk と既存アカウントの招待状態を先に確認してください。",
-    zh: "账户已存在；邀请可能已发送，但记录未能确认。请勿盲目重发，请先核对 Clerk 与现有账户的邀请状态。",
-    ko: "계정은 이미 존재합니다. 초대가 전송되었을 수 있지만 기록을 확정하지 못했습니다. 무작정 다시 보내지 말고 Clerk와 기존 계정의 초대 상태를 먼저 확인해 주세요.",
+    ja: "アカウントは作成済みです。Clerk が招待作成を受け付けた可能性がありますが、結果と受信箱への到達を確認できませんでした。むやみに再送せず、Clerk と既存アカウントの招待状態を先に確認してください。",
+    zh: "账户已存在；Clerk 可能已受理邀请创建，但结果和收件箱到达未能确认。请勿盲目重发，先核对 Clerk 与现有账户的邀请状态。",
+    ko: "계정은 이미 존재합니다. Clerk가 초대 생성을 접수했을 수 있지만 결과와 받은편지함 도착을 확인하지 못했습니다. 무작정 다시 보내지 말고 Clerk와 기존 계정의 초대 상태를 먼저 확인해 주세요.",
+  },
+  invitation_delivery_in_progress: {
+    tone: "warning",
+    ja: "別の招待送信が進行中です。完了するまで再送せず、状態を更新してください。",
+    zh: "另一个邀请发送请求正在处理中。请等待状态更新，不要重复发送。",
+    ko: "다른 초대 발송이 진행 중입니다. 상태가 갱신될 때까지 다시 보내지 마세요.",
   },
   tenant_created_invitation_failed: {
     tone: "warning",
@@ -173,9 +179,9 @@ function assertPlatformFlashContract({ actionSource, pageSource }) {
   for (const token of tokens) {
     assert(actionSource.includes(token), `platform Actions must produce the ${token} token`);
   }
-  assert(actionSource.includes('deliveryUncertain ? "invitation_delivery_uncertain" : invitationFailed ? "tenant_created_invitation_failed" : "tenant_created"'), "platform create Action must distinguish success, post-create delivery failure, and irreversible uncertain delivery");
+  assert(actionSource.includes('deliveryUncertain ? "invitation_delivery_uncertain" : deliveryInProgress ? "invitation_delivery_in_progress" : invitationFailed ? "tenant_created_invitation_failed" : "tenant_created"'), "platform create Action must distinguish success, in-progress, post-create delivery failure, and irreversible uncertain delivery");
   assert(actionSource.includes('redirect("/platform/accounts?flash=tenant_updated")'), "platform update Action must produce exactly tenant_updated");
-  assert(actionSource.includes('invitation.uncertain ? "invitation_delivery_uncertain" : invitation.sent ? "invitation_sent" : "invitation_failed"'), "platform invitation Action must distinguish sent, failed, and irreversible uncertain delivery");
+  assert(actionSource.includes('invitation.uncertain ? "invitation_delivery_uncertain" : invitation.deliveryBlocked === "sending" ? "invitation_delivery_in_progress" : invitation.sent ? "invitation_sent" : "invitation_failed"'), "platform invitation Action must distinguish sent, in-progress, failed, and irreversible uncertain delivery");
   const mapStart = pageSource.indexOf("const PLATFORM_ACCOUNT_FLASH_COPY");
   const mapEnd = pageSource.indexOf("const PLATFORM_ACCOUNT_FLASH_TONE_CLASSES", mapStart);
   const map = mapStart >= 0 && mapEnd > mapStart ? pageSource.slice(mapStart, mapEnd) : "";
@@ -389,7 +395,8 @@ function assertPlatformInvitationDeliveryBoundary({ actionSource, postgresPrepar
   const externalDelivery = actionSource.indexOf("await createClerkInvitationForTenantMember(prepared)", prepareCall);
   const recordDelivery = actionSource.indexOf("await updateTenantMemberInvitation({", externalDelivery);
   assert(prepareCall >= 0 && externalDelivery > prepareCall && recordDelivery > externalDelivery, "invitation sender must prepare guarded context before Clerk and record delivery afterward");
-  assert(actionSource.includes("const member = prepared.member") && actionSource.split("memberContext: member").length === 4, "all delivery outcomes must reuse the guarded prepared member context without an ordinary reread");
+  assert(actionSource.includes("const member = prepared.member") && actionSource.split("memberContext: member").length >= 4, "all delivery outcomes must reuse the guarded prepared member context without an ordinary reread");
+  assert(actionSource.includes("prepared.invitationDeliveryBlocked") && actionSource.includes("makeInvitationDeliveryUnknownError"), "delivery claim blocks must be handled before provider invocation and unknown outcomes must be persisted");
 
   assert(postgresPrepareSource.includes("brokerdesk_private.prepare_tenant_invitation_delivery($1, $2, $3, $4)") && postgresPrepareSource.includes("mapTenantInvitationDeliveryContext(result.rows[0])"), "PostgreSQL prepare facade must directly map the definer context row");
   assert(!postgresPrepareSource.includes("getTenantById") && !postgresPrepareSource.includes("getTenantMemberById") && postgresPrepareSource.split("getPool().query").length === 2, "PostgreSQL prepare facade must issue one definer query and no ordinary RLS reads");
@@ -449,9 +456,9 @@ function assertPlatformInvitationRuntimeProbe(taskSource) {
 }
 
 const MEMBER_INVITATION_UNCERTAIN_COPY = {
-  ja: "招待は送信された可能性がありますが、記録を確定できませんでした。むやみに再送せず、Clerk と現在の招待状態を先に確認してください。",
-  zh: "邀请可能已发送，但记录未能确认。请勿盲目重发，请先核对 Clerk 与当前邀请状态。",
-  ko: "초대가 전송되었을 수 있지만 기록을 확정하지 못했습니다. 무작정 다시 보내지 말고 Clerk와 현재 초대 상태를 먼저 확인해 주세요.",
+  ja: "Clerk が招待作成を受け付けた可能性がありますが、結果を確定できませんでした。受信箱への到達は未確認です。むやみに再送せず、Clerk と現在の招待状態を先に確認してください。",
+  zh: "Clerk 可能已受理邀请创建，但结果未能确认；收件箱到达未确认。请勿盲目重发，先核对 Clerk 与当前邀请状态。",
+  ko: "Clerk가 초대 생성을 접수했을 수 있지만 결과를 확정하지 못했습니다. 받은편지함 도착은 확인되지 않았습니다. 무작정 다시 보내지 말고 Clerk와 현재 초대 상태를 확인하세요.",
 };
 
 function assertInvitationDeliveryAuditAtomicity({ senderSource, actionSource, memorySource, sqlSource, migrationSource, memberCopySource, membersPageSource }) {
@@ -1106,6 +1113,7 @@ assertNegativeSynthetic(
   "restoring a composite record plus scalar multi-item INTO must be rejected",
 );
 assertPlatformInvitationDeliveryBoundary({ actionSource: invitationSender, postgresPrepareSource: postgresInvitationPrepare, postgresRecordSource: postgresInvitationDelivery, sqlSource: prepareInvitationFunction });
+assert(postgres.includes('membership.invitationDeliveryState === "sending"') && postgres.includes('membership.invitationDeliveryState === "unknown"') && postgres.includes("invitationDeliveryBlocked"), "PostgreSQL prepare facade must expose persisted delivery claims to the Action before provider invocation");
 assert(invitedEmailFollowupMigration.includes("prepare_tenant_invitation_delivery_task043_legacy") && invitedEmailFollowupMigration.includes("memberships.invited_email IS NULL"), "platform invitation prepare follow-up must backfill a legacy NULL invited email from the locked target user");
 assert(invitedEmailFollowupMigration.includes("refresh_tenant_invitation_task043_legacy") && invitedEmailFollowupMigration.includes("FOR UPDATE OF users"), "invitation refresh follow-up must lock the target user before legacy NULL email repair");
 assertPlatformInvitationRuntimeProbe(task043);

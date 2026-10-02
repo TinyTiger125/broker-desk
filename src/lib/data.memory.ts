@@ -51,6 +51,12 @@ import {
 import { assertNoForbiddenRecordInput } from "@/lib/record-input-guard";
 import { mayDeletePreimportUpload, mayStartPropertyImport } from "@/lib/preimport-upload-lifecycle";
 import {
+  deliveryStateAfterFinalization,
+  normalizeInvitationDeliveryState,
+  type TenantInvitationDeliveryState,
+} from "@/lib/invitation-delivery-state";
+export type { TenantInvitationDeliveryState } from "@/lib/invitation-delivery-state";
+import {
   resolveRecordVisibility,
   type RequestContext,
   type VisibilityRecord,
@@ -109,6 +115,7 @@ export type TenantMembership = {
   status: TenantMembershipStatus;
   invitationProvider: TenantInvitationProvider;
   invitationStatus: TenantInvitationStatus;
+  invitationDeliveryState?: TenantInvitationDeliveryState;
   providerInvitationId?: string;
   invitationUrl?: string;
   invitationSentAt?: Date;
@@ -150,6 +157,7 @@ export type TenantMemberListItem = TenantMembership & {
 export type TenantInvitationDeliveryContext = TenantMemberListItem & {
   tenant: Tenant;
   member: TenantMemberListItem;
+  invitationDeliveryBlocked?: "sending" | "unknown";
 };
 
 export type TenantAccountMemberSummary = TenantMemberListItem & {
@@ -912,6 +920,7 @@ function countUsedSeats(tenantId: string, now = new Date()): { activeSeatCount: 
 function ensureTenantMembershipDefaults(membership: TenantMembership): TenantMembership {
   membership.invitationProvider = membership.invitationProvider ?? (membership.status === "active" ? "manual" : "none");
   membership.invitationStatus = membership.invitationStatus ?? (membership.status === "active" ? "accepted" : "not_sent");
+  membership.invitationDeliveryState = normalizeInvitationDeliveryState(membership.invitationDeliveryState, membership);
   // Do not derive elevated capabilities from legacy roles. Missing capability
   // is deliberately treated as the least-privileged compatibility state by
   // the session layer until an explicit preset is stored.
@@ -2989,6 +2998,7 @@ export async function updateTenantMemberInvitation(input: {
   if (!user) return null;
   membership.invitationProvider = input.invitationProvider;
   membership.invitationStatus = input.invitationStatus;
+  membership.invitationDeliveryState = deliveryStateAfterFinalization(input);
   membership.providerInvitationId = input.providerInvitationId;
   membership.invitationUrl = input.invitationUrl;
   membership.invitationError = input.invitationError;
@@ -3010,7 +3020,7 @@ export async function updateTenantMemberInvitation(input: {
       action: auditAction,
       targetType: "member",
       targetId: membership.id,
-      message: auditAction === "member_invitation_sent" ? "成员邀请已发送。" : "成员邀请发送失败。",
+      message: auditAction === "member_invitation_sent" ? "Clerk 已受理邀请创建请求；收件箱到达未确认。" : "成员邀请发送失败。",
       context: {
         membershipId: membership.id,
         provider: input.invitationProvider,
@@ -3050,6 +3060,31 @@ export async function refreshTenantMemberInvitation(input: {
   const user = membership ? nextDb.users.find((item) => item.id === membership.userId) : undefined;
   if (!tenant || !membership || membership.status !== "invited" || !user) return null;
   assertTenantInvitationActorAuthorized(nextDb, scopeTenantId, input.invitedByUserId);
+  const currentDeliveryState = normalizeInvitationDeliveryState(membership.invitationDeliveryState, membership);
+  const memberContext = (): TenantInvitationDeliveryContext => {
+    const member: TenantMemberListItem = {
+      ...membership,
+      invitationDeliveryState: currentDeliveryState,
+      invitationStatus: deriveMembershipInvitationStatus(membership, new Date()),
+      tenantName: tenant.name,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        externalAuthSubject: user.externalAuthSubject,
+        createdAt: user.createdAt,
+      },
+    };
+    return {
+      ...member,
+      tenant: { ...tenant },
+      member,
+      invitationDeliveryBlocked: currentDeliveryState === "sending" || currentDeliveryState === "unknown"
+        ? currentDeliveryState
+        : undefined,
+    };
+  };
+  if (currentDeliveryState === "sending" || currentDeliveryState === "unknown") return memberContext();
   const nowDate = new Date();
   const nextInvitationExpiresAt = new Date(nowDate.getTime() + 7 * 24 * 60 * 60 * 1000);
   const currentlyOccupiesSeat = membershipOccupiesSeat(membership, nowDate);
@@ -3059,6 +3094,7 @@ export async function refreshTenantMemberInvitation(input: {
     if (usedSeatCount >= tenant.purchasedSeatCount) throw new Error("purchased seat count exceeded");
   }
   membership.invitationStatus = "pending";
+  membership.invitationDeliveryState = "sending";
   membership.invitedEmail = user.email.trim().toLowerCase();
   membership.invitationToken = randomUUID();
   membership.invitationExpiresAt = nextInvitationExpiresAt;
@@ -3155,6 +3191,7 @@ export async function inviteTenantMember(input: {
     existing.invitedByUserId = actorUserId;
     existing.invitationProvider = "none";
     existing.invitationStatus = "pending";
+    existing.invitationDeliveryState = "ready";
     existing.invitationToken = randomUUID();
     existing.invitationExpiresAt = new Date(nowDate.getTime() + 7 * 24 * 60 * 60 * 1000);
     existing.invitationAcceptedAt = undefined;
@@ -3170,6 +3207,7 @@ export async function inviteTenantMember(input: {
       status: "invited",
       invitationProvider: "none",
       invitationStatus: "pending",
+      invitationDeliveryState: "ready",
       invitedEmail: email,
       invitedByUserId: actorUserId,
       invitationToken: randomUUID(),

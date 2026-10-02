@@ -1,4 +1,4 @@
-import type { TenantCapabilityPreset, TenantInvitationStatus, TenantMembershipStatus } from "@/lib/data";
+import type { TenantCapabilityPreset, TenantInvitationDeliveryState, TenantInvitationStatus, TenantMembershipStatus } from "@/lib/data";
 import type { Locale } from "@/lib/locale";
 
 export const MEMBER_CAPABILITY_PRESETS = ["company_owner", "company_form_admin", "ordinary_member"] as const satisfies readonly TenantCapabilityPreset[];
@@ -36,11 +36,18 @@ export const MEMBERSHIP_STATUS_LABELS: Record<TenantMembershipStatus, Record<Loc
 
 export const INVITATION_STATUS_LABELS: Record<TenantInvitationStatus, Record<Locale, string>> = {
   not_sent: { ja: "未送信", zh: "未发送", ko: "미발송" },
-  pending: { ja: "承諾待ち・処理中", zh: "待接受，处理中", ko: "수락 대기·처리 중" },
+  pending: { ja: "承諾待ち", zh: "待接受", ko: "수락 대기" },
   accepted: { ja: "承諾済み", zh: "已接受", ko: "수락됨" },
   revoked: { ja: "取消済み", zh: "已撤销", ko: "취소됨" },
   expired: { ja: "期限切れ", zh: "已过期", ko: "만료됨" },
   failed: { ja: "送信失敗", zh: "发送失败", ko: "전송 실패" },
+};
+
+export const INVITATION_DELIVERY_STATE_LABELS: Record<TenantInvitationDeliveryState, Record<Locale, string>> = {
+  ready: { ja: "送信可能", zh: "可发送", ko: "발송 가능" },
+  sending: { ja: "送信中", zh: "发送中", ko: "발송 중" },
+  unknown: { ja: "送信結果を要確認", zh: "发送结果待确认", ko: "발송 결과 확인 필요" },
+  provider_accepted: { ja: "Clerk 受付済み（受信未確認）", zh: "Clerk 已受理（未确认收件）", ko: "Clerk 접수됨 (수신 미확인)" },
 };
 
 export function getMemberManagementCopy(locale: Locale) {
@@ -70,6 +77,17 @@ export function getMemberManagementCopy(locale: Locale) {
     status: locale === "zh" ? "状态" : locale === "ko" ? "상태" : "状態",
     membershipStatus: locale === "zh" ? "成员关系状态" : locale === "ko" ? "소속 상태" : "所属状態",
     invitationStatus: locale === "zh" ? "邀请状态" : locale === "ko" ? "초대 상태" : "招待状態",
+    invitationDeliveryState: locale === "zh" ? "发送状态" : locale === "ko" ? "발송 상태" : "送信状態",
+    invitationDeliveryRecovery: locale === "zh"
+      ? "请先在 Clerk 核对邀请；必要时手动撤销远端邀请，再停止本地记录并重新邀请。"
+      : locale === "ko"
+        ? "먼저 Clerk에서 초대 상태를 확인하세요. 필요하면 원격 초대를 수동 취소한 뒤 로컬 기록을 중지하고 다시 초대하세요."
+        : "先に Clerk で招待状態を確認してください。必要なら遠端招待を手動で取り消してから、ローカル記録を停止し再招待してください。",
+    invitationDeliveryInProgressRecovery: locale === "zh"
+      ? "请先等待发送完成；若长时间不变，核对 Clerk 后停止本地记录（不会自动撤销远端邀请）。"
+      : locale === "ko"
+        ? "발송이 완료될 때까지 기다리세요. 오래 변하지 않으면 Clerk를 확인한 뒤 로컬 기록을 중지하세요(원격 초대는 자동 취소되지 않음)."
+        : "送信完了を待ってください。長時間変わらない場合は Clerk を確認してからローカル記録を停止してください（遠端招待は自動取消されません）。",
     actions: locale === "zh" ? "操作" : locale === "ko" ? "작업" : "操作",
     saveRole: locale === "zh" ? "保存权限" : locale === "ko" ? "권한 저장" : "権限を保存",
     suspend: locale === "zh" ? "停用" : locale === "ko" ? "중지" : "停止",
@@ -131,9 +149,9 @@ export function getMemberManagementCopy(locale: Locale) {
 export function getMemberManagementFlash(locale: Locale, flash?: string) {
   const messages: Record<string, Record<Locale, string>> = {
     member_invited: {
-      ja: "メンバーを招待しました。招待は受け入れられるまで有効化されません。",
-      zh: "已发送成员邀请；对方接受前仍处于邀请中。",
-      ko: "멤버 초대를 보냈습니다. 수락 전에는 초대 중 상태로 유지됩니다.",
+      ja: "Clerk が招待作成を受け付けました。受信箱への到達は確認されておらず、受け入れられるまで有効化されません。",
+      zh: "Clerk 已受理邀请创建请求；对方接受前仍处于邀请中，收件箱到达未确认。",
+      ko: "Clerk가 초대 생성 요청을 접수했습니다. 수락 전에는 초대 중 상태이며 받은편지함 도착은 확인되지 않았습니다.",
     },
     member_invited_pending: {
       ja: "招待を作成しました。送信設定を確認してから受け取ったメールアドレスで承諾してください。",
@@ -145,15 +163,28 @@ export function getMemberManagementFlash(locale: Locale, flash?: string) {
       zh: "成员已保留在邀请中，但邀请邮件发送失败；请检查设置后重试。",
       ko: "멤버는 초대 중으로 보존되었지만 초대 이메일 발송에 실패했습니다. 설정을 확인하고 다시 시도해 주세요.",
     },
-    invitation_sent: { ja: "招待を再送信しました。", zh: "已重新发送邀请。", ko: "초대를 다시 보냈습니다." },
+    invitation_sent: {
+      ja: "Clerk が招待作成を受け付けました。再送結果の受信箱への到達は確認されていません。",
+      zh: "Clerk 已受理邀请创建请求；本次重试的收件箱到达未确认。",
+      ko: "Clerk가 초대 생성 요청을 접수했습니다. 이번 재시도의 받은편지함 도착은 확인되지 않았습니다.",
+    },
     invitation_pending: { ja: "招待は送信待ちとして保持されています。", zh: "邀请已保留为待发送状态。", ko: "초대가 발송 대기 상태로 유지되었습니다." },
     invitation_failed: { ja: "招待の再送信に失敗しました。", zh: "重新发送邀请失败。", ko: "초대 재전송에 실패했습니다." },
     invitation_delivery_uncertain: {
-      ja: "招待は送信された可能性がありますが、記録を確定できませんでした。むやみに再送せず、Clerk と現在の招待状態を先に確認してください。",
-      zh: "邀请可能已发送，但记录未能确认。请勿盲目重发，请先核对 Clerk 与当前邀请状态。",
-      ko: "초대가 전송되었을 수 있지만 기록을 확정하지 못했습니다. 무작정 다시 보내지 말고 Clerk와 현재 초대 상태를 먼저 확인해 주세요.",
+      ja: "Clerk が招待作成を受け付けた可能性がありますが、結果を確定できませんでした。受信箱への到達は未確認です。むやみに再送せず、Clerk と現在の招待状態を先に確認してください。",
+      zh: "Clerk 可能已受理邀请创建，但结果未能确认；收件箱到达未确认。请勿盲目重发，先核对 Clerk 与当前邀请状态。",
+      ko: "Clerk가 초대 생성을 접수했을 수 있지만 결과를 확정하지 못했습니다. 받은편지함 도착은 확인되지 않았습니다. 무작정 다시 보내지 말고 Clerk와 현재 초대 상태를 확인하세요.",
     },
-    invitation_revoked: { ja: "招待を取り消しました。", zh: "已撤销邀请。", ko: "초대를 취소했습니다." },
+    invitation_delivery_in_progress: {
+      ja: "別の送信処理が進行中です。完了するまで再送せず、状態を更新してください。",
+      zh: "另一个发送请求正在处理中。请等待状态更新，不要重复发送。",
+      ko: "다른 발송 처리가 진행 중입니다. 상태가 갱신될 때까지 다시 보내지 마세요.",
+    },
+    invitation_revoked: {
+      ja: "ローカルの招待記録を停止しました。これは Clerk 側の招待を取り消したことを意味しません。作成済みの可能性がある場合は Clerk を確認し、必要なら手動で取り消してください。",
+      zh: "已停止本地邀请记录，但这不代表已撤销 Clerk 远端邀请。如 Clerk 可能已受理，请先核对并按需手动撤销。",
+      ko: "로컬 초대 기록을 중지했습니다. Clerk 원격 초대가 취소되었다는 뜻은 아닙니다. 생성되었을 수 있다면 Clerk를 확인하고 필요할 때 수동으로 취소하세요.",
+    },
     member_role_updated: { ja: "メンバーの権限を更新しました。", zh: "已更新成员权限。", ko: "멤버 권한을 업데이트했습니다." },
     member_suspended: { ja: "メンバーを停止しました。", zh: "已暂停成员。", ko: "멤버를 중지했습니다." },
     member_reactivated: { ja: "メンバーを復元しました。", zh: "已恢复成员。", ko: "멤버를 복원했습니다." },

@@ -108,6 +108,7 @@ import type {
   RefreshObjectImportReviewInput,
   RefreshObjectImportReviewResult,
 } from "@/lib/data.memory";
+import { normalizeInvitationDeliveryState } from "@/lib/invitation-delivery-state";
 import type { VisibleBrokerageCase, VisibleProperty } from "@/lib/data.memory";
 import type { TenantRole, TenantCapabilityPreset } from "@/lib/tenant-permissions";
 import type { LifecycleFilter, LifecycleStatus } from "@/lib/record-lifecycle";
@@ -194,6 +195,7 @@ const REQUIRED_PRODUCTION_MIGRATIONS = [
   "20260924_002_admin_worker_identity_read.sql",
   "20260924_003_runtime_object_import_case_lookup.sql",
   "20260924_004_official_template_publish.sql",
+  "20261002_001_invitation_delivery_claim.sql",
 ] as const;
 
 const OPEN_STAGES: ClientStage[] = ["lead", "contacted", "quoted", "viewing", "negotiating"];
@@ -644,6 +646,11 @@ function mapTenantMembership(row: Record<string, unknown>): TenantMembership {
     status,
     invitationProvider: String(row.invitation_provider ?? (row.status === "active" ? "manual" : "none")) as TenantMembership["invitationProvider"],
     invitationStatus,
+    invitationDeliveryState: normalizeInvitationDeliveryState(row.invitation_delivery_state, {
+      invitationStatus: rawInvitationStatus,
+      providerInvitationId: row.provider_invitation_id ? String(row.provider_invitation_id) : undefined,
+      invitationError: row.invitation_error ? String(row.invitation_error) : undefined,
+    }),
     providerInvitationId: row.provider_invitation_id ? String(row.provider_invitation_id) : undefined,
     invitationUrl: row.invitation_url ? String(row.invitation_url) : undefined,
     invitationSentAt: toDate(row.invitation_sent_at),
@@ -2349,7 +2356,15 @@ function mapTenantInvitationDeliveryContext(row: Record<string, unknown>): Tenan
       createdAt: user.createdAt,
     },
   };
-  return { ...member, tenant, member };
+  return {
+    ...member,
+    tenant,
+    member,
+    invitationDeliveryBlocked:
+      membership.invitationDeliveryState === "sending" || membership.invitationDeliveryState === "unknown"
+        ? membership.invitationDeliveryState
+        : undefined,
+  };
 }
 
 export async function listPlatformTenantAccounts(): Promise<TenantAccountSummary[]> {

@@ -172,7 +172,7 @@ const expectedStatuses = {
 };
 const expectedInvitationStatuses = {
   not_sent: { ja: "未送信", zh: "未发送", ko: "미발송" },
-  pending: { ja: "承諾待ち・処理中", zh: "待接受，处理中", ko: "수락 대기·처리 중" },
+  pending: { ja: "承諾待ち", zh: "待接受", ko: "수락 대기" },
   accepted: { ja: "承諾済み", zh: "已接受", ko: "수락됨" },
   revoked: { ja: "取消済み", zh: "已撤销", ko: "취소됨" },
   expired: { ja: "期限切れ", zh: "已过期", ko: "만료됨" },
@@ -313,7 +313,7 @@ function assertTargetedAction(form, expectedActionText, expectedConditionText, c
 }
 
 assertTargetedAction(formsByAction.get("updateTenantMemberRoleAction")[0], "ui.saveRole", "canUpdateRole", "button");
-assertTargetedAction(formsByAction.get("sendTenantMemberInvitationAction")[0], "ui.sendInvite", 'canInvite && member.status === "invited"');
+assertTargetedAction(formsByAction.get("sendTenantMemberInvitationAction")[0], "ui.sendInvite", 'canInvite && member.status === "invited" && !deliveryBlocked');
 assertTargetedAction(formsByAction.get("revokeTenantMemberInvitationAction")[0], "ui.revokeInvite", 'canRemove && member.status === "invited"');
 
 const statusForms = formsByAction.get("updateTenantMemberStatusAction");

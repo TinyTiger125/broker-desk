@@ -26,18 +26,29 @@ export type ClerkInvitationFailure = {
 
 /**
  * The invitation endpoint is a POST. Clerk's SDK exposes the HTTP status and
- * error codes, but neither the SDK nor the endpoint contract proves that an
- * API response with an error status did not reach the create side effect.
- * This is especially important for timeout/rate-limit responses, so every
- * Clerk API response remains outcome-unknown until a persisted provider
- * result or an explicit manual recovery is recorded.
+ * error codes. Only the bounded validation/authentication codes below are
+ * treated as a safe local rejection. Timeout, rate-limit, unknown-code, and
+ * server responses remain outcome-unknown because the SDK/endpoint contract
+ * does not prove that the POST did not reach the create side effect.
  */
 export function classifyClerkInvitationError(error: unknown): ClerkInvitationFailure {
   if (isClerkAPIResponseError(error)) {
     const status = Number.isInteger(error.status) ? error.status : 0;
     const codes = error.errors.map(({ code }) => code).filter(Boolean).slice(0, 3).join(",");
+    const safeLocalRejectionCodes = new Set([
+      "email_address_invalid",
+      "form_param_missing",
+      "form_param_invalid",
+      "authentication_invalid",
+    ]);
+    const isSafeLocalRejection = status >= 400
+      && status < 500
+      && status !== 408
+      && status !== 429
+      && error.errors.length > 0
+      && error.errors.every(({ code }) => safeLocalRejectionCodes.has(code));
     return {
-      uncertain: true,
+      uncertain: !isSafeLocalRejection,
       reason: `clerk_invitation_api_${status || "error"}${codes ? `:${codes}` : ""}`,
     };
   }
