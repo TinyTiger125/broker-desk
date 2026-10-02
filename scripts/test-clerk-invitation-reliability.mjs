@@ -43,17 +43,41 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+const testAuthEnvKeys = [
+  "BROKER_DESK_AUTH_MODE",
+  "BROKER_DESK_AUTH_PROVIDER",
+  "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
+  "CLERK_SECRET_KEY",
+];
+const testAuthEnvSnapshot = new Map(testAuthEnvKeys.map((key) => [key, process.env[key]]));
+const restoreTestAuthEnv = () => {
+  for (const [key, value] of testAuthEnvSnapshot) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+};
+process.once("exit", restoreTestAuthEnv);
 process.env.BROKER_DESK_AUTH_MODE = "clerk";
-process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY = "fixture-clerk-publishable-key"
+process.env.BROKER_DESK_AUTH_PROVIDER = "clerk";
+process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY = "fixture-clerk-publishable-key";
 process.env.CLERK_SECRET_KEY = "fixture-clerk-secret-key";
 
 const {
   classifyClerkInvitationError,
   createClerkInvitationForTenantMember,
 } = loadTs("src/lib/clerk-invitations.ts");
+const { resolveBrokerDeskAuthMode } = loadTs("src/lib/auth-mode.ts");
 const { classifySupabaseInvitationError } = loadTs("src/lib/supabase-invitations.ts");
 const { inviteSupabaseUserByEmail } = loadTs("src/lib/supabase/admin.ts");
 const { makeInvitationDeliveryUnknownError } = loadTs("src/lib/invitation-delivery-state.ts");
+
+let mismatchRejected = false;
+try {
+  resolveBrokerDeskAuthMode({ configuredMode: "clerk", configuredProvider: "supabase", clerkConfigured: true });
+} catch (error) {
+  mismatchRejected = error instanceof Error && error.message === "auth_mode_provider_mismatch";
+}
+assert(mismatchRejected, "auth mode/provider mismatch must remain fail-closed");
 
 const context = {
   tenant: { id: "tenant_mock", name: "Mock Tenant" },

@@ -172,6 +172,7 @@ try {
     "DATABASE_URL",
     "DATABASE_DEVELOPMENT_URL",
     "BROKER_DESK_AUTH_MODE",
+    "BROKER_DESK_AUTH_PROVIDER",
     "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
     "CLERK_SECRET_KEY",
   ];
@@ -188,6 +189,7 @@ try {
     process.env.DATABASE_URL = `postgresql://brokerdesk_runtime@127.0.0.1:${port}/broker_desk_runner_test`;
     delete process.env.DATABASE_DEVELOPMENT_URL;
     process.env.BROKER_DESK_AUTH_MODE = "clerk";
+    process.env.BROKER_DESK_AUTH_PROVIDER = "clerk";
     process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY = "fixture-clerk-publishable-key";
     process.env.CLERK_SECRET_KEY = "fixture-clerk-secret-key";
 
