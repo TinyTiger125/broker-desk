@@ -3,6 +3,14 @@
 > 本文件是唯一活动交接和进度入口，不重复产品、架构或历史正文。
 > Last updated: 2026-09-30.
 
+## 2026-10-03 版本台账治理收口
+
+- 唯一版本、部署与迁移 manifest 已建立于 RELEASE_VERSION_LEDGER.md，本节只保留交接指针，不复制其正文。
+- 当前 selected candidate 的应用基线是 detached worktree commit 9bc001b20c397bf054dc5fb23561c41d821d85f5；本轮治理提交可位于其上。既有未提交 AGENTS.md 规则块保持原样，不属于本轮写集。
+- GitHub PR #16 合并 SHA 701a8bdbdc86073f60cd07cfdfd79da73925295d 已核实为 18-file invitation delivery hotfix，但 Tokyo Production 当前 production_migrations_required；它是 DEPLOYED_NOT_ACCEPTED，不是已验证发布。
+- 上一 Tokyo Production 0f18d6ccc1b4c2fc921ae05f0978de6b7ac0c3b5 / dpl_BqYgpSjbArxFDUSxskzngSXpNQBK 只记录为 PREVIOUSLY_VERIFIED_NOT_RECHECKED；本轮未执行 Production migration、APPONLY 回退、部署或远端写入。
+- 台账校验器为 scripts/check-release-version-ledger.mjs；本轮只运行定向台账检查、diff check 与状态核对，不重复无关旧测试。
+
 ## 2026-09-30 单入口工作流更新
 
 - 当前统一候选：`broker-desk-recovery-delivery-20260922`，分支 `fix/tokyo-production-build-command`；本轮复核起点是 `eadc87dd8a49fa95446c80c55a14be42e6a1938a`，其后已有本地提交 `8f63f46`，本轮修复仍只在该候选内收口。它与旧 `broker-desk-web-dev` worktree（`task040-property-page-integrated`，HEAD `481a22b786d476740aa31b23ba706bb80b3bd672`）是同一仓库的独立 worktree，双方互不为祖先；本次不删除、重置、迁移、合并或覆盖任一工作树的未提交改动。
