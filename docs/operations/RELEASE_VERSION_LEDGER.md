@@ -33,7 +33,7 @@
 | --- | --- | --- | --- | --- | --- |
 | Tokyo 用户 Production 当前部署 | v0.3.0-rc.1（台账候选编号，**不表示已发布/已验收**） | 邀请投递幂等热修复候选 | 701a8bdbdc86073f60cd07cfdfd79da73925295d | DEPLOYED_NOT_ACCEPTED | Tokyo 返回 production_migrations_required；Production 不可用，禁止把它写成已验证版本 |
 | Tokyo Production 上一曾正常部署 | 未绑定语义版本（历史部署，不回填版号） | Tokyo 上一已验证基线 | 0f18d6ccc1b4c2fc921ae05f0978de6b7ac0c3b5 | PREVIOUSLY_VERIFIED_NOT_RECHECKED | 部署 dpl_BqYgpSjbArxFDUSxskzngSXpNQBK 曾正常；本轮未重验，不代表当前可用 |
-| 本地 selected candidate | v0.3.0-rc.2（台账建议编号，**未部署**） | V1 输入与邀请可靠性候选 | 9bc001b20c397bf054dc5fb23561c41d821d85f5 | LOCAL_NOT_DEPLOYED | 包含 PR16 之外的 Excel/OCR、PDF、导航/UI 与邀请后续改动；不得整体写成线上 |
+| 本地 selected candidate 应用基线 | v0.3.0-rc.2（台账建议编号，**未部署**） | V1 输入与邀请可靠性候选 | 9bc001b20c397bf054dc5fb23561c41d821d85f5 | LOCAL_NOT_DEPLOYED | 这是业务 candidate 基线，不是本次 docs 治理提交后的当前 HEAD；包含 PR16 之外的 Excel/OCR、PDF、导航/UI 与邀请后续改动 |
 
 > v0.3.0-rc.1 与 v0.3.0-rc.2 是本台账为后续沟通提供的候选编号，不是已创建
 > 的 tag、GitHub Release、Vercel Release 或 Production 发布事实。当前仓库仍保留
@@ -49,13 +49,14 @@
 | 自动部署目标 | Project ID | Deployment ID | URL/入口 | target | 观察到的状态 | 证据边界 |
 | --- | --- | --- | --- | --- | --- | --- |
 | broker-desk-tokyo-validation（真正用户站） | prj_W4OClYmrW25iNApoSK2y7djJsZDM | dpl_Rqf6ySXA91JKHpPRHkvgbBj6Z7Rt | project-6q8up.vercel.app | Production | BLOCKED: production_migrations_required | 当前部署事实来自本轮交接背景；未执行修复、迁移或回退 |
-| broker-desk-staging | UNVERIFIED | UNVERIFIED | UNVERIFIED | Production 配置为空 | UNVERIFIED | 目标存在及配置问题来自本轮交接背景；不能把空配置写成健康部署 |
+| broker-desk-staging | prj_1cQA4Bc1BsVVM0qhzDdsFGzAVd0Q | dpl_FXTu3VGqFDBgpJBGq5ZwjZhNxmg8 | URL 未提供 | Production | READY，但 /health=503；不能视为真正用户站 | Project/Deployment 与状态证据截至 2026-10-02；Production/Shared 变量 UI 为空，未把它写成健康用户站，也未刷新当前状态 |
 
 ### 3.2 v0.3.0-rc.2 本地 candidate（SHA 9bc001b...）
 
-- 没有已确认的部署 ID、Production URL 或 Preview URL；状态为 NOT_DEPLOYED。
-- 如果以后允许部署，必须同时记录上表的每个自动目标（包括 staging 的实际
-  Project ID/Deployment ID），不能只记录 Tokyo 用户站。
+- 没有已确认的部署 ID、Production URL 或 Preview URL；状态为 NOT_DEPLOYED。上表 staging 的部署属于 701a8bd 线上候选，不属于这个本地 candidate。
+- 如果以后允许部署，必须在发布动作前刷新上表每个自动目标的部署 SHA、状态和
+  URL；staging 的 Project/Deployment ID 目前只有 2026-10-02 的证据，不能沿用为
+  下一次发布的当前状态，也不能只复核 Tokyo 用户站。
 - 本地 candidate 不得通过“当前线上 URL 看起来能打开”获得 DEPLOYED 或
   VERIFIED 状态；每个目标都要有部署 SHA 和独立运行证据。
 
@@ -114,7 +115,8 @@
 
 - **发布名**：V1 输入与邀请可靠性候选
 - **状态**：LOCAL_NOT_DEPLOYED；仅用于下一次受控发布前的台账占位。
-- **精确 candidate SHA**：9bc001b20c397bf054dc5fb23561c41d821d85f5
+- **精确业务 candidate 基线 SHA**：9bc001b20c397bf054dc5fb23561c41d821d85f5
+- **当前治理提交**：bdb57b35891ef8b4692ea64147013668fc1fc25f；它只承载本台账/校验器，不改变业务 candidate SHA。
 - **当前 package.json**：0.2.0-rc.2，本轮未修改。
 - **相对本地 origin/main=7a283d4 的候选提交**：包含以下可独立拆分的 pending
   范围；这些提交不等于已上线：
