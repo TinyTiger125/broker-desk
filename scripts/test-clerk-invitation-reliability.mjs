@@ -156,6 +156,24 @@ assert(
     && supabaseParamsSeen[0].options.redirectTo === "https://example.test/auth/callback",
   "Supabase adapter must normalize email and pass the invite redirect",
 );
+let missingUserError;
+try {
+  await inviteSupabaseUserByEmail({ email: "qa-fixture-4@example.test" }, {
+    inviteUserByEmail: async () => ({ data: { user: null }, error: null }),
+  });
+} catch (error) {
+  missingUserError = error;
+}
+assert(missingUserError?.message === "supabase_invitation_missing_user", "missing Supabase user response must preserve an explicit reason");
+assert(
+  classifySupabaseInvitationError(new Error("supabase_admin_not_configured")).uncertain === false,
+  "missing Supabase admin configuration must be a confirmed local failure",
+);
+assert(
+  classifySupabaseInvitationError(missingUserError).uncertain === true
+    && classifySupabaseInvitationError(missingUserError).reason === "supabase_invitation_missing_user",
+  "missing Supabase user response must remain outcome-unknown with an explicit reason",
+);
 assert(
   classifySupabaseInvitationError({ status: 422, code: "email_address_invalid" }).uncertain === false,
   "known Supabase email validation failure must remain safely retryable",
@@ -485,6 +503,49 @@ const actionSuccess = await runActionWithProvider(actionSuccessMember, async () 
 assert(actionSuccess.result.sent === true && !actionSuccess.result.uncertain && actionSuccess.getProviderCalls() === 1, "normal Action success must call the provider once");
 const actionSuccessState = await invitationData.getTenantMemberById({ tenantId, membershipId: actionSuccessMember.id });
 assert(actionSuccessState?.invitationDeliveryState === "provider_accepted", "normal Action success must persist provider-accepted state");
+
+const actionSupabaseConfigMember = await createActionTestMember("Supabase Admin Config");
+let supabaseAdapterCalls = 0;
+let actualSupabaseProviderCalls = 0;
+const actionSupabaseConfigSender = loadActionSender(async () => {
+  throw new Error("the Supabase configuration harness must not call Clerk");
+}, {
+  supabaseEnabled: true,
+  supabaseProvider: async () => {
+    supabaseAdapterCalls += 1;
+    if (supabaseAdapterCalls === 1) throw new Error("supabase_admin_not_configured");
+    actualSupabaseProviderCalls += 1;
+    return { providerInvitationId: "supabase_action_configured", sentAt: new Date() };
+  },
+});
+const actionSupabaseConfigFailure = await actionSupabaseConfigSender({
+  tenantId,
+  membershipId: actionSupabaseConfigMember.id,
+  actorId,
+  recordSkippedAsFailure: true,
+});
+assert(
+  !actionSupabaseConfigFailure.uncertain && actionSupabaseConfigFailure.sent === false,
+  "missing Supabase admin configuration must be a confirmed Action failure",
+);
+const actionSupabaseConfigState = await invitationData.getTenantMemberById({ tenantId, membershipId: actionSupabaseConfigMember.id });
+assert(
+  actionSupabaseConfigState?.invitationDeliveryState === "ready"
+    && actionSupabaseConfigState.invitationError === "supabase_admin_not_configured",
+  "local Supabase configuration failure must leave a retryable ready state with its explicit reason",
+);
+const actionSupabaseConfigRetry = await actionSupabaseConfigSender({
+  tenantId,
+  membershipId: actionSupabaseConfigMember.id,
+  actorId,
+  recordSkippedAsFailure: true,
+});
+assert(
+  actionSupabaseConfigRetry.sent === true
+    && supabaseAdapterCalls === 2
+    && actualSupabaseProviderCalls === 1,
+  "a corrected Supabase admin configuration must retry once without counting the local failure as a provider call",
+);
 
 const actionSupabaseTimeoutMember = await createActionTestMember("Supabase Timeout");
 const actionSupabaseTimeout = await runActionWithSupabaseProvider(actionSupabaseTimeoutMember, async () => {
