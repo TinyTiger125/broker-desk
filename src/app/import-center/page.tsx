@@ -174,8 +174,8 @@ function getCopy(locale: Locale) {
       colTarget: "対象",
       colCreatedAt: "作成日",
       colStatus: "状態",
-      wizardTitle: "情報管理アシスト",
-      wizardSubtitle: "保存先の確認",
+      wizardTitle: "資料の保存先を確認",
+      wizardSubtitle: "読み取った内容を確認",
       stepSelect: "選択",
       stepMap: "保存確認",
       stepValidate: "確認",
@@ -184,19 +184,19 @@ function getCopy(locale: Locale) {
       schemaMappingDesc: "資料にある名前を、業務で使う保存先に合わせます。違うところだけ直してください。",
       saveDraft: "途中保存",
       continueValidation: "確認へ進む",
-      sourceColumn: "情報分類",
-      targetField: "分類に保存",
-      autoMapCol: "初期対応",
-      sampleValue: "入力済情報確認",
+      sourceColumn: "資料上の名前",
+      targetField: "保存する項目",
+      autoMapCol: "対応案",
+      sampleValue: "確認内容",
       unmapped: "この列は保存しない",
       recentImportHistory: "最近の読取履歴",
       viewArchive: "アーカイブ表示",
-      issueStatsTitle: "確認事項",
-      issueStatsDesc: "直近の読取で確認が必要な内容",
-      issueTrendTitle: "確認事項の推移（7日）",
-      issueTrendDesc: "日別の確認件数",
-      alerts: "アラート",
-      validationLog: "確認記録",
+      issueStatsTitle: "確認事項の集計",
+      issueStatsDesc: "必要な確認の件数と内訳",
+      issueTrendTitle: "確認事項の推移",
+      issueTrendDesc: "最近7日間の確認件数",
+      alerts: "確認項目",
+      validationLog: "確認事項の記録",
       noFurtherAlerts: "追加アラートはありません",
       validationUnmappedRequired: "必須項目の保存先が未設定",
       validationFormatMismatch: "データ形式の不一致",
@@ -226,7 +226,7 @@ function getCopy(locale: Locale) {
       fieldDefTitle: "保存先項目",
       fieldDefSubtitle: "保存先を確認",
       attachmentTitle: "添付登録",
-      attachmentSubtitle: "実ファイル保存対応",
+      attachmentSubtitle: "ファイルを保存",
       labelAttachmentTargetType: "対象種別",
       labelAttachmentTargetId: "関連記録",
       labelUpload: "ファイルアップロード（推奨）",
@@ -279,8 +279,8 @@ function getCopy(locale: Locale) {
       colTarget: "目标",
       colCreatedAt: "创建日期",
       colStatus: "状态",
-      wizardTitle: "资料整理助手",
-      wizardSubtitle: "确认保存位置",
+      wizardTitle: "确认资料保存位置",
+      wizardSubtitle: "确认读取内容",
       stepSelect: "选择",
       stepMap: "保存确认",
       stepValidate: "检查",
@@ -290,18 +290,18 @@ function getCopy(locale: Locale) {
       saveDraft: "暂存",
       continueValidation: "进入检查",
       sourceColumn: "资料里的名称",
-      targetField: "保存成",
-      autoMapCol: "初步对应",
-      sampleValue: "确认说明",
+      targetField: "保存成什么项目",
+      autoMapCol: "对应建议",
+      sampleValue: "确认内容",
       unmapped: "不保存这一列",
       recentImportHistory: "最近读取历史",
       viewArchive: "查看归档",
-      issueStatsTitle: "问题汇总",
-      issueStatsDesc: "按最近读取结果统计需要处理的内容",
-      issueTrendTitle: "问题变化（7天）",
-      issueTrendDesc: "按天统计需要确认的内容",
-      alerts: "告警",
-      validationLog: "检查记录",
+      issueStatsTitle: "确认事项汇总",
+      issueStatsDesc: "需要确认的数量和明细",
+      issueTrendTitle: "确认事项变化",
+      issueTrendDesc: "最近 7 天需要确认的数量",
+      alerts: "确认事项",
+      validationLog: "确认事项记录",
       noFurtherAlerts: "暂无更多告警",
       validationUnmappedRequired: "必填项还没有保存位置",
       validationFormatMismatch: "数据格式不一致",
@@ -330,7 +330,7 @@ function getCopy(locale: Locale) {
       fieldDefTitle: "可保存内容",
       fieldDefSubtitle: "确认要保存到案件的项目",
       attachmentTitle: "附件登记",
-      attachmentSubtitle: "支持实际文件保存",
+      attachmentSubtitle: "保存实际文件",
       labelAttachmentTargetType: "目标类型",
       labelAttachmentTargetId: "关联记录",
       labelUpload: "上传文件（推荐）",
@@ -383,8 +383,8 @@ function getCopy(locale: Locale) {
       colTarget: "대상",
       colCreatedAt: "생성일",
       colStatus: "상태",
-      wizardTitle: "자료 정리 도우미",
-      wizardSubtitle: "저장 항목 확인",
+      wizardTitle: "자료 저장 위치 확인",
+      wizardSubtitle: "읽은 내용 확인",
       stepSelect: "선택",
       stepMap: "저장 확인",
       stepValidate: "확인",
@@ -394,18 +394,18 @@ function getCopy(locale: Locale) {
       saveDraft: "임시 저장",
       continueValidation: "확인으로 이동",
       sourceColumn: "자료에 적힌 이름",
-      targetField: "저장 위치",
-      autoMapCol: "초기 대응",
+      targetField: "저장할 항목",
+      autoMapCol: "대응 제안",
       sampleValue: "확인 내용",
       unmapped: "이 열은 저장하지 않음",
       recentImportHistory: "최근 읽기 이력",
       viewArchive: "보관 이력 보기",
-      issueStatsTitle: "확인 사항",
-      issueStatsDesc: "최근 읽기 결과에서 확인이 필요한 내용",
-      issueTrendTitle: "확인 사항 추이 (7일)",
-      issueTrendDesc: "일자별 확인 건수",
-      alerts: "알림",
-      validationLog: "확인 기록",
+      issueStatsTitle: "확인 사항 집계",
+      issueStatsDesc: "확인이 필요한 수와 세부 내용",
+      issueTrendTitle: "확인 사항 추이",
+      issueTrendDesc: "최근 7일간 확인이 필요한 수",
+      alerts: "확인 사항",
+      validationLog: "확인 사항 기록",
       noFurtherAlerts: "추가 알림이 없습니다",
       validationUnmappedRequired: "필수 항목의 저장 위치 미설정",
       validationFormatMismatch: "데이터 형식 불일치",
@@ -434,7 +434,7 @@ function getCopy(locale: Locale) {
       fieldDefTitle: "저장 항목",
       fieldDefSubtitle: "안건에 저장할 항목 확인",
       attachmentTitle: "첨부 등록",
-      attachmentSubtitle: "실파일 저장 지원",
+      attachmentSubtitle: "파일 저장",
       labelAttachmentTargetType: "대상 유형",
       labelAttachmentTargetId: "연결 기록",
       labelUpload: "파일 업로드(권장)",
@@ -1627,10 +1627,10 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                       ? "정보 정리를 열고 안건에 남길 데이터를 확인하세요."
                       : "情報整理を開き、案件に残すデータを確認します。"
                   : locale === "zh"
-                    ? "打开高级历史查看这条任务的原始状态，不把 completed 单独当作已写入。"
+                    ? "打开处理记录，确认保存结果和原始资料状态。"
                     : locale === "ko"
-                      ? "고급 기록에서 원래 작업 상태를 확인하세요. completed만으로 저장 완료로 간주하지 않습니다."
-                      : "高度な履歴で元のタスク状態を確認します。completed だけで保存完了とは扱いません。"}
+                      ? "처리 기록을 열어 저장 결과와 원본 자료 상태를 확인하세요."
+                      : "処理記録を開いて、保存結果と元資料の状態を確認します。"}
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
@@ -1887,51 +1887,58 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
             </dl>
           </article>
 
-          <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <h3 className="text-xs font-black uppercase tracking-widest text-[#1f477b]">{copy.issueStatsTitle}</h3>
-            <p className="mt-1 text-[11px] text-slate-500">{copy.issueStatsDesc}</p>
-            <div className="mt-3 space-y-2">
-              {issueCodeStats.length === 0 ? <p className="text-xs text-slate-500">{copy.noFurtherAlerts}</p> : null}
-              {issueCodeStats.map((item) => (
-                <div key={`issue-stat-${item.code}`} className="rounded-lg border border-slate-200 bg-slate-50 p-2.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="truncate text-xs font-semibold text-slate-800">{item.label}</p>
-                    <span className="rounded bg-white px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-slate-700">
-                      {item.total}
-                    </span>
-                  </div>
-                  <div className="mt-1.5 flex gap-1.5 text-[10px]">
-                    <span className="rounded bg-red-50 px-1.5 py-0.5 font-semibold text-red-600">C {item.critical}</span>
-                    <span className="rounded bg-amber-50 px-1.5 py-0.5 font-semibold text-amber-700">W {item.warning}</span>
-                    <span className="rounded bg-blue-50 px-1.5 py-0.5 font-semibold text-blue-700">I {item.info}</span>
-                  </div>
+          <details className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <summary className="cursor-pointer text-xs font-black uppercase tracking-widest text-[#1f477b]">
+              {locale === "zh" ? "确认事项汇总" : locale === "ko" ? "확인 사항 요약" : "確認事項の集計"}
+            </summary>
+            <div className="mt-4 space-y-5">
+              <article>
+                <h3 className="text-xs font-black uppercase tracking-widest text-[#1f477b]">{copy.issueStatsTitle}</h3>
+                <p className="mt-1 text-[11px] text-slate-500">{copy.issueStatsDesc}</p>
+                <div className="mt-3 space-y-2">
+                  {issueCodeStats.length === 0 ? <p className="text-xs text-slate-500">{copy.noFurtherAlerts}</p> : null}
+                  {issueCodeStats.map((item) => (
+                    <div key={`issue-stat-${item.code}`} className="rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="truncate text-xs font-semibold text-slate-800">{item.label}</p>
+                        <span className="rounded bg-white px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-slate-700">
+                          {item.total}
+                        </span>
+                      </div>
+                      <div className="mt-1.5 flex gap-1.5 text-[10px]">
+                        <span className="rounded bg-red-50 px-1.5 py-0.5 font-semibold text-red-600">C {item.critical}</span>
+                        <span className="rounded bg-amber-50 px-1.5 py-0.5 font-semibold text-amber-700">W {item.warning}</span>
+                        <span className="rounded bg-blue-50 px-1.5 py-0.5 font-semibold text-blue-700">I {item.info}</span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </article>
+              </article>
 
-          <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <h3 className="text-xs font-black uppercase tracking-widest text-[#1f477b]">{copy.issueTrendTitle}</h3>
-            <p className="mt-1 text-[11px] text-slate-500">{copy.issueTrendDesc}</p>
-            <div className="mt-3 space-y-2">
-              {issueTrendDays.map((day) => (
-                <div key={`issue-trend-${day.key}`} className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2">
-                  <div className="mb-1 flex items-center justify-between gap-2">
-                    <p className="text-[11px] font-semibold text-slate-700">{day.label}</p>
-                    <p className="text-[11px] font-bold tabular-nums text-slate-800">{day.total}</p>
-                  </div>
-                  <div className="h-1.5 overflow-hidden rounded-full bg-slate-200">
-                    <div className="h-full bg-blue-500" style={{ width: `${Math.round((day.total / maxIssueTrendTotal) * 100)}%` }} />
-                  </div>
-                  <div className="mt-1.5 flex gap-1.5 text-[10px]">
-                    <span className="rounded bg-red-50 px-1.5 py-0.5 font-semibold text-red-600">C {day.critical}</span>
-                    <span className="rounded bg-amber-50 px-1.5 py-0.5 font-semibold text-amber-700">W {day.warning}</span>
-                    <span className="rounded bg-blue-50 px-1.5 py-0.5 font-semibold text-blue-700">I {day.info}</span>
-                  </div>
+              <article>
+                <h3 className="text-xs font-black uppercase tracking-widest text-[#1f477b]">{copy.issueTrendTitle}</h3>
+                <p className="mt-1 text-[11px] text-slate-500">{copy.issueTrendDesc}</p>
+                <div className="mt-3 space-y-2">
+                  {issueTrendDays.map((day) => (
+                    <div key={`issue-trend-${day.key}`} className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2">
+                      <div className="mb-1 flex items-center justify-between gap-2">
+                        <p className="text-[11px] font-semibold text-slate-700">{day.label}</p>
+                        <p className="text-[11px] font-bold tabular-nums text-slate-800">{day.total}</p>
+                      </div>
+                      <div className="h-1.5 overflow-hidden rounded-full bg-slate-200">
+                        <div className="h-full bg-blue-500" style={{ width: `${Math.round((day.total / maxIssueTrendTotal) * 100)}%` }} />
+                      </div>
+                      <div className="mt-1.5 flex gap-1.5 text-[10px]">
+                        <span className="rounded bg-red-50 px-1.5 py-0.5 font-semibold text-red-600">C {day.critical}</span>
+                        <span className="rounded bg-amber-50 px-1.5 py-0.5 font-semibold text-amber-700">W {day.warning}</span>
+                        <span className="rounded bg-blue-50 px-1.5 py-0.5 font-semibold text-blue-700">I {day.info}</span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              </article>
             </div>
-          </article>
+          </details>
 
           <article className="flex flex-col overflow-hidden rounded-xl bg-[#e6eeff]">
             <div className="flex items-center justify-between border-b border-slate-200/50 px-5 py-4">

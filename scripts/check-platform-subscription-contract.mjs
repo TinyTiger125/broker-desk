@@ -456,9 +456,9 @@ function assertPlatformInvitationRuntimeProbe(taskSource) {
 }
 
 const MEMBER_INVITATION_UNCERTAIN_COPY = {
-  ja: "遠端認証サービスが招待作成を受け付けた可能性がありますが、結果を確定できませんでした。受信箱への到達は未確認です。むやみに再送せず、遠端認証サービスと現在の招待状態を先に確認してください。",
-  zh: "远端身份服务可能已受理邀请创建，但结果未能确认；收件箱到达未确认。请勿盲目重发，先核对远端身份服务与当前邀请状态。",
-  ko: "원격 인증 서비스가 초대 생성을 접수했을 수 있지만 결과를 확정하지 못했습니다. 받은편지함 도착은 확인되지 않았습니다. 무작정 다시 보내지 말고 원격 인증 서비스와 현재 초대 상태를 확인하세요.",
+  ja: "認証サービスが招待作成を受け付けた可能性がありますが、結果を確定できませんでした。受信箱への到達は未確認です。むやみに再送せず、認証サービスと現在の招待状態を先に確認してください。",
+  zh: "身份认证服务可能已受理邀请创建，但结果未能确认；收件箱到达未确认。请勿盲目重发，先核对身份认证服务与当前邀请状态。",
+  ko: "인증 서비스가 초대 생성을 접수했을 수 있지만 결과를 확정하지 못했습니다. 받은편지함 도착은 확인되지 않았습니다. 무작정 다시 보내지 말고 인증 서비스와 현재 초대 상태를 확인하세요.",
 };
 
 function assertInvitationDeliveryAuditAtomicity({ senderSource, actionSource, memorySource, sqlSource, migrationSource, memberCopySource, membersPageSource }) {

@@ -48,6 +48,15 @@ for (const obsoleteLandingCopy of ["台账与附件", "台帳と添付", "대장
   assert(!page.includes(obsoleteLandingCopy), `obsolete landing module copy must be removed: ${obsoleteLandingCopy}`);
 }
 assert(page.includes('showAdvanced ? (\n      <section data-import-advanced-section="true"'), "legacy recovery content must remain available only for explicit advanced routes");
+const issueStatsIndex = page.indexOf("{copy.issueStatsTitle}");
+const issueTrendIndex = page.indexOf("{copy.issueTrendTitle}");
+const issueDetailsStart = page.lastIndexOf("<details", issueStatsIndex);
+const issueDetailsEnd = page.indexOf("</details>", issueTrendIndex);
+const validationLogIndex = page.indexOf("{copy.validationLog}");
+assert(issueDetailsStart >= 0 && issueDetailsStart < issueStatsIndex && issueDetailsEnd > issueTrendIndex && issueDetailsEnd < validationLogIndex, "aggregate import diagnostics must stay behind an on-demand details disclosure while the validation record remains visible");
+for (const mappingCopyKey of ["{copy.sourceColumn}", "{copy.targetField}", "{copy.sampleValue}"]) {
+  assert(page.includes(mappingCopyKey), `mapping review must render user-facing copy key: ${mappingCopyKey}`);
+}
 const layoutOpening = page.slice(layoutStart, objectChannels);
 assert(layoutOpening.includes("lg:grid-cols-[minmax(0,1fr)_20rem]"), "desktop lg layout must use a main column and bounded recent sidebar");
 assert(!layoutOpening.includes("md:grid-cols") && !layoutOpening.includes("sm:grid-cols"), "390px and 768px layouts must remain single-column");
