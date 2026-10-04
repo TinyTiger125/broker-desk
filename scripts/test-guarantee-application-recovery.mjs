@@ -35,6 +35,15 @@ for (const copy of [
 ]) {
   assert(client.includes(copy), `localized recovery copy is missing: ${copy}`);
 }
+for (const copy of [
+  "申請資料の生成に失敗したか、状態の確認に時間がかかっています。連続送信せず、履歴または生成状態を確認してから再試行してください。",
+  "ファイル生成を処理中です。同じファイルを重ねて作成しないため、連続送信せず、生成状態を更新するか履歴を確認してください。",
+  "生成中は同じファイルを重ねて作成しないため、ボタンを連続して押さず、履歴または「生成状態を確認」から結果を確認してください。失敗しても案件資料は変更されません。",
+  "申请资料可能仍在生成，或暂时无法确认状态。请勿重复提交，先查看历史记录或刷新生成状态后再重试。",
+  "신청 자료가 아직 생성 중이거나 상태를 확인할 수 없습니다. 중복 제출하지 말고 이력 또는 생성 상태를 확인한 뒤 다시 시도해 주세요.",
+]) {
+  assert(client.includes(copy), `persistent generation recovery copy is missing: ${copy}`);
+}
 assert(client.includes("clearPreviewConfirmation();"), "failed or successful generation must clear the confirmation before another attempt");
 assert(client.includes('postJson(locale, "generationStatus"') && client.includes("generationInProgress"), "active generation must retain a safe status refresh path");
 assert(client.includes('postJson(locale, "preview"') && client.includes("setMessage(text.previewLocked)"), "the recovery path must be able to generate a new preview successfully");

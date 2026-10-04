@@ -20,26 +20,31 @@
 
 ### 首页 / 工作台
 
-- [ ] 本轮新增改动的首页主要任务、入口文案和工作台完整回归：未执行。
+- [x] 本轮取得 owner/demo Chrome 路径的首页渲染证据：`/` 显示「資料管理センター」「今日の重点」，截图与 DOM 报告保存在 `/tmp/broker-desk-ui-flow-vS4QyW/`。
+- [ ] 首页主要任务的完整交互、写入和权限回归：未执行。
 - Source/contract：本轮没有修改首页业务流程。
 - Unit/memory：`test:home-resumable-work`、`test:work-center-behavior` 等既有检查不代表本轮完成首页人工验收。
-- Browser：无本轮新的真实 authenticated browser 证据。
+- Browser：只有显式本地 demo auth 的 Chrome owner 路径；不是 Clerk/Supabase 真实认证证据。
 - Gap：不能把本地构建通过写成首页验收通过。
 
 ### 导入
 
-- [ ] 上传、候选复核、保存、刷新/重开和进入案件的完整用户路径：未纳入本轮修复验收。
+- [x] 本轮 Chrome owner 路径验证 `/import-center` 页面可加载并显示「情報入力」。
+- [ ] 上传、候选复核、保存、刷新/重开和进入案件的完整用户路径：本轮未复测。
 - Source/contract：当前候选未修改导入解析或导入权限。
-- Unit/memory：既有导入合同/失败恢复检查可作为回归参考，但不是本轮的完整导入验收。
-- Browser/PG：未取得本轮导入浏览器证据；本轮临时 PostgreSQL 只覆盖保证申请生成占用，不覆盖导入流程。
+- Unit/memory：本轮 `test:import-failure-recovery` 等导入检查作为回归通过；它们不是完整导入人工验收。
+- Historical browser evidence：MIG-007/TASK-003 已保留资料确认、追加/新建、持久化和失败恢复的本地 demo 浏览器基线；不因本轮未复测而抹去，也不扩大为本轮新证据。
+- Current gap evidence：`CURRENT_WORKING_CONTEXT.md` 2026-09-30 记录的合成 Excel 选择文件动作曾被浏览器工具中断，因此本轮仍不宣称上传→映射→保存→刷新/重开闭环通过。
+- Browser/PG：本轮页面加载证据仅为 `/import-center`；临时 PostgreSQL 只覆盖保证申请生成占用，不覆盖导入流程。
 - Gap：需要单独用合成 Excel/证件样本验证原件留存、候选状态和重新打开；不使用真实证件或外部 OCR。
 
 ### 案件 / 客户 / 物件
 
-- [ ] 案件、客户、物件列表/详情/只读写入边界的全角色浏览器回归：未纳入本轮。
+- [x] 本轮 Chrome owner 路径渲染通过：案件 `/organize-center?type=case`、客户 `/clients`、物件 `/properties`。
+- [ ] 案件、客户、物件详情、写入边界和全角色浏览器回归：未纳入本轮。
 - Source/contract：保证生成路由使用现有 `RequestContext` 和案件可写/来源可读检查；本轮没有扩大客户/物件数据权限。
 - Unit/memory：现有 visibility/W93 检查可证明 resolver 的 fail-closed 规则；route harness 使用一个合成无外部来源案件验证 owner context。
-- Browser/PG：没有本轮真实多身份浏览器矩阵；临时 PostgreSQL 未承担页面权限验收。
+- Browser/PG：只有本地 demo owner 页面证据；临时 PostgreSQL 未承担页面权限验收。
 - Gap：仍需同公司 owner/company-read、第二租户和直接 URL 的 authenticated browser/真实 RLS 证据。
 
 ### 文件 / 模板 / 保证申请书输出
@@ -52,8 +57,9 @@
 - Unit/memory：`npm run test:guarantee-slice1-behavior`、`npm run test:guarantee-application-recovery`、`npm run test:guarantee-slice1-contract` 通过。
 - Isolated PostgreSQL：`npm run test:guarantee-preview-concurrency-postgres` 通过，覆盖临时真实 PostgreSQL 的双并发、provider 次数、单 output、失败释放/重试。
 - Route harness：`npm run test:guarantee-generation-route` 通过：unauthorized=403、cross-actor=404、cross-tenant=404；并发 providerCalls=1；失败+重试后 providerCalls=3、outputs=2。
-- Browser/Staging/Production：本轮没有真实 authenticated browser、远端 Clerk、真实邮件、Staging 或 Production 证据。
-- Gap：局部申込页已经有 processing/refresh 文案，但全产品常驻解释文案仍未完全收口；日文覆盖也未完成全站收敛，不能据此宣称整个产品的用户说明已验收。
+- Browser：本轮 Chrome owner 路径新增 `/cases/case_demo_asakusa_mori_rent/guarantee-application` 和 `/output-center` 证据；申込页常驻显示「生成中は同じファイルを重ねて作成しないため…」说明，具体截图为 `/tmp/broker-desk-ui-flow-vS4QyW/04-guarantee.png`。
+- Route/PG：既有 route harness 与 isolated PostgreSQL 证据仍有效；本轮没有真实 authenticated browser、远端 Clerk、真实邮件、Staging 或 Production 证据。
+- Gap：本轮完成的是申込页日语/恢复帮助的具体收敛；全产品常驻解释文案仍未完全收口，日文覆盖也未完成全站收敛，不能据此宣称整个产品的用户说明已验收。
 
 ### 成员 / 权限 / 邀请
 
@@ -62,7 +68,8 @@
 - Source/contract：邀请 action、Clerk/Supabase adapter、迁移合同和 `test:invitation-reliability`。
 - Unit/memory：`npm run test:invitation-reliability`、`npm run test:platform-subscription` 通过。
 - PG：临时 PostgreSQL 验收仅针对保证申请生成占用；没有远端 Supabase 或 Clerk 写入。
-- Browser/Staging/Production：没有成员邀请页面的真实会话矩阵，没有向邮箱发送测试邀请，也未核对收件箱/Clerk 日志。
+- Browser：本轮 Chrome owner 路径包含 `/settings/members` 页面渲染证据；同租户 `user_ops` 通过真实本地 `/api/actor` 与 `/api/tenant/session` fixture endpoint 验证为 `tenant_cherry` 成员。第二租户只存在于 route harness synthetic session，不是浏览器认证。
+- Staging/Production：没有成员邀请页面的真实会话矩阵，没有向邮箱发送测试邀请，也未执行远端 provider 操作。
 - Gap/人工恢复：若发送状态为 `unknown`/processing，操作员必须先根据收件地址、provider 日志和后台记录确认远端状态；确认未投递后再走受控本地恢复/重发路径。撤销本地 membership 不等于撤销 Clerk 远端 invitation，不得把本地撤销写成远端撤销。
 
 ## 本轮工程门
@@ -71,11 +78,12 @@
 - [x] `npm run lint`（仅保留既有 2 条 warning，无 error）
 - [x] `npm run build`（含 prebuild/postbuild）
 - [x] `git diff --check`
+- [x] `npm run test:local-ui-flow`（Chrome owner/demo 路径：首页→导入→案件→保证申请书帮助→客户→物件→文书输出→成员；同租户成员 session fixture；第二租户 route-harness-only）
 - [x] 当前工作树仅保留预先存在且未触碰的 `AGENTS.md` 修改；本轮没有执行生产迁移、远端写入、push 或 deploy。
 
 ## 未解决风险与准备条件
 
 1. 没有收件地址与 Clerk provider 日志，不能判断“正式版朋友邀请未收到邮件”的实际投递根因；本轮只证明重复 provider 调用风险已被占用状态阻断。
-2. `agent-browser` 不可用，且当前没有安全的本地 authenticated session fixture，因此没有浏览器角色矩阵。最小准备条件是受控的本地/Preview session fixture，能正常建立至少 owner、同公司普通成员和第二租户成员身份，不增加生产登录旁路。
+2. `agent-browser` 不可用，本轮改用已安装 Chrome headless；浏览器证据仍是显式 demo owner。现有 actor/session fixture 可建立 owner 与同租户成员，第二租户只在测试 route harness 中存在；没有安全的真实 authenticated browser 第二租户身份。最小准备条件仍是受控的本地/Preview session fixture，不增加生产登录旁路。
 3. 本地临时 PostgreSQL 测试不代表 Supabase RLS、Clerk 身份、邮件 provider 或 Production 数据已验证。真实 RLS/远端验收还需要隔离数据库、授权测试身份和明确回滚窗口。
-4. 本文不覆盖全产品信息架构、首页、导入、案件/客户/物件、成员页的完整人工评审；各节的未勾选项必须保持为缺口，不能合并解释为“整站通过”。
+4. 本文不覆盖全产品信息架构、首页、导入、案件/客户/物件、成员页的完整人工评审；各节的未勾选项必须保持为缺口，不能合并解释为“整站通过”。本轮新 Chrome 证据只证明页面可观察加载和具体帮助展示，不证明所有按钮写入、真实身份或跨租户页面隔离。

@@ -55,6 +55,7 @@ const COPY: Record<Locale, {
   generateButton: string;
   noGeneratePermission: string;
   previewLocked: string;
+  generationHelp: string;
   generationInProgress: string;
   refreshGenerationStatus: string;
   generated: string;
@@ -82,9 +83,9 @@ const COPY: Record<Locale, {
       preview_confirmation_expired: "プレビューの有効期限が切れました。入力内容を確認して、もう一度プレビューを生成してからファイルを生成してください。",
       preview_confirmation_required: "先にプレビューを生成してください。入力内容を確認してから、もう一度プレビューを生成してください。",
       preview_stale: "案件に登録済みの情報または帳票が更新されたため、確認済みプレビューを使えません。現在の内容を確認して、もう一度プレビューを生成してください。",
-      guarantee_slice1_failed: "申請資料を読み込めません。時間をおいて、もう一度お試しください。",
+      guarantee_slice1_failed: "申請資料の生成に失敗したか、状態の確認に時間がかかっています。連続送信せず、履歴または生成状態を確認してから再試行してください。",
     },
-    temporaryError: "申請資料を読み込めません。時間をおいて、もう一度お試しください。",
+    temporaryError: "申請資料の生成状態を確認できません。連続送信せず、履歴または生成状態を確認してから再試行してください。",
     disabled: "この申込機能は現在利用できません。利用権限または環境設定を確認してください。",
     backToCase: "案件に戻る",
     eyebrow: "案件の申請資料",
@@ -121,8 +122,9 @@ const COPY: Record<Locale, {
     generateButton: "確認してファイルを生成",
     noGeneratePermission: "生成権限がありません",
     previewLocked: "プレビューを固定しました。確認後にファイルを生成できます。",
-    generationInProgress: "ファイル生成を処理中です。完了するまで再送信しないでください。履歴を確認できます。",
-    refreshGenerationStatus: "生成状態を更新",
+    generationHelp: "生成中は同じファイルを重ねて作成しないため、ボタンを連続して押さず、履歴または「生成状態を確認」から結果を確認してください。失敗しても案件資料は変更されません。",
+    generationInProgress: "ファイル生成を処理中です。同じファイルを重ねて作成しないため、連続送信せず、生成状態を更新するか履歴を確認してください。",
+    refreshGenerationStatus: "生成状態を確認",
     generated: "申込書を生成し、この案件の履歴に保存しました。",
     historyTitle: "案件申込書の履歴",
     historyEmpty: "生成済みファイルはありません。",
@@ -156,9 +158,9 @@ const COPY: Record<Locale, {
       preview_confirmation_expired: "预览已过期。请确认本次申请内容，重新生成预览后再生成文件。",
       preview_confirmation_required: "请先生成预览。确认本次申请内容后，再重新生成预览。",
       preview_stale: "案件中已登记的信息或表格已更新，无法使用之前确认的预览。请确认当前内容后重新生成预览。",
-      guarantee_slice1_failed: "申请资料暂时无法读取，请稍后重试。",
+      guarantee_slice1_failed: "申请资料可能仍在生成，或暂时无法确认状态。请勿重复提交，先查看历史记录或刷新生成状态后再重试。",
     },
-    temporaryError: "申请资料暂时无法读取，请稍后重试。",
+    temporaryError: "暂时无法确认申请资料的生成状态。请勿重复提交，先查看历史记录或刷新生成状态后再重试。",
     disabled: "当前无法使用该申请功能。请确认访问权限或环境设置。",
     backToCase: "返回案件",
     eyebrow: "案件申请资料",
@@ -195,6 +197,7 @@ const COPY: Record<Locale, {
     generateButton: "确认并生成文件",
     noGeneratePermission: "没有生成权限",
     previewLocked: "预览已锁定，可以确认后生成文件。",
+    generationHelp: "生成过程中不会重复创建同一文件。请勿连续提交，可通过历史记录或“刷新生成状态”确认结果；即使失败，案件资料也不会被修改。",
     generationInProgress: "文件正在生成，请勿重复提交。可以安全刷新生成状态或查看下方历史记录。",
     refreshGenerationStatus: "刷新生成状态",
     generated: "申请书已生成并保存到本案件历史。",
@@ -230,9 +233,9 @@ const COPY: Record<Locale, {
       preview_confirmation_expired: "미리보기 유효 시간이 만료되었습니다. 이번 신청 내용을 확인한 뒤 미리보기를 다시 생성하고 파일을 만들어 주세요.",
       preview_confirmation_required: "먼저 미리보기를 생성해 주세요. 이번 신청 내용을 확인한 뒤 미리보기를 다시 생성해 주세요.",
       preview_stale: "안건에 등록된 정보 또는 서식이 변경되어 이전에 확인한 미리보기를 사용할 수 없습니다. 현재 내용을 확인한 뒤 미리보기를 다시 생성해 주세요.",
-      guarantee_slice1_failed: "신청 자료를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.",
+      guarantee_slice1_failed: "신청 자료가 아직 생성 중이거나 상태를 확인할 수 없습니다. 중복 제출하지 말고 이력 또는 생성 상태를 확인한 뒤 다시 시도해 주세요.",
     },
-    temporaryError: "신청 자료를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.",
+    temporaryError: "신청 자료의 생성 상태를 확인할 수 없습니다. 중복 제출하지 말고 이력 또는 생성 상태를 확인한 뒤 다시 시도해 주세요.",
     disabled: "현재 신청 기능을 사용할 수 없습니다. 이용 권한 또는 환경 설정을 확인해 주세요.",
     backToCase: "안건으로 돌아가기",
     eyebrow: "안건 신청 자료",
@@ -269,6 +272,7 @@ const COPY: Record<Locale, {
     generateButton: "확인 후 파일 생성",
     noGeneratePermission: "생성 권한 없음",
     previewLocked: "미리보기를 고정했습니다. 확인 후 파일을 생성할 수 있습니다.",
+    generationHelp: "생성 중에는 같은 파일을 중복으로 만들지 않습니다. 연속 제출하지 말고 이력 또는 ‘생성 상태 새로 고침’으로 결과를 확인해 주세요. 실패해도 안건 자료는 변경되지 않습니다.",
     generationInProgress: "파일 생성 처리 중입니다. 중복 제출하지 말고 생성 상태 또는 아래 이력을 확인해 주세요.",
     refreshGenerationStatus: "생성 상태 새로 고침",
     generated: "신청서를 생성하여 이 안건의 이력에 저장했습니다.",
@@ -522,6 +526,7 @@ export function GuaranteeApplicationClient({ locale, enabled, caseId, caseTitle,
         <p className="mt-2 text-sm text-slate-600">{text.caseFactsDescription}</p>
         {caseFacts.length === 0 ? <p className="mt-4 text-sm text-slate-600">{text.caseFactsEmpty}</p> : <dl className="mt-4 grid gap-3 sm:grid-cols-2">{caseFacts.map((fact) => <div key={fact.label} className="rounded-md border border-slate-200 bg-white px-3 py-2"><dt className="text-xs text-slate-500">{fact.label}</dt><dd className="mt-1 text-sm font-medium text-slate-900">{fact.value}</dd></div>)}</dl>}
       </section>
+      <p data-generation-help className="mt-5 rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-900">{text.generationHelp}</p>
       {publishedVersions.length === 0 ? <p className="mt-8 rounded-md border border-dashed border-slate-300 px-4 py-8 text-sm text-slate-600">{text.noPublishedVersions} {text.contactTemplateAdmin}</p> : <>
         <section className="mt-8 border-b border-slate-200 pb-8" aria-labelledby="select-form">
           <h2 id="select-form" className="text-lg font-semibold text-slate-950">{text.selectFormTitle}</h2>
