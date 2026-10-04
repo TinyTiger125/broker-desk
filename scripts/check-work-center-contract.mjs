@@ -9,7 +9,7 @@ const data = fs.readFileSync("src/lib/data.ts", "utf8");
 const model = fs.readFileSync("src/lib/work-center.ts", "utf8");
 const actionButton = fs.readFileSync("src/components/work-center-task-action.tsx", "utf8");
 
-for (const label of ["今日の重点", "今日の重点", "今日重点", "오늘의 주요 업무", "作業センター", "工作中枢", "업무 센터", "七日間の予定", "七日议程", "7일 일정", "フォロー待ち", "等待跟进", "후속 연락 대기", "週次チェック", "周度检查", "주간 점검"]) {
+for (const label of ["今日の重点", "今日の重点", "今日重点", "오늘의 주요 업무", "資料管理センター", "工作中枢", "업무 센터", "七日間の予定", "七日议程", "7일 일정", "フォロー待ち", "等待跟进", "후속 연락 대기", "週次チェック", "周度检查", "주간 점검"]) {
   assert.match(page, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), `missing locale copy: ${label}`);
 }
 for (const marker of ["getWorkCenterSnapshotForContext", "listBrokerageCasesForContext", "listHubImportJobs", "changeTaskStatusAction", "buildWorkCenterModel", "buildHomeResumableWork", "/clients/"]) {
