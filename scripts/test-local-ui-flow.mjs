@@ -197,6 +197,7 @@ async function queryLocalImportEvidence(jobId) {
     )).rows[0].count);
     assert.equal(job.status, "completed", "real executePropertyImportAction must complete the job");
     assert.ok(job.final_import_started_at, "real action job must retain final_import_started_at");
+    assert.equal(Number(job.attempt_count), 1, "two synchronous submissions must increment the real attempt count exactly once");
     assert.equal(Number(propertyCounts.total), 3, "two synchronous submissions must produce exactly three valid synthetic properties");
     assert.equal(Number(propertyCounts.tower_count), 2, "the two distinct tower rows must both persist");
     assert.equal(Number(propertyCounts.vacant_count), 1, "the vacant synthetic row must persist");
