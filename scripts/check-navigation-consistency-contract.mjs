@@ -7,6 +7,7 @@ const read = (file) => readFileSync(path.join(root, file), "utf8");
 const back = read("src/components/back-to-parent.tsx");
 const layout = read("src/app/layout.tsx");
 const nav = read("src/components/app-nav.tsx");
+const routeTitle = read("src/components/app-route-title.tsx");
 const styles = read("src/app/globals.css");
 const fixture = read("scripts/local-navigation-fixture-server.mjs");
 const failures = [];
@@ -32,6 +33,7 @@ expect(back.includes('href: "/workspace"'), "Nested workspace routes must return
 expect(styles.includes(".bd-back-to-parent-link") && styles.includes("min-height: var(--bd-control-height-touch)"), "BackToParent must preserve a touch-sized keyboard target.");
 expect(!nav.includes("business_center"), "The brand block must not use the decorative briefcase icon.");
 expect(nav.includes("app-nav-mark") && nav.includes("BD"), "The collapsed sidebar must retain a compact product mark.");
+expect(routeTitle.includes('party: "関係者資料"') && !routeTitle.includes('party: "主体資料"'), "party breadcrumbs must use the same business term as the relationship pages.");
 expect(fixture.includes('server.listen(port, "127.0.0.1"'), "Browser fixture must bind to localhost only.");
 expect(fixture.includes("fixture only; no app or data service loaded"), "Browser fixture must be explicitly isolated from app and data services.");
 

@@ -41,7 +41,7 @@ function getAdminLinks(locale: Locale) {
 function getPlatformLinks(locale: Locale) {
   return [
     { href: "/platform/accounts", label: locale === "zh" ? "账户管理" : locale === "ko" ? "계정 관리" : "アカウント管理" },
-    { href: "/platform/templates", label: locale === "zh" ? "官方模板工厂" : locale === "ko" ? "공식 템플릿 공장" : "公式テンプレート工場" },
+    { href: "/platform/templates", label: locale === "zh" ? "官方文书模板" : locale === "ko" ? "공식 문서 템플릿" : "公式帳票テンプレート" },
   ];
 }
 

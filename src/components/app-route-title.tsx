@@ -21,7 +21,7 @@ const labels = {
     settings: "工作区设置",
     platform: "平台管理",
     platformAccounts: "账户管理",
-    platformTemplates: "官方模板工厂",
+    platformTemplates: "官方文书模板",
   },
   ja: {
     home: "ホーム",
@@ -30,7 +30,7 @@ const labels = {
     output: "文書出力",
     templates: "テンプレートライブラリ",
     case: "案件資料",
-    party: "主体資料",
+    party: "関係者資料",
     property: "物件資料",
     unassigned: "未分類資料",
     relation: "関係図",
@@ -40,7 +40,7 @@ const labels = {
     settings: "設定",
     platform: "プラットフォーム管理",
     platformAccounts: "アカウント管理",
-    platformTemplates: "公式テンプレート工場",
+    platformTemplates: "公式帳票テンプレート",
   },
   ko: {
     home: "작업대",
@@ -59,7 +59,7 @@ const labels = {
     settings: "설정",
     platform: "플랫폼 관리",
     platformAccounts: "계정 관리",
-    platformTemplates: "공식 템플릿 공장",
+    platformTemplates: "공식 문서 템플릿",
   },
 } satisfies Record<Locale, Record<string, string>>;
 

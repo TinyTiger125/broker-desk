@@ -15,6 +15,8 @@ const postgres = read("src/lib/data.postgres.ts");
 const data = read("src/lib/data.ts");
 const casePage = read("src/app/cases/[id]/page.tsx");
 const caseApplicationPage = read("src/app/cases/[id]/guarantee-application/page.tsx");
+const caseApplicationClient = read("src/app/cases/[id]/guarantee-application/client.tsx");
+const caseApplicationClientRender = caseApplicationClient.slice(caseApplicationClient.indexOf("\n  return (\n"));
 const organizePage = read("src/app/organize-center/page.tsx");
 const organizeBrowser = read("src/components/organize-center-object-browser.tsx");
 const actions = read("src/app/actions.ts");
@@ -54,7 +56,7 @@ assert(!resolver.includes("record.userId") && !resolver.includes("record.ownerUs
 assert(resolver.includes("record.visibilityScope !== \"private\"") && resolver.includes("record.visibilityScope !== \"company_read\""), "unknown scopes are fail-closed");
 assert(resolver.includes('outcome: "owner_write"') && resolver.includes('outcome: "company_read"'), "read/write outcomes are explicit");
 assert(tenantSession.includes("externalAuthSubject: string | null"), "trusted session carries auth subject");
-assert(tenantSession.includes("externalAuthSubject: clerkSubject"), "subject comes from current auth/session lookup");
+assert(tenantSession.includes("listTenantSessionLookupsByExternalAuthSubject(externalAuthSubject)") && tenantSession.includes("externalAuthSubject: externalAuthSubject"), "subject comes from current auth/session lookup");
 
 for (const source of [memory, postgres]) {
   assert(source.includes("resolveRecordVisibility"), "adapter uses the shared resolver");
@@ -92,6 +94,9 @@ assert(casePage.includes("caseVisibility.resolution.outcome"), "case detail bran
 assert(casePage.includes("resolveClientVisibilityForContext") && casePage.includes("resolvePropertyVisibilityForContext"), "case detail rechecks related object visibility");
 assert(casePage.includes("primaryPropertyId") && casePage.includes("tenant.name") && casePage.includes('key.startsWith("guarantor.")'), "case detail redacts inaccessible related content and fallback names");
 assert(caseApplicationPage.includes("getBrokerageCaseByIdForContext") && caseApplicationPage.includes('!== "owner_write"') && caseApplicationPage.includes("if (inaccessible) notFound()"), "application entry is owner-write only with uniform not-found");
+assert(caseApplicationPage.includes("getLocale") && caseApplicationPage.includes("locale={locale}"), "application entry resolves and passes the requested locale");
+assert(caseApplicationClient.includes("const COPY") && caseApplicationClient.includes("locale: Locale") && caseApplicationClient.includes("postJson(locale, \"preview\""), "application client localizes user-facing workflow and keeps locale on mutations");
+assert(!caseApplicationClientRender.includes("选择已发布表格") && !caseApplicationClientRender.includes("预览与生成") && !caseApplicationClientRender.includes("尚无已生成文件"), "application client has no hardcoded Chinese workflow labels");
 assert(actions.includes("async function requireWritableCase") && actions.includes("resolveCaseVisibilityForContext"), "case write actions re-check owner_write server-side");
 assert(memory.includes("listClientsForContext") && memory.includes("getClientDetailForContext"), "memory person reads are context-bound");
 assert(postgres.includes("listClientsForContext") && postgres.includes("getClientDetailForContext"), "Postgres person reads are context-bound");

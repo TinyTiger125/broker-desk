@@ -28,7 +28,7 @@ function assertPlatformNavigation({ navSource, mainNavSource, routeTitleSource, 
   assert(navSource.includes("const hasPlatformAccess = Boolean(platformSession)"), "platform navigation visibility must derive only from the shared platform session");
   assert(!navSource.includes("clerkEnabled || hasPlatformAccess") && !navSource.includes("isConfiguredPlatformOwnerUser"), "platform navigation must not use Clerk/configured-only authority");
   assert(navSource.includes('href: "/platform/accounts"') && navSource.includes('href: "/platform/templates"'), "platform navigation must expose accounts and official template factory links");
-  for (const text of ["プラットフォーム管理", "平台管理", "플랫폼 관리", "アカウント管理", "账户管理", "계정 관리", "公式テンプレート工場", "官方模板工厂", "공식 템플릿 공장"]) {
+  for (const text of ["プラットフォーム管理", "平台管理", "플랫폼 관리", "アカウント管理", "账户管理", "계정 관리", "公式帳票テンプレート", "官方文书模板", "공식 문서 템플릿"]) {
     assert(navSource.includes(text), `platform navigation locale copy must include ${text}`);
   }
   assert(navSource.includes("const platformLinks = hasPlatformAccess ? getPlatformLinks(locale) : []"), "platform links must be absent without persisted platform access");
@@ -37,7 +37,7 @@ function assertPlatformNavigation({ navSource, mainNavSource, routeTitleSource, 
 
   assert(mainNavSource.includes('"/platform/accounts": "admin_panel_settings"') && mainNavSource.includes('"/platform/templates": "dashboard_customize"'), "platform navigation links must have stable icons and active-link callers");
   assert(routeTitleSource.includes('pathname.startsWith("/platform/accounts")') && routeTitleSource.includes('pathname.startsWith("/platform/templates")'), "platform routes must have explicit route-title branches");
-  for (const text of ["プラットフォーム管理", "平台管理", "플랫폼 관리", "アカウント管理", "账户管理", "계정 관리", "公式テンプレート工場", "官方模板工厂", "공식 템플릿 공장"]) {
+  for (const text of ["プラットフォーム管理", "平台管理", "플랫폼 관리", "アカウント管理", "账户管理", "계정 관리", "公式帳票テンプレート", "官方文书模板", "공식 문서 템플릿"]) {
     assert(routeTitleSource.includes(text), `platform route-title locale copy must include ${text}`);
   }
   assert(accountsPageSource.includes("requirePlatformOwnerSession()") && templatesPageSource.includes("requirePlatformOwnerSession()"), "both platform destinations must retain server-side platform-owner authorization");

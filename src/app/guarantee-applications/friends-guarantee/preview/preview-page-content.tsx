@@ -91,20 +91,20 @@ function getDraftValue(draftValues: Record<string, unknown>, fieldKey: string) {
 function templateAccessCopy(locale: Locale) {
   if (locale === "zh") {
     return {
-      title: "官方模板工厂",
+      title: "官方文书模板",
       denied: "需要平台管理员权限。当前账号无法编辑或发布官方模板。",
       saveDenied: "当前账号没有保存官方模板的权限。未保存任何修改；离开页面后未保存的编辑内容可能丢失。",
     };
   }
   if (locale === "ko") {
     return {
-      title: "공식 템플릿 공장",
+      title: "공식 문서 템플릿",
       denied: "플랫폼 관리자 권한이 필요합니다. 현재 계정은 공식 템플릿을 편집하거나 게시할 수 없습니다.",
       saveDenied: "현재 계정에는 공식 템플릿 저장 권한이 없습니다. 변경 사항은 저장되지 않았으며 페이지를 떠나면 저장하지 않은 편집 내용이 사라질 수 있습니다.",
     };
   }
   return {
-    title: "公式テンプレート工場",
+    title: "公式帳票テンプレート",
     denied: "プラットフォーム管理者権限が必要です。現在のアカウントでは公式テンプレートを編集・公開できません。",
     saveDenied: "現在のアカウントには公式テンプレートの保存権限がありません。変更は保存されておらず、ページを離れると未保存の編集内容が失われる可能性があります。",
   };
@@ -376,7 +376,7 @@ export async function GuaranteeApplicationPreviewPage({
           <div>
             <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
               <Link href={isTemplateAuthoring ? "/platform/templates" : "/output-center"} className="hover:text-slate-900">
-                {isTemplateAuthoring ? "公式テンプレート工場" : "PDF出力"}
+                {isTemplateAuthoring ? "公式帳票テンプレート" : "PDF出力"}
               </Link>
               <span className="material-symbols-outlined text-[14px]">chevron_right</span>
               <span>{template.companyDisplayName}{isTemplateAuthoring ? "校正" : "申込書確認"}</span>
