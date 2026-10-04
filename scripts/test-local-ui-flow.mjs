@@ -4,26 +4,44 @@ import { spawn, spawnSync } from "node:child_process";
 import net from "node:net";
 import crypto from "node:crypto";
 import { join } from "node:path";
+import pg from "pg";
 
-// Local-only browser evidence. The Next server must already be running with
-// BROKER_DESK_AUTH_MODE=demo and an explicitly selected local DATA_DRIVER.
-// Demo auth is explicit and non-production; this script never sends a provider
+// Local-only browser evidence. The Next server must already be running with an
+// explicitly selected local DATA_DRIVER and either demo auth or the
+// non-production trusted-header harness. This script never sends a provider
 // request or writes remote data.
 const baseUrl = (process.env.BROKER_DESK_UI_BASE_URL ?? "http://localhost:3002").replace(/\/$/, "");
 const chromePath = process.env.BROKER_DESK_CHROME_PATH ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const evidenceDir = mkdtempSync(join("/tmp", "broker-desk-ui-flow-"));
 const syntheticLedgerFixture = process.env.BROKER_DESK_EXCEL_FIXTURE ?? "/tmp/broker-desk-synthetic-v1-import.xlsx";
 const supportedCaseFixture = process.env.BROKER_DESK_CASE_EXCEL_FIXTURE ?? join(process.cwd(), "scripts/fixtures/object-import/h034-supported.xlsx");
+const uniqueSyntheticLedgerFixture = process.env.BROKER_DESK_UI_UNIQUE_FIXTURE === "1"
+  ? join(evidenceDir, "broker-desk-synthetic-v1-import-unique.xlsx")
+  : syntheticLedgerFixture;
+if (uniqueSyntheticLedgerFixture !== syntheticLedgerFixture) {
+  // The local acceptance may be rerun against the same disposable database.
+  // Rewrite a harmless workbook metadata field so the content hash receives a
+  // fresh idempotency key while the worksheet rows remain unchanged.
+  const { default: ExcelJS } = await import("exceljs");
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.readFile(syntheticLedgerFixture);
+  workbook.creator = "Broker Desk local acceptance";
+  workbook.modified = new Date();
+  await workbook.xlsx.writeFile(uniqueSyntheticLedgerFixture);
+}
 
 const routes = [
   { name: "01-home", path: "/", expected: ["資料管理センター", "今日の重点"] },
   { name: "02-import", path: "/import-center", expected: ["情報入力"] },
-  { name: "03-cases", path: "/organize-center?type=case", expected: ["案件資料", "案件"] },
-  { name: "04-guarantee", path: "/cases/case_demo_asakusa_mori_rent/guarantee-application", expected: ["保証会社申込書を作成", "生成中は同じファイルを重ねて作成しないため"] },
+  { name: "03-cases", path: "/organize-center?type=case", expected: ["案件を新規作成", "案件"] },
+  // The isolated harness intentionally leaves the staging-only guarantee
+  // feature flag off; review its explicit disabled state rather than
+  // weakening the gate or manufacturing template-library rows.
+  { name: "04-guarantee", path: "/cases/case_demo_asakusa_mori_rent/guarantee-application", expected: ["保証会社申込書を作成", "この申込機能は現在利用できません"] },
   { name: "05-clients", path: "/clients", expected: ["顧客"] },
   { name: "06-properties", path: "/properties", expected: ["物件"] },
   { name: "07-documents", path: "/output-center", expected: ["文書出力"] },
-  { name: "08-members", path: "/settings/members", expected: ["ユーザー管理", "メンバー"] },
+  { name: "08-members", path: "/settings/members", expected: ["会社メンバーと権限", "メンバー追加"] },
 ];
 
 function getSetCookie(response) {
@@ -39,6 +57,19 @@ function cookieValue(setCookie, name) {
 }
 
 async function actorSession(actorId) {
+  if (process.env.BROKER_DESK_UI_TRUSTED_HEADER === "1") {
+    const headers = {
+      origin: baseUrl,
+      "x-brokerdesk-auth-secret": process.env.BROKER_DESK_AUTH_TRUSTED_HEADER_SECRET ?? "local-ui-test-secret",
+      "x-brokerdesk-auth-subject": `demo:${actorId}`,
+      "x-brokerdesk-auth-email": actorId === "user_ops" ? "ops@brokerdesk.local" : "demo@brokerdesk.local",
+      "x-brokerdesk-auth-name": actorId === "user_ops" ? "Synthetic Ops" : "Synthetic Owner",
+    };
+    const sessionResponse = await fetch(`${baseUrl}/api/tenant/session`, { headers });
+    const session = await sessionResponse.json();
+    assert.equal(sessionResponse.status, 200, `trusted-header actor ${actorId} must resolve a tenant session`);
+    return { actorId, headers, session, sessionStatus: sessionResponse.status };
+  }
   const response = await fetch(`${baseUrl}/api/actor`, {
     method: "POST",
     headers: { "content-type": "application/json", origin: baseUrl },
@@ -53,6 +84,139 @@ async function actorSession(actorId) {
     assert.equal(sessionResponse.status, 200, `local actor fixture ${actorId} must resolve a tenant session`);
   }
   return { actorId, cookie, session, sessionStatus: sessionResponse.status };
+}
+
+async function requestAsActor(actor, path, options = {}) {
+  const headers = new Headers(options.headers ?? {});
+  for (const [name, value] of Object.entries(actor.headers ?? {})) headers.set(name, value);
+  headers.set("origin", baseUrl);
+  return fetch(`${baseUrl}${path}`, { ...options, headers });
+}
+
+function localQueryClient() {
+  const queryUrl = process.env.BROKER_DESK_UI_PG_QUERY_URL?.trim();
+  const querySocket = process.env.BROKER_DESK_UI_PG_QUERY_SOCKET?.trim();
+  assert.ok(queryUrl || querySocket, "local PostgreSQL fixture requires an explicit query connection");
+  return queryUrl
+    ? new pg.Client({ connectionString: queryUrl, application_name: "brokerdesk-ui-fixture" })
+    : new pg.Client({
+      host: querySocket,
+      port: Number(process.env.BROKER_DESK_UI_PG_QUERY_PORT ?? 55439),
+      database: process.env.BROKER_DESK_UI_PG_QUERY_DATABASE ?? "preimport_lifecycle_test",
+      user: process.env.BROKER_DESK_UI_PG_QUERY_USER ?? "qa_initializer",
+      password: "",
+      application_name: "brokerdesk-ui-fixture",
+    });
+}
+
+async function seedLocalAcceptanceFixture() {
+  const client = localQueryClient();
+  await client.connect();
+  try {
+    await client.query("BEGIN");
+    // The harness is allowed to reset only its own named synthetic rows so a
+    // rerun against the same disposable cluster can assert absolute counts.
+    await client.query(
+      `DELETE FROM private_attachment_blobs
+        WHERE attachment_id IN (
+          SELECT id FROM attachments
+           WHERE tenant_id = 'tenant_cherry' AND file_name LIKE 'broker-desk-synthetic-v1-import%'
+        )`,
+    );
+    await client.query("DELETE FROM attachments WHERE tenant_id = 'tenant_cherry' AND file_name LIKE 'broker-desk-synthetic-v1-import%'");
+    await client.query(
+      `DELETE FROM audit_logs
+        WHERE tenant_id = 'tenant_cherry'
+          AND (message LIKE 'Excel 物件保存:%' OR target_id IN (SELECT id FROM import_jobs WHERE tenant_id = 'tenant_cherry' AND title LIKE 'broker-desk-synthetic-v1-import%'))`,
+    );
+    await client.query("DELETE FROM import_jobs WHERE tenant_id = 'tenant_cherry' AND title LIKE 'broker-desk-synthetic-v1-import%'");
+    await client.query("DELETE FROM properties WHERE tenant_id = 'tenant_cherry' AND name IN ('合成タワー', '合成空室', '合成坏价格')");
+    await client.query(
+      `INSERT INTO users(id,name,email,password_hash,external_auth_subject)
+       VALUES ('user_demo','Synthetic Owner','demo@brokerdesk.local','local-fixture','demo:user_demo'),
+              ('user_ops','Synthetic Ops','ops@brokerdesk.local','local-fixture','demo:user_ops')
+       ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name, email=EXCLUDED.email, external_auth_subject=EXCLUDED.external_auth_subject`,
+    );
+    await client.query(
+      `INSERT INTO tenants(id,name,slug,account_type,status,purchased_seat_count)
+       VALUES ('tenant_cherry','Synthetic Cherry Tenant','synthetic-cherry','company','active',5)
+       ON CONFLICT (id) DO UPDATE SET status='active', purchased_seat_count=5`,
+    );
+    await client.query(
+      `INSERT INTO tenant_memberships(id,tenant_id,user_id,role,capability,status,invitation_provider,invitation_status,invitation_accepted_at)
+       VALUES ('membership_demo','tenant_cherry','user_demo','tenant_owner','company_owner','active','manual','accepted',NOW()),
+              ('membership_ops','tenant_cherry','user_ops','broker','ordinary_member','active','manual','accepted',NOW())
+       ON CONFLICT DO NOTHING`,
+    );
+    await client.query(
+      `INSERT INTO clients(id,tenant_id,name,phone,purpose,stage,temperature,owner_user_id,created_by_user_id,current_owner_user_id,visibility_scope,owner_resolution_status)
+       VALUES ('client_demo_asakusa','tenant_cherry','Synthetic Applicant','09000000000','rent','lead','warm','user_demo','user_demo','user_demo','private','resolved')
+       ON CONFLICT (id) DO NOTHING`,
+    );
+    await client.query(
+      `INSERT INTO properties(id,tenant_id,name,address,listing_price,created_by_user_id,current_owner_user_id,visibility_scope,owner_resolution_status)
+       VALUES ('property_demo_asakusa','tenant_cherry','Synthetic Property','東京都台東区浅草1-1',100000,'user_demo','user_demo','private','resolved')
+       ON CONFLICT (id) DO NOTHING`,
+    );
+    await client.query(
+      `INSERT INTO brokerage_cases(id,tenant_id,user_id,case_type,case_title,primary_property_id,status,confirmed_data_json,source_import_job_ids,created_by_user_id,current_owner_user_id,visibility_scope,owner_resolution_status)
+       VALUES ('case_demo_asakusa_mori_rent','tenant_cherry','user_demo','unit_rent','Synthetic 浅草案件','property_demo_asakusa','draft',
+               '{"applicant.name":"Synthetic Applicant","property.name":"Synthetic Property","property.address":"東京都台東区浅草1-1"}'::jsonb,ARRAY[]::text[],'user_demo','user_demo','private','resolved')
+       ON CONFLICT (id) DO UPDATE SET tenant_id='tenant_cherry', user_id='user_demo', current_owner_user_id='user_demo', visibility_scope='private', owner_resolution_status='resolved'`,
+    );
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    await client.end();
+  }
+}
+
+async function queryLocalImportEvidence(jobId) {
+  const queryUrl = process.env.BROKER_DESK_UI_PG_QUERY_URL?.trim();
+  const querySocket = process.env.BROKER_DESK_UI_PG_QUERY_SOCKET?.trim();
+  const client = localQueryClient();
+  await client.connect();
+  try {
+    const job = (await client.query(
+      "SELECT id, tenant_id, status, mapping_json, validation_message, final_import_started_at, attempt_count FROM import_jobs WHERE id = $1",
+      [jobId],
+    )).rows[0];
+    assert.ok(job, `real action job must exist in PostgreSQL: ${jobId}`);
+    const propertyCounts = (await client.query(
+      `SELECT count(*)::int AS total,
+              count(*) FILTER (WHERE name = '合成タワー')::int AS tower_count,
+              count(*) FILTER (WHERE name = '合成空室')::int AS vacant_count
+         FROM properties WHERE tenant_id = $1 AND name IN ('合成タワー', '合成空室')`,
+      [job.tenant_id],
+    )).rows[0];
+    const auditCount = Number((await client.query(
+      "SELECT count(*)::int AS count FROM audit_logs WHERE tenant_id = $1 AND target_id = $2 AND action = 'import_job_completed'",
+      [job.tenant_id, jobId],
+    )).rows[0].count);
+    assert.equal(job.status, "completed", "real executePropertyImportAction must complete the job");
+    assert.ok(job.final_import_started_at, "real action job must retain final_import_started_at");
+    assert.equal(Number(propertyCounts.total), 3, "two synchronous submissions must produce exactly three valid synthetic properties");
+    assert.equal(Number(propertyCounts.tower_count), 2, "the two distinct tower rows must both persist");
+    assert.equal(Number(propertyCounts.vacant_count), 1, "the vacant synthetic row must persist");
+    assert.equal(auditCount, 1, "two synchronous submissions must produce one completion audit");
+    return {
+      job: {
+        id: job.id,
+        tenantId: job.tenant_id,
+        status: job.status,
+        mapping: job.mapping_json,
+        finalImportStartedAt: Boolean(job.final_import_started_at),
+        attemptCount: Number(job.attempt_count),
+      },
+      properties: { total: Number(propertyCounts.total), towerCount: Number(propertyCounts.tower_count), vacantCount: Number(propertyCounts.vacant_count) },
+      completionAudits: auditCount,
+      querySource: queryUrl ? "explicit local PostgreSQL URL" : `explicit local PostgreSQL socket ${querySocket}`,
+    };
+  } finally {
+    await client.end();
+  }
 }
 
 function runChrome(route) {
@@ -310,14 +474,14 @@ async function reservePort() {
   return port;
 }
 
-async function launchInteractiveChrome() {
+async function launchInteractiveChrome(requestHeaders = {}) {
   const port = Number(process.env.BROKER_DESK_CDP_PORT ?? await reservePort());
   const profile = join(evidenceDir, "interactive-profile");
   const child = spawn(chromePath, [
     "--headless=new", "--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage",
     "--disable-background-networking", "--disable-component-update", "--disable-sync",
     "--disable-crash-reporter", "--no-first-run", "--no-default-browser-check",
-    "--remote-debugging-port=" + port, "--remote-allow-origins=*", "--user-data-dir=" + profile, baseUrl + "/",
+    "--remote-debugging-port=" + port, "--remote-allow-origins=*", "--user-data-dir=" + profile, "about:blank",
   ], { stdio: ["ignore", "ignore", "pipe"] });
   let chromeStderr = "";
   child.stderr.on("data", (chunk) => { chromeStderr += chunk.toString(); });
@@ -342,6 +506,10 @@ async function launchInteractiveChrome() {
   assert.ok(tab?.webSocketDebuggerUrl, "Chrome must expose an interactive page target; targets=" + JSON.stringify(lastTabs.map((item) => ({ type: item.type, url: item.url }))) + " stderr=" + chromeStderr.slice(-1000));
   const page = new CdpPage(tab.webSocketDebuggerUrl);
   await page.connect();
+  if (Object.keys(requestHeaders).length > 0) {
+    await page.send("Network.enable");
+    await page.send("Network.setExtraHTTPHeaders", { headers: requestHeaders });
+  }
   return { page, child, port };
 }
 
@@ -360,15 +528,30 @@ async function navigate(page, path) {
   return page.evaluate("location.href");
 }
 
+async function runInteractiveRoutes(page) {
+  const evidence = [];
+  for (const route of routes) {
+    console.log(`[BROWSER] opening authenticated ${route.path}`);
+    await navigate(page, route.path);
+    for (const expected of route.expected) await page.waitForText(expected, 15_000);
+    const screenshot = await page.send("Page.captureScreenshot", { format: "png" });
+    const screenshotPath = join(evidenceDir, `${route.name}.png`);
+    writeFileSync(screenshotPath, Buffer.from(screenshot.data, "base64"));
+    evidence.push({ path: route.path, expected: route.expected, screenshot: screenshotPath });
+    console.log(`[BROWSER] passed authenticated ${route.path}`);
+  }
+  return evidence;
+}
+
 function browserScript(lines) {
   return lines.join("\n");
 }
 
 async function runExcelLedgerFlow(page) {
-  assert.ok(existsSync(syntheticLedgerFixture), "synthetic ledger fixture must exist: " + syntheticLedgerFixture);
+  assert.ok(existsSync(uniqueSyntheticLedgerFixture), "synthetic ledger fixture must exist: " + uniqueSyntheticLedgerFixture);
   await navigate(page, "/import-center?flow=ledger#source-upload");
   await page.waitForText("情報入力", 15_000);
-  await page.setFile('input[name="excelFile"]', syntheticLedgerFixture);
+  await page.setFile('input[name="excelFile"]', uniqueSyntheticLedgerFixture);
   const uploadSummary = await page.evaluate(browserScript([
     "(() => {",
     "  const input = document.querySelector('input[name=\"excelFile\"]');",
@@ -377,7 +560,7 @@ async function runExcelLedgerFlow(page) {
     "  return input.files?.[0]?.name ?? \"no-file\";",
     "})()",
   ]));
-  assert.equal(uploadSummary, syntheticLedgerFixture.split("/").pop(), "browser must attach the synthetic Excel source");
+  assert.equal(uploadSummary, uniqueSyntheticLedgerFixture.split("/").pop(), "browser must attach the synthetic Excel source");
   const uploadLocation = await page.waitForLocation((location) => location.includes("xlsxJob="), 15_000);
   const jobId = new URL(uploadLocation).searchParams.get("xlsxJob");
   assert.ok(jobId, "Excel upload must return an xlsxJob id");
@@ -441,7 +624,8 @@ async function runExcelLedgerFlow(page) {
   assert.equal(recoveredMapping.ok, true, "required mapping must be recoverable after an invalid-field submission");
   console.log(`[BROWSER] recovered mapping form: ${JSON.stringify(recoveredMapping)}`);
   assert.deepEqual(recoveredMapping.values, ["name", "listing_price"], "recovered mapping must submit both required fields");
-  await page.waitForText("保存先を確認", 15_000);
+  await page.waitForLocation((location) => location.includes("job=" + encodeURIComponent(jobId)) && location.includes("advanced=1"), 20_000);
+  await sleep(1_000);
   await navigate(page, "/import-center?xlsxJob=" + encodeURIComponent(jobId) + "&advanced=1#source-upload");
   await sleep(1_000);
   await page.evaluate(browserScript([
@@ -475,7 +659,7 @@ async function runExcelLedgerFlow(page) {
   const propertiesBody = await page.waitForText("合成タワー", 15_000);
   assert.match(propertiesBody, /合成空室/, "successful rows must be visible in the saved property list");
   return {
-    fixture: syntheticLedgerFixture,
+    fixture: uniqueSyntheticLedgerFixture,
     jobId,
     upload: "queued and parsed",
     invalidMappingRecovery: "missing required 物件名 mapping -> restore mapping",
@@ -501,7 +685,9 @@ async function runCaseAssociationFlow(page) {
     "})()",
   ]));
   assert.equal(uploadSummary, supportedCaseFixture.split("/").pop(), "browser must attach the supported case Excel source");
+  console.log(`[BROWSER] case upload submitted; current=${await page.evaluate("location.href")}`);
   const uploadLocation = await page.waitForLocation((location) => location.includes("xlsxJob=") && location.includes("targetCaseId="), 15_000);
+  console.log(`[BROWSER] case upload redirected: ${uploadLocation}`);
   const jobId = new URL(uploadLocation).searchParams.get("xlsxJob");
   assert.ok(jobId, "case-scoped Excel upload must return an xlsxJob id");
   await page.waitForText("この案件へ追加", 5_000).catch(async () => {
@@ -549,7 +735,9 @@ async function runCaseAssociationFlow(page) {
     "})()",
   ]));
   assert.equal(saveResult, true, "case review save form must submit");
+  console.log(`[BROWSER] case review save submitted; current=${await page.evaluate("location.href")}`);
   const caseLocation = await page.waitForLocation((location) => location.includes("/cases/" + caseId), 20_000);
+  console.log(`[BROWSER] case review redirected: ${caseLocation}`);
   const caseBody = await page.waitForText("案件", 15_000);
   assert.match(caseBody, /合成確認|雨漏り|資料/, "saved review must return to the associated case with source evidence");
   const reopenedCase = await navigate(page, caseLocation.replace(baseUrl, ""));
@@ -566,6 +754,7 @@ async function runCaseAssociationFlow(page) {
 }
 
 try {
+  if (process.env.BROKER_DESK_UI_TRUSTED_HEADER === "1") await seedLocalAcceptanceFixture();
   const owner = await actorSession("user_demo");
   const sameTenantMember = await actorSession("user_ops");
   assert.equal(owner.session.user.id, "user_demo", "owner fixture must resolve user_demo");
@@ -575,17 +764,46 @@ try {
     assert.equal(sameTenantMember.session.tenant.id, "tenant_cherry", "same-tenant member must remain in Cherry tenant");
   }
 
-  // The second-tenant role intentionally exists only as a route-test context;
-  // there is no production/demo browser identity or membership for it.
-  const secondTenant = { actorId: "synthetic_user_other", tenantId: "tenant_other", mode: "route_harness_only" };
-  assert.equal(secondTenant.mode, "route_harness_only");
+  let accessEvidence;
+  if (process.env.BROKER_DESK_UI_TRUSTED_HEADER === "1") {
+    const ownerMembersResponse = await requestAsActor(owner, "/settings/members");
+    const ownerMembersBody = await ownerMembersResponse.text();
+    assert.equal(ownerMembersResponse.status, 200, "owner must be allowed to read the members page");
+    assert.match(ownerMembersBody, /メンバー追加/, "owner members page must expose the management control");
+    const memberMembersResponse = await requestAsActor(sameTenantMember, "/settings/members");
+    const memberMembersBody = await memberMembersResponse.text();
+    assert.equal(memberMembersResponse.status, 200, "same-tenant ordinary member must be allowed to read the members page");
+    assert.match(memberMembersBody, /会社メンバーを管理できません/, "ordinary member must receive the explicit management denial state");
+    assert.doesNotMatch(memberMembersBody, /メンバー追加/, "ordinary member must not receive the invite management form");
+    const foreignTenantResponse = await requestAsActor(owner, "/api/tenant/session", {
+      headers: { cookie: "brokerdesk_tenant_id=tenant_other" },
+    });
+    const foreignTenantBody = await foreignTenantResponse.json();
+    assert.equal(foreignTenantResponse.status, 403, "owner must be denied when a second-tenant cookie is requested");
+    assert.equal(foreignTenantBody.error, "tenant_forbidden", "cross-tenant request must fail closed at the session resolver");
+    accessEvidence = {
+      ownerMembersPage: { status: ownerMembersResponse.status, managementControl: true },
+      sameTenantOrdinaryMember: { status: memberMembersResponse.status, managementControl: false },
+      foreignTenantRequest: { status: foreignTenantResponse.status, error: foreignTenantBody.error, requestedTenant: "tenant_other" },
+    };
+  } else {
+    accessEvidence = { mode: "demo-cookie harness; trusted-header request matrix not run" };
+  }
 
-  const browserEvidence = process.env.BROKER_DESK_SKIP_STATIC_ROUTES === "1" ? [] : routes.map(runChrome);
-  const interactive = await launchInteractiveChrome();
+  let browserEvidence = process.env.BROKER_DESK_UI_TRUSTED_HEADER === "1" || process.env.BROKER_DESK_SKIP_STATIC_ROUTES === "1"
+    ? []
+    : routes.map(runChrome);
+  const interactive = await launchInteractiveChrome(owner.headers ?? {});
   let ledgerEvidence;
   let caseEvidence;
   try {
-    ledgerEvidence = await runExcelLedgerFlow(interactive.page);
+    if (process.env.BROKER_DESK_UI_TRUSTED_HEADER === "1") browserEvidence = await runInteractiveRoutes(interactive.page);
+    if (process.env.BROKER_DESK_UI_ONLY_CASE !== "1") {
+      ledgerEvidence = await runExcelLedgerFlow(interactive.page);
+      ledgerEvidence.postgresActionEvidence = await queryLocalImportEvidence(ledgerEvidence.jobId);
+    } else {
+      ledgerEvidence = { skipped: true };
+    }
     caseEvidence = await runCaseAssociationFlow(interactive.page);
     assert.deepEqual(interactive.page.consoleErrors, [], "interactive Chrome import flow must not emit console errors");
   } finally {
@@ -599,21 +817,22 @@ try {
       owner: { actorId: owner.actorId, userId: owner.session.user.id, tenantId: owner.session.tenant.id },
       sameTenantMember: sameTenantMember.sessionStatus === 200
         ? { actorId: sameTenantMember.actorId, userId: sameTenantMember.session.user.id, tenantId: sameTenantMember.session.tenant.id }
-        : { actorId: sameTenantMember.actorId, sessionStatus: sameTenantMember.sessionStatus, note: "not used for PostgreSQL UI flow because the isolated database fixes app.external_auth_subject to the owner subject" },
-      secondTenant,
+        : { actorId: sameTenantMember.actorId, sessionStatus: sameTenantMember.sessionStatus },
     },
+    accessEvidence,
     browserEvidence,
     importEvidence: {
       ledger: ledgerEvidence,
       caseAssociation: caseEvidence,
       browserTool: "agent-browser unavailable; installed Chrome headless CDP fallback used",
     },
-    note: "Browser path is owner/demo UI evidence. The isolated PostgreSQL run fixes app.external_auth_subject to the owner for request-scope compatibility; user_ops actor switching returned 403 and was not used for UI evidence. Second-tenant isolation remains route-harness evidence only. Import flow uses two existing synthetic workbooks and never calls a remote provider.",
+    note: "Browser path uses explicit local trusted-header identities and transaction-local PostgreSQL request scopes. Owner, same-tenant ordinary-member, and second-tenant denial requests were made against the isolated database. Import flow uses two existing synthetic workbooks and never calls a remote provider.",
   };
   const reportPath = join(evidenceDir, "report.json");
   writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
   console.log(`[PASS] local UI flow owner browser path: ${routes.map((route) => route.path).join(" -> ")}`);
   console.log(`[PASS] Excel ledger happy path + invalid mapping/duplicate recovery: ${ledgerEvidence.jobId}`);
+  console.log(`[PASS] real executePropertyImportAction PostgreSQL row/job/audit counts: ${JSON.stringify(ledgerEvidence.postgresActionEvidence)}`);
   console.log(`[PASS] case-scoped review edit/save/reopen path: ${caseEvidence.jobId} -> ${caseEvidence.caseId}`);
   console.log(`[EVIDENCE] ${reportPath}`);
   console.log(`[EVIDENCE] screenshots: ${evidenceDir}`);

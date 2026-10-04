@@ -47,6 +47,7 @@ const body = actions.slice(start, actions.indexOf("export async function", start
 assert.ok(body.indexOf("await preparePropertyRowImport(") > 0, "final import must prepare mapping and claim persistently");
 assert.ok(body.indexOf("await preparePropertyRowImport(") < body.indexOf("await addProperty("), "atomic prepare precedes first business write");
 assert.match(body, /if\s*\(!prepared\.claimed\)/, "a lost atomic claim must stop business writes");
+assert.match(body, /allowFinalImportCompletion:\s*true/, "the final execution write must be the only post-claim mapping update");
 assert.doesNotMatch(read("src/app/import-center/actions.ts"), /deletePrivateAttachmentForTenant/, "delete must not split into independent writes");
 
 function executeModule(source, globals = {}, dependencies = {}) {
@@ -109,6 +110,48 @@ for (const scenario of ["claim-denied", "success", "write-failed"]) {
     assert.equal(status, scenario === "write-failed" ? "failed" : "completed");
   }
 }
+
+// The memory repository must reject stale mapping/retry writes after the
+// durable final-import marker, while allowing the execution completion write
+// to preserve the winning mapping and only update its result message/status.
+{
+  const memorySourceFile = ts.createSourceFile("data.memory.ts", read("src/lib/data.memory.ts"), ts.ScriptTarget.Latest, true);
+  const memoryFunction = (name) => memorySourceFile.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === name).getText(memorySourceFile);
+  const memoryJob = {
+    id: "memory-final-claim", tenantId: "tenant-a", userId: "owner", sourceType: "excel", title: "Synthetic",
+    targetEntity: "properties", status: "mapped", notes: JSON.stringify({ kind: "property_row_import", rows: [] }),
+    uploadLifecycleVersion: 1, attemptCount: 0, createdAt: new Date(), updatedAt: new Date(),
+  };
+  const memoryDb = { importJobs: [memoryJob], tenants: [{ id: "tenant-a", status: "active" }], tenantMemberships: [{ tenantId: "tenant-a", userId: "owner", status: "active" }] };
+  const memory = executeModule(
+    memoryFunction("preparePropertyRowImport") + "\n" + memoryFunction("updateImportJobMapping") + "\n" + memoryFunction("isValidImportStatusTransition"),
+    {
+      db: memoryDb,
+      resolveTenantId: (value) => value ?? "tenant-a",
+      deriveTenantServiceState: () => ({ status: "operational" }),
+      isTenantServiceOperational: () => true,
+      mayStartPropertyImport: () => true,
+    },
+  );
+  const memoryClaim = await memory.preparePropertyRowImport({
+    tenantId: "tenant-a", userId: "owner", jobId: memoryJob.id,
+    mappingJson: { winning_name: "name" }, validationMessage: "winning mapping",
+  });
+  assert.equal(memoryClaim.claimed, true);
+  const staleMemoryWrite = await memory.updateImportJobMapping({
+    tenantId: "tenant-a", userId: "owner", jobId: memoryJob.id,
+    mappingJson: { stale_name: "name" }, validationMessage: "stale", status: "mapped",
+  });
+  assert.equal(staleMemoryWrite, null, "memory must reject a stale mapping after final claim");
+  const memoryCompletion = await memory.updateImportJobMapping({
+    tenantId: "tenant-a", userId: "owner", jobId: memoryJob.id,
+    mappingJson: { stale_name: "name" }, validationMessage: "completed", status: "completed",
+    allowFinalImportCompletion: true,
+  });
+  assert.equal(memoryCompletion?.status, "completed");
+  assert.equal(JSON.stringify(memoryCompletion?.mappingJson), JSON.stringify({ winning_name: "name" }), "completion must preserve winning mapping");
+}
+console.log("[PASS] memory repository rejects post-claim manual/auto/retry mapping writes and preserves final mapping");
 
 for (const role of ["ordinary_member", "platform_owner", "company_owner", "company_form_admin"]) {
   let rpcCalls = 0;
@@ -197,9 +240,11 @@ for (const name of ["updateImportJobMapping", "updateImportJobExecution"]) {
       queries++;
       if (sql.startsWith("SELECT")) return { rows: [{ status: "processing", final_import_started_at: null }] };
       // Emulate the atomic UPDATE observing a claim committed after SELECT.
-      const guard = sql.match(/AND \(NOT \$(\d+)::boolean OR final_import_started_at IS NULL\)/);
+      const guard = name === "updateImportJobMapping"
+        ? sql.match(/AND \(final_import_started_at IS NULL OR \$(\d+)::boolean\)/)
+        : sql.match(/AND \(NOT \$(\d+)::boolean OR final_import_started_at IS NULL\)/);
       assert.ok(guard, `${name}: missing SQL compare-and-write guard`);
-      assert.equal(params[Number(guard[1]) - 1], true, `${name}: guard parameter not bound`);
+      assert.equal(params[Number(guard[1]) - 1], name === "updateImportJobMapping" ? false : true, `${name}: guard parameter not bound`);
       assert.equal(params[0], "test-job"); assert.equal(params[1], "owner");
       return { rows: [] };
     } }),
@@ -448,7 +493,88 @@ if (process.argv.includes("--postgres")) {
     await fixture.query("UPDATE import_jobs SET status='completed', completed_at=NOW() WHERE id=$1", [prepareJobId]);
     assert.equal(Number((await fixture.query("SELECT COUNT(*) FROM properties WHERE tenant_id='local-tenant' AND id='property-prepare-interleaving'")).rows[0].count), 1, "winning claim permits one business property write");
     assert.equal(Number((await fixture.query("SELECT COUNT(*) FROM audit_logs WHERE tenant_id='local-tenant' AND target_id=$1 AND action='import_job_completed'", [prepareJobId])).rows[0].count), 1, "winning claim has one completion audit");
-    console.log("[PASS] isolated PostgreSQL prepare CAS: stale mapping waited, final state stayed with A, one property and one audit");
+    console.log("[PASS] isolated PostgreSQL prepare CAS observation: stale mapping waited and final state stayed with A (business rows below are separate fixture writes)");
+
+    // Exercise the actual legacy mapping actions against the real PostgreSQL
+    // adapter after a final-import claim. These are intentionally extracted
+    // from the production action source only to keep this script independent
+    // of Next's server-action loader; their repository calls and SQL execute
+    // against the disposable cluster above.
+    const postgresUpdateSource = postgresTree.statements
+      .find((node) => ts.isFunctionDeclaration(node) && node.name?.text === "updateImportJobMapping")?.getText(postgresTree);
+    const transitionSource = postgresTree.statements
+      .find((node) => ts.isFunctionDeclaration(node) && node.name?.text === "isValidImportStatusTransition")?.getText(postgresTree);
+    assert.ok(postgresUpdateSource && transitionSource, "PostgreSQL mapping adapter source must be available");
+    const mappingRuntime = await connect("brokerdesk_runtime");
+    await mappingRuntime.query("SELECT set_config('app.external_auth_subject','local-actor-subject',false)");
+    const { updateImportJobMapping: updateMappingAgainstPostgres } = executeModule(
+      postgresUpdateSource + "\n" + transitionSource,
+      {
+        ensureSchema: async () => {},
+        resolveTenantId: (value) => value,
+        getPool: () => ({ query: (...args) => mappingRuntime.query(...args) }),
+        mapImportJob: (row) => ({ id: String(row.id), status: String(row.status), title: String(row.title ?? "Synthetic") }),
+      },
+    );
+    const actionTree = ts.createSourceFile("actions.ts", actions, ts.ScriptTarget.Latest, true);
+    const actionSource = (name) => actionTree.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === name)?.getText(actionTree);
+    const actionNames = ["updateImportJobMappingAction", "autoMapImportJobAction", "retryImportJobAction"];
+    for (const actionName of actionNames) assert.ok(actionSource(actionName), `${actionName} source must be available`);
+    const actionSession = { user: { id: "local-actor" }, tenant: { id: "local-tenant" } };
+    let actionSerial = 0;
+    for (const actionName of actionNames) {
+      const actionJobId = `local-action-claim-${++actionSerial}`;
+      await fixture.query(
+        "INSERT INTO import_jobs(id,tenant_id,user_id,source_type,title,target_entity,status,notes,mapping_json,upload_lifecycle_version) VALUES ($1,'local-tenant','local-actor','excel',$2,'properties','mapped',$3,$4::jsonb,1)",
+        [actionJobId, `Synthetic ${actionName}`, JSON.stringify({ kind: "property_row_import", rows: [] }), JSON.stringify({ winning_name: "name" })],
+      );
+      const claim = await fixture.query("SELECT brokerdesk_private.claim_property_row_import('local-tenant',$1) AS claimed", [actionJobId]);
+      assert.equal(claim.rows[0].claimed, true, `${actionName}: fixture job must be claimed before stale action`);
+      const before = (await fixture.query(
+        "SELECT status, mapping_json, validation_message, final_import_started_at FROM import_jobs WHERE id=$1",
+        [actionJobId],
+      )).rows[0];
+      let auditCalls = 0;
+      const commonActionDeps = {
+        requireTenantSession: async () => actionSession,
+        getLocale: async () => "ja",
+        updateImportJobMapping: updateMappingAgainstPostgres,
+        addAuditLog: async () => { auditCalls += 1; },
+        revalidatePath: () => {},
+        redirect: () => { throw new Error("test-redirect"); },
+        tr: (_locale, copy) => copy.ja,
+        createImportValidationIssue: (value) => value,
+        buildImportValidationMessage: () => "stale action message",
+        buildMappingFromLists: (sources, targets) => Object.fromEntries(sources.map((source, index) => [source, targets[index]]).filter(([, target]) => target)),
+        validateImportMapping: () => ({ missingRequired: [], unknownTargets: [], summary: "Synthetic mapping", coveredRequiredCount: 1, requiredCount: 1 }),
+        isImportTargetEntity: (value) => value === "properties",
+        suggestImportMapping: () => ({ stale_name: "name" }),
+        parseCommaList: (value) => String(value).split(",").map((item) => item.trim()).filter(Boolean),
+        listImportJobs: async () => [{ id: actionJobId, title: `Synthetic ${actionName}`, status: "processing", finalImportStartedAt: new Date(), mappingJson: { winning_name: "name" }, notes: JSON.stringify({ kind: "property_row_import", rows: [] }) }],
+      };
+      const { [actionName]: action } = executeModule(actionSource(actionName), commonActionDeps, {});
+      const input = new FormData();
+      input.set("jobId", actionJobId);
+      if (actionName === "updateImportJobMappingAction") {
+        input.set("targetEntity", "properties");
+        input.append("sourceColumn", "stale_name"); input.append("targetField", "name");
+      } else if (actionName === "autoMapImportJobAction") {
+        input.set("targetEntity", "properties"); input.set("sourceColumns", "stale_name");
+      }
+      await assert.rejects(action(input), /処理開始済み|再処理|見つかりません|test-redirect/);
+      assert.equal(auditCalls, 0, `${actionName}: rejected stale write must not emit an audit`);
+      const after = (await fixture.query(
+        "SELECT status, mapping_json, validation_message, final_import_started_at FROM import_jobs WHERE id=$1",
+        [actionJobId],
+      )).rows[0];
+      assert.equal(after.status, before.status, `${actionName}: status must remain processing`);
+      assert.deepEqual(after.mapping_json, before.mapping_json, `${actionName}: winning mapping must remain unchanged`);
+      assert.equal(after.validation_message, before.validation_message, `${actionName}: winning validation must remain unchanged`);
+      assert.ok(after.final_import_started_at, `${actionName}: final claim marker must remain`);
+    }
+    console.log("[PASS] actual PostgreSQL legacy actions: manual mapping, auto mapping, and retry were rejected after claim with zero audit drift");
+    await mappingRuntime.end();
+
     let serial = 0;
     const makeJob = async () => {
       const id = `local-job-${++serial}`;

@@ -178,7 +178,7 @@ const resolveTenantSession = cache(async (preferredUserId?: string, requestedTen
     // contexts use the current external-auth subject; demo mode is the explicit local
     // exception and uses the memory repository's synthetic identity.
     externalAuthSubject: externalAuthSubject ?? (
-      isDemoAuthEnabled() ? sessionUser.externalAuthSubject ?? null : null
+      isDemoAuthEnabled() || isTrustedHeaderAuthEnabled() ? sessionUser.externalAuthSubject ?? null : null
     ),
     user: sessionUser,
     tenant,

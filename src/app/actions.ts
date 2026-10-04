@@ -1828,7 +1828,7 @@ export async function resolveImportValidationAction(formData: FormData) {
   });
   const nextNotes = [job.notes, `${new Date().toISOString()} ${operationLabel}`].filter(Boolean).join("\n");
 
-  await updateImportJobMapping({
+  const resolved = await updateImportJobMapping({
     tenantId,
     userId: user.id,
     jobId: job.id,
@@ -1837,6 +1837,9 @@ export async function resolveImportValidationAction(formData: FormData) {
     notes: nextNotes,
     status: nextStatus,
   });
+  if (!resolved) {
+    throw new Error("資料読取記録はすでに処理開始済みのため、検証結果を上書きできません。");
+  }
 
   await addAuditLog({
     tenantId,
@@ -5714,6 +5717,7 @@ export async function executePropertyImportAction(formData: FormData) {
     mappingJson: mapping,
     validationMessage,
     status: nextStatus,
+    allowFinalImportCompletion: true,
   });
 
   await addAuditLog({

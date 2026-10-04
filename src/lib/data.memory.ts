@@ -3781,19 +3781,22 @@ export async function updateImportJobMapping(input: {
   status?: ImportJobStatus;
   allowRetry?: boolean;
   beforeFinalImport?: boolean;
+  /** Only the final execution write may update a claimed job's result. */
+  allowFinalImportCompletion?: boolean;
 }): Promise<ImportJob | null> {
   const scopeTenantId = resolveTenantId(input.tenantId);
   const job = db.importJobs.find(
     (item) => item.userId === input.userId && item.tenantId === scopeTenantId && item.id === input.jobId,
   );
   if (!job) return null;
-  if (input.beforeFinalImport && job.finalImportStartedAt) return null;
+  if (job.finalImportStartedAt && !input.allowFinalImportCompletion) return null;
+  if (input.allowFinalImportCompletion && !job.finalImportStartedAt) return null;
 
   if (job.finalImportStartedAt && input.status && !["processing", "completed", "failed"].includes(input.status)) {
     throw new Error("import_execution_started");
   }
 
-  job.mappingJson = input.mappingJson;
+  if (!job.finalImportStartedAt) job.mappingJson = input.mappingJson;
   job.validationMessage = input.validationMessage?.trim() || undefined;
   if (typeof input.notes === "string") {
     job.notes = input.notes.trim() || undefined;

@@ -43,11 +43,18 @@ function getRepository(): DataRepository {
 const syncRepositoryMethods = new Set<keyof DataRepository>(["isTenantAccessibleStatus"]);
 
 async function withRepositoryIdentity<T>(operation: () => Promise<T>): Promise<T> {
-  if (!usePostgres || !isProductionRuntime()) {
+  const bindLocalTestRequestScope = !isProductionRuntime() && process.env.BROKER_DESK_TEST_REQUEST_SCOPE === "1";
+  if (!usePostgres || (!isProductionRuntime() && !bindLocalTestRequestScope)) {
     return operation();
   }
 
-  const subject = workerRepositorySubject.getStore() ?? (await getAuthSubject());
+  let subject = workerRepositorySubject.getStore() ?? null;
+  if (!subject && isTrustedHeaderAuthEnabled()) {
+    const identity = readTrustedHeaderAuthIdentity(await headers());
+    if (!identity.ok) throw new Error(identity.error);
+    subject = identity.identity.subject;
+  }
+  subject ??= await getAuthSubject();
   if (!subject) {
     throw new ProductionReadinessError("production_tenant_scope_required");
   }

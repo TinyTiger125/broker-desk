@@ -310,7 +310,13 @@ async function queryWithinRequestScope(rawPool: Pool, args: unknown[]) {
 
 function getPool(): Pool {
   const rawPool = getRawPool();
-  if (!isProductionRuntime()) return rawPool;
+  // The local trusted-header acceptance harness opts into the same
+  // transaction-local subject binding used in production. This branch is
+  // explicitly non-production and inert unless the harness sets the flag;
+  // it prevents a database-wide synthetic subject from masking cross-actor
+  // authorization results during local UI verification.
+  const bindLocalTestRequestScope = !isProductionRuntime() && process.env.BROKER_DESK_TEST_REQUEST_SCOPE === "1";
+  if (!isProductionRuntime() && !bindLocalTestRequestScope) return rawPool;
 
   // Pool.query does not keep a caller-selected connection. Use a proxy so the
   // session variable and business query always run on the same client, then
@@ -3449,6 +3455,8 @@ export async function updateImportJobMapping(input: {
   status?: ImportJobStatus;
   allowRetry?: boolean;
   beforeFinalImport?: boolean;
+  /** Only the final execution write may update a claimed job's result. */
+  allowFinalImportCompletion?: boolean;
 }): Promise<ImportJob | null> {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(input.tenantId);
@@ -3458,7 +3466,10 @@ export async function updateImportJobMapping(input: {
     [input.jobId, input.userId, scopeTenantId]
   );
   if (!currentRes.rows[0]) return null;
-  if (input.beforeFinalImport && currentRes.rows[0].final_import_started_at) return null;
+  const allowFinalImportCompletion = Boolean(input.allowFinalImportCompletion);
+  if (currentRes.rows[0].final_import_started_at && !allowFinalImportCompletion) return null;
+  if (allowFinalImportCompletion && !currentRes.rows[0].final_import_started_at) return null;
+  if (allowFinalImportCompletion && input.status !== "completed" && input.status !== "failed") return null;
   const currentStatus = String(currentRes.rows[0].status) as ImportJobStatus;
   if (input.status && !isValidImportStatusTransition(currentStatus, input.status, Boolean(input.allowRetry))) {
     throw new Error(`資料読取記録の状態変更が不正です: ${currentStatus} -> ${input.status}`);
@@ -3467,13 +3478,13 @@ export async function updateImportJobMapping(input: {
   const result = await getPool().query(
     `UPDATE import_jobs
      SET
-      mapping_json = $3::jsonb,
+      mapping_json = CASE WHEN final_import_started_at IS NULL THEN $3::jsonb ELSE mapping_json END,
       validation_message = $4,
-      notes = COALESCE($5, notes),
+      notes = CASE WHEN final_import_started_at IS NULL THEN COALESCE($5, notes) ELSE notes END,
       status = COALESCE($6, status),
       updated_at = NOW()
      WHERE id = $1 AND user_id = $2 AND tenant_id = $7
-       AND (NOT $8::boolean OR final_import_started_at IS NULL)
+       AND (final_import_started_at IS NULL OR $8::boolean)
      RETURNING *`,
     [
       input.jobId,
@@ -3483,7 +3494,7 @@ export async function updateImportJobMapping(input: {
       input.notes?.trim() || null,
       input.status ?? null,
       scopeTenantId,
-      Boolean(input.beforeFinalImport),
+      allowFinalImportCompletion,
     ]
   );
   return result.rows[0] ? mapImportJob(result.rows[0]) : null;
