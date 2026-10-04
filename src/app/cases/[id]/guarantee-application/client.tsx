@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { Locale } from "@/lib/locale";
+import { getGuaranteeApplicationRecoveryAction } from "@/lib/guarantee-application-recovery";
 
 type PublishedVersion = { id: string; versionNumber: number; blankFormVersionId: string; formName: string };
 type HistoryItem = { id: string; generatedAt: string; version?: string; fileReady: boolean };
@@ -31,6 +32,7 @@ const COPY: Record<Locale, {
   formLabel: string;
   chooseForm: string;
   durableDataBoundary: string;
+  templateUnavailable: string;
   guaranteeCompany: string;
   applicationDate: string;
   planType: string;
@@ -73,22 +75,27 @@ const COPY: Record<Locale, {
       application_draft_context_required: "公開済みの会社帳票を先に選択してください。",
       application_draft_save_context_required: "保存する前に公開済みの会社帳票を選択してください。",
       permission_denied: "現在のアカウントにはこの操作の権限がありません。",
+      generation_in_progress_or_not_found: "プレビューの有効期限が切れたか、確認状態を利用できません。入力内容を確認して、もう一度プレビューを生成してからファイルを生成してください。",
+      preview_confirmation_expired: "プレビューの有効期限が切れました。入力内容を確認して、もう一度プレビューを生成してからファイルを生成してください。",
+      preview_confirmation_required: "先にプレビューを生成してください。入力内容を確認してから、もう一度プレビューを生成してください。",
+      preview_stale: "案件に登録済みの情報または帳票が更新されたため、確認済みプレビューを使えません。現在の内容を確認して、もう一度プレビューを生成してください。",
       guarantee_slice1_failed: "申請資料を読み込めません。時間をおいて、もう一度お試しください。",
     },
     temporaryError: "申請資料を読み込めません。時間をおいて、もう一度お試しください。",
-    disabled: "この機能は現在、管理された非本番環境でのみ利用できます。",
+    disabled: "この申込機能は現在利用できません。利用権限または環境設定を確認してください。",
     backToCase: "案件に戻る",
     eyebrow: "案件の申請資料",
     title: "保証会社申込書を作成",
     caseFactsTitle: "案件資料",
-    caseFactsDescription: "以下は現在の案件から読み込んだ長期保存資料です。このページで今回の保証申請を入力しても、案件資料は変更されません。",
+    caseFactsDescription: "以下は現在の案件から読み込んだ、案件に登録済みの情報です。このページで今回の保証申請を入力しても、案件資料は変更されません。",
     caseFactsEmpty: "表示できる案件資料はありません。",
     noPublishedVersions: "利用できる公開済み帳票がありません。",
     contactTemplateAdmin: "会社の帳票管理者に確認してください。",
     selectFormTitle: "公開済み帳票を選択",
     formLabel: "帳票",
     chooseForm: "選択してください",
-    durableDataBoundary: "氏名・住所・勤務先・物件などは案件の長期保存資料です。保証会社、申請日、今回の申告・選択はこの申請記録に保存され、案件の事実情報は変更しません。",
+    durableDataBoundary: "氏名・住所・勤務先・物件などは案件に登録済みの情報です。保証会社、申請日、今回の申告・選択はこの申請記録に保存され、案件の事実情報は変更しません。",
+    templateUnavailable: "選択した帳票は利用できません。別の公開済み帳票を選択するか、会社の帳票管理者に確認してください。",
     guaranteeCompany: "保証会社",
     applicationDate: "申請日",
     planType: "今回の保証プラン",
@@ -106,7 +113,7 @@ const COPY: Record<Locale, {
     saveDraft: "今回の保証申請を保存",
     saved: "保存済み",
     previewTitle: "プレビューと生成",
-    previewDescription: "案件資料、帳票バージョン、今回の申請記録を固定してプレビューを生成します。通常メンバーはマスク編集や顧客用の空白原本のダウンロードはできません。",
+    previewDescription: "案件に登録済みの情報、帳票バージョン、今回の申請記録を固定してプレビューを生成します。生成前に表示内容と権限を確認してください。",
     previewButton: "申込書をプレビュー",
     generateButton: "確認してファイルを生成",
     noGeneratePermission: "生成権限がありません",
@@ -139,22 +146,27 @@ const COPY: Record<Locale, {
       application_draft_context_required: "请先选择已发布的公司表格。",
       application_draft_save_context_required: "请先选择已发布的公司表格后再保存。",
       permission_denied: "当前身份没有执行此操作的权限。",
+      generation_in_progress_or_not_found: "预览已过期或确认状态不可用。请确认本次申请内容，重新生成预览后再生成文件。",
+      preview_confirmation_expired: "预览已过期。请确认本次申请内容，重新生成预览后再生成文件。",
+      preview_confirmation_required: "请先生成预览。确认本次申请内容后，再重新生成预览。",
+      preview_stale: "案件中已登记的信息或表格已更新，无法使用之前确认的预览。请确认当前内容后重新生成预览。",
       guarantee_slice1_failed: "申请资料暂时无法读取，请稍后重试。",
     },
     temporaryError: "申请资料暂时无法读取，请稍后重试。",
-    disabled: "该功能当前仅在受控非生产环境开放。",
+    disabled: "当前无法使用该申请功能。请确认访问权限或环境设置。",
     backToCase: "返回案件",
     eyebrow: "案件申请资料",
     title: "生成保证公司申请书",
     caseFactsTitle: "案件资料",
-    caseFactsDescription: "以下资料读取自当前案件，属于案件长期资料；本页面不会因填写本次保证申请而改写。",
+    caseFactsDescription: "以下资料读取自当前案件，是案件中已登记的信息；本页面不会因填写本次保证申请而改写。",
     caseFactsEmpty: "当前案件暂无可显示的案件资料。",
     noPublishedVersions: "当前公司没有可用的已发布表格。",
     contactTemplateAdmin: "请联系公司表格管理员。",
     selectFormTitle: "选择已发布表格",
     formLabel: "表格",
     chooseForm: "请选择",
-    durableDataBoundary: "案件姓名、地址、工作和房源等长期资料属于案件资料；保证公司、申请日期和本次声明/选择属于当前案件的本次保证申请记录，不会改写案件事实。",
+    durableDataBoundary: "案件姓名、地址、工作和房源等属于案件中已登记的信息；保证公司、申请日期和本次声明/选择属于当前案件的本次保证申请记录，不会改写案件事实。",
+    templateUnavailable: "所选表格暂不可用。请选择其他已发布表格，或联系公司表格管理员。",
     guaranteeCompany: "保证公司",
     applicationDate: "申请日期",
     planType: "本次保证选择",
@@ -172,7 +184,7 @@ const COPY: Record<Locale, {
     saveDraft: "保存本次保证申请",
     saved: "已保存到当前案件",
     previewTitle: "预览与生成",
-    previewDescription: "系统会锁定案件资料、表格版本和本次申请记录后生成预览。普通成员不能进入蒙板编辑或下载客户空白原件。",
+    previewDescription: "系统会锁定案件中已登记的信息、表格版本和本次申请记录后生成预览。生成前请确认显示内容和权限。",
     previewButton: "预览申请书",
     generateButton: "确认并生成文件",
     noGeneratePermission: "没有生成权限",
@@ -205,22 +217,27 @@ const COPY: Record<Locale, {
       application_draft_context_required: "먼저 게시된 회사 서식을 선택해 주세요.",
       application_draft_save_context_required: "저장하기 전에 게시된 회사 서식을 선택해 주세요.",
       permission_denied: "현재 계정에는 이 작업을 수행할 권한이 없습니다.",
+      generation_in_progress_or_not_found: "미리보기가 만료되었거나 확인 상태를 사용할 수 없습니다. 이번 신청 내용을 확인한 뒤 미리보기를 다시 생성하고 파일을 만들어 주세요.",
+      preview_confirmation_expired: "미리보기 유효 시간이 만료되었습니다. 이번 신청 내용을 확인한 뒤 미리보기를 다시 생성하고 파일을 만들어 주세요.",
+      preview_confirmation_required: "먼저 미리보기를 생성해 주세요. 이번 신청 내용을 확인한 뒤 미리보기를 다시 생성해 주세요.",
+      preview_stale: "안건에 등록된 정보 또는 서식이 변경되어 이전에 확인한 미리보기를 사용할 수 없습니다. 현재 내용을 확인한 뒤 미리보기를 다시 생성해 주세요.",
       guarantee_slice1_failed: "신청 자료를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.",
     },
     temporaryError: "신청 자료를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.",
-    disabled: "이 기능은 현재 관리된 비프로덕션 환경에서만 사용할 수 있습니다.",
+    disabled: "현재 신청 기능을 사용할 수 없습니다. 이용 권한 또는 환경 설정을 확인해 주세요.",
     backToCase: "안건으로 돌아가기",
     eyebrow: "안건 신청 자료",
     title: "보증회사 신청서 만들기",
     caseFactsTitle: "안건 자료",
-    caseFactsDescription: "다음 자료는 현재 안건에서 읽은 장기 보존 자료입니다. 이 페이지에서 이번 보증 신청을 입력해도 안건 자료는 변경되지 않습니다.",
+    caseFactsDescription: "다음 자료는 현재 안건에서 읽은 안건 등록 정보입니다. 이 페이지에서 이번 보증 신청을 입력해도 안건 자료는 변경되지 않습니다.",
     caseFactsEmpty: "현재 안건에 표시할 자료가 없습니다.",
     noPublishedVersions: "사용할 수 있는 게시된 서식이 없습니다.",
     contactTemplateAdmin: "회사 서식 관리자에게 문의해 주세요.",
     selectFormTitle: "게시된 서식 선택",
     formLabel: "서식",
     chooseForm: "선택해 주세요",
-    durableDataBoundary: "이름·주소·근무처·매물 등은 안건의 장기 자료입니다. 보증회사, 신청일, 이번 신고/선택은 이번 신청 기록에 저장되며 안건 사실은 변경하지 않습니다.",
+    durableDataBoundary: "이름·주소·근무처·매물 등은 안건에 등록된 정보입니다. 보증회사, 신청일, 이번 신고/선택은 이번 신청 기록에 저장되며 안건 사실은 변경하지 않습니다.",
+    templateUnavailable: "선택한 서식을 사용할 수 없습니다. 다른 게시 서식을 선택하거나 회사 서식 관리자에게 문의해 주세요.",
     guaranteeCompany: "보증회사",
     applicationDate: "신청일",
     planType: "이번 보증 플랜",
@@ -238,7 +255,7 @@ const COPY: Record<Locale, {
     saveDraft: "이번 보증 신청 저장",
     saved: "현재 안건에 저장됨",
     previewTitle: "미리보기 및 생성",
-    previewDescription: "안건 자료, 서식 버전, 이번 신청 기록을 고정한 뒤 미리보기를 생성합니다. 일반 멤버는 마스크를 편집하거나 고객용 빈 원본을 다운로드할 수 없습니다.",
+    previewDescription: "안건 등록 정보, 서식 버전, 이번 신청 기록을 고정한 뒤 미리보기를 생성합니다. 생성 전에 표시 내용과 권한을 확인해 주세요.",
     previewButton: "신청서 미리보기",
     generateButton: "확인 후 파일 생성",
     noGeneratePermission: "생성 권한 없음",
@@ -296,12 +313,26 @@ type Props = {
   canGenerate: boolean;
 };
 
+class GuaranteeApplicationActionError extends Error {
+  readonly code: string;
+
+  constructor(code: string, message: string) {
+    super(message);
+    this.name = "GuaranteeApplicationActionError";
+    this.code = code;
+  }
+}
+
 async function postJson(locale: Locale, action: string, body: Record<string, unknown>) {
   const response = await fetch("/api/guarantee-g1-slice1", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action, ...body }) });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     const code = String(payload.error ?? "");
-    throw new Error(COPY[locale].errors[code] ?? COPY[locale].temporaryError);
+    const recoveryAction = getGuaranteeApplicationRecoveryAction(code);
+    const message = recoveryAction === "select_template"
+      ? COPY[locale].templateUnavailable
+      : COPY[locale].errors[code] ?? COPY[locale].temporaryError;
+    throw new GuaranteeApplicationActionError(code, message);
   }
   return payload as Record<string, unknown>;
 }
@@ -362,9 +393,20 @@ export function GuaranteeApplicationClient({ locale, enabled, caseId, caseTitle,
   if (!enabled) return <main className="mx-auto max-w-3xl px-6 py-12"><h1 className="text-2xl font-semibold text-slate-950">{text.title}</h1><p className="mt-3 text-sm text-slate-600">{text.disabled}</p></main>;
 
   const selected = publishedVersions.find((item) => item.id === maskVersionId);
+  const clearPreviewConfirmation = () => {
+    setConfirmationId("");
+    setPreviewSrc("");
+  };
+  const handleActionError = (caught: unknown) => {
+    const recoveryAction = caught instanceof GuaranteeApplicationActionError
+      ? getGuaranteeApplicationRecoveryAction(caught.code)
+      : "none";
+    if (recoveryAction !== "none") clearPreviewConfirmation();
+    setError(caught instanceof Error ? caught.message : text.temporaryError);
+  };
   const run = async (operation: () => Promise<void>) => {
     setBusy(true); setError(""); setMessage("");
-    try { await operation(); } catch (caught) { setError(caught instanceof Error ? caught.message : text.temporaryError); } finally { setBusy(false); }
+    try { await operation(); } catch (caught) { handleActionError(caught); } finally { setBusy(false); }
   };
 
   const currentDraftValues = (): ApplicationDraftValues => ({
@@ -441,7 +483,7 @@ export function GuaranteeApplicationClient({ locale, enabled, caseId, caseTitle,
           <h2 id="select-form" className="text-lg font-semibold text-slate-950">{text.selectFormTitle}</h2>
           <label className="mt-4 grid max-w-xl gap-2 text-sm text-slate-700">
             {text.formLabel}
-            <select value={maskVersionId} onChange={(event) => { setMaskVersionId(event.target.value); setConfirmationId(""); setPreviewSrc(""); resetApplicationValues(); }} className="rounded-md border border-slate-300 px-3 py-2">
+            <select value={maskVersionId} onChange={(event) => { setMaskVersionId(event.target.value); clearPreviewConfirmation(); setError(""); setMessage(""); resetApplicationValues(); }} className="rounded-md border border-slate-300 px-3 py-2">
               <option value="">{text.chooseForm}</option>
               {publishedVersions.map((item) => <option key={item.id} value={item.id}>{item.formName} · v{item.versionNumber}</option>)}
             </select>
@@ -463,7 +505,7 @@ export function GuaranteeApplicationClient({ locale, enabled, caseId, caseTitle,
           <p className="mt-2 text-sm text-slate-600">{text.previewDescription}</p>
           <div className="mt-5 flex flex-wrap gap-3">
             <button type="button" disabled={!selected || busy} onClick={() => void run(async () => { const result = await postJson(locale, "preview", { caseId, blankFormVersionId: selected?.blankFormVersionId, maskVersionId, supplement: currentDraftValues() }); setConfirmationId(String(result.confirmationId ?? "")); setPreviewSrc(result.previewPdfBase64 ? "data:application/pdf;base64," + String(result.previewPdfBase64) : ""); setMessage(text.previewLocked); setPersisted(true); })} className="rounded-md border border-slate-300 px-4 py-2 text-sm disabled:opacity-50">{text.previewButton}</button>
-            <button type="button" disabled={!confirmationId || !canGenerate || busy} onClick={() => void run(async () => { const result = await postJson(locale, "generate", { confirmationId }); const id = String(result.outputId ?? ""); setHistory((items) => [{ id, generatedAt: new Date().toISOString(), version: String(selected?.versionNumber ?? ""), fileReady: true }, ...items.filter((item) => item.id !== id)]); setMessage(text.generated); })} className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{canGenerate ? text.generateButton : text.noGeneratePermission}</button>
+            <button type="button" disabled={!confirmationId || !canGenerate || busy} onClick={() => void run(async () => { const result = await postJson(locale, "generate", { confirmationId }); const id = String(result.outputId ?? ""); setHistory((items) => [{ id, generatedAt: new Date().toISOString(), version: String(selected?.versionNumber ?? ""), fileReady: true }, ...items.filter((item) => item.id !== id)]); clearPreviewConfirmation(); setMessage(text.generated); })} className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{canGenerate ? text.generateButton : text.noGeneratePermission}</button>
           </div>
           {previewSrc && <iframe title={text.previewTitle} src={previewSrc} className="mt-6 h-[560px] w-full rounded border border-slate-200" />}
         </section>
