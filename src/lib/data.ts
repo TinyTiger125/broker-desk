@@ -467,6 +467,7 @@ export const getGuaranteeCompanyMask: typeof memory.getGuaranteeCompanyMask = (.
 export const getGuaranteeCompanyMaskForBlankForm: typeof memory.getGuaranteeCompanyMaskForBlankForm = (...args) => repo.getGuaranteeCompanyMaskForBlankForm(...args);
 export const getGuaranteeOutputByCase: typeof memory.getGuaranteeOutputByCase = (...args) => repo.getGuaranteeOutputByCase(...args);
 export const listGuaranteeOutputsByCase: typeof memory.listGuaranteeOutputsByCase = (...args) => repo.listGuaranteeOutputsByCase(...args);
+export const getGuaranteePreviewConfirmation: typeof memory.getGuaranteePreviewConfirmation = (...args) => repo.getGuaranteePreviewConfirmation(...args);
 export const deleteGeneratedOutputForTenant: typeof memory.deleteGeneratedOutputForTenant = (...args) => repo.deleteGeneratedOutputForTenant(...args);
 export const readPrivateAttachmentContentForTenant: typeof memory.readPrivateAttachmentContentForTenant = (...args) => repo.readPrivateAttachmentContentForTenant(...args);
 export const deletePrivateAttachmentForTenant: typeof memory.deletePrivateAttachmentForTenant = (...args) => repo.deletePrivateAttachmentForTenant(...args);

@@ -38,6 +38,7 @@
     "test:guarantee-address-fit": "node scripts/test-guarantee-address-fit.mjs",
     "test:guarantee-slice1-contract": "node scripts/check-guarantee-slice1-contract.mjs",
     "test:guarantee-slice1-behavior": "node scripts/test-guarantee-slice1-behavior.mjs",
+    "test:guarantee-preview-concurrency-postgres": "node scripts/test-guarantee-preview-concurrency-postgres.mjs",
     "test:guarantee-application-recovery": "node scripts/test-guarantee-application-recovery.mjs",
     "test:case-field-catalog": "node scripts/check-case-field-catalog.mjs",
     "test:case-field-switch": "node scripts/check-case-field-switch-contract.mjs",

@@ -642,6 +642,12 @@ export type GuaranteePreviewConfirmation = {
   status: GuaranteePreviewConfirmationStatus; processingExpiresAt?: Date; processingToken?: string; generatedOutputId?: string;
   createdAt: Date; consumedAt?: Date;
 };
+export type GuaranteePreviewConfirmationClaim =
+  | { kind: "claimed"; confirmation: GuaranteePreviewConfirmation }
+  | { kind: "consumed"; confirmation: GuaranteePreviewConfirmation }
+  | { kind: "processing"; confirmation: GuaranteePreviewConfirmation }
+  | { kind: "expired"; confirmation: GuaranteePreviewConfirmation }
+  | { kind: "not_found" };
 
 export type GuaranteePreviewOutputInput = {
   tenantId?: string; userId: string; actorId?: string; sourceQuoteId?: string; quoteId?: string; propertyId?: string; partyId?: string;
@@ -4964,20 +4970,27 @@ export async function getGuaranteeMaskMatch(input: { tenantId: string; blankForm
   return item ? cloneGuarantee(item) : undefined;
 }
 
+export async function getGuaranteePreviewConfirmation(input: { tenantId: string; id: string; actorUserId: string }): Promise<GuaranteePreviewConfirmation | undefined> {
+  const item = db.guaranteePreviewConfirmations.find((value) => value.id === input.id && value.tenantId === resolveTenantId(input.tenantId) && value.actorUserId === input.actorUserId);
+  return item ? cloneGuarantee(item) : undefined;
+}
+
 export async function createGuaranteePreviewConfirmation(input: Omit<GuaranteePreviewConfirmation, "id" | "status" | "createdAt">): Promise<GuaranteePreviewConfirmation> {
   const item: GuaranteePreviewConfirmation = { ...cloneGuarantee(input), id: makeId("gconfirm"), status: "issued", createdAt: new Date() };
   db.guaranteePreviewConfirmations.unshift(item);
   return cloneGuarantee(item);
 }
 
-export async function claimGuaranteePreviewConfirmation(input: { tenantId: string; id: string; actorUserId: string; leaseMs?: number }): Promise<GuaranteePreviewConfirmation | undefined> {
+export async function claimGuaranteePreviewConfirmation(input: { tenantId: string; id: string; actorUserId: string; leaseMs?: number }): Promise<GuaranteePreviewConfirmationClaim> {
   const item = db.guaranteePreviewConfirmations.find((value) => value.id === input.id && value.tenantId === resolveTenantId(input.tenantId) && value.actorUserId === input.actorUserId);
-  if (!item) return undefined;
-  if (item.status === "consumed") return cloneGuarantee(item);
-  if (item.expiresAt <= new Date()) { item.status = "expired"; return cloneGuarantee(item); }
-  if (item.status === "processing" && item.processingExpiresAt && item.processingExpiresAt > new Date()) return undefined;
+  if (!item) return { kind: "not_found" };
+  if (item.status === "consumed") return { kind: "consumed", confirmation: cloneGuarantee(item) };
+  if (item.expiresAt <= new Date()) { item.status = "expired"; return { kind: "expired", confirmation: cloneGuarantee(item) }; }
+  if (item.status === "processing" && (!item.processingExpiresAt || item.processingExpiresAt > new Date())) {
+    return { kind: "processing", confirmation: { ...cloneGuarantee(item), processingToken: undefined } };
+  }
   item.status = "processing"; item.processingExpiresAt = new Date(Date.now() + (input.leaseMs ?? 60_000)); item.processingToken = randomUUID();
-  return cloneGuarantee(item);
+  return { kind: "claimed", confirmation: cloneGuarantee(item) };
 }
 
 export async function consumeGuaranteePreviewConfirmation(input: { tenantId: string; id: string; actorUserId: string; generatedOutputId: string; processingToken: string }): Promise<GuaranteePreviewConfirmation | undefined> {

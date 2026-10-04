@@ -16,7 +16,8 @@ require.extensions[".ts"] = (module, filename) => {
 
 const { getGuaranteeApplicationRecoveryAction } = require(resolve(root, "src/lib/guarantee-application-recovery.ts"));
 assert.equal(getGuaranteeApplicationRecoveryAction("preview_confirmation_expired"), "retry_preview", "expired confirmation must require a new preview");
-assert.equal(getGuaranteeApplicationRecoveryAction("generation_in_progress_or_not_found"), "retry_preview", "expired database confirmation must require a new preview");
+assert.equal(getGuaranteeApplicationRecoveryAction("generation_in_progress"), "refresh_generation", "active generation must retain the confirmation and refresh its status");
+assert.equal(getGuaranteeApplicationRecoveryAction("generation_confirmation_not_found"), "retry_preview", "missing confirmation must require a new preview");
 assert.equal(getGuaranteeApplicationRecoveryAction("preview_stale"), "retry_preview", "changed case or form data must require a new preview");
 assert.equal(getGuaranteeApplicationRecoveryAction("preview_confirmation_required"), "retry_preview", "missing confirmation must require a new preview");
 assert.equal(getGuaranteeApplicationRecoveryAction("mask_version_not_found"), "select_template", "missing form version must return to form selection");
@@ -35,6 +36,7 @@ for (const copy of [
   assert(client.includes(copy), `localized recovery copy is missing: ${copy}`);
 }
 assert(client.includes("clearPreviewConfirmation();"), "failed or successful generation must clear the confirmation before another attempt");
+assert(client.includes('postJson(locale, "generationStatus"') && client.includes("generationInProgress"), "active generation must retain a safe status refresh path");
 assert(client.includes('postJson(locale, "preview"') && client.includes("setMessage(text.previewLocked)"), "the recovery path must be able to generate a new preview successfully");
 assert(client.includes("templateUnavailable") && client.includes("会社の帳票管理者"), "unavailable forms must direct the user to select another form or contact the manager");
 

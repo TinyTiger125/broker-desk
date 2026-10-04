@@ -55,6 +55,8 @@ const COPY: Record<Locale, {
   generateButton: string;
   noGeneratePermission: string;
   previewLocked: string;
+  generationInProgress: string;
+  refreshGenerationStatus: string;
   generated: string;
   historyTitle: string;
   historyEmpty: string;
@@ -75,7 +77,8 @@ const COPY: Record<Locale, {
       application_draft_context_required: "公開済みの会社帳票を先に選択してください。",
       application_draft_save_context_required: "保存する前に公開済みの会社帳票を選択してください。",
       permission_denied: "現在のアカウントにはこの操作の権限がありません。",
-      generation_in_progress_or_not_found: "プレビューの有効期限が切れたか、確認状態を利用できません。入力内容を確認して、もう一度プレビューを生成してからファイルを生成してください。",
+      generation_confirmation_not_found: "生成状態を確認できません。入力内容を確認して、もう一度プレビューを生成してください。",
+      generation_in_progress: "ファイルを生成中です。完了するまでお待ちください。履歴に結果が表示されたら、そこから開けます。",
       preview_confirmation_expired: "プレビューの有効期限が切れました。入力内容を確認して、もう一度プレビューを生成してからファイルを生成してください。",
       preview_confirmation_required: "先にプレビューを生成してください。入力内容を確認してから、もう一度プレビューを生成してください。",
       preview_stale: "案件に登録済みの情報または帳票が更新されたため、確認済みプレビューを使えません。現在の内容を確認して、もう一度プレビューを生成してください。",
@@ -118,6 +121,8 @@ const COPY: Record<Locale, {
     generateButton: "確認してファイルを生成",
     noGeneratePermission: "生成権限がありません",
     previewLocked: "プレビューを固定しました。確認後にファイルを生成できます。",
+    generationInProgress: "ファイル生成を処理中です。完了するまで再送信しないでください。履歴を確認できます。",
+    refreshGenerationStatus: "生成状態を更新",
     generated: "申込書を生成し、この案件の履歴に保存しました。",
     historyTitle: "案件申込書の履歴",
     historyEmpty: "生成済みファイルはありません。",
@@ -146,7 +151,8 @@ const COPY: Record<Locale, {
       application_draft_context_required: "请先选择已发布的公司表格。",
       application_draft_save_context_required: "请先选择已发布的公司表格后再保存。",
       permission_denied: "当前身份没有执行此操作的权限。",
-      generation_in_progress_or_not_found: "预览已过期或确认状态不可用。请确认本次申请内容，重新生成预览后再生成文件。",
+      generation_confirmation_not_found: "无法确认生成状态。请确认本次申请内容后重新生成预览。",
+      generation_in_progress: "文件正在生成，请稍候。完成后结果会出现在历史记录中，可从那里打开。",
       preview_confirmation_expired: "预览已过期。请确认本次申请内容，重新生成预览后再生成文件。",
       preview_confirmation_required: "请先生成预览。确认本次申请内容后，再重新生成预览。",
       preview_stale: "案件中已登记的信息或表格已更新，无法使用之前确认的预览。请确认当前内容后重新生成预览。",
@@ -189,6 +195,8 @@ const COPY: Record<Locale, {
     generateButton: "确认并生成文件",
     noGeneratePermission: "没有生成权限",
     previewLocked: "预览已锁定，可以确认后生成文件。",
+    generationInProgress: "文件正在生成，请勿重复提交。可以安全刷新生成状态或查看下方历史记录。",
+    refreshGenerationStatus: "刷新生成状态",
     generated: "申请书已生成并保存到本案件历史。",
     historyTitle: "案件申请书历史",
     historyEmpty: "尚无已生成文件。",
@@ -217,7 +225,8 @@ const COPY: Record<Locale, {
       application_draft_context_required: "먼저 게시된 회사 서식을 선택해 주세요.",
       application_draft_save_context_required: "저장하기 전에 게시된 회사 서식을 선택해 주세요.",
       permission_denied: "현재 계정에는 이 작업을 수행할 권한이 없습니다.",
-      generation_in_progress_or_not_found: "미리보기가 만료되었거나 확인 상태를 사용할 수 없습니다. 이번 신청 내용을 확인한 뒤 미리보기를 다시 생성하고 파일을 만들어 주세요.",
+      generation_confirmation_not_found: "생성 상태를 확인할 수 없습니다. 이번 신청 내용을 확인한 뒤 미리보기를 다시 생성해 주세요.",
+      generation_in_progress: "파일을 생성 중입니다. 완료되면 이력에서 결과를 열 수 있습니다.",
       preview_confirmation_expired: "미리보기 유효 시간이 만료되었습니다. 이번 신청 내용을 확인한 뒤 미리보기를 다시 생성하고 파일을 만들어 주세요.",
       preview_confirmation_required: "먼저 미리보기를 생성해 주세요. 이번 신청 내용을 확인한 뒤 미리보기를 다시 생성해 주세요.",
       preview_stale: "안건에 등록된 정보 또는 서식이 변경되어 이전에 확인한 미리보기를 사용할 수 없습니다. 현재 내용을 확인한 뒤 미리보기를 다시 생성해 주세요.",
@@ -260,6 +269,8 @@ const COPY: Record<Locale, {
     generateButton: "확인 후 파일 생성",
     noGeneratePermission: "생성 권한 없음",
     previewLocked: "미리보기를 고정했습니다. 확인 후 파일을 생성할 수 있습니다.",
+    generationInProgress: "파일 생성 처리 중입니다. 중복 제출하지 말고 생성 상태 또는 아래 이력을 확인해 주세요.",
+    refreshGenerationStatus: "생성 상태 새로 고침",
     generated: "신청서를 생성하여 이 안건의 이력에 저장했습니다.",
     historyTitle: "안건 신청서 이력",
     historyEmpty: "생성된 파일이 없습니다.",
@@ -355,6 +366,7 @@ export function GuaranteeApplicationClient({ locale, enabled, caseId, caseTitle,
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [generationPending, setGenerationPending] = useState(false);
   const [historyLoadingId, setHistoryLoadingId] = useState("");
   const [historyErrorId, setHistoryErrorId] = useState("");
   const [historyPreviewUrl, setHistoryPreviewUrl] = useState("");
@@ -396,12 +408,19 @@ export function GuaranteeApplicationClient({ locale, enabled, caseId, caseTitle,
   const clearPreviewConfirmation = () => {
     setConfirmationId("");
     setPreviewSrc("");
+    setGenerationPending(false);
   };
   const handleActionError = (caught: unknown) => {
     const recoveryAction = caught instanceof GuaranteeApplicationActionError
       ? getGuaranteeApplicationRecoveryAction(caught.code)
       : "none";
-    if (recoveryAction !== "none") clearPreviewConfirmation();
+    if (recoveryAction === "retry_preview" || recoveryAction === "select_template") clearPreviewConfirmation();
+    if (recoveryAction === "refresh_generation") {
+      setGenerationPending(true);
+      setError("");
+      setMessage(text.generationInProgress);
+      return;
+    }
     setError(caught instanceof Error ? caught.message : text.temporaryError);
   };
   const run = async (operation: () => Promise<void>) => {
@@ -463,6 +482,31 @@ export function GuaranteeApplicationClient({ locale, enabled, caseId, caseTitle,
     }
   };
 
+  const refreshGenerationStatus = () => void run(async () => {
+    if (!confirmationId) return;
+    const result = await postJson(locale, "generationStatus", { confirmationId });
+    const status = String(result.status ?? "");
+    if (status === "completed" && result.outputId) {
+      const id = String(result.outputId);
+      setHistory((items) => [{ id, generatedAt: new Date().toISOString(), version: String(selected?.versionNumber ?? ""), fileReady: true }, ...items.filter((item) => item.id !== id)]);
+      clearPreviewConfirmation();
+      setMessage(text.generated);
+      return;
+    }
+    if (status === "processing") {
+      setGenerationPending(true);
+      setMessage(text.generationInProgress);
+      return;
+    }
+    if (status === "issued") {
+      setGenerationPending(false);
+      setMessage(text.previewLocked);
+      return;
+    }
+    clearPreviewConfirmation();
+    setError(status === "expired" ? text.errors.preview_confirmation_expired : text.errors.generation_confirmation_not_found);
+  });
+
   return (
     <main className="mx-auto max-w-4xl px-6 py-10">
       <header className="border-b border-slate-200 pb-6">
@@ -505,8 +549,9 @@ export function GuaranteeApplicationClient({ locale, enabled, caseId, caseTitle,
           <p className="mt-2 text-sm text-slate-600">{text.previewDescription}</p>
           <div className="mt-5 flex flex-wrap gap-3">
             <button type="button" disabled={!selected || busy} onClick={() => void run(async () => { const result = await postJson(locale, "preview", { caseId, blankFormVersionId: selected?.blankFormVersionId, maskVersionId, supplement: currentDraftValues() }); setConfirmationId(String(result.confirmationId ?? "")); setPreviewSrc(result.previewPdfBase64 ? "data:application/pdf;base64," + String(result.previewPdfBase64) : ""); setMessage(text.previewLocked); setPersisted(true); })} className="rounded-md border border-slate-300 px-4 py-2 text-sm disabled:opacity-50">{text.previewButton}</button>
-            <button type="button" disabled={!confirmationId || !canGenerate || busy} onClick={() => void run(async () => { const result = await postJson(locale, "generate", { confirmationId }); const id = String(result.outputId ?? ""); setHistory((items) => [{ id, generatedAt: new Date().toISOString(), version: String(selected?.versionNumber ?? ""), fileReady: true }, ...items.filter((item) => item.id !== id)]); clearPreviewConfirmation(); setMessage(text.generated); })} className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{canGenerate ? text.generateButton : text.noGeneratePermission}</button>
+            <button type="button" disabled={!confirmationId || !canGenerate || busy || generationPending} onClick={() => void run(async () => { const result = await postJson(locale, "generate", { confirmationId }); const id = String(result.outputId ?? ""); setHistory((items) => [{ id, generatedAt: new Date().toISOString(), version: String(selected?.versionNumber ?? ""), fileReady: true }, ...items.filter((item) => item.id !== id)]); clearPreviewConfirmation(); setMessage(text.generated); })} className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{canGenerate ? text.generateButton : text.noGeneratePermission}</button>
           </div>
+          {generationPending && <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"><p>{text.generationInProgress}</p><button type="button" disabled={busy} onClick={refreshGenerationStatus} className="mt-2 text-blue-700 underline disabled:opacity-50">{text.refreshGenerationStatus}</button></div>}
           {previewSrc && <iframe title={text.previewTitle} src={previewSrc} className="mt-6 h-[560px] w-full rounded border border-slate-200" />}
         </section>
       </>}
