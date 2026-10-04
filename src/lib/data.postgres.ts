@@ -108,6 +108,7 @@ import type {
   SaveCaseWorkbenchWithObjectReviewResult,
   RefreshObjectImportReviewInput,
   RefreshObjectImportReviewResult,
+  PreparePropertyRowImportResult,
 } from "@/lib/data.memory";
 import { normalizeInvitationDeliveryState } from "@/lib/invitation-delivery-state";
 import type { VisibleBrokerageCase, VisibleProperty } from "@/lib/data.memory";
@@ -3362,6 +3363,70 @@ export async function claimPropertyRowImport(input: { tenantId: string; userId: 
     [input.tenantId, input.jobId],
   );
   return result.rows[0]?.claimed === true;
+}
+
+export async function preparePropertyRowImport(input: {
+  tenantId: string;
+  userId: string;
+  jobId: string;
+  mappingJson: Record<string, string>;
+  validationMessage?: string;
+}): Promise<PreparePropertyRowImportResult> {
+  await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
+
+  return withTransaction(async (client) => {
+    // The row lock covers both the stale mapping check and the existing
+    // SECURITY DEFINER claim. A request that arrived with an old queued view
+    // therefore waits, then observes processing/completed and cannot rewrite
+    // the mapping or validation message.
+    const currentRes = await client.query(
+      "SELECT * FROM import_jobs WHERE id = $1 AND user_id = $2 AND tenant_id = $3 FOR UPDATE",
+      [input.jobId, input.userId, scopeTenantId],
+    );
+    if (!currentRes.rows[0]) return { job: null, claimed: false };
+    const currentJob = mapImportJob(currentRes.rows[0]);
+    if (currentJob.status === "completed" || currentJob.status === "processing" || currentJob.finalImportStartedAt) {
+      return { job: currentJob, claimed: false };
+    }
+    if (currentJob.status !== "queued" && currentJob.status !== "mapped") {
+      return { job: currentJob, claimed: false };
+    }
+
+    const mappedRes = await client.query(
+      `UPDATE import_jobs
+       SET mapping_json = $4::jsonb,
+           validation_message = $5,
+           status = 'mapped',
+           updated_at = NOW()
+       WHERE id = $1 AND user_id = $2 AND tenant_id = $3
+         AND status IN ('queued', 'mapped')
+         AND final_import_started_at IS NULL
+       RETURNING *`,
+      [input.jobId, input.userId, scopeTenantId, JSON.stringify(input.mappingJson), input.validationMessage?.trim() || null],
+    );
+    if (!mappedRes.rows[0]) return { job: currentJob, claimed: false };
+
+    const claimRes = await client.query(
+      "SELECT brokerdesk_private.claim_property_row_import($1, $2) AS claimed",
+      [scopeTenantId, input.jobId],
+    );
+    if (claimRes.rows[0]?.claimed !== true) {
+      // Do not commit the mapping if the authenticated database subject could
+      // not claim the same tenant/user-bound job. Throwing rolls back the
+      // transaction instead of leaving a queued-looking audit trail with no
+      // durable final-import marker.
+      throw new Error("import_execution_claim_failed");
+    }
+    const finalRes = await client.query(
+      "SELECT * FROM import_jobs WHERE id = $1 AND user_id = $2 AND tenant_id = $3 LIMIT 1",
+      [input.jobId, input.userId, scopeTenantId],
+    );
+    return {
+      job: finalRes.rows[0] ? mapImportJob(finalRes.rows[0]) : mapImportJob(mappedRes.rows[0]),
+      claimed: claimRes.rows[0]?.claimed === true,
+    };
+  });
 }
 
 export async function deletePreimportPropertyUpload(input: { tenantId: string; userId: string; jobId: string }): Promise<boolean> {

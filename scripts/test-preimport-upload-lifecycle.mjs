@@ -44,9 +44,9 @@ assert.match(queue, /uploadLifecycleVersion:\s*1/, "new upload must stamp V1 at 
 const actions = read("src/app/actions.ts");
 const start = actions.indexOf("export async function executePropertyImportAction");
 const body = actions.slice(start, actions.indexOf("export async function", start + 30));
-assert.ok(body.indexOf("await claimPropertyRowImport(") > 0, "final import must claim persistently");
-assert.ok(body.indexOf("await claimPropertyRowImport(") < body.indexOf("await addProperty("), "claim precedes first business write");
-assert.match(body, /if\s*\(!claimed\)/, "a lost atomic claim must stop business writes");
+assert.ok(body.indexOf("await preparePropertyRowImport(") > 0, "final import must prepare mapping and claim persistently");
+assert.ok(body.indexOf("await preparePropertyRowImport(") < body.indexOf("await addProperty("), "atomic prepare precedes first business write");
+assert.match(body, /if\s*\(!prepared\.claimed\)/, "a lost atomic claim must stop business writes");
 assert.doesNotMatch(read("src/app/import-center/actions.ts"), /deletePrivateAttachmentForTenant/, "delete must not split into independent writes");
 
 function executeModule(source, globals = {}, dependencies = {}) {
@@ -82,14 +82,12 @@ for (const scenario of ["claim-denied", "success", "write-failed"]) {
     listPropertiesForContext: async () => [],
     createRequestContext: (session) => ({ tenantId: session.tenant.id, userId: session.user.id }),
     ...importRowPolicy,
-    updateImportJobMapping: async (input) => {
-      if (claimed && input.status === "mapped") throw new Error("import_execution_started");
-      status = input.status;
+    preparePropertyRowImport: async () => {
+      if (scenario === "claim-denied" || claimed) return { job: { ...fixture, status: "mapped" }, claimed: false };
+      claimed = true; status = "processing";
+      return { job: { ...fixture, status: "processing", finalImportStartedAt: new Date() }, claimed: true };
     },
-    claimPropertyRowImport: async () => {
-      if (scenario === "claim-denied" || claimed) return false;
-      claimed = true; status = "processing"; return true;
-    },
+    updateImportJobMapping: async (input) => { status = input.status; },
     addProperty: async () => {
       assert.equal(claimed, true, "business write before claim");
       propertyWrites++;
@@ -361,6 +359,96 @@ if (process.argv.includes("--postgres")) {
     await manager.query("SELECT set_config('app.external_auth_subject','local-owner-subject',false)");
     const deletePid = (await deleter.query("SELECT pg_backend_pid() AS pid")).rows[0].pid;
     const managerPid = (await manager.query("SELECT pg_backend_pid() AS pid")).rows[0].pid;
+
+    // Exercise the real PostgreSQL prepare primitive with a deterministic
+    // stale-view interleaving. A holds the row after the claim and before
+    // commit; B arrives with an older mapping and must wait, then return the
+    // already-processing row without overwriting A's mapping.
+    const postgresTree = ts.createSourceFile("data.postgres.ts", read("src/lib/data.postgres.ts"), ts.ScriptTarget.Latest, true);
+    const prepareSource = postgresTree.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === "preparePropertyRowImport")?.getText(postgresTree);
+    assert.ok(prepareSource, "PostgreSQL prepare primitive must be exported");
+    let firstPrepare = true;
+    let firstClaimReached;
+    let releaseFirstClaim;
+    const firstClaimReachedPromise = new Promise((resolve) => { firstClaimReached = resolve; });
+    const firstClaimReleasePromise = new Promise((resolve) => { releaseFirstClaim = resolve; });
+    const prepareWithTransaction = async (fn) => {
+      const client = await connect("brokerdesk_runtime");
+      await client.query("BEGIN");
+      await client.query("SELECT set_config('app.external_auth_subject','local-actor-subject',true)");
+      try {
+        const result = await fn(client);
+        if (firstPrepare) {
+          firstPrepare = false;
+          firstClaimReached();
+          await firstClaimReleasePromise;
+        }
+        await client.query("COMMIT");
+        return result;
+      } catch (error) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        throw error;
+      }
+    };
+    const { preparePropertyRowImport } = executeModule(prepareSource, {
+      ensureSchema: async () => {},
+      resolveTenantId: (value) => value,
+      withTransaction: prepareWithTransaction,
+      mapImportJob: (row) => ({
+        id: String(row.id),
+        status: String(row.status),
+        finalImportStartedAt: row.final_import_started_at ? new Date(row.final_import_started_at) : undefined,
+      }),
+    });
+    const prepareJobId = "local-prepare-interleaving";
+    await fixture.query(
+      "INSERT INTO import_jobs(id,tenant_id,user_id,source_type,title,target_entity,status,notes,upload_lifecycle_version) VALUES ($1,'local-tenant','local-actor','excel','Synthetic prepare','properties','queued',$2,1)",
+      [prepareJobId, JSON.stringify({ kind: "property_row_import", rows: [{ name: "Prepared property", price: 1 }] })],
+    );
+    let bSettled = false;
+    const prepareA = preparePropertyRowImport({
+      tenantId: "local-tenant",
+      userId: "local-actor",
+      jobId: prepareJobId,
+      mappingJson: { source_name: "name", source_price: "listing_price" },
+      validationMessage: "mapping A",
+    });
+    await firstClaimReachedPromise;
+    const prepareB = preparePropertyRowImport({
+      tenantId: "local-tenant",
+      userId: "local-actor",
+      jobId: prepareJobId,
+      mappingJson: { stale_name: "name", stale_price: "listing_price" },
+      validationMessage: "stale mapping B",
+    }).then((result) => { bSettled = true; return result; });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal(bSettled, false, "stale mapping request must wait for the winning PostgreSQL row lock");
+    releaseFirstClaim();
+    const [preparedA, preparedB] = await Promise.all([prepareA, prepareB]);
+    assert.equal(preparedA.claimed, true, "first prepare must claim the final import");
+    assert.equal(preparedB.claimed, false, "stale second prepare must not claim or rewrite the job");
+    const prepareState = (await fixture.query(
+      "SELECT status, mapping_json, validation_message, final_import_started_at, attempt_count FROM import_jobs WHERE id=$1",
+      [prepareJobId],
+    )).rows[0];
+    assert.equal(prepareState.status, "processing");
+    assert.deepEqual(prepareState.mapping_json, { source_name: "name", source_price: "listing_price" });
+    assert.equal(prepareState.validation_message, "mapping A");
+    assert.ok(prepareState.final_import_started_at, "winning prepare must persist final_import_started_at");
+    assert.equal(Number(prepareState.attempt_count), 0, "final-import prepare must not mutate the parser attempt_count");
+    await fixture.query(
+      `INSERT INTO properties (id,tenant_id,name,listing_price,created_by_user_id,current_owner_user_id,visibility_scope,owner_resolution_status)
+       VALUES ('property-prepare-interleaving','local-tenant','Prepared property',1,'local-actor','local-actor','private','resolved')`,
+    );
+    await fixture.query(
+      `INSERT INTO audit_logs (id,tenant_id,user_id,actor_id,action,target_type,target_id,message,context_json)
+       VALUES ('audit-prepare-interleaving','local-tenant','local-actor','local-actor','import_job_completed','import_job',$1,'Synthetic property import completed','{}'::jsonb)`,
+      [prepareJobId],
+    );
+    await fixture.query("UPDATE import_jobs SET status='completed', completed_at=NOW() WHERE id=$1", [prepareJobId]);
+    assert.equal(Number((await fixture.query("SELECT COUNT(*) FROM properties WHERE tenant_id='local-tenant' AND id='property-prepare-interleaving'")).rows[0].count), 1, "winning claim permits one business property write");
+    assert.equal(Number((await fixture.query("SELECT COUNT(*) FROM audit_logs WHERE tenant_id='local-tenant' AND target_id=$1 AND action='import_job_completed'", [prepareJobId])).rows[0].count), 1, "winning claim has one completion audit");
+    console.log("[PASS] isolated PostgreSQL prepare CAS: stale mapping waited, final state stayed with A, one property and one audit");
     let serial = 0;
     const makeJob = async () => {
       const id = `local-job-${++serial}`;

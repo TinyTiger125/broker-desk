@@ -375,6 +375,11 @@ export type ImportJob = {
   updatedAt: Date;
 };
 
+export type PreparePropertyRowImportResult = {
+  job: ImportJob | null;
+  claimed: boolean;
+};
+
 export type BrokerageCaseStatus = "draft" | "reviewed";
 export type BrokerageCaseType = "unit_sale";
 export type ExtractionReviewStatus = "suggested" | "accepted" | "edited" | "unknown" | "rejected";
@@ -3727,6 +3732,34 @@ export async function claimPropertyRowImport(input: { tenantId: string; userId: 
   job.status = "processing";
   job.updatedAt = new Date();
   return true;
+}
+
+export async function preparePropertyRowImport(input: {
+  tenantId: string;
+  userId: string;
+  jobId: string;
+  mappingJson: Record<string, string>;
+  validationMessage?: string;
+}): Promise<PreparePropertyRowImportResult> {
+  const job = db.importJobs.find((item) => item.id === input.jobId && item.tenantId === input.tenantId && item.userId === input.userId);
+  const tenant = db.tenants.find((item) => item.id === input.tenantId);
+  const member = db.tenantMemberships.find((item) => item.tenantId === input.tenantId && item.userId === input.userId && item.status === "active");
+  if (!job) return { job: null, claimed: false };
+  if (job.status === "completed" || job.status === "processing" || job.finalImportStartedAt) return { job: { ...job }, claimed: false };
+  if (job.status !== "queued" && job.status !== "mapped") return { job: { ...job }, claimed: false };
+  if (!member || !tenant || !isTenantServiceOperational(deriveTenantServiceState(tenant)) || !mayStartPropertyImport({ ...job, status: "mapped" })) {
+    return { job: { ...job }, claimed: false };
+  }
+
+  // Memory has no await between the compare-and-claim steps. Keep the
+  // mapping update and durable start marker as one synchronous mutation so a
+  // competing request cannot leave a stale mapping behind.
+  job.mappingJson = { ...input.mappingJson };
+  job.validationMessage = input.validationMessage?.trim() || undefined;
+  job.status = "processing";
+  job.finalImportStartedAt = new Date();
+  job.updatedAt = job.finalImportStartedAt;
+  return { job: { ...job }, claimed: true };
 }
 
 export async function deletePreimportPropertyUpload(input: { tenantId: string; userId: string; jobId: string }): Promise<boolean> {

@@ -30,14 +30,15 @@
 ### 导入
 
 - [x] 本轮 Chrome owner 路径验证 `/import-center` 页面可加载并显示「情報入力」。
-- [x] 本轮在隔离 PostgreSQL + Chrome owner/demo 中完成合成 Excel：上传 → 异步解析 → 字段映射 → 清空必填「物件名」并看到可操作错误 → 恢复映射 → 保存到物件台账 → 同一 job 两次同步提交 → 刷新/重开 → 物件列表；最终报告为 `/tmp/broker-desk-ui-flow-8X2WHe/report.json`。
+- [x] 本轮在隔离 PostgreSQL + Chrome owner/demo 中完成合成 Excel：上传 → 异步解析 → 字段映射 → 清空必填「物件名」并看到可操作错误 → 恢复映射 → 保存到物件台账 → 同一 job 两次同步提交 → 刷新/重开 → 物件列表；历史完整报告为 `/tmp/broker-desk-ui-flow-8X2WHe/report.json`，P1 修复后的真实 PG job 为 `import_6l6fvyg8`。
 - [x] 物件台账结果持久化为成功 3 件：`合成タワー` 两价位、`合成空室`；无效价格与完全/疑似重复行保留在 validation result 中，未静默丢失。
 - [x] 同一隔离 PG 中完成支持 workbook 的案件路径：上传 → 解析 → 手工编辑 → 单项确认 → 保存到 `case_demo_asakusa_mori_rent` → 刷新/重开；最终回归 job `import_zk9en6xn`、案件 `source_import_job_ids` 与 `edited` review item 均可直接查询。
 - Source/contract：本轮发现并修复真实保存缺陷：高级映射有效恢复需要允许 `queued → mapped`；同时修正「列対応を開く」链接应进入 `job=` 作用域而不是 `xlsxJob=`。
 - Unit/memory：`node scripts/test-import-mapping-form.mjs` 通过，并新增 `queued → mapped` 合同断言；完整浏览器流程使用真实 Next Action/adapter，不以 mock 代替。
 - Historical browser evidence：MIG-007/TASK-003 已保留资料确认、追加/新建、持久化和失败恢复的本地 demo 浏览器基线；不因本轮未复测而抹去，也不扩大为本轮新证据。
 - Browser/PG：`agent-browser` 不可用，使用已安装 Chrome headless CDP fallback；PG 为临时本地 16 集群、合成 workbook、demo owner，未连接远端 provider。
-- Duplicate-submit regression：最终回归报告 `/tmp/broker-desk-ui-flow-a8tJZh/report.json`；两次同步物件保存 POST 均返回 200/既有结果，未产生第二批物件或浏览器 console error。
+- Duplicate-submit/P1 CAS regression：job `import_6l6fvyg8` 的两次同步物件保存 POST 均返回 200；直接查询临时 PostgreSQL 得到 `status=completed`、`final_import_started_at` 非空、mapping/validation 保留首个请求、物件记录严格 3 条、`import_job_completed` 审计严格 1 条。此前仅浏览器文本层的 `/tmp/broker-desk-ui-flow-a8tJZh/report.json` 不再作为“无重复数据”的充分证据。
+- Adapter interleaving：`node scripts/test-preimport-upload-lifecycle.mjs --postgres` 通过；真实 PostgreSQL 行锁下，旧 mapping 请求等待后返回既有 processing 状态，不能覆盖 mapping/validation；最终断言包含 job 状态、final marker、物件数量和审计数量。
 - Gap：本地证据不等于 Supabase RLS、Supabase 邮件 provider、生产附件存储或真实认证矩阵；不使用真实证件、真实邮件或外部 OCR。
 
 ### 案件 / 客户 / 物件
@@ -89,7 +90,8 @@
 - [x] `npm run lint`（仅保留既有 2 条 warning，无 error）
 - [x] `npm run build`（含 prebuild/postbuild）
 - [x] `git diff --check`
-- [x] `BROKER_DESK_UI_FIXED_PG_SUBJECT=1 npm run test:local-ui-flow`（Chrome owner/demo + 临时 PostgreSQL；首页→导入→案件→保证申请书帮助→客户→物件→文书输出→成员；完整 Excel/案件关联路径；第二租户 route-harness-only）
+- [x] `BROKER_DESK_UI_FIXED_PG_SUBJECT=1 BROKER_DESK_SKIP_STATIC_ROUTES=1 npm run test:local-ui-flow` 的 Excel/action 子路径（P1 修复后的 Chrome owner/demo + 临时 PostgreSQL；直接 PG 查询补足 job/property/audit 数量证据）。
+- [ ] 同命令的案件关联子路径：本次最小 PG fixture 缺少可读 source 记录而未通过，不能写成 P1 回归通过；历史完整案件证据仍见上方既有 job `import_zk9en6xn`。
 - [x] 当前工作树仅保留预先存在且未触碰的 `AGENTS.md` 修改；本轮没有执行生产迁移、远端写入、push 或 deploy。
 
 ## 未解决风险与准备条件

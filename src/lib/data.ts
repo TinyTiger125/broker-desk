@@ -387,6 +387,8 @@ export const addImportJob: typeof memory.addImportJob = (...args) =>
   repo.addImportJob(...args);
 export const claimPropertyRowImport: typeof memory.claimPropertyRowImport = (...args) =>
   repo.claimPropertyRowImport(...args);
+export const preparePropertyRowImport: typeof memory.preparePropertyRowImport = (...args) =>
+  repo.preparePropertyRowImport(...args);
 export const deletePreimportPropertyUpload: typeof memory.deletePreimportPropertyUpload = (...args) =>
   repo.deletePreimportPropertyUpload(...args);
 export const updateImportJobMapping: typeof memory.updateImportJobMapping = (...args) =>
