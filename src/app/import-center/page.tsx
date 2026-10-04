@@ -997,6 +997,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
     : [];
   const recentJobHref = (job: HubImportJobItem) => {
     if (job.status === "queued" && isBatchMappingJob(job)) return `/import-center?job=${encodeURIComponent(job.id)}&advanced=1#job-mapping`;
+    if (getImportPayloadKind(job) === "property_row_import" && job.status !== "completed") return `/import-center?job=${encodeURIComponent(job.id)}&advanced=1#job-mapping`;
     if (isModernExcelImportJob(job)) return `/import-center?xlsxJob=${encodeURIComponent(job.id)}#source-upload`;
     if (job.sourceType === "excel" && (job.status === "queued" || job.status === "processing" || job.status === "failed")) {
       return `/import-center?xlsxJob=${encodeURIComponent(job.id)}#source-upload`;
@@ -1471,7 +1472,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
             <p className="mt-1 text-xs leading-5 text-slate-700">
               {locale === "zh" ? "打开详细恢复路径，继续确认原有字段对应。" : locale === "ko" ? "상세 복구 경로를 열어 기존 필드 매핑을 계속 확인합니다." : "詳細な復旧経路を開き、既存の列対応を確認します。"}
             </p>
-            <Link href={`/import-center?xlsxJob=${encodeURIComponent(xlsxJob.id)}&advanced=1#job-mapping`} className="mt-3 inline-flex rounded-lg bg-blue-700 px-3 py-2 text-xs font-bold text-white hover:bg-blue-800">
+            <Link href={`/import-center?job=${encodeURIComponent(xlsxJob.id)}&advanced=1#job-mapping`} className="mt-3 inline-flex rounded-lg bg-blue-700 px-3 py-2 text-xs font-bold text-white hover:bg-blue-800">
               {locale === "zh" ? "进入字段映射" : locale === "ko" ? "필드 매핑 열기" : "列対応を開く"}
             </Link>
           </div>

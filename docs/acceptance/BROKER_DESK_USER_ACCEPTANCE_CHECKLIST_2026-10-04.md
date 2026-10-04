@@ -20,7 +20,7 @@
 
 ### 首页 / 工作台
 
-- [x] 本轮取得 owner/demo Chrome 路径的首页渲染证据：`/` 显示「資料管理センター」「今日の重点」，截图与 DOM 报告保存在 `/tmp/broker-desk-ui-flow-vS4QyW/`。
+- [x] 本轮取得 owner/demo Chrome 路径的首页渲染证据：`/` 显示「資料管理センター」「今日の重点」，截图与 DOM 报告保存在 `/tmp/broker-desk-ui-flow-8X2WHe/`。
 - [ ] 首页主要任务的完整交互、写入和权限回归：未执行。
 - Source/contract：本轮没有修改首页业务流程。
 - Unit/memory：`test:home-resumable-work`、`test:work-center-behavior` 等既有检查不代表本轮完成首页人工验收。
@@ -30,13 +30,15 @@
 ### 导入
 
 - [x] 本轮 Chrome owner 路径验证 `/import-center` 页面可加载并显示「情報入力」。
-- [ ] 上传、候选复核、保存、刷新/重开和进入案件的完整用户路径：本轮未复测。
-- Source/contract：当前候选未修改导入解析或导入权限。
-- Unit/memory：本轮 `test:import-failure-recovery` 等导入检查作为回归通过；它们不是完整导入人工验收。
+- [x] 本轮在隔离 PostgreSQL + Chrome owner/demo 中完成合成 Excel：上传 → 异步解析 → 字段映射 → 清空必填「物件名」并看到可操作错误 → 恢复映射 → 保存到物件台账 → 同一 job 两次同步提交 → 刷新/重开 → 物件列表；最终报告为 `/tmp/broker-desk-ui-flow-8X2WHe/report.json`。
+- [x] 物件台账结果持久化为成功 3 件：`合成タワー` 两价位、`合成空室`；无效价格与完全/疑似重复行保留在 validation result 中，未静默丢失。
+- [x] 同一隔离 PG 中完成支持 workbook 的案件路径：上传 → 解析 → 手工编辑 → 单项确认 → 保存到 `case_demo_asakusa_mori_rent` → 刷新/重开；最终回归 job `import_zk9en6xn`、案件 `source_import_job_ids` 与 `edited` review item 均可直接查询。
+- Source/contract：本轮发现并修复真实保存缺陷：高级映射有效恢复需要允许 `queued → mapped`；同时修正「列対応を開く」链接应进入 `job=` 作用域而不是 `xlsxJob=`。
+- Unit/memory：`node scripts/test-import-mapping-form.mjs` 通过，并新增 `queued → mapped` 合同断言；完整浏览器流程使用真实 Next Action/adapter，不以 mock 代替。
 - Historical browser evidence：MIG-007/TASK-003 已保留资料确认、追加/新建、持久化和失败恢复的本地 demo 浏览器基线；不因本轮未复测而抹去，也不扩大为本轮新证据。
-- Current gap evidence：`CURRENT_WORKING_CONTEXT.md` 2026-09-30 记录的合成 Excel 选择文件动作曾被浏览器工具中断，因此本轮仍不宣称上传→映射→保存→刷新/重开闭环通过。
-- Browser/PG：本轮页面加载证据仅为 `/import-center`；临时 PostgreSQL 只覆盖保证申请生成占用，不覆盖导入流程。
-- Gap：需要单独用合成 Excel/证件样本验证原件留存、候选状态和重新打开；不使用真实证件或外部 OCR。
+- Browser/PG：`agent-browser` 不可用，使用已安装 Chrome headless CDP fallback；PG 为临时本地 16 集群、合成 workbook、demo owner，未连接远端 provider。
+- Duplicate-submit regression：最终回归报告 `/tmp/broker-desk-ui-flow-a8tJZh/report.json`；两次同步物件保存 POST 均返回 200/既有结果，未产生第二批物件或浏览器 console error。
+- Gap：本地证据不等于 Supabase RLS、Supabase 邮件 provider、生产附件存储或真实认证矩阵；不使用真实证件、真实邮件或外部 OCR。
 
 ### 案件 / 客户 / 物件
 
@@ -57,9 +59,18 @@
 - Unit/memory：`npm run test:guarantee-slice1-behavior`、`npm run test:guarantee-application-recovery`、`npm run test:guarantee-slice1-contract` 通过。
 - Isolated PostgreSQL：`npm run test:guarantee-preview-concurrency-postgres` 通过，覆盖临时真实 PostgreSQL 的双并发、provider 次数、单 output、失败释放/重试。
 - Route harness：`npm run test:guarantee-generation-route` 通过：unauthorized=403、cross-actor=404、cross-tenant=404；并发 providerCalls=1；失败+重试后 providerCalls=3、outputs=2。
-- Browser：本轮 Chrome owner 路径新增 `/cases/case_demo_asakusa_mori_rent/guarantee-application` 和 `/output-center` 证据；申込页常驻显示「生成中は同じファイルを重ねて作成しないため…」说明，具体截图为 `/tmp/broker-desk-ui-flow-vS4QyW/04-guarantee.png`。
-- Route/PG：既有 route harness 与 isolated PostgreSQL 证据仍有效；本轮没有真实 authenticated browser、远端 Clerk、真实邮件、Staging 或 Production 证据。
+- Browser：本轮 Chrome owner 路径新增 `/cases/case_demo_asakusa_mori_rent/guarantee-application` 和 `/output-center` 证据；申込页常驻显示「生成中は同じファイルを重ねて作成しないため…」说明，具体截图为 `/tmp/broker-desk-ui-flow-8X2WHe/04-guarantee.png`。
+- Route/PG：既有 route harness 与 isolated PostgreSQL 证据仍有效；本轮没有真实 authenticated browser、远端 Supabase、真实邮件、Staging 或 Production 证据。
 - Gap：本轮完成的是申込页日语/恢复帮助的具体收敛；全产品常驻解释文案仍未完全收口，日文覆盖也未完成全站收敛，不能据此宣称整个产品的用户说明已验收。
+
+### 常驻文案矩阵（本轮逐项核对）
+
+| 页面 | 本轮处理 | 本轮未处理 |
+|---|---|---|
+| 首页 `/` | 以 Chrome owner 路径核对「資料管理センター」「今日の重点」可见；无新增文案改动。 | 首页任务说明、完整写入状态和权限提示未扩展。 |
+| 导入 `/import-center` | 核对日文真实 locale `ja` 及已有 `zh`/`ko` 分支；补齐导入失败/映射恢复的可达路径，并修正 job-scoped 链接。 | 未做全站文案重写；真实 Supabase 邮件或外部 OCR 提示未处理。 |
+| 管理 `/settings/members` | 以 Chrome owner 路径核对「ユーザー管理」「メンバー」常驻结构。 | 成员邀请的真实 Supabase 投递、收件箱与 provider 日志未处理。 |
+| 保证申请 | 保留已有日文生成占用/恢复说明并核对页面可见。 | 其他输出专题的常驻解释未扩展。 |
 
 ### 成员 / 权限 / 邀请
 
@@ -67,10 +78,10 @@
 - [x] 已有 invitation reliability 行为测试覆盖 Supabase/Clerk 适配器边界、已知本地校验失败和正常成功；本轮没有真实 provider 调用。
 - Source/contract：邀请 action、Clerk/Supabase adapter、迁移合同和 `test:invitation-reliability`。
 - Unit/memory：`npm run test:invitation-reliability`、`npm run test:platform-subscription` 通过。
-- PG：临时 PostgreSQL 验收仅针对保证申请生成占用；没有远端 Supabase 或 Clerk 写入。
-- Browser：本轮 Chrome owner 路径包含 `/settings/members` 页面渲染证据；同租户 `user_ops` 通过真实本地 `/api/actor` 与 `/api/tenant/session` fixture endpoint 验证为 `tenant_cherry` 成员。第二租户只存在于 route harness synthetic session，不是浏览器认证。
-- Staging/Production：没有成员邀请页面的真实会话矩阵，没有向邮箱发送测试邀请，也未执行远端 provider 操作。
-- Gap/人工恢复：若发送状态为 `unknown`/processing，操作员必须先根据收件地址、provider 日志和后台记录确认远端状态；确认未投递后再走受控本地恢复/重发路径。撤销本地 membership 不等于撤销 Clerk 远端 invitation，不得把本地撤销写成远端撤销。
+- PG：临时 PostgreSQL 验收覆盖保证申请生成占用与本轮 Excel/案件关联路径；没有远端 Supabase 或 Clerk 写入。
+- Browser：本轮 Chrome owner 路径包含 `/settings/members` 页面渲染证据。隔离 PG 为满足受限函数 request-scope 固定 `app.external_auth_subject=demo:user_demo`；`user_ops` actor endpoint 的 session 返回 403，因此没有把成员 session 写成通过。第二租户只存在于 route harness synthetic session，不是浏览器认证。
+- Staging/Production：没有成员邀请页面的真实会话矩阵，没有向邮箱发送测试邀请，也未执行远端 Supabase provider 操作。
+- Gap/人工恢复：若发送状态为 `unknown`/processing，操作员必须先根据收件地址、Supabase provider 日志和后台记录确认远端状态；确认未投递后再走受控本地恢复/重发路径。撤销本地 membership 不等于撤销 Supabase 远端 invitation，不得把本地撤销写成远端撤销。
 
 ## 本轮工程门
 
@@ -78,12 +89,12 @@
 - [x] `npm run lint`（仅保留既有 2 条 warning，无 error）
 - [x] `npm run build`（含 prebuild/postbuild）
 - [x] `git diff --check`
-- [x] `npm run test:local-ui-flow`（Chrome owner/demo 路径：首页→导入→案件→保证申请书帮助→客户→物件→文书输出→成员；同租户成员 session fixture；第二租户 route-harness-only）
+- [x] `BROKER_DESK_UI_FIXED_PG_SUBJECT=1 npm run test:local-ui-flow`（Chrome owner/demo + 临时 PostgreSQL；首页→导入→案件→保证申请书帮助→客户→物件→文书输出→成员；完整 Excel/案件关联路径；第二租户 route-harness-only）
 - [x] 当前工作树仅保留预先存在且未触碰的 `AGENTS.md` 修改；本轮没有执行生产迁移、远端写入、push 或 deploy。
 
 ## 未解决风险与准备条件
 
-1. 没有收件地址与 Clerk provider 日志，不能判断“正式版朋友邀请未收到邮件”的实际投递根因；本轮只证明重复 provider 调用风险已被占用状态阻断。
-2. `agent-browser` 不可用，本轮改用已安装 Chrome headless；浏览器证据仍是显式 demo owner。现有 actor/session fixture 可建立 owner 与同租户成员，第二租户只在测试 route harness 中存在；没有安全的真实 authenticated browser 第二租户身份。最小准备条件仍是受控的本地/Preview session fixture，不增加生产登录旁路。
-3. 本地临时 PostgreSQL 测试不代表 Supabase RLS、Clerk 身份、邮件 provider 或 Production 数据已验证。真实 RLS/远端验收还需要隔离数据库、授权测试身份和明确回滚窗口。
+1. 没有收件地址与 Supabase provider 日志，不能判断“正式版朋友邀请未收到邮件”的实际投递根因；本轮只证明重复 provider 调用风险已被占用状态阻断。
+2. `agent-browser` 不可用，本轮改用已安装 Chrome headless；浏览器证据仍是显式 demo owner。隔离 PG 为满足受限函数 request-scope 固定 owner subject；`user_ops` session 返回 403，未把成员 session 写成通过；第二租户只在测试 route harness 中存在。
+3. 本地临时 PostgreSQL 测试不代表 Supabase RLS、Supabase 身份、邮件 provider 或 Production 数据已验证。真实 RLS/远端验收还需要隔离数据库、授权测试身份和明确回滚窗口。
 4. 本文不覆盖全产品信息架构、首页、导入、案件/客户/物件、成员页的完整人工评审；各节的未勾选项必须保持为缺口，不能合并解释为“整站通过”。本轮新 Chrome 证据只证明页面可观察加载和具体帮助展示，不证明所有按钮写入、真实身份或跨租户页面隔离。

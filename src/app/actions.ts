@@ -5416,6 +5416,17 @@ export async function executePropertyImportAction(formData: FormData) {
     throw new Error("この資料は内容確認用です。物件台帳への一括保存は実行できません。");
   }
 
+  // A second browser submission can arrive after the first request has
+  // claimed or completed the durable import. Treat that replay as a refresh
+  // of the existing result instead of trying to remap a completed job and
+  // surfacing a state-transition error.
+  if (job.status === "completed") {
+    redirect(withFlash(`/import-center?xlsxJob=${job.id}`, "excel_imported"));
+  }
+  if (job.status === "processing" || job.finalImportStartedAt) {
+    redirect(withFlash(`/import-center?xlsxJob=${job.id}`, "input_extraction_queued"));
+  }
+
   const sourceCols = formData.getAll("sourceCol") as string[];
   const targetFields = formData.getAll("targetField") as string[];
   const mapping: Record<string, string> = {};
@@ -5423,25 +5434,45 @@ export async function executePropertyImportAction(formData: FormData) {
     if (targetFields[i] && targetFields[i] !== "") mapping[src] = targetFields[i];
   });
 
-  await updateImportJobMapping({
-    tenantId,
-    userId: user.id,
-    jobId: job.id,
-    mappingJson: mapping,
-    validationMessage: tr(locale, {
-      ja: "保存先を適用しました。保存処理を開始します。",
-      zh: "保存位置已应用，开始保存。",
-      ko: "저장 위치를 적용했고 저장을 시작합니다.",
-    }),
-    status: "mapped",
-  });
+  try {
+    await updateImportJobMapping({
+      tenantId,
+      userId: user.id,
+      jobId: job.id,
+      mappingJson: mapping,
+      validationMessage: tr(locale, {
+        ja: "保存先を適用しました。保存処理を開始します。",
+        zh: "保存位置已应用，开始保存。",
+        ko: "저장 위치를 적용했고 저장을 시작합니다.",
+      }),
+      status: "mapped",
+    });
+  } catch (error) {
+    const latestJob = (await listImportJobs(user.id, 200, tenantId)).find((item) => item.id === job.id);
+    if (latestJob?.status === "completed") {
+      redirect(withFlash(`/import-center?xlsxJob=${job.id}`, "excel_imported"));
+    }
+    if (latestJob?.status === "processing" || latestJob?.finalImportStartedAt) {
+      redirect(withFlash(`/import-center?xlsxJob=${job.id}`, "input_extraction_queued"));
+    }
+    throw error;
+  }
 
   const claimed = await claimPropertyRowImport({ tenantId, userId: user.id, jobId: job.id });
-  if (!claimed) throw new Error(tr(locale, {
-    ja: "この取込は開始済み、または開始できない状態です。再実行は行いません。",
-    zh: "此导入已开始，或当前状态不允许开始。不会重复执行。",
-    ko: "이미 시작했거나 시작할 수 없는 가져오기입니다. 다시 실행하지 않습니다.",
-  }));
+  if (!claimed) {
+    const latestJob = (await listImportJobs(user.id, 200, tenantId)).find((item) => item.id === job.id);
+    if (latestJob?.status === "completed") {
+      redirect(withFlash(`/import-center?xlsxJob=${job.id}`, "excel_imported"));
+    }
+    if (latestJob?.status === "processing" || latestJob?.finalImportStartedAt) {
+      redirect(withFlash(`/import-center?xlsxJob=${job.id}`, "input_extraction_queued"));
+    }
+    throw new Error(tr(locale, {
+      ja: "この取込は開始済み、または開始できない状態です。再実行は行いません。",
+      zh: "此导入已开始，或当前状态不允许开始。不会重复执行。",
+      ko: "이미 시작했거나 시작할 수 없는 가져오기입니다. 다시 실행하지 않습니다.",
+    }));
+  }
 
   const visibleProperties = await listPropertiesForContext({
     context: createRequestContext(session),

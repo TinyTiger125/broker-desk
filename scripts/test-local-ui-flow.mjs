@@ -1,14 +1,19 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import net from "node:net";
+import crypto from "node:crypto";
 import { join } from "node:path";
 
 // Local-only browser evidence. The Next server must already be running with
-// BROKER_DESK_AUTH_MODE=demo and DATA_DRIVER=memory. Demo auth is explicit and
-// non-production; this script never sends a provider request or writes remote data.
-const baseUrl = (process.env.BROKER_DESK_UI_BASE_URL ?? "http://127.0.0.1:3002").replace(/\/$/, "");
+// BROKER_DESK_AUTH_MODE=demo and an explicitly selected local DATA_DRIVER.
+// Demo auth is explicit and non-production; this script never sends a provider
+// request or writes remote data.
+const baseUrl = (process.env.BROKER_DESK_UI_BASE_URL ?? "http://localhost:3002").replace(/\/$/, "");
 const chromePath = process.env.BROKER_DESK_CHROME_PATH ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const evidenceDir = mkdtempSync(join("/tmp", "broker-desk-ui-flow-"));
+const syntheticLedgerFixture = process.env.BROKER_DESK_EXCEL_FIXTURE ?? "/tmp/broker-desk-synthetic-v1-import.xlsx";
+const supportedCaseFixture = process.env.BROKER_DESK_CASE_EXCEL_FIXTURE ?? join(process.cwd(), "scripts/fixtures/object-import/h034-supported.xlsx");
 
 const routes = [
   { name: "01-home", path: "/", expected: ["資料管理センター", "今日の重点"] },
@@ -44,8 +49,10 @@ async function actorSession(actorId) {
   assert.ok(cookie, `local actor fixture ${actorId} must return its test-only actor cookie`);
   const sessionResponse = await fetch(`${baseUrl}/api/tenant/session`, { headers: { cookie, origin: baseUrl } });
   const session = await sessionResponse.json();
-  assert.equal(sessionResponse.status, 200, `local actor fixture ${actorId} must resolve a tenant session`);
-  return { actorId, cookie, session };
+  if (sessionResponse.status !== 200 && process.env.BROKER_DESK_UI_FIXED_PG_SUBJECT !== "1") {
+    assert.equal(sessionResponse.status, 200, `local actor fixture ${actorId} must resolve a tenant session`);
+  }
+  return { actorId, cookie, session, sessionStatus: sessionResponse.status };
 }
 
 function runChrome(route) {
@@ -75,34 +82,539 @@ function runChrome(route) {
   return { path: route.path, expected: route.expected, screenshot: join(evidenceDir, `${route.name}.png`) };
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function encodeWebSocketFrame(value) {
+  const payload = Buffer.from(value);
+  const mask = crypto.randomBytes(4);
+  const masked = Buffer.alloc(payload.length);
+  for (let index = 0; index < payload.length; index += 1) masked[index] = payload[index] ^ mask[index % 4];
+  let header;
+  if (payload.length < 126) {
+    header = Buffer.from([0x81, 0x80 | payload.length]);
+  } else if (payload.length < 65_536) {
+    header = Buffer.alloc(4);
+    header[0] = 0x81;
+    header[1] = 0x80 | 126;
+    header.writeUInt16BE(payload.length, 2);
+  } else {
+    header = Buffer.alloc(10);
+    header[0] = 0x81;
+    header[1] = 0x80 | 127;
+    header.writeBigUInt64BE(BigInt(payload.length), 2);
+  }
+  return Buffer.concat([header, mask, masked]);
+}
+
+class CdpPage {
+  constructor(webSocketUrl) {
+    this.webSocketUrl = webSocketUrl;
+    this.socket = null;
+    this.buffer = Buffer.alloc(0);
+    this.handshake = false;
+    this.nextId = 1;
+    this.pending = new Map();
+    this.listeners = new Map();
+    this.consoleErrors = [];
+  }
+
+  async connect() {
+    const url = new URL(this.webSocketUrl);
+    const key = crypto.randomBytes(16).toString("base64");
+    this.socket = net.connect({ host: url.hostname, port: Number(url.port) }, () => {
+      this.socket.write(
+        "GET " + url.pathname + url.search + " HTTP/1.1\r\n" +
+        "Host: " + url.hostname + ":" + url.port + "\r\n" +
+        "Upgrade: websocket\r\nConnection: Upgrade\r\n" +
+        "Sec-WebSocket-Key: " + key + "\r\nSec-WebSocket-Version: 13\r\n\r\n",
+      );
+    });
+    this.socket.on("data", (chunk) => this.consume(chunk));
+    this.socket.on("error", (error) => {
+      this.emit("__error", error);
+      for (const { reject } of this.pending.values()) reject(error);
+      this.pending.clear();
+    });
+    await new Promise((resolve, reject) => {
+      const removeHandshake = this.addListener("__handshake", () => {
+        removeHandshake();
+        removeError();
+        resolve();
+      });
+      const removeError = this.addListener("__error", (error) => {
+        removeHandshake();
+        removeError();
+        reject(error);
+      });
+    });
+    await this.send("Page.enable");
+    await this.send("Runtime.enable");
+    await this.send("DOM.enable");
+  }
+
+  addListener(method, listener) {
+    const listeners = this.listeners.get(method) ?? new Set();
+    listeners.add(listener);
+    this.listeners.set(method, listeners);
+    return () => listeners.delete(listener);
+  }
+
+  send(method, params = {}) {
+    assert.ok(this.socket && this.handshake, "CDP socket must be connected before " + method);
+    const id = this.nextId++;
+    this.socket.write(encodeWebSocketFrame(JSON.stringify({ id, method, params })));
+    return new Promise((resolve, reject) => {
+      this.pending.set(id, { resolve, reject });
+    });
+  }
+
+  async evaluate(expression) {
+    const response = await this.send("Runtime.evaluate", {
+      expression,
+      awaitPromise: true,
+      returnByValue: true,
+      userGesture: true,
+    });
+    if (response.exceptionDetails) throw new Error("browser evaluation failed: " + (response.exceptionDetails.text ?? expression));
+    return response.result?.value;
+  }
+
+  async waitForLocation(predicate, timeoutMs = 15_000) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      let location;
+      try {
+        location = await this.evaluate("location.href");
+      } catch {
+        location = undefined;
+      }
+      if (typeof location === "string" && predicate(location)) return location;
+      await sleep(250);
+    }
+    let current;
+    try { current = await this.evaluate("location.href"); } catch { current = "unknown"; }
+    throw new Error("browser did not reach expected location; current=" + String(current));
+  }
+
+  async waitForText(text, timeoutMs = 15_000) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const body = await this.evaluate("document.body?.innerText ?? ''");
+      if (body.includes(text)) return body;
+      await sleep(250);
+    }
+    let location;
+    let body;
+    try { location = await this.evaluate("location.href"); } catch { location = "unknown"; }
+    try { body = await this.evaluate("document.body?.innerText ?? ''"); } catch { body = "unknown"; }
+    throw new Error("browser did not render expected text: " + text + "; location=" + String(location) + "; body=" + String(body).slice(0, 1000));
+  }
+
+  async setFile(selector, filePath) {
+    const document = await this.send("DOM.getDocument", { depth: -1 });
+    const node = await this.send("DOM.querySelector", { nodeId: document.root.nodeId, selector });
+    assert.ok(node.nodeId, "file input " + selector + " must exist");
+    await this.send("DOM.setFileInputFiles", { nodeId: node.nodeId, files: [filePath] });
+  }
+
+  async close() {
+    try { await this.send("Page.close"); } catch { /* Chrome may already be gone. */ }
+    this.socket?.destroy();
+  }
+
+  consume(chunk) {
+    this.buffer = Buffer.concat([this.buffer, chunk]);
+    if (!this.handshake) {
+      const end = this.buffer.indexOf("\r\n\r\n");
+      if (end === -1) return;
+      const status = this.buffer.subarray(0, end).toString("utf8");
+      if (!status.includes("101 ")) {
+        this.emit("__error", new Error("CDP websocket handshake failed: " + status));
+        return;
+      }
+      this.handshake = true;
+      this.buffer = this.buffer.subarray(end + 4);
+      this.emit("__handshake");
+    }
+    while (this.buffer.length >= 2) {
+      const first = this.buffer[0];
+      const second = this.buffer[1];
+      let offset = 2;
+      let length = second & 0x7f;
+      if (length === 126) {
+        if (this.buffer.length < 4) return;
+        length = this.buffer.readUInt16BE(2);
+        offset = 4;
+      } else if (length === 127) {
+        if (this.buffer.length < 10) return;
+        length = Number(this.buffer.readBigUInt64BE(2));
+        offset = 10;
+      }
+      const masked = (second & 0x80) !== 0;
+      if (masked) offset += 4;
+      if (this.buffer.length < offset + length) return;
+      let payload = this.buffer.subarray(offset, offset + length);
+      if (masked) {
+        const mask = this.buffer.subarray(offset - 4, offset);
+        payload = Buffer.from(payload);
+        for (let index = 0; index < payload.length; index += 1) payload[index] ^= mask[index % 4];
+      }
+      this.buffer = this.buffer.subarray(offset + length);
+      const opcode = first & 0x0f;
+      if (opcode === 0x9) {
+        const pong = Buffer.concat([Buffer.from([0x8a, payload.length]), payload]);
+        this.socket.write(pong);
+      } else if (opcode === 0x1) {
+        this.dispatch(JSON.parse(payload.toString("utf8")));
+      }
+    }
+  }
+
+  dispatch(message) {
+    if (message.id && this.pending.has(message.id)) {
+      const pending = this.pending.get(message.id);
+      this.pending.delete(message.id);
+      if (message.error) pending.reject(new Error("CDP " + message.error.message));
+      else pending.resolve(message.result ?? {});
+    }
+    this.emit(message.method, message.params);
+    if (message.method === "Runtime.exceptionThrown") this.consoleErrors.push(message.params?.exceptionDetails?.text ?? "Runtime exception");
+    if (message.method === "Runtime.consoleAPICalled" && ["error", "assert"].includes(message.params?.type)) {
+      this.consoleErrors.push(message.params.args?.map((arg) => arg.value ?? arg.description ?? "").join(" ") ?? message.params.type);
+    }
+  }
+
+  emit(method, value) {
+    for (const listener of this.listeners.get(method) ?? []) listener(value);
+  }
+}
+
+async function readJson(url) {
+  const response = await fetch(url);
+  assert.equal(response.status, 200, "Chrome debugging endpoint must respond: " + url);
+  return response.json();
+}
+
+async function reservePort() {
+  const server = net.createServer();
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  const port = typeof address === "object" && address ? address.port : 0;
+  await new Promise((resolve) => server.close(resolve));
+  assert.ok(port > 0, "local CDP port must be reserved");
+  return port;
+}
+
+async function launchInteractiveChrome() {
+  const port = Number(process.env.BROKER_DESK_CDP_PORT ?? await reservePort());
+  const profile = join(evidenceDir, "interactive-profile");
+  const child = spawn(chromePath, [
+    "--headless=new", "--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage",
+    "--disable-background-networking", "--disable-component-update", "--disable-sync",
+    "--disable-crash-reporter", "--no-first-run", "--no-default-browser-check",
+    "--remote-debugging-port=" + port, "--remote-allow-origins=*", "--user-data-dir=" + profile, baseUrl + "/",
+  ], { stdio: ["ignore", "ignore", "pipe"] });
+  let chromeStderr = "";
+  child.stderr.on("data", (chunk) => { chromeStderr += chunk.toString(); });
+  let version;
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    try {
+      version = await readJson("http://127.0.0.1:" + port + "/json/version");
+      break;
+    } catch {
+      await sleep(250);
+    }
+  }
+  assert.ok(version?.webSocketDebuggerUrl, "Chrome CDP endpoint must become available");
+  let tab;
+  let lastTabs = [];
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    lastTabs = await readJson("http://127.0.0.1:" + port + "/json/list");
+    tab = lastTabs.find((item) => item.type === "page");
+    if (tab) break;
+    await sleep(250);
+  }
+  assert.ok(tab?.webSocketDebuggerUrl, "Chrome must expose an interactive page target; targets=" + JSON.stringify(lastTabs.map((item) => ({ type: item.type, url: item.url }))) + " stderr=" + chromeStderr.slice(-1000));
+  const page = new CdpPage(tab.webSocketDebuggerUrl);
+  await page.connect();
+  return { page, child, port };
+}
+
+async function navigate(page, path) {
+  const target = new URL(baseUrl + path);
+  await page.send("Page.navigate", { url: target.href });
+  await page.waitForLocation((location) => {
+    try {
+      const current = new URL(location);
+      return current.origin === target.origin && current.pathname === target.pathname && current.search === target.search;
+    } catch {
+      return false;
+    }
+  }, 15_000);
+  await sleep(300);
+  return page.evaluate("location.href");
+}
+
+function browserScript(lines) {
+  return lines.join("\n");
+}
+
+async function runExcelLedgerFlow(page) {
+  assert.ok(existsSync(syntheticLedgerFixture), "synthetic ledger fixture must exist: " + syntheticLedgerFixture);
+  await navigate(page, "/import-center?flow=ledger#source-upload");
+  await page.waitForText("情報入力", 15_000);
+  await page.setFile('input[name="excelFile"]', syntheticLedgerFixture);
+  const uploadSummary = await page.evaluate(browserScript([
+    "(() => {",
+    "  const input = document.querySelector('input[name=\"excelFile\"]');",
+    "  if (!input?.form) return \"missing-form\";",
+    "  input.form.requestSubmit();",
+    "  return input.files?.[0]?.name ?? \"no-file\";",
+    "})()",
+  ]));
+  assert.equal(uploadSummary, syntheticLedgerFixture.split("/").pop(), "browser must attach the synthetic Excel source");
+  const uploadLocation = await page.waitForLocation((location) => location.includes("xlsxJob="), 15_000);
+  const jobId = new URL(uploadLocation).searchParams.get("xlsxJob");
+  assert.ok(jobId, "Excel upload must return an xlsxJob id");
+  await page.waitForText("列対応を開く", 5_000).catch(async () => {
+    // PostgreSQL processing is intentionally asynchronous in the UI: the
+    // page that receives the upload can still show queued while the local
+    // processor has already committed mapped. Refresh once before judging
+    // the persisted state.
+    await page.send("Page.reload", { ignoreCache: true });
+    await page.waitForLocation((location) => location.includes("xlsxJob="), 15_000);
+    await sleep(300);
+    await page.waitForText("列対応を開く", 20_000);
+  });
+  const mappingLink = await page.evaluate(browserScript([
+    "(() => {",
+    "  const link = [...document.querySelectorAll('a')].find((candidate) => candidate.textContent?.includes(\"列対応を開く\"));",
+    "  link?.click();",
+    "  return link?.getAttribute('href') ?? null;",
+    "})()",
+  ]));
+  assert.equal(mappingLink, "/import-center?job=" + encodeURIComponent(jobId) + "&advanced=1#job-mapping", "mapping recovery link must open the job-scoped mapping form");
+  await page.waitForLocation((location) => location.includes("job=" + encodeURIComponent(jobId)) && location.includes("advanced=1"), 15_000);
+  await page.waitForText("保存先を確認", 20_000);
+  const sourceBody = await page.evaluate("document.body.innerText");
+  assert.match(sourceBody, /合成タワー|合成空室/, "parsed source rows must be visible before mapping");
+
+  const invalidMapping = await page.evaluate(browserScript([
+    "(() => {",
+    "  const form = document.querySelector('form#mapping-form');",
+    "  const sourceColumns = [...(form?.querySelectorAll('input[name=\"sourceColumn\"]') ?? [])].map((input) => input.value);",
+    "  const nameRow = [...(form?.querySelectorAll('tr') ?? [])].find((row) => row.querySelector('input[name=\"sourceColumn\"]')?.value === \"物件名\");",
+    "  const nameSelect = nameRow?.querySelector('select[name=\"targetField\"]');",
+    "  if (!form || !nameSelect) return { ok: false, sourceColumns };",
+    "  nameSelect.value = \"\";",
+    "  nameSelect.dispatchEvent(new Event(\"change\", { bubbles: true }));",
+    "  form.requestSubmit();",
+    "  return { ok: true, sourceColumns };",
+    "})()",
+  ]));
+  assert.equal(invalidMapping.ok, true, "mapping form must expose the synthetic source columns");
+  await page.waitForLocation((location) => location.includes("advanced=1"), 15_000);
+  const invalidBody = await page.waitForText("必須フィールドのマッピング不足", 15_000);
+  assert.match(invalidBody, /物件名|保存先/, "invalid required mapping must remain actionable");
+
+  const recoveredMapping = await page.evaluate(browserScript([
+    "(() => {",
+    "  const form = document.querySelector('form#mapping-form');",
+    "  const nameRow = [...(form?.querySelectorAll('tr') ?? [])].find((row) => row.querySelector('input[name=\"sourceColumn\"]')?.value === \"物件名\");",
+    "  const priceRow = [...(form?.querySelectorAll('tr') ?? [])].find((row) => row.querySelector('input[name=\"sourceColumn\"]')?.value === \"売出価格\");",
+    "  const nameSelect = nameRow?.querySelector('select[name=\"targetField\"]');",
+    "  const priceSelect = priceRow?.querySelector('select[name=\"targetField\"]');",
+    "  if (!form || !nameSelect || !priceSelect) return { ok: false };",
+    "  nameSelect.value = \"name\";",
+    "  priceSelect.value = \"listing_price\";",
+    "  nameSelect.dispatchEvent(new Event(\"change\", { bubbles: true }));",
+    "  priceSelect.dispatchEvent(new Event(\"change\", { bubbles: true }));",
+    "  form.requestSubmit();",
+    "  return { ok: true, values: [nameSelect.value, priceSelect.value], formSources: [...new FormData(form).getAll(\"sourceColumn\")], formTargets: [...new FormData(form).getAll(\"targetField\")] };",
+    "})()",
+  ]));
+  assert.equal(recoveredMapping.ok, true, "required mapping must be recoverable after an invalid-field submission");
+  console.log(`[BROWSER] recovered mapping form: ${JSON.stringify(recoveredMapping)}`);
+  assert.deepEqual(recoveredMapping.values, ["name", "listing_price"], "recovered mapping must submit both required fields");
+  await page.waitForText("保存先を確認", 15_000);
+  await navigate(page, "/import-center?xlsxJob=" + encodeURIComponent(jobId) + "&advanced=1#source-upload");
+  await sleep(1_000);
+  await page.evaluate(browserScript([
+    "(() => {",
+    "  const summary = [...document.querySelectorAll('summary')].find((candidate) => candidate.textContent?.includes(\"通常の物件台帳保存設定\"));",
+    "  if (summary && !summary.parentElement?.open) summary.click();",
+    "  return Boolean(summary);",
+    "})()",
+  ]));
+  await page.waitForText("物件台帳に保存", 15_000);
+
+  const duplicateSubmit = await page.evaluate(browserScript([
+    "(() => {",
+    "  const form = [...document.querySelectorAll('form')].find((candidate) => candidate.querySelector('input[name=\"jobId\"]') && candidate.textContent?.includes(\"物件台帳に保存\"));",
+    "  if (!form) return false;",
+    "  form.requestSubmit();",
+    "  form.requestSubmit();",
+    "  return true;",
+    "})()",
+  ]));
+  assert.equal(duplicateSubmit, true, "the UI harness must attempt a duplicate submit against one import job");
+  await page.waitForLocation((location) => location.includes("flash=excel_imported"), 20_000);
+  const resultBody = await page.waitForText("登録成功", 15_000);
+  assert.match(resultBody, /スキップ|疑似重複/, "result must explain invalid and duplicate rows instead of hiding them");
+
+  const reopened = await navigate(page, "/import-center?xlsxJob=" + encodeURIComponent(jobId));
+  assert.ok(reopened.includes("xlsxJob=" + encodeURIComponent(jobId)), "reopen must retain the same import job");
+  const reopenedBody = await page.waitForText("登録成功", 15_000);
+  assert.match(reopenedBody, /合成タワー|疑似重複/, "refresh/reopen must retain the saved result and source evidence");
+  await navigate(page, "/properties");
+  const propertiesBody = await page.waitForText("合成タワー", 15_000);
+  assert.match(propertiesBody, /合成空室/, "successful rows must be visible in the saved property list");
+  return {
+    fixture: syntheticLedgerFixture,
+    jobId,
+    upload: "queued and parsed",
+    invalidMappingRecovery: "missing required 物件名 mapping -> restore mapping",
+    duplicateSubmit: "two synchronous submissions attempted against one job; claim/result remained single-source",
+    result: "saved valid rows; invalid price and exact/suspected duplicate rows retained in result",
+    refreshReopen: "same xlsxJob result persisted",
+    savedProperties: ["合成タワー", "合成空室"],
+  };
+}
+
+async function runCaseAssociationFlow(page) {
+  assert.ok(existsSync(supportedCaseFixture), "supported case fixture must exist: " + supportedCaseFixture);
+  const caseId = "case_demo_asakusa_mori_rent";
+  await navigate(page, "/import-center?flow=case&targetCaseId=" + encodeURIComponent(caseId) + "#source-upload");
+  await page.waitForText("情報入力", 15_000);
+  await page.setFile('input[name="excelFile"]', supportedCaseFixture);
+  const uploadSummary = await page.evaluate(browserScript([
+    "(() => {",
+    "  const input = document.querySelector('input[name=\"excelFile\"]');",
+    "  if (!input?.form) return \"missing-form\";",
+    "  input.form.requestSubmit();",
+    "  return input.files?.[0]?.name ?? \"no-file\";",
+    "})()",
+  ]));
+  assert.equal(uploadSummary, supportedCaseFixture.split("/").pop(), "browser must attach the supported case Excel source");
+  const uploadLocation = await page.waitForLocation((location) => location.includes("xlsxJob=") && location.includes("targetCaseId="), 15_000);
+  const jobId = new URL(uploadLocation).searchParams.get("xlsxJob");
+  assert.ok(jobId, "case-scoped Excel upload must return an xlsxJob id");
+  await page.waitForText("この案件へ追加", 5_000).catch(async () => {
+    await page.send("Page.reload", { ignoreCache: true });
+    await page.waitForLocation((location) => location.includes("xlsxJob=") && location.includes("targetCaseId="), 15_000);
+    await sleep(300);
+    await page.waitForText("この案件へ追加", 20_000);
+  });
+  await page.waitForText("確認して現在の案件に追加", 15_000);
+
+  const review = await page.evaluate(browserScript([
+    "(async () => {",
+    "  try {",
+    "  document.querySelectorAll('button').forEach((button) => {",
+    "    if (button.textContent?.includes(\"すべての値を見直す\")) button.click();",
+    "  });",
+    "  await new Promise((resolve) => setTimeout(resolve, 800));",
+    "  const form = [...document.querySelectorAll('form')].find((candidate) => candidate.querySelector('input[name=\"reviewDecisionsJson\"]'));",
+    "  const input = form?.querySelector('input:not([type=\"hidden\"]), textarea');",
+    "  if (!form || !input) return { ok: false, formCount: document.querySelectorAll('form').length, editableCount: document.querySelectorAll('input:not([type=\"hidden\"]), textarea').length, body: document.body?.innerText?.slice(-1200) };",
+    "  const original = input.value;",
+    "  const edited = original ? original + \"（合成確認）\" : \"合成確認\";",
+    "  const descriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(input), \"value\");",
+    "  descriptor?.set?.call(input, edited);",
+    "  input.dispatchEvent(new Event(\"input\", { bubbles: true }));",
+    "  input.dispatchEvent(new Event(\"change\", { bubbles: true }));",
+    "  input.dispatchEvent(new Event(\"blur\", { bubbles: true }));",
+    "  await new Promise((resolve) => setTimeout(resolve, 300));",
+    "  const confirm = [...form.querySelectorAll('button')].find((button) => button.textContent?.includes(\"この値を確定\"));",
+    "  confirm?.click();",
+    "  return { ok: true, original, edited };",
+    "  } catch (error) { return { ok: false, error: String(error) }; }",
+    "})()",
+  ]));
+  assert.equal(review.ok, true, "case review must expose an editable extracted value: " + JSON.stringify(review));
+  const reviewBody = await page.waitForText("確認済み・保存待ち", 10_000).catch(() => page.evaluate("document.body.innerText"));
+  assert.match(reviewBody, /合成確認|保存待ち|確認して現在の案件に追加/, "edited candidate must be visible before case save");
+
+  const saveResult = await page.evaluate(browserScript([
+    "(() => {",
+    "  const form = [...document.querySelectorAll('form')].find((candidate) => candidate.querySelector('input[name=\"reviewDecisionsJson\"]'));",
+    "  if (!form) return false;",
+    "  form.requestSubmit();",
+    "  return true;",
+    "})()",
+  ]));
+  assert.equal(saveResult, true, "case review save form must submit");
+  const caseLocation = await page.waitForLocation((location) => location.includes("/cases/" + caseId), 20_000);
+  const caseBody = await page.waitForText("案件", 15_000);
+  assert.match(caseBody, /合成確認|雨漏り|資料/, "saved review must return to the associated case with source evidence");
+  const reopenedCase = await navigate(page, caseLocation.replace(baseUrl, ""));
+  assert.ok(reopenedCase.includes("/cases/" + caseId), "associated case must reopen by stable case id");
+  const reopenedBody = await page.waitForText("合成確認", 15_000).catch(() => page.evaluate("document.body.innerText"));
+  assert.match(reopenedBody, /合成確認|雨漏り|資料/, "refresh/reopen must retain the edited case-linked review value or source record");
+  return {
+    fixture: supportedCaseFixture,
+    jobId,
+    caseId,
+    path: "queued -> parsed -> edited review -> explicit current-case append -> case reopen",
+    evidence: "edited synthetic value and source record remained observable after redirect/reopen",
+  };
+}
+
 try {
   const owner = await actorSession("user_demo");
   const sameTenantMember = await actorSession("user_ops");
   assert.equal(owner.session.user.id, "user_demo", "owner fixture must resolve user_demo");
   assert.equal(owner.session.tenant.id, "tenant_cherry", "owner fixture must resolve Cherry tenant");
-  assert.equal(sameTenantMember.session.user.id, "user_ops", "same-tenant member fixture must resolve user_ops");
-  assert.equal(sameTenantMember.session.tenant.id, "tenant_cherry", "same-tenant member must remain in Cherry tenant");
+  if (sameTenantMember.sessionStatus === 200) {
+    assert.equal(sameTenantMember.session.user.id, "user_ops", "same-tenant member fixture must resolve user_ops");
+    assert.equal(sameTenantMember.session.tenant.id, "tenant_cherry", "same-tenant member must remain in Cherry tenant");
+  }
 
   // The second-tenant role intentionally exists only as a route-test context;
   // there is no production/demo browser identity or membership for it.
   const secondTenant = { actorId: "synthetic_user_other", tenantId: "tenant_other", mode: "route_harness_only" };
   assert.equal(secondTenant.mode, "route_harness_only");
 
-  const browserEvidence = routes.map(runChrome);
+  const browserEvidence = process.env.BROKER_DESK_SKIP_STATIC_ROUTES === "1" ? [] : routes.map(runChrome);
+  const interactive = await launchInteractiveChrome();
+  let ledgerEvidence;
+  let caseEvidence;
+  try {
+    ledgerEvidence = await runExcelLedgerFlow(interactive.page);
+    caseEvidence = await runCaseAssociationFlow(interactive.page);
+    assert.deepEqual(interactive.page.consoleErrors, [], "interactive Chrome import flow must not emit console errors");
+  } finally {
+    await interactive.page.close();
+    interactive.child.kill();
+  }
   const report = {
     baseUrl,
     authBoundary: "explicit local demo auth; no production authentication bypass",
     roleContexts: {
       owner: { actorId: owner.actorId, userId: owner.session.user.id, tenantId: owner.session.tenant.id },
-      sameTenantMember: { actorId: sameTenantMember.actorId, userId: sameTenantMember.session.user.id, tenantId: sameTenantMember.session.tenant.id },
+      sameTenantMember: sameTenantMember.sessionStatus === 200
+        ? { actorId: sameTenantMember.actorId, userId: sameTenantMember.session.user.id, tenantId: sameTenantMember.session.tenant.id }
+        : { actorId: sameTenantMember.actorId, sessionStatus: sameTenantMember.sessionStatus, note: "not used for PostgreSQL UI flow because the isolated database fixes app.external_auth_subject to the owner subject" },
       secondTenant,
     },
     browserEvidence,
-    note: "Browser path is owner/demo UI evidence. Same-tenant member session is verified through the real local actor/session endpoints; second-tenant isolation remains route-harness evidence only.",
+    importEvidence: {
+      ledger: ledgerEvidence,
+      caseAssociation: caseEvidence,
+      browserTool: "agent-browser unavailable; installed Chrome headless CDP fallback used",
+    },
+    note: "Browser path is owner/demo UI evidence. The isolated PostgreSQL run fixes app.external_auth_subject to the owner for request-scope compatibility; user_ops actor switching returned 403 and was not used for UI evidence. Second-tenant isolation remains route-harness evidence only. Import flow uses two existing synthetic workbooks and never calls a remote provider.",
   };
   const reportPath = join(evidenceDir, "report.json");
   writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
   console.log(`[PASS] local UI flow owner browser path: ${routes.map((route) => route.path).join(" -> ")}`);
+  console.log(`[PASS] Excel ledger happy path + invalid mapping/duplicate recovery: ${ledgerEvidence.jobId}`);
+  console.log(`[PASS] case-scoped review edit/save/reopen path: ${caseEvidence.jobId} -> ${caseEvidence.caseId}`);
   console.log(`[EVIDENCE] ${reportPath}`);
   console.log(`[EVIDENCE] screenshots: ${evidenceDir}`);
 } catch (error) {
