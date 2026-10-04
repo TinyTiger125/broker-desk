@@ -135,7 +135,10 @@ import {
   type ImportValidationIssueCode,
   type ImportValidationIssueLevel,
 } from "@/lib/import-mapping";
-import { materializeExtractionReviewValue } from "@/lib/extraction-review-materialization";
+import {
+  getExtractionReviewFieldId,
+  materializeExtractionReviewValue,
+} from "@/lib/extraction-review-materialization";
 import { buildPropertyImportKey, buildPropertyImportRowFingerprint, normalizeImportCellValue } from "@/lib/import-row-policy";
 import {
   assertTenantPermission,
@@ -3727,10 +3730,6 @@ function isExtractionReviewStatus(value: string): value is ExtractionReviewStatu
   );
 }
 
-function getExtractionFieldId(field: InputFileExtractionResult["fields"][number]) {
-  return `${field.fieldKey}:${field.sourceCell ?? field.sourceRange ?? field.sourceSheet}`;
-}
-
 function buildCaseTitle(extraction: InputFileExtractionResult, fallbackTitle: string) {
   const propertyName = extraction.fields.find((field) => field.fieldKey === "property_name" || field.fieldKey === "property.name")?.normalizedValue;
   const applicantName = extraction.fields.find((field) => field.fieldKey === "applicant.name")?.normalizedValue;
@@ -5015,7 +5014,7 @@ export async function saveExtractionReviewAction(formData: FormData) {
   const reviewedAt = new Date();
 
   const reviewItems = payload.inputExtraction.fields.map((field) => {
-    const decision = decisionByFieldId.get(getExtractionFieldId(field));
+    const decision = decisionByFieldId.get(getExtractionReviewFieldId(field));
     const reviewStatus = decision?.reviewStatus ?? field.reviewStatus;
     const baseValue = field.normalizedValue || field.value;
     const materialized = materializeExtractionReviewValue({

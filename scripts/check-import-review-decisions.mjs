@@ -43,7 +43,9 @@ function loadTranspiledModule(filePath, stubs = {}) {
 
 const review = read("src/components/input-extraction-review.tsx");
 const page = read("src/app/import-center/page.tsx");
-const materialization = loadTranspiledModule(path.resolve("src/lib/extraction-review-materialization.ts"));
+const materialization = loadTranspiledModule(path.resolve("src/lib/extraction-review-materialization.ts"), {
+  "@/lib/data.memory": {},
+});
 const reviewModule = loadTranspiledModule(path.resolve("src/components/input-extraction-review.tsx"), {
   react: {
     useMemo: (factory) => factory(),
@@ -53,6 +55,7 @@ const reviewModule = loadTranspiledModule(path.resolve("src/components/input-ext
   "react/jsx-runtime": { jsx: () => null, jsxs: () => null, Fragment: Symbol("Fragment") },
   "@/app/actions": { saveExtractionReviewAction: () => undefined },
   "@/lib/case-field-catalog": { getCaseFieldDefinition: () => undefined },
+  "@/lib/extraction-review-materialization": materialization,
 });
 
 assert(review.includes("export function buildExtractionReviewDecisions"), "review decisions must have a pure payload builder");
@@ -78,7 +81,11 @@ assert(!page.includes("mappedJobCount + completedJobCount"), "default import cen
 assert(page.includes("skipped.length"), "result summaries must preserve partial or skipped outcomes");
 
 const { buildExtractionReviewDecisions } = reviewModule;
-const { materializeExtractionReviewValue } = materialization;
+const {
+  materializeExtractionReviewValue,
+  buildPersistedExtractionReviewState,
+  getExtractionReviewFieldId,
+} = materialization;
 const fields = [
   { fieldKey: "normal", sourceCell: "A1", sourceSheet: "Sheet1", value: "", normalizedValue: "Readable", confidence: 0.95 },
   { fieldKey: "low", sourceCell: "A2", sourceSheet: "Sheet1", value: "Low", normalizedValue: "Low", confidence: 0.4 },
@@ -115,6 +122,19 @@ assert(materialized(fields[2]).shouldConfirm === false, "empty values must not m
 assert(materialized(fields[3]).shouldConfirm === false, "unknown values must not materialize");
 assert(materialized(fields[4]).shouldConfirm === false, "rejected values must not materialize");
 assert(materialized(fields[5]).finalValue === "Corrected", "edited values must materialize the correction");
+const persistedState = buildPersistedExtractionReviewState(
+  fields,
+  [
+    { importJobId: "job-reopen", fieldKey: "edited", sourceCell: "A6", sourceSheet: "Sheet1", reviewStatus: "edited", editedValue: "Persisted correction" },
+    { importJobId: "job-reopen", fieldKey: "rejected", sourceCell: "A5", sourceSheet: "Sheet1", reviewStatus: "rejected" },
+    { importJobId: "other-job", fieldKey: "edited", sourceCell: "A6", sourceSheet: "Sheet1", reviewStatus: "accepted" },
+  ],
+  "job-reopen",
+);
+assert(persistedState.statusByFieldId[getExtractionReviewFieldId(fields[5])] === "edited", "reopen must restore the persisted edited status");
+assert(persistedState.editedValueByFieldId[getExtractionReviewFieldId(fields[5])] === "Persisted correction", "reopen must restore the persisted edited value");
+assert(persistedState.statusByFieldId[getExtractionReviewFieldId(fields[4])] === "rejected", "reopen must restore the persisted rejected status");
+assert(!persistedState.statusByFieldId[getExtractionReviewFieldId(fields[0])], "a different import job must not leak review state into this job");
 assert(page.includes("hasPendingExceptions"), "unresolved extraction exceptions must remain a distinct wizard state");
 assert(review.includes("未读取、拒绝和仍待处理的信息不会写入"), "result copy must not claim unresolved fields were imported");
 assert(page.includes("不能据此确认已写入或全部导入"), "completed alone must not be treated as a write confirmation");

@@ -20,7 +20,7 @@ import { getImportMappingFormRows, getPropertyRowMappingPayload } from "@/lib/im
 import { getImportJobFeedbackMessage } from "@/lib/import-feedback";
 import { PreimportUploadDelete } from "@/components/preimport-upload-delete";
 import { mayDeletePreimportUpload } from "@/lib/preimport-upload-lifecycle";
-import { listBrokerageCases } from "@/lib/data";
+import { listBrokerageCases, listExtractionReviewItems } from "@/lib/data";
 import { formatDate } from "@/lib/format";
 import { t } from "@/lib/i18n";
 import type { InputFileExtractionResult } from "@/lib/input-file-extractor";
@@ -991,6 +991,10 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
     cases.flatMap((caseItem) => caseItem.sourceImportJobIds.map((importJobId) => [importJobId, caseItem] as const)),
   );
   const requestedJobCase = requestedJob ? caseByImportJobId.get(requestedJob.id) : undefined;
+  const reviewCase = requestedJobCase ?? targetCase;
+  const persistedReviewItems = reviewCase && xlsxJob
+    ? await listExtractionReviewItems({ userId: user.id, tenantId, caseId: reviewCase.id })
+    : [];
   const recentJobHref = (job: HubImportJobItem) => {
     if (job.status === "queued" && isBatchMappingJob(job)) return `/import-center?job=${encodeURIComponent(job.id)}&advanced=1#job-mapping`;
     if (isModernExcelImportJob(job)) return `/import-center?xlsxJob=${encodeURIComponent(job.id)}#source-upload`;
@@ -1359,11 +1363,13 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
               </span>
             </div>
             <InputExtractionReview
+              key={`${xlsxJob.id}:${reviewCase?.id ?? "new"}`}
               extraction={inputExtractionPreview}
               locale={locale}
               importJobId={xlsxJob.id}
               mergeCandidates={mergeCandidates}
               targetCaseId={targetCaseId || undefined}
+              persistedReviewItems={persistedReviewItems}
             />
           </div>
           </div>
@@ -1431,11 +1437,13 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
 
             {inputExtractionPreview.fields.length > 0 ? (
               <InputExtractionReview
+                key={`${xlsxJob.id}:${reviewCase?.id ?? "new"}`}
                 extraction={inputExtractionPreview}
                 locale={locale}
                 importJobId={xlsxJob.id}
                 mergeCandidates={mergeCandidates}
                 targetCaseId={targetCaseId || undefined}
+                persistedReviewItems={persistedReviewItems}
               />
             ) : (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
