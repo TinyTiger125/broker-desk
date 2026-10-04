@@ -332,7 +332,12 @@ if (process.argv.includes("--postgres")) {
     run("pg_ctl", ["-D", data, "-o", `-F -p 55439 -k ${root} -c listen_addresses='' -c unix_socket_permissions=0700`, "-l", join(root, "postgres.log"), "-w", "start"]);
     running = true;
     const control = await connect("qa_initializer", "postgres");
+    // This role exists only inside the disposable cluster. The migration set
+    // contains owner-qualified DDL for the production-shaped `postgres`
+    // owner, while qa_initializer remains the local bootstrap superuser.
+    await control.query("CREATE ROLE postgres NOLOGIN SUPERUSER CREATEDB CREATEROLE BYPASSRLS");
     await control.query("CREATE ROLE brokerdesk_admin LOGIN NOSUPERUSER NOBYPASSRLS; CREATE ROLE brokerdesk_runtime LOGIN NOSUPERUSER NOBYPASSRLS");
+    await control.query("GRANT postgres TO brokerdesk_admin WITH INHERIT FALSE, SET TRUE, ADMIN FALSE");
     await control.query("CREATE DATABASE preimport_lifecycle_test OWNER brokerdesk_admin");
     const admin = await connect("brokerdesk_admin");
     await admin.query("CREATE TABLE broker_desk_schema_migrations (name TEXT PRIMARY KEY, checksum TEXT NOT NULL, applied_at TIMESTAMPTZ DEFAULT NOW())");
