@@ -11,6 +11,20 @@ export type SupabaseInvitationFailure = {
  */
 export function classifySupabaseInvitationError(error: unknown): SupabaseInvitationFailure {
   const candidate = typeof error === "object" && error !== null ? error as Record<string, unknown> : {};
+  const message = error instanceof Error ? error.message : "";
+  const localFailureCodes = new Set([
+    "supabase_admin_not_configured",
+    "supabase_invitation_email_required",
+  ]);
+  if (localFailureCodes.has(message)) {
+    return { uncertain: false, reason: message };
+  }
+  if (message === "supabase_invitation_missing_user") {
+    // The provider call may have had a side effect even though the SDK did
+    // not return a usable user record, so keep this outcome unknown while
+    // preserving the actionable reason.
+    return { uncertain: true, reason: message };
+  }
   const status = typeof candidate.status === "number" && Number.isInteger(candidate.status) ? candidate.status : 0;
   const code = typeof candidate.code === "string" ? candidate.code : "";
   const safeLocalRejectionCodes = new Set([
