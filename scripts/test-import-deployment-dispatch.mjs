@@ -31,7 +31,12 @@ for (const environment of ["preview", "staging", "production", "unknown", undefi
       BROKER_DESK_IMPORT_WORKER_SCHEDULE: "every minute",
       BROKER_DESK_IMPORT_WORKER_TOKEN: "test-only-worker-token-with-32-characters",
     });
-    const readiness = loadModule(read("src/lib/production-readiness.ts"), {}, env);
+    const readiness = loadModule(read("src/lib/production-readiness.ts"), {
+      "@/lib/auth-mode": {
+        getAuthMode: () => "trusted_header",
+        isSupabaseAuthConfigured: () => false,
+      },
+    }, env);
     const calls = [];
     class TenantSessionError extends Error {}
     const route = loadModule(processRoute, {

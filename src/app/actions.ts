@@ -42,7 +42,7 @@ import {
   addClient,
   addProperty,
   addImportJob,
-  claimPropertyRowImport,
+  preparePropertyRowImport,
   addTask,
   createTenantAccount,
   createTenantAccountForUser,
@@ -70,6 +70,7 @@ import {
   listCaseWorkbenchFieldRules,
   listExtractionReviewItems,
   listImportJobs,
+  listPropertiesForContext,
   listGuaranteeCompanyMaskVersions,
   listTenantMembers,
   mergeBrokerageCaseExtractionReview,
@@ -134,7 +135,11 @@ import {
   type ImportValidationIssueCode,
   type ImportValidationIssueLevel,
 } from "@/lib/import-mapping";
-import { materializeExtractionReviewValue } from "@/lib/extraction-review-materialization";
+import {
+  getExtractionReviewFieldId,
+  materializeExtractionReviewValue,
+} from "@/lib/extraction-review-materialization";
+import { buildPropertyImportKey, buildPropertyImportRowFingerprint, normalizeImportCellValue } from "@/lib/import-row-policy";
 import {
   assertTenantPermission,
   requireTenantSession,
@@ -1823,7 +1828,7 @@ export async function resolveImportValidationAction(formData: FormData) {
   });
   const nextNotes = [job.notes, `${new Date().toISOString()} ${operationLabel}`].filter(Boolean).join("\n");
 
-  await updateImportJobMapping({
+  const resolved = await updateImportJobMapping({
     tenantId,
     userId: user.id,
     jobId: job.id,
@@ -1832,6 +1837,9 @@ export async function resolveImportValidationAction(formData: FormData) {
     notes: nextNotes,
     status: nextStatus,
   });
+  if (!resolved) {
+    throw new Error("資料読取記録はすでに処理開始済みのため、検証結果を上書きできません。");
+  }
 
   await addAuditLog({
     tenantId,
@@ -3725,10 +3733,6 @@ function isExtractionReviewStatus(value: string): value is ExtractionReviewStatu
   );
 }
 
-function getExtractionFieldId(field: InputFileExtractionResult["fields"][number]) {
-  return `${field.fieldKey}:${field.sourceCell ?? field.sourceRange ?? field.sourceSheet}`;
-}
-
 function buildCaseTitle(extraction: InputFileExtractionResult, fallbackTitle: string) {
   const propertyName = extraction.fields.find((field) => field.fieldKey === "property_name" || field.fieldKey === "property.name")?.normalizedValue;
   const applicantName = extraction.fields.find((field) => field.fieldKey === "applicant.name")?.normalizedValue;
@@ -5013,7 +5017,7 @@ export async function saveExtractionReviewAction(formData: FormData) {
   const reviewedAt = new Date();
 
   const reviewItems = payload.inputExtraction.fields.map((field) => {
-    const decision = decisionByFieldId.get(getExtractionFieldId(field));
+    const decision = decisionByFieldId.get(getExtractionReviewFieldId(field));
     const reviewStatus = decision?.reviewStatus ?? field.reviewStatus;
     const baseValue = field.normalizedValue || field.value;
     const materialized = materializeExtractionReviewValue({
@@ -5402,7 +5406,7 @@ export async function executePropertyImportAction(formData: FormData) {
   if (!jobId) throw new Error("ジョブIDが不正です。");
 
   const jobs = await listImportJobs(user.id, 200, tenantId);
-  const job = jobs.find((j) => j.id === jobId);
+  let job = jobs.find((j) => j.id === jobId);
   if (!job?.notes) throw new Error("資料読取記録が見つかりません。再度アップロードしてください。");
 
   let payload: ExcelImportPayload;
@@ -5415,6 +5419,17 @@ export async function executePropertyImportAction(formData: FormData) {
     throw new Error("この資料は内容確認用です。物件台帳への一括保存は実行できません。");
   }
 
+  // A second browser submission can arrive with a stale queued/mapped view.
+  // The prepare primitive applies the mapping and durable claim under one
+  // repository transaction, so a replay becomes a refresh of the existing
+  // result instead of rewriting the execution audit after the claim.
+  if (job.status === "completed") {
+    redirect(withFlash(`/import-center?xlsxJob=${job.id}`, "excel_imported"));
+  }
+  if (job.status === "processing" || job.finalImportStartedAt) {
+    redirect(withFlash(`/import-center?xlsxJob=${job.id}`, "input_extraction_queued"));
+  }
+
   const sourceCols = formData.getAll("sourceCol") as string[];
   const targetFields = formData.getAll("targetField") as string[];
   const mapping: Record<string, string> = {};
@@ -5422,7 +5437,7 @@ export async function executePropertyImportAction(formData: FormData) {
     if (targetFields[i] && targetFields[i] !== "") mapping[src] = targetFields[i];
   });
 
-  await updateImportJobMapping({
+  const prepared = await preparePropertyRowImport({
     tenantId,
     userId: user.id,
     jobId: job.id,
@@ -5432,18 +5447,46 @@ export async function executePropertyImportAction(formData: FormData) {
       zh: "保存位置已应用，开始保存。",
       ko: "저장 위치를 적용했고 저장을 시작합니다.",
     }),
-    status: "mapped",
   });
+  if (!prepared.job) throw new Error("資料読取記録が見つかりません。再度アップロードしてください。");
+  job = prepared.job;
+  if (!prepared.claimed) {
+    if (job.status === "completed") {
+      redirect(withFlash(`/import-center?xlsxJob=${job.id}`, "excel_imported"));
+    }
+    if (job.status === "processing" || job.finalImportStartedAt) {
+      redirect(withFlash(`/import-center?xlsxJob=${job.id}`, "input_extraction_queued"));
+    }
+    throw new Error(tr(locale, {
+      ja: "この取込は開始済み、または開始できない状態です。再実行は行いません。",
+      zh: "此导入已开始，或当前状态不允许开始。不会重复执行。",
+      ko: "이미 시작했거나 시작할 수 없는 가져오기입니다. 다시 실행하지 않습니다.",
+    }));
+  }
 
-  const claimed = await claimPropertyRowImport({ tenantId, userId: user.id, jobId: job.id });
-  if (!claimed) throw new Error(tr(locale, {
-    ja: "この取込は開始済み、または開始できない状態です。再実行は行いません。",
-    zh: "此导入已开始，或当前状态不允许开始。不会重复执行。",
-    ko: "이미 시작했거나 시작할 수 없는 가져오기입니다. 다시 실행하지 않습니다.",
-  }));
-
+  const visibleProperties = await listPropertiesForContext({
+    context: createRequestContext(session),
+    lifecycleStatus: "all",
+  });
+  const knownPropertyKeys = new Set(
+    visibleProperties
+      .map(({ property }) => buildPropertyImportKey(property.name, property.address))
+      .filter((key): key is string => Boolean(key)),
+  );
   let successCount = 0;
-  const skipped: { row: number; code: "import_row_missing_name" | "import_row_invalid_listing_price" | "import_row_unknown_error"; reason: string }[] = [];
+  const skipped: {
+    row: number;
+    code: "import_row_missing_name" | "import_row_invalid_listing_price" | "import_row_exact_duplicate" | "import_row_unknown_error";
+    reason: string;
+    originalRow?: Record<string, unknown>;
+  }[] = [];
+  const suspectedDuplicates: {
+    row: number;
+    code: "import_row_suspected_duplicate";
+    reason: string;
+    originalRow: Record<string, unknown>;
+  }[] = [];
+  const seenRowFingerprints = new Set<string>();
 
   for (let i = 0; i < payload.rows.length; i++) {
     const row = payload.rows[i];
@@ -5452,9 +5495,9 @@ export async function executePropertyImportAction(formData: FormData) {
       mapped[targetField] = row[srcCol];
     }
 
-    const name = String(mapped["name"] ?? "").trim();
+    const name = normalizeImportCellValue(mapped["name"]);
     if (!name) {
-      skipped.push({ row: i + 2, code: "import_row_missing_name", reason: "name（物件名）が空です" });
+      skipped.push({ row: i + 2, code: "import_row_missing_name", reason: "name（物件名）が空です", originalRow: row });
       continue;
     }
 
@@ -5464,8 +5507,31 @@ export async function executePropertyImportAction(formData: FormData) {
         row: i + 2,
         code: "import_row_invalid_listing_price",
         reason: `listing_price を数値に変換できません: "${String(mapped["listing_price"] ?? "")}"`,
+        originalRow: row,
       });
       continue;
+    }
+
+    const rowFingerprint = buildPropertyImportRowFingerprint(row);
+    if (seenRowFingerprints.has(rowFingerprint)) {
+      skipped.push({
+        row: i + 2,
+        code: "import_row_exact_duplicate",
+        reason: "同じファイル内に完全に同じ行があるため、この行だけスキップしました。元の行データは記録に残しています。",
+        originalRow: row,
+      });
+      continue;
+    }
+    seenRowFingerprints.add(rowFingerprint);
+
+    const propertyKey = buildPropertyImportKey(name, mapped["address"]);
+    if (propertyKey && knownPropertyKeys.has(propertyKey)) {
+      suspectedDuplicates.push({
+        row: i + 2,
+        code: "import_row_suspected_duplicate",
+        reason: "同名・同所在地の既存または同一ファイル内の物件があるため、疑似重複として確認してください。房号・单位或业务对象字段尚未纳入此导入模型；本行仍会新增，且不会覆盖原有数据。",
+        originalRow: row,
+      });
     }
 
     const managementFeeRaw = parsePrice(mapped["management_fee"]);
@@ -5477,13 +5543,14 @@ export async function executePropertyImportAction(formData: FormData) {
         createdByUserId: user.id,
         currentOwnerUserId: user.id,
         name,
-        area: String(mapped["area"] ?? "").trim() || undefined,
-        address: String(mapped["address"] ?? "").trim() || undefined,
+        area: normalizeImportCellValue(mapped["area"]) || undefined,
+        address: normalizeImportCellValue(mapped["address"]) || undefined,
         listingPrice,
         managementFee: managementFeeRaw > 0 ? managementFeeRaw : undefined,
         repairFee: repairFeeRaw > 0 ? repairFeeRaw : undefined,
-        notes: String(mapped["notes"] ?? "").trim() || undefined,
+        notes: normalizeImportCellValue(mapped["notes"]) || undefined,
       });
+      if (propertyKey) knownPropertyKeys.add(propertyKey);
       successCount++;
     } catch (e) {
       skipped.push({
@@ -5547,6 +5614,38 @@ export async function executePropertyImportAction(formData: FormData) {
       })
     );
   }
+  if ((skippedByCode.import_row_exact_duplicate ?? 0) > 0) {
+    executionIssues.push(
+      createImportValidationIssue({
+        code: "import_row_exact_duplicate",
+        level: "warning",
+        action: "resolve_now",
+        message:
+          locale === "zh"
+            ? "文件内存在完全相同的重复行；仅跳过重复行，原始行和原因已保留。"
+            : locale === "ko"
+              ? "파일 안에 완전히 같은 중복 행이 있어 중복 행만 건너뛰고 원본 행과 이유를 남겼습니다."
+              : "同一ファイル内に完全一致する重複行があるため、重複行のみスキップし、元行と理由を保存しました。",
+        count: skippedByCode.import_row_exact_duplicate,
+      })
+    );
+  }
+  if (suspectedDuplicates.length > 0) {
+    executionIssues.push(
+      createImportValidationIssue({
+        code: "import_row_suspected_duplicate",
+        level: "warning",
+        action: "resolve_now",
+        message:
+          locale === "zh"
+            ? "发现同名同地址的疑似重复行；由于当前模型没有房号/单位等唯一业务身份字段，本行仍保留并新增，未覆盖原有数据，请人工确认。"
+            : locale === "ko"
+              ? "동일한 이름·주소의 의심 중복 행이 있습니다. 현재 모델에 호실/단위 같은 업무 식별자가 없어 행을 보존해 새로 저장했으며 기존 데이터는 덮어쓰지 않았습니다. 확인해 주세요."
+              : "同名・同所在地の疑似重複行があります。現在のモデルに号室・単位などの業務識別子がないため、元行を残して新規保存し、既存データは上書きしていません。確認してください。",
+        count: suspectedDuplicates.length,
+      })
+    );
+  }
   if ((skippedByCode.import_row_unknown_error ?? 0) > 0) {
     executionIssues.push(
       createImportValidationIssue({
@@ -5563,7 +5662,7 @@ export async function executePropertyImportAction(formData: FormData) {
       })
     );
   }
-  if (successCount > 0 && skipped.length > 0) {
+  if (successCount > 0 && (skipped.length > 0 || suspectedDuplicates.length > 0)) {
     executionIssues.push(
       createImportValidationIssue({
         code: "import_partial_completed",
@@ -5578,7 +5677,7 @@ export async function executePropertyImportAction(formData: FormData) {
       })
     );
   }
-  if (successCount > 0 && skipped.length === 0) {
+  if (successCount > 0 && skipped.length === 0 && suspectedDuplicates.length === 0) {
     executionIssues.push(
       createImportValidationIssue({
         code: "import_completed",
@@ -5597,10 +5696,10 @@ export async function executePropertyImportAction(formData: FormData) {
     source: "import_execution",
     summary:
       locale === "zh"
-        ? `保存完成：成功 ${successCount} 条，跳过 ${skipped.length} 条`
+        ? `保存完成：成功 ${successCount} 条，跳过 ${skipped.length} 条，疑似重复 ${suspectedDuplicates.length} 条`
         : locale === "ko"
-          ? `저장 완료: 성공 ${successCount}건, 건너뜀 ${skipped.length}건`
-          : `保存完了: 成功 ${successCount} 件、スキップ ${skipped.length} 件`,
+          ? `저장 완료: 성공 ${successCount}건, 건너뜀 ${skipped.length}건, 의심 중복 ${suspectedDuplicates.length}건`
+          : `保存完了: 成功 ${successCount} 件、スキップ ${skipped.length} 件、疑似重複 ${suspectedDuplicates.length} 件`,
     issues: executionIssues,
     metrics: {
       successCount,
@@ -5608,6 +5707,7 @@ export async function executePropertyImportAction(formData: FormData) {
     },
     details: {
       skippedRows: skipped,
+      suspectedDuplicateRows: suspectedDuplicates,
     },
   });
   await updateImportJobMapping({
@@ -5617,6 +5717,7 @@ export async function executePropertyImportAction(formData: FormData) {
     mappingJson: mapping,
     validationMessage,
     status: nextStatus,
+    allowFinalImportCompletion: true,
   });
 
   await addAuditLog({

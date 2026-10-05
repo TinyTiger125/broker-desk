@@ -177,21 +177,26 @@ const claims = await Promise.all([
   repository.claimGuaranteePreviewConfirmation({ tenantId, id: confirmation.id, actorUserId: memberId }),
   repository.claimGuaranteePreviewConfirmation({ tenantId, id: confirmation.id, actorUserId: memberId }),
 ]);
-const claimed = claims.find(Boolean);
+const claimedResult = claims.find((result) => result.kind === "claimed");
+const processingResult = claims.find((result) => result.kind === "processing");
+const claimed = claimedResult?.confirmation;
 assert.ok(claimed?.processingToken, "one concurrent confirmation request obtains the processing lease");
-assert.equal(claims.filter(Boolean).length, 1, "concurrent confirmation claim has one winner");
+assert.equal(claims.filter((result) => result.kind === "claimed").length, 1, "concurrent confirmation claim has one winner");
+assert.equal(processingResult?.confirmation.processingToken, undefined, "a losing concurrent request must not receive the processing token");
 const v1OutputAttachment = await repository.addPrivateAttachment({ tenantId, userId: memberId, targetType: "guarantee_generated_output", targetId: confirmation.id, fileName: "slice1-v1.pdf", fileType: "application/pdf", content: testV1Bytes });
 const finalized = await repository.finalizeGuaranteePreviewOutput({ confirmationId: confirmation.id, processingToken: claimed.processingToken, output: { tenantId, userId: memberId, actorId: memberId, outputType: "guarantee_application", outputFormat: "pdf", language: "ja", title: "TASK-038 v1", documentNumber: "TASK-038-V1", caseId, draftValueSnapshot: { consent: true }, layoutSnapshot: layoutV1, fileAttachmentId: v1OutputAttachment.id, fileSha256: sha256(testV1Bytes), fileSizeBytes: testV1Bytes.length, fileMimeType: "application/pdf", blankFormVersionId: blankVersion.id, blankFormSha256: blankVersion.sha256, companyMaskVersionId: v1Version.id, fieldCatalogVersion: "slice1-v1", caseInputSnapshotHash: "case-hash-v1" } });
 const v1Output = await repository.getGuaranteeOutputByCase({ tenantId, caseId, id: finalized.output.id });
 const v1BytesBeforeV2 = await repository.readPrivateAttachmentContentForTenant({ tenantId, id: v1Output.fileAttachmentId });
 assert.equal(sha256(v1BytesBeforeV2), sha256(testV1Bytes), "history reads the saved v1 PDF bytes");
 const retryClaim = await repository.claimGuaranteePreviewConfirmation({ tenantId, id: confirmation.id, actorUserId: memberId });
-assert.equal(retryClaim.generatedOutputId, finalized.output.id, "consumed confirmation retry returns the same output");
+assert.equal(retryClaim.kind, "consumed", "consumed confirmation retry must report completed state");
+assert.equal(retryClaim.confirmation.generatedOutputId, finalized.output.id, "consumed confirmation retry returns the same output");
 const outputsForConfirmation = (await repository.listGeneratedOutputs({ tenantId, userId: memberId })).filter((item) => item.previewConfirmationId === confirmation.id);
 assert.equal(outputsForConfirmation.length, 1, "concurrent/retried confirmation creates one output and therefore one stored PDF attachment");
 
 const confirmationCaseB = await repository.createGuaranteePreviewConfirmation({ tenantId, actorUserId: memberId, caseId: caseBId, caseInputSnapshotHash: "case-hash-b-v1", blankFormVersionId: blankVersion.id, blankFormSha256: blankVersion.sha256, companyMaskVersionId: v1Version.id, fieldCatalogVersion: "slice1-v1", supplementSnapshot: { consent: false }, supplementHash: "supp-b-v1", expiresAt: new Date(Date.now() + 60_000) });
-const claimedCaseB = await repository.claimGuaranteePreviewConfirmation({ tenantId, id: confirmationCaseB.id, actorUserId: memberId });
+const claimedCaseBResult = await repository.claimGuaranteePreviewConfirmation({ tenantId, id: confirmationCaseB.id, actorUserId: memberId });
+const claimedCaseB = claimedCaseBResult.kind === "claimed" ? claimedCaseBResult.confirmation : undefined;
 assert.ok(claimedCaseB?.processingToken, "case B can reuse the published mask without uploading or editing it again");
 const caseBAttachment = await repository.addPrivateAttachment({ tenantId, userId: memberId, targetType: "guarantee_generated_output", targetId: confirmationCaseB.id, fileName: "slice1-case-b.pdf", fileType: "application/pdf", content: caseBBytes });
 const finalizedCaseB = await repository.finalizeGuaranteePreviewOutput({ confirmationId: confirmationCaseB.id, processingToken: claimedCaseB.processingToken, output: { tenantId, userId: memberId, actorId: memberId, outputType: "guarantee_application", outputFormat: "pdf", language: "ja", title: "TASK-038 case B", documentNumber: "TASK-038-B", caseId: caseBId, draftValueSnapshot: { consent: false }, layoutSnapshot: layoutV1, fileAttachmentId: caseBAttachment.id, fileSha256: sha256(caseBBytes), fileSizeBytes: caseBBytes.length, fileMimeType: "application/pdf", blankFormVersionId: blankVersion.id, blankFormSha256: blankVersion.sha256, companyMaskVersionId: v1Version.id, fieldCatalogVersion: "slice1-v1", caseInputSnapshotHash: "case-hash-b-v1" } });
@@ -223,5 +228,52 @@ const failedMatch = await repository.getGuaranteeMaskMatch({ tenantId, blankForm
 assert.equal(maskAfterFailure.activeVersionId, publishedV2.version.id, "failed publish leaves the previous active version");
 assert.equal(failedVersion.status, "draft", "failed publish leaves the candidate draft unpublished");
 assert.equal(failedMatch, undefined, "failed publish does not create an exact match");
+
+async function waitFor(delayMs) {
+  await new Promise((resolve) => setTimeout(resolve, delayMs));
+}
+
+async function runGenerationAttempt({ confirmationId, provider, fail = false }) {
+  const claimResult = await repository.claimGuaranteePreviewConfirmation({ tenantId, id: confirmationId, actorUserId: memberId, leaseMs: 5_000 });
+  if (claimResult.kind !== "claimed") return { kind: claimResult.kind };
+  const claim = claimResult.confirmation;
+  try {
+    const bytes = await provider();
+    if (fail) throw new Error("synthetic_provider_failure");
+    const attachment = await repository.addPrivateAttachment({ tenantId, userId: memberId, targetType: "guarantee_generated_output", targetId: confirmationId, fileName: "concurrency.pdf", fileType: "application/pdf", content: bytes });
+    const finalizedAttempt = await repository.finalizeGuaranteePreviewOutput({ confirmationId, processingToken: claim.processingToken, output: { tenantId, userId: memberId, actorId: memberId, outputType: "guarantee_application", outputFormat: "pdf", language: "ja", title: "TASK-038 concurrency", documentNumber: `TASK-038-CONCURRENCY-${confirmationId}`, caseId, draftValueSnapshot: { consent: true }, layoutSnapshot: layoutV1, fileAttachmentId: attachment.id, fileSha256: sha256(bytes), fileSizeBytes: bytes.length, fileMimeType: "application/pdf", blankFormVersionId: blankVersion.id, blankFormSha256: blankVersion.sha256, companyMaskVersionId: v1Version.id, fieldCatalogVersion: "slice1-v1", caseInputSnapshotHash: "case-hash-v1" } });
+    return { kind: "completed", output: finalizedAttempt.output };
+  } catch (error) {
+    await repository.releaseGuaranteePreviewConfirmation({ tenantId, id: confirmationId, actorUserId: memberId, processingToken: claim.processingToken });
+    return { kind: "failed", error };
+  }
+}
+
+assert.equal((await repository.claimGuaranteePreviewConfirmation({ tenantId, id: "missing-guarantee-confirmation", actorUserId: memberId })).kind, "not_found", "missing confirmation must remain distinguishable from active processing");
+const expiredConfirmation = await repository.createGuaranteePreviewConfirmation({ tenantId, actorUserId: memberId, caseId, caseInputSnapshotHash: "case-hash-v1", blankFormVersionId: blankVersion.id, blankFormSha256: blankVersion.sha256, companyMaskVersionId: v1Version.id, fieldCatalogVersion: "slice1-v1", supplementSnapshot: { consent: true }, supplementHash: "expired-confirmation", expiresAt: new Date(Date.now() - 1_000) });
+const expiredClaim = await repository.claimGuaranteePreviewConfirmation({ tenantId, id: expiredConfirmation.id, actorUserId: memberId });
+assert.equal(expiredClaim.kind, "expired", "expired confirmation must require a new preview");
+
+const delayedConfirmation = await repository.createGuaranteePreviewConfirmation({ tenantId, actorUserId: memberId, caseId, caseInputSnapshotHash: "case-hash-v1", blankFormVersionId: blankVersion.id, blankFormSha256: blankVersion.sha256, companyMaskVersionId: v1Version.id, fieldCatalogVersion: "slice1-v1", supplementSnapshot: { consent: true }, supplementHash: "concurrency-delay", expiresAt: new Date(Date.now() + 60_000) });
+let delayedProviderCalls = 0;
+const delayedProvider = async () => { delayedProviderCalls += 1; await waitFor(40); return testV1Bytes; };
+const delayedResults = await Promise.all([
+  runGenerationAttempt({ confirmationId: delayedConfirmation.id, provider: delayedProvider }),
+  runGenerationAttempt({ confirmationId: delayedConfirmation.id, provider: delayedProvider }),
+]);
+assert.equal(delayedProviderCalls, 1, "two concurrent generation requests must invoke the provider exactly once");
+assert.equal(delayedResults.filter((result) => result.kind === "completed").length, 1, "one delayed generation request must finalize");
+assert.equal(delayedResults.filter((result) => result.kind === "processing").length, 1, "the overlapping request must remain processing");
+assert.equal((await repository.listGeneratedOutputs({ tenantId, userId: memberId })).filter((item) => item.previewConfirmationId === delayedConfirmation.id).length, 1, "delayed concurrent generation must persist exactly one output");
+
+const failureConfirmation = await repository.createGuaranteePreviewConfirmation({ tenantId, actorUserId: memberId, caseId, caseInputSnapshotHash: "case-hash-v1", blankFormVersionId: blankVersion.id, blankFormSha256: blankVersion.sha256, companyMaskVersionId: v1Version.id, fieldCatalogVersion: "slice1-v1", supplementSnapshot: { consent: true }, supplementHash: "concurrency-failure", expiresAt: new Date(Date.now() + 60_000) });
+let failureProviderCalls = 0;
+const failingProvider = async () => { failureProviderCalls += 1; await waitFor(10); return testV1Bytes; };
+const failedAttempt = await runGenerationAttempt({ confirmationId: failureConfirmation.id, provider: failingProvider, fail: true });
+assert.equal(failedAttempt.kind, "failed", "provider failure must be surfaced to the request");
+const recoveredAttempt = await runGenerationAttempt({ confirmationId: failureConfirmation.id, provider: failingProvider });
+assert.equal(recoveredAttempt.kind, "completed", "released confirmation must be recoverable by a retry");
+assert.equal(failureProviderCalls, 2, "a failed provider attempt plus one retry must invoke the provider once per attempt");
+assert.equal((await repository.listGeneratedOutputs({ tenantId, userId: memberId })).filter((item) => item.previewConfirmationId === failureConfirmation.id).length, 1, "failure recovery must persist exactly one output");
 
 console.log("[PASS] TASK-038 real memory-adapter behavior, coordinates, strict booleans, PDF geometry, rollback, idempotency, and v1 immutability checks");

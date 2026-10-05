@@ -5,6 +5,11 @@ import { useFormStatus } from "react-dom";
 import { saveExtractionReviewAction } from "@/app/actions";
 import type { CaseMergeCandidateSummary } from "@/lib/case-merge";
 import { getCaseFieldDefinition } from "@/lib/case-field-catalog";
+import {
+  buildPersistedExtractionReviewState,
+  getExtractionReviewFieldId,
+  type PersistedExtractionReviewItem,
+} from "@/lib/extraction-review-materialization";
 import type { ExtractedInputField, InputFileExtractionResult } from "@/lib/input-file-extractor";
 import type { Locale } from "@/lib/locale";
 
@@ -117,10 +122,6 @@ function getSourceLabel(field: ExtractedInputField) {
   return field.sourceCell ?? field.sourceRange ?? "-";
 }
 
-function getFieldId(field: ExtractedInputField) {
-  return `${field.fieldKey}:${field.sourceCell ?? field.sourceRange ?? field.sourceSheet}`;
-}
-
 function getFieldValue(field: ExtractedInputField) {
   return field.normalizedValue || field.value;
 }
@@ -176,7 +177,7 @@ export function buildExtractionReviewDecisions(
   editedValues: Record<string, string> = {},
 ): ExtractionReviewDecision[] {
   return items.map((field) => {
-    const fieldId = getFieldId(field);
+    const fieldId = getExtractionReviewFieldId(field);
     const explicitStatus = reviewStatuses[fieldId];
     const reviewStatus = getEffectiveReviewStatus(field, explicitStatus);
     return {
@@ -240,12 +241,14 @@ export function InputExtractionReview({
   importJobId,
   mergeCandidates = [],
   targetCaseId,
+  persistedReviewItems = [],
 }: {
   extraction: InputFileExtractionResult;
   locale: Locale;
   importJobId: string;
   mergeCandidates?: CaseMergeCandidateSummary[];
   targetCaseId?: string;
+  persistedReviewItems?: readonly PersistedExtractionReviewItem[];
 }) {
   const items = useMemo<ReviewItem[]>(
     () =>
@@ -271,8 +274,16 @@ export function InputExtractionReview({
       })).filter((group) => group.items.length > 0),
     [items, locale],
   );
-  const [reviewStatuses, setReviewStatuses] = useState<Record<string, LocalReviewStatus>>({});
-  const [editedValues, setEditedValues] = useState<Record<string, string>>({});
+  const persistedReviewState = useMemo(
+    () => buildPersistedExtractionReviewState(extraction.fields, persistedReviewItems, importJobId),
+    [extraction.fields, importJobId, persistedReviewItems],
+  );
+  const [reviewStatuses, setReviewStatuses] = useState<Record<string, LocalReviewStatus>>(
+    () => persistedReviewState.statusByFieldId,
+  );
+  const [editedValues, setEditedValues] = useState<Record<string, string>>(
+    () => persistedReviewState.editedValueByFieldId,
+  );
   const [selectedMergeCaseId, setSelectedMergeCaseId] = useState("");
   const [mergeConfirmed, setMergeConfirmed] = useState(false);
   const [reviewMode, setReviewMode] = useState<"pending" | "all">("pending");
@@ -292,7 +303,7 @@ export function InputExtractionReview({
   const reviewCounts = useMemo(() => {
     return {
       pending: items.filter((field) => {
-        const id = getFieldId(field);
+        const id = getExtractionReviewFieldId(field);
         const status = getEffectiveReviewStatus(field, reviewStatuses[id]);
         return !isResolvedStatus(status);
       }).length,
@@ -305,7 +316,7 @@ export function InputExtractionReview({
   const confirmedValueCount = useMemo(
     () =>
       items.filter((field) => {
-        const id = getFieldId(field);
+        const id = getExtractionReviewFieldId(field);
         const status = getEffectiveReviewStatus(field, reviewStatuses[id]);
         return isConfirmedStatus(status);
       }).length,
@@ -320,7 +331,7 @@ export function InputExtractionReview({
             reviewMode === "all"
               ? group.items
               : group.items.filter((field) => {
-                  const id = getFieldId(field);
+                  const id = getExtractionReviewFieldId(field);
                   const status = getEffectiveReviewStatus(field, reviewStatuses[id]);
                   return isExceptionField(field) && (!isResolvedStatus(status) || settlingFieldIds.has(id));
                 }),
@@ -330,7 +341,7 @@ export function InputExtractionReview({
   );
 
   function setStatus(field: ExtractedInputField, status: LocalReviewStatus) {
-    const id = getFieldId(field);
+    const id = getExtractionReviewFieldId(field);
     setReviewStatuses((current) => ({ ...current, [id]: status }));
     if (status === "edited") {
       setEditedValues((current) => ({ ...current, [id]: current[id] ?? field.normalizedValue ?? field.value }));
@@ -338,7 +349,7 @@ export function InputExtractionReview({
   }
 
   function confirmField(field: ExtractedInputField) {
-    const id = getFieldId(field);
+    const id = getExtractionReviewFieldId(field);
     const readValue = getFieldValue(field);
     const nextValue = editedValues[id] ?? readValue;
     if (!nextValue.trim()) {
@@ -631,7 +642,7 @@ export function InputExtractionReview({
                 </div>
                 <div className="divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-100">
                   {group.items.map((field) => {
-                    const id = getFieldId(field);
+                    const id = getExtractionReviewFieldId(field);
                     const explicitStatus = reviewStatuses[id];
                     const status = getEffectiveReviewStatus(field, explicitStatus);
                     const displayStatus = getDisplayReviewStatus(field, explicitStatus);
@@ -739,15 +750,15 @@ export function InputExtractionReview({
                 <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-slate-600">{group.items.length}</span>
               </div>
               <div className="divide-y divide-slate-100">
-                  {group.items.map((field) => {
-                    const id = getFieldId(field);
-                    const explicitStatus = reviewStatuses[id];
-                    const currentStatus = getDisplayReviewStatus(field, explicitStatus);
-                    const implicitNormal = isImplicitNormalField(field, explicitStatus);
-                    const isConfirmed = isConfirmedStatus(currentStatus) && !implicitNormal;
-                    const isSettling = reviewMode === "pending" && settlingFieldIds.has(id);
-                    const wasRecentlyConfirmed = recentlyConfirmedIds.has(id);
-                    const readValue = getFieldValue(field);
+                {group.items.map((field) => {
+                  const id = getExtractionReviewFieldId(field);
+                  const explicitStatus = reviewStatuses[id];
+                  const currentStatus = getDisplayReviewStatus(field, explicitStatus);
+                  const implicitNormal = isImplicitNormalField(field, explicitStatus);
+                  const isConfirmed = isConfirmedStatus(currentStatus) && !implicitNormal;
+                  const isSettling = reviewMode === "pending" && settlingFieldIds.has(id);
+                  const wasRecentlyConfirmed = recentlyConfirmedIds.has(id);
+                  const readValue = getFieldValue(field);
                   const currentValue = editedValues[id] ?? readValue;
                   const useTextarea = currentValue.length > 48 || currentValue.includes("\n") || field.fieldKey.toLowerCase().includes("address");
                   const updateValue = (value: string) => setEditedValues((current) => ({ ...current, [id]: value }));

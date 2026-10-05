@@ -43,11 +43,18 @@ function getRepository(): DataRepository {
 const syncRepositoryMethods = new Set<keyof DataRepository>(["isTenantAccessibleStatus"]);
 
 async function withRepositoryIdentity<T>(operation: () => Promise<T>): Promise<T> {
-  if (!usePostgres || !isProductionRuntime()) {
+  const bindLocalTestRequestScope = !isProductionRuntime() && process.env.BROKER_DESK_TEST_REQUEST_SCOPE === "1";
+  if (!usePostgres || (!isProductionRuntime() && !bindLocalTestRequestScope)) {
     return operation();
   }
 
-  const subject = workerRepositorySubject.getStore() ?? (await getAuthSubject());
+  let subject = workerRepositorySubject.getStore() ?? null;
+  if (!subject && isTrustedHeaderAuthEnabled()) {
+    const identity = readTrustedHeaderAuthIdentity(await headers());
+    if (!identity.ok) throw new Error(identity.error);
+    subject = identity.identity.subject;
+  }
+  subject ??= await getAuthSubject();
   if (!subject) {
     throw new ProductionReadinessError("production_tenant_scope_required");
   }
@@ -387,6 +394,8 @@ export const addImportJob: typeof memory.addImportJob = (...args) =>
   repo.addImportJob(...args);
 export const claimPropertyRowImport: typeof memory.claimPropertyRowImport = (...args) =>
   repo.claimPropertyRowImport(...args);
+export const preparePropertyRowImport: typeof memory.preparePropertyRowImport = (...args) =>
+  repo.preparePropertyRowImport(...args);
 export const deletePreimportPropertyUpload: typeof memory.deletePreimportPropertyUpload = (...args) =>
   repo.deletePreimportPropertyUpload(...args);
 export const updateImportJobMapping: typeof memory.updateImportJobMapping = (...args) =>
@@ -467,6 +476,7 @@ export const getGuaranteeCompanyMask: typeof memory.getGuaranteeCompanyMask = (.
 export const getGuaranteeCompanyMaskForBlankForm: typeof memory.getGuaranteeCompanyMaskForBlankForm = (...args) => repo.getGuaranteeCompanyMaskForBlankForm(...args);
 export const getGuaranteeOutputByCase: typeof memory.getGuaranteeOutputByCase = (...args) => repo.getGuaranteeOutputByCase(...args);
 export const listGuaranteeOutputsByCase: typeof memory.listGuaranteeOutputsByCase = (...args) => repo.listGuaranteeOutputsByCase(...args);
+export const getGuaranteePreviewConfirmation: typeof memory.getGuaranteePreviewConfirmation = (...args) => repo.getGuaranteePreviewConfirmation(...args);
 export const deleteGeneratedOutputForTenant: typeof memory.deleteGeneratedOutputForTenant = (...args) => repo.deleteGeneratedOutputForTenant(...args);
 export const readPrivateAttachmentContentForTenant: typeof memory.readPrivateAttachmentContentForTenant = (...args) => repo.readPrivateAttachmentContentForTenant(...args);
 export const deletePrivateAttachmentForTenant: typeof memory.deletePrivateAttachmentForTenant = (...args) => repo.deletePrivateAttachmentForTenant(...args);

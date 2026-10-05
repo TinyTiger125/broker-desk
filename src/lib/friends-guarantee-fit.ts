@@ -3,6 +3,7 @@ import type { FriendsOverlayBox, FriendsOverlayField } from "@/lib/friends-guara
 export type FriendsOverlayTextFitStatus =
   | "empty"
   | "fits"
+  | "wrapped"
   | "shrinks"
   | "overflows"
   | "segment_overflows"
@@ -12,6 +13,8 @@ export type FriendsOverlayTextFitResult = {
   status: FriendsOverlayTextFitStatus;
   estimatedWidth: number;
   printableWidth: number;
+  lineCount?: number;
+  resolvedSize?: number;
 };
 
 function normalizeSegmentValue(value: string, segment: NonNullable<FriendsOverlayField["segment"]>) {
@@ -35,13 +38,59 @@ function getPrintableWidth(field: FriendsOverlayField, box: FriendsOverlayBox) {
   return Math.max(1, box.width - 6);
 }
 
+export const FRIENDS_OVERLAY_TEXT_LINE_HEIGHT = 1.15;
+
+export function isFriendsAddressOverlayField(field: FriendsOverlayField) {
+  if (field.segment || field.dateParts) return false;
+  const identity = `${field.fieldKey} ${field.sourceFieldKey ?? ""} ${field.label}`;
+  return /(address|住所|所在地)/i.test(identity) && !/(postalcode|postal_code|郵便番号)/i.test(identity);
+}
+
+export function getFriendsOverlayMaxLines(field: FriendsOverlayField, box: FriendsOverlayBox, size: number) {
+  if (!isFriendsAddressOverlayField(field)) return 1;
+  return Math.max(1, Math.floor((box.height - 2) / Math.max(1, size * FRIENDS_OVERLAY_TEXT_LINE_HEIGHT)));
+}
+
+function getEffectiveAddressBox(field: FriendsOverlayField, box?: FriendsOverlayBox) {
+  if (box) return box;
+  if (field.box) return field.box;
+  return {
+    x: field.x,
+    y: field.y - 4,
+    width: field.maxWidth + 12,
+    height: Math.max(18, field.size * 2.4),
+  };
+}
+
+function estimateWrappedLineCount(value: string, size: number, maxWidth: number) {
+  let lineCount = 1;
+  let lineWidth = 0;
+  for (const char of value) {
+    if (char === "\n") {
+      lineCount += 1;
+      lineWidth = 0;
+      continue;
+    }
+    const charWidth = estimateTextUnits(char) * size;
+    if (lineWidth > 0 && lineWidth + charWidth > maxWidth) {
+      lineCount += 1;
+      lineWidth = charWidth;
+    } else {
+      lineWidth += charWidth;
+    }
+  }
+  return lineCount;
+}
+
 export function getFriendsOverlayEstimatedTextFit(input: {
   field: FriendsOverlayField;
   value: string;
   box?: FriendsOverlayBox;
 }): FriendsOverlayTextFitResult {
   const value = input.value.trim();
-  const box = input.box ?? input.field.box;
+  const box = isFriendsAddressOverlayField(input.field)
+    ? getEffectiveAddressBox(input.field, input.box)
+    : input.box ?? input.field.box;
   const printableWidth = box ? getPrintableWidth(input.field, box) : Math.max(1, input.field.maxWidth);
   if (!value) return { status: "empty", estimatedWidth: 0, printableWidth };
 
@@ -62,6 +111,30 @@ export function getFriendsOverlayEstimatedTextFit(input: {
   const size = input.field.size;
   const minSize = input.field.minSize ?? Math.max(5, size * 0.8);
   const estimatedWidth = estimateTextUnits(value) * size;
+  if (isFriendsAddressOverlayField(input.field) && box) {
+    const lineCount = estimateWrappedLineCount(value, size, printableWidth);
+    if (lineCount <= getFriendsOverlayMaxLines(input.field, box, size)) {
+      return {
+        status: lineCount > 1 ? "wrapped" : "fits",
+        estimatedWidth,
+        printableWidth,
+        lineCount,
+        resolvedSize: size,
+      };
+    }
+    const minLineCount = estimateWrappedLineCount(value, minSize, printableWidth);
+    if (minLineCount <= getFriendsOverlayMaxLines(input.field, box, minSize)) {
+      return {
+        status: "wrapped",
+        estimatedWidth,
+        printableWidth,
+        lineCount: minLineCount,
+        resolvedSize: minSize,
+      };
+    }
+    return { status: "overflows", estimatedWidth, printableWidth, lineCount: minLineCount, resolvedSize: minSize };
+  }
+
   if (estimatedWidth <= printableWidth) {
     return { status: "fits", estimatedWidth, printableWidth };
   }

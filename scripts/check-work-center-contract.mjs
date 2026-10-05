@@ -9,17 +9,32 @@ const data = fs.readFileSync("src/lib/data.ts", "utf8");
 const model = fs.readFileSync("src/lib/work-center.ts", "utf8");
 const actionButton = fs.readFileSync("src/components/work-center-task-action.tsx", "utf8");
 
-for (const label of ["今日の重点", "今日の重点", "今日重点", "오늘의 주요 업무", "作業センター", "工作中枢", "업무 센터", "七日間の予定", "七日议程", "7일 일정", "フォロー待ち", "等待跟进", "후속 연락 대기", "週次チェック", "周度检查", "주간 점검"]) {
+for (const label of ["今日の重点", "今日の重点", "今日重点", "오늘의 주요 업무", "資料管理センター", "工作中枢", "업무 센터", "七日間の予定", "七日议程", "7일 일정", "フォロー待ち", "等待跟进", "후속 연락 대기", "週次チェック", "周度检查", "주간 점검"]) {
   assert.match(page, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), `missing locale copy: ${label}`);
 }
-for (const marker of ["getWorkCenterSnapshotForContext", "listBrokerageCasesForContext", "listHubImportJobs", "changeTaskStatusAction", "buildWorkCenterModel", "buildHomeResumableWork", "/clients/", "/import-center"]) {
+for (const marker of ["getWorkCenterSnapshotForContext", "listBrokerageCasesForContext", "listHubImportJobs", "changeTaskStatusAction", "buildWorkCenterModel", "buildHomeResumableWork", "/clients/"]) {
   assert.match(page, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), `missing work-center marker: ${marker}`);
 }
 assert.ok(fs.existsSync("src/app/service-requests/page.tsx"), "existing service-request task route must remain available");
 assert.doesNotMatch(page, /\/tasks/, "Work Center must not expose the retired /tasks route");
+for (const shortcut of ['href="/import-center"', 'href="/organize-center"', 'copy.intake', 'copy.organize', 'intakeDesc:', 'organizeDesc:']) {
+  assert(!page.includes(shortcut), `home must not duplicate sidebar shortcuts: ${shortcut}`);
+}
+for (const section of ["work-center-today", "work-center-waiting", "work-center-agenda", "work-center-weekly", "work-center-recent"]) {
+  assert(page.includes(`id="${section}"`), `home must retain ${section}`);
+}
+for (const route of ["import-center", "organize-center"]) {
+  assert.ok(fs.existsSync(`src/app/${route}/page.tsx`), `business route remains available: ${route}`);
+}
 const todayStart = page.indexOf('aria-labelledby="work-center-today"');
 const waitingStart = page.indexOf('aria-labelledby="work-center-waiting"');
 assert.ok(todayStart >= 0 && waitingStart > todayStart, "today and waiting sections must remain distinct");
+assert.doesNotMatch(page, /<details[^>]*aria-labelledby="work-center-waiting"/, "waiting section must always remain visible");
+assert.equal((page.match(/<HomeFollowupPreview expandLabel=\{copy\.showMore\} collapseLabel=\{copy\.collapse\}>/g) ?? []).length, 2, "today and waiting lists must share the five-row preview");
+assert.match(page, /className="grid min-w-0 items-stretch gap-4 xl:grid-cols-2"/, "today and waiting cards must stretch as a symmetric grid");
+assert.equal((page.match(/className="flex h-full min-w-0 flex-col rounded-lg border border-slate-200 bg-white p-5"/g) ?? []).length, 2, "today and waiting cards must share the same flex column shell");
+assert.match(fs.readFileSync("src/components/home-followup-preview.tsx", "utf8"), /className="flex flex-1 flex-col"/, "preview content must stretch inside equal-height cards");
+assert.match(page, /href="\/clients"/, "original customer open route remains visible");
 const todaySection = page.slice(todayStart, waitingStart);
 assert.doesNotMatch(todaySection, /href="\/(?:tasks|service-requests)"/, "today heading must not expose an invalid global task entry point");
 assert.match(page, /href=\{`\/clients\/\$\{encodeURIComponent\(client\.id\)\}#client-tasks`\}/, "task rows must retain client task deep links");
@@ -65,7 +80,42 @@ assert.match(actionButton, /useFormStatus/);
 assert.match(actionButton, /disabled=\{pending\}/);
 assert.doesNotMatch(page, /Gmail|Outlook|sendEmail|aiWrite/);
 assert.doesNotMatch(page, /company_read|owner_write|private/);
-const ts = createRequire(import.meta.url)("typescript");
+const require = createRequire(import.meta.url);
+const ts = require("typescript");
+const react = require("react");
+const previewSource = fs.readFileSync("src/components/home-followup-preview.tsx", "utf8");
+const previewJs = ts.transpileModule(previewSource, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
+let expanded = false;
+const previewModule = { exports: {} };
+new Function("require", "module", "exports", previewJs)((name) => name === "react" ? {
+  ...react, useId: () => "followup-extra", useState: () => [expanded, (update) => { expanded = update(expanded); }],
+} : require(name), previewModule, previewModule.exports);
+function flattenElements(element) {
+  if (element == null || typeof element !== "object") return [];
+  if (Array.isArray(element)) return element.flatMap(flattenElements);
+  return [element, ...flattenElements(element.props?.children)];
+}
+for (const count of [0, 3, 5, 8]) {
+  expanded = false;
+  const children = Array.from({ length: count }, (_, i) => react.createElement("li", { key: i }, `client-${i}`));
+  const render = () => flattenElements(previewModule.exports.HomeFollowupPreview({ children, expandLabel: "展开更多", collapseLabel: "收起" }));
+  let elements = render();
+  const firstList = elements.find((element) => element.type === "ul");
+  assert.equal(firstList.props.children.length, Math.min(count, 5));
+  let button = elements.find((element) => element.type === "button");
+  assert.equal(Boolean(button), count > 5, "only surplus rows create a toggle");
+  if (button) {
+    assert.equal(button.props["aria-expanded"], false);
+    assert.equal(elements.find((element) => element.props?.id === button.props["aria-controls"]).props.hidden, true);
+    button.props.onClick(); elements = render(); button = elements.find((element) => element.type === "button");
+    assert.equal(button.props["aria-expanded"], true);
+    assert.equal(button.props.children, "收起");
+    const extra = elements.find((element) => element.props?.id === button.props["aria-controls"]);
+    assert.equal(extra.props.hidden, false); assert.equal(extra.props.children.length, count - 5);
+    button.props.onClick(); assert.equal(render().find((element) => element.props?.id === "followup-extra").props.hidden, true);
+  }
+}
+
 const destination = fs.readFileSync("src/app/clients/[id]/page.tsx", "utf8");
 const tree = ts.createSourceFile("page.tsx", destination, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 assert.equal(tree.parseDiagnostics.length, 0, "task destination must parse");

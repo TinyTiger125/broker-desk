@@ -39,6 +39,15 @@ function loadTsModule(sourcePath) {
 function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
+function assertNegativeSynthetic(check, candidate, message) {
+  let rejected = false;
+  try {
+    check(candidate);
+  } catch {
+    rejected = true;
+  }
+  assert(rejected, message);
+}
 
 const memory = loadTsModule("src/lib/data.memory.ts");
 const bootstrapPolicy = loadTsModule("src/lib/tenant-bootstrap-policy.ts");
@@ -68,6 +77,7 @@ const transactionExecutor = postgresSource.slice(
   postgresSource.indexOf("function isValidImportStatusTransition", postgresSource.indexOf("async function withTransaction")),
 );
 const clerkAuthSource = fs.readFileSync(path.resolve("src/lib/clerk-auth.ts"), "utf8");
+const authProviderSource = fs.readFileSync(path.resolve("src/lib/auth-provider.ts"), "utf8");
 const createWorkspacePageSource = fs.readFileSync(path.resolve("src/app/workspace/create/page.tsx"), "utf8");
 const createWorkspaceFormSource = fs.readFileSync(path.resolve("src/app/workspace/create/create-workspace-form.tsx"), "utf8");
 const invitationPageSource = fs.readFileSync(path.resolve("src/app/workspace/invitations/page.tsx"), "utf8");
@@ -323,10 +333,34 @@ assert(postgresSource.includes("brokerdesk_private.list_pending_tenant_invitatio
 assert(postgresSource.includes("brokerdesk_private.bind_current_clerk_identity_to_pending_invitation($1, $2, $3)"), "Postgres Clerk invite binding must use the restricted current-identity function");
 assert(clerkAuthSource.includes("getVerifiedClerkAuthIdentity"), "invitation binding must use a dedicated verified Clerk identity helper");
 assert(clerkAuthSource.includes('item?.verification?.status === "verified"'), "invitation binding must require Clerk email verification");
-assert(fs.readFileSync(path.resolve("src/lib/data.ts"), "utf8").includes("getVerifiedClerkAuthIdentity"), "default user resolution must use the verified invitation identity");
 const acceptInvitationActionSource = actionsSource.slice(actionsSource.indexOf("export async function acceptTenantInvitationAction"));
-assert(acceptInvitationActionSource.includes("getVerifiedClerkAuthIdentity"), "invitation acceptance must use the verified Clerk identity helper");
-assert(!acceptInvitationActionSource.includes("getClerkAuthIdentity()"), "invitation acceptance must not fall back to an unverified Clerk email");
+const defaultUserResolverSource = dataSource.slice(
+  dataSource.indexOf("const resolveDefaultUser"),
+  dataSource.indexOf("export async function getDefaultUser", dataSource.indexOf("const resolveDefaultUser")),
+);
+assert(authProviderSource.includes("getVerifiedIdentity: async") && authProviderSource.includes("getVerifiedClerkAuthIdentity"), "provider adapter must route its verified identity facade to the verified Clerk identity helper");
+function assertVerifiedInvitationIdentityBoundary(candidate) {
+  assert(candidate.defaultUserResolverSource.includes("getVerifiedAuthIdentity"), "default user resolution must use the provider-neutral verified invitation identity");
+  assert(candidate.acceptInvitationActionSource.includes("getVerifiedAuthIdentity"), "invitation acceptance must use the provider-neutral verified identity facade");
+  assert(!candidate.acceptInvitationActionSource.includes("getAuthIdentity()"), "invitation acceptance must not fall back to an unverified provider identity");
+  const verifiedAdapterStart = candidate.authProviderSource.indexOf("getVerifiedIdentity: async");
+  const verifiedAdapterEnd = candidate.authProviderSource.indexOf("\n  },", verifiedAdapterStart);
+  assert(
+    verifiedAdapterStart >= 0 && verifiedAdapterEnd > verifiedAdapterStart &&
+      candidate.authProviderSource.slice(verifiedAdapterStart, verifiedAdapterEnd).includes("getVerifiedClerkAuthIdentity"),
+    "provider adapter must retain the verified Clerk identity implementation",
+  );
+}
+assertVerifiedInvitationIdentityBoundary({ defaultUserResolverSource, acceptInvitationActionSource, authProviderSource });
+assertNegativeSynthetic(
+  assertVerifiedInvitationIdentityBoundary,
+  {
+    defaultUserResolverSource: defaultUserResolverSource.replaceAll("getVerifiedAuthIdentity", "getAuthIdentity"),
+    acceptInvitationActionSource: acceptInvitationActionSource.replaceAll("getVerifiedAuthIdentity", "getAuthIdentity"),
+    authProviderSource: authProviderSource.replaceAll("getVerifiedClerkAuthIdentity", "getClerkAuthIdentity"),
+  },
+  "removing verified identity requirements must fail the tenant-slice contract",
+);
 assert(acceptInvitationActionSource.includes("TenantInvitationActionState"), "invitation acceptance must expose structured UI state");
 assert(acceptInvitationActionSource.includes('return { status: "error"'), "invitation acceptance failures must return visible structured errors");
 assert(acceptInvitationActionSource.includes("try {"), "invitation acceptance must catch retryable server failures");

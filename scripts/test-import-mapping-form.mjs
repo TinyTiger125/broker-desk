@@ -17,6 +17,7 @@ for(const broken of ['invalid',JSON.stringify({...payload,headers:[]}),JSON.stri
 assert.equal(rows({...job,notes:'物件5件を保存',mappingJson:{'物件名':'name'}}).length,1);
 assert.equal(rows({...job,notes:JSON.stringify({...payload,headers:[]}),mappingJson:{'物件名':'name'}}).length,0);
 const {isBatchMappingJob}=load(functions('src/app/import-center/page.tsx',['isBatchMappingJob']),{getPropertyRowMappingPayload:parsePayload,isInputFileExtractionJob:()=>false});
+const {getImportPayloadKind}=load(functions('src/app/import-center/page.tsx',['getImportPayloadKind']));
 assert.equal(isBatchMappingJob({...job,status:'queued'}),true);
 assert.equal(isBatchMappingJob({...job,status:'queued',notes:'queued upload'}),false);
 assert.equal(isBatchMappingJob({...job,status:'processing'}),false);
@@ -34,7 +35,7 @@ const queuedPage=reopenPage({...job,status:'queued'});assert.equal(queuedPage.wi
 const initialUpload=reopenPage({...job,status:'queued',notes:'upload'},false,true);assert.equal(initialUpload.wizardStep,'processing');assert.equal(initialUpload.inputTaskJob.id,'job');assert.equal(initialUpload.needsMappingRedirect,false);
 const plainReopen=reopenPage({...job,status:'queued'},false);assert.equal(plainReopen.wizardStep,'mapping');assert.equal(plainReopen.needsMappingRedirect,true);assert.equal(plainReopen.inputTaskJob,undefined);
 const xlsxReopen=reopenPage({...job,status:'queued'},false,true);assert.equal(xlsxReopen.needsMappingRedirect,true);assert.equal(xlsxReopen.inputTaskJob,undefined);
-const {recentHref}=load(`export const recentHref=${expressions.recentJobHref}`,{isBatchMappingJob,isModernExcelImportJob:()=>true});
+const {recentHref}=load(`export const recentHref=${expressions.recentJobHref}`,{isBatchMappingJob,getImportPayloadKind,isModernExcelImportJob:()=>true});
 assert.equal(recentHref({...job,status:'queued'}),'/import-center?job=job&advanced=1#job-mapping');
 assert.equal(recentHref({...job,status:'queued',notes:'upload'}),'/import-center?xlsxJob=job#source-upload');
 assert(page.includes('if (needsMappingRedirect && requestedJob)'));
@@ -51,6 +52,7 @@ assert.equal(job.status,'queued');assert.equal(redirectPath,'/import-center?job=
 assert(JSON.parse(job.validationMessage).issues.some(issue=>issue.code==='missing_required_mapping'));
 assert.equal(mapping.validateImportMapping('properties',job.mappingJson).missingRequired.join(','),'listing_price');
 assert.equal(isBatchMappingJob(job),true);
+assert.equal(transition("queued", "mapped"), true);
 assert.equal(JSON.stringify(rows(job)),JSON.stringify([{source:'物件名',target:'name'},{source:'所在地',target:'area'}]));
 // A blank middle target must not shift the final target or reappear via autoMapping on reopen.
 job={...job,status:'mapped',mappingJson:{},notes:JSON.stringify({...payload,headers:['物件名','所在地','価格,税込'],autoMapping:{'物件名':'name','所在地':'address','価格,税込':'listing_price'}})};

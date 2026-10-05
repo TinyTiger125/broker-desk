@@ -91,20 +91,20 @@ function getDraftValue(draftValues: Record<string, unknown>, fieldKey: string) {
 function templateAccessCopy(locale: Locale) {
   if (locale === "zh") {
     return {
-      title: "官方模板工厂",
+      title: "官方文书模板",
       denied: "需要平台管理员权限。当前账号无法编辑或发布官方模板。",
       saveDenied: "当前账号没有保存官方模板的权限。未保存任何修改；离开页面后未保存的编辑内容可能丢失。",
     };
   }
   if (locale === "ko") {
     return {
-      title: "공식 템플릿 공장",
+      title: "공식 문서 템플릿",
       denied: "플랫폼 관리자 권한이 필요합니다. 현재 계정은 공식 템플릿을 편집하거나 게시할 수 없습니다.",
       saveDenied: "현재 계정에는 공식 템플릿 저장 권한이 없습니다. 변경 사항은 저장되지 않았으며 페이지를 떠나면 저장하지 않은 편집 내용이 사라질 수 있습니다.",
     };
   }
   return {
-    title: "公式テンプレート工場",
+    title: "公式帳票テンプレート",
     denied: "プラットフォーム管理者権限が必要です。現在のアカウントでは公式テンプレートを編集・公開できません。",
     saveDenied: "現在のアカウントには公式テンプレートの保存権限がありません。変更は保存されておらず、ページを離れると未保存の編集内容が失われる可能性があります。",
   };
@@ -125,6 +125,7 @@ function formatPreviewFieldValue(field: FriendsOverlayField, value: string) {
 function fitStatusLabel(status: FriendsOverlayTextFitStatus) {
   if (status === "overflows") return "長すぎ";
   if (status === "segment_overflows") return "桁数超過";
+  if (status === "wrapped") return "自動折行";
   if (status === "shrinks") return "縮小印字";
   return "";
 }
@@ -351,7 +352,10 @@ export async function GuaranteeApplicationPreviewPage({
     const status = printFitByFieldKey.get(field.fieldKey)?.status;
     return status === "overflows" || status === "segment_overflows";
   });
-  const printAttentionIssues = overlayFields.filter((field) => printFitByFieldKey.get(field.fieldKey)?.status === "shrinks");
+  const printAttentionIssues = overlayFields.filter((field) => {
+    const status = printFitByFieldKey.get(field.fieldKey)?.status;
+    return status === "shrinks" || status === "wrapped";
+  });
   const manualAdjustedCount = Object.keys(layoutOverrides).length;
   const addedFieldCount = customFields.length;
   const manualPlacementCount = overlayFields.filter((field) => isFriendsOverlayFieldManualOnly(field) && !layoutOverrides[field.fieldKey]).length;
@@ -372,7 +376,7 @@ export async function GuaranteeApplicationPreviewPage({
           <div>
             <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
               <Link href={isTemplateAuthoring ? "/platform/templates" : "/output-center"} className="hover:text-slate-900">
-                {isTemplateAuthoring ? "公式テンプレート工場" : "PDF出力"}
+                {isTemplateAuthoring ? "公式帳票テンプレート" : "PDF出力"}
               </Link>
               <span className="material-symbols-outlined text-[14px]">chevron_right</span>
               <span>{template.companyDisplayName}{isTemplateAuthoring ? "校正" : "申込書確認"}</span>
@@ -596,7 +600,7 @@ export async function GuaranteeApplicationPreviewPage({
               {printBlockingIssues.length > 0 || printAttentionIssues.length > 0 ? (
                 <section className="rounded-xl border border-amber-200 bg-amber-50 p-4">
                   <p className="text-sm font-black text-amber-950">印字前に確認する項目</p>
-                  <p className="mt-1 text-xs font-semibold text-amber-800">長すぎる文字や分格の桁数超過は、左の申込書上で短縮・分割・幅調整してください。</p>
+                  <p className="mt-1 text-xs font-semibold text-amber-800">住所は枠高内で自動折行します。枠に収まらない住所や分格の桁数超過は、左の申込書上で修正してください。</p>
                   <div className="mt-3 grid gap-2">
                     {[...printBlockingIssues, ...printAttentionIssues].map((field) => {
                       const fit = printFitByFieldKey.get(field.fieldKey);
@@ -629,7 +633,7 @@ export async function GuaranteeApplicationPreviewPage({
                       !(field.sourceFieldKey && confirmedOverlayFieldKeys.has(field.sourceFieldKey));
                     const fitStatus = printFitByFieldKey.get(field.fieldKey)?.status ?? "fits";
                     const hasBlockingFitIssue = fitStatus === "overflows" || fitStatus === "segment_overflows";
-                    const hasFitWarning = hasBlockingFitIssue || fitStatus === "shrinks";
+                    const hasFitWarning = hasBlockingFitIssue || fitStatus === "shrinks" || fitStatus === "wrapped";
                     const status: GuaranteeReadinessStatus = value ? "available" : required ? "missing" : "missing";
                     return (
                       <a
@@ -652,8 +656,8 @@ export async function GuaranteeApplicationPreviewPage({
                             </span>
                           ) : null}
                         </span>
-                        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${hasBlockingFitIssue ? "bg-rose-100 text-rose-800" : manualPlacementRequired || candidateNeedsConfirmation || fitStatus === "shrinks" ? "bg-amber-100 text-amber-800" : fieldCompletionMode === "certified_auto" && value ? "bg-emerald-100 text-emerald-800" : required ? statusClass(status) : value ? "bg-slate-200 text-slate-700" : "bg-slate-200 text-slate-600"}`}>
-                          {hasBlockingFitIssue ? fitStatusLabel(fitStatus) : manualPlacementRequired ? "要配置" : candidateNeedsConfirmation ? "要保存" : fitStatus === "shrinks" ? "縮小" : fieldCompletionMode === "certified_auto" && value ? "自動" : required ? statusLabel(status) : value ? "候補" : "任意"}
+                        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${hasBlockingFitIssue ? "bg-rose-100 text-rose-800" : manualPlacementRequired || candidateNeedsConfirmation || fitStatus === "shrinks" || fitStatus === "wrapped" ? "bg-amber-100 text-amber-800" : fieldCompletionMode === "certified_auto" && value ? "bg-emerald-100 text-emerald-800" : required ? statusClass(status) : value ? "bg-slate-200 text-slate-700" : "bg-slate-200 text-slate-600"}`}>
+                          {hasBlockingFitIssue ? fitStatusLabel(fitStatus) : manualPlacementRequired ? "要配置" : candidateNeedsConfirmation ? "要保存" : fitStatus === "shrinks" ? "縮小" : fitStatus === "wrapped" ? "自動折行" : fieldCompletionMode === "certified_auto" && value ? "自動" : required ? statusLabel(status) : value ? "候補" : "任意"}
                         </span>
                       </a>
                     );

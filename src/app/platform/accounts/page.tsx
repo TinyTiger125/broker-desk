@@ -3,6 +3,7 @@ import {
   sendPlatformTenantMemberInvitationAction,
   updateTenantAccountLifecycleAction,
 } from "@/app/actions";
+import { InvitationSubmitButton } from "@/components/invitation-submit-button";
 import { listPlatformTenantAccounts, type TenantAccountSummary, type TenantInvitationStatus, type TenantStatus } from "@/lib/data";
 import { getLocale, type Locale } from "@/lib/locale";
 import { INVITATION_DELIVERY_STATE_LABELS } from "@/lib/member-management-copy";
@@ -108,6 +109,7 @@ function resolvePlatformAccountFlash(token: string | undefined, locale: Locale) 
   const entry = PLATFORM_ACCOUNT_FLASH_COPY[token as PlatformAccountFlashToken];
   return {
     message: entry[locale],
+    tone: entry.tone,
     className: PLATFORM_ACCOUNT_FLASH_TONE_CLASSES[entry.tone],
   };
 }
@@ -146,6 +148,7 @@ function copy(locale: Locale) {
     bound: locale === "zh" ? "已绑定" : locale === "ko" ? "연동됨" : "外部ID連携済み",
     unbound: locale === "zh" ? "未绑定" : locale === "ko" ? "미연동" : "外部ID未連携",
     sendInvite: locale === "zh" ? "发送邀请" : locale === "ko" ? "초대 보내기" : "招待送信",
+    sendingInvite: locale === "zh" ? "发送中…" : locale === "ko" ? "전송 중…" : "送信中…",
     update: locale === "zh" ? "保存生命周期" : locale === "ko" ? "라이프사이클 저장" : "ライフサイクル保存",
   };
 }
@@ -206,7 +209,7 @@ export default async function PlatformAccountsPage({ searchParams }: PlatformAcc
       </header>
 
       {flashMessage ? (
-        <div className={`rounded-lg border px-4 py-3 text-sm font-semibold ${flashMessage.className}`}>
+        <div role={flashMessage.tone === "error" ? "alert" : "status"} aria-live={flashMessage.tone === "error" ? "assertive" : "polite"} className={`rounded-lg border px-4 py-3 text-sm font-semibold ${flashMessage.className}`}>
           {flashMessage.message}
         </div>
       ) : null}
@@ -330,7 +333,7 @@ export default async function PlatformAccountsPage({ searchParams }: PlatformAcc
                         <form action={sendPlatformTenantMemberInvitationAction}>
                           <input type="hidden" name="tenantId" value={account.id} />
                           <input type="hidden" name="membershipId" value={owner.id} />
-                          <button className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">{ui.sendInvite}</button>
+                          <InvitationSubmitButton label={ui.sendInvite} pendingLabel={ui.sendingInvite} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60" />
                         </form>
                       )}
                     </div>

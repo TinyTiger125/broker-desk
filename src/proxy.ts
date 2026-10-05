@@ -1,6 +1,6 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
-import { isClerkAuthConfigured, isClerkAuthEnabled, isDemoAuthEnabled, isProductionRuntime, isSupabaseAuthConfigured, isSupabaseAuthEnabled } from "@/lib/auth-mode";
+import { isClerkAuthConfigured, isClerkAuthEnabled, isDemoAuthEnabled, isProductionRuntime, isSupabaseAuthConfigured, isSupabaseAuthEnabled, isTrustedHeaderAuthEnabled } from "@/lib/auth-mode";
 import { assertProductionAuthReady, assertProductionRateLimitReady } from "@/lib/production-readiness";
 import { checkRequestRateLimit } from "@/lib/request-rate-limit";
 import { updateSupabaseSession } from "@/lib/supabase/proxy";
@@ -69,6 +69,10 @@ export default function proxy(req: Parameters<typeof clerkProxy>[0], event: Para
       if (!isSupabaseAuthConfigured()) return new NextResponse("Supabase Auth is not configured.", { status: 503 });
       return updateSupabaseSession(req, { requireAuth: !isPublicRoute(req) });
     }
+    // Trusted-header identities are a non-production harness boundary. The
+    // route handlers still verify the signed shared secret and resolve the
+    // subject through the normal tenant/session and PostgreSQL RLS paths.
+    if (isTrustedHeaderAuthEnabled()) return NextResponse.next();
     if (isDemoAuthEnabled()) return NextResponse.next();
     if (isPublicRoute(req)) return NextResponse.next();
     if (req.nextUrl.pathname.startsWith("/api/")) {

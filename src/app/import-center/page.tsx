@@ -20,7 +20,7 @@ import { getImportMappingFormRows, getPropertyRowMappingPayload } from "@/lib/im
 import { getImportJobFeedbackMessage } from "@/lib/import-feedback";
 import { PreimportUploadDelete } from "@/components/preimport-upload-delete";
 import { mayDeletePreimportUpload } from "@/lib/preimport-upload-lifecycle";
-import { listBrokerageCases } from "@/lib/data";
+import { listBrokerageCases, listExtractionReviewItems } from "@/lib/data";
 import { formatDate } from "@/lib/format";
 import { t } from "@/lib/i18n";
 import type { InputFileExtractionResult } from "@/lib/input-file-extractor";
@@ -174,8 +174,8 @@ function getCopy(locale: Locale) {
       colTarget: "対象",
       colCreatedAt: "作成日",
       colStatus: "状態",
-      wizardTitle: "情報管理アシスト",
-      wizardSubtitle: "保存先の確認",
+      wizardTitle: "資料の保存先を確認",
+      wizardSubtitle: "読み取った内容を確認",
       stepSelect: "選択",
       stepMap: "保存確認",
       stepValidate: "確認",
@@ -184,19 +184,19 @@ function getCopy(locale: Locale) {
       schemaMappingDesc: "資料にある名前を、業務で使う保存先に合わせます。違うところだけ直してください。",
       saveDraft: "途中保存",
       continueValidation: "確認へ進む",
-      sourceColumn: "情報分類",
-      targetField: "分類に保存",
-      autoMapCol: "初期対応",
-      sampleValue: "入力済情報確認",
+      sourceColumn: "資料上の名前",
+      targetField: "保存する項目",
+      autoMapCol: "対応案",
+      sampleValue: "確認内容",
       unmapped: "この列は保存しない",
       recentImportHistory: "最近の読取履歴",
       viewArchive: "アーカイブ表示",
-      issueStatsTitle: "確認事項",
-      issueStatsDesc: "直近の読取で確認が必要な内容",
-      issueTrendTitle: "確認事項の推移（7日）",
-      issueTrendDesc: "日別の確認件数",
-      alerts: "アラート",
-      validationLog: "確認記録",
+      issueStatsTitle: "確認事項の集計",
+      issueStatsDesc: "必要な確認の件数と内訳",
+      issueTrendTitle: "確認事項の推移",
+      issueTrendDesc: "最近7日間の確認件数",
+      alerts: "確認項目",
+      validationLog: "確認事項の記録",
       noFurtherAlerts: "追加アラートはありません",
       validationUnmappedRequired: "必須項目の保存先が未設定",
       validationFormatMismatch: "データ形式の不一致",
@@ -226,7 +226,7 @@ function getCopy(locale: Locale) {
       fieldDefTitle: "保存先項目",
       fieldDefSubtitle: "保存先を確認",
       attachmentTitle: "添付登録",
-      attachmentSubtitle: "実ファイル保存対応",
+      attachmentSubtitle: "ファイルを保存",
       labelAttachmentTargetType: "対象種別",
       labelAttachmentTargetId: "関連記録",
       labelUpload: "ファイルアップロード（推奨）",
@@ -279,8 +279,8 @@ function getCopy(locale: Locale) {
       colTarget: "目标",
       colCreatedAt: "创建日期",
       colStatus: "状态",
-      wizardTitle: "资料整理助手",
-      wizardSubtitle: "确认保存位置",
+      wizardTitle: "确认资料保存位置",
+      wizardSubtitle: "确认读取内容",
       stepSelect: "选择",
       stepMap: "保存确认",
       stepValidate: "检查",
@@ -290,18 +290,18 @@ function getCopy(locale: Locale) {
       saveDraft: "暂存",
       continueValidation: "进入检查",
       sourceColumn: "资料里的名称",
-      targetField: "保存成",
-      autoMapCol: "初步对应",
-      sampleValue: "确认说明",
+      targetField: "保存成什么项目",
+      autoMapCol: "对应建议",
+      sampleValue: "确认内容",
       unmapped: "不保存这一列",
       recentImportHistory: "最近读取历史",
       viewArchive: "查看归档",
-      issueStatsTitle: "问题汇总",
-      issueStatsDesc: "按最近读取结果统计需要处理的内容",
-      issueTrendTitle: "问题变化（7天）",
-      issueTrendDesc: "按天统计需要确认的内容",
-      alerts: "告警",
-      validationLog: "检查记录",
+      issueStatsTitle: "确认事项汇总",
+      issueStatsDesc: "需要确认的数量和明细",
+      issueTrendTitle: "确认事项变化",
+      issueTrendDesc: "最近 7 天需要确认的数量",
+      alerts: "确认事项",
+      validationLog: "确认事项记录",
       noFurtherAlerts: "暂无更多告警",
       validationUnmappedRequired: "必填项还没有保存位置",
       validationFormatMismatch: "数据格式不一致",
@@ -330,7 +330,7 @@ function getCopy(locale: Locale) {
       fieldDefTitle: "可保存内容",
       fieldDefSubtitle: "确认要保存到案件的项目",
       attachmentTitle: "附件登记",
-      attachmentSubtitle: "支持实际文件保存",
+      attachmentSubtitle: "保存实际文件",
       labelAttachmentTargetType: "目标类型",
       labelAttachmentTargetId: "关联记录",
       labelUpload: "上传文件（推荐）",
@@ -383,8 +383,8 @@ function getCopy(locale: Locale) {
       colTarget: "대상",
       colCreatedAt: "생성일",
       colStatus: "상태",
-      wizardTitle: "자료 정리 도우미",
-      wizardSubtitle: "저장 항목 확인",
+      wizardTitle: "자료 저장 위치 확인",
+      wizardSubtitle: "읽은 내용 확인",
       stepSelect: "선택",
       stepMap: "저장 확인",
       stepValidate: "확인",
@@ -394,18 +394,18 @@ function getCopy(locale: Locale) {
       saveDraft: "임시 저장",
       continueValidation: "확인으로 이동",
       sourceColumn: "자료에 적힌 이름",
-      targetField: "저장 위치",
-      autoMapCol: "초기 대응",
+      targetField: "저장할 항목",
+      autoMapCol: "대응 제안",
       sampleValue: "확인 내용",
       unmapped: "이 열은 저장하지 않음",
       recentImportHistory: "최근 읽기 이력",
       viewArchive: "보관 이력 보기",
-      issueStatsTitle: "확인 사항",
-      issueStatsDesc: "최근 읽기 결과에서 확인이 필요한 내용",
-      issueTrendTitle: "확인 사항 추이 (7일)",
-      issueTrendDesc: "일자별 확인 건수",
-      alerts: "알림",
-      validationLog: "확인 기록",
+      issueStatsTitle: "확인 사항 집계",
+      issueStatsDesc: "확인이 필요한 수와 세부 내용",
+      issueTrendTitle: "확인 사항 추이",
+      issueTrendDesc: "최근 7일간 확인이 필요한 수",
+      alerts: "확인 사항",
+      validationLog: "확인 사항 기록",
       noFurtherAlerts: "추가 알림이 없습니다",
       validationUnmappedRequired: "필수 항목의 저장 위치 미설정",
       validationFormatMismatch: "데이터 형식 불일치",
@@ -434,7 +434,7 @@ function getCopy(locale: Locale) {
       fieldDefTitle: "저장 항목",
       fieldDefSubtitle: "안건에 저장할 항목 확인",
       attachmentTitle: "첨부 등록",
-      attachmentSubtitle: "실파일 저장 지원",
+      attachmentSubtitle: "파일 저장",
       labelAttachmentTargetType: "대상 유형",
       labelAttachmentTargetId: "연결 기록",
       labelUpload: "파일 업로드(권장)",
@@ -479,7 +479,8 @@ type ExcelImportPayload = {
 
 type ExcelImportResult = {
   successCount: number;
-  skipped: { row: number; reason: string }[];
+  skipped: { row: number; reason: string; originalRow?: Record<string, unknown> }[];
+  suspectedDuplicates?: { row: number; reason: string; originalRow?: Record<string, unknown> }[];
 };
 
 type ImportCenterPageProps = {
@@ -662,6 +663,10 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
       locale === "zh" ? "存在空名称行" : locale === "ko" ? "매물명 누락 행 있음" : "物件名未入力行あり",
     import_row_invalid_listing_price:
       locale === "zh" ? "价格格式异常" : locale === "ko" ? "가격 형식 오류" : "価格フィールド異常",
+    import_row_exact_duplicate:
+      locale === "zh" ? "文件内完全重复行已跳过" : locale === "ko" ? "파일 내 완전 중복 행 건너뜀" : "同一ファイル内の完全重複行をスキップ",
+    import_row_suspected_duplicate:
+      locale === "zh" ? "疑似重复行待确认" : locale === "ko" ? "의심 중복 행 확인 필요" : "疑似重複行を要確認",
     import_row_unknown_error:
       locale === "zh" ? "保存处理异常" : locale === "ko" ? "저장 처리 오류" : "保存処理エラー",
     import_partial_completed:
@@ -942,11 +947,15 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
       if (payload) {
         const successCount = Number(payload.metrics?.successCount ?? 0);
         const skippedRows = Array.isArray(payload.details?.skippedRows)
-          ? (payload.details?.skippedRows as Array<{ row: number; reason: string }>)
+          ? (payload.details?.skippedRows as Array<{ row: number; reason: string; originalRow?: Record<string, unknown> }>)
+          : [];
+        const suspectedDuplicateRows = Array.isArray(payload.details?.suspectedDuplicateRows)
+          ? (payload.details?.suspectedDuplicateRows as Array<{ row: number; reason: string; originalRow?: Record<string, unknown> }>)
           : [];
         xlsxResult = {
           successCount,
           skipped: skippedRows,
+          suspectedDuplicates: suspectedDuplicateRows,
         };
       } else {
         xlsxResult = JSON.parse(xlsxJob.validationMessage) as ExcelImportResult;
@@ -982,8 +991,13 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
     cases.flatMap((caseItem) => caseItem.sourceImportJobIds.map((importJobId) => [importJobId, caseItem] as const)),
   );
   const requestedJobCase = requestedJob ? caseByImportJobId.get(requestedJob.id) : undefined;
+  const reviewCase = requestedJobCase ?? targetCase;
+  const persistedReviewItems = reviewCase && xlsxJob
+    ? await listExtractionReviewItems({ userId: user.id, tenantId, caseId: reviewCase.id })
+    : [];
   const recentJobHref = (job: HubImportJobItem) => {
     if (job.status === "queued" && isBatchMappingJob(job)) return `/import-center?job=${encodeURIComponent(job.id)}&advanced=1#job-mapping`;
+    if (getImportPayloadKind(job) === "property_row_import" && job.status !== "completed") return `/import-center?job=${encodeURIComponent(job.id)}&advanced=1#job-mapping`;
     if (isModernExcelImportJob(job)) return `/import-center?xlsxJob=${encodeURIComponent(job.id)}#source-upload`;
     if (job.sourceType === "excel" && (job.status === "queued" || job.status === "processing" || job.status === "failed")) {
       return `/import-center?xlsxJob=${encodeURIComponent(job.id)}#source-upload`;
@@ -1350,11 +1364,13 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
               </span>
             </div>
             <InputExtractionReview
+              key={`${xlsxJob.id}:${reviewCase?.id ?? "new"}`}
               extraction={inputExtractionPreview}
               locale={locale}
               importJobId={xlsxJob.id}
               mergeCandidates={mergeCandidates}
               targetCaseId={targetCaseId || undefined}
+              persistedReviewItems={persistedReviewItems}
             />
           </div>
           </div>
@@ -1422,11 +1438,13 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
 
             {inputExtractionPreview.fields.length > 0 ? (
               <InputExtractionReview
+                key={`${xlsxJob.id}:${reviewCase?.id ?? "new"}`}
                 extraction={inputExtractionPreview}
                 locale={locale}
                 importJobId={xlsxJob.id}
                 mergeCandidates={mergeCandidates}
                 targetCaseId={targetCaseId || undefined}
+                persistedReviewItems={persistedReviewItems}
               />
             ) : (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
@@ -1454,7 +1472,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
             <p className="mt-1 text-xs leading-5 text-slate-700">
               {locale === "zh" ? "打开详细恢复路径，继续确认原有字段对应。" : locale === "ko" ? "상세 복구 경로를 열어 기존 필드 매핑을 계속 확인합니다." : "詳細な復旧経路を開き、既存の列対応を確認します。"}
             </p>
-            <Link href={`/import-center?xlsxJob=${encodeURIComponent(xlsxJob.id)}&advanced=1#job-mapping`} className="mt-3 inline-flex rounded-lg bg-blue-700 px-3 py-2 text-xs font-bold text-white hover:bg-blue-800">
+            <Link href={`/import-center?job=${encodeURIComponent(xlsxJob.id)}&advanced=1#job-mapping`} className="mt-3 inline-flex rounded-lg bg-blue-700 px-3 py-2 text-xs font-bold text-white hover:bg-blue-800">
               {locale === "zh" ? "进入字段映射" : locale === "ko" ? "필드 매핑 열기" : "列対応を開く"}
             </Link>
           </div>
@@ -1569,7 +1587,28 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
               <ul className="space-y-1 rounded-lg border border-amber-200 bg-amber-50 p-3">
                 {xlsxResult.skipped.map((s, index) => (
                   <li key={`skip-${s.row}-${index}`} className="text-xs text-amber-800">
-                    {locale === "zh" ? `第 ${s.row} 行` : locale === "ko" ? `${s.row}행` : `${s.row} 行目`}: {s.reason}
+                    <span>{locale === "zh" ? `第 ${s.row} 行` : locale === "ko" ? `${s.row}행` : `${s.row} 行目`}: {s.reason}</span>
+                    {s.originalRow ? (
+                      <details className="mt-1 text-[11px]">
+                        <summary className="cursor-pointer underline">{locale === "zh" ? "查看原始行" : locale === "ko" ? "원본 행 보기" : "元行を表示"}</summary>
+                        <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap rounded bg-white/70 p-2">{JSON.stringify(s.originalRow, null, 2)}</pre>
+                      </details>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {xlsxResult && xlsxResult.suspectedDuplicates && xlsxResult.suspectedDuplicates.length > 0 && (
+              <ul className="space-y-1 rounded-lg border border-orange-200 bg-orange-50 p-3">
+                {xlsxResult.suspectedDuplicates.map((s, index) => (
+                  <li key={`suspected-duplicate-${s.row}-${index}`} className="text-xs text-orange-900">
+                    <span>{locale === "zh" ? `第 ${s.row} 行疑似重复` : locale === "ko" ? `${s.row}행 의심 중복` : `${s.row} 行目の疑似重複`}: {s.reason}</span>
+                    {s.originalRow ? (
+                      <details className="mt-1 text-[11px]">
+                        <summary className="cursor-pointer underline">{locale === "zh" ? "查看原始行" : locale === "ko" ? "원본 행 보기" : "元行を表示"}</summary>
+                        <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap rounded bg-white/70 p-2">{JSON.stringify(s.originalRow, null, 2)}</pre>
+                      </details>
+                    ) : null}
                   </li>
                 ))}
               </ul>
@@ -1588,10 +1627,10 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                       ? "정보 정리를 열고 안건에 남길 데이터를 확인하세요."
                       : "情報整理を開き、案件に残すデータを確認します。"
                   : locale === "zh"
-                    ? "打开高级历史查看这条任务的原始状态，不把 completed 单独当作已写入。"
+                    ? "打开处理记录，确认保存结果和原始资料状态。"
                     : locale === "ko"
-                      ? "고급 기록에서 원래 작업 상태를 확인하세요. completed만으로 저장 완료로 간주하지 않습니다."
-                      : "高度な履歴で元のタスク状態を確認します。completed だけで保存完了とは扱いません。"}
+                      ? "처리 기록을 열어 저장 결과와 원본 자료 상태를 확인하세요."
+                      : "処理記録を開いて、保存結果と元資料の状態を確認します。"}
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
@@ -1848,51 +1887,58 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
             </dl>
           </article>
 
-          <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <h3 className="text-xs font-black uppercase tracking-widest text-[#1f477b]">{copy.issueStatsTitle}</h3>
-            <p className="mt-1 text-[11px] text-slate-500">{copy.issueStatsDesc}</p>
-            <div className="mt-3 space-y-2">
-              {issueCodeStats.length === 0 ? <p className="text-xs text-slate-500">{copy.noFurtherAlerts}</p> : null}
-              {issueCodeStats.map((item) => (
-                <div key={`issue-stat-${item.code}`} className="rounded-lg border border-slate-200 bg-slate-50 p-2.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="truncate text-xs font-semibold text-slate-800">{item.label}</p>
-                    <span className="rounded bg-white px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-slate-700">
-                      {item.total}
-                    </span>
-                  </div>
-                  <div className="mt-1.5 flex gap-1.5 text-[10px]">
-                    <span className="rounded bg-red-50 px-1.5 py-0.5 font-semibold text-red-600">C {item.critical}</span>
-                    <span className="rounded bg-amber-50 px-1.5 py-0.5 font-semibold text-amber-700">W {item.warning}</span>
-                    <span className="rounded bg-blue-50 px-1.5 py-0.5 font-semibold text-blue-700">I {item.info}</span>
-                  </div>
+          <details className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <summary className="cursor-pointer text-xs font-black uppercase tracking-widest text-[#1f477b]">
+              {locale === "zh" ? "确认事项汇总" : locale === "ko" ? "확인 사항 요약" : "確認事項の集計"}
+            </summary>
+            <div className="mt-4 space-y-5">
+              <article>
+                <h3 className="text-xs font-black uppercase tracking-widest text-[#1f477b]">{copy.issueStatsTitle}</h3>
+                <p className="mt-1 text-[11px] text-slate-500">{copy.issueStatsDesc}</p>
+                <div className="mt-3 space-y-2">
+                  {issueCodeStats.length === 0 ? <p className="text-xs text-slate-500">{copy.noFurtherAlerts}</p> : null}
+                  {issueCodeStats.map((item) => (
+                    <div key={`issue-stat-${item.code}`} className="rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="truncate text-xs font-semibold text-slate-800">{item.label}</p>
+                        <span className="rounded bg-white px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-slate-700">
+                          {item.total}
+                        </span>
+                      </div>
+                      <div className="mt-1.5 flex gap-1.5 text-[10px]">
+                        <span className="rounded bg-red-50 px-1.5 py-0.5 font-semibold text-red-600">C {item.critical}</span>
+                        <span className="rounded bg-amber-50 px-1.5 py-0.5 font-semibold text-amber-700">W {item.warning}</span>
+                        <span className="rounded bg-blue-50 px-1.5 py-0.5 font-semibold text-blue-700">I {item.info}</span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </article>
+              </article>
 
-          <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <h3 className="text-xs font-black uppercase tracking-widest text-[#1f477b]">{copy.issueTrendTitle}</h3>
-            <p className="mt-1 text-[11px] text-slate-500">{copy.issueTrendDesc}</p>
-            <div className="mt-3 space-y-2">
-              {issueTrendDays.map((day) => (
-                <div key={`issue-trend-${day.key}`} className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2">
-                  <div className="mb-1 flex items-center justify-between gap-2">
-                    <p className="text-[11px] font-semibold text-slate-700">{day.label}</p>
-                    <p className="text-[11px] font-bold tabular-nums text-slate-800">{day.total}</p>
-                  </div>
-                  <div className="h-1.5 overflow-hidden rounded-full bg-slate-200">
-                    <div className="h-full bg-blue-500" style={{ width: `${Math.round((day.total / maxIssueTrendTotal) * 100)}%` }} />
-                  </div>
-                  <div className="mt-1.5 flex gap-1.5 text-[10px]">
-                    <span className="rounded bg-red-50 px-1.5 py-0.5 font-semibold text-red-600">C {day.critical}</span>
-                    <span className="rounded bg-amber-50 px-1.5 py-0.5 font-semibold text-amber-700">W {day.warning}</span>
-                    <span className="rounded bg-blue-50 px-1.5 py-0.5 font-semibold text-blue-700">I {day.info}</span>
-                  </div>
+              <article>
+                <h3 className="text-xs font-black uppercase tracking-widest text-[#1f477b]">{copy.issueTrendTitle}</h3>
+                <p className="mt-1 text-[11px] text-slate-500">{copy.issueTrendDesc}</p>
+                <div className="mt-3 space-y-2">
+                  {issueTrendDays.map((day) => (
+                    <div key={`issue-trend-${day.key}`} className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2">
+                      <div className="mb-1 flex items-center justify-between gap-2">
+                        <p className="text-[11px] font-semibold text-slate-700">{day.label}</p>
+                        <p className="text-[11px] font-bold tabular-nums text-slate-800">{day.total}</p>
+                      </div>
+                      <div className="h-1.5 overflow-hidden rounded-full bg-slate-200">
+                        <div className="h-full bg-blue-500" style={{ width: `${Math.round((day.total / maxIssueTrendTotal) * 100)}%` }} />
+                      </div>
+                      <div className="mt-1.5 flex gap-1.5 text-[10px]">
+                        <span className="rounded bg-red-50 px-1.5 py-0.5 font-semibold text-red-600">C {day.critical}</span>
+                        <span className="rounded bg-amber-50 px-1.5 py-0.5 font-semibold text-amber-700">W {day.warning}</span>
+                        <span className="rounded bg-blue-50 px-1.5 py-0.5 font-semibold text-blue-700">I {day.info}</span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              </article>
             </div>
-          </article>
+          </details>
 
           <article className="flex flex-col overflow-hidden rounded-xl bg-[#e6eeff]">
             <div className="flex items-center justify-between border-b border-slate-200/50 px-5 py-4">

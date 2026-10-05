@@ -96,6 +96,7 @@ import type {
   GuaranteeCompanyMaskVersion,
   GuaranteeMaskMatch,
   GuaranteePreviewConfirmation,
+  GuaranteePreviewConfirmationClaim,
   GuaranteePreviewOutputInput,
   MemberVisibilityDefault,
   SetRecordLifecycleWithAuditInput,
@@ -107,6 +108,7 @@ import type {
   SaveCaseWorkbenchWithObjectReviewResult,
   RefreshObjectImportReviewInput,
   RefreshObjectImportReviewResult,
+  PreparePropertyRowImportResult,
 } from "@/lib/data.memory";
 import { normalizeInvitationDeliveryState } from "@/lib/invitation-delivery-state";
 import type { VisibleBrokerageCase, VisibleProperty } from "@/lib/data.memory";
@@ -308,7 +310,13 @@ async function queryWithinRequestScope(rawPool: Pool, args: unknown[]) {
 
 function getPool(): Pool {
   const rawPool = getRawPool();
-  if (!isProductionRuntime()) return rawPool;
+  // The local trusted-header acceptance harness opts into the same
+  // transaction-local subject binding used in production. This branch is
+  // explicitly non-production and inert unless the harness sets the flag;
+  // it prevents a database-wide synthetic subject from masking cross-actor
+  // authorization results during local UI verification.
+  const bindLocalTestRequestScope = !isProductionRuntime() && process.env.BROKER_DESK_TEST_REQUEST_SCOPE === "1";
+  if (!isProductionRuntime() && !bindLocalTestRequestScope) return rawPool;
 
   // Pool.query does not keep a caller-selected connection. Use a proxy so the
   // session variable and business query always run on the same client, then
@@ -2132,6 +2140,7 @@ function isValidImportStatusTransition(from: ImportJobStatus, to: ImportJobStatu
   if (allowRetry && from === "failed" && to === "queued") return true;
   if (from === "queued" && to === "failed") return true;
   if (from === "queued" && to === "processing") return true;
+  if (from === "queued" && to === "mapped") return true;
   if (from === "processing" && (to === "mapped" || to === "failed" || to === "completed")) return true;
   if (from === "mapped" && (to === "queued" || to === "completed" || to === "failed")) return true;
   return false;
@@ -3362,6 +3371,70 @@ export async function claimPropertyRowImport(input: { tenantId: string; userId: 
   return result.rows[0]?.claimed === true;
 }
 
+export async function preparePropertyRowImport(input: {
+  tenantId: string;
+  userId: string;
+  jobId: string;
+  mappingJson: Record<string, string>;
+  validationMessage?: string;
+}): Promise<PreparePropertyRowImportResult> {
+  await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
+
+  return withTransaction(async (client) => {
+    // The row lock covers both the stale mapping check and the existing
+    // SECURITY DEFINER claim. A request that arrived with an old queued view
+    // therefore waits, then observes processing/completed and cannot rewrite
+    // the mapping or validation message.
+    const currentRes = await client.query(
+      "SELECT * FROM import_jobs WHERE id = $1 AND user_id = $2 AND tenant_id = $3 FOR UPDATE",
+      [input.jobId, input.userId, scopeTenantId],
+    );
+    if (!currentRes.rows[0]) return { job: null, claimed: false };
+    const currentJob = mapImportJob(currentRes.rows[0]);
+    if (currentJob.status === "completed" || currentJob.status === "processing" || currentJob.finalImportStartedAt) {
+      return { job: currentJob, claimed: false };
+    }
+    if (currentJob.status !== "queued" && currentJob.status !== "mapped") {
+      return { job: currentJob, claimed: false };
+    }
+
+    const mappedRes = await client.query(
+      `UPDATE import_jobs
+       SET mapping_json = $4::jsonb,
+           validation_message = $5,
+           status = 'mapped',
+           updated_at = NOW()
+       WHERE id = $1 AND user_id = $2 AND tenant_id = $3
+         AND status IN ('queued', 'mapped')
+         AND final_import_started_at IS NULL
+       RETURNING *`,
+      [input.jobId, input.userId, scopeTenantId, JSON.stringify(input.mappingJson), input.validationMessage?.trim() || null],
+    );
+    if (!mappedRes.rows[0]) return { job: currentJob, claimed: false };
+
+    const claimRes = await client.query(
+      "SELECT brokerdesk_private.claim_property_row_import($1, $2) AS claimed",
+      [scopeTenantId, input.jobId],
+    );
+    if (claimRes.rows[0]?.claimed !== true) {
+      // Do not commit the mapping if the authenticated database subject could
+      // not claim the same tenant/user-bound job. Throwing rolls back the
+      // transaction instead of leaving a queued-looking audit trail with no
+      // durable final-import marker.
+      throw new Error("import_execution_claim_failed");
+    }
+    const finalRes = await client.query(
+      "SELECT * FROM import_jobs WHERE id = $1 AND user_id = $2 AND tenant_id = $3 LIMIT 1",
+      [input.jobId, input.userId, scopeTenantId],
+    );
+    return {
+      job: finalRes.rows[0] ? mapImportJob(finalRes.rows[0]) : mapImportJob(mappedRes.rows[0]),
+      claimed: claimRes.rows[0]?.claimed === true,
+    };
+  });
+}
+
 export async function deletePreimportPropertyUpload(input: { tenantId: string; userId: string; jobId: string }): Promise<boolean> {
   await ensureSchema();
   // The function derives actor identity from the authenticated database scope, never from form input.
@@ -3382,6 +3455,8 @@ export async function updateImportJobMapping(input: {
   status?: ImportJobStatus;
   allowRetry?: boolean;
   beforeFinalImport?: boolean;
+  /** Only the final execution write may update a claimed job's result. */
+  allowFinalImportCompletion?: boolean;
 }): Promise<ImportJob | null> {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(input.tenantId);
@@ -3391,7 +3466,10 @@ export async function updateImportJobMapping(input: {
     [input.jobId, input.userId, scopeTenantId]
   );
   if (!currentRes.rows[0]) return null;
-  if (input.beforeFinalImport && currentRes.rows[0].final_import_started_at) return null;
+  const allowFinalImportCompletion = Boolean(input.allowFinalImportCompletion);
+  if (currentRes.rows[0].final_import_started_at && !allowFinalImportCompletion) return null;
+  if (allowFinalImportCompletion && !currentRes.rows[0].final_import_started_at) return null;
+  if (allowFinalImportCompletion && input.status !== "completed" && input.status !== "failed") return null;
   const currentStatus = String(currentRes.rows[0].status) as ImportJobStatus;
   if (input.status && !isValidImportStatusTransition(currentStatus, input.status, Boolean(input.allowRetry))) {
     throw new Error(`資料読取記録の状態変更が不正です: ${currentStatus} -> ${input.status}`);
@@ -3400,13 +3478,13 @@ export async function updateImportJobMapping(input: {
   const result = await getPool().query(
     `UPDATE import_jobs
      SET
-      mapping_json = $3::jsonb,
+      mapping_json = CASE WHEN final_import_started_at IS NULL THEN $3::jsonb ELSE mapping_json END,
       validation_message = $4,
-      notes = COALESCE($5, notes),
+      notes = CASE WHEN final_import_started_at IS NULL THEN COALESCE($5, notes) ELSE notes END,
       status = COALESCE($6, status),
       updated_at = NOW()
      WHERE id = $1 AND user_id = $2 AND tenant_id = $7
-       AND (NOT $8::boolean OR final_import_started_at IS NULL)
+       AND (final_import_started_at IS NULL OR $8::boolean)
      RETURNING *`,
     [
       input.jobId,
@@ -3416,7 +3494,7 @@ export async function updateImportJobMapping(input: {
       input.notes?.trim() || null,
       input.status ?? null,
       scopeTenantId,
-      Boolean(input.beforeFinalImport),
+      allowFinalImportCompletion,
     ]
   );
   return result.rows[0] ? mapImportJob(result.rows[0]) : null;
@@ -4999,7 +5077,8 @@ export async function rollbackGuaranteeCompanyMaskVersion(input: { tenantId: str
 export async function createGuaranteeMaskMatch(input: { tenantId: string; blankFormVersionId: string; maskVersionId: string; status: GuaranteeMaskMatch["status"]; userId: string; reason?: string }): Promise<GuaranteeMaskMatch> { await ensureSchema(); const result=await getPool().query(`INSERT INTO guarantee_mask_matches (id,tenant_id,blank_form_version_id,mask_version_id,status,evaluated_at,evaluated_by_user_id,reason) VALUES ($1,$2,$3,$4,$5,NOW(),$6,$7) ON CONFLICT (tenant_id,blank_form_version_id,mask_version_id) DO UPDATE SET status=EXCLUDED.status,evaluated_at=NOW(),evaluated_by_user_id=EXCLUDED.evaluated_by_user_id,reason=EXCLUDED.reason RETURNING *`,[genId("gmatch"),resolveTenantId(input.tenantId),input.blankFormVersionId,input.maskVersionId,input.status,input.userId,input.reason ?? null]); return mapGuaranteeMaskMatch(result.rows[0]); }
 export async function getGuaranteeMaskMatch(input: { tenantId: string; blankFormVersionId: string; maskVersionId: string }): Promise<GuaranteeMaskMatch | undefined> { await ensureSchema(); const result=await getPool().query(`SELECT * FROM guarantee_mask_matches WHERE tenant_id=$1 AND blank_form_version_id=$2 AND mask_version_id=$3`,[resolveTenantId(input.tenantId),input.blankFormVersionId,input.maskVersionId]); return result.rows[0] ? mapGuaranteeMaskMatch(result.rows[0]) : undefined; }
 export async function createGuaranteePreviewConfirmation(input: Omit<GuaranteePreviewConfirmation, "id" | "status" | "createdAt">): Promise<GuaranteePreviewConfirmation> { await ensureSchema(); const result=await getPool().query(`INSERT INTO guarantee_preview_confirmations (id,tenant_id,actor_user_id,case_id,case_input_snapshot_hash,blank_form_version_id,blank_form_sha256,company_mask_version_id,field_catalog_version,supplement_snapshot,supplement_hash,expires_at,status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'issued') RETURNING *`,[genId("gconfirm"),input.tenantId,input.actorUserId,input.caseId,input.caseInputSnapshotHash,input.blankFormVersionId,input.blankFormSha256,input.companyMaskVersionId,input.fieldCatalogVersion,JSON.stringify(input.supplementSnapshot),input.supplementHash,input.expiresAt]); return mapGuaranteePreviewConfirmation(result.rows[0]); }
-export async function claimGuaranteePreviewConfirmation(input: { tenantId: string; id: string; actorUserId: string; leaseMs?: number }): Promise<GuaranteePreviewConfirmation | undefined> { await ensureSchema(); const tenantId=resolveTenantId(input.tenantId); const processingToken=genId("gclaim"); const result=await getPool().query(`UPDATE guarantee_preview_confirmations SET status='processing',processing_expires_at=NOW()+($4::text || ' milliseconds')::interval,processing_token=$5 WHERE id=$1 AND tenant_id=$2 AND actor_user_id=$3 AND expires_at>NOW() AND ((status='issued') OR (status='processing' AND processing_expires_at<NOW())) RETURNING *`,[input.id,tenantId,input.actorUserId,String(input.leaseMs ?? 60000),processingToken]); if(result.rows[0]) return mapGuaranteePreviewConfirmation(result.rows[0]); const existing=await getPool().query(`SELECT * FROM guarantee_preview_confirmations WHERE id=$1 AND tenant_id=$2 AND actor_user_id=$3`,[input.id,tenantId,input.actorUserId]); if(!existing.rows[0]) return undefined; if(String(existing.rows[0].status) === "consumed") return mapGuaranteePreviewConfirmation(existing.rows[0]); return undefined; }
+export async function getGuaranteePreviewConfirmation(input: { tenantId: string; id: string; actorUserId: string }): Promise<GuaranteePreviewConfirmation | undefined> { await ensureSchema(); const result=await getPool().query(`SELECT * FROM guarantee_preview_confirmations WHERE id=$1 AND tenant_id=$2 AND actor_user_id=$3`,[input.id,resolveTenantId(input.tenantId),input.actorUserId]); return result.rows[0] ? mapGuaranteePreviewConfirmation(result.rows[0]) : undefined; }
+export async function claimGuaranteePreviewConfirmation(input: { tenantId: string; id: string; actorUserId: string; leaseMs?: number }): Promise<GuaranteePreviewConfirmationClaim> { await ensureSchema(); const tenantId=resolveTenantId(input.tenantId); const processingToken=genId("gclaim"); const result=await getPool().query(`UPDATE guarantee_preview_confirmations SET status='processing',processing_expires_at=NOW()+($4::text || ' milliseconds')::interval,processing_token=$5 WHERE id=$1 AND tenant_id=$2 AND actor_user_id=$3 AND expires_at>NOW() AND ((status='issued') OR (status='processing' AND processing_expires_at<NOW())) RETURNING *`,[input.id,tenantId,input.actorUserId,String(input.leaseMs ?? 60000),processingToken]); if(result.rows[0]) return { kind: "claimed", confirmation: mapGuaranteePreviewConfirmation(result.rows[0]) }; const existing=await getPool().query(`SELECT * FROM guarantee_preview_confirmations WHERE id=$1 AND tenant_id=$2 AND actor_user_id=$3`,[input.id,tenantId,input.actorUserId]); if(!existing.rows[0]) return { kind: "not_found" }; const confirmation=mapGuaranteePreviewConfirmation(existing.rows[0]); if(confirmation.status === "consumed") return { kind: "consumed", confirmation }; if(confirmation.expiresAt <= new Date() || confirmation.status === "expired") return { kind: "expired", confirmation: { ...confirmation, status: "expired" } }; return { kind: "processing", confirmation: { ...confirmation, processingToken: undefined } }; }
 export async function consumeGuaranteePreviewConfirmation(input: { tenantId: string; id: string; actorUserId: string; generatedOutputId: string; processingToken: string }): Promise<GuaranteePreviewConfirmation | undefined> { await ensureSchema(); const result=await getPool().query(`UPDATE guarantee_preview_confirmations SET status='consumed',generated_output_id=$5,consumed_at=NOW(),processing_expires_at=NULL,processing_token=NULL WHERE id=$1 AND tenant_id=$2 AND actor_user_id=$3 AND status='processing' AND processing_token=$4 RETURNING *`,[input.id,resolveTenantId(input.tenantId),input.actorUserId,input.processingToken,input.generatedOutputId]); return result.rows[0] ? mapGuaranteePreviewConfirmation(result.rows[0]) : undefined; }
 export async function releaseGuaranteePreviewConfirmation(input: { tenantId: string; id: string; actorUserId: string; processingToken: string }): Promise<GuaranteePreviewConfirmation | undefined> { await ensureSchema(); const result=await getPool().query(`UPDATE guarantee_preview_confirmations SET status='issued',processing_expires_at=NULL,processing_token=NULL WHERE id=$1 AND tenant_id=$2 AND actor_user_id=$3 AND status='processing' AND processing_token=$4 AND generated_output_id IS NULL RETURNING *`,[input.id,resolveTenantId(input.tenantId),input.actorUserId,input.processingToken]); return result.rows[0] ? mapGuaranteePreviewConfirmation(result.rows[0]) : undefined; }
 

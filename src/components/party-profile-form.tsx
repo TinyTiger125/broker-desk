@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useActionState, useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent, type MouseEvent } from "react";
 import type { PartyProfileFormActionState, PartyProfileFormValues } from "@/app/actions";
+import { Button } from "@/components/ui-foundation";
 import type { Locale } from "@/lib/locale";
 import { getPartyProfileRoleOptions, getPartyProfileTypeOptions } from "@/lib/party-profile";
 
@@ -168,7 +169,7 @@ export function PartyProfileForm({ action, defaults, locale, returnTo, relationT
           <Link href={returnTo} className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">{text.cancel}</Link>
           <Link href={relationTreeHref} className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">{text.relationTree}</Link>
         </div>
-        <button type="submit" disabled={pending} className="rounded-lg bg-slate-950 px-5 py-2.5 text-sm font-bold text-white hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">{pending ? text.saving : text.save}</button>
+      <Button type="submit" loading={pending} className="rounded-lg bg-slate-950 px-5 py-2.5 text-sm font-bold text-white hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60">{pending ? text.saving : text.save}</Button>
       </div>
       <div className="sr-only" aria-live="polite">{pending ? text.saving : ""}</div>
     </form>

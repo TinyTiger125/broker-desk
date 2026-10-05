@@ -375,6 +375,11 @@ export type ImportJob = {
   updatedAt: Date;
 };
 
+export type PreparePropertyRowImportResult = {
+  job: ImportJob | null;
+  claimed: boolean;
+};
+
 export type BrokerageCaseStatus = "draft" | "reviewed";
 export type BrokerageCaseType = "unit_sale";
 export type ExtractionReviewStatus = "suggested" | "accepted" | "edited" | "unknown" | "rejected";
@@ -642,6 +647,12 @@ export type GuaranteePreviewConfirmation = {
   status: GuaranteePreviewConfirmationStatus; processingExpiresAt?: Date; processingToken?: string; generatedOutputId?: string;
   createdAt: Date; consumedAt?: Date;
 };
+export type GuaranteePreviewConfirmationClaim =
+  | { kind: "claimed"; confirmation: GuaranteePreviewConfirmation }
+  | { kind: "consumed"; confirmation: GuaranteePreviewConfirmation }
+  | { kind: "processing"; confirmation: GuaranteePreviewConfirmation }
+  | { kind: "expired"; confirmation: GuaranteePreviewConfirmation }
+  | { kind: "not_found" };
 
 export type GuaranteePreviewOutputInput = {
   tenantId?: string; userId: string; actorId?: string; sourceQuoteId?: string; quoteId?: string; propertyId?: string; partyId?: string;
@@ -1262,6 +1273,20 @@ const _freshDb: DB = withDefaultTenantScope({
       createdAt: new Date(now - 20 * 24 * 60 * 60 * 1000),
     },
     {
+      id: "prop_fixture_friends_guarantee_pdf",
+      name: "港区グランドタワー 8F（PDF検証用）",
+      area: "港区",
+      address: "東京都港区麻布台2-3-5",
+      listingPrice: 135000000,
+      sizeSqm: 82.4,
+      managementFee: 44000,
+      repairFee: 18000,
+      notes: "合成PDF検証専用のローカル物件",
+      createdByUserId: "user_demo",
+      currentOwnerUserId: "user_demo",
+      createdAt: new Date(now - 20 * 24 * 60 * 60 * 1000),
+    },
+    {
       id: "prop_shibuya_court",
       name: "渋谷コートレジデンス 12F",
       area: "渋谷区",
@@ -1562,7 +1587,7 @@ const _freshDb: DB = withDefaultTenantScope({
       userId: "user_demo",
       caseType: "unit_sale",
       caseTitle: "港区グランドタワー 8F 保証会社申込書",
-      primaryPropertyId: "prop_minato_tower",
+      primaryPropertyId: "prop_fixture_friends_guarantee_pdf",
       status: "reviewed",
       confirmedDataJson: { ...COMPLETE_CASE_FIELD_DEFAULTS },
       sourceImportJobIds: [],
@@ -2254,6 +2279,7 @@ function isValidImportStatusTransition(from: ImportJobStatus, to: ImportJobStatu
   if (allowRetry && from === "failed" && to === "queued") return true;
   if (from === "queued" && to === "failed") return true;
   if (from === "queued" && to === "processing") return true;
+  if (from === "queued" && to === "mapped") return true;
   if (from === "processing" && (to === "mapped" || to === "failed" || to === "completed")) return true;
   if (from === "mapped" && (to === "queued" || to === "completed" || to === "failed")) return true;
   return false;
@@ -3708,6 +3734,34 @@ export async function claimPropertyRowImport(input: { tenantId: string; userId: 
   return true;
 }
 
+export async function preparePropertyRowImport(input: {
+  tenantId: string;
+  userId: string;
+  jobId: string;
+  mappingJson: Record<string, string>;
+  validationMessage?: string;
+}): Promise<PreparePropertyRowImportResult> {
+  const job = db.importJobs.find((item) => item.id === input.jobId && item.tenantId === input.tenantId && item.userId === input.userId);
+  const tenant = db.tenants.find((item) => item.id === input.tenantId);
+  const member = db.tenantMemberships.find((item) => item.tenantId === input.tenantId && item.userId === input.userId && item.status === "active");
+  if (!job) return { job: null, claimed: false };
+  if (job.status === "completed" || job.status === "processing" || job.finalImportStartedAt) return { job: { ...job }, claimed: false };
+  if (job.status !== "queued" && job.status !== "mapped") return { job: { ...job }, claimed: false };
+  if (!member || !tenant || !isTenantServiceOperational(deriveTenantServiceState(tenant)) || !mayStartPropertyImport({ ...job, status: "mapped" })) {
+    return { job: { ...job }, claimed: false };
+  }
+
+  // Memory has no await between the compare-and-claim steps. Keep the
+  // mapping update and durable start marker as one synchronous mutation so a
+  // competing request cannot leave a stale mapping behind.
+  job.mappingJson = { ...input.mappingJson };
+  job.validationMessage = input.validationMessage?.trim() || undefined;
+  job.status = "processing";
+  job.finalImportStartedAt = new Date();
+  job.updatedAt = job.finalImportStartedAt;
+  return { job: { ...job }, claimed: true };
+}
+
 export async function deletePreimportPropertyUpload(input: { tenantId: string; userId: string; jobId: string }): Promise<boolean> {
   const job = db.importJobs.find((item) => item.id === input.jobId && item.tenantId === input.tenantId && item.userId === input.userId);
   const tenant = db.tenants.find((item) => item.id === input.tenantId);
@@ -3727,19 +3781,22 @@ export async function updateImportJobMapping(input: {
   status?: ImportJobStatus;
   allowRetry?: boolean;
   beforeFinalImport?: boolean;
+  /** Only the final execution write may update a claimed job's result. */
+  allowFinalImportCompletion?: boolean;
 }): Promise<ImportJob | null> {
   const scopeTenantId = resolveTenantId(input.tenantId);
   const job = db.importJobs.find(
     (item) => item.userId === input.userId && item.tenantId === scopeTenantId && item.id === input.jobId,
   );
   if (!job) return null;
-  if (input.beforeFinalImport && job.finalImportStartedAt) return null;
+  if (job.finalImportStartedAt && !input.allowFinalImportCompletion) return null;
+  if (input.allowFinalImportCompletion && !job.finalImportStartedAt) return null;
 
   if (job.finalImportStartedAt && input.status && !["processing", "completed", "failed"].includes(input.status)) {
     throw new Error("import_execution_started");
   }
 
-  job.mappingJson = input.mappingJson;
+  if (!job.finalImportStartedAt) job.mappingJson = input.mappingJson;
   job.validationMessage = input.validationMessage?.trim() || undefined;
   if (typeof input.notes === "string") {
     job.notes = input.notes.trim() || undefined;
@@ -4950,20 +5007,27 @@ export async function getGuaranteeMaskMatch(input: { tenantId: string; blankForm
   return item ? cloneGuarantee(item) : undefined;
 }
 
+export async function getGuaranteePreviewConfirmation(input: { tenantId: string; id: string; actorUserId: string }): Promise<GuaranteePreviewConfirmation | undefined> {
+  const item = db.guaranteePreviewConfirmations.find((value) => value.id === input.id && value.tenantId === resolveTenantId(input.tenantId) && value.actorUserId === input.actorUserId);
+  return item ? cloneGuarantee(item) : undefined;
+}
+
 export async function createGuaranteePreviewConfirmation(input: Omit<GuaranteePreviewConfirmation, "id" | "status" | "createdAt">): Promise<GuaranteePreviewConfirmation> {
   const item: GuaranteePreviewConfirmation = { ...cloneGuarantee(input), id: makeId("gconfirm"), status: "issued", createdAt: new Date() };
   db.guaranteePreviewConfirmations.unshift(item);
   return cloneGuarantee(item);
 }
 
-export async function claimGuaranteePreviewConfirmation(input: { tenantId: string; id: string; actorUserId: string; leaseMs?: number }): Promise<GuaranteePreviewConfirmation | undefined> {
+export async function claimGuaranteePreviewConfirmation(input: { tenantId: string; id: string; actorUserId: string; leaseMs?: number }): Promise<GuaranteePreviewConfirmationClaim> {
   const item = db.guaranteePreviewConfirmations.find((value) => value.id === input.id && value.tenantId === resolveTenantId(input.tenantId) && value.actorUserId === input.actorUserId);
-  if (!item) return undefined;
-  if (item.status === "consumed") return cloneGuarantee(item);
-  if (item.expiresAt <= new Date()) { item.status = "expired"; return cloneGuarantee(item); }
-  if (item.status === "processing" && item.processingExpiresAt && item.processingExpiresAt > new Date()) return undefined;
+  if (!item) return { kind: "not_found" };
+  if (item.status === "consumed") return { kind: "consumed", confirmation: cloneGuarantee(item) };
+  if (item.expiresAt <= new Date()) { item.status = "expired"; return { kind: "expired", confirmation: cloneGuarantee(item) }; }
+  if (item.status === "processing" && (!item.processingExpiresAt || item.processingExpiresAt > new Date())) {
+    return { kind: "processing", confirmation: { ...cloneGuarantee(item), processingToken: undefined } };
+  }
   item.status = "processing"; item.processingExpiresAt = new Date(Date.now() + (input.leaseMs ?? 60_000)); item.processingToken = randomUUID();
-  return cloneGuarantee(item);
+  return { kind: "claimed", confirmation: cloneGuarantee(item) };
 }
 
 export async function consumeGuaranteePreviewConfirmation(input: { tenantId: string; id: string; actorUserId: string; generatedOutputId: string; processingToken: string }): Promise<GuaranteePreviewConfirmation | undefined> {

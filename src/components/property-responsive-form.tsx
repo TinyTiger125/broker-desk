@@ -5,6 +5,7 @@ import { useActionState, useEffect, useRef, useState, type FormEvent, type Keybo
 import type { Locale } from "@/lib/locale";
 import type { PropertyFormActionState, PropertyFormValues } from "@/app/actions";
 import { endSubmission, handleFormSubmit, type SubmissionLock } from "@/components/form-submission-lock";
+import { Button } from "@/components/ui-foundation";
 
 type PropertyFormAction = (
   previousState: PropertyFormActionState,
@@ -246,9 +247,9 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
 
       {hideActions ? null : <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-200 pt-5">
         <Link href={returnTo} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">{text.cancel}</Link>
-        <button type="submit" disabled={pending} className="min-h-11 rounded-lg bg-slate-950 px-5 py-2.5 text-sm font-bold text-white hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">
+        <Button type="submit" loading={pending} className="min-h-11 rounded-lg bg-slate-950 px-5 py-2.5 text-sm font-bold text-white hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60">
           {pending ? text.saving : text.save}
-        </button>
+        </Button>
       </div>}
       <div className="sr-only" aria-live="polite">{pending ? text.saving : ""}</div>
     </form>

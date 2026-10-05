@@ -16,6 +16,8 @@ export type ImportValidationIssueCode =
   | "import_zero_success"
   | "import_row_missing_name"
   | "import_row_invalid_listing_price"
+  | "import_row_exact_duplicate"
+  | "import_row_suspected_duplicate"
   | "import_row_unknown_error"
   | "import_partial_completed"
   | "import_completed"

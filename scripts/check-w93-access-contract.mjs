@@ -24,7 +24,14 @@ assert(relation.includes("listHubParties(locale, { requestContext })") && relati
 assert(!relation.includes("listHubAttachments") && !relation.includes("listHubContracts") && !relation.includes("listHubImportJobs"), "unsupported legacy nodes are not exposed");
 assert(relation.includes("notFound()"), "hidden direct nodes use a uniform unavailable result");
 
-assert(access.includes("getAttachmentByIdForTenant") && access.includes("resolveW93Parent") && access.includes("getObjectImportTargetByJob"), "attachments require tenant lookup plus parent resolution");
+assert(
+  access.includes("getAttachmentByIdForTenant")
+    && access.includes("resolveW93Parent")
+    && access.includes("getObjectImportCaseIdByJob")
+    && access.includes("tenantId: context.tenantId")
+    && access.includes("userId: context.userId"),
+  "attachments require tenant lookup plus context-bound parent resolution",
+);
 assert(access.includes("getGeneratedOutputByIdForTenant") && access.includes("output.caseId"), "history output is bound to its case");
 assert(access.includes('parentType === "quote"') && access.includes('targetType === "quote"'), "quote attachments reuse related person/property visibility");
 assert(access.includes("areCaseSourcesReadable") && access.includes("areGeneratedOutputSourcesReadable") && access.includes("listQuotationsForContext"), "generation and history checks every explicit source");

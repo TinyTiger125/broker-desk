@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
 import { AppNav } from "@/components/app-nav";
+import { BackToParent } from "@/components/back-to-parent";
 import { ScrollMemory } from "@/components/scroll-memory";
 import { isClerkAuthEnabled } from "@/lib/auth-mode";
 import { t } from "@/lib/i18n";
@@ -26,7 +27,10 @@ export default async function RootLayout({
     <>
       <ScrollMemory />
       <AppNav />
-      <main className="app-main w-full px-4 py-5 sm:px-6 sm:py-7 lg:pr-10 lg:pt-24">{children}</main>
+      <main className="app-main w-full px-4 py-5 sm:px-6 sm:py-7 lg:pr-10 lg:pt-24">
+        <BackToParent locale={locale} />
+        {children}
+      </main>
     </>
   );
 

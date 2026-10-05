@@ -28,7 +28,7 @@ function assertPlatformNavigation({ navSource, mainNavSource, routeTitleSource, 
   assert(navSource.includes("const hasPlatformAccess = Boolean(platformSession)"), "platform navigation visibility must derive only from the shared platform session");
   assert(!navSource.includes("clerkEnabled || hasPlatformAccess") && !navSource.includes("isConfiguredPlatformOwnerUser"), "platform navigation must not use Clerk/configured-only authority");
   assert(navSource.includes('href: "/platform/accounts"') && navSource.includes('href: "/platform/templates"'), "platform navigation must expose accounts and official template factory links");
-  for (const text of ["プラットフォーム管理", "平台管理", "플랫폼 관리", "アカウント管理", "账户管理", "계정 관리", "公式テンプレート工場", "官方模板工厂", "공식 템플릿 공장"]) {
+  for (const text of ["プラットフォーム管理", "平台管理", "플랫폼 관리", "アカウント管理", "账户管理", "계정 관리", "公式帳票テンプレート", "官方文书模板", "공식 문서 템플릿"]) {
     assert(navSource.includes(text), `platform navigation locale copy must include ${text}`);
   }
   assert(navSource.includes("const platformLinks = hasPlatformAccess ? getPlatformLinks(locale) : []"), "platform links must be absent without persisted platform access");
@@ -37,7 +37,7 @@ function assertPlatformNavigation({ navSource, mainNavSource, routeTitleSource, 
 
   assert(mainNavSource.includes('"/platform/accounts": "admin_panel_settings"') && mainNavSource.includes('"/platform/templates": "dashboard_customize"'), "platform navigation links must have stable icons and active-link callers");
   assert(routeTitleSource.includes('pathname.startsWith("/platform/accounts")') && routeTitleSource.includes('pathname.startsWith("/platform/templates")'), "platform routes must have explicit route-title branches");
-  for (const text of ["プラットフォーム管理", "平台管理", "플랫폼 관리", "アカウント管理", "账户管理", "계정 관리", "公式テンプレート工場", "官方模板工厂", "공식 템플릿 공장"]) {
+  for (const text of ["プラットフォーム管理", "平台管理", "플랫폼 관리", "アカウント管理", "账户管理", "계정 관리", "公式帳票テンプレート", "官方文书模板", "공식 문서 템플릿"]) {
     assert(routeTitleSource.includes(text), `platform route-title locale copy must include ${text}`);
   }
   assert(accountsPageSource.includes("requirePlatformOwnerSession()") && templatesPageSource.includes("requirePlatformOwnerSession()"), "both platform destinations must retain server-side platform-owner authorization");
@@ -141,9 +141,9 @@ const INVITATION_ACTION_MESSAGE_EXPECTATIONS = {
     ko: "초대 정보가 완전하지 않습니다. 페이지를 새로고침한 후 다시 시도해 주세요.",
   },
   invitation_unavailable: {
-    ja: "この招待は取り消されたか期限切れです。または、ログイン中のメールアドレスが招待先と一致していません。",
-    zh: "邀请已撤销、已过期，或当前登录邮箱与受邀邮箱不一致。",
-    ko: "이 초대는 취소되었거나 만료되었으며, 로그인 이메일이 초대받은 이메일과 일치하지 않을 수도 있습니다.",
+    ja: "この招待は現在利用できません。取り消されたか期限切れの可能性があります。招待を送った管理者に確認してください。",
+    zh: "该邀请目前无法使用，可能已被撤销或已过期。请联系发出邀请的管理员确认。",
+    ko: "이 초대는 현재 사용할 수 없습니다. 취소되었거나 만료되었을 수 있으니 초대를 보낸 관리자에게 확인해 주세요.",
   },
   accepted_workspace_switch_failed: {
     ja: "招待は承諾されましたが、ワークスペースの切り替えを完了できませんでした。ページを再読み込みして続けてください。",
@@ -456,9 +456,9 @@ function assertPlatformInvitationRuntimeProbe(taskSource) {
 }
 
 const MEMBER_INVITATION_UNCERTAIN_COPY = {
-  ja: "遠端認証サービスが招待作成を受け付けた可能性がありますが、結果を確定できませんでした。受信箱への到達は未確認です。むやみに再送せず、遠端認証サービスと現在の招待状態を先に確認してください。",
-  zh: "远端身份服务可能已受理邀请创建，但结果未能确认；收件箱到达未确认。请勿盲目重发，先核对远端身份服务与当前邀请状态。",
-  ko: "원격 인증 서비스가 초대 생성을 접수했을 수 있지만 결과를 확정하지 못했습니다. 받은편지함 도착은 확인되지 않았습니다. 무작정 다시 보내지 말고 원격 인증 서비스와 현재 초대 상태를 확인하세요.",
+  ja: "認証サービスが招待作成を受け付けた可能性がありますが、結果を確定できませんでした。受信箱への到達は未確認です。むやみに再送せず、認証サービスと現在の招待状態を先に確認してください。",
+  zh: "身份认证服务可能已受理邀请创建，但结果未能确认；收件箱到达未确认。请勿盲目重发，先核对身份认证服务与当前邀请状态。",
+  ko: "인증 서비스가 초대 생성을 접수했을 수 있지만 결과를 확정하지 못했습니다. 받은편지함 도착은 확인되지 않았습니다. 무작정 다시 보내지 말고 인증 서비스와 현재 초대 상태를 확인하세요.",
 };
 
 function assertInvitationDeliveryAuditAtomicity({ senderSource, actionSource, memorySource, sqlSource, migrationSource, memberCopySource, membersPageSource }) {

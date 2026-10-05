@@ -1,7 +1,72 @@
 # Broker Desk 当前工作交接
 
 > 本文件是唯一活动交接和进度入口，不重复产品、架构或历史正文。
-> Last updated: 2026-08-24.
+> Last updated: 2026-09-30.
+
+## 2026-10-03 版本台账治理收口
+
+- 唯一版本、部署与迁移 manifest 已建立于 RELEASE_VERSION_LEDGER.md，本节只保留交接指针，不复制其正文。
+- 当前 selected candidate 的应用基线是 detached worktree commit 9bc001b20c397bf054dc5fb23561c41d821d85f5；本轮治理提交可位于其上。既有未提交 AGENTS.md 规则块保持原样，不属于本轮写集。
+- GitHub PR #16 合并 SHA 701a8bdbdc86073f60cd07cfdfd79da73925295d 已核实为 18-file invitation delivery hotfix，但 Tokyo Production 当前 production_migrations_required；它是 DEPLOYED_NOT_ACCEPTED，不是已验证发布。
+- 上一 Tokyo Production 0f18d6ccc1b4c2fc921ae05f0978de6b7ac0c3b5 / dpl_BqYgpSjbArxFDUSxskzngSXpNQBK 只记录为 PREVIOUSLY_VERIFIED_NOT_RECHECKED；本轮未执行 Production migration、APPONLY 回退、部署或远端写入。
+- 台账校验器为 scripts/check-release-version-ledger.mjs；本轮只运行定向台账检查、diff check 与状态核对，不重复无关旧测试。
+
+## 2026-09-30 单入口工作流更新
+
+- 当前统一候选：`broker-desk-recovery-delivery-20260922`，分支 `fix/tokyo-production-build-command`；本轮复核起点是 `eadc87dd8a49fa95446c80c55a14be42e6a1938a`，其后已有本地提交 `8f63f46`，本轮修复仍只在该候选内收口。它与旧 `broker-desk-web-dev` worktree（`task040-property-page-integrated`，HEAD `481a22b786d476740aa31b23ba706bb80b3bd672`）是同一仓库的独立 worktree，双方互不为祖先；本次不删除、重置、迁移、合并或覆盖任一工作树的未提交改动。
+- 版本、部署与验收必须分层记录：本地候选是当前 recovery HEAD `eadc87d`（含既有未提交改动）；远端 GitHub `main` 是 PR #15 合并提交 `0f18d6c`（[PR #15](https://github.com/TinyTiger125/broker-desk/pull/15)），该 SHA 不在当前本地 refs 中，本次未 fetch。PR #14/#15 的最终 checks 在 PR 页面显示通过，用户提供的远端调查另记录当前无开放 PR；Actions 详情页本次未作为独立状态源使用（[Actions run](https://github.com/TinyTiger125/broker-desk/actions/runs/36025234296)）。用户提供的 Vercel 记录称 `broker-desk-staging` 的 `main=0f18d6c` 部署为 `READY` 且 target=`production`（[部署记录](https://vercel.com/neos-projects-d66edfc8/broker-desk-staging/99Ftasajqnt3ghCdWR18vPeY69mg)）；该直接页面本次无法独立打开，故只记为外部来源声明，不能替代运行验收。V1 客户验收仍未完成；部署 Ready、target=production、PR/CI 通过都不等于产品验收通过。
+- PR #14 的合并说明报告 Tokyo migration 48 已应用并完成 ledger/checksum/RPC/permission/audit/RLS readback，同时恢复 main 自动部署（[PR #14](https://github.com/TinyTiger125/broker-desk/pull/14)）；这是 PR/外部回执，本次没有执行云端 migration 或 readback。PR #15 页面可复核 `eadc87d` 为该 PR head、合并后 main 为 `0f18d6c` 及 checks passed；本地仍不把这些外部证据写成客户验收证据。
+- 统一路由与连续性边界见 [`PROJECT_WORKFLOW_SINGLE_ENTRY_20260930.md`](PROJECT_WORKFLOW_SINGLE_ENTRY_20260930.md)。波比是当前用户主聊天入口（`source_thread_id=01a0f081-541d-76ef-b07c-bb5430058015`），负责愿景、功能、视觉反馈和产品取舍；旧正式产品经理会话 `01a0c40b-2576-7d00-b433-dd0199565da3` 当前 `notLoaded`、未恢复，只作历史决策来源，不派工、不唤醒、不要求用户转发；当前任务内项目经理负责 workId、专业角色、集成、证据与阻塞回报。
+- 当前 `.codex/config.toml` 已声明主任务和默认子agent为 `gpt-5.6-luna` + `xhigh`；本次不改配置。桌面持久元数据已核实当前任务实际为 Luna/xhigh；子agent继承仍不以配置替代平台实际证据。
+- 历史产品经理/项目经理会话、已完成或中断的 Luna 项目经理子agent只作为可复查资料，不宣称记忆恢复；设计、实现、独立审查/测试的长期会话ID未核实，按角色合同和源文档重新派工。
+- 已登记一个仅演练的 `UI-REHEARSAL-20260930-01`：针对导航候选尚未取得的窄视口运行证据；不创建任务、不派agent、不开发，结果只能按 Local/Preview/Production 证据层级记录。
+
+## 2026-09-30 V1 输入流程收敛与 V2 路线图
+
+### 当前生效的产品范围决定
+
+- V1 收敛为基础输入流程：在留卡、驾照等本人确认资料的基础 OCR/字段提取，以及 Excel 结构化导入用于补填基础信息；Excel 不走 OCR。
+- V1 必须打通的用户结果是：上传原件 → 形成候选字段 → 用户核对、修改、确认或不采用 → 保存/追加到案件 → 重新打开仍可见同一状态 → 能进入现有案件整理和保证申请书 readiness/preview 流程。不能把候选值静默当作已确认事实。
+- V1 不扩展为通用海量文书 OCR、多源任意文档理解、外部客户证件试验或“重说”自动填写；不新增证件敏感字段，姓名、生日、地址等只使用现有案件字段目录和已有 `applicant.*` 合同。
+- 用户已给出 V2 探索方向：“重说”在本记录按“重要事項説明書”理解，未来可能需要多源资料结构化输入、关联到房产/案件、来源/冲突/缺失和人工确认。但目前不推断租赁还是买卖、具体模板/字段、供应商或实施日期；不启动 V2 开发或法规研究。
+
+### 代码现状核对（本地静态证据，不等于运行验收）
+
+| 链路 | 已有实现 | 未验证或明确缺口 |
+|---|---|---|
+| 身份资料上传/重试 | `identity-import-queue.ts` 私有原件先保存、哈希幂等、租户范围、最多 6 个文件/60MB；`identity-import-processor.ts` 从已保存附件处理，失败可沿用同一 job 重试 | 尚未用合成样本取得 Preview/浏览器的重开一致性、权限和真实 OCR 运行证据 |
+| 在留卡/驾照 | `identity-document-extractor.ts` 已按现有 `applicant.*` 字段提取姓名、生日、现住所及在留/驾照已有字段，并保留 `suggested`、来源页和置信度；支持本地 Swift OCR、生产远程 reader、非生产 OpenAI Responses 分支 | OCR 供应商/配置是否可用未在本次核实；不把代码分支写成已接通的生产能力；来源 UI 仍主要显示来源页/range，非完整图像证据 |
+| Excel | `input-file-extractor.ts` 按指纹识别 3 类既有 Excel 模板并按单元格/范围提取；未知表格进入 `excel-import-processor.ts` 的结构化行导入，`import-mapping.ts` 提供列别名、必填项校验和手工映射；本轮已补齐稳定日期/空值规范化、同文件完全重复行区分及疑似重复提示 | 不做 Excel OCR；同名同所在地只是疑似身份信号，不再自动丢弃不同内容的行；同文件完全相同行才可分类跳过，原始行/原因保留；没有显式覆盖模式或通用日期业务语义，浏览器运行行为仍需验收 |
+| 候选复核/确认 | `input-extraction-review.tsx` 支持正常读取候选、低置信/空值待处理、编辑、接受、不采用；`saveExtractionReviewAction` 只把接受/编辑值物化为确认数据，支持追加/合并历史、源附件关联和审计 | 现有 UI 对正常读取项采用“最终确认时批量采纳”语义；需在首批验收中确认用户可理解，且不得把静态实现写成已通过的运行体验 |
+| 后续流程 | 已确认数据进入 `guarantee-application.ts` readiness；未确认候选由 `guarantee-download-gate.ts` 阻止最终下载 | 现有下游接线存在，但身份/Excel 首批从保存到重新打开、案件整理、申请书预览的完整运行证据未取得 |
+
+### V1 有限验收顺序（不新建实施任务、不开发）
+
+1. 用合成/脱敏在留卡和驾照样本分别验证上传、原件留存、分类、候选字段、空值/低置信提示、编辑、接受和不采用；只核对现有字段，不增加新的证件字段。
+2. 用受控 Excel 样本验证：已知模板识别、普通表头列映射、必填缺失、空值、日期显示/保存；同文件完全相同行可报告并跳过，同名同地址但内容不同的行必须报告疑似重复并保留/新增，不覆盖原有数据；是否增加显式覆盖模式另需产品决定。
+3. 关闭并重新打开同一导入记录，确认 job、候选状态、原始附件和审计/来源仍一致；再验证确认值进入案件、能继续现有整理和保证申请书 readiness/preview。此项目前仅有代码依据，未声称已测试。
+4. 证据按 Local → Preview 分层记录；不上传真实证件、不调用外部 OCR、不做 Production 验收。只有上述链路在合成资料、权限和失败恢复证据齐全后，才讨论 V1 是否可接受。
+
+### V2 仅作路线图记录
+
+- 重要事項説明書自动填写属于 V2 探索，不进入当前 V1 验收。未来最小问题定义是多源资料结构化输入、房产/案件关联、每字段来源、冲突/缺失显式化和人工确认后再写入。
+- V2 尚未决定租赁/买卖范围、具体官方模板与字段、OCR/模型供应商、法规研究范围或日期；不得以 V1 的身份 OCR/Excel 代码推断 V2 已有能力，也不得为 V2 过度设计 V1。
+
+## 2026-09-30 本轮本地修复切片：V1 Excel 基础导入
+
+- WorkId：`V1-IMPORT-ROW-20260930`。目标只覆盖结构化 Excel 行导入的稳定值边界、重复保护和结果可解释性；没有改在留卡/驾照 OCR、PDF、权限模型或数据库 schema。
+- 修改文件：`src/lib/import-row-policy.ts`、`src/lib/excel-import-processor.ts`、`src/lib/import-mapping.ts`、`src/app/actions.ts`、`src/app/import-center/page.tsx`，以及定向检查 `scripts/check-v1-import-row-policy.mjs`。既有未提交业务改动和未跟踪证据未清理、未覆盖。
+- 前后行为：Excel 行现在通过 `worksheetToRows` 和统一值规范化处理，日期稳定为 `YYYY-MM-DD`，空单元格为空字符串，换行/多余空白不会改变映射；属性导入对文件内完全相同的重复行报告 `import_row_exact_duplicate` 并跳过，对同名同所在地但内容不同的行报告 `import_row_suspected_duplicate`，保留原始行并新增、不覆盖原有数据。未来是否允许显式覆盖仍是独立产品决定，本轮不默认覆盖。
+- 已通过：`node scripts/check-v1-import-row-policy.mjs`、`node scripts/test-import-mapping-form.mjs`、`npm run test:import-review-decisions`、`npm run test:import-failure-recovery`、`npm run test:import-center-object-actions`、`npm run lint`（仅既有 2 个 warning）、`npm run build`（含 prebuild/postbuild）。
+- 第一切片当时未通过/未取得：直接 `npm run typecheck` 被现有 `.next/types/cache-life.d 2.ts` 与 `.next/types/routes.d 2.ts` 的重复生成文件阻断；当时未删除或覆盖 `.next`。该历史状态已在本轮通过可恢复隔离生成目录重新验证；第一切片本身没有浏览器、Preview、真实数据库、真实证件、外部 OCR/API 或 Production 证据。
+- 下一步仍需独立切片：用合成 Excel 与在留卡/驾照样本做本地或受控 Preview 的上传、复核编辑/确认、不采用、刷新重开和进入案件/保证申请书流程；PDF 偏移、窄视口导航、邀请/删除权限不并入本切片。
+
+## 2026-09-30 本轮复核：重复身份策略与工程门
+
+- `8f63f46` 的同名同地址唯一键策略已确认过窄：当前 `Property` 模型没有房号/单位或来源业务身份字段，不能证明同名同地址就是同一物件。本轮改为同文件完全相同行使用 `import_row_exact_duplicate` 分类并保留原始行；同名同地址但内容不同使用 `import_row_suspected_duplicate` 警告，原始行/原因写入导入记录并在结果页可展开查看，仍新增且不覆盖既有数据。
+- 复核写集：`src/lib/import-row-policy.ts`、`src/lib/import-mapping.ts`、`src/app/actions.ts`、`src/app/import-center/page.tsx`、`src/lib/identity-document-extractor.ts`、`scripts/check-v1-import-row-policy.mjs`。未修改数据库 schema、RLS、权限配置或现有非本轮脏文件。
+- 本轮工程门：针对性 Excel/复核/失败恢复/导入中心检查通过；在可恢复改名 `/tmp/broker-desk-next-before-isolated-20260930` 后，`npm run typecheck` 通过，随后干净 `npm run build` 通过，`npm run lint` 仅保留既有 2 个 warning。原 `.next` 未删除，必要时可恢复。
+- 浏览器证据状态：本轮已启动本地 demo 并打开 `/import-center?locale=zh&object=property#source-upload`；合成 Excel 已生成于 `/tmp/broker-desk-synthetic-v1-import.xlsx`。上传动作被浏览器工具中断，尚未取得“选择文件→映射→保存→刷新/重开”的有效浏览器证据，不得写成通过。身份仅取得本地 mock OCR 解析证据，尚未取得真实图片、浏览器保存/重开、Preview 或生产 OCR 证据；禁止外部收费 OCR/API。
 
 ## 当前任务
 
@@ -57,9 +122,10 @@
 ## Git事实
 
 - 正式仓库：`/Users/laineyzhu/Documents/独立开发项目/房产专家/broker-desk-web-dev`
-- Branch: `main`
-- 正式开发分支：`main`
-- 当前分支与 `main`：最终收口后当前分支为 `main`；`main` HEAD 与当前 HEAD 相同，且 Git 历史包含 MIG-001 至 MIG-007 的实现、审查和收口证据。不得维护易漂移的“领先多少个提交”手工计数。
+- 当前执行候选：`broker-desk-recovery-delivery-20260922`；Branch: `fix/tokyo-production-build-command`；本轮复核起点 `eadc87dd`，前一切片提交 `8f63f46`，当前精确 HEAD 以 `git status`/提交记录为准；这不是远端 `main` 的同义词，也不抹除当前工作树的既有脏改动。
+- 本地只读 refs 显示 `origin/main=7a283d4`、`origin/fix/tokyo-production-build-command=eadc87d`；本地没有 `0f18d6c`，本次未 fetch。远端 main 的 `0f18d6c` 仅由 GitHub PR #15 合并记录核实。
+- 部署层单独记录：用户提供的 Vercel `broker-desk-staging` 记录声明 `main=0f18d6c`、`READY`、target=`production`；本次直接打开该 Vercel URL 返回内部错误，故未作实时独立复核。该部署事实仍不等于 V1 客户验收完成。
+- Tokyo migration 48 的“已应用”来自 PR #14 合并说明；本地没有执行生产 migration、云端 readback 或部署操作。
 - TASK-024 正式收口提交：`bf88506e9e671ba712c635c8a436aa57b57cbfa4`；本轮只补充其持久审计证据和历史状态措辞，不改变任务、业务代码或产品状态。
 - 治理恢复分支：`recovery/mig-007-checkpoint-a` 已安全 fast-forward 合入 `main`，不再作为正式开发入口。
 - `safety/wip-mixed-worktree-20260812`：`61bce515e4ad44a6c32da551377dbf427d8bd946`；仅作混合 WIP 隔离证据，保持不变。

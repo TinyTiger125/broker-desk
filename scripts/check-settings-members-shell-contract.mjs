@@ -298,9 +298,13 @@ for (const rowAction of ["updateTenantMemberRoleAction", "sendTenantMemberInvita
 assert.equal(rowForms.length, forms.length - 1, "all forms except the invite panel must belong to the live member row subtree");
 
 function assertTargetedAction(form, expectedActionText, expectedConditionText, conditionOwner = "form") {
-  const buttons = descendants(form, (node) => (typescript.isJsxElement(node) || typescript.isJsxSelfClosingElement(node)) && jsxTagName(node) === "button");
+  const buttons = descendants(form, (node) => {
+    if ((!typescript.isJsxElement(node) && !typescript.isJsxSelfClosingElement(node))) return false;
+    const tag = jsxTagName(node);
+    return tag === "button" || tag === "InvitationSubmitButton";
+  });
   assert.equal(buttons.length, 1, `${expectedActionText} form must contain one action button`);
-  const accessibleName = jsxAttributeExpressionText(buttons[0], "aria-label").replace(/\s+/gu, "");
+  const accessibleName = jsxAttributeExpressionText(buttons[0], jsxTagName(buttons[0]) === "InvitationSubmitButton" ? "ariaLabel" : "aria-label").replace(/\s+/gu, "");
   assert(accessibleName.includes(expectedActionText.replace(/\s+/gu, "")), `${expectedActionText} accessible name must identify the action`);
   assert(accessibleName.includes("member.user.name") && accessibleName.includes("member.user.email"), `${expectedActionText} accessible name must identify the target member by name and email`);
   const conditional = enclosingConditional(conditionOwner === "button" ? buttons[0] : form);

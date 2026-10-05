@@ -21,6 +21,7 @@ import {
   getGuaranteeCompanyMask,
   getGuaranteeCompanyMaskVersion,
   getGuaranteeApplicationDraft,
+  getGuaranteePreviewConfirmation,
   saveGuaranteeApplicationDraft,
   readPrivateAttachmentContentForTenant,
   releaseGuaranteePreviewConfirmation,
@@ -68,7 +69,8 @@ const GUARANTEE_PUBLIC_ERROR_CODES = new Set([
   "blank_form_encrypted_unsupported",
   "case_not_found",
   "generation_confirmation_claim_token_missing",
-  "generation_in_progress_or_not_found",
+  "generation_confirmation_not_found",
+  "generation_in_progress",
   "guarantee_blank_form_not_found",
   "guarantee_checkbox_value_unknown",
   "guarantee_output_generate_permission_required",
@@ -117,6 +119,10 @@ function jsonError(error: unknown, requestId: string) {
   const code = GUARANTEE_PUBLIC_ERROR_CODES.has(candidate) ? candidate : "guarantee_slice1_failed";
   const status = code === "guarantee_slice1_failed"
     ? 500
+    : code === "generation_in_progress"
+      ? 409
+      : code === "generation_confirmation_not_found"
+        ? 404
     : error instanceof TenantSessionError && code === error.code
       ? error.status
       : code.includes("disabled") || code.includes("permission") || code.includes("required") || code.includes("forbidden")
@@ -505,10 +511,13 @@ async function handleLoadApplicationDraft(request: Request) {
 async function handleGenerate(request: Request) {
   const session = await requireSession("generate"); const body = asRecord(await request.json()); const confirmationId = String(body.confirmationId ?? "");
   if (!confirmationId) throw new Error("preview_confirmation_required");
-  const claimed = await claimGuaranteePreviewConfirmation({ tenantId: session.tenant.id, id: confirmationId, actorUserId: session.user.id });
-  if (!claimed) throw new Error("generation_in_progress_or_not_found");
-  if (claimed.status === "consumed" && claimed.generatedOutputId) return NextResponse.json({ outputId: claimed.generatedOutputId, idempotent: true });
-  if (claimed.status !== "processing") throw new Error("preview_confirmation_expired");
+  const claim = await claimGuaranteePreviewConfirmation({ tenantId: session.tenant.id, id: confirmationId, actorUserId: session.user.id });
+  if (claim.kind === "not_found") throw new Error("generation_confirmation_not_found");
+  if (claim.kind === "processing") throw new Error("generation_in_progress");
+  if (claim.kind === "expired") throw new Error("preview_confirmation_expired");
+  const claimed = claim.confirmation;
+  if (claim.kind === "consumed" && claimed.generatedOutputId) return NextResponse.json({ outputId: claimed.generatedOutputId, idempotent: true });
+  if (claim.kind !== "claimed" || claimed.status !== "processing") throw new Error("preview_confirmation_expired");
   let attachmentId: string | undefined;
   let outputId: string | undefined;
   try {
@@ -536,6 +545,19 @@ async function handleGenerate(request: Request) {
   }
 }
 
+async function handleGenerationStatus(request: Request) {
+  const session = await requireSession("generate");
+  const body = asRecord(await request.json());
+  const confirmationId = String(body.confirmationId ?? "").trim();
+  if (!confirmationId) throw new Error("preview_confirmation_required");
+  const confirmation = await getGuaranteePreviewConfirmation({ tenantId: session.tenant.id, id: confirmationId, actorUserId: session.user.id });
+  if (!confirmation) throw new Error("generation_confirmation_not_found");
+  if (confirmation.status === "consumed" && confirmation.generatedOutputId) return NextResponse.json({ status: "completed", outputId: confirmation.generatedOutputId });
+  if (confirmation.status === "processing") return NextResponse.json({ status: "processing" });
+  if (confirmation.status === "expired" || confirmation.expiresAt <= new Date()) return NextResponse.json({ status: "expired" });
+  return NextResponse.json({ status: "issued" });
+}
+
 export async function POST(request: Request) {
   const requestId = randomUUID();
   try {
@@ -552,6 +574,7 @@ export async function POST(request: Request) {
     if (action === "loadApplicationDraft") return await handleLoadApplicationDraft(request);
     if (action === "saveApplicationDraft") return await handleSaveApplicationDraft(request);
     if (action === "generate") return await handleGenerate(request);
+    if (action === "generationStatus") return await handleGenerationStatus(request);
     throw new Error("guarantee_slice1_action_invalid");
   } catch (error) { return jsonError(error, requestId); }
 }
