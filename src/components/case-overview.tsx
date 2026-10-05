@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { CaseWorkbenchFieldForm } from "@/components/case-workbench-field-form";
@@ -77,13 +78,23 @@ type CaseViewSwitchProps = {
   activeView: "quick" | "overview";
   issueCount: number;
   locale: Locale;
+  viewContext?: {
+    field?: string;
+    scrollTop?: number;
+    hash?: string;
+  };
+  onBeforeViewChange?: (view: "quick" | "overview") => boolean;
 };
 
-function viewHref(caseId: string, view: "quick" | "overview") {
-  return `/cases/${encodeURIComponent(caseId)}?view=${view}`;
+function viewHref(caseId: string, view: "quick" | "overview", viewContext?: CaseViewSwitchProps["viewContext"]) {
+  const params = new URLSearchParams({ view });
+  if (viewContext?.field) params.set("field", viewContext.field);
+  if (viewContext?.scrollTop !== undefined) params.set("scrollTop", String(viewContext.scrollTop));
+  return `/cases/${encodeURIComponent(caseId)}?${params.toString()}${viewContext?.hash ? `#${viewContext.hash}` : ""}`;
 }
 
-export function CaseViewSwitch({ caseId, activeView, issueCount, locale }: CaseViewSwitchProps) {
+export function CaseViewSwitch({ caseId, activeView, issueCount, locale, viewContext, onBeforeViewChange }: CaseViewSwitchProps) {
+  const router = useRouter();
   const labels = {
     quick: { ja: "補完", zh: "快速补全", ko: "빠른 보완" },
     overview: { ja: "案件全体", zh: "案件总览", ko: "안건 전체" },
@@ -94,7 +105,20 @@ export function CaseViewSwitch({ caseId, activeView, issueCount, locale }: CaseV
       {(["quick", "overview"] as const).map((view) => (
         <Link
           key={view}
-          href={viewHref(caseId, view)}
+          href={viewHref(caseId, view, viewContext)}
+          scroll={false}
+          onClick={(event) => {
+            event.preventDefault();
+            if (view === activeView || onBeforeViewChange?.(view) === false) return;
+            const current = new URL(window.location.href);
+            const next = new URL(viewHref(caseId, view, viewContext), window.location.origin);
+            const currentField = current.searchParams.get("field");
+            const currentScrollTop = Math.max(0, Math.round(window.scrollY));
+            if (currentField) next.searchParams.set("field", currentField);
+            if (currentScrollTop > 0 || current.searchParams.has("scrollTop")) next.searchParams.set("scrollTop", String(currentScrollTop || viewContext?.scrollTop || 0));
+            if (current.hash) next.hash = current.hash;
+            router.push(`${next.pathname}?${next.searchParams.toString()}${next.hash}`, { scroll: false });
+          }}
           aria-current={activeView === view ? "page" : undefined}
           className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-black transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-offset-1 sm:px-4 ${
             activeView === view ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
@@ -268,6 +292,8 @@ export function CaseIdentityHeader({
   issueCount,
   actions,
   showViewSwitch = true,
+  viewContext,
+  onBeforeViewChange,
   queueOpen,
   onToggleQueue,
 }: {
@@ -282,6 +308,8 @@ export function CaseIdentityHeader({
   issueCount: number;
   actions: ReactNode;
   showViewSwitch?: boolean;
+  viewContext?: CaseViewSwitchProps["viewContext"];
+  onBeforeViewChange?: CaseViewSwitchProps["onBeforeViewChange"];
   queueOpen?: boolean;
   onToggleQueue?: () => void;
 }) {
@@ -324,7 +352,7 @@ export function CaseIdentityHeader({
       </div>
       {!compactHeader ? (
         <div className={`mt-3 flex flex-wrap items-center gap-2 sm:mt-4 ${showViewSwitch ? "sm:grid sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center" : ""}`}>
-          {showViewSwitch ? <CaseViewSwitch caseId={caseId} activeView={activeView} issueCount={issueCount} locale={locale} /> : null}
+          {showViewSwitch ? <CaseViewSwitch caseId={caseId} activeView={activeView} issueCount={issueCount} locale={locale} viewContext={viewContext} onBeforeViewChange={onBeforeViewChange} /> : null}
           <CaseStatusSummary locale={locale} issueCount={issueCount} expanded={queueOpen} onToggle={onToggleQueue} />
         </div>
       ) : null}
@@ -346,6 +374,10 @@ function isApplicantChild(child: CaseOverviewChildSection) {
 
 function isWideResponsiveField(field: CaseOverviewField) {
   return field.inputSpec.kind === "textarea";
+}
+
+function isInlineField(field: CaseOverviewField) {
+  return ["text", "tel", "email", "money", "number", "date"].includes(field.inputSpec.kind);
 }
 
 function buildResponsiveFieldRows(fields: CaseOverviewField[]) {
@@ -573,6 +605,7 @@ export function CaseOverview({
   saveAction,
   readOnly = false,
   showViewSwitch,
+  viewContext,
   associationPanel,
   visibilityLabel,
   flash,
@@ -596,6 +629,7 @@ export function CaseOverview({
   saveAction: SaveAction;
   readOnly?: boolean;
   showViewSwitch: boolean;
+  viewContext?: CaseViewSwitchProps["viewContext"];
   associationPanel?: ReactNode;
   visibilityLabel?: string;
   flash?: ReactNode;
@@ -603,16 +637,23 @@ export function CaseOverview({
   initialScrollTop?: number;
 }) {
   const sectionIds = useMemo(() => sections.map((section) => section.id), [sections]);
+  const router = useRouter();
   const [activeSection, setActiveSection] = useActiveSection(sectionIds);
   const [queueOpen, setQueueOpen] = useState(false);
   const [downloadAttempted, setDownloadAttempted] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmedVersion, setConfirmedVersion] = useState<string | null>(null);
   const [editingFieldKey, setEditingFieldKey] = useState<string | null>(null);
+  const [dirtyFieldKey, setDirtyFieldKey] = useState<string | null>(null);
+  const [pendingView, setPendingView] = useState<"quick" | "overview" | null>(null);
+  const [saveAndSwitchView, setSaveAndSwitchView] = useState<"quick" | "overview" | null>(null);
+  const [editorPosition, setEditorPosition] = useState<{ top: number; left: number; width: number } | null>(null);
   const [wideResponsiveLayout, setWideResponsiveLayout] = useState(false);
   const pageRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
   const lastTriggerIdRef = useRef<string | null>(null);
+  const lastTriggerRef = useRef<HTMLElement | null>(null);
+  const lastTriggerSelectorRef = useRef<string | null>(null);
   const hasBlockingOutput = outputBlockers.length > 0;
   const isConfirmedForCurrentData = confirmedVersion === dataVersion;
   const attentionFields = useMemo(
@@ -626,6 +667,7 @@ export function CaseOverview({
   const initialFieldSectionId = initialFieldKey
     ? sections.find((section) => section.children.some((child) => child.fields.some((field) => field.fieldKey === initialFieldKey)))?.id
     : undefined;
+  const editingApplicantField = editingField && sections.some((section) => section.children.some((child) => isApplicantChild(child) && child.fields.some((field) => field.fieldKey === editingField.fieldKey)));
 
   useEffect(() => {
     const mediaQuery = window.matchMedia("(min-width: 64rem)");
@@ -656,16 +698,45 @@ export function CaseOverview({
   useEffect(() => {
     if (!editingFieldKey) return;
     const frame = window.requestAnimationFrame(() => {
-      const input = editorRef.current?.querySelector<HTMLElement>("input:not([type=hidden]), select, textarea") ?? editorRef.current?.querySelector<HTMLElement>("button");
+      const input = editorRef.current?.querySelector<HTMLElement>("input:not([type=hidden]), select, textarea")
+        ?? document.querySelector<HTMLElement>(`[data-case-inline-editor="${editingFieldKey}"] input:not([type=hidden]), [data-case-inline-editor="${editingFieldKey}"] select, [data-case-inline-editor="${editingFieldKey}"] textarea`)
+        ?? editorRef.current?.querySelector<HTMLElement>("button");
       input?.focus();
     });
     return () => window.cancelAnimationFrame(frame);
   }, [editingFieldKey]);
 
   useLayoutEffect(() => {
+    if (!editingField || editingApplicantField) return;
+    const updateEditorPosition = () => {
+      const anchor = document.getElementById(fieldAnchor(editingField.fieldKey));
+      if (!anchor) return;
+      const rect = anchor.getBoundingClientRect();
+      const width = Math.min(576, Math.max(0, window.innerWidth - 32));
+      const left = Math.min(Math.max(16, rect.left), Math.max(16, window.innerWidth - width - 16));
+      const minTop = Math.min(Math.max(16, getStickyOffset()), Math.max(16, window.innerHeight - 280));
+      const maxTop = Math.max(minTop, window.innerHeight - 280);
+      const top = Math.min(Math.max(minTop, rect.bottom + 12), maxTop);
+      setEditorPosition({ top, left, width });
+    };
+    updateEditorPosition();
+    window.addEventListener("scroll", updateEditorPosition, { passive: true, capture: true });
+    window.addEventListener("resize", updateEditorPosition, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", updateEditorPosition, true);
+      window.removeEventListener("resize", updateEditorPosition);
+    };
+  }, [editingField, editingApplicantField]);
+
+  useLayoutEffect(() => {
     if (editingFieldKey || !lastTriggerIdRef.current) return;
     const triggerId = lastTriggerIdRef.current;
-    document.querySelector<HTMLButtonElement>(`[data-field-trigger="${triggerId}"]`)?.focus({ preventScroll: true });
+    const trigger = lastTriggerRef.current?.isConnected
+      ? lastTriggerRef.current
+      : lastTriggerSelectorRef.current
+        ? document.querySelector<HTMLElement>(lastTriggerSelectorRef.current)
+        : document.querySelector<HTMLElement>(`[data-field-trigger="${triggerId}"]`);
+    trigger?.focus({ preventScroll: true });
   }, [editingFieldKey]);
 
   useEffect(() => {
@@ -722,14 +793,49 @@ export function CaseOverview({
     scrollToId(id);
   };
 
-  const openEditor = (field: CaseOverviewField) => {
+  const openEditor = (field: CaseOverviewField, trigger?: HTMLElement) => {
     lastTriggerIdRef.current = fieldAnchor(field.fieldKey);
+    lastTriggerRef.current = trigger ?? null;
+    lastTriggerSelectorRef.current = trigger?.hasAttribute("data-field-value-trigger")
+      ? `[data-field-value-trigger="${fieldAnchor(field.fieldKey)}"]`
+      : `[data-field-trigger="${fieldAnchor(field.fieldKey)}"]`;
+    if (!isInlineField(field)) scrollToId(fieldAnchor(field.fieldKey), "smooth");
     setEditingFieldKey(field.fieldKey);
   };
 
   const closeEditor = () => {
     setEditingFieldKey(null);
+    setDirtyFieldKey(null);
+    setSaveAndSwitchView(null);
   };
+
+  const pushView = (view: "quick" | "overview") => {
+    const current = new URL(window.location.href);
+    const next = new URL(viewHref(caseId, view, {
+      field: current.searchParams.get("field") ?? undefined,
+      scrollTop: current.searchParams.has("scrollTop") ? Number(current.searchParams.get("scrollTop")) : undefined,
+      hash: current.hash.slice(1) || undefined,
+    }), window.location.origin);
+    const currentScrollTop = Math.max(0, Math.round(window.scrollY));
+    if (current.searchParams.get("field")) next.searchParams.set("field", current.searchParams.get("field")!);
+    if (currentScrollTop > 0 || current.searchParams.has("scrollTop")) next.searchParams.set("scrollTop", String(currentScrollTop));
+    if (current.hash) next.hash = current.hash;
+    router.push(`${next.pathname}?${next.searchParams.toString()}${next.hash}`, { scroll: false });
+  };
+
+  const handleBeforeViewChange = (view: "quick" | "overview") => {
+    if (!dirtyFieldKey) return true;
+    setPendingView(view);
+    return false;
+  };
+
+  useEffect(() => {
+    if (!saveAndSwitchView || !editingFieldKey) return;
+    const frame = window.requestAnimationFrame(() => {
+      document.querySelector<HTMLFormElement>(`form[data-case-workbench-field="${editingFieldKey}"]`)?.requestSubmit();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [saveAndSwitchView, editingFieldKey]);
 
   useEffect(() => {
     if (!editingFieldKey) return;
@@ -763,7 +869,35 @@ export function CaseOverview({
 
   const visibleAnchors = sections.slice(0, 4);
   const overflowAnchors = sections.slice(4);
-  const editingApplicantField = editingField && sections.some((section) => section.children.some((child) => isApplicantChild(child) && child.fields.some((field) => field.fieldKey === editingField.fieldKey)));
+  const renderFieldForm = (field: CaseOverviewField, className: string) => (
+    <CaseWorkbenchFieldForm
+      action={saveAction}
+      caseId={caseId}
+      fieldKey={field.fieldKey}
+      returnField={field.fieldKey}
+      returnAnchor={editingSection?.id ?? fieldAnchor(field.fieldKey)}
+      returnView={saveAndSwitchView ?? "overview"}
+      showSaveWhenPristine
+      onDirtyChange={(dirty) => setDirtyFieldKey((current) => dirty ? field.fieldKey : current === field.fieldKey ? null : current)}
+      saveLabel={fieldIssue(field) ? (locale === "zh" ? "处理问题" : locale === "ko" ? "문제 처리" : "対応して保存") : (locale === "zh" ? "保存" : locale === "ko" ? "저장" : "保存")}
+      savingLabel={locale === "zh" ? "保存中" : locale === "ko" ? "저장 중" : "保存中"}
+      className={className}
+    >
+      {field.evidenceItems.length > 0 ? (
+        <CaseEvidenceSummary
+          locale={locale}
+          title={locale === "zh" ? "资料候选" : locale === "ko" ? "자료 후보" : "資料候補"}
+          evidenceItems={field.evidenceItems}
+          currentValue={field.value}
+          candidateFieldKey={field.fieldKey}
+        />
+      ) : null}
+      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 sm:p-4">
+        <p className="text-xs font-black text-slate-600">{locale === "zh" ? "案件信息" : locale === "ko" ? "안건 정보" : "案件情報"}</p>
+        <div className="mt-2"><FieldInput field={field} locale={locale} /></div>
+      </div>
+    </CaseWorkbenchFieldForm>
+  );
 
   const renderEditor = () => {
     if (!editingField) return null;
@@ -776,30 +910,7 @@ export function CaseOverview({
         onClose={closeEditor}
         className={layoutStyles.editorPanel}
       >
-        <CaseWorkbenchFieldForm
-          action={saveAction}
-          caseId={caseId}
-          fieldKey={editingField.fieldKey}
-          returnField={editingField.fieldKey}
-          returnAnchor={editingSection?.id ?? fieldAnchor(editingField.fieldKey)}
-          returnView="overview"
-          showSaveWhenPristine
-          saveLabel={fieldIssue(editingField) ? (locale === "zh" ? "处理问题" : locale === "ko" ? "문제 처리" : "対応して保存") : (locale === "zh" ? "保存" : locale === "ko" ? "저장" : "保存")}
-          savingLabel={locale === "zh" ? "保存中" : locale === "ko" ? "저장 중" : "保存中"}
-          className={`${layoutStyles.editorForm} mt-5 space-y-4`}
-        >
-          <CaseEvidenceSummary
-            locale={locale}
-            title={locale === "zh" ? "资料候选" : locale === "ko" ? "자료 후보" : "資料候補"}
-            evidenceItems={editingField.evidenceItems}
-            currentValue={editingField.value}
-            candidateFieldKey={editingField.fieldKey}
-          />
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-            <p className="text-xs font-black text-slate-600">{locale === "zh" ? "案件信息" : locale === "ko" ? "안건 정보" : "案件情報"}</p>
-            <div className="mt-2"><FieldInput field={editingField} locale={locale} /></div>
-          </div>
-        </CaseWorkbenchFieldForm>
+        {renderFieldForm(editingField, `${layoutStyles.editorForm} mt-5 space-y-4`)}
       </CaseEditPanel>
     );
   };
@@ -863,6 +974,8 @@ export function CaseOverview({
             locale={locale}
             activeView="overview"
             showViewSwitch={showViewSwitch}
+            viewContext={viewContext}
+            onBeforeViewChange={handleBeforeViewChange}
             issueCount={issueCount}
             queueOpen={queueOpen}
             onToggleQueue={() => setQueueOpen((open) => !open)}
@@ -912,51 +1025,67 @@ export function CaseOverview({
             const sectionIssues = sectionFields.filter(fieldIssue).length;
             return (
               <section key={section.id} id={section.id} style={{ scrollMarginTop: "var(--case-object-scroll-margin, 11rem)" }} className="scroll-mt-[11rem] rounded-xl border border-slate-200 bg-white shadow-sm">
-                <div className="border-b border-slate-100 px-4 py-4 sm:px-6">
+                <div className="border-b border-slate-100 px-3 py-3 sm:px-4">
                   <div className="flex items-center justify-between gap-3">
-                    <h2 className="text-lg font-black text-slate-950">{section.label}</h2>
+                    <h2 className="text-base font-black text-slate-950 sm:text-lg">{section.label}</h2>
                     {sectionIssues > 0 ? <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-black text-amber-900 ring-1 ring-amber-200">{locale === "zh" ? `待处理 ${sectionIssues}` : locale === "ko" ? `처리 필요 ${sectionIssues}` : `要対応 ${sectionIssues}`}</span> : null}
                   </div>
                 </div>
-                <div className="space-y-5 p-4 sm:p-6">
+                <div className="space-y-3 p-3 sm:p-4">
                   {section.children.map((child) => {
                     const applicantChild = isApplicantChild(child);
-                    const childEditing = Boolean(editingApplicantField && child.fields.some((field) => field.fieldKey === editingField?.fieldKey));
-                    const renderField = (field: CaseOverviewField) => (
-                      <div className="flex h-full min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                        <div className="min-w-0 flex-1">
+                    const childEditing = Boolean(editingApplicantField && editingField && !isInlineField(editingField) && child.fields.some((field) => field.fieldKey === editingField.fieldKey));
+                    const renderField = (field: CaseOverviewField) => {
+                      const inlineEditing = !readOnly && isInlineField(field) && editingField?.fieldKey === field.fieldKey;
+                      const valueButton = !readOnly && isInlineField(field) ? (
+                        <button
+                          type="button"
+                          data-field-value-trigger={fieldAnchor(field.fieldKey)}
+                          onClick={(event) => openEditor(field, event.currentTarget)}
+                          className="block min-w-0 rounded-md text-left focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]"
+                        >
                           <CaseFieldValue label={field.label} value={field.displayValue} required={field.required} />
-                          {fieldIssue(field) ? <CaseFieldState issueLabel={field.issueLabel} normalLabel={locale === "zh" ? "已填写" : locale === "ko" ? "입력됨" : "入力済み"} /> : null}
-                          {fieldIssue(field) && field.evidenceItems.length > 0 ? (
-                            <details className="mt-2 text-xs">
-                              <summary className="cursor-pointer font-bold text-slate-600">{locale === "zh" ? "查看资料依据" : locale === "ko" ? "자료 근거 보기" : "資料の根拠を見る"}</summary>
-                              <div className="mt-2 space-y-2 rounded-lg border border-slate-200 bg-white p-2">
-                                {field.evidenceItems.slice(0, 3).map((evidence) => <div key={evidence.id} className="flex flex-wrap items-center justify-between gap-2"><span className="font-semibold text-slate-700">{evidence.value || "-"}</span><span className="text-[11px] font-semibold text-slate-500">{evidence.sourceLabel}</span></div>)}
-                              </div>
-                            </details>
+                        </button>
+                      ) : <CaseFieldValue label={field.label} value={field.displayValue} required={field.required} />;
+
+                      return (
+                        <div className="flex h-full min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="min-w-0 flex-1">
+                            {inlineEditing ? <div data-case-inline-editor={field.fieldKey}>{renderFieldForm(field, "space-y-3")}</div> : valueButton}
+                            {fieldIssue(field) ? <CaseFieldState issueLabel={field.issueLabel} normalLabel={locale === "zh" ? "已填写" : locale === "ko" ? "입력됨" : "入力済み"} /> : null}
+                            {fieldIssue(field) && field.evidenceItems.length > 0 ? (
+                              <details className="mt-2 text-xs">
+                                <summary className="cursor-pointer font-bold text-slate-600">{locale === "zh" ? "查看资料依据" : locale === "ko" ? "자료 근거 보기" : "資料の根拠を見る"}</summary>
+                                <div className="mt-2 space-y-2 rounded-lg border border-slate-200 bg-white p-2">
+                                  {field.evidenceItems.slice(0, 3).map((evidence) => <div key={evidence.id} className="flex flex-wrap items-center justify-between gap-2"><span className="font-semibold text-slate-700">{evidence.value || "-"}</span><span className="text-[11px] font-semibold text-slate-500">{evidence.sourceLabel}</span></div>)}
+                                </div>
+                              </details>
+                            ) : null}
+                          </div>
+                          {!readOnly ? (
+                            <button
+                              type="button"
+                              data-field-trigger={fieldAnchor(field.fieldKey)}
+                              onClick={(event) => inlineEditing ? closeEditor() : openEditor(field, event.currentTarget)}
+                              onKeyDown={(event) => {
+                                if (event.key !== "Enter" && event.key !== " ") return;
+                                event.preventDefault();
+                                if (inlineEditing) closeEditor();
+                                else openEditor(field, event.currentTarget);
+                              }}
+                              aria-label={inlineEditing ? (locale === "zh" ? `取消${field.label}编辑` : locale === "ko" ? `${field.label} 편집 취소` : `${field.label}の編集をキャンセル`) : undefined}
+                              className={`inline-flex min-h-10 shrink-0 items-center justify-center rounded-lg border px-3 py-2 text-xs font-black focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)] sm:min-w-20 ${fieldIssue(field) ? "border-amber-300 bg-white text-amber-900 hover:bg-amber-50" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`}
+                            >
+                              {inlineEditing ? (locale === "zh" ? "取消" : locale === "ko" ? "취소" : "キャンセル") : fieldIssue(field) ? (locale === "zh" ? "处理问题" : locale === "ko" ? "문제 처리" : "要対応") : (locale === "zh" ? "编辑" : locale === "ko" ? "편집" : "編集")}
+                            </button>
                           ) : null}
                         </div>
-                        {!readOnly ? (
-                          <button
-                            type="button"
-                            data-field-trigger={fieldAnchor(field.fieldKey)}
-                            onClick={() => openEditor(field)}
-                            onKeyDown={(event) => {
-                              if (event.key !== "Enter" && event.key !== " ") return;
-                              event.preventDefault();
-                              openEditor(field);
-                            }}
-                            className={`inline-flex min-h-11 shrink-0 items-center justify-center rounded-lg border px-3 py-2 text-xs font-black focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)] sm:min-w-24 ${fieldIssue(field) ? "border-amber-300 bg-white text-amber-900 hover:bg-amber-50" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`}
-                          >
-                            {fieldIssue(field) ? (locale === "zh" ? "处理问题" : locale === "ko" ? "문제 처리" : "要対応") : (locale === "zh" ? "编辑" : locale === "ko" ? "편집" : "編集")}
-                          </button>
-                        ) : null}
-                      </div>
-                    );
+                      );
+                    };
 
                     return (
                       <section key={child.id} id={`${section.id}-${child.id}`}>
-                        <h3 className="text-sm font-black text-slate-700">{child.label}</h3>
+                        <h3 className="text-xs font-black text-slate-700 sm:text-sm">{child.label}</h3>
                         {applicantChild ? (
                           <ResponsiveFormLayout aria-label={child.label} editorOpen={childEditing} className="mt-2">
                             <div className={layoutStyles.formFields}>
@@ -1007,7 +1136,7 @@ export function CaseOverview({
                         ) : (
                           <div className="mt-2 divide-y divide-slate-100 rounded-lg border border-slate-100">
                             {child.fields.map((field) => (
-                              <article key={field.fieldKey} id={fieldAnchor(field.fieldKey)} style={{ scrollMarginTop: "var(--case-object-scroll-margin, 11rem)" }} className={`scroll-mt-[11rem] px-3 py-3 sm:px-4 ${fieldIssue(field) ? "bg-amber-50/45" : "bg-white"}`}>
+                              <article key={field.fieldKey} id={fieldAnchor(field.fieldKey)} style={{ scrollMarginTop: "var(--case-object-scroll-margin, 11rem)" }} className={`scroll-mt-[11rem] px-3 py-2.5 sm:px-3 ${fieldIssue(field) ? "bg-amber-50/45" : "bg-white"}`}>
                                 {renderField(field)}
                               </article>
                             ))}
@@ -1023,9 +1152,31 @@ export function CaseOverview({
         </main>
 
         {editingField && !editingApplicantField ? (
-          <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/35 p-0 sm:p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeEditor(); }}>
-            <div ref={editorRef} role="dialog" aria-modal="true" aria-label={editingField.label} className="h-full w-full max-w-xl overflow-y-auto bg-white p-4 shadow-2xl sm:rounded-2xl sm:p-6">
+          <div className="fixed inset-0 z-50 bg-slate-950/35" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeEditor(); }}>
+            <div
+              ref={editorRef}
+              data-case-anchored-editor={editingField.fieldKey}
+              role="dialog"
+              aria-modal="true"
+              aria-label={editingField.label}
+              style={{ top: editorPosition?.top ?? 16, left: editorPosition?.left ?? 16, width: editorPosition?.width ?? "min(36rem, calc(100vw - 2rem))", maxHeight: "calc(100vh - 2rem)" }}
+              className="fixed overflow-y-auto rounded-2xl bg-white p-4 shadow-2xl sm:p-6"
+            >
               {renderEditor()}
+            </div>
+          </div>
+        ) : null}
+
+        {pendingView ? (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/45 p-4" role="presentation">
+            <div role="dialog" aria-modal="true" aria-labelledby="case-unsaved-view-title" className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl">
+              <h2 id="case-unsaved-view-title" className="text-lg font-black text-slate-950">{locale === "zh" ? "有未保存的修改" : locale === "ko" ? "저장하지 않은 변경 사항" : "未保存の変更があります"}</h2>
+              <p className="mt-2 text-sm font-semibold leading-6 text-slate-700">{locale === "zh" ? "切换视图前，请选择保存、放弃或继续编辑。" : locale === "ko" ? "보기를 전환하기 전에 저장, 변경 취소 또는 계속 편집을 선택해 주세요." : "表示を切り替える前に、保存・破棄・編集継続を選択してください。"}</p>
+              <div className="mt-4 flex flex-wrap justify-end gap-2">
+                <button type="button" onClick={() => setPendingView(null)} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50">{locale === "zh" ? "继续编辑" : locale === "ko" ? "계속 편집" : "編集を続ける"}</button>
+                <button type="button" onClick={() => { const target = pendingView; closeEditor(); setPendingView(null); pushView(target); }} className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-black text-rose-700 hover:bg-rose-50">{locale === "zh" ? "放弃并切换" : locale === "ko" ? "취소하고 전환" : "破棄して切替"}</button>
+                <button type="button" onClick={() => { const target = pendingView; setPendingView(null); setSaveAndSwitchView(target); }} className="rounded-lg bg-slate-950 px-3 py-2 text-xs font-black text-white hover:bg-slate-800">{locale === "zh" ? "保存并切换" : locale === "ko" ? "저장 후 전환" : "保存して切替"}</button>
+              </div>
             </div>
           </div>
         ) : null}

@@ -1132,6 +1132,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
           hasOutputTemplate={overviewHasOutputTemplate}
           saveAction={saveCaseWorkbenchAction}
           showViewSwitch={canWriteCase}
+          viewContext={{ field: initialFieldKey, scrollTop: initialScrollTop }}
           associationPanel={associationPanel}
           flash={<PageFlashBanner message={flashMessage} tone={flashTone} />}
           initialFieldKey={initialFieldKey}
@@ -1159,6 +1160,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
             locale={locale}
             activeView="quick"
             showViewSwitch={canWriteCase}
+            viewContext={{ field: initialFieldKey, scrollTop: initialScrollTop }}
             issueCount={overviewIssueCount}
             actions={
               <>

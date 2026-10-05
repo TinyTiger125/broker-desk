@@ -21,6 +21,7 @@ type CaseWorkbenchFieldFormProps = {
   saveButtonWrapperClassName?: string;
   saveButtonClassName?: string;
   saveButtonAriaLabel?: string;
+  onDirtyChange?: (dirty: boolean) => void;
   saveLabel: string;
   savingLabel: string;
   children: ReactNode;
@@ -79,6 +80,7 @@ export function CaseWorkbenchFieldForm({
   saveButtonWrapperClassName,
   saveButtonClassName,
   saveButtonAriaLabel,
+  onDirtyChange,
   saveLabel,
   savingLabel,
   children,
@@ -90,8 +92,10 @@ export function CaseWorkbenchFieldForm({
   return (
     <form
       action={action}
+      data-case-workbench-field={fieldKey}
       onChange={(event) => {
         setDirty(true);
+        onDirtyChange?.(true);
         const target = event.target;
         if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) {
           if (target.name === `field:${fieldKey}` && fieldValueSnapshotRef.current) fieldValueSnapshotRef.current.value = target.value;
@@ -105,6 +109,7 @@ export function CaseWorkbenchFieldForm({
       }}
       onInput={(event) => {
         setDirty(true);
+        onDirtyChange?.(true);
         const target = event.target;
         if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) {
           if (target.name === `field:${fieldKey}` && fieldValueSnapshotRef.current) fieldValueSnapshotRef.current.value = target.value;
@@ -117,8 +122,13 @@ export function CaseWorkbenchFieldForm({
         }
       }}
       onKeyDown={(event) => {
-        if (event.key === "Enter" && (event.nativeEvent.isComposing || event.keyCode === 229)) {
+        if (event.key !== "Enter") return;
+        // Let the browser/IME finish candidate confirmation. Synthetic Enter
+        // from an active composition must never be turned into a save.
+        if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+        if (event.target instanceof HTMLInputElement) {
           event.preventDefault();
+          event.currentTarget.requestSubmit();
         }
       }}
       onSubmit={(event) => {
@@ -157,6 +167,7 @@ export function CaseWorkbenchFieldForm({
           scrollTopRef.current.value = String(Math.max(0, Math.round(document.scrollingElement?.scrollTop ?? window.scrollY)));
         }
         setDirty(false);
+        onDirtyChange?.(false);
       }}
       className={className}
     >
