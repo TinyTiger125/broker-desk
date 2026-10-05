@@ -38,8 +38,10 @@ assert.match(associationManager, /caseAttachments/, "case association management
 assert.match(associationManager, /caseAttachments\.length > 0/, "empty case attachment lists must not create a large empty panel");
 assert.match(associationManager, /data-case-association-details/, "case association details must have an explicit expandable container");
 assert.match(associationManager, /associationNeedsAttention/, "compact association summary must retain the missing-association warning condition");
-assert.match(associationManager, /\{compact \? \(\s*<summary data-case-association-toggle data-case-association-summary/, "only compact overview mode may render the association summary entry");
-assert.match(associationManager, /open=\{compact \? undefined : true\}/, "quick association management must be server-rendered open");
+assert.match(associationManager, /const associationContent = \(/, "association management content must be defined once for both presentation modes");
+assert.match(associationManager, /\{compact \? \(\s*<details className=\"group\" data-case-association-details/, "only compact overview mode may render the expandable details container");
+assert.match(associationManager, /\) : \(\s*<div data-case-association-content>\{associationContent\}<\/div>/, "noncompact association management must render as a normal container");
+assert.doesNotMatch(associationManager, /<details[^>]*open=/, "noncompact association management must not rely on a default details marker");
 assert.equal((associationManager.match(/data-case-association-summary/g) ?? []).length, 1, "association summary entry must have one source");
 assert.match(casePage, /caseAttachments=\{objectAttachments\}/, "case page must place case attachments in association management");
 assert.doesNotMatch(casePage, /<ObjectAttachmentSection/, "case page must not render a second standalone generic upload form");
