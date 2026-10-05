@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { ClientForm } from "@/components/client-form";
 import { FocusDialog } from "@/components/case-association-draft";
 import { PropertyResponsiveForm } from "@/components/property-responsive-form";
@@ -202,14 +202,9 @@ export function CaseAssociationManager({
   const [quickCreateFeedback, setQuickCreateFeedback] = useState<string | undefined>();
   const [autoSave, setAutoSave] = useState(false);
   const associationFormRef = useRef<HTMLFormElement>(null);
-  const associationDetailsRef = useRef<HTMLDetailsElement>(null);
   const focusReturnRef = useRef<HTMLElement | null>(null);
   const personCreatePendingRef = useRef(false);
   const personCreateRolesRef = useRef<CasePersonRole[]>([]);
-
-  useLayoutEffect(() => {
-    if (associationDetailsRef.current) associationDetailsRef.current.open = !compact;
-  }, [compact]);
 
   const updatePersonCreatePending = (next: boolean) => {
     personCreatePendingRef.current = next;
@@ -339,7 +334,7 @@ export function CaseAssociationManager({
 
   return (
     <section className={`rounded-xl border border-slate-200 bg-white ${compact ? "p-3 sm:p-4" : "p-4 sm:p-5"}`} aria-label={compact ? text.title : undefined} aria-labelledby={compact ? undefined : "case-association-heading"}>
-      <details ref={associationDetailsRef} className={compact ? "group" : ""} data-case-association-details>
+      <details open={compact ? undefined : true} className={compact ? "group" : ""} data-case-association-details>
         <summary data-case-association-toggle data-case-association-summary className={compact ? "flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-offset-2 [&::-webkit-details-marker]:hidden" : "hidden"}>
           <span className="min-w-0">
             <span className="block text-sm font-black text-slate-950">{text.title}</span>
