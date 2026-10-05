@@ -21,6 +21,7 @@ if (!overview.includes("data-field-value-trigger")) throw new Error("short field
 if (!overview.includes("data-case-inline-editor")) throw new Error("short field editing must remain in the anchored overview row");
 if (!overview.includes("!isInlineField(editingField)") || !overview.includes("data-case-anchored-editor")) throw new Error("complex fields must use one anchored editor without duplicating short-field forms");
 if (!overview.includes("onBeforeViewChange") || !overview.includes("保存して切替")) throw new Error("view switching must offer an unsaved-draft decision");
+if (!overview.includes("requestCloseEditor") || !overview.includes("pendingClose") || !overview.includes("保存して閉じる")) throw new Error("all dirty close paths must offer the same save-discard-continue decision");
 if (!overview.includes("lastTriggerRef.current") || !overview.includes("lastTriggerSelectorRef.current")) throw new Error("cancel must restore focus to the actual edit trigger");
 if (!overview.includes("editorPosition?.top") || !overview.includes("editorPosition?.left")) throw new Error("complex editor must be positioned near its field");
 if (!form.includes("onDirtyChange") || !form.includes("data-case-workbench-field")) throw new Error("field form must expose dirty state for safe view switching");

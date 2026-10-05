@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { CaseWorkbenchFieldForm } from "@/components/case-workbench-field-form";
 import { ObjectPageShell, ResponsiveFormEditorSlot, ResponsiveFormField, ResponsiveFormLayout, ResponsiveFormRow } from "@/components/layout-system";
@@ -646,6 +646,7 @@ export function CaseOverview({
   const [editingFieldKey, setEditingFieldKey] = useState<string | null>(null);
   const [dirtyFieldKey, setDirtyFieldKey] = useState<string | null>(null);
   const [pendingView, setPendingView] = useState<"quick" | "overview" | null>(null);
+  const [pendingClose, setPendingClose] = useState(false);
   const [saveAndSwitchView, setSaveAndSwitchView] = useState<"quick" | "overview" | null>(null);
   const [editorPosition, setEditorPosition] = useState<{ top: number; left: number; width: number } | null>(null);
   const [wideResponsiveLayout, setWideResponsiveLayout] = useState(false);
@@ -712,7 +713,7 @@ export function CaseOverview({
       const anchor = document.getElementById(fieldAnchor(editingField.fieldKey));
       if (!anchor) return;
       const rect = anchor.getBoundingClientRect();
-      const width = Math.min(576, Math.max(0, window.innerWidth - 32));
+      const width = Math.min(480, Math.max(0, window.innerWidth - 32));
       const left = Math.min(Math.max(16, rect.left), Math.max(16, window.innerWidth - width - 16));
       const minTop = Math.min(Math.max(16, getStickyOffset()), Math.max(16, window.innerHeight - 280));
       const maxTop = Math.max(minTop, window.innerHeight - 280);
@@ -803,11 +804,20 @@ export function CaseOverview({
     setEditingFieldKey(field.fieldKey);
   };
 
-  const closeEditor = () => {
+  const closeEditor = useCallback(() => {
     setEditingFieldKey(null);
     setDirtyFieldKey(null);
+    setPendingClose(false);
     setSaveAndSwitchView(null);
-  };
+  }, []);
+
+  const requestCloseEditor = useCallback(() => {
+    if (dirtyFieldKey) {
+      setPendingClose(true);
+      return;
+    }
+    closeEditor();
+  }, [closeEditor, dirtyFieldKey]);
 
   const pushView = (view: "quick" | "overview") => {
     const current = new URL(window.location.href);
@@ -842,11 +852,11 @@ export function CaseOverview({
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
-      closeEditor();
+      requestCloseEditor();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [editingFieldKey]);
+  }, [editingFieldKey, dirtyFieldKey, requestCloseEditor]);
 
   const handleDownload = () => {
     if (!hasOutputTemplate || !downloadHref) {
@@ -907,7 +917,7 @@ export function CaseOverview({
         context={editingField.treePath.join(" / ")}
         issueLabel={fieldIssue(editingField) ? editingField.issueLabel : undefined}
         closeLabel={locale === "zh" ? "取消" : locale === "ko" ? "취소" : "キャンセル"}
-        onClose={closeEditor}
+        onClose={requestCloseEditor}
         className={layoutStyles.editorPanel}
       >
         {renderFieldForm(editingField, `${layoutStyles.editorForm} mt-5 space-y-4`)}
@@ -1066,11 +1076,11 @@ export function CaseOverview({
                             <button
                               type="button"
                               data-field-trigger={fieldAnchor(field.fieldKey)}
-                              onClick={(event) => inlineEditing ? closeEditor() : openEditor(field, event.currentTarget)}
+                              onClick={(event) => inlineEditing ? requestCloseEditor() : openEditor(field, event.currentTarget)}
                               onKeyDown={(event) => {
                                 if (event.key !== "Enter" && event.key !== " ") return;
                                 event.preventDefault();
-                                if (inlineEditing) closeEditor();
+                                if (inlineEditing) requestCloseEditor();
                                 else openEditor(field, event.currentTarget);
                               }}
                               aria-label={inlineEditing ? (locale === "zh" ? `取消${field.label}编辑` : locale === "ko" ? `${field.label} 편집 취소` : `${field.label}の編集をキャンセル`) : undefined}
@@ -1152,14 +1162,14 @@ export function CaseOverview({
         </main>
 
         {editingField && !editingApplicantField ? (
-          <div className="fixed inset-0 z-50 bg-slate-950/35" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeEditor(); }}>
+          <div className="fixed inset-0 z-50 bg-slate-950/25" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) requestCloseEditor(); }}>
             <div
               ref={editorRef}
               data-case-anchored-editor={editingField.fieldKey}
               role="dialog"
               aria-modal="true"
               aria-label={editingField.label}
-              style={{ top: editorPosition?.top ?? 16, left: editorPosition?.left ?? 16, width: editorPosition?.width ?? "min(36rem, calc(100vw - 2rem))", maxHeight: "calc(100vh - 2rem)" }}
+              style={{ top: editorPosition?.top ?? 16, left: editorPosition?.left ?? 16, width: editorPosition?.width ?? "min(30rem, calc(100vw - 2rem))", maxHeight: "calc(100vh - 2rem)" }}
               className="fixed overflow-y-auto rounded-2xl bg-white p-4 shadow-2xl sm:p-6"
             >
               {renderEditor()}
@@ -1167,15 +1177,15 @@ export function CaseOverview({
           </div>
         ) : null}
 
-        {pendingView ? (
+        {pendingView || pendingClose ? (
           <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/45 p-4" role="presentation">
             <div role="dialog" aria-modal="true" aria-labelledby="case-unsaved-view-title" className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl">
               <h2 id="case-unsaved-view-title" className="text-lg font-black text-slate-950">{locale === "zh" ? "有未保存的修改" : locale === "ko" ? "저장하지 않은 변경 사항" : "未保存の変更があります"}</h2>
-              <p className="mt-2 text-sm font-semibold leading-6 text-slate-700">{locale === "zh" ? "切换视图前，请选择保存、放弃或继续编辑。" : locale === "ko" ? "보기를 전환하기 전에 저장, 변경 취소 또는 계속 편집을 선택해 주세요." : "表示を切り替える前に、保存・破棄・編集継続を選択してください。"}</p>
+              <p className="mt-2 text-sm font-semibold leading-6 text-slate-700">{pendingView ? (locale === "zh" ? "切换视图前，请选择保存、放弃或继续编辑。" : locale === "ko" ? "보기를 전환하기 전에 저장, 변경 취소 또는 계속 편집을 선택해 주세요." : "表示を切り替える前に、保存・破棄・編集継続を選択してください。") : (locale === "zh" ? "关闭编辑前，请选择保存、放弃或继续编辑。" : locale === "ko" ? "편집을 닫기 전에 저장, 변경 취소 또는 계속 편집을 선택해 주세요." : "編集を閉じる前に、保存・破棄・編集継続を選択してください。")}</p>
               <div className="mt-4 flex flex-wrap justify-end gap-2">
-                <button type="button" onClick={() => setPendingView(null)} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50">{locale === "zh" ? "继续编辑" : locale === "ko" ? "계속 편집" : "編集を続ける"}</button>
-                <button type="button" onClick={() => { const target = pendingView; closeEditor(); setPendingView(null); pushView(target); }} className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-black text-rose-700 hover:bg-rose-50">{locale === "zh" ? "放弃并切换" : locale === "ko" ? "취소하고 전환" : "破棄して切替"}</button>
-                <button type="button" onClick={() => { const target = pendingView; setPendingView(null); setSaveAndSwitchView(target); }} className="rounded-lg bg-slate-950 px-3 py-2 text-xs font-black text-white hover:bg-slate-800">{locale === "zh" ? "保存并切换" : locale === "ko" ? "저장 후 전환" : "保存して切替"}</button>
+                <button type="button" onClick={() => { setPendingView(null); setPendingClose(false); }} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50">{locale === "zh" ? "继续编辑" : locale === "ko" ? "계속 편집" : "編集を続ける"}</button>
+                <button type="button" onClick={() => { const target = pendingView; closeEditor(); setPendingView(null); setPendingClose(false); if (target) pushView(target); }} className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-black text-rose-700 hover:bg-rose-50">{pendingView ? (locale === "zh" ? "放弃并切换" : locale === "ko" ? "취소하고 전환" : "破棄して切替") : (locale === "zh" ? "放弃修改" : locale === "ko" ? "변경 취소" : "変更を破棄")}</button>
+                <button type="button" onClick={() => { const target = pendingView ?? "overview"; setPendingView(null); setPendingClose(false); setSaveAndSwitchView(target); }} className="rounded-lg bg-slate-950 px-3 py-2 text-xs font-black text-white hover:bg-slate-800">{pendingView ? (locale === "zh" ? "保存并切换" : locale === "ko" ? "저장 후 전환" : "保存して切替") : (locale === "zh" ? "保存并关闭" : locale === "ko" ? "저장 후 닫기" : "保存して閉じる")}</button>
               </div>
             </div>
           </div>
