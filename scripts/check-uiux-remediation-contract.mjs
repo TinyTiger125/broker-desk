@@ -22,8 +22,8 @@ function assertFieldGridContract(css, overview) {
   const desktop = css.match(/@media \(min-width: 64rem\) \{([\s\S]*?)\n\}/)?.[1] ?? "";
   requireMatch(desktop, /\.formRow\s*\{[\s\S]*?align-items:\s*stretch;/, "desktop field rows must stretch both cells to one row height");
   requireMatch(desktop, /\.formRow\s*>\s*\.formField\s*\{[\s\S]*?height:\s*100%;/, "each field article must fill the stretched row");
-  requireMatch(overview, /const renderField = \(field: CaseOverviewField\) => \(\s*<div className="[^"]*h-full[^"]*sm:flex-row[^"]*sm:items-start/, "field content must fill its article and align value/action from the same top baseline");
-  requireMatch(overview, /data-field-trigger=\{fieldAnchor\(field\.fieldKey\)\}[\s\S]*?className=\{`[^`]*min-h-11[^`]*sm:min-w-24/, "field actions must keep one stable touch target and desktop action column");
+  requireMatch(overview, /const renderField = \(field: CaseOverviewField\) => \{\s*const inlineEditing[\s\S]*?return \(\s*<div className="[^"]*h-full[^"]*sm:flex-row[^"]*sm:items-start/, "field content must fill its article and align value/action from the same top baseline");
+  requireMatch(overview, /data-field-trigger=\{fieldAnchor\(field\.fieldKey\)\}[\s\S]*?className=\{`[^`]*min-h-10[^`]*sm:min-w-16/, "field actions must keep the compact 40px touch target and desktop action column");
 }
 
 function assertMobileMenuContract(css) {

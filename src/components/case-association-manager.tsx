@@ -335,13 +335,15 @@ export function CaseAssociationManager({
   return (
     <section className={`rounded-xl border border-slate-200 bg-white ${compact ? "p-3 sm:p-4" : "p-4 sm:p-5"}`} aria-label={compact ? text.title : undefined} aria-labelledby={compact ? undefined : "case-association-heading"}>
       <details open={compact ? undefined : true} className={compact ? "group" : ""} data-case-association-details>
-        <summary data-case-association-toggle data-case-association-summary className={compact ? "flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-offset-2 [&::-webkit-details-marker]:hidden" : "hidden"}>
-          <span className="min-w-0">
-            <span className="block text-sm font-black text-slate-950">{text.title}</span>
-            <span className="mt-0.5 block truncate text-xs font-semibold text-slate-600">{parties.length} {text.people} · {currentProperty?.name ?? text.propertyEmpty}</span>
-          </span>
-          <span className="shrink-0 rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-black text-slate-700">{text.expand}</span>
-        </summary>
+        {compact ? (
+          <summary data-case-association-toggle data-case-association-summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-offset-2 [&::-webkit-details-marker]:hidden">
+            <span className="min-w-0">
+              <span className="block text-sm font-black text-slate-950">{text.title}</span>
+              <span className="mt-0.5 block truncate text-xs font-semibold text-slate-600">{parties.length} {text.people} · {currentProperty?.name ?? text.propertyEmpty}</span>
+            </span>
+            <span className="shrink-0 rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-black text-slate-700">{text.expand}</span>
+          </summary>
+        ) : null}
         <div className={compact ? "mt-3 space-y-3" : ""}>
           <div><h2 id="case-association-heading" className="text-base font-black text-slate-950">{text.title}</h2><p className="mt-1 text-xs font-semibold text-slate-500">{text.description}</p></div>
       {objectImportUnavailable ? <p role="status" className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">{text.objectImportUnavailable}</p> : null}

@@ -38,6 +38,9 @@ assert.match(associationManager, /caseAttachments/, "case association management
 assert.match(associationManager, /caseAttachments\.length > 0/, "empty case attachment lists must not create a large empty panel");
 assert.match(associationManager, /data-case-association-details/, "case association details must have an explicit expandable container");
 assert.match(associationManager, /associationNeedsAttention/, "compact association summary must retain the missing-association warning condition");
+assert.match(associationManager, /\{compact \? \(\s*<summary data-case-association-toggle data-case-association-summary/, "only compact overview mode may render the association summary entry");
+assert.match(associationManager, /open=\{compact \? undefined : true\}/, "quick association management must be server-rendered open");
+assert.equal((associationManager.match(/data-case-association-summary/g) ?? []).length, 1, "association summary entry must have one source");
 assert.match(casePage, /caseAttachments=\{objectAttachments\}/, "case page must place case attachments in association management");
 assert.doesNotMatch(casePage, /<ObjectAttachmentSection/, "case page must not render a second standalone generic upload form");
 assert.equal((casePage.match(/associationPanel=\{associationPanel\}/g) ?? []).length, 2, "read-only and overview branches must retain the association panel");
