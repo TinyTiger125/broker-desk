@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
 import { ClientForm } from "@/components/client-form";
 import { FocusDialog } from "@/components/case-association-draft";
 import { PropertyResponsiveForm } from "@/components/property-responsive-form";
@@ -22,6 +22,7 @@ type ObjectImportView = { target: ObjectImportTargetRecord; fields: ObjectImport
 type CaseAssociationManagerProps = {
   locale: Locale;
   caseId: string;
+  compact?: boolean;
   readOnly?: boolean;
   initialParties: Array<CaseAssociationParty & { name: string }>;
   initialPrimaryPropertyId?: string;
@@ -44,6 +45,7 @@ const copy = {
     close: "閉じる",
     title: "関連資料",
     description: "同じ人物に複数の案件役割を設定できます。関連を解除しても人物や物件の主資料は削除されません。",
+    expand: "関連を確認・編集",
     addPerson: "人物を追加",
     people: "人物の関連",
     peopleEmpty: "関連付けられた人物はまだありません。",
@@ -84,6 +86,7 @@ const copy = {
     close: "关闭",
     title: "关联资料",
     description: "同一人物可以编辑多个案件角色；解除关联不会删除人物或物件主资料。",
+    expand: "查看并编辑关联",
     addPerson: "增加人物",
     people: "人物关联",
     peopleEmpty: "还没有关联人物。",
@@ -124,6 +127,7 @@ const copy = {
     close: "닫기",
     title: "연결 자료",
     description: "같은 관계자에게 여러 안건 역할을 설정할 수 있습니다. 연결을 해제해도 관계자나 매물 기본 자료는 삭제되지 않습니다.",
+    expand: "연결 확인 및 편집",
     addPerson: "관계자 추가",
     people: "관계자 연결",
     peopleEmpty: "연결된 관계자가 없습니다.",
@@ -165,6 +169,7 @@ const copy = {
 export function CaseAssociationManager({
   locale,
   caseId,
+  compact = false,
   readOnly = false,
   initialParties,
   initialPrimaryPropertyId,
@@ -197,9 +202,14 @@ export function CaseAssociationManager({
   const [quickCreateFeedback, setQuickCreateFeedback] = useState<string | undefined>();
   const [autoSave, setAutoSave] = useState(false);
   const associationFormRef = useRef<HTMLFormElement>(null);
+  const associationDetailsRef = useRef<HTMLDetailsElement>(null);
   const focusReturnRef = useRef<HTMLElement | null>(null);
   const personCreatePendingRef = useRef(false);
   const personCreateRolesRef = useRef<CasePersonRole[]>([]);
+
+  useLayoutEffect(() => {
+    if (associationDetailsRef.current) associationDetailsRef.current.open = !compact;
+  }, [compact]);
 
   const updatePersonCreatePending = (next: boolean) => {
     personCreatePendingRef.current = next;
@@ -324,10 +334,21 @@ export function CaseAssociationManager({
   };
   const visibleCandidates = candidates.filter((candidate) => `${candidate.name} ${candidate.id} ${candidate.searchText ?? ""}`.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
   const visibleProperties = properties.filter((property) => `${property.name} ${property.address ?? ""}`.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
+  const hasPrimaryApplicant = parties.some((party) => party.roles.includes("主要申请人"));
+  const associationNeedsAttention = !hasPrimaryApplicant || !primaryPropertyId;
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5" aria-labelledby="case-association-heading">
-      <div><h2 id="case-association-heading" className="text-base font-black text-slate-950">{text.title}</h2><p className="mt-1 text-xs font-semibold text-slate-500">{text.description}</p></div>
+    <section className={`rounded-xl border border-slate-200 bg-white ${compact ? "p-3 sm:p-4" : "p-4 sm:p-5"}`} aria-label={compact ? text.title : undefined} aria-labelledby={compact ? undefined : "case-association-heading"}>
+      <details ref={associationDetailsRef} className={compact ? "group" : ""} data-case-association-details>
+        <summary data-case-association-toggle data-case-association-summary className={compact ? "flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-offset-2 [&::-webkit-details-marker]:hidden" : "hidden"}>
+          <span className="min-w-0">
+            <span className="block text-sm font-black text-slate-950">{text.title}</span>
+            <span className="mt-0.5 block truncate text-xs font-semibold text-slate-600">{parties.length} {text.people} · {currentProperty?.name ?? text.propertyEmpty}</span>
+          </span>
+          <span className="shrink-0 rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-black text-slate-700">{text.expand}</span>
+        </summary>
+        <div className={compact ? "mt-3 space-y-3" : ""}>
+          <div><h2 id="case-association-heading" className="text-base font-black text-slate-950">{text.title}</h2><p className="mt-1 text-xs font-semibold text-slate-500">{text.description}</p></div>
       {objectImportUnavailable ? <p role="status" className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">{text.objectImportUnavailable}</p> : null}
       <div className="mt-4 grid items-stretch gap-5 md:grid-cols-2">
         <div className="flex min-w-0 flex-col gap-3"><div className="flex min-h-11 items-center justify-between gap-2"><h3 className="text-sm font-black text-slate-900">{text.people} ({parties.length})</h3>{!readOnly ? <button type="button" data-case-association-focus-target onClick={(event) => { focusReturnRef.current = event.currentTarget; openPersonDrawer(); }} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0046ad]">{text.addPerson}</button> : null}</div>{parties.length === 0 ? <p className="min-h-20 rounded-lg bg-slate-50 px-3 py-3 text-sm text-slate-500">{text.peopleEmpty}</p> : <div className="space-y-2">{parties.map((party) => <div key={party.partyId} className="flex min-h-20 items-start justify-between gap-3 rounded-lg border border-slate-200 px-4 py-3"><div className="min-w-0 flex-1"><p className="truncate text-sm font-bold text-slate-900" title={party.name} aria-label={party.name}>{party.name}</p>{renderObjectImport("party", party.partyId)}<div className="mt-1 flex flex-wrap gap-1.5">{party.roles.map((role) => <span key={role} className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-700">{getCasePersonRoleLabel(locale, role)}</span>)}</div></div>{!readOnly ? <button type="button" data-case-association-focus-target onClick={(event) => { focusReturnRef.current = event.currentTarget; editPerson(party); }} className="inline-flex min-h-11 shrink-0 self-start items-center rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700">{text.editRoles}</button> : null}</div>)}</div>}</div>
@@ -342,12 +363,15 @@ export function CaseAssociationManager({
           <ObjectAttachmentList locale={locale} items={caseAttachments} />
         </section>
       ) : null}
-      <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">{text.outputBlocker}</p>
+      {!compact ? <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">{text.outputBlocker}</p> : null}
       {quickCreateFeedback ? <p role="status" className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-900">{quickCreateFeedback}</p> : null}
       {!readOnly && saveAction ? <form ref={associationFormRef} action={saveAction} className="mt-4 flex justify-end border-t border-slate-200 pt-4"><input type="hidden" name="caseId" value={caseId} /><input type="hidden" name="associationDraftJson" value={draftJson} /><button type="submit" className="rounded-lg bg-slate-950 px-4 py-2.5 text-sm font-black text-white hover:bg-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0046ad]">{text.save}</button></form> : null}
 
       {drawer === "person" ? <FocusDialog title={drawerView === "create" ? text.createPerson : text.choosePerson} closeLabel={text.close} closeDisabled={drawerView === "create" && personCreatePending} closeDisabledRef={personCreatePendingRef} onClose={closeDrawer}>{drawerView === "create" && createPersonAction ? <div onClickCapture={guardPersonCreateCancel} onSubmitCapture={(event) => { if (!validatePersonCreate()) { event.preventDefault(); event.stopPropagation(); } }}><div className="mb-4 space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4"><h3 className="text-sm font-black text-slate-900">{text.quickCreateRoles}</h3><div className="grid gap-2 sm:grid-cols-2">{CASE_PERSON_ROLES.map((role) => <label key={role} className="flex min-h-11 items-center gap-2 text-sm font-semibold text-slate-700"><input type="checkbox" checked={personCreateRoles.includes(role)} disabled={personCreatePending} onChange={(event) => { setPersonCreateRoles((current) => event.target.checked ? [...current, role] : current.filter((item) => item !== role)); setSelectionError(undefined); }} />{getCasePersonRoleLabel(locale, role)}</label>)}</div>{selectionError ? <p role="alert" className="text-xs font-bold text-rose-700">{selectionError}</p> : null}</div><ClientForm action={createPersonAction} mode="create" locale={locale} returnTo={`/cases/${caseId}`} onSubmitStart={startPersonCreate} onPendingChange={updatePersonCreatePending} onCreated={(record) => { const roles = [...personCreateRolesRef.current]; updatePersonCreatePending(false); personCreateRolesRef.current = []; setCandidates((current) => [...current, record]); setParties((current) => [...current, { partyId: record.id, name: record.name, roles }]); setAutoSave(true); setQuickCreateFeedback(text.quickCreateFeedback); closeDrawer(true); }} /></div> : <div className="space-y-4"><div className="flex gap-2"><input autoFocus value={query} onChange={(event) => { setQuery(event.target.value); setSelectionError(undefined); }} placeholder={text.searchPerson} className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2.5 text-sm" />{createPersonAction ? <button type="button" onClick={openPersonCreate} className="shrink-0 rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold">{text.quickCreate}</button> : null}</div><div className="space-y-2">{visibleCandidates.map((candidate) => <button type="button" key={candidate.id} onClick={() => { setSelectedPersonId(candidate.id); setSelectedRoles(parties.find((party) => party.partyId === candidate.id)?.roles ?? []); setSelectionError(undefined); }} className={`flex w-full items-center justify-between rounded-lg border px-3 py-3 text-left ${selectedPersonId === candidate.id ? "border-blue-700 bg-blue-50" : "border-slate-200"}`}><span className="truncate text-sm font-bold">{candidate.name}</span>{parties.some((party) => party.partyId === candidate.id) ? <span className="text-xs font-bold text-slate-600">{text.associated}</span> : <span className="text-xs font-bold text-[#0046ad]">{text.select}</span>}</button>)}</div>{visibleCandidates.length === 0 ? <p className="text-sm text-slate-500">{text.noCandidates}</p> : null}{selectionError ? <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-900">{selectionError}</p> : null}{selectedPersonId ? <div className="space-y-3 rounded-lg border border-slate-200 p-4"><h3 className="text-sm font-black">{text.roles}</h3><div className="grid gap-2 sm:grid-cols-2">{CASE_PERSON_ROLES.map((role) => <label key={role} className="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={selectedRoles.includes(role)} onChange={(event) => changeRole(role, event.target.checked)} />{getCasePersonRoleLabel(locale, role)}</label>)}</div><div className="flex justify-end gap-3 border-t border-slate-200 pt-3"><button type="button" onClick={closeDrawer} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold">{text.cancel}</button><button type="button" onClick={applyPerson} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-black text-white">{text.saveRoles}</button></div></div> : null}</div>}</FocusDialog> : null}
       {drawer === "property" ? <FocusDialog title={drawerView === "create" ? text.createProperty : text.chooseProperty} closeLabel={text.close} onClose={closeDrawer}>{drawerView === "create" && createPropertyAction ? <PropertyResponsiveForm action={createPropertyAction} locale={locale} initialValues={{ name: "", area: "", address: "", sizeSqm: "", listingPrice: "", managementFee: "", repairFee: "", notes: "" }} returnTo={`/cases/${caseId}`} onCreated={(record) => { setProperties((current) => [...current, record]); setPrimaryPropertyId(record.id); setAutoSave(true); setQuickCreateFeedback(text.quickCreateFeedback); closeDrawer(); }} /> : <div className="space-y-4"><div className="flex gap-2"><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder={text.searchProperty} className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2.5 text-sm" />{createPropertyAction ? <button type="button" onClick={() => setDrawerView("create")} className="shrink-0 rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold">{text.quickCreate}</button> : null}</div><div className="space-y-2">{visibleProperties.map((property) => <button type="button" key={property.id} onClick={() => chooseProperty(property.id)} className="flex w-full items-center justify-between rounded-lg border border-slate-200 px-3 py-3 text-left"><span className="min-w-0"><span className="block truncate text-sm font-bold">{property.name}</span>{property.address ? <span className="mt-1 block truncate text-xs text-slate-500">{property.address}</span> : null}</span><span className="text-xs font-bold text-[#0046ad]">{text.select}</span></button>)}</div>{visibleProperties.length === 0 ? <p className="text-sm text-slate-500">{text.noCandidates}</p> : null}<div className="flex justify-end border-t border-slate-200 pt-3"><button type="button" onClick={closeDrawer} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold">{text.cancel}</button></div></div>}</FocusDialog> : null}
+        </div>
+      </details>
+      {compact && associationNeedsAttention ? <p role="alert" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">{text.outputBlocker}</p> : null}
     </section>
   );
 }

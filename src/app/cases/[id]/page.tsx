@@ -756,11 +756,12 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
     group.fields.map((field) => ({ ...field, groupId: group.id, label: `${group.label} / ${field.label}` })),
   );
   const caseAddressField = allWorkbenchFields.find((field) => field.fieldKey === "property.address");
-  const associationPanel = (
+  const renderAssociationPanel = (compact: boolean) => (
     <>
       <CaseAssociationManager
         locale={locale}
         caseId={brokerageCase.id}
+        compact={compact}
         readOnly={!canWriteCase}
         initialParties={associationParties}
         initialPrimaryPropertyId={associationDraft.primaryPropertyId}
@@ -797,6 +798,8 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
         : null}
     </>
   );
+  const associationPanel = renderAssociationPanel(true);
+  const quickAssociationPanel = renderAssociationPanel(false);
   const applicableWorkbenchFields = allWorkbenchFields.filter((field) => field.applicable);
   const dossierTreeNodes = CASE_INFORMATION_TREE.filter((node) => node.id !== "output_draft" && node.id !== "source_evidence") as readonly CaseInformationTreeNode[];
   const dossierTopNodes = dossierTreeNodes.filter((node) => applicableWorkbenchFields.some((field) => fieldMatchesTreeNode(field, node)));
@@ -1183,7 +1186,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
         }
         feedback={<PageFlashBanner message={flashMessage} tone={flashTone} />}
       >
-        {associationPanel}
+        {quickAssociationPanel}
 
         {selectedWorkbenchField ? (
           <section className="rounded-lg border border-amber-200 bg-amber-50/70 p-3 sm:hidden" aria-label={tr(locale, { ja: "次の対応項目", zh: "下一项任务", ko: "다음 처리 항목" })}>

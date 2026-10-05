@@ -36,10 +36,13 @@ assert.match(attachmentList, /\/api\/attachments\//, "shared object UI must expo
 assert.match(associationManager, /ObjectAttachmentList/, "case association management must retain the attachment list");
 assert.match(associationManager, /caseAttachments/, "case association management must receive case attachments");
 assert.match(associationManager, /caseAttachments\.length > 0/, "empty case attachment lists must not create a large empty panel");
+assert.match(associationManager, /data-case-association-details/, "case association details must have an explicit expandable container");
+assert.match(associationManager, /associationNeedsAttention/, "compact association summary must retain the missing-association warning condition");
 assert.match(casePage, /caseAttachments=\{objectAttachments\}/, "case page must place case attachments in association management");
 assert.doesNotMatch(casePage, /<ObjectAttachmentSection/, "case page must not render a second standalone generic upload form");
 assert.equal((casePage.match(/associationPanel=\{associationPanel\}/g) ?? []).length, 2, "read-only and overview branches must retain the association panel");
-assert.match(casePage, /\{associationPanel\}/, "quick case branch must retain the association panel");
+assert.match(casePage, /\{quickAssociationPanel\}/, "quick case branch must retain the full association panel");
+assert.match(casePage, /compact=\{compact\}/, "case association panel must support compact overview rendering");
 for (const page of pages) assert.match(page, /<ObjectAttachmentSection/, "party and property pages must render the shared attachment section");
 
 console.log("object attachments contract: PASS");

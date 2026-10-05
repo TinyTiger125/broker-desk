@@ -302,7 +302,7 @@ requireText(caseOverview, "state={attentionQueue}", "CaseOverview state slot");
 requireText(caseOverview, "{associationPanel}", "CaseOverview association panel child");
 if (caseOverview.includes("navigation={")) failures.push("CaseOverview: navigation must be assembled in children after associationPanel");
 const caseOverviewNavPosition = caseOverview.indexOf("<nav data-case-anchor-nav");
-const caseOverviewFieldsPosition = caseOverview.indexOf("<main className=\"space-y-4\">");
+const caseOverviewFieldsPosition = caseOverview.indexOf("<main className=\"space-y-3\" data-case-overview-density=\"dense\">");
 if (caseOverviewAssociationPosition < 0 || caseOverviewNavPosition < 0 || caseOverviewFieldsPosition < 0 || !(caseOverviewAssociationPosition < caseOverviewNavPosition && caseOverviewNavPosition < caseOverviewFieldsPosition)) {
   failures.push("CaseOverview: children order must be associationPanel, section navigation, then fields");
 }
@@ -318,8 +318,8 @@ requireText(readOnlyBranch, "showViewSwitch={canWriteCase}", "read-only switch d
 requireText(overviewBranch, "showViewSwitch={canWriteCase}", "overview switch decision from page permission result");
 requireText(readOnlyBranch, "associationPanel={associationPanel}", "read-only association panel handoff");
 requireText(overviewBranch, "associationPanel={associationPanel}", "overview association panel handoff");
-if ((casePage.slice(quickBranchStart).match(/\{associationPanel\}/g) ?? []).length !== 1) {
-  failures.push("case detail page: quick branch must render associationPanel exactly once inside its shell");
+if ((casePage.slice(quickBranchStart).match(/\{quickAssociationPanel\}/g) ?? []).length !== 1) {
+  failures.push("case detail page: quick branch must render quickAssociationPanel exactly once inside its shell");
 }
 for (const fragment of [
   "readOnly={!canWriteCase}",
@@ -328,6 +328,7 @@ for (const fragment of [
   "saveAction={canWriteCase ? saveCaseAssociationsAction : undefined}",
   "createPersonAction={canWriteCase ? createClientFormAction : undefined}",
   "createPropertyAction={canWriteCase ? createPropertyQuickAction : undefined}",
+  "const quickAssociationPanel = renderAssociationPanel(false)",
   "const activeView = query?.view === \"quick\" || query?.view === \"overview\"",
   "downloadGate && downloadGate.blockedReasons.length > 0",
   "flashTone =",
@@ -348,6 +349,7 @@ for (const fragment of [
 ]) {
   requireText(caseOverview, fragment, "CaseOverview output and return-context preservation");
 }
+requireText(caseOverview, "data-case-overview-density=\"dense\"", "CaseOverview dense field layout marker");
 
 const casesCompositionFragments = [
   "<PageFrame className=\"space-y-5\">",

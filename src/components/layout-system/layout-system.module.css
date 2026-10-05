@@ -18,6 +18,10 @@
   border-bottom: 1px solid var(--bd-line);
 }
 
+.overviewDense .formField {
+  padding: var(--bd-space-2);
+}
+
 .formFieldWide {
   grid-column: 1 / -1;
 }

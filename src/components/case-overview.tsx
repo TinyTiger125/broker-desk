@@ -373,7 +373,7 @@ function isApplicantChild(child: CaseOverviewChildSection) {
 }
 
 function isWideResponsiveField(field: CaseOverviewField) {
-  return field.inputSpec.kind === "textarea";
+  return field.inputSpec.kind === "textarea" || field.fieldKey.split(".").at(-1) === "address";
 }
 
 function isInlineField(field: CaseOverviewField) {
@@ -1029,19 +1029,19 @@ export function CaseOverview({
             </select>
           </label>
         </nav>
-        <main className="space-y-4">
+        <main className="space-y-3" data-case-overview-density="dense">
           {sections.map((section) => {
             const sectionFields = section.children.flatMap((child) => child.fields);
             const sectionIssues = sectionFields.filter(fieldIssue).length;
             return (
               <section key={section.id} id={section.id} style={{ scrollMarginTop: "var(--case-object-scroll-margin, 11rem)" }} className="scroll-mt-[11rem] rounded-xl border border-slate-200 bg-white shadow-sm">
-                <div className="border-b border-slate-100 px-3 py-3 sm:px-4">
+                <div className="border-b border-slate-100 px-3 py-2.5 sm:px-4 sm:py-3">
                   <div className="flex items-center justify-between gap-3">
                     <h2 className="text-base font-black text-slate-950 sm:text-lg">{section.label}</h2>
                     {sectionIssues > 0 ? <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-black text-amber-900 ring-1 ring-amber-200">{locale === "zh" ? `待处理 ${sectionIssues}` : locale === "ko" ? `처리 필요 ${sectionIssues}` : `要対応 ${sectionIssues}`}</span> : null}
                   </div>
                 </div>
-                <div className="space-y-3 p-3 sm:p-4">
+                <div className="space-y-2 p-2.5 sm:p-3">
                   {section.children.map((child) => {
                     const applicantChild = isApplicantChild(child);
                     const childEditing = Boolean(editingApplicantField && editingField && !isInlineField(editingField) && child.fields.some((field) => field.fieldKey === editingField.fieldKey));
@@ -1084,7 +1084,7 @@ export function CaseOverview({
                                 else openEditor(field, event.currentTarget);
                               }}
                               aria-label={inlineEditing ? (locale === "zh" ? `取消${field.label}编辑` : locale === "ko" ? `${field.label} 편집 취소` : `${field.label}の編集をキャンセル`) : undefined}
-                              className={`inline-flex min-h-10 shrink-0 items-center justify-center rounded-lg border px-3 py-2 text-xs font-black focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)] sm:min-w-20 ${fieldIssue(field) ? "border-amber-300 bg-white text-amber-900 hover:bg-amber-50" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`}
+                              className={`inline-flex min-h-10 shrink-0 items-center justify-center rounded-lg border px-2 py-1.5 text-[11px] font-black focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)] sm:min-w-16 ${fieldIssue(field) ? "border-amber-300 bg-white text-amber-900 hover:bg-amber-50" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`}
                             >
                               {inlineEditing ? (locale === "zh" ? "取消" : locale === "ko" ? "취소" : "キャンセル") : fieldIssue(field) ? (locale === "zh" ? "处理问题" : locale === "ko" ? "문제 처리" : "要対応") : (locale === "zh" ? "编辑" : locale === "ko" ? "편집" : "編集")}
                             </button>
@@ -1097,7 +1097,7 @@ export function CaseOverview({
                       <section key={child.id} id={`${section.id}-${child.id}`}>
                         <h3 className="text-xs font-black text-slate-700 sm:text-sm">{child.label}</h3>
                         {applicantChild ? (
-                          <ResponsiveFormLayout aria-label={child.label} editorOpen={childEditing} className="mt-2">
+                          <ResponsiveFormLayout aria-label={child.label} editorOpen={childEditing} className={`mt-2 ${layoutStyles.overviewDense}`}>
                             <div className={layoutStyles.formFields}>
                               {buildResponsiveFieldRows(child.fields).map((row) => (
                                 <ResponsiveFormRow key={row.map((field) => field.fieldKey).join("-")}>
@@ -1144,9 +1144,9 @@ export function CaseOverview({
                             ) : null}
                           </ResponsiveFormLayout>
                         ) : (
-                          <div className="mt-2 divide-y divide-slate-100 rounded-lg border border-slate-100">
+                          <div className="mt-2 grid gap-px overflow-hidden rounded-lg border border-slate-100 bg-slate-100 sm:grid-cols-2">
                             {child.fields.map((field) => (
-                              <article key={field.fieldKey} id={fieldAnchor(field.fieldKey)} style={{ scrollMarginTop: "var(--case-object-scroll-margin, 11rem)" }} className={`scroll-mt-[11rem] px-3 py-2.5 sm:px-3 ${fieldIssue(field) ? "bg-amber-50/45" : "bg-white"}`}>
+                              <article key={field.fieldKey} id={fieldAnchor(field.fieldKey)} style={{ scrollMarginTop: "var(--case-object-scroll-margin, 11rem)" }} className={`min-w-0 scroll-mt-[11rem] px-3 py-2 sm:px-3 ${isWideResponsiveField(field) ? "sm:col-span-2" : ""} ${fieldIssue(field) ? "bg-amber-50/45" : "bg-white"}`}>
                                 {renderField(field)}
                               </article>
                             ))}
