@@ -97,12 +97,12 @@ function getStatusLabel(locale: Locale, status: LocalReviewStatus) {
 }
 
 function getStatusClass(status: LocalReviewStatus, implicitNormal = false) {
-  if (implicitNormal) return "bg-slate-100 text-slate-700";
-  if (status === "accepted") return "bg-emerald-100 text-emerald-800";
-  if (status === "edited") return "bg-blue-100 text-blue-800";
-  if (status === "unknown") return "bg-slate-200 text-slate-700";
-  if (status === "rejected") return "bg-rose-100 text-rose-800";
-  return "bg-amber-100 text-amber-800";
+  if (implicitNormal) return "bd-status-pill bd-status-pill-neutral";
+  if (status === "accepted") return "bd-status-pill bd-status-pill-success";
+  if (status === "edited") return "bd-status-pill bd-status-pill-info";
+  if (status === "unknown") return "bd-status-pill bd-status-pill-neutral";
+  if (status === "rejected") return "bd-status-pill bd-status-pill-danger";
+  return "bd-status-pill bd-status-pill-warning";
 }
 
 function getMethodLabel(locale: Locale, method: ExtractedInputField["method"]) {
@@ -225,7 +225,7 @@ function SaveReviewButton({
       disabled={pending || disabled}
       aria-busy={pending || undefined}
       aria-live="polite"
-      className="inline-flex min-w-48 items-center justify-center gap-2 rounded-lg bg-indigo-700 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-indigo-800 disabled:cursor-not-allowed disabled:bg-indigo-300"
+      className="bd-primary-action inline-flex min-w-48 items-center justify-center gap-2 px-4 py-2"
     >
       {pending ? <span aria-hidden="true" className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/35 border-t-white" /> : null}
       {pending
@@ -559,7 +559,7 @@ export function InputExtractionReview({
         </section>
       )}
 
-      <section aria-live="polite" className="rounded-xl border border-indigo-200 bg-indigo-50/70 p-4">
+      <section aria-live="polite" className="bd-review-save-bar rounded-xl border p-4">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
             <p className="text-sm font-bold text-slate-950">

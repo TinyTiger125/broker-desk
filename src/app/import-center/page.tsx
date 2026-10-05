@@ -1063,11 +1063,40 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
     { key: "person", icon: "group", iconClass: "bg-emerald-50 text-emerald-700", title: locale === "zh" ? "人物资料" : locale === "ko" ? "관계자 자료" : "関係者資料", desc: locale === "zh" ? "创建或读取人物相关资料。" : locale === "ko" ? "관계자 자료를 만들거나 읽습니다." : "関係者に関する資料を作成・読取します。", manualHref: "/parties/new?from=entry" },
     { key: "property", icon: "apartment", iconClass: "bg-violet-50 text-violet-700", title: locale === "zh" ? "物件资料" : locale === "ko" ? "매물 자료" : "物件資料", desc: locale === "zh" ? "创建或读取物件相关资料。" : locale === "ko" ? "매물 관련 자료를 만들거나 읽습니다." : "物件に関する資料を作成・読取します。", manualHref: "/properties/new?from=entry" },
   ] as const;
+  const flowStepKey =
+    wizardStep === "select" || wizardStep === "processing" || wizardStep === "failed"
+      ? "select"
+      : wizardStep === "mapping"
+        ? "mapping"
+        : wizardStep === "result"
+          ? "complete"
+          : "validate";
+  const flowSteps = [
+    { key: "select", label: copy.stepSelect },
+    { key: "mapping", label: copy.stepMap },
+    { key: "validate", label: copy.stepValidate },
+    { key: "complete", label: copy.stepComplete },
+  ] as const;
+  const flowStepIndex = flowSteps.findIndex((step) => step.key === flowStepKey);
   return (
     <div className="bd-page bd-import-page space-y-6">
       <section>
         <h1 className="text-4xl font-bold tracking-tight text-slate-900">{copy.pageTitle}</h1>
       </section>
+      <nav className="bd-flow-steps" aria-label={locale === "zh" ? "资料录入步骤" : locale === "ko" ? "자료 입력 단계" : "資料入力の手順"}>
+        <ol className="bd-flow-steps-list">
+          {flowSteps.map((step, index) => {
+            const state = index < flowStepIndex ? "complete" : index === flowStepIndex ? "current" : "upcoming";
+            return (
+              <li key={step.key} className={`bd-flow-step bd-flow-step--${state}`} data-state={state} aria-current={state === "current" ? "step" : undefined}>
+                <span className="bd-flow-step-marker" aria-hidden="true">{index < flowStepIndex ? "✓" : index + 1}</span>
+                <span className="bd-flow-step-label">{step.label}</span>
+                {state === "current" ? <span className="bd-flow-step-current">{locale === "zh" ? "当前" : locale === "ko" ? "현재" : "現在"}</span> : null}
+              </li>
+            );
+          })}
+        </ol>
+      </nav>
       <PageFlashBanner message={flashMessage} tone={flashTone} />
 
       {targetCaseId ? (

@@ -695,6 +695,196 @@ button:disabled:not([class~="text-white"]):not([class~="!text-white"]) {
   color: var(--bd-ink);
 }
 
+.bd-flow-steps {
+  overflow-x: auto;
+  border: 1px solid var(--bd-line);
+  border-radius: var(--bd-radius-lg);
+  background: var(--bd-surface);
+  padding: var(--bd-space-3) var(--bd-space-4);
+}
+
+.bd-flow-steps-list {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(8rem, 1fr));
+  min-width: 32rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bd-flow-step {
+  position: relative;
+  display: flex;
+  min-height: var(--bd-control-height-touch);
+  align-items: center;
+  gap: var(--bd-space-2);
+  padding: var(--bd-space-2) var(--bd-space-3);
+  color: var(--bd-muted);
+  font-size: var(--bd-text-sm);
+  font-weight: var(--bd-weight-medium);
+}
+
+.bd-flow-step:not(:last-child)::after {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  width: var(--bd-space-6);
+  height: 1px;
+  background: var(--bd-line);
+  content: "";
+  transform: translateY(-50%);
+}
+
+.bd-flow-step-marker {
+  display: inline-flex;
+  height: 1.75rem;
+  width: 1.75rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--bd-line-strong);
+  border-radius: var(--bd-radius-pill);
+  background: var(--bd-surface);
+  color: var(--bd-muted);
+  font-size: var(--bd-text-xs);
+  font-weight: var(--bd-weight-bold);
+}
+
+.bd-flow-step-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bd-flow-step-current {
+  margin-left: auto;
+  color: var(--bd-accent);
+  font-size: 0.6875rem;
+  font-weight: var(--bd-weight-bold);
+  white-space: nowrap;
+}
+
+.bd-flow-step--complete {
+  color: var(--bd-success);
+}
+
+.bd-flow-step--complete .bd-flow-step-marker {
+  border-color: var(--bd-success-line);
+  background: var(--bd-success-bg);
+  color: var(--bd-success);
+}
+
+.bd-flow-step--current {
+  color: var(--bd-ink);
+  font-weight: var(--bd-weight-bold);
+}
+
+.bd-flow-step--current .bd-flow-step-marker {
+  border-color: var(--bd-accent);
+  background: var(--bd-accent);
+  color: var(--bd-surface);
+  box-shadow: 0 0 0 3px var(--bd-info-bg);
+}
+
+.bd-primary-action {
+  border: 1px solid var(--bd-ink);
+  border-radius: var(--bd-radius-md);
+  background: var(--bd-ink);
+  color: var(--bd-surface) !important;
+  font-family: inherit;
+  font-weight: var(--bd-weight-bold);
+  -webkit-text-fill-color: var(--bd-surface);
+}
+
+.bd-primary-action:hover {
+  border-color: var(--bd-accent-dark);
+  background: var(--bd-accent-dark);
+}
+
+.bd-primary-action:focus-visible {
+  outline: var(--bd-focus-ring-width) solid var(--bd-focus-ring-color);
+  outline-offset: var(--bd-focus-ring-offset);
+}
+
+.bd-flash-banner {
+  border: 1px solid var(--bd-success-line);
+  border-radius: var(--bd-radius-lg);
+  background: var(--bd-success-bg);
+  color: var(--bd-success);
+  padding: var(--bd-space-3) var(--bd-space-4);
+  font-size: var(--bd-text-sm);
+  font-weight: var(--bd-weight-medium);
+}
+
+.bd-flash-banner[data-tone="info"] {
+  border-color: var(--bd-info-line);
+  background: var(--bd-info-bg);
+  color: var(--bd-accent-dark);
+}
+
+.bd-flash-banner[data-tone="error"] {
+  border-color: var(--bd-danger-line);
+  background: var(--bd-danger-bg);
+  color: var(--bd-danger-dark);
+}
+
+.bd-status-pill {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--bd-radius-pill);
+  padding: 0.25rem 0.5rem;
+  font-size: var(--bd-text-xs);
+  font-weight: var(--bd-weight-bold);
+  line-height: 1.1rem;
+  white-space: normal;
+}
+
+.bd-status-pill-success {
+  border-color: var(--bd-success-line);
+  background: var(--bd-success-bg);
+  color: var(--bd-success);
+}
+
+.bd-status-pill-info {
+  border-color: var(--bd-info-line);
+  background: var(--bd-info-bg);
+  color: var(--bd-accent-dark);
+}
+
+.bd-status-pill-warning {
+  border-color: var(--bd-warning-line);
+  background: var(--bd-warning-bg);
+  color: var(--bd-warning);
+}
+
+.bd-status-pill-danger {
+  border-color: var(--bd-danger-line);
+  background: var(--bd-danger-bg);
+  color: var(--bd-danger);
+}
+
+.bd-status-pill-neutral {
+  border-color: var(--bd-line);
+  background: var(--bd-neutral-bg);
+  color: var(--bd-muted);
+}
+
+.bd-review-save-bar {
+  border-color: var(--bd-info-line);
+  background: var(--bd-info-bg);
+}
+
+@media (max-width: 47.9375rem) {
+  .bd-flow-steps {
+    margin-inline: calc(var(--bd-page-gutter-compact) * -1);
+    border-inline: 0;
+    border-radius: 0;
+  }
+}
+
 .bd-route-loading {
   display: grid;
   min-height: calc(100dvh - 4rem);

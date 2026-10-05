@@ -1,7 +1,15 @@
 # Broker Desk 当前工作交接
 
 > 本文件是唯一活动交接和进度入口，不重复产品、架构或历史正文。
-> Last updated: 2026-09-30.
+> Last updated: 2026-10-05.
+
+## 2026-10-05 本地视觉统一回合交接
+
+- 基线：`e5b8ad3318869f40259af34f6ae652969e20b94a`，分支 `codex/tokyo-main-integration-20261005`，与 `origin/main` 一致；既有 `AGENTS.md` 未提交改动保持不动。
+- 本轮只做现有视觉系统内的局部统一：`src/app/globals.css`、`src/app/import-center/page.tsx`、`src/app/output-center/page.tsx`、`src/components/input-extraction-review.tsx`、`src/components/page-flash-banner.tsx`。导入页新增选择→保存确认→确认→完了步骤轨道；核对/输出状态徽标、主操作、flash/保存反馈改用既有 `--bd-*` token；业务动作、数据、权限、AI/API、数据库与生产配置未改。
+- 最终浏览器证据：`/tmp/broker-desk-ui-flow-kZqQPX/report.json` 及同目录截图；重启本地 Next 后 `/`、`/import-center`、案件、客户、物件、`/output-center`、成员页通过，导入映射恢复、重复提交、真实临时 PostgreSQL 计数和案件核对保存/重开通过。
+- 工程门：`git diff --check`、lint（仅既有 `guarantee-g1-slice1/client.tsx` 两条 warning）、typecheck、`npm run build`（含 prebuild/postbuild）通过；`npm run verify:public-beta` 已在临时 PostgreSQL 下通过至 `test:guarantee-template-publication`，随后因缺少明确的 `TASK038_PUBLICATION_DATABASE_URL` 停止。没有猜测该外部/专用数据库地址，也没有用本地 mock 冒充该门禁。
+- 当前状态：代码已完成本地提交，等待独立只读审查；在审查与专用数据库门禁补齐前不 push、不部署、不改 Vercel alias、不做迁移、不发送邮件。下一步是独立审查本轮 5 个源码文件和截图，再由项目经理决定是否进入正常发布流程。
 
 ## 2026-10-03 版本台账治理收口
 

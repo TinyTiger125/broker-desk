@@ -373,9 +373,9 @@ type OutputCenterPageProps = {
 };
 
 function readinessClass(status: GuaranteeReadinessStatus) {
-  if (status === "available") return "bg-emerald-100 text-emerald-800";
-  if (status === "needs_confirmation") return "bg-amber-100 text-amber-800";
-  return "bg-rose-100 text-rose-800";
+  if (status === "available") return "bd-status-pill bd-status-pill-success";
+  if (status === "needs_confirmation") return "bd-status-pill bd-status-pill-warning";
+  return "bd-status-pill bd-status-pill-danger";
 }
 
 function previewFieldId(fieldKey: string) {
@@ -781,12 +781,12 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                       item.selected ? "border-[#002FA7] bg-[#002FA7]" : item.disabled ? "border-slate-300 bg-white" : "border-blue-200 bg-white"
                     }`;
                     const statusClass = item.disabled
-                      ? "bg-slate-100 text-slate-500"
+                      ? "bd-status-pill bd-status-pill-neutral"
                       : item.status === documentTreeCopy.officialSource || item.status === documentTreeCopy.readyToPreview
-                        ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100"
+                        ? "bd-status-pill bd-status-pill-success"
                         : item.status.includes(documentTreeCopy.needsInput)
-                          ? "bg-rose-50 text-rose-700 ring-1 ring-rose-100"
-                          : "bg-blue-50 text-[#002FA7] ring-1 ring-blue-100";
+                          ? "bd-status-pill bd-status-pill-danger"
+                          : "bd-status-pill bd-status-pill-info";
                     const itemBody = (
                       <>
                         <span aria-hidden="true" className={markerClass} />
@@ -798,7 +798,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
                             ) : null}
                           </div>
                           <span className="flex max-w-full flex-col items-end gap-1.5 sm:items-start">
-                            <span className={`max-w-full break-words rounded-full px-2 py-0.5 text-xs font-black leading-4 [overflow-wrap:anywhere] ${statusClass}`}>
+                            <span className={`${statusClass} max-w-full break-words text-xs leading-4 [overflow-wrap:anywhere]`}>
                               {item.status}
                             </span>
                             {item.external ? (
@@ -850,7 +850,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
           title={documentTreeCopy.templateRequired}
           description={copy.guaranteeLibraryRequired}
           action={(
-            <Link href="/templates" className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded bg-slate-950 px-4 py-2 text-sm font-black text-white hover:bg-slate-800 focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]">
+            <Link href="/templates" className="bd-primary-action inline-flex min-h-11 shrink-0 items-center justify-center gap-2 px-4 py-2 focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]">
               <span aria-hidden="true" className="material-symbols-outlined text-[18px]">library_books</span>
               {copy.guaranteeLibraryAction}
             </Link>
@@ -868,8 +868,8 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
             </h2>
             {selectedCase ? (
               <div className="mt-3 flex flex-wrap items-center gap-2">
-              <span className={`rounded border px-2 py-1 text-xs font-black ${
-                selectedGuaranteeMissingCount > 0 ? "border-red-700 bg-red-50 text-red-700" : "border-emerald-700 bg-emerald-700 text-white"
+              <span className={`bd-status-pill ${
+                selectedGuaranteeMissingCount > 0 ? "bd-status-pill-danger" : "bd-status-pill-success"
               }`}>
                 {selectedGuaranteeMissingCount > 0 ? `${copy.guaranteeMissing}: ${selectedGuaranteeMissingCount}` : copy.guaranteeReady}
               </span>
@@ -878,7 +878,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
           </div>
           <div className="grid gap-2 lg:min-w-[13rem]">
             {selectedCase ? (
-              <Link href={outputNextHref} className="inline-flex items-center justify-center gap-2 rounded bg-slate-950 px-4 py-3 text-sm font-black text-white hover:bg-slate-800 focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]">
+              <Link href={outputNextHref} className="bd-primary-action inline-flex items-center justify-center gap-2 px-4 py-3 focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]">
                 <span className="material-symbols-outlined text-[18px]">{outputNextIcon}</span>
                 {outputNextLabel}
               </Link>
@@ -932,7 +932,7 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
               title={copy.guaranteeNoCase}
               description={copy.guaranteeSelectCaseFirst}
               action={(
-                <Link href={outputNextHref} className="inline-flex min-h-11 items-center justify-center rounded bg-slate-950 px-4 py-2 text-sm font-black text-white hover:bg-slate-800 focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]">
+                <Link href={outputNextHref} className="bd-primary-action inline-flex min-h-11 items-center justify-center px-4 py-2 focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]">
                   {copy.guaranteeCreateCase}
                 </Link>
               )}
