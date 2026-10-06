@@ -176,10 +176,6 @@ function getCopy(locale: Locale) {
       colStatus: "状態",
       wizardTitle: "資料の保存先を確認",
       wizardSubtitle: "読み取った内容を確認",
-      stepSelect: "選択",
-      stepMap: "保存確認",
-      stepValidate: "確認",
-      stepComplete: "完了",
       schemaMappingTitle: "資料の保存先を確認",
       schemaMappingDesc: "資料にある名前を、業務で使う保存先に合わせます。違うところだけ直してください。",
       saveDraft: "途中保存",
@@ -281,10 +277,6 @@ function getCopy(locale: Locale) {
       colStatus: "状态",
       wizardTitle: "确认资料保存位置",
       wizardSubtitle: "确认读取内容",
-      stepSelect: "选择",
-      stepMap: "保存确认",
-      stepValidate: "检查",
-      stepComplete: "完成",
       schemaMappingTitle: "确认资料要保存到哪里",
       schemaMappingDesc: "把资料里的名称对应到业务保存位置，明显不对的地方直接改。",
       saveDraft: "暂存",
@@ -385,10 +377,6 @@ function getCopy(locale: Locale) {
       colStatus: "상태",
       wizardTitle: "자료 저장 위치 확인",
       wizardSubtitle: "읽은 내용 확인",
-      stepSelect: "선택",
-      stepMap: "저장 확인",
-      stepValidate: "확인",
-      stepComplete: "완료",
       schemaMappingTitle: "자료를 어디에 저장할지 확인",
       schemaMappingDesc: "자료에 적힌 이름을 업무 저장 위치에 맞춥니다. 다른 부분만 수정하세요.",
       saveDraft: "임시 저장",
@@ -1063,40 +1051,11 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
     { key: "person", icon: "group", iconClass: "bg-emerald-50 text-emerald-700", title: locale === "zh" ? "人物资料" : locale === "ko" ? "관계자 자료" : "関係者資料", desc: locale === "zh" ? "创建或读取人物相关资料。" : locale === "ko" ? "관계자 자료를 만들거나 읽습니다." : "関係者に関する資料を作成・読取します。", manualHref: "/parties/new?from=entry" },
     { key: "property", icon: "apartment", iconClass: "bg-violet-50 text-violet-700", title: locale === "zh" ? "物件资料" : locale === "ko" ? "매물 자료" : "物件資料", desc: locale === "zh" ? "创建或读取物件相关资料。" : locale === "ko" ? "매물 관련 자료를 만들거나 읽습니다." : "物件に関する資料を作成・読取します。", manualHref: "/properties/new?from=entry" },
   ] as const;
-  const flowStepKey =
-    wizardStep === "select" || wizardStep === "processing" || wizardStep === "failed"
-      ? "select"
-      : wizardStep === "mapping"
-        ? "mapping"
-        : wizardStep === "result"
-          ? "complete"
-          : "validate";
-  const flowSteps = [
-    { key: "select", label: copy.stepSelect },
-    { key: "mapping", label: copy.stepMap },
-    { key: "validate", label: copy.stepValidate },
-    { key: "complete", label: copy.stepComplete },
-  ] as const;
-  const flowStepIndex = flowSteps.findIndex((step) => step.key === flowStepKey);
   return (
     <div className="bd-page bd-import-page space-y-6">
       <section>
         <h1 className="text-4xl font-bold tracking-tight text-slate-900">{copy.pageTitle}</h1>
       </section>
-      <nav className="bd-flow-steps" aria-label={locale === "zh" ? "资料录入步骤" : locale === "ko" ? "자료 입력 단계" : "資料入力の手順"}>
-        <ol className="bd-flow-steps-list">
-          {flowSteps.map((step, index) => {
-            const state = index < flowStepIndex ? "complete" : index === flowStepIndex ? "current" : "upcoming";
-            return (
-              <li key={step.key} className={`bd-flow-step bd-flow-step--${state}`} data-state={state} aria-current={state === "current" ? "step" : undefined}>
-                <span className="bd-flow-step-marker" aria-hidden="true">{index < flowStepIndex ? "✓" : index + 1}</span>
-                <span className="bd-flow-step-label">{step.label}</span>
-                {state === "current" ? <span className="bd-flow-step-current">{locale === "zh" ? "当前" : locale === "ko" ? "현재" : "現在"}</span> : null}
-              </li>
-            );
-          })}
-        </ol>
-      </nav>
       <PageFlashBanner message={flashMessage} tone={flashTone} />
 
       {targetCaseId ? (
