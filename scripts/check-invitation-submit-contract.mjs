@@ -31,6 +31,13 @@ assert.throws(
 if (!accounts.includes("<InvitationSubmitButton") || !members.includes("<InvitationSubmitButton")) {
   throw new Error("both invitation surfaces must use the shared submit button");
 }
+for (const [surface, source] of [["platform accounts", accounts], ["tenant members", members]]) {
+  const invitationClassNames = [...source.matchAll(/<InvitationSubmitButton[^>]*className="([^"]*)"/g)].map((match) => match[1]);
+  assert(invitationClassNames.length > 0, `${surface} must keep an invitation button className`);
+  for (const className of invitationClassNames) {
+    assert(!/(?:^|\s)border(?:\s|$)|(?:^|\s)(?:bg|text)-(?:slate|white|black|gray|zinc|neutral)-/u.test(className), `${surface} invitation button must not override the shared primary tone: ${className}`);
+  }
+}
 if (!accounts.includes('role={flashMessage.tone === "error" ? "alert" : "status"}') || !accounts.includes('aria-live={flashMessage.tone === "error" ? "assertive" : "polite"}')) {
   throw new Error("platform account flash must expose live feedback semantics");
 }

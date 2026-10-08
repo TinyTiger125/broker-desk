@@ -333,7 +333,7 @@ export default async function PlatformAccountsPage({ searchParams }: PlatformAcc
                         <form action={sendPlatformTenantMemberInvitationAction}>
                           <input type="hidden" name="tenantId" value={account.id} />
                           <input type="hidden" name="membershipId" value={owner.id} />
-                          <InvitationSubmitButton label={ui.sendInvite} pendingLabel={ui.sendingInvite} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60" />
+                          <InvitationSubmitButton label={ui.sendInvite} pendingLabel={ui.sendingInvite} className="rounded-lg px-3 py-2 text-xs font-bold disabled:cursor-wait disabled:opacity-60" />
                         </form>
                       )}
                     </div>
