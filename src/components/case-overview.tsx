@@ -294,6 +294,7 @@ export function CaseIdentityHeader({
   showViewSwitch = true,
   viewContext,
   onBeforeViewChange,
+  showStatusSummary = true,
   queueOpen,
   onToggleQueue,
 }: {
@@ -310,6 +311,7 @@ export function CaseIdentityHeader({
   showViewSwitch?: boolean;
   viewContext?: CaseViewSwitchProps["viewContext"];
   onBeforeViewChange?: CaseViewSwitchProps["onBeforeViewChange"];
+  showStatusSummary?: boolean;
   queueOpen?: boolean;
   onToggleQueue?: () => void;
 }) {
@@ -353,7 +355,7 @@ export function CaseIdentityHeader({
       {!compactHeader ? (
         <div className={`mt-3 flex flex-wrap items-center gap-2 sm:mt-4 ${showViewSwitch ? "sm:grid sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center" : ""}`}>
           {showViewSwitch ? <CaseViewSwitch caseId={caseId} activeView={activeView} issueCount={issueCount} locale={locale} viewContext={viewContext} onBeforeViewChange={onBeforeViewChange} /> : null}
-          <CaseStatusSummary locale={locale} issueCount={issueCount} expanded={queueOpen} onToggle={onToggleQueue} />
+          {showStatusSummary ? <CaseStatusSummary locale={locale} issueCount={issueCount} expanded={queueOpen} onToggle={onToggleQueue} /> : null}
         </div>
       ) : null}
     </header>
@@ -969,6 +971,8 @@ export function CaseOverview({
       </div>
     </section>
   ) : null;
+  void attentionQueue;
+  void outputState;
 
   return (
     <div ref={pageRef} className="flex min-w-0 flex-col gap-4 pb-16">
@@ -987,8 +991,7 @@ export function CaseOverview({
             viewContext={viewContext}
             onBeforeViewChange={handleBeforeViewChange}
             issueCount={issueCount}
-            queueOpen={queueOpen}
-            onToggleQueue={() => setQueueOpen((open) => !open)}
+            showStatusSummary={false}
             actions={null}
           />
         }
@@ -1000,10 +1003,9 @@ export function CaseOverview({
               </div>
             ) : null}
             {flash}
-            {outputState}
           </>
         }
-        state={attentionQueue}
+        state={null}
       >
         {associationPanel}
         <nav data-case-anchor-nav aria-label={locale === "zh" ? "案件章节" : locale === "ko" ? "안건 섹션" : "案件セクション"} className="sticky top-[8.75rem] z-20 rounded-xl border border-slate-200 bg-white/95 px-2 py-2 shadow-sm backdrop-blur lg:top-[10.5rem]">
@@ -1029,16 +1031,13 @@ export function CaseOverview({
             </select>
           </label>
         </nav>
-        <main className="space-y-3" data-case-overview-density="dense">
+        <main className={`${layoutStyles.overviewReadable} space-y-3`} data-case-overview-density="dense">
           {sections.map((section) => {
-            const sectionFields = section.children.flatMap((child) => child.fields);
-            const sectionIssues = sectionFields.filter(fieldIssue).length;
             return (
               <section key={section.id} id={section.id} style={{ scrollMarginTop: "var(--case-object-scroll-margin, 11rem)" }} className="scroll-mt-[11rem] rounded-xl border border-slate-200 bg-white shadow-sm">
                 <div className="border-b border-slate-100 px-3 py-2.5 sm:px-4 sm:py-3">
                   <div className="flex items-center justify-between gap-3">
                     <h2 className="text-base font-black text-slate-950 sm:text-lg">{section.label}</h2>
-                    {sectionIssues > 0 ? <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-black text-amber-900 ring-1 ring-amber-200">{locale === "zh" ? `待处理 ${sectionIssues}` : locale === "ko" ? `처리 필요 ${sectionIssues}` : `要対応 ${sectionIssues}`}</span> : null}
                   </div>
                 </div>
                 <div className="space-y-2 p-2.5 sm:p-3">
@@ -1062,8 +1061,7 @@ export function CaseOverview({
                         <div className="flex h-full min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                           <div className="min-w-0 flex-1">
                             {inlineEditing ? <div data-case-inline-editor={field.fieldKey}>{renderFieldForm(field, "space-y-3")}</div> : valueButton}
-                            {fieldIssue(field) ? <CaseFieldState issueLabel={field.issueLabel} normalLabel={locale === "zh" ? "已填写" : locale === "ko" ? "입력됨" : "入力済み"} /> : null}
-                            {fieldIssue(field) && field.evidenceItems.length > 0 ? (
+                            {false && fieldIssue(field) && field.evidenceItems.length > 0 ? (
                               <details className="mt-2 text-xs">
                                 <summary className="cursor-pointer font-bold text-slate-600">{locale === "zh" ? "查看资料依据" : locale === "ko" ? "자료 근거 보기" : "資料の根拠を見る"}</summary>
                                 <div className="mt-2 space-y-2 rounded-lg border border-slate-200 bg-white p-2">
@@ -1084,9 +1082,9 @@ export function CaseOverview({
                                 else openEditor(field, event.currentTarget);
                               }}
                               aria-label={inlineEditing ? (locale === "zh" ? `取消${field.label}编辑` : locale === "ko" ? `${field.label} 편집 취소` : `${field.label}の編集をキャンセル`) : undefined}
-                              className={`inline-flex min-h-10 shrink-0 items-center justify-center rounded-lg border px-2 py-1.5 text-[11px] font-black focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)] sm:min-w-16 ${fieldIssue(field) ? "border-amber-300 bg-white text-amber-900 hover:bg-amber-50" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`}
+                              className={`inline-flex min-h-10 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px] font-black text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)] sm:min-w-16`}
                             >
-                              {inlineEditing ? (locale === "zh" ? "取消" : locale === "ko" ? "취소" : "キャンセル") : fieldIssue(field) ? (locale === "zh" ? "处理问题" : locale === "ko" ? "문제 처리" : "要対応") : (locale === "zh" ? "编辑" : locale === "ko" ? "편집" : "編集")}
+                              {inlineEditing ? (locale === "zh" ? "取消" : locale === "ko" ? "취소" : "キャンセル") : (locale === "zh" ? "编辑" : locale === "ko" ? "편집" : "編集")}
                             </button>
                           ) : null}
                         </div>
@@ -1120,7 +1118,7 @@ export function CaseOverview({
                                         <ResponsiveFormField
                                           id={fieldAnchor(field.fieldKey)}
                                           style={{ scrollMarginTop: "var(--case-object-scroll-margin, 11rem)" }}
-                                          className={`scroll-mt-[11rem] ${fieldIssue(field) ? "bg-amber-50/45" : "bg-white"} ${selectionClass} ${columnClass}`}
+                                          className={`scroll-mt-[11rem] bg-white ${selectionClass} ${columnClass}`}
                                           wide={isWideResponsiveField(field)}
                                           selected={editingField?.fieldKey === field.fieldKey}
                                         >
@@ -1146,7 +1144,7 @@ export function CaseOverview({
                         ) : (
                           <div className="mt-2 grid gap-px overflow-hidden rounded-lg border border-slate-100 bg-slate-100 sm:grid-cols-2">
                             {child.fields.map((field) => (
-                              <article key={field.fieldKey} id={fieldAnchor(field.fieldKey)} style={{ scrollMarginTop: "var(--case-object-scroll-margin, 11rem)" }} className={`min-w-0 scroll-mt-[11rem] px-3 py-2 sm:px-3 ${isWideResponsiveField(field) ? "sm:col-span-2" : ""} ${fieldIssue(field) ? "bg-amber-50/45" : "bg-white"}`}>
+                              <article key={field.fieldKey} id={fieldAnchor(field.fieldKey)} style={{ scrollMarginTop: "var(--case-object-scroll-margin, 11rem)" }} className={`min-w-0 scroll-mt-[11rem] bg-white px-3 py-2 sm:px-3 ${isWideResponsiveField(field) ? "sm:col-span-2" : ""}`}>
                                 {renderField(field)}
                               </article>
                             ))}

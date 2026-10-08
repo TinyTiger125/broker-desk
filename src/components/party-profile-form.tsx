@@ -125,7 +125,7 @@ export function PartyProfileForm({ action, defaults, locale, returnTo, relationT
       {content} {required ? <span className="text-rose-700">*</span> : <span className="text-xs font-normal text-slate-500">({text.optional})</span>}
     </label>
   );
-  const fieldError = (field: keyof PartyProfileFormValues) => errorFor(field) ? <p id={`party-${field}-error`} className="text-xs font-semibold text-rose-700">{errorFor(field)}</p> : null;
+  const fieldError = (field: keyof PartyProfileFormValues) => <p id={`party-${field}-error`} className={`min-h-4 text-xs font-semibold text-rose-700 ${errorFor(field) ? "" : "invisible"}`}>{errorFor(field) ?? text.optional}</p>;
 
   return (
     <form action={formAction} noValidate className="space-y-6 pb-10">
@@ -144,24 +144,24 @@ export function PartyProfileForm({ action, defaults, locale, returnTo, relationT
 
       <section aria-labelledby="party-basic-heading" className="space-y-4 border-b border-slate-200 pb-6">
         <h2 id="party-basic-heading" className="text-base font-bold text-slate-950">{text.basic}</h2>
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-1 md:col-span-2">{label("name", text.name, true)}<input {...fieldProps("name")} required aria-required="true" className={inputClass} />{fieldError("name")}</div>
-          <div className="space-y-1">{label("partyType", text.type)}<select {...fieldProps("partyType")} className={inputClass}><option value="">{text.unset}</option>{getPartyProfileTypeOptions(locale).map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select>{fieldError("partyType")}</div>
+        <div className="grid items-start gap-4 md:grid-cols-2">
+          <div className="grid content-start gap-1 md:col-span-2">{label("name", text.name, true)}<input {...fieldProps("name")} required aria-required="true" className={inputClass} />{fieldError("name")}</div>
+          <div className="grid content-start gap-1">{label("partyType", text.type)}<select {...fieldProps("partyType")} className={inputClass}><option value="">{text.unset}</option>{getPartyProfileTypeOptions(locale).map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select>{fieldError("partyType")}</div>
         </div>
       </section>
 
       <section aria-labelledby="party-contact-heading" className="space-y-4 border-b border-slate-200 pb-6">
         <h2 id="party-contact-heading" className="text-base font-bold text-slate-950">{text.contact}</h2>
-        <div className="grid gap-4 md:grid-cols-3">
-          <div className="space-y-1">{label("phone", text.phone, true)}<input {...fieldProps("phone")} required aria-required="true" className={inputClass} />{fieldError("phone")}</div>
-          <div className="space-y-1">{label("email", text.email)}<input {...fieldProps("email")} type="email" className={inputClass} />{fieldError("email")}</div>
-          <div className="space-y-1">{label("lineId", text.lineId)}<input {...fieldProps("lineId")} className={inputClass} />{fieldError("lineId")}</div>
+        <div className="grid items-start gap-4 md:grid-cols-3">
+          <div className="grid content-start gap-1">{label("phone", text.phone, true)}<input {...fieldProps("phone")} required aria-required="true" className={inputClass} />{fieldError("phone")}</div>
+          <div className="grid content-start gap-1">{label("email", text.email)}<input {...fieldProps("email")} type="email" className={inputClass} />{fieldError("email")}</div>
+          <div className="grid content-start gap-1">{label("lineId", text.lineId)}<input {...fieldProps("lineId")} className={inputClass} />{fieldError("lineId")}</div>
         </div>
       </section>
 
       <section aria-labelledby="party-attributes-heading" className="space-y-4 pb-2">
         <h2 id="party-attributes-heading" className="text-base font-bold text-slate-950">{text.attributes}</h2>
-        <div className="max-w-md space-y-1">{label("partyRole", text.role)}<select {...fieldProps("partyRole")} className={inputClass}><option value="">{text.unset}</option>{getPartyProfileRoleOptions(locale).map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select>{fieldError("partyRole")}</div>
+        <div className="grid max-w-md content-start gap-1">{label("partyRole", text.role)}<select {...fieldProps("partyRole")} className={inputClass}><option value="">{text.unset}</option>{getPartyProfileRoleOptions(locale).map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select>{fieldError("partyRole")}</div>
       </section>
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-5">

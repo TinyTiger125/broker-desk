@@ -296,13 +296,13 @@ if (caseOverviewHeaderPosition < 0 || caseOverviewAssociationPosition < 0 || cas
 }
 requireText(caseOverview, "!compactHeader ?", "identity header compact visibility");
 requireText(caseOverview, "showViewSwitch ? <CaseViewSwitch", "read-only view switch visibility");
-requireText(caseOverview, "<CaseStatusSummary", "read-only status summary retention");
+requireText(caseOverview, "showStatusSummary", "overview status summary visibility decision");
 requireText(caseOverview, "feedback={", "CaseOverview feedback slot");
-requireText(caseOverview, "state={attentionQueue}", "CaseOverview state slot");
+requireText(caseOverview, "state={null}", "CaseOverview archival view omits the task queue state slot");
 requireText(caseOverview, "{associationPanel}", "CaseOverview association panel child");
 if (caseOverview.includes("navigation={")) failures.push("CaseOverview: navigation must be assembled in children after associationPanel");
 const caseOverviewNavPosition = caseOverview.indexOf("<nav data-case-anchor-nav");
-const caseOverviewFieldsPosition = caseOverview.indexOf("<main className=\"space-y-3\" data-case-overview-density=\"dense\">");
+const caseOverviewFieldsPosition = caseOverview.indexOf("<main className={`${layoutStyles.overviewReadable} space-y-3`} data-case-overview-density=\"dense\">");
 if (caseOverviewAssociationPosition < 0 || caseOverviewNavPosition < 0 || caseOverviewFieldsPosition < 0 || !(caseOverviewAssociationPosition < caseOverviewNavPosition && caseOverviewNavPosition < caseOverviewFieldsPosition)) {
   failures.push("CaseOverview: children order must be associationPanel, section navigation, then fields");
 }
@@ -345,7 +345,6 @@ for (const fragment of [
   "scrollToId",
   "lastTriggerIdRef",
   "showViewSwitch={showViewSwitch}",
-  "{outputState}",
 ]) {
   requireText(caseOverview, fragment, "CaseOverview output and return-context preservation");
 }
