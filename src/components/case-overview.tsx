@@ -671,6 +671,10 @@ export function CaseOverview({
     ? sections.find((section) => section.children.some((child) => child.fields.some((field) => field.fieldKey === initialFieldKey)))?.id
     : undefined;
   const editingApplicantField = editingField && sections.some((section) => section.children.some((child) => isApplicantChild(child) && child.fields.some((field) => field.fieldKey === editingField.fieldKey)));
+  const editingGroupFields = editingField
+    ? sections.flatMap((section) => section.children).find((child) => child.fields.some((field) => field.fieldKey === editingField.fieldKey))?.fields ?? []
+    : [];
+  const editingGroupIndex = editingField ? editingGroupFields.findIndex((field) => field.fieldKey === editingField.fieldKey) : -1;
 
   useEffect(() => {
     const mediaQuery = window.matchMedia("(min-width: 64rem)");
@@ -923,6 +927,11 @@ export function CaseOverview({
         className={layoutStyles.editorPanel}
       >
         {renderFieldForm(editingField, `${layoutStyles.editorForm} mt-5 space-y-4`)}
+        {editingGroupFields.length > 1 ? <div className="mt-4 flex items-center justify-between gap-2 border-t border-slate-100 pt-3">
+          <button type="button" disabled={editingGroupIndex <= 0} onClick={() => setEditingFieldKey(editingGroupFields[editingGroupIndex - 1].fieldKey)} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 disabled:opacity-50">{locale === "zh" ? "上一项" : locale === "ko" ? "이전 항목" : "前の項目"}</button>
+          <span className="text-xs font-semibold text-slate-500">{editingGroupIndex + 1} / {editingGroupFields.length}</span>
+          <button type="button" disabled={editingGroupIndex >= editingGroupFields.length - 1} onClick={() => setEditingFieldKey(editingGroupFields[editingGroupIndex + 1].fieldKey)} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 disabled:opacity-50">{locale === "zh" ? "下一项" : locale === "ko" ? "다음 항목" : "次の項目"}</button>
+        </div> : null}
       </CaseEditPanel>
     );
   };
@@ -1093,7 +1102,10 @@ export function CaseOverview({
 
                     return (
                       <section key={child.id} id={`${section.id}-${child.id}`}>
-                        <h3 className="text-xs font-black text-slate-700 sm:text-sm">{child.label}</h3>
+                        <div className="flex items-center justify-between gap-3">
+                          <h3 className="text-xs font-black text-slate-700 sm:text-sm">{child.label}</h3>
+                          {!readOnly && child.fields[0] ? <button type="button" onClick={(event) => openEditor(child.fields[0], event.currentTarget)} className="rounded-md px-2 py-1 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-slate-950">{locale === "zh" ? "编辑本组" : locale === "ko" ? "그룹 편집" : "このグループを編集"}</button> : null}
+                        </div>
                         {applicantChild ? (
                           <ResponsiveFormLayout aria-label={child.label} editorOpen={childEditing} className={`mt-2 ${layoutStyles.overviewDense}`}>
                             <div className={layoutStyles.formFields}>

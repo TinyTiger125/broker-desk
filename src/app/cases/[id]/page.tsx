@@ -880,6 +880,26 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
     };
   }).filter((section) => section.children.some((child) => child.fields.length > 0));
   const overviewIssueCount = applicableWorkbenchFields.filter(fieldNeedsAttention).length;
+  const overviewFieldList = overviewSections.flatMap((section) => section.children.flatMap((child) => child.fields));
+  const overviewArchiveGroups = [
+    { id: "property-and-lease", label: tr(locale, { ja: "物件・契約条件", zh: "房屋与租赁条件", ko: "물건·계약 조건" }), match: (key: string) => key.startsWith("property.") || key.startsWith("lease.") },
+    { id: "people", label: tr(locale, { ja: "関係者・勤務先", zh: "人物、工作与收入", ko: "관계자·근무·소득" }), match: (key: string) => /^(applicant|occupant|cohabitant|guarantor|emergencyContact)\./.test(key) },
+    { id: "companies", label: tr(locale, { ja: "仲介・管理会社", zh: "管理与仲介公司", ko: "중개·관리 회사" }), match: (key: string) => /^(broker|management|guaranteeCompany|guarantee)\./.test(key) },
+  ] as const;
+  const groupedOverviewSections: CaseOverviewSection[] = overviewArchiveGroups
+    .map((group) => ({
+      id: `archive-${group.id}`,
+      label: group.label,
+      children: [{ id: group.id, label: group.label, fields: overviewFieldList.filter((field) => group.match(field.fieldKey)) }],
+    }))
+    .filter((section) => section.children[0].fields.length > 0);
+  const groupedFieldKeys = new Set(groupedOverviewSections.flatMap((section) => section.children[0].fields.map((field) => field.fieldKey)));
+  const remainingOverviewFields = overviewFieldList.filter((field) => !groupedFieldKeys.has(field.fieldKey));
+  if (remainingOverviewFields.length > 0) groupedOverviewSections.push({
+    id: "archive-other",
+    label: tr(locale, { ja: "その他の案件情報", zh: "其他案件信息", ko: "기타 안건 정보" }),
+    children: [{ id: "other", label: tr(locale, { ja: "その他", zh: "其他", ko: "기타" }), fields: remainingOverviewFields }],
+  });
   const outputBlockers: CaseOverviewOutputBlocker[] = downloadGate?.blockedReasons.map((reason) => ({
     code: reason.code,
     count: reason.count,
@@ -1103,7 +1123,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
           propertySummary={propertySummary}
           guaranteeCompanySummary={guaranteeCompanySummary}
           currentHandlerSummary={currentHandlerSummary}
-          sections={overviewSections}
+          sections={groupedOverviewSections}
           locale={locale}
           issueCount={overviewIssueCount}
           outputHref=""
@@ -1138,7 +1158,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
           propertySummary={propertySummary}
           guaranteeCompanySummary={guaranteeCompanySummary}
           currentHandlerSummary={currentHandlerSummary}
-          sections={overviewSections}
+          sections={groupedOverviewSections}
           locale={locale}
           issueCount={overviewIssueCount}
           outputHref={outputHref}
