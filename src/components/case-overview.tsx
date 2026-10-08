@@ -670,7 +670,7 @@ export function CaseOverview({
   const initialFieldSectionId = initialFieldKey
     ? sections.find((section) => section.children.some((child) => child.fields.some((field) => field.fieldKey === initialFieldKey)))?.id
     : undefined;
-  const editingApplicantField = editingField && sections.some((section) => section.children.some((child) => isApplicantChild(child) && child.fields.some((field) => field.fieldKey === editingField.fieldKey)));
+  const editingApplicantField = false;
   const editingGroupFields = editingField
     ? sections.flatMap((section) => section.children).find((child) => child.fields.some((field) => field.fieldKey === editingField.fieldKey))?.fields ?? []
     : [];
@@ -1179,8 +1179,7 @@ export function CaseOverview({
               role="dialog"
               aria-modal="true"
               aria-label={editingField.label}
-              style={{ top: editorPosition?.top ?? 16, left: editorPosition?.left ?? 16, width: editorPosition?.width ?? "min(30rem, calc(100vw - 2rem))", maxHeight: "calc(100vh - 2rem)" }}
-              className="fixed overflow-y-auto rounded-2xl bg-white p-4 shadow-2xl sm:p-6"
+              className="fixed left-1/2 top-1/2 max-h-[calc(100vh-2rem)] w-[min(38rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl bg-white p-4 shadow-2xl sm:p-6"
             >
               {renderEditor()}
             </div>
