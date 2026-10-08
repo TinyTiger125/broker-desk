@@ -5,6 +5,7 @@ import { PDFDocument, rgb } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import {
   buildGuaranteeApplicationFieldValues,
+  getGuaranteeCaseFieldValue,
   getGuaranteeCompanyTemplate,
   getGuaranteeFieldCompletionMode,
 } from "@/lib/guarantee-application";
@@ -1088,8 +1089,8 @@ export function hasConfirmedGuaranteeFieldValue(
   const sourceFieldKey = field.sourceFieldKey ?? field.fieldKey;
 
   return Boolean(
-    getCaseFieldValue(confirmedData, field.fieldKey) ||
-      getCaseFieldValue(confirmedData, sourceFieldKey),
+    getGuaranteeCaseFieldValue(confirmedData, field.fieldKey) ||
+      getGuaranteeCaseFieldValue(confirmedData, sourceFieldKey),
   );
 }
 

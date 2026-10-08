@@ -687,6 +687,25 @@ function valueFromRecord(data: Record<string, unknown>, fieldKey: string): strin
   return "";
 }
 
+// The case workbench keeps a dedicated mobile-number field, while several
+// official guarantee forms call their required contact simply "phone".  A
+// mobile value is therefore an acceptable source for that form field, but we
+// never overwrite or reinterpret the case's primary phone value when it is
+// present.
+const GUARANTEE_CASE_FIELD_FALLBACKS: Record<string, readonly string[]> = {
+  "applicant.phone": ["applicant.mobilePhone"],
+};
+
+export function getGuaranteeCaseFieldValue(confirmedData: Record<string, unknown>, fieldKey: string): string {
+  const directValue = getCaseFieldValue(confirmedData, fieldKey);
+  if (directValue) return directValue;
+  for (const fallbackFieldKey of GUARANTEE_CASE_FIELD_FALLBACKS[fieldKey] ?? []) {
+    const fallbackValue = getCaseFieldValue(confirmedData, fallbackFieldKey);
+    if (fallbackValue) return fallbackValue;
+  }
+  return "";
+}
+
 export function getGuaranteeCompanyTemplate(templateId?: string): GuaranteeCompanyTemplate {
   return guaranteeCompanyTemplates.find((template) => template.id === templateId) ?? guaranteeCompanyTemplates[0];
 }
@@ -712,7 +731,7 @@ export function buildGuaranteeApplicationFieldValues(input: {
   return input.fieldKeys.map((fieldKey) => ({
     fieldKey,
     label: labels.get(fieldKey) ?? "確認項目",
-    value: getCaseFieldValue(confirmedData, fieldKey) || valueFromRecord(draftData, fieldKey),
+    value: getGuaranteeCaseFieldValue(confirmedData, fieldKey) || valueFromRecord(draftData, fieldKey),
   }));
 }
 
@@ -776,7 +795,7 @@ export function buildGuaranteeApplicationReadiness(input: {
     id: group.id,
     label: group.label,
     fields: group.fields.map(([fieldKey, label]) => {
-      const confirmedValue = getCaseFieldValue(confirmedData, fieldKey);
+      const confirmedValue = getGuaranteeCaseFieldValue(confirmedData, fieldKey);
       const candidateValue = valueFromCandidate(candidateData, fieldKey);
       return {
         fieldKey,
@@ -791,7 +810,7 @@ export function buildGuaranteeApplicationReadiness(input: {
 
   const companyOptionFields = input.template.companySpecificOptionKeys.map((fieldKey) => {
     const draftValue = valueFromRecord(draftData, fieldKey);
-    const confirmedValue = getCaseFieldValue(confirmedData, fieldKey);
+    const confirmedValue = getGuaranteeCaseFieldValue(confirmedData, fieldKey);
     const candidateValue = valueFromCandidate(candidateData, fieldKey);
     const value = draftValue || confirmedValue || candidateValue;
     return {

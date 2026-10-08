@@ -174,4 +174,12 @@ assert(
   "Guarantor evidence should infer guarantor fields as applicable",
 );
 
+const casePageSource = readFileSync(join(root, "src/app/cases/[id]/page.tsx"), "utf8");
+assert(
+  casePageSource.includes("outputRequiredWorkbenchFieldKeys") &&
+    casePageSource.includes('reason.code === "required_fields_missing"') &&
+    casePageSource.includes("field.applicable || outputRequiredWorkbenchFieldKeys.has(field.fieldKey)"),
+  "a required output field must remain editable even when its conditional section has no existing value",
+);
+
 console.log("[PASS] Case applicability and required-field progress rules are consistent.");

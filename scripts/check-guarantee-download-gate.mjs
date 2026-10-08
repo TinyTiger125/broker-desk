@@ -56,6 +56,7 @@ const {
 const { getCaseFieldValue } = caseFieldNormalization;
 const {
   findGuaranteeCompanyTemplate,
+  buildGuaranteeApplicationFieldValues,
   getGuaranteeDraftFieldDefinitions,
   guaranteeCompanyTemplates,
 } = guaranteeApplication;
@@ -200,6 +201,31 @@ const summaries = guaranteeCompanyTemplates
       candidateBlockedReasons: candidateGate.blockedReasons.map((reason) => reason.code),
     };
   });
+
+const mobileOnlyCaseData = {
+  ...fullData,
+  "applicant.phone": "",
+  "applicant.mobilePhone": "090-0000-0000",
+};
+const mobileOnlyFieldValues = buildGuaranteeApplicationFieldValues({
+  confirmedDataJson: mobileOnlyCaseData,
+  fieldKeys: ["applicant.phone"],
+});
+assert(
+  mobileOnlyFieldValues[0].value === "090-0000-0000",
+  "guarantee field values must use the saved mobile number when the primary phone is empty",
+);
+const zenhorenTemplate = findGuaranteeCompanyTemplate("zenhoren_individual_v1");
+assert(zenhorenTemplate, "zenhoren template must remain available");
+const mobileOnlyGate = evaluateGuaranteeDownloadGate({
+  brokerageCase: baseCase({ confirmedDataJson: mobileOnlyCaseData }),
+  template: zenhorenTemplate,
+  draft: draft(zenhorenTemplate, buildDraftValues(zenhorenTemplate)),
+});
+assert(
+  !mobileOnlyGate.blockedReasons.some((reason) => reason.fields.some((field) => field.fieldKey === "applicant.phone")),
+  "a saved applicant.mobilePhone must satisfy the Zenhoren applicant.phone requirement",
+);
 
 console.log(JSON.stringify({
   ok: true,

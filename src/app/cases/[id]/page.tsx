@@ -752,8 +752,21 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
       }),
     ),
   }));
+  // A required field can itself establish that a conditional section applies.
+  // Without this exception, an empty broker section is hidden exactly when an
+  // installed guarantee template asks the user to fill broker.companyName.
+  const outputRequiredWorkbenchFieldKeys = new Set(
+    downloadGate?.blockedReasons
+      .filter((reason) => reason.code === "required_fields_missing")
+      .flatMap((reason) => reason.fields.map((field) => field.fieldKey)) ?? [],
+  );
   const allWorkbenchFields = workbenchFieldGroups.flatMap((group) =>
-    group.fields.map((field) => ({ ...field, groupId: group.id, label: `${group.label} / ${field.label}` })),
+    group.fields.map((field) => ({
+      ...field,
+      applicable: field.applicable || outputRequiredWorkbenchFieldKeys.has(field.fieldKey),
+      groupId: group.id,
+      label: `${group.label} / ${field.label}`,
+    })),
   );
   const caseAddressField = allWorkbenchFields.find((field) => field.fieldKey === "property.address");
   const renderAssociationPanel = (compact: boolean) => (

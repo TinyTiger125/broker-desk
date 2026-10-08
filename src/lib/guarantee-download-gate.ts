@@ -12,6 +12,7 @@ import {
 } from "@/lib/friends-guarantee-pdf";
 import {
   buildGuaranteeApplicationReadiness,
+  getGuaranteeCaseFieldValue,
   type GuaranteeCompanyTemplate,
   type GuaranteeReadinessField,
 } from "@/lib/guarantee-application";
@@ -81,7 +82,7 @@ function readOverlaySourceValue(input: {
   }
   return isDraftSpecificField(sourceFieldKey)
     ? readDraftValue(draft, sourceFieldKey) || getCaseFieldValue(brokerageCase.confirmedDataJson, sourceFieldKey)
-    : getCaseFieldValue(brokerageCase.confirmedDataJson, sourceFieldKey);
+    : getGuaranteeCaseFieldValue(brokerageCase.confirmedDataJson, sourceFieldKey);
 }
 
 function issueFromReadinessField(input: {

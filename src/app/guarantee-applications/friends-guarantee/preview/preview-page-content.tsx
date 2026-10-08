@@ -16,11 +16,11 @@ import {
   GUARANTEE_FIELD_COMPLETION_LABELS,
   getGuaranteeFieldCompletionMode,
   getGuaranteeFieldCompletionSummary,
+  getGuaranteeCaseFieldValue,
   getGuaranteeDraftFieldDefinitions,
   findGuaranteeCompanyTemplate,
   type GuaranteeReadinessStatus,
 } from "@/lib/guarantee-application";
-import { getCaseFieldValue } from "@/lib/case-field-normalization";
 import {
   FRIENDS_GUARANTEE_DEFAULT_TEMPLATE_ID,
   getGuaranteeConfirmedOverlayFieldKeys,
@@ -268,12 +268,12 @@ export async function GuaranteeApplicationPreviewPage({
   );
   const getSourceValue = (fieldKey: string) => {
     const value = selectedCase
-      ? getCaseFieldValue(selectedCase.confirmedDataJson, fieldKey) || getDraftValue(draftValues, fieldKey)
+      ? getGuaranteeCaseFieldValue(selectedCase.confirmedDataJson, fieldKey) || getDraftValue(draftValues, fieldKey)
       : getDraftValue(draftValues, fieldKey);
     if (value) return value;
     for (const fallbackKey of TEMPLATE_BINDING_VALUE_FALLBACKS[fieldKey] ?? []) {
       const fallbackValue = selectedCase
-        ? getCaseFieldValue(selectedCase.confirmedDataJson, fallbackKey) || getDraftValue(draftValues, fallbackKey)
+        ? getGuaranteeCaseFieldValue(selectedCase.confirmedDataJson, fallbackKey) || getDraftValue(draftValues, fallbackKey)
         : getDraftValue(draftValues, fallbackKey);
       if (fallbackValue) return fallbackValue;
     }
