@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import ts from "typescript";
+import { NextResponse as RealNextResponse } from "next/server.js";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
@@ -13,6 +14,16 @@ function loadFunction(source, name, dependencies) {
 
 const callbackSource = await read("src/app/auth/callback/route.ts");
 const callbackBody = callbackSource.slice(callbackSource.indexOf("function safeNext("));
+const confirmSource = await read("src/app/auth/confirm/route.ts");
+const confirmBody = confirmSource.slice(confirmSource.indexOf("type PendingCookie"));
+const resetSource = await read("src/components/supabase-reset-password-form.tsx");
+const resetPasswordBody = resetSource.slice(
+  resetSource.indexOf("export async function updateSupabasePassword"),
+  resetSource.indexOf("export function SupabaseResetPasswordForm"),
+);
+const invitationTemplate = await read("config/supabase/invitation-email.candidate.html");
+assert.match(invitationTemplate, /\{\{ \.SiteURL \}\}\/auth\/confirm\?token_hash=\{\{ \.TokenHash \}\}&amp;type=invite&amp;next=%2Freset-password/);
+assert.doesNotMatch(invitationTemplate, /\{\{ \.ConfirmationURL \}\}/, "local candidate must target the invite-specific token_hash route");
 
 async function callbackResult(input, exchange) {
   const GET = loadFunction(callbackBody, "GET", {
@@ -40,6 +51,115 @@ for (const [query, exchange] of [
     "https://app.example.test/sign-in?error=auth_callback_failed",
   );
 }
+
+function makeConfirmHarness({
+  query,
+  verifyError = null,
+  session = { user: { id: "user-1" } },
+  setCookies = [],
+  setHeaders = {},
+  existingCookies = [],
+}) {
+  const effects = {
+    verifyCalls: [],
+    clientCalls: 0,
+    cookieStoreSets: [],
+    response: null,
+  };
+  const cookieStore = {
+    getAll: () => existingCookies,
+    set: (...args) => effects.cookieStoreSets.push(args),
+  };
+  const NextResponse = {
+    redirect: (target) => {
+      const response = RealNextResponse.redirect(target);
+      effects.response = response;
+      return response;
+    },
+  };
+  const GET = loadFunction(confirmBody, "GET", {
+    NextResponse,
+    cookies: async () => cookieStore,
+    getSupabaseConfig: () => ({ url: "https://supabase.example.test", key: "publishable-key" }),
+    createServerClient: (_url, _key, options) => {
+      effects.clientCalls += 1;
+      return {
+        auth: {
+          verifyOtp: async (input) => {
+            effects.verifyCalls.push(input);
+            if (verifyError) return { data: { session: null }, error: verifyError };
+            options.cookies.setAll(setCookies, setHeaders);
+            return { data: { session }, error: null };
+          },
+          signOut: async () => { throw new Error("confirm route must not sign out"); },
+        },
+      };
+    },
+  });
+  return { GET, effects, query };
+}
+
+const inviteToken = "invite-token-fixture";
+const validConfirm = makeConfirmHarness({
+  query: `?token_hash=${inviteToken}&type=invite&next=%2Freset-password`,
+  setCookies: [{ name: "sb-fixture-auth-token", value: "session-cookie", options: { path: "/", httpOnly: true } }],
+  setHeaders: { "cache-control": "private, no-store" },
+});
+const validConfirmResponse = await validConfirm.GET(new Request(`https://app.example.test/auth/confirm${validConfirm.query}`));
+assert.equal(validConfirmResponse.headers.get("location"), "https://app.example.test/reset-password");
+assert.deepEqual(validConfirm.effects.verifyCalls, [{ token_hash: inviteToken, type: "invite" }]);
+assert.deepEqual(validConfirmResponse.cookies.getAll().map(({ name, value }) => ({ name, value })), [{ name: "sb-fixture-auth-token", value: "session-cookie" }]);
+assert.match(validConfirmResponse.headers.get("set-cookie") ?? "", /HttpOnly/i);
+assert.equal(validConfirmResponse.headers.get("cache-control"), "private, no-store");
+assert.equal(validConfirm.effects.cookieStoreSets.length, 0, "invite confirmation must persist cookies on its redirect response");
+assert.ok(!validConfirmResponse.headers.get("location")?.includes(inviteToken), "successful redirect must not leak token_hash");
+
+const unsafeNext = makeConfirmHarness({
+  query: `?token_hash=${inviteToken}&type=invite&next=%2F%2Fevil.example`,
+  setCookies: [{ name: "sb-fixture-auth-token", value: "session-cookie", options: { path: "/" } }],
+});
+assert.equal(
+  (await unsafeNext.GET(new Request(`https://app.example.test/auth/confirm${unsafeNext.query}`))).headers.get("location"),
+  "https://app.example.test/reset-password",
+);
+
+for (const [label, query, verifyError, expectedClientCalls] of [
+  ["missing token", "?type=invite", null, 0],
+  ["wrong type", `?token_hash=${inviteToken}&type=recovery`, null, 0],
+  ["expired token", `?token_hash=${inviteToken}&type=invite`, new Error("expired"), 1],
+  ["reused token", `?token_hash=${inviteToken}&type=invite`, new Error("already used"), 1],
+]) {
+  const fixture = makeConfirmHarness({
+    query,
+    verifyError,
+    existingCookies: [{ name: "sb-fixture-auth-token", value: "existing-session" }],
+  });
+  const response = await fixture.GET(new Request(`https://app.example.test/auth/confirm${fixture.query}`));
+  assert.equal(response.headers.get("location"), "https://app.example.test/sign-in?error=invite_confirmation_failed", label);
+  assert.equal(fixture.effects.clientCalls, expectedClientCalls, label);
+  assert.deepEqual(response.cookies.getAll(), [], `${label} must not establish a new session`);
+  assert.ok(!response.headers.get("location")?.includes(inviteToken), `${label} must not leak token_hash`);
+}
+
+const duplicateType = makeConfirmHarness({ query: `?token_hash=${inviteToken}&type=invite&type=recovery` });
+assert.equal(
+  (await duplicateType.GET(new Request(`https://app.example.test/auth/confirm${duplicateType.query}`))).headers.get("location"),
+  "https://app.example.test/sign-in?error=invite_confirmation_failed",
+);
+
+const updateSupabasePassword = loadFunction(resetPasswordBody, "updateSupabasePassword", {});
+let passwordUpdated = null;
+await updateSupabasePassword({
+  updateUser: async (input) => {
+    passwordUpdated = input.password;
+    return { error: null };
+  },
+}, "first-password-fixture");
+assert.equal(passwordUpdated, "first-password-fixture");
+await assert.rejects(
+  () => updateSupabasePassword({ updateUser: async () => ({ error: new Error("weak password") }) }, "weak"),
+  /weak password/,
+);
 
 const actions = await read("src/app/actions.ts");
 const invitationBody = actions.slice(
@@ -146,5 +266,13 @@ const repeated = scenario();
 assert.deepEqual(await invoke(repeated.action, repeated.form), { redirectedTo: "/" });
 assert.deepEqual(await invoke(repeated.action, repeated.form), { status: "error", message: "invitation_unavailable" });
 assert.equal(repeated.effects.cookies.length, 1);
+
+const firstPasswordMembership = await run({
+  provider: "supabase",
+  identity: { subject: "supabase:verified", email: "INVITED@example.test" },
+  user: { id: "user-1", email: "invited@example.test", externalAuthSubject: "supabase:verified" },
+});
+assert.deepEqual(firstPasswordMembership.result, { redirectedTo: "/" });
+assert.equal(firstPasswordMembership.effects.accepts, 1, "first password flow must accept the existing membership exactly once");
 
 console.log("Supabase callback and invitation action behavior: PASS (success, failure, expiry, identity, tenant, repeat)");

@@ -4,6 +4,14 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
+export async function updateSupabasePassword(
+  auth: { updateUser: (input: { password: string }) => Promise<{ error: unknown | null }> },
+  password: string,
+) {
+  const { error } = await auth.updateUser({ password });
+  if (error) throw error;
+}
+
 export function SupabaseResetPasswordForm() {
   const router = useRouter();
   const [password, setPassword] = useState("");
@@ -16,8 +24,7 @@ export function SupabaseResetPasswordForm() {
     if (password.length < 8 || password !== confirmation) { setMessage("密码至少需要 8 位，且两次输入必须一致。"); return; }
     setPending(true); setMessage(null);
     try {
-      const { error } = await createSupabaseBrowserClient().auth.updateUser({ password });
-      if (error) throw error;
+      await updateSupabasePassword(createSupabaseBrowserClient().auth, password);
       setMessage("密码已更新，请重新登录。");
       window.setTimeout(() => router.replace("/sign-in"), 600);
     } catch { setMessage("密码更新失败，请重新打开邮件后再试。"); }
