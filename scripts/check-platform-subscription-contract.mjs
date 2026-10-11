@@ -237,7 +237,13 @@ function assertPlatformAccountDatabaseBoundary({ migrationSource, postgresSource
   }
 
   const listFacade = postgresSource.slice(postgresSource.indexOf("export async function listPlatformTenantAccounts"), postgresSource.indexOf("function slugifyTenantName"));
-  const createFacade = postgresSource.slice(postgresSource.indexOf("export async function createTenantAccount("), postgresSource.indexOf("export async function updateTenantAccountLifecycle("));
+  const createFacadeStart = postgresSource.indexOf("export async function createTenantAccount(");
+  const updateFacadeStart = postgresSource.indexOf("export async function updateTenantAccountLifecycle(");
+  const closedBetaBoundary = postgresSource.indexOf("/**\n * Closed-beta provisioning");
+  const createFacadeEnd = closedBetaBoundary > createFacadeStart && closedBetaBoundary < updateFacadeStart
+    ? closedBetaBoundary
+    : updateFacadeStart;
+  const createFacade = postgresSource.slice(createFacadeStart, createFacadeEnd);
   const updateFacade = postgresSource.slice(postgresSource.indexOf("export async function updateTenantAccountLifecycle("), postgresSource.indexOf("/** Creates a company for the already-authenticated local user. */"));
   assert(listFacade.includes("brokerdesk_private.list_platform_tenant_accounts()") && !listFacade.includes("FROM tenants") && !listFacade.includes("FROM tenant_memberships"), "platform list facade must use only the definer list primitive");
   assert(createFacade.includes("brokerdesk_private.create_platform_tenant_account(") && !createFacade.includes("INSERT INTO") && !createFacade.includes("SELECT * FROM tenants"), "platform create facade must use only the atomic definer create primitive");

@@ -882,18 +882,42 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
   const overviewIssueCount = applicableWorkbenchFields.filter(fieldNeedsAttention).length;
   const overviewFieldList = overviewSections.flatMap((section) => section.children.flatMap((child) => child.fields));
   const overviewArchiveGroups = [
-    { id: "property-and-lease", label: tr(locale, { ja: "物件・契約条件", zh: "房屋与租赁条件", ko: "물건·계약 조건" }), match: (key: string) => key.startsWith("property.") || key.startsWith("lease.") },
-    { id: "people", label: tr(locale, { ja: "関係者・勤務先", zh: "人物、工作与收入", ko: "관계자·근무·소득" }), match: (key: string) => /^(applicant|occupant|cohabitant|guarantor|emergencyContact)\./.test(key) },
-    { id: "companies", label: tr(locale, { ja: "仲介・管理会社", zh: "管理与仲介公司", ko: "중개·관리 회사" }), match: (key: string) => /^(broker|management|guaranteeCompany|guarantee)\./.test(key) },
-  ] as const;
+    {
+      id: "property-and-lease",
+      label: tr(locale, { ja: "物件・賃貸条件", zh: "房屋与租赁条件", ko: "물건·임대 조건" }),
+      children: [{ id: "property-and-lease", label: tr(locale, { ja: "物件・賃貸条件", zh: "房屋与租赁条件", ko: "물건·임대 조건" }), match: (key: string) => key.startsWith("property.") || key.startsWith("lease.") }],
+    },
+    {
+      id: "people",
+      label: tr(locale, { ja: "関係者", zh: "相关人员", ko: "관계자" }),
+      children: [
+        { id: "applicant", label: tr(locale, { ja: "申込者・賃借人", zh: "申请人／承租人", ko: "신청자·임차인" }), match: (key: string) => key.startsWith("applicant.") },
+        { id: "co-occupants", label: tr(locale, { ja: "同居人・入居者", zh: "同住人／入住者", ko: "동거인·입주자" }), match: (key: string) => key.startsWith("coOccupants.") },
+        { id: "emergency-contact", label: tr(locale, { ja: "緊急連絡先", zh: "紧急联系人", ko: "긴급 연락처" }), match: (key: string) => key.startsWith("emergencyContact.") },
+        { id: "guarantor", label: tr(locale, { ja: "連帯保証人", zh: "连带保证人", ko: "연대 보증인" }), match: (key: string) => key.startsWith("guarantor.") },
+      ],
+    },
+    {
+      id: "companies",
+      label: tr(locale, { ja: "関係会社", zh: "相关公司", ko: "관계 회사" }),
+      children: [
+        { id: "broker", label: tr(locale, { ja: "協定会社・取扱店", zh: "合作公司／经办门店", ko: "제휴 회사·취급점" }), match: (key: string) => key.startsWith("broker.") },
+        { id: "management", label: tr(locale, { ja: "管理会社", zh: "管理公司", ko: "관리 회사" }), match: (key: string) => key.startsWith("management.") },
+        { id: "landlord", label: tr(locale, { ja: "貸主", zh: "出租人", ko: "임대인" }), match: (key: string) => key.startsWith("landlord.") },
+        { id: "guarantee", label: tr(locale, { ja: "保証会社", zh: "保证公司", ko: "보증 회사" }), match: (key: string) => key.startsWith("guaranteeCompany.") || key.startsWith("guarantee.") },
+      ],
+    },
+  ];
   const groupedOverviewSections: CaseOverviewSection[] = overviewArchiveGroups
     .map((group) => ({
       id: `archive-${group.id}`,
       label: group.label,
-      children: [{ id: group.id, label: group.label, fields: overviewFieldList.filter((field) => group.match(field.fieldKey)) }],
+      children: group.children
+        .map((child) => ({ id: child.id, label: child.label, fields: overviewFieldList.filter((field) => child.match(field.fieldKey)) }))
+        .filter((child) => child.fields.length > 0),
     }))
-    .filter((section) => section.children[0].fields.length > 0);
-  const groupedFieldKeys = new Set(groupedOverviewSections.flatMap((section) => section.children[0].fields.map((field) => field.fieldKey)));
+    .filter((section) => section.children.length > 0);
+  const groupedFieldKeys = new Set(groupedOverviewSections.flatMap((section) => section.children.flatMap((child) => child.fields.map((field) => field.fieldKey))));
   const remainingOverviewFields = overviewFieldList.filter((field) => !groupedFieldKeys.has(field.fieldKey));
   if (remainingOverviewFields.length > 0) groupedOverviewSections.push({
     id: "archive-other",
@@ -1117,6 +1141,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
         data-import-deployment-version={importRuntimeDiagnostics.deploymentVersion}
       >
         <CaseOverview
+          key={`case-overview-${query?.flash ?? "initial"}-${initialFieldKey ?? "none"}`}
           caseId={brokerageCase.id}
           caseTitle={brokerageCase.caseTitle}
           applicantSummary={applicantSummary}
@@ -1173,6 +1198,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
           flash={<PageFlashBanner message={flashMessage} tone={flashTone} />}
           initialFieldKey={initialFieldKey}
           initialScrollTop={initialScrollTop}
+          resumeGroupEditing={Boolean(initialFieldKey && ["case_workbench_saved", "case_required_field_missing", "case_field_invalid"].includes(query?.flash ?? ""))}
         />
       </div>
     );

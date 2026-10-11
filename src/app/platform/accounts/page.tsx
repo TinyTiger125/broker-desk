@@ -3,6 +3,7 @@ import {
   sendPlatformTenantMemberInvitationAction,
   updateTenantAccountLifecycleAction,
 } from "@/app/actions";
+import Link from "next/link";
 import { InvitationSubmitButton } from "@/components/invitation-submit-button";
 import { listPlatformTenantAccounts, type TenantAccountSummary, type TenantInvitationStatus, type TenantStatus } from "@/lib/data";
 import { getLocale, type Locale } from "@/lib/locale";
@@ -117,6 +118,7 @@ function resolvePlatformAccountFlash(token: string | undefined, locale: Locale) 
 function copy(locale: Locale) {
   return {
     title: locale === "zh" ? "平台账户生命周期" : locale === "ko" ? "플랫폼 계정 라이프사이클" : "プラットフォームアカウント管理",
+    closedBeta: locale === "zh" ? "公测账号" : locale === "ko" ? "클로즈드 베타 계정" : "クローズドベータアカウント",
     subtitle:
       locale === "zh"
         ? "这里开通、冻结、取消地产经纪人或公司组织账户，并控制购买席位数。普通登录用户不能自助注册。"
@@ -206,6 +208,9 @@ export default async function PlatformAccountsPage({ searchParams }: PlatformAcc
           <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-900">{ui.title}</h1>
           <p className="mt-1 max-w-4xl text-sm text-slate-600">{ui.subtitle}</p>
         </div>
+        <Link href="/platform/closed-beta" className="rounded-lg border border-[#3158d8] px-4 py-2 text-sm font-bold text-[#173b9f] hover:bg-[#e7edff]">
+          {ui.closedBeta}
+        </Link>
       </header>
 
       {flashMessage ? (

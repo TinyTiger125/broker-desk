@@ -22,6 +22,7 @@ const labels = {
     platform: "平台管理",
     platformAccounts: "账户管理",
     platformTemplates: "官方文书模板",
+    closedBeta: "公测账号",
   },
   ja: {
     home: "ホーム",
@@ -41,6 +42,7 @@ const labels = {
     platform: "プラットフォーム管理",
     platformAccounts: "アカウント管理",
     platformTemplates: "公式帳票テンプレート",
+    closedBeta: "クローズドベータ",
   },
   ko: {
     home: "작업대",
@@ -60,6 +62,7 @@ const labels = {
     platform: "플랫폼 관리",
     platformAccounts: "계정 관리",
     platformTemplates: "공식 문서 템플릿",
+    closedBeta: "클로즈드 베타",
   },
 } satisfies Record<Locale, Record<string, string>>;
 
@@ -98,6 +101,7 @@ export function AppRouteTitle({ locale }: { locale: Locale }) {
   if (pathname.startsWith("/settings/case-workbench-fields")) return <span>{joinPath([l.settings, l.required])}</span>;
   if (pathname.startsWith("/settings/output-templates")) return <span>{joinPath([l.settings, l.documentHeader])}</span>;
   if (pathname.startsWith("/settings")) return <span>{l.settings}</span>;
+  if (pathname.startsWith("/platform/closed-beta")) return <span>{joinPath([l.platform, l.platformAccounts, l.closedBeta])}</span>;
   if (pathname.startsWith("/platform/accounts")) return <span>{joinPath([l.platform, l.platformAccounts])}</span>;
   if (pathname.startsWith("/platform/templates")) return <span>{joinPath([l.platform, l.platformTemplates])}</span>;
 

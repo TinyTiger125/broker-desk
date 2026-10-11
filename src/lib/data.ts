@@ -211,6 +211,8 @@ export const listPlatformTenantAccounts: typeof memory.listPlatformTenantAccount
   repo.listPlatformTenantAccounts(...args);
 export const createTenantAccount: typeof memory.createTenantAccount = (...args) =>
   repo.createTenantAccount(...args);
+export const createClosedBetaTenantAccount: typeof memory.createClosedBetaTenantAccount = (...args) =>
+  repo.createClosedBetaTenantAccount(...args);
 export const createTenantAccountForUser: typeof memory.createTenantAccountForUser = (...args) =>
   repo.createTenantAccountForUser(...args);
 export const tenantRoleForCapabilityPreset = memory.tenantRoleForCapabilityPreset;
@@ -221,8 +223,13 @@ export const listTenantMemberships: typeof memory.listTenantMemberships = (...ar
   resolveTenantMemberships(...args);
 export const listPendingTenantInvitations: typeof memory.listPendingTenantInvitations = (...args) =>
   repo.listPendingTenantInvitations(...args);
+// Invitation acceptance commits only the membership transition. Closed-beta
+// demo data is ensured by the authenticated home page, where a failed seed
+// can be retried safely without asking the user to accept the invitation again.
 export const acceptTenantInvitation: typeof memory.acceptTenantInvitation = (...args) =>
   repo.acceptTenantInvitation(...args);
+export const seedClosedBetaDemoData: typeof memory.seedClosedBetaDemoData = (...args) =>
+  repo.seedClosedBetaDemoData(...args);
 export const getTenantMembership: typeof memory.getTenantMembership = (...args) =>
   repo.getTenantMembership(...args);
 export const listTenantsForUser: typeof memory.listTenantsForUser = (...args) =>
@@ -561,6 +568,7 @@ export type {
   TenantCapabilityPreset,
   TenantMembershipStatus,
   TenantStatus,
+  ClosedBetaDemoResult,
   Property,
   Quotation,
   ImportJob,

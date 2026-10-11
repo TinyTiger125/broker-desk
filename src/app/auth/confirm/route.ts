@@ -12,6 +12,11 @@ type PendingCookie = {
 const RESET_PASSWORD_PATH = "/reset-password";
 const INVITE_CONFIRMATION_ERROR = "invite_confirmation_failed";
 const INTERNAL_ORIGIN = "https://brokerdesk.invalid";
+const INVITE_POST_SECURITY_HEADERS = {
+  "cache-control": "private, no-store",
+  "referrer-policy": "no-referrer",
+  "x-content-type-options": "nosniff",
+};
 
 function safeInviteNext(value: string | null) {
   const candidate = value?.trim() ?? "";
@@ -43,24 +48,61 @@ function safeInviteNext(value: string | null) {
   }
 }
 
-function failedInviteConfirmation(request: Request) {
-  const signIn = new URL("/sign-in", request.url);
-  signIn.searchParams.set("error", INVITE_CONFIRMATION_ERROR);
-  return NextResponse.redirect(signIn);
+function failedInvitePost(status: number) {
+  return NextResponse.json(
+    { ok: false, error: INVITE_CONFIRMATION_ERROR },
+    { status, headers: INVITE_POST_SECURITY_HEADERS },
+  );
 }
 
-export async function GET(request: Request) {
-  const requestUrl = new URL(request.url);
-  const tokenHashes = requestUrl.searchParams.getAll("token_hash");
-  const types = requestUrl.searchParams.getAll("type");
-  const tokenHash = tokenHashes[0] ?? "";
-  if (tokenHashes.length !== 1 || !tokenHash || tokenHash !== tokenHash.trim() || types.length !== 1 || types[0] !== "invite") {
-    return failedInviteConfirmation(request);
+function hasExactRequestOrigin(request: Request, requestUrl: URL) {
+  return request.headers.get("origin") === requestUrl.origin;
+}
+
+function parseInvitePostPayload(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const allowedKeys = new Set(["token_hash", "type", "next"]);
+  if (Object.keys(record).some((key) => !allowedKeys.has(key))) return null;
+  if (
+    typeof record.token_hash !== "string"
+    || !record.token_hash
+    || record.token_hash !== record.token_hash.trim()
+    || typeof record.type !== "string"
+    || record.type !== "invite"
+    || (record.next !== undefined && typeof record.next !== "string")
+  ) {
+    return null;
   }
+  return {
+    tokenHash: record.token_hash,
+    next: typeof record.next === "string" ? record.next : null,
+  };
+}
+
+/**
+ * Confirm a fragment-delivered invitation. The raw provider secret is accepted
+ * only in this same-origin POST body. There is intentionally no GET handler:
+ * a token in a query string can enter browser history, referrers, proxy logs,
+ * or analytics before application code can remove it.
+ */
+export async function POST(request: Request) {
+  const requestUrl = new URL(request.url);
+  if (!hasExactRequestOrigin(request, requestUrl)) return failedInvitePost(403);
+  const contentType = request.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase();
+  if (contentType !== "application/json") return failedInvitePost(415);
+
+  let payload: unknown;
+  try {
+    payload = await request.json();
+  } catch {
+    return failedInvitePost(400);
+  }
+  const parsed = parseInvitePostPayload(payload);
+  if (!parsed) return failedInvitePost(400);
 
   const pendingCookies: PendingCookie[] = [];
   const pendingHeaders: Record<string, string> = {};
-
   try {
     const cookieStore = await cookies();
     const { url, key } = getSupabaseConfig();
@@ -75,19 +117,18 @@ export async function GET(request: Request) {
         },
       },
     });
-    const { data, error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: "invite" });
-    if (error || !data.session || pendingCookies.length === 0) {
-      return failedInviteConfirmation(request);
-    }
+    const { data, error } = await supabase.auth.verifyOtp({ token_hash: parsed.tokenHash, type: "invite" });
+    if (error || !data.session || pendingCookies.length === 0) return failedInvitePost(401);
 
-    const response = NextResponse.redirect(new URL(safeInviteNext(requestUrl.searchParams.get("next")), request.url));
+    const response = NextResponse.json(
+      { ok: true, redirectTo: safeInviteNext(parsed.next) },
+      { headers: INVITE_POST_SECURITY_HEADERS },
+    );
     for (const cookie of pendingCookies) response.cookies.set(cookie.name, cookie.value, cookie.options);
     for (const [name, value] of Object.entries(pendingHeaders)) response.headers.set(name, value);
+    for (const [name, value] of Object.entries(INVITE_POST_SECURITY_HEADERS)) response.headers.set(name, value);
     return response;
   } catch {
-    // Do not sign out or clear an existing browser session when this invite
-    // token cannot be verified. The failure response never carries pending
-    // auth mutations collected from a failed verification attempt.
-    return failedInviteConfirmation(request);
+    return failedInvitePost(401);
   }
 }

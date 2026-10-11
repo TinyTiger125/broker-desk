@@ -19,6 +19,7 @@ const routeMap: Array<{ matches: (segments: string[]) => boolean; resolve: (segm
   { matches: (s) => s[0] === "quotes" && s.length === 2, resolve: () => ({ href: "/quotes", label: labels }) },
   { matches: (s) => s[0] === "guarantee-applications" && s.length === 3, resolve: () => ({ href: "/platform/templates", label: labels }) },
   { matches: (s) => s[0] === "guarantee-forms" && s.length === 3, resolve: () => ({ href: "/guarantee-forms", label: labels }) },
+  { matches: (s) => s[0] === "platform" && s[1] === "closed-beta" && s.length === 2, resolve: () => ({ href: "/platform/accounts", label: labels }) },
   { matches: (s) => s[0] === "platform" && s[1] === "templates" && s.length === 3, resolve: () => ({ href: "/platform/templates", label: labels }) },
   { matches: (s) => s[0] === "settings" && s.length === 2, resolve: () => ({ href: "/", label: labels }) },
   { matches: (s) => s[0] === "workspace" && s.length > 1, resolve: () => ({ href: "/workspace", label: labels }) },

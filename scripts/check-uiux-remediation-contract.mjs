@@ -22,8 +22,13 @@ function assertFieldGridContract(css, overview) {
   const desktop = css.match(/@media \(min-width: 64rem\) \{([\s\S]*?)\n\}/)?.[1] ?? "";
   requireMatch(desktop, /\.formRow\s*\{[\s\S]*?align-items:\s*stretch;/, "desktop field rows must stretch both cells to one row height");
   requireMatch(desktop, /\.formRow\s*>\s*\.formField\s*\{[\s\S]*?height:\s*100%;/, "each field article must fill the stretched row");
-  requireMatch(overview, /const renderField = \(field: CaseOverviewField\) => \{\s*const inlineEditing[\s\S]*?return \(\s*<div className="[^"]*h-full[^"]*sm:flex-row[^"]*sm:items-start/, "field content must fill its article and align value/action from the same top baseline");
-  requireMatch(overview, /data-field-trigger=\{fieldAnchor\(field\.fieldKey\)\}[\s\S]*?className=\{`[^`]*min-h-10[^`]*sm:min-w-16/, "field actions must keep the compact 40px touch target and desktop action column");
+  requireMatch(overview, /const renderField = \(field: CaseOverviewField\) => \{\s*return \(\s*<CaseFieldValue/, "overview field rows must remain read-only compact values");
+  requireMatch(overview, /このグループを編集/, "each business group must expose one group editing entry point");
+  requireMatch(overview, /const requestGroupFieldChange = \(fieldKey: string\) => \{[\s\S]*?if \(dirtyFieldKey\)/, "group navigation must protect unsaved changes");
+  requireMatch(overview, /pendingGroupFieldKey/, "group navigation must offer a recovery decision before changing fields");
+  assert.doesNotMatch(overview, /data-field-trigger=\{fieldAnchor\(field\.fieldKey\)\}/, "overview rows must not retain individual edit buttons");
+  requireMatch(overview, /<h3 className="min-w-0 flex-1 text-xs font-black leading-5/, "narrow group titles must retain the available flex width");
+  requireMatch(overview, /className="shrink-0 whitespace-nowrap rounded-md/, "group edit actions must not force Japanese titles into character-by-character wrapping");
 }
 
 function assertMobileMenuContract(css) {

@@ -17,6 +17,7 @@ type MainNavLinksProps = {
 function isActive(pathname: string, href: string) {
   const hrefPath = href.split(/[?#]/)[0] || "/";
   if (hrefPath === "/") return pathname === "/";
+  if (hrefPath === "/platform/accounts" && pathname.startsWith("/platform/closed-beta")) return true;
   return pathname === hrefPath || pathname.startsWith(`${hrefPath}/`);
 }
 

@@ -11,6 +11,14 @@ export type SupabaseInvitationDependencies = {
   inviteUserByEmail?: SupabaseInvitationCreate;
 };
 
+export type SupabaseGenerateInvitationLink = (
+  params: Parameters<SupabaseClient["auth"]["admin"]["generateLink"]>[0],
+) => ReturnType<SupabaseClient["auth"]["admin"]["generateLink"]>;
+
+export type SupabaseGenerateInvitationLinkDependencies = {
+  generateLink?: SupabaseGenerateInvitationLink;
+};
+
 let adminClient: SupabaseClient | null = null;
 
 function getSupabaseAdminConfig() {
@@ -45,6 +53,74 @@ export async function inviteSupabaseUserByEmail(
   if (error) throw error;
   if (!data.user?.id) throw new Error("supabase_invitation_missing_user");
   return { providerInvitationId: data.user.id, sentAt: new Date() };
+}
+
+export function normalizeFixedOrigin(origin: string): string {
+  const value = origin.trim();
+  if (!value) throw new Error("supabase_invitation_origin_required");
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error("supabase_invitation_origin_invalid");
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    throw new Error("supabase_invitation_origin_invalid");
+  }
+  if (parsed.username || parsed.password || parsed.search || parsed.hash || parsed.pathname !== "/") {
+    throw new Error("supabase_invitation_origin_invalid");
+  }
+  if (process.env.NODE_ENV === "production" && parsed.protocol !== "https:") {
+    throw new Error("supabase_invitation_origin_https_required");
+  }
+  return parsed.toString().replace(/\/$/, "");
+}
+
+/**
+ * Server-only invitation-link generation. The provider's action_link and raw
+ * token are deliberately discarded; callers receive one fixed-origin app URL
+ * for one-time manual delivery and must not persist it.
+ */
+export async function generateSupabaseInvitationLink(
+  input: { email: string; origin: string },
+  dependencies: SupabaseGenerateInvitationLinkDependencies = {},
+) {
+  const email = input.email.trim().toLowerCase();
+  if (!email) throw new Error("supabase_invitation_email_required");
+  const origin = normalizeFixedOrigin(input.origin);
+  const redirectTo = `${origin}/auth/confirm?next=${encodeURIComponent("/reset-password")}`;
+  const generateLink = dependencies.generateLink
+    ?? ((params) => createSupabaseAdminClient().auth.admin.generateLink(params));
+  const { data, error } = await generateLink({
+    type: "invite",
+    email,
+    options: { redirectTo },
+  });
+  if (error) throw error;
+  const generatedEmail = data.user?.email?.trim().toLowerCase();
+  const hashedToken = data.properties?.hashed_token?.trim();
+  if (!data.user?.id || generatedEmail !== email) {
+    throw new Error("supabase_invitation_user_mismatch");
+  }
+  if (data.properties?.verification_type !== "invite" || !hashedToken) {
+    throw new Error("supabase_invitation_response_invalid");
+  }
+  // Keep the one-time provider secret in the URL fragment. Browsers do not
+  // send fragments in HTTP requests, referrers, or request-log paths. The
+  // dedicated client route removes it before the user can submit it once in
+  // a same-origin POST to the server-side verifier.
+  const invitationUrl = new URL("/auth/invite", `${origin}/`);
+  invitationUrl.hash = new URLSearchParams({
+    token_hash: hashedToken,
+    type: "invite",
+    next: "/reset-password",
+  }).toString();
+  return {
+    providerInvitationId: data.user.id,
+    invitationUrl: invitationUrl.toString(),
+    sentAt: new Date(),
+    linkExpiry: "provider_defined_or_unknown" as const,
+  };
 }
 
 /** Server-only global account ban. Use only for an explicit platform-account lifecycle action. */

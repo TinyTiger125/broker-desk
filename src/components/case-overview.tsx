@@ -613,6 +613,7 @@ export function CaseOverview({
   flash,
   initialFieldKey,
   initialScrollTop,
+  resumeGroupEditing = false,
 }: {
   caseId: string;
   caseTitle: string;
@@ -637,6 +638,7 @@ export function CaseOverview({
   flash?: ReactNode;
   initialFieldKey?: string;
   initialScrollTop?: number;
+  resumeGroupEditing?: boolean;
 }) {
   const sectionIds = useMemo(() => sections.map((section) => section.id), [sections]);
   const router = useRouter();
@@ -645,12 +647,12 @@ export function CaseOverview({
   const [downloadAttempted, setDownloadAttempted] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmedVersion, setConfirmedVersion] = useState<string | null>(null);
-  const [editingFieldKey, setEditingFieldKey] = useState<string | null>(null);
+  const [editingFieldKey, setEditingFieldKey] = useState<string | null>(() => resumeGroupEditing && initialFieldKey && !readOnly ? initialFieldKey : null);
   const [dirtyFieldKey, setDirtyFieldKey] = useState<string | null>(null);
   const [pendingView, setPendingView] = useState<"quick" | "overview" | null>(null);
   const [pendingClose, setPendingClose] = useState(false);
+  const [pendingGroupFieldKey, setPendingGroupFieldKey] = useState<string | null>(null);
   const [saveAndSwitchView, setSaveAndSwitchView] = useState<"quick" | "overview" | null>(null);
-  const [editorPosition, setEditorPosition] = useState<{ top: number; left: number; width: number } | null>(null);
   const [wideResponsiveLayout, setWideResponsiveLayout] = useState(false);
   const pageRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
@@ -712,28 +714,6 @@ export function CaseOverview({
     });
     return () => window.cancelAnimationFrame(frame);
   }, [editingFieldKey]);
-
-  useLayoutEffect(() => {
-    if (!editingField || editingApplicantField) return;
-    const updateEditorPosition = () => {
-      const anchor = document.getElementById(fieldAnchor(editingField.fieldKey));
-      if (!anchor) return;
-      const rect = anchor.getBoundingClientRect();
-      const width = Math.min(480, Math.max(0, window.innerWidth - 32));
-      const left = Math.min(Math.max(16, rect.left), Math.max(16, window.innerWidth - width - 16));
-      const minTop = Math.min(Math.max(16, getStickyOffset()), Math.max(16, window.innerHeight - 280));
-      const maxTop = Math.max(minTop, window.innerHeight - 280);
-      const top = Math.min(Math.max(minTop, rect.bottom + 12), maxTop);
-      setEditorPosition({ top, left, width });
-    };
-    updateEditorPosition();
-    window.addEventListener("scroll", updateEditorPosition, { passive: true, capture: true });
-    window.addEventListener("resize", updateEditorPosition, { passive: true });
-    return () => {
-      window.removeEventListener("scroll", updateEditorPosition, true);
-      window.removeEventListener("resize", updateEditorPosition);
-    };
-  }, [editingField, editingApplicantField]);
 
   useLayoutEffect(() => {
     if (editingFieldKey || !lastTriggerIdRef.current) return;
@@ -871,8 +851,6 @@ export function CaseOverview({
     }
     if (hasBlockingOutput) {
       setDownloadAttempted(true);
-      setQueueOpen(true);
-      window.requestAnimationFrame(() => document.getElementById("case-output-blockers")?.scrollIntoView({ behavior: "smooth", block: "center" }));
       return;
     }
     if (isConfirmedForCurrentData) {
@@ -881,7 +859,13 @@ export function CaseOverview({
     }
     setConfirmOpen(true);
   };
-  void handleDownload;
+  const requestGroupFieldChange = (fieldKey: string) => {
+    if (dirtyFieldKey) {
+      setPendingGroupFieldKey(fieldKey);
+      return;
+    }
+    setEditingFieldKey(fieldKey);
+  };
 
   const visibleAnchors = sections.slice(0, 4);
   const overflowAnchors = sections.slice(4);
@@ -928,9 +912,9 @@ export function CaseOverview({
       >
         {renderFieldForm(editingField, `${layoutStyles.editorForm} mt-5 space-y-4`)}
         {editingGroupFields.length > 1 ? <div className="mt-4 flex items-center justify-between gap-2 border-t border-slate-100 pt-3">
-          <button type="button" disabled={editingGroupIndex <= 0} onClick={() => setEditingFieldKey(editingGroupFields[editingGroupIndex - 1].fieldKey)} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 disabled:opacity-50">{locale === "zh" ? "上一项" : locale === "ko" ? "이전 항목" : "前の項目"}</button>
+          <button type="button" disabled={editingGroupIndex <= 0} onClick={() => requestGroupFieldChange(editingGroupFields[editingGroupIndex - 1].fieldKey)} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 disabled:opacity-50">{locale === "zh" ? "上一项" : locale === "ko" ? "이전 항목" : "前の項目"}</button>
           <span className="text-xs font-semibold text-slate-500">{editingGroupIndex + 1} / {editingGroupFields.length}</span>
-          <button type="button" disabled={editingGroupIndex >= editingGroupFields.length - 1} onClick={() => setEditingFieldKey(editingGroupFields[editingGroupIndex + 1].fieldKey)} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 disabled:opacity-50">{locale === "zh" ? "下一项" : locale === "ko" ? "다음 항목" : "次の項目"}</button>
+          <button type="button" disabled={editingGroupIndex >= editingGroupFields.length - 1} onClick={() => requestGroupFieldChange(editingGroupFields[editingGroupIndex + 1].fieldKey)} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 disabled:opacity-50">{locale === "zh" ? "下一项" : locale === "ko" ? "다음 항목" : "次の項目"}</button>
         </div> : null}
       </CaseEditPanel>
     );
@@ -958,30 +942,38 @@ export function CaseOverview({
   ) : null;
 
   const outputState = downloadAttempted && hasBlockingOutput ? (
-    <section id="case-output-blockers" role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4">
-      <div className="flex items-start gap-3">
-        <span className="material-symbols-outlined text-[20px] text-rose-700" aria-hidden="true">error</span>
-        <div>
-          <h2 className="text-sm font-black text-rose-950">{locale === "zh" ? "暂时不能下载申请书" : locale === "ko" ? "신청서를 아직 다운로드할 수 없습니다" : "申込書をまだダウンロードできません"}</h2>
-          <p className="mt-1 text-xs font-semibold text-rose-900">{locale === "zh" ? "请处理以下问题后重试。申请书预览仍然可以打开。" : locale === "ko" ? "아래 문제를 처리한 뒤 다시 시도해 주세요. 신청서 미리보기는 계속 열 수 있습니다." : "次の項目を対応してから再試行してください。申込書プレビューは開けます。"}</p>
-        </div>
-      </div>
-      <div className="mt-3 grid gap-2">
-        {outputBlockers.map((blocker) => (
-          <div key={blocker.code} className="rounded-lg border border-rose-200 bg-white p-3">
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-xs font-black text-rose-900">{blocker.label || localizeOutputLabel(locale, blocker.code)}</p>
-              <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-black text-rose-800">{blocker.count}</span>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/40 p-4" role="presentation">
+      <section id="case-output-blockers" role="dialog" aria-modal="true" aria-labelledby="case-output-blockers-title" className="max-h-[calc(100vh-2rem)] w-full max-w-xl overflow-y-auto rounded-2xl border border-rose-200 bg-white p-5 shadow-2xl">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <span className="material-symbols-outlined text-[20px] text-rose-700" aria-hidden="true">error</span>
+            <div>
+              <h2 id="case-output-blockers-title" className="text-sm font-black text-rose-950">{locale === "zh" ? "暂时不能下载申请书" : locale === "ko" ? "신청서를 아직 다운로드할 수 없습니다" : "申込書をまだダウンロードできません"}</h2>
+              <p className="mt-1 text-xs font-semibold text-rose-900">{locale === "zh" ? "请处理以下问题后重试。申请书预览仍然可以打开。" : locale === "ko" ? "아래 문제를 처리한 뒤 다시 시도해 주세요. 신청서 미리보기는 계속 열 수 있습니다." : "次の項目を対応してから再試行してください。申込書プレビューは開けます。"}</p>
             </div>
-            <p className="mt-1 text-xs font-semibold text-slate-600">{blocker.message || localizeOutputMessage(locale, blocker.code)}</p>
-            {blocker.fields.length > 0 ? <div className="mt-2 flex flex-wrap gap-2">{blocker.fields.slice(0, 5).map((field) => <Link key={`${blocker.code}-${field.fieldKey}`} href={field.actionUrl} className="rounded-md border border-slate-200 px-2 py-1 text-[11px] font-bold text-slate-700 hover:bg-slate-50">{field.label}</Link>)}</div> : null}
           </div>
-        ))}
-      </div>
-    </section>
+          <button type="button" onClick={() => setDownloadAttempted(false)} className="rounded-lg px-2 py-1 text-xs font-bold text-slate-700 hover:bg-slate-100">{locale === "zh" ? "关闭" : locale === "ko" ? "닫기" : "閉じる"}</button>
+        </div>
+        <div className="mt-3 grid gap-2">
+          {outputBlockers.map((blocker) => (
+            <div key={blocker.code} className="rounded-lg border border-rose-200 bg-white p-3">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs font-black text-rose-900">{blocker.label || localizeOutputLabel(locale, blocker.code)}</p>
+                <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-black text-rose-800">{blocker.count}</span>
+              </div>
+              <p className="mt-1 text-xs font-semibold text-slate-600">{blocker.message || localizeOutputMessage(locale, blocker.code)}</p>
+              {blocker.fields.length > 0 ? <div className="mt-2 flex flex-wrap gap-2">{blocker.fields.slice(0, 5).map((field) => <Link key={`${blocker.code}-${field.fieldKey}`} href={field.actionUrl} className="rounded-md border border-slate-200 px-2 py-1 text-[11px] font-bold text-slate-700 hover:bg-slate-50">{field.label}</Link>)}</div> : null}
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4">
+          <Link href={viewHref(caseId, "quick")} className="rounded-lg bg-slate-950 px-3 py-2 text-xs font-black text-white hover:bg-slate-800">{locale === "zh" ? "前往快速补全" : locale === "ko" ? "빠른 보완으로 이동" : "補完で確認する"}</Link>
+          <Link href={outputHref} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50">{locale === "zh" ? "继续预览" : locale === "ko" ? "미리보기 계속" : "プレビューを開く"}</Link>
+        </div>
+      </section>
+    </div>
   ) : null;
   void attentionQueue;
-  void outputState;
 
   return (
     <div ref={pageRef} className="flex min-w-0 flex-col gap-4 pb-16">
@@ -1001,7 +993,12 @@ export function CaseOverview({
             onBeforeViewChange={handleBeforeViewChange}
             issueCount={issueCount}
             showStatusSummary={false}
-            actions={null}
+            actions={
+              <>
+                <Link href={outputHref} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50">{locale === "zh" ? "预览申请书" : locale === "ko" ? "신청서 미리보기" : "申込書をプレビュー"}</Link>
+                <button type="button" onClick={handleDownload} className="rounded-lg bg-slate-950 px-3 py-2 text-xs font-black text-white hover:bg-slate-800">{locale === "zh" ? "下载申请书" : locale === "ko" ? "신청서 다운로드" : "申込書をダウンロード"}</button>
+              </>
+            }
           />
         }
         feedback={
@@ -1054,57 +1051,16 @@ export function CaseOverview({
                     const applicantChild = isApplicantChild(child);
                     const childEditing = Boolean(editingApplicantField && editingField && !isInlineField(editingField) && child.fields.some((field) => field.fieldKey === editingField.fieldKey));
                     const renderField = (field: CaseOverviewField) => {
-                      const inlineEditing = !readOnly && isInlineField(field) && editingField?.fieldKey === field.fieldKey;
-                      const valueButton = !readOnly && isInlineField(field) ? (
-                        <button
-                          type="button"
-                          data-field-value-trigger={fieldAnchor(field.fieldKey)}
-                          onClick={(event) => openEditor(field, event.currentTarget)}
-                          className="block min-w-0 rounded-md text-left focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]"
-                        >
-                          <CaseFieldValue label={field.label} value={field.displayValue} required={field.required} />
-                        </button>
-                      ) : <CaseFieldValue label={field.label} value={field.displayValue} required={field.required} />;
-
                       return (
-                        <div className="flex h-full min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                          <div className="min-w-0 flex-1">
-                            {inlineEditing ? <div data-case-inline-editor={field.fieldKey}>{renderFieldForm(field, "space-y-3")}</div> : valueButton}
-                            {false && fieldIssue(field) && field.evidenceItems.length > 0 ? (
-                              <details className="mt-2 text-xs">
-                                <summary className="cursor-pointer font-bold text-slate-600">{locale === "zh" ? "查看资料依据" : locale === "ko" ? "자료 근거 보기" : "資料の根拠を見る"}</summary>
-                                <div className="mt-2 space-y-2 rounded-lg border border-slate-200 bg-white p-2">
-                                  {field.evidenceItems.slice(0, 3).map((evidence) => <div key={evidence.id} className="flex flex-wrap items-center justify-between gap-2"><span className="font-semibold text-slate-700">{evidence.value || "-"}</span><span className="text-[11px] font-semibold text-slate-500">{evidence.sourceLabel}</span></div>)}
-                                </div>
-                              </details>
-                            ) : null}
-                          </div>
-                          {!readOnly ? (
-                            <button
-                              type="button"
-                              data-field-trigger={fieldAnchor(field.fieldKey)}
-                              onClick={(event) => inlineEditing ? requestCloseEditor() : openEditor(field, event.currentTarget)}
-                              onKeyDown={(event) => {
-                                if (event.key !== "Enter" && event.key !== " ") return;
-                                event.preventDefault();
-                                if (inlineEditing) requestCloseEditor();
-                                else openEditor(field, event.currentTarget);
-                              }}
-                              aria-label={inlineEditing ? (locale === "zh" ? `取消${field.label}编辑` : locale === "ko" ? `${field.label} 편집 취소` : `${field.label}の編集をキャンセル`) : undefined}
-                              className={`inline-flex min-h-10 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px] font-black text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)] sm:min-w-16`}
-                            >
-                              {inlineEditing ? (locale === "zh" ? "取消" : locale === "ko" ? "취소" : "キャンセル") : (locale === "zh" ? "编辑" : locale === "ko" ? "편집" : "編集")}
-                            </button>
-                          ) : null}
-                        </div>
+                        <CaseFieldValue label={field.label} value={field.displayValue} required={field.required} />
                       );
                     };
 
                     return (
                       <section key={child.id} id={`${section.id}-${child.id}`}>
                         <div className="flex items-center justify-between gap-3">
-                          <h3 className="text-xs font-black text-slate-700 sm:text-sm">{child.label}</h3>
-                          {!readOnly && child.fields[0] ? <button type="button" onClick={(event) => openEditor(child.fields[0], event.currentTarget)} className="rounded-md px-2 py-1 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-slate-950">{locale === "zh" ? "编辑本组" : locale === "ko" ? "그룹 편집" : "このグループを編集"}</button> : null}
+                          <h3 className="min-w-0 flex-1 text-xs font-black leading-5 text-slate-700 sm:text-sm">{child.label}</h3>
+                          {!readOnly && child.fields[0] ? <button type="button" onClick={(event) => openEditor(child.fields[0], event.currentTarget)} className="shrink-0 whitespace-nowrap rounded-md px-2 py-1 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-slate-950">{locale === "zh" ? "编辑本组" : locale === "ko" ? "그룹 편집" : "このグループを編集"}</button> : null}
                         </div>
                         {applicantChild ? (
                           <ResponsiveFormLayout aria-label={child.label} editorOpen={childEditing} className={`mt-2 ${layoutStyles.overviewDense}`}>
@@ -1186,15 +1142,15 @@ export function CaseOverview({
           </div>
         ) : null}
 
-        {pendingView || pendingClose ? (
+        {pendingView || pendingClose || pendingGroupFieldKey ? (
           <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/45 p-4" role="presentation">
             <div role="dialog" aria-modal="true" aria-labelledby="case-unsaved-view-title" className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl">
               <h2 id="case-unsaved-view-title" className="text-lg font-black text-slate-950">{locale === "zh" ? "有未保存的修改" : locale === "ko" ? "저장하지 않은 변경 사항" : "未保存の変更があります"}</h2>
-              <p className="mt-2 text-sm font-semibold leading-6 text-slate-700">{pendingView ? (locale === "zh" ? "切换视图前，请选择保存、放弃或继续编辑。" : locale === "ko" ? "보기를 전환하기 전에 저장, 변경 취소 또는 계속 편집을 선택해 주세요." : "表示を切り替える前に、保存・破棄・編集継続を選択してください。") : (locale === "zh" ? "关闭编辑前，请选择保存、放弃或继续编辑。" : locale === "ko" ? "편집을 닫기 전에 저장, 변경 취소 또는 계속 편집을 선택해 주세요." : "編集を閉じる前に、保存・破棄・編集継続を選択してください。")}</p>
+              <p className="mt-2 text-sm font-semibold leading-6 text-slate-700">{pendingView ? (locale === "zh" ? "切换视图前，请选择保存、放弃或继续编辑。" : locale === "ko" ? "보기를 전환하기 전에 저장, 변경 취소 또는 계속 편집을 선택해 주세요." : "表示を切り替える前に、保存・破棄・編集継続を選択してください。") : pendingGroupFieldKey ? (locale === "zh" ? "切换组内项目之前，请选择保存、放弃或继续编辑。" : locale === "ko" ? "그룹 내 항목을 이동하기 전에 저장, 변경 취소 또는 계속 편집을 선택해 주세요." : "グループ内の項目を移動する前に、保存・破棄・編集継続を選択してください。") : (locale === "zh" ? "关闭编辑前，请选择保存、放弃或继续编辑。" : locale === "ko" ? "편집을 닫기 전에 저장, 변경 취소 또는 계속 편집을 선택해 주세요." : "編集を閉じる前に、保存・破棄・編集継続を選択してください。")}</p>
               <div className="mt-4 flex flex-wrap justify-end gap-2">
-                <button type="button" onClick={() => { setPendingView(null); setPendingClose(false); }} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50">{locale === "zh" ? "继续编辑" : locale === "ko" ? "계속 편집" : "編集を続ける"}</button>
-                <button type="button" onClick={() => { const target = pendingView; closeEditor(); setPendingView(null); setPendingClose(false); if (target) pushView(target); }} className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-black text-rose-700 hover:bg-rose-50">{pendingView ? (locale === "zh" ? "放弃并切换" : locale === "ko" ? "취소하고 전환" : "破棄して切替") : (locale === "zh" ? "放弃修改" : locale === "ko" ? "변경 취소" : "変更を破棄")}</button>
-                <button type="button" onClick={() => { const target = pendingView ?? "overview"; setPendingView(null); setPendingClose(false); setSaveAndSwitchView(target); }} className="rounded-lg bg-slate-950 px-3 py-2 text-xs font-black text-white hover:bg-slate-800">{pendingView ? (locale === "zh" ? "保存并切换" : locale === "ko" ? "저장 후 전환" : "保存して切替") : (locale === "zh" ? "保存并关闭" : locale === "ko" ? "저장 후 닫기" : "保存して閉じる")}</button>
+                <button type="button" onClick={() => { setPendingView(null); setPendingClose(false); setPendingGroupFieldKey(null); }} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50">{locale === "zh" ? "继续编辑" : locale === "ko" ? "계속 편집" : "編集を続ける"}</button>
+                <button type="button" onClick={() => { const target = pendingView; const nextField = pendingGroupFieldKey; setPendingView(null); setPendingClose(false); setPendingGroupFieldKey(null); if (nextField) { setDirtyFieldKey(null); setEditingFieldKey(nextField); return; } closeEditor(); if (target) pushView(target); }} className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-black text-rose-700 hover:bg-rose-50">{pendingView ? (locale === "zh" ? "放弃并切换" : locale === "ko" ? "취소하고 전환" : "破棄して切替") : pendingGroupFieldKey ? (locale === "zh" ? "放弃并移动" : locale === "ko" ? "취소하고 이동" : "破棄して移動") : (locale === "zh" ? "放弃修改" : locale === "ko" ? "변경 취소" : "変更を破棄")}</button>
+                <button type="button" onClick={() => { const target = pendingView; const nextField = pendingGroupFieldKey; setPendingView(null); setPendingClose(false); setPendingGroupFieldKey(null); if (target) { setSaveAndSwitchView(target); return; } const form = document.querySelector<HTMLFormElement>(`form[data-case-workbench-field="${editingFieldKey}"]`); if (nextField) { const returnField = form?.querySelector<HTMLInputElement>('input[name="returnField"]'); if (returnField) returnField.value = nextField; } form?.requestSubmit(); }} className="rounded-lg bg-slate-950 px-3 py-2 text-xs font-black text-white hover:bg-slate-800">{pendingView ? (locale === "zh" ? "保存并切换" : locale === "ko" ? "저장 후 전환" : "保存して切替") : pendingGroupFieldKey ? (locale === "zh" ? "保存并继续本组" : locale === "ko" ? "저장하고 그룹 계속" : "保存してこのグループを続ける") : (locale === "zh" ? "保存并关闭" : locale === "ko" ? "저장 후 닫기" : "保存して閉じる")}</button>
               </div>
             </div>
           </div>
@@ -1212,6 +1168,7 @@ export function CaseOverview({
             </div>
           </div>
         ) : null}
+        {outputState}
       </ObjectPageShell>
     </div>
   );

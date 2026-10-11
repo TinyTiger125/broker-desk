@@ -3,7 +3,7 @@ import { buildObjectVersionFingerprint, resolveObjectImportFeatureReadiness, typ
 import { readCaseAssociationDraft } from "@/lib/case-associations";
 import { PostgresObjectImportRepository, mapObjectImportTarget, mapObjectImportCandidate } from "@/lib/object-import-repository.postgres";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { Pool, type PoolClient } from "pg";
 import { buildDatabasePoolConnectionConfig, getDatabasePoolMax } from "@/lib/database-connection";
 import { cache } from "react";
@@ -109,6 +109,7 @@ import type {
   RefreshObjectImportReviewInput,
   RefreshObjectImportReviewResult,
   PreparePropertyRowImportResult,
+  ClosedBetaDemoResult,
 } from "@/lib/data.memory";
 import { normalizeInvitationDeliveryState } from "@/lib/invitation-delivery-state";
 import type { VisibleBrokerageCase, VisibleProperty } from "@/lib/data.memory";
@@ -129,6 +130,14 @@ import {
   type VisibilityRecordResult,
 } from "@/lib/visibility-resolver";
 import { validateTenantServicePeriod } from "@/lib/tenant-service";
+import { deriveTenantServiceState, isTenantServiceOperational } from "@/lib/tenant-service";
+import {
+  buildClosedBetaDemoFixture,
+  CLOSED_BETA_DEMO_FIXTURE_VERSION,
+  CLOSED_BETA_DEMO_LABEL,
+  ClosedBetaDemoSeedError,
+  type ClosedBetaDemoFixture,
+} from "@/lib/closed-beta-demo-fixture";
 
 export type TenantSessionLookup = {
   user: User;
@@ -198,6 +207,7 @@ const REQUIRED_PRODUCTION_MIGRATIONS = [
   "20260924_003_runtime_object_import_case_lookup.sql",
   "20260924_004_official_template_publish.sql",
   "20261002_001_invitation_delivery_claim.sql",
+  "20261008_001_closed_beta_atomic_provisioning.sql",
 ] as const;
 
 const OPEN_STAGES: ClientStage[] = ["lead", "contacted", "quoted", "viewing", "negotiating"];
@@ -2398,6 +2408,10 @@ function slugifyTenantName(value: string): string {
   return slug || `tenant-${Date.now().toString(36)}`;
 }
 
+function createClosedBetaTechnicalSlug(): string {
+  return `closed-beta-${randomUUID()}`;
+}
+
 export async function createTenantAccount(input: {
   name: string;
   slug?: string;
@@ -2439,6 +2453,290 @@ export async function createTenantAccount(input: {
   );
   if (!result.rows[0]) throw new Error("platform tenant account creation returned no account");
   return mapPlatformTenantAccountFunctionRow(result.rows[0]);
+}
+
+/**
+ * Closed-beta provisioning delegates the transaction-local email lock and
+ * global duplicate check to a restricted SECURITY DEFINER function. Direct
+ * users-table reads are intentionally avoided because runtime RLS only exposes
+ * the current tenant; the migration is a release dependency for this path.
+ */
+export async function createClosedBetaTenantAccount(input: {
+  name: string;
+  accountType: Tenant["accountType"];
+  status?: TenantStatus;
+  purchasedSeatCount: number;
+  serviceStartAt?: string;
+  serviceEndAt?: string;
+  actorUserId: string;
+  ownerName: string;
+  ownerEmail: string;
+}): Promise<TenantAccountSummary> {
+  await ensureSchema();
+  const name = input.name.trim();
+  const ownerEmail = input.ownerEmail.trim().toLowerCase();
+  const actorUserId = input.actorUserId.trim();
+  if (!name) throw new Error("tenant name is required");
+  if (!ownerEmail) throw new Error("owner email is required");
+  if (!actorUserId) throw new Error("tenant creation actor is required");
+
+  const dates = validateTenantServicePeriod(input);
+  return withTransaction(async (client) => {
+    const result = await client.query(
+      `SELECT *
+       FROM brokerdesk_private.create_closed_beta_tenant_account(
+         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
+       )`,
+      [
+        actorUserId,
+        name,
+        createClosedBetaTechnicalSlug(),
+        input.accountType,
+        input.status ?? "trial",
+        normalizePurchasedSeatCount(input.purchasedSeatCount),
+        dates.serviceStartAt ?? null,
+        dates.serviceEndAt ?? null,
+        input.ownerName.trim() || ownerEmail,
+        ownerEmail,
+      ],
+    );
+    if (!result.rows[0]) throw new Error("platform tenant account creation returned no account");
+    return mapPlatformTenantAccountFunctionRow(result.rows[0]);
+  });
+}
+
+type ClosedBetaDemoDbState = {
+  clientIds: string[];
+  propertyIds: string[];
+  caseIds: string[];
+  taskIds: string[];
+  followUpIds: string[];
+  counts: ClosedBetaDemoResult["counts"];
+  allPresent: boolean;
+  partial: boolean;
+};
+
+async function assertClosedBetaDemoActor(client: PoolClient, tenantId: string, userId: string): Promise<void> {
+  if (!tenantId) throw new Error("closed_beta_demo_tenant_required");
+  if (!userId) throw new Error("closed_beta_demo_actor_required");
+  const result = await client.query(
+    `SELECT tenants.*
+     FROM public.tenants
+     INNER JOIN public.tenant_memberships
+       ON tenant_memberships.tenant_id = tenants.id
+      AND tenant_memberships.user_id = $2
+      AND tenant_memberships.status = 'active'
+      AND tenant_memberships.role = 'tenant_owner'
+      AND tenant_memberships.capability = 'company_owner'
+     WHERE tenants.id = $1
+       AND EXISTS (
+         SELECT 1
+         FROM public.audit_logs
+         WHERE audit_logs.tenant_id = tenants.id
+           AND audit_logs.action = 'tenant_account_created'
+           AND audit_logs.context_json->>'flow' = 'closed_beta'
+       )
+     LIMIT 1`,
+    [tenantId, userId],
+  );
+  if (!result.rows[0]) throw new Error("closed_beta_demo_owner_required");
+  const tenant = mapTenant(result.rows[0]);
+  if (!isTenantServiceOperational(deriveTenantServiceState(tenant))) {
+    throw new Error("closed_beta_demo_tenant_not_operational");
+  }
+}
+
+async function readClosedBetaDemoState(
+  client: PoolClient,
+  tenantId: string,
+  fixture: ClosedBetaDemoFixture,
+): Promise<ClosedBetaDemoDbState> {
+  const clientIds = fixture.clients.map((item) => item.id);
+  const propertyIds = fixture.properties.map((item) => item.id);
+  const caseIds = fixture.cases.map((item) => item.id);
+  const taskIds = fixture.tasks.map((item) => item.id);
+  const followUpIds = fixture.followUps.map((item) => item.id);
+  const [clients, properties, cases, tasks, followUps, markedCases] = await Promise.all([
+    client.query("SELECT id FROM public.clients WHERE tenant_id = $1 AND id = ANY($2::text[])", [tenantId, clientIds]),
+    client.query("SELECT id FROM public.properties WHERE tenant_id = $1 AND id = ANY($2::text[])", [tenantId, propertyIds]),
+    client.query("SELECT id FROM public.brokerage_cases WHERE tenant_id = $1 AND id = ANY($2::text[])", [tenantId, caseIds]),
+    client.query("SELECT id FROM public.tasks WHERE tenant_id = $1 AND id = ANY($2::text[])", [tenantId, taskIds]),
+    client.query("SELECT id FROM public.follow_ups WHERE tenant_id = $1 AND id = ANY($2::text[])", [tenantId, followUpIds]),
+    client.query(
+      "SELECT id FROM public.brokerage_cases WHERE tenant_id = $1 AND confirmed_data_json->>'closedBetaFixtureMarker' = $2",
+      [tenantId, fixture.marker],
+    ),
+  ]);
+  const counts = {
+    clients: clients.rowCount ?? clients.rows.length,
+    properties: properties.rowCount ?? properties.rows.length,
+    cases: cases.rowCount ?? cases.rows.length,
+    tasks: tasks.rowCount ?? tasks.rows.length,
+    followUps: followUps.rowCount ?? followUps.rows.length,
+  };
+  const actualCount = Object.values(counts).reduce((sum, count) => sum + count, 0);
+  const expectedCount = fixture.clients.length + fixture.properties.length + fixture.cases.length + fixture.tasks.length + fixture.followUps.length;
+  const markedCaseIds = new Set(markedCases.rows.map((row) => String(row.id)));
+  const expectedCaseIds = new Set(caseIds);
+  const allPresent = actualCount === expectedCount
+    && counts.clients === fixture.clients.length
+    && counts.properties === fixture.properties.length
+    && counts.cases === fixture.cases.length
+    && counts.tasks === fixture.tasks.length
+    && counts.followUps === fixture.followUps.length
+    && markedCaseIds.size === fixture.cases.length
+    && [...markedCaseIds].every((id) => expectedCaseIds.has(id));
+  return {
+    clientIds,
+    propertyIds,
+    caseIds,
+    taskIds,
+    followUpIds,
+    counts,
+    allPresent,
+    partial: actualCount > 0 || markedCaseIds.size > 0,
+  };
+}
+
+function closedBetaDemoCounts(fixture: ClosedBetaDemoFixture): ClosedBetaDemoResult["counts"] {
+  return {
+    clients: fixture.clients.length,
+    properties: fixture.properties.length,
+    cases: fixture.cases.length,
+    tasks: fixture.tasks.length,
+    followUps: fixture.followUps.length,
+  };
+}
+
+export async function seedClosedBetaDemoData(input: {
+  tenantId: string;
+  userId: string;
+}): Promise<ClosedBetaDemoResult> {
+  await ensureSchema();
+  const tenantId = input.tenantId.trim();
+  const userId = input.userId.trim();
+  return withTransaction(async (client) => {
+    const tenantExists = await client.query("SELECT 1 FROM public.tenants WHERE id = $1 LIMIT 1", [tenantId]);
+    if (!tenantExists.rows[0]) throw new Error("closed_beta_demo_tenant_required");
+    const closedBetaMarker = await client.query(
+      `SELECT 1 FROM public.audit_logs
+       WHERE tenant_id = $1 AND action = 'tenant_account_created' AND context_json->>'flow' = 'closed_beta'
+       LIMIT 1`,
+      [tenantId],
+    );
+    if (!closedBetaMarker.rows[0]) {
+      return {
+        tenantId,
+        marker: "",
+        status: "skipped",
+        counts: { clients: 0, properties: 0, cases: 0, tasks: 0, followUps: 0 },
+      };
+    }
+    try {
+      await assertClosedBetaDemoActor(client, tenantId, userId);
+      // Serialize one tenant's deterministic fixture claim. The lock is
+      // transaction-scoped, so a failed or unknown transaction releases it and
+      // a later first-login request can retry after the database has rolled back.
+      await client.query(
+        "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+        [`closed_beta_demo:${CLOSED_BETA_DEMO_FIXTURE_VERSION}:${tenantId}`],
+      );
+      const fixture = buildClosedBetaDemoFixture(tenantId);
+      const state = await readClosedBetaDemoState(client, tenantId, fixture);
+      if (state.allPresent) {
+        return { tenantId, marker: fixture.marker, status: "already_initialized", counts: state.counts };
+      }
+      if (state.partial) throw new Error("closed_beta_demo_partial_state");
+
+      for (const item of fixture.clients) {
+      await client.query(
+        `INSERT INTO public.clients (
+          id, tenant_id, name, phone, line_id, email, budget_min, budget_max, budget_type, preferred_area,
+          first_choice_area, second_choice_area, purpose, loan_pre_approval_status, desired_move_in_period,
+          stage, temperature, brokerage_contract_type, brokerage_contract_signed_at, brokerage_contract_expires_at,
+          important_matters_explained_at, contract_document_delivered_at, personal_info_consent_at, aml_check_status,
+          next_follow_up_at, notes, owner_user_id, created_by_user_id, current_owner_user_id,
+          visibility_scope, owner_resolution_status
+        ) VALUES ($1,$2,$3,$4,NULL,NULL,$5,$6,$7,$8,$8,NULL,$9,$10,NULL,$11,$12,$13,NULL,NULL,NULL,NULL,NULL,$14,NULL,$15,$16,$16,$16,$17,'resolved')`,
+        [
+          item.id,
+          tenantId,
+          item.name,
+          item.phone,
+          item.budgetMin,
+          item.budgetMax,
+          item.budgetType,
+          item.preferredArea,
+          item.purpose,
+          item.loanPreApprovalStatus,
+          item.stage,
+          item.temperature,
+          item.brokerageContractType,
+          item.amlCheckStatus,
+          item.notes,
+          userId,
+          "private",
+        ],
+      );
+    }
+      for (const item of fixture.properties) {
+      await client.query(
+        `INSERT INTO public.properties (
+          id, tenant_id, name, area, address, listing_price, size_sqm, management_fee, repair_fee, notes,
+          created_by_user_id, current_owner_user_id, visibility_scope, owner_resolution_status
+        ) VALUES ($1,$2,$3,$4,$5,$6,NULL,NULL,NULL,$7,$8,$8,$9,'resolved')`,
+        [item.id, tenantId, item.name, item.area, item.address, item.listingPrice, item.notes, userId, "private"],
+      );
+    }
+      for (const item of fixture.cases) {
+      await client.query(
+        `INSERT INTO public.brokerage_cases (
+          id, tenant_id, user_id, case_type, case_title, primary_property_id, status,
+          confirmed_data_json, source_import_job_ids, created_by_user_id, current_owner_user_id,
+          visibility_scope, owner_resolution_status
+        ) VALUES ($1,$2,$3,'unit_sale',$4,$5,$6,$7::jsonb,ARRAY[]::text[],$3,$3,$8,'resolved')`,
+        [
+          item.id,
+          tenantId,
+          userId,
+          item.caseTitle,
+          fixture.properties[item.propertyIndex].id,
+          item.status,
+          JSON.stringify(item.confirmedDataJson),
+          "private",
+        ],
+      );
+    }
+      for (const item of fixture.tasks) {
+      await client.query(
+        `INSERT INTO public.tasks (id, tenant_id, client_id, title, due_at, status, created_by_id)
+         VALUES ($1,$2,$3,$4,NULL,'pending',$5)`,
+        [item.id, tenantId, fixture.clients[item.clientIndex].id, item.title, userId],
+      );
+    }
+      for (const item of fixture.followUps) {
+      await client.query(
+        `INSERT INTO public.follow_ups (id, tenant_id, client_id, type, content, next_action, next_follow_up_at, created_by_id)
+         VALUES ($1,$2,$3,'note',$4,$5,NULL,$6)`,
+        [item.id, tenantId, fixture.clients[item.clientIndex].id, item.content, item.nextAction, userId],
+      );
+    }
+      await client.query(
+      `INSERT INTO public.audit_logs (id, tenant_id, user_id, actor_id, action, target_type, target_id, message, context_json)
+       VALUES ($1,$2,$3,$3,'closed_beta_demo_seeded','tenant',$2,$4,$5::jsonb)`,
+      [
+        genId("audit"),
+        tenantId,
+        userId,
+        `${CLOSED_BETA_DEMO_LABEL}初回合成データを初期化しました。`,
+        JSON.stringify({ marker: fixture.marker, version: CLOSED_BETA_DEMO_FIXTURE_VERSION, counts: closedBetaDemoCounts(fixture) }),
+      ],
+    );
+      return { tenantId, marker: fixture.marker, status: "seeded", counts: closedBetaDemoCounts(fixture) };
+    } catch (error) {
+      throw new ClosedBetaDemoSeedError(error);
+    }
+  });
 }
 
 export async function updateTenantAccountLifecycle(input: {

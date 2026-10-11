@@ -69,6 +69,8 @@
     "test:supabase-proxy-fixture": "node scripts/test-supabase-proxy-fixture.mjs",
     "test:supabase-account-lifecycle-fixture": "node scripts/test-supabase-account-lifecycle-fixture.mjs",
     "test:supabase-account-e2e": "node scripts/test-supabase-account-e2e.mjs",
+    "test:supabase-auth-invite-integrated": "node scripts/test-supabase-auth-invite-integrated.mjs",
+    "test:closed-beta-demo-data": "node scripts/test-closed-beta-demo-data.mjs",
     "test:supabase-membership-lifecycle": "node scripts/test-supabase-membership-lifecycle-behavior.mjs",
     "test:staging-allowlist": "node scripts/test-staging-allowlist-behavior.mjs",
     "test:staging-access-contract": "node scripts/check-staging-access-contract.mjs",

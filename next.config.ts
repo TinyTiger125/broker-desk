@@ -41,7 +41,25 @@ const nextConfig: NextConfig = {
       headers.push({ key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" });
     }
 
-    return [{ source: "/(.*)", headers }];
+    return [
+      { source: "/(.*)", headers },
+      {
+        source: "/auth/invite",
+        headers: [
+          { key: "Cache-Control", value: "private, no-store" },
+          { key: "Referrer-Policy", value: "no-referrer" },
+          { key: "X-Robots-Tag", value: "noindex, nofollow" },
+        ],
+      },
+      {
+        source: "/auth/confirm",
+        headers: [
+          { key: "Cache-Control", value: "private, no-store" },
+          { key: "Referrer-Policy", value: "no-referrer" },
+          { key: "X-Robots-Tag", value: "noindex, nofollow" },
+        ],
+      },
+    ];
   },
 };
 

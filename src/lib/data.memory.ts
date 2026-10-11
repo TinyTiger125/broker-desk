@@ -36,6 +36,13 @@ import type {
 import { COMPLETE_CASE_FIELD_DEFAULTS, COMPLETE_DRAFT_DEFAULTS } from "@/lib/guarantee-application-fixtures";
 import { DEFAULT_TENANT_ID } from "@/lib/tenant-constants";
 import type { TenantRole, TenantCapabilityPreset } from "@/lib/tenant-permissions";
+import {
+  buildClosedBetaDemoFixture,
+  CLOSED_BETA_DEMO_FIXTURE_VERSION,
+  CLOSED_BETA_DEMO_LABEL,
+  ClosedBetaDemoSeedError,
+  type ClosedBetaDemoFixture,
+} from "@/lib/closed-beta-demo-fixture";
 export type { TenantCapabilityPreset } from "@/lib/tenant-permissions";
 import type { LifecycleFilter, LifecycleStatus } from "@/lib/record-lifecycle";
 import { canPublishMaskVersion } from "@/lib/guarantee-slice1-policy.mjs";
@@ -725,6 +732,30 @@ export type MemberVisibilityDefault = {
   createdAt: Date;
   updatedAt: Date;
 };
+
+export type ClosedBetaDemoResult = {
+  tenantId: string;
+  marker: string;
+  status: "seeded" | "already_initialized" | "skipped";
+  counts: {
+    clients: number;
+    properties: number;
+    cases: number;
+    tasks: number;
+    followUps: number;
+  };
+};
+
+let closedBetaDemoSeedFailureForTest: Error | null = null;
+
+/**
+ * Test-only fault injection for the pre-commit boundary. Production code has
+ * no caller for this hook; it exists so the local adapter can prove that a
+ * failed first-login attempt leaves no fixture rows behind and can be retried.
+ */
+export function __failNextClosedBetaDemoSeedForTest(message = "closed_beta_demo_injected_failure"): void {
+  closedBetaDemoSeedFailureForTest = new Error(message);
+}
 
 type DB = {
   users: User[];
@@ -1754,6 +1785,52 @@ if (!db.guaranteeCompanyMaskVersions) db.guaranteeCompanyMaskVersions = [];
 if (!db.guaranteeMaskMatches) db.guaranteeMaskMatches = [];
 if (!db.guaranteePreviewConfirmations) db.guaranteePreviewConfirmations = [];
 
+function closedBetaLocalFixtureEnabled(): boolean {
+  if (process.env.NODE_ENV !== "development") return false;
+  if (process.env.VERCEL === "1" || process.env.VERCEL_ENV) return false;
+  if (process.env.DATA_DRIVER !== "memory") return false;
+  if (process.env.BROKER_DESK_AUTH_MODE !== "demo") return false;
+  if (process.env.BROKER_DESK_CLOSED_BETA_UI_FIXTURE !== "1") return false;
+  const origin = process.env.BROKER_DESK_APP_ORIGIN?.trim() ?? "";
+  try {
+    const parsed = new URL(origin);
+    return parsed.protocol === "http:"
+      && ["localhost", "127.0.0.1", "[::1]", "::1"].includes(parsed.hostname)
+      && !parsed.username
+      && !parsed.password
+      && parsed.pathname === "/"
+      && !parsed.search
+      && !parsed.hash;
+  } catch {
+    return false;
+  }
+}
+
+// Explicitly local-only fixture for browser acceptance. The guard requires
+// every non-production condition above and never runs for the production
+// runtime, external auth, or a non-memory data store.
+if (closedBetaLocalFixtureEnabled()
+  && !db.tenantMemberships.some((membership) =>
+    membership.userId === "user_demo"
+    && membership.role === "platform_owner"
+    && membership.status === "active"
+  )) {
+  const fixtureNow = new Date();
+  db.tenantMemberships.push({
+    id: "membership_closed_beta_ui_fixture",
+    tenantId: "tenant_cherry",
+    userId: "user_demo",
+    role: "platform_owner",
+    capability: "ordinary_member",
+    status: "active",
+    invitationProvider: "manual",
+    invitationStatus: "accepted",
+    invitationAcceptedAt: fixtureNow,
+    createdAt: fixtureNow,
+    updatedAt: fixtureNow,
+  });
+}
+
 export function resetBusinessDataForQa(): QaBusinessDataCounts {
   const templateSettings = createQaBlankTemplateSettings();
 
@@ -2473,6 +2550,10 @@ function slugifyTenantName(value: string): string {
   return slug || `tenant-${Date.now().toString(36)}`;
 }
 
+function createClosedBetaTechnicalSlug(): string {
+  return `closed-beta-${randomUUID()}`;
+}
+
 function assertTenantInvitationActorAuthorized(database: DB, tenantId: string, actorUserId?: string) {
   const tenant = database.tenants.find((item) => item.id === tenantId);
   if (!tenant || !isTenantServiceOperational(deriveTenantServiceState(tenant))) {
@@ -2549,6 +2630,7 @@ export async function createTenantAccount(input: {
   actorUserId: string;
   ownerName: string;
   ownerEmail: string;
+  creationFlow?: "closed_beta";
 }): Promise<TenantAccountSummary> {
   const name = input.name.trim();
   const ownerEmail = input.ownerEmail.trim().toLowerCase();
@@ -2620,6 +2702,7 @@ export async function createTenantAccount(input: {
       purchasedSeatCount: tenant.purchasedSeatCount,
       serviceStartAt: tenant.serviceStartAt ?? null,
       serviceEndAt: tenant.serviceEndAt ?? null,
+      ...(input.creationFlow ? { flow: input.creationFlow } : {}),
     },
     createdAt: nowDate,
   };
@@ -2648,6 +2731,253 @@ export async function createTenantAccount(input: {
   nextDb.auditLogs.unshift(audit);
   _g.__brokerDb = nextDb;
   return result;
+}
+
+/**
+ * Closed-beta provisioning rejects an existing email before creating a tenant.
+ * The in-memory adapter has one synchronous clone/commit boundary, so this
+ * preserves the same fail-closed contract as the transaction-scoped Postgres
+ * adapter without changing the legacy platform-account behavior.
+ */
+export async function createClosedBetaTenantAccount(input: {
+  name: string;
+  accountType: TenantAccountType;
+  status?: TenantStatus;
+  purchasedSeatCount: number;
+  serviceStartAt?: string;
+  serviceEndAt?: string;
+  actorUserId: string;
+  ownerName: string;
+  ownerEmail: string;
+}): Promise<TenantAccountSummary> {
+  const actorUserId = input.actorUserId.trim();
+  if (!actorUserId) throw new Error("tenant creation actor is required");
+  // Authorize the actor before probing the global email set. The production
+  // adapter enforces this ordering inside its SECURITY DEFINER transaction;
+  // memory must preserve the same observable boundary.
+  assertActivePlatformOwnerActor(db, actorUserId);
+  const ownerEmail = input.ownerEmail.trim().toLowerCase();
+  if (!ownerEmail) throw new Error("owner email is required");
+  if (db.users.some((item) => item.email.trim().toLowerCase() === ownerEmail)) {
+    throw new Error("closed_beta_owner_email_in_use");
+  }
+  return createTenantAccount({
+    ...input,
+    slug: createClosedBetaTechnicalSlug(),
+    actorUserId,
+    creationFlow: "closed_beta",
+  });
+}
+
+function assertClosedBetaDemoActor(database: DB, tenantId: string, userId: string): Tenant {
+  const normalizedTenantId = tenantId.trim();
+  const normalizedUserId = userId.trim();
+  if (!normalizedTenantId) throw new Error("closed_beta_demo_tenant_required");
+  if (!normalizedUserId) throw new Error("closed_beta_demo_actor_required");
+
+  const tenant = database.tenants.find((item) => item.id === normalizedTenantId);
+  if (!tenant || !isTenantServiceOperational(deriveTenantServiceState(tenant))) {
+    throw new Error("closed_beta_demo_tenant_not_operational");
+  }
+  if (!database.users.some((item) => item.id === normalizedUserId)) {
+    throw new Error("closed_beta_demo_actor_required");
+  }
+  const ownerMembership = database.tenantMemberships.find((membership) =>
+    membership.tenantId === normalizedTenantId
+    && membership.userId === normalizedUserId
+    && membership.status === "active"
+    && membership.role === "tenant_owner"
+    && membership.capability === "company_owner",
+  );
+  if (!ownerMembership) throw new Error("closed_beta_demo_owner_required");
+
+  const closedBetaAudit = database.auditLogs.find((audit) =>
+    audit.tenantId === normalizedTenantId
+    && audit.action === "tenant_account_created"
+    && audit.context?.flow === "closed_beta",
+  );
+  if (!closedBetaAudit) throw new Error("closed_beta_demo_tenant_required");
+  return tenant;
+}
+
+function closedBetaDemoState(database: DB, tenantId: string, fixture: ClosedBetaDemoFixture) {
+  const clientIds = new Set(fixture.clients.map((item) => item.id));
+  const propertyIds = new Set(fixture.properties.map((item) => item.id));
+  const caseIds = new Set(fixture.cases.map((item) => item.id));
+  const taskIds = new Set(fixture.tasks.map((item) => item.id));
+  const followUpIds = new Set(fixture.followUps.map((item) => item.id));
+  const clients = database.clients.filter((item) => item.tenantId === tenantId && clientIds.has(item.id));
+  const properties = database.properties.filter((item) => item.tenantId === tenantId && propertyIds.has(item.id));
+  const cases = database.brokerageCases.filter((item) => item.tenantId === tenantId && caseIds.has(item.id));
+  const tasks = database.tasks.filter((item) => item.tenantId === tenantId && taskIds.has(item.id));
+  const followUps = database.followUps.filter((item) => item.tenantId === tenantId && followUpIds.has(item.id));
+  const markedCases = database.brokerageCases.filter((item) =>
+    item.tenantId === tenantId && item.confirmedDataJson?.closedBetaFixtureMarker === fixture.marker,
+  );
+  const counts = {
+    clients: clients.length,
+    properties: properties.length,
+    cases: cases.length,
+    tasks: tasks.length,
+    followUps: followUps.length,
+  };
+  const expectedCount = fixture.clients.length + fixture.properties.length + fixture.cases.length + fixture.tasks.length + fixture.followUps.length;
+  const actualCount = Object.values(counts).reduce((sum, count) => sum + count, 0);
+  const allPresent = actualCount === expectedCount
+    && counts.clients === fixture.clients.length
+    && counts.properties === fixture.properties.length
+    && counts.cases === fixture.cases.length
+    && counts.tasks === fixture.tasks.length
+    && counts.followUps === fixture.followUps.length
+    && markedCases.length === fixture.cases.length
+    && markedCases.every((item) => caseIds.has(item.id));
+  const partial = actualCount > 0 || markedCases.length > 0;
+  return { clientIds, propertyIds, caseIds, taskIds, followUpIds, counts, allPresent, partial };
+}
+
+function closedBetaDemoCounts(fixture: ClosedBetaDemoFixture): ClosedBetaDemoResult["counts"] {
+  return {
+    clients: fixture.clients.length,
+    properties: fixture.properties.length,
+    cases: fixture.cases.length,
+    tasks: fixture.tasks.length,
+    followUps: fixture.followUps.length,
+  };
+}
+
+/** Seed only the owner-scoped, persisted closed-beta fixture at first login. */
+export async function seedClosedBetaDemoData(input: {
+  tenantId: string;
+  userId: string;
+}): Promise<ClosedBetaDemoResult> {
+  const tenantId = input.tenantId.trim();
+  const userId = input.userId.trim();
+  const nextDb = cloneDb(db);
+  if (!nextDb.tenants.some((item) => item.id === tenantId)) throw new Error("closed_beta_demo_tenant_required");
+  if (!nextDb.auditLogs.some((audit) =>
+    audit.tenantId === tenantId
+    && audit.action === "tenant_account_created"
+    && audit.context?.flow === "closed_beta",
+  )) {
+    return {
+      tenantId,
+      marker: "",
+      status: "skipped",
+      counts: { clients: 0, properties: 0, cases: 0, tasks: 0, followUps: 0 },
+    };
+  }
+  try {
+    assertClosedBetaDemoActor(nextDb, tenantId, userId);
+    const fixture = buildClosedBetaDemoFixture(tenantId);
+    const state = closedBetaDemoState(nextDb, tenantId, fixture);
+    if (state.allPresent) {
+      return { tenantId, marker: fixture.marker, status: "already_initialized", counts: state.counts };
+    }
+    if (state.partial) throw new Error("closed_beta_demo_partial_state");
+
+    const nowDate = new Date();
+    const clients: Client[] = fixture.clients.map((item) => ({
+    id: item.id,
+    tenantId,
+    name: item.name,
+    phone: item.phone,
+    budgetMin: item.budgetMin,
+    budgetMax: item.budgetMax,
+    budgetType: item.budgetType,
+    preferredArea: item.preferredArea,
+    purpose: item.purpose,
+    loanPreApprovalStatus: item.loanPreApprovalStatus,
+    stage: item.stage,
+    temperature: item.temperature,
+    brokerageContractType: item.brokerageContractType,
+    amlCheckStatus: item.amlCheckStatus,
+    notes: item.notes,
+    ownerUserId: userId,
+    createdByUserId: userId,
+    currentOwnerUserId: userId,
+    visibilityScope: "private",
+    ownerResolutionStatus: "resolved",
+    createdAt: nowDate,
+    updatedAt: nowDate,
+    }));
+    const properties: Property[] = fixture.properties.map((item) => ({
+    id: item.id,
+    tenantId,
+    name: item.name,
+    area: item.area,
+    address: item.address,
+    listingPrice: item.listingPrice,
+    notes: item.notes,
+    createdByUserId: userId,
+    currentOwnerUserId: userId,
+    visibilityScope: "private",
+    ownerResolutionStatus: "resolved",
+    createdAt: nowDate,
+    }));
+    const cases: BrokerageCase[] = fixture.cases.map((item) => ({
+    id: item.id,
+    tenantId,
+    userId,
+    caseType: "unit_sale",
+    caseTitle: item.caseTitle,
+    primaryPropertyId: fixture.properties[item.propertyIndex].id,
+    status: item.status,
+    confirmedDataJson: { ...item.confirmedDataJson },
+    sourceImportJobIds: [],
+    createdByUserId: userId,
+    currentOwnerUserId: userId,
+    visibilityScope: "private",
+    ownerResolutionStatus: "resolved",
+    createdAt: nowDate,
+    updatedAt: nowDate,
+    }));
+    const tasks: Task[] = fixture.tasks.map((item) => ({
+    id: item.id,
+    tenantId,
+    clientId: fixture.clients[item.clientIndex].id,
+    title: item.title,
+    status: item.status,
+    createdById: userId,
+    createdAt: nowDate,
+    }));
+    const followUps: FollowUp[] = fixture.followUps.map((item) => ({
+    id: item.id,
+    tenantId,
+    clientId: fixture.clients[item.clientIndex].id,
+    type: item.type,
+    content: item.content,
+    nextAction: item.nextAction,
+    createdById: userId,
+    createdAt: nowDate,
+    }));
+
+    nextDb.clients.push(...clients);
+    nextDb.properties.push(...properties);
+    nextDb.brokerageCases.push(...cases);
+    nextDb.tasks.push(...tasks);
+    nextDb.followUps.push(...followUps);
+    nextDb.auditLogs.unshift({
+      id: makeId("audit"),
+      tenantId,
+      userId,
+      actorId: userId,
+      action: "closed_beta_demo_seeded",
+      targetType: "tenant",
+      targetId: tenantId,
+      message: `${CLOSED_BETA_DEMO_LABEL}初回合成データを初期化しました。`,
+      context: { marker: fixture.marker, version: CLOSED_BETA_DEMO_FIXTURE_VERSION, counts: closedBetaDemoCounts(fixture) },
+      createdAt: nowDate,
+    });
+    if (closedBetaDemoSeedFailureForTest) {
+      const failure = closedBetaDemoSeedFailureForTest;
+      closedBetaDemoSeedFailureForTest = null;
+      throw failure;
+    }
+    _g.__brokerDb = nextDb;
+    return { tenantId, marker: fixture.marker, status: "seeded", counts: closedBetaDemoCounts(fixture) };
+  } catch (error) {
+    throw new ClosedBetaDemoSeedError(error);
+  }
 }
 
 /** Creates a company for the already-authenticated local user. */
