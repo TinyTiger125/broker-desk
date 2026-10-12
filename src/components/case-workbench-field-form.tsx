@@ -1,9 +1,10 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { Button } from "@/components/ui-foundation";
+import { isValidCaseDateInput } from "@/lib/case-date";
 import { isValidJapanesePostalCode } from "@/lib/japanese-postal-code-validation";
 import { getCaseContactValidationError } from "@/lib/case-contact-validation";
 
@@ -17,11 +18,16 @@ type CaseWorkbenchFieldFormProps = {
   returnAnchor?: string;
   returnView?: "quick" | "overview";
   showSaveWhenPristine?: boolean;
+  readOnly?: boolean;
+  editLabel?: string;
+  onEdit?: () => void;
   className?: string;
   saveButtonWrapperClassName?: string;
   saveButtonClassName?: string;
   saveButtonAriaLabel?: string;
   onDirtyChange?: (dirty: boolean) => void;
+  onSubmitAccepted?: () => void;
+  onPendingChange?: (pending: boolean) => void;
   saveLabel: string;
   savingLabel: string;
   children: ReactNode;
@@ -32,6 +38,10 @@ function FieldSaveButton({
   saveLabel,
   savingLabel,
   showWhenPristine = false,
+  readOnly = false,
+  editLabel,
+  onEdit,
+  onPendingChange,
   wrapperClassName = "",
   buttonClassName = "text-xs",
   buttonAriaLabel,
@@ -40,27 +50,51 @@ function FieldSaveButton({
   saveLabel: string;
   savingLabel: string;
   showWhenPristine?: boolean;
+  readOnly?: boolean;
+  editLabel?: string;
+  onEdit?: () => void;
+  onPendingChange?: (pending: boolean) => void;
   wrapperClassName?: string;
   buttonClassName?: string;
   buttonAriaLabel?: string;
 }) {
   const { pending } = useFormStatus();
-  const visible = showWhenPristine || dirty || pending;
+  const visible = readOnly || showWhenPristine || dirty || pending;
+
+  useEffect(() => {
+    onPendingChange?.(pending);
+  }, [onPendingChange, pending]);
 
   return (
     <div className={`overflow-hidden transition-all duration-200 ${visible ? "mt-4 max-h-12 opacity-100" : "mt-0 max-h-0 opacity-0"} ${wrapperClassName}`}>
       <div className="flex justify-end">
-        <Button
-          type="submit"
-          tone="primary"
-          controlSize="regular"
-          loading={pending}
-          aria-live="polite"
-          aria-label={buttonAriaLabel}
-          className={buttonClassName}
-        >
-          {pending ? savingLabel : saveLabel}
-        </Button>
+        {readOnly ? (
+          <Button
+            type="button"
+            tone="secondary"
+            controlSize="regular"
+            aria-label={buttonAriaLabel}
+            className={buttonClassName}
+            onClick={(event) => {
+              event.preventDefault();
+              onEdit?.();
+            }}
+          >
+            {editLabel}
+          </Button>
+        ) : (
+          <Button
+            type="submit"
+            tone="primary"
+            controlSize="regular"
+            loading={pending}
+            aria-live="polite"
+            aria-label={buttonAriaLabel}
+            className={buttonClassName}
+          >
+            {pending ? savingLabel : saveLabel}
+          </Button>
+        )}
       </div>
     </div>
   );
@@ -76,11 +110,16 @@ export function CaseWorkbenchFieldForm({
   returnAnchor = "case-main-editor",
   returnView,
   showSaveWhenPristine = false,
+  readOnly = false,
+  editLabel,
+  onEdit,
   className,
   saveButtonWrapperClassName,
   saveButtonClassName,
   saveButtonAriaLabel,
   onDirtyChange,
+  onSubmitAccepted,
+  onPendingChange,
   saveLabel,
   savingLabel,
   children,
@@ -94,6 +133,7 @@ export function CaseWorkbenchFieldForm({
       action={action}
       data-case-workbench-field={fieldKey}
       onChange={(event) => {
+        if (readOnly) return;
         setDirty(true);
         onDirtyChange?.(true);
         const target = event.target;
@@ -104,10 +144,14 @@ export function CaseWorkbenchFieldForm({
           target.setCustomValidity("");
         }
         if (target instanceof HTMLInputElement && (target.dataset.caseFieldKind === "tel" || target.dataset.caseFieldKind === "email")) {
+          target.setCustomValidity("");
+        }
+        if (target instanceof HTMLInputElement && target.dataset.caseFieldKind === "date") {
           target.setCustomValidity("");
         }
       }}
       onInput={(event) => {
+        if (readOnly) return;
         setDirty(true);
         onDirtyChange?.(true);
         const target = event.target;
@@ -120,8 +164,12 @@ export function CaseWorkbenchFieldForm({
         if (target instanceof HTMLInputElement && (target.dataset.caseFieldKind === "tel" || target.dataset.caseFieldKind === "email")) {
           target.setCustomValidity("");
         }
+        if (target instanceof HTMLInputElement && target.dataset.caseFieldKind === "date") {
+          target.setCustomValidity("");
+        }
       }}
       onKeyDown={(event) => {
+        if (readOnly) return;
         if (event.key !== "Enter") return;
         // Let the browser/IME finish candidate confirmation. Synthetic Enter
         // from an active composition must never be turned into a save.
@@ -132,6 +180,10 @@ export function CaseWorkbenchFieldForm({
         }
       }}
       onSubmit={(event) => {
+        if (readOnly) {
+          event.preventDefault();
+          return;
+        }
         // Form actions serialize the form after this handler runs. Read the
         // live control at the last possible moment so programmatic fills or
         // a remount cannot leave the snapshot behind the value on screen.
@@ -154,6 +206,15 @@ export function CaseWorkbenchFieldForm({
           event.preventDefault();
           return;
         }
+        const dateInput = event.currentTarget.querySelector<HTMLInputElement>('input[data-case-field-kind="date"]');
+        if (dateInput && dateInput.value.trim() && !isValidCaseDateInput(dateInput.value)) {
+          event.preventDefault();
+          dateInput.setCustomValidity(dateInput.dataset.caseDateValidationMessage || "请输入有效日期。");
+          dateInput.reportValidity();
+          dateInput.focus();
+          return;
+        }
+        dateInput?.setCustomValidity("");
         const postalInput = event.currentTarget.querySelector<HTMLInputElement>('input[data-case-validation="japanese-postal-code"]');
         if (postalInput && postalInput.value.trim() && !isValidJapanesePostalCode(postalInput.value)) {
           event.preventDefault();
@@ -166,8 +227,10 @@ export function CaseWorkbenchFieldForm({
         if (scrollTopRef.current) {
           scrollTopRef.current.value = String(Math.max(0, Math.round(document.scrollingElement?.scrollTop ?? window.scrollY)));
         }
-        setDirty(false);
-        onDirtyChange?.(false);
+        onSubmitAccepted?.();
+        // Keep the editor dirty until the action redirects and remounts the
+        // page. If the server action fails without a redirect, the current
+        // value and the save control must remain available for correction.
       }}
       className={className}
     >
@@ -180,7 +243,7 @@ export function CaseWorkbenchFieldForm({
       {returnNode ? <input type="hidden" name="returnNode" value={returnNode} /> : null}
       {returnField ? <input type="hidden" name="returnField" value={returnField} /> : null}
       {children}
-      <FieldSaveButton dirty={dirty} saveLabel={saveLabel} savingLabel={savingLabel} showWhenPristine={showSaveWhenPristine} wrapperClassName={saveButtonWrapperClassName} buttonClassName={saveButtonClassName} buttonAriaLabel={saveButtonAriaLabel} />
+      <FieldSaveButton dirty={dirty} saveLabel={saveLabel} savingLabel={savingLabel} showWhenPristine={showSaveWhenPristine} readOnly={readOnly} editLabel={editLabel} onEdit={onEdit} onPendingChange={onPendingChange} wrapperClassName={saveButtonWrapperClassName} buttonClassName={saveButtonClassName} buttonAriaLabel={saveButtonAriaLabel} />
     </form>
   );
 }

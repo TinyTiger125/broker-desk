@@ -795,8 +795,9 @@ export function InputExtractionReview({
                             ) : null}
                           </div>
                         </div>
-                        <details className="text-right text-[11px] text-slate-500">
-                          <summary className="cursor-pointer font-bold text-slate-600">
+                        <details className="group text-right text-[11px] text-slate-500">
+                          <summary className="inline-flex cursor-pointer list-none items-center gap-1 font-bold text-slate-600 [&::-webkit-details-marker]:hidden">
+                            <span aria-hidden="true" className="material-symbols-outlined text-[16px] transition-transform group-open:rotate-90 motion-reduce:transition-none">chevron_right</span>
                             {tr(locale, { ja: "確認元", zh: "查看来源", ko: "출처 보기" })}
                           </summary>
                           <p className="mt-1 max-w-xs truncate">{field.sourceSheet} {getSourceLabel(field)}</p>

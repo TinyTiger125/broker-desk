@@ -444,8 +444,11 @@ export function CaseAssociationDraft({
 
         <FormSection className="space-y-3" aria-labelledby="case-draft-heading">
           <div className="flex flex-wrap items-center justify-between gap-3"><h2 id="case-draft-heading" className="text-base font-black text-slate-950">{text.draft}</h2><span className="text-xs font-semibold text-slate-500">{text.draftNote}</span></div>
-          <details className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3" open>
-            <summary className="cursor-pointer text-sm font-bold text-slate-900">{text.draftSummary}</summary>
+          <details className="group rounded-lg border border-slate-200 bg-slate-50 px-3 py-3" open>
+            <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-bold text-slate-900 [&::-webkit-details-marker]:hidden">
+              <span aria-hidden="true" className="material-symbols-outlined shrink-0 text-[18px] text-slate-500 transition-transform group-open:rotate-90 motion-reduce:transition-none">chevron_right</span>
+              <span>{text.draftSummary}</span>
+            </summary>
             <div className="mt-3 grid gap-2 text-sm text-slate-700 sm:grid-cols-2">
               <p><span className="font-semibold">{text.draftPeopleCount}：</span>{draftPeopleCount}</p>
               <p><span className="font-semibold">{text.draftRoles}：</span>{roleSummary}</p>

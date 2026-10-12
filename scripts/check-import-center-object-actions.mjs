@@ -58,7 +58,7 @@ for (const mappingCopyKey of ["{copy.sourceColumn}", "{copy.targetField}", "{cop
   assert(page.includes(mappingCopyKey), `mapping review must render user-facing copy key: ${mappingCopyKey}`);
 }
 const layoutOpening = page.slice(layoutStart, objectChannels);
-assert(layoutOpening.includes("lg:grid-cols-[minmax(0,1fr)_20rem]"), "desktop lg layout must use a main column and bounded recent sidebar");
+assert(layoutOpening.includes("xl:grid-cols-[minmax(0,1fr)_20rem]"), "desktop xl layout must use a main column and bounded recent sidebar");
 assert(!layoutOpening.includes("md:grid-cols") && !layoutOpening.includes("sm:grid-cols"), "390px and 768px layouts must remain single-column");
 
 assert.deepEqual([...page.matchAll(/\{ key: "(case|person|property)"/g)].map((match) => match[1]), ["case", "person", "property"], "initial import center must expose exactly three material objects");

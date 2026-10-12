@@ -494,8 +494,9 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
       </ClientsListReturnState>
 
       {canCreateClient ? (
-        <details className={styles.quickDetails}>
+        <details className={`${styles.quickDetails} group`}>
           <summary className={styles.quickSummary}>
+            <span aria-hidden="true" className={`${styles.quickChevron} material-symbols-outlined`}>chevron_right</span>
             <span className={styles.quickSummaryText}>
               <span className={styles.quickTitle}>{text.quickTitle}</span>
               <span className={styles.quickDesc}>{text.quickDesc}</span>

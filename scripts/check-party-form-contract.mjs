@@ -5,6 +5,7 @@ const action = await readFile("src/app/actions.ts", "utf8");
 const createPage = await readFile("src/app/parties/new/page.tsx", "utf8");
 const editPage = await readFile("src/app/parties/[id]/edit/page.tsx", "utf8");
 const form = await readFile("src/components/party-profile-form.tsx", "utf8");
+const attachmentDisclosure = await readFile("src/components/party-attachment-disclosure.tsx", "utf8");
 const failures = [];
 
 function requireText(source, text, description) {
@@ -14,17 +15,22 @@ function forbidText(source, text, description) {
   if (source.includes(text)) failures.push(description);
 }
 
-// New is an honest system state: no form and no create action call.
-forbidText(createPage, "createPartyProfileAction", "new page must not reference the party create action");
-forbidText(createPage, "PartyProfileForm", "new page must not render a party form");
-forbidText(createPage, "<form", "new page must contain zero form submissions");
-forbidText(createPage, "searchParams", "new page must not turn name/from/flash query values into facts");
-requireText(createPage, "独立した関係者の作成は現在利用できません", "new page must explain the data-model boundary");
+// New uses the shared client form; editing is the only place for the legacy party profile form.
+requireText(createPage, "createClientFormAction", "new page must use the shared client create action");
+requireText(createPage, "<ClientForm", "new page must render the shared client form");
+forbidText(createPage, "PartyProfileForm", "new page must not render the legacy party profile form");
 
 // Edit is the only form and has one primary submit.
 requireText(editPage, "PartyProfileForm", "edit page must use the shared responsive form");
+requireText(editPage, '<PartyAttachmentDisclosure label={text.attachments} initialOpen={query.flash === "object_attachment_uploaded"}>', "party attachments must open after a successful upload");
+requireText(editPage, "<ObjectAttachmentSection", "party attachments must remain available from the compact header entry");
+requireText(attachmentDisclosure, "absolute left-0 top-full", "party attachment management must be positioned as a compact disclosure");
+requireText(editPage, 'listClassName="max-h-[60vh] overflow-y-auto"', "party attachment lists must scroll within a bounded panel");
+requireText(attachmentDisclosure, 'event.key !== "Escape"', "party attachment disclosure must close on Escape");
+requireText(attachmentDisclosure, "summaryRef.current?.focus()", "party attachment disclosure must return focus to its trigger");
+requireText(attachmentDisclosure, 'document.addEventListener("pointerdown"', "party attachment disclosure must close on outside pointer down");
 requireText(form, "useActionState", "edit form must preserve structured action state");
-if ((form.match(/<button type="submit"/g) ?? []).length !== 1) failures.push("edit form must have exactly one submit button");
+if ((form.match(/<Button type="submit"/g) ?? []).length !== 1) failures.push("edit form must have exactly one submit button");
 requireText(form, "role=\"alert\"", "edit form must expose a focusable error summary");
 requireText(form, "summaryRef.current?.focus()", "error summary must receive focus after validation failure");
 requireText(form, "aria-describedby", "field errors must be associated with inputs");
@@ -32,11 +38,17 @@ requireText(form, "onCompositionStart", "IME composition guard must exist as a c
 forbidText(form, "FormDraftAssist", "party form must not use draft assist");
 forbidText(form, "relationHint", "party form must not edit relation hints");
 forbidText(form, "name=\"note\"", "party form must not edit notes");
+forbidText(form, 'label("partyRole"', "party edit form must not edit the party role");
+forbidText(form, 'fieldProps("partyRole")', "party edit form must not submit the party role");
+forbidText(form, 'name=\"partyRole\"', "party edit form must not submit the party role");
+requireText(form, 'label("partyType"', "party edit form must retain the independent party type");
+requireText(form, 'fieldProps("partyType")', "party edit form must submit the independent party type");
 requireText(form, "text.shared", "edit form must explain shared customer facts");
-requireText(form, 'option value="">{text.unset}</option>', "missing metadata must remain unset");
 
 // The update path must only materialize explicit type/role metadata and preserve client facts.
 requireText(action, "mergePartyProfileMetadataNotes", "update must use the safe metadata merge");
+requireText(action, "metadataSubmitted", "update must distinguish legacy metadata payloads from the role-free edit form");
+requireText(action, "existing.notes", "role-free updates must preserve existing notes");
 requireText(action, "purpose: existing.purpose", "update must preserve customer purpose");
 requireText(action, "preferredArea: existing.preferredArea", "update must preserve customer area");
 forbidText(action.slice(action.indexOf("export async function updatePartyProfileAction")), "inferPurposeFromPartyRole", "party update must not infer customer purpose");
@@ -62,4 +74,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("TASK-033 party form contract checks passed (system state, safe metadata merge, protected client facts, errors, and returnTo).");
+console.log("TASK-033 party form contract checks passed (shared client create route, role-free party edit, legacy metadata preservation, errors, and returnTo).");

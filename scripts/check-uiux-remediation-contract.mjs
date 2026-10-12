@@ -25,7 +25,8 @@ function assertFieldGridContract(css, overview) {
   requireMatch(overview, /const renderField = \(field: CaseOverviewField\) => \{\s*return \(\s*<CaseFieldValue/, "overview field rows must remain read-only compact values");
   requireMatch(overview, /このグループを編集/, "each business group must expose one group editing entry point");
   requireMatch(overview, /const requestGroupFieldChange = \(fieldKey: string\) => \{[\s\S]*?if \(dirtyFieldKey\)/, "group navigation must protect unsaved changes");
-  requireMatch(overview, /pendingGroupFieldKey/, "group navigation must offer a recovery decision before changing fields");
+  requireMatch(overview, /groupSaveRequestedFieldRef\.current = fieldKey[\s\S]*?form\.requestSubmit\(\)/, "group navigation must save the current dirty field before changing fields");
+  requireMatch(overview, /onSubmitAccepted=\{\(\) => \{[\s\S]*?setGroupSavePendingFieldKey\(nextFieldKey\)/, "accepted group saves must retain the requested next field until the redirect completes");
   assert.doesNotMatch(overview, /data-field-trigger=\{fieldAnchor\(field\.fieldKey\)\}/, "overview rows must not retain individual edit buttons");
   requireMatch(overview, /<h3 className="min-w-0 flex-1 text-xs font-black leading-5/, "narrow group titles must retain the available flex width");
   requireMatch(overview, /className="shrink-0 whitespace-nowrap rounded-md/, "group edit actions must not force Japanese titles into character-by-character wrapping");

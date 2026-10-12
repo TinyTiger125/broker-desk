@@ -20,7 +20,7 @@ import { getImportMappingFormRows, getPropertyRowMappingPayload } from "@/lib/im
 import { getImportJobFeedbackMessage } from "@/lib/import-feedback";
 import { PreimportUploadDelete } from "@/components/preimport-upload-delete";
 import { mayDeletePreimportUpload } from "@/lib/preimport-upload-lifecycle";
-import { listBrokerageCases, listExtractionReviewItems } from "@/lib/data";
+import { listBrokerageCases, listBrokerageCasesForContext, listClientsForContext, listExtractionReviewItems } from "@/lib/data";
 import { formatDate } from "@/lib/format";
 import { t } from "@/lib/i18n";
 import type { InputFileExtractionResult } from "@/lib/input-file-extractor";
@@ -34,6 +34,10 @@ import { getLocale, type Locale } from "@/lib/locale";
 import { listHubAttachments, listHubImportJobs, type HubImportJobItem } from "@/lib/hub";
 import { requireTenantSession, TenantSessionError } from "@/lib/tenant-session";
 import { createRequestContext } from "@/lib/visibility-resolver";
+import {
+  buildImportCenterRecentInputs,
+  type ImportCenterRecentCategory,
+} from "@/lib/import-center-recent";
 
 export const dynamic = "force-dynamic";
 
@@ -145,6 +149,19 @@ function getMappingConfirmation(locale: Locale, source: string, target?: string)
   if (locale === "ko") return `「${source}」를 「${label}」로 저장합니다.`;
   return `「${source}」を「${label}」として保存します。`;
 }
+
+const recentCategoryUi: Record<ImportCenterRecentCategory, { icon: string; className: string }> = {
+  case: { icon: "business_center", className: "bg-blue-50 text-blue-700" },
+  person: { icon: "group", className: "bg-emerald-50 text-emerald-700" },
+  property: { icon: "apartment", className: "bg-violet-50 text-violet-700" },
+  unknown: { icon: "description", className: "bg-slate-100 text-slate-600" },
+};
+
+const recentCategoryLabels: Record<Locale, Record<ImportCenterRecentCategory, string>> = {
+  ja: { case: "案件", person: "人物", property: "物件", unknown: "未分類" },
+  zh: { case: "案件", person: "人物", property: "物件", unknown: "待分类" },
+  ko: { case: "案件", person: "관계자", property: "매물", unknown: "분류 대기" },
+};
 
 function getCopy(locale: Locale) {
   const copyByLocale = {
@@ -576,10 +593,12 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
   const user = session.user;
   const tenantId = session.tenant.id;
   const hubContext = { userId: user.id, tenantId, requestContext: createRequestContext(session) };
-  const [jobs, attachments, cases] = await Promise.all([
+  const [jobs, attachments, cases, recentCases, recentClients] = await Promise.all([
     listHubImportJobs(hubContext),
     listHubAttachments(locale, 30, hubContext),
     listBrokerageCases(user.id, 20, tenantId),
+    listBrokerageCasesForContext({ context: hubContext.requestContext, limit: 100 }),
+    listClientsForContext({ context: hubContext.requestContext, filter: { lifecycleStatus: "active", sort: "recent_created" } }),
   ]);
   const reviewHref = "/organize-center";
 
@@ -995,6 +1014,38 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
     if (linkedCase) return `/cases/${encodeURIComponent(linkedCase.id)}#case-main-editor`;
     return `/import-center?job=${encodeURIComponent(job.id)}#source-review-summary`;
   };
+  const recentInputs = buildImportCenterRecentInputs({
+    cases: recentCases.flatMap((entry) => {
+      const item = entry.brokerageCase;
+      if (!item || item.sourceImportJobIds.length > 0) return [];
+      return [{
+        id: `case:${item.id}`,
+        title: item.caseTitle,
+        type: locale === "zh" ? "手动案件" : locale === "ko" ? "수기 안건" : "手入力案件",
+        href: `/cases/${encodeURIComponent(item.id)}#case-main-editor`,
+        updatedAt: item.updatedAt,
+        category: "case",
+        sourceImportJobIds: item.sourceImportJobIds,
+      }];
+    }),
+    clients: recentClients.map(({ client }) => ({
+      id: `party:${client.id}`,
+      title: client.name,
+      type: locale === "zh" ? "顾客资料" : locale === "ko" ? "고객 자료" : "顧客情報",
+      href: `/clients/${encodeURIComponent(client.id)}`,
+      updatedAt: client.updatedAt,
+      category: "person",
+    })),
+    fileJobs: jobs.map((job) => ({
+      id: `job:${job.id}`,
+      title: job.title,
+      type: `${sourceLabel[job.sourceType]} / ${statusLabel[job.status]}`,
+      href: recentJobHref(job),
+      updatedAt: job.updatedAt,
+      targetEntity: job.targetEntity,
+      linkedCaseId: caseByImportJobId.get(job.id)?.id,
+    })),
+  });
   const requestedJobActionHref = requestedJob
     ? isInputFileExtractionJob(requestedJob)
       ? "#source-upload"
@@ -1179,7 +1230,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
       ) : null}
 
       {showObjectSelection ? (
-        <div data-import-layout="object-recent" className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
+        <div data-import-layout="object-recent" className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-start">
           <section data-import-object-channels="true" className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
             <div className="border-b border-slate-100 p-5">
               <p className="text-[11px] font-black uppercase tracking-wider text-blue-700">{locale === "zh" ? "录入资料" : locale === "ko" ? "자료 입력" : "資料入力"}</p>
@@ -1187,33 +1238,43 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
             </div>
             <div className="grid gap-4 p-5">
               {materialObjects.map((object) => (
-                <section key={object.key} data-import-object={object.key} className="grid gap-4 rounded-xl border border-slate-200 bg-white p-5 md:grid-cols-[minmax(15rem,1fr)_minmax(0,2fr)] md:items-center">
+                <section key={object.key} data-import-object={object.key} className="grid gap-4 rounded-xl border border-slate-200 bg-white p-5 2xl:grid-cols-[minmax(12rem,1fr)_minmax(0,1.6fr)] 2xl:items-center">
                   <div className="flex items-center gap-4">
                     <span className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-xl ${object.iconClass}`} aria-hidden="true"><span className="material-symbols-outlined text-[28px]">{object.icon}</span></span>
                     <div><h3 className="text-lg font-black text-slate-950">{object.title}</h3><p className="mt-1 text-sm font-semibold text-slate-500">{object.desc}</p></div>
                   </div>
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <Link data-import-action="manual" href={object.manualHref} className="inline-flex min-h-14 items-center justify-between rounded-lg border border-slate-200 px-4 text-sm font-black text-slate-900 hover:border-blue-300 hover:bg-blue-50/40">
-                      <span className="inline-flex items-center gap-2"><span className="material-symbols-outlined text-blue-700">edit</span>{locale === "zh" ? "手动创建" : locale === "ko" ? "수동 생성" : "手動作成"}</span><span aria-hidden="true">›</span>
+                    <Link data-import-action="manual" href={object.manualHref} className="inline-flex min-h-14 min-w-0 items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 text-sm font-black text-slate-900 hover:border-blue-300 hover:bg-blue-50/40 sm:px-4">
+                      <span className="inline-flex min-w-0 items-center gap-2 whitespace-nowrap"><span className="material-symbols-outlined shrink-0 text-blue-700">edit</span><span className="whitespace-nowrap">{locale === "zh" ? "手动创建" : locale === "ko" ? "수동 생성" : "手動作成"}</span></span><span aria-hidden="true">›</span>
                     </Link>
-                    <Link data-import-action="file" href={`/import-center?object=${object.key}#source-upload`} className="inline-flex min-h-14 items-center justify-between rounded-lg border border-slate-200 px-4 text-sm font-black text-slate-900 hover:border-emerald-300 hover:bg-emerald-50/40">
-                      <span className="inline-flex items-center gap-2"><span className="material-symbols-outlined text-emerald-700">upload_file</span>{locale === "zh" ? "文件读取" : locale === "ko" ? "파일 읽기" : "ファイル読取"}</span><span aria-hidden="true">›</span>
+                    <Link data-import-action="file" href={`/import-center?object=${object.key}#source-upload`} className="inline-flex min-h-14 min-w-0 items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 text-sm font-black text-slate-900 hover:border-emerald-300 hover:bg-emerald-50/40 sm:px-4">
+                      <span className="inline-flex min-w-0 items-center gap-2 whitespace-nowrap"><span className="material-symbols-outlined shrink-0 text-emerald-700">upload_file</span><span className="whitespace-nowrap">{locale === "zh" ? "文件读取" : locale === "ko" ? "파일 읽기" : "ファイル読取"}</span></span><span aria-hidden="true">›</span>
                     </Link>
                   </div>
                 </section>
               ))}
             </div>
           </section>
-          <aside data-import-recent-slot="true" className="rounded-2xl border border-slate-200 bg-white p-5 lg:min-h-[34rem]">
+          <aside data-import-recent-slot="true" className="rounded-2xl border border-slate-200 bg-white p-5 xl:min-h-[34rem]">
             <h2 className="text-base font-bold text-slate-950">{locale === "zh" ? "最近录入" : locale === "ko" ? "최근 입력" : "最近の入力"}</h2>
             <div className="mt-4 space-y-2">
-              {jobs.slice(0, 3).map((job) => (
-                <Link key={`landing-recent-${job.id}`} href={recentJobHref(job)} className="block rounded-lg border border-slate-200 bg-slate-50 p-3 hover:border-blue-300 hover:bg-blue-50/40">
-                  <p className="truncate text-sm font-bold text-slate-900">{job.title}</p>
-                  <p className="mt-1 text-xs text-slate-500">{formatDate(job.updatedAt, locale)} / {statusLabel[job.status]}</p>
+              {recentInputs.map((item) => (
+                <Link key={`landing-recent-${item.id}`} href={item.href} className="flex min-w-0 items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 hover:border-blue-300 hover:bg-blue-50/40">
+                  <span className="flex w-16 shrink-0 flex-col items-center gap-1 text-center">
+                    <span className={`flex h-9 w-9 items-center justify-center rounded-lg ${recentCategoryUi[item.category].className}`} aria-hidden="true">
+                      <span className="material-symbols-outlined text-[18px]">{recentCategoryUi[item.category].icon}</span>
+                    </span>
+                    <span className={`whitespace-nowrap rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-tight ${recentCategoryUi[item.category].className}`}>
+                      {recentCategoryLabels[locale][item.category]}
+                    </span>
+                  </span>
+                  <span className="min-w-0 flex-1 self-center">
+                    <span className="block truncate text-sm font-bold text-slate-900">{item.title}</span>
+                    <span className="mt-1 block truncate text-xs text-slate-500">{item.type} / {formatDate(item.updatedAt, locale)}</span>
+                  </span>
                 </Link>
               ))}
-              {jobs.length === 0 ? <p className="rounded-lg border border-dashed border-slate-200 px-3 py-10 text-center text-sm text-slate-500">{locale === "zh" ? "暂无最近录入记录。" : locale === "ko" ? "최근 입력 기록이 없습니다." : "最近の入力履歴はありません。"}</p> : null}
+              {recentInputs.length === 0 ? <p className="rounded-lg border border-dashed border-slate-200 px-3 py-10 text-center text-sm text-slate-500">{locale === "zh" ? "暂无最近录入记录。" : locale === "ko" ? "최근 입력 기록이 없습니다." : "最近の入力履歴はありません。"}</p> : null}
             </div>
           </aside>
           <span data-import-layout-end="object-recent" className="hidden" />
@@ -1396,8 +1457,9 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
               </a>
             </div>
 
-            <details className="rounded-lg border border-indigo-100 bg-indigo-50/40 p-3">
-              <summary className="cursor-pointer text-xs font-bold text-indigo-900">
+            <details className="group rounded-lg border border-indigo-100 bg-indigo-50/40 p-3">
+              <summary className="flex cursor-pointer list-none items-center gap-1 text-xs font-bold text-indigo-900 [&::-webkit-details-marker]:hidden">
+                <span aria-hidden="true" className="material-symbols-outlined shrink-0 text-[16px] transition-transform group-open:rotate-90 motion-reduce:transition-none">chevron_right</span>
                 {locale === "zh" ? "资料详情" : locale === "ko" ? "자료 상세" : "資料詳細"}
               </summary>
             <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-4">
@@ -1512,8 +1574,9 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
             </div>
 
             {/* Mapping form */}
-            <details className="rounded-lg border border-blue-200 bg-white p-3">
-              <summary className="cursor-pointer text-xs font-bold text-blue-900">
+            <details className="group rounded-lg border border-blue-200 bg-white p-3">
+              <summary className="flex cursor-pointer list-none items-center gap-1 text-xs font-bold text-blue-900 [&::-webkit-details-marker]:hidden">
+                <span aria-hidden="true" className="material-symbols-outlined shrink-0 text-[16px] transition-transform group-open:rotate-90 motion-reduce:transition-none">chevron_right</span>
                 {locale === "zh" ? "普通物件台账保存设置" : locale === "ko" ? "일반 매물 대장 저장 설정" : "通常の物件台帳保存設定"}
               </summary>
             <form action={executePropertyImportAction} className="mt-3 space-y-3">
@@ -1577,8 +1640,11 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                   <li key={`skip-${s.row}-${index}`} className="text-xs text-amber-800">
                     <span>{locale === "zh" ? `第 ${s.row} 行` : locale === "ko" ? `${s.row}행` : `${s.row} 行目`}: {s.reason}</span>
                     {s.originalRow ? (
-                      <details className="mt-1 text-[11px]">
-                        <summary className="cursor-pointer underline">{locale === "zh" ? "查看原始行" : locale === "ko" ? "원본 행 보기" : "元行を表示"}</summary>
+                      <details className="group mt-1 text-[11px]">
+                        <summary className="inline-flex cursor-pointer list-none items-center gap-1 underline [&::-webkit-details-marker]:hidden">
+                          <span aria-hidden="true" className="material-symbols-outlined text-[14px] transition-transform group-open:rotate-90 motion-reduce:transition-none">chevron_right</span>
+                          {locale === "zh" ? "查看原始行" : locale === "ko" ? "원본 행 보기" : "元行を表示"}
+                        </summary>
                         <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap rounded bg-white/70 p-2">{JSON.stringify(s.originalRow, null, 2)}</pre>
                       </details>
                     ) : null}
@@ -1592,8 +1658,11 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                   <li key={`suspected-duplicate-${s.row}-${index}`} className="text-xs text-orange-900">
                     <span>{locale === "zh" ? `第 ${s.row} 行疑似重复` : locale === "ko" ? `${s.row}행 의심 중복` : `${s.row} 行目の疑似重複`}: {s.reason}</span>
                     {s.originalRow ? (
-                      <details className="mt-1 text-[11px]">
-                        <summary className="cursor-pointer underline">{locale === "zh" ? "查看原始行" : locale === "ko" ? "원본 행 보기" : "元行を表示"}</summary>
+                      <details className="group mt-1 text-[11px]">
+                        <summary className="inline-flex cursor-pointer list-none items-center gap-1 underline [&::-webkit-details-marker]:hidden">
+                          <span aria-hidden="true" className="material-symbols-outlined text-[14px] transition-transform group-open:rotate-90 motion-reduce:transition-none">chevron_right</span>
+                          {locale === "zh" ? "查看原始行" : locale === "ko" ? "원본 행 보기" : "元行を表示"}
+                        </summary>
                         <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap rounded bg-white/70 p-2">{JSON.stringify(s.originalRow, null, 2)}</pre>
                       </details>
                     ) : null}
@@ -1875,8 +1944,9 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
             </dl>
           </article>
 
-          <details className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <summary className="cursor-pointer text-xs font-black uppercase tracking-widest text-[#1f477b]">
+          <details className="group rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <summary className="flex cursor-pointer list-none items-center gap-1 text-xs font-black uppercase tracking-widest text-[#1f477b] [&::-webkit-details-marker]:hidden">
+              <span aria-hidden="true" className="material-symbols-outlined shrink-0 text-[16px] transition-transform group-open:rotate-90 motion-reduce:transition-none">chevron_right</span>
               {locale === "zh" ? "确认事项汇总" : locale === "ko" ? "확인 사항 요약" : "確認事項の集計"}
             </summary>
             <div className="mt-4 space-y-5">

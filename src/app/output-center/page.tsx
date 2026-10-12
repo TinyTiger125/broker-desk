@@ -1016,8 +1016,8 @@ export default async function OutputCenterPage({ searchParams }: OutputCenterPag
       {shouldShowGuaranteeFlow && selectedCase ? (
       <section className="rounded border border-slate-300 bg-white p-4">
         <details className="group">
-          <summary className="inline-flex min-h-11 w-full cursor-pointer items-center gap-2 rounded px-3 py-2 text-sm font-bold leading-5 text-slate-900 [overflow-wrap:anywhere] focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)]">
-            <span aria-hidden="true" className="material-symbols-outlined text-[18px] transition-transform group-open:rotate-180 motion-reduce:transition-none">expand_more</span>
+          <summary className="inline-flex min-h-11 w-full cursor-pointer list-none items-center gap-2 rounded px-3 py-2 text-sm font-bold leading-5 text-slate-900 [overflow-wrap:anywhere] focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[var(--bd-focus-ring-offset)] [&::-webkit-details-marker]:hidden">
+            <span aria-hidden="true" className="material-symbols-outlined shrink-0 text-[18px] transition-transform group-open:rotate-90 motion-reduce:transition-none">chevron_right</span>
             <span className="min-w-0 break-words">{copy.guaranteeDetailToggle}</span>
           </summary>
         <div className="mt-4 min-w-0 space-y-4">

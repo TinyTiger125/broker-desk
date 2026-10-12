@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent, type MouseEvent } from "react";
+import { useActionState, useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import type { ClientFormActionState, ClientFormValues } from "@/app/actions";
 import { endSubmission, handleFormSubmit, type SubmissionLock } from "@/components/form-submission-lock";
 import { Button } from "@/components/ui-foundation";
@@ -80,6 +80,64 @@ const copy = {
   },
 } as const;
 
+type ClientFormSectionKey = "basic" | "needs" | "management" | "legal" | "notes";
+
+const clientFormSectionForField: Record<keyof ClientFormValues, ClientFormSectionKey> = {
+  clientId: "basic",
+  name: "basic",
+  phone: "basic",
+  lineId: "basic",
+  email: "basic",
+  budgetMin: "needs",
+  budgetMax: "needs",
+  budgetType: "needs",
+  preferredArea: "needs",
+  firstChoiceArea: "needs",
+  secondChoiceArea: "needs",
+  purpose: "needs",
+  loanPreApprovalStatus: "needs",
+  desiredMoveInPeriod: "needs",
+  stage: "management",
+  temperature: "management",
+  nextFollowUpAt: "management",
+  brokerageContractType: "legal",
+  brokerageContractSignedAt: "legal",
+  brokerageContractExpiresAt: "legal",
+  importantMattersExplainedAt: "legal",
+  contractDocumentDeliveredAt: "legal",
+  personalInfoConsentAt: "legal",
+  amlCheckStatus: "legal",
+  notes: "notes",
+};
+
+function ClientFormSection({
+  section,
+  title,
+  expanded,
+  onToggle,
+  children,
+}: {
+  section: ClientFormSectionKey;
+  title: string;
+  expanded: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  const headingId = `client-${section}-heading`;
+  const contentId = `client-${section}-content`;
+  return (
+    <section aria-labelledby={headingId} className="space-y-4 border-b border-slate-200 pb-6">
+      <button type="button" aria-expanded={expanded} aria-controls={contentId} onClick={onToggle} className="group flex w-full cursor-pointer items-center justify-start gap-2 rounded-md text-left text-base font-bold text-slate-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">
+        <span aria-hidden="true" className="material-symbols-outlined shrink-0 text-[20px] text-slate-500">{expanded ? "expand_more" : "chevron_right"}</span>
+        <span id={headingId} role="heading" aria-level={2}>{title}</span>
+      </button>
+      <div id={contentId} aria-labelledby={headingId} className={expanded ? "" : "hidden"}>
+        {children}
+      </div>
+    </section>
+  );
+}
+
 const emptyValues = (): ClientFormValues => ({
   clientId: "", name: "", phone: "", lineId: "", email: "", budgetMin: "", budgetMax: "", budgetType: "total_price", preferredArea: "", firstChoiceArea: "", secondChoiceArea: "", purpose: "", loanPreApprovalStatus: "not_applied", desiredMoveInPeriod: "", stage: "lead", temperature: "", brokerageContractType: "none", brokerageContractSignedAt: "", brokerageContractExpiresAt: "", importantMattersExplainedAt: "", contractDocumentDeliveredAt: "", personalInfoConsentAt: "", amlCheckStatus: "not_required", nextFollowUpAt: "", notes: "",
 });
@@ -115,6 +173,7 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, on
   const [values, setValues] = useState<ClientFormValues>(initial);
   const [state, formAction, pending] = useActionState<ClientFormActionState, FormData>(action, { status: "idle", fieldErrors: {}, values: initial });
   const summaryRef = useRef<HTMLDivElement>(null);
+  const [expandedSections, setExpandedSections] = useState<Record<ClientFormSectionKey, boolean>>({ basic: true, needs: true, management: true, legal: true, notes: true });
   const composingRef = useRef(false);
   const notifiedCreatedId = useRef<string | undefined>(undefined);
   const submissionLockRef = useRef<SubmissionLock>({ current: false });
@@ -126,11 +185,20 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, on
   const stageOptions = getStageOptions(locale);
   const temperatureOptions = getTemperatureOptions(locale);
 
+  const openSectionForField = useCallback((field: keyof ClientFormValues) => {
+    const section = clientFormSectionForField[field];
+    setExpandedSections((current) => current[section] ? current : { ...current, [section]: true });
+  }, []);
+  const toggleSection = (section: ClientFormSectionKey) => {
+    setExpandedSections((current) => ({ ...current, [section]: !current[section] }));
+  };
+
   useEffect(() => {
     if (state.status !== "error") return;
     setValues(state.values);
+    for (const field of Object.keys(state.fieldErrors) as Array<keyof ClientFormValues>) openSectionForField(field);
     summaryRef.current?.focus();
-  }, [state.status, state.values]);
+  }, [openSectionForField, state.fieldErrors, state.status, state.values]);
   useEffect(() => {
     const record = state.createdRecord;
     if (!record || notifiedCreatedId.current === record.id) return;
@@ -149,9 +217,14 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, on
   };
   const focusField = (event: MouseEvent<HTMLAnchorElement>, field: keyof ClientFormValues) => {
     event.preventDefault();
-    const target = document.getElementById(`client-${field}`);
-    target?.focus();
-    target?.scrollIntoView({ block: "center", behavior: "smooth" });
+    openSectionForField(field);
+    const focus = () => {
+      const target = document.getElementById(`client-${field}`);
+      target?.focus();
+      target?.scrollIntoView({ block: "center", behavior: "smooth" });
+    };
+    if (typeof window === "undefined") focus();
+    else window.requestAnimationFrame(focus);
   };
   const fieldProps = (field: keyof ClientFormValues) => ({
     id: `client-${field}`, name: field, value: values[field], onChange: (event: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => update(field, event), onKeyDown,
@@ -170,22 +243,26 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, on
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     handleFormSubmit(event, submissionLockRef.current, onSubmitStart);
   };
+  const handleInvalid = (event: FormEvent<HTMLFormElement>) => {
+    const field = String((event.target as HTMLInputElement).name) as keyof ClientFormValues;
+    if (field in clientFormSectionForField) openSectionForField(field);
+  };
 
   return (
-    <form id={formId} action={formAction} onSubmit={handleSubmit} noValidate className="space-y-6 pb-10">
+    <form id={formId} action={formAction} onSubmit={handleSubmit} onInvalidCapture={handleInvalid} noValidate className="space-y-6 pb-10">
       <input type="hidden" name="returnTo" value={returnTo} />
       {onCreated ? <input type="hidden" name="caseDraftReturn" value="1" /> : null}
       {values.clientId ? <input type="hidden" name="clientId" value={values.clientId} /> : null}
       {state.status === "error" ? <div ref={summaryRef} tabIndex={-1} role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900 outline-none focus-visible:ring-2 focus-visible:ring-rose-500"><p className="font-bold">{state.message ?? text.error}</p><ul className="mt-2 list-disc space-y-1 pl-5">{errorEntries.map(([field, message]) => <li key={field}><a className="underline" href={`#client-${field}`} onClick={(event) => focusField(event, field)}>{message}</a></li>)}</ul></div> : null}
 
-      <section aria-labelledby="client-basic-heading" className="space-y-4 border-b border-slate-200 pb-6"><h2 id="client-basic-heading" className="text-base font-bold text-slate-950">{text.basic}</h2><div className="grid gap-4 md:grid-cols-2">
+      <ClientFormSection section="basic" title={text.basic} expanded={expandedSections.basic} onToggle={() => toggleSection("basic")}><div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-1">{label("name", text.name, true)}<input {...fieldProps("name")} required aria-required="true" className={inputClass} />{errorText("name")}</div>
         <div className="space-y-1">{label("phone", text.phone, true)}<input {...fieldProps("phone")} required aria-required="true" className={inputClass} />{errorText("phone")}</div>
         <div className="space-y-1">{label("lineId", text.lineId)}<input {...fieldProps("lineId")} className={inputClass} />{errorText("lineId")}</div>
         <div className="space-y-1">{label("email", text.email)}<input {...fieldProps("email")} type="email" className={inputClass} />{errorText("email")}</div>
-      </div></section>
+      </div></ClientFormSection>
 
-      <section aria-labelledby="client-needs-heading" className="space-y-4 border-b border-slate-200 pb-6"><h2 id="client-needs-heading" className="text-base font-bold text-slate-950">{text.needs}</h2><div className="grid gap-4 md:grid-cols-2">
+      <ClientFormSection section="needs" title={text.needs} expanded={expandedSections.needs} onToggle={() => toggleSection("needs")}><div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-1">{label("budgetMin", text.budgetMin)}<input {...fieldProps("budgetMin")} type="number" min="0" step="any" inputMode="decimal" className={inputClass} />{errorText("budgetMin")}</div>
         <div className="space-y-1">{label("budgetMax", text.budgetMax)}<input {...fieldProps("budgetMax")} type="number" min="0" step="any" inputMode="decimal" className={inputClass} />{errorText("budgetMax")}</div>
         <div className="space-y-1">{label("budgetType", text.budgetType)}{select("budgetType", budgetTypeOptions)}{errorText("budgetType")}</div>
@@ -195,21 +272,21 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, on
         <div className="space-y-1">{label("purpose", text.purpose, true)}{select("purpose", purposeOptions, true)}{errorText("purpose")}</div>
         <div className="space-y-1">{label("desiredMoveInPeriod", text.period)}<input {...fieldProps("desiredMoveInPeriod")} className={inputClass} />{errorText("desiredMoveInPeriod")}</div>
         <div className="space-y-1">{label("loanPreApprovalStatus", text.loan)}{select("loanPreApprovalStatus", loanOptions)}{errorText("loanPreApprovalStatus")}</div>
-      </div></section>
+      </div></ClientFormSection>
 
-      <section aria-labelledby="client-management-heading" className="space-y-4 border-b border-slate-200 pb-6"><h2 id="client-management-heading" className="text-base font-bold text-slate-950">{text.management}</h2><div className="grid gap-4 md:grid-cols-3">
+      <ClientFormSection section="management" title={text.management} expanded={expandedSections.management} onToggle={() => toggleSection("management")}><div className="grid gap-4 md:grid-cols-3">
         <div className="space-y-1">{label("stage", text.stage, true)}{select("stage", stageOptions, true)}{errorText("stage")}{initialNote}</div>
         <div className="space-y-1">{label("temperature", text.temperature, true)}{select("temperature", temperatureOptions, true)}{errorText("temperature")}</div>
         <div className="space-y-1">{label("nextFollowUpAt", text.nextFollowUpAt)}<input {...fieldProps("nextFollowUpAt")} type="date" className={inputClass} />{errorText("nextFollowUpAt")}</div>
-      </div></section>
+      </div></ClientFormSection>
 
-      <section aria-labelledby="client-legal-heading" className="space-y-4 border-b border-slate-200 pb-6"><h2 id="client-legal-heading" className="text-base font-bold text-slate-950">{text.legal}</h2><div className="grid gap-4 md:grid-cols-2">
+      <ClientFormSection section="legal" title={text.legal} expanded={expandedSections.legal} onToggle={() => toggleSection("legal")}><div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-1">{label("brokerageContractType", text.brokerage)}{select("brokerageContractType", brokerageOptions)}{errorText("brokerageContractType")}</div>
         <div className="space-y-1">{label("amlCheckStatus", text.aml)}{select("amlCheckStatus", amlOptions)}{errorText("amlCheckStatus")}</div>
         {(["brokerageContractSignedAt", "brokerageContractExpiresAt", "importantMattersExplainedAt", "contractDocumentDeliveredAt", "personalInfoConsentAt"] as const).map((field) => { const labels = { brokerageContractSignedAt: text.signedAt, brokerageContractExpiresAt: text.expiresAt, importantMattersExplainedAt: text.matters35, contractDocumentDeliveredAt: text.matters37, personalInfoConsentAt: text.consent }; return <div key={field} className="space-y-1">{label(field, labels[field])}<input {...fieldProps(field)} type="date" className={inputClass} />{errorText(field)}</div>; })}
-      </div></section>
+      </div></ClientFormSection>
 
-      <section aria-labelledby="client-notes-heading" className="space-y-3"><h2 id="client-notes-heading" className="text-base font-bold text-slate-950">{text.notes}</h2>{label("notes", text.notes)}<textarea {...fieldProps("notes")} rows={5} placeholder={text.notesPlaceholder} className={`${inputClass} resize-y`} />{errorText("notes")}</section>
+      <ClientFormSection section="notes" title={text.notes} expanded={expandedSections.notes} onToggle={() => toggleSection("notes")}><div className="space-y-3">{label("notes", text.notes)}<textarea {...fieldProps("notes")} rows={5} placeholder={text.notesPlaceholder} className={`${inputClass} resize-y`} />{errorText("notes")}</div></ClientFormSection>
 
       {hideActions ? null : <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-200 pt-5"><Link href={returnTo} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">{text.cancel}</Link><Button type="submit" loading={pending} className="min-h-11 rounded-lg bg-slate-950 px-5 py-2.5 text-sm font-bold text-white hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60">{pending ? text.saving : text.save}</Button></div>}
       <div className="sr-only" aria-live="polite">{pending ? text.saving : ""}</div>

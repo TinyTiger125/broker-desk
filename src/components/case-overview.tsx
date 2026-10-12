@@ -8,6 +8,7 @@ import { CaseWorkbenchFieldForm } from "@/components/case-workbench-field-form";
 import { ObjectPageShell, ResponsiveFormEditorSlot, ResponsiveFormField, ResponsiveFormLayout, ResponsiveFormRow } from "@/components/layout-system";
 import type { Locale } from "@/lib/locale";
 import layoutStyles from "@/components/layout-system/layout-system.module.css";
+import { formatCaseDateForDisplay, parseCaseDateInput } from "@/lib/case-date";
 import { getCaseContactValidationError } from "@/lib/case-contact-validation";
 
 export type CaseFieldInputSpec = {
@@ -49,12 +50,14 @@ export type CaseOverviewChildSection = {
   id: string;
   label: string;
   fields: CaseOverviewField[];
+  collapsible?: boolean;
 };
 
 export type CaseOverviewSection = {
   id: string;
   label: string;
   children: CaseOverviewChildSection[];
+  collapsible?: boolean;
 };
 
 type OutputBlockerField = {
@@ -425,7 +428,8 @@ function getStickyOffset() {
   return Math.max(headerBottom, anchorBottom) + 12;
 }
 
-function inputClass(tone: "default" | "attention") {
+function inputClass(tone: "default" | "attention", readOnly = false) {
+  if (readOnly) return "min-h-11 w-full cursor-default rounded-lg border border-slate-200 bg-slate-100 px-3 py-2.5 text-sm font-semibold text-slate-600 outline-none";
   return tone === "attention"
     ? "min-h-11 w-full rounded-lg border border-rose-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-950 outline-none transition focus:border-slate-950 focus:ring-2 focus:ring-rose-100"
     : "min-h-11 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-950 outline-none transition focus:border-slate-950 focus:ring-2 focus:ring-blue-100";
@@ -438,6 +442,8 @@ export function CaseFieldInput({
   inputSpec,
   locale,
   tone = "default",
+  required = false,
+  readOnly = false,
 }: {
   name: string;
   value: string;
@@ -445,14 +451,18 @@ export function CaseFieldInput({
   inputSpec: CaseFieldInputSpec;
   locale: Locale;
   tone?: "default" | "attention";
+  required?: boolean;
+  readOnly?: boolean;
 }) {
   const spec = inputSpec;
   const placeholder = spec.placeholder?.[locale];
   const currentOptionExists = spec.options?.some((option) => option === value);
+  const dateTextRef = useRef<HTMLInputElement>(null);
+  const datePickerRef = useRef<HTMLInputElement>(null);
 
   if (spec.kind === "select") {
     return (
-      <select name={name} defaultValue={value} aria-label={label} data-case-validation={spec.validation?.replaceAll("_", "-")} className={inputClass(tone)}>
+      <select name={name} defaultValue={value} aria-label={label} required={required} disabled={readOnly} data-case-validation={spec.validation?.replaceAll("_", "-")} className={inputClass(tone, readOnly)}>
         <option value="">{locale === "zh" ? "未填写" : locale === "ko" ? "미입력" : "未入力"}</option>
         {value && !currentOptionExists ? <option value={value}>{value}</option> : null}
         {spec.options?.map((option) => <option key={option} value={option}>{option}</option>)}
@@ -461,31 +471,89 @@ export function CaseFieldInput({
   }
 
   if (spec.kind === "textarea") {
-    return <textarea name={name} aria-label={label} defaultValue={value} rows={spec.rows ?? 3} placeholder={placeholder} className={inputClass(tone)} />;
+    return <textarea name={name} aria-label={label} required={required} readOnly={readOnly} defaultValue={value} rows={spec.rows ?? 3} placeholder={placeholder} className={inputClass(tone, readOnly)} />;
+  }
+
+  if (spec.kind === "date") {
+    const parsed = parseCaseDateInput(value);
+    const dateValidationMessage = locale === "zh" ? "请输入有效日期，例如 1987/01/01。" : locale === "ko" ? "유효한 날짜를 입력해 주세요. 예: 1987/01/01" : "有効な日付を入力してください（例：1987/01/01）。";
+    const datePickerLabel = locale === "zh" ? "选择日期" : locale === "ko" ? "날짜 선택" : "日付を選択";
+    return (
+      <span className="relative block">
+        <input
+          ref={dateTextRef}
+          name={name}
+          type="text"
+          inputMode="numeric"
+          aria-label={label}
+          required={required}
+          readOnly={readOnly}
+          data-case-field-kind="date"
+          data-case-date-validation-message={dateValidationMessage}
+          defaultValue={formatCaseDateForDisplay(value)}
+          placeholder={placeholder}
+          className={`${inputClass(tone, readOnly)} pr-14`}
+          onBlur={(event) => {
+            const formatted = parseCaseDateInput(event.currentTarget.value)?.display;
+            if (formatted) event.currentTarget.value = formatted;
+          }}
+        />
+        <button
+          type="button"
+          aria-label={datePickerLabel}
+          disabled={readOnly}
+          className="absolute inset-y-1 right-1 rounded-md px-2 text-xs font-black text-slate-500 hover:bg-slate-100 disabled:cursor-default disabled:opacity-40"
+          onClick={() => {
+            const picker = datePickerRef.current as (HTMLInputElement & { showPicker?: () => void }) | null;
+            picker?.showPicker?.();
+            picker?.focus();
+          }}
+        >
+          ▣
+        </button>
+        <input
+          ref={datePickerRef}
+          type="date"
+          defaultValue={parsed?.iso ?? ""}
+          tabIndex={-1}
+          aria-hidden="true"
+          disabled={readOnly}
+          className="pointer-events-none absolute h-px w-px opacity-0"
+          onChange={(event) => {
+            const formatted = parseCaseDateInput(event.currentTarget.value)?.display;
+            if (!formatted || !dateTextRef.current) return;
+            dateTextRef.current.value = formatted;
+            dateTextRef.current.dispatchEvent(new Event("input", { bubbles: true }));
+          }}
+        />
+      </span>
+    );
   }
 
   return (
     <span className="relative block">
       <input
         name={name}
-        type={spec.kind === "date" ? "date" : spec.kind === "email" ? "email" : spec.kind === "tel" ? "tel" : "text"}
+        type={spec.kind === "email" ? "email" : spec.kind === "tel" ? "tel" : "text"}
         inputMode={spec.inputMode}
         aria-label={label}
+        required={required}
+        readOnly={readOnly}
         data-case-validation={spec.validation?.replaceAll("_", "-")}
         data-case-field-kind={spec.kind}
         data-case-contact-validation-message={spec.kind === "email" ? getCaseContactValidationError("field.email", "invalid", locale) ?? undefined : spec.kind === "tel" ? getCaseContactValidationError("field.phone", "abc", locale) ?? undefined : undefined}
         data-validation-message={spec.validation === "japanese_postal_code" ? locale === "zh" ? "日本邮政编码必须为7位数字。" : locale === "ko" ? "일본 우편번호는 7자리로 입력해 주세요." : "日本の郵便番号は7桁で入力してください。" : undefined}
         defaultValue={value}
         placeholder={placeholder}
-        className={`${inputClass(tone)} ${spec.unit ? "pr-14" : ""}`}
+        className={`${inputClass(tone, readOnly)} ${spec.unit ? "pr-14" : ""}`}
       />
       {spec.unit ? <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs font-bold text-slate-500">{spec.unit}</span> : null}
     </span>
   );
 }
 
-function FieldInput({ field, locale }: { field: CaseOverviewField; locale: Locale }) {
-  return <CaseFieldInput name={`field:${field.fieldKey}`} value={field.value} label={field.label} inputSpec={field.inputSpec} locale={locale} tone={fieldIssue(field) ? "attention" : "default"} />;
+function FieldInput({ field, locale, readOnly = false }: { field: CaseOverviewField; locale: Locale; readOnly?: boolean }) {
+  return <CaseFieldInput name={`field:${field.fieldKey}`} value={field.value} label={field.label} inputSpec={field.inputSpec} locale={locale} required={field.required} readOnly={readOnly} tone={fieldIssue(field) ? "attention" : "default"} />;
 }
 
 function localizeOutputLabel(locale: Locale, code: string) {
@@ -609,11 +677,13 @@ export function CaseOverview({
   showViewSwitch,
   viewContext,
   associationPanel,
+  applicantPersonInfo,
   visibilityLabel,
   flash,
   initialFieldKey,
   initialScrollTop,
   resumeGroupEditing = false,
+  resumeSavedReadOnly = false,
 }: {
   caseId: string;
   caseTitle: string;
@@ -634,11 +704,13 @@ export function CaseOverview({
   showViewSwitch: boolean;
   viewContext?: CaseViewSwitchProps["viewContext"];
   associationPanel?: ReactNode;
+  applicantPersonInfo?: ReactNode;
   visibilityLabel?: string;
   flash?: ReactNode;
   initialFieldKey?: string;
   initialScrollTop?: number;
   resumeGroupEditing?: boolean;
+  resumeSavedReadOnly?: boolean;
 }) {
   const sectionIds = useMemo(() => sections.map((section) => section.id), [sections]);
   const router = useRouter();
@@ -647,18 +719,26 @@ export function CaseOverview({
   const [downloadAttempted, setDownloadAttempted] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmedVersion, setConfirmedVersion] = useState<string | null>(null);
-  const [editingFieldKey, setEditingFieldKey] = useState<string | null>(() => resumeGroupEditing && initialFieldKey && !readOnly ? initialFieldKey : null);
+  const [editingFieldKey, setEditingFieldKey] = useState<string | null>(() => (resumeGroupEditing || resumeSavedReadOnly) && initialFieldKey && !readOnly ? initialFieldKey : null);
+  const [savedReadOnlyFieldKey, setSavedReadOnlyFieldKey] = useState<string | null>(() => resumeSavedReadOnly && initialFieldKey && !readOnly ? initialFieldKey : null);
   const [dirtyFieldKey, setDirtyFieldKey] = useState<string | null>(null);
   const [pendingView, setPendingView] = useState<"quick" | "overview" | null>(null);
   const [pendingClose, setPendingClose] = useState(false);
-  const [pendingGroupFieldKey, setPendingGroupFieldKey] = useState<string | null>(null);
+  const [groupSavePendingFieldKey, setGroupSavePendingFieldKey] = useState<string | null>(null);
   const [saveAndSwitchView, setSaveAndSwitchView] = useState<"quick" | "overview" | null>(null);
+  const [collapsedSectionIds, setCollapsedSectionIds] = useState<Set<string>>(() => new Set());
+  const [collapsedChildIds, setCollapsedChildIds] = useState<Set<string>>(() => new Set());
   const [wideResponsiveLayout, setWideResponsiveLayout] = useState(false);
   const pageRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
   const lastTriggerIdRef = useRef<string | null>(null);
   const lastTriggerRef = useRef<HTMLElement | null>(null);
   const lastTriggerSelectorRef = useRef<string | null>(null);
+  const groupSaveRequestedFieldRef = useRef<string | null>(null);
+  const groupSaveCurrentFieldRef = useRef<string | null>(null);
+  const groupSaveSubmitAcceptedRef = useRef(false);
+  const groupSaveSubmittingRef = useRef(false);
+  const groupSavePendingObservedRef = useRef(false);
   const hasBlockingOutput = outputBlockers.length > 0;
   const isConfirmedForCurrentData = confirmedVersion === dataVersion;
   const attentionFields = useMemo(
@@ -677,6 +757,27 @@ export function CaseOverview({
     ? sections.flatMap((section) => section.children).find((child) => child.fields.some((field) => field.fieldKey === editingField.fieldKey))?.fields ?? []
     : [];
   const editingGroupIndex = editingField ? editingGroupFields.findIndex((field) => field.fieldKey === editingField.fieldKey) : -1;
+  const toggleSectionCollapsed = (section: CaseOverviewSection) => {
+    if (!section.collapsible) return;
+    if (dirtyFieldKey && section.children.some((child) => child.fields.some((field) => field.fieldKey === dirtyFieldKey))) return;
+    setCollapsedSectionIds((current) => {
+      const next = new Set(current);
+      if (next.has(section.id)) next.delete(section.id);
+      else next.add(section.id);
+      return next;
+    });
+  };
+
+  const toggleChildCollapsed = (child: CaseOverviewChildSection) => {
+    if (!child.collapsible) return;
+    if (dirtyFieldKey && child.fields.some((field) => field.fieldKey === dirtyFieldKey)) return;
+    setCollapsedChildIds((current) => {
+      const next = new Set(current);
+      if (next.has(child.id)) next.delete(child.id);
+      else next.add(child.id);
+      return next;
+    });
+  };
 
   useEffect(() => {
     const mediaQuery = window.matchMedia("(min-width: 64rem)");
@@ -787,17 +888,25 @@ export function CaseOverview({
       ? `[data-field-value-trigger="${fieldAnchor(field.fieldKey)}"]`
       : `[data-field-trigger="${fieldAnchor(field.fieldKey)}"]`;
     if (!isInlineField(field)) scrollToId(fieldAnchor(field.fieldKey), "smooth");
+    setSavedReadOnlyFieldKey(null);
     setEditingFieldKey(field.fieldKey);
   };
 
   const closeEditor = useCallback(() => {
     setEditingFieldKey(null);
+    setSavedReadOnlyFieldKey(null);
     setDirtyFieldKey(null);
+    setGroupSavePendingFieldKey(null);
+    groupSaveRequestedFieldRef.current = null;
+    groupSaveCurrentFieldRef.current = null;
+    groupSaveSubmittingRef.current = false;
+    groupSavePendingObservedRef.current = false;
     setPendingClose(false);
     setSaveAndSwitchView(null);
   }, []);
 
   const requestCloseEditor = useCallback(() => {
+    if (groupSaveSubmittingRef.current) return;
     if (dirtyFieldKey) {
       setPendingClose(true);
       return;
@@ -860,10 +969,26 @@ export function CaseOverview({
     setConfirmOpen(true);
   };
   const requestGroupFieldChange = (fieldKey: string) => {
+    if (!editingFieldKey) return;
     if (dirtyFieldKey) {
-      setPendingGroupFieldKey(fieldKey);
+      if (groupSaveSubmittingRef.current || groupSaveRequestedFieldRef.current) return;
+      const currentFieldKey = editingFieldKey;
+      const form = document.querySelector<HTMLFormElement>(`form[data-case-workbench-field="${currentFieldKey}"]`);
+      const returnFieldInput = form?.querySelector<HTMLInputElement>('input[name="returnField"]');
+      if (!form || !returnFieldInput) return;
+      groupSaveSubmitAcceptedRef.current = false;
+      groupSaveCurrentFieldRef.current = currentFieldKey;
+      groupSaveRequestedFieldRef.current = fieldKey;
+      returnFieldInput.value = fieldKey;
+      form.requestSubmit();
+      if (!groupSaveSubmitAcceptedRef.current) {
+        returnFieldInput.value = currentFieldKey;
+        groupSaveRequestedFieldRef.current = null;
+        groupSaveCurrentFieldRef.current = null;
+      }
       return;
     }
+    setSavedReadOnlyFieldKey(null);
     setEditingFieldKey(fieldKey);
   };
 
@@ -878,8 +1003,40 @@ export function CaseOverview({
       returnAnchor={editingSection?.id ?? fieldAnchor(field.fieldKey)}
       returnView={saveAndSwitchView ?? "overview"}
       showSaveWhenPristine
+      readOnly={savedReadOnlyFieldKey === field.fieldKey}
+      editLabel={locale === "zh" ? "修改" : locale === "ko" ? "수정" : "変更"}
+      onEdit={() => {
+        setSavedReadOnlyFieldKey(null);
+        setDirtyFieldKey(null);
+      }}
+      onSubmitAccepted={() => {
+        groupSaveSubmitAcceptedRef.current = true;
+        const nextFieldKey = groupSaveRequestedFieldRef.current;
+        if (!nextFieldKey) return;
+        groupSaveRequestedFieldRef.current = null;
+        groupSaveSubmittingRef.current = true;
+        groupSavePendingObservedRef.current = false;
+        setGroupSavePendingFieldKey(nextFieldKey);
+      }}
+      onPendingChange={(pending) => {
+        if (pending) {
+          groupSavePendingObservedRef.current = true;
+          return;
+        }
+        if (!groupSaveSubmittingRef.current || !groupSavePendingObservedRef.current) return;
+        const currentFieldKey = groupSaveCurrentFieldRef.current;
+        if (currentFieldKey) {
+          const form = document.querySelector<HTMLFormElement>(`form[data-case-workbench-field="${currentFieldKey}"]`);
+          const returnFieldInput = form?.querySelector<HTMLInputElement>('input[name="returnField"]');
+          if (returnFieldInput) returnFieldInput.value = currentFieldKey;
+        }
+        groupSaveSubmittingRef.current = false;
+        groupSavePendingObservedRef.current = false;
+        groupSaveCurrentFieldRef.current = null;
+        setGroupSavePendingFieldKey(null);
+      }}
       onDirtyChange={(dirty) => setDirtyFieldKey((current) => dirty ? field.fieldKey : current === field.fieldKey ? null : current)}
-      saveLabel={fieldIssue(field) ? (locale === "zh" ? "处理问题" : locale === "ko" ? "문제 처리" : "対応して保存") : (locale === "zh" ? "保存" : locale === "ko" ? "저장" : "保存")}
+      saveLabel={locale === "zh" ? "保存" : locale === "ko" ? "저장" : "保存"}
       savingLabel={locale === "zh" ? "保存中" : locale === "ko" ? "저장 중" : "保存中"}
       className={className}
     >
@@ -894,7 +1051,7 @@ export function CaseOverview({
       ) : null}
       <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 sm:p-4">
         <p className="text-xs font-black text-slate-600">{locale === "zh" ? "案件信息" : locale === "ko" ? "안건 정보" : "案件情報"}</p>
-        <div className="mt-2"><FieldInput field={field} locale={locale} /></div>
+        <div className="mt-2"><FieldInput field={field} locale={locale} readOnly={savedReadOnlyFieldKey === field.fieldKey} /></div>
       </div>
     </CaseWorkbenchFieldForm>
   );
@@ -912,9 +1069,9 @@ export function CaseOverview({
       >
         {renderFieldForm(editingField, `${layoutStyles.editorForm} mt-5 space-y-4`)}
         {editingGroupFields.length > 1 ? <div className="mt-4 flex items-center justify-between gap-2 border-t border-slate-100 pt-3">
-          <button type="button" disabled={editingGroupIndex <= 0} onClick={() => requestGroupFieldChange(editingGroupFields[editingGroupIndex - 1].fieldKey)} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 disabled:opacity-50">{locale === "zh" ? "上一项" : locale === "ko" ? "이전 항목" : "前の項目"}</button>
-          <span className="text-xs font-semibold text-slate-500">{editingGroupIndex + 1} / {editingGroupFields.length}</span>
-          <button type="button" disabled={editingGroupIndex >= editingGroupFields.length - 1} onClick={() => requestGroupFieldChange(editingGroupFields[editingGroupIndex + 1].fieldKey)} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 disabled:opacity-50">{locale === "zh" ? "下一项" : locale === "ko" ? "다음 항목" : "次の項目"}</button>
+          <button type="button" disabled={editingGroupIndex <= 0 || Boolean(groupSavePendingFieldKey)} onClick={() => requestGroupFieldChange(editingGroupFields[editingGroupIndex - 1].fieldKey)} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 disabled:opacity-50">{locale === "zh" ? "上一项" : locale === "ko" ? "이전 항목" : "前の項目"}</button>
+          <span className="text-xs font-semibold text-slate-500" role={groupSavePendingFieldKey ? "status" : undefined}>{groupSavePendingFieldKey ? (locale === "zh" ? "保存中…" : locale === "ko" ? "저장 중…" : "保存中…") : `${editingGroupIndex + 1} / ${editingGroupFields.length}`}</span>
+          <button type="button" disabled={editingGroupIndex >= editingGroupFields.length - 1 || Boolean(groupSavePendingFieldKey)} onClick={() => requestGroupFieldChange(editingGroupFields[editingGroupIndex + 1].fieldKey)} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 disabled:opacity-50">{locale === "zh" ? "下一项" : locale === "ko" ? "다음 항목" : "次の項目"}</button>
         </div> : null}
       </CaseEditPanel>
     );
@@ -1039,17 +1196,33 @@ export function CaseOverview({
         </nav>
         <main className={`${layoutStyles.overviewReadable} space-y-3`} data-case-overview-density="dense">
           {sections.map((section) => {
+            const sectionCollapsed = Boolean(section.collapsible && collapsedSectionIds.has(section.id));
             return (
               <section key={section.id} id={section.id} style={{ scrollMarginTop: "var(--case-object-scroll-margin, 11rem)" }} className="scroll-mt-[11rem] rounded-xl border border-slate-200 bg-white shadow-sm">
                 <div className="border-b border-slate-100 px-3 py-2.5 sm:px-4 sm:py-3">
                   <div className="flex items-center justify-between gap-3">
-                    <h2 className="text-base font-black text-slate-950 sm:text-lg">{section.label}</h2>
+                    <div className="flex min-w-0 items-center gap-1">
+                      {section.collapsible ? (
+                        <button
+                          type="button"
+                          aria-expanded={!sectionCollapsed}
+                          aria-controls={`${section.id}-content`}
+                          onClick={() => toggleSectionCollapsed(section)}
+                          className="shrink-0 rounded-md p-1 text-slate-500 hover:bg-slate-50 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300"
+                        >
+                          <span className={`material-symbols-outlined text-[20px] transition-transform ${sectionCollapsed ? "" : "rotate-90"}`} aria-hidden="true">chevron_right</span>
+                          <span className="sr-only">{sectionCollapsed ? (locale === "zh" ? "展开" : locale === "ko" ? "펼치기" : "展開") : (locale === "zh" ? "收起" : locale === "ko" ? "접기" : "閉じる")}</span>
+                        </button>
+                      ) : null}
+                      <h2 className="min-w-0 text-base font-black text-slate-950 sm:text-lg">{section.label}</h2>
+                    </div>
                   </div>
                 </div>
-                <div className="space-y-2 p-2.5 sm:p-3">
+                <div id={`${section.id}-content`} hidden={sectionCollapsed} className="space-y-2 p-2.5 sm:p-3">
                   {section.children.map((child) => {
                     const applicantChild = isApplicantChild(child);
                     const childEditing = Boolean(editingApplicantField && editingField && !isInlineField(editingField) && child.fields.some((field) => field.fieldKey === editingField.fieldKey));
+                    const childCollapsed = Boolean(child.collapsible && collapsedChildIds.has(child.id));
                     const renderField = (field: CaseOverviewField) => {
                       return (
                         <CaseFieldValue label={field.label} value={field.displayValue} required={field.required} />
@@ -1059,9 +1232,35 @@ export function CaseOverview({
                     return (
                       <section key={child.id} id={`${section.id}-${child.id}`}>
                         <div className="flex items-center justify-between gap-3">
-                          <h3 className="min-w-0 flex-1 text-xs font-black leading-5 text-slate-700 sm:text-sm">{child.label}</h3>
-                          {!readOnly && child.fields[0] ? <button type="button" onClick={(event) => openEditor(child.fields[0], event.currentTarget)} className="shrink-0 whitespace-nowrap rounded-md px-2 py-1 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-slate-950">{locale === "zh" ? "编辑本组" : locale === "ko" ? "그룹 편집" : "このグループを編集"}</button> : null}
+                          <div className="flex min-w-0 flex-1 items-center gap-1">
+                            {child.collapsible ? (
+                              <button
+                                type="button"
+                                aria-expanded={!childCollapsed}
+                                aria-controls={`${section.id}-${child.id}-content`}
+                                onClick={() => toggleChildCollapsed(child)}
+                                className="shrink-0 rounded-md p-1 text-slate-500 hover:bg-slate-50 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300"
+                              >
+                                <span className={`material-symbols-outlined text-[18px] transition-transform ${childCollapsed ? "" : "rotate-90"}`} aria-hidden="true">chevron_right</span>
+                                <span className="sr-only">{childCollapsed ? (locale === "zh" ? "展开" : locale === "ko" ? "펼치기" : "展開") : (locale === "zh" ? "收起" : locale === "ko" ? "접기" : "閉じる")}</span>
+                              </button>
+                            ) : null}
+                            <h3 className="min-w-0 flex-1 text-xs font-black leading-5 text-slate-700 sm:text-sm">{child.label}</h3>
+                          </div>
+                          <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
+                            {section.id === "archive-people" && child.id === "applicant" && applicantPersonInfo ? (
+                              <fieldset
+                                disabled={Boolean(dirtyFieldKey)}
+                                aria-label={locale === "zh" ? "未保存的修改" : locale === "ko" ? "저장하지 않은 변경 사항" : "未保存の変更"}
+                                className={`m-0 min-w-0 border-0 p-0 ${dirtyFieldKey ? "opacity-60" : ""}`}
+                              >
+                                {applicantPersonInfo}
+                              </fieldset>
+                            ) : null}
+                            {!readOnly && child.fields[0] ? <button type="button" onClick={(event) => openEditor(child.fields[0], event.currentTarget)} className="shrink-0 whitespace-nowrap rounded-md px-2 py-1 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-slate-950">{locale === "zh" ? "编辑本组" : locale === "ko" ? "그룹 편집" : "このグループを編集"}</button> : null}
+                          </div>
                         </div>
+                        <div id={`${section.id}-${child.id}-content`} hidden={childCollapsed}>
                         {applicantChild ? (
                           <ResponsiveFormLayout aria-label={child.label} editorOpen={childEditing} className={`mt-2 ${layoutStyles.overviewDense}`}>
                             <div className={layoutStyles.formFields}>
@@ -1118,6 +1317,7 @@ export function CaseOverview({
                             ))}
                           </div>
                         )}
+                        </div>
                       </section>
                     );
                   })}
@@ -1142,15 +1342,15 @@ export function CaseOverview({
           </div>
         ) : null}
 
-        {pendingView || pendingClose || pendingGroupFieldKey ? (
+        {pendingView || pendingClose ? (
           <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/45 p-4" role="presentation">
             <div role="dialog" aria-modal="true" aria-labelledby="case-unsaved-view-title" className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl">
               <h2 id="case-unsaved-view-title" className="text-lg font-black text-slate-950">{locale === "zh" ? "有未保存的修改" : locale === "ko" ? "저장하지 않은 변경 사항" : "未保存の変更があります"}</h2>
-              <p className="mt-2 text-sm font-semibold leading-6 text-slate-700">{pendingView ? (locale === "zh" ? "切换视图前，请选择保存、放弃或继续编辑。" : locale === "ko" ? "보기를 전환하기 전에 저장, 변경 취소 또는 계속 편집을 선택해 주세요." : "表示を切り替える前に、保存・破棄・編集継続を選択してください。") : pendingGroupFieldKey ? (locale === "zh" ? "切换组内项目之前，请选择保存、放弃或继续编辑。" : locale === "ko" ? "그룹 내 항목을 이동하기 전에 저장, 변경 취소 또는 계속 편집을 선택해 주세요." : "グループ内の項目を移動する前に、保存・破棄・編集継続を選択してください。") : (locale === "zh" ? "关闭编辑前，请选择保存、放弃或继续编辑。" : locale === "ko" ? "편집을 닫기 전에 저장, 변경 취소 또는 계속 편집을 선택해 주세요." : "編集を閉じる前に、保存・破棄・編集継続を選択してください。")}</p>
+              <p className="mt-2 text-sm font-semibold leading-6 text-slate-700">{pendingView ? (locale === "zh" ? "切换视图前，请选择保存、放弃或继续编辑。" : locale === "ko" ? "보기를 전환하기 전에 저장, 변경 취소 또는 계속 편집을 선택해 주세요." : "表示を切り替える前に、保存・破棄・編集継続を選択してください。") : (locale === "zh" ? "关闭编辑前，请选择保存、放弃或继续编辑。" : locale === "ko" ? "편집을 닫기 전에 저장, 변경 취소 또는 계속 편집을 선택해 주세요." : "編集を閉じる前に、保存・破棄・編集継続を選択してください。")}</p>
               <div className="mt-4 flex flex-wrap justify-end gap-2">
-                <button type="button" onClick={() => { setPendingView(null); setPendingClose(false); setPendingGroupFieldKey(null); }} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50">{locale === "zh" ? "继续编辑" : locale === "ko" ? "계속 편집" : "編集を続ける"}</button>
-                <button type="button" onClick={() => { const target = pendingView; const nextField = pendingGroupFieldKey; setPendingView(null); setPendingClose(false); setPendingGroupFieldKey(null); if (nextField) { setDirtyFieldKey(null); setEditingFieldKey(nextField); return; } closeEditor(); if (target) pushView(target); }} className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-black text-rose-700 hover:bg-rose-50">{pendingView ? (locale === "zh" ? "放弃并切换" : locale === "ko" ? "취소하고 전환" : "破棄して切替") : pendingGroupFieldKey ? (locale === "zh" ? "放弃并移动" : locale === "ko" ? "취소하고 이동" : "破棄して移動") : (locale === "zh" ? "放弃修改" : locale === "ko" ? "변경 취소" : "変更を破棄")}</button>
-                <button type="button" onClick={() => { const target = pendingView; const nextField = pendingGroupFieldKey; setPendingView(null); setPendingClose(false); setPendingGroupFieldKey(null); if (target) { setSaveAndSwitchView(target); return; } const form = document.querySelector<HTMLFormElement>(`form[data-case-workbench-field="${editingFieldKey}"]`); if (nextField) { const returnField = form?.querySelector<HTMLInputElement>('input[name="returnField"]'); if (returnField) returnField.value = nextField; } form?.requestSubmit(); }} className="rounded-lg bg-slate-950 px-3 py-2 text-xs font-black text-white hover:bg-slate-800">{pendingView ? (locale === "zh" ? "保存并切换" : locale === "ko" ? "저장 후 전환" : "保存して切替") : pendingGroupFieldKey ? (locale === "zh" ? "保存并继续本组" : locale === "ko" ? "저장하고 그룹 계속" : "保存してこのグループを続ける") : (locale === "zh" ? "保存并关闭" : locale === "ko" ? "저장 후 닫기" : "保存して閉じる")}</button>
+                <button type="button" onClick={() => { setPendingView(null); setPendingClose(false); }} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50">{locale === "zh" ? "继续编辑" : locale === "ko" ? "계속 편집" : "編集を続ける"}</button>
+                <button type="button" onClick={() => { const target = pendingView; setPendingView(null); setPendingClose(false); closeEditor(); if (target) pushView(target); }} className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-black text-rose-700 hover:bg-rose-50">{pendingView ? (locale === "zh" ? "放弃并切换" : locale === "ko" ? "취소하고 전환" : "破棄して切替") : (locale === "zh" ? "放弃修改" : locale === "ko" ? "변경 취소" : "変更を破棄")}</button>
+                <button type="button" onClick={() => { const target = pendingView; setPendingView(null); setPendingClose(false); if (target) { setSaveAndSwitchView(target); return; } const form = document.querySelector<HTMLFormElement>(`form[data-case-workbench-field="${editingFieldKey}"]`); form?.requestSubmit(); }} className="rounded-lg bg-slate-950 px-3 py-2 text-xs font-black text-white hover:bg-slate-800">{pendingView ? (locale === "zh" ? "保存并切换" : locale === "ko" ? "저장 후 전환" : "保存して切替") : (locale === "zh" ? "保存并关闭" : locale === "ko" ? "저장 후 닫기" : "保存して閉じる")}</button>
               </div>
             </div>
           </div>

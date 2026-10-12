@@ -317,8 +317,11 @@ export default async function OutputTemplateSettingsPage({ searchParams }: Outpu
         </section>
       </form>
 
-      <details className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <summary className="cursor-pointer text-lg font-semibold text-slate-900">{getSavedRecordsLabel(locale)}</summary>
+      <details className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <summary className="flex cursor-pointer list-none items-center gap-2 text-lg font-semibold text-slate-900 [&::-webkit-details-marker]:hidden">
+          <span aria-hidden="true" className="material-symbols-outlined shrink-0 text-[20px] text-slate-500 transition-transform group-open:rotate-90 motion-reduce:transition-none">chevron_right</span>
+          <span>{getSavedRecordsLabel(locale)}</span>
+        </summary>
         <div className="mt-4">
           <h2 className="text-lg font-semibold text-slate-900">{copy.versionsTitle}</h2>
           <p className="mt-1 text-xs text-slate-500">{copy.versionsDesc}</p>

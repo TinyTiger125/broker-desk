@@ -4,6 +4,7 @@ import { updatePartyProfileAction } from "@/app/actions";
 import { PartyProfileForm, PartyProfileReadOnly } from "@/components/party-profile-form";
 import { PageFlashBanner } from "@/components/page-flash-banner";
 import { ObjectAttachmentSection } from "@/components/object-attachment-section";
+import { PartyAttachmentDisclosure } from "@/components/party-attachment-disclosure";
 import { getClientDetailForContext } from "@/lib/data";
 import { getLocale, type Locale } from "@/lib/locale";
 import { extractPartyProfileFromNotes, normalizePartyReturnTo } from "@/lib/party-profile";
@@ -20,9 +21,9 @@ type EditPartyPageProps = {
 };
 
 const copy = {
-  ja: { eyebrow: "関係者を管理", back: "関係者一覧へ戻る", relationTree: "関係を確認", updated: "関係者を更新しました。", attachmentUploaded: "添付資料を追加しました。", title: "関係者を編集", readOnly: "会社メンバーに公開／読み取り専用", ownerReadOnly: "現在のアカウントは閲覧のみです。" },
-  zh: { eyebrow: "维护主体", back: "返回主体列表", relationTree: "查看关系", updated: "主体已更新。", attachmentUploaded: "附件已添加。", title: "编辑主体", readOnly: "公司成员可见／只读", ownerReadOnly: "当前账号仅可查看。" },
-  ko: { eyebrow: "관계자 관리", back: "관계자 목록으로", relationTree: "관계 확인", updated: "관계자를 업데이트했습니다.", attachmentUploaded: "첨부 자료를 추가했습니다.", title: "관계자 편집", readOnly: "회사 구성원 공개 / 읽기 전용", ownerReadOnly: "현재 계정은 보기 전용입니다." },
+  ja: { eyebrow: "関係者を管理", back: "関係者一覧へ戻る", relationTree: "関係を確認", attachments: "資料", updated: "関係者を更新しました。", attachmentUploaded: "添付資料を追加しました。", title: "関係者を編集", readOnly: "会社メンバーに公開／読み取り専用", ownerReadOnly: "現在のアカウントは閲覧のみです。" },
+  zh: { eyebrow: "维护主体", back: "返回主体列表", relationTree: "查看关系", attachments: "资料", updated: "主体已更新。", attachmentUploaded: "附件已添加。", title: "编辑主体", readOnly: "公司成员可见／只读", ownerReadOnly: "当前账号仅可查看。" },
+  ko: { eyebrow: "관계자 관리", back: "관계자 목록으로", relationTree: "관계 확인", attachments: "자료", updated: "관계자를 업데이트했습니다.", attachmentUploaded: "첨부 자료를 추가했습니다.", title: "관계자 편집", readOnly: "회사 구성원 공개 / 읽기 전용", ownerReadOnly: "현재 계정은 보기 전용입니다." },
 } as const;
 
 export default async function EditPartyPage({ params, searchParams }: EditPartyPageProps) {
@@ -49,9 +50,21 @@ export default async function EditPartyPage({ params, searchParams }: EditPartyP
   return (
     <div className="mx-auto max-w-5xl space-y-6 pb-12">
       <header className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-5">
-        <div>
+        <div className="min-w-0">
           <p className="text-sm font-semibold text-slate-500">{text.eyebrow}</p>
-          <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">{client.name || text.title}</h1>
+          <div className="mt-1 flex flex-wrap items-center gap-3">
+            <h1 className="text-3xl font-bold tracking-tight text-slate-950">{client.name || text.title}</h1>
+            <PartyAttachmentDisclosure label={text.attachments} initialOpen={query.flash === "object_attachment_uploaded"}>
+              <ObjectAttachmentSection
+                locale={locale as Locale}
+                targetType="party"
+                targetId={client.id}
+                items={attachments}
+                canWrite={canEdit}
+                listClassName="max-h-[60vh] overflow-y-auto"
+              />
+            </PartyAttachmentDisclosure>
+          </div>
         </div>
         <Link href={returnTo} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">{text.back}</Link>
       </header>
@@ -68,7 +81,6 @@ export default async function EditPartyPage({ params, searchParams }: EditPartyP
             email: client.email,
             lineId: client.lineId,
             partyType: meta.type,
-            partyRole: meta.role,
           }}
         /> : <PartyProfileReadOnly
           locale={locale as Locale}
@@ -82,7 +94,6 @@ export default async function EditPartyPage({ params, searchParams }: EditPartyP
             partyRole: meta.role,
           }}
         />}
-      <ObjectAttachmentSection locale={locale as Locale} targetType="party" targetId={client.id} items={attachments} canWrite={canEdit} />
     </div>
   );
 }

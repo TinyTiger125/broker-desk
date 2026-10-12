@@ -24,6 +24,12 @@ export type OrganizeCenterBrowserItem = {
   subtitle: string;
   relation: string;
   relationLabel: string;
+  relatedObjects?: Array<{
+    type: "party" | "property";
+    label: string;
+    value: string;
+    placeholder?: boolean;
+  }>;
   updatedLabel: string;
   href: string;
   lifecycleStatus: LifecycleStatus;
@@ -61,7 +67,13 @@ function getTypeIcon(type: OrganizeCenterBrowserItem["type"]) {
 }
 
 function buildSearchText(item: OrganizeCenterBrowserItem) {
-  return [item.title, item.subtitle, item.relation].join(" ").toLowerCase();
+  return [item.title, item.subtitle, item.relation, ...(item.relatedObjects ?? []).map((related) => related.value)].join(" ").toLowerCase();
+}
+
+function getRelatedObjectUi(type: "party" | "property") {
+  return type === "party"
+    ? { icon: "group", iconClass: "bg-emerald-50 text-emerald-700", valueClass: "text-emerald-700" }
+    : { icon: "apartment", iconClass: "bg-violet-50 text-violet-700", valueClass: "text-violet-700" };
 }
 
 function filterItems(items: OrganizeCenterBrowserItem[], type: ObjectType, query: string) {
@@ -220,19 +232,40 @@ export function OrganizeCenterObjectBrowser({
                 <Link
                   href={itemHref}
                   data-list-return-trigger={`${item.type}:${item.id}`}
-                  className="group inline-flex max-w-full items-start gap-2 rounded-md text-base font-black leading-6 text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3158d8] focus-visible:ring-offset-2"
+                  className="group -m-2 flex w-full cursor-pointer flex-col rounded-md p-2 text-base font-black leading-6 text-slate-950 hover:bg-[#f6f8ff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3158d8] focus-visible:ring-offset-2"
                 >
-                  <span className="min-w-0 break-words">{item.title}</span>
-                  <span className="material-symbols-outlined mt-1 shrink-0 text-[18px] text-slate-400 transition group-hover:translate-x-0.5 group-hover:text-[#3158d8]" aria-hidden="true">arrow_forward</span>
+                  <span className="flex min-w-0 items-start justify-between gap-3">
+                    <span className="min-w-0 break-words">{item.title}</span>
+                    <span className="material-symbols-outlined mt-1 shrink-0 text-[18px] text-slate-400 transition group-hover:translate-x-0.5 group-hover:text-[#3158d8]" aria-hidden="true">arrow_forward</span>
+                  </span>
+                  <span className="mt-1 break-words text-xs font-bold text-slate-500">{item.subtitle}</span>
+                  {item.visibilityLabel ? <span className="mt-2 inline-flex w-fit rounded-full bg-slate-100 px-2 py-1 text-[11px] font-black text-slate-600">{item.visibilityLabel}</span> : null}
                 </Link>
-                <p className="mt-1 break-words text-xs font-bold text-slate-500">{item.subtitle}</p>
-                {item.visibilityLabel ? <p className="mt-2 inline-flex w-fit rounded-full bg-slate-100 px-2 py-1 text-[11px] font-black text-slate-600">{item.visibilityLabel}</p> : null}
               </div>
 
-              <div className="min-w-0 rounded-md bg-slate-50 px-3 py-2">
-                <p className="text-[11px] font-black text-slate-500">{item.relationLabel}</p>
-                <p className="mt-1 break-words font-semibold leading-5 text-slate-800">{item.relation}</p>
-              </div>
+              {item.relatedObjects?.length ? (
+                <div className="min-w-0 space-y-2 rounded-md bg-slate-50 px-3 py-2">
+                  {item.relatedObjects.map((related) => {
+                    const relatedUi = getRelatedObjectUi(related.type);
+                    return (
+                      <div key={`${related.type}:${related.label}`} className="flex min-w-0 items-start gap-2">
+                        <span className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${relatedUi.iconClass}`} aria-hidden="true">
+                          <span className="material-symbols-outlined text-[16px]">{relatedUi.icon}</span>
+                        </span>
+                        <p className="min-w-0 break-words font-semibold leading-5">
+                          <span className="mr-1 text-[11px] font-black text-slate-500">[{related.label}]</span>
+                          <span className={related.placeholder ? "text-slate-500" : relatedUi.valueClass}>{related.value}</span>
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="min-w-0 rounded-md bg-slate-50 px-3 py-2">
+                  <p className="text-[11px] font-black text-slate-500">{item.relationLabel}</p>
+                  <p className="mt-1 break-words font-semibold leading-5 text-slate-800">{item.relation}</p>
+                </div>
+              )}
 
               <div className="min-w-0 rounded-md bg-slate-50 px-3 py-2">
                 <p className="text-[11px] font-black text-slate-500">{copy.lifecycle}</p>

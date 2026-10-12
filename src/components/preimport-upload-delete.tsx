@@ -37,8 +37,11 @@ export function PreimportUploadDelete({ jobId, locale }: { jobId: string; locale
   }, [state]);
   const c = copy[locale];
   return (
-    <details ref={detailsRef} className="border-t border-slate-200 p-5">
-      <summary className="flex min-h-11 cursor-pointer items-center text-sm font-semibold text-red-700">{c.title}</summary>
+    <details ref={detailsRef} className="group border-t border-slate-200 p-5">
+      <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-sm font-semibold text-red-700 [&::-webkit-details-marker]:hidden">
+        <span aria-hidden="true" className="material-symbols-outlined shrink-0 text-[18px] transition-transform group-open:rotate-90 motion-reduce:transition-none">chevron_right</span>
+        <span>{c.title}</span>
+      </summary>
       <form action={action} className="mt-3 grid gap-3" aria-busy={pending}>
         <input type="hidden" name="jobId" value={jobId} />
         <p className="text-sm text-slate-600">{c.warning}</p>

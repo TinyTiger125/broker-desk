@@ -8,13 +8,14 @@ export { ObjectAttachmentList } from "@/components/object-attachment-list";
 export { OBJECT_ATTACHMENT_CATEGORY_LABELS as CATEGORY_LABELS, OBJECT_ATTACHMENT_COPY as COPY } from "@/components/object-attachment-list";
 
 export function ObjectAttachmentSection({
-  locale, targetType, targetId, items, canWrite,
+  locale, targetType, targetId, items, canWrite, listClassName,
 }: {
   locale: Locale;
   targetType: ObjectAttachmentTargetType;
   targetId: string;
   items: ObjectAttachmentItem[];
   canWrite: boolean;
+  listClassName?: string;
 }) {
   const text = OBJECT_ATTACHMENT_COPY[locale];
   const labels = OBJECT_ATTACHMENT_CATEGORY_LABELS[locale];
@@ -24,7 +25,7 @@ export function ObjectAttachmentSection({
         <h2 className="text-lg font-black text-slate-950">{text.title}</h2>
         <p className="mt-1 text-sm leading-6 text-slate-600">{text.desc}</p>
       </div>
-      <ObjectAttachmentList locale={locale} items={items} />
+      <ObjectAttachmentList locale={locale} items={items} className={listClassName} />
       {canWrite ? (
         <form action={uploadObjectAttachmentAction} className="grid gap-3 border-t border-slate-100 bg-slate-50/70 p-5 md:grid-cols-[minmax(12rem,0.7fr)_minmax(16rem,1.3fr)_auto] md:items-end">
           <input type="hidden" name="targetType" value={targetType} />

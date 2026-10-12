@@ -382,6 +382,7 @@
 
 .quickSummary {
   align-items: center;
+  justify-content: flex-start;
   padding: var(--bd-space-4);
   cursor: pointer;
   list-style: none;
@@ -391,16 +392,16 @@
   display: none;
 }
 
-.quickSummary::after {
+.quickChevron {
   flex: 0 0 auto;
   color: var(--bd-muted);
-  content: "+";
   font-size: var(--bd-text-lg);
   line-height: 1;
+  transition: transform 150ms ease;
 }
 
-.quickDetails[open] .quickSummary::after {
-  content: "−";
+.quickDetails[open] .quickChevron {
+  transform: rotate(90deg);
 }
 
 .quickSummaryText {

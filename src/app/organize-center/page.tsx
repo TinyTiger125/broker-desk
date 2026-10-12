@@ -41,6 +41,12 @@ type WorkObject = {
   subtitle: string;
   relation: string;
   relationLabel: string;
+  relatedObjects?: Array<{
+    type: "party" | "property";
+    label: string;
+    value: string;
+    placeholder?: boolean;
+  }>;
   updatedAt?: Date;
   href: string;
   lifecycleStatus: "active" | "archived";
@@ -75,10 +81,12 @@ const copyByLocale = {
     objectCount: "対象",
     continueCheck: "一覧で続けて確認",
     relationCase: "案件内の関係",
+    casePartyLabel: "人物",
+    casePropertyLabel: "物件",
     visibilityLabel: "可視範囲",
     companyReadOnly: "会社メンバーが閲覧できます（変更不可）",
     ownerReadOnly: "現在のアカウントは閲覧のみです。",
-    relationParty: "関連先",
+    relationParty: "希望エリア",
     relationProperty: "利用先",
     pageStatus: "表示中",
     pageOf: "ページ",
@@ -88,7 +96,7 @@ const copyByLocale = {
     archivedRecords: "保管済み",
     allRecords: "すべての記録",
     noKeyword: "キーワード未設定",
-    noRelation: "未紐付け",
+    noRelation: "未入力",
     noDate: "-",
     personUnset: "関係者未設定",
     propertyUnset: "物件未設定",
@@ -133,10 +141,12 @@ const copyByLocale = {
     objectCount: "对象",
     continueCheck: "进入列表继续核对",
     relationCase: "案件关系",
+    casePartyLabel: "人物",
+    casePropertyLabel: "物件",
     visibilityLabel: "可见范围",
     companyReadOnly: "公司成员可查看（不能修改）",
     ownerReadOnly: "当前账号仅可查看。",
-    relationParty: "关联对象",
+    relationParty: "意向区域",
     relationProperty: "使用位置",
     pageStatus: "当前显示",
     pageOf: "页",
@@ -146,7 +156,7 @@ const copyByLocale = {
     archivedRecords: "已归档",
     allRecords: "全部记录",
     noKeyword: "未设置关键词",
-    noRelation: "未关联",
+    noRelation: "未填写",
     noDate: "-",
     personUnset: "主体未设置",
     propertyUnset: "物件未设置",
@@ -191,10 +201,12 @@ const copyByLocale = {
     objectCount: "대상",
     continueCheck: "목록에서 계속 확인",
     relationCase: "안건 관계",
+    casePartyLabel: "관계자",
+    casePropertyLabel: "매물",
     visibilityLabel: "공개 범위",
     companyReadOnly: "회사 구성원이 볼 수 있음(변경 불가)",
     ownerReadOnly: "현재 계정은 보기 전용입니다.",
-    relationParty: "연결 대상",
+    relationParty: "희망 지역",
     relationProperty: "사용 위치",
     pageStatus: "현재 표시",
     pageOf: "페이지",
@@ -204,7 +216,7 @@ const copyByLocale = {
     archivedRecords: "보관된 기록",
     allRecords: "전체 기록",
     noKeyword: "검색어 미설정",
-    noRelation: "미연결",
+    noRelation: "미입력",
     noDate: "-",
     personUnset: "관계자 미설정",
     propertyUnset: "매물 미설정",
@@ -409,6 +421,10 @@ async function OrganizeCenterContent({ locale, params }: { locale: Locale; param
         ? locale === "zh" ? "公司成员可见（只读）" : locale === "ko" ? "회사 멤버 공개（읽기 전용）" : "会社メンバーに公開（読み取り専用）"
         : `${applicantName || copy.personUnset} / ${propertyName || copy.propertyUnset}`,
       relationLabel: resolution.outcome === "company_read" ? copy.visibilityLabel : copy.relationCase,
+      relatedObjects: resolution.outcome === "company_read" ? undefined : [
+        { type: "party", label: copy.casePartyLabel, value: applicantName || copy.personUnset, placeholder: !applicantName },
+        { type: "property", label: copy.casePropertyLabel, value: propertyName || copy.propertyUnset, placeholder: !propertyName },
+      ],
       updatedAt: item.updatedAt,
       href: `/cases/${encodeURIComponent(item.id)}`,
       visibilityLabel: resolution.outcome === "company_read"
@@ -463,6 +479,7 @@ async function OrganizeCenterContent({ locale, params }: { locale: Locale; param
     subtitle: item.subtitle,
     relation: item.relation,
     relationLabel: item.relationLabel,
+    relatedObjects: item.relatedObjects,
     updatedLabel: item.updatedAt ? formatDate(item.updatedAt, locale) : copy.noDate,
     href: item.href,
     canArchive: item.canArchive,

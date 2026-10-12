@@ -203,6 +203,7 @@ import {
   resolveCaseWorkbenchFieldRequirement,
 } from "@/lib/case-workbench-field-rules";
 import { canonicalizeCaseFieldKey, clearCaseFieldValueAliases, getCaseFieldValue } from "@/lib/case-field-normalization";
+import { buildApplicantPrefillValues, CASE_PERSON_PREFILL_FIELDS, isCasePersonPrefillFieldKey, type CasePersonPrefillFieldKey } from "@/lib/case-person-prefill";
 import {
   parseCaseApplicabilitySettings,
   readCaseApplicabilitySettings,
@@ -211,6 +212,7 @@ import {
 import { getCaseWorkbenchProgressSnapshot } from "@/lib/case-workbench-progress";
 import { applyJapanesePostalCodeAddressCompletions, isValidJapanesePostalCode } from "@/lib/japan-postal-code";
 import { getCaseContactValidationError } from "@/lib/case-contact-validation";
+import { isValidCaseDateInput, normalizeCaseDateValue } from "@/lib/case-date";
 import {
   buildExtractionReviewCorrectionEvents,
   buildGuaranteeDraftCorrectionEvents,
@@ -275,6 +277,7 @@ import {
 } from "@/lib/case-associations";
 import {
   buildPartyProfileNotes,
+  extractPartyProfileFromNotes,
   inferPurposeFromPartyRole,
   isPartyProfileRole,
   isPartyProfileType,
@@ -2399,12 +2402,11 @@ function parsePartyUpdateForm(formData: FormData, locale: Locale) {
   const phone = values.phone.trim();
   const partyTypeRaw = values.partyType.trim();
   const partyRoleRaw = values.partyRole.trim();
+  const metadataSubmitted = formData.has("partyType") || formData.has("partyRole");
   if (!name) fieldErrors.name = partyValidationMessage(locale, "name");
   if (!phone) fieldErrors.phone = partyValidationMessage(locale, "phone");
-  if (!formData.has("partyType")) fieldErrors.partyType = partyValidationMessage(locale, "partyType");
-  if (!formData.has("partyRole")) fieldErrors.partyRole = partyValidationMessage(locale, "partyRole");
-  if (partyTypeRaw && !isPartyProfileType(partyTypeRaw)) fieldErrors.partyType = partyValidationMessage(locale, "partyType");
-  if (partyRoleRaw && !isPartyProfileRole(partyRoleRaw)) fieldErrors.partyRole = partyValidationMessage(locale, "partyRole");
+  if (metadataSubmitted && partyTypeRaw && !isPartyProfileType(partyTypeRaw)) fieldErrors.partyType = partyValidationMessage(locale, "partyType");
+  if (metadataSubmitted && partyRoleRaw && !isPartyProfileRole(partyRoleRaw)) fieldErrors.partyRole = partyValidationMessage(locale, "partyRole");
 
   return {
     values,
@@ -2443,12 +2445,17 @@ export async function updatePartyProfileAction(
   if (Object.keys(payload.fieldErrors).length > 0) {
     return partyValidationState(payload.values, payload.fieldErrors, locale);
   }
-  const notes = mergePartyProfileMetadataNotes({
-    existingNotes: existing.notes,
-    type: payload.normalized.partyType,
-    role: payload.normalized.partyRole,
-    locale,
-  });
+  const notes = formData.has("partyType") || formData.has("partyRole")
+    ? (() => {
+        const existingMeta = extractPartyProfileFromNotes(existing.notes);
+        return mergePartyProfileMetadataNotes({
+          existingNotes: existing.notes,
+          type: formData.has("partyType") ? payload.normalized.partyType : existingMeta.type,
+          role: formData.has("partyRole") ? payload.normalized.partyRole : existingMeta.role,
+          locale,
+        });
+      })()
+    : existing.notes;
 
   const updated = await updateClient(clientId, {
     tenantId,
@@ -3577,6 +3584,16 @@ function getCaseWorkbenchSubmittedValue(formData: FormData, fieldKey: string): s
   return String(formData.get("fieldValueSnapshot") ?? "").trim();
 }
 
+function normalizeCaseWorkbenchCandidateValue(fieldKey: string, value: string): string {
+  const rawValue = value.trim();
+  return getCaseFieldDefinition(fieldKey)?.valueKind === "date" ? normalizeCaseDateValue(rawValue) : rawValue;
+}
+
+function getCaseWorkbenchNormalizedValue(formData: FormData, fieldKey: string): string {
+  const rawValue = getCaseWorkbenchSubmittedValue(formData, fieldKey);
+  return getCaseFieldDefinition(fieldKey)?.valueKind === "date" ? normalizeCaseDateValue(rawValue) : rawValue;
+}
+
 function safeHashAnchor(value: FormDataEntryValue | null): string {
   const anchor = String(value ?? "").trim();
   return /^[a-zA-Z0-9_-]+$/.test(anchor) ? anchor : "";
@@ -3935,6 +3952,78 @@ export async function saveCaseAssociationsAction(formData: FormData) {
   redirect(`/cases/${encodeURIComponent(caseId)}?flash=case_associations_updated`);
 }
 
+export async function readExistingCasePersonInfoAction(formData: FormData) {
+  const session = await requireTenantSession({ permission: "record.update" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
+  const caseId = String(formData.get("caseId") ?? "").trim();
+  const clientId = String(formData.get("clientId") ?? "").trim();
+  const targetGroup = String(formData.get("targetGroup") ?? "").trim();
+  await rejectForbiddenRecordInput(formData, session, "case", caseId || undefined);
+  if (!caseId) throw new Error("案件IDが不正です。");
+  if (targetGroup !== "applicant") throw new Error("読み込み対象の人物グループが不正です。");
+  if (!clientId) throw new Error("読み込む人物を選択してください。");
+
+  const brokerageCase = await requireWritableCase(session, caseId);
+  const requestContext = createRequestContext(session);
+  const clientResult = await resolveClientVisibilityForContext({ context: requestContext, clientId });
+  if (!clientResult.record || !clientResult.resolution.canRead) {
+    throw new Error("選択した人物が存在しないか、現在のテナントで利用できません。");
+  }
+  if (clientResult.record.lifecycleStatus === "archived") {
+    throw new Error("選択した人物が存在しないか、現在のテナントで利用できません。");
+  }
+
+  const overwriteFieldKeys = new Set(
+    formData.getAll("overwriteFieldKey")
+      .map((value) => String(value).trim())
+      .filter(isCasePersonPrefillFieldKey),
+  );
+  const sourceValues = buildApplicantPrefillValues(clientResult.record);
+  const nextConfirmedData: Record<string, unknown> = { ...brokerageCase.confirmedDataJson };
+  const existingStatusMap =
+    nextConfirmedData[WORKBENCH_FIELD_STATUS_KEY] && typeof nextConfirmedData[WORKBENCH_FIELD_STATUS_KEY] === "object"
+      ? { ...(nextConfirmedData[WORKBENCH_FIELD_STATUS_KEY] as Record<string, string>) }
+      : {};
+  const changedFieldKeys: string[] = [];
+
+  for (const { fieldKey } of CASE_PERSON_PREFILL_FIELDS) {
+    const sourceValue = sourceValues[fieldKey];
+    if (!sourceValue) continue;
+    const previousValue = getCaseFieldValue(brokerageCase.confirmedDataJson, fieldKey);
+    if (previousValue && !overwriteFieldKeys.has(fieldKey as CasePersonPrefillFieldKey)) continue;
+    if (previousValue === sourceValue) continue;
+    clearCaseFieldValueAliases(nextConfirmedData, fieldKey);
+    nextConfirmedData[fieldKey] = sourceValue;
+    existingStatusMap[fieldKey] = previousValue ? "edited" : "confirmed";
+    changedFieldKeys.push(fieldKey);
+  }
+
+  nextConfirmedData[WORKBENCH_FIELD_STATUS_KEY] = existingStatusMap;
+  const updatedCase = await updateBrokerageCaseConfirmedData({
+    userId: user.id,
+    tenantId,
+    caseId,
+    confirmedDataJson: nextConfirmedData,
+  });
+  if (!updatedCase) throw new Error("案件が見つからないか、保存できませんでした。");
+
+  await addAuditLog({
+    tenantId,
+    userId: user.id,
+    action: "case_person_info_prefilled",
+    targetType: "case",
+    targetId: caseId,
+    message: "既存人物情報を案件の申込者欄へ読み込みました。",
+    context: { clientId, targetGroup, changedFieldKeys },
+  });
+  revalidatePath(`/cases/${encodeURIComponent(caseId)}`);
+  const params = new URLSearchParams({ view: "overview", node: "participants_applicant_basic" });
+  params.set("flash", changedFieldKeys.length > 0 ? "case_person_prefilled" : "case_person_prefill_noop");
+  if (changedFieldKeys[0]) params.set("field", changedFieldKeys[0]);
+  redirect(`/cases/${encodeURIComponent(caseId)}?${params.toString()}`);
+}
+
 export async function refreshObjectImportReviewAction(formData: FormData) {
   const session = await requireTenantSession({ permission: "extract.accept_result" });
   const targetId = String(formData.get("importTargetId") ?? "").trim();
@@ -4014,14 +4103,15 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
   const guaranteeTemplate = safeQueryToken(formData.get("guaranteeTemplate"));
   const returnNode = safeQueryToken(formData.get("returnNode"));
   const returnField = safeWorkbenchFieldToken(formData.get("returnField"));
+  const continuationFieldKey = returnField && !fieldKeysToSave.includes(returnField) ? returnField : "";
   const requiredMissingFieldKey = fieldKeysToSave.find((fieldKey) => {
     const decision = getCaseWorkbenchFieldDecision(formData, fieldKey);
     if (decision !== "confirmed") return false;
     const definition = getCaseFieldDefinition(fieldKey);
     const information = definition ? getCaseFieldInformation(definition) : undefined;
     if (!information || resolveCaseWorkbenchFieldRequirement(fieldKey, information.importance, ruleMap) !== "required") return false;
-    const rawValue = getCaseWorkbenchSubmittedValue(formData, fieldKey);
-    const candidateValue = String(formData.get(`candidate:${fieldKey}`) ?? "").trim();
+    const rawValue = getCaseWorkbenchNormalizedValue(formData, fieldKey);
+    const candidateValue = normalizeCaseWorkbenchCandidateValue(fieldKey, String(formData.get(`candidate:${fieldKey}`) ?? ""));
     const nextValue = (fieldKey === useCandidateFieldKey || shouldBatchUseCandidates) && candidateValue ? candidateValue : rawValue;
     return !nextValue;
   });
@@ -4033,17 +4123,32 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
     if (returnScrollTop) requiredParams.set("scrollTop", returnScrollTop);
     redirect(`/cases/${caseId}?${requiredParams.toString()}${returnAnchor ? `#${returnAnchor}` : ""}`);
   }
+  const invalidDateFieldKey = fieldKeysToSave.find((fieldKey) => {
+    if (getCaseFieldDefinition(fieldKey)?.valueKind !== "date") return false;
+    const rawValue = getCaseWorkbenchNormalizedValue(formData, fieldKey);
+    const candidateValue = normalizeCaseWorkbenchCandidateValue(fieldKey, String(formData.get(`candidate:${fieldKey}`) ?? ""));
+    const nextValue = (fieldKey === useCandidateFieldKey || shouldBatchUseCandidates) && candidateValue ? candidateValue : rawValue;
+    return Boolean(nextValue) && !isValidCaseDateInput(nextValue);
+  });
+  if (invalidDateFieldKey) {
+    const invalidParams = new URLSearchParams();
+    if (returnView) invalidParams.set("view", returnView);
+    invalidParams.set("flash", "case_field_invalid");
+    invalidParams.set("field", invalidDateFieldKey);
+    if (returnScrollTop) invalidParams.set("scrollTop", returnScrollTop);
+    redirect(`/cases/${caseId}?${invalidParams.toString()}${returnAnchor ? `#${returnAnchor}` : ""}`);
+  }
   const invalidPostalFieldKey = fieldKeysToSave.find((fieldKey) => {
     if (getCaseFieldDefinition(fieldKey)?.valueKind !== "postal_code") return false;
-    const rawValue = getCaseWorkbenchSubmittedValue(formData, fieldKey);
-    const candidateValue = String(formData.get(`candidate:${fieldKey}`) ?? "").trim();
+    const rawValue = getCaseWorkbenchNormalizedValue(formData, fieldKey);
+    const candidateValue = normalizeCaseWorkbenchCandidateValue(fieldKey, String(formData.get(`candidate:${fieldKey}`) ?? ""));
     const nextValue = (fieldKey === useCandidateFieldKey || shouldBatchUseCandidates) && candidateValue ? candidateValue : rawValue;
     return Boolean(nextValue) && !isValidJapanesePostalCode(nextValue);
   });
   const locale = await getLocale();
   const invalidContactFieldKey = fieldKeysToSave.find((fieldKey) => {
-    const rawValue = getCaseWorkbenchSubmittedValue(formData, fieldKey);
-    const candidateValue = String(formData.get(`candidate:${fieldKey}`) ?? "").trim();
+    const rawValue = getCaseWorkbenchNormalizedValue(formData, fieldKey);
+    const candidateValue = normalizeCaseWorkbenchCandidateValue(fieldKey, String(formData.get(`candidate:${fieldKey}`) ?? ""));
     const nextValue = (fieldKey === useCandidateFieldKey || shouldBatchUseCandidates) && candidateValue ? candidateValue : rawValue;
     let decision = getCaseWorkbenchFieldDecision(formData, fieldKey);
     if (fieldKey === useCandidateFieldKey || shouldBatchUseCandidates) decision = "confirmed";
@@ -4068,10 +4173,10 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
   }
   fieldKeysToSave.forEach((fieldKey) => {
     const previousValue = getCaseFieldValue(brokerageCase.confirmedDataJson, fieldKey);
-    let nextValue = getCaseWorkbenchSubmittedValue(formData, fieldKey);
+    let nextValue = getCaseWorkbenchNormalizedValue(formData, fieldKey);
     let decision = getCaseWorkbenchFieldDecision(formData, fieldKey);
     if (fieldKey === useCandidateFieldKey || shouldBatchUseCandidates) {
-      const candidateValue = String(formData.get(`candidate:${fieldKey}`) ?? "").trim();
+      const candidateValue = normalizeCaseWorkbenchCandidateValue(fieldKey, String(formData.get(`candidate:${fieldKey}`) ?? ""));
       if (candidateValue) {
         nextValue = candidateValue;
         decision = "confirmed";
@@ -4121,7 +4226,7 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
   });
 
   const objectReviewFieldKey = String(parsedObjectReview?.caseFieldKey ?? "").trim();
-  const objectReviewSubmittedValue = objectReviewFieldKey ? getCaseWorkbenchSubmittedValue(formData, objectReviewFieldKey) : "";
+  const objectReviewSubmittedValue = objectReviewFieldKey ? getCaseWorkbenchNormalizedValue(formData, objectReviewFieldKey) : "";
   const objectReviewExistingValue = objectReviewFieldKey ? getCaseFieldValue(brokerageCase.confirmedDataJson, objectReviewFieldKey) : "";
   const preserveExistingObjectReview = parsedObjectReview?.preserveExisting === true || parsedObjectReview?.preserveExisting === "true";
   const objectReviewDecision = preserveExistingObjectReview && objectReviewSubmittedValue.trim() === objectReviewExistingValue.trim() ? "reject" : "confirm";
@@ -4196,6 +4301,7 @@ export async function saveCaseWorkbenchAction(formData: FormData) {
   if (guaranteeTemplate) redirectParams.set("guaranteeTemplate", guaranteeTemplate);
   if (returnNode) redirectParams.set("node", returnNode);
   if (returnField) redirectParams.set("field", returnField);
+  if (continuationFieldKey) redirectParams.set("edit", "1");
   if (returnView) redirectParams.set("view", returnView);
   if (returnScrollTop) redirectParams.set("scrollTop", returnScrollTop);
   redirectParams.set("flash", "case_workbench_saved");

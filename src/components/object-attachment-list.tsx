@@ -21,12 +21,12 @@ function formatBytes(bytes?: number) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-export function ObjectAttachmentList({ locale, items }: { locale: Locale; items: ObjectAttachmentItem[] }) {
+export function ObjectAttachmentList({ locale, items, className }: { locale: Locale; items: ObjectAttachmentItem[]; className?: string }) {
   const text = OBJECT_ATTACHMENT_COPY[locale];
   const labels = OBJECT_ATTACHMENT_CATEGORY_LABELS[locale];
   if (items.length === 0) return <p className="px-5 py-6 text-sm text-slate-500">{text.empty}</p>;
   return (
-    <ul className="divide-y divide-slate-100">
+    <ul className={`divide-y divide-slate-100 ${className ?? ""}`}>
       {items.map(({ attachment, link }) => (
         <li key={link.id} className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">

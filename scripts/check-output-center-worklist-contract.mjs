@@ -306,7 +306,7 @@ function assertSelectedCaseSummary(source, filename) {
   assert(!/\btruncate\b|\bline-clamp-|\bwhitespace-nowrap\b/.test(classText), "selected-case disclosure summary must not truncate its label");
   assert(visit(summary, (node) => ts.isJsxAttribute(node) && node.name.text === "className" && node.getText(tree).includes("break-words")).length >= 1, "selected-case disclosure label must wrap naturally");
   assert.equal(visit(summary, (node) => ts.isJsxExpression(node) && node.expression?.getText(tree) === "copy.guaranteeDetailToggle").length, 1, "selected-case disclosure must render the live locale label");
-  const disclosureIcons = visit(summary, (node) => (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node)) && jsxAttribute(node, "className") && staticClassText(node, tree, "selected-case disclosure icon").includes("group-open:rotate-180"));
+  const disclosureIcons = visit(summary, (node) => (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node)) && jsxAttribute(node, "className") && staticClassText(node, tree, "selected-case disclosure icon").includes("group-open:rotate-90"));
   assert.equal(disclosureIcons.length, 1, "selected-case disclosure must have one visible expansion indicator");
   assert(staticClassText(disclosureIcons[0], tree, "selected-case disclosure icon").includes("motion-reduce:transition-none"), "disclosure motion must stop for reduced-motion users");
   let current = summary.parent;
@@ -690,7 +690,7 @@ for (const [index, invalid] of invalidSynthetics.entries()) {
 }
 const duplicatePageCurrentSynthetic = `async function OutputCenterPage(){const documentTreeGroups=[];const activeDocumentTreeGroup={items:[]};return <WorklistShell items={<>{documentTreeGroups.map((group)=><Link aria-current={group.selected?"page":undefined}/>)}{activeDocumentTreeGroup.items.map((item)=><Link aria-current={item.selected?"page":undefined}/>)}</>} detail={<StateSurface/>}/>;}`;
 assert.throws(() => analyzeLivePageCurrent(duplicatePageCurrentSynthetic, "duplicate-page-current.tsx"), "selected group plus selected task must fail the mutually exclusive current gate");
-const validSummarySynthetic = `async function OutputCenterPage(){const shouldShowGuaranteeFlow=true;const selectedCase={};const copy={guaranteeDetailToggle:"details"};return <>{shouldShowGuaranteeFlow && selectedCase ? <details><summary className="inline-flex min-h-11 items-center px-3 py-2 leading-5 ${semanticFocusClassText}"><span className="group-open:rotate-180 motion-reduce:transition-none"/><span className="break-words">{copy.guaranteeDetailToggle}</span></summary></details> : null}</>;}`;
+const validSummarySynthetic = `async function OutputCenterPage(){const shouldShowGuaranteeFlow=true;const selectedCase={};const copy={guaranteeDetailToggle:"details"};return <>{shouldShowGuaranteeFlow && selectedCase ? <details><summary className="inline-flex min-h-11 items-center px-3 py-2 leading-5 ${semanticFocusClassText}"><span className="group-open:rotate-90 motion-reduce:transition-none"/><span className="break-words">{copy.guaranteeDetailToggle}</span></summary></details> : null}</>;}`;
 assert.doesNotThrow(() => assertSelectedCaseSummary(validSummarySynthetic, "valid-summary.tsx"), "complete selected-case disclosure fixture must pass");
 for (const [index, invalidSummary] of [
   validSummarySynthetic.replace(" min-h-11", ""),

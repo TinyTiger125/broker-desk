@@ -357,23 +357,24 @@ export default async function PropertiesPage({ searchParams }: PropertiesPagePro
             />
             ) : undefined}
             results={!readError && sorted.length > 0 ? (
-              <div role="table" aria-label={copy.results}>
+              <div className="overflow-x-auto">
+              <div role="table" aria-label={copy.results} className="w-full min-w-0">
             <div role="rowgroup">
-              <div role="row" className="hidden gap-4 border-b border-slate-200/80 bg-slate-50/70 px-5 py-2 text-xs font-bold uppercase tracking-wide text-slate-500 lg:grid lg:grid-cols-[minmax(12rem,1.3fr)_minmax(8rem,.8fr)_minmax(8rem,.8fr)_minmax(8rem,.8fr)_minmax(8rem,.8fr)_minmax(6rem,.6fr)_auto] lg:items-center">
+              <div role="row" className="hidden gap-4 border-b border-slate-200/80 bg-slate-50/70 px-5 py-2 text-xs font-bold uppercase tracking-wide text-slate-500 lg:grid lg:grid-cols-[minmax(10rem,1.4fr)_minmax(5.5rem,.8fr)_minmax(7rem,1fr)_minmax(6rem,.8fr)_minmax(6rem,.8fr)_minmax(5.5rem,.6fr)_minmax(7rem,auto)] lg:items-center">
                 <span role="columnheader">{copy.name}</span>
                 <span role="columnheader">{copy.area}</span>
                 <span role="columnheader">{copy.listingPrice}</span>
                 <span role="columnheader">{copy.managementFee}</span>
                 <span role="columnheader">{copy.repairFee}</span>
                 <span role="columnheader">{copy.status}</span>
-                <span role="columnheader" className="text-right">{copy.actions}</span>
+                <span role="columnheader" className="min-w-28 whitespace-nowrap text-right">{copy.actions}</span>
               </div>
             </div>
             <div role="rowgroup" className="divide-y divide-slate-200/80">
               {visibleProperties.map((property) => {
                 const statusLabel = property.status === "archived" ? copy.archived : copy.active;
                 return (
-                  <div key={property.id} role="row" className="grid gap-4 px-5 py-4 transition hover:bg-slate-50 lg:grid-cols-[minmax(12rem,1.3fr)_minmax(8rem,.8fr)_minmax(8rem,.8fr)_minmax(8rem,.8fr)_minmax(8rem,.8fr)_minmax(6rem,.6fr)_auto] lg:items-center">
+                  <div key={property.id} role="row" className="grid gap-4 px-5 py-4 transition hover:bg-slate-50 lg:grid-cols-[minmax(10rem,1.4fr)_minmax(5.5rem,.8fr)_minmax(7rem,1fr)_minmax(6rem,.8fr)_minmax(6rem,.8fr)_minmax(5.5rem,.6fr)_minmax(7rem,auto)] lg:items-center">
                     <div role="cell" className="min-w-0">
                       <Link
                         href={`/properties/${encodeURIComponent(property.id)}/edit?returnTo=${encodeURIComponent(returnTo)}`}
@@ -393,7 +394,7 @@ export default async function PropertiesPage({ searchParams }: PropertiesPagePro
                     <div role="cell" className="text-sm tabular-nums text-slate-700"><span className="mr-2 text-xs font-bold text-slate-400 lg:hidden">{copy.managementFee}</span>{formatFee(property.managementFeeValue, copy.notSet, locale)}</div>
                     <div role="cell" className="text-sm tabular-nums text-slate-700"><span className="mr-2 text-xs font-bold text-slate-400 lg:hidden">{copy.repairFee}</span>{formatFee(property.repairFeeValue, copy.notSet, locale)}</div>
                     <div role="cell" className={property.status === "archived" ? "text-sm font-semibold text-slate-500" : "text-sm text-slate-700"}><span className="mr-2 text-xs font-bold text-slate-400 lg:hidden">{copy.status}</span>{statusLabel}</div>
-                    <div role="cell" className="flex items-center justify-start gap-2 lg:justify-end">
+                    <div role="cell" className="flex min-w-28 items-center justify-start gap-2 whitespace-nowrap lg:justify-end">
                       {property.canArchive ? (
                         <ArchiveRecordButton
                           entityType="property"
@@ -411,6 +412,7 @@ export default async function PropertiesPage({ searchParams }: PropertiesPagePro
                 );
               })}
             </div>
+              </div>
               </div>
             ) : undefined}
           />

@@ -37,13 +37,13 @@ const inputClass = "w-full rounded-lg border border-slate-300 bg-white px-3 py-2
 
 const copy = {
   ja: {
-    basic: "基本情報", contact: "連絡先", attributes: "関係者属性", name: "氏名 / 会社名", type: "種別", role: "役割", phone: "電話番号", email: "メールアドレス", lineId: "LINE ID", unset: "未設定", optional: "任意", save: "保存", saving: "保存中…", cancel: "キャンセル", relationTree: "関係を確認", shared: "氏名と連絡先は現在、顧客プロフィールと共有されています。保存後、関連する顧客情報にも反映されます。", error: "入力内容を確認してください。", readOnly: "会社メンバーに公開されている読み取り専用の関係者です。", ownerReadOnly: "現在のアカウントは閲覧のみです。",
+    basic: "基本情報", contact: "連絡先", name: "氏名 / 会社名", type: "種別", role: "役割", phone: "電話番号", email: "メールアドレス", lineId: "LINE ID", unset: "未設定", optional: "任意", save: "保存", saving: "保存中…", cancel: "キャンセル", relationTree: "関係を確認", shared: "氏名と連絡先は現在、顧客プロフィールと共有されています。保存後、関連する顧客情報にも反映されます。", error: "入力内容を確認してください。", readOnly: "会社メンバーに公開されている読み取り専用の関係者です。", ownerReadOnly: "現在のアカウントは閲覧のみです。",
   },
   zh: {
-    basic: "基本信息", contact: "联系方式", attributes: "主体属性", name: "姓名 / 公司名", type: "主体类型", role: "主体角色", phone: "电话号码", email: "邮箱地址", lineId: "LINE ID", unset: "未设置", optional: "选填", save: "保存", saving: "保存中…", cancel: "取消", relationTree: "查看关系", shared: "姓名和联系方式当前与客户档案共享，保存后会同步反映在相关客户信息中。", error: "请检查以下输入内容。", readOnly: "该主体对公司成员可见，但当前为只读。", ownerReadOnly: "当前账号仅可查看。",
+    basic: "基本信息", contact: "联系方式", name: "姓名 / 公司名", type: "主体类型", role: "主体角色", phone: "电话号码", email: "邮箱地址", lineId: "LINE ID", unset: "未设置", optional: "选填", save: "保存", saving: "保存中…", cancel: "取消", relationTree: "查看关系", shared: "姓名和联系方式当前与客户档案共享，保存后会同步反映在相关客户信息中。", error: "请检查以下输入内容。", readOnly: "该主体对公司成员可见，但当前为只读。", ownerReadOnly: "当前账号仅可查看。",
   },
   ko: {
-    basic: "기본 정보", contact: "연락처", attributes: "관계자 속성", name: "이름 / 회사명", type: "관계자 유형", role: "역할", phone: "전화번호", email: "이메일", lineId: "LINE ID", unset: "미설정", optional: "선택", save: "저장", saving: "저장 중…", cancel: "취소", relationTree: "관계 확인", shared: "이름과 연락처는 현재 고객 프로필과 공유됩니다. 저장 후 관련 고객 정보에도 반영됩니다.", error: "다음 입력 내용을 확인해 주세요.", readOnly: "회사 구성원에게 공개되지만 현재 읽기 전용입니다.", ownerReadOnly: "현재 계정은 보기 전용입니다.",
+    basic: "기본 정보", contact: "연락처", name: "이름 / 회사명", type: "관계자 유형", role: "역할", phone: "전화번호", email: "이메일", lineId: "LINE ID", unset: "미설정", optional: "선택", save: "저장", saving: "저장 중…", cancel: "취소", relationTree: "관계 확인", shared: "이름과 연락처는 현재 고객 프로필과 공유됩니다. 저장 후 관련 고객 정보에도 반영됩니다.", error: "다음 항목을 확인해 주세요.", readOnly: "회사 구성원에게 공개되지만 현재 읽기 전용입니다.", ownerReadOnly: "현재 계정은 보기 전용입니다.",
   },
 } as const;
 
@@ -157,11 +157,6 @@ export function PartyProfileForm({ action, defaults, locale, returnTo, relationT
           <div className="grid content-start gap-1">{label("email", text.email)}<input {...fieldProps("email")} type="email" className={inputClass} />{fieldError("email")}</div>
           <div className="grid content-start gap-1">{label("lineId", text.lineId)}<input {...fieldProps("lineId")} className={inputClass} />{fieldError("lineId")}</div>
         </div>
-      </section>
-
-      <section aria-labelledby="party-attributes-heading" className="space-y-4 pb-2">
-        <h2 id="party-attributes-heading" className="text-base font-bold text-slate-950">{text.attributes}</h2>
-        <div className="grid max-w-md content-start gap-1">{label("partyRole", text.role)}<select {...fieldProps("partyRole")} className={inputClass}><option value="">{text.unset}</option>{getPartyProfileRoleOptions(locale).map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select>{fieldError("partyRole")}</div>
       </section>
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-5">

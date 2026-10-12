@@ -45,7 +45,6 @@ const copy = {
     close: "閉じる",
     title: "関連資料",
     description: "同じ人物に複数の案件役割を設定できます。関連を解除しても人物や物件の主資料は削除されません。",
-    expand: "関連を確認・編集",
     addPerson: "人物を追加",
     people: "人物の関連",
     peopleEmpty: "関連付けられた人物はまだありません。",
@@ -86,7 +85,6 @@ const copy = {
     close: "关闭",
     title: "关联资料",
     description: "同一人物可以编辑多个案件角色；解除关联不会删除人物或物件主资料。",
-    expand: "查看并编辑关联",
     addPerson: "增加人物",
     people: "人物关联",
     peopleEmpty: "还没有关联人物。",
@@ -127,7 +125,6 @@ const copy = {
     close: "닫기",
     title: "연결 자료",
     description: "같은 관계자에게 여러 안건 역할을 설정할 수 있습니다. 연결을 해제해도 관계자나 매물 기본 자료는 삭제되지 않습니다.",
-    expand: "연결 확인 및 편집",
     addPerson: "관계자 추가",
     people: "관계자 연결",
     peopleEmpty: "연결된 관계자가 없습니다.",
@@ -362,12 +359,12 @@ export function CaseAssociationManager({
     <section className={`rounded-xl border border-slate-200 bg-white ${compact ? "p-3 sm:p-4" : "p-4 sm:p-5"}`} aria-label={compact ? text.title : undefined} aria-labelledby={compact ? undefined : "case-association-heading"}>
       {compact ? (
         <details className="group" data-case-association-details>
-          <summary data-case-association-toggle data-case-association-summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-offset-2 [&::-webkit-details-marker]:hidden">
+          <summary data-case-association-toggle data-case-association-summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-offset-2 [&::-webkit-details-marker]:hidden">
+            <span aria-hidden="true" className="material-symbols-outlined shrink-0 text-[18px] text-slate-500 transition-transform group-open:rotate-90 motion-reduce:transition-none">chevron_right</span>
             <span className="min-w-0">
               <span className="block text-sm font-black text-slate-950">{text.title}</span>
               <span className="mt-0.5 block truncate text-xs font-semibold text-slate-600">{parties.length} {text.people} · {currentProperty?.name ?? text.propertyEmpty}</span>
             </span>
-            <span className="shrink-0 rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-black text-slate-700">{text.expand}</span>
           </summary>
           <div className="mt-3">{associationContent}</div>
         </details>
