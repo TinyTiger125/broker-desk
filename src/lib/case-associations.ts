@@ -173,11 +173,34 @@ export function writeCaseAssociationData(
     primaryPartyName?: string;
     propertyName?: string;
     previousPrimaryPartyName?: string;
+    previousPrimaryPropertyName?: string;
   },
 ): Record<string, unknown> {
   const next = { ...confirmedData };
-  const previousPrimaryPartyId = getPrimaryPartyId(readCaseAssociationDraft(confirmedData));
+  const previousAssociation = readCaseAssociationDraft(confirmedData);
+  const previousPrimaryPartyId = getPrimaryPartyId(previousAssociation);
+  const existingApplicantName = typeof confirmedData["applicant.name"] === "string"
+    ? confirmedData["applicant.name"].trim()
+    : "";
+  const previousPrimaryPartyName = names.previousPrimaryPartyName?.trim() ?? "";
   const workbenchStatuses = confirmedData["__workbenchFieldStatuses"];
+  const applicantNameMatchesPreviousPrimary = Boolean(
+    previousPrimaryPartyId &&
+    previousPrimaryPartyName &&
+    existingApplicantName === previousPrimaryPartyName,
+  );
+  const existingPropertyName = typeof confirmedData["property.name"] === "string"
+    ? confirmedData["property.name"].trim()
+    : "";
+  const previousPrimaryPropertyName = names.previousPrimaryPropertyName?.trim() ?? "";
+  const propertyNameWasEdited = workbenchStatuses && typeof workbenchStatuses === "object"
+    ? (workbenchStatuses as Record<string, unknown>)["property.name"] === "edited"
+    : false;
+  const propertyNameMatchesPreviousProperty = Boolean(
+    previousAssociation.primaryPropertyId &&
+    previousPrimaryPropertyName &&
+    existingPropertyName === previousPrimaryPropertyName,
+  );
   const applicantNameWasEdited = workbenchStatuses && typeof workbenchStatuses === "object"
     ? (workbenchStatuses as Record<string, unknown>)["applicant.name"] === "edited"
     : false;
@@ -185,10 +208,31 @@ export function writeCaseAssociationData(
   next[ASSOCIATED_PARTIES_KEY] = draft.parties.map((party) => ({ partyId: party.partyId, roles: [...party.roles] }));
   if (draft.primaryPropertyId) {
     next[PRIMARY_PROPERTY_KEY] = draft.primaryPropertyId;
-    if (names.propertyName) next["property.name"] = names.propertyName;
+    const propertyAssociationChanged = previousAssociation.primaryPropertyId !== draft.primaryPropertyId;
+    if (
+      names.propertyName &&
+      (!existingPropertyName || (
+        propertyAssociationChanged &&
+        !propertyNameWasEdited &&
+        propertyNameMatchesPreviousProperty
+      ))
+    ) {
+      next["property.name"] = names.propertyName;
+    }
   } else {
     delete next[PRIMARY_PROPERTY_KEY];
-    delete next["property.name"];
+    // A case can contain a manually confirmed property name before its
+    // association is saved.  Saving only a person association must not erase
+    // that independent case value.  When a property was previously linked,
+    // an empty draft represents the explicit unlink action and may clear the
+    // association-derived name.
+    if (
+      names.previousPrimaryPropertyName &&
+      !propertyNameWasEdited &&
+      next["property.name"] === names.previousPrimaryPropertyName
+    ) {
+      delete next["property.name"];
+    }
   }
   const primaryParty = draft.parties.find((party) => party.roles.includes("主要申请人"));
   if (primaryParty) {
@@ -196,7 +240,12 @@ export function writeCaseAssociationData(
     // Case-field edits are independent from association edits. Populate the
     // canonical master-data name only when a new primary party is assigned;
     // changing only the property or another role must retain the case value.
-    if (previousPrimaryPartyId !== primaryParty.partyId && names.primaryPartyName) {
+    if (
+      previousPrimaryPartyId !== primaryParty.partyId &&
+      names.primaryPartyName &&
+      (!existingApplicantName || applicantNameMatchesPreviousPrimary) &&
+      !applicantNameWasEdited
+    ) {
       next["applicant.name"] = names.primaryPartyName;
     }
   } else {

@@ -461,10 +461,15 @@ export async function listHubServiceRequests(context: HubQueryContext = {}): Pro
   return items.sort((a, b) => (b.occurredAt?.getTime() ?? 0) - (a.occurredAt?.getTime() ?? 0));
 }
 
-export async function listHubImportJobs(context: HubQueryContext = {}, locale: Locale = "ja"): Promise<HubImportJobItem[]> {
+export async function listHubImportJobs(
+  context: HubQueryContext = {},
+  locale: Locale = "ja",
+  limit: number | null = 100,
+  updatedSince?: Date,
+): Promise<HubImportJobItem[]> {
   const resolved = await resolveHubContext(context);
   if (!resolved) return [];
-  return (await listImportJobs(resolved.userId, 100, resolved.tenantId)).map((item) => ({
+  return (await listImportJobs(resolved.userId, limit, resolved.tenantId, updatedSince)).map((item) => ({
     ...localizeDemoImportJob(locale, item),
     updatedAt: item.updatedAt,
   }));

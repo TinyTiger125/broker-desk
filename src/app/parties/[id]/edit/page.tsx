@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { updatePartyProfileAction } from "@/app/actions";
-import { PartyProfileForm, PartyProfileReadOnly } from "@/components/party-profile-form";
+import { updateClientProfileAction } from "@/app/actions";
+import { ClientForm, type ClientFormDefaults } from "@/components/client-form";
 import { PageFlashBanner } from "@/components/page-flash-banner";
 import { ObjectAttachmentSection } from "@/components/object-attachment-section";
 import { PartyAttachmentDisclosure } from "@/components/party-attachment-disclosure";
 import { getClientDetailForContext } from "@/lib/data";
 import { getLocale, type Locale } from "@/lib/locale";
-import { extractPartyProfileFromNotes, normalizePartyReturnTo } from "@/lib/party-profile";
+import { extractFreeformPartyNote, extractPartyProfileFromNotes, normalizePartyReturnTo } from "@/lib/party-profile";
 import { getTenantCapability, requireTenantSession } from "@/lib/tenant-session";
 import { capabilityHasTenantPermission } from "@/lib/tenant-permissions";
 import { createRequestContext } from "@/lib/visibility-resolver";
@@ -39,13 +39,50 @@ export default async function EditPartyPage({ params, searchParams }: EditPartyP
   const capabilityCanWrite = session.membership.status === "active"
     && capabilityHasTenantPermission(getTenantCapability(session.membership), "record.update");
   const canEdit = visible.resolution.canWrite && capabilityCanWrite;
-  const readOnlyReason = visible.resolution.outcome === "company_read" ? "company_read" : "owner_read_only";
   const query = (await searchParams) ?? {};
   const returnTo = normalizePartyReturnTo(query.returnTo);
   const text = copy[locale];
   const meta = extractPartyProfileFromNotes(client.notes);
   const flashMessage = query.flash === "party_updated" ? text.updated : query.flash === "object_attachment_uploaded" ? text.attachmentUploaded : undefined;
   const attachments = await listLinkedObjectAttachments({ tenantId: session.tenant.id, targetType: "party", targetId: client.id });
+  const profileDefaults: ClientFormDefaults = {
+    clientId: client.id,
+    name: client.name,
+    phone: client.phone,
+    email: client.email,
+    lineId: client.lineId,
+    furigana: client.furigana,
+    birthDate: client.birthDate,
+    gender: client.gender,
+    currentPostalCode: client.currentPostalCode,
+    currentAddress: client.currentAddress,
+    employerName: client.employerName,
+    employerAddress: client.employerAddress,
+    employerPhone: client.employerPhone,
+    annualIncome: client.annualIncome,
+    annualIncomeAsOf: client.annualIncomeAsOf,
+    annualIncomeSource: client.annualIncomeSource,
+    budgetMin: client.budgetMin,
+    budgetMax: client.budgetMax,
+    budgetType: client.budgetType,
+    preferredArea: client.preferredArea,
+    firstChoiceArea: client.firstChoiceArea,
+    secondChoiceArea: client.secondChoiceArea,
+    purpose: client.purpose,
+    loanPreApprovalStatus: client.loanPreApprovalStatus,
+    desiredMoveInPeriod: client.desiredMoveInPeriod,
+    stage: client.stage,
+    temperature: client.temperature,
+    brokerageContractType: client.brokerageContractType,
+    brokerageContractSignedAt: client.brokerageContractSignedAt,
+    brokerageContractExpiresAt: client.brokerageContractExpiresAt,
+    importantMattersExplainedAt: client.importantMattersExplainedAt,
+    contractDocumentDeliveredAt: client.contractDocumentDeliveredAt,
+    personalInfoConsentAt: client.personalInfoConsentAt,
+    amlCheckStatus: client.amlCheckStatus,
+    nextFollowUpAt: client.nextFollowUpAt,
+    notes: extractFreeformPartyNote(client.notes),
+  };
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 pb-12">
@@ -66,34 +103,20 @@ export default async function EditPartyPage({ params, searchParams }: EditPartyP
             </PartyAttachmentDisclosure>
           </div>
         </div>
-        <Link href={returnTo} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">{text.back}</Link>
+        <div className="flex flex-wrap items-center gap-2"><Link href={`/relationship-tree?type=client&id=${encodeURIComponent(client.id)}`} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">{text.relationTree}</Link><Link href={returnTo} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">{text.back}</Link></div>
       </header>
       <PageFlashBanner message={flashMessage} />
-      {canEdit ? <PartyProfileForm
-          action={updatePartyProfileAction}
-          locale={locale as Locale}
-          returnTo={returnTo}
-          relationTreeHref={`/relationship-tree?type=party&id=${encodeURIComponent(client.id)}`}
-          defaults={{
-            partyId: client.id,
-            name: client.name,
-            phone: client.phone,
-            email: client.email,
-            lineId: client.lineId,
-            partyType: meta.type,
-          }}
-        /> : <PartyProfileReadOnly
-          locale={locale as Locale}
-          reason={readOnlyReason}
-          defaults={{
-            name: client.name,
-            phone: client.phone,
-            email: client.email,
-            lineId: client.lineId,
-            partyType: meta.type,
-            partyRole: meta.role,
-          }}
-        />}
+      <ClientForm
+        action={updateClientProfileAction}
+        locale={locale as Locale}
+        mode="edit"
+        returnTo={returnTo}
+        submitReturnTo={`/parties/${encodeURIComponent(client.id)}/edit`}
+        partyMeta={{ type: meta.type }}
+        readOnly={!canEdit}
+        hideActions={!canEdit}
+        defaults={profileDefaults}
+      />
     </div>
   );
 }

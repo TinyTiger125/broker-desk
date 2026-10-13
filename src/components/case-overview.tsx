@@ -444,6 +444,7 @@ export function CaseFieldInput({
   tone = "default",
   required = false,
   readOnly = false,
+  controlClassName,
 }: {
   name: string;
   value: string;
@@ -453,8 +454,10 @@ export function CaseFieldInput({
   tone?: "default" | "attention";
   required?: boolean;
   readOnly?: boolean;
+  controlClassName?: string;
 }) {
   const spec = inputSpec;
+  const controlClasses = `${inputClass(tone, readOnly)}${controlClassName ? ` ${controlClassName}` : ""}`;
   const placeholder = spec.placeholder?.[locale];
   const currentOptionExists = spec.options?.some((option) => option === value);
   const dateTextRef = useRef<HTMLInputElement>(null);
@@ -462,11 +465,23 @@ export function CaseFieldInput({
 
   if (spec.kind === "select") {
     return (
-      <select name={name} defaultValue={value} aria-label={label} required={required} disabled={readOnly} data-case-validation={spec.validation?.replaceAll("_", "-")} className={inputClass(tone, readOnly)}>
-        <option value="">{locale === "zh" ? "未填写" : locale === "ko" ? "미입력" : "未入力"}</option>
-        {value && !currentOptionExists ? <option value={value}>{value}</option> : null}
-        {spec.options?.map((option) => <option key={option} value={option}>{option}</option>)}
-      </select>
+      <>
+        <select
+          name={name}
+          defaultValue={value}
+          aria-label={label}
+          aria-readonly={readOnly || undefined}
+          required={required}
+          disabled={readOnly}
+          data-case-validation={spec.validation?.replaceAll("_", "-")}
+          className={controlClasses}
+        >
+          <option value="">{locale === "zh" ? "未填写" : locale === "ko" ? "미입력" : "未入力"}</option>
+          {value && !currentOptionExists ? <option value={value}>{value}</option> : null}
+          {spec.options?.map((option) => <option key={option} value={option}>{option}</option>)}
+        </select>
+        {readOnly ? <input type="hidden" name={name} value={value} readOnly /> : null}
+      </>
     );
   }
 
@@ -492,7 +507,7 @@ export function CaseFieldInput({
           data-case-date-validation-message={dateValidationMessage}
           defaultValue={formatCaseDateForDisplay(value)}
           placeholder={placeholder}
-          className={`${inputClass(tone, readOnly)} pr-14`}
+          className={`${controlClasses} pr-14`}
           onBlur={(event) => {
             const formatted = parseCaseDateInput(event.currentTarget.value)?.display;
             if (formatted) event.currentTarget.value = formatted;
@@ -545,7 +560,7 @@ export function CaseFieldInput({
         data-validation-message={spec.validation === "japanese_postal_code" ? locale === "zh" ? "日本邮政编码必须为7位数字。" : locale === "ko" ? "일본 우편번호는 7자리로 입력해 주세요." : "日本の郵便番号は7桁で入力してください。" : undefined}
         defaultValue={value}
         placeholder={placeholder}
-        className={`${inputClass(tone, readOnly)} ${spec.unit ? "pr-14" : ""}`}
+        className={`${controlClasses} ${spec.unit ? "pr-14" : ""}`}
       />
       {spec.unit ? <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs font-bold text-slate-500">{spec.unit}</span> : null}
     </span>

@@ -166,8 +166,11 @@ export function GuaranteeTemplateSelector({
   if (!selectedTemplate) return null;
 
   return (
-    <div className="grid min-w-0 gap-4 p-4 xl:grid-cols-[minmax(0,1fr)_minmax(24rem,32rem)]">
-      <div className="grid content-start gap-2 sm:grid-cols-2">
+    <div
+      className="grid min-w-0 gap-4 p-4"
+      style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 32rem), 1fr))" }}
+    >
+      <div className={`grid min-w-0 content-start gap-2 ${templates.length > 1 ? "sm:grid-cols-2" : "grid-cols-1"}`}>
         {templates.map((template) => {
           const selected = template.id === selectedTemplate.id;
           const statusLabel = template.missingCount > 0 ? `${labels.missing}: ${template.missingCount}` : labels.ready;
@@ -177,7 +180,7 @@ export function GuaranteeTemplateSelector({
               type="button"
               aria-pressed={selected}
               onClick={() => selectTemplate(template.id)}
-              className={`group min-h-28 rounded border p-3 text-left transition focus:outline-none focus:ring-2 focus:ring-[#1960a3] focus:ring-offset-2 ${
+              className={`group min-h-28 min-w-0 rounded border p-3 text-left transition focus:outline-none focus:ring-2 focus:ring-[#1960a3] focus:ring-offset-2 ${
                 selected
                   ? "border-[#1960a3] bg-blue-50 ring-1 ring-[#1960a3]"
                   : "border-slate-200 bg-white hover:border-[#1960a3] hover:bg-slate-50"
@@ -205,14 +208,14 @@ export function GuaranteeTemplateSelector({
                   {statusLabel}
                 </span>
               </div>
-              <h3 className="mt-3 truncate text-base font-black text-slate-950">{template.companyDisplayName}</h3>
-              <p className="mt-1 truncate text-xs font-semibold text-slate-600">{template.companyLegalName}</p>
+              <h3 className="mt-3 break-words text-base font-black leading-5 text-slate-950 [overflow-wrap:anywhere]">{template.companyDisplayName}</h3>
+              <p className="mt-1 break-words text-xs font-semibold leading-4 text-slate-600 [overflow-wrap:anywhere]">{template.companyLegalName}</p>
             </button>
           );
         })}
       </div>
 
-      <section className="overflow-hidden rounded border border-slate-300 bg-white">
+      <section className="min-w-0 overflow-hidden rounded border border-slate-300 bg-white">
         <div className="flex min-h-12 items-center justify-between gap-3 border-b border-slate-200 px-3 py-2">
           <h3 className="truncate text-sm font-black text-slate-950">
             {selectedTemplate.companyDisplayName} {labels.preview}

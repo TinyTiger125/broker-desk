@@ -35,6 +35,7 @@ require.extensions[".tsx"] = compileTypeScript;
 
 const { writeCaseAssociationData } = require(resolve(root, "src/lib/case-associations.ts"));
 const actionsSource = readFileSync(resolve(root, "src/app/actions.ts"), "utf8");
+const casePageSource = readFileSync(resolve(root, "src/app/cases/[id]/page.tsx"), "utf8");
 const associationActionSource = actionsSource.slice(actionsSource.indexOf("export async function saveCaseAssociationsAction"));
 assert(
   associationActionSource.includes('if (primaryPartyId && !primaryParty?.name?.trim())'),
@@ -43,6 +44,14 @@ assert(
 assert(
   associationActionSource.indexOf('if (primaryPartyId && !primaryParty?.name?.trim())') < associationActionSource.indexOf("updateBrokerageCaseConfirmedData"),
   "empty-name rejection occurs before the association update write",
+);
+assert(
+  casePageSource.includes("result?.record && result.resolution.canWrite"),
+  "read-only associated properties must not receive editable profile defaults",
+);
+assert(
+  casePageSource.includes("updatePropertyAction={canWriteCase && associatedPropertyResult?.resolution.canWrite ? updatePropertyProfileInlineAction : undefined}"),
+  "read-only associated properties must not receive an inline edit action",
 );
 
 const party = (partyId, roles) => ({ partyId, roles });
@@ -55,6 +64,40 @@ const propertyOnly = writeCaseAssociationData(
   { propertyName: "H010 Synthetic Property" },
 );
 assert.equal(propertyOnly["applicant.name"], "Neo Test H009", "property-only association retains applicant name");
+
+// A case may already contain a confirmed applicant name before its first
+// association is saved.  Adding the master record must not silently replace
+// that case value.
+const firstAssociation = writeCaseAssociationData(
+  { "applicant.name": "已确认申请人" },
+  { parties: [party("person-b", ["主要申请人"])], primaryPropertyId: "prop-h010" },
+  { primaryPartyName: "主档申请人", propertyName: "主档物件" },
+);
+assert.equal(firstAssociation["applicant.name"], "已确认申请人", "first association retains an existing applicant value");
+
+// The same protection applies to a confirmed property value.  A linked
+// property's canonical name can replace an association-derived old value,
+// but not an independently edited value.
+const firstPropertyAssociation = writeCaseAssociationData(
+  { "property.name": "已确认物件" },
+  { parties: [], primaryPropertyId: "prop-h011" },
+  { propertyName: "主档物件" },
+);
+assert.equal(firstPropertyAssociation["property.name"], "已确认物件", "first association retains an existing property value");
+
+const switchedProperty = writeCaseAssociationData(
+  { __primaryPropertyId: "prop-h010", "property.name": "旧主档物件" },
+  { parties: [], primaryPropertyId: "prop-h011" },
+  { propertyName: "新主档物件", previousPrimaryPropertyName: "旧主档物件" },
+);
+assert.equal(switchedProperty["property.name"], "新主档物件", "property switch adopts a previous canonical value");
+
+const retainedEditedProperty = writeCaseAssociationData(
+  { __primaryPropertyId: "prop-h010", "property.name": "案件编辑物件", __workbenchFieldStatuses: { "property.name": "edited" } },
+  { parties: [], primaryPropertyId: "prop-h011" },
+  { propertyName: "新主档物件", previousPrimaryPropertyName: "旧主档物件" },
+);
+assert.equal(retainedEditedProperty["property.name"], "案件编辑物件", "edited property value is retained on switch");
 
 // Changing only the property for the same primary applicant must retain both
 // canonical and manually edited case values.
@@ -88,6 +131,28 @@ const removedEdited = writeCaseAssociationData(
   { previousPrimaryPartyName: "Person A" },
 );
 assert.equal(removedEdited["applicant.name"], "Neo Edited", "removing primary retains independently edited value");
+
+// Explicitly unlinking a property clears only the association-derived name.
+const removedCanonicalProperty = writeCaseAssociationData(
+  { __primaryPropertyId: "prop-h010", "property.name": "旧主档物件" },
+  { parties: [], primaryPropertyId: undefined },
+  { previousPrimaryPropertyName: "旧主档物件" },
+);
+assert.equal(removedCanonicalProperty["property.name"], undefined, "removing primary clears matching association-derived property name");
+
+const removedEditedProperty = writeCaseAssociationData(
+  { __primaryPropertyId: "prop-h010", "property.name": "案件编辑物件", __workbenchFieldStatuses: { "property.name": "edited" } },
+  { parties: [], primaryPropertyId: undefined },
+  { previousPrimaryPropertyName: "旧主档物件" },
+);
+assert.equal(removedEditedProperty["property.name"], "案件编辑物件", "removing primary retains independently edited property name");
+
+const removedSameValueEditedProperty = writeCaseAssociationData(
+  { __primaryPropertyId: "prop-h010", "property.name": "旧主档物件", __workbenchFieldStatuses: { "property.name": "edited" } },
+  { parties: [], primaryPropertyId: undefined },
+  { previousPrimaryPropertyName: "旧主档物件" },
+);
+assert.equal(removedSameValueEditedProperty["property.name"], "旧主档物件", "edited property value equal to canonical name is retained");
 
 const removedSameValueEdited = writeCaseAssociationData(
   { __primaryPartyId: "person-a", "applicant.name": "Person A", __workbenchFieldStatuses: { "applicant.name": "edited" } },

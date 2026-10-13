@@ -85,6 +85,7 @@ import type {
   TenantStatus,
   User,
   AuditLog,
+  RecentPropertyActivity,
   CaseWorkbenchFieldRule,
   CaseWorkbenchFieldRuleInput,
   GuaranteeTemplateLayoutVersion,
@@ -208,6 +209,7 @@ const REQUIRED_PRODUCTION_MIGRATIONS = [
   "20260924_004_official_template_publish.sql",
   "20261002_001_invitation_delivery_claim.sql",
   "20261008_001_closed_beta_atomic_provisioning.sql",
+  "20261012_002_unified_profiles.sql",
 ] as const;
 
 const OPEN_STAGES: ClientStage[] = ["lead", "contacted", "quoted", "viewing", "negotiating"];
@@ -365,6 +367,29 @@ function toDate(value: unknown): Date | undefined {
   const date = value instanceof Date ? value : new Date(String(value));
   if (Number.isNaN(date.getTime())) return undefined;
   return date;
+}
+
+/** Preserve a SQL DATE as a calendar date instead of interpreting it as UTC midnight. */
+function toDateOnly(value: unknown): Date | undefined {
+  if (value == null) return undefined;
+  if (typeof value === "string") {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    if (match) return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  }
+  const date = value instanceof Date ? value : new Date(String(value));
+  if (Number.isNaN(date.getTime())) return undefined;
+  const usesUtcMidnight = date.getUTCHours() === 0 && date.getUTCMinutes() === 0 && date.getUTCSeconds() === 0 && date.getUTCMilliseconds() === 0 && date.getHours() !== 0;
+  return usesUtcMidnight
+    ? new Date(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())
+    : new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function toSqlDateOnly(value?: Date): string | null {
+  if (!value) return null;
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function resolveTenantId(tenantId?: string): string {
@@ -691,6 +716,17 @@ function mapClient(row: Record<string, unknown>): Client {
     phone: String(row.phone),
     lineId: row.line_id ? String(row.line_id) : undefined,
     email: row.email ? String(row.email) : undefined,
+    furigana: row.furigana ? String(row.furigana) : undefined,
+    birthDate: toDateOnly(row.birth_date),
+    gender: row.gender ? String(row.gender) : undefined,
+    currentPostalCode: row.current_postal_code ? String(row.current_postal_code) : undefined,
+    currentAddress: row.current_address ? String(row.current_address) : undefined,
+    employerName: row.employer_name ? String(row.employer_name) : undefined,
+    employerAddress: row.employer_address ? String(row.employer_address) : undefined,
+    employerPhone: row.employer_phone ? String(row.employer_phone) : undefined,
+    annualIncome: row.annual_income != null ? Number(row.annual_income) : undefined,
+    annualIncomeAsOf: toDateOnly(row.annual_income_as_of),
+    annualIncomeSource: row.annual_income_source ? String(row.annual_income_source) : undefined,
     budgetMin: row.budget_min != null ? Number(row.budget_min) : undefined,
     budgetMax: row.budget_max != null ? Number(row.budget_max) : undefined,
     budgetType: (row.budget_type ? String(row.budget_type) : "total_price") as BudgetType,
@@ -732,7 +768,13 @@ function mapProperty(row: Record<string, unknown>): Property {
     name: String(row.name),
     area: row.area ? String(row.area) : undefined,
     address: row.address ? String(row.address) : undefined,
+    furigana: row.furigana ? String(row.furigana) : undefined,
+    roomNumber: row.room_number ? String(row.room_number) : undefined,
+    postalCode: row.postal_code ? String(row.postal_code) : undefined,
+    usage: row.usage ? String(row.usage) : undefined,
     listingPrice: Number(row.listing_price ?? 0),
+    listingRent: row.listing_rent != null ? Number(row.listing_rent) : undefined,
+    listingCommonFee: row.listing_common_fee != null ? Number(row.listing_common_fee) : undefined,
     sizeSqm: row.size_sqm != null ? Number(row.size_sqm) : undefined,
     managementFee: row.management_fee != null ? Number(row.management_fee) : undefined,
     repairFee: row.repair_fee != null ? Number(row.repair_fee) : undefined,
@@ -1316,6 +1358,17 @@ async function ensureSchemaLegacyForUnversionedDevelopment() {
       phone TEXT NOT NULL,
       line_id TEXT,
       email TEXT,
+      furigana TEXT,
+      birth_date DATE,
+      gender TEXT,
+      current_postal_code TEXT,
+      current_address TEXT,
+      employer_name TEXT,
+      employer_address TEXT,
+      employer_phone TEXT,
+      annual_income INTEGER,
+      annual_income_as_of DATE,
+      annual_income_source TEXT,
       budget_min INTEGER,
       budget_max INTEGER,
       budget_type TEXT NOT NULL DEFAULT 'total_price',
@@ -1348,7 +1401,13 @@ async function ensureSchemaLegacyForUnversionedDevelopment() {
       name TEXT NOT NULL,
       area TEXT,
       address TEXT,
+      furigana TEXT,
+      room_number TEXT,
+      postal_code TEXT,
+      usage TEXT,
       listing_price INTEGER NOT NULL,
+      listing_rent INTEGER,
+      listing_common_fee INTEGER,
       size_sqm DOUBLE PRECISION,
       management_fee INTEGER,
       repair_fee INTEGER,
@@ -3583,15 +3642,27 @@ export async function getOutputTemplateVersionById(input: {
   return result.rows[0] ? mapOutputTemplateVersion(result.rows[0]) : null;
 }
 
-export async function listImportJobs(userId: string, limit = 50, tenantId?: string): Promise<ImportJob[]> {
+export async function listImportJobs(
+  userId: string,
+  limit: number | null = 50,
+  tenantId?: string,
+  updatedSince?: Date,
+): Promise<ImportJob[]> {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(tenantId);
+  const values: Array<string | number> = [userId, scopeTenantId];
+  let parameterIndex = 3;
+  const updatedSinceClause = updatedSince ? `\n     AND updated_at >= $${parameterIndex++}` : "";
+  if (updatedSince) values.push(updatedSince.toISOString());
+  const limitClause = limit === null ? "" : `\n     LIMIT $${parameterIndex++}`;
+  if (limit !== null) values.push(Math.max(0, limit));
   const result = await getPool().query(
     `SELECT * FROM import_jobs
      WHERE user_id = $1 AND tenant_id = $2
+     ${updatedSinceClause}
      ORDER BY created_at DESC
-     LIMIT $3`,
-    [userId, scopeTenantId, limit]
+     ${limitClause}`,
+    values,
   );
   return result.rows.map(mapImportJob);
 }
@@ -3906,22 +3977,27 @@ export async function listBrokerageCasesForContext(input: {
   context: RequestContext;
   limit?: number;
   lifecycleStatus?: LifecycleFilter;
+  updatedSince?: Date;
 }): Promise<VisibleBrokerageCase[]> {
   return withPostgresAuthContext(input.context.externalAuthSubject, async () => {
     await ensureSchema();
     const lifecycleStatus = input.lifecycleStatus ?? "active";
-    const limitClause = input.limit === undefined ? "" : " LIMIT $3";
+    const values: Array<string | number> = [input.context.tenantId, lifecycleStatus];
+    let parameterIndex = 3;
+    const updatedSinceClause = input.updatedSince ? `\n         AND updated_at >= $${parameterIndex++}` : "";
+    if (input.updatedSince) values.push(input.updatedSince.toISOString());
+    const limitClause = input.limit === undefined ? "" : ` LIMIT $${parameterIndex++}`;
+    if (input.limit !== undefined) values.push(Math.max(1, input.limit));
     const result = await getPool().query(
       `SELECT * FROM brokerage_cases
        WHERE tenant_id = $1
          AND owner_resolution_status = 'resolved'
          AND current_owner_user_id IS NOT NULL
          AND ($2 = 'all' OR lifecycle_status = $2)
+         ${updatedSinceClause}
        ORDER BY updated_at DESC
        ${limitClause}`,
-      input.limit === undefined
-        ? [input.context.tenantId, lifecycleStatus]
-        : [input.context.tenantId, lifecycleStatus, Math.max(1, input.limit)],
+      values,
     );
     return result.rows.flatMap((row) => {
       const brokerageCase = mapBrokerageCase(row);
@@ -5646,9 +5722,15 @@ export async function listClientsForContext(input: {
   return withPostgresAuthContext(input.context.externalAuthSubject, async () => {
     await ensureSchema();
     const filter = input.filter ?? {};
+    const clientValues: string[] = [input.context.tenantId];
+    const updatedSinceClause = filter.updatedSince ? " AND updated_at >= $2" : "";
+    if (filter.updatedSince) clientValues.push(filter.updatedSince.toISOString());
     const result = await getPool().query(
-      "SELECT * FROM clients WHERE tenant_id = $1 AND owner_resolution_status = 'resolved' AND current_owner_user_id IS NOT NULL",
-      [input.context.tenantId],
+      `SELECT * FROM clients
+       WHERE tenant_id = $1
+         AND owner_resolution_status = 'resolved'
+         AND current_owner_user_id IS NOT NULL${updatedSinceClause}`,
+      clientValues,
     );
     let clients = result.rows.flatMap((row) => {
       const item = mapClient(row);
@@ -5795,13 +5877,20 @@ export async function getWorkCenterSnapshotForContext(input: {
 export async function listPropertiesForContext(input: {
   context: RequestContext;
   lifecycleStatus?: LifecycleFilter;
+  createdSince?: Date;
 }): Promise<VisibleProperty[]> {
   return withPostgresAuthContext(input.context.externalAuthSubject, async () => {
     await ensureSchema();
     const lifecycleStatus = input.lifecycleStatus ?? "active";
+    const propertyValues: Array<string> = [input.context.tenantId, lifecycleStatus];
+    const createdSinceClause = input.createdSince ? " AND created_at >= $3" : "";
+    if (input.createdSince) propertyValues.push(input.createdSince.toISOString());
     const result = await getPool().query(
-      "SELECT * FROM properties WHERE tenant_id = $1 AND ($2 = 'all' OR lifecycle_status = $2) ORDER BY created_at DESC",
-      [input.context.tenantId, lifecycleStatus],
+      `SELECT * FROM properties
+       WHERE tenant_id = $1
+         AND ($2 = 'all' OR lifecycle_status = $2)${createdSinceClause}
+       ORDER BY created_at DESC`,
+      propertyValues,
     );
     return result.rows.flatMap((row) => {
       const property = mapProperty(row);
@@ -5814,6 +5903,66 @@ export async function listPropertiesForContext(input: {
       });
       return resolution.canRead ? [{ property, resolution }] : [];
     });
+  });
+}
+
+/**
+ * Property rows do not have updated_at. Use the tenant audit trail for
+ * supported property-changing actions, then apply the same record visibility
+ * resolver before returning anything to the page.
+ */
+export async function listRecentPropertyActivitiesForContext(input: {
+  context: RequestContext;
+  since: Date;
+  limit?: number;
+}): Promise<RecentPropertyActivity[]> {
+  return withPostgresAuthContext(input.context.externalAuthSubject, async () => {
+    await ensureSchema();
+    const limit = input.limit === undefined ? undefined : Math.max(1, Math.trunc(input.limit));
+    const result = await getPool().query(
+      `WITH latest_property_activity AS (
+         SELECT DISTINCT ON (a.target_id)
+             p.*,
+             a.created_at AS property_activity_at,
+             a.action AS property_activity_action
+          FROM audit_logs AS a
+          JOIN properties AS p
+            ON p.id = a.target_id
+           AND p.tenant_id = a.tenant_id
+         WHERE a.tenant_id = $1
+           AND a.target_type = 'property'
+           AND a.action = ANY($2::text[])
+           AND a.created_at >= $3
+           AND COALESCE(p.lifecycle_status, 'active') = 'active'
+         ORDER BY a.target_id, a.created_at DESC, a.id DESC
+       )
+       SELECT *
+       FROM latest_property_activity
+       ORDER BY property_activity_at DESC, id DESC`,
+      [
+        input.context.tenantId,
+        ["property_created", "property_updated", "object_import_confirm", "record_archived", "record_restored"],
+        input.since.toISOString(),
+      ],
+    );
+    return result.rows
+      .map((row) => {
+        const property = mapProperty(row);
+        const resolution = resolveRecordVisibility(input.context, {
+          ...property,
+          tenantId: row.tenant_id == null ? null : String(row.tenant_id),
+          currentOwnerUserId: row.current_owner_user_id == null ? null : String(row.current_owner_user_id),
+          visibilityScope: row.visibility_scope,
+          ownerResolutionStatus: row.owner_resolution_status,
+        });
+        const changedAt = toDate(row.property_activity_at);
+        return resolution.canRead && changedAt
+          ? { property, resolution, changedAt, action: String(row.property_activity_action) }
+          : null;
+      })
+      .filter((item): item is RecentPropertyActivity => item !== null)
+      .sort((a, b) => b.changedAt.getTime() - a.changedAt.getTime() || a.property.id.localeCompare(b.property.id))
+      .slice(0, limit);
   });
 }
 
@@ -6124,7 +6273,13 @@ export async function addProperty(input: {
   name: string;
   area?: string;
   address?: string;
+  furigana?: string;
+  roomNumber?: string;
+  postalCode?: string;
+  usage?: string;
   listingPrice: number;
+  listingRent?: number;
+  listingCommonFee?: number;
   sizeSqm?: number;
   managementFee?: number;
   repairFee?: number;
@@ -6138,9 +6293,9 @@ export async function addProperty(input: {
     : "private";
   const result = await getPool().query(
     `INSERT INTO properties (
-      id, tenant_id, name, area, address, listing_price, size_sqm, management_fee, repair_fee, notes,
+      id, tenant_id, name, area, address, furigana, room_number, postal_code, usage, listing_price, listing_rent, listing_common_fee, size_sqm, management_fee, repair_fee, notes,
       created_by_user_id, current_owner_user_id, visibility_scope, owner_resolution_status
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
     RETURNING *`,
     [
       genId("prop"),
@@ -6148,7 +6303,13 @@ export async function addProperty(input: {
       input.name,
       input.area ?? null,
       input.address ?? null,
+      input.furigana ?? null,
+      input.roomNumber ?? null,
+      input.postalCode ?? null,
+      input.usage ?? null,
       input.listingPrice,
+      input.listingRent ?? null,
+      input.listingCommonFee ?? null,
       input.sizeSqm ?? null,
       input.managementFee ?? null,
       input.repairFee ?? null,
@@ -6179,7 +6340,13 @@ export async function updateProperty(
     name: string;
     area?: string;
     address?: string;
+    furigana?: string;
+    roomNumber?: string;
+    postalCode?: string;
+    usage?: string;
     listingPrice: number;
+    listingRent?: number;
+    listingCommonFee?: number;
     sizeSqm?: number;
     managementFee?: number;
     repairFee?: number;
@@ -6189,16 +6356,34 @@ export async function updateProperty(
   assertNoForbiddenRecordInput(input, { allowTenantId: true });
   await ensureSchema();
   const scopeTenantId = resolveTenantId(input.tenantId);
+  const existing = await getPool().query("SELECT furigana, room_number, postal_code, usage, listing_rent, listing_common_fee FROM properties WHERE id = $1 AND tenant_id = $2 LIMIT 1", [propertyId, scopeTenantId]);
+  if (!existing.rows[0]) return null;
+  const existingProperty = existing.rows[0] as Record<string, unknown>;
+  const hasInput = (key: string) => Object.prototype.hasOwnProperty.call(input, key);
+  const profileValues = {
+    furigana: hasInput("furigana") ? input.furigana ?? null : existingProperty.furigana ?? null,
+    roomNumber: hasInput("roomNumber") ? input.roomNumber ?? null : existingProperty.room_number ?? null,
+    postalCode: hasInput("postalCode") ? input.postalCode ?? null : existingProperty.postal_code ?? null,
+    usage: hasInput("usage") ? input.usage ?? null : existingProperty.usage ?? null,
+    listingRent: hasInput("listingRent") ? input.listingRent ?? null : existingProperty.listing_rent ?? null,
+    listingCommonFee: hasInput("listingCommonFee") ? input.listingCommonFee ?? null : existingProperty.listing_common_fee ?? null,
+  };
   const result = await getPool().query(
     `UPDATE properties
         SET name = $3,
             area = $4,
             address = $5,
-            listing_price = $6,
-            size_sqm = $7,
-            management_fee = $8,
-            repair_fee = $9,
-            notes = $10
+            furigana = $6,
+            room_number = $7,
+            postal_code = $8,
+            usage = $9,
+            listing_price = $10,
+            listing_rent = $11,
+            listing_common_fee = $12,
+            size_sqm = $13,
+            management_fee = $14,
+            repair_fee = $15,
+            notes = $16
       WHERE id = $1 AND tenant_id = $2
       RETURNING *`,
     [
@@ -6207,7 +6392,13 @@ export async function updateProperty(
       input.name,
       input.area ?? null,
       input.address ?? null,
+      profileValues.furigana,
+      profileValues.roomNumber,
+      profileValues.postalCode,
+      profileValues.usage,
       input.listingPrice,
+      profileValues.listingRent,
+      profileValues.listingCommonFee,
       input.sizeSqm ?? null,
       input.managementFee ?? null,
       input.repairFee ?? null,
@@ -6350,6 +6541,17 @@ export async function addClient(input: {
   phone: string;
   lineId?: string;
   email?: string;
+  furigana?: string;
+  birthDate?: Date;
+  gender?: string;
+  currentPostalCode?: string;
+  currentAddress?: string;
+  employerName?: string;
+  employerAddress?: string;
+  employerPhone?: string;
+  annualIncome?: number;
+  annualIncomeAsOf?: Date;
+  annualIncomeSource?: string;
   budgetMin?: number;
   budgetMax?: number;
   budgetType: BudgetType;
@@ -6378,13 +6580,15 @@ export async function addClient(input: {
 
   const result = await getPool().query(
     `INSERT INTO clients (
-      id, tenant_id, name, phone, line_id, email, budget_min, budget_max, budget_type, preferred_area,
+      id, tenant_id, name, phone, line_id, email, furigana, birth_date, gender, current_postal_code, current_address,
+      employer_name, employer_address, employer_phone, annual_income, annual_income_as_of, annual_income_source,
+      budget_min, budget_max, budget_type, preferred_area,
       first_choice_area, second_choice_area, purpose, loan_pre_approval_status, desired_move_in_period,
       stage, temperature, brokerage_contract_type, brokerage_contract_signed_at, brokerage_contract_expires_at,
       important_matters_explained_at, contract_document_delivered_at, personal_info_consent_at, aml_check_status,
       next_follow_up_at, notes, owner_user_id, created_by_user_id, current_owner_user_id,
       visibility_scope, owner_resolution_status
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31)
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42)
     RETURNING *`,
     [
       id,
@@ -6393,6 +6597,17 @@ export async function addClient(input: {
       input.phone,
       input.lineId ?? null,
       input.email ?? null,
+      input.furigana ?? null,
+      toSqlDateOnly(input.birthDate),
+      input.gender ?? null,
+      input.currentPostalCode ?? null,
+      input.currentAddress ?? null,
+      input.employerName ?? null,
+      input.employerAddress ?? null,
+      input.employerPhone ?? null,
+      input.annualIncome ?? null,
+      toSqlDateOnly(input.annualIncomeAsOf),
+      input.annualIncomeSource ?? null,
       input.budgetMin ?? null,
       input.budgetMax ?? null,
       input.budgetType,
@@ -6432,6 +6647,17 @@ export async function updateClient(
     phone: string;
     lineId?: string;
     email?: string;
+    furigana?: string;
+    birthDate?: Date;
+    gender?: string;
+    currentPostalCode?: string;
+    currentAddress?: string;
+    employerName?: string;
+    employerAddress?: string;
+    employerPhone?: string;
+    annualIncome?: number;
+    annualIncomeAsOf?: Date;
+    annualIncomeSource?: string;
     budgetMin?: number;
     budgetMax?: number;
     budgetType: BudgetType;
@@ -6457,6 +6683,23 @@ export async function updateClient(
   assertNoForbiddenRecordInput(input, { allowTenantId: true });
   await ensureSchema();
   const scopeTenantId = resolveTenantId(input.tenantId);
+  const existing = await getPool().query("SELECT furigana, birth_date, gender, current_postal_code, current_address, employer_name, employer_address, employer_phone, annual_income, annual_income_as_of, annual_income_source FROM clients WHERE id = $1 AND tenant_id = $2 LIMIT 1", [clientId, scopeTenantId]);
+  if (!existing.rows[0]) return null;
+  const existingClient = existing.rows[0] as Record<string, unknown>;
+  const hasInput = (key: string) => Object.prototype.hasOwnProperty.call(input, key);
+  const profileValues = {
+    furigana: hasInput("furigana") ? input.furigana ?? null : existingClient.furigana ?? null,
+    birthDate: hasInput("birthDate") ? toSqlDateOnly(input.birthDate) : existingClient.birth_date ?? null,
+    gender: hasInput("gender") ? input.gender ?? null : existingClient.gender ?? null,
+    currentPostalCode: hasInput("currentPostalCode") ? input.currentPostalCode ?? null : existingClient.current_postal_code ?? null,
+    currentAddress: hasInput("currentAddress") ? input.currentAddress ?? null : existingClient.current_address ?? null,
+    employerName: hasInput("employerName") ? input.employerName ?? null : existingClient.employer_name ?? null,
+    employerAddress: hasInput("employerAddress") ? input.employerAddress ?? null : existingClient.employer_address ?? null,
+    employerPhone: hasInput("employerPhone") ? input.employerPhone ?? null : existingClient.employer_phone ?? null,
+    annualIncome: hasInput("annualIncome") ? input.annualIncome ?? null : existingClient.annual_income ?? null,
+    annualIncomeAsOf: hasInput("annualIncomeAsOf") ? toSqlDateOnly(input.annualIncomeAsOf) : existingClient.annual_income_as_of ?? null,
+    annualIncomeSource: hasInput("annualIncomeSource") ? input.annualIncomeSource ?? null : existingClient.annual_income_source ?? null,
+  };
 
   const result = await getPool().query(
     `UPDATE clients SET
@@ -6464,28 +6707,39 @@ export async function updateClient(
       phone = $3,
       line_id = $4,
       email = $5,
-      budget_min = $6,
-      budget_max = $7,
-      budget_type = $8,
-      preferred_area = $9,
-      first_choice_area = $10,
-      second_choice_area = $11,
-      purpose = $12,
-      loan_pre_approval_status = $13,
-      desired_move_in_period = $14,
-      stage = $15,
-      temperature = $16,
-      brokerage_contract_type = $17,
-      brokerage_contract_signed_at = $18,
-      brokerage_contract_expires_at = $19,
-      important_matters_explained_at = $20,
-      contract_document_delivered_at = $21,
-      personal_info_consent_at = $22,
-      aml_check_status = $23,
-      next_follow_up_at = $24,
-      notes = $25,
+      furigana = $6,
+      birth_date = $7,
+      gender = $8,
+      current_postal_code = $9,
+      current_address = $10,
+      employer_name = $11,
+      employer_address = $12,
+      employer_phone = $13,
+      annual_income = $14,
+      annual_income_as_of = $15,
+      annual_income_source = $16,
+      budget_min = $17,
+      budget_max = $18,
+      budget_type = $19,
+      preferred_area = $20,
+      first_choice_area = $21,
+      second_choice_area = $22,
+      purpose = $23,
+      loan_pre_approval_status = $24,
+      desired_move_in_period = $25,
+      stage = $26,
+      temperature = $27,
+      brokerage_contract_type = $28,
+      brokerage_contract_signed_at = $29,
+      brokerage_contract_expires_at = $30,
+      important_matters_explained_at = $31,
+      contract_document_delivered_at = $32,
+      personal_info_consent_at = $33,
+      aml_check_status = $34,
+      next_follow_up_at = $35,
+      notes = $36,
       updated_at = NOW()
-    WHERE id = $1 AND tenant_id = $26
+    WHERE id = $1 AND tenant_id = $37
     RETURNING *`,
     [
       clientId,
@@ -6493,6 +6747,17 @@ export async function updateClient(
       input.phone,
       input.lineId ?? null,
       input.email ?? null,
+      profileValues.furigana,
+      profileValues.birthDate,
+      profileValues.gender,
+      profileValues.currentPostalCode,
+      profileValues.currentAddress,
+      profileValues.employerName,
+      profileValues.employerAddress,
+      profileValues.employerPhone,
+      profileValues.annualIncome,
+      profileValues.annualIncomeAsOf,
+      profileValues.annualIncomeSource,
       input.budgetMin ?? null,
       input.budgetMax ?? null,
       input.budgetType,

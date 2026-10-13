@@ -281,6 +281,7 @@ import {
   inferPurposeFromPartyRole,
   isPartyProfileRole,
   isPartyProfileType,
+  mergePartyProfileNotes,
   mergePartyProfileMetadataNotes,
   normalizePartyReturnTo,
   type PartyProfileRole,
@@ -424,8 +425,14 @@ export type PropertyFormValues = {
   name: string;
   area: string;
   address: string;
+  furigana: string;
+  roomNumber: string;
+  postalCode: string;
+  usage: string;
   sizeSqm: string;
   listingPrice: string;
+  listingRent: string;
+  listingCommonFee: string;
   managementFee: string;
   repairFee: string;
   notes: string;
@@ -437,6 +444,7 @@ export type PropertyFormActionState = {
   fieldErrors: Partial<Record<keyof PropertyFormValues, string>>;
   values: PropertyFormValues;
   createdRecord?: { id: string; name: string };
+  updatedRecord?: { id: string; name: string; values: PropertyFormValues };
 };
 
 export type CaseCreationActionState = {
@@ -450,6 +458,18 @@ export type ClientFormValues = {
   phone: string;
   lineId: string;
   email: string;
+  partyType: string;
+  furigana: string;
+  birthDate: string;
+  gender: string;
+  currentPostalCode: string;
+  currentAddress: string;
+  employerName: string;
+  employerAddress: string;
+  employerPhone: string;
+  annualIncome: string;
+  annualIncomeAsOf: string;
+  annualIncomeSource: string;
   budgetMin: string;
   budgetMax: string;
   budgetType: string;
@@ -478,6 +498,7 @@ export type ClientFormActionState = {
   fieldErrors: Partial<Record<keyof ClientFormValues, string>>;
   values: ClientFormValues;
   createdRecord?: { id: string; name: string };
+  updatedRecord?: { id: string; name: string; values: ClientFormValues };
 };
 
 export type PartyProfileFormValues = {
@@ -503,8 +524,14 @@ function propertyFormValues(formData: FormData): PropertyFormValues {
     name: read("name"),
     area: read("area"),
     address: read("address"),
+    furigana: read("furigana"),
+    roomNumber: read("roomNumber"),
+    postalCode: read("postalCode"),
+    usage: read("usage"),
     sizeSqm: read("sizeSqm"),
     listingPrice: read("listingPrice"),
+    listingRent: read("listingRent"),
+    listingCommonFee: read("listingCommonFee"),
     managementFee: read("managementFee"),
     repairFee: read("repairFee"),
     notes: read("notes"),
@@ -544,7 +571,7 @@ function parsePropertyForm(formData: FormData, locale: Locale) {
   const name = values.name.trim();
   if (!name) fieldErrors.name = propertyValidationMessage(locale, "name");
 
-  const parseOptionalNumber = (field: "listingPrice" | "sizeSqm" | "managementFee" | "repairFee", minimum: number) => {
+  const parseOptionalNumber = (field: "listingPrice" | "sizeSqm" | "managementFee" | "repairFee" | "listingRent" | "listingCommonFee", minimum: number) => {
     const raw = values[field].trim();
     if (!raw) return undefined;
     const parsed = Number(raw);
@@ -559,6 +586,8 @@ function parsePropertyForm(formData: FormData, locale: Locale) {
   const sizeSqm = parseOptionalNumber("sizeSqm", Number.MIN_VALUE);
   const managementFee = parseOptionalNumber("managementFee", 0);
   const repairFee = parseOptionalNumber("repairFee", 0);
+  const listingRent = parseOptionalNumber("listingRent", 0);
+  const listingCommonFee = parseOptionalNumber("listingCommonFee", 0);
   return {
     values,
     fieldErrors,
@@ -566,8 +595,14 @@ function parsePropertyForm(formData: FormData, locale: Locale) {
       name,
       area: values.area.trim() || undefined,
       address: values.address.trim() || undefined,
+      furigana: values.furigana.trim() || undefined,
+      roomNumber: values.roomNumber.trim() || undefined,
+      postalCode: values.postalCode.trim() || undefined,
+      usage: values.usage.trim() || undefined,
       sizeSqm,
       listingPrice: listingPrice ?? 0,
+      listingRent,
+      listingCommonFee,
       managementFee,
       repairFee,
       notes: values.notes.trim() || undefined,
@@ -704,6 +739,18 @@ function clientFormValues(formData: FormData): ClientFormValues {
     phone: read("phone"),
     lineId: read("lineId"),
     email: read("email"),
+    partyType: read("partyType"),
+    furigana: read("furigana"),
+    birthDate: read("birthDate"),
+    gender: read("gender"),
+    currentPostalCode: read("currentPostalCode"),
+    currentAddress: read("currentAddress"),
+    employerName: read("employerName"),
+    employerAddress: read("employerAddress"),
+    employerPhone: read("employerPhone"),
+    annualIncome: read("annualIncome"),
+    annualIncomeAsOf: read("annualIncomeAsOf"),
+    annualIncomeSource: read("annualIncomeSource"),
     budgetMin: read("budgetMin"),
     budgetMax: read("budgetMax"),
     budgetType: read("budgetType"),
@@ -732,6 +779,7 @@ function clientValidationMessage(locale: Locale, field: keyof ClientFormValues):
     ja: {
       name: "顧客名を入力してください。",
       phone: "電話番号を入力してください。",
+      partyType: "関係者種別を選択するか、未設定のままにしてください。",
       budgetMin: "予算下限は0より大きい数値で入力してください。",
       budgetMax: "予算上限は0より大きい数値で入力してください。",
       budgetType: "予算種別を選択してください。",
@@ -752,6 +800,7 @@ function clientValidationMessage(locale: Locale, field: keyof ClientFormValues):
     zh: {
       name: "请输入客户姓名。",
       phone: "请输入电话号码。",
+      partyType: "请选择主体类型，或保留为未设置。",
       budgetMin: "预算下限必须是大于 0 的数字。",
       budgetMax: "预算上限必须是大于 0 的数字。",
       budgetType: "请选择预算类型。",
@@ -772,6 +821,7 @@ function clientValidationMessage(locale: Locale, field: keyof ClientFormValues):
     ko: {
       name: "고객명을 입력해 주세요.",
       phone: "전화번호를 입력해 주세요.",
+      partyType: "관계자 유형을 선택하거나 미설정으로 두세요.",
       budgetMin: "예산 하한은 0보다 큰 숫자여야 합니다.",
       budgetMax: "예산 상한은 0보다 큰 숫자여야 합니다.",
       budgetType: "예산 유형을 선택해 주세요.",
@@ -844,6 +894,8 @@ function parseClientForm(formData: FormData, locale: Locale, mode: "create" | "e
   }
 
   const dates = {
+    birthDate: parseClientDate(values.birthDate, locale, "birthDate", fieldErrors),
+    annualIncomeAsOf: parseClientDate(values.annualIncomeAsOf, locale, "annualIncomeAsOf", fieldErrors),
     brokerageContractSignedAt: parseClientDate(values.brokerageContractSignedAt, locale, "brokerageContractSignedAt", fieldErrors),
     brokerageContractExpiresAt: parseClientDate(values.brokerageContractExpiresAt, locale, "brokerageContractExpiresAt", fieldErrors),
     importantMattersExplainedAt: parseClientDate(values.importantMattersExplainedAt, locale, "importantMattersExplainedAt", fieldErrors),
@@ -851,6 +903,15 @@ function parseClientForm(formData: FormData, locale: Locale, mode: "create" | "e
     personalInfoConsentAt: parseClientDate(values.personalInfoConsentAt, locale, "personalInfoConsentAt", fieldErrors),
     nextFollowUpAt: parseClientDate(values.nextFollowUpAt, locale, "nextFollowUpAt", fieldErrors),
   };
+
+  const parseOptionalInteger = (field: "annualIncome") => {
+    const raw = values[field].trim();
+    if (!raw) return undefined;
+    const parsed = Number(raw);
+    if (!Number.isInteger(parsed) || parsed < 0) fieldErrors[field] = clientValidationMessage(locale, field);
+    return Number.isInteger(parsed) && parsed >= 0 ? parsed : undefined;
+  };
+  const annualIncome = parseOptionalInteger("annualIncome");
 
   return {
     values,
@@ -860,6 +921,16 @@ function parseClientForm(formData: FormData, locale: Locale, mode: "create" | "e
       phone,
       lineId: values.lineId.trim() || undefined,
       email: values.email.trim() || undefined,
+      furigana: values.furigana.trim() || undefined,
+      ...dates,
+      gender: values.gender.trim() || undefined,
+      currentPostalCode: values.currentPostalCode.trim() || undefined,
+      currentAddress: values.currentAddress.trim() || undefined,
+      employerName: values.employerName.trim() || undefined,
+      employerAddress: values.employerAddress.trim() || undefined,
+      employerPhone: values.employerPhone.trim() || undefined,
+      annualIncome,
+      annualIncomeSource: values.annualIncomeSource.trim() || undefined,
       budgetMin,
       budgetMax,
       budgetType: budgetType as BudgetType,
@@ -872,7 +943,6 @@ function parseClientForm(formData: FormData, locale: Locale, mode: "create" | "e
       stage: stage as ClientStage,
       temperature: temperature as Temperature,
       brokerageContractType: brokerageContractType as BrokerageContractType,
-      ...dates,
       amlCheckStatus: amlCheckStatus as AmlCheckStatus,
       notes: values.notes.trim() || undefined,
     },
@@ -913,12 +983,17 @@ function safeClientReturnTo(value: FormDataEntryValue | null, fallback: string, 
     if (keys.some((key) => !["q", "stage", "purpose", "temperature", "sort", "page"].includes(key))) return fallback;
     return `${parsed.pathname}${parsed.search}`;
   }
+  if (parsed.pathname === "/parties") {
+    if (keys.some((key) => !["q", "type", "lifecycle", "page"].includes(key))) return fallback;
+    return `${parsed.pathname}${parsed.search}`;
+  }
   if (parsed.pathname === "/organize-center") {
-    if (parsed.searchParams.get("type") !== "client" || keys.some((key) => !["type", "q", "lifecycle", "page"].includes(key))) return fallback;
+    if (!["client", "party"].includes(parsed.searchParams.get("type") ?? "") || keys.some((key) => !["type", "q", "lifecycle", "page"].includes(key))) return fallback;
     return `${parsed.pathname}${parsed.search}`;
   }
   if (allowImportCenter && parsed.pathname === IMPORT_CENTER_RETURN_PATH && keys.length === 0 && !parsed.hash) return parsed.pathname;
   if (currentClientId && parsed.pathname === `/clients/${encodeURIComponent(currentClientId)}` && keys.length === 0) return parsed.pathname;
+  if (currentClientId && parsed.pathname === `/parties/${encodeURIComponent(currentClientId)}/edit` && keys.length === 0) return parsed.pathname;
   return fallback;
 }
 
@@ -953,6 +1028,7 @@ async function persistClientForm(
   mode: "create" | "edit",
   previousState?: ClientFormActionState,
   compatibilityDefaults = false,
+  inline = false,
 ) {
   const session = await requireTenantSession({ permission: "record.update" });
   const user = session.user;
@@ -961,6 +1037,11 @@ async function persistClientForm(
   const values = clientFormValues(formData);
   await rejectForbiddenRecordInput(formData, session, "client", values.clientId.trim() || undefined);
   const parsed = parseClientForm(formData, locale, mode, compatibilityDefaults);
+  const partyTypeSubmitted = formData.has("partyType");
+  const partyTypeRaw = values.partyType.trim();
+  if (partyTypeSubmitted && partyTypeRaw && !isPartyProfileType(partyTypeRaw)) {
+    parsed.fieldErrors.partyType = clientValidationMessage(locale, "partyType");
+  }
   if (Object.keys(parsed.fieldErrors).length > 0) {
     if (previousState) return clientValidationState(parsed.values, parsed.fieldErrors, locale);
     throw new Error(Object.values(parsed.fieldErrors)[0] ?? "顧客データの形式が不正です。");
@@ -969,26 +1050,54 @@ async function persistClientForm(
   const clientId = values.clientId.trim();
   const fallback = mode === "create" || !clientId ? "/clients" : `/clients/${encodeURIComponent(clientId)}`;
   const returnTo = safeClientReturnTo(formData.get("returnTo"), fallback, mode === "edit" ? clientId : undefined, mode === "create");
+  const submitReturnTo = safeClientReturnTo(formData.get("submitReturnTo"), returnTo, mode === "edit" ? clientId : undefined, mode === "create");
   let client;
   if (mode === "create") {
-    client = await addClient({ tenantId, ownerUserId: user.id, ...parsed.normalized });
+    client = await addClient({
+      tenantId,
+      ownerUserId: user.id,
+      ...parsed.normalized,
+      notes: mergePartyProfileNotes({
+        type: partyTypeRaw ? partyTypeRaw as PartyProfileType : undefined,
+        note: parsed.normalized.notes,
+        locale,
+      }),
+    });
   } else {
     if (!clientId) {
       if (previousState) return clientValidationState(parsed.values, { clientId: "顧客IDは必須です。" }, locale, "顧客IDを確認してください。");
       throw new Error("顧客IDは必須です。");
     }
-    await ensureClientOwnership(clientId, session);
-    client = await updateClient(clientId, { tenantId, ...parsed.normalized });
+    const existingClient = await ensureClientOwnership(clientId, session);
+    const existingProfile = extractPartyProfileFromNotes(existingClient.notes);
+    const normalized = {
+      ...parsed.normalized,
+      notes: mergePartyProfileNotes({
+        existingNotes: existingClient.notes,
+        type: partyTypeSubmitted ? (partyTypeRaw ? partyTypeRaw as PartyProfileType : undefined) : existingProfile.type,
+        role: existingProfile.role,
+        note: parsed.normalized.notes,
+        locale,
+      }),
+    };
+    client = await updateClient(clientId, { tenantId, ...normalized });
     if (!client) {
       if (previousState) return clientValidationState(parsed.values, {}, locale, "顧客が見つからないか、更新権限がありません。");
       throw new Error("顧客が見つからないか、更新権限がありません。");
     }
   }
 
-  revalidatePath("/clients");
-  revalidatePath(`/clients/${client.id}`);
-  revalidatePath("/");
-  revalidatePath("/board");
+  // An inline profile edit runs inside a case workbench.  Revalidating the
+  // current route here would remount the server-rendered workbench and can
+  // replace its unsaved case-field draft with the old snapshot.  The drawer
+  // consumes updatedRecord locally; ordinary client/party edits still
+  // revalidate their normal pages below.
+  if (!inline) {
+    revalidatePath("/clients");
+    revalidatePath(`/clients/${client.id}`);
+    revalidatePath("/");
+    revalidatePath("/board");
+  }
   await addAuditLog({
     tenantId,
     userId: user.id,
@@ -997,6 +1106,15 @@ async function persistClientForm(
     targetId: client.id,
     message: mode === "create" ? `顧客を新規登録しました: ${client.name}` : "顧客情報を更新しました。",
   });
+
+  if (inline && mode === "edit") {
+    return {
+      status: "idle" as const,
+      fieldErrors: {},
+      values: parsed.values,
+      updatedRecord: { id: client.id, name: client.name, values: parsed.values },
+    } satisfies ClientFormActionState;
+  }
 
   const createCompletion = mode === "create" ? getClientCreateCompletion({
     returnTo,
@@ -1014,7 +1132,9 @@ async function persistClientForm(
   }
   if (createCompletion?.kind === "redirect" && createCompletion.href.startsWith(`${IMPORT_CENTER_RETURN_PATH}?`)) redirect(createCompletion.href);
   if (mode === "create") redirect(`/clients/${client.id}?flash=client_created`);
-  redirect(withFlash(`/clients/${client.id}/edit?returnTo=${encodeURIComponent(returnTo)}`, "client_updated"));
+  const partyEditPath = `/parties/${encodeURIComponent(client.id)}/edit`;
+  const isPartyEdit = submitReturnTo === partyEditPath;
+  redirect(withFlash(`${isPartyEdit ? partyEditPath : `/clients/${encodeURIComponent(client.id)}/edit`}?returnTo=${encodeURIComponent(returnTo)}`, isPartyEdit ? "party_updated" : "client_updated"));
 }
 
 export async function createClientFormAction(_previousState: ClientFormActionState, formData: FormData): Promise<ClientFormActionState> {
@@ -1023,6 +1143,10 @@ export async function createClientFormAction(_previousState: ClientFormActionSta
 
 export async function updateClientProfileAction(_previousState: ClientFormActionState, formData: FormData): Promise<ClientFormActionState> {
   return persistClientForm(formData, "edit", _previousState, false);
+}
+
+export async function updateClientProfileInlineAction(_previousState: ClientFormActionState, formData: FormData): Promise<ClientFormActionState> {
+  return persistClientForm(formData, "edit", _previousState, false, true);
 }
 
 /** Compatibility wrapper for the existing /clients quick-create form. */
@@ -2188,6 +2312,21 @@ export async function updatePropertyProfileAction(
   _previousState: PropertyFormActionState,
   formData: FormData,
 ): Promise<PropertyFormActionState> {
+  return updatePropertyProfile(formData, _previousState, false);
+}
+
+export async function updatePropertyProfileInlineAction(
+  _previousState: PropertyFormActionState,
+  formData: FormData,
+): Promise<PropertyFormActionState> {
+  return updatePropertyProfile(formData, _previousState, true);
+}
+
+async function updatePropertyProfile(
+  formData: FormData,
+  _previousState: PropertyFormActionState,
+  inline: boolean,
+): Promise<PropertyFormActionState> {
   const session = await requireTenantSession({ permission: "record.update" });
   const user = session.user;
   const tenantId = session.tenant.id;
@@ -2235,9 +2374,23 @@ export async function updatePropertyProfileAction(
     }),
   });
 
-  revalidatePath(`/properties/${propertyId}/edit`);
-  revalidatePath("/properties");
-  revalidatePath("/");
+  // Inline property edits run inside the case workbench.  Keep the current
+  // route mounted so unsaved case fields remain in the client draft; the
+  // drawer consumes updatedRecord locally.  Ordinary property edits still
+  // invalidate their normal pages.
+  if (!inline) {
+    revalidatePath(`/properties/${propertyId}/edit`);
+    revalidatePath("/properties");
+    revalidatePath("/");
+  }
+  if (inline) {
+    return {
+      status: "idle",
+      fieldErrors: {},
+      values: parsed.values,
+      updatedRecord: { id: updated.id, name: updated.name, values: parsed.values },
+    } satisfies PropertyFormActionState;
+  }
   redirect(withFlash(`/properties/${propertyId}/edit?returnTo=${encodeURIComponent(returnTo)}`, "property_updated"));
 }
 
@@ -3913,9 +4066,14 @@ export async function saveCaseAssociationsAction(formData: FormData) {
   if (primaryPartyId && !primaryParty?.name?.trim()) {
     throw new Error("主要申请人资料缺少姓名，无法保存关联。");
   }
-  const previousPrimaryPartyId = getPrimaryPartyId(readCaseAssociationDraft(brokerageCase.confirmedDataJson));
+  const previousAssociation = readCaseAssociationDraft(brokerageCase.confirmedDataJson);
+  const previousPrimaryPartyId = getPrimaryPartyId(previousAssociation);
   const previousPrimaryPartyResult = previousPrimaryPartyId && previousPrimaryPartyId !== primaryPartyId
     ? await resolveClientVisibilityForContext({ context: requestContext, clientId: previousPrimaryPartyId })
+    : undefined;
+  const previousPrimaryPropertyId = previousAssociation.primaryPropertyId;
+  const previousPropertyResult = previousPrimaryPropertyId && previousPrimaryPropertyId !== associationDraft.primaryPropertyId
+    ? await resolvePropertyVisibilityForContext({ context: requestContext, propertyId: previousPrimaryPropertyId })
     : undefined;
   const nextConfirmedData = writeCaseAssociationData(
     brokerageCase.confirmedDataJson,
@@ -3924,6 +4082,7 @@ export async function saveCaseAssociationsAction(formData: FormData) {
       primaryPartyName: primaryParty?.name,
       propertyName: propertyResult?.record?.name,
       previousPrimaryPartyName: previousPrimaryPartyResult?.record?.name,
+      previousPrimaryPropertyName: previousPropertyResult?.record?.name,
     },
   );
   const updatedCase = await updateBrokerageCaseConfirmedData({

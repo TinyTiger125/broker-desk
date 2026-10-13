@@ -1,0 +1,465 @@
+{
+  "workId": "bd_full_acceptance_selected_finish_20261013",
+  "generatedAt": "2026-10-13T22:00:00+09:00",
+  "selectedCandidate": "/Users/laineyzhu/Documents/独立开发项目/房产专家/bd-release-selected-20261013",
+  "baseCommit": "adcb399e28476246f4b712e13648272be96e8f9a",
+  "auditCandidate": "/Users/laineyzhu/Documents/独立开发项目/房产专家/bd-full-acceptance-candidate-20261013",
+  "selectionStatus": "SELECTED_CANDIDATE_BUILD_PASS_LOCAL_PG17_AND_DATA_POSTGRES_PASS_PRODUCTION_DB_UNVERIFIED_BROWSER_QA_RECEIPT_PENDING",
+  "sourceBoundary": {
+    "baselineAuth": "adcb399e baseline invite/confirm retained",
+    "excludedOverlay": "20261012_001 recovery claim/migration, recovery routes/components, 2b invite-session password gate, local-review route/launcher",
+    "requiredOverlay": "20261012_002 unified profiles migration plus profile/property/recent/case/field UI deltas copied from audited candidate",
+    "crossDataCleanup": "data.memory.ts, data.postgres.ts, data.ts retain profile/recent APIs but no closed-beta recovery claim export/function or migration 001 reference"
+  },
+  "selectedModifiedFiles": [
+    {
+      "path": "scripts/check-client-form-contract.mjs",
+      "sha256": "3c2a58e160b9778ca3f77c9fdf41097beae2fba8880eb7587f8cc2739e4cee60",
+      "bytes": 9838
+    },
+    {
+      "path": "scripts/check-feedback03-b-layout-contract.mjs",
+      "sha256": "fe1690d4fe21c1eb49862493efa94ef5506cd2ae333986b9836e9acf06c9ccf2",
+      "bytes": 4522
+    },
+    {
+      "path": "scripts/check-feedback2-forms-list-contract.mjs",
+      "sha256": "60dffe3fb4ee376eb940d22fa5e1e53be84526d91f23ef1454832086e0f4b0b5",
+      "bytes": 3222
+    },
+    {
+      "path": "scripts/check-layout-system-contract.mjs",
+      "sha256": "410fcf4ed1e0590ada9aa1fc09b8c0589ab720f64ea29562be5d786ebca13023",
+      "bytes": 38415
+    },
+    {
+      "path": "scripts/check-party-form-contract.mjs",
+      "sha256": "fea8b68f67086c8520ee0f8a31f8557bf34eb83d2baf1d124610b7e367d50592",
+      "bytes": 6810
+    },
+    {
+      "path": "scripts/test-case-association-retention.mjs",
+      "sha256": "3b238e2e04d2de060a2615722348914db678f18259e092698b76241dd2dd5bda",
+      "bytes": 8877
+    },
+    {
+      "path": "scripts/test-case-workbench-fields.mjs",
+      "sha256": "db87e3a717ec74478ac4c643121b75be9ea2c1dafc756a90bbe4a5e0ee324721",
+      "bytes": 2777
+    },
+    {
+      "path": "scripts/test-import-center-recent.mjs",
+      "sha256": "f2df0e7918328a62938d9b7535ecd75864325edfe4acee07cd09270d0754387f",
+      "bytes": 8865
+    },
+    {
+      "path": "scripts/test-object-import-pipeline.mjs",
+      "sha256": "35116a9b69bcbee2d043fd1b77781ca46d97d87c3acc50e4d1df5b07f79656e3",
+      "bytes": 71232
+    },
+    {
+      "path": "src/app/actions.ts",
+      "sha256": "8016ed0ea491ec8f3fb66820cd9a34c60e297aacbd0dafe758b90fc3681c6112",
+      "bytes": 243364
+    },
+    {
+      "path": "src/app/cases/[id]/page.tsx",
+      "sha256": "15b0f51eef70c727b649c62e17ae176b1ec05cbfc2f4deb795863182591bb70b",
+      "bytes": 92975
+    },
+    {
+      "path": "src/app/clients/[id]/edit/page.tsx",
+      "sha256": "14d5451e508704917802d04721456d76cb384b4d7ba1e05b27d61d0bd5553808",
+      "bytes": 9535
+    },
+    {
+      "path": "src/app/import-center/page.tsx",
+      "sha256": "52ff83c6c103a53679c4a57aed08ad7e18ac508d8e31d97d0b703c4f5c4a0360",
+      "bytes": 127975
+    },
+    {
+      "path": "src/app/parties/[id]/edit/page.tsx",
+      "sha256": "cd9a29d31b03f3cc59c7a65819ca565d1e77a866112b3139d910bfa7505ebd99",
+      "bytes": 6965
+    },
+    {
+      "path": "src/app/properties/[id]/edit/page.tsx",
+      "sha256": "3019025cfb7616bb31db6a04bec7db898c839ed7a36af8054a6653137c7b407c",
+      "bytes": 8792
+    },
+    {
+      "path": "src/app/properties/new/page.tsx",
+      "sha256": "372439b23c3195eaa2d7078ae26e6d4a1c70b7313238ebd38b9bab1beedaf449",
+      "bytes": 4003
+    },
+    {
+      "path": "src/components/case-association-draft.tsx",
+      "sha256": "5c8c0a9ae532e5f554243a1ce4d54282f7f6a46b22848489329e1331b7ec5a10",
+      "bytes": 37690
+    },
+    {
+      "path": "src/components/case-association-manager.tsx",
+      "sha256": "786a67f6146b319afdcac04e2acc759fb4823cd96ed5deb510346305a43610fe",
+      "bytes": 37021
+    },
+    {
+      "path": "src/components/case-overview.tsx",
+      "sha256": "5c6b5a02245df08a4e90eff16364ebe4e704ffbd3534f09342c2020416ebcd74",
+      "bytes": 74656
+    },
+    {
+      "path": "src/components/case-workbench-field-form.tsx",
+      "sha256": "c996bb845cc3c1669dc5025f59265f8417f8ceb87d83b08e7a0cdad9f6937ba0",
+      "bytes": 10816
+    },
+    {
+      "path": "src/components/client-form.tsx",
+      "sha256": "15b6e08c19de477e8c80b11e2ed27993541620245d8e62d51fe29ad797a8a87a",
+      "bytes": 29944
+    },
+    {
+      "path": "src/components/excel-import-queue-processor.tsx",
+      "sha256": "06276f7628e89009d758f16b9a4091c824ecb9cac28625d9e500fcde07a9ace2",
+      "bytes": 14221
+    },
+    {
+      "path": "src/components/guarantee-template-selector.tsx",
+      "sha256": "52bc6a8e897055b5b9e94e01a0b90b99d4cac9a96430c8e7509046a68ba30c9b",
+      "bytes": 13366
+    },
+    {
+      "path": "src/components/property-profile-read-only.tsx",
+      "sha256": "bb1a0ab46d946d34d1528b8b783dc45f79a25755d07a2848f2e9e21f24ac7dca",
+      "bytes": 6003
+    },
+    {
+      "path": "src/components/property-responsive-form.tsx",
+      "sha256": "1bb816d6be9e31f3f77b9ecb846ba9ebfb33aa556efe25f6581cf2c9caa16c3d",
+      "bytes": 14798
+    },
+    {
+      "path": "src/lib/case-associations.ts",
+      "sha256": "4462f4d82636eb87a0f477f5084aa3c59d7a98d957f76742d6196a04264ed085",
+      "bytes": 11881
+    },
+    {
+      "path": "src/lib/data.memory.ts",
+      "sha256": "497737f463f296d7dc415088811ede0debed552fac17b1921a42d8dac51638ba",
+      "bytes": 370052
+    },
+    {
+      "path": "src/lib/data.postgres.ts",
+      "sha256": "16bf7a9865853a81a0353c03d43407fb7c2b78535da2a6bf3665f03be55013e5",
+      "bytes": 354169
+    },
+    {
+      "path": "src/lib/data.ts",
+      "sha256": "27fc0d036d65d707a944c339a1ed48ae4bdb2a829b0362a4915e32783b0538db",
+      "bytes": 35807
+    },
+    {
+      "path": "src/lib/hub.ts",
+      "sha256": "f91f67b4dd69e2131c6c215a33b5ed3cfc9d9f8de3582d20c08fb46aa50d252f",
+      "bytes": 23425
+    },
+    {
+      "path": "src/lib/import-center-recent.ts",
+      "sha256": "91e9a434186390b9088ebe471fa8bd61a0f641018fe5faf9cc7cc8de2fe19290",
+      "bytes": 3542
+    },
+    {
+      "path": "src/lib/party-profile.ts",
+      "sha256": "7a546bd175d799f3163e57faf95936ddd95412718c14e5ec65d8a55ea5d6fb4e",
+      "bytes": 11198
+    },
+    {
+      "path": "db/migrations/20261012_002_unified_profiles.sql",
+      "sha256": "6c1bddb91acfa6a3000b8f3837749c41e6f33c329c18c53437814fbbfb639ae8",
+      "bytes": 1121
+    },
+    {
+      "path": "scripts/test-unified-profiles-contract.mjs",
+      "sha256": "fe153760fdd8042a7a881d5d36e0ef6bca234ae76aaacf01497e24d2713b0e0f",
+      "bytes": 5247
+    },
+    {
+      "path": "src/components/case-workbench-field-row.tsx",
+      "sha256": "c61326a25fb09e62a862346265ff94342c8b405b548f2e7df0398e1a11a0cbf2",
+      "bytes": 5777
+    }
+  ],
+  "staticValidation": {
+    "typecheck": {
+      "status": "PASS",
+      "path": "/private/tmp/bd-release-selected-typecheck-20261013.log",
+      "sha256": "50ecdeec024fd40643ddaace1fc1d7ff8b9f61273b316ce0200a0230dac5b7ed"
+    },
+    "lint": {
+      "status": "PASS_WITH_2_EXISTING_WARNINGS",
+      "path": "/private/tmp/bd-release-selected-lint-20261013.log",
+      "sha256": "9fcd3ddf9063436afaa6df66699b7faf030cc74249997735cd82132b8e24380b"
+    },
+    "build": {
+      "status": "PASS",
+      "path": "/private/tmp/bd-release-selected-build-final-20261013.log",
+      "sha256": "9c14efac585d7290b123bcfd762e41f3e11dafa0e7832f30728b8ebf74e7a21a"
+    },
+    "targeted": {
+      "status": "PASS",
+      "path": "/private/tmp/bd-release-selected-targeted-20261013.log",
+      "sha256": "f84a349c6edf147dec8931e7fa6253c8f51bf83783f8fc7b66baac3a0978bc84"
+    },
+    "migrationRunner": {
+      "status": "PASS",
+      "path": "/private/tmp/bd-release-selected-migration-runner-20261013.log",
+      "sha256": "8a77c8c6d229e30e0034f108bf5d2518564f519bf6014495772043adb0082ffe"
+    },
+    "diffCheck": {
+      "status": "PASS",
+      "path": "/private/tmp/bd-release-selected-diffcheck-20261013.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "noRecoveryOverlay": {
+      "status": "PASS",
+      "path": "/private/tmp/bd-release-selected-no-recovery-20261013.log",
+      "sha256": "7a889e3abe57c8fea8af22865502828fb0b249b041907a3669145712deb52338"
+    },
+    "pg17Default": {
+      "status": "BLOCKED_SHMGET",
+      "path": "/private/tmp/bd-release-selected-pg17-profile-rehearsal-20261013.log",
+      "sha256": "8360dfc914200c5fae2d48a9e374073e37e78a7fdaf3a1534651549b63d01347"
+    },
+    "pg17PosixAttempt": {
+      "status": "BLOCKED_SHMGET",
+      "path": "/private/tmp/bd-release-selected-pg17-profile-rehearsal-posix-20261013.log",
+      "sha256": "aa059852d0cf828cade647b8cc8d653f41e69aec6df1872626c9c60b2f0596ac"
+    },
+    "associationP1Fix": {
+      "status": "PASS",
+      "scope": "read-only property profile/action gating and property-name unlink retention",
+      "path": "/private/tmp/bd-release-selected-association-p1-20261013.log",
+      "sha256": "3c5c0c07e2f9238ac273363be46a36ec31e4009cb11778c53540d929af425474"
+    },
+    "lintP1Rerun": {
+      "status": "PASS_WITH_2_EXISTING_WARNINGS",
+      "path": "/private/tmp/bd-release-selected-lint-p1-20261013.log",
+      "sha256": "9fcd3ddf9063436afaa6df66699b7faf030cc74249997735cd82132b8e24380b"
+    },
+    "buildP1Rerun": {
+      "status": "PASS",
+      "path": "/private/tmp/bd-release-selected-build-p1-20261013.log",
+      "sha256": "d7d276080c86eb69a411048b65f6bde8ab3bf024e607c7c59df48c3ebb9c2f61"
+    }
+  },
+  "browserHttpSmoke": {
+    "status": "PASS_HTTP_ONLY",
+    "url": "http://127.0.0.1:3111",
+    "sessionId": "48317",
+    "environment": {
+      "NODE_ENV": "development",
+      "DATA_DRIVER": "memory",
+      "BROKER_DESK_AUTH_MODE": "demo",
+      "BROKER_DESK_CLOSED_BETA_UI_FIXTURE": "1",
+      "BROKER_DESK_APP_ORIGIN": "http://127.0.0.1:3111",
+      "tenantCookie": "brokerdesk_tenant_id=tenant_cherry"
+    },
+    "paths": [
+      {
+        "path": "/import-center",
+        "status": 200,
+        "errorMarkers": []
+      },
+      {
+        "path": "/organize-center",
+        "status": 200,
+        "errorMarkers": []
+      },
+      {
+        "path": "/output-center",
+        "status": 200,
+        "errorMarkers": []
+      },
+      {
+        "path": "/parties",
+        "status": 200,
+        "errorMarkers": []
+      },
+      {
+        "path": "/properties",
+        "status": 200,
+        "errorMarkers": []
+      },
+      {
+        "path": "/cases/case_demo_park_ikebukuro_share?view=overview",
+        "status": 200,
+        "errorMarkers": []
+      },
+      {
+        "path": "/platform/closed-beta",
+        "status": 200,
+        "errorMarkers": []
+      }
+    ],
+    "uiBrowserStatus": "QA_reported_reupload_download_and_1280_layout; receipt_path_not_attached_to_selected_manifest",
+    "note": "Do not infer authenticated end-to-end browser acceptance from HTTP-only or parent-reported status until the QA receipt is attached."
+  },
+  "postgres": {
+    "status": "PASS_LOCAL_PG17_CONTAINER_PRODUCTION_DB_UNVERIFIED",
+    "availableBins": [
+      "/opt/homebrew/opt/postgresql@17/bin/postgres",
+      "/opt/homebrew/opt/postgresql@16/bin/postgres"
+    ],
+    "brewServices": "postgresql@16 none; postgresql@17 none",
+    "attempts": [
+      "PG16 test harness initdb failed with shmget shared-memory limit and cleaned its temp directory",
+      "PG17 initdb failed with shmget shared-memory limit and cleaned its temp directory",
+      "PG17 initdb -c dynamic_shared_memory_type=posix -c shared_memory_type=mmap also failed before config persisted; no further attempts"
+    ],
+    "migration002PersistenceReadback": "PASS_LOCAL_CONTAINER_ONLY",
+    "noCloudOrProductionConnection": true,
+    "hostEscalatedProbe": {
+      "status": "BLOCKED_SHMGET_ESCALATED",
+      "script": "/private/tmp/bd-selected-pg17-escalated-probe-20261013.mjs",
+      "scriptSha256": "3329612d3257b1d1ac55ddb5ca5d490c7463e5fd0cbcfb0537ca809c93eae156",
+      "summary": "/private/tmp/bd-selected-pg17-escalated-probe-summary-20261013.json",
+      "summarySha256": "49271e0874d7fc953cac4fba47e5988b57a63340645dfce01a2b421c08737e17",
+      "initdb": "failed: shmget(size=56) ENOSPC",
+      "pgCtl": "not_started",
+      "ipcSharedMemoryRows": 0,
+      "activePostgresDaemonRows": 0,
+      "temporaryDataCleanup": "initdb removed its own temporary directory",
+      "noCloudOrProjectWrites": true
+    },
+    "localContainerAlternative": {
+      "dockerCli": "29.3.0",
+      "dockerDaemon": "AVAILABLE_VIA_ESCALATED_READONLY_LOCAL_TOOL",
+      "colima": "RUNNING",
+      "images": "postgres:17 pre-existing local image; no pull",
+      "action": "one temporary no-volume container created on 127.0.0.1 and removed after rehearsal"
+    },
+    "pg17ContainerRehearsal": {
+      "status": "PASS",
+      "image": "postgres:17 (pre-existing local image)",
+      "containerName": "bd-selected-pg17-20261013",
+      "port": 55471,
+      "receipt": "/private/tmp/bd-selected-pg17-container-rehearsal-20261013.json",
+      "receiptSha256": "befae75231d5995c7c3c2ff377e1c63e26e69eef04901b6ec6aff0c246154755",
+      "script": "/private/tmp/bd-selected-pg17-container-rehearsal-20261013.mjs",
+      "scriptSha256": "861e9db28129a5f2d5f20311b5231d5a123105fab3c2c7f7edc7ab3785c7a9b5",
+      "migrationApplied": 1,
+      "migrationChecksumMatches": true,
+      "appliedAtPresent": true,
+      "clientProfileColumns": 11,
+      "propertyProfileColumns": 6,
+      "oldFieldsPreserved": true,
+      "confirmedDataJsonUntouched": true,
+      "explicitClearReadback": true,
+      "tenantScopeCounts": {
+        "tenantA": 1,
+        "tenantB": 1
+      },
+      "containerCleanup": "stopped with docker stop; --rm removed; existing containers/volumes unchanged",
+      "cloudOrProductionWrites": false
+    },
+    "pg17DataPostgresRehearsal": {
+      "status": "PASS_LOCAL_CONTAINER_ONLY",
+      "containerName": "bd-selected-pg17-data-postgres-20261013",
+      "port": 55472,
+      "script": "/private/tmp/bd-selected-pg17-data-postgres-rehearsal-20261013.mjs",
+      "scriptSha256": "1449ea3e27fa0c1226616b37f1551ac674c8813e9f828cc57df653537fc3e1e5",
+      "receipt": "/private/tmp/bd-selected-pg17-data-postgres-rehearsal-20261013.json",
+      "receiptSha256": "d5dc84d440e7b3030598f9d2b80794748b7f9a4f3401030ef81e516f5f15a401",
+      "firstMigration": {
+        "appliedCount": 51,
+        "skippedCount": 0
+      },
+      "secondMigration": {
+        "appliedCount": 0,
+        "skippedCount": 51
+      },
+      "dataPostgres": {
+        "clientSameTenantRead": true,
+        "clientNewProfileFieldsPersisted": true,
+        "clientLegacyUpdatePreservedOmittedProfileFields": true,
+        "clientExplicitProfileClear": true,
+        "propertySameTenantRead": true,
+        "propertyNewProfileFieldsPersisted": true,
+        "propertyLegacyUpdatePreservedOmittedProfileFields": true,
+        "propertyExplicitProfileClear": true,
+        "crossTenantClientReadAndUpdateRejected": true,
+        "crossTenantPropertyReadAndUpdateRejected": true,
+        "crossTenantMutationAbsent": true
+      },
+      "migration002": {
+        "checksumMatches": true,
+        "appliedAtPresent": true,
+        "unifiedProfileColumnCount": 17
+      },
+      "notCovered": "Tokyo/Supabase production ledger/RLS/role; case confirmedDataJson snapshot; worker-backed production upload completion",
+      "containerCleanup": "stopped with docker stop; --rm removed; existing containers/volumes unchanged",
+      "cloudOrProductionWrites": false
+    }
+  },
+  "releaseGate": "NO_GO_UNTIL_REMAINING_CORE_UI_UPLOAD_OUTPUT_PERMISSION_EVIDENCE_AND_PRODUCTION_DB_VERIFICATION",
+  "rollback": "Selected candidate is detached local worktree; no remote action performed.",
+  "productionReadOnlyPreflight": {
+    "github": {
+      "repository": "TinyTiger125/broker-desk",
+      "ref": "refs/heads/main",
+      "observedSha": "adcb399e28476246f4b712e13648272be96e8f9a",
+      "method": "git ls-remote read-only",
+      "writes": false,
+      "receipt": "/private/tmp/bd-release-final-github-main-20261013.json",
+      "receiptSha256": "abf7a95e1a5f7eebf3b0bb6fd00b106adb8972cc32af1ae1feb29a645235c1bb"
+    },
+    "vercel": {
+      "team": "neos-projects-d66edfc8",
+      "project": "broker-desk-tokyo-validation",
+      "alias": "project-6q8up.vercel.app",
+      "deploymentId": "dpl_f2fTH4kMu8FrvFHo9vzqTViy7AEM",
+      "deploymentUrl": "broker-desk-tokyo-validation-axmyor69s-neos-projects-d66edfc8.vercel.app",
+      "target": "production",
+      "readyState": "READY",
+      "githubCommitSha": "adcb399e28476246f4b712e13648272be96e8f9a",
+      "inspectReceipt": "/private/tmp/bd-release-final-vercel-inspect-20261013.json",
+      "inspectReceiptSha256": "74642e7d3b3ba035f43925fe6d203f976d81f48e49dd00095d0c3b15723eff97",
+      "listReceipt": "/private/tmp/bd-release-final-vercel-list-20261013.json",
+      "listReceiptSha256": "31ce92f296383a836f65ceb525924d52468fddc23bcbef0db3cca8fc1ee00c79",
+      "writes": false
+    },
+    "supabase": {
+      "projectRef": "ilujuwuzaqwcbpnqixen",
+      "database": "postgres",
+      "currentUser": "postgres",
+      "currentSchema": "public",
+      "migration002LedgerRows": 0,
+      "expectedUnifiedProfileColumns": 17,
+      "observedUnifiedProfileColumns": 0,
+      "readbackReceipt": "/private/tmp/bd-release-final-production-readback-20261013.json",
+      "readbackReceiptSha256": "24c75d1260301740e0f1b140a788adee52cb5585d7a94a5565f3d33b40edeadc",
+      "nativeOutput": "/private/tmp/bd-release-final-production-readback-20261013-native.txt",
+      "nativeOutputSha256": "b1f4bc6a70f069cbb28880d4b3c5444c2636cacdd7a592b62a29eca277e79353",
+      "query": "/private/tmp/bd-release-final-production-readback-20261013.sql",
+      "querySha256": "1a689c0593933b0d87decd443be7da70155ed7815658a83b6c09e2c3c1abc333",
+      "queryUtf8Bytes": 1661,
+      "classification": "BLOCKED_FOR_SELECTED_RELEASE: migration002 ledger row absent and all 17 expected columns absent",
+      "writes": false
+    }
+  },
+  "postSelectionIndependentProductionReadback": {
+    "receipt": "/private/tmp/bd-prod002-root-independent-readback-20261014.json",
+    "status": "APPLIED_STATE_INDEPENDENTLY_VERIFIED",
+    "projectRef": "ilujuwuzaqwcbpnqixen",
+    "database": "postgres",
+    "ledgerRows": 51,
+    "targetRows": 1,
+    "priorMismatch": 0,
+    "unexpectedRows": 0,
+    "nullAppliedAt": 0,
+    "unifiedProfileColumns": 17,
+    "relationChecks": 2,
+    "identity": "postgres/public",
+    "writes": false,
+    "note": "Independent readback supersedes the earlier pre-migration snapshot above; no apply retry was performed."
+  }
+}

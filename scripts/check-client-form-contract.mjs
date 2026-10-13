@@ -50,12 +50,12 @@ requireText(form, 'setValues(state.values)', "server validation errors must rest
 requireText(form, 'role="alert"', "form must expose one focusable error summary");
 requireText(form, 'aria-describedby', "field errors must be associated with fields");
 requireText(form, 'onCompositionStart', "IME composition guard must exist as code mechanism");
-requireText(form, "basic: true, needs: true, management: true, legal: true, notes: true", "client form sections must start expanded");
+requireText(form, "basic: true, profile: true, needs: true, management: true, legal: true, notes: true", "client form sections must start expanded");
 requireText(form, "onInvalidCapture={handleInvalid}", "native invalid fields must open their containing section");
 requireText(form, "openSectionForField(field)", "error summary links must reopen the containing section before focus");
 requireText(form, "aria-expanded={expanded}", "client section controls must expose their expanded state");
 requireText(form, 'className={expanded ? "" : "hidden"}', "collapsing a client section must keep its fields mounted");
-if ((form.match(/<ClientFormSection section=/g) ?? []).length !== 5) failures.push("client form must keep five independently collapsible sections");
+if ((form.match(/<ClientFormSection section=/g) ?? []).length !== 6) failures.push("client form must keep six independently collapsible sections");
 if ((form.match(/<(?:Button|button) type="submit"/g) ?? []).length !== 1) failures.push("complete form must have exactly one submit button");
 forbidText(form, "afterSave", "complete form must not expose the old second submit flow");
 

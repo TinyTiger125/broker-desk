@@ -256,6 +256,8 @@ export const getClientDetailForContext: typeof memory.getClientDetailForContext 
   repo.getClientDetailForContext(...args);
 export const listPropertiesForContext: typeof memory.listPropertiesForContext = (...args) =>
   repo.listPropertiesForContext(...args);
+export const listRecentPropertyActivitiesForContext: typeof memory.listRecentPropertyActivitiesForContext = (...args) =>
+  repo.listRecentPropertyActivitiesForContext(...args);
 export const countVisibleRecordsForContext: typeof memory.countVisibleRecordsForContext = (...args) =>
   repo.countVisibleRecordsForContext(...args);
 export const searchVisibleRecordsForContext: typeof memory.searchVisibleRecordsForContext = (...args) =>
@@ -570,6 +572,7 @@ export type {
   TenantStatus,
   ClosedBetaDemoResult,
   Property,
+  RecentPropertyActivity,
   Quotation,
   ImportJob,
   ImportJobStatus,

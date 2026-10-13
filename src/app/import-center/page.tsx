@@ -20,7 +20,7 @@ import { getImportMappingFormRows, getPropertyRowMappingPayload } from "@/lib/im
 import { getImportJobFeedbackMessage } from "@/lib/import-feedback";
 import { PreimportUploadDelete } from "@/components/preimport-upload-delete";
 import { mayDeletePreimportUpload } from "@/lib/preimport-upload-lifecycle";
-import { listBrokerageCases, listBrokerageCasesForContext, listClientsForContext, listExtractionReviewItems } from "@/lib/data";
+import { listBrokerageCasesForContext, listClientsForContext, listExtractionReviewItems, listPropertiesForContext, listRecentPropertyActivitiesForContext } from "@/lib/data";
 import { formatDate } from "@/lib/format";
 import { t } from "@/lib/i18n";
 import type { InputFileExtractionResult } from "@/lib/input-file-extractor";
@@ -162,6 +162,23 @@ const recentCategoryLabels: Record<Locale, Record<ImportCenterRecentCategory, st
   zh: { case: "案件", person: "人物", property: "物件", unknown: "待分类" },
   ko: { case: "案件", person: "관계자", property: "매물", unknown: "분류 대기" },
 };
+
+function formatRecentModifiedAt(value: Date, locale: Locale): string {
+  const formatted = new Intl.DateTimeFormat(
+    locale === "zh" ? "zh-CN" : locale === "ko" ? "ko-KR" : "ja-JP",
+    {
+      timeZone: "Asia/Tokyo",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    },
+  ).format(value);
+  if (locale === "zh") return `最后修改：${formatted}`;
+  if (locale === "ko") return `최근 수정: ${formatted}`;
+  return `最終更新：${formatted}`;
+}
 
 function getCopy(locale: Locale) {
   const copyByLocale = {
@@ -498,6 +515,7 @@ type ImportCenterPageProps = {
     targetCaseId?: string;
     flow?: string;
     object?: string;
+    recentPage?: string;
   }>;
 };
 
@@ -576,7 +594,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
       // Reconstruct only this route's declared query keys; never accept a
       // caller-supplied returnTo. Workspace applies its existing URL guard.
       const query = new URLSearchParams();
-      for (const key of ["job", "flash", "xlsxJob", "advanced", "intake", "targetCaseId", "flow", "object"] as const) {
+      for (const key of ["job", "flash", "xlsxJob", "advanced", "intake", "targetCaseId", "flow", "object", "recentPage"] as const) {
         const value = params?.[key];
         if (typeof value === "string") query.set(key, value);
       }
@@ -593,13 +611,18 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
   const user = session.user;
   const tenantId = session.tenant.id;
   const hubContext = { userId: user.id, tenantId, requestContext: createRequestContext(session) };
-  const [jobs, attachments, cases, recentCases, recentClients] = await Promise.all([
-    listHubImportJobs(hubContext),
+  const recentSince = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const [jobs, recentJobs, attachments, caseEntries, recentCases, recentClients, recentProperties, recentPropertyActivities] = await Promise.all([
+    listHubImportJobs(hubContext, locale, null),
+    listHubImportJobs(hubContext, locale, null, recentSince),
     listHubAttachments(locale, 30, hubContext),
-    listBrokerageCases(user.id, 20, tenantId),
-    listBrokerageCasesForContext({ context: hubContext.requestContext, limit: 100 }),
-    listClientsForContext({ context: hubContext.requestContext, filter: { lifecycleStatus: "active", sort: "recent_created" } }),
+    listBrokerageCasesForContext({ context: hubContext.requestContext, limit: 20 }),
+    listBrokerageCasesForContext({ context: hubContext.requestContext, updatedSince: recentSince }),
+    listClientsForContext({ context: hubContext.requestContext, filter: { lifecycleStatus: "active", sort: "recent_created", updatedSince: recentSince } }),
+    listPropertiesForContext({ context: hubContext.requestContext, lifecycleStatus: "active", createdSince: recentSince }),
+    listRecentPropertyActivitiesForContext({ context: hubContext.requestContext, since: recentSince }),
   ]);
+  const cases = caseEntries.flatMap((entry) => (entry.brokerageCase ? [entry.brokerageCase] : []));
   const reviewHref = "/organize-center";
 
   const sourceLabel: Record<HubImportJobItem["sourceType"], string> = {
@@ -995,7 +1018,10 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
   }
   const missingRequestedJob = Boolean(requestedJobId && !requestedJob);
   const caseByImportJobId = new Map(
-    cases.flatMap((caseItem) => caseItem.sourceImportJobIds.map((importJobId) => [importJobId, caseItem] as const)),
+    [
+      ...cases,
+      ...recentCases.flatMap((entry) => (entry.brokerageCase ? [entry.brokerageCase] : [])),
+    ].flatMap((caseItem) => caseItem.sourceImportJobIds.map((importJobId) => [importJobId, caseItem] as const)),
   );
   const requestedJobCase = requestedJob ? caseByImportJobId.get(requestedJob.id) : undefined;
   const reviewCase = requestedJobCase ?? targetCase;
@@ -1017,7 +1043,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
   const recentInputs = buildImportCenterRecentInputs({
     cases: recentCases.flatMap((entry) => {
       const item = entry.brokerageCase;
-      if (!item || item.sourceImportJobIds.length > 0) return [];
+      if (!item) return [];
       return [{
         id: `case:${item.id}`,
         title: item.caseTitle,
@@ -1036,7 +1062,25 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
       updatedAt: client.updatedAt,
       category: "person",
     })),
-    fileJobs: jobs.map((job) => ({
+    properties: [
+      ...recentProperties.map(({ property }) => ({
+      id: `property:${property.id}`,
+      title: property.name,
+      type: locale === "zh" ? "物件资料" : locale === "ko" ? "매물 자료" : "物件情報",
+      href: `/properties/${encodeURIComponent(property.id)}/edit`,
+      updatedAt: property.createdAt,
+      category: "property" as const,
+      })),
+      ...recentPropertyActivities.map(({ property, changedAt }) => ({
+        id: `property:${property.id}`,
+        title: property.name,
+        type: locale === "zh" ? "物件资料" : locale === "ko" ? "매물 자료" : "物件情報",
+        href: `/properties/${encodeURIComponent(property.id)}/edit`,
+        updatedAt: changedAt,
+        category: "property" as const,
+      })),
+    ],
+    fileJobs: recentJobs.map((job) => ({
       id: `job:${job.id}`,
       title: job.title,
       type: `${sourceLabel[job.sourceType]} / ${statusLabel[job.status]}`,
@@ -1045,7 +1089,25 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
       targetEntity: job.targetEntity,
       linkedCaseId: caseByImportJobId.get(job.id)?.id,
     })),
+    since: recentSince,
   });
+  const recentPageSize = 5;
+  const parsedRecentPage = Number.parseInt(String(params?.recentPage ?? "1"), 10);
+  const recentPageCount = Math.max(1, Math.ceil(recentInputs.length / recentPageSize));
+  const recentPage = Number.isFinite(parsedRecentPage)
+    ? Math.min(Math.max(parsedRecentPage, 1), recentPageCount)
+    : 1;
+  const recentPageItems = recentInputs.slice((recentPage - 1) * recentPageSize, recentPage * recentPageSize);
+  const recentPageHref = (nextPage: number) => {
+    const query = new URLSearchParams();
+    for (const key of ["job", "flash", "xlsxJob", "advanced", "intake", "targetCaseId", "flow", "object"] as const) {
+      const value = params?.[key];
+      if (typeof value === "string" && value) query.set(key, value);
+    }
+    if (nextPage > 1) query.set("recentPage", String(nextPage));
+    const encoded = query.toString();
+    return `/import-center${encoded ? `?${encoded}` : ""}#recent-activity`;
+  };
   const requestedJobActionHref = requestedJob
     ? isInputFileExtractionJob(requestedJob)
       ? "#source-upload"
@@ -1230,10 +1292,9 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
       ) : null}
 
       {showObjectSelection ? (
-        <div data-import-layout="object-recent" className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-start">
+        <div data-import-layout="object-recent" className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-stretch">
           <section data-import-object-channels="true" className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-            <div className="border-b border-slate-100 p-5">
-              <p className="text-[11px] font-black uppercase tracking-wider text-blue-700">{locale === "zh" ? "录入资料" : locale === "ko" ? "자료 입력" : "資料入力"}</p>
+            <div className="flex min-h-[4.5rem] items-center border-b border-slate-100 px-5">
               <h2 className="text-base font-bold text-slate-950">{locale === "zh" ? "选择资料对象" : locale === "ko" ? "자료 대상 선택" : "資料の対象を選ぶ"}</h2>
             </div>
             <div className="grid gap-4 p-5">
@@ -1255,10 +1316,13 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
               ))}
             </div>
           </section>
-          <aside data-import-recent-slot="true" className="rounded-2xl border border-slate-200 bg-white p-5 xl:min-h-[34rem]">
-            <h2 className="text-base font-bold text-slate-950">{locale === "zh" ? "最近录入" : locale === "ko" ? "최근 입력" : "最近の入力"}</h2>
-            <div className="mt-4 space-y-2">
-              {recentInputs.map((item) => (
+          <aside id="recent-activity" data-import-recent-slot="true" className="flex h-full min-h-[34rem] flex-col rounded-2xl border border-slate-200 bg-white">
+            <div className="flex min-h-[4.5rem] items-center border-b border-slate-100 px-5">
+              <h2 className="text-base font-bold text-slate-950">{locale === "zh" ? "最近录入与修改" : locale === "ko" ? "최근 입력 및 수정" : "最近の入力・更新"}</h2>
+            </div>
+            <div className="flex min-h-0 flex-1 flex-col p-5">
+              <div className="flex-1 space-y-2">
+              {recentPageItems.map((item) => (
                 <Link key={`landing-recent-${item.id}`} href={item.href} className="flex min-w-0 items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 hover:border-blue-300 hover:bg-blue-50/40">
                   <span className="flex w-16 shrink-0 flex-col items-center gap-1 text-center">
                     <span className={`flex h-9 w-9 items-center justify-center rounded-lg ${recentCategoryUi[item.category].className}`} aria-hidden="true">
@@ -1270,11 +1334,35 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                   </span>
                   <span className="min-w-0 flex-1 self-center">
                     <span className="block truncate text-sm font-bold text-slate-900">{item.title}</span>
-                    <span className="mt-1 block truncate text-xs text-slate-500">{item.type} / {formatDate(item.updatedAt, locale)}</span>
+                    <span className="mt-1 block truncate text-xs text-slate-500">{formatRecentModifiedAt(item.updatedAt, locale)}</span>
                   </span>
                 </Link>
               ))}
               {recentInputs.length === 0 ? <p className="rounded-lg border border-dashed border-slate-200 px-3 py-10 text-center text-sm text-slate-500">{locale === "zh" ? "暂无最近录入记录。" : locale === "ko" ? "최근 입력 기록이 없습니다." : "最近の入力履歴はありません。"}</p> : null}
+              </div>
+            {recentInputs.length > recentPageSize ? (
+              <nav aria-label={locale === "zh" ? "最近录入分页" : locale === "ko" ? "최근 입력 페이지" : "最近の入力ページ"} className="mt-4 flex items-center justify-between border-t border-slate-100 pt-4 text-xs font-bold text-slate-600">
+                {recentPage > 1 ? (
+                  <Link href={recentPageHref(recentPage - 1)} className="rounded-md border border-slate-200 px-2.5 py-1.5 hover:border-blue-300 hover:text-blue-700">
+                    <span className="inline-flex items-center gap-1"><span aria-hidden="true" className="material-symbols-outlined text-[15px]">chevron_left</span>{locale === "zh" ? "上一页" : locale === "ko" ? "이전" : "前へ"}</span>
+                  </Link>
+                ) : (
+                  <span aria-disabled="true" className="cursor-not-allowed rounded-md border border-slate-100 px-2.5 py-1.5 text-slate-300">
+                    <span className="inline-flex items-center gap-1"><span aria-hidden="true" className="material-symbols-outlined text-[15px]">chevron_left</span>{locale === "zh" ? "上一页" : locale === "ko" ? "이전" : "前へ"}</span>
+                  </span>
+                )}
+                <span aria-live="polite">{recentPage} / {recentPageCount}</span>
+                {recentPage < recentPageCount ? (
+                  <Link href={recentPageHref(recentPage + 1)} className="rounded-md border border-slate-200 px-2.5 py-1.5 hover:border-blue-300 hover:text-blue-700">
+                    <span className="inline-flex items-center gap-1">{locale === "zh" ? "下一页" : locale === "ko" ? "다음" : "次へ"}<span aria-hidden="true" className="material-symbols-outlined text-[15px]">chevron_right</span></span>
+                  </Link>
+                ) : (
+                  <span aria-disabled="true" className="cursor-not-allowed rounded-md border border-slate-100 px-2.5 py-1.5 text-slate-300">
+                    <span className="inline-flex items-center gap-1">{locale === "zh" ? "下一页" : locale === "ko" ? "다음" : "次へ"}<span aria-hidden="true" className="material-symbols-outlined text-[15px]">chevron_right</span></span>
+                  </span>
+                )}
+              </nav>
+            ) : null}
             </div>
           </aside>
           <span data-import-layout-end="object-recent" className="hidden" />

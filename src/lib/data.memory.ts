@@ -90,6 +90,17 @@ export type User = {
 export type ExternalAuthUserInput = {
   subject: string;
   email?: string;
+  furigana?: string;
+  birthDate?: Date;
+  gender?: string;
+  currentPostalCode?: string;
+  currentAddress?: string;
+  employerName?: string;
+  employerAddress?: string;
+  employerPhone?: string;
+  annualIncome?: number;
+  annualIncomeAsOf?: Date;
+  annualIncomeSource?: string;
   name?: string;
 };
 
@@ -135,6 +146,7 @@ export type TenantMembership = {
   createdAt: Date;
   updatedAt: Date;
 };
+
 
 export type TenantCreationRequest = {
   id: string;
@@ -187,6 +199,17 @@ export type Client = {
   phone: string;
   lineId?: string;
   email?: string;
+  furigana?: string;
+  birthDate?: Date;
+  gender?: string;
+  currentPostalCode?: string;
+  currentAddress?: string;
+  employerName?: string;
+  employerAddress?: string;
+  employerPhone?: string;
+  annualIncome?: number;
+  annualIncomeAsOf?: Date;
+  annualIncomeSource?: string;
   budgetMin?: number;
   budgetMax?: number;
   budgetType: BudgetType;
@@ -227,7 +250,13 @@ export type Property = {
   name: string;
   area?: string;
   address?: string;
+  furigana?: string;
+  roomNumber?: string;
+  postalCode?: string;
+  usage?: string;
   listingPrice: number;
+  listingRent?: number;
+  listingCommonFee?: number;
   sizeSqm?: number;
   managementFee?: number;
   repairFee?: number;
@@ -793,6 +822,7 @@ type DB = {
   guaranteePreviewConfirmations: GuaranteePreviewConfirmation[];
 };
 
+
 function makeId(prefix: string): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
 }
@@ -983,6 +1013,29 @@ function ensureVisibilityRecordDefaults(record: {
     record.ownerResolutionStatus ?? (record.currentOwnerUserId ? "resolved" : "pending_confirmation"),
   );
   if (!record.currentOwnerUserId) record.ownerResolutionStatus = "pending_confirmation";
+}
+
+/**
+ * Repair only the known local demo source whose seed predates visibility
+ * metadata.  This is deliberately keyed by both tenant and property id so a
+ * runtime read cannot infer ownership for other records or tenants.
+ */
+function ensureStrictLocalDemoFixturePropertyOwner(property: Property | null): void {
+  if (!closedBetaLocalFixtureEnabled() || !property || property.tenantId !== DEFAULT_TENANT_ID || property.id !== "prop_ikebukuro_share") return;
+
+  const currentOwnerUserId = property.currentOwnerUserId?.trim();
+  const createdByUserId = property.createdByUserId?.trim();
+  if (currentOwnerUserId && (currentOwnerUserId !== "user_demo" || (createdByUserId && createdByUserId !== "user_demo"))) return;
+  if (!currentOwnerUserId && createdByUserId && createdByUserId !== "user_demo") return;
+
+  if (!currentOwnerUserId) {
+    ensureVisibilityRecordDefaults(property, "user_demo");
+    if (property.currentOwnerUserId !== "user_demo") return;
+  } else if (createdByUserId !== "user_demo") {
+    return;
+  }
+
+  property.ownerResolutionStatus = "resolved";
 }
 
 function deriveMembershipInvitationStatus(membership: TenantMembership, now: Date): TenantInvitationStatus {
@@ -2326,6 +2379,8 @@ function ensureRichDemoData() {
   backfillTenantScope(db);
   db.clients.forEach((record) => ensureVisibilityRecordDefaults(record, record.ownerUserId));
   db.brokerageCases.forEach((record) => ensureVisibilityRecordDefaults(record, record.userId));
+  const parkFixtureProperty = db.properties.find((record) => record.tenantId === DEFAULT_TENANT_ID && record.id === "prop_ikebukuro_share");
+  ensureStrictLocalDemoFixturePropertyOwner(parkFixtureProperty ?? null);
   db.properties.forEach((record) => ensureVisibilityRecordDefaults(record));
 }
 
@@ -3986,13 +4041,18 @@ export async function getOutputTemplateVersionById(input: {
   return version ? { ...version } : null;
 }
 
-export async function listImportJobs(userId: string, limit = 50, tenantId?: string): Promise<ImportJob[]> {
+export async function listImportJobs(
+  userId: string,
+  limit: number | null = 50,
+  tenantId?: string,
+  updatedSince?: Date,
+): Promise<ImportJob[]> {
   const scopeTenantId = resolveTenantId(tenantId);
-  return db.importJobs
+  const items = db.importJobs
     .filter((item) => item.userId === userId && item.tenantId === scopeTenantId)
-    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-    .slice(0, limit)
-    .map((item) => ({ ...item }));
+    .filter((item) => !updatedSince || item.updatedAt >= updatedSince)
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  return (limit === null ? items : items.slice(0, Math.max(0, limit))).map((item) => ({ ...item }));
 }
 
 export async function getImportJobByIdempotencyKey(input: {
@@ -4243,11 +4303,13 @@ export async function listBrokerageCasesForContext(input: {
   context: RequestContext;
   limit?: number;
   lifecycleStatus?: LifecycleFilter;
+  updatedSince?: Date;
 }): Promise<VisibleBrokerageCase[]> {
   const lifecycleStatus = input.lifecycleStatus ?? "active";
   const visible = db.brokerageCases
     .filter((item) => item.tenantId === input.context.tenantId && isVisibilityRecordResolved(item))
     .filter((item) => lifecycleStatus === "all" || (item.lifecycleStatus ?? "active") === lifecycleStatus)
+    .filter((item) => !input.updatedSince || item.updatedAt >= input.updatedSince)
     .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
     .map((item) => ({
       brokerageCase: cloneBrokerageCase(item),
@@ -5550,6 +5612,7 @@ export type ClientListFilter = {
   sort?: ClientListSort;
   tenantId?: string;
   lifecycleStatus?: LifecycleFilter;
+  updatedSince?: Date;
 };
 
 export type VisibleClient = {
@@ -5561,6 +5624,13 @@ export type VisibleClient = {
 export type VisibleProperty = {
   property: Property;
   resolution: VisibilityResolution;
+};
+
+export type RecentPropertyActivity = {
+  property: Property;
+  resolution: VisibilityResolution;
+  changedAt: Date;
+  action: string;
 };
 
 export type VisibleRecordSearchHit = {
@@ -5709,6 +5779,7 @@ export async function listClientsForContext(input: {
     .filter((item) => isVisibilityRecordResolved(item))
     .filter((item) => resolveRecordVisibility(input.context, item).canRead)
     .filter((item) => filter.lifecycleStatus === "all" || (item.lifecycleStatus ?? "active") === (filter.lifecycleStatus ?? "active"))
+    .filter((item) => !filter.updatedSince || item.updatedAt >= filter.updatedSince)
     .filter((item) => (filter.stage && filter.stage !== "all" ? item.stage === filter.stage : true))
     .filter((item) => (filter.purpose && filter.purpose !== "all" ? item.purpose === filter.purpose : true))
     .filter((item) => (filter.temperature && filter.temperature !== "all" ? item.temperature === filter.temperature : true))
@@ -5800,15 +5871,57 @@ export async function getWorkCenterSnapshotForContext(input: {
 export async function listPropertiesForContext(input: {
   context: RequestContext;
   lifecycleStatus?: LifecycleFilter;
+  createdSince?: Date;
 }): Promise<VisibleProperty[]> {
   const lifecycleStatus = input.lifecycleStatus ?? "active";
   return db.properties
     .filter((item) => item.tenantId === input.context.tenantId)
     .filter((item) => lifecycleStatus === "all" || (item.lifecycleStatus ?? "active") === lifecycleStatus)
+    .filter((item) => !input.createdSince || item.createdAt >= input.createdSince)
     .flatMap((item) => {
       const resolution = resolveRecordVisibility(input.context, item);
       return resolution.canRead ? [{ property: { ...item }, resolution }] : [];
     });
+}
+
+/**
+ * Read recent property changes from the existing tenant audit trail, then
+ * re-check each target through the property visibility resolver.  Property
+ * rows predate updated_at, so this is the only reliable local signal for
+ * edits made through the supported actions. The caller's seven-day window
+ * bounds the history scan; any optional limit is applied only after tenant,
+ * lifecycle, and visibility checks so hidden records cannot consume a page.
+ */
+export async function listRecentPropertyActivitiesForContext(input: {
+  context: RequestContext;
+  since: Date;
+  limit?: number;
+}): Promise<RecentPropertyActivity[]> {
+  const limit = input.limit === undefined ? undefined : Math.max(1, Math.trunc(input.limit));
+  const propertyChangeActions = new Set([
+    "property_created",
+    "property_updated",
+    "object_import_confirm",
+    "record_archived",
+    "record_restored",
+  ]);
+  const seenPropertyIds = new Set<string>();
+  return db.auditLogs
+    .filter((item) => item.tenantId === input.context.tenantId)
+    .filter((item) => item.targetType === "property" && Boolean(item.targetId))
+    .filter((item) => propertyChangeActions.has(item.action) && item.createdAt >= input.since)
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || a.id.localeCompare(b.id))
+    .flatMap((item) => {
+      const propertyId = item.targetId!;
+      if (seenPropertyIds.has(propertyId)) return [];
+      seenPropertyIds.add(propertyId);
+      const property = db.properties.find((entry) => entry.id === propertyId && entry.tenantId === input.context.tenantId);
+      const resolution = resolveRecordVisibility(input.context, property);
+      return resolution.canRead && property && (property.lifecycleStatus ?? "active") === "active"
+        ? [{ property: { ...property }, resolution, changedAt: item.createdAt, action: item.action }]
+        : [];
+    })
+    .slice(0, limit);
 }
 
 export type VisiblePropertyDetail = {
@@ -6088,7 +6201,13 @@ export async function addProperty(input: {
   name: string;
   area?: string;
   address?: string;
+  furigana?: string;
+  roomNumber?: string;
+  postalCode?: string;
+  usage?: string;
   listingPrice: number;
+  listingRent?: number;
+  listingCommonFee?: number;
   sizeSqm?: number;
   managementFee?: number;
   repairFee?: number;
@@ -6101,7 +6220,13 @@ export async function addProperty(input: {
     name: input.name,
     area: input.area,
     address: input.address,
+    furigana: input.furigana,
+    roomNumber: input.roomNumber,
+    postalCode: input.postalCode,
+    usage: input.usage,
     listingPrice: input.listingPrice,
+    listingRent: input.listingRent,
+    listingCommonFee: input.listingCommonFee,
     sizeSqm: input.sizeSqm,
     managementFee: input.managementFee,
     repairFee: input.repairFee,
@@ -6130,7 +6255,13 @@ export async function updateProperty(
     name: string;
     area?: string;
     address?: string;
+    furigana?: string;
+    roomNumber?: string;
+    postalCode?: string;
+    usage?: string;
     listingPrice: number;
+    listingRent?: number;
+    listingCommonFee?: number;
     sizeSqm?: number;
     managementFee?: number;
     repairFee?: number;
@@ -6145,7 +6276,13 @@ export async function updateProperty(
   property.name = input.name;
   property.area = input.area;
   property.address = input.address;
+  if (Object.prototype.hasOwnProperty.call(input, "furigana")) property.furigana = input.furigana;
+  if (Object.prototype.hasOwnProperty.call(input, "roomNumber")) property.roomNumber = input.roomNumber;
+  if (Object.prototype.hasOwnProperty.call(input, "postalCode")) property.postalCode = input.postalCode;
+  if (Object.prototype.hasOwnProperty.call(input, "usage")) property.usage = input.usage;
   property.listingPrice = input.listingPrice;
+  if (Object.prototype.hasOwnProperty.call(input, "listingRent")) property.listingRent = input.listingRent;
+  if (Object.prototype.hasOwnProperty.call(input, "listingCommonFee")) property.listingCommonFee = input.listingCommonFee;
   property.sizeSqm = input.sizeSqm;
   property.managementFee = input.managementFee;
   property.repairFee = input.repairFee;
@@ -6230,6 +6367,17 @@ export async function addClient(input: {
   phone: string;
   lineId?: string;
   email?: string;
+  furigana?: string;
+  birthDate?: Date;
+  gender?: string;
+  currentPostalCode?: string;
+  currentAddress?: string;
+  employerName?: string;
+  employerAddress?: string;
+  employerPhone?: string;
+  annualIncome?: number;
+  annualIncomeAsOf?: Date;
+  annualIncomeSource?: string;
   budgetMin?: number;
   budgetMax?: number;
   budgetType: BudgetType;
@@ -6259,6 +6407,17 @@ export async function addClient(input: {
     phone: input.phone,
     lineId: input.lineId,
     email: input.email,
+    furigana: input.furigana,
+    birthDate: input.birthDate,
+    gender: input.gender,
+    currentPostalCode: input.currentPostalCode,
+    currentAddress: input.currentAddress,
+    employerName: input.employerName,
+    employerAddress: input.employerAddress,
+    employerPhone: input.employerPhone,
+    annualIncome: input.annualIncome,
+    annualIncomeAsOf: input.annualIncomeAsOf,
+    annualIncomeSource: input.annualIncomeSource,
     budgetMin: input.budgetMin,
     budgetMax: input.budgetMax,
     budgetType: input.budgetType,
@@ -6300,6 +6459,17 @@ export async function updateClient(
     phone: string;
     lineId?: string;
     email?: string;
+    furigana?: string;
+    birthDate?: Date;
+    gender?: string;
+    currentPostalCode?: string;
+    currentAddress?: string;
+    employerName?: string;
+    employerAddress?: string;
+    employerPhone?: string;
+    annualIncome?: number;
+    annualIncomeAsOf?: Date;
+    annualIncomeSource?: string;
     budgetMin?: number;
     budgetMax?: number;
     budgetType: BudgetType;
@@ -6331,6 +6501,17 @@ export async function updateClient(
   client.phone = input.phone;
   client.lineId = input.lineId;
   client.email = input.email;
+  if (Object.prototype.hasOwnProperty.call(input, "furigana")) client.furigana = input.furigana;
+  if (Object.prototype.hasOwnProperty.call(input, "birthDate")) client.birthDate = input.birthDate;
+  if (Object.prototype.hasOwnProperty.call(input, "gender")) client.gender = input.gender;
+  if (Object.prototype.hasOwnProperty.call(input, "currentPostalCode")) client.currentPostalCode = input.currentPostalCode;
+  if (Object.prototype.hasOwnProperty.call(input, "currentAddress")) client.currentAddress = input.currentAddress;
+  if (Object.prototype.hasOwnProperty.call(input, "employerName")) client.employerName = input.employerName;
+  if (Object.prototype.hasOwnProperty.call(input, "employerAddress")) client.employerAddress = input.employerAddress;
+  if (Object.prototype.hasOwnProperty.call(input, "employerPhone")) client.employerPhone = input.employerPhone;
+  if (Object.prototype.hasOwnProperty.call(input, "annualIncome")) client.annualIncome = input.annualIncome;
+  if (Object.prototype.hasOwnProperty.call(input, "annualIncomeAsOf")) client.annualIncomeAsOf = input.annualIncomeAsOf;
+  if (Object.prototype.hasOwnProperty.call(input, "annualIncomeSource")) client.annualIncomeSource = input.annualIncomeSource;
   client.budgetMin = input.budgetMin;
   client.budgetMax = input.budgetMax;
   client.budgetType = input.budgetType;
@@ -6881,6 +7062,7 @@ export async function resolvePropertyVisibilityForContext(input: {
   propertyId: string;
 }): Promise<VisibilityRecordResult<Property>> {
   const record = db.properties.find((item) => item.id === input.propertyId) ?? null;
+  ensureStrictLocalDemoFixturePropertyOwner(record);
   const resolution = resolveRecordVisibility(input.context, record);
   return { resolution, record: resolution.canRead && record ? { ...record } : null };
 }

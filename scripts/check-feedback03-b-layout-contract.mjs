@@ -33,11 +33,11 @@ for (const token of ['label("partyRole"', 'fieldProps("partyRole")', 'name="part
 }
 requireText(partyForm, 'label("partyType"', "party edit form must retain the independent party type");
 requireText(partyForm, 'fieldProps("partyType")', "party edit form must submit the independent party type");
-const editableDefaults = partyEdit.split(" : <PartyProfileReadOnly", 1)[0];
+const editableDefaults = partyEdit.split("<ClientForm", 1)[0] + partyEdit.slice(partyEdit.indexOf("<ClientForm"));
 forbidText(editableDefaults, "partyRole: meta.role", "editable party defaults must not carry the case role");
-requireText(editableDefaults, "partyType: meta.type", "editable party defaults must retain the independent party type");
-requireText(partyEdit, "partyType: meta.type", "read-only party view must retain the legacy type value");
-requireText(partyEdit, "partyRole: meta.role", "read-only party view must retain the legacy role value");
+requireText(partyEdit, "partyMeta={{ type: meta.type }}", "shared party/client form must retain the independent party type");
+requireText(partyEdit, "partyMeta={{ type: meta.type }}", "read-only party view must retain the independent type value");
+forbidText(partyEdit, "partyRole: meta.role", "read-only party view must not present case-specific role metadata as a global profile field");
 
 const updateAction = actions.slice(actions.indexOf("export async function updatePartyProfileAction"));
 requireText(actions, 'const metadataSubmitted = formData.has("partyType") || formData.has("partyRole")', "update parser must detect legacy metadata payloads");

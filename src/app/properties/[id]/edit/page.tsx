@@ -128,8 +128,14 @@ export default async function EditPropertyPage({ params, searchParams }: EditPro
     name: property.name,
     area: property.area ?? "",
     address: property.address ?? "",
+    furigana: property.furigana ?? "",
+    roomNumber: property.roomNumber ?? "",
+    postalCode: property.postalCode ?? "",
+    usage: property.usage ?? "",
     sizeSqm: property.sizeSqm == null ? "" : String(property.sizeSqm),
     listingPrice: property.listingPrice > 0 ? String(property.listingPrice) : "",
+    listingRent: property.listingRent == null ? "" : String(property.listingRent),
+    listingCommonFee: property.listingCommonFee == null ? "" : String(property.listingCommonFee),
     managementFee: property.managementFee == null ? "" : String(property.managementFee),
     repairFee: property.repairFee == null ? "" : String(property.repairFee),
     notes: property.notes ?? "",
@@ -157,7 +163,22 @@ export default async function EditPropertyPage({ params, searchParams }: EditPro
       {canEdit ? (
         <PropertyResponsiveForm action={updatePropertyProfileAction} locale={locale} initialValues={initialValues} returnTo={returnTo} propertyId={property.id} />
       ) : (
-        <PropertyProfileReadOnly locale={locale} reason={readOnlyReason} property={property} />
+        <PropertyProfileReadOnly locale={locale} reason={readOnlyReason} property={{
+          name: property.name,
+          furigana: property.furigana,
+          area: property.area,
+          address: property.address,
+          roomNumber: property.roomNumber,
+          postalCode: property.postalCode,
+          usage: property.usage,
+          sizeSqm: property.sizeSqm,
+          listingPrice: property.listingPrice,
+          listingRent: property.listingRent,
+          listingCommonFee: property.listingCommonFee,
+          managementFee: property.managementFee,
+          repairFee: property.repairFee,
+          notes: property.notes,
+        }} />
       )}
       <ObjectAttachmentSection locale={locale} targetType="property" targetId={property.id} items={attachments} canWrite={canEdit} />
     </div>

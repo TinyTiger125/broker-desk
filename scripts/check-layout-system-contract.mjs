@@ -414,8 +414,11 @@ if ((caseDraft.match(/footer=\{drawerView === \"create\"/g) ?? []).length < 2) {
 }
 
 for (const [source, label] of [[clientForm, "ClientForm"], [propertyForm, "PropertyResponsiveForm"]]) {
-  for (const fragment of ["formId?: string", "hideActions?: boolean", "onPendingChange?: (pending: boolean) => void", "onSubmitStart?: () => void", "id={formId}", "onPendingChange?.(pending)", "submissionLockRef", "handleFormSubmit", "endSubmission", "onSubmit={handleSubmit}"]) {
+  for (const fragment of ["formId?: string", "hideActions?: boolean", "onPendingChange?: (pending: boolean) => void", "onSubmitStart?: () => void", "id={formId}", "onPendingChange?.(pending)", "submissionLockRef", "handleFormSubmit", "endSubmission"]) {
     requireText(source, fragment, `${label} pending bridge`);
+  }
+  if (!source.includes("onSubmit={handleSubmit}") && !source.includes("onSubmit={readOnly ? (event) => event.preventDefault() : handleSubmit}")) {
+    failures.push(`${label} pending bridge: missing submit handler binding`);
   }
   requireText(source, "hideActions ? null", `${label} footer ownership`);
 }

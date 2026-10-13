@@ -86,6 +86,12 @@ function classifyImportError(errorCode: string | null | undefined, httpStatus?: 
 /** Starts one import, then waits for the worker before opening the review screen. */
 export function ExcelImportQueueProcessor({ jobId, locale, targetCaseId, statusOnly = false, successHref, objectRecoveryHref }: ExcelImportQueueProcessorProps) {
   const started = useRef(false);
+  const startedKey = useRef<string | null>(null);
+  // React StrictMode re-runs effects in development. Keep the one POST, but
+  // let the surviving effect cycle adopt its response instead of cancelling
+  // the request during StrictMode's probe cleanup.
+  const requestRun = useRef(0);
+  const mounted = useRef(false);
   const [readOnlyStatus, setReadOnlyStatus] = useState(statusOnly);
   const [status, setStatus] = useState<ImportProcessStatus>(statusOnly ? "processing" : "submitting");
   const [retryKey, setRetryKey] = useState(0);
@@ -103,9 +109,17 @@ export function ExcelImportQueueProcessor({ jobId, locale, targetCaseId, statusO
   }, [jobId, targetCaseId, successHref]);
 
   useEffect(() => {
-    if (started.current) return;
+    mounted.current = true;
+    const currentRequestKey = JSON.stringify([jobId, targetCaseId ?? "", successHref ?? "", readOnlyStatus]);
+    if (started.current && startedKey.current === currentRequestKey) {
+      return () => {
+        mounted.current = false;
+      };
+    }
     started.current = true;
-    let cancelled = false;
+    startedKey.current = currentRequestKey;
+    requestRun.current += 1;
+    const currentRequestRun = requestRun.current;
 
     async function processJob() {
       let classifiedError = false;
@@ -118,7 +132,7 @@ export function ExcelImportQueueProcessor({ jobId, locale, targetCaseId, statusO
               headers: { "x-requested-with": "broker-desk" },
             });
         const payload = (await response.json().catch(() => null)) as ImportProcessResponse | null;
-        if (cancelled) return;
+        if (!mounted.current || requestRun.current !== currentRequestRun) return;
         if (!response.ok || !payload?.ok) {
           setRequestId(payload?.requestId ?? null);
           setErrorKind(classifyImportError(payload?.errorCode ?? payload?.error, response.status));
@@ -139,7 +153,7 @@ export function ExcelImportQueueProcessor({ jobId, locale, targetCaseId, statusO
         }
         openReview();
       } catch {
-        if (!cancelled) {
+        if (mounted.current && requestRun.current === currentRequestRun) {
           if (!classifiedError) setErrorKind("retryable");
           setStatus("failed");
         }
@@ -148,9 +162,12 @@ export function ExcelImportQueueProcessor({ jobId, locale, targetCaseId, statusO
 
     void processJob();
     return () => {
-      cancelled = true;
+      // React StrictMode immediately runs the next setup in the same effect
+      // flush, which restores mounted before the response microtask. A real
+      // unmount has no following setup, so the response is rejected at once.
+      mounted.current = false;
     };
-  }, [jobId, openReview, readOnlyStatus, retryKey]);
+  }, [jobId, openReview, readOnlyStatus, retryKey, successHref, targetCaseId]);
 
   useEffect(() => {
     if (status !== "queued" && status !== "processing") return;

@@ -299,6 +299,28 @@ export function mergePartyProfileMetadataNotes(input: {
   return merged || undefined;
 }
 
+/**
+ * Preserve the legacy type/role metadata while replacing only the visible
+ * freeform note edited in the unified profile form.
+ */
+export function mergePartyProfileNotes(input: {
+  existingNotes?: string;
+  type?: PartyProfileType;
+  role?: PartyProfileRole;
+  note?: string;
+  locale: Locale;
+}): string | undefined {
+  const merged = mergePartyProfileMetadataNotes(input);
+  const noteKeys = new Set(Object.values(labelKeys.note));
+  const lines = (merged ?? "").split(/\r?\n/).filter((line) => {
+    const trimmed = line.trim();
+    return ![...noteKeys].some((key) => trimmed.startsWith(`${key}:`) || trimmed.startsWith(`${key}：`));
+  });
+  if (input.note?.trim()) lines.push(`${labelKeys.note[input.locale]}：${input.note.trim()}`);
+  const result = lines.filter(Boolean).join("\n");
+  return result || undefined;
+}
+
 export function normalizePartyReturnTo(value: string | null | undefined): string {
   const fallback = "/parties";
   const path = (value ?? "").trim();

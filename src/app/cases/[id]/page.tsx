@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { createClientFormAction, createPropertyQuickAction, readExistingCasePersonInfoAction, refreshObjectImportReviewAction, rollbackCaseMergeAction, saveCaseAssociationsAction, saveCaseWorkbenchAction } from "@/app/actions";
+import { createClientFormAction, createPropertyQuickAction, readExistingCasePersonInfoAction, refreshObjectImportReviewAction, rollbackCaseMergeAction, saveCaseAssociationsAction, saveCaseWorkbenchAction, updateClientProfileInlineAction, updatePropertyProfileInlineAction } from "@/app/actions";
 import { ArchiveRecordButton } from "@/components/archive-record-button";
-import { CaseWorkbenchFieldForm } from "@/components/case-workbench-field-form";
 import { CaseAssociationManager } from "@/components/case-association-manager";
 import { CaseExistingPersonInfo } from "@/components/case-existing-person-info";
-import { CaseFieldInput, CaseFieldState, CaseFieldValue, CaseIdentityHeader, CaseOverview, type CaseOverviewOutputBlocker, type CaseOverviewSection } from "@/components/case-overview";
+import { CaseFieldState, CaseFieldValue, CaseIdentityHeader, CaseOverview, type CaseOverviewOutputBlocker, type CaseOverviewSection } from "@/components/case-overview";
+import { CaseWorkbenchFieldRow } from "@/components/case-workbench-field-row";
 import { PageFlashBanner } from "@/components/page-flash-banner";
 import { getBrokerageCaseByIdForContext, getGuaranteeApplicationDraft, listCaseWorkbenchFieldRules, listClientsForContext, listExtractionReviewItems, listPropertiesForContext, listTenantGuaranteeTemplateInstalls, resolveClientVisibilityForContext, resolvePropertyVisibilityForContext } from "@/lib/data";
 import type { ExtractionReviewItem, ExtractionReviewStatus } from "@/lib/data";
@@ -51,6 +51,7 @@ import { buildObjectVersionFingerprint } from "@/lib/object-import-contract";
 import { resolveCasePropertyAddressPresentation } from "@/lib/case-property-address-presentation";
 import { formatCaseDateForDisplay } from "@/lib/case-date";
 import { CASE_PERSON_PREFILL_FIELDS, type CasePersonPrefillCandidate } from "@/lib/case-person-prefill";
+import { extractFreeformPartyNote, extractPartyProfileFromNotes } from "@/lib/party-profile";
 
 export const dynamic = "force-dynamic";
 
@@ -90,6 +91,8 @@ type WorkbenchField = {
   fieldKey: string;
   label: string;
   value: string;
+  /** True only when the persisted field-status map confirms this exact value. */
+  serverConfirmed: boolean;
   required: boolean;
   state: WorkbenchTrustState;
   treeNodeId: string;
@@ -364,6 +367,10 @@ function getSource(item: ExtractionReviewItem) {
   return item.sourceCell ?? item.sourceRange ?? "-";
 }
 
+function isPendingWorkbenchReview(reviewStatus?: ExtractionReviewStatus) {
+  return reviewStatus === "suggested" || reviewStatus === "unknown";
+}
+
 function readText(data: Record<string, unknown>, key: string) {
   return getCaseFieldValue(data, key);
 }
@@ -397,6 +404,7 @@ function buildWorkbenchField(input: {
     .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
   const latestReview = reviewItems[reviewItems.length - 1];
   const manualState = input.statusMap[input.fieldKey] as WorkbenchTrustState | undefined;
+  const reviewNeedsAttention = isPendingWorkbenchReview(latestReview?.reviewStatus);
   const requirement = resolveCaseWorkbenchFieldRequirement(input.fieldKey, information.importance, input.ruleMap);
   const required = requirement === "required";
   const applicable = isCaseFieldApplicable({
@@ -429,6 +437,7 @@ function buildWorkbenchField(input: {
     fieldKey: input.fieldKey,
     label: input.label,
     value,
+    serverConfirmed: Boolean(value.trim()) && (manualState === "confirmed" || manualState === "edited") && !reviewNeedsAttention,
     required,
     state,
     treeNodeId: information.treeNodeId,
@@ -638,6 +647,65 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
     const record = associatedPartyResults[index]?.record;
     return record ? [{ ...party, name: record.name }] : [];
   });
+  const personProfiles = Object.fromEntries(
+    associatedPartyResults.flatMap((result) => result.record && result.resolution.canWrite ? [[result.record.id, {
+      clientId: result.record.id,
+      name: result.record.name,
+      phone: result.record.phone,
+      lineId: result.record.lineId,
+      email: result.record.email,
+      partyType: extractPartyProfileFromNotes(result.record.notes).type,
+      furigana: result.record.furigana,
+      birthDate: result.record.birthDate,
+      gender: result.record.gender,
+      currentPostalCode: result.record.currentPostalCode,
+      currentAddress: result.record.currentAddress,
+      employerName: result.record.employerName,
+      employerAddress: result.record.employerAddress,
+      employerPhone: result.record.employerPhone,
+      annualIncome: result.record.annualIncome,
+      annualIncomeAsOf: result.record.annualIncomeAsOf,
+      annualIncomeSource: result.record.annualIncomeSource,
+      budgetMin: result.record.budgetMin,
+      budgetMax: result.record.budgetMax,
+      budgetType: result.record.budgetType,
+      preferredArea: result.record.preferredArea,
+      firstChoiceArea: result.record.firstChoiceArea,
+      secondChoiceArea: result.record.secondChoiceArea,
+      purpose: result.record.purpose,
+      loanPreApprovalStatus: result.record.loanPreApprovalStatus,
+      desiredMoveInPeriod: result.record.desiredMoveInPeriod,
+      stage: result.record.stage,
+      temperature: result.record.temperature,
+      brokerageContractType: result.record.brokerageContractType,
+      brokerageContractSignedAt: result.record.brokerageContractSignedAt,
+      brokerageContractExpiresAt: result.record.brokerageContractExpiresAt,
+      importantMattersExplainedAt: result.record.importantMattersExplainedAt,
+      contractDocumentDeliveredAt: result.record.contractDocumentDeliveredAt,
+      personalInfoConsentAt: result.record.personalInfoConsentAt,
+      amlCheckStatus: result.record.amlCheckStatus,
+      nextFollowUpAt: result.record.nextFollowUpAt,
+      notes: extractFreeformPartyNote(result.record.notes),
+    }]] : []),
+  );
+  const propertyProfiles = Object.fromEntries(
+    [associatedPropertyResult].flatMap((result) => result?.record && result.resolution.canWrite ? [[result.record.id, {
+      name: result.record.name,
+      area: result.record.area ?? "",
+      address: result.record.address ?? "",
+      furigana: result.record.furigana ?? "",
+      roomNumber: result.record.roomNumber ?? "",
+      postalCode: result.record.postalCode ?? "",
+      usage: result.record.usage ?? "",
+      sizeSqm: result.record.sizeSqm == null ? "" : String(result.record.sizeSqm),
+      listingPrice: result.record.listingPrice > 0 ? String(result.record.listingPrice) : "",
+      listingRent: result.record.listingRent == null ? "" : String(result.record.listingRent),
+      listingCommonFee: result.record.listingCommonFee == null ? "" : String(result.record.listingCommonFee),
+      managementFee: result.record.managementFee == null ? "" : String(result.record.managementFee),
+      repairFee: result.record.repairFee == null ? "" : String(result.record.repairFee),
+      notes: result.record.notes ?? "",
+    }]] : []),
+  );
   const stableCaseId = brokerageCase.id;
   const objectImportJobId = String(query?.objectImportJob ?? "").trim();
   const objectImportReadiness = await getObjectImportFeatureReadiness();
@@ -790,6 +858,10 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
         saveAction={canWriteCase ? saveCaseAssociationsAction : undefined}
         createPersonAction={canWriteCase ? createClientFormAction : undefined}
         createPropertyAction={canWriteCase ? createPropertyQuickAction : undefined}
+        updatePersonAction={canWriteCase ? updateClientProfileInlineAction : undefined}
+        updatePropertyAction={canWriteCase && associatedPropertyResult?.resolution.canWrite ? updatePropertyProfileInlineAction : undefined}
+        personProfiles={personProfiles}
+        propertyProfiles={propertyProfiles}
         objectImportViews={objectImportViews}
         objectImportUploadAction={canWriteCase && objectImportReadiness.ready ? uploadObjectImportAction : undefined}
         objectImportUnavailable={!objectImportReadiness.ready}
@@ -918,7 +990,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
     .map((group) => ({
       id: `archive-${group.id}`,
       label: group.label,
-      collapsible: group.id === "people",
+      collapsible: group.id === "property-and-lease" || group.id === "people",
       children: group.children
         .map((child) => ({
           id: child.id,
@@ -1172,67 +1244,49 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
       invalidFieldKey === field.fieldKey &&
       objectImportBinding?.importJobId === objectImportJobId &&
       Boolean(objectImportBinding?.observedVersion);
+    const objectImportMessage = objectImportBinding
+      ? preserveExistingObjectValue
+        ? tr(locale, { ja: `既存値を優先。候補「${objectImportBinding.candidateValue}」は確認待ち`, zh: `已有值优先；候选「${objectImportBinding.candidateValue}」待核对`, ko: `기존 값을 우선합니다. 후보「${objectImportBinding.candidateValue}」는 확인 대기` })
+        : objectImportBinding.status === "conflict"
+          ? tr(locale, { ja: "資料間で不一致があります。内容を確認して保存してください", zh: "资料存在冲突，请核对后保存", ko: "자료가 서로 다릅니다. 확인 후 저장하세요" })
+          : objectImportBinding.status === "low_confidence"
+            ? tr(locale, { ja: "根拠が弱いため、確認前に出典を確認してください", zh: "来源清晰度不足，确认前请核对", ko: "근거가 약하므로 확인 전에 출처를 확인하세요" })
+            : tr(locale, { ja: "資料候補。確認すると保存します", zh: "资料候选，确认后写入", ko: "자료 후보입니다. 확인하면 저장합니다" })
+      : undefined;
+    const objectImportReviewJson = objectImportBinding
+      ? JSON.stringify({ ...objectImportBinding, preserveExisting: preserveExistingObjectValue, caseFieldKey: field.fieldKey })
+      : undefined;
+    const serverConfirmed = field.serverConfirmed && !objectImportBinding;
     return (
-      <div key={field.fieldKey} className={`grid grid-cols-[4rem_minmax(0,1fr)_minmax(0,1.35fr)_auto] items-start gap-2 px-3 py-3 transition sm:grid-cols-[5.5rem_minmax(0,1fr)_minmax(0,1.35fr)_auto] sm:items-start sm:gap-3 sm:px-5 ${selected ? "bg-blue-50 ring-1 ring-inset ring-blue-700" : "hover:bg-slate-50"}`}>
-        <CaseWorkbenchFieldForm
-          action={saveCaseWorkbenchAction}
-          caseId={brokerageCase.id}
-          fieldKey={field.fieldKey}
-          initialValue={candidateValue}
-          returnNode={returnNode}
-          returnField={field.fieldKey}
-          returnAnchor="case-main-editor"
-          returnView="quick"
-          showSaveWhenPristine
-          saveLabel={tr(locale, { ja: "確認", zh: "确认", ko: "확인" })}
-          savingLabel={tr(locale, { ja: "保存中", zh: "保存中", ko: "저장 중" })}
-          saveButtonAriaLabel={getCaseWorkbenchSaveAriaLabel(locale, getCaseOverviewFieldLabel(locale, field))}
-          saveButtonWrapperClassName="col-start-4 row-start-1 mt-0 max-h-12 self-start opacity-100"
-          saveButtonClassName="min-h-11 min-w-[3.5rem] rounded-md px-3 py-2 text-xs font-black"
-          className="contents"
-        >
-          <span>
-            <CaseFieldState issueLabel={fieldNeedsAttention(field) ? getWorkbenchFieldIssueLabel(locale, field) : undefined} />
-          </span>
-          <span className="min-w-0">
-            <span className="block break-words text-sm font-black text-slate-950">
-              {getCaseOverviewFieldLabel(locale, field)}
-              {field.required ? <span className="ml-1 text-slate-400" aria-label={tr(locale, { ja: "必須", zh: "必填", ko: "필수" })}>*</span> : null}
-            </span>
-            <span className="mt-1 block break-words text-[11px] font-semibold text-slate-500">{getCaseOverviewFieldPath(locale, field)}</span>
-          </span>
-          <span className="min-w-0">
-            <CaseFieldInput
-              name={`field:${field.fieldKey}`}
-              value={candidateValue}
-              label={getCaseAddressDisplayLabel(locale, field) ?? field.label}
-              inputSpec={field.inputSpec}
-              locale={locale}
-              tone={fieldNeedsAttention(field) || Boolean(objectImportBinding?.status === "low_confidence" || objectImportBinding?.status === "conflict") ? "attention" : "default"}
-            />
-            {objectImportBinding ? <p className="mt-1 text-[11px] font-semibold text-amber-700">{preserveExistingObjectValue ? tr(locale, { ja: `既存値を優先。候補「${objectImportBinding.candidateValue}」は確認待ち`, zh: `已有值优先；候选「${objectImportBinding.candidateValue}」待核对`, ko: `기존 값을 우선합니다. 후보「${objectImportBinding.candidateValue}」는 확인 대기` }) : objectImportBinding.status === "conflict" ? tr(locale, { ja: "資料間で不一致があります。内容を確認して保存してください", zh: "资料存在冲突，请核对后保存", ko: "자료가 서로 다릅니다. 확인 후 저장하세요" }) : objectImportBinding.status === "low_confidence" ? tr(locale, { ja: "根拠が弱いため、確認前に出典を確認してください", zh: "来源清晰度不足，确认前请核对", ko: "근거가 약하므로 확인 전에 출처를 확인하세요" }) : tr(locale, { ja: "資料候補。確認すると保存します", zh: "资料候选，确认后写入", ko: "자료 후보입니다. 확인하면 저장합니다" })}{objectImportBinding.sourceEvidence ? tr(locale, { ja: `（${objectImportBinding.sourceEvidence}）`, zh: `（${objectImportBinding.sourceEvidence}）`, ko: `（${objectImportBinding.sourceEvidence}）` }) : ""}</p> : null}
-            {objectImportBinding ? <input type="hidden" name="objectImportReviewJson" value={JSON.stringify({ ...objectImportBinding, preserveExisting: preserveExistingObjectValue, caseFieldKey: field.fieldKey })} readOnly /> : null}
-          </span>
-        </CaseWorkbenchFieldForm>
-        {canRefreshObjectImport ? (
-          <form action={refreshObjectImportReviewAction} className="col-start-3 row-start-2 mt-1 sm:col-start-3">
-            <input type="hidden" name="importTargetId" value={objectImportBinding.targetId} />
-            <input type="hidden" name="fieldId" value={objectImportBinding.fieldId} />
-            <input type="hidden" name="importJobId" value={objectImportBinding.importJobId} />
-            <input type="hidden" name="expectedVersion" value={objectImportBinding.expectedVersion} />
-            <input type="hidden" name="observedVersion" value={objectImportBinding.observedVersion} />
-            <input type="hidden" name="expectedCandidateValue" value={objectImportBinding.expectedCandidateValue} />
-            <input type="hidden" name="field" value={field.fieldKey} />
-            <input type="hidden" name="returnNode" value={returnNode} />
-            <input type="hidden" name="returnField" value={field.fieldKey} />
-            <input type="hidden" name="returnView" value="quick" />
-            <input type="hidden" name="returnAnchor" value="case-main-editor" />
-            <button type="submit" className="text-xs font-bold text-amber-800 underline underline-offset-2">
-              {tr(locale, { ja: "最新の資料を再確認", zh: "重新核对最新资料", ko: "최신 자료 다시 확인" })}
-            </button>
-          </form>
-        ) : null}
-      </div>
+      <CaseWorkbenchFieldRow
+        key={field.fieldKey}
+        rowKey={`${field.fieldKey}-${serverConfirmed ? "confirmed" : "unconfirmed"}-${brokerageCase.updatedAt.toISOString()}`}
+        action={saveCaseWorkbenchAction}
+        refreshAction={refreshObjectImportReviewAction}
+        caseId={brokerageCase.id}
+        fieldKey={field.fieldKey}
+        candidateValue={candidateValue}
+        returnNode={returnNode}
+        label={getCaseOverviewFieldLabel(locale, field)}
+        path={getCaseOverviewFieldPath(locale, field)}
+        inputLabel={getCaseAddressDisplayLabel(locale, field) ?? field.label}
+        inputSpec={field.inputSpec}
+        locale={locale}
+        tone={fieldNeedsAttention(field) || Boolean(objectImportBinding?.status === "low_confidence" || objectImportBinding?.status === "conflict") ? "attention" : "default"}
+        issueLabel={fieldNeedsAttention(field) ? getWorkbenchFieldIssueLabel(locale, field) : undefined}
+        selected={selected}
+        serverConfirmed={serverConfirmed}
+        required={field.required}
+        editLabel={tr(locale, { ja: "変更", zh: "修改", ko: "수정" })}
+        editButtonAriaLabel={locale === "zh" ? `修改：${getCaseOverviewFieldLabel(locale, field)}` : locale === "ko" ? `${getCaseOverviewFieldLabel(locale, field)} 수정` : `${getCaseOverviewFieldLabel(locale, field)}を変更`}
+        saveLabel={tr(locale, { ja: "確認", zh: "确认", ko: "확인" })}
+        savingLabel={tr(locale, { ja: "保存中", zh: "保存中", ko: "저장 중" })}
+        saveButtonAriaLabel={getCaseWorkbenchSaveAriaLabel(locale, getCaseOverviewFieldLabel(locale, field))}
+        objectImportBinding={objectImportBinding}
+        objectImportMessage={objectImportBinding?.sourceEvidence ? `${objectImportMessage ?? ""}（${objectImportBinding.sourceEvidence}）` : objectImportMessage}
+        objectImportReviewJson={objectImportReviewJson}
+        canRefreshObjectImport={canRefreshObjectImport}
+      />
     );
   });
 

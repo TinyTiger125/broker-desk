@@ -18,6 +18,7 @@ type CaseWorkbenchFieldFormProps = {
   returnAnchor?: string;
   returnView?: "quick" | "overview";
   showSaveWhenPristine?: boolean;
+  saveButtonPlacement?: "stacked" | "inline";
   readOnly?: boolean;
   editLabel?: string;
   onEdit?: () => void;
@@ -25,12 +26,13 @@ type CaseWorkbenchFieldFormProps = {
   saveButtonWrapperClassName?: string;
   saveButtonClassName?: string;
   saveButtonAriaLabel?: string;
+  editButtonAriaLabel?: string;
   onDirtyChange?: (dirty: boolean) => void;
   onSubmitAccepted?: () => void;
   onPendingChange?: (pending: boolean) => void;
   saveLabel: string;
   savingLabel: string;
-  children: ReactNode;
+  children: ReactNode | ((readOnly: boolean) => ReactNode);
 };
 
 function FieldSaveButton({
@@ -38,6 +40,7 @@ function FieldSaveButton({
   saveLabel,
   savingLabel,
   showWhenPristine = false,
+  placement = "stacked",
   readOnly = false,
   editLabel,
   onEdit,
@@ -45,11 +48,13 @@ function FieldSaveButton({
   wrapperClassName = "",
   buttonClassName = "text-xs",
   buttonAriaLabel,
+  editButtonAriaLabel,
 }: {
   dirty: boolean;
   saveLabel: string;
   savingLabel: string;
   showWhenPristine?: boolean;
+  placement?: "stacked" | "inline";
   readOnly?: boolean;
   editLabel?: string;
   onEdit?: () => void;
@@ -57,6 +62,7 @@ function FieldSaveButton({
   wrapperClassName?: string;
   buttonClassName?: string;
   buttonAriaLabel?: string;
+  editButtonAriaLabel?: string;
 }) {
   const { pending } = useFormStatus();
   const visible = readOnly || showWhenPristine || dirty || pending;
@@ -66,14 +72,14 @@ function FieldSaveButton({
   }, [onPendingChange, pending]);
 
   return (
-    <div className={`overflow-hidden transition-all duration-200 ${visible ? "mt-4 max-h-12 opacity-100" : "mt-0 max-h-0 opacity-0"} ${wrapperClassName}`}>
+    <div className={`overflow-hidden transition-all duration-200 ${placement === "inline" ? "mt-0" : visible ? "mt-4" : "mt-0"} ${visible ? "max-h-12 opacity-100" : "max-h-0 opacity-0"} ${wrapperClassName}`}>
       <div className="flex justify-end">
         {readOnly ? (
           <Button
             type="button"
             tone="secondary"
             controlSize="regular"
-            aria-label={buttonAriaLabel}
+            aria-label={editButtonAriaLabel ?? buttonAriaLabel}
             className={buttonClassName}
             onClick={(event) => {
               event.preventDefault();
@@ -110,6 +116,7 @@ export function CaseWorkbenchFieldForm({
   returnAnchor = "case-main-editor",
   returnView,
   showSaveWhenPristine = false,
+  saveButtonPlacement = "stacked",
   readOnly = false,
   editLabel,
   onEdit,
@@ -117,6 +124,7 @@ export function CaseWorkbenchFieldForm({
   saveButtonWrapperClassName,
   saveButtonClassName,
   saveButtonAriaLabel,
+  editButtonAriaLabel,
   onDirtyChange,
   onSubmitAccepted,
   onPendingChange,
@@ -125,15 +133,24 @@ export function CaseWorkbenchFieldForm({
   children,
 }: CaseWorkbenchFieldFormProps) {
   const [dirty, setDirty] = useState(false);
+  const [editingReadOnlyField, setEditingReadOnlyField] = useState(false);
   const scrollTopRef = useRef<HTMLInputElement>(null);
   const fieldValueSnapshotRef = useRef<HTMLInputElement>(null);
+  const effectiveReadOnly = readOnly && !editingReadOnlyField;
+
+  const handleEdit = () => {
+    setEditingReadOnlyField(true);
+    setDirty(false);
+    onDirtyChange?.(false);
+    onEdit?.();
+  };
 
   return (
     <form
       action={action}
       data-case-workbench-field={fieldKey}
       onChange={(event) => {
-        if (readOnly) return;
+        if (effectiveReadOnly) return;
         setDirty(true);
         onDirtyChange?.(true);
         const target = event.target;
@@ -151,7 +168,7 @@ export function CaseWorkbenchFieldForm({
         }
       }}
       onInput={(event) => {
-        if (readOnly) return;
+        if (effectiveReadOnly) return;
         setDirty(true);
         onDirtyChange?.(true);
         const target = event.target;
@@ -169,7 +186,7 @@ export function CaseWorkbenchFieldForm({
         }
       }}
       onKeyDown={(event) => {
-        if (readOnly) return;
+        if (effectiveReadOnly) return;
         if (event.key !== "Enter") return;
         // Let the browser/IME finish candidate confirmation. Synthetic Enter
         // from an active composition must never be turned into a save.
@@ -180,7 +197,7 @@ export function CaseWorkbenchFieldForm({
         }
       }}
       onSubmit={(event) => {
-        if (readOnly) {
+        if (effectiveReadOnly) {
           event.preventDefault();
           return;
         }
@@ -242,8 +259,8 @@ export function CaseWorkbenchFieldForm({
       {returnView ? <input type="hidden" name="returnView" value={returnView} /> : null}
       {returnNode ? <input type="hidden" name="returnNode" value={returnNode} /> : null}
       {returnField ? <input type="hidden" name="returnField" value={returnField} /> : null}
-      {children}
-      <FieldSaveButton dirty={dirty} saveLabel={saveLabel} savingLabel={savingLabel} showWhenPristine={showSaveWhenPristine} readOnly={readOnly} editLabel={editLabel} onEdit={onEdit} onPendingChange={onPendingChange} wrapperClassName={saveButtonWrapperClassName} buttonClassName={saveButtonClassName} buttonAriaLabel={saveButtonAriaLabel} />
+      {typeof children === "function" ? children(effectiveReadOnly) : children}
+      <FieldSaveButton dirty={dirty} saveLabel={saveLabel} savingLabel={savingLabel} showWhenPristine={showSaveWhenPristine} placement={saveButtonPlacement} readOnly={effectiveReadOnly} editLabel={editLabel} onEdit={handleEdit} onPendingChange={onPendingChange} wrapperClassName={saveButtonWrapperClassName} buttonClassName={saveButtonClassName} buttonAriaLabel={saveButtonAriaLabel} editButtonAriaLabel={editButtonAriaLabel} />
     </form>
   );
 }

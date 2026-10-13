@@ -19,6 +19,8 @@ type PropertyResponsiveFormProps = {
   returnTo: string;
   propertyId?: string;
   onCreated?: (record: { id: string; name: string }) => void;
+  onSaved?: (record: { id: string; name: string; values: PropertyFormValues }) => void;
+  onCancel?: () => void;
   formId?: string;
   hideActions?: boolean;
   onPendingChange?: (pending: boolean) => void;
@@ -31,9 +33,15 @@ const copy = {
     money: "価格・費用",
     detail: "面積・補足",
     name: "物件名",
+    furigana: "物件名かな",
     area: "エリア",
     address: "所在地",
+    roomNumber: "部屋番号",
+    postalCode: "郵便番号",
+    usage: "用途",
     listingPrice: "価格",
+    listingRent: "参考月額賃料",
+    listingCommonFee: "参考共益費",
     managementFee: "管理費",
     repairFee: "修繕積立金",
     sizeSqm: "専有面積",
@@ -51,9 +59,15 @@ const copy = {
     money: "价格与费用",
     detail: "面积与补充说明",
     name: "物件名",
+    furigana: "物件名拼音/假名",
     area: "区域",
     address: "所在地／地址",
+    roomNumber: "房号",
+    postalCode: "邮编",
+    usage: "用途",
     listingPrice: "售价",
+    listingRent: "参考月租",
+    listingCommonFee: "参考共益费",
     managementFee: "管理费",
     repairFee: "修缮费",
     sizeSqm: "面积",
@@ -71,9 +85,15 @@ const copy = {
     money: "가격과 비용",
     detail: "면적과 보충 설명",
     name: "매물명",
+    furigana: "매물명 후리가나",
     area: "에리어",
     address: "소재지／주소",
+    roomNumber: "호수",
+    postalCode: "우편번호",
+    usage: "용도",
     listingPrice: "가격",
+    listingRent: "참고 월세",
+    listingCommonFee: "참고 공익비",
     managementFee: "관리비",
     repairFee: "수선 적립금",
     sizeSqm: "전용 면적",
@@ -94,14 +114,20 @@ const initialState: PropertyFormActionState = { status: "idle", fieldErrors: {},
   name: "",
   area: "",
   address: "",
+  furigana: "",
+  roomNumber: "",
+  postalCode: "",
+  usage: "",
   sizeSqm: "",
   listingPrice: "",
+  listingRent: "",
+  listingCommonFee: "",
   managementFee: "",
   repairFee: "",
   notes: "",
 } };
 
-export function PropertyResponsiveForm({ action, locale, initialValues, returnTo, propertyId, onCreated, formId, hideActions = false, onPendingChange, onSubmitStart }: PropertyResponsiveFormProps) {
+export function PropertyResponsiveForm({ action, locale, initialValues, returnTo, propertyId, onCreated, onSaved, onCancel, formId, hideActions = false, onPendingChange, onSubmitStart }: PropertyResponsiveFormProps) {
   const text = copy[locale];
   const [values, setValues] = useState<PropertyFormValues>(initialValues);
   const [state, formAction, pending] = useActionState(action, { ...initialState, values: initialValues });
@@ -121,6 +147,9 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
     notifiedCreatedId.current = record.id;
     onCreated?.(record);
   }, [onCreated, state.createdRecord]);
+  useEffect(() => {
+    if (state.updatedRecord) onSaved?.(state.updatedRecord);
+  }, [onSaved, state.updatedRecord]);
   useEffect(() => {
     if (!pending) endSubmission(submissionLockRef.current);
     onPendingChange?.(pending);
@@ -191,6 +220,11 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
             {fieldError("name") ? <p id="property-name-error" className="text-xs font-semibold text-rose-700">{fieldError("name")}</p> : null}
           </div>
           <div className="space-y-1">
+            <label htmlFor="property-furigana" className="text-sm font-semibold text-slate-700">{text.furigana}</label>
+            <input {...fieldProps("furigana", "property-furigana")} className={inputClass} />
+            {fieldError("furigana") ? <p id="property-furigana-error" className="text-xs font-semibold text-rose-700">{fieldError("furigana")}</p> : null}
+          </div>
+          <div className="space-y-1">
             <label htmlFor="property-area" className="text-sm font-semibold text-slate-700">{text.area}</label>
             <input {...fieldProps("area", "property-area")} className={inputClass} />
             {fieldError("area") ? <p id="property-area-error" className="text-xs font-semibold text-rose-700">{fieldError("area")}</p> : null}
@@ -200,6 +234,18 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
             <input {...fieldProps("address", "property-address")} className={inputClass} />
             {fieldError("address") ? <p id="property-address-error" className="text-xs font-semibold text-rose-700">{fieldError("address")}</p> : null}
           </div>
+          <div className="space-y-1">
+            <label htmlFor="property-roomNumber" className="text-sm font-semibold text-slate-700">{text.roomNumber}</label>
+            <input {...fieldProps("roomNumber", "property-roomNumber")} className={inputClass} />
+          </div>
+          <div className="space-y-1">
+            <label htmlFor="property-postalCode" className="text-sm font-semibold text-slate-700">{text.postalCode}</label>
+            <input {...fieldProps("postalCode", "property-postalCode")} className={inputClass} />
+          </div>
+          <div className="space-y-1">
+            <label htmlFor="property-usage" className="text-sm font-semibold text-slate-700">{text.usage}</label>
+            <input {...fieldProps("usage", "property-usage")} className={inputClass} />
+          </div>
         </div>
       </section>
 
@@ -208,6 +254,8 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
         <div className="grid gap-4 md:grid-cols-3">
           {([
             ["listingPrice", text.listingPrice],
+            ["listingRent", text.listingRent],
+            ["listingCommonFee", text.listingCommonFee],
             ["managementFee", text.managementFee],
             ["repairFee", text.repairFee],
           ] as const).map(([field, label]) => {
@@ -246,7 +294,7 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
       </section>
 
       {hideActions ? null : <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-200 pt-5">
-        <Link href={returnTo} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">{text.cancel}</Link>
+        {onCancel ? <button type="button" onClick={onCancel} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">{text.cancel}</button> : <Link href={returnTo} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">{text.cancel}</Link>}
         <Button type="submit" loading={pending} className="min-h-11 rounded-lg bg-slate-950 px-5 py-2.5 text-sm font-bold text-white hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60">
           {pending ? text.saving : text.save}
         </Button>

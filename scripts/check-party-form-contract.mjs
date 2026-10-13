@@ -4,7 +4,7 @@ const profile = await readFile("src/lib/party-profile.ts", "utf8");
 const action = await readFile("src/app/actions.ts", "utf8");
 const createPage = await readFile("src/app/parties/new/page.tsx", "utf8");
 const editPage = await readFile("src/app/parties/[id]/edit/page.tsx", "utf8");
-const form = await readFile("src/components/party-profile-form.tsx", "utf8");
+const form = await readFile("src/components/client-form.tsx", "utf8");
 const attachmentDisclosure = await readFile("src/components/party-attachment-disclosure.tsx", "utf8");
 const failures = [];
 
@@ -20,8 +20,9 @@ requireText(createPage, "createClientFormAction", "new page must use the shared 
 requireText(createPage, "<ClientForm", "new page must render the shared client form");
 forbidText(createPage, "PartyProfileForm", "new page must not render the legacy party profile form");
 
-// Edit is the only form and has one primary submit.
-requireText(editPage, "PartyProfileForm", "edit page must use the shared responsive form");
+// Party editing reuses the complete client/profile form and has one primary submit.
+requireText(editPage, "<ClientForm", "edit page must use the shared complete profile form");
+forbidText(editPage, "PartyProfileForm", "edit page must not render the legacy incomplete party form");
 requireText(editPage, '<PartyAttachmentDisclosure label={text.attachments} initialOpen={query.flash === "object_attachment_uploaded"}>', "party attachments must open after a successful upload");
 requireText(editPage, "<ObjectAttachmentSection", "party attachments must remain available from the compact header entry");
 requireText(attachmentDisclosure, "absolute left-0 top-full", "party attachment management must be positioned as a compact disclosure");
@@ -41,13 +42,13 @@ forbidText(form, "name=\"note\"", "party form must not edit notes");
 forbidText(form, 'label("partyRole"', "party edit form must not edit the party role");
 forbidText(form, 'fieldProps("partyRole")', "party edit form must not submit the party role");
 forbidText(form, 'name=\"partyRole\"', "party edit form must not submit the party role");
-requireText(form, 'label("partyType"', "party edit form must retain the independent party type");
-requireText(form, 'fieldProps("partyType")', "party edit form must submit the independent party type");
-requireText(form, "text.shared", "edit form must explain shared customer facts");
+requireText(form, 'fieldProps("partyType")', "the shared profile form must expose optional party type");
+requireText(form, "partyTypeUnset", "party type must support an explicit unset value");
 
 // The update path must only materialize explicit type/role metadata and preserve client facts.
-requireText(action, "mergePartyProfileMetadataNotes", "update must use the safe metadata merge");
-requireText(action, "metadataSubmitted", "update must distinguish legacy metadata payloads from the role-free edit form");
+requireText(action, "mergePartyProfileNotes", "unified client updates must use the safe metadata merge");
+requireText(action, "partyTypeSubmitted", "unified updates must distinguish optional party type from omitted legacy payloads");
+requireText(action, "existingProfile.role", "role metadata must be preserved when editing the unified profile");
 requireText(action, "existing.notes", "role-free updates must preserve existing notes");
 requireText(action, "purpose: existing.purpose", "update must preserve customer purpose");
 requireText(action, "preferredArea: existing.preferredArea", "update must preserve customer area");
@@ -68,6 +69,7 @@ requireText(profile, '"q", "type", "lifecycle", "page"', "returnTo must only kee
 forbidText(profile, "/import-center", "party returnTo must reject import-center");
 forbidText(action.slice(action.indexOf("export async function updatePartyProfileAction")), "?focus=", "party update must not restore focus selection URLs");
 requireText(action, 'redirect(withFlash(`/parties/${encodeURIComponent(clientId)}/edit?returnTo=', "update must stay on the edit page after save");
+requireText(action, 'parsed.pathname === "/parties"', "party form returnTo must preserve the parties list");
 
 if (failures.length > 0) {
   console.error(failures.map((failure) => `FAIL: ${failure}`).join("\n"));

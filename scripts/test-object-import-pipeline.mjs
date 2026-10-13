@@ -266,6 +266,12 @@ property.name = originalPropertyName;
 const detached = writeCaseAssociationData(brokerageCase.confirmedDataJson, { parties: [{ partyId: person.id, roles: ["主要申请人"] }] }, {});
 await data.updateBrokerageCaseConfirmedData({ ...scope, caseId: brokerageCase.id, confirmedDataJson: detached });
 assert.deepEqual(await data.reviewObjectImportCandidate(propertyInput(priceField, propertyTask.targetVersion)), { ok: false, reason: "not_writable" });
+const preexistingCaseValue = writeCaseAssociationData(
+  { "property.name": "已确认物件名称" },
+  { parties: [{ partyId: person.id, roles: ["主要申请人"] }] },
+  {},
+);
+assert.equal(preexistingCaseValue["property.name"], "已确认物件名称", "saving a person association must preserve an existing unlinked confirmed property name");
 await data.updateBrokerageCaseConfirmedData({ ...scope, caseId: brokerageCase.id, confirmedDataJson: writeCaseAssociationData(detached, { parties: [{ partyId: person.id, roles: ["主要申请人"] }], primaryPropertyId: property.id }, {}) });
 for (const candidate of propertyFields) {
   const current = await data.getObjectImportTarget({ ...scope, id: propertyTask.id });
@@ -522,6 +528,7 @@ const postgresSource = readFileSync(resolve(root, "src/lib/data.postgres.ts"), "
 const actionSource = readFileSync(resolve(root, "src/app/actions.ts"), "utf8");
 const objectActionsSource = readFileSync(resolve(root, "src/app/object-import-actions.ts"), "utf8");
 const casePageSource = readFileSync(resolve(root, "src/app/cases/[id]/page.tsx"), "utf8");
+const caseWorkbenchFieldRowSource = readFileSync(resolve(root, "src/components/case-workbench-field-row.tsx"), "utf8");
 const importFeedbackSource = readFileSync(resolve(root, "src/lib/import-feedback.ts"), "utf8");
 const importCenterSource = readFileSync(resolve(root, "src/app/import-center/page.tsx"), "utf8");
 const queueProcessorSource = readFileSync(resolve(root, "src/components/excel-import-queue-processor.tsx"), "utf8");
@@ -618,8 +625,8 @@ assert.match(objectActionsSource, /getObjectImportTarget/, "standalone object re
 assert.match(casePageSource, /资料已在其他页面更新，请刷新案件页面，重新核对当前资料和候选；本次修改未保存，确认时仍会校验最新版本/, "case page must explain stale object review without promising that refresh creates a fresh token");
 assert.match(casePageSource, /该候选已在其他页面处理完成，请刷新案件查看已确认值/, "case page must explain duplicate review while preserving the confirmed result");
 assert.match(casePageSource, /objectImportTargetsForView = \[\.\.\.objectImportTargets\]\.sort/, "case page must prioritize the queried job when rendering multiple target attempts");
-assert.match(casePageSource, /重新核对最新资料/, "the conflict field must offer an explicit re-read action");
-assert.match(casePageSource, /name=\"observedVersion\"/, "the re-read action must submit the rendered object fingerprint");
+assert.match(caseWorkbenchFieldRowSource, /重新核对最新资料/, "the conflict field must offer an explicit re-read action");
+assert.match(caseWorkbenchFieldRowSource, /name=\"observedVersion\"/, "the re-read action must submit the rendered object fingerprint");
 assert.match(casePageSource, /statusOnly=\{target\.status === "processing"\}/, "processing jobs must use status-only polling and avoid a duplicate POST");
 assert.match(casePageSource, /successHref=\{`\/cases\/\$\{encodeURIComponent\(stableCaseId\)\}/, "case object processing must return to the same case workbench");
 assert.match(casePageSource, /successHref=\{`[^`]*objectImportJob=\$\{encodeURIComponent\(target\.importJobId\)\}/, "completion return must retain the processed object job for an unambiguous result");

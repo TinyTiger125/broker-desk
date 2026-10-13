@@ -9,8 +9,8 @@ const assert = (condition, message) => {
   if (!condition) throw new Error(`feedback 2 forms/list contract failed: ${message}`);
 };
 
-assert((clientForm.match(/<ClientFormSection section=/g) ?? []).length === 5, "client form keeps five peer sections");
-assert(clientForm.includes("basic: true, needs: true, management: true, legal: true, notes: true"), "client sections default to expanded");
+assert((clientForm.match(/<ClientFormSection section=/g) ?? []).length === 6, "client form keeps six peer sections");
+assert(clientForm.includes("basic: true, profile: true, needs: true, management: true, legal: true, notes: true"), "client sections default to expanded");
 assert(clientForm.includes("onInvalidCapture={handleInvalid}"), "native invalid fields open their section");
 assert(clientForm.includes("openSectionForField(field)"), "error-summary field links reopen their section");
 assert(clientForm.includes("aria-expanded={expanded}"), "client section controls expose their expanded state");
