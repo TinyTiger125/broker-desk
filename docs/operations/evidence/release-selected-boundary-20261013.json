@@ -124,8 +124,8 @@
     },
     {
       "path": "src/components/guarantee-template-selector.tsx",
-      "sha256": "52bc6a8e897055b5b9e94e01a0b90b99d4cac9a96430c8e7509046a68ba30c9b",
-      "bytes": 13366
+      "sha256": "8962f26b0eac0473aac239d360a61b7ba3998ba658a91f072537e1db779fb0b6",
+      "bytes": 13421
     },
     {
       "path": "src/components/property-profile-read-only.tsx",
@@ -250,6 +250,18 @@
       "path": "/private/tmp/bd-release-selected-build-p1-20261013.log",
       "sha256": "d7d276080c86eb69a411048b65f6bde8ab3bf024e607c7c59df48c3ebb9c2f61"
     }
+  },
+  "latestAcceptanceEvidence": {
+    "verifiedAt": "2026-10-14T00:14:56+09:00",
+    "rootScreenshot": "/private/tmp/bd-selected-output-layout-pass-root-20261014.jpg",
+    "outputCompanySelectorMeasuredPx": {
+      "width": 572,
+      "height": 112
+    },
+    "outputLayoutStatus": "PASS_LOCAL",
+    "lastEslint": "PASS",
+    "lastTypecheck": "PASS",
+    "sourceCodeUnchangedSince": "7ee1b8d27ac00f5097c4bd6d02601a7301019333"
   },
   "browserHttpSmoke": {
     "status": "PASS_HTTP_ONLY",
