@@ -3,6 +3,7 @@
 import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import { UiIcon } from "@/components/ui-icon";
 
 type NavLink = {
   href: string;
@@ -26,12 +27,10 @@ function MainNavLinkContent({ icon, label, isRow }: { icon: string; label: strin
 
   return (
     <>
-      <span
-        aria-hidden="true"
-        className={`material-symbols-outlined app-nav-link-icon ${pending ? "inline-block animate-spin text-[20px] motion-reduce:animate-none" : isRow ? "hidden" : "inline-block text-[20px]"}`}
-      >
-        {pending ? "progress_activity" : icon}
-      </span>
+      <UiIcon
+        name={pending ? "progress_activity" : icon}
+        className={`app-nav-link-icon ${pending ? "inline-block animate-spin text-[20px] motion-reduce:animate-none" : isRow ? "hidden" : "text-[20px]"}`}
+      />
       <span className={isRow ? "" : "app-nav-link-label"}>{label}</span>
     </>
   );
@@ -84,6 +83,7 @@ export function MainNavLinks({ links, orientation = "row" }: MainNavLinksProps) 
     "/settings/output-templates": "edit_document",
     "/platform/accounts": "admin_panel_settings",
     "/platform/templates": "dashboard_customize",
+    "/service-status": "health_and_safety",
   };
 
   return (

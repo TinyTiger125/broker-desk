@@ -6,6 +6,7 @@ import { ClerkAccountLabel } from "@/components/clerk-account-label";
 import { HeaderPopover } from "@/components/header-popover";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { MainNavLinks } from "@/components/main-nav-links";
+import { UiIcon } from "@/components/ui-icon";
 import { isActorSwitchingEnabled } from "@/lib/actor";
 import {
   listUsers,
@@ -144,7 +145,7 @@ export async function AppNav() {
               panelClassName="app-header-menu-panel right-0 w-64 p-2"
               trigger={
                 <>
-                <span aria-hidden="true" className="material-symbols-outlined text-[18px]">settings</span>
+                <UiIcon name="settings" className="text-[18px]" />
                 <span className="sr-only">{menuCopy.workspace}</span>
                 </>
               }
@@ -163,7 +164,7 @@ export async function AppNav() {
               panelClassName="app-header-menu-panel right-0 w-72 p-3"
               trigger={
                 <>
-                <span aria-hidden="true" className="material-symbols-outlined text-[18px]">account_circle</span>
+                <UiIcon name="account_circle" className="text-[18px]" />
                 <span className="sr-only">{menuCopy.account}</span>
                 </>
               }
@@ -241,8 +242,8 @@ export async function AppNav() {
             className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-md border border-slate-700 bg-slate-900 text-slate-300 transition hover:border-slate-500 hover:text-white"
             title={locale === "zh" ? "收起/展开侧栏" : locale === "ko" ? "사이드바 접기/펼치기" : "サイドバーを開閉"}
           >
-            <span aria-hidden="true" className="material-symbols-outlined app-nav-expanded-only text-[18px]">keyboard_double_arrow_left</span>
-            <span aria-hidden="true" className="material-symbols-outlined app-nav-collapsed-only text-[18px]">keyboard_double_arrow_right</span>
+            <UiIcon name="keyboard_double_arrow_left" className="app-nav-expanded-only text-[18px]" />
+            <UiIcon name="keyboard_double_arrow_right" className="app-nav-collapsed-only text-[18px]" />
             <span className="sr-only">{locale === "zh" ? "收起或展开侧栏" : locale === "ko" ? "사이드바 접기 또는 펼치기" : "サイドバーを開閉"}</span>
           </label>
         </div>
@@ -261,7 +262,7 @@ export async function AppNav() {
 
       <header data-app-shell-top-occluder className="app-desktop-header fixed right-0 top-0 z-40 hidden h-16 items-center justify-between border-b border-slate-300 bg-[#f3f4f6]/95 px-8 backdrop-blur lg:flex">
         <div className="flex items-center gap-3 text-sm font-bold text-slate-900">
-          <span aria-hidden="true" className="material-symbols-outlined text-[18px] text-[#1960a3]">task_alt</span>
+          <UiIcon name="task_alt" className="text-[18px] text-[#1960a3]" />
           <AppRouteTitle locale={locale} />
         </div>
 
@@ -271,7 +272,7 @@ export async function AppNav() {
             panelClassName="app-header-menu-panel right-0 w-64 p-2"
             trigger={
               <>
-              <span aria-hidden="true" className="material-symbols-outlined text-[19px]">settings</span>
+              <UiIcon name="settings" className="text-[19px]" />
               <span className="sr-only">{menuCopy.workspace}</span>
               </>
             }
@@ -291,7 +292,7 @@ export async function AppNav() {
             panelClassName="app-header-menu-panel right-0 w-72 p-3"
             trigger={
               <>
-              <span aria-hidden="true" className="material-symbols-outlined text-[20px]">account_circle</span>
+              <UiIcon name="account_circle" className="text-[20px]" />
               <span className="sr-only">{menuCopy.account}</span>
               </>
             }

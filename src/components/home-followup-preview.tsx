@@ -1,6 +1,7 @@
 "use client";
 
 import { Children, useId, useState, type ReactNode } from "react";
+import { UiIcon } from "@/components/ui-icon";
 
 export function HomeFollowupPreview({ children, expandLabel, collapseLabel }: {
   children: ReactNode;
@@ -18,7 +19,7 @@ export function HomeFollowupPreview({ children, expandLabel, collapseLabel }: {
       <button type="button" aria-expanded={expanded} aria-controls={remainingId}
         onClick={() => setExpanded((value) => !value)}
         className="inline-flex min-h-11 items-center gap-1 rounded-md px-2 pt-3 text-sm font-black text-[#002FA7] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#002FA7]" style={{ marginTop: "auto" }}>
-        <span aria-hidden="true" className="material-symbols-outlined text-[18px]">{expanded ? "expand_more" : "chevron_right"}</span>
+        <UiIcon name={expanded ? "expand_more" : "chevron_right"} className="text-[18px]" />
         {expanded ? collapseLabel : expandLabel}
       </button>
     </> : null}
