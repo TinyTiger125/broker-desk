@@ -9,6 +9,7 @@ type ExcelDocumentUploadFormProps = {
   locale?: Locale;
   targetCaseId?: string;
   uploadContext?: "case" | "import";
+  object?: "case" | "person" | "property";
   density?: "default" | "compact";
 };
 
@@ -52,7 +53,7 @@ function validateExcelFile(files: File[]) {
   return null;
 }
 
-export function ExcelDocumentUploadForm({ action, locale = "ja", targetCaseId, uploadContext, density = "default" }: ExcelDocumentUploadFormProps) {
+export function ExcelDocumentUploadForm({ action, locale = "ja", targetCaseId, uploadContext, object, density = "default" }: ExcelDocumentUploadFormProps) {
   const text = textByLocale[locale];
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -117,6 +118,7 @@ export function ExcelDocumentUploadForm({ action, locale = "ja", targetCaseId, u
     >
       {targetCaseId ? <input type="hidden" name="targetCaseId" value={targetCaseId} /> : null}
       {uploadContext ? <input type="hidden" name="uploadContext" value={uploadContext} /> : null}
+      {object ? <input type="hidden" name="object" value={object} /> : null}
       <label
         className={
           compact

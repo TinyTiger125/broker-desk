@@ -1224,9 +1224,15 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
 	                                zh: "请选择 PDF 或图片文件。",
 	                                ko: "PDF 또는 이미지 파일을 선택해 주세요.",
 	                              })
+	                            : query?.flash === "import_service_unavailable"
+	                              ? tr(locale, {
+	                                  ja: "資料読取サービスが一時的に利用できません。元ファイルは保存されたか確認できていません。管理者に読取 worker の設定を確認してもらってください。",
+	                                  zh: "资料读取服务暂时不可用，原文件尚未确认保存。请联系管理员检查读取 worker 配置后再试。",
+	                                  ko: "자료 읽기 서비스를 잠시 사용할 수 없습니다. 원본 파일 저장 여부를 확인할 수 없습니다. 관리자에게 읽기 worker 설정을 확인해 달라고 요청해 주세요.",
+	                                })
 	              : undefined;
   const flashTone =
-    objectImportNoSupportedFieldsFailed || query?.flash === "object_import_review_conflict" || query?.flash === "object_import_review_already_reviewed" || query?.flash?.startsWith("excel_upload_") || query?.flash?.startsWith("identity_upload_") || query?.flash === "case_required_field_missing" || query?.flash === "case_field_invalid" ? "error" : undefined;
+    objectImportNoSupportedFieldsFailed || query?.flash === "object_import_review_conflict" || query?.flash === "object_import_review_already_reviewed" || query?.flash?.startsWith("excel_upload_") || query?.flash?.startsWith("identity_upload_") || query?.flash === "import_service_unavailable" || query?.flash === "case_required_field_missing" || query?.flash === "case_field_invalid" ? "error" : undefined;
   const activeView = query?.view === "quick" || query?.view === "overview"
     ? query.view
     : downloadGate && downloadGate.blockedReasons.length > 0

@@ -913,6 +913,11 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
       zh: "请选择在留卡或驾照的 PDF / 图片文件。",
       ko: "재류카드 또는 운전면허증 PDF/이미지를 선택해 주세요.",
     },
+    import_service_unavailable: {
+      ja: "資料読取サービスが一時的に利用できません。元ファイルは保存されたか確認できていません。管理者に読取 worker の設定を確認してもらってください。",
+      zh: "资料读取服务暂时不可用，原文件尚未确认保存。请联系管理员检查读取 worker 配置后再试。",
+      ko: "자료 읽기 서비스를 잠시 사용할 수 없습니다. 원본 파일 저장 여부를 확인할 수 없습니다. 관리자에게 읽기 worker 설정을 확인해 달라고 요청해 주세요.",
+    },
     extraction_review_saved: {
       ja: "確認結果を案件として保存しました。",
       zh: "核对结果已保存为案件。",
@@ -935,7 +940,8 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
   const flashTone =
     (flashKey === "input_extraction_queued" && xlsxJob?.status === "failed") ||
     String(flashKey).includes("upload_") ||
-    String(flashKey).includes("missing")
+    String(flashKey).includes("missing") ||
+    flashKey === "import_service_unavailable"
       ? "error"
       : "success";
 
@@ -1392,14 +1398,14 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
           showIdentityReader ? (
           <section id="identity-document-upload" className={selectedObject === "person" ? "flex min-h-80 flex-col rounded-xl border border-emerald-200 bg-emerald-50/40 p-5 xl:col-span-2" : "flex min-h-80 flex-col rounded-xl border border-emerald-200 bg-emerald-50/40 p-5"}>
             <h3 className="text-base font-bold text-emerald-950">{locale === "zh" ? "身份证明文件" : locale === "ko" ? "신원 확인 파일" : "本人確認ファイル"}</h3>
-            <div className="mt-auto pt-5">{!isIdentityExtractionOnly ? <IdentityDocumentUploadForm action={uploadAndParseIdentityDocumentAction} locale={locale} targetCaseId={targetCaseId || undefined} uploadContext={targetCaseId ? "case" : "import"} /> : <a href="/import-center" className="flex h-12 items-center justify-center rounded-lg border border-emerald-300 bg-white px-4 text-sm font-bold text-emerald-900">{locale === "zh" ? "重新选择文件" : locale === "ko" ? "파일 다시 선택" : "ファイルを選び直す"}</a>}</div>
+            <div className="mt-auto pt-5">{!isIdentityExtractionOnly ? <IdentityDocumentUploadForm action={uploadAndParseIdentityDocumentAction} locale={locale} targetCaseId={targetCaseId || undefined} uploadContext={targetCaseId ? "case" : "import"} object={selectedObject} /> : <a href="/import-center" className="flex h-12 items-center justify-center rounded-lg border border-emerald-300 bg-white px-4 text-sm font-bold text-emerald-900">{locale === "zh" ? "重新选择文件" : locale === "ko" ? "파일 다시 선택" : "ファイルを選び直す"}</a>}</div>
           </section>
           ) : null
           ) : null}
           {showExcelReader ? (
           <section id="excel-document-upload" className={selectedObject === "property" ? "flex min-h-80 flex-col rounded-xl border border-blue-200 bg-blue-50/40 p-5 xl:col-span-2" : "flex min-h-80 flex-col rounded-xl border border-blue-200 bg-blue-50/40 p-5"}>
             <h3 className="text-base font-bold text-blue-950">{locale === "zh" ? "Excel 文件" : locale === "ko" ? "Excel 파일" : "Excel ファイル"}</h3>
-            <div className="mt-auto pt-5">{!xlsxJob ? <ExcelDocumentUploadForm action={uploadAndParseExcelAction} locale={locale} targetCaseId={targetCaseId || undefined} uploadContext={targetCaseId ? "case" : "import"} /> : <a href="/import-center" className="flex h-12 items-center justify-center rounded-lg border border-blue-300 bg-white px-4 text-sm font-bold text-blue-900">{locale === "zh" ? "重新选择文件" : locale === "ko" ? "파일 다시 선택" : "ファイルを選び直す"}</a>}</div>
+            <div className="mt-auto pt-5">{!xlsxJob ? <ExcelDocumentUploadForm action={uploadAndParseExcelAction} locale={locale} targetCaseId={targetCaseId || undefined} uploadContext={targetCaseId ? "case" : "import"} object={selectedObject} /> : <a href="/import-center" className="flex h-12 items-center justify-center rounded-lg border border-blue-300 bg-white px-4 text-sm font-bold text-blue-900">{locale === "zh" ? "重新选择文件" : locale === "ko" ? "파일 다시 선택" : "ファイルを選び直す"}</a>}</div>
           </section>
           ) : null}
 

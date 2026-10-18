@@ -122,6 +122,7 @@ import {
   assertProductionDocumentReaderReady,
   assertProductionImportWorkerReady,
   isProductionRuntime,
+  ProductionReadinessError,
 } from "@/lib/production-readiness";
 import { type ComplianceAlertType } from "@/lib/compliance-alerts";
 import {
@@ -5159,22 +5160,31 @@ function parsePrice(val: unknown): number {
 }
 
 export async function uploadAndParseExcelAction(formData: FormData) {
-  assertProductionImportWorkerReady();
-  const session = await requireTenantSession({ permission: "source.upload" });
-  const user = session.user;
-  const tenantId = session.tenant.id;
   const targetCaseId = String(formData.get("targetCaseId") ?? "").trim();
   const uploadContext = String(formData.get("uploadContext") ?? "").trim();
-  if (targetCaseId) {
-    await requireWritableCase(session, targetCaseId);
-  }
   const targetCaseQuery = targetCaseId ? `&targetCaseId=${encodeURIComponent(targetCaseId)}` : "";
+  const requestedObject = String(formData.get("object") ?? "").trim();
+  const objectQuery = ["case", "person", "property"].includes(requestedObject)
+    ? `&object=${encodeURIComponent(requestedObject)}`
+    : "";
   const redirectExcelUploadError = (flash: string): never => {
     if (targetCaseId && uploadContext === "case") {
       redirect(`/cases/${encodeURIComponent(targetCaseId)}?flash=${encodeURIComponent(flash)}#case-review-desk`);
     }
-    redirect(`/import-center?flash=${encodeURIComponent(flash)}${targetCaseQuery}`);
+    redirect(`/import-center?flash=${encodeURIComponent(flash)}${targetCaseQuery}${objectQuery}#source-upload`);
   };
+  try {
+    assertProductionImportWorkerReady();
+  } catch (error) {
+    if (error instanceof ProductionReadinessError) redirectExcelUploadError("import_service_unavailable");
+    throw error;
+  }
+  const session = await requireTenantSession({ permission: "source.upload" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
+  if (targetCaseId) {
+    await requireWritableCase(session, targetCaseId);
+  }
 
   const fileEntry = formData.get("excelFile");
   if (!(fileEntry instanceof File) || fileEntry.size === 0) {
@@ -5195,24 +5205,33 @@ export async function uploadAndParseExcelAction(formData: FormData) {
 }
 
 export async function uploadAndParseIdentityDocumentAction(formData: FormData) {
-  assertProductionImportWorkerReady();
-  assertProductionDocumentReaderReady();
-  const session = await requireTenantSession({ permission: "source.upload" });
-  const user = session.user;
-  const tenantId = session.tenant.id;
   const uploadMode = String(formData.get("identityUploadMode") ?? "same_person").trim();
   const targetCaseId = String(formData.get("targetCaseId") ?? "").trim();
   const uploadContext = String(formData.get("uploadContext") ?? "").trim();
-  if (targetCaseId) {
-    await requireWritableCase(session, targetCaseId);
-  }
   const targetCaseQuery = targetCaseId ? `&targetCaseId=${encodeURIComponent(targetCaseId)}` : "";
+  const requestedObject = String(formData.get("object") ?? "").trim();
+  const objectQuery = ["case", "person", "property"].includes(requestedObject)
+    ? `&object=${encodeURIComponent(requestedObject)}`
+    : "";
   const redirectIdentityUploadError = (flash: string): never => {
     if (targetCaseId && uploadContext === "case") {
       redirect(`/cases/${encodeURIComponent(targetCaseId)}?flash=${encodeURIComponent(flash)}#case-review-desk`);
     }
-    redirect(`/import-center?flash=${encodeURIComponent(flash)}${targetCaseQuery}`);
+    redirect(`/import-center?flash=${encodeURIComponent(flash)}${targetCaseQuery}${objectQuery}#source-upload`);
   };
+  try {
+    assertProductionImportWorkerReady();
+    assertProductionDocumentReaderReady();
+  } catch (error) {
+    if (error instanceof ProductionReadinessError) redirectIdentityUploadError("import_service_unavailable");
+    throw error;
+  }
+  const session = await requireTenantSession({ permission: "source.upload" });
+  const user = session.user;
+  const tenantId = session.tenant.id;
+  if (targetCaseId) {
+    await requireWritableCase(session, targetCaseId);
+  }
 
   const files = formData
     .getAll("identityDocumentFile")
