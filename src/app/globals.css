@@ -480,8 +480,23 @@ button:disabled:not([class~="text-white"]):not([class~="!text-white"]) {
   text-align: center;
 }
 
+.app-mobile-primary-nav nav {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  min-width: 0;
+}
+
+.app-mobile-primary-nav .ui-nav-stable {
+  min-width: 0;
+  padding-inline: 0.25rem;
+}
+
 .app-nav-collapsed-only {
   display: none;
+}
+
+[data-home-preferences-toggle] {
+  display: flex;
 }
 
 .app-header-menu > summary {
@@ -995,6 +1010,20 @@ button:disabled:not([class~="text-white"]):not([class~="!text-white"]) {
 
 .bd-organize-page .hover\:bg-blue-50\/40:hover {
   background-color: #f5f7ff !important;
+}
+
+.bd-organize-page .organize-object-browser [data-organize-object-filters] > button,
+.bd-organize-page .organize-object-browser [data-organize-object-filters] > a {
+  min-height: var(--bd-control-height-touch) !important;
+}
+
+[data-case-association-summary] {
+  display: flex !important;
+  list-style: none;
+}
+
+[data-case-association-summary]::-webkit-details-marker {
+  display: none;
 }
 
 @media (min-width: 1024px) {

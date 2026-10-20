@@ -1,4 +1,5 @@
 import type { Locale } from "@/lib/locale";
+import { parseObjectImportNotes } from "./object-import-contract";
 
 export type HomeResumableCase = {
   id: string;
@@ -52,6 +53,18 @@ export function buildHomeResumableWork(input: {
   const jobItems = input.importJobs
     .filter((item) => item.status === "queued" || item.status === "processing" || item.status === "mapped" || item.status === "failed")
     .map((item) => {
+      const objectTarget = parseObjectImportNotes(item.notes);
+      if (objectTarget && !objectTarget.caseId) {
+        const object = objectTarget.targetObjectType === "property" ? "property" : "person";
+        const objectHref = `/import-center?object=${object}&targetId=${encodeURIComponent(objectTarget.targetObjectId)}&job=${encodeURIComponent(item.id)}#source-review-summary`;
+        return {
+          id: `source:${item.id}`,
+          title: item.title,
+          reason: jobReason(item.status),
+          href: objectHref,
+          updatedAt: item.updatedAt,
+        };
+      }
       let kind: string | undefined;
       if (item.notes) {
         try {

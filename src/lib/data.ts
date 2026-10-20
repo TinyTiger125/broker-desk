@@ -54,12 +54,35 @@ async function withRepositoryIdentity<T>(operation: () => Promise<T>): Promise<T
     if (!identity.ok) throw new Error(identity.error);
     subject = identity.identity.subject;
   }
+  if (!subject && bindLocalTestRequestScope && isDemoAuthEnabled()) {
+    // The durable local runtime deliberately starts with no browser cookie.
+    // Bind the synthetic owner before any provider adapter is consulted so a
+    // normal first GET never reaches Clerk's `auth()` helper. This is gated by
+    // the local runtime and request-scope flags; production cannot enter it.
+    const actorId = await getActorIdFromCookie();
+    if (actorId || process.env.BROKER_DESK_LOCAL_RUNTIME === "1") {
+      subject = `demo:${actorId ?? "user_demo"}`;
+    }
+  }
   subject ??= await getAuthSubject();
   if (!subject) {
     throw new ProductionReadinessError("production_tenant_scope_required");
   }
 
   return postgres.withPostgresAuthContext(subject, operation);
+}
+
+/** Bind the explicit local demo actor used by the first /api/actor request.
+ * This branch is local-only and requires both demo mode and the test scope
+ * flag; production authentication cannot enter it. */
+export async function withLocalDemoRepositoryIdentity<T>(actorId: string, operation: () => Promise<T>): Promise<T> {
+  const normalizedActorId = actorId.trim();
+  if (!normalizedActorId) throw new ProductionReadinessError("production_tenant_scope_required");
+  if (!usePostgres || isProductionRuntime() || !isDemoAuthEnabled() || process.env.BROKER_DESK_TEST_REQUEST_SCOPE !== "1") {
+    return operation();
+  }
+  const subject = `demo:${normalizedActorId}`;
+  return workerRepositorySubject.run(subject, () => postgres.withPostgresAuthContext(subject, operation));
 }
 
 /** Runs a background job in the same tenant-scoped repository context as its owner. */
@@ -158,7 +181,9 @@ const resolveDefaultUser = cache(async (preferredUserId?: string) => {
     return repo.getUserByExternalAuthSubject(identity.identity.subject);
   }
 
-  const actorId = isDemoAuthEnabled() ? preferredUserId ?? (await getActorIdFromCookie()) : undefined;
+  const actorId = isDemoAuthEnabled()
+    ? preferredUserId ?? (await getActorIdFromCookie()) ?? (process.env.BROKER_DESK_LOCAL_RUNTIME === "1" ? "user_demo" : undefined)
+    : undefined;
   if (!actorId && !isDemoAuthEnabled()) return null;
   return repo.getDefaultUser(actorId);
 });
@@ -411,6 +436,8 @@ export const updateImportJobMapping: typeof memory.updateImportJobMapping = (...
   repo.updateImportJobMapping(...args);
 export const updateImportJobExecution: typeof memory.updateImportJobExecution = (...args) =>
   repo.updateImportJobExecution(...args);
+export const claimImportJobProcessing: typeof memory.claimImportJobProcessing = (...args) =>
+  repo.claimImportJobProcessing(...args);
 export const retryImportJobExecution: typeof memory.retryImportJobExecution = (...args) =>
   repo.retryImportJobExecution(...args);
 export const listBrokerageCases: typeof memory.listBrokerageCases = (...args) =>
@@ -613,5 +640,6 @@ export const createObjectImportTarget: typeof memory.createObjectImportTarget = 
 export const updateObjectImportTarget: typeof memory.updateObjectImportTarget = (...args) => repo.updateObjectImportTarget(...args);
 export const upsertObjectImportCandidate: typeof memory.upsertObjectImportCandidate = (...args) => repo.upsertObjectImportCandidate(...args);
 export const listObjectImportCandidates: typeof memory.listObjectImportCandidates = (...args) => repo.listObjectImportCandidates(...args);
+export const retryObjectImportTarget: typeof memory.retryObjectImportTarget = (...args) => repo.retryObjectImportTarget(...args);
 
 export const reviewObjectImportCandidate: typeof memory.reviewObjectImportCandidate = (...args) => repo.reviewObjectImportCandidate(...args);

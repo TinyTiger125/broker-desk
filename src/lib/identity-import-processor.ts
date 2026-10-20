@@ -2,9 +2,11 @@ import { persistObjectImportJobExtraction, persistObjectReaderJobExtraction, mar
 import { parseObjectImportNotes, type ObjectImportMetadata } from "@/lib/object-import-contract";
 import {
   addAuditLog,
+  claimImportJobProcessing,
   listAttachments,
   listImportJobs,
   readPrivateAttachmentContent,
+  updateObjectImportTarget,
   updateImportJobExecution,
   updateImportJobMapping,
 } from "@/lib/data";
@@ -27,16 +29,20 @@ type IdentityImportPayload = {
   targetCaseId?: string;
   objectImport?: ObjectImportMetadata;
   objectReader?: ObjectReaderResponse;
+  /** Bounded local history retained when an object source is explicitly retried. */
+  objectReaderHistory?: Array<{ recordedAt: string; response: ObjectReaderResponse }>;
 };
 
 export type IdentityImportProcessResult =
-  | { ok: true; status: "mapped"; fieldCount: number; documentType: string; documentTypeLabel: string; fingerprintConfidence: number }
-  | { ok: false; status: "failed"; error: "import_job_not_found" | "source_attachment_missing" | "identity_extraction_failed" | "object_import_no_supported_fields" | "object_reader_no_readable_fields" };
+  | { ok: true; status: "mapped" | "processing"; fieldCount: number; documentType: string; documentTypeLabel: string; fingerprintConfidence: number }
+  | { ok: false; status: "failed"; error: "import_job_not_found" | "source_attachment_missing" | "identity_extraction_failed" | "object_import_no_supported_fields" | "object_reader_no_readable_fields" | "object_import_retry_exhausted" };
 
 export async function processIdentityImportJob(input: {
   tenantId: string;
   userId: string;
   jobId: string;
+  /** Internal drain already owns the database processing lease. */
+  processingPreclaimed?: boolean;
 }): Promise<IdentityImportProcessResult> {
   const jobs = await listImportJobs(input.userId, 500, input.tenantId);
   const job = jobs.find((item) => item.id === input.jobId && item.sourceType === "scan");
@@ -66,6 +72,44 @@ export async function processIdentityImportJob(input: {
       fingerprintConfidence: payload?.inputExtraction?.fingerprintConfidence ?? (payload?.objectReader ? 1 : 0),
     };
   }
+  // A terminal failed job cannot have a concurrent active reader. Preserve
+  // the bounded retry result for direct re-entry; a fresh processing job must
+  // still pass through the CAS first so the losing request only observes it.
+  if (objectTarget && objectTarget.attemptCount >= 2 && job.status !== "processing") {
+    await markFailed(input, "object_import_retry_exhausted", "资料读取重试次数已用尽，请人工处理或重新上传原始资料。");
+    return { ok: false, status: "failed", error: "object_import_retry_exhausted" };
+  }
+  const processingClaim = input.processingPreclaimed
+    ? { job, claimed: true }
+    : await claimImportJobProcessing(input);
+  if (!processingClaim.claimed) {
+    const payload = parsePayload(processingClaim.job?.notes);
+    if (processingClaim.job?.status === "mapped" || processingClaim.job?.status === "completed") {
+      return {
+        ok: true,
+        status: "mapped",
+        fieldCount: payload?.inputExtraction?.fields.length ?? payload?.objectReader?.candidates.length ?? 0,
+        documentType: payload?.inputExtraction?.documentType ?? payload?.objectReader?.documentType ?? "identity_document",
+        documentTypeLabel: payload?.inputExtraction?.documentTypeLabel ?? (payload?.objectReader ? "物件・賃貸資料" : "本人確認資料"),
+        fingerprintConfidence: payload?.inputExtraction?.fingerprintConfidence ?? (payload?.objectReader ? 1 : 0),
+      };
+    }
+    if (processingClaim.job?.status === "failed") {
+      return { ok: false, status: "failed", error: "identity_extraction_failed" };
+    }
+    return {
+      ok: true,
+      status: "processing",
+      fieldCount: payload?.inputExtraction?.fields.length ?? payload?.objectReader?.candidates.length ?? 0,
+      documentType: payload?.inputExtraction?.documentType ?? payload?.objectReader?.documentType ?? "identity_document",
+      documentTypeLabel: payload?.inputExtraction?.documentTypeLabel ?? (payload?.objectReader ? "物件・賃貸資料" : "本人確認資料"),
+      fingerprintConfidence: payload?.inputExtraction?.fingerprintConfidence ?? (payload?.objectReader ? 1 : 0),
+    };
+  }
+  if (objectTarget && objectTarget.attemptCount >= 2) {
+    await markFailed(input, "object_import_retry_exhausted", "资料读取重试次数已用尽，请人工处理或重新上传原始资料。");
+    return { ok: false, status: "failed", error: "object_import_retry_exhausted" };
+  }
   const attachments = await listAttachments({
     tenantId: input.tenantId,
     userId: input.userId,
@@ -90,20 +134,28 @@ export async function processIdentityImportJob(input: {
   }
 
   try {
-    if (job.status !== "processing") {
-      await updateImportJobExecution({
+    // Count the attempt immediately before the provider call. This closes the
+    // timeout/error path where persistence never runs, while the persistence
+    // adapter deliberately leaves the count unchanged to avoid double-counting
+    // successful and attribution-conflict responses.
+    if (objectTarget && ["queued", "failed", "processing"].includes(objectTarget.status)) {
+      const startedTarget = await updateObjectImportTarget({
         tenantId: input.tenantId,
         userId: input.userId,
-        jobId: input.jobId,
+        id: objectTarget.id,
         status: "processing",
-        allowRetry: job.status === "failed",
+        attemptCount: objectTarget.attemptCount + 1,
       });
+      if (!startedTarget) throw new Error("object_import_target_attempt_claim_failed");
     }
+    const previousPayload = parsePayload(job.notes);
     const objectImport = parseObjectImportNotes(job.notes);
     const objectReader = objectImport?.targetObjectType === "property"
-      ? await readObjectDocumentWithOpenAi({ buffer: readableSources[0].buffer, filename: readableSources[0].filename })
+      ? await readObjectDocumentWithOpenAi({ buffer: readableSources[0].buffer, filename: readableSources[0].filename, documentType: objectTarget?.documentType })
       : undefined;
-    const inputExtraction = objectReader ? undefined : await extractIdentityDocumentsFromFiles(readableSources);
+    const inputExtraction = objectReader ? undefined : await extractIdentityDocumentsFromFiles(readableSources, {
+      requireModel: objectTarget?.targetType === "party" && !objectTarget.caseId,
+    });
     const payload: IdentityImportPayload = {
       kind: "input_file_extraction",
       headers: [],
@@ -118,6 +170,10 @@ export async function processIdentityImportJob(input: {
       payload.objectImport = objectImport;
       if (objectReader) {
         payload.objectReader = objectReader;
+        const priorHistory = previousPayload?.objectReaderHistory ?? [];
+        payload.objectReaderHistory = previousPayload?.objectReader
+          ? [...priorHistory, { recordedAt: new Date().toISOString(), response: previousPayload.objectReader }].slice(-3)
+          : priorHistory.length > 0 ? priorHistory.slice(-3) : undefined;
         const persisted = await persistObjectReaderJobExtraction({ job, ...input, response: objectReader });
         if (persisted?.target?.status === "failed") {
           const errorCode = persisted.target.errorCode === "object_reader_no_readable_fields"

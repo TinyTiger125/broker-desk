@@ -31,15 +31,14 @@ export function ObjectAttachmentSection({
           <input type="hidden" name="targetType" value={targetType} />
           <input type="hidden" name="targetId" value={targetId} />
           <label className="grid gap-1.5 text-sm font-bold text-slate-800">{text.category}
-            <select name="category" defaultValue="other" className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm">
+            <select name="category" defaultValue="other" className="h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm">
               {OBJECT_ATTACHMENT_CATEGORIES.map((category) => <option key={category} value={category}>{labels[category]}</option>)}
             </select>
           </label>
           <label className="grid gap-1.5 text-sm font-bold text-slate-800">{text.file}
-            <input required name="attachmentFile" type="file" accept="application/pdf,image/jpeg,image/png,image/webp,image/heic,.xlsx" className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-1 file:font-bold" />
-            <span className="text-xs font-medium text-slate-500">{text.hint}</span>
+            <input required name="attachmentFile" type="file" accept="application/pdf,image/jpeg,image/png,image/webp,image/heic,.xlsx" className="box-border h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-1 file:font-bold" />
           </label>
-          <button type="submit" className="min-h-11 rounded-lg bg-slate-950 px-5 text-sm font-black text-white hover:bg-blue-800 active:translate-y-px focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">{text.upload}</button>
+          <button type="submit" className="h-11 rounded-lg bg-slate-950 px-5 text-sm font-black text-white hover:bg-blue-800 active:translate-y-px focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">{text.upload}</button>
         </form>
       ) : null}
     </section>

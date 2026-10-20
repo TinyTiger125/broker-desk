@@ -1,4 +1,5 @@
 import { getAuthMode, isSupabaseAuthConfigured } from "@/lib/auth-mode";
+import { DEFAULT_AI_BASE_URL, resolveAiRuntimeConfig } from "@/lib/ai/model-routing";
 
 type ProductionReadinessCode =
   | "production_database_required"
@@ -176,6 +177,17 @@ export function assertProductionAttachmentStorageReady() {
 
 export function assertProductionDocumentReaderReady() {
   if (!isProductionRuntime()) return;
+
+  if (process.env.DOCUMENT_READING_PROVIDER?.trim().toLowerCase() === "openai_responses") {
+    const config = resolveAiRuntimeConfig();
+    if (!config.enabled) {
+      throw new ProductionReadinessError("production_document_reader_required");
+    }
+    if (config.baseUrl !== DEFAULT_AI_BASE_URL) {
+      throw new ProductionReadinessError("production_document_reader_endpoint_not_allowed");
+    }
+    return;
+  }
 
   if (
     process.env.DOCUMENT_READING_PROVIDER !== "remote" ||

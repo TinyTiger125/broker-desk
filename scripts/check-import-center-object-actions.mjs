@@ -8,6 +8,9 @@ const ts = require("typescript");
 const page = readFileSync(new URL("../src/app/import-center/page.tsx", import.meta.url), "utf8");
 const partyPage = readFileSync(new URL("../src/app/parties/new/page.tsx", import.meta.url), "utf8");
 const actions = readFileSync(new URL("../src/app/actions.ts", import.meta.url), "utf8");
+const objectActions = readFileSync(new URL("../src/app/object-import-actions.ts", import.meta.url), "utf8");
+const propertyObjectSection = readFileSync(new URL("../src/components/property-object-import-section.tsx", import.meta.url), "utf8");
+const proxy = readFileSync(new URL("../src/proxy.ts", import.meta.url), "utf8");
 
 const occurrences = (source, token) => source.split(token).length - 1;
 const actionsTree = ts.createSourceFile("actions.ts", actions, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
@@ -24,6 +27,7 @@ const compileActionFunction = (name, dependencies = {}) => {
 
 const safeClientReturnTo = compileActionFunction("safeClientReturnTo", { IMPORT_CENTER_RETURN_PATH: "/import-center" });
 assert.equal(safeClientReturnTo("/import-center", "/clients", undefined, true), "/import-center", "validated create returnTo may use the import-center source");
+assert.equal(safeClientReturnTo("/import-center?object=person#target-selection", "/clients", undefined, true), "/import-center?object=person#target-selection", "object target choice must survive a new party form round trip");
 assert.equal(safeClientReturnTo("/import-center", "/clients/client-1", "client-1", false), "/clients/client-1", "edit behavior must not gain the import-center return path");
 assert.equal(safeClientReturnTo(null, "/clients", undefined, true), "/clients", "create without returnTo must keep the existing fallback");
 for (const unsafe of ["https://attacker.invalid/import-center", "//attacker.invalid/import-center", "/import-center?job=forged", "/import-center#source-upload", "/%2e%2e/import-center"]) {
@@ -62,14 +66,15 @@ assert(layoutOpening.includes("xl:grid-cols-[minmax(0,1fr)_20rem]"), "desktop xl
 assert(!layoutOpening.includes("md:grid-cols") && !layoutOpening.includes("sm:grid-cols"), "390px and 768px layouts must remain single-column");
 
 assert.deepEqual([...page.matchAll(/\{ key: "(case|person|property)"/g)].map((match) => match[1]), ["case", "person", "property"], "initial import center must expose exactly three material objects");
-assert.equal(occurrences(page, 'data-import-action="manual"'), 1, "the three-object renderer must expose one manual-create action per object");
-assert.equal(occurrences(page, 'data-import-action="file"'), 1, "the three-object renderer must expose one file-read action per object");
+assert.equal(occurrences(page, 'data-import-action="unified"'), 1, "the three-object renderer must expose one unified entry action per object");
+assert.equal(occurrences(page, 'data-import-action="existing"'), 1, "the three-object renderer must expose one existing-record selection action per object");
 for (const href of [
   "/cases/new?from=entry",
-  "/parties/new?from=entry",
-  "/properties/new?from=entry",
+  "/parties/new?returnTo=%2Fimport-center%3Fobject%3Dperson",
+  "/properties/new?returnTo=%2Fimport-center%3Fobject%3Dproperty",
 ]) assert(page.includes(href), `missing live object action ${href}`);
-assert(page.includes("`/import-center?object=${object.key}#source-upload`"), "each object file action must preserve its object in the file-read deep link");
+assert(page.includes("`/organize-center?type=${object.key === \"person\" ? \"party\" : object.key}`"), "existing objects must be selected from their ordinary record list");
+assert(page.includes("`/clients/${encodeURIComponent(client.id)}/edit`"), "existing customer selection must enter the unified editor");
 
 for (const forbidden of ["Excel 批量台账", "Excel 一括台帳", "Excel 일괄 대장", "未归属资料", "未割当資料", "미지정 자료"]) {
   assert(!page.includes(forbidden), `product entry concept must be hidden: ${forbidden}`);
@@ -89,9 +94,18 @@ assert(page.includes("targetCaseId"), "target-case recovery must remain availabl
 assert(page.includes("xlsxJob"), "xlsx recovery must remain available");
 assert(page.includes("advanced=1#job-mapping"), "legacy advanced recovery must remain available");
 
-assert(partyPage.includes("ClientForm"), "party manual create must use the existing client form");
-assert(partyPage.includes("createClientFormAction"), "party manual create must use the existing create action");
-assert(!partyPage.includes("notFound()"), "party manual create must no longer return 404");
-assert(partyPage.includes('params.from === "entry" ? "/import-center" : "/parties"'), "party manual create must return to import center when opened from entry");
+assert(partyPage.includes("redirect(`/clients/new?returnTo="), "legacy party creation must forward to the unified client form");
+assert(partyPage.includes('params.from === "entry"'), "legacy entry link must preserve the entry return path");
+assert(objectActions.includes("return redirectObjectUploadError(flash);"), "object upload persistence failures must return to the selected target instead of throwing a route error");
+assert.equal((propertyObjectSection.match(/name=\"returnTo\" value=\{returnTo\}/g) ?? []).length, 3, "property review/retry/refresh forms must preserve the central return path");
+assert(actions.includes("safeObjectImportRefreshReturnTo"), "object refresh action must validate the central return path");
+assert(actions.includes('parsed.searchParams.get("targetId") === targetId'), "object refresh return path must be bound to the reviewed target");
+assert(actions.includes("redirectUrl.searchParams.set(key, value)"), "object refresh redirect must merge feedback into an existing return query");
+assert(page.includes("const recentJobStatusLabel = (job: HubImportJobItem)"), "recent import cards must derive object status from the persisted target");
+assert(page.includes("{recentJobStatusLabel(job)}"), "recent import cards must render the persisted object status");
+assert(page.includes("const recentJobIsCompleted = (job: HubImportJobItem)"), "recent import status styling must use the persisted object completion state");
+assert(page.includes("object_import_upload_save_failed"), "object upload persistence failures need a recoverable page flash");
+assert(proxy.includes("BROKER_DESK_LOCAL_RUNTIME") && proxy.includes("LOCAL_LOOPBACK_HOSTS"), "local loopback origin alias must remain explicitly scoped");
+assert(proxy.includes('supplied.port === expected.port') && proxy.includes('supplied.protocol === "http:"'), "local origin alias must require the same HTTP port and scheme");
 
 console.log("import center object actions: PASS");

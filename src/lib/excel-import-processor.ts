@@ -6,6 +6,7 @@ import {
   listAttachments,
   listImportJobs,
   readPrivateAttachmentContent,
+  updateObjectImportTarget,
   updateImportJobExecution,
   updateImportJobMapping,
 } from "@/lib/data";
@@ -37,7 +38,7 @@ export type ExcelImportPayload = {
 
 export type ExcelImportProcessResult =
   | { ok: true; status: "mapped"; fieldCount: number; documentType: string; documentTypeLabel: string; fingerprintConfidence: number }
-  | { ok: false; status: "failed"; error: "import_job_not_found" | "source_attachment_missing" | "excel_extraction_failed" | "object_import_no_supported_fields" }
+  | { ok: false; status: "failed"; error: "import_job_not_found" | "source_attachment_missing" | "excel_extraction_failed" | "object_import_no_supported_fields" | "object_import_retry_exhausted" }
   | { ok: false; error: "import_execution_started" };
 
 /**
@@ -78,6 +79,11 @@ export async function processExcelImportJob(input: {
       fingerprintConfidence: payload?.inputExtraction?.fingerprintConfidence ?? 0,
     };
   }
+  if (objectTarget && objectTarget.attemptCount >= 2) {
+    const failedJob = await markFailed(input, "object_import_retry_exhausted", "资料读取重试次数已用尽，请人工处理或重新上传原始资料。");
+    if (!failedJob) return { ok: false, error: "import_execution_started" };
+    return { ok: false, status: "failed", error: "object_import_retry_exhausted" };
+  }
   const attachments = await listAttachments({
     tenantId: input.tenantId,
     userId: input.userId,
@@ -114,6 +120,16 @@ export async function processExcelImportJob(input: {
         beforeFinalImport: true,
       });
       if (!processingJob) return { ok: false, error: "import_execution_started" };
+    }
+    if (objectTarget && ["queued", "failed", "processing"].includes(objectTarget.status)) {
+      const startedTarget = await updateObjectImportTarget({
+        tenantId: input.tenantId,
+        userId: input.userId,
+        id: objectTarget.id,
+        status: "processing",
+        attemptCount: objectTarget.attemptCount + 1,
+      });
+      if (!startedTarget) throw new Error("object_import_target_attempt_claim_failed");
     }
     await validateExcelZip(content);
     const workbook = await readExcelWorkbook(content);

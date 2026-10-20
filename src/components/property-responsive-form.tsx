@@ -1,11 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useActionState, useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import type { Locale } from "@/lib/locale";
 import type { PropertyFormActionState, PropertyFormValues } from "@/app/actions";
 import { endSubmission, handleFormSubmit, type SubmissionLock } from "@/components/form-submission-lock";
 import { Button } from "@/components/ui-foundation";
+import { EntryFilePicker, replaceEntryFiles } from "@/components/entry-file-picker";
+import { applyEntryPreviewCandidate, EntryPreview, type EntryPreviewCandidate } from "@/components/entry-preview";
+import { useEntryDraft } from "@/components/use-entry-draft";
 
 type PropertyFormAction = (
   previousState: PropertyFormActionState,
@@ -25,13 +28,19 @@ type PropertyResponsiveFormProps = {
   hideActions?: boolean;
   onPendingChange?: (pending: boolean) => void;
   onSubmitStart?: () => void;
+  /** Enable the unified new-entry file picker. Files use the uploadFile protocol. */
+  entryUpload?: boolean;
+  /** Stable tenant/user/object sessionStorage key for edit drafts. */
+  entryDraftKey?: string;
+  /** Fields successfully confirmed by the document review redirect. */
+  entryAppliedFields?: readonly string[];
 };
 
 const copy = {
   ja: {
     basic: "基本情報",
-    money: "価格・費用",
-    detail: "面積・補足",
+    money: "価格・費用・面積",
+    detail: "補足情報",
     name: "物件名",
     furigana: "物件名かな",
     area: "エリア",
@@ -50,14 +59,15 @@ const copy = {
     sqm: "㎡",
     optional: "任意",
     save: "保存",
+    saveAndRead: "保存して資料を読み取る",
     cancel: "キャンセル",
     errorSummary: "入力内容を確認してください。",
     saving: "保存中…",
   },
   zh: {
     basic: "基本信息",
-    money: "价格与费用",
-    detail: "面积与补充说明",
+    money: "价格、费用与面积",
+    detail: "补充说明",
     name: "物件名",
     furigana: "物件名拼音/假名",
     area: "区域",
@@ -76,14 +86,15 @@ const copy = {
     sqm: "㎡",
     optional: "选填",
     save: "保存",
+    saveAndRead: "保存并读取资料",
     cancel: "取消",
     errorSummary: "请检查以下输入内容。",
     saving: "保存中…",
   },
   ko: {
     basic: "기본 정보",
-    money: "가격과 비용",
-    detail: "면적과 보충 설명",
+    money: "가격·비용·면적",
+    detail: "보충 설명",
     name: "매물명",
     furigana: "매물명 후리가나",
     area: "에리어",
@@ -102,6 +113,7 @@ const copy = {
     sqm: "㎡",
     optional: "선택",
     save: "저장",
+    saveAndRead: "저장하고 자료 읽기",
     cancel: "취소",
     errorSummary: "다음 입력 내용을 확인해 주세요.",
     saving: "저장 중…",
@@ -127,10 +139,34 @@ const initialState: PropertyFormActionState = { status: "idle", fieldErrors: {},
   notes: "",
 } };
 
-export function PropertyResponsiveForm({ action, locale, initialValues, returnTo, propertyId, onCreated, onSaved, onCancel, formId, hideActions = false, onPendingChange, onSubmitStart }: PropertyResponsiveFormProps) {
+export function PropertyResponsiveForm({ action, locale, initialValues, returnTo, propertyId, onCreated, onSaved, onCancel, formId, hideActions = false, onPendingChange, onSubmitStart, entryUpload = false, entryDraftKey, entryAppliedFields = [] }: PropertyResponsiveFormProps) {
   const text = copy[locale];
-  const [values, setValues] = useState<PropertyFormValues>(initialValues);
-  const [state, formAction, pending] = useActionState(action, { ...initialState, values: initialValues });
+  const { values, setValues } = useEntryDraft({ storageKey: entryDraftKey, serverValues: initialValues, appliedFields: entryAppliedFields });
+  const [entryFiles, setEntryFiles] = useState<File[]>([]);
+  const [entryReadFileKeys, setEntryReadFileKeys] = useState<string[]>([]);
+  const entryFilesRef = useRef<File[]>([]);
+  const entryReadFileKeysRef = useRef<string[]>([]);
+  const handleEntryReadFileKeys = useCallback((keys: string[]) => {
+    entryReadFileKeysRef.current = keys;
+    setEntryReadFileKeys(keys);
+  }, []);
+  const updateEntryFiles = useCallback((files: File[]) => {
+    entryFilesRef.current = files;
+    setEntryFiles(files);
+    entryReadFileKeysRef.current = [];
+    setEntryReadFileKeys([]);
+  }, []);
+  const confirmEntryCandidate = useCallback((candidate: EntryPreviewCandidate) => {
+    setValues((current) => applyEntryPreviewCandidate(current, candidate));
+  }, [setValues]);
+  const entryAction = useCallback(async (previousState: PropertyFormActionState, formData: FormData) => {
+    if (entryUpload) {
+      replaceEntryFiles(formData, entryFilesRef.current);
+      formData.set("entryReadFileKeys", JSON.stringify(entryReadFileKeysRef.current));
+    }
+    return action(previousState, formData);
+  }, [action, entryUpload]);
+  const [state, formAction, pending] = useActionState(entryAction, { ...initialState, values: initialValues });
   const summaryRef = useRef<HTMLDivElement>(null);
   const composingRef = useRef(false);
   const notifiedCreatedId = useRef<string | undefined>(undefined);
@@ -191,6 +227,11 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
       <input type="hidden" name="returnTo" value={returnTo} />
       {onCreated ? <input type="hidden" name="caseDraftReturn" value="1" /> : null}
       {propertyId ? <input type="hidden" name="propertyId" value={propertyId} /> : null}
+      {entryUpload ? <>
+        <EntryFilePicker locale={locale} files={entryFiles} onFilesChange={updateEntryFiles} disabled={pending} />
+        <EntryPreview files={entryFiles} kind="property" locale={locale} onConfirm={confirmEntryCandidate} onReadFileKeys={handleEntryReadFileKeys} />
+        <input type="hidden" name="entryReadFileKeys" value={JSON.stringify(entryReadFileKeys)} />
+      </> : null}
 
       {state.status === "error" ? (
         <div
@@ -258,14 +299,15 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
             ["listingCommonFee", text.listingCommonFee],
             ["managementFee", text.managementFee],
             ["repairFee", text.repairFee],
+            ["sizeSqm", text.sizeSqm],
           ] as const).map(([field, label]) => {
             const id = `property-${field}`;
             return (
               <div key={field} className="space-y-1">
-                <label htmlFor={id} className="text-sm font-semibold text-slate-700">{label}</label>
+                <label htmlFor={id} className="text-sm font-semibold text-slate-700">{label}{field === "sizeSqm" ? <span className="text-xs font-normal text-slate-500"> ({text.optional})</span> : null}</label>
                 <div className="flex items-center rounded-lg border border-slate-300 bg-white focus-within:border-[#0046ad] focus-within:ring-2 focus-within:ring-blue-100">
-                  <input {...fieldProps(field, id)} type="number" inputMode="decimal" step="any" className="min-h-11 min-w-0 flex-1 rounded-lg border-0 bg-transparent px-3 py-2.5 text-base text-slate-900 outline-none sm:text-sm" />
-                  <span className="pr-3 text-xs font-semibold text-slate-500">{text.yen}</span>
+                  <input {...fieldProps(field, id)} type="number" inputMode="decimal" step={field === "sizeSqm" ? "0.01" : "any"} className="min-h-11 min-w-0 flex-1 rounded-lg border-0 bg-transparent px-3 py-2.5 text-base text-slate-900 outline-none sm:text-sm" />
+                  <span className="pr-3 text-xs font-semibold text-slate-500">{field === "sizeSqm" ? text.sqm : text.yen}</span>
                 </div>
                 {fieldError(field) ? <p id={`${id}-error`} className="text-xs font-semibold text-rose-700">{fieldError(field)}</p> : null}
               </div>
@@ -277,15 +319,7 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
       <section aria-labelledby="property-detail-heading" className="space-y-3">
         <h2 id="property-detail-heading" className="text-base font-bold text-slate-950">{text.detail}</h2>
         <div className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-1">
-            <label htmlFor="property-sizeSqm" className="text-sm font-semibold text-slate-700">{text.sizeSqm} <span className="text-xs font-normal text-slate-500">({text.optional})</span></label>
-            <div className="flex items-center rounded-lg border border-slate-300 bg-white focus-within:border-[#0046ad] focus-within:ring-2 focus-within:ring-blue-100">
-              <input {...fieldProps("sizeSqm", "property-sizeSqm")} type="number" inputMode="decimal" step="0.01" className="min-h-11 min-w-0 flex-1 rounded-lg border-0 bg-transparent px-3 py-2.5 text-base text-slate-900 outline-none sm:text-sm" />
-              <span className="pr-3 text-xs font-semibold text-slate-500">{text.sqm}</span>
-            </div>
-            {fieldError("sizeSqm") ? <p id="property-sizeSqm-error" className="text-xs font-semibold text-rose-700">{fieldError("sizeSqm")}</p> : null}
-          </div>
-          <div className="space-y-1">
+          <div className="space-y-1 md:col-span-2">
             <label htmlFor="property-notes" className="text-sm font-semibold text-slate-700">{text.notes} <span className="text-xs font-normal text-slate-500">({text.optional})</span></label>
             <textarea {...fieldProps("notes", "property-notes")} rows={4} className={`${inputClass} resize-y`} />
             {fieldError("notes") ? <p id="property-notes-error" className="text-xs font-semibold text-rose-700">{fieldError("notes")}</p> : null}
@@ -296,7 +330,7 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
       {hideActions ? null : <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-200 pt-5">
         {onCancel ? <button type="button" onClick={onCancel} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">{text.cancel}</button> : <Link href={returnTo} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">{text.cancel}</Link>}
         <Button type="submit" loading={pending} className="min-h-11 rounded-lg bg-slate-950 px-5 py-2.5 text-sm font-bold text-white hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60">
-          {pending ? text.saving : text.save}
+          {pending ? text.saving : entryUpload && entryFiles.length > entryReadFileKeys.length ? text.saveAndRead : text.save}
         </Button>
       </div>}
       <div className="sr-only" aria-live="polite">{pending ? text.saving : ""}</div>

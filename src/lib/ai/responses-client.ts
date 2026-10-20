@@ -21,6 +21,8 @@ export type CreateAiResponseArgs = {
   jsonSchema?: AiJsonSchema;
   reasoningEffort?: AiReasoningEffort;
   textVerbosity?: AiTextVerbosity;
+  /** Hard ceiling for provider output, especially important for page-indexed PDF reads. */
+  maxOutputTokens?: number;
   metadata?: Record<string, string>;
 };
 
@@ -136,6 +138,8 @@ export async function createAiResponse<T = unknown>(
     body: JSON.stringify({
       model: route.model,
       input: args.input,
+      store: false,
+      ...(args.maxOutputTokens === undefined ? {} : { max_output_tokens: args.maxOutputTokens }),
       reasoning: {
         effort: reasoningEffort,
       },

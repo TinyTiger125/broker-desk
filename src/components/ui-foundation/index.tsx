@@ -153,6 +153,7 @@ type FieldMeta = {
   warning?: string;
   id?: string;
   required?: boolean;
+  controlSize?: ControlSize;
 };
 
 function useFieldMeta({ id, label, hint, error, warning }: FieldMeta) {
@@ -177,12 +178,12 @@ function FieldMessages({ hint, error, warning, hintId, errorId, warningId }: Pic
 
 export type TextInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, "id" | "className"> & FieldMeta & { className?: string };
 
-export function TextInput({ label, hint, error, warning, id, required, className, ...props }: TextInputProps) {
+export function TextInput({ label, hint, error, warning, id, required, controlSize, className, ...props }: TextInputProps) {
   const meta = useFieldMeta({ id, label, hint, error, warning, required });
   return (
     <div className={cx(styles.formField, className)}>
       <FieldLabel htmlFor={meta.inputId} required={required}>{label}</FieldLabel>
-      <input {...props} id={meta.inputId} required={required} className={cx(styles.input, error ? styles.inputError : warning ? styles.inputWarning : undefined)} aria-invalid={Boolean(error) || undefined} aria-describedby={meta.describedBy} />
+      <input {...props} id={meta.inputId} required={required} className={cx(styles.input, controlSize ? styles[`controlSize${controlSize[0].toUpperCase()}${controlSize.slice(1)}`] : undefined, error ? styles.inputError : warning ? styles.inputWarning : undefined)} aria-invalid={Boolean(error) || undefined} aria-describedby={meta.describedBy} />
       <FieldMessages hint={hint} error={error} warning={warning} hintId={meta.hintId} errorId={meta.errorId} warningId={meta.warningId} />
     </div>
   );
@@ -190,12 +191,12 @@ export function TextInput({ label, hint, error, warning, id, required, className
 
 export type SelectInputProps = Omit<SelectHTMLAttributes<HTMLSelectElement>, "id" | "className"> & FieldMeta & { className?: string };
 
-export function SelectInput({ label, hint, error, warning, id, required, className, children, ...props }: SelectInputProps) {
+export function SelectInput({ label, hint, error, warning, id, required, controlSize, className, children, ...props }: SelectInputProps) {
   const meta = useFieldMeta({ id, label, hint, error, warning, required });
   return (
     <div className={cx(styles.formField, className)}>
       <FieldLabel htmlFor={meta.inputId} required={required}>{label}</FieldLabel>
-      <select {...props} id={meta.inputId} required={required} className={cx(styles.input, styles.select, error ? styles.inputError : warning ? styles.inputWarning : undefined)} aria-invalid={Boolean(error) || undefined} aria-describedby={meta.describedBy}>{children}</select>
+      <select {...props} id={meta.inputId} required={required} className={cx(styles.input, styles.select, controlSize ? styles[`controlSize${controlSize[0].toUpperCase()}${controlSize.slice(1)}`] : undefined, error ? styles.inputError : warning ? styles.inputWarning : undefined)} aria-invalid={Boolean(error) || undefined} aria-describedby={meta.describedBy}>{children}</select>
       <FieldMessages hint={hint} error={error} warning={warning} hintId={meta.hintId} errorId={meta.errorId} warningId={meta.warningId} />
     </div>
   );

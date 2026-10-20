@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { readBuiltCss } from "./read-built-css.mjs";
 
 const require = createRequire(import.meta.url);
 const ts = require("typescript");
@@ -353,11 +354,7 @@ assert.equal([...contractCandidates].filter((candidate) => candidate.startsWith(
 assert.equal([...contractCandidates].filter((candidate) => candidate === syntheticTouchClass || candidate.startsWith(`${["min", "h"].join("-")}-[`)).length, 0, "the checker must not inject a Tailwind class that could satisfy the shared height contract");
 
 if (builtCssMode) {
-  const cssDirectory = resolve(root, ".next/static/css");
-  const builtCss = readdirSync(cssDirectory)
-    .filter((name) => name.endsWith(".css"))
-    .map((name) => readFileSync(resolve(cssDirectory, name), "utf8"))
-    .join("\n");
+  const builtCss = readBuiltCss(root);
   analyzeSharedFrameCss(builtCss, "built CSS");
   assert.match(builtCss, /\.bd-inline-select-frame:focus-within\s*\{[^}]*outline:\s*var\(--bd-focus-ring-width\)\s+solid\s+var\(--bd-focus-ring-color\);?[^}]*outline-offset:\s*var\(--bd-focus-ring-offset\);?[^}]*\}/s, "built CSS must retain the tokenized inline-select focus rule");
 }

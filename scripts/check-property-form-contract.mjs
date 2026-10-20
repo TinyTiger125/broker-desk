@@ -30,7 +30,7 @@ assert(form.includes('aria-invalid'), "fields must expose invalid state");
 assert(form.includes('aria-describedby'), "fields must associate their errors");
 assert(form.includes("target?.focus()"), "summary links must focus their field");
 assert(form.includes("event.nativeEvent.keyCode === 229"), "IME Enter must not submit");
-assert((form.match(/<button type="submit"/g) ?? []).length === 1, "form must have one submit button");
+assert((form.match(/<(?:button|Button) type="submit"/g) ?? []).length === 1, "form must have one submit button");
 assert(!createPage.includes("FormDraftAssist"), "create page must not invoke FormDraftAssist");
 assert(!editPage.includes("ObjectWorkbenchShell"), "edit page must not use the workbench shell");
 assert(!editPage.includes("WorkbenchProgress"), "edit page must not expose progress UI");

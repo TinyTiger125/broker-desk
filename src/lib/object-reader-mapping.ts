@@ -3,6 +3,7 @@ import { selectSingleObjectReaderCandidates } from "@/lib/object-reader-attribut
 import type { ObjectReaderCandidate } from "@/lib/object-reader-contract";
 
 const FIELD_LABELS: Record<string, string> = {
+  "property.furigana": "物件フリガナ",
   "property.name": "物件名",
   "property.roomNumber": "部屋番号・号室",
   "property.postalCode": "物件郵便番号",
@@ -26,6 +27,16 @@ const FIELD_LABELS: Record<string, string> = {
   "lease.initialCostTotal": "初回費用合計",
   "lease.paymentMethod": "賃料支払方法",
   "lease.rentPaymentDay": "賃料支払日",
+  "property.area": "エリア",
+  "property.sizeSqm": "専有面積",
+  "property.listingPrice": "価格",
+  "property.listingRent": "参考月額賃料",
+  "property.listingCommonFee": "参考共益費",
+  "property.managementFee": "管理費",
+  "property.repairFee": "修繕積立金",
+  // Notes is an existing field, but the model prompt explicitly forbids using
+  // it as a catch-all for source clauses.
+  "property.notes": "備考",
 };
 
 export type ObjectReaderMappingDecision = {

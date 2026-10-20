@@ -339,8 +339,8 @@ export function CaseIdentityHeader({
 
   return (
     <header ref={headerRef} data-case-object-header className={`sticky top-16 z-30 border border-slate-200 bg-white/95 shadow-sm backdrop-blur transition-[padding,box-shadow] duration-200 lg:top-20 ${compactHeader ? "rounded-lg px-3 py-2 sm:px-4" : "rounded-xl px-3 py-3 sm:px-5 sm:py-4"}`}>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0 flex-1">
+      <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0 sm:flex-1">
           <div className="flex items-center gap-2 text-[11px] font-bold text-slate-500">
             <span>{activeView === "quick" ? (locale === "zh" ? "快速补全" : locale === "ko" ? "빠른 보완" : "補完") : locale === "zh" ? "案件总览" : locale === "ko" ? "안건 전체" : "案件全体"}</span>
             {compactHeader ? <span className="truncate text-slate-900">· {caseTitle}</span> : null}
@@ -353,7 +353,7 @@ export function CaseIdentityHeader({
             <span className="hidden lg:inline">{locale === "zh" ? "保证公司" : locale === "ko" ? "보증 회사" : "保証会社"}：{guaranteeCompanySummary}</span>
           </div>
         </div>
-        <div className="flex max-w-full shrink-0 flex-wrap items-center justify-end gap-2">{actions}</div>
+        <div className="flex w-full max-w-full flex-wrap items-center justify-start gap-2 sm:w-auto sm:shrink-0 sm:justify-end">{actions}</div>
       </div>
       {!compactHeader ? (
         <div className={`mt-3 flex flex-wrap items-center gap-2 sm:mt-4 ${showViewSwitch ? "sm:grid sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center" : ""}`}>

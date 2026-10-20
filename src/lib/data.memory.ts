@@ -1,9 +1,10 @@
 import { getGuaranteeCompanyTemplate } from "@/lib/guarantee-application";
 import { validateObjectImportReview, type ObjectImportReviewInput, type ObjectImportReviewResult } from "@/lib/object-import-review";
+import { isCorporateCustomerRecord } from "@/lib/customer-identity-field-catalog";
 import { buildObjectVersionFingerprint, type ObjectImportFeatureReadiness } from "@/lib/object-import-contract";
 import { readCaseAssociationDraft } from "@/lib/case-associations";
 import { MemoryObjectImportRepository } from "@/lib/object-import-repository.memory";
-import type { ObjectImportTargetRecord, ObjectImportCandidateRecord } from "@/lib/object-import-repository";
+import type { ObjectImportTargetRecord, ObjectImportCandidateRecord, ObjectImportRetryResult } from "@/lib/object-import-repository";
 import {
   type AmlCheckStatus,
   type BrokerageContractType,
@@ -412,6 +413,11 @@ export type ImportJob = {
 };
 
 export type PreparePropertyRowImportResult = {
+  job: ImportJob | null;
+  claimed: boolean;
+};
+
+export type ClaimImportJobProcessingResult = {
   job: ImportJob | null;
   claimed: boolean;
 };
@@ -4124,6 +4130,27 @@ export async function claimPropertyRowImport(input: { tenantId: string; userId: 
   return true;
 }
 
+/**
+ * Atomically claim one extraction attempt. A fresh processing job belongs to
+ * the request that first claims it; only a processing job without a lease or
+ * with an expired five-minute lease may be recovered after a crash.
+ */
+export async function claimImportJobProcessing(input: { tenantId: string; userId: string; jobId: string }): Promise<ClaimImportJobProcessingResult> {
+  const job = db.importJobs.find((item) => item.id === input.jobId && item.tenantId === input.tenantId && item.userId === input.userId);
+  if (!job) return { job: null, claimed: false };
+  const now = new Date();
+  const leaseExpired = job.status === "processing"
+    && (!job.processingStartedAt || now.getTime() - job.processingStartedAt.getTime() >= 5 * 60 * 1000);
+  if (job.status !== "queued" && !leaseExpired) return { job: { ...job }, claimed: false };
+  job.status = "processing";
+  job.processingStartedAt = now;
+  job.attemptCount = (job.attemptCount ?? 0) + 1;
+  job.errorCode = undefined;
+  job.errorSummary = undefined;
+  job.updatedAt = now;
+  return { job: { ...job }, claimed: true };
+}
+
 export async function preparePropertyRowImport(input: {
   tenantId: string;
   userId: string;
@@ -4387,7 +4414,7 @@ export type RefreshObjectImportReviewInput = {
 };
 
 export type RefreshObjectImportReviewResult =
-  | { ok: true; caseId: string; targetVersion: string }
+  | { ok: true; caseId?: string; targetVersion: string }
   | { ok: false; reason: "not_writable" | "conflict" | "already_reviewed" | "unsupported_target" };
 
 export async function refreshObjectImportReview(input: RefreshObjectImportReviewInput): Promise<RefreshObjectImportReviewResult> {
@@ -4397,23 +4424,30 @@ export async function refreshObjectImportReview(input: RefreshObjectImportReview
   if (!target || !field) return { ok: false, reason: "not_writable" };
   if (target.targetType !== "party" && target.targetType !== "property") return { ok: false, reason: "unsupported_target" };
   if (target.targetVersion !== input.expectedVersion || target.status !== "needs_review") {
-    return { ok: false, reason: field.finalSource === "human" || field.status === "confirmed" || field.status === "rejected" ? "already_reviewed" : "conflict" };
+    return { ok: false, reason: field.finalSource === "human" || ["confirmed", "rejected", "not_found"].includes(field.status) ? "already_reviewed" : "conflict" };
   }
-  if ((field.candidateValue ?? "") !== input.expectedCandidateValue || field.finalSource === "human" || ["confirmed", "rejected"].includes(field.status)) return { ok: false, reason: field.finalSource === "human" || ["confirmed", "rejected"].includes(field.status) ? "already_reviewed" : "conflict" };
-  const caseItem = db.brokerageCases.find((item) => item.id === target.caseId && item.tenantId === context.tenantId);
+  if ((field.candidateValue ?? "") !== input.expectedCandidateValue || field.finalSource === "human" || ["confirmed", "rejected", "not_found"].includes(field.status)) return { ok: false, reason: field.finalSource === "human" || ["confirmed", "rejected", "not_found"].includes(field.status) ? "already_reviewed" : "conflict" };
+  const caseItem = target.caseId ? db.brokerageCases.find((item) => item.id === target.caseId && item.tenantId === context.tenantId) : undefined;
   const person = (target.targetType === "party" ? db.clients : db.properties).find((item) => item.id === target.targetId && item.tenantId === context.tenantId);
+  if (target.targetType === "party" && person && isCorporateCustomerRecord(person)) return { ok: false, reason: "not_writable" };
   const membership = db.tenantMemberships.find((item) => item.id === context.membershipId && item.userId === context.userId && item.tenantId === context.tenantId && item.status === "active");
-  if (!membership || !caseItem || caseItem.lifecycleStatus === "archived" || !person || person.lifecycleStatus === "archived" || !resolveRecordVisibility(context, caseItem).canWrite || !resolveRecordVisibility(context, person).canWrite) return { ok: false, reason: "not_writable" };
-  const associated = target.targetType === "party"
-    ? readCaseAssociationDraft(caseItem.confirmedDataJson).parties.some((item) => item.partyId === person.id)
-    : readCaseAssociationDraft(caseItem.confirmedDataJson).primaryPropertyId === person.id;
-  if (!associated || !hasObjectImportSource(target, field)) return { ok: false, reason: "not_writable" };
+  if (!membership || !person || person.lifecycleStatus === "archived" || !resolveRecordVisibility(context, person).canWrite) return { ok: false, reason: "not_writable" };
+  if (target.caseId) {
+    if (!caseItem || caseItem.lifecycleStatus === "archived" || !resolveRecordVisibility(context, caseItem).canWrite) return { ok: false, reason: "not_writable" };
+    const associated = target.targetType === "party"
+      ? readCaseAssociationDraft(caseItem.confirmedDataJson).parties.some((item) => item.partyId === person.id)
+      : readCaseAssociationDraft(caseItem.confirmedDataJson).primaryPropertyId === person.id;
+    if (!associated) return { ok: false, reason: "not_writable" };
+  } else if (target.targetType !== "property" && target.targetType !== "party") {
+    return { ok: false, reason: "not_writable" };
+  }
+  if (!hasObjectImportSource(target, field)) return { ok: false, reason: "not_writable" };
   const currentVersion = buildObjectVersionFingerprint(person as unknown as Record<string, unknown>);
   if (currentVersion !== input.observedVersion || currentVersion === target.targetVersion || !input.observedVersion.trim()) return { ok: false, reason: "conflict" };
   target.targetVersion = currentVersion;
   target.updatedAt = new Date();
   db.auditLogs.unshift({ id: makeId("audit"), tenantId: context.tenantId, userId: context.userId, actorId: context.userId, action: "object_import_review_rebased", targetType: target.targetType === "party" ? "client" : "property", targetId: person.id, message: "Object import review baseline refreshed", context: { importTargetId: target.id, fieldId: field.id, previousVersion: input.expectedVersion, targetVersion: currentVersion }, createdAt: new Date() });
-  return { ok: true, caseId: target.caseId, targetVersion: currentVersion };
+  return { ok: true, ...(target.caseId ? { caseId: target.caseId } : {}), targetVersion: currentVersion };
 }
 
 export async function saveBrokerageCaseExtractionReview(input: {
@@ -7094,6 +7128,69 @@ export const updateObjectImportTarget = (input: Parameters<MemoryObjectImportRep
 export const upsertObjectImportCandidate = (input: Parameters<MemoryObjectImportRepository["upsertCandidate"]>[0]) => objectImportRepository().upsertCandidate(input);
 export const listObjectImportCandidates = (input: Parameters<MemoryObjectImportRepository["listCandidates"]>[0]) => objectImportRepository().listCandidates(input);
 
+/** Requeue one failed/ambiguous object source while preserving source and human decisions. */
+export async function retryObjectImportTarget(input: {
+  tenantId?: string;
+  userId: string;
+  targetId: string;
+  targetVersion: string;
+}): Promise<ObjectImportRetryResult> {
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const target = db.objectImportTargets.find((item) => item.id === input.targetId && item.tenantId === scopeTenantId && item.userId === input.userId);
+  if (!target) return { ok: false, reason: "not_found" };
+  const targetFields = db.objectImportCandidates.filter((item) => item.targetId === target.id && item.tenantId === scopeTenantId);
+  const hasHumanDecision = targetFields.some((field) => field.finalSource === "human");
+  const hasUsableCandidate = targetFields.some((field) => Boolean(field.candidateValue?.trim()) && !["not_found", "failed", "rejected"].includes(field.status));
+  const emptyStandaloneCustomer = target.targetType === "party"
+    && !target.caseId
+    && target.status === "needs_review"
+    && !hasHumanDecision
+    && !hasUsableCandidate;
+  if (!emptyStandaloneCustomer && target.status !== "failed" && target.status !== "conflict") return { ok: false, reason: target.status === "queued" || target.status === "processing" ? "already_queued" : "not_retryable" };
+  if (target.attemptCount >= 2) return { ok: false, reason: "retry_exhausted" };
+  const job = db.importJobs.find((item) => item.id === target.importJobId && item.tenantId === scopeTenantId && item.userId === input.userId);
+  if (!job) return { ok: false, reason: "not_found" };
+  if (job.finalImportStartedAt) return { ok: false, reason: "final_import_started" };
+  if (job.status === "queued" || job.status === "processing") return { ok: false, reason: "already_queued" };
+  if (job.status !== "mapped" && job.status !== "failed") return { ok: false, reason: "not_retryable" };
+  const source = db.attachments.find((item) => item.id === target.sourceAttachmentId && item.tenantId === scopeTenantId && item.userId === input.userId && item.targetType === "import_job" && item.targetId === target.importJobId);
+  if (!source || !privateAttachmentContents.get(source.id)?.length) return { ok: false, reason: "source_unavailable" };
+  let parsedNotes: Record<string, unknown>;
+  try {
+    parsedNotes = JSON.parse(job.notes ?? "") as Record<string, unknown>;
+    const objectImport = parsedNotes.objectImport;
+    if (!objectImport || typeof objectImport !== "object" || Array.isArray(objectImport)) return { ok: false, reason: "not_retryable" };
+    parsedNotes.objectImport = { ...(objectImport as Record<string, unknown>), targetVersion: input.targetVersion };
+  } catch {
+    return { ok: false, reason: "not_retryable" };
+  }
+
+  target.status = "queued";
+  target.targetVersion = input.targetVersion;
+  target.errorCode = undefined;
+  target.errorSummary = undefined;
+  target.updatedAt = new Date();
+  for (const field of targetFields.filter((item) => item.finalSource !== "human")) {
+    field.candidateValue = undefined;
+    field.confidence = undefined;
+    field.finalValue = undefined;
+    field.finalSource = undefined;
+    field.status = "not_found";
+    field.provenance = { retryReset: true, sourceAttachmentId: target.sourceAttachmentId };
+    field.confirmedByUserId = undefined;
+    field.confirmedAt = undefined;
+  }
+  job.status = "queued";
+  job.processingStartedAt = undefined;
+  job.completedAt = undefined;
+  job.failedAt = undefined;
+  job.errorCode = undefined;
+  job.errorSummary = undefined;
+  job.notes = JSON.stringify(parsedNotes);
+  job.updatedAt = new Date();
+  return { ok: true, targetId: target.id, importJobId: target.importJobId };
+}
+
 function hasObjectImportSource(target: ObjectImportTargetRecord, field: ObjectImportCandidateRecord): boolean {
   const attachment = db.attachments.find((item) => item.id === target.sourceAttachmentId && item.tenantId === target.tenantId && item.userId === target.userId && item.targetType === "import_job" && item.targetId === target.importJobId);
   const content = attachment ? privateAttachmentContents.get(attachment.id) : undefined;
@@ -7109,14 +7206,22 @@ export async function reviewObjectImportCandidate(input: ObjectImportReviewInput
   const caseItem = db.brokerageCases.find((item) => item.id === target.caseId && item.tenantId === context.tenantId);
   const person = (target.targetType === "party" ? db.clients : db.properties).find((item) => item.id === target.targetId && item.tenantId === context.tenantId);
   const membership = db.tenantMemberships.find((item) => item.id === context.membershipId && item.userId === context.userId && item.tenantId === context.tenantId && item.status === "active");
-  if (!membership || !caseItem || !person || caseItem.lifecycleStatus === "archived" || person.lifecycleStatus === "archived" || !resolveRecordVisibility(context, caseItem).canWrite || !resolveRecordVisibility(context, person).canWrite || !(target.targetType === "party" ? readCaseAssociationDraft(caseItem.confirmedDataJson).parties.some((item) => item.partyId === person.id) : readCaseAssociationDraft(caseItem.confirmedDataJson).primaryPropertyId === person.id)) return { ok: false, reason: "not_writable" };
+  const caseAuthorized = !target.caseId
+    ? target.targetType === "property" || target.targetType === "party"
+    : Boolean(caseItem && caseItem.lifecycleStatus !== "archived" && resolveRecordVisibility(context, caseItem).canWrite && (target.targetType === "party"
+      ? readCaseAssociationDraft(caseItem.confirmedDataJson).parties.some((item) => item.partyId === person?.id)
+      : readCaseAssociationDraft(caseItem.confirmedDataJson).primaryPropertyId === person?.id));
+  if (!membership || !person || person.lifecycleStatus === "archived" || !resolveRecordVisibility(context, person).canWrite || !caseAuthorized) return { ok: false, reason: "not_writable" };
   if (!hasObjectImportSource(target, field)) return { ok: false, reason: "not_writable" };
   const validated = validateObjectImportReview(input, target, field, person as unknown as Record<string, unknown>);
   if (!validated.ok) return validated;
   const mutableRecord = person as unknown as Record<string, unknown>;
   const before = mutableRecord[validated.key];
   const date = new Date();
-  if (input.decision === "confirm") { mutableRecord[validated.key] = validated.recordValue; if ("updatedAt" in person) person.updatedAt = date; }
+  if (input.decision === "confirm") {
+    mutableRecord[validated.key] = validated.key === "birthDate" ? new Date(validated.value) : validated.recordValue;
+    if ("updatedAt" in person) person.updatedAt = date;
+  }
   field.finalValue = input.decision === "confirm" ? validated.value : undefined;
   field.finalSource = "human";
   field.status = input.decision === "confirm" ? "confirmed" : "rejected";
@@ -7124,9 +7229,13 @@ export async function reviewObjectImportCandidate(input: ObjectImportReviewInput
   field.confirmedAt = date;
   target.targetVersion = buildObjectVersionFingerprint(person as unknown as Record<string, unknown>);
   target.updatedAt = date;
-  target.status = db.objectImportCandidates.filter((item) => item.targetId === target.id && item.tenantId === context.tenantId).every((item) => item.finalSource === "human") ? "completed" : "needs_review";
+  target.status = db.objectImportCandidates
+    .filter((item) => item.targetId === target.id && item.tenantId === context.tenantId)
+    .every((item) => item.finalSource === "human" || ["not_found", "confirmed", "rejected"].includes(item.status))
+    ? "completed"
+    : "needs_review";
   db.auditLogs.unshift({ id: makeId("audit"), tenantId: context.tenantId, userId: context.userId, actorId: context.userId, action: `object_import_${input.decision}`, targetType: target.targetType === "party" ? "client" : "property", targetId: person.id, message: "Object import field reviewed", context: { importTargetId: target.id, fieldKey: validated.key, before: before ?? null, after: input.decision === "confirm" ? validated.recordValue : before ?? null }, createdAt: date });
-  return { ok: true, caseId: target.caseId, targetVersion: target.targetVersion };
+  return { ok: true, ...(target.caseId ? { caseId: target.caseId } : {}), targetId: target.targetId, targetVersion: target.targetVersion };
 }
 
 export async function saveCaseWorkbenchWithObjectReview(
@@ -7203,7 +7312,7 @@ export async function saveCaseWorkbenchWithObjectReview(
       target.updatedAt = new Date();
       target.status = db.objectImportCandidates
         .filter((item) => item.targetId === target.id && item.tenantId === context.tenantId)
-        .every((item) => item.finalSource === "human")
+        .every((item) => item.finalSource === "human" || ["not_found", "confirmed", "rejected"].includes(item.status))
         ? "completed"
         : "needs_review";
       db.auditLogs.unshift({
@@ -7223,7 +7332,7 @@ export async function saveCaseWorkbenchWithObjectReview(
         },
         createdAt: new Date(),
       });
-      objectReview = { ok: true, caseId: target.caseId, targetVersion: target.targetVersion };
+      objectReview = { ok: true, caseId: target.caseId, targetId: target.targetId, targetVersion: target.targetVersion };
     }
     return { ok: true, brokerageCase: cloneBrokerageCase(caseItem), objectReview };
   } catch (error) {

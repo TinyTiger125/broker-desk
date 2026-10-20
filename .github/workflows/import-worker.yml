@@ -1,0 +1,33 @@
+name: Import worker
+
+on:
+  schedule:
+    - cron: "2/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: broker-desk-import-worker-production
+  cancel-in-progress: false
+
+jobs:
+  drain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Drain bounded production import queue
+        env:
+          WORKER_TOKEN: ${{ secrets.BROKER_DESK_IMPORT_WORKER_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$WORKER_TOKEN"
+          response="$(curl --fail-with-body --silent --show-error \
+            --connect-timeout 15 --max-time 280 \
+            -X POST \
+            -H "Authorization: Bearer $WORKER_TOKEN" \
+            -H 'Content-Type: application/json' \
+            --data '{"limit":5}' \
+            'https://project-6q8up.vercel.app/api/internal/import-jobs/drain')"
+          jq -e '.ok == true and .failed == 0' <<< "$response" >/dev/null

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { createClientFormAction } from "@/app/actions";
+import { createClientEntryAction } from "@/app/entry-actions";
 import { ClientForm, type ClientFormDefaults } from "@/components/client-form";
 import { getLocale } from "@/lib/locale";
 
@@ -8,9 +8,9 @@ export const dynamic = "force-dynamic";
 type NewClientPageProps = { searchParams?: Promise<{ returnTo?: string }> };
 
 const copy = {
-  ja: { title: "新規顧客登録", desc: "顧客の基本情報、希望条件、管理情報を登録します。", back: "顧客一覧へ戻る" },
-  zh: { title: "新建客户", desc: "登记客户的基本信息、需求条件和管理信息。", back: "返回客户列表" },
-  ko: { title: "신규 고객 등록", desc: "고객의 기본 정보, 희망 조건과 관리 정보를 등록합니다.", back: "고객 목록으로" },
+  ja: { title: "新規顧客登録", desc: "資料の読み取りと手入力を組み合わせ、候補を確認してから保存します。", back: "顧客一覧へ戻る" },
+  zh: { title: "新建客户", desc: "资料读取和手动填写可以并用，确认候选后再保存。", back: "返回客户列表" },
+  ko: { title: "신규 고객 등록", desc: "자료 읽기와 직접 입력을 함께 사용하고, 후보를 확인한 뒤 저장합니다.", back: "고객 목록으로" },
 } as const;
 
 function normalizeReturnTo(value: string | undefined): string {
@@ -29,10 +29,11 @@ function normalizeReturnTo(value: string | undefined): string {
     if (keys.some((key) => !["q", "stage", "purpose", "temperature", "sort", "page"].includes(key))) return fallback;
     return `${parsed.pathname}${parsed.search}`;
   }
-  if (parsed.pathname === "/organize-center" && parsed.searchParams.get("type") === "client") {
+  if (parsed.pathname === "/organize-center" && ["client", "party"].includes(parsed.searchParams.get("type") ?? "")) {
     if (keys.some((key) => !["type", "q", "lifecycle", "page"].includes(key))) return fallback;
     return `${parsed.pathname}${parsed.search}`;
   }
+  if (parsed.pathname === "/import-center" && keys.length === 0) return parsed.pathname;
   return fallback;
 }
 
@@ -55,7 +56,7 @@ export default async function NewClientPage({ searchParams }: NewClientPageProps
         <div><h1 className="text-3xl font-bold tracking-tight text-slate-950">{text.title}</h1><p className="mt-2 text-sm font-medium text-slate-600">{text.desc}</p></div>
         <Link href={returnTo} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">{text.back}</Link>
       </header>
-      <ClientForm action={createClientFormAction} mode="create" defaults={defaults} locale={locale} returnTo={returnTo} />
+      <ClientForm action={createClientEntryAction} mode="create" defaults={defaults} locale={locale} returnTo={returnTo} entryUpload />
     </div>
   );
 }

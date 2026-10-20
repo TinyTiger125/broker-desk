@@ -445,7 +445,7 @@ async function OrganizeCenterContent({ locale, params }: { locale: Locale; param
       subtitle: item.partyType === "corporate" ? copy.corporate : copy.individual,
       relation: item.relatedPropertyHint || copy.noRelation,
       relationLabel: copy.relationParty,
-      href: `/parties/${encodeURIComponent(item.id)}/edit`,
+      href: `/clients/${encodeURIComponent(item.id)}/edit`,
       visibilityLabel: item.readOnly ? copy.companyReadOnly : canWrite ? undefined : copy.ownerReadOnly,
       readOnly: !canWrite,
       canArchive: item.canArchive,

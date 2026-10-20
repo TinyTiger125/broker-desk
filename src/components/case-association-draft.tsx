@@ -8,11 +8,14 @@ import type {
 } from "@/app/actions";
 import { ClientForm } from "@/components/client-form";
 import { PropertyResponsiveForm } from "@/components/property-responsive-form";
+import { EntryFilePicker } from "@/components/entry-file-picker";
+import { EntryPreview, type EntryPreviewCandidate } from "@/components/entry-preview";
 import { handleFocusDialogEscape, requestFocusDialogClose } from "@/components/focus-dialog-guards";
 import { ActionBar, FormSection, PageFrame, PageHeader, ResponsiveFormShell, StateSurface } from "@/components/layout-system";
 import layoutStyles from "@/components/layout-system/layout-system.module.css";
 import { Button } from "@/components/ui-foundation";
 import type { Locale } from "@/lib/locale";
+import { CASE_FIELD_DEFINITIONS, CASE_FIELD_KEY_SET } from "@/lib/case-field-catalog";
 import { CASE_PERSON_ROLES, getCasePersonRoleLabel, localizeCaseAssociationError, type CaseAssociationParty, type CasePersonRole } from "@/lib/case-associations";
 
 type Candidate = { id: string; name: string; address?: string; searchText?: string };
@@ -32,15 +35,53 @@ type CaseAssociationDraftProps = {
 
 type Drawer = "person" | "property" | null;
 type DrawerView = "select" | "create";
+type PreviewKind = "customer" | "property";
+
+const CASE_ENTRY_FIELDS = CASE_FIELD_DEFINITIONS.filter((field) => field.storageScope === "case_fact");
+const CASE_ENTRY_FIELD_KEY_SET = new Set(CASE_ENTRY_FIELDS.filter((field) => CASE_FIELD_KEY_SET.has(field.fieldKey)).map((field) => field.fieldKey));
+const CASE_PREVIEW_DIRECT_KEYS: Record<PreviewKind, Record<string, string>> = {
+  customer: {
+    name: "applicant.name",
+    furigana: "applicant.furigana",
+    birthDate: "applicant.birthDate",
+    gender: "applicant.gender",
+    phone: "applicant.phone",
+    currentPostalCode: "applicant.currentPostalCode",
+    currentAddress: "applicant.currentAddress",
+    email: "applicant.email",
+  },
+  property: {
+    name: "property.name",
+    furigana: "property.furigana",
+    roomNumber: "property.roomNumber",
+    postalCode: "property.postalCode",
+    address: "property.address",
+    usage: "property.usage",
+  },
+};
+
+function caseFieldKeyForPreviewCandidate(kind: PreviewKind, candidate: EntryPreviewCandidate) {
+  const sourceKey = String((candidate as EntryPreviewCandidate & { sourceKey?: unknown }).sourceKey ?? "").trim();
+  if (sourceKey && CASE_ENTRY_FIELD_KEY_SET.has(sourceKey)) return sourceKey;
+  const directKey = String(candidate.key ?? "").trim();
+  if (CASE_ENTRY_FIELD_KEY_SET.has(directKey)) return directKey;
+  return CASE_PREVIEW_DIRECT_KEYS[kind][directKey];
+}
 
 const copy = {
   ja: {
     close: "閉じる",
     title: "案件を新規作成",
-    description: "資料をこの案件の草稿に追加し、案件作成後に正式に関連付けます。",
+    description: "既存の案件項目、人物・物件の関連、資料を一つの画面で整理します。資料は先に読み取り、確認してから保存できます。",
     caseInfo: "案件情報",
     workflowType: "案件種別",
     caseTitle: "案件名",
+    upload: "案件資料",
+    uploadDescription: "資料を先に読み取り、確認した項目だけ案件草稿へ反映します。保存前に人物・物件は作成しません。原本は案件へ保存します。",
+    uploadKind: "資料種別",
+    uploadKindCustomer: "顧客・申込人資料",
+    uploadKindProperty: "物件資料",
+    uploadFile: "PDF、画像、Excel を選択",
     draft: "案件草稿",
     draftSummary: "現在の案件草稿の概要",
     draftSessionOnly: "この概要と草稿は現在のページセッション内のみ保持され、ページを再読み込みすると引き継がれません。",
@@ -90,10 +131,16 @@ const copy = {
   zh: {
     close: "关闭",
     title: "新建案件",
-    description: "先将资料加入本次案件草稿，创建案件后再正式关联。",
+    description: "在同一页面整理现有案件字段、人物与物件关联和资料。资料可以先读取、确认后再保存。",
     caseInfo: "案件信息",
     workflowType: "案件类型",
     caseTitle: "案件名",
+    upload: "案件资料",
+    uploadDescription: "先读取资料，只把确认的项目反映到案件草稿。保存前不会创建人物或物件；原文件会保存到案件。",
+    uploadKind: "资料类型",
+    uploadKindCustomer: "客户／申请人资料",
+    uploadKindProperty: "物件资料",
+    uploadFile: "选择 PDF、图片或 Excel",
     draft: "案件草稿",
     draftSummary: "当前案件草稿摘要",
     draftSessionOnly: "此摘要和草稿仅在当前页面会话内保留，刷新页面后不会继续保留。",
@@ -143,10 +190,16 @@ const copy = {
   ko: {
     close: "닫기",
     title: "안건 새로 만들기",
-    description: "자료를 이 안건의 초안에 추가하고, 안건을 만든 뒤 정식으로 연결합니다.",
+    description: "기존 안건 항목, 관계자·매물 연결, 자료를 한 화면에서 정리합니다. 자료는 먼저 읽고 확인한 뒤 저장할 수 있습니다.",
     caseInfo: "안건 정보",
     workflowType: "안건 유형",
     caseTitle: "안건명",
+    upload: "안건 자료",
+    uploadDescription: "자료를 먼저 읽고 확인한 항목만 안건 초안에 반영합니다. 저장 전에는 관계자나 매물을 만들지 않으며 원본은 안건에 저장합니다.",
+    uploadKind: "자료 유형",
+    uploadKindCustomer: "고객·신청인 자료",
+    uploadKindProperty: "매물 자료",
+    uploadFile: "PDF, 이미지 또는 Excel 선택",
     draft: "안건 초안",
     draftSummary: "현재 안건 초안 요약",
     draftSessionOnly: "이 요약과 초안은 현재 페이지 세션에서만 유지되며 페이지를 새로 고치면 이어지지 않습니다.",
@@ -298,6 +351,12 @@ export function CaseAssociationDraft({
   const [properties, setProperties] = useState(initialProperties);
   const [caseTitle, setCaseTitle] = useState("");
   const [workflowType, setWorkflowType] = useState(workflowOptions[0]?.value ?? "rental_application");
+  const [previewKind, setPreviewKind] = useState<PreviewKind>("customer");
+  const [caseFieldValues, setCaseFieldValues] = useState<Record<string, string>>({});
+  const [manualCaseFieldValues, setManualCaseFieldValues] = useState<Record<string, string>>({});
+  const [confirmedPreviewValues, setConfirmedPreviewValues] = useState<Record<string, string>>({});
+  const [entryReadFileKeys, setEntryReadFileKeys] = useState<string[]>([]);
+  const [unsupportedPreviewCount, setUnsupportedPreviewCount] = useState(0);
   const [parties, setParties] = useState<CaseAssociationParty[]>([]);
   const [primaryPropertyId, setPrimaryPropertyId] = useState<string | undefined>();
   const [drawer, setDrawer] = useState<Drawer>(null);
@@ -316,7 +375,46 @@ export function CaseAssociationDraft({
   const personCreatePendingRef = useRef(false);
   const personCreateRolesRef = useRef<CasePersonRole[]>([]);
   const propertyCreatePendingRef = useRef(false);
-  const [caseState, caseFormAction, pending] = useActionState(createCaseAction, initialCaseState);
+  const [entryFiles, setEntryFiles] = useState<File[]>([]);
+  const entryFilesRef = useRef<File[]>([]);
+  const updateEntryFiles = useCallback((files: File[]) => {
+    entryFilesRef.current = files;
+    setEntryFiles(files);
+    setEntryReadFileKeys([]);
+    setUnsupportedPreviewCount(0);
+  }, []);
+  const handleEntryReadFileKeys = useCallback((keys: string[]) => setEntryReadFileKeys(keys), []);
+  const confirmEntryCandidate = useCallback((candidate: EntryPreviewCandidate) => {
+    const fieldKey = caseFieldKeyForPreviewCandidate(previewKind, candidate);
+    if (!fieldKey || !CASE_ENTRY_FIELD_KEY_SET.has(fieldKey)) {
+      setUnsupportedPreviewCount((count) => count + 1);
+      return;
+    }
+    setCaseFieldValues((current) => ({ ...current, [fieldKey]: candidate.value }));
+    setConfirmedPreviewValues((current) => ({ ...current, [fieldKey]: candidate.value }));
+    setManualCaseFieldValues((current) => {
+      if (!(fieldKey in current)) return current;
+      const next = { ...current };
+      delete next[fieldKey];
+      return next;
+    });
+  }, [previewKind]);
+  const updateCaseField = useCallback((fieldKey: string, value: string) => {
+    setCaseFieldValues((current) => ({ ...current, [fieldKey]: value }));
+    setManualCaseFieldValues((current) => ({ ...current, [fieldKey]: value }));
+    setConfirmedPreviewValues((current) => {
+      if (!(fieldKey in current)) return current;
+      const next = { ...current };
+      delete next[fieldKey];
+      return next;
+    });
+  }, []);
+  const caseEntryAction = useCallback(async (previousState: CaseCreationActionState, formData: FormData) => {
+    formData.delete("caseUploadFile");
+    entryFilesRef.current.forEach((file) => formData.append("caseUploadFile", file));
+    return createCaseAction(previousState, formData);
+  }, [createCaseAction]);
+  const [caseState, caseFormAction, pending] = useActionState(caseEntryAction, initialCaseState);
   const caseError = caseState.status === "error" ? localizeCaseAssociationError(locale, caseState.message, text.caseSaveError) : undefined;
 
   const updatePersonCreatePending = useCallback((next: boolean) => {
@@ -439,6 +537,55 @@ export function CaseAssociationDraft({
           <div className="grid gap-3 md:grid-cols-2">
             <label className="space-y-1 text-sm font-semibold text-slate-700"><span>{text.workflowType}</span><select name="workflowType" value={workflowType} onChange={(event) => setWorkflowType(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base text-slate-900 focus:border-[#0046ad] focus:ring-2 focus:ring-blue-100 sm:text-sm">{workflowOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
             <label className="space-y-1 text-sm font-semibold text-slate-700"><span>{text.caseTitle}</span><input name="caseTitle" value={caseTitle} onChange={(event) => setCaseTitle(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-base text-slate-900 focus:border-[#0046ad] focus:ring-2 focus:ring-blue-100 sm:text-sm" /></label>
+          </div>
+        </FormSection>
+
+        <FormSection className="space-y-3">
+          <h2 className="text-base font-black text-slate-950">{text.upload}</h2>
+          <p className="text-sm text-slate-600">{text.uploadDescription}</p>
+          <input type="hidden" name="caseUploadTarget" value="case" />
+          <input type="hidden" name="casePreviewValuesJson" value={JSON.stringify(confirmedPreviewValues)} />
+          <input type="hidden" name="caseManualValuesJson" value={JSON.stringify(manualCaseFieldValues)} />
+          <input type="hidden" name="entryReadFileKeys" value={JSON.stringify(entryReadFileKeys)} />
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="space-y-1 text-sm font-semibold text-slate-700">
+              <span>{text.uploadKind}</span>
+                <select
+                name="previewKind"
+                value={previewKind}
+                onChange={(event) => setPreviewKind(event.target.value as PreviewKind)}
+                className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base text-slate-900 focus:border-[#0046ad] focus:ring-2 focus:ring-blue-100 sm:text-sm"
+              >
+                <option value="customer">{text.uploadKindCustomer}</option>
+                <option value="property">{text.uploadKindProperty}</option>
+              </select>
+            </label>
+            <div className="space-y-1 text-sm font-semibold text-slate-700">
+              <span>{text.uploadFile}</span>
+              <EntryFilePicker locale={locale} files={entryFiles} onFilesChange={updateEntryFiles} name="caseUploadFile" disabled={pending} />
+            </div>
+          </div>
+          <EntryPreview files={entryFiles} kind={previewKind} context="case" locale={locale} onConfirm={confirmEntryCandidate} onReadFileKeys={handleEntryReadFileKeys} />
+          {unsupportedPreviewCount > 0 ? <p role="status" className="text-xs font-semibold text-amber-700">{locale === "zh" ? "部分候选没有对应的案件字段，未写入案件。请只确认已有字段。" : locale === "ko" ? "일부 후보에 대응하는 안건 필드가 없어 반영하지 않았습니다. 기존 필드만 확인해 주세요." : "一部の候補は案件の既存項目に対応しないため反映していません。既存項目だけ確認してください。"}</p> : null}
+        </FormSection>
+
+        <FormSection className="space-y-3" aria-labelledby="case-fields-heading">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 id="case-fields-heading" className="text-base font-black text-slate-950">{locale === "zh" ? "案件字段草稿" : locale === "ko" ? "안건 필드 초안" : "案件項目の草稿"}</h2>
+            <span className="text-xs font-semibold text-slate-500">{locale === "zh" ? "仅使用现有案件字段；保存前不会创建人物或物件" : locale === "ko" ? "기존 안건 필드만 사용하며 저장 전에는 관계자나 매물을 만들지 않습니다" : "既存の案件項目だけを使用し、保存前に人物・物件は作成しません"}</span>
+          </div>
+          <div data-case-entry-fields className="grid gap-4 md:grid-cols-2">
+            {CASE_ENTRY_FIELDS.map((field) => {
+              const value = caseFieldValues[field.fieldKey] ?? "";
+              const isTextarea = field.valueKind === "textarea";
+              const inputType = field.valueKind === "date" ? "date" : field.valueKind === "email" ? "email" : "text";
+              return (
+                <label key={field.fieldKey} className={`space-y-1 text-sm font-semibold text-slate-700 ${isTextarea ? "md:col-span-2" : ""}`}>
+                  <span>{field.label}</span>
+                  {isTextarea ? <textarea name={`casePreviewField:${field.fieldKey}`} value={value} onChange={(event) => updateCaseField(field.fieldKey, event.target.value)} rows={2} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-base text-slate-900 focus:border-[#0046ad] focus:ring-2 focus:ring-blue-100 sm:text-sm" /> : <input name={`casePreviewField:${field.fieldKey}`} type={inputType} value={value} onChange={(event) => updateCaseField(field.fieldKey, event.target.value)} inputMode={field.valueKind === "number" || field.valueKind.startsWith("money") ? "decimal" : undefined} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-base text-slate-900 focus:border-[#0046ad] focus:ring-2 focus:ring-blue-100 sm:text-sm" />}
+                </label>
+              );
+            })}
           </div>
         </FormSection>
 

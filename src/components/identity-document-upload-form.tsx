@@ -13,6 +13,7 @@ type IdentityDocumentUploadFormProps = {
   locale?: Locale;
   targetCaseId?: string;
   uploadContext?: "case" | "import";
+  object?: "case" | "person" | "property";
   density?: "default" | "compact";
 };
 
@@ -62,7 +63,7 @@ function validateIdentityFiles(files: File[]) {
   return null;
 }
 
-export function IdentityDocumentUploadForm({ action, locale = "ja", targetCaseId, uploadContext, density = "default" }: IdentityDocumentUploadFormProps) {
+export function IdentityDocumentUploadForm({ action, locale = "ja", targetCaseId, uploadContext, object, density = "default" }: IdentityDocumentUploadFormProps) {
   const text = textByLocale[locale];
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -121,6 +122,7 @@ export function IdentityDocumentUploadForm({ action, locale = "ja", targetCaseId
       >
         {targetCaseId ? <input type="hidden" name="targetCaseId" value={targetCaseId} /> : null}
         {uploadContext ? <input type="hidden" name="uploadContext" value={uploadContext} /> : null}
+        {object ? <input type="hidden" name="object" value={object} /> : null}
         <input type="hidden" name="identityUploadMode" value="same_person" />
         <label
           className={`block cursor-pointer rounded-md border border-dashed p-3 transition ${
@@ -167,6 +169,7 @@ export function IdentityDocumentUploadForm({ action, locale = "ja", targetCaseId
     >
       {targetCaseId ? <input type="hidden" name="targetCaseId" value={targetCaseId} /> : null}
       {uploadContext ? <input type="hidden" name="uploadContext" value={uploadContext} /> : null}
+      {object ? <input type="hidden" name="object" value={object} /> : null}
       <input type="hidden" name="identityUploadMode" value="same_person" />
       <label
         className={`block min-h-40 cursor-pointer rounded-xl border-2 border-dashed p-5 transition ${

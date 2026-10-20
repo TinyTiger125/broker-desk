@@ -4,7 +4,7 @@ import { mkdtemp, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
 import { promisify } from "util";
-import type { ExtractedInputField, InputDocumentType, InputFileExtractionResult } from "@/lib/input-file-extractor";
+import type { ExtractedInputField, InputDocumentType, InputFieldEvidenceAlternative, InputFieldUncertainty, InputFileExtractionResult } from "@/lib/input-file-extractor";
 import {
   assertProductionDocumentReaderReady,
   isProductionRuntime,
@@ -18,7 +18,7 @@ import {
 import { readIdentityDocumentWithOpenAi } from "@/lib/openai-identity-reader";
 import type { OpenAiIdentityReaderCandidate } from "@/lib/identity-reader-contract";
 import { resolveIdentityReaderCandidate } from "@/lib/identity-reader-evidence";
-import { selectPrimaryIdentityReaderCandidates } from "@/lib/identity-reader-attribution";
+import { selectPrimaryIdentityReaderCandidates, type IdentityReaderAttributionScope } from "@/lib/identity-reader-attribution";
 
 const execFileAsync = promisify(execFile);
 
@@ -39,6 +39,8 @@ const DOCUMENT_LABELS: Record<InputDocumentType, string> = {
   property_condition_notice_unit: "物件状況確認書（告知書／区分所有建物用）",
   identity_residence_card: "本人確認資料（在留カード）",
   identity_driver_license: "本人確認資料（運転免許証）",
+  identity_passport: "本人確認資料（パスポート）",
+  identity_health_insurance_card: "本人確認資料（国民健康保険証）",
   identity_residence_card_or_driver_license: "本人確認資料（在留カード・運転免許証）",
   unknown_identity_scan: "本人確認資料（未識別）",
   unknown_excel: "unknown",
@@ -84,6 +86,36 @@ function findLineAfter(lines: string[], marker: string) {
   return lines.slice(index + 1).find((line) => line && !line.includes("/") && !line.includes("DATE")) ?? "";
 }
 
+function fieldEvidence(field: Pick<FieldDraft, "value" | "normalizedValue" | "sourcePageNumber" | "sourceText" | "uncertainty" | "subjectKey" | "subjectLabel">): InputFieldEvidenceAlternative | null {
+  if (!field.value && !field.normalizedValue && !field.sourceText && field.sourcePageNumber === undefined) return null;
+  return {
+    value: field.value || undefined,
+    normalizedValue: field.normalizedValue || undefined,
+    ...(field.sourcePageNumber !== undefined ? { pageNumber: field.sourcePageNumber } : {}),
+    ...(field.sourceText ? { sourceText: field.sourceText } : {}),
+    ...(field.uncertainty ? { uncertainty: field.uncertainty } : {}),
+    ...(field.subjectKey ? { subjectKey: field.subjectKey } : {}),
+    ...(field.subjectLabel ? { subjectLabel: field.subjectLabel } : {}),
+  };
+}
+
+function mergeFieldAlternatives(...fields: Array<Pick<FieldDraft, "value" | "normalizedValue" | "sourcePageNumber" | "sourceText" | "uncertainty" | "subjectKey" | "subjectLabel" | "alternatives"> | undefined>) {
+  const alternatives: InputFieldEvidenceAlternative[] = [];
+  for (const field of fields) {
+    if (!field) continue;
+    const direct = fieldEvidence(field);
+    if (direct) alternatives.push(direct);
+    alternatives.push(...(field.alternatives ?? []));
+  }
+  const seen = new Set<string>();
+  return alternatives.filter((alternative) => {
+    const key = JSON.stringify(alternative);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function uniqueFields(fields: FieldDraft[], sourceFileHash: string, templateVersion: string): ExtractedInputField[] {
   const byKey = new Map<string, FieldDraft>();
   for (const field of fields) {
@@ -94,9 +126,14 @@ function uniqueFields(fields: FieldDraft[], sourceFileHash: string, templateVers
     }
     const existingValue = clean(existing.normalizedValue || existing.value);
     const nextValue = clean(field.normalizedValue || field.value);
-    if ((!existingValue && nextValue) || (nextValue && field.confidence > existing.confidence)) {
-      byKey.set(field.fieldKey, field);
-    }
+    const nextWins = (!existingValue && nextValue) || (nextValue && field.confidence > existing.confidence);
+    const winner = nextWins ? field : existing;
+    const alternatives = mergeFieldAlternatives(existing, field);
+    byKey.set(field.fieldKey, {
+      ...winner,
+      ...(alternatives.length ? { alternatives } : {}),
+      ...(existingValue && nextValue && existingValue !== nextValue ? { uncertainty: "conflict" as const } : {}),
+    });
   }
 
   return [...byKey.values()].map((field) => ({
@@ -117,6 +154,12 @@ function addField(fields: FieldDraft[], input: {
   confidence: number;
   method?: FieldDraft["method"];
   sourceRange?: string;
+  sourcePageNumber?: number;
+  sourceText?: string;
+  uncertainty?: InputFieldUncertainty;
+  subjectKey?: string;
+  subjectLabel?: string;
+  alternatives?: InputFieldEvidenceAlternative[];
 }) {
   fields.push({
     fieldKey: input.fieldKey,
@@ -127,6 +170,12 @@ function addField(fields: FieldDraft[], input: {
     sourceRange: input.sourceRange ?? `page ${input.page.pageNumber}`,
     confidence: input.confidence,
     method: input.method,
+    ...(input.sourcePageNumber !== undefined ? { sourcePageNumber: input.sourcePageNumber } : {}),
+    ...(input.sourceText ? { sourceText: input.sourceText } : {}),
+    ...(input.uncertainty ? { uncertainty: input.uncertainty } : {}),
+    ...(input.subjectKey ? { subjectKey: input.subjectKey } : {}),
+    ...(input.subjectLabel ? { subjectLabel: input.subjectLabel } : {}),
+    ...(input.alternatives?.length ? { alternatives: input.alternatives } : {}),
   });
 }
 
@@ -134,13 +183,46 @@ function addManualFallbackFields(fields: FieldDraft[], page: OcrPage) {
   const source = "本人確認資料 OCR";
   [
     ["applicant.name", "氏名"],
+    ["applicant.furigana", "氏名かな"],
     ["applicant.birthDate", "生年月日"],
     ["applicant.gender", "性別"],
+    ["applicant.currentPostalCode", "現住所郵便番号"],
     ["applicant.currentAddress", "現住所"],
+    ["applicant.phone", "電話番号"],
+    ["applicant.lineId", "LINE ID"],
+    ["applicant.email", "メールアドレス"],
     ["applicant.nationality", "国籍"],
   ].forEach(([fieldKey, label]) => {
     if (fields.some((field) => field.fieldKey === fieldKey)) return;
     addField(fields, { fieldKey, label, value: "", page, source, confidence: 0.2 });
+  });
+}
+
+function addModelCustomerPlaceholders(fields: FieldDraft[], page: OcrPage) {
+  const source = "OpenAI Responses API";
+  [
+    ["applicant.name", "氏名"],
+    ["applicant.furigana", "氏名かな"],
+    ["applicant.birthDate", "生年月日"],
+    ["applicant.gender", "性別"],
+    ["applicant.currentPostalCode", "現住所郵便番号"],
+    ["applicant.currentAddress", "現住所"],
+    ["applicant.phone", "電話番号"],
+    ["applicant.lineId", "LINE ID"],
+    ["applicant.email", "メールアドレス"],
+  ].forEach(([fieldKey, label]) => {
+    if (fields.some((field) => field.fieldKey === fieldKey)) return;
+    addField(fields, {
+      fieldKey,
+      label,
+      value: "",
+      page,
+      source,
+      confidence: 0,
+      method: "ai",
+      sourceRange: "model_not_found",
+      uncertainty: "not_found",
+    });
   });
 }
 
@@ -320,10 +402,22 @@ function isDriverLicensePage(page: OcrPage) {
   return text.includes("公安委員会") && (text.includes("免許") || text.includes("番号"));
 }
 
-function detectDocumentType(hasResidenceCard: boolean, hasDriverLicense: boolean): InputDocumentType {
+function isPassportPage(page: OcrPage) {
+  const text = normalizeComparable(page.lines.join(" "));
+  return text.includes("PASSPORT") || text.includes("旅券");
+}
+
+function isHealthInsurancePage(page: OcrPage) {
+  const text = normalizeComparable(page.lines.join(" "));
+  return text.includes("国民健康保険") || text.includes("健康保険") || text.includes("HEALTHINSURANCE");
+}
+
+function detectDocumentType(hasResidenceCard: boolean, hasDriverLicense: boolean, hasPassport = false, hasHealthInsurance = false): InputDocumentType {
   if (hasResidenceCard && hasDriverLicense) return "identity_residence_card_or_driver_license";
   if (hasResidenceCard) return "identity_residence_card";
   if (hasDriverLicense) return "identity_driver_license";
+  if (hasPassport) return "identity_passport";
+  if (hasHealthInsurance) return "identity_health_insurance_card";
   return "unknown_identity_scan";
 }
 
@@ -366,9 +460,14 @@ async function runRemoteOcr(buffer: Buffer, filename: string): Promise<OcrResult
 
 const MODEL_FIELD_LABELS: Record<string, string> = {
   "applicant.name": "氏名",
+  "applicant.furigana": "氏名かな",
   "applicant.birthDate": "生年月日",
   "applicant.gender": "性別",
+  "applicant.currentPostalCode": "現住所郵便番号",
   "applicant.currentAddress": "現住所",
+  "applicant.phone": "電話番号",
+  "applicant.lineId": "LINE ID",
+  "applicant.email": "メールアドレス",
   "applicant.nationality": "国籍",
   "applicant.residenceStatus": "在留資格",
   "applicant.residencePeriod": "在留期間",
@@ -380,12 +479,40 @@ const MODEL_FIELD_LABELS: Record<string, string> = {
   "applicant.driverLicenseConditions": "免許条件",
 };
 
-function addModelCandidates(fields: FieldDraft[], candidates: OpenAiIdentityReaderCandidate[], pages: OcrPage[]) {
-  const attribution = selectPrimaryIdentityReaderCandidates(candidates);
+function addModelCandidates(fields: FieldDraft[], candidates: OpenAiIdentityReaderCandidate[], pages: OcrPage[], scope: IdentityReaderAttributionScope = "case") {
+  const allNotFound = candidates.length > 0 && candidates.every((candidate) => candidate.uncertainty === "not_found");
+  const attribution = selectPrimaryIdentityReaderCandidates(candidates, { scope });
   if (attribution.status !== "single_applicant") {
     for (const field of fields) {
       if (MODEL_FIELD_LABELS[field.fieldKey]) {
         field.sourceRange = `${field.sourceRange ?? ""}; model_attribution_blocked=${attribution.status}`.replace(/^;\s*/, "");
+        const blocked = candidates.filter((candidate) => candidate.fieldKey === field.fieldKey);
+        if (blocked.length) {
+          if (allNotFound) {
+            const notFound = blocked.find((candidate) => candidate.uncertainty === "not_found");
+            if (notFound) {
+              field.sourcePageNumber = notFound.pageNumber;
+              field.sourceText = undefined;
+              field.uncertainty = "not_found";
+              field.subjectKey = notFound.subjectKey;
+              field.subjectLabel = notFound.subjectLabel;
+            }
+            continue;
+          }
+          field.uncertainty = attribution.status === "ambiguous_applicants" ? "conflict" : "unclear";
+          field.alternatives = mergeFieldAlternatives(field, {
+            value: field.value,
+            normalizedValue: field.normalizedValue,
+            alternatives: blocked.map((candidate) => ({
+              value: candidate.value || undefined,
+              pageNumber: candidate.pageNumber,
+              sourceText: candidate.sourceText || undefined,
+              uncertainty: candidate.uncertainty,
+              subjectKey: candidate.subjectKey,
+              subjectLabel: candidate.subjectLabel,
+            })),
+          });
+        }
       }
     }
     return;
@@ -397,11 +524,45 @@ function addModelCandidates(fields: FieldDraft[], candidates: OpenAiIdentityRead
     const decision = resolveIdentityReaderCandidate({ existingValue: existing?.value, candidateValue: candidate.value, uncertainty: candidate.uncertainty });
     const evidence = `page ${candidate.pageNumber}; evidence=${candidate.sourceText}; uncertainty=${decision.effectiveUncertainty}`;
     if (existing) {
+      const alternatives = mergeFieldAlternatives(existing, {
+        value: candidate.value,
+        normalizedValue: candidate.value,
+        sourcePageNumber: candidate.pageNumber,
+        sourceText: candidate.sourceText,
+        uncertainty: decision.effectiveUncertainty,
+        subjectKey: candidate.subjectKey,
+        subjectLabel: candidate.subjectLabel,
+      });
       existing.sourceRange = `${existing.sourceRange ?? `page ${candidate.pageNumber}`}; model_${evidence}`;
       if (decision.effectiveUncertainty !== "clear") existing.confidence = Math.min(existing.confidence, decision.reviewScore);
+      existing.sourcePageNumber = candidate.pageNumber;
+      existing.sourceText = candidate.sourceText;
+      existing.uncertainty = decision.effectiveUncertainty;
+      existing.subjectKey = candidate.subjectKey;
+      existing.subjectLabel = candidate.subjectLabel;
+      existing.alternatives = alternatives;
       continue;
     }
-    if (!candidate.value || candidate.uncertainty === "not_found") continue;
+    if (!candidate.value || candidate.uncertainty === "not_found") {
+      const placeholder = fields.find((field) => field.fieldKey === candidate.fieldKey);
+      if (placeholder) {
+        placeholder.sourcePageNumber = candidate.pageNumber;
+        placeholder.sourceText = candidate.sourceText || undefined;
+        placeholder.uncertainty = candidate.uncertainty;
+        placeholder.subjectKey = candidate.subjectKey;
+        placeholder.subjectLabel = candidate.subjectLabel;
+        placeholder.alternatives = mergeFieldAlternatives(placeholder, {
+          value: candidate.value,
+          normalizedValue: candidate.value,
+          sourcePageNumber: candidate.pageNumber,
+          sourceText: candidate.sourceText,
+          uncertainty: candidate.uncertainty,
+          subjectKey: candidate.subjectKey,
+          subjectLabel: candidate.subjectLabel,
+        });
+      }
+      continue;
+    }
     const page = pages.find((item) => item.pageNumber === candidate.pageNumber) ?? { pageNumber: candidate.pageNumber, lines: [] };
     addField(fields, {
       fieldKey: candidate.fieldKey,
@@ -412,15 +573,32 @@ function addModelCandidates(fields: FieldDraft[], candidates: OpenAiIdentityRead
       confidence: decision.reviewScore,
       method: "ai",
       sourceRange: evidence,
+      sourcePageNumber: candidate.pageNumber,
+      sourceText: candidate.sourceText,
+      uncertainty: decision.effectiveUncertainty,
+      subjectKey: candidate.subjectKey,
+      subjectLabel: candidate.subjectLabel,
     });
   }
 }
 
-async function runOcr(buffer: Buffer, filename: string): Promise<OcrResult> {
+async function runOcr(buffer: Buffer, filename: string, requireModel = false): Promise<OcrResult> {
+  if (requireModel) {
+    // Standalone customer identity intake is explicitly model-first. It must
+    // not silently invoke the local Swift OCR or regex legacy path when the
+    // configured provider is unavailable.
+    if (isProductionRuntime()) {
+      if (process.env.DOCUMENT_READING_PROVIDER?.trim().toLowerCase() !== "openai_responses") {
+        throw new ProductionReadinessError("production_document_reader_required");
+      }
+      assertProductionDocumentReaderReady();
+    }
+    return readIdentityDocumentWithOpenAi({ buffer, filename, scope: "customer" });
+  }
   const provider = process.env.DOCUMENT_READING_PROVIDER?.trim().toLowerCase();
   if (provider === "openai_responses") {
-    if (isProductionRuntime()) throw new ProductionReadinessError("production_document_reader_required");
-    return readIdentityDocumentWithOpenAi({ buffer, filename });
+    assertProductionDocumentReaderReady();
+    return readIdentityDocumentWithOpenAi({ buffer, filename, scope: "case" });
   }
   // The local Swift helper is development-only. Production must use an
   // auditable remote reader rather than silently running a machine-specific
@@ -448,17 +626,19 @@ async function runOcr(buffer: Buffer, filename: string): Promise<OcrResult> {
 export async function extractIdentityDocumentFromBuffer(input: {
   buffer: Buffer;
   filename: string;
+  requireModel?: boolean;
 }): Promise<InputFileExtractionResult> {
   const sourceFileHash = createHash("sha256").update(input.buffer).digest("hex");
   let ocr: OcrResult = { pages: [] };
   try {
-    ocr = await runOcr(input.buffer, input.filename);
+    ocr = await runOcr(input.buffer, input.filename, input.requireModel === true);
   } catch (error) {
     const configuredProvider = process.env.DOCUMENT_READING_PROVIDER?.trim().toLowerCase();
     if (
       isProductionRuntime()
       || configuredProvider === "remote"
       || configuredProvider === "openai_responses"
+      || input.requireModel === true
       || error instanceof ProductionReadinessError
     ) {
       throw error;
@@ -469,23 +649,33 @@ export async function extractIdentityDocumentFromBuffer(input: {
   const pages = ocr.pages.filter((page) => Array.isArray(page.lines));
   const residencePages = pages.filter(isResidenceCardPage);
   const driverLicensePages = pages.filter(isDriverLicensePage);
-  const detectedDocumentType = detectDocumentType(residencePages.length > 0, driverLicensePages.length > 0);
+  const passportPages = pages.filter(isPassportPage);
+  const healthInsurancePages = pages.filter(isHealthInsurancePage);
+  const detectedDocumentType = detectDocumentType(residencePages.length > 0, driverLicensePages.length > 0, passportPages.length > 0, healthInsurancePages.length > 0);
   const documentType = ocr.documentType && ocr.documentType !== "unknown_identity_scan"
     ? ocr.documentType
     : detectedDocumentType;
-  const templateVersion = `identity_document:${documentType}:${process.env.DOCUMENT_READING_PROVIDER?.trim().toLowerCase() === "openai_responses" ? "vision_ai_v1" : "vision_ocr_v1"}`;
+  const usesModelReader = input.requireModel === true || process.env.DOCUMENT_READING_PROVIDER?.trim().toLowerCase() === "openai_responses";
+  const templateVersion = `identity_document:${documentType}:${usesModelReader ? "vision_ai_v1" : "vision_ocr_v1"}`;
   const fields: FieldDraft[] = [];
-
-  residencePages.forEach((page) => extractResidenceCardFields(page, fields));
-  driverLicensePages.forEach((page) => extractDriverLicenseFields(page, fields));
-  if (ocr.candidates) addModelCandidates(fields, ocr.candidates, pages);
   const firstEvidencePage = residencePages[0] ?? driverLicensePages[0] ?? pages[0] ?? { pageNumber: 1, lines: [] };
+
+  if (!input.requireModel) {
+    residencePages.forEach((page) => extractResidenceCardFields(page, fields));
+    driverLicensePages.forEach((page) => extractDriverLicenseFields(page, fields));
+  }
+  if (input.requireModel) addModelCustomerPlaceholders(fields, firstEvidencePage);
+  if (ocr.candidates) addModelCandidates(fields, ocr.candidates, pages, input.requireModel ? "customer" : "case");
   if (documentType !== "unknown_identity_scan") {
     const label = documentType === "identity_residence_card_or_driver_license"
       ? "在留カード / 運転免許証"
       : documentType === "identity_residence_card"
         ? "在留カード"
-        : "運転免許証";
+        : documentType === "identity_driver_license"
+          ? "運転免許証"
+          : documentType === "identity_passport"
+            ? "パスポート"
+            : "国民健康保険証";
     addField(fields, {
       fieldKey: "applicant.identityDocumentType",
       label: "本人確認資料種別",
@@ -495,7 +685,7 @@ export async function extractIdentityDocumentFromBuffer(input: {
       confidence: 0.92,
     });
   }
-  addManualFallbackFields(fields, firstEvidencePage);
+  if (!input.requireModel) addManualFallbackFields(fields, firstEvidencePage);
 
   const extractedFields = uniqueFields(fields, sourceFileHash, templateVersion);
   return {
@@ -521,16 +711,28 @@ function hasDriverLicenseDocument(type: InputDocumentType) {
   return type === "identity_driver_license" || type === "identity_residence_card_or_driver_license";
 }
 
+function hasPassportDocument(type: InputDocumentType) {
+  return type === "identity_passport";
+}
+
+function hasHealthInsuranceDocument(type: InputDocumentType) {
+  return type === "identity_health_insurance_card";
+}
+
 function mergeIdentityDocumentType(results: InputFileExtractionResult[]): InputDocumentType {
   const hasResidenceCard = results.some((result) => hasResidenceCardDocument(result.documentType));
   const hasDriverLicense = results.some((result) => hasDriverLicenseDocument(result.documentType));
-  return detectDocumentType(hasResidenceCard, hasDriverLicense);
+  const hasPassport = results.some((result) => hasPassportDocument(result.documentType));
+  const hasHealthInsurance = results.some((result) => hasHealthInsuranceDocument(result.documentType));
+  return detectDocumentType(hasResidenceCard, hasDriverLicense, hasPassport, hasHealthInsurance);
 }
 
 function getIdentityDocumentValue(type: InputDocumentType) {
   if (type === "identity_residence_card_or_driver_license") return "在留カード / 運転免許証";
   if (type === "identity_residence_card") return "在留カード";
   if (type === "identity_driver_license") return "運転免許証";
+  if (type === "identity_passport") return "パスポート";
+  if (type === "identity_health_insurance_card") return "国民健康保険証";
   return "";
 }
 
@@ -567,9 +769,14 @@ function mergeIdentityFields(results: InputFileExtractionResult[], documentType:
     }
     const existingValue = clean(existing.normalizedValue || existing.value);
     const nextValue = clean(field.normalizedValue || field.value);
-    if ((!existingValue && nextValue) || (nextValue && field.confidence > existing.confidence)) {
-      byKey.set(field.fieldKey, field);
-    }
+    const nextWins = (!existingValue && nextValue) || (nextValue && field.confidence > existing.confidence);
+    const winner = nextWins ? field : existing;
+    const alternatives = mergeFieldAlternatives(existing, field);
+    byKey.set(field.fieldKey, {
+      ...winner,
+      ...(alternatives.length ? { alternatives } : {}),
+      ...(existingValue && nextValue && existingValue !== nextValue ? { uncertainty: "conflict" as const } : {}),
+    });
   }
 
   const identityDocumentValue = getIdentityDocumentValue(documentType);
@@ -597,14 +804,14 @@ function mergeIdentityFields(results: InputFileExtractionResult[], documentType:
 export async function extractIdentityDocumentsFromFiles(inputs: Array<{
   buffer: Buffer;
   filename: string;
-}>): Promise<InputFileExtractionResult> {
+}>, options?: { requireModel?: boolean }): Promise<InputFileExtractionResult> {
   if (inputs.length === 1) {
-    return extractIdentityDocumentFromBuffer(inputs[0]);
+    return extractIdentityDocumentFromBuffer({ ...inputs[0], requireModel: options?.requireModel });
   }
 
   const results: InputFileExtractionResult[] = [];
   for (const input of inputs) {
-    results.push(await extractIdentityDocumentFromBuffer(input));
+    results.push(await extractIdentityDocumentFromBuffer({ ...input, requireModel: options?.requireModel }));
   }
   assertNoIdentityMergeConflicts(results);
 
@@ -614,7 +821,7 @@ export async function extractIdentityDocumentsFromFiles(inputs: Array<{
   }
   const mergedSourceFileHash = sourceFileHash.digest("hex");
   const documentType = mergeIdentityDocumentType(results);
-  const templateVersion = `identity_document:${documentType}:multi_file_vision_ocr_v1`;
+  const templateVersion = `identity_document:${documentType}:multi_file_${options?.requireModel || process.env.DOCUMENT_READING_PROVIDER?.trim().toLowerCase() === "openai_responses" ? "vision_ai_v1" : "vision_ocr_v1"}`;
   const fields = mergeIdentityFields(results, documentType, mergedSourceFileHash, templateVersion);
   const sourceFilename = inputs.map((input) => input.filename).join(", ");
 

@@ -72,7 +72,7 @@ Module._load = function(request, parent, ...rest) {
 const { uploadObjectImportAction } = require(resolve(root, "src/app/object-import-actions.ts"));
 const { processIdentityImportJob } = require(resolve(root, "src/lib/identity-import-processor.ts"));
 const { processExcelImportJob } = require(resolve(root, "src/lib/excel-import-processor.ts"));
-const { ensureObjectImportTask } = require(resolve(root, "src/lib/object-import-processor-adapter.ts"));
+const { ensureObjectImportTask, persistObjectReaderJobExtraction } = require(resolve(root, "src/lib/object-import-processor-adapter.ts"));
 function form(targetId = person.id, content = "%PDF-synthetic", filename = "synthetic.pdf") { const f = new FormData(); f.set("caseId", brokerageCase.id); f.set("targetType", "party"); f.set("targetId", targetId); f.set("uploadFile", new File([content], filename, { type: "application/pdf" })); return f; }
 await assert.rejects(uploadObjectImportAction(form("unassociated")), /not_associated/);
 assert.equal((await data.listImportJobs(user.id, 500, tenant.id)).length, 0);
@@ -139,6 +139,21 @@ assert.equal(competing.filter((item) => item.ok).length, 1);
 assert.equal(competing.filter((item) => !item.ok && item.reason === "already_reviewed").length, 1);
 assert.equal((await data.getClientById(person.id, tenant.id)).name, "Human confirmed");
 assert.equal((await data.getClientById(person.id, tenant.id)).phone, "000-0000-0000");
+const invalidReviewTarget = await data.getObjectImportTarget({ ...scope, id: target.id });
+const invalidReviewPhone = (await data.listObjectImportCandidates({ ...scope, targetId: target.id })).find((item) => item.id === phoneField.id);
+assert(invalidReviewTarget && invalidReviewPhone && invalidReviewPhone.status === "low_confidence");
+const invalidReviewForm = new FormData();
+invalidReviewForm.set("importTargetId", target.id);
+invalidReviewForm.set("fieldId", invalidReviewPhone.id);
+invalidReviewForm.set("expectedVersion", invalidReviewTarget.targetVersion);
+invalidReviewForm.set("expectedCandidateValue", invalidReviewPhone.candidateValue);
+invalidReviewForm.set("decision", "confirm");
+invalidReviewForm.set("value", "");
+await assert.rejects(reviewObjectImportAction(invalidReviewForm), /REDIRECT:/, "an invalid review value must return to the review surface");
+assert.match(lastRedirectUrl, /flash=object_import_review_invalid_value/);
+assert.match(lastRedirectUrl, new RegExp(`/cases/${brokerageCase.id}\\?`));
+const invalidReviewPhoneAfter = (await data.listObjectImportCandidates({ ...scope, targetId: target.id })).find((item) => item.id === phoneField.id);
+assert(invalidReviewPhoneAfter && invalidReviewPhoneAfter.status === "low_confidence" && invalidReviewPhoneAfter.candidateValue === invalidReviewPhone.candidateValue, "invalid review input must preserve the editable candidate");
 const duplicateReviewForm = new FormData();
 duplicateReviewForm.set("importTargetId", target.id); duplicateReviewForm.set("fieldId", nameField.id);
 duplicateReviewForm.set("expectedVersion", target.targetVersion); duplicateReviewForm.set("expectedCandidateValue", nameField.candidateValue); duplicateReviewForm.set("decision", "confirm");
@@ -318,6 +333,70 @@ assert(supportedH034Target && supportedH034Target.status === "needs_review");
 const supportedH034Candidates = await data.listObjectImportCandidates({ ...scope, targetId: supportedH034Target.id });
 assert.equal(supportedH034Candidates.find((item) => item.fieldKey === "name")?.candidateValue, "H034 Local CAS Candidate 20260919");
 assert.deepEqual(await data.resolvePropertyVisibilityForContext({ context, propertyId: supportedH034Property.id }), supportedH034Before, "supported extraction must not write before review");
+// Standalone property-profile intake has no case association. It still uses
+// the normal upload action, but the server-side reader path only retains the
+// existing property-profile keys and requires explicit review before writing.
+const standaloneProperty = await data.addProperty({ ...scope, name: "Standalone original", area: "Fukuoka", address: "Standalone address", sizeSqm: 60, listingPrice: 5000, managementFee: 1800, repairFee: 2400, createdByUserId: user.id, currentOwnerUserId: user.id });
+const standaloneUpload = new FormData();
+standaloneUpload.set("targetType", "property");
+standaloneUpload.set("targetId", standaloneProperty.id);
+standaloneUpload.set("uploadFile", new File(["%PDF-standalone"], "重要事項説明書(1).pdf", { type: "application/pdf" }));
+await assert.rejects(uploadObjectImportAction(standaloneUpload), /REDIRECT:/, "a standalone property upload must not require an associated case");
+assert.match(lastRedirectUrl, new RegExp(`/properties/${standaloneProperty.id}/edit\\?`));
+const routedProperty = await data.addProperty({ ...scope, name: "Standalone return target", listingPrice: 1, createdByUserId: user.id, currentOwnerUserId: user.id });
+const routedUpload = new FormData();
+routedUpload.set("targetType", "property");
+routedUpload.set("targetId", routedProperty.id);
+routedUpload.set("returnTo", `/import-center?object=property&targetId=${encodeURIComponent(routedProperty.id)}#source-upload`);
+routedUpload.set("uploadFile", new File(["%PDF-routed"], "routed.pdf", { type: "application/pdf" }));
+await assert.rejects(uploadObjectImportAction(routedUpload), /REDIRECT:/, "a standalone upload must honor its validated import-center return target");
+assert.match(lastRedirectUrl, /\/import-center\?object=property&targetId=[^&]+&flash=input_extraction_queued&objectImportJob=/);
+assert.match(lastRedirectUrl, /#source-upload$/);
+assert.doesNotMatch(lastRedirectUrl, /\?\?/);
+const [standaloneTarget] = (await data.listObjectImportTargets({ ...scope, targetType: "property", targetId: standaloneProperty.id })).filter((item) => !item.caseId);
+assert(standaloneTarget && standaloneTarget.status === "queued");
+const standaloneResponse = {
+  documentType: "important_matters",
+  pages: [{ pageNumber: 3, lines: ["専有面積（壁芯）19.45㎡", "専有面積（登記簿）15.34㎡"] }, { pageNumber: 15, lines: ["管理費 月額 2,210 円", "修繕積立金 月額 3,540円"] }, { pageNumber: 17, lines: ["売買代金 7,500,000 円"] }],
+  candidates: [
+    { fieldKey: "property.sizeSqm", value: "（壁芯）19.45㎡", pageNumber: 3, sourceText: "専有面積（壁芯）19.45㎡", uncertainty: "clear", subjectKey: "property", subjectLabel: "物件" },
+    { fieldKey: "property.sizeSqm", value: "（登記簿）15.34㎡", pageNumber: 3, sourceText: "専有面積（登記簿）15.34㎡", uncertainty: "clear", subjectKey: "property", subjectLabel: "物件" },
+    { fieldKey: "property.listingPrice", value: "7,500,000 円", pageNumber: 17, sourceText: "売買代金 7,500,000 円", uncertainty: "clear", subjectKey: "property", subjectLabel: "物件" },
+    { fieldKey: "property.managementFee", value: "月額 2,210 円", pageNumber: 15, sourceText: "管理費 月額 2,210 円", uncertainty: "clear", subjectKey: "property", subjectLabel: "物件" },
+    { fieldKey: "property.repairFee", value: "月額 3,540円", pageNumber: 15, sourceText: "修繕積立金 月額 3,540円", uncertainty: "clear", subjectKey: "property", subjectLabel: "物件" },
+    { fieldKey: "lease.deposit", value: "750万円", pageNumber: 17, sourceText: "敷金 750万円", uncertainty: "clear", subjectKey: "property", subjectLabel: "物件" },
+  ],
+};
+const standaloneJob = (await data.listImportJobs(user.id, 500, tenant.id)).find((item) => item.id === standaloneTarget.importJobId);
+assert(standaloneJob);
+const standaloneExtraction = await persistObjectReaderJobExtraction({ ...scope, job: standaloneJob, response: standaloneResponse });
+assert(standaloneExtraction && standaloneExtraction.candidates.length === 4, "standalone property extraction must filter lease fields and persist only four existing property keys");
+const standaloneCandidates = await data.listObjectImportCandidates({ ...scope, targetId: standaloneTarget.id });
+assert.equal(standaloneCandidates.length, 4);
+assert.equal(standaloneCandidates.find((item) => item.fieldKey === "property.managementFee")?.candidateValue, "2210");
+assert.equal(standaloneCandidates.find((item) => item.fieldKey === "property.repairFee")?.candidateValue, "3540");
+assert.equal(standaloneCandidates.find((item) => item.fieldKey === "property.listingPrice")?.candidateValue, "7500000");
+const standaloneSize = standaloneCandidates.find((item) => item.fieldKey === "property.sizeSqm");
+assert(standaloneSize && standaloneSize.status === "conflict", "wall-center and registry area bases must remain visible as a conflict");
+assert.equal((standaloneSize.provenance.alternatives ?? []).length, 2);
+assert.equal((standaloneSize.provenance.alternatives ?? [])[0].rawValue, "（壁芯）19.45㎡");
+assert.equal((standaloneCandidates.find((item) => item.fieldKey === "property.managementFee").provenance.rawCandidateValue), "月額 2,210 円");
+const standaloneBeforeConfirm = await data.resolvePropertyVisibilityForContext({ context, propertyId: standaloneProperty.id });
+assert.equal(standaloneBeforeConfirm.record.managementFee, 1800, "standalone extraction must not write before confirmation");
+const managementCandidate = standaloneCandidates.find((item) => item.fieldKey === "property.managementFee");
+const repairCandidate = standaloneCandidates.find((item) => item.fieldKey === "property.repairFee");
+assert(managementCandidate && repairCandidate);
+const standaloneReview = await data.reviewObjectImportCandidate({ context, targetId: standaloneTarget.id, fieldId: managementCandidate.id, expectedVersion: standaloneTarget.targetVersion, expectedCandidateValue: managementCandidate.candidateValue, decision: "confirm", value: managementCandidate.candidateValue });
+assert.equal(standaloneReview.ok, true);
+const afterManagement = (await data.resolvePropertyVisibilityForContext({ context, propertyId: standaloneProperty.id })).record;
+assert.equal(afterManagement.managementFee, 2210);
+const afterManagementTarget = await data.getObjectImportTarget({ ...scope, id: standaloneTarget.id });
+await data.updateProperty(standaloneProperty.id, { tenantId: tenant.id, name: afterManagement.name, area: afterManagement.area ?? "", address: afterManagement.address ?? "", listingPrice: afterManagement.listingPrice, sizeSqm: afterManagement.sizeSqm, managementFee: afterManagement.managementFee, repairFee: afterManagement.repairFee, notes: "External profile edit" });
+const afterExternalEdit = (await data.resolvePropertyVisibilityForContext({ context, propertyId: standaloneProperty.id })).record;
+const standaloneRebased = await data.refreshObjectImportReview({ context, targetId: standaloneTarget.id, fieldId: repairCandidate.id, expectedVersion: afterManagementTarget.targetVersion, observedVersion: buildObjectVersionFingerprint(afterExternalEdit), expectedCandidateValue: repairCandidate.candidateValue });
+assert.equal(standaloneRebased.ok, true, "standalone property review must provide an explicit re-read path after another source changes the profile");
+assert.equal((await data.getObjectImportTarget({ ...scope, id: standaloneTarget.id })).targetVersion, buildObjectVersionFingerprint(afterExternalEdit));
+assert.equal((await data.resolvePropertyVisibilityForContext({ context, propertyId: standaloneProperty.id })).record.repairFee, 2400, "standalone re-read must not write the second field");
 // Main-input save commits the object CAS and case field as one data-layer operation.
 const atomicPerson = await data.addClient({ ...scope, ownerUserId: user.id, name: "Atomic original", phone: "000-1111-2222", budgetType: "total_price", purpose: "buy", loanPreApprovalStatus: "not_applied", stage: "lead", temperature: "cold", brokerageContractType: "none", amlCheckStatus: "not_required" });
 const atomicCase = await data.saveBrokerageCaseExtractionReview({ ...scope, caseType: "unit_sale", caseTitle: "Atomic save", confirmedDataJson: writeCaseAssociationData({}, { parties: [{ partyId: atomicPerson.id, roles: ["主要申请人"] }] }, {}), sourceImportJobIds: [], reviewItems: [] });
@@ -621,6 +700,7 @@ assert.match(actionSource, /objectImportJob/, "review conflict redirect must pre
 assert.match(actionSource, /export async function refreshObjectImportReviewAction/, "review conflict must expose an explicit protected re-read action");
 assert.match(actionSource, /observedVersion/, "re-read action must bind the user-observed object fingerprint");
 assert.match(objectActionsSource, /object_import_review_conflict/, "standalone object review must return through the same conflict flash");
+assert.match(objectActionsSource, /object_import_review_invalid_value/, "invalid standalone object review must return through a recoverable flash");
 assert.match(objectActionsSource, /getObjectImportTarget/, "standalone object review must resolve the protected case before returning after a known conflict");
 assert.match(casePageSource, /资料已在其他页面更新，请刷新案件页面，重新核对当前资料和候选；本次修改未保存，确认时仍会校验最新版本/, "case page must explain stale object review without promising that refresh creates a fresh token");
 assert.match(casePageSource, /该候选已在其他页面处理完成，请刷新案件查看已确认值/, "case page must explain duplicate review while preserving the confirmed result");
@@ -668,7 +748,7 @@ assert(postgresSource.includes("brokerdesk_private.lock_case_review_source($1,$2
 const lockMigration = readFileSync(resolve(root, "db/migrations/20260917_002_case_review_locks.sql"), "utf8");
 assert(lockMigration.includes("a.target_id = p_import_job_id"));
 assert(lockMigration.includes("FOR SHARE OF a, b"));
-assert.equal((postgresSource.match(/if \(!await hasObjectImportSource\(client, target, field\)\)/g) ?? []).length, 2);
+assert.equal((postgresSource.match(/if \(!await hasObjectImportSource\(client, target, field\)\)/g) ?? []).length, 3, "case save, standalone review, and explicit refresh must each revalidate the source attachment");
 const reviewSource = postgresSource.slice(postgresSource.indexOf("export async function reviewObjectImportCandidate"));
 for (const marker of ["withTransaction", "databaseActorMatches", "FOR UPDATE", "lockCaseReviewMembership", "resolveRecordVisibility", "validateObjectImportReview", "INSERT INTO audit_logs"]) assert(reviewSource.includes(marker), `missing PostgreSQL review boundary: ${marker}`);
 const combinedSource = postgresSource.slice(postgresSource.indexOf("export async function saveCaseWorkbenchWithObjectReview"));

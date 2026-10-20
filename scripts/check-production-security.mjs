@@ -63,6 +63,9 @@ function withEnv(nextEnv, fn) {
     "DOCUMENT_READING_ENDPOINT",
     "DOCUMENT_READING_API_TOKEN",
     "DOCUMENT_READING_ALLOWED_HOSTS",
+    "OPENAI_API_KEY",
+    "OPENAI_BASE_URL",
+    "BROKER_DESK_AI_DISABLED",
     "BROKER_DESK_IMPORT_WORKER_ENABLED",
     "BROKER_DESK_IMPORT_WORKER_SCHEDULE",
     "BROKER_DESK_IMPORT_WORKER_TOKEN",
@@ -296,6 +299,63 @@ withEnv(
       readiness.assertProductionImportWorkerReady,
       "production_import_worker_required",
       "unknown deployment classifications must not default to a local import worker path",
+    );
+  },
+);
+
+withEnv(
+  {
+    NODE_ENV: "production",
+    DOCUMENT_READING_PROVIDER: "openai_responses",
+    OPENAI_API_KEY: "test-only-api-key",
+  },
+  () => {
+    readiness.assertProductionDocumentReaderReady();
+  },
+);
+
+withEnv(
+  {
+    NODE_ENV: "production",
+    DOCUMENT_READING_PROVIDER: "openai_responses",
+  },
+  () => {
+    assertThrowsCode(
+      readiness.assertProductionDocumentReaderReady,
+      "production_document_reader_required",
+      "production model reader must require its API key",
+    );
+  },
+);
+
+withEnv(
+  {
+    NODE_ENV: "production",
+    DOCUMENT_READING_PROVIDER: "openai_responses",
+    OPENAI_API_KEY: "test-only-api-key",
+    BROKER_DESK_AI_DISABLED: "true",
+  },
+  () => {
+    assertThrowsCode(
+      readiness.assertProductionDocumentReaderReady,
+      "production_document_reader_required",
+      "production model reader must respect the AI disable switch",
+    );
+  },
+);
+
+withEnv(
+  {
+    NODE_ENV: "production",
+    DOCUMENT_READING_PROVIDER: "openai_responses",
+    OPENAI_API_KEY: "test-only-api-key",
+    OPENAI_BASE_URL: "https://reader.example.test/v1",
+  },
+  () => {
+    assertThrowsCode(
+      readiness.assertProductionDocumentReaderReady,
+      "production_document_reader_endpoint_not_allowed",
+      "production model reader must reject an unapproved API endpoint",
     );
   },
 );
@@ -645,7 +705,8 @@ assert(proxySource.includes("assertProductionAuthReady"), "production proxy must
 const publicRouteMatcherSource = proxySource.match(/const isPublicRoute = createRouteMatcher\(\[([\s\S]*?)\]\);/);
 assert(publicRouteMatcherSource && !publicRouteMatcherSource[1].includes("/api/qa(.*)"), "QA route must not remain public in production");
 assert(proxySource.includes("invalid_request_origin"), "unsafe browser API writes must have a same-origin guard");
-assert(proxySource.includes("req.headers.get(\"origin\") === req.nextUrl.origin"), "same-origin guard must compare the canonical request origin");
+assert(proxySource.includes("if (requestOrigin === req.nextUrl.origin) return true;"), "same-origin guard must compare the canonical request origin");
+assert(proxySource.includes('process.env.BROKER_DESK_LOCAL_RUNTIME !== "1"'), "loopback origin equivalence must remain gated to the local runtime");
 
 const nextConfigSource = fs.readFileSync("next.config.ts", "utf8");
 for (const header of ["X-Content-Type-Options", "X-Frame-Options", "Referrer-Policy", "Permissions-Policy", "Strict-Transport-Security"]) {

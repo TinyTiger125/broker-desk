@@ -18,8 +18,14 @@ export type IdentityReaderUncertainty = "clear" | "unclear" | "conflict" | "not_
 
 export type OpenAiIdentityReaderFieldKey =
   | "applicant.name"
+  | "applicant.furigana"
   | "applicant.birthDate"
+  | "applicant.gender"
+  | "applicant.currentPostalCode"
   | "applicant.currentAddress"
+  | "applicant.phone"
+  | "applicant.lineId"
+  | "applicant.email"
   | "applicant.nationality"
   | "applicant.residenceStatus"
   | "applicant.residencePeriod"
@@ -42,8 +48,14 @@ export type OpenAiIdentityReaderCandidate = {
 
 const OPENAI_IDENTITY_READER_FIELD_KEYS = new Set<OpenAiIdentityReaderFieldKey>([
   "applicant.name",
+  "applicant.furigana",
   "applicant.birthDate",
+  "applicant.gender",
+  "applicant.currentPostalCode",
   "applicant.currentAddress",
+  "applicant.phone",
+  "applicant.lineId",
+  "applicant.email",
   "applicant.nationality",
   "applicant.residenceStatus",
   "applicant.residencePeriod",
@@ -56,13 +68,14 @@ const OPENAI_IDENTITY_READER_FIELD_KEYS = new Set<OpenAiIdentityReaderFieldKey>(
 ]);
 
 export type OpenAiIdentityReaderResponse = RemoteDocumentReaderResponse & {
-  documentType: "identity_residence_card" | "identity_driver_license" | "unknown_identity_scan";
+  documentType: "identity_residence_card" | "identity_driver_license" | "identity_passport" | "identity_health_insurance_card" | "unknown_identity_scan";
   candidates: OpenAiIdentityReaderCandidate[];
 };
 
 export type RemoteDocumentReaderErrorCode =
   | "invalid_response"
   | "invalid_page"
+  | "too_many_pages"
   | "empty_result"
   | "timeout"
   | "request_failed"
@@ -125,6 +138,9 @@ export function parseRemoteDocumentReaderResponse(value: unknown): RemoteDocumen
   if (pages.length === 0 || !pages.some((page) => page.lines.some((line) => line.trim()))) {
     throw new RemoteDocumentReaderError("empty_result");
   }
+  if (new Set(pages.map((page) => page.pageNumber)).size !== pages.length) {
+    throw new RemoteDocumentReaderError("invalid_page");
+  }
   return { pages };
 }
 
@@ -135,12 +151,13 @@ export function parseOpenAiIdentityReaderResponse(value: unknown): OpenAiIdentit
   const parsedPages = parseRemoteDocumentReaderResponse(value);
   const raw = value as { documentType?: unknown; candidates?: unknown };
   const documentType = raw.documentType;
-  if (documentType !== "identity_residence_card" && documentType !== "identity_driver_license" && documentType !== "unknown_identity_scan") {
+  if (documentType !== "identity_residence_card" && documentType !== "identity_driver_license" && documentType !== "identity_passport" && documentType !== "identity_health_insurance_card" && documentType !== "unknown_identity_scan") {
     throw new RemoteDocumentReaderError("invalid_response");
   }
   if (!Array.isArray(raw.candidates) || raw.candidates.length > 64) {
     throw new RemoteDocumentReaderError("invalid_response");
   }
+  const pageNumbers = new Set(parsedPages.pages.map((page) => page.pageNumber));
   const candidates = raw.candidates.map((candidate) => {
     if (!candidate || typeof candidate !== "object") throw new RemoteDocumentReaderError("invalid_response");
     const item = candidate as Record<string, unknown>;
@@ -151,7 +168,7 @@ export function parseOpenAiIdentityReaderResponse(value: unknown): OpenAiIdentit
     const subjectLabel = typeof item.subjectLabel === "string" ? item.subjectLabel.slice(0, 100).trim() : "";
     const pageNumber = item.pageNumber;
     const uncertainty = item.uncertainty;
-    if (!OPENAI_IDENTITY_READER_FIELD_KEYS.has(fieldKey as OpenAiIdentityReaderFieldKey) || !Number.isInteger(pageNumber) || Number(pageNumber) < 1 || !subjectKey || !subjectLabel) {
+    if (!OPENAI_IDENTITY_READER_FIELD_KEYS.has(fieldKey as OpenAiIdentityReaderFieldKey) || !Number.isInteger(pageNumber) || Number(pageNumber) < 1 || !pageNumbers.has(Number(pageNumber)) || !subjectKey || !subjectLabel) {
       throw new RemoteDocumentReaderError("invalid_response");
     }
     if (uncertainty !== "clear" && uncertainty !== "unclear" && uncertainty !== "conflict" && uncertainty !== "not_found") {

@@ -11,10 +11,16 @@ const actions = read("src/app/actions.ts");
 const api = read("src/lib/w93-access.ts");
 const component = read("src/components/object-attachment-section.tsx");
 const attachmentList = read("src/components/object-attachment-list.tsx");
+const attachmentRoute = read("src/app/api/attachments/[attachmentId]/route.ts");
+const objectImportActions = read("src/app/object-import-actions.ts");
+const importCenter = read("src/app/import-center/page.tsx");
+const propertyImport = read("src/components/property-object-import-section.tsx");
+const clientImport = read("src/components/client-identity-import-section.tsx");
 const associationManager = read("src/components/case-association-manager.tsx");
 const casePage = read("src/app/cases/[id]/page.tsx");
 const pages = [
-  read("src/app/parties/[id]/edit/page.tsx"),
+  read("src/app/clients/[id]/edit/page.tsx"),
+  read("src/app/clients/[id]/page.tsx"),
   read("src/app/properties/[id]/edit/page.tsx"),
 ];
 
@@ -26,6 +32,9 @@ assert.match(postgres, /20260830_002_object_attachment_runtime_grant\.sql/, "run
 assert.match(postgres, /ON CONFLICT \(tenant_id, attachment_id, target_type, target_id\)/, "postgres link writes must be idempotent");
 assert.match(memory, /const existing = db\.attachmentLinks\.find/, "memory link writes must be idempotent");
 assert.match(objectAttachments, /linkImportJobAttachmentsToObject/, "import source files need an object-link operation");
+assert.match(objectAttachments, /listObjectArchiveAttachments/, "object archive must expose a read-only source fallback");
+assert.match(objectAttachments, /!target\.caseId/, "object archive fallback must exclude case-linked import targets");
+assert.match(objectAttachments, /seenSourceAttachmentIds/, "object archive fallback must deduplicate source attachments");
 assert.match(actions, /documentType: payload\.inputExtraction\.documentType/, "accepted OCR source files must receive a document-aware category");
 assert.equal((actions.match(/linkImportJobAttachmentsToObject\(/g) ?? []).length >= 3, true, "new, append, and merge case paths must link source files");
 assert.match(actions, /isObjectAttachmentTargetType[\s\S]*isObjectAttachmentCategory/, "direct object upload must validate target and category");
@@ -33,6 +42,17 @@ assert.match(api, /listAttachmentLinks[\s\S]*resolveW93Parent/, "downloads must 
 assert.match(component, /attachmentFile/, "shared object UI must accept a file upload");
 assert.match(component, /OBJECT_ATTACHMENT_CATEGORIES/, "shared object UI must expose the bounded category set");
 assert.match(attachmentList, /\/api\/attachments\//, "shared object UI must expose authorized downloads");
+assert.match(attachmentList, /disposition=inline/, "shared object UI must expose an explicit inline preview");
+assert.doesNotMatch(component, /text\.hint/, "attachment controls must not be shifted by helper hint copy");
+assert.match(attachmentRoute, /INLINE_PREVIEW_TYPES/, "attachment route must bound inline preview MIME types");
+assert.match(attachmentRoute, /source\.download_original/, "inline preview must keep original-source permission");
+assert.doesNotMatch(objectImportActions, /linkImportJobAttachmentsToObject/, "object upload must not add a second source-link write path");
+assert.match(importCenter, /listObjectArchiveAttachments/, "central object intake must load the selected object's archive");
+assert.match(importCenter, /archiveItems=\{selectedObjectAttachments\}/, "central object intake must render the selected object's archive below upload");
+assert.match(propertyImport, /objectPage && visibleViews\.length === 0/, "property object pages must hide an empty completed review card");
+assert.match(clientImport, /objectPage && visibleViews\.length === 0/, "client object pages must hide an empty completed review card");
+assert.match(propertyImport, /uploadAction \? <div/, "property upload must be available in the object editor");
+assert.match(clientImport, /uploadAction \? <div/, "client upload must be available in the object editor");
 assert.match(associationManager, /ObjectAttachmentList/, "case association management must retain the attachment list");
 assert.match(associationManager, /caseAttachments/, "case association management must receive case attachments");
 assert.match(associationManager, /caseAttachments\.length > 0/, "empty case attachment lists must not create a large empty panel");
@@ -48,6 +68,13 @@ assert.doesNotMatch(casePage, /<ObjectAttachmentSection/, "case page must not re
 assert.equal((casePage.match(/associationPanel=\{associationPanel\}/g) ?? []).length, 2, "read-only and overview branches must retain the association panel");
 assert.match(casePage, /\{quickAssociationPanel\}/, "quick case branch must retain the full association panel");
 assert.match(casePage, /compact=\{compact\}/, "case association panel must support compact overview rendering");
-for (const page of pages) assert.match(page, /<ObjectAttachmentSection/, "party and property pages must render the shared attachment section");
+for (const page of pages) {
+  assert.match(page, /<ObjectAttachmentSection/, "object pages must render the shared attachment section");
+  assert.match(page, /listObjectArchiveAttachments/, "object pages must read legacy import source files into the archive");
+  assert.doesNotMatch(page, /PartyAttachmentDisclosure/, "customer archive must not be hidden beside the name");
+  assert.ok(page.indexOf("<ObjectAttachmentSection") > page.indexOf("<ClientForm"), "customer archive must render after the profile form");
+}
 
 console.log("object attachments contract: PASS");
+
+assert.match(read("src/app/parties/[id]/edit/page.tsx"), /redirect\(`\/clients\//, "legacy party edit must use the unified customer editor");

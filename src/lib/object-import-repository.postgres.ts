@@ -6,12 +6,14 @@ const optionalString = (value: unknown) => value == null ? undefined : String(va
 export function mapObjectImportTarget(row: Row): ObjectImportTargetRecord {
   return {
     id: String(row.id), tenantId: String(row.tenant_id), userId: String(row.user_id),
-    caseId: String(row.case_id), importJobId: String(row.import_job_id),
+    ...(row.case_id == null ? {} : { caseId: String(row.case_id) }), importJobId: String(row.import_job_id),
     targetType: row.target_type as ObjectImportTargetRecord["targetType"], targetId: String(row.target_id), targetVersion: String(row.target_version),
     sourceAttachmentId: optionalString(row.source_attachment_id), status: row.status as ObjectImportTargetRecord["status"],
     idempotencyKey: String(row.idempotency_key), attemptCount: Number(row.attempt_count),
     errorCode: optionalString(row.error_code), errorSummary: optionalString(row.error_summary),
     createdAt: new Date(row.created_at as string | Date), updatedAt: new Date(row.updated_at as string | Date),
+    ...(row.document_type == null ? {} : { documentType: String(row.document_type) as ObjectImportTargetRecord["documentType"] }),
+    ...(row.processing_metadata == null ? {} : { processingMetadata: (typeof row.processing_metadata === "string" ? JSON.parse(row.processing_metadata) : row.processing_metadata) as ObjectImportTargetRecord["processingMetadata"] }),
   };
 }
 export function mapObjectImportCandidate(row: Row): ObjectImportCandidateRecord {
@@ -31,8 +33,13 @@ export class PostgresObjectImportRepository implements ObjectImportRepository {
     const result = await this.pool.query("SELECT * FROM object_import_targets WHERE tenant_id=$1 AND user_id=$2 AND id=$3 LIMIT 1", [input.tenantId, input.userId, input.id]);
     return result.rows[0] ? mapObjectImportTarget(result.rows[0]) : null;
   }
-  async listTargets(input: ObjectImportScope & { caseId: string }) {
-    const result = await this.pool.query("SELECT * FROM object_import_targets WHERE tenant_id=$1 AND user_id=$2 AND case_id=$3 ORDER BY created_at,id", [input.tenantId, input.userId, input.caseId]);
+  async listTargets(input: ObjectImportScope & { caseId?: string; targetType?: "party" | "property"; targetId?: string }) {
+    const values: unknown[] = [input.tenantId, input.userId];
+    const clauses = ["tenant_id=$1", "user_id=$2"];
+    if (input.caseId !== undefined) { values.push(input.caseId); clauses.push(`case_id=$${values.length}`); }
+    if (input.targetType !== undefined) { values.push(input.targetType); clauses.push(`target_type=$${values.length}`); }
+    if (input.targetId !== undefined) { values.push(input.targetId); clauses.push(`target_id=$${values.length}`); }
+    const result = await this.pool.query(`SELECT * FROM object_import_targets WHERE ${clauses.join(" AND ")} ORDER BY created_at,id`, values);
     return result.rows.map(mapObjectImportTarget);
   }
   async getTargetByJob(input: ObjectImportScope & { importJobId: string }) {
@@ -44,12 +51,12 @@ export class PostgresObjectImportRepository implements ObjectImportRepository {
     return result.rows.map(mapObjectImportCandidate);
   }
   async createTarget(input: ObjectImportTargetRecord) {
-    const result = await this.pool.query("INSERT INTO object_import_targets (id,tenant_id,user_id,case_id,import_job_id,target_type,target_id,target_version,source_attachment_id,status,idempotency_key,attempt_count,error_code,error_summary,created_at,updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) ON CONFLICT (tenant_id,idempotency_key) DO UPDATE SET updated_at=object_import_targets.updated_at WHERE object_import_targets.user_id=EXCLUDED.user_id RETURNING *", [input.id,input.tenantId,input.userId,input.caseId,input.importJobId,input.targetType,input.targetId,input.targetVersion,input.sourceAttachmentId ?? null,input.status,input.idempotencyKey,input.attemptCount,input.errorCode ?? null,input.errorSummary ?? null,input.createdAt,input.updatedAt]);
+    const result = await this.pool.query("INSERT INTO object_import_targets (id,tenant_id,user_id,case_id,import_job_id,target_type,target_id,target_version,document_type,processing_metadata,source_attachment_id,status,idempotency_key,attempt_count,error_code,error_summary,created_at,updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12,$13,$14,$15,$16,$17,$18) ON CONFLICT (tenant_id,idempotency_key) DO UPDATE SET updated_at=object_import_targets.updated_at WHERE object_import_targets.user_id=EXCLUDED.user_id RETURNING *", [input.id,input.tenantId,input.userId,input.caseId ?? null,input.importJobId,input.targetType,input.targetId,input.targetVersion,input.documentType ?? null,input.processingMetadata ? JSON.stringify(input.processingMetadata) : null,input.sourceAttachmentId ?? null,input.status,input.idempotencyKey,input.attemptCount,input.errorCode ?? null,input.errorSummary ?? null,input.createdAt,input.updatedAt]);
     if (!result.rows[0]) throw new Error("object_import_target_scope_mismatch");
     return mapObjectImportTarget(result.rows[0]);
   }
-  async updateTarget(input: Pick<ObjectImportTargetRecord, "tenantId" | "userId" | "id" | "status"> & Partial<Pick<ObjectImportTargetRecord, "attemptCount" | "errorCode" | "errorSummary">>) {
-    const result = await this.pool.query("UPDATE object_import_targets SET status=$1,attempt_count=COALESCE($2,attempt_count),error_code=CASE WHEN $8 THEN $3 ELSE error_code END,error_summary=CASE WHEN $9 THEN $4 ELSE error_summary END,updated_at=NOW() WHERE id=$5 AND tenant_id=$6 AND user_id=$7 RETURNING *", [input.status,input.attemptCount ?? null,input.errorCode ?? null,input.errorSummary ?? null,input.id,input.tenantId,input.userId,"errorCode" in input,"errorSummary" in input]);
+  async updateTarget(input: Pick<ObjectImportTargetRecord, "tenantId" | "userId" | "id" | "status"> & Partial<Pick<ObjectImportTargetRecord, "attemptCount" | "errorCode" | "errorSummary" | "documentType" | "processingMetadata">>) {
+    const result = await this.pool.query("UPDATE object_import_targets SET status=$1,attempt_count=COALESCE($2,attempt_count),error_code=CASE WHEN $8 THEN $3 ELSE error_code END,error_summary=CASE WHEN $9 THEN $4 ELSE error_summary END,document_type=CASE WHEN $10 THEN $5 ELSE document_type END,processing_metadata=CASE WHEN $11 THEN $6::jsonb ELSE processing_metadata END,updated_at=NOW() WHERE id=$7 AND tenant_id=$12 AND user_id=$13 RETURNING *", [input.status,input.attemptCount ?? null,input.errorCode ?? null,input.errorSummary ?? null,input.documentType ?? null,input.processingMetadata ? JSON.stringify(input.processingMetadata) : null,input.id,"errorCode" in input,"errorSummary" in input,"documentType" in input,"processingMetadata" in input,input.tenantId,input.userId]);
     return result.rows[0] ? mapObjectImportTarget(result.rows[0]) : null;
   }
   async upsertCandidate(input: ObjectImportCandidateRecord) {
@@ -60,7 +67,7 @@ export class PostgresObjectImportRepository implements ObjectImportRepository {
       final_value=CASE WHEN object_import_fields.final_source='human' THEN object_import_fields.final_value ELSE EXCLUDED.final_value END,
       final_source=CASE WHEN object_import_fields.final_source='human' THEN object_import_fields.final_source ELSE EXCLUDED.final_source END,
       status=CASE WHEN object_import_fields.final_source='human' THEN object_import_fields.status ELSE EXCLUDED.status END
-      WHERE object_import_fields.tenant_id=EXCLUDED.tenant_id RETURNING *`, [input.id,input.tenantId,input.targetId,input.fieldKey,input.candidateValue ?? null,input.confidence ?? null,JSON.stringify(input.provenance),input.finalValue ?? null,input.finalSource ?? "model_draft",input.status,input.confirmedByUserId ?? null,input.confirmedAt ?? null]);
+      WHERE object_import_fields.tenant_id=EXCLUDED.tenant_id RETURNING *`, [input.id,input.tenantId,input.targetId,input.fieldKey,input.candidateValue ?? null,input.confidence ?? null,JSON.stringify(input.provenance),input.finalValue ?? null,input.finalSource ?? null,input.status,input.confirmedByUserId ?? null,input.confirmedAt ?? null]);
     if (!result.rows[0]) throw new Error("object_import_target_not_found");
     return mapObjectImportCandidate(result.rows[0]);
   }

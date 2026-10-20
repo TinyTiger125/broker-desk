@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
+import { readBuiltCss } from "./read-built-css.mjs";
 
 const require = createRequire(import.meta.url);
 const { Scanner } = require("@tailwindcss/oxide");
@@ -367,8 +368,7 @@ function assertStyles(built = false) {
   const candidates = new Scanner({ sources: [] }).scanFiles([{ content: read("scripts/check-archive-record-button-contract.mjs"), extension: "mjs" }]);
   assert.ok(!candidates.some((candidate) => candidate.startsWith("bg-[") || candidate.startsWith("text-[") || candidate.startsWith("hover:bg-[")), "checker must not inject arbitrary production color utilities");
   if (!built) return;
-  const dir = path.join(root, ".next/static/css");
-  const compiled = readdirSync(dir).filter((name) => name.endsWith(".css")).map((name) => readFileSync(path.join(dir, name), "utf8")).join("\n");
+  const compiled = readBuiltCss(root);
   assert.match(compiled, /min-height:var\(--bd-control-height-touch\)/);
   assert.match(compiled, /outline:var\(--bd-focus-ring-width\) solid var\(--bd-focus-ring-color\)/);
   assert.match(compiled, /background:var\(--bd-warning-line\);color:var\(--bd-ink\)/, "built hover warning contrast rule");

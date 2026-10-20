@@ -4,12 +4,16 @@ import {
   addAuditLog,
   addImportJob,
   addPrivateAttachment,
+  deletePrivateAttachmentForTenant,
   getImportJobByIdempotencyKey,
+  listAttachments,
+  retryImportJobExecution,
   updateImportJobExecution,
 } from "@/lib/data";
 import { getAttachmentStorageMode, getPostgresPrivateAttachmentLimitBytes } from "@/lib/attachment-storage";
 import { detectIdentityDocumentKind } from "@/lib/upload-validation";
 import { assertObjectImportMetadata, buildObjectImportIdempotencyKey, serializeObjectImportNotes, type ObjectImportTargetType } from "@/lib/object-import-contract";
+import { inferPropertyDocumentType } from "@/lib/object-reader-contract";
 
 export const MAX_IDENTITY_DOCUMENT_FILES = 6;
 const MAX_IDENTITY_DOCUMENT_FILE_BYTES = 25 * 1024 * 1024;
@@ -54,7 +58,6 @@ export async function queueIdentityImportSources(input: {
   sourceAttachmentId?: string;
 }): Promise<QueueIdentityImportResult> {
   const maxFileBytes = getIdentityDocumentUploadLimitBytes();
-  if (input.targetObjectType && input.files.length !== 1) return { ok: false, error: "object_target_invalid" };
   if (input.files.length === 0) return { ok: false, error: "file_required" };
   if (input.files.length > MAX_IDENTITY_DOCUMENT_FILES) {
     return { ok: false, error: "too_many_files", maxFiles: MAX_IDENTITY_DOCUMENT_FILES };
@@ -73,18 +76,30 @@ export async function queueIdentityImportSources(input: {
     return { ok: false, error: "files_too_large", maxBytes: MAX_IDENTITY_DOCUMENT_TOTAL_BYTES };
   }
 
-  const groups = input.uploadMode === "separate_people" && files.length > 1
+  // A standalone property/person target is source-specific: every uploaded
+  // document gets one immutable job, one attachment, and one evidence target.
+  // Keep the case-level same_person batch semantics unchanged.
+  const isStandaloneObjectUpload = Boolean(input.targetObjectType && input.targetObjectId);
+  const groups = isStandaloneObjectUpload
     ? files.map((file) => [file])
-    : [files];
+    : input.uploadMode === "separate_people" && files.length > 1
+      ? files.map((file) => [file])
+      : [files];
   const jobIds: string[] = [];
   let deduplicated = true;
 
   for (const group of groups) {
+    if (isStandaloneObjectUpload && group.length !== 1) {
+      // This is an invariant guard for future changes to grouping. It keeps
+      // ensureObjectImportTask's one-source contract from turning a malformed
+      // multi-source object job into a route-level error.
+      return { ok: false, error: "source_persistence_failed" };
+    }
     const sourceHash = createHash("sha256").update(Buffer.concat(group.map((file) => file.buffer))).digest("hex");
     let objectTarget = null;
     try {
       objectTarget = input.targetObjectType
-        ? assertObjectImportMetadata({ caseId: input.caseId, targetObjectType: input.targetObjectType, targetObjectId: input.targetObjectId, targetVersion: input.targetVersion, sourceAttachmentId: input.sourceAttachmentId })
+        ? assertObjectImportMetadata({ caseId: input.caseId, targetObjectType: input.targetObjectType, targetObjectId: input.targetObjectId, targetVersion: input.targetVersion, sourceAttachmentId: input.sourceAttachmentId, documentType: input.targetObjectType === "property" ? inferPropertyDocumentType(group[0].filename) : undefined })
         : null;
     } catch {
       return { ok: false, error: "object_target_invalid" };
@@ -93,40 +108,68 @@ export async function queueIdentityImportSources(input: {
     const idempotencyKey = objectTarget
       ? buildObjectImportIdempotencyKey({ tenantId: input.tenantId, target: objectTarget, sourceHash: `${input.uploadMode}:${sourceHash}` })
       : `identity:${input.uploadMode}:${sourceHash}:${targetKey}`;
-    const existing = await getImportJobByIdempotencyKey({
+    let existing = await getImportJobByIdempotencyKey({
       tenantId: input.tenantId,
       userId: input.userId,
       idempotencyKey,
     });
+    let rewriteExistingSource = false;
     if (existing) {
-      await ensureObjectImportTask(existing, input);
-      jobIds.push(existing.id);
-      continue;
+      const existingAttachments = await listAttachments({ tenantId: input.tenantId, userId: input.userId, targetType: "import_job", targetId: existing.id });
+      // A prior source write can fail after the idempotency row is committed
+      // but before its blob is durable. Reuse that failed row only for this
+      // persistence error, remove any partial blobs, and make the browser
+      // retry uploadable without creating an unbounded duplicate job stream.
+      if (existing.status === "failed" && existing.errorCode === "source_persistence_failed") {
+        for (const attachment of existingAttachments) {
+          await deletePrivateAttachmentForTenant({ tenantId: input.tenantId, id: attachment.id });
+        }
+        existing = await retryImportJobExecution({ tenantId: input.tenantId, userId: input.userId, jobId: existing.id });
+        rewriteExistingSource = Boolean(existing);
+      } else if (existing.status === "queued" && (existingAttachments.length === 0 || (objectTarget && existingAttachments.length !== 1))) {
+        // Recover an earlier queue row that committed before its source write
+        // (or before the one-source object invariant was introduced). The
+        // row remains the idempotency anchor; only its missing/malformed
+        // source attachments are replaced.
+        for (const attachment of existingAttachments) {
+          await deletePrivateAttachmentForTenant({ tenantId: input.tenantId, id: attachment.id });
+        }
+        rewriteExistingSource = true;
+      }
+      if (!existing) return { ok: false, error: "source_persistence_failed" };
+      if (existing.status === "failed" && !rewriteExistingSource) {
+        await ensureObjectImportTask(existing, input);
+        jobIds.push(existing.id);
+        continue;
+      }
     }
 
-    let job;
-    try {
-      job = await addImportJob({
-        tenantId: input.tenantId,
-        userId: input.userId,
-        sourceType: "scan",
-        targetEntity: "parties",
-        title: identityUploadTitle(group),
-        status: "queued",
-        idempotencyKey,
-        notes: objectTarget ? serializeObjectImportNotes(objectTarget) : JSON.stringify({ kind: "identity_import_source", targetCaseId: input.targetCaseId || undefined }),
-      });
-    } catch (error) {
-      const concurrent = await getImportJobByIdempotencyKey({
-        tenantId: input.tenantId,
-        userId: input.userId,
-        idempotencyKey,
-      });
-      if (!concurrent) throw error;
-      await ensureObjectImportTask(concurrent, input);
-      jobIds.push(concurrent.id);
-      continue;
+    let job = existing;
+    if (!job) {
+      try {
+        job = await addImportJob({
+          tenantId: input.tenantId,
+          userId: input.userId,
+          sourceType: "scan",
+          targetEntity: input.targetObjectType === "property" ? "properties" : "parties",
+          title: identityUploadTitle(group),
+          status: "queued",
+          idempotencyKey,
+          notes: objectTarget ? serializeObjectImportNotes(objectTarget) : JSON.stringify({ kind: "identity_import_source", targetCaseId: input.targetCaseId || undefined }),
+        });
+      } catch (error) {
+        const concurrent = await getImportJobByIdempotencyKey({
+          tenantId: input.tenantId,
+          userId: input.userId,
+          idempotencyKey,
+        });
+        if (!concurrent) throw error;
+        await ensureObjectImportTask(concurrent, input);
+        jobIds.push(concurrent.id);
+        continue;
+      }
     }
+    if (!job) return { ok: false, error: "source_persistence_failed" };
 
     try {
       for (const file of group) {

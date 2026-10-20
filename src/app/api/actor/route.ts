@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { ACTOR_COOKIE_NAME, isActorSwitchingEnabled } from "@/lib/actor";
-import { getUserById, listTenantMemberships } from "@/lib/data";
+import { getUserById, listTenantMemberships, withLocalDemoRepositoryIdentity } from "@/lib/data";
 import { ACTIVE_TENANT_COOKIE_NAME } from "@/lib/tenant-permissions";
 
 type ActorPayload = {
@@ -24,12 +24,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "missing_actor_id" }, { status: 400 });
   }
 
-  const user = await getUserById(actorId);
+  const { user, memberships } = await withLocalDemoRepositoryIdentity(actorId, async () => {
+    const user = await getUserById(actorId);
+    if (!user) return { user: null, memberships: [] };
+    return { user, memberships: await listTenantMemberships(user.id) };
+  });
   if (!user) {
     return NextResponse.json({ ok: false, error: "invalid_actor_id" }, { status: 404 });
   }
-
-  const memberships = await listTenantMemberships(user.id);
   const activeMembership = memberships.find((membership) => membership.status === "active");
 
   const response = NextResponse.json({

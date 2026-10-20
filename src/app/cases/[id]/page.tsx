@@ -41,7 +41,7 @@ import { createRequestContext } from "@/lib/visibility-resolver";
 import { readCaseAssociationDraft } from "@/lib/case-associations";
 import { ObjectPageShell } from "@/components/layout-system";
 import { listLinkedObjectAttachments } from "@/lib/object-attachments";
-import { uploadObjectImportAction } from "@/app/object-import-actions";
+import { reviewObjectImportAction, uploadObjectImportAction } from "@/app/object-import-actions";
 import { getObjectImportFeatureReadiness, listObjectImportCandidates, listObjectImportTargets } from "@/lib/data";
 import type { ObjectImportCandidateRecord, ObjectImportTargetRecord } from "@/lib/object-import-repository";
 import { getImportRuntimeDiagnostics } from "@/lib/production-readiness";
@@ -739,7 +739,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
     const fieldMap = view.target.targetType === "property"
       ? {
           name: "property.name", address: "property.address",
-          "property.name": "property.name", "property.address": "property.address",
+          "property.name": "property.name", "property.furigana": "property.furigana", "property.address": "property.address",
           "property.roomNumber": "property.roomNumber", "property.postalCode": "property.postalCode", "property.usage": "property.usage",
           "lease.contractType": "lease.contractType", "lease.contractStartDate": "lease.contractStartDate", "lease.contractEndDate": "lease.contractEndDate", "lease.moveInDate": "lease.moveInDate",
           "lease.rent": "lease.rent", "lease.commonFee": "lease.commonFee", "lease.parkingFee": "lease.parkingFee", "lease.waterTownFee": "lease.waterTownFee", "lease.otherMonthlyFee": "lease.otherMonthlyFee", "lease.monthlyRentTotal": "lease.monthlyRentTotal",
@@ -864,6 +864,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
         propertyProfiles={propertyProfiles}
         objectImportViews={objectImportViews}
         objectImportUploadAction={canWriteCase && objectImportReadiness.ready ? uploadObjectImportAction : undefined}
+        objectImportReviewAction={canWriteCase && objectImportReadiness.ready ? reviewObjectImportAction : undefined}
         objectImportUnavailable={!objectImportReadiness.ready}
         caseAttachments={objectAttachments}
         caseAddress={caseAddressField?.value}
@@ -1078,6 +1079,48 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
             zh: "该候选已在其他页面处理完成，请刷新案件查看已确认值。本次修改未保存。",
             ko: "이 후보는 다른 화면에서 이미 처리되었습니다. 안건을 새로 고쳐 확정된 값을 확인해 주세요. 이번 변경 사항은 저장되지 않았습니다.",
           })
+        : query?.flash === "object_import_review_invalid_value"
+          ? tr(locale, {
+              ja: "入力値を確認してください。今回の変更は保存されていません。候補を修正して再確認できます。",
+              zh: "请检查输入值。本次修改未保存；修正候选后可以再次确认。",
+              ko: "입력값을 확인해 주세요. 이번 변경 사항은 저장되지 않았으며 후보를 수정한 뒤 다시 확인할 수 있습니다.",
+            })
+        : query?.flash === "case_upload_preview_audit_failed"
+          ? tr(locale, {
+              ja: "原本資料と確認済みの読み取り結果は保存しましたが、読み取り確認の監査記録を保存できませんでした。原本と案件項目を確認し、管理者へ連絡してください。",
+              zh: "原始资料和已确认的读取结果已保存，但读取确认审计记录未能保存。请核对原件和案件字段，并联系管理员。",
+              ko: "원본 자료와 확인된 읽기 결과는 저장했지만 읽기 확인 감사 기록을 저장하지 못했습니다. 원본과 안건 항목을 확인하고 관리자에게 문의해 주세요.",
+            })
+        : query?.flash === "case_upload_archived_preview"
+          ? tr(locale, {
+              ja: "原本資料を案件に保存し、確認した読み取り結果を案件項目へ反映しました。未確認の候補は反映していません。",
+              zh: "原始资料已保存到案件，已确认的读取结果已写入案件字段；未确认的候选没有写入。",
+              ko: "원본 자료를 안건에 저장하고 확인한 읽기 결과를 안건 항목에 반영했습니다. 확인하지 않은 후보는 반영하지 않았습니다.",
+            })
+        : query?.flash === "case_upload_archived_limited"
+          ? tr(locale, {
+              ja: "原本資料は案件に保存しましたが、確認済みの読み取り結果は保存されていません。案件資料から原本を確認できます。",
+              zh: "原始资料已保存到案件，但没有保存已确认的读取结果。请在案件附件中确认原文件。",
+              ko: "원본 자료는 안건에 저장했지만 확인된 읽기 결과는 저장되지 않았습니다. 안건 첨부에서 원본을 확인해 주세요.",
+            })
+        : query?.flash === "case_upload_archive_failed"
+          ? tr(locale, {
+              ja: "原本資料を案件に保存できませんでした。案件を開いたまま、資料を選び直して補完してください。",
+              zh: "原始资料未能保存到案件。请留在当前案件页面，重新选择资料补传。",
+              ko: "원본 자료를 안건에 저장하지 못했습니다. 현재 안건에서 자료를 다시 선택해 보완해 주세요.",
+            })
+        : query?.flash === "case_upload_archive_partial"
+          ? tr(locale, {
+              ja: "一部の原本資料だけ案件に保存しました。保存できなかった資料は案件ページから補完してください。",
+              zh: "只有部分原始资料保存到了案件。请在案件页面补传未保存的资料。",
+              ko: "일부 원본 자료만 안건에 저장했습니다. 저장되지 않은 자료는 안건 페이지에서 보완해 주세요.",
+            })
+        : query?.flash === "case_upload_archived"
+          ? tr(locale, {
+              ja: "原本資料を案件に保存しました。",
+              zh: "原始资料已保存到案件。",
+              ko: "원본 자료를 안건에 저장했습니다.",
+            })
     : objectImportStatusFlash
       ? objectImportStatusFlash
       : query?.flash === "extraction_review_saved"
@@ -1224,9 +1267,15 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
 	                                zh: "请选择 PDF 或图片文件。",
 	                                ko: "PDF 또는 이미지 파일을 선택해 주세요.",
 	                              })
+	                            : query?.flash === "import_service_unavailable"
+	                              ? tr(locale, {
+	                                  ja: "資料読み取りサービスを利用できません。今回の資料は保存されておらず、読み取りも開始していません。管理者に対応を依頼してください。",
+	                                  zh: "资料读取服务暂不可用，本次资料未保存，也未开始读取。请联系管理员处理。",
+	                                  ko: "자료 읽기 서비스를 이용할 수 없습니다. 이번 자료는 저장되지 않았고 읽기도 시작되지 않았습니다. 관리자에게 처리를 요청해 주세요.",
+	                                })
 	              : undefined;
   const flashTone =
-    objectImportNoSupportedFieldsFailed || query?.flash === "object_import_review_conflict" || query?.flash === "object_import_review_already_reviewed" || query?.flash?.startsWith("excel_upload_") || query?.flash?.startsWith("identity_upload_") || query?.flash === "case_required_field_missing" || query?.flash === "case_field_invalid" ? "error" : undefined;
+    objectImportNoSupportedFieldsFailed || query?.flash === "object_import_review_conflict" || query?.flash === "object_import_review_already_reviewed" || query?.flash === "object_import_review_invalid_value" || query?.flash === "case_upload_archived_limited" || query?.flash === "case_upload_preview_audit_failed" || query?.flash === "case_upload_archive_failed" || query?.flash === "case_upload_archive_partial" || query?.flash?.startsWith("excel_upload_") || query?.flash?.startsWith("identity_upload_") || query?.flash === "import_service_unavailable" || query?.flash === "case_required_field_missing" || query?.flash === "case_field_invalid" ? "error" : undefined;
   const activeView = query?.view === "quick" || query?.view === "overview"
     ? query.view
     : downloadGate && downloadGate.blockedReasons.length > 0

@@ -9,18 +9,23 @@ import {
   updateImportJobMappingAction,
   uploadAndParseIdentityDocumentAction,
   uploadAndParseExcelAction,
+  refreshObjectImportReviewAction,
 } from "@/app/actions";
+import { reviewObjectImportAction, retryObjectImportAction, uploadObjectImportAction } from "@/app/object-import-actions";
 import { FormDraftAssist } from "@/components/form-draft-assist";
 import { ExcelDocumentUploadForm } from "@/components/excel-document-upload-form";
 import { ExcelImportQueueProcessor } from "@/components/excel-import-queue-processor";
 import { IdentityDocumentUploadForm } from "@/components/identity-document-upload-form";
+import { ClientIdentityImportSection } from "@/components/client-identity-import-section";
+import { PropertyObjectImportSection } from "@/components/property-object-import-section";
+import { listObjectArchiveAttachments } from "@/lib/object-attachments";
 import { InputExtractionReview } from "@/components/input-extraction-review";
 import { PageFlashBanner } from "@/components/page-flash-banner";
 import { getImportMappingFormRows, getPropertyRowMappingPayload } from "@/lib/import-mapping-form";
 import { getImportJobFeedbackMessage } from "@/lib/import-feedback";
 import { PreimportUploadDelete } from "@/components/preimport-upload-delete";
 import { mayDeletePreimportUpload } from "@/lib/preimport-upload-lifecycle";
-import { listBrokerageCasesForContext, listClientsForContext, listExtractionReviewItems, listPropertiesForContext, listRecentPropertyActivitiesForContext } from "@/lib/data";
+import { getObjectImportFeatureReadiness, listBrokerageCasesForContext, listClientsForContext, listExtractionReviewItems, listObjectImportCandidates, listObjectImportTargets, listPropertiesForContext, listRecentPropertyActivitiesForContext } from "@/lib/data";
 import { formatDate } from "@/lib/format";
 import { t } from "@/lib/i18n";
 import type { InputFileExtractionResult } from "@/lib/input-file-extractor";
@@ -33,7 +38,11 @@ import {
 import { getLocale, type Locale } from "@/lib/locale";
 import { listHubAttachments, listHubImportJobs, type HubImportJobItem } from "@/lib/hub";
 import { requireTenantSession, TenantSessionError } from "@/lib/tenant-session";
+import { getTenantCapability } from "@/lib/tenant-session";
+import { capabilityHasTenantPermission } from "@/lib/tenant-permissions";
 import { createRequestContext } from "@/lib/visibility-resolver";
+import { buildObjectVersionFingerprint, parseObjectImportNotes } from "@/lib/object-import-contract";
+import type { ObjectImportCandidateRecord, ObjectImportTargetRecord } from "@/lib/object-import-repository";
 import {
   buildImportCenterRecentInputs,
   type ImportCenterRecentCategory,
@@ -515,6 +524,10 @@ type ImportCenterPageProps = {
     targetCaseId?: string;
     flow?: string;
     object?: string;
+    targetId?: string;
+    targetPropertyId?: string;
+    targetClientId?: string;
+    objectImportJob?: string;
     recentPage?: string;
   }>;
 };
@@ -594,7 +607,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
       // Reconstruct only this route's declared query keys; never accept a
       // caller-supplied returnTo. Workspace applies its existing URL guard.
       const query = new URLSearchParams();
-      for (const key of ["job", "flash", "xlsxJob", "advanced", "intake", "targetCaseId", "flow", "object", "recentPage"] as const) {
+      for (const key of ["job", "flash", "xlsxJob", "advanced", "intake", "targetCaseId", "flow", "object", "targetId", "targetPropertyId", "targetClientId", "objectImportJob", "recentPage"] as const) {
         const value = params?.[key];
         if (typeof value === "string") query.set(key, value);
       }
@@ -606,13 +619,29 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
     }
     throw error;
   }
+  // Old bookmarked upload routes now enter the same object editor.
+  if (params?.advanced !== "1" && !params?.job && !params?.xlsxJob && !params?.targetCaseId && !params?.flow) {
+    const object = params?.object;
+    const id = String(params?.targetId ?? (object === "person" ? params?.targetClientId : params?.targetPropertyId) ?? "").trim();
+    if (object === "person" || object === "property") {
+      if (id) {
+        const query = new URLSearchParams();
+        if (params?.flash) query.set("flash", params.flash);
+        if (params?.objectImportJob) query.set("objectImportJob", params.objectImportJob);
+        const path = object === "person" ? `/clients/${encodeURIComponent(id)}/edit` : `/properties/${encodeURIComponent(id)}/edit`;
+        redirect(`${path}${query.size ? `?${query}` : ""}`);
+      }
+      redirect(params?.intake === "existing" ? `/organize-center?type=${object === "person" ? "party" : "property"}` : object === "person" ? "/clients/new?returnTo=%2Fimport-center" : "/properties/new?returnTo=%2Fimport-center");
+    }
+    if (object === "case") redirect("/cases/new?from=entry");
+  }
   const copy = getCopy(locale);
   const showAdvanced = params?.advanced === "1";
   const user = session.user;
   const tenantId = session.tenant.id;
   const hubContext = { userId: user.id, tenantId, requestContext: createRequestContext(session) };
   const recentSince = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  const [jobs, recentJobs, attachments, caseEntries, recentCases, recentClients, recentProperties, recentPropertyActivities] = await Promise.all([
+  const [jobs, recentJobs, attachments, caseEntries, recentCases, recentClients, recentProperties, recentPropertyActivities, targetClients, targetProperties, recentObjectTargets] = await Promise.all([
     listHubImportJobs(hubContext, locale, null),
     listHubImportJobs(hubContext, locale, null, recentSince),
     listHubAttachments(locale, 30, hubContext),
@@ -621,6 +650,9 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
     listClientsForContext({ context: hubContext.requestContext, filter: { lifecycleStatus: "active", sort: "recent_created", updatedSince: recentSince } }),
     listPropertiesForContext({ context: hubContext.requestContext, lifecycleStatus: "active", createdSince: recentSince }),
     listRecentPropertyActivitiesForContext({ context: hubContext.requestContext, since: recentSince }),
+    listClientsForContext({ context: hubContext.requestContext, filter: { lifecycleStatus: "active", sort: "recent_created" } }),
+    listPropertiesForContext({ context: hubContext.requestContext, lifecycleStatus: "active" }),
+    listObjectImportTargets({ tenantId, userId: user.id }),
   ]);
   const cases = caseEntries.flatMap((entry) => (entry.brokerageCase ? [entry.brokerageCase] : []));
   const reviewHref = "/organize-center";
@@ -913,6 +945,26 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
       zh: "请选择在留卡或驾照的 PDF / 图片文件。",
       ko: "재류카드 또는 운전면허증 PDF/이미지를 선택해 주세요.",
     },
+    object_import_upload_save_failed: {
+      ja: "資料の受付は完了しませんでした。元ファイルを保存できなかったため、対象を選んだまま再試行してください。",
+      zh: "资料未完成接收。原始文件未能保存，请保持当前对象后重试。",
+      ko: "자료 접수가 완료되지 않았습니다. 원본을 저장하지 못했으므로 현재 대상을 유지한 채 다시 시도해 주세요.",
+    },
+    object_import_target_invalid: {
+      ja: "対象を確認できませんでした。対象を選び直してから再試行してください。",
+      zh: "无法确认资料对象，请重新选择对象后重试。",
+      ko: "자료 대상을 확인할 수 없습니다. 대상을 다시 선택한 뒤 재시도해 주세요.",
+    },
+    object_import_upload_failed: {
+      ja: "資料の受付に失敗しました。対象を選んだまま、もう一度お試しください。",
+      zh: "资料接收失败。请保持当前对象后重试。",
+      ko: "자료 접수에 실패했습니다. 현재 대상을 유지한 채 다시 시도해 주세요.",
+    },
+    import_service_unavailable: {
+      ja: "資料読み取りサービスを利用できません。今回の資料は保存されておらず、読み取りも開始していません。管理者に対応を依頼してください。",
+      zh: "资料读取服务暂不可用，本次资料未保存，也未开始读取。请联系管理员处理。",
+      ko: "자료 읽기 서비스를 이용할 수 없습니다. 이번 자료는 저장되지 않았고 읽기도 시작되지 않았습니다. 관리자에게 처리를 요청해 주세요.",
+    },
     extraction_review_saved: {
       ja: "確認結果を案件として保存しました。",
       zh: "核对结果已保存为案件。",
@@ -935,7 +987,8 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
   const flashTone =
     (flashKey === "input_extraction_queued" && xlsxJob?.status === "failed") ||
     String(flashKey).includes("upload_") ||
-    String(flashKey).includes("missing")
+    String(flashKey).includes("missing") ||
+    flashKey === "import_service_unavailable"
       ? "error"
       : "success";
 
@@ -1029,6 +1082,16 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
     ? await listExtractionReviewItems({ userId: user.id, tenantId, caseId: reviewCase.id })
     : [];
   const recentJobHref = (job: HubImportJobItem) => {
+    const persistedObjectTarget = recentObjectTargets.find((target) => target.importJobId === job.id && !target.caseId);
+    if (persistedObjectTarget) {
+      const object = persistedObjectTarget.targetType === "property" ? "property" : "person";
+      return `/import-center?object=${object}&targetId=${encodeURIComponent(persistedObjectTarget.targetId)}&objectImportJob=${encodeURIComponent(job.id)}#source-review-summary`;
+    }
+    const objectTarget = parseObjectImportNotes(job.notes);
+    if (objectTarget && !objectTarget.caseId) {
+      const object = objectTarget.targetObjectType === "property" ? "property" : "person";
+      return `/import-center?object=${object}&targetId=${encodeURIComponent(objectTarget.targetObjectId)}&job=${encodeURIComponent(job.id)}#source-review-summary`;
+    }
     if (job.status === "queued" && isBatchMappingJob(job)) return `/import-center?job=${encodeURIComponent(job.id)}&advanced=1#job-mapping`;
     if (getImportPayloadKind(job) === "property_row_import" && job.status !== "completed") return `/import-center?job=${encodeURIComponent(job.id)}&advanced=1#job-mapping`;
     if (isModernExcelImportJob(job)) return `/import-center?xlsxJob=${encodeURIComponent(job.id)}#source-upload`;
@@ -1040,6 +1103,19 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
     if (linkedCase) return `/cases/${encodeURIComponent(linkedCase.id)}#case-main-editor`;
     return `/import-center?job=${encodeURIComponent(job.id)}#source-review-summary`;
   };
+  const objectTargetByJobId = new Map(recentObjectTargets.filter((target) => !target.caseId).map((target) => [target.importJobId, target]));
+  const objectTargetStatusLabel = (status: ObjectImportTargetRecord["status"]) => {
+    if (status === "completed") return statusLabel.completed;
+    if (status === "queued") return statusLabel.queued;
+    if (status === "processing") return statusLabel.processing;
+    if (status === "failed" || status === "conflict") return statusLabel.failed;
+    return statusLabel.mapped;
+  };
+  const recentJobStatusLabel = (job: HubImportJobItem) => {
+    const objectTarget = objectTargetByJobId.get(job.id);
+    return objectTarget ? objectTargetStatusLabel(objectTarget.status) : statusLabel[job.status];
+  };
+  const recentJobIsCompleted = (job: HubImportJobItem) => objectTargetByJobId.get(job.id)?.status === "completed" || (!objectTargetByJobId.has(job.id) && job.status === "completed");
   const recentInputs = buildImportCenterRecentInputs({
     cases: recentCases.flatMap((entry) => {
       const item = entry.brokerageCase;
@@ -1058,7 +1134,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
       id: `party:${client.id}`,
       title: client.name,
       type: locale === "zh" ? "顾客资料" : locale === "ko" ? "고객 자료" : "顧客情報",
-      href: `/clients/${encodeURIComponent(client.id)}`,
+      href: `/clients/${encodeURIComponent(client.id)}/edit`,
       updatedAt: client.updatedAt,
       category: "person",
     })),
@@ -1083,10 +1159,16 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
     fileJobs: recentJobs.map((job) => ({
       id: `job:${job.id}`,
       title: job.title,
-      type: `${sourceLabel[job.sourceType]} / ${statusLabel[job.status]}`,
+      type: objectTargetByJobId.has(job.id)
+        ? `${sourceLabel[job.sourceType]} / ${objectTargetStatusLabel(objectTargetByJobId.get(job.id)!.status)}`
+        : `${sourceLabel[job.sourceType]} / ${statusLabel[job.status]}`,
       href: recentJobHref(job),
       updatedAt: job.updatedAt,
-      targetEntity: job.targetEntity,
+      targetEntity: objectTargetByJobId.get(job.id)?.targetType === "property"
+        ? "properties"
+        : objectTargetByJobId.has(job.id)
+          ? "parties"
+          : job.targetEntity,
       linkedCaseId: caseByImportJobId.get(job.id)?.id,
     })),
     since: recentSince,
@@ -1100,7 +1182,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
   const recentPageItems = recentInputs.slice((recentPage - 1) * recentPageSize, recentPage * recentPageSize);
   const recentPageHref = (nextPage: number) => {
     const query = new URLSearchParams();
-    for (const key of ["job", "flash", "xlsxJob", "advanced", "intake", "targetCaseId", "flow", "object"] as const) {
+    for (const key of ["job", "flash", "xlsxJob", "advanced", "intake", "targetCaseId", "flow", "object", "targetId", "targetPropertyId", "targetClientId", "objectImportJob"] as const) {
       const value = params?.[key];
       if (typeof value === "string" && value) query.set(key, value);
     }
@@ -1126,8 +1208,41 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
   const selectedObject = params?.object === "case" || params?.object === "person" || params?.object === "property"
     ? params.object
     : undefined;
-  const showIdentityReader = flowIntent === "case" ? true : !selectedObject || selectedObject === "case" || selectedObject === "person";
-  const showExcelReader = isLedgerFlow ? true : !selectedObject || selectedObject === "case" || selectedObject === "property";
+  const selectedTargetId = String(params?.targetId ?? (selectedObject === "property" ? params?.targetPropertyId : selectedObject === "person" ? params?.targetClientId : "") ?? "").trim();
+  const selectedClient = selectedObject === "person" && selectedTargetId
+    ? targetClients.find(({ client }) => client.id === selectedTargetId)
+    : undefined;
+  const selectedProperty = selectedObject === "property" && selectedTargetId
+    ? targetProperties.find(({ property }) => property.id === selectedTargetId)
+    : undefined;
+  const selectedObjectAttachments = selectedClient
+    ? await listObjectArchiveAttachments({ tenantId, userId: user.id, targetType: "party", targetId: selectedClient.client.id })
+    : selectedProperty
+      ? await listObjectArchiveAttachments({ tenantId, userId: user.id, targetType: "property", targetId: selectedProperty.property.id })
+      : undefined;
+  const objectImportReadiness = (selectedClient || selectedProperty) ? await getObjectImportFeatureReadiness() : { ready: false, reason: "target_not_selected" };
+  const canWriteObjectImport = session.membership.status === "active" && capabilityHasTenantPermission(getTenantCapability(session.membership), "record.update");
+  const selectedObjectViews: Array<{ target: ObjectImportTargetRecord; fields: ObjectImportCandidateRecord[] }> = [];
+  if (objectImportReadiness.ready && selectedTargetId && (selectedObject === "person" || selectedObject === "property")) {
+    const targets = await listObjectImportTargets({
+      tenantId,
+      userId: user.id,
+      targetType: selectedObject === "person" ? "party" : "property",
+      targetId: selectedTargetId,
+    });
+    selectedObjectViews.push(...await Promise.all(targets.filter((target) => !target.caseId).map(async (target) => ({
+      target,
+      fields: await listObjectImportCandidates({ tenantId, userId: user.id, targetId: target.id }),
+    }))));
+  }
+  const selectedObjectReturnTo = selectedObject && selectedTargetId
+    ? `/import-center?object=${encodeURIComponent(selectedObject)}&targetId=${encodeURIComponent(selectedTargetId)}`
+    : "/import-center";
+  const showIdentityReader = flowIntent === "case" ? true : !selectedObject || selectedObject === "case" || (selectedObject === "person" && !selectedTargetId);
+  // An explicitly selected property/person gets its dedicated document
+  // channel. Excel remains available from the ledger/case entry or the
+  // unscoped import center, so a selected object cannot mix channels.
+  const showExcelReader = isLedgerFlow ? true : !selectedObject || selectedObject === "case";
   const hasPendingExceptions = hasPendingExtractionException(inputExtractionPreview);
   const hasAdvancedBatchPayload = hasBatchMappingPayload(xlsxPayload);
   const hasCompletedBatchResult = Boolean(
@@ -1155,14 +1270,15 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
               ? "review"
               : "confirm"
             : "review";
+  const showObjectTargetSelection = wizardStep === "select" && !requestedJob && (selectedObject === "person" || selectedObject === "property") && !selectedTargetId;
   const showObjectSelection = wizardStep === "select" && !flowIntent && !requestedJob && !targetCaseId && !selectedObject;
   const showPostProcessingContent = wizardStep !== "processing" && wizardStep !== "failed";
   const inputTaskJob = isExtractedQueuedMapping ? undefined : xlsxJob ?? (requestedJob && isInputFileExtractionJob(requestedJob) ? requestedJob : undefined);
   const failedInputJob = inputTaskJob?.status === "failed" && !inputTaskJob.finalImportStartedAt ? inputTaskJob : undefined;
   const materialObjects = [
     { key: "case", icon: "business_center", iconClass: "bg-blue-50 text-blue-700", title: locale === "zh" ? "案件资料" : locale === "ko" ? "안건 자료" : "案件資料", desc: locale === "zh" ? "创建或读取案件相关资料。" : locale === "ko" ? "안건 관련 자료를 만들거나 읽습니다." : "案件に関する資料を作成・読取します。", manualHref: "/cases/new?from=entry" },
-    { key: "person", icon: "group", iconClass: "bg-emerald-50 text-emerald-700", title: locale === "zh" ? "人物资料" : locale === "ko" ? "관계자 자료" : "関係者資料", desc: locale === "zh" ? "创建或读取人物相关资料。" : locale === "ko" ? "관계자 자료를 만들거나 읽습니다." : "関係者に関する資料を作成・読取します。", manualHref: "/parties/new?from=entry" },
-    { key: "property", icon: "apartment", iconClass: "bg-violet-50 text-violet-700", title: locale === "zh" ? "物件资料" : locale === "ko" ? "매물 자료" : "物件資料", desc: locale === "zh" ? "创建或读取物件相关资料。" : locale === "ko" ? "매물 관련 자료를 만들거나 읽습니다." : "物件に関する資料を作成・読取します。", manualHref: "/properties/new?from=entry" },
+    { key: "person", icon: "group", iconClass: "bg-emerald-50 text-emerald-700", title: locale === "zh" ? "人物资料" : locale === "ko" ? "관계자 자료" : "関係者資料", desc: locale === "zh" ? "创建或读取人物相关资料。" : locale === "ko" ? "관계자 자료를 만들거나 읽습니다." : "関係者に関する資料を作成・読取します。", manualHref: "/clients/new?returnTo=%2Fimport-center" },
+    { key: "property", icon: "apartment", iconClass: "bg-violet-50 text-violet-700", title: locale === "zh" ? "物件资料" : locale === "ko" ? "매물 자료" : "物件資料", desc: locale === "zh" ? "创建或读取物件相关资料。" : locale === "ko" ? "매물 관련 자료를 만들거나 읽습니다." : "物件に関する資料を作成・読取します。", manualHref: "/properties/new?returnTo=%2Fimport-center" },
   ] as const;
   return (
     <div className="bd-page bd-import-page space-y-6">
@@ -1305,11 +1421,11 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                     <div><h3 className="text-lg font-black text-slate-950">{object.title}</h3><p className="mt-1 text-sm font-semibold text-slate-500">{object.desc}</p></div>
                   </div>
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <Link data-import-action="manual" href={object.manualHref} className="inline-flex min-h-14 min-w-0 items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 text-sm font-black text-slate-900 hover:border-blue-300 hover:bg-blue-50/40 sm:px-4">
-                      <span className="inline-flex min-w-0 items-center gap-2 whitespace-nowrap"><span className="material-symbols-outlined shrink-0 text-blue-700">edit</span><span className="whitespace-nowrap">{locale === "zh" ? "手动创建" : locale === "ko" ? "수동 생성" : "手動作成"}</span></span><span aria-hidden="true">›</span>
+                    <Link data-import-action="unified" href={object.manualHref} className="inline-flex min-h-14 min-w-0 items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 text-sm font-black text-slate-900 hover:border-blue-300 hover:bg-blue-50/40 sm:px-4">
+                      <span className="inline-flex min-w-0 items-center gap-2 whitespace-nowrap"><span className="material-symbols-outlined shrink-0 text-blue-700">edit</span><span className="whitespace-nowrap">{locale === "zh" ? "录入资料" : locale === "ko" ? "자료 입력" : "資料を入力"}</span></span><span aria-hidden="true">›</span>
                     </Link>
-                    <Link data-import-action="file" href={`/import-center?object=${object.key}#source-upload`} className="inline-flex min-h-14 min-w-0 items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 text-sm font-black text-slate-900 hover:border-emerald-300 hover:bg-emerald-50/40 sm:px-4">
-                      <span className="inline-flex min-w-0 items-center gap-2 whitespace-nowrap"><span className="material-symbols-outlined shrink-0 text-emerald-700">upload_file</span><span className="whitespace-nowrap">{locale === "zh" ? "文件读取" : locale === "ko" ? "파일 읽기" : "ファイル読取"}</span></span><span aria-hidden="true">›</span>
+                    <Link data-import-action="existing" href={`/organize-center?type=${object.key === "person" ? "party" : object.key}`} className="inline-flex min-h-14 min-w-0 items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 text-sm font-black text-slate-900 hover:border-emerald-300 hover:bg-emerald-50/40 sm:px-4">
+                      <span className="inline-flex min-w-0 items-center gap-2 whitespace-nowrap"><span className="material-symbols-outlined shrink-0 text-emerald-700">upload_file</span><span className="whitespace-nowrap">{locale === "zh" ? "选择现有档案" : locale === "ko" ? "기존 기록 선택" : "既存の記録を選ぶ"}</span></span><span aria-hidden="true">›</span>
                     </Link>
                   </div>
                 </section>
@@ -1388,18 +1504,19 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
 
         {wizardStep === "select" && !requestedJob ? (
         <div className={isLedgerFlow ? "grid gap-4 p-5" : "grid gap-4 p-5 xl:grid-cols-2"}>
+          {!showObjectTargetSelection ? <>
           {!isLedgerFlow ? (
           showIdentityReader ? (
           <section id="identity-document-upload" className={selectedObject === "person" ? "flex min-h-80 flex-col rounded-xl border border-emerald-200 bg-emerald-50/40 p-5 xl:col-span-2" : "flex min-h-80 flex-col rounded-xl border border-emerald-200 bg-emerald-50/40 p-5"}>
             <h3 className="text-base font-bold text-emerald-950">{locale === "zh" ? "身份证明文件" : locale === "ko" ? "신원 확인 파일" : "本人確認ファイル"}</h3>
-            <div className="mt-auto pt-5">{!isIdentityExtractionOnly ? <IdentityDocumentUploadForm action={uploadAndParseIdentityDocumentAction} locale={locale} targetCaseId={targetCaseId || undefined} uploadContext={targetCaseId ? "case" : "import"} /> : <a href="/import-center" className="flex h-12 items-center justify-center rounded-lg border border-emerald-300 bg-white px-4 text-sm font-bold text-emerald-900">{locale === "zh" ? "重新选择文件" : locale === "ko" ? "파일 다시 선택" : "ファイルを選び直す"}</a>}</div>
+            <div className="mt-auto pt-5">{!isIdentityExtractionOnly ? <IdentityDocumentUploadForm action={uploadAndParseIdentityDocumentAction} locale={locale} targetCaseId={targetCaseId || undefined} uploadContext={targetCaseId ? "case" : "import"} object={selectedObject} /> : <a href="/import-center" className="flex h-12 items-center justify-center rounded-lg border border-emerald-300 bg-white px-4 text-sm font-bold text-emerald-900">{locale === "zh" ? "重新选择文件" : locale === "ko" ? "파일 다시 선택" : "ファイルを選び直す"}</a>}</div>
           </section>
           ) : null
           ) : null}
           {showExcelReader ? (
           <section id="excel-document-upload" className={selectedObject === "property" ? "flex min-h-80 flex-col rounded-xl border border-blue-200 bg-blue-50/40 p-5 xl:col-span-2" : "flex min-h-80 flex-col rounded-xl border border-blue-200 bg-blue-50/40 p-5"}>
             <h3 className="text-base font-bold text-blue-950">{locale === "zh" ? "Excel 文件" : locale === "ko" ? "Excel 파일" : "Excel ファイル"}</h3>
-            <div className="mt-auto pt-5">{!xlsxJob ? <ExcelDocumentUploadForm action={uploadAndParseExcelAction} locale={locale} targetCaseId={targetCaseId || undefined} uploadContext={targetCaseId ? "case" : "import"} /> : <a href="/import-center" className="flex h-12 items-center justify-center rounded-lg border border-blue-300 bg-white px-4 text-sm font-bold text-blue-900">{locale === "zh" ? "重新选择文件" : locale === "ko" ? "파일 다시 선택" : "ファイルを選び直す"}</a>}</div>
+            <div className="mt-auto pt-5">{!xlsxJob ? <ExcelDocumentUploadForm action={uploadAndParseExcelAction} locale={locale} targetCaseId={targetCaseId || undefined} uploadContext={targetCaseId ? "case" : "import"} object={selectedObject} /> : <a href="/import-center" className="flex h-12 items-center justify-center rounded-lg border border-blue-300 bg-white px-4 text-sm font-bold text-blue-900">{locale === "zh" ? "重新选择文件" : locale === "ko" ? "파일 다시 선택" : "ファイルを選び直す"}</a>}</div>
           </section>
           ) : null}
 
@@ -1446,8 +1563,106 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
               </div>
             </div>
           ) : null}
+          </> : null}
         </div>
         ) : null}
+
+        {showObjectTargetSelection ? (
+          <div id="target-selection" className="grid gap-4 border-t border-slate-100 p-5">
+            <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4">
+              <h3 className="text-sm font-black text-amber-950">
+                {locale === "zh" ? "先选择新建还是已有记录" : locale === "ko" ? "새 기록 또는 기존 기록을 먼저 선택" : "新規作成か既存記録かを先に選択"}
+              </h3>
+              <p className="mt-1 text-xs font-semibold leading-5 text-amber-900">
+                {selectedObject === "property"
+                  ? locale === "zh" ? "读取结果只会作为候选显示；确认前不会改动物件档案。" : locale === "ko" ? "읽기 결과는 후보로만 표시되며 확인 전에는 매물 정보를 바꾸지 않습니다." : "読取結果は候補として表示し、確認するまで物件台帳を変更しません。"
+                  : locale === "zh" ? "读取结果只会作为候选显示；确认前不会改动客户档案。" : locale === "ko" ? "읽기 결과는 후보로만 표시되며 확인 전에는 고객 정보를 바꾸지 않습니다." : "読取結果は候補として表示し、確認するまで顧客情報を変更しません."}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Link
+                href={selectedObject === "property" ? "/properties/new?returnTo=%2Fimport-center%3Fobject%3Dproperty" : "/parties/new?returnTo=%2Fimport-center%3Fobject%3Dperson"}
+                className="inline-flex min-h-11 items-center rounded-lg bg-slate-950 px-4 py-2 text-xs font-black text-white hover:bg-slate-800"
+              >
+                {locale === "zh" ? "新建并录入资料" : locale === "ko" ? "새 기록에 자료 입력" : "新規記録に資料を入力"}
+              </Link>
+              <Link href="/import-center#source-upload" className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700">
+                {locale === "zh" ? "返回对象选择" : locale === "ko" ? "대상 선택으로 돌아가기" : "対象選択へ戻る"}
+              </Link>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <h3 className="text-sm font-bold text-slate-950">
+                {locale === "zh" ? "选择已有记录" : locale === "ko" ? "기존 기록 선택" : "既存記録を選ぶ"}
+              </h3>
+              <div className="mt-3 grid gap-2 md:grid-cols-2">
+                {selectedObject === "property"
+                  ? targetProperties.slice(0, 24).map(({ property }) => (
+                    <Link key={property.id} href={`/properties/${encodeURIComponent(property.id)}/edit`} className="rounded-lg border border-slate-200 bg-white p-3 hover:border-blue-300 hover:bg-blue-50/40">
+                      <p className="truncate text-sm font-bold text-slate-950">{property.name}</p>
+                      <p className="mt-1 truncate text-[11px] text-slate-500">{property.address || (locale === "zh" ? "地址未填写" : locale === "ko" ? "주소 미입력" : "所在地未入力")}</p>
+                    </Link>
+                  ))
+                  : targetClients.slice(0, 24).map(({ client }) => (
+                    <Link key={client.id} href={`/clients/${encodeURIComponent(client.id)}/edit`} className="rounded-lg border border-slate-200 bg-white p-3 hover:border-blue-300 hover:bg-emerald-50/40">
+                      <p className="truncate text-sm font-bold text-slate-950">{client.name}</p>
+                      <p className="mt-1 truncate text-[11px] text-slate-500">{client.phone || client.email || (locale === "zh" ? "联系方式未填写" : locale === "ko" ? "연락처 미입력" : "連絡先未入力")}</p>
+                    </Link>
+                  ))}
+                {(selectedObject === "property" ? targetProperties.length : targetClients.length) === 0 ? (
+                  <p className="rounded-lg border border-dashed border-slate-200 bg-white p-4 text-sm text-slate-500">
+                    {locale === "zh" ? "没有可选择的已有记录，请先新建。" : locale === "ko" ? "선택할 기존 기록이 없습니다. 먼저 새 기록을 만들어 주세요." : "選択できる既存記録がありません。先に新規作成してください。"}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {selectedObject === "property" && selectedProperty && !requestedJob ? (
+          <div className="border-t border-slate-100 p-5">
+            <PropertyObjectImportSection
+              locale={locale}
+              propertyId={selectedProperty.property.id}
+              archiveItems={selectedObjectAttachments}
+              views={selectedObjectViews}
+              uploadAction={canWriteObjectImport && objectImportReadiness.ready ? uploadObjectImportAction : undefined}
+              reviewAction={canWriteObjectImport && objectImportReadiness.ready ? reviewObjectImportAction : undefined}
+              retryAction={canWriteObjectImport && objectImportReadiness.ready ? retryObjectImportAction : undefined}
+              refreshAction={canWriteObjectImport && objectImportReadiness.ready ? refreshObjectImportReviewAction : undefined}
+              observedVersion={buildObjectVersionFingerprint(selectedProperty.property as unknown as Record<string, unknown>)}
+              returnTo={selectedObjectReturnTo}
+              unavailable={!objectImportReadiness.ready}
+            />
+          </div>
+        ) : null}
+        {selectedObject === "person" && selectedClient && !requestedJob ? (
+          <div className="border-t border-slate-100 p-5">
+            <ClientIdentityImportSection
+              locale={locale}
+              clientId={selectedClient.client.id}
+              archiveItems={selectedObjectAttachments}
+              views={selectedObjectViews}
+              uploadAction={canWriteObjectImport && objectImportReadiness.ready ? uploadObjectImportAction : undefined}
+              reviewAction={canWriteObjectImport && objectImportReadiness.ready ? reviewObjectImportAction : undefined}
+              retryAction={canWriteObjectImport && objectImportReadiness.ready ? retryObjectImportAction : undefined}
+              refreshAction={canWriteObjectImport && objectImportReadiness.ready ? refreshObjectImportReviewAction : undefined}
+              observedVersion={buildObjectVersionFingerprint(selectedClient.client as unknown as Record<string, unknown>)}
+              returnTo={selectedObjectReturnTo}
+            />
+          </div>
+        ) : null}
+        {selectedObjectViews
+          .filter(({ target }) => target.status === "queued" || target.status === "processing")
+          .map(({ target }) => (
+            <ExcelImportQueueProcessor
+              key={`import-center-object-process-${target.importJobId}`}
+              jobId={target.importJobId}
+              locale={locale}
+              statusOnly={target.status === "processing"}
+              objectRecoveryHref={`${selectedObjectReturnTo}&objectImportJob=${encodeURIComponent(target.importJobId)}#source-upload`}
+              successHref={`${selectedObjectReturnTo}&objectImportJob=${encodeURIComponent(target.importJobId)}&flash=object_import_processed#source-upload`}
+            />
+          ))}
 
         {requestedJob && mayDeletePreimportUpload(requestedJob, session.membership) ? (
           <PreimportUploadDelete jobId={requestedJob.id} locale={locale} />
@@ -1835,7 +2050,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
 	              >
 	                <p className="truncate text-sm font-bold text-slate-900">{job.title}</p>
 	                <p className="mt-1 text-xs text-slate-500">
-	                  {formatDate(job.createdAt, locale)} / {statusLabel[job.status]}
+	                  {formatDate(job.createdAt, locale)} / {recentJobStatusLabel(job)}
 	                </p>
 	                <p className={"mt-2 text-[11px] font-bold " + (selected ? "text-blue-700" : "text-slate-700")}>
 	                  {selected
@@ -1998,8 +2213,8 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
 	                        {sourceLabel[job.sourceType]} • {targetLabel[job.targetEntity]} • {formatDate(job.createdAt, locale)}
 	                      </p>
 	                    </div>
-	                    <span className={"rounded-full px-3 py-1 text-[10px] font-bold uppercase " + (job.status === "completed" ? "bg-emerald-100 text-emerald-700" : "bg-[#ffdbca] text-[#723610]")}>
-	                      {statusLabel[job.status]}
+	                    <span className={"rounded-full px-3 py-1 text-[10px] font-bold uppercase " + (recentJobIsCompleted(job) ? "bg-emerald-100 text-emerald-700" : "bg-[#ffdbca] text-[#723610]")}>
+	                      {recentJobStatusLabel(job)}
 	                    </span>
 	                    <Link href={recentJobHref(job)} className="text-slate-400 transition group-hover:text-slate-700">
 	                      <span className="material-symbols-outlined">more_vert</span>

@@ -104,6 +104,7 @@ async function main() {
   assert.equal(result.model, "gpt-5.4-mini");
   assert.deepEqual(result.parsed, { ok: true });
   assert.equal(capturedPayload?.model, "gpt-5.4-mini");
+  assert.equal(capturedPayload?.store, false);
   assert.deepEqual(capturedPayload?.reasoning, { effort: "low" });
   assert.equal((capturedPayload?.metadata as { brokerDeskTaskId?: string }).brokerDeskTaskId, "document_type_classification");
 
