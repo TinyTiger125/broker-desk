@@ -63,6 +63,9 @@ function withEnv(nextEnv, fn) {
     "DOCUMENT_READING_ENDPOINT",
     "DOCUMENT_READING_API_TOKEN",
     "DOCUMENT_READING_ALLOWED_HOSTS",
+    "OPENAI_API_KEY",
+    "OPENAI_BASE_URL",
+    "BROKER_DESK_AI_DISABLED",
     "BROKER_DESK_IMPORT_WORKER_ENABLED",
     "BROKER_DESK_IMPORT_WORKER_SCHEDULE",
     "BROKER_DESK_IMPORT_WORKER_TOKEN",
@@ -296,6 +299,63 @@ withEnv(
       readiness.assertProductionImportWorkerReady,
       "production_import_worker_required",
       "unknown deployment classifications must not default to a local import worker path",
+    );
+  },
+);
+
+withEnv(
+  {
+    NODE_ENV: "production",
+    DOCUMENT_READING_PROVIDER: "openai_responses",
+    OPENAI_API_KEY: "test-only-api-key",
+  },
+  () => {
+    readiness.assertProductionDocumentReaderReady();
+  },
+);
+
+withEnv(
+  {
+    NODE_ENV: "production",
+    DOCUMENT_READING_PROVIDER: "openai_responses",
+  },
+  () => {
+    assertThrowsCode(
+      readiness.assertProductionDocumentReaderReady,
+      "production_document_reader_required",
+      "production model reader must require its API key",
+    );
+  },
+);
+
+withEnv(
+  {
+    NODE_ENV: "production",
+    DOCUMENT_READING_PROVIDER: "openai_responses",
+    OPENAI_API_KEY: "test-only-api-key",
+    BROKER_DESK_AI_DISABLED: "true",
+  },
+  () => {
+    assertThrowsCode(
+      readiness.assertProductionDocumentReaderReady,
+      "production_document_reader_required",
+      "production model reader must respect the AI disable switch",
+    );
+  },
+);
+
+withEnv(
+  {
+    NODE_ENV: "production",
+    DOCUMENT_READING_PROVIDER: "openai_responses",
+    OPENAI_API_KEY: "test-only-api-key",
+    OPENAI_BASE_URL: "https://reader.example.test/v1",
+  },
+  () => {
+    assertThrowsCode(
+      readiness.assertProductionDocumentReaderReady,
+      "production_document_reader_endpoint_not_allowed",
+      "production model reader must reject an unapproved API endpoint",
     );
   },
 );

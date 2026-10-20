@@ -158,6 +158,7 @@ assert(extractorSource.includes("resolveIdentityReaderCandidate"), "AI candidate
 assert(extractorSource.includes("effectiveUncertainty"), "AI candidate evidence must retain the resolved uncertainty state");
 assert(extractorSource.includes("decision.effectiveUncertainty !== \"clear\""), "unclear/conflicting candidates must lower review confidence");
 assert(extractorSource.includes('configuredProvider === "openai_responses"'), "configured reader failures must not be swallowed as empty local OCR");
-assert(extractorSource.includes('if (isProductionRuntime()) throw new ProductionReadinessError("production_document_reader_required")'), "OpenAI adapter must remain production fail-closed");
+assert(extractorSource.includes('if (provider === "openai_responses") {\n    assertProductionDocumentReaderReady();'), "production OpenAI reader must pass readiness gate");
+assert(readinessSource.includes('config.baseUrl !== DEFAULT_AI_BASE_URL'), "production OpenAI reader must use the approved API endpoint");
 assert(readinessSource.includes('process.env.DOCUMENT_READING_PROVIDER !== "remote"'), "existing production remote reader gate must remain intact");
-console.log("PASS: OpenAI identity reader input modality, structured evidence, uncertainty provenance and production fail-closed contract");
+console.log("PASS: OpenAI identity reader input modality, structured evidence, uncertainty provenance and production readiness contract");

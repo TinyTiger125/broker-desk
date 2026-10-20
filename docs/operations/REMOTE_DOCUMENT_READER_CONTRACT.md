@@ -51,9 +51,12 @@ Structured Outputs 返回 `documentType`、分页原文行和带 `pageNumber`、
 保留页码、证据引文和不确定性；`clear`/`unclear`/`conflict` 是复核分层，不是模型
 自报概率。空值不填充，`not_found` 保持缺失。
 
-当前生产 readiness 仍拒绝该 provider；这是本地/非生产适配与评测路径，不代表已
-批准把身份证件发送至 OpenAI。正式开启前必须单独确认数据处理目的、区域与保留、
-账户费用、密钥作用域和部署环境；不能仅凭 `OPENAI_API_KEY` 存在就放行生产。
+生产环境仅在明确配置 `DOCUMENT_READING_PROVIDER=openai_responses`、存在可用的
+`OPENAI_API_KEY`、未禁用 AI 且 API 地址为 `https://api.openai.com/v1` 时允许该读取路径。
+启用前仍须确认数据处理目的、区域与保留、账户费用、密钥作用域和部署环境；不能仅凭
+`OPENAI_API_KEY` 存在就声称生产已获批准或服务已可用。
+Broker Desk 的单次 Responses 请求显式使用 `store: false`，不依赖模型端保存响应以供后续读取。
+这不等于 OpenAI 账户已获零数据保留资格；默认滥用监测日志仍可能保留最多 30 天。
 
 ## 安全与数据处理要求
 

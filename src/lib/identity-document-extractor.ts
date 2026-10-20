@@ -587,11 +587,17 @@ async function runOcr(buffer: Buffer, filename: string, requireModel = false): P
     // Standalone customer identity intake is explicitly model-first. It must
     // not silently invoke the local Swift OCR or regex legacy path when the
     // configured provider is unavailable.
+    if (isProductionRuntime()) {
+      if (process.env.DOCUMENT_READING_PROVIDER?.trim().toLowerCase() !== "openai_responses") {
+        throw new ProductionReadinessError("production_document_reader_required");
+      }
+      assertProductionDocumentReaderReady();
+    }
     return readIdentityDocumentWithOpenAi({ buffer, filename, scope: "customer" });
   }
   const provider = process.env.DOCUMENT_READING_PROVIDER?.trim().toLowerCase();
   if (provider === "openai_responses") {
-    if (isProductionRuntime()) throw new ProductionReadinessError("production_document_reader_required");
+    assertProductionDocumentReaderReady();
     return readIdentityDocumentWithOpenAi({ buffer, filename, scope: "case" });
   }
   // The local Swift helper is development-only. Production must use an

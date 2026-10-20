@@ -138,6 +138,7 @@ export async function createAiResponse<T = unknown>(
     body: JSON.stringify({
       model: route.model,
       input: args.input,
+      store: false,
       ...(args.maxOutputTokens === undefined ? {} : { max_output_tokens: args.maxOutputTokens }),
       reasoning: {
         effort: reasoningEffort,
