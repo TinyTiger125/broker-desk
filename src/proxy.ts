@@ -22,6 +22,7 @@ const isClerkWebhookRoute = createRouteMatcher(["/api/webhooks/clerk(.*)"]);
 const isQaRoute = createRouteMatcher(["/api/qa(.*)"]);
 const isImportWorkerRoute = createRouteMatcher(["/api/internal/import-jobs/drain(.*)"]);
 const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+const LOCAL_LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 const clerkProxy = clerkMiddleware(
   async (auth, req) => {
@@ -43,7 +44,25 @@ function hasSameOriginWriteRequest(req: Parameters<typeof clerkProxy>[0]) {
   // development-only gate. Browser initiated writes must be same-origin.
   if (isClerkWebhookRoute(req) || isQaRoute(req) || isImportWorkerRoute(req)) return true;
 
-  return req.headers.get("origin") === req.nextUrl.origin;
+  const requestOrigin = req.headers.get("origin");
+  if (requestOrigin === req.nextUrl.origin) return true;
+
+  // The local runtime binds IPv4 loopback, while browsers may preserve the
+  // `localhost` URL used to open the app (or vice versa). Treat those names
+  // as one origin only for the explicitly local demo runtime, with the same
+  // HTTP scheme and port. Production and hosted auth keep strict equality.
+  if (process.env.BROKER_DESK_LOCAL_RUNTIME !== "1" || !requestOrigin) return false;
+  try {
+    const supplied = new URL(requestOrigin);
+    const expected = new URL(req.nextUrl.origin);
+    return supplied.protocol === "http:"
+      && expected.protocol === "http:"
+      && supplied.port === expected.port
+      && LOCAL_LOOPBACK_HOSTS.has(supplied.hostname)
+      && LOCAL_LOOPBACK_HOSTS.has(expected.hostname);
+  } catch {
+    return false;
+  }
 }
 
 export default function proxy(req: Parameters<typeof clerkProxy>[0], event: Parameters<typeof clerkProxy>[1]) {

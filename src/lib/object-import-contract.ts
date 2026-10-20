@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { PropertyDocumentType } from "@/lib/object-reader-contract";
 
 export const OBJECT_IMPORT_TARGET_TYPES = ["party", "property"] as const;
 export type ObjectImportTargetType = (typeof OBJECT_IMPORT_TARGET_TYPES)[number];
@@ -23,14 +24,16 @@ export function resolveObjectImportFeatureReadiness(input: {
 export function isObjectImportStatusTransitionAllowed(from: ObjectImportStatus, to: ObjectImportStatus) {
   return from === to || (from === "queued" && to === "processing") || (from === "processing" && ["needs_review", "completed", "failed", "conflict"].includes(to)) || (from === "failed" && to === "queued");
 }
-export type ObjectImportFieldStatus = "draft" | "confirmed" | "rejected" | "low_confidence" | "conflict" | "failed";
+export type ObjectImportFieldStatus = "draft" | "confirmed" | "rejected" | "low_confidence" | "conflict" | "failed" | "not_found";
 
 export type ObjectImportMetadata = {
-  caseId: string;
+  /** Optional for standalone property and customer-profile intake. */
+  caseId?: string;
   targetObjectType: ObjectImportTargetType;
   targetObjectId: string;
   targetVersion: string;
   sourceAttachmentId?: string;
+  documentType?: PropertyDocumentType;
 };
 
 export type ObjectImportFieldCandidate = {
@@ -44,14 +47,18 @@ export type ObjectImportFieldCandidate = {
 };
 export const OBJECT_IMPORT_WRITABLE_FIELDS = {
   party: new Set(["name", "phone", "email"]),
-  property: new Set(["name", "area", "address", "listing_price"]),
+  property: new Set([
+    "name", "furigana", "area", "address", "roomNumber", "postalCode", "usage", "sizeSqm",
+    "listing_price", "listingRent", "listingCommonFee", "managementFee", "repairFee", "notes",
+  ]),
 } as const;
 export function normalizeObjectImportFieldKey(targetType: ObjectImportTargetType, fieldKey: string): string {
   const key = targetType === "property" && fieldKey === "property_name"
     ? "name"
     : fieldKey.includes(".") ? fieldKey.split(".").at(-1) ?? "" : fieldKey;
-  if (!OBJECT_IMPORT_WRITABLE_FIELDS[targetType].has(key as never)) throw new Error("object_import_field_not_writable");
-  return key;
+  const normalized = targetType === "property" && ["listingPrice", "listing_price"].includes(key) ? "listing_price" : key;
+  if (!OBJECT_IMPORT_WRITABLE_FIELDS[targetType].has(normalized as never)) throw new Error("object_import_field_not_writable");
+  return normalized;
 }
 export function toObjectRecordFieldKey(targetType: ObjectImportTargetType, fieldKey: string): string {
   const key = normalizeObjectImportFieldKey(targetType, fieldKey);
@@ -66,8 +73,14 @@ export function assertObjectImportMetadata(value: Partial<ObjectImportMetadata>)
   const targetVersion = value.targetVersion?.trim();
   if (!targetObjectId || !targetVersion) throw new Error("object_import_target_required");
   const caseId = value.caseId?.trim();
-  if (!caseId) throw new Error("object_import_case_required");
-  return { caseId, targetObjectType: value.targetObjectType, targetObjectId, targetVersion, sourceAttachmentId: value.sourceAttachmentId?.trim() || undefined };
+  const allowedDocumentTypes = new Set<PropertyDocumentType>([
+    "registry", "important_matters", "sale_contract", "seller_disclosure",
+    "property_lease_document", "unknown_property_document",
+  ]);
+  const documentType = typeof value.documentType === "string" && allowedDocumentTypes.has(value.documentType as PropertyDocumentType)
+    ? value.documentType as PropertyDocumentType
+    : undefined;
+  return { ...(caseId ? { caseId } : {}), targetObjectType: value.targetObjectType, targetObjectId, targetVersion, sourceAttachmentId: value.sourceAttachmentId?.trim() || undefined, ...(documentType ? { documentType } : {}) };
 }
 
 export function buildObjectImportIdempotencyKey(input: {
@@ -76,7 +89,8 @@ export function buildObjectImportIdempotencyKey(input: {
   sourceHash: string;
 }): string {
   const target = assertObjectImportMetadata(input.target);
-  return `object:${input.tenantId}:${target.caseId}:${target.targetObjectType}:${target.targetObjectId}:${input.sourceHash}:${target.targetVersion}`;
+  const scope = target.caseId ?? (target.targetObjectType === "party" ? "customer-profile" : "property-profile");
+  return `object:${input.tenantId}:${scope}:${target.targetObjectType}:${target.targetObjectId}:${input.sourceHash}:${target.targetVersion}`;
 }
 
 export function buildObjectImportSourceHash(content: Uint8Array): string {

@@ -1,7 +1,9 @@
 import {
   getAttachmentByIdForTenant,
+  getObjectImportFeatureReadiness,
   linkAttachmentToObject,
   listAttachmentLinks,
+  listObjectImportTargets,
   listAttachments,
   type Attachment,
   type AttachmentLink,
@@ -79,4 +81,64 @@ export async function listLinkedObjectAttachments(input: {
     getAttachmentByIdForTenant({ tenantId: input.tenantId, id: link.attachmentId }),
   ));
   return links.flatMap((link, index) => attachments[index] ? [{ link, attachment: attachments[index]! }] : []);
+}
+
+/**
+ * Read the durable source files for object-import targets without mutating
+ * attachment_links. This keeps legacy imports visible in the archive even if
+ * their review was completed before source linking was added.
+ */
+export async function listObjectArchiveAttachments(input: {
+  tenantId: string;
+  userId: string;
+  targetType: "party" | "property";
+  targetId: string;
+}): Promise<ObjectAttachmentItem[]> {
+  const [linkedItems, readiness] = await Promise.all([
+    listLinkedObjectAttachments(input),
+    getObjectImportFeatureReadiness(),
+  ]);
+  if (!readiness.ready) return linkedItems;
+  const targets = (await listObjectImportTargets({
+    tenantId: input.tenantId,
+    userId: input.userId,
+    targetType: input.targetType,
+    targetId: input.targetId,
+  })).filter((target) =>
+    !target.caseId && target.targetType === input.targetType && target.targetId === input.targetId,
+  );
+  const linkedAttachmentIds = new Set(linkedItems.map((item) => item.attachment.id));
+  const sourceGroups = await Promise.all(targets.map(async (target) => ({
+    target,
+    attachments: await listAttachments({
+      tenantId: input.tenantId,
+      userId: input.userId,
+      targetType: "import_job",
+      targetId: target.importJobId,
+      limit: 100,
+    }),
+  })));
+  const derivedItems: ObjectAttachmentItem[] = [];
+  const seenSourceAttachmentIds = new Set<string>();
+  for (const { target, attachments } of sourceGroups) {
+    for (const attachment of attachments) {
+      if (linkedAttachmentIds.has(attachment.id) || seenSourceAttachmentIds.has(attachment.id)) continue;
+      seenSourceAttachmentIds.add(attachment.id);
+      derivedItems.push({
+        attachment,
+        link: {
+          id: `import-source:${target.id}:${attachment.id}`,
+          tenantId: input.tenantId,
+          attachmentId: attachment.id,
+          targetType: input.targetType,
+          targetId: input.targetId,
+          category: inferObjectAttachmentCategory({ fileName: attachment.fileName, documentType: target.documentType }),
+          sourceImportJobId: target.importJobId,
+          createdByUserId: target.userId,
+          createdAt: target.createdAt,
+        },
+      });
+    }
+  }
+  return [...linkedItems, ...derivedItems].sort((left, right) => right.attachment.uploadedAt.getTime() - left.attachment.uploadedAt.getTime());
 }

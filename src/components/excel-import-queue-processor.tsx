@@ -141,6 +141,10 @@ export function ExcelImportQueueProcessor({ jobId, locale, targetCaseId, statusO
           throw new Error("excel_import_process_failed");
         }
         if (payload.status === "queued" || payload.status === "processing") {
+          // A refresh may show a still-processing lease left by a crashed
+          // request. Re-enter through POST so the server CAS can either
+          // recover an expired lease or safely return the active state.
+          if (readOnlyStatus) setReadOnlyStatus(false);
           setStatus(payload.status);
           return;
         }

@@ -10,6 +10,7 @@ import type { Locale } from "@/lib/locale";
 import type { ObjectImportCandidateRecord, ObjectImportKind, ObjectImportTargetRecord } from "@/lib/object-import-repository";
 import { ObjectImportFailureNotice, ObjectImportStatusBadge } from "@/components/object-import-status-badge";
 import { ObjectImportUpload } from "@/components/object-import-upload";
+import { OBJECT_READER_FIELD_LABELS } from "@/lib/object-reader-mapping";
 import { ObjectAttachmentList } from "@/components/object-attachment-list";
 import type { ObjectAttachmentItem } from "@/lib/object-attachments";
 import { resolveCasePropertyAddressPresentation } from "@/lib/case-property-address-presentation";
@@ -38,6 +39,7 @@ type CaseAssociationManagerProps = {
   propertyProfiles?: Record<string, PropertyFormValues>;
   objectImportViews?: ObjectImportView[];
   objectImportUploadAction?: (formData: FormData) => Promise<void>;
+  objectImportReviewAction?: (formData: FormData) => Promise<void>;
   objectImportUnavailable?: boolean;
   caseAttachments?: ObjectAttachmentItem[];
   caseAddress?: string;
@@ -192,6 +194,7 @@ export function CaseAssociationManager({
     propertyProfiles = {},
   objectImportViews = [],
   objectImportUploadAction,
+  objectImportReviewAction,
   objectImportUnavailable = false,
   caseAttachments = [],
   caseAddress,
@@ -390,7 +393,30 @@ export function CaseAssociationManager({
         {objectImportUploadAction && !readOnly ? <div className="border-b border-slate-200 pb-3"><ObjectImportUpload action={objectImportUploadAction} caseId={caseId} targetType={targetType} targetId={targetId} locale={locale} /></div> : null}
         {view ? <div className="mt-3 flex min-h-7 flex-wrap items-center gap-2 text-[11px] font-bold leading-5 text-slate-600"><ObjectImportStatusBadge locale={locale} status={view.target.status} /><span>{fields.length} {locale === "zh" ? "个候选字段" : locale === "ja" ? "候補項目" : "후보 항목"}</span>{view.target.sourceAttachmentId ? <a href={`/api/attachments/${encodeURIComponent(view.target.sourceAttachmentId)}`} target="_blank" rel="noreferrer" className="text-[#0046ad] underline">{locale === "zh" ? "查看来源" : locale === "ja" ? "出典を見る" : "출처 보기"}</a> : null}</div> : null}
         <ObjectImportFailureNotice locale={locale} errorCode={view?.target.errorCode} />
-        {fields.map((field) => <div key={field.id} className={`mt-2 flex flex-wrap items-center gap-1.5 text-xs leading-5 ${field.status === "conflict" ? "text-rose-700" : field.status === "low_confidence" ? "text-amber-700" : "text-slate-700"}`}><span className="font-bold">{field.fieldKey}</span>{field.candidateValue ? <span className="break-words [overflow-wrap:anywhere]">{field.candidateValue}</span> : null}{field.status === "conflict" ? <span className="font-bold">{locale === "zh" ? "资料不同" : "資料が一致しません"}</span> : field.status === "low_confidence" ? <span className="font-bold">{locale === "zh" ? "需要核对" : "確認してください"}</span> : null}</div>)}
+        {fields.map((field) => {
+          const sourceText = typeof field.provenance.sourceText === "string" ? field.provenance.sourceText : "";
+          const pageNumber = typeof field.provenance.pageNumber === "number" ? field.provenance.pageNumber : undefined;
+          const alternatives = Array.isArray(field.provenance.alternatives) ? field.provenance.alternatives as Array<{ value?: unknown; pageNumber?: unknown; sourceText?: unknown }> : [];
+          const reviewTarget = view?.target;
+          const canReview = Boolean(objectImportReviewAction && reviewTarget?.status === "needs_review" && field.candidateValue && !["confirmed", "rejected", "failed", "not_found"].includes(field.status));
+          return (
+            <div key={field.id} className={`mt-2 rounded-md border px-2.5 py-2 text-xs leading-5 ${field.status === "conflict" ? "border-rose-200 bg-rose-50 text-rose-900" : field.status === "low_confidence" ? "border-amber-200 bg-amber-50 text-amber-900" : "border-slate-200 bg-white text-slate-700"}`}>
+              <div className="flex flex-wrap items-center gap-1.5"><span className="font-bold">{OBJECT_READER_FIELD_LABELS[field.fieldKey] ?? field.fieldKey}</span>{field.candidateValue ? <span className="break-words [overflow-wrap:anywhere]">{field.candidateValue}</span> : null}{field.status === "conflict" ? <span className="font-bold">{locale === "zh" ? "资料不同" : locale === "ko" ? "자료가 서로 다릅니다" : "資料が一致しません"}</span> : field.status === "low_confidence" ? <span className="font-bold">{locale === "zh" ? "需要核对" : locale === "ko" ? "확인 필요" : "確認してください"}</span> : field.status === "not_found" ? <span className="font-bold text-slate-500">{locale === "zh" ? "资料未记载" : locale === "ko" ? "자료에 기재 없음" : "資料に記載なし"}</span> : null}</div>
+              {pageNumber || sourceText ? <p className="mt-1 text-[11px] text-slate-600">{pageNumber ? `p.${pageNumber}` : ""}{pageNumber && sourceText ? " · " : ""}{sourceText}</p> : null}
+              {alternatives.length > 1 ? <div className="mt-1 space-y-0.5 text-[11px] text-rose-800">{alternatives.map((alternative, index) => <p key={`${field.id}-alternative-${index}`}>候補{index + 1}: {typeof alternative.value === "string" ? alternative.value : "未読"}{typeof alternative.pageNumber === "number" ? ` (p.${alternative.pageNumber})` : ""}{typeof alternative.sourceText === "string" && alternative.sourceText ? ` · ${alternative.sourceText}` : ""}</p>)}</div> : null}
+              {canReview && reviewTarget ? <form action={objectImportReviewAction} className="mt-2 flex flex-wrap items-center gap-2">
+                <input type="hidden" name="importTargetId" value={reviewTarget.id} />
+                <input type="hidden" name="fieldId" value={field.id} />
+                <input type="hidden" name="expectedVersion" value={reviewTarget.targetVersion} />
+                <input type="hidden" name="expectedCandidateValue" value={field.candidateValue ?? ""} />
+                {field.fieldKey.startsWith("lease.") ? <input type="hidden" name="caseFieldKey" value={field.fieldKey} /> : null}
+                <input name="value" defaultValue={field.candidateValue ?? ""} aria-label={OBJECT_READER_FIELD_LABELS[field.fieldKey] ?? field.fieldKey} className="min-h-9 min-w-40 flex-1 rounded border border-slate-300 bg-white px-2 py-1 text-xs" />
+                <button type="submit" name="decision" value="confirm" className="min-h-9 rounded border border-blue-300 bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-900">{locale === "zh" ? "确认并保存" : locale === "ko" ? "확인 후 저장" : "確認して保存"}</button>
+                <button type="submit" name="decision" value="reject" className="min-h-9 rounded border border-slate-300 bg-white px-2.5 py-1 text-xs font-bold text-slate-700">{locale === "zh" ? "拒绝" : locale === "ko" ? "거부" : "候補を棄却"}</button>
+              </form> : null}
+            </div>
+          );
+        })}
       </div>
     );
   };
@@ -407,15 +433,6 @@ export function CaseAssociationManager({
         <div className="flex min-w-0 flex-col gap-3"><div className="flex min-h-11 items-center justify-between gap-2"><h3 className="text-sm font-black text-slate-900">{text.people} ({parties.length})</h3>{!readOnly ? <button type="button" data-case-association-focus-target onClick={(event) => { focusReturnRef.current = event.currentTarget; openPersonDrawer(); }} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0046ad]">{text.addPerson}</button> : null}</div>{parties.length === 0 ? <p className="min-h-20 rounded-lg bg-slate-50 px-3 py-3 text-sm text-slate-500">{text.peopleEmpty}</p> : <div className="space-y-2">{parties.map((party) => <div key={party.partyId} className="flex min-h-20 items-start justify-between gap-3 rounded-lg border border-slate-200 px-4 py-3"><div className="min-w-0 flex-1"><p className="truncate text-sm font-bold text-slate-900" title={party.name} aria-label={party.name}>{party.name}</p>{renderObjectImport("party", party.partyId)}<div className="mt-1 flex flex-wrap gap-1.5">{party.roles.map((role) => <span key={role} className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-700">{getCasePersonRoleLabel(locale, role)}</span>)}</div></div>{!readOnly ? <div className="flex shrink-0 flex-wrap justify-end gap-2 self-start"><button type="button" data-case-association-focus-target onClick={(event) => { focusReturnRef.current = event.currentTarget; editPerson(party); }} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700">{text.editRoles}</button>{updatePersonAction && editablePersonProfiles[party.partyId] ? <button type="button" data-case-association-focus-target onClick={(event) => { focusReturnRef.current = event.currentTarget; editPersonProfile(party.partyId); }} className="inline-flex min-h-11 items-center rounded-lg border border-blue-200 px-3 py-2 text-xs font-bold text-[#0046ad]">{text.editProfile}</button> : null}</div> : null}</div>)}</div>}</div>
         <div className="flex min-w-0 flex-col gap-3"><div className="flex min-h-11 items-center justify-between gap-2"><h3 className="text-sm font-black text-slate-900">{text.property} ({primaryPropertyId ? 1 : 0})</h3>{!readOnly ? <button type="button" data-case-association-focus-target onClick={(event) => { focusReturnRef.current = event.currentTarget; setDrawer("property"); setDrawerView("select"); setSelectionError(undefined); }} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-3 py-2 text-xs font-black text-slate-700">{primaryPropertyId ? text.changeProperty : text.setProperty}</button> : null}</div>{currentProperty ? <div className="flex min-h-20 items-start justify-between gap-3 rounded-lg border border-slate-200 px-4 py-3"><div className="min-w-0 flex-1"><p className="truncate text-sm font-bold text-slate-900" title={currentProperty.name} aria-label={currentProperty.name}>{currentProperty.name}</p>{renderObjectImport("property", currentProperty.id)}{currentProperty.address ? <div className="mt-2"><p className="text-[11px] font-bold text-slate-500">{addressPresentation.propertyAddressLabel}</p><p className="mt-0.5 break-words text-xs text-slate-600 [overflow-wrap:anywhere]">{currentProperty.address}</p></div> : null}{addressPresentation.differenceNotice ? <p role="note" data-case-property-address-difference className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs font-semibold leading-5 text-amber-900">{addressPresentation.differenceNotice}</p> : null}</div>{!readOnly ? <div className="flex shrink-0 flex-wrap justify-end gap-2 self-start">{updatePropertyAction && currentProperty && editablePropertyProfiles[currentProperty.id] ? <button type="button" data-case-association-focus-target onClick={(event) => { focusReturnRef.current = event.currentTarget; editPropertyProfile(currentProperty.id); }} className="inline-flex min-h-11 items-center rounded-lg border border-blue-200 px-3 py-2 text-xs font-bold text-[#0046ad]">{text.editPropertyProfile}</button> : null}<button type="button" onClick={removeProperty} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700">{text.removeProperty}</button></div> : null}</div> : <p className="min-h-20 rounded-lg bg-slate-50 px-3 py-3 text-sm text-slate-500">{text.propertyEmpty}</p>}</div>
       </div>
-      {caseAttachments.length > 0 ? (
-        <section className="mt-5 overflow-hidden rounded-lg border border-slate-200 bg-slate-50/60" aria-labelledby="case-other-attachments-heading">
-          <div className="border-b border-slate-200 px-4 py-3">
-            <h3 id="case-other-attachments-heading" className="text-sm font-black text-slate-900">{text.otherAttachments}</h3>
-            <p className="mt-1 text-xs font-semibold text-slate-500">{text.otherAttachmentsDescription}</p>
-          </div>
-          <ObjectAttachmentList locale={locale} items={caseAttachments} />
-        </section>
-      ) : null}
       {!compact ? <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">{text.outputBlocker}</p> : null}
       {quickCreateFeedback ? <p role="status" className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-900">{quickCreateFeedback}</p> : null}
       {!readOnly && saveAction ? <form ref={associationFormRef} action={saveAction} className="mt-4 flex justify-end border-t border-slate-200 pt-4"><input type="hidden" name="caseId" value={caseId} /><input type="hidden" name="associationDraftJson" value={draftJson} /><button type="submit" className="rounded-lg bg-slate-950 px-4 py-2.5 text-sm font-black text-white hover:bg-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0046ad]">{text.save}</button></form> : null}
@@ -441,6 +458,15 @@ export function CaseAssociationManager({
       ) : (
         <div data-case-association-content>{associationContent}</div>
       )}
+      {caseAttachments.length > 0 ? (
+        <section className="mt-5 overflow-hidden rounded-lg border border-slate-200 bg-slate-50/60" aria-labelledby="case-other-attachments-heading">
+          <div className="border-b border-slate-200 px-4 py-3">
+            <h3 id="case-other-attachments-heading" className="text-sm font-black text-slate-900">{text.otherAttachments}</h3>
+            <p className="mt-1 text-xs font-semibold text-slate-500">{text.otherAttachmentsDescription}</p>
+          </div>
+          <ObjectAttachmentList locale={locale} items={caseAttachments} />
+        </section>
+      ) : null}
       {compact && associationNeedsAttention ? <p role="alert" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">{text.outputBlocker}</p> : null}
     </section>
   );

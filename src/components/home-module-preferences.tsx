@@ -131,7 +131,7 @@ export function HomeModulePreferences({ layoutId, storageKey, labels, ui, childr
   return (
     <>
       <details className="group relative z-10 mt-4 rounded-lg border border-slate-200 bg-white text-left shadow-sm">
-        <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-black text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#002FA7] [&::-webkit-details-marker]:hidden">
+        <summary data-home-preferences-toggle="true" className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-black text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#002FA7] [&::-webkit-details-marker]:hidden">
           <UiIcon name="chevron_right" className="text-[18px] text-[#002FA7] transition-transform group-open:rotate-90 motion-reduce:transition-none" />
           <span className="inline-flex min-h-6 items-center gap-2">
             <UiIcon name="tune" className="text-[18px] text-[#002FA7]" />

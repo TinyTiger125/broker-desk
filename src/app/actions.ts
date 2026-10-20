@@ -445,6 +445,7 @@ export type PropertyFormActionState = {
   fieldErrors: Partial<Record<keyof PropertyFormValues, string>>;
   values: PropertyFormValues;
   createdRecord?: { id: string; name: string };
+  auditWarning?: boolean;
   updatedRecord?: { id: string; name: string; values: PropertyFormValues };
 };
 
@@ -499,6 +500,7 @@ export type ClientFormActionState = {
   fieldErrors: Partial<Record<keyof ClientFormValues, string>>;
   values: ClientFormValues;
   createdRecord?: { id: string; name: string };
+  auditWarning?: boolean;
   updatedRecord?: { id: string; name: string; values: ClientFormValues };
 };
 
@@ -650,9 +652,31 @@ function safePropertyReturnTo(value: FormDataEntryValue | null): string {
     return `${parsed.pathname}${parsed.search}`;
   }
   if (parsed.pathname === "/import-center") {
-    const allowedImportKeys = ["flow", "targetCaseId", "job", "xlsxJob", "intake", "advanced", "flash", "panel"];
+    const allowedImportKeys = ["flow", "targetCaseId", "job", "xlsxJob", "intake", "advanced", "flash", "panel", "object", "targetId"];
+    if (parsed.searchParams.get("object") && !["property", "person"].includes(parsed.searchParams.get("object") ?? "")) return fallback;
+    if (parsed.searchParams.get("targetId") && !/^[A-Za-z0-9_-]{1,160}$/.test(parsed.searchParams.get("targetId") ?? "")) return fallback;
     if (keys.some((key) => !allowedImportKeys.includes(key))) return fallback;
     return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  }
+  return fallback;
+}
+
+function safeObjectImportRefreshReturnTo(value: FormDataEntryValue | null, targetType: "party" | "property", targetId: string): string {
+  const fallback = targetType === "party" ? `/clients/${encodeURIComponent(targetId)}/edit` : `/properties/${encodeURIComponent(targetId)}/edit`;
+  const requested = String(value ?? "").trim();
+  if (!requested) return fallback;
+  try {
+    const parsed = new URL(requested, "http://broker-desk.local");
+    const expectedObject = targetType === "party" ? "person" : "property";
+    const allowedKeys = new Set(["object", "targetId", "targetPropertyId", "targetClientId", "objectImportJob", "flash"]);
+    if (parsed.origin === "http://broker-desk.local" && parsed.pathname === "/import-center"
+      && parsed.searchParams.get("object") === expectedObject
+      && parsed.searchParams.get("targetId") === targetId
+      && [...parsed.searchParams.keys()].every((key) => allowedKeys.has(key))) {
+      return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+    }
+  } catch {
+    // Fall through to the owned object detail page.
   }
   return fallback;
 }
@@ -961,6 +985,20 @@ function clientValidationState(values: ClientFormValues, fieldErrors: ClientForm
 
 const IMPORT_CENTER_RETURN_PATH = "/import-center";
 
+function buildImportCenterObjectCreateRedirect(returnTo: string, object: "person" | "property", targetId: string, flash: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(returnTo, "http://broker-desk.local");
+  } catch {
+    return null;
+  }
+  if (parsed.origin !== "http://broker-desk.local" || parsed.pathname !== IMPORT_CENTER_RETURN_PATH || parsed.searchParams.get("object") !== object) return null;
+  parsed.searchParams.set("targetId", targetId);
+  parsed.searchParams.set("flash", flash);
+  parsed.hash = "#source-upload";
+  return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+}
+
 function safeClientReturnTo(value: FormDataEntryValue | null, fallback: string, currentClientId?: string, allowImportCenter = false): string {
   const path = String(value ?? "").trim();
   if (!path || !path.startsWith("/") || path.startsWith("//") || path.includes("\\")) return fallback;
@@ -992,7 +1030,12 @@ function safeClientReturnTo(value: FormDataEntryValue | null, fallback: string, 
     if (!["client", "party"].includes(parsed.searchParams.get("type") ?? "") || keys.some((key) => !["type", "q", "lifecycle", "page"].includes(key))) return fallback;
     return `${parsed.pathname}${parsed.search}`;
   }
-  if (allowImportCenter && parsed.pathname === IMPORT_CENTER_RETURN_PATH && keys.length === 0 && !parsed.hash) return parsed.pathname;
+  if (allowImportCenter && parsed.pathname === IMPORT_CENTER_RETURN_PATH) {
+    if (keys.some((key) => !["object", "targetId"].includes(key)) || (parsed.searchParams.get("object") && parsed.searchParams.get("object") !== "person")) return fallback;
+    if (parsed.searchParams.get("targetId") && !/^[A-Za-z0-9_-]{1,160}$/.test(parsed.searchParams.get("targetId") ?? "")) return fallback;
+    if (parsed.hash && parsed.hash !== "#target-selection") return fallback;
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  }
   if (currentClientId && parsed.pathname === `/clients/${encodeURIComponent(currentClientId)}` && keys.length === 0) return parsed.pathname;
   if (currentClientId && parsed.pathname === `/parties/${encodeURIComponent(currentClientId)}/edit` && keys.length === 0) return parsed.pathname;
   return fallback;
@@ -1004,6 +1047,7 @@ function getClientCreateCompletion(input: {
   clientName: string;
   values: ClientFormValues;
   caseDraftReturn: boolean;
+  auditWarning?: boolean;
 }) {
   if (input.caseDraftReturn) {
     return {
@@ -1013,14 +1057,26 @@ function getClientCreateCompletion(input: {
         fieldErrors: {},
         values: input.values,
         createdRecord: { id: input.clientId, name: input.clientName },
+        ...(input.auditWarning ? { auditWarning: true } : {}),
       },
     };
   }
+  let objectImportHref: string | null = null;
+  try {
+    const parsed = new URL(input.returnTo, "http://broker-desk.local");
+    if (parsed.origin === "http://broker-desk.local" && parsed.pathname === IMPORT_CENTER_RETURN_PATH && parsed.searchParams.get("object") === "person") {
+      parsed.searchParams.set("targetId", input.clientId);
+      parsed.searchParams.set("flash", "client_created");
+      parsed.hash = "#source-upload";
+      objectImportHref = `${parsed.pathname}${parsed.search}${parsed.hash}`;
+    }
+  } catch {
+    objectImportHref = null;
+  }
   return {
     kind: "redirect" as const,
-    href: input.returnTo === IMPORT_CENTER_RETURN_PATH
-      ? `${IMPORT_CENTER_RETURN_PATH}?flash=client_created`
-      : `/clients/${encodeURIComponent(input.clientId)}?flash=client_created`,
+    href: objectImportHref
+      ?? (input.returnTo === IMPORT_CENTER_RETURN_PATH ? `${IMPORT_CENTER_RETURN_PATH}?flash=client_created` : `/clients/${encodeURIComponent(input.clientId)}?flash=client_created`),
   };
 }
 
@@ -1099,6 +1155,7 @@ async function persistClientForm(
     revalidatePath("/");
     revalidatePath("/board");
   }
+  let creationAuditWarning = false;
   await addAuditLog({
     tenantId,
     userId: user.id,
@@ -1106,6 +1163,9 @@ async function persistClientForm(
     targetType: "client",
     targetId: client.id,
     message: mode === "create" ? `顧客を新規登録しました: ${client.name}` : "顧客情報を更新しました。",
+  }).catch((error: unknown) => {
+    if (mode !== "create") throw error;
+    creationAuditWarning = true;
   });
 
   if (inline && mode === "edit") {
@@ -1123,8 +1183,10 @@ async function persistClientForm(
     clientName: client.name,
     values: parsed.values,
     caseDraftReturn: formData.get("caseDraftReturn") === "1",
+    auditWarning: creationAuditWarning,
   }) : undefined;
   if (createCompletion?.kind === "state") return createCompletion.state satisfies ClientFormActionState;
+  if (mode === "create" && creationAuditWarning) redirect(`/clients/${encodeURIComponent(client.id)}/edit?createAuditWarning=1`);
 
   if (compatibilityDefaults) {
     const afterSave = String(formData.get("afterSave") ?? "detail");
@@ -2280,6 +2342,7 @@ export async function createPropertyQuickAction(
     ...parsed.normalized,
   });
 
+  let creationAuditWarning = false;
   await addAuditLog({
     tenantId,
     userId: user.id,
@@ -2291,7 +2354,7 @@ export async function createPropertyQuickAction(
       zh: `已新增物件：${property.name}`,
       ko: `매물을 등록했습니다: ${property.name}`,
     }),
-  });
+  }).catch(() => { creationAuditWarning = true; });
 
   revalidatePath("/properties");
   revalidatePath("/");
@@ -2302,10 +2365,14 @@ export async function createPropertyQuickAction(
       fieldErrors: {},
       values: parsed.values,
       createdRecord: { id: property.id, name: property.name },
+      auditWarning: creationAuditWarning,
     } satisfies PropertyFormActionState;
   }
 
   const destination = `/properties/${encodeURIComponent(property.id)}/edit?returnTo=${encodeURIComponent(returnTo)}`;
+  if (creationAuditWarning) redirect(`${destination}&createAuditWarning=1`);
+  const importCenterDestination = buildImportCenterObjectCreateRedirect(returnTo, "property", property.id, "property_created");
+  if (importCenterDestination) redirect(importCenterDestination);
   redirect(withFlash(destination, "property_created"));
 }
 
@@ -4200,7 +4267,6 @@ export async function refreshObjectImportReviewAction(formData: FormData) {
   }
   const target = await getObjectImportTarget({ tenantId: session.tenant.id, userId: session.user.id, id: targetId });
   const caseId = result.ok ? result.caseId : target?.caseId;
-  if (!caseId) throw new Error(`object_import_review_refresh_${"reason" in result ? result.reason : "conflict"}`);
   const params = new URLSearchParams();
   const importJobId = String(formData.get("importJobId") ?? target?.importJobId ?? "").trim();
   const field = String(formData.get("field") ?? "").trim();
@@ -4214,8 +4280,17 @@ export async function refreshObjectImportReviewAction(formData: FormData) {
   if (importJobId) params.set("objectImportJob", importJobId);
   if (field) params.set("field", field);
   params.set("flash", result.ok ? "object_import_review_rebased" : result.reason === "already_reviewed" ? "object_import_review_already_reviewed" : "object_import_review_conflict");
-  revalidatePath(`/cases/${caseId}`);
-  redirect(`/cases/${encodeURIComponent(caseId)}?${params.toString()}${returnAnchor ? `#${returnAnchor}` : ""}`);
+  if (caseId) {
+    revalidatePath(`/cases/${caseId}`);
+    redirect(`/cases/${encodeURIComponent(caseId)}?${params.toString()}${returnAnchor ? `#${returnAnchor}` : ""}`);
+  }
+  if (!target || (target.targetType !== "property" && target.targetType !== "party")) throw new Error(`object_import_review_refresh_${"reason" in result ? result.reason : "conflict"}`);
+  const path = safeObjectImportRefreshReturnTo(formData.get("returnTo"), target.targetType, target.targetId);
+  revalidatePath(path);
+  const redirectUrl = new URL(path, "http://broker-desk.local");
+  for (const [key, value] of params) redirectUrl.searchParams.set(key, value);
+  if (returnAnchor) redirectUrl.hash = `#${returnAnchor}`;
+  redirect(`${redirectUrl.pathname}${redirectUrl.search}${redirectUrl.hash}`);
 }
 
 export async function saveCaseWorkbenchAction(formData: FormData) {
@@ -5168,10 +5243,12 @@ export async function uploadAndParseExcelAction(formData: FormData) {
     ? `&object=${encodeURIComponent(requestedObject)}`
     : "";
   const redirectExcelUploadError = (flash: string): never => {
+    const fragment = flash === "import_service_unavailable" ? "" : "#case-review-desk";
     if (targetCaseId && uploadContext === "case") {
-      redirect(`/cases/${encodeURIComponent(targetCaseId)}?flash=${encodeURIComponent(flash)}#case-review-desk`);
+      redirect(`/cases/${encodeURIComponent(targetCaseId)}?flash=${encodeURIComponent(flash)}${fragment}`);
     }
-    redirect(`/import-center?flash=${encodeURIComponent(flash)}${targetCaseQuery}${objectQuery}#source-upload`);
+    const importFragment = flash === "import_service_unavailable" ? "" : "#source-upload";
+    redirect(`/import-center?flash=${encodeURIComponent(flash)}${targetCaseQuery}${objectQuery}${importFragment}`);
   };
   try {
     assertProductionImportWorkerReady();
@@ -5214,10 +5291,12 @@ export async function uploadAndParseIdentityDocumentAction(formData: FormData) {
     ? `&object=${encodeURIComponent(requestedObject)}`
     : "";
   const redirectIdentityUploadError = (flash: string): never => {
+    const fragment = flash === "import_service_unavailable" ? "" : "#case-review-desk";
     if (targetCaseId && uploadContext === "case") {
-      redirect(`/cases/${encodeURIComponent(targetCaseId)}?flash=${encodeURIComponent(flash)}#case-review-desk`);
+      redirect(`/cases/${encodeURIComponent(targetCaseId)}?flash=${encodeURIComponent(flash)}${fragment}`);
     }
-    redirect(`/import-center?flash=${encodeURIComponent(flash)}${targetCaseQuery}${objectQuery}#source-upload`);
+    const importFragment = flash === "import_service_unavailable" ? "" : "#source-upload";
+    redirect(`/import-center?flash=${encodeURIComponent(flash)}${targetCaseQuery}${objectQuery}${importFragment}`);
   };
   try {
     assertProductionImportWorkerReady();

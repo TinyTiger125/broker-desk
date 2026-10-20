@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { createPropertyQuickAction, type PropertyFormValues } from "@/app/actions";
+import { type PropertyFormValues } from "@/app/actions";
+import { createPropertyEntryAction } from "@/app/entry-actions";
 import { PropertyResponsiveForm } from "@/components/property-responsive-form";
 import { getLocale } from "@/lib/locale";
 import { requireTenantSession } from "@/lib/tenant-session";
@@ -13,17 +14,17 @@ type NewPropertyPageProps = {
 const copy = {
   ja: {
     title: "物件を追加",
-    desc: "物件の基本情報と価格・費用を登録します。",
+    desc: "資料の読み取りと手入力を組み合わせ、候補を確認してから保存します。",
     back: "物件一覧へ戻る",
   },
   zh: {
     title: "新增物件",
-    desc: "登记物件的基本信息、价格和费用。",
+    desc: "资料读取和手动填写可以并用，确认候选后再保存。",
     back: "返回物件列表",
   },
   ko: {
     title: "매물 추가",
-    desc: "매물의 기본 정보와 가격·비용을 등록합니다.",
+    desc: "자료 읽기와 직접 입력을 함께 사용하고, 후보를 확인한 뒤 저장합니다.",
     back: "매물 목록으로",
   },
 } as const;
@@ -57,7 +58,9 @@ function normalizeReturnTo(value: string | undefined): string {
     return `${parsed.pathname}${parsed.search}`;
   }
   if (parsed.pathname === "/import-center") {
-    const allowed = ["flow", "targetCaseId", "job", "xlsxJob", "intake", "advanced", "flash", "panel"];
+    const allowed = ["flow", "targetCaseId", "job", "xlsxJob", "intake", "advanced", "flash", "panel", "object", "targetId"];
+    if (parsed.searchParams.get("object") && parsed.searchParams.get("object") !== "property") return fallback;
+    if (parsed.searchParams.get("targetId") && !/^[A-Za-z0-9_-]{1,160}$/.test(parsed.searchParams.get("targetId") ?? "")) return fallback;
     if (keys.some((key) => !allowed.includes(key))) return fallback;
     return `${parsed.pathname}${parsed.search}${parsed.hash}`;
   }
@@ -102,7 +105,7 @@ export default async function NewPropertyPage({ searchParams }: NewPropertyPageP
           {text.back}
         </Link>
       </header>
-      <PropertyResponsiveForm action={createPropertyQuickAction} locale={locale} initialValues={emptyValues} returnTo={returnTo} />
+      <PropertyResponsiveForm action={createPropertyEntryAction} locale={locale} initialValues={emptyValues} returnTo={returnTo} entryUpload />
     </div>
   );
 }

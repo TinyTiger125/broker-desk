@@ -645,7 +645,8 @@ assert(proxySource.includes("assertProductionAuthReady"), "production proxy must
 const publicRouteMatcherSource = proxySource.match(/const isPublicRoute = createRouteMatcher\(\[([\s\S]*?)\]\);/);
 assert(publicRouteMatcherSource && !publicRouteMatcherSource[1].includes("/api/qa(.*)"), "QA route must not remain public in production");
 assert(proxySource.includes("invalid_request_origin"), "unsafe browser API writes must have a same-origin guard");
-assert(proxySource.includes("req.headers.get(\"origin\") === req.nextUrl.origin"), "same-origin guard must compare the canonical request origin");
+assert(proxySource.includes("if (requestOrigin === req.nextUrl.origin) return true;"), "same-origin guard must compare the canonical request origin");
+assert(proxySource.includes('process.env.BROKER_DESK_LOCAL_RUNTIME !== "1"'), "loopback origin equivalence must remain gated to the local runtime");
 
 const nextConfigSource = fs.readFileSync("next.config.ts", "utf8");
 for (const header of ["X-Content-Type-Options", "X-Frame-Options", "Referrer-Policy", "Permissions-Policy", "Strict-Transport-Security"]) {

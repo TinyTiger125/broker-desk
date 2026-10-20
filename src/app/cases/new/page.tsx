@@ -1,8 +1,5 @@
-import {
-  createBlankBrokerageCaseAction,
-  createClientFormAction,
-  createPropertyQuickAction,
-} from "@/app/actions";
+import { createClientFormAction, createPropertyQuickAction } from "@/app/actions";
+import { createCaseWithUploadAction } from "@/app/case-entry-actions";
 import { CaseAssociationDraft } from "@/components/case-association-draft";
 import { listClientsForContext, listPropertiesForContext } from "@/lib/data";
 import { getLocale } from "@/lib/locale";
@@ -93,7 +90,7 @@ export default async function NewCasePage({ searchParams }: NewCasePageProps) {
       candidates={candidates}
       properties={properties}
       workflowOptions={workflowOptions}
-      createCaseAction={createBlankBrokerageCaseAction}
+      createCaseAction={createCaseWithUploadAction}
       createPersonAction={createClientFormAction}
       createPropertyAction={createPropertyQuickAction}
     />

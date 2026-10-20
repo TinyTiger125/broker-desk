@@ -7,7 +7,7 @@ const association = readFileSync(new URL("../src/components/case-association-man
 const attachmentRoute = readFileSync(new URL("../src/app/api/attachments/[attachmentId]/route.ts", import.meta.url), "utf8");
 const required = [
   'targetType: ObjectImportTargetType',
-  'reason: "case_not_writable" | "not_associated" | "object_not_writable"',
+  'reason: "case_not_writable" | "not_associated" | "object_not_writable" | "corporate_identity_unsupported"',
   "caseResult.resolution.canWrite",
   "association.parties.some",
   "association.primaryPropertyId",

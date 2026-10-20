@@ -12,11 +12,25 @@ export type InputDocumentType =
   | "property_condition_notice_unit"
   | "identity_residence_card"
   | "identity_driver_license"
+  | "identity_passport"
+  | "identity_health_insurance_card"
   | "identity_residence_card_or_driver_license"
   | "unknown_identity_scan"
   | "unknown_excel";
 
 export type InputExtractionReviewStatus = "suggested";
+
+export type InputFieldUncertainty = "clear" | "unclear" | "conflict" | "not_found";
+
+export type InputFieldEvidenceAlternative = {
+  value?: string;
+  normalizedValue?: string;
+  pageNumber?: number;
+  sourceText?: string;
+  uncertainty?: InputFieldUncertainty;
+  subjectKey?: string;
+  subjectLabel?: string;
+};
 
 export type ExtractedInputField = {
   fieldKey: string;
@@ -31,6 +45,13 @@ export type ExtractedInputField = {
   reviewStatus: InputExtractionReviewStatus;
   sourceFileHash: string;
   templateVersion: string;
+  /** Model evidence is carried separately from the legacy sheet/range fields. */
+  sourcePageNumber?: number;
+  sourceText?: string;
+  uncertainty?: InputFieldUncertainty;
+  subjectKey?: string;
+  subjectLabel?: string;
+  alternatives?: InputFieldEvidenceAlternative[];
 };
 
 export type InputFileExtractionResult = {
@@ -53,6 +74,8 @@ const DOCUMENT_TYPE_LABEL: Record<InputDocumentType, string> = {
   property_condition_notice_unit: "物件状況確認書（告知書／区分所有建物用）",
   identity_residence_card: "本人確認資料（在留カード）",
   identity_driver_license: "本人確認資料（運転免許証）",
+  identity_passport: "本人確認資料（パスポート）",
+  identity_health_insurance_card: "本人確認資料（国民健康保険証）",
   identity_residence_card_or_driver_license: "本人確認資料（在留カード・運転免許証）",
   unknown_identity_scan: "本人確認資料（未識別）",
   unknown_excel: "unknown",

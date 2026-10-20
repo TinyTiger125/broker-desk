@@ -6,8 +6,11 @@ export class MemoryObjectImportRepository implements ObjectImportRepository {
     const item = this.targets.find((item) => item.id === input.id && item.tenantId === input.tenantId && item.userId === input.userId);
     return item ? structuredClone(item) : null;
   }
-  async listTargets(input: ObjectImportScope & { caseId: string }) {
-    return structuredClone(this.targets.filter((item) => item.tenantId === input.tenantId && item.userId === input.userId && item.caseId === input.caseId));
+  async listTargets(input: ObjectImportScope & { caseId?: string; targetType?: "party" | "property"; targetId?: string }) {
+    return structuredClone(this.targets.filter((item) => item.tenantId === input.tenantId && item.userId === input.userId
+      && (input.caseId === undefined || item.caseId === input.caseId)
+      && (input.targetType === undefined || item.targetType === input.targetType)
+      && (input.targetId === undefined || item.targetId === input.targetId)));
   }
   async getTargetByJob(input: ObjectImportScope & { importJobId: string }) {
     const item = this.targets.find((item) => item.tenantId === input.tenantId && item.userId === input.userId && item.importJobId === input.importJobId);
@@ -27,7 +30,7 @@ export class MemoryObjectImportRepository implements ObjectImportRepository {
     this.targets.push(structuredClone(input));
     return structuredClone(input);
   }
-  async updateTarget(input: Pick<ObjectImportTargetRecord, "tenantId" | "userId" | "id" | "status"> & Partial<Pick<ObjectImportTargetRecord, "attemptCount" | "errorCode" | "errorSummary">>) {
+  async updateTarget(input: Pick<ObjectImportTargetRecord, "tenantId" | "userId" | "id" | "status"> & Partial<Pick<ObjectImportTargetRecord, "attemptCount" | "errorCode" | "errorSummary" | "documentType" | "processingMetadata">>) {
     const item = this.targets.find((target) => target.id === input.id && target.tenantId === input.tenantId && target.userId === input.userId);
     if (!item) return null;
     Object.assign(item, input, { updatedAt: new Date() });
@@ -48,7 +51,7 @@ export class MemoryObjectImportRepository implements ObjectImportRepository {
       return structuredClone(existing);
     }
     if (this.candidates.some((item) => item.id === input.id)) throw new Error("object_import_candidate_id_conflict");
-    const created = { ...structuredClone(input), finalSource: input.finalSource ?? "model_draft" as const };
+    const created = { ...structuredClone(input), ...(input.status === "not_found" ? {} : { finalSource: input.finalSource ?? "model_draft" as const }) };
     this.candidates.push(created);
     return structuredClone(created);
   }

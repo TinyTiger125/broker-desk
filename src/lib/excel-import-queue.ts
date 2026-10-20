@@ -1,6 +1,6 @@
 import { ensureObjectImportTask } from "@/lib/object-import-processor-adapter";
 import { createHash } from "node:crypto";
-import { addAuditLog, addImportJob, addPrivateAttachment, getImportJobByIdempotencyKey, updateImportJobExecution } from "@/lib/data";
+import { addAuditLog, addImportJob, addPrivateAttachment, deletePrivateAttachmentForTenant, getImportJobByIdempotencyKey, listAttachments, retryImportJobExecution, updateImportJobExecution } from "@/lib/data";
 import { getAttachmentStorageMode, getPostgresPrivateAttachmentLimitBytes } from "@/lib/attachment-storage";
 import { MAX_EXCEL_UPLOAD_BYTES, validateExcelZip } from "@/lib/excel-workbook";
 import { isZipContainer } from "@/lib/upload-validation";
@@ -55,8 +55,16 @@ export async function queueExcelImportSource(input: {
   const idempotencyKey = objectTarget
     ? buildObjectImportIdempotencyKey({ tenantId: input.tenantId, target: objectTarget, sourceHash: sourceFileHash })
     : `excel:${sourceFileHash}:${targetKey}`;
-  const existing = await getImportJobByIdempotencyKey({ tenantId: input.tenantId, userId: input.userId, idempotencyKey });
+  let existing = await getImportJobByIdempotencyKey({ tenantId: input.tenantId, userId: input.userId, idempotencyKey });
   if (existing) {
+    if (existing.status === "failed" && existing.errorCode === "source_persistence_failed") {
+      const partialAttachments = await listAttachments({ tenantId: input.tenantId, userId: input.userId, targetType: "import_job", targetId: existing.id });
+      for (const attachment of partialAttachments) {
+        await deletePrivateAttachmentForTenant({ tenantId: input.tenantId, id: attachment.id });
+      }
+      existing = await retryImportJobExecution({ tenantId: input.tenantId, userId: input.userId, jobId: existing.id });
+    }
+    if (!existing) return { ok: false, error: "source_persistence_failed" };
     await ensureObjectImportTask(existing, input);
     return { ok: true, jobId: existing.id, status: existing.status, deduplicated: true };
   }

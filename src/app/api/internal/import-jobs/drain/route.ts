@@ -44,7 +44,7 @@ export async function POST(request: Request) {
       try {
         const result = job.sourceType === "scan"
           ? await withWorkerRepositoryIdentity(job.externalAuthSubject, () =>
-            processIdentityImportJob({ tenantId: job.tenantId, userId: job.userId, jobId: job.jobId }),
+            processIdentityImportJob({ tenantId: job.tenantId, userId: job.userId, jobId: job.jobId, processingPreclaimed: true }),
           )
           : await withWorkerRepositoryIdentity(job.externalAuthSubject, () =>
             processExcelImportJob({ tenantId: job.tenantId, userId: job.userId, jobId: job.jobId }),

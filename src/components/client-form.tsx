@@ -5,6 +5,9 @@ import { useActionState, useCallback, useEffect, useRef, useState, type ChangeEv
 import type { ClientFormActionState, ClientFormValues } from "@/app/actions";
 import { endSubmission, handleFormSubmit, type SubmissionLock } from "@/components/form-submission-lock";
 import { Button } from "@/components/ui-foundation";
+import { EntryFilePicker, replaceEntryFiles } from "@/components/entry-file-picker";
+import { applyEntryPreviewCandidate, EntryPreview, type EntryPreviewCandidate } from "@/components/entry-preview";
+import { useEntryDraft } from "@/components/use-entry-draft";
 import type { Locale } from "@/lib/locale";
 import {
   getAmlCheckStatusOptions,
@@ -73,6 +76,12 @@ type ClientFormProps = {
   hideActions?: boolean;
   onPendingChange?: (pending: boolean) => void;
   onSubmitStart?: () => void;
+  /** Enable the unified new-entry file picker. Files use the uploadFile protocol. */
+  entryUpload?: boolean;
+  /** Stable tenant/user/object sessionStorage key for edit drafts. */
+  entryDraftKey?: string;
+  /** Fields successfully confirmed by the document review redirect. */
+  entryAppliedFields?: readonly string[];
 };
 
 const inputClass = "w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base text-slate-900 outline-none transition focus:border-[#0046ad] focus:ring-2 focus:ring-blue-100 sm:text-sm";
@@ -82,19 +91,19 @@ const copy = {
     basic: "基本情報", profile: "本人資料", needs: "希望条件", management: "顧客管理", legal: "契約・法定情報", notes: "備考",
     name: "顧客名", companyName: "会社名", furigana: "氏名かな", companyFurigana: "会社名かな", phone: "電話番号", lineId: "LINE ID", email: "メールアドレス", partyType: "主体種別", partyTypeUnset: "未設定", birthDate: "生年月日", gender: "性別", currentPostalCode: "現住所郵便番号", currentAddress: "現住所", companyPostalCode: "会社郵便番号", companyAddress: "会社住所", employerName: "勤務先", employerAddress: "勤務先住所", employerPhone: "勤務先電話", annualIncome: "年収（参考）", annualIncomeAsOf: "年収基準日", annualIncomeSource: "年収情報の出典", yen: "円", genderUnset: "未設定", genderMale: "男性", genderFemale: "女性", genderOther: "その他", budgetMin: "予算下限", budgetMax: "予算上限", budgetType: "予算タイプ",
     preferredArea: "意向エリア", firstChoiceArea: "第1希望エリア", secondChoiceArea: "第2希望エリア", purpose: "用途", period: "入居/運用希望時期",
-    loan: "ローン事前審査", stage: "ステージ", temperature: "温度感", nextFollowUpAt: "次回フォロー日", brokerage: "媒介契約", signedAt: "媒介契約締結日", expiresAt: "媒介契約満了日", matters35: "重要事項説明日（35条）", matters37: "契約書面交付日（37条）", consent: "個人情報利用目的同意確認日", aml: "本人確認/AML", notesPlaceholder: "顧客の要望や確認事項", save: "顧客を保存", saving: "保存中…", cancel: "キャンセル", back: "戻る", choose: "選択してください", optional: "任意", error: "入力内容を確認してください。", initialState: "新規登録時は未確認の状態です。必要な確認項目を入力して保存してください。",
+    loan: "ローン事前審査", stage: "ステージ", temperature: "温度感", nextFollowUpAt: "次回フォロー日", brokerage: "媒介契約", signedAt: "媒介契約締結日", expiresAt: "媒介契約満了日", matters35: "重要事項説明日（35条）", matters37: "契約書面交付日（37条）", consent: "個人情報利用目的同意確認日", aml: "本人確認/AML", notesPlaceholder: "顧客の要望や確認事項", save: "顧客を保存", saveAndRead: "保存して資料を読み取る", saving: "保存中…", cancel: "キャンセル", back: "戻る", choose: "選択してください", optional: "任意", error: "入力内容を確認してください。", initialState: "新規登録時は未確認の状態です。必要な確認項目を入力して保存してください。",
   },
   zh: {
     basic: "基本信息", profile: "个人资料", needs: "需求条件", management: "客户管理", legal: "合同与法定信息", notes: "备注",
     name: "客户姓名", companyName: "公司名称", furigana: "姓名假名", companyFurigana: "公司名称假名", phone: "电话号码", lineId: "LINE ID", email: "邮箱地址", partyType: "主体类型", partyTypeUnset: "未设置", birthDate: "出生日期", gender: "性别", currentPostalCode: "现住址邮编", currentAddress: "现住址", companyPostalCode: "公司邮编", companyAddress: "公司地址", employerName: "工作单位", employerAddress: "工作单位地址", employerPhone: "工作单位电话", annualIncome: "年收入（参考）", annualIncomeAsOf: "收入基准日期", annualIncomeSource: "收入信息来源", yen: "日元", genderUnset: "未设置", genderMale: "男性", genderFemale: "女性", genderOther: "其他", budgetMin: "预算下限", budgetMax: "预算上限", budgetType: "预算类型",
     preferredArea: "意向区域", firstChoiceArea: "第一意向区域", secondChoiceArea: "第二意向区域", purpose: "用途", period: "入住/运营期望时间",
-    loan: "贷款预审", stage: "阶段", temperature: "温度", nextFollowUpAt: "下次跟进日期", brokerage: "媒介合同", signedAt: "媒介合同签订日", expiresAt: "媒介合同到期日", matters35: "重要事项说明日（35条）", matters37: "合同书面交付日（37条）", consent: "个人信息使用同意确认日", aml: "实名/AML", notesPlaceholder: "客户需求和确认事项", save: "保存客户", saving: "保存中…", cancel: "取消", back: "返回", choose: "请选择", optional: "选填", error: "请检查以下输入内容。", initialState: "新建记录时默认为未核验状态。请填写需要确认的项目后保存。",
+    loan: "贷款预审", stage: "阶段", temperature: "温度", nextFollowUpAt: "下次跟进日期", brokerage: "媒介合同", signedAt: "媒介合同签订日", expiresAt: "媒介合同到期日", matters35: "重要事项说明日（35条）", matters37: "合同书面交付日（37条）", consent: "个人信息使用同意确认日", aml: "实名/AML", notesPlaceholder: "客户需求和确认事项", save: "保存客户", saveAndRead: "保存并读取资料", saving: "保存中…", cancel: "取消", back: "返回", choose: "请选择", optional: "选填", error: "请检查以下输入内容。", initialState: "新建记录时默认为未核验状态。请填写需要确认的项目后保存。",
   },
   ko: {
     basic: "기본 정보", profile: "개인 자료", needs: "희망 조건", management: "고객 관리", legal: "계약 및 법정 정보", notes: "메모",
     name: "고객명", companyName: "회사명", furigana: "후리가나", companyFurigana: "회사명 후리가나", phone: "전화번호", lineId: "LINE ID", email: "이메일", partyType: "주체 유형", partyTypeUnset: "미설정", birthDate: "생년월일", gender: "성별", currentPostalCode: "현재 우편번호", currentAddress: "현재 주소", companyPostalCode: "회사 우편번호", companyAddress: "회사 주소", employerName: "근무처", employerAddress: "근무처 주소", employerPhone: "근무처 전화", annualIncome: "연소득(참고)", annualIncomeAsOf: "소득 기준일", annualIncomeSource: "소득 정보 출처", yen: "엔", genderUnset: "미설정", genderMale: "남성", genderFemale: "여성", genderOther: "기타", budgetMin: "예산 하한", budgetMax: "예산 상한", budgetType: "예산 유형",
     preferredArea: "희망 지역", firstChoiceArea: "1순위 희망 지역", secondChoiceArea: "2순위 희망 지역", purpose: "용도", period: "입주/운용 희망 시기",
-    loan: "대출 사전심사", stage: "단계", temperature: "온도", nextFollowUpAt: "다음 후속 날짜", brokerage: "중개 계약", signedAt: "중개 계약 체결일", expiresAt: "중개 계약 만료일", matters35: "중요사항 설명일(35조)", matters37: "계약서 교부일(37조)", consent: "개인정보 이용 동의 확인일", aml: "본인확인/AML", notesPlaceholder: "고객 요청과 확인 사항", save: "고객 저장", saving: "저장 중…", cancel: "취소", back: "돌아가기", choose: "선택해 주세요", optional: "선택", error: "다음 입력 내용을 확인해 주세요.", initialState: "새로 등록한 기록은 미확인 초기 상태입니다. 필요한 확인 항목을 입력한 후 저장해 주세요.",
+    loan: "대출 사전심사", stage: "단계", temperature: "온도", nextFollowUpAt: "다음 후속 날짜", brokerage: "중개 계약", signedAt: "중개 계약 체결일", expiresAt: "중개 계약 만료일", matters35: "중요사항 설명일(35조)", matters37: "계약서 교부일(37조)", consent: "개인정보 이용 동의 확인일", aml: "본인확인/AML", notesPlaceholder: "고객 요청과 확인 사항", save: "고객 저장", saveAndRead: "저장하고 자료 읽기", saving: "저장 중…", cancel: "취소", back: "돌아가기", choose: "선택해 주세요", optional: "선택", error: "다음 입력 내용을 확인해 주세요.", initialState: "새로 등록한 기록은 미확인 초기 상태입니다. 필요한 확인 항목을 입력한 후 저장해 주세요.",
   },
 } as const;
 
@@ -203,11 +212,35 @@ function initialValues(defaults?: ClientFormDefaults, partyMeta?: ClientFormProp
   };
 }
 
-export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, submitReturnTo, onCreated, onSaved, onCancel, partyMeta, readOnly = false, formId, hideActions = false, onPendingChange, onSubmitStart }: ClientFormProps) {
+export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, submitReturnTo, onCreated, onSaved, onCancel, partyMeta, readOnly = false, formId, hideActions = false, onPendingChange, onSubmitStart, entryUpload = false, entryDraftKey, entryAppliedFields = [] }: ClientFormProps) {
   const text = copy[locale];
   const initial = initialValues(defaults, partyMeta);
-  const [values, setValues] = useState<ClientFormValues>(initial);
-  const [state, formAction, pending] = useActionState<ClientFormActionState, FormData>(action, { status: "idle", fieldErrors: {}, values: initial });
+  const { values, setValues } = useEntryDraft({ storageKey: entryDraftKey, serverValues: initial, appliedFields: entryAppliedFields });
+  const [entryFiles, setEntryFiles] = useState<File[]>([]);
+  const [entryReadFileKeys, setEntryReadFileKeys] = useState<string[]>([]);
+  const entryFilesRef = useRef<File[]>([]);
+  const entryReadFileKeysRef = useRef<string[]>([]);
+  const handleEntryReadFileKeys = useCallback((keys: string[]) => {
+    entryReadFileKeysRef.current = keys;
+    setEntryReadFileKeys(keys);
+  }, []);
+  const updateEntryFiles = useCallback((files: File[]) => {
+    entryFilesRef.current = files;
+    setEntryFiles(files);
+    entryReadFileKeysRef.current = [];
+    setEntryReadFileKeys([]);
+  }, []);
+  const confirmEntryCandidate = useCallback((candidate: EntryPreviewCandidate) => {
+    setValues((current) => applyEntryPreviewCandidate(current, candidate));
+  }, [setValues]);
+  const entryAction = useCallback(async (previousState: ClientFormActionState, formData: FormData) => {
+    if (entryUpload) {
+      replaceEntryFiles(formData, entryFilesRef.current);
+      formData.set("entryReadFileKeys", JSON.stringify(entryReadFileKeysRef.current));
+    }
+    return action(previousState, formData);
+  }, [action, entryUpload]);
+  const [state, formAction, pending] = useActionState<ClientFormActionState, FormData>(entryAction, { status: "idle", fieldErrors: {}, values: initial });
   const summaryRef = useRef<HTMLDivElement>(null);
   const [expandedSections, setExpandedSections] = useState<Record<ClientFormSectionKey, boolean>>({ basic: true, profile: true, needs: true, management: true, legal: true, notes: true });
   const composingRef = useRef(false);
@@ -240,7 +273,7 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
     setValues(state.values);
     for (const field of Object.keys(state.fieldErrors) as Array<keyof ClientFormValues>) openSectionForField(field);
     summaryRef.current?.focus();
-  }, [openSectionForField, state.fieldErrors, state.status, state.values]);
+  }, [openSectionForField, setValues, state.fieldErrors, state.status, state.values]);
   useEffect(() => {
     const record = state.createdRecord;
     if (!record || notifiedCreatedId.current === record.id) return;
@@ -302,6 +335,11 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
       {submitReturnTo ? <input type="hidden" name="submitReturnTo" value={submitReturnTo} /> : null}
       {onCreated ? <input type="hidden" name="caseDraftReturn" value="1" /> : null}
       {values.clientId ? <input type="hidden" name="clientId" value={values.clientId} /> : null}
+      {entryUpload && !readOnly ? <>
+        <EntryFilePicker locale={locale} files={entryFiles} onFilesChange={updateEntryFiles} disabled={pending} />
+        <EntryPreview files={entryFiles} kind="customer" locale={locale} onConfirm={confirmEntryCandidate} onReadFileKeys={handleEntryReadFileKeys} />
+        <input type="hidden" name="entryReadFileKeys" value={JSON.stringify(entryReadFileKeys)} />
+      </> : null}
       {state.status === "error" ? <div ref={summaryRef} tabIndex={-1} role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900 outline-none focus-visible:ring-2 focus-visible:ring-rose-500"><p className="font-bold">{state.message ?? text.error}</p><ul className="mt-2 list-disc space-y-1 pl-5">{errorEntries.map(([field, message]) => <li key={field}><a className="underline" href={`#client-${field}`} onClick={(event) => focusField(event, field)}>{message}</a></li>)}</ul></div> : null}
 
       <ClientFormSection section="basic" title={text.basic} expanded={expandedSections.basic} onToggle={() => toggleSection("basic")}><div className="grid gap-4 md:grid-cols-2">
@@ -354,7 +392,7 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
 
       <ClientFormSection section="notes" title={text.notes} expanded={expandedSections.notes} onToggle={() => toggleSection("notes")}><div className="space-y-3">{label("notes", text.notes)}<textarea {...fieldProps("notes")} rows={5} placeholder={text.notesPlaceholder} className={`${inputClass} resize-y`} />{errorText("notes")}</div></ClientFormSection>
 
-      {hideActions ? null : <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-200 pt-5">{onCancel ? <button type="button" onClick={onCancel} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">{text.cancel}</button> : <Link href={returnTo} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">{text.cancel}</Link>}<Button type="submit" loading={pending} className="min-h-11 rounded-lg bg-slate-950 px-5 py-2.5 text-sm font-bold text-white hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60">{pending ? text.saving : text.save}</Button></div>}
+      {hideActions ? null : <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-200 pt-5">{onCancel ? <button type="button" onClick={onCancel} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">{text.cancel}</button> : <Link href={returnTo} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">{text.cancel}</Link>}<Button type="submit" loading={pending} className="min-h-11 rounded-lg bg-slate-950 px-5 py-2.5 text-sm font-bold text-white hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60">{pending ? text.saving : entryUpload && entryFiles.length > entryReadFileKeys.length ? text.saveAndRead : text.save}</Button></div>}
       <div className="sr-only" aria-live="polite">{pending ? text.saving : ""}</div>
     </form>
   );

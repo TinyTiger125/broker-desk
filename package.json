@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
-    "build": "next build --webpack",
+    "build": "next build --turbopack",
     "postbuild": "node scripts/check-inline-select-focus-contract.mjs --built-css && node scripts/check-archive-record-button-contract.mjs --built-css",
     "start": "next start",
     "lint": "eslint src next.config.ts eslint.config.mjs",
@@ -14,6 +14,8 @@
     "test:postgres-migration-runner-postgres": "node scripts/test-postgres-migration-runner-postgres.mjs",
     "test:postgres-migration-runner-full": "node scripts/test-postgres-migration-runner-full.mjs",
     "db:migrate:tokyo": "node scripts/run-tokyo-supabase-migrations.mjs",
+    "local:intake:runtime": "node scripts/start-local-intake-runtime.mjs",
+    "local:intake:app": "node scripts/start-local-intake-runtime.mjs --app",
     "db:provision-runtime-roles": "node scripts/provision-postgres-runtime-roles.mjs",
     "worker:import": "node scripts/run-import-worker.mjs",
     "smoke:friends-guarantee-pdf": "node scripts/friends-guarantee-pdf-fidelity.mjs",
@@ -132,6 +134,7 @@
     "test:visibility-resolver-behavior": "node scripts/test-visibility-resolver-behavior.mjs",
     "test:clients-visibility-consistency": "node scripts/check-clients-visibility-consistency.mjs",
     "test:object-attachments": "node scripts/check-object-attachments-contract.mjs",
+    "test:object-attachments-archive": "node scripts/test-object-attachments-archive.mjs",
     "test:global-visibility-surfaces": "node scripts/check-global-visibility-surfaces.mjs",
     "test:global-visibility-surfaces-behavior": "node scripts/test-global-visibility-surfaces.mjs",
     "test:data-access-performance": "node scripts/check-data-access-performance-contract.mjs",
@@ -141,7 +144,11 @@
     "terms:export": "node scripts/export-ui-terminology.mjs",
     "terms:import": "node scripts/import-ui-terminology.mjs",
     "test:object-reader-pipeline": "node scripts/test-object-reader-pipeline.mjs",
-    "test:object-import-pipeline": "node scripts/test-object-import-pipeline.mjs"
+    "test:import-processing-claim": "node scripts/test-import-processing-claim.mjs",
+    "test:import-processing-claim-postgres": "node scripts/test-import-processing-claim-postgres.mjs",
+    "test:import-processing-concurrency": "node scripts/test-import-processing-concurrency.mjs",
+    "test:object-import-pipeline": "node scripts/test-object-import-pipeline.mjs",
+    "test:standalone-object-multifile-queue": "node scripts/test-standalone-object-multifile-queue.mjs"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.7.1",

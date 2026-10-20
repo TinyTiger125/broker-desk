@@ -189,7 +189,7 @@ export async function AppNav() {
             </HeaderPopover>
           </div>
 
-          <div className="mt-3 overflow-x-auto border-t border-slate-100 pt-2">
+          <div className="app-mobile-primary-nav mt-3 border-t border-slate-100 pt-2">
             <MainNavLinks links={links} />
           </div>
           <details className="mt-2 border-t border-slate-200 pt-2">

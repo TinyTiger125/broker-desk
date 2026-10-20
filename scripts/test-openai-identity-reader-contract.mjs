@@ -28,6 +28,11 @@ const readinessSource = fs.readFileSync(path.join(root, "src/lib/production-read
 const { buildOpenAiIdentityReaderInput } = loadTypescript(path.join(root, "src/lib/openai-identity-reader.ts"), {
   "@/lib/ai/responses-client": {},
   "@/lib/identity-reader-contract": contract,
+  "@/lib/customer-identity-field-catalog": {
+    CUSTOMER_IDENTITY_FIELDS: {
+      name: {}, furigana: {}, birthDate: {}, gender: {}, currentPostalCode: {}, currentAddress: {}, phone: {}, lineId: {}, email: {},
+    },
+  },
 });
 
 const pdfInput = buildOpenAiIdentityReaderInput(Buffer.from("pdf"), "identity.pdf");
@@ -38,6 +43,79 @@ assert.match(pdfInput[0].content[0].text, /Do not guess/);
 const imageInput = buildOpenAiIdentityReaderInput(Buffer.from("png"), "identity.png");
 assert.equal(imageInput[0].content[1].type, "input_image");
 assert.match(imageInput[0].content[1].image_url, /^data:image\/png;base64,/);
+
+const readerModule = loadTypescript(path.join(root, "src/lib/openai-identity-reader.ts"), {
+  "@/lib/ai/responses-client": { createAiResponse: async () => { throw new Error("provider should not be called"); } },
+  "@/lib/identity-reader-contract": contract,
+  "@/lib/customer-identity-field-catalog": {
+    CUSTOMER_IDENTITY_FIELDS: {
+      name: {}, furigana: {}, birthDate: {}, gender: {}, currentPostalCode: {}, currentAddress: {}, phone: {}, lineId: {}, email: {},
+    },
+  },
+});
+const customerSchema = readerModule.buildIdentityReaderSchema(readerModule.IDENTITY_CUSTOMER_FIELD_KEYS);
+assert.deepEqual(customerSchema.properties.candidates.items.properties.fieldKey.enum, [
+  "applicant.name", "applicant.furigana", "applicant.birthDate", "applicant.gender",
+  "applicant.currentPostalCode", "applicant.currentAddress", "applicant.phone", "applicant.lineId", "applicant.email",
+]);
+assert(!customerSchema.properties.candidates.items.properties.fieldKey.enum.includes("applicant.nationality"));
+assert.match(readerSource, /maxOutputTokens: IDENTITY_READER_MAX_OUTPUT_TOKENS/);
+assert.match(readerSource, /PDFDocument\.load/);
+assert.match(readerSource, /scope === "customer"/);
+const { PDFDocument } = await import("pdf-lib");
+const oversized = await PDFDocument.create();
+for (let index = 0; index < 21; index += 1) oversized.addPage();
+let providerCalls = 0;
+const readerWithProviderCounter = loadTypescript(path.join(root, "src/lib/openai-identity-reader.ts"), {
+  "@/lib/ai/responses-client": { createAiResponse: async () => { providerCalls += 1; throw new Error("provider should not be called"); } },
+  "@/lib/identity-reader-contract": contract,
+  "@/lib/customer-identity-field-catalog": { CUSTOMER_IDENTITY_FIELDS: { name: {} } },
+});
+const oversizedBytes = Buffer.from(await oversized.save());
+await assert.rejects(
+  () => readerWithProviderCounter.readIdentityDocumentWithOpenAi({ buffer: oversizedBytes, filename: "oversized.pdf", scope: "customer" }),
+  /remote_document_reader_too_many_pages/,
+);
+assert.equal(providerCalls, 0, "page preflight must run before the paid provider");
+
+const twoPagePdf = await PDFDocument.create();
+twoPagePdf.addPage();
+twoPagePdf.addPage();
+const outOfRangePdfBytes = Buffer.from(await twoPagePdf.save());
+const outOfRangeReader = loadTypescript(path.join(root, "src/lib/openai-identity-reader.ts"), {
+  "@/lib/ai/responses-client": {
+    createAiResponse: async () => ({
+      parsed: {
+        documentType: "identity_passport",
+        pages: [{ pageNumber: 1, lines: ["氏名 Synthetic"] }, { pageNumber: 3, lines: ["氏名 Synthetic"] }],
+        candidates: [{ fieldKey: "applicant.name", value: "Synthetic", pageNumber: 3, sourceText: "氏名 Synthetic", uncertainty: "clear", subjectKey: "person_1", subjectLabel: "申請人" }],
+      },
+    }),
+  },
+  "@/lib/identity-reader-contract": contract,
+  "@/lib/customer-identity-field-catalog": { CUSTOMER_IDENTITY_FIELDS: { name: {} } },
+});
+await assert.rejects(
+  () => outOfRangeReader.readIdentityDocumentWithOpenAi({ buffer: outOfRangePdfBytes, filename: "two-page.pdf", scope: "customer" }),
+  /remote_document_reader_invalid_response/,
+);
+const imageOutOfRangeReader = loadTypescript(path.join(root, "src/lib/openai-identity-reader.ts"), {
+  "@/lib/ai/responses-client": {
+    createAiResponse: async () => ({
+      parsed: {
+        documentType: "identity_passport",
+        pages: [{ pageNumber: 1, lines: ["氏名 Synthetic"] }, { pageNumber: 2, lines: ["氏名 Synthetic"] }],
+        candidates: [{ fieldKey: "applicant.name", value: "Synthetic", pageNumber: 2, sourceText: "氏名 Synthetic", uncertainty: "clear", subjectKey: "person_1", subjectLabel: "申請人" }],
+      },
+    }),
+  },
+  "@/lib/identity-reader-contract": contract,
+  "@/lib/customer-identity-field-catalog": { CUSTOMER_IDENTITY_FIELDS: { name: {} } },
+});
+await assert.rejects(
+  () => imageOutOfRangeReader.readIdentityDocumentWithOpenAi({ buffer: Buffer.from("png"), filename: "one-page.png", scope: "customer" }),
+  /remote_document_reader_invalid_response/,
+);
 
 const parsed = contract.parseOpenAiIdentityReaderResponse({
   documentType: "identity_residence_card",
@@ -72,6 +150,8 @@ assert(readerSource.includes("not_found, an empty sourceText is allowed"), "not_
 assert(readerSource.includes("subjectKey"), "the model schema must carry a stable person-group key");
 assert(readerSource.includes("subjectLabel"), "the model schema must carry a visible person role label");
 assert(readerSource.includes("jsonSchema"), "adapter must require structured output");
+assert(readerSource.includes("IDENTITY_CUSTOMER_FIELD_KEYS"), "customer schema must derive from the existing customer catalog");
+assert.match(readerSource, /scope === "customer"/, "standalone customer reader must pass an explicit customer scope");
 assert(extractorSource.includes("method: \"ai\""), "AI candidates must retain their extraction method");
 assert(extractorSource.includes("uncertainty=${decision.effectiveUncertainty}"), "candidate provenance must retain resolved uncertainty");
 assert(extractorSource.includes("resolveIdentityReaderCandidate"), "AI candidates must pass through the deterministic conflict resolver");

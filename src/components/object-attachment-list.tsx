@@ -1,4 +1,3 @@
-import Link from "next/link";
 import type { Locale } from "@/lib/locale";
 import type { ObjectAttachmentItem } from "@/lib/object-attachments";
 import type { ObjectAttachmentCategory } from "@/lib/data";
@@ -10,15 +9,20 @@ export const OBJECT_ATTACHMENT_CATEGORY_LABELS: Record<Locale, Record<ObjectAtta
 };
 
 export const OBJECT_ATTACHMENT_COPY = {
-  ja: { title: "原資料・添付", desc: "読取に使用した原本と、この対象に追加した資料です。", empty: "添付資料はまだありません。", category: "分類", file: "ファイル", upload: "添付する", download: "開く・ダウンロード", hint: "PDF、画像、Excel／1ファイル10 MBまで" },
-  zh: { title: "原始资料与附件", desc: "这里保留读取所用的原文件及之后补充的资料。", empty: "暂无附件。", category: "资料分类", file: "选择文件", upload: "添加附件", download: "打开或下载", hint: "支持 PDF、图片、Excel；单个文件不超过10 MB" },
-  ko: { title: "원본 자료·첨부", desc: "판독에 사용한 원본과 이 대상에 추가한 자료입니다.", empty: "첨부 자료가 없습니다.", category: "분류", file: "파일", upload: "첨부", download: "열기·다운로드", hint: "PDF, 이미지, Excel / 파일당 10 MB 이하" },
+  ja: { title: "原資料・添付", desc: "読取に使用した原本と、この対象に追加した資料です。", empty: "添付資料はまだありません。", category: "分類", file: "ファイル", upload: "添付する", download: "ダウンロード", previewUnavailable: "プレビュー不可" },
+  zh: { title: "原始资料与附件", desc: "这里保留读取所用的原文件及之后补充的资料。", empty: "暂无附件。", category: "资料分类", file: "选择文件", upload: "添加附件", download: "下载", previewUnavailable: "不支持预览" },
+  ko: { title: "원본 자료·첨부", desc: "판독에 사용한 원본과 이 대상에 추가한 자료입니다.", empty: "첨부 자료가 없습니다.", category: "분류", file: "파일", upload: "첨부", download: "다운로드", previewUnavailable: "미리보기 불가" },
 } as const;
 
 function formatBytes(bytes?: number) {
   if (!bytes) return "—";
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function isPreviewableAttachment(attachment: ObjectAttachmentItem["attachment"]): boolean {
+  const fileType = (attachment.fileType ?? "").split(";", 1)[0].trim().toLowerCase();
+  return ["application/pdf", "image/jpeg", "image/png", "image/webp"].includes(fileType);
 }
 
 export function ObjectAttachmentList({ locale, items, className }: { locale: Locale; items: ObjectAttachmentItem[]; className?: string }) {
@@ -32,13 +36,16 @@ export function ObjectAttachmentList({ locale, items, className }: { locale: Loc
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-700">{labels[link.category]}</span>
-              <p className="break-all text-sm font-bold text-slate-950">{attachment.fileName}</p>
+              {isPreviewableAttachment(attachment) ? <a href={`/api/attachments/${encodeURIComponent(attachment.id)}?disposition=inline`} target="_blank" rel="noreferrer" className="break-all text-sm font-bold text-[#0046ad] underline underline-offset-2">{attachment.fileName}</a> : <p className="break-all text-sm font-bold text-slate-950">{attachment.fileName}</p>}
             </div>
             <p className="mt-1 text-xs text-slate-500">{attachment.uploadedAt.toLocaleDateString(locale === "zh" ? "zh-CN" : locale === "ko" ? "ko-KR" : "ja-JP")} · {formatBytes(attachment.fileSizeBytes)}</p>
           </div>
-          <Link href={`/api/attachments/${encodeURIComponent(attachment.id)}`} className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-bold text-slate-800 hover:border-blue-400 hover:bg-blue-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">
-            {text.download}
-          </Link>
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+            {!isPreviewableAttachment(attachment) ? <span className="text-xs font-semibold text-slate-500">{text.previewUnavailable}</span> : null}
+            <a href={`/api/attachments/${encodeURIComponent(attachment.id)}`} download={attachment.fileName} className="inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-bold text-slate-800 hover:border-blue-400 hover:bg-blue-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">
+              {text.download}
+            </a>
+          </div>
         </li>
       ))}
     </ul>

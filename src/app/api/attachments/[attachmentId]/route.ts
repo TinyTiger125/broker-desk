@@ -11,12 +11,14 @@ import { getW93AttachmentForContext } from "@/lib/w93-access";
 
 export const dynamic = "force-dynamic";
 
-function contentDisposition(fileName: string) {
+const INLINE_PREVIEW_TYPES = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp"]);
+
+function contentDisposition(fileName: string, disposition: "inline" | "attachment") {
   const fallback = fileName.replace(/[^A-Za-z0-9._-]/g, "_") || "attachment";
-  return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(fileName)}`;
+  return `${disposition}; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(fileName)}`;
 }
 
-export async function GET(_request: Request, context: { params: Promise<{ attachmentId: string }> }) {
+export async function GET(request: Request, context: { params: Promise<{ attachmentId: string }> }) {
   let session;
   try {
     session = await requireTenantSession({ permission: "source.download_original" });
@@ -53,11 +55,14 @@ export async function GET(_request: Request, context: { params: Promise<{ attach
   }
 
   const responseBody = content.buffer.slice(content.byteOffset, content.byteOffset + content.byteLength) as ArrayBuffer;
+  const requestedInline = new URL(request.url).searchParams.get("disposition") === "inline";
+  const normalizedFileType = (attachment.fileType ?? "").split(";", 1)[0].trim().toLowerCase();
+  const inline = requestedInline && INLINE_PREVIEW_TYPES.has(normalizedFileType);
 
   return new NextResponse(responseBody, {
     headers: {
-      "content-type": attachment.fileType || "application/octet-stream",
-      "content-disposition": contentDisposition(attachment.fileName),
+      "content-type": normalizedFileType || "application/octet-stream",
+      "content-disposition": contentDisposition(attachment.fileName, inline ? "inline" : "attachment"),
       "cache-control": "private, no-store",
       "x-content-type-options": "nosniff",
     },

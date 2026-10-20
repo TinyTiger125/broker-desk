@@ -193,7 +193,7 @@ export function OrganizeCenterObjectBrowser({
         </div>
       }
       filters={
-        <form action="/organize-center" method="get" className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(12rem,0.42fr)_auto_auto] md:items-end">
+        <form action="/organize-center" method="get" data-organize-object-filters className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(12rem,0.42fr)_auto_auto] md:items-end">
           <input type="hidden" name="type" value={selectedType} />
           <TextInput
             id="organize-center-query"
@@ -202,8 +202,9 @@ export function OrganizeCenterObjectBrowser({
             defaultValue={query}
             placeholder={copy.searchPlaceholder}
             className="min-w-0"
+            controlSize="touch"
           />
-          <SelectInput id="organize-center-lifecycle" name="lifecycle" label={copy.lifecycle} defaultValue={lifecycleFilter}>
+          <SelectInput id="organize-center-lifecycle" name="lifecycle" label={copy.lifecycle} defaultValue={lifecycleFilter} controlSize="touch">
             <option value="active">{copy.activeRecords}</option>
             <option value="archived">{copy.archivedRecords}</option>
             <option value="all">{copy.allRecords}</option>
