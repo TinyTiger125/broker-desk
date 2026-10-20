@@ -7750,14 +7750,14 @@ export async function getObjectImportFeatureReadiness(): Promise<ObjectImportFea
       has_table_privilege(current_user, 'public.object_import_fields', 'SELECT')
         AND has_table_privilege(current_user, 'public.object_import_fields', 'INSERT')
         AND has_table_privilege(current_user, 'public.object_import_fields', 'UPDATE') AS fields_table_writable,
-      to_regprocedure('brokerdesk_private.lock_case_review_membership(text,text,text)') AS membership_lock,
+      to_regprocedure('brokerdesk_private.lock_case_review_membership_v2(text,text,text)') AS membership_lock,
       to_regprocedure('brokerdesk_private.lock_case_review_source(text,text,text,text)') AS source_lock
   `);
   if (!privileges.rows[0]?.membership_lock || !privileges.rows[0]?.source_lock) {
     return { ready: false, reason: "migration_required" };
   }
   const helperPrivileges = await db.query(`SELECT
-    has_function_privilege(current_user, 'brokerdesk_private.lock_case_review_membership(text,text,text)', 'EXECUTE')
+    has_function_privilege(current_user, 'brokerdesk_private.lock_case_review_membership_v2(text,text,text)', 'EXECUTE')
       AND has_function_privilege(current_user, 'brokerdesk_private.lock_case_review_source(text,text,text,text)', 'EXECUTE') AS allowed
   `);
   if (!helperPrivileges.rows[0]?.allowed) return { ready: false, reason: "permissions_incomplete" };
@@ -7963,7 +7963,7 @@ function objectImportTargetStatusSql(): string {
 
 async function lockCaseReviewMembership(client: PoolClient, context: RequestContext): Promise<boolean> {
   try {
-    const membership = await client.query("SELECT brokerdesk_private.lock_case_review_membership($1,$2,$3) AS allowed", [context.membershipId, context.tenantId, context.userId]);
+    const membership = await client.query("SELECT brokerdesk_private.lock_case_review_membership_v2($1,$2,$3) AS allowed", [context.membershipId, context.tenantId, context.userId]);
     return Boolean(membership.rows[0]?.allowed);
   } catch (error) {
     // Review must fail closed until the helper migration and EXECUTE grant are
