@@ -18,6 +18,16 @@ import { CASE_FIELD_KEY_SET, getCaseFieldLabel } from "@/lib/case-field-catalog"
 import { createHash } from "node:crypto";
 import { signEntryPreviewProof } from "@/lib/entry-preview-proof";
 
+const PROPERTY_NUMERIC_PREVIEW_KEYS = new Set(["sizeSqm", "listingPrice", "listingRent", "listingCommonFee", "managementFee", "repairFee"]);
+
+function validPropertyNumericPreview(key: string, value: string): boolean {
+  if (!PROPERTY_NUMERIC_PREVIEW_KEYS.has(key)) return true;
+  if (!/^\d+(?:\.\d+)?$/.test(value)) return false;
+  const number = Number(value);
+  if (key === "sizeSqm") return Number.isFinite(number) && number > 0 && number <= 1_000_000;
+  return Number.isSafeInteger(number) && number <= 2_147_483_647 && (key === "listingPrice" ? number > 0 : number >= 0);
+}
+
 /** Ephemeral suggestions only: this action never creates a record, job, or attachment. */
 export async function previewEntryDocumentsAction(formData: FormData): Promise<EntryPreviewState> {
   const session = await requireTenantSession({ permission: "source.upload" });
@@ -51,6 +61,7 @@ export async function previewEntryDocumentsAction(formData: FormData): Promise<E
         let key: string;
         let label: string;
         let value: string;
+        let uncertainty: EntryPreviewCandidate["uncertainty"] = field.uncertainty;
         if (caseContext) {
           if (!CASE_FIELD_KEY_SET.has(field.fieldKey)) continue;
           key = field.fieldKey;
@@ -66,9 +77,13 @@ export async function previewEntryDocumentsAction(formData: FormData): Promise<E
           if (!field.fieldKey.startsWith("property.")) continue;
           try { key = toObjectRecordFieldKey("property", field.fieldKey); } catch { continue; }
           label = OBJECT_READER_FIELD_LABELS[field.fieldKey] ?? key;
-          value = normalizeObjectReaderCandidateValue(field.fieldKey, field.value, field.uncertainty).value;
+          const normalized = normalizeObjectReaderCandidateValue(field.fieldKey, field.value, field.uncertainty);
+          value = normalized.value;
+          uncertainty = normalized.uncertainty;
+          // An invalid number would appear accepted while an HTML number input submits an empty value.
+          if (!validPropertyNumericPreview(key, value)) continue;
         }
-        candidates.push({ id: `${entryFileKey(file)}:${index}`, key, sourceKey: field.fieldKey, label, value, fileName: file.name, pageNumber: field.pageNumber, sourceText: field.sourceText, uncertainty: field.uncertainty });
+        candidates.push({ id: `${entryFileKey(file)}:${index}`, key, sourceKey: field.fieldKey, label, value, fileName: file.name, pageNumber: field.pageNumber, sourceText: field.sourceText, uncertainty });
       }
       readFileKeys.push(entryFileKey(file));
       readProofs[entryFileKey(file)] = signEntryPreviewProof({ tenantId: session.tenant.id, userId: session.user.id, fileKey: entryFileKey(file), digest: createHash("sha256").update(buffer).digest("hex"), kind: kind as "customer" | "property", context: caseContext ? "case" : "entry", candidates: candidates.filter((candidate) => candidate.id.startsWith(`${entryFileKey(file)}:`)) });

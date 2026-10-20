@@ -54,10 +54,12 @@ const { uploadObjectImportAction } = require(resolve(root, "src/app/object-impor
 const { processIdentityImportJob } = require(resolve(root, "src/lib/identity-import-processor.ts"));
 const { normalizeObjectReaderCandidateValue } = require(resolve(root, "src/lib/object-import-processor-adapter.ts"));
 assert.deepEqual(normalizeObjectReaderCandidateValue("property.listingPrice", "750万円", "clear"), { value: "7500000", uncertainty: "clear" });
+assert.deepEqual(normalizeObjectReaderCandidateValue("property.listingPrice", "12345678 JPY", "clear"), { value: "12345678", uncertainty: "clear" }, "English currency units must become number-input-safe values");
 assert.deepEqual(normalizeObjectReaderCandidateValue("property.listingPrice", "750万円から", "clear"), { value: "750万円から", uncertainty: "unclear" }, "money with a from/range suffix must remain unresolved");
 assert.deepEqual(normalizeObjectReaderCandidateValue("property.managementFee", "管理費 月額 2,210 円", "clear"), { value: "2210", uncertainty: "clear" }, "allowed labels may precede one anchored amount");
 assert.deepEqual(normalizeObjectReaderCandidateValue("property.listingPrice", "合計 750,000円、残金 6,750,000円", "clear"), { value: "合計 750,000円、残金 6,750,000円", uncertainty: "unclear" }, "multiple money values must not select the first amount");
 assert.deepEqual(normalizeObjectReaderCandidateValue("property.sizeSqm", "1,234.56㎡", "clear"), { value: "1234.56", uncertainty: "clear" });
+assert.deepEqual(normalizeObjectReaderCandidateValue("property.sizeSqm", "15.34 square meters", "clear"), { value: "15.34", uncertainty: "clear" }, "English area units must become number-input-safe values");
 assert.deepEqual(normalizeObjectReaderCandidateValue("property.sizeSqm", "19.45㎡ / 15.34㎡", "clear"), { value: "19.45㎡ / 15.34㎡", uncertainty: "unclear" }, "multiple area values must remain unresolved");
 assert.deepEqual(normalizeObjectReaderCandidateValue("property.sizeSqm", "１５：３４㎡", "clear"), { value: "15.34", uncertainty: "unclear" }, "colon area convention must be explicit low-confidence normalization");
 const form = new FormData(); form.set("caseId", brokerageCase.id); form.set("targetType", "property"); form.set("targetId", property.id); form.set("uploadFile", new File(["%PDF-synthetic"], "lease.pdf", { type: "application/pdf" }));
