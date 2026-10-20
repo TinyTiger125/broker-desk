@@ -53,7 +53,7 @@ function normalizedDecimal(token: string) {
 function normalizeMoneyCandidate(value: string): string | null {
   const text = normalizeJapaneseDigits(value).trim();
   if (/[~〜～\-−]/.test(text)) return null;
-  const unitMatch = text.match(/^(?:(?:月額|金額|価格|売買代金|管理費|修繕積立金|賃料|家賃)\s*){0,2}(\d[\d,]*(?:\.\d+)?)\s*(億円?|万円?|円)$/);
+  const unitMatch = text.match(/^(?:(?:月額|金額|価格|売買代金|管理費|修繕積立金|賃料|家賃)\s*){0,2}(\d[\d,]*(?:\.\d+)?)\s*(億円?|万円?|円|JPY|yen)$/i);
   if (unitMatch) {
     const token = unitMatch[1];
     const base = Number(token.replaceAll(",", ""));
@@ -74,7 +74,7 @@ function normalizeAreaCandidate(value: string): { value: string; ambiguous: bool
     const right = normalizedDecimal(colonMatches[0][2]);
     return left && right ? { value: `${left}.${right.padStart(2, "0")}`, ambiguous: true } : null;
   }
-  const areaMatches = [...text.matchAll(/(\d[\d,]*(?:\.\d+)?)\s*(?:㎡|m²|m2)/gi)];
+  const areaMatches = [...text.matchAll(/(\d[\d,]*(?:\.\d+)?)\s*(?:㎡|m²|m2|square\s+met(?:er|re)s?|sq\.?\s*m|sqm)/gi)];
   if (areaMatches.length === 1 && [...text.matchAll(/\d[\d,]*(?:\.\d+)?/g)].length === 1) {
     const number = normalizedDecimal(areaMatches[0][1]);
     return number ? { value: number, ambiguous: false } : null;

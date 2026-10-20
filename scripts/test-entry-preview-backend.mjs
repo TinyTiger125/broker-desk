@@ -47,7 +47,7 @@ Module._load = function(request, parent, ...rest) {
   if (request === "@/lib/openai-object-reader") return { readObjectDocumentWithOpenAi: async () => {
     readerCalls += 1;
     const shared = { value: "Example", pageNumber: 2, sourceText: "Property: Example", uncertainty: "clear", subjectKey: "one", subjectLabel: "property" };
-    return { candidates: [{ ...shared, fieldKey: "property.name" }, { ...shared, fieldKey: "lease.rent", value: "50000" }] };
+    return { candidates: [{ ...shared, fieldKey: "property.name" }, { ...shared, fieldKey: "property.listingPrice", value: "750-800 JPY" }, { ...shared, fieldKey: "lease.rent", value: "50000" }] };
   } };
   return originalLoad.call(this, request, parent, ...rest);
 };
@@ -68,7 +68,7 @@ person.set("entryReadProofs", JSON.stringify(customerResult.readProofs));
 person.set("entryReadFileKeys", JSON.stringify(customerResult.readFileKeys));
 assert.equal((await verifyEntryPreviewProofs({ formData: person, files: person.getAll("uploadFile"), session, kind: "customer", context: "entry" })).size, 1);
 const propertyResult = await previewEntryDocumentsAction(request("property"));
-assert.deepEqual(propertyResult.candidates.map((field) => field.key), ["name"], "standalone property preview must not leak lease fields into profile");
+assert.deepEqual(propertyResult.candidates.map((field) => field.key), ["name"], "standalone property preview must exclude lease fields and numeric candidates that cannot fill the form");
 const partial = await previewEntryDocumentsAction(request("customer", ["good.pdf", "fail.pdf"]));
 assert.equal(partial.status, "error");
 assert.equal(partial.candidates.length, 1);
