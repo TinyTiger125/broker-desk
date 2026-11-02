@@ -656,7 +656,7 @@ function safePropertyReturnTo(value: FormDataEntryValue | null): string {
     return `${parsed.pathname}${parsed.search}`;
   }
   if (parsed.pathname === "/organize-center") {
-    if (keys.some((key) => !["type", "q", "lifecycle", "page"].includes(key)) || parsed.searchParams.get("type") !== "property") return fallback;
+    if (keys.some((key) => !["type", "q", "lifecycle", "page"].includes(key)) || !["", "all", "property"].includes(parsed.searchParams.get("type") ?? "")) return fallback;
     return `${parsed.pathname}${parsed.search}`;
   }
   if (parsed.pathname === "/import-center") {
@@ -1055,7 +1055,7 @@ function safeClientReturnTo(value: FormDataEntryValue | null, fallback: string, 
     return `${parsed.pathname}${parsed.search}`;
   }
   if (parsed.pathname === "/organize-center") {
-    if (!["client", "party"].includes(parsed.searchParams.get("type") ?? "") || keys.some((key) => !["type", "q", "lifecycle", "page"].includes(key))) return fallback;
+    if (!["", "all", "client", "party"].includes(parsed.searchParams.get("type") ?? "") || keys.some((key) => !["type", "q", "lifecycle", "page"].includes(key))) return fallback;
     return `${parsed.pathname}${parsed.search}`;
   }
   if (allowImportCenter && parsed.pathname === IMPORT_CENTER_RETURN_PATH) {
@@ -2910,7 +2910,8 @@ export async function createQuotation(formData: FormData) {
     message: `提案を作成しました: ${quote.quoteTitle}`,
   });
 
-  redirect(`/quotes/${quote.id}`);
+  const returnTo = safeReturnTo(formData.get("returnTo"), `/clients/${encodeURIComponent(clientId)}`);
+  redirect(`/quotes/${quote.id}?returnTo=${encodeURIComponent(returnTo)}`);
 }
 
 export async function duplicateQuotationAction(formData: FormData) {

@@ -145,7 +145,7 @@ export function ArchiveRecordButton({
       >
         {isPending ? (isArchived ? copy.restoring : copy.archiving) : isArchived ? copy.restore : copy.archive}
       </Button>
-      <p className="max-w-64 text-[11px] leading-4 text-slate-500">{isArchived ? copy.restoreHint : copy.archiveHint}</p>
+      <p data-list-row-ignore className="max-w-64 text-[11px] leading-4 text-slate-500">{isArchived ? copy.restoreHint : copy.archiveHint}</p>
       {failureCode ? (
         <div
           ref={errorRef}

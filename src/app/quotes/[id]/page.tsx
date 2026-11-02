@@ -14,8 +14,28 @@ export const dynamic = "force-dynamic";
 
 type QuoteDetailPageProps = {
   params: Promise<{ id: string }>;
-  searchParams?: Promise<{ compare?: string }>;
+  searchParams?: Promise<{ compare?: string; returnTo?: string }>;
 };
+
+function normalizeReturnTo(value: string | undefined, clientId: string): string {
+  const fallback = `/clients/${encodeURIComponent(clientId)}`;
+  const path = (value ?? "").trim();
+  if (!path || !path.startsWith("/") || path.startsWith("//") || path.includes("\\")) return fallback;
+  let parsed: URL;
+  try { parsed = new URL(path, "http://broker-desk.local"); } catch { return fallback; }
+  if (parsed.origin !== "http://broker-desk.local" || parsed.hash) return fallback;
+  const keys = [...new Set(parsed.searchParams.keys())];
+  if (parsed.pathname === "/clients") {
+    if (keys.some((key) => !["q", "stage", "purpose", "temperature", "sort", "page"].includes(key))) return fallback;
+    return `${parsed.pathname}${parsed.search}`;
+  }
+  if (parsed.pathname === "/organize-center") {
+    if (keys.some((key) => !["type", "q", "lifecycle", "page"].includes(key)) || !["", "all", "party", "client"].includes(parsed.searchParams.get("type") ?? "")) return fallback;
+    return `${parsed.pathname}${parsed.search}`;
+  }
+  if (parsed.pathname === `/clients/${encodeURIComponent(clientId)}` && keys.length === 0) return parsed.pathname;
+  return fallback;
+}
 
 const texts = {
   ja: {
@@ -148,6 +168,7 @@ export default async function QuoteDetailPage({ params, searchParams }: QuoteDet
   if (!quote || !quote.client) {
     notFound();
   }
+  const returnTo = normalizeReturnTo(query.returnTo, quote.client.id);
   const summaries = generateQuoteSummaries(
     {
       listingPrice: quote.listingPrice,
@@ -189,7 +210,7 @@ export default async function QuoteDetailPage({ params, searchParams }: QuoteDet
             {text.status}：{quoteStatusLabel[quote.status]}
           </span>
           <Link
-            href={compareMode ? `/quotes/${quote.id}` : `/quotes/${quote.id}?compare=1`}
+            href={compareMode ? `/quotes/${quote.id}?returnTo=${encodeURIComponent(returnTo)}` : `/quotes/${quote.id}?compare=1&returnTo=${encodeURIComponent(returnTo)}`}
             className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
           >
             {compareMode ? text.compareOff : text.compareOn}
@@ -276,7 +297,7 @@ export default async function QuoteDetailPage({ params, searchParams }: QuoteDet
             </form> : <p className="mt-3 text-sm text-slate-600">{text.readOnly}</p>}
           </article>
 
-          <Link href={`/clients/${quote.client.id}`} className="inline-flex rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100">
+          <Link href={returnTo} className="inline-flex rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100">
             {text.backClient}
           </Link>
         </aside>

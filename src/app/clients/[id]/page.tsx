@@ -254,7 +254,7 @@ function normalizeReturnTo(value: string | undefined): string {
     if (keys.some((key) => !["q", "stage", "purpose", "temperature", "sort", "page"].includes(key))) return fallback;
     return `${parsed.pathname}${parsed.search}`;
   }
-  if (parsed.pathname === "/organize-center" && ["client", "party"].includes(parsed.searchParams.get("type") ?? "")) {
+  if (parsed.pathname === "/organize-center" && ["", "all", "client", "party"].includes(parsed.searchParams.get("type") ?? "")) {
     if (keys.some((key) => !["type", "q", "lifecycle", "page"].includes(key))) return fallback;
     return `${parsed.pathname}${parsed.search}`;
   }

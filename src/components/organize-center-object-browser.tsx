@@ -293,7 +293,7 @@ export function OrganizeCenterObjectBrowser({
                     returnTo={listHref}
                     returnStateScope={"organize"}
                     returnFocusKey={`${item.type}:${item.id}`}
-                  /><p className="text-[11px] leading-4 text-slate-500">{copy.archiveHint}</p></div>
+                  /></div>
                 ) : null}
               </div>
             </article>

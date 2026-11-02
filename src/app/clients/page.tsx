@@ -421,6 +421,7 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
                 <tbody>
                   {visibleClients.map(({ client, resolution }) => {
                     const clientHref = `/clients/${encodeURIComponent(client.id)}?returnTo=${encodeURIComponent(returnTo)}`;
+                    const quoteHref = `/quotes/new?clientId=${encodeURIComponent(client.id)}&returnTo=${encodeURIComponent(returnTo)}`;
                     return (
                     <tr key={client.id} data-list-row-link={clientHref} data-client-link={`name:${client.id}`} tabIndex={0} aria-label={`${client.name} · ${text.detail}`} className={styles.resultRow}>
                       <td className={styles.clientCell}>
@@ -471,7 +472,7 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
                         {resolution.canWrite ? (
                           <div className={styles.secondaryActions}>
                             <Link
-                              href={`/clients/${client.id}#timeline`}
+                              href={`${clientHref}#timeline`}
                               data-client-link={`follow:${client.id}`}
                               aria-label={`${text.addFollow}: ${client.name}`}
                               className={styles.secondaryLink}
@@ -479,7 +480,7 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
                               {text.addFollow}
                             </Link>
                             <Link
-                              href={`/quotes/new?clientId=${client.id}`}
+                              href={quoteHref}
                               data-client-link={`quote:${client.id}`}
                               aria-label={`${text.createQuote}: ${client.name}`}
                               className={styles.secondaryLink}

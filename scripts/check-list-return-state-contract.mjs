@@ -601,12 +601,16 @@ function runReturnToBoundaryChecks() {
   const property = compileFunction(sources.propertyEdit, "properties-edit.tsx", "normalizeReturnTo");
   const partyCases = [
     ["/parties?q=Alpha&type=individual&lifecycle=archived&page=2", "/parties?q=Alpha&type=individual&lifecycle=archived&page=2"],
+    ["/organize-center", "/organize-center"],
+    ["/organize-center?type=all&q=Alpha&lifecycle=all&page=2", "/organize-center?type=all&q=Alpha&lifecycle=all&page=2"],
     ["/organize-center?type=party&q=Alpha&lifecycle=all&page=2", "/organize-center?type=party&q=Alpha&lifecycle=all&page=2"],
     ["https://evil.example/parties", "/parties"], ["//evil.example/parties", "/parties"], ["/parties/../admin", "/parties"],
     ["/parties#private", "/parties"], ["/parties?admin=true", "/parties"], ["/organize-center?type=property", "/parties"], ["/\\evil", "/parties"],
   ];
   const propertyCases = [
     ["/properties?q=Tokyo&lifecycle=all&sort=price&page=2", "/properties?q=Tokyo&lifecycle=all&sort=price&page=2"],
+    ["/organize-center", "/organize-center"],
+    ["/organize-center?type=all&q=Tokyo&lifecycle=all&page=2", "/organize-center?type=all&q=Tokyo&lifecycle=all&page=2"],
     ["/organize-center?type=property&q=Tokyo&lifecycle=all&page=2", "/organize-center?type=property&q=Tokyo&lifecycle=all&page=2"],
     ["https://evil.example/properties", "/properties"], ["//evil.example/properties", "/properties"], ["/properties/../admin", "/properties"],
     ["/properties?admin=true", "/properties"], ["/organize-center?type=party", "/properties"], ["/\\evil", "/properties"],

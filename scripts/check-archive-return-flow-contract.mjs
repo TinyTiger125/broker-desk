@@ -281,6 +281,8 @@ function assertCaseReturnNormalizer(source) {
   const fallback = "/organize-center?type=case";
   const cases = [
     ["/organize-center?type=case", fallback],
+    ["/organize-center", "/organize-center"],
+    ["/organize-center?type=all&q=%E7%94%B2&lifecycle=archived&page=2", "/organize-center?type=all&q=%E7%94%B2&lifecycle=archived&page=2"],
     ["/organize-center?type=case&q=%E7%94%B2&lifecycle=archived&page=2", "/organize-center?type=case&q=%E7%94%B2&lifecycle=archived&page=2"],
     ["https://evil.example/organize-center?type=case", fallback],
     ["//evil.example/organize-center?type=case", fallback],

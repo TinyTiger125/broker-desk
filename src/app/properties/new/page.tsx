@@ -54,7 +54,7 @@ function normalizeReturnTo(value: string | undefined): string {
     return `${parsed.pathname}${parsed.search}`;
   }
   if (parsed.pathname === "/organize-center") {
-    if (keys.some((key) => !["type", "q", "lifecycle", "page"].includes(key)) || parsed.searchParams.get("type") !== "property") return fallback;
+    if (keys.some((key) => !["type", "q", "lifecycle", "page"].includes(key)) || !["", "all", "property"].includes(parsed.searchParams.get("type") ?? "")) return fallback;
     return `${parsed.pathname}${parsed.search}`;
   }
   if (parsed.pathname === "/import-center") {

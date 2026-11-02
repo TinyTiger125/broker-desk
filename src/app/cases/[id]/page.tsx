@@ -156,13 +156,14 @@ function normalizeCaseArchiveReturnTo(value: string | null | undefined): string 
   const keys = [...new Set(parsed.searchParams.keys())];
   const lifecycle = parsed.searchParams.get("lifecycle");
   const page = parsed.searchParams.get("page");
+  const organizeType = parsed.searchParams.get("type");
   if (
     parsed.origin !== "http://broker-desk.local"
     || parsed.hash
     || parsed.pathname !== "/organize-center"
     || decodedSegments.some((segment) => segment === "." || segment === ".." || segment.includes("\\"))
-    || parsed.searchParams.get("type") !== "case"
-    || parsed.searchParams.getAll("type").length !== 1
+    || (organizeType !== null && !["all", "case"].includes(organizeType))
+    || parsed.searchParams.getAll("type").length > 1
     || keys.some((key) => parsed.searchParams.getAll(key).length !== 1)
     || keys.some((key) => !["type", "q", "lifecycle", "page"].includes(key))
     || (lifecycle !== null && !["active", "archived", "all"].includes(lifecycle))

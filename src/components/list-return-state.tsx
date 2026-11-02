@@ -201,7 +201,7 @@ export function ListReturnState({ children, listUrl, scope }: ListReturnStatePro
     const rememberTrigger = (event: MouseEvent) => {
       if (!(event.target instanceof Element)) return;
       const row = event.target.closest<HTMLElement>("[data-list-row-link]");
-      if (row && root.contains(row) && !event.target.closest("a,button,input,select,textarea,label") && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
+      if (row && root.contains(row) && !event.target.closest("a,button,input,select,textarea,label,[data-list-row-ignore]") && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
         const triggerKey = row.dataset.listRowReturnTrigger;
         if (!triggerKey) return;
         rememberListReturnIntent({ listUrl: canonicalUrl, scope, triggerKey });
@@ -228,7 +228,7 @@ export function ListReturnState({ children, listUrl, scope }: ListReturnStatePro
       if (event.key !== "Enter" && event.key !== " ") return;
       if (!(event.target instanceof Element)) return;
       const row = event.target.closest<HTMLElement>("[data-list-row-link]");
-      if (!row || !root.contains(row) || event.target.closest("a,button,input,select,textarea,label")) return;
+      if (!row || !root.contains(row) || event.target.closest("a,button,input,select,textarea,label,[data-list-row-ignore]")) return;
       const triggerKey = row.dataset.listRowReturnTrigger;
       if (!triggerKey) return;
       event.preventDefault();
