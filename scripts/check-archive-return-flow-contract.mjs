@@ -402,15 +402,22 @@ function assertOrganizeSharedReturn(source, pageSource) {
   const triggers = walk(row, (node) => (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) && Boolean(jsxAttribute(node, "data-list-return-trigger")));
   assert.equal(triggers.length, 1, "organize object link must use one shared stable trigger template");
   assert.equal(jsxAttributeExpression(triggers[0], "data-list-return-trigger").getText(sf), "`${item.type}:${item.id}`");
-  assert.equal(jsxAttributeExpression(triggers[0], "data-list-row-link").getText(sf), "itemHref", "the live row target must consume the source-aware href");
-  assert.equal(jsxAttributeExpression(triggers[0], "tabIndex").getText(sf), "0", "the live row target must remain keyboard focusable");
-  assert.equal(jsxAttribute(triggers[0], "role")?.initializer?.getText(sf), '"row"', "the live row target must retain row semantics");
+  assert.equal(jsxTag(triggers[0], sf), "a", "the stable organize target must be one semantic anchor");
+  assert.ok(jsxAttribute(triggers[0], "data-list-row-anchor"), "the semantic anchor must be the only organize row keyboard target");
+  assert.equal(jsxAttributeExpression(triggers[0], "href").getText(sf), "itemHref", "the semantic row anchor must consume the source-aware href");
+  assert.ok(jsxAttribute(triggers[0], "aria-label"), "the semantic row anchor must be accessible by name");
+  const rowOpening = row.openingElement;
+  assert.equal(jsxAttributeExpression(rowOpening, "data-list-row-link").getText(sf), "itemHref", "the outer row must retain the source-aware whole-row target");
+  assert.equal(jsxAttributeExpression(rowOpening, "data-list-row-return-trigger").getText(sf), "`${item.type}:${item.id}`", "the outer row must retain a stable navigation identity");
+  assert.equal(jsxAttribute(rowOpening, "tabIndex"), undefined, "the outer row must not create a duplicate keyboard target");
+  assert.equal(jsxAttribute(rowOpening, "role"), undefined, "the outer row must not pretend to be a table row without table context");
   const nestedDetailLinks = walk(row, (node) =>
     (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node))
-    && node.tagName.getText(sf) === "Link"
-    && jsxAttributeExpression(node, "href")?.getText(sf) === "itemHref",
+    && node.tagName.getText(sf) === "Link",
   );
-  assert.equal(nestedDetailLinks.length, 0, "organize rows must not contain a competing nested detail link");
+  assert.equal(nestedDetailLinks.length, 0, "organize rows must not contain a competing nested Next link");
+  const ignoredContainers = walk(row, (node) => (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) && Boolean(jsxAttribute(node, "data-list-row-ignore")));
+  assert.ok(ignoredContainers.length >= 1, "archive controls must remain outside row navigation");
   const mapCall = walk(liveReturn.expression, (node) => ts.isCallExpression(node)
     && ts.isPropertyAccessExpression(node.expression)
     && node.expression.name.text === "map"

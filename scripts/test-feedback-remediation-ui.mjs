@@ -61,8 +61,13 @@ const organizeBrowser = await source("src/components/organize-center-object-brow
 assert.match(organizeBrowser, /const itemHref = `\$\{item\.href\}\$\{item\.href\.includes\("\?"\) \? "&" : "\?"\}returnTo=/);
 assert.match(organizeBrowser, /data-list-row-link=\{itemHref\}/);
 assert.match(organizeBrowser, /data-list-row-return-trigger=\{`\$\{item\.type\}:\$\{item\.id\}`\}/);
-assert.match(organizeBrowser, /role="row"/);
-assert.match(organizeBrowser, /tabIndex=\{0\}/);
+assert.match(organizeBrowser, /<a\s+href=\{itemHref\}/);
+assert.match(organizeBrowser, /data-list-row-anchor/);
+assert.match(organizeBrowser, /aria-label=\{`\$\{item\.title\} · \$\{getTypeLabel\(item\.type, copy\)\}`\}/);
+assert.doesNotMatch(organizeBrowser, /role="row"/);
+assert.doesNotMatch(organizeBrowser, /tabIndex=\{0\}/);
+assert.match(organizeBrowser, /hover:bg-\[#eef1f6\]/);
+assert.match(organizeBrowser, /focus-visible:bg-\[#e8efff\]/);
 assert.doesNotMatch(organizeBrowser, /copy\.archiveHint/);
 const quotePage = await source("src/app/quotes/new/page.tsx");
 assert.match(quotePage, /function normalizeReturnTo\(value: string \| undefined\): string/);

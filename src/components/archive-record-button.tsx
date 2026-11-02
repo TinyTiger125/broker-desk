@@ -150,6 +150,7 @@ export function ArchiveRecordButton({
         <div
           ref={errorRef}
           role="alert"
+          data-list-row-ignore
           aria-live="assertive"
           tabIndex={-1}
           className="max-w-80 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium leading-6 text-rose-800 break-words focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[length:var(--bd-focus-ring-offset)]"

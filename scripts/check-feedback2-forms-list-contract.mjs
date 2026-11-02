@@ -32,15 +32,20 @@ assert(organizePage.includes("relatedObjects: resolution.outcome === \"company_r
 assert(organizePage.includes('casePartyLabel: "人物"') && organizePage.includes('casePropertyLabel: "物件"'), "case relationship labels remain explicit in Chinese/Japanese UI copy");
 
 assert(!/<Link\s+href=\{itemHref\}/.test(objectBrowser), "organize rows must not create a competing nested title link");
+assert((objectBrowser.match(/<a\s+href=\{itemHref\}/g) ?? []).length === 1, "each organize row must expose one semantic detail anchor");
+assert((objectBrowser.match(/data-list-row-anchor/g) ?? []).length === 1, "the detail anchor must be the only row keyboard target");
+assert(objectBrowser.includes("aria-label={`${item.title} · ${getTypeLabel(item.type, copy)}`}"), "the semantic row anchor must have an accessible name");
 assert((objectBrowser.match(/data-list-return-trigger=\{`\$\{item\.type\}:\$\{item\.id\}`\}/g) ?? []).length === 1, "each row must expose one stable return/focus target");
-assert(objectBrowser.includes('data-list-return-trigger={`${item.type}:${item.id}`}'), "the row itself must be the stable return/focus target");
-assert(objectBrowser.includes("hover:bg-[#e8efff]") && objectBrowser.includes("focus-visible:bg-[#e8efff]"), "row hover and focus must visibly highlight the whole row");
+assert(objectBrowser.includes('data-list-return-trigger={`${item.type}:${item.id}`}'), "the semantic row anchor must be the stable return/focus target");
+assert(!objectBrowser.includes('role="row"') && !objectBrowser.includes('tabIndex={0}'), "the outer row must not create a duplicate keyboard target");
+assert(objectBrowser.includes("hover:bg-[#eef1f6]") && objectBrowser.includes("focus-visible:bg-[#e8efff]"), "row hover and keyboard focus must use distinct visible treatments");
 assert(objectBrowser.includes("focus-visible:shadow-[inset_3px_0_0_#3158d8]"), "focused row must have a distinct focus marker");
 assert(objectBrowser.includes("{item.subtitle}"), "row target includes the surrounding subtitle content");
 assert(objectBrowser.includes("<ArchiveRecordButton"), "archive action remains rendered independently");
-assert(archiveButton.includes("data-list-row-ignore"), "archive hint remains outside row navigation");
+assert(archiveButton.includes('role="alert"\n          data-list-row-ignore'), "archive failure alert remains outside row navigation");
 assert(archiveButton.includes("event.stopPropagation()"), "archive action must not activate row navigation");
 assert(listReturnState.includes('if (event.target.closest("[data-list-row-ignore]")) return;'), "ignored row content must not write a return intent after row navigation is skipped");
+assert(listReturnState.includes('a[data-list-row-anchor]'), "keyboard row activation must allow the semantic row anchor only");
 assert(objectBrowser.includes("getRelatedObjectUi"), "case relationship rows use a stable type-to-color mapping");
 assert(objectBrowser.includes("relatedObjects?.length"), "case relationship rows render separately from generic relation text");
 assert(objectBrowser.includes("bg-emerald-50 text-emerald-700") && objectBrowser.includes("bg-violet-50 text-violet-700"), "person/property relationship rows retain recent-entry colors");

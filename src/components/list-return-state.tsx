@@ -229,7 +229,9 @@ export function ListReturnState({ children, listUrl, scope }: ListReturnStatePro
       if (event.key !== "Enter" && event.key !== " ") return;
       if (!(event.target instanceof Element)) return;
       const row = event.target.closest<HTMLElement>("[data-list-row-link]");
-      if (!row || !root.contains(row) || event.target.closest("a,button,input,select,textarea,label,[data-list-row-ignore]")) return;
+      const rowAnchor = event.target.closest<HTMLAnchorElement>("a[data-list-row-anchor]");
+      const ignoredTarget = event.target.closest("button,input,select,textarea,label,[data-list-row-ignore]");
+      if (!row || !root.contains(row) || ignoredTarget || (event.target.closest("a") && !rowAnchor)) return;
       const triggerKey = row.dataset.listRowReturnTrigger;
       if (!triggerKey) return;
       event.preventDefault();
