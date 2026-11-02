@@ -1,4 +1,4 @@
-import { validateObjectImportReview, type ObjectImportReviewInput, type ObjectImportReviewResult } from "@/lib/object-import-review";
+import { isEmptyModelDestination, isObjectImportCaseFieldManuallyCleared, isSafeModelAutoSave, recordObjectImportManualCaseClears, validateObjectImportReview, type ObjectImportReviewInput, type ObjectImportReviewResult } from "@/lib/object-import-review";
 import { isCorporateCustomerRecord } from "@/lib/customer-identity-field-catalog";
 import { buildObjectVersionFingerprint, resolveObjectImportFeatureReadiness, type ObjectImportFeatureReadiness } from "@/lib/object-import-contract";
 import { readCaseAssociationDraft } from "@/lib/case-associations";
@@ -113,10 +113,13 @@ import type {
   RefreshObjectImportReviewResult,
   PreparePropertyRowImportResult,
   ClosedBetaDemoResult,
+  EntryRequestTargetType,
+  EntryRequestClaimResult,
 } from "@/lib/data.memory";
 import { normalizeInvitationDeliveryState } from "@/lib/invitation-delivery-state";
 import type { VisibleBrokerageCase, VisibleProperty } from "@/lib/data.memory";
 import type { TenantRole, TenantCapabilityPreset } from "@/lib/tenant-permissions";
+import { capabilityHasTenantPermission, roleHasTenantPermission } from "@/lib/tenant-permissions";
 import type { LifecycleFilter, LifecycleStatus } from "@/lib/record-lifecycle";
 import { getTenantDeploymentEnvironment } from "@/lib/tenant-bootstrap-policy";
 import {
@@ -212,6 +215,12 @@ const REQUIRED_PRODUCTION_MIGRATIONS = [
   "20261002_001_invitation_delivery_claim.sql",
   "20261008_001_closed_beta_atomic_provisioning.sql",
   "20261012_002_unified_profiles.sql",
+  "20261102_001_entry_request_claims.sql",
+  "20261102_002_entry_request_payload_digest.sql",
+  "20261102_003_entry_request_intent_key.sql",
+  "20261102_004_entry_request_claim_fencing.sql",
+  "20261102_005_entry_request_claims_runtime_acl.sql",
+  "20261102_006_entry_request_claims_authenticated_acl.sql",
 ] as const;
 
 const OPEN_STAGES: ClientStage[] = ["lead", "contacted", "quoted", "viewing", "negotiating"];
@@ -1247,9 +1256,9 @@ async function assertProductionRuntimeRoleSafe(db: Pool) {
 
   if (!productionRuntimeRoleCheck) {
     productionRuntimeRoleCheck = db
-      .query("SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user")
+      .query("SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user")
       .then((result) => {
-        if (!result.rows[0] || Boolean(result.rows[0].rolbypassrls)) {
+        if (!result.rows[0] || Boolean(result.rows[0].rolsuper) || Boolean(result.rows[0].rolbypassrls)) {
           throw new ProductionReadinessError("production_database_role_unsafe");
         }
       })
@@ -2204,6 +2213,129 @@ async function withTransaction<T>(fn: (client: PoolClient) => Promise<T>) {
 /** Narrow transaction seam for object-import CAS; general writers remain private. */
 export async function runObjectImportTransaction<T>(fn: (client: PoolClient) => Promise<T>) {
   return withTransaction(fn);
+}
+
+/**
+ * Claim the request key inside a transaction. The primary key is the actual
+ * concurrency fence; the follow-up row lock only resolves the state after a
+ * competing INSERT has committed.
+ */
+export async function claimEntryRequest(input: {
+  tenantId?: string;
+  userId: string;
+  targetType: EntryRequestTargetType;
+  requestKey: string;
+  payloadDigest: string;
+  targetId?: string;
+}): Promise<EntryRequestClaimResult> {
+  await ensureSchema();
+  const tenantId = resolveTenantId(input.tenantId);
+  const userId = input.userId.trim();
+  const requestKey = input.requestKey.trim();
+  const payloadDigest = input.payloadDigest.trim();
+  const targetId = input.targetId?.trim() || undefined;
+  if (!userId || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestKey) || !/^[a-f0-9]{64}$/.test(payloadDigest)) throw new Error("entry_request_key_invalid");
+  if (targetId && !/^[A-Za-z0-9_-]{1,160}$/.test(targetId)) throw new Error("entry_target_id_invalid");
+  return withTransaction(async (client) => {
+    const inserted = await client.query(
+      `INSERT INTO entry_request_claims (tenant_id, user_id, request_key, target_type, payload_digest, target_id, claim_token)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
+       ON CONFLICT (tenant_id, user_id, request_key, target_type) DO NOTHING
+       RETURNING state, target_id, claim_token`,
+      [tenantId, userId, requestKey, input.targetType, payloadDigest, targetId ?? null, randomUUID()],
+    );
+    if (inserted.rows[0]) {
+      return { state: "claimed", claimToken: String(inserted.rows[0].claim_token ?? ""), ...(inserted.rows[0].target_id ? { targetId: String(inserted.rows[0].target_id) } : {}) };
+    }
+    const current = await client.query(
+      `SELECT state, target_id, updated_at, payload_digest, claim_token
+         FROM entry_request_claims
+        WHERE tenant_id=$1 AND user_id=$2 AND request_key=$3 AND target_type=$4
+        FOR UPDATE`,
+      [tenantId, userId, requestKey, input.targetType],
+    );
+    const row = current.rows[0];
+    if (!row) throw new Error("entry_request_claim_conflict");
+    if (row.state === "failed") {
+      await client.query(
+        `UPDATE entry_request_claims
+            SET state='claimed', payload_digest=$5, target_id=COALESCE(target_id,$6), claim_token=$7, updated_at=NOW()
+          WHERE tenant_id=$1 AND user_id=$2 AND request_key=$3 AND target_type=$4`,
+        [tenantId, userId, requestKey, input.targetType, payloadDigest, targetId ?? null, randomUUID()],
+      );
+      const refreshed = await client.query(
+        `SELECT claim_token, target_id FROM entry_request_claims
+          WHERE tenant_id=$1 AND user_id=$2 AND request_key=$3 AND target_type=$4`,
+        [tenantId, userId, requestKey, input.targetType],
+      );
+      return { state: "claimed", claimToken: String(refreshed.rows[0]?.claim_token ?? ""), ...(refreshed.rows[0]?.target_id ? { targetId: String(refreshed.rows[0].target_id) } : {}) };
+    }
+    if (String(row.payload_digest ?? "") !== payloadDigest) return { state: "payload_mismatch" };
+    if (row.state === "completed" && row.target_id) return { state: "existing", targetId: String(row.target_id) };
+    const stale = new Date(String(row.updated_at)).getTime() < Date.now() - 10 * 60 * 1000;
+    if (stale) {
+      const fenced = await client.query(
+        `UPDATE entry_request_claims
+            SET state='claimed', target_id=COALESCE(target_id,$5), claim_token=$6, updated_at=NOW()
+          WHERE tenant_id=$1 AND user_id=$2 AND request_key=$3 AND target_type=$4 AND state='claimed'
+          RETURNING claim_token, target_id`,
+        [tenantId, userId, requestKey, input.targetType, targetId ?? null, randomUUID()],
+      );
+      if (!fenced.rows[0]) throw new Error("entry_request_claim_fence_failed");
+      return { state: "claimed", claimToken: String(fenced.rows[0].claim_token), ...(fenced.rows[0].target_id ? { targetId: String(fenced.rows[0].target_id) } : {}) };
+    }
+    return { state: "in_progress", ...(row.target_id ? { targetId: String(row.target_id) } : {}) };
+  });
+}
+
+export async function completeEntryRequest(input: {
+  tenantId?: string;
+  userId: string;
+  targetType: EntryRequestTargetType;
+  requestKey: string;
+  targetId: string;
+  claimToken: string;
+}): Promise<boolean> {
+  await ensureSchema();
+  const tenantId = resolveTenantId(input.tenantId);
+  return withTransaction(async (client) => {
+    const result = await client.query(
+      `UPDATE entry_request_claims
+          SET state='completed', target_id=$5, updated_at=NOW()
+        WHERE tenant_id=$1 AND user_id=$2 AND request_key=$3 AND target_type=$4
+          AND state='claimed' AND claim_token=$6
+        RETURNING target_id`,
+      [tenantId, input.userId.trim(), input.requestKey.trim(), input.targetType, input.targetId, input.claimToken.trim()],
+    );
+    if (result.rowCount) return true;
+    const existing = await client.query(
+      `SELECT target_id, claim_token FROM entry_request_claims
+        WHERE tenant_id=$1 AND user_id=$2 AND request_key=$3 AND target_type=$4 AND state='completed'`,
+      [tenantId, input.userId.trim(), input.requestKey.trim(), input.targetType],
+    );
+    return String(existing.rows[0]?.target_id ?? "") === input.targetId && String(existing.rows[0]?.claim_token ?? "") === input.claimToken.trim();
+  });
+}
+
+export async function releaseEntryRequest(input: {
+  tenantId?: string;
+  userId: string;
+  targetType: EntryRequestTargetType;
+  requestKey: string;
+  claimToken: string;
+}): Promise<boolean> {
+  await ensureSchema();
+  const tenantId = resolveTenantId(input.tenantId);
+  return withTransaction(async (client) => {
+    const result = await client.query(
+      `UPDATE entry_request_claims
+          SET state='failed', updated_at=NOW()
+        WHERE tenant_id=$1 AND user_id=$2 AND request_key=$3 AND target_type=$4 AND state='claimed' AND claim_token=$5
+        RETURNING tenant_id`,
+      [tenantId, input.userId.trim(), input.requestKey.trim(), input.targetType, input.claimToken.trim()],
+    );
+    return Boolean(result.rowCount);
+  });
 }
 
 function isValidImportStatusTransition(from: ImportJobStatus, to: ImportJobStatus, allowRetry: boolean): boolean {
@@ -4412,11 +4544,12 @@ export async function saveCaseWorkbenchWithObjectReview(
       objectReview = { ok: true, caseId: target.caseId, targetId: target.targetId, targetVersion };
     }
 
+    const confirmedDataJson = recordObjectImportManualCaseClears(caseItem.confirmedDataJson, input.confirmedDataJson);
     const result = await client.query(
       `UPDATE brokerage_cases SET confirmed_data_json=$3, updated_at=NOW()
        WHERE id=$1 AND tenant_id=$2 AND current_owner_user_id=$4 AND owner_resolution_status='resolved'
        RETURNING *`,
-      [input.caseId, context.tenantId, JSON.stringify(input.confirmedDataJson), context.userId],
+      [input.caseId, context.tenantId, JSON.stringify(confirmedDataJson), context.userId],
     );
     // A rejected final write must roll back earlier object/candidate/audit writes.
     if (!result.rows[0]) throw new Error("case_workbench_write_not_applied");
@@ -4428,6 +4561,7 @@ export async function saveBrokerageCaseExtractionReview(input: {
   tenantId?: string;
   userId: string;
   caseId?: string;
+  preventDuplicateTitle?: boolean;
   caseType: BrokerageCaseType;
   caseTitle: string;
   primaryPropertyId?: string;
@@ -4435,6 +4569,7 @@ export async function saveBrokerageCaseExtractionReview(input: {
   confirmedDataJson: Record<string, unknown>;
   sourceImportJobIds: string[];
   reviewItems: Array<Omit<ExtractionReviewItem, "id" | "tenantId" | "userId" | "caseId" | "createdAt">>;
+  entryRequest?: { requestKey: string; claimToken: string };
 }): Promise<BrokerageCase> {
   await ensureSchema();
   const nowIso = new Date().toISOString();
@@ -4442,6 +4577,17 @@ export async function saveBrokerageCaseExtractionReview(input: {
   const tenantId = resolveTenantId(input.tenantId);
   const sourceImportJobIds = [...new Set(input.sourceImportJobIds)];
   const caseResult = await withTransaction(async (client) => {
+    if (input.entryRequest) {
+      const fence = await client.query(
+        `SELECT 1
+           FROM entry_request_claims
+          WHERE tenant_id=$1 AND user_id=$2 AND request_key=$3 AND target_type='case'
+            AND state='claimed' AND claim_token=$4
+          FOR UPDATE`,
+        [tenantId, input.userId, input.entryRequest.requestKey.trim(), input.entryRequest.claimToken.trim()],
+      );
+      if (!fence.rows[0]) throw new Error("entry_request_claim_fenced");
+    }
     const visibilityScope = await resolveMemberVisibilityScope(tenantId, input.userId, "case", client);
     const existing = input.caseId
       ? await client.query("SELECT id FROM brokerage_cases WHERE id = $1 AND current_owner_user_id = $2 AND tenant_id = $3 AND owner_resolution_status = 'resolved' LIMIT 1", [
@@ -4450,6 +4596,15 @@ export async function saveBrokerageCaseExtractionReview(input: {
           tenantId,
         ])
       : { rows: [] };
+    if (!existing.rows.length && input.preventDuplicateTitle && input.caseTitle.trim()) {
+      const normalizedTitle = input.caseTitle.trim().toLocaleLowerCase();
+      await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`${tenantId}|${normalizedTitle}`]);
+      const duplicate = await client.query(
+        "SELECT id FROM brokerage_cases WHERE tenant_id=$1 AND lower(trim(case_title))=lower(trim($2)) AND lifecycle_status='active' LIMIT 1",
+        [tenantId, input.caseTitle.trim()],
+      );
+      if (duplicate.rows[0]) throw new Error("case_title_duplicate");
+    }
     const result =
       existing.rows.length > 0
         ? await client.query(
@@ -5122,27 +5277,44 @@ export async function addAttachment(input: {
   fileType?: string;
   fileSizeBytes?: number;
   storagePath?: string;
+  dedupeKey?: string;
 }): Promise<Attachment> {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(input.tenantId);
-  const result = await getPool().query(
-    `INSERT INTO attachments (
-      id, tenant_id, user_id, target_type, target_id, file_name, file_type, file_size_bytes, storage_path, uploaded_at
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())
-    RETURNING *`,
-    [
-      genId("att"),
-      scopeTenantId,
-      input.userId,
-      input.targetType,
-      input.targetId,
-      input.fileName.trim(),
-      input.fileType?.trim() || null,
-      input.fileSizeBytes ?? null,
-      input.storagePath?.trim() || null,
-    ]
-  );
-  return mapAttachment(result.rows[0]);
+  const dedupeKey = input.dedupeKey?.trim();
+  const dedupeMarker = dedupeKey ? `?entryRequest=${encodeURIComponent(dedupeKey)}` : "";
+  const write = async (client: Pick<PoolClient, "query">) => {
+    if (dedupeMarker) {
+      await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`${scopeTenantId}|${input.targetType}|${input.targetId}|${dedupeMarker}`]);
+      const existing = await client.query(
+        `SELECT * FROM attachments
+          WHERE tenant_id=$1 AND user_id=$2 AND target_type=$3 AND target_id=$4
+            AND RIGHT(storage_path, LENGTH($5))=$5
+          LIMIT 1`,
+        [scopeTenantId, input.userId, input.targetType, input.targetId, dedupeMarker],
+      );
+      if (existing.rows[0]) return mapAttachment(existing.rows[0]);
+    }
+    const result = await client.query(
+      `INSERT INTO attachments (
+        id, tenant_id, user_id, target_type, target_id, file_name, file_type, file_size_bytes, storage_path, uploaded_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())
+      RETURNING *`,
+      [
+        genId("att"),
+        scopeTenantId,
+        input.userId,
+        input.targetType,
+        input.targetId,
+        input.fileName.trim(),
+        input.fileType?.trim() || null,
+        input.fileSizeBytes ?? null,
+        input.storagePath?.trim() ? `${input.storagePath.trim()}${dedupeMarker}` : dedupeMarker || null,
+      ]
+    );
+    return mapAttachment(result.rows[0]);
+  };
+  return dedupeMarker ? withTransaction(write) : write(getPool());
 }
 
 export async function addPrivateAttachment(input: {
@@ -5153,6 +5325,8 @@ export async function addPrivateAttachment(input: {
   fileName: string;
   fileType?: string;
   content: Buffer;
+  /** Stable only for one entry intent/file slot; a new user upload gets a new key. */
+  dedupeKey?: string;
 }): Promise<Attachment> {
   await ensureSchema();
   if (input.content.length > 10 * 1024 * 1024) {
@@ -5160,7 +5334,25 @@ export async function addPrivateAttachment(input: {
   }
   const scopeTenantId = resolveTenantId(input.tenantId);
   const attachmentId = genId("att");
+  const contentDigest = createHash("sha256").update(input.content).digest("hex");
+  const dedupeKey = input.dedupeKey?.trim();
+  const dedupeMarker = dedupeKey ? `?entryRequest=${encodeURIComponent(dedupeKey)}&digest=${contentDigest}` : "";
   return withTransaction(async (client) => {
+    // A stale worker can wake after the claim fence moved. Serialize by
+    // target+digest before creating the blob so a retry can only link the one
+    // durable original, even when both workers race before either links it.
+    await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`${scopeTenantId}|${input.targetType}|${input.targetId}|${dedupeMarker || attachmentId}`]);
+    if (dedupeMarker) {
+      const existing = await client.query(
+        `SELECT a.*
+           FROM attachments a
+          WHERE a.tenant_id=$1 AND a.user_id=$2 AND a.target_type=$3 AND a.target_id=$4
+            AND RIGHT(a.storage_path, LENGTH($5))=$5
+          LIMIT 1`,
+        [scopeTenantId, input.userId, input.targetType, input.targetId, dedupeMarker],
+      );
+      if (existing.rows[0]) return mapAttachment(existing.rows[0]);
+    }
     const attachmentResult = await client.query(
       `INSERT INTO attachments (
         id, tenant_id, user_id, target_type, target_id, file_name, file_type, file_size_bytes, storage_path, uploaded_at
@@ -5175,13 +5367,13 @@ export async function addPrivateAttachment(input: {
         input.fileName.trim(),
         input.fileType?.trim() || null,
         input.content.length,
-        `postgres-private://${scopeTenantId}/${attachmentId}`,
+        `postgres-private://${scopeTenantId}/${attachmentId}${dedupeMarker}`,
       ],
     );
     await client.query(
       `INSERT INTO private_attachment_blobs (attachment_id, tenant_id, content, sha256)
        VALUES ($1,$2,$3,$4)`,
-      [attachmentId, scopeTenantId, input.content, createHash("sha256").update(input.content).digest("hex")],
+      [attachmentId, scopeTenantId, input.content, contentDigest],
     );
     return mapAttachment(attachmentResult.rows[0]);
   });
@@ -6321,6 +6513,7 @@ export async function setRecordLifecycleWithAudit(input: SetRecordLifecycleWithA
 }
 
 export async function addProperty(input: {
+  id?: string;
   tenantId?: string;
   createdByUserId?: string;
   currentOwnerUserId?: string;
@@ -6338,6 +6531,7 @@ export async function addProperty(input: {
   managementFee?: number;
   repairFee?: number;
   notes?: string;
+  entryRequest?: { requestKey: string; claimToken: string };
 }) {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(input.tenantId);
@@ -6345,14 +6539,25 @@ export async function addProperty(input: {
   const visibilityScope = ownerUserId
     ? await resolveMemberVisibilityScope(scopeTenantId, ownerUserId, "property")
     : "private";
-  const result = await getPool().query(
+  return withTransaction(async (client) => {
+    if (input.entryRequest) {
+      const fence = await client.query(
+        `SELECT 1 FROM entry_request_claims
+          WHERE tenant_id=$1 AND user_id=$2 AND request_key=$3
+            AND target_type='property' AND state='claimed' AND claim_token=$4
+          FOR UPDATE`,
+        [scopeTenantId, ownerUserId, input.entryRequest.requestKey.trim(), input.entryRequest.claimToken.trim()],
+      );
+      if (!fence.rowCount) throw new Error("entry_request_claim_fenced");
+    }
+    const result = await client.query(
     `INSERT INTO properties (
       id, tenant_id, name, area, address, furigana, room_number, postal_code, usage, listing_price, listing_rent, listing_common_fee, size_sqm, management_fee, repair_fee, notes,
       created_by_user_id, current_owner_user_id, visibility_scope, owner_resolution_status
     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
     RETURNING *`,
     [
-      genId("prop"),
+      input.id?.trim() || genId("prop"),
       scopeTenantId,
       input.name,
       input.area ?? null,
@@ -6373,8 +6578,9 @@ export async function addProperty(input: {
       visibilityScope,
       ownerUserId ? "resolved" : "pending_confirmation",
     ]
-  );
-  return mapProperty(result.rows[0]);
+    );
+    return mapProperty(result.rows[0]);
+  });
 }
 
 export async function getPropertyById(propertyId: string, tenantId?: string) {
@@ -6589,6 +6795,7 @@ export async function getQuotationByIdForContext(input: { context: RequestContex
 }
 
 export async function addClient(input: {
+  id?: string;
   tenantId?: string;
   ownerUserId: string;
   name: string;
@@ -6626,13 +6833,25 @@ export async function addClient(input: {
   amlCheckStatus: AmlCheckStatus;
   nextFollowUpAt?: Date;
   notes?: string;
+  entryRequest?: { requestKey: string; claimToken: string };
 }) {
   await ensureSchema();
   const scopeTenantId = resolveTenantId(input.tenantId);
-  const id = genId("client");
+  const id = input.id?.trim() || genId("client");
   const visibilityScope = await resolveMemberVisibilityScope(scopeTenantId, input.ownerUserId, "person");
 
-  const result = await getPool().query(
+  return withTransaction(async (client) => {
+    if (input.entryRequest) {
+      const fence = await client.query(
+        `SELECT 1 FROM entry_request_claims
+          WHERE tenant_id=$1 AND user_id=$2 AND request_key=$3
+            AND target_type='client' AND state='claimed' AND claim_token=$4
+          FOR UPDATE`,
+        [scopeTenantId, input.ownerUserId, input.entryRequest.requestKey.trim(), input.entryRequest.claimToken.trim()],
+      );
+      if (!fence.rowCount) throw new Error("entry_request_claim_fenced");
+    }
+    const result = await client.query(
     `INSERT INTO clients (
       id, tenant_id, name, phone, line_id, email, furigana, birth_date, gender, current_postal_code, current_address,
       employer_name, employer_address, employer_phone, annual_income, annual_income_as_of, annual_income_source,
@@ -6688,9 +6907,10 @@ export async function addClient(input: {
       visibilityScope,
       "resolved",
     ]
-  );
+    );
 
-  return mapClient(result.rows[0]);
+    return mapClient(result.rows[0]);
+  });
 }
 
 export async function updateClient(
@@ -8025,5 +8245,79 @@ export async function reviewObjectImportCandidate(input: ObjectImportReviewInput
     await client.query(`UPDATE object_import_targets SET target_version=$1,status=${objectImportTargetStatusSql()},updated_at=NOW() WHERE id=$2 AND tenant_id=$3`, [targetVersion, target.id, context.tenantId]);
     await client.query("INSERT INTO audit_logs (id,tenant_id,user_id,actor_id,action,target_type,target_id,message,context_json,created_at) VALUES ($1,$2,$3,$3,$4,$8,$5,$6,$7::jsonb,NOW())", [genId("audit"),context.tenantId,context.userId,`object_import_${input.decision}`,person.id,"Object import field reviewed",JSON.stringify({ importTargetId: target.id, fieldKey: validated.key, before: before ?? null, after: input.decision === "confirm" ? validated.recordValue : before ?? null }),target.targetType === "party" ? "client" : "property"]);
     return { ok: true, ...(target.caseId ? { caseId: target.caseId } : {}), targetId: target.targetId, targetVersion };
+  });
+}
+
+/** The worker saves clear values to empty fields in one transaction. */
+export async function autoSaveObjectImportCandidates(input: { tenantId: string; userId: string; targetId: string }): Promise<number> {
+  return withTransaction(async (client) => {
+    if (!await databaseActorMatches(client, input.userId)) return 0;
+    const targetRows = await client.query("SELECT * FROM object_import_targets WHERE id=$1 AND tenant_id=$2 AND user_id=$3 FOR UPDATE", [input.targetId, input.tenantId, input.userId]);
+    if (!targetRows.rows[0]) return 0;
+    const target = mapObjectImportTarget(targetRows.rows[0]);
+    if (target.status !== "needs_review") return 0;
+    const membership = await client.query("SELECT capability FROM tenant_memberships WHERE tenant_id=$1 AND user_id=$2 AND status='active' LIMIT 1", [input.tenantId, input.userId]);
+    const capability = membership.rows[0]?.capability ?? "ordinary_member";
+    const membershipRole = membership.rows[0]?.role as TenantRole | undefined;
+    if (!membership.rows[0]
+      || !capabilityHasTenantPermission(capability, "record.update")
+      || !capabilityHasTenantPermission(capability, "source.upload")
+      || !membershipRole
+      || !roleHasTenantPermission(membershipRole, "record.update")
+      || !roleHasTenantPermission(membershipRole, "source.upload")) {
+      await client.query("UPDATE object_import_targets SET error_code=$1,error_summary=$2,updated_at=NOW() WHERE id=$3 AND tenant_id=$4 AND user_id=$5 AND status='needs_review'", ["object_import_permission_denied", "Record or source permission expired before save; an authorized user must process this import.", input.targetId, input.tenantId, input.userId]);
+      return 0;
+    }
+    const table = target.targetType === "party" ? "clients" : "properties";
+    const recordRows = await client.query(`SELECT * FROM ${table} WHERE id=$1 AND tenant_id=$2 FOR UPDATE`, [target.targetId, input.tenantId]);
+    if (!recordRows.rows[0]) return 0;
+    const record = target.targetType === "party" ? mapClient(recordRows.rows[0]) : mapProperty(recordRows.rows[0]);
+    if (record.lifecycleStatus === "archived" || record.currentOwnerUserId !== input.userId || record.ownerResolutionStatus !== "resolved") return 0;
+    let brokerageCase: BrokerageCase | undefined;
+    if (target.caseId) {
+      const caseRows = await client.query("SELECT * FROM brokerage_cases WHERE id=$1 AND tenant_id=$2 FOR UPDATE", [target.caseId, input.tenantId]);
+      if (!caseRows.rows[0]) return 0;
+      brokerageCase = mapBrokerageCase(caseRows.rows[0]);
+      if (brokerageCase.lifecycleStatus === "archived" || brokerageCase.currentOwnerUserId !== input.userId || !(target.targetType === "party"
+        ? readCaseAssociationDraft(brokerageCase.confirmedDataJson).parties.some((item) => item.partyId === record.id)
+        : readCaseAssociationDraft(brokerageCase.confirmedDataJson).primaryPropertyId === record.id)) return 0;
+    }
+    const mutable = record as unknown as Record<string, unknown>;
+    if (buildObjectVersionFingerprint(mutable) !== target.targetVersion) return 0;
+    const fieldRows = await client.query("SELECT * FROM object_import_fields WHERE object_import_target_id=$1 AND tenant_id=$2 ORDER BY id FOR UPDATE", [target.id, input.tenantId]);
+    let saved = 0;
+    for (const row of fieldRows.rows) {
+      const field = mapObjectImportCandidate(row);
+      if (!isSafeModelAutoSave(field) || !await hasObjectImportSource(client, target, field)) continue;
+      const validated = validateObjectImportReview({ targetId: target.id, fieldId: field.id, expectedVersion: target.targetVersion, expectedCandidateValue: field.candidateValue ?? "", decision: "confirm", ...(field.fieldKey.startsWith("lease.") ? { caseFieldKey: field.fieldKey } : {}) }, target, field, mutable);
+      if (!validated.ok) continue;
+      const savedAt = new Date().toISOString();
+      if (validated.scope === "case") {
+        if (isObjectImportCaseFieldManuallyCleared(brokerageCase?.confirmedDataJson ?? {}, validated.key)) continue;
+        if (!brokerageCase || !isEmptyModelDestination(validated.key, brokerageCase.confirmedDataJson[validated.key])) continue;
+        brokerageCase.confirmedDataJson = { ...brokerageCase.confirmedDataJson, [validated.key]: validated.recordValue };
+        const updatedCase = await client.query(
+          `UPDATE brokerage_cases SET confirmed_data_json=$3,updated_at=NOW()
+           WHERE id=$1 AND tenant_id=$2 AND current_owner_user_id=$4 AND owner_resolution_status='resolved'
+           RETURNING *`,
+          [brokerageCase.id, input.tenantId, JSON.stringify(brokerageCase.confirmedDataJson), input.userId],
+        );
+        if (!updatedCase.rows[0]) throw new Error("object_import_auto_save_case_missing");
+        brokerageCase = mapBrokerageCase(updatedCase.rows[0]);
+      } else {
+        if (!isEmptyModelDestination(validated.key, mutable[validated.key])) continue;
+        const column = objectImportColumn(target.targetType, validated.key);
+        if (!column) continue;
+        const updated = await client.query(`UPDATE ${table} SET ${column}=$1${target.targetType === "party" ? ",updated_at=NOW()" : ""} WHERE id=$2 AND tenant_id=$3 RETURNING *`, [validated.recordValue, record.id, input.tenantId]);
+        if (!updated.rows[0]) throw new Error("object_import_auto_save_record_missing");
+        Object.assign(mutable, target.targetType === "party" ? mapClient(updated.rows[0]) : mapProperty(updated.rows[0]));
+        target.targetVersion = buildObjectVersionFingerprint(mutable);
+      }
+      await client.query("UPDATE object_import_fields SET final_value=$1,final_source='model_draft',model_source=$2::jsonb WHERE id=$3 AND tenant_id=$4", [validated.value, JSON.stringify({ ...field.provenance, autoSavedAt: savedAt }), field.id, input.tenantId]);
+      await client.query("UPDATE object_import_targets SET target_version=$1,updated_at=NOW() WHERE id=$2 AND tenant_id=$3", [target.targetVersion, target.id, input.tenantId]);
+      await client.query("INSERT INTO audit_logs (id,tenant_id,user_id,actor_id,action,target_type,target_id,message,context_json,created_at) VALUES ($1,$2,$3,$3,'object_import_auto_saved',$4,$5,$6,$7::jsonb,NOW())", [genId("audit"), input.tenantId, input.userId, validated.scope === "case" ? "case" : target.targetType === "party" ? "client" : "property", validated.scope === "case" ? brokerageCase!.id : record.id, "Clear model field saved pending human review", JSON.stringify({ importTargetId: target.id, fieldKey: validated.key, sourceAttachmentId: target.sourceAttachmentId })]);
+      saved += 1;
+    }
+    return saved;
   });
 }

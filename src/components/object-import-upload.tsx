@@ -4,8 +4,8 @@ import { useFormStatus } from "react-dom";
 import type { Locale } from "@/lib/locale";
 
 const copy = {
-  ja: { submit: "解析", processing: "読み取り中…", file: "資料ファイルを選択" },
-  zh: { submit: "解析", processing: "正在读取…", file: "选择资料文件" },
+  ja: { submit: "読み取る", processing: "読み取り中…", file: "資料ファイルを選択" },
+  zh: { submit: "读取", processing: "正在读取…", file: "选择资料文件" },
   ko: { submit: "읽기", processing: "읽는 중…", file: "자료 파일 선택" },
 } as const;
 

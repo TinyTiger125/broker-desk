@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -88,7 +89,7 @@ function parseLocalPrivateStoragePath(storagePath: string) {
   };
 }
 
-export async function persistAttachmentToLocalPrivate(file: File, tenantId: string) {
+export async function persistAttachmentToLocalPrivate(file: File, tenantId: string, dedupeKey?: string) {
   if (!tenantId || !/^[a-zA-Z0-9_-]+$/.test(tenantId)) {
     throw new Error("attachment storage requires a valid tenant scope");
   }
@@ -100,12 +101,16 @@ export async function persistAttachmentToLocalPrivate(file: File, tenantId: stri
   const yyyy = String(now.getFullYear());
   const mm = String(now.getMonth() + 1).padStart(2, "0");
   const safeName = sanitizeFileName(file.name || "upload.bin");
-  const finalName = `${randomUUID()}-${safeName}`;
   const diskDir = path.join(getPrivateAttachmentRoot(), tenantId, yyyy, mm);
 
   await mkdir(diskDir, { recursive: true });
   const arrayBuffer = await file.arrayBuffer();
-  await writeFile(path.join(diskDir, finalName), Buffer.from(arrayBuffer));
+  const content = Buffer.from(arrayBuffer);
+  const stableName = dedupeKey?.trim()
+    ? createHash("sha256").update(`${dedupeKey.trim()}:${createHash("sha256").update(content).digest("hex")}`).digest("hex").slice(0, 32)
+    : randomUUID();
+  const finalName = `${stableName}-${safeName}`;
+  await writeFile(path.join(diskDir, finalName), content);
 
   return {
     fileName: file.name || "upload.bin",

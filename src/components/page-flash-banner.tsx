@@ -1,9 +1,10 @@
 type PageFlashBannerProps = {
   message?: string;
   tone?: "success" | "info" | "error";
+  action?: { href: string; label: string };
 };
 
-export function PageFlashBanner({ message, tone = "success" }: PageFlashBannerProps) {
+export function PageFlashBanner({ message, tone = "success", action }: PageFlashBannerProps) {
   if (!message) return null;
 
   const toneClass = "bd-flash-banner";
@@ -15,7 +16,12 @@ export function PageFlashBanner({ message, tone = "success" }: PageFlashBannerPr
       data-tone={tone}
       className={`text-sm font-medium ${toneClass}`}
     >
-      {message}
+      <span>{message}</span>
+      {action ? (
+        <a href={action.href} className="ml-3 inline-flex font-black underline underline-offset-4">
+          {action.label}
+        </a>
+      ) : null}
     </div>
   );
 }

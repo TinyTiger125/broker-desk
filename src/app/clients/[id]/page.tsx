@@ -265,6 +265,7 @@ export default async function ClientDetailPage({ params, searchParams }: ClientD
     notFound();
   }
   const client = visible.detail;
+  const phoneDisplay = client.phone || (locale === "zh" ? "电话待补全" : locale === "ko" ? "전화번호 입력 필요" : "電話番号未入力・要補完");
   const attachments = await listObjectArchiveAttachments({ tenantId: session.tenant.id, userId: session.user.id, targetType: "party", targetId: client.id });
   const capabilityCanWrite = session.membership.status === "active"
     && capabilityHasTenantPermission(getTenantCapability(session.membership), "record.update");
@@ -276,7 +277,7 @@ export default async function ClientDetailPage({ params, searchParams }: ClientD
     return (
       <div className="space-y-6">
         <header className="flex flex-wrap items-center justify-between gap-3">
-          <div><h1 className="text-3xl font-bold tracking-tight text-slate-900">{client.name}</h1><p className="mt-1 text-sm text-slate-600">{client.phone} · {client.preferredArea ?? text.areaUnset}</p></div>
+          <div><h1 className="text-3xl font-bold tracking-tight text-slate-900">{client.name}</h1><p className="mt-1 text-sm text-slate-600">{phoneDisplay} · {client.preferredArea ?? text.areaUnset}</p></div>
           <Link href="/clients" className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700">{locale === "zh" ? "返回客户列表" : locale === "ko" ? "고객 목록으로" : "顧客一覧へ戻る"}</Link>
         </header>
         <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><p className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">{readOnlyText}</p><dl className="grid gap-y-2 text-sm sm:grid-cols-[minmax(9rem,12rem)_minmax(0,1fr)] sm:gap-x-4 [&>dt]:min-w-0 [&>dt]:break-words [&>dd]:min-w-0 [&>dd]:break-words"><dt className="text-slate-500">{text.line}</dt><dd>{client.lineId ?? text.dash}</dd><dt className="text-slate-500">{text.email}</dt><dd>{client.email ?? text.dash}</dd><dt className="text-slate-500">{text.usage}</dt><dd>{purposeLabel[client.purpose]}</dd></dl></section>
@@ -352,7 +353,7 @@ export default async function ClientDetailPage({ params, searchParams }: ClientD
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-900">{client.name}</h1>
           <p className="mt-1 text-sm text-slate-600">
-            {client.phone} · {client.preferredArea ?? text.areaUnset}
+            {phoneDisplay} · {client.preferredArea ?? text.areaUnset}
           </p>
         </div>
         <div className="flex gap-2">

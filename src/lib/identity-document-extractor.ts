@@ -58,6 +58,12 @@ function clean(value: string) {
     .trim();
 }
 
+function isAddressPlaceholder(fieldKey: string, value: string) {
+  if (fieldKey !== "applicant.currentAddress") return false;
+  const normalized = clean(value).replace(/\s+/g, "");
+  return /^(?:住所|住居地)?(?:未定|未確認|不明|なし|n\/a|-)$/i.test(normalized);
+}
+
 function normalizeComparable(value: string) {
   return value.replace(/\s+/g, "").toUpperCase();
 }
@@ -520,8 +526,14 @@ function addModelCandidates(fields: FieldDraft[], candidates: OpenAiIdentityRead
   for (const candidate of attribution.candidates) {
     const label = MODEL_FIELD_LABELS[candidate.fieldKey];
     if (!label) continue;
+    // A residence card may explicitly say 未定 before a later back-side
+    // address update. Preserve that evidence for review, but never let it
+    // qualify as a clear value for automatic customer/case saving.
+    const effectiveUncertainty = isAddressPlaceholder(candidate.fieldKey, candidate.value) && candidate.uncertainty === "clear"
+      ? "unclear"
+      : candidate.uncertainty;
     const existing = fields.find((field) => field.fieldKey === candidate.fieldKey && field.value);
-    const decision = resolveIdentityReaderCandidate({ existingValue: existing?.value, candidateValue: candidate.value, uncertainty: candidate.uncertainty });
+    const decision = resolveIdentityReaderCandidate({ existingValue: existing?.value, candidateValue: candidate.value, uncertainty: effectiveUncertainty });
     const evidence = `page ${candidate.pageNumber}; evidence=${candidate.sourceText}; uncertainty=${decision.effectiveUncertainty}`;
     if (existing) {
       const alternatives = mergeFieldAlternatives(existing, {
@@ -665,7 +677,10 @@ export async function extractIdentityDocumentFromBuffer(input: {
     driverLicensePages.forEach((page) => extractDriverLicenseFields(page, fields));
   }
   if (input.requireModel) addModelCustomerPlaceholders(fields, firstEvidencePage);
-  if (ocr.candidates) addModelCandidates(fields, ocr.candidates, pages, input.requireModel ? "customer" : "case");
+  // Unknown document types remain source-only. Preserve the original for
+  // review, but do not let a model guess turn an unsupported identity card
+  // into a formally saved customer field.
+  if (ocr.candidates && documentType !== "unknown_identity_scan") addModelCandidates(fields, ocr.candidates, pages, input.requireModel ? "customer" : "case");
   if (documentType !== "unknown_identity_scan") {
     const label = documentType === "identity_residence_card_or_driver_license"
       ? "在留カード / 運転免許証"

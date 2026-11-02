@@ -1,5 +1,6 @@
 "use server";
 
+import { createHash, randomUUID } from "node:crypto";
 import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -7,9 +8,15 @@ import {
   addAttachment,
   addAuditLog,
   addPrivateAttachment,
+  claimEntryRequest,
+  completeEntryRequest,
+  getBrokerageCaseByIdForContext,
   linkAttachmentToObject,
+  listAuditLogs,
+  listBrokerageCasesForContext,
   resolveClientVisibilityForContext,
   resolvePropertyVisibilityForContext,
+  releaseEntryRequest,
   saveBrokerageCaseExtractionReview,
 } from "@/lib/data";
 import { assertProductionAttachmentStorageReady } from "@/lib/production-readiness";
@@ -33,7 +40,8 @@ import { CASE_FIELD_KEY_SET, getCaseFieldDefinition } from "@/lib/case-field-cat
 import { isValidCaseDateInput, normalizeCaseDateValue } from "@/lib/case-date";
 import { getCaseContactValidationError } from "@/lib/case-contact-validation";
 import { isValidJapanesePostalCode } from "@/lib/japanese-postal-code-validation";
-import { persistEntryPreviewAudit, verifyEntryPreviewProofs, type EntryPreviewProofPayload } from "@/lib/entry-preview-proof";
+import { buildEntryRequestPayloadDigest, readEntryIntentId, persistEntryPreviewAudit, verifyEntryPreviewProofs, type EntryPreviewProofPayload } from "@/lib/entry-preview-proof";
+import { inferObjectAttachmentCategory } from "@/lib/object-attachments";
 
 export type CaseEntryActionState = {
   status: "idle" | "error";
@@ -68,13 +76,13 @@ function getPreviewProofForFile(proofs: ReadonlyMap<string, EntryPreviewProofPay
 
 function parsePreviewDecisions(formData: FormData) {
   const raw = String(formData.get("entryPreviewDecisions") ?? "").trim();
-  if (!raw) return {} as Record<string, "confirmed" | "rejected">;
+  if (!raw) return {} as Record<string, "confirmed" | "rejected" | "auto_saved">;
   try {
     const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {} as Record<string, "confirmed" | "rejected">;
-    return Object.fromEntries(Object.entries(parsed as Record<string, unknown>).filter(([, value]) => value === "confirmed" || value === "rejected")) as Record<string, "confirmed" | "rejected">;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {} as Record<string, "confirmed" | "rejected" | "auto_saved">;
+    return Object.fromEntries(Object.entries(parsed as Record<string, unknown>).filter(([, value]) => value === "confirmed" || value === "rejected" || value === "auto_saved")) as Record<string, "confirmed" | "rejected" | "auto_saved">;
   } catch {
-    return {} as Record<string, "confirmed" | "rejected">;
+    return {} as Record<string, "confirmed" | "rejected" | "auto_saved">;
   }
 }
 
@@ -89,10 +97,14 @@ function filterProofConfirmedValues(
   const confirmedCandidates = new Map<string, Set<string>>();
   for (const proof of proofs.values()) {
     for (const candidate of proof.candidates ?? []) {
-      if (decisions[candidate.id] !== "confirmed" || typeof candidate.value !== "string") continue;
+      if (decisions[candidate.id] !== "confirmed" && decisions[candidate.id] !== "auto_saved" || typeof candidate.value !== "string") continue;
       const sourceKey = String(candidate.sourceKey ?? candidate.key ?? "").trim();
       const definition = getCaseFieldDefinition(sourceKey);
       if (!CASE_FIELD_KEY_SET.has(sourceKey) || definition?.storageScope !== "case_fact") continue;
+      if (decisions[candidate.id] === "auto_saved" && candidate.uncertainty !== "clear") {
+        return { values: {}, error: "案件自动保存只接受明确且无冲突的读取结果，请改为人工确认后再保存。" };
+      }
+      if (candidate.uncertainty === "unclear" || candidate.uncertainty === "conflict") return { values: {}, error: "案件读取结果存在冲突或需要人工确认，未自动写入正式案件记录。" };
       const valuesForField = confirmedCandidates.get(sourceKey) ?? new Set<string>();
       valuesForField.add(candidate.value.trim());
       confirmedCandidates.set(sourceKey, valuesForField);
@@ -100,7 +112,7 @@ function filterProofConfirmedValues(
     }
   }
   if ([...confirmedCandidates.values()].some((candidateValues) => candidateValues.size > 1)) return { values: {}, error: "案件读取结果存在冲突，请只确认一个候选后再保存。" };
-  if (Object.keys(confirmed).length !== Object.keys(values).length) return { values: {}, error: "案件读取结果已变化，请重新确认候选后再保存。" };
+  if (Object.keys(confirmed).length !== Object.keys(values).length) return { values: {}, error: "案件读取结果已变化，请重新读取资料；当前正式案件记录尚未更新。" };
   return { values: confirmed };
 }
 
@@ -184,18 +196,22 @@ function archiveTargetForUpload(formData: FormData): { target: UploadTarget; tar
   return { target: "case" };
 }
 
-async function archiveCaseFile(input: { tenantId: string; userId: string; caseId: string; file: File }) {
+export async function archiveCaseFile(input: { tenantId: string; userId: string; caseId: string; file: File; dedupeKey?: string; source?: string }) {
   assertProductionAttachmentStorageReady();
   const storageMode = getAttachmentStorageMode();
   let attachment;
   if (storageMode === "local_private") {
-    const persisted = await persistAttachmentToLocalPrivate(input.file, input.tenantId);
+    const persisted = await persistAttachmentToLocalPrivate(input.file, input.tenantId, input.dedupeKey);
+    const localDedupeKey = input.dedupeKey
+      ? `${input.dedupeKey}:${createHash("sha256").update(Buffer.from(await input.file.arrayBuffer())).digest("hex")}`
+      : undefined;
     attachment = await addAttachment({
       tenantId: input.tenantId,
       userId: input.userId,
       targetType: "case",
       targetId: input.caseId,
       ...persisted,
+      dedupeKey: localDedupeKey,
     });
   } else if (storageMode === "postgres_private") {
     if (input.file.size > getPostgresPrivateAttachmentLimitBytes()) {
@@ -209,6 +225,7 @@ async function archiveCaseFile(input: { tenantId: string; userId: string; caseId
       fileName: input.file.name || "attachment.bin",
       fileType: input.file.type || "application/octet-stream",
       content: Buffer.from(await input.file.arrayBuffer()),
+      dedupeKey: input.dedupeKey,
     });
   } else {
     throw new Error("案件资料保存方式尚未配置。");
@@ -218,7 +235,7 @@ async function archiveCaseFile(input: { tenantId: string; userId: string; caseId
     attachmentId: attachment.id,
     targetType: "case",
     targetId: input.caseId,
-    category: "other",
+    category: inferObjectAttachmentCategory({ fileName: input.file.name }),
     createdByUserId: input.userId,
   });
   await addAuditLog({
@@ -228,7 +245,7 @@ async function archiveCaseFile(input: { tenantId: string; userId: string; caseId
     targetType: "case",
     targetId: input.caseId,
     message: `案件原始资料已归档: ${attachment.fileName}`,
-    context: { attachmentId: attachment.id, category: "other", source: "case_create_entry" },
+    context: { attachmentId: attachment.id, category: inferObjectAttachmentCategory({ fileName: input.file.name }), source: input.source ?? "case_create_entry" },
   }).catch(() => undefined);
   return attachment.id;
 }
@@ -257,6 +274,13 @@ export async function createCaseWithUploadAction(
   const workflowType = String(formData.get("workflowType") ?? "").trim();
   const requestedTitle = String(formData.get("caseTitle") ?? "").trim();
   if (!ALLOWED_WORKFLOW_TYPES.has(workflowType)) return { status: "error", message: "案件类型不正确，请重新选择。" };
+  if (requestedTitle && files.length === 0) {
+    const normalizedTitle = requestedTitle.toLocaleLowerCase();
+    const existingCases = await listBrokerageCasesForContext({ context: createRequestContext(session), lifecycleStatus: "active" });
+    if (existingCases.some(({ brokerageCase }) => brokerageCase?.caseTitle.trim().toLocaleLowerCase() === normalizedTitle) && formData.get("allowDuplicateCase") !== "1") {
+      return { status: "error", message: "case_title_duplicate" };
+    }
+  }
   const previewValuesResult = parseCasePreviewValues(formData);
   if (previewValuesResult.error) return { status: "error", message: previewValuesResult.error };
   let previewValues = previewValuesResult.values;
@@ -267,6 +291,13 @@ export async function createCaseWithUploadAction(
 
   let associationDraft: CaseAssociationDraft;
   let createdCaseId: string | undefined;
+  let entryRequestKey: string | undefined;
+  let entryPayloadDigest: string | undefined;
+  let entryClaimToken: string | undefined;
+  let entryRequestClaimed = false;
+  let entryRequestAlreadyCompleted = false;
+  let recoveredCase: Awaited<ReturnType<typeof getBrokerageCaseByIdForContext>>["brokerageCase"] = null;
+  let entryTargetId: string | undefined;
   let firstJobId: string | undefined;
   let previewProofs: ReadonlyMap<string, EntryPreviewProofPayload> = new Map();
   let previewAuditFailed = false;
@@ -313,7 +344,12 @@ export async function createCaseWithUploadAction(
       const filteredPreviewValues = filterProofConfirmedValues(previewValues, previewProofs, formData);
       if (filteredPreviewValues.error) return { status: "error", message: filteredPreviewValues.error };
       previewValues = filteredPreviewValues.values;
-      previewApplied = readFileKeys.size > 0 && Object.keys(previewValues).length > 0;
+      const allFilesRead = files.length > 0 && files.every((file) => {
+        const keyClaimed = readFileKeys.has(fileReadKey(file)) || readFileKeys.has(`${file.name}:${file.size}`);
+        return keyClaimed && Boolean(getPreviewProofForFile(previewProofs, file));
+      });
+      previewApplied = allFilesRead && Object.keys(previewValues).length > 0;
+      if (readFileKeys.size > 0 && !allFilesRead) recognitionLimited = true;
     }
     const partyResults = await Promise.all(
       associationDraft.parties.map((party) => resolveClientVisibilityForContext({ context: requestContext, clientId: party.partyId })),
@@ -337,40 +373,83 @@ export async function createCaseWithUploadAction(
       primaryPartyName: primaryParty?.name,
       propertyName: property?.name,
     });
-    Object.assign(confirmedDataJson, manualValues, previewValues);
+    Object.assign(confirmedDataJson, previewValues, manualValues);
     confirmedDataJson.__workflowType = workflowType;
-    const brokerageCase = await saveBrokerageCaseExtractionReview({
-      tenantId: session.tenant.id,
-      userId: session.user.id,
-      caseType: "unit_sale",
-      caseTitle: requestedTitle || [primaryParty?.name, property?.name].filter(Boolean).join(" / ") || "新建案件",
-      primaryPropertyId: associationDraft.primaryPropertyId,
-      status: "draft",
-      confirmedDataJson,
-      sourceImportJobIds: [],
-      reviewItems: [],
-    });
+    if (files.length > 0) {
+      try {
+        entryRequestKey = readEntryIntentId(formData);
+        entryPayloadDigest = await buildEntryRequestPayloadDigest({ targetType: "case", files, proofs: previewProofs, formData });
+      } catch {
+        return { status: "error", message: "新建请求标识已失效，请重新打开新建页面后重试。" };
+      }
+      formData.set("entryRequestKey", entryRequestKey);
+      formData.set("entryPayloadDigest", entryPayloadDigest);
+      const reservedTargetId = `case_${randomUUID().replaceAll("-", "")}`;
+      const claim = await claimEntryRequest({ tenantId: session.tenant.id, userId: session.user.id, targetType: "case", requestKey: entryRequestKey, payloadDigest: entryPayloadDigest, targetId: reservedTargetId });
+      if (claim.state === "existing" && claim.targetId) {
+        // A prior worker may have completed the claim before it crashed while
+        // archiving the browser files. Re-enter the same target and run the
+        // archive path again; digest-locked attachment storage makes this
+        // recovery idempotent instead of silently dropping the originals.
+        entryTargetId = claim.targetId;
+        entryRequestAlreadyCompleted = true;
+      } else {
+        if (claim.state === "in_progress") return { status: "error", message: "保存请求正在处理，请稍后重试；刷新后会回到同一案件。" };
+        if (claim.state === "manual_review") return { status: "error", message: "保存请求长时间未完成，已暂停自动重试。请联系管理员核对后再继续，避免重复建档。" };
+        if (claim.state === "payload_mismatch") return { status: "error", message: "保存请求内容与原请求不一致，请重新打开新建页面后重试。" };
+        entryClaimToken = claim.claimToken;
+        if (claim.state === "claimed" && !entryClaimToken) return { status: "error", message: "保存请求状态无法确认，请稍后重试。" };
+        const priorCases = await listAuditLogs(session.user.id, { tenantId: session.tenant.id, action: "case_created_blank", limit: 500 });
+        const replay = priorCases.find((log) => log.targetType === "case" && log.context?.entryRequestKey === entryRequestKey && log.targetId);
+        if (replay?.targetId) entryTargetId = replay.targetId;
+        entryRequestClaimed = true;
+        entryTargetId ??= claim.targetId ?? reservedTargetId;
+      }
+      const existingTarget = await getBrokerageCaseByIdForContext({ context: requestContext, caseId: entryTargetId });
+      // A stale worker may have written the formal case before it crashed. Keep
+      // processing this same target so the retry can still archive any files
+      // left behind; the claim's reserved ID prevents a second case.
+      if (existingTarget.brokerageCase && !existingTarget.resolution.canWrite) return { status: "error", message: "保存请求对应的案件当前不可写，请稍后重试。" };
+      recoveredCase = existingTarget.brokerageCase;
+      if (entryRequestAlreadyCompleted && !recoveredCase) return { status: "error", message: "保存请求对应的案件不存在，请联系管理员核对后再继续。" };
+    }
+    const brokerageCase = entryRequestAlreadyCompleted
+      ? recoveredCase!
+      : await saveBrokerageCaseExtractionReview({
+          tenantId: session.tenant.id,
+          userId: session.user.id,
+          ...(entryTargetId ? { caseId: entryTargetId } : {}),
+          ...(entryClaimToken && entryRequestKey ? { entryRequest: { requestKey: entryRequestKey, claimToken: entryClaimToken } } : {}),
+          preventDuplicateTitle: formData.get("allowDuplicateCase") !== "1",
+          caseType: "unit_sale",
+          caseTitle: requestedTitle || [primaryParty?.name, property?.name].filter(Boolean).join(" / ") || "新建案件",
+          primaryPropertyId: associationDraft.primaryPropertyId,
+          status: "draft",
+          confirmedDataJson,
+          sourceImportJobIds: [],
+          reviewItems: [],
+        });
     createdCaseId = brokerageCase.id;
-
-    for (const file of files) {
+    const fileDigests = await Promise.all(files.map(async (file) => createHash("sha256").update(Buffer.from(await file.arrayBuffer())).digest("hex")));
+    for (const [fileIndex, file] of files.entries()) {
+      const archiveDedupeKey = entryRequestKey ? `${entryRequestKey}:${fileDigests[fileIndex]}` : undefined;
       const proof = getPreviewProofForFile(previewProofs, file);
       const archiveOnly = uploadTarget.target === "case" || Boolean(proof);
       if (archiveOnly) {
-        const attachmentId = await archiveCaseFile({ tenantId: session.tenant.id, userId: session.user.id, caseId: brokerageCase.id, file });
+        const attachmentId = await archiveCaseFile({ tenantId: session.tenant.id, userId: session.user.id, caseId: brokerageCase.id, file, dedupeKey: archiveDedupeKey });
         preservedFileCount += 1;
         if (proof) {
           try {
-            await persistEntryPreviewAudit({ session, targetType: "case", targetId: brokerageCase.id, attachmentId, proof, formData, finalValues: { ...manualValues, ...previewValues } });
+            await persistEntryPreviewAudit({ session, targetType: "case", targetId: brokerageCase.id, attachmentId, proof, formData, finalValues: { ...previewValues, ...manualValues } });
           } catch {
             previewAuditFailed = true;
           }
         }
-        recognitionLimited = recognitionLimited || Boolean(proof);
         continue;
       }
       const objectTargetType = uploadTarget.target === "party" || uploadTarget.target === "property" ? uploadTarget.target : undefined;
       if (!objectTargetType) {
-        await archiveCaseFile({ tenantId: session.tenant.id, userId: session.user.id, caseId: brokerageCase.id, file });
+        await archiveCaseFile({ tenantId: session.tenant.id, userId: session.user.id, caseId: brokerageCase.id, file, dedupeKey: archiveDedupeKey });
         preservedFileCount += 1;
         recognitionLimited = true;
         continue;
@@ -389,7 +468,7 @@ export async function createCaseWithUploadAction(
       }
       if (!resolved.ok) {
         recognitionLimited = true;
-        await archiveCaseFile({ tenantId: session.tenant.id, userId: session.user.id, caseId: brokerageCase.id, file });
+        await archiveCaseFile({ tenantId: session.tenant.id, userId: session.user.id, caseId: brokerageCase.id, file, dedupeKey: archiveDedupeKey });
         preservedFileCount += 1;
         continue;
       }
@@ -424,7 +503,7 @@ export async function createCaseWithUploadAction(
         // The queue rejected the source before it became a usable import. Keep
         // the original on the case so the user can retry without losing it.
         recognitionLimited = true;
-        await archiveCaseFile({ tenantId: session.tenant.id, userId: session.user.id, caseId: brokerageCase.id, file });
+        await archiveCaseFile({ tenantId: session.tenant.id, userId: session.user.id, caseId: brokerageCase.id, file, dedupeKey: archiveDedupeKey });
         preservedFileCount += 1;
         continue;
       }
@@ -432,7 +511,7 @@ export async function createCaseWithUploadAction(
       const jobIds = "jobId" in result ? [result.jobId] : result.jobIds;
       if (jobIds.length === 0) {
         recognitionLimited = true;
-        await archiveCaseFile({ tenantId: session.tenant.id, userId: session.user.id, caseId: brokerageCase.id, file });
+        await archiveCaseFile({ tenantId: session.tenant.id, userId: session.user.id, caseId: brokerageCase.id, file, dedupeKey: archiveDedupeKey });
         preservedFileCount += 1;
         continue;
       }
@@ -452,7 +531,7 @@ export async function createCaseWithUploadAction(
       preservedFileCount += 1;
     }
 
-    await addAuditLog({
+    if (!entryRequestAlreadyCompleted) await addAuditLog({
       tenantId: session.tenant.id,
       userId: session.user.id,
       action: "case_created_blank",
@@ -467,18 +546,30 @@ export async function createCaseWithUploadAction(
         workflowType,
         preservedFileCount,
         recognitionTarget: uploadTarget.target,
+        ...(entryRequestKey ? { entryRequestKey } : {}),
+        ...(entryPayloadDigest ? { entryPayloadDigest } : {}),
       },
     }).catch(() => undefined);
+    if (entryRequestClaimed && !entryRequestAlreadyCompleted && entryRequestKey && entryClaimToken && !await completeEntryRequest({ tenantId: session.tenant.id, userId: session.user.id, targetType: "case", requestKey: entryRequestKey, claimToken: entryClaimToken, targetId: brokerageCase.id })) {
+      throw new Error("entry_request_completion_failed");
+    }
     revalidatePath("/import-center");
     revalidatePath("/cases");
     revalidatePath("/organize-center");
     revalidatePath(`/cases/${brokerageCase.id}`);
     const params = new URLSearchParams();
-    params.set("flash", previewAuditFailed ? "case_upload_preview_audit_failed" : previewApplied ? "case_upload_archived_preview" : recognitionLimited ? "case_upload_archived_limited" : firstJobId ? "input_extraction_queued" : preservedFileCount > 0 ? "case_upload_archived" : "blank_case_created");
+    // A limited read is the stronger user-visible state.  A proof-backed
+    // preview can still have been applied while another source was unread or
+    // failed; reporting "preview archived" in that case hides the recovery
+    // action and falsely implies a complete read.
+    params.set("flash", recognitionLimited ? "case_upload_archived_limited" : previewAuditFailed ? "case_upload_preview_audit_failed" : previewApplied ? "case_upload_archived_preview" : firstJobId ? "input_extraction_queued" : preservedFileCount > 0 ? "case_upload_archived" : "blank_case_created");
     if (firstJobId) params.set("objectImportJob", firstJobId);
     redirect(`/cases/${encodeURIComponent(brokerageCase.id)}?${params.toString()}#case-review-desk`);
   } catch (error) {
     if (isRedirectError(error)) throw error;
+    if (entryRequestClaimed && entryRequestKey && entryClaimToken) {
+      await releaseEntryRequest({ tenantId: session.tenant.id, userId: session.user.id, targetType: "case", requestKey: entryRequestKey, claimToken: entryClaimToken }).catch(() => undefined);
+    }
     if (createdCaseId) {
       const flash = files.length === 0
         ? "blank_case_created"
@@ -486,12 +577,12 @@ export async function createCaseWithUploadAction(
           ? "case_upload_archive_failed"
           : preservedFileCount < files.length
             ? "case_upload_archive_partial"
+            : recognitionLimited
+                ? "case_upload_archived_limited"
             : previewAuditFailed
               ? "case_upload_preview_audit_failed"
-            : previewApplied
-              ? "case_upload_archived_preview"
-              : recognitionLimited
-                ? "case_upload_archived_limited"
+              : previewApplied
+                ? "case_upload_archived_preview"
               : firstJobId
                 ? "input_extraction_queued"
                 : "case_upload_archived";
@@ -499,6 +590,6 @@ export async function createCaseWithUploadAction(
       if (firstJobId) params.set("objectImportJob", firstJobId);
       redirect(`/cases/${encodeURIComponent(createdCaseId)}?${params.toString()}#case-review-desk`);
     }
-    return { status: "error", message: error instanceof Error ? error.message : "案件保存失败，请保留当前草稿后重试。" };
+    return { status: "error", message: error instanceof Error && error.message === "case_title_duplicate" ? "case_title_duplicate" : error instanceof Error ? error.message : "案件保存失败，请保留当前草稿后重试。" };
   }
 }

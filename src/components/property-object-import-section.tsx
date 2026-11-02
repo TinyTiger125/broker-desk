@@ -33,7 +33,7 @@ type PropertyObjectImportSectionProps = {
 const copy = {
   ja: {
     title: "物件資料の読み取り",
-    description: "既存の物件プロフィール項目だけを候補として表示し、確認した項目だけ保存します。",
+    description: "判読できた既存項目は空欄へ自動保存します。保存後も確認・修正できます。",
     noCase: "この物件から資料を選択すると、既存の物件プロフィール項目を確認できます。",
     noTarget: "物件資料を選択すると、既存項目の候補と出典がここに表示されます。",
     unavailable: "資料解析は現在利用できません。既存の物件プロフィールは引き続き編集できます。",
@@ -53,10 +53,12 @@ const copy = {
     retry: "再読み取り（1回）",
     openReview: "確認画面を開く",
     archive: "原資料・添付",
+    autoSaved: "自動保存・要確認",
+    add: "資料を追加",
   },
   zh: {
     title: "读取物件资料",
-    description: "只显示现有物件档案字段的候选值，确认后才保存。",
+    description: "清晰的现有字段会自动保存到空白项；保存后仍可反复核对修改。",
     noCase: "可直接从此物件选择资料，核对现有物件档案字段。",
     noTarget: "选择物件资料后，现有字段候选值和来源会显示在这里。",
     unavailable: "资料解析暂不可用；现有物件档案仍可继续编辑。",
@@ -76,10 +78,12 @@ const copy = {
     retry: "重新读取（限一次）",
     openReview: "打开确认内容",
     archive: "原始资料与附件",
+    autoSaved: "已自动保存，待复核",
+    add: "添加资料",
   },
   ko: {
     title: "매물 자료 읽기",
-    description: "기존 매물 프로필 필드의 후보만 표시하며 확인한 항목만 저장합니다.",
+    description: "명확한 기존 항목은 빈칸에 자동 저장하며 이후에도 확인·수정할 수 있습니다.",
     noCase: "이 매물에서 자료를 선택하면 기존 매물 프로필 필드를 확인할 수 있습니다.",
     noTarget: "매물 자료를 선택하면 기존 필드 후보와 출처가 여기에 표시됩니다.",
     unavailable: "자료 분석을 사용할 수 없습니다. 기존 매물 프로필은 계속 편집할 수 있습니다.",
@@ -99,18 +103,20 @@ const copy = {
     retry: "다시 읽기 (1회)",
     openReview: "확인 화면 열기",
     archive: "원본 자료·첨부",
+    autoSaved: "자동 저장·확인 필요",
+    add: "자료 추가",
   },
 } as const;
 
-export function PropertyObjectImportSection({ locale, caseId, propertyId, caseTitle, views = [], uploadAction, reviewAction, refreshAction, retryAction, observedVersion, returnTo, unavailable = false, archiveItems, objectPage = false }: PropertyObjectImportSectionProps) {
+export function PropertyObjectImportSection({ locale, caseId, propertyId, caseTitle, views = [], uploadAction, refreshAction, retryAction, observedVersion, returnTo, unavailable = false, archiveItems, objectPage = false }: PropertyObjectImportSectionProps) {
   const text = copy[locale];
   const visibleViews = views.filter((view) => view.target.status !== "completed" && (
     ["queued", "processing", "failed", "conflict"].includes(view.target.status)
       || view.fields.some((field) => !["confirmed", "rejected", "failed", "not_found"].includes(field.status))
   ));
   if (objectPage && visibleViews.length === 0 && !uploadAction && !archiveItems?.length) return null;
-  return (
-    <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm" aria-labelledby="property-object-import-heading">
+  const content = (
+    <>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 id="property-object-import-heading" className="text-base font-black text-slate-950">{text.title}</h2>
@@ -125,7 +131,6 @@ export function PropertyObjectImportSection({ locale, caseId, propertyId, caseTi
       {!views.length && !unavailable && !uploadAction ? <p className="text-xs font-semibold text-slate-500">{text.noTarget}</p> : null}
       {objectPage ? [...new Set(views.filter((view) => ["queued", "processing"].includes(view.target.status)).map((view) => view.target.importJobId))].map((jobId) => <ExcelImportQueueProcessor key={jobId} jobId={jobId} locale={locale} successHref={returnTo ?? `/properties/${encodeURIComponent(propertyId)}/edit`} objectRecoveryHref={returnTo ?? `/properties/${encodeURIComponent(propertyId)}/edit`} />) : null}
       {visibleViews.map((view) => {
-        const canReview = Boolean(reviewAction && view.target.status === "needs_review");
         const canRetry = Boolean(retryAction && (view.target.status === "failed" || view.target.status === "conflict") && view.target.attemptCount < 2);
         const refreshField = view.fields.find((field) => Boolean(field.candidateValue) && !["confirmed", "rejected", "failed", "not_found"].includes(field.status));
         const staleTarget = Boolean(refreshAction && observedVersion && view.target.targetVersion !== observedVersion && refreshField);
@@ -147,25 +152,12 @@ export function PropertyObjectImportSection({ locale, caseId, propertyId, caseTi
             const sourceText = typeof field.provenance.sourceText === "string" ? field.provenance.sourceText : "";
             const pageNumber = typeof field.provenance.pageNumber === "number" ? field.provenance.pageNumber : undefined;
             const alternatives = Array.isArray(field.provenance.alternatives) ? field.provenance.alternatives as Array<{ value?: unknown; pageNumber?: unknown; sourceText?: unknown }> : [];
-            const fieldCanReview = canReview && Boolean(field.candidateValue) && !["confirmed", "rejected", "failed", "not_found"].includes(field.status);
             return (
               <div key={field.id} className={`mt-2 rounded-md border px-2.5 py-2 text-xs leading-5 ${field.status === "conflict" ? "border-rose-200 bg-rose-50 text-rose-900" : field.status === "low_confidence" ? "border-amber-200 bg-amber-50 text-amber-900" : "border-slate-200 bg-white text-slate-700"}`}>
-                <div className="flex flex-wrap items-center gap-1.5"><span className="font-bold">{OBJECT_READER_FIELD_LABELS[field.fieldKey] ?? field.fieldKey}</span>{field.finalSource === "human" && field.finalValue ? <span className="break-words [overflow-wrap:anywhere] font-semibold text-slate-950">{field.finalValue}</span> : field.candidateValue ? <span className="break-words [overflow-wrap:anywhere]">{field.candidateValue}</span> : null}{field.status === "confirmed" ? <span className="font-bold text-emerald-700">{text.confirmed}</span> : field.status === "rejected" ? <span className="font-bold text-slate-500">{text.rejected}</span> : field.status === "failed" ? <span className="font-bold text-rose-700">{text.failed}</span> : field.status === "not_found" ? <span className="font-bold text-slate-500">{text.notFound}</span> : null}{field.status === "conflict" || field.status === "low_confidence" ? <span className="font-bold">{text.review}</span> : null}</div>
+                <div className="flex flex-wrap items-center gap-1.5"><span className="font-bold">{OBJECT_READER_FIELD_LABELS[field.fieldKey] ?? field.fieldKey}</span>{field.finalSource === "human" && field.finalValue ? <span className="break-words [overflow-wrap:anywhere] font-semibold text-slate-950">{field.finalValue}</span> : field.candidateValue ? <span className="break-words [overflow-wrap:anywhere]">{field.candidateValue}</span> : null}{field.status === "confirmed" ? <span className="font-bold text-emerald-700">{text.confirmed}</span> : field.status === "rejected" ? <span className="font-bold text-slate-500">{text.rejected}</span> : field.provenance.autoSavedAt ? <span className="font-bold text-blue-700">{text.autoSaved}</span> : field.status === "failed" ? <span className="font-bold text-rose-700">{text.failed}</span> : field.status === "not_found" ? <span className="font-bold text-slate-500">{text.notFound}</span> : null}{field.status === "conflict" || field.status === "low_confidence" ? <span className="font-bold">{text.review}</span> : null}</div>
                 {field.finalSource === "human" && field.finalValue && field.candidateValue && field.finalValue !== field.candidateValue ? <p className="mt-1 text-[11px] text-slate-500">{text.modelCandidate}：{field.candidateValue}</p> : null}
                 {pageNumber || sourceText ? <p className="mt-1 text-[11px] text-slate-600">{pageNumber ? `p.${pageNumber}` : ""}{pageNumber && sourceText ? " · " : ""}{sourceText}</p> : null}
                 {alternatives.length > 1 ? <div className="mt-1 space-y-0.5 text-[11px] text-rose-800">{alternatives.map((alternative, index) => <p key={`${field.id}-alternative-${index}`}>{text.alternative}{index + 1}: {typeof alternative.value === "string" ? alternative.value : "—"}{typeof alternative.pageNumber === "number" ? ` (p.${alternative.pageNumber})` : ""}{typeof alternative.sourceText === "string" && alternative.sourceText ? ` · ${alternative.sourceText}` : ""}</p>)}</div> : null}
-                {fieldCanReview && reviewAction ? <form action={reviewAction} className="mt-2 flex flex-wrap items-center gap-2">
-                  <input type="hidden" name="importTargetId" value={view.target.id} />
-                  <input type="hidden" name="fieldId" value={field.id} />
-                  <input type="hidden" name="expectedVersion" value={view.target.targetVersion} />
-                  <input type="hidden" name="expectedCandidateValue" value={field.candidateValue ?? ""} />
-                  {returnTo ? <input type="hidden" name="returnTo" value={returnTo} /> : null}
-                  {field.fieldKey.startsWith("lease.") ? <input type="hidden" name="caseFieldKey" value={field.fieldKey} /> : null}
-                  <label className="sr-only" htmlFor={`property-import-value-${field.id}`}>{OBJECT_READER_FIELD_LABELS[field.fieldKey] ?? field.fieldKey}</label>
-                  <input id={`property-import-value-${field.id}`} name="value" defaultValue={field.candidateValue ?? ""} className="min-h-9 min-w-40 flex-1 rounded border border-slate-300 bg-white px-2 py-1 text-xs" />
-                  <button type="submit" name="decision" value="confirm" className="min-h-9 rounded border border-blue-300 bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-900">{text.confirm}</button>
-                  <button type="submit" name="decision" value="reject" className="min-h-9 rounded border border-slate-300 bg-white px-2.5 py-1 text-xs font-bold text-slate-700">{text.reject}</button>
-                </form> : null}
               </div>
             );
             })}
@@ -174,6 +166,17 @@ export function PropertyObjectImportSection({ locale, caseId, propertyId, caseTi
         </div>
         );
       })}
+    </>
+  );
+  return (
+    <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm" aria-labelledby="property-object-import-heading">
+      {objectPage ? <details className="group" data-object-import-details>
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-offset-2 [&::-webkit-details-marker]:hidden">
+          <span className="min-w-0"><span className="block text-sm font-black text-slate-950">{text.title}</span><span className="mt-0.5 block truncate text-xs font-semibold text-slate-600">{text.add}</span></span>
+          <span aria-hidden="true" className="material-symbols-outlined shrink-0 text-[18px] text-slate-500 transition-transform group-open:rotate-90 motion-reduce:transition-none">chevron_right</span>
+        </summary>
+        <div className="space-y-3 pt-3">{content}</div>
+      </details> : content}
     </section>
   );
 }

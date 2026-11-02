@@ -9,6 +9,8 @@ import {
   updateObjectImportTarget,
   updateImportJobExecution,
   updateImportJobMapping,
+  getObjectImportTargetByJob,
+  autoSaveObjectImportCandidates,
 } from "@/lib/data";
 import { isLocalPrivateStoragePath, isPostgresPrivateStoragePath } from "@/lib/attachment-storage";
 import { extractIdentityDocumentsFromFiles } from "@/lib/identity-document-extractor";
@@ -35,7 +37,7 @@ type IdentityImportPayload = {
 
 export type IdentityImportProcessResult =
   | { ok: true; status: "mapped" | "processing"; fieldCount: number; documentType: string; documentTypeLabel: string; fingerprintConfidence: number }
-  | { ok: false; status: "failed"; error: "import_job_not_found" | "source_attachment_missing" | "identity_extraction_failed" | "object_import_no_supported_fields" | "object_reader_no_readable_fields" | "object_import_retry_exhausted" };
+  | { ok: false; status: "failed"; error: "import_job_not_found" | "source_attachment_missing" | "identity_extraction_failed" | "object_import_no_supported_fields" | "object_reader_no_readable_fields" | "object_reader_ambiguous_subject" | "object_import_retry_exhausted" };
 
 export async function processIdentityImportJob(input: {
   tenantId: string;
@@ -48,6 +50,14 @@ export async function processIdentityImportJob(input: {
   const job = jobs.find((item) => item.id === input.jobId && item.sourceType === "scan");
   if (!job) return { ok: false, status: "failed", error: "import_job_not_found" };
 
+  const objectTarget = await ensureObjectImportTask(job, input);
+  if (objectTarget?.status === "conflict") {
+    const error = objectTarget.errorCode === "object_reader_ambiguous_subject" ? "object_reader_ambiguous_subject" : "identity_extraction_failed";
+    if (job.status !== "failed") {
+      await markFailed(input, error, "资料中的物件归属无法确认，未更新正式物件资料。请重新选择只包含一个物件的资料。", { preserveObjectTarget: true });
+    }
+    return { ok: false, status: "failed", error };
+  }
   if (job.status === "mapped" || job.status === "completed") {
     const payload = parsePayload(job.notes);
     return {
@@ -59,8 +69,6 @@ export async function processIdentityImportJob(input: {
       fingerprintConfidence: payload?.inputExtraction?.fingerprintConfidence ?? (payload?.objectReader ? 1 : 0),
     };
   }
-
-  const objectTarget = await ensureObjectImportTask(job, input);
   if (objectTarget && ["needs_review", "completed", "conflict"].includes(objectTarget.status)) {
     const payload = parsePayload(job.notes);
     return {
@@ -175,6 +183,10 @@ export async function processIdentityImportJob(input: {
           ? [...priorHistory, { recordedAt: new Date().toISOString(), response: previousPayload.objectReader }].slice(-3)
           : priorHistory.length > 0 ? priorHistory.slice(-3) : undefined;
         const persisted = await persistObjectReaderJobExtraction({ job, ...input, response: objectReader });
+        if (persisted?.target?.status === "conflict") {
+          await markFailed(input, "object_reader_ambiguous_subject", "资料中的物件归属无法确认，未更新正式物件资料。请重新选择只包含一个物件的资料。", { preserveObjectTarget: true });
+          return { ok: false, status: "failed", error: "object_reader_ambiguous_subject" };
+        }
         if (persisted?.target?.status === "failed") {
           const errorCode = persisted.target.errorCode === "object_reader_no_readable_fields"
             ? "object_reader_no_readable_fields"
@@ -184,10 +196,14 @@ export async function processIdentityImportJob(input: {
         }
       } else if (inputExtraction) {
         const candidates = await persistObjectImportJobExtraction({ job, ...input, fields: inputExtraction.fields });
-        if (candidates && candidates.length === 0) {
+        if (candidates && !candidates.some((candidate) => Boolean(candidate.candidateValue?.trim()) && candidate.provenance.uncertainty !== "not_found")) {
           await markFailed(input, "object_import_no_supported_fields", "资料中没有可填写的受支持内容，案件资料未更新。请使用受支持的物件或租赁格式后重新选择资料。");
           return { ok: false, status: "failed", error: "object_import_no_supported_fields" };
         }
+      }
+      const persistedTarget = await getObjectImportTargetByJob({ tenantId: input.tenantId, userId: input.userId, importJobId: job.id });
+      if (persistedTarget?.status === "needs_review") {
+        await autoSaveObjectImportCandidates({ tenantId: input.tenantId, userId: input.userId, targetId: persistedTarget.id });
       }
     }
     const mappedJob = await updateImportJobMapping({
@@ -267,6 +283,7 @@ async function markFailed(
   input: { tenantId: string; userId: string; jobId: string },
   errorCode: string,
   errorSummary: string,
+  options: { preserveObjectTarget?: boolean } = {},
 ) {
   await updateImportJobExecution({
     tenantId: input.tenantId,
@@ -276,7 +293,7 @@ async function markFailed(
     errorCode,
     errorSummary,
   });
-  await markObjectImportJobFailed(input, errorCode, errorSummary);
+  if (!options.preserveObjectTarget) await markObjectImportJobFailed(input, errorCode, errorSummary);
   await addAuditLog({
     tenantId: input.tenantId,
     userId: input.userId,

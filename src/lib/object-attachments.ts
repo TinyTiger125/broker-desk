@@ -60,7 +60,7 @@ export async function linkImportJobAttachmentsToObject(input: {
     attachmentId: attachment.id,
     targetType: input.targetType,
     targetId: input.targetId,
-    category: inferObjectAttachmentCategory({ fileName: attachment.fileName, documentType: input.documentType }),
+    category: inferObjectAttachmentCategory({ fileName: attachment.fileName, documentType: input.targetType === "party" ? "identity_document" : input.documentType }),
     sourceImportJobId: input.importJobId,
     createdByUserId: input.userId,
   })));
@@ -132,7 +132,7 @@ export async function listObjectArchiveAttachments(input: {
           attachmentId: attachment.id,
           targetType: input.targetType,
           targetId: input.targetId,
-          category: inferObjectAttachmentCategory({ fileName: attachment.fileName, documentType: target.documentType }),
+          category: inferObjectAttachmentCategory({ fileName: attachment.fileName, documentType: input.targetType === "party" ? "identity_document" : target.documentType }),
           sourceImportJobId: target.importJobId,
           createdByUserId: target.userId,
           createdAt: target.createdAt,

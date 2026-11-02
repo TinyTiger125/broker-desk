@@ -131,6 +131,20 @@ const parsed = contract.parseOpenAiIdentityReaderResponse({
   }],
 });
 assert.equal(parsed.candidates[0].uncertainty, "unclear");
+const blankTranscriptWithEvidence = contract.parseOpenAiIdentityReaderResponse({
+  documentType: "identity_residence_card",
+  pages: [{ pageNumber: 1, lines: [] }],
+  candidates: [{
+    fieldKey: "applicant.name",
+    value: "Synthetic",
+    pageNumber: 1,
+    sourceText: "氏名 Synthetic",
+    uncertainty: "clear",
+    subjectKey: "person_1",
+    subjectLabel: "在留カード所持者",
+  }],
+});
+assert.equal(blankTranscriptWithEvidence.candidates[0].value, "Synthetic", "candidate evidence must survive an empty auxiliary page transcript");
 assert.throws(() => contract.parseOpenAiIdentityReaderResponse({
   documentType: "identity_residence_card",
   pages: [{ pageNumber: 1, lines: ["氏名 Synthetic"] }],

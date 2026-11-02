@@ -56,6 +56,12 @@ const customerHolder = selectPrimaryIdentityReaderCandidates([
 assert.equal(customerHolder.status, "single_applicant", "standalone customer intake accepts explicit holder roles");
 assert.equal(customerHolder.candidates.length, 2);
 
+const documentSpecificHolder = selectPrimaryIdentityReaderCandidates([
+  candidate("person_1", "在留カード所持者", "applicant.name", "Holder Synthetic"),
+], { scope: "customer" });
+assert.equal(documentSpecificHolder.status, "single_applicant", "a single non-negative document holder role must remain attributable");
+assert.equal(documentSpecificHolder.candidates.length, 1);
+
 const sameSubjectRoleMix = selectPrimaryIdentityReaderCandidates([
   candidate("person_1", "本人", "applicant.name", "Holder Synthetic"),
   candidate("person_1", "世帯主", "applicant.currentAddress", "Household address"),

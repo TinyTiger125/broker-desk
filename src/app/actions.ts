@@ -1,6 +1,6 @@
 "use server";
 
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import {
   AML_CHECK_STATUSES,
   BROKERAGE_CONTRACT_TYPES,
@@ -141,6 +141,7 @@ import {
   materializeExtractionReviewValue,
 } from "@/lib/extraction-review-materialization";
 import { buildPropertyImportKey, buildPropertyImportRowFingerprint, normalizeImportCellValue } from "@/lib/import-row-policy";
+import { archiveCaseFile } from "@/app/case-entry-actions";
 import {
   assertTenantPermission,
   requireTenantSession,
@@ -186,12 +187,13 @@ async function requireWritableCase(session: TenantSession, caseId: string) {
 }
 import type { InputFileExtractionResult } from "@/lib/input-file-extractor";
 import { queueExcelImportSource } from "@/lib/excel-import-queue";
-import { queueIdentityImportSources } from "@/lib/identity-import-queue";
+import { getIdentityDocumentUploadLimitBytes, queueIdentityImportSources } from "@/lib/identity-import-queue";
 import { classifyClerkInvitationError, createClerkInvitationForTenantMember } from "@/lib/clerk-invitations";
 import { makeInvitationDeliveryUnknownError } from "@/lib/invitation-delivery-state";
 import { inviteSupabaseUserByEmail } from "@/lib/supabase/admin";
 import { classifySupabaseInvitationError } from "@/lib/supabase-invitations";
 import { assertCaseSourcesReadable } from "@/lib/w93-access";
+import { detectIdentityDocumentKind } from "@/lib/upload-validation";
 import { getVerifiedAuthIdentity } from "@/lib/auth-provider";
 import { isClerkAuthEnabled, isSupabaseAuthEnabled } from "@/lib/auth-mode";
 import { persistTenantMembershipStatus } from "@/lib/supabase/membership-lifecycle";
@@ -545,6 +547,7 @@ function propertyValidationMessage(locale: Locale, field: keyof PropertyFormValu
   const messages: Record<Locale, Partial<Record<keyof PropertyFormValues, string>>> = {
     ja: {
       name: "物件名を入力してください。",
+      postalCode: "郵便番号は7桁（例: 100-0005）で入力してください。",
       listingPrice: "価格は空欄または0より大きい数値で入力してください。",
       sizeSqm: "面積は空欄または0より大きい数値で入力してください。",
       managementFee: "管理費は空欄または0以上の数値で入力してください。",
@@ -552,6 +555,7 @@ function propertyValidationMessage(locale: Locale, field: keyof PropertyFormValu
     },
     zh: {
       name: "请输入物件名称。",
+      postalCode: "邮编请输入7位数字（例如 100-0005）。",
       listingPrice: "售价可留空，填写时必须是大于 0 的数字。",
       sizeSqm: "面积可留空，填写时必须是大于 0 的数字。",
       managementFee: "管理费可留空，填写时必须是 0 或更大的数字。",
@@ -559,6 +563,7 @@ function propertyValidationMessage(locale: Locale, field: keyof PropertyFormValu
     },
     ko: {
       name: "매물명을 입력해 주세요.",
+      postalCode: "우편번호는 7자리(예: 100-0005)로 입력해 주세요.",
       listingPrice: "가격은 비워 두거나 0보다 큰 숫자를 입력해 주세요.",
       sizeSqm: "면적은 비워 두거나 0보다 큰 숫자를 입력해 주세요.",
       managementFee: "관리비는 비워 두거나 0 이상의 숫자를 입력해 주세요.",
@@ -573,6 +578,9 @@ function parsePropertyForm(formData: FormData, locale: Locale) {
   const fieldErrors: PropertyFormActionState["fieldErrors"] = {};
   const name = values.name.trim();
   if (!name) fieldErrors.name = propertyValidationMessage(locale, "name");
+  if (values.postalCode.trim() && !/^\d{3}-?\d{4}$/.test(values.postalCode.trim())) {
+    fieldErrors.postalCode = propertyValidationMessage(locale, "postalCode");
+  }
 
   const parseOptionalNumber = (field: "listingPrice" | "sizeSqm" | "managementFee" | "repairFee" | "listingRent" | "listingCommonFee", minimum: number) => {
     const raw = values[field].trim();
@@ -804,6 +812,9 @@ function clientValidationMessage(locale: Locale, field: keyof ClientFormValues):
     ja: {
       name: "顧客名を入力してください。",
       phone: "電話番号を入力してください。",
+      email: "メールアドレスの形式を確認してください。",
+      currentPostalCode: "郵便番号は7桁（例: 100-0005）で入力してください。",
+      employerPhone: "勤務先電話番号の形式を確認してください。",
       partyType: "関係者種別を選択するか、未設定のままにしてください。",
       budgetMin: "予算下限は0より大きい数値で入力してください。",
       budgetMax: "予算上限は0より大きい数値で入力してください。",
@@ -825,6 +836,9 @@ function clientValidationMessage(locale: Locale, field: keyof ClientFormValues):
     zh: {
       name: "请输入客户姓名。",
       phone: "请输入电话号码。",
+      email: "请检查邮箱地址格式。",
+      currentPostalCode: "邮编请输入7位数字（例如 100-0005）。",
+      employerPhone: "请检查工作单位电话号码格式。",
       partyType: "请选择主体类型，或保留为未设置。",
       budgetMin: "预算下限必须是大于 0 的数字。",
       budgetMax: "预算上限必须是大于 0 的数字。",
@@ -846,6 +860,9 @@ function clientValidationMessage(locale: Locale, field: keyof ClientFormValues):
     ko: {
       name: "고객명을 입력해 주세요.",
       phone: "전화번호를 입력해 주세요.",
+      email: "이메일 주소 형식을 확인해 주세요.",
+      currentPostalCode: "우편번호는 7자리(예: 100-0005)로 입력해 주세요.",
+      employerPhone: "근무처 전화번호 형식을 확인해 주세요.",
       partyType: "관계자 유형을 선택하거나 미설정으로 두세요.",
       budgetMin: "예산 하한은 0보다 큰 숫자여야 합니다.",
       budgetMax: "예산 상한은 0보다 큰 숫자여야 합니다.",
@@ -888,7 +905,18 @@ function parseClientForm(formData: FormData, locale: Locale, mode: "create" | "e
   const name = values.name.trim();
   const phone = values.phone.trim();
   if (!name) fieldErrors.name = clientValidationMessage(locale, "name");
-  if (!phone) fieldErrors.phone = clientValidationMessage(locale, "phone");
+  // Identity documents generally contain no telephone number. An empty phone
+  // is a genuine pending detail, not a value to invent or a reason to lose an
+  // otherwise readable customer record.
+  const validateOptionalFormat = (field: "phone" | "email" | "currentPostalCode" | "employerPhone", valid: (value: string) => boolean) => {
+    const value = values[field].trim();
+    if (value && !valid(value)) fieldErrors[field] = clientValidationMessage(locale, field);
+    return value;
+  };
+  validateOptionalFormat("phone", (value) => /^(?=.*\d)[0-9+()\-\s]{6,30}$/.test(value));
+  validateOptionalFormat("employerPhone", (value) => /^(?=.*\d)[0-9+()\-\s]{6,30}$/.test(value));
+  validateOptionalFormat("email", (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value));
+  validateOptionalFormat("currentPostalCode", (value) => /^\d{3}-?\d{4}$/.test(value));
 
   const requiredEnum = <T extends string>(field: keyof ClientFormValues, raw: string, valid: (value: string) => value is T, fallback?: T) => {
     const value = raw.trim() || (compatibilityDefaults ? fallback ?? "" : "");
@@ -1113,6 +1141,10 @@ async function persistClientForm(
     client = await addClient({
       tenantId,
       ownerUserId: user.id,
+      ...(formData.get("entryTargetId") ? { id: String(formData.get("entryTargetId")) } : {}),
+      ...(formData.get("entryRequestKey") && formData.get("entryClaimToken")
+        ? { entryRequest: { requestKey: String(formData.get("entryRequestKey")), claimToken: String(formData.get("entryClaimToken")) } }
+        : {}),
       ...parsed.normalized,
       notes: mergePartyProfileNotes({
         type: partyTypeRaw ? partyTypeRaw as PartyProfileType : undefined,
@@ -1163,6 +1195,9 @@ async function persistClientForm(
     targetType: "client",
     targetId: client.id,
     message: mode === "create" ? `顧客を新規登録しました: ${client.name}` : "顧客情報を更新しました。",
+    ...(mode === "create" && formData.get("entryRequestKey")
+      ? { context: { entryRequestKey: String(formData.get("entryRequestKey")), ...(formData.get("entryPayloadDigest") ? { entryPayloadDigest: String(formData.get("entryPayloadDigest")) } : {}), source: "unified_entry" } }
+      : {}),
   }).catch((error: unknown) => {
     if (mode !== "create") throw error;
     creationAuditWarning = true;
@@ -2339,6 +2374,10 @@ export async function createPropertyQuickAction(
     tenantId,
     createdByUserId: user.id,
     currentOwnerUserId: user.id,
+    ...(formData.get("entryTargetId") ? { id: String(formData.get("entryTargetId")) } : {}),
+    ...(formData.get("entryRequestKey") && formData.get("entryClaimToken")
+      ? { entryRequest: { requestKey: String(formData.get("entryRequestKey")), claimToken: String(formData.get("entryClaimToken")) } }
+      : {}),
     ...parsed.normalized,
   });
 
@@ -2354,6 +2393,9 @@ export async function createPropertyQuickAction(
       zh: `已新增物件：${property.name}`,
       ko: `매물을 등록했습니다: ${property.name}`,
     }),
+    ...(formData.get("entryRequestKey")
+      ? { context: { entryRequestKey: String(formData.get("entryRequestKey")), ...(formData.get("entryPayloadDigest") ? { entryPayloadDigest: String(formData.get("entryPayloadDigest")) } : {}), source: "unified_entry" } }
+      : {}),
   }).catch(() => { creationAuditWarning = true; });
 
   revalidatePath("/properties");
@@ -2490,6 +2532,12 @@ function parsePartyProfileForm(formData: FormData, locale: Locale, options?: { f
       })
     );
   }
+  if (phone && !/^(?=.*\d)[0-9+()\-\s]{6,30}$/.test(phone)) {
+    throw new Error(tr(locale, { ja: "電話番号の形式を確認してください。", zh: "请检查电话号码格式。", ko: "전화번호 형식을 확인해 주세요." }));
+  }
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new Error(tr(locale, { ja: "メールアドレスの形式を確認してください。", zh: "请检查邮箱地址格式。", ko: "이메일 주소 형식을 확인해 주세요." }));
+  }
 
   return {
     name,
@@ -2579,19 +2627,22 @@ function partyValidationMessage(locale: Locale, field: keyof PartyProfileFormVal
   const messages: Record<Locale, Partial<Record<keyof PartyProfileFormValues, string>>> = {
     ja: {
       name: "氏名または会社名は必須です。",
-      phone: "電話番号は必須です。",
+      phone: "電話番号の形式を確認してください。",
+      email: "メールアドレスの形式を確認してください。",
       partyType: "関係者種別を選択するか、未設定のままにしてください。",
       partyRole: "役割を選択するか、未設定のままにしてください。",
     },
     zh: {
       name: "姓名或公司名是必填项。",
-      phone: "电话号码是必填项。",
+      phone: "请检查电话号码格式。",
+      email: "请检查邮箱地址格式。",
       partyType: "请选择主体类型，或保留为未设置。",
       partyRole: "请选择主体角色，或保留为未设置。",
     },
     ko: {
       name: "이름 또는 회사명은 필수입니다.",
-      phone: "전화번호는 필수입니다.",
+      phone: "전화번호 형식을 확인해 주세요.",
+      email: "이메일 주소 형식을 확인해 주세요.",
       partyType: "관계자 유형을 선택하거나 미설정으로 두세요.",
       partyRole: "역할을 선택하거나 미설정으로 두세요.",
     },
@@ -2625,7 +2676,10 @@ function parsePartyUpdateForm(formData: FormData, locale: Locale) {
   const partyRoleRaw = values.partyRole.trim();
   const metadataSubmitted = formData.has("partyType") || formData.has("partyRole");
   if (!name) fieldErrors.name = partyValidationMessage(locale, "name");
-  if (!phone) fieldErrors.phone = partyValidationMessage(locale, "phone");
+  // A party linked to a customer must remain editable while its contact
+  // number is pending; the empty value is intentional, not a fake number.
+  if (phone && !/^(?=.*\d)[0-9+()\-\s]{6,30}$/.test(phone)) fieldErrors.phone = tr(locale, { ja: "電話番号の形式を確認してください。", zh: "请检查电话号码格式。", ko: "전화번호 형식을 확인해 주세요." });
+  if (values.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email.trim())) fieldErrors.email = partyValidationMessage(locale, "email");
   if (metadataSubmitted && partyTypeRaw && !isPartyProfileType(partyTypeRaw)) fieldErrors.partyType = partyValidationMessage(locale, "partyType");
   if (metadataSubmitted && partyRoleRaw && !isPartyProfileRole(partyRoleRaw)) fieldErrors.partyRole = partyValidationMessage(locale, "partyRole");
 
@@ -5334,6 +5388,72 @@ export async function uploadAndParseIdentityDocumentAction(formData: FormData) {
     revalidatePath("/import-center");
     redirect(`/import-center?xlsxJob=${result.jobIds[0]}&flash=input_extraction_queued${targetCaseQuery}`);
   }
+}
+
+/**
+ * Archive generic case documents without routing them through the identity
+ * reader. This is the recovery path for contracts and other case-level
+ * evidence whose only durable requirement is the existing case attachment
+ * archive. Case fields remain unchanged and can be completed in the case
+ * workbench after the original is retained.
+ */
+export async function uploadAndArchiveCaseDocumentsAction(formData: FormData) {
+  const targetCaseId = String(formData.get("targetCaseId") ?? "").trim();
+  const redirectUploadError = (flash: string): never => {
+    if (targetCaseId) {
+      redirect(`/cases/${encodeURIComponent(targetCaseId)}?flash=${encodeURIComponent(flash)}#case-review-desk`);
+    }
+    redirect(`/import-center?flow=case&flash=${encodeURIComponent(flash)}#source-upload`);
+  };
+  const session = await requireTenantSession({ permission: "source.upload" });
+  if (!targetCaseId) redirectUploadError("case_upload_archive_failed");
+  await requireWritableCase(session, targetCaseId);
+  try {
+    assertProductionAttachmentStorageReady();
+  } catch (error) {
+    if (error instanceof ProductionReadinessError) redirectUploadError("case_upload_archive_failed");
+    throw error;
+  }
+
+  const files = formData
+    .getAll("caseDocumentFile")
+    .filter((file): file is File => file instanceof File && file.size > 0);
+  if (files.length === 0) redirectUploadError("case_upload_archive_failed");
+  if (files.length > 6) redirectUploadError("case_upload_archive_failed");
+
+  const maxFileBytes = getIdentityDocumentUploadLimitBytes();
+  const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
+  if (files.some((file) => file.size > maxFileBytes) || totalBytes > 60 * 1024 * 1024) {
+    redirectUploadError("case_upload_archive_failed");
+  }
+  for (const file of files) {
+    const content = Buffer.from(await file.arrayBuffer());
+    if (!detectIdentityDocumentKind(content)) redirectUploadError("case_upload_archive_failed");
+  }
+
+  let archivedCount = 0;
+  for (const file of files) {
+    try {
+      const digest = createHash("sha256").update(Buffer.from(await file.arrayBuffer())).digest("hex");
+      await archiveCaseFile({
+        tenantId: session.tenant.id,
+        userId: session.user.id,
+        caseId: targetCaseId,
+        file,
+        dedupeKey: `case-recovery:${targetCaseId}:${file.name}:${file.size}:${digest}`,
+        source: "case_recovery_entry",
+      });
+      archivedCount += 1;
+    } catch {
+      // Keep already archived originals and surface a recoverable partial state.
+    }
+  }
+  revalidatePath(`/cases/${targetCaseId}`);
+  revalidatePath("/import-center");
+  if (archivedCount === files.length) {
+    redirect(`/cases/${encodeURIComponent(targetCaseId)}?flash=case_upload_archived#case-review-desk`);
+  }
+  redirect(`/cases/${encodeURIComponent(targetCaseId)}?flash=${archivedCount > 0 ? "case_upload_archive_partial" : "case_upload_archive_failed"}#case-review-desk`);
 }
 
 export async function saveExtractionReviewAction(formData: FormData) {

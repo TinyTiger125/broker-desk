@@ -194,7 +194,6 @@ export function CaseAssociationManager({
     propertyProfiles = {},
   objectImportViews = [],
   objectImportUploadAction,
-  objectImportReviewAction,
   objectImportUnavailable = false,
   caseAttachments = [],
   caseAddress,
@@ -397,23 +396,11 @@ export function CaseAssociationManager({
           const sourceText = typeof field.provenance.sourceText === "string" ? field.provenance.sourceText : "";
           const pageNumber = typeof field.provenance.pageNumber === "number" ? field.provenance.pageNumber : undefined;
           const alternatives = Array.isArray(field.provenance.alternatives) ? field.provenance.alternatives as Array<{ value?: unknown; pageNumber?: unknown; sourceText?: unknown }> : [];
-          const reviewTarget = view?.target;
-          const canReview = Boolean(objectImportReviewAction && reviewTarget?.status === "needs_review" && field.candidateValue && !["confirmed", "rejected", "failed", "not_found"].includes(field.status));
           return (
             <div key={field.id} className={`mt-2 rounded-md border px-2.5 py-2 text-xs leading-5 ${field.status === "conflict" ? "border-rose-200 bg-rose-50 text-rose-900" : field.status === "low_confidence" ? "border-amber-200 bg-amber-50 text-amber-900" : "border-slate-200 bg-white text-slate-700"}`}>
               <div className="flex flex-wrap items-center gap-1.5"><span className="font-bold">{OBJECT_READER_FIELD_LABELS[field.fieldKey] ?? field.fieldKey}</span>{field.candidateValue ? <span className="break-words [overflow-wrap:anywhere]">{field.candidateValue}</span> : null}{field.status === "conflict" ? <span className="font-bold">{locale === "zh" ? "资料不同" : locale === "ko" ? "자료가 서로 다릅니다" : "資料が一致しません"}</span> : field.status === "low_confidence" ? <span className="font-bold">{locale === "zh" ? "需要核对" : locale === "ko" ? "확인 필요" : "確認してください"}</span> : field.status === "not_found" ? <span className="font-bold text-slate-500">{locale === "zh" ? "资料未记载" : locale === "ko" ? "자료에 기재 없음" : "資料に記載なし"}</span> : null}</div>
               {pageNumber || sourceText ? <p className="mt-1 text-[11px] text-slate-600">{pageNumber ? `p.${pageNumber}` : ""}{pageNumber && sourceText ? " · " : ""}{sourceText}</p> : null}
               {alternatives.length > 1 ? <div className="mt-1 space-y-0.5 text-[11px] text-rose-800">{alternatives.map((alternative, index) => <p key={`${field.id}-alternative-${index}`}>候補{index + 1}: {typeof alternative.value === "string" ? alternative.value : "未読"}{typeof alternative.pageNumber === "number" ? ` (p.${alternative.pageNumber})` : ""}{typeof alternative.sourceText === "string" && alternative.sourceText ? ` · ${alternative.sourceText}` : ""}</p>)}</div> : null}
-              {canReview && reviewTarget ? <form action={objectImportReviewAction} className="mt-2 flex flex-wrap items-center gap-2">
-                <input type="hidden" name="importTargetId" value={reviewTarget.id} />
-                <input type="hidden" name="fieldId" value={field.id} />
-                <input type="hidden" name="expectedVersion" value={reviewTarget.targetVersion} />
-                <input type="hidden" name="expectedCandidateValue" value={field.candidateValue ?? ""} />
-                {field.fieldKey.startsWith("lease.") ? <input type="hidden" name="caseFieldKey" value={field.fieldKey} /> : null}
-                <input name="value" defaultValue={field.candidateValue ?? ""} aria-label={OBJECT_READER_FIELD_LABELS[field.fieldKey] ?? field.fieldKey} className="min-h-9 min-w-40 flex-1 rounded border border-slate-300 bg-white px-2 py-1 text-xs" />
-                <button type="submit" name="decision" value="confirm" className="min-h-9 rounded border border-blue-300 bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-900">{locale === "zh" ? "确认并保存" : locale === "ko" ? "확인 후 저장" : "確認して保存"}</button>
-                <button type="submit" name="decision" value="reject" className="min-h-9 rounded border border-slate-300 bg-white px-2.5 py-1 text-xs font-bold text-slate-700">{locale === "zh" ? "拒绝" : locale === "ko" ? "거부" : "候補を棄却"}</button>
-              </form> : null}
             </div>
           );
         })}

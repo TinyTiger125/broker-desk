@@ -62,14 +62,17 @@ const stageLabelByLocale: Record<Locale, Record<ClientStage, string>> = {
 
 const purposeLabelByLocale: Record<Locale, Record<Purpose, string>> = {
   ja: {
+    unspecified: "未確認",
     self_use: "居住用",
     investment: "投資用",
   },
   zh: {
+    unspecified: "待确认",
     self_use: "自住",
     investment: "投资",
   },
   ko: {
+    unspecified: "미확인",
     self_use: "실거주",
     investment: "투자",
   },
@@ -77,16 +80,19 @@ const purposeLabelByLocale: Record<Locale, Record<Purpose, string>> = {
 
 const temperatureLabelByLocale: Record<Locale, Record<Temperature, string>> = {
   ja: {
+    unspecified: "未確認",
     high: "高",
     medium: "中",
     low: "低",
   },
   zh: {
+    unspecified: "待确认",
     high: "高",
     medium: "中",
     low: "低",
   },
   ko: {
+    unspecified: "미확인",
     high: "높음",
     medium: "보통",
     low: "낮음",

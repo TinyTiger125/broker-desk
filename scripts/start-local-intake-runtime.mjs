@@ -130,6 +130,11 @@ async function configureRuntimeRoles(client, { runtimePassword, adminPassword })
   await client.query("REVOKE ALL ON ALL TABLES IN SCHEMA public FROM brokerdesk_runtime, brokerdesk_admin");
   await client.query("REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM brokerdesk_runtime, brokerdesk_admin");
   await client.query(readFileSync(path.join(repoRoot, "db", "migrations", "20260902_003_runtime_acl_baseline.sql"), "utf8"));
+  const entryClaimsTable = await client.query("SELECT to_regclass('public.entry_request_claims') IS NOT NULL AS present");
+  if (entryClaimsTable.rows[0]?.present) {
+    await client.query(readFileSync(path.join(repoRoot, "db", "migrations", "20261102_005_entry_request_claims_runtime_acl.sql"), "utf8"));
+    await client.query(readFileSync(path.join(repoRoot, "db", "migrations", "20261102_006_entry_request_claims_authenticated_acl.sql"), "utf8"));
+  }
   await client.query("REVOKE REFERENCES ON TABLE public.users, public.tenants, public.attachments, public.brokerage_cases, public.import_jobs, public.object_import_targets FROM brokerdesk_runtime");
   await client.query("GRANT SELECT, INSERT, UPDATE ON TABLE public.object_import_targets, public.object_import_fields TO brokerdesk_runtime");
   await client.query("GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO brokerdesk_runtime");
@@ -141,6 +146,7 @@ async function configureRuntimeRoles(client, { runtimePassword, adminPassword })
     GRANT SELECT, UPDATE ON public.tenant_memberships TO brokerdesk_admin;
     GRANT SELECT, UPDATE ON public.import_jobs TO brokerdesk_admin;
     GRANT SELECT, DELETE ON public.attachments, public.private_attachment_blobs TO brokerdesk_admin;
+    GRANT SELECT, DELETE ON public.entry_request_claims TO brokerdesk_admin;
     GRANT SELECT ON public.attachment_links TO brokerdesk_admin;
     GRANT INSERT ON public.audit_logs TO brokerdesk_admin;
     GRANT REFERENCES ON public.users, public.tenants TO brokerdesk_admin;

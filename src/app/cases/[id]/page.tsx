@@ -1099,21 +1099,21 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
             })
         : query?.flash === "case_upload_archived_limited"
           ? tr(locale, {
-              ja: "原本資料は案件に保存しましたが、確認済みの読み取り結果は保存されていません。案件資料から原本を確認できます。",
-              zh: "原始资料已保存到案件，但没有保存已确认的读取结果。请在案件附件中确认原文件。",
-              ko: "원본 자료는 안건에 저장했지만 확인된 읽기 결과는 저장되지 않았습니다. 안건 첨부에서 원본을 확인해 주세요.",
+              ja: "原本資料は案件に保存しましたが、読み取りは完了していません。案件項目と原本を確認し、未読資料は補完入口から再送してください。",
+              zh: "原始资料已保存到案件，但读取未全部完成。请核对案件字段和原文件，并通过补传入口重新发送未读资料。",
+              ko: "원본 자료는 안건에 저장했지만 읽기가 모두 완료되지 않았습니다. 안건 항목과 원본을 확인하고 읽지 못한 자료는 보완 입구에서 다시 보내 주세요.",
             })
         : query?.flash === "case_upload_archive_failed"
           ? tr(locale, {
-              ja: "原本資料を案件に保存できませんでした。案件を開いたまま、資料を選び直して補完してください。",
-              zh: "原始资料未能保存到案件。请留在当前案件页面，重新选择资料补传。",
-              ko: "원본 자료를 안건에 저장하지 못했습니다. 현재 안건에서 자료를 다시 선택해 보완해 주세요.",
+              ja: "原本資料を案件に保存できませんでした。案件資料の補完入口から、原本を選び直してください。",
+              zh: "原始资料未能保存到案件。请通过案件资料补传入口重新选择原件。",
+              ko: "원본 자료를 안건에 저장하지 못했습니다. 안건 자료 보완 입구에서 원본을 다시 선택해 주세요.",
             })
         : query?.flash === "case_upload_archive_partial"
           ? tr(locale, {
-              ja: "一部の原本資料だけ案件に保存しました。保存できなかった資料は案件ページから補完してください。",
-              zh: "只有部分原始资料保存到了案件。请在案件页面补传未保存的资料。",
-              ko: "일부 원본 자료만 안건에 저장했습니다. 저장되지 않은 자료는 안건 페이지에서 보완해 주세요.",
+              ja: "一部の原本資料だけ案件に保存しました。案件資料の補完入口から未保存の資料を選んでください。",
+              zh: "只有部分原始资料保存到了案件。请通过案件资料补传入口选择未保存的原件。",
+              ko: "일부 원본 자료만 안건에 저장했습니다. 안건 자료 보완 입구에서 저장되지 않은 자료를 선택해 주세요.",
             })
         : query?.flash === "case_upload_archived"
           ? tr(locale, {
@@ -1276,6 +1276,12 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
 	              : undefined;
   const flashTone =
     objectImportNoSupportedFieldsFailed || query?.flash === "object_import_review_conflict" || query?.flash === "object_import_review_already_reviewed" || query?.flash === "object_import_review_invalid_value" || query?.flash === "case_upload_archived_limited" || query?.flash === "case_upload_preview_audit_failed" || query?.flash === "case_upload_archive_failed" || query?.flash === "case_upload_archive_partial" || query?.flash?.startsWith("excel_upload_") || query?.flash?.startsWith("identity_upload_") || query?.flash === "import_service_unavailable" || query?.flash === "case_required_field_missing" || query?.flash === "case_field_invalid" ? "error" : undefined;
+  const archiveRecoveryAction = query?.flash === "case_upload_archive_failed" || query?.flash === "case_upload_archive_partial" || query?.flash === "case_upload_archived_limited"
+    ? {
+        href: `/import-center?flow=case&targetCaseId=${encodeURIComponent(brokerageCase.id)}#source-upload`,
+        label: tr(locale, { ja: "案件資料の補完入口を開く", zh: "打开案件资料补传入口", ko: "안건 자료 보완 입구 열기" }),
+      }
+    : undefined;
   const activeView = query?.view === "quick" || query?.view === "overview"
     ? query.view
     : downloadGate && downloadGate.blockedReasons.length > 0
@@ -1370,7 +1376,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
           associationPanel={associationPanel}
           applicantPersonInfo={applicantPersonInfo}
           visibilityLabel={caseVisibilityLabel}
-          flash={<PageFlashBanner message={flashMessage} tone={flashTone} />}
+          flash={<PageFlashBanner message={flashMessage} tone={flashTone} action={archiveRecoveryAction} />}
         />
       </div>
     );
@@ -1406,7 +1412,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
           viewContext={{ field: initialFieldKey, scrollTop: initialScrollTop }}
           associationPanel={associationPanel}
           applicantPersonInfo={applicantPersonInfo}
-          flash={<PageFlashBanner message={flashMessage} tone={flashTone} />}
+          flash={<PageFlashBanner message={flashMessage} tone={flashTone} action={archiveRecoveryAction} />}
           initialFieldKey={initialFieldKey}
           initialScrollTop={initialScrollTop}
           resumeGroupEditing={Boolean(initialFieldKey && (["case_required_field_missing", "case_field_invalid"].includes(query?.flash ?? "") || (query?.flash === "case_workbench_saved" && query?.edit === "1")))}
@@ -1455,7 +1461,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
             }
           />
         }
-        feedback={<PageFlashBanner message={flashMessage} tone={flashTone} />}
+        feedback={<PageFlashBanner message={flashMessage} tone={flashTone} action={archiveRecoveryAction} />}
       >
         {quickAssociationPanel}
 

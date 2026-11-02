@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { useActionState, useCallback, useEffect, useRef, useState, useTransition, type ChangeEvent, type FormEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import type { ClientFormActionState, ClientFormValues } from "@/app/actions";
 import { endSubmission, handleFormSubmit, type SubmissionLock } from "@/components/form-submission-lock";
 import { Button } from "@/components/ui-foundation";
 import { EntryFilePicker, replaceEntryFiles } from "@/components/entry-file-picker";
-import { applyEntryPreviewCandidate, EntryPreview, type EntryPreviewCandidate } from "@/components/entry-preview";
+import { applyEntryPreviewCandidate, createEntryIntentId, EntryPreview, type EntryPreviewCandidate } from "@/components/entry-preview";
 import { useEntryDraft } from "@/components/use-entry-draft";
+import { fillAutoSavedEntryForm, type EntryPreviewState } from "@/lib/entry-preview";
 import type { Locale } from "@/lib/locale";
 import {
   getAmlCheckStatusOptions,
@@ -217,7 +218,11 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
   const initial = initialValues(defaults, partyMeta);
   const { values, setValues } = useEntryDraft({ storageKey: entryDraftKey, serverValues: initial, appliedFields: entryAppliedFields });
   const [entryFiles, setEntryFiles] = useState<File[]>([]);
+  const [entryIntentId] = useState(() => createEntryIntentId());
   const [entryReadFileKeys, setEntryReadFileKeys] = useState<string[]>([]);
+  const [autoSaving, startAutoSaving] = useTransition();
+  const formRef = useRef<HTMLFormElement>(null);
+  const autoSaveStartedRef = useRef(false);
   const entryFilesRef = useRef<File[]>([]);
   const entryReadFileKeysRef = useRef<string[]>([]);
   const handleEntryReadFileKeys = useCallback((keys: string[]) => {
@@ -225,13 +230,14 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
     setEntryReadFileKeys(keys);
   }, []);
   const updateEntryFiles = useCallback((files: File[]) => {
+    autoSaveStartedRef.current = false;
     entryFilesRef.current = files;
     setEntryFiles(files);
     entryReadFileKeysRef.current = [];
     setEntryReadFileKeys([]);
   }, []);
   const confirmEntryCandidate = useCallback((candidate: EntryPreviewCandidate) => {
-    setValues((current) => applyEntryPreviewCandidate(current, candidate));
+    setValues((current) => String(current[candidate.key as keyof ClientFormValues] ?? "").trim() ? current : applyEntryPreviewCandidate(current, candidate));
   }, [setValues]);
   const entryAction = useCallback(async (previousState: ClientFormActionState, formData: FormData) => {
     if (entryUpload) {
@@ -241,6 +247,18 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
     return action(previousState, formData);
   }, [action, entryUpload]);
   const [state, formAction, pending] = useActionState<ClientFormActionState, FormData>(entryAction, { status: "idle", fieldErrors: {}, values: initial });
+  const autoSaveReadResult = useCallback((preview: EntryPreviewState) => {
+    if (mode !== "create" || !entryUpload || autoSaveStartedRef.current || !formRef.current) return;
+    const data = new FormData(formRef.current);
+    const applied = fillAutoSavedEntryForm(data, preview);
+    if (applied === 0 || !String(data.get("name") ?? "").trim()) return;
+    if (!String(data.get("purpose") ?? "").trim()) data.set("purpose", "unspecified");
+    if (!String(data.get("temperature") ?? "").trim()) data.set("temperature", "unspecified");
+    entryReadFileKeysRef.current = preview.readFileKeys;
+    setValues((current) => ({ ...current, ...Object.fromEntries([...data.entries()].filter(([key, value]) => key in current && typeof value === "string")) }));
+    autoSaveStartedRef.current = true;
+    startAutoSaving(() => formAction(data));
+  }, [entryUpload, formAction, mode, setValues]);
   const summaryRef = useRef<HTMLDivElement>(null);
   const [expandedSections, setExpandedSections] = useState<Record<ClientFormSectionKey, boolean>>({ basic: true, profile: true, needs: true, management: true, legal: true, notes: true });
   const composingRef = useRef(false);
@@ -330,21 +348,22 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
   };
 
   return (
-    <form id={formId} action={formAction} onSubmit={readOnly ? (event) => event.preventDefault() : handleSubmit} onInvalidCapture={handleInvalid} noValidate className="space-y-6 pb-10">
+    <form ref={formRef} id={formId} action={formAction} onSubmit={readOnly ? (event) => event.preventDefault() : handleSubmit} onInvalidCapture={handleInvalid} noValidate className="space-y-6 pb-10">
       <input type="hidden" name="returnTo" value={returnTo} />
       {submitReturnTo ? <input type="hidden" name="submitReturnTo" value={submitReturnTo} /> : null}
       {onCreated ? <input type="hidden" name="caseDraftReturn" value="1" /> : null}
       {values.clientId ? <input type="hidden" name="clientId" value={values.clientId} /> : null}
       {entryUpload && !readOnly ? <>
+        <input type="hidden" name="entryIntentId" value={entryIntentId} />
         <EntryFilePicker locale={locale} files={entryFiles} onFilesChange={updateEntryFiles} disabled={pending} />
-        <EntryPreview files={entryFiles} kind="customer" locale={locale} onConfirm={confirmEntryCandidate} onReadFileKeys={handleEntryReadFileKeys} />
+        <EntryPreview files={entryFiles} kind="customer" locale={locale} onConfirm={confirmEntryCandidate} onReadFileKeys={handleEntryReadFileKeys} onReadComplete={autoSaveReadResult} />
         <input type="hidden" name="entryReadFileKeys" value={JSON.stringify(entryReadFileKeys)} />
       </> : null}
       {state.status === "error" ? <div ref={summaryRef} tabIndex={-1} role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900 outline-none focus-visible:ring-2 focus-visible:ring-rose-500"><p className="font-bold">{state.message ?? text.error}</p><ul className="mt-2 list-disc space-y-1 pl-5">{errorEntries.map(([field, message]) => <li key={field}><a className="underline" href={`#client-${field}`} onClick={(event) => focusField(event, field)}>{message}</a></li>)}</ul></div> : null}
 
       <ClientFormSection section="basic" title={text.basic} expanded={expandedSections.basic} onToggle={() => toggleSection("basic")}><div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-1">{label("name", profileNameLabel, true)}<input {...fieldProps("name")} required aria-required="true" className={inputClass} />{errorText("name")}</div>
-        <div className="space-y-1">{label("phone", text.phone, true)}<input {...fieldProps("phone")} required aria-required="true" className={inputClass} />{errorText("phone")}</div>
+        <div className="space-y-1">{label("phone", text.phone)}<input {...fieldProps("phone")} className={inputClass} />{!values.phone.trim() ? <p className="text-xs font-semibold text-amber-700">{locale === "zh" ? "待补全：证件通常不含电话号码" : locale === "ko" ? "추가 필요: 신분증에는 전화번호가 없는 경우가 많습니다" : "要補完：本人確認資料には電話番号がない場合があります"}</p> : null}{errorText("phone")}</div>
         <div className="space-y-1">{label("lineId", text.lineId)}<input {...fieldProps("lineId")} className={inputClass} />{errorText("lineId")}</div>
         <div className="space-y-1">{label("email", text.email)}<input {...fieldProps("email")} type="email" className={inputClass} />{errorText("email")}</div>
       </div></ClientFormSection>
@@ -392,7 +411,7 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
 
       <ClientFormSection section="notes" title={text.notes} expanded={expandedSections.notes} onToggle={() => toggleSection("notes")}><div className="space-y-3">{label("notes", text.notes)}<textarea {...fieldProps("notes")} rows={5} placeholder={text.notesPlaceholder} className={`${inputClass} resize-y`} />{errorText("notes")}</div></ClientFormSection>
 
-      {hideActions ? null : <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-200 pt-5">{onCancel ? <button type="button" onClick={onCancel} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">{text.cancel}</button> : <Link href={returnTo} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">{text.cancel}</Link>}<Button type="submit" loading={pending} className="min-h-11 rounded-lg bg-slate-950 px-5 py-2.5 text-sm font-bold text-white hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60">{pending ? text.saving : entryUpload && entryFiles.length > entryReadFileKeys.length ? text.saveAndRead : text.save}</Button></div>}
+      {hideActions ? null : <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-200 pt-5">{onCancel ? <button type="button" onClick={onCancel} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">{text.cancel}</button> : <Link href={returnTo} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">{text.cancel}</Link>}<Button type="submit" loading={pending || autoSaving} className="min-h-11 rounded-lg bg-slate-950 px-5 py-2.5 text-sm font-bold text-white hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60">{pending || autoSaving ? text.saving : entryUpload && entryFiles.length > entryReadFileKeys.length ? text.saveAndRead : text.save}</Button></div>}
       <div className="sr-only" aria-live="polite">{pending ? text.saving : ""}</div>
     </form>
   );

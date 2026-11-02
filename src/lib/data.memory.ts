@@ -1,5 +1,5 @@
 import { getGuaranteeCompanyTemplate } from "@/lib/guarantee-application";
-import { validateObjectImportReview, type ObjectImportReviewInput, type ObjectImportReviewResult } from "@/lib/object-import-review";
+import { isEmptyModelDestination, isObjectImportCaseFieldManuallyCleared, isSafeModelAutoSave, recordObjectImportManualCaseClears, validateObjectImportReview, type ObjectImportReviewInput, type ObjectImportReviewResult } from "@/lib/object-import-review";
 import { isCorporateCustomerRecord } from "@/lib/customer-identity-field-catalog";
 import { buildObjectVersionFingerprint, type ObjectImportFeatureReadiness } from "@/lib/object-import-contract";
 import { readCaseAssociationDraft } from "@/lib/case-associations";
@@ -37,6 +37,7 @@ import type {
 import { COMPLETE_CASE_FIELD_DEFAULTS, COMPLETE_DRAFT_DEFAULTS } from "@/lib/guarantee-application-fixtures";
 import { DEFAULT_TENANT_ID } from "@/lib/tenant-constants";
 import type { TenantRole, TenantCapabilityPreset } from "@/lib/tenant-permissions";
+import { capabilityHasTenantPermission, roleHasTenantPermission } from "@/lib/tenant-permissions";
 import {
   buildClosedBetaDemoFixture,
   CLOSED_BETA_DEMO_FIXTURE_VERSION,
@@ -449,6 +450,26 @@ export type BrokerageCase = {
   archivedById?: string;
 };
 
+export type EntryRequestTargetType = "client" | "property" | "case";
+export type EntryRequestClaimState = "claimed" | "completed" | "failed";
+export type EntryRequestClaimResult = {
+  state: "claimed" | "in_progress" | "existing" | "payload_mismatch" | "manual_review";
+  targetId?: string;
+  claimToken?: string;
+};
+export type EntryRequestClaim = {
+  tenantId: string;
+  userId: string;
+  requestKey: string;
+  payloadDigest?: string;
+  claimToken?: string;
+  targetType: EntryRequestTargetType;
+  targetId?: string;
+  state: EntryRequestClaimState;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 export type VisibleBrokerageCase = {
   brokerageCase: BrokerageCase | null;
   resolution: VisibilityResolution;
@@ -603,6 +624,8 @@ export type PrivateAttachmentInput = {
   fileName: string;
   fileType?: string;
   content: Buffer;
+  /** Stable only for one entry intent/file slot; a new user upload gets a new key. */
+  dedupeKey?: string;
 };
 
 type PrivateAttachmentContentsHolder = { current: Map<string, Buffer> };
@@ -813,6 +836,7 @@ type DB = {
   objectImportTargets: ObjectImportTargetRecord[];
   objectImportCandidates: ObjectImportCandidateRecord[];
   brokerageCases: BrokerageCase[];
+  entryRequestClaims: EntryRequestClaim[];
   extractionReviewItems: ExtractionReviewItem[];
   guaranteeApplicationDrafts: GuaranteeApplicationDraft[];
   correctionEvents: CorrectionEvent[];
@@ -837,6 +861,97 @@ const now = Date.now();
 
 function resolveTenantId(tenantId?: string): string {
   return tenantId?.trim() || DEFAULT_TENANT_ID;
+}
+
+const ENTRY_REQUEST_CLAIM_STALE_MS = 10 * 60 * 1000;
+
+export async function claimEntryRequest(input: {
+  tenantId?: string;
+  userId: string;
+  targetType: EntryRequestTargetType;
+  requestKey: string;
+  payloadDigest: string;
+  targetId?: string;
+}): Promise<EntryRequestClaimResult> {
+  const tenantId = resolveTenantId(input.tenantId);
+  const userId = input.userId.trim();
+  const requestKey = input.requestKey.trim();
+  const payloadDigest = input.payloadDigest.trim();
+  const targetId = input.targetId?.trim() || undefined;
+  if (!userId || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestKey) || !/^[a-f0-9]{64}$/.test(payloadDigest)) throw new Error("entry_request_key_invalid");
+  if (targetId && !/^[A-Za-z0-9_-]{1,160}$/.test(targetId)) throw new Error("entry_target_id_invalid");
+  const nowDate = new Date();
+  const existing = db.entryRequestClaims.find((claim) =>
+    claim.tenantId === tenantId && claim.userId === userId && claim.targetType === input.targetType && claim.requestKey === requestKey,
+  );
+  if (!existing) {
+    const claimToken = randomUUID();
+    db.entryRequestClaims.push({ tenantId, userId, requestKey, payloadDigest, claimToken, ...(targetId ? { targetId } : {}), targetType: input.targetType, state: "claimed", createdAt: nowDate, updatedAt: nowDate });
+    return { state: "claimed", claimToken, ...(targetId ? { targetId } : {}) };
+  }
+  if (existing.state === "failed") {
+    const claimToken = randomUUID();
+    existing.state = "claimed";
+    // A failed request can be corrected and retried from the same mounted
+    // form. Keep the intent key (which fences duplicates) but replace the
+    // failed payload fingerprint so a corrected manual field is not rejected
+    // as a different request.
+    existing.payloadDigest = payloadDigest;
+    existing.targetId ??= targetId;
+    existing.claimToken = claimToken;
+    existing.updatedAt = nowDate;
+    return { state: "claimed", claimToken, ...(existing.targetId ? { targetId: existing.targetId } : {}) };
+  }
+  if (existing.payloadDigest !== payloadDigest) return { state: "payload_mismatch" };
+  if (existing.state === "completed" && existing.targetId) return { state: "existing", targetId: existing.targetId };
+  if (nowDate.getTime() - existing.updatedAt.getTime() > ENTRY_REQUEST_CLAIM_STALE_MS) {
+    // A stale worker may still be running. Rotate the token before allowing a
+    // new owner to continue; the old worker can no longer complete or release
+    // this request after the fence moves.
+    const claimToken = randomUUID();
+    existing.state = "claimed";
+    existing.targetId ??= targetId;
+    existing.claimToken = claimToken;
+    existing.updatedAt = nowDate;
+    return { state: "claimed", claimToken, ...(existing.targetId ? { targetId: existing.targetId } : {}) };
+  }
+  return { state: "in_progress", ...(existing.targetId ? { targetId: existing.targetId } : {}) };
+}
+
+export async function completeEntryRequest(input: {
+  tenantId?: string;
+  userId: string;
+  targetType: EntryRequestTargetType;
+  requestKey: string;
+  targetId: string;
+  claimToken: string;
+}): Promise<boolean> {
+  const claim = db.entryRequestClaims.find((item) => item.tenantId === resolveTenantId(input.tenantId) && item.userId === input.userId.trim() && item.targetType === input.targetType && item.requestKey === input.requestKey.trim());
+  if (!claim) return false;
+  if (claim.state === "completed") return claim.targetId === input.targetId;
+  if (claim.state !== "claimed") return false;
+  if (claim.claimToken !== input.claimToken.trim()) return false;
+  claim.state = "completed";
+  claim.targetId = input.targetId;
+  claim.updatedAt = new Date();
+  return true;
+}
+
+export async function releaseEntryRequest(input: {
+  tenantId?: string;
+  userId: string;
+  targetType: EntryRequestTargetType;
+  requestKey: string;
+  claimToken: string;
+}): Promise<boolean> {
+  const claim = db.entryRequestClaims.find((item) => item.tenantId === resolveTenantId(input.tenantId) && item.userId === input.userId.trim() && item.targetType === input.targetType && item.requestKey === input.requestKey.trim());
+  if (!claim || claim.state === "completed" || claim.claimToken !== input.claimToken.trim()) return false;
+  claim.state = "failed";
+  // Keep the reserved target id. If the formal row was written before an
+  // archive/validation failure, the next mounted-form retry must repair that
+  // same row instead of reserving a second record.
+  claim.updatedAt = new Date();
+  return true;
 }
 
 export function isTenantAccessibleStatus(status: TenantStatus): boolean {
@@ -1212,6 +1327,7 @@ function cloneDb(input: DB): DB {
     objectImportTargets: cloneCollection(input.objectImportTargets ?? []),
     objectImportCandidates: cloneCollection(input.objectImportCandidates ?? []),
     brokerageCases: cloneCollection(input.brokerageCases),
+    entryRequestClaims: cloneCollection(input.entryRequestClaims ?? []),
     extractionReviewItems: cloneCollection(input.extractionReviewItems),
     guaranteeApplicationDrafts: cloneCollection(input.guaranteeApplicationDrafts),
     correctionEvents: cloneCollection(input.correctionEvents),
@@ -1243,6 +1359,7 @@ function qaBusinessDataCounts(): QaBusinessDataCounts {
     importJobs: db.importJobs.length,
     objectImportTargets: db.objectImportTargets.length,
     objectImportCandidates: db.objectImportCandidates.length,
+    entryRequestClaims: db.entryRequestClaims.length,
     brokerageCases: db.brokerageCases.length,
     extractionReviewItems: db.extractionReviewItems.length,
     guaranteeApplicationDrafts: db.guaranteeApplicationDrafts.length,
@@ -1715,6 +1832,7 @@ const _freshDb: DB = withDefaultTenantScope({
       updatedAt: new Date(now - 1 * 24 * 60 * 60 * 1000),
     },
   ],
+  entryRequestClaims: [],
   extractionReviewItems: [
     {
       id: "review_fixture_extractor_property_name",
@@ -1825,6 +1943,7 @@ const db: DB = new Proxy({} as DB, {
 backfillTenantScope(db);
 if (!db.objectImportTargets) db.objectImportTargets = [];
 if (!db.objectImportCandidates) db.objectImportCandidates = [];
+if (!db.entryRequestClaims) db.entryRequestClaims = [];
 if (!db.tenants) db.tenants = cloneCollection(_freshDb.tenants);
 db.tenants.forEach(ensureTenantDefaults);
 if (!db.tenantMemberships) db.tenantMemberships = cloneCollection(_freshDb.tenantMemberships);
@@ -1925,6 +2044,7 @@ export function resetBusinessDataForQa(): QaBusinessDataCounts {
   db.objectImportTargets = [];
   db.objectImportCandidates = [];
   db.brokerageCases = [];
+  db.entryRequestClaims = [];
   db.extractionReviewItems = [];
   db.guaranteeApplicationDrafts = [];
   db.correctionEvents = [];
@@ -4454,6 +4574,7 @@ export async function saveBrokerageCaseExtractionReview(input: {
   tenantId?: string;
   userId: string;
   caseId?: string;
+  preventDuplicateTitle?: boolean;
   caseType: BrokerageCaseType;
   caseTitle: string;
   primaryPropertyId?: string;
@@ -4461,7 +4582,19 @@ export async function saveBrokerageCaseExtractionReview(input: {
   confirmedDataJson: Record<string, unknown>;
   sourceImportJobIds: string[];
   reviewItems: Array<Omit<ExtractionReviewItem, "id" | "tenantId" | "userId" | "caseId" | "createdAt">>;
+  entryRequest?: { requestKey: string; claimToken: string };
 }): Promise<BrokerageCase> {
+  if (input.entryRequest) {
+    const claim = db.entryRequestClaims.find((item) =>
+      item.tenantId === resolveTenantId(input.tenantId)
+      && item.userId === input.userId
+      && item.requestKey === input.entryRequest?.requestKey.trim()
+      && item.targetType === "case"
+      && item.state === "claimed"
+      && item.claimToken === input.entryRequest?.claimToken.trim(),
+    );
+    if (!claim) throw new Error("entry_request_claim_fenced");
+  }
   const nowDate = new Date();
   const scopeTenantId = resolveTenantId(input.tenantId);
   let item = input.caseId
@@ -4471,6 +4604,9 @@ export async function saveBrokerageCaseExtractionReview(input: {
     : undefined;
 
   if (!item) {
+    if (input.preventDuplicateTitle && input.caseTitle.trim() && db.brokerageCases.some((candidate) => candidate.tenantId === scopeTenantId && candidate.lifecycleStatus !== "archived" && candidate.caseTitle.trim().toLocaleLowerCase() === input.caseTitle.trim().toLocaleLowerCase())) {
+      throw new Error("case_title_duplicate");
+    }
     item = {
       id: makeId("case"),
       tenantId: scopeTenantId,
@@ -4922,17 +5058,26 @@ export async function addAttachment(input: {
   fileType?: string;
   fileSizeBytes?: number;
   storagePath?: string;
+  dedupeKey?: string;
 }): Promise<Attachment> {
+  const tenantId = resolveTenantId(input.tenantId);
+  const dedupeMarker = input.dedupeKey?.trim()
+    ? `?entryRequest=${encodeURIComponent(input.dedupeKey.trim())}`
+    : "";
+  if (dedupeMarker) {
+    const existing = db.attachments.find((candidate) => candidate.tenantId === tenantId && candidate.userId === input.userId && candidate.targetType === input.targetType && candidate.targetId === input.targetId && candidate.storagePath?.endsWith(dedupeMarker));
+    if (existing) return { ...existing };
+  }
   const attachment: Attachment = {
     id: makeId("att"),
-    tenantId: resolveTenantId(input.tenantId),
+    tenantId,
     userId: input.userId,
     targetType: input.targetType,
     targetId: input.targetId,
     fileName: input.fileName.trim(),
     fileType: input.fileType?.trim() || undefined,
     fileSizeBytes: input.fileSizeBytes,
-    storagePath: input.storagePath?.trim() || undefined,
+    storagePath: input.storagePath?.trim() ? `${input.storagePath.trim()}${dedupeMarker}` : dedupeMarker || undefined,
     uploadedAt: new Date(),
   };
   db.attachments.unshift(attachment);
@@ -4940,18 +5085,24 @@ export async function addAttachment(input: {
 }
 
 export async function addPrivateAttachment(input: PrivateAttachmentInput): Promise<Attachment> {
-  const attachment = await addAttachment({
-    tenantId: input.tenantId,
-    userId: input.userId,
-    targetType: input.targetType,
-    targetId: input.targetId,
-    fileName: input.fileName,
-    fileType: input.fileType,
-    fileSizeBytes: input.content.length,
-    storagePath: `postgres-private://${input.tenantId ?? DEFAULT_TENANT_ID}/${Date.now().toString(36)}`,
-  });
-  privateAttachmentContents.set(attachment.id, Buffer.from(input.content));
-  attachment.storagePath = `postgres-private://${attachment.tenantId}/${attachment.id}`;
+  const tenantId = resolveTenantId(input.tenantId);
+  const content = Buffer.from(input.content);
+  const digest = createHash("sha256").update(content).digest("hex");
+  const dedupeMarker = input.dedupeKey?.trim()
+    ? `?entryRequest=${encodeURIComponent(input.dedupeKey.trim())}&digest=${digest}`
+    : "";
+  const existing = dedupeMarker
+    ? db.attachments.find((candidate) => candidate.tenantId === tenantId && candidate.userId === input.userId && candidate.targetType === input.targetType && candidate.targetId === input.targetId && candidate.storagePath?.endsWith(dedupeMarker))
+    : undefined;
+  if (existing) return { ...existing };
+  const attachment: Attachment = {
+    id: makeId("att"), tenantId, userId: input.userId, targetType: input.targetType,
+    targetId: input.targetId, fileName: input.fileName.trim(), fileType: input.fileType?.trim() || undefined,
+    fileSizeBytes: content.length, storagePath: `postgres-private://${tenantId}/pending${dedupeMarker}`, uploadedAt: new Date(),
+  };
+  attachment.storagePath = `postgres-private://${tenantId}/${attachment.id}${dedupeMarker}`;
+  db.attachments.unshift(attachment);
+  privateAttachmentContents.set(attachment.id, content);
   return attachment;
 }
 
@@ -6229,6 +6380,7 @@ export async function setRecordLifecycleWithAudit(
 }
 
 export async function addProperty(input: {
+  id?: string;
   tenantId?: string;
   createdByUserId?: string;
   currentOwnerUserId?: string;
@@ -6246,10 +6398,19 @@ export async function addProperty(input: {
   managementFee?: number;
   repairFee?: number;
   notes?: string;
+  entryRequest?: { requestKey: string; claimToken: string };
 }) {
   const scopeTenantId = resolveTenantId(input.tenantId);
+  if (input.entryRequest) {
+    const claim = db.entryRequestClaims.find((item) =>
+      item.tenantId === scopeTenantId && item.userId === input.createdByUserId && item.targetType === "property" && item.requestKey === input.entryRequest!.requestKey.trim(),
+    );
+    if (!claim || claim.state !== "claimed" || claim.claimToken !== input.entryRequest.claimToken.trim()) {
+      throw new Error("entry_request_claim_fenced");
+    }
+  }
   const property: Property = {
-    id: makeId("prop"),
+    id: input.id?.trim() || makeId("prop"),
     tenantId: scopeTenantId,
     name: input.name,
     area: input.area,
@@ -6395,6 +6556,7 @@ export async function getQuotationByIdForContext(input: { context: RequestContex
 }
 
 export async function addClient(input: {
+  id?: string;
   tenantId?: string;
   ownerUserId: string;
   name: string;
@@ -6432,10 +6594,19 @@ export async function addClient(input: {
   amlCheckStatus: AmlCheckStatus;
   nextFollowUpAt?: Date;
   notes?: string;
+  entryRequest?: { requestKey: string; claimToken: string };
 }) {
   const scopeTenantId = resolveTenantId(input.tenantId);
+  if (input.entryRequest) {
+    const claim = db.entryRequestClaims.find((item) =>
+      item.tenantId === scopeTenantId && item.userId === input.ownerUserId && item.targetType === "client" && item.requestKey === input.entryRequest!.requestKey.trim(),
+    );
+    if (!claim || claim.state !== "claimed" || claim.claimToken !== input.entryRequest.claimToken.trim()) {
+      throw new Error("entry_request_claim_fenced");
+    }
+  }
   const client: Client = {
-    id: makeId("client"),
+    id: input.id?.trim() || makeId("client"),
     tenantId: scopeTenantId,
     name: input.name,
     phone: input.phone,
@@ -7238,6 +7409,57 @@ export async function reviewObjectImportCandidate(input: ObjectImportReviewInput
   return { ok: true, ...(target.caseId ? { caseId: target.caseId } : {}), targetId: target.targetId, targetVersion: target.targetVersion };
 }
 
+/** Persist clear model values into empty existing fields; human edits always win. */
+export async function autoSaveObjectImportCandidates(input: { tenantId: string; userId: string; targetId: string }): Promise<number> {
+  const target = db.objectImportTargets.find((item) => item.id === input.targetId && item.tenantId === input.tenantId && item.userId === input.userId);
+  const membership = db.tenantMemberships.find((item) => item.tenantId === input.tenantId && item.userId === input.userId && item.status === "active");
+  const capability = membership?.capability ?? "ordinary_member";
+  if (!target || target.status !== "needs_review") return 0;
+  if (!membership
+    || !capabilityHasTenantPermission(capability, "record.update")
+    || !capabilityHasTenantPermission(capability, "source.upload")
+    || !roleHasTenantPermission(membership.role, "record.update")
+    || !roleHasTenantPermission(membership.role, "source.upload")) {
+    target.errorCode = "object_import_permission_denied";
+    target.errorSummary = "保存前にレコードまたは原本の操作権限が失効しました。権限のあるユーザーが処理してください。";
+    target.updatedAt = new Date();
+    return 0;
+  }
+  const record = (target.targetType === "party" ? db.clients : db.properties).find((item) => item.id === target.targetId && item.tenantId === input.tenantId);
+  if (!record || record.lifecycleStatus === "archived" || record.currentOwnerUserId !== input.userId || record.ownerResolutionStatus !== "resolved") return 0;
+  const brokerageCase = target.caseId ? db.brokerageCases.find((item) => item.id === target.caseId && item.tenantId === input.tenantId) : undefined;
+  if (target.caseId && (!brokerageCase || brokerageCase.lifecycleStatus === "archived" || brokerageCase.currentOwnerUserId !== input.userId || !(target.targetType === "party"
+    ? readCaseAssociationDraft(brokerageCase.confirmedDataJson).parties.some((item) => item.partyId === record.id)
+    : readCaseAssociationDraft(brokerageCase.confirmedDataJson).primaryPropertyId === record.id))) return 0;
+  const mutable = record as unknown as Record<string, unknown>;
+  if (buildObjectVersionFingerprint(mutable) !== target.targetVersion) return 0;
+  let saved = 0;
+  for (const field of db.objectImportCandidates.filter((item) => item.targetId === target.id && item.tenantId === input.tenantId)) {
+    if (!isSafeModelAutoSave(field) || !hasObjectImportSource(target, field)) continue;
+    const validated = validateObjectImportReview({ targetId: target.id, fieldId: field.id, expectedVersion: target.targetVersion, expectedCandidateValue: field.candidateValue ?? "", decision: "confirm", ...(field.fieldKey.startsWith("lease.") ? { caseFieldKey: field.fieldKey } : {}) }, target, field, mutable);
+    if (!validated.ok) continue;
+    const date = new Date();
+    if (validated.scope === "case") {
+      if (isObjectImportCaseFieldManuallyCleared(brokerageCase?.confirmedDataJson ?? {}, validated.key)) continue;
+      if (!brokerageCase || !isEmptyModelDestination(validated.key, brokerageCase.confirmedDataJson[validated.key])) continue;
+      brokerageCase.confirmedDataJson = { ...brokerageCase.confirmedDataJson, [validated.key]: validated.recordValue };
+      brokerageCase.updatedAt = date;
+    } else {
+      if (!isEmptyModelDestination(validated.key, mutable[validated.key])) continue;
+      mutable[validated.key] = validated.key === "birthDate" ? new Date(validated.value) : validated.recordValue;
+      if ("updatedAt" in record) record.updatedAt = date;
+      target.targetVersion = buildObjectVersionFingerprint(mutable);
+    }
+    field.finalValue = validated.value;
+    field.finalSource = "model_draft";
+    field.provenance = { ...field.provenance, autoSavedAt: date.toISOString() };
+    target.updatedAt = date;
+    db.auditLogs.unshift({ id: makeId("audit"), tenantId: input.tenantId, userId: input.userId, actorId: input.userId, action: "object_import_auto_saved", targetType: validated.scope === "case" ? "case" : target.targetType === "party" ? "client" : "property", targetId: validated.scope === "case" ? brokerageCase!.id : record.id, message: "Clear model field saved pending human review", context: { importTargetId: target.id, fieldKey: validated.key, sourceAttachmentId: target.sourceAttachmentId, value: validated.value }, createdAt: date });
+    saved += 1;
+  }
+  return saved;
+}
+
 export async function saveCaseWorkbenchWithObjectReview(
   input: SaveCaseWorkbenchWithObjectReviewInput,
 ): Promise<SaveCaseWorkbenchWithObjectReviewResult> {
@@ -7293,7 +7515,7 @@ export async function saveCaseWorkbenchWithObjectReview(
   const targetBefore = reviewData ? structuredClone(reviewData.target) : undefined;
   const auditBefore = db.auditLogs.slice();
   try {
-    caseItem.confirmedDataJson = { ...input.confirmedDataJson };
+    caseItem.confirmedDataJson = recordObjectImportManualCaseClears(caseBefore.confirmedDataJson, input.confirmedDataJson);
     caseItem.updatedAt = new Date();
     let objectReview: Extract<ObjectImportReviewResult, { ok: true }> | undefined;
     if (reviewData) {

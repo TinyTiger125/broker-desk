@@ -15,6 +15,47 @@ export type EntryPreviewProofPayload = {
   candidates: EntryPreviewCandidate[];
 };
 
+/**
+ * Derive the payload fingerprint used to prove that a retry carries the same
+ * request body.  This is deliberately not the idempotency key: a user may
+ * intentionally create two records from the same files and values, while a
+ * retry of one intent must keep its original id.
+ */
+export async function buildEntryRequestPayloadDigest(input: {
+  targetType: "party" | "property" | "case";
+  files: File[];
+  proofs: ReadonlyMap<string, EntryPreviewProofPayload>;
+  formData?: FormData;
+}): Promise<string> {
+  const digests: string[] = [];
+  for (const file of input.files) {
+    const proof = input.proofs.get(entryFileKey(file));
+    digests.push(proof?.digest ?? createHash("sha256").update(Buffer.from(await file.arrayBuffer())).digest("hex"));
+  }
+  const volatileFields = new Set([
+    "uploadFile", "caseUploadFile", "entryReadProofs", "entryReadFileKeys",
+    "entryPreviewDecisions", "entryIntentId", "entryRequestKey", "entryPayloadDigest", "entryClaimToken", "caseDraftReturn", "returnTo",
+    "submitReturnTo", "afterSave",
+  ]);
+  const formValues = input.formData
+    ? [...input.formData.entries()]
+      .filter(([field, value]) => !volatileFields.has(field) && typeof value === "string")
+      .map(([field, value]) => [field, String(value)] as const)
+      .sort(([aField, aValue], [bField, bValue]) => aField.localeCompare(bField) || aValue.localeCompare(bValue))
+      .map(([field, value]) => `${field}=${value}`)
+      .join("&")
+    : "";
+  return createHash("sha256").update(`${input.targetType}|${[...digests].sort().join("|")}|${formValues}`).digest("hex");
+}
+
+export function readEntryIntentId(formData: FormData): string {
+  const value = String(formData.get("entryIntentId") ?? "").trim();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)) {
+    throw new Error("entry_intent_id_invalid");
+  }
+  return value.toLowerCase();
+}
+
 // Temporary previews intentionally expire with this runtime. A restart cannot
 // turn an unverified browser claim into permission to skip document reading.
 const runtime = globalThis as typeof globalThis & { __brokerDeskEntryProofKey?: Buffer };
@@ -26,11 +67,11 @@ export function signEntryPreviewProof(input: Omit<EntryPreviewProofPayload, "exp
   return `${payload}.${signature(payload).toString("base64url")}`;
 }
 
-export function readEntryPreviewDecisions(formData: FormData): Record<string, "confirmed" | "rejected"> {
+export function readEntryPreviewDecisions(formData: FormData): Record<string, "confirmed" | "rejected" | "auto_saved"> {
   try {
     const parsed: unknown = JSON.parse(String(formData.get("entryPreviewDecisions") ?? "{}"));
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-    return Object.fromEntries(Object.entries(parsed).filter(([, value]) => value === "confirmed" || value === "rejected"));
+    return Object.fromEntries(Object.entries(parsed).filter(([, value]) => value === "confirmed" || value === "rejected" || value === "auto_saved"));
   } catch { return {}; }
 }
 
@@ -68,6 +109,8 @@ export async function persistEntryPreviewAudit(input: { session: PreviewSession;
     message: "資料の候補確認と原本の保存を記録しました。",
     context: {
       attachmentId: input.attachmentId, fileDigest: input.proof.digest,
+      ...(input.formData.get("entryRequestKey") ? { entryRequestKey: String(input.formData.get("entryRequestKey")) } : {}),
+      ...(input.formData.get("entryPayloadDigest") ? { entryPayloadDigest: String(input.formData.get("entryPayloadDigest")) } : {}),
       source: "unified_entry_preview", kind: input.proof.kind,
       review: input.proof.candidates.map((candidate) => ({
         fieldKey: candidate.key, sourceKey: candidate.sourceKey,

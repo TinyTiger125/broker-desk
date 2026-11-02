@@ -228,7 +228,7 @@ export function OrganizeCenterObjectBrowser({
               ? `${item.href}?returnTo=${encodeURIComponent(listHref)}`
               : item.href;
             return (
-            <article key={`${item.type}:${item.id}`} className="grid gap-4 px-4 py-5 transition hover:bg-[#f9fbff] sm:px-5 md:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)] xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1.45fr)_auto]">
+            <article key={`${item.type}:${item.id}`} className="grid gap-3 px-4 py-3 transition hover:bg-[#f9fbff] sm:px-5 md:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)] xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1.45fr)_auto]">
               <div className="min-w-0">
                 <Link
                   href={itemHref}
@@ -278,7 +278,7 @@ export function OrganizeCenterObjectBrowser({
               <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 md:col-span-2 xl:col-span-1 xl:flex-col xl:items-end xl:justify-start">
                 <span className="text-xs font-bold tabular-nums text-slate-500">{copy.taskUpdated}: {item.updatedLabel}</span>
                 {item.canArchive ? (
-                  <ArchiveRecordButton
+                  <div className="max-w-44 space-y-1 text-right"><ArchiveRecordButton
                     entityType={item.type}
                     entityId={item.id}
                     recordLabel={item.title}
@@ -287,7 +287,7 @@ export function OrganizeCenterObjectBrowser({
                     returnTo={listHref}
                     returnStateScope={"organize"}
                     returnFocusKey={`${item.type}:${item.id}`}
-                  />
+                  /><p className="text-[11px] leading-4 text-slate-500">{copy.archiveHint}</p></div>
                 ) : null}
               </div>
             </article>

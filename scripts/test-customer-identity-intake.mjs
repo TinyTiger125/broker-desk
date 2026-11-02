@@ -44,6 +44,10 @@ for (const documentType of ["identity_passport", "identity_residence_card", "ide
   const parsed = parseOpenAiIdentityReaderResponse({ documentType, pages: [{ pageNumber: 1, lines: ["SAMPLE TEST"] }], candidates: [{ fieldKey: "applicant.name", value: "YAMADA SHIKEN", pageNumber: 1, sourceText: "氏名 YAMADA SHIKEN", uncertainty: "clear", subjectKey: "person-1", subjectLabel: "申請人" }] });
   assert.equal(parsed.documentType, documentType);
 }
+const unsupportedMyNumber = parseOpenAiIdentityReaderResponse({ documentType: "identity_residence_card", pages: [{ pageNumber: 1, lines: ["個人番号カード"] }], candidates: [{ fieldKey: "applicant.name", value: "UNSUPPORTED HOLDER", pageNumber: 1, sourceText: "個人番号カード 氏名 UNSUPPORTED HOLDER", uncertainty: "clear", subjectKey: "person-1", subjectLabel: "本人" }] });
+assert.equal(unsupportedMyNumber.documentType, "unknown_identity_scan", "My Number markers must override a false supported-document classification");
+const splitUnsupportedMyNumber = parseOpenAiIdentityReaderResponse({ documentType: "identity_residence_card", pages: [{ pageNumber: 1, lines: ["個人", "番号カード"] }], candidates: [{ fieldKey: "applicant.currentAddress", value: "UNSUPPORTED ADDRESS", pageNumber: 1, sourceText: "UNSUPPORTED ADDRESS", uncertainty: "clear", subjectKey: "person-1", subjectLabel: "本人" }] });
+assert.equal(splitUnsupportedMyNumber.documentType, "unknown_identity_scan", "split OCR My Number markers must also fail closed");
 
 const data = require(resolve(root, "src/lib/data.ts"));
 data.resetBusinessDataForQa();
@@ -144,4 +148,23 @@ const ambiguousName = ambiguousModelOnly.fields.find((field) => field.fieldKey =
 assert.equal(ambiguousName?.value, "");
 assert.equal(ambiguousName?.uncertainty, "conflict");
 assert.equal(Array.isArray(ambiguousName?.alternatives), true);
+modelResponse = {
+  documentType: "unknown_identity_scan",
+  pages: [{ pageNumber: 1, lines: ["unsupported identity card"] }],
+  candidates: [{ fieldKey: "applicant.name", value: "UNSUPPORTED HOLDER", pageNumber: 1, sourceText: "氏名 UNSUPPORTED HOLDER", uncertainty: "clear", subjectKey: "person-1", subjectLabel: "本人" }],
+};
+const unsupportedModelOnly = await extractIdentityDocumentFromBuffer({ buffer: Buffer.from("%PDF-UNSUPPORTED-IDENTITY"), filename: "unsupported.jpg", requireModel: true });
+assert.equal(unsupportedModelOnly.documentType, "unknown_identity_scan");
+assert.equal(unsupportedModelOnly.fields.find((field) => field.fieldKey === "applicant.name")?.value, "", "unsupported identity types must not produce a customer name candidate");
+modelResponse = {
+  documentType: "identity_residence_card",
+  pages: [{ pageNumber: 1, lines: ["住居地 未定"] }],
+  candidates: [{ fieldKey: "applicant.currentAddress", value: "未定", pageNumber: 1, sourceText: "住居地 未定", uncertainty: "clear", subjectKey: "person-1", subjectLabel: "本人" }],
+};
+const placeholderAddress = await extractIdentityDocumentFromBuffer({ buffer: Buffer.from("%PDF-MODEL-UNSET-ADDRESS"), filename: "residence-card.jpg", requireModel: true });
+const placeholderAddressField = placeholderAddress.fields.find((field) => field.fieldKey === "applicant.currentAddress");
+assert.equal(placeholderAddressField?.value, "未定");
+assert.equal(placeholderAddressField?.uncertainty, "unclear");
+const { safeEntryPreviewCandidates } = require(resolve(root, "src/lib/entry-preview.ts"));
+assert.deepEqual(safeEntryPreviewCandidates([{ id: "address-placeholder", key: "currentAddress", sourceKey: "applicant.currentAddress", label: "现住址", value: "未定", fileName: "residence-card.jpg", uncertainty: "clear" }]), []);
 console.log("PASS: four identity classifications, existing customer-only field mapping, not_found contacts, normalized date/gender/postal code, standalone review/save/reopen and source-only rejection");

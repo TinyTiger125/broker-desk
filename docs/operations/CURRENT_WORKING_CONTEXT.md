@@ -199,3 +199,10 @@
 ## Agent状态
 
 - TASK-043 实现 Agent 完成后必须退出，再启动 1 个独立审查 Agent；不得并行修改同一写集。当前下一步仅为独立只读审查，不得先执行 migration 或部署。
+
+## 2026-11-02 TASK-048 最终发布状态
+
+- `TASK-048` 已通过本轮 Release gate：独立审查 R16 为代码 GO；生产 001–006 已由获授权操作应用，postflight 核对 ledger 62 条、6 条迁移 checksum 精确匹配、claims 表 enabled + FORCE RLS、runtime 仅 SELECT/INSERT/UPDATE 且无 DELETE、authenticated 无 SELECT/INSERT/UPDATE。
+- 代码 readiness 已把 005 runtime ACL 与 006 authenticated ACL 纳入 `ensureSchema()` 必需集合；回归证明 ledger 停在 004 会拒绝，完整到 006 才接受。应用回退保留 claims 扩展表与 migration ledger；rollback 003/001 对 UUID/非空数据 fail-closed，删表不属于常规回退。
+- 本次最终候选仍以基线 `81901825877b3c1ec7e32b68cfb1b8717ca47832` 为父提交；发布提交只允许从该基线快进到 GitHub `main`，不得 force push 或部署 Vercel。临时 packet/evidence、真实证件/PDF、私有 fixture 与密钥均不在 Git 写集内。
+- 最终门：定向 readiness、production-security、typecheck、lint、`npx next build --webpack`、`git diff --check` 通过；默认 `npm run build` 的 Turbopack 仅受本机 EPERM 子进程/端口绑定限制，webpack production build 成功。

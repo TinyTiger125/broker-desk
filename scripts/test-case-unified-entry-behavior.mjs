@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -103,8 +103,10 @@ const person = await data.addClient({ tenantId: tenant.id, ownerUserId: user.id,
 const property = await data.addProperty({ tenantId: tenant.id, createdByUserId: user.id, currentOwnerUserId: user.id, name: "Entry property", address: "福岡市", listingPrice: 0 });
 const { createCaseWithUploadAction } = require(resolve(root, "src/app/case-entry-actions.ts"));
 const { signEntryPreviewProof } = require(resolve(root, "src/lib/entry-preview-proof.ts"));
+const setEntryIntent = (formData) => formData.set("entryIntentId", randomUUID());
 const associationJson = JSON.stringify({ parties: [{ partyId: person.id, roles: ["主要申请人"] }], primaryPropertyId: property.id });
 const invalidForm = new FormData();
+setEntryIntent(invalidForm);
 invalidForm.set("workflowType", "rental_application");
 invalidForm.set("caseTitle", "Invalid content must not create");
 invalidForm.set("associationDraftJson", associationJson);
@@ -122,6 +124,7 @@ for (const [fileName, fileType, expectedMessage] of [
   ["invalid.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", /Excel 文件内容无效/],
 ]) {
   const sniffForm = new FormData();
+  setEntryIntent(sniffForm);
   sniffForm.set("workflowType", "rental_application");
   sniffForm.set("caseTitle", `Invalid ${fileName} must not create`);
   sniffForm.set("associationDraftJson", associationJson);
@@ -133,6 +136,7 @@ for (const [fileName, fileType, expectedMessage] of [
   assert.equal((await data.listBrokerageCases(user.id, 200, tenant.id, "all")).length, beforeSniffCases, `${fileName} content sniff must reject before case creation`);
 }
 const form = new FormData();
+setEntryIntent(form);
 form.set("workflowType", "rental_application");
 form.set("caseTitle", "Explicit target entry");
 form.set("associationDraftJson", associationJson);
@@ -162,6 +166,7 @@ assert.match(redirectUrl, /objectImportJob=import_/);
 assert.equal((await data.listObjectImportTargets({ tenantId: tenant.id, userId: user.id, caseId })).length, 0, "stubbed queue must not invent unrelated target records");
 
 const archiveFailureForm = new FormData();
+setEntryIntent(archiveFailureForm);
 archiveFailureForm.set("workflowType", "rental_application");
 archiveFailureForm.set("caseTitle", "Archive failure returns to case");
 archiveFailureForm.set("associationDraftJson", associationJson);
@@ -186,6 +191,7 @@ const fallbackAttachment = await data.getAttachmentByIdForTenant({ tenantId: ten
 assert.equal(fallbackAttachment?.targetType, "case", "queue failure fallback must be a case archive");
 
 const archiveStorageFailureForm = new FormData();
+setEntryIntent(archiveStorageFailureForm);
 archiveStorageFailureForm.set("workflowType", "rental_application");
 archiveStorageFailureForm.set("caseTitle", "Archive storage failure is explicit");
 archiveStorageFailureForm.set("associationDraftJson", associationJson);
@@ -211,6 +217,7 @@ assert.equal((await data.listAttachmentLinks({ tenantId: tenant.id, targetType: 
 
 const forgedPreviewFile = new File(["%PDF-synthetic"], "forged-preview.pdf", { type: "application/pdf" });
 const forgedPreviewForm = new FormData();
+setEntryIntent(forgedPreviewForm);
 forgedPreviewForm.set("workflowType", "rental_application");
 forgedPreviewForm.set("caseTitle", "Forged preview must not create");
 forgedPreviewForm.set("associationDraftJson", associationJson);
@@ -225,6 +232,7 @@ assert.equal((await data.listBrokerageCases(user.id, 200, tenant.id, "all")).len
 const conflictPreviewFile = new File(["%PDF-synthetic"], "conflict-preview.pdf", { type: "application/pdf" });
 const conflictPreviewKey = `${conflictPreviewFile.name}:${conflictPreviewFile.size}`;
 const conflictPreviewForm = new FormData();
+setEntryIntent(conflictPreviewForm);
 conflictPreviewForm.set("workflowType", "rental_application");
 conflictPreviewForm.set("caseTitle", "Conflicting preview must not create");
 conflictPreviewForm.set("associationDraftJson", associationJson);
@@ -255,6 +263,7 @@ assert.equal((await data.listBrokerageCases(user.id, 200, tenant.id, "all")).len
 
 const previewFile = new File(["%PDF-synthetic"], "preview-first.pdf", { type: "application/pdf" });
 const previewForm = new FormData();
+setEntryIntent(previewForm);
 previewForm.set("workflowType", "rental_application");
 previewForm.set("caseTitle", "Preview values are archived without requeue");
 previewForm.set("associationDraftJson", associationJson);
@@ -262,6 +271,7 @@ previewForm.set("caseUploadTarget", "property");
 previewForm.set("caseUploadTargetId", property.id);
 previewForm.set("previewKind", "property");
 previewForm.set("casePreviewValuesJson", JSON.stringify({ "applicant.name": "Preview applicant", "lease.rent": "80000", unknownField: "must drop" }));
+previewForm.set("caseManualValuesJson", JSON.stringify({ "applicant.name": "Manual applicant" }));
 const previewFileKey = `${previewFile.name}:${previewFile.size}`;
 const previewDigest = createHash("sha256").update(Buffer.from(await previewFile.arrayBuffer())).digest("hex");
 const previewProof = signEntryPreviewProof({
@@ -292,7 +302,7 @@ assert.match(previewRedirect, /flash=case_upload_archived_preview/);
 assert.equal(queueCallCount, queueCallsBeforePreview, "a file already read in the case preview must not be queued again");
 const previewCaseId = new URL(previewRedirect, "http://broker-desk.local").pathname.split("/").at(-1);
 const previewCase = await data.getBrokerageCaseById({ tenantId: tenant.id, userId: user.id, caseId: previewCaseId });
-assert.equal(previewCase?.confirmedDataJson?.["applicant.name"], "Preview applicant");
+assert.equal(previewCase?.confirmedDataJson?.["applicant.name"], "Manual applicant", "server-side manual case values must override preview values");
 assert.equal(previewCase?.confirmedDataJson?.["lease.rent"], "80000");
 assert.equal(previewCase?.confirmedDataJson?.unknownField, undefined);
 const previewAttachments = await data.listAttachmentLinks({ tenantId: tenant.id, targetType: "case", targetId: previewCaseId, limit: 20 });
@@ -300,7 +310,95 @@ assert.equal(previewAttachments.length, 1, "preview-first upload must archive on
 const previewAttachment = await data.getAttachmentByIdForTenant({ tenantId: tenant.id, id: previewAttachments[0].attachmentId });
 assert.equal(previewAttachment?.targetType, "case", "preview-first upload must not leave an import-job source");
 
+const mixedGoodFile = new File(["%PDF-good"], "mixed-good.pdf", { type: "application/pdf" });
+const mixedUnreadFile = new File(["%PDF-unread"], "mixed-unread.pdf", { type: "application/pdf" });
+const mixedGoodKey = `${mixedGoodFile.name}:${mixedGoodFile.size}`;
+const mixedGoodDigest = createHash("sha256").update(Buffer.from(await mixedGoodFile.arrayBuffer())).digest("hex");
+const mixedIntentId = randomUUID();
+const mixedProof = signEntryPreviewProof({
+  tenantId: tenant.id,
+  userId: user.id,
+  fileKey: mixedGoodKey,
+  digest: mixedGoodDigest,
+  kind: "property",
+  context: "case",
+  candidates: [{ id: "mixed-applicant", key: "applicant.name", sourceKey: "applicant.name", label: "Applicant", value: "Mixed applicant", fileName: mixedGoodFile.name }],
+});
+const mixedForm = new FormData();
+mixedForm.set("entryIntentId", mixedIntentId);
+mixedForm.set("workflowType", "rental_application");
+mixedForm.set("caseTitle", "Mixed file keeps recovery state");
+mixedForm.set("associationDraftJson", associationJson);
+mixedForm.set("previewKind", "property");
+mixedForm.set("casePreviewValuesJson", JSON.stringify({ "applicant.name": "Mixed applicant" }));
+mixedForm.set("entryReadFileKeys", JSON.stringify([mixedGoodKey]));
+mixedForm.set("entryReadProofs", JSON.stringify({ [mixedGoodKey]: mixedProof }));
+mixedForm.set("entryPreviewDecisions", JSON.stringify({ "mixed-applicant": "confirmed" }));
+mixedForm.append("caseUploadFile", mixedGoodFile);
+mixedForm.append("caseUploadFile", mixedUnreadFile);
+let mixedRedirect = "";
+try {
+  await createCaseWithUploadAction({ status: "idle" }, mixedForm);
+} catch (error) {
+  assert.match(String(error?.message), /^REDIRECT:/);
+  mixedRedirect = String(error.message).slice("REDIRECT:".length);
+}
+assert.match(mixedRedirect, /flash=case_upload_archived_limited/, "mixed read state must remain visibly recoverable");
+const mixedCaseId = new URL(mixedRedirect, "http://broker-desk.local").pathname.split("/").at(-1);
+assert.equal((await data.listAttachmentLinks({ tenantId: tenant.id, targetType: "case", targetId: mixedCaseId, limit: 20 })).length, 2, "mixed read state must preserve both original files");
+const mixedRetryForm = new FormData();
+mixedRetryForm.set("entryIntentId", mixedIntentId);
+mixedRetryForm.set("workflowType", "rental_application");
+mixedRetryForm.set("caseTitle", "Mixed file keeps recovery state");
+mixedRetryForm.set("associationDraftJson", associationJson);
+mixedRetryForm.set("previewKind", "property");
+mixedRetryForm.set("casePreviewValuesJson", JSON.stringify({ "applicant.name": "Mixed applicant" }));
+mixedRetryForm.set("entryReadFileKeys", JSON.stringify([mixedGoodKey]));
+mixedRetryForm.set("entryReadProofs", JSON.stringify({ [mixedGoodKey]: mixedProof }));
+mixedRetryForm.set("entryPreviewDecisions", JSON.stringify({ "mixed-applicant": "confirmed" }));
+mixedRetryForm.append("caseUploadFile", mixedUnreadFile);
+mixedRetryForm.append("caseUploadFile", mixedGoodFile);
+let mixedRetryRedirect = "";
+try {
+  await createCaseWithUploadAction({ status: "idle" }, mixedRetryForm);
+} catch (error) {
+  assert.match(String(error?.message), /^REDIRECT:/);
+  mixedRetryRedirect = String(error.message).slice("REDIRECT:".length);
+}
+assert.equal(new URL(mixedRetryRedirect, "http://broker-desk.local").pathname.split("/").at(-1), mixedCaseId, "same request retry must return the original case");
+assert.equal((await data.listAttachmentLinks({ tenantId: tenant.id, targetType: "case", targetId: mixedCaseId, limit: 20 })).length, 2, "reordered retry must reuse both digest-keyed originals");
+
+const unclearFile = new File(["%PDF-unclear"], "unclear-auto-save.pdf", { type: "application/pdf" });
+const unclearKey = `${unclearFile.name}:${unclearFile.size}`;
+const unclearDigest = createHash("sha256").update(Buffer.from(await unclearFile.arrayBuffer())).digest("hex");
+const unclearProof = signEntryPreviewProof({
+  tenantId: tenant.id,
+  userId: user.id,
+  fileKey: unclearKey,
+  digest: unclearDigest,
+  kind: "property",
+  context: "case",
+  candidates: [{ id: "unclear-auto", key: "applicant.name", sourceKey: "applicant.name", label: "Applicant", value: "Unclear applicant", uncertainty: "unclear", fileName: unclearFile.name }],
+});
+const unclearForm = new FormData();
+setEntryIntent(unclearForm);
+unclearForm.set("workflowType", "rental_application");
+unclearForm.set("caseTitle", "Unclear auto-save must stop");
+unclearForm.set("associationDraftJson", associationJson);
+unclearForm.set("previewKind", "property");
+unclearForm.set("casePreviewValuesJson", JSON.stringify({ "applicant.name": "Unclear applicant" }));
+unclearForm.set("entryReadFileKeys", JSON.stringify([unclearKey]));
+unclearForm.set("entryReadProofs", JSON.stringify({ [unclearKey]: unclearProof }));
+unclearForm.set("entryPreviewDecisions", JSON.stringify({ "unclear-auto": "auto_saved" }));
+unclearForm.append("caseUploadFile", unclearFile);
+const beforeUnclearCases = (await data.listBrokerageCases(user.id, 200, tenant.id, "all")).length;
+const unclearResult = await createCaseWithUploadAction({ status: "idle" }, unclearForm);
+assert.equal(unclearResult.status, "error", "auto_saved must reject non-clear candidates");
+assert.match(unclearResult.message ?? "", /自动保存|人工确认/);
+assert.equal((await data.listBrokerageCases(user.id, 200, tenant.id, "all")).length, beforeUnclearCases, "unclear auto-save must not create a formal case");
+
 const auditFailureForm = new FormData();
+setEntryIntent(auditFailureForm);
 auditFailureForm.set("workflowType", "rental_application");
 auditFailureForm.set("caseTitle", "Preview audit failure remains archived");
 auditFailureForm.set("associationDraftJson", associationJson);
@@ -327,4 +425,28 @@ const auditFailureAttachments = await data.listAttachmentLinks({ tenantId: tenan
 assert.equal(auditFailureAttachments.length, 1, "audit failure must preserve the already archived original");
 const auditFailureAttachment = await data.getAttachmentByIdForTenant({ tenantId: tenant.id, id: auditFailureAttachments[0].attachmentId });
 assert.equal(auditFailureAttachment?.targetType, "case", "audit failure must not turn an archived original into a reupload failure");
+
+const combinedLimitedForm = new FormData();
+setEntryIntent(combinedLimitedForm);
+combinedLimitedForm.set("workflowType", "rental_application");
+combinedLimitedForm.set("caseTitle", "Limited read outranks preview audit failure");
+combinedLimitedForm.set("associationDraftJson", associationJson);
+combinedLimitedForm.set("previewKind", "property");
+combinedLimitedForm.set("casePreviewValuesJson", JSON.stringify({ "applicant.name": "Preview applicant" }));
+combinedLimitedForm.set("entryReadFileKeys", JSON.stringify([previewFileKey]));
+combinedLimitedForm.set("entryReadProofs", JSON.stringify({ [previewFileKey]: previewProof }));
+combinedLimitedForm.set("entryPreviewDecisions", JSON.stringify({ "preview-applicant": "confirmed" }));
+combinedLimitedForm.append("caseUploadFile", new File(["%PDF-synthetic"], previewFile.name, { type: "application/pdf" }));
+combinedLimitedForm.append("caseUploadFile", new File(["%PDF-unread"], "combined-unread.pdf", { type: "application/pdf" }));
+data.addAuditLog = async () => { throw new Error("synthetic_combined_preview_audit_failure"); };
+let combinedLimitedRedirect = "";
+try {
+  await createCaseWithUploadAction({ status: "idle" }, combinedLimitedForm);
+} catch (error) {
+  assert.match(String(error?.message), /^REDIRECT:/);
+  combinedLimitedRedirect = String(error.message).slice("REDIRECT:".length);
+} finally {
+  data.addAuditLog = originalAddAuditLog;
+}
+assert.match(combinedLimitedRedirect, /flash=case_upload_archived_limited/, "an unread source must keep recovery visible when preview audit also fails");
 console.log("case unified entry behavior: PASS");

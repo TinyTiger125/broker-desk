@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
+import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -32,7 +33,9 @@ let queueCalls = [];
 let queueFailure = false;
 let formInvalid = false;
 let readiness = true;
+const claims = new Map();
 const archives = [];
+const attachmentLinks = [];
 const auditRows = [];
 const session = { tenant: { id: "tenant_test" }, user: { id: "user_test" } };
 const identity = {
@@ -40,7 +43,7 @@ const identity = {
   getIdentityDocumentUploadLimitBytes: () => 10 * 1024 * 1024,
   queueIdentityImportSources: async (input) => {
     queueCalls.push(input);
-    if (queueFailure) throw new Error("synthetic_storage_failure");
+    if (queueFailure) return { ok: false, error: "source_persistence_failed" };
     return { ok: true, jobIds: input.files.map((_, i) => `job-${i}`) };
   },
 };
@@ -53,8 +56,20 @@ Module._load = function(request, parent, ...rest) {
   if (request === "@/lib/data") return {
     getObjectImportFeatureReadiness: async () => ({ ready: readiness }),
     addPrivateAttachment: async (input) => { const row = { ...input, id: `attachment-${archives.length + 1}` }; archives.push(row); return row; },
-    linkAttachmentToObject: async () => ({}),
+    linkAttachmentToObject: async (input) => { attachmentLinks.push(input); return {}; },
     addAuditLog: async (input) => { auditRows.push(structuredClone(input)); return input; },
+    listAuditLogs: async () => auditRows.map((row) => ({ ...row, context: row.context ?? {} })),
+    claimEntryRequest: async ({ requestKey, targetType, payloadDigest, targetId }) => {
+      const key = `${targetType}:${requestKey}`;
+      const current = claims.get(key);
+      if (!current) { const claimToken = randomUUID(); claims.set(key, { payloadDigest, claimToken, targetId, state: "claimed" }); return { state: "claimed", claimToken, targetId }; }
+      if (current.payloadDigest !== payloadDigest) return { state: "payload_mismatch" };
+      return current.state === "completed" ? { state: "existing", targetId: current.targetId } : { state: "in_progress" };
+    },
+    completeEntryRequest: async ({ requestKey, targetType, targetId, claimToken }) => { const current = claims.get(`${targetType}:${requestKey}`); if (!current || current.claimToken !== claimToken) return false; current.state = "completed"; current.targetId = targetId; return true; },
+    releaseEntryRequest: async () => true,
+    resolveClientVisibilityForContext: async () => ({ record: null, resolution: { canWrite: true } }),
+    resolvePropertyVisibilityForContext: async () => ({ record: null, resolution: { canWrite: true } }),
   };
   if (request === "@/lib/attachment-storage") return { getAttachmentStorageMode: () => "postgres_private" };
   if (request === "@/lib/production-readiness") return { assertProductionAttachmentStorageReady: () => {} };
@@ -65,7 +80,7 @@ Module._load = function(request, parent, ...rest) {
     const create = (type) => async (previous, formData) => {
       assert.equal(formData.get("caseDraftReturn"), "1");
       if (formInvalid) return { ...previous, status: "error", message: "existing required-field error" };
-      const id = `${type}-${created.length + 1}`;
+      const id = String(formData.get("entryTargetId") || `${type}-${created.length + 1}`);
       created.push({ type, id, name: formData.get("name") });
       return { ...previous, values: { name: String(formData.get("name")), phone: String(formData.get("phone")) }, createdRecord: { id, name: String(formData.get("name")) } };
     };
@@ -74,11 +89,15 @@ Module._load = function(request, parent, ...rest) {
   return originalLoad.call(this, request, parent, ...rest);
 };
 const { createClientEntryAction, createPropertyEntryAction } = require(resolve(root, "src/app/entry-actions.ts"));
+const { inferObjectAttachmentCategory } = require(resolve(root, "src/lib/object-attachments.ts"));
+assert.equal(inferObjectAttachmentCategory({ fileName: "identity.jpg", documentType: "identity_document" }), "identity", "identity document type must override generic image classification");
+assert.equal(inferObjectAttachmentCategory({ fileName: "property-photo.jpg", documentType: "unknown_property_document" }), "photo", "property image classification must remain photo");
 const previous = { status: "idle", fieldErrors: {}, values: { name: "", phone: "" } };
 function form(fileContent = "%PDF-synthetic") {
   const fd = new FormData();
   fd.set("name", "Synthetic entry");
   fd.set("phone", "000-0000-0000");
+  fd.set("entryIntentId", randomUUID());
   if (fileContent !== null) fd.set("uploadFile", new File([fileContent], "test.pdf", { type: "application/pdf" }));
   return fd;
 }
@@ -102,19 +121,36 @@ assert.equal((await createClientEntryAction(previous, form())).status, "error");
 assert.equal(queueCalls.length, 0, "existing form errors must not enqueue");
 formInvalid = false;
 const success = await redirected(createClientEntryAction, form());
-assert.equal(success.pathname, "/clients/client-1/edit");
+assert.match(success.pathname, /^\/clients\/client_[0-9a-f]+\/edit$/);
 assert.equal(success.searchParams.get("flash"), "input_extraction_queued");
-assert.equal(queueCalls[0].targetObjectId, "client-1");
+assert.equal(queueCalls[0].targetObjectId, success.pathname.split("/")[2]);
 assert.equal(queueCalls[0].targetObjectType, "party");
 queueFailure = true;
-const failure = await redirected(createPropertyEntryAction, form());
-assert.equal(failure.pathname, "/properties/property-2/edit");
-assert.equal(failure.searchParams.get("flash"), "object_import_upload_failed");
+const failedPropertyForm = form();
+const failure = await redirected(createPropertyEntryAction, failedPropertyForm);
+assert.match(failure.pathname, /^\/properties\/prop_[0-9a-f]+\/edit$/);
+assert.equal(failure.searchParams.get("flash"), "entry_archive_saved_with_reading_failure");
 assert.equal(created.length, 2, "a queue failure must keep exactly one already-created object");
 assert.equal(created[1].name, "Synthetic entry");
-const manual = await redirected(createClientEntryAction, form(null));
-assert.equal(manual.pathname, "/clients/client-3/edit");
+assert.equal(archives.length, 1, "a queue failure must keep the unread original on the formal property");
+assert.equal(attachmentLinks[0].category, "other", "a property fallback must retain filename-based classification");
+assert.equal(auditRows.filter((row) => row.action === "entry_original_archived").length, 1);
+const retryPropertyForm = form();
+retryPropertyForm.set("entryIntentId", failedPropertyForm.get("entryIntentId"));
+const retryFailure = await redirected(createPropertyEntryAction, retryPropertyForm);
+assert.equal(retryFailure.pathname, failure.pathname, "same-intent retry must return to the same formal property");
+assert.equal(retryFailure.searchParams.get("flash"), "entry_archive_saved_with_reading_failure");
+assert.equal(queueCalls.length, 2, "same-intent fallback retry must not enqueue the model again");
+assert.equal(archives.length, 1, "same-intent fallback retry must not duplicate the original attachment");
+const manualForm = form(null);
+const manual = await redirected(createClientEntryAction, manualForm);
+assert.match(manual.pathname, /^\/clients\/client_[0-9a-f]+\/edit$/);
 assert.equal(queueCalls.length, 2, "manual-only entry must not enqueue");
+const manualRetryForm = form(null);
+manualRetryForm.set("entryIntentId", manualForm.get("entryIntentId"));
+const manualRetry = await redirected(createClientEntryAction, manualRetryForm);
+assert.equal(manualRetry.pathname, manual.pathname, "same-intent manual retry must return to the same client");
+assert.equal(created.length, 3, "same-intent manual retry must not create a second client");
 
 const { createHash } = require("node:crypto");
 const { signEntryPreviewProof, verifyEntryPreviewProofs } = require(resolve(root, "src/lib/entry-preview-proof.ts"));
@@ -150,12 +186,14 @@ const bare = form(); bare.set("entryReadFileKeys", JSON.stringify([fileKey]));
 assert.equal((await createClientEntryAction(previous, bare)).status, "error", "a bare filename claim must not skip reading");
 const beforeQueue = queueCalls.length;
 const finalPreview = await redirected(createClientEntryAction, withProof());
-assert.match(finalPreview.pathname, /\/clients\/client-4\/edit/);
+assert.match(finalPreview.pathname, /^\/clients\/client_[0-9a-f]+\/edit$/);
 assert.equal(queueCalls.length, beforeQueue, "verified previews must not invoke the model queue twice");
-assert.equal(archives.length, 1, "the original must be archived once");
-assert.equal(auditRows.length, 1);
-const reopenedAudit = structuredClone(auditRows[0]);
-assert.equal(reopenedAudit.context.attachmentId, archives[0].id);
+assert.equal(archives.length, 2, "the fallback property original and preview client original must each be archived once");
+assert.equal(attachmentLinks[1].category, "identity", "customer entry originals must be archived as identity evidence even when the file is a JPG");
+const previewAudits = auditRows.filter((row) => row.action === "entry_preview_reviewed");
+assert.equal(previewAudits.length, 1);
+const reopenedAudit = structuredClone(previewAudits[0]);
+assert.equal(reopenedAudit.context.attachmentId, archives[1].id);
 assert.deepEqual(reopenedAudit.context.review.map((item) => item.decision), ["confirmed", "rejected", "undecided"]);
 assert.equal(reopenedAudit.context.review[0].pageNumber, 1);
 assert.equal(reopenedAudit.context.review[0].savedValue, "Synthetic entry");

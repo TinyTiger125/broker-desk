@@ -201,8 +201,11 @@ export async function persistObjectImportJobExtraction(input: { job: ImportJob; 
   // so it must not increment the execution budget a second time.
   await updateObjectImportTarget({ tenantId: input.tenantId, userId: input.userId, id: target.id, status: "processing" });
   const candidates = await persistObjectExtraction({ target: { ...target, sourceAttachmentId: target.sourceAttachmentId }, sourceFileHash, fields: selected });
-  const terminal = candidates.length > 0 && candidates.every((field) => field.finalSource === "human" || ["not_found", "confirmed", "rejected"].includes(field.status));
-  await updateObjectImportTarget({ tenantId: input.tenantId, userId: input.userId, id: target.id, status: candidates.length ? terminal ? "completed" : "needs_review" : "failed", errorCode: candidates.length ? undefined : "object_import_no_supported_fields", errorSummary: candidates.length ? undefined : "No supported fields were extracted." });
+  // The identity reader may return placeholders for every catalog field. Nine
+  // empty placeholders are still zero extracted values, never a successful read.
+  const hasReadableCandidate = candidates.some((field) => Boolean(field.candidateValue?.trim()) && field.provenance.uncertainty !== "not_found");
+  const terminal = hasReadableCandidate && candidates.every((field) => field.finalSource === "human" || ["not_found", "confirmed", "rejected"].includes(field.status));
+  await updateObjectImportTarget({ tenantId: input.tenantId, userId: input.userId, id: target.id, status: hasReadableCandidate ? terminal ? "completed" : "needs_review" : "failed", errorCode: hasReadableCandidate ? undefined : "object_import_no_supported_fields", errorSummary: hasReadableCandidate ? undefined : "No readable supported fields were extracted." });
   return candidates;
 }
 
@@ -221,7 +224,9 @@ export async function persistObjectReaderJobExtraction(input: {
   if (!content?.length) throw new Error("object_import_source_attachment_unreadable");
   const sourceFileHash = createHash("sha256").update(content).digest("hex");
   const attribution = selectSingleObjectReaderCandidates(input.response.candidates);
-  const allNotFound = input.response.candidates.length > 0 && input.response.candidates.every((field) => field.uncertainty === "not_found");
+  // An empty model response is also a no-readable-fields result. It must not
+  // be classified as an attribution conflict or later reported as mapped.
+  const allNotFound = input.response.candidates.length === 0 || input.response.candidates.every((field) => field.uncertainty === "not_found");
   if (attribution.status !== "single_object" && !allNotFound) {
     await updateObjectImportTarget({ tenantId: input.tenantId, userId: input.userId, id: target.id, status: "conflict", errorCode: "object_reader_ambiguous_subject", errorSummary: "资料中存在多个物件或无法确认物件归属。" });
     return { target: await getObjectImportTargetByJob({ ...input, importJobId: input.job.id }), candidates: [], attribution: attribution.status };

@@ -5,6 +5,9 @@ const page = fs.readFileSync("src/components/case-association-draft.tsx", "utf8"
 const action = fs.readFileSync("src/app/case-entry-actions.ts", "utf8");
 const newRoute = fs.readFileSync("src/app/cases/new/page.tsx", "utf8");
 const detail = fs.readFileSync("src/app/cases/[id]/page.tsx", "utf8");
+const importCenter = fs.readFileSync("src/app/import-center/page.tsx", "utf8");
+const recoveryAction = fs.readFileSync("src/app/actions.ts", "utf8");
+const recoveryForm = fs.readFileSync("src/components/case-document-upload-form.tsx", "utf8");
 
 assert.match(newRoute, /createCaseWithUploadAction/);
 assert.match(page, /name="caseUploadFile"/);
@@ -22,5 +25,18 @@ assert.match(action, /caseUploadTarget/);
 assert.match(action, /uploadTarget\.targetId !== primaryPartyId/);
 assert.match(action, /associationDraft\.primaryPropertyId !== uploadTarget\.targetId/);
 assert.match(detail, /case_upload_archived_limited/);
+assert.ok(action.indexOf('recognitionLimited ? "case_upload_archived_limited"') < action.indexOf('previewAuditFailed ? "case_upload_preview_audit_failed"'), "limited recognition must outrank preview audit failure in the final case status");
+assert.match(detail, /query\?\.flash === "case_upload_archived_limited"/);
+assert.match(importCenter, /CaseDocumentUploadForm/);
+assert.match(importCenter, /id="case-document-upload"/);
+assert.match(importCenter, /uploadAndArchiveCaseDocumentsAction/);
+assert.match(recoveryForm, /name="caseDocumentFile"/);
+assert.match(recoveryForm, /accept="application\/pdf,image\/png,image\/jpeg,\.pdf,\.png,\.jpg,\.jpeg"/);
+assert.match(recoveryForm, /不会按身份证明资料读取/);
+assert.match(recoveryAction, /export async function uploadAndArchiveCaseDocumentsAction/);
+assert.match(recoveryAction, /archiveCaseFile\(\{/);
+assert.match(recoveryAction, /case-recovery:/);
+assert.match(recoveryAction, /case_upload_archive_partial/);
+assert.match(recoveryAction, /detectIdentityDocumentKind/);
 
 console.log("case unified entry contract: PASS");

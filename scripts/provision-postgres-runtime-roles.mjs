@@ -73,6 +73,11 @@ try {
   // setup and preserves identity reads plus tenant-scoped RLS boundaries.
   const aclBaseline = readFileSync(resolve(process.cwd(), "db/migrations/20260902_003_runtime_acl_baseline.sql"), "utf8");
   await client.query(aclBaseline);
+  const entryClaimsTable = await client.query("SELECT to_regclass('public.entry_request_claims') IS NOT NULL AS present");
+  if (entryClaimsTable.rows[0]?.present) {
+    await client.query(readFileSync(resolve(process.cwd(), "db/migrations/20261102_005_entry_request_claims_runtime_acl.sql"), "utf8"));
+    await client.query(readFileSync(resolve(process.cwd(), "db/migrations/20261102_006_entry_request_claims_authenticated_acl.sql"), "utf8"));
+  }
   await client.query("GRANT SELECT (tenant_id, user_id, import_job_id, case_id) ON public.object_import_targets TO brokerdesk_runtime");
   await client.query("GRANT USAGE ON SCHEMA public TO brokerdesk_runtime");
   // The lifecycle SECURITY DEFINER owner needs schema visibility plus only
@@ -83,6 +88,7 @@ try {
   await client.query("GRANT SELECT (id, status, service_start_at, service_end_at) ON public.tenants TO brokerdesk_admin");
   await client.query("GRANT SELECT, UPDATE ON TABLE public.tenant_memberships TO brokerdesk_admin");
   await client.query("GRANT SELECT, UPDATE ON TABLE public.import_jobs TO brokerdesk_admin");
+  await client.query("GRANT SELECT, DELETE ON TABLE public.entry_request_claims TO brokerdesk_admin");
   await client.query("GRANT SELECT, DELETE ON TABLE public.attachments TO brokerdesk_admin");
   await client.query("GRANT SELECT, DELETE ON TABLE public.private_attachment_blobs TO brokerdesk_admin");
   await client.query("GRANT SELECT ON TABLE public.attachment_links TO brokerdesk_admin");

@@ -8,6 +8,7 @@ import {
   resolveImportValidationAction,
   updateImportJobMappingAction,
   uploadAndParseIdentityDocumentAction,
+  uploadAndArchiveCaseDocumentsAction,
   uploadAndParseExcelAction,
   refreshObjectImportReviewAction,
 } from "@/app/actions";
@@ -16,6 +17,7 @@ import { FormDraftAssist } from "@/components/form-draft-assist";
 import { ExcelDocumentUploadForm } from "@/components/excel-document-upload-form";
 import { ExcelImportQueueProcessor } from "@/components/excel-import-queue-processor";
 import { IdentityDocumentUploadForm } from "@/components/identity-document-upload-form";
+import { CaseDocumentUploadForm } from "@/components/case-document-upload-form";
 import { ClientIdentityImportSection } from "@/components/client-identity-import-section";
 import { PropertyObjectImportSection } from "@/components/property-object-import-section";
 import { listObjectArchiveAttachments } from "@/lib/object-attachments";
@@ -1505,6 +1507,21 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
         {wizardStep === "select" && !requestedJob ? (
         <div className={isLedgerFlow ? "grid gap-4 p-5" : "grid gap-4 p-5 xl:grid-cols-2"}>
           {!showObjectTargetSelection ? <>
+          {targetCaseId ? (
+          <section id="case-document-upload" className="flex min-h-80 flex-col rounded-xl border border-blue-200 bg-blue-50/40 p-5 xl:col-span-2">
+            <h3 className="text-base font-bold text-blue-950">{locale === "zh" ? "案件资料（PDF / 图片）" : locale === "ko" ? "안건 자료 (PDF / 이미지)" : "案件資料（PDF / 画像）"}</h3>
+            <p className="mt-2 text-xs font-semibold leading-5 text-blue-900">
+              {locale === "zh"
+                ? "合同、说明书等案件资料不会按身份证明资料读取；原件将保存到当前案件，字段可在案件中继续核对。"
+                : locale === "ko"
+                  ? "계약서·설명서 등 안건 자료는 신원 확인 자료로 읽지 않습니다. 원본은 현재 안건에 저장하고 필드는 안건에서 계속 확인할 수 있습니다."
+                  : "契約書・説明書などの案件資料は本人確認資料として読み取りません。原本を現在の案件に保存し、項目は案件で続けて確認できます。"}
+            </p>
+            <div className="mt-auto pt-5">
+              <CaseDocumentUploadForm action={uploadAndArchiveCaseDocumentsAction} locale={locale} targetCaseId={targetCaseId} />
+            </div>
+          </section>
+          ) : null}
           {!isLedgerFlow ? (
           showIdentityReader ? (
           <section id="identity-document-upload" className={selectedObject === "person" ? "flex min-h-80 flex-col rounded-xl border border-emerald-200 bg-emerald-50/40 p-5 xl:col-span-2" : "flex min-h-80 flex-col rounded-xl border border-emerald-200 bg-emerald-50/40 p-5"}>

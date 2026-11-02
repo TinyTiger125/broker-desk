@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import Link from "next/link";
+import { useActionState, useCallback, useEffect, useRef, useState, useTransition, type ReactNode } from "react";
 import type {
   CaseCreationActionState,
   ClientFormActionState,
@@ -9,12 +10,13 @@ import type {
 import { ClientForm } from "@/components/client-form";
 import { PropertyResponsiveForm } from "@/components/property-responsive-form";
 import { EntryFilePicker } from "@/components/entry-file-picker";
-import { EntryPreview, type EntryPreviewCandidate } from "@/components/entry-preview";
+import { createEntryIntentId, EntryPreview, type EntryPreviewCandidate } from "@/components/entry-preview";
 import { handleFocusDialogEscape, requestFocusDialogClose } from "@/components/focus-dialog-guards";
 import { ActionBar, FormSection, PageFrame, PageHeader, ResponsiveFormShell, StateSurface } from "@/components/layout-system";
 import layoutStyles from "@/components/layout-system/layout-system.module.css";
 import { Button } from "@/components/ui-foundation";
 import type { Locale } from "@/lib/locale";
+import { safeEntryPreviewCandidates, type EntryPreviewState } from "@/lib/entry-preview";
 import { CASE_FIELD_DEFINITIONS, CASE_FIELD_KEY_SET } from "@/lib/case-field-catalog";
 import { CASE_PERSON_ROLES, getCasePersonRoleLabel, localizeCaseAssociationError, type CaseAssociationParty, type CasePersonRole } from "@/lib/case-associations";
 
@@ -27,6 +29,7 @@ type CaseAssociationDraftProps = {
   backLabel: string;
   candidates: Candidate[];
   properties: Candidate[];
+  existingCases: Array<{ id: string; title: string }>;
   workflowOptions: Array<{ value: string; label: string }>;
   createCaseAction: CreateAction<CaseCreationActionState>;
   createPersonAction: CreateAction<ClientFormActionState>;
@@ -38,6 +41,8 @@ type DrawerView = "select" | "create";
 type PreviewKind = "customer" | "property";
 
 const CASE_ENTRY_FIELDS = CASE_FIELD_DEFINITIONS.filter((field) => field.storageScope === "case_fact");
+const CASE_ENTRY_FIELD_GROUPS = [...new Map(CASE_ENTRY_FIELDS.map((field) => [field.groupId, field.groupLabel])).entries()]
+  .map(([id, label]) => ({ id, label, fields: CASE_ENTRY_FIELDS.filter((field) => field.groupId === id) }));
 const CASE_ENTRY_FIELD_KEY_SET = new Set(CASE_ENTRY_FIELDS.filter((field) => CASE_FIELD_KEY_SET.has(field.fieldKey)).map((field) => field.fieldKey));
 const CASE_PREVIEW_DIRECT_KEYS: Record<PreviewKind, Record<string, string>> = {
   customer: {
@@ -72,12 +77,17 @@ const copy = {
   ja: {
     close: "閉じる",
     title: "案件を新規作成",
-    description: "既存の案件項目、人物・物件の関連、資料を一つの画面で整理します。資料は先に読み取り、確認してから保存できます。",
+    description: "案件項目、人物・物件の関連、資料を一つの画面で整理します。案件名を入力して資料を読み取ると、判読できた既存項目は正式な案件記録としてすぐ保存され、保存後も確認・修正できます。",
     caseInfo: "案件情報",
     workflowType: "案件種別",
     caseTitle: "案件名",
     upload: "案件資料",
-    uploadDescription: "資料を先に読み取り、確認した項目だけ案件草稿へ反映します。保存前に人物・物件は作成しません。原本は案件へ保存します。",
+    uploadDescription: "先に案件名を入力してください。資料の読み取りが終わると、判読できた案件項目と原本は正式な案件記録としてすぐ保存されます。人物・物件は別途選択します。",
+    titleNeeded: "自動保存には案件名が必要です。先に入力してください。",
+    existingCase: "既存の案件候補",
+    duplicateCase: "案件名が既存記録と競合する可能性があります。既存候補を開くか、別名にするか、同名作成を明示して確認してください。",
+    continueDuplicateCase: "同名でも新しい案件として続ける",
+    allowDuplicateCase: "同名でも新しい案件として作成する（明示して確認）",
     uploadKind: "資料種別",
     uploadKindCustomer: "顧客・申込人資料",
     uploadKindProperty: "物件資料",
@@ -131,12 +141,17 @@ const copy = {
   zh: {
     close: "关闭",
     title: "新建案件",
-    description: "在同一页面整理现有案件字段、人物与物件关联和资料。资料可以先读取、确认后再保存。",
+    description: "在同一页面整理现有案件字段、人物与物件关联和资料。先填写案件名，识别完成后清晰字段和原件会立即保存为正式案件记录；保存后可反复复核修改。",
     caseInfo: "案件信息",
     workflowType: "案件类型",
     caseTitle: "案件名",
     upload: "案件资料",
-    uploadDescription: "先读取资料，只把确认的项目反映到案件草稿。保存前不会创建人物或物件；原文件会保存到案件。",
+    uploadDescription: "请先填写案件名。识别完成后，清晰的现有案件字段和原件会立即保存为正式案件记录；人物与物件另行选择。",
+    titleNeeded: "自动保存需要案件名，请先填写。",
+    existingCase: "可能已有的案件",
+    duplicateCase: "案件名可能与已有记录冲突。请打开可见候选、改用其他名称，或明确勾选仍要新建同名案件。",
+    continueDuplicateCase: "仍要新建同名案件",
+    allowDuplicateCase: "即使同名也创建新案件（明确确认）",
     uploadKind: "资料类型",
     uploadKindCustomer: "客户／申请人资料",
     uploadKindProperty: "物件资料",
@@ -190,12 +205,17 @@ const copy = {
   ko: {
     close: "닫기",
     title: "안건 새로 만들기",
-    description: "기존 안건 항목, 관계자·매물 연결, 자료를 한 화면에서 정리합니다. 자료는 먼저 읽고 확인한 뒤 저장할 수 있습니다.",
+    description: "기존 안건 항목, 관계자·매물 연결, 자료를 한 화면에서 정리합니다. 안건명을 입력하고 읽기를 끝내면 명확한 항목과 원본이 정식 안건 기록으로 즉시 저장되며 이후에도 확인·수정할 수 있습니다.",
     caseInfo: "안건 정보",
     workflowType: "안건 유형",
     caseTitle: "안건명",
     upload: "안건 자료",
-    uploadDescription: "자료를 먼저 읽고 확인한 항목만 안건 초안에 반영합니다. 저장 전에는 관계자나 매물을 만들지 않으며 원본은 안건에 저장합니다.",
+    uploadDescription: "먼저 안건명을 입력해 주세요. 읽기가 끝나면 명확한 기존 항목과 원본이 정식 안건 기록으로 즉시 저장됩니다. 관계자와 매물은 별도로 선택합니다.",
+    titleNeeded: "자동 저장하려면 안건명을 먼저 입력해 주세요.",
+    existingCase: "기존 안건 후보",
+    duplicateCase: "안건명이 기존 기록과 충돌할 수 있습니다. 보이는 후보를 열거나 다른 이름을 사용하거나, 같은 이름으로 만들기를 명시해 주세요.",
+    continueDuplicateCase: "같은 이름으로 새 안건 계속 만들기",
+    allowDuplicateCase: "같은 이름이어도 새 안건으로 만들기 (명시적으로 확인)",
     uploadKind: "자료 유형",
     uploadKindCustomer: "고객·신청인 자료",
     uploadKindProperty: "매물 자료",
@@ -341,6 +361,7 @@ export function CaseAssociationDraft({
   backLabel,
   candidates: initialCandidates,
   properties: initialProperties,
+  existingCases,
   workflowOptions,
   createCaseAction,
   createPersonAction,
@@ -350,6 +371,13 @@ export function CaseAssociationDraft({
   const [candidates, setCandidates] = useState(initialCandidates);
   const [properties, setProperties] = useState(initialProperties);
   const [caseTitle, setCaseTitle] = useState("");
+  const [allowDuplicateCase, setAllowDuplicateCase] = useState(false);
+  const existingCaseMatches = caseTitle.trim()
+    ? existingCases.filter((item) => item.title.toLocaleLowerCase().includes(caseTitle.trim().toLocaleLowerCase())).slice(0, 5)
+    : [];
+  const existingCaseExactMatch = caseTitle.trim()
+    ? existingCases.some((item) => item.title.trim().toLocaleLowerCase() === caseTitle.trim().toLocaleLowerCase())
+    : false;
   const [workflowType, setWorkflowType] = useState(workflowOptions[0]?.value ?? "rental_application");
   const [previewKind, setPreviewKind] = useState<PreviewKind>("customer");
   const [caseFieldValues, setCaseFieldValues] = useState<Record<string, string>>({});
@@ -376,8 +404,14 @@ export function CaseAssociationDraft({
   const personCreateRolesRef = useRef<CasePersonRole[]>([]);
   const propertyCreatePendingRef = useRef(false);
   const [entryFiles, setEntryFiles] = useState<File[]>([]);
+  const [entryIntentId] = useState(() => createEntryIntentId());
+  const [autoSavingCase, startAutoSavingCase] = useTransition();
+  const caseFormContainerRef = useRef<HTMLDivElement>(null);
+  const autoSaveCaseStartedRef = useRef(false);
+  const pendingCasePreviewRef = useRef<EntryPreviewState | null>(null);
   const entryFilesRef = useRef<File[]>([]);
   const updateEntryFiles = useCallback((files: File[]) => {
+    autoSaveCaseStartedRef.current = false;
     entryFilesRef.current = files;
     setEntryFiles(files);
     setEntryReadFileKeys([]);
@@ -390,7 +424,8 @@ export function CaseAssociationDraft({
       setUnsupportedPreviewCount((count) => count + 1);
       return;
     }
-    setCaseFieldValues((current) => ({ ...current, [fieldKey]: candidate.value }));
+    if (Object.prototype.hasOwnProperty.call(manualCaseFieldValues, fieldKey)) return;
+    setCaseFieldValues((current) => current[fieldKey]?.trim() ? current : { ...current, [fieldKey]: candidate.value });
     setConfirmedPreviewValues((current) => ({ ...current, [fieldKey]: candidate.value }));
     setManualCaseFieldValues((current) => {
       if (!(fieldKey in current)) return current;
@@ -398,7 +433,7 @@ export function CaseAssociationDraft({
       delete next[fieldKey];
       return next;
     });
-  }, [previewKind]);
+  }, [manualCaseFieldValues, previewKind]);
   const updateCaseField = useCallback((fieldKey: string, value: string) => {
     setCaseFieldValues((current) => ({ ...current, [fieldKey]: value }));
     setManualCaseFieldValues((current) => ({ ...current, [fieldKey]: value }));
@@ -410,11 +445,36 @@ export function CaseAssociationDraft({
     });
   }, []);
   const caseEntryAction = useCallback(async (previousState: CaseCreationActionState, formData: FormData) => {
+    if (existingCaseExactMatch && !allowDuplicateCase) return { status: "error" as const, message: text.duplicateCase };
     formData.delete("caseUploadFile");
     entryFilesRef.current.forEach((file) => formData.append("caseUploadFile", file));
     return createCaseAction(previousState, formData);
-  }, [createCaseAction]);
-  const [caseState, caseFormAction, pending] = useActionState(caseEntryAction, initialCaseState);
+  }, [allowDuplicateCase, createCaseAction, existingCaseExactMatch, text.duplicateCase]);
+  const [caseState, caseFormAction, pending] = useActionState<CaseCreationActionState, FormData>(caseEntryAction, initialCaseState);
+  const autoSaveCaseReadResult = useCallback((preview: EntryPreviewState) => {
+    pendingCasePreviewRef.current = preview;
+    const form = caseFormContainerRef.current?.querySelector("form");
+    if (!form || autoSaveCaseStartedRef.current || !caseTitle.trim() || (existingCaseExactMatch && !allowDuplicateCase)) return;
+    const chosen = safeEntryPreviewCandidates(preview.candidates).filter((candidate) => CASE_ENTRY_FIELD_KEY_SET.has(candidate.key) && !Object.prototype.hasOwnProperty.call(manualCaseFieldValues, candidate.key));
+    if (!chosen.length) return;
+    const data = new FormData(form);
+    const previewValues = Object.fromEntries(chosen.map((candidate) => [candidate.key, candidate.value]));
+    data.set("casePreviewValuesJson", JSON.stringify(previewValues));
+    data.set("caseManualValuesJson", JSON.stringify(manualCaseFieldValues));
+    data.set("entryReadProofs", JSON.stringify(preview.readProofs ?? {}));
+    data.set("entryReadFileKeys", JSON.stringify(preview.readFileKeys));
+    data.set("entryPreviewDecisions", JSON.stringify(Object.fromEntries(chosen.map((candidate) => [candidate.id, "auto_saved"]))));
+    setCaseFieldValues((current) => ({ ...current, ...previewValues }));
+    setConfirmedPreviewValues((current) => ({ ...current, ...previewValues }));
+    autoSaveCaseStartedRef.current = true;
+    startAutoSavingCase(() => caseFormAction(data));
+  }, [allowDuplicateCase, caseFormAction, caseTitle, existingCaseExactMatch, manualCaseFieldValues]);
+  useEffect(() => {
+    if (!allowDuplicateCase || autoSaveCaseStartedRef.current || !pendingCasePreviewRef.current) return;
+    const preview = pendingCasePreviewRef.current;
+    pendingCasePreviewRef.current = null;
+    autoSaveCaseReadResult(preview);
+  }, [allowDuplicateCase, autoSaveCaseReadResult]);
   const caseError = caseState.status === "error" ? localizeCaseAssociationError(locale, caseState.message, text.caseSaveError) : undefined;
 
   const updatePersonCreatePending = useCallback((next: boolean) => {
@@ -530,19 +590,22 @@ export function CaseAssociationDraft({
       <PageHeader title={text.title} description={text.description} backHref={backHref} backLabel={backLabel} onBackClick={confirmLeave} />
       {caseError ? <div ref={errorRef} data-case-association-case-error role="alert" aria-live="assertive" tabIndex={-1} className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-900">{caseError}</div> : null}
 
-      <ResponsiveFormShell action={caseFormAction}>
+      <div ref={caseFormContainerRef}><ResponsiveFormShell action={caseFormAction}>
+        <input type="hidden" name="entryIntentId" value={entryIntentId} />
         <input type="hidden" name="associationDraftJson" value={draftJson} />
+        <input type="hidden" name="allowDuplicateCase" value={allowDuplicateCase ? "1" : "0"} />
         <FormSection className="space-y-3">
           <h2 className="text-base font-black text-slate-950">{text.caseInfo}</h2>
           <div className="grid gap-3 md:grid-cols-2">
             <label className="space-y-1 text-sm font-semibold text-slate-700"><span>{text.workflowType}</span><select name="workflowType" value={workflowType} onChange={(event) => setWorkflowType(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base text-slate-900 focus:border-[#0046ad] focus:ring-2 focus:ring-blue-100 sm:text-sm">{workflowOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
-            <label className="space-y-1 text-sm font-semibold text-slate-700"><span>{text.caseTitle}</span><input name="caseTitle" value={caseTitle} onChange={(event) => setCaseTitle(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-base text-slate-900 focus:border-[#0046ad] focus:ring-2 focus:ring-blue-100 sm:text-sm" /></label>
+            <div className="space-y-1 text-sm font-semibold text-slate-700"><label htmlFor="new-case-title">{text.caseTitle}</label><input id="new-case-title" name="caseTitle" value={caseTitle} onChange={(event) => { setCaseTitle(event.target.value); setAllowDuplicateCase(false); }} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-base text-slate-900 focus:border-[#0046ad] focus:ring-2 focus:ring-blue-100 sm:text-sm" />{caseTitle.trim() ? <label className="flex items-start gap-2 pt-1 text-xs font-semibold text-slate-700"><input type="checkbox" data-case-allow-duplicate checked={allowDuplicateCase} onChange={(event) => setAllowDuplicateCase(event.target.checked)} className="mt-0.5" />{text.allowDuplicateCase}</label> : null}{existingCaseMatches.length > 0 ? <div className="space-y-1 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900"><p className="font-bold">{text.existingCase}</p>{existingCaseMatches.map((item) => <Link key={item.id} href={`/cases/${encodeURIComponent(item.id)}`} className="block rounded px-1 py-1 underline hover:bg-amber-100">{item.title}</Link>)}{existingCaseExactMatch ? <><p role="alert" className="pt-1 font-bold text-rose-800">{text.duplicateCase}</p><button type="button" onClick={() => setAllowDuplicateCase(true)} className="mt-1 rounded border border-amber-300 bg-white px-2 py-1 font-bold text-amber-900 hover:bg-amber-100">{text.continueDuplicateCase}</button></> : null}</div> : null}</div>
           </div>
         </FormSection>
 
         <FormSection className="space-y-3">
           <h2 className="text-base font-black text-slate-950">{text.upload}</h2>
           <p className="text-sm text-slate-600">{text.uploadDescription}</p>
+          {entryFiles.length > 0 && !caseTitle.trim() ? <p role="status" className="text-xs font-bold text-amber-800">{text.titleNeeded}</p> : null}
           <input type="hidden" name="caseUploadTarget" value="case" />
           <input type="hidden" name="casePreviewValuesJson" value={JSON.stringify(confirmedPreviewValues)} />
           <input type="hidden" name="caseManualValuesJson" value={JSON.stringify(manualCaseFieldValues)} />
@@ -565,7 +628,7 @@ export function CaseAssociationDraft({
               <EntryFilePicker locale={locale} files={entryFiles} onFilesChange={updateEntryFiles} name="caseUploadFile" disabled={pending} />
             </div>
           </div>
-          <EntryPreview files={entryFiles} kind={previewKind} context="case" locale={locale} onConfirm={confirmEntryCandidate} onReadFileKeys={handleEntryReadFileKeys} />
+          <EntryPreview files={entryFiles} kind={previewKind} context="case" locale={locale} onConfirm={confirmEntryCandidate} onReadFileKeys={handleEntryReadFileKeys} onReadComplete={autoSaveCaseReadResult} />
           {unsupportedPreviewCount > 0 ? <p role="status" className="text-xs font-semibold text-amber-700">{locale === "zh" ? "部分候选没有对应的案件字段，未写入案件。请只确认已有字段。" : locale === "ko" ? "일부 후보에 대응하는 안건 필드가 없어 반영하지 않았습니다. 기존 필드만 확인해 주세요." : "一部の候補は案件の既存項目に対応しないため反映していません。既存項目だけ確認してください。"}</p> : null}
         </FormSection>
 
@@ -574,8 +637,10 @@ export function CaseAssociationDraft({
             <h2 id="case-fields-heading" className="text-base font-black text-slate-950">{locale === "zh" ? "案件字段草稿" : locale === "ko" ? "안건 필드 초안" : "案件項目の草稿"}</h2>
             <span className="text-xs font-semibold text-slate-500">{locale === "zh" ? "仅使用现有案件字段；保存前不会创建人物或物件" : locale === "ko" ? "기존 안건 필드만 사용하며 저장 전에는 관계자나 매물을 만들지 않습니다" : "既存の案件項目だけを使用し、保存前に人物・物件は作成しません"}</span>
           </div>
-          <div data-case-entry-fields className="grid gap-4 md:grid-cols-2">
-            {CASE_ENTRY_FIELDS.map((field) => {
+          <div data-case-entry-fields className="space-y-2">
+            {CASE_ENTRY_FIELD_GROUPS.map((group) => <details key={group.id} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+              <summary className="cursor-pointer py-1 text-sm font-bold text-slate-800">{group.label} <span className="ml-1 text-xs font-normal text-slate-500">({group.fields.length})</span></summary>
+              <div className="grid gap-3 border-t border-slate-100 pt-3 md:grid-cols-2">{group.fields.map((field) => {
               const value = caseFieldValues[field.fieldKey] ?? "";
               const isTextarea = field.valueKind === "textarea";
               const inputType = field.valueKind === "date" ? "date" : field.valueKind === "email" ? "email" : "text";
@@ -585,7 +650,8 @@ export function CaseAssociationDraft({
                   {isTextarea ? <textarea name={`casePreviewField:${field.fieldKey}`} value={value} onChange={(event) => updateCaseField(field.fieldKey, event.target.value)} rows={2} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-base text-slate-900 focus:border-[#0046ad] focus:ring-2 focus:ring-blue-100 sm:text-sm" /> : <input name={`casePreviewField:${field.fieldKey}`} type={inputType} value={value} onChange={(event) => updateCaseField(field.fieldKey, event.target.value)} inputMode={field.valueKind === "number" || field.valueKind.startsWith("money") ? "decimal" : undefined} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-base text-slate-900 focus:border-[#0046ad] focus:ring-2 focus:ring-blue-100 sm:text-sm" />}
                 </label>
               );
-            })}
+              })}</div>
+            </details>)}
           </div>
         </FormSection>
 
@@ -625,9 +691,9 @@ export function CaseAssociationDraft({
         {quickCreateFeedback ? <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-900">{quickCreateFeedback}</div> : null}
         <ActionBar mobileFixed>
           <a href={backHref} data-page-action-cancel onClick={confirmLeave} className={`${layoutStyles.pageActionCancel} inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0046ad]`}>{text.cancel}</a>
-          <Button type="submit" disabled={pending} loading={pending} controlSize="touch">{pending ? text.creating : text.create}</Button>
+          <Button type="submit" disabled={pending || autoSavingCase || (existingCaseExactMatch && !allowDuplicateCase)} loading={pending || autoSavingCase} controlSize="touch">{pending || autoSavingCase ? text.creating : text.create}</Button>
         </ActionBar>
-      </ResponsiveFormShell>
+      </ResponsiveFormShell></div>
 
       {drawer === "person" ? <FocusDialog title={drawerView === "create" ? text.createPerson : text.choosePerson} closeLabel={text.close} closeDisabled={drawerView === "create" && personCreatePending} closeDisabledRef={personCreatePendingRef} onClose={closeDrawer} returnFocusRef={focusReturnRef} footer={drawerView === "create" ? <div className="flex justify-end gap-3"><button type="button" onClick={() => closeDrawer()} disabled={personCreatePending} className="min-h-11 rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700 disabled:cursor-wait disabled:opacity-60">{text.cancel}</button><button type="submit" form="case-association-person-create" disabled={personCreatePending} aria-busy={personCreatePending || undefined} onClick={(event) => { if (!validatePersonCreate()) event.preventDefault(); }} className="min-h-11 rounded-lg bg-slate-950 px-4 py-2 text-sm font-black text-white disabled:cursor-wait disabled:opacity-60">{personCreatePending ? text.creating : text.createPerson}</button></div> : <div className="flex justify-end gap-3"><button type="button" onClick={() => closeDrawer()} className="min-h-11 rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700">{text.cancel}</button><button type="button" onClick={applyPerson} className="min-h-11 rounded-lg bg-slate-950 px-4 py-2 text-sm font-black text-white">{text.addToDraft}</button></div>}>
         {drawerView === "create" ? <div onSubmitCapture={(event) => { if (!validatePersonCreate()) { event.preventDefault(); event.stopPropagation(); } }}><div className="mb-4 space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4"><h3 className="text-sm font-black text-slate-900">{text.quickCreateRoles}</h3><div className="grid gap-2 sm:grid-cols-2">{CASE_PERSON_ROLES.map((role) => <label key={role} className="flex min-h-11 items-center gap-2 text-sm font-semibold text-slate-700"><input type="checkbox" checked={personCreateRoles.includes(role)} disabled={personCreatePending} onChange={(event) => { setPersonCreateRoles((current) => event.target.checked ? [...current, role] : current.filter((item) => item !== role)); setSelectionError(undefined); }} />{getCasePersonRoleLabel(locale, role)}</label>)}</div>{selectionError ? <p role="alert" className="text-xs font-bold text-rose-700">{selectionError}</p> : null}</div><ClientForm action={createPersonAction} mode="create" locale={locale} returnTo="/cases/new" formId="case-association-person-create" hideActions onSubmitStart={startPersonCreate} onPendingChange={updatePersonCreatePending} onCreated={(record) => { const roles = [...personCreateRolesRef.current]; updatePersonCreatePending(false); personCreateRolesRef.current = []; setCandidates((current) => [...current, record]); setParties((current) => addOrReplaceParty(current, record.id, roles)); setHasIndependentCreatedMaster(true); setQuickCreateFeedback(text.quickCreateFeedback); closeDrawer(true); }} /></div> : <div className="space-y-5">

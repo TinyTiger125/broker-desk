@@ -48,6 +48,10 @@ const copy = {
     ownerReadOnly: "現在のアカウントは閲覧のみです。",
     uploadFailed: "資料の読み取りアップロードに失敗しました。物件は作成済みです。資料を追加でアップロードしてください。",
     uploadSaveFailed: "資料の保存に失敗しました。物件は作成済みです。資料を追加でアップロードしてください。",
+    entryArchiveFailed: "物件は作成されましたが、原本を保存できませんでした。同じ物件の資料欄から再アップロードしてください。",
+    entryArchivePartial: "物件は作成されましたが、原本の一部だけ保存されました。資料欄で未保存の資料を再アップロードしてください。",
+    entryArchiveSavedWithReadingFailure: "物件は作成され、原本はすべて保存されましたが、資料の読み取りに失敗しました。資料欄から再読み取りまたは手動確認を行ってください。",
+    entryReused: "同じアップロードの既存物件へ戻りました。重複記録は作成していません。",
   },
   zh: {
     title: "编辑物件",
@@ -71,6 +75,10 @@ const copy = {
     ownerReadOnly: "当前账号仅可查看。",
     uploadFailed: "资料读取上传失败。物件已创建，请补传资料。",
     uploadSaveFailed: "资料保存失败。物件已创建，请补传资料。",
+    entryArchiveFailed: "物件记录已创建，但原件未保存。请在同一物件的资料区重新上传；不会创建第二条记录。",
+    entryArchivePartial: "物件记录已创建，但只保存了部分原件。请在资料区重新上传尚未保存的资料。",
+    entryArchiveSavedWithReadingFailure: "物件记录已创建，所有原件均已保留，但资料读取失败。请在资料区重新读取或人工核对。",
+    entryReused: "检测到同一上传，已回到原有物件记录，未创建重复记录。",
   },
   ko: {
     title: "매물 편집",
@@ -94,6 +102,10 @@ const copy = {
     ownerReadOnly: "현재 계정은 보기 전용입니다.",
     uploadFailed: "자료 읽기 업로드에 실패했습니다. 매물은 생성되었으니 자료를 다시 올려 주세요.",
     uploadSaveFailed: "자료 저장에 실패했습니다. 매물은 생성되었으니 자료를 다시 올려 주세요.",
+    entryArchiveFailed: "매물은 생성되었지만 원본을 저장하지 못했습니다. 같은 매물의 자료 영역에서 다시 업로드해 주세요.",
+    entryArchivePartial: "매물은 생성되었지만 원본 일부만 저장되었습니다. 자료 영역에서 저장되지 않은 자료를 다시 올려 주세요.",
+    entryArchiveSavedWithReadingFailure: "매물은 생성되었고 원본은 모두 보관되었지만 자료 읽기에 실패했습니다. 자료 영역에서 다시 읽거나 수동으로 확인해 주세요.",
+    entryReused: "같은 업로드의 기존 매물 기록으로 돌아갔으며 중복 기록은 만들지 않았습니다.",
   },
 } as const;
 
@@ -183,6 +195,14 @@ export default async function EditPropertyPage({ params, searchParams }: EditPro
     : undefined;
   const flashMessage = query.flash === "entry_preview_audit_failed"
     ? locale === "zh" ? "档案和已归档原件已保留，但部分候选核对记录未保存。请勿重新创建或重复上传下方已列出的原件。" : locale === "ko" ? "기록과 보관된 원본은 유지되지만 일부 후보 확인 이력을 저장하지 못했습니다. 기록을 다시 만들거나 아래 원본을 중복 업로드하지 마세요." : "記録と保管済み原本は保持されていますが、一部の候補確認履歴を保存できませんでした。記録の再作成や下に表示されている原本の再送は不要です。"
+    : query.flash === "entry_archive_saved_with_reading_failure"
+      ? text.entryArchiveSavedWithReadingFailure
+      : query.flash === "entry_archive_partial"
+      ? text.entryArchivePartial
+      : query.flash === "entry_archive_failed"
+      ? text.entryArchiveFailed
+    : query.flash === "entry_reused"
+      ? text.entryReused
     : query.flash === "property_updated"
     ? text.updated
     : query.flash === "property_created"

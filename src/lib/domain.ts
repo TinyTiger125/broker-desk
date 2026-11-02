@@ -10,10 +10,10 @@ export const CLIENT_STAGES = [
 
 export type ClientStage = (typeof CLIENT_STAGES)[number];
 
-export const PURPOSES = ["self_use", "investment"] as const;
+export const PURPOSES = ["unspecified", "self_use", "investment"] as const;
 export type Purpose = (typeof PURPOSES)[number];
 
-export const TEMPERATURES = ["high", "medium", "low"] as const;
+export const TEMPERATURES = ["unspecified", "high", "medium", "low"] as const;
 export type Temperature = (typeof TEMPERATURES)[number];
 
 export const BUDGET_TYPES = ["total_price", "monthly_payment"] as const;

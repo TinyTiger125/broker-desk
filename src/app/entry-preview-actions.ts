@@ -20,6 +20,14 @@ import { signEntryPreviewProof } from "@/lib/entry-preview-proof";
 
 const PROPERTY_NUMERIC_PREVIEW_KEYS = new Set(["sizeSqm", "listingPrice", "listingRent", "listingCommonFee", "managementFee", "repairFee"]);
 
+function hasCustomerIdentityAnchor(fields: Array<{ fieldKey: string; value: string; uncertainty: "clear" | "unclear" | "conflict" | "not_found" }>) {
+  return fields.some((field) =>
+    (field.fieldKey === "applicant.name" || field.fieldKey === "applicant.birthDate" || field.fieldKey === "applicant.gender")
+    && field.value.trim()
+    && field.uncertainty !== "not_found",
+  );
+}
+
 function validPropertyNumericPreview(key: string, value: string): boolean {
   if (!PROPERTY_NUMERIC_PREVIEW_KEYS.has(key)) return true;
   if (!/^\d+(?:\.\d+)?$/.test(value)) return false;
@@ -51,7 +59,17 @@ export async function previewEntryDocumentsAction(formData: FormData): Promise<E
         fields = extracted.fields.map((field) => ({ fieldKey: field.fieldKey, value: field.normalizedValue || field.value, pageNumber: field.sourcePageNumber, sourceText: field.sourceText || [field.sourceSheet, field.sourceCell || field.sourceRange].filter(Boolean).join(" / "), uncertainty: field.uncertainty ?? "unclear" }));
       } else if (kind === "customer") {
         const result = await readIdentityDocumentWithOpenAi({ buffer, filename: file.name, scope: "customer" });
-        fields = selectPrimaryIdentityReaderCandidates(result.candidates, { scope: "customer" }).candidates;
+        // Keep the supported customer document list closed. An unclassified
+        // image may still be archived for human inspection, but its model
+        // fields must never silently become formal customer values.
+        const selected = selectPrimaryIdentityReaderCandidates(result.candidates, { scope: "customer" }).candidates;
+        // An address/contact-only response is not enough to identify the
+        // customer. This also fails closed when vision misses the printed
+        // marker on an unsupported card: never surface a plausible address as
+        // a customer field without a holder identity anchor.
+        fields = result.documentType === "unknown_identity_scan" || !hasCustomerIdentityAnchor(selected)
+          ? []
+          : selected;
       } else {
         const result = await readObjectDocumentWithOpenAi({ buffer, filename: file.name });
         fields = selectSingleObjectReaderCandidates(result.candidates).candidates;

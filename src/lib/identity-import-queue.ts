@@ -142,6 +142,13 @@ export async function queueIdentityImportSources(input: {
         jobIds.push(existing.id);
         continue;
       }
+      // The idempotency key already has a durable source. Reusing the job
+      // must not append a second attachment to the one-source import target.
+      if (!rewriteExistingSource) {
+        await ensureObjectImportTask(existing, input);
+        jobIds.push(existing.id);
+        continue;
+      }
     }
 
     let job = existing;

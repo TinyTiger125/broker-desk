@@ -1,14 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useActionState, useCallback, useEffect, useRef, useState, useTransition, type FormEvent, type KeyboardEvent } from "react";
 import type { Locale } from "@/lib/locale";
 import type { PropertyFormActionState, PropertyFormValues } from "@/app/actions";
 import { endSubmission, handleFormSubmit, type SubmissionLock } from "@/components/form-submission-lock";
 import { Button } from "@/components/ui-foundation";
 import { EntryFilePicker, replaceEntryFiles } from "@/components/entry-file-picker";
-import { applyEntryPreviewCandidate, EntryPreview, type EntryPreviewCandidate } from "@/components/entry-preview";
+import { applyEntryPreviewCandidate, createEntryIntentId, EntryPreview, type EntryPreviewCandidate } from "@/components/entry-preview";
 import { useEntryDraft } from "@/components/use-entry-draft";
+import { fillAutoSavedEntryForm, type EntryPreviewState } from "@/lib/entry-preview";
 
 type PropertyFormAction = (
   previousState: PropertyFormActionState,
@@ -143,7 +144,11 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
   const text = copy[locale];
   const { values, setValues } = useEntryDraft({ storageKey: entryDraftKey, serverValues: initialValues, appliedFields: entryAppliedFields });
   const [entryFiles, setEntryFiles] = useState<File[]>([]);
+  const [entryIntentId] = useState(() => createEntryIntentId());
   const [entryReadFileKeys, setEntryReadFileKeys] = useState<string[]>([]);
+  const [autoSaving, startAutoSaving] = useTransition();
+  const formRef = useRef<HTMLFormElement>(null);
+  const autoSaveStartedRef = useRef(false);
   const entryFilesRef = useRef<File[]>([]);
   const entryReadFileKeysRef = useRef<string[]>([]);
   const handleEntryReadFileKeys = useCallback((keys: string[]) => {
@@ -151,13 +156,14 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
     setEntryReadFileKeys(keys);
   }, []);
   const updateEntryFiles = useCallback((files: File[]) => {
+    autoSaveStartedRef.current = false;
     entryFilesRef.current = files;
     setEntryFiles(files);
     entryReadFileKeysRef.current = [];
     setEntryReadFileKeys([]);
   }, []);
   const confirmEntryCandidate = useCallback((candidate: EntryPreviewCandidate) => {
-    setValues((current) => applyEntryPreviewCandidate(current, candidate));
+    setValues((current) => String(current[candidate.key as keyof PropertyFormValues] ?? "").trim() ? current : applyEntryPreviewCandidate(current, candidate));
   }, [setValues]);
   const entryAction = useCallback(async (previousState: PropertyFormActionState, formData: FormData) => {
     if (entryUpload) {
@@ -167,6 +173,16 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
     return action(previousState, formData);
   }, [action, entryUpload]);
   const [state, formAction, pending] = useActionState(entryAction, { ...initialState, values: initialValues });
+  const autoSaveReadResult = useCallback((preview: EntryPreviewState) => {
+    if (!entryUpload || propertyId || autoSaveStartedRef.current || !formRef.current) return;
+    const data = new FormData(formRef.current);
+    const applied = fillAutoSavedEntryForm(data, preview);
+    if (applied === 0 || !String(data.get("name") ?? "").trim()) return;
+    entryReadFileKeysRef.current = preview.readFileKeys;
+    setValues((current) => ({ ...current, ...Object.fromEntries([...data.entries()].filter(([key, value]) => key in current && typeof value === "string")) }));
+    autoSaveStartedRef.current = true;
+    startAutoSaving(() => formAction(data));
+  }, [entryUpload, formAction, propertyId, setValues]);
   const summaryRef = useRef<HTMLDivElement>(null);
   const composingRef = useRef(false);
   const notifiedCreatedId = useRef<string | undefined>(undefined);
@@ -223,13 +239,14 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
   };
 
   return (
-    <form id={formId} action={formAction} onSubmit={handleSubmit} noValidate className="space-y-6">
+    <form ref={formRef} id={formId} action={formAction} onSubmit={handleSubmit} noValidate className="space-y-6">
       <input type="hidden" name="returnTo" value={returnTo} />
       {onCreated ? <input type="hidden" name="caseDraftReturn" value="1" /> : null}
       {propertyId ? <input type="hidden" name="propertyId" value={propertyId} /> : null}
       {entryUpload ? <>
+        <input type="hidden" name="entryIntentId" value={entryIntentId} />
         <EntryFilePicker locale={locale} files={entryFiles} onFilesChange={updateEntryFiles} disabled={pending} />
-        <EntryPreview files={entryFiles} kind="property" locale={locale} onConfirm={confirmEntryCandidate} onReadFileKeys={handleEntryReadFileKeys} />
+        <EntryPreview files={entryFiles} kind="property" locale={locale} onConfirm={confirmEntryCandidate} onReadFileKeys={handleEntryReadFileKeys} onReadComplete={autoSaveReadResult} />
         <input type="hidden" name="entryReadFileKeys" value={JSON.stringify(entryReadFileKeys)} />
       </> : null}
 
@@ -329,8 +346,8 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
 
       {hideActions ? null : <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-200 pt-5">
         {onCancel ? <button type="button" onClick={onCancel} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">{text.cancel}</button> : <Link href={returnTo} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">{text.cancel}</Link>}
-        <Button type="submit" loading={pending} className="min-h-11 rounded-lg bg-slate-950 px-5 py-2.5 text-sm font-bold text-white hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60">
-          {pending ? text.saving : entryUpload && entryFiles.length > entryReadFileKeys.length ? text.saveAndRead : text.save}
+        <Button type="submit" loading={pending || autoSaving} className="min-h-11 rounded-lg bg-slate-950 px-5 py-2.5 text-sm font-bold text-white hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60">
+          {pending || autoSaving ? text.saving : entryUpload && entryFiles.length > entryReadFileKeys.length ? text.saveAndRead : text.save}
         </Button>
       </div>}
       <div className="sr-only" aria-live="polite">{pending ? text.saving : ""}</div>

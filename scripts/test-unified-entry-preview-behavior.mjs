@@ -47,7 +47,8 @@ const transpile = (module, filename) => {
 require.extensions[".tsx"] = transpile;
 require.extensions[".ts"] = transpile;
 
-const { applyEntryPreviewCandidate, buildEntryPreviewFormData, getUnreadEntryFiles, mergeEntryPreviewStates } = require(resolve(root, "src/components/entry-preview.tsx"));
+const { applyEntryPreviewCandidate, buildEntryPreviewFormData, getUnreadEntryFiles, hasPropertyNameCandidate, mergeEntryPreviewStates } = require(resolve(root, "src/components/entry-preview.tsx"));
+const { fillAutoSavedEntryForm, safeEntryPreviewCandidates } = require(resolve(root, "src/lib/entry-preview.ts"));
 const pdf = new File(["%PDF-1.7"], "identity.pdf", { type: "application/pdf" });
 const image = new File(["image"], "portrait.png", { type: "image/png" });
 const formData = buildEntryPreviewFormData([pdf, image], "customer");
@@ -67,6 +68,9 @@ assert.equal(confirmed.name, "Document name", "explicit confirmation applies onl
 assert.equal(confirmed.phone, "000");
 assert.equal(confirmed.notes, "Keep this");
 assert.deepEqual(applyEntryPreviewCandidate(manualFirst, { key: "unknownField", value: "must not enter" }), manualFirst, "unknown candidates must not add business fields");
+assert.equal(hasPropertyNameCandidate([{ key: "address", value: "Address A" }]), false, "property candidates without a name must not claim formal-save readiness");
+assert.equal(hasPropertyNameCandidate([{ key: "name", value: "  " }]), false, "blank property names must not claim formal-save readiness");
+assert.equal(hasPropertyNameCandidate([{ key: "name", value: "Fixture property" }]), true, "a clear property name is the formal-save readiness anchor");
 
 const mergedPartial = mergeEntryPreviewStates(
   { status: "ready", candidates: [{ id: "old", key: "phone", sourceKey: "phone", label: "Phone", value: "000", fileName: "identity.pdf" }], readFileKeys: ["identity.pdf:8"], readProofs: { "identity.pdf:8": "proof:identity" } },
@@ -77,6 +81,17 @@ assert.deepEqual(mergedPartial.readFileKeys, ["identity.pdf:8", "portrait.png:5"
 assert.deepEqual(mergedPartial.readProofs, { "identity.pdf:8": "proof:identity", "portrait.png:5": "proof:portrait" }, "partial retry must preserve and merge read proofs");
 assert.deepEqual(mergedPartial.candidates.map((candidate) => candidate.id), ["old", "new"], "partial failure must preserve prior candidates");
 assert.deepEqual(getUnreadEntryFiles([pdf, image], ["identity.pdf:8"]), [image], "partial retry must send only unread files");
+
+const conflictingAddressCandidates = [
+  { id: "address-old", key: "currentAddress", sourceKey: "applicant.currentAddress", label: "Current address", value: "Address A", fileName: "old.jpg", uncertainty: "clear" },
+  { id: "address-new", key: "currentAddress", sourceKey: "applicant.currentAddress", label: "Current address", value: "Address B", fileName: "new.jpg", uncertainty: "clear" },
+  { id: "stable-name", key: "name", sourceKey: "applicant.name", label: "Name", value: "Stable person", fileName: "front.jpg", uncertainty: "clear" },
+];
+assert.deepEqual(safeEntryPreviewCandidates(conflictingAddressCandidates).map((candidate) => candidate.id), ["stable-name"], "different address evidence must never be auto-saved while stable identity evidence remains eligible");
+const conflictForm = new FormData();
+fillAutoSavedEntryForm(conflictForm, { status: "ready", candidates: conflictingAddressCandidates, readFileKeys: [], readProofs: {} });
+assert.equal(conflictForm.get("currentAddress"), null, "conflicting addresses must remain blank for explicit user review");
+assert.equal(conflictForm.get("name"), "Stable person", "uncontested identity fields may still be auto-saved");
 
 const failedPreview = await previewEntryDocumentsAction(buildEntryPreviewFormData([pdf], "property", "case"));
 assert.equal(failedPreview.status, "error");

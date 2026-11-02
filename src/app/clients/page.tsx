@@ -139,6 +139,7 @@ const texts = {
     quickDesc: "必要な基本情報だけ先に登録し、あとで詳細を追加できます。",
     name: "氏名",
     phone: "電話番号",
+    phonePending: "電話番号未入力・要補完",
     budgetMax: "予算上限",
     quickSave: "保存",
     quickOpen: "登録フォームを開く",
@@ -185,6 +186,7 @@ const texts = {
     quickDesc: "先填写必要的基本信息，之后可以补充详细内容。",
     name: "姓名",
     phone: "电话",
+    phonePending: "电话待补全",
     budgetMax: "预算上限",
     quickSave: "保存",
     quickOpen: "打开创建表单",
@@ -231,6 +233,7 @@ const texts = {
     quickDesc: "필요한 기본 정보만 먼저 등록하고 나중에 자세한 내용을 추가할 수 있습니다.",
     name: "이름",
     phone: "전화번호",
+    phonePending: "전화번호 입력 필요",
     budgetMax: "예산 상한",
     quickSave: "저장",
     quickOpen: "등록 양식 열기",
@@ -426,7 +429,7 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
                           {client.name}
                         </Link>
                         <div className={`${styles.clientSubline} ${styles.clientSecondary}`}>
-                          <span>{text.contact}: {client.phone || text.dash}</span>
+                          <span className={!client.phone ? "font-bold text-amber-800" : undefined}>{text.contact}: {client.phone || text.phonePending}</span>
                           <span className={styles.clientSecondaryWide}>{text.area}: {client.preferredArea ?? text.dash}</span>
                         </div>
                       </td>
@@ -506,7 +509,7 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
           <div className={styles.quickBody}>
             <form action={createClient} className={styles.quickForm}>
               <input name="name" required placeholder={text.name} aria-label={text.name} className={styles.control} />
-              <input name="phone" required placeholder={text.phone} aria-label={text.phone} className={styles.control} />
+              <input name="phone" placeholder={`${text.phone} · ${text.phonePending}`} aria-label={text.phone} className={styles.control} />
               <input name="preferredArea" placeholder={text.area} aria-label={text.area} className={styles.control} />
               <input name="budgetMax" type="number" placeholder={text.budgetMax} aria-label={text.budgetMax} className={styles.control} />
               <select name="stage" defaultValue="lead" aria-label={text.stage} className={styles.control}>

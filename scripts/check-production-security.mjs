@@ -538,6 +538,18 @@ assert(
 const runtimeAclBaselinePath = "db/migrations/20260902_003_runtime_acl_baseline.sql";
 assert(fs.existsSync(runtimeAclBaselinePath), "runtime ACL baseline migration must exist");
 const runtimeAclBaseline = fs.readFileSync(runtimeAclBaselinePath, "utf8").replace(/\s+/g, " ").trim();
+const entryClaimsAclPath = "db/migrations/20261102_005_entry_request_claims_runtime_acl.sql";
+assert(fs.existsSync(entryClaimsAclPath), "entry request claims ACL migration must exist");
+const entryClaimsAcl = fs.readFileSync(entryClaimsAclPath, "utf8").replace(/\s+/g, " ").trim();
+const entryClaimsAclRollbackPath = "db/migrations/rollback/20261102_005_entry_request_claims_runtime_acl.sql";
+assert(fs.existsSync(entryClaimsAclRollbackPath), "entry request claims ACL rollback must exist");
+const entryClaimsAclRollback = fs.readFileSync(entryClaimsAclRollbackPath, "utf8").replace(/\s+/g, " ").trim();
+const entryClaimsAuthenticatedAclPath = "db/migrations/20261102_006_entry_request_claims_authenticated_acl.sql";
+assert(fs.existsSync(entryClaimsAuthenticatedAclPath), "entry request claims authenticated-role ACL migration must exist");
+const entryClaimsAuthenticatedAcl = fs.readFileSync(entryClaimsAuthenticatedAclPath, "utf8").replace(/\s+/g, " ").trim();
+const entryClaimsAuthenticatedAclRollbackPath = "db/migrations/rollback/20261102_006_entry_request_claims_authenticated_acl.sql";
+assert(fs.existsSync(entryClaimsAuthenticatedAclRollbackPath), "entry request claims authenticated-role ACL rollback must exist");
+const entryClaimsAuthenticatedAclRollback = fs.readFileSync(entryClaimsAuthenticatedAclRollbackPath, "utf8").replace(/\s+/g, " ").trim();
 const runtimeExternalSubjectGrantPath = "db/migrations/20260904_001_runtime_external_auth_subject_execute.sql";
 assert(fs.existsSync(runtimeExternalSubjectGrantPath), "runtime external subject execute migration must exist");
 const runtimeExternalSubjectGrant = fs.readFileSync(runtimeExternalSubjectGrantPath, "utf8").replace(/\s+/g, " ").trim();
@@ -591,6 +603,25 @@ for (const [table, privileges] of runtimeTableGrants) {
     `runtime ACL baseline must grant only the ${privileges.join(", ")} surface for ${table}`,
   );
 }
+assert(
+  entryClaimsAcl.includes("REVOKE ALL PRIVILEGES ON TABLE public.entry_request_claims FROM brokerdesk_runtime") &&
+    entryClaimsAcl.includes("GRANT SELECT, INSERT, UPDATE ON TABLE public.entry_request_claims TO brokerdesk_runtime"),
+  "entry request claims ACL must clear stale runtime grants and grant only its reviewed surface in the follow-up migration",
+);
+assert(
+  entryClaimsAclRollback.includes("REVOKE ALL PRIVILEGES ON TABLE public.entry_request_claims FROM brokerdesk_runtime") &&
+    entryClaimsAclRollback.includes("GRANT SELECT, INSERT, UPDATE ON TABLE public.entry_request_claims TO brokerdesk_runtime") &&
+    entryClaimsAclRollback.includes("REVOKE ALL PRIVILEGES ON TABLE public.entry_request_claims FROM brokerdesk_admin") &&
+    entryClaimsAclRollback.includes("GRANT SELECT, DELETE ON TABLE public.entry_request_claims TO brokerdesk_admin") &&
+    !/GRANT\s+[^;]*\bDELETE\b[^;]*TO brokerdesk_runtime/i.test(entryClaimsAclRollback),
+  "entry request claims ACL rollback must restore the canonical narrow runtime/admin matrix without widening runtime delete",
+);
+assert(
+  entryClaimsAuthenticatedAcl.includes("REVOKE ALL PRIVILEGES ON TABLE public.entry_request_claims FROM authenticated") &&
+    !/GRANT\s+[^;]*\bON TABLE public\.entry_request_claims\s+TO authenticated/i.test(entryClaimsAuthenticatedAcl) &&
+    entryClaimsAuthenticatedAclRollback.includes("GRANT SELECT, INSERT, UPDATE ON TABLE public.entry_request_claims TO authenticated"),
+  "authenticated claim-table access must be revoked in a follow-up migration with an explicit rollback only",
+);
 assert(
   runtimeAclBaseline.includes("GRANT USAGE ON SCHEMA brokerdesk_private TO brokerdesk_runtime;") &&
     runtimeAclBaseline.includes("REVOKE ALL PRIVILEGES ON FUNCTION brokerdesk_private.current_user_id() FROM PUBLIC;") &&

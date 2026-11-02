@@ -1,7 +1,7 @@
 import { createClientFormAction, createPropertyQuickAction } from "@/app/actions";
 import { createCaseWithUploadAction } from "@/app/case-entry-actions";
 import { CaseAssociationDraft } from "@/components/case-association-draft";
-import { listClientsForContext, listPropertiesForContext } from "@/lib/data";
+import { listBrokerageCasesForContext, listClientsForContext, listPropertiesForContext } from "@/lib/data";
 import { getLocale } from "@/lib/locale";
 import { TenantSessionError, requireTenantSession } from "@/lib/tenant-session";
 import { createRequestContext } from "@/lib/visibility-resolver";
@@ -63,9 +63,10 @@ export default async function NewCasePage({ searchParams }: NewCasePageProps) {
   }
   const text = copy[locale];
   const requestContext = createRequestContext(session);
-  const [visibleClients, visibleProperties] = await Promise.all([
+  const [visibleClients, visibleProperties, visibleCases] = await Promise.all([
     listClientsForContext({ context: requestContext, filter: { lifecycleStatus: "active" } }),
     listPropertiesForContext({ context: requestContext, lifecycleStatus: "active" }),
+    listBrokerageCasesForContext({ context: requestContext, limit: 100 }),
   ]);
   const candidates = visibleClients
     .filter((item) => item.resolution.canWrite)
@@ -89,6 +90,7 @@ export default async function NewCasePage({ searchParams }: NewCasePageProps) {
       backLabel={fromEntry ? text.backEntry : text.back}
       candidates={candidates}
       properties={properties}
+      existingCases={visibleCases.flatMap(({ brokerageCase }) => brokerageCase ? [{ id: brokerageCase.id, title: brokerageCase.caseTitle }] : [])}
       workflowOptions={workflowOptions}
       createCaseAction={createCaseWithUploadAction}
       createPersonAction={createClientFormAction}

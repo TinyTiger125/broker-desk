@@ -398,6 +398,12 @@ export const appendFollowUp: typeof memory.appendFollowUp = (...args) =>
   repo.appendFollowUp(...args);
 export const addAuditLog: typeof memory.addAuditLog = (...args) =>
   repo.addAuditLog(...args);
+export const claimEntryRequest: typeof memory.claimEntryRequest = (...args) =>
+  repo.claimEntryRequest(...args);
+export const completeEntryRequest: typeof memory.completeEntryRequest = (...args) =>
+  repo.completeEntryRequest(...args);
+export const releaseEntryRequest: typeof memory.releaseEntryRequest = (...args) =>
+  repo.releaseEntryRequest(...args);
 export const listAuditLogs: typeof memory.listAuditLogs = (...args) =>
   repo.listAuditLogs(...args);
 export const createComplianceTaskFromAlert: typeof memory.createComplianceTaskFromAlert = (...args) =>
@@ -608,6 +614,8 @@ export type {
   BrokerageCase,
   BrokerageCaseStatus,
   BrokerageCaseType,
+  EntryRequestTargetType,
+  EntryRequestClaimResult,
   AiExperienceDraft,
   AiExperienceDraftStatus,
   CorrectionEvent,
@@ -643,3 +651,4 @@ export const listObjectImportCandidates: typeof memory.listObjectImportCandidate
 export const retryObjectImportTarget: typeof memory.retryObjectImportTarget = (...args) => repo.retryObjectImportTarget(...args);
 
 export const reviewObjectImportCandidate: typeof memory.reviewObjectImportCandidate = (...args) => repo.reviewObjectImportCandidate(...args);
+export const autoSaveObjectImportCandidates: typeof memory.autoSaveObjectImportCandidates = (...args) => repo.autoSaveObjectImportCandidates(...args);

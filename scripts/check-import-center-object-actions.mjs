@@ -97,7 +97,7 @@ assert(page.includes("advanced=1#job-mapping"), "legacy advanced recovery must r
 assert(partyPage.includes("redirect(`/clients/new?returnTo="), "legacy party creation must forward to the unified client form");
 assert(partyPage.includes('params.from === "entry"'), "legacy entry link must preserve the entry return path");
 assert(objectActions.includes("return redirectObjectUploadError(flash);"), "object upload persistence failures must return to the selected target instead of throwing a route error");
-assert.equal((propertyObjectSection.match(/name=\"returnTo\" value=\{returnTo\}/g) ?? []).length, 3, "property review/retry/refresh forms must preserve the central return path");
+assert.equal((propertyObjectSection.match(/name=\"returnTo\" value=\{returnTo\}/g) ?? []).length, 2, "property retry/refresh forms must preserve the central return path");
 assert(actions.includes("safeObjectImportRefreshReturnTo"), "object refresh action must validate the central return path");
 assert(actions.includes('parsed.searchParams.get("targetId") === targetId'), "object refresh return path must be bound to the reviewed target");
 assert(actions.includes("redirectUrl.searchParams.set(key, value)"), "object refresh redirect must merge feedback into an existing return query");

@@ -56,14 +56,14 @@ async function run(overrides = {}, options = {}) {
       state.writes += 1;
       return { rows: [{ confirmedDataJson: stored }] };
     }
-    if (sql.startsWith("SELECT case_id FROM object_import_targets")) return { rows: [{ case_id: input.caseId }] };
+    if (sql.startsWith("SELECT case_id,target_type FROM object_import_targets") || sql.startsWith("SELECT case_id FROM object_import_targets")) return { rows: [{ case_id: input.caseId, target_type: "party" }] };
     if (sql.includes("FROM object_import_targets")) return { rows: [{ id: "target-a", caseId: input.caseId, targetType: "party", targetId: "party-a", sourceAttachmentId: "attachment-a", tenantId: context.tenantId, userId: context.userId, importJobId: "job-a" }] };
     if (sql.includes("FROM clients")) return { rows: [{ id: "party-a", lifecycleStatus: "active", name: "before" }] };
     if (sql.includes("FROM object_import_fields")) return { rows: [{ id: "field-a", provenance: { sourceAttachmentId: options.wrongSourceId ? "other" : "attachment-a", sourceFileHash: "hash-a" } }] };
     if (/^(UPDATE (clients|object_import_)|INSERT INTO audit_logs)/.test(sql)) {
       state.writes += 1;
       if (options.auditFailure && sql.startsWith("INSERT INTO audit_logs")) throw new Error("audit_insert_failed");
-      return { rows: [], rowCount: 1 };
+      return { rows: sql.startsWith("UPDATE clients") ? [{ id: "party-a", lifecycleStatus: "active", name: "after" }] : [], rowCount: 1 };
     }
     throw new Error(`Unexpected SQL: ${sql}`);
   } };
@@ -72,7 +72,8 @@ async function run(overrides = {}, options = {}) {
     mapObjectImportTarget: (row) => row, mapObjectImportCandidate: (row) => row, mapClient: (row) => row,
     readCaseAssociationDraft: () => ({ parties: [{ partyId: "party-a" }] }),
     validateObjectImportReview: () => ({ ok: true, key: "name", value: "Neo Test Manual", recordValue: "Neo Test Manual" }),
-    buildObjectVersionFingerprint: () => "v2", genId: () => "audit-a",
+    recordObjectImportManualCaseClears: (_previous, next) => ({ ...next }),
+    buildObjectVersionFingerprint: () => "v2", objectImportColumn: () => "name", objectImportTargetStatusSql: () => "'needs_review'", genId: () => "audit-a",
     mapBrokerageCase: (row) => row, resolveRecordVisibility: () => ({ canWrite: !options.readOnly }) };
   vm.runInNewContext(compiled, sandbox);
   const result = options.standalone
@@ -123,7 +124,7 @@ for (const failure of [{ finalWriteMissing: true }, { auditFailure: true }]) {
 }
 const standalone = parsed.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === "reviewObjectImportCandidate").getText(parsed);
 assert(standalone.indexOf('SELECT * FROM brokerage_cases') < standalone.indexOf('SELECT * FROM object_import_targets'));
-assert.match(standalone, /target.caseId !== targetHint.rows\[0\].case_id/);
+assert.match(standalone, /target.caseId !== hintedCaseId/);
 console.log("PASS: combined-save transaction simulation commits success and rolls back missing final case write/audit failure; unreadable source denies before mutation; review entry points lock case before target.");
 
 for (const options of [{ inactive: true }, { unreadableSource: true }, { wrongHash: true }, { wrongSourceId: true }]) {

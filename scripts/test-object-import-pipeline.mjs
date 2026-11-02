@@ -190,6 +190,27 @@ assert.equal((await data.getObjectImportTarget({ ...scope, id: noFieldsTarget.id
 assert.equal((await data.getObjectImportTarget({ ...scope, id: target.id })).status, "completed");
 assert.equal((await data.getClientById(person.id, tenant.id)).name, beforeNoFields.name, "zero-field failure must preserve the existing object value");
 assert.equal((await data.listImportJobs(user.id, 500, tenant.id)).find((item) => item.id === noFieldsTarget.importJobId).status, "failed");
+// The model can return every catalog key as an empty placeholder. A non-empty
+// array of placeholders must fail exactly like an empty extraction.
+extractionFields = [field("applicant.name", "", 0), field("applicant.phone", "", 0)];
+await assert.rejects(uploadObjectImportAction(form(person.id, "%PDF-empty-placeholders", "placeholders.pdf")), /REDIRECT:/);
+const placeholderTarget = (await data.listObjectImportTargets({ ...scope, caseId: brokerageCase.id })).find((item) => item.id !== target.id && item.id !== noFieldsTarget.id);
+assert(placeholderTarget);
+assert.deepEqual(await processIdentityImportJob({ ...scope, jobId: placeholderTarget.importJobId }), { ok: false, status: "failed", error: "object_import_no_supported_fields" });
+assert.equal((await data.getObjectImportTarget({ ...scope, id: placeholderTarget.id })).status, "failed");
+assert.equal((await data.listImportJobs(user.id, 500, tenant.id)).find((item) => item.id === placeholderTarget.importJobId).status, "failed");
+const pendingPhonePerson = await data.addClient({ tenantId: tenant.id, ownerUserId: user.id, name: "Pending phone", phone: "", budgetType: "total_price", purpose: "unspecified", loanPreApprovalStatus: "not_applied", stage: "lead", temperature: "unspecified", brokerageContractType: "none", amlCheckStatus: "not_required" });
+const pendingPhoneForm = new FormData();
+pendingPhoneForm.set("targetType", "party"); pendingPhoneForm.set("targetId", pendingPhonePerson.id);
+pendingPhoneForm.set("uploadFile", new File(["%PDF-pending-phone"], "pending-phone.pdf", { type: "application/pdf" }));
+extractionFields = [{ ...field("applicant.name", "Wrong replacement"), uncertainty: "clear" }, { ...field("applicant.phone", "090-3333-4444"), uncertainty: "clear" }];
+await assert.rejects(uploadObjectImportAction(pendingPhoneForm), /REDIRECT:/);
+const [pendingPhoneTarget] = await data.listObjectImportTargets({ ...scope, targetType: "party", targetId: pendingPhonePerson.id });
+assert(pendingPhoneTarget);
+assert.equal((await processIdentityImportJob({ ...scope, jobId: pendingPhoneTarget.importJobId })).ok, true);
+assert.equal((await data.getClientById(pendingPhonePerson.id, tenant.id)).phone, "090-3333-4444", "clear model value must save to the empty formal field");
+assert.equal((await data.getClientById(pendingPhonePerson.id, tenant.id)).name, "Pending phone", "model reading must never replace an existing human value");
+assert((await data.listObjectImportCandidates({ ...scope, targetId: pendingPhoneTarget.id })).find((item) => item.fieldKey === "phone").provenance.autoSavedAt, "auto save must retain provenance without pretending human confirmation");
 extractionFields = [field("applicant.name", "Extracted name"), field("applicant.phone", "090-1234-5678", 0.6), field("guarantor.name", "Must not leak"), field("applicant.residenceCardNumber", "Must not persist")];
 for (const mutation of [
   { mutation: { caseId: "forged-case" }, error: /metadata_mutated/ },
@@ -427,6 +448,35 @@ const atomicConflict = await data.saveCaseWorkbenchWithObjectReview({
 assert.deepEqual(atomicConflict, { ok: false, reason: "conflict" });
 assert.deepEqual(await data.getBrokerageCaseById({ userId: user.id, tenantId: tenant.id, caseId: atomicCase.id }), atomicCaseBeforeConflict);
 assert.equal((await data.getClientById(atomicPerson.id, tenant.id)).phone, "000-1111-2222");
+// A human-cleared case fact is a durable decision. A pending clear model
+// candidate must not fill it back on a later worker run; an explicit human
+// value clears the guard again.
+const manualClearProperty = await data.addProperty({ ...scope, name: "Manual clear property", area: "manual", address: "Manual address", listingPrice: 1000, createdByUserId: user.id, currentOwnerUserId: user.id });
+const manualClearData = writeCaseAssociationData({}, { parties: [], primaryPropertyId: manualClearProperty.id }, {});
+manualClearData["lease.deposit"] = "Existing human value";
+const manualClearCase = await data.saveBrokerageCaseExtractionReview({ ...scope, caseType: "unit_sale", caseTitle: "Manual clear guard", confirmedDataJson: manualClearData, sourceImportJobIds: [], reviewItems: [] });
+const manualClearJob = await data.addImportJob({ ...scope, sourceType: "identity", targetEntity: "properties", title: "Manual clear guard", status: "queued", idempotencyKey: "manual-clear-guard", notes: JSON.stringify({ objectImport: { caseId: manualClearCase.id, targetObjectType: "property", targetObjectId: manualClearProperty.id, targetVersion: buildObjectVersionFingerprint(manualClearProperty) } }) });
+await data.addPrivateAttachment({ ...scope, targetType: "import_job", targetId: manualClearJob.id, fileName: "manual-clear.pdf", content: Buffer.from("synthetic manual clear source") });
+await persistObjectReaderJobExtraction({ ...scope, job: manualClearJob, response: { documentType: "important_matters", pages: [{ pageNumber: 1, lines: ["物件名 Manual clear property", "敷金 750万円"] }], candidates: [{ fieldKey: "property.name", value: "Manual clear property", pageNumber: 1, sourceText: "物件名 Manual clear property", uncertainty: "clear", subjectKey: "property", subjectLabel: "物件" }, { fieldKey: "lease.deposit", value: "750万円", pageNumber: 1, sourceText: "敷金 750万円", uncertainty: "clear", subjectKey: "property", subjectLabel: "物件" }] } });
+const manualClearTarget = await data.getObjectImportTargetByJob({ ...scope, importJobId: manualClearJob.id });
+assert(manualClearTarget && manualClearTarget.status === "needs_review", JSON.stringify(manualClearTarget));
+const manualClearBefore = await data.getBrokerageCaseById({ ...scope, caseId: manualClearCase.id });
+const manualClearSave = await data.saveCaseWorkbenchWithObjectReview({ context, caseId: manualClearCase.id, confirmedDataJson: { ...manualClearBefore.confirmedDataJson, "lease.deposit": "" } });
+assert.equal(manualClearSave.ok, true);
+const manualClearAfter = await data.getBrokerageCaseById({ ...scope, caseId: manualClearCase.id });
+assert(manualClearAfter);
+assert.equal(manualClearAfter.confirmedDataJson["lease.deposit"], "");
+assert.deepEqual(manualClearAfter.confirmedDataJson.__manualClearedObjectImportCaseFields, ["lease.deposit"]);
+assert.equal(await data.autoSaveObjectImportCandidates({ ...scope, targetId: manualClearTarget.id }), 0, "pending model save must respect a human-cleared case field");
+const manualClearAfterWorker = await data.getBrokerageCaseById({ ...scope, caseId: manualClearCase.id });
+assert(manualClearAfterWorker);
+assert.equal(manualClearAfterWorker.confirmedDataJson["lease.deposit"], "");
+const manualRestoreSave = await data.saveCaseWorkbenchWithObjectReview({ context, caseId: manualClearCase.id, confirmedDataJson: { ...manualClearAfterWorker.confirmedDataJson, "lease.deposit": "Human explicit value" } });
+assert.equal(manualRestoreSave.ok, true);
+const manualRestoreAfter = await data.getBrokerageCaseById({ ...scope, caseId: manualClearCase.id });
+assert(manualRestoreAfter);
+assert.equal(manualRestoreAfter.confirmedDataJson["lease.deposit"], "Human explicit value");
+assert.equal(manualRestoreAfter.confirmedDataJson.__manualClearedObjectImportCaseFields, undefined);
 // The server action must turn a stale CAS result into a contextual case redirect;
 // it must not swallow the conflict or retry with the old expected version.
 const actionLoad = Module._load;
@@ -654,7 +704,7 @@ const renderedObjectUpload = renderToStaticMarkup(React.createElement(ObjectImpo
 assert.match(renderedObjectUpload, /name="caseId"/);
 assert.match(renderedObjectUpload, /name="targetType" value="property"/);
 assert.match(renderedObjectUpload, /name="targetId"/);
-assert.match(renderedObjectUpload, />解析<\/button>/, "object card upload must expose its actual localized submit button");
+assert.match(renderedObjectUpload, />读取<\/button>/, "object card upload must expose its actual localized submit button");
 assert.doesNotMatch(renderedObjectUpload, /正在读取/, "idle object upload must not claim processing before submission");
 const objectUploadModulePath = resolve(root, "src/components/object-import-upload.tsx");
 const pendingObjectUploadLoad = Module._load;

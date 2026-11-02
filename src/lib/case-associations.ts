@@ -47,6 +47,11 @@ export function getCasePersonRoleLabel(locale: Locale, role: CasePersonRole) {
 }
 
 const CASE_ASSOCIATION_ERROR_MESSAGES: Record<string, Record<Locale, string>> = {
+  "case_title_duplicate": {
+    ja: "案件名が既存記録と競合する可能性があります。既存候補を開くか、別名にするか、同名作成を明示して確認してください。",
+    zh: "案件名可能与已有记录冲突。请打开可见候选、改用其他名称，或明确勾选仍要新建同名案件。",
+    ko: "안건명이 기존 기록과 충돌할 수 있습니다. 보이는 후보를 열거나 다른 이름을 사용하거나, 같은 이름으로 만들기를 명시해 주세요.",
+  },
   "案件草稿格式不正确，请重新选择资料。": {
     ja: "案件草稿の形式が正しくありません。資料を選び直してください。",
     zh: "案件草稿格式不正确，请重新选择资料。",

@@ -8,9 +8,9 @@ export const dynamic = "force-dynamic";
 type NewClientPageProps = { searchParams?: Promise<{ returnTo?: string }> };
 
 const copy = {
-  ja: { title: "新規顧客登録", desc: "資料の読み取りと手入力を組み合わせ、候補を確認してから保存します。", back: "顧客一覧へ戻る" },
-  zh: { title: "新建客户", desc: "资料读取和手动填写可以并用，确认候选后再保存。", back: "返回客户列表" },
-  ko: { title: "신규 고객 등록", desc: "자료 읽기와 직접 입력을 함께 사용하고, 후보를 확인한 뒤 저장합니다.", back: "고객 목록으로" },
+  ja: { title: "新規顧客登録", desc: "資料をアップロードすると、判読できて不一致のない既存項目は正式な顧客記録へ自動保存されます。氏名など必須項目が不足する場合は補完後に保存でき、保存後も編集・再確認できます。", back: "顧客一覧へ戻る" },
+  zh: { title: "新建客户", desc: "上传资料后，清晰且无冲突的现有字段会自动写入正式客户记录；缺少姓名等必填项时请补充后保存，保存后仍可编辑和复核。", back: "返回客户列表" },
+  ko: { title: "신규 고객 등록", desc: "자료를 업로드하면 명확하고 불일치가 없는 기존 항목은 정식 고객 기록에 자동 저장됩니다. 이름 등 필수 항목이 없으면 보완 후 저장할 수 있으며, 저장 후에도 수정하고 다시 확인할 수 있습니다.", back: "고객 목록으로" },
 } as const;
 
 function normalizeReturnTo(value: string | undefined): string {

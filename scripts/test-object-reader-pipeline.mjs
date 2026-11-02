@@ -82,6 +82,8 @@ const { createRequestContext } = require(resolve(root, "src/lib/visibility-resol
 const context = createRequestContext(session);
 const currentCase = await data.getBrokerageCaseById({ caseId: brokerageCase.id, tenantId: tenant.id, userId: user.id });
 assert(currentCase);
+assert.equal(currentCase.confirmedDataJson["lease.rent"], "120000", "clear case facts must be saved immediately after recognition");
+assert.equal((await data.listObjectImportCandidates({ ...scope, targetId: target.id })).find((item) => item.id === rent.id).finalSource, "model_draft");
 const leaseData = { ...currentCase.confirmedDataJson, "lease.rent": "120000" };
 const savedLease = await data.saveCaseWorkbenchWithObjectReview({ context, caseId: brokerageCase.id, confirmedDataJson: leaseData, objectReview: { context, targetId: target.id, fieldId: rent.id, expectedVersion: target.targetVersion, expectedCandidateValue: rent.candidateValue, decision: "confirm", value: "120000", caseFieldKey: "lease.rent", caseFieldValue: "120000" } });
 assert.equal(savedLease.ok, true);
@@ -133,8 +135,9 @@ readerResponse = { documentType: "property_lease_document", pages: [{ pageNumber
 const ambiguousForm = new FormData(); ambiguousForm.set("caseId", secondCase.id); ambiguousForm.set("targetType", "property"); ambiguousForm.set("targetId", secondProperty.id); ambiguousForm.set("uploadFile", new File(["%PDF-ambiguous"], "ambiguous.pdf", { type: "application/pdf" }));
 await assert.rejects(uploadObjectImportAction(ambiguousForm), /REDIRECT:/);
 const [ambiguousTarget] = await data.listObjectImportTargets({ ...scope, caseId: secondCase.id });
-assert.equal((await processIdentityImportJob({ ...scope, jobId: ambiguousTarget.importJobId })).ok, true);
+assert.deepEqual(await processIdentityImportJob({ ...scope, jobId: ambiguousTarget.importJobId }), { ok: false, status: "failed", error: "object_reader_ambiguous_subject" });
 assert.equal((await data.getObjectImportTarget({ ...scope, id: ambiguousTarget.id })).status, "conflict");
+assert.equal((await data.listImportJobs(user.id, 500, tenant.id)).find((item) => item.id === ambiguousTarget.importJobId).status, "failed");
 assert.equal((await data.listObjectImportCandidates({ ...scope, targetId: ambiguousTarget.id })).length, 0);
 
 const thirdProperty = await data.addProperty({ tenantId: tenant.id, createdByUserId: user.id, currentOwnerUserId: user.id, name: "Third property", listingPrice: 300000 });
@@ -152,6 +155,17 @@ assert.equal(notFoundAfter.status, "failed");
 assert.equal(notFoundAfter.errorCode, "object_reader_no_readable_fields");
 assert.equal((await data.listImportJobs(user.id, 500, tenant.id)).find((item) => item.id === notFoundTarget.importJobId).status, "failed");
 assert.deepEqual(await data.getPropertyById(thirdProperty.id, tenant.id), thirdPropertyBefore, "unreadable object reader input must preserve the whole property record");
+
+const emptyReaderProperty = await data.addProperty({ tenantId: tenant.id, createdByUserId: user.id, currentOwnerUserId: user.id, name: "Empty reader property", listingPrice: 400000 });
+const emptyReaderBefore = await data.getPropertyById(emptyReaderProperty.id, tenant.id);
+const emptyReaderCase = await data.saveBrokerageCaseExtractionReview({ tenantId: tenant.id, userId: user.id, caseType: "rental", caseTitle: "Empty object reader", confirmedDataJson: writeCaseAssociationData({}, { parties: [], primaryPropertyId: emptyReaderProperty.id }, { propertyName: emptyReaderProperty.name }), sourceImportJobIds: [], reviewItems: [] });
+readerResponse = { documentType: "unknown_property_document", pages: [{ pageNumber: 1, lines: [] }], candidates: [] };
+const emptyReaderForm = new FormData(); emptyReaderForm.set("caseId", emptyReaderCase.id); emptyReaderForm.set("targetType", "property"); emptyReaderForm.set("targetId", emptyReaderProperty.id); emptyReaderForm.set("uploadFile", new File(["%PDF-empty-reader"], "empty-reader.pdf", { type: "application/pdf" }));
+await assert.rejects(uploadObjectImportAction(emptyReaderForm), /REDIRECT:/);
+const [emptyReaderTarget] = await data.listObjectImportTargets({ ...scope, caseId: emptyReaderCase.id });
+assert.deepEqual(await processIdentityImportJob({ ...scope, jobId: emptyReaderTarget.importJobId }), { ok: false, status: "failed", error: "object_reader_no_readable_fields" });
+assert.equal((await data.getObjectImportTarget({ ...scope, id: emptyReaderTarget.id })).status, "failed");
+assert.deepEqual(await data.getPropertyById(emptyReaderProperty.id, tenant.id), emptyReaderBefore, "empty reader input must preserve the whole property record");
 
 // Standalone property-profile intake has no case association. It may write
 // only the 14 existing property fields; valid lease keys are out of context
@@ -202,5 +216,28 @@ assert.equal(multiTargets.length, 3, "multi-file standalone property upload must
 assert.equal(new Set(multiTargets.map((item) => item.sourceAttachmentId)).size, 3, "multi-file property sources must retain independent attachments");
 const redirectedJobs = new URL(`http://brokerdesk.local${lastRedirectUrl}`).searchParams.get("objectImportJobs")?.split(",") ?? [];
 assert.deepEqual(new Set(redirectedJobs), new Set(multiTargets.map((item) => item.importJobId)), "redirect must expose every queued property source job");
+
+// A queued source may outlive the user's membership change. The worker may
+// retain the review task, but it must not write formal fields without the
+// current capability/active membership.
+const restrictedProperty = await data.addProperty({ tenantId: tenant.id, createdByUserId: "user_ops", currentOwnerUserId: "user_ops", name: "Restricted property" });
+const restrictedTarget = await data.createObjectImportTarget({
+  id: "target_permission_downgrade",
+  tenantId: tenant.id,
+  userId: "user_ops",
+  importJobId: "job_permission_downgrade",
+  targetType: "property",
+  targetId: restrictedProperty.id,
+  targetVersion: "version-permission-downgrade",
+  status: "needs_review",
+  idempotencyKey: "permission-downgrade-key",
+  attemptCount: 1,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+});
+assert(await data.updateTenantMemberStatus({ tenantId: tenant.id, membershipId: "membership_cherry_admin", status: "suspended", actorUserId: user.id }));
+assert.equal(await data.autoSaveObjectImportCandidates({ tenantId: tenant.id, userId: "user_ops", targetId: restrictedTarget.id }), 0);
+assert.equal((await data.getObjectImportTarget({ tenantId: tenant.id, userId: "user_ops", id: restrictedTarget.id })).errorCode, "object_import_permission_denied");
+assert.equal((await data.getPropertyById(restrictedProperty.id, tenant.id)).name, "Restricted property");
 
 console.log("test-object-reader-pipeline: PASS");
