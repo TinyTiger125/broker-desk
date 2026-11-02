@@ -1191,9 +1191,9 @@ export function CaseOverview({
         }
         state={null}
       >
-        <div data-case-sticky-occluder aria-hidden="true" className="pointer-events-none fixed inset-x-0 top-0 z-10 h-[10.5rem] bg-[var(--background)] lg:top-16 lg:h-[6.5rem]" />
+        <div data-case-sticky-occluder aria-hidden="true" className="pointer-events-none fixed inset-x-0 top-0 z-10 h-[10.5rem] bg-[var(--background)] sm:h-[8.75rem] lg:top-16 lg:h-[6.5rem]" />
         {associationPanel}
-        <nav data-case-anchor-nav aria-label={locale === "zh" ? "案件章节" : locale === "ko" ? "안건 섹션" : "案件セクション"} className="sticky top-[10.5rem] z-20 rounded-xl border border-slate-200 bg-white px-2 py-2 shadow-sm lg:top-[10.5rem]">
+        <nav data-case-anchor-nav aria-label={locale === "zh" ? "案件章节" : locale === "ko" ? "안건 섹션" : "案件セクション"} className="sticky top-[10.5rem] z-20 rounded-xl border border-slate-200 bg-white px-2 py-2 shadow-sm sm:top-[8.75rem] lg:top-[10.5rem]">
           <div className="hidden items-center gap-1 sm:flex">
             {visibleAnchors.map((section) => (
               <a key={section.id} href={`#${section.id}`} onClick={(event) => { event.preventDefault(); setActiveSection(section.id); scrollToId(section.id); }} onKeyDown={(event) => activateAnchorWithKeyboard(event, section.id)} aria-current={activeSection === section.id ? "location" : undefined} className={`min-w-0 flex-1 truncate rounded-lg px-3 py-2 text-center text-xs font-black transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 ${activeSection === section.id ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"}`}>
