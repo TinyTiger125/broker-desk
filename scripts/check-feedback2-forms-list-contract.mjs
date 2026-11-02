@@ -43,6 +43,8 @@ assert(objectBrowser.includes("focus-visible:shadow-[inset_3px_0_0_#3158d8]"), "
 assert(objectBrowser.includes("{item.subtitle}"), "row target includes the surrounding subtitle content");
 assert(objectBrowser.includes("<ArchiveRecordButton"), "archive action remains rendered independently");
 assert(archiveButton.includes('role="alert"\n          data-list-row-ignore'), "archive failure alert remains outside row navigation");
+assert(!objectBrowser.includes('<div data-list-row-ignore className="flex min-w-0 flex-wrap items-center justify-between'), "passive updated-at text must remain part of whole-row navigation");
+assert(objectBrowser.includes('<div data-list-row-ignore className="max-w-44 space-y-1 text-right">'), "only the archive control subtree must be ignored by row navigation");
 assert(archiveButton.includes("event.stopPropagation()"), "archive action must not activate row navigation");
 assert(listReturnState.includes('if (event.target.closest("[data-list-row-ignore]")) return;'), "ignored row content must not write a return intent after row navigation is skipped");
 assert(listReturnState.includes('a[data-list-row-anchor]'), "keyboard row activation must allow the semantic row anchor only");

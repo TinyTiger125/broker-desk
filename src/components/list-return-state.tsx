@@ -234,6 +234,8 @@ export function ListReturnState({ children, listUrl, scope }: ListReturnStatePro
       if (!row || !root.contains(row) || ignoredTarget || (event.target.closest("a") && !rowAnchor)) return;
       const triggerKey = row.dataset.listRowReturnTrigger;
       if (!triggerKey) return;
+      if (rowAnchor && event.key === "Enter") return;
+      if (rowAnchor && (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)) return;
       event.preventDefault();
       rememberListReturnIntent({ listUrl: canonicalUrl, scope, triggerKey });
       navigateRow(row);

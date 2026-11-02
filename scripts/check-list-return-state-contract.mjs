@@ -544,6 +544,14 @@ function analyzeComponent(source) {
   assert.match(rememberText, /trigger\.dataset\.listReturnTrigger/, "activation must store the stable trigger id");
   assert.match(writes[0].getText(tree), /scrollY:\s*window\.scrollY/, "activation must store the real scroll position");
 
+  const keyboard = unwrap(directVariable(activationEffect.body, "activateRowByKeyboard", "activation effect"));
+  assert(ts.isArrowFunction(keyboard) && ts.isBlock(keyboard.body), "keyboard row activation must remain a direct block callback");
+  const keyboardText = keyboard.body.getText(tree);
+  assert.match(keyboardText, /rowAnchor\s*&&\s*event\.key\s*===\s*"Enter"\)\s*return;/, "native row-anchor Enter must remain browser-controlled");
+  assert.match(keyboardText, /rowAnchor\s*&&\s*\(event\.metaKey\s*\|\|\s*event\.ctrlKey\s*\|\|\s*event\.shiftKey\s*\|\|\s*event\.altKey\)\)\s*return;/, "modified row-anchor keys must not be hijacked");
+  assert.match(keyboardText, /event\.preventDefault\(\);/, "plain Space must use the shared custom row activation path");
+  assert.match(keyboardText, /rememberListReturnIntent\(\{\s*listUrl:\s*canonicalUrl,\s*scope,\s*triggerKey\s*\}\);/, "custom Space activation must record the return intent before navigation");
+
   const listenerStatement = activationEffect.body.statements.at(-2);
   assert(ts.isExpressionStatement(listenerStatement) && ts.isCallExpression(listenerStatement.expression) && listenerStatement.expression.expression.getText(tree) === "root.addEventListener", "activation effect must directly register its live listener");
   assert.equal(listenerStatement.expression.arguments[0]?.getText(tree), '"click"', "activation listener must handle clicks");
@@ -596,6 +604,114 @@ function compileFunction(source, filename, name) {
   return context.module.exports;
 }
 
+function compileActivationFunctions(source) {
+  const tree = parse(source, "list-return-state.tsx");
+  const findFunctionSnippet = (name) => {
+    const declarations = visit(tree, (node) => ts.isFunctionDeclaration(node) && node.name?.text === name);
+    if (declarations.length === 1) return declarations[0].getText(tree);
+    const variables = visit(tree, (node) => ts.isVariableDeclaration(node)
+      && ts.isIdentifier(node.name)
+      && node.name.text === name
+      && node.initializer
+      && (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer)));
+    assert.equal(variables.length, 1, `${name} must have one live function for interaction testing`);
+    return `const ${name} = ${variables[0].initializer.getText(tree)};`;
+  };
+  const functions = ["shouldRememberActivation", "rememberTrigger", "activateRowByKeyboard"].map(findFunctionSnippet);
+  const output = ts.transpileModule(
+    `${functions.join("\n")}\nmodule.exports = { shouldRememberActivation, rememberTrigger, activateRowByKeyboard };`,
+    { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } },
+  ).outputText;
+
+  class FakeElement {
+    constructor({ row, anchor = false, ignored = false, trigger = false } = {}) {
+      this.row = row;
+      this.anchor = anchor;
+      this.ignored = ignored;
+      this.trigger = trigger;
+      this.dataset = { listReturnTrigger: "party:p1" };
+    }
+
+    closest(selector) {
+      if (selector === "[data-list-row-link]") return this.row;
+      if (selector === "a[data-list-row-anchor]") return this.anchor ? this : null;
+      if (selector === "a") return this.anchor ? this : null;
+      if (selector === "[data-list-return-trigger]") return this.trigger ? this : null;
+      if (selector === "[data-list-row-ignore]") return this.ignored ? this : null;
+      if (selector === "a,button,input,select,textarea,label,[data-list-row-ignore]") return this.anchor || this.ignored ? this : null;
+      if (selector === "button,input,select,textarea,label,[data-list-row-ignore]") return this.ignored ? this : null;
+      return null;
+    }
+
+    hasAttribute() {
+      return false;
+    }
+  }
+  class FakeAnchor extends FakeElement {}
+  const row = new FakeElement();
+  row.dataset = { listRowLink: "/parties/p1?returnTo=%2Forganize-center", listRowReturnTrigger: "party:p1" };
+  const anchor = new FakeAnchor({ row, anchor: true, trigger: true });
+  const passiveTimestamp = new FakeElement({ row });
+  const blankRowTarget = new FakeElement({ row });
+  const archiveTarget = new FakeElement({ row, ignored: true });
+  const root = { contains: (node) => [row, anchor, passiveTimestamp, blankRowTarget, archiveTarget].includes(node) };
+  const navigation = [];
+  const intents = [];
+  const writes = [];
+  const context = {
+    module: { exports: {} },
+    exports: {},
+    Element: FakeElement,
+    HTMLAnchorElement: FakeAnchor,
+    URL,
+    URLSearchParams,
+    window: { scrollY: 417 },
+    root,
+    key: "list-return-state:organize:/organize-center?type=party",
+    canonicalUrl: "/organize-center?type=party",
+    scope: "organize",
+    rememberListReturnIntent: (value) => intents.push(value),
+    writeStoredState: (key, value) => writes.push([key, value]),
+    navigateRow: (value) => navigation.push(value),
+  };
+  vm.runInNewContext(output, context, { filename: "list-return-state-interactions.cjs" });
+  return { api: context.module.exports, fixtures: { row, anchor, passiveTimestamp, blankRowTarget, archiveTarget }, navigation, intents, writes };
+}
+
+function runInteractionBehavior(source) {
+  const { api, fixtures, navigation, intents, writes } = compileActivationFunctions(source);
+  const eventBase = { metaKey: false, ctrlKey: false, shiftKey: false, altKey: false };
+  const dispatchKey = (target, key, modifiers = {}) => {
+    let prevented = false;
+    api.activateRowByKeyboard({ ...eventBase, ...modifiers, key, target, preventDefault: () => { prevented = true; } });
+    return prevented;
+  };
+
+  assert.equal(dispatchKey(fixtures.anchor, "Enter", { metaKey: true }), false, "modified Enter on a native row anchor must remain browser-controlled");
+  assert.equal(dispatchKey(fixtures.anchor, "Enter"), false, "plain Enter on a native row anchor must remain browser-controlled");
+  assert.equal(dispatchKey(fixtures.anchor, " "), true, "plain Space on a native row anchor must use custom activation");
+  assert.equal(dispatchKey(fixtures.anchor, " ", { ctrlKey: true }), false, "modified Space must not be hijacked");
+  assert.equal(navigation.length, 1, "only plain Space should custom-navigate the anchor");
+  assert.equal(intents.length, 1, "only plain Space should write a return intent through custom activation");
+  assert.equal(writes.length, 0, "keyboard activation must not use the click storage writer directly");
+
+  const clickBase = { button: 0, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false };
+  api.rememberTrigger({ ...clickBase, target: fixtures.anchor });
+  assert.equal(writes.length, 1, "normal native anchor activation must record its return state through the click path");
+  assert.equal(navigation.length, 1, "normal native anchor activation must not be double-navigated by the row handler");
+  api.rememberTrigger({ ...clickBase, metaKey: true, target: fixtures.anchor });
+  assert.equal(writes.length, 1, "modified native anchor activation must not overwrite return state");
+  api.rememberTrigger({ ...clickBase, target: fixtures.passiveTimestamp });
+  assert.equal(navigation.length, 2, "passive updated-at text must retain whole-row click navigation");
+  assert.equal(intents.length, 2, "passive updated-at navigation must retain the row return intent");
+  api.rememberTrigger({ ...clickBase, target: fixtures.blankRowTarget });
+  assert.equal(navigation.length, 3, "blank row space must retain whole-row click navigation");
+  assert.equal(intents.length, 3, "blank row navigation must retain the row return intent");
+  api.rememberTrigger({ ...clickBase, target: fixtures.archiveTarget });
+  assert.equal(navigation.length, 3, "archive controls must remain outside whole-row click navigation");
+  assert.equal(intents.length, 3, "archive controls must not write a row return intent");
+}
+
 function runReturnToBoundaryChecks() {
   const party = compileFunction(sources.partyProfile, "party-profile.ts", "normalizePartyReturnTo");
   const property = compileFunction(sources.propertyEdit, "properties-edit.tsx", "normalizeReturnTo");
@@ -622,6 +738,7 @@ function runReturnToBoundaryChecks() {
 analyzeComponent(sources.component);
 analyzeAppNav(sources.appNav);
 runPureBehavior(sources.component);
+runInteractionBehavior(sources.component);
 for (const spec of pageSpecs) analyzePage(sources[spec.key], spec);
 runReturnToBoundaryChecks();
 

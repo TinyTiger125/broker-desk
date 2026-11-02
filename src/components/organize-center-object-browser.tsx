@@ -282,10 +282,10 @@ export function OrganizeCenterObjectBrowser({
                 </div>
               </a>
 
-              <div data-list-row-ignore className="flex min-w-0 flex-wrap items-center justify-between gap-3 md:col-span-2 xl:col-span-1 xl:flex-col xl:items-end xl:justify-start">
+              <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 md:col-span-2 xl:col-span-1 xl:flex-col xl:items-end xl:justify-start">
                 <span className="text-xs font-bold tabular-nums text-slate-500">{copy.taskUpdated}: {item.updatedLabel}</span>
                 {item.canArchive ? (
-                  <div className="max-w-44 space-y-1 text-right"><ArchiveRecordButton
+                  <div data-list-row-ignore className="max-w-44 space-y-1 text-right"><ArchiveRecordButton
                     entityType={item.type}
                     entityId={item.id}
                     recordLabel={item.title}
