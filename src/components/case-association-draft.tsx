@@ -22,6 +22,8 @@ import { CASE_PERSON_ROLES, getCasePersonRoleLabel, localizeCaseAssociationError
 
 type Candidate = { id: string; name: string; address?: string; searchText?: string };
 type CreateAction<State> = (previousState: State, formData: FormData) => Promise<State>;
+type WorkflowOption = { value: string; label: string };
+type WorkflowGroup = { id: string; label: string; options: WorkflowOption[] };
 
 type CaseAssociationDraftProps = {
   locale: Locale;
@@ -30,7 +32,7 @@ type CaseAssociationDraftProps = {
   candidates: Candidate[];
   properties: Candidate[];
   existingCases: Array<{ id: string; title: string }>;
-  workflowOptions: Array<{ value: string; label: string }>;
+  workflowGroups: WorkflowGroup[];
   createCaseAction: CreateAction<CaseCreationActionState>;
   createPersonAction: CreateAction<ClientFormActionState>;
   createPropertyAction: CreateAction<PropertyFormActionState>;
@@ -365,7 +367,7 @@ export function CaseAssociationDraft({
   candidates: initialCandidates,
   properties: initialProperties,
   existingCases,
-  workflowOptions,
+  workflowGroups,
   createCaseAction,
   createPersonAction,
   createPropertyAction,
@@ -382,7 +384,8 @@ export function CaseAssociationDraft({
   const existingCaseExactMatch = caseTitle.trim()
     ? existingCases.some((item) => item.title.trim().toLocaleLowerCase() === caseTitle.trim().toLocaleLowerCase())
     : false;
-  const [workflowType, setWorkflowType] = useState(workflowOptions[0]?.value ?? "rental_application");
+  const firstWorkflowOption = workflowGroups[0]?.options[0];
+  const [workflowType, setWorkflowType] = useState(firstWorkflowOption?.value ?? "rental_new_application");
   const [previewKind, setPreviewKind] = useState<PreviewKind>("customer");
   const [caseFieldValues, setCaseFieldValues] = useState<Record<string, string>>({});
   const [manualCaseFieldValues, setManualCaseFieldValues] = useState<Record<string, string>>({});
@@ -613,7 +616,7 @@ export function CaseAssociationDraft({
         <FormSection className="space-y-3">
           <h2 className="text-base font-black text-slate-950">{text.caseInfo}</h2>
           <div className="grid gap-3 md:grid-cols-2">
-            <label className="space-y-1 text-sm font-semibold text-slate-700"><span>{text.workflowType}</span><select name="workflowType" value={workflowType} onChange={(event) => setWorkflowType(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base text-slate-900 focus:border-[#0046ad] focus:ring-2 focus:ring-blue-100 sm:text-sm">{workflowOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+            <label className="space-y-1 text-sm font-semibold text-slate-700"><span>{text.workflowType}</span><select name="workflowType" value={workflowType} onChange={(event) => setWorkflowType(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base text-slate-900 focus:border-[#0046ad] focus:ring-2 focus:ring-blue-100 sm:text-sm">{workflowGroups.map((group) => <optgroup key={group.id} label={group.label}>{group.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</optgroup>)}</select></label>
             <div className="space-y-1 text-sm font-semibold text-slate-700"><label htmlFor="new-case-title">{text.caseTitle}</label><input id="new-case-title" name="caseTitle" value={caseTitle} onChange={(event) => { setCaseTitle(event.target.value); setAllowDuplicateCase(false); }} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-base text-slate-900 focus:border-[#0046ad] focus:ring-2 focus:ring-blue-100 sm:text-sm" />{caseTitle.trim() ? <label className="flex items-start gap-2 pt-1 text-xs font-semibold text-slate-700"><input type="checkbox" data-case-allow-duplicate checked={allowDuplicateCase} onChange={(event) => setAllowDuplicateCase(event.target.checked)} className="mt-0.5" />{text.allowDuplicateCase}</label> : null}{existingCaseMatches.length > 0 ? <div className="space-y-1 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900"><p className="font-bold">{text.existingCase}</p><p className="font-normal leading-5 text-amber-800">{text.existingCaseHint}</p>{existingCaseMatches.map((item) => <Link key={item.id} href={`/cases/${encodeURIComponent(item.id)}`} className="block rounded px-1 py-1 underline hover:bg-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#0046ad]">{item.title}</Link>)}{existingCaseMatchesAll.length > existingCaseMatches.length ? <p className="font-normal text-amber-800">+{existingCaseMatchesAll.length - existingCaseMatches.length}</p> : null}{existingCaseExactMatch ? <><p role="alert" className="pt-1 font-bold text-rose-800">{text.duplicateCase}</p><button type="button" onClick={() => setAllowDuplicateCase(true)} className="mt-1 rounded border border-amber-300 bg-white px-2 py-1 font-bold text-amber-900 hover:bg-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#0046ad]">{text.continueDuplicateCase}</button></> : null}</div> : null}</div>
           </div>
         </FormSection>

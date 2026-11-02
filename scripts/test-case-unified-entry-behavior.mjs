@@ -137,7 +137,7 @@ for (const [fileName, fileType, expectedMessage] of [
 }
 const form = new FormData();
 setEntryIntent(form);
-form.set("workflowType", "rental_application");
+form.set("workflowType", "rental_new_application");
 form.set("caseTitle", "Explicit target entry");
 form.set("associationDraftJson", associationJson);
 form.set("caseUploadTarget", "property");
@@ -156,6 +156,7 @@ const caseId = new URL(redirectUrl, "http://broker-desk.local").pathname.split("
 assert(caseId, "create+upload must return to the created case");
 const createdCase = await data.getBrokerageCaseById({ tenantId: tenant.id, userId: user.id, caseId });
 assert.equal(createdCase?.caseTitle, "Explicit target entry");
+assert.equal(createdCase?.confirmedDataJson?.__workflowType, "rental_new_application", "a detailed case type must persist through the normal entry action");
 const attachments = await data.listAttachmentLinks({ tenantId: tenant.id, targetType: "case", targetId: caseId, limit: 20 });
 assert.equal(attachments.length, 1, "the queued original must be linked once into the case archive");
 const queuedAttachment = await data.getAttachmentByIdForTenant({ tenantId: tenant.id, id: attachments[0].attachmentId });

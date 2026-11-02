@@ -52,6 +52,7 @@ import { resolveCasePropertyAddressPresentation } from "@/lib/case-property-addr
 import { formatCaseDateForDisplay } from "@/lib/case-date";
 import { CASE_PERSON_PREFILL_FIELDS, type CasePersonPrefillCandidate } from "@/lib/case-person-prefill";
 import { extractFreeformPartyNote, extractPartyProfileFromNotes } from "@/lib/party-profile";
+import { getCaseWorkflowTypeLabel } from "@/lib/options";
 
 export const dynamic = "force-dynamic";
 
@@ -576,6 +577,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
   let brokerageCase = caseVisibility.brokerageCase;
   if (!brokerageCase) notFound();
   const initiallyVisibleCase = brokerageCase;
+  const caseTypeLabel = getCaseWorkflowTypeLabel(locale, brokerageCase.confirmedDataJson.__workflowType);
   const canWriteCase = caseVisibility.resolution.outcome === "owner_write";
   const canArchiveCase = canWriteCase
     && session.membership.status === "active"
@@ -1359,6 +1361,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
           key={`case-overview-${query?.flash ?? "initial"}-${initialFieldKey ?? "none"}`}
           caseId={brokerageCase.id}
           caseTitle={brokerageCase.caseTitle}
+          caseTypeLabel={caseTypeLabel}
           applicantSummary={applicantSummary}
           propertySummary={propertySummary}
           guaranteeCompanySummary={guaranteeCompanySummary}
@@ -1396,6 +1399,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
           key={`case-overview-${query?.flash ?? "initial"}-${query?.edit ?? "0"}-${initialFieldKey ?? "none"}-${brokerageCase.updatedAt.toISOString()}`}
           caseId={brokerageCase.id}
           caseTitle={brokerageCase.caseTitle}
+          caseTypeLabel={caseTypeLabel}
           applicantSummary={applicantSummary}
           propertySummary={propertySummary}
           guaranteeCompanySummary={guaranteeCompanySummary}
@@ -1434,6 +1438,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
           <CaseIdentityHeader
             caseId={brokerageCase.id}
             caseTitle={brokerageCase.caseTitle}
+            caseTypeLabel={caseTypeLabel}
             applicantSummary={applicantSummary}
             propertySummary={propertySummary}
             guaranteeCompanySummary={guaranteeCompanySummary}

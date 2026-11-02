@@ -286,6 +286,7 @@ export function CaseEditPanel({
 export function CaseIdentityHeader({
   caseId,
   caseTitle,
+  caseTypeLabel,
   applicantSummary,
   propertySummary,
   guaranteeCompanySummary,
@@ -303,6 +304,7 @@ export function CaseIdentityHeader({
 }: {
   caseId: string;
   caseTitle: string;
+  caseTypeLabel?: string;
   applicantSummary: string;
   propertySummary: string;
   guaranteeCompanySummary: string;
@@ -347,6 +349,7 @@ export function CaseIdentityHeader({
           </div>
           {!compactHeader ? <h1 className="mt-1 break-words text-lg font-black tracking-tight text-slate-950 sm:text-2xl">{caseTitle}</h1> : null}
           <div className={`flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-semibold text-slate-600 ${compactHeader ? "mt-0" : "mt-2"}`}>
+            {caseTypeLabel ? <span>{locale === "zh" ? "案件类型" : locale === "ko" ? "안건 유형" : "案件種別"}：{caseTypeLabel}</span> : null}
             <span>{locale === "zh" ? "申请人" : locale === "ko" ? "신청인" : "申込人"}：{applicantSummary}</span>
             <span className="hidden sm:inline">{locale === "zh" ? "物件" : locale === "ko" ? "물건" : "物件"}：{propertySummary}</span>
             <span className="hidden md:inline">{locale === "zh" ? "负责人" : locale === "ko" ? "담당" : "担当"}：{currentHandlerSummary}</span>
@@ -675,6 +678,7 @@ function scrollToId(id: string, behavior: ScrollBehavior = "smooth", updateHisto
 export function CaseOverview({
   caseId,
   caseTitle,
+  caseTypeLabel,
   applicantSummary,
   propertySummary,
   guaranteeCompanySummary,
@@ -702,6 +706,7 @@ export function CaseOverview({
 }: {
   caseId: string;
   caseTitle: string;
+  caseTypeLabel?: string;
   applicantSummary: string;
   propertySummary: string;
   guaranteeCompanySummary: string;
@@ -1154,6 +1159,7 @@ export function CaseOverview({
           <CaseIdentityHeader
             caseId={caseId}
             caseTitle={caseTitle}
+            caseTypeLabel={caseTypeLabel}
             applicantSummary={applicantSummary}
             propertySummary={propertySummary}
             guaranteeCompanySummary={guaranteeCompanySummary}

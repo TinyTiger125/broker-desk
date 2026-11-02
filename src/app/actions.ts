@@ -125,6 +125,7 @@ import {
   ProductionReadinessError,
 } from "@/lib/production-readiness";
 import { type ComplianceAlertType } from "@/lib/compliance-alerts";
+import { isCaseWorkflowType } from "@/lib/options";
 import {
   buildMappingFromLists,
   parseCommaList,
@@ -4052,6 +4053,7 @@ export async function createBlankBrokerageCaseAction(
   await rejectForbiddenRecordInput(formData, session, "case");
   const requestedTitle = String(formData.get("caseTitle") ?? "").trim();
   const workflowType = String(formData.get("workflowType") ?? "").trim();
+  if (workflowType && !isCaseWorkflowType(workflowType)) throw new Error("案件类型不正确，请重新选择。");
   let associationDraft: CaseAssociationDraft;
   try {
     const rawDraft = String(formData.get("associationDraftJson") ?? "").trim();

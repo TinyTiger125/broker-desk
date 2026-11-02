@@ -20,7 +20,7 @@ import {
 } from "@/lib/domain";
 import type { Locale } from "@/lib/locale";
 
-type Option<T extends string> = { value: T; label: string };
+export type Option<T extends string> = { value: T; label: string };
 
 function getLocaleMap<T extends string>(map: Record<Locale, Record<T, string>>, locale: Locale): Record<T, string> {
   return map[locale] ?? map.ja;
@@ -28,6 +28,149 @@ function getLocaleMap<T extends string>(map: Record<Locale, Record<T, string>>, 
 
 function createOptions<T extends string>(values: readonly T[], labels: Record<T, string>): Option<T>[] {
   return values.map((value) => ({ value, label: labels[value] }));
+}
+
+/**
+ * Case workflow types are classification metadata stored in
+ * `confirmedDataJson.__workflowType`. They deliberately do not change the
+ * legacy `brokerage_cases.case_type` column or select a specialized workflow.
+ */
+export const CASE_WORKFLOW_TYPE_VALUES = [
+  "rental_new_application",
+  "rental_listing_ad",
+  "rental_lease_contract",
+  "sale_listing_request",
+  "sale_purchase_offer",
+  "sale_contract",
+  "management_new_contract",
+  "management_periodic_report",
+  "management_ad_hoc_report",
+  "general_estimate",
+  "general_proposal",
+  // Legacy values remain accepted so existing links, saved drafts and old
+  // records continue to round-trip without a data migration.
+  "rental_application",
+  "rental_mandate",
+  "sale_mandate",
+  "quote_preparation",
+  "contract_preparation",
+] as const;
+
+export type CaseWorkflowType = (typeof CASE_WORKFLOW_TYPE_VALUES)[number];
+export type CaseWorkflowTypeGroupId = "rental" | "sale" | "management" | "general" | "legacy";
+export type CaseWorkflowTypeFamily = CaseWorkflowTypeGroupId;
+
+export const CASE_WORKFLOW_TYPE_GROUPS = [
+  { id: "rental", values: ["rental_new_application", "rental_listing_ad", "rental_lease_contract"] },
+  { id: "sale", values: ["sale_listing_request", "sale_purchase_offer", "sale_contract"] },
+  { id: "management", values: ["management_new_contract", "management_periodic_report", "management_ad_hoc_report"] },
+  { id: "general", values: ["general_estimate", "general_proposal"] },
+  { id: "legacy", values: ["rental_application", "rental_mandate", "sale_mandate", "quote_preparation", "contract_preparation"] },
+] as const satisfies ReadonlyArray<{ id: CaseWorkflowTypeGroupId; values: ReadonlyArray<CaseWorkflowType> }>;
+
+const caseWorkflowTypeLabelByLocale: Record<Locale, Record<CaseWorkflowType, string>> = {
+  ja: {
+    rental_new_application: "新規賃貸申込",
+    rental_listing_ad: "賃貸募集広告",
+    rental_lease_contract: "新規賃貸借契約",
+    sale_listing_request: "売却依頼",
+    sale_purchase_offer: "売買買付",
+    sale_contract: "売買契約",
+    management_new_contract: "新規管理契約",
+    management_periodic_report: "定期管理報告",
+    management_ad_hoc_report: "臨時管理報告",
+    general_estimate: "見積もり",
+    general_proposal: "提案",
+    rental_application: "賃貸申込",
+    rental_mandate: "賃貸募集",
+    sale_mandate: "売却依頼",
+    quote_preparation: "見積・提案",
+    contract_preparation: "契約準備",
+  },
+  zh: {
+    rental_new_application: "新租赁申请",
+    rental_listing_ad: "租赁招租广告",
+    rental_lease_contract: "新租赁合同",
+    sale_listing_request: "出售委托",
+    sale_purchase_offer: "买卖买付",
+    sale_contract: "买卖合同",
+    management_new_contract: "新管理合同",
+    management_periodic_report: "定期管理报告",
+    management_ad_hoc_report: "临时管理报告",
+    general_estimate: "报价",
+    general_proposal: "提案",
+    rental_application: "租赁申请",
+    rental_mandate: "出租委托",
+    sale_mandate: "出售委托",
+    quote_preparation: "报价 / 提案",
+    contract_preparation: "合同准备",
+  },
+  ko: {
+    rental_new_application: "신규 임대 신청",
+    rental_listing_ad: "임대 모집 광고",
+    rental_lease_contract: "신규 임대차 계약",
+    sale_listing_request: "매도 의뢰",
+    sale_purchase_offer: "매매 매수의향",
+    sale_contract: "매매 계약",
+    management_new_contract: "신규 관리 계약",
+    management_periodic_report: "정기 관리 보고",
+    management_ad_hoc_report: "임시 관리 보고",
+    general_estimate: "견적",
+    general_proposal: "제안",
+    rental_application: "임대 신청",
+    rental_mandate: "임대 모집",
+    sale_mandate: "매각 의뢰",
+    quote_preparation: "견적 / 제안",
+    contract_preparation: "계약 준비",
+  },
+};
+
+const caseWorkflowTypeGroupLabelByLocale: Record<Locale, Record<CaseWorkflowTypeGroupId, string>> = {
+  ja: { rental: "賃貸", sale: "売買", management: "管理", general: "一般", legacy: "既存分類" },
+  zh: { rental: "租赁", sale: "买卖", management: "管理", general: "通用", legacy: "原有分类" },
+  ko: { rental: "임대", sale: "매매", management: "관리", general: "일반", legacy: "기존 분류" },
+};
+
+const caseWorkflowTypeFamily: Record<CaseWorkflowType, CaseWorkflowTypeFamily> = {
+  rental_new_application: "rental",
+  rental_listing_ad: "rental",
+  rental_lease_contract: "rental",
+  sale_listing_request: "sale",
+  sale_purchase_offer: "sale",
+  sale_contract: "sale",
+  management_new_contract: "management",
+  management_periodic_report: "management",
+  management_ad_hoc_report: "management",
+  general_estimate: "general",
+  general_proposal: "general",
+  rental_application: "legacy",
+  rental_mandate: "legacy",
+  sale_mandate: "legacy",
+  quote_preparation: "legacy",
+  contract_preparation: "legacy",
+};
+
+export function isCaseWorkflowType(value: unknown): value is CaseWorkflowType {
+  return typeof value === "string" && (CASE_WORKFLOW_TYPE_VALUES as readonly string[]).includes(value);
+}
+
+export function getCaseWorkflowTypeLabel(locale: Locale, value: unknown): string {
+  if (isCaseWorkflowType(value)) return caseWorkflowTypeLabelByLocale[locale]?.[value] ?? caseWorkflowTypeLabelByLocale.ja[value];
+  return locale === "zh" ? "未分类" : locale === "ko" ? "미분류" : "未分類";
+}
+
+export function getCaseWorkflowTypeFamily(value: unknown): CaseWorkflowTypeFamily | undefined {
+  return isCaseWorkflowType(value) ? caseWorkflowTypeFamily[value] : undefined;
+}
+
+export function getCaseWorkflowTypeGroups(locale: Locale): Array<{ id: CaseWorkflowTypeGroupId; label: string; options: Option<CaseWorkflowType>[] }> {
+  const labels = caseWorkflowTypeLabelByLocale[locale] ?? caseWorkflowTypeLabelByLocale.ja;
+  const groupLabels = caseWorkflowTypeGroupLabelByLocale[locale] ?? caseWorkflowTypeGroupLabelByLocale.ja;
+  return CASE_WORKFLOW_TYPE_GROUPS.map((group) => ({
+    id: group.id,
+    label: groupLabels[group.id],
+    options: group.values.map((value) => ({ value, label: labels[value] })),
+  }));
 }
 
 const stageLabelByLocale: Record<Locale, Record<ClientStage, string>> = {
