@@ -340,7 +340,7 @@ export function CaseIdentityHeader({
   }, []);
 
   return (
-    <header ref={headerRef} data-case-object-header className={`sticky top-16 z-30 border border-slate-200 bg-white/95 shadow-sm backdrop-blur transition-[padding,box-shadow] duration-200 lg:top-20 ${compactHeader ? "rounded-lg px-3 py-2 sm:px-4" : "rounded-xl px-3 py-3 sm:px-5 sm:py-4"}`}>
+    <header ref={headerRef} data-case-object-header className={`sticky top-16 z-30 border border-slate-200 bg-white shadow-sm transition-[padding,box-shadow] duration-200 lg:top-20 ${compactHeader ? "rounded-lg px-3 py-2 sm:px-4" : "rounded-xl px-3 py-3 sm:px-5 sm:py-4"}`}>
       <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0 sm:flex-1">
           <div className="flex items-center gap-2 text-[11px] font-bold text-slate-500">
@@ -1191,8 +1191,9 @@ export function CaseOverview({
         }
         state={null}
       >
+        <div data-case-sticky-occluder aria-hidden="true" className="pointer-events-none fixed inset-x-0 top-16 z-10 h-[4.75rem] bg-[var(--background)] lg:h-[6.5rem]" />
         {associationPanel}
-        <nav data-case-anchor-nav aria-label={locale === "zh" ? "案件章节" : locale === "ko" ? "안건 섹션" : "案件セクション"} className="sticky top-[8.75rem] z-20 rounded-xl border border-slate-200 bg-white/95 px-2 py-2 shadow-sm backdrop-blur lg:top-[10.5rem]">
+        <nav data-case-anchor-nav aria-label={locale === "zh" ? "案件章节" : locale === "ko" ? "안건 섹션" : "案件セクション"} className="sticky top-[8.75rem] z-20 rounded-xl border border-slate-200 bg-white px-2 py-2 shadow-sm lg:top-[10.5rem]">
           <div className="hidden items-center gap-1 sm:flex">
             {visibleAnchors.map((section) => (
               <a key={section.id} href={`#${section.id}`} onClick={(event) => { event.preventDefault(); setActiveSection(section.id); scrollToId(section.id); }} onKeyDown={(event) => activateAnchorWithKeyboard(event, section.id)} aria-current={activeSection === section.id ? "location" : undefined} className={`min-w-0 flex-1 truncate rounded-lg px-3 py-2 text-center text-xs font-black transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 ${activeSection === section.id ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"}`}>

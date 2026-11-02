@@ -303,9 +303,12 @@ requireText(caseOverview, "{associationPanel}", "CaseOverview association panel 
 if (caseOverview.includes("navigation={")) failures.push("CaseOverview: navigation must be assembled in children after associationPanel");
 const caseOverviewNavPosition = caseOverview.indexOf("<nav data-case-anchor-nav");
 const caseOverviewFieldsPosition = caseOverview.indexOf("<main className={`${layoutStyles.overviewReadable} space-y-3`} data-case-overview-density=\"dense\">");
-if (caseOverviewAssociationPosition < 0 || caseOverviewNavPosition < 0 || caseOverviewFieldsPosition < 0 || !(caseOverviewAssociationPosition < caseOverviewNavPosition && caseOverviewNavPosition < caseOverviewFieldsPosition)) {
+const caseOverviewOccluderPosition = caseOverview.indexOf("data-case-sticky-occluder");
+if (caseOverviewAssociationPosition < 0 || caseOverviewNavPosition < 0 || caseOverviewFieldsPosition < 0 || caseOverviewOccluderPosition < 0 || !(caseOverviewOccluderPosition < caseOverviewAssociationPosition && caseOverviewAssociationPosition < caseOverviewNavPosition && caseOverviewNavPosition < caseOverviewFieldsPosition)) {
   failures.push("CaseOverview: children order must be associationPanel, section navigation, then fields");
 }
+requireText(caseOverview, "pointer-events-none fixed inset-x-0 top-16 z-10 h-[4.75rem] bg-[var(--background)] lg:h-[6.5rem]", "CaseOverview sticky boundary occluder");
+if (caseOverview.includes("bg-white/95")) failures.push("CaseOverview: sticky summary and chapter surfaces must be opaque at the scroll boundary");
 const readOnlyBranchStart = casePage.indexOf("if (!canWriteCase)");
 const overviewBranchStart = casePage.indexOf("if (activeView === \"overview\")");
 const quickBranchStart = casePage.indexOf("return (\n    <div className=\"flex min-w-0 flex-col gap-6\">");
