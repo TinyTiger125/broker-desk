@@ -99,9 +99,9 @@ for (const path of [
   assert.match(text, /activeRecords:|active: "(未保管|未归档|使用中|사용 중)/, `${path} must define explicit active lifecycle copy`);
 }
 
-const newCase = await source("src/app/case-entry-actions.ts");
+const caseWorkflowOptions = await source("src/lib/options.ts");
 for (const value of ["rental_application", "rental_mandate", "sale_mandate", "quote_preparation", "contract_preparation"]) {
-  assert.match(newCase, new RegExp(`"${value}"`), `${value} remains supported`);
+  assert.match(caseWorkflowOptions, new RegExp(`"${value}"`), `${value} remains supported`);
 }
 
 console.log("feedback remediation UI contract: PASS");

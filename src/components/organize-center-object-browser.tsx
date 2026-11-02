@@ -231,23 +231,20 @@ export function OrganizeCenterObjectBrowser({
               role="row"
               data-list-row-link={itemHref}
               data-list-row-return-trigger={`${item.type}:${item.id}`}
+              data-list-return-trigger={`${item.type}:${item.id}`}
               tabIndex={0}
               aria-label={`${item.title} · ${getTypeLabel(item.type, copy)}`}
-              className="grid cursor-pointer gap-3 px-4 py-3 transition hover:bg-[#f9fbff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3158d8] focus-visible:ring-inset sm:px-5 md:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)] xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1.45fr)_auto]"
+              className="grid cursor-pointer gap-3 px-4 py-3 transition hover:bg-[#e8efff] hover:shadow-[inset_3px_0_0_#3158d8] focus-visible:bg-[#e8efff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3158d8] focus-visible:ring-inset focus-visible:shadow-[inset_3px_0_0_#3158d8] sm:px-5 md:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)] xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1.45fr)_auto]"
             >
               <div className="min-w-0">
-                <Link
-                  href={itemHref}
-                  data-list-return-trigger={`${item.type}:${item.id}`}
-                  className="group -m-2 flex w-full cursor-pointer flex-col rounded-md p-2 text-base font-black leading-6 text-slate-950 hover:bg-[#f6f8ff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3158d8] focus-visible:ring-offset-2"
-                >
+                <div className="flex min-w-0 flex-col rounded-md p-2 text-base font-black leading-6 text-slate-950">
                   <span className="flex min-w-0 items-start justify-between gap-3">
                     <span className="min-w-0 break-words">{item.title}</span>
-                    <span className="material-symbols-outlined mt-1 shrink-0 text-[18px] text-slate-400 transition group-hover:translate-x-0.5 group-hover:text-[#3158d8]" aria-hidden="true">arrow_forward</span>
+                    <span className="material-symbols-outlined mt-1 shrink-0 text-[18px] text-slate-400" aria-hidden="true">arrow_forward</span>
                   </span>
                   <span className="mt-1 break-words text-xs font-bold text-slate-500">{item.subtitle}</span>
                   {item.visibilityLabel ? <span className="mt-2 inline-flex w-fit rounded-full bg-slate-100 px-2 py-1 text-[11px] font-black text-slate-600">{item.visibilityLabel}</span> : null}
-                </Link>
+                </div>
               </div>
 
               {item.relatedObjects?.length ? (

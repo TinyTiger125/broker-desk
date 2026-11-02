@@ -402,7 +402,15 @@ function assertOrganizeSharedReturn(source, pageSource) {
   const triggers = walk(row, (node) => (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) && Boolean(jsxAttribute(node, "data-list-return-trigger")));
   assert.equal(triggers.length, 1, "organize object link must use one shared stable trigger template");
   assert.equal(jsxAttributeExpression(triggers[0], "data-list-return-trigger").getText(sf), "`${item.type}:${item.id}`");
-  assert.equal(jsxAttributeExpression(triggers[0], "href").getText(sf), "itemHref", "live object link must consume the source-aware href");
+  assert.equal(jsxAttributeExpression(triggers[0], "data-list-row-link").getText(sf), "itemHref", "the live row target must consume the source-aware href");
+  assert.equal(jsxAttributeExpression(triggers[0], "tabIndex").getText(sf), "0", "the live row target must remain keyboard focusable");
+  assert.equal(jsxAttribute(triggers[0], "role")?.initializer?.getText(sf), '"row"', "the live row target must retain row semantics");
+  const nestedDetailLinks = walk(row, (node) =>
+    (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node))
+    && node.tagName.getText(sf) === "Link"
+    && jsxAttributeExpression(node, "href")?.getText(sf) === "itemHref",
+  );
+  assert.equal(nestedDetailLinks.length, 0, "organize rows must not contain a competing nested detail link");
   const mapCall = walk(liveReturn.expression, (node) => ts.isCallExpression(node)
     && ts.isPropertyAccessExpression(node.expression)
     && node.expression.name.text === "map"

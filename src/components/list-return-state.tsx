@@ -200,6 +200,7 @@ export function ListReturnState({ children, listUrl, scope }: ListReturnStatePro
 
     const rememberTrigger = (event: MouseEvent) => {
       if (!(event.target instanceof Element)) return;
+      if (event.target.closest("[data-list-row-ignore]")) return;
       const row = event.target.closest<HTMLElement>("[data-list-row-link]");
       if (row && root.contains(row) && !event.target.closest("a,button,input,select,textarea,label,[data-list-row-ignore]") && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
         const triggerKey = row.dataset.listRowReturnTrigger;
