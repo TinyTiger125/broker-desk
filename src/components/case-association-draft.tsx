@@ -84,7 +84,8 @@ const copy = {
     upload: "案件資料",
     uploadDescription: "先に案件名を入力してください。資料の読み取りが終わると、判読できた案件項目と原本は正式な案件記録としてすぐ保存されます。人物・物件は別途選択します。",
     titleNeeded: "自動保存には案件名が必要です。先に入力してください。",
-    existingCase: "既存の案件候補",
+    existingCase: "類似する既存案件",
+    existingCaseHint: "現在のアカウントで確認できる候補です。開いて内容を確認し、同名作成は明示して続けてください。",
     duplicateCase: "案件名が既存記録と競合する可能性があります。既存候補を開くか、別名にするか、同名作成を明示して確認してください。",
     continueDuplicateCase: "同名でも新しい案件として続ける",
     allowDuplicateCase: "同名でも新しい案件として作成する（明示して確認）",
@@ -141,14 +142,15 @@ const copy = {
   zh: {
     close: "关闭",
     title: "新建案件",
-    description: "在同一页面整理现有案件字段、人物与物件关联和资料。先填写案件名，识别完成后清晰字段和原件会立即保存为正式案件记录；保存后可反复复核修改。",
+    description: "在同一页面整理现有案件字段、人物与物件关联和资料。先填写案件名，读取完成后清晰字段和原件会立即保存为正式案件记录；保存后可反复复核修改。",
     caseInfo: "案件信息",
     workflowType: "案件类型",
     caseTitle: "案件名",
     upload: "案件资料",
-    uploadDescription: "请先填写案件名。识别完成后，清晰的现有案件字段和原件会立即保存为正式案件记录；人物与物件另行选择。",
+    uploadDescription: "请先填写案件名。读取完成后，清晰的现有案件字段和原件会立即保存为正式案件记录；人物与物件另行选择。",
     titleNeeded: "自动保存需要案件名，请先填写。",
-    existingCase: "可能已有的案件",
+    existingCase: "相似的已有案件",
+    existingCaseHint: "这里只显示当前账号可查看的候选。请先打开核对内容；仍要同名新建时必须明确确认。",
     duplicateCase: "案件名可能与已有记录冲突。请打开可见候选、改用其他名称，或明确勾选仍要新建同名案件。",
     continueDuplicateCase: "仍要新建同名案件",
     allowDuplicateCase: "即使同名也创建新案件（明确确认）",
@@ -212,7 +214,8 @@ const copy = {
     upload: "안건 자료",
     uploadDescription: "먼저 안건명을 입력해 주세요. 읽기가 끝나면 명확한 기존 항목과 원본이 정식 안건 기록으로 즉시 저장됩니다. 관계자와 매물은 별도로 선택합니다.",
     titleNeeded: "자동 저장하려면 안건명을 먼저 입력해 주세요.",
-    existingCase: "기존 안건 후보",
+    existingCase: "비슷한 기존 안건",
+    existingCaseHint: "현재 계정에서 확인할 수 있는 후보입니다. 내용을 먼저 확인하고 같은 이름으로 만들 때는 명시적으로 확인해 주세요.",
     duplicateCase: "안건명이 기존 기록과 충돌할 수 있습니다. 보이는 후보를 열거나 다른 이름을 사용하거나, 같은 이름으로 만들기를 명시해 주세요.",
     continueDuplicateCase: "같은 이름으로 새 안건 계속 만들기",
     allowDuplicateCase: "같은 이름이어도 새 안건으로 만들기 (명시적으로 확인)",
@@ -372,9 +375,10 @@ export function CaseAssociationDraft({
   const [properties, setProperties] = useState(initialProperties);
   const [caseTitle, setCaseTitle] = useState("");
   const [allowDuplicateCase, setAllowDuplicateCase] = useState(false);
-  const existingCaseMatches = caseTitle.trim()
-    ? existingCases.filter((item) => item.title.toLocaleLowerCase().includes(caseTitle.trim().toLocaleLowerCase())).slice(0, 5)
+  const existingCaseMatchesAll = caseTitle.trim()
+    ? existingCases.filter((item) => item.title.toLocaleLowerCase().includes(caseTitle.trim().toLocaleLowerCase()))
     : [];
+  const existingCaseMatches = existingCaseMatchesAll.slice(0, 5);
   const existingCaseExactMatch = caseTitle.trim()
     ? existingCases.some((item) => item.title.trim().toLocaleLowerCase() === caseTitle.trim().toLocaleLowerCase())
     : false;
@@ -434,6 +438,18 @@ export function CaseAssociationDraft({
       return next;
     });
   }, [manualCaseFieldValues, previewKind]);
+  const locateEntryCandidate = useCallback((candidate: EntryPreviewCandidate) => {
+    const fieldKey = caseFieldKeyForPreviewCandidate(previewKind, candidate);
+    if (!fieldKey || !CASE_ENTRY_FIELD_KEY_SET.has(fieldKey)) return;
+    const focus = () => {
+      const target = document.getElementById(`case-${fieldKey}`);
+      target?.closest("details")?.setAttribute("open", "");
+      target?.focus();
+      target?.scrollIntoView({ block: "center", behavior: "smooth" });
+    };
+    if (typeof window === "undefined") focus();
+    else window.requestAnimationFrame(focus);
+  }, [previewKind]);
   const updateCaseField = useCallback((fieldKey: string, value: string) => {
     setCaseFieldValues((current) => ({ ...current, [fieldKey]: value }));
     setManualCaseFieldValues((current) => ({ ...current, [fieldKey]: value }));
@@ -598,7 +614,7 @@ export function CaseAssociationDraft({
           <h2 className="text-base font-black text-slate-950">{text.caseInfo}</h2>
           <div className="grid gap-3 md:grid-cols-2">
             <label className="space-y-1 text-sm font-semibold text-slate-700"><span>{text.workflowType}</span><select name="workflowType" value={workflowType} onChange={(event) => setWorkflowType(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base text-slate-900 focus:border-[#0046ad] focus:ring-2 focus:ring-blue-100 sm:text-sm">{workflowOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
-            <div className="space-y-1 text-sm font-semibold text-slate-700"><label htmlFor="new-case-title">{text.caseTitle}</label><input id="new-case-title" name="caseTitle" value={caseTitle} onChange={(event) => { setCaseTitle(event.target.value); setAllowDuplicateCase(false); }} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-base text-slate-900 focus:border-[#0046ad] focus:ring-2 focus:ring-blue-100 sm:text-sm" />{caseTitle.trim() ? <label className="flex items-start gap-2 pt-1 text-xs font-semibold text-slate-700"><input type="checkbox" data-case-allow-duplicate checked={allowDuplicateCase} onChange={(event) => setAllowDuplicateCase(event.target.checked)} className="mt-0.5" />{text.allowDuplicateCase}</label> : null}{existingCaseMatches.length > 0 ? <div className="space-y-1 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900"><p className="font-bold">{text.existingCase}</p>{existingCaseMatches.map((item) => <Link key={item.id} href={`/cases/${encodeURIComponent(item.id)}`} className="block rounded px-1 py-1 underline hover:bg-amber-100">{item.title}</Link>)}{existingCaseExactMatch ? <><p role="alert" className="pt-1 font-bold text-rose-800">{text.duplicateCase}</p><button type="button" onClick={() => setAllowDuplicateCase(true)} className="mt-1 rounded border border-amber-300 bg-white px-2 py-1 font-bold text-amber-900 hover:bg-amber-100">{text.continueDuplicateCase}</button></> : null}</div> : null}</div>
+            <div className="space-y-1 text-sm font-semibold text-slate-700"><label htmlFor="new-case-title">{text.caseTitle}</label><input id="new-case-title" name="caseTitle" value={caseTitle} onChange={(event) => { setCaseTitle(event.target.value); setAllowDuplicateCase(false); }} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-base text-slate-900 focus:border-[#0046ad] focus:ring-2 focus:ring-blue-100 sm:text-sm" />{caseTitle.trim() ? <label className="flex items-start gap-2 pt-1 text-xs font-semibold text-slate-700"><input type="checkbox" data-case-allow-duplicate checked={allowDuplicateCase} onChange={(event) => setAllowDuplicateCase(event.target.checked)} className="mt-0.5" />{text.allowDuplicateCase}</label> : null}{existingCaseMatches.length > 0 ? <div className="space-y-1 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900"><p className="font-bold">{text.existingCase}</p><p className="font-normal leading-5 text-amber-800">{text.existingCaseHint}</p>{existingCaseMatches.map((item) => <Link key={item.id} href={`/cases/${encodeURIComponent(item.id)}`} className="block rounded px-1 py-1 underline hover:bg-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#0046ad]">{item.title}</Link>)}{existingCaseMatchesAll.length > existingCaseMatches.length ? <p className="font-normal text-amber-800">+{existingCaseMatchesAll.length - existingCaseMatches.length}</p> : null}{existingCaseExactMatch ? <><p role="alert" className="pt-1 font-bold text-rose-800">{text.duplicateCase}</p><button type="button" onClick={() => setAllowDuplicateCase(true)} className="mt-1 rounded border border-amber-300 bg-white px-2 py-1 font-bold text-amber-900 hover:bg-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#0046ad]">{text.continueDuplicateCase}</button></> : null}</div> : null}</div>
           </div>
         </FormSection>
 
@@ -628,7 +644,7 @@ export function CaseAssociationDraft({
               <EntryFilePicker locale={locale} files={entryFiles} onFilesChange={updateEntryFiles} name="caseUploadFile" disabled={pending} />
             </div>
           </div>
-          <EntryPreview files={entryFiles} kind={previewKind} context="case" locale={locale} onConfirm={confirmEntryCandidate} onReadFileKeys={handleEntryReadFileKeys} onReadComplete={autoSaveCaseReadResult} />
+          <EntryPreview files={entryFiles} kind={previewKind} context="case" locale={locale} onConfirm={confirmEntryCandidate} onLocateCandidate={locateEntryCandidate} onReadFileKeys={handleEntryReadFileKeys} onReadComplete={autoSaveCaseReadResult} />
           {unsupportedPreviewCount > 0 ? <p role="status" className="text-xs font-semibold text-amber-700">{locale === "zh" ? "部分候选没有对应的案件字段，未写入案件。请只确认已有字段。" : locale === "ko" ? "일부 후보에 대응하는 안건 필드가 없어 반영하지 않았습니다. 기존 필드만 확인해 주세요." : "一部の候補は案件の既存項目に対応しないため反映していません。既存項目だけ確認してください。"}</p> : null}
         </FormSection>
 
@@ -638,7 +654,7 @@ export function CaseAssociationDraft({
             <span className="text-xs font-semibold text-slate-500">{locale === "zh" ? "仅使用现有案件字段；保存前不会创建人物或物件" : locale === "ko" ? "기존 안건 필드만 사용하며 저장 전에는 관계자나 매물을 만들지 않습니다" : "既存の案件項目だけを使用し、保存前に人物・物件は作成しません"}</span>
           </div>
           <div data-case-entry-fields className="space-y-2">
-            {CASE_ENTRY_FIELD_GROUPS.map((group) => <details key={group.id} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+            {CASE_ENTRY_FIELD_GROUPS.map((group) => <details key={group.id} data-case-entry-group={group.id} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
               <summary className="cursor-pointer py-1 text-sm font-bold text-slate-800">{group.label} <span className="ml-1 text-xs font-normal text-slate-500">({group.fields.length})</span></summary>
               <div className="grid gap-3 border-t border-slate-100 pt-3 md:grid-cols-2">{group.fields.map((field) => {
               const value = caseFieldValues[field.fieldKey] ?? "";
@@ -647,7 +663,7 @@ export function CaseAssociationDraft({
               return (
                 <label key={field.fieldKey} className={`space-y-1 text-sm font-semibold text-slate-700 ${isTextarea ? "md:col-span-2" : ""}`}>
                   <span>{field.label}</span>
-                  {isTextarea ? <textarea name={`casePreviewField:${field.fieldKey}`} value={value} onChange={(event) => updateCaseField(field.fieldKey, event.target.value)} rows={2} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-base text-slate-900 focus:border-[#0046ad] focus:ring-2 focus:ring-blue-100 sm:text-sm" /> : <input name={`casePreviewField:${field.fieldKey}`} type={inputType} value={value} onChange={(event) => updateCaseField(field.fieldKey, event.target.value)} inputMode={field.valueKind === "number" || field.valueKind.startsWith("money") ? "decimal" : undefined} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-base text-slate-900 focus:border-[#0046ad] focus:ring-2 focus:ring-blue-100 sm:text-sm" />}
+                  {isTextarea ? <textarea id={`case-${field.fieldKey}`} name={`casePreviewField:${field.fieldKey}`} value={value} onChange={(event) => updateCaseField(field.fieldKey, event.target.value)} rows={2} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-base text-slate-900 focus:border-[#0046ad] focus:ring-2 focus:ring-blue-100 sm:text-sm" /> : <input id={`case-${field.fieldKey}`} name={`casePreviewField:${field.fieldKey}`} type={inputType} value={value} onChange={(event) => updateCaseField(field.fieldKey, event.target.value)} inputMode={field.valueKind === "number" || field.valueKind.startsWith("money") ? "decimal" : undefined} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-base text-slate-900 focus:border-[#0046ad] focus:ring-2 focus:ring-blue-100 sm:text-sm" />}
                 </label>
               );
               })}</div>

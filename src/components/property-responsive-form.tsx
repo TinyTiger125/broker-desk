@@ -60,7 +60,7 @@ const copy = {
     sqm: "㎡",
     optional: "任意",
     save: "保存",
-    saveAndRead: "保存して資料を読み取る",
+    saveAndRead: "保存して読み取る",
     cancel: "キャンセル",
     errorSummary: "入力内容を確認してください。",
     saving: "保存中…",
@@ -87,7 +87,7 @@ const copy = {
     sqm: "㎡",
     optional: "选填",
     save: "保存",
-    saveAndRead: "保存并读取资料",
+    saveAndRead: "保存后读取",
     cancel: "取消",
     errorSummary: "请检查以下输入内容。",
     saving: "保存中…",
@@ -114,7 +114,7 @@ const copy = {
     sqm: "㎡",
     optional: "선택",
     save: "저장",
-    saveAndRead: "저장하고 자료 읽기",
+    saveAndRead: "저장 후 읽기",
     cancel: "취소",
     errorSummary: "다음 입력 내용을 확인해 주세요.",
     saving: "저장 중…",
@@ -165,6 +165,13 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
   const confirmEntryCandidate = useCallback((candidate: EntryPreviewCandidate) => {
     setValues((current) => String(current[candidate.key as keyof PropertyFormValues] ?? "").trim() ? current : applyEntryPreviewCandidate(current, candidate));
   }, [setValues]);
+  const locateEntryCandidate = useCallback((candidate: EntryPreviewCandidate) => {
+    const field = candidate.key as keyof PropertyFormValues;
+    if (!Object.prototype.hasOwnProperty.call(initialValues, field)) return;
+    const target = document.getElementById(`property-${field}`);
+    target?.focus();
+    target?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [initialValues]);
   const entryAction = useCallback(async (previousState: PropertyFormActionState, formData: FormData) => {
     if (entryUpload) {
       replaceEntryFiles(formData, entryFilesRef.current);
@@ -246,7 +253,7 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
       {entryUpload ? <>
         <input type="hidden" name="entryIntentId" value={entryIntentId} />
         <EntryFilePicker locale={locale} files={entryFiles} onFilesChange={updateEntryFiles} disabled={pending} />
-        <EntryPreview files={entryFiles} kind="property" locale={locale} onConfirm={confirmEntryCandidate} onReadFileKeys={handleEntryReadFileKeys} onReadComplete={autoSaveReadResult} />
+        <EntryPreview files={entryFiles} kind="property" locale={locale} onConfirm={confirmEntryCandidate} onLocateCandidate={locateEntryCandidate} onReadFileKeys={handleEntryReadFileKeys} onReadComplete={autoSaveReadResult} />
         <input type="hidden" name="entryReadFileKeys" value={JSON.stringify(entryReadFileKeys)} />
       </> : null}
 

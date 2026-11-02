@@ -266,6 +266,15 @@
   background: var(--bd-surface-soft);
 }
 
+.resultRow:focus-visible td {
+  background: var(--bd-surface-soft);
+}
+
+.resultRow:focus-visible {
+  outline: var(--bd-focus-ring-width) solid var(--bd-focus-ring-color);
+  outline-offset: -2px;
+}
+
 .nameLink {
   display: inline-flex;
   max-width: 100%;

@@ -193,8 +193,21 @@ export function ListReturnState({ children, listUrl, scope }: ListReturnStatePro
     if (!root) return undefined;
     const key = storageKey(scope, canonicalUrl);
 
+    const navigateRow = (row: HTMLElement) => {
+      const href = row.dataset.listRowLink;
+      if (href) window.location.assign(href);
+    };
+
     const rememberTrigger = (event: MouseEvent) => {
       if (!(event.target instanceof Element)) return;
+      const row = event.target.closest<HTMLElement>("[data-list-row-link]");
+      if (row && root.contains(row) && !event.target.closest("a,button,input,select,textarea,label") && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
+        const triggerKey = row.dataset.listRowReturnTrigger;
+        if (!triggerKey) return;
+        rememberListReturnIntent({ listUrl: canonicalUrl, scope, triggerKey });
+        navigateRow(row);
+        return;
+      }
       const trigger = event.target.closest<HTMLElement>("[data-list-return-trigger]");
       if (!trigger || !root.contains(trigger)) return;
       if (!shouldRememberActivation({
@@ -211,8 +224,24 @@ export function ListReturnState({ children, listUrl, scope }: ListReturnStatePro
       writeStoredState(key, { scrollY: window.scrollY, triggerKey });
     };
 
+    const activateRowByKeyboard = (event: KeyboardEvent) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      if (!(event.target instanceof Element)) return;
+      const row = event.target.closest<HTMLElement>("[data-list-row-link]");
+      if (!row || !root.contains(row) || event.target.closest("a,button,input,select,textarea,label")) return;
+      const triggerKey = row.dataset.listRowReturnTrigger;
+      if (!triggerKey) return;
+      event.preventDefault();
+      rememberListReturnIntent({ listUrl: canonicalUrl, scope, triggerKey });
+      navigateRow(row);
+    };
+
+    root.addEventListener("keydown", activateRowByKeyboard);
     root.addEventListener("click", rememberTrigger);
-    return () => root.removeEventListener("click", rememberTrigger);
+    return () => {
+      root.removeEventListener("keydown", activateRowByKeyboard);
+      root.removeEventListener("click", rememberTrigger);
+    };
   }, [canonicalUrl, scope]);
 
   return <div ref={rootRef}>{children}</div>;

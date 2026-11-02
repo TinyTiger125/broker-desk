@@ -29,6 +29,7 @@ type EntryPreviewProps = {
   context?: "entry" | "case";
   locale: Locale;
   onConfirm: (candidate: EntryPreviewCandidate) => void;
+  onLocateCandidate?: (candidate: EntryPreviewCandidate) => void;
   onReadFileKeys: (keys: string[]) => void;
   onReadComplete?: (state: EntryPreviewState) => void;
 };
@@ -39,7 +40,7 @@ const copy = {
     description: "読み取り完了後、判読できて不一致のない既存項目は正式記録へ自動保存します。氏名など必須項目が不足する場合は、内容を保持して補完後に保存します。保存後も編集・再確認できます。",
     descriptionCase: "読み取り完了後、判読できて不一致のない既存項目は正式な案件記録へ自動保存します。案件名が不足する場合は、案件名を補完してから保存してください。保存後も編集・再確認できます。",
     descriptionProperty: "読み取り完了後、判読できて不一致のない既存項目は正式記録へ自動保存します。物件名が不足する場合は、現在の画面に候補と原本を保持します。物件名を補完して保存すると原本を正式記録へ保管します。保存後も編集・再確認できます。",
-    read: "資料を読み取って保存",
+    read: "読み取る",
     retry: "未読資料を再試行",
     readComplete: "読み取り完了",
     reading: "読み取り中…",
@@ -61,16 +62,16 @@ const copy = {
   },
   zh: {
     title: "读取资料并保存正式记录",
-    description: "识别完成后，清晰且无冲突的现有字段会自动写入正式记录；若缺少姓名等必填项，会保留已识别内容并提示补充后保存。保存后仍可编辑和复核。",
-    descriptionCase: "识别完成后，清晰且无冲突的现有字段会自动写入正式案件记录；若缺少案件名，请补全后保存。保存后仍可编辑和复核。",
-    descriptionProperty: "识别完成后，清晰且无冲突的现有字段会自动写入正式记录；若缺少物件名，候选和原件只保留在当前页面，补充物件名并保存后才会归档原件。保存后仍可编辑和复核。",
-    read: "读取资料并保存",
+    description: "读取完成后，清晰且无冲突的现有字段会自动写入正式记录；若缺少姓名等必填项，会保留已读取内容并提示补充后保存。保存后仍可编辑和复核。",
+    descriptionCase: "读取完成后，清晰且无冲突的现有字段会自动写入正式案件记录；若缺少案件名，请补全后保存。保存后仍可编辑和复核。",
+    descriptionProperty: "读取完成后，清晰且无冲突的现有字段会自动写入正式记录；若缺少物件名，候选和原件只保留在当前页面，补充物件名并保存后才会归档原件。保存后仍可编辑和复核。",
+    read: "读取",
     retry: "重试未读取资料",
     readComplete: "资料读取完成",
     reading: "读取中…",
     noFiles: "请先选择资料。",
-    ready: "识别完成；清晰且无冲突的字段已写入正式记录。若必填项不足，请补充后保存。",
-    readyProperty: "识别完成；清晰且无冲突的字段已写入正式记录。若物件名不足，请补充物件名后保存。",
+    ready: "读取完成；清晰且无冲突的字段已写入正式记录。若必填项不足，请补充后保存。",
+    readyProperty: "读取完成；清晰且无冲突的字段已写入正式记录。若物件名不足，请补充物件名后保存。",
     empty: "没有可确认的候选值。尚未创建正式记录；手动填写后保存时会归档原件。",
     needsReview: "发现候选，但没有可自动保存的确定值。尚未创建正式记录，请核对内容后手动填写。",
     needsPropertyName: "发现清晰候选，但缺少物件名。候选与原件目前仅保留在当前页面；请补充物件名后保存，保存后才会归档原件。尚未创建正式记录。",
@@ -89,7 +90,7 @@ const copy = {
     description: "읽기가 끝나면 명확하고 불일치가 없는 기존 항목은 정식 기록으로 자동 저장됩니다. 이름 등 필수 항목이 없으면 내용을 유지하고 보완 후 저장합니다. 저장 후에도 수정하고 다시 확인할 수 있습니다.",
     descriptionCase: "읽기가 끝나면 명확하고 불일치가 없는 기존 항목은 정식 안건 기록으로 자동 저장됩니다. 안건명이 없으면 안건명을 보완한 후 저장해 주세요. 저장 후에도 수정하고 다시 확인할 수 있습니다.",
     descriptionProperty: "읽기가 끝나면 명확하고 불일치가 없는 기존 항목은 정식 기록으로 자동 저장됩니다. 매물명이 없으면 후보와 원본은 현재 화면에만 유지되며, 매물명을 보완해 저장한 후 원본이 정식 기록에 보관됩니다. 저장 후에도 수정하고 다시 확인할 수 있습니다.",
-    read: "자료를 읽고 저장",
+    read: "읽기",
     retry: "읽지 못한 자료 재시도",
     readComplete: "자료 읽기 완료",
     reading: "읽는 중…",
@@ -145,7 +146,7 @@ export function getUnreadEntryFiles(files: readonly File[], readFileKeys: readon
   return files.filter((file) => !read.has(entryFileKey(file)));
 }
 
-export function EntryPreview({ files, kind, context, locale, onConfirm, onReadFileKeys, onReadComplete }: EntryPreviewProps) {
+export function EntryPreview({ files, kind, context, locale, onConfirm, onLocateCandidate, onReadFileKeys, onReadComplete }: EntryPreviewProps) {
   const text = copy[locale];
   const [preview, setPreview] = useState<{ files: File[]; kind: EntryPreviewKind; context?: "entry" | "case"; state: EntryPreviewState }>();
   const [decisions, setDecisions] = useState<{ files: File[]; kind: EntryPreviewKind; context?: "entry" | "case"; values: Record<string, "auto_saved" | "rejected"> }>();
@@ -234,10 +235,11 @@ export function EntryPreview({ files, kind, context, locale, onConfirm, onReadFi
             <ul className="divide-y divide-slate-100 overflow-hidden rounded-lg border border-indigo-100 bg-white">
               {activePreview.candidates.map((candidate) => {
                 return (
-                  <li key={candidate.id} className="grid gap-0.5 px-3 py-2 text-xs sm:grid-cols-[minmax(8rem,0.25fr)_minmax(0,1fr)] sm:gap-x-3">
+                  <li key={candidate.id} className="grid gap-0.5 px-3 py-2 text-xs sm:grid-cols-[minmax(8rem,0.25fr)_minmax(0,1fr)_auto] sm:gap-x-3">
                     <span className="font-bold text-slate-950">{candidate.label}</span>
                     <span className="min-w-0 break-words text-slate-800">{candidate.value}</span>
-                    <span className="text-[11px] text-slate-500 sm:col-start-2">{candidate.fileName}{candidate.pageNumber == null ? "" : ` · ${text.page} ${candidate.pageNumber}`}{candidate.uncertainty && candidate.uncertainty !== "clear" ? ` · ${text.uncertaintyReasons[candidate.uncertainty as keyof typeof text.uncertaintyReasons] ?? text.uncertainty}` : ""}</span>
+                    {onLocateCandidate ? <button type="button" onClick={() => onLocateCandidate(candidate)} className="min-h-8 justify-self-start rounded-md border border-slate-200 px-2 py-1 text-[11px] font-bold text-[#0046ad] hover:bg-blue-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad] sm:col-start-3 sm:row-span-2 sm:row-start-1">{locale === "zh" ? "定位字段" : locale === "ko" ? "필드로 이동" : "項目へ移動"}</button> : null}
+                    <span className="text-[11px] text-slate-500 sm:col-start-1 sm:col-span-2">{candidate.fileName}{candidate.pageNumber == null ? "" : ` · ${text.page} ${candidate.pageNumber}`}{candidate.uncertainty && candidate.uncertainty !== "clear" ? ` · ${text.uncertaintyReasons[candidate.uncertainty as keyof typeof text.uncertaintyReasons] ?? text.uncertainty}` : ""}</span>
                   </li>
                 );
               })}

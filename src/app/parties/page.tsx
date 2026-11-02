@@ -60,9 +60,9 @@ const partiesCopy = {
     contact: "連絡先",
     corporate: "法人",
     individual: "個人",
-    lifecycle: "ライフサイクル",
-    active: "有効",
-    archived: "アーカイブ済み",
+    lifecycle: "記録状態",
+    active: "未保管",
+    archived: "保管済み",
     all: "すべて",
     filter: "検索",
     noParties: "登録されている関係者はまだありません。",
@@ -100,8 +100,8 @@ const partiesCopy = {
     contact: "联系方式",
     corporate: "法人",
     individual: "个人",
-    lifecycle: "生命周期",
-    active: "有效",
+    lifecycle: "记录状态",
+    active: "未归档",
     archived: "已归档",
     all: "全部",
     filter: "查找",
@@ -140,8 +140,8 @@ const partiesCopy = {
     contact: "연락처",
     corporate: "법인",
     individual: "개인",
-    lifecycle: "라이프사이클",
-    active: "유효",
+    lifecycle: "기록 상태",
+    active: "사용 중",
     archived: "보관됨",
     all: "전체",
     filter: "검색",
@@ -380,8 +380,9 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
                         : notSet;
                     const roleLabel = party.explicitRoles.join(" / ") || notSet;
                     const statusLabel = party.status === "archived" ? copy.archived : copy.active;
+                    const editHref = `/parties/${encodeURIComponent(party.id)}/edit?${new URLSearchParams({ returnTo }).toString()}`;
                     return (
-                      <div key={party.id} role="row" className="grid gap-4 px-5 py-4 transition hover:bg-slate-50 lg:grid-cols-[minmax(12rem,1.2fr)_minmax(11rem,1fr)_minmax(7rem,.65fr)_minmax(9rem,.9fr)_minmax(6rem,.55fr)_auto] lg:items-center">
+                      <div key={party.id} role="row" data-list-row-link={editHref} data-list-row-return-trigger={`party:${party.id}`} tabIndex={0} aria-label={`${party.name} · ${copy.name}`} className="grid cursor-pointer gap-4 px-5 py-4 transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] lg:grid-cols-[minmax(12rem,1.2fr)_minmax(11rem,1fr)_minmax(7rem,.65fr)_minmax(9rem,.9fr)_minmax(6rem,.55fr)_auto] lg:items-center">
                         <div role="cell" className="min-w-0">
                           <Link
                             href={`/parties/${encodeURIComponent(party.id)}/edit?returnTo=${encodeURIComponent(returnTo)}`}

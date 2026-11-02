@@ -549,10 +549,24 @@ function analyzeComponent(source) {
   assert.equal(listenerStatement.expression.arguments[0]?.getText(tree), '"click"', "activation listener must handle clicks");
   assert.equal(listenerStatement.expression.arguments[1]?.getText(tree), "rememberTrigger", "activation listener must use the live rememberTrigger callback");
   assertReachableStatement(activationEffect.body, listenerStatement, "activation listener registration");
+  const keyboardListenerStatement = activationEffect.body.statements.at(-3);
+  assert(ts.isExpressionStatement(keyboardListenerStatement) && ts.isCallExpression(keyboardListenerStatement.expression) && keyboardListenerStatement.expression.expression.getText(tree) === "root.addEventListener", "activation effect must directly register its keyboard listener");
+  assert.equal(keyboardListenerStatement.expression.arguments[0]?.getText(tree), '"keydown"', "activation listener must handle keyboard activation");
+  assert.equal(keyboardListenerStatement.expression.arguments[1]?.getText(tree), "activateRowByKeyboard", "activation listener must use the live keyboard callback");
+  assertReachableStatement(activationEffect.body, keyboardListenerStatement, "activation keyboard listener registration");
   const listenerCleanup = activationEffect.body.statements.at(-1);
   assert(ts.isReturnStatement(listenerCleanup) && listenerCleanup.expression && ts.isArrowFunction(listenerCleanup.expression), "activation effect must end with a direct cleanup return");
-  const removeCall = unwrap(listenerCleanup.expression.body);
-  assert(ts.isCallExpression(removeCall) && removeCall.expression.getText(tree) === "root.removeEventListener", "activation cleanup must directly remove its listener");
+  assert(ts.isBlock(listenerCleanup.expression.body), "activation cleanup must remove both live listeners");
+  const cleanupCalls = listenerCleanup.expression.body.statements
+    .filter((statement) => ts.isExpressionStatement(statement) && ts.isCallExpression(statement.expression))
+    .map((statement) => statement.expression);
+  assert.equal(cleanupCalls.length, 2, "activation cleanup must remove both live listeners");
+  const keyboardRemoveCall = cleanupCalls[0];
+  assert(ts.isCallExpression(keyboardRemoveCall) && keyboardRemoveCall.expression.getText(tree) === "root.removeEventListener", "activation cleanup must directly remove its keyboard listener");
+  assert.equal(keyboardRemoveCall.arguments[0]?.getText(tree), '"keydown"', "activation cleanup must remove the keyboard listener");
+  assert.equal(keyboardRemoveCall.arguments[1]?.getText(tree), "activateRowByKeyboard", "activation cleanup must remove the same keyboard callback");
+  const removeCall = cleanupCalls[1];
+  assert(ts.isCallExpression(removeCall) && removeCall.expression.getText(tree) === "root.removeEventListener", "activation cleanup must directly remove its click listener");
   assert.equal(removeCall.arguments[0]?.getText(tree), '"click"', "activation cleanup must remove the click listener");
   assert.equal(removeCall.arguments[1]?.getText(tree), "rememberTrigger", "activation cleanup must remove the same live rememberTrigger callback");
 }

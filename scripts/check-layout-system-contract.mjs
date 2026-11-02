@@ -506,7 +506,7 @@ for (const copy of [
   'clearFilters: "清除关键词"',
   'clear: "키워드 지우기"',
   'clearFilters: "키워드 지우기"',
-  'clearKeywordHint: "キーワードだけを解除し、記録の状態はそのままにして再検索できます。"',
+  'clearKeywordHint: "キーワードだけを解除し、記録状態はそのままにして再検索できます。"',
   'clearKeywordHint: "可以只清除关键词，记录状态筛选保持不变。"',
   'clearKeywordHint: "키워드만 지우고 기록 상태 필터는 그대로 둔 채 다시 확인할 수 있습니다."',
   'noKeyword: "キーワード未設定"',

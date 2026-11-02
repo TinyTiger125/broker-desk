@@ -418,7 +418,7 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
                 </thead>
                 <tbody>
                   {visibleClients.map(({ client, resolution }) => (
-                    <tr key={client.id} className={styles.resultRow}>
+                    <tr key={client.id} data-list-row-link={`/clients/${client.id}`} data-client-link={`name:${client.id}`} tabIndex={0} aria-label={`${client.name} · ${text.detail}`} className={styles.resultRow}>
                       <td className={styles.clientCell}>
                         <Link
                           href={`/clients/${client.id}`}
