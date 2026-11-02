@@ -236,8 +236,30 @@ function getTaskStatusLabel(locale: "ja" | "zh" | "ko") {
 
 type ClientDetailPageProps = {
   params: Promise<{ id: string }>;
-  searchParams?: Promise<{ flash?: string }>;
+  searchParams?: Promise<{ flash?: string; returnTo?: string }>;
 };
+
+function normalizeReturnTo(value: string | undefined): string {
+  const fallback = "/clients";
+  const path = (value ?? "").trim();
+  if (!path || !path.startsWith("/") || path.startsWith("//") || path.includes("\\")) return fallback;
+  let decodedPathname = path.split(/[?#]/, 1)[0];
+  try { decodedPathname = decodeURIComponent(decodedPathname); } catch { return fallback; }
+  if (decodedPathname.includes("\\") || decodedPathname.split("/").some((segment) => segment === "." || segment === "..")) return fallback;
+  let parsed: URL;
+  try { parsed = new URL(path, "http://broker-desk.local"); } catch { return fallback; }
+  if (parsed.origin !== "http://broker-desk.local" || parsed.hash) return fallback;
+  const keys = [...new Set([...parsed.searchParams.keys()])];
+  if (parsed.pathname === "/clients") {
+    if (keys.some((key) => !["q", "stage", "purpose", "temperature", "sort", "page"].includes(key))) return fallback;
+    return `${parsed.pathname}${parsed.search}`;
+  }
+  if (parsed.pathname === "/organize-center" && ["client", "party"].includes(parsed.searchParams.get("type") ?? "")) {
+    if (keys.some((key) => !["type", "q", "lifecycle", "page"].includes(key))) return fallback;
+    return `${parsed.pathname}${parsed.search}`;
+  }
+  return fallback;
+}
 
 export default async function ClientDetailPage({ params, searchParams }: ClientDetailPageProps) {
   const [locale, session] = await Promise.all([
@@ -260,6 +282,7 @@ export default async function ClientDetailPage({ params, searchParams }: ClientD
 
   const { id } = await params;
   const query = (await searchParams) ?? {};
+  const returnTo = normalizeReturnTo(query.returnTo);
   const visible = await getClientDetailForContext({ context: createRequestContext(session), clientId: id });
   if (!visible.detail || !visible.resolution.canRead) {
     notFound();
@@ -278,7 +301,7 @@ export default async function ClientDetailPage({ params, searchParams }: ClientD
       <div className="space-y-6">
         <header className="flex flex-wrap items-center justify-between gap-3">
           <div><h1 className="text-3xl font-bold tracking-tight text-slate-900">{client.name}</h1><p className="mt-1 text-sm text-slate-600">{phoneDisplay} · {client.preferredArea ?? text.areaUnset}</p></div>
-          <Link href="/clients" className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700">{locale === "zh" ? "返回客户列表" : locale === "ko" ? "고객 목록으로" : "顧客一覧へ戻る"}</Link>
+          <Link href={returnTo} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700">{locale === "zh" ? "返回客户列表" : locale === "ko" ? "고객 목록으로" : "顧客一覧へ戻る"}</Link>
         </header>
         <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><p className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">{readOnlyText}</p><dl className="grid gap-y-2 text-sm sm:grid-cols-[minmax(9rem,12rem)_minmax(0,1fr)] sm:gap-x-4 [&>dt]:min-w-0 [&>dt]:break-words [&>dd]:min-w-0 [&>dd]:break-words"><dt className="text-slate-500">{text.line}</dt><dd>{client.lineId ?? text.dash}</dd><dt className="text-slate-500">{text.email}</dt><dd>{client.email ?? text.dash}</dd><dt className="text-slate-500">{text.usage}</dt><dd>{purposeLabel[client.purpose]}</dd></dl></section>
         <ObjectAttachmentSection locale={locale} targetType="party" targetId={client.id} items={attachments} canWrite={false} />
@@ -357,7 +380,7 @@ export default async function ClientDetailPage({ params, searchParams }: ClientD
           </p>
         </div>
         <div className="flex gap-2">
-          <Link href={`/clients/${client.id}/edit`} className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700">
+          <Link href={`/clients/${client.id}/edit?returnTo=${encodeURIComponent(returnTo)}`} className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700">
             {text.edit}
           </Link>
         </div>

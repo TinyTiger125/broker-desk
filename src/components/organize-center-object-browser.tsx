@@ -224,11 +224,17 @@ export function OrganizeCenterObjectBrowser({
       results={filteredItems.length > 0 ? (
         <div className="divide-y divide-slate-200">
           {visibleItems.map((item) => {
-            const itemHref = item.type === "case"
-              ? `${item.href}?returnTo=${encodeURIComponent(listHref)}`
-              : item.href;
+            const itemHref = `${item.href}${item.href.includes("?") ? "&" : "?"}returnTo=${encodeURIComponent(listHref)}`;
             return (
-            <article key={`${item.type}:${item.id}`} className="grid gap-3 px-4 py-3 transition hover:bg-[#f9fbff] sm:px-5 md:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)] xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1.45fr)_auto]">
+            <article
+              key={`${item.type}:${item.id}`}
+              role="row"
+              data-list-row-link={itemHref}
+              data-list-row-return-trigger={`${item.type}:${item.id}`}
+              tabIndex={0}
+              aria-label={`${item.title} · ${getTypeLabel(item.type, copy)}`}
+              className="grid cursor-pointer gap-3 px-4 py-3 transition hover:bg-[#f9fbff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3158d8] focus-visible:ring-inset sm:px-5 md:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)] xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1.45fr)_auto]"
+            >
               <div className="min-w-0">
                 <Link
                   href={itemHref}

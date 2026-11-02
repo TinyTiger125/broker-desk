@@ -47,6 +47,18 @@ assert.match(listReturn, /event\.key !== "Enter" && event\.key !== " "/);
 const clientsReturn = await source("src/app/clients/clients-list-return-state.tsx");
 assert.match(clientsReturn, /data-list-row-link/);
 assert.match(clientsReturn, /keydown/);
+const clientsList = await source("src/app/clients/page.tsx");
+assert.match(clientsList, /const returnTo = buildClientsHref\(\{ \.\.\.filters, page: safePage \}\)/);
+assert.match(clientsList, /const clientHref = `\/clients\/\$\{encodeURIComponent\(client\.id\)\}\?returnTo=/);
+const clientDetail = await source("src/app/clients/[id]/page.tsx");
+assert.match(clientDetail, /function normalizeReturnTo\(value: string \| undefined\): string/);
+assert.match(clientDetail, /href=\{`\/clients\/\$\{client\.id\}\/edit\?returnTo=\$\{encodeURIComponent\(returnTo\)\}`\}/);
+const organizeBrowser = await source("src/components/organize-center-object-browser.tsx");
+assert.match(organizeBrowser, /const itemHref = `\$\{item\.href\}\$\{item\.href\.includes\("\?"\) \? "&" : "\?"\}returnTo=/);
+assert.match(organizeBrowser, /data-list-row-link=\{itemHref\}/);
+assert.match(organizeBrowser, /data-list-row-return-trigger=\{`\$\{item\.type\}:\$\{item\.id\}`\}/);
+assert.match(organizeBrowser, /role="row"/);
+assert.match(organizeBrowser, /tabIndex=\{0\}/);
 
 const identity = await source("src/components/client-identity-import-section.tsx");
 assert.match(identity, /add: "读取新资料"/);

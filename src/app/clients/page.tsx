@@ -297,6 +297,8 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
     redirect(buildClientsHref({ ...filters, page: safePage }));
   }
 
+  const returnTo = buildClientsHref({ ...filters, page: safePage });
+
   const visibleClients = clients.slice(
     (safePage - 1) * CLIENTS_PAGE_SIZE,
     safePage * CLIENTS_PAGE_SIZE,
@@ -417,11 +419,13 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
                   </tr>
                 </thead>
                 <tbody>
-                  {visibleClients.map(({ client, resolution }) => (
-                    <tr key={client.id} data-list-row-link={`/clients/${client.id}`} data-client-link={`name:${client.id}`} tabIndex={0} aria-label={`${client.name} · ${text.detail}`} className={styles.resultRow}>
+                  {visibleClients.map(({ client, resolution }) => {
+                    const clientHref = `/clients/${encodeURIComponent(client.id)}?returnTo=${encodeURIComponent(returnTo)}`;
+                    return (
+                    <tr key={client.id} data-list-row-link={clientHref} data-client-link={`name:${client.id}`} tabIndex={0} aria-label={`${client.name} · ${text.detail}`} className={styles.resultRow}>
                       <td className={styles.clientCell}>
                         <Link
-                          href={`/clients/${client.id}`}
+                          href={clientHref}
                           data-client-link={`name:${client.id}`}
                           aria-label={`${client.name} · ${text.detail}`}
                           className={styles.nameLink}
@@ -488,7 +492,8 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
                         )}
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

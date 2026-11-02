@@ -415,8 +415,8 @@ function assertOrganizeSharedReturn(source, pageSource) {
   const selectItemHref = Function("item", "listHref", `return (${itemHrefBinding.initializer.getText(sf)});`);
   const listHref = "/organize-center?type=case&q=%E7%94%B2";
   assert.equal(selectItemHref({ type: "case", id: "c1", href: "/cases/c1" }, listHref), `/cases/c1?returnTo=${encodeURIComponent(listHref)}`, "case itemHref must append the source list to its real detail href");
-  assert.equal(selectItemHref({ type: "party", id: "p1", href: "/parties/p1/edit" }, listHref), "/parties/p1/edit", "party itemHref must preserve its real detail href");
-  assert.equal(selectItemHref({ type: "property", id: "r1", href: "/properties/r1/edit" }, listHref), "/properties/r1/edit", "property itemHref must preserve its real detail href");
+  assert.equal(selectItemHref({ type: "party", id: "p1", href: "/parties/p1/edit" }, listHref), `/parties/p1/edit?returnTo=${encodeURIComponent(listHref)}`, "party itemHref must append the source list to its real edit href");
+  assert.equal(selectItemHref({ type: "property", id: "r1", href: "/properties/r1/edit" }, listHref), `/properties/r1/edit?returnTo=${encodeURIComponent(listHref)}`, "property itemHref must append the source list to its real edit href");
 
   const page = parse("src/app/organize-center/page.tsx", pageSource);
   const copy = page.statements.find((node) => ts.isVariableStatement(node) && node.declarationList.declarations.some((item) => ts.isIdentifier(item.name) && item.name.text === "copyByLocale"));
@@ -565,10 +565,13 @@ const organizePage = read("src/app/organize-center/page.tsx");
 const wrongListSourceMutation = organizeBrowser.replace("encodeURIComponent(listHref)", "encodeURIComponent('/organize-center?type=case')");
 assert.notEqual(wrongListSourceMutation, organizeBrowser, "case list source mutation target must exist");
 assert.throws(() => assertOrganizeSharedReturn(wrongListSourceMutation, organizePage), /case itemHref must append/);
-const nonCaseHrefMutation = organizeBrowser.replace(": item.href;", ": item.id;");
+const nonCaseHrefMutation = organizeBrowser.replace(
+  'const itemHref = `${item.href}${item.href.includes("?") ? "&" : "?"}returnTo=${encodeURIComponent(listHref)}`;',
+  'const itemHref = `${item.id}${item.href.includes("?") ? "&" : "?"}returnTo=${encodeURIComponent(listHref)}`;',
+);
 assert.notEqual(nonCaseHrefMutation, organizeBrowser, "non-case itemHref mutation target must exist");
-assert.throws(() => assertOrganizeSharedReturn(nonCaseHrefMutation, organizePage), /party itemHref must preserve/);
-const caseHrefTarget = '`${item.href}?returnTo=${encodeURIComponent(listHref)}`';
+assert.throws(() => assertOrganizeSharedReturn(nonCaseHrefMutation, organizePage), /case itemHref must append/);
+const caseHrefTarget = '`${item.href}${item.href.includes("?") ? "&" : "?"}returnTo=${encodeURIComponent(listHref)}`';
 const hardcodedCaseHrefMutation = organizeBrowser.replace(caseHrefTarget, '`/cases/fixed?returnTo=${encodeURIComponent(listHref)}`');
 assert.notEqual(hardcodedCaseHrefMutation, organizeBrowser, "case itemHref mutation target must exist");
 assert.throws(() => assertOrganizeSharedReturn(hardcodedCaseHrefMutation, organizePage), /case itemHref must append/);
