@@ -307,7 +307,8 @@ const caseOverviewOccluderPosition = caseOverview.indexOf("data-case-sticky-occl
 if (caseOverviewAssociationPosition < 0 || caseOverviewNavPosition < 0 || caseOverviewFieldsPosition < 0 || caseOverviewOccluderPosition < 0 || !(caseOverviewOccluderPosition < caseOverviewAssociationPosition && caseOverviewAssociationPosition < caseOverviewNavPosition && caseOverviewNavPosition < caseOverviewFieldsPosition)) {
   failures.push("CaseOverview: children order must be associationPanel, section navigation, then fields");
 }
-requireText(caseOverview, "pointer-events-none fixed inset-x-0 top-16 z-10 h-[4.75rem] bg-[var(--background)] lg:h-[6.5rem]", "CaseOverview sticky boundary occluder");
+requireText(caseOverview, "pointer-events-none fixed inset-x-0 top-0 z-10 h-[10.5rem] bg-[var(--background)] lg:top-16 lg:h-[6.5rem]", "CaseOverview sticky boundary occluder");
+requireText(caseOverview, "className=\"sticky top-[10.5rem] z-20 rounded-xl border border-slate-200 bg-white px-2 py-2 shadow-sm lg:top-[10.5rem]\"", "CaseOverview mobile chapter bar clears the compact summary");
 if (caseOverview.includes("bg-white/95")) failures.push("CaseOverview: sticky summary and chapter surfaces must be opaque at the scroll boundary");
 const readOnlyBranchStart = casePage.indexOf("if (!canWriteCase)");
 const overviewBranchStart = casePage.indexOf("if (activeView === \"overview\")");
