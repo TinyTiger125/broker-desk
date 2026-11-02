@@ -57,15 +57,22 @@ export const CASE_WORKFLOW_TYPE_VALUES = [
 ] as const;
 
 export type CaseWorkflowType = (typeof CASE_WORKFLOW_TYPE_VALUES)[number];
-export type CaseWorkflowTypeGroupId = "rental" | "sale" | "management" | "general" | "legacy";
-export type CaseWorkflowTypeFamily = CaseWorkflowTypeGroupId;
+export const CASE_LEGACY_WORKFLOW_TYPE_VALUES = [
+  "rental_application",
+  "rental_mandate",
+  "sale_mandate",
+  "quote_preparation",
+  "contract_preparation",
+] as const;
+
+export type CaseWorkflowTypeGroupId = "rental" | "sale" | "management" | "general";
+export type CaseWorkflowTypeFamily = CaseWorkflowTypeGroupId | "legacy";
 
 export const CASE_WORKFLOW_TYPE_GROUPS = [
   { id: "rental", values: ["rental_new_application", "rental_listing_ad", "rental_lease_contract"] },
   { id: "sale", values: ["sale_listing_request", "sale_purchase_offer", "sale_contract"] },
   { id: "management", values: ["management_new_contract", "management_periodic_report", "management_ad_hoc_report"] },
   { id: "general", values: ["general_estimate", "general_proposal"] },
-  { id: "legacy", values: ["rental_application", "rental_mandate", "sale_mandate", "quote_preparation", "contract_preparation"] },
 ] as const satisfies ReadonlyArray<{ id: CaseWorkflowTypeGroupId; values: ReadonlyArray<CaseWorkflowType> }>;
 
 const caseWorkflowTypeLabelByLocale: Record<Locale, Record<CaseWorkflowType, string>> = {
@@ -126,9 +133,9 @@ const caseWorkflowTypeLabelByLocale: Record<Locale, Record<CaseWorkflowType, str
 };
 
 const caseWorkflowTypeGroupLabelByLocale: Record<Locale, Record<CaseWorkflowTypeGroupId, string>> = {
-  ja: { rental: "賃貸", sale: "売買", management: "管理", general: "一般", legacy: "既存分類" },
-  zh: { rental: "租赁", sale: "买卖", management: "管理", general: "通用", legacy: "原有分类" },
-  ko: { rental: "임대", sale: "매매", management: "관리", general: "일반", legacy: "기존 분류" },
+  ja: { rental: "賃貸", sale: "売買", management: "管理", general: "一般" },
+  zh: { rental: "租赁", sale: "买卖", management: "管理", general: "通用" },
+  ko: { rental: "임대", sale: "매매", management: "관리", general: "일반" },
 };
 
 const caseWorkflowTypeFamily: Record<CaseWorkflowType, CaseWorkflowTypeFamily> = {

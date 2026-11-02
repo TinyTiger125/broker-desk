@@ -28,7 +28,7 @@ require.extensions[".ts"] = (module, filename) => {
 
 const {
   CASE_WORKFLOW_TYPE_VALUES,
-  CASE_WORKFLOW_TYPE_GROUPS,
+  CASE_LEGACY_WORKFLOW_TYPE_VALUES,
   getCaseWorkflowTypeFamily,
   getCaseWorkflowTypeGroups,
   getCaseWorkflowTypeLabel,
@@ -51,20 +51,21 @@ const detailedTypes = [
 ];
 assert.deepEqual(CASE_WORKFLOW_TYPE_VALUES.slice(0, detailedTypes.length), detailedTypes, "the first options are the 11 approved detailed case types");
 for (const type of detailedTypes) assert.equal(isCaseWorkflowType(type), true, `${type} is server-allowed`);
-for (const legacy of ["rental_application", "rental_mandate", "sale_mandate", "quote_preparation", "contract_preparation"]) {
+for (const legacy of CASE_LEGACY_WORKFLOW_TYPE_VALUES) {
   assert.equal(isCaseWorkflowType(legacy), true, `${legacy} remains accepted for old records and links`);
 }
 assert.equal(isCaseWorkflowType("not_a_case_type"), false, "unrecognized values are rejected");
 
 const groups = getCaseWorkflowTypeGroups("ja");
-assert.deepEqual(groups.map((group) => group.id), ["rental", "sale", "management", "general", "legacy"]);
-assert.deepEqual(groups.slice(0, 4).map((group) => group.options.map((option) => option.value)), [
+assert.deepEqual(groups.map((group) => group.id), ["rental", "sale", "management", "general"], "new-case UI exposes exactly four PDF groups");
+assert.deepEqual(groups.map((group) => group.options.map((option) => option.value)), [
   detailedTypes.slice(0, 3), detailedTypes.slice(3, 6), detailedTypes.slice(6, 9), detailedTypes.slice(9),
-]);
+], "new-case UI exposes exactly the 11 detailed PDF types");
 for (const locale of ["ja", "zh", "ko"]) {
   const localizedGroups = getCaseWorkflowTypeGroups(locale);
-  assert.equal(localizedGroups.flatMap((group) => group.options).length, CASE_WORKFLOW_TYPE_VALUES.length, `${locale} has a label for every allowed type`);
+  assert.equal(localizedGroups.flatMap((group) => group.options).length, detailedTypes.length, `${locale} visibly labels only the 11 detailed types`);
   for (const type of detailedTypes) assert.notEqual(getCaseWorkflowTypeLabel(locale, type), "未分類", `${locale} labels ${type}`);
+  for (const type of CASE_LEGACY_WORKFLOW_TYPE_VALUES) assert.notEqual(getCaseWorkflowTypeLabel(locale, type), "未分類", `${locale} preserves detail label for ${type}`);
 }
 
 for (const type of ["rental_new_application", "rental_listing_ad", "rental_lease_contract"]) {
