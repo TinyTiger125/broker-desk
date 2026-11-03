@@ -8181,9 +8181,9 @@ function objectImportTargetStatusSql(): string {
   ) THEN 'needs_review' ELSE 'completed' END`;
 }
 
-async function lockCaseReviewMembership(client: PoolClient, context: RequestContext): Promise<boolean> {
+async function lockMembershipForMutation(client: PoolClient, membershipId: string, tenantId: string, actorUserId: string): Promise<boolean> {
   try {
-    const membership = await client.query("SELECT brokerdesk_private.lock_case_review_membership_v2($1,$2,$3) AS allowed", [context.membershipId, context.tenantId, context.userId]);
+    const membership = await client.query("SELECT brokerdesk_private.lock_case_review_membership_v2($1,$2,$3) AS allowed", [membershipId, tenantId, actorUserId]);
     return Boolean(membership.rows[0]?.allowed);
   } catch (error) {
     // Review must fail closed until the helper migration and EXECUTE grant are
@@ -8192,6 +8192,10 @@ async function lockCaseReviewMembership(client: PoolClient, context: RequestCont
     if (code === "42883" || code === "42501") return false;
     throw error;
   }
+}
+
+async function lockCaseReviewMembership(client: PoolClient, context: RequestContext): Promise<boolean> {
+  return lockMembershipForMutation(client, context.membershipId, context.tenantId, context.userId);
 }
 
 export async function reviewObjectImportCandidate(input: ObjectImportReviewInput): Promise<ObjectImportReviewResult> {
@@ -8256,11 +8260,26 @@ export async function autoSaveObjectImportCandidates(input: { tenantId: string; 
     if (!targetRows.rows[0]) return 0;
     const target = mapObjectImportTarget(targetRows.rows[0]);
     if (target.status !== "needs_review") return 0;
-    const membership = await client.query("SELECT capability,role FROM tenant_memberships WHERE tenant_id=$1 AND user_id=$2 AND status='active' LIMIT 1 FOR SHARE", [input.tenantId, input.userId]);
-    const capability = membership.rows[0]?.capability ?? "ordinary_member";
-    const rawMembershipRole = membership.rows[0]?.role;
+    // The runtime role may SELECT membership metadata but cannot acquire a
+    // row lock directly. Read the candidate membership id, then let the
+    // narrowly scoped SECURITY DEFINER helper re-check and lock it in this
+    // transaction before any formal field write.
+    const membershipHint = await client.query("SELECT id FROM tenant_memberships WHERE tenant_id=$1 AND user_id=$2 AND status='active' LIMIT 1", [input.tenantId, input.userId]);
+    const membershipId = membershipHint.rows[0]?.id ? String(membershipHint.rows[0].id) : "";
+    const membershipLocked = membershipId
+      ? await lockMembershipForMutation(client, membershipId, input.tenantId, input.userId)
+      : false;
+    // Re-read permission metadata only after the helper has locked and
+    // revalidated the membership row. Never authorize from the pre-lock hint.
+    const membership = membershipLocked
+      ? await client.query("SELECT capability,role FROM tenant_memberships WHERE id=$1 AND tenant_id=$2 AND user_id=$3 AND status='active'", [membershipId, input.tenantId, input.userId])
+      : { rows: [] as Record<string, unknown>[] };
+    const membershipRow = membership.rows[0];
+    const capability = membershipRow?.capability ?? "ordinary_member";
+    const rawMembershipRole = membershipRow?.role;
     const membershipRole: TenantRole | undefined = typeof rawMembershipRole === "string" && isTenantRole(rawMembershipRole) ? rawMembershipRole : undefined;
-    if (!membership.rows[0]
+    if (!membershipRow
+      || !membershipLocked
       || !capabilityHasTenantPermission(capability, "record.update")
       || !capabilityHasTenantPermission(capability, "source.upload")
       || !membershipRole

@@ -944,9 +944,9 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
       ko: "본인 확인 자료의 총 용량은 60MB 이하로 선택해 주세요.",
     },
     identity_upload_type: {
-      ja: "在留カード・運転免許証のPDFまたは画像ファイルを選択してください。",
-      zh: "请选择在留卡或驾照的 PDF / 图片文件。",
-      ko: "재류카드 또는 운전면허증 PDF/이미지를 선택해 주세요.",
+      ja: "パスポート・在留カード・運転免許証・国民健康保険証のPDFまたは画像ファイルを選択してください。",
+      zh: "请选择护照、在留卡、驾照或国民健康保险卡的 PDF / 图片文件。",
+      ko: "여권·재류카드·운전면허증·국민건강보험증 PDF/이미지를 선택해 주세요.",
     },
     object_import_upload_save_failed: {
       ja: "資料の受付は完了しませんでした。元ファイルを保存できなかったため、対象を選んだまま再試行してください。",
@@ -1723,10 +1723,10 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                 </div>
                 <p className="mt-1 text-xs text-slate-600">
                   {locale === "zh"
-                    ? "只采用确认无误的信息。在留卡或驾照任选一份即可。"
+                    ? "只采用确认无误的信息。护照、在留卡、驾照或国民健康保险卡任选一份即可。"
                     : locale === "ko"
-                      ? "확실한 항목만 채택하세요. 재류카드 또는 운전면허증 중 하나만 업로드해도 됩니다."
-                      : "正しい項目だけ採用してください。在留カードまたは運転免許証の片方だけで進められます。"}
+                      ? "확실한 항목만 채택하세요. 여권·재류카드·운전면허증·국민건강보험증 중 하나만 업로드해도 됩니다."
+                      : "正しい項目だけ採用してください。パスポート・在留カード・運転免許証・国民健康保険証のいずれか1点で進められます。"}
                 </p>
               </div>
               <span className="rounded-full bg-white px-3 py-1 text-[11px] font-bold text-slate-700">
