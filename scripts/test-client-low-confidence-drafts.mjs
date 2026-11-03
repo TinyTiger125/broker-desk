@@ -32,13 +32,14 @@ const field = (fieldKey, candidateValue, overrides = {}) => ({
   status: "low_confidence",
   ...overrides,
 });
-const view = (fields, status = "needs_review") => ({ target: { status }, fields });
+const view = (fields, status = "needs_review", targetVersion = "profile-v1") => ({ target: { status, targetVersion }, fields });
 
 const suggestions = collectClientIdentityDraftSuggestions([
   view([
     field("name", "Candidate Name"),
     field("birthDate", "平成2年1月2日", { provenance: { alternatives: [{ value: "1990-01-02" }] } }),
     field("gender", "男性"),
+    field("currentAddress", "未定"),
     field("currentAddress", "Draft Address"),
     field("phone", "not a phone"),
     field("nationality", "unsupported"),
@@ -46,17 +47,51 @@ const suggestions = collectClientIdentityDraftSuggestions([
     field("email", "invalid-email"),
     field("currentPostalCode", "123"),
     field("currentAddress", "Ambiguous Address", { provenance: { uncertainty: "unclear", alternatives: [{ value: "Other Address" }] } }),
-    field("gender", "female", { finalSource: "human" }),
   ]),
   view([field("currentAddress", "Another Address")]),
   view([field("name", "Candidate Name")]),
-  view([field("name", "Ignored completed target")], "completed"),
-]);
+  view([field("name", "Ignored completed target")], "completed", "old-profile"),
+], "profile-v1");
 assert.deepEqual(suggestions, [
   { key: "name", value: "Candidate Name" },
-  { key: "birthDate", value: "1990-01-02" },
   { key: "gender", value: "male" },
 ], "only unique, valid, low-confidence existing fields become drafts");
+assert.deepEqual(
+  collectClientIdentityDraftSuggestions([view([field("birthDate", "平成2年1月2日")])], "profile-v1"),
+  [{ key: "birthDate", value: "1990-01-02" }],
+  "valid Japanese era dates normalize to the existing date control",
+);
+
+assert.deepEqual(
+  collectClientIdentityDraftSuggestions([view([field("name", "Old Candidate")], "needs_review", "old-profile")], "profile-v1"),
+  [],
+  "stale target fingerprints never project old candidates",
+);
+assert.deepEqual(
+  collectClientIdentityDraftSuggestions([view([field("currentAddress", "One Address", { provenance: { alternatives: [{ value: "Other Address" }] } })])], "profile-v1"),
+  [],
+  "alternative conflicts block the field even when no second row survives grouping",
+);
+assert.deepEqual(
+  collectClientIdentityDraftSuggestions([view([field("name", "Candidate A"), field("name", "Candidate B", { status: "draft", confidence: 0.95 })])], "profile-v1"),
+  [],
+  "clear or draft values block a different low-confidence value",
+);
+assert.deepEqual(
+  collectClientIdentityDraftSuggestions([view([field("birthDate", "not-a-date"), field("birthDate", "1990-01-02", { status: "draft", confidence: 0.95 })])], "profile-v1"),
+  [],
+  "an invalid value blocks a different value for the same field",
+);
+assert.deepEqual(
+  collectClientIdentityDraftSuggestions([view([field("gender", "male"), field("gender", "female", { finalSource: "human" })])], "profile-v1"),
+  [],
+  "a saved human value blocks a different model value",
+);
+assert.deepEqual(
+  collectClientIdentityDraftSuggestions([view([field("currentAddress", "未确认")])], "profile-v1"),
+  [],
+  "placeholder addresses are never draft suggestions",
+);
 
 const seeded = fillEmptyEntryDraftSuggestions(
   { name: "", birthDate: "saved-date", gender: "", phone: "" },
@@ -74,5 +109,8 @@ for (const copy of [
 ]) assert.match(clientForm, new RegExp(copy));
 assert.match(clientForm, /data-client-draft-suggestions/);
 assert.match(clientForm, /低信頼度または不一致の候補は自動保存されません/);
+const editPage = readFileSync(resolve(root, "src/app/clients/[id]/edit/page.tsx"), "utf8");
+assert.match(editPage, /!canEdit \|\| profile\.type === "corporate"/);
+assert.match(editPage, /collectClientIdentityDraftSuggestions\(identityViews, clientProfileVersion\)/);
 
 console.log("client low-confidence draft suggestions: PASS");

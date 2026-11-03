@@ -104,7 +104,7 @@ export default async function EditClientPage({ params, searchParams }: EditClien
   const identityTargets = (await listObjectImportTargets({ tenantId: session.tenant.id, userId: session.user.id, targetType: "party", targetId: client.id }))
     .filter((target) => !target.caseId);
   const identityViews = await Promise.all(identityTargets.map(async (target) => ({ target, fields: await listObjectImportCandidates({ tenantId: session.tenant.id, userId: session.user.id, targetId: target.id }) })));
-  const identityDraftSuggestions = collectClientIdentityDraftSuggestions(identityViews);
+  const identityDraftSuggestions = !canEdit || profile.type === "corporate" ? [] : collectClientIdentityDraftSuggestions(identityViews, clientProfileVersion);
   const defaults: ClientFormDefaults = {
     clientId: client.id,
     name: client.name,

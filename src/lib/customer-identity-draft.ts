@@ -2,7 +2,7 @@ import { customerIdentityFieldKey, isValidCustomerBirthDate, normalizeCustomerId
 import type { ObjectImportCandidateRecord, ObjectImportTargetRecord } from "@/lib/object-import-repository";
 
 export type ClientIdentityImportViewLike = {
-  target: Pick<ObjectImportTargetRecord, "status">;
+  target: Pick<ObjectImportTargetRecord, "status" | "targetVersion">;
   fields: readonly ObjectImportCandidateRecord[];
 };
 
@@ -21,15 +21,19 @@ function validDraftValue(field: CustomerIdentityFieldKey, value: string): boolea
   return true;
 }
 
-function hasDifferentAlternative(field: ObjectImportCandidateRecord, fieldKey: CustomerIdentityFieldKey, value: string): boolean {
+function isNonActualCurrentAddress(value: string): boolean {
+  const normalized = value.trim().replace(/\s+/g, "");
+  return /^(?:住所|住居地)?(?:未定|未确认|不明|なし|n\/a|-)$/i.test(normalized);
+}
+
+function alternativeValues(field: ObjectImportCandidateRecord, fieldKey: CustomerIdentityFieldKey): string[] {
   const alternatives = Array.isArray(field.provenance.alternatives) ? field.provenance.alternatives : [];
-  return alternatives.some((item) => {
-    if (!item || typeof item !== "object" || Array.isArray(item)) return false;
+  return alternatives.flatMap((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
     const alternative = (item as { value?: unknown }).value;
-    return typeof alternative === "string"
-      && alternative.trim()
-      && normalizeCustomerIdentityValue(fieldKey, alternative) !== value;
-  });
+    if (typeof alternative !== "string" || !alternative.trim()) return [];
+    return [normalizeCustomerIdentityValue(fieldKey, alternative)];
+  }).filter((value): value is string => typeof value === "string" && Boolean(value));
 }
 
 /**
@@ -38,33 +42,47 @@ function hasDifferentAlternative(field: ObjectImportCandidateRecord, fieldKey: C
  * than silently choosing one. The caller still decides whether a blank form
  * control may display the suggestion.
  */
-export function collectClientIdentityDraftSuggestions(views: readonly ClientIdentityImportViewLike[]): ClientIdentityDraftSuggestion[] {
+export function collectClientIdentityDraftSuggestions(views: readonly ClientIdentityImportViewLike[], expectedProfileVersion: string): ClientIdentityDraftSuggestion[] {
+  if (!expectedProfileVersion.trim()) return [];
   const candidates: ClientIdentityDraftSuggestion[] = [];
+  const valuesByField = new Map<CustomerIdentityFieldKey, Set<string>>();
+  const blockedFields = new Set<CustomerIdentityFieldKey>();
+
+  const addValue = (key: CustomerIdentityFieldKey, value: string) => {
+    if (!validDraftValue(key, value) || (key === "currentAddress" && isNonActualCurrentAddress(value))) return;
+    const values = valuesByField.get(key) ?? new Set<string>();
+    values.add(value);
+    valuesByField.set(key, values);
+  };
+
   for (const view of views) {
-    if (view.target.status !== "needs_review") continue;
+    // The target version is the upload-time profile fingerprint. A changed
+    // profile must never project an old candidate back into the edit form.
+    if (view.target.targetVersion !== expectedProfileVersion) continue;
     for (const field of view.fields) {
-      if (field.status !== "low_confidence" || field.finalSource === "human") continue;
       const fieldKey = customerIdentityFieldKey(field.fieldKey);
       if (!fieldKey) continue;
       const value = normalizeCustomerIdentityValue(fieldKey, field.candidateValue ?? "");
-      if (!validDraftValue(fieldKey, value)) continue;
-      if (["conflict", "not_found"].includes(String(field.provenance.uncertainty)) || hasDifferentAlternative(field, fieldKey, value)) continue;
+      const alternatives = alternativeValues(field, fieldKey);
+      const hasDifferentAlternative = alternatives.some((alternative) => alternative !== value);
+      if (hasDifferentAlternative || field.provenance.uncertainty === "conflict") blockedFields.add(fieldKey);
+      if (value && !validDraftValue(fieldKey, value) && !(fieldKey === "currentAddress" && isNonActualCurrentAddress(value))) blockedFields.add(fieldKey);
+      if (!["failed", "not_found"].includes(field.status) && value) addValue(fieldKey, value);
+      for (const alternative of alternatives) addValue(fieldKey, alternative);
+
+      if (view.target.status !== "needs_review" || field.status !== "low_confidence" || field.finalSource === "human") continue;
+      if (!validDraftValue(fieldKey, value) || (fieldKey === "currentAddress" && isNonActualCurrentAddress(value))) continue;
+      if (["conflict", "not_found"].includes(String(field.provenance.uncertainty)) || hasDifferentAlternative) continue;
       const sourceRange = typeof field.provenance.sourceRange === "string" ? field.provenance.sourceRange : "";
       if (sourceRange.includes("model_attribution_blocked=")) continue;
       candidates.push({ key: fieldKey, value });
     }
   }
 
-  const valuesByField = new Map<CustomerIdentityFieldKey, Set<string>>();
-  for (const candidate of candidates) {
-    const values = valuesByField.get(candidate.key) ?? new Set<string>();
-    values.add(candidate.value);
-    valuesByField.set(candidate.key, values);
-  }
   const seen = new Set<CustomerIdentityFieldKey>();
   return candidates.filter((candidate) => {
     if (seen.has(candidate.key)) return false;
     seen.add(candidate.key);
-    return valuesByField.get(candidate.key)?.size === 1;
+    return !blockedFields.has(candidate.key) && valuesByField.get(candidate.key)?.size === 1;
   });
 }
