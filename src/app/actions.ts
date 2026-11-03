@@ -811,6 +811,11 @@ function clientFormValues(formData: FormData): ClientFormValues {
   };
 }
 
+function withoutClientIndividualFields<T extends Record<string, unknown>>(values: T) {
+  const individualFields = new Set(["birthDate", "gender", "employerName", "employerAddress", "employerPhone", "annualIncome", "annualIncomeAsOf", "annualIncomeSource"]);
+  return Object.fromEntries(Object.entries(values).filter(([key]) => !individualFields.has(key))) as Omit<T, "birthDate" | "gender" | "employerName" | "employerAddress" | "employerPhone" | "annualIncome" | "annualIncomeAsOf" | "annualIncomeSource">;
+}
+
 function clientValidationMessage(locale: Locale, field: keyof ClientFormValues): string {
   const messages: Record<Locale, Partial<Record<keyof ClientFormValues, string>>> = {
     ja: {
@@ -1131,6 +1136,7 @@ async function persistClientForm(
   const submitReturnTo = safeClientReturnTo(formData.get("submitReturnTo"), returnTo, mode === "edit" ? clientId : undefined, mode === "create");
   let client;
   if (mode === "create") {
+    const normalized = partyTypeRaw === "corporate" ? withoutClientIndividualFields(parsed.normalized) : parsed.normalized;
     client = await addClient({
       tenantId,
       ownerUserId: user.id,
@@ -1138,7 +1144,7 @@ async function persistClientForm(
       ...(formData.get("entryRequestKey") && formData.get("entryClaimToken")
         ? { entryRequest: { requestKey: String(formData.get("entryRequestKey")), claimToken: String(formData.get("entryClaimToken")) } }
         : {}),
-      ...parsed.normalized,
+      ...normalized,
       notes: mergePartyProfileNotes({
         type: partyTypeRaw ? partyTypeRaw as PartyProfileType : undefined,
         note: parsed.normalized.notes,
@@ -1152,8 +1158,10 @@ async function persistClientForm(
     }
     const existingClient = await ensureClientOwnership(clientId, session);
     const existingProfile = extractPartyProfileFromNotes(existingClient.notes);
+    const effectivePartyType = partyTypeSubmitted ? (partyTypeRaw || undefined) : existingProfile.type;
+    const normalizedValues = effectivePartyType === "corporate" ? withoutClientIndividualFields(parsed.normalized) : parsed.normalized;
     const normalized = {
-      ...parsed.normalized,
+      ...normalizedValues,
       notes: mergePartyProfileNotes({
         existingNotes: existingClient.notes,
         type: partyTypeSubmitted ? (partyTypeRaw ? partyTypeRaw as PartyProfileType : undefined) : existingProfile.type,

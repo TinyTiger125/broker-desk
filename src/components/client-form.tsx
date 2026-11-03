@@ -8,8 +8,8 @@ import { Button } from "@/components/ui-foundation";
 import { EntryFilePicker, replaceEntryFiles } from "@/components/entry-file-picker";
 import { applyEntryPreviewCandidate, createEntryIntentId, EntryPreview, type EntryPreviewCandidate } from "@/components/entry-preview";
 import { useEntryDraft } from "@/components/use-entry-draft";
-import { fillAutoSavedEntryForm, fillEmptyEntryDraftSuggestions, type EntryDraftSuggestion, type EntryPreviewState } from "@/lib/entry-preview";
-import { CLIENT_IDENTITY_DRAFT_APPLY_EVENT } from "@/lib/customer-identity-draft";
+import { fillAutoSavedEntryForm, fillEmptyEntryDraftSuggestions, type EntryPreviewState } from "@/lib/entry-preview";
+import { CLIENT_IDENTITY_DRAFT_APPLY_EVENT, filterClientIdentityDraftSuggestionsForPartyType, type ClientIdentityDraftSuggestion } from "@/lib/customer-identity-draft";
 import type { Locale } from "@/lib/locale";
 import {
   getAmlCheckStatusOptions,
@@ -309,9 +309,15 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
   useEffect(() => {
     if (!formId || readOnly) return;
     const handleDraftApply = (event: Event) => {
-      const detail = (event as CustomEvent<{ formId?: string; suggestions?: EntryDraftSuggestion[] }>).detail;
+      const detail = (event as CustomEvent<{ formId?: string; suggestions?: ClientIdentityDraftSuggestion[] }>).detail;
       if (detail?.formId !== formId || !Array.isArray(detail.suggestions)) return;
-      setValues((current) => fillEmptyEntryDraftSuggestions(current, detail.suggestions ?? []));
+      setValues((current) => {
+        const partyTypeControl = formRef.current?.elements.namedItem("partyType");
+        const livePartyType = partyTypeControl instanceof HTMLSelectElement ? partyTypeControl.value : current.partyType;
+        if (livePartyType === "corporate" || current.partyType === "corporate") return current;
+        const safeSuggestions = filterClientIdentityDraftSuggestionsForPartyType(livePartyType, detail.suggestions ?? []);
+        return fillEmptyEntryDraftSuggestions(current, safeSuggestions);
+      });
     };
     window.addEventListener(CLIENT_IDENTITY_DRAFT_APPLY_EVENT, handleDraftApply);
     return () => window.removeEventListener(CLIENT_IDENTITY_DRAFT_APPLY_EVENT, handleDraftApply);
@@ -397,7 +403,7 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
         <div className="space-y-1">{label("furigana", profileFuriganaLabel)}<input {...fieldProps("furigana")} className={inputClass} />{errorText("furigana")}</div>
         <div className="space-y-1">{label("currentPostalCode", profilePostalCodeLabel)}<input {...fieldProps("currentPostalCode")} className={inputClass} />{errorText("currentPostalCode")}</div>
         <div className="space-y-1 md:col-span-2">{label("currentAddress", profileAddressLabel)}<input {...fieldProps("currentAddress")} className={inputClass} />{errorText("currentAddress")}</div>
-        {isCorporate ? hiddenIndividualFields.map((field) => <input key={field} type="hidden" name={field} value={values[field]} />) : <>
+        {isCorporate ? hiddenIndividualFields.map((field) => <input key={field} type="hidden" value={values[field]} disabled aria-hidden="true" />) : <>
           <div className="space-y-1">{label("birthDate", text.birthDate)}<input {...fieldProps("birthDate")} type="date" className={inputClass} />{errorText("birthDate")}</div>
           <div className="space-y-1">{label("gender", text.gender)}<select {...fieldProps("gender")} className={inputClass}><option value="">{text.genderUnset}</option><option value="male">{text.genderMale}</option><option value="female">{text.genderFemale}</option><option value="other">{text.genderOther}</option></select>{errorText("gender")}</div>
           <div className="space-y-1">{label("employerName", text.employerName)}<input {...fieldProps("employerName")} className={inputClass} />{errorText("employerName")}</div>

@@ -1,4 +1,4 @@
-import { customerIdentityFieldKey, isValidCustomerBirthDate, normalizeCustomerIdentityValue, type CustomerIdentityFieldKey } from "@/lib/customer-identity-field-catalog";
+import { CUSTOMER_IDENTITY_FIELD_KEYS, customerIdentityFieldKey, isValidCustomerBirthDate, normalizeCustomerIdentityValue, type CustomerIdentityFieldKey } from "@/lib/customer-identity-field-catalog";
 import type { ObjectImportCandidateRecord, ObjectImportTargetRecord } from "@/lib/object-import-repository";
 
 export const CLIENT_IDENTITY_DRAFT_APPLY_EVENT = "brokerdesk:apply-client-identity-drafts";
@@ -12,6 +12,38 @@ export type ClientIdentityDraftSuggestion = {
   key: CustomerIdentityFieldKey;
   value: string;
 };
+
+/**
+ * Personal identity drafts are never applicable to a corporate subject. Keep
+ * this runtime boundary separate from the TypeScript type because the browser
+ * event can be forged by page code after the server-rendered suggestions were
+ * created.
+ */
+export function filterClientIdentityDraftSuggestionsForPartyType(
+  partyType: unknown,
+  suggestions: readonly ClientIdentityDraftSuggestion[],
+): ClientIdentityDraftSuggestion[] {
+  if (String(partyType ?? "").trim() === "corporate") return [];
+  return suggestions.filter((suggestion) => (
+    typeof suggestion?.key === "string"
+      && CUSTOMER_IDENTITY_FIELD_KEYS.has(suggestion.key as CustomerIdentityFieldKey)
+      && typeof suggestion?.value === "string"
+      && Boolean(suggestion.value.trim())
+  ));
+}
+
+export function isEditableClientIdentityDraftControl(control: {
+  value?: unknown;
+  type?: unknown;
+  disabled?: unknown;
+  readOnly?: unknown;
+} | null | undefined): boolean {
+  return Boolean(control)
+    && control?.type !== "hidden"
+    && !control?.disabled
+    && !control?.readOnly
+    && Boolean(String(control?.value ?? "").trim()) === false;
+}
 
 function validDraftValue(field: CustomerIdentityFieldKey, value: string): boolean {
   if (!value) return false;

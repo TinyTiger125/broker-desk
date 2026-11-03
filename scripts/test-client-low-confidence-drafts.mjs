@@ -17,7 +17,7 @@ Module._resolveFilename = function(request, parent, ...rest) {
 };
 require.extensions[".ts"] = (mod, filename) => mod._compile(typescript.transpileModule(readFileSync(filename, "utf8"), { compilerOptions: { module: typescript.ModuleKind.CommonJS, target: typescript.ScriptTarget.ES2022, esModuleInterop: true }, fileName: filename }).outputText, filename);
 
-const { collectClientIdentityDraftSuggestions } = require(resolve(root, "src/lib/customer-identity-draft.ts"));
+const { collectClientIdentityDraftSuggestions, filterClientIdentityDraftSuggestionsForPartyType, isEditableClientIdentityDraftControl } = require(resolve(root, "src/lib/customer-identity-draft.ts"));
 const { fillEmptyEntryDraftSuggestions } = require(resolve(root, "src/lib/entry-preview.ts"));
 
 const field = (fieldKey, candidateValue, overrides = {}) => ({
@@ -97,6 +97,42 @@ assert.deepEqual(
   [],
   "placeholder addresses are never draft suggestions",
 );
+assert.deepEqual(
+  filterClientIdentityDraftSuggestionsForPartyType("corporate", suggestions),
+  [],
+  "switching an individual form to corporate blocks all personal identity drafts",
+);
+const forgedCorporateEventValues = { partyType: "corporate", name: "Existing Company", birthDate: "" };
+assert.deepEqual(
+  fillEmptyEntryDraftSuggestions(forgedCorporateEventValues, filterClientIdentityDraftSuggestionsForPartyType("corporate", [{ key: "birthDate", value: "1990-01-02" }])),
+  forgedCorporateEventValues,
+  "a forged apply event cannot write personal fields after the live subject becomes corporate",
+);
+assert.deepEqual(
+  filterClientIdentityDraftSuggestionsForPartyType("individual", suggestions),
+  suggestions,
+  "ordinary individual forms retain identity drafts",
+);
+assert.equal(
+  isEditableClientIdentityDraftControl({ value: "", type: "hidden" }),
+  false,
+  "hidden controls are never eligible for a draft event",
+);
+assert.equal(
+  isEditableClientIdentityDraftControl({ value: "", type: "text", disabled: true }),
+  false,
+  "disabled controls are never eligible for a draft event",
+);
+assert.equal(
+  isEditableClientIdentityDraftControl({ value: "", type: "text", readOnly: true }),
+  false,
+  "read-only controls are never eligible for a draft event",
+);
+assert.equal(
+  isEditableClientIdentityDraftControl({ value: "", type: "text" }),
+  true,
+  "an enabled blank individual control remains eligible",
+);
 
 const seeded = fillEmptyEntryDraftSuggestions(
   { name: "", birthDate: "saved-date", gender: "", phone: "" },
@@ -108,11 +144,20 @@ assert.deepEqual(clearedByUser, { name: "", birthDate: "", gender: "" }, "no can
 
 const clientForm = readFileSync(resolve(root, "src/components/client-form.tsx"), "utf8");
 assert.match(clientForm, /CLIENT_IDENTITY_DRAFT_APPLY_EVENT/);
-assert.match(clientForm, /fillEmptyEntryDraftSuggestions\(current, detail\.suggestions/);
+assert.match(clientForm, /fillEmptyEntryDraftSuggestions\(current, safeSuggestions/);
+assert.match(clientForm, /current\.partyType === "corporate"/);
+assert.match(clientForm, /type=\"hidden\" value=\{values\[field\]\} disabled/);
 assert.doesNotMatch(clientForm, /const initial = fillEmptyEntryDraftSuggestions/);
 const applyButton = readFileSync(resolve(root, "src/components/client-identity-draft-apply-button.tsx"), "utf8");
 for (const copy of ["空欄に候補を入力", "填入空白字段", "빈 필드에 후보 입력"]) assert.match(applyButton, new RegExp(copy));
 assert.match(applyButton, /CLIENT_IDENTITY_DRAFT_APPLY_EVENT/);
+assert.match(applyButton, /partyType/);
+assert.match(applyButton, /disabled|readOnly/);
+const actions = readFileSync(resolve(root, "src/app/actions.ts"), "utf8");
+assert.match(actions, /withoutClientIndividualFields/);
+assert.match(actions, /partyTypeRaw === "corporate"/);
+assert.match(actions, /const effectivePartyType = partyTypeSubmitted \? \(partyTypeRaw \|\| undefined\) : existingProfile\.type/);
+assert.match(actions, /const normalizedValues = effectivePartyType === "corporate" \? withoutClientIndividualFields\(parsed\.normalized\) : parsed\.normalized/);
 const editPage = readFileSync(resolve(root, "src/app/clients/[id]/edit/page.tsx"), "utf8");
 assert.match(editPage, /!canEdit \|\| profile\.type === "corporate"/);
 assert.match(editPage, /collectClientIdentityDraftSuggestions\(identityViews, clientProfileVersion\)/);
