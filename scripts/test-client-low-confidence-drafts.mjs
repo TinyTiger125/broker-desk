@@ -19,6 +19,7 @@ require.extensions[".ts"] = (mod, filename) => mod._compile(typescript.transpile
 
 const { collectClientIdentityDraftSuggestions, filterClientIdentityDraftSuggestionsForPartyType, isEditableClientIdentityDraftControl } = require(resolve(root, "src/lib/customer-identity-draft.ts"));
 const { fillEmptyEntryDraftSuggestions } = require(resolve(root, "src/lib/entry-preview.ts"));
+const { preserveClientIndividualFieldsOnCorporateValidation } = require(resolve(root, "src/lib/client-form-state.ts"));
 
 const field = (fieldKey, candidateValue, overrides = {}) => ({
   id: `field-${fieldKey}-${candidateValue}`,
@@ -133,6 +134,23 @@ assert.equal(
   true,
   "an enabled blank individual control remains eligible",
 );
+const draftBaseline = { partyType: "individual", birthDate: "1990-01-02", gender: "male" };
+const liveCorporateDraft = { partyType: "corporate", birthDate: "1991-02-03", gender: "female" };
+const corporateValidationError = { partyType: "corporate", birthDate: "", gender: "" };
+const preservedAfterCorporateError = preserveClientIndividualFieldsOnCorporateValidation(liveCorporateDraft, corporateValidationError);
+assert.deepEqual(
+  preservedAfterCorporateError,
+  liveCorporateDraft,
+  "a corporate validation error keeps the live individual fields before the user switches back",
+);
+const dirtyAfterError = Object.keys(draftBaseline).filter((key) => preservedAfterCorporateError[key] !== draftBaseline[key]);
+assert.deepEqual(dirtyAfterError.sort(), ["birthDate", "gender", "partyType"], "session draft state retains changed individual fields across the failed corporate submit");
+const individualSubmitted = { partyType: "individual", birthDate: "1992-03-04", gender: "male" };
+assert.deepEqual(
+  preserveClientIndividualFieldsOnCorporateValidation(liveCorporateDraft, individualSubmitted),
+  individualSubmitted,
+  "successful individual submissions keep the normal server values",
+);
 
 const seeded = fillEmptyEntryDraftSuggestions(
   { name: "", birthDate: "saved-date", gender: "", phone: "" },
@@ -147,6 +165,7 @@ assert.match(clientForm, /CLIENT_IDENTITY_DRAFT_APPLY_EVENT/);
 assert.match(clientForm, /fillEmptyEntryDraftSuggestions\(current, safeSuggestions/);
 assert.match(clientForm, /current\.partyType === "corporate"/);
 assert.match(clientForm, /type=\"hidden\" value=\{values\[field\]\} disabled/);
+assert.match(clientForm, /preserveClientIndividualFieldsOnCorporateValidation\(current, state\.values\)/);
 assert.doesNotMatch(clientForm, /const initial = fillEmptyEntryDraftSuggestions/);
 const applyButton = readFileSync(resolve(root, "src/components/client-identity-draft-apply-button.tsx"), "utf8");
 for (const copy of ["空欄に候補を入力", "填入空白字段", "빈 필드에 후보 입력"]) assert.match(applyButton, new RegExp(copy));

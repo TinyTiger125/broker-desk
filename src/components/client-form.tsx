@@ -10,6 +10,7 @@ import { applyEntryPreviewCandidate, createEntryIntentId, EntryPreview, type Ent
 import { useEntryDraft } from "@/components/use-entry-draft";
 import { fillAutoSavedEntryForm, fillEmptyEntryDraftSuggestions, type EntryPreviewState } from "@/lib/entry-preview";
 import { CLIENT_IDENTITY_DRAFT_APPLY_EVENT, filterClientIdentityDraftSuggestionsForPartyType, type ClientIdentityDraftSuggestion } from "@/lib/customer-identity-draft";
+import { CLIENT_INDIVIDUAL_FORM_FIELDS, preserveClientIndividualFieldsOnCorporateValidation } from "@/lib/client-form-state";
 import type { Locale } from "@/lib/locale";
 import {
   getAmlCheckStatusOptions,
@@ -278,7 +279,7 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
   const profileFuriganaLabel = isCorporate ? text.companyFurigana : text.furigana;
   const profilePostalCodeLabel = isCorporate ? text.companyPostalCode : text.currentPostalCode;
   const profileAddressLabel = isCorporate ? text.companyAddress : text.currentAddress;
-  const hiddenIndividualFields = (["birthDate", "gender", "employerName", "employerAddress", "employerPhone", "annualIncome", "annualIncomeAsOf", "annualIncomeSource"] as const);
+  const hiddenIndividualFields = CLIENT_INDIVIDUAL_FORM_FIELDS;
 
   const openSectionForField = useCallback((field: keyof ClientFormValues) => {
     const section = clientFormSectionForField[field];
@@ -302,7 +303,7 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
 
   useEffect(() => {
     if (state.status !== "error") return;
-    setValues(state.values);
+    setValues((current) => preserveClientIndividualFieldsOnCorporateValidation(current, state.values));
     for (const field of Object.keys(state.fieldErrors) as Array<keyof ClientFormValues>) openSectionForField(field);
     summaryRef.current?.focus();
   }, [openSectionForField, setValues, state.fieldErrors, state.status, state.values]);

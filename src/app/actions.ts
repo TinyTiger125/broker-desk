@@ -265,6 +265,7 @@ import {
 import { listHubContracts } from "@/lib/hub";
 import { draftAiExperiencesFromRecentCorrections } from "@/lib/ai-experience-job";
 import { getLocale, type Locale } from "@/lib/locale";
+import { CLIENT_INDIVIDUAL_FORM_FIELDS } from "@/lib/client-form-state";
 import { getDefaultOutputTemplateSettings } from "@/lib/output-doc";
 import { type TenantRole } from "@/lib/tenant-permissions";
 import {
@@ -812,7 +813,7 @@ function clientFormValues(formData: FormData): ClientFormValues {
 }
 
 function withoutClientIndividualFields<T extends Record<string, unknown>>(values: T) {
-  const individualFields = new Set(["birthDate", "gender", "employerName", "employerAddress", "employerPhone", "annualIncome", "annualIncomeAsOf", "annualIncomeSource"]);
+  const individualFields = new Set<string>(CLIENT_INDIVIDUAL_FORM_FIELDS);
   return Object.fromEntries(Object.entries(values).filter(([key]) => !individualFields.has(key))) as Omit<T, "birthDate" | "gender" | "employerName" | "employerAddress" | "employerPhone" | "annualIncome" | "annualIncomeAsOf" | "annualIncomeSource">;
 }
 

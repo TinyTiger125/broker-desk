@@ -51,7 +51,9 @@ for (const [locale, messages] of Object.entries(expectedCopy)) {
 forbidText(form, 'label("budgetType", "予算タイプ")', "ClientForm must not hardcode a single-language budget type label");
 const renderedSource = `${form.slice(0, copyStart)}${form.slice(copyEnd + "} as const;".length)}`;
 if (/["'][^"']*[一-龥ぁ-んァ-ン가-힣][^"']*["']/u.test(renderedSource)) failures.push("ClientForm contains a hardcoded user-visible localized string outside the locale copy map");
-requireText(form, 'setValues(state.values)', "server validation errors must restore submitted values");
+if (!form.includes('setValues(state.values)') && !form.includes('preserveClientIndividualFieldsOnCorporateValidation(current, state.values)')) {
+  failures.push("server validation errors must restore submitted values without discarding omitted corporate personal drafts");
+}
 requireText(form, 'role="alert"', "form must expose one focusable error summary");
 requireText(form, 'aria-describedby', "field errors must be associated with fields");
 requireText(form, 'onCompositionStart', "IME composition guard must exist as code mechanism");
