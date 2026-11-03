@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClientEntryAction } from "@/app/entry-actions";
 import { ClientForm, type ClientFormDefaults } from "@/components/client-form";
+import { normalizeImportCenterObjectReturnTo } from "@/lib/import-center-return";
 import { getLocale } from "@/lib/locale";
 
 export const dynamic = "force-dynamic";
@@ -33,7 +34,9 @@ function normalizeReturnTo(value: string | undefined): string {
     if (keys.some((key) => !["type", "q", "lifecycle", "page"].includes(key))) return fallback;
     return `${parsed.pathname}${parsed.search}`;
   }
-  if (parsed.pathname === "/import-center" && keys.length === 0) return parsed.pathname;
+  if (parsed.pathname === "/import-center") {
+    return normalizeImportCenterObjectReturnTo(path, "person", true) ?? fallback;
+  }
   return fallback;
 }
 

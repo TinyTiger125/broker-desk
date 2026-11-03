@@ -126,6 +126,7 @@ import {
 } from "@/lib/production-readiness";
 import { type ComplianceAlertType } from "@/lib/compliance-alerts";
 import { isCaseWorkflowType } from "@/lib/options";
+import { normalizeImportCenterObjectReturnTo } from "@/lib/import-center-return";
 import {
   buildMappingFromLists,
   parseCommaList,
@@ -1060,10 +1061,7 @@ function safeClientReturnTo(value: FormDataEntryValue | null, fallback: string, 
     return `${parsed.pathname}${parsed.search}`;
   }
   if (allowImportCenter && parsed.pathname === IMPORT_CENTER_RETURN_PATH) {
-    if (keys.some((key) => !["object", "targetId"].includes(key)) || (parsed.searchParams.get("object") && parsed.searchParams.get("object") !== "person")) return fallback;
-    if (parsed.searchParams.get("targetId") && !/^[A-Za-z0-9_-]{1,160}$/.test(parsed.searchParams.get("targetId") ?? "")) return fallback;
-    if (parsed.hash && parsed.hash !== "#target-selection") return fallback;
-    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+    return normalizeImportCenterObjectReturnTo(path, "person", true) ?? fallback;
   }
   if (currentClientId && parsed.pathname === `/clients/${encodeURIComponent(currentClientId)}` && keys.length === 0) return parsed.pathname;
   if (currentClientId && parsed.pathname === `/parties/${encodeURIComponent(currentClientId)}/edit` && keys.length === 0) return parsed.pathname;
