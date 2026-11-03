@@ -633,7 +633,8 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
         const path = object === "person" ? `/clients/${encodeURIComponent(id)}/edit` : `/properties/${encodeURIComponent(id)}/edit`;
         redirect(`${path}${query.size ? `?${query}` : ""}`);
       }
-      redirect(params?.intake === "existing" ? `/organize-center?type=${object === "person" ? "party" : "property"}` : object === "person" ? "/clients/new?returnTo=%2Fimport-center" : "/properties/new?returnTo=%2Fimport-center");
+      const objectSelectionReturnTo = `/import-center?advanced=1&object=${object}#target-selection`;
+      redirect(params?.intake === "existing" ? `/organize-center?type=${object === "person" ? "party" : "property"}` : object === "person" ? `/clients/new?returnTo=${encodeURIComponent(objectSelectionReturnTo)}` : `/properties/new?returnTo=${encodeURIComponent(objectSelectionReturnTo)}`);
     }
     if (object === "case") redirect("/cases/new?from=entry");
   }
@@ -1598,7 +1599,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
             </div>
             <div className="flex flex-wrap gap-2">
               <Link
-                href={selectedObject === "property" ? "/properties/new?returnTo=%2Fimport-center%3Fobject%3Dproperty" : "/parties/new?returnTo=%2Fimport-center%3Fobject%3Dperson"}
+                href={selectedObject === "property" ? "/properties/new?returnTo=%2Fimport-center%3Fadvanced%3D1%26object%3Dproperty%23target-selection" : "/parties/new?returnTo=%2Fimport-center%3Fadvanced%3D1%26object%3Dperson%23target-selection"}
                 className="inline-flex min-h-11 items-center rounded-lg bg-slate-950 px-4 py-2 text-xs font-black text-white hover:bg-slate-800"
               >
                 {locale === "zh" ? "新建并录入资料" : locale === "ko" ? "새 기록에 자료 입력" : "新規記録に資料を入力"}

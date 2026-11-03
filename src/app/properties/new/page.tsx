@@ -2,6 +2,7 @@ import Link from "next/link";
 import { type PropertyFormValues } from "@/app/actions";
 import { createPropertyEntryAction } from "@/app/entry-actions";
 import { PropertyResponsiveForm } from "@/components/property-responsive-form";
+import { normalizeImportCenterObjectReturnTo } from "@/lib/import-center-return";
 import { getLocale } from "@/lib/locale";
 import { requireTenantSession } from "@/lib/tenant-session";
 
@@ -58,8 +59,10 @@ function normalizeReturnTo(value: string | undefined): string {
     return `${parsed.pathname}${parsed.search}`;
   }
   if (parsed.pathname === "/import-center") {
-    const allowed = ["flow", "targetCaseId", "job", "xlsxJob", "intake", "advanced", "flash", "panel", "object", "targetId"];
-    if (parsed.searchParams.get("object") && parsed.searchParams.get("object") !== "property") return fallback;
+    if (parsed.searchParams.has("object")) {
+      return normalizeImportCenterObjectReturnTo(path, "property", true) ?? fallback;
+    }
+    const allowed = ["flow", "targetCaseId", "job", "xlsxJob", "intake", "advanced", "flash", "panel", "targetId"];
     if (parsed.searchParams.get("targetId") && !/^[A-Za-z0-9_-]{1,160}$/.test(parsed.searchParams.get("targetId") ?? "")) return fallback;
     if (keys.some((key) => !allowed.includes(key))) return fallback;
     return `${parsed.pathname}${parsed.search}${parsed.hash}`;

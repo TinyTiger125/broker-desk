@@ -104,7 +104,10 @@ if (!safeClientReturnToDeclaration) {
     normalizeImportCenterObjectReturnTo,
   );
   const safeClientReturnTo = safeClientReturnToModule.exports;
-  const personReturnTo = "/import-center?object=person";
+  const personReturnTo = "/import-center?advanced=1&object=person";
+  if (normalizeImportCenterObjectReturnTo("/import-center?object=person", "person", true) !== personReturnTo) {
+    failures.push("legacy person import-center returnTo must canonicalize to advanced object selection");
+  }
   const partyRedirect = `/clients/new?returnTo=${encodeURIComponent(personReturnTo)}`;
   const clientReturnTo = new URL(partyRedirect, "http://broker-desk.local").searchParams.get("returnTo");
   if (clientReturnTo !== personReturnTo || safeClientReturnTo(clientReturnTo, "/clients", undefined, true) !== personReturnTo) {

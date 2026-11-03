@@ -662,8 +662,10 @@ function safePropertyReturnTo(value: FormDataEntryValue | null): string {
     return `${parsed.pathname}${parsed.search}`;
   }
   if (parsed.pathname === "/import-center") {
+    if (parsed.searchParams.has("object")) {
+      return normalizeImportCenterObjectReturnTo(path, "property", true) ?? fallback;
+    }
     const allowedImportKeys = ["flow", "targetCaseId", "job", "xlsxJob", "intake", "advanced", "flash", "panel", "object", "targetId"];
-    if (parsed.searchParams.get("object") && !["property", "person"].includes(parsed.searchParams.get("object") ?? "")) return fallback;
     if (parsed.searchParams.get("targetId") && !/^[A-Za-z0-9_-]{1,160}$/.test(parsed.searchParams.get("targetId") ?? "")) return fallback;
     if (keys.some((key) => !allowedImportKeys.includes(key))) return fallback;
     return `${parsed.pathname}${parsed.search}${parsed.hash}`;
@@ -1016,9 +1018,11 @@ function clientValidationState(values: ClientFormValues, fieldErrors: ClientForm
 const IMPORT_CENTER_RETURN_PATH = "/import-center";
 
 function buildImportCenterObjectCreateRedirect(returnTo: string, object: "person" | "property", targetId: string, flash: string): string | null {
+  const normalizedReturnTo = normalizeImportCenterObjectReturnTo(returnTo, object, true);
+  if (!normalizedReturnTo) return null;
   let parsed: URL;
   try {
-    parsed = new URL(returnTo, "http://broker-desk.local");
+    parsed = new URL(normalizedReturnTo, "http://broker-desk.local");
   } catch {
     return null;
   }
@@ -1089,17 +1093,7 @@ function getClientCreateCompletion(input: {
     };
   }
   let objectImportHref: string | null = null;
-  try {
-    const parsed = new URL(input.returnTo, "http://broker-desk.local");
-    if (parsed.origin === "http://broker-desk.local" && parsed.pathname === IMPORT_CENTER_RETURN_PATH && parsed.searchParams.get("object") === "person") {
-      parsed.searchParams.set("targetId", input.clientId);
-      parsed.searchParams.set("flash", "client_created");
-      parsed.hash = "#source-upload";
-      objectImportHref = `${parsed.pathname}${parsed.search}${parsed.hash}`;
-    }
-  } catch {
-    objectImportHref = null;
-  }
+  objectImportHref = buildImportCenterObjectCreateRedirect(input.returnTo, "person", input.clientId, "client_created");
   return {
     kind: "redirect" as const,
     href: objectImportHref

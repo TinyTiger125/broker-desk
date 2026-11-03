@@ -1,6 +1,6 @@
 const LOCAL_APP_ORIGIN = "http://broker-desk.local";
 const IMPORT_CENTER_RETURN_PATH = "/import-center";
-const IMPORT_CENTER_ALLOWED_KEYS = new Set(["object", "targetId"]);
+const IMPORT_CENTER_ALLOWED_KEYS = new Set(["advanced", "object", "targetId"]);
 const TARGET_ID_PATTERN = /^[A-Za-z0-9_-]{1,160}$/;
 
 export type ImportCenterObject = "person" | "property";
@@ -9,6 +9,8 @@ export type ImportCenterObject = "person" | "property";
  * Keep the object target when a new-record form is entered from import center.
  * The result is a same-origin, route-scoped path suitable for a hidden returnTo
  * field. A bare import-center path is retained only for legacy entry links.
+ * Object-scoped links are canonicalized to the advanced target-selection view
+ * so the import-center legacy redirect cannot send the user back to the form.
  */
 export function normalizeImportCenterObjectReturnTo(
   value: string | null | undefined,
@@ -38,8 +40,14 @@ export function normalizeImportCenterObjectReturnTo(
   const keys = [...new Set([...parsed.searchParams.keys()])];
   if (allowBare && keys.length === 0 && !parsed.hash) return parsed.pathname;
   if (keys.some((key) => !IMPORT_CENTER_ALLOWED_KEYS.has(key)) || parsed.searchParams.get("object") !== object) return null;
+  const advanced = parsed.searchParams.get("advanced");
+  if (advanced && advanced !== "1") return null;
   const targetId = parsed.searchParams.get("targetId");
   if (targetId && !TARGET_ID_PATTERN.test(targetId)) return null;
   if (parsed.hash && parsed.hash !== "#target-selection") return null;
-  return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  const canonical = new URLSearchParams();
+  canonical.set("advanced", "1");
+  canonical.set("object", object);
+  if (targetId) canonical.set("targetId", targetId);
+  return `${parsed.pathname}?${canonical}${parsed.hash}`;
 }
