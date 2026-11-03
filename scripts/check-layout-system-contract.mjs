@@ -307,8 +307,12 @@ const caseOverviewOccluderPosition = caseOverview.indexOf("data-case-sticky-occl
 if (caseOverviewAssociationPosition < 0 || caseOverviewNavPosition < 0 || caseOverviewFieldsPosition < 0 || caseOverviewOccluderPosition < 0 || !(caseOverviewOccluderPosition < caseOverviewAssociationPosition && caseOverviewAssociationPosition < caseOverviewNavPosition && caseOverviewNavPosition < caseOverviewFieldsPosition)) {
   failures.push("CaseOverview: children order must be associationPanel, section navigation, then fields");
 }
-requireText(caseOverview, "pointer-events-none fixed inset-x-0 top-0 z-10 h-[10.5rem] bg-[var(--background)] sm:h-[8.75rem] lg:top-16 lg:h-[6.5rem]", "CaseOverview responsive sticky boundary occluder");
-requireText(caseOverview, "className=\"sticky top-[10.5rem] z-20 rounded-xl border border-slate-200 bg-white px-2 py-2 shadow-sm sm:top-[8.75rem] lg:top-[10.5rem]\"", "CaseOverview responsive chapter bar clears the compact summary");
+requireText(caseOverview, "pointer-events-none fixed inset-x-0 top-0 z-10 h-[10.5rem] bg-[var(--background)] sm:h-[var(--case-anchor-top-offset)] lg:top-16 lg:h-[6.5rem]", "CaseOverview responsive sticky boundary occluder");
+requireText(caseOverview, "className=\"sticky top-[10.5rem] z-20 rounded-xl border border-slate-200 bg-white px-2 py-2 shadow-sm sm:top-[var(--case-anchor-top-offset)] lg:top-[10.5rem]\"", "CaseOverview responsive chapter bar clears the compact summary");
+requireText(caseOverview, "sm:top-[var(--case-shell-top-offset)]", "CaseOverview tablet summary must follow the measured app header height");
+requireText(caseOverview, "sm:top-[var(--case-anchor-top-offset)]", "CaseOverview tablet chapter bar must follow the measured summary boundary");
+requireText(caseOverview, 'page.style.setProperty("--case-shell-top-offset"', "CaseOverview must measure the tablet app header before positioning sticky content");
+requireText(caseOverview, 'new ResizeObserver(syncScrollMargin)', "CaseOverview must react to variable header/summary height changes");
 if (caseOverview.includes("bg-white/95")) failures.push("CaseOverview: sticky summary and chapter surfaces must be opaque at the scroll boundary");
 const readOnlyBranchStart = casePage.indexOf("if (!canWriteCase)");
 const overviewBranchStart = casePage.indexOf("if (activeView === \"overview\")");
