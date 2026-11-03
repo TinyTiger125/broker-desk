@@ -52,6 +52,7 @@ import { resolveCasePropertyAddressPresentation } from "@/lib/case-property-addr
 import { formatCaseDateForDisplay } from "@/lib/case-date";
 import { CASE_PERSON_PREFILL_FIELDS, type CasePersonPrefillCandidate } from "@/lib/case-person-prefill";
 import { extractFreeformPartyNote, extractPartyProfileFromNotes } from "@/lib/party-profile";
+import { getCaseWorkflowTypeLabel } from "@/lib/options";
 
 export const dynamic = "force-dynamic";
 
@@ -156,13 +157,14 @@ function normalizeCaseArchiveReturnTo(value: string | null | undefined): string 
   const keys = [...new Set(parsed.searchParams.keys())];
   const lifecycle = parsed.searchParams.get("lifecycle");
   const page = parsed.searchParams.get("page");
+  const organizeType = parsed.searchParams.get("type");
   if (
     parsed.origin !== "http://broker-desk.local"
     || parsed.hash
     || parsed.pathname !== "/organize-center"
     || decodedSegments.some((segment) => segment === "." || segment === ".." || segment.includes("\\"))
-    || parsed.searchParams.get("type") !== "case"
-    || parsed.searchParams.getAll("type").length !== 1
+    || (organizeType !== null && !["all", "case"].includes(organizeType))
+    || parsed.searchParams.getAll("type").length > 1
     || keys.some((key) => parsed.searchParams.getAll(key).length !== 1)
     || keys.some((key) => !["type", "q", "lifecycle", "page"].includes(key))
     || (lifecycle !== null && !["active", "archived", "all"].includes(lifecycle))
@@ -575,6 +577,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
   let brokerageCase = caseVisibility.brokerageCase;
   if (!brokerageCase) notFound();
   const initiallyVisibleCase = brokerageCase;
+  const caseTypeLabel = getCaseWorkflowTypeLabel(locale, brokerageCase.confirmedDataJson.__workflowType);
   const canWriteCase = caseVisibility.resolution.outcome === "owner_write";
   const canArchiveCase = canWriteCase
     && session.membership.status === "active"
@@ -1358,6 +1361,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
           key={`case-overview-${query?.flash ?? "initial"}-${initialFieldKey ?? "none"}`}
           caseId={brokerageCase.id}
           caseTitle={brokerageCase.caseTitle}
+          caseTypeLabel={caseTypeLabel}
           applicantSummary={applicantSummary}
           propertySummary={propertySummary}
           guaranteeCompanySummary={guaranteeCompanySummary}
@@ -1395,6 +1399,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
           key={`case-overview-${query?.flash ?? "initial"}-${query?.edit ?? "0"}-${initialFieldKey ?? "none"}-${brokerageCase.updatedAt.toISOString()}`}
           caseId={brokerageCase.id}
           caseTitle={brokerageCase.caseTitle}
+          caseTypeLabel={caseTypeLabel}
           applicantSummary={applicantSummary}
           propertySummary={propertySummary}
           guaranteeCompanySummary={guaranteeCompanySummary}
@@ -1433,6 +1438,7 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
           <CaseIdentityHeader
             caseId={brokerageCase.id}
             caseTitle={brokerageCase.caseTitle}
+            caseTypeLabel={caseTypeLabel}
             applicantSummary={applicantSummary}
             propertySummary={propertySummary}
             guaranteeCompanySummary={guaranteeCompanySummary}

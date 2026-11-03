@@ -224,61 +224,68 @@ export function OrganizeCenterObjectBrowser({
       results={filteredItems.length > 0 ? (
         <div className="divide-y divide-slate-200">
           {visibleItems.map((item) => {
-            const itemHref = item.type === "case"
-              ? `${item.href}?returnTo=${encodeURIComponent(listHref)}`
-              : item.href;
+            const itemHref = `${item.href}${item.href.includes("?") ? "&" : "?"}returnTo=${encodeURIComponent(listHref)}`;
             return (
-            <article key={`${item.type}:${item.id}`} className="grid gap-3 px-4 py-3 transition hover:bg-[#f9fbff] sm:px-5 md:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)] xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1.45fr)_auto]">
-              <div className="min-w-0">
-                <Link
-                  href={itemHref}
-                  data-list-return-trigger={`${item.type}:${item.id}`}
-                  className="group -m-2 flex w-full cursor-pointer flex-col rounded-md p-2 text-base font-black leading-6 text-slate-950 hover:bg-[#f6f8ff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3158d8] focus-visible:ring-offset-2"
-                >
+            <article
+              key={`${item.type}:${item.id}`}
+              data-list-row-link={itemHref}
+              data-list-row-return-trigger={`${item.type}:${item.id}`}
+              className="grid cursor-pointer gap-3 px-4 py-3 transition hover:bg-[#eef1f6] sm:px-5 md:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)] xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1.45fr)_auto]"
+            >
+              <a
+                href={itemHref}
+                data-list-row-anchor
+                data-list-return-trigger={`${item.type}:${item.id}`}
+                aria-label={`${item.title} · ${getTypeLabel(item.type, copy)}`}
+                className="grid min-w-0 gap-3 rounded-md focus-visible:bg-[#e8efff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3158d8] focus-visible:ring-inset focus-visible:shadow-[inset_3px_0_0_#3158d8] md:col-span-2 md:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)] xl:col-span-3 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1.45fr)]"
+              >
+                <div className="min-w-0">
+                <div className="flex min-w-0 flex-col rounded-md p-2 text-base font-black leading-6 text-slate-950">
                   <span className="flex min-w-0 items-start justify-between gap-3">
                     <span className="min-w-0 break-words">{item.title}</span>
-                    <span className="material-symbols-outlined mt-1 shrink-0 text-[18px] text-slate-400 transition group-hover:translate-x-0.5 group-hover:text-[#3158d8]" aria-hidden="true">arrow_forward</span>
+                    <span className="material-symbols-outlined mt-1 shrink-0 text-[18px] text-slate-400" aria-hidden="true">arrow_forward</span>
                   </span>
                   <span className="mt-1 break-words text-xs font-bold text-slate-500">{item.subtitle}</span>
                   {item.visibilityLabel ? <span className="mt-2 inline-flex w-fit rounded-full bg-slate-100 px-2 py-1 text-[11px] font-black text-slate-600">{item.visibilityLabel}</span> : null}
-                </Link>
-              </div>
-
-              {item.relatedObjects?.length ? (
-                <div className="min-w-0 space-y-2 rounded-md bg-slate-50 px-3 py-2">
-                  {item.relatedObjects.map((related) => {
-                    const relatedUi = getRelatedObjectUi(related.type);
-                    return (
-                      <div key={`${related.type}:${related.label}`} className="flex min-w-0 items-start gap-2">
-                        <span className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${relatedUi.iconClass}`} aria-hidden="true">
-                          <span className="material-symbols-outlined text-[16px]">{relatedUi.icon}</span>
-                        </span>
-                        <p className="min-w-0 break-words font-semibold leading-5">
-                          <span className="mr-1 text-[11px] font-black text-slate-500">[{related.label}]</span>
-                          <span className={related.placeholder ? "text-slate-500" : relatedUi.valueClass}>{related.value}</span>
-                        </p>
-                      </div>
-                    );
-                  })}
                 </div>
-              ) : (
+                </div>
+
+                {item.relatedObjects?.length ? (
+                  <div className="min-w-0 space-y-2 rounded-md bg-slate-50 px-3 py-2">
+                    {item.relatedObjects.map((related) => {
+                      const relatedUi = getRelatedObjectUi(related.type);
+                      return (
+                        <div key={`${related.type}:${related.label}`} className="flex min-w-0 items-start gap-2">
+                          <span className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${relatedUi.iconClass}`} aria-hidden="true">
+                            <span className="material-symbols-outlined text-[16px]">{relatedUi.icon}</span>
+                          </span>
+                          <p className="min-w-0 break-words font-semibold leading-5">
+                            <span className="mr-1 text-[11px] font-black text-slate-500">[{related.label}]</span>
+                            <span className={related.placeholder ? "text-slate-500" : relatedUi.valueClass}>{related.value}</span>
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="min-w-0 rounded-md bg-slate-50 px-3 py-2">
+                    <p className="text-[11px] font-black text-slate-500">{item.relationLabel}</p>
+                    <p className="mt-1 break-words font-semibold leading-5 text-slate-800">{item.relation}</p>
+                  </div>
+                )}
+
                 <div className="min-w-0 rounded-md bg-slate-50 px-3 py-2">
-                  <p className="text-[11px] font-black text-slate-500">{item.relationLabel}</p>
-                  <p className="mt-1 break-words font-semibold leading-5 text-slate-800">{item.relation}</p>
+                  <p className="text-[11px] font-black text-slate-500">{copy.lifecycle}</p>
+                  <StatusBadge tone={item.lifecycleStatus === "archived" ? "neutral" : "info"}>
+                    {item.lifecycleStatus === "archived" ? copy.archivedRecords : copy.activeRecords}
+                  </StatusBadge>
                 </div>
-              )}
-
-              <div className="min-w-0 rounded-md bg-slate-50 px-3 py-2">
-                <p className="text-[11px] font-black text-slate-500">{copy.lifecycle}</p>
-                <StatusBadge tone={item.lifecycleStatus === "archived" ? "neutral" : "info"}>
-                  {item.lifecycleStatus === "archived" ? copy.archivedRecords : copy.activeRecords}
-                </StatusBadge>
-              </div>
+              </a>
 
               <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 md:col-span-2 xl:col-span-1 xl:flex-col xl:items-end xl:justify-start">
                 <span className="text-xs font-bold tabular-nums text-slate-500">{copy.taskUpdated}: {item.updatedLabel}</span>
                 {item.canArchive ? (
-                  <div className="max-w-44 space-y-1 text-right"><ArchiveRecordButton
+                  <div data-list-row-ignore className="max-w-44 space-y-1 text-right"><ArchiveRecordButton
                     entityType={item.type}
                     entityId={item.id}
                     recordLabel={item.title}
@@ -287,7 +294,7 @@ export function OrganizeCenterObjectBrowser({
                     returnTo={listHref}
                     returnStateScope={"organize"}
                     returnFocusKey={`${item.type}:${item.id}`}
-                  /><p className="text-[11px] leading-4 text-slate-500">{copy.archiveHint}</p></div>
+                  /></div>
                 ) : null}
               </div>
             </article>

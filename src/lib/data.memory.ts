@@ -37,7 +37,7 @@ import type {
 import { COMPLETE_CASE_FIELD_DEFAULTS, COMPLETE_DRAFT_DEFAULTS } from "@/lib/guarantee-application-fixtures";
 import { DEFAULT_TENANT_ID } from "@/lib/tenant-constants";
 import type { TenantRole, TenantCapabilityPreset } from "@/lib/tenant-permissions";
-import { capabilityHasTenantPermission, roleHasTenantPermission } from "@/lib/tenant-permissions";
+import { capabilityHasTenantPermission, isTenantRole, roleHasTenantPermission } from "@/lib/tenant-permissions";
 import {
   buildClosedBetaDemoFixture,
   CLOSED_BETA_DEMO_FIXTURE_VERSION,
@@ -7368,6 +7368,11 @@ function hasObjectImportSource(target: ObjectImportTargetRecord, field: ObjectIm
   return Boolean(attachment && content?.length && field.provenance.sourceAttachmentId === attachment.id && field.provenance.sourceFileHash === createHash("sha256").update(content).digest("hex"));
 }
 
+function modelDestinationMatches(current: unknown, expected: string | number): boolean {
+  if (current instanceof Date) return current.toISOString().slice(0, 10) === String(expected).slice(0, 10);
+  return String(current ?? "") === String(expected);
+}
+
 /** No await between checking the version and mutating the shared memory holder. */
 export async function reviewObjectImportCandidate(input: ObjectImportReviewInput): Promise<ObjectImportReviewResult> {
   const { context } = input;
@@ -7414,12 +7419,14 @@ export async function autoSaveObjectImportCandidates(input: { tenantId: string; 
   const target = db.objectImportTargets.find((item) => item.id === input.targetId && item.tenantId === input.tenantId && item.userId === input.userId);
   const membership = db.tenantMemberships.find((item) => item.tenantId === input.tenantId && item.userId === input.userId && item.status === "active");
   const capability = membership?.capability ?? "ordinary_member";
+  const membershipRole = membership && isTenantRole(membership.role) ? membership.role : undefined;
   if (!target || target.status !== "needs_review") return 0;
   if (!membership
     || !capabilityHasTenantPermission(capability, "record.update")
     || !capabilityHasTenantPermission(capability, "source.upload")
-    || !roleHasTenantPermission(membership.role, "record.update")
-    || !roleHasTenantPermission(membership.role, "source.upload")) {
+    || !membershipRole
+    || !roleHasTenantPermission(membershipRole, "record.update")
+    || !roleHasTenantPermission(membershipRole, "source.upload")) {
     target.errorCode = "object_import_permission_denied";
     target.errorSummary = "保存前にレコードまたは原本の操作権限が失効しました。権限のあるユーザーが処理してください。";
     target.updatedAt = new Date();
@@ -7433,7 +7440,10 @@ export async function autoSaveObjectImportCandidates(input: { tenantId: string; 
     : readCaseAssociationDraft(brokerageCase.confirmedDataJson).primaryPropertyId === record.id))) return 0;
   const mutable = record as unknown as Record<string, unknown>;
   if (buildObjectVersionFingerprint(mutable) !== target.targetVersion) return 0;
+  const previousErrorCode = target.errorCode;
+  const previousErrorSummary = target.errorSummary;
   let saved = 0;
+  let reconciled = 0;
   for (const field of db.objectImportCandidates.filter((item) => item.targetId === target.id && item.tenantId === input.tenantId)) {
     if (!isSafeModelAutoSave(field) || !hasObjectImportSource(target, field)) continue;
     const validated = validateObjectImportReview({ targetId: target.id, fieldId: field.id, expectedVersion: target.targetVersion, expectedCandidateValue: field.candidateValue ?? "", decision: "confirm", ...(field.fieldKey.startsWith("lease.") ? { caseFieldKey: field.fieldKey } : {}) }, target, field, mutable);
@@ -7441,11 +7451,18 @@ export async function autoSaveObjectImportCandidates(input: { tenantId: string; 
     const date = new Date();
     if (validated.scope === "case") {
       if (isObjectImportCaseFieldManuallyCleared(brokerageCase?.confirmedDataJson ?? {}, validated.key)) continue;
-      if (!brokerageCase || !isEmptyModelDestination(validated.key, brokerageCase.confirmedDataJson[validated.key])) continue;
+      if (!brokerageCase) continue;
+      if (!isEmptyModelDestination(validated.key, brokerageCase.confirmedDataJson[validated.key])) {
+        if (field.finalSource === "model_draft" && modelDestinationMatches(brokerageCase.confirmedDataJson[validated.key], validated.recordValue)) reconciled += 1;
+        continue;
+      }
       brokerageCase.confirmedDataJson = { ...brokerageCase.confirmedDataJson, [validated.key]: validated.recordValue };
       brokerageCase.updatedAt = date;
     } else {
-      if (!isEmptyModelDestination(validated.key, mutable[validated.key])) continue;
+      if (!isEmptyModelDestination(validated.key, mutable[validated.key])) {
+        if (field.finalSource === "model_draft" && modelDestinationMatches(mutable[validated.key], validated.recordValue)) reconciled += 1;
+        continue;
+      }
       mutable[validated.key] = validated.key === "birthDate" ? new Date(validated.value) : validated.recordValue;
       if ("updatedAt" in record) record.updatedAt = date;
       target.targetVersion = buildObjectVersionFingerprint(mutable);
@@ -7456,6 +7473,29 @@ export async function autoSaveObjectImportCandidates(input: { tenantId: string; 
     target.updatedAt = date;
     db.auditLogs.unshift({ id: makeId("audit"), tenantId: input.tenantId, userId: input.userId, actorId: input.userId, action: "object_import_auto_saved", targetType: validated.scope === "case" ? "case" : target.targetType === "party" ? "client" : "property", targetId: validated.scope === "case" ? brokerageCase!.id : record.id, message: "Clear model field saved pending human review", context: { importTargetId: target.id, fieldKey: validated.key, sourceAttachmentId: target.sourceAttachmentId, value: validated.value }, createdAt: date });
     saved += 1;
+  }
+  const recovered = saved + reconciled;
+  if (recovered > 0 && (previousErrorCode || previousErrorSummary)) {
+    target.errorCode = undefined;
+    target.errorSummary = undefined;
+    db.auditLogs.unshift({
+      id: makeId("audit"),
+      tenantId: input.tenantId,
+      userId: input.userId,
+      actorId: input.userId,
+      action: "object_import_auto_save_recovered",
+      targetType: target.caseId ? "case" : target.targetType === "party" ? "client" : "property",
+      targetId: target.caseId ?? target.targetId,
+      message: "Object import autosave recovered a prior save-status error",
+      context: {
+        importTargetId: target.id,
+        previousErrorCode: previousErrorCode ?? null,
+        previousErrorSummary: previousErrorSummary ?? null,
+        savedFields: saved,
+        reconciledFields: reconciled,
+      },
+      createdAt: new Date(),
+    });
   }
   return saved;
 }

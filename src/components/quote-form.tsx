@@ -23,6 +23,7 @@ type QuoteFormProps = {
   properties: PropertyOption[];
   action: (formData: FormData) => void;
   defaultClientId?: string;
+  returnTo?: string;
   locale?: Locale;
 };
 
@@ -134,7 +135,7 @@ const texts = {
   },
 } as const;
 
-export function QuoteForm({ clients, properties, action, defaultClientId, locale = "ja" }: QuoteFormProps) {
+export function QuoteForm({ clients, properties, action, defaultClientId, returnTo, locale = "ja" }: QuoteFormProps) {
   const text = texts[locale];
 
   const [draft, setDraft] = useState<QuoteInput>({
@@ -161,6 +162,7 @@ export function QuoteForm({ clients, properties, action, defaultClientId, locale
 
   return (
     <form action={action} className="grid min-w-0 gap-4 2xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+      {returnTo ? <input type="hidden" name="returnTo" value={returnTo} /> : null}
       <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="text-lg font-semibold text-slate-900">{text.inputTitle}</h2>
         <div className="grid gap-3 md:grid-cols-2">

@@ -41,9 +41,9 @@ const propertiesCopy = {
     addProperty: "新規物件",
     searchLabel: "物件を検索",
     queryPlaceholder: "物件名またはエリア",
-    lifecycle: "記録の状態",
-    active: "有効",
-    archived: "アーカイブ済み",
+    lifecycle: "記録状態",
+    active: "未保管",
+    archived: "保管済み",
     all: "すべて",
     sort: "並び順",
     defaultSort: "標準",
@@ -83,7 +83,7 @@ const propertiesCopy = {
     searchLabel: "查找物件",
     queryPlaceholder: "按物件名称或区域搜索",
     lifecycle: "记录状态",
-    active: "有效",
+    active: "未归档",
     archived: "已归档",
     all: "全部",
     sort: "排序",
@@ -99,7 +99,7 @@ const propertiesCopy = {
     listingPrice: "售价",
     managementFee: "管理费",
     repairFee: "修缮费",
-    status: "生命周期",
+    status: "记录状态",
     actions: "操作",
     notSet: "未设置",
     noProperties: "当前还没有已登记的物件。",
@@ -124,7 +124,7 @@ const propertiesCopy = {
     searchLabel: "매물 검색",
     queryPlaceholder: "매물명 또는 지역 검색",
     lifecycle: "기록 상태",
-    active: "유효",
+    active: "사용 중",
     archived: "보관됨",
     all: "전체",
     sort: "정렬",
@@ -373,8 +373,9 @@ export default async function PropertiesPage({ searchParams }: PropertiesPagePro
             <div role="rowgroup" className="divide-y divide-slate-200/80">
               {visibleProperties.map((property) => {
                 const statusLabel = property.status === "archived" ? copy.archived : copy.active;
+                const editHref = `/properties/${encodeURIComponent(property.id)}/edit?${new URLSearchParams({ returnTo }).toString()}`;
                 return (
-                  <div key={property.id} role="row" className="grid gap-4 px-5 py-4 transition hover:bg-slate-50 lg:grid-cols-[minmax(10rem,1.4fr)_minmax(5.5rem,.8fr)_minmax(7rem,1fr)_minmax(6rem,.8fr)_minmax(6rem,.8fr)_minmax(5.5rem,.6fr)_minmax(7rem,auto)] lg:items-center">
+                  <div key={property.id} role="row" data-list-row-link={editHref} data-list-row-return-trigger={`property:${property.id}`} tabIndex={0} aria-label={`${property.name} · ${copy.name}`} className="grid cursor-pointer gap-4 px-5 py-4 transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#0046ad] lg:grid-cols-[minmax(10rem,1.4fr)_minmax(5.5rem,.8fr)_minmax(7rem,1fr)_minmax(6rem,.8fr)_minmax(6rem,.8fr)_minmax(5.5rem,.6fr)_minmax(7rem,auto)] lg:items-center">
                     <div role="cell" className="min-w-0">
                       <Link
                         href={`/properties/${encodeURIComponent(property.id)}/edit?returnTo=${encodeURIComponent(returnTo)}`}

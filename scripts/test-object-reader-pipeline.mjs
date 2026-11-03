@@ -200,6 +200,50 @@ const standaloneReview = await data.reviewObjectImportCandidate({ context: creat
 assert.equal(standaloneReview.ok, true);
 assert.equal((await data.getPropertyById(standaloneProperty.id, tenant.id)).managementFee, 2210, "standalone confirmed profile field must survive property reopen");
 
+// A previous permission failure may remain on the review target after a
+// later, cost-free autosave/replay has already written or reconciled the
+// model fields. Recovery clears only that stale status and leaves an audit
+// trail; it must not overwrite the manually confirmed management fee.
+await data.updateObjectImportTarget({
+  ...scope,
+  id: standaloneTarget.id,
+  status: "needs_review",
+  errorCode: "object_import_permission_denied",
+  errorSummary: "stale permission status for recovery regression",
+});
+const recoveredCount = await data.autoSaveObjectImportCandidates({ ...scope, targetId: standaloneTarget.id });
+const recoveredProperty = await data.getPropertyById(standaloneProperty.id, tenant.id);
+const recoveredTarget = await data.getObjectImportTarget({ ...scope, id: standaloneTarget.id });
+assert.equal(recoveredProperty.managementFee, 2210, "recovery must preserve the human-confirmed field");
+assert.equal(recoveredProperty.repairFee, 3540, "recovery must retain the extracted repair fee");
+assert.equal(recoveredProperty.listingPrice, 7500000, "recovery must retain the extracted listing price");
+assert.equal(recoveredTarget.errorCode, undefined, "successful recovery must clear the stale error code");
+assert.equal(recoveredTarget.errorSummary, undefined, "successful recovery must clear the stale error summary");
+const recoveryLogs = (await data.listAuditLogs(user.id, { tenantId: tenant.id, action: "object_import_auto_save_recovered" }))
+  .filter((item) => item.context?.importTargetId === standaloneTarget.id);
+assert.equal(recoveryLogs.length, 1, "successful recovery must emit one reconciliation audit");
+assert.equal(recoveryLogs[0].context.previousErrorCode, "object_import_permission_denied");
+assert.ok(Number(recoveryLogs[0].context.savedFields ?? 0) + Number(recoveryLogs[0].context.reconciledFields ?? 0) > 0, "recovery audit must record saved or reconciled fields");
+assert.ok(recoveredCount >= 0, "recovery return count remains the count of newly saved fields");
+
+// Replaying an already reconciled target must also clear a stale status
+// without writing any field a second time.
+await data.updateObjectImportTarget({
+  ...scope,
+  id: standaloneTarget.id,
+  status: "needs_review",
+  errorCode: "object_import_permission_denied",
+  errorSummary: "stale permission status for idempotent replay regression",
+});
+assert.equal(await data.autoSaveObjectImportCandidates({ ...scope, targetId: standaloneTarget.id }), 0, "idempotent replay must not count existing writes twice");
+const replayTarget = await data.getObjectImportTarget({ ...scope, id: standaloneTarget.id });
+assert.equal(replayTarget.errorCode, undefined, "idempotent recovery must clear the stale error code");
+assert.equal(replayTarget.errorSummary, undefined, "idempotent recovery must clear the stale error summary");
+const replayLogs = (await data.listAuditLogs(user.id, { tenantId: tenant.id, action: "object_import_auto_save_recovered" }))
+  .filter((item) => item.context?.importTargetId === standaloneTarget.id);
+assert.equal(replayLogs.length, 2, "idempotent recovery must retain a separate reconciliation audit");
+assert.ok(Number(replayLogs[0].context.reconciledFields ?? 0) > 0, "idempotent recovery must record reconciled fields");
+
 // A standalone property upload may contain all supplied source documents. Each
 // PDF receives its own immutable target/evidence chain so sources remain
 // independently reviewable and no document silently replaces another.
@@ -237,7 +281,26 @@ const restrictedTarget = await data.createObjectImportTarget({
 });
 assert(await data.updateTenantMemberStatus({ tenantId: tenant.id, membershipId: "membership_cherry_admin", status: "suspended", actorUserId: user.id }));
 assert.equal(await data.autoSaveObjectImportCandidates({ tenantId: tenant.id, userId: "user_ops", targetId: restrictedTarget.id }), 0);
-assert.equal((await data.getObjectImportTarget({ tenantId: tenant.id, userId: "user_ops", id: restrictedTarget.id })).errorCode, "object_import_permission_denied");
+const restrictedAfterDowngrade = await data.getObjectImportTarget({ tenantId: tenant.id, userId: "user_ops", id: restrictedTarget.id });
+assert.equal(restrictedAfterDowngrade.errorCode, "object_import_permission_denied", "membership downgrade before the worker check must fail closed");
+assert.equal(restrictedAfterDowngrade.status, "needs_review", "permission denial must retain the review task for authorized recovery");
 assert.equal((await data.getPropertyById(restrictedProperty.id, tenant.id)).name, "Restricted property");
+
+// Corrupt role values from a database must be denied explicitly rather than
+// reaching ROLE_PERMISSIONS with an invalid key or accidentally gaining access.
+const invalidRoleProperty = await data.addProperty({ tenantId: tenant.id, createdByUserId: user.id, currentOwnerUserId: user.id, name: "Invalid role property" });
+const invalidRoleTarget = await data.createObjectImportTarget({
+  id: "target_invalid_membership_role", tenantId: tenant.id, userId: user.id, importJobId: "job_invalid_membership_role",
+  targetType: "property", targetId: invalidRoleProperty.id, targetVersion: "invalid-role-version", status: "needs_review",
+  idempotencyKey: "invalid-membership-role", attemptCount: 1, createdAt: new Date(), updatedAt: new Date(),
+});
+const dbHolder = globalThis.__brokerDbHolder;
+const ownerMembership = dbHolder?.current.tenantMemberships.find((item) => item.tenantId === tenant.id && item.userId === user.id && item.status === "active");
+assert(ownerMembership, "invalid-role regression requires the active owner membership");
+const previousOwnerRole = ownerMembership.role;
+ownerMembership.role = "corrupt_role";
+assert.equal(await data.autoSaveObjectImportCandidates({ ...scope, targetId: invalidRoleTarget.id }), 0, "invalid tenant role must fail closed");
+assert.equal((await data.getObjectImportTarget({ ...scope, id: invalidRoleTarget.id })).errorCode, "object_import_permission_denied");
+ownerMembership.role = previousOwnerRole;
 
 console.log("test-object-reader-pipeline: PASS");

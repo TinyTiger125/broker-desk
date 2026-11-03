@@ -1,8 +1,13 @@
 import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+const ts = require("typescript");
 
 const action = await readFile("src/app/actions.ts", "utf8");
 const form = await readFile("src/components/client-form.tsx", "utf8");
 const createPage = await readFile("src/app/clients/new/page.tsx", "utf8");
+const importCenterReturnSource = await readFile("src/lib/import-center-return.ts", "utf8");
 const editPage = await readFile("src/app/clients/[id]/edit/page.tsx", "utf8");
 const detailPage = await readFile("src/app/clients/[id]/page.tsx", "utf8");
 const failures = [];
@@ -23,13 +28,13 @@ requireText(form, 'notes: "備考"', "form must keep the notes group");
 requireText(form, 'label("budgetType", text.budgetType)', "budget type label must come from the locale copy map");
 const expectedCopy = {
   ja: {
-    basic: "基本情報", needs: "希望条件", management: "顧客管理", legal: "契約・法定情報", notes: "備考", name: "顧客名", phone: "電話番号", lineId: "LINE ID", email: "メールアドレス", budgetMin: "予算下限", budgetMax: "予算上限", budgetType: "予算タイプ", preferredArea: "意向エリア", firstChoiceArea: "第1希望エリア", secondChoiceArea: "第2希望エリア", purpose: "用途", period: "入居/運用希望時期", loan: "ローン事前審査", stage: "ステージ", temperature: "温度感", nextFollowUpAt: "次回フォロー日", brokerage: "媒介契約", signedAt: "媒介契約締結日", expiresAt: "媒介契約満了日", matters35: "重要事項説明日（35条）", matters37: "契約書面交付日（37条）", consent: "個人情報利用目的同意確認日", aml: "本人確認/AML", notesPlaceholder: "顧客の要望や確認事項", save: "顧客を保存", saving: "保存中…", cancel: "キャンセル", back: "戻る", choose: "選択してください", optional: "任意", error: "入力内容を確認してください。", initialState: "新規登録時は未確認の状態です。必要な確認項目を入力して保存してください。",
+    basic: "基本情報", needs: "希望条件", management: "顧客管理", legal: "契約・法定情報", notes: "備考", name: "顧客名", phone: "電話番号", phoneMissing: "要補完：本人確認資料には電話番号がない場合があります", lineId: "LINE ID", email: "メールアドレス", budgetMin: "予算下限", budgetMax: "予算上限", budgetType: "予算タイプ", preferredArea: "意向エリア", firstChoiceArea: "第1希望エリア", secondChoiceArea: "第2希望エリア", purpose: "用途", period: "入居/運用希望時期", loan: "ローン事前審査", stage: "ステージ", temperature: "温度感", nextFollowUpAt: "次回フォロー日", brokerage: "媒介契約", signedAt: "媒介契約締結日", expiresAt: "媒介契約満了日", matters35: "重要事項説明日（35条）", matters37: "契約書面交付日（37条）", consent: "個人情報利用目的同意確認日", aml: "本人確認/AML", notesPlaceholder: "顧客の要望や確認事項", save: "顧客を保存", saving: "保存中…", cancel: "キャンセル", back: "戻る", choose: "選択してください", optional: "任意", error: "入力内容を確認してください。", initialState: "新規登録時は未確認の状態です。必要な確認項目を入力して保存してください。",
   },
   zh: {
-    basic: "基本信息", needs: "需求条件", management: "客户管理", legal: "合同与法定信息", notes: "备注", name: "客户姓名", phone: "电话号码", lineId: "LINE ID", email: "邮箱地址", budgetMin: "预算下限", budgetMax: "预算上限", budgetType: "预算类型", preferredArea: "意向区域", firstChoiceArea: "第一意向区域", secondChoiceArea: "第二意向区域", purpose: "用途", period: "入住/运营期望时间", loan: "贷款预审", stage: "阶段", temperature: "温度", nextFollowUpAt: "下次跟进日期", brokerage: "媒介合同", signedAt: "媒介合同签订日", expiresAt: "媒介合同到期日", matters35: "重要事项说明日（35条）", matters37: "合同书面交付日（37条）", consent: "个人信息使用同意确认日", aml: "实名/AML", notesPlaceholder: "客户需求和确认事项", save: "保存客户", saving: "保存中…", cancel: "取消", back: "返回", choose: "请选择", optional: "选填", error: "请检查以下输入内容。", initialState: "新建记录时默认为未核验状态。请填写需要确认的项目后保存。",
+    basic: "基本信息", needs: "需求条件", management: "客户管理", legal: "合同与法定信息", notes: "备注", name: "客户姓名", phone: "电话号码", phoneMissing: "待补全：证件通常不含电话号码", lineId: "LINE ID", email: "邮箱地址", budgetMin: "预算下限", budgetMax: "预算上限", budgetType: "预算类型", preferredArea: "意向区域", firstChoiceArea: "第一意向区域", secondChoiceArea: "第二意向区域", purpose: "用途", period: "入住/运营期望时间", loan: "贷款预审", stage: "阶段", temperature: "温度", nextFollowUpAt: "下次跟进日期", brokerage: "媒介合同", signedAt: "媒介合同签订日", expiresAt: "媒介合同到期日", matters35: "重要事项说明日（35条）", matters37: "合同书面交付日（37条）", consent: "个人信息使用同意确认日", aml: "实名/AML", notesPlaceholder: "客户需求和确认事项", save: "保存客户", saving: "保存中…", cancel: "取消", back: "返回", choose: "请选择", optional: "选填", error: "请检查以下输入内容。", initialState: "新建记录时默认为未核验状态。请填写需要确认的项目后保存。",
   },
   ko: {
-    basic: "기본 정보", needs: "희망 조건", management: "고객 관리", legal: "계약 및 법정 정보", notes: "메모", name: "고객명", phone: "전화번호", lineId: "LINE ID", email: "이메일", budgetMin: "예산 하한", budgetMax: "예산 상한", budgetType: "예산 유형", preferredArea: "희망 지역", firstChoiceArea: "1순위 희망 지역", secondChoiceArea: "2순위 희망 지역", purpose: "용도", period: "입주/운용 희망 시기", loan: "대출 사전심사", stage: "단계", temperature: "온도", nextFollowUpAt: "다음 후속 날짜", brokerage: "중개 계약", signedAt: "중개 계약 체결일", expiresAt: "중개 계약 만료일", matters35: "중요사항 설명일(35조)", matters37: "계약서 교부일(37조)", consent: "개인정보 이용 동의 확인일", aml: "본인확인/AML", notesPlaceholder: "고객 요청과 확인 사항", save: "고객 저장", saving: "저장 중…", cancel: "취소", back: "돌아가기", choose: "선택해 주세요", optional: "선택", error: "다음 입력 내용을 확인해 주세요.", initialState: "새로 등록한 기록은 미확인 초기 상태입니다. 필요한 확인 항목을 입력한 후 저장해 주세요.",
+    basic: "기본 정보", needs: "희망 조건", management: "고객 관리", legal: "계약 및 법정 정보", notes: "메모", name: "고객명", phone: "전화번호", phoneMissing: "추가 필요: 신분증에는 전화번호가 없는 경우가 많습니다", lineId: "LINE ID", email: "이메일", budgetMin: "예산 하한", budgetMax: "예산 상한", budgetType: "예산 유형", preferredArea: "희망 지역", firstChoiceArea: "1순위 희망 지역", secondChoiceArea: "2순위 희망 지역", purpose: "용도", period: "입주/운용 희망 시기", loan: "대출 사전심사", stage: "단계", temperature: "온도", nextFollowUpAt: "다음 후속 날짜", brokerage: "중개 계약", signedAt: "중개 계약 체결일", expiresAt: "중개 계약 만료일", matters35: "중요사항 설명일(35조)", matters37: "계약서 교부일(37조)", consent: "개인정보 이용 동의 확인일", aml: "본인확인/AML", notesPlaceholder: "고객 요청과 확인 사항", save: "고객 저장", saving: "저장 중…", cancel: "취소", back: "돌아가기", choose: "선택해 주세요", optional: "선택", error: "다음 입력 내용을 확인해 주세요.", initialState: "새로 등록한 기록은 미확인 초기 상태입니다. 필요한 확인 항목을 입력한 후 저장해 주세요.",
   },
 };
 const copyStart = form.indexOf("const copy =");
@@ -46,7 +51,9 @@ for (const [locale, messages] of Object.entries(expectedCopy)) {
 forbidText(form, 'label("budgetType", "予算タイプ")', "ClientForm must not hardcode a single-language budget type label");
 const renderedSource = `${form.slice(0, copyStart)}${form.slice(copyEnd + "} as const;".length)}`;
 if (/["'][^"']*[一-龥ぁ-んァ-ン가-힣][^"']*["']/u.test(renderedSource)) failures.push("ClientForm contains a hardcoded user-visible localized string outside the locale copy map");
-requireText(form, 'setValues(state.values)', "server validation errors must restore submitted values");
+if (!form.includes('setValues(state.values)') && !form.includes('preserveClientIndividualFieldsOnCorporateValidation(current, state.values)')) {
+  failures.push("server validation errors must restore submitted values without discarding omitted corporate personal drafts");
+}
 requireText(form, 'role="alert"', "form must expose one focusable error summary");
 requireText(form, 'aria-describedby', "field errors must be associated with fields");
 requireText(form, 'onCompositionStart', "IME composition guard must exist as code mechanism");
@@ -62,7 +69,7 @@ forbidText(form, "afterSave", "complete form must not expose the old second subm
 forbidText(createPage, "client-form-template", "new page must not import template helpers");
 forbidText(createPage, "client-intake-parser", "new page must not import memo parser");
 forbidText(createPage, "confidence", "new page must not show confidence UI");
-forbidText(createPage, "import-center", "new page must not treat import-center as returnTo");
+requireText(createPage, 'normalizeImportCenterObjectReturnTo(path, "person", true)', "new entry page must preserve the validated person import-center return path");
 requireText(createPage, 'stage: "lead"', "create page must seed only the lead stage");
 requireText(editPage, "updateClientProfileAction", "edit page must use the structured update action");
 requireText(editPage, "normalizeReturnTo", "edit page must validate returnTo before rendering");
@@ -72,7 +79,56 @@ const returnToEnd = action.indexOf("async function persistClientForm", returnToS
 const returnTo = action.slice(returnToStart, returnToEnd);
 requireText(returnTo, 'parsed.pathname === "/clients"', "actions must whitelist the client list return path");
 requireText(returnTo, 'parsed.pathname === "/organize-center"', "actions must whitelist the approved organize entry");
-forbidText(returnTo, "/import-center", "actions must reject import-center as a form return path");
+requireText(returnTo, "normalizeImportCenterObjectReturnTo(path, \"person\", true)", "actions must delegate import-center returns to the shared safe helper");
+
+const helperModule = { exports: {} };
+Function(
+  "module",
+  "exports",
+  ts.transpileModule(importCenterReturnSource, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText,
+)(helperModule, helperModule.exports);
+const { normalizeImportCenterObjectReturnTo } = helperModule.exports;
+const actionTree = ts.createSourceFile("actions.ts", action, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+const safeClientReturnToDeclaration = actionTree.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === "safeClientReturnTo");
+if (!safeClientReturnToDeclaration) {
+  failures.push("actions must keep the safeClientReturnTo implementation");
+} else {
+  const safeClientReturnToModule = { exports: {} };
+  const safeClientReturnToOutput = ts.transpileModule(
+    `${safeClientReturnToDeclaration.getText(actionTree)}\nmodule.exports = safeClientReturnTo;`,
+    { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } },
+  ).outputText;
+  Function("module", "IMPORT_CENTER_RETURN_PATH", "normalizeImportCenterObjectReturnTo", safeClientReturnToOutput)(
+    safeClientReturnToModule,
+    "/import-center",
+    normalizeImportCenterObjectReturnTo,
+  );
+  const safeClientReturnTo = safeClientReturnToModule.exports;
+  const personReturnTo = "/import-center?advanced=1&object=person";
+  if (normalizeImportCenterObjectReturnTo("/import-center?object=person", "person", true) !== personReturnTo) {
+    failures.push("legacy person import-center returnTo must canonicalize to advanced object selection");
+  }
+  const partyRedirect = `/clients/new?returnTo=${encodeURIComponent(personReturnTo)}`;
+  const clientReturnTo = new URL(partyRedirect, "http://broker-desk.local").searchParams.get("returnTo");
+  if (clientReturnTo !== personReturnTo || safeClientReturnTo(clientReturnTo, "/clients", undefined, true) !== personReturnTo) {
+    failures.push("person import-center returnTo must survive the party-to-client creation chain");
+  }
+  if (safeClientReturnTo("/import-center", "/clients", undefined, true) !== "/import-center") {
+    failures.push("legacy bare import-center returnTo must remain valid");
+  }
+  for (const unsafe of [
+    "https://attacker.invalid/import-center",
+    "/import-center?job=forged",
+    "/import-center?object=person&targetId=../../forged",
+    "/import-center?object=person#source-upload",
+  ]) {
+    if (safeClientReturnTo(unsafe, "/clients", undefined, true) !== "/clients") {
+      failures.push(`unsafe import-center returnTo must fail closed: ${unsafe}`);
+    }
+  }
+}
 requireText(action, "export async function createClient(formData: FormData)", "quick create compatibility wrapper must remain");
 requireText(action, "await persistClientForm(formData, \"create\", undefined, true)", "quick create must reuse the shared persistence core");
 requireText(action, "parsed <= 0", "budget zero and negative values must be rejected server-side");

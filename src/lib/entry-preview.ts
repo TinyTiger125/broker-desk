@@ -18,6 +18,20 @@ export type EntryPreviewState = {
   message?: string;
 };
 
+export type EntryDraftSuggestion = { key: string; value: string };
+
+/** Fill only blank existing controls; a draft suggestion never replaces a value already present. */
+export function fillEmptyEntryDraftSuggestions<T extends Record<string, string>>(current: T, suggestions: readonly EntryDraftSuggestion[]): T {
+  const next = { ...current };
+  for (const suggestion of suggestions) {
+    const key = suggestion.key as keyof T;
+    const value = suggestion.value.trim();
+    if (!(key in next) || !value || String(next[key] ?? "").trim()) continue;
+    next[key] = value as T[keyof T];
+  }
+  return next;
+}
+
 function isNonActualCurrentAddress(candidate: Pick<EntryPreviewCandidate, "key" | "value">) {
   if (candidate.key !== "currentAddress" && candidate.key !== "applicant.currentAddress") return false;
   const normalized = candidate.value.trim().replace(/\s+/g, "");

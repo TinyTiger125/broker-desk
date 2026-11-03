@@ -1,5 +1,6 @@
 import { CASE_FIELD_DEFINITIONS, type CaseFieldAppliesWhen } from "@/lib/case-field-catalog";
 import { getCaseFieldValue } from "@/lib/case-field-normalization";
+import { getCaseWorkflowTypeFamily } from "@/lib/options";
 
 export const CASE_APPLICABILITY_SETTINGS_KEY = "__caseApplicability";
 
@@ -68,6 +69,14 @@ function hasMatchingEvidence(evidenceFieldKeys: ReadonlySet<string>, prefixes: r
 
 function isLeaseCase(confirmedData: Record<string, unknown>) {
   const workflowType = String(confirmedData.__workflowType ?? "").trim();
+  const family = getCaseWorkflowTypeFamily(workflowType);
+  // New detailed classifications are metadata only. Only the rental family
+  // opts into the existing lease-field applicability; sale, management and
+  // general work stay neutral instead of inheriting a rental workflow.
+  if (family === "rental") return true;
+  if (family === "sale" || family === "management" || family === "general") return false;
+  // Preserve the pre-existing behavior for legacy values and old records that
+  // do not carry a classification yet.
   return workflowType !== "sale_mandate";
 }
 

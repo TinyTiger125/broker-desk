@@ -95,6 +95,17 @@ assert.equal((await mappedRepo.listCandidates({ ...scope, targetId: target.id })
 const pgSource = readFileSync(resolve(root, "src/lib/data.postgres.ts"), "utf8");
 assert.match(pgSource, /new PostgresObjectImportRepository\(getPool\(\)\)/);
 assert(!pgSource.includes("new PostgresObjectImportRepository(getRawPool())"));
+assert.match(pgSource, /SELECT id FROM tenant_memberships WHERE tenant_id=\$1 AND user_id=\$2 AND status='active' LIMIT 1/, "PostgreSQL auto-save must read only the scoped membership id before locking");
+assert.match(pgSource, /lockMembershipForMutation\(client, membershipId, input\.tenantId, input\.userId\)/, "PostgreSQL auto-save must lock membership through the scoped SECURITY DEFINER helper");
+assert.match(pgSource, /const membershipLocked = membershipId/, "PostgreSQL auto-save must gate formal writes on the helper lock result");
+assert.match(pgSource, /SELECT capability,role FROM tenant_memberships WHERE id=\$1 AND tenant_id=\$2 AND user_id=\$3 AND status='active'/, "PostgreSQL auto-save must re-read role and capability after the membership lock");
+assert.match(pgSource, /Never authorize from the pre-lock hint/, "PostgreSQL auto-save must not authorize from stale pre-lock membership metadata");
+assert.match(pgSource, /isTenantRole\(rawMembershipRole\)/, "PostgreSQL auto-save must fail closed for an invalid stored role");
+assert.match(pgSource, /roleHasTenantPermission\(membershipRole, "record\.update"\)/, "PostgreSQL auto-save must retain the role-level record permission check");
+assert.match(pgSource, /roleHasTenantPermission\(membershipRole, "source\.upload"\)/, "PostgreSQL auto-save must retain the role-level source permission check");
+assert.match(pgSource, /modelDestinationMatches\(/, "PostgreSQL recovery must distinguish already-reconciled model values from manual values");
+assert.match(pgSource, /object_import_auto_save_recovered/, "PostgreSQL recovery must emit a reconciliation audit");
+assert.match(pgSource, /error_code=NULL,error_summary=NULL/, "PostgreSQL recovery must clear stale save-status errors atomically");
 const { MemoryObjectImportRepository } = require(resolve(root, "src/lib/object-import-repository.memory.ts"));
 const confirmed = { ...candidate, finalValue: "Human value", finalSource: "human", status: "confirmed", confirmedByUserId: scope.userId, confirmedAt: date };
 const isolatedMemory = new MemoryObjectImportRepository([target], [confirmed]);

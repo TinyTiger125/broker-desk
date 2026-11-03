@@ -633,7 +633,8 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
         const path = object === "person" ? `/clients/${encodeURIComponent(id)}/edit` : `/properties/${encodeURIComponent(id)}/edit`;
         redirect(`${path}${query.size ? `?${query}` : ""}`);
       }
-      redirect(params?.intake === "existing" ? `/organize-center?type=${object === "person" ? "party" : "property"}` : object === "person" ? "/clients/new?returnTo=%2Fimport-center" : "/properties/new?returnTo=%2Fimport-center");
+      const objectSelectionReturnTo = `/import-center?advanced=1&object=${object}#target-selection`;
+      redirect(params?.intake === "existing" ? `/organize-center?type=${object === "person" ? "party" : "property"}` : object === "person" ? `/clients/new?returnTo=${encodeURIComponent(objectSelectionReturnTo)}` : `/properties/new?returnTo=${encodeURIComponent(objectSelectionReturnTo)}`);
     }
     if (object === "case") redirect("/cases/new?from=entry");
   }
@@ -943,9 +944,9 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
       ko: "본인 확인 자료의 총 용량은 60MB 이하로 선택해 주세요.",
     },
     identity_upload_type: {
-      ja: "在留カード・運転免許証のPDFまたは画像ファイルを選択してください。",
-      zh: "请选择在留卡或驾照的 PDF / 图片文件。",
-      ko: "재류카드 또는 운전면허증 PDF/이미지를 선택해 주세요.",
+      ja: "パスポート・在留カード・運転免許証・国民健康保険証のPDFまたは画像ファイルを選択してください。",
+      zh: "请选择护照、在留卡、驾照或国民健康保险卡的 PDF / 图片文件。",
+      ko: "여권·재류카드·운전면허증·국민건강보험증 PDF/이미지를 선택해 주세요.",
     },
     object_import_upload_save_failed: {
       ja: "資料の受付は完了しませんでした。元ファイルを保存できなかったため、対象を選んだまま再試行してください。",
@@ -1598,7 +1599,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
             </div>
             <div className="flex flex-wrap gap-2">
               <Link
-                href={selectedObject === "property" ? "/properties/new?returnTo=%2Fimport-center%3Fobject%3Dproperty" : "/parties/new?returnTo=%2Fimport-center%3Fobject%3Dperson"}
+                href={selectedObject === "property" ? "/properties/new?returnTo=%2Fimport-center%3Fadvanced%3D1%26object%3Dproperty%23target-selection" : "/parties/new?returnTo=%2Fimport-center%3Fadvanced%3D1%26object%3Dperson%23target-selection"}
                 className="inline-flex min-h-11 items-center rounded-lg bg-slate-950 px-4 py-2 text-xs font-black text-white hover:bg-slate-800"
               >
                 {locale === "zh" ? "新建并录入资料" : locale === "ko" ? "새 기록에 자료 입력" : "新規記録に資料を入力"}
@@ -1722,10 +1723,10 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                 </div>
                 <p className="mt-1 text-xs text-slate-600">
                   {locale === "zh"
-                    ? "只采用确认无误的信息。在留卡或驾照任选一份即可。"
+                    ? "只采用确认无误的信息。护照、在留卡、驾照或国民健康保险卡任选一份即可。"
                     : locale === "ko"
-                      ? "확실한 항목만 채택하세요. 재류카드 또는 운전면허증 중 하나만 업로드해도 됩니다."
-                      : "正しい項目だけ採用してください。在留カードまたは運転免許証の片方だけで進められます。"}
+                      ? "확실한 항목만 채택하세요. 여권·재류카드·운전면허증·국민건강보험증 중 하나만 업로드해도 됩니다."
+                      : "正しい項目だけ採用してください。パスポート・在留カード・運転免許証・国民健康保険証のいずれか1点で進められます。"}
                 </p>
               </div>
               <span className="rounded-full bg-white px-3 py-1 text-[11px] font-bold text-slate-700">

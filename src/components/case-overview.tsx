@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { CaseWorkbenchFieldForm } from "@/components/case-workbench-field-form";
 import { ObjectPageShell, ResponsiveFormEditorSlot, ResponsiveFormField, ResponsiveFormLayout, ResponsiveFormRow } from "@/components/layout-system";
 import type { Locale } from "@/lib/locale";
@@ -286,6 +286,7 @@ export function CaseEditPanel({
 export function CaseIdentityHeader({
   caseId,
   caseTitle,
+  caseTypeLabel,
   applicantSummary,
   propertySummary,
   guaranteeCompanySummary,
@@ -303,6 +304,7 @@ export function CaseIdentityHeader({
 }: {
   caseId: string;
   caseTitle: string;
+  caseTypeLabel?: string;
   applicantSummary: string;
   propertySummary: string;
   guaranteeCompanySummary: string;
@@ -338,7 +340,7 @@ export function CaseIdentityHeader({
   }, []);
 
   return (
-    <header ref={headerRef} data-case-object-header className={`sticky top-16 z-30 border border-slate-200 bg-white/95 shadow-sm backdrop-blur transition-[padding,box-shadow] duration-200 lg:top-20 ${compactHeader ? "rounded-lg px-3 py-2 sm:px-4" : "rounded-xl px-3 py-3 sm:px-5 sm:py-4"}`}>
+    <header ref={headerRef} data-case-object-header className={`sticky top-16 z-30 border border-slate-200 bg-white shadow-sm transition-[padding,box-shadow] duration-200 sm:top-[var(--case-shell-top-offset)] lg:top-20 ${compactHeader ? "rounded-lg px-3 py-2 sm:px-4" : "rounded-xl px-3 py-3 sm:px-5 sm:py-4"}`}>
       <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0 sm:flex-1">
           <div className="flex items-center gap-2 text-[11px] font-bold text-slate-500">
@@ -347,6 +349,7 @@ export function CaseIdentityHeader({
           </div>
           {!compactHeader ? <h1 className="mt-1 break-words text-lg font-black tracking-tight text-slate-950 sm:text-2xl">{caseTitle}</h1> : null}
           <div className={`flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-semibold text-slate-600 ${compactHeader ? "mt-0" : "mt-2"}`}>
+            {caseTypeLabel ? <span>{locale === "zh" ? "案件类型" : locale === "ko" ? "안건 유형" : "案件種別"}：{caseTypeLabel}</span> : null}
             <span>{locale === "zh" ? "申请人" : locale === "ko" ? "신청인" : "申込人"}：{applicantSummary}</span>
             <span className="hidden sm:inline">{locale === "zh" ? "物件" : locale === "ko" ? "물건" : "物件"}：{propertySummary}</span>
             <span className="hidden md:inline">{locale === "zh" ? "负责人" : locale === "ko" ? "담당" : "担当"}：{currentHandlerSummary}</span>
@@ -675,6 +678,7 @@ function scrollToId(id: string, behavior: ScrollBehavior = "smooth", updateHisto
 export function CaseOverview({
   caseId,
   caseTitle,
+  caseTypeLabel,
   applicantSummary,
   propertySummary,
   guaranteeCompanySummary,
@@ -702,6 +706,7 @@ export function CaseOverview({
 }: {
   caseId: string;
   caseTitle: string;
+  caseTypeLabel?: string;
   applicantSummary: string;
   propertySummary: string;
   guaranteeCompanySummary: string;
@@ -802,21 +807,39 @@ export function CaseOverview({
     return () => mediaQuery.removeEventListener?.("change", syncViewport);
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const page = pageRef.current;
     if (!page) return;
-    const syncScrollMargin = () => page.style.setProperty("--case-object-scroll-margin", `${Math.ceil(getStickyOffset())}px`);
+    const syncScrollMargin = () => {
+      const visibleShellHeaderHeight = [...document.querySelectorAll<HTMLElement>("[data-app-shell-top-occluder]")]
+        .reduce((height, element) => Math.max(height, element.getBoundingClientRect().height, element.offsetHeight), 0);
+      const isTablet = window.innerWidth >= 640 && window.innerWidth < 1024;
+      if (isTablet) {
+        const shellHeaderHeight = Math.ceil(visibleShellHeaderHeight || 64);
+        const caseHeaderHeight = Math.ceil(document.querySelector<HTMLElement>("[data-case-object-header]")?.getBoundingClientRect().height ?? 0);
+        page.style.setProperty("--case-shell-top-offset", `${shellHeaderHeight}px`);
+        page.style.setProperty("--case-anchor-top-offset", `${shellHeaderHeight + caseHeaderHeight + 12}px`);
+      } else {
+        page.style.removeProperty("--case-shell-top-offset");
+        page.style.removeProperty("--case-anchor-top-offset");
+      }
+      page.style.setProperty("--case-object-scroll-margin", `${Math.ceil(getStickyOffset())}px`);
+    };
     syncScrollMargin();
     const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(syncScrollMargin);
     const header = document.querySelector<HTMLElement>("[data-case-object-header]");
     const anchorNav = document.querySelector<HTMLElement>("[data-case-anchor-nav]");
+    const shellHeaders = [...document.querySelectorAll<HTMLElement>("[data-app-shell-top-occluder]")];
     if (header) resizeObserver?.observe(header);
     if (anchorNav) resizeObserver?.observe(anchorNav);
+    shellHeaders.forEach((shellHeader) => resizeObserver?.observe(shellHeader));
     window.addEventListener("resize", syncScrollMargin, { passive: true });
     return () => {
       resizeObserver?.disconnect();
       window.removeEventListener("resize", syncScrollMargin);
       page.style.removeProperty("--case-object-scroll-margin");
+      page.style.removeProperty("--case-shell-top-offset");
+      page.style.removeProperty("--case-anchor-top-offset");
     };
   }, []);
 
@@ -1148,12 +1171,13 @@ export function CaseOverview({
   void attentionQueue;
 
   return (
-    <div ref={pageRef} className="flex min-w-0 flex-col gap-4 pb-16">
+    <div ref={pageRef} style={{ "--case-shell-top-offset": "4rem", "--case-anchor-top-offset": "8.75rem" } as CSSProperties} className="flex min-w-0 flex-col gap-4 pb-16">
       <ObjectPageShell
         header={
           <CaseIdentityHeader
             caseId={caseId}
             caseTitle={caseTitle}
+            caseTypeLabel={caseTypeLabel}
             applicantSummary={applicantSummary}
             propertySummary={propertySummary}
             guaranteeCompanySummary={guaranteeCompanySummary}
@@ -1185,8 +1209,9 @@ export function CaseOverview({
         }
         state={null}
       >
+        <div data-case-sticky-occluder aria-hidden="true" className="pointer-events-none fixed inset-x-0 top-0 z-10 h-[10.5rem] bg-[var(--background)] sm:h-[var(--case-anchor-top-offset)] lg:top-16 lg:h-[6.5rem]" />
         {associationPanel}
-        <nav data-case-anchor-nav aria-label={locale === "zh" ? "案件章节" : locale === "ko" ? "안건 섹션" : "案件セクション"} className="sticky top-[8.75rem] z-20 rounded-xl border border-slate-200 bg-white/95 px-2 py-2 shadow-sm backdrop-blur lg:top-[10.5rem]">
+        <nav data-case-anchor-nav aria-label={locale === "zh" ? "案件章节" : locale === "ko" ? "안건 섹션" : "案件セクション"} className="sticky top-[10.5rem] z-20 rounded-xl border border-slate-200 bg-white px-2 py-2 shadow-sm sm:top-[var(--case-anchor-top-offset)] lg:top-[10.5rem]">
           <div className="hidden items-center gap-1 sm:flex">
             {visibleAnchors.map((section) => (
               <a key={section.id} href={`#${section.id}`} onClick={(event) => { event.preventDefault(); setActiveSection(section.id); scrollToId(section.id); }} onKeyDown={(event) => activateAnchorWithKeyboard(event, section.id)} aria-current={activeSection === section.id ? "location" : undefined} className={`min-w-0 flex-1 truncate rounded-lg px-3 py-2 text-center text-xs font-black transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 ${activeSection === section.id ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"}`}>

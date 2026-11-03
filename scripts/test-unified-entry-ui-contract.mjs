@@ -75,9 +75,9 @@ assert.ok(editClient.indexOf("<ClientIdentityImportSection") < editClient.indexO
 assert.ok(editClient.indexOf("<ClientForm") < editClient.indexOf("<ObjectAttachmentSection"), "client originals must follow the long form");
 assert.ok(editProperty.indexOf("<PropertyObjectImportSection") < editProperty.indexOf("<PropertyResponsiveForm"), "property reading area must precede the long form");
 assert.ok(editProperty.indexOf("<PropertyResponsiveForm") < editProperty.indexOf("<ObjectAttachmentSection"), "property originals must follow the long form");
-assert.match(newClient, /parsed\.pathname === "\/import-center" && keys\.length === 0/);
+assert.match(newClient, /normalizeImportCenterObjectReturnTo\(path, "person", true\)/);
 assert.match(editClient, /parsed\.pathname === "\/import-center" && keys\.length === 0/);
-assert.match(newClient, /\["client", "party"\]\.includes/);
-assert.match(editClient, /\["client", "party"\]\.includes/);
+assert.match(newClient, /\["", "all", "client", "party"\]\.includes/);
+assert.match(editClient, /\["", "all", "client", "party"\]\.includes/);
 
 console.log("Unified entry UI contract passed: uploadFile picker, explicit save/read action, scoped drafts, and page wiring.");

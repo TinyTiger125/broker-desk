@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useCallback, useEffect, useRef, useState, useTransition, type FormEvent, type KeyboardEvent } from "react";
+import { useActionState, useCallback, useEffect, useRef, useState, useTransition, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import type { Locale } from "@/lib/locale";
 import type { PropertyFormActionState, PropertyFormValues } from "@/app/actions";
 import { endSubmission, handleFormSubmit, type SubmissionLock } from "@/components/form-submission-lock";
@@ -60,7 +60,7 @@ const copy = {
     sqm: "㎡",
     optional: "任意",
     save: "保存",
-    saveAndRead: "保存して資料を読み取る",
+    saveAndRead: "保存して読み取る",
     cancel: "キャンセル",
     errorSummary: "入力内容を確認してください。",
     saving: "保存中…",
@@ -87,7 +87,7 @@ const copy = {
     sqm: "㎡",
     optional: "选填",
     save: "保存",
-    saveAndRead: "保存并读取资料",
+    saveAndRead: "保存后读取",
     cancel: "取消",
     errorSummary: "请检查以下输入内容。",
     saving: "保存中…",
@@ -114,7 +114,7 @@ const copy = {
     sqm: "㎡",
     optional: "선택",
     save: "저장",
-    saveAndRead: "저장하고 자료 읽기",
+    saveAndRead: "저장 후 읽기",
     cancel: "취소",
     errorSummary: "다음 입력 내용을 확인해 주세요.",
     saving: "저장 중…",
@@ -123,6 +123,54 @@ const copy = {
 
 const inputClass =
   "w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base text-slate-900 outline-none transition focus:border-[#0046ad] focus:ring-2 focus:ring-blue-100 sm:text-sm";
+
+type PropertyFormSectionKey = "basic" | "money" | "detail";
+
+const propertyFormSectionForField: Record<keyof PropertyFormValues, PropertyFormSectionKey> = {
+  name: "basic",
+  area: "basic",
+  address: "basic",
+  furigana: "basic",
+  roomNumber: "basic",
+  postalCode: "basic",
+  usage: "basic",
+  listingPrice: "money",
+  listingRent: "money",
+  listingCommonFee: "money",
+  managementFee: "money",
+  repairFee: "money",
+  sizeSqm: "money",
+  notes: "detail",
+};
+
+function PropertyFormSection({
+  section,
+  title,
+  expanded,
+  onToggle,
+  children,
+}: {
+  section: PropertyFormSectionKey;
+  title: string;
+  expanded: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  const headingId = `property-${section}-heading`;
+  const contentId = `property-${section}-content`;
+  return (
+    <section aria-labelledby={headingId} className="space-y-4 border-b border-slate-200 pb-6">
+      <button type="button" aria-expanded={expanded} aria-controls={contentId} onClick={onToggle} className="group flex w-full cursor-pointer items-center justify-start gap-2 rounded-md text-left text-base font-bold text-slate-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">
+        <span aria-hidden="true" className="material-symbols-outlined shrink-0 text-[20px] text-slate-500">{expanded ? "expand_more" : "chevron_right"}</span>
+        <span id={headingId} role="heading" aria-level={2}>{title}</span>
+      </button>
+      <div id={contentId} aria-labelledby={headingId} className={expanded ? "" : "hidden"}>
+        {children}
+      </div>
+    </section>
+  );
+}
+
 const initialState: PropertyFormActionState = { status: "idle", fieldErrors: {}, values: {
   name: "",
   area: "",
@@ -165,6 +213,26 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
   const confirmEntryCandidate = useCallback((candidate: EntryPreviewCandidate) => {
     setValues((current) => String(current[candidate.key as keyof PropertyFormValues] ?? "").trim() ? current : applyEntryPreviewCandidate(current, candidate));
   }, [setValues]);
+  const [expandedSections, setExpandedSections] = useState<Record<PropertyFormSectionKey, boolean>>({ basic: true, money: true, detail: true });
+  const openSectionForField = useCallback((field: keyof PropertyFormValues) => {
+    const section = propertyFormSectionForField[field];
+    setExpandedSections((current) => current[section] ? current : { ...current, [section]: true });
+  }, []);
+  const toggleSection = (section: PropertyFormSectionKey) => {
+    setExpandedSections((current) => ({ ...current, [section]: !current[section] }));
+  };
+  const locateEntryCandidate = useCallback((candidate: EntryPreviewCandidate) => {
+    const field = candidate.key as keyof PropertyFormValues;
+    if (!Object.prototype.hasOwnProperty.call(initialValues, field)) return;
+    openSectionForField(field);
+    const focus = () => {
+      const target = document.getElementById(`property-${field}`);
+      target?.focus();
+      target?.scrollIntoView({ block: "center", behavior: "smooth" });
+    };
+    if (typeof window === "undefined") focus();
+    else window.requestAnimationFrame(focus);
+  }, [initialValues, openSectionForField]);
   const entryAction = useCallback(async (previousState: PropertyFormActionState, formData: FormData) => {
     if (entryUpload) {
       replaceEntryFiles(formData, entryFilesRef.current);
@@ -189,10 +257,14 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
   const submissionLockRef = useRef<SubmissionLock>({ current: false });
 
   useEffect(() => {
-    if (state.status === "error") {
+    if (state.status !== "error") return;
+    setValues(state.values);
+    const frame = window.requestAnimationFrame(() => {
+      for (const field of Object.keys(state.fieldErrors) as Array<keyof PropertyFormValues>) openSectionForField(field);
       summaryRef.current?.focus();
-    }
-  }, [state]);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [openSectionForField, setValues, state.fieldErrors, state.status, state.values]);
   useEffect(() => {
     const record = state.createdRecord;
     if (!record || notifiedCreatedId.current === record.id) return;
@@ -219,9 +291,14 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
   const fieldError = (field: keyof PropertyFormValues) => state.fieldErrors[field];
   const focusField = (event: React.MouseEvent<HTMLAnchorElement>, field: keyof PropertyFormValues) => {
     event.preventDefault();
-    const target = document.getElementById(`property-${field}`);
-    target?.focus();
-    target?.scrollIntoView({ block: "center", behavior: "smooth" });
+    openSectionForField(field);
+    const focus = () => {
+      const target = document.getElementById(`property-${field}`);
+      target?.focus();
+      target?.scrollIntoView({ block: "center", behavior: "smooth" });
+    };
+    if (typeof window === "undefined") focus();
+    else window.requestAnimationFrame(focus);
   };
   const fieldProps = (field: keyof PropertyFormValues, id: string) => ({
     id,
@@ -237,16 +314,20 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     handleFormSubmit(event, submissionLockRef.current, onSubmitStart);
   };
+  const handleInvalid = (event: FormEvent<HTMLFormElement>) => {
+    const field = String((event.target as HTMLInputElement).name) as keyof PropertyFormValues;
+    if (field in propertyFormSectionForField) openSectionForField(field);
+  };
 
   return (
-    <form ref={formRef} id={formId} action={formAction} onSubmit={handleSubmit} noValidate className="space-y-6">
+    <form ref={formRef} id={formId} action={formAction} onSubmit={handleSubmit} onInvalidCapture={handleInvalid} noValidate className="space-y-6">
       <input type="hidden" name="returnTo" value={returnTo} />
       {onCreated ? <input type="hidden" name="caseDraftReturn" value="1" /> : null}
       {propertyId ? <input type="hidden" name="propertyId" value={propertyId} /> : null}
       {entryUpload ? <>
         <input type="hidden" name="entryIntentId" value={entryIntentId} />
         <EntryFilePicker locale={locale} files={entryFiles} onFilesChange={updateEntryFiles} disabled={pending} />
-        <EntryPreview files={entryFiles} kind="property" locale={locale} onConfirm={confirmEntryCandidate} onReadFileKeys={handleEntryReadFileKeys} onReadComplete={autoSaveReadResult} />
+        <EntryPreview files={entryFiles} kind="property" locale={locale} onConfirm={confirmEntryCandidate} onLocateCandidate={locateEntryCandidate} onReadFileKeys={handleEntryReadFileKeys} onReadComplete={autoSaveReadResult} />
         <input type="hidden" name="entryReadFileKeys" value={JSON.stringify(entryReadFileKeys)} />
       </> : null}
 
@@ -269,8 +350,7 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
         </div>
       ) : null}
 
-      <section aria-labelledby="property-basic-heading" className="space-y-3 border-b border-slate-200 pb-6">
-        <h2 id="property-basic-heading" className="text-base font-bold text-slate-950">{text.basic}</h2>
+      <PropertyFormSection section="basic" title={text.basic} expanded={expandedSections.basic} onToggle={() => toggleSection("basic")}>
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-1 md:col-span-2">
             <label htmlFor="property-name" className="text-sm font-semibold text-slate-700">{text.name}</label>
@@ -305,10 +385,9 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
             <input {...fieldProps("usage", "property-usage")} className={inputClass} />
           </div>
         </div>
-      </section>
+      </PropertyFormSection>
 
-      <section aria-labelledby="property-money-heading" className="space-y-3 border-b border-slate-200 pb-6">
-        <h2 id="property-money-heading" className="text-base font-bold text-slate-950">{text.money}</h2>
+      <PropertyFormSection section="money" title={text.money} expanded={expandedSections.money} onToggle={() => toggleSection("money")}>
         <div className="grid gap-4 md:grid-cols-3">
           {([
             ["listingPrice", text.listingPrice],
@@ -331,10 +410,9 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
             );
           })}
         </div>
-      </section>
+      </PropertyFormSection>
 
-      <section aria-labelledby="property-detail-heading" className="space-y-3">
-        <h2 id="property-detail-heading" className="text-base font-bold text-slate-950">{text.detail}</h2>
+      <PropertyFormSection section="detail" title={text.detail} expanded={expandedSections.detail} onToggle={() => toggleSection("detail")}>
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-1 md:col-span-2">
             <label htmlFor="property-notes" className="text-sm font-semibold text-slate-700">{text.notes} <span className="text-xs font-normal text-slate-500">({text.optional})</span></label>
@@ -342,7 +420,7 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
             {fieldError("notes") ? <p id="property-notes-error" className="text-xs font-semibold text-rose-700">{fieldError("notes")}</p> : null}
           </div>
         </div>
-      </section>
+      </PropertyFormSection>
 
       {hideActions ? null : <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-200 pt-5">
         {onCancel ? <button type="button" onClick={onCancel} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">{text.cancel}</button> : <Link href={returnTo} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">{text.cancel}</Link>}

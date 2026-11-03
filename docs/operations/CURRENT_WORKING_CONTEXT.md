@@ -206,3 +206,23 @@
 - 代码 readiness 已把 005 runtime ACL 与 006 authenticated ACL 纳入 `ensureSchema()` 必需集合；回归证明 ledger 停在 004 会拒绝，完整到 006 才接受。应用回退保留 claims 扩展表与 migration ledger；rollback 003/001 对 UUID/非空数据 fail-closed，删表不属于常规回退。
 - 本次最终候选仍以基线 `81901825877b3c1ec7e32b68cfb1b8717ca47832` 为父提交；发布提交只允许从该基线快进到 GitHub `main`，不得 force push 或部署 Vercel。临时 packet/evidence、真实证件/PDF、私有 fixture 与密钥均不在 Git 写集内。
 - 最终门：定向 readiness、production-security、typecheck、lint、`npx next build --webpack`、`git diff --check` 通过；默认 `npm run build` 的 Turbopack 仅受本机 EPERM 子进程/端口绑定限制，webpack production build 成功。
+
+## 2026-11-02 BD-20261102-053 组织中心行语义收口
+
+- 隔离候选 `/Users/laineyzhu/Documents/独立开发项目/房产专家/bd-feedback-20261102-049` 已完成 `BD-20261102-053-ORGANIZE-ROW-A11Y-FIX`，本地提交 `e3ba9e2`，未 push、未部署、未写生产。
+- 组织中心共享记录行改为单一原生 `<a href>` 语义目标；外层行保留整行鼠标增强导航，归档操作和失败告警带 `data-list-row-ignore`，不再触发记录导航；悬停采用中性底色，键盘焦点采用独立蓝色焦点标记。返回 URL、滚动恢复、焦点恢复、Enter/Space 与其他列表页行内链接规则保持不变。
+- 通过：反馈表单/列表契约、反馈补救 UI 契约、归档返回流程、列表返回状态、layout-system 组合门、typecheck、lint（仅既有 2 条 warning）、`npx next build --webpack`、`git diff --check`。本轮未取得浏览器运行证据：本地服务未启动且桌面控制受锁屏限制，不能将静态门禁写成浏览器通过。
+- 下一步：交独立审查/产品浏览器验收；如需窄视口或运行态证据，应在可控本地服务与桌面环境恢复后另行取得。
+
+## 2026-11-02 BD-20261102-054 组织中心行修正复核回合
+
+- 独立复审提出的两项回归已在同一隔离候选修复，本地提交 `bbff2bd`：原生记录链接的 Enter 不再由脚本阻止或强制 `location.assign`，修饰键 Enter/Space 保持浏览器语义；只有普通 Space 使用自定义激活。返回状态由正常原生点击路径记录，修饰点击不覆盖。
+- `data-list-row-ignore` 已从整个右侧更新时间/操作容器收窄到实际归档控件子树；更新时间、空白行区域继续支持整行鼠标导航，归档按钮、提示和失败告警保持隔离。
+- 通过：事件级列表返回契约（修饰 Enter、普通 Enter/Space、原生点击、时间戳/空白行、归档控件）、反馈表单/列表契约、反馈补救 UI、归档返回流程、layout-system 组合门、typecheck、lint（仅既有 2 条 warning）、`npx next build --webpack`、`git diff --check`。未取得浏览器运行证据，仍需在可控服务/桌面环境恢复后验收。
+
+## 2026-11-02 BD-20261102-055 物件表单分区收口
+
+- 同一隔离候选完成 `BD-20261102-055-PROPERTY-SECTIONS`，本地提交 `40810d5`，未 push、未部署、未写生产。
+- 共享 `PropertyResponsiveForm` 的基本信息、价格/费用/面积、补充信息三组现在都有可见且键盘可达的折叠按钮，默认全部展开；内容使用 `hidden` 保持字段挂载和受控值，折叠不会删除或阻止提交字段。新建、编辑及案件内嵌物件表单均复用同一实现。
+- 错误状态、错误摘要字段链接及资料候选“定位字段”都会先展开目标分区，再聚焦和滚动到字段。
+- 通过：物件表单契约（含三分区、默认展开、aria 状态、字段挂载、错误/候选定位和内嵌入口）、布局组合门、webpack build、typecheck、lint（仅既有 2 条 warning）、`git diff --check`。统一录入/统一资料测试中仍有两项与本轮无关的既有基线契约失败，未修改其范围；无浏览器运行证据。

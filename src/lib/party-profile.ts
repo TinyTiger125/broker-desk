@@ -346,7 +346,7 @@ export function normalizePartyReturnTo(value: string | null | undefined): string
     return `${parsed.pathname}${parsed.search}`;
   }
   if (parsed.pathname === "/organize-center") {
-    if (parsed.searchParams.get("type") !== "party" || keys.some((key) => !["type", "q", "lifecycle", "page"].includes(key))) return fallback;
+    if (!["", "all", "party"].includes(parsed.searchParams.get("type") ?? "") || keys.some((key) => !["type", "q", "lifecycle", "page"].includes(key))) return fallback;
     return `${parsed.pathname}${parsed.search}`;
   }
   return fallback;

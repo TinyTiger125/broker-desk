@@ -563,7 +563,7 @@ const EXPECTED_LIFECYCLE_UPDATES = {
     args: ["input.entityId", "input.userId", "scopeTenantId", "input.status", "input.archivedById ?? null"],
   },
   properties: {
-    sql: "UPDATE properties SET lifecycle_status = $3, updated_at = NOW(), archived_at = CASE WHEN $3 = 'archived' THEN NOW() ELSE NULL END, archived_by_id = CASE WHEN $3 = 'archived' THEN $4 ELSE NULL END WHERE id = $1 AND tenant_id = $2 RETURNING *",
+    sql: "UPDATE properties SET lifecycle_status = $3, archived_at = CASE WHEN $3 = 'archived' THEN NOW() ELSE NULL END, archived_by_id = CASE WHEN $3 = 'archived' THEN $4 ELSE NULL END WHERE id = $1 AND tenant_id = $2 RETURNING *",
     args: ["input.entityId", "scopeTenantId", "input.status", "input.archivedById ?? null"],
   },
 };

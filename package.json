@@ -55,6 +55,7 @@
     "test:inline-field-editing": "node scripts/check-inline-field-editing-contract.mjs",
     "test:inline-field-payload": "node scripts/test-inline-field-payload.mjs",
     "test:case-applicability": "node scripts/check-case-applicability.cjs",
+    "test:case-workflow-types": "node scripts/check-case-workflow-types-contract.mjs",
     "test:case-workbench-assistant": "node scripts/check-case-workbench-assistant.cjs",
     "test:tenant-session": "node scripts/check-tenant-session.mjs",
     "test:platform-subscription": "node scripts/check-platform-subscription-contract.mjs && node scripts/test-platform-subscription-behavior.mjs && node scripts/check-platform-owner-bootstrap-contract.mjs && node scripts/check-clerk-invitation-template.mjs",

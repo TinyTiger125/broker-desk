@@ -42,6 +42,7 @@ import { getCaseContactValidationError } from "@/lib/case-contact-validation";
 import { isValidJapanesePostalCode } from "@/lib/japanese-postal-code-validation";
 import { buildEntryRequestPayloadDigest, readEntryIntentId, persistEntryPreviewAudit, verifyEntryPreviewProofs, type EntryPreviewProofPayload } from "@/lib/entry-preview-proof";
 import { inferObjectAttachmentCategory } from "@/lib/object-attachments";
+import { isCaseWorkflowType } from "@/lib/options";
 
 export type CaseEntryActionState = {
   status: "idle" | "error";
@@ -49,14 +50,6 @@ export type CaseEntryActionState = {
 };
 
 type UploadTarget = "case" | "party" | "property";
-
-const ALLOWED_WORKFLOW_TYPES = new Set([
-  "rental_application",
-  "rental_mandate",
-  "sale_mandate",
-  "quote_preparation",
-  "contract_preparation",
-]);
 
 const MAX_UPLOAD_FILES = 6;
 const MAX_UPLOAD_TOTAL_BYTES = 60 * 1024 * 1024;
@@ -273,7 +266,7 @@ export async function createCaseWithUploadAction(
 
   const workflowType = String(formData.get("workflowType") ?? "").trim();
   const requestedTitle = String(formData.get("caseTitle") ?? "").trim();
-  if (!ALLOWED_WORKFLOW_TYPES.has(workflowType)) return { status: "error", message: "案件类型不正确，请重新选择。" };
+  if (!isCaseWorkflowType(workflowType)) return { status: "error", message: "案件类型不正确，请重新选择。" };
   if (requestedTitle && files.length === 0) {
     const normalizedTitle = requestedTitle.toLocaleLowerCase();
     const existingCases = await listBrokerageCasesForContext({ context: createRequestContext(session), lifecycleStatus: "active" });

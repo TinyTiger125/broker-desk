@@ -31,6 +31,8 @@ const labels: Record<Locale, {
   accessibleRestore: (recordLabel: string) => string;
   accessibleArchiving: (recordLabel: string) => string;
   accessibleRestoring: (recordLabel: string) => string;
+  archiveHint: string;
+  restoreHint: string;
 }> = {
   ja: {
     archive: "保管",
@@ -44,6 +46,8 @@ const labels: Record<Locale, {
     accessibleRestore: (recordLabel) => `${recordLabel}を復元`,
     accessibleArchiving: (recordLabel) => `${recordLabel}を保管中`,
     accessibleRestoring: (recordLabel) => `${recordLabel}を復元中`,
+    archiveHint: "記録は残したまま一時的に保管し、後で復元できます。",
+    restoreHint: "保管中の記録を一覧へ戻します。",
   },
   zh: {
     archive: "归档",
@@ -57,6 +61,8 @@ const labels: Record<Locale, {
     accessibleRestore: (recordLabel) => `恢复“${recordLabel}”`,
     accessibleArchiving: (recordLabel) => `正在归档“${recordLabel}”`,
     accessibleRestoring: (recordLabel) => `正在恢复“${recordLabel}”`,
+    archiveHint: "记录会保留在系统中，仅作保管，之后仍可恢复。",
+    restoreHint: "将已归档记录恢复到当前列表。",
   },
   ko: {
     archive: "보관",
@@ -70,6 +76,8 @@ const labels: Record<Locale, {
     accessibleRestore: (recordLabel) => `${recordLabel} 복원`,
     accessibleArchiving: (recordLabel) => `${recordLabel} 보관 중`,
     accessibleRestoring: (recordLabel) => `${recordLabel} 복원 중`,
+    archiveHint: "기록을 남긴 채 보관하며 나중에 복원할 수 있습니다.",
+    restoreHint: "보관된 기록을 현재 목록으로 되돌립니다.",
   },
 };
 
@@ -137,10 +145,12 @@ export function ArchiveRecordButton({
       >
         {isPending ? (isArchived ? copy.restoring : copy.archiving) : isArchived ? copy.restore : copy.archive}
       </Button>
+      <p data-list-row-ignore className="max-w-64 text-[11px] leading-4 text-slate-500">{isArchived ? copy.restoreHint : copy.archiveHint}</p>
       {failureCode ? (
         <div
           ref={errorRef}
           role="alert"
+          data-list-row-ignore
           aria-live="assertive"
           tabIndex={-1}
           className="max-w-80 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium leading-6 text-rose-800 break-words focus-visible:outline focus-visible:outline-[length:var(--bd-focus-ring-width)] focus-visible:outline-[color:var(--bd-focus-ring-color)] focus-visible:outline-offset-[length:var(--bd-focus-ring-offset)]"

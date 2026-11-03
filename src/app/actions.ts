@@ -125,6 +125,8 @@ import {
   ProductionReadinessError,
 } from "@/lib/production-readiness";
 import { type ComplianceAlertType } from "@/lib/compliance-alerts";
+import { isCaseWorkflowType } from "@/lib/options";
+import { normalizeImportCenterObjectReturnTo } from "@/lib/import-center-return";
 import {
   buildMappingFromLists,
   parseCommaList,
@@ -263,6 +265,7 @@ import {
 import { listHubContracts } from "@/lib/hub";
 import { draftAiExperiencesFromRecentCorrections } from "@/lib/ai-experience-job";
 import { getLocale, type Locale } from "@/lib/locale";
+import { CLIENT_INDIVIDUAL_FORM_FIELDS } from "@/lib/client-form-state";
 import { getDefaultOutputTemplateSettings } from "@/lib/output-doc";
 import { type TenantRole } from "@/lib/tenant-permissions";
 import {
@@ -656,12 +659,14 @@ function safePropertyReturnTo(value: FormDataEntryValue | null): string {
     return `${parsed.pathname}${parsed.search}`;
   }
   if (parsed.pathname === "/organize-center") {
-    if (keys.some((key) => !["type", "q", "lifecycle", "page"].includes(key)) || parsed.searchParams.get("type") !== "property") return fallback;
+    if (keys.some((key) => !["type", "q", "lifecycle", "page"].includes(key)) || !["", "all", "property"].includes(parsed.searchParams.get("type") ?? "")) return fallback;
     return `${parsed.pathname}${parsed.search}`;
   }
   if (parsed.pathname === "/import-center") {
+    if (parsed.searchParams.has("object")) {
+      return normalizeImportCenterObjectReturnTo(path, "property", true) ?? fallback;
+    }
     const allowedImportKeys = ["flow", "targetCaseId", "job", "xlsxJob", "intake", "advanced", "flash", "panel", "object", "targetId"];
-    if (parsed.searchParams.get("object") && !["property", "person"].includes(parsed.searchParams.get("object") ?? "")) return fallback;
     if (parsed.searchParams.get("targetId") && !/^[A-Za-z0-9_-]{1,160}$/.test(parsed.searchParams.get("targetId") ?? "")) return fallback;
     if (keys.some((key) => !allowedImportKeys.includes(key))) return fallback;
     return `${parsed.pathname}${parsed.search}${parsed.hash}`;
@@ -805,6 +810,11 @@ function clientFormValues(formData: FormData): ClientFormValues {
     nextFollowUpAt: read("nextFollowUpAt"),
     notes: read("notes"),
   };
+}
+
+function withoutClientIndividualFields<T extends Record<string, unknown>>(values: T) {
+  const individualFields = new Set<string>(CLIENT_INDIVIDUAL_FORM_FIELDS);
+  return Object.fromEntries(Object.entries(values).filter(([key]) => !individualFields.has(key))) as Omit<T, "birthDate" | "gender" | "employerName" | "employerAddress" | "employerPhone" | "annualIncome" | "annualIncomeAsOf" | "annualIncomeSource">;
 }
 
 function clientValidationMessage(locale: Locale, field: keyof ClientFormValues): string {
@@ -1014,9 +1024,11 @@ function clientValidationState(values: ClientFormValues, fieldErrors: ClientForm
 const IMPORT_CENTER_RETURN_PATH = "/import-center";
 
 function buildImportCenterObjectCreateRedirect(returnTo: string, object: "person" | "property", targetId: string, flash: string): string | null {
+  const normalizedReturnTo = normalizeImportCenterObjectReturnTo(returnTo, object, true);
+  if (!normalizedReturnTo) return null;
   let parsed: URL;
   try {
-    parsed = new URL(returnTo, "http://broker-desk.local");
+    parsed = new URL(normalizedReturnTo, "http://broker-desk.local");
   } catch {
     return null;
   }
@@ -1055,14 +1067,11 @@ function safeClientReturnTo(value: FormDataEntryValue | null, fallback: string, 
     return `${parsed.pathname}${parsed.search}`;
   }
   if (parsed.pathname === "/organize-center") {
-    if (!["client", "party"].includes(parsed.searchParams.get("type") ?? "") || keys.some((key) => !["type", "q", "lifecycle", "page"].includes(key))) return fallback;
+    if (!["", "all", "client", "party"].includes(parsed.searchParams.get("type") ?? "") || keys.some((key) => !["type", "q", "lifecycle", "page"].includes(key))) return fallback;
     return `${parsed.pathname}${parsed.search}`;
   }
   if (allowImportCenter && parsed.pathname === IMPORT_CENTER_RETURN_PATH) {
-    if (keys.some((key) => !["object", "targetId"].includes(key)) || (parsed.searchParams.get("object") && parsed.searchParams.get("object") !== "person")) return fallback;
-    if (parsed.searchParams.get("targetId") && !/^[A-Za-z0-9_-]{1,160}$/.test(parsed.searchParams.get("targetId") ?? "")) return fallback;
-    if (parsed.hash && parsed.hash !== "#target-selection") return fallback;
-    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+    return normalizeImportCenterObjectReturnTo(path, "person", true) ?? fallback;
   }
   if (currentClientId && parsed.pathname === `/clients/${encodeURIComponent(currentClientId)}` && keys.length === 0) return parsed.pathname;
   if (currentClientId && parsed.pathname === `/parties/${encodeURIComponent(currentClientId)}/edit` && keys.length === 0) return parsed.pathname;
@@ -1090,17 +1099,7 @@ function getClientCreateCompletion(input: {
     };
   }
   let objectImportHref: string | null = null;
-  try {
-    const parsed = new URL(input.returnTo, "http://broker-desk.local");
-    if (parsed.origin === "http://broker-desk.local" && parsed.pathname === IMPORT_CENTER_RETURN_PATH && parsed.searchParams.get("object") === "person") {
-      parsed.searchParams.set("targetId", input.clientId);
-      parsed.searchParams.set("flash", "client_created");
-      parsed.hash = "#source-upload";
-      objectImportHref = `${parsed.pathname}${parsed.search}${parsed.hash}`;
-    }
-  } catch {
-    objectImportHref = null;
-  }
+  objectImportHref = buildImportCenterObjectCreateRedirect(input.returnTo, "person", input.clientId, "client_created");
   return {
     kind: "redirect" as const,
     href: objectImportHref
@@ -1138,6 +1137,7 @@ async function persistClientForm(
   const submitReturnTo = safeClientReturnTo(formData.get("submitReturnTo"), returnTo, mode === "edit" ? clientId : undefined, mode === "create");
   let client;
   if (mode === "create") {
+    const normalized = partyTypeRaw === "corporate" ? withoutClientIndividualFields(parsed.normalized) : parsed.normalized;
     client = await addClient({
       tenantId,
       ownerUserId: user.id,
@@ -1145,7 +1145,7 @@ async function persistClientForm(
       ...(formData.get("entryRequestKey") && formData.get("entryClaimToken")
         ? { entryRequest: { requestKey: String(formData.get("entryRequestKey")), claimToken: String(formData.get("entryClaimToken")) } }
         : {}),
-      ...parsed.normalized,
+      ...normalized,
       notes: mergePartyProfileNotes({
         type: partyTypeRaw ? partyTypeRaw as PartyProfileType : undefined,
         note: parsed.normalized.notes,
@@ -1159,8 +1159,10 @@ async function persistClientForm(
     }
     const existingClient = await ensureClientOwnership(clientId, session);
     const existingProfile = extractPartyProfileFromNotes(existingClient.notes);
+    const effectivePartyType = partyTypeSubmitted ? (partyTypeRaw || undefined) : existingProfile.type;
+    const normalizedValues = effectivePartyType === "corporate" ? withoutClientIndividualFields(parsed.normalized) : parsed.normalized;
     const normalized = {
-      ...parsed.normalized,
+      ...normalizedValues,
       notes: mergePartyProfileNotes({
         existingNotes: existingClient.notes,
         type: partyTypeSubmitted ? (partyTypeRaw ? partyTypeRaw as PartyProfileType : undefined) : existingProfile.type,
@@ -2910,7 +2912,8 @@ export async function createQuotation(formData: FormData) {
     message: `提案を作成しました: ${quote.quoteTitle}`,
   });
 
-  redirect(`/quotes/${quote.id}`);
+  const returnTo = safeReturnTo(formData.get("returnTo"), `/clients/${encodeURIComponent(clientId)}`);
+  redirect(`/quotes/${quote.id}?returnTo=${encodeURIComponent(returnTo)}`);
 }
 
 export async function duplicateQuotationAction(formData: FormData) {
@@ -4051,6 +4054,7 @@ export async function createBlankBrokerageCaseAction(
   await rejectForbiddenRecordInput(formData, session, "case");
   const requestedTitle = String(formData.get("caseTitle") ?? "").trim();
   const workflowType = String(formData.get("workflowType") ?? "").trim();
+  if (workflowType && !isCaseWorkflowType(workflowType)) throw new Error("案件类型不正确，请重新选择。");
   let associationDraft: CaseAssociationDraft;
   try {
     const rawDraft = String(formData.get("associationDraftJson") ?? "").trim();

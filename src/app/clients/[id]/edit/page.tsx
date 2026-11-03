@@ -16,6 +16,8 @@ import { listObjectImportCandidates, listObjectImportTargets, resolveClientVisib
 import { ClientIdentityImportSection } from "@/components/client-identity-import-section";
 import { buildObjectVersionFingerprint } from "@/lib/object-import-contract";
 import { buildEntryDraftKey } from "@/lib/entry-draft-key";
+import { collectClientIdentityDraftSuggestions } from "@/lib/customer-identity-draft";
+import { ClientIdentityDraftApplyButton } from "@/components/client-identity-draft-apply-button";
 
 export const dynamic = "force-dynamic";
 
@@ -54,7 +56,7 @@ function normalizeReturnTo(value: string | undefined, clientId: string): string 
     if (keys.some((key) => !["q", "stage", "purpose", "temperature", "sort", "page"].includes(key))) return fallback;
     return `${parsed.pathname}${parsed.search}`;
   }
-  if (parsed.pathname === "/organize-center" && ["client", "party"].includes(parsed.searchParams.get("type") ?? "")) {
+  if (parsed.pathname === "/organize-center" && ["", "all", "client", "party"].includes(parsed.searchParams.get("type") ?? "")) {
     if (keys.some((key) => !["type", "q", "lifecycle", "page"].includes(key))) return fallback;
     return `${parsed.pathname}${parsed.search}`;
   }
@@ -103,6 +105,7 @@ export default async function EditClientPage({ params, searchParams }: EditClien
   const identityTargets = (await listObjectImportTargets({ tenantId: session.tenant.id, userId: session.user.id, targetType: "party", targetId: client.id }))
     .filter((target) => !target.caseId);
   const identityViews = await Promise.all(identityTargets.map(async (target) => ({ target, fields: await listObjectImportCandidates({ tenantId: session.tenant.id, userId: session.user.id, targetId: target.id }) })));
+  const identityDraftSuggestions = !canEdit || profile.type === "corporate" ? [] : collectClientIdentityDraftSuggestions(identityViews, clientProfileVersion);
   const defaults: ClientFormDefaults = {
     clientId: client.id,
     name: client.name,
@@ -148,7 +151,7 @@ export default async function EditClientPage({ params, searchParams }: EditClien
       <div className="mx-auto max-w-5xl space-y-6 pb-12">
         <header className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-5"><div className="min-w-0"><div className="flex flex-wrap items-center gap-3"><h1 className="text-3xl font-bold tracking-tight text-slate-950">{client.name}</h1></div><p className="mt-2 text-sm font-medium text-slate-600">{readOnlyReason === "company_read" ? locale === "zh" ? "公司成员可见／只读" : locale === "ko" ? "회사 구성원 공개 / 읽기 전용" : "会社メンバーに公開／読み取り専用" : locale === "zh" ? "当前账号仅可查看。" : locale === "ko" ? "현재 계정은 보기 전용입니다." : "現在のアカウントは閲覧のみです。"}</p></div><div className="flex flex-wrap items-center gap-2"><Link href={`/relationship-tree?type=client&id=${encodeURIComponent(client.id)}`} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">{text.relationTree}</Link><Link href={returnTo} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700">{text.back}</Link></div></header>
         {profile.type === "corporate" ? <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs font-semibold leading-5 text-amber-900">{locale === "zh" ? "法人客户不支持个人身份证件读取。请通过公司资料流程维护公司信息。" : locale === "ko" ? "법인 고객에는 개인 신분증 읽기를 사용할 수 없습니다. 회사 자료 절차를 사용하세요." : "法人顧客には個人本人確認資料の読み取りを使用できません。会社資料の手順を利用してください。"}</p> : <ClientIdentityImportSection locale={locale} clientId={client.id} views={identityViews} objectPage returnTo={`/clients/${encodeURIComponent(client.id)}/edit`} />}
-        <ClientForm action={updateClientProfileAction} mode="edit" defaults={defaults} locale={locale} returnTo={returnTo} partyMeta={{ type: profile.type }} readOnly hideActions />
+        <ClientForm action={updateClientProfileAction} mode="edit" defaults={defaults} locale={locale} returnTo={returnTo} partyMeta={{ type: profile.type }} readOnly hideActions formId={`client-edit-form-${client.id}`} />
         <ObjectAttachmentSection locale={locale as Locale} targetType="party" targetId={client.id} items={attachments} canWrite={false} />
       </div>
     );
@@ -159,7 +162,8 @@ export default async function EditClientPage({ params, searchParams }: EditClien
       <PageFlashBanner message={flashMessage} />
       {query.createAuditWarning === "1" ? <PageFlashBanner tone="info" message={locale === "zh" ? "档案已创建，但创建事件记录未能保存。请在此继续，不要重复新建。" : locale === "ko" ? "기록은 생성되었지만 생성 이력을 저장하지 못했습니다. 여기에서 계속하고 새로 만들지 마세요." : "記録は作成済みですが、作成履歴を保存できませんでした。この画面で続けてください。再作成は不要です。"} /> : null}
       {profile.type === "corporate" ? <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs font-semibold leading-5 text-amber-900">{locale === "zh" ? "法人客户不支持个人身份证件读取。请通过公司资料流程维护公司信息。" : locale === "ko" ? "법인 고객에는 개인 신분증 읽기를 사용할 수 없습니다. 회사 자료 절차를 이용하세요." : "法人顧客には個人本人確認資料の読み取りを使用できません。会社資料の手順を利用してください。"}</p> : <ClientIdentityImportSection locale={locale} clientId={client.id} views={identityViews} objectPage uploadAction={canEdit ? uploadObjectImportAction : undefined} reviewAction={canEdit ? reviewObjectImportAction : undefined} retryAction={canEdit ? retryObjectImportAction : undefined} refreshAction={canEdit ? refreshObjectImportReviewAction : undefined} observedVersion={clientProfileVersion} returnTo={`/clients/${encodeURIComponent(client.id)}/edit`} />}
-      <ClientForm action={updateClientProfileAction} mode="edit" defaults={defaults} locale={locale} returnTo={returnTo} partyMeta={{ type: profile.type }} entryDraftKey={entryDraftKey} entryAppliedFields={entryAppliedFields} />
+      {profile.type !== "corporate" && canEdit && identityDraftSuggestions.length > 0 ? <ClientIdentityDraftApplyButton locale={locale} formId={`client-edit-form-${client.id}`} suggestions={identityDraftSuggestions} /> : null}
+      <ClientForm action={updateClientProfileAction} mode="edit" defaults={defaults} locale={locale} returnTo={returnTo} partyMeta={{ type: profile.type }} entryDraftKey={entryDraftKey} entryAppliedFields={entryAppliedFields} formId={`client-edit-form-${client.id}`} />
       <ObjectAttachmentSection locale={locale as Locale} targetType="party" targetId={client.id} items={attachments} canWrite={canEdit} />
     </div>
   );

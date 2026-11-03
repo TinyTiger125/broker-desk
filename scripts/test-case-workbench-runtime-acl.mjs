@@ -9,7 +9,7 @@ const parsed = ts.createSourceFile("data.ts", source, ts.ScriptTarget.Latest, tr
 const declaration = parsed.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === "saveCaseWorkbenchWithObjectReview");
 assert(declaration);
 const functionSource = (name) => parsed.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === name).getText(parsed);
-const compiled = ts.transpileModule([declaration.getText(parsed), functionSource("withTransaction"), functionSource("hasObjectImportSource"), functionSource("lockCaseReviewMembership"), functionSource("reviewObjectImportCandidate")].join("\n"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+const compiled = ts.transpileModule([declaration.getText(parsed), functionSource("withTransaction"), functionSource("hasObjectImportSource"), functionSource("lockMembershipForMutation"), functionSource("lockCaseReviewMembership"), functionSource("reviewObjectImportCandidate")].join("\n"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 const context = { membershipId: "membership-a", tenantId: "tenant-a", userId: "user-a" };
 const input = { context, caseId: "case-a", confirmedDataJson: { applicant: { name: "Neo Test Manual" } } };
 

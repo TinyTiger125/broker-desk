@@ -8,7 +8,9 @@ import { Button } from "@/components/ui-foundation";
 import { EntryFilePicker, replaceEntryFiles } from "@/components/entry-file-picker";
 import { applyEntryPreviewCandidate, createEntryIntentId, EntryPreview, type EntryPreviewCandidate } from "@/components/entry-preview";
 import { useEntryDraft } from "@/components/use-entry-draft";
-import { fillAutoSavedEntryForm, type EntryPreviewState } from "@/lib/entry-preview";
+import { fillAutoSavedEntryForm, fillEmptyEntryDraftSuggestions, type EntryPreviewState } from "@/lib/entry-preview";
+import { CLIENT_IDENTITY_DRAFT_APPLY_EVENT, filterClientIdentityDraftSuggestionsForPartyType, type ClientIdentityDraftSuggestion } from "@/lib/customer-identity-draft";
+import { CLIENT_INDIVIDUAL_FORM_FIELDS, preserveClientIndividualFieldsOnCorporateValidation } from "@/lib/client-form-state";
 import type { Locale } from "@/lib/locale";
 import {
   getAmlCheckStatusOptions,
@@ -90,21 +92,21 @@ const inputClass = "w-full rounded-lg border border-slate-300 bg-white px-3 py-2
 const copy = {
   ja: {
     basic: "基本情報", profile: "本人資料", needs: "希望条件", management: "顧客管理", legal: "契約・法定情報", notes: "備考",
-    name: "顧客名", companyName: "会社名", furigana: "氏名かな", companyFurigana: "会社名かな", phone: "電話番号", lineId: "LINE ID", email: "メールアドレス", partyType: "主体種別", partyTypeUnset: "未設定", birthDate: "生年月日", gender: "性別", currentPostalCode: "現住所郵便番号", currentAddress: "現住所", companyPostalCode: "会社郵便番号", companyAddress: "会社住所", employerName: "勤務先", employerAddress: "勤務先住所", employerPhone: "勤務先電話", annualIncome: "年収（参考）", annualIncomeAsOf: "年収基準日", annualIncomeSource: "年収情報の出典", yen: "円", genderUnset: "未設定", genderMale: "男性", genderFemale: "女性", genderOther: "その他", budgetMin: "予算下限", budgetMax: "予算上限", budgetType: "予算タイプ",
+    name: "顧客名", companyName: "会社名", furigana: "氏名かな", companyFurigana: "会社名かな", phone: "電話番号", phoneMissing: "要補完：本人確認資料には電話番号がない場合があります", lineId: "LINE ID", email: "メールアドレス", partyType: "主体種別", partyTypeUnset: "未設定", birthDate: "生年月日", gender: "性別", currentPostalCode: "現住所郵便番号", currentAddress: "現住所", companyPostalCode: "会社郵便番号", companyAddress: "会社住所", employerName: "勤務先", employerAddress: "勤務先住所", employerPhone: "勤務先電話", annualIncome: "年収（参考）", annualIncomeAsOf: "年収基準日", annualIncomeSource: "年収情報の出典", yen: "円", genderUnset: "未設定", genderMale: "男性", genderFemale: "女性", genderOther: "その他", budgetMin: "予算下限", budgetMax: "予算上限", budgetType: "予算タイプ",
     preferredArea: "意向エリア", firstChoiceArea: "第1希望エリア", secondChoiceArea: "第2希望エリア", purpose: "用途", period: "入居/運用希望時期",
-    loan: "ローン事前審査", stage: "ステージ", temperature: "温度感", nextFollowUpAt: "次回フォロー日", brokerage: "媒介契約", signedAt: "媒介契約締結日", expiresAt: "媒介契約満了日", matters35: "重要事項説明日（35条）", matters37: "契約書面交付日（37条）", consent: "個人情報利用目的同意確認日", aml: "本人確認/AML", notesPlaceholder: "顧客の要望や確認事項", save: "顧客を保存", saveAndRead: "保存して資料を読み取る", saving: "保存中…", cancel: "キャンセル", back: "戻る", choose: "選択してください", optional: "任意", error: "入力内容を確認してください。", initialState: "新規登録時は未確認の状態です。必要な確認項目を入力して保存してください。",
+    loan: "ローン事前審査", stage: "ステージ", temperature: "温度感", nextFollowUpAt: "次回フォロー日", brokerage: "媒介契約", signedAt: "媒介契約締結日", expiresAt: "媒介契約満了日", matters35: "重要事項説明日（35条）", matters37: "契約書面交付日（37条）", consent: "個人情報利用目的同意確認日", aml: "本人確認/AML", notesPlaceholder: "顧客の要望や確認事項", save: "顧客を保存", saveAndRead: "保存して読み取る", saving: "保存中…", cancel: "キャンセル", back: "戻る", choose: "選択してください", optional: "任意", error: "入力内容を確認してください。", initialState: "新規登録時は未確認の状態です。必要な確認項目を入力して保存してください。",
   },
   zh: {
     basic: "基本信息", profile: "个人资料", needs: "需求条件", management: "客户管理", legal: "合同与法定信息", notes: "备注",
-    name: "客户姓名", companyName: "公司名称", furigana: "姓名假名", companyFurigana: "公司名称假名", phone: "电话号码", lineId: "LINE ID", email: "邮箱地址", partyType: "主体类型", partyTypeUnset: "未设置", birthDate: "出生日期", gender: "性别", currentPostalCode: "现住址邮编", currentAddress: "现住址", companyPostalCode: "公司邮编", companyAddress: "公司地址", employerName: "工作单位", employerAddress: "工作单位地址", employerPhone: "工作单位电话", annualIncome: "年收入（参考）", annualIncomeAsOf: "收入基准日期", annualIncomeSource: "收入信息来源", yen: "日元", genderUnset: "未设置", genderMale: "男性", genderFemale: "女性", genderOther: "其他", budgetMin: "预算下限", budgetMax: "预算上限", budgetType: "预算类型",
+    name: "客户姓名", companyName: "公司名称", furigana: "姓名假名", companyFurigana: "公司名称假名", phone: "电话号码", phoneMissing: "待补全：证件通常不含电话号码", lineId: "LINE ID", email: "邮箱地址", partyType: "主体类型", partyTypeUnset: "未设置", birthDate: "出生日期", gender: "性别", currentPostalCode: "现住址邮编", currentAddress: "现住址", companyPostalCode: "公司邮编", companyAddress: "公司地址", employerName: "工作单位", employerAddress: "工作单位地址", employerPhone: "工作单位电话", annualIncome: "年收入（参考）", annualIncomeAsOf: "收入基准日期", annualIncomeSource: "收入信息来源", yen: "日元", genderUnset: "未设置", genderMale: "男性", genderFemale: "女性", genderOther: "其他", budgetMin: "预算下限", budgetMax: "预算上限", budgetType: "预算类型",
     preferredArea: "意向区域", firstChoiceArea: "第一意向区域", secondChoiceArea: "第二意向区域", purpose: "用途", period: "入住/运营期望时间",
-    loan: "贷款预审", stage: "阶段", temperature: "温度", nextFollowUpAt: "下次跟进日期", brokerage: "媒介合同", signedAt: "媒介合同签订日", expiresAt: "媒介合同到期日", matters35: "重要事项说明日（35条）", matters37: "合同书面交付日（37条）", consent: "个人信息使用同意确认日", aml: "实名/AML", notesPlaceholder: "客户需求和确认事项", save: "保存客户", saveAndRead: "保存并读取资料", saving: "保存中…", cancel: "取消", back: "返回", choose: "请选择", optional: "选填", error: "请检查以下输入内容。", initialState: "新建记录时默认为未核验状态。请填写需要确认的项目后保存。",
+    loan: "贷款预审", stage: "阶段", temperature: "温度", nextFollowUpAt: "下次跟进日期", brokerage: "媒介合同", signedAt: "媒介合同签订日", expiresAt: "媒介合同到期日", matters35: "重要事项说明日（35条）", matters37: "合同书面交付日（37条）", consent: "个人信息使用同意确认日", aml: "实名/AML", notesPlaceholder: "客户需求和确认事项", save: "保存客户", saveAndRead: "保存后读取", saving: "保存中…", cancel: "取消", back: "返回", choose: "请选择", optional: "选填", error: "请检查以下输入内容。", initialState: "新建记录时默认为未核验状态。请填写需要确认的项目后保存。",
   },
   ko: {
     basic: "기본 정보", profile: "개인 자료", needs: "희망 조건", management: "고객 관리", legal: "계약 및 법정 정보", notes: "메모",
-    name: "고객명", companyName: "회사명", furigana: "후리가나", companyFurigana: "회사명 후리가나", phone: "전화번호", lineId: "LINE ID", email: "이메일", partyType: "주체 유형", partyTypeUnset: "미설정", birthDate: "생년월일", gender: "성별", currentPostalCode: "현재 우편번호", currentAddress: "현재 주소", companyPostalCode: "회사 우편번호", companyAddress: "회사 주소", employerName: "근무처", employerAddress: "근무처 주소", employerPhone: "근무처 전화", annualIncome: "연소득(참고)", annualIncomeAsOf: "소득 기준일", annualIncomeSource: "소득 정보 출처", yen: "엔", genderUnset: "미설정", genderMale: "남성", genderFemale: "여성", genderOther: "기타", budgetMin: "예산 하한", budgetMax: "예산 상한", budgetType: "예산 유형",
+    name: "고객명", companyName: "회사명", furigana: "후리가나", companyFurigana: "회사명 후리가나", phone: "전화번호", phoneMissing: "추가 필요: 신분증에는 전화번호가 없는 경우가 많습니다", lineId: "LINE ID", email: "이메일", partyType: "주체 유형", partyTypeUnset: "미설정", birthDate: "생년월일", gender: "성별", currentPostalCode: "현재 우편번호", currentAddress: "현재 주소", companyPostalCode: "회사 우편번호", companyAddress: "회사 주소", employerName: "근무처", employerAddress: "근무처 주소", employerPhone: "근무처 전화", annualIncome: "연소득(참고)", annualIncomeAsOf: "소득 기준일", annualIncomeSource: "소득 정보 출처", yen: "엔", genderUnset: "미설정", genderMale: "남성", genderFemale: "여성", genderOther: "기타", budgetMin: "예산 하한", budgetMax: "예산 상한", budgetType: "예산 유형",
     preferredArea: "희망 지역", firstChoiceArea: "1순위 희망 지역", secondChoiceArea: "2순위 희망 지역", purpose: "용도", period: "입주/운용 희망 시기",
-    loan: "대출 사전심사", stage: "단계", temperature: "온도", nextFollowUpAt: "다음 후속 날짜", brokerage: "중개 계약", signedAt: "중개 계약 체결일", expiresAt: "중개 계약 만료일", matters35: "중요사항 설명일(35조)", matters37: "계약서 교부일(37조)", consent: "개인정보 이용 동의 확인일", aml: "본인확인/AML", notesPlaceholder: "고객 요청과 확인 사항", save: "고객 저장", saveAndRead: "저장하고 자료 읽기", saving: "저장 중…", cancel: "취소", back: "돌아가기", choose: "선택해 주세요", optional: "선택", error: "다음 입력 내용을 확인해 주세요.", initialState: "새로 등록한 기록은 미확인 초기 상태입니다. 필요한 확인 항목을 입력한 후 저장해 주세요.",
+    loan: "대출 사전심사", stage: "단계", temperature: "온도", nextFollowUpAt: "다음 후속 날짜", brokerage: "중개 계약", signedAt: "중개 계약 체결일", expiresAt: "중개 계약 만료일", matters35: "중요사항 설명일(35조)", matters37: "계약서 교부일(37조)", consent: "개인정보 이용 동의 확인일", aml: "본인확인/AML", notesPlaceholder: "고객 요청과 확인 사항", save: "고객 저장", saveAndRead: "저장 후 읽기", saving: "저장 중…", cancel: "취소", back: "돌아가기", choose: "선택해 주세요", optional: "선택", error: "다음 입력 내용을 확인해 주세요.", initialState: "새로 등록한 기록은 미확인 초기 상태입니다. 필요한 확인 항목을 입력한 후 저장해 주세요.",
   },
 } as const;
 
@@ -215,8 +217,9 @@ function initialValues(defaults?: ClientFormDefaults, partyMeta?: ClientFormProp
 
 export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, submitReturnTo, onCreated, onSaved, onCancel, partyMeta, readOnly = false, formId, hideActions = false, onPendingChange, onSubmitStart, entryUpload = false, entryDraftKey, entryAppliedFields = [] }: ClientFormProps) {
   const text = copy[locale];
-  const initial = initialValues(defaults, partyMeta);
-  const { values, setValues } = useEntryDraft({ storageKey: entryDraftKey, serverValues: initial, appliedFields: entryAppliedFields });
+  const baseInitial = initialValues(defaults, partyMeta);
+  const initial = baseInitial;
+  const { values, setValues } = useEntryDraft({ storageKey: entryDraftKey, serverValues: baseInitial, appliedFields: entryAppliedFields });
   const [entryFiles, setEntryFiles] = useState<File[]>([]);
   const [entryIntentId] = useState(() => createEntryIntentId());
   const [entryReadFileKeys, setEntryReadFileKeys] = useState<string[]>([]);
@@ -276,22 +279,50 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
   const profileFuriganaLabel = isCorporate ? text.companyFurigana : text.furigana;
   const profilePostalCodeLabel = isCorporate ? text.companyPostalCode : text.currentPostalCode;
   const profileAddressLabel = isCorporate ? text.companyAddress : text.currentAddress;
-  const hiddenIndividualFields = (["birthDate", "gender", "employerName", "employerAddress", "employerPhone", "annualIncome", "annualIncomeAsOf", "annualIncomeSource"] as const);
+  const hiddenIndividualFields = CLIENT_INDIVIDUAL_FORM_FIELDS;
 
   const openSectionForField = useCallback((field: keyof ClientFormValues) => {
     const section = clientFormSectionForField[field];
     setExpandedSections((current) => current[section] ? current : { ...current, [section]: true });
   }, []);
+  const locateEntryCandidate = useCallback((candidate: EntryPreviewCandidate) => {
+    const field = candidate.key as keyof ClientFormValues;
+    if (!(field in clientFormSectionForField)) return;
+    openSectionForField(field);
+    const focus = () => {
+      const target = document.getElementById(`client-${field}`);
+      target?.focus();
+      target?.scrollIntoView({ block: "center", behavior: "smooth" });
+    };
+    if (typeof window === "undefined") focus();
+    else window.requestAnimationFrame(focus);
+  }, [openSectionForField]);
   const toggleSection = (section: ClientFormSectionKey) => {
     setExpandedSections((current) => ({ ...current, [section]: !current[section] }));
   };
 
   useEffect(() => {
     if (state.status !== "error") return;
-    setValues(state.values);
+    setValues((current) => preserveClientIndividualFieldsOnCorporateValidation(current, state.values));
     for (const field of Object.keys(state.fieldErrors) as Array<keyof ClientFormValues>) openSectionForField(field);
     summaryRef.current?.focus();
   }, [openSectionForField, setValues, state.fieldErrors, state.status, state.values]);
+  useEffect(() => {
+    if (!formId || readOnly) return;
+    const handleDraftApply = (event: Event) => {
+      const detail = (event as CustomEvent<{ formId?: string; suggestions?: ClientIdentityDraftSuggestion[] }>).detail;
+      if (detail?.formId !== formId || !Array.isArray(detail.suggestions)) return;
+      setValues((current) => {
+        const partyTypeControl = formRef.current?.elements.namedItem("partyType");
+        const livePartyType = partyTypeControl instanceof HTMLSelectElement ? partyTypeControl.value : current.partyType;
+        if (livePartyType === "corporate" || current.partyType === "corporate") return current;
+        const safeSuggestions = filterClientIdentityDraftSuggestionsForPartyType(livePartyType, detail.suggestions ?? []);
+        return fillEmptyEntryDraftSuggestions(current, safeSuggestions);
+      });
+    };
+    window.addEventListener(CLIENT_IDENTITY_DRAFT_APPLY_EVENT, handleDraftApply);
+    return () => window.removeEventListener(CLIENT_IDENTITY_DRAFT_APPLY_EVENT, handleDraftApply);
+  }, [formId, readOnly, setValues]);
   useEffect(() => {
     const record = state.createdRecord;
     if (!record || notifiedCreatedId.current === record.id) return;
@@ -356,14 +387,14 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
       {entryUpload && !readOnly ? <>
         <input type="hidden" name="entryIntentId" value={entryIntentId} />
         <EntryFilePicker locale={locale} files={entryFiles} onFilesChange={updateEntryFiles} disabled={pending} />
-        <EntryPreview files={entryFiles} kind="customer" locale={locale} onConfirm={confirmEntryCandidate} onReadFileKeys={handleEntryReadFileKeys} onReadComplete={autoSaveReadResult} />
+        <EntryPreview files={entryFiles} kind="customer" locale={locale} onConfirm={confirmEntryCandidate} onLocateCandidate={locateEntryCandidate} onReadFileKeys={handleEntryReadFileKeys} onReadComplete={autoSaveReadResult} />
         <input type="hidden" name="entryReadFileKeys" value={JSON.stringify(entryReadFileKeys)} />
       </> : null}
       {state.status === "error" ? <div ref={summaryRef} tabIndex={-1} role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900 outline-none focus-visible:ring-2 focus-visible:ring-rose-500"><p className="font-bold">{state.message ?? text.error}</p><ul className="mt-2 list-disc space-y-1 pl-5">{errorEntries.map(([field, message]) => <li key={field}><a className="underline" href={`#client-${field}`} onClick={(event) => focusField(event, field)}>{message}</a></li>)}</ul></div> : null}
 
       <ClientFormSection section="basic" title={text.basic} expanded={expandedSections.basic} onToggle={() => toggleSection("basic")}><div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-1">{label("name", profileNameLabel, true)}<input {...fieldProps("name")} required aria-required="true" className={inputClass} />{errorText("name")}</div>
-        <div className="space-y-1">{label("phone", text.phone)}<input {...fieldProps("phone")} className={inputClass} />{!values.phone.trim() ? <p className="text-xs font-semibold text-amber-700">{locale === "zh" ? "待补全：证件通常不含电话号码" : locale === "ko" ? "추가 필요: 신분증에는 전화번호가 없는 경우가 많습니다" : "要補完：本人確認資料には電話番号がない場合があります"}</p> : null}{errorText("phone")}</div>
+        <div className="space-y-1">{label("phone", text.phone)}<input {...fieldProps("phone")} className={inputClass} />{!values.phone.trim() ? <p className="text-xs font-semibold text-amber-700">{text.phoneMissing}</p> : null}{errorText("phone")}</div>
         <div className="space-y-1">{label("lineId", text.lineId)}<input {...fieldProps("lineId")} className={inputClass} />{errorText("lineId")}</div>
         <div className="space-y-1">{label("email", text.email)}<input {...fieldProps("email")} type="email" className={inputClass} />{errorText("email")}</div>
       </div></ClientFormSection>
@@ -373,7 +404,7 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
         <div className="space-y-1">{label("furigana", profileFuriganaLabel)}<input {...fieldProps("furigana")} className={inputClass} />{errorText("furigana")}</div>
         <div className="space-y-1">{label("currentPostalCode", profilePostalCodeLabel)}<input {...fieldProps("currentPostalCode")} className={inputClass} />{errorText("currentPostalCode")}</div>
         <div className="space-y-1 md:col-span-2">{label("currentAddress", profileAddressLabel)}<input {...fieldProps("currentAddress")} className={inputClass} />{errorText("currentAddress")}</div>
-        {isCorporate ? hiddenIndividualFields.map((field) => <input key={field} type="hidden" name={field} value={values[field]} />) : <>
+        {isCorporate ? hiddenIndividualFields.map((field) => <input key={field} type="hidden" value={values[field]} disabled aria-hidden="true" />) : <>
           <div className="space-y-1">{label("birthDate", text.birthDate)}<input {...fieldProps("birthDate")} type="date" className={inputClass} />{errorText("birthDate")}</div>
           <div className="space-y-1">{label("gender", text.gender)}<select {...fieldProps("gender")} className={inputClass}><option value="">{text.genderUnset}</option><option value="male">{text.genderMale}</option><option value="female">{text.genderFemale}</option><option value="other">{text.genderOther}</option></select>{errorText("gender")}</div>
           <div className="space-y-1">{label("employerName", text.employerName)}<input {...fieldProps("employerName")} className={inputClass} />{errorText("employerName")}</div>

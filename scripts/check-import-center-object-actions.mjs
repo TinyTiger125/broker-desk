@@ -7,12 +7,25 @@ const ts = require("typescript");
 
 const page = readFileSync(new URL("../src/app/import-center/page.tsx", import.meta.url), "utf8");
 const partyPage = readFileSync(new URL("../src/app/parties/new/page.tsx", import.meta.url), "utf8");
+const clientNewPage = readFileSync(new URL("../src/app/clients/new/page.tsx", import.meta.url), "utf8");
+const propertyNewPage = readFileSync(new URL("../src/app/properties/new/page.tsx", import.meta.url), "utf8");
+const entryActions = readFileSync(new URL("../src/app/entry-actions.ts", import.meta.url), "utf8");
+const importCenterReturnSource = readFileSync(new URL("../src/lib/import-center-return.ts", import.meta.url), "utf8");
 const actions = readFileSync(new URL("../src/app/actions.ts", import.meta.url), "utf8");
 const objectActions = readFileSync(new URL("../src/app/object-import-actions.ts", import.meta.url), "utf8");
 const propertyObjectSection = readFileSync(new URL("../src/components/property-object-import-section.tsx", import.meta.url), "utf8");
 const proxy = readFileSync(new URL("../src/proxy.ts", import.meta.url), "utf8");
 
 const occurrences = (source, token) => source.split(token).length - 1;
+const importCenterReturnModule = { exports: {} };
+Function(
+  "module",
+  "exports",
+  ts.transpileModule(importCenterReturnSource, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText,
+)(importCenterReturnModule, importCenterReturnModule.exports);
+const { normalizeImportCenterObjectReturnTo } = importCenterReturnModule.exports;
 const actionsTree = ts.createSourceFile("actions.ts", actions, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
 const compileActionFunction = (name, dependencies = {}) => {
   const declaration = actionsTree.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === name);
@@ -25,16 +38,77 @@ const compileActionFunction = (name, dependencies = {}) => {
   return module.exports;
 };
 
-const safeClientReturnTo = compileActionFunction("safeClientReturnTo", { IMPORT_CENTER_RETURN_PATH: "/import-center" });
+const entryActionsTree = ts.createSourceFile("entry-actions.ts", entryActions, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+const finishEntryDeclaration = entryActionsTree.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === "finishEntry");
+assert(finishEntryDeclaration, "missing normal-entry finishEntry route");
+const finishEntryOutput = ts.transpileModule(`${finishEntryDeclaration.getText(entryActionsTree)}\nmodule.exports = finishEntry;`, {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+}).outputText;
+const captureFinishEntryRedirect = async (targetType, targetId) => {
+  let observed;
+  const module = { exports: {} };
+  Function("module", "revalidatePath", "redirect", finishEntryOutput)(
+    module,
+    () => undefined,
+    (value) => {
+      observed = value;
+      throw new Error("captured_redirect");
+    },
+  );
+  await assert.rejects(() => module.exports(targetType, targetId, [], new Map(), {}, {}, false, false), /captured_redirect/);
+  return observed;
+};
+
+const safeClientReturnTo = compileActionFunction("safeClientReturnTo", {
+  IMPORT_CENTER_RETURN_PATH: "/import-center",
+  normalizeImportCenterObjectReturnTo,
+});
+const safePropertyReturnTo = compileActionFunction("safePropertyReturnTo", {
+  normalizeImportCenterObjectReturnTo,
+});
+const buildImportCenterObjectCreateRedirect = compileActionFunction("buildImportCenterObjectCreateRedirect", {
+  IMPORT_CENTER_RETURN_PATH: "/import-center",
+  normalizeImportCenterObjectReturnTo,
+});
 assert.equal(safeClientReturnTo("/import-center", "/clients", undefined, true), "/import-center", "validated create returnTo may use the import-center source");
-assert.equal(safeClientReturnTo("/import-center?object=person#target-selection", "/clients", undefined, true), "/import-center?object=person#target-selection", "object target choice must survive a new party form round trip");
+assert.equal(safePropertyReturnTo("/import-center"), "/import-center", "property form must retain the bare legacy import-center return");
+assert.equal(safePropertyReturnTo("/import-center?flow=case&targetCaseId=case_demo"), "/import-center?flow=case&targetCaseId=case_demo", "property form must retain the legacy case import-center return");
+const partyEntryReturnTo = normalizeImportCenterObjectReturnTo("/import-center?object=person#target-selection", "person", true);
+const propertyEntryReturnTo = normalizeImportCenterObjectReturnTo("/import-center?object=property#target-selection", "property", true);
+assert.equal(partyEntryReturnTo, "/import-center?advanced=1&object=person#target-selection", "person entry source must settle on the advanced target selection view");
+assert.equal(propertyEntryReturnTo, "/import-center?advanced=1&object=property#target-selection", "property entry source must settle on the advanced target selection view");
+assert.equal(safeClientReturnTo("/import-center?object=person#target-selection", "/clients", undefined, true), partyEntryReturnTo, "person target choice must survive a new party form round trip");
+assert.equal(safePropertyReturnTo("/import-center?object=property#target-selection"), propertyEntryReturnTo, "property target choice must survive a property form round trip");
+assert.equal(safePropertyReturnTo("/import-center?object=person#target-selection"), "/properties", "property form must reject a person object target");
+assert.equal(safePropertyReturnTo("/import-center?object=property&targetId=../../forged"), "/properties", "property form must reject a dangerous object target");
+const partyRedirect = `/clients/new?returnTo=${encodeURIComponent(partyEntryReturnTo)}`;
+const clientPageReturnTo = new URL(partyRedirect, "http://broker-desk.local").searchParams.get("returnTo");
+assert.equal(clientPageReturnTo, partyEntryReturnTo, "party redirect must preserve the encoded object return path");
+assert.equal(safeClientReturnTo(clientPageReturnTo, "/clients", undefined, true), partyEntryReturnTo, "client creation action must receive the preserved person target");
+const settleLegacyObjectEntry = (object, formPath) => {
+  const objectSelectionReturnTo = `/import-center?advanced=1&object=${object}#target-selection`;
+  const newFormUrl = new URL(`${formPath}?returnTo=${encodeURIComponent(objectSelectionReturnTo)}`, "http://broker-desk.local");
+  const cancelReturnTo = newFormUrl.searchParams.get("returnTo");
+  return normalizeImportCenterObjectReturnTo(cancelReturnTo, object, true);
+};
+assert.equal(settleLegacyObjectEntry("person", "/clients/new"), "/import-center?advanced=1&object=person#target-selection", "person cancel must settle on object selection instead of a new-form loop");
+assert.equal(settleLegacyObjectEntry("property", "/properties/new"), "/import-center?advanced=1&object=property#target-selection", "property cancel must settle on object selection instead of a new-form loop");
+assert(entryActions.includes('return finishEntry("party"'), "person normal entry save must use the shared finishEntry route");
+assert(entryActions.includes('return finishEntry("property"'), "property normal entry save must use the shared finishEntry route");
+assert.equal(await captureFinishEntryRedirect("party", "client_demo"), "/clients/client_demo/edit?flash=client_created", "person normal entry save must settle on the client edit record");
+assert.equal(await captureFinishEntryRedirect("property", "property_demo"), "/properties/property_demo/edit?flash=property_created", "property normal entry save must settle on the property edit record");
+assert.equal(buildImportCenterObjectCreateRedirect("/import-center?object=property&job=forged", "property", "property_demo", "property_created"), null, "property return policy must reject an unscoped import-center path");
 assert.equal(safeClientReturnTo("/import-center", "/clients/client-1", "client-1", false), "/clients/client-1", "edit behavior must not gain the import-center return path");
 assert.equal(safeClientReturnTo(null, "/clients", undefined, true), "/clients", "create without returnTo must keep the existing fallback");
-for (const unsafe of ["https://attacker.invalid/import-center", "//attacker.invalid/import-center", "/import-center?job=forged", "/import-center#source-upload", "/%2e%2e/import-center"]) {
+for (const unsafe of ["https://attacker.invalid/import-center", "//attacker.invalid/import-center", "/import-center?job=forged", "/import-center?advanced=0&object=person", "/import-center?object=person&targetId=../../forged", "/import-center#source-upload", "/%2e%2e/import-center"]) {
   assert.equal(safeClientReturnTo(unsafe, "/clients", undefined, true), "/clients", `unsafe create returnTo must fail closed: ${unsafe}`);
 }
-const getClientCreateCompletion = compileActionFunction("getClientCreateCompletion", { IMPORT_CENTER_RETURN_PATH: "/import-center" });
+const getClientCreateCompletion = compileActionFunction("getClientCreateCompletion", {
+  IMPORT_CENTER_RETURN_PATH: "/import-center",
+  buildImportCenterObjectCreateRedirect,
+});
 assert.deepEqual(getClientCreateCompletion({ returnTo: "/import-center", clientId: "client 1", clientName: "人物", values: { name: "人物" }, caseDraftReturn: false }), { kind: "redirect", href: "/import-center?flash=client_created" }, "import-center create success must return to its validated source with explicit feedback");
+assert.deepEqual(getClientCreateCompletion({ returnTo: partyEntryReturnTo, clientId: "client_demo", clientName: "人物", values: { name: "人物" }, caseDraftReturn: false }), { kind: "redirect", href: "/import-center?advanced=1&object=person&targetId=client_demo&flash=client_created#source-upload" }, "legacy quick client create must preserve the advanced selected-object context");
 assert.deepEqual(getClientCreateCompletion({ returnTo: "/clients", clientId: "client 1", clientName: "人物", values: { name: "人物" }, caseDraftReturn: false }), { kind: "redirect", href: "/clients/client%201?flash=client_created" }, "default create success must keep the client detail destination");
 assert.deepEqual(getClientCreateCompletion({ returnTo: "/import-center", clientId: "client 1", clientName: "人物", values: { name: "人物" }, caseDraftReturn: true }), { kind: "state", state: { status: "idle", fieldErrors: {}, values: { name: "人物" }, createdRecord: { id: "client 1", name: "人物" } } }, "case draft create must return the created record without redirecting");
 for (const feedback of ["関係者を登録しました。", "人物资料已创建。", "관계자 자료를 만들었습니다."]) {
@@ -70,8 +144,8 @@ assert.equal(occurrences(page, 'data-import-action="unified"'), 1, "the three-ob
 assert.equal(occurrences(page, 'data-import-action="existing"'), 1, "the three-object renderer must expose one existing-record selection action per object");
 for (const href of [
   "/cases/new?from=entry",
-  "/parties/new?returnTo=%2Fimport-center%3Fobject%3Dperson",
-  "/properties/new?returnTo=%2Fimport-center%3Fobject%3Dproperty",
+  "/parties/new?returnTo=%2Fimport-center%3Fadvanced%3D1%26object%3Dperson%23target-selection",
+  "/properties/new?returnTo=%2Fimport-center%3Fadvanced%3D1%26object%3Dproperty%23target-selection",
 ]) assert(page.includes(href), `missing live object action ${href}`);
 assert(page.includes("`/organize-center?type=${object.key === \"person\" ? \"party\" : object.key}`"), "existing objects must be selected from their ordinary record list");
 assert(page.includes("`/clients/${encodeURIComponent(client.id)}/edit`"), "existing customer selection must enter the unified editor");
@@ -95,7 +169,11 @@ assert(page.includes("xlsxJob"), "xlsx recovery must remain available");
 assert(page.includes("advanced=1#job-mapping"), "legacy advanced recovery must remain available");
 
 assert(partyPage.includes("redirect(`/clients/new?returnTo="), "legacy party creation must forward to the unified client form");
-assert(partyPage.includes('params.from === "entry"'), "legacy entry link must preserve the entry return path");
+assert(partyPage.includes('from === "entry"'), "legacy entry link must preserve the entry return path");
+assert(partyPage.includes('normalizeImportCenterObjectReturnTo(value, "person", true)'), "party route must validate and preserve the person import target");
+assert(clientNewPage.includes('normalizeImportCenterObjectReturnTo(path, "person", true)'), "client form route must preserve the validated person import target");
+assert(propertyNewPage.includes('normalizeImportCenterObjectReturnTo(path, "property", true)'), "property form route must preserve the validated property import target");
+assert(page.includes("const objectSelectionReturnTo = `/import-center?advanced=1&object=${object}#target-selection`"), "legacy object entry must return to advanced object selection instead of reopening the new form");
 assert(objectActions.includes("return redirectObjectUploadError(flash);"), "object upload persistence failures must return to the selected target instead of throwing a route error");
 assert.equal((propertyObjectSection.match(/name=\"returnTo\" value=\{returnTo\}/g) ?? []).length, 2, "property retry/refresh forms must preserve the central return path");
 assert(actions.includes("safeObjectImportRefreshReturnTo"), "object refresh action must validate the central return path");

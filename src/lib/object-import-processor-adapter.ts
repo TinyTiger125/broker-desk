@@ -205,7 +205,11 @@ export async function persistObjectImportJobExtraction(input: { job: ImportJob; 
   // empty placeholders are still zero extracted values, never a successful read.
   const hasReadableCandidate = candidates.some((field) => Boolean(field.candidateValue?.trim()) && field.provenance.uncertainty !== "not_found");
   const terminal = hasReadableCandidate && candidates.every((field) => field.finalSource === "human" || ["not_found", "confirmed", "rejected"].includes(field.status));
-  await updateObjectImportTarget({ tenantId: input.tenantId, userId: input.userId, id: target.id, status: hasReadableCandidate ? terminal ? "completed" : "needs_review" : "failed", errorCode: hasReadableCandidate ? undefined : "object_import_no_supported_fields", errorSummary: hasReadableCandidate ? undefined : "No readable supported fields were extracted." });
+  const noReadableErrorCode = isStandaloneCustomerTarget(target) ? "identity_no_supported_fields" : "object_import_no_supported_fields";
+  const noReadableErrorSummary = isStandaloneCustomerTarget(target)
+    ? "No readable supported identity fields were extracted; customer record was not updated."
+    : "No readable supported fields were extracted.";
+  await updateObjectImportTarget({ tenantId: input.tenantId, userId: input.userId, id: target.id, status: hasReadableCandidate ? terminal ? "completed" : "needs_review" : "failed", errorCode: hasReadableCandidate ? undefined : noReadableErrorCode, errorSummary: hasReadableCandidate ? undefined : noReadableErrorSummary });
   return candidates;
 }
 
