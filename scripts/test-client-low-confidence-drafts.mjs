@@ -78,6 +78,11 @@ assert.deepEqual(
   "clear or draft values block a different low-confidence value",
 );
 assert.deepEqual(
+  collectClientIdentityDraftSuggestions([view([field("name", "Rejected A", { status: "rejected" })]), view([field("name", "New B")])], "profile-v1"),
+  [{ key: "name", value: "New B" }],
+  "a rejected old candidate does not block a later source",
+);
+assert.deepEqual(
   collectClientIdentityDraftSuggestions([view([field("birthDate", "not-a-date"), field("birthDate", "1990-01-02", { status: "draft", confidence: 0.95 })])], "profile-v1"),
   [],
   "an invalid value blocks a different value for the same field",
@@ -102,15 +107,15 @@ const clearedByUser = fillEmptyEntryDraftSuggestions({ name: "", birthDate: "", 
 assert.deepEqual(clearedByUser, { name: "", birthDate: "", gender: "" }, "no candidates means no synthetic form edits");
 
 const clientForm = readFileSync(resolve(root, "src/components/client-form.tsx"), "utf8");
-for (const copy of [
-  "読み取り候補を空欄の顧客項目に入力しています",
-  "读取候选已填入空白客户字段",
-  "읽기 후보를 비어 있는 고객 필드에 입력했습니다",
-]) assert.match(clientForm, new RegExp(copy));
-assert.match(clientForm, /data-client-draft-suggestions/);
-assert.match(clientForm, /低信頼度または不一致の候補は自動保存されません/);
+assert.match(clientForm, /CLIENT_IDENTITY_DRAFT_APPLY_EVENT/);
+assert.match(clientForm, /fillEmptyEntryDraftSuggestions\(current, detail\.suggestions/);
+assert.doesNotMatch(clientForm, /const initial = fillEmptyEntryDraftSuggestions/);
+const applyButton = readFileSync(resolve(root, "src/components/client-identity-draft-apply-button.tsx"), "utf8");
+for (const copy of ["空欄に候補を入力", "填入空白字段", "빈 필드에 후보 입력"]) assert.match(applyButton, new RegExp(copy));
+assert.match(applyButton, /CLIENT_IDENTITY_DRAFT_APPLY_EVENT/);
 const editPage = readFileSync(resolve(root, "src/app/clients/[id]/edit/page.tsx"), "utf8");
 assert.match(editPage, /!canEdit \|\| profile\.type === "corporate"/);
 assert.match(editPage, /collectClientIdentityDraftSuggestions\(identityViews, clientProfileVersion\)/);
+assert.match(editPage, /ClientIdentityDraftApplyButton/);
 
 console.log("client low-confidence draft suggestions: PASS");

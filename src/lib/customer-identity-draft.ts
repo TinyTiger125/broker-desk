@@ -1,6 +1,8 @@
 import { customerIdentityFieldKey, isValidCustomerBirthDate, normalizeCustomerIdentityValue, type CustomerIdentityFieldKey } from "@/lib/customer-identity-field-catalog";
 import type { ObjectImportCandidateRecord, ObjectImportTargetRecord } from "@/lib/object-import-repository";
 
+export const CLIENT_IDENTITY_DRAFT_APPLY_EVENT = "brokerdesk:apply-client-identity-drafts";
+
 export type ClientIdentityImportViewLike = {
   target: Pick<ObjectImportTargetRecord, "status" | "targetVersion">;
   fields: readonly ObjectImportCandidateRecord[];
@@ -62,12 +64,13 @@ export function collectClientIdentityDraftSuggestions(views: readonly ClientIden
     for (const field of view.fields) {
       const fieldKey = customerIdentityFieldKey(field.fieldKey);
       if (!fieldKey) continue;
+      if (["failed", "not_found", "rejected"].includes(field.status)) continue;
       const value = normalizeCustomerIdentityValue(fieldKey, field.candidateValue ?? "");
       const alternatives = alternativeValues(field, fieldKey);
       const hasDifferentAlternative = alternatives.some((alternative) => alternative !== value);
       if (hasDifferentAlternative || field.provenance.uncertainty === "conflict") blockedFields.add(fieldKey);
       if (value && !validDraftValue(fieldKey, value) && !(fieldKey === "currentAddress" && isNonActualCurrentAddress(value))) blockedFields.add(fieldKey);
-      if (!["failed", "not_found"].includes(field.status) && value) addValue(fieldKey, value);
+      if (value) addValue(fieldKey, value);
       for (const alternative of alternatives) addValue(fieldKey, alternative);
 
       if (view.target.status !== "needs_review" || field.status !== "low_confidence" || field.finalSource === "human") continue;
