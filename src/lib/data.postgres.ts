@@ -8181,6 +8181,11 @@ function objectImportTargetStatusSql(): string {
   ) THEN 'needs_review' ELSE 'completed' END`;
 }
 
+function modelDestinationMatches(current: unknown, expected: string | number): boolean {
+  if (current instanceof Date) return current.toISOString().slice(0, 10) === String(expected).slice(0, 10);
+  return String(current ?? "") === String(expected);
+}
+
 async function lockMembershipForMutation(client: PoolClient, membershipId: string, tenantId: string, actorUserId: string): Promise<boolean> {
   try {
     const membership = await client.query("SELECT brokerdesk_private.lock_case_review_membership_v2($1,$2,$3) AS allowed", [membershipId, tenantId, actorUserId]);
@@ -8260,6 +8265,8 @@ export async function autoSaveObjectImportCandidates(input: { tenantId: string; 
     if (!targetRows.rows[0]) return 0;
     const target = mapObjectImportTarget(targetRows.rows[0]);
     if (target.status !== "needs_review") return 0;
+    const previousErrorCode = target.errorCode;
+    const previousErrorSummary = target.errorSummary;
     // The runtime role may SELECT membership metadata but cannot acquire a
     // row lock directly. Read the candidate membership id, then let the
     // narrowly scoped SECURITY DEFINER helper re-check and lock it in this
@@ -8306,6 +8313,7 @@ export async function autoSaveObjectImportCandidates(input: { tenantId: string; 
     if (buildObjectVersionFingerprint(mutable) !== target.targetVersion) return 0;
     const fieldRows = await client.query("SELECT * FROM object_import_fields WHERE object_import_target_id=$1 AND tenant_id=$2 ORDER BY id FOR UPDATE", [target.id, input.tenantId]);
     let saved = 0;
+    let reconciled = 0;
     for (const row of fieldRows.rows) {
       const field = mapObjectImportCandidate(row);
       if (!isSafeModelAutoSave(field) || !await hasObjectImportSource(client, target, field)) continue;
@@ -8314,7 +8322,11 @@ export async function autoSaveObjectImportCandidates(input: { tenantId: string; 
       const savedAt = new Date().toISOString();
       if (validated.scope === "case") {
         if (isObjectImportCaseFieldManuallyCleared(brokerageCase?.confirmedDataJson ?? {}, validated.key)) continue;
-        if (!brokerageCase || !isEmptyModelDestination(validated.key, brokerageCase.confirmedDataJson[validated.key])) continue;
+        if (!brokerageCase) continue;
+        if (!isEmptyModelDestination(validated.key, brokerageCase.confirmedDataJson[validated.key])) {
+          if (field.finalSource === "model_draft" && modelDestinationMatches(brokerageCase.confirmedDataJson[validated.key], validated.recordValue)) reconciled += 1;
+          continue;
+        }
         brokerageCase.confirmedDataJson = { ...brokerageCase.confirmedDataJson, [validated.key]: validated.recordValue };
         const updatedCase = await client.query(
           `UPDATE brokerage_cases SET confirmed_data_json=$3,updated_at=NOW()
@@ -8325,7 +8337,10 @@ export async function autoSaveObjectImportCandidates(input: { tenantId: string; 
         if (!updatedCase.rows[0]) throw new Error("object_import_auto_save_case_missing");
         brokerageCase = mapBrokerageCase(updatedCase.rows[0]);
       } else {
-        if (!isEmptyModelDestination(validated.key, mutable[validated.key])) continue;
+        if (!isEmptyModelDestination(validated.key, mutable[validated.key])) {
+          if (field.finalSource === "model_draft" && modelDestinationMatches(mutable[validated.key], validated.recordValue)) reconciled += 1;
+          continue;
+        }
         const column = objectImportColumn(target.targetType, validated.key);
         if (!column) continue;
         const updated = await client.query(`UPDATE ${table} SET ${column}=$1${target.targetType === "party" ? ",updated_at=NOW()" : ""} WHERE id=$2 AND tenant_id=$3 RETURNING *`, [validated.recordValue, record.id, input.tenantId]);
@@ -8337,6 +8352,11 @@ export async function autoSaveObjectImportCandidates(input: { tenantId: string; 
       await client.query("UPDATE object_import_targets SET target_version=$1,updated_at=NOW() WHERE id=$2 AND tenant_id=$3", [target.targetVersion, target.id, input.tenantId]);
       await client.query("INSERT INTO audit_logs (id,tenant_id,user_id,actor_id,action,target_type,target_id,message,context_json,created_at) VALUES ($1,$2,$3,$3,'object_import_auto_saved',$4,$5,$6,$7::jsonb,NOW())", [genId("audit"), input.tenantId, input.userId, validated.scope === "case" ? "case" : target.targetType === "party" ? "client" : "property", validated.scope === "case" ? brokerageCase!.id : record.id, "Clear model field saved pending human review", JSON.stringify({ importTargetId: target.id, fieldKey: validated.key, sourceAttachmentId: target.sourceAttachmentId })]);
       saved += 1;
+    }
+    const recovered = saved + reconciled;
+    if (recovered > 0 && (previousErrorCode || previousErrorSummary)) {
+      await client.query("UPDATE object_import_targets SET error_code=NULL,error_summary=NULL,updated_at=NOW() WHERE id=$1 AND tenant_id=$2 AND user_id=$3 AND status='needs_review'", [target.id, input.tenantId, input.userId]);
+      await client.query("INSERT INTO audit_logs (id,tenant_id,user_id,actor_id,action,target_type,target_id,message,context_json,created_at) VALUES ($1,$2,$3,$3,'object_import_auto_save_recovered',$4,$5,$6,$7::jsonb,NOW())", [genId("audit"), input.tenantId, input.userId, target.caseId ? "case" : target.targetType === "party" ? "client" : "property", target.caseId ?? target.targetId, "Object import autosave recovered a prior save-status error", JSON.stringify({ importTargetId: target.id, previousErrorCode: previousErrorCode ?? null, previousErrorSummary: previousErrorSummary ?? null, savedFields: saved, reconciledFields: reconciled })]);
     }
     return saved;
   });

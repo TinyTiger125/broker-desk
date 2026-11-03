@@ -200,6 +200,50 @@ const standaloneReview = await data.reviewObjectImportCandidate({ context: creat
 assert.equal(standaloneReview.ok, true);
 assert.equal((await data.getPropertyById(standaloneProperty.id, tenant.id)).managementFee, 2210, "standalone confirmed profile field must survive property reopen");
 
+// A previous permission failure may remain on the review target after a
+// later, cost-free autosave/replay has already written or reconciled the
+// model fields. Recovery clears only that stale status and leaves an audit
+// trail; it must not overwrite the manually confirmed management fee.
+await data.updateObjectImportTarget({
+  ...scope,
+  id: standaloneTarget.id,
+  status: "needs_review",
+  errorCode: "object_import_permission_denied",
+  errorSummary: "stale permission status for recovery regression",
+});
+const recoveredCount = await data.autoSaveObjectImportCandidates({ ...scope, targetId: standaloneTarget.id });
+const recoveredProperty = await data.getPropertyById(standaloneProperty.id, tenant.id);
+const recoveredTarget = await data.getObjectImportTarget({ ...scope, id: standaloneTarget.id });
+assert.equal(recoveredProperty.managementFee, 2210, "recovery must preserve the human-confirmed field");
+assert.equal(recoveredProperty.repairFee, 3540, "recovery must retain the extracted repair fee");
+assert.equal(recoveredProperty.listingPrice, 7500000, "recovery must retain the extracted listing price");
+assert.equal(recoveredTarget.errorCode, undefined, "successful recovery must clear the stale error code");
+assert.equal(recoveredTarget.errorSummary, undefined, "successful recovery must clear the stale error summary");
+const recoveryLogs = (await data.listAuditLogs(user.id, { tenantId: tenant.id, action: "object_import_auto_save_recovered" }))
+  .filter((item) => item.context?.importTargetId === standaloneTarget.id);
+assert.equal(recoveryLogs.length, 1, "successful recovery must emit one reconciliation audit");
+assert.equal(recoveryLogs[0].context.previousErrorCode, "object_import_permission_denied");
+assert.ok(Number(recoveryLogs[0].context.savedFields ?? 0) + Number(recoveryLogs[0].context.reconciledFields ?? 0) > 0, "recovery audit must record saved or reconciled fields");
+assert.ok(recoveredCount >= 0, "recovery return count remains the count of newly saved fields");
+
+// Replaying an already reconciled target must also clear a stale status
+// without writing any field a second time.
+await data.updateObjectImportTarget({
+  ...scope,
+  id: standaloneTarget.id,
+  status: "needs_review",
+  errorCode: "object_import_permission_denied",
+  errorSummary: "stale permission status for idempotent replay regression",
+});
+assert.equal(await data.autoSaveObjectImportCandidates({ ...scope, targetId: standaloneTarget.id }), 0, "idempotent replay must not count existing writes twice");
+const replayTarget = await data.getObjectImportTarget({ ...scope, id: standaloneTarget.id });
+assert.equal(replayTarget.errorCode, undefined, "idempotent recovery must clear the stale error code");
+assert.equal(replayTarget.errorSummary, undefined, "idempotent recovery must clear the stale error summary");
+const replayLogs = (await data.listAuditLogs(user.id, { tenantId: tenant.id, action: "object_import_auto_save_recovered" }))
+  .filter((item) => item.context?.importTargetId === standaloneTarget.id);
+assert.equal(replayLogs.length, 2, "idempotent recovery must retain a separate reconciliation audit");
+assert.ok(Number(replayLogs[0].context.reconciledFields ?? 0) > 0, "idempotent recovery must record reconciled fields");
+
 // A standalone property upload may contain all supplied source documents. Each
 // PDF receives its own immutable target/evidence chain so sources remain
 // independently reviewable and no document silently replaces another.
