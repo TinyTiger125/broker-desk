@@ -1,8 +1,13 @@
 import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+const ts = require("typescript");
 
 const action = await readFile("src/app/actions.ts", "utf8");
 const form = await readFile("src/components/client-form.tsx", "utf8");
 const createPage = await readFile("src/app/clients/new/page.tsx", "utf8");
+const importCenterReturnSource = await readFile("src/lib/import-center-return.ts", "utf8");
 const editPage = await readFile("src/app/clients/[id]/edit/page.tsx", "utf8");
 const detailPage = await readFile("src/app/clients/[id]/page.tsx", "utf8");
 const failures = [];
@@ -62,7 +67,7 @@ forbidText(form, "afterSave", "complete form must not expose the old second subm
 forbidText(createPage, "client-form-template", "new page must not import template helpers");
 forbidText(createPage, "client-intake-parser", "new page must not import memo parser");
 forbidText(createPage, "confidence", "new page must not show confidence UI");
-requireText(createPage, 'parsed.pathname === "/import-center" && keys.length === 0', "new entry page must preserve the safe import-center return path");
+requireText(createPage, 'normalizeImportCenterObjectReturnTo(path, "person", true)', "new entry page must preserve the validated person import-center return path");
 requireText(createPage, 'stage: "lead"', "create page must seed only the lead stage");
 requireText(editPage, "updateClientProfileAction", "edit page must use the structured update action");
 requireText(editPage, "normalizeReturnTo", "edit page must validate returnTo before rendering");
@@ -72,7 +77,53 @@ const returnToEnd = action.indexOf("async function persistClientForm", returnToS
 const returnTo = action.slice(returnToStart, returnToEnd);
 requireText(returnTo, 'parsed.pathname === "/clients"', "actions must whitelist the client list return path");
 requireText(returnTo, 'parsed.pathname === "/organize-center"', "actions must whitelist the approved organize entry");
-forbidText(returnTo, "/import-center", "actions must reject import-center as a form return path");
+requireText(returnTo, "normalizeImportCenterObjectReturnTo(path, \"person\", true)", "actions must delegate import-center returns to the shared safe helper");
+
+const helperModule = { exports: {} };
+Function(
+  "module",
+  "exports",
+  ts.transpileModule(importCenterReturnSource, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText,
+)(helperModule, helperModule.exports);
+const { normalizeImportCenterObjectReturnTo } = helperModule.exports;
+const actionTree = ts.createSourceFile("actions.ts", action, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+const safeClientReturnToDeclaration = actionTree.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === "safeClientReturnTo");
+if (!safeClientReturnToDeclaration) {
+  failures.push("actions must keep the safeClientReturnTo implementation");
+} else {
+  const safeClientReturnToModule = { exports: {} };
+  const safeClientReturnToOutput = ts.transpileModule(
+    `${safeClientReturnToDeclaration.getText(actionTree)}\nmodule.exports = safeClientReturnTo;`,
+    { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } },
+  ).outputText;
+  Function("module", "IMPORT_CENTER_RETURN_PATH", "normalizeImportCenterObjectReturnTo", safeClientReturnToOutput)(
+    safeClientReturnToModule,
+    "/import-center",
+    normalizeImportCenterObjectReturnTo,
+  );
+  const safeClientReturnTo = safeClientReturnToModule.exports;
+  const personReturnTo = "/import-center?object=person";
+  const partyRedirect = `/clients/new?returnTo=${encodeURIComponent(personReturnTo)}`;
+  const clientReturnTo = new URL(partyRedirect, "http://broker-desk.local").searchParams.get("returnTo");
+  if (clientReturnTo !== personReturnTo || safeClientReturnTo(clientReturnTo, "/clients", undefined, true) !== personReturnTo) {
+    failures.push("person import-center returnTo must survive the party-to-client creation chain");
+  }
+  if (safeClientReturnTo("/import-center", "/clients", undefined, true) !== "/import-center") {
+    failures.push("legacy bare import-center returnTo must remain valid");
+  }
+  for (const unsafe of [
+    "https://attacker.invalid/import-center",
+    "/import-center?job=forged",
+    "/import-center?object=person&targetId=../../forged",
+    "/import-center?object=person#source-upload",
+  ]) {
+    if (safeClientReturnTo(unsafe, "/clients", undefined, true) !== "/clients") {
+      failures.push(`unsafe import-center returnTo must fail closed: ${unsafe}`);
+    }
+  }
+}
 requireText(action, "export async function createClient(formData: FormData)", "quick create compatibility wrapper must remain");
 requireText(action, "await persistClientForm(formData, \"create\", undefined, true)", "quick create must reuse the shared persistence core");
 requireText(action, "parsed <= 0", "budget zero and negative values must be rejected server-side");
