@@ -9,6 +9,7 @@ const page = readFileSync(new URL("../src/app/import-center/page.tsx", import.me
 const partyPage = readFileSync(new URL("../src/app/parties/new/page.tsx", import.meta.url), "utf8");
 const clientNewPage = readFileSync(new URL("../src/app/clients/new/page.tsx", import.meta.url), "utf8");
 const propertyNewPage = readFileSync(new URL("../src/app/properties/new/page.tsx", import.meta.url), "utf8");
+const entryActions = readFileSync(new URL("../src/app/entry-actions.ts", import.meta.url), "utf8");
 const importCenterReturnSource = readFileSync(new URL("../src/lib/import-center-return.ts", import.meta.url), "utf8");
 const actions = readFileSync(new URL("../src/app/actions.ts", import.meta.url), "utf8");
 const objectActions = readFileSync(new URL("../src/app/object-import-actions.ts", import.meta.url), "utf8");
@@ -35,6 +36,27 @@ const compileActionFunction = (name, dependencies = {}) => {
   const module = { exports: {} };
   Function("module", ...Object.keys(dependencies), output)(module, ...Object.values(dependencies));
   return module.exports;
+};
+
+const entryActionsTree = ts.createSourceFile("entry-actions.ts", entryActions, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+const finishEntryDeclaration = entryActionsTree.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === "finishEntry");
+assert(finishEntryDeclaration, "missing normal-entry finishEntry route");
+const finishEntryOutput = ts.transpileModule(`${finishEntryDeclaration.getText(entryActionsTree)}\nmodule.exports = finishEntry;`, {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+}).outputText;
+const captureFinishEntryRedirect = async (targetType, targetId) => {
+  let observed;
+  const module = { exports: {} };
+  Function("module", "revalidatePath", "redirect", finishEntryOutput)(
+    module,
+    () => undefined,
+    (value) => {
+      observed = value;
+      throw new Error("captured_redirect");
+    },
+  );
+  await assert.rejects(() => module.exports(targetType, targetId, [], new Map(), {}, {}, false, false), /captured_redirect/);
+  return observed;
 };
 
 const safeClientReturnTo = compileActionFunction("safeClientReturnTo", {
@@ -64,24 +86,18 @@ const clientPageReturnTo = new URL(partyRedirect, "http://broker-desk.local").se
 assert.equal(clientPageReturnTo, partyEntryReturnTo, "party redirect must preserve the encoded object return path");
 assert.equal(safeClientReturnTo(clientPageReturnTo, "/clients", undefined, true), partyEntryReturnTo, "client creation action must receive the preserved person target");
 const settleLegacyObjectEntry = (object, formPath) => {
-  const canonicalReturnTo = normalizeImportCenterObjectReturnTo(`/import-center?object=${object}`, object, true);
-  const newFormUrl = new URL(`${formPath}?returnTo=${encodeURIComponent(canonicalReturnTo)}`, "http://broker-desk.local");
+  const objectSelectionReturnTo = `/import-center?advanced=1&object=${object}#target-selection`;
+  const newFormUrl = new URL(`${formPath}?returnTo=${encodeURIComponent(objectSelectionReturnTo)}`, "http://broker-desk.local");
   const cancelReturnTo = newFormUrl.searchParams.get("returnTo");
   return normalizeImportCenterObjectReturnTo(cancelReturnTo, object, true);
 };
-assert.equal(settleLegacyObjectEntry("person", "/clients/new"), "/import-center?advanced=1&object=person", "person cancel must settle on object selection instead of a new-form loop");
-assert.equal(settleLegacyObjectEntry("property", "/properties/new"), "/import-center?advanced=1&object=property", "property cancel must settle on object selection instead of a new-form loop");
-assert.equal(
-  buildImportCenterObjectCreateRedirect(partyEntryReturnTo, "person", "client_demo", "client_created"),
-  "/import-center?advanced=1&object=person&targetId=client_demo&flash=client_created#source-upload",
-  "person save must settle on the selected object summary/upload context",
-);
-assert.equal(
-  buildImportCenterObjectCreateRedirect(propertyEntryReturnTo, "property", "property_demo", "property_created"),
-  "/import-center?advanced=1&object=property&targetId=property_demo&flash=property_created#source-upload",
-  "property save must settle on the selected object summary/upload context",
-);
-assert.equal(buildImportCenterObjectCreateRedirect("/import-center?object=property&job=forged", "property", "property_demo", "property_created"), null, "property save must reject an unscoped import-center return");
+assert.equal(settleLegacyObjectEntry("person", "/clients/new"), "/import-center?advanced=1&object=person#target-selection", "person cancel must settle on object selection instead of a new-form loop");
+assert.equal(settleLegacyObjectEntry("property", "/properties/new"), "/import-center?advanced=1&object=property#target-selection", "property cancel must settle on object selection instead of a new-form loop");
+assert(entryActions.includes('return finishEntry("party"'), "person normal entry save must use the shared finishEntry route");
+assert(entryActions.includes('return finishEntry("property"'), "property normal entry save must use the shared finishEntry route");
+assert.equal(await captureFinishEntryRedirect("party", "client_demo"), "/clients/client_demo/edit?flash=client_created", "person normal entry save must settle on the client edit record");
+assert.equal(await captureFinishEntryRedirect("property", "property_demo"), "/properties/property_demo/edit?flash=property_created", "property normal entry save must settle on the property edit record");
+assert.equal(buildImportCenterObjectCreateRedirect("/import-center?object=property&job=forged", "property", "property_demo", "property_created"), null, "property return policy must reject an unscoped import-center path");
 assert.equal(safeClientReturnTo("/import-center", "/clients/client-1", "client-1", false), "/clients/client-1", "edit behavior must not gain the import-center return path");
 assert.equal(safeClientReturnTo(null, "/clients", undefined, true), "/clients", "create without returnTo must keep the existing fallback");
 for (const unsafe of ["https://attacker.invalid/import-center", "//attacker.invalid/import-center", "/import-center?job=forged", "/import-center?advanced=0&object=person", "/import-center?object=person&targetId=../../forged", "/import-center#source-upload", "/%2e%2e/import-center"]) {
@@ -92,7 +108,7 @@ const getClientCreateCompletion = compileActionFunction("getClientCreateCompleti
   buildImportCenterObjectCreateRedirect,
 });
 assert.deepEqual(getClientCreateCompletion({ returnTo: "/import-center", clientId: "client 1", clientName: "人物", values: { name: "人物" }, caseDraftReturn: false }), { kind: "redirect", href: "/import-center?flash=client_created" }, "import-center create success must return to its validated source with explicit feedback");
-assert.deepEqual(getClientCreateCompletion({ returnTo: partyEntryReturnTo, clientId: "client_demo", clientName: "人物", values: { name: "人物" }, caseDraftReturn: false }), { kind: "redirect", href: "/import-center?advanced=1&object=person&targetId=client_demo&flash=client_created#source-upload" }, "person create success must settle on the advanced selected-object context");
+assert.deepEqual(getClientCreateCompletion({ returnTo: partyEntryReturnTo, clientId: "client_demo", clientName: "人物", values: { name: "人物" }, caseDraftReturn: false }), { kind: "redirect", href: "/import-center?advanced=1&object=person&targetId=client_demo&flash=client_created#source-upload" }, "legacy quick client create must preserve the advanced selected-object context");
 assert.deepEqual(getClientCreateCompletion({ returnTo: "/clients", clientId: "client 1", clientName: "人物", values: { name: "人物" }, caseDraftReturn: false }), { kind: "redirect", href: "/clients/client%201?flash=client_created" }, "default create success must keep the client detail destination");
 assert.deepEqual(getClientCreateCompletion({ returnTo: "/import-center", clientId: "client 1", clientName: "人物", values: { name: "人物" }, caseDraftReturn: true }), { kind: "state", state: { status: "idle", fieldErrors: {}, values: { name: "人物" }, createdRecord: { id: "client 1", name: "人物" } } }, "case draft create must return the created record without redirecting");
 for (const feedback of ["関係者を登録しました。", "人物资料已创建。", "관계자 자료를 만들었습니다."]) {
