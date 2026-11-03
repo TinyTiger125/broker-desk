@@ -74,7 +74,7 @@ assert(manager.includes("clientDefaultsFromValues"), "case drawer must refresh t
 assert(manager.includes("record.values"), "case drawer must consume the full saved profile");
 assert(manager.includes("updatePersonAction"), "case drawer is missing person profile edit action");
 assert(manager.includes("updatePropertyAction"), "case drawer is missing property profile edit action");
-assert(partyPage.includes("ClientForm"), "party edit must use the unified full profile form");
+assert(partyPage.includes('redirect(`/clients/${encodeURIComponent(id)}/edit${query.size ? `?${query}` : ""}`)'), "party edit must redirect to the unified full profile form");
 assert(clientPage.includes("ClientForm"), "client edit must use the unified full profile form");
 
 console.log("Unified profile contract passed: nullable migration, persistence-preserving updates, unified forms, and case drawer cache refresh.");
