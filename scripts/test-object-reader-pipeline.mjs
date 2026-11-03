@@ -237,7 +237,26 @@ const restrictedTarget = await data.createObjectImportTarget({
 });
 assert(await data.updateTenantMemberStatus({ tenantId: tenant.id, membershipId: "membership_cherry_admin", status: "suspended", actorUserId: user.id }));
 assert.equal(await data.autoSaveObjectImportCandidates({ tenantId: tenant.id, userId: "user_ops", targetId: restrictedTarget.id }), 0);
-assert.equal((await data.getObjectImportTarget({ tenantId: tenant.id, userId: "user_ops", id: restrictedTarget.id })).errorCode, "object_import_permission_denied");
+const restrictedAfterDowngrade = await data.getObjectImportTarget({ tenantId: tenant.id, userId: "user_ops", id: restrictedTarget.id });
+assert.equal(restrictedAfterDowngrade.errorCode, "object_import_permission_denied", "membership downgrade before the worker check must fail closed");
+assert.equal(restrictedAfterDowngrade.status, "needs_review", "permission denial must retain the review task for authorized recovery");
 assert.equal((await data.getPropertyById(restrictedProperty.id, tenant.id)).name, "Restricted property");
+
+// Corrupt role values from a database must be denied explicitly rather than
+// reaching ROLE_PERMISSIONS with an invalid key or accidentally gaining access.
+const invalidRoleProperty = await data.addProperty({ tenantId: tenant.id, createdByUserId: user.id, currentOwnerUserId: user.id, name: "Invalid role property" });
+const invalidRoleTarget = await data.createObjectImportTarget({
+  id: "target_invalid_membership_role", tenantId: tenant.id, userId: user.id, importJobId: "job_invalid_membership_role",
+  targetType: "property", targetId: invalidRoleProperty.id, targetVersion: "invalid-role-version", status: "needs_review",
+  idempotencyKey: "invalid-membership-role", attemptCount: 1, createdAt: new Date(), updatedAt: new Date(),
+});
+const dbHolder = globalThis.__brokerDbHolder;
+const ownerMembership = dbHolder?.current.tenantMemberships.find((item) => item.tenantId === tenant.id && item.userId === user.id && item.status === "active");
+assert(ownerMembership, "invalid-role regression requires the active owner membership");
+const previousOwnerRole = ownerMembership.role;
+ownerMembership.role = "corrupt_role";
+assert.equal(await data.autoSaveObjectImportCandidates({ ...scope, targetId: invalidRoleTarget.id }), 0, "invalid tenant role must fail closed");
+assert.equal((await data.getObjectImportTarget({ ...scope, id: invalidRoleTarget.id })).errorCode, "object_import_permission_denied");
+ownerMembership.role = previousOwnerRole;
 
 console.log("test-object-reader-pipeline: PASS");

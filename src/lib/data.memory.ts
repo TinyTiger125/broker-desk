@@ -37,7 +37,7 @@ import type {
 import { COMPLETE_CASE_FIELD_DEFAULTS, COMPLETE_DRAFT_DEFAULTS } from "@/lib/guarantee-application-fixtures";
 import { DEFAULT_TENANT_ID } from "@/lib/tenant-constants";
 import type { TenantRole, TenantCapabilityPreset } from "@/lib/tenant-permissions";
-import { capabilityHasTenantPermission, roleHasTenantPermission } from "@/lib/tenant-permissions";
+import { capabilityHasTenantPermission, isTenantRole, roleHasTenantPermission } from "@/lib/tenant-permissions";
 import {
   buildClosedBetaDemoFixture,
   CLOSED_BETA_DEMO_FIXTURE_VERSION,
@@ -7414,12 +7414,14 @@ export async function autoSaveObjectImportCandidates(input: { tenantId: string; 
   const target = db.objectImportTargets.find((item) => item.id === input.targetId && item.tenantId === input.tenantId && item.userId === input.userId);
   const membership = db.tenantMemberships.find((item) => item.tenantId === input.tenantId && item.userId === input.userId && item.status === "active");
   const capability = membership?.capability ?? "ordinary_member";
+  const membershipRole = membership && isTenantRole(membership.role) ? membership.role : undefined;
   if (!target || target.status !== "needs_review") return 0;
   if (!membership
     || !capabilityHasTenantPermission(capability, "record.update")
     || !capabilityHasTenantPermission(capability, "source.upload")
-    || !roleHasTenantPermission(membership.role, "record.update")
-    || !roleHasTenantPermission(membership.role, "source.upload")) {
+    || !membershipRole
+    || !roleHasTenantPermission(membershipRole, "record.update")
+    || !roleHasTenantPermission(membershipRole, "source.upload")) {
     target.errorCode = "object_import_permission_denied";
     target.errorSummary = "保存前にレコードまたは原本の操作権限が失効しました。権限のあるユーザーが処理してください。";
     target.updatedAt = new Date();

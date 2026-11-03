@@ -119,7 +119,7 @@ import type {
 import { normalizeInvitationDeliveryState } from "@/lib/invitation-delivery-state";
 import type { VisibleBrokerageCase, VisibleProperty } from "@/lib/data.memory";
 import type { TenantRole, TenantCapabilityPreset } from "@/lib/tenant-permissions";
-import { capabilityHasTenantPermission, roleHasTenantPermission } from "@/lib/tenant-permissions";
+import { capabilityHasTenantPermission, isTenantRole, roleHasTenantPermission } from "@/lib/tenant-permissions";
 import type { LifecycleFilter, LifecycleStatus } from "@/lib/record-lifecycle";
 import { getTenantDeploymentEnvironment } from "@/lib/tenant-bootstrap-policy";
 import {
@@ -8256,9 +8256,10 @@ export async function autoSaveObjectImportCandidates(input: { tenantId: string; 
     if (!targetRows.rows[0]) return 0;
     const target = mapObjectImportTarget(targetRows.rows[0]);
     if (target.status !== "needs_review") return 0;
-    const membership = await client.query("SELECT capability,role FROM tenant_memberships WHERE tenant_id=$1 AND user_id=$2 AND status='active' LIMIT 1", [input.tenantId, input.userId]);
+    const membership = await client.query("SELECT capability,role FROM tenant_memberships WHERE tenant_id=$1 AND user_id=$2 AND status='active' LIMIT 1 FOR SHARE", [input.tenantId, input.userId]);
     const capability = membership.rows[0]?.capability ?? "ordinary_member";
-    const membershipRole = membership.rows[0]?.role as TenantRole | undefined;
+    const rawMembershipRole = membership.rows[0]?.role;
+    const membershipRole: TenantRole | undefined = typeof rawMembershipRole === "string" && isTenantRole(rawMembershipRole) ? rawMembershipRole : undefined;
     if (!membership.rows[0]
       || !capabilityHasTenantPermission(capability, "record.update")
       || !capabilityHasTenantPermission(capability, "source.upload")

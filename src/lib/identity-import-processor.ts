@@ -19,6 +19,7 @@ import { ProductionReadinessError } from "@/lib/production-readiness";
 import { RemoteDocumentReaderError } from "@/lib/identity-reader-contract";
 import { readObjectDocumentWithOpenAi } from "@/lib/openai-object-reader";
 import type { ObjectReaderResponse } from "@/lib/object-reader-contract";
+import { isStandaloneCustomerTarget } from "@/lib/customer-identity-field-catalog";
 
 type IdentityImportPayload = {
   kind: "input_file_extraction";
@@ -37,7 +38,7 @@ type IdentityImportPayload = {
 
 export type IdentityImportProcessResult =
   | { ok: true; status: "mapped" | "processing"; fieldCount: number; documentType: string; documentTypeLabel: string; fingerprintConfidence: number }
-  | { ok: false; status: "failed"; error: "import_job_not_found" | "source_attachment_missing" | "identity_extraction_failed" | "object_import_no_supported_fields" | "object_reader_no_readable_fields" | "object_reader_ambiguous_subject" | "object_import_retry_exhausted" };
+  | { ok: false; status: "failed"; error: "import_job_not_found" | "source_attachment_missing" | "identity_extraction_failed" | "identity_no_supported_fields" | "object_import_no_supported_fields" | "object_reader_no_readable_fields" | "object_reader_ambiguous_subject" | "object_import_retry_exhausted" };
 
 export async function processIdentityImportJob(input: {
   tenantId: string;
@@ -197,8 +198,13 @@ export async function processIdentityImportJob(input: {
       } else if (inputExtraction) {
         const candidates = await persistObjectImportJobExtraction({ job, ...input, fields: inputExtraction.fields });
         if (candidates && !candidates.some((candidate) => Boolean(candidate.candidateValue?.trim()) && candidate.provenance.uncertainty !== "not_found")) {
-          await markFailed(input, "object_import_no_supported_fields", "资料中没有可填写的受支持内容，案件资料未更新。请使用受支持的物件或租赁格式后重新选择资料。");
-          return { ok: false, status: "failed", error: "object_import_no_supported_fields" };
+          const identityNoFields = Boolean(objectTarget && isStandaloneCustomerTarget(objectTarget));
+          const error = identityNoFields ? "identity_no_supported_fields" : "object_import_no_supported_fields";
+          const summary = identityNoFields
+            ? "未能从这份身份证明资料读取可用于客户记录的现有字段，正式客户资料未更新。请确认上传受支持的身份证明资料。"
+            : "资料中没有可填写的受支持内容，案件资料未更新。请使用受支持的物件或租赁格式后重新选择资料。";
+          await markFailed(input, error, summary);
+          return { ok: false, status: "failed", error };
         }
       }
       const persistedTarget = await getObjectImportTargetByJob({ tenantId: input.tenantId, userId: input.userId, importJobId: job.id });

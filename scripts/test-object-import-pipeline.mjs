@@ -199,6 +199,20 @@ assert(placeholderTarget);
 assert.deepEqual(await processIdentityImportJob({ ...scope, jobId: placeholderTarget.importJobId }), { ok: false, status: "failed", error: "object_import_no_supported_fields" });
 assert.equal((await data.getObjectImportTarget({ ...scope, id: placeholderTarget.id })).status, "failed");
 assert.equal((await data.listImportJobs(user.id, 500, tenant.id)).find((item) => item.id === placeholderTarget.importJobId).status, "failed");
+// A standalone customer upload uses the identity reader path. Zero extracted
+// identity fields must keep the record untouched and report identity-specific
+// recovery guidance, not the property/lease failure copy.
+const unsupportedIdentityPerson = await data.addClient({ tenantId: tenant.id, ownerUserId: user.id, name: "Unsupported identity fixture", phone: "", budgetType: "total_price", purpose: "unspecified", loanPreApprovalStatus: "not_applied", stage: "lead", temperature: "unspecified", brokerageContractType: "none", amlCheckStatus: "not_required" });
+const unsupportedIdentityForm = new FormData();
+unsupportedIdentityForm.set("targetType", "party"); unsupportedIdentityForm.set("targetId", unsupportedIdentityPerson.id);
+unsupportedIdentityForm.set("uploadFile", new File(["%PDF-unsupported-identity"], "unsupported-identity.pdf", { type: "application/pdf" }));
+extractionFields = [];
+await assert.rejects(uploadObjectImportAction(unsupportedIdentityForm), /REDIRECT:/);
+const [unsupportedIdentityTarget] = await data.listObjectImportTargets({ ...scope, targetType: "party", targetId: unsupportedIdentityPerson.id });
+assert(unsupportedIdentityTarget && !unsupportedIdentityTarget.caseId);
+assert.deepEqual(await processIdentityImportJob({ ...scope, jobId: unsupportedIdentityTarget.importJobId }), { ok: false, status: "failed", error: "identity_no_supported_fields" });
+assert.equal((await data.getObjectImportTarget({ ...scope, id: unsupportedIdentityTarget.id })).errorCode, "identity_no_supported_fields");
+assert.equal((await data.getClientById(unsupportedIdentityPerson.id, tenant.id)).name, "Unsupported identity fixture");
 const pendingPhonePerson = await data.addClient({ tenantId: tenant.id, ownerUserId: user.id, name: "Pending phone", phone: "", budgetType: "total_price", purpose: "unspecified", loanPreApprovalStatus: "not_applied", stage: "lead", temperature: "unspecified", brokerageContractType: "none", amlCheckStatus: "not_required" });
 const pendingPhoneForm = new FormData();
 pendingPhoneForm.set("targetType", "party"); pendingPhoneForm.set("targetId", pendingPhonePerson.id);
@@ -672,6 +686,10 @@ assert.equal(olderCompletedTarget.status, "completed", "the older completed targ
 const renderedCurrentFailure = renderToStaticMarkup(React.createElement(ObjectImportFailureNotice, { locale: "zh", errorCode: currentNoFieldsTarget.errorCode }));
 assert.match(renderedCurrentFailure, /未能读取可填写的受支持内容，案件资料未更新/);
 assert.doesNotMatch(renderedCurrentFailure, /object_import_no_supported_fields|No supported fields/);
+const renderedIdentityFailure = renderToStaticMarkup(React.createElement(ObjectImportFailureNotice, { locale: "zh", errorCode: "identity_no_supported_fields" }));
+assert.match(renderedIdentityFailure, /身份证明资料读取可用于客户记录/);
+assert.match(renderedIdentityFailure, /正式客户资料未更新/);
+assert.doesNotMatch(renderedIdentityFailure, /物件|租赁/);
 const pipelineLoad = Module._load;
 Module._load = function(request, parent, ...rest) {
   if (parent?.filename.endsWith("/src/components/case-association-manager.tsx")) {
@@ -774,7 +792,9 @@ assert.match(queueProcessorSource, /正在读取资料，完成后会返回确�
 assert.match(queueProcessorSource, /type ImportProcessStatus = "submitting" \| "queued" \| "processing" \| "failed"/, "processing status must remain distinct from queued admission");
 assert.match(queueProcessorSource, /setStatus\(payload\.status\)/, "queue polling must surface the server processing stage");
 assert.match(queueProcessorSource, /noSupportedFields/, "zero-field object failures must use explicit user guidance");
-assert.match(queueProcessorSource, /errorKind !== "noSupportedFields"/, "technical zero-field error summaries must not be exposed");
+assert.match(queueProcessorSource, /identityNoSupportedFields/, "standalone customer zero-field failures must use identity guidance");
+assert.match(queueProcessorSource, /!noSupportedFieldsError/, "technical zero-field error summaries must not be exposed");
+assert.match(queueProcessorSource, /noSupportedFieldsError/, "identity and object zero-field guidance must share safe recovery handling");
 assert.match(queueProcessorSource, /objectRecoveryHref/, "object zero-field recovery must accept an object-specific case return target");
 assert.match(casePageSource, /objectRecoveryHref=\{`\/cases\/\$\{encodeURIComponent\(stableCaseId\)\}\?objectImportJob=/, "object zero-field recovery must return to the current case association area");
 assert.match(uploadFormSource, /const \[pending, setPending\] = useState\(false\)/, "upload form must track a single pending submission");
