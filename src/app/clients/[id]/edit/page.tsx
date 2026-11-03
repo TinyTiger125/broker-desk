@@ -16,6 +16,7 @@ import { listObjectImportCandidates, listObjectImportTargets, resolveClientVisib
 import { ClientIdentityImportSection } from "@/components/client-identity-import-section";
 import { buildObjectVersionFingerprint } from "@/lib/object-import-contract";
 import { buildEntryDraftKey } from "@/lib/entry-draft-key";
+import { collectClientIdentityDraftSuggestions } from "@/lib/customer-identity-draft";
 
 export const dynamic = "force-dynamic";
 
@@ -103,6 +104,7 @@ export default async function EditClientPage({ params, searchParams }: EditClien
   const identityTargets = (await listObjectImportTargets({ tenantId: session.tenant.id, userId: session.user.id, targetType: "party", targetId: client.id }))
     .filter((target) => !target.caseId);
   const identityViews = await Promise.all(identityTargets.map(async (target) => ({ target, fields: await listObjectImportCandidates({ tenantId: session.tenant.id, userId: session.user.id, targetId: target.id }) })));
+  const identityDraftSuggestions = collectClientIdentityDraftSuggestions(identityViews);
   const defaults: ClientFormDefaults = {
     clientId: client.id,
     name: client.name,
@@ -159,7 +161,7 @@ export default async function EditClientPage({ params, searchParams }: EditClien
       <PageFlashBanner message={flashMessage} />
       {query.createAuditWarning === "1" ? <PageFlashBanner tone="info" message={locale === "zh" ? "档案已创建，但创建事件记录未能保存。请在此继续，不要重复新建。" : locale === "ko" ? "기록은 생성되었지만 생성 이력을 저장하지 못했습니다. 여기에서 계속하고 새로 만들지 마세요." : "記録は作成済みですが、作成履歴を保存できませんでした。この画面で続けてください。再作成は不要です。"} /> : null}
       {profile.type === "corporate" ? <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs font-semibold leading-5 text-amber-900">{locale === "zh" ? "法人客户不支持个人身份证件读取。请通过公司资料流程维护公司信息。" : locale === "ko" ? "법인 고객에는 개인 신분증 읽기를 사용할 수 없습니다. 회사 자료 절차를 이용하세요." : "法人顧客には個人本人確認資料の読み取りを使用できません。会社資料の手順を利用してください。"}</p> : <ClientIdentityImportSection locale={locale} clientId={client.id} views={identityViews} objectPage uploadAction={canEdit ? uploadObjectImportAction : undefined} reviewAction={canEdit ? reviewObjectImportAction : undefined} retryAction={canEdit ? retryObjectImportAction : undefined} refreshAction={canEdit ? refreshObjectImportReviewAction : undefined} observedVersion={clientProfileVersion} returnTo={`/clients/${encodeURIComponent(client.id)}/edit`} />}
-      <ClientForm action={updateClientProfileAction} mode="edit" defaults={defaults} locale={locale} returnTo={returnTo} partyMeta={{ type: profile.type }} entryDraftKey={entryDraftKey} entryAppliedFields={entryAppliedFields} />
+      <ClientForm action={updateClientProfileAction} mode="edit" defaults={defaults} locale={locale} returnTo={returnTo} partyMeta={{ type: profile.type }} entryDraftKey={entryDraftKey} entryAppliedFields={entryAppliedFields} entryDraftSuggestions={canEdit ? identityDraftSuggestions : []} />
       <ObjectAttachmentSection locale={locale as Locale} targetType="party" targetId={client.id} items={attachments} canWrite={canEdit} />
     </div>
   );
