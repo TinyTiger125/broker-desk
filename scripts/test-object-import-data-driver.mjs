@@ -95,6 +95,9 @@ assert.equal((await mappedRepo.listCandidates({ ...scope, targetId: target.id })
 const pgSource = readFileSync(resolve(root, "src/lib/data.postgres.ts"), "utf8");
 assert.match(pgSource, /new PostgresObjectImportRepository\(getPool\(\)\)/);
 assert(!pgSource.includes("new PostgresObjectImportRepository(getRawPool())"));
+assert.match(pgSource, /SELECT capability,role FROM tenant_memberships WHERE tenant_id=\$1 AND user_id=\$2 AND status='active'/, "PostgreSQL auto-save must load the role used by the permission checks");
+assert.match(pgSource, /roleHasTenantPermission\(membershipRole, "record\.update"\)/, "PostgreSQL auto-save must retain the role-level record permission check");
+assert.match(pgSource, /roleHasTenantPermission\(membershipRole, "source\.upload"\)/, "PostgreSQL auto-save must retain the role-level source permission check");
 const { MemoryObjectImportRepository } = require(resolve(root, "src/lib/object-import-repository.memory.ts"));
 const confirmed = { ...candidate, finalValue: "Human value", finalSource: "human", status: "confirmed", confirmedByUserId: scope.userId, confirmedAt: date };
 const isolatedMemory = new MemoryObjectImportRepository([target], [confirmed]);

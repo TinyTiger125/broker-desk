@@ -8256,7 +8256,7 @@ export async function autoSaveObjectImportCandidates(input: { tenantId: string; 
     if (!targetRows.rows[0]) return 0;
     const target = mapObjectImportTarget(targetRows.rows[0]);
     if (target.status !== "needs_review") return 0;
-    const membership = await client.query("SELECT capability FROM tenant_memberships WHERE tenant_id=$1 AND user_id=$2 AND status='active' LIMIT 1", [input.tenantId, input.userId]);
+    const membership = await client.query("SELECT capability,role FROM tenant_memberships WHERE tenant_id=$1 AND user_id=$2 AND status='active' LIMIT 1", [input.tenantId, input.userId]);
     const capability = membership.rows[0]?.capability ?? "ordinary_member";
     const membershipRole = membership.rows[0]?.role as TenantRole | undefined;
     if (!membership.rows[0]
