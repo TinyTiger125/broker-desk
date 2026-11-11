@@ -32,7 +32,7 @@ function getLinks(locale: Locale) {
 
 function getAdminLinks(locale: Locale) {
   return [
-    { href: "/templates", label: locale === "zh" ? "输出文书管理" : locale === "ko" ? "출력 문서 관리" : "出力文書管理" },
+    { href: "/templates", label: locale === "zh" ? "输出文书模板管理" : locale === "ko" ? "출력 문서 템플릿 관리" : "出力文書テンプレート管理" },
     { href: "/settings/members", label: locale === "zh" ? "用户管理" : locale === "ko" ? "사용자 관리" : "ユーザー管理" },
     { href: "/settings/case-workbench-fields", label: locale === "zh" ? "输入信息/项目设置" : locale === "ko" ? "입력 정보/항목 설정" : "入力情報・項目設定" },
     { href: "/settings/output-templates", label: locale === "zh" ? "公司信息设置" : locale === "ko" ? "회사 정보 설정" : "自社情報設定" },

@@ -482,7 +482,8 @@ for (const slot of ["scope={", "filters={", "summary={", "results=", "pagination
 for (const fragment of [
   "const LIST_PAGE_SIZE = 6;",
   "if (lifecycleFilter !== \"active\") params.set(\"lifecycle\", lifecycleFilter)",
-  "href={buildListHref(selectedType, \"\", lifecycleFilter)}",
+  "if (returnTo) params.set(\"returnTo\", returnTo)",
+  "href={buildListHref(selectedType, \"\", lifecycleFilter, 1, returnTo)}",
 ]) {
   requireText(organizeBrowser, fragment, "organize-center behavior contract");
 }
