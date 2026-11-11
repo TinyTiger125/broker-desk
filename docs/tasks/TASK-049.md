@@ -5,7 +5,7 @@
 桌面浏览器窄窗口下的导航、设置入口和信息整理反馈修复
 
 - 状态: In Review
-- 当前工作单：`BD-20261112-001-GATES`（门禁治理）；前序实施工作单：`BD-20261111-005-IMPLEMENT`
+- 当前工作单：`BD-20261112-007-ARCHIVE-LIFECYCLE-CARD`（归档生命周期边界治理）；前序实施工作单：`BD-20261111-005-IMPLEMENT`
 - 基线：`b4b12e0a247c6a5f29e8f8241d5fa75e800271d0`
 - 实施候选：隔离工作树 `/private/tmp/bd-ui-execution-20261111`
 - 证据原件：`/Users/laineyzhu/Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files/ytyaillforever_6bd8/temp/drag/report1111.pdf`（9 页截图 PDF）
@@ -47,7 +47,7 @@ PDF 逐页反馈登记如下：
 
 ## 依赖关系
 
-- 依赖基线 `b4b12e0a247c6a5f29e8f8241d5fa75e800271d0`、治理提交 `728f16e`、初版实现提交 `eae0bd3`、单入口修订提交 `f4520a8` 和 inline-focus 合同提交 `217d8af`。
+- 依赖基线 `b4b12e0a247c6a5f29e8f8241d5fa75e800271d0`、治理提交 `728f16e`、初版实现提交 `eae0bd3`、单入口修订提交 `f4520a8`、inline-focus 合同提交 `217d8af`、p2/layout 治理提交 `f92accb` 和归档生命周期修复提交 `162ab1a`。
 - 依赖现有 HeaderPopover、导入对象选择、整理列表归档/恢复和返回状态机制；不重建数据模型或权限模型。
 - 真实桌面浏览器验收依赖可控本地运行环境；无法取得运行态证据时保持 `In Review` 或 `Blocked`。
 
@@ -63,13 +63,16 @@ PDF 逐页反馈登记如下：
 - `scripts/check-header-popover-contract.mjs`（仅允许同步单一设置入口的最小静态合同）
 - `scripts/check-inline-select-focus-contract.mjs`（仅允许同步两处 live mount 与 synthetic fixtures 的最小静态合同）
 - `scripts/check-layout-system-contract.mjs`（仅允许同步安全 `returnTo` 下的生命周期、页码与分页重置调用合同）
+- `src/app/actions.ts`（仅允许归档/恢复生命周期的案件可写检查窄修复）
+- `scripts/check-archive-failure-contract.mjs`（仅允许覆盖生命周期专用授权与归档失败回归 fixture）
+- `scripts/check-archive-atomic-contract.mjs`（仅允许同步生命周期专用 guard 的既有原子性合同）
 
-允许在 `archive-record-button.tsx` 中为信息整理列表场景调整“保管/復元”按钮及每行说明文案，或新增显式的可选 compact 呈现；必须保留确认流程、归档/恢复动作、错误反馈、键盘焦点与可达性行为，不能通过父级 CSS 隐藏子组件内容。允许在 `check-header-popover-contract.mjs` 中移除“四个弹层”的过时假设，并改为验证单一合并入口及既有可达性/权限/语言约束；允许在 `check-inline-select-focus-contract.mjs` 中把固定的三个 LanguageSwitcher/ActorSwitcher 挂载假设修订为实际两处 live mount，并保留每个 live mount 可达、focus 与 actor availability 检查，同时更新必要的 synthetic fixtures；允许在 `check-layout-system-contract.mjs` 中把旧的 `buildListHref(selectedType, "", lifecycleFilter)` 静态片段合同更新为实际带 `page=1`、安全 `returnTo` 的调用形式，但必须继续检查 lifecycle、page reset 和 returnTo 约束；不得修改其他测试脚本。不得新增文件或修改上述列表之外的任何业务、样式、测试、配置、文档、数据库或迁移文件。若实现需要新增文件、修改共享 CSS/组件、改变返回协议或触及列表之外的文件，必须先停止并扩卡取得产品/项目经理裁决；不得以“顺手修复”扩大写集。治理登记文件（本卡、`BACKLOG.md`、当前上下文）只由本次治理提交维护。
+允许在 `archive-record-button.tsx` 中为信息整理列表场景调整“保管/復元”按钮及每行说明文案，或新增显式的可选 compact 呈现；必须保留确认流程、归档/恢复动作、错误反馈、键盘焦点与可达性行为，不能通过父级 CSS 隐藏子组件内容。允许在 `check-header-popover-contract.mjs` 中移除“四个弹层”的过时假设，并改为验证单一合并入口及既有可达性/权限/语言约束；允许在 `check-inline-select-focus-contract.mjs` 中把固定的三个 LanguageSwitcher/ActorSwitcher 挂载假设修订为实际两处 live mount，并保留每个 live mount 可达、focus 与 actor availability 检查，同时更新必要的 synthetic fixtures；允许在 `check-layout-system-contract.mjs` 中把旧的 `buildListHref(selectedType, "", lifecycleFilter)` 静态片段合同更新为实际带 `page=1`、安全 `returnTo` 的调用形式，但必须继续检查 lifecycle、page reset 和 returnTo 约束；为修复已观察到的归档确认后错误页，允许在 `src/app/actions.ts` 中新增/调用 `requireWritableCaseForLifecycle`：该路径必须继续经过 `requireTenantSession({ permission: "record.archive" })`、`rejectForbiddenRecordInput`、`resolveCaseVisibilityForContext` 与 `resolution.canWrite`，并继续使用既有 `setRecordLifecycleWithAudit`、安全返回和审计/原子写入；仅可省略 `assertCaseSourcesReadable`，因为归档/恢复只改变案件生命周期、不读取或暴露 W93 源数据。一般案件写入的 `requireWritableCase` 必须继续保留 W93 源可读检查。允许在两个 archive 合同脚本中同步该 helper 名称、静态边界和 synthetic runtime fixture，并验证归档失败回归、权限/租户/禁止字段、状态和原子写入约束；不得借此改变权限授予、租户范围、数据库/字段/识别或其他生命周期行为；不得修改其他测试脚本。不得新增文件或修改上述列表之外的任何业务、样式、测试、配置、文档、数据库或迁移文件。若实现需要新增文件、修改共享 CSS/组件、改变返回协议或触及列表之外的文件，必须先停止并扩卡取得产品/项目经理裁决；不得以“顺手修复”扩大写集。治理登记文件（本卡、`BACKLOG.md`、当前上下文）只由本次治理提交维护。
 
 ## 明确不做什么
 
 - 不改数据库、migration、识别/OCR、字段定义、数据模型、查询权限、租户边界或归档持久化语义。
-- 不删除归档数据，不把可恢复归档改为删除，不改变现有权限判定。
+- 不删除归档数据，不把可恢复归档改为删除，不扩大 `record.archive`、租户或对象写权限；归档/恢复只复用既有可写可见性判定，普通案件写入仍保留 W93 源可读门。
 - 不以手机专项方案替代桌面缩窄响应式修复，不引入新的菜单入口或新的产品模块。
 - 不访问或修改生产数据，不执行生产 migration，不发布、不部署、不推送 GitHub/Vercel，不提交真实客户资料、密钥或临时证据。
 
@@ -82,6 +85,7 @@ PDF 逐页反馈登记如下：
 | p2 设置名称 | 逐一核对四个候选名称的目标页语义；ja/zh/ko 对应语义一致；不匹配项保留旧名并形成产品裁决 | 未核对目标页就替换，或三语言中任一语言语义漂移 |
 | 信息输入 | 冗余可见标题/副标题消失；案件/人物/物件等对象卡片、选择动作、错误/权限和原有数据流仍存在 | 误删对象选择、改变字段/识别/权限行为，或标题仍重复 |
 | 信息整理列表 | 每行明确关联信息；未设置状态可理解；保管/归档操作明确且可恢复，恢复后记录仍可见 | 关联状态含义不清、归档不可恢复、删除数据或改变权限 |
+| 归档生命周期回归 | 已有 `record.archive` 权限且 `canWrite` 的案件，即使关联源不满足 W93 可读，也能完成归档/恢复并安全返回；普通案件写入仍拒绝不可读源；跨租户、不可写、禁止字段、审计和原子写入边界不变 | 归档仍出现确认后错误页、越过租户/可写判定、普通写入失去 W93 门、审计/原子更新或恢复语义改变 |
 | 数量/分页 | 顶部与底部数量、当前页/总页或等价分页信息一致且不重复；翻页边界、空态、刷新保持准确 | 上下信息不一致、数量被截断、分页查询边界改变 |
 | 返回上下文 | 从输入对象选择进入整理，再返回，回到对应输入对象选择；从整理中心直达仍回原整理中心；同源安全参数保持 | 返回错误对象、回整理中心、丢失上下文或允许任意外链 |
 | 工程门 | `npm run test:workflow-rules`、定向契约（含 `npm run test:inline-select-focus`）、`npm run typecheck`、`npm run lint`、`npx next build --webpack`、`git diff --check`；最终工作树干净且仅含本卡写集 | 任一门禁失败、存在未授权文件差异、或把静态通过写成浏览器通过 |
@@ -101,6 +105,7 @@ PDF 逐页反馈登记如下：
 - 输入对象选择和返回上下文：`src/app/import-center/page.tsx`
 - 整理中心返回/列表入口：`src/app/organize-center/page.tsx`
 - 案件关联、数量/分页、可恢复归档展示：`src/components/organize-center-object-browser.tsx`
+- 归档生命周期授权与原子链路：`src/app/actions.ts`、`scripts/check-archive-failure-contract.mjs`、`scripts/check-archive-atomic-contract.mjs`
 
 ## 风险和注意事项
 
@@ -110,12 +115,15 @@ PDF 逐页反馈登记如下：
 - `check-layout-system-contract.mjs` 当前把旧的三参数 `buildListHref` 调用写死；实际调用增加 `page=1` 与安全 `returnTo` 以保持页码重置和返回上下文，合同修订不得删除 lifecycle/page/returnTo 检查。
 - 初始实现 `eae0bd3` 的静态定向契约与工程门结果不能替代真实桌面浏览器证据；不得把未运行浏览器写成通过。
 - p2 中 `出力文書管理` 与 `/settings/output-templates` 的实际公司/发出方信息语义可能不符，不能无证据替换。
+- 独立浏览器验收发现归档确认后错误页；`162ab1a` 已将案件归档/恢复改为生命周期专用可写检查。该修复仍需浏览器回归确认：`record.archive`、租户/`canWrite`、禁止输入、审计原子写入与安全返回均不得退化；不得把省略 W93 源可读门误写成权限放宽。
 
 ## 验证命令
 
 ```text
 npm run test:workflow-rules
 npm run test:inline-select-focus
+npm run test:archive-failure
+npm run test:archive-atomic-contract
 npm run typecheck
 npm run lint
 npx next build --webpack
@@ -124,9 +132,9 @@ git diff --check
 
 ## 当前状态
 
-- 当前为 `In Review`。单入口修订提交 `f4520a8` 与 inline-focus 合同提交 `217d8af` 已完成，代码与工程大门通过。
+- 当前为 `In Review`。单入口修订提交 `f4520a8`、inline-focus 合同提交 `217d8af`、p2/layout 治理提交 `f92accb` 与归档生命周期修复提交 `162ab1a` 已完成；归档失败合同、原子合同和 workflow-rules 通过。
 - 独立审查当前为 `NO-GO`：`/templates` 导航文案仍需精准改为“出力文書テンプレート管理/输出文书模板管理/출력 문서 템플릿 관리”，且 layout-system 合同仍有旧三参数静态假设；独立桌面浏览器验收尚未执行。
-- 本门禁回合只扩写 layout 合同脚本授权并记录 p2 裁决；不改业务、DB、识别、字段、权限或生产行为。
+- 本回合仅登记 `162ab1a` 的窄写集与安全边界；不改业务代码、DB、识别、字段、权限授予或生产行为。真实桌面浏览器仍需复验归档确认后的错误页是否消失，并保持 TASK-049 全部响应式/导航验收未完成即不得 Done。
 
 ## 发布门禁
 

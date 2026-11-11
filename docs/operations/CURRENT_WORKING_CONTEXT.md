@@ -257,3 +257,11 @@
 - 独立审查 NO-GO 的 p2 原因已裁决：报告候选 `出力文書管理` 过宽，`/templates` 实际仅为模板库；精准文案为 `出力文書テンプレート管理`、zh“输出文书模板管理”、ko“출력 문서 템플릿 관리”，不扩大页面功能。
 - 另一项 NO-GO 为 `scripts/check-layout-system-contract.mjs` 仍固定旧的 `buildListHref(selectedType, "", lifecycleFilter)`；实际调用带 `page=1` 与安全 `returnTo`，TASK-049 现授权该脚本做最小合同修订，并保留 lifecycle、页码重置和 returnTo 检查。
 - TASK-049 / BACKLOG 保持 `In Review`；独立桌面浏览器验收仍未执行。当前治理不修改业务或测试代码、不创建 agent、不推送/部署。
+
+## 2026-11-12 BD-20261112-007-ARCHIVE-LIFECYCLE-CARD / TASK-049 归档生命周期边界治理
+
+- 当前隔离 worktree 为 `/private/tmp/bd-ui-execution-20261111`，分支 `task049-report1111-responsive-ui`，实际 HEAD 为 `162ab1aba64207242cf2d9b15c759147e5d9eb28`；治理登记前工作树干净，未推送、未部署、未访问或修改生产数据。
+- 独立浏览器验收记录了归档确认后错误页（请求编号 `2517333276`）。静态复核 `162ab1a` 确认根因范围是案件生命周期动作仍错误复用 `requireWritableCase` 的 W93 源可读门；修复新增 `requireWritableCaseForLifecycle`，保留 `requireTenantSession({ permission: "record.archive" })`、`rejectForbiddenRecordInput`、`resolveCaseVisibilityForContext`、`resolution.canWrite`、既有 `setRecordLifecycleWithAudit`、审计/原子写入和安全返回。一般案件写入的 `requireWritableCase` 仍调用 `assertCaseSourcesReadable`。
+- 本回合批准的窄写集扩为：`src/app/actions.ts`、`scripts/check-archive-failure-contract.mjs`、`scripts/check-archive-atomic-contract.mjs`；仅覆盖生命周期专用授权、错误回归 fixture 与既有原子 guard 合同，不改变权限授予、租户隔离、DB、字段、识别或数据持久化语义。
+- 已执行并通过：`npm run test:archive-failure`、`npm run test:archive-atomic-contract`、`npm run test:workflow-rules`、`git diff --check`。其中 runtime fixture 证明有 `canWrite` 但源不可 W93 读取的案件仍可归档并安全返回，合同同时证明普通案件写入仍保留 W93 检查。
+- `TASK-049` 与 `BACKLOG.md` 保持 `In Review`。待独立桌面浏览器复验确认错误页消失，并回归 `record.archive`、跨租户/不可写/禁止字段、审计原子性、安全返回及全量响应式导航矩阵；在该证据完成前不得标记 `Done`，不启动发布或部署。
