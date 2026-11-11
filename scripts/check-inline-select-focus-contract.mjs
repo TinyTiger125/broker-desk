@@ -204,8 +204,8 @@ function analyzeAppNavMountsSource(source, path) {
   const liveReturn = assertFinalReturn(fn, "AppNav");
   const languageCallers = jsxComponentOpenings(liveReturn, tree, "LanguageSwitcher");
   const actorCallers = jsxComponentOpenings(liveReturn, tree, "ActorSwitcher");
-  assert.equal(languageCallers.length, 3, "AppNav must retain its three live LanguageSwitcher mounts");
-  assert.equal(actorCallers.length, 3, "AppNav must retain its three live ActorSwitcher mounts");
+  assert.equal(languageCallers.length, 2, "AppNav must retain one live LanguageSwitcher mount per responsive branch");
+  assert.equal(actorCallers.length, 2, "AppNav must retain one live ActorSwitcher mount per responsive branch");
   for (const [index, caller] of languageCallers.entries()) {
     assertReachable(caller, liveReturn, `AppNav LanguageSwitcher mount ${index + 1}`);
   }
@@ -263,8 +263,7 @@ for (const [label, source] of invalidSyntheticCases) {
 const validAppNavSynthetic = `
   async function AppNav() {
     return (<>
-      {[1, 2, 3].map((key) => <LanguageSwitcher key={key} />)}
-      {actorSwitchingAvailable ? <ActorSwitcher /> : null}
+      {[1, 2].map((key) => <LanguageSwitcher key={key} />)}
       {actorSwitchingAvailable ? <ActorSwitcher /> : null}
       {actorSwitchingAvailable ? <ActorSwitcher /> : null}
     </>);
@@ -272,8 +271,8 @@ const validAppNavSynthetic = `
 `;
 // Keep the synthetic mount count explicit without duplicating the production JSX.
 const expandedValidAppNavSynthetic = validAppNavSynthetic.replace(
-  "{[1, 2, 3].map((key) => <LanguageSwitcher key={key} />)}",
-  "<LanguageSwitcher /><LanguageSwitcher /><LanguageSwitcher />",
+  "{[1, 2].map((key) => <LanguageSwitcher key={key} />)}",
+  "<LanguageSwitcher /><LanguageSwitcher />",
 );
 analyzeAppNavMountsSource(expandedValidAppNavSynthetic, "synthetic-valid-app-nav.tsx");
 
@@ -284,8 +283,7 @@ const invalidAppNavCases = [
   ["callers in uncalled function", `
     async function AppNav() {
       const hidden = () => (<>
-        <LanguageSwitcher /><LanguageSwitcher /><LanguageSwitcher />
-        {actorSwitchingAvailable ? <ActorSwitcher /> : null}
+        <LanguageSwitcher /><LanguageSwitcher />
         {actorSwitchingAvailable ? <ActorSwitcher /> : null}
         {actorSwitchingAvailable ? <ActorSwitcher /> : null}
       </>);
