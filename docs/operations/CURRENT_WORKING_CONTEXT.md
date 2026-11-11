@@ -207,6 +207,15 @@
 - 本次最终候选仍以基线 `81901825877b3c1ec7e32b68cfb1b8717ca47832` 为父提交；发布提交只允许从该基线快进到 GitHub `main`，不得 force push 或部署 Vercel。临时 packet/evidence、真实证件/PDF、私有 fixture 与密钥均不在 Git 写集内。
 - 最终门：定向 readiness、production-security、typecheck、lint、`npx next build --webpack`、`git diff --check` 通过；默认 `npm run build` 的 Turbopack 仅受本机 EPERM 子进程/端口绑定限制，webpack production build 成功。
 
+## 2026-11-11 BD-20261111-003-TASK-CARD / TASK-049 治理登记
+
+- `TASK-049` 已按 `TASK-048` 结构登记为 `Ready`，基线为 `b4b12e0a247c6a5f29e8f8241d5fa75e800271d0`，候选工作树为 `/private/tmp/bd-ui-execution-20261111`，治理分支为 `task049-report1111-responsive-ui`。本步只修改本卡、`BACKLOG.md` 与本文件，不修改 `src/`，不运行应用写操作。
+- `report1111.pdf` 九页反馈已逐页登记。用户已明确：截图是桌面浏览器窗口缩窄，不是移动设备；验收覆盖约 600–700、768、1024、1440 CSS px，必要时 125% 缩放，并验证恢复常规宽度。
+- 产品裁决冻结为 UI/导航/文案/返回上下文：合并账户与工作区设置入口，核对 p2 四个候选名称的目标页语义并保持 ja/zh/ko 一致，去掉输入页冗余可见标题，明确整理列表关联与可恢复归档，顶部/底部数量分页呼应，从输入进入整理后返回原对象选择；不改 DB、识别、字段、权限或生产行为。
+- 严格实施写集已写入 TASK-049：仅 `src/components/app-nav.tsx`、`src/app/import-center/page.tsx`、`src/app/organize-center/page.tsx`、`src/components/organize-center-object-browser.tsx`；如需新增或越界文件，先停下扩卡。实施与独立浏览器验收必须顺序进行，未有运行态证据不得标记 Done。
+- 本隔离目录由 canonical repository 的 Git worktree 管理，`git rev-parse --git-common-dir` 指向 canonical `.git`；不触碰脏的 `broker-desk-web-dev` 工作树，不推送、不部署。此前 `BD-20261111-002-UI-EXECUTION` 因缺少任务卡而暂停，现以 TASK-049 作为授权边界。
+- 本步验证范围为治理 diff、`git diff --check`、工作树与同仓库 worktree 事实；业务工程门、真实浏览器和权限/数据回归属于后续实施/独立验收，当前均未宣称通过。
+
 ## 2026-11-02 BD-20261102-053 组织中心行语义收口
 
 - 隔离候选 `/Users/laineyzhu/Documents/独立开发项目/房产专家/bd-feedback-20261102-049` 已完成 `BD-20261102-053-ORGANIZE-ROW-A11Y-FIX`，本地提交 `e3ba9e2`，未 push、未部署、未写生产。
