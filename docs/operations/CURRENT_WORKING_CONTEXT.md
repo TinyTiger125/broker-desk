@@ -265,3 +265,11 @@
 - 本回合批准的窄写集扩为：`src/app/actions.ts`、`scripts/check-archive-failure-contract.mjs`、`scripts/check-archive-atomic-contract.mjs`；仅覆盖生命周期专用授权、错误回归 fixture 与既有原子 guard 合同，不改变权限授予、租户隔离、DB、字段、识别或数据持久化语义。
 - 已执行并通过：`npm run test:archive-failure`、`npm run test:archive-atomic-contract`、`npm run test:workflow-rules`、`git diff --check`。其中 runtime fixture 证明有 `canWrite` 但源不可 W93 读取的案件仍可归档并安全返回，合同同时证明普通案件写入仍保留 W93 检查。
 - `TASK-049` 与 `BACKLOG.md` 保持 `In Review`。待独立桌面浏览器复验确认错误页消失，并回归 `record.archive`、跨租户/不可写/禁止字段、审计原子性、安全返回及全量响应式导航矩阵；在该证据完成前不得标记 `Done`，不启动发布或部署。
+
+## 2026-11-12 BD-20261112-010-TASK049-ACCEPTANCE-REGISTER / TASK-049 本地功能验收收口
+
+- 独立最终审查基于隔离 worktree `/private/tmp/bd-ui-execution-20261111`、分支 `task049-report1111-responsive-ui`、HEAD `ba711bb`；报告工作树干净，14 个变更文件均落在 TASK-049 最终业务/合同写集或三个治理文件内。
+- 本地功能验收 GO：同一桌面浏览器在 600/640/700/768/1024/1440 CSS px 缩窄并恢复常规宽度均通过；账户/工作区单入口、菜单垂直可达、既有权限、ja/zh/ko 文案、输入对象选择、整理关联、返回上下文、上下数量/分页均通过。
+- 归档生命周期回归通过：归档→筛选→恢复→新标签/刷新流程通过，归档确认后错误页不再出现；真实服务端 POST/GET 均返回 200。前序 `162ab1a` 的生命周期专用可写边界、`record.archive`、租户/`canWrite`、禁止字段、审计/原子写入和安全返回约束均纳入复验范围。
+- `TASK-049` 与 `BACKLOG.md` 现登记为 `Done`。本次 Done 仅表示本地 demo+memory 功能验收完成，不等于线上发布授权，不等于真实 PostgreSQL 或 Production 验收；未 push、未 deploy、未访问或修改 Production 数据。
+- 剩余风险/门禁：如需线上发布，必须另行取得明确发布授权并在受控环境补充真实 PostgreSQL、Production 数据安全、部署与回滚证据；本卡不自动开启任何后续云端操作。

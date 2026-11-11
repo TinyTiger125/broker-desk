@@ -4,8 +4,8 @@
 
 桌面浏览器窄窗口下的导航、设置入口和信息整理反馈修复
 
-- 状态: In Review
-- 当前工作单：`BD-20261112-007-ARCHIVE-LIFECYCLE-CARD`（归档生命周期边界治理）；前序实施工作单：`BD-20261111-005-IMPLEMENT`
+- 状态: Done
+- 当前工作单：`BD-20261112-010-TASK049-ACCEPTANCE-REGISTER`（本地功能验收登记）；前序实施工作单：`BD-20261112-007-ARCHIVE-LIFECYCLE-CARD`
 - 基线：`b4b12e0a247c6a5f29e8f8241d5fa75e800271d0`
 - 实施候选：隔离工作树 `/private/tmp/bd-ui-execution-20261111`
 - 证据原件：`/Users/laineyzhu/Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files/ytyaillforever_6bd8/temp/drag/report1111.pdf`（9 页截图 PDF）
@@ -49,7 +49,7 @@ PDF 逐页反馈登记如下：
 
 - 依赖基线 `b4b12e0a247c6a5f29e8f8241d5fa75e800271d0`、治理提交 `728f16e`、初版实现提交 `eae0bd3`、单入口修订提交 `f4520a8`、inline-focus 合同提交 `217d8af`、p2/layout 治理提交 `f92accb` 和归档生命周期修复提交 `162ab1a`。
 - 依赖现有 HeaderPopover、导入对象选择、整理列表归档/恢复和返回状态机制；不重建数据模型或权限模型。
-- 真实桌面浏览器验收依赖可控本地运行环境；无法取得运行态证据时保持 `In Review` 或 `Blocked`。
+- 真实桌面浏览器验收依赖可控本地运行环境；本轮已取得本地 demo+memory 运行态证据，但该证据不等于线上发布授权或真实 PostgreSQL 验收。
 
 ## 严格写集
 
@@ -113,9 +113,9 @@ PDF 逐页反馈登记如下：
 - 旧 `check-header-popover-contract.mjs` 将四个 HeaderPopover 当作硬性合同，与当前单入口目标冲突；只能做最小合同修订，不能为通过测试保留错误 UI。
 - `check-inline-select-focus-contract.mjs` 当前把三个 LanguageSwitcher/ActorSwitcher 挂载写死，但实际合并两断点只有两个 live mount；修订必须保留逐个 live mount 的可达、focus 与 actor availability 检查，不得删除覆盖。
 - `check-layout-system-contract.mjs` 当前把旧的三参数 `buildListHref` 调用写死；实际调用增加 `page=1` 与安全 `returnTo` 以保持页码重置和返回上下文，合同修订不得删除 lifecycle/page/returnTo 检查。
-- 初始实现 `eae0bd3` 的静态定向契约与工程门结果不能替代真实桌面浏览器证据；不得把未运行浏览器写成通过。
-- p2 中 `出力文書管理` 与 `/settings/output-templates` 的实际公司/发出方信息语义可能不符，不能无证据替换。
-- 独立浏览器验收发现归档确认后错误页；`162ab1a` 已将案件归档/恢复改为生命周期专用可写检查。该修复仍需浏览器回归确认：`record.archive`、租户/`canWrite`、禁止输入、审计原子写入与安全返回均不得退化；不得把省略 W93 源可读门误写成权限放宽。
+- 初始实现 `eae0bd3` 的静态定向契约与工程门结果不能替代真实桌面浏览器证据；该缺口已由独立最终复验 `ba711bb` 补齐，本地证据仍不外推为线上发布证据。
+- p2 中 `出力文書管理` 与 `/settings/output-templates` 的语义风险已按产品裁决收窄为模板管理文案，并由 `ba711bb` 的 ja/zh/ko 菜单复验覆盖；不扩大 `/templates` 页面功能。
+- 独立浏览器曾发现归档确认后错误页；`162ab1a` 的生命周期专用可写检查已在 `ba711bb` 的归档→筛选→恢复→新标签/刷新回归中通过。剩余风险仅为本地 demo+memory 证据不能替代真实 PostgreSQL、线上发布、部署和回滚验收。
 
 ## 验证命令
 
@@ -133,8 +133,8 @@ git diff --check
 ## 当前状态
 
 - 当前为 `In Review`。单入口修订提交 `f4520a8`、inline-focus 合同提交 `217d8af`、p2/layout 治理提交 `f92accb` 与归档生命周期修复提交 `162ab1a` 已完成；归档失败合同、原子合同和 workflow-rules 通过。
-- 独立审查当前为 `NO-GO`：`/templates` 导航文案仍需精准改为“出力文書テンプレート管理/输出文书模板管理/출력 문서 템플릿 관리”，且 layout-system 合同仍有旧三参数静态假设；独立桌面浏览器验收尚未执行。
-- 本回合仅登记 `162ab1a` 的窄写集与安全边界；不改业务代码、DB、识别、字段、权限授予或生产行为。真实桌面浏览器仍需复验归档确认后的错误页是否消失，并保持 TASK-049 全部响应式/导航验收未完成即不得 Done。
+- 独立最终审查在 `ba711bb` 给出功能验收 `GO`：桌面浏览器 600/640/700/768/1024/1440 CSS px 的缩窄与恢复、菜单/权限/ja-zh-ko 三语言、输入/整理/返回、分页，以及归档→筛选→恢复→新标签/刷新均通过；真实服务端 POST/GET 均为 200。
+- 本地功能验收已满足本卡用户结果与验收矩阵，状态登记为 `Done`。证据边界明确为本地 demo+memory：不等于线上发布授权，不等于真实 PostgreSQL、Production 数据、部署或发布验收；本回合未执行 push/deploy。
 
 ## 发布门禁
 
