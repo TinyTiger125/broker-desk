@@ -243,3 +243,10 @@
 - `TASK-049` 已改为 `In Progress`，补齐 workflow-rules 所需六个固定标题，并将严格写集扩为原五个源文件加 `scripts/check-header-popover-contract.mjs`；该脚本只可修订过时的弹层数量假设，其他测试脚本、DB、识别、字段、权限、生产数据均不在范围。
 - 已核对前序工程结果：归档返回/按钮、HeaderPopover、导航一致性、输入对象动作定向契约通过；typecheck、lint（既有 2 warnings）、webpack build、`git diff --check` 通过。`test:workflow-rules` 的原失败来自 TASK-049 固定标题缺失；`test:layout-system` 的残留失败来自旧 `buildListHref(...,"")` 静态匹配，需在后续实现/合同修订中重新验证。真实浏览器证据仍为缺失。
 - 下一步：治理提交后，按 collaboration.spawn_agent 创建一名 `gpt-5.6-luna`、`xhigh`、`fork_turns none` 的实现角色，只修复单入口与允许的合同脚本，完成本地测试并提交；随后再决定是否需要独立验收 agent。当前不发布、不部署、不推送。
+
+## 2026-11-12 BD-20261112-003-CONTRACT / TASK-049 inline focus 合同登记
+
+- 当前隔离 worktree 为 `/private/tmp/bd-ui-execution-20261111`，分支 `task049-report1111-responsive-ui`，HEAD `f4520a8`；单入口代码修订已提交，工程大门已通过，未推送、未部署。
+- `npm run test:inline-select-focus` 的失败不是代码断言失败，而是 `scripts/check-inline-select-focus-contract.mjs` 仍固定要求三个 LanguageSwitcher/ActorSwitcher 挂载；实际合并两断点只有两个 live mount。
+- TASK-049 严格写集已扩为允许该脚本的最小合同修订及 synthetic fixtures：改为验证每个 live mount 的可达、focus 与 actor availability，不删除这些覆盖；本回合不修改脚本本身、不修改 `src`。
+- TASK-049 / BACKLOG 状态同步为 `In Review`；独立桌面浏览器验收仍未完成，合同修订后必须继续验证常规/窄/恢复宽度、菜单焦点和无溢出。

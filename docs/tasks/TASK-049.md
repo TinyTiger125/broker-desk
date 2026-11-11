@@ -4,7 +4,7 @@
 
 桌面浏览器窄窗口下的导航、设置入口和信息整理反馈修复
 
-- 状态: In Progress
+- 状态: In Review
 - 当前工作单：`BD-20261112-001-GATES`（门禁治理）；前序实施工作单：`BD-20261111-005-IMPLEMENT`
 - 基线：`b4b12e0a247c6a5f29e8f8241d5fa75e800271d0`
 - 实施候选：隔离工作树 `/private/tmp/bd-ui-execution-20261111`
@@ -46,7 +46,7 @@ PDF 逐页反馈登记如下：
 
 ## 依赖关系
 
-- 依赖基线 `b4b12e0a247c6a5f29e8f8241d5fa75e800271d0`、治理提交 `728f16e` 和前序五文件实现提交 `eae0bd3`。
+- 依赖基线 `b4b12e0a247c6a5f29e8f8241d5fa75e800271d0`、治理提交 `728f16e`、初版实现提交 `eae0bd3` 和单入口修订提交 `f4520a8`。
 - 依赖现有 HeaderPopover、导入对象选择、整理列表归档/恢复和返回状态机制；不重建数据模型或权限模型。
 - 真实桌面浏览器验收依赖可控本地运行环境；无法取得运行态证据时保持 `In Review` 或 `Blocked`。
 
@@ -60,8 +60,9 @@ PDF 逐页反馈登记如下：
 - `src/components/organize-center-object-browser.tsx`
 - `src/components/archive-record-button.tsx`
 - `scripts/check-header-popover-contract.mjs`（仅允许同步单一设置入口的最小静态合同）
+- `scripts/check-inline-select-focus-contract.mjs`（仅允许同步两处 live mount 与 synthetic fixtures 的最小静态合同）
 
-允许在 `archive-record-button.tsx` 中为信息整理列表场景调整“保管/復元”按钮及每行说明文案，或新增显式的可选 compact 呈现；必须保留确认流程、归档/恢复动作、错误反馈、键盘焦点与可达性行为，不能通过父级 CSS 隐藏子组件内容。允许在 `check-header-popover-contract.mjs` 中移除“四个弹层”的过时假设，并改为验证单一合并入口及既有可达性/权限/语言约束；不得修改其他测试脚本。不得新增文件或修改上述列表之外的任何业务、样式、测试、配置、文档、数据库或迁移文件。若实现需要新增文件、修改共享 CSS/组件、改变返回协议或触及列表之外的文件，必须先停止并扩卡取得产品/项目经理裁决；不得以“顺手修复”扩大写集。治理登记文件（本卡、`BACKLOG.md`、当前上下文）只由本次治理提交维护。
+允许在 `archive-record-button.tsx` 中为信息整理列表场景调整“保管/復元”按钮及每行说明文案，或新增显式的可选 compact 呈现；必须保留确认流程、归档/恢复动作、错误反馈、键盘焦点与可达性行为，不能通过父级 CSS 隐藏子组件内容。允许在 `check-header-popover-contract.mjs` 中移除“四个弹层”的过时假设，并改为验证单一合并入口及既有可达性/权限/语言约束；允许在 `check-inline-select-focus-contract.mjs` 中把固定的三个 LanguageSwitcher/ActorSwitcher 挂载假设修订为实际两处 live mount，并保留每个 live mount 可达、focus 与 actor availability 检查，同时更新必要的 synthetic fixtures；不得修改其他测试脚本。不得新增文件或修改上述列表之外的任何业务、样式、测试、配置、文档、数据库或迁移文件。若实现需要新增文件、修改共享 CSS/组件、改变返回协议或触及列表之外的文件，必须先停止并扩卡取得产品/项目经理裁决；不得以“顺手修复”扩大写集。治理登记文件（本卡、`BACKLOG.md`、当前上下文）只由本次治理提交维护。
 
 ## 明确不做什么
 
@@ -81,7 +82,7 @@ PDF 逐页反馈登记如下：
 | 信息整理列表 | 每行明确关联信息；未设置状态可理解；保管/归档操作明确且可恢复，恢复后记录仍可见 | 关联状态含义不清、归档不可恢复、删除数据或改变权限 |
 | 数量/分页 | 顶部与底部数量、当前页/总页或等价分页信息一致且不重复；翻页边界、空态、刷新保持准确 | 上下信息不一致、数量被截断、分页查询边界改变 |
 | 返回上下文 | 从输入对象选择进入整理，再返回，回到对应输入对象选择；从整理中心直达仍回原整理中心；同源安全参数保持 | 返回错误对象、回整理中心、丢失上下文或允许任意外链 |
-| 工程门 | `npm run test:workflow-rules`、`npm run typecheck`、`npm run lint`、`npx next build --webpack`、`git diff --check`；最终工作树干净且仅含本卡写集 | 任一门禁失败、存在未授权文件差异、或把静态通过写成浏览器通过 |
+| 工程门 | `npm run test:workflow-rules`、定向契约（含 `npm run test:inline-select-focus`）、`npm run typecheck`、`npm run lint`、`npx next build --webpack`、`git diff --check`；最终工作树干净且仅含本卡写集 | 任一门禁失败、存在未授权文件差异、或把静态通过写成浏览器通过 |
 
 浏览器运行验收必须由独立验收角色在实现角色完成并退出后执行；静态门禁不能替代真实界面证据。无可控本地浏览器环境时，状态只能是 `In Review`/`Blocked`，不得标记 `Done`。
 
@@ -103,6 +104,7 @@ PDF 逐页反馈登记如下：
 
 - 当前导航仍可能在窄/宽分支分别呈现齿轮与账号两个触发入口，未满足单入口产品裁决；需在既有 `app-nav.tsx` 内收口。
 - 旧 `check-header-popover-contract.mjs` 将四个 HeaderPopover 当作硬性合同，与当前单入口目标冲突；只能做最小合同修订，不能为通过测试保留错误 UI。
+- `check-inline-select-focus-contract.mjs` 当前把三个 LanguageSwitcher/ActorSwitcher 挂载写死，但实际合并两断点只有两个 live mount；修订必须保留逐个 live mount 的可达、focus 与 actor availability 检查，不得删除覆盖。
 - 初始实现 `eae0bd3` 的静态定向契约与工程门结果不能替代真实桌面浏览器证据；不得把未运行浏览器写成通过。
 - p2 中 `出力文書管理` 与 `/settings/output-templates` 的实际公司/发出方信息语义可能不符，不能无证据替换。
 
@@ -110,6 +112,7 @@ PDF 逐页反馈登记如下：
 
 ```text
 npm run test:workflow-rules
+npm run test:inline-select-focus
 npm run typecheck
 npm run lint
 npx next build --webpack
@@ -118,9 +121,9 @@ git diff --check
 
 ## 当前状态
 
-- 当前为 `In Progress`。前序实现提交 `eae0bd3` 已修改严格五个源文件，当前分支工作树在门禁治理开始前为干净。
-- 产品复核未通过：导航单入口仍未完成；旧 HeaderPopover 合同需修订；独立桌面浏览器验收尚未执行。
-- 本门禁回合先补齐任务卡固定标题并记录上述实际风险；随后由单一实现 agent 完成单入口与合同修订，再交独立验收。
+- 当前为 `In Review`。单入口修订提交 `f4520a8` 已完成，代码与工程大门通过；当前唯一静态合同阻塞是 `test:inline-select-focus` 对三个挂载的过时假设。
+- 独立桌面浏览器验收尚未执行；合同修订后仍需核对常规/窄/恢复宽度、菜单可达性、焦点和无溢出。
+- 本门禁回合只扩写合同脚本授权；不改 `src`、DB、识别、字段、权限或生产行为。
 
 ## 发布门禁
 
