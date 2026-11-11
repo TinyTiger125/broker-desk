@@ -15,6 +15,7 @@ import { normalizeLifecycleFilter, type LifecycleFilter } from "@/lib/record-lif
 import { getTenantCapability, requireTenantSession, TenantSessionError } from "@/lib/tenant-session";
 import { capabilityHasTenantPermission } from "@/lib/tenant-permissions";
 import { createRequestContext } from "@/lib/visibility-resolver";
+import { normalizeImportCenterObjectReturnTo } from "@/lib/import-center-return";
 import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
@@ -32,6 +33,7 @@ type OrganizeCenterQuery = {
   lifecycle?: string;
   page?: string;
   flash?: string;
+  returnTo?: string;
 };
 
 type WorkObject = {
@@ -250,14 +252,21 @@ function parsePage(value: string | undefined) {
   return Number.isFinite(page) && page > 0 ? page : 1;
 }
 
-function buildListHref(type: ObjectType, query: string, lifecycleFilter: LifecycleFilter, page = 1) {
+function buildListHref(type: ObjectType, query: string, lifecycleFilter: LifecycleFilter, page = 1, returnTo?: string) {
   const params = new URLSearchParams();
   if (type !== "all") params.set("type", type);
   if (query.trim()) params.set("q", query.trim());
   if (lifecycleFilter !== "active") params.set("lifecycle", lifecycleFilter);
   if (page > 1) params.set("page", String(page));
+  if (returnTo) params.set("returnTo", returnTo);
   const search = params.toString();
   return search ? `/organize-center?${search}` : "/organize-center";
+}
+
+function normalizeOrganizeReturnTo(value: string | undefined) {
+  const personReturnTo = normalizeImportCenterObjectReturnTo(value, "person", true);
+  if (personReturnTo) return personReturnTo;
+  return normalizeImportCenterObjectReturnTo(value, "property", true);
 }
 
 function compareWorkObjects(a: WorkObject, b: WorkObject) {
@@ -353,6 +362,7 @@ async function OrganizeCenterContent({ locale, params }: { locale: Locale; param
   const query = String(params.q ?? "").trim();
   const lifecycleFilter: LifecycleFilter = normalizeLifecycleFilter(params.lifecycle);
   const page = parsePage(params.page);
+  const returnTo = normalizeOrganizeReturnTo(params.returnTo) ?? undefined;
 
   let session;
   try {
@@ -362,7 +372,7 @@ async function OrganizeCenterContent({ locale, params }: { locale: Locale; param
       return <OrganizeCenterPermissionError copy={copy} />;
     }
     if (error instanceof TenantSessionError && error.code === "tenant_selection_required") {
-      redirect(`/workspace?reason=tenant_selection_required&returnTo=${encodeURIComponent(buildListHref(selectedType, query, lifecycleFilter, page))}`);
+      redirect(`/workspace?reason=tenant_selection_required&returnTo=${encodeURIComponent(buildListHref(selectedType, query, lifecycleFilter, page, returnTo))}`);
     }
     throw error;
   }
@@ -405,7 +415,7 @@ async function OrganizeCenterContent({ locale, params }: { locale: Locale; param
       properties = await listHubProperties(locale, hubContext);
     }
   } catch {
-    return <OrganizeCenterLoadError copy={copy} href={buildListHref(selectedType, query, lifecycleFilter, page)} />;
+    return <OrganizeCenterLoadError copy={copy} href={buildListHref(selectedType, query, lifecycleFilter, page, returnTo)} />;
   }
 
   const caseItems: WorkObject[] = cases.flatMap(({ brokerageCase: item, resolution }) => {
@@ -485,6 +495,7 @@ async function OrganizeCenterContent({ locale, params }: { locale: Locale; param
     relatedObjects: item.relatedObjects,
     updatedLabel: item.updatedAt ? formatDate(item.updatedAt, locale) : copy.noDate,
     href: item.href,
+    visibilityLabel: item.visibilityLabel,
     canArchive: item.canArchive,
     readOnly: item.readOnly,
   }));
@@ -500,6 +511,7 @@ async function OrganizeCenterContent({ locale, params }: { locale: Locale; param
       lifecycleFilter={lifecycleFilter}
       locale={locale}
       page={page}
+      returnTo={returnTo}
       canCreateCase={capabilityCanCreateCase}
     />
   );

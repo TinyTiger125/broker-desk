@@ -17,6 +17,7 @@ type ArchiveRecordButtonProps = {
   returnStateScope: ListReturnScope;
   returnFocusKey: string;
   preserveExistingReturnState?: boolean;
+  compact?: boolean;
 };
 
 const labels: Record<Locale, {
@@ -46,8 +47,8 @@ const labels: Record<Locale, {
     accessibleRestore: (recordLabel) => `${recordLabel}を復元`,
     accessibleArchiving: (recordLabel) => `${recordLabel}を保管中`,
     accessibleRestoring: (recordLabel) => `${recordLabel}を復元中`,
-    archiveHint: "記録は残したまま一時的に保管し、後で復元できます。",
-    restoreHint: "保管中の記録を一覧へ戻します。",
+    archiveHint: "保管後も復元できます。",
+    restoreHint: "一覧に戻します。",
   },
   zh: {
     archive: "归档",
@@ -61,8 +62,8 @@ const labels: Record<Locale, {
     accessibleRestore: (recordLabel) => `恢复“${recordLabel}”`,
     accessibleArchiving: (recordLabel) => `正在归档“${recordLabel}”`,
     accessibleRestoring: (recordLabel) => `正在恢复“${recordLabel}”`,
-    archiveHint: "记录会保留在系统中，仅作保管，之后仍可恢复。",
-    restoreHint: "将已归档记录恢复到当前列表。",
+    archiveHint: "保留记录，之后可恢复。",
+    restoreHint: "恢复到当前列表。",
   },
   ko: {
     archive: "보관",
@@ -76,8 +77,8 @@ const labels: Record<Locale, {
     accessibleRestore: (recordLabel) => `${recordLabel} 복원`,
     accessibleArchiving: (recordLabel) => `${recordLabel} 보관 중`,
     accessibleRestoring: (recordLabel) => `${recordLabel} 복원 중`,
-    archiveHint: "기록을 남긴 채 보관하며 나중에 복원할 수 있습니다.",
-    restoreHint: "보관된 기록을 현재 목록으로 되돌립니다.",
+    archiveHint: "보관 후 복원할 수 있습니다.",
+    restoreHint: "현재 목록으로 복원합니다.",
   },
 };
 
@@ -91,6 +92,7 @@ export function ArchiveRecordButton({
   returnStateScope,
   returnFocusKey,
   preserveExistingReturnState = false,
+  compact = false,
 }: ArchiveRecordButtonProps) {
   const [isPending, startTransition] = useTransition();
   const [failureCode, setFailureCode] = useState<RecordLifecycleActionFailure["code"] | undefined>(undefined);
@@ -145,7 +147,7 @@ export function ArchiveRecordButton({
       >
         {isPending ? (isArchived ? copy.restoring : copy.archiving) : isArchived ? copy.restore : copy.archive}
       </Button>
-      <p data-list-row-ignore className="max-w-64 text-[11px] leading-4 text-slate-500">{isArchived ? copy.restoreHint : copy.archiveHint}</p>
+      <p data-list-row-ignore className={compact ? "max-w-full text-[11px] leading-4 text-slate-500" : "max-w-64 text-[11px] leading-4 text-slate-500"}>{isArchived ? copy.restoreHint : copy.archiveHint}</p>
       {failureCode ? (
         <div
           ref={errorRef}

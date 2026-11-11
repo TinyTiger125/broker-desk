@@ -658,7 +658,6 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
     listObjectImportTargets({ tenantId, userId: user.id }),
   ]);
   const cases = caseEntries.flatMap((entry) => (entry.brokerageCase ? [entry.brokerageCase] : []));
-  const reviewHref = "/organize-center";
 
   const sourceLabel: Record<HubImportJobItem["sourceType"], string> = {
     excel: t(locale, "import.source.excel"),
@@ -1241,6 +1240,11 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
   const selectedObjectReturnTo = selectedObject && selectedTargetId
     ? `/import-center?object=${encodeURIComponent(selectedObject)}&targetId=${encodeURIComponent(selectedTargetId)}`
     : "/import-center";
+  const importObjectSelectionReturnTo = selectedObject === "person" || selectedObject === "property"
+    ? `/import-center?advanced=1&object=${selectedObject}#target-selection`
+    : "/import-center";
+  const reviewType = selectedObject === "person" ? "party" : selectedObject === "property" ? "property" : undefined;
+  const reviewHref = `/organize-center?${reviewType ? `type=${reviewType}&` : ""}returnTo=${encodeURIComponent(importObjectSelectionReturnTo)}`;
   const showIdentityReader = flowIntent === "case" ? true : !selectedObject || selectedObject === "case" || (selectedObject === "person" && !selectedTargetId);
   // An explicitly selected property/person gets its dedicated document
   // channel. Excel remains available from the ledger/case entry or the
@@ -1285,9 +1289,11 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
   ] as const;
   return (
     <div className="bd-page bd-import-page space-y-6">
-      <section>
-        <h1 className="text-4xl font-bold tracking-tight text-slate-900">{copy.pageTitle}</h1>
-      </section>
+      {!showObjectSelection ? (
+        <section>
+          <h1 className="text-4xl font-bold tracking-tight text-slate-900">{copy.pageTitle}</h1>
+        </section>
+      ) : null}
       <PageFlashBanner message={flashMessage} tone={flashTone} />
 
       {targetCaseId ? (
@@ -1400,7 +1406,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                   <Link href="#source-upload" className="rounded-lg bg-blue-700 px-4 py-2 text-xs font-black text-white hover:bg-blue-800">
                     {locale === "zh" ? "重新读取" : locale === "ko" ? "다시 읽기" : "読み直す"}
                   </Link>
-                  <Link href="/organize-center" className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-black text-slate-700 hover:bg-slate-50">
+                  <Link href={reviewHref} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-black text-slate-700 hover:bg-slate-50">
                     {locale === "zh" ? "前往整理信息" : locale === "ko" ? "정보 정리로 이동" : "情報整理へ進む"}
                   </Link>
                 </>
@@ -1417,7 +1423,12 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
               <h2 className="text-base font-bold text-slate-950">{locale === "zh" ? "选择资料对象" : locale === "ko" ? "자료 대상 선택" : "資料の対象を選ぶ"}</h2>
             </div>
             <div className="grid gap-4 p-5">
-              {materialObjects.map((object) => (
+              {materialObjects.map((object) => {
+                const existingObjectHref = `/organize-center?type=${object.key === "person" ? "party" : object.key}`;
+                const objectReturnTo = object.key === "person" || object.key === "property"
+                  ? `/import-center?advanced=1&object=${object.key}#target-selection`
+                  : undefined;
+                return (
                 <section key={object.key} data-import-object={object.key} className="grid gap-4 rounded-xl border border-slate-200 bg-white p-5 2xl:grid-cols-[minmax(12rem,1fr)_minmax(0,1.6fr)] 2xl:items-center">
                   <div className="flex items-center gap-4">
                     <span className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-xl ${object.iconClass}`} aria-hidden="true"><span className="material-symbols-outlined text-[28px]">{object.icon}</span></span>
@@ -1427,12 +1438,17 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                     <Link data-import-action="unified" href={object.manualHref} className="inline-flex min-h-14 min-w-0 items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 text-sm font-black text-slate-900 hover:border-blue-300 hover:bg-blue-50/40 sm:px-4">
                       <span className="inline-flex min-w-0 items-center gap-2 whitespace-nowrap"><span className="material-symbols-outlined shrink-0 text-blue-700">edit</span><span className="whitespace-nowrap">{locale === "zh" ? "录入资料" : locale === "ko" ? "자료 입력" : "資料を入力"}</span></span><span aria-hidden="true">›</span>
                     </Link>
-                    <Link data-import-action="existing" href={`/organize-center?type=${object.key === "person" ? "party" : object.key}`} className="inline-flex min-h-14 min-w-0 items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 text-sm font-black text-slate-900 hover:border-emerald-300 hover:bg-emerald-50/40 sm:px-4">
+                    <Link
+                      data-import-action="existing"
+                      href={`${existingObjectHref}${objectReturnTo ? `&returnTo=${encodeURIComponent(objectReturnTo)}` : ""}`}
+                      className="inline-flex min-h-14 min-w-0 items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 text-sm font-black text-slate-900 hover:border-emerald-300 hover:bg-emerald-50/40 sm:px-4"
+                    >
                       <span className="inline-flex min-w-0 items-center gap-2 whitespace-nowrap"><span className="material-symbols-outlined shrink-0 text-emerald-700">upload_file</span><span className="whitespace-nowrap">{locale === "zh" ? "选择现有档案" : locale === "ko" ? "기존 기록 선택" : "既存の記録を選ぶ"}</span></span><span aria-hidden="true">›</span>
                     </Link>
                   </div>
                 </section>
-              ))}
+                );
+              })}
             </div>
           </section>
           <aside id="recent-activity" data-import-recent-slot="true" className="flex h-full min-h-[34rem] flex-col rounded-2xl border border-slate-200 bg-white">

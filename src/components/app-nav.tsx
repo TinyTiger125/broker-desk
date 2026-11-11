@@ -32,10 +32,10 @@ function getLinks(locale: Locale) {
 
 function getAdminLinks(locale: Locale) {
   return [
-    { href: "/templates", label: locale === "zh" ? "模板库" : locale === "ko" ? "템플릿 라이브러리" : "テンプレートライブラリ" },
-    { href: "/settings/members", label: locale === "zh" ? "团队成员" : locale === "ko" ? "팀 멤버" : "ユーザー管理" },
-    { href: "/settings/case-workbench-fields", label: locale === "zh" ? "必填项目" : locale === "ko" ? "필수 항목" : "情報分類・項目設定" },
-    { href: "/settings/output-templates", label: locale === "zh" ? "文书抬头" : locale === "ko" ? "문서 발행 정보" : "書類の発行元情報" },
+    { href: "/templates", label: locale === "zh" ? "输出文书管理" : locale === "ko" ? "출력 문서 관리" : "出力文書管理" },
+    { href: "/settings/members", label: locale === "zh" ? "用户管理" : locale === "ko" ? "사용자 관리" : "ユーザー管理" },
+    { href: "/settings/case-workbench-fields", label: locale === "zh" ? "输入信息/项目设置" : locale === "ko" ? "입력 정보/항목 설정" : "入力情報・項目設定" },
+    { href: "/settings/output-templates", label: locale === "zh" ? "公司信息设置" : locale === "ko" ? "회사 정보 설정" : "自社情報設定" },
   ];
 }
 
@@ -192,40 +192,6 @@ export async function AppNav() {
           <div className="app-mobile-primary-nav mt-3 border-t border-slate-100 pt-2">
             <MainNavLinks links={links} />
           </div>
-          <details className="mt-2 border-t border-slate-200 pt-2">
-            <summary className="cursor-pointer px-1 text-xs font-bold text-slate-500">
-              {menuCopy.account}
-            </summary>
-            <div className="mt-2 grid gap-2 sm:grid-cols-2 [&_label]:min-w-0 [&_select]:min-w-0">
-              {actorSwitchingAvailable ? (
-                <ActorSwitcher currentActorId={currentActor?.id} options={actorOptions} label={actorLabel} />
-              ) : null}
-              <LanguageSwitcher
-                locale={locale}
-                label={t(locale, "locale.label")}
-                labels={{
-                  ja: t(locale, "locale.ja"),
-                  zh: t(locale, "locale.zh"),
-                  ko: t(locale, "locale.ko"),
-                }}
-              />
-              {externalAuthEnabled ? <AccountSignOutButton provider={authProvider} label={menuCopy.signOut} /> : null}
-            </div>
-          </details>
-          <details className="mt-2 border-t border-slate-200 pt-2">
-            <summary className="cursor-pointer px-1 text-xs font-bold text-slate-500">
-              {menuCopy.workspace}
-            </summary>
-            <div className="mt-2 overflow-x-auto">
-              <MainNavLinks links={adminLinks} />
-              {platformLinks.length > 0 ? (
-                <div data-platform-admin-group className="mt-2 border-t border-slate-200 pt-2">
-                  <p className="px-1 pb-2 text-xs font-bold text-slate-600">{menuCopy.platform}</p>
-                  <MainNavLinks links={platformLinks} />
-                </div>
-              ) : null}
-            </div>
-          </details>
         </div>
       </header>
 
