@@ -235,3 +235,11 @@
 - 共享 `PropertyResponsiveForm` 的基本信息、价格/费用/面积、补充信息三组现在都有可见且键盘可达的折叠按钮，默认全部展开；内容使用 `hidden` 保持字段挂载和受控值，折叠不会删除或阻止提交字段。新建、编辑及案件内嵌物件表单均复用同一实现。
 - 错误状态、错误摘要字段链接及资料候选“定位字段”都会先展开目标分区，再聚焦和滚动到字段。
 - 通过：物件表单契约（含三分区、默认展开、aria 状态、字段挂载、错误/候选定位和内嵌入口）、布局组合门、webpack build、typecheck、lint（仅既有 2 条 warning）、`git diff --check`。统一录入/统一资料测试中仍有两项与本轮无关的既有基线契约失败，未修改其范围；无浏览器运行证据。
+
+## 2026-11-12 BD-20261112-001-GATES / TASK-049 实施门禁复核
+
+- 当前隔离 worktree 为 `/private/tmp/bd-ui-execution-20261111`，分支 `task049-report1111-responsive-ui`，HEAD `eae0bd3`；前序实现提交仅修改 TASK-049 原定五个源文件，未推送、未部署，当前门禁回合开始时工作树干净。
+- 产品复核未接受初版：`src/components/app-nav.tsx` 的窄/宽响应式分支仍各有齿轮与账号两个触发入口，违反单一设置入口；`scripts/check-header-popover-contract.mjs` 的“四个 HeaderPopover”硬编码是过时测试合同，必须按单入口目标做最小修订；独立桌面浏览器验收尚未执行。
+- `TASK-049` 已改为 `In Progress`，补齐 workflow-rules 所需六个固定标题，并将严格写集扩为原五个源文件加 `scripts/check-header-popover-contract.mjs`；该脚本只可修订过时的弹层数量假设，其他测试脚本、DB、识别、字段、权限、生产数据均不在范围。
+- 已核对前序工程结果：归档返回/按钮、HeaderPopover、导航一致性、输入对象动作定向契约通过；typecheck、lint（既有 2 warnings）、webpack build、`git diff --check` 通过。`test:workflow-rules` 的原失败来自 TASK-049 固定标题缺失；`test:layout-system` 的残留失败来自旧 `buildListHref(...,"")` 静态匹配，需在后续实现/合同修订中重新验证。真实浏览器证据仍为缺失。
+- 下一步：治理提交后，按 collaboration.spawn_agent 创建一名 `gpt-5.6-luna`、`xhigh`、`fork_turns none` 的实现角色，只修复单入口与允许的合同脚本，完成本地测试并提交；随后再决定是否需要独立验收 agent。当前不发布、不部署、不推送。
