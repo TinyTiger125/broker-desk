@@ -827,17 +827,17 @@ function assertAction(text) {
   assert(ts.isBlock(partyGuard.thenStatement), "party guard branch is explicit");
   assert(partyGuard.elseStatement && ts.isBlock(partyGuard.elseStatement), "property guard uses the final else branch");
   function directGuardCalls(branch, expected) {
-    const calls = descendants(branch, (node) => ts.isCallExpression(node) && ts.isIdentifier(node.expression) && ["requireWritableCase", "ensureClientOwnership", "ensurePropertyOwnership"].includes(node.expression.text));
+    const calls = descendants(branch, (node) => ts.isCallExpression(node) && ts.isIdentifier(node.expression) && ["requireWritableCaseForLifecycle", "ensureClientOwnership", "ensurePropertyOwnership"].includes(node.expression.text));
     assert.deepEqual(calls.map((call) => call.expression.text), [expected], `${expected} is bound to its correct entity branch`);
     return calls[0];
   }
   const guardCalls = [
-    directGuardCalls(entityGuard.thenStatement, "requireWritableCase"),
+    directGuardCalls(entityGuard.thenStatement, "requireWritableCaseForLifecycle"),
     directGuardCalls(partyGuard.thenStatement, "ensureClientOwnership"),
     directGuardCalls(partyGuard.elseStatement, "ensurePropertyOwnership"),
   ];
   const expectedGuardArguments = {
-    requireWritableCase: ["session", "entityId"],
+    requireWritableCaseForLifecycle: ["session", "entityId"],
     ensureClientOwnership: ["entityId", "session"],
     ensurePropertyOwnership: ["entityId", "session"],
   };
@@ -929,7 +929,7 @@ function assertAction(text) {
     "redirect",
     "rejectForbiddenRecordInput",
     "requireTenantSession",
-    "requireWritableCase",
+    "requireWritableCaseForLifecycle",
     "revalidatePath", "revalidatePath", "revalidatePath", "revalidatePath",
     "safeReturnTo",
     "setRecordLifecycleWithAudit",
@@ -1199,7 +1199,7 @@ for (const [label, mutated] of [
 
 for (const [label, original] of [
   ["forbidden", "await rejectForbiddenRecordInput("],
-  ["case", "await requireWritableCase("],
+  ["case", "await requireWritableCaseForLifecycle("],
   ["party", "await ensureClientOwnership("],
   ["property", "await ensurePropertyOwnership("],
 ]) {
@@ -1213,7 +1213,7 @@ for (const [label, original, replacement] of [
   ["forbidden session", "    formData,\n    session,", "    formData,\n    null,"],
   ["forbidden type map", 'entityType === "party" ? "client" : entityType === "property" ? "property" : "case"', 'entityType === "party" ? "case" : entityType === "property" ? "property" : "client"'],
   ["forbidden id fallback", "    entityId || undefined,", "    entityId,"],
-  ["case guard order", "await requireWritableCase(session, entityId);", "await requireWritableCase(entityId, session);"],
+  ["case guard order", "await requireWritableCaseForLifecycle(session, entityId);", "await requireWritableCaseForLifecycle(entityId, session);"],
   ["party guard wrong id", "await ensureClientOwnership(entityId, session);", 'await ensureClientOwnership("wrong-id", session);'],
   ["property guard wrong session", "await ensurePropertyOwnership(entityId, session);", "await ensurePropertyOwnership(entityId, null);"],
 ]) {

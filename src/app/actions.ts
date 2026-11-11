@@ -187,6 +187,16 @@ async function requireWritableCase(session: TenantSession, caseId: string) {
   await assertCaseSourcesReadable(context, result.record);
   return result.record;
 }
+
+/** Lifecycle archive/restore changes only the case record and does not expose source data. */
+async function requireWritableCaseForLifecycle(session: TenantSession, caseId: string) {
+  const context = createRequestContext(session);
+  const result = await resolveCaseVisibilityForContext({ context, caseId });
+  if (!result.record || !result.resolution.canWrite) {
+    throw new Error("案件が見つかりません。");
+  }
+  return result.record;
+}
 import type { InputFileExtractionResult } from "@/lib/input-file-extractor";
 import { queueExcelImportSource } from "@/lib/excel-import-queue";
 import { getIdentityDocumentUploadLimitBytes, queueIdentityImportSources } from "@/lib/identity-import-queue";
@@ -718,7 +728,7 @@ export async function setRecordLifecycleAction(formData: FormData): Promise<Reco
 
   const status = statusRaw as LifecycleStatus;
   if (entityType === "case") {
-    await requireWritableCase(session, entityId);
+    await requireWritableCaseForLifecycle(session, entityId);
   } else if (entityType === "party") {
     await ensureClientOwnership(entityId, session);
   } else {

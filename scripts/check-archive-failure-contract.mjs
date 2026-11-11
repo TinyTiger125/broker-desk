@@ -73,9 +73,41 @@ function exportedFunction(file, name) {
   return matches[0];
 }
 
+function topLevelFunction(file, name) {
+  const matches = file.statements.filter((statement) => ts.isFunctionDeclaration(statement)
+    && statement.name?.text === name);
+  assert.equal(matches.length, 1, `${name} must be one live top-level helper`);
+  assert(matches[0].body, `${name} must have a body`);
+  return matches[0];
+}
+
 function assertAction(text) {
   const file = parse(text, "actions.ts");
   const fn = exportedFunction(file, "setRecordLifecycleAction");
+  const writableCase = topLevelFunction(file, "requireWritableCase");
+  const writableCaseCalls = descendants(writableCase.body, ts.isCallExpression);
+  assert.equal(
+    writableCaseCalls.filter((call) => call.expression.getText(file) === "resolveCaseVisibilityForContext").length,
+    1,
+    "case lifecycle authorization resolves the case visibility/write decision",
+  );
+  assert.equal(
+    writableCaseCalls.filter((call) => call.expression.getText(file) === "assertCaseSourcesReadable").length,
+    1,
+    "general case writes retain W93 source readability authorization",
+  );
+  const lifecycleWritableCase = topLevelFunction(file, "requireWritableCaseForLifecycle");
+  const lifecycleWritableCaseCalls = descendants(lifecycleWritableCase.body, ts.isCallExpression);
+  assert.equal(
+    lifecycleWritableCaseCalls.filter((call) => call.expression.getText(file) === "resolveCaseVisibilityForContext").length,
+    1,
+    "lifecycle authorization resolves the case visibility/write decision",
+  );
+  assert.equal(
+    lifecycleWritableCaseCalls.filter((call) => call.expression.getText(file) === "assertCaseSourcesReadable").length,
+    0,
+    "case lifecycle authorization must not require W93 source readability",
+  );
   const calls = descendants(fn.body, ts.isCallExpression);
   const composite = calls.filter((call) => call.expression.getText(file) === "setRecordLifecycleWithAudit");
   assert.equal(composite.length, 1, "Action has one composite repository call");
@@ -83,7 +115,7 @@ function assertAction(text) {
   const tryStatement = fn.body.statements.find(ts.isTryStatement);
   assert(tryStatement?.catchClause && !tryStatement.finallyBlock, "Action catches only the safe repository failure boundary");
   assert(composite[0].pos >= tryStatement.tryBlock.pos && composite[0].end <= tryStatement.tryBlock.end, "composite call is inside the safe catch boundary");
-  const guardedCalls = ["requireTenantSession", "rejectForbiddenRecordInput", "requireWritableCase", "ensureClientOwnership", "ensurePropertyOwnership"];
+  const guardedCalls = ["requireTenantSession", "rejectForbiddenRecordInput", "requireWritableCaseForLifecycle", "ensureClientOwnership", "ensurePropertyOwnership"];
   for (const name of guardedCalls) {
     const matches = calls.filter((call) => call.expression.getText(file) === name);
     assert(matches.length >= 1, `${name} remains live`);
@@ -319,6 +351,65 @@ function assertButton(text) {
   assert.doesNotMatch(body, /error\.(?:message|stack|cause)|String\s*\(\s*error|JSON\.stringify\s*\(\s*error/, "button never renders raw error details");
 }
 
+async function assertArchiveActionBehavior(text) {
+  const file = parse(text, "actions.ts");
+  const helper = topLevelFunction(file, "requireWritableCaseForLifecycle");
+  const action = exportedFunction(file, "setRecordLifecycleAction");
+  const compiled = ts.transpileModule(
+    `${helper.getText(file)}\n${action.getText(file)}\nmodule.exports = { setRecordLifecycleAction };`,
+    { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } },
+  ).outputText;
+  const state = { update: undefined };
+  class RedirectSignal extends Error {
+    constructor(url) {
+      super(`redirect:${url}`);
+      this.name = "RedirectSignal";
+      this.url = url;
+    }
+  }
+  const context = {
+    module: { exports: {} },
+    exports: {},
+    FormData,
+    requireTenantSession: async () => ({ user: { id: "user_demo" }, tenant: { id: "tenant_cherry" } }),
+    rejectForbiddenRecordInput: async () => {},
+    createRequestContext: (session) => ({ session }),
+    resolveCaseVisibilityForContext: async ({ context: requestContext, caseId }) => ({
+      resolution: { canWrite: true },
+      record: { id: caseId, primaryPropertyId: "property-without-w93-read-access", context: requestContext },
+    }),
+    assertCaseSourcesReadable: async () => { throw new Error("case_sources_not_readable"); },
+    isLifecycleStatus: (value) => value === "archived" || value === "active",
+    setRecordLifecycleWithAudit: async (input) => {
+      state.update = input;
+      return { id: input.entityId, lifecycleStatus: input.status };
+    },
+    revalidatePath: () => {},
+    safeReturnTo: () => "/organize-center?type=case",
+    withFlash: (path, flash) => `${path}&flash=${flash}`,
+    redirect: (url) => { throw new RedirectSignal(url); },
+  };
+  vm.runInNewContext(compiled, context, { filename: "archive-action-memory-regression.cjs" });
+  const formData = new FormData();
+  formData.set("entityType", "case");
+  formData.set("entityId", "case_demo_park_ikebukuro_share");
+  formData.set("status", "archived");
+  formData.set("returnTo", "/organize-center?type=case");
+  await assert.rejects(
+    () => context.module.exports.setRecordLifecycleAction(formData),
+    (error) => error?.name === "RedirectSignal" && error.url === "/organize-center?type=case&flash=record_archived",
+    "a writable case archives even when its linked source is not W93-readable",
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(state.update)), {
+    tenantId: "tenant_cherry",
+    userId: "user_demo",
+    entityType: "case",
+    entityId: "case_demo_park_ikebukuro_share",
+    status: "archived",
+    archivedById: "user_demo",
+  }, "case archive reaches the lifecycle repository after case-only authorization");
+}
+
 function transitionRuntime(text) {
   const file = parse(text, "archive-record-button.tsx", true);
   const fn = exportedFunction(file, "ArchiveRecordButton");
@@ -393,6 +484,7 @@ assertAction(source.action);
 assertListReturn(source.listReturn);
 assertButton(source.button);
 await assertTransitionBehavior(source.button);
+await assertArchiveActionBehavior(source.action);
 
 const liveCatch = `            } catch (error) {
               clearListReturnIntent({ listUrl: returnTo, scope: returnStateScope });
