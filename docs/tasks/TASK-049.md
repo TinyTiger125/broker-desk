@@ -18,6 +18,7 @@ PDF 逐页反馈登记如下：
 
 - p1：账户菜单与工作区设置入口重复且分离；合并为一个可理解的入口，去掉无必要的下层重复框。
 - p2：设置名称需要按实际目标页语义核对。红字候选为 `出力文書管理`、`ユーザー管理`、`入力情報/項目設定`、`自社情報設定`；候选不是无条件替换指令，必须在 ja/zh/ko 中核对语义一致性，功能不匹配时先回报产品裁决。
+- p2 产品裁决：报告候选 `出力文書管理` 过宽，因为 `/templates` 实际仅为模板库；该入口精准改为 `出力文書テンプレート管理`，zh 为“输出文书模板管理”，ko 为“출력 문서 템플릿 관리”，不扩大 `/templates` 页面功能。
 - p3：再次指出账户/工作区设置应合并，并检查齿轮入口在窄桌面窗口中的位置与可达性。
 - p4：信息输入页的可见“资料的对象选择”标题/副标题重复；去掉冗余可见标题，不删除对象卡片、选择动作或已有功能。
 - p5：信息整理案件列表的关联信息未设置时含义不清；保管/归档应保持可恢复并以紧凑、明确的状态表达。
@@ -46,7 +47,7 @@ PDF 逐页反馈登记如下：
 
 ## 依赖关系
 
-- 依赖基线 `b4b12e0a247c6a5f29e8f8241d5fa75e800271d0`、治理提交 `728f16e`、初版实现提交 `eae0bd3` 和单入口修订提交 `f4520a8`。
+- 依赖基线 `b4b12e0a247c6a5f29e8f8241d5fa75e800271d0`、治理提交 `728f16e`、初版实现提交 `eae0bd3`、单入口修订提交 `f4520a8` 和 inline-focus 合同提交 `217d8af`。
 - 依赖现有 HeaderPopover、导入对象选择、整理列表归档/恢复和返回状态机制；不重建数据模型或权限模型。
 - 真实桌面浏览器验收依赖可控本地运行环境；无法取得运行态证据时保持 `In Review` 或 `Blocked`。
 
@@ -61,8 +62,9 @@ PDF 逐页反馈登记如下：
 - `src/components/archive-record-button.tsx`
 - `scripts/check-header-popover-contract.mjs`（仅允许同步单一设置入口的最小静态合同）
 - `scripts/check-inline-select-focus-contract.mjs`（仅允许同步两处 live mount 与 synthetic fixtures 的最小静态合同）
+- `scripts/check-layout-system-contract.mjs`（仅允许同步安全 `returnTo` 下的生命周期、页码与分页重置调用合同）
 
-允许在 `archive-record-button.tsx` 中为信息整理列表场景调整“保管/復元”按钮及每行说明文案，或新增显式的可选 compact 呈现；必须保留确认流程、归档/恢复动作、错误反馈、键盘焦点与可达性行为，不能通过父级 CSS 隐藏子组件内容。允许在 `check-header-popover-contract.mjs` 中移除“四个弹层”的过时假设，并改为验证单一合并入口及既有可达性/权限/语言约束；允许在 `check-inline-select-focus-contract.mjs` 中把固定的三个 LanguageSwitcher/ActorSwitcher 挂载假设修订为实际两处 live mount，并保留每个 live mount 可达、focus 与 actor availability 检查，同时更新必要的 synthetic fixtures；不得修改其他测试脚本。不得新增文件或修改上述列表之外的任何业务、样式、测试、配置、文档、数据库或迁移文件。若实现需要新增文件、修改共享 CSS/组件、改变返回协议或触及列表之外的文件，必须先停止并扩卡取得产品/项目经理裁决；不得以“顺手修复”扩大写集。治理登记文件（本卡、`BACKLOG.md`、当前上下文）只由本次治理提交维护。
+允许在 `archive-record-button.tsx` 中为信息整理列表场景调整“保管/復元”按钮及每行说明文案，或新增显式的可选 compact 呈现；必须保留确认流程、归档/恢复动作、错误反馈、键盘焦点与可达性行为，不能通过父级 CSS 隐藏子组件内容。允许在 `check-header-popover-contract.mjs` 中移除“四个弹层”的过时假设，并改为验证单一合并入口及既有可达性/权限/语言约束；允许在 `check-inline-select-focus-contract.mjs` 中把固定的三个 LanguageSwitcher/ActorSwitcher 挂载假设修订为实际两处 live mount，并保留每个 live mount 可达、focus 与 actor availability 检查，同时更新必要的 synthetic fixtures；允许在 `check-layout-system-contract.mjs` 中把旧的 `buildListHref(selectedType, "", lifecycleFilter)` 静态片段合同更新为实际带 `page=1`、安全 `returnTo` 的调用形式，但必须继续检查 lifecycle、page reset 和 returnTo 约束；不得修改其他测试脚本。不得新增文件或修改上述列表之外的任何业务、样式、测试、配置、文档、数据库或迁移文件。若实现需要新增文件、修改共享 CSS/组件、改变返回协议或触及列表之外的文件，必须先停止并扩卡取得产品/项目经理裁决；不得以“顺手修复”扩大写集。治理登记文件（本卡、`BACKLOG.md`、当前上下文）只由本次治理提交维护。
 
 ## 明确不做什么
 
@@ -105,6 +107,7 @@ PDF 逐页反馈登记如下：
 - 当前导航仍可能在窄/宽分支分别呈现齿轮与账号两个触发入口，未满足单入口产品裁决；需在既有 `app-nav.tsx` 内收口。
 - 旧 `check-header-popover-contract.mjs` 将四个 HeaderPopover 当作硬性合同，与当前单入口目标冲突；只能做最小合同修订，不能为通过测试保留错误 UI。
 - `check-inline-select-focus-contract.mjs` 当前把三个 LanguageSwitcher/ActorSwitcher 挂载写死，但实际合并两断点只有两个 live mount；修订必须保留逐个 live mount 的可达、focus 与 actor availability 检查，不得删除覆盖。
+- `check-layout-system-contract.mjs` 当前把旧的三参数 `buildListHref` 调用写死；实际调用增加 `page=1` 与安全 `returnTo` 以保持页码重置和返回上下文，合同修订不得删除 lifecycle/page/returnTo 检查。
 - 初始实现 `eae0bd3` 的静态定向契约与工程门结果不能替代真实桌面浏览器证据；不得把未运行浏览器写成通过。
 - p2 中 `出力文書管理` 与 `/settings/output-templates` 的实际公司/发出方信息语义可能不符，不能无证据替换。
 
@@ -121,9 +124,9 @@ git diff --check
 
 ## 当前状态
 
-- 当前为 `In Review`。单入口修订提交 `f4520a8` 已完成，代码与工程大门通过；当前唯一静态合同阻塞是 `test:inline-select-focus` 对三个挂载的过时假设。
-- 独立桌面浏览器验收尚未执行；合同修订后仍需核对常规/窄/恢复宽度、菜单可达性、焦点和无溢出。
-- 本门禁回合只扩写合同脚本授权；不改 `src`、DB、识别、字段、权限或生产行为。
+- 当前为 `In Review`。单入口修订提交 `f4520a8` 与 inline-focus 合同提交 `217d8af` 已完成，代码与工程大门通过。
+- 独立审查当前为 `NO-GO`：`/templates` 导航文案仍需精准改为“出力文書テンプレート管理/输出文书模板管理/출력 문서 템플릿 관리”，且 layout-system 合同仍有旧三参数静态假设；独立桌面浏览器验收尚未执行。
+- 本门禁回合只扩写 layout 合同脚本授权并记录 p2 裁决；不改业务、DB、识别、字段、权限或生产行为。
 
 ## 发布门禁
 

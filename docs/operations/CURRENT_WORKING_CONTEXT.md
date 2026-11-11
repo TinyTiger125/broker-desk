@@ -250,3 +250,10 @@
 - `npm run test:inline-select-focus` 的失败不是代码断言失败，而是 `scripts/check-inline-select-focus-contract.mjs` 仍固定要求三个 LanguageSwitcher/ActorSwitcher 挂载；实际合并两断点只有两个 live mount。
 - TASK-049 严格写集已扩为允许该脚本的最小合同修订及 synthetic fixtures：改为验证每个 live mount 的可达、focus 与 actor availability，不删除这些覆盖；本回合不修改脚本本身、不修改 `src`。
 - TASK-049 / BACKLOG 状态同步为 `In Review`；独立桌面浏览器验收仍未完成，合同修订后必须继续验证常规/窄/恢复宽度、菜单焦点和无溢出。
+
+## 2026-11-12 BD-20261112-006-REVIEW-FIX-CARD / TASK-049 独立审查 NO-GO 登记
+
+- 实际当前 HEAD 为 `217d8af`（派工消息所述 `f4520a8` 之后已存在 inline-focus 合同提交），分支仍为 `task049-report1111-responsive-ui`，工作树在本治理修改前干净。
+- 独立审查 NO-GO 的 p2 原因已裁决：报告候选 `出力文書管理` 过宽，`/templates` 实际仅为模板库；精准文案为 `出力文書テンプレート管理`、zh“输出文书模板管理”、ko“출력 문서 템플릿 관리”，不扩大页面功能。
+- 另一项 NO-GO 为 `scripts/check-layout-system-contract.mjs` 仍固定旧的 `buildListHref(selectedType, "", lifecycleFilter)`；实际调用带 `page=1` 与安全 `returnTo`，TASK-049 现授权该脚本做最小合同修订，并保留 lifecycle、页码重置和 returnTo 检查。
+- TASK-049 / BACKLOG 保持 `In Review`；独立桌面浏览器验收仍未执行。当前治理不修改业务或测试代码、不创建 agent、不推送/部署。
