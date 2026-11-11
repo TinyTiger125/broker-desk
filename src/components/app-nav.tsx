@@ -49,29 +49,29 @@ function getPlatformLinks(locale: Locale) {
 function getHeaderMenuCopy(locale: Locale) {
   if (locale === "zh") {
     return {
+      accountWorkspace: "账号与工作区设置",
       workspace: "工作区设置",
       workspaceHint: "模板、成员和工作区规则",
       platform: "平台管理",
-      account: "账号菜单",
       currentAccount: "当前账号",
       signOut: "退出登录",
     };
   }
   if (locale === "ko") {
     return {
+      accountWorkspace: "계정 및 워크스페이스 설정",
       workspace: "워크스페이스 설정",
       workspaceHint: "템플릿, 팀, 워크스페이스 규칙",
       platform: "플랫폼 관리",
-      account: "계정 메뉴",
       currentAccount: "현재 계정",
       signOut: "로그아웃",
     };
   }
   return {
+    accountWorkspace: "アカウントとワークスペース設定",
     workspace: "ワークスペース設定",
     workspaceHint: "テンプレート、メンバー、ワークスペース規則",
     platform: "プラットフォーム管理",
-    account: "アカウントメニュー",
     currentAccount: "現在のアカウント",
     signOut: "ログアウト",
   };
@@ -141,35 +141,17 @@ export async function AppNav() {
             </Link>
 
             <HeaderPopover
-              title={menuCopy.workspace}
-              panelClassName="app-header-menu-panel right-0 w-64 p-2"
+              title={menuCopy.accountWorkspace}
+              panelClassName="app-header-menu-panel right-0 w-[min(24rem,calc(100vw-1rem))] p-3"
               trigger={
                 <>
                 <UiIcon name="settings" className="text-[18px]" />
-                <span className="sr-only">{menuCopy.workspace}</span>
+                <span className="sr-only">{menuCopy.accountWorkspace}</span>
                 </>
               }
             >
-                <p className="px-2 pb-2 text-xs font-bold text-slate-900">{menuCopy.workspace}</p>
-                <MainNavLinks links={adminLinks} orientation="column" />
-                {platformLinks.length > 0 ? (
-                  <div data-platform-admin-group className="mt-2 border-t border-slate-200 pt-2">
-                    <p className="px-2 pb-2 text-xs font-bold text-slate-900">{menuCopy.platform}</p>
-                    <MainNavLinks links={platformLinks} orientation="column" />
-                  </div>
-                ) : null}
-            </HeaderPopover>
-            <HeaderPopover
-              title={menuCopy.account}
-              panelClassName="app-header-menu-panel right-0 w-72 p-3"
-              trigger={
-                <>
-                <UiIcon name="account_circle" className="text-[18px]" />
-                <span className="sr-only">{menuCopy.account}</span>
-                </>
-              }
-            >
-                <p className="text-[11px] font-bold text-slate-500">{menuCopy.currentAccount}</p>
+                <p className="px-2 pb-2 text-xs font-bold text-slate-900">{menuCopy.accountWorkspace}</p>
+                <p className="px-2 text-[11px] font-bold text-slate-500">{menuCopy.currentAccount}</p>
                 <p className="mt-1 truncate text-sm font-bold text-slate-900">{currentAccountLabel}</p>
                 <div className="mt-3 grid gap-2 [&_label]:min-w-0 [&_select]:min-w-0">
                   {actorSwitchingAvailable ? (
@@ -185,6 +167,16 @@ export async function AppNav() {
                     }}
                   />
                   {externalAuthEnabled ? <AccountSignOutButton provider={authProvider} label={menuCopy.signOut} /> : null}
+                </div>
+                <div className="mt-3 border-t border-slate-200 pt-3">
+                  <p className="px-2 pb-1 text-xs font-bold text-slate-900">{menuCopy.workspace}</p>
+                  <MainNavLinks links={adminLinks} orientation="column" />
+                  {platformLinks.length > 0 ? (
+                    <div data-platform-admin-group className="mt-2 border-t border-slate-200 pt-2">
+                      <p className="px-2 pb-1 text-xs font-bold text-slate-900">{menuCopy.platform}</p>
+                      <MainNavLinks links={platformLinks} orientation="column" />
+                    </div>
+                  ) : null}
                 </div>
             </HeaderPopover>
           </div>
@@ -234,36 +226,17 @@ export async function AppNav() {
 
         <div className="ml-6 flex items-center gap-2">
           <HeaderPopover
-            title={menuCopy.workspace}
-            panelClassName="app-header-menu-panel right-0 w-64 p-2"
+            title={menuCopy.accountWorkspace}
+            panelClassName="app-header-menu-panel right-0 w-[min(24rem,calc(100vw-1rem))] p-3"
             trigger={
               <>
-              <UiIcon name="settings" className="text-[19px]" />
-              <span className="sr-only">{menuCopy.workspace}</span>
+              <UiIcon name="settings" className="text-[20px]" />
+              <span className="sr-only">{menuCopy.accountWorkspace}</span>
               </>
             }
           >
-              <p className="px-2 pb-2 text-xs font-bold text-slate-900">{menuCopy.workspace}</p>
-              <p className="px-2 pb-2 text-xs text-slate-500">{menuCopy.workspaceHint}</p>
-              <MainNavLinks links={adminLinks} orientation="column" />
-              {platformLinks.length > 0 ? (
-                <div data-platform-admin-group className="mt-2 border-t border-slate-200 pt-2">
-                  <p className="px-2 pb-2 text-xs font-bold text-slate-900">{menuCopy.platform}</p>
-                  <MainNavLinks links={platformLinks} orientation="column" />
-                </div>
-              ) : null}
-          </HeaderPopover>
-          <HeaderPopover
-            title={menuCopy.account}
-            panelClassName="app-header-menu-panel right-0 w-72 p-3"
-            trigger={
-              <>
-              <UiIcon name="account_circle" className="text-[20px]" />
-              <span className="sr-only">{menuCopy.account}</span>
-              </>
-            }
-          >
-              <p className="text-[11px] font-bold text-slate-500">{menuCopy.currentAccount}</p>
+              <p className="px-2 pb-2 text-xs font-bold text-slate-900">{menuCopy.accountWorkspace}</p>
+              <p className="px-2 text-[11px] font-bold text-slate-500">{menuCopy.currentAccount}</p>
               <p className="mt-1 truncate text-sm font-bold text-slate-900">{currentAccountLabel}</p>
               <div className="mt-3 grid gap-2 [&_label]:min-w-0 [&_select]:min-w-0">
                 {actorSwitchingAvailable ? (
@@ -279,6 +252,17 @@ export async function AppNav() {
                   }}
                 />
                 {externalAuthEnabled ? <AccountSignOutButton provider={authProvider} label={menuCopy.signOut} /> : null}
+              </div>
+              <div className="mt-3 border-t border-slate-200 pt-3">
+                <p className="px-2 pb-1 text-xs font-bold text-slate-900">{menuCopy.workspace}</p>
+                <p className="px-2 pb-2 text-xs text-slate-500">{menuCopy.workspaceHint}</p>
+                <MainNavLinks links={adminLinks} orientation="column" />
+                {platformLinks.length > 0 ? (
+                  <div data-platform-admin-group className="mt-2 border-t border-slate-200 pt-2">
+                    <p className="px-2 pb-1 text-xs font-bold text-slate-900">{menuCopy.platform}</p>
+                    <MainNavLinks links={platformLinks} orientation="column" />
+                  </div>
+                ) : null}
               </div>
           </HeaderPopover>
         </div>

@@ -29,7 +29,8 @@ expect(component.includes('event.key === "Escape"'), "Escape must close the menu
 expect(component.includes("summaryRef.current?.focus()"), "Escape close must return focus to the trigger.");
 expect(component.includes("onFocusCapture={clearCloseTimer}"), "Focus entering the menu must cancel a pending close.");
 expect(component.includes("event.relatedTarget"), "Focus leaving the menu must be checked before scheduling close.");
-expect((navigation.match(/<HeaderPopover/g) ?? []).length === 4, "Mobile and desktop settings/account menus must use the shared component.");
+expect((navigation.match(/<HeaderPopover/g) ?? []).length === 2, "Mobile and desktop must each expose one merged account/workspace menu.");
+expect((navigation.match(/menuCopy\.accountWorkspace/g) ?? []).length >= 4, "The merged account/workspace menu must be named consistently across both responsive branches.");
 expect(!navigation.includes('app-header-menu-panel right-0 mt-2'), "Header panels must not retain the old pointer gap utility.");
 expect(styles.includes(".app-header-menu-panel") && styles.includes("margin-top: 0.25rem"), "Header panel spacing must remain within the shared hover grace area.");
 

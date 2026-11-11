@@ -133,7 +133,7 @@ export function OrganizeCenterObjectBrowser({
           {branchCards.map((card) => (
             <Link
               key={card.type}
-              href={buildListHref(card.type, "", "active")}
+              href={buildListHref(card.type, "", "active", 1, returnTo)}
               data-testid={`organize-branch-${card.type}`}
               className="group flex min-h-48 flex-col rounded-lg border border-slate-200 bg-white p-4 text-left transition hover:border-[#3158d8] hover:bg-[#f6f8ff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3158d8]"
             >

@@ -47,7 +47,7 @@ const labels: Record<Locale, {
     accessibleRestore: (recordLabel) => `${recordLabel}を復元`,
     accessibleArchiving: (recordLabel) => `${recordLabel}を保管中`,
     accessibleRestoring: (recordLabel) => `${recordLabel}を復元中`,
-    archiveHint: "保管後も復元できます。",
+    archiveHint: "保管した記録は後で復元できます。",
     restoreHint: "一覧に戻します。",
   },
   zh: {
@@ -62,7 +62,7 @@ const labels: Record<Locale, {
     accessibleRestore: (recordLabel) => `恢复“${recordLabel}”`,
     accessibleArchiving: (recordLabel) => `正在归档“${recordLabel}”`,
     accessibleRestoring: (recordLabel) => `正在恢复“${recordLabel}”`,
-    archiveHint: "保留记录，之后可恢复。",
+    archiveHint: "保留记录，之后仍可恢复。",
     restoreHint: "恢复到当前列表。",
   },
   ko: {
@@ -77,7 +77,7 @@ const labels: Record<Locale, {
     accessibleRestore: (recordLabel) => `${recordLabel} 복원`,
     accessibleArchiving: (recordLabel) => `${recordLabel} 보관 중`,
     accessibleRestoring: (recordLabel) => `${recordLabel} 복원 중`,
-    archiveHint: "보관 후 복원할 수 있습니다.",
+    archiveHint: "보관한 기록은 나중에 복원할 수 있습니다.",
     restoreHint: "현재 목록으로 복원합니다.",
   },
 };
