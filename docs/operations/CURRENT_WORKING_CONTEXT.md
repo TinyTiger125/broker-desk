@@ -285,8 +285,8 @@
 
 - GitHub `main` 已为 `104f00af142839443d7cfaa9beec0b4d1759adf5`；CI run `43130265960` success。`broker-desk-staging` 与 `broker-desk-tokyo-validation` 对该 commit 的 GitHub Vercel statuses 均 success；staging Vercel API 为 `READY` 且 SHA `104f00a`。Tokyo Vercel API 在当前连接返回 404，未将该 404 误判为失败或用它替代 GitHub status。
 - 正式域名 `https://project-6q8up.vercel.app/` 的独立浏览器只读 smoke 已到达：platform owner 会话可读 `/platform/accounts`、`/platform/templates`、`/import-center`、`/organize-center`；640/1024/1440 CSS px 无溢出且单一设置入口；ja/zh/ko 文案正确，恢复 ja 通过。以上是只读界面证据，不是写入、持久化、回滚或真实客户数据证据。
-- 生产归档写入链路未执行，状态为 `UNVERIFIED`：platform owner 会话对合成案件 `TEST-SYNTHETIC-BrokerDesk-20261008v` 无归档按钮且无 `record.archive` 权限，无法证明真实 PostgreSQL 归档/恢复持久化、审计或线上写入。未访问/修改生产数据，未执行 migration。
-- `TASK-049` 保持 `In Review`，本轮不登记全量 GO/Done；正式发布结论仍受真实 PostgreSQL 归档/恢复写入证据或产品经理明确裁决阻断。
+- （截至 `BD-20261112-017` 登记时的历史状态）生产归档写入链路未执行，状态为 `UNVERIFIED`：platform owner 会话对合成案件 `TEST-SYNTHETIC-BrokerDesk-20261008v` 无归档按钮且无 `record.archive` 权限，无法证明真实 PostgreSQL 归档/恢复持久化、审计或线上写入。未访问/修改生产数据，未执行 migration。
+- （截至 `BD-20261112-017` 登记时的历史状态）`TASK-049` 保持 `In Review`，本轮不登记全量 GO/Done；正式发布结论仍受真实 PostgreSQL 归档/恢复写入证据或产品经理明确裁决阻断。
 
 ## 2026-11-12 BD-20261112-022-TASK049-PROD-QA-CLOSEOUT / TASK-049 生产合成案件验收收口
 
