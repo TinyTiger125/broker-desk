@@ -4,8 +4,8 @@
 
 桌面浏览器窄窗口下的导航、设置入口和信息整理反馈修复
 
-- 状态: In Review
-- 当前工作单：`BD-20261112-017-RELEASE-EVIDENCE-REGISTER`（发布证据登记与生产写入边界复核）；前序构建修复工作单：`BD-20261112-012-PROD-BUILD-REMEDIATION`，前序实施工作单：`BD-20261112-010-TASK049-ACCEPTANCE-REGISTER`
+- 状态: Done
+- 当前工作单：`BD-20261112-022-TASK049-PROD-QA-CLOSEOUT`（生产合成案件归档/恢复验收收口）；前序发布证据工作单：`BD-20261112-017-RELEASE-EVIDENCE-REGISTER`，构建修复工作单：`BD-20261112-012-PROD-BUILD-REMEDIATION`，前序实施工作单：`BD-20261112-010-TASK049-ACCEPTANCE-REGISTER`
 - 基线：`b4b12e0a247c6a5f29e8f8241d5fa75e800271d0`
 - 实施候选：隔离工作树 `/private/tmp/bd-ui-execution-20261111`
 - 证据原件：`/Users/laineyzhu/Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files/ytyaillforever_6bd8/temp/drag/report1111.pdf`（9 页截图 PDF）
@@ -138,9 +138,9 @@ git diff --check
 
 ## 当前状态
 
-- 当前重新为 `In Review`：本地功能验收曾基于 `ba711bb` 给出 GO，但 `a78f8f1` 推送后的 staging/Tokyo 自动构建暴露旧平台订阅合同；尚未改变业务权限或导航目标。
+- 历史状态：本地功能验收后曾因 `a78f8f1` 推送暴露旧平台订阅合同而重新进入 `In Review`；该合同已在 `104f00a` 以最小范围修复，未改变业务权限或导航目标。生产合成案件 QA 收口后，本卡当前状态为 `Done`。
 - 独立最终审查在 `ba711bb` 给出功能验收 `GO`：桌面浏览器 600/640/700/768/1024/1440 CSS px 的缩窄与恢复、菜单/权限/ja-zh-ko 三语言、输入/整理/返回、分页，以及归档→筛选→恢复→新标签/刷新均通过；真实服务端 POST/GET 均为 200。
-- 本地功能验收仍覆盖本卡用户结果，但发布候选必须先通过 `npm run build`（非仅 webpack，含 `prebuild` 全套合同）及 staging/Tokyo 两个自动部署；在修复完成前不得恢复 `Done` 或再次推送。
+- `npm run build`（含 `prebuild` 合同）、staging/Tokyo 自动部署状态和正式域名只读 smoke 已在前序登记中通过；本次生产合成案件归档/恢复跨标签刷新证据完成最后的生命周期收口。未取得直接 DB/audit readback 和全角色生产写入矩阵，不能将本卡 Done 外推为完整运维证明。
 
 ## 发布门禁
 
@@ -154,3 +154,11 @@ git diff --check
 - 正式域名 `https://project-6q8up.vercel.app/` 已完成只读浏览器 smoke：platform owner 会话可读 `/platform/accounts`、`/platform/templates`、`/import-center`、`/organize-center`；640/1024/1440 CSS px 无横向溢出且只有单一设置入口；ja/zh/ko 文案正确，恢复 ja 通过。该证据仅覆盖只读界面可达性，不覆盖写入、持久化或回滚。
 - 生产归档链路未执行且保持 `UNVERIFIED`：platform owner 会话对合成案件 `TEST-SYNTHETIC-BrokerDesk-20261008v` 没有归档按钮，也没有 `record.archive` 权限；因此不能证明真实 PostgreSQL 中的归档/恢复持久化、审计或线上写入链路。未访问或修改生产数据，未执行 migration。
 - TASK-049 保持 `In Review`，不得宣称全量 GO 或将本地/只读 smoke 解释为生产写入验收。关闭本卡仍需获得具备明确 `record.archive` 权限的受控测试身份与真实 PostgreSQL 写入/恢复证据，或由产品经理明确接受该未验证项并另立发布裁决。
+
+## 2026-11-12 BD-20261112-022-TASK049-PROD-QA-CLOSEOUT / 生产合成案件生命周期验收
+
+- 根 agent 使用获授权的业务测试账号在正式域名完成生产合成案件写入/恢复 UI 验收。目标案件 ID 为 `closed_beta_demo_case_cf01bc0bb8a9f96f_complete`，标题为 `【合成上手】確認済みの合成案件`。
+- 归档路径通过：活动列表中目标行显示，原生 Chrome 点击该行“保管”并确认精确标题对话框；成功 flash 为 `record_archived`，活动列表数量 `4→3`。另一个浏览器标签刷新归档列表后仍显示同一目标及“復元”按钮，归档数量由 `1→2`；点击并确认“復元”后成功 flash 为 `record_restored`，归档数量恢复为 `1`。独立新标签刷新活动列表重新显示目标案件及 `ABCDマンション`，数量恢复为 `4`；目标详情页加载精确案件 ID 与标题。
+- QA 过程中曾误操作归档 `ABCDマンション`；已通过原生 UI 恢复并确认 `record_restored`，归档数量 `2→1`，活动列表重新显示 `ABCDマンション`。收口时未观察到残留记录状态偏差；该临时状态变化作为本次验收事件登记，不视为产品功能缺陷。
+- 结合 `ba711bb` 本地完整响应式/权限/语言/输入/整理/返回/分页验收、`104f00a` 的 CI 与两个 Vercel commit statuses success、staging READY、正式域名只读 smoke，以及本次生产合成案件跨标签归档/恢复/刷新证据，TASK-049 的用户结果与发布候选行为达到关闭条件，状态更新为 `Done`。
+- 关闭范围必须严格解释为：生产合成案件的用户路径和服务端持久结果经界面刷新得到证据；未执行直接数据库查询或审计表 readback，也未覆盖所有租户角色的生产写入矩阵。Tokyo Vercel API 部署详情仍在当前连接下 404，但其 GitHub commit status 已 success。上述残余不阻止本卡关闭，但不得外推为全角色、全数据库运维或回滚演练证明。

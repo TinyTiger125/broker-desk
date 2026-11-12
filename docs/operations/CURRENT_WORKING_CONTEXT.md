@@ -287,3 +287,10 @@
 - 正式域名 `https://project-6q8up.vercel.app/` 的独立浏览器只读 smoke 已到达：platform owner 会话可读 `/platform/accounts`、`/platform/templates`、`/import-center`、`/organize-center`；640/1024/1440 CSS px 无溢出且单一设置入口；ja/zh/ko 文案正确，恢复 ja 通过。以上是只读界面证据，不是写入、持久化、回滚或真实客户数据证据。
 - 生产归档写入链路未执行，状态为 `UNVERIFIED`：platform owner 会话对合成案件 `TEST-SYNTHETIC-BrokerDesk-20261008v` 无归档按钮且无 `record.archive` 权限，无法证明真实 PostgreSQL 归档/恢复持久化、审计或线上写入。未访问/修改生产数据，未执行 migration。
 - `TASK-049` 保持 `In Review`，本轮不登记全量 GO/Done；正式发布结论仍受真实 PostgreSQL 归档/恢复写入证据或产品经理明确裁决阻断。
+
+## 2026-11-12 BD-20261112-022-TASK049-PROD-QA-CLOSEOUT / TASK-049 生产合成案件验收收口
+
+- 根 agent 使用获授权业务测试账号在正式域名完成目标案件 `closed_beta_demo_case_cf01bc0bb8a9f96f_complete`（`【合成上手】確認済みの合成案件`）的原生 Chrome 归档/恢复验收：精确行点击、精确标题确认框、`record_archived` 成功 flash、活动数量 `4→3`；另一标签刷新归档列表仍显示目标及“復元”，归档数量 `1→2`；恢复后 `record_restored`，归档数量回 `1`；新标签活动列表重新显示目标与 `ABCDマンション`，数量为 `4`，目标详情 ID/标题准确。
+- QA 过程中误归档 `ABCDマンション`，随后以原生 UI 恢复并确认 `record_restored`；归档数量 `2→1`，活动列表重新显示 `ABCDマンション`。关闭时未观察到残留记录状态偏差，事件作为临时 QA 状态变化登记。
+- 与本地完整响应式矩阵、`104f00a` CI/两个 Vercel commit statuses success、staging READY 和正式域名只读 smoke 合并后，TASK-049 产品用户结果与生产合成生命周期路径达到关闭条件，状态更新为 `Done`。
+- 关闭边界：本次生产证据是跨标签/刷新后的用户可见持久结果，不是直接 DB 查询或审计表 readback；未覆盖所有租户角色的生产写入矩阵，Tokyo Vercel API 详情仍为当前连接 404。上述风险不得外推为全角色或回滚演练证明，但不阻止本卡关闭。
