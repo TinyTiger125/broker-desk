@@ -32,8 +32,8 @@ function assertPlatformNavigation({ navSource, mainNavSource, routeTitleSource, 
     assert(navSource.includes(text), `platform navigation locale copy must include ${text}`);
   }
   assert(navSource.includes("const platformLinks = hasPlatformAccess ? getPlatformLinks(locale) : []"), "platform links must be absent without persisted platform access");
-  assert(navSource.split('data-platform-admin-group').length === 5, "platform group must render once in each desktop/mobile sidebar and settings surface");
-  assert(navSource.includes("platformLinks.length > 0 ?"), "all platform navigation groups must remain guarded by the shared access result");
+  assert(navSource.split('data-platform-admin-group').length === 4, "platform group must render once in the mobile menu, desktop sidebar, and desktop header menu");
+  assert((navSource.match(/platformLinks\.length > 0 \?/g) ?? []).length === 3, "mobile menu, desktop sidebar, and desktop header menu must each guard platform links with the shared access result");
 
   assert(mainNavSource.includes('"/platform/accounts": "admin_panel_settings"') && mainNavSource.includes('"/platform/templates": "dashboard_customize"'), "platform navigation links must have stable icons and active-link callers");
   assert(routeTitleSource.includes('pathname.startsWith("/platform/accounts")') && routeTitleSource.includes('pathname.startsWith("/platform/templates")'), "platform routes must have explicit route-title branches");
