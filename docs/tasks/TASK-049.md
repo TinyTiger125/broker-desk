@@ -5,7 +5,7 @@
 桌面浏览器窄窗口下的导航、设置入口和信息整理反馈修复
 
 - 状态: In Review
-- 当前工作单：`BD-20261112-012-PROD-BUILD-REMEDIATION`（生产构建合同回归修复）；前序实施工作单：`BD-20261112-010-TASK049-ACCEPTANCE-REGISTER`
+- 当前工作单：`BD-20261112-017-RELEASE-EVIDENCE-REGISTER`（发布证据登记与生产写入边界复核）；前序构建修复工作单：`BD-20261112-012-PROD-BUILD-REMEDIATION`，前序实施工作单：`BD-20261112-010-TASK049-ACCEPTANCE-REGISTER`
 - 基线：`b4b12e0a247c6a5f29e8f8241d5fa75e800271d0`
 - 实施候选：隔离工作树 `/private/tmp/bd-ui-execution-20261111`
 - 证据原件：`/Users/laineyzhu/Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files/ytyaillforever_6bd8/temp/drag/report1111.pdf`（9 页截图 PDF）
@@ -147,3 +147,10 @@ git diff --check
 - 必须在实现与独立浏览器验收均通过、写集干净、基线可追溯后才可讨论产品接受；本卡本身不授权任何发布动作。
 - 任何生产数据、生产 migration、部署、GitHub 推送、Vercel 操作、真实客户资料或权限扩大均是硬阻断。
 - 隔离工作树是 canonical repository 的 Git worktree：`git rev-parse --git-common-dir` 指向 `/Users/laineyzhu/Documents/独立开发项目/房产专家/broker-desk-web-dev/.git`；不是 sibling clone。治理分支为 `task049-report1111-responsive-ui`，当前分支从基线 commit 建立，实施前仍需按 AGENTS 规则复核状态与写集。
+
+## 2026-11-12 BD-20261112-017-RELEASE-EVIDENCE-REGISTER / 发布与生产写入边界
+
+- GitHub `main` 当前为 `104f00af142839443d7cfaa9beec0b4d1759adf5`；CI run `43130265960` 已成功。`broker-desk-staging` 与 `broker-desk-tokyo-validation` 的该 commit 状态均为 success；staging Vercel API 返回 `READY` 且 SHA 为 `104f00a`。Tokyo Vercel API 在当前连接下返回 404，故其部署详情不独立外推，只登记 GitHub Vercel status success。
+- 正式域名 `https://project-6q8up.vercel.app/` 已完成只读浏览器 smoke：platform owner 会话可读 `/platform/accounts`、`/platform/templates`、`/import-center`、`/organize-center`；640/1024/1440 CSS px 无横向溢出且只有单一设置入口；ja/zh/ko 文案正确，恢复 ja 通过。该证据仅覆盖只读界面可达性，不覆盖写入、持久化或回滚。
+- 生产归档链路未执行且保持 `UNVERIFIED`：platform owner 会话对合成案件 `TEST-SYNTHETIC-BrokerDesk-20261008v` 没有归档按钮，也没有 `record.archive` 权限；因此不能证明真实 PostgreSQL 中的归档/恢复持久化、审计或线上写入链路。未访问或修改生产数据，未执行 migration。
+- TASK-049 保持 `In Review`，不得宣称全量 GO 或将本地/只读 smoke 解释为生产写入验收。关闭本卡仍需获得具备明确 `record.archive` 权限的受控测试身份与真实 PostgreSQL 写入/恢复证据，或由产品经理明确接受该未验证项并另立发布裁决。
