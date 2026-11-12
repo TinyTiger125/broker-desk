@@ -4,8 +4,8 @@
 
 桌面浏览器窄窗口下的导航、设置入口和信息整理反馈修复
 
-- 状态: Done
-- 当前工作单：`BD-20261112-010-TASK049-ACCEPTANCE-REGISTER`（本地功能验收登记）；前序实施工作单：`BD-20261112-007-ARCHIVE-LIFECYCLE-CARD`
+- 状态: In Review
+- 当前工作单：`BD-20261112-012-PROD-BUILD-REMEDIATION`（生产构建合同回归修复）；前序实施工作单：`BD-20261112-010-TASK049-ACCEPTANCE-REGISTER`
 - 基线：`b4b12e0a247c6a5f29e8f8241d5fa75e800271d0`
 - 实施候选：隔离工作树 `/private/tmp/bd-ui-execution-20261111`
 - 证据原件：`/Users/laineyzhu/Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files/ytyaillforever_6bd8/temp/drag/report1111.pdf`（9 页截图 PDF）
@@ -66,8 +66,11 @@ PDF 逐页反馈登记如下：
 - `src/app/actions.ts`（仅允许归档/恢复生命周期的案件可写检查窄修复）
 - `scripts/check-archive-failure-contract.mjs`（仅允许覆盖生命周期专用授权与归档失败回归 fixture）
 - `scripts/check-archive-atomic-contract.mjs`（仅允许同步生命周期专用 guard 的既有原子性合同）
+- `scripts/check-platform-subscription-contract.mjs`（仅允许同步 TASK-049 合并菜单后的 live 平台导航组计数/fixture 合同）
 
 允许在 `archive-record-button.tsx` 中为信息整理列表场景调整“保管/復元”按钮及每行说明文案，或新增显式的可选 compact 呈现；必须保留确认流程、归档/恢复动作、错误反馈、键盘焦点与可达性行为，不能通过父级 CSS 隐藏子组件内容。允许在 `check-header-popover-contract.mjs` 中移除“四个弹层”的过时假设，并改为验证单一合并入口及既有可达性/权限/语言约束；允许在 `check-inline-select-focus-contract.mjs` 中把固定的三个 LanguageSwitcher/ActorSwitcher 挂载假设修订为实际两处 live mount，并保留每个 live mount 可达、focus 与 actor availability 检查，同时更新必要的 synthetic fixtures；允许在 `check-layout-system-contract.mjs` 中把旧的 `buildListHref(selectedType, "", lifecycleFilter)` 静态片段合同更新为实际带 `page=1`、安全 `returnTo` 的调用形式，但必须继续检查 lifecycle、page reset 和 returnTo 约束；为修复已观察到的归档确认后错误页，允许在 `src/app/actions.ts` 中新增/调用 `requireWritableCaseForLifecycle`：该路径必须继续经过 `requireTenantSession({ permission: "record.archive" })`、`rejectForbiddenRecordInput`、`resolveCaseVisibilityForContext` 与 `resolution.canWrite`，并继续使用既有 `setRecordLifecycleWithAudit`、安全返回和审计/原子写入；仅可省略 `assertCaseSourcesReadable`，因为归档/恢复只改变案件生命周期、不读取或暴露 W93 源数据。一般案件写入的 `requireWritableCase` 必须继续保留 W93 源可读检查。允许在两个 archive 合同脚本中同步该 helper 名称、静态边界和 synthetic runtime fixture，并验证归档失败回归、权限/租户/禁止字段、状态和原子写入约束；不得借此改变权限授予、租户范围、数据库/字段/识别或其他生命周期行为；不得修改其他测试脚本。不得新增文件或修改上述列表之外的任何业务、样式、测试、配置、文档、数据库或迁移文件。若实现需要新增文件、修改共享 CSS/组件、改变返回协议或触及列表之外的文件，必须先停止并扩卡取得产品/项目经理裁决；不得以“顺手修复”扩大写集。治理登记文件（本卡、`BACKLOG.md`、当前上下文）只由本次治理提交维护。
+
+允许在 `check-platform-subscription-contract.mjs` 中把 TASK-049 合并账户/工作区菜单后的过时四组静态计数改为实际三个 live 平台导航组，并更新必要的 synthetic fixture；必须继续检查唯一 `getPlatformOwnerSession()`、`hasPlatformAccess`、每个组的 `platformLinks.length > 0` 守卫、ja/zh/ko 文案、稳定链接图标/路由标题和目标页 `requirePlatformOwnerSession()`，不得新增重复 UI 以满足旧计数。该合同修订不授权修改 `src`、平台权限、租户范围、数据库、识别或字段。
 
 ## 明确不做什么
 
@@ -116,6 +119,7 @@ PDF 逐页反馈登记如下：
 - 初始实现 `eae0bd3` 的静态定向契约与工程门结果不能替代真实桌面浏览器证据；该缺口已由独立最终复验 `ba711bb` 补齐，本地证据仍不外推为线上发布证据。
 - p2 中 `出力文書管理` 与 `/settings/output-templates` 的语义风险已按产品裁决收窄为模板管理文案，并由 `ba711bb` 的 ja/zh/ko 菜单复验覆盖；不扩大 `/templates` 页面功能。
 - 独立浏览器曾发现归档确认后错误页；`162ab1a` 的生命周期专用可写检查已在 `ba711bb` 的归档→筛选→恢复→新标签/刷新回归中通过。剩余风险仅为本地 demo+memory 证据不能替代真实 PostgreSQL、线上发布、部署和回滚验收。
+- `a78f8f1` 推送后 Vercel `broker-desk-staging` 与 `broker-desk-tokyo-validation` 构建失败，失败点为 `scripts/check-platform-subscription-contract.mjs:35` 固定要求四个平台组；代码实际只保留三个合并菜单后的 live 组。该项是合同过期回归，必须只修订合同计数/fixture，不得恢复重复入口或放宽平台权限。
 
 ## 验证命令
 
@@ -124,17 +128,19 @@ npm run test:workflow-rules
 npm run test:inline-select-focus
 npm run test:archive-failure
 npm run test:archive-atomic-contract
+npm run test:platform-subscription
 npm run typecheck
 npm run lint
+npm run build
 npx next build --webpack
 git diff --check
 ```
 
 ## 当前状态
 
-- 当前为 `In Review`。单入口修订提交 `f4520a8`、inline-focus 合同提交 `217d8af`、p2/layout 治理提交 `f92accb` 与归档生命周期修复提交 `162ab1a` 已完成；归档失败合同、原子合同和 workflow-rules 通过。
+- 当前重新为 `In Review`：本地功能验收曾基于 `ba711bb` 给出 GO，但 `a78f8f1` 推送后的 staging/Tokyo 自动构建暴露旧平台订阅合同；尚未改变业务权限或导航目标。
 - 独立最终审查在 `ba711bb` 给出功能验收 `GO`：桌面浏览器 600/640/700/768/1024/1440 CSS px 的缩窄与恢复、菜单/权限/ja-zh-ko 三语言、输入/整理/返回、分页，以及归档→筛选→恢复→新标签/刷新均通过；真实服务端 POST/GET 均为 200。
-- 本地功能验收已满足本卡用户结果与验收矩阵，状态登记为 `Done`。证据边界明确为本地 demo+memory：不等于线上发布授权，不等于真实 PostgreSQL、Production 数据、部署或发布验收；本回合未执行 push/deploy。
+- 本地功能验收仍覆盖本卡用户结果，但发布候选必须先通过 `npm run build`（非仅 webpack，含 `prebuild` 全套合同）及 staging/Tokyo 两个自动部署；在修复完成前不得恢复 `Done` 或再次推送。
 
 ## 发布门禁
 

@@ -273,3 +273,10 @@
 - 归档生命周期回归通过：归档→筛选→恢复→新标签/刷新流程通过，归档确认后错误页不再出现；真实服务端 POST/GET 均返回 200。前序 `162ab1a` 的生命周期专用可写边界、`record.archive`、租户/`canWrite`、禁止字段、审计/原子写入和安全返回约束均纳入复验范围。
 - `TASK-049` 与 `BACKLOG.md` 现登记为 `Done`。本次 Done 仅表示本地 demo+memory 功能验收完成，不等于线上发布授权，不等于真实 PostgreSQL 或 Production 验收；未 push、未 deploy、未访问或修改 Production 数据。
 - 剩余风险/门禁：如需线上发布，必须另行取得明确发布授权并在受控环境补充真实 PostgreSQL、Production 数据安全、部署与回滚证据；本卡不自动开启任何后续云端操作。
+
+## 2026-11-12 BD-20261112-012-PROD-BUILD-REMEDIATION / TASK-049 自动构建合同回归
+
+- `a78f8f1` 已按 Neo 授权推送 `main`；Vercel 自动触发 `broker-desk-staging` 与 `broker-desk-tokyo-validation` 两个 target=`production` 部署，均报告 build failure。失败日志定位到 `npm run build` 的 `prebuild` 阶段：`scripts/check-platform-subscription-contract.mjs:35` 固定要求四个 `data-platform-admin-group`。
+- 根因已独立核对为过时静态合同，不是权限或产品入口缺失：`src/components/app-nav.tsx` 在 TASK-049 合并账户/工作区设置后实际有三个 live 平台组（移动合并设置弹层、桌面侧栏、桌面合并设置弹层）；每组均受 `platformLinks.length > 0` 守卫，`platformLinks` 仍只由唯一 `getPlatformOwnerSession()` 结果派生；平台目标页仍保留 `requirePlatformOwnerSession()`。
+- 本回合仅批准扩写 `scripts/check-platform-subscription-contract.mjs`。允许把旧四组计数/fixture 同步为三个 live 组，并继续验证平台会话唯一性、`hasPlatformAccess`、组可见性守卫、ja/zh/ko 文案、稳定链接/标题和目标页服务端权限；不得修改 `src`、恢复重复 UI、放宽权限或改变数据库/识别/字段。
+- `TASK-049` 状态从本地 Done 重新置为 `In Review`，直到修复角色完成合同更新、`npm run build`（非仅 webpack）、相关平台订阅/导航合同与 workflow/diff 检查通过，并对 staging 与 Tokyo 两个自动部署得到成功结果。修复完成前不再次推送。

@@ -48,7 +48,7 @@
 | TASK-046 | P1 | 退役普通输出实现与确认孤儿代码一次性清理 | Done | TASK-045 固定 Staging 基线 | [TASK-046](docs/tasks/TASK-046.md) | 独立复核 GO：P0/P1=0，3,219 行清理与完整工程门通过并快进固定 Staging；不改保证申请书、数据模型、数据库或 Production |
 | TASK-047 | P0 | 工作中枢 V1：今日事项、七日议程、等待跟进与周度检查 | Done | TASK-046 固定 Staging 基线 | [TASK-047](docs/tasks/TASK-047.md) | Product Accepted / Integrated / Production Not Released；固定 Preview 真实验收通过并保留 R2 合成回归任务；P2：readOnly 实跑、独立审查返回、资料上传证据未验证 |
 | TASK-048 | P0 | 反馈修复与完整回归 | Done | TASK-047、统一资料入口与既有 migration | [TASK-048](docs/tasks/TASK-048.md) | Release gate passed；生产 001–006 postflight、readiness、ACL/RLS 与原件/识别状态边界已核对 |
-| TASK-049 | P0 | 桌面窄窗口响应式与录入/整理导航反馈修复 | Done | TASK-048 | [TASK-049](docs/tasks/TASK-049.md) | 独立最终审查基于 `ba711bb` 功能验收 GO：600/640/700/768/1024/1440 CSS px 缩窄/恢复、菜单/权限/ja-zh-ko、输入/整理/返回、分页、归档→筛选→恢复→新标签/刷新及真实服务端 POST/GET 200 均通过；本地 demo+memory 证据不等于线上发布授权或真实 PostgreSQL 验收，未 push/deploy |
+| TASK-049 | P0 | 桌面窄窗口响应式与录入/整理导航反馈修复 | In Review | TASK-048 | [TASK-049](docs/tasks/TASK-049.md) | 本地独立功能验收基于 `ba711bb` 为 GO；`a78f8f1` 推送后 staging/Tokyo 自动构建因平台订阅合同过时的四组计数失败。仅允许将合同同步为三个 live 合并菜单组并保留平台权限/入口语义；必须重跑 `npm run build`、相关合同和两个 Vercel 部署后才恢复 Done |
 | TASK-003 | P0 | Close the input-material merge completion loop | Proposed | TASK-002 | [TASK-003](docs/tasks/TASK-003.md) | Selection, confirmation, result, failure, and refresh evidence |
 | TASK-004 | P0 | Consolidate template-library and official-template boundaries | Proposed | TASK-002 | [TASK-004](docs/tasks/TASK-004.md) | Role-aware entry, visibility, and installation evidence |
 | TASK-005 | P0 | Separate official template draft and publish states | Proposed | TASK-004 | [TASK-005](docs/tasks/TASK-005.md) | Independent draft save, publish, immutable version, and failure evidence |
