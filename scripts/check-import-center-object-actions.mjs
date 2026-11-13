@@ -185,7 +185,7 @@ assert(clientNewPage.includes('normalizeImportCenterObjectReturnTo(path, "person
 assert(propertyNewPage.includes('normalizeImportCenterObjectReturnTo(path, "property", true)'), "property form route must preserve the validated property import target");
 assert(page.includes("const objectSelectionReturnTo = `/import-center?advanced=1&object=${object}#target-selection`"), "legacy object entry must return to advanced object selection instead of reopening the new form");
 assert(objectActions.includes("return redirectObjectUploadError(flash);"), "object upload persistence failures must return to the selected target instead of throwing a route error");
-assert.equal((propertyObjectSection.match(/name=\"returnTo\" value=\{returnTo\}/g) ?? []).length, 2, "property retry/refresh forms must preserve the central return path");
+assert((propertyObjectSection.match(/name=\"returnTo\" value=\{returnTo\}/g) ?? []).length >= 2, "property retry/refresh/review forms must preserve the central return path");
 assert(actions.includes("safeObjectImportRefreshReturnTo"), "object refresh action must validate the central return path");
 assert(actions.includes('parsed.searchParams.get("targetId") === targetId'), "object refresh return path must be bound to the reviewed target");
 assert(actions.includes("redirectUrl.searchParams.set(key, value)"), "object refresh redirect must merge feedback into an existing return query");

@@ -2,14 +2,14 @@ import fs from "node:fs";
 import path from "node:path";
 
 const root = process.cwd();
-const page = fs.readFileSync(path.join(root, "src/app/cases/[id]/page.tsx"), "utf8");
+const page = `${fs.readFileSync(path.join(root, "src/app/cases/[id]/page.tsx"), "utf8")}\n${fs.readFileSync(path.join(root, "src/components/case-workbench-field-row.tsx"), "utf8")}`;
 const overview = fs.readFileSync(path.join(root, "src/components/case-overview.tsx"), "utf8");
 const form = fs.readFileSync(path.join(root, "src/components/case-workbench-field-form.tsx"), "utf8");
 const actions = fs.readFileSync(path.join(root, "src/app/actions.ts"), "utf8");
 
 if (page.includes('id="case-field-editor"')) throw new Error("inline field editing must remove the right-side editor");
 if (!page.includes("<CaseWorkbenchFieldForm")) throw new Error("each field row must own a save form");
-if (!page.includes("name={`field:${field.fieldKey}`}")) throw new Error("row input must bind to its fieldKey");
+if (!page.includes("name={`field:${fieldKey}`}")) throw new Error("row input must bind to its fieldKey");
 if (!page.includes("const candidateValue = objectImportBinding && !preserveExistingObjectValue ? objectImportBinding.candidateValue : field.value;")) throw new Error("row must resolve the candidate-or-saved value before rendering");
 if (!page.includes("initialValue={candidateValue}")) throw new Error("row form must seed the value snapshot from the resolved candidate or saved value");
 if (!page.includes("value={candidateValue}")) throw new Error("row input must display the resolved candidate or saved value");
@@ -23,7 +23,7 @@ if (!overview.includes("!isInlineField(editingField)") || !overview.includes("da
 if (!overview.includes("onBeforeViewChange") || !overview.includes("保存して切替")) throw new Error("view switching must offer an unsaved-draft decision");
 if (!overview.includes("requestCloseEditor") || !overview.includes("pendingClose") || !overview.includes("保存して閉じる")) throw new Error("all dirty close paths must offer the same save-discard-continue decision");
 if (!overview.includes("lastTriggerRef.current") || !overview.includes("lastTriggerSelectorRef.current")) throw new Error("cancel must restore focus to the actual edit trigger");
-if (!overview.includes("editorPosition?.top") || !overview.includes("editorPosition?.left")) throw new Error("complex editor must be positioned near its field");
+if (!overview.includes("fixed left-1/2 top-1/2")) throw new Error("complex editor must use the centered modal positioning contract");
 if (!form.includes("onDirtyChange") || !form.includes("data-case-workbench-field")) throw new Error("field form must expose dirty state for safe view switching");
 if (!form.includes("if (event.nativeEvent.isComposing || event.keyCode === 229) return;")) throw new Error("IME Enter must not be cancelled or submitted");
 if (!form.includes("saveButtonAriaLabel")) throw new Error("field form must expose an accessible save label");

@@ -60,6 +60,9 @@ const copy = {
     sqm: "㎡",
     optional: "任意",
     save: "保存",
+    basicHint: "物件の識別情報です。所在地や部屋番号は分かる範囲で入力します。",
+    moneyHint: "価格・費用・面積は未確認なら空欄のまま保存できます。",
+    detailHint: "補足事項を残します。",
     saveAndRead: "保存して読み取る",
     cancel: "キャンセル",
     errorSummary: "入力内容を確認してください。",
@@ -87,6 +90,9 @@ const copy = {
     sqm: "㎡",
     optional: "选填",
     save: "保存",
+    basicHint: "物件识别信息；所在地和房号只填写已确认的内容。",
+    moneyHint: "价格、费用和面积未确认时可以留空保存。",
+    detailHint: "记录补充说明。",
     saveAndRead: "保存后读取",
     cancel: "取消",
     errorSummary: "请检查以下输入内容。",
@@ -114,6 +120,9 @@ const copy = {
     sqm: "㎡",
     optional: "선택",
     save: "저장",
+    basicHint: "매물 식별 정보입니다. 확인된 소재지와 호수만 입력합니다.",
+    moneyHint: "가격·비용·면적은 확인 전에는 비워 두고 저장할 수 있습니다.",
+    detailHint: "추가 확인 사항을 기록합니다.",
     saveAndRead: "저장 후 읽기",
     cancel: "취소",
     errorSummary: "다음 입력 내용을 확인해 주세요.",
@@ -146,12 +155,14 @@ const propertyFormSectionForField: Record<keyof PropertyFormValues, PropertyForm
 function PropertyFormSection({
   section,
   title,
+  hint,
   expanded,
   onToggle,
   children,
 }: {
   section: PropertyFormSectionKey;
   title: string;
+  hint?: string;
   expanded: boolean;
   onToggle: () => void;
   children: ReactNode;
@@ -159,12 +170,15 @@ function PropertyFormSection({
   const headingId = `property-${section}-heading`;
   const contentId = `property-${section}-content`;
   return (
-    <section aria-labelledby={headingId} className="space-y-4 border-b border-slate-200 pb-6">
-      <button type="button" aria-expanded={expanded} aria-controls={contentId} onClick={onToggle} className="group flex w-full cursor-pointer items-center justify-start gap-2 rounded-md text-left text-base font-bold text-slate-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">
+    <section aria-labelledby={headingId} className={`rounded-md ${expanded ? "border border-slate-300 bg-white p-3" : "bg-slate-100 px-3 py-2"}`}>
+      <div className="flex items-center gap-2">
+      <button type="button" aria-expanded={expanded} aria-controls={contentId} onClick={onToggle} className="group flex min-h-7 min-w-0 flex-1 cursor-pointer items-center justify-start gap-2 rounded-md text-left text-sm font-bold text-slate-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">
         <span aria-hidden="true" className="material-symbols-outlined shrink-0 text-[20px] text-slate-500">{expanded ? "expand_more" : "chevron_right"}</span>
         <span id={headingId} role="heading" aria-level={2}>{title}</span>
       </button>
-      <div id={contentId} aria-labelledby={headingId} className={expanded ? "" : "hidden"}>
+      {hint ? <details className="relative shrink-0"><summary aria-label={title} className="flex h-5 w-5 cursor-help list-none items-center justify-center rounded-full border border-slate-400 text-[11px] font-black text-slate-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">?</summary><div role="tooltip" className="absolute right-0 top-7 z-30 w-72 rounded-md border border-slate-300 bg-white p-2 text-xs font-medium leading-5 text-slate-700 shadow-lg">{hint}</div></details> : null}
+      </div>
+      <div id={contentId} aria-labelledby={headingId} className={expanded ? "mt-3" : "hidden"}>
         {children}
       </div>
     </section>
@@ -190,7 +204,7 @@ const initialState: PropertyFormActionState = { status: "idle", fieldErrors: {},
 
 export function PropertyResponsiveForm({ action, locale, initialValues, returnTo, propertyId, onCreated, onSaved, onCancel, formId, hideActions = false, onPendingChange, onSubmitStart, entryUpload = false, entryDraftKey, entryAppliedFields = [] }: PropertyResponsiveFormProps) {
   const text = copy[locale];
-  const { values, setValues } = useEntryDraft({ storageKey: entryDraftKey, serverValues: initialValues, appliedFields: entryAppliedFields });
+  const { values, setValues, hydrated } = useEntryDraft({ storageKey: entryDraftKey, serverValues: initialValues, appliedFields: entryAppliedFields });
   const [entryFiles, setEntryFiles] = useState<File[]>([]);
   const [entryIntentId] = useState(() => createEntryIntentId());
   const [entryReadFileKeys, setEntryReadFileKeys] = useState<string[]>([]);
@@ -213,11 +227,23 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
   const confirmEntryCandidate = useCallback((candidate: EntryPreviewCandidate) => {
     setValues((current) => String(current[candidate.key as keyof PropertyFormValues] ?? "").trim() ? current : applyEntryPreviewCandidate(current, candidate));
   }, [setValues]);
-  const [expandedSections, setExpandedSections] = useState<Record<PropertyFormSectionKey, boolean>>({ basic: true, money: true, detail: true });
+  const [expandedSections, setExpandedSections] = useState<Record<PropertyFormSectionKey, boolean>>({ basic: true, money: Boolean(initialValues.listingPrice || initialValues.listingRent || initialValues.listingCommonFee || initialValues.managementFee || initialValues.repairFee || initialValues.sizeSqm), detail: Boolean(initialValues.notes) });
   const openSectionForField = useCallback((field: keyof PropertyFormValues) => {
     const section = propertyFormSectionForField[field];
     setExpandedSections((current) => current[section] ? current : { ...current, [section]: true });
   }, []);
+  const appliedFieldKey = entryAppliedFields.at(-1) ?? "";
+  useEffect(() => {
+    if (!hydrated || !appliedFieldKey || !(appliedFieldKey in propertyFormSectionForField)) return;
+    const field = appliedFieldKey as keyof PropertyFormValues;
+    const frame = window.requestAnimationFrame(() => {
+      openSectionForField(field);
+      const target = document.getElementById(`property-${field}`);
+      target?.focus();
+      target?.scrollIntoView({ block: "center", behavior: "smooth" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [appliedFieldKey, hydrated, openSectionForField]);
   const toggleSection = (section: PropertyFormSectionKey) => {
     setExpandedSections((current) => ({ ...current, [section]: !current[section] }));
   };
@@ -350,8 +376,8 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
         </div>
       ) : null}
 
-      <PropertyFormSection section="basic" title={text.basic} expanded={expandedSections.basic} onToggle={() => toggleSection("basic")}>
-        <div className="grid gap-4 md:grid-cols-2">
+      <PropertyFormSection section="basic" title={text.basic} hint={text.basicHint} expanded={expandedSections.basic} onToggle={() => toggleSection("basic")}>
+        <div className="grid gap-3 md:grid-cols-2">
           <div className="space-y-1 md:col-span-2">
             <label htmlFor="property-name" className="text-sm font-semibold text-slate-700">{text.name}</label>
             <input {...fieldProps("name", "property-name")} required aria-required="true" className={inputClass} />
@@ -387,8 +413,8 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
         </div>
       </PropertyFormSection>
 
-      <PropertyFormSection section="money" title={text.money} expanded={expandedSections.money} onToggle={() => toggleSection("money")}>
-        <div className="grid gap-4 md:grid-cols-3">
+      <PropertyFormSection section="money" title={text.money} hint={text.moneyHint} expanded={expandedSections.money} onToggle={() => toggleSection("money")}>
+        <div className="grid gap-3 md:grid-cols-3">
           {([
             ["listingPrice", text.listingPrice],
             ["listingRent", text.listingRent],
@@ -412,7 +438,7 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
         </div>
       </PropertyFormSection>
 
-      <PropertyFormSection section="detail" title={text.detail} expanded={expandedSections.detail} onToggle={() => toggleSection("detail")}>
+      <PropertyFormSection section="detail" title={text.detail} hint={text.detailHint} expanded={expandedSections.detail} onToggle={() => toggleSection("detail")}>
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-1 md:col-span-2">
             <label htmlFor="property-notes" className="text-sm font-semibold text-slate-700">{text.notes} <span className="text-xs font-normal text-slate-500">({text.optional})</span></label>

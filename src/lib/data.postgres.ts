@@ -221,6 +221,7 @@ const REQUIRED_PRODUCTION_MIGRATIONS = [
   "20261102_004_entry_request_claim_fencing.sql",
   "20261102_005_entry_request_claims_runtime_acl.sql",
   "20261102_006_entry_request_claims_authenticated_acl.sql",
+  "20261114_001_client_personal_name_fields.sql",
 ] as const;
 
 const OPEN_STAGES: ClientStage[] = ["lead", "contacted", "quoted", "viewing", "negotiating"];
@@ -724,6 +725,9 @@ function mapClient(row: Record<string, unknown>): Client {
     id: String(row.id),
     tenantId: String(row.tenant_id ?? DEFAULT_TENANT_ID),
     name: String(row.name),
+    nameLatin: row.name_latin ? String(row.name_latin) : undefined,
+    nameKanji: row.name_kanji ? String(row.name_kanji) : undefined,
+    nameKatakana: row.name_katakana ? String(row.name_katakana) : undefined,
     phone: String(row.phone),
     lineId: row.line_id ? String(row.line_id) : undefined,
     email: row.email ? String(row.email) : undefined,
@@ -1366,6 +1370,9 @@ async function ensureSchemaLegacyForUnversionedDevelopment() {
       id TEXT PRIMARY KEY,
       tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry',
       name TEXT NOT NULL,
+      name_latin TEXT,
+      name_kanji TEXT,
+      name_katakana TEXT,
       phone TEXT NOT NULL,
       line_id TEXT,
       email TEXT,
@@ -1834,6 +1841,9 @@ async function ensureSchemaLegacyForUnversionedDevelopment() {
     ALTER TABLE generated_outputs ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry';
 
     ALTER TABLE clients ADD COLUMN IF NOT EXISTS budget_type TEXT NOT NULL DEFAULT 'total_price';
+    ALTER TABLE clients ADD COLUMN IF NOT EXISTS name_latin TEXT;
+    ALTER TABLE clients ADD COLUMN IF NOT EXISTS name_kanji TEXT;
+    ALTER TABLE clients ADD COLUMN IF NOT EXISTS name_katakana TEXT;
     ALTER TABLE clients ADD COLUMN IF NOT EXISTS first_choice_area TEXT;
     ALTER TABLE clients ADD COLUMN IF NOT EXISTS second_choice_area TEXT;
     ALTER TABLE clients ADD COLUMN IF NOT EXISTS loan_pre_approval_status TEXT NOT NULL DEFAULT 'not_applied';
@@ -6797,6 +6807,9 @@ export async function addClient(input: {
   tenantId?: string;
   ownerUserId: string;
   name: string;
+  nameLatin?: string;
+  nameKanji?: string;
+  nameKatakana?: string;
   phone: string;
   lineId?: string;
   email?: string;
@@ -6851,7 +6864,7 @@ export async function addClient(input: {
     }
     const result = await client.query(
     `INSERT INTO clients (
-      id, tenant_id, name, phone, line_id, email, furigana, birth_date, gender, current_postal_code, current_address,
+      id, tenant_id, name, name_latin, name_kanji, name_katakana, phone, line_id, email, furigana, birth_date, gender, current_postal_code, current_address,
       employer_name, employer_address, employer_phone, annual_income, annual_income_as_of, annual_income_source,
       budget_min, budget_max, budget_type, preferred_area,
       first_choice_area, second_choice_area, purpose, loan_pre_approval_status, desired_move_in_period,
@@ -6859,12 +6872,15 @@ export async function addClient(input: {
       important_matters_explained_at, contract_document_delivered_at, personal_info_consent_at, aml_check_status,
       next_follow_up_at, notes, owner_user_id, created_by_user_id, current_owner_user_id,
       visibility_scope, owner_resolution_status
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42)
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44,$45)
     RETURNING *`,
     [
       id,
       scopeTenantId,
       input.name,
+      input.nameLatin ?? null,
+      input.nameKanji ?? null,
+      input.nameKatakana ?? null,
       input.phone,
       input.lineId ?? null,
       input.email ?? null,
@@ -6916,6 +6932,9 @@ export async function updateClient(
   input: {
     tenantId?: string;
     name: string;
+    nameLatin?: string;
+    nameKanji?: string;
+    nameKatakana?: string;
     phone: string;
     lineId?: string;
     email?: string;
@@ -6955,11 +6974,14 @@ export async function updateClient(
   assertNoForbiddenRecordInput(input, { allowTenantId: true });
   await ensureSchema();
   const scopeTenantId = resolveTenantId(input.tenantId);
-  const existing = await getPool().query("SELECT furigana, birth_date, gender, current_postal_code, current_address, employer_name, employer_address, employer_phone, annual_income, annual_income_as_of, annual_income_source FROM clients WHERE id = $1 AND tenant_id = $2 LIMIT 1", [clientId, scopeTenantId]);
+  const existing = await getPool().query("SELECT name_latin, name_kanji, name_katakana, furigana, birth_date, gender, current_postal_code, current_address, employer_name, employer_address, employer_phone, annual_income, annual_income_as_of, annual_income_source FROM clients WHERE id = $1 AND tenant_id = $2 LIMIT 1", [clientId, scopeTenantId]);
   if (!existing.rows[0]) return null;
   const existingClient = existing.rows[0] as Record<string, unknown>;
   const hasInput = (key: string) => Object.prototype.hasOwnProperty.call(input, key);
   const profileValues = {
+    nameLatin: hasInput("nameLatin") ? input.nameLatin ?? null : existingClient.name_latin ?? null,
+    nameKanji: hasInput("nameKanji") ? input.nameKanji ?? null : existingClient.name_kanji ?? null,
+    nameKatakana: hasInput("nameKatakana") ? input.nameKatakana ?? null : existingClient.name_katakana ?? null,
     furigana: hasInput("furigana") ? input.furigana ?? null : existingClient.furigana ?? null,
     birthDate: hasInput("birthDate") ? toSqlDateOnly(input.birthDate) : existingClient.birth_date ?? null,
     gender: hasInput("gender") ? input.gender ?? null : existingClient.gender ?? null,
@@ -6976,46 +6998,52 @@ export async function updateClient(
   const result = await getPool().query(
     `UPDATE clients SET
       name = $2,
-      phone = $3,
-      line_id = $4,
-      email = $5,
-      furigana = $6,
-      birth_date = $7,
-      gender = $8,
-      current_postal_code = $9,
-      current_address = $10,
-      employer_name = $11,
-      employer_address = $12,
-      employer_phone = $13,
-      annual_income = $14,
-      annual_income_as_of = $15,
-      annual_income_source = $16,
-      budget_min = $17,
-      budget_max = $18,
-      budget_type = $19,
-      preferred_area = $20,
-      first_choice_area = $21,
-      second_choice_area = $22,
-      purpose = $23,
-      loan_pre_approval_status = $24,
-      desired_move_in_period = $25,
-      stage = $26,
-      temperature = $27,
-      brokerage_contract_type = $28,
-      brokerage_contract_signed_at = $29,
-      brokerage_contract_expires_at = $30,
-      important_matters_explained_at = $31,
-      contract_document_delivered_at = $32,
-      personal_info_consent_at = $33,
-      aml_check_status = $34,
-      next_follow_up_at = $35,
-      notes = $36,
+      name_latin = $3,
+      name_kanji = $4,
+      name_katakana = $5,
+      phone = $6,
+      line_id = $7,
+      email = $8,
+      furigana = $9,
+      birth_date = $10,
+      gender = $11,
+      current_postal_code = $12,
+      current_address = $13,
+      employer_name = $14,
+      employer_address = $15,
+      employer_phone = $16,
+      annual_income = $17,
+      annual_income_as_of = $18,
+      annual_income_source = $19,
+      budget_min = $20,
+      budget_max = $21,
+      budget_type = $22,
+      preferred_area = $23,
+      first_choice_area = $24,
+      second_choice_area = $25,
+      purpose = $26,
+      loan_pre_approval_status = $27,
+      desired_move_in_period = $28,
+      stage = $29,
+      temperature = $30,
+      brokerage_contract_type = $31,
+      brokerage_contract_signed_at = $32,
+      brokerage_contract_expires_at = $33,
+      important_matters_explained_at = $34,
+      contract_document_delivered_at = $35,
+      personal_info_consent_at = $36,
+      aml_check_status = $37,
+      next_follow_up_at = $38,
+      notes = $39,
       updated_at = NOW()
-    WHERE id = $1 AND tenant_id = $37
+    WHERE id = $1 AND tenant_id = $40
     RETURNING *`,
     [
       clientId,
       input.name,
+      profileValues.nameLatin,
+      profileValues.nameKanji,
+      profileValues.nameKatakana,
       input.phone,
       input.lineId ?? null,
       input.email ?? null,

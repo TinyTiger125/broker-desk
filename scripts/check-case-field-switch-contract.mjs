@@ -1,17 +1,20 @@
 import { readFileSync } from "node:fs";
 
 const pageSource = readFileSync("src/app/cases/[id]/page.tsx", "utf8");
+const overviewSource = readFileSync("src/components/case-overview.tsx", "utf8");
+const rowSource = readFileSync("src/components/case-workbench-field-row.tsx", "utf8");
+const fieldSurfaceSource = `${pageSource}\n${overviewSource}\n${rowSource}`;
 const actionSource = readFileSync("src/app/actions.ts", "utf8");
 const fieldFormSource = readFileSync("src/components/case-workbench-field-form.tsx", "utf8");
 if (pageSource.includes('id="case-field-editor"')) throw new Error("the right-side case field editor must stay removed");
-if (!pageSource.includes("<CaseWorkbenchFieldForm")) throw new Error("each visible field must own an inline save form");
-if (!pageSource.includes("key={field.fieldKey}")) throw new Error("field rows must remount when the selected field changes");
-if (!pageSource.includes("name={`field:${field.fieldKey}`}")) throw new Error("field rows must bind controls to their field key");
+if (!fieldSurfaceSource.includes("<CaseWorkbenchFieldForm")) throw new Error("each visible field must own an inline save form");
+if (!fieldSurfaceSource.includes("key={field.fieldKey}")) throw new Error("field rows must remount when the selected field changes");
+if (!fieldSurfaceSource.includes("name={`field:${fieldKey}`}")) throw new Error("field rows must bind controls to their field key");
 if (!pageSource.includes("action={saveCaseWorkbenchAction}")) throw new Error("field rows must keep the shared save action");
-if (!pageSource.includes("initialValue={candidateValue}")) {
+if (!fieldSurfaceSource.includes("initialValue={candidateValue}")) {
   throw new Error("an unconfirmed model candidate must prefill the main input and fall back to the saved value");
 }
-if (!pageSource.includes("value={candidateValue}")) {
+if (!fieldSurfaceSource.includes("value={candidateValue}")) {
   throw new Error("the visible main input must use the candidate-or-saved-value contract");
 }
 if (pageSource.includes("资料候补・判定") || pageSource.includes("<WorkbenchDecisionSelect")) {

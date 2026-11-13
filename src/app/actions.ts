@@ -227,6 +227,7 @@ import {
 import { getCaseWorkbenchProgressSnapshot } from "@/lib/case-workbench-progress";
 import { applyJapanesePostalCodeAddressCompletions, isValidJapanesePostalCode } from "@/lib/japan-postal-code";
 import { getCaseContactValidationError } from "@/lib/case-contact-validation";
+import { isJapaneseMobilePhone, normalizeJapaneseMobilePhone } from "@/lib/japanese-mobile-phone";
 import { isValidCaseDateInput, normalizeCaseDateValue } from "@/lib/case-date";
 import {
   buildExtractionReviewCorrectionEvents,
@@ -472,6 +473,9 @@ export type CaseCreationActionState = {
 export type ClientFormValues = {
   clientId: string;
   name: string;
+  nameLatin: string;
+  nameKanji: string;
+  nameKatakana: string;
   phone: string;
   lineId: string;
   email: string;
@@ -784,6 +788,9 @@ function clientFormValues(formData: FormData): ClientFormValues {
   return {
     clientId: read("clientId"),
     name: read("name"),
+    nameLatin: read("nameLatin"),
+    nameKanji: read("nameKanji"),
+    nameKatakana: read("nameKatakana"),
     phone: read("phone"),
     lineId: read("lineId"),
     email: read("email"),
@@ -831,7 +838,10 @@ function clientValidationMessage(locale: Locale, field: keyof ClientFormValues):
   const messages: Record<Locale, Partial<Record<keyof ClientFormValues, string>>> = {
     ja: {
       name: "顧客名を入力してください。",
-      phone: "電話番号を入力してください。",
+      nameLatin: "ローマ字氏名を確認してください。",
+      nameKanji: "漢字氏名を確認してください。",
+      nameKatakana: "カタカナ氏名を確認してください。",
+      phone: "電話番号は日本の携帯11桁（060/070/080/090）で入力してください。",
       email: "メールアドレスの形式を確認してください。",
       currentPostalCode: "郵便番号は7桁（例: 100-0005）で入力してください。",
       employerPhone: "勤務先電話番号の形式を確認してください。",
@@ -855,7 +865,10 @@ function clientValidationMessage(locale: Locale, field: keyof ClientFormValues):
     },
     zh: {
       name: "请输入客户姓名。",
-      phone: "请输入电话号码。",
+      nameLatin: "请检查拉丁字母姓名。",
+      nameKanji: "请检查汉字姓名。",
+      nameKatakana: "请检查片假名姓名。",
+      phone: "电话号码须为日本11位手机号码（060/070/080/090）。",
       email: "请检查邮箱地址格式。",
       currentPostalCode: "邮编请输入7位数字（例如 100-0005）。",
       employerPhone: "请检查工作单位电话号码格式。",
@@ -879,7 +892,10 @@ function clientValidationMessage(locale: Locale, field: keyof ClientFormValues):
     },
     ko: {
       name: "고객명을 입력해 주세요.",
-      phone: "전화번호를 입력해 주세요.",
+      nameLatin: "라틴 문자 이름을 확인해 주세요.",
+      nameKanji: "한자 이름을 확인해 주세요.",
+      nameKatakana: "가타카나 이름을 확인해 주세요.",
+      phone: "전화번호는 일본 휴대전화 11자리(060/070/080/090)여야 합니다.",
       email: "이메일 주소 형식을 확인해 주세요.",
       currentPostalCode: "우편번호는 7자리(예: 100-0005)로 입력해 주세요.",
       employerPhone: "근무처 전화번호 형식을 확인해 주세요.",
@@ -922,8 +938,10 @@ function parseClientDate(value: string, locale: Locale, field: keyof ClientFormV
 function parseClientForm(formData: FormData, locale: Locale, mode: "create" | "edit", compatibilityDefaults = false) {
   const values = clientFormValues(formData);
   const fieldErrors: ClientFormActionState["fieldErrors"] = {};
-  const name = values.name.trim();
-  const phone = values.phone.trim();
+  const nameLatin = values.nameLatin.trim();
+  const nameKanji = values.nameKanji.trim();
+  const nameKatakana = values.nameKatakana.trim();
+  const name = values.name.trim() || nameKanji || nameLatin || nameKatakana;
   if (!name) fieldErrors.name = clientValidationMessage(locale, "name");
   // Identity documents generally contain no telephone number. An empty phone
   // is a genuine pending detail, not a value to invent or a reason to lose an
@@ -933,7 +951,7 @@ function parseClientForm(formData: FormData, locale: Locale, mode: "create" | "e
     if (value && !valid(value)) fieldErrors[field] = clientValidationMessage(locale, field);
     return value;
   };
-  validateOptionalFormat("phone", (value) => /^(?=.*\d)[0-9+()\-\s]{6,30}$/.test(value));
+  const normalizedPhone = validateOptionalFormat("phone", (value) => isJapaneseMobilePhone(value));
   validateOptionalFormat("employerPhone", (value) => /^(?=.*\d)[0-9+()\-\s]{6,30}$/.test(value));
   validateOptionalFormat("email", (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value));
   validateOptionalFormat("currentPostalCode", (value) => /^\d{3}-?\d{4}$/.test(value));
@@ -944,8 +962,8 @@ function parseClientForm(formData: FormData, locale: Locale, mode: "create" | "e
     return value;
   };
   const stage = values.stage.trim() || (mode === "create" ? "lead" : "");
-  const purpose = requiredEnum("purpose", values.purpose, isPurpose, compatibilityDefaults ? PURPOSES[0] : undefined);
-  const temperature = requiredEnum("temperature", values.temperature, isTemperature, compatibilityDefaults ? TEMPERATURES[1] : undefined);
+  const purpose = values.purpose.trim() ? requiredEnum("purpose", values.purpose, isPurpose, compatibilityDefaults ? PURPOSES[0] : undefined) : PURPOSES[0];
+  const temperature = values.temperature.trim() ? requiredEnum("temperature", values.temperature, isTemperature, compatibilityDefaults ? TEMPERATURES[1] : undefined) : TEMPERATURES[0];
   const budgetType = requiredEnum("budgetType", values.budgetType, isBudgetType, compatibilityDefaults ? BUDGET_TYPES[0] : undefined);
   const loanPreApprovalStatus = requiredEnum("loanPreApprovalStatus", values.loanPreApprovalStatus, isLoanPreApprovalStatus, compatibilityDefaults ? LOAN_PREAPPROVAL_STATUSES[0] : undefined);
   const brokerageContractType = requiredEnum("brokerageContractType", values.brokerageContractType, isBrokerageContractType, compatibilityDefaults ? BROKERAGE_CONTRACT_TYPES[0] : undefined);
@@ -991,7 +1009,10 @@ function parseClientForm(formData: FormData, locale: Locale, mode: "create" | "e
     fieldErrors,
     normalized: {
       name,
-      phone,
+      nameLatin: nameLatin || undefined,
+      nameKanji: nameKanji || undefined,
+      nameKatakana: nameKatakana || undefined,
+      phone: normalizedPhone ? normalizeJapaneseMobilePhone(normalizedPhone) : "",
       lineId: values.lineId.trim() || undefined,
       email: values.email.trim() || undefined,
       furigana: values.furigana.trim() || undefined,
@@ -2544,8 +2565,8 @@ function parsePartyProfileForm(formData: FormData, locale: Locale, options?: { f
       })
     );
   }
-  if (phone && !/^(?=.*\d)[0-9+()\-\s]{6,30}$/.test(phone)) {
-    throw new Error(tr(locale, { ja: "電話番号の形式を確認してください。", zh: "请检查电话号码格式。", ko: "전화번호 형식을 확인해 주세요." }));
+  if (phone && !isJapaneseMobilePhone(phone)) {
+    throw new Error(tr(locale, { ja: "電話番号は日本の携帯11桁（060/070/080/090）で入力してください。", zh: "电话号码须为日本11位手机号码（060/070/080/090）。", ko: "전화번호는 일본 휴대전화 11자리(060/070/080/090)여야 합니다." }));
   }
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     throw new Error(tr(locale, { ja: "メールアドレスの形式を確認してください。", zh: "请检查邮箱地址格式。", ko: "이메일 주소 형식을 확인해 주세요." }));
@@ -2555,7 +2576,7 @@ function parsePartyProfileForm(formData: FormData, locale: Locale, options?: { f
     name,
     partyType: partyTypeRaw,
     partyRole: partyRoleRaw,
-    phone,
+    phone: phone ? normalizeJapaneseMobilePhone(phone) : "",
     email: email || undefined,
     lineId: lineId || undefined,
     relationHint: relationHint || undefined,
@@ -2690,7 +2711,7 @@ function parsePartyUpdateForm(formData: FormData, locale: Locale) {
   if (!name) fieldErrors.name = partyValidationMessage(locale, "name");
   // A party linked to a customer must remain editable while its contact
   // number is pending; the empty value is intentional, not a fake number.
-  if (phone && !/^(?=.*\d)[0-9+()\-\s]{6,30}$/.test(phone)) fieldErrors.phone = tr(locale, { ja: "電話番号の形式を確認してください。", zh: "请检查电话号码格式。", ko: "전화번호 형식을 확인해 주세요." });
+  if (phone && !isJapaneseMobilePhone(phone)) fieldErrors.phone = tr(locale, { ja: "電話番号は日本の携帯11桁（060/070/080/090）で入力してください。", zh: "电话号码须为日本11位手机号码（060/070/080/090）。", ko: "전화번호는 일본 휴대전화 11자리(060/070/080/090)여야 합니다." });
   if (values.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email.trim())) fieldErrors.email = partyValidationMessage(locale, "email");
   if (metadataSubmitted && partyTypeRaw && !isPartyProfileType(partyTypeRaw)) fieldErrors.partyType = partyValidationMessage(locale, "partyType");
   if (metadataSubmitted && partyRoleRaw && !isPartyProfileRole(partyRoleRaw)) fieldErrors.partyRole = partyValidationMessage(locale, "partyRole");
@@ -2700,7 +2721,7 @@ function parsePartyUpdateForm(formData: FormData, locale: Locale) {
     fieldErrors,
     normalized: {
       name,
-      phone,
+      phone: phone ? normalizeJapaneseMobilePhone(phone) : "",
       email: values.email.trim() || undefined,
       lineId: values.lineId.trim() || undefined,
       partyType: partyTypeRaw ? (partyTypeRaw as PartyProfileType) : undefined,

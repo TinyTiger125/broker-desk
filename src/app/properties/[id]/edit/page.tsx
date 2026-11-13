@@ -31,6 +31,7 @@ const copy = {
     desc: "物件の基本情報と価格・費用を更新します。",
     viewTitle: "物件を表示",
     viewDesc: "この物件は読み取り専用です。",
+    save: "保存",
     back: "物件一覧へ戻る",
     relationTree: "関係を確認",
     updated: "物件を更新しました。",
@@ -58,6 +59,7 @@ const copy = {
     desc: "更新物件的基本信息、价格和费用。",
     viewTitle: "查看物件",
     viewDesc: "此物件为只读。",
+    save: "保存",
     back: "返回物件列表",
     relationTree: "查看关系",
     updated: "物件已更新。",
@@ -85,6 +87,7 @@ const copy = {
     desc: "매물의 기본 정보와 가격·비용을 업데이트합니다.",
     viewTitle: "매물 보기",
     viewDesc: "이 매물은 읽기 전용입니다.",
+    save: "저장",
     back: "매물 목록으로",
     relationTree: "관계 확인",
     updated: "매물을 업데이트했습니다.",
@@ -252,12 +255,13 @@ export default async function EditPropertyPage({ params, searchParams }: EditPro
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 pb-12">
-      <header className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-5">
+      <header className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-950">{canEdit ? text.title : text.viewTitle}</h1>
-          <p className="mt-2 text-sm font-medium text-slate-600">{property.name} · {canEdit ? text.desc : text.viewDesc}</p>
+          <div className="flex items-center gap-2"><h1 className="text-3xl font-bold tracking-tight text-slate-950">{canEdit ? text.title : text.viewTitle}</h1><details className="relative"><summary aria-label={canEdit ? text.title : text.viewTitle} className="flex h-5 w-5 cursor-help list-none items-center justify-center rounded-full border border-slate-400 text-[11px] font-black text-slate-600">?</summary><div role="tooltip" className="absolute left-0 top-7 z-30 w-80 rounded-md border border-slate-300 bg-white p-2 text-xs font-medium leading-5 text-slate-700 shadow-lg">{canEdit ? text.desc : text.viewDesc}</div></details></div>
+          <p className="mt-1 text-sm font-medium text-slate-600">{property.name}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {canEdit ? <button type="submit" form={`property-edit-form-${property.id}`} className="rounded-lg bg-slate-950 px-3 py-2 text-sm font-bold text-white hover:bg-slate-800">{text.save}</button> : null}
           {canEdit ? (
             <Link href={`/relationship-tree?type=property&id=${encodeURIComponent(property.id)}`} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">
               {text.relationTree}
@@ -283,7 +287,7 @@ export default async function EditPropertyPage({ params, searchParams }: EditPro
         unavailable={!objectImportReadiness.ready}
       />
       {canEdit ? (
-        <PropertyResponsiveForm action={updatePropertyProfileAction} locale={locale} initialValues={initialValues} returnTo={returnTo} propertyId={property.id} entryDraftKey={entryDraftKey} entryAppliedFields={entryAppliedFields} />
+        <PropertyResponsiveForm action={updatePropertyProfileAction} locale={locale} initialValues={initialValues} returnTo={returnTo} propertyId={property.id} formId={`property-edit-form-${property.id}`} entryDraftKey={entryDraftKey} entryAppliedFields={entryAppliedFields} />
       ) : (
         <PropertyProfileReadOnly locale={locale} reason={readOnlyReason} property={{
           name: property.name,

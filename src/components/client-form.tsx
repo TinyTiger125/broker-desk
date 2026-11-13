@@ -22,10 +22,14 @@ import {
   getTemperatureOptions,
 } from "@/lib/options";
 import { getPartyProfileTypeOptions } from "@/lib/party-profile";
+import { formatJapaneseMobilePhone } from "@/lib/japanese-mobile-phone";
 
 export type ClientFormDefaults = {
   clientId?: string;
   name?: string;
+  nameLatin?: string;
+  nameKanji?: string;
+  nameKatakana?: string;
   phone?: string;
   lineId?: string;
   email?: string;
@@ -91,20 +95,20 @@ const inputClass = "w-full rounded-lg border border-slate-300 bg-white px-3 py-2
 
 const copy = {
   ja: {
-    basic: "基本情報", profile: "本人資料", needs: "希望条件", management: "顧客管理", legal: "契約・法定情報", notes: "備考",
-    name: "顧客名", companyName: "会社名", furigana: "氏名かな", companyFurigana: "会社名かな", phone: "電話番号", phoneMissing: "要補完：本人確認資料には電話番号がない場合があります", lineId: "LINE ID", email: "メールアドレス", partyType: "主体種別", partyTypeUnset: "未設定", birthDate: "生年月日", gender: "性別", currentPostalCode: "現住所郵便番号", currentAddress: "現住所", companyPostalCode: "会社郵便番号", companyAddress: "会社住所", employerName: "勤務先", employerAddress: "勤務先住所", employerPhone: "勤務先電話", annualIncome: "年収（参考）", annualIncomeAsOf: "年収基準日", annualIncomeSource: "年収情報の出典", yen: "円", genderUnset: "未設定", genderMale: "男性", genderFemale: "女性", genderOther: "その他", budgetMin: "予算下限", budgetMax: "予算上限", budgetType: "予算タイプ",
+    basic: "基本情報", profile: "本人資料", needs: "希望条件", management: "顧客管理", legal: "契約・法定情報", notes: "備考", basicHint: "顧客名は既存の互換項目です。個人はラテン文字・漢字・カタカナを別々に保存できます。", profileHint: "本人情報。法人には個人名の項目を表示しません。", needsHint: "希望条件は未入力のまま保存できます。", managementHint: "未設定の管理項目は後から補完できます。", legalHint: "契約・法定情報は確認できた項目だけ入力します。", notesHint: "補足事項を残します。",
+    name: "顧客名", nameLatin: "氏名（ラテン文字）", nameKanji: "氏名（漢字）", nameKatakana: "氏名（カタカナ）", companyName: "会社名", furigana: "氏名かな", companyFurigana: "会社名かな", phone: "電話番号", phoneMissing: "要補完：本人確認資料には電話番号がない場合があります", lineId: "LINE ID", email: "メールアドレス", partyType: "主体種別", partyTypeUnset: "未設定", birthDate: "生年月日", gender: "性別", currentPostalCode: "現住所郵便番号", currentAddress: "現住所", companyPostalCode: "会社郵便番号", companyAddress: "会社住所", employerName: "勤務先", employerAddress: "勤務先住所", employerPhone: "勤務先電話", annualIncome: "年収（参考）", annualIncomeAsOf: "年収基準日", annualIncomeSource: "年収情報の出典", yen: "円", genderUnset: "未設定", genderMale: "男性", genderFemale: "女性", genderOther: "その他", budgetMin: "予算下限", budgetMax: "予算上限", budgetType: "予算タイプ",
     preferredArea: "意向エリア", firstChoiceArea: "第1希望エリア", secondChoiceArea: "第2希望エリア", purpose: "用途", period: "入居/運用希望時期",
     loan: "ローン事前審査", stage: "ステージ", temperature: "温度感", nextFollowUpAt: "次回フォロー日", brokerage: "媒介契約", signedAt: "媒介契約締結日", expiresAt: "媒介契約満了日", matters35: "重要事項説明日（35条）", matters37: "契約書面交付日（37条）", consent: "個人情報利用目的同意確認日", aml: "本人確認/AML", notesPlaceholder: "顧客の要望や確認事項", save: "顧客を保存", saveAndRead: "保存して読み取る", saving: "保存中…", cancel: "キャンセル", back: "戻る", choose: "選択してください", optional: "任意", error: "入力内容を確認してください。", initialState: "新規登録時は未確認の状態です。必要な確認項目を入力して保存してください。",
   },
   zh: {
-    basic: "基本信息", profile: "个人资料", needs: "需求条件", management: "客户管理", legal: "合同与法定信息", notes: "备注",
-    name: "客户姓名", companyName: "公司名称", furigana: "姓名假名", companyFurigana: "公司名称假名", phone: "电话号码", phoneMissing: "待补全：证件通常不含电话号码", lineId: "LINE ID", email: "邮箱地址", partyType: "主体类型", partyTypeUnset: "未设置", birthDate: "出生日期", gender: "性别", currentPostalCode: "现住址邮编", currentAddress: "现住址", companyPostalCode: "公司邮编", companyAddress: "公司地址", employerName: "工作单位", employerAddress: "工作单位地址", employerPhone: "工作单位电话", annualIncome: "年收入（参考）", annualIncomeAsOf: "收入基准日期", annualIncomeSource: "收入信息来源", yen: "日元", genderUnset: "未设置", genderMale: "男性", genderFemale: "女性", genderOther: "其他", budgetMin: "预算下限", budgetMax: "预算上限", budgetType: "预算类型",
+    basic: "基本信息", profile: "个人资料", needs: "需求条件", management: "客户管理", legal: "合同与法定信息", notes: "备注", basicHint: "客户姓名保留为兼容字段。个人可分别保存拉丁字母、汉字和片假名姓名。", profileHint: "个人资料；法人不显示个人姓名字段。", needsHint: "需求条件可以留空并在之后补充。", managementHint: "未设置的管理项目可以之后补全。", legalHint: "只填写已确认的合同与法定信息。", notesHint: "记录补充说明。",
+    name: "客户姓名", nameLatin: "姓名（拉丁字母）", nameKanji: "姓名（汉字）", nameKatakana: "姓名（片假名）", companyName: "公司名称", furigana: "姓名假名", companyFurigana: "公司名称假名", phone: "电话号码", phoneMissing: "待补全：证件通常不含电话号码", lineId: "LINE ID", email: "邮箱地址", partyType: "主体类型", partyTypeUnset: "未设置", birthDate: "出生日期", gender: "性别", currentPostalCode: "现住址邮编", currentAddress: "现住址", companyPostalCode: "公司邮编", companyAddress: "公司地址", employerName: "工作单位", employerAddress: "工作单位地址", employerPhone: "工作单位电话", annualIncome: "年收入（参考）", annualIncomeAsOf: "收入基准日期", annualIncomeSource: "收入信息来源", yen: "日元", genderUnset: "未设置", genderMale: "男性", genderFemale: "女性", genderOther: "其他", budgetMin: "预算下限", budgetMax: "预算上限", budgetType: "预算类型",
     preferredArea: "意向区域", firstChoiceArea: "第一意向区域", secondChoiceArea: "第二意向区域", purpose: "用途", period: "入住/运营期望时间",
     loan: "贷款预审", stage: "阶段", temperature: "温度", nextFollowUpAt: "下次跟进日期", brokerage: "媒介合同", signedAt: "媒介合同签订日", expiresAt: "媒介合同到期日", matters35: "重要事项说明日（35条）", matters37: "合同书面交付日（37条）", consent: "个人信息使用同意确认日", aml: "实名/AML", notesPlaceholder: "客户需求和确认事项", save: "保存客户", saveAndRead: "保存后读取", saving: "保存中…", cancel: "取消", back: "返回", choose: "请选择", optional: "选填", error: "请检查以下输入内容。", initialState: "新建记录时默认为未核验状态。请填写需要确认的项目后保存。",
   },
   ko: {
-    basic: "기본 정보", profile: "개인 자료", needs: "희망 조건", management: "고객 관리", legal: "계약 및 법정 정보", notes: "메모",
-    name: "고객명", companyName: "회사명", furigana: "후리가나", companyFurigana: "회사명 후리가나", phone: "전화번호", phoneMissing: "추가 필요: 신분증에는 전화번호가 없는 경우가 많습니다", lineId: "LINE ID", email: "이메일", partyType: "주체 유형", partyTypeUnset: "미설정", birthDate: "생년월일", gender: "성별", currentPostalCode: "현재 우편번호", currentAddress: "현재 주소", companyPostalCode: "회사 우편번호", companyAddress: "회사 주소", employerName: "근무처", employerAddress: "근무처 주소", employerPhone: "근무처 전화", annualIncome: "연소득(참고)", annualIncomeAsOf: "소득 기준일", annualIncomeSource: "소득 정보 출처", yen: "엔", genderUnset: "미설정", genderMale: "남성", genderFemale: "여성", genderOther: "기타", budgetMin: "예산 하한", budgetMax: "예산 상한", budgetType: "예산 유형",
+    basic: "기본 정보", profile: "개인 자료", needs: "희망 조건", management: "고객 관리", legal: "계약 및 법정 정보", notes: "메모", basicHint: "고객명은 호환 필드로 유지됩니다. 개인은 라틴 문자·한자·가타카나 이름을 별도로 저장할 수 있습니다.", profileHint: "개인 자료이며 법인에는 개인 이름 항목을 표시하지 않습니다.", needsHint: "희망 조건은 비워 두고 나중에 보완할 수 있습니다.", managementHint: "설정하지 않은 관리 항목은 나중에 보완할 수 있습니다.", legalHint: "확인된 계약·법정 정보만 입력합니다.", notesHint: "추가 확인 사항을 기록합니다.",
+    name: "고객명", nameLatin: "이름（라틴 문자）", nameKanji: "이름（한자）", nameKatakana: "이름（가타카나）", companyName: "회사명", furigana: "후리가나", companyFurigana: "회사명 후리가나", phone: "전화번호", phoneMissing: "추가 필요: 신분증에는 전화번호가 없는 경우가 많습니다", lineId: "LINE ID", email: "이메일", partyType: "주체 유형", partyTypeUnset: "미설정", birthDate: "생년월일", gender: "성별", currentPostalCode: "현재 우편번호", currentAddress: "현재 주소", companyPostalCode: "회사 우편번호", companyAddress: "회사 주소", employerName: "근무처", employerAddress: "근무처 주소", employerPhone: "근무처 전화", annualIncome: "연소득(참고)", annualIncomeAsOf: "소득 기준일", annualIncomeSource: "소득 정보 출처", yen: "엔", genderUnset: "미설정", genderMale: "남성", genderFemale: "여성", genderOther: "기타", budgetMin: "예산 하한", budgetMax: "예산 상한", budgetType: "예산 유형",
     preferredArea: "희망 지역", firstChoiceArea: "1순위 희망 지역", secondChoiceArea: "2순위 희망 지역", purpose: "용도", period: "입주/운용 희망 시기",
     loan: "대출 사전심사", stage: "단계", temperature: "온도", nextFollowUpAt: "다음 후속 날짜", brokerage: "중개 계약", signedAt: "중개 계약 체결일", expiresAt: "중개 계약 만료일", matters35: "중요사항 설명일(35조)", matters37: "계약서 교부일(37조)", consent: "개인정보 이용 동의 확인일", aml: "본인확인/AML", notesPlaceholder: "고객 요청과 확인 사항", save: "고객 저장", saveAndRead: "저장 후 읽기", saving: "저장 중…", cancel: "취소", back: "돌아가기", choose: "선택해 주세요", optional: "선택", error: "다음 입력 내용을 확인해 주세요.", initialState: "새로 등록한 기록은 미확인 초기 상태입니다. 필요한 확인 항목을 입력한 후 저장해 주세요.",
   },
@@ -116,6 +120,9 @@ const clientFormSectionForField: Record<keyof ClientFormValues, ClientFormSectio
   clientId: "basic",
   partyType: "profile",
   name: "basic",
+  nameLatin: "profile",
+  nameKanji: "profile",
+  nameKatakana: "profile",
   phone: "basic",
   lineId: "basic",
   email: "basic",
@@ -155,12 +162,14 @@ const clientFormSectionForField: Record<keyof ClientFormValues, ClientFormSectio
 function ClientFormSection({
   section,
   title,
+  hint,
   expanded,
   onToggle,
   children,
 }: {
   section: ClientFormSectionKey;
   title: string;
+  hint?: string;
   expanded: boolean;
   onToggle: () => void;
   children: ReactNode;
@@ -168,12 +177,15 @@ function ClientFormSection({
   const headingId = `client-${section}-heading`;
   const contentId = `client-${section}-content`;
   return (
-    <section aria-labelledby={headingId} className="space-y-4 border-b border-slate-200 pb-6">
-      <button type="button" aria-expanded={expanded} aria-controls={contentId} onClick={onToggle} className="group flex w-full cursor-pointer items-center justify-start gap-2 rounded-md text-left text-base font-bold text-slate-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">
+    <section aria-labelledby={headingId} className={`rounded-md ${expanded ? "border border-slate-300 bg-white p-3" : "bg-slate-100 px-3 py-2"}`}>
+      <div className="flex items-center gap-2">
+      <button type="button" aria-expanded={expanded} aria-controls={contentId} onClick={onToggle} className="group flex min-h-7 min-w-0 flex-1 cursor-pointer items-center justify-start gap-2 rounded-md text-left text-sm font-bold text-slate-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">
         <span aria-hidden="true" className="material-symbols-outlined shrink-0 text-[20px] text-slate-500">{expanded ? "expand_more" : "chevron_right"}</span>
         <span id={headingId} role="heading" aria-level={2}>{title}</span>
       </button>
-      <div id={contentId} aria-labelledby={headingId} className={expanded ? "" : "hidden"}>
+      {hint ? <details className="relative shrink-0"><summary aria-label={title} className="flex h-5 w-5 cursor-help list-none items-center justify-center rounded-full border border-slate-400 text-[11px] font-black text-slate-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">?</summary><div role="tooltip" className="absolute right-0 top-7 z-30 w-72 rounded-md border border-slate-300 bg-white p-2 text-xs font-medium leading-5 text-slate-700 shadow-lg">{hint}</div></details> : null}
+      </div>
+      <div id={contentId} aria-labelledby={headingId} className={expanded ? "mt-3" : "hidden"}>
         {children}
       </div>
     </section>
@@ -181,7 +193,7 @@ function ClientFormSection({
 }
 
 const emptyValues = (): ClientFormValues => ({
-  clientId: "", name: "", phone: "", lineId: "", email: "", partyType: "", furigana: "", birthDate: "", gender: "", currentPostalCode: "", currentAddress: "", employerName: "", employerAddress: "", employerPhone: "", annualIncome: "", annualIncomeAsOf: "", annualIncomeSource: "", budgetMin: "", budgetMax: "", budgetType: "total_price", preferredArea: "", firstChoiceArea: "", secondChoiceArea: "", purpose: "", loanPreApprovalStatus: "not_applied", desiredMoveInPeriod: "", stage: "lead", temperature: "", brokerageContractType: "none", brokerageContractSignedAt: "", brokerageContractExpiresAt: "", importantMattersExplainedAt: "", contractDocumentDeliveredAt: "", personalInfoConsentAt: "", amlCheckStatus: "not_required", nextFollowUpAt: "", notes: "",
+  clientId: "", name: "", nameLatin: "", nameKanji: "", nameKatakana: "", phone: "", lineId: "", email: "", partyType: "", furigana: "", birthDate: "", gender: "", currentPostalCode: "", currentAddress: "", employerName: "", employerAddress: "", employerPhone: "", annualIncome: "", annualIncomeAsOf: "", annualIncomeSource: "", budgetMin: "", budgetMax: "", budgetType: "total_price", preferredArea: "", firstChoiceArea: "", secondChoiceArea: "", purpose: "unspecified", loanPreApprovalStatus: "not_applied", desiredMoveInPeriod: "", stage: "lead", temperature: "unspecified", brokerageContractType: "none", brokerageContractSignedAt: "", brokerageContractExpiresAt: "", importantMattersExplainedAt: "", contractDocumentDeliveredAt: "", personalInfoConsentAt: "", amlCheckStatus: "not_required", nextFollowUpAt: "", notes: "",
 });
 
 function dateValue(value?: Date | string): string {
@@ -219,7 +231,7 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
   const text = copy[locale];
   const baseInitial = initialValues(defaults, partyMeta);
   const initial = baseInitial;
-  const { values, setValues } = useEntryDraft({ storageKey: entryDraftKey, serverValues: baseInitial, appliedFields: entryAppliedFields });
+  const { values, setValues, hydrated } = useEntryDraft({ storageKey: entryDraftKey, serverValues: baseInitial, appliedFields: entryAppliedFields });
   const [entryFiles, setEntryFiles] = useState<File[]>([]);
   const [entryIntentId] = useState(() => createEntryIntentId());
   const [entryReadFileKeys, setEntryReadFileKeys] = useState<string[]>([]);
@@ -263,7 +275,14 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
     startAutoSaving(() => formAction(data));
   }, [entryUpload, formAction, mode, setValues]);
   const summaryRef = useRef<HTMLDivElement>(null);
-  const [expandedSections, setExpandedSections] = useState<Record<ClientFormSectionKey, boolean>>({ basic: true, profile: true, needs: true, management: true, legal: true, notes: true });
+  const [expandedSections, setExpandedSections] = useState<Record<ClientFormSectionKey, boolean>>(() => ({
+    basic: true,
+    profile: Boolean(baseInitial.partyType || baseInitial.nameLatin || baseInitial.nameKanji || baseInitial.nameKatakana || baseInitial.furigana || baseInitial.birthDate || baseInitial.gender || baseInitial.currentPostalCode || baseInitial.currentAddress || baseInitial.employerName || baseInitial.employerAddress || baseInitial.employerPhone || baseInitial.annualIncome || baseInitial.annualIncomeAsOf || baseInitial.annualIncomeSource),
+    needs: Boolean(baseInitial.budgetMin || baseInitial.budgetMax || baseInitial.preferredArea || baseInitial.firstChoiceArea || baseInitial.secondChoiceArea || (baseInitial.purpose && baseInitial.purpose !== "unspecified") || baseInitial.desiredMoveInPeriod || (baseInitial.loanPreApprovalStatus && baseInitial.loanPreApprovalStatus !== "not_applied")),
+    management: Boolean((baseInitial.stage && baseInitial.stage !== "lead") || (baseInitial.temperature && baseInitial.temperature !== "unspecified") || baseInitial.nextFollowUpAt),
+    legal: Boolean((baseInitial.brokerageContractType && baseInitial.brokerageContractType !== "none") || (baseInitial.amlCheckStatus && baseInitial.amlCheckStatus !== "not_required") || baseInitial.brokerageContractSignedAt || baseInitial.brokerageContractExpiresAt || baseInitial.importantMattersExplainedAt || baseInitial.contractDocumentDeliveredAt || baseInitial.personalInfoConsentAt),
+    notes: Boolean(baseInitial.notes),
+  }));
   const composingRef = useRef(false);
   const notifiedCreatedId = useRef<string | undefined>(undefined);
   const submissionLockRef = useRef<SubmissionLock>({ current: false });
@@ -275,6 +294,12 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
   const stageOptions = getStageOptions(locale);
   const temperatureOptions = getTemperatureOptions(locale);
   const isCorporate = values.partyType === "corporate";
+  // `name` remains the compatibility column, but individual users edit the
+  // three explicit name representations below. Keep the legacy value hidden
+  // and derive it from the first supplied representation when possible.
+  const legacyNameValue = isCorporate
+    ? values.name
+    : values.nameKanji.trim() || values.nameLatin.trim() || values.nameKatakana.trim() || values.name;
   const profileNameLabel = isCorporate ? text.companyName : text.name;
   const profileFuriganaLabel = isCorporate ? text.companyFurigana : text.furigana;
   const profilePostalCodeLabel = isCorporate ? text.companyPostalCode : text.currentPostalCode;
@@ -282,9 +307,22 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
   const hiddenIndividualFields = CLIENT_INDIVIDUAL_FORM_FIELDS;
 
   const openSectionForField = useCallback((field: keyof ClientFormValues) => {
-    const section = clientFormSectionForField[field];
+    const resolvedField = !isCorporate && field === "name" ? "nameKanji" : field;
+    const section = clientFormSectionForField[resolvedField];
     setExpandedSections((current) => current[section] ? current : { ...current, [section]: true });
-  }, []);
+  }, [isCorporate]);
+  const appliedFieldKey = entryAppliedFields.at(-1) ?? "";
+  useEffect(() => {
+    if (!hydrated || !appliedFieldKey || !(appliedFieldKey in clientFormSectionForField)) return;
+    const field = appliedFieldKey as keyof ClientFormValues;
+    const frame = window.requestAnimationFrame(() => {
+      openSectionForField(field);
+      const target = document.getElementById(`client-${field}`);
+      target?.focus();
+      target?.scrollIntoView({ block: "center", behavior: "smooth" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [appliedFieldKey, hydrated, openSectionForField]);
   const locateEntryCandidate = useCallback((candidate: EntryPreviewCandidate) => {
     const field = candidate.key as keyof ClientFormValues;
     if (!(field in clientFormSectionForField)) return;
@@ -346,9 +384,10 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
   };
   const focusField = (event: MouseEvent<HTMLAnchorElement>, field: keyof ClientFormValues) => {
     event.preventDefault();
-    openSectionForField(field);
+    const resolvedField = !isCorporate && field === "name" ? "nameKanji" : field;
+    openSectionForField(resolvedField);
     const focus = () => {
-      const target = document.getElementById(`client-${field}`);
+      const target = document.getElementById(`client-${resolvedField}`);
       target?.focus();
       target?.scrollIntoView({ block: "center", behavior: "smooth" });
     };
@@ -362,14 +401,13 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
     disabled: readOnly || undefined,
   });
   const errorText = (field: keyof ClientFormValues) => errorFor(field) ? <p id={`client-${field}-error`} className="text-xs font-semibold text-rose-700">{errorFor(field)}</p> : null;
-  const label = (field: keyof ClientFormValues, content: string, required = false) => <label htmlFor={`client-${field}`} className="text-sm font-semibold text-slate-700">{content} {required ? <span className="text-rose-700">*</span> : <span className="text-xs font-normal text-slate-500">({text.optional})</span>}</label>;
+  const label = (field: keyof ClientFormValues, content: string, required = false, hint?: string) => <div className="flex items-center gap-1"><label htmlFor={`client-${field}`} className="text-sm font-semibold text-slate-700">{content} {required ? <span className="text-rose-700">*</span> : <span className="text-xs font-normal text-slate-500">({text.optional})</span>}</label>{hint ? <details className="relative"><summary aria-label={content} className="flex h-5 w-5 cursor-help list-none items-center justify-center rounded-full border border-slate-400 text-[11px] font-black text-slate-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">?</summary><div role="tooltip" className="absolute left-0 top-7 z-30 w-72 rounded-md border border-slate-300 bg-white p-2 text-xs font-medium leading-5 text-slate-700 shadow-lg">{hint}</div></details> : null}</div>;
   const select = (field: keyof ClientFormValues, options: ReadonlyArray<{ value: string; label: string }>, required = false) => (
     <select {...fieldProps(field)} required={required} aria-required={required || undefined} className={inputClass}>
       {required ? <option value="">{text.choose}</option> : null}
       {options.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
     </select>
   );
-  const initialNote = mode === "create" ? <p className="mt-1 text-xs text-slate-500">{text.initialState}</p> : null;
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     handleFormSubmit(event, submissionLockRef.current, onSubmitStart);
   };
@@ -384,6 +422,7 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
       {submitReturnTo ? <input type="hidden" name="submitReturnTo" value={submitReturnTo} /> : null}
       {onCreated ? <input type="hidden" name="caseDraftReturn" value="1" /> : null}
       {values.clientId ? <input type="hidden" name="clientId" value={values.clientId} /> : null}
+      {!isCorporate ? <input type="hidden" id="client-name" name="name" value={legacyNameValue} readOnly aria-hidden="true" /> : null}
       {entryUpload && !readOnly ? <>
         <input type="hidden" name="entryIntentId" value={entryIntentId} />
         <EntryFilePicker locale={locale} files={entryFiles} onFilesChange={updateEntryFiles} disabled={pending} />
@@ -392,16 +431,22 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
       </> : null}
       {state.status === "error" ? <div ref={summaryRef} tabIndex={-1} role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900 outline-none focus-visible:ring-2 focus-visible:ring-rose-500"><p className="font-bold">{state.message ?? text.error}</p><ul className="mt-2 list-disc space-y-1 pl-5">{errorEntries.map(([field, message]) => <li key={field}><a className="underline" href={`#client-${field}`} onClick={(event) => focusField(event, field)}>{message}</a></li>)}</ul></div> : null}
 
-      <ClientFormSection section="basic" title={text.basic} expanded={expandedSections.basic} onToggle={() => toggleSection("basic")}><div className="grid gap-4 md:grid-cols-2">
-        <div className="space-y-1">{label("name", profileNameLabel, true)}<input {...fieldProps("name")} required aria-required="true" className={inputClass} />{errorText("name")}</div>
-        <div className="space-y-1">{label("phone", text.phone)}<input {...fieldProps("phone")} className={inputClass} />{!values.phone.trim() ? <p className="text-xs font-semibold text-amber-700">{text.phoneMissing}</p> : null}{errorText("phone")}</div>
+      <ClientFormSection section="basic" title={text.basic} hint={text.basicHint} expanded={expandedSections.basic} onToggle={() => toggleSection("basic")}><div className="grid gap-3 md:grid-cols-2">
+        {isCorporate ? <div className="space-y-1">{label("name", profileNameLabel, true)}<input {...fieldProps("name")} required aria-required="true" className={inputClass} />{errorText("name")}</div> : null}
+        <div className="space-y-1">{label("phone", text.phone, false, !values.phone.trim() ? text.phoneMissing : undefined)}<input {...fieldProps("phone")} onChange={(event) => setValues((current) => ({ ...current, phone: formatJapaneseMobilePhone(event.target.value) }))} inputMode="tel" className={inputClass} />{errorText("phone")}</div>
         <div className="space-y-1">{label("lineId", text.lineId)}<input {...fieldProps("lineId")} className={inputClass} />{errorText("lineId")}</div>
         <div className="space-y-1">{label("email", text.email)}<input {...fieldProps("email")} type="email" className={inputClass} />{errorText("email")}</div>
       </div></ClientFormSection>
 
-      <ClientFormSection section="profile" title={text.profile} expanded={expandedSections.profile} onToggle={() => toggleSection("profile")}><div className="grid gap-4 md:grid-cols-2">
+      <ClientFormSection section="profile" title={text.profile} hint={text.profileHint} expanded={expandedSections.profile} onToggle={() => toggleSection("profile")}><div className="grid gap-3 md:grid-cols-2">
         <div className="space-y-1"><label htmlFor="client-partyType" className="text-sm font-semibold text-slate-700">{text.partyType} <span className="text-xs font-normal text-slate-500">({text.optional})</span></label><select {...fieldProps("partyType")} id="client-partyType" className={inputClass}><option value="">{text.partyTypeUnset}</option>{getPartyProfileTypeOptions(locale).map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select>{errorText("partyType")}</div>
         <div className="space-y-1">{label("furigana", profileFuriganaLabel)}<input {...fieldProps("furigana")} className={inputClass} />{errorText("furigana")}</div>
+        {!isCorporate ? <>
+          <div className="space-y-1">{label("nameLatin", text.nameLatin)}<input {...fieldProps("nameLatin")} className={inputClass} />{errorText("nameLatin")}</div>
+          <div className="space-y-1">{label("nameKanji", text.nameKanji)}<input {...fieldProps("nameKanji")} className={inputClass} />{errorText("nameKanji")}</div>
+          <div className="space-y-1">{label("nameKatakana", text.nameKatakana)}<input {...fieldProps("nameKatakana")} className={inputClass} />{errorText("nameKatakana")}</div>
+          <div className="md:col-span-2">{errorText("name")}</div>
+        </> : null}
         <div className="space-y-1">{label("currentPostalCode", profilePostalCodeLabel)}<input {...fieldProps("currentPostalCode")} className={inputClass} />{errorText("currentPostalCode")}</div>
         <div className="space-y-1 md:col-span-2">{label("currentAddress", profileAddressLabel)}<input {...fieldProps("currentAddress")} className={inputClass} />{errorText("currentAddress")}</div>
         {isCorporate ? hiddenIndividualFields.map((field) => <input key={field} type="hidden" value={values[field]} disabled aria-hidden="true" />) : <>
@@ -416,31 +461,31 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
         </>}
       </div></ClientFormSection>
 
-      <ClientFormSection section="needs" title={text.needs} expanded={expandedSections.needs} onToggle={() => toggleSection("needs")}><div className="grid gap-4 md:grid-cols-2">
+      <ClientFormSection section="needs" title={text.needs} hint={text.needsHint} expanded={expandedSections.needs} onToggle={() => toggleSection("needs")}><div className="grid gap-3 md:grid-cols-2">
         <div className="space-y-1">{label("budgetMin", text.budgetMin)}<input {...fieldProps("budgetMin")} type="number" min="0" step="any" inputMode="decimal" className={inputClass} />{errorText("budgetMin")}</div>
         <div className="space-y-1">{label("budgetMax", text.budgetMax)}<input {...fieldProps("budgetMax")} type="number" min="0" step="any" inputMode="decimal" className={inputClass} />{errorText("budgetMax")}</div>
         <div className="space-y-1">{label("budgetType", text.budgetType)}{select("budgetType", budgetTypeOptions)}{errorText("budgetType")}</div>
         <div className="space-y-1">{label("preferredArea", text.preferredArea)}<input {...fieldProps("preferredArea")} className={inputClass} />{errorText("preferredArea")}</div>
         <div className="space-y-1">{label("firstChoiceArea", text.firstChoiceArea)}<input {...fieldProps("firstChoiceArea")} className={inputClass} />{errorText("firstChoiceArea")}</div>
         <div className="space-y-1">{label("secondChoiceArea", text.secondChoiceArea)}<input {...fieldProps("secondChoiceArea")} className={inputClass} />{errorText("secondChoiceArea")}</div>
-        <div className="space-y-1">{label("purpose", text.purpose, true)}{select("purpose", purposeOptions, true)}{errorText("purpose")}</div>
+        <div className="space-y-1">{label("purpose", text.purpose)}{select("purpose", purposeOptions)}{errorText("purpose")}</div>
         <div className="space-y-1">{label("desiredMoveInPeriod", text.period)}<input {...fieldProps("desiredMoveInPeriod")} className={inputClass} />{errorText("desiredMoveInPeriod")}</div>
         <div className="space-y-1">{label("loanPreApprovalStatus", text.loan)}{select("loanPreApprovalStatus", loanOptions)}{errorText("loanPreApprovalStatus")}</div>
       </div></ClientFormSection>
 
-      <ClientFormSection section="management" title={text.management} expanded={expandedSections.management} onToggle={() => toggleSection("management")}><div className="grid gap-4 md:grid-cols-3">
-        <div className="space-y-1">{label("stage", text.stage, true)}{select("stage", stageOptions, true)}{errorText("stage")}{initialNote}</div>
-        <div className="space-y-1">{label("temperature", text.temperature, true)}{select("temperature", temperatureOptions, true)}{errorText("temperature")}</div>
+      <ClientFormSection section="management" title={text.management} hint={text.managementHint} expanded={expandedSections.management} onToggle={() => toggleSection("management")}><div className="grid gap-3 md:grid-cols-3">
+        <div className="space-y-1">{label("stage", text.stage, true, mode === "create" ? text.initialState : undefined)}{select("stage", stageOptions, true)}{errorText("stage")}</div>
+        <div className="space-y-1">{label("temperature", text.temperature)}{select("temperature", temperatureOptions)}{errorText("temperature")}</div>
         <div className="space-y-1">{label("nextFollowUpAt", text.nextFollowUpAt)}<input {...fieldProps("nextFollowUpAt")} type="date" className={inputClass} />{errorText("nextFollowUpAt")}</div>
       </div></ClientFormSection>
 
-      <ClientFormSection section="legal" title={text.legal} expanded={expandedSections.legal} onToggle={() => toggleSection("legal")}><div className="grid gap-4 md:grid-cols-2">
+      <ClientFormSection section="legal" title={text.legal} hint={text.legalHint} expanded={expandedSections.legal} onToggle={() => toggleSection("legal")}><div className="grid gap-3 md:grid-cols-2">
         <div className="space-y-1">{label("brokerageContractType", text.brokerage)}{select("brokerageContractType", brokerageOptions)}{errorText("brokerageContractType")}</div>
         <div className="space-y-1">{label("amlCheckStatus", text.aml)}{select("amlCheckStatus", amlOptions)}{errorText("amlCheckStatus")}</div>
         {(["brokerageContractSignedAt", "brokerageContractExpiresAt", "importantMattersExplainedAt", "contractDocumentDeliveredAt", "personalInfoConsentAt"] as const).map((field) => { const labels = { brokerageContractSignedAt: text.signedAt, brokerageContractExpiresAt: text.expiresAt, importantMattersExplainedAt: text.matters35, contractDocumentDeliveredAt: text.matters37, personalInfoConsentAt: text.consent }; return <div key={field} className="space-y-1">{label(field, labels[field])}<input {...fieldProps(field)} type="date" className={inputClass} />{errorText(field)}</div>; })}
       </div></ClientFormSection>
 
-      <ClientFormSection section="notes" title={text.notes} expanded={expandedSections.notes} onToggle={() => toggleSection("notes")}><div className="space-y-3">{label("notes", text.notes)}<textarea {...fieldProps("notes")} rows={5} placeholder={text.notesPlaceholder} className={`${inputClass} resize-y`} />{errorText("notes")}</div></ClientFormSection>
+      <ClientFormSection section="notes" title={text.notes} hint={text.notesHint} expanded={expandedSections.notes} onToggle={() => toggleSection("notes")}><div className="space-y-3">{label("notes", text.notes)}<textarea {...fieldProps("notes")} rows={5} placeholder={text.notesPlaceholder} className={`${inputClass} resize-y`} />{errorText("notes")}</div></ClientFormSection>
 
       {hideActions ? null : <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-200 pt-5">{onCancel ? <button type="button" onClick={onCancel} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">{text.cancel}</button> : <Link href={returnTo} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">{text.cancel}</Link>}<Button type="submit" loading={pending || autoSaving} className="min-h-11 rounded-lg bg-slate-950 px-5 py-2.5 text-sm font-bold text-white hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60">{pending || autoSaving ? text.saving : entryUpload && entryFiles.length > entryReadFileKeys.length ? text.saveAndRead : text.save}</Button></div>}
       <div className="sr-only" aria-live="polite">{pending ? text.saving : ""}</div>

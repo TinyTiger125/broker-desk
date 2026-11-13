@@ -225,6 +225,8 @@ export function CaseEvidenceSummary({
 }) {
   if (evidenceItems.length === 0) return null;
   const candidate = evidenceItems[0];
+  const distinctEvidenceValues = new Set(evidenceItems.map((evidence) => evidence.value.trim()).filter(Boolean));
+  const hasConflictingCandidates = distinctEvidenceValues.size > 1;
   return (
     <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
       <p className="text-xs font-black text-amber-950">{title}</p>
@@ -236,7 +238,10 @@ export function CaseEvidenceSummary({
           </div>
         ))}
       </div>
-      {candidate.value ? (
+      {candidate.value && !hasConflictingCandidates ? (
+        <input type="hidden" name={`candidate:${candidateFieldKey}`} value={candidate.value} readOnly />
+      ) : null}
+      {candidate.value && !hasConflictingCandidates ? (
         <button type="submit" name="useCandidateField" value={candidateFieldKey} className="mt-3 w-full rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-black text-blue-800 hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300">
           {candidate.value === currentValue
             ? locale === "zh" ? "按此值保存" : locale === "ko" ? "이 값으로 저장" : "この値で保存"

@@ -198,6 +198,10 @@ export type Client = {
   id: string;
   tenantId?: string;
   name: string;
+  /** Separate individual-person name forms; corporate names use legacy `name`. */
+  nameLatin?: string;
+  nameKanji?: string;
+  nameKatakana?: string;
   phone: string;
   lineId?: string;
   email?: string;
@@ -6560,6 +6564,9 @@ export async function addClient(input: {
   tenantId?: string;
   ownerUserId: string;
   name: string;
+  nameLatin?: string;
+  nameKanji?: string;
+  nameKatakana?: string;
   phone: string;
   lineId?: string;
   email?: string;
@@ -6609,6 +6616,9 @@ export async function addClient(input: {
     id: input.id?.trim() || makeId("client"),
     tenantId: scopeTenantId,
     name: input.name,
+    nameLatin: input.nameLatin,
+    nameKanji: input.nameKanji,
+    nameKatakana: input.nameKatakana,
     phone: input.phone,
     lineId: input.lineId,
     email: input.email,
@@ -6661,6 +6671,9 @@ export async function updateClient(
   input: {
     tenantId?: string;
     name: string;
+    nameLatin?: string;
+    nameKanji?: string;
+    nameKatakana?: string;
     phone: string;
     lineId?: string;
     email?: string;
@@ -6703,6 +6716,9 @@ export async function updateClient(
   if (!client) return null;
 
   client.name = input.name;
+  if (Object.prototype.hasOwnProperty.call(input, "nameLatin")) client.nameLatin = input.nameLatin;
+  if (Object.prototype.hasOwnProperty.call(input, "nameKanji")) client.nameKanji = input.nameKanji;
+  if (Object.prototype.hasOwnProperty.call(input, "nameKatakana")) client.nameKatakana = input.nameKatakana;
   client.phone = input.phone;
   client.lineId = input.lineId;
   client.email = input.email;

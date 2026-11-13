@@ -33,6 +33,7 @@ const copyByLocale: Record<
     clearReuse: string;
     autosave: string;
     saved: string;
+    description: string;
   }
 > = {
   ja: {
@@ -44,6 +45,7 @@ const copyByLocale: Record<
     clearReuse: "忘却",
     autosave: "自動保存",
     saved: "保存済み",
+    description: "入力中の内容をこの端末の下書きとして自動保存します。正式記録への保存は保存ボタンで確定します。",
   },
   zh: {
     available: "有未保存内容可恢复",
@@ -54,6 +56,7 @@ const copyByLocale: Record<
     clearReuse: "清空",
     autosave: "自动保存",
     saved: "已保存",
+    description: "输入内容会自动保存为本设备草稿。正式记录仍需点击保存确认。",
   },
   ko: {
     available: "복원 가능한 초안이 있습니다",
@@ -64,6 +67,7 @@ const copyByLocale: Record<
     clearReuse: "초기화",
     autosave: "자동 저장",
     saved: "저장됨",
+    description: "입력 중인 내용은 이 기기의 초안으로 자동 저장됩니다. 정식 기록은 저장 버튼으로 확정합니다.",
   },
 };
 
@@ -261,9 +265,7 @@ export function FormDraftAssist({
 
   return (
     <div className={`flex flex-wrap items-center gap-2 text-xs text-slate-500 ${className}`}>
-      <span className="rounded-md bg-slate-100 px-2 py-1 font-semibold text-slate-600">
-        {copy.autosave} · {savedState === "saving" ? "..." : savedState === "saved" ? copy.saved : ""}
-      </span>
+      <details className="relative"><summary className="flex cursor-help list-none items-center gap-1 rounded-md bg-slate-100 px-2 py-1 font-semibold text-slate-600"><span>{copy.autosave}</span><span aria-hidden="true" className="flex h-4 w-4 items-center justify-center rounded-full border border-slate-400 text-[10px]">?</span><span aria-live="polite">{savedState === "saving" ? "..." : savedState === "saved" ? copy.saved : ""}</span></summary><div role="tooltip" className="absolute left-0 top-7 z-30 w-72 rounded-md border border-slate-300 bg-white p-2 text-xs font-medium leading-5 text-slate-700 shadow-lg">{copy.description}</div></details>
       {hasDraft ? (
         <>
           <span>

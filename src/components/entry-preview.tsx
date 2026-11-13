@@ -220,9 +220,9 @@ export function EntryPreview({ files, kind, context, locale, onConfirm, onLocate
     <section aria-labelledby="entry-preview-heading" className="space-y-3 rounded-xl border border-indigo-200 bg-indigo-50/50 p-4">
       <input type="hidden" name="entryReadProofs" value={JSON.stringify(activePreview?.readProofs ?? {})} />
       <input type="hidden" name="entryPreviewDecisions" value={JSON.stringify(activeDecisions)} />
-      <div>
+      <div className="flex items-center gap-2">
         <h2 id="entry-preview-heading" className="text-sm font-black text-slate-950">{text.title}</h2>
-        <p className="mt-1 text-xs leading-5 text-slate-600">{description}</p>
+        <details className="relative"><summary aria-label={text.title} className="flex h-5 w-5 cursor-help list-none items-center justify-center rounded-full border border-slate-400 text-[11px] font-black text-slate-600">?</summary><div role="tooltip" className="absolute left-0 top-7 z-30 w-96 rounded-md border border-slate-300 bg-white p-2 text-xs font-medium leading-5 text-slate-700 shadow-lg">{description}</div></details>
       </div>
       <button type="button" onClick={read} disabled={pending || allFilesRead} className="min-h-11 rounded-lg bg-indigo-700 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-800 disabled:cursor-wait disabled:opacity-60">
         {pending ? text.reading : allFilesRead ? text.readComplete : activePreview?.status === "error" && activePreview.readFileKeys.length > 0 ? text.retry : text.read}

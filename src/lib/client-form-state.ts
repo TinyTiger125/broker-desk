@@ -1,4 +1,7 @@
 export const CLIENT_INDIVIDUAL_FORM_FIELDS = [
+  "nameLatin",
+  "nameKanji",
+  "nameKatakana",
   "birthDate",
   "gender",
   "employerName",

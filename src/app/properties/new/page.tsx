@@ -16,16 +16,19 @@ const copy = {
   ja: {
     title: "物件を追加",
     desc: "資料をアップロードすると、判読できて不一致のない既存項目は正式な物件記録へ自動保存されます。必須項目が不足する場合は補完後に保存でき、保存後も編集・再確認できます。",
+    save: "保存",
     back: "物件一覧へ戻る",
   },
   zh: {
     title: "新增物件",
     desc: "上传资料后，清晰且无冲突的现有字段会自动写入正式物件记录；缺少必填项时请补充后保存，保存后仍可编辑和复核。",
+    save: "保存",
     back: "返回物件列表",
   },
   ko: {
     title: "매물 추가",
     desc: "자료를 업로드하면 명확하고 불일치가 없는 기존 항목은 정식 매물 기록에 자동 저장됩니다. 필수 항목이 없으면 보완 후 저장할 수 있으며, 저장 후에도 수정하고 다시 확인할 수 있습니다.",
+    save: "저장",
     back: "매물 목록으로",
   },
 } as const;
@@ -101,14 +104,11 @@ export default async function NewPropertyPage({ searchParams }: NewPropertyPageP
     <div className="mx-auto max-w-5xl space-y-6 pb-12">
       <header className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-5">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-950">{text.title}</h1>
-          <p className="mt-2 text-sm font-medium text-slate-600">{text.desc}</p>
+          <div className="flex items-center gap-2"><h1 className="text-3xl font-bold tracking-tight text-slate-950">{text.title}</h1><details className="relative"><summary aria-label={text.title} className="flex h-5 w-5 cursor-help list-none items-center justify-center rounded-full border border-slate-400 text-[11px] font-black text-slate-600">?</summary><div role="tooltip" className="absolute left-0 top-7 z-30 w-80 rounded-md border border-slate-300 bg-white p-2 text-xs font-medium leading-5 text-slate-700 shadow-lg">{text.desc}</div></details></div>
         </div>
-        <Link href={returnTo} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">
-          {text.back}
-        </Link>
+        <div className="flex flex-wrap items-center gap-2"><button type="submit" form="property-new-form" className="rounded-lg bg-slate-950 px-3 py-2 text-sm font-bold text-white hover:bg-slate-800">{text.save}</button><Link href={returnTo} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">{text.back}</Link></div>
       </header>
-      <PropertyResponsiveForm action={createPropertyEntryAction} locale={locale} initialValues={emptyValues} returnTo={returnTo} entryUpload />
+      <PropertyResponsiveForm action={createPropertyEntryAction} locale={locale} initialValues={emptyValues} returnTo={returnTo} formId="property-new-form" entryUpload />
     </div>
   );
 }

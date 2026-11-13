@@ -80,10 +80,11 @@ assert.deepEqual(rowCallback.parameters[0].name.elements.map((item) => item.name
 const rowConditionals = visit(rowCallback.body, (node) => ts.isConditionalExpression(node));
 const writeGate = rowConditionals.find((node) => node.condition.getText(tree) === "resolution.canWrite");
 assert(writeGate, "owner-only row actions must be gated by resolver canWrite");
-assert(writeGate.whenTrue.getText(tree).includes("#timeline") && writeGate.whenTrue.getText(tree).includes("/quotes/new"), "write gate must own the follow-up and quotation actions");
+assert(writeGate.whenTrue.getText(tree).includes("#timeline") && writeGate.whenTrue.getText(tree).includes("quoteHref"), "write gate must own the follow-up and quotation actions");
+assert(source.includes('const quoteHref = `/quotes/new?clientId=${encodeURIComponent(client.id)}&returnTo=${encodeURIComponent(returnTo)}`;'), "quotation action must retain the client-scoped creation route");
 assert(writeGate.whenFalse.getText(tree).includes("text.readOnly"), "company-read rows must expose an explicit localized read-only state");
 
-const quickDetails = visit(page.body, (node) => ts.isJsxElement(node) && node.openingElement.attributes.properties.some((attribute) => ts.isJsxAttribute(attribute) && attribute.name.getText(tree) === "className" && attribute.initializer?.getText(tree) === "{styles.quickDetails}"));
+const quickDetails = visit(page.body, (node) => ts.isJsxElement(node) && node.openingElement.attributes.properties.some((attribute) => ts.isJsxAttribute(attribute) && attribute.name.getText(tree) === "className" && attribute.initializer?.getText(tree).includes("styles.quickDetails")));
 assert.equal(quickDetails.length, 1, "clients page must retain exactly one quick-create surface");
 const quickCreateGate = visit(page.body, (node) => ts.isConditionalExpression(node) && node.condition.getText(tree) === "canCreateClient");
 assert.equal(quickCreateGate.length, 1, "client quick-create must be conditionally rendered by canCreateClient");

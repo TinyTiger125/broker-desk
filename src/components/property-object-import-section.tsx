@@ -108,7 +108,7 @@ const copy = {
   },
 } as const;
 
-export function PropertyObjectImportSection({ locale, caseId, propertyId, caseTitle, views = [], uploadAction, refreshAction, retryAction, observedVersion, returnTo, unavailable = false, archiveItems, objectPage = false }: PropertyObjectImportSectionProps) {
+export function PropertyObjectImportSection({ locale, caseId, propertyId, caseTitle, views = [], uploadAction, reviewAction, refreshAction, retryAction, observedVersion, returnTo, unavailable = false, archiveItems, objectPage = false }: PropertyObjectImportSectionProps) {
   const text = copy[locale];
   const visibleViews = views.filter((view) => view.target.status !== "completed" && (
     ["queued", "processing", "failed", "conflict"].includes(view.target.status)
@@ -118,10 +118,7 @@ export function PropertyObjectImportSection({ locale, caseId, propertyId, caseTi
   const content = (
     <>
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 id="property-object-import-heading" className="text-base font-black text-slate-950">{text.title}</h2>
-          <p className="mt-1 text-xs font-semibold leading-5 text-slate-600">{text.description}</p>
-        </div>
+        <div className="flex items-center gap-2"><h2 id="property-object-import-heading" className="text-base font-black text-slate-950">{text.title}</h2><details className="relative"><summary aria-label={text.title} className="flex h-5 w-5 cursor-help list-none items-center justify-center rounded-full border border-slate-400 text-[11px] font-black text-slate-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">?</summary><div role="tooltip" className="absolute left-0 top-7 z-30 w-80 rounded-md border border-slate-300 bg-white p-2 text-xs font-medium leading-5 text-slate-700 shadow-lg">{text.description}</div></details></div>
         {caseId ? <Link href={`/cases/${encodeURIComponent(caseId)}#case-review-desk`} className="inline-flex min-h-10 items-center rounded-lg border border-blue-200 px-3 py-2 text-xs font-bold text-[#0046ad]">{text.openCase}{caseTitle ? ` · ${caseTitle}` : ""}</Link> : null}
       </div>
       {unavailable ? <p role="status" className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">{text.unavailable}</p> : null}
@@ -158,6 +155,7 @@ export function PropertyObjectImportSection({ locale, caseId, propertyId, caseTi
                 {field.finalSource === "human" && field.finalValue && field.candidateValue && field.finalValue !== field.candidateValue ? <p className="mt-1 text-[11px] text-slate-500">{text.modelCandidate}：{field.candidateValue}</p> : null}
                 {pageNumber || sourceText ? <p className="mt-1 text-[11px] text-slate-600">{pageNumber ? `p.${pageNumber}` : ""}{pageNumber && sourceText ? " · " : ""}{sourceText}</p> : null}
                 {alternatives.length > 1 ? <div className="mt-1 space-y-0.5 text-[11px] text-rose-800">{alternatives.map((alternative, index) => <p key={`${field.id}-alternative-${index}`}>{text.alternative}{index + 1}: {typeof alternative.value === "string" ? alternative.value : "—"}{typeof alternative.pageNumber === "number" ? ` (p.${alternative.pageNumber})` : ""}{typeof alternative.sourceText === "string" && alternative.sourceText ? ` · ${alternative.sourceText}` : ""}</p>)}</div> : null}
+                {reviewAction && field.candidateValue && !["confirmed", "rejected", "failed", "not_found"].includes(field.status) ? <div className="mt-2 flex flex-wrap gap-2"><form action={reviewAction}><input type="hidden" name="importTargetId" value={view.target.id} /><input type="hidden" name="fieldId" value={field.id} /><input type="hidden" name="expectedVersion" value={view.target.targetVersion} /><input type="hidden" name="expectedCandidateValue" value={field.candidateValue} /><input type="hidden" name="decision" value="confirm" /><input type="hidden" name="value" value={field.candidateValue} />{returnTo ? <input type="hidden" name="returnTo" value={returnTo} /> : null}<button type="submit" className="rounded border border-blue-300 bg-blue-50 px-2 py-1 text-[11px] font-bold text-blue-900">{text.confirm}</button></form><form action={reviewAction}><input type="hidden" name="importTargetId" value={view.target.id} /><input type="hidden" name="fieldId" value={field.id} /><input type="hidden" name="expectedVersion" value={view.target.targetVersion} /><input type="hidden" name="expectedCandidateValue" value={field.candidateValue} /><input type="hidden" name="decision" value="reject" />{returnTo ? <input type="hidden" name="returnTo" value={returnTo} /> : null}<button type="submit" className="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] font-bold text-slate-700">{text.reject}</button></form></div> : null}
               </div>
             );
             })}
