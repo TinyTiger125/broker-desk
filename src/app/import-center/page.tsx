@@ -1283,9 +1283,9 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
   const inputTaskJob = isExtractedQueuedMapping ? undefined : xlsxJob ?? (requestedJob && isInputFileExtractionJob(requestedJob) ? requestedJob : undefined);
   const failedInputJob = inputTaskJob?.status === "failed" && !inputTaskJob.finalImportStartedAt ? inputTaskJob : undefined;
   const materialObjects = [
-    { key: "case", icon: "business_center", iconClass: "bg-blue-50 text-blue-700", title: locale === "zh" ? "案件资料" : locale === "ko" ? "안건 자료" : "案件資料", desc: locale === "zh" ? "创建或读取案件相关资料。" : locale === "ko" ? "안건 관련 자료를 만들거나 읽습니다." : "案件に関する資料を作成・読取します。", manualHref: "/cases/new?from=entry" },
-    { key: "person", icon: "group", iconClass: "bg-emerald-50 text-emerald-700", title: locale === "zh" ? "人物资料" : locale === "ko" ? "관계자 자료" : "関係者資料", desc: locale === "zh" ? "创建或读取人物相关资料。" : locale === "ko" ? "관계자 자료를 만들거나 읽습니다." : "関係者に関する資料を作成・読取します。", manualHref: "/clients/new?returnTo=%2Fimport-center" },
-    { key: "property", icon: "apartment", iconClass: "bg-violet-50 text-violet-700", title: locale === "zh" ? "物件资料" : locale === "ko" ? "매물 자료" : "物件資料", desc: locale === "zh" ? "创建或读取物件相关资料。" : locale === "ko" ? "매물 관련 자료를 만들거나 읽습니다." : "物件に関する資料を作成・読取します。", manualHref: "/properties/new?returnTo=%2Fimport-center" },
+    { key: "case", icon: "business_center", iconClass: "bg-blue-50 text-blue-700", title: locale === "zh" ? "案件" : locale === "ko" ? "안건" : "案件", desc: locale === "zh" ? "创建或读取案件资料。" : locale === "ko" ? "안건 자료를 만들거나 읽습니다." : "案件の資料を作成・読取します。", manualHref: "/cases/new?from=entry" },
+    { key: "person", icon: "group", iconClass: "bg-emerald-50 text-emerald-700", title: locale === "zh" ? "主体" : locale === "ko" ? "관계자" : "関係者", desc: locale === "zh" ? "创建或读取客户、卖方、保证人等主体资料。" : locale === "ko" ? "고객·매도인·보증인 등 관계자 자료를 만들거나 읽습니다." : "顧客・売主・保証人など、関係者の資料を作成・読取します。", manualHref: "/clients/new?returnTo=%2Fimport-center" },
+    { key: "property", icon: "apartment", iconClass: "bg-violet-50 text-violet-700", title: locale === "zh" ? "物件" : locale === "ko" ? "매물" : "物件", desc: locale === "zh" ? "创建或读取物件资料。" : locale === "ko" ? "매물 자료를 만들거나 읽습니다." : "物件の資料を作成・読取します。", manualHref: "/properties/new?returnTo=%2Fimport-center" },
   ] as const;
   return (
     <div className="bd-page bd-import-page space-y-6">
@@ -1436,14 +1436,14 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
                   </div>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <Link data-import-action="unified" href={object.manualHref} className="inline-flex min-h-14 min-w-0 items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 text-sm font-black text-slate-900 hover:border-blue-300 hover:bg-blue-50/40 sm:px-4">
-                      <span className="inline-flex min-w-0 items-center gap-2 whitespace-nowrap"><span className="material-symbols-outlined shrink-0 text-blue-700">edit</span><span className="whitespace-nowrap">{locale === "zh" ? "录入资料" : locale === "ko" ? "자료 입력" : "資料を入力"}</span></span><span aria-hidden="true">›</span>
+                      <span className="inline-flex min-w-0 items-center gap-2 whitespace-nowrap"><span className="material-symbols-outlined shrink-0 text-blue-700">add_circle</span><span className="whitespace-nowrap">{locale === "zh" ? "新建" : locale === "ko" ? "새로 만들기" : "新規作成"}</span></span><span aria-hidden="true">›</span>
                     </Link>
                     <Link
                       data-import-action="existing"
                       href={`${existingObjectHref}${objectReturnTo ? `&returnTo=${encodeURIComponent(objectReturnTo)}` : ""}`}
                       className="inline-flex min-h-14 min-w-0 items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 text-sm font-black text-slate-900 hover:border-emerald-300 hover:bg-emerald-50/40 sm:px-4"
                     >
-                      <span className="inline-flex min-w-0 items-center gap-2 whitespace-nowrap"><span className="material-symbols-outlined shrink-0 text-emerald-700">upload_file</span><span className="whitespace-nowrap">{locale === "zh" ? "选择现有档案" : locale === "ko" ? "기존 기록 선택" : "既存の記録を選ぶ"}</span></span><span aria-hidden="true">›</span>
+                      <span className="inline-flex min-w-0 items-center gap-2 whitespace-nowrap"><span className="material-symbols-outlined shrink-0 text-emerald-700">folder_open</span><span className="whitespace-nowrap">{locale === "zh" ? "从已有记录选择" : locale === "ko" ? "기존 기록에서 선택" : "既存から選ぶ"}</span></span><span aria-hidden="true">›</span>
                     </Link>
                   </div>
                 </section>
