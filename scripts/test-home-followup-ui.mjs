@@ -57,7 +57,12 @@ function loadRouteModule(request) {
 
   const module = { exports: {} };
   modules.set(filename, module);
-  const compiled = ts.transpileModule(fs.readFileSync(filename, "utf8"), {
+  let source = fs.readFileSync(filename, "utf8");
+  if (request === "@/app/page") {
+    source = source.replace("function WaitingRows(", "export function WaitingRows(");
+    assert.notEqual(source, fs.readFileSync(filename, "utf8"), "test fixture must expose WaitingRows without exporting it from the Next.js page");
+  }
+  const compiled = ts.transpileModule(source, {
     fileName: filename,
     compilerOptions: {
       esModuleInterop: true,
@@ -92,6 +97,12 @@ const model = {
   staleClients: [],
 };
 const html = renderToStaticMarkup(WaitingRows({ model, copy, locale: "ja" }));
+const pageSource = fs.readFileSync(path.resolve(root, "src/app/page.tsx"), "utf8");
+const waitingModuleStart = pageSource.indexOf('<HomeModule id="waiting">');
+const agendaModuleStart = pageSource.indexOf('<HomeModule id="agenda">', waitingModuleStart);
+assert(waitingModuleStart >= 0 && agendaModuleStart > waitingModuleStart, "home route must keep a bounded waiting module");
+const waitingModule = pageSource.slice(waitingModuleStart, agendaModuleStart);
+assert.doesNotMatch(waitingModule, /href="\/clients"[\s\S]*?\{copy\.open\}/, "waiting module must not render a right-side open link");
 
 assert.match(html, /class="divide-y divide-slate-100"/, "follow-up rows must retain a concise divider");
 assert.match(html, /href="\/clients\/client%2Fa#client-follow-ups"/, "waiting row must navigate to the linked client's follow-ups");
