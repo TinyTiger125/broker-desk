@@ -342,7 +342,7 @@ class CdpPage {
       returnByValue: true,
       userGesture: true,
     });
-    if (response.exceptionDetails) throw new Error("browser evaluation failed: " + (response.exceptionDetails.text ?? expression));
+    if (response.exceptionDetails) throw new Error("browser evaluation failed: " + (response.exceptionDetails.text ?? expression) + "; details=" + String(response.exceptionDetails.exception?.description ?? response.exceptionDetails.description ?? "unknown").slice(0, 2000));
     return response.result?.value;
   }
 
@@ -360,7 +360,9 @@ class CdpPage {
     }
     let current;
     try { current = await this.evaluate("location.href"); } catch { current = "unknown"; }
-    throw new Error("browser did not reach expected location; current=" + String(current));
+    let body;
+    try { body = await this.evaluate("document.body?.innerText ?? ''"); } catch { body = "unknown"; }
+    throw new Error("browser did not reach expected location; current=" + String(current) + "; body=" + String(body).slice(0, 2000) + "; console=" + JSON.stringify(this.consoleErrors).slice(0, 2000));
   }
 
   async waitForText(text, timeoutMs = 15_000) {
@@ -548,6 +550,40 @@ function browserScript(lines) {
   return lines.join("\n");
 }
 
+async function createMemoryUiCase(page) {
+  const title = `Broker Desk local UI case ${Date.now()}`;
+  await navigate(page, "/cases/new?from=entry");
+  await page.waitForText("案件");
+  const submitted = await page.evaluate(browserScript([
+    "(() => {",
+    "  const form = [...document.querySelectorAll('form')].find((candidate) => candidate.querySelector('input[name=\"caseTitle\"]'));",
+    "  const titleInput = form?.querySelector('input[name=\"caseTitle\"]');",
+    "  const workflow = form?.querySelector('select[name=\"workflowType\"]');",
+    "  if (!form || !titleInput || !workflow) return { ok: false };",
+    "  const titleDescriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(titleInput), \"value\");",
+    `  titleDescriptor?.set?.call(titleInput, ${JSON.stringify(title)});`,
+    "  titleInput.dispatchEvent(new Event(\"input\", { bubbles: true }));",
+    "  titleInput.dispatchEvent(new Event(\"change\", { bubbles: true }));",
+    "  if (!workflow.value) { workflow.value = workflow.options[0]?.value ?? \"\"; workflow.dispatchEvent(new Event(\"change\", { bubbles: true })); }",
+    "  form.requestSubmit();",
+    "  return { ok: true, workflow: workflow.value };",
+    "})()",
+  ]));
+  assert.equal(submitted.ok, true, "memory UI fixture case form must submit through the normal create route");
+  const location = await page.waitForLocation((current) => {
+    try {
+      const pathname = new URL(current).pathname;
+      return pathname.startsWith("/cases/") && pathname !== "/cases/new";
+    } catch {
+      return false;
+    }
+  }, 20_000);
+  const caseId = new URL(location).pathname.split("/").filter(Boolean)[1] ?? "";
+  console.log(`[BROWSER] created memory UI case: ${location}`);
+  assert.match(caseId, /^case_[A-Za-z0-9_-]+$/, "memory UI fixture case must return a stable case id");
+  return caseId;
+}
+
 async function runExcelLedgerFlow(page) {
   assert.ok(existsSync(uniqueSyntheticLedgerFixture), "synthetic ledger fixture must exist: " + uniqueSyntheticLedgerFixture);
   await navigate(page, "/import-center?flow=ledger#source-upload");
@@ -673,7 +709,9 @@ async function runExcelLedgerFlow(page) {
 
 async function runCaseAssociationFlow(page) {
   assert.ok(existsSync(supportedCaseFixture), "supported case fixture must exist: " + supportedCaseFixture);
-  const caseId = "case_demo_asakusa_mori_rent";
+  const requestedCaseId = process.env.BROKER_DESK_UI_CASE_ID?.trim();
+  const caseId = requestedCaseId
+    || (process.env.BROKER_DESK_UI_TRUSTED_HEADER === "1" ? "case_demo_asakusa_mori_rent" : await createMemoryUiCase(page));
   await navigate(page, "/import-center?flow=case&targetCaseId=" + encodeURIComponent(caseId) + "#source-upload");
   await page.waitForText("情報入力", 15_000);
   await page.setFile('input[name="excelFile"]', supportedCaseFixture);
@@ -801,7 +839,9 @@ try {
     if (process.env.BROKER_DESK_UI_TRUSTED_HEADER === "1") browserEvidence = await runInteractiveRoutes(interactive.page);
     if (process.env.BROKER_DESK_UI_ONLY_CASE !== "1") {
       ledgerEvidence = await runExcelLedgerFlow(interactive.page);
-      ledgerEvidence.postgresActionEvidence = await queryLocalImportEvidence(ledgerEvidence.jobId);
+      ledgerEvidence.postgresActionEvidence = process.env.BROKER_DESK_UI_TRUSTED_HEADER === "1"
+        ? await queryLocalImportEvidence(ledgerEvidence.jobId)
+        : { skipped: "memory/demo-cookie run; PostgreSQL row evidence requires trusted-header mode and an explicit nonproduction query connection" };
     } else {
       ledgerEvidence = { skipped: true };
     }
@@ -833,7 +873,11 @@ try {
   writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
   console.log(`[PASS] local UI flow owner browser path: ${routes.map((route) => route.path).join(" -> ")}`);
   console.log(`[PASS] Excel ledger happy path + invalid mapping/duplicate recovery: ${ledgerEvidence.jobId}`);
-  console.log(`[PASS] real executePropertyImportAction PostgreSQL row/job/audit counts: ${JSON.stringify(ledgerEvidence.postgresActionEvidence)}`);
+  if (ledgerEvidence.postgresActionEvidence?.skipped) {
+    console.log(`[PASS] PostgreSQL row/job/audit evidence skipped: ${ledgerEvidence.postgresActionEvidence.skipped}`);
+  } else {
+    console.log(`[PASS] real executePropertyImportAction PostgreSQL row/job/audit counts: ${JSON.stringify(ledgerEvidence.postgresActionEvidence)}`);
+  }
   console.log(`[PASS] case-scoped review edit/save/reopen path: ${caseEvidence.jobId} -> ${caseEvidence.caseId}`);
   console.log(`[EVIDENCE] ${reportPath}`);
   console.log(`[EVIDENCE] screenshots: ${evidenceDir}`);

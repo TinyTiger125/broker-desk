@@ -227,7 +227,7 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
   const confirmEntryCandidate = useCallback((candidate: EntryPreviewCandidate) => {
     setValues((current) => String(current[candidate.key as keyof PropertyFormValues] ?? "").trim() ? current : applyEntryPreviewCandidate(current, candidate));
   }, [setValues]);
-  const [expandedSections, setExpandedSections] = useState<Record<PropertyFormSectionKey, boolean>>({ basic: true, money: Boolean(initialValues.listingPrice || initialValues.listingRent || initialValues.listingCommonFee || initialValues.managementFee || initialValues.repairFee || initialValues.sizeSqm), detail: Boolean(initialValues.notes) });
+  const [expandedSections, setExpandedSections] = useState<Record<PropertyFormSectionKey, boolean>>({ basic: Boolean(initialValues.name || initialValues.area || initialValues.address || initialValues.furigana || initialValues.roomNumber || initialValues.postalCode || initialValues.usage), money: Boolean(initialValues.listingPrice || initialValues.listingRent || initialValues.listingCommonFee || initialValues.managementFee || initialValues.repairFee || initialValues.sizeSqm), detail: Boolean(initialValues.notes) });
   const openSectionForField = useCallback((field: keyof PropertyFormValues) => {
     const section = propertyFormSectionForField[field];
     setExpandedSections((current) => current[section] ? current : { ...current, [section]: true });

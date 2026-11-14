@@ -33,7 +33,7 @@ assert(form.includes('aria-describedby'), "fields must associate their errors");
 assert(form.includes("target?.focus()"), "summary links must focus their field");
 assert(form.includes("event.nativeEvent.keyCode === 229"), "IME Enter must not submit");
 assert(form.includes('type PropertyFormSectionKey = "basic" | "money" | "detail"'), "property form must define the three collapsible sections");
-assert(form.includes('basic: true, money: Boolean(initialValues'), "property money section should collapse when empty and open when populated");
+assert(form.includes('basic: Boolean(initialValues.name || initialValues.area || initialValues.address || initialValues.furigana || initialValues.roomNumber || initialValues.postalCode || initialValues.usage), money: Boolean(initialValues'), "property basic and money sections should collapse when empty and open when populated");
 assert(form.includes('detail: Boolean(initialValues.notes)'), "property detail section should collapse when empty and open when populated");
 assert((form.match(/<PropertyFormSection section=/g) ?? []).length === 3, "property form must render three independently collapsible sections");
 assert(form.includes("aria-expanded={expanded}"), "property section controls must expose their expanded state");
