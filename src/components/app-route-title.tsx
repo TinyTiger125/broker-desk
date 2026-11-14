@@ -77,16 +77,18 @@ export function AppRouteTitle({ locale }: { locale: Locale }) {
 
   if (pathname === "/clients/new" || pathname === "/properties/new") {
     const returnTo = searchParams.get("returnTo") ?? (searchParams.get("from") === "entry" ? "/import-center" : "");
+    let cameFromImportCenter = false;
     try {
       const rawPathname = returnTo.split(/[?#]/, 1)[0];
       const decodedPathname = decodeURIComponent(rawPathname);
       const parsed = new URL(returnTo, "http://broker-desk.local");
       const safePath = returnTo.startsWith("/") && !returnTo.startsWith("//") && !returnTo.includes("\\")
         && !decodedPathname.split("/").some((segment) => segment === "." || segment === "..");
-      if (safePath && parsed.origin === "http://broker-desk.local" && parsed.pathname === "/import-center") return <span>{joinPath([l.home, l.import])}</span>;
+      cameFromImportCenter = safePath && parsed.origin === "http://broker-desk.local" && parsed.pathname === "/import-center";
     } catch {
       // Keep the ordinary organize breadcrumb for malformed or external values.
     }
+    if (cameFromImportCenter) return <span>{joinPath([l.home, l.import])}</span>;
   }
 
   if (pathname === "/") return <span>{l.home}</span>;
