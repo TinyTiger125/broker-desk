@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { previewEntryDocumentsAction } from "@/app/entry-preview-actions";
-import { entryFileKey, safeEntryPreviewCandidates, type EntryPreviewState } from "@/lib/entry-preview";
+import { entryFileKey, safeEntryPreviewCandidates, selectableEntryPreviewCandidates, type EntryPreviewState } from "@/lib/entry-preview";
 import type { Locale } from "@/lib/locale";
 
 export type EntryPreviewKind = "customer" | "property";
@@ -212,7 +212,7 @@ export function EntryPreview({ files, kind, context, locale, onConfirm, onApplyC
   const unreadFiles = getUnreadEntryFiles(files, activePreview?.readFileKeys ?? []);
   const allFilesRead = files.length > 0 && unreadFiles.length === 0 && Boolean(activePreview?.candidates.length);
   const safeCandidates = activePreview ? safeEntryPreviewCandidates(activePreview.candidates) : [];
-  const safeCandidateIds = new Set(safeCandidates.map((candidate) => candidate.id));
+  const selectableCandidateIds = new Set(activePreview ? selectableEntryPreviewCandidates(activePreview.candidates).map((candidate) => candidate.id) : []);
   const safeCandidateCount = safeCandidates.length;
   const hasPropertyName = kind !== "property" || hasPropertyNameCandidate(safeCandidates);
   const description = context === "case" ? text.descriptionCase : kind === "property" ? text.descriptionProperty : text.description;
@@ -223,7 +223,7 @@ export function EntryPreview({ files, kind, context, locale, onConfirm, onApplyC
       <input type="hidden" name="entryReadProofs" value={JSON.stringify(activePreview?.readProofs ?? {})} />
       <input type="hidden" name="entryPreviewDecisions" value={JSON.stringify(activeDecisions)} />
       <div className="flex items-center gap-2">
-        <h2 id="entry-preview-heading" className="text-sm font-black text-slate-950">{text.title}</h2>
+        <h2 id="entry-preview-heading" tabIndex={-1} className="text-sm font-black text-slate-950 outline-none">{text.title}</h2>
         <details className="relative"><summary aria-label={text.title} className="flex h-5 w-5 cursor-help list-none items-center justify-center rounded-full border border-slate-400 text-[11px] font-black text-slate-600">?</summary><div role="tooltip" className="absolute left-0 top-7 z-30 w-96 rounded-md border border-slate-300 bg-white p-2 text-xs font-medium leading-5 text-slate-700 shadow-lg">{description}</div></details>
       </div>
       <button type="button" onClick={read} disabled={pending || allFilesRead} className="min-h-11 rounded-lg bg-indigo-700 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-800 disabled:cursor-wait disabled:opacity-60">
@@ -239,7 +239,7 @@ export function EntryPreview({ files, kind, context, locale, onConfirm, onApplyC
                 return (
                   <li key={candidate.id} className="grid gap-0.5 px-3 py-2 text-xs sm:grid-cols-[minmax(8rem,0.25fr)_minmax(0,1fr)_auto] sm:gap-x-3">
                     <span className="font-bold text-slate-950">{candidate.label}</span>
-                    <span className="min-w-0 break-words text-slate-800">{onApplyCandidate && safeCandidateIds.has(candidate.id) ? <button type="button" onClick={() => onApplyCandidate(candidate, activePreview)} className="text-left font-semibold text-[#0046ad] underline decoration-dotted underline-offset-2 hover:text-blue-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]" aria-label={locale === "zh" ? `采用并保存${candidate.label}` : locale === "ko" ? `${candidate.label} 선택 후 저장` : `${candidate.label}を選択して保存`}>{candidate.value}</button> : candidate.value}</span>
+                    <span className="min-w-0 break-words text-slate-800">{onApplyCandidate && selectableCandidateIds.has(candidate.id) ? <button type="button" onClick={() => onApplyCandidate(candidate, activePreview)} className="text-left font-semibold text-[#0046ad] underline decoration-dotted underline-offset-2 hover:text-blue-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]" aria-label={locale === "zh" ? `采用并保存${candidate.label}` : locale === "ko" ? `${candidate.label} 선택 후 저장` : `${candidate.label}を選択して保存`}>{candidate.value}</button> : candidate.value}</span>
                     {onLocateCandidate ? <button type="button" onClick={() => onLocateCandidate(candidate)} className="min-h-8 justify-self-start rounded-md border border-slate-200 px-2 py-1 text-[11px] font-bold text-[#0046ad] hover:bg-blue-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad] sm:col-start-3 sm:row-span-2 sm:row-start-1">{locale === "zh" ? "定位字段" : locale === "ko" ? "필드로 이동" : "項目へ移動"}</button> : null}
                     <span className="text-[11px] text-slate-500 sm:col-start-1 sm:col-span-2">{candidate.fileName}{candidate.pageNumber == null ? "" : ` · ${text.page} ${candidate.pageNumber}`}{candidate.uncertainty && candidate.uncertainty !== "clear" ? ` · ${text.uncertaintyReasons[candidate.uncertainty as keyof typeof text.uncertaintyReasons] ?? text.uncertainty}` : ""}</span>
                   </li>

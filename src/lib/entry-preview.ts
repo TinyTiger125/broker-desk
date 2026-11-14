@@ -53,6 +53,23 @@ export function safeEntryPreviewCandidates(candidates: readonly EntryPreviewCand
     && byKey.get(candidate.key)?.size === 1);
 }
 
+/** Candidates that may be chosen explicitly; conflicts require that choice. */
+export function selectableEntryPreviewCandidates(candidates: readonly EntryPreviewCandidate[]): EntryPreviewCandidate[] {
+  return candidates.filter((candidate) => {
+    if (!candidate.value.trim() || isNonActualCurrentAddress(candidate)) return false;
+    if (candidate.uncertainty === "clear") return true;
+    return candidate.uncertainty === "conflict"
+      && candidates.some((other) => other.id !== candidate.id && other.key === candidate.key && other.value.trim() !== candidate.value.trim());
+  });
+}
+
+const CLIENT_NAME_PREVIEW_KEYS = new Set(["name", "nameLatin", "nameKanji", "nameKatakana"]);
+
+/** A name conflict must stay in the preview until a person chooses an alternative. */
+export function hasClientNameEntryPreviewConflict(candidates: readonly EntryPreviewCandidate[]): boolean {
+  return candidates.some((candidate) => CLIENT_NAME_PREVIEW_KEYS.has(candidate.key) && candidate.uncertainty === "conflict");
+}
+
 export function fillAutoSavedEntryForm(formData: FormData, preview: EntryPreviewState): number {
   const selected = safeEntryPreviewCandidates(preview.candidates);
   const decisions: Record<string, "auto_saved"> = {};
@@ -72,7 +89,7 @@ export function fillAutoSavedEntryForm(formData: FormData, preview: EntryPreview
 
 /** Fill exactly one clear candidate after an explicit user selection. */
 export function fillSelectedEntryCandidateForm(formData: FormData, preview: EntryPreviewState, candidate: EntryPreviewCandidate): boolean {
-  const selected = safeEntryPreviewCandidates(preview.candidates).find((item) => item.id === candidate.id);
+  const selected = selectableEntryPreviewCandidates(preview.candidates).find((item) => item.id === candidate.id);
   if (!selected || selected.key !== candidate.key || selected.value !== candidate.value) return false;
   const existing = String(formData.get(selected.key) ?? "").trim();
   if (existing && existing !== selected.value) return false;

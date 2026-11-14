@@ -8,9 +8,10 @@ import { Button } from "@/components/ui-foundation";
 import { EntryFilePicker, replaceEntryFiles } from "@/components/entry-file-picker";
 import { applyEntryPreviewCandidate, createEntryIntentId, EntryPreview, type EntryPreviewCandidate } from "@/components/entry-preview";
 import { useEntryDraft } from "@/components/use-entry-draft";
-import { fillAutoSavedEntryForm, fillEmptyEntryDraftSuggestions, fillSelectedEntryCandidateForm, type EntryPreviewState } from "@/lib/entry-preview";
+import { fillAutoSavedEntryForm, fillEmptyEntryDraftSuggestions, fillSelectedEntryCandidateForm, hasClientNameEntryPreviewConflict, type EntryPreviewState } from "@/lib/entry-preview";
 import { CLIENT_IDENTITY_DRAFT_APPLY_EVENT, filterClientIdentityDraftSuggestionsForPartyType, type ClientIdentityDraftSuggestion } from "@/lib/customer-identity-draft";
 import { CLIENT_INDIVIDUAL_FORM_FIELDS, preserveClientIndividualFieldsOnCorporateValidation } from "@/lib/client-form-state";
+import { visibleClientNameFieldFromEvidence } from "@/lib/client-name-representation";
 import type { Locale } from "@/lib/locale";
 import {
   getAmlCheckStatusOptions,
@@ -232,6 +233,7 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
   const baseInitial = initialValues(defaults, partyMeta);
   const initial = baseInitial;
   const { values, setValues, hydrated } = useEntryDraft({ storageKey: entryDraftKey, serverValues: baseInitial, appliedFields: entryAppliedFields });
+  const isCorporate = values.partyType === "corporate";
   const [entryFiles, setEntryFiles] = useState<File[]>([]);
   const [entryIntentId] = useState(() => createEntryIntentId());
   const [entryReadFileKeys, setEntryReadFileKeys] = useState<string[]>([]);
@@ -252,8 +254,13 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
     setEntryReadFileKeys([]);
   }, []);
   const confirmEntryCandidate = useCallback((candidate: EntryPreviewCandidate) => {
-    setValues((current) => String(current[candidate.key as keyof ClientFormValues] ?? "").trim() ? current : applyEntryPreviewCandidate(current, candidate));
-  }, [setValues]);
+    setValues((current) => {
+      if (String(current[candidate.key as keyof ClientFormValues] ?? "").trim()) return current;
+      const visibleField = !isCorporate ? visibleClientNameFieldFromEvidence(candidate.key, candidate.value) : null;
+      const next = applyEntryPreviewCandidate(current, candidate);
+      return visibleField && !String(next[visibleField] ?? "").trim() ? { ...next, [visibleField]: candidate.value } : next;
+    });
+  }, [isCorporate, setValues]);
   const entryAction = useCallback(async (previousState: ClientFormActionState, formData: FormData) => {
     if (entryUpload) {
       replaceEntryFiles(formData, entryFilesRef.current);
@@ -266,7 +273,7 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
     if (mode !== "create" || !entryUpload || autoSaveStartedRef.current || !formRef.current) return;
     const data = new FormData(formRef.current);
     const applied = fillAutoSavedEntryForm(data, preview);
-    if (applied === 0 || !String(data.get("name") ?? "").trim()) return;
+    if (applied === 0 || hasClientNameEntryPreviewConflict(preview.candidates) || !String(data.get("name") ?? "").trim()) return;
     if (!String(data.get("purpose") ?? "").trim()) data.set("purpose", "unspecified");
     if (!String(data.get("temperature") ?? "").trim()) data.set("temperature", "unspecified");
     entryReadFileKeysRef.current = preview.readFileKeys;
@@ -293,7 +300,6 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
   const amlOptions = getAmlCheckStatusOptions(locale);
   const stageOptions = getStageOptions(locale);
   const temperatureOptions = getTemperatureOptions(locale);
-  const isCorporate = values.partyType === "corporate";
   // `name` remains the compatibility column, but individual users edit the
   // three explicit name representations below. Keep the legacy value hidden
   // and derive it from the first supplied representation when possible.
@@ -326,7 +332,14 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
   const locateEntryCandidate = useCallback((candidate: EntryPreviewCandidate) => {
     // The legacy generic name is hidden for individual clients; focus the
     // visible profile field instead of attempting to focus a hidden input.
-    const field = (!isCorporate && candidate.key === "name" ? "nameKanji" : candidate.key) as keyof ClientFormValues;
+    const visibleField = !isCorporate ? visibleClientNameFieldFromEvidence(candidate.key, candidate.value) : null;
+    if (!visibleField && !isCorporate && candidate.key === "name") {
+      const fallback = document.getElementById("entry-preview-heading");
+      fallback?.focus();
+      fallback?.scrollIntoView({ block: "center", behavior: "smooth" });
+      return;
+    }
+    const field = (visibleField ?? candidate.key) as keyof ClientFormValues;
     if (!(field in clientFormSectionForField)) return;
     openSectionForField(field);
     const focus = () => {
@@ -341,8 +354,10 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
     if (mode !== "create" || !entryUpload || autoSaveStartedRef.current || !formRef.current) return;
     const data = new FormData(formRef.current);
     if (!fillSelectedEntryCandidateForm(data, preview, candidate)) return;
-    const isNameRepresentation = ["nameLatin", "nameKanji", "nameKatakana"].includes(candidate.key);
+    const visibleNameField = !isCorporate ? visibleClientNameFieldFromEvidence(candidate.key, candidate.value) : null;
+    const isNameRepresentation = Boolean(visibleNameField);
     if (isNameRepresentation && !String(data.get("name") ?? "").trim()) data.set("name", candidate.value);
+    if (visibleNameField) data.set(visibleNameField, candidate.value);
     if (!String(data.get("purpose") ?? "").trim()) data.set("purpose", "unspecified");
     if (!String(data.get("temperature") ?? "").trim()) data.set("temperature", "unspecified");
     entryReadFileKeysRef.current = preview.readFileKeys;
@@ -350,13 +365,14 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
       const existing = String(current[candidate.key as keyof ClientFormValues] ?? "").trim();
       if (existing && existing !== candidate.value.trim()) return current;
       const next = applyEntryPreviewCandidate(current, candidate);
+      if (visibleNameField && !next[visibleNameField].trim()) next[visibleNameField] = candidate.value;
       if (isNameRepresentation && !next.name.trim()) next.name = candidate.value;
       return next;
     });
     autoSaveStartedRef.current = true;
     startAutoSaving(() => formAction(data));
     locateEntryCandidate(candidate);
-  }, [entryUpload, formAction, locateEntryCandidate, mode, setValues]);
+  }, [entryUpload, formAction, isCorporate, locateEntryCandidate, mode, setValues]);
   const toggleSection = (section: ClientFormSectionKey) => {
     setExpandedSections((current) => ({ ...current, [section]: !current[section] }));
   };

@@ -1,6 +1,6 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { addAuditLog } from "@/lib/data";
-import { entryFileKey, type EntryPreviewCandidate } from "@/lib/entry-preview";
+import { entryFileKey, safeEntryPreviewCandidates, selectableEntryPreviewCandidates, type EntryPreviewCandidate } from "@/lib/entry-preview";
 import type { TenantSession } from "@/lib/tenant-session";
 
 type PreviewSession = Pick<TenantSession, "tenant" | "user">;
@@ -73,6 +73,25 @@ export function readEntryPreviewDecisions(formData: FormData): Record<string, "c
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
     return Object.fromEntries(Object.entries(parsed).filter(([, value]) => value === "confirmed" || value === "rejected" || value === "auto_saved"));
   } catch { return {}; }
+}
+
+/** Validate automatic and explicit candidate decisions against signed proofs. */
+export function validateEntryPreviewDecisions(formData: FormData, proofs: ReadonlyMap<string, EntryPreviewProofPayload>): boolean {
+  if (formData.get("entryAutoSave") !== "1") return true;
+  if (proofs.size === 0) return false;
+  let decisions: Record<string, unknown>;
+  try { decisions = JSON.parse(String(formData.get("entryPreviewDecisions") ?? "{}")) as Record<string, unknown>; }
+  catch { return false; }
+  const candidates = [...proofs.values()].flatMap((proof) => proof.candidates);
+  const safe = new Map(safeEntryPreviewCandidates(candidates).map((candidate) => [candidate.id, candidate]));
+  const selectable = new Map(selectableEntryPreviewCandidates(candidates).map((candidate) => [candidate.id, candidate]));
+  let applied = 0;
+  for (const [id, decision] of Object.entries(decisions)) {
+    const candidate = decision === "auto_saved" ? safe.get(id) : decision === "confirmed" ? selectable.get(id) : undefined;
+    if (!candidate || String(formData.get(candidate.key) ?? "") !== candidate.value) return false;
+    applied += 1;
+  }
+  return applied > 0;
 }
 
 export async function verifyEntryPreviewProofs(input: { formData: FormData; files: File[]; session: PreviewSession; kind?: "customer" | "property"; context: "entry" | "case" }): Promise<Map<string, EntryPreviewProofPayload>> {

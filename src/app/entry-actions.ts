@@ -12,10 +12,10 @@ import { resolveObjectImportTarget } from "@/lib/object-import-target-service";
 import { queueExcelImportSource } from "@/lib/excel-import-queue";
 import { queueIdentityImportSources } from "@/lib/identity-import-queue";
 import { validateEntryUploads } from "@/lib/entry-upload-validation";
-import { entryFileKey, safeEntryPreviewCandidates } from "@/lib/entry-preview";
+import { entryFileKey } from "@/lib/entry-preview";
 import { getAttachmentStorageMode, persistAttachmentToLocalPrivate } from "@/lib/attachment-storage";
 import { inferObjectAttachmentCategory } from "@/lib/object-attachments";
-import { buildEntryRequestPayloadDigest, readEntryIntentId, verifyEntryPreviewProofs, persistEntryPreviewAudit, type EntryPreviewProofPayload } from "@/lib/entry-preview-proof";
+import { buildEntryRequestPayloadDigest, readEntryIntentId, validateEntryPreviewDecisions, verifyEntryPreviewProofs, persistEntryPreviewAudit, type EntryPreviewProofPayload } from "@/lib/entry-preview-proof";
 import { assertProductionAttachmentStorageReady } from "@/lib/production-readiness";
 
 async function prepareUploads(formData: FormData, kind: "customer" | "property") {
@@ -190,21 +190,7 @@ function submittedValues<T extends Record<string, string>>(previous: T, formData
 }
 
 function validAutoSave(formData: FormData, proofs: Map<string, EntryPreviewProofPayload>): boolean {
-  if (formData.get("entryAutoSave") !== "1") return true;
-  if (proofs.size === 0) return false;
-  let decisions: Record<string, unknown>;
-  try { decisions = JSON.parse(String(formData.get("entryPreviewDecisions") ?? "{}")) as Record<string, unknown>; }
-  catch { return false; }
-  const safe = safeEntryPreviewCandidates([...proofs.values()].flatMap((proof) => proof.candidates));
-  const byId = new Map(safe.map((candidate) => [candidate.id, candidate]));
-  let applied = 0;
-  for (const [id, decision] of Object.entries(decisions)) {
-    if (decision !== "auto_saved" && decision !== "confirmed") return false;
-    const candidate = byId.get(id);
-    if (!candidate || String(formData.get(candidate.key) ?? "") !== candidate.value) return false;
-    applied += 1;
-  }
-  return applied > 0;
+  return validateEntryPreviewDecisions(formData, proofs);
 }
 
 export async function createClientEntryAction(previous: ClientFormActionState, formData: FormData): Promise<ClientFormActionState> {
