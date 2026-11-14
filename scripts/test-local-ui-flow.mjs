@@ -793,7 +793,8 @@ async function runCaseAssociationFlow(page) {
 }
 
 try {
-  if (process.env.BROKER_DESK_UI_TRUSTED_HEADER === "1") await seedLocalAcceptanceFixture();
+  const trustedHeaderMode = process.env.BROKER_DESK_UI_TRUSTED_HEADER === "1";
+  if (trustedHeaderMode) await seedLocalAcceptanceFixture();
   const owner = await actorSession("user_demo");
   const sameTenantMember = await actorSession("user_ops");
   assert.equal(owner.session.user.id, "user_demo", "owner fixture must resolve user_demo");
@@ -804,7 +805,7 @@ try {
   }
 
   let accessEvidence;
-  if (process.env.BROKER_DESK_UI_TRUSTED_HEADER === "1") {
+  if (trustedHeaderMode) {
     const ownerMembersResponse = await requestAsActor(owner, "/settings/members");
     const ownerMembersBody = await ownerMembersResponse.text();
     assert.equal(ownerMembersResponse.status, 200, "owner must be allowed to read the members page");
@@ -829,17 +830,17 @@ try {
     accessEvidence = { mode: "demo-cookie harness; trusted-header request matrix not run" };
   }
 
-  let browserEvidence = process.env.BROKER_DESK_UI_TRUSTED_HEADER === "1" || process.env.BROKER_DESK_SKIP_STATIC_ROUTES === "1"
+  let browserEvidence = trustedHeaderMode || process.env.BROKER_DESK_SKIP_STATIC_ROUTES === "1"
     ? []
     : routes.map(runChrome);
   const interactive = await launchInteractiveChrome(owner.headers ?? {});
   let ledgerEvidence;
   let caseEvidence;
   try {
-    if (process.env.BROKER_DESK_UI_TRUSTED_HEADER === "1") browserEvidence = await runInteractiveRoutes(interactive.page);
+    if (trustedHeaderMode) browserEvidence = await runInteractiveRoutes(interactive.page);
     if (process.env.BROKER_DESK_UI_ONLY_CASE !== "1") {
       ledgerEvidence = await runExcelLedgerFlow(interactive.page);
-      ledgerEvidence.postgresActionEvidence = process.env.BROKER_DESK_UI_TRUSTED_HEADER === "1"
+      ledgerEvidence.postgresActionEvidence = trustedHeaderMode
         ? await queryLocalImportEvidence(ledgerEvidence.jobId)
         : { skipped: "memory/demo-cookie run; PostgreSQL row evidence requires trusted-header mode and an explicit nonproduction query connection" };
     } else {
@@ -867,7 +868,9 @@ try {
       caseAssociation: caseEvidence,
       browserTool: "agent-browser unavailable; installed Chrome headless CDP fallback used",
     },
-    note: "Browser path uses explicit local trusted-header identities and transaction-local PostgreSQL request scopes. Owner, same-tenant ordinary-member, and second-tenant denial requests were made against the isolated database. Import flow uses two existing synthetic workbooks and never calls a remote provider.",
+    note: trustedHeaderMode
+      ? "Browser path used explicit local trusted-header identities and transaction-local PostgreSQL request scopes. Owner, same-tenant ordinary-member, and second-tenant denial requests were made against the isolated database. Import flow used two existing synthetic workbooks and never called a remote provider."
+      : "Browser path used the local demo-cookie memory harness. The trusted-header access matrix and PostgreSQL row/job/audit evidence were not run. Import flow used two existing synthetic workbooks and never called a remote provider.",
   };
   const reportPath = join(evidenceDir, "report.json");
   writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
