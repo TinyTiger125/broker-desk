@@ -92,7 +92,6 @@ export async function previewEntryDocumentsAction(formData: FormData): Promise<E
           label = customerIdentityFieldLabel(field.fieldKey);
           value = normalizeCustomerIdentityValue(customerKey, field.value);
         } else {
-          if (!field.fieldKey.startsWith("property.")) continue;
           try { key = toObjectRecordFieldKey("property", field.fieldKey); } catch { continue; }
           label = OBJECT_READER_FIELD_LABELS[field.fieldKey] ?? key;
           const normalized = normalizeObjectReaderCandidateValue(field.fieldKey, field.value, field.uncertainty);
