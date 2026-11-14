@@ -44,6 +44,10 @@ Module._load = function(request, parent, ...rest) {
     const shared = { value: "Synthetic Person", pageNumber: 1, sourceText: "Name: Synthetic Person", uncertainty: "clear", subjectKey: "holder", subjectLabel: "document holder" };
     if (filename === "unknown.pdf") return { documentType: "unknown_identity_scan", candidates: [{ ...shared, fieldKey: "applicant.name" }] };
     if (filename === "address-only.pdf") return { documentType: "identity_residence_card", candidates: [{ ...shared, fieldKey: "applicant.currentAddress", value: "Synthetic address", sourceText: "住所: Synthetic address" }] };
+    if (filename === "direct-names.pdf") return { documentType: "identity_passport", candidates: [
+      { ...shared, fieldKey: "applicant.nameLatin", value: "YAMADA SHIKEN", sourceText: "Name: YAMADA SHIKEN" },
+      { ...shared, fieldKey: "applicant.nameKanji", value: "山田 試験", sourceText: "氏名: 山田 試験" },
+    ] };
     return { documentType: "identity_passport", candidates: [{ ...shared, fieldKey: "applicant.name" }, { ...shared, fieldKey: "applicant.residenceCardNumber", value: "DO_NOT_MAP" }] };
   } };
   if (request === "@/lib/openai-object-reader") return { readObjectDocumentWithOpenAi: async () => {
@@ -55,6 +59,7 @@ Module._load = function(request, parent, ...rest) {
 };
 const { previewEntryDocumentsAction } = require(resolve(root, "src/app/entry-preview-actions.ts"));
 const { verifyEntryPreviewProofs } = require(resolve(root, "src/lib/entry-preview-proof.ts"));
+const { fillSelectedEntryCandidateForm, safeEntryPreviewCandidates } = require(resolve(root, "src/lib/entry-preview.ts"));
 function request(kind, names = ["source.pdf"]) {
   const fd = new FormData(); fd.set("previewKind", kind);
   for (const name of names) fd.append("uploadFile", new File(["%PDF-synthetic"], name, { type: "application/pdf" }));
@@ -66,6 +71,14 @@ assert.equal(customerResult.status, "ready");
 assert.deepEqual(customerResult.candidates.map((field) => field.key), ["name"], "customer preview must exclude document-only fields");
 assert.equal(customerResult.candidates[0].pageNumber, 1);
 assert.equal(customerResult.candidates[0].sourceText, "Name: Synthetic Person");
+const directNamesResult = await previewEntryDocumentsAction(request("customer", ["direct-names.pdf"]));
+assert.deepEqual(directNamesResult.candidates.map((field) => field.key), ["nameLatin", "nameKanji"], "direct name evidence must map only to the matching visible fields");
+assert.equal(directNamesResult.candidates.some((field) => field.key === "nameKatakana"), false, "Katakana must remain empty when the document does not print it");
+const selectedForm = new FormData();
+assert.equal(fillSelectedEntryCandidateForm(selectedForm, directNamesResult, directNamesResult.candidates[0]), true, "a clear candidate must be selectable");
+assert.equal(selectedForm.get("nameLatin"), "YAMADA SHIKEN");
+assert.match(String(selectedForm.get("entryPreviewDecisions")), /confirmed/);
+assert.equal(safeEntryPreviewCandidates(directNamesResult.candidates).length, 2);
 const unknownDocumentResult = await previewEntryDocumentsAction(request("customer", ["unknown.pdf"]));
 assert.equal(unknownDocumentResult.status, "ready");
 assert.equal(unknownDocumentResult.candidates.length, 0, "unsupported identity type must remain source-only in customer preview");

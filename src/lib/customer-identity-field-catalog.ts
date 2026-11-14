@@ -8,6 +8,9 @@ import { extractPartyProfileFromNotes } from "@/lib/party-profile";
  */
 export const CUSTOMER_IDENTITY_FIELDS = {
   name: { label: "氏名", column: "name", kind: "text" },
+  nameLatin: { label: "氏名（ラテン文字）", column: "name_latin", kind: "text" },
+  nameKanji: { label: "氏名（漢字）", column: "name_kanji", kind: "text" },
+  nameKatakana: { label: "氏名（カタカナ）", column: "name_katakana", kind: "text" },
   furigana: { label: "氏名かな", column: "furigana", kind: "text" },
   birthDate: { label: "生年月日", column: "birth_date", kind: "date" },
   gender: { label: "性別", column: "gender", kind: "gender" },
@@ -23,6 +26,9 @@ export const CUSTOMER_IDENTITY_FIELD_KEYS = new Set<CustomerIdentityFieldKey>(Ob
 
 const APPLICANT_TO_CUSTOMER: Record<string, CustomerIdentityFieldKey> = {
   "applicant.name": "name",
+  "applicant.nameLatin": "nameLatin",
+  "applicant.nameKanji": "nameKanji",
+  "applicant.nameKatakana": "nameKatakana",
   "applicant.furigana": "furigana",
   "applicant.birthDate": "birthDate",
   "applicant.gender": "gender",

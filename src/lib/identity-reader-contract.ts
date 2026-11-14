@@ -18,6 +18,9 @@ export type IdentityReaderUncertainty = "clear" | "unclear" | "conflict" | "not_
 
 export type OpenAiIdentityReaderFieldKey =
   | "applicant.name"
+  | "applicant.nameLatin"
+  | "applicant.nameKanji"
+  | "applicant.nameKatakana"
   | "applicant.furigana"
   | "applicant.birthDate"
   | "applicant.gender"
@@ -48,6 +51,9 @@ export type OpenAiIdentityReaderCandidate = {
 
 const OPENAI_IDENTITY_READER_FIELD_KEYS = new Set<OpenAiIdentityReaderFieldKey>([
   "applicant.name",
+  "applicant.nameLatin",
+  "applicant.nameKanji",
+  "applicant.nameKatakana",
   "applicant.furigana",
   "applicant.birthDate",
   "applicant.gender",

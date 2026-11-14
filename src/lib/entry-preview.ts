@@ -70,6 +70,20 @@ export function fillAutoSavedEntryForm(formData: FormData, preview: EntryPreview
   return applied;
 }
 
+/** Fill exactly one clear candidate after an explicit user selection. */
+export function fillSelectedEntryCandidateForm(formData: FormData, preview: EntryPreviewState, candidate: EntryPreviewCandidate): boolean {
+  const selected = safeEntryPreviewCandidates(preview.candidates).find((item) => item.id === candidate.id);
+  if (!selected || selected.key !== candidate.key || selected.value !== candidate.value) return false;
+  const existing = String(formData.get(selected.key) ?? "").trim();
+  if (existing && existing !== selected.value) return false;
+  formData.set(selected.key, selected.value);
+  formData.set("entryReadProofs", JSON.stringify(preview.readProofs ?? {}));
+  formData.set("entryReadFileKeys", JSON.stringify(preview.readFileKeys));
+  formData.set("entryPreviewDecisions", JSON.stringify({ [selected.id]: "confirmed" }));
+  formData.set("entryAutoSave", "1");
+  return true;
+}
+
 // Multipart uploads preserve name and size, but not browser lastModified.
 export function entryFileKey(file: Pick<File, "name" | "size">): string {
   return `${file.name}:${file.size}`;

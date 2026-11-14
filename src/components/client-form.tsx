@@ -8,7 +8,7 @@ import { Button } from "@/components/ui-foundation";
 import { EntryFilePicker, replaceEntryFiles } from "@/components/entry-file-picker";
 import { applyEntryPreviewCandidate, createEntryIntentId, EntryPreview, type EntryPreviewCandidate } from "@/components/entry-preview";
 import { useEntryDraft } from "@/components/use-entry-draft";
-import { fillAutoSavedEntryForm, fillEmptyEntryDraftSuggestions, type EntryPreviewState } from "@/lib/entry-preview";
+import { fillAutoSavedEntryForm, fillEmptyEntryDraftSuggestions, fillSelectedEntryCandidateForm, type EntryPreviewState } from "@/lib/entry-preview";
 import { CLIENT_IDENTITY_DRAFT_APPLY_EVENT, filterClientIdentityDraftSuggestionsForPartyType, type ClientIdentityDraftSuggestion } from "@/lib/customer-identity-draft";
 import { CLIENT_INDIVIDUAL_FORM_FIELDS, preserveClientIndividualFieldsOnCorporateValidation } from "@/lib/client-form-state";
 import type { Locale } from "@/lib/locale";
@@ -324,7 +324,9 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
     return () => window.cancelAnimationFrame(frame);
   }, [appliedFieldKey, hydrated, openSectionForField]);
   const locateEntryCandidate = useCallback((candidate: EntryPreviewCandidate) => {
-    const field = candidate.key as keyof ClientFormValues;
+    // The legacy generic name is hidden for individual clients; focus the
+    // visible profile field instead of attempting to focus a hidden input.
+    const field = (!isCorporate && candidate.key === "name" ? "nameKanji" : candidate.key) as keyof ClientFormValues;
     if (!(field in clientFormSectionForField)) return;
     openSectionForField(field);
     const focus = () => {
@@ -334,7 +336,27 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
     };
     if (typeof window === "undefined") focus();
     else window.requestAnimationFrame(focus);
-  }, [openSectionForField]);
+  }, [isCorporate, openSectionForField]);
+  const applyEntryCandidate = useCallback((candidate: EntryPreviewCandidate, preview: EntryPreviewState) => {
+    if (mode !== "create" || !entryUpload || autoSaveStartedRef.current || !formRef.current) return;
+    const data = new FormData(formRef.current);
+    if (!fillSelectedEntryCandidateForm(data, preview, candidate)) return;
+    const isNameRepresentation = ["nameLatin", "nameKanji", "nameKatakana"].includes(candidate.key);
+    if (isNameRepresentation && !String(data.get("name") ?? "").trim()) data.set("name", candidate.value);
+    if (!String(data.get("purpose") ?? "").trim()) data.set("purpose", "unspecified");
+    if (!String(data.get("temperature") ?? "").trim()) data.set("temperature", "unspecified");
+    entryReadFileKeysRef.current = preview.readFileKeys;
+    setValues((current) => {
+      const existing = String(current[candidate.key as keyof ClientFormValues] ?? "").trim();
+      if (existing && existing !== candidate.value.trim()) return current;
+      const next = applyEntryPreviewCandidate(current, candidate);
+      if (isNameRepresentation && !next.name.trim()) next.name = candidate.value;
+      return next;
+    });
+    autoSaveStartedRef.current = true;
+    startAutoSaving(() => formAction(data));
+    locateEntryCandidate(candidate);
+  }, [entryUpload, formAction, locateEntryCandidate, mode, setValues]);
   const toggleSection = (section: ClientFormSectionKey) => {
     setExpandedSections((current) => ({ ...current, [section]: !current[section] }));
   };
@@ -426,7 +448,7 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
       {entryUpload && !readOnly ? <>
         <input type="hidden" name="entryIntentId" value={entryIntentId} />
         <EntryFilePicker locale={locale} files={entryFiles} onFilesChange={updateEntryFiles} disabled={pending} />
-        <EntryPreview files={entryFiles} kind="customer" locale={locale} onConfirm={confirmEntryCandidate} onLocateCandidate={locateEntryCandidate} onReadFileKeys={handleEntryReadFileKeys} onReadComplete={autoSaveReadResult} />
+        <EntryPreview files={entryFiles} kind="customer" locale={locale} onConfirm={confirmEntryCandidate} onApplyCandidate={applyEntryCandidate} onLocateCandidate={locateEntryCandidate} onReadFileKeys={handleEntryReadFileKeys} onReadComplete={autoSaveReadResult} />
         <input type="hidden" name="entryReadFileKeys" value={JSON.stringify(entryReadFileKeys)} />
       </> : null}
       {state.status === "error" ? <div ref={summaryRef} tabIndex={-1} role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900 outline-none focus-visible:ring-2 focus-visible:ring-rose-500"><p className="font-bold">{state.message ?? text.error}</p><ul className="mt-2 list-disc space-y-1 pl-5">{errorEntries.map(([field, message]) => <li key={field}><a className="underline" href={`#client-${field}`} onClick={(event) => focusField(event, field)}>{message}</a></li>)}</ul></div> : null}

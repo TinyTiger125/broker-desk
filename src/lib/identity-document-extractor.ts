@@ -189,6 +189,9 @@ function addManualFallbackFields(fields: FieldDraft[], page: OcrPage) {
   const source = "本人確認資料 OCR";
   [
     ["applicant.name", "氏名"],
+    ["applicant.nameLatin", "氏名（ラテン文字）"],
+    ["applicant.nameKanji", "氏名（漢字）"],
+    ["applicant.nameKatakana", "氏名（カタカナ）"],
     ["applicant.furigana", "氏名かな"],
     ["applicant.birthDate", "生年月日"],
     ["applicant.gender", "性別"],
@@ -208,6 +211,9 @@ function addModelCustomerPlaceholders(fields: FieldDraft[], page: OcrPage) {
   const source = "OpenAI Responses API";
   [
     ["applicant.name", "氏名"],
+    ["applicant.nameLatin", "氏名（ラテン文字）"],
+    ["applicant.nameKanji", "氏名（漢字）"],
+    ["applicant.nameKatakana", "氏名（カタカナ）"],
     ["applicant.furigana", "氏名かな"],
     ["applicant.birthDate", "生年月日"],
     ["applicant.gender", "性別"],
@@ -466,6 +472,9 @@ async function runRemoteOcr(buffer: Buffer, filename: string): Promise<OcrResult
 
 const MODEL_FIELD_LABELS: Record<string, string> = {
   "applicant.name": "氏名",
+  "applicant.nameLatin": "氏名（ラテン文字）",
+  "applicant.nameKanji": "氏名（漢字）",
+  "applicant.nameKatakana": "氏名（カタカナ）",
   "applicant.furigana": "氏名かな",
   "applicant.birthDate": "生年月日",
   "applicant.gender": "性別",
@@ -751,9 +760,12 @@ function getIdentityDocumentValue(type: InputDocumentType) {
   return "";
 }
 
-const IDENTITY_MERGE_CONFLICT_FIELDS = new Set(["applicant.name", "applicant.birthDate", "applicant.gender"]);
+const IDENTITY_MERGE_CONFLICT_FIELDS = new Set(["applicant.name", "applicant.nameLatin", "applicant.nameKanji", "applicant.nameKatakana", "applicant.birthDate", "applicant.gender"]);
 const IDENTITY_MERGE_CONFLICT_LABELS: Record<string, string> = {
   "applicant.name": "氏名",
+  "applicant.nameLatin": "氏名（ラテン文字）",
+  "applicant.nameKanji": "氏名（漢字）",
+  "applicant.nameKatakana": "氏名（カタカナ）",
   "applicant.birthDate": "生年月日",
   "applicant.gender": "性別",
 };

@@ -102,7 +102,7 @@ export function buildOpenAiIdentityReaderInput(buffer: Buffer, filename: string,
   const dataUrl = `data:${mimeType};base64,${buffer.toString("base64")}`;
   const customerOnly = options.scope === "customer";
   const fieldInstruction = customerOnly
-    ? `This is a standalone customer profile. Emit only ${IDENTITY_CUSTOMER_FIELD_KEYS.join(", ")}. Do not emit nationality, document numbers, issuer, residence status, residence period, expiry, work restrictions, driver conditions, or any other document-only fact. The document holder may be labelled 本人, 申請人, 被保険者, cardholder, or insured person; accept only the single holder subject. Reject 世帯主, 保険者, 代理人, 代表者, insurer, agent, and other non-holder roles.`
+    ? `This is a standalone customer profile. Emit only ${IDENTITY_CUSTOMER_FIELD_KEYS.join(", ")}. For applicant.nameLatin, applicant.nameKanji, and applicant.nameKatakana, emit a value only when that exact script and representation is visibly printed for the single document holder. Never transliterate, translate, infer Katakana or furigana, or copy applicant.name into a representation field. Keep applicant.name as the legacy exact printed name only. Do not emit nationality, document numbers, issuer, residence status, residence period, expiry, work restrictions, driver conditions, or any other document-only fact. The document holder may be labelled 本人, 申請人, 被保険者, cardholder, or insured person; accept only the single holder subject. Reject 世帯主, 保険者, 代理人, 代表者, insurer, agent, and other non-holder roles.`
     : "This is an existing case context. Use the canonical applicant.* keys from the case schema and preserve the existing case-field destinations; do not invent new business fields.";
   const content = [
     {

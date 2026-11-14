@@ -22,7 +22,12 @@ const PROPERTY_NUMERIC_PREVIEW_KEYS = new Set(["sizeSqm", "listingPrice", "listi
 
 function hasCustomerIdentityAnchor(fields: Array<{ fieldKey: string; value: string; uncertainty: "clear" | "unclear" | "conflict" | "not_found" }>) {
   return fields.some((field) =>
-    (field.fieldKey === "applicant.name" || field.fieldKey === "applicant.birthDate" || field.fieldKey === "applicant.gender")
+    (field.fieldKey === "applicant.name"
+      || field.fieldKey === "applicant.nameLatin"
+      || field.fieldKey === "applicant.nameKanji"
+      || field.fieldKey === "applicant.nameKatakana"
+      || field.fieldKey === "applicant.birthDate"
+      || field.fieldKey === "applicant.gender")
     && field.value.trim()
     && field.uncertainty !== "not_found",
   );

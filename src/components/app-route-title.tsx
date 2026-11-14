@@ -75,6 +75,20 @@ export function AppRouteTitle({ locale }: { locale: Locale }) {
   const searchParams = useSearchParams();
   const l = labels[locale];
 
+  if (pathname === "/clients/new" || pathname === "/properties/new") {
+    const returnTo = searchParams.get("returnTo") ?? (searchParams.get("from") === "entry" ? "/import-center" : "");
+    try {
+      const rawPathname = returnTo.split(/[?#]/, 1)[0];
+      const decodedPathname = decodeURIComponent(rawPathname);
+      const parsed = new URL(returnTo, "http://broker-desk.local");
+      const safePath = returnTo.startsWith("/") && !returnTo.startsWith("//") && !returnTo.includes("\\")
+        && !decodedPathname.split("/").some((segment) => segment === "." || segment === "..");
+      if (safePath && parsed.origin === "http://broker-desk.local" && parsed.pathname === "/import-center") return <span>{joinPath([l.home, l.import])}</span>;
+    } catch {
+      // Keep the ordinary organize breadcrumb for malformed or external values.
+    }
+  }
+
   if (pathname === "/") return <span>{l.home}</span>;
   if (pathname.startsWith("/import-center")) return <span>{joinPath([l.home, l.import])}</span>;
   if (pathname.startsWith("/output-center")) return <span>{joinPath([l.home, l.output])}</span>;

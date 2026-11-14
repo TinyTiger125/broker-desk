@@ -199,7 +199,7 @@ function validAutoSave(formData: FormData, proofs: Map<string, EntryPreviewProof
   const byId = new Map(safe.map((candidate) => [candidate.id, candidate]));
   let applied = 0;
   for (const [id, decision] of Object.entries(decisions)) {
-    if (decision !== "auto_saved") return false;
+    if (decision !== "auto_saved" && decision !== "confirmed") return false;
     const candidate = byId.get(id);
     if (!candidate || String(formData.get(candidate.key) ?? "") !== candidate.value) return false;
     applied += 1;

@@ -30,7 +30,7 @@ const { buildOpenAiIdentityReaderInput } = loadTypescript(path.join(root, "src/l
   "@/lib/identity-reader-contract": contract,
   "@/lib/customer-identity-field-catalog": {
     CUSTOMER_IDENTITY_FIELDS: {
-      name: {}, furigana: {}, birthDate: {}, gender: {}, currentPostalCode: {}, currentAddress: {}, phone: {}, lineId: {}, email: {},
+      name: {}, nameLatin: {}, nameKanji: {}, nameKatakana: {}, furigana: {}, birthDate: {}, gender: {}, currentPostalCode: {}, currentAddress: {}, phone: {}, lineId: {}, email: {},
     },
   },
 });
@@ -49,13 +49,13 @@ const readerModule = loadTypescript(path.join(root, "src/lib/openai-identity-rea
   "@/lib/identity-reader-contract": contract,
   "@/lib/customer-identity-field-catalog": {
     CUSTOMER_IDENTITY_FIELDS: {
-      name: {}, furigana: {}, birthDate: {}, gender: {}, currentPostalCode: {}, currentAddress: {}, phone: {}, lineId: {}, email: {},
+      name: {}, nameLatin: {}, nameKanji: {}, nameKatakana: {}, furigana: {}, birthDate: {}, gender: {}, currentPostalCode: {}, currentAddress: {}, phone: {}, lineId: {}, email: {},
     },
   },
 });
 const customerSchema = readerModule.buildIdentityReaderSchema(readerModule.IDENTITY_CUSTOMER_FIELD_KEYS);
 assert.deepEqual(customerSchema.properties.candidates.items.properties.fieldKey.enum, [
-  "applicant.name", "applicant.furigana", "applicant.birthDate", "applicant.gender",
+  "applicant.name", "applicant.nameLatin", "applicant.nameKanji", "applicant.nameKatakana", "applicant.furigana", "applicant.birthDate", "applicant.gender",
   "applicant.currentPostalCode", "applicant.currentAddress", "applicant.phone", "applicant.lineId", "applicant.email",
 ]);
 assert(!customerSchema.properties.candidates.items.properties.fieldKey.enum.includes("applicant.nationality"));
@@ -165,6 +165,7 @@ assert(readerSource.includes("subjectKey"), "the model schema must carry a stabl
 assert(readerSource.includes("subjectLabel"), "the model schema must carry a visible person role label");
 assert(readerSource.includes("jsonSchema"), "adapter must require structured output");
 assert(readerSource.includes("IDENTITY_CUSTOMER_FIELD_KEYS"), "customer schema must derive from the existing customer catalog");
+assert(readerSource.includes("Never transliterate"), "customer identity reader must not infer name representations");
 assert.match(readerSource, /scope === "customer"/, "standalone customer reader must pass an explicit customer scope");
 assert(extractorSource.includes("method: \"ai\""), "AI candidates must retain their extraction method");
 assert(extractorSource.includes("uncertainty=${decision.effectiveUncertainty}"), "candidate provenance must retain resolved uncertainty");

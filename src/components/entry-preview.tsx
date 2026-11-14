@@ -29,6 +29,7 @@ type EntryPreviewProps = {
   context?: "entry" | "case";
   locale: Locale;
   onConfirm: (candidate: EntryPreviewCandidate) => void;
+  onApplyCandidate?: (candidate: EntryPreviewCandidate, preview: EntryPreviewState) => void;
   onLocateCandidate?: (candidate: EntryPreviewCandidate) => void;
   onReadFileKeys: (keys: string[]) => void;
   onReadComplete?: (state: EntryPreviewState) => void;
@@ -146,7 +147,7 @@ export function getUnreadEntryFiles(files: readonly File[], readFileKeys: readon
   return files.filter((file) => !read.has(entryFileKey(file)));
 }
 
-export function EntryPreview({ files, kind, context, locale, onConfirm, onLocateCandidate, onReadFileKeys, onReadComplete }: EntryPreviewProps) {
+export function EntryPreview({ files, kind, context, locale, onConfirm, onApplyCandidate, onLocateCandidate, onReadFileKeys, onReadComplete }: EntryPreviewProps) {
   const text = copy[locale];
   const [preview, setPreview] = useState<{ files: File[]; kind: EntryPreviewKind; context?: "entry" | "case"; state: EntryPreviewState }>();
   const [decisions, setDecisions] = useState<{ files: File[]; kind: EntryPreviewKind; context?: "entry" | "case"; values: Record<string, "auto_saved" | "rejected"> }>();
@@ -211,6 +212,7 @@ export function EntryPreview({ files, kind, context, locale, onConfirm, onLocate
   const unreadFiles = getUnreadEntryFiles(files, activePreview?.readFileKeys ?? []);
   const allFilesRead = files.length > 0 && unreadFiles.length === 0 && Boolean(activePreview?.candidates.length);
   const safeCandidates = activePreview ? safeEntryPreviewCandidates(activePreview.candidates) : [];
+  const safeCandidateIds = new Set(safeCandidates.map((candidate) => candidate.id));
   const safeCandidateCount = safeCandidates.length;
   const hasPropertyName = kind !== "property" || hasPropertyNameCandidate(safeCandidates);
   const description = context === "case" ? text.descriptionCase : kind === "property" ? text.descriptionProperty : text.description;
@@ -237,7 +239,7 @@ export function EntryPreview({ files, kind, context, locale, onConfirm, onLocate
                 return (
                   <li key={candidate.id} className="grid gap-0.5 px-3 py-2 text-xs sm:grid-cols-[minmax(8rem,0.25fr)_minmax(0,1fr)_auto] sm:gap-x-3">
                     <span className="font-bold text-slate-950">{candidate.label}</span>
-                    <span className="min-w-0 break-words text-slate-800">{candidate.value}</span>
+                    <span className="min-w-0 break-words text-slate-800">{onApplyCandidate && safeCandidateIds.has(candidate.id) ? <button type="button" onClick={() => onApplyCandidate(candidate, activePreview)} className="text-left font-semibold text-[#0046ad] underline decoration-dotted underline-offset-2 hover:text-blue-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]" aria-label={locale === "zh" ? `采用并保存${candidate.label}` : locale === "ko" ? `${candidate.label} 선택 후 저장` : `${candidate.label}を選択して保存`}>{candidate.value}</button> : candidate.value}</span>
                     {onLocateCandidate ? <button type="button" onClick={() => onLocateCandidate(candidate)} className="min-h-8 justify-self-start rounded-md border border-slate-200 px-2 py-1 text-[11px] font-bold text-[#0046ad] hover:bg-blue-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad] sm:col-start-3 sm:row-span-2 sm:row-start-1">{locale === "zh" ? "定位字段" : locale === "ko" ? "필드로 이동" : "項目へ移動"}</button> : null}
                     <span className="text-[11px] text-slate-500 sm:col-start-1 sm:col-span-2">{candidate.fileName}{candidate.pageNumber == null ? "" : ` · ${text.page} ${candidate.pageNumber}`}{candidate.uncertainty && candidate.uncertainty !== "clear" ? ` · ${text.uncertaintyReasons[candidate.uncertainty as keyof typeof text.uncertaintyReasons] ?? text.uncertainty}` : ""}</span>
                   </li>

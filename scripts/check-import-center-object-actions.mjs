@@ -14,6 +14,7 @@ const importCenterReturnSource = readFileSync(new URL("../src/lib/import-center-
 const actions = readFileSync(new URL("../src/app/actions.ts", import.meta.url), "utf8");
 const objectActions = readFileSync(new URL("../src/app/object-import-actions.ts", import.meta.url), "utf8");
 const propertyObjectSection = readFileSync(new URL("../src/components/property-object-import-section.tsx", import.meta.url), "utf8");
+const appRouteTitle = readFileSync(new URL("../src/components/app-route-title.tsx", import.meta.url), "utf8");
 const proxy = readFileSync(new URL("../src/proxy.ts", import.meta.url), "utf8");
 
 const occurrences = (source, token) => source.split(token).length - 1;
@@ -183,6 +184,8 @@ assert(partyPage.includes('from === "entry"'), "legacy entry link must preserve 
 assert(partyPage.includes('normalizeImportCenterObjectReturnTo(value, "person", true)'), "party route must validate and preserve the person import target");
 assert(clientNewPage.includes('normalizeImportCenterObjectReturnTo(path, "person", true)'), "client form route must preserve the validated person import target");
 assert(propertyNewPage.includes('normalizeImportCenterObjectReturnTo(path, "property", true)'), "property form route must preserve the validated property import target");
+assert(appRouteTitle.includes('pathname === "/clients/new" || pathname === "/properties/new"'), "new entry breadcrumbs must recognize both unified forms");
+assert(appRouteTitle.includes('parsed.pathname === "/import-center"'), "new entry breadcrumbs must reflect the import-center source");
 assert(page.includes("const objectSelectionReturnTo = `/import-center?advanced=1&object=${object}#target-selection`"), "legacy object entry must return to advanced object selection instead of reopening the new form");
 assert(objectActions.includes("return redirectObjectUploadError(flash);"), "object upload persistence failures must return to the selected target instead of throwing a route error");
 assert((propertyObjectSection.match(/name=\"returnTo\" value=\{returnTo\}/g) ?? []).length >= 2, "property retry/refresh/review forms must preserve the central return path");

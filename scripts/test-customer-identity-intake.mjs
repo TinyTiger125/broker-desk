@@ -30,10 +30,13 @@ Module._load = function(request, parent, ...rest) {
 };
 
 const { parseOpenAiIdentityReaderResponse } = require(resolve(root, "src/lib/identity-reader-contract.ts"));
-const { isValidCustomerBirthDate, normalizeCustomerIdentityValue, CUSTOMER_IDENTITY_FIELDS } = require(resolve(root, "src/lib/customer-identity-field-catalog.ts"));
+const { isValidCustomerBirthDate, normalizeCustomerIdentityValue, customerIdentityFieldKey, CUSTOMER_IDENTITY_FIELDS } = require(resolve(root, "src/lib/customer-identity-field-catalog.ts"));
 assert.equal(isValidCustomerBirthDate("1990-04-12"), true);
 assert.equal(isValidCustomerBirthDate("1900-02-30"), false);
-assert.deepEqual(Object.keys(CUSTOMER_IDENTITY_FIELDS), ["name", "furigana", "birthDate", "gender", "currentPostalCode", "currentAddress", "phone", "lineId", "email"]);
+assert.deepEqual(Object.keys(CUSTOMER_IDENTITY_FIELDS), ["name", "nameLatin", "nameKanji", "nameKatakana", "furigana", "birthDate", "gender", "currentPostalCode", "currentAddress", "phone", "lineId", "email"]);
+assert.equal(customerIdentityFieldKey("applicant.nameLatin"), "nameLatin");
+assert.equal(customerIdentityFieldKey("applicant.nameKanji"), "nameKanji");
+assert.equal(customerIdentityFieldKey("applicant.nameKatakana"), "nameKatakana");
 assert.equal(normalizeCustomerIdentityValue("birthDate", "12 APR 1990"), "1990-04-12");
 assert.equal(normalizeCustomerIdentityValue("birthDate", "平成2年4月12日"), "1990-04-12");
 assert.equal(normalizeCustomerIdentityValue("gender", "M"), "male");
@@ -122,7 +125,11 @@ assert.deepEqual(corporateResolution, { ok: false, reason: "corporate_identity_u
 let modelResponse = {
   documentType: "identity_passport",
   pages: [{ pageNumber: 1, lines: ["氏名 YAMADA SHIKEN", "発行官庁 ADDRESS SHOULD NOT BE USED"] }],
-  candidates: [{ fieldKey: "applicant.name", value: "YAMADA SHIKEN", pageNumber: 1, sourceText: "氏名 YAMADA SHIKEN", uncertainty: "clear", subjectKey: "person-1", subjectLabel: "申請人" }],
+  candidates: [
+    { fieldKey: "applicant.name", value: "YAMADA SHIKEN", pageNumber: 1, sourceText: "氏名 YAMADA SHIKEN", uncertainty: "clear", subjectKey: "person-1", subjectLabel: "申請人" },
+    { fieldKey: "applicant.nameLatin", value: "YAMADA SHIKEN", pageNumber: 1, sourceText: "Name YAMADA SHIKEN", uncertainty: "clear", subjectKey: "person-1", subjectLabel: "申請人" },
+    { fieldKey: "applicant.nameKanji", value: "山田 試験", pageNumber: 1, sourceText: "氏名 山田 試験", uncertainty: "clear", subjectKey: "person-1", subjectLabel: "申請人" },
+  ],
 };
 const loaderBeforeIdentityExtractor = Module._load;
 Module._load = function(request, parent, ...rest) {
@@ -134,6 +141,9 @@ const modelOnly = await extractIdentityDocumentFromBuffer({ buffer: Buffer.from(
 assert.equal(modelOnly.fields.find((field) => field.fieldKey === "applicant.name")?.value, "YAMADA SHIKEN");
 assert.match(modelOnly.templateVersion, /vision_ai_v1$/);
 assert.equal(modelOnly.fields.find((field) => field.fieldKey === "applicant.name")?.method, "ai");
+assert.equal(modelOnly.fields.find((field) => field.fieldKey === "applicant.nameLatin")?.value, "YAMADA SHIKEN");
+assert.equal(modelOnly.fields.find((field) => field.fieldKey === "applicant.nameKanji")?.value, "山田 試験");
+assert.equal(modelOnly.fields.find((field) => field.fieldKey === "applicant.nameKatakana")?.value, "", "missing Katakana evidence must remain empty");
 assert.equal(modelOnly.fields.some((field) => field.fieldKey === "applicant.nationality"), false);
 assert.equal(modelOnly.fields.some((field) => field.fieldKey === "applicant.residenceStatus"), false);
 modelResponse = {
