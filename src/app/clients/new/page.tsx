@@ -1,5 +1,6 @@
 import { createClientEntryAction } from "@/app/entry-actions";
 import { ClientForm, type ClientFormDefaults } from "@/components/client-form";
+import { HelpHint } from "@/components/help-hint";
 import { normalizeImportCenterObjectReturnTo } from "@/lib/import-center-return";
 import { getLocale } from "@/lib/locale";
 
@@ -55,7 +56,7 @@ export default async function NewClientPage({ searchParams }: NewClientPageProps
   return (
     <div className="mx-auto max-w-5xl space-y-6 pb-12">
       <header className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-5">
-        <div><div className="flex items-center gap-2"><h1 className="text-3xl font-bold tracking-tight text-slate-950">{text.title}</h1><details className="relative"><summary aria-label={text.title} className="flex h-5 w-5 cursor-help list-none items-center justify-center rounded-full border border-slate-400 text-[11px] font-black text-slate-600">?</summary><div role="tooltip" className="absolute left-0 top-7 z-30 w-80 rounded-md border border-slate-300 bg-white p-2 text-xs font-medium leading-5 text-slate-700 shadow-lg">{text.desc}</div></details></div></div>
+        <div><div className="flex items-center gap-2"><h1 className="text-3xl font-bold tracking-tight text-slate-950">{text.title}</h1><HelpHint id="client-new-help" label={text.title} size="md">{text.desc}</HelpHint></div></div>
         <div className="flex flex-wrap items-center gap-2"><button type="submit" form="client-new-form" className="rounded-lg bg-slate-950 px-3 py-2 text-sm font-bold text-white hover:bg-slate-800">{text.save}</button></div>
       </header>
       <ClientForm action={createClientEntryAction} mode="create" defaults={defaults} locale={locale} returnTo={returnTo} formId="client-new-form" entryUpload />

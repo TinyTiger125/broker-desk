@@ -6,6 +6,7 @@ import { ObjectAttachmentList } from "@/components/object-attachment-list";
 import type { ObjectImportCandidateRecord, ObjectImportTargetRecord } from "@/lib/object-import-repository";
 import type { ObjectAttachmentItem } from "@/lib/object-attachments";
 import { customerIdentityFieldLabel } from "@/lib/customer-identity-field-catalog";
+import { HelpHint } from "@/components/help-hint";
 
 type ClientIdentityImportView = { target: ObjectImportTargetRecord; fields: ObjectImportCandidateRecord[] };
 
@@ -36,7 +37,7 @@ export function ClientIdentityImportSection({ locale, clientId, views = [], uplo
   if (objectPage && visibleViews.length === 0 && !uploadAction && !archiveItems?.length) return null;
   const content = (
     <>
-      <div className="flex items-center gap-2"><h2 id="client-identity-import-heading" className="text-base font-black text-slate-950">{text.title}</h2><details className="relative"><summary aria-label={text.title} className="flex h-5 w-5 cursor-help list-none items-center justify-center rounded-full border border-slate-400 text-[11px] font-black text-slate-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">?</summary><div role="tooltip" className="absolute left-0 top-7 z-30 w-80 rounded-md border border-slate-300 bg-white p-2 text-xs font-medium leading-5 text-slate-700 shadow-lg">{text.description}</div></details></div>
+      <div className="flex items-center gap-2"><h2 id="client-identity-import-heading" className="text-base font-black text-slate-950">{text.title}</h2><HelpHint id="client-identity-import-help" label={text.title} size="md">{text.description}</HelpHint></div>
       {uploadAction ? <div className="border-b border-slate-200 pb-3"><ObjectImportUpload action={uploadAction} targetType="party" targetId={clientId} locale={locale} returnTo={returnTo} accept="application/pdf,image/png,image/jpeg,.pdf,.png,.jpg,.jpeg" /></div> : null}
       {archiveItems ? <div className="border-b border-slate-200 pb-3"><h3 className="px-1 pb-2 text-sm font-black text-slate-950">{text.archive}</h3><ObjectAttachmentList locale={locale} items={archiveItems} /></div> : null}
       {!views.length ? <p role="status" className="text-xs font-semibold text-slate-500">{text.noTarget}</p> : null}

@@ -6,6 +6,7 @@ import type { Locale } from "@/lib/locale";
 import type { PropertyFormActionState, PropertyFormValues } from "@/app/actions";
 import { endSubmission, handleFormSubmit, type SubmissionLock } from "@/components/form-submission-lock";
 import { Button } from "@/components/ui-foundation";
+import { HelpHint } from "@/components/help-hint";
 import { EntryFilePicker, replaceEntryFiles } from "@/components/entry-file-picker";
 import { applyEntryPreviewCandidate, createEntryIntentId, EntryPreview, type EntryPreviewCandidate } from "@/components/entry-preview";
 import { useEntryDraft } from "@/components/use-entry-draft";
@@ -176,7 +177,7 @@ function PropertyFormSection({
         <span aria-hidden="true" className="material-symbols-outlined shrink-0 text-[20px] text-slate-500">{expanded ? "expand_more" : "chevron_right"}</span>
         <span id={headingId} role="heading" aria-level={2}>{title}</span>
       </button>
-      {hint ? <details className="relative shrink-0"><summary aria-label={title} className="flex h-5 w-5 cursor-help list-none items-center justify-center rounded-full border border-slate-400 text-[11px] font-black text-slate-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">?</summary><div role="tooltip" className="absolute left-0 top-7 z-30 w-72 rounded-md border border-slate-300 bg-white p-2 text-xs font-medium leading-5 text-slate-700 shadow-lg">{hint}</div></details> : null}
+      {hint ? <HelpHint id={`${headingId}-hint`} label={title}>{hint}</HelpHint> : null}
       </div>
       <div id={contentId} aria-labelledby={headingId} className={expanded ? "mt-3" : "hidden"}>
         {children}

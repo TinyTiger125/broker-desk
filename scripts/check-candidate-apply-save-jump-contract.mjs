@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 const overview = readFileSync("src/components/case-overview.tsx", "utf8");
 const clientImport = readFileSync("src/components/client-identity-import-section.tsx", "utf8");
 const propertyImport = readFileSync("src/components/property-object-import-section.tsx", "utf8");
+const helpHint = readFileSync("src/components/help-hint.tsx", "utf8");
 const entryPreviewAction = readFileSync("src/app/entry-preview-actions.ts", "utf8");
 const entryPreview = readFileSync("src/components/entry-preview.tsx", "utf8");
 const entryPreviewLib = readFileSync("src/lib/entry-preview.ts", "utf8");
@@ -26,7 +27,9 @@ assert.match(entryPreviewAction, /toObjectRecordFieldKey\("property", field\.fie
 assert.doesNotMatch(entryPreviewAction, /field\.fieldKey\.startsWith\("property\."\)/, "property preview must not discard workbook property_name candidates before normalization");
 assert.match(entryPreview, /onApplyCandidate\?:/, "entry preview must expose explicit candidate selection");
 assert.match(entryPreview, /selectableCandidateIds\.has\(candidate\.id\)/, "only explicitly selectable candidates may become selectable values");
-assert.match(entryPreview, /onApplyCandidate\(candidate, activePreview\)/, "selected candidates must send the current proof-backed preview to the form");
+assert.match(entryPreview, /onApplyCandidate(?:\?\.)?\(candidate, activePreview\)/, "selected candidates must send the current proof-backed preview to the form");
+assert.match(entryPreview, /!canApplyCandidate/, "an applied candidate row must hide the redundant field-navigation action");
+assert.match(entryPreview, /applyLabel/, "the applied candidate row must visibly describe its save action");
 assert.doesNotMatch(entryPreview, /<input(?![^>]*type="hidden")/, "entry preview must not add inline candidate editing");
 assert.match(entryPreviewLib, /fillSelectedEntryCandidateForm/, "selected candidate persistence must use a shared proof-backed form helper");
 assert.match(entryPreviewLib, /entryPreviewDecisions.*confirmed/, "selected candidate persistence must retain explicit confirmation state");
@@ -36,6 +39,8 @@ assert.match(clientForm, /startAutoSaving\(\(\) => formAction\(data\)\)/, "selec
 assert.match(clientForm, /visibleClientNameFieldFromEvidence\(candidate\.key, candidate\.value\)/, "selected name candidates must jump to a visible evidence-matched name field");
 assert.match(clientForm, /hasClientNameEntryPreviewConflict\(preview\.candidates\)/, "name conflicts must prevent an unrelated safe value from auto-saving first");
 assert.match(readFileSync("src/lib/entry-preview-proof.ts", "utf8"), /decision === "auto_saved".*decision === "confirmed"/s, "server proof validation must distinguish automatic and explicit candidate decisions");
+assert.match(helpHint, /hidden .*group-hover:block group-focus-within:block/, "help hints must show on hover and keyboard focus, then hide outside both states");
+assert.match(helpHint, /pointer-events-none/, "help hint popovers must not occupy or capture layout space");
 for (const field of ["nameLatin", "nameKanji", "nameKatakana"]) {
   assert.match(identityCatalog, new RegExp(`${field}:`), `customer identity catalog must retain ${field}`);
   assert.match(identityCatalog, new RegExp(`applicant\\.${field}.*${field}`), `${field} must map directly from its applicant evidence key`);
