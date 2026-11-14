@@ -38,7 +38,7 @@ export function ObjectPageShell({ header, feedback, state, navigation, children,
   );
 }
 
-export type PageHeaderProps = HTMLAttributes<HTMLElement> & {
+export type PageHeaderProps = Omit<HTMLAttributes<HTMLElement>, "title"> & {
   title: ReactNode;
   description?: ReactNode;
   backHref?: string;

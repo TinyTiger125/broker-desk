@@ -96,6 +96,10 @@ const routeMap: Array<{ matches: (segments: string[]) => boolean; resolve: (segm
 ];
 
 function resolveParent(pathname: string, searchParams: URLSearchParams): ParentRoute | null {
+  // The case draft owns its cancel link so it can confirm before leaving after
+  // a quick-created master. Rendering the shell link as well creates two
+  // competing return destinations on /cases/new.
+  if (pathname === "/cases/new") return null;
   const newEntryParent = resolveNewEntryParent(pathname, searchParams);
   if (newEntryParent) return newEntryParent;
   const segments = pathname.split("/").filter(Boolean).map((segment) => decodeURIComponent(segment));

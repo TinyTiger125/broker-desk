@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { ClientForm, type ClientFormDefaults } from "@/components/client-form";
 import { FocusDialog } from "@/components/case-association-draft";
 import { PropertyResponsiveForm } from "@/components/property-responsive-form";
+import { HelpHint } from "@/components/help-hint";
 import type { ClientFormActionState, ClientFormValues, PropertyFormActionState, PropertyFormValues } from "@/app/actions";
 import { CASE_PERSON_ROLES, getCasePersonRoleLabel, type CaseAssociationParty, type CasePersonRole } from "@/lib/case-associations";
 import type { Locale } from "@/lib/locale";
@@ -417,7 +418,7 @@ export function CaseAssociationManager({
 
   const associationContent = (
     <div className="space-y-3">
-          <div><h2 id="case-association-heading" className="text-base font-black text-slate-950">{text.title}</h2><p className="mt-1 text-xs font-semibold text-slate-500">{text.description}</p></div>
+          <div><h2 id="case-association-heading" className="inline-flex items-center gap-2 text-base font-black text-slate-950">{text.title}<HelpHint id="case-association-help" label={text.title}>{text.description}</HelpHint></h2></div>
       {objectImportUnavailable ? <p role="status" className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">{text.objectImportUnavailable}</p> : null}
       <div className="mt-4 grid items-stretch gap-5 md:grid-cols-2">
         <div className="flex min-w-0 flex-col gap-3"><div className="flex min-h-11 items-center justify-between gap-2"><h3 className="text-sm font-black text-slate-900">{text.people} ({parties.length})</h3>{!readOnly ? <button type="button" data-case-association-focus-target onClick={(event) => { focusReturnRef.current = event.currentTarget; openPersonDrawer(); }} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0046ad]">{text.addPerson}</button> : null}</div>{parties.length === 0 ? <p className="min-h-20 rounded-lg bg-slate-50 px-3 py-3 text-sm text-slate-500">{text.peopleEmpty}</p> : <div className="space-y-2">{parties.map((party) => <div key={party.partyId} className="flex min-h-20 items-start justify-between gap-3 rounded-lg border border-slate-200 px-4 py-3"><div className="min-w-0 flex-1"><p className="truncate text-sm font-bold text-slate-900" title={party.name} aria-label={party.name}>{party.name}</p>{renderObjectImport("party", party.partyId)}<div className="mt-1 flex flex-wrap gap-1.5">{party.roles.map((role) => <span key={role} className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-700">{getCasePersonRoleLabel(locale, role)}</span>)}</div></div>{!readOnly ? <div className="flex shrink-0 flex-wrap justify-end gap-2 self-start"><button type="button" data-case-association-focus-target onClick={(event) => { focusReturnRef.current = event.currentTarget; editPerson(party); }} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700">{text.editRoles}</button>{updatePersonAction && editablePersonProfiles[party.partyId] ? <button type="button" data-case-association-focus-target onClick={(event) => { focusReturnRef.current = event.currentTarget; editPersonProfile(party.partyId); }} className="inline-flex min-h-11 items-center rounded-lg border border-blue-200 px-3 py-2 text-xs font-bold text-[#0046ad]">{text.editProfile}</button> : null}</div> : null}</div>)}</div>}</div>
@@ -451,8 +452,7 @@ export function CaseAssociationManager({
       {caseAttachments.length > 0 ? (
         <section className="mt-5 overflow-hidden rounded-lg border border-slate-200 bg-slate-50/60" aria-labelledby="case-other-attachments-heading">
           <div className="border-b border-slate-200 px-4 py-3">
-            <h3 id="case-other-attachments-heading" className="text-sm font-black text-slate-900">{text.otherAttachments}</h3>
-            <p className="mt-1 text-xs font-semibold text-slate-500">{text.otherAttachmentsDescription}</p>
+            <h3 id="case-other-attachments-heading" className="inline-flex items-center gap-2 text-sm font-black text-slate-900">{text.otherAttachments}<HelpHint id="case-other-attachments-help" label={text.otherAttachments}>{text.otherAttachmentsDescription}</HelpHint></h3>
           </div>
           <ObjectAttachmentList locale={locale} items={caseAttachments} />
         </section>

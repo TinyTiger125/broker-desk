@@ -15,6 +15,7 @@ const roles = ["主要申请人", "承租人", "同住人", "连带保证人", "
 const association = read("src/lib/case-associations.ts");
 const newCase = read("src/components/case-association-draft.tsx");
 const manager = read("src/components/case-association-manager.tsx");
+const backToParent = read("src/components/back-to-parent.tsx");
 const actions = read("src/app/actions.ts");
 const caseEntryActions = read("src/app/case-entry-actions.ts");
 const page = read("src/app/cases/new/page.tsx");
@@ -68,6 +69,10 @@ expect(caseEntryActions.includes("let preservedFileCount = 0") && caseEntryActio
 expect(caseEntryActions.includes("linkImportJobAttachmentsToObject") && caseEntryActions.includes('targetType: "case"'), "queued source files are not linked back to the created case archive");
 expect(newCase.includes("EntryFilePicker") && newCase.includes("entryFilesRef") && newCase.includes('formData.append("caseUploadFile", file)'), "case upload selection is not preserved by the action adapter");
 expect(newCase.includes("EntryPreview") && newCase.includes('name="casePreviewValuesJson"') && newCase.includes('name="entryReadFileKeys"'), "case entry does not expose pre-read review state to final save");
+expect(newCase.includes('HelpHint id="case-new-help"') && newCase.includes('HelpHint id="case-upload-help"'), "new-case descriptive copy must be available from title-adjacent help hints");
+expect(newCase.includes('HelpHint id="case-draft-help"') && newCase.includes('role="note" className="text-sm text-slate-500"'), "draft boundary copy must retain its visible session-risk note while moving descriptions to the heading hint");
+expect(manager.includes('HelpHint id="case-association-help"') && manager.includes('HelpHint id="case-other-attachments-help"'), "existing-case descriptive copy must use title-adjacent help hints");
+expect(backToParent.includes('if (pathname === "/cases/new") return null;'), "new-case draft must keep one source-aware local cancel link instead of the shell duplicate");
 expect(newCase.includes('context="case"') && newCase.includes('name="caseManualValuesJson"'), "case entry does not separate case preview context from manual field values");
 expect(newCase.includes("CASE_FIELD_KEY_SET") && newCase.includes("sourceKey"), "case preview candidates are not constrained to existing case field keys");
 expect(caseEntryActions.includes("parseCasePreviewValues") && caseEntryActions.includes("CASE_FIELD_KEY_SET") && caseEntryActions.includes("verifyEntryPreviewProofs") && caseEntryActions.includes("persistEntryPreviewAudit") && caseEntryActions.includes("case_upload_archived_preview"), "case preview values are not proof-validated, audited, and persisted as existing fields without requeue");

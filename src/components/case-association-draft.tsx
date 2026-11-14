@@ -11,6 +11,7 @@ import { ClientForm } from "@/components/client-form";
 import { PropertyResponsiveForm } from "@/components/property-responsive-form";
 import { EntryFilePicker } from "@/components/entry-file-picker";
 import { createEntryIntentId, EntryPreview, type EntryPreviewCandidate } from "@/components/entry-preview";
+import { HelpHint } from "@/components/help-hint";
 import { handleFocusDialogEscape, requestFocusDialogClose } from "@/components/focus-dialog-guards";
 import { ActionBar, FormSection, PageFrame, PageHeader, ResponsiveFormShell, StateSurface } from "@/components/layout-system";
 import layoutStyles from "@/components/layout-system/layout-system.module.css";
@@ -606,7 +607,7 @@ export function CaseAssociationDraft({
 
   return (
     <PageFrame className="space-y-5">
-      <PageHeader title={text.title} description={text.description} backHref={backHref} backLabel={backLabel} onBackClick={confirmLeave} />
+      <PageHeader title={<span className="inline-flex items-center gap-2">{text.title}<HelpHint id="case-new-help" label={text.title} size="lg">{text.description}</HelpHint></span>} backHref={backHref} backLabel={backLabel} onBackClick={confirmLeave} />
       {caseError ? <div ref={errorRef} data-case-association-case-error role="alert" aria-live="assertive" tabIndex={-1} className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-900">{caseError}</div> : null}
 
       <div ref={caseFormContainerRef}><ResponsiveFormShell action={caseFormAction}>
@@ -622,8 +623,7 @@ export function CaseAssociationDraft({
         </FormSection>
 
         <FormSection className="space-y-3">
-          <h2 className="text-base font-black text-slate-950">{text.upload}</h2>
-          <p className="text-sm text-slate-600">{text.uploadDescription}</p>
+          <h2 className="inline-flex items-center gap-2 text-base font-black text-slate-950">{text.upload}<HelpHint id="case-upload-help" label={text.upload} size="lg">{text.uploadDescription}</HelpHint></h2>
           {entryFiles.length > 0 && !caseTitle.trim() ? <p role="status" className="text-xs font-bold text-amber-800">{text.titleNeeded}</p> : null}
           <input type="hidden" name="caseUploadTarget" value="case" />
           <input type="hidden" name="casePreviewValuesJson" value={JSON.stringify(confirmedPreviewValues)} />
@@ -653,8 +653,7 @@ export function CaseAssociationDraft({
 
         <FormSection className="space-y-3" aria-labelledby="case-fields-heading">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 id="case-fields-heading" className="text-base font-black text-slate-950">{locale === "zh" ? "案件字段草稿" : locale === "ko" ? "안건 필드 초안" : "案件項目の草稿"}</h2>
-            <span className="text-xs font-semibold text-slate-500">{locale === "zh" ? "仅使用现有案件字段；保存前不会创建人物或物件" : locale === "ko" ? "기존 안건 필드만 사용하며 저장 전에는 관계자나 매물을 만들지 않습니다" : "既存の案件項目だけを使用し、保存前に人物・物件は作成しません"}</span>
+            <h2 id="case-fields-heading" className="inline-flex items-center gap-2 text-base font-black text-slate-950">{locale === "zh" ? "案件字段草稿" : locale === "ko" ? "안건 필드 초안" : "案件項目の草稿"}<HelpHint id="case-fields-help" label={locale === "zh" ? "案件字段草稿" : locale === "ko" ? "안건 필드 초안" : "案件項目の草稿"}>{locale === "zh" ? "仅使用现有案件字段；保存前不会创建人物或物件" : locale === "ko" ? "기존 안건 필드만 사용하며 저장 전에는 관계자나 매물을 만들지 않습니다" : "既存の案件項目だけを使用し、保存前に人物・物件は作成しません"}</HelpHint></h2>
           </div>
           <div data-case-entry-fields className="space-y-2">
             {CASE_ENTRY_FIELD_GROUPS.map((group) => <details key={group.id} data-case-entry-group={group.id} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
@@ -675,7 +674,7 @@ export function CaseAssociationDraft({
         </FormSection>
 
         <FormSection className="space-y-3" aria-labelledby="case-draft-heading">
-          <div className="flex flex-wrap items-center justify-between gap-3"><h2 id="case-draft-heading" className="text-base font-black text-slate-950">{text.draft}</h2><span className="text-xs font-semibold text-slate-500">{text.draftNote}</span></div>
+          <div className="flex flex-wrap items-center justify-between gap-3"><h2 id="case-draft-heading" className="inline-flex items-center gap-2 text-base font-black text-slate-950">{text.draft}<HelpHint id="case-draft-help" label={text.draft}>{text.draftNote} {text.outputEligibilityNote}</HelpHint></h2></div>
           <details className="group rounded-lg border border-slate-200 bg-slate-50 px-3 py-3" open>
             <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-bold text-slate-900 [&::-webkit-details-marker]:hidden">
               <span aria-hidden="true" className="material-symbols-outlined shrink-0 text-[18px] text-slate-500 transition-transform group-open:rotate-90 motion-reduce:transition-none">chevron_right</span>
@@ -691,7 +690,7 @@ export function CaseAssociationDraft({
               {guaranteeRequirementsMissing ? text.guaranteeRequirementsMissing : text.guaranteeRequirementsReady}
             </p>
           </details>
-          <p className="text-sm text-slate-500">{text.draftSessionOnly}</p>
+          <p role="note" className="text-sm text-slate-500">{text.draftSessionOnly}</p>
           <div className="grid gap-4 border-t border-slate-200 pt-4 lg:grid-cols-2">
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2"><h3 className="text-sm font-black text-slate-900">{text.peopleDraft} ({parties.length})</h3><button type="button" data-case-association-focus-target onClick={(event) => { focusReturnRef.current = event.currentTarget; openPersonDrawer(); }} className="min-h-11 rounded-lg border border-slate-300 px-3 py-2 text-sm font-black text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0046ad]">{text.selectPerson}</button></div>
@@ -704,7 +703,6 @@ export function CaseAssociationDraft({
               <button type="button" data-case-association-focus-target onClick={(event) => { focusReturnRef.current = event.currentTarget; openPropertyDrawer(); setDrawerView("create"); }} className="inline-flex min-h-11 items-center text-sm font-bold text-[#0046ad] underline underline-offset-2">{text.quickCreateProperty}</button>
             </div>
           </div>
-          <p className="text-sm text-slate-500">{text.outputEligibilityNote}</p>
         </FormSection>
 
         {quickCreateFeedback ? <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-900">{quickCreateFeedback}</div> : null}

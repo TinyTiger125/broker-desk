@@ -360,7 +360,7 @@ requireText(caseOverview, "data-case-overview-density=\"dense\"", "CaseOverview 
 
 const casesCompositionFragments = [
   "<PageFrame className=\"space-y-5\">",
-  "<PageHeader title={text.title}",
+  "<PageHeader title={<span className=\"inline-flex items-center gap-2\">",
   "<ResponsiveFormShell action={caseFormAction}>",
   "<FormSection className=\"space-y-3\">",
   "<ActionBar mobileFixed>",
