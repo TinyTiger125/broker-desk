@@ -178,12 +178,12 @@ function ClientFormSection({
   const contentId = `client-${section}-content`;
   return (
     <section aria-labelledby={headingId} className={`rounded-md ${expanded ? "border border-slate-300 bg-white p-3" : "bg-slate-100 px-3 py-2"}`}>
-      <div className="flex items-center gap-2">
-      <button type="button" aria-expanded={expanded} aria-controls={contentId} onClick={onToggle} className="group flex min-h-7 min-w-0 flex-1 cursor-pointer items-center justify-start gap-2 rounded-md text-left text-sm font-bold text-slate-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">
+      <div className="flex min-w-0 items-center gap-2">
+      <button type="button" aria-expanded={expanded} aria-controls={contentId} onClick={onToggle} className="group inline-flex min-h-7 min-w-0 cursor-pointer items-center justify-start gap-2 rounded-md text-left text-sm font-bold text-slate-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">
         <span aria-hidden="true" className="material-symbols-outlined shrink-0 text-[20px] text-slate-500">{expanded ? "expand_more" : "chevron_right"}</span>
         <span id={headingId} role="heading" aria-level={2}>{title}</span>
       </button>
-      {hint ? <details className="relative shrink-0"><summary aria-label={title} className="flex h-5 w-5 cursor-help list-none items-center justify-center rounded-full border border-slate-400 text-[11px] font-black text-slate-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">?</summary><div role="tooltip" className="absolute right-0 top-7 z-30 w-72 rounded-md border border-slate-300 bg-white p-2 text-xs font-medium leading-5 text-slate-700 shadow-lg">{hint}</div></details> : null}
+      {hint ? <details className="relative shrink-0"><summary aria-label={title} className="flex h-5 w-5 cursor-help list-none items-center justify-center rounded-full border border-slate-400 text-[11px] font-black text-slate-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">?</summary><div role="tooltip" className="absolute left-0 top-7 z-30 w-72 rounded-md border border-slate-300 bg-white p-2 text-xs font-medium leading-5 text-slate-700 shadow-lg">{hint}</div></details> : null}
       </div>
       <div id={contentId} aria-labelledby={headingId} className={expanded ? "mt-3" : "hidden"}>
         {children}
@@ -417,7 +417,7 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
   };
 
   return (
-    <form ref={formRef} id={formId} action={formAction} onSubmit={readOnly ? (event) => event.preventDefault() : handleSubmit} onInvalidCapture={handleInvalid} noValidate className="space-y-6 pb-10">
+    <form ref={formRef} id={formId} action={formAction} onSubmit={readOnly ? (event) => event.preventDefault() : handleSubmit} onInvalidCapture={handleInvalid} noValidate className="space-y-3 pb-10">
       <input type="hidden" name="returnTo" value={returnTo} />
       {submitReturnTo ? <input type="hidden" name="submitReturnTo" value={submitReturnTo} /> : null}
       {onCreated ? <input type="hidden" name="caseDraftReturn" value="1" /> : null}

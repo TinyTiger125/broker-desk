@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { createClientEntryAction } from "@/app/entry-actions";
 import { ClientForm, type ClientFormDefaults } from "@/components/client-form";
 import { normalizeImportCenterObjectReturnTo } from "@/lib/import-center-return";
@@ -9,9 +8,9 @@ export const dynamic = "force-dynamic";
 type NewClientPageProps = { searchParams?: Promise<{ returnTo?: string }> };
 
 const copy = {
-  ja: { title: "新規顧客登録", desc: "資料をアップロードすると、判読できて不一致のない既存項目は正式な顧客記録へ自動保存されます。氏名など必須項目が不足する場合は補完後に保存でき、保存後も編集・再確認できます。", save: "保存", back: "顧客一覧へ戻る" },
-  zh: { title: "新建客户", desc: "上传资料后，清晰且无冲突的现有字段会自动写入正式客户记录；缺少姓名等必填项时请补充后保存，保存后仍可编辑和复核。", save: "保存", back: "返回客户列表" },
-  ko: { title: "신규 고객 등록", desc: "자료를 업로드하면 명확하고 불일치가 없는 기존 항목은 정식 고객 기록에 자동 저장됩니다. 이름 등 필수 항목이 없으면 보완 후 저장할 수 있으며, 저장 후에도 수정하고 다시 확인할 수 있습니다.", save: "저장", back: "고객 목록으로" },
+  ja: { title: "新規顧客登録", desc: "資料をアップロードすると、判読できて不一致のない既存項目は正式な顧客記録へ自動保存されます。氏名など必須項目が不足する場合は補完後に保存でき、保存後も編集・再確認できます。", save: "保存" },
+  zh: { title: "新建客户", desc: "上传资料后，清晰且无冲突的现有字段会自动写入正式客户记录；缺少姓名等必填项时请补充后保存，保存后仍可编辑和复核。", save: "保存" },
+  ko: { title: "신규 고객 등록", desc: "자료를 업로드하면 명확하고 불일치가 없는 기존 항목은 정식 고객 기록에 자동 저장됩니다. 이름 등 필수 항목이 없으면 보완 후 저장할 수 있으며, 저장 후에도 수정하고 다시 확인할 수 있습니다.", save: "저장" },
 } as const;
 
 function normalizeReturnTo(value: string | undefined): string {
@@ -57,7 +56,7 @@ export default async function NewClientPage({ searchParams }: NewClientPageProps
     <div className="mx-auto max-w-5xl space-y-6 pb-12">
       <header className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-5">
         <div><div className="flex items-center gap-2"><h1 className="text-3xl font-bold tracking-tight text-slate-950">{text.title}</h1><details className="relative"><summary aria-label={text.title} className="flex h-5 w-5 cursor-help list-none items-center justify-center rounded-full border border-slate-400 text-[11px] font-black text-slate-600">?</summary><div role="tooltip" className="absolute left-0 top-7 z-30 w-80 rounded-md border border-slate-300 bg-white p-2 text-xs font-medium leading-5 text-slate-700 shadow-lg">{text.desc}</div></details></div></div>
-        <div className="flex flex-wrap items-center gap-2"><button type="submit" form="client-new-form" className="rounded-lg bg-slate-950 px-3 py-2 text-sm font-bold text-white hover:bg-slate-800">{text.save}</button><Link href={returnTo} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">{text.back}</Link></div>
+        <div className="flex flex-wrap items-center gap-2"><button type="submit" form="client-new-form" className="rounded-lg bg-slate-950 px-3 py-2 text-sm font-bold text-white hover:bg-slate-800">{text.save}</button></div>
       </header>
       <ClientForm action={createClientEntryAction} mode="create" defaults={defaults} locale={locale} returnTo={returnTo} formId="client-new-form" entryUpload />
     </div>

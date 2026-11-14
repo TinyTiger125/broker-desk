@@ -153,10 +153,10 @@ assert(page.includes("`/organize-center?type=${object.key === \"person\" ? \"par
 assert(page.includes("`/clients/${encodeURIComponent(client.id)}/edit`"), "existing customer selection must enter the unified editor");
 for (const cardCopy of [
   'title: locale === "zh" ? "案件" : locale === "ko" ? "안건" : "案件"',
-  'title: locale === "zh" ? "主体" : locale === "ko" ? "관계자" : "関係者"',
+  'title: locale === "zh" ? "相关人员" : locale === "ko" ? "관계자" : "関係者"',
   'title: locale === "zh" ? "物件" : locale === "ko" ? "매물" : "物件"',
   "顧客・売主・保証人など、関係者の資料を作成・読取します。",
-  "创建或读取客户、卖方、保证人等主体资料。",
+  "创建或读取客户、卖方、保证人等相关人员资料。",
   "고객·매도인·보증인 등 관계자 자료를 만들거나 읽습니다.",
 ]) assert(page.includes(cardCopy), `missing concise object card copy: ${cardCopy}`);
 for (const actionCopy of [

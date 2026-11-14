@@ -392,7 +392,7 @@ function getCopy(locale: Locale) {
       optionContract: "合同",
       optionServiceRequest: "跟进记录",
       optionQuote: "提案",
-      optionParty: "主体",
+      optionParty: "相关人员",
     },
     ko: {
       pageTitle: "자료 입력",
@@ -1284,7 +1284,7 @@ export default async function ImportCenterPage({ searchParams }: ImportCenterPag
   const failedInputJob = inputTaskJob?.status === "failed" && !inputTaskJob.finalImportStartedAt ? inputTaskJob : undefined;
   const materialObjects = [
     { key: "case", icon: "business_center", iconClass: "bg-blue-50 text-blue-700", title: locale === "zh" ? "案件" : locale === "ko" ? "안건" : "案件", desc: locale === "zh" ? "创建或读取案件资料。" : locale === "ko" ? "안건 자료를 만들거나 읽습니다." : "案件の資料を作成・読取します。", manualHref: "/cases/new?from=entry" },
-    { key: "person", icon: "group", iconClass: "bg-emerald-50 text-emerald-700", title: locale === "zh" ? "主体" : locale === "ko" ? "관계자" : "関係者", desc: locale === "zh" ? "创建或读取客户、卖方、保证人等主体资料。" : locale === "ko" ? "고객·매도인·보증인 등 관계자 자료를 만들거나 읽습니다." : "顧客・売主・保証人など、関係者の資料を作成・読取します。", manualHref: "/clients/new?returnTo=%2Fimport-center" },
+    { key: "person", icon: "group", iconClass: "bg-emerald-50 text-emerald-700", title: locale === "zh" ? "相关人员" : locale === "ko" ? "관계자" : "関係者", desc: locale === "zh" ? "创建或读取客户、卖方、保证人等相关人员资料。" : locale === "ko" ? "고객·매도인·보증인 등 관계자 자료를 만들거나 읽습니다." : "顧客・売主・保証人など、関係者の資料を作成・読取します。", manualHref: "/clients/new?returnTo=%2Fimport-center" },
     { key: "property", icon: "apartment", iconClass: "bg-violet-50 text-violet-700", title: locale === "zh" ? "物件" : locale === "ko" ? "매물" : "物件", desc: locale === "zh" ? "创建或读取物件资料。" : locale === "ko" ? "매물 자료를 만들거나 읽습니다." : "物件の資料を作成・読取します。", manualHref: "/properties/new?returnTo=%2Fimport-center" },
   ] as const;
   return (
