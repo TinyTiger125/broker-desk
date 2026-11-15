@@ -9,7 +9,7 @@ import { readIdentityDocumentWithOpenAi } from "@/lib/openai-identity-reader";
 import { readObjectDocumentWithOpenAi } from "@/lib/openai-object-reader";
 import { selectPrimaryIdentityReaderCandidates } from "@/lib/identity-reader-attribution";
 import { selectSingleObjectReaderCandidates } from "@/lib/object-reader-attribution";
-import { customerIdentityFieldKey, customerIdentityFieldLabel, normalizeCustomerIdentityValue } from "@/lib/customer-identity-field-catalog";
+import { customerIdentityFieldKey, customerIdentityFieldLabel, normalizeCustomerGenderValue, normalizeCustomerIdentityValue } from "@/lib/customer-identity-field-catalog";
 import { toObjectRecordFieldKey } from "@/lib/object-import-contract";
 import { normalizeObjectReaderCandidateValue } from "@/lib/object-import-processor-adapter";
 import { OBJECT_READER_FIELD_LABELS } from "@/lib/object-reader-mapping";
@@ -19,6 +19,7 @@ import { CASE_FIELD_KEY_SET, getCaseFieldLabel } from "@/lib/case-field-catalog"
 import { createHash } from "node:crypto";
 import { signEntryPreviewProof } from "@/lib/entry-preview-proof";
 import { RemoteDocumentReaderError } from "@/lib/identity-reader-contract";
+import { parseEntryUploadStagedRefs, readEntryUploadStagedFiles } from "@/lib/entry-upload-staging";
 
 const PROPERTY_NUMERIC_PREVIEW_KEYS = new Set(["sizeSqm", "listingPrice", "listingRent", "listingCommonFee", "managementFee", "repairFee"]);
 
@@ -69,7 +70,17 @@ export async function previewEntryDocumentsAction(formData: FormData): Promise<E
   const locale = await getLocale();
   const kind = String(formData.get("previewKind") ?? "");
   const caseContext = formData.get("previewContext") === "case";
-  const files = formData.getAll("uploadFile").filter((value): value is File => value instanceof File && value.size > 0);
+  const rawFiles = formData.getAll("uploadFile").filter((value): value is File => value instanceof File && value.size > 0);
+  let files = rawFiles;
+  try {
+    const refs = parseEntryUploadStagedRefs(formData.get("entryStagedFiles"));
+    if (refs.length) {
+      const staged = await readEntryUploadStagedFiles({ refs, tenantId: session.tenant.id, userId: session.user.id });
+      files = [...rawFiles, ...staged.files];
+    }
+  } catch {
+    return { status: "error", candidates: [], readFileKeys: [], errorCode: "entry_upload_staging_reference_invalid", message: locale === "zh" ? "临时上传引用已失效或不匹配。请重新选择资料；尚未创建档案。" : locale === "ko" ? "임시 업로드 참조가 만료되었거나 일치하지 않습니다. 자료를 다시 선택해 주세요. 기록은 생성되지 않았습니다." : "一時アップロードの参照が失効したか一致しません。資料を選び直してください。記録はまだ作成していません。" };
+  }
   const candidates: EntryPreviewCandidate[] = [];
   const readFileKeys: string[] = [];
   const readProofs: Record<string, string> = {};
@@ -119,6 +130,11 @@ export async function previewEntryDocumentsAction(formData: FormData): Promise<E
           key = customerKey;
           label = customerIdentityFieldLabel(field.fieldKey);
           value = normalizeCustomerIdentityValue(customerKey, field.value);
+          if (customerKey === "gender" && !normalizeCustomerGenderValue(field.value)) {
+            // Contradictory/unknown gender evidence is review-only and must
+            // never qualify for automatic form persistence.
+            uncertainty = uncertainty === "conflict" ? "conflict" : "unclear";
+          }
         } else {
           try { key = toObjectRecordFieldKey("property", field.fieldKey); } catch { continue; }
           label = OBJECT_READER_FIELD_LABELS[field.fieldKey] ?? key;

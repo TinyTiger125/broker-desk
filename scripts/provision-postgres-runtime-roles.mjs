@@ -78,6 +78,12 @@ try {
     await client.query(readFileSync(resolve(process.cwd(), "db/migrations/20261102_005_entry_request_claims_runtime_acl.sql"), "utf8"));
     await client.query(readFileSync(resolve(process.cwd(), "db/migrations/20261102_006_entry_request_claims_authenticated_acl.sql"), "utf8"));
   }
+  const entryUploadStagingTables = await client.query("SELECT to_regclass('public.entry_upload_staging') IS NOT NULL AS parent_present, to_regclass('public.entry_upload_staging_chunks') IS NOT NULL AS chunks_present");
+  if (entryUploadStagingTables.rows[0]?.parent_present && entryUploadStagingTables.rows[0]?.chunks_present) {
+    await client.query("GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.entry_upload_staging, public.entry_upload_staging_chunks TO brokerdesk_runtime");
+    await client.query("GRANT SELECT, UPDATE, DELETE ON TABLE public.entry_upload_staging TO brokerdesk_admin");
+    await client.query("GRANT SELECT, DELETE ON TABLE public.entry_upload_staging_chunks TO brokerdesk_admin");
+  }
   await client.query("GRANT SELECT (tenant_id, user_id, import_job_id, case_id) ON public.object_import_targets TO brokerdesk_runtime");
   await client.query("GRANT USAGE ON SCHEMA public TO brokerdesk_runtime");
   // The lifecycle SECURITY DEFINER owner needs schema visibility plus only
@@ -110,6 +116,7 @@ try {
   await client.query("GRANT EXECUTE ON FUNCTION brokerdesk_private.suspend_external_auth_user(TEXT) TO brokerdesk_admin");
   await client.query("GRANT EXECUTE ON FUNCTION brokerdesk_private.claim_next_import_jobs(INTEGER) TO brokerdesk_admin");
   await client.query("GRANT EXECUTE ON FUNCTION brokerdesk_private.claim_import_job_by_id(TEXT) TO brokerdesk_admin");
+  await client.query("GRANT EXECUTE ON FUNCTION brokerdesk_private.cleanup_expired_entry_upload_staging_system(INTEGER) TO brokerdesk_admin");
   await client.query("COMMIT");
 
   const url = new URL(ownerConnectionString);

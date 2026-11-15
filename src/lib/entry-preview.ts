@@ -1,3 +1,5 @@
+import { normalizeCustomerGenderValue } from "@/lib/customer-identity-field-catalog";
+
 export type EntryPreviewCandidate = {
   id: string;
   key: string;
@@ -53,6 +55,8 @@ export function safeEntryPreviewCandidates(candidates: readonly EntryPreviewCand
   return candidates.filter((candidate) => candidate.uncertainty === "clear"
     && Boolean(candidate.value.trim())
     && !isNonActualCurrentAddress(candidate)
+    && (candidate.key !== "gender"
+      || normalizeCustomerGenderValue(candidate.rawValue ?? candidate.value) === candidate.value)
     && byKey.get(candidate.key)?.size === 1);
 }
 
@@ -60,6 +64,7 @@ export function safeEntryPreviewCandidates(candidates: readonly EntryPreviewCand
 export function selectableEntryPreviewCandidates(candidates: readonly EntryPreviewCandidate[]): EntryPreviewCandidate[] {
   return candidates.filter((candidate) => {
     if (!candidate.value.trim() || isNonActualCurrentAddress(candidate)) return false;
+    if (candidate.key === "gender" && normalizeCustomerGenderValue(candidate.rawValue ?? candidate.value) !== candidate.value) return false;
     if (candidate.uncertainty === "clear") return true;
     return candidate.uncertainty === "conflict"
       && candidates.some((other) => other.id !== candidate.id && other.key === candidate.key && other.value.trim() !== candidate.value.trim());
@@ -106,7 +111,10 @@ export function fillSelectedEntryCandidateForm(formData: FormData, preview: Entr
 
 // Multipart uploads preserve name and size, but not browser lastModified.
 export function entryFileKey(file: Pick<File, "name" | "size">): string {
-  return `${file.name}:${file.size}`;
+  // Staging persists the server-normalized name. Keep browser-side identity
+  // keys byte-for-byte equivalent for NFD/NFC and surrounding whitespace so a
+  // large file can never fall back to multipart Server Action input.
+  return `${file.name.normalize("NFC").trim()}:${file.size}`;
 }
 
 export function parseEntryReadFileKeys(value: FormDataEntryValue | null): Set<string> {

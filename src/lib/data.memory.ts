@@ -72,6 +72,19 @@ import {
   type VisibilityResolution,
   type VisibilityRecordResult,
 } from "@/lib/visibility-resolver";
+import {
+  ENTRY_UPLOAD_CHUNK_SIZE_BYTES,
+  ENTRY_UPLOAD_STAGING_MAX_ACTIVE_BYTES,
+  ENTRY_UPLOAD_STAGING_MAX_ACTIVE_FILES,
+  ENTRY_UPLOAD_STAGING_MAX_FILE_BYTES,
+  ENTRY_UPLOAD_STAGING_TTL_MS,
+  type CreateEntryUploadStagingInput,
+  type EntryUploadStagingChunk,
+  type EntryUploadStagingReadInput,
+  type EntryUploadStagingRecord,
+  type EntryUploadStagingScope,
+  type PutEntryUploadStagingChunkInput,
+} from "@/lib/entry-upload-staging-contract";
 
 export type { OutputTemplateSettingsInput } from "@/lib/output-doc";
 export type {
@@ -854,6 +867,8 @@ type DB = {
   guaranteeCompanyMaskVersions: GuaranteeCompanyMaskVersion[];
   guaranteeMaskMatches: GuaranteeMaskMatch[];
   guaranteePreviewConfirmations: GuaranteePreviewConfirmation[];
+  entryUploadStaging: EntryUploadStagingRecord[];
+  entryUploadStagingChunks: EntryUploadStagingChunk[];
 };
 
 
@@ -868,6 +883,141 @@ function resolveTenantId(tenantId?: string): string {
 }
 
 const ENTRY_REQUEST_CLAIM_STALE_MS = 10 * 60 * 1000;
+
+function assertEntryUploadStagingMetadata(input: CreateEntryUploadStagingInput) {
+  const fileName = input.fileName.normalize("NFC").trim();
+  const fileSizeBytes = Number(input.fileSizeBytes);
+  const chunkCount = Number(input.chunkCount);
+  const sha256 = input.sha256.trim().toLowerCase();
+  if (!input.userId.trim() || !fileName || fileName === "." || fileName === ".." || fileName.length > 255 || /[\\/\u0000-\u001f\u007f]/u.test(fileName)
+    || !Number.isSafeInteger(fileSizeBytes) || fileSizeBytes <= 0 || fileSizeBytes > ENTRY_UPLOAD_STAGING_MAX_FILE_BYTES
+    || !Number.isSafeInteger(chunkCount) || chunkCount < 1
+    || chunkCount !== Math.ceil(fileSizeBytes / ENTRY_UPLOAD_CHUNK_SIZE_BYTES)
+    || !/^[a-f0-9]{64}$/.test(sha256)) {
+    throw new Error("entry_upload_staging_invalid_metadata");
+  }
+  return { fileName, fileSizeBytes, chunkCount, sha256 };
+}
+
+function entryUploadStagingRecordForScope(input: { tenantId?: string; userId: string; id: string }) {
+  const tenantId = resolveTenantId(input.tenantId);
+  const record = db.entryUploadStaging.find((item) => item.id === input.id && item.tenantId === tenantId && item.userId === input.userId.trim());
+  if (!record) throw new Error("entry_upload_staging_not_found");
+  if (record.expiresAt.getTime() <= Date.now()) {
+    db.entryUploadStaging = db.entryUploadStaging.filter((item) => item.id !== record.id);
+    db.entryUploadStagingChunks = db.entryUploadStagingChunks.filter((item) => item.stagingId !== record.id);
+    throw new Error("entry_upload_staging_expired");
+  }
+  return record;
+}
+
+export async function createEntryUploadStaging(input: CreateEntryUploadStagingInput): Promise<EntryUploadStagingRecord> {
+  const tenantId = resolveTenantId(input.tenantId);
+  const metadata = assertEntryUploadStagingMetadata(input);
+  const nowDate = new Date();
+  const active = db.entryUploadStaging.filter((item) => item.tenantId === tenantId && item.userId === input.userId.trim() && item.status !== "consumed" && item.expiresAt.getTime() > nowDate.getTime());
+  const activeBytes = active.reduce((total, item) => total + item.fileSizeBytes, 0);
+  if (active.length >= ENTRY_UPLOAD_STAGING_MAX_ACTIVE_FILES || activeBytes + metadata.fileSizeBytes > ENTRY_UPLOAD_STAGING_MAX_ACTIVE_BYTES) {
+    throw new Error("entry_upload_staging_quota_exceeded");
+  }
+  const record: EntryUploadStagingRecord = {
+    id: makeId("entry_stage"),
+    tenantId,
+    userId: input.userId.trim(),
+    fileName: metadata.fileName,
+    fileType: input.fileType?.trim() || undefined,
+    fileSizeBytes: metadata.fileSizeBytes,
+    sha256: metadata.sha256,
+    chunkSizeBytes: ENTRY_UPLOAD_CHUNK_SIZE_BYTES,
+    chunkCount: metadata.chunkCount,
+    status: "open",
+    expiresAt: new Date(nowDate.getTime() + ENTRY_UPLOAD_STAGING_TTL_MS),
+    createdAt: nowDate,
+    updatedAt: nowDate,
+  };
+  db.entryUploadStaging.unshift(record);
+  return { ...record };
+}
+
+export async function putEntryUploadStagingChunk(input: PutEntryUploadStagingChunkInput): Promise<boolean> {
+  const record = entryUploadStagingRecordForScope(input);
+  if (record.status !== "open") throw new Error("entry_upload_staging_not_open");
+  const content = Buffer.from(input.content);
+  const chunkIndex = Number(input.chunkIndex);
+  const digest = input.sha256.trim().toLowerCase();
+  const expectedSize = chunkIndex === record.chunkCount - 1
+    ? record.fileSizeBytes - (record.chunkCount - 1) * record.chunkSizeBytes
+    : record.chunkSizeBytes;
+  if (!Number.isSafeInteger(chunkIndex) || chunkIndex < 0 || chunkIndex >= record.chunkCount
+    || content.length !== expectedSize || content.length > record.chunkSizeBytes
+    || createHash("sha256").update(content).digest("hex") !== digest) {
+    throw new Error("entry_upload_staging_chunk_invalid");
+  }
+  const existing = db.entryUploadStagingChunks.find((item) => item.stagingId === record.id && item.chunkIndex === chunkIndex);
+  if (existing) {
+    if (existing.sha256 !== digest || existing.byteSize !== content.length || !existing.content.equals(content)) throw new Error("entry_upload_staging_chunk_conflict");
+    return false;
+  }
+  db.entryUploadStagingChunks.push({ stagingId: record.id, chunkIndex, content, sha256: digest, byteSize: content.length });
+  record.updatedAt = new Date();
+  return true;
+}
+
+export async function completeEntryUploadStaging(input: EntryUploadStagingScope): Promise<EntryUploadStagingRecord> {
+  const record = entryUploadStagingRecordForScope(input);
+  if (record.status === "consumed") return { ...record };
+  if (record.status !== "open") return { ...record };
+  const chunks = db.entryUploadStagingChunks.filter((item) => item.stagingId === record.id).sort((a, b) => a.chunkIndex - b.chunkIndex);
+  if (chunks.length !== record.chunkCount || chunks.some((item, index) => item.chunkIndex !== index)) throw new Error("entry_upload_staging_missing_chunk");
+  const content = Buffer.concat(chunks.map((item) => item.content));
+  if (content.length !== record.fileSizeBytes || createHash("sha256").update(content).digest("hex") !== record.sha256) throw new Error("entry_upload_staging_hash_mismatch");
+  record.status = "ready";
+  record.updatedAt = new Date();
+  return { ...record };
+}
+
+export async function readEntryUploadStaging(input: EntryUploadStagingReadInput): Promise<{ record: EntryUploadStagingRecord; content: Buffer } | null> {
+  let record: EntryUploadStagingRecord;
+  try { record = entryUploadStagingRecordForScope(input); } catch (error) {
+    if (error instanceof Error && error.message === "entry_upload_staging_not_found") return null;
+    throw error;
+  }
+  if (record.status !== "ready" && !(record.status === "consumed" && input.requestKey && record.consumedRequestKey === input.requestKey.trim())) return null;
+  const chunks = db.entryUploadStagingChunks.filter((item) => item.stagingId === record.id).sort((a, b) => a.chunkIndex - b.chunkIndex);
+  return { record: { ...record }, content: Buffer.concat(chunks.map((item) => item.content)) };
+}
+
+export async function consumeEntryUploadStaging(input: EntryUploadStagingScope & { requestKey: string }): Promise<boolean> {
+  const record = entryUploadStagingRecordForScope(input);
+  const requestKey = input.requestKey.trim();
+  if (!requestKey) throw new Error("entry_upload_staging_request_key_required");
+  if (record.status === "consumed") return record.consumedRequestKey === requestKey;
+  if (record.status !== "ready") throw new Error("entry_upload_staging_not_ready");
+  record.status = "consumed";
+  record.consumedRequestKey = requestKey;
+  record.updatedAt = new Date();
+  return true;
+}
+
+export async function discardEntryUploadStaging(input: EntryUploadStagingScope): Promise<boolean> {
+  const tenantId = resolveTenantId(input.tenantId);
+  const index = db.entryUploadStaging.findIndex((item) => item.id === input.id && item.tenantId === tenantId && item.userId === input.userId.trim());
+  if (index < 0) return false;
+  const [record] = db.entryUploadStaging.splice(index, 1);
+  db.entryUploadStagingChunks = db.entryUploadStagingChunks.filter((item) => item.stagingId !== record.id);
+  return true;
+}
+
+export async function cleanupExpiredEntryUploadStaging(input: { tenantId?: string; userId?: string; now?: Date }): Promise<number> {
+  const tenantId = resolveTenantId(input.tenantId);
+  const cutoff = input.now?.getTime() ?? Date.now();
+  const doomed = db.entryUploadStaging.filter((item) => item.tenantId === tenantId && (!input.userId || item.userId === input.userId.trim()) && item.expiresAt.getTime() <= cutoff);
+  if (!doomed.length) return 0;
+  const doomedIds = new Set(doomed.map((item) => item.id));
+  db.entryUploadStaging = db.entryUploadStaging.filter((item) => !doomedIds.has(item.id));
+  db.entryUploadStagingChunks = db.entryUploadStagingChunks.filter((item) => !doomedIds.has(item.stagingId));
+  return doomed.length;
+}
 
 export async function claimEntryRequest(input: {
   tenantId?: string;
@@ -1345,6 +1495,8 @@ function cloneDb(input: DB): DB {
     guaranteeCompanyMaskVersions: cloneCollection(input.guaranteeCompanyMaskVersions),
     guaranteeMaskMatches: cloneCollection(input.guaranteeMaskMatches),
     guaranteePreviewConfirmations: cloneCollection(input.guaranteePreviewConfirmations),
+    entryUploadStaging: cloneCollection(input.entryUploadStaging ?? []),
+    entryUploadStagingChunks: cloneCollection(input.entryUploadStagingChunks ?? []),
   };
 }
 
@@ -1378,6 +1530,8 @@ function qaBusinessDataCounts(): QaBusinessDataCounts {
     guaranteeCompanyMaskVersions: db.guaranteeCompanyMaskVersions.length,
     guaranteeMaskMatches: db.guaranteeMaskMatches.length,
     guaranteePreviewConfirmations: db.guaranteePreviewConfirmations.length,
+    entryUploadStaging: db.entryUploadStaging.length,
+    entryUploadStagingChunks: db.entryUploadStagingChunks.length,
   };
 }
 
@@ -1923,6 +2077,8 @@ const _freshDb: DB = withDefaultTenantScope({
   guaranteeCompanyMaskVersions: [],
   guaranteeMaskMatches: [],
   guaranteePreviewConfirmations: [],
+  entryUploadStaging: [],
+  entryUploadStagingChunks: [],
 });
 
 const dbHolder: BrokerDbHolder = _g.__brokerDbHolder ?? { current: _g.__brokerDb ?? cloneDb(_freshDb) };
@@ -1966,6 +2122,8 @@ if (!db.guaranteeCompanyMasks) db.guaranteeCompanyMasks = [];
 if (!db.guaranteeCompanyMaskVersions) db.guaranteeCompanyMaskVersions = [];
 if (!db.guaranteeMaskMatches) db.guaranteeMaskMatches = [];
 if (!db.guaranteePreviewConfirmations) db.guaranteePreviewConfirmations = [];
+if (!db.entryUploadStaging) db.entryUploadStaging = [];
+if (!db.entryUploadStagingChunks) db.entryUploadStagingChunks = [];
 
 function closedBetaLocalFixtureEnabled(): boolean {
   if (process.env.NODE_ENV !== "development") return false;
@@ -2061,6 +2219,8 @@ export function resetBusinessDataForQa(): QaBusinessDataCounts {
   db.guaranteeCompanyMaskVersions = [];
   db.guaranteeMaskMatches = [];
   db.guaranteePreviewConfirmations = [];
+  db.entryUploadStaging = [];
+  db.entryUploadStagingChunks = [];
 
   return qaBusinessDataCounts();
 }

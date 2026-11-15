@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { POST as drainImportJobs } from "../drain/route";
 import { getRequestId, logOperationalEvent } from "@/lib/operational-logging";
+import { cleanupExpiredEntryUploadStaging } from "@/lib/data.admin.postgres";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,6 +30,15 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: false, error: "worker_token_missing", requestId }, { status: 503 });
   }
 
+  let stagingCleaned = 0;
+  try {
+    stagingCleaned = await cleanupExpiredEntryUploadStaging(500);
+  } catch {
+    // Temporary-file cleanup must be observable but cannot prevent the
+    // existing import worker from draining durable jobs.
+    logOperationalEvent({ event: "entry_upload_staging_cleanup", requestId, outcome: "failed", detail: { reason: "cleanup_unavailable" } });
+  }
+
   const response = await drainImportJobs(new Request(request.url, {
     method: "POST",
     headers: {
@@ -49,6 +59,7 @@ export async function GET(request: Request) {
       claimed: typeof payload.claimed === "number" ? payload.claimed : 0,
       completed: typeof payload.completed === "number" ? payload.completed : 0,
       failed: typeof payload.failed === "number" ? payload.failed : 0,
+      stagingCleaned,
     },
   });
   return response;

@@ -33,7 +33,7 @@ export async function buildEntryRequestPayloadDigest(input: {
     digests.push(proof?.digest ?? createHash("sha256").update(Buffer.from(await file.arrayBuffer())).digest("hex"));
   }
   const volatileFields = new Set([
-    "uploadFile", "caseUploadFile", "entryReadProofs", "entryReadFileKeys",
+    "uploadFile", "caseUploadFile", "entryStagedFiles", "entryReadProofs", "entryReadFileKeys",
     "entryPreviewDecisions", "entryIntentId", "entryRequestKey", "entryPayloadDigest", "entryClaimToken", "caseDraftReturn", "returnTo",
     "submitReturnTo", "afterSave",
   ]);

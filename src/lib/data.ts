@@ -522,6 +522,14 @@ export const getGuaranteePreviewConfirmation: typeof memory.getGuaranteePreviewC
 export const deleteGeneratedOutputForTenant: typeof memory.deleteGeneratedOutputForTenant = (...args) => repo.deleteGeneratedOutputForTenant(...args);
 export const readPrivateAttachmentContentForTenant: typeof memory.readPrivateAttachmentContentForTenant = (...args) => repo.readPrivateAttachmentContentForTenant(...args);
 export const deletePrivateAttachmentForTenant: typeof memory.deletePrivateAttachmentForTenant = (...args) => repo.deletePrivateAttachmentForTenant(...args);
+export const createEntryUploadStaging: typeof memory.createEntryUploadStaging = (...args) => repo.createEntryUploadStaging(...args);
+export const putEntryUploadStagingChunk: typeof memory.putEntryUploadStagingChunk = (...args) => repo.putEntryUploadStagingChunk(...args);
+export const completeEntryUploadStaging: typeof memory.completeEntryUploadStaging = (...args) => repo.completeEntryUploadStaging(...args);
+export const readEntryUploadStaging: typeof memory.readEntryUploadStaging = (...args) => repo.readEntryUploadStaging(...args);
+export const consumeEntryUploadStaging: typeof memory.consumeEntryUploadStaging = (...args) => repo.consumeEntryUploadStaging(...args);
+export const discardEntryUploadStaging: typeof memory.discardEntryUploadStaging = (...args) => repo.discardEntryUploadStaging(...args);
+export const cleanupExpiredEntryUploadStaging: typeof memory.cleanupExpiredEntryUploadStaging = (...args) => repo.cleanupExpiredEntryUploadStaging(...args);
+export const cleanupEntryUploadStagingForUser = (input: { tenantId: string; userId: string }) => repo.cleanupExpiredEntryUploadStaging(input);
 export const createGuaranteeCompanyMask: typeof memory.createGuaranteeCompanyMask = (...args) => repo.createGuaranteeCompanyMask(...args);
 export const addGuaranteeCompanyMaskVersion: typeof memory.addGuaranteeCompanyMaskVersion = (...args) => repo.addGuaranteeCompanyMaskVersion(...args);
 export const markGuaranteeCompanyMaskVersionTested: typeof memory.markGuaranteeCompanyMaskVersionTested = (...args) => repo.markGuaranteeCompanyMaskVersionTested(...args);

@@ -782,7 +782,11 @@ function assertNoIdentityMergeConflicts(results: InputFileExtractionResult[]) {
   const valuesByFieldKey = new Map<string, Set<string>>();
   for (const field of results.flatMap((result) => result.fields)) {
     if (!IDENTITY_MERGE_CONFLICT_FIELDS.has(field.fieldKey)) continue;
-    const value = normalizeComparable(field.normalizedValue || field.value);
+    // Gender is commonly printed as a Japanese mark plus its Latin mark. Use
+    // the same canonical comparator as the intake boundary so `男 M` and
+    // `男/M` do not become a false cross-file conflict. Invalid gender text is
+    // retained as evidence and remains conflict/unclear rather than guessed.
+    const value = normalizeComparable(comparableFieldValue(field) || field.normalizedValue || field.value);
     if (!value) continue;
     valuesByFieldKey.set(field.fieldKey, (valuesByFieldKey.get(field.fieldKey) ?? new Set()).add(value));
   }
@@ -802,8 +806,8 @@ function mergeIdentityFields(results: InputFileExtractionResult[], documentType:
       byKey.set(field.fieldKey, field);
       continue;
     }
-    const existingValue = clean(existing.normalizedValue || existing.value);
-    const nextValue = clean(field.normalizedValue || field.value);
+    const existingValue = clean(comparableFieldValue(existing) || existing.normalizedValue || existing.value);
+    const nextValue = clean(comparableFieldValue(field) || field.normalizedValue || field.value);
     const nextWins = (!existingValue && nextValue) || (nextValue && field.confidence > existing.confidence);
     const winner = nextWins ? field : existing;
     const alternatives = mergeFieldAlternatives(existing, field);

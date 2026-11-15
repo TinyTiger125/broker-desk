@@ -149,11 +149,9 @@ export async function persistObjectExtraction(input: { repository?: Pick<ObjectI
     const identityKey = customerIdentityFieldKey(field.fieldKey);
     const rawValue = field.rawValue ?? field.value;
     const normalizedValue = identityKey ? normalizeCustomerIdentityValue(identityKey, rawValue) : (field.normalizedValue ?? field.value);
-    if (identityKey === "gender" && rawValue.trim() && !isCustomerGenderValue(normalizedValue)) {
-      throw new Error("object_import_invalid_gender");
-    }
+    const genderConflict = identityKey === "gender" && rawValue.trim().length > 0 && !isCustomerGenderValue(normalizedValue);
     const persistedField = identityKey
-      ? { ...field, value: normalizedValue, normalizedValue, rawValue }
+      ? { ...field, value: normalizedValue, normalizedValue, rawValue, ...(genderConflict ? { uncertainty: "conflict" as const } : {}) }
       : field;
     return {
     id: `candidate_${input.target.id}_${field.fieldKey}`,
@@ -169,14 +167,14 @@ export async function persistObjectExtraction(input: { repository?: Pick<ObjectI
       templateVersion: persistedField.templateVersion,
       ...(persistedField.sourcePageNumber !== undefined ? { pageNumber: persistedField.sourcePageNumber } : {}),
       ...(persistedField.sourceText ? { sourceText: persistedField.sourceText } : {}),
-      ...(persistedField.rawValue && persistedField.rawValue !== normalizedValue ? { rawCandidateValue: persistedField.rawValue } : {}),
+      ...(persistedField.rawValue && (persistedField.rawValue !== normalizedValue || genderConflict) ? { rawCandidateValue: persistedField.rawValue } : {}),
       ...(persistedField.uncertainty ? { uncertainty: persistedField.uncertainty } : {}),
       ...(persistedField.subjectKey ? { subjectKey: persistedField.subjectKey } : {}),
       ...(persistedField.subjectLabel ? { subjectLabel: persistedField.subjectLabel } : {}),
       ...(persistedField.alternatives?.length ? { alternatives: persistedField.alternatives } : {}),
     },
-    finalValue: normalizedValue || undefined, finalSource: normalizedValue ? "model_draft" : undefined,
-    status: normalizedValue
+    finalValue: genderConflict ? undefined : normalizedValue || undefined, finalSource: genderConflict ? undefined : normalizedValue ? "model_draft" : undefined,
+    status: genderConflict ? "conflict" : normalizedValue
       ? persistedField.uncertainty === "conflict" ? "conflict" : persistedField.uncertainty === "unclear" ? "low_confidence" : persistedField.confidence < 0.8 ? "low_confidence" : "draft"
       : persistedField.uncertainty === "conflict" ? "conflict" : persistedField.uncertainty === "unclear" ? "low_confidence" : "not_found",
     };

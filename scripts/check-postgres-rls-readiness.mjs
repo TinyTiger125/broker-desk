@@ -32,6 +32,8 @@ const tenantTables = [
   "ai_experience_drafts",
   "case_workbench_field_rules",
   "tenant_guarantee_template_installs",
+  "entry_upload_staging",
+  "entry_upload_staging_chunks",
 ];
 
 function assert(condition, message) {
@@ -62,6 +64,13 @@ try {
     assert(row, `tenant table public.${table} is missing`);
     assert(row.relrowsecurity, `tenant table public.${table} does not have RLS enabled`);
     assert(row.relforcerowsecurity, `tenant table public.${table} does not force RLS for owners`);
+  }
+
+  for (const table of ["entry_upload_staging", "entry_upload_staging_chunks"]) {
+    for (const privilege of ["SELECT", "INSERT", "UPDATE", "DELETE"]) {
+      const privilegeResult = await pool.query("SELECT has_table_privilege(current_user, $1, $2) AS allowed", [`public.${table}`, privilege]);
+      assert(privilegeResult.rows[0]?.allowed === true, `runtime role lacks ${privilege} on public.${table}`);
+    }
   }
 
   const functionResult = await pool.query(

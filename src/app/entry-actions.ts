@@ -17,37 +17,52 @@ import { getAttachmentStorageMode, persistAttachmentToLocalPrivate } from "@/lib
 import { inferObjectAttachmentCategory } from "@/lib/object-attachments";
 import { buildEntryRequestPayloadDigest, readEntryIntentId, validateEntryPreviewDecisions, verifyEntryPreviewProofs, persistEntryPreviewAudit, type EntryPreviewProofPayload } from "@/lib/entry-preview-proof";
 import { assertProductionAttachmentStorageReady } from "@/lib/production-readiness";
+import { consumeEntryUploadStagedFiles, discardEntryUploadStagedFiles, parseEntryUploadStagedRefs, readEntryUploadStagedFiles } from "@/lib/entry-upload-staging";
+import type { EntryUploadStagingRecord } from "@/lib/entry-upload-staging-contract";
 
 async function prepareUploads(formData: FormData, kind: "customer" | "property") {
-  const files = formData.getAll("uploadFile").filter((value): value is File => value instanceof File && value.size > 0);
-  const session = await requireTenantSession({ permissions: files.length ? ["record.update", "source.upload"] : ["record.update"] });
+  const rawFiles = formData.getAll("uploadFile").filter((value): value is File => value instanceof File && value.size > 0);
+  const session = await requireTenantSession({ permissions: rawFiles.length || formData.has("entryStagedFiles") ? ["record.update", "source.upload"] : ["record.update"] });
   const locale = await getLocale();
+  let files = rawFiles;
+  let stagedRecords: EntryUploadStagingRecord[] = [];
+  try {
+    const refs = parseEntryUploadStagedRefs(formData.get("entryStagedFiles"));
+    if (refs.length) {
+      const staged = await readEntryUploadStagedFiles({ refs, tenantId: session.tenant.id, userId: session.user.id, requestKey: String(formData.get("entryIntentId") ?? "").trim() || undefined });
+      files = [...rawFiles, ...staged.files];
+      stagedRecords = staged.records;
+    }
+  } catch {
+    return { files, stagedRecords, error: locale === "zh" ? "临时上传引用已失效或不匹配。请重新读取资料；尚未创建档案。" : locale === "ko" ? "임시 업로드 참조가 만료되었거나 일치하지 않습니다. 다시 읽어 주세요. 기록은 아직 생성되지 않았습니다." : "一時アップロードの参照が失効したか一致しません。再度読み取ってください。記録はまだ作成されていません。", proofs: new Map<string, EntryPreviewProofPayload>() };
+  }
   if (files.length) {
     try {
       assertProductionAttachmentStorageReady();
       if (!["local_private", "postgres_private"].includes(getAttachmentStorageMode())) throw new Error("entry_archive_unavailable");
     } catch {
-      return { files, error: locale === "zh" ? "原件保存暂不可用，请稍后重试；尚未创建档案。" : locale === "ko" ? "원본 저장을 사용할 수 없습니다. 아직 기록을 만들지 않았습니다." : "原本を保存できません。記録はまだ作成されていません。" };
+      return { files, stagedRecords, error: locale === "zh" ? "原件保存暂不可用，请稍后重试；尚未创建档案。" : locale === "ko" ? "원본 저장을 사용할 수 없습니다. 아직 기록을 만들지 않았습니다." : "原本を保存できません。記録はまだ作成されていません。" };
     }
   }
   let proofs: Map<string, EntryPreviewProofPayload>;
   try { proofs = await verifyEntryPreviewProofs({ formData, files, session, kind, context: "entry" }); }
-  catch { return { files, error: locale === "zh" ? "预读凭证已失效或文件已变更。请重新读取资料；尚未创建档案。" : locale === "ko" ? "미리 읽기 확인이 만료되었거나 파일이 바뀌었습니다. 다시 읽어 주세요. 기록은 아직 생성되지 않았습니다." : "事前読取の確認が失効したかファイルが変更されました。再度読み取ってください。記録はまだ作成されていません。", proofs: new Map<string, EntryPreviewProofPayload>() }; }
+  catch { return { files, stagedRecords, error: locale === "zh" ? "预读凭证已失效或文件已变更。请重新读取资料；尚未创建档案。" : locale === "ko" ? "미리 읽기 확인이 만료되었거나 파일이 바뀌었습니다. 다시 읽어 주세요. 기록은 아직 생성되지 않았습니다." : "事前読取の確認が失効したかファイルが変更されました。再度読み取ってください。記録はまだ作成されていません。", proofs: new Map<string, EntryPreviewProofPayload>() }; }
   const readKeys = new Set(proofs.keys());
   const readiness = files.every((file) => readKeys.has(entryFileKey(file))) ? { ready: true } : await getObjectImportFeatureReadiness();
-  if (!readiness.ready) return { files, error: locale === "zh" ? "资料读取暂不可用。请保留文件，稍后重试；尚未创建档案。" : locale === "ko" ? "자료 읽기를 사용할 수 없습니다. 아직 기록을 만들지 않았습니다." : "資料読取は現在利用できません。まだ記録は作成されていません。" };
-  if (!(await validateEntryUploads(files))) return { files, error: locale === "zh" ? "请选择最多 6 份有效 PDF、PNG、JPEG，或单独一份 XLSX，并检查文件大小。尚未创建档案。" : locale === "ko" ? "유효한 PDF·PNG·JPEG 최대 6개 또는 XLSX 1개를 선택하고 크기를 확인해 주세요. 기록은 아직 생성되지 않았습니다." : "有効な PDF・PNG・JPEG を最大 6 件、または XLSX を単独で選択し、サイズを確認してください。記録はまだ作成されていません。" };
-  return { files, error: undefined, proofs };
+  if (!readiness.ready) return { files, stagedRecords, error: locale === "zh" ? "资料读取暂不可用。请保留文件，稍后重试；尚未创建档案。" : locale === "ko" ? "자료 읽기를 사용할 수 없습니다. 아직 기록을 만들지 않았습니다." : "資料読取は現在利用できません。まだ記録は作成されていません。" };
+  if (!(await validateEntryUploads(files))) return { files, stagedRecords, error: locale === "zh" ? "请选择最多 6 份有效 PDF、PNG、JPEG，或单独一份 XLSX，并检查文件大小。尚未创建档案。" : locale === "ko" ? "유효한 PDF·PNG·JPEG 최대 6개 또는 XLSX 1개를 선택하고 크기를 확인해 주세요. 기록은 아직 생성되지 않았습니다." : "有効な PDF・PNG・JPEG を最大 6 件、または XLSX を単独で選択し、サイズを確認してください。记录はまだ作成されていません。" };
+  return { files, stagedRecords, error: undefined, proofs };
 }
 
 /** Once a record exists, every outcome stays on that record; retry never creates another. */
-async function finishEntry(targetType: "party" | "property", targetId: string, files: File[], proofs: Map<string, EntryPreviewProofPayload>, formData: FormData, finalValues: Record<string, string>, creationAuditWarning = false, reusedEntry = false): Promise<never> {
+async function finishEntry(targetType: "party" | "property", targetId: string, files: File[], proofs: Map<string, EntryPreviewProofPayload>, formData: FormData, finalValues: Record<string, string>, creationAuditWarning = false, reusedEntry = false, stagedRecords: EntryUploadStagingRecord[] = []): Promise<never> {
   const path = targetType === "party" ? `/clients/${encodeURIComponent(targetId)}/edit` : `/properties/${encodeURIComponent(targetId)}/edit`;
   const params = new URLSearchParams({ flash: reusedEntry ? "entry_reused" : targetType === "party" ? "client_created" : "property_created" });
   if (creationAuditWarning) params.set("createAuditWarning", "1");
   let auditFailed = false;
   let archiveFailed = false;
   let archivedFileCount = 0;
+  let recoveredOriginalCount = 0;
   if (files.length) {
     try {
       const session = await requireTenantSession({ permissions: ["record.update", "source.upload"] });
@@ -71,8 +86,6 @@ async function finishEntry(targetType: "party" | "property", targetId: string, f
         return createHash("sha256").update(Buffer.from(await file.arrayBuffer())).digest("hex");
       }));
       const unreadFiles: Array<{ file: File; digest: string }> = [];
-      let recoveredOriginalCount = 0;
-
       const archiveOriginal = async (file: File, digest: string) => {
         const dedupeKey = entryRequestKey ? `${entryRequestKey}:${digest}` : undefined;
         const storageMode = getAttachmentStorageMode();
@@ -181,6 +194,14 @@ async function finishEntry(targetType: "party" | "property", targetId: string, f
     }
   }
   if (auditFailed && !archiveFailed) params.set("flash", "entry_preview_audit_failed");
+  // Queue failure can still be a successful original archive through the
+  // same-record fallback. Once every input has a durable attachment (including
+  // recovered same-intent markers), consume the one-time staging references;
+  // partial archive leaves them for a bounded retry/TTL cleanup.
+  if (stagedRecords.length && archivedFileCount + (recoveredOriginalCount ?? 0) >= files.length) {
+    const session = await requireTenantSession({ permissions: ["record.update", "source.upload"] });
+    await consumeEntryUploadStagedFiles({ records: stagedRecords, tenantId: session.tenant.id, userId: session.user.id, requestKey: String(formData.get("entryIntentId") ?? formData.get("entryRequestKey") ?? "") });
+  }
   revalidatePath(path);
   redirect(`${path}?${params}`);
 }
@@ -194,7 +215,7 @@ function validAutoSave(formData: FormData, proofs: Map<string, EntryPreviewProof
 }
 
 export async function createClientEntryAction(previous: ClientFormActionState, formData: FormData): Promise<ClientFormActionState> {
-  const { files, error, proofs } = await prepareUploads(formData, "customer");
+  const { files, stagedRecords, error, proofs } = await prepareUploads(formData, "customer");
   if (error) return { status: "error", message: error, fieldErrors: {}, values: submittedValues(previous.values, formData) };
   if (!validAutoSave(formData, proofs ?? new Map())) return { status: "error", message: "自动保存的识别结果已失效，请重新读取资料。", fieldErrors: {}, values: submittedValues(previous.values, formData) };
   if (formData.get("entryAutoSave") === "1") {
@@ -219,7 +240,7 @@ export async function createClientEntryAction(previous: ClientFormActionState, f
     const session = await requireTenantSession({ permission: "record.update" });
     const reservedTargetId = `client_${randomUUID().replaceAll("-", "")}`;
     const claim = await claimEntryRequest({ tenantId: session.tenant.id, userId: session.user.id, targetType: "client", requestKey, payloadDigest, targetId: reservedTargetId });
-    if (claim.state === "existing" && claim.targetId) return finishEntry("party", claim.targetId, files, proofs ?? new Map(), formData, {}, false, true);
+    if (claim.state === "existing" && claim.targetId) return finishEntry("party", claim.targetId, files, proofs ?? new Map(), formData, {}, false, true, stagedRecords);
     if (claim.state === "in_progress") return { status: "error", message: "保存请求正在处理，请稍后重试；刷新后会回到同一记录。", fieldErrors: {}, values: submittedValues(previous.values, formData) };
     if (claim.state === "manual_review") return { status: "error", message: "保存请求长时间未完成，已暂停自动重试。请联系管理员核对后再继续，避免重复建档。", fieldErrors: {}, values: submittedValues(previous.values, formData) };
     if (claim.state === "payload_mismatch") return { status: "error", message: "保存请求内容与原请求不一致，请重新打开新建页面后重试。", fieldErrors: {}, values: submittedValues(previous.values, formData) };
@@ -237,14 +258,14 @@ export async function createClientEntryAction(previous: ClientFormActionState, f
     const replay = priorCreates.find((log) => log.targetType === "client" && log.context?.entryRequestKey === requestKey && log.targetId);
     if (replay?.targetId) {
       await completeEntryRequest({ tenantId: session.tenant.id, userId: session.user.id, targetType: "client", requestKey, claimToken: claimToken!, targetId: replay.targetId });
-      return finishEntry("party", replay.targetId, files, proofs ?? new Map(), formData, {}, false, true);
+      return finishEntry("party", replay.targetId, files, proofs ?? new Map(), formData, {}, false, true, stagedRecords);
     }
     requestClaimed = true;
     entryTargetId = claim.targetId ?? reservedTargetId;
     const existingTarget = await resolveClientVisibilityForContext({ context: createRequestContext(session), clientId: entryTargetId });
     if (existingTarget.record && existingTarget.resolution.canWrite) {
       if (!await completeEntryRequest({ tenantId: session.tenant.id, userId: session.user.id, targetType: "client", requestKey, claimToken: claimToken!, targetId: entryTargetId })) return { status: "error", message: "保存请求状态无法确认，请稍后重试。", fieldErrors: {}, values: submittedValues(previous.values, formData) };
-      return finishEntry("party", entryTargetId, files, proofs ?? new Map(), formData, {}, false, true);
+      return finishEntry("party", entryTargetId, files, proofs ?? new Map(), formData, {}, false, true, stagedRecords);
     }
     formData.set("entryTargetId", entryTargetId);
   }
@@ -264,18 +285,21 @@ export async function createClientEntryAction(previous: ClientFormActionState, f
       const session = await requireTenantSession({ permission: "record.update" });
       if (!await completeEntryRequest({ tenantId: session.tenant.id, userId: session.user.id, targetType: "client", requestKey, claimToken, targetId: result.createdRecord.id })) throw new Error("entry_request_completion_failed");
     }
-    return finishEntry("party", result.createdRecord.id, files, proofs ?? new Map(), formData, result.values, result.auditWarning);
+    return finishEntry("party", result.createdRecord.id, files, proofs ?? new Map(), formData, result.values, result.auditWarning, false, stagedRecords);
   } catch (error) {
     if (!recordCreated && requestClaimed && requestKey && claimToken) {
       const session = await requireTenantSession({ permission: "record.update" }).catch(() => null);
-      if (session) await releaseEntryRequest({ tenantId: session.tenant.id, userId: session.user.id, targetType: "client", requestKey, claimToken }).catch(() => undefined);
+      if (session) {
+        await releaseEntryRequest({ tenantId: session.tenant.id, userId: session.user.id, targetType: "client", requestKey, claimToken }).catch(() => undefined);
+        await discardEntryUploadStagedFiles({ records: stagedRecords, tenantId: session.tenant.id, userId: session.user.id }).catch(() => undefined);
+      }
     }
     throw error;
   }
 }
 
 export async function createPropertyEntryAction(previous: PropertyFormActionState, formData: FormData): Promise<PropertyFormActionState> {
-  const { files, error, proofs } = await prepareUploads(formData, "property");
+  const { files, stagedRecords, error, proofs } = await prepareUploads(formData, "property");
   if (error) return { status: "error", message: error, fieldErrors: {}, values: submittedValues(previous.values, formData) };
   if (!validAutoSave(formData, proofs ?? new Map())) return { status: "error", message: "自动保存的识别结果已失效，请重新读取资料。", fieldErrors: {}, values: submittedValues(previous.values, formData) };
   let requestKey: string | undefined;
@@ -296,7 +320,7 @@ export async function createPropertyEntryAction(previous: PropertyFormActionStat
     const session = await requireTenantSession({ permission: "record.update" });
     const reservedTargetId = `prop_${randomUUID().replaceAll("-", "")}`;
     const claim = await claimEntryRequest({ tenantId: session.tenant.id, userId: session.user.id, targetType: "property", requestKey, payloadDigest, targetId: reservedTargetId });
-    if (claim.state === "existing" && claim.targetId) return finishEntry("property", claim.targetId, files, proofs ?? new Map(), formData, {}, false, true);
+    if (claim.state === "existing" && claim.targetId) return finishEntry("property", claim.targetId, files, proofs ?? new Map(), formData, {}, false, true, stagedRecords);
     if (claim.state === "in_progress") return { status: "error", message: "保存请求正在处理，请稍后重试；刷新后会回到同一记录。", fieldErrors: {}, values: submittedValues(previous.values, formData) };
     if (claim.state === "manual_review") return { status: "error", message: "保存请求长时间未完成，已暂停自动重试。请联系管理员核对后再继续，避免重复建档。", fieldErrors: {}, values: submittedValues(previous.values, formData) };
     if (claim.state === "payload_mismatch") return { status: "error", message: "保存请求内容与原请求不一致，请重新打开新建页面后重试。", fieldErrors: {}, values: submittedValues(previous.values, formData) };
@@ -307,14 +331,14 @@ export async function createPropertyEntryAction(previous: PropertyFormActionStat
     const replay = priorCreates.find((log) => log.targetType === "property" && log.context?.entryRequestKey === requestKey && log.targetId);
     if (replay?.targetId) {
       await completeEntryRequest({ tenantId: session.tenant.id, userId: session.user.id, targetType: "property", requestKey, claimToken: claimToken!, targetId: replay.targetId });
-      return finishEntry("property", replay.targetId, files, proofs ?? new Map(), formData, {}, false, true);
+      return finishEntry("property", replay.targetId, files, proofs ?? new Map(), formData, {}, false, true, stagedRecords);
     }
     requestClaimed = true;
     entryTargetId = claim.targetId ?? reservedTargetId;
     const existingTarget = await resolvePropertyVisibilityForContext({ context: createRequestContext(session), propertyId: entryTargetId });
     if (existingTarget.record && existingTarget.resolution.canWrite) {
       if (!await completeEntryRequest({ tenantId: session.tenant.id, userId: session.user.id, targetType: "property", requestKey, claimToken: claimToken!, targetId: entryTargetId })) return { status: "error", message: "保存请求状态无法确认，请稍后重试。", fieldErrors: {}, values: submittedValues(previous.values, formData) };
-      return finishEntry("property", entryTargetId, files, proofs ?? new Map(), formData, {}, false, true);
+      return finishEntry("property", entryTargetId, files, proofs ?? new Map(), formData, {}, false, true, stagedRecords);
     }
     formData.set("entryTargetId", entryTargetId);
   }
@@ -334,11 +358,14 @@ export async function createPropertyEntryAction(previous: PropertyFormActionStat
       const session = await requireTenantSession({ permission: "record.update" });
       if (!await completeEntryRequest({ tenantId: session.tenant.id, userId: session.user.id, targetType: "property", requestKey, claimToken, targetId: result.createdRecord.id })) throw new Error("entry_request_completion_failed");
     }
-    return finishEntry("property", result.createdRecord.id, files, proofs ?? new Map(), formData, result.values, result.auditWarning);
+    return finishEntry("property", result.createdRecord.id, files, proofs ?? new Map(), formData, result.values, result.auditWarning, false, stagedRecords);
   } catch (error) {
     if (!recordCreated && requestClaimed && requestKey && claimToken) {
       const session = await requireTenantSession({ permission: "record.update" }).catch(() => null);
-      if (session) await releaseEntryRequest({ tenantId: session.tenant.id, userId: session.user.id, targetType: "property", requestKey, claimToken }).catch(() => undefined);
+      if (session) {
+        await releaseEntryRequest({ tenantId: session.tenant.id, userId: session.user.id, targetType: "property", requestKey, claimToken }).catch(() => undefined);
+        await discardEntryUploadStagedFiles({ records: stagedRecords, tenantId: session.tenant.id, userId: session.user.id }).catch(() => undefined);
+      }
     }
     throw error;
   }

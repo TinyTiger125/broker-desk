@@ -26,6 +26,8 @@ import {
 import { getPartyProfileTypeOptions } from "@/lib/party-profile";
 import { formatJapaneseMobilePhone } from "@/lib/japanese-mobile-phone";
 import { normalizeCustomerIdentityValue } from "@/lib/customer-identity-field-catalog";
+import type { EntryUploadStagedFileRef } from "@/lib/entry-upload-staging";
+import { applyEntryStagedFilesToFormData } from "@/lib/entry-upload-staging-client";
 
 export type ClientFormDefaults = {
   clientId?: string;
@@ -240,21 +242,38 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
   const [entryFiles, setEntryFiles] = useState<File[]>([]);
   const [entryIntentId] = useState(() => createEntryIntentId());
   const [entryReadFileKeys, setEntryReadFileKeys] = useState<string[]>([]);
+  const [entryStagedFiles, setEntryStagedFiles] = useState<EntryUploadStagedFileRef[]>([]);
+  const [entryStagingPending, setEntryStagingPending] = useState(false);
   const [autoSaving, startAutoSaving] = useTransition();
   const formRef = useRef<HTMLFormElement>(null);
   const autoSaveStartedRef = useRef(false);
   const entryFilesRef = useRef<File[]>([]);
   const entryReadFileKeysRef = useRef<string[]>([]);
+  const entryStagedFilesRef = useRef<EntryUploadStagedFileRef[]>([]);
   const handleEntryReadFileKeys = useCallback((keys: string[]) => {
     entryReadFileKeysRef.current = keys;
     setEntryReadFileKeys(keys);
   }, []);
   const updateEntryFiles = useCallback((files: File[]) => {
     autoSaveStartedRef.current = false;
+    const priorStagedFiles = entryStagedFilesRef.current;
+    if (priorStagedFiles.length) {
+      void Promise.all(priorStagedFiles.map((ref) => fetch(`/api/entry-staging?id=${encodeURIComponent(ref.id)}`, { method: "DELETE" }).catch(() => undefined)));
+    }
     entryFilesRef.current = files;
     setEntryFiles(files);
+    setEntryStagingPending(false);
     entryReadFileKeysRef.current = [];
     setEntryReadFileKeys([]);
+    entryStagedFilesRef.current = [];
+    setEntryStagedFiles([]);
+  }, []);
+  const handleEntryStagedFiles = useCallback((refs: EntryUploadStagedFileRef[]) => {
+    entryStagedFilesRef.current = refs;
+    setEntryStagedFiles(refs);
+  }, []);
+  const handleEntryStagingPending = useCallback((pending: boolean) => {
+    setEntryStagingPending(pending);
   }, []);
   const confirmEntryCandidate = useCallback((candidate: EntryPreviewCandidate) => {
     setValues((current) => {
@@ -267,6 +286,9 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
   const entryAction = useCallback(async (previousState: ClientFormActionState, formData: FormData) => {
     if (entryUpload) {
       replaceEntryFiles(formData, entryFilesRef.current);
+      // The preview has already transferred these bytes in 1 MiB requests;
+      // never re-embed the original in the final Action body.
+      applyEntryStagedFilesToFormData(formData, entryStagedFilesRef.current);
       formData.set("entryReadFileKeys", JSON.stringify(entryReadFileKeysRef.current));
     }
     return action(previousState, formData);
@@ -467,8 +489,9 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
       {entryUpload && !readOnly ? <>
         <input type="hidden" name="entryIntentId" value={entryIntentId} />
         <EntryFilePicker locale={locale} files={entryFiles} onFilesChange={updateEntryFiles} disabled={pending} />
-        <EntryPreview files={entryFiles} kind="customer" locale={locale} onConfirm={confirmEntryCandidate} onApplyCandidate={applyEntryCandidate} onLocateCandidate={locateEntryCandidate} onReadFileKeys={handleEntryReadFileKeys} onReadComplete={autoSaveReadResult} />
+        <EntryPreview files={entryFiles} kind="customer" locale={locale} onConfirm={confirmEntryCandidate} onApplyCandidate={applyEntryCandidate} onLocateCandidate={locateEntryCandidate} onReadFileKeys={handleEntryReadFileKeys} onStagedFiles={handleEntryStagedFiles} onStagingPending={handleEntryStagingPending} onReadComplete={autoSaveReadResult} />
         <input type="hidden" name="entryReadFileKeys" value={JSON.stringify(entryReadFileKeys)} />
+        <input type="hidden" name="entryStagedFiles" value={JSON.stringify(entryStagedFiles)} />
       </> : null}
       {state.status === "error" ? <div ref={summaryRef} tabIndex={-1} role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900 outline-none focus-visible:ring-2 focus-visible:ring-rose-500"><p className="font-bold">{state.message ?? text.error}</p><ul className="mt-2 list-disc space-y-1 pl-5">{errorEntries.map(([field, message]) => <li key={field}><a className="underline" href={`#client-${field}`} onClick={(event) => focusField(event, field)}>{message}</a></li>)}</ul></div> : null}
 
@@ -528,7 +551,7 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
 
       <ClientFormSection section="notes" title={text.notes} hint={text.notesHint} expanded={expandedSections.notes} onToggle={() => toggleSection("notes")}><div className="space-y-3">{label("notes", text.notes)}<textarea {...fieldProps("notes")} rows={5} placeholder={text.notesPlaceholder} className={`${inputClass} resize-y`} />{errorText("notes")}</div></ClientFormSection>
 
-      {hideActions ? null : <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-200 pt-5">{onCancel ? <button type="button" onClick={onCancel} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">{text.cancel}</button> : <Link href={returnTo} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">{text.cancel}</Link>}<Button type="submit" loading={pending || autoSaving} className="min-h-11 rounded-lg bg-slate-950 px-5 py-2.5 text-sm font-bold text-white hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60">{pending || autoSaving ? text.saving : entryUpload && entryFiles.length > entryReadFileKeys.length ? text.saveAndRead : text.save}</Button></div>}
+      {hideActions ? null : <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-200 pt-5">{onCancel ? <button type="button" onClick={onCancel} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">{text.cancel}</button> : <Link href={returnTo} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">{text.cancel}</Link>}<Button type="submit" disabled={Boolean(entryUpload && entryFiles.length > 0 && (entryStagingPending || entryStagedFiles.length === 0))} loading={pending || autoSaving} className="min-h-11 rounded-lg bg-slate-950 px-5 py-2.5 text-sm font-bold text-white hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60">{pending || autoSaving ? text.saving : entryUpload && entryFiles.length > entryReadFileKeys.length ? text.saveAndRead : text.save}</Button></div>}
       <div className="sr-only" aria-live="polite">{pending ? text.saving : ""}</div>
     </form>
   );

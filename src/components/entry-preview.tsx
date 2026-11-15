@@ -5,6 +5,8 @@ import { previewEntryDocumentsAction } from "@/app/entry-preview-actions";
 import { HelpHint } from "@/components/help-hint";
 import { entryFileKey, safeEntryPreviewCandidates, selectableEntryPreviewCandidates, type EntryPreviewState } from "@/lib/entry-preview";
 import type { Locale } from "@/lib/locale";
+import { stageEntryUploadFiles } from "@/lib/entry-upload-staging-client";
+import type { EntryUploadStagedFileRef } from "@/lib/entry-upload-staging";
 
 export type EntryPreviewKind = "customer" | "property";
 export type EntryPreviewCandidate = EntryPreviewState["candidates"][number];
@@ -33,6 +35,8 @@ type EntryPreviewProps = {
   onApplyCandidate?: (candidate: EntryPreviewCandidate, preview: EntryPreviewState) => void;
   onLocateCandidate?: (candidate: EntryPreviewCandidate) => void;
   onReadFileKeys: (keys: string[]) => void;
+  onStagedFiles?: (refs: EntryUploadStagedFileRef[]) => void;
+  onStagingPending?: (pending: boolean) => void;
   onReadComplete?: (state: EntryPreviewState) => void;
 };
 
@@ -61,6 +65,8 @@ const copy = {
     uncertainty: "確認が必要",
     uncertaintyReasons: { unclear: "判読が不確か", conflict: "資料間で不一致", not_found: "資料に記載なし" },
     failed: "資料を読み取れませんでした。ファイルを確認して再試行してください。",
+    stagingFailed: "一時アップロードに失敗しました。資料は正式記録に保存されていません。もう一度選択して再試行してください。",
+    stagingFileTooLarge: "この保存先で扱える資料サイズを超えています。ファイルを小さくして再試行してください。",
   },
   zh: {
     title: "读取资料并保存正式记录",
@@ -86,6 +92,8 @@ const copy = {
     uncertainty: "需要确认",
     uncertaintyReasons: { unclear: "文字不清晰", conflict: "文件内容不一致", not_found: "资料未记载" },
     failed: "资料读取失败。请检查文件后重试。",
+    stagingFailed: "临时上传失败。资料尚未保存到正式记录，请重新选择后重试。",
+    stagingFileTooLarge: "文件超过当前保存方式允许的大小，请压缩文件后重试。",
   },
   ko: {
     title: "자료를 읽고 정식 기록으로 저장",
@@ -111,14 +119,20 @@ const copy = {
     uncertainty: "확인 필요",
     uncertaintyReasons: { unclear: "판독 불확실", conflict: "자료 간 불일치", not_found: "자료에 없음" },
     failed: "자료를 읽지 못했습니다. 파일을 확인한 뒤 다시 시도해 주세요.",
+    stagingFailed: "임시 업로드에 실패했습니다. 자료는 정식 기록에 저장되지 않았습니다. 다시 선택해 시도해 주세요.",
+    stagingFileTooLarge: "현재 저장 방식에서 허용하는 자료 크기를 초과했습니다. 파일을 줄여 다시 시도해 주세요.",
   },
 } as const;
 
-export function buildEntryPreviewFormData(files: readonly File[], kind: EntryPreviewKind, context?: "entry" | "case") {
+export function buildEntryPreviewFormData(files: readonly File[], kind: EntryPreviewKind, context?: "entry" | "case", stagedFiles: readonly EntryUploadStagedFileRef[] = []) {
   const formData = new FormData();
   formData.set("previewKind", kind);
   if (context) formData.set("previewContext", context);
-  files.forEach((file) => formData.append("uploadFile", file));
+  const stagedByKey = new Set(stagedFiles.map((ref) => `${ref.fileName.normalize("NFC").trim()}:${ref.fileSizeBytes}`));
+  files.forEach((file) => {
+    if (!stagedByKey.has(entryFileKey(file))) formData.append("uploadFile", file);
+  });
+  if (stagedFiles.length) formData.set("entryStagedFiles", JSON.stringify(stagedFiles));
   return formData;
 }
 
@@ -148,17 +162,25 @@ export function getUnreadEntryFiles(files: readonly File[], readFileKeys: readon
   return files.filter((file) => !read.has(entryFileKey(file)));
 }
 
-export function EntryPreview({ files, kind, context, locale, onConfirm, onApplyCandidate, onLocateCandidate, onReadFileKeys, onReadComplete }: EntryPreviewProps) {
+export function EntryPreview({ files, kind, context, locale, onConfirm, onApplyCandidate, onLocateCandidate, onReadFileKeys, onStagedFiles, onStagingPending, onReadComplete }: EntryPreviewProps) {
   const text = copy[locale];
   const [preview, setPreview] = useState<{ files: File[]; kind: EntryPreviewKind; context?: "entry" | "case"; state: EntryPreviewState }>();
   const [decisions, setDecisions] = useState<{ files: File[]; kind: EntryPreviewKind; context?: "entry" | "case"; values: Record<string, "auto_saved" | "rejected"> }>();
   const [pending, startTransition] = useTransition();
   const requestIdRef = useRef(0);
   const pendingRef = useRef(false);
+  const stagedFilesRef = useRef<EntryUploadStagedFileRef[]>([]);
 
   useEffect(() => {
     requestIdRef.current += 1;
     pendingRef.current = false;
+    onStagingPending?.(false);
+    const priorStagedFiles = stagedFilesRef.current;
+    stagedFilesRef.current = [];
+    onStagedFiles?.([]);
+    if (priorStagedFiles.length) {
+      void Promise.all(priorStagedFiles.map((ref) => fetch(`/api/entry-staging?id=${encodeURIComponent(ref.id)}`, { method: "DELETE" }).catch(() => undefined)));
+    }
     onReadFileKeys([]);
   // The callback belongs to the parent form; file object identity, rather than callback identity, resets read keys.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -177,10 +199,28 @@ export function EntryPreview({ files, kind, context, locale, onConfirm, onApplyC
     const filesToRead = unread.length === 0 && previous?.candidates.length === 0 ? files : unread;
     if (!filesToRead.length) return;
     const requestId = ++requestIdRef.current;
-    const formData = buildEntryPreviewFormData(filesToRead, kind, context);
     pendingRef.current = true;
+    onStagingPending?.(true);
     startTransition(() => {
-      void previewEntryDocumentsAction(formData).then((result) => {
+      void (async () => {
+        // Customer entry is the normal user-facing path that must avoid the
+        // Vercel Function multipart body cap. Property/case flows retain their
+        // existing upload protocol for this incremental migration.
+        const existingStagedKeys = new Set(stagedFilesRef.current.map((ref) => `${ref.fileName}:${ref.fileSizeBytes}`));
+        const filesToStage = kind === "customer"
+          ? filesToRead.filter((file) => !existingStagedKeys.has(entryFileKey(file)))
+          : [];
+        const staged = filesToStage.length ? await stageEntryUploadFiles(filesToStage) : [];
+        if (staged.length) {
+          const byKey = new Map(stagedFilesRef.current.map((ref) => [`${ref.fileName}:${ref.fileSizeBytes}`, ref]));
+          for (const ref of staged) byKey.set(`${ref.fileName}:${ref.fileSizeBytes}`, ref);
+          stagedFilesRef.current = [...byKey.values()];
+          onStagedFiles?.(stagedFilesRef.current);
+        }
+        const refsForRequest = stagedFilesRef.current.filter((ref) => filesToRead.some((file) => entryFileKey(file) === `${ref.fileName}:${ref.fileSizeBytes}`));
+        const formData = buildEntryPreviewFormData(filesToRead, kind, context, refsForRequest);
+        return previewEntryDocumentsAction(formData);
+      })().then((result) => {
         if (requestId !== requestIdRef.current) return;
         const merged = mergeEntryPreviewStates(previous, result);
         setPreview({ files, kind, context, state: merged });
@@ -192,13 +232,17 @@ export function EntryPreview({ files, kind, context, locale, onConfirm, onApplyC
         onReadFileKeys(merged.readFileKeys);
         for (const candidate of safeCandidates) onConfirm(candidate);
         if (result.status === "ready" && merged.readFileKeys.length === files.length && safeCandidates.length > 0) onReadComplete?.(merged);
-      }).catch(() => {
+      }).catch((error) => {
         if (requestId !== requestIdRef.current) return;
-        const merged = mergeEntryPreviewStates(previous, { status: "error", candidates: [], readFileKeys: [], message: text.failed });
+        const stagingFailure = error instanceof Error && error.message.startsWith("entry_upload_staging_");
+        const merged = mergeEntryPreviewStates(previous, { status: "error", candidates: [], readFileKeys: [], ...(stagingFailure ? { errorCode: error.message, message: error.message === "entry_upload_staging_file_too_large" ? text.stagingFileTooLarge : text.stagingFailed } : { message: text.failed }) });
         setPreview({ files, kind, context, state: merged });
         onReadFileKeys(merged.readFileKeys);
       }).finally(() => {
-        if (requestId === requestIdRef.current) pendingRef.current = false;
+        if (requestId === requestIdRef.current) {
+          pendingRef.current = false;
+          onStagingPending?.(false);
+        }
       });
     });
   };

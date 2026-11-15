@@ -144,6 +144,18 @@ import {
   ClosedBetaDemoSeedError,
   type ClosedBetaDemoFixture,
 } from "@/lib/closed-beta-demo-fixture";
+import {
+  ENTRY_UPLOAD_CHUNK_SIZE_BYTES,
+  ENTRY_UPLOAD_STAGING_MAX_ACTIVE_BYTES,
+  ENTRY_UPLOAD_STAGING_MAX_ACTIVE_FILES,
+  ENTRY_UPLOAD_STAGING_MAX_FILE_BYTES,
+  ENTRY_UPLOAD_STAGING_TTL_MS,
+  type CreateEntryUploadStagingInput,
+  type EntryUploadStagingReadInput,
+  type EntryUploadStagingRecord,
+  type EntryUploadStagingScope,
+  type PutEntryUploadStagingChunkInput,
+} from "@/lib/entry-upload-staging-contract";
 
 export type TenantSessionLookup = {
   user: User;
@@ -222,6 +234,8 @@ const REQUIRED_PRODUCTION_MIGRATIONS = [
   "20261102_005_entry_request_claims_runtime_acl.sql",
   "20261102_006_entry_request_claims_authenticated_acl.sql",
   "20261114_001_client_personal_name_fields.sql",
+  "20261116_001_entry_upload_staging.sql",
+  "20261116_002_entry_upload_staging_acl_fix.sql",
 ] as const;
 
 const OPEN_STAGES: ClientStage[] = ["lead", "contacted", "quoted", "viewing", "negotiating"];
@@ -5387,6 +5401,175 @@ export async function addPrivateAttachment(input: {
     );
     return mapAttachment(attachmentResult.rows[0]);
   });
+}
+
+function mapEntryUploadStaging(row: Record<string, unknown>): EntryUploadStagingRecord {
+  return {
+    id: String(row.id),
+    tenantId: String(row.tenant_id),
+    userId: String(row.user_id),
+    fileName: String(row.file_name),
+    ...(row.file_type ? { fileType: String(row.file_type) } : {}),
+    fileSizeBytes: Number(row.file_size_bytes),
+    sha256: String(row.sha256),
+    chunkSizeBytes: Number(row.chunk_size_bytes),
+    chunkCount: Number(row.chunk_count),
+    status: row.status as EntryUploadStagingRecord["status"],
+    ...(row.consumed_request_key ? { consumedRequestKey: String(row.consumed_request_key) } : {}),
+    expiresAt: new Date(String(row.expires_at)),
+    createdAt: new Date(String(row.created_at)),
+    updatedAt: new Date(String(row.updated_at)),
+  };
+}
+
+function validateEntryUploadStagingMetadata(input: CreateEntryUploadStagingInput) {
+  const fileName = input.fileName.normalize("NFC").trim();
+  const fileSizeBytes = Number(input.fileSizeBytes);
+  const chunkCount = Number(input.chunkCount);
+  const sha256 = input.sha256.trim().toLowerCase();
+  if (!input.userId.trim() || !fileName || fileName === "." || fileName === ".." || fileName.length > 255 || /[\\/\u0000-\u001f\u007f]/u.test(fileName)
+    || !Number.isSafeInteger(fileSizeBytes) || fileSizeBytes <= 0 || fileSizeBytes > ENTRY_UPLOAD_STAGING_MAX_FILE_BYTES
+    || !Number.isSafeInteger(chunkCount) || chunkCount < 1
+    || chunkCount !== Math.ceil(fileSizeBytes / ENTRY_UPLOAD_CHUNK_SIZE_BYTES)
+    || !/^[a-f0-9]{64}$/.test(sha256)) throw new Error("entry_upload_staging_invalid_metadata");
+  return { fileName, fileSizeBytes, chunkCount, sha256 };
+}
+
+export async function createEntryUploadStaging(input: CreateEntryUploadStagingInput): Promise<EntryUploadStagingRecord> {
+  await ensureSchema();
+  const tenantId = resolveTenantId(input.tenantId);
+  const metadata = validateEntryUploadStagingMetadata(input);
+  const userId = input.userId.trim();
+  return withTransaction(async (client) => {
+    // Serialize quota checks per tenant/user. Without this lock two concurrent
+    // init requests could each observe spare quota and exceed the cap.
+    await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`entry-upload-staging:${tenantId}:${userId}`]);
+    const active = await client.query<{ active_files: string; active_bytes: string }>(
+      `SELECT COUNT(*)::text AS active_files, COALESCE(SUM(file_size_bytes), 0)::text AS active_bytes
+         FROM entry_upload_staging
+        WHERE tenant_id=$1 AND user_id=$2 AND status <> 'consumed' AND expires_at > NOW()`,
+      [tenantId, userId],
+    );
+    const activeFiles = Number(active.rows[0]?.active_files ?? 0);
+    const activeBytes = Number(active.rows[0]?.active_bytes ?? 0);
+    if (activeFiles >= ENTRY_UPLOAD_STAGING_MAX_ACTIVE_FILES || activeBytes + metadata.fileSizeBytes > ENTRY_UPLOAD_STAGING_MAX_ACTIVE_BYTES) {
+      throw new Error("entry_upload_staging_quota_exceeded");
+    }
+    const result = await client.query(
+      `INSERT INTO entry_upload_staging
+        (id, tenant_id, user_id, file_name, file_type, file_size_bytes, sha256,
+         chunk_size_bytes, chunk_count, status, expires_at, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'open',NOW() + ($10 * INTERVAL '1 millisecond'),NOW(),NOW())
+       RETURNING *`,
+      [genId("entry_stage"), tenantId, userId, metadata.fileName, input.fileType?.trim() || null,
+        metadata.fileSizeBytes, metadata.sha256, ENTRY_UPLOAD_CHUNK_SIZE_BYTES, metadata.chunkCount, ENTRY_UPLOAD_STAGING_TTL_MS],
+    );
+    return mapEntryUploadStaging(result.rows[0]);
+  });
+}
+
+async function getEntryUploadStagingForScope(input: EntryUploadStagingScope): Promise<EntryUploadStagingRecord | null> {
+  await ensureSchema();
+  const tenantId = resolveTenantId(input.tenantId);
+  const result = await getPool().query(
+    `SELECT * FROM entry_upload_staging
+      WHERE id=$1 AND tenant_id=$2 AND user_id=$3 AND expires_at > NOW()
+      LIMIT 1`,
+    [input.id.trim(), tenantId, input.userId.trim()],
+  );
+  return result.rows[0] ? mapEntryUploadStaging(result.rows[0]) : null;
+}
+
+export async function putEntryUploadStagingChunk(input: PutEntryUploadStagingChunkInput): Promise<boolean> {
+  const record = await getEntryUploadStagingForScope(input);
+  if (!record) throw new Error("entry_upload_staging_not_found");
+  if (record.status !== "open") throw new Error("entry_upload_staging_not_open");
+  const content = Buffer.from(input.content);
+  const chunkIndex = Number(input.chunkIndex);
+  const digest = input.sha256.trim().toLowerCase();
+  const expectedSize = chunkIndex === record.chunkCount - 1
+    ? record.fileSizeBytes - (record.chunkCount - 1) * record.chunkSizeBytes
+    : record.chunkSizeBytes;
+  if (!Number.isSafeInteger(chunkIndex) || chunkIndex < 0 || chunkIndex >= record.chunkCount
+    || content.length !== expectedSize || content.length > record.chunkSizeBytes
+    || createHash("sha256").update(content).digest("hex") !== digest) throw new Error("entry_upload_staging_chunk_invalid");
+  const result = await getPool().query(
+    `INSERT INTO entry_upload_staging_chunks
+      (staging_id, tenant_id, chunk_index, content, sha256, byte_size)
+     VALUES ($1,$2,$3,$4,$5,$6)
+     ON CONFLICT (staging_id, chunk_index) DO NOTHING`,
+    [record.id, record.tenantId, chunkIndex, content, digest, content.length],
+  );
+  if (result.rowCount) return true;
+  const existing = await getPool().query(
+    `SELECT sha256, byte_size, content FROM entry_upload_staging_chunks
+      WHERE staging_id=$1 AND tenant_id=$2 AND chunk_index=$3`,
+    [record.id, record.tenantId, chunkIndex],
+  );
+  const row = existing.rows[0];
+  if (!row || String(row.sha256) !== digest || Number(row.byte_size) !== content.length || !Buffer.from(row.content).equals(content)) throw new Error("entry_upload_staging_chunk_conflict");
+  return false;
+}
+
+export async function completeEntryUploadStaging(input: EntryUploadStagingScope): Promise<EntryUploadStagingRecord> {
+  const existing = await getEntryUploadStagingForScope(input);
+  if (!existing) throw new Error("entry_upload_staging_not_found");
+  if (existing.status === "consumed" || existing.status === "ready") return existing;
+  return withTransaction(async (client) => {
+    const locked = await client.query(`SELECT * FROM entry_upload_staging WHERE id=$1 AND tenant_id=$2 AND user_id=$3 AND expires_at > NOW() FOR UPDATE`, [existing.id, existing.tenantId, existing.userId]);
+    const record = locked.rows[0] ? mapEntryUploadStaging(locked.rows[0]) : null;
+    if (!record) throw new Error("entry_upload_staging_not_found");
+    if (record.status !== "open") return record;
+    const chunks = await client.query(`SELECT chunk_index, content FROM entry_upload_staging_chunks WHERE staging_id=$1 AND tenant_id=$2 ORDER BY chunk_index`, [record.id, record.tenantId]);
+    if (chunks.rows.length !== record.chunkCount || chunks.rows.some((row, index) => Number(row.chunk_index) !== index)) throw new Error("entry_upload_staging_missing_chunk");
+    const content = Buffer.concat(chunks.rows.map((row) => Buffer.from(row.content)));
+    if (content.length !== record.fileSizeBytes || createHash("sha256").update(content).digest("hex") !== record.sha256) throw new Error("entry_upload_staging_hash_mismatch");
+    const updated = await client.query(`UPDATE entry_upload_staging SET status='ready', updated_at=NOW() WHERE id=$1 AND tenant_id=$2 RETURNING *`, [record.id, record.tenantId]);
+    return mapEntryUploadStaging(updated.rows[0]);
+  });
+}
+
+export async function readEntryUploadStaging(input: EntryUploadStagingReadInput): Promise<{ record: EntryUploadStagingRecord; content: Buffer } | null> {
+  const record = await getEntryUploadStagingForScope(input);
+  if (!record || (record.status !== "ready" && !(record.status === "consumed" && input.requestKey && record.consumedRequestKey === input.requestKey.trim()))) return null;
+  const result = await getPool().query(`SELECT content FROM entry_upload_staging_chunks WHERE staging_id=$1 AND tenant_id=$2 ORDER BY chunk_index`, [record.id, record.tenantId]);
+  return { record, content: Buffer.concat(result.rows.map((row) => Buffer.from(row.content))) };
+}
+
+export async function consumeEntryUploadStaging(input: EntryUploadStagingScope & { requestKey: string }): Promise<boolean> {
+  const requestKey = input.requestKey.trim();
+  if (!requestKey) throw new Error("entry_upload_staging_request_key_required");
+  const tenantId = resolveTenantId(input.tenantId);
+  const result = await getPool().query(
+    `UPDATE entry_upload_staging
+        SET status='consumed', consumed_request_key=$4, updated_at=NOW()
+      WHERE id=$1 AND tenant_id=$2 AND user_id=$3 AND expires_at > NOW() AND status='ready'
+      RETURNING id`,
+    [input.id.trim(), tenantId, input.userId.trim(), requestKey],
+  );
+  if (result.rowCount) return true;
+  const existing = await getPool().query(`SELECT status, consumed_request_key, expires_at FROM entry_upload_staging WHERE id=$1 AND tenant_id=$2 AND user_id=$3`, [input.id.trim(), tenantId, input.userId.trim()]);
+  if (existing.rows[0]?.expires_at && new Date(String(existing.rows[0].expires_at)).getTime() <= Date.now()) throw new Error("entry_upload_staging_expired");
+  if (existing.rows[0]?.status === "consumed") return String(existing.rows[0].consumed_request_key ?? "") === requestKey;
+  throw new Error("entry_upload_staging_not_ready");
+}
+
+export async function discardEntryUploadStaging(input: EntryUploadStagingScope): Promise<boolean> {
+  await ensureSchema();
+  const tenantId = resolveTenantId(input.tenantId);
+  const result = await getPool().query(`DELETE FROM entry_upload_staging WHERE id=$1 AND tenant_id=$2 AND user_id=$3 RETURNING id`, [input.id.trim(), tenantId, input.userId.trim()]);
+  return Boolean(result.rowCount);
+}
+
+export async function cleanupExpiredEntryUploadStaging(input: { tenantId?: string; userId?: string; now?: Date }): Promise<number> {
+  await ensureSchema();
+  const tenantId = resolveTenantId(input.tenantId);
+  const values: Array<string | Date | null> = [tenantId];
+  const filters = ["tenant_id=$1", "expires_at <= COALESCE($2::timestamptz, NOW())"];
+  values.push(input.now ?? null);
+  if (input.userId?.trim()) { values.push(input.userId.trim()); filters.push(`user_id=$${values.length}`); }
+  const result = await getPool().query(`DELETE FROM entry_upload_staging WHERE ${filters.join(" AND ")} RETURNING id`, values);
+  return result.rowCount ?? 0;
 }
 
 export async function readPrivateAttachmentContent(input: {

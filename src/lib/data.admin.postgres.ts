@@ -102,6 +102,16 @@ export async function claimQueuedImportJobs(limit = 3): Promise<ClaimedImportJob
   });
 }
 
+/** Bounded cross-tenant TTL cleanup invoked by the existing worker scheduler. */
+export async function cleanupExpiredEntryUploadStaging(limit = 500): Promise<number> {
+  await assertAdminRoleSafe();
+  const result = await getAdminPool().query<{ count: number }>(
+    "SELECT brokerdesk_private.cleanup_expired_entry_upload_staging_system($1) AS count",
+    [Math.min(Math.max(Math.trunc(limit) || 500, 1), 5000)],
+  );
+  return Number(result.rows[0]?.count ?? 0);
+}
+
 /**
  * Claims exactly one named job for a controlled diagnostic run. The database
  * function applies the same tenant service-period, source-type and
