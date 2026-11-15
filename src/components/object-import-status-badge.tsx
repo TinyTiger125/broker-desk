@@ -7,7 +7,38 @@ const statusCopy = {
 } as const;
 export function ObjectImportStatusBadge({ locale = "ja", status }: { locale?: Locale; status: ObjectImportStatus }) { return <span className="rounded bg-slate-100 px-2 py-0.5 text-[11px] font-bold">{statusCopy[locale][status]}</span>; }
 export function ObjectImportFailureNotice({ locale, errorCode }: { locale: Locale; errorCode?: string | null }) {
-  if (errorCode !== "identity_no_supported_fields" && errorCode !== "object_import_no_supported_fields" && errorCode !== "object_reader_no_readable_fields" && errorCode !== "object_reader_ambiguous_subject" && errorCode !== "object_import_permission_denied") return null;
+  const remoteReaderFailure = errorCode === "remote_document_reader_file_upload_failed"
+    || errorCode === "remote_document_reader_file_cleanup_failed"
+    || errorCode === "remote_document_reader_timeout"
+    || errorCode === "remote_document_reader_http_error"
+    || errorCode === "remote_document_reader_request_failed";
+  if (!remoteReaderFailure && errorCode !== "identity_no_supported_fields" && errorCode !== "object_import_no_supported_fields" && errorCode !== "object_reader_no_readable_fields" && errorCode !== "object_reader_ambiguous_subject" && errorCode !== "object_import_permission_denied") return null;
+  if (remoteReaderFailure) {
+    const message = locale === "zh"
+      ? errorCode === "remote_document_reader_file_upload_failed"
+        ? "资料已保留，但无法上传到临时读取服务。正式客户资料未更新，请稍后重试或改为手动录入。"
+        : errorCode === "remote_document_reader_file_cleanup_failed"
+          ? "资料读取完成后，临时文件清理未得到确认。正式客户资料未更新，请稍后重试；如仍失败请联系管理员。"
+          : errorCode === "remote_document_reader_timeout"
+            ? "资料读取超时。原件已保留，正式客户资料未更新，请稍后重试或改为手动录入。"
+            : "远程资料读取服务失败。原件已保留，正式客户资料未更新，请稍后重试或改为手动录入。"
+      : locale === "ko"
+        ? errorCode === "remote_document_reader_file_upload_failed"
+          ? "자료는 보존되었지만 임시 읽기 서비스로 업로드하지 못했습니다. 정식 고객 자료는 변경하지 않았습니다. 다시 시도하거나 수동으로 입력해 주세요."
+          : errorCode === "remote_document_reader_file_cleanup_failed"
+            ? "읽기 후 임시 파일 삭제를 확인하지 못했습니다. 정식 고객 자료는 변경하지 않았습니다. 다시 시도하고 계속되면 관리자에게 문의해 주세요."
+            : errorCode === "remote_document_reader_timeout"
+              ? "자료 읽기 시간이 초과되었습니다. 원본은 보존되었고 정식 고객 자료는 변경하지 않았습니다. 다시 시도하거나 수동으로 입력해 주세요."
+              : "원격 자료 읽기 서비스에 실패했습니다. 원본은 보존되었고 정식 고객 자료는 변경하지 않았습니다. 다시 시도하거나 수동으로 입력해 주세요."
+        : errorCode === "remote_document_reader_file_upload_failed"
+          ? "資料は保持されていますが、一時読み取りサービスへのアップロードに失敗しました。正式な顧客資料は更新していません。再試行するか、手動で入力してください。"
+          : errorCode === "remote_document_reader_file_cleanup_failed"
+            ? "読み取り後の一時ファイル削除を確認できませんでした。正式な顧客資料は更新していません。再試行し、続く場合は管理者に連絡してください。"
+            : errorCode === "remote_document_reader_timeout"
+              ? "資料の読み取りがタイムアウトしました。原本は保持され、正式な顧客資料は更新していません。再試行するか、手動で入力してください。"
+              : "遠隔読み取りサービスに失敗しました。原本は保持され、正式な顧客資料は更新していません。再試行するか、手動で入力してください。";
+    return <p role="alert" className="mt-1 text-xs font-semibold text-rose-700">{message}</p>;
+  }
   const message = locale === "zh"
     ? errorCode === "object_import_permission_denied"
       ? "读取结果已保留，但保存前的记录或原件权限已失效。当前未更新正式资料，请由有权限的用户处理。"

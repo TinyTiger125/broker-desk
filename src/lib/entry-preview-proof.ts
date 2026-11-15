@@ -135,6 +135,7 @@ export async function persistEntryPreviewAudit(input: { session: PreviewSession;
         fieldKey: candidate.key, sourceKey: candidate.sourceKey,
         candidateValue: candidate.value, decision: decisions[candidate.id] ?? "undecided",
         savedValue: input.finalValues?.[candidate.key],
+        ...(candidate.rawValue ? { rawCandidateValue: candidate.rawValue } : {}),
         pageNumber: candidate.pageNumber, sourceText: candidate.sourceText?.slice(0, 1000),
         uncertainty: candidate.uncertainty,
       })),

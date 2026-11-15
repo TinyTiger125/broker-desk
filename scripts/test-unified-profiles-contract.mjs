@@ -60,6 +60,10 @@ assert(actions.includes("updatePropertyProfileInlineAction"), "inline property p
 assert(!/confirmedDataJson\s*[:=].*(updateClient|updateProperty)/s.test(actions), "profile actions must not write case snapshots");
 const clientPersist = actions.slice(actions.indexOf("async function persistClientForm"), actions.indexOf("export async function createClientFormAction"));
 assert(clientPersist.includes("if (!inline)"), "inline person profile saves must not revalidate the case workbench and discard its draft");
+assert(actions.includes("normalizeCustomerIdentityValue"), "direct client saves must normalize identity candidates before persistence");
+assert(actions.includes("isCustomerGenderValue"), "direct client saves must reject non-canonical or conflicting gender values");
+const clientFormParse = actions.slice(actions.indexOf("function parseClientForm"), actions.indexOf("async function persistClientForm"));
+assert(clientFormParse.includes("normalizedGender"), "direct client saves must persist the canonical gender select value");
 const propertyPersist = actions.slice(actions.indexOf("async function updatePropertyProfile("), actions.indexOf("function parsePartyProfileForm"));
 assert(propertyPersist.includes("if (!inline)"), "inline property profile saves must not revalidate the case workbench and discard its draft");
 
@@ -70,6 +74,7 @@ for (const field of ["roomNumber", "postalCode", "usage", "listingRent", "listin
   assert(propertyForm.includes(field), `property form is missing ${field}`);
 }
 assert(clientForm.includes("readOnly"), "client form needs a read-only mode");
+assert(clientForm.includes('normalizeCustomerIdentityValue("gender", defaults.gender)'), "reopened client forms must render known legacy gender expressions as canonical select values");
 assert(manager.includes("clientDefaultsFromValues"), "case drawer must refresh the full person profile after save");
 assert(manager.includes("record.values"), "case drawer must consume the full saved profile");
 assert(manager.includes("updatePersonAction"), "case drawer is missing person profile edit action");

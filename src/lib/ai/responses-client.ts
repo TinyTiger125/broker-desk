@@ -64,6 +64,23 @@ export class AiResponseError extends Error {
   }
 }
 
+export class AiTemporaryFileError extends Error {
+  readonly code = "ai_temporary_file_failed";
+  readonly operation: "upload" | "cleanup";
+  readonly status?: number;
+
+  constructor(operation: "upload" | "cleanup", status?: number) {
+    super(`OpenAI temporary file ${operation} failed.`);
+    this.name = "AiTemporaryFileError";
+    this.operation = operation;
+    this.status = status;
+  }
+}
+
+function isAbortError(error: unknown) {
+  return Boolean(error && typeof error === "object" && "name" in error && (error as { name?: unknown }).name === "AbortError");
+}
+
 function getApiKey(env: NodeJS.ProcessEnv) {
   return env.OPENAI_API_KEY?.trim() ?? "";
 }
@@ -110,6 +127,74 @@ function parseStructuredOutput<T>(outputText: string, schema?: AiJsonSchema): T 
   if (!schema) return undefined;
   if (!outputText.trim()) return undefined;
   return JSON.parse(outputText) as T;
+}
+
+/**
+ * Upload one source through the Files API for a single Responses request.
+ * The file has a short provider-side expiry and is deleted in finally; the
+ * callback never receives the bytes, only the opaque file id.
+ */
+export async function withTemporaryOpenAiFile<T>(
+  input: { buffer: Buffer; filename: string; mimeType: string },
+  callback: (fileId: string) => Promise<T>,
+  options: CreateAiResponseOptions = {},
+): Promise<T> {
+  const env = options.env ?? process.env;
+  const config = resolveAiRuntimeConfig(env);
+  if (!config.enabled) throw new AiRuntimeUnavailableError(config.disabledReason);
+  const apiKey = getApiKey(env);
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const form = new FormData();
+  form.set("purpose", "user_data");
+  form.set("expires_after[anchor]", "created_at");
+  // OpenAI's minimum expiry is one hour; explicit DELETE in finally normally
+  // removes the file sooner, while this remains a bounded privacy fallback.
+  form.set("expires_after[seconds]", "3600");
+  form.append("file", new Blob([new Uint8Array(input.buffer)], { type: input.mimeType }), input.filename);
+
+  let fileId: string | undefined;
+  try {
+    let upload: Response;
+    try {
+      upload = await fetchImpl(`${config.baseUrl}/files`, {
+        method: "POST",
+        signal: options.signal,
+        headers: { authorization: `Bearer ${apiKey}` },
+        body: form,
+      });
+    } catch (error) {
+      if (isAbortError(error)) throw error;
+      throw new AiTemporaryFileError("upload");
+    }
+    if (!upload.ok) throw new AiTemporaryFileError("upload", upload.status);
+    let payload: unknown;
+    try { payload = await upload.json(); } catch { throw new AiTemporaryFileError("upload", upload.status); }
+    const candidate = payload && typeof payload === "object" ? (payload as { id?: unknown }).id : undefined;
+    if (typeof candidate !== "string" || !candidate.trim()) throw new AiTemporaryFileError("upload", upload.status);
+    fileId = candidate.trim();
+    return await callback(fileId);
+  } finally {
+    if (fileId) {
+      const cleanupController = new AbortController();
+      const cleanupTimer = setTimeout(() => cleanupController.abort(), 10_000);
+      try {
+        let cleanup: Response;
+        try {
+          cleanup = await fetchImpl(`${config.baseUrl}/files/${encodeURIComponent(fileId)}`, {
+            method: "DELETE",
+            signal: cleanupController.signal,
+            headers: { authorization: `Bearer ${apiKey}` },
+          });
+        } catch {
+          throw new AiTemporaryFileError("cleanup");
+        }
+        // A prior cleanup or expiry is already a safe terminal state.
+        if (!cleanup.ok && cleanup.status !== 404) throw new AiTemporaryFileError("cleanup", cleanup.status);
+      } finally {
+        clearTimeout(cleanupTimer);
+      }
+    }
+  }
 }
 
 export async function createAiResponse<T = unknown>(

@@ -156,6 +156,96 @@ assert.equal(contract.parseOpenAiIdentityReaderResponse({
   candidates: [{ fieldKey: "applicant.nationality", value: "", pageNumber: 1, sourceText: "", uncertainty: "not_found", subjectKey: "person_1", subjectLabel: "申請人" }],
 }).candidates[0].uncertainty, "not_found");
 
+// Large PDFs must use an opaque, short-lived Files API reference rather than
+// putting a multi-megabyte base64 string in the Responses JSON request.
+const temporaryFileReaderCalls = [];
+let temporaryFileInput;
+const largeReader = loadTypescript(path.join(root, "src/lib/openai-identity-reader.ts"), {
+  "@/lib/ai/responses-client": {
+    createAiResponse: async (args) => {
+      temporaryFileReaderCalls.push(args);
+      assert.equal(args.input[0].content[1].type, "input_file");
+      assert.equal(args.input[0].content[1].file_id, "file-large-synthetic");
+      assert.equal("file_data" in args.input[0].content[1], false);
+      return {
+        parsed: {
+          documentType: "identity_passport",
+          pages: [{ pageNumber: 1, lines: ["氏名 Synthetic"] }, { pageNumber: 2, lines: ["氏名 Synthetic"] }],
+          candidates: [{ fieldKey: "applicant.name", value: "Synthetic", pageNumber: 1, sourceText: "氏名 Synthetic", uncertainty: "clear", subjectKey: "person_1", subjectLabel: "申請人" }],
+        },
+      };
+    },
+    withTemporaryOpenAiFile: async (input, callback) => {
+      temporaryFileInput = input;
+      return callback("file-large-synthetic");
+    },
+    AiResponseError: class AiResponseError extends Error {},
+    AiTemporaryFileError: class AiTemporaryFileError extends Error {},
+    AiRuntimeUnavailableError: class AiRuntimeUnavailableError extends Error {},
+  },
+  "@/lib/identity-reader-contract": contract,
+  "@/lib/customer-identity-field-catalog": { CUSTOMER_IDENTITY_FIELDS: { name: {} } },
+});
+const largePdfBytes = Buffer.concat([outOfRangePdfBytes, Buffer.alloc(readerModule.OPENAI_IDENTITY_READER_INLINE_FILE_MAX_BYTES + 1)]);
+const largeResponse = await largeReader.readIdentityDocumentWithOpenAi({ buffer: largePdfBytes, filename: "large-synthetic.pdf", scope: "customer" });
+assert.equal(largeResponse.candidates[0].value, "Synthetic");
+assert.equal(temporaryFileReaderCalls.length, 1);
+assert.equal(temporaryFileInput.filename, "large-synthetic.pdf");
+assert.equal(temporaryFileInput.mimeType, "application/pdf");
+assert.equal(temporaryFileInput.buffer.byteLength, largePdfBytes.byteLength);
+const inlineBoundary = buildOpenAiIdentityReaderInput(Buffer.alloc(readerModule.OPENAI_IDENTITY_READER_INLINE_FILE_MAX_BYTES), "boundary.pdf");
+assert.equal(inlineBoundary[0].content[1].type, "input_file");
+assert.match(inlineBoundary[0].content[1].file_data, /^data:application\/pdf;base64,/);
+class SyntheticTemporaryFileError extends Error {
+  constructor(operation, status) { super(operation); this.operation = operation; this.status = status; }
+}
+const failedUploadReader = loadTypescript(path.join(root, "src/lib/openai-identity-reader.ts"), {
+  "@/lib/ai/responses-client": {
+    createAiResponse: async () => { throw new Error("must not call Responses after upload failure"); },
+    withTemporaryOpenAiFile: async () => { throw new SyntheticTemporaryFileError("upload", 413); },
+    AiResponseError: class AiResponseError extends Error {},
+    AiTemporaryFileError: SyntheticTemporaryFileError,
+    AiRuntimeUnavailableError: class AiRuntimeUnavailableError extends Error {},
+  },
+  "@/lib/identity-reader-contract": contract,
+  "@/lib/customer-identity-field-catalog": { CUSTOMER_IDENTITY_FIELDS: { name: {} } },
+});
+await assert.rejects(
+  () => failedUploadReader.readIdentityDocumentWithOpenAi({ buffer: largePdfBytes, filename: "large-synthetic.pdf", scope: "customer" }),
+  (error) => error?.code === "file_upload_failed" && error?.status === 413,
+);
+
+// The helper itself must delete the file even when the Responses callback fails.
+const responsesClient = loadTypescript(path.join(root, "src/lib/ai/responses-client.ts"), {
+  "./model-routing": {
+    resolveAiRuntimeConfig: () => ({ enabled: true, baseUrl: "https://api.openai.test/v1" }),
+    resolveAiTaskRoute: () => ({ model: "synthetic" }),
+  },
+});
+const fileApiCalls = [];
+const fileApiFetch = async (url, init = {}) => {
+  fileApiCalls.push({ url, init });
+  if (String(url).endsWith("/files")) {
+    assert.equal(init.method, "POST");
+    assert.equal(init.body.get("purpose"), "user_data");
+    assert.equal(init.body.get("expires_after[seconds]"), "3600");
+    assert.equal(init.body.get("file").type, "application/pdf");
+    return new Response(JSON.stringify({ id: "file-expiring-synthetic" }), { status: 200, headers: { "content-type": "application/json" } });
+  }
+  assert.equal(String(url), "https://api.openai.test/v1/files/file-expiring-synthetic");
+  assert.equal(init.method, "DELETE");
+  return new Response(null, { status: 204 });
+};
+await assert.rejects(
+  () => responsesClient.withTemporaryOpenAiFile(
+    { buffer: Buffer.from("synthetic"), filename: "synthetic.pdf", mimeType: "application/pdf" },
+    async () => { throw new Error("responses failed"); },
+    { env: { OPENAI_API_KEY: "test-key" }, fetchImpl: fileApiFetch },
+  ),
+  /responses failed/,
+);
+assert.equal(fileApiCalls.length, 2, "temporary file cleanup must run after a failed Responses request");
+
 assert(readerSource.includes("identity_document_extraction_assist"), "adapter must use the existing AI task route");
 assert(readerSource.includes("input_file"), "PDFs must be sent as Responses API input_file");
 assert(readerSource.includes("input_image"), "images must be sent as Responses API input_image");

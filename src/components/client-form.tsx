@@ -25,6 +25,7 @@ import {
 } from "@/lib/options";
 import { getPartyProfileTypeOptions } from "@/lib/party-profile";
 import { formatJapaneseMobilePhone } from "@/lib/japanese-mobile-phone";
+import { normalizeCustomerIdentityValue } from "@/lib/customer-identity-field-catalog";
 
 export type ClientFormDefaults = {
   clientId?: string;
@@ -216,6 +217,7 @@ function initialValues(defaults?: ClientFormDefaults, partyMeta?: ClientFormProp
     ...Object.fromEntries(Object.entries(defaults).filter(([key]) => !key.endsWith("At") && key !== "budgetMin" && key !== "budgetMax" && key !== "clientId")) as Partial<ClientFormValues>,
     clientId: defaults.clientId ?? "",
     partyType: partyMeta?.type ?? defaults.partyType ?? "",
+    gender: defaults.gender ? normalizeCustomerIdentityValue("gender", defaults.gender) : "",
     birthDate: dateValue(defaults.birthDate),
     annualIncomeAsOf: dateValue(defaults.annualIncomeAsOf),
     budgetMin: defaults.budgetMin == null ? "" : String(defaults.budgetMin),

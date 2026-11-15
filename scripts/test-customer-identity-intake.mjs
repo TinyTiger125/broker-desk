@@ -30,7 +30,7 @@ Module._load = function(request, parent, ...rest) {
 };
 
 const { parseOpenAiIdentityReaderResponse } = require(resolve(root, "src/lib/identity-reader-contract.ts"));
-const { isValidCustomerBirthDate, normalizeCustomerIdentityValue, customerIdentityFieldKey, CUSTOMER_IDENTITY_FIELDS } = require(resolve(root, "src/lib/customer-identity-field-catalog.ts"));
+const { isValidCustomerBirthDate, isCustomerGenderValue, normalizeCustomerGenderValue, normalizeCustomerIdentityValue, customerIdentityFieldKey, CUSTOMER_IDENTITY_FIELDS } = require(resolve(root, "src/lib/customer-identity-field-catalog.ts"));
 assert.equal(isValidCustomerBirthDate("1990-04-12"), true);
 assert.equal(isValidCustomerBirthDate("1900-02-30"), false);
 assert.deepEqual(Object.keys(CUSTOMER_IDENTITY_FIELDS), ["name", "nameLatin", "nameKanji", "nameKatakana", "furigana", "birthDate", "gender", "currentPostalCode", "currentAddress", "phone", "lineId", "email"]);
@@ -41,6 +41,15 @@ assert.equal(normalizeCustomerIdentityValue("birthDate", "12 APR 1990"), "1990-0
 assert.equal(normalizeCustomerIdentityValue("birthDate", "平成2年4月12日"), "1990-04-12");
 assert.equal(normalizeCustomerIdentityValue("gender", "M"), "male");
 assert.equal(normalizeCustomerIdentityValue("gender", "F"), "female");
+for (const [raw, expected] of [["男 M", "male"], ["男/M", "male"], ["男性 (Male)", "male"], ["Ｍ／男性", "male"], ["女 F", "female"], ["女性/F", "female"], ["その他 / Other", "other"]]) {
+  assert.equal(normalizeCustomerGenderValue(raw), expected, `gender expression ${raw} must normalize`);
+  assert.equal(normalizeCustomerIdentityValue("gender", raw), expected);
+  assert.equal(isCustomerGenderValue(normalizeCustomerIdentityValue("gender", raw)), true);
+}
+for (const raw of ["男 / 女", "male female", "男 unknown", "性別:?"]) {
+  assert.equal(normalizeCustomerGenderValue(raw), null, `ambiguous gender ${raw} must not be guessed`);
+  assert.equal(isCustomerGenderValue(normalizeCustomerIdentityValue("gender", raw)), false);
+}
 assert.throws(() => parseOpenAiIdentityReaderResponse({ documentType: "identity_passport", pages: [{ pageNumber: 1, lines: ["SAMPLE TEST"] }, { pageNumber: 1, lines: ["DUPLICATE"] }], candidates: [] }));
 assert.throws(() => parseOpenAiIdentityReaderResponse({ documentType: "identity_passport", pages: [{ pageNumber: 1, lines: ["SAMPLE TEST"] }], candidates: [{ fieldKey: "applicant.name", value: "YAMADA SHIKEN", pageNumber: 2, sourceText: "氏名 YAMADA SHIKEN", uncertainty: "clear", subjectKey: "person-1", subjectLabel: "申請人" }] }));
 for (const documentType of ["identity_passport", "identity_residence_card", "identity_driver_license", "identity_health_insurance_card"]) {
@@ -62,7 +71,7 @@ const { registerTenantSessionProvenance } = require(resolve(root, "src/lib/tenan
 registerTenantSessionProvenance(session);
 const client = await data.addClient({ tenantId: tenant.id, ownerUserId: user.id, name: "Original customer", phone: "090-0000-0000", email: "keep@example.test", budgetType: "total_price", purpose: "buy", loanPreApprovalStatus: "not_applied", stage: "lead", temperature: "cold", brokerageContractType: "none", amlCheckStatus: "not_required" });
 const { buildObjectImportIdempotencyKey, buildObjectVersionFingerprint } = require(resolve(root, "src/lib/object-import-contract.ts"));
-const { persistObjectImportJobExtraction } = require(resolve(root, "src/lib/object-import-processor-adapter.ts"));
+const { persistObjectExtraction, persistObjectImportJobExtraction } = require(resolve(root, "src/lib/object-import-processor-adapter.ts"));
 const { resolveObjectImportTarget } = require(resolve(root, "src/lib/object-import-target-service.ts"));
 const content = Buffer.from("%PDF-SAMPLE-TEST");
 const version = buildObjectVersionFingerprint(client);
@@ -72,7 +81,7 @@ const fields = [
   { fieldKey: "applicant.name", value: "YAMADA SHIKEN", normalizedValue: "YAMADA SHIKEN", confidence: 0.95, sourceRange: "page 1", method: "ai", sourcePageNumber: 1, sourceText: "氏名 YAMADA SHIKEN", uncertainty: "clear", subjectKey: "person-1", subjectLabel: "申請人", alternatives: [{ value: "YAMADA SHIKEN", pageNumber: 1, sourceText: "氏名 YAMADA SHIKEN", uncertainty: "clear", subjectKey: "person-1", subjectLabel: "申請人" }, { value: "YAMADA SHIKEN", pageNumber: 2, sourceText: "NAME YAMADA SHIKEN", uncertainty: "clear", subjectKey: "person-1", subjectLabel: "申請人" }] },
   { fieldKey: "applicant.furigana", value: "ヤマダ シケン", normalizedValue: "ヤマダ シケン", confidence: 0.95, sourceRange: "page 1", method: "ai" },
   { fieldKey: "applicant.birthDate", value: "1990年4月12日", normalizedValue: "1990年4月12日", confidence: 0.95, sourceRange: "page 1", method: "ai" },
-  { fieldKey: "applicant.gender", value: "男性", normalizedValue: "男性", confidence: 0.95, sourceRange: "page 1", method: "ai" },
+  { fieldKey: "applicant.gender", value: "男/M", normalizedValue: "男/M", rawValue: "男/M", confidence: 0.95, sourceRange: "page 1", method: "ai", sourceText: "性別 男/M" },
   { fieldKey: "applicant.currentPostalCode", value: "１５０１５００", normalizedValue: "１５０１５００", confidence: 0.95, sourceRange: "page 1", method: "ai" },
   { fieldKey: "applicant.currentAddress", value: "", normalizedValue: "", confidence: 0.0, sourceRange: "page 1", method: "ai" },
   { fieldKey: "applicant.phone", value: "", normalizedValue: "", confidence: 0.0, sourceRange: "page 1", method: "ai" },
@@ -80,6 +89,16 @@ const fields = [
   { fieldKey: "applicant.nationality", value: "日本", normalizedValue: "日本", confidence: 0.99, sourceRange: "page 1", method: "ai" },
 ];
 const scope = { tenantId: tenant.id, userId: user.id };
+await assert.rejects(
+  () => persistObjectExtraction({
+    repository: { upsertCandidate: async (candidate) => candidate },
+    target: { id: "target-gender-validation", tenantId: tenant.id, sourceAttachmentId: "attachment-synthetic" },
+    sourceFileHash: "synthetic-hash",
+    fields: [{ fieldKey: "gender", value: "男/女", normalizedValue: "男/女", confidence: 0.9 }],
+  }),
+  /object_import_invalid_gender/,
+  "the persistence boundary must reject a contradictory gender instead of storing raw OCR text",
+);
 await persistObjectImportJobExtraction({ ...scope, job, fields });
 const target = await data.getObjectImportTargetByJob({ ...scope, importJobId: job.id });
 assert(target && target.targetType === "party" && !target.caseId);
@@ -90,7 +109,12 @@ assert.equal(candidates.find((item) => item.fieldKey === "currentAddress").statu
 assert.equal(candidates.find((item) => item.fieldKey === "phone").status, "not_found");
 assert.equal(candidates.find((item) => item.fieldKey === "birthDate").candidateValue, "1990-04-12");
 assert.equal(candidates.find((item) => item.fieldKey === "gender").candidateValue, "male");
+assert.equal(candidates.find((item) => item.fieldKey === "gender").provenance.rawCandidateValue, "男/M");
 assert.equal(candidates.find((item) => item.fieldKey === "currentPostalCode").candidateValue, "150-1500");
+const candidateCountBeforeReplay = candidates.length;
+await persistObjectImportJobExtraction({ ...scope, job, fields });
+const replayedCandidates = await data.listObjectImportCandidates({ ...scope, targetId: target.id });
+assert.equal(replayedCandidates.length, candidateCountBeforeReplay, "replaying the queued extraction must upsert, not duplicate, candidates");
 const nameProvenance = candidates.find((item) => item.fieldKey === "name").provenance;
 assert.equal(nameProvenance.pageNumber, 1);
 assert.equal(nameProvenance.sourceText, "氏名 YAMADA SHIKEN");
@@ -159,6 +183,18 @@ assert.equal(ambiguousName?.value, "");
 assert.equal(ambiguousName?.uncertainty, "conflict");
 assert.equal(Array.isArray(ambiguousName?.alternatives), true);
 modelResponse = {
+  documentType: "identity_residence_card",
+  pages: [{ pageNumber: 1, lines: ["性別 男/M", "性別 女性"] }],
+  candidates: [
+    { fieldKey: "applicant.gender", value: "男/M", pageNumber: 1, sourceText: "性別 男/M", uncertainty: "clear", subjectKey: "person-1", subjectLabel: "本人" },
+    { fieldKey: "applicant.gender", value: "女性", pageNumber: 1, sourceText: "性別 女性", uncertainty: "clear", subjectKey: "person-1", subjectLabel: "本人" },
+  ],
+};
+const ambiguousGenderModelOnly = await extractIdentityDocumentFromBuffer({ buffer: Buffer.from("%PDF-MODEL-GENDER-CONFLICT"), filename: "residence-card.pdf", requireModel: true });
+const ambiguousGender = ambiguousGenderModelOnly.fields.find((field) => field.fieldKey === "applicant.gender");
+assert.equal(ambiguousGender?.uncertainty, "conflict", "male/female evidence must remain a conflict");
+assert.equal(Array.isArray(ambiguousGender?.alternatives), true);
+modelResponse = {
   documentType: "unknown_identity_scan",
   pages: [{ pageNumber: 1, lines: ["unsupported identity card"] }],
   candidates: [{ fieldKey: "applicant.name", value: "UNSUPPORTED HOLDER", pageNumber: 1, sourceText: "氏名 UNSUPPORTED HOLDER", uncertainty: "clear", subjectKey: "person-1", subjectLabel: "本人" }],
@@ -175,6 +211,20 @@ const placeholderAddress = await extractIdentityDocumentFromBuffer({ buffer: Buf
 const placeholderAddressField = placeholderAddress.fields.find((field) => field.fieldKey === "applicant.currentAddress");
 assert.equal(placeholderAddressField?.value, "未定");
 assert.equal(placeholderAddressField?.uncertainty, "unclear");
-const { safeEntryPreviewCandidates } = require(resolve(root, "src/lib/entry-preview.ts"));
+const { fillAutoSavedEntryForm, safeEntryPreviewCandidates, selectableEntryPreviewCandidates } = require(resolve(root, "src/lib/entry-preview.ts"));
 assert.deepEqual(safeEntryPreviewCandidates([{ id: "address-placeholder", key: "currentAddress", sourceKey: "applicant.currentAddress", label: "现住址", value: "未定", fileName: "residence-card.jpg", uncertainty: "clear" }]), []);
+const previewForm = new FormData();
+assert.equal(fillAutoSavedEntryForm(previewForm, {
+  status: "ready",
+  candidates: [{ id: "gender-1", key: "gender", sourceKey: "applicant.gender", label: "性別", value: "male", rawValue: "男/M", fileName: "identity.pdf", pageNumber: 1, sourceText: "性別 男/M", uncertainty: "clear" }],
+  readFileKeys: ["identity.pdf:42"],
+}), 1);
+assert.equal(previewForm.get("gender"), "male", "direct entry auto-save must write the canonical select value");
+assert.equal(JSON.parse(String(previewForm.get("entryPreviewDecisions")))["gender-1"], "auto_saved");
+const genderConflict = [
+  { id: "gender-male", key: "gender", sourceKey: "applicant.gender", label: "性別", value: "male", fileName: "identity.pdf", uncertainty: "conflict" },
+  { id: "gender-female", key: "gender", sourceKey: "applicant.gender", label: "性別", value: "female", fileName: "identity.pdf", uncertainty: "conflict" },
+];
+assert.deepEqual(safeEntryPreviewCandidates(genderConflict), [], "conflicting gender candidates must not auto-save");
+assert.equal(selectableEntryPreviewCandidates(genderConflict).length, 2, "conflicting gender candidates remain explicit choices");
 console.log("PASS: four identity classifications, existing customer-only field mapping, not_found contacts, normalized date/gender/postal code, standalone review/save/reopen and source-only rejection");

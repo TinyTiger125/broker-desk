@@ -690,6 +690,12 @@ const renderedIdentityFailure = renderToStaticMarkup(React.createElement(ObjectI
 assert.match(renderedIdentityFailure, /身份证明资料读取可用于客户记录/);
 assert.match(renderedIdentityFailure, /正式客户资料未更新/);
 assert.doesNotMatch(renderedIdentityFailure, /物件|租赁/);
+assert.match(statusBadgeSource, /remote_document_reader_file_upload_failed/);
+const renderedRemoteUploadFailure = renderToStaticMarkup(React.createElement(ObjectImportFailureNotice, { locale: "zh", errorCode: "remote_document_reader_file_upload_failed" }));
+assert.match(renderedRemoteUploadFailure, /临时读取服务/);
+assert.match(renderedRemoteUploadFailure, /正式客户资料未更新/);
+const renderedRemoteCleanupFailure = renderToStaticMarkup(React.createElement(ObjectImportFailureNotice, { locale: "zh", errorCode: "remote_document_reader_file_cleanup_failed" }));
+assert.match(renderedRemoteCleanupFailure, /临时文件清理/);
 const pipelineLoad = Module._load;
 Module._load = function(request, parent, ...rest) {
   if (parent?.filename.endsWith("/src/components/case-association-manager.tsx")) {

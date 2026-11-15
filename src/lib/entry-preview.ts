@@ -4,6 +4,8 @@ export type EntryPreviewCandidate = {
   sourceKey: string;
   label: string;
   value: string;
+  /** Original model/OCR value when `value` is a canonical form value. */
+  rawValue?: string;
   fileName: string;
   pageNumber?: number;
   sourceText?: string;
@@ -15,6 +17,7 @@ export type EntryPreviewState = {
   candidates: EntryPreviewCandidate[];
   readFileKeys: string[];
   readProofs?: Record<string, string>;
+  errorCode?: string;
   message?: string;
 };
 

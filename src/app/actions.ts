@@ -156,6 +156,7 @@ import { PlatformSessionError, requirePlatformOwnerSession } from "@/lib/platfor
 import { isLifecycleStatus, type LifecycleStatus } from "@/lib/record-lifecycle";
 import { FORBIDDEN_RECORD_INPUT_FIELDS } from "@/lib/record-input-guard";
 import { deriveTenantServiceState, isTenantServiceOperational, validateTenantServicePeriod } from "@/lib/tenant-service";
+import { isCustomerGenderValue, normalizeCustomerIdentityValue } from "@/lib/customer-identity-field-catalog";
 
 async function rejectForbiddenRecordInput(
   formData: FormData,
@@ -844,6 +845,7 @@ function clientValidationMessage(locale: Locale, field: keyof ClientFormValues):
       phone: "電話番号は日本の携帯11桁（060/070/080/090）で入力してください。",
       email: "メールアドレスの形式を確認してください。",
       currentPostalCode: "郵便番号は7桁（例: 100-0005）で入力してください。",
+      gender: "性別は男性・女性・その他のいずれかで入力してください。",
       employerPhone: "勤務先電話番号の形式を確認してください。",
       partyType: "関係者種別を選択するか、未設定のままにしてください。",
       budgetMin: "予算下限は0より大きい数値で入力してください。",
@@ -871,6 +873,7 @@ function clientValidationMessage(locale: Locale, field: keyof ClientFormValues):
       phone: "电话号码须为日本11位手机号码（060/070/080/090）。",
       email: "请检查邮箱地址格式。",
       currentPostalCode: "邮编请输入7位数字（例如 100-0005）。",
+      gender: "性别请输入男性、女性或其他。",
       employerPhone: "请检查工作单位电话号码格式。",
       partyType: "请选择主体类型，或保留为未设置。",
       budgetMin: "预算下限必须是大于 0 的数字。",
@@ -898,6 +901,7 @@ function clientValidationMessage(locale: Locale, field: keyof ClientFormValues):
       phone: "전화번호는 일본 휴대전화 11자리(060/070/080/090)여야 합니다.",
       email: "이메일 주소 형식을 확인해 주세요.",
       currentPostalCode: "우편번호는 7자리(예: 100-0005)로 입력해 주세요.",
+      gender: "성별은 남성·여성·기타 중 하나로 입력해 주세요.",
       employerPhone: "근무처 전화번호 형식을 확인해 주세요.",
       partyType: "관계자 유형을 선택하거나 미설정으로 두세요.",
       budgetMin: "예산 하한은 0보다 큰 숫자여야 합니다.",
@@ -955,6 +959,9 @@ function parseClientForm(formData: FormData, locale: Locale, mode: "create" | "e
   validateOptionalFormat("employerPhone", (value) => /^(?=.*\d)[0-9+()\-\s]{6,30}$/.test(value));
   validateOptionalFormat("email", (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value));
   validateOptionalFormat("currentPostalCode", (value) => /^\d{3}-?\d{4}$/.test(value));
+  const rawGender = values.gender.trim();
+  const normalizedGender = rawGender ? normalizeCustomerIdentityValue("gender", rawGender) : "";
+  if (rawGender && !isCustomerGenderValue(normalizedGender)) fieldErrors.gender = clientValidationMessage(locale, "gender");
 
   const requiredEnum = <T extends string>(field: keyof ClientFormValues, raw: string, valid: (value: string) => value is T, fallback?: T) => {
     const value = raw.trim() || (compatibilityDefaults ? fallback ?? "" : "");
@@ -1017,7 +1024,7 @@ function parseClientForm(formData: FormData, locale: Locale, mode: "create" | "e
       email: values.email.trim() || undefined,
       furigana: values.furigana.trim() || undefined,
       ...dates,
-      gender: values.gender.trim() || undefined,
+      gender: normalizedGender || undefined,
       currentPostalCode: values.currentPostalCode.trim() || undefined,
       currentAddress: values.currentAddress.trim() || undefined,
       employerName: values.employerName.trim() || undefined,

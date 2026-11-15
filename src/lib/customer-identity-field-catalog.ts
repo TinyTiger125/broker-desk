@@ -23,6 +23,50 @@ export const CUSTOMER_IDENTITY_FIELDS = {
 
 export type CustomerIdentityFieldKey = keyof typeof CUSTOMER_IDENTITY_FIELDS;
 export const CUSTOMER_IDENTITY_FIELD_KEYS = new Set<CustomerIdentityFieldKey>(Object.keys(CUSTOMER_IDENTITY_FIELDS) as CustomerIdentityFieldKey[]);
+export type CustomerGender = "male" | "female" | "other";
+
+const CUSTOMER_GENDER_TOKENS: Record<CustomerGender, Set<string>> = {
+  male: new Set(["男性", "男", "male", "m", "man", "masculine"]),
+  female: new Set(["女性", "女", "female", "f", "woman", "feminine"]),
+  other: new Set(["その他", "其他", "other"]),
+};
+
+/**
+ * Normalize only an unambiguous gender expression.  OCR often returns both
+ * the Japanese and Latin mark (for example `男 M`); accepting all tokens only
+ * when they agree keeps that representation usable without guessing through
+ * a contradictory value such as `男 / 女`.
+ */
+export function normalizeCustomerGenderValue(value: string): CustomerGender | null {
+  const normalized = value
+    .normalize("NFKC")
+    .trim()
+    .toLowerCase()
+    .replace(/(?:性別|性别|gender|sex)/g, " ")
+    .replace(/[()\[\]{}（）［］【】/:：,，、;；|｜\/／]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized) return null;
+
+  const categories = new Set<CustomerGender>();
+  const unknownTokens: string[] = [];
+  for (const token of normalized.split(" ")) {
+    let matched: CustomerGender | undefined;
+    for (const category of ["male", "female", "other"] as const) {
+      if (CUSTOMER_GENDER_TOKENS[category].has(token)) {
+        matched = category;
+        break;
+      }
+    }
+    if (matched) categories.add(matched);
+    else unknownTokens.push(token);
+  }
+  return categories.size === 1 && unknownTokens.length === 0 ? [...categories][0] : null;
+}
+
+export function isCustomerGenderValue(value: string): value is CustomerGender {
+  return value === "male" || value === "female" || value === "other";
+}
 
 const APPLICANT_TO_CUSTOMER: Record<string, CustomerIdentityFieldKey> = {
   "applicant.name": "name",
@@ -55,9 +99,7 @@ export function normalizeCustomerIdentityValue(fieldKey: CustomerIdentityFieldKe
     .replace(/[／]/g, "/")
     .replace(/[－ー−]/g, "-");
   if (fieldKey === "gender") {
-    if (/^(男性|男|male|m)$/i.test(normalized)) return "male";
-    if (/^(女性|女|female|f)$/i.test(normalized)) return "female";
-    if (/^(その他|other)$/i.test(normalized)) return "other";
+    return normalizeCustomerGenderValue(normalized) ?? normalized;
   }
   if (fieldKey === "birthDate") {
     const western = normalized.match(/^(\d{4})\s*(?:年|[-/.])\s*(\d{1,2})\s*(?:月|[-/.])\s*(\d{1,2})日?$/);

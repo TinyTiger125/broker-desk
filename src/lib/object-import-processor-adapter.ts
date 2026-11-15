@@ -5,11 +5,11 @@ import type { ObjectImportCandidateRecord, ObjectImportRepository } from "@/lib/
 import { parseObjectImportNotes, normalizeObjectImportFieldKey } from "@/lib/object-import-contract";
 import { selectSingleObjectReaderCandidates } from "@/lib/object-reader-attribution";
 import type { ObjectReaderResponse, ObjectReaderSourceLocation } from "@/lib/object-reader-contract";
-import { customerIdentityFieldKey, isStandaloneCustomerTarget, normalizeCustomerIdentityValue } from "@/lib/customer-identity-field-catalog";
+import { customerIdentityFieldKey, isCustomerGenderValue, isStandaloneCustomerTarget, normalizeCustomerIdentityValue } from "@/lib/customer-identity-field-catalog";
 import type { InputFieldEvidenceAlternative, InputFieldUncertainty } from "@/lib/input-file-extractor";
 
 export type ExtractedObjectField = {
-  fieldKey: string; value: string; normalizedValue?: string; confidence: number;
+  fieldKey: string; value: string; normalizedValue?: string; rawValue?: string; confidence: number;
   sourceSheet?: string; sourceCell?: string; sourceRange?: string; method?: string;
   sourceFileHash?: string; templateVersion?: string;
   sourcePageNumber?: number; sourceText?: string; uncertainty?: InputFieldUncertainty;
@@ -145,30 +145,42 @@ export async function ensureObjectImportTask(job: ImportJob, scope: { tenantId: 
 
 export async function persistObjectExtraction(input: { repository?: Pick<ObjectImportRepository, "upsertCandidate">; target: { id: string; tenantId: string; sourceAttachmentId: string }; sourceFileHash: string; fields: ExtractedObjectField[] }) {
   if (!input.target.sourceAttachmentId || !input.sourceFileHash) throw new Error("object_import_source_attachment_required");
-  const candidates = input.fields.map((field): ObjectImportCandidateRecord => ({
+  const candidates = input.fields.map((field): ObjectImportCandidateRecord => {
+    const identityKey = customerIdentityFieldKey(field.fieldKey);
+    const rawValue = field.rawValue ?? field.value;
+    const normalizedValue = identityKey ? normalizeCustomerIdentityValue(identityKey, rawValue) : (field.normalizedValue ?? field.value);
+    if (identityKey === "gender" && rawValue.trim() && !isCustomerGenderValue(normalizedValue)) {
+      throw new Error("object_import_invalid_gender");
+    }
+    const persistedField = identityKey
+      ? { ...field, value: normalizedValue, normalizedValue, rawValue }
+      : field;
+    return {
     id: `candidate_${input.target.id}_${field.fieldKey}`,
     tenantId: input.target.tenantId, targetId: input.target.id, fieldKey: field.fieldKey,
-    candidateValue: field.normalizedValue ?? field.value, confidence: field.confidence,
+    candidateValue: normalizedValue, confidence: persistedField.confidence,
     provenance: {
       sourceAttachmentId: input.target.sourceAttachmentId,
-      sourceSheet: field.sourceSheet,
-      sourceCell: field.sourceCell,
-      sourceRange: field.sourceRange,
-      method: field.method,
+      sourceSheet: persistedField.sourceSheet,
+      sourceCell: persistedField.sourceCell,
+      sourceRange: persistedField.sourceRange,
+      method: persistedField.method,
       sourceFileHash: input.sourceFileHash,
-      templateVersion: field.templateVersion,
-      ...(field.sourcePageNumber !== undefined ? { pageNumber: field.sourcePageNumber } : {}),
-      ...(field.sourceText ? { sourceText: field.sourceText } : {}),
-      ...(field.uncertainty ? { uncertainty: field.uncertainty } : {}),
-      ...(field.subjectKey ? { subjectKey: field.subjectKey } : {}),
-      ...(field.subjectLabel ? { subjectLabel: field.subjectLabel } : {}),
-      ...(field.alternatives?.length ? { alternatives: field.alternatives } : {}),
+      templateVersion: persistedField.templateVersion,
+      ...(persistedField.sourcePageNumber !== undefined ? { pageNumber: persistedField.sourcePageNumber } : {}),
+      ...(persistedField.sourceText ? { sourceText: persistedField.sourceText } : {}),
+      ...(persistedField.rawValue && persistedField.rawValue !== normalizedValue ? { rawCandidateValue: persistedField.rawValue } : {}),
+      ...(persistedField.uncertainty ? { uncertainty: persistedField.uncertainty } : {}),
+      ...(persistedField.subjectKey ? { subjectKey: persistedField.subjectKey } : {}),
+      ...(persistedField.subjectLabel ? { subjectLabel: persistedField.subjectLabel } : {}),
+      ...(persistedField.alternatives?.length ? { alternatives: persistedField.alternatives } : {}),
     },
-    finalValue: field.normalizedValue || undefined, finalSource: field.normalizedValue ? "model_draft" : undefined,
-    status: field.normalizedValue
-      ? field.uncertainty === "conflict" ? "conflict" : field.uncertainty === "unclear" ? "low_confidence" : field.confidence < 0.8 ? "low_confidence" : "draft"
-      : field.uncertainty === "conflict" ? "conflict" : field.uncertainty === "unclear" ? "low_confidence" : "not_found",
-  }));
+    finalValue: normalizedValue || undefined, finalSource: normalizedValue ? "model_draft" : undefined,
+    status: normalizedValue
+      ? persistedField.uncertainty === "conflict" ? "conflict" : persistedField.uncertainty === "unclear" ? "low_confidence" : persistedField.confidence < 0.8 ? "low_confidence" : "draft"
+      : persistedField.uncertainty === "conflict" ? "conflict" : persistedField.uncertainty === "unclear" ? "low_confidence" : "not_found",
+    };
+  });
   const saved = [];
   for (const candidate of candidates) saved.push(await (input.repository?.upsertCandidate(candidate) ?? upsertObjectImportCandidate(candidate)));
   return saved;
@@ -187,8 +199,9 @@ export async function persistObjectImportJobExtraction(input: { job: ImportJob; 
     if (target.targetType === "party" && isStandaloneCustomerTarget(target)) {
       const customerKey = customerIdentityFieldKey(field.fieldKey);
       if (!customerKey) return [];
-      const normalizedValue = normalizeCustomerIdentityValue(customerKey, field.normalizedValue ?? field.value);
-      return [{ ...field, fieldKey: customerKey, value: normalizedValue, normalizedValue }];
+      const rawValue = field.rawValue ?? field.value;
+      const normalizedValue = normalizeCustomerIdentityValue(customerKey, rawValue);
+      return [{ ...field, fieldKey: customerKey, value: normalizedValue, normalizedValue, rawValue }];
     }
     // A document may contain several people. Only applicant fields belong to this identity source.
     const prefix = field.fieldKey.includes(".") ? field.fieldKey.split(".")[0] : null;

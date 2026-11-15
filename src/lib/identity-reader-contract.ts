@@ -85,7 +85,9 @@ export type RemoteDocumentReaderErrorCode =
   | "empty_result"
   | "timeout"
   | "request_failed"
-  | "http_error";
+  | "http_error"
+  | "file_upload_failed"
+  | "file_cleanup_failed";
 
 export class RemoteDocumentReaderError extends Error {
   readonly code: RemoteDocumentReaderErrorCode;

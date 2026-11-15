@@ -19,6 +19,7 @@ import { readIdentityDocumentWithOpenAi } from "@/lib/openai-identity-reader";
 import type { OpenAiIdentityReaderCandidate } from "@/lib/identity-reader-contract";
 import { resolveIdentityReaderCandidate } from "@/lib/identity-reader-evidence";
 import { selectPrimaryIdentityReaderCandidates, type IdentityReaderAttributionScope } from "@/lib/identity-reader-attribution";
+import { normalizeCustomerIdentityValue } from "@/lib/customer-identity-field-catalog";
 
 const execFileAsync = promisify(execFile);
 
@@ -130,8 +131,8 @@ function uniqueFields(fields: FieldDraft[], sourceFileHash: string, templateVers
       byKey.set(field.fieldKey, field);
       continue;
     }
-    const existingValue = clean(existing.normalizedValue || existing.value);
-    const nextValue = clean(field.normalizedValue || field.value);
+    const existingValue = comparableFieldValue(existing);
+    const nextValue = comparableFieldValue(field);
     const nextWins = (!existingValue && nextValue) || (nextValue && field.confidence > existing.confidence);
     const winner = nextWins ? field : existing;
     const alternatives = mergeFieldAlternatives(existing, field);
@@ -149,6 +150,13 @@ function uniqueFields(fields: FieldDraft[], sourceFileHash: string, templateVers
     sourceFileHash,
     templateVersion,
   }));
+}
+
+function comparableFieldValue(field: Pick<FieldDraft, "fieldKey" | "normalizedValue" | "value">) {
+  const value = clean(field.normalizedValue || field.value);
+  return field.fieldKey === "applicant.gender"
+    ? normalizeCustomerIdentityValue("gender", value)
+    : value;
 }
 
 function addField(fields: FieldDraft[], input: {

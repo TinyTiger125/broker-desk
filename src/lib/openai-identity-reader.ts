@@ -1,7 +1,9 @@
 import {
   AiResponseError,
+  AiTemporaryFileError,
   AiRuntimeUnavailableError,
   createAiResponse,
+  withTemporaryOpenAiFile,
 } from "@/lib/ai/responses-client";
 import { PDFDocument } from "pdf-lib";
 import { CUSTOMER_IDENTITY_FIELDS } from "@/lib/customer-identity-field-catalog";
@@ -12,6 +14,9 @@ import {
 } from "@/lib/identity-reader-contract";
 
 const OPENAI_IDENTITY_READER_TIMEOUT_MS = 60_000;
+const OPENAI_IDENTITY_READER_FILE_TIMEOUT_MS = 120_000;
+/** Keep small PDFs inline; larger PDFs use an ephemeral Files API reference. */
+export const OPENAI_IDENTITY_READER_INLINE_FILE_MAX_BYTES = 1 * 1024 * 1024;
 export const IDENTITY_READER_MAX_PAGES = 20;
 const IDENTITY_READER_MAX_OUTPUT_TOKENS = 6_000;
 
@@ -97,9 +102,11 @@ function mimeTypeForFilename(filename: string) {
   throw new RemoteDocumentReaderError("invalid_response");
 }
 
-export function buildOpenAiIdentityReaderInput(buffer: Buffer, filename: string, options: { scope?: IdentityReaderScope } = {}) {
+export function buildOpenAiIdentityReaderInput(buffer: Buffer, filename: string, options: { scope?: IdentityReaderScope; fileId?: string } = {}) {
   const mimeType = mimeTypeForFilename(filename);
-  const dataUrl = `data:${mimeType};base64,${buffer.toString("base64")}`;
+  const dataUrl = options.fileId && mimeType === "application/pdf"
+    ? undefined
+    : `data:${mimeType};base64,${buffer.toString("base64")}`;
   const customerOnly = options.scope === "customer";
   const fieldInstruction = customerOnly
     ? `This is a standalone customer profile. Emit only ${IDENTITY_CUSTOMER_FIELD_KEYS.join(", ")}. For applicant.nameLatin, applicant.nameKanji, and applicant.nameKatakana, emit a value only when that exact script and representation is visibly printed for the single document holder. Never transliterate, translate, infer Katakana or furigana, or copy applicant.name into a representation field. Keep applicant.name as the legacy exact printed name only. Do not emit nationality, document numbers, issuer, residence status, residence period, expiry, work restrictions, driver conditions, or any other document-only fact. The document holder may be labelled 本人, 申請人, 被保険者, cardholder, or insured person; accept only the single holder subject. Reject 世帯主, 保険者, 代理人, 代表者, insurer, agent, and other non-holder roles.`
@@ -123,7 +130,9 @@ export function buildOpenAiIdentityReaderInput(buffer: Buffer, filename: string,
       ].join(" "),
     },
     mimeType === "application/pdf"
-      ? { type: "input_file", filename, file_data: dataUrl, detail: "high" }
+      ? options.fileId
+        ? { type: "input_file", file_id: options.fileId, detail: "high" }
+        : { type: "input_file", filename, file_data: dataUrl, detail: "high" }
       : { type: "input_image", image_url: dataUrl, detail: "high" },
   ];
   return [{ role: "user", content }];
@@ -136,8 +145,10 @@ export async function readIdentityDocumentWithOpenAi(input: {
   signal?: AbortSignal;
 }): Promise<OpenAiIdentityReaderResponse> {
   const scope = input.scope ?? "case";
+  const isPdf = mimeTypeForFilename(input.filename) === "application/pdf";
+  const useTemporaryFile = isPdf && input.buffer.byteLength > OPENAI_IDENTITY_READER_INLINE_FILE_MAX_BYTES;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), OPENAI_IDENTITY_READER_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), useTemporaryFile ? OPENAI_IDENTITY_READER_FILE_TIMEOUT_MS : OPENAI_IDENTITY_READER_TIMEOUT_MS);
   const signal = input.signal
     ? AbortSignal.any([input.signal, controller.signal])
     : controller.signal;
@@ -155,13 +166,20 @@ export async function readIdentityDocumentWithOpenAi(input: {
       }
       actualPageCount = pageCount;
     }
-    const response = await createAiResponse<OpenAiIdentityReaderResponse>({
+    const request = (fileId?: string) => createAiResponse<OpenAiIdentityReaderResponse>({
       taskId: "identity_document_extraction_assist",
-      input: buildOpenAiIdentityReaderInput(input.buffer, input.filename, { scope }),
+      input: buildOpenAiIdentityReaderInput(input.buffer, input.filename, { scope, fileId }),
       jsonSchema: { name: "identity_document_reader", schema: scope === "customer" ? buildIdentityReaderSchema(IDENTITY_CUSTOMER_FIELD_KEYS) : IDENTITY_READER_SCHEMA, strict: true },
       maxOutputTokens: IDENTITY_READER_MAX_OUTPUT_TOKENS,
-      metadata: { brokerDeskReaderVersion: scope === "customer" ? "openai_identity_customer_v1" : "openai_identity_v1", brokerDeskReaderScope: scope },
+      metadata: {
+        brokerDeskReaderVersion: scope === "customer" ? "openai_identity_customer_v1" : "openai_identity_v1",
+        brokerDeskReaderScope: scope,
+        brokerDeskInputTransport: useTemporaryFile ? "files_api_ephemeral" : "inline_data_url",
+      },
     }, { signal });
+    const response = useTemporaryFile
+      ? await withTemporaryOpenAiFile({ buffer: input.buffer, filename: input.filename, mimeType: "application/pdf" }, request, { signal })
+      : await request();
     const parsed = parseOpenAiIdentityReaderResponse(response.parsed);
     if (parsed.pages.some((page) => page.pageNumber > actualPageCount)
       || parsed.candidates.some((candidate) => candidate.pageNumber > actualPageCount)) {
@@ -170,6 +188,9 @@ export async function readIdentityDocumentWithOpenAi(input: {
     return parsed;
   } catch (error) {
     if (error instanceof RemoteDocumentReaderError) throw error;
+    if (error instanceof AiTemporaryFileError) {
+      throw new RemoteDocumentReaderError(error.operation === "upload" ? "file_upload_failed" : "file_cleanup_failed", { status: error.status });
+    }
     if (error instanceof AiResponseError) throw new RemoteDocumentReaderError("http_error", { status: error.status });
     if (error instanceof AiRuntimeUnavailableError) throw new RemoteDocumentReaderError("request_failed");
     if (error instanceof DOMException && error.name === "AbortError") throw new RemoteDocumentReaderError("timeout");

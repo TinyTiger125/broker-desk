@@ -29,6 +29,7 @@ require.extensions[".ts"] = (module, filename) => {
 
 const originalLoad = Module._load;
 let readerCalls = 0;
+const { RemoteDocumentReaderError } = require(resolve(root, "src/lib/identity-reader-contract.ts"));
 const session = { tenant: { id: "tenant_test" }, user: { id: "user_test" } };
 Module._load = function(request, parent, ...rest) {
   if (request === "@/lib/tenant-session") return { requireTenantSession: async (input) => { assert.equal(input.permission, "source.upload"); return session; } };
@@ -41,6 +42,7 @@ Module._load = function(request, parent, ...rest) {
     readerCalls += 1;
     assert.equal(scope, "customer");
     if (filename === "fail.pdf") throw new Error("synthetic_provider_failure");
+    if (filename === "large-upload-fail.pdf") throw new RemoteDocumentReaderError("file_upload_failed", { status: 413 });
     const shared = { value: "Synthetic Person", pageNumber: 1, sourceText: "Name: Synthetic Person", uncertainty: "clear", subjectKey: "holder", subjectLabel: "document holder" };
     if (filename === "unknown.pdf") return { documentType: "unknown_identity_scan", candidates: [{ ...shared, fieldKey: "applicant.name" }] };
     if (filename === "address-only.pdf") return { documentType: "identity_residence_card", candidates: [{ ...shared, fieldKey: "applicant.currentAddress", value: "Synthetic address", sourceText: "住所: Synthetic address" }] };
@@ -126,6 +128,10 @@ const partial = await previewEntryDocumentsAction(request("customer", ["good.pdf
 assert.equal(partial.status, "error");
 assert.equal(partial.candidates.length, 1);
 assert.deepEqual(partial.readFileKeys, ["good.pdf:14"]);
+const largeUploadFailure = await previewEntryDocumentsAction(request("customer", ["large-upload-fail.pdf"]));
+assert.equal(largeUploadFailure.status, "error");
+assert.equal(largeUploadFailure.errorCode, "remote_document_reader_file_upload_failed");
+assert.match(largeUploadFailure.message, /临时读取服务/);
 const beforeDuplicate = readerCalls;
 const duplicate = await previewEntryDocumentsAction(request("customer", ["same.pdf", "same.pdf"]));
 assert.equal(duplicate.status, "error");
