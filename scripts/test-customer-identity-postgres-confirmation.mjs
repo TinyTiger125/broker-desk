@@ -105,6 +105,9 @@ const context = createRequestContext(session);
 
 const customerValues = {
   name: "YAMADA SHIKEN",
+  nameLatin: "YAMADA SHIKEN",
+  nameKanji: "山田 試験",
+  nameKatakana: "ヤマダ シケン",
   furigana: "ヤマダ シケン",
   birthDate: "1990-04-12",
   gender: "male",
@@ -112,7 +115,7 @@ const customerValues = {
   currentAddress: "福岡県福岡市中央区1-1",
 };
 const existingContact = { phone: "090-0000-0000", email: "keep@example.test" };
-const customerFields = ["name", "furigana", "birthDate", "gender", "currentPostalCode", "currentAddress", "phone", "lineId", "email"];
+const customerFields = ["name", "nameLatin", "nameKanji", "nameKatakana", "furigana", "birthDate", "gender", "currentPostalCode", "currentAddress", "phone", "lineId", "email"];
 
 async function createPartyTarget(label, notes = "関係者種別：個人", options = {}) {
   const content = Buffer.from(`%PDF-${prefix}-${label}`);
@@ -291,6 +294,9 @@ try {
   const saved = await data.getClientById(primary.client.id, tenantId);
   assert(saved);
   assert.equal(saved.name, customerValues.name);
+  assert.equal(saved.nameLatin, customerValues.nameLatin);
+  assert.equal(saved.nameKanji, customerValues.nameKanji);
+  assert.equal(saved.nameKatakana, customerValues.nameKatakana);
   assert.equal(saved.furigana, customerValues.furigana);
   assert.equal(saved.birthDate?.toISOString().slice(0, 10), customerValues.birthDate);
   assert.equal(saved.gender, customerValues.gender);
@@ -322,6 +328,9 @@ try {
   const completeSaved = await data.getClientById(complete.client.id, tenantId);
   assert(completeSaved);
   assert.equal(completeSaved.name, customerValues.name);
+  assert.equal(completeSaved.nameLatin, customerValues.nameLatin);
+  assert.equal(completeSaved.nameKanji, customerValues.nameKanji);
+  assert.equal(completeSaved.nameKatakana, customerValues.nameKatakana);
   assert.equal(completeSaved.furigana, customerValues.furigana);
   assert.equal(completeSaved.birthDate?.toISOString().slice(0, 10), customerValues.birthDate);
   assert.equal(completeSaved.gender, customerValues.gender);
@@ -331,8 +340,8 @@ try {
   assert.equal(completeSaved.lineId, "identity-line");
   assert.equal(completeSaved.email, "identity@example.test");
   assert.equal((await data.getObjectImportTarget({ tenantId, userId, id: complete.target.id })).status, "completed");
-  evidence.checks.allNineFieldsConfirmed = completeConfirmed;
-  evidence.checks.allNineSavedAndReopened = true;
+  evidence.checks.allIdentityFieldsConfirmed = completeConfirmed;
+  evidence.checks.allIdentityFieldsSavedAndReopened = true;
 
   const corporateField = (await data.listObjectImportCandidates({ tenantId, userId, targetId: corporate.target.id })).find((field) => field.fieldKey === "name");
   assert(corporateField);
