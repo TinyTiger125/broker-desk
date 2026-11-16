@@ -3219,6 +3219,17 @@ export async function seedClosedBetaDemoData(input: {
       return { tenantId, marker: fixture.marker, status: "already_initialized", counts: state.counts };
     }
     if (state.partial) throw new Error("closed_beta_demo_partial_state");
+    const consumedMarker = nextDb.auditLogs.some((audit) =>
+      audit.tenantId === tenantId
+      && audit.action === "closed_beta_demo_seeded"
+      && audit.targetType === "tenant"
+      && audit.targetId === tenantId
+      && audit.context?.version === CLOSED_BETA_DEMO_FIXTURE_VERSION
+      && audit.context?.marker === fixture.marker,
+    );
+    if (consumedMarker) {
+      return { tenantId, marker: fixture.marker, status: "already_initialized", counts: state.counts };
+    }
 
     const nowDate = new Date();
     const clients: Client[] = fixture.clients.map((item) => ({

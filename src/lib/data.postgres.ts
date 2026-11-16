@@ -2864,6 +2864,21 @@ export async function seedClosedBetaDemoData(input: {
         return { tenantId, marker: fixture.marker, status: "already_initialized", counts: state.counts };
       }
       if (state.partial) throw new Error("closed_beta_demo_partial_state");
+      const consumedMarker = await client.query(
+        `SELECT 1
+           FROM public.audit_logs
+          WHERE tenant_id = $1
+            AND action = 'closed_beta_demo_seeded'
+            AND target_type = 'tenant'
+            AND target_id = $1
+            AND context_json->>'version' = $2
+            AND context_json->>'marker' = $3
+          LIMIT 1`,
+        [tenantId, CLOSED_BETA_DEMO_FIXTURE_VERSION, fixture.marker],
+      );
+      if (consumedMarker.rows[0]) {
+        return { tenantId, marker: fixture.marker, status: "already_initialized", counts: state.counts };
+      }
 
       for (const item of fixture.clients) {
       await client.query(
