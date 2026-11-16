@@ -89,10 +89,12 @@ const { validateObjectImportReview } = require(resolve(root, "src/lib/object-imp
 const reviewRecord = { id: "client-synthetic-review", name: "", notes: undefined };
 const reviewVersion = buildObjectVersionFingerprint(reviewRecord);
 const reviewTarget = { id: "target-synthetic-review", tenantId: tenant.id, userId: user.id, importJobId: "job-synthetic-review", targetType: "party", targetId: reviewRecord.id, targetVersion: reviewVersion, sourceAttachmentId: "attachment-synthetic", status: "needs_review", idempotencyKey: "synthetic-review", attemptCount: 1, createdAt: new Date(), updatedAt: new Date() };
-const invalidScriptReview = validateObjectImportReview({ targetId: reviewTarget.id, fieldId: "field-synthetic-review", expectedVersion: reviewVersion, expectedCandidateValue: "YAMADA SHIKEN", decision: "confirm" }, reviewTarget, { id: "field-synthetic-review", tenantId: tenant.id, targetId: reviewTarget.id, fieldKey: "nameKatakana", candidateValue: "YAMADA SHIKEN", confidence: 0.99, provenance: { sourceAttachmentId: reviewTarget.sourceAttachmentId, sourceFileHash: "synthetic-hash", sourceText: "Name: YAMADA SHIKEN", uncertainty: "clear" }, status: "draft" }, reviewRecord);
+const invalidScriptReview = validateObjectImportReview({ targetId: reviewTarget.id, fieldId: "field-synthetic-review", expectedVersion: reviewVersion, expectedCandidateValue: "YAMADA SHIKEN", decision: "confirm" }, reviewTarget, { id: "field-synthetic-review", tenantId: tenant.id, targetId: reviewTarget.id, fieldKey: "nameKatakana", candidateValue: "YAMADA SHIKEN", confidence: 0.99, provenance: { sourceAttachmentId: reviewTarget.sourceAttachmentId, sourceFileHash: "synthetic-hash", sourceText: "Name: YAMADA SHIKEN", pageEvidenceVerified: true, uncertainty: "clear" }, status: "draft" }, reviewRecord);
 assert.deepEqual(invalidScriptReview, { ok: false, reason: "invalid_value" }, "queued review must reject a Latin value in the Katakana field at the server boundary");
-const missingEvidenceReview = validateObjectImportReview({ targetId: reviewTarget.id, fieldId: "field-synthetic-review", expectedVersion: reviewVersion, expectedCandidateValue: "山田 試験", decision: "confirm" }, reviewTarget, { id: "field-synthetic-review", tenantId: tenant.id, targetId: reviewTarget.id, fieldKey: "nameKanji", candidateValue: "山田 試験", confidence: 0.99, provenance: { sourceAttachmentId: reviewTarget.sourceAttachmentId, sourceFileHash: "synthetic-hash", uncertainty: "clear" }, status: "draft" }, reviewRecord);
+const missingEvidenceReview = validateObjectImportReview({ targetId: reviewTarget.id, fieldId: "field-synthetic-review", expectedVersion: reviewVersion, expectedCandidateValue: "山田 試験", decision: "confirm" }, reviewTarget, { id: "field-synthetic-review", tenantId: tenant.id, targetId: reviewTarget.id, fieldKey: "nameKanji", candidateValue: "山田 試験", confidence: 0.99, provenance: { sourceAttachmentId: reviewTarget.sourceAttachmentId, sourceFileHash: "synthetic-hash", pageEvidenceVerified: true, uncertainty: "clear" }, status: "draft" }, reviewRecord);
 assert.deepEqual(missingEvidenceReview, { ok: false, reason: "invalid_value" }, "queued review must reject a name without matching printed evidence");
+const missingPageEvidenceReview = validateObjectImportReview({ targetId: reviewTarget.id, fieldId: "field-synthetic-review", expectedVersion: reviewVersion, expectedCandidateValue: "090-1111-2222", decision: "confirm" }, reviewTarget, { id: "field-synthetic-review", tenantId: tenant.id, targetId: reviewTarget.id, fieldKey: "phone", candidateValue: "090-1111-2222", confidence: 0.99, provenance: { sourceAttachmentId: reviewTarget.sourceAttachmentId, sourceFileHash: "synthetic-hash", uncertainty: "clear" }, status: "draft" }, reviewRecord);
+assert.deepEqual(missingPageEvidenceReview, { ok: false, reason: "invalid_value" }, "queued review must fail closed for any candidate from an old record without page evidence");
 const content = Buffer.from("%PDF-SAMPLE-TEST");
 const version = buildObjectVersionFingerprint(client);
 const job = await data.addImportJob({ tenantId: tenant.id, userId: user.id, sourceType: "scan", targetEntity: "parties", title: "SAMPLE TEST passport", status: "queued", idempotencyKey: buildObjectImportIdempotencyKey({ tenantId: tenant.id, target: { targetObjectType: "party", targetObjectId: client.id, targetVersion: version }, sourceHash: "same_person:sample" }), notes: JSON.stringify({ objectImport: { targetObjectType: "party", targetObjectId: client.id, targetVersion: version } }) });
@@ -111,6 +113,12 @@ const fields = [
   { fieldKey: "applicant.email", value: "", normalizedValue: "", confidence: 0.0, sourceRange: "page 1", method: "ai" },
   { fieldKey: "applicant.nationality", value: "日本", normalizedValue: "日本", confidence: 0.99, sourceRange: "page 1", method: "ai" },
 ];
+// The fixture represents the server's page-lines consistency result. This is
+// deliberately explicit so final review tests do not rely on a candidate quote
+// alone; it is not an independent assertion about document authenticity.
+for (const field of fields) {
+  field.pageEvidenceVerified = Boolean(field.value.trim());
+}
 const scope = { tenantId: tenant.id, userId: user.id };
 const queuedGenderReview = await persistObjectExtraction({
   repository: { upsertCandidate: async (candidate) => candidate },
@@ -192,7 +200,7 @@ assert.deepEqual(corporateResolution, { ok: false, reason: "corporate_identity_u
 // into a regex-derived formal value.
 let modelResponse = {
   documentType: "identity_passport",
-  pages: [{ pageNumber: 1, lines: ["氏名 YAMADA SHIKEN", "発行官庁 ADDRESS SHOULD NOT BE USED"] }],
+  pages: [{ pageNumber: 1, lines: ["氏名 YAMADA SHIKEN", "Name YAMADA SHIKEN", "氏名 山田 試験", "発行官庁 ADDRESS SHOULD NOT BE USED"] }],
   candidates: [
     { fieldKey: "applicant.name", value: "YAMADA SHIKEN", pageNumber: 1, sourceText: "氏名 YAMADA SHIKEN", uncertainty: "clear", subjectKey: "person-1", subjectLabel: "申請人" },
     { fieldKey: "applicant.nameLatin", value: "YAMADA SHIKEN", pageNumber: 1, sourceText: "Name YAMADA SHIKEN", uncertainty: "clear", subjectKey: "person-1", subjectLabel: "申請人" },
@@ -246,6 +254,16 @@ Module._load = function(request, parent, ...rest) {
         candidates: [
           { fieldKey: "applicant.name", value: personName, pageNumber: 1, sourceText: `氏名 ${personName}`, uncertainty: "clear", subjectKey: "person", subjectLabel: "本人" },
           { fieldKey: "applicant.birthDate", value: birthDate, pageNumber: 1, sourceText: `生年月日 ${birthDate}`, uncertainty: "clear", subjectKey: "person", subjectLabel: "本人" },
+        ],
+      };
+    }
+    if (Buffer.from(buffer).toString().includes("DIRECT-QUEUED-B")) {
+      return {
+        documentType: "identity_passport",
+        pages: [{ pageNumber: 1, lines: ["氏名 QUEUED DIFFERENT PERSON", "生年月日 1980-01-01"] }],
+        candidates: [
+          { fieldKey: "applicant.name", value: "QUEUED DIFFERENT PERSON", pageNumber: 1, sourceText: "氏名 QUEUED DIFFERENT PERSON", uncertainty: "clear", subjectKey: "person", subjectLabel: "本人" },
+          { fieldKey: "applicant.birthDate", value: "1980-01-01", pageNumber: 1, sourceText: "生年月日 1980-01-01", uncertainty: "clear", subjectKey: "person", subjectLabel: "本人" },
         ],
       };
     }
@@ -384,7 +402,7 @@ assert.equal(expiredName?.uncertainty, "unclear", "expired identity documents mu
 assert.match(expiredName?.sourceRange ?? "", /identity_document_validity=expired/);
 modelResponse = {
   documentType: "identity_residence_card",
-  pages: [{ pageNumber: 1, lines: ["氏名 PERSON VALID", "有効期限 2099年12月31日"] }],
+  pages: [{ pageNumber: 1, lines: ["氏名 PERSON VALID", "生年月日 1990-04-12", "有効期限 2099年12月31日"] }],
   candidates: [
     { fieldKey: "applicant.name", value: "PERSON VALID", pageNumber: 1, sourceText: "氏名 PERSON VALID", uncertainty: "clear", subjectKey: "person-1", subjectLabel: "本人" },
     { fieldKey: "applicant.birthDate", value: "1990-04-12", pageNumber: 1, sourceText: "生年月日 1990-04-12", uncertainty: "clear", subjectKey: "person-1", subjectLabel: "本人" },
@@ -513,6 +531,41 @@ assert.equal(queuedBatchReopened?.name, "QUEUE PERSON A", "B's different name mu
 assert.equal(queuedBatchReopened?.nameLatin, undefined, "B's different identity must not fill a complementary name field");
 const queuedBTarget = await data.getObjectImportTargetByJob({ tenantId: tenant.id, userId: user.id, importJobId: queuedJobB });
 assert.equal(queuedBTarget?.status, "needs_review", "B's different identity must remain review-only");
+// A first queued file after a direct save must still compare its complete
+// identity pair to the existing client; sibling-count heuristics are not a
+// sufficient identity boundary.
+const directCreatedClient = await data.addClient({
+  tenantId: tenant.id,
+  ownerUserId: user.id,
+  name: "DIRECT PERSON A",
+  birthDate: new Date("1990-04-12T00:00:00Z"),
+  phone: "090-0000-0088",
+  budgetType: "total_price",
+  purpose: "buy",
+  loanPreApprovalStatus: "not_applied",
+  stage: "lead",
+  temperature: "cold",
+  brokerageContractType: "none",
+  amlCheckStatus: "not_required",
+});
+const directQueued = await queueIdentityImportSources({
+  tenantId: tenant.id,
+  userId: user.id,
+  files: [new File([Buffer.from("%PDF-DIRECT-QUEUED-B")], "direct-queued-b.pdf", { type: "application/pdf" })],
+  uploadMode: "same_person",
+  targetObjectType: "party",
+  targetObjectId: directCreatedClient.id,
+  targetVersion: buildObjectVersionFingerprint(directCreatedClient),
+});
+assert.equal(directQueued.ok, true);
+if (!directQueued.ok) throw new Error(directQueued.error);
+const directQueuedResult = await processIdentityImportJob({ tenantId: tenant.id, userId: user.id, jobId: directQueued.jobIds[0] });
+assert.equal(directQueuedResult.ok, true, "first queued file after direct creation must still be reviewable");
+const directQueuedReopened = await data.getClientById(directCreatedClient.id, tenant.id);
+assert.equal(directQueuedReopened?.name, "DIRECT PERSON A", "different first queued identity must not overwrite direct client name");
+assert.equal(directQueuedReopened?.birthDate?.toISOString().slice(0, 10), "1990-04-12", "different first queued identity must not overwrite direct client birth date");
+const directQueuedTarget = await data.getObjectImportTargetByJob({ tenantId: tenant.id, userId: user.id, importJobId: directQueued.jobIds[0] });
+assert.equal(directQueuedTarget?.status, "needs_review", "different first queued identity must remain review-only");
 // Exercise the browser uploader against a local protocol fake: metadata-only
 // POSTs, binary PUTs no larger than 1 MiB, and a final reference response.
 const { applyEntryStagedFilesToFormData, stageEntryUploadFiles } = require(resolve(root, "src/lib/entry-upload-staging-client.ts"));

@@ -93,7 +93,7 @@ export async function previewEntryDocumentsAction(formData: FormData): Promise<E
   for (const file of files) {
     try {
       const buffer = Buffer.from(await file.arrayBuffer());
-      let fields: Array<{ fieldKey: string; value: string; pageNumber?: number; sourceText?: string; uncertainty: "clear" | "unclear" | "conflict" | "not_found"; reviewOnly?: boolean }>;
+      let fields: Array<{ fieldKey: string; value: string; pageNumber?: number; sourceText?: string; pageEvidenceVerified?: boolean; uncertainty: "clear" | "unclear" | "conflict" | "not_found"; reviewOnly?: boolean }>;
       let validityReviewRequired = false;
       if (file.name.toLowerCase().endsWith(".xlsx")) {
         const extracted = extractInputFileFromWorkbook(await readExcelWorkbook(buffer), file.name);
@@ -114,9 +114,13 @@ export async function previewEntryDocumentsAction(formData: FormData): Promise<E
           ? []
           : selected.map((field) => {
             const pageEvidenceMissing = !hasPrintedIdentityPageEvidence(field.value, field.sourceText, result.pages, field.pageNumber);
-            return validityReviewRequired || pageEvidenceMissing
-              ? { ...field, reviewOnly: true, uncertainty: field.uncertainty === "conflict" ? "conflict" : "unclear" }
-              : field;
+            return {
+              ...field,
+              pageEvidenceVerified: !pageEvidenceMissing,
+              ...(validityReviewRequired || pageEvidenceMissing
+                ? { reviewOnly: true, uncertainty: field.uncertainty === "conflict" ? "conflict" as const : "unclear" as const }
+                : {}),
+            };
           });
       } else {
         const result = await readObjectDocumentWithOpenAi({ buffer, filename: file.name });
@@ -172,6 +176,7 @@ export async function previewEntryDocumentsAction(formData: FormData): Promise<E
           fileKey,
           pageNumber: field.pageNumber,
           sourceText: field.sourceText,
+          ...(kind === "customer" ? { pageEvidenceVerified: field.pageEvidenceVerified } : {}),
           uncertainty,
           ...(field.reviewOnly ? { reviewOnly: true } : {}),
         });

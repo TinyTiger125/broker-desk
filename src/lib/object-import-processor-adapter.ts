@@ -13,6 +13,7 @@ export type ExtractedObjectField = {
   sourceSheet?: string; sourceCell?: string; sourceRange?: string; method?: string;
   sourceFileHash?: string; templateVersion?: string;
   sourcePageNumber?: number; sourceText?: string; uncertainty?: InputFieldUncertainty;
+  pageEvidenceVerified?: boolean;
   subjectKey?: string; subjectLabel?: string; alternatives?: InputFieldEvidenceAlternative[];
 };
 
@@ -151,7 +152,7 @@ export async function persistObjectExtraction(input: { repository?: Pick<ObjectI
     const normalizedValue = identityKey ? normalizeCustomerIdentityValue(identityKey, rawValue) : (field.normalizedValue ?? field.value);
     const genderConflict = identityKey === "gender" && rawValue.trim().length > 0 && !isCustomerGenderValue(normalizedValue);
     const identityNameReview = input.customerTarget === true && identityKey !== null && isCustomerNameFieldKey(identityKey)
-      && (!isCustomerNameRepresentationValue(identityKey, normalizedValue) || !hasExactPrintedIdentityEvidence(normalizedValue, field.sourceText));
+      && (field.pageEvidenceVerified !== true || !isCustomerNameRepresentationValue(identityKey, normalizedValue) || !hasExactPrintedIdentityEvidence(normalizedValue, field.sourceText));
     const persistedField = identityKey
       ? { ...field, value: normalizedValue, normalizedValue, rawValue, ...((genderConflict || identityNameReview) ? { uncertainty: genderConflict ? "conflict" as const : "unclear" as const } : {}) }
       : field;
@@ -169,6 +170,7 @@ export async function persistObjectExtraction(input: { repository?: Pick<ObjectI
       templateVersion: persistedField.templateVersion,
       ...(persistedField.sourcePageNumber !== undefined ? { pageNumber: persistedField.sourcePageNumber } : {}),
       ...(persistedField.sourceText ? { sourceText: persistedField.sourceText } : {}),
+      ...(persistedField.pageEvidenceVerified !== undefined ? { pageEvidenceVerified: persistedField.pageEvidenceVerified } : {}),
       ...(persistedField.rawValue && (persistedField.rawValue !== normalizedValue || genderConflict) ? { rawCandidateValue: persistedField.rawValue } : {}),
       ...(persistedField.uncertainty ? { uncertainty: persistedField.uncertainty } : {}),
       ...(persistedField.subjectKey ? { subjectKey: persistedField.subjectKey } : {}),

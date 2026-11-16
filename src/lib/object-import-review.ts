@@ -93,10 +93,15 @@ export function validateObjectImportReview(input: Omit<ObjectImportReviewInput, 
   if (input.decision === "confirm") {
     if (!value) return { ok: false, reason: "invalid_value" };
     if (isStandaloneCustomerTarget(target)) {
+      // The worker persists this server-computed consistency result with every
+      // candidate. Old records without it fail closed rather than treating a
+      // quoted value as proof; the upload can be reread to create a new record.
+      if (field.provenance.pageEvidenceVerified !== true) return { ok: false, reason: "invalid_value" };
       if (key === "birthDate" && !isValidCustomerBirthDate(value)) return { ok: false, reason: "invalid_value" };
       if (key === "gender" && !new Set(["male", "female", "other"]).has(value)) return { ok: false, reason: "invalid_value" };
       if (isCustomerNameFieldKey(key)
-        && (!isCustomerNameRepresentationValue(key, value)
+        && (field.provenance.pageEvidenceVerified !== true
+          || !isCustomerNameRepresentationValue(key, value)
           || !hasExactPrintedIdentityEvidence(value, typeof field.provenance.sourceText === "string" ? field.provenance.sourceText : undefined))) {
         return { ok: false, reason: "invalid_value" };
       }

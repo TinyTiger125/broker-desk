@@ -48,6 +48,8 @@ export type ExtractedInputField = {
   /** Model evidence is carried separately from the legacy sheet/range fields. */
   sourcePageNumber?: number;
   sourceText?: string;
+  /** Server-computed consistency result: sourceText occurred in page lines. */
+  pageEvidenceVerified?: boolean;
   uncertainty?: InputFieldUncertainty;
   subjectKey?: string;
   subjectLabel?: string;

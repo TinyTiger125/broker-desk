@@ -164,10 +164,12 @@ const CUSTOMER_IDENTITY_NAME_FIELDS = new Set(["applicant.name", "applicant.name
 
 function standaloneCustomerNeedsIdentityReview(fields: readonly ExtractedInputField[]): boolean {
   const hasName = fields.some((field) => CUSTOMER_IDENTITY_NAME_FIELDS.has(field.fieldKey)
+    && field.pageEvidenceVerified === true
     && field.uncertainty !== "not_found"
     && field.uncertainty !== "conflict"
     && Boolean((field.normalizedValue || field.value).trim()));
   const hasBirthDate = fields.some((field) => field.fieldKey === "applicant.birthDate"
+    && field.pageEvidenceVerified === true
     && field.uncertainty !== "not_found"
     && field.uncertainty !== "conflict"
     && Boolean((field.normalizedValue || field.value).trim()));
@@ -197,6 +199,7 @@ function addField(fields: FieldDraft[], input: {
   sourceRange?: string;
   sourcePageNumber?: number;
   sourceText?: string;
+  pageEvidenceVerified?: boolean;
   uncertainty?: InputFieldUncertainty;
   subjectKey?: string;
   subjectLabel?: string;
@@ -213,6 +216,7 @@ function addField(fields: FieldDraft[], input: {
     method: input.method,
     ...(input.sourcePageNumber !== undefined ? { sourcePageNumber: input.sourcePageNumber } : {}),
     ...(input.sourceText ? { sourceText: input.sourceText } : {}),
+    ...(input.pageEvidenceVerified !== undefined ? { pageEvidenceVerified: input.pageEvidenceVerified } : {}),
     ...(input.uncertainty ? { uncertainty: input.uncertainty } : {}),
     ...(input.subjectKey ? { subjectKey: input.subjectKey } : {}),
     ...(input.subjectLabel ? { subjectLabel: input.subjectLabel } : {}),
@@ -600,6 +604,7 @@ function addModelCandidates(fields: FieldDraft[], candidates: OpenAiIdentityRead
       if (decision.effectiveUncertainty !== "clear") existing.confidence = Math.min(existing.confidence, decision.reviewScore);
       existing.sourcePageNumber = candidate.pageNumber;
       existing.sourceText = candidate.sourceText;
+      existing.pageEvidenceVerified = pageEvidencePresent;
       existing.uncertainty = decision.effectiveUncertainty;
       existing.subjectKey = candidate.subjectKey;
       existing.subjectLabel = candidate.subjectLabel;
@@ -611,6 +616,7 @@ function addModelCandidates(fields: FieldDraft[], candidates: OpenAiIdentityRead
       if (placeholder) {
         placeholder.sourcePageNumber = candidate.pageNumber;
         placeholder.sourceText = candidate.sourceText || undefined;
+        placeholder.pageEvidenceVerified = pageEvidencePresent;
         placeholder.uncertainty = candidateUncertainty;
         placeholder.subjectKey = candidate.subjectKey;
         placeholder.subjectLabel = candidate.subjectLabel;
@@ -638,6 +644,7 @@ function addModelCandidates(fields: FieldDraft[], candidates: OpenAiIdentityRead
       sourceRange: evidence,
       sourcePageNumber: candidate.pageNumber,
       sourceText: candidate.sourceText,
+      pageEvidenceVerified: pageEvidencePresent,
       uncertainty: decision.effectiveUncertainty,
       subjectKey: candidate.subjectKey,
       subjectLabel: candidate.subjectLabel,
@@ -817,7 +824,7 @@ function identityBatchNeedsReview(results: InputFileExtractionResult[]): boolean
     const names = new Set<string>();
     const birthDates = new Set<string>();
     for (const field of result.fields) {
-      if (field.uncertainty === "conflict") continue;
+      if (field.uncertainty !== "clear" || field.pageEvidenceVerified !== true) continue;
       const value = normalizeComparable(comparableFieldValue(field) || field.normalizedValue || field.value);
       if (!value) continue;
       if (IDENTITY_MERGE_NAME_ANCHOR_FIELDS.has(field.fieldKey)) names.add(value);

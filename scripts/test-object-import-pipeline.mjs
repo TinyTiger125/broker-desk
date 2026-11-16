@@ -213,11 +213,15 @@ assert(unsupportedIdentityTarget && !unsupportedIdentityTarget.caseId);
 assert.deepEqual(await processIdentityImportJob({ ...scope, jobId: unsupportedIdentityTarget.importJobId }), { ok: false, status: "failed", error: "identity_no_supported_fields" });
 assert.equal((await data.getObjectImportTarget({ ...scope, id: unsupportedIdentityTarget.id })).errorCode, "identity_no_supported_fields");
 assert.equal((await data.getClientById(unsupportedIdentityPerson.id, tenant.id)).name, "Unsupported identity fixture");
-const pendingPhonePerson = await data.addClient({ tenantId: tenant.id, ownerUserId: user.id, name: "Pending phone", phone: "", budgetType: "total_price", purpose: "unspecified", loanPreApprovalStatus: "not_applied", stage: "lead", temperature: "unspecified", brokerageContractType: "none", amlCheckStatus: "not_required" });
+const pendingPhonePerson = await data.addClient({ tenantId: tenant.id, ownerUserId: user.id, name: "Pending phone", birthDate: new Date("1990-04-12T00:00:00Z"), phone: "", budgetType: "total_price", purpose: "unspecified", loanPreApprovalStatus: "not_applied", stage: "lead", temperature: "unspecified", brokerageContractType: "none", amlCheckStatus: "not_required" });
 const pendingPhoneForm = new FormData();
 pendingPhoneForm.set("targetType", "party"); pendingPhoneForm.set("targetId", pendingPhonePerson.id);
 pendingPhoneForm.set("uploadFile", new File(["%PDF-pending-phone"], "pending-phone.pdf", { type: "application/pdf" }));
-extractionFields = [{ ...field("applicant.name", "Wrong replacement"), uncertainty: "clear" }, { ...field("applicant.phone", "090-3333-4444"), uncertainty: "clear" }];
+extractionFields = [
+  { ...field("applicant.name", "Pending phone"), sourceText: "氏名 Pending phone", pageEvidenceVerified: true, uncertainty: "clear" },
+  { ...field("applicant.birthDate", "1990-04-12"), sourceText: "生年月日 1990-04-12", pageEvidenceVerified: true, uncertainty: "clear" },
+  { ...field("applicant.phone", "090-3333-4444"), pageEvidenceVerified: true, uncertainty: "clear" },
+];
 await assert.rejects(uploadObjectImportAction(pendingPhoneForm), /REDIRECT:/);
 const [pendingPhoneTarget] = await data.listObjectImportTargets({ ...scope, targetType: "party", targetId: pendingPhonePerson.id });
 assert(pendingPhoneTarget);

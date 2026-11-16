@@ -14,6 +14,8 @@ export type EntryPreviewCandidate = {
   pageNumber?: number;
   sourceText?: string;
   uncertainty?: string;
+  /** Server-computed internal consistency check for sourceText/page lines. */
+  pageEvidenceVerified?: boolean;
   /** Candidate is evidence-only until a person reviews the batch identity. */
   reviewOnly?: boolean;
 };
@@ -50,7 +52,8 @@ function isNonActualCurrentAddress(candidate: Pick<EntryPreviewCandidate, "key" 
 const CROSS_FILE_IDENTITY_ANCHOR_KEYS = new Set(["name", "nameLatin", "nameKanji", "nameKatakana", "birthDate"]);
 
 function crossFileIdentityAnchor(candidate: EntryPreviewCandidate): { family: "name" | "birthDate"; value: string } | undefined {
-  if (!candidate.fileKey || !CROSS_FILE_IDENTITY_ANCHOR_KEYS.has(candidate.key) || !candidate.value.trim()) return undefined;
+  if (!candidate.fileKey || !CROSS_FILE_IDENTITY_ANCHOR_KEYS.has(candidate.key) || !candidate.value.trim()
+    || candidate.uncertainty !== "clear" || candidate.pageEvidenceVerified !== true) return undefined;
   const family = isCustomerNameFieldKey(candidate.key) ? "name" : candidate.key === "birthDate" ? "birthDate" : undefined;
   if (!family) return undefined;
   return { family, value: candidate.value.normalize("NFKC").trim().replace(/\s+/g, "").toUpperCase() };
@@ -77,9 +80,10 @@ export function requiresCrossFileIdentityReview(candidates: readonly EntryPrevie
   return !sharedName || !sharedBirthDate;
 }
 
-function isUnsafeCustomerNameCandidate(candidate: Pick<EntryPreviewCandidate, "key" | "value" | "sourceText">): boolean {
+function isUnsafeCustomerNameCandidate(candidate: Pick<EntryPreviewCandidate, "key" | "value" | "sourceText" | "pageEvidenceVerified">): boolean {
   if (!isCustomerNameFieldKey(candidate.key)) return false;
-  return !isCustomerNameRepresentationValue(candidate.key, candidate.value)
+  return candidate.pageEvidenceVerified !== true
+    || !isCustomerNameRepresentationValue(candidate.key, candidate.value)
     || !hasExactPrintedIdentityEvidence(candidate.value, candidate.sourceText);
 }
 

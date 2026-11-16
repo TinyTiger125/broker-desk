@@ -11,7 +11,6 @@ import {
   updateImportJobMapping,
   getObjectImportTargetByJob,
   getClientById,
-  listObjectImportTargets,
   listObjectImportCandidates,
   autoSaveObjectImportCandidates,
 } from "@/lib/data";
@@ -56,7 +55,8 @@ function clearIdentityAnchors(candidates: ObjectImportCandidateRecord[]) {
   const names = new Set<string>();
   const birthDates = new Set<string>();
   for (const candidate of candidates) {
-    if (candidate.status !== "draft" || candidate.provenance.uncertainty !== "clear" || !candidate.candidateValue?.trim()) continue;
+    if (candidate.status !== "draft" || candidate.provenance.uncertainty !== "clear"
+      || candidate.provenance.pageEvidenceVerified !== true || !candidate.candidateValue?.trim()) continue;
     if (CUSTOMER_NAME_FIELD_KEYS.has(candidate.fieldKey)) names.add(identityAnchorText(candidate.candidateValue));
     if (candidate.fieldKey === "birthDate") birthDates.add(identityAnchorText(candidate.candidateValue));
   }
@@ -64,11 +64,10 @@ function clearIdentityAnchors(candidates: ObjectImportCandidateRecord[]) {
 }
 
 /**
- * A standalone customer may have one queued target per uploaded file. Once
- * another target exists, a fresh file is allowed to auto-save only when the
- * current persisted record already has a complete identity and the new
- * candidate agrees with both anchors. This prevents a later different person
- * from filling the fields that an earlier file left blank.
+ * A standalone customer may have one queued target per uploaded file. Every
+ * queued target must carry a clear, page-consistent name and birth-date pair
+ * that matches the complete persisted customer identity. An incomplete target
+ * is never enough to prove same-person ownership, regardless of sibling count.
  */
 async function standaloneCustomerAutoSaveAllowed(input: {
   tenantId: string;
@@ -76,20 +75,17 @@ async function standaloneCustomerAutoSaveAllowed(input: {
   target: ObjectImportTargetRecord;
 }): Promise<boolean> {
   if (!isStandaloneCustomerTarget(input.target)) return true;
-  const siblingTargets = (await listObjectImportTargets({ tenantId: input.tenantId, userId: input.userId, targetType: "party", targetId: input.target.targetId }))
-    .filter((target) => target.id !== input.target.id && !target.caseId && ["processing", "needs_review", "completed"].includes(target.status));
-  if (siblingTargets.length === 0) return true;
   const client = await getClientById(input.target.targetId, input.tenantId);
   if (!client) return false;
-  const clientNames = new Set([client.name, client.nameLatin, client.nameKanji, client.nameKatakana].map(identityAnchorText).filter(Boolean));
-  const clientBirthDate = clientBirthDateText(client);
-  if (clientNames.size === 0 || !clientBirthDate) return false;
   const candidates = await listObjectImportCandidates({ tenantId: input.tenantId, userId: input.userId, targetId: input.target.id });
   const anchors = clearIdentityAnchors(candidates);
-  return anchors.names.size > 0
-    && anchors.birthDates.size > 0
-    && [...anchors.names].some((name) => clientNames.has(name))
-    && anchors.birthDates.has(clientBirthDate);
+  if (anchors.names.size === 0 || anchors.birthDates.size === 0) return false;
+  const clientNames = new Set([client.name, client.nameLatin, client.nameKanji, client.nameKatakana].map(identityAnchorText).filter(Boolean));
+  const clientBirthDate = clientBirthDateText(client);
+  if (clientNames.size > 0 && clientBirthDate) {
+    return [...anchors.names].some((name) => clientNames.has(name)) && anchors.birthDates.has(clientBirthDate);
+  }
+  return false;
 }
 
 export type IdentityImportProcessResult =
