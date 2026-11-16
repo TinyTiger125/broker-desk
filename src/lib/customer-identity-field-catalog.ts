@@ -54,6 +54,20 @@ export function hasExactPrintedIdentityEvidence(value: string, sourceText: strin
   return normalize(sourceText).includes(normalize(value));
 }
 
+/** Require the reader's quote to occur in the separate page-lines field. */
+export function hasPrintedIdentityPageEvidence(
+  value: string,
+  sourceText: string | undefined,
+  pages: readonly { pageNumber: number; lines: readonly string[] }[] | undefined,
+  pageNumber: number | undefined,
+): boolean {
+  if (!pageNumber || !hasExactPrintedIdentityEvidence(value, sourceText)) return false;
+  const page = pages?.find((item) => item.pageNumber === pageNumber);
+  if (!page || page.lines.length === 0 || !sourceText?.trim()) return false;
+  const normalize = (input: string) => input.normalize("NFKC").replace(/\s+/g, "").toUpperCase();
+  return normalize(page.lines.join(" ")).includes(normalize(sourceText));
+}
+
 const CUSTOMER_GENDER_TOKENS: Record<CustomerGender, Set<string>> = {
   male: new Set(["男性", "男", "male", "m", "man", "masculine"]),
   female: new Set(["女性", "女", "female", "f", "woman", "feminine"]),

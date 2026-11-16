@@ -44,46 +44,50 @@ Module._load = function(request, parent, ...rest) {
     if (filename === "fail.pdf") throw new Error("synthetic_provider_failure");
     if (filename === "large-upload-fail.pdf") throw new RemoteDocumentReaderError("file_upload_failed", { status: 413 });
     const shared = { value: "Synthetic Person", pageNumber: 1, sourceText: "Name: Synthetic Person", uncertainty: "clear", subjectKey: "holder", subjectLabel: "document holder" };
-    if (filename === "unknown.pdf") return { documentType: "unknown_identity_scan", candidates: [{ ...shared, fieldKey: "applicant.name" }] };
-    if (filename === "address-only.pdf") return { documentType: "identity_residence_card", candidates: [{ ...shared, fieldKey: "applicant.currentAddress", value: "Synthetic address", sourceText: "住所: Synthetic address" }] };
+    const page = (lines) => [{ pageNumber: 1, lines }];
+    if (filename === "unknown.pdf") return { documentType: "unknown_identity_scan", pages: page(["Name: Synthetic Person"]), candidates: [{ ...shared, fieldKey: "applicant.name" }] };
+    if (filename === "address-only.pdf") return { documentType: "identity_residence_card", pages: page(["住所: Synthetic address"]), candidates: [{ ...shared, fieldKey: "applicant.currentAddress", value: "Synthetic address", sourceText: "住所: Synthetic address" }] };
     if (filename === "direct-names.pdf") return { documentType: "identity_passport", candidates: [
       { ...shared, fieldKey: "applicant.nameLatin", value: "YAMADA SHIKEN", sourceText: "Name: YAMADA SHIKEN" },
       { ...shared, fieldKey: "applicant.nameKanji", value: "山田 試験", sourceText: "氏名: 山田 試験" },
-    ] };
+    ], pages: page(["Name: YAMADA SHIKEN", "氏名: 山田 試験"]) };
     if (filename === "expired.pdf") return { documentType: "identity_passport", pages: [{ pageNumber: 1, lines: ["氏名: EXPIRED PERSON", "DATE OF EXPIRY 2020-01-01"] }], candidates: [
       { ...shared, fieldKey: "applicant.name", value: "EXPIRED PERSON", sourceText: "氏名: EXPIRED PERSON" },
     ] };
-    if (filename === "direct-names-a.pdf" || filename === "direct-names-b.pdf") return { documentType: "identity_passport", candidates: [
+    if (filename === "direct-names-a.pdf" || filename === "direct-names-b.pdf") return { documentType: "identity_passport", pages: page([`Name: ${filename === "direct-names-a.pdf" ? "YAMADA SHIKEN" : "OTHER PERSON"}`]), candidates: [
       { ...shared, fieldKey: "applicant.nameLatin", value: filename === "direct-names-a.pdf" ? "YAMADA SHIKEN" : "OTHER PERSON", sourceText: `Name: ${filename === "direct-names-a.pdf" ? "YAMADA SHIKEN" : "OTHER PERSON"}` },
     ] };
-    if (filename === "direct-names-safe.pdf") return { documentType: "identity_passport", candidates: [
+    if (filename === "direct-names-safe.pdf") return { documentType: "identity_passport", pages: page(["氏名: 山田 試験"]), candidates: [
       { ...shared, fieldKey: "applicant.nameKanji", value: "山田 試験", sourceText: "氏名: 山田 試験" },
     ] };
-    if (filename === "partial-person-a.pdf") return { documentType: "identity_passport", candidates: [
+    if (filename === "partial-person-a.pdf") return { documentType: "identity_passport", pages: page(["Name: PERSON A"]), candidates: [
       { ...shared, fieldKey: "applicant.name", value: "PERSON A", sourceText: "Name: PERSON A" },
     ] };
-    if (filename === "partial-person-b.pdf") return { documentType: "identity_passport", candidates: [
+    if (filename === "partial-person-b.pdf") return { documentType: "identity_passport", pages: page(["Birth: 1990-04-12"]), candidates: [
       { ...shared, fieldKey: "applicant.birthDate", value: "1990-04-12", sourceText: "Birth: 1990-04-12" },
     ] };
-    if (filename === "same-dob-a.pdf" || filename === "same-dob-b.pdf") return { documentType: "identity_passport", candidates: [
+    if (filename === "same-dob-a.pdf" || filename === "same-dob-b.pdf") return { documentType: "identity_passport", pages: page([`Name: ${filename === "same-dob-a.pdf" ? "PERSON A" : "PERSON B"}`, "Birth: 1990-04-12"]), candidates: [
       { ...shared, fieldKey: "applicant.nameLatin", value: filename === "same-dob-a.pdf" ? "PERSON A" : "PERSON B", sourceText: `Name: ${filename === "same-dob-a.pdf" ? "PERSON A" : "PERSON B"}` },
       { ...shared, fieldKey: "applicant.birthDate", value: "1990-04-12", sourceText: "Birth: 1990-04-12" },
     ] };
-    if (filename === "same-name-a.pdf" || filename === "same-name-b.pdf") return { documentType: "identity_passport", candidates: [
+    if (filename === "same-name-a.pdf" || filename === "same-name-b.pdf") return { documentType: "identity_passport", pages: page(["Name: SAME PERSON", `Birth: ${filename === "same-name-a.pdf" ? "1990-04-12" : "1980-01-01"}`]), candidates: [
       { ...shared, fieldKey: "applicant.nameLatin", value: "SAME PERSON", sourceText: "Name: SAME PERSON" },
       { ...shared, fieldKey: "applicant.birthDate", value: filename === "same-name-a.pdf" ? "1990-04-12" : "1980-01-01", sourceText: `Birth: ${filename === "same-name-a.pdf" ? "1990-04-12" : "1980-01-01"}` },
     ] };
-    if (filename === "same-identity-a.pdf" || filename === "same-identity-b.pdf") return { documentType: "identity_passport", candidates: [
+    if (filename === "same-identity-a.pdf" || filename === "same-identity-b.pdf") return { documentType: "identity_passport", pages: page(["Name: SAME PERSON", "Birth: 1990-04-12"]), candidates: [
       { ...shared, fieldKey: "applicant.nameLatin", value: "SAME PERSON", sourceText: "Name: SAME PERSON" },
       { ...shared, fieldKey: "applicant.birthDate", value: "1990-04-12", sourceText: "Birth: 1990-04-12" },
     ] };
-    if (filename === "wrong-script.pdf") return { documentType: "identity_passport", candidates: [
+    if (filename === "wrong-script.pdf") return { documentType: "identity_passport", pages: page(["Name: YAMADA SHIKEN"]), candidates: [
       { ...shared, fieldKey: "applicant.nameKatakana", value: "YAMADA SHIKEN", sourceText: "Name: YAMADA SHIKEN" },
     ] };
-    if (filename === "missing-name-evidence.pdf") return { documentType: "identity_passport", candidates: [
+    if (filename === "missing-name-evidence.pdf") return { documentType: "identity_passport", pages: page(["氏名: 別の文字列"]), candidates: [
       { ...shared, fieldKey: "applicant.nameKanji", value: "山田 試験", sourceText: "氏名: 別の文字列" },
     ] };
-    return { documentType: "identity_passport", candidates: [{ ...shared, fieldKey: "applicant.name" }, { ...shared, fieldKey: "applicant.residenceCardNumber", value: "DO_NOT_MAP" }] };
+    if (filename === "empty-page-evidence.pdf") return { documentType: "identity_passport", pages: page([]), candidates: [
+      { ...shared, fieldKey: "applicant.name", value: "EMPTY PAGE PERSON", sourceText: "氏名: EMPTY PAGE PERSON" },
+    ] };
+    return { documentType: "identity_passport", pages: page(["Name: Synthetic Person"]), candidates: [{ ...shared, fieldKey: "applicant.name" }, { ...shared, fieldKey: "applicant.residenceCardNumber", value: "DO_NOT_MAP" }] };
   } };
   if (request === "@/lib/openai-object-reader") return { readObjectDocumentWithOpenAi: async () => {
     readerCalls += 1;
@@ -166,6 +170,9 @@ assert.equal(fillSelectedEntryCandidateForm(new FormData(), wrongScript, wrongSc
 const missingNameEvidence = await previewEntryDocumentsAction(request("customer", ["missing-name-evidence.pdf"]));
 assert.equal(missingNameEvidence.candidates[0].uncertainty, "unclear", "a name without matching printed evidence must remain review-only");
 assert.deepEqual(safeEntryPreviewCandidates(missingNameEvidence.candidates), []);
+const emptyPageEvidence = await previewEntryDocumentsAction(request("customer", ["empty-page-evidence.pdf"]));
+assert.equal(emptyPageEvidence.candidates[0].uncertainty, "unclear", "a name whose referenced page has no lines must remain review-only");
+assert.deepEqual(safeEntryPreviewCandidates(emptyPageEvidence.candidates), []);
 const expiredResult = await previewEntryDocumentsAction(request("customer", ["expired.pdf"]));
 assert.equal(expiredResult.candidates[0].reviewOnly, true, "expired direct-entry evidence must remain review-only");
 assert.equal(safeEntryPreviewCandidates(expiredResult.candidates).length, 0);

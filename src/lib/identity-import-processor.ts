@@ -10,6 +10,9 @@ import {
   updateImportJobExecution,
   updateImportJobMapping,
   getObjectImportTargetByJob,
+  getClientById,
+  listObjectImportTargets,
+  listObjectImportCandidates,
   autoSaveObjectImportCandidates,
 } from "@/lib/data";
 import { isLocalPrivateStoragePath, isPostgresPrivateStoragePath } from "@/lib/attachment-storage";
@@ -20,6 +23,8 @@ import { RemoteDocumentReaderError } from "@/lib/identity-reader-contract";
 import { readObjectDocumentWithOpenAi } from "@/lib/openai-object-reader";
 import type { ObjectReaderResponse } from "@/lib/object-reader-contract";
 import { isStandaloneCustomerTarget } from "@/lib/customer-identity-field-catalog";
+import type { Client } from "@/lib/data.memory";
+import type { ObjectImportCandidateRecord, ObjectImportTargetRecord } from "@/lib/object-import-repository";
 
 type IdentityImportPayload = {
   kind: "input_file_extraction";
@@ -36,6 +41,57 @@ type IdentityImportPayload = {
   objectReaderHistory?: Array<{ recordedAt: string; response: ObjectReaderResponse }>;
 };
 
+const CUSTOMER_NAME_FIELD_KEYS = new Set(["name", "nameLatin", "nameKanji", "nameKatakana"]);
+
+function identityAnchorText(value: unknown): string {
+  return typeof value === "string" ? value.normalize("NFKC").replace(/\s+/g, "").trim().toUpperCase() : "";
+}
+
+function clientBirthDateText(client: Client): string {
+  if (!client.birthDate) return "";
+  return client.birthDate instanceof Date ? client.birthDate.toISOString().slice(0, 10) : String(client.birthDate).slice(0, 10);
+}
+
+function clearIdentityAnchors(candidates: ObjectImportCandidateRecord[]) {
+  const names = new Set<string>();
+  const birthDates = new Set<string>();
+  for (const candidate of candidates) {
+    if (candidate.status !== "draft" || candidate.provenance.uncertainty !== "clear" || !candidate.candidateValue?.trim()) continue;
+    if (CUSTOMER_NAME_FIELD_KEYS.has(candidate.fieldKey)) names.add(identityAnchorText(candidate.candidateValue));
+    if (candidate.fieldKey === "birthDate") birthDates.add(identityAnchorText(candidate.candidateValue));
+  }
+  return { names, birthDates };
+}
+
+/**
+ * A standalone customer may have one queued target per uploaded file. Once
+ * another target exists, a fresh file is allowed to auto-save only when the
+ * current persisted record already has a complete identity and the new
+ * candidate agrees with both anchors. This prevents a later different person
+ * from filling the fields that an earlier file left blank.
+ */
+async function standaloneCustomerAutoSaveAllowed(input: {
+  tenantId: string;
+  userId: string;
+  target: ObjectImportTargetRecord;
+}): Promise<boolean> {
+  if (!isStandaloneCustomerTarget(input.target)) return true;
+  const siblingTargets = (await listObjectImportTargets({ tenantId: input.tenantId, userId: input.userId, targetType: "party", targetId: input.target.targetId }))
+    .filter((target) => target.id !== input.target.id && !target.caseId && ["processing", "needs_review", "completed"].includes(target.status));
+  if (siblingTargets.length === 0) return true;
+  const client = await getClientById(input.target.targetId, input.tenantId);
+  if (!client) return false;
+  const clientNames = new Set([client.name, client.nameLatin, client.nameKanji, client.nameKatakana].map(identityAnchorText).filter(Boolean));
+  const clientBirthDate = clientBirthDateText(client);
+  if (clientNames.size === 0 || !clientBirthDate) return false;
+  const candidates = await listObjectImportCandidates({ tenantId: input.tenantId, userId: input.userId, targetId: input.target.id });
+  const anchors = clearIdentityAnchors(candidates);
+  return anchors.names.size > 0
+    && anchors.birthDates.size > 0
+    && [...anchors.names].some((name) => clientNames.has(name))
+    && anchors.birthDates.has(clientBirthDate);
+}
+
 export type IdentityImportProcessResult =
   | { ok: true; status: "mapped" | "processing"; fieldCount: number; documentType: string; documentTypeLabel: string; fingerprintConfidence: number }
   | { ok: false; status: "failed"; error: "import_job_not_found" | "source_attachment_missing" | "identity_extraction_failed" | "identity_no_supported_fields" | "object_import_no_supported_fields" | "object_reader_no_readable_fields" | "object_reader_ambiguous_subject" | "object_import_retry_exhausted" };
@@ -51,7 +107,20 @@ export async function processIdentityImportJob(input: {
   const job = jobs.find((item) => item.id === input.jobId && item.sourceType === "scan");
   if (!job) return { ok: false, status: "failed", error: "import_job_not_found" };
 
-  const objectTarget = await ensureObjectImportTask(job, input);
+  let objectTarget;
+  try {
+    objectTarget = await ensureObjectImportTask(job, input);
+  } catch (error) {
+    // The target bootstrap re-reads the immutable source attachment before the
+    // main provider try/catch. Classify a missing/unreadable source here too;
+    // otherwise a transient pre-read failure escapes as an unhandled worker
+    // error and cannot be retried through the normal queued path.
+    if (error instanceof Error && error.message === "object_import_source_attachment_unreadable") {
+      await markFailed(input, "source_attachment_missing", "找不到已保存的本人资料原始文件，请重新上传。", { preserveObjectTarget: true });
+      return { ok: false, status: "failed", error: "source_attachment_missing" };
+    }
+    throw error;
+  }
   if (objectTarget?.status === "conflict") {
     const error = objectTarget.errorCode === "object_reader_ambiguous_subject" ? "object_reader_ambiguous_subject" : "identity_extraction_failed";
     if (job.status !== "failed") {
@@ -209,7 +278,9 @@ export async function processIdentityImportJob(input: {
       }
       const persistedTarget = await getObjectImportTargetByJob({ tenantId: input.tenantId, userId: input.userId, importJobId: job.id });
       if (persistedTarget?.status === "needs_review") {
-        await autoSaveObjectImportCandidates({ tenantId: input.tenantId, userId: input.userId, targetId: persistedTarget.id });
+        if (await standaloneCustomerAutoSaveAllowed({ tenantId: input.tenantId, userId: input.userId, target: persistedTarget })) {
+          await autoSaveObjectImportCandidates({ tenantId: input.tenantId, userId: input.userId, targetId: persistedTarget.id });
+        }
       }
     }
     const mappedJob = await updateImportJobMapping({

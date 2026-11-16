@@ -19,7 +19,7 @@ import { readIdentityDocumentWithOpenAi } from "@/lib/openai-identity-reader";
 import type { OpenAiIdentityReaderCandidate } from "@/lib/identity-reader-contract";
 import { resolveIdentityReaderCandidate } from "@/lib/identity-reader-evidence";
 import { selectPrimaryIdentityReaderCandidates, type IdentityReaderAttributionScope } from "@/lib/identity-reader-attribution";
-import { normalizeCustomerIdentityValue } from "@/lib/customer-identity-field-catalog";
+import { hasPrintedIdentityPageEvidence, normalizeCustomerIdentityValue } from "@/lib/customer-identity-field-catalog";
 import { assessIdentityDocumentValidity, markIdentityFieldsForValidityReview } from "@/lib/identity-document-validity";
 
 const execFileAsync = promisify(execFile);
@@ -570,12 +570,19 @@ function addModelCandidates(fields: FieldDraft[], candidates: OpenAiIdentityRead
   for (const candidate of attribution.candidates) {
     const label = MODEL_FIELD_LABELS[candidate.fieldKey];
     if (!label) continue;
+    // The candidate quote is not sufficient by itself. It must be present in
+    // the separate page-lines field for the same page; otherwise retain the
+    // value only as an unclear review candidate. This is an internal
+    // consistency check on one model response, not proof of document truth.
+    const pageEvidencePresent = candidate.uncertainty === "not_found"
+      || hasPrintedIdentityPageEvidence(candidate.value, candidate.sourceText, pages, candidate.pageNumber);
+    const candidateUncertainty = pageEvidencePresent ? candidate.uncertainty : "unclear" as const;
     // A residence card may explicitly say 未定 before a later back-side
     // address update. Preserve that evidence for review, but never let it
     // qualify as a clear value for automatic customer/case saving.
-    const effectiveUncertainty = isAddressPlaceholder(candidate.fieldKey, candidate.value) && candidate.uncertainty === "clear"
+    const effectiveUncertainty = isAddressPlaceholder(candidate.fieldKey, candidate.value) && candidateUncertainty === "clear"
       ? "unclear"
-      : candidate.uncertainty;
+      : candidateUncertainty;
     const existing = fields.find((field) => field.fieldKey === candidate.fieldKey && field.value);
     const decision = resolveIdentityReaderCandidate({ existingValue: existing?.value, candidateValue: candidate.value, uncertainty: effectiveUncertainty });
     const evidence = `page ${candidate.pageNumber}; evidence=${candidate.sourceText}; uncertainty=${decision.effectiveUncertainty}`;
@@ -599,12 +606,12 @@ function addModelCandidates(fields: FieldDraft[], candidates: OpenAiIdentityRead
       existing.alternatives = alternatives;
       continue;
     }
-    if (!candidate.value || candidate.uncertainty === "not_found") {
+    if (!candidate.value || candidateUncertainty === "not_found") {
       const placeholder = fields.find((field) => field.fieldKey === candidate.fieldKey);
       if (placeholder) {
         placeholder.sourcePageNumber = candidate.pageNumber;
         placeholder.sourceText = candidate.sourceText || undefined;
-        placeholder.uncertainty = candidate.uncertainty;
+        placeholder.uncertainty = candidateUncertainty;
         placeholder.subjectKey = candidate.subjectKey;
         placeholder.subjectLabel = candidate.subjectLabel;
         placeholder.alternatives = mergeFieldAlternatives(placeholder, {
@@ -612,7 +619,7 @@ function addModelCandidates(fields: FieldDraft[], candidates: OpenAiIdentityRead
           normalizedValue: candidate.value,
           sourcePageNumber: candidate.pageNumber,
           sourceText: candidate.sourceText,
-          uncertainty: candidate.uncertainty,
+          uncertainty: candidateUncertainty,
           subjectKey: candidate.subjectKey,
           subjectLabel: candidate.subjectLabel,
         });

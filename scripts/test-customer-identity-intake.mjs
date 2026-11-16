@@ -237,11 +237,25 @@ Module._load = function(request, parent, ...rest) {
         { fieldKey: "applicant.birthDate", value: birthDate, pageNumber: 1, sourceText: `生年月日 ${birthDate}`, uncertainty: "clear", subjectKey: "person", subjectLabel: "本人" },
       ] };
     }
+    if (Buffer.from(buffer).toString().includes("QUEUE-A") || Buffer.from(buffer).toString().includes("QUEUE-B")) {
+      const personName = Buffer.from(buffer).toString().includes("QUEUE-A") ? "QUEUE PERSON A" : "QUEUE PERSON B";
+      const birthDate = Buffer.from(buffer).toString().includes("QUEUE-A") ? "1990-04-12" : "1980-01-01";
+      return {
+        documentType: "identity_passport",
+        pages: [{ pageNumber: 1, lines: [`氏名 ${personName}`, `生年月日 ${birthDate}`] }],
+        candidates: [
+          { fieldKey: "applicant.name", value: personName, pageNumber: 1, sourceText: `氏名 ${personName}`, uncertainty: "clear", subjectKey: "person", subjectLabel: "本人" },
+          { fieldKey: "applicant.birthDate", value: birthDate, pageNumber: 1, sourceText: `生年月日 ${birthDate}`, uncertainty: "clear", subjectKey: "person", subjectLabel: "本人" },
+        ],
+      };
+    }
     return modelResponse;
   } };
   return loaderBeforeIdentityExtractor.call(this, request, parent, ...rest);
 };
 const { extractIdentityDocumentFromBuffer, extractIdentityDocumentsFromFiles } = require(resolve(root, "src/lib/identity-document-extractor.ts"));
+const { queueIdentityImportSources } = require(resolve(root, "src/lib/identity-import-queue.ts"));
+const { processIdentityImportJob } = require(resolve(root, "src/lib/identity-import-processor.ts"));
 const modelOnly = await extractIdentityDocumentFromBuffer({ buffer: Buffer.from("%PDF-MODEL-FIRST"), filename: "passport.pdf", requireModel: true });
 assert.equal(modelOnly.fields.find((field) => field.fieldKey === "applicant.name")?.value, "YAMADA SHIKEN");
 assert.match(modelOnly.templateVersion, /vision_ai_v1$/);
@@ -327,6 +341,20 @@ const queuedSameNameDifferentBirthDates = await extractIdentityDocumentsFromFile
 ], { requireModel: true });
 assert.notEqual(queuedSameNameDifferentBirthDates.fields.find((field) => field.fieldKey === "applicant.name")?.uncertainty, "clear", "queued same-name different-DOB sources must remain review-only");
 assert.notEqual(queuedSameNameDifferentBirthDates.fields.find((field) => field.fieldKey === "applicant.birthDate")?.uncertainty, "clear", "queued same-name different-DOB evidence must not be used for merge");
+modelResponse = {
+  documentType: "identity_passport",
+  pages: [{ pageNumber: 1, lines: ["氏名 PAGE PERSON"] }],
+  candidates: [{ fieldKey: "applicant.name", value: "WRONG QUOTE PERSON", pageNumber: 1, sourceText: "氏名 WRONG QUOTE PERSON", uncertainty: "clear", subjectKey: "person-1", subjectLabel: "本人" }],
+};
+const wrongPageQuote = await extractIdentityDocumentFromBuffer({ buffer: Buffer.from("%PDF-WRONG-PAGE-QUOTE"), filename: "wrong-page-quote.pdf", requireModel: true });
+assert.equal(wrongPageQuote.fields.find((field) => field.fieldKey === "applicant.name")?.uncertainty, "unclear", "a queued candidate quote absent from page lines must remain review-only");
+modelResponse = {
+  documentType: "identity_passport",
+  pages: [{ pageNumber: 1, lines: [] }],
+  candidates: [{ fieldKey: "applicant.name", value: "EMPTY PAGE PERSON", pageNumber: 1, sourceText: "氏名 EMPTY PAGE PERSON", uncertainty: "clear", subjectKey: "person-1", subjectLabel: "本人" }],
+};
+const emptyPageCandidate = await extractIdentityDocumentFromBuffer({ buffer: Buffer.from("%PDF-EMPTY-PAGE"), filename: "empty-page.pdf", requireModel: true });
+assert.equal(emptyPageCandidate.fields.find((field) => field.fieldKey === "applicant.name")?.uncertainty, "unclear", "a queued candidate on an empty page must remain review-only");
 modelResponse = {
   documentType: "unknown_identity_scan",
   pages: [{ pageNumber: 1, lines: ["unsupported identity card"] }],
@@ -424,6 +452,67 @@ const firstChunk = Buffer.alloc(1024 * 1024, 0x41);
 await data.putEntryUploadStagingChunk({ tenantId: tenant.id, userId: user.id, id: missing.id, chunkIndex: 0, content: firstChunk, sha256: createHash("sha256").update(firstChunk).digest("hex") });
 await assert.rejects(() => data.completeEntryUploadStaging({ tenantId: tenant.id, userId: user.id, id: missing.id }), /entry_upload_staging_missing_chunk/);
 assert.equal(await data.cleanupExpiredEntryUploadStaging({ tenantId: tenant.id, userId: user.id, now: new Date(Date.now() + 31 * 60 * 1000) }), 2, "TTL cleanup must remove expired staging rows by exact tenant/user scope");
+// Real queued-path regression: each standalone file has its own immutable
+// target, but both point to one client. A succeeds first; B fails before read,
+// is retried, then returns a complete different identity. B must remain review
+// only and must not fill any complementary fields on A's client.
+const queuedBatchClient = await data.addClient({ tenantId: tenant.id, ownerUserId: user.id, name: "Queue target original", phone: "090-0000-0099", budgetType: "total_price", purpose: "buy", loanPreApprovalStatus: "not_applied", stage: "lead", temperature: "cold", brokerageContractType: "none", amlCheckStatus: "not_required" });
+const queuedBatchVersion = buildObjectVersionFingerprint(queuedBatchClient);
+const queuedBatch = await queueIdentityImportSources({
+  tenantId: tenant.id,
+  userId: user.id,
+  files: [
+    new File([Buffer.from("%PDF-QUEUE-A")], "queue-a.pdf", { type: "application/pdf" }),
+    new File([Buffer.from("%PDF-QUEUE-B")], "queue-b.pdf", { type: "application/pdf" }),
+  ],
+  uploadMode: "same_person",
+  targetObjectType: "party",
+  targetObjectId: queuedBatchClient.id,
+  targetVersion: queuedBatchVersion,
+});
+assert.equal(queuedBatch.ok, true);
+if (!queuedBatch.ok) throw new Error(queuedBatch.error);
+assert.equal(queuedBatch.jobIds.length, 2, "standalone queued files must retain separate source jobs");
+const [queuedJobA, queuedJobB] = queuedBatch.jobIds;
+const queuedBAttachment = (await data.listAttachments({ tenantId: tenant.id, userId: user.id, targetType: "import_job", targetId: queuedJobB }))[0];
+assert(queuedBAttachment);
+const realReadPrivateAttachmentContent = data.readPrivateAttachmentContent;
+let failQueuedBPreRead = true;
+data.readPrivateAttachmentContent = async (input) => {
+  if (failQueuedBPreRead && input.id === queuedBAttachment.id) {
+    failQueuedBPreRead = false;
+    return null;
+  }
+  return realReadPrivateAttachmentContent(input);
+};
+try {
+  const processedA = await processIdentityImportJob({ tenantId: tenant.id, userId: user.id, jobId: queuedJobA });
+  assert.equal(processedA.ok, true, "queued A must process successfully");
+  const queuedATarget = await data.getObjectImportTargetByJob({ tenantId: tenant.id, userId: user.id, importJobId: queuedJobA });
+  assert(queuedATarget);
+  for (const fieldKey of ["name", "birthDate"]) {
+    const queuedAFields = await data.listObjectImportCandidates({ tenantId: tenant.id, userId: user.id, targetId: queuedATarget.id });
+    const candidate = queuedAFields.find((field) => field.fieldKey === fieldKey);
+    assert(candidate?.candidateValue);
+    const currentTarget = await data.getObjectImportTarget({ tenantId: tenant.id, userId: user.id, id: queuedATarget.id });
+    assert(currentTarget);
+    const accepted = await data.reviewObjectImportCandidate({ context, targetId: queuedATarget.id, fieldId: candidate.id, expectedVersion: currentTarget.targetVersion, expectedCandidateValue: candidate.candidateValue, decision: "confirm", value: candidate.candidateValue });
+    assert.equal(accepted.ok, true, `queued A ${fieldKey} must be explicitly accepted before B is evaluated`);
+  }
+  const failedB = await processIdentityImportJob({ tenantId: tenant.id, userId: user.id, jobId: queuedJobB });
+  assert.deepEqual(failedB, { ok: false, status: "failed", error: "source_attachment_missing" }, "queued B pre-read failure must be classified before model extraction");
+  await data.retryImportJobExecution({ tenantId: tenant.id, userId: user.id, jobId: queuedJobB });
+  const retriedB = await processIdentityImportJob({ tenantId: tenant.id, userId: user.id, jobId: queuedJobB });
+  assert.equal(retriedB.ok, true, "queued B retry must reach review without failing the job");
+} finally {
+  data.readPrivateAttachmentContent = realReadPrivateAttachmentContent;
+}
+const queuedBatchReopened = await data.getClientById(queuedBatchClient.id, tenant.id);
+assert.equal(queuedBatchReopened?.birthDate?.toISOString().slice(0, 10), "1990-04-12", "A's accepted birth date must remain on the client");
+assert.equal(queuedBatchReopened?.name, "QUEUE PERSON A", "B's different name must not overwrite A's accepted client identity");
+assert.equal(queuedBatchReopened?.nameLatin, undefined, "B's different identity must not fill a complementary name field");
+const queuedBTarget = await data.getObjectImportTargetByJob({ tenantId: tenant.id, userId: user.id, importJobId: queuedJobB });
+assert.equal(queuedBTarget?.status, "needs_review", "B's different identity must remain review-only");
 // Exercise the browser uploader against a local protocol fake: metadata-only
 // POSTs, binary PUTs no larger than 1 MiB, and a final reference response.
 const { applyEntryStagedFilesToFormData, stageEntryUploadFiles } = require(resolve(root, "src/lib/entry-upload-staging-client.ts"));
