@@ -62,6 +62,11 @@ const postgresSource = fs.readFileSync(path.resolve(ROOT, "src/lib/data.postgres
 const homeSource = fs.readFileSync(path.resolve(ROOT, "src/app/page.tsx"), "utf8");
 assert.match(postgresSource, /pg_advisory_xact_lock\(hashtextextended\(\$1, 0\)\)/);
 assert.ok(postgresSource.indexOf("pg_advisory_xact_lock") < postgresSource.indexOf("readClosedBetaDemoState(client, tenantId, fixture)"));
+assert.match(postgresSource, /action = 'closed_beta_demo_seeded'/);
+assert.match(postgresSource, /context_json->>'version' = \$2/);
+assert.match(postgresSource, /context_json->>'marker' = \$3/);
+assert.ok(postgresSource.indexOf("state.allPresent") < postgresSource.indexOf("const consumedMarker = await client.query"));
+assert.ok(postgresSource.indexOf("state.partial") < postgresSource.indexOf("const consumedMarker = await client.query"));
 assert.doesNotMatch(postgresSource, /resetClosedBetaDemoData|reset_closed_beta_demo_data/);
 assert.match(homeSource, /seedClosedBetaDemoData\(\{ tenantId: session\.tenant\.id, userId: session\.user\.id \}\)/);
 const actorUserId = "user_demo";
@@ -125,6 +130,33 @@ assert.equal(secondSeed.status, "already_initialized");
 assert.deepEqual(secondSeed.counts, firstSeed.counts);
 assert.equal(globalThis.__brokerDb.clients.filter((item) => item.tenantId === first.account.id).length, 2);
 
+// A cleanup that removes the fixture rows must not silently turn the next
+// home-page request into a fresh seed. The consumed marker is durable audit
+// history, so preserve it and make the empty+marker path a no-op.
+const firstSeededAuditCount = globalThis.__brokerDb.auditLogs.filter((item) =>
+  item.tenantId === first.account.id && item.action === "closed_beta_demo_seeded"
+  && item.context?.version === fixture.CLOSED_BETA_DEMO_FIXTURE_VERSION
+  && item.context?.marker === firstFixture.marker,
+).length;
+assert.equal(firstSeededAuditCount, 1);
+const firstFixtureIds = new Set([
+  ...firstFixture.clients.map((item) => item.id),
+  ...firstFixture.properties.map((item) => item.id),
+  ...firstFixture.cases.map((item) => item.id),
+  ...firstFixture.tasks.map((item) => item.id),
+  ...firstFixture.followUps.map((item) => item.id),
+]);
+globalThis.__brokerDb.clients = globalThis.__brokerDb.clients.filter((item) => !firstFixtureIds.has(item.id));
+globalThis.__brokerDb.properties = globalThis.__brokerDb.properties.filter((item) => !firstFixtureIds.has(item.id));
+globalThis.__brokerDb.brokerageCases = globalThis.__brokerDb.brokerageCases.filter((item) => !firstFixtureIds.has(item.id));
+globalThis.__brokerDb.tasks = globalThis.__brokerDb.tasks.filter((item) => !firstFixtureIds.has(item.id));
+globalThis.__brokerDb.followUps = globalThis.__brokerDb.followUps.filter((item) => !firstFixtureIds.has(item.id));
+const emptyMarkedSeed = await memory.seedClosedBetaDemoData({ tenantId: first.account.id, userId: first.userId });
+assert.equal(emptyMarkedSeed.status, "already_initialized");
+assert.deepEqual(emptyMarkedSeed.counts, { clients: 0, properties: 0, cases: 0, tasks: 0, followUps: 0 });
+assert.equal(globalThis.__brokerDb.auditLogs.filter((item) => item.tenantId === first.account.id && item.action === "closed_beta_demo_seeded").length, firstSeededAuditCount);
+assert.equal(globalThis.__brokerDb.clients.some((item) => item.id.startsWith("closed_beta_demo_")), false);
+
 const unrelated = await memory.addClient({
   tenantId: first.account.id,
   ownerUserId: first.userId,
@@ -139,6 +171,7 @@ const unrelated = await memory.addClient({
   amlCheckStatus: "not_required",
 });
 const second = await createAcceptedClosedBetaAccount("two");
+const secondFixture = fixture.buildClosedBetaDemoFixture(second.account.id);
 const concurrentResults = await Promise.all([
   memory.seedClosedBetaDemoData({ tenantId: second.account.id, userId: second.userId }),
   memory.seedClosedBetaDemoData({ tenantId: second.account.id, userId: second.userId }),
@@ -147,10 +180,10 @@ assert.deepEqual(new Set(concurrentResults.map((result) => result.status)), new 
 assert.equal(globalThis.__brokerDb.clients.filter((item) => item.tenantId === second.account.id).length, 2);
 assert.equal(globalThis.__brokerDb.clients.filter((item) => item.tenantId === first.account.id).some((item) => item.id === unrelated.id), true);
 assert.equal(globalThis.__brokerDb.clients.filter((item) => item.tenantId === second.account.id).some((item) => item.id === unrelated.id), false);
-const partialId = firstFixture.clients[0].id;
+const partialId = secondFixture.clients[0].id;
 globalThis.__brokerDb.clients = globalThis.__brokerDb.clients.filter((item) => item.id !== partialId);
 await assert.rejects(
-  memory.seedClosedBetaDemoData({ tenantId: first.account.id, userId: first.userId }),
+  memory.seedClosedBetaDemoData({ tenantId: second.account.id, userId: second.userId }),
   /closed_beta_demo_partial_state/,
 );
 const ordinary = await memory.seedClosedBetaDemoData({ tenantId: "tenant_cherry", userId: actorUserId });
