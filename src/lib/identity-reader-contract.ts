@@ -168,40 +168,10 @@ export function parseOpenAiIdentityReaderResponse(value: unknown): OpenAiIdentit
   if (!Array.isArray(raw.candidates) || raw.candidates.length > 64) {
     throw new RemoteDocumentReaderError("invalid_response");
   }
-  // Vision models can return structured candidates with exact source quotes
-  // while leaving the auxiliary page transcription empty. The generic remote
-  // OCR contract correctly rejects an empty transcript, but applying that
-  // rule here discards otherwise valid identity evidence as
-  // remote_document_reader_empty_result. Seed only empty pages from the
-  // candidate quotes, then keep the normal page/count validation below.
-  let parsedPages: RemoteDocumentReaderResponse;
-  try {
-    parsedPages = parseRemoteDocumentReaderResponse(value);
-  } catch (error) {
-    if (!(error instanceof RemoteDocumentReaderError) || error.code !== "empty_result") throw error;
-    const rawPages = (value as { pages?: unknown }).pages;
-    if (!Array.isArray(rawPages)) throw error;
-    const candidateQuotes = new Map<number, string[]>();
-    for (const candidate of raw.candidates) {
-      if (!candidate || typeof candidate !== "object") continue;
-      const item = candidate as Record<string, unknown>;
-      const pageNumber = item.pageNumber;
-      const sourceText = typeof item.sourceText === "string" ? item.sourceText.trim() : "";
-      if (Number.isInteger(pageNumber) && Number(pageNumber) > 0 && sourceText) {
-        candidateQuotes.set(Number(pageNumber), [...(candidateQuotes.get(Number(pageNumber)) ?? []), sourceText]);
-      }
-    }
-    const seededPages = rawPages.map((page, index) => {
-      if (!page || typeof page !== "object") return page;
-      const item = page as Record<string, unknown>;
-      const pageNumber = Number.isInteger(item.pageNumber) ? Number(item.pageNumber) : index + 1;
-      const lines = Array.isArray(item.lines) ? item.lines.filter((line): line is string => typeof line === "string") : [];
-      return lines.some((line) => line.trim())
-        ? page
-        : { ...item, lines: candidateQuotes.get(pageNumber) ?? [] };
-    });
-    parsedPages = parseRemoteDocumentReaderResponse({ pages: seededPages });
-  }
+  // Candidate quotes are not page transcription. Never fill an empty page
+  // from sourceText: the extractor must see the empty page and fail its
+  // internal page-evidence check closed.
+  const parsedPages = parseRemoteDocumentReaderResponse(value);
   const pageNumbers = new Set(parsedPages.pages.map((page) => page.pageNumber));
   const candidates = raw.candidates.map((candidate) => {
     if (!candidate || typeof candidate !== "object") throw new RemoteDocumentReaderError("invalid_response");

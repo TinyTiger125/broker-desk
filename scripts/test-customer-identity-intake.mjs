@@ -257,6 +257,13 @@ Module._load = function(request, parent, ...rest) {
         ],
       };
     }
+    if (Buffer.from(buffer).toString().includes("EMPTY-PAGE")) {
+      return parseOpenAiIdentityReaderResponse({
+        documentType: "identity_passport",
+        pages: [{ pageNumber: 1, lines: [] }, { pageNumber: 2, lines: ["unrelated page text"] }],
+        candidates: [{ fieldKey: "applicant.name", value: "EMPTY PAGE PERSON", pageNumber: 1, sourceText: "氏名 EMPTY PAGE PERSON", uncertainty: "clear", subjectKey: "person-1", subjectLabel: "本人" }],
+      });
+    }
     if (Buffer.from(buffer).toString().includes("DIRECT-QUEUED-B")) {
       return {
         documentType: "identity_passport",
@@ -366,13 +373,9 @@ modelResponse = {
 };
 const wrongPageQuote = await extractIdentityDocumentFromBuffer({ buffer: Buffer.from("%PDF-WRONG-PAGE-QUOTE"), filename: "wrong-page-quote.pdf", requireModel: true });
 assert.equal(wrongPageQuote.fields.find((field) => field.fieldKey === "applicant.name")?.uncertainty, "unclear", "a queued candidate quote absent from page lines must remain review-only");
-modelResponse = {
-  documentType: "identity_passport",
-  pages: [{ pageNumber: 1, lines: [] }],
-  candidates: [{ fieldKey: "applicant.name", value: "EMPTY PAGE PERSON", pageNumber: 1, sourceText: "氏名 EMPTY PAGE PERSON", uncertainty: "clear", subjectKey: "person-1", subjectLabel: "本人" }],
-};
 const emptyPageCandidate = await extractIdentityDocumentFromBuffer({ buffer: Buffer.from("%PDF-EMPTY-PAGE"), filename: "empty-page.pdf", requireModel: true });
 assert.equal(emptyPageCandidate.fields.find((field) => field.fieldKey === "applicant.name")?.uncertainty, "unclear", "a queued candidate on an empty page must remain review-only");
+assert.equal(emptyPageCandidate.fields.find((field) => field.fieldKey === "applicant.name")?.pageEvidenceVerified, false, "a pseudo quote must not mark an empty page as verified");
 modelResponse = {
   documentType: "unknown_identity_scan",
   pages: [{ pageNumber: 1, lines: ["unsupported identity card"] }],
