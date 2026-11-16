@@ -8368,6 +8368,9 @@ const OBJECT_IMPORT_PROPERTY_COLUMNS: Record<string, string> = {
 
 const OBJECT_IMPORT_PARTY_COLUMNS: Record<string, string> = {
   name: "name",
+  nameLatin: "name_latin",
+  nameKanji: "name_kanji",
+  nameKatakana: "name_katakana",
   phone: "phone",
   email: "email",
   furigana: "furigana",

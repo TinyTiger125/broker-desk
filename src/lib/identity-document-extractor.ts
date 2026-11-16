@@ -20,6 +20,7 @@ import type { OpenAiIdentityReaderCandidate } from "@/lib/identity-reader-contra
 import { resolveIdentityReaderCandidate } from "@/lib/identity-reader-evidence";
 import { selectPrimaryIdentityReaderCandidates, type IdentityReaderAttributionScope } from "@/lib/identity-reader-attribution";
 import { normalizeCustomerIdentityValue } from "@/lib/customer-identity-field-catalog";
+import { assessIdentityDocumentValidity, markIdentityFieldsForValidityReview } from "@/lib/identity-document-validity";
 
 const execFileAsync = promisify(execFile);
 
@@ -719,7 +720,10 @@ export async function extractIdentityDocumentFromBuffer(input: {
   }
   if (!input.requireModel) addManualFallbackFields(fields, firstEvidencePage);
 
-  const extractedFields = uniqueFields(fields, sourceFileHash, templateVersion);
+  const extractedFields = markIdentityFieldsForValidityReview(
+    uniqueFields(fields, sourceFileHash, templateVersion),
+    assessIdentityDocumentValidity({ documentType, pages }),
+  );
   return {
     schemaVersion: "v1",
     documentType,
@@ -769,16 +773,18 @@ function getIdentityDocumentValue(type: InputDocumentType) {
 }
 
 const IDENTITY_MERGE_CONFLICT_FIELDS = new Set(["applicant.name", "applicant.nameLatin", "applicant.nameKanji", "applicant.nameKatakana", "applicant.birthDate", "applicant.gender"]);
-const IDENTITY_MERGE_CONFLICT_LABELS: Record<string, string> = {
-  "applicant.name": "氏名",
-  "applicant.nameLatin": "氏名（ラテン文字）",
-  "applicant.nameKanji": "氏名（漢字）",
-  "applicant.nameKatakana": "氏名（カタカナ）",
-  "applicant.birthDate": "生年月日",
-  "applicant.gender": "性別",
-};
+const IDENTITY_MERGE_ANCHOR_FIELDS = new Set(["applicant.name", "applicant.nameLatin", "applicant.nameKanji", "applicant.nameKatakana", "applicant.birthDate"]);
 
-function assertNoIdentityMergeConflicts(results: InputFileExtractionResult[]) {
+function identityBatchNeedsReview(results: InputFileExtractionResult[]): boolean {
+  const anchorsByFile = results.map((result) => new Set(result.fields
+    .filter((field) => IDENTITY_MERGE_ANCHOR_FIELDS.has(field.fieldKey) && field.uncertainty !== "conflict")
+    .map((field) => normalizeComparable(comparableFieldValue(field) || field.normalizedValue || field.value))
+    .filter(Boolean)));
+  if (anchorsByFile.some((anchors) => anchors.size === 0)) return true;
+  return ![...anchorsByFile[0]].some((anchor) => anchorsByFile.every((anchors) => anchors.has(anchor)));
+}
+
+function analyzeIdentityMerge(results: InputFileExtractionResult[]) {
   const valuesByFieldKey = new Map<string, Set<string>>();
   for (const field of results.flatMap((result) => result.fields)) {
     if (!IDENTITY_MERGE_CONFLICT_FIELDS.has(field.fieldKey)) continue;
@@ -791,11 +797,22 @@ function assertNoIdentityMergeConflicts(results: InputFileExtractionResult[]) {
     valuesByFieldKey.set(field.fieldKey, (valuesByFieldKey.get(field.fieldKey) ?? new Set()).add(value));
   }
 
-  const conflictField = [...valuesByFieldKey.entries()].find(([, values]) => values.size > 1)?.[0];
-  if (conflictField) {
-    const label = IDENTITY_MERGE_CONFLICT_LABELS[conflictField] ?? "主要項目";
-    throw new Error(`本人確認資料の${label}が一致しません。同一人物の資料だけをまとめてアップロードしてください。`);
-  }
+  // Conflicts are retained as candidate evidence. A queued customer job must
+  // reach review rather than fail the entire source batch, especially for a
+  // contradictory gender; field-level validation still blocks persistence.
+  return { conflictField: [...valuesByFieldKey.entries()].find(([, values]) => values.size > 1)?.[0], needsIdentityReview: identityBatchNeedsReview(results) };
+}
+
+function markIdentityBatchForReview(fields: ExtractedInputField[], needsReview: boolean): ExtractedInputField[] {
+  if (!needsReview) return fields;
+  return fields.map((field) => {
+    if (!field.fieldKey.startsWith("applicant.") || !field.value.trim()) return field;
+    return {
+      ...field,
+      uncertainty: field.uncertainty === "conflict" ? "conflict" : "unclear",
+      sourceRange: [field.sourceRange, "identity_merge_review=missing_shared_anchor"].filter(Boolean).join("; "),
+    };
+  });
 }
 
 function mergeIdentityFields(results: InputFileExtractionResult[], documentType: InputDocumentType, sourceFileHash: string, templateVersion: string) {
@@ -852,7 +869,7 @@ export async function extractIdentityDocumentsFromFiles(inputs: Array<{
   for (const input of inputs) {
     results.push(await extractIdentityDocumentFromBuffer({ ...input, requireModel: options?.requireModel }));
   }
-  assertNoIdentityMergeConflicts(results);
+  const mergeReview = analyzeIdentityMerge(results);
 
   const sourceFileHash = createHash("sha256");
   for (const result of results) {
@@ -861,7 +878,7 @@ export async function extractIdentityDocumentsFromFiles(inputs: Array<{
   const mergedSourceFileHash = sourceFileHash.digest("hex");
   const documentType = mergeIdentityDocumentType(results);
   const templateVersion = `identity_document:${documentType}:multi_file_${options?.requireModel || process.env.DOCUMENT_READING_PROVIDER?.trim().toLowerCase() === "openai_responses" ? "vision_ai_v1" : "vision_ocr_v1"}`;
-  const fields = mergeIdentityFields(results, documentType, mergedSourceFileHash, templateVersion);
+  const fields = markIdentityBatchForReview(mergeIdentityFields(results, documentType, mergedSourceFileHash, templateVersion), mergeReview.needsIdentityReview);
   const sourceFilename = inputs.map((input) => input.filename).join(", ");
 
   return {

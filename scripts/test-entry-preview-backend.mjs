@@ -50,11 +50,20 @@ Module._load = function(request, parent, ...rest) {
       { ...shared, fieldKey: "applicant.nameLatin", value: "YAMADA SHIKEN", sourceText: "Name: YAMADA SHIKEN" },
       { ...shared, fieldKey: "applicant.nameKanji", value: "山田 試験", sourceText: "氏名: 山田 試験" },
     ] };
+    if (filename === "expired.pdf") return { documentType: "identity_passport", pages: [{ pageNumber: 1, lines: ["氏名: EXPIRED PERSON", "DATE OF EXPIRY 2020-01-01"] }], candidates: [
+      { ...shared, fieldKey: "applicant.name", value: "EXPIRED PERSON", sourceText: "氏名: EXPIRED PERSON" },
+    ] };
     if (filename === "direct-names-a.pdf" || filename === "direct-names-b.pdf") return { documentType: "identity_passport", candidates: [
       { ...shared, fieldKey: "applicant.nameLatin", value: filename === "direct-names-a.pdf" ? "YAMADA SHIKEN" : "OTHER PERSON", sourceText: `Name: ${filename === "direct-names-a.pdf" ? "YAMADA SHIKEN" : "OTHER PERSON"}` },
     ] };
     if (filename === "direct-names-safe.pdf") return { documentType: "identity_passport", candidates: [
       { ...shared, fieldKey: "applicant.nameKanji", value: "山田 試験", sourceText: "氏名: 山田 試験" },
+    ] };
+    if (filename === "partial-person-a.pdf") return { documentType: "identity_passport", candidates: [
+      { ...shared, fieldKey: "applicant.name", value: "PERSON A", sourceText: "Name: PERSON A" },
+    ] };
+    if (filename === "partial-person-b.pdf") return { documentType: "identity_passport", candidates: [
+      { ...shared, fieldKey: "applicant.birthDate", value: "1990-04-12", sourceText: "Birth: 1990-04-12" },
     ] };
     return { documentType: "identity_passport", candidates: [{ ...shared, fieldKey: "applicant.name" }, { ...shared, fieldKey: "applicant.residenceCardNumber", value: "DO_NOT_MAP" }] };
   } };
@@ -67,7 +76,7 @@ Module._load = function(request, parent, ...rest) {
 };
 const { previewEntryDocumentsAction } = require(resolve(root, "src/app/entry-preview-actions.ts"));
 const { verifyEntryPreviewProofs } = require(resolve(root, "src/lib/entry-preview-proof.ts"));
-const { fillSelectedEntryCandidateForm, hasClientNameEntryPreviewConflict, safeEntryPreviewCandidates, selectableEntryPreviewCandidates } = require(resolve(root, "src/lib/entry-preview.ts"));
+const { fillAutoSavedEntryForm, fillSelectedEntryCandidateForm, hasClientNameEntryPreviewConflict, requiresCrossFileIdentityReview, safeEntryPreviewCandidates, selectableEntryPreviewCandidates } = require(resolve(root, "src/lib/entry-preview.ts"));
 const { validateEntryPreviewDecisions } = require(resolve(root, "src/lib/entry-preview-proof.ts"));
 const { visibleClientNameFieldFromEvidence } = require(resolve(root, "src/lib/client-name-representation.ts"));
 function request(kind, names = ["source.pdf"]) {
@@ -84,6 +93,10 @@ assert.equal(customerResult.candidates[0].sourceText, "Name: Synthetic Person");
 const directNamesResult = await previewEntryDocumentsAction(request("customer", ["direct-names.pdf"]));
 assert.deepEqual(directNamesResult.candidates.map((field) => field.key), ["nameLatin", "nameKanji"], "direct name evidence must map only to the matching visible fields");
 assert.equal(directNamesResult.candidates.some((field) => field.key === "nameKatakana"), false, "Katakana must remain empty when the document does not print it");
+const representationOnlyForm = new FormData();
+assert.equal(fillAutoSavedEntryForm(representationOnlyForm, directNamesResult), 2, "clear exact-script name candidates must remain auto-saveable");
+assert.equal(representationOnlyForm.get("nameKanji"), "山田 試験");
+assert.equal(representationOnlyForm.get("name"), "山田 試験", "compatibility name must derive from exact printed representation");
 const selectedForm = new FormData();
 assert.equal(fillSelectedEntryCandidateForm(selectedForm, directNamesResult, directNamesResult.candidates[0]), true, "a clear candidate must be selectable");
 assert.equal(selectedForm.get("nameLatin"), "YAMADA SHIKEN");
@@ -97,20 +110,31 @@ const conflictRequest = request("customer", ["direct-names-a.pdf", "direct-names
 const conflictResult = await previewEntryDocumentsAction(conflictRequest);
 assert.equal(conflictResult.candidates.length, 3);
 assert.equal(conflictResult.candidates.filter((candidate) => candidate.key === "nameLatin").every((candidate) => candidate.uncertainty === "conflict"), true, "same-field alternatives must be marked as conflict");
-assert.deepEqual(safeEntryPreviewCandidates(conflictResult.candidates).map((candidate) => candidate.key), ["nameKanji"], "an unrelated safe name field remains available but must not bypass a conflicting name");
-assert.equal(selectableEntryPreviewCandidates(conflictResult.candidates).length, 3, "conflicting alternatives and the safe name field must remain explicitly selectable");
+assert.deepEqual(safeEntryPreviewCandidates(conflictResult.candidates), [], "a multi-file batch without a shared identity anchor must not auto-save any complementary field");
+assert.deepEqual(selectableEntryPreviewCandidates(conflictResult.candidates), [], "a multi-file batch without a shared identity anchor must remain review-only");
 assert.equal(hasClientNameEntryPreviewConflict(conflictResult.candidates), true, "name conflicts must hold the preview open for explicit review");
 const selectedConflict = conflictResult.candidates.find((candidate) => candidate.key === "nameLatin");
 assert.ok(selectedConflict);
-assert.equal(fillSelectedEntryCandidateForm(conflictRequest, conflictResult, selectedConflict), true, "one selected conflict candidate must be form-fillable");
-assert.equal(conflictRequest.get("nameLatin"), selectedConflict.value);
-assert.equal(conflictRequest.get("entryPreviewDecisions"), JSON.stringify({ [selectedConflict.id]: "confirmed" }));
+assert.equal(fillSelectedEntryCandidateForm(conflictRequest, conflictResult, selectedConflict), false, "cross-file identity uncertainty must not expose a direct confirmation action");
+assert.equal(conflictRequest.get("nameLatin"), null);
+conflictRequest.set("entryPreviewDecisions", JSON.stringify({ [selectedConflict.id]: "confirmed" }));
+conflictRequest.set("entryAutoSave", "1");
 const conflictProofs = await verifyEntryPreviewProofs({ formData: conflictRequest, files: conflictRequest.getAll("uploadFile"), session, kind: "customer", context: "entry" });
-assert.equal(validateEntryPreviewDecisions(conflictRequest, conflictProofs), true, "server proof validation must accept the explicitly selected conflict candidate");
+assert.equal(validateEntryPreviewDecisions(conflictRequest, conflictProofs), false, "server proof validation must reject cross-file identity decisions");
 const tamperedConflict = new FormData();
 for (const [key, value] of conflictRequest.entries()) tamperedConflict.append(key, value);
 tamperedConflict.set("entryPreviewDecisions", JSON.stringify({ [selectedConflict.id]: "confirmed", [conflictResult.candidates[1].id]: "confirmed" }));
 assert.equal(validateEntryPreviewDecisions(tamperedConflict, conflictProofs), false, "server proof validation must reject an unselected conflict candidate");
+const partialDifferentPeople = await previewEntryDocumentsAction(request("customer", ["partial-person-a.pdf", "partial-person-b.pdf"]));
+assert.equal(partialDifferentPeople.status, "ready");
+assert.equal(partialDifferentPeople.candidates.length, 2);
+assert.equal(requiresCrossFileIdentityReview(partialDifferentPeople.candidates), true, "cross-file batches without a shared identity anchor must remain review-only");
+assert.equal(safeEntryPreviewCandidates(partialDifferentPeople.candidates).length, 0);
+assert.equal(selectableEntryPreviewCandidates(partialDifferentPeople.candidates).length, 0);
+const expiredResult = await previewEntryDocumentsAction(request("customer", ["expired.pdf"]));
+assert.equal(expiredResult.candidates[0].reviewOnly, true, "expired direct-entry evidence must remain review-only");
+assert.equal(safeEntryPreviewCandidates(expiredResult.candidates).length, 0);
+assert.match(expiredResult.message ?? "", /有効期限|过期|유효기간/);
 const unknownDocumentResult = await previewEntryDocumentsAction(request("customer", ["unknown.pdf"]));
 assert.equal(unknownDocumentResult.status, "ready");
 assert.equal(unknownDocumentResult.candidates.length, 0, "unsupported identity type must remain source-only in customer preview");

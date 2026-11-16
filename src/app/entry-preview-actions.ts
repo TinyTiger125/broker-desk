@@ -4,7 +4,7 @@ import { requireTenantSession } from "@/lib/tenant-session";
 import { getLocale } from "@/lib/locale";
 import type { Locale } from "@/lib/locale";
 import { validateEntryUploads } from "@/lib/entry-upload-validation";
-import { entryFileKey, type EntryPreviewCandidate, type EntryPreviewState } from "@/lib/entry-preview";
+import { entryFileKey, requiresCrossFileIdentityReview, type EntryPreviewCandidate, type EntryPreviewState } from "@/lib/entry-preview";
 import { readIdentityDocumentWithOpenAi } from "@/lib/openai-identity-reader";
 import { readObjectDocumentWithOpenAi } from "@/lib/openai-object-reader";
 import { selectPrimaryIdentityReaderCandidates } from "@/lib/identity-reader-attribution";
@@ -20,6 +20,7 @@ import { createHash } from "node:crypto";
 import { signEntryPreviewProof } from "@/lib/entry-preview-proof";
 import { RemoteDocumentReaderError } from "@/lib/identity-reader-contract";
 import { parseEntryUploadStagedRefs, readEntryUploadStagedFiles } from "@/lib/entry-upload-staging";
+import { assessIdentityDocumentValidity } from "@/lib/identity-document-validity";
 
 const PROPERTY_NUMERIC_PREVIEW_KEYS = new Set(["sizeSqm", "listingPrice", "listingRent", "listingCommonFee", "managementFee", "repairFee"]);
 
@@ -92,12 +93,15 @@ export async function previewEntryDocumentsAction(formData: FormData): Promise<E
   for (const file of files) {
     try {
       const buffer = Buffer.from(await file.arrayBuffer());
-      let fields: Array<{ fieldKey: string; value: string; pageNumber?: number; sourceText?: string; uncertainty: "clear" | "unclear" | "conflict" | "not_found" }>;
+      let fields: Array<{ fieldKey: string; value: string; pageNumber?: number; sourceText?: string; uncertainty: "clear" | "unclear" | "conflict" | "not_found"; reviewOnly?: boolean }>;
+      let validityReviewRequired = false;
       if (file.name.toLowerCase().endsWith(".xlsx")) {
         const extracted = extractInputFileFromWorkbook(await readExcelWorkbook(buffer), file.name);
         fields = extracted.fields.map((field) => ({ fieldKey: field.fieldKey, value: field.normalizedValue || field.value, pageNumber: field.sourcePageNumber, sourceText: field.sourceText || [field.sourceSheet, field.sourceCell || field.sourceRange].filter(Boolean).join(" / "), uncertainty: field.uncertainty ?? "unclear" }));
       } else if (kind === "customer") {
         const result = await readIdentityDocumentWithOpenAi({ buffer, filename: file.name, scope: "customer" });
+        const validity = assessIdentityDocumentValidity({ documentType: result.documentType, pages: result.pages ?? [] });
+        validityReviewRequired = validity.status === "expired" || validity.status === "unclear";
         // Keep the supported customer document list closed. An unclassified
         // image may still be archived for human inspection, but its model
         // fields must never silently become formal customer values.
@@ -108,7 +112,9 @@ export async function previewEntryDocumentsAction(formData: FormData): Promise<E
         // a customer field without a holder identity anchor.
         fields = result.documentType === "unknown_identity_scan" || !hasCustomerIdentityAnchor(selected)
           ? []
-          : selected;
+          : selected.map((field) => validityReviewRequired
+            ? { ...field, reviewOnly: true, uncertainty: field.uncertainty === "conflict" ? "conflict" : "unclear" }
+            : field);
       } else {
         const result = await readObjectDocumentWithOpenAi({ buffer, filename: file.name });
         fields = selectSingleObjectReaderCandidates(result.candidates).candidates;
@@ -144,17 +150,20 @@ export async function previewEntryDocumentsAction(formData: FormData): Promise<E
           // An invalid number would appear accepted while an HTML number input submits an empty value.
           if (!validPropertyNumericPreview(key, value)) continue;
         }
+        const fileKey = entryFileKey(file);
         candidates.push({
-          id: `${entryFileKey(file)}:${index}`,
+          id: `${fileKey}:${index}`,
           key,
           sourceKey: field.fieldKey,
           label,
           value,
           ...(kind === "customer" && value !== field.value ? { rawValue: field.value } : {}),
           fileName: file.name,
+          fileKey,
           pageNumber: field.pageNumber,
           sourceText: field.sourceText,
           uncertainty,
+          ...(field.reviewOnly ? { reviewOnly: true } : {}),
         });
       }
       readFileKeys.push(entryFileKey(file));
@@ -168,8 +177,10 @@ export async function previewEntryDocumentsAction(formData: FormData): Promise<E
   for (const candidate of candidates) {
     if (candidates.some((other) => other.key === candidate.key && other.value !== candidate.value)) candidate.uncertainty = "conflict";
   }
+  const crossFileIdentityReviewRequired = kind === "customer" && requiresCrossFileIdentityReview(candidates);
+  const validityReviewRequired = candidates.some((candidate) => candidate.reviewOnly);
   const message = failed
     ? (failureCode ? readerFailureMessage(locale, failureCode) : undefined) ?? (locale === "zh" ? "部分或全部资料未能读取。已完成的候选保留；未创建档案，可重试失败资料或继续手动填写。" : locale === "ko" ? "일부 자료를 읽지 못했습니다. 완료된 후보는 보존되며 기록은 생성되지 않았습니다. 실패한 자료를 다시 읽거나 직접 입력하세요." : "一部の資料を読み取れませんでした。完了した候補は保持され、記録はまだ作成されていません。失敗した資料を再試行するか手入力してください。")
-    : candidates.length === 0 ? locale === "zh" ? "没有可确认的现有字段候选，或资料对象归属不明确。请手动填写；原件将在最终保存时归档。" : locale === "ko" ? "확인 가능한 기존 항목이 없거나 대상이 불명확합니다. 직접 입력해 주세요. 원본은 최종 저장 시 보관됩니다." : "確認できる既存項目がないか、対象が不明確です。手入力してください。原本は最終保存時に保管します。" : undefined;
+    : crossFileIdentityReviewRequired ? locale === "zh" ? "多份资料无法确认属于同一人。候选仅供人工核对，不会自动合并或建档；请手动填写或重新选择同一人的资料。" : locale === "ko" ? "여러 자료가 같은 사람의 것인지 확인할 수 없습니다. 후보는 수동 확인용으로만 보관되며 자동 병합·저장되지 않습니다. 직접 입력하거나 같은 사람의 자료만 다시 선택해 주세요." : "複数資料が同一人物のものか確認できません。候補は手動確認用に保持し、自動統合・登録しません。手入力するか、同一人物の資料だけを選び直してください。" : validityReviewRequired ? locale === "zh" ? "证件有效期无法确认或已过期。候选仅供人工核对，不会自动保存；请核对原件后手动处理。" : locale === "ko" ? "문서의 유효기간을 확인할 수 없거나 만료되었습니다. 후보는 수동 확인용으로만 보관되며 자동 저장되지 않습니다. 원본을 확인해 직접 처리해 주세요." : "証明書の有効期限を確認できないか、期限切れです。候補は手動確認用に保持し、自動保存しません。原本を確認して手動で処理してください。" : candidates.length === 0 ? locale === "zh" ? "没有可确认的现有字段候选，或资料对象归属不明确。请手动填写；原件将在最终保存时归档。" : locale === "ko" ? "확인 가능한 기존 항목이 없거나 대상이 불명확합니다. 직접 입력해 주세요. 원본은 최종 저장 시 보관됩니다." : "確認できる既存項目がないか、対象が不明確です。手入力してください。原本は最終保存時に保管します。" : undefined;
   return { status: failed ? "error" : "ready", candidates, readFileKeys, readProofs, ...(failureCode ? { errorCode: failureCode } : {}), message };
 }

@@ -54,7 +54,7 @@ export function isObjectImportCaseFieldManuallyCleared(confirmedDataJson: Record
 }
 
 type ObjectReviewKey =
-  | "name" | "phone" | "email" | "lineId" | "furigana" | "birthDate" | "gender" | "currentPostalCode" | "currentAddress" | "area" | "address" | "roomNumber" | "postalCode" | "usage"
+  | "name" | "nameLatin" | "nameKanji" | "nameKatakana" | "phone" | "email" | "lineId" | "furigana" | "birthDate" | "gender" | "currentPostalCode" | "currentAddress" | "area" | "address" | "roomNumber" | "postalCode" | "usage"
   | "sizeSqm" | "listingPrice" | "listingRent" | "listingCommonFee" | "managementFee" | "repairFee" | "notes";
 type ReviewValue =
   | { ok: true; scope: "object"; key: ObjectReviewKey; value: string; recordValue: string | number }

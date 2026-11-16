@@ -35,6 +35,14 @@ Module._load = function(request, parent, ...rest) {
 
 const { parseOpenAiIdentityReaderResponse } = require(resolve(root, "src/lib/identity-reader-contract.ts"));
 const { isValidCustomerBirthDate, isCustomerGenderValue, normalizeCustomerGenderValue, normalizeCustomerIdentityValue, customerIdentityFieldKey, CUSTOMER_IDENTITY_FIELDS } = require(resolve(root, "src/lib/customer-identity-field-catalog.ts"));
+const postgresSource = readFileSync(resolve(root, "src/lib/data.postgres.ts"), "utf8");
+assert.match(postgresSource, /nameLatin:\s*"name_latin"/);
+assert.match(postgresSource, /nameKanji:\s*"name_kanji"/);
+assert.match(postgresSource, /nameKatakana:\s*"name_katakana"/);
+const identityImportUiSource = readFileSync(resolve(root, "src/components/client-identity-import-section.tsx"), "utf8");
+assert.match(identityImportUiSource, /isCustomerGenderValue/);
+assert.match(identityImportUiSource, /invalidGenderCandidate/);
+assert.match(identityImportUiSource, /!invalidGenderCandidate/);
 assert.equal(isValidCustomerBirthDate("1990-04-12"), true);
 assert.equal(isValidCustomerBirthDate("1900-02-30"), false);
 assert.deepEqual(Object.keys(CUSTOMER_IDENTITY_FIELDS), ["name", "nameLatin", "nameKanji", "nameKatakana", "furigana", "birthDate", "gender", "currentPostalCode", "currentAddress", "phone", "lineId", "email"]);
@@ -83,6 +91,9 @@ const job = await data.addImportJob({ tenantId: tenant.id, userId: user.id, sour
 await data.addPrivateAttachment({ tenantId: tenant.id, userId: user.id, targetType: "import_job", targetId: job.id, fileName: "SAMPLE-TEST-passport.pdf", content });
 const fields = [
   { fieldKey: "applicant.name", value: "YAMADA SHIKEN", normalizedValue: "YAMADA SHIKEN", confidence: 0.95, sourceRange: "page 1", method: "ai", sourcePageNumber: 1, sourceText: "氏名 YAMADA SHIKEN", uncertainty: "clear", subjectKey: "person-1", subjectLabel: "申請人", alternatives: [{ value: "YAMADA SHIKEN", pageNumber: 1, sourceText: "氏名 YAMADA SHIKEN", uncertainty: "clear", subjectKey: "person-1", subjectLabel: "申請人" }, { value: "YAMADA SHIKEN", pageNumber: 2, sourceText: "NAME YAMADA SHIKEN", uncertainty: "clear", subjectKey: "person-1", subjectLabel: "申請人" }] },
+  { fieldKey: "applicant.nameLatin", value: "YAMADA SHIKEN", normalizedValue: "YAMADA SHIKEN", confidence: 0.95, sourceRange: "page 1", method: "ai", sourcePageNumber: 1, sourceText: "Name YAMADA SHIKEN", uncertainty: "clear", subjectKey: "person-1", subjectLabel: "申請人" },
+  { fieldKey: "applicant.nameKanji", value: "山田 試験", normalizedValue: "山田 試験", confidence: 0.95, sourceRange: "page 1", method: "ai", sourcePageNumber: 1, sourceText: "氏名 山田 試験", uncertainty: "clear", subjectKey: "person-1", subjectLabel: "申請人" },
+  { fieldKey: "applicant.nameKatakana", value: "ヤマダ シケン", normalizedValue: "ヤマダ シケン", confidence: 0.95, sourceRange: "page 1", method: "ai", sourcePageNumber: 1, sourceText: "氏名 ヤマダ シケン", uncertainty: "clear", subjectKey: "person-1", subjectLabel: "申請人" },
   { fieldKey: "applicant.furigana", value: "ヤマダ シケン", normalizedValue: "ヤマダ シケン", confidence: 0.95, sourceRange: "page 1", method: "ai" },
   { fieldKey: "applicant.birthDate", value: "1990年4月12日", normalizedValue: "1990年4月12日", confidence: 0.95, sourceRange: "page 1", method: "ai" },
   { fieldKey: "applicant.gender", value: "男/M", normalizedValue: "男/M", rawValue: "男/M", confidence: 0.95, sourceRange: "page 1", method: "ai", sourceText: "性別 男/M" },
@@ -107,7 +118,7 @@ await persistObjectImportJobExtraction({ ...scope, job, fields });
 const target = await data.getObjectImportTargetByJob({ ...scope, importJobId: job.id });
 assert(target && target.targetType === "party" && !target.caseId);
 const candidates = await data.listObjectImportCandidates({ ...scope, targetId: target.id });
-assert.deepEqual(candidates.map((item) => item.fieldKey).sort(), ["birthDate", "currentAddress", "currentPostalCode", "email", "furigana", "gender", "name", "phone"].sort());
+assert.deepEqual(candidates.map((item) => item.fieldKey).sort(), ["birthDate", "currentAddress", "currentPostalCode", "email", "furigana", "gender", "name", "nameKanji", "nameKatakana", "nameLatin", "phone"].sort());
 assert.equal(candidates.find((item) => item.fieldKey === "nationality"), undefined);
 assert.equal(candidates.find((item) => item.fieldKey === "currentAddress").status, "not_found");
 assert.equal(candidates.find((item) => item.fieldKey === "phone").status, "not_found");
@@ -136,6 +147,9 @@ for (const field of candidates.filter((item) => item.candidateValue)) {
 }
 const reopened = await data.getClientById(client.id, tenant.id);
 assert.equal(reopened.name, "YAMADA SHIKEN");
+assert.equal(reopened.nameLatin, "YAMADA SHIKEN");
+assert.equal(reopened.nameKanji, "山田 試験");
+assert.equal(reopened.nameKatakana, "ヤマダ シケン");
 assert.equal(reopened.furigana, "ヤマダ シケン");
 assert.equal(reopened.birthDate.toISOString().slice(0, 10), "1990-04-12");
 assert.equal(reopened.gender, "male");
@@ -162,8 +176,20 @@ let modelResponse = {
 const loaderBeforeIdentityExtractor = Module._load;
 Module._load = function(request, parent, ...rest) {
   if (request === "@/lib/openai-identity-reader") return { readIdentityDocumentWithOpenAi: async ({ buffer }) => {
+    if (Buffer.from(buffer).toString().includes("GENDER-CONFLICT")) {
+      return { ...modelResponse, candidates: [
+        { fieldKey: "applicant.gender", value: "男/M", pageNumber: 1, sourceText: "性別 男/M", uncertainty: "clear", subjectKey: "person-1", subjectLabel: "本人" },
+        { fieldKey: "applicant.gender", value: "女性", pageNumber: 1, sourceText: "性別 女性", uncertainty: "clear", subjectKey: "person-1", subjectLabel: "本人" },
+      ] };
+    }
     if (Buffer.from(buffer).toString().includes("GENDER-SECOND")) {
       return { ...modelResponse, candidates: modelResponse.candidates.map((candidate) => ({ ...candidate, value: "男/M", sourceText: "性別 男/M" })) };
+    }
+    if (Buffer.from(buffer).toString().includes("PARTIAL-A")) {
+      return { ...modelResponse, candidates: [{ fieldKey: "applicant.name", value: "PERSON A", pageNumber: 1, sourceText: "氏名 PERSON A", uncertainty: "clear", subjectKey: "person-a", subjectLabel: "本人" }] };
+    }
+    if (Buffer.from(buffer).toString().includes("PARTIAL-B")) {
+      return { ...modelResponse, candidates: [{ fieldKey: "applicant.birthDate", value: "1990-04-12", pageNumber: 1, sourceText: "生年月日 1990-04-12", uncertainty: "clear", subjectKey: "person-b", subjectLabel: "本人" }] };
     }
     return modelResponse;
   } };
@@ -215,6 +241,24 @@ const equivalentGenderFirstResult = await extractIdentityDocumentsFromFiles([
 ], { requireModel: true });
 const equivalentGenderField = equivalentGenderFirstResult.fields.find((field) => field.fieldKey === "applicant.gender");
 assert.notEqual(equivalentGenderField?.uncertainty, "conflict", "equivalent cross-file gender evidence must not conflict");
+const conflictingGenderBatch = await extractIdentityDocumentsFromFiles([
+  { buffer: Buffer.from("%PDF-GENDER-CONFLICT-A"), filename: "gender-conflict-a.pdf" },
+  { buffer: Buffer.from("%PDF-GENDER-CONFLICT-B"), filename: "gender-conflict-b.pdf" },
+], { requireModel: true });
+const conflictingGenderBatchField = conflictingGenderBatch.fields.find((field) => field.fieldKey === "applicant.gender");
+assert.equal(conflictingGenderBatchField?.uncertainty, "conflict", "queued contradictory gender must remain review-only instead of failing the whole job");
+const partialDifferentPeopleResult = await extractIdentityDocumentsFromFiles([
+  { buffer: Buffer.from("%PDF-PARTIAL-A"), filename: "partial-a.pdf" },
+  { buffer: Buffer.from("%PDF-PARTIAL-B"), filename: "partial-b.pdf" },
+], { requireModel: true });
+const partialName = partialDifferentPeopleResult.fields.find((field) => field.fieldKey === "applicant.name");
+const partialBirthDate = partialDifferentPeopleResult.fields.find((field) => field.fieldKey === "applicant.birthDate");
+assert.equal(partialName?.value, "PERSON A");
+assert.equal(partialBirthDate?.value, "1990-04-12");
+assert.equal(partialName?.uncertainty, "unclear", "cross-file complementary identity fields must remain review-only");
+assert.equal(partialBirthDate?.uncertainty, "unclear", "cross-file complementary identity fields must remain review-only");
+assert.match(partialName?.sourceRange ?? "", /identity_merge_review=missing_shared_anchor/);
+assert.match(partialBirthDate?.sourceRange ?? "", /identity_merge_review=missing_shared_anchor/);
 modelResponse = {
   documentType: "unknown_identity_scan",
   pages: [{ pageNumber: 1, lines: ["unsupported identity card"] }],
@@ -232,6 +276,23 @@ const placeholderAddress = await extractIdentityDocumentFromBuffer({ buffer: Buf
 const placeholderAddressField = placeholderAddress.fields.find((field) => field.fieldKey === "applicant.currentAddress");
 assert.equal(placeholderAddressField?.value, "未定");
 assert.equal(placeholderAddressField?.uncertainty, "unclear");
+modelResponse = {
+  documentType: "identity_residence_card",
+  pages: [{ pageNumber: 1, lines: ["氏名 PERSON EXPIRY", "有効期限 2020年01月01日"] }],
+  candidates: [{ fieldKey: "applicant.name", value: "PERSON EXPIRY", pageNumber: 1, sourceText: "氏名 PERSON EXPIRY", uncertainty: "clear", subjectKey: "person-1", subjectLabel: "本人" }],
+};
+const expiredDocument = await extractIdentityDocumentFromBuffer({ buffer: Buffer.from("%PDF-MODEL-EXPIRED"), filename: "expired-residence-card.pdf", requireModel: true });
+const expiredName = expiredDocument.fields.find((field) => field.fieldKey === "applicant.name");
+assert.equal(expiredName?.value, "PERSON EXPIRY", "expired evidence remains retained");
+assert.equal(expiredName?.uncertainty, "unclear", "expired identity documents must not auto-save");
+assert.match(expiredName?.sourceRange ?? "", /identity_document_validity=expired/);
+modelResponse = {
+  documentType: "identity_residence_card",
+  pages: [{ pageNumber: 1, lines: ["氏名 PERSON VALID", "有効期限 2099年12月31日"] }],
+  candidates: [{ fieldKey: "applicant.name", value: "PERSON VALID", pageNumber: 1, sourceText: "氏名 PERSON VALID", uncertainty: "clear", subjectKey: "person-1", subjectLabel: "本人" }],
+};
+const validDocument = await extractIdentityDocumentFromBuffer({ buffer: Buffer.from("%PDF-MODEL-VALID"), filename: "valid-residence-card.pdf", requireModel: true });
+assert.equal(validDocument.fields.find((field) => field.fieldKey === "applicant.name")?.uncertainty, "clear", "future expiry remains eligible for the existing review pipeline");
 const { entryFileKey, fillAutoSavedEntryForm, safeEntryPreviewCandidates, selectableEntryPreviewCandidates } = require(resolve(root, "src/lib/entry-preview.ts"));
 const { buildEntryPreviewFormData } = require(resolve(root, "src/components/entry-preview.tsx"));
 assert.equal(entryFileKey({ name: " e\u0301xample.pdf ", size: 42 }), entryFileKey({ name: "éxample.pdf", size: 42 }), "NFD and surrounding spaces must not bypass staging identity");

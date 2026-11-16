@@ -9,9 +9,13 @@ export type EntryPreviewCandidate = {
   /** Original model/OCR value when `value` is a canonical form value. */
   rawValue?: string;
   fileName: string;
+  /** Stable per-upload file key used to prevent cross-file identity mixing. */
+  fileKey?: string;
   pageNumber?: number;
   sourceText?: string;
   uncertainty?: string;
+  /** Candidate is evidence-only until a person reviews the batch identity. */
+  reviewOnly?: boolean;
 };
 
 export type EntryPreviewState = {
@@ -43,8 +47,28 @@ function isNonActualCurrentAddress(candidate: Pick<EntryPreviewCandidate, "key" 
   return /^(?:住所|住居地)?(?:未定|未確認|不明|なし|n\/a|-)$/i.test(normalized);
 }
 
+const CROSS_FILE_IDENTITY_ANCHOR_KEYS = new Set(["name", "nameLatin", "nameKanji", "nameKatakana", "birthDate"]);
+
+function crossFileIdentityAnchor(candidate: EntryPreviewCandidate): string | undefined {
+  if (!candidate.fileKey || !CROSS_FILE_IDENTITY_ANCHOR_KEYS.has(candidate.key) || !candidate.value.trim()) return undefined;
+  return `${candidate.key}:${candidate.value.normalize("NFKC").trim().replace(/\s+/g, " ").toUpperCase()}`;
+}
+
+/** Multiple uploaded files may merge only when every file has one shared identity anchor. */
+export function requiresCrossFileIdentityReview(candidates: readonly EntryPreviewCandidate[]): boolean {
+  const fileKeys = [...new Set(candidates.map((candidate) => candidate.fileKey).filter((key): key is string => Boolean(key)))];
+  if (fileKeys.length <= 1) return false;
+  const anchorsByFile = fileKeys.map((fileKey) => new Set(candidates
+    .filter((candidate) => candidate.fileKey === fileKey && candidate.uncertainty !== "not_found")
+    .map(crossFileIdentityAnchor)
+    .filter((anchor): anchor is string => Boolean(anchor))));
+  if (anchorsByFile.some((anchors) => anchors.size === 0)) return true;
+  return ![...anchorsByFile[0]].some((anchor) => anchorsByFile.every((anchors) => anchors.has(anchor)));
+}
+
 /** Only unambiguous values may enter a formal record without prior review. */
 export function safeEntryPreviewCandidates(candidates: readonly EntryPreviewCandidate[]): EntryPreviewCandidate[] {
+  if (requiresCrossFileIdentityReview(candidates)) return [];
   const byKey = new Map<string, Set<string>>();
   for (const candidate of candidates) {
     if (!candidate.value.trim()) continue;
@@ -53,6 +77,7 @@ export function safeEntryPreviewCandidates(candidates: readonly EntryPreviewCand
     byKey.set(candidate.key, values);
   }
   return candidates.filter((candidate) => candidate.uncertainty === "clear"
+    && !candidate.reviewOnly
     && Boolean(candidate.value.trim())
     && !isNonActualCurrentAddress(candidate)
     && (candidate.key !== "gender"
@@ -62,7 +87,9 @@ export function safeEntryPreviewCandidates(candidates: readonly EntryPreviewCand
 
 /** Candidates that may be chosen explicitly; conflicts require that choice. */
 export function selectableEntryPreviewCandidates(candidates: readonly EntryPreviewCandidate[]): EntryPreviewCandidate[] {
+  if (requiresCrossFileIdentityReview(candidates)) return [];
   return candidates.filter((candidate) => {
+    if (candidate.reviewOnly) return false;
     if (!candidate.value.trim() || isNonActualCurrentAddress(candidate)) return false;
     if (candidate.key === "gender" && normalizeCustomerGenderValue(candidate.rawValue ?? candidate.value) !== candidate.value) return false;
     if (candidate.uncertainty === "clear") return true;
@@ -87,6 +114,16 @@ export function fillAutoSavedEntryForm(formData: FormData, preview: EntryPreview
     formData.set(candidate.key, candidate.value);
     decisions[candidate.id] = "auto_saved";
     applied += 1;
+  }
+  // The individual customer form keeps `name` as a hidden compatibility
+  // column while exposing three exact-script fields. A model may legitimately
+  // return only one of those representations; derive the compatibility value
+  // from the same accepted printed evidence without transliteration.
+  if (!String(formData.get("name") ?? "").trim()) {
+    const nameRepresentation = ["nameKanji", "nameLatin", "nameKatakana"]
+      .map((key) => selected.find((candidate) => candidate.key === key))
+      .find(Boolean);
+    if (nameRepresentation) formData.set("name", nameRepresentation.value);
   }
   formData.set("entryReadProofs", JSON.stringify(preview.readProofs ?? {}));
   formData.set("entryReadFileKeys", JSON.stringify(preview.readFileKeys));
