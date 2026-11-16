@@ -9,7 +9,7 @@ import { readIdentityDocumentWithOpenAi } from "@/lib/openai-identity-reader";
 import { readObjectDocumentWithOpenAi } from "@/lib/openai-object-reader";
 import { selectPrimaryIdentityReaderCandidates } from "@/lib/identity-reader-attribution";
 import { selectSingleObjectReaderCandidates } from "@/lib/object-reader-attribution";
-import { customerIdentityFieldKey, customerIdentityFieldLabel, normalizeCustomerGenderValue, normalizeCustomerIdentityValue } from "@/lib/customer-identity-field-catalog";
+import { customerIdentityFieldKey, customerIdentityFieldLabel, hasExactPrintedIdentityEvidence, isCustomerNameFieldKey, isCustomerNameRepresentationValue, normalizeCustomerGenderValue, normalizeCustomerIdentityValue } from "@/lib/customer-identity-field-catalog";
 import { toObjectRecordFieldKey } from "@/lib/object-import-contract";
 import { normalizeObjectReaderCandidateValue } from "@/lib/object-import-processor-adapter";
 import { OBJECT_READER_FIELD_LABELS } from "@/lib/object-reader-mapping";
@@ -139,6 +139,13 @@ export async function previewEntryDocumentsAction(formData: FormData): Promise<E
           if (customerKey === "gender" && !normalizeCustomerGenderValue(field.value)) {
             // Contradictory/unknown gender evidence is review-only and must
             // never qualify for automatic form persistence.
+            uncertainty = uncertainty === "conflict" ? "conflict" : "unclear";
+          }
+          if (isCustomerNameFieldKey(customerKey)
+            && (!isCustomerNameRepresentationValue(customerKey, value) || !hasExactPrintedIdentityEvidence(value, field.sourceText))) {
+            // Preserve the model/OCR candidate for human inspection, but do
+            // not expose it as a writable selection when script or printed
+            // source evidence does not match the destination field.
             uncertainty = uncertainty === "conflict" ? "conflict" : "unclear";
           }
         } else {

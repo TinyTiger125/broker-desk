@@ -85,7 +85,7 @@ assert.deepEqual(getUnreadEntryFiles([pdf, image], ["identity.pdf:8"]), [image],
 const conflictingAddressCandidates = [
   { id: "address-old", key: "currentAddress", sourceKey: "applicant.currentAddress", label: "Current address", value: "Address A", fileName: "old.jpg", uncertainty: "clear" },
   { id: "address-new", key: "currentAddress", sourceKey: "applicant.currentAddress", label: "Current address", value: "Address B", fileName: "new.jpg", uncertainty: "clear" },
-  { id: "stable-name", key: "name", sourceKey: "applicant.name", label: "Name", value: "Stable person", fileName: "front.jpg", uncertainty: "clear" },
+  { id: "stable-name", key: "name", sourceKey: "applicant.name", label: "Name", value: "Stable person", fileName: "front.jpg", sourceText: "Name: Stable person", uncertainty: "clear" },
 ];
 assert.deepEqual(safeEntryPreviewCandidates(conflictingAddressCandidates).map((candidate) => candidate.id), ["stable-name"], "different address evidence must never be auto-saved while stable identity evidence remains eligible");
 const conflictForm = new FormData();

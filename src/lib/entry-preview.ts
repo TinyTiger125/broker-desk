@@ -1,4 +1,4 @@
-import { normalizeCustomerGenderValue } from "@/lib/customer-identity-field-catalog";
+import { hasExactPrintedIdentityEvidence, isCustomerNameFieldKey, isCustomerNameRepresentationValue, normalizeCustomerGenderValue } from "@/lib/customer-identity-field-catalog";
 
 export type EntryPreviewCandidate = {
   id: string;
@@ -49,21 +49,38 @@ function isNonActualCurrentAddress(candidate: Pick<EntryPreviewCandidate, "key" 
 
 const CROSS_FILE_IDENTITY_ANCHOR_KEYS = new Set(["name", "nameLatin", "nameKanji", "nameKatakana", "birthDate"]);
 
-function crossFileIdentityAnchor(candidate: EntryPreviewCandidate): string | undefined {
+function crossFileIdentityAnchor(candidate: EntryPreviewCandidate): { family: "name" | "birthDate"; value: string } | undefined {
   if (!candidate.fileKey || !CROSS_FILE_IDENTITY_ANCHOR_KEYS.has(candidate.key) || !candidate.value.trim()) return undefined;
-  return `${candidate.key}:${candidate.value.normalize("NFKC").trim().replace(/\s+/g, " ").toUpperCase()}`;
+  const family = isCustomerNameFieldKey(candidate.key) ? "name" : candidate.key === "birthDate" ? "birthDate" : undefined;
+  if (!family) return undefined;
+  return { family, value: candidate.value.normalize("NFKC").trim().replace(/\s+/g, "").toUpperCase() };
 }
 
-/** Multiple uploaded files may merge only when every file has one shared identity anchor. */
+/** Multiple uploaded files may merge only when every file has the same name and birth-date anchors. */
 export function requiresCrossFileIdentityReview(candidates: readonly EntryPreviewCandidate[]): boolean {
   const fileKeys = [...new Set(candidates.map((candidate) => candidate.fileKey).filter((key): key is string => Boolean(key)))];
   if (fileKeys.length <= 1) return false;
-  const anchorsByFile = fileKeys.map((fileKey) => new Set(candidates
-    .filter((candidate) => candidate.fileKey === fileKey && candidate.uncertainty !== "not_found")
-    .map(crossFileIdentityAnchor)
-    .filter((anchor): anchor is string => Boolean(anchor))));
-  if (anchorsByFile.some((anchors) => anchors.size === 0)) return true;
-  return ![...anchorsByFile[0]].some((anchor) => anchorsByFile.every((anchors) => anchors.has(anchor)));
+  const anchorsByFile = fileKeys.map((fileKey) => {
+    const names = new Set<string>();
+    const birthDates = new Set<string>();
+    for (const candidate of candidates) {
+      if (candidate.fileKey !== fileKey || candidate.uncertainty === "not_found") continue;
+      const anchor = crossFileIdentityAnchor(candidate);
+      if (!anchor) continue;
+      (anchor.family === "name" ? names : birthDates).add(anchor.value);
+    }
+    return { names, birthDates };
+  });
+  if (anchorsByFile.some(({ names, birthDates }) => names.size === 0 || birthDates.size === 0)) return true;
+  const sharedName = [...anchorsByFile[0].names].some((anchor) => anchorsByFile.every(({ names }) => names.has(anchor)));
+  const sharedBirthDate = [...anchorsByFile[0].birthDates].some((anchor) => anchorsByFile.every(({ birthDates }) => birthDates.has(anchor)));
+  return !sharedName || !sharedBirthDate;
+}
+
+function isUnsafeCustomerNameCandidate(candidate: Pick<EntryPreviewCandidate, "key" | "value" | "sourceText">): boolean {
+  if (!isCustomerNameFieldKey(candidate.key)) return false;
+  return !isCustomerNameRepresentationValue(candidate.key, candidate.value)
+    || !hasExactPrintedIdentityEvidence(candidate.value, candidate.sourceText);
 }
 
 /** Only unambiguous values may enter a formal record without prior review. */
@@ -80,6 +97,7 @@ export function safeEntryPreviewCandidates(candidates: readonly EntryPreviewCand
     && !candidate.reviewOnly
     && Boolean(candidate.value.trim())
     && !isNonActualCurrentAddress(candidate)
+    && !isUnsafeCustomerNameCandidate(candidate)
     && (candidate.key !== "gender"
       || normalizeCustomerGenderValue(candidate.rawValue ?? candidate.value) === candidate.value)
     && byKey.get(candidate.key)?.size === 1);
@@ -91,6 +109,7 @@ export function selectableEntryPreviewCandidates(candidates: readonly EntryPrevi
   return candidates.filter((candidate) => {
     if (candidate.reviewOnly) return false;
     if (!candidate.value.trim() || isNonActualCurrentAddress(candidate)) return false;
+    if (isUnsafeCustomerNameCandidate(candidate)) return false;
     if (candidate.key === "gender" && normalizeCustomerGenderValue(candidate.rawValue ?? candidate.value) !== candidate.value) return false;
     if (candidate.uncertainty === "clear") return true;
     return candidate.uncertainty === "conflict"

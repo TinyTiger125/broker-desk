@@ -25,6 +25,35 @@ export type CustomerIdentityFieldKey = keyof typeof CUSTOMER_IDENTITY_FIELDS;
 export const CUSTOMER_IDENTITY_FIELD_KEYS = new Set<CustomerIdentityFieldKey>(Object.keys(CUSTOMER_IDENTITY_FIELDS) as CustomerIdentityFieldKey[]);
 export type CustomerGender = "male" | "female" | "other";
 
+const CUSTOMER_NAME_FIELD_KEYS = new Set<CustomerIdentityFieldKey>(["name", "nameLatin", "nameKanji", "nameKatakana"]);
+
+/**
+ * A name representation is writable only when its printed script matches the
+ * destination field. This is intentionally stricter than the model prompt:
+ * provenance and script are checked again at the server boundary so a Latin
+ * string can never be accepted as a Katakana value merely because the model
+ * labelled it that way.
+ */
+export function isCustomerNameFieldKey(fieldKey: string): fieldKey is CustomerIdentityFieldKey {
+  return CUSTOMER_NAME_FIELD_KEYS.has(fieldKey as CustomerIdentityFieldKey);
+}
+
+export function isCustomerNameRepresentationValue(fieldKey: string, value: string): boolean {
+  const normalized = value.normalize("NFKC").trim();
+  if (fieldKey === "name") return normalized.length > 0;
+  if (fieldKey === "nameLatin") return /\p{Script=Latin}/u.test(normalized) && /^[\p{Script=Latin}\p{Number}\s.'’\-‐‑‒–—－]+$/u.test(normalized);
+  if (fieldKey === "nameKanji") return /^[\p{Script=Han}々〇〆ヶ\s・ー－-]+$/u.test(normalized);
+  if (fieldKey === "nameKatakana") return /^[\p{Script=Katakana}ー－・\s-]+$/u.test(normalized);
+  return true;
+}
+
+/** Compare a candidate with the short exact quote supplied by the reader. */
+export function hasExactPrintedIdentityEvidence(value: string, sourceText: string | undefined): boolean {
+  if (!value.trim() || !sourceText?.trim()) return false;
+  const normalize = (input: string) => input.normalize("NFKC").replace(/\s+/g, "").toUpperCase();
+  return normalize(sourceText).includes(normalize(value));
+}
+
 const CUSTOMER_GENDER_TOKENS: Record<CustomerGender, Set<string>> = {
   male: new Set(["男性", "男", "male", "m", "man", "masculine"]),
   female: new Set(["女性", "女", "female", "f", "woman", "feminine"]),

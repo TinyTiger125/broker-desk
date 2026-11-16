@@ -3,7 +3,7 @@ import type { ObjectImportCandidateRecord, ObjectImportTargetRecord } from "@/li
 import { buildObjectVersionFingerprint, normalizeObjectImportFieldKey } from "@/lib/object-import-contract";
 import { getCaseContactValidationError } from "@/lib/case-contact-validation";
 import { getCaseFieldDefinition } from "@/lib/case-field-catalog";
-import { customerIdentityFieldKey, isCorporateCustomerRecord, isStandaloneCustomerTarget, isValidCustomerBirthDate } from "@/lib/customer-identity-field-catalog";
+import { customerIdentityFieldKey, hasExactPrintedIdentityEvidence, isCorporateCustomerRecord, isCustomerNameFieldKey, isCustomerNameRepresentationValue, isStandaloneCustomerTarget, isValidCustomerBirthDate } from "@/lib/customer-identity-field-catalog";
 
 export type ObjectImportReviewInput = {
   context: RequestContext; targetId: string; fieldId: string;
@@ -95,6 +95,11 @@ export function validateObjectImportReview(input: Omit<ObjectImportReviewInput, 
     if (isStandaloneCustomerTarget(target)) {
       if (key === "birthDate" && !isValidCustomerBirthDate(value)) return { ok: false, reason: "invalid_value" };
       if (key === "gender" && !new Set(["male", "female", "other"]).has(value)) return { ok: false, reason: "invalid_value" };
+      if (isCustomerNameFieldKey(key)
+        && (!isCustomerNameRepresentationValue(key, value)
+          || !hasExactPrintedIdentityEvidence(value, typeof field.provenance.sourceText === "string" ? field.provenance.sourceText : undefined))) {
+        return { ok: false, reason: "invalid_value" };
+      }
       if (key === "currentPostalCode" && !/^\d{3}-?\d{4}$/.test(value)) return { ok: false, reason: "invalid_value" };
       if (key === "phone" && !/^(?=.*\d)[0-9+()\-\s]{6,30}$/.test(value)) return { ok: false, reason: "invalid_value" };
       if (key === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return { ok: false, reason: "invalid_value" };

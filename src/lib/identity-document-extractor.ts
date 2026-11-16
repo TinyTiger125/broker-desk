@@ -160,6 +160,32 @@ function comparableFieldValue(field: Pick<FieldDraft, "fieldKey" | "normalizedVa
     : value;
 }
 
+const CUSTOMER_IDENTITY_NAME_FIELDS = new Set(["applicant.name", "applicant.nameLatin", "applicant.nameKanji", "applicant.nameKatakana"]);
+
+function standaloneCustomerNeedsIdentityReview(fields: readonly ExtractedInputField[]): boolean {
+  const hasName = fields.some((field) => CUSTOMER_IDENTITY_NAME_FIELDS.has(field.fieldKey)
+    && field.uncertainty !== "not_found"
+    && field.uncertainty !== "conflict"
+    && Boolean((field.normalizedValue || field.value).trim()));
+  const hasBirthDate = fields.some((field) => field.fieldKey === "applicant.birthDate"
+    && field.uncertainty !== "not_found"
+    && field.uncertainty !== "conflict"
+    && Boolean((field.normalizedValue || field.value).trim()));
+  return !hasName || !hasBirthDate;
+}
+
+function markStandaloneCustomerForReview(fields: ExtractedInputField[], needsReview: boolean): ExtractedInputField[] {
+  if (!needsReview) return fields;
+  return fields.map((field) => {
+    if (!field.fieldKey.startsWith("applicant.") || !field.value.trim()) return field;
+    return {
+      ...field,
+      uncertainty: field.uncertainty === "conflict" ? "conflict" : "unclear",
+      sourceRange: [field.sourceRange, "identity_single_file_review=missing_name_or_birth_date"].filter(Boolean).join("; "),
+    };
+  });
+}
+
 function addField(fields: FieldDraft[], input: {
   fieldKey: string;
   label: string;
@@ -720,9 +746,13 @@ export async function extractIdentityDocumentFromBuffer(input: {
   }
   if (!input.requireModel) addManualFallbackFields(fields, firstEvidencePage);
 
-  const extractedFields = markIdentityFieldsForValidityReview(
+  const validityMarkedFields = markIdentityFieldsForValidityReview(
     uniqueFields(fields, sourceFileHash, templateVersion),
     assessIdentityDocumentValidity({ documentType, pages }),
+  );
+  const extractedFields = markStandaloneCustomerForReview(
+    validityMarkedFields,
+    input.requireModel === true && standaloneCustomerNeedsIdentityReview(validityMarkedFields),
   );
   return {
     schemaVersion: "v1",
@@ -773,15 +803,25 @@ function getIdentityDocumentValue(type: InputDocumentType) {
 }
 
 const IDENTITY_MERGE_CONFLICT_FIELDS = new Set(["applicant.name", "applicant.nameLatin", "applicant.nameKanji", "applicant.nameKatakana", "applicant.birthDate", "applicant.gender"]);
-const IDENTITY_MERGE_ANCHOR_FIELDS = new Set(["applicant.name", "applicant.nameLatin", "applicant.nameKanji", "applicant.nameKatakana", "applicant.birthDate"]);
+const IDENTITY_MERGE_NAME_ANCHOR_FIELDS = new Set(["applicant.name", "applicant.nameLatin", "applicant.nameKanji", "applicant.nameKatakana"]);
 
 function identityBatchNeedsReview(results: InputFileExtractionResult[]): boolean {
-  const anchorsByFile = results.map((result) => new Set(result.fields
-    .filter((field) => IDENTITY_MERGE_ANCHOR_FIELDS.has(field.fieldKey) && field.uncertainty !== "conflict")
-    .map((field) => normalizeComparable(comparableFieldValue(field) || field.normalizedValue || field.value))
-    .filter(Boolean)));
-  if (anchorsByFile.some((anchors) => anchors.size === 0)) return true;
-  return ![...anchorsByFile[0]].some((anchor) => anchorsByFile.every((anchors) => anchors.has(anchor)));
+  const anchorsByFile = results.map((result) => {
+    const names = new Set<string>();
+    const birthDates = new Set<string>();
+    for (const field of result.fields) {
+      if (field.uncertainty === "conflict") continue;
+      const value = normalizeComparable(comparableFieldValue(field) || field.normalizedValue || field.value);
+      if (!value) continue;
+      if (IDENTITY_MERGE_NAME_ANCHOR_FIELDS.has(field.fieldKey)) names.add(value);
+      else if (field.fieldKey === "applicant.birthDate") birthDates.add(value);
+    }
+    return { names, birthDates };
+  });
+  if (anchorsByFile.some(({ names, birthDates }) => names.size === 0 || birthDates.size === 0)) return true;
+  const sharedName = [...anchorsByFile[0].names].some((anchor) => anchorsByFile.every(({ names }) => names.has(anchor)));
+  const sharedBirthDate = [...anchorsByFile[0].birthDates].some((anchor) => anchorsByFile.every(({ birthDates }) => birthDates.has(anchor)));
+  return !sharedName || !sharedBirthDate;
 }
 
 function analyzeIdentityMerge(results: InputFileExtractionResult[]) {

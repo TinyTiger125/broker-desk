@@ -5,7 +5,7 @@ import type { ObjectImportCandidateRecord, ObjectImportRepository } from "@/lib/
 import { parseObjectImportNotes, normalizeObjectImportFieldKey } from "@/lib/object-import-contract";
 import { selectSingleObjectReaderCandidates } from "@/lib/object-reader-attribution";
 import type { ObjectReaderResponse, ObjectReaderSourceLocation } from "@/lib/object-reader-contract";
-import { customerIdentityFieldKey, isCustomerGenderValue, isStandaloneCustomerTarget, normalizeCustomerIdentityValue } from "@/lib/customer-identity-field-catalog";
+import { customerIdentityFieldKey, hasExactPrintedIdentityEvidence, isCustomerGenderValue, isCustomerNameFieldKey, isCustomerNameRepresentationValue, isStandaloneCustomerTarget, normalizeCustomerIdentityValue } from "@/lib/customer-identity-field-catalog";
 import type { InputFieldEvidenceAlternative, InputFieldUncertainty } from "@/lib/input-file-extractor";
 
 export type ExtractedObjectField = {
@@ -143,15 +143,17 @@ export async function ensureObjectImportTask(job: ImportJob, scope: { tenantId: 
   });
 }
 
-export async function persistObjectExtraction(input: { repository?: Pick<ObjectImportRepository, "upsertCandidate">; target: { id: string; tenantId: string; sourceAttachmentId: string }; sourceFileHash: string; fields: ExtractedObjectField[] }) {
+export async function persistObjectExtraction(input: { repository?: Pick<ObjectImportRepository, "upsertCandidate">; customerTarget?: boolean; target: { id: string; tenantId: string; sourceAttachmentId: string }; sourceFileHash: string; fields: ExtractedObjectField[] }) {
   if (!input.target.sourceAttachmentId || !input.sourceFileHash) throw new Error("object_import_source_attachment_required");
   const candidates = input.fields.map((field): ObjectImportCandidateRecord => {
     const identityKey = customerIdentityFieldKey(field.fieldKey);
     const rawValue = field.rawValue ?? field.value;
     const normalizedValue = identityKey ? normalizeCustomerIdentityValue(identityKey, rawValue) : (field.normalizedValue ?? field.value);
     const genderConflict = identityKey === "gender" && rawValue.trim().length > 0 && !isCustomerGenderValue(normalizedValue);
+    const identityNameReview = input.customerTarget === true && identityKey !== null && isCustomerNameFieldKey(identityKey)
+      && (!isCustomerNameRepresentationValue(identityKey, normalizedValue) || !hasExactPrintedIdentityEvidence(normalizedValue, field.sourceText));
     const persistedField = identityKey
-      ? { ...field, value: normalizedValue, normalizedValue, rawValue, ...(genderConflict ? { uncertainty: "conflict" as const } : {}) }
+      ? { ...field, value: normalizedValue, normalizedValue, rawValue, ...((genderConflict || identityNameReview) ? { uncertainty: genderConflict ? "conflict" as const : "unclear" as const } : {}) }
       : field;
     return {
     id: `candidate_${input.target.id}_${field.fieldKey}`,
@@ -173,8 +175,8 @@ export async function persistObjectExtraction(input: { repository?: Pick<ObjectI
       ...(persistedField.subjectLabel ? { subjectLabel: persistedField.subjectLabel } : {}),
       ...(persistedField.alternatives?.length ? { alternatives: persistedField.alternatives } : {}),
     },
-    finalValue: genderConflict ? undefined : normalizedValue || undefined, finalSource: genderConflict ? undefined : normalizedValue ? "model_draft" : undefined,
-    status: genderConflict ? "conflict" : normalizedValue
+    finalValue: genderConflict || identityNameReview ? undefined : normalizedValue || undefined, finalSource: genderConflict || identityNameReview ? undefined : normalizedValue ? "model_draft" : undefined,
+    status: genderConflict ? "conflict" : identityNameReview ? "low_confidence" : normalizedValue
       ? persistedField.uncertainty === "conflict" ? "conflict" : persistedField.uncertainty === "unclear" ? "low_confidence" : persistedField.confidence < 0.8 ? "low_confidence" : "draft"
       : persistedField.uncertainty === "conflict" ? "conflict" : persistedField.uncertainty === "unclear" ? "low_confidence" : "not_found",
     };
@@ -211,7 +213,7 @@ export async function persistObjectImportJobExtraction(input: { job: ImportJob; 
   // persistence helper may also be used to replay an already obtained result,
   // so it must not increment the execution budget a second time.
   await updateObjectImportTarget({ tenantId: input.tenantId, userId: input.userId, id: target.id, status: "processing" });
-  const candidates = await persistObjectExtraction({ target: { ...target, sourceAttachmentId: target.sourceAttachmentId }, sourceFileHash, fields: selected });
+  const candidates = await persistObjectExtraction({ customerTarget: isStandaloneCustomerTarget(target), target: { ...target, sourceAttachmentId: target.sourceAttachmentId }, sourceFileHash, fields: selected });
   // The identity reader may return placeholders for every catalog field. Nine
   // empty placeholders are still zero extracted values, never a successful read.
   const hasReadableCandidate = candidates.some((field) => Boolean(field.candidateValue?.trim()) && field.provenance.uncertainty !== "not_found");

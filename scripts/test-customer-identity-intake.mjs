@@ -85,6 +85,14 @@ const client = await data.addClient({ tenantId: tenant.id, ownerUserId: user.id,
 const { buildObjectImportIdempotencyKey, buildObjectVersionFingerprint } = require(resolve(root, "src/lib/object-import-contract.ts"));
 const { persistObjectExtraction, persistObjectImportJobExtraction } = require(resolve(root, "src/lib/object-import-processor-adapter.ts"));
 const { resolveObjectImportTarget } = require(resolve(root, "src/lib/object-import-target-service.ts"));
+const { validateObjectImportReview } = require(resolve(root, "src/lib/object-import-review.ts"));
+const reviewRecord = { id: "client-synthetic-review", name: "", notes: undefined };
+const reviewVersion = buildObjectVersionFingerprint(reviewRecord);
+const reviewTarget = { id: "target-synthetic-review", tenantId: tenant.id, userId: user.id, importJobId: "job-synthetic-review", targetType: "party", targetId: reviewRecord.id, targetVersion: reviewVersion, sourceAttachmentId: "attachment-synthetic", status: "needs_review", idempotencyKey: "synthetic-review", attemptCount: 1, createdAt: new Date(), updatedAt: new Date() };
+const invalidScriptReview = validateObjectImportReview({ targetId: reviewTarget.id, fieldId: "field-synthetic-review", expectedVersion: reviewVersion, expectedCandidateValue: "YAMADA SHIKEN", decision: "confirm" }, reviewTarget, { id: "field-synthetic-review", tenantId: tenant.id, targetId: reviewTarget.id, fieldKey: "nameKatakana", candidateValue: "YAMADA SHIKEN", confidence: 0.99, provenance: { sourceAttachmentId: reviewTarget.sourceAttachmentId, sourceFileHash: "synthetic-hash", sourceText: "Name: YAMADA SHIKEN", uncertainty: "clear" }, status: "draft" }, reviewRecord);
+assert.deepEqual(invalidScriptReview, { ok: false, reason: "invalid_value" }, "queued review must reject a Latin value in the Katakana field at the server boundary");
+const missingEvidenceReview = validateObjectImportReview({ targetId: reviewTarget.id, fieldId: "field-synthetic-review", expectedVersion: reviewVersion, expectedCandidateValue: "山田 試験", decision: "confirm" }, reviewTarget, { id: "field-synthetic-review", tenantId: tenant.id, targetId: reviewTarget.id, fieldKey: "nameKanji", candidateValue: "山田 試験", confidence: 0.99, provenance: { sourceAttachmentId: reviewTarget.sourceAttachmentId, sourceFileHash: "synthetic-hash", uncertainty: "clear" }, status: "draft" }, reviewRecord);
+assert.deepEqual(missingEvidenceReview, { ok: false, reason: "invalid_value" }, "queued review must reject a name without matching printed evidence");
 const content = Buffer.from("%PDF-SAMPLE-TEST");
 const version = buildObjectVersionFingerprint(client);
 const job = await data.addImportJob({ tenantId: tenant.id, userId: user.id, sourceType: "scan", targetEntity: "parties", title: "SAMPLE TEST passport", status: "queued", idempotencyKey: buildObjectImportIdempotencyKey({ tenantId: tenant.id, target: { targetObjectType: "party", targetObjectId: client.id, targetVersion: version }, sourceHash: "same_person:sample" }), notes: JSON.stringify({ objectImport: { targetObjectType: "party", targetObjectId: client.id, targetVersion: version } }) });
@@ -114,6 +122,24 @@ assert.equal(queuedGenderReview[0].candidateValue, "男/女", "queued conflict m
 assert.equal(queuedGenderReview[0].status, "conflict", "queued conflict must be review-only");
 assert.equal(queuedGenderReview[0].finalValue, undefined, "queued conflict must not produce a model final value");
 assert.equal(queuedGenderReview[0].provenance.rawCandidateValue, "男/女", "queued conflict must retain raw evidence");
+const queuedWrongScript = await persistObjectExtraction({
+  customerTarget: true,
+  repository: { upsertCandidate: async (candidate) => candidate },
+  target: { id: "target-name-validation", tenantId: tenant.id, sourceAttachmentId: "attachment-synthetic" },
+  sourceFileHash: "synthetic-hash",
+  fields: [{ fieldKey: "nameKatakana", value: "YAMADA SHIKEN", confidence: 0.99, sourceText: "Name: YAMADA SHIKEN", uncertainty: "clear" }],
+});
+assert.equal(queuedWrongScript[0].status, "low_confidence", "queued wrong-script name must remain review-only at persistence");
+assert.equal(queuedWrongScript[0].finalValue, undefined, "queued wrong-script name must not receive a model final value");
+const queuedMissingEvidence = await persistObjectExtraction({
+  customerTarget: true,
+  repository: { upsertCandidate: async (candidate) => candidate },
+  target: { id: "target-name-evidence", tenantId: tenant.id, sourceAttachmentId: "attachment-synthetic" },
+  sourceFileHash: "synthetic-hash",
+  fields: [{ fieldKey: "nameKanji", value: "山田 試験", confidence: 0.99, uncertainty: "clear" }],
+});
+assert.equal(queuedMissingEvidence[0].status, "low_confidence", "queued name without printed evidence must remain review-only at persistence");
+assert.equal(queuedMissingEvidence[0].finalValue, undefined, "queued name without printed evidence must not receive a model final value");
 await persistObjectImportJobExtraction({ ...scope, job, fields });
 const target = await data.getObjectImportTargetByJob({ ...scope, importJobId: job.id });
 assert(target && target.targetType === "party" && !target.caseId);
@@ -191,6 +217,26 @@ Module._load = function(request, parent, ...rest) {
     if (Buffer.from(buffer).toString().includes("PARTIAL-B")) {
       return { ...modelResponse, candidates: [{ fieldKey: "applicant.birthDate", value: "1990-04-12", pageNumber: 1, sourceText: "生年月日 1990-04-12", uncertainty: "clear", subjectKey: "person-b", subjectLabel: "本人" }] };
     }
+    if (Buffer.from(buffer).toString().includes("PARTIAL-SINGLE-NAME")) {
+      return { ...modelResponse, candidates: [{ fieldKey: "applicant.name", value: "PERSON A", pageNumber: 1, sourceText: "氏名 PERSON A", uncertainty: "clear", subjectKey: "person-a", subjectLabel: "本人" }] };
+    }
+    if (Buffer.from(buffer).toString().includes("PARTIAL-SINGLE-BIRTH")) {
+      return { ...modelResponse, candidates: [{ fieldKey: "applicant.birthDate", value: "1990-04-12", pageNumber: 1, sourceText: "生年月日 1990-04-12", uncertainty: "clear", subjectKey: "person-a", subjectLabel: "本人" }] };
+    }
+    if (Buffer.from(buffer).toString().includes("SAME-DOB-A") || Buffer.from(buffer).toString().includes("SAME-DOB-B")) {
+      const personName = Buffer.from(buffer).toString().includes("SAME-DOB-A") ? "PERSON A" : "PERSON B";
+      return { ...modelResponse, candidates: [
+        { fieldKey: "applicant.name", value: personName, pageNumber: 1, sourceText: `氏名 ${personName}`, uncertainty: "clear", subjectKey: "person", subjectLabel: "本人" },
+        { fieldKey: "applicant.birthDate", value: "1990-04-12", pageNumber: 1, sourceText: "生年月日 1990-04-12", uncertainty: "clear", subjectKey: "person", subjectLabel: "本人" },
+      ] };
+    }
+    if (Buffer.from(buffer).toString().includes("SAME-NAME-A") || Buffer.from(buffer).toString().includes("SAME-NAME-B")) {
+      const birthDate = Buffer.from(buffer).toString().includes("SAME-NAME-A") ? "1990-04-12" : "1980-01-01";
+      return { ...modelResponse, candidates: [
+        { fieldKey: "applicant.name", value: "SAME PERSON", pageNumber: 1, sourceText: "氏名 SAME PERSON", uncertainty: "clear", subjectKey: "person", subjectLabel: "本人" },
+        { fieldKey: "applicant.birthDate", value: birthDate, pageNumber: 1, sourceText: `生年月日 ${birthDate}`, uncertainty: "clear", subjectKey: "person", subjectLabel: "本人" },
+      ] };
+    }
     return modelResponse;
   } };
   return loaderBeforeIdentityExtractor.call(this, request, parent, ...rest);
@@ -259,6 +305,28 @@ assert.equal(partialName?.uncertainty, "unclear", "cross-file complementary iden
 assert.equal(partialBirthDate?.uncertainty, "unclear", "cross-file complementary identity fields must remain review-only");
 assert.match(partialName?.sourceRange ?? "", /identity_merge_review=missing_shared_anchor/);
 assert.match(partialBirthDate?.sourceRange ?? "", /identity_merge_review=missing_shared_anchor/);
+const queuedPartialName = await extractIdentityDocumentFromBuffer({ buffer: Buffer.from("%PDF-PARTIAL-SINGLE-NAME"), filename: "partial-name.pdf", requireModel: true });
+const queuedPartialNameField = queuedPartialName.fields.find((field) => field.fieldKey === "applicant.name");
+assert.equal(queuedPartialNameField?.value, "PERSON A");
+assert.equal(queuedPartialNameField?.uncertainty, "unclear", "queued single-file name-only extraction must remain review-only");
+assert.match(queuedPartialNameField?.sourceRange ?? "", /identity_single_file_review=missing_name_or_birth_date/);
+const queuedPartialBirth = await extractIdentityDocumentFromBuffer({ buffer: Buffer.from("%PDF-PARTIAL-SINGLE-BIRTH"), filename: "partial-birth.pdf", requireModel: true });
+const queuedPartialBirthField = queuedPartialBirth.fields.find((field) => field.fieldKey === "applicant.birthDate");
+assert.equal(queuedPartialBirthField?.value, "1990-04-12");
+assert.equal(queuedPartialBirthField?.uncertainty, "unclear", "queued single-file birth-only extraction must remain review-only");
+assert.match(queuedPartialBirthField?.sourceRange ?? "", /identity_single_file_review=missing_name_or_birth_date/);
+const queuedSameBirthDifferentNames = await extractIdentityDocumentsFromFiles([
+  { buffer: Buffer.from("%PDF-SAME-DOB-A"), filename: "same-dob-a.pdf" },
+  { buffer: Buffer.from("%PDF-SAME-DOB-B"), filename: "same-dob-b.pdf" },
+], { requireModel: true });
+assert.notEqual(queuedSameBirthDifferentNames.fields.find((field) => field.fieldKey === "applicant.name")?.uncertainty, "clear", "queued same-DOB different-name sources must remain review-only");
+assert.notEqual(queuedSameBirthDifferentNames.fields.find((field) => field.fieldKey === "applicant.birthDate")?.uncertainty, "clear", "queued same-DOB different-name birth evidence must not be used for merge");
+const queuedSameNameDifferentBirthDates = await extractIdentityDocumentsFromFiles([
+  { buffer: Buffer.from("%PDF-SAME-NAME-A"), filename: "same-name-a.pdf" },
+  { buffer: Buffer.from("%PDF-SAME-NAME-B"), filename: "same-name-b.pdf" },
+], { requireModel: true });
+assert.notEqual(queuedSameNameDifferentBirthDates.fields.find((field) => field.fieldKey === "applicant.name")?.uncertainty, "clear", "queued same-name different-DOB sources must remain review-only");
+assert.notEqual(queuedSameNameDifferentBirthDates.fields.find((field) => field.fieldKey === "applicant.birthDate")?.uncertainty, "clear", "queued same-name different-DOB evidence must not be used for merge");
 modelResponse = {
   documentType: "unknown_identity_scan",
   pages: [{ pageNumber: 1, lines: ["unsupported identity card"] }],
@@ -289,7 +357,10 @@ assert.match(expiredName?.sourceRange ?? "", /identity_document_validity=expired
 modelResponse = {
   documentType: "identity_residence_card",
   pages: [{ pageNumber: 1, lines: ["氏名 PERSON VALID", "有効期限 2099年12月31日"] }],
-  candidates: [{ fieldKey: "applicant.name", value: "PERSON VALID", pageNumber: 1, sourceText: "氏名 PERSON VALID", uncertainty: "clear", subjectKey: "person-1", subjectLabel: "本人" }],
+  candidates: [
+    { fieldKey: "applicant.name", value: "PERSON VALID", pageNumber: 1, sourceText: "氏名 PERSON VALID", uncertainty: "clear", subjectKey: "person-1", subjectLabel: "本人" },
+    { fieldKey: "applicant.birthDate", value: "1990-04-12", pageNumber: 1, sourceText: "生年月日 1990-04-12", uncertainty: "clear", subjectKey: "person-1", subjectLabel: "本人" },
+  ],
 };
 const validDocument = await extractIdentityDocumentFromBuffer({ buffer: Buffer.from("%PDF-MODEL-VALID"), filename: "valid-residence-card.pdf", requireModel: true });
 assert.equal(validDocument.fields.find((field) => field.fieldKey === "applicant.name")?.uncertainty, "clear", "future expiry remains eligible for the existing review pipeline");

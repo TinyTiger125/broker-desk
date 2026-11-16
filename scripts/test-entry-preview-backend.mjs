@@ -65,6 +65,24 @@ Module._load = function(request, parent, ...rest) {
     if (filename === "partial-person-b.pdf") return { documentType: "identity_passport", candidates: [
       { ...shared, fieldKey: "applicant.birthDate", value: "1990-04-12", sourceText: "Birth: 1990-04-12" },
     ] };
+    if (filename === "same-dob-a.pdf" || filename === "same-dob-b.pdf") return { documentType: "identity_passport", candidates: [
+      { ...shared, fieldKey: "applicant.nameLatin", value: filename === "same-dob-a.pdf" ? "PERSON A" : "PERSON B", sourceText: `Name: ${filename === "same-dob-a.pdf" ? "PERSON A" : "PERSON B"}` },
+      { ...shared, fieldKey: "applicant.birthDate", value: "1990-04-12", sourceText: "Birth: 1990-04-12" },
+    ] };
+    if (filename === "same-name-a.pdf" || filename === "same-name-b.pdf") return { documentType: "identity_passport", candidates: [
+      { ...shared, fieldKey: "applicant.nameLatin", value: "SAME PERSON", sourceText: "Name: SAME PERSON" },
+      { ...shared, fieldKey: "applicant.birthDate", value: filename === "same-name-a.pdf" ? "1990-04-12" : "1980-01-01", sourceText: `Birth: ${filename === "same-name-a.pdf" ? "1990-04-12" : "1980-01-01"}` },
+    ] };
+    if (filename === "same-identity-a.pdf" || filename === "same-identity-b.pdf") return { documentType: "identity_passport", candidates: [
+      { ...shared, fieldKey: "applicant.nameLatin", value: "SAME PERSON", sourceText: "Name: SAME PERSON" },
+      { ...shared, fieldKey: "applicant.birthDate", value: "1990-04-12", sourceText: "Birth: 1990-04-12" },
+    ] };
+    if (filename === "wrong-script.pdf") return { documentType: "identity_passport", candidates: [
+      { ...shared, fieldKey: "applicant.nameKatakana", value: "YAMADA SHIKEN", sourceText: "Name: YAMADA SHIKEN" },
+    ] };
+    if (filename === "missing-name-evidence.pdf") return { documentType: "identity_passport", candidates: [
+      { ...shared, fieldKey: "applicant.nameKanji", value: "山田 試験", sourceText: "氏名: 別の文字列" },
+    ] };
     return { documentType: "identity_passport", candidates: [{ ...shared, fieldKey: "applicant.name" }, { ...shared, fieldKey: "applicant.residenceCardNumber", value: "DO_NOT_MAP" }] };
   } };
   if (request === "@/lib/openai-object-reader") return { readObjectDocumentWithOpenAi: async () => {
@@ -131,6 +149,23 @@ assert.equal(partialDifferentPeople.candidates.length, 2);
 assert.equal(requiresCrossFileIdentityReview(partialDifferentPeople.candidates), true, "cross-file batches without a shared identity anchor must remain review-only");
 assert.equal(safeEntryPreviewCandidates(partialDifferentPeople.candidates).length, 0);
 assert.equal(selectableEntryPreviewCandidates(partialDifferentPeople.candidates).length, 0);
+const sameBirthDifferentNames = await previewEntryDocumentsAction(request("customer", ["same-dob-a.pdf", "same-dob-b.pdf"]));
+assert.equal(requiresCrossFileIdentityReview(sameBirthDifferentNames.candidates), true, "a shared birth date without a shared name must not permit complementary-field merging");
+assert.deepEqual(safeEntryPreviewCandidates(sameBirthDifferentNames.candidates), []);
+const sameNameDifferentBirthDates = await previewEntryDocumentsAction(request("customer", ["same-name-a.pdf", "same-name-b.pdf"]));
+assert.equal(requiresCrossFileIdentityReview(sameNameDifferentBirthDates.candidates), true, "a shared name without a shared birth date must not permit complementary-field merging");
+assert.deepEqual(safeEntryPreviewCandidates(sameNameDifferentBirthDates.candidates), []);
+const sameIdentity = await previewEntryDocumentsAction(request("customer", ["same-identity-a.pdf", "same-identity-b.pdf"]));
+assert.equal(requiresCrossFileIdentityReview(sameIdentity.candidates), false, "matching name and birth date anchors may proceed to ordinary duplicate-value handling");
+assert.equal(safeEntryPreviewCandidates(sameIdentity.candidates).length, 4);
+const wrongScript = await previewEntryDocumentsAction(request("customer", ["wrong-script.pdf"]));
+assert.equal(wrongScript.candidates[0].uncertainty, "unclear", "a Latin value labelled Katakana must remain review-only");
+assert.deepEqual(safeEntryPreviewCandidates(wrongScript.candidates), []);
+assert.deepEqual(selectableEntryPreviewCandidates(wrongScript.candidates), []);
+assert.equal(fillSelectedEntryCandidateForm(new FormData(), wrongScript, wrongScript.candidates[0]), false, "invalid script must not expose a confirmation action");
+const missingNameEvidence = await previewEntryDocumentsAction(request("customer", ["missing-name-evidence.pdf"]));
+assert.equal(missingNameEvidence.candidates[0].uncertainty, "unclear", "a name without matching printed evidence must remain review-only");
+assert.deepEqual(safeEntryPreviewCandidates(missingNameEvidence.candidates), []);
 const expiredResult = await previewEntryDocumentsAction(request("customer", ["expired.pdf"]));
 assert.equal(expiredResult.candidates[0].reviewOnly, true, "expired direct-entry evidence must remain review-only");
 assert.equal(safeEntryPreviewCandidates(expiredResult.candidates).length, 0);
