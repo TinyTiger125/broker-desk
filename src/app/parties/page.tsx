@@ -84,7 +84,7 @@ const partiesCopy = {
     actions: "操作",
     relationTree: "関係を確認",
     searchLabel: "キーワード",
-    searchPlaceholder: "名前・電話・メール・役割で検索",
+    searchPlaceholder: "名前（英字・漢字・カタカナ）・電話・メール・役割で検索",
     created: "関係者を登録しました。",
     updated: "関係者を更新しました。",
     archivedFeedback: "関係者をアーカイブしました。",
@@ -92,6 +92,7 @@ const partiesCopy = {
     backToWorkbench: "ワークベンチに戻る",
     readOnly: "会社メンバーに公開／読み取り専用",
     ownerReadOnly: "現在のアカウントは閲覧のみです。",
+    pendingReview: "本人確認資料の確認待ち",
   },
   zh: {
     description: "搜索相关主体，查看联系方式、角色和状态。",
@@ -124,7 +125,7 @@ const partiesCopy = {
     actions: "操作",
     relationTree: "查看关系图",
     searchLabel: "关键词",
-    searchPlaceholder: "按姓名、电话、邮箱或角色搜索",
+    searchPlaceholder: "按姓名（拉丁字母、汉字、片假名）、电话、邮箱或角色搜索",
     created: "主体已创建。",
     updated: "主体已更新。",
     archivedFeedback: "主体已归档。",
@@ -132,6 +133,7 @@ const partiesCopy = {
     backToWorkbench: "返回工作台",
     readOnly: "公司成员可见／只读",
     ownerReadOnly: "当前账号仅可查看。",
+    pendingReview: "身份资料待复核",
   },
   ko: {
     description: "관계자를 검색하고 연락처, 역할, 상태를 확인합니다.",
@@ -164,7 +166,7 @@ const partiesCopy = {
     actions: "작업",
     relationTree: "관계 확인",
     searchLabel: "키워드",
-    searchPlaceholder: "이름, 전화, 이메일 또는 역할 검색",
+    searchPlaceholder: "이름(라틴 문자·한자·가타카나), 전화, 이메일 또는 역할 검색",
     created: "관계자를 등록했습니다.",
     updated: "관계자를 업데이트했습니다.",
     archivedFeedback: "관계자를 보관했습니다.",
@@ -172,6 +174,7 @@ const partiesCopy = {
     backToWorkbench: "워크벤치로 돌아가기",
     readOnly: "회사 구성원 공개 / 읽기 전용",
     ownerReadOnly: "현재 계정은 보기 전용입니다.",
+    pendingReview: "본인 확인 자료 검토 대기",
   },
 } as const;
 
@@ -224,8 +227,12 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
   const searched = query
     ? lifecycleFiltered.filter((party) => {
         const normalized = query.toLowerCase();
+        const normalizedName = query.normalize("NFKC").toLowerCase();
         return (
           party.name.toLowerCase().includes(normalized) ||
+          (party.nameLatin?.normalize("NFKC").toLowerCase().includes(normalizedName) ?? false) ||
+          (party.nameKanji?.normalize("NFKC").toLowerCase().includes(normalizedName) ?? false) ||
+          (party.nameKatakana?.normalize("NFKC").toLowerCase().includes(normalizedName) ?? false) ||
           party.phone.toLowerCase().includes(normalized) ||
           (party.email?.toLowerCase().includes(normalized) ?? false) ||
           party.explicitRoles.some((role) => role.toLowerCase().includes(normalized))
@@ -391,6 +398,7 @@ export default async function PartiesPage({ searchParams }: PartiesPageProps) {
                           >
                             {party.name}
                           </Link>
+                          {party.pendingIdentityReview ? <p className="mt-1 text-xs font-bold leading-relaxed text-amber-700">{copy.pendingReview}</p> : null}
                           {readOnlyMessage ? <p className="mt-1 text-xs font-bold leading-relaxed text-slate-600 [overflow-wrap:anywhere]">{readOnlyMessage}</p> : null}
                         </div>
                         <div role="cell" className="break-words text-sm leading-relaxed text-slate-700 [overflow-wrap:anywhere]"><span className="mr-2 text-xs font-bold text-slate-400 lg:hidden">{copy.contact}</span>{contactSummary(party, notSet)}</div>

@@ -35,6 +35,7 @@ Module._load = function(request, parent, ...rest) {
 
 const { parseOpenAiIdentityReaderResponse } = require(resolve(root, "src/lib/identity-reader-contract.ts"));
 const { isValidCustomerBirthDate, isCustomerGenderValue, isCustomerNameRepresentationValue, normalizeCustomerGenderValue, normalizeCustomerIdentityValue, customerIdentityFieldKey, CUSTOMER_IDENTITY_FIELDS, hasStrictPrintedAddressPageEvidence } = require(resolve(root, "src/lib/customer-identity-field-catalog.ts"));
+const { matchesClientNameSearch, sharesClientNameRepresentation } = require(resolve(root, "src/lib/client-name-search.ts"));
 const postgresSource = readFileSync(resolve(root, "src/lib/data.postgres.ts"), "utf8");
 assert.match(postgresSource, /nameLatin:\s*"name_latin"/);
 assert.match(postgresSource, /nameKanji:\s*"name_kanji"/);
@@ -42,6 +43,7 @@ assert.match(postgresSource, /nameKatakana:\s*"name_katakana"/);
 const identityImportUiSource = readFileSync(resolve(root, "src/components/client-identity-import-section.tsx"), "utf8");
 const objectImportActionsSource = readFileSync(resolve(root, "src/app/object-import-actions.ts"), "utf8");
 const clientEditPageSource = readFileSync(resolve(root, "src/app/clients/[id]/edit/page.tsx"), "utf8");
+const partiesPageSource = readFileSync(resolve(root, "src/app/parties/page.tsx"), "utf8");
 assert.match(identityImportUiSource, /isCustomerGenderValue/);
 assert.match(identityImportUiSource, /invalidGenderCandidate/);
 assert.match(identityImportUiSource, /!invalidGenderCandidate/);
@@ -56,6 +58,12 @@ assert.doesNotMatch(identityImportUiSource, /페이지 증거가 없으므로/);
 assert.match(identityImportUiSource, /manualBirthDateBlocked/);
 assert.match(identityImportUiSource, /isObjectImportBirthDateManualReviewRequired/);
 assert.match(identityImportUiSource, /isObjectImportManualBirthDateAttributable/);
+assert.match(identityImportUiSource, /relatedRecords/);
+assert.match(identityImportUiSource, /同名候補があります/);
+assert.match(identityImportUiSource, /原本と照合して顧客フォームへ入力/);
+assert.match(clientEditPageSource, /relatedNameRecords/);
+assert.match(partiesPageSource, /pendingIdentityReview/);
+assert.match(partiesPageSource, /nameKatakana/);
 assert.match(identityImportUiSource, /manualBirthDateBlocked && reviewAction[\s\S]*name="decision" value="reject"/);
 assert.match(identityImportUiSource, /manualAttestation/);
 assert.match(identityImportUiSource, /type="date"/);
@@ -76,6 +84,12 @@ assert.equal(normalizeCustomerIdentityValue("birthDate", "12 APR 1990"), "1990-0
 assert.equal(normalizeCustomerIdentityValue("birthDate", "平成2年4月12日"), "1990-04-12");
 assert.equal(normalizeCustomerIdentityValue("gender", "M"), "male");
 assert.equal(normalizeCustomerIdentityValue("gender", "F"), "female");
+const persistedNameRepresentations = { name: "", nameLatin: "YAMADA, TARO", nameKanji: "山田 太郎", nameKatakana: "ヤマダ タロウ" };
+assert.equal(matchesClientNameSearch(persistedNameRepresentations, "yamada"), true, "Latin name search must use persisted representation");
+assert.equal(matchesClientNameSearch(persistedNameRepresentations, "山田"), true, "Hanzi name search must use persisted representation");
+assert.equal(matchesClientNameSearch(persistedNameRepresentations, "ﾔﾏﾀﾞ"), true, "Katakana search must normalize width variants");
+assert.equal(sharesClientNameRepresentation(persistedNameRepresentations, { name: "山田 太郎", nameLatin: "", nameKanji: "", nameKatakana: "" }), true, "same-name warning must match an exact persisted representation");
+assert.equal(sharesClientNameRepresentation(persistedNameRepresentations, { name: "山田 次郎", nameLatin: "", nameKanji: "", nameKatakana: "" }), false, "same-name warning must not treat similar names as identical");
 assert.equal(hasStrictPrintedAddressPageEvidence(
   "東京都テスト区3丁目1番2号",
   "住所 東京都テスト区3丁目1番2号",
@@ -127,7 +141,15 @@ const { buildObjectImportIdempotencyKey, buildObjectVersionFingerprint } = requi
 const { persistObjectExtraction, persistObjectImportJobExtraction } = require(resolve(root, "src/lib/object-import-processor-adapter.ts"));
 const { isSafeModelAutoSave } = require(resolve(root, "src/lib/object-import-review.ts"));
 const { resolveObjectImportTarget } = require(resolve(root, "src/lib/object-import-target-service.ts"));
-const { isObjectImportBirthDateManualReviewRequired, isObjectImportManualBirthDateAttributable, validateObjectImportReview } = require(resolve(root, "src/lib/object-import-review.ts"));
+const { getObjectImportIdentityReviewReasonCodes, hasPendingObjectImportReview, isObjectImportBirthDateManualReviewRequired, isObjectImportManualBirthDateAttributable, validateObjectImportReview } = require(resolve(root, "src/lib/object-import-review.ts"));
+assert.deepEqual(getObjectImportIdentityReviewReasonCodes({ fieldKey: "nameLatin", provenance: { sourceRange: "page 1; identity_document_validity=expired; model_attribution_blocked=ambiguous_applicants", pageEvidenceVerified: true, uncertainty: "clear" } }), ["expired_document", "attribution_blocked"], "identity review reasons must preserve precise persisted blockers");
+assert.deepEqual(getObjectImportIdentityReviewReasonCodes({ fieldKey: "nameLatin", provenance: { uncertainty: "clear" } }), ["missing_page_evidence"], "missing page evidence must be surfaced as a fail-closed identity review reason");
+assert.equal(hasPendingObjectImportReview("queued", []), false, "queue state alone must not show a pending-review badge");
+assert.equal(hasPendingObjectImportReview("processing", ["failed"]), false, "processing with only terminal candidate rows is not pending review");
+assert.equal(hasPendingObjectImportReview("failed", ["draft"]), false, "a failed target must not show a pending-review badge from a stale draft row");
+assert.equal(hasPendingObjectImportReview("completed", ["draft"]), false, "a completed target must not show a pending-review badge from a stale draft row");
+assert.equal(hasPendingObjectImportReview("needs_review", ["draft"]), true, "unresolved candidate rows must show a pending-review badge");
+assert.equal(hasPendingObjectImportReview("conflict", []), true, "target conflict remains actionable without candidate rows");
 const reviewRecord = { id: "client-synthetic-review", name: "", notes: undefined };
 const reviewVersion = buildObjectVersionFingerprint(reviewRecord);
 const reviewTarget = { id: "target-synthetic-review", tenantId: tenant.id, userId: user.id, importJobId: "job-synthetic-review", targetType: "party", targetId: reviewRecord.id, targetVersion: reviewVersion, sourceAttachmentId: "attachment-synthetic", status: "needs_review", idempotencyKey: "synthetic-review", attemptCount: 1, createdAt: new Date(), updatedAt: new Date() };
@@ -137,6 +159,8 @@ const missingEvidenceReview = validateObjectImportReview({ targetId: reviewTarge
 assert.deepEqual(missingEvidenceReview, { ok: false, reason: "invalid_value" }, "queued review must reject a name without matching printed evidence");
 const commaNameReview = validateObjectImportReview({ targetId: reviewTarget.id, fieldId: "field-synthetic-review", expectedVersion: reviewVersion, expectedCandidateValue: "YAMADA, TARO", decision: "confirm" }, reviewTarget, { id: "field-synthetic-review", tenantId: tenant.id, targetId: reviewTarget.id, fieldKey: "nameLatin", candidateValue: "YAMADA, TARO", confidence: 0.74, provenance: { sourceAttachmentId: reviewTarget.sourceAttachmentId, sourceFileHash: "synthetic-hash", sourceText: "Name: YAMADA, TARO", pageEvidenceVerified: true, uncertainty: "clear" }, status: "draft" }, reviewRecord);
 assert.deepEqual(commaNameReview, { ok: true, scope: "object", key: "nameLatin", value: "YAMADA, TARO", recordValue: "YAMADA, TARO" }, "server review confirmation must accept only the controlled comma-separated Latin format with exact evidence");
+const expiredNameReview = validateObjectImportReview({ targetId: reviewTarget.id, fieldId: "field-synthetic-review", expectedVersion: reviewVersion, expectedCandidateValue: "YAMADA, TARO", decision: "confirm" }, reviewTarget, { id: "field-synthetic-review", tenantId: tenant.id, targetId: reviewTarget.id, fieldKey: "nameLatin", candidateValue: "YAMADA, TARO", confidence: 0.99, provenance: { sourceAttachmentId: reviewTarget.sourceAttachmentId, sourceFileHash: "synthetic-hash", sourceText: "Name: YAMADA, TARO", sourceRange: "page 1; identity_document_validity=expired", pageEvidenceVerified: true, uncertainty: "clear" }, status: "draft" }, reviewRecord);
+assert.deepEqual(expiredNameReview, { ok: false, reason: "invalid_value" }, "expired identity candidates must not accept one-click model confirmation");
 const unsupportedLatinPunctuationReview = validateObjectImportReview({ targetId: reviewTarget.id, fieldId: "field-synthetic-review", expectedVersion: reviewVersion, expectedCandidateValue: "YAMADA; TARO", decision: "confirm" }, reviewTarget, { id: "field-synthetic-review", tenantId: tenant.id, targetId: reviewTarget.id, fieldKey: "nameLatin", candidateValue: "YAMADA; TARO", confidence: 0.99, provenance: { sourceAttachmentId: reviewTarget.sourceAttachmentId, sourceFileHash: "synthetic-hash", sourceText: "Name: YAMADA; TARO", pageEvidenceVerified: true, uncertainty: "clear" }, status: "draft" }, reviewRecord);
 assert.deepEqual(unsupportedLatinPunctuationReview, { ok: false, reason: "invalid_value" }, "server review confirmation must reject unsupported Latin punctuation");
 const missingPageEvidenceReview = validateObjectImportReview({ targetId: reviewTarget.id, fieldId: "field-synthetic-review", expectedVersion: reviewVersion, expectedCandidateValue: "090-1111-2222", decision: "confirm" }, reviewTarget, { id: "field-synthetic-review", tenantId: tenant.id, targetId: reviewTarget.id, fieldKey: "phone", candidateValue: "090-1111-2222", confidence: 0.99, provenance: { sourceAttachmentId: reviewTarget.sourceAttachmentId, sourceFileHash: "synthetic-hash", uncertainty: "clear" }, status: "draft" }, reviewRecord);
@@ -292,6 +316,35 @@ expiredTargetNow = await data.getObjectImportTarget({ ...scope, id: expiredRevie
 const expiredAddressReview = await data.reviewObjectImportCandidate({ context, targetId: expiredReviewTarget.id, fieldId: expiredAddress.id, expectedVersion: expiredTargetNow.targetVersion, expectedCandidateValue: expiredAddress.candidateValue, decision: "confirm", value: expiredAddress.candidateValue });
 assert.deepEqual(expiredAddressReview, { ok: false, reason: "invalid_value" }, "document address must remain a pending candidate, not a current-address write");
 assert.equal((await data.getClientById(expiredReviewClient.id, tenant.id)).currentAddress, undefined, "document address must not persist as current address");
+
+// An ordinary customer-form save may fill the field without reviewing the
+// import candidate. The target must remain visibly pending because the
+// candidate row is still unresolved; the badge is about review state, not
+// whether the underlying client field happens to be blank.
+const manualFormBefore = await data.getClientById(expiredReviewClient.id, tenant.id);
+assert(manualFormBefore);
+const manualFormSaved = await data.updateClient(expiredReviewClient.id, {
+  tenantId: tenant.id,
+  name: manualFormBefore.name,
+  nameLatin: manualFormBefore.nameLatin,
+  nameKanji: manualFormBefore.nameKanji,
+  nameKatakana: manualFormBefore.nameKatakana,
+  phone: manualFormBefore.phone,
+  email: manualFormBefore.email,
+  currentAddress: "東京都テスト区 手入力確認済み",
+  budgetType: manualFormBefore.budgetType,
+  purpose: manualFormBefore.purpose,
+  loanPreApprovalStatus: manualFormBefore.loanPreApprovalStatus,
+  stage: manualFormBefore.stage,
+  temperature: manualFormBefore.temperature,
+  brokerageContractType: manualFormBefore.brokerageContractType,
+  amlCheckStatus: manualFormBefore.amlCheckStatus,
+});
+assert.equal(manualFormSaved?.currentAddress, "東京都テスト区 手入力確認済み", "ordinary customer-form save must persist the manually entered field");
+const manualFormTarget = await data.getObjectImportTarget({ ...scope, id: expiredReviewTarget.id });
+const manualFormCandidates = await data.listObjectImportCandidates({ ...scope, targetId: expiredReviewTarget.id });
+assert.equal(manualFormTarget?.status, "needs_review", "ordinary customer-form save must not silently complete the import target");
+assert.equal(hasPendingObjectImportReview(manualFormTarget?.status ?? "", manualFormCandidates.map((item) => item.status)), true, "an unresolved candidate remains pending after an ordinary field save");
 
 // A standalone applicant.name value may populate the Latin display slot only
 // when the server has both clear uncertainty and page-evidence proof. It must

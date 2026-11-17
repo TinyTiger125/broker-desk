@@ -1,4 +1,4 @@
-import type { ObjectImportCandidateRecord, ObjectImportRepository, ObjectImportTargetRecord, ObjectImportScope } from "@/lib/object-import-repository";
+import type { ObjectImportCandidateRecord, ObjectImportCandidateStatusRecord, ObjectImportRepository, ObjectImportTargetRecord, ObjectImportScope } from "@/lib/object-import-repository";
 
 export class MemoryObjectImportRepository implements ObjectImportRepository {
   constructor(private readonly targets: ObjectImportTargetRecord[] = [], private readonly candidates: ObjectImportCandidateRecord[] = []) {}
@@ -6,11 +6,13 @@ export class MemoryObjectImportRepository implements ObjectImportRepository {
     const item = this.targets.find((item) => item.id === input.id && item.tenantId === input.tenantId && item.userId === input.userId);
     return item ? structuredClone(item) : null;
   }
-  async listTargets(input: ObjectImportScope & { caseId?: string; targetType?: "party" | "property"; targetId?: string }) {
+  async listTargets(input: ObjectImportScope & { caseId?: string; targetType?: "party" | "property"; targetId?: string; targetIds?: readonly string[] }) {
+    const targetIds = input.targetIds === undefined ? undefined : new Set(input.targetIds);
     return structuredClone(this.targets.filter((item) => item.tenantId === input.tenantId && item.userId === input.userId
       && (input.caseId === undefined || item.caseId === input.caseId)
       && (input.targetType === undefined || item.targetType === input.targetType)
-      && (input.targetId === undefined || item.targetId === input.targetId)));
+      && (input.targetId === undefined || item.targetId === input.targetId)
+      && (targetIds === undefined || targetIds.has(item.targetId))));
   }
   async getTargetByJob(input: ObjectImportScope & { importJobId: string }) {
     const item = this.targets.find((item) => item.tenantId === input.tenantId && item.userId === input.userId && item.importJobId === input.importJobId);
@@ -19,6 +21,13 @@ export class MemoryObjectImportRepository implements ObjectImportRepository {
   async listCandidates(input: ObjectImportScope & { targetId: string }) {
     if (!await this.getTarget({ ...input, id: input.targetId })) return [];
     return structuredClone(this.candidates.filter((item) => item.tenantId === input.tenantId && item.targetId === input.targetId));
+  }
+  async listCandidateStatuses(input: ObjectImportScope & { targetIds: readonly string[] }): Promise<ObjectImportCandidateStatusRecord[]> {
+    if (input.targetIds.length === 0) return [];
+    const targetIds = new Set(input.targetIds);
+    return this.candidates
+      .filter((item) => item.tenantId === input.tenantId && targetIds.has(item.targetId))
+      .map((item) => ({ targetId: item.targetId, status: item.status }));
   }
   async createTarget(input: ObjectImportTargetRecord) {
     const existing = this.targets.find((item) => item.tenantId === input.tenantId && item.idempotencyKey === input.idempotencyKey);

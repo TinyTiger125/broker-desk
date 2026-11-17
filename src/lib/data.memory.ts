@@ -59,6 +59,7 @@ import {
 } from "@/lib/visibility-foundation";
 import { assertNoForbiddenRecordInput } from "@/lib/record-input-guard";
 import { mayDeletePreimportUpload, mayStartPropertyImport } from "@/lib/preimport-upload-lifecycle";
+import { matchesClientNameSearch } from "@/lib/client-name-search";
 import {
   deliveryStateAfterFinalization,
   normalizeInvitationDeliveryState,
@@ -6170,7 +6171,7 @@ export async function searchVisibleRecordsForContext(input: {
     .filter((item) => lifecycleStatus === "all" || (item.lifecycleStatus ?? "active") === lifecycleStatus)
     .flatMap((item) => {
       const resolution = resolveRecordVisibility(input.context, item);
-      if (!resolution.canRead || !includes(item.name, item.phone, item.email, item.preferredArea)) return [];
+      if (!resolution.canRead || (!matchesClientNameSearch(item, normalized) && !includes(item.phone, item.email, item.preferredArea))) return [];
       return [{ entity: "party" as const, id: item.id, title: item.name, subtitle: item.phone, resolution, sortAt: item.lastContactedAt ?? item.createdAt }];
     })
     .sort((a, b) => b.sortAt.getTime() - a.sortAt.getTime())
@@ -6198,7 +6199,7 @@ export async function listClients(userId: string, filter: ClientListFilter = {})
       if (!filter.query) return true;
       const q = filter.query;
       return (
-        item.name.includes(q) ||
+        matchesClientNameSearch(item, q) ||
         item.phone.includes(q) ||
         (item.preferredArea?.includes(q) ?? false) ||
         (item.firstChoiceArea?.includes(q) ?? false) ||
@@ -6249,7 +6250,7 @@ export async function listClientsForContext(input: {
     .filter((item) => {
       if (!filter.query) return true;
       const q = filter.query;
-      return item.name.includes(q) || item.phone.includes(q) || (item.preferredArea?.includes(q) ?? false) || (item.firstChoiceArea?.includes(q) ?? false) || (item.secondChoiceArea?.includes(q) ?? false) || (item.notes?.includes(q) ?? false);
+      return matchesClientNameSearch(item, q) || item.phone.includes(q) || (item.preferredArea?.includes(q) ?? false) || (item.firstChoiceArea?.includes(q) ?? false) || (item.secondChoiceArea?.includes(q) ?? false) || (item.notes?.includes(q) ?? false);
     });
 
   const sort = filter.sort ?? "follow_up";
@@ -7588,6 +7589,7 @@ export const createObjectImportTarget = (input: Parameters<MemoryObjectImportRep
 export const updateObjectImportTarget = (input: Parameters<MemoryObjectImportRepository["updateTarget"]>[0]) => objectImportRepository().updateTarget(input);
 export const upsertObjectImportCandidate = (input: Parameters<MemoryObjectImportRepository["upsertCandidate"]>[0]) => objectImportRepository().upsertCandidate(input);
 export const listObjectImportCandidates = (input: Parameters<MemoryObjectImportRepository["listCandidates"]>[0]) => objectImportRepository().listCandidates(input);
+export const listObjectImportCandidateStatuses = (input: Parameters<MemoryObjectImportRepository["listCandidateStatuses"]>[0]) => objectImportRepository().listCandidateStatuses(input);
 
 /** Requeue one failed/ambiguous object source while preserving source and human decisions. */
 export async function retryObjectImportTarget(input: {

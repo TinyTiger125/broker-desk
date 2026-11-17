@@ -14,6 +14,15 @@ export type ObjectImportReviewResult =
   | { ok: true; caseId?: string; targetId: string; targetVersion: string }
   | { ok: false; reason: "not_writable" | "conflict" | "invalid_value" | "already_reviewed" | "unsupported_target" };
 
+const TERMINAL_OBJECT_IMPORT_CANDIDATE_STATUSES = new Set(["confirmed", "rejected", "failed", "not_found"]);
+
+/** Only an actionable target with unresolved candidate rows is a review badge. */
+export function hasPendingObjectImportReview(targetStatus: string, candidateStatuses: readonly string[]): boolean {
+  if (targetStatus === "conflict") return true;
+  if (targetStatus !== "needs_review") return false;
+  return candidateStatuses.some((status) => !TERMINAL_OBJECT_IMPORT_CANDIDATE_STATUSES.has(status));
+}
+
 // Case facts written by the object-import worker must never replace an
 // explicit human deletion. Keep this marker inside the existing JSON document
 // so the rule is atomic with the ordinary case save and needs no parallel
@@ -97,12 +106,18 @@ export function validateObjectImportReview(input: Omit<ObjectImportReviewInput, 
       // the customer's current address. Keep it visible for comparison, but
       // require a separate current-address workflow before any write.
       if (key === "currentAddress") return { ok: false, reason: "invalid_value" };
+      const manualBirthDate = key === "birthDate" && input.manualAttestation === true;
+      const manualBirthDateAttributable = manualBirthDate && isObjectImportManualBirthDateAttributable(field);
+      const identityReviewReasons = getObjectImportIdentityReviewReasonCodes(field);
+      if (identityReviewReasons.some((reason) => ["expired_document", "unclear_document_validity", "attribution_blocked", "conflicting_candidates", "missing_subject", "non_holder_subject"].includes(reason))
+        && !manualBirthDateAttributable) {
+        return { ok: false, reason: "invalid_value" };
+      }
       // The worker persists this server-computed consistency result with every
       // candidate. Old records without it fail closed rather than treating a
       // quoted value as proof. Birth date is the sole stable fact that may be
       // entered manually after an explicit human attestation against the
       // original; the model quote remains untrusted and is never used as proof.
-      const manualBirthDate = key === "birthDate" && input.manualAttestation === true;
       const birthDateNeedsManualReview = isObjectImportBirthDateManualReviewRequired(field);
       if (manualBirthDate && !isObjectImportManualBirthDateAttributable(field)) return { ok: false, reason: "invalid_value" };
       if (birthDateNeedsManualReview && !manualBirthDate) return { ok: false, reason: "invalid_value" };
@@ -132,6 +147,36 @@ export function validateObjectImportReview(input: Omit<ObjectImportReviewInput, 
 
 const NEGATIVE_IDENTITY_SUBJECT_LABEL = /世帯主|(?<!被)保険者|代理人|代表者|保証人|連帯保証人|緊急連絡先|扶養者|household[ _-]?head|insurer|agent|representative|guarantor|sponsor|emergency[ _-]?contact|dependent|policyholder/i;
 const HOLDER_IDENTITY_SUBJECT_LABEL = /申請人|主要申請人|本人|被保険者|カード名義人|名義人|所持者|保持者|持ち主|primary[ _-]?applicant|applicant|document[ _-]?holder|cardholder|insured[ _-]?person|insured|holder/i;
+
+export type ObjectImportIdentityReviewReason =
+  | "expired_document"
+  | "unclear_document_validity"
+  | "attribution_blocked"
+  | "conflicting_candidates"
+  | "missing_subject"
+  | "non_holder_subject"
+  | "missing_page_evidence";
+
+/** Stable, UI-facing reason codes derived only from persisted review evidence. */
+export function getObjectImportIdentityReviewReasonCodes(
+  field: Pick<ObjectImportCandidateRecord, "fieldKey" | "provenance">,
+): ObjectImportIdentityReviewReason[] {
+  if (!customerIdentityFieldKey(field.fieldKey)) return [];
+  const sourceRange = typeof field.provenance.sourceRange === "string" ? field.provenance.sourceRange : "";
+  const reasons: ObjectImportIdentityReviewReason[] = [];
+  if (/identity_document_validity=expired/.test(sourceRange)) reasons.push("expired_document");
+  if (/identity_document_validity=unclear/.test(sourceRange)) reasons.push("unclear_document_validity");
+  if (/model_attribution_blocked=/.test(sourceRange)) reasons.push("attribution_blocked");
+  if (field.provenance.uncertainty === "conflict") reasons.push("conflicting_candidates");
+  if (customerIdentityFieldKey(field.fieldKey) === "birthDate" && isObjectImportBirthDateManualReviewRequired(field)) {
+    const subjectKey = typeof field.provenance.subjectKey === "string" ? field.provenance.subjectKey.trim() : "";
+    const subjectLabel = typeof field.provenance.subjectLabel === "string" ? field.provenance.subjectLabel.trim() : "";
+    if (!subjectKey || !subjectLabel) reasons.push("missing_subject");
+    else if (NEGATIVE_IDENTITY_SUBJECT_LABEL.test(subjectLabel) || !HOLDER_IDENTITY_SUBJECT_LABEL.test(subjectLabel)) reasons.push("non_holder_subject");
+  }
+  if (field.provenance.pageEvidenceVerified !== true) reasons.push("missing_page_evidence");
+  return [...new Set(reasons)];
+}
 
 export function isObjectImportBirthDateManualReviewRequired(field: Pick<ObjectImportCandidateRecord, "fieldKey" | "provenance">): boolean {
   if (customerIdentityFieldKey(field.fieldKey) !== "birthDate") return false;

@@ -19,6 +19,8 @@ export type ObjectImportCandidateRecord = {
   confirmedByUserId?: string; confirmedAt?: Date;
 };
 
+export type ObjectImportCandidateStatusRecord = Pick<ObjectImportCandidateRecord, "targetId" | "status">;
+
 export type ObjectImportScope = { tenantId: string; userId: string };
 
 export type ObjectImportRetryResult =
@@ -27,8 +29,9 @@ export type ObjectImportRetryResult =
 
 export interface ObjectImportRepository {
   getTarget(input: ObjectImportScope & { id: string }): Promise<ObjectImportTargetRecord | null>;
-  listTargets(input: ObjectImportScope & { caseId?: string; targetType?: ObjectImportKind; targetId?: string }): Promise<ObjectImportTargetRecord[]>;
+  listTargets(input: ObjectImportScope & { caseId?: string; targetType?: ObjectImportKind; targetId?: string; targetIds?: readonly string[] }): Promise<ObjectImportTargetRecord[]>;
   listCandidates(input: ObjectImportScope & { targetId: string }): Promise<ObjectImportCandidateRecord[]>;
+  listCandidateStatuses(input: ObjectImportScope & { targetIds: readonly string[] }): Promise<ObjectImportCandidateStatusRecord[]>;
   getTargetByJob(input: { tenantId: string; userId: string; importJobId: string }): Promise<ObjectImportTargetRecord | null>;
   createTarget(input: ObjectImportTargetRecord): Promise<ObjectImportTargetRecord>;
   updateTarget(input: Pick<ObjectImportTargetRecord, "tenantId" | "userId" | "id" | "status"> & Partial<Pick<ObjectImportTargetRecord, "attemptCount" | "errorCode" | "errorSummary" | "documentType" | "processingMetadata">>): Promise<ObjectImportTargetRecord | null>;

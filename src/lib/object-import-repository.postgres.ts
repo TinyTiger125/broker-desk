@@ -1,5 +1,5 @@
 import type { Pool } from "pg";
-import type { ObjectImportCandidateRecord, ObjectImportRepository, ObjectImportTargetRecord, ObjectImportScope } from "@/lib/object-import-repository";
+import type { ObjectImportCandidateRecord, ObjectImportCandidateStatusRecord, ObjectImportRepository, ObjectImportTargetRecord, ObjectImportScope } from "@/lib/object-import-repository";
 
 type Row = Record<string, unknown>;
 const optionalString = (value: unknown) => value == null ? undefined : String(value);
@@ -33,12 +33,14 @@ export class PostgresObjectImportRepository implements ObjectImportRepository {
     const result = await this.pool.query("SELECT * FROM object_import_targets WHERE tenant_id=$1 AND user_id=$2 AND id=$3 LIMIT 1", [input.tenantId, input.userId, input.id]);
     return result.rows[0] ? mapObjectImportTarget(result.rows[0]) : null;
   }
-  async listTargets(input: ObjectImportScope & { caseId?: string; targetType?: "party" | "property"; targetId?: string }) {
+  async listTargets(input: ObjectImportScope & { caseId?: string; targetType?: "party" | "property"; targetId?: string; targetIds?: readonly string[] }) {
+    if (input.targetIds !== undefined && input.targetIds.length === 0) return [];
     const values: unknown[] = [input.tenantId, input.userId];
     const clauses = ["tenant_id=$1", "user_id=$2"];
     if (input.caseId !== undefined) { values.push(input.caseId); clauses.push(`case_id=$${values.length}`); }
     if (input.targetType !== undefined) { values.push(input.targetType); clauses.push(`target_type=$${values.length}`); }
     if (input.targetId !== undefined) { values.push(input.targetId); clauses.push(`target_id=$${values.length}`); }
+    if (input.targetIds !== undefined) { values.push([...input.targetIds]); clauses.push(`target_id = ANY($${values.length}::text[])`); }
     const result = await this.pool.query(`SELECT * FROM object_import_targets WHERE ${clauses.join(" AND ")} ORDER BY created_at,id`, values);
     return result.rows.map(mapObjectImportTarget);
   }
@@ -49,6 +51,14 @@ export class PostgresObjectImportRepository implements ObjectImportRepository {
   async listCandidates(input: ObjectImportScope & { targetId: string }) {
     const result = await this.pool.query("SELECT f.* FROM object_import_fields f JOIN object_import_targets t ON t.id=f.object_import_target_id AND t.tenant_id=f.tenant_id WHERE f.tenant_id=$1 AND t.user_id=$2 AND t.id=$3 ORDER BY f.field_key", [input.tenantId, input.userId, input.targetId]);
     return result.rows.map(mapObjectImportCandidate);
+  }
+  async listCandidateStatuses(input: ObjectImportScope & { targetIds: readonly string[] }): Promise<ObjectImportCandidateStatusRecord[]> {
+    if (input.targetIds.length === 0) return [];
+    const result = await this.pool.query(
+      "SELECT f.object_import_target_id,f.status FROM object_import_fields f JOIN object_import_targets t ON t.id=f.object_import_target_id AND t.tenant_id=f.tenant_id WHERE f.tenant_id=$1 AND t.user_id=$2 AND f.object_import_target_id = ANY($3::text[])",
+      [input.tenantId, input.userId, [...input.targetIds]],
+    );
+    return result.rows.map((row) => ({ targetId: String(row.object_import_target_id), status: row.status as ObjectImportCandidateStatusRecord["status"] }));
   }
   async createTarget(input: ObjectImportTargetRecord) {
     const result = await this.pool.query("INSERT INTO object_import_targets (id,tenant_id,user_id,case_id,import_job_id,target_type,target_id,target_version,document_type,processing_metadata,source_attachment_id,status,idempotency_key,attempt_count,error_code,error_summary,created_at,updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12,$13,$14,$15,$16,$17,$18) ON CONFLICT (tenant_id,idempotency_key) DO UPDATE SET updated_at=object_import_targets.updated_at WHERE object_import_targets.user_id=EXCLUDED.user_id RETURNING *", [input.id,input.tenantId,input.userId,input.caseId ?? null,input.importJobId,input.targetType,input.targetId,input.targetVersion,input.documentType ?? null,input.processingMetadata ? JSON.stringify(input.processingMetadata) : null,input.sourceAttachmentId ?? null,input.status,input.idempotencyKey,input.attemptCount,input.errorCode ?? null,input.errorSummary ?? null,input.createdAt,input.updatedAt]);

@@ -658,6 +658,7 @@ export const createObjectImportTarget: typeof memory.createObjectImportTarget = 
 export const updateObjectImportTarget: typeof memory.updateObjectImportTarget = (...args) => repo.updateObjectImportTarget(...args);
 export const upsertObjectImportCandidate: typeof memory.upsertObjectImportCandidate = (...args) => repo.upsertObjectImportCandidate(...args);
 export const listObjectImportCandidates: typeof memory.listObjectImportCandidates = (...args) => repo.listObjectImportCandidates(...args);
+export const listObjectImportCandidateStatuses: typeof memory.listObjectImportCandidateStatuses = (...args) => repo.listObjectImportCandidateStatuses(...args);
 export const retryObjectImportTarget: typeof memory.retryObjectImportTarget = (...args) => repo.retryObjectImportTarget(...args);
 export const cleanupEntryPreviewReviewArtifacts: typeof memory.cleanupEntryPreviewReviewArtifacts = (...args) => repo.cleanupEntryPreviewReviewArtifacts(...args);
 

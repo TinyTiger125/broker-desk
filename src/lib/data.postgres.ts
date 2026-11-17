@@ -137,6 +137,7 @@ import {
   type VisibilityRecord,
   type VisibilityRecordResult,
 } from "@/lib/visibility-resolver";
+import { matchesClientNameSearch } from "@/lib/client-name-search";
 import { validateTenantServicePeriod } from "@/lib/tenant-service";
 import { deriveTenantServiceState, isTenantServiceOperational } from "@/lib/tenant-service";
 import {
@@ -4389,6 +4390,9 @@ export async function searchVisibleRecordsForContext(input: {
            AND ($3 = 'all' OR lifecycle_status = $3)
            AND (
              name ILIKE $5 ESCAPE '!'
+             OR COALESCE(name_latin, '') ILIKE $5 ESCAPE '!'
+             OR COALESCE(name_kanji, '') ILIKE $5 ESCAPE '!'
+             OR COALESCE(name_katakana, '') ILIKE $5 ESCAPE '!'
              OR phone ILIKE $5 ESCAPE '!'
              OR COALESCE(email, '') ILIKE $5 ESCAPE '!'
              OR COALESCE(preferred_area, '') ILIKE $5 ESCAPE '!'
@@ -6178,7 +6182,7 @@ export async function listClients(userId: string, filter: ClientListFilter = {})
   if (filter.query) {
     clients = clients.filter(
       (item) =>
-        item.name.includes(filter.query!) ||
+        matchesClientNameSearch(item, filter.query!) ||
         item.phone.includes(filter.query!) ||
         (item.preferredArea?.includes(filter.query!) ?? false) ||
         (item.firstChoiceArea?.includes(filter.query!) ?? false) ||
@@ -6258,7 +6262,7 @@ export async function listClientsForContext(input: {
     if (filter.temperature && filter.temperature !== "all") clients = clients.filter((item) => item.temperature === filter.temperature);
     if (filter.lifecycleStatus && filter.lifecycleStatus !== "all") clients = clients.filter((item) => (item.lifecycleStatus ?? "active") === filter.lifecycleStatus);
     if (filter.query) {
-      clients = clients.filter((item) => item.name.includes(filter.query!) || item.phone.includes(filter.query!) || (item.preferredArea?.includes(filter.query!) ?? false) || (item.firstChoiceArea?.includes(filter.query!) ?? false) || (item.secondChoiceArea?.includes(filter.query!) ?? false) || (item.notes?.includes(filter.query!) ?? false));
+      clients = clients.filter((item) => matchesClientNameSearch(item, filter.query!) || item.phone.includes(filter.query!) || (item.preferredArea?.includes(filter.query!) ?? false) || (item.firstChoiceArea?.includes(filter.query!) ?? false) || (item.secondChoiceArea?.includes(filter.query!) ?? false) || (item.notes?.includes(filter.query!) ?? false));
     }
     const sort: ClientListSort = filter.sort ?? "follow_up";
     clients.sort((a, b) => {
@@ -8294,6 +8298,7 @@ export const createObjectImportTarget = (input: Parameters<PostgresObjectImportR
 export const updateObjectImportTarget = (input: Parameters<PostgresObjectImportRepository["updateTarget"]>[0]) => new PostgresObjectImportRepository(getPool()).updateTarget(input);
 export const upsertObjectImportCandidate = (input: Parameters<PostgresObjectImportRepository["upsertCandidate"]>[0]) => new PostgresObjectImportRepository(getPool()).upsertCandidate(input);
 export const listObjectImportCandidates = (input: Parameters<PostgresObjectImportRepository["listCandidates"]>[0]) => new PostgresObjectImportRepository(getPool()).listCandidates(input);
+export const listObjectImportCandidateStatuses = (input: Parameters<PostgresObjectImportRepository["listCandidateStatuses"]>[0]) => new PostgresObjectImportRepository(getPool()).listCandidateStatuses(input);
 
 /**
  * Remove only a failed direct-entry review graph. The SQL helper re-checks the

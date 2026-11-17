@@ -10,6 +10,8 @@ import {
   listPropertiesForContext,
   searchVisibleRecordsForContext,
   listOutputTemplateVersions,
+  listObjectImportTargets,
+  listObjectImportCandidateStatuses,
   listQuoteFormData,
   listQuotations,
   getQuotationByIdForContext,
@@ -28,6 +30,7 @@ import {
   extractPartyProfileFromNotes,
   getPartyProfileRoleLabel,
 } from "@/lib/party-profile";
+import { hasPendingObjectImportReview } from "@/lib/object-import-review";
 import {
   localizeDemoClient,
   localizeDemoImportJob,
@@ -75,6 +78,9 @@ export type HubPropertyItem = {
 export type HubPartyItem = {
   id: string;
   name: string;
+  nameLatin?: string;
+  nameKanji?: string;
+  nameKatakana?: string;
   phone: string;
   email?: string;
   partyType: "individual" | "corporate";
@@ -94,6 +100,8 @@ export type HubPartyItem = {
   canArchive: boolean;
   readOnly: boolean;
   readOnlyReason?: "company_read" | "owner_read_only";
+  /** The visible import candidate still needs an explicit review decision. */
+  pendingIdentityReview: boolean;
 };
 
 export type HubContractItem = {
@@ -199,6 +207,23 @@ function mapPartyType(client: Client): "individual" | "corporate" {
     return "corporate";
   }
   return "individual";
+}
+
+async function listPendingIdentityPartyIds(input: { tenantId: string; userId: string; clientIds?: ReadonlySet<string> }): Promise<Set<string>> {
+  // The visible client set is passed into the repository query so this list
+  // path never scans unrelated target rows or issues one candidate query per
+  // visible party.
+  const targets = (await listObjectImportTargets({
+    tenantId: input.tenantId,
+    userId: input.userId,
+    targetType: "party",
+    ...(input.clientIds ? { targetIds: [...input.clientIds] } : {}),
+  })).filter((target) => !target.caseId && (!input.clientIds || input.clientIds.has(target.targetId)));
+  if (targets.length === 0) return new Set();
+  const statuses = await listObjectImportCandidateStatuses({ tenantId: input.tenantId, userId: input.userId, targetIds: targets.map((target) => target.id) });
+  const statusesByTarget = new Map<string, string[]>();
+  for (const row of statuses) statusesByTarget.set(row.targetId, [...(statusesByTarget.get(row.targetId) ?? []), row.status]);
+  return new Set(targets.filter((target) => hasPendingObjectImportReview(target.status, statusesByTarget.get(target.id) ?? [])).map((target) => target.targetId));
 }
 
 function buildRoleTags(client: Client, locale: Locale): string[] {
@@ -331,6 +356,9 @@ const resolveHubParties = cache(async (
     listClients(userId, { sort: "recent_contact", tenantId, lifecycleStatus }),
     listQuotations(undefined, tenantId),
   ]);
+  const pendingPartyIds = tenantId
+    ? await listPendingIdentityPartyIds({ tenantId, userId, clientIds: new Set(clients.map((client) => client.id)) })
+    : new Set<string>();
   const countMap = new Map<string, number>();
   quotes.forEach((quote) => {
     countMap.set(quote.clientId, (countMap.get(quote.clientId) ?? 0) + 1);
@@ -342,6 +370,9 @@ const resolveHubParties = cache(async (
     return {
       id: client.id,
       name: client.name,
+      nameLatin: client.nameLatin,
+      nameKanji: client.nameKanji,
+      nameKatakana: client.nameKatakana,
       phone: client.phone,
       email: client.email,
       partyType: mapPartyType(client),
@@ -356,6 +387,7 @@ const resolveHubParties = cache(async (
       canWrite: true,
       canArchive: true,
       readOnly: false,
+      pendingIdentityReview: pendingPartyIds.has(client.id),
     };
   });
 });
@@ -367,12 +399,16 @@ function mapVisibleHubParty(
   canArchive: boolean,
   readOnlyReason: HubPartyItem["readOnlyReason"],
   contractCount: number,
+  pendingIdentityReview = false,
 ): HubPartyItem {
   const client = localizeDemoClient(locale, rawClient);
   const profile = extractPartyProfileFromNotes(client.notes);
   return {
     id: client.id,
     name: client.name,
+    nameLatin: client.nameLatin,
+    nameKanji: client.nameKanji,
+    nameKatakana: client.nameKatakana,
     phone: client.phone,
     email: client.email,
     partyType: mapPartyType(client),
@@ -388,6 +424,7 @@ function mapVisibleHubParty(
     canArchive,
     readOnly: !canWrite,
     readOnlyReason,
+    pendingIdentityReview,
   };
 }
 
@@ -397,6 +434,11 @@ export async function listHubParties(locale: Locale = "ja", context: HubQueryCon
       context: context.requestContext,
       filter: { sort: "recent_contact", lifecycleStatus: context.lifecycleStatus },
     });
+    const pendingPartyIds = await listPendingIdentityPartyIds({
+      tenantId: context.requestContext.tenantId,
+      userId: context.requestContext.userId,
+      clientIds: new Set(visible.map((item) => item.client.id)),
+    });
     return visible.map((item) => {
       const canWrite = item.resolution.canWrite && context.canUpdateRecords !== false;
       const canArchive = canWrite && context.canArchiveRecords === true;
@@ -405,7 +447,7 @@ export async function listHubParties(locale: Locale = "ja", context: HubQueryCon
         : item.resolution.outcome === "company_read"
           ? "company_read"
           : "owner_read_only";
-      return mapVisibleHubParty(locale, item.client, canWrite, canArchive, readOnlyReason, item._count.quotations);
+      return mapVisibleHubParty(locale, item.client, canWrite, canArchive, readOnlyReason, item._count.quotations, pendingPartyIds.has(item.client.id));
     });
   }
   const resolved = await resolveHubContext(context);

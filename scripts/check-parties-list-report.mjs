@@ -308,10 +308,13 @@ function analyzePage(source) {
     return terms;
   };
   const searchTerms = flattenOr(searchReturns[0].expression);
-  assert.equal(searchTerms.length, 4, "keyword predicate must OR exactly name, phone, email and role matches");
+  assert.equal(searchTerms.length, 7, "keyword predicate must OR legacy name, persisted name representations, phone, email and role matches");
   const compact = (node) => nodeText(node, tree).replaceAll(/\s+/g, "");
   assert.deepEqual(searchTerms.map(compact), [
     "party.name.toLowerCase().includes(normalized)",
+    "party.nameLatin?.normalize(\"NFKC\").toLowerCase().includes(normalizedName)??false",
+    "party.nameKanji?.normalize(\"NFKC\").toLowerCase().includes(normalizedName)??false",
+    "party.nameKatakana?.normalize(\"NFKC\").toLowerCase().includes(normalizedName)??false",
     "party.phone.toLowerCase().includes(normalized)",
     "party.email?.toLowerCase().includes(normalized)??false",
     "party.explicitRoles.some((role)=>role.toLowerCase().includes(normalized))",
@@ -811,7 +814,7 @@ function analyzeHub(source) {
   assertReachableStatement(itemCallback.body, callbackReturns[0], "visible item callback return");
   const mapperCall = unwrap(callbackReturns[0].expression);
   assert(mapperCall && ts.isCallExpression(mapperCall) && nodeText(mapperCall.expression, tree) === "mapVisibleHubParty", "live callback must return mapVisibleHubParty");
-  assert.deepEqual(mapperCall.arguments.map((argument) => nodeText(argument, tree)), ["locale", "item.client", "canWrite", "canArchive", "readOnlyReason", "item._count.quotations"], "live mapper must receive the exact derived decisions");
+  assert.deepEqual(mapperCall.arguments.map((argument) => nodeText(argument, tree)), ["locale", "item.client", "canWrite", "canArchive", "readOnlyReason", "item._count.quotations", "pendingPartyIds.has(item.client.id)"], "live mapper must receive the exact derived decisions and pending identity state");
 }
 
 const LOADING_COPY_EXPECTED = {
@@ -959,12 +962,18 @@ function assertLiveSearchBehavior(source) {
     { id: "phone", name: "Bravo", phone: "090-2468-1357", email: undefined, explicitRoles: ["buyer"] },
     { id: "email", name: "Charlie", phone: "111-1111", email: "Desk@Example.COM", explicitRoles: ["seller"] },
     { id: "role", name: "Delta", phone: "222-2222", email: undefined, explicitRoles: ["Property MANAGER"] },
+    { id: "latin-representation", name: "Legacy", nameLatin: "SATO, HANAKO", phone: "333-3333", email: undefined, explicitRoles: [] },
+    { id: "hanzi-representation", name: "Legacy", nameKanji: "佐藤 花子", phone: "444-4444", email: undefined, explicitRoles: [] },
+    { id: "katakana-representation", name: "Legacy", nameKatakana: "サトウ ハナコ", phone: "555-5555", email: undefined, explicitRoles: [] },
   ];
   const ids = (result) => result.map((row) => row.id);
   assert.deepEqual(ids(search({ q: "alpha" }, rows)), ["name"], "name search must match case-insensitively");
   assert.deepEqual(ids(search({ q: "2468" }, rows)), ["phone"], "phone search must match independently");
   assert.deepEqual(ids(search({ q: "EXAMPLE.com" }, rows)), ["email"], "optional email search must match case-insensitively");
   assert.deepEqual(ids(search({ q: "manager" }, rows)), ["role"], "explicit role search must match case-insensitively");
+  assert.deepEqual(ids(search({ q: "hanako" }, rows)), ["latin-representation"], "Latin persisted name search must be independent of legacy name");
+  assert.deepEqual(ids(search({ q: "佐藤" }, rows)), ["hanzi-representation"], "Hanzi persisted name search must be independent of legacy name");
+  assert.deepEqual(ids(search({ q: "ﾊﾅｺ" }, rows)), ["katakana-representation"], "Katakana persisted name search must normalize width variants");
   assert.deepEqual(ids(search({ q: "  ALPHA  " }, rows)), ["name"], "query search must trim before lowercase matching");
   assert.deepEqual(ids(search({ q: "not-present" }, rows)), [], "nonmatching query must return no rows");
   assert.equal(search({}, rows), rows, "omitted query must preserve the lifecycle-filtered collection identity");
@@ -1208,8 +1217,8 @@ for (const [label, mutate] of [
   ["search drops optional email", (source) => source.replace('          (party.email?.toLowerCase().includes(normalized) ?? false) ||\n', "")],
   ["search drops explicit roles", (source) => source.replace('          party.explicitRoles.some((role) => role.toLowerCase().includes(normalized))', "          false")],
   ["search wrong normalization", (source) => source.replace("const normalized = query.toLowerCase();", "const normalized = query;")],
-  ["search constant true", (source) => source.replace("const normalized = query.toLowerCase();\n        return (", "const normalized = query.toLowerCase();\n        return true || (")],
-  ["search dead correct live wrong", (source) => `${source.replace("const normalized = query.toLowerCase();\n        return (", "const normalized = query.toLowerCase();\n        return true || (")}\nfunction DeadCorrectPartySearch(party, normalized) { return party.name.toLowerCase().includes(normalized) || party.phone.toLowerCase().includes(normalized) || (party.email?.toLowerCase().includes(normalized) ?? false) || party.explicitRoles.some((role) => role.toLowerCase().includes(normalized)); }`],
+  ["search constant true", (source) => source.replace("const normalized = query.toLowerCase();\n        const normalizedName = query.normalize(\"NFKC\").toLowerCase();\n        return (", "const normalized = query.toLowerCase();\n        const normalizedName = query.normalize(\"NFKC\").toLowerCase();\n        return true || (")],
+  ["search dead correct live wrong", (source) => `${source.replace("const normalized = query.toLowerCase();\n        const normalizedName = query.normalize(\"NFKC\").toLowerCase();\n        return (", "const normalized = query.toLowerCase();\n        const normalizedName = query.normalize(\"NFKC\").toLowerCase();\n        return true || (")}\nfunction DeadCorrectPartySearch(party, normalized) { return party.name.toLowerCase().includes(normalized) || party.phone.toLowerCase().includes(normalized) || (party.email?.toLowerCase().includes(normalized) ?? false) || party.explicitRoles.some((role) => role.toLowerCase().includes(normalized)); }`],
 ]) assertMutationFails(label, sources.page, mutate, [analyzePage, assertLiveSearchBehavior]);
 
 for (const [label, mutate] of [
@@ -1413,8 +1422,8 @@ const deadArchiveHub = sources.hub.replace(
 );
 assert.throws(() => analyzeHub(deadArchiveHub), "an uncalled archive helper must not satisfy the live map contract");
 const deadMapperHub = sources.hub.replace(
-  "return mapVisibleHubParty(locale, item.client, canWrite, canArchive, readOnlyReason, item._count.quotations);",
-  "function ignoredMapper() { return mapVisibleHubParty(locale, item.client, canWrite, canArchive, readOnlyReason, item._count.quotations); } return mapVisibleHubParty(locale, item.client, false, false, undefined, item._count.quotations);",
+  "return mapVisibleHubParty(locale, item.client, canWrite, canArchive, readOnlyReason, item._count.quotations, pendingPartyIds.has(item.client.id));",
+  "function ignoredMapper() { return mapVisibleHubParty(locale, item.client, canWrite, canArchive, readOnlyReason, item._count.quotations, pendingPartyIds.has(item.client.id)); } return mapVisibleHubParty(locale, item.client, false, false, undefined, item._count.quotations, false);",
 );
 assert.throws(() => analyzeHub(deadMapperHub), "an uncalled mapper must not satisfy the live return contract");
 const earlyHubReturn = sources.hub.replace(
