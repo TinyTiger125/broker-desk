@@ -1,3 +1,5 @@
+import { isCustomerNameRepresentationValue } from "@/lib/customer-identity-field-catalog";
+
 export type VisibleClientNameField = "nameLatin" | "nameKanji" | "nameKatakana";
 
 /**
@@ -8,9 +10,9 @@ export type VisibleClientNameField = "nameLatin" | "nameKanji" | "nameKatakana";
 export function visibleClientNameFieldFromEvidence(key: string, value: string): VisibleClientNameField | null {
   if (key === "nameLatin" || key === "nameKanji" || key === "nameKatakana") return key;
   if (key !== "name") return null;
-  const normalized = value.trim();
+  const normalized = value.normalize("NFKC").trim();
   if (!normalized) return null;
-  if (/^[A-Za-z0-9][A-Za-z0-9 .,'’\-]*$/.test(normalized)) return "nameLatin";
+  if (isCustomerNameRepresentationValue("nameLatin", normalized)) return "nameLatin";
   if (/^[\p{Script=Han}々〇〆ヶ\s・ー－-]+$/u.test(normalized)) return "nameKanji";
   if (/^[\p{Script=Katakana}ー－・\s-]+$/u.test(normalized)) return "nameKatakana";
   return null;

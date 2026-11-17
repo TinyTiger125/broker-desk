@@ -52,6 +52,12 @@ Module._load = function(request, parent, ...rest) {
       { ...shared, fieldKey: "applicant.nameLatin", value: "YAMADA SHIKEN", sourceText: "Name: YAMADA SHIKEN" },
       { ...shared, fieldKey: "applicant.nameKanji", value: "山田 試験", sourceText: "氏名: 山田 試験" },
     ], pages: page(["Name: YAMADA SHIKEN", "氏名: 山田 試験"]) };
+    if (filename === "direct-comma-name.pdf") return { documentType: "identity_passport", candidates: [
+      { ...shared, fieldKey: "applicant.nameLatin", value: "YAMADA, TARO", sourceText: "Name: YAMADA, TARO" },
+    ], pages: page(["Name: YAMADA, TARO"]) };
+    if (filename === "direct-unsupported-punctuation.pdf") return { documentType: "identity_passport", candidates: [
+      { ...shared, fieldKey: "applicant.nameLatin", value: "YAMADA; TARO", sourceText: "Name: YAMADA; TARO" },
+    ], pages: page(["Name: YAMADA; TARO"]) };
     if (filename === "direct-address.pdf") return { documentType: "identity_residence_card", pages: page(["Name: ADDRESS HOLDER", "Birth: 1990-04-12", "住所: 東京都テスト区1-2-3"]), candidates: [
       { ...shared, fieldKey: "applicant.name", value: "ADDRESS HOLDER", sourceText: "Name: ADDRESS HOLDER" },
       { ...shared, fieldKey: "applicant.birthDate", value: "1990-04-12", sourceText: "Birth: 1990-04-12" },
@@ -145,6 +151,23 @@ assert.equal(fillSelectedEntryCandidateForm(selectedForm, directNamesResult, dir
 assert.equal(selectedForm.get("nameLatin"), "YAMADA SHIKEN");
 assert.match(String(selectedForm.get("entryPreviewDecisions")), /confirmed/);
 assert.equal(safeEntryPreviewCandidates(directNamesResult.candidates).length, 2);
+const directCommaNameRequest = request("customer", ["direct-comma-name.pdf"]);
+const directCommaNameResult = await previewEntryDocumentsAction(directCommaNameRequest);
+assert.equal(directCommaNameResult.candidates.length, 1);
+assert.equal(directCommaNameResult.candidates[0].value, "YAMADA, TARO", "direct preview must preserve the exact comma-separated Latin value");
+assert.equal(directCommaNameResult.candidates[0].confidence, undefined, "direct preview regression keeps the model's absent confidence distinct from proof evidence");
+assert.equal(directCommaNameResult.candidates[0].uncertainty, "clear", "an exact comma-separated Latin value with page evidence must remain clear");
+assert.equal(directCommaNameResult.candidates[0].pageEvidenceVerified, true, "the complete comma-separated source quote must retain page evidence");
+assert.deepEqual(safeEntryPreviewCandidates(directCommaNameResult.candidates).map((candidate) => candidate.value), ["YAMADA, TARO"]);
+const directCommaNameForm = new FormData();
+assert.equal(fillAutoSavedEntryForm(directCommaNameForm, directCommaNameResult), 1, "a direct comma-separated Latin name may pass the existing exact-evidence preview gate");
+assert.equal(directCommaNameForm.get("nameLatin"), "YAMADA, TARO", "direct preview auto-save must write the normalized visible Latin field");
+assert.equal(directCommaNameForm.get("name"), "YAMADA, TARO", "legacy compatibility name must preserve the selected Latin value");
+const directCommaNameProofs = await verifyEntryPreviewProofs({ formData: directCommaNameForm, files: directCommaNameRequest.getAll("uploadFile").filter((file) => file instanceof File), session, kind: "customer", context: "entry" });
+assert.equal(validateEntryPreviewDecisions(directCommaNameForm, directCommaNameProofs), true, "the signed direct preview proof must accept the exact comma-separated value through the existing decision gate");
+const directUnsupportedPunctuationResult = await previewEntryDocumentsAction(request("customer", ["direct-unsupported-punctuation.pdf"]));
+assert.equal(directUnsupportedPunctuationResult.candidates[0].uncertainty, "unclear", "direct preview must downgrade unsupported Latin punctuation even when the quote is present on the page");
+assert.deepEqual(safeEntryPreviewCandidates(directUnsupportedPunctuationResult.candidates), [], "unsupported Latin punctuation must never enter the direct auto-save set");
 const directAddressResult = await previewEntryDocumentsAction(request("customer", ["direct-address.pdf"]));
 assert.equal(directAddressResult.candidates.some((candidate) => candidate.key === "currentAddress"), true, "document address remains visible as a candidate");
 assert.equal(safeEntryPreviewCandidates(directAddressResult.candidates).some((candidate) => candidate.key === "currentAddress"), false, "document address must never auto-save into a new client");
@@ -153,6 +176,8 @@ const directAddressForm = new FormData();
 assert.equal(fillAutoSavedEntryForm(directAddressForm, directAddressResult), 2, "identity anchors remain auto-saveable while address stays review-only");
 assert.equal(directAddressForm.get("currentAddress"), null);
 assert.equal(visibleClientNameFieldFromEvidence("name", "YAMADA SHIKEN"), "nameLatin");
+assert.equal(visibleClientNameFieldFromEvidence("name", "YAMADA，TARO"), "nameLatin", "fullwidth comma must normalize to the visible Latin field");
+assert.equal(visibleClientNameFieldFromEvidence("name", "YAMADA; TARO"), null, "unsupported punctuation must not be mapped to a visible Latin field");
 assert.equal(visibleClientNameFieldFromEvidence("name", "山田 試験"), "nameKanji");
 assert.equal(visibleClientNameFieldFromEvidence("name", "ヤマダ シケン"), "nameKatakana");
 assert.equal(visibleClientNameFieldFromEvidence("name", "YAMADA 山田"), null, "mixed scripts must not be assigned to a representation field");

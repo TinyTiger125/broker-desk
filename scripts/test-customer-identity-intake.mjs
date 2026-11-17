@@ -34,7 +34,7 @@ Module._load = function(request, parent, ...rest) {
 };
 
 const { parseOpenAiIdentityReaderResponse } = require(resolve(root, "src/lib/identity-reader-contract.ts"));
-const { isValidCustomerBirthDate, isCustomerGenderValue, normalizeCustomerGenderValue, normalizeCustomerIdentityValue, customerIdentityFieldKey, CUSTOMER_IDENTITY_FIELDS, hasStrictPrintedAddressPageEvidence } = require(resolve(root, "src/lib/customer-identity-field-catalog.ts"));
+const { isValidCustomerBirthDate, isCustomerGenderValue, isCustomerNameRepresentationValue, normalizeCustomerGenderValue, normalizeCustomerIdentityValue, customerIdentityFieldKey, CUSTOMER_IDENTITY_FIELDS, hasStrictPrintedAddressPageEvidence } = require(resolve(root, "src/lib/customer-identity-field-catalog.ts"));
 const postgresSource = readFileSync(resolve(root, "src/lib/data.postgres.ts"), "utf8");
 assert.match(postgresSource, /nameLatin:\s*"name_latin"/);
 assert.match(postgresSource, /nameKanji:\s*"name_kanji"/);
@@ -47,6 +47,11 @@ assert.equal(isValidCustomerBirthDate("1990-04-12"), true);
 assert.equal(isValidCustomerBirthDate("1900-02-30"), false);
 assert.deepEqual(Object.keys(CUSTOMER_IDENTITY_FIELDS), ["name", "nameLatin", "nameKanji", "nameKatakana", "furigana", "birthDate", "gender", "currentPostalCode", "currentAddress", "phone", "lineId", "email"]);
 assert.equal(customerIdentityFieldKey("applicant.nameLatin"), "nameLatin");
+assert.equal(isCustomerNameRepresentationValue("nameLatin", "YAMADA, TARO"), true, "a single surname/given-name comma is a supported Latin representation");
+assert.equal(isCustomerNameRepresentationValue("nameLatin", "YAMADA，TARO"), true, "a fullwidth comma normalizes to the supported Latin separator");
+assert.equal(isCustomerNameRepresentationValue("nameLatin", "YAMADA; TARO"), false, "arbitrary punctuation must not be accepted as a Latin name");
+assert.equal(isCustomerNameRepresentationValue("nameLatin", "YAMADA, TARO, TEST"), false, "multiple comma separators must remain invalid");
+assert.equal(normalizeCustomerIdentityValue("nameLatin", "YAMADA， TARO"), "YAMADA, TARO", "Latin comma formatting must normalize before persistence");
 assert.equal(customerIdentityFieldKey("applicant.nameKanji"), "nameKanji");
 assert.equal(customerIdentityFieldKey("applicant.nameKatakana"), "nameKatakana");
 assert.equal(normalizeCustomerIdentityValue("birthDate", "12 APR 1990"), "1990-04-12");
@@ -112,6 +117,10 @@ const invalidScriptReview = validateObjectImportReview({ targetId: reviewTarget.
 assert.deepEqual(invalidScriptReview, { ok: false, reason: "invalid_value" }, "queued review must reject a Latin value in the Katakana field at the server boundary");
 const missingEvidenceReview = validateObjectImportReview({ targetId: reviewTarget.id, fieldId: "field-synthetic-review", expectedVersion: reviewVersion, expectedCandidateValue: "山田 試験", decision: "confirm" }, reviewTarget, { id: "field-synthetic-review", tenantId: tenant.id, targetId: reviewTarget.id, fieldKey: "nameKanji", candidateValue: "山田 試験", confidence: 0.99, provenance: { sourceAttachmentId: reviewTarget.sourceAttachmentId, sourceFileHash: "synthetic-hash", pageEvidenceVerified: true, uncertainty: "clear" }, status: "draft" }, reviewRecord);
 assert.deepEqual(missingEvidenceReview, { ok: false, reason: "invalid_value" }, "queued review must reject a name without matching printed evidence");
+const commaNameReview = validateObjectImportReview({ targetId: reviewTarget.id, fieldId: "field-synthetic-review", expectedVersion: reviewVersion, expectedCandidateValue: "YAMADA, TARO", decision: "confirm" }, reviewTarget, { id: "field-synthetic-review", tenantId: tenant.id, targetId: reviewTarget.id, fieldKey: "nameLatin", candidateValue: "YAMADA, TARO", confidence: 0.74, provenance: { sourceAttachmentId: reviewTarget.sourceAttachmentId, sourceFileHash: "synthetic-hash", sourceText: "Name: YAMADA, TARO", pageEvidenceVerified: true, uncertainty: "clear" }, status: "draft" }, reviewRecord);
+assert.deepEqual(commaNameReview, { ok: true, scope: "object", key: "nameLatin", value: "YAMADA, TARO", recordValue: "YAMADA, TARO" }, "server review confirmation must accept only the controlled comma-separated Latin format with exact evidence");
+const unsupportedLatinPunctuationReview = validateObjectImportReview({ targetId: reviewTarget.id, fieldId: "field-synthetic-review", expectedVersion: reviewVersion, expectedCandidateValue: "YAMADA; TARO", decision: "confirm" }, reviewTarget, { id: "field-synthetic-review", tenantId: tenant.id, targetId: reviewTarget.id, fieldKey: "nameLatin", candidateValue: "YAMADA; TARO", confidence: 0.99, provenance: { sourceAttachmentId: reviewTarget.sourceAttachmentId, sourceFileHash: "synthetic-hash", sourceText: "Name: YAMADA; TARO", pageEvidenceVerified: true, uncertainty: "clear" }, status: "draft" }, reviewRecord);
+assert.deepEqual(unsupportedLatinPunctuationReview, { ok: false, reason: "invalid_value" }, "server review confirmation must reject unsupported Latin punctuation");
 const missingPageEvidenceReview = validateObjectImportReview({ targetId: reviewTarget.id, fieldId: "field-synthetic-review", expectedVersion: reviewVersion, expectedCandidateValue: "090-1111-2222", decision: "confirm" }, reviewTarget, { id: "field-synthetic-review", tenantId: tenant.id, targetId: reviewTarget.id, fieldKey: "phone", candidateValue: "090-1111-2222", confidence: 0.99, provenance: { sourceAttachmentId: reviewTarget.sourceAttachmentId, sourceFileHash: "synthetic-hash", uncertainty: "clear" }, status: "draft" }, reviewRecord);
 assert.deepEqual(missingPageEvidenceReview, { ok: false, reason: "invalid_value" }, "queued review must fail closed for any candidate from an old record without page evidence");
 const content = Buffer.from("%PDF-SAMPLE-TEST");
@@ -304,7 +313,7 @@ Module._load = function(request, parent, ...rest) {
         candidates: [{ fieldKey: "applicant.currentAddress", value: "東京都テスト区5丁目1番2号", pageNumber: 1, sourceText: "住所 東京都テスト区5丁目1番2号", uncertainty: "clear", subjectKey: "person", subjectLabel: "本人" }],
       };
     }
-    if (Buffer.from(buffer).toString().includes("ADDRESS-DUAL-VIEW-CONFLICT")) {
+    if (Buffer.from(buffer).toString().includes("ADDRESS-SAME-RESPONSE-CONFLICT")) {
       return {
         documentType: "identity_residence_card",
         pages: [{ pageNumber: 1, lines: ["住所 東京都テスト区3丁目1番2号", "住所 東京都テスト区5丁目1番2号"] }],
@@ -479,10 +488,10 @@ const persistedMismatchedAddress = await persistObjectExtraction({
 });
 assert.equal(persistedMismatchedAddress[0].finalValue, undefined, "a mismatched address must never receive a model final value");
 assert.equal(isSafeModelAutoSave(persistedMismatchedAddress[0]), false, "a mismatched address must never qualify for auto-save");
-const addressDualViewConflict = await extractIdentityDocumentFromBuffer({ buffer: Buffer.from("%PDF-ADDRESS-DUAL-VIEW-CONFLICT"), filename: "address-dual-view-conflict.pdf", requireModel: true });
-const dualViewAddressField = addressDualViewConflict.fields.find((field) => field.fieldKey === "applicant.currentAddress");
-assert.equal(dualViewAddressField?.uncertainty, "conflict", "disagreeing full/crop address views must remain conflict evidence");
-assert.equal((dualViewAddressField?.alternatives ?? []).length >= 2, true, "address conflict must retain both review alternatives");
+const sameResponseAddressConflict = await extractIdentityDocumentFromBuffer({ buffer: Buffer.from("%PDF-ADDRESS-SAME-RESPONSE-CONFLICT"), filename: "address-same-response-conflict.pdf", requireModel: true });
+const sameResponseAddressField = sameResponseAddressConflict.fields.find((field) => field.fieldKey === "applicant.currentAddress");
+assert.equal(sameResponseAddressField?.uncertainty, "conflict", "同一响应中的地址候选冲突必须保持冲突证据");
+assert.equal((sameResponseAddressField?.alternatives ?? []).length >= 2, true, "同一响应的地址候选冲突必须保留两个待核对备选值");
 const latinEvidenceDraft = await extractIdentityDocumentFromBuffer({ buffer: Buffer.from("%PDF-LATIN-EVIDENCE-DRAFT"), filename: "latin-evidence-draft.pdf", requireModel: true });
 const latinEvidenceField = latinEvidenceDraft.fields.find((field) => field.fieldKey === "applicant.nameLatin");
 assert.equal(latinEvidenceField?.uncertainty, "clear", "exact Latin evidence remains clear at extraction");
@@ -498,15 +507,17 @@ assert.equal(persistedLatinEvidence[0].confidence, 0.74, "Latin evidence calibra
 assert.equal(persistedLatinEvidence[0].status, "draft", "exact Latin evidence may be shown as a reviewable draft instead of low-confidence");
 assert.match(persistedLatinEvidence[0].provenance.sourceRange, /identity_name_latin_exact_evidence/);
 assert.equal(isSafeModelAutoSave(persistedLatinEvidence[0]), false, "the unchanged 0.8 auto-save gate must still block the calibrated Latin draft");
-const latinPunctuationReview = await persistObjectExtraction({
+const latinCommaEvidenceDraft = await persistObjectExtraction({
   customerTarget: true,
   repository: { upsertCandidate: async (candidate) => candidate },
-  target: { id: "target-latin-punctuation-review", tenantId: tenant.id, sourceAttachmentId: "attachment-synthetic" },
-  sourceFileHash: "synthetic-hash-latin-punctuation",
+  target: { id: "target-latin-comma-evidence", tenantId: tenant.id, sourceAttachmentId: "attachment-synthetic" },
+  sourceFileHash: "synthetic-hash-latin-comma",
   fields: [{ fieldKey: "nameLatin", value: "YAMADA, TARO", confidence: 0.74, method: "ai", pageEvidenceVerified: true, sourceText: "Name YAMADA, TARO", uncertainty: "clear" }],
 });
-assert.equal(latinPunctuationReview[0].status, "low_confidence", "unsupported Latin punctuation must remain review-only until its evidence policy is explicitly approved");
-assert.equal(latinPunctuationReview[0].finalValue, undefined);
+assert.equal(latinCommaEvidenceDraft[0].candidateValue, "YAMADA, TARO", "the queued Latin candidate must preserve the exact comma-separated value");
+assert.equal(latinCommaEvidenceDraft[0].status, "draft", "a supported comma-separated Latin value with exact evidence remains a reviewable draft");
+assert.equal(latinCommaEvidenceDraft[0].finalValue, "YAMADA, TARO", "normalization must not alter the supported Latin value before review");
+assert.equal(isSafeModelAutoSave(latinCommaEvidenceDraft[0]), false, "the existing confidence gate must still block automatic persistence of the calibrated draft");
 const emptyPageCandidate = await extractIdentityDocumentFromBuffer({ buffer: Buffer.from("%PDF-EMPTY-PAGE"), filename: "empty-page.pdf", requireModel: true });
 assert.equal(emptyPageCandidate.fields.find((field) => field.fieldKey === "applicant.name")?.uncertainty, "unclear", "a queued candidate on an empty page must remain review-only");
 assert.equal(emptyPageCandidate.fields.find((field) => field.fieldKey === "applicant.name")?.pageEvidenceVerified, false, "a pseudo quote must not mark an empty page as verified");

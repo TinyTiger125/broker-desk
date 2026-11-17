@@ -26,6 +26,15 @@ export const CUSTOMER_IDENTITY_FIELD_KEYS = new Set<CustomerIdentityFieldKey>(Ob
 export type CustomerGender = "male" | "female" | "other";
 
 const CUSTOMER_NAME_FIELD_KEYS = new Set<CustomerIdentityFieldKey>(["name", "nameLatin", "nameKanji", "nameKatakana"]);
+const CUSTOMER_LATIN_NAME_PART_PATTERN = /^[\p{Script=Latin}\p{Number}\s.'’\-‐‑‒–—－]+$/u;
+
+function normalizeCustomerLatinNameValue(value: string): string {
+  return value.normalize("NFKC").replace(/，/g, ",").trim();
+}
+
+function isCustomerLatinNamePart(value: string): boolean {
+  return /\p{Script=Latin}/u.test(value) && CUSTOMER_LATIN_NAME_PART_PATTERN.test(value);
+}
 
 /**
  * A name representation is writable only when its printed script matches the
@@ -39,9 +48,12 @@ export function isCustomerNameFieldKey(fieldKey: string): fieldKey is CustomerId
 }
 
 export function isCustomerNameRepresentationValue(fieldKey: string, value: string): boolean {
-  const normalized = value.normalize("NFKC").trim();
+  const normalized = fieldKey === "nameLatin" ? normalizeCustomerLatinNameValue(value) : value.normalize("NFKC").trim();
   if (fieldKey === "name") return normalized.length > 0;
-  if (fieldKey === "nameLatin") return /\p{Script=Latin}/u.test(normalized) && /^[\p{Script=Latin}\p{Number}\s.'’\-‐‑‒–—－]+$/u.test(normalized);
+  if (fieldKey === "nameLatin") {
+    const parts = normalized.split(",");
+    return parts.length <= 2 && parts.every((part) => isCustomerLatinNamePart(part.trim()));
+  }
   if (fieldKey === "nameKanji") return /^[\p{Script=Han}々〇〆ヶ\s・ー－-]+$/u.test(normalized);
   if (fieldKey === "nameKatakana") return /^[\p{Script=Katakana}ー－・\s-]+$/u.test(normalized);
   return true;
@@ -158,7 +170,7 @@ export function customerIdentityFieldLabel(fieldKey: string): string {
 }
 
 export function normalizeCustomerIdentityValue(fieldKey: CustomerIdentityFieldKey, value: string): string {
-  const normalized = value.trim()
+  const normalized = (fieldKey === "nameLatin" ? normalizeCustomerLatinNameValue(value) : value.trim())
     .replace(/[０-９]/g, (digit) => String.fromCharCode(digit.charCodeAt(0) - "０".charCodeAt(0) + "0".charCodeAt(0)))
     .replace(/[／]/g, "/")
     .replace(/[－ー−]/g, "-");
