@@ -55,6 +55,7 @@ assert.doesNotMatch(identityImportUiSource, /页面证据不足/);
 assert.doesNotMatch(identityImportUiSource, /페이지 증거가 없으므로/);
 assert.match(identityImportUiSource, /manualBirthDateBlocked/);
 assert.match(identityImportUiSource, /isObjectImportManualBirthDateAttributable/);
+assert.match(identityImportUiSource, /manualBirthDateBlocked && reviewAction[\s\S]*name="decision" value="reject"/);
 assert.match(identityImportUiSource, /manualAttestation/);
 assert.match(identityImportUiSource, /type="date"/);
 assert.match(objectImportActionsSource, /decision === "reject" \? "object_import_rejected"/);
