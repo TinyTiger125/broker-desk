@@ -103,6 +103,7 @@ export function validateObjectImportReview(input: Omit<ObjectImportReviewInput, 
       // entered manually after an explicit human attestation against the
       // original; the model quote remains untrusted and is never used as proof.
       const manualBirthDate = key === "birthDate" && input.manualAttestation === true;
+      if (manualBirthDate && !isObjectImportManualBirthDateAttributable(field)) return { ok: false, reason: "invalid_value" };
       if (field.provenance.pageEvidenceVerified !== true && !manualBirthDate) return { ok: false, reason: "invalid_value" };
       if (key === "birthDate" && !isValidCustomerBirthDate(value)) return { ok: false, reason: "invalid_value" };
       if (key === "gender" && !new Set(["male", "female", "other"]).has(value)) return { ok: false, reason: "invalid_value" };
@@ -125,6 +126,32 @@ export function validateObjectImportReview(input: Omit<ObjectImportReviewInput, 
     }
   }
   return { ok: true, scope: "object", key, value, recordValue };
+}
+
+const NEGATIVE_IDENTITY_SUBJECT_LABEL = /世帯主|(?<!被)保険者|代理人|代表者|保証人|連帯保証人|緊急連絡先|扶養者|household[ _-]?head|insurer|agent|representative|guarantor|sponsor|emergency[ _-]?contact|dependent|policyholder/i;
+const HOLDER_IDENTITY_SUBJECT_LABEL = /申請人|主要申請人|本人|被保険者|カード名義人|名義人|所持者|保持者|持ち主|primary[ _-]?applicant|applicant|document[ _-]?holder|cardholder|insured[ _-]?person|insured|holder/i;
+
+/**
+ * Manual DOB entry is allowed only when the stored candidate is attributable
+ * to the document holder. The sourceRange marker is produced by the server's
+ * attribution pass; subject metadata and alternative subject keys provide a
+ * fail-closed check for older or partially populated records.
+ */
+export function isObjectImportManualBirthDateAttributable(field: Pick<ObjectImportCandidateRecord, "fieldKey" | "provenance">): boolean {
+  if (customerIdentityFieldKey(field.fieldKey) !== "birthDate") return false;
+  const sourceRange = typeof field.provenance.sourceRange === "string" ? field.provenance.sourceRange : "";
+  if (sourceRange.includes("model_attribution_blocked=") || field.provenance.uncertainty === "conflict") return false;
+  const subjectKey = typeof field.provenance.subjectKey === "string" ? field.provenance.subjectKey.trim() : "";
+  const subjectLabel = typeof field.provenance.subjectLabel === "string" ? field.provenance.subjectLabel.trim() : "";
+  if (!subjectKey || !subjectLabel || NEGATIVE_IDENTITY_SUBJECT_LABEL.test(subjectLabel) || !HOLDER_IDENTITY_SUBJECT_LABEL.test(subjectLabel)) return false;
+  const alternatives = Array.isArray(field.provenance.alternatives) ? field.provenance.alternatives : [];
+  return alternatives.every((alternative) => {
+    if (!alternative || typeof alternative !== "object") return false;
+    const alternativeSubjectKey = typeof alternative.subjectKey === "string" ? alternative.subjectKey.trim() : "";
+    const alternativeSubjectLabel = typeof alternative.subjectLabel === "string" ? alternative.subjectLabel.trim() : "";
+    return (!alternativeSubjectKey || alternativeSubjectKey === subjectKey)
+      && (!alternativeSubjectLabel || !NEGATIVE_IDENTITY_SUBJECT_LABEL.test(alternativeSubjectLabel));
+  });
 }
 
 export function isSafeModelAutoSave(field: ObjectImportCandidateRecord): boolean {

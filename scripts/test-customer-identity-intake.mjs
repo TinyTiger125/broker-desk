@@ -53,6 +53,8 @@ assert.match(identityImportUiSource, /请先打开上方原始资料/);
 assert.match(identityImportUiSource, /먼저 위의 원본 자료를 열어/);
 assert.doesNotMatch(identityImportUiSource, /页面证据不足/);
 assert.doesNotMatch(identityImportUiSource, /페이지 증거가 없으므로/);
+assert.match(identityImportUiSource, /manualBirthDateBlocked/);
+assert.match(identityImportUiSource, /isObjectImportManualBirthDateAttributable/);
 assert.match(identityImportUiSource, /manualAttestation/);
 assert.match(identityImportUiSource, /type="date"/);
 assert.match(objectImportActionsSource, /decision === "reject" \? "object_import_rejected"/);
@@ -123,7 +125,7 @@ const { buildObjectImportIdempotencyKey, buildObjectVersionFingerprint } = requi
 const { persistObjectExtraction, persistObjectImportJobExtraction } = require(resolve(root, "src/lib/object-import-processor-adapter.ts"));
 const { isSafeModelAutoSave } = require(resolve(root, "src/lib/object-import-review.ts"));
 const { resolveObjectImportTarget } = require(resolve(root, "src/lib/object-import-target-service.ts"));
-const { validateObjectImportReview } = require(resolve(root, "src/lib/object-import-review.ts"));
+const { isObjectImportManualBirthDateAttributable, validateObjectImportReview } = require(resolve(root, "src/lib/object-import-review.ts"));
 const reviewRecord = { id: "client-synthetic-review", name: "", notes: undefined };
 const reviewVersion = buildObjectVersionFingerprint(reviewRecord);
 const reviewTarget = { id: "target-synthetic-review", tenantId: tenant.id, userId: user.id, importJobId: "job-synthetic-review", targetType: "party", targetId: reviewRecord.id, targetVersion: reviewVersion, sourceAttachmentId: "attachment-synthetic", status: "needs_review", idempotencyKey: "synthetic-review", attemptCount: 1, createdAt: new Date(), updatedAt: new Date() };
@@ -326,6 +328,27 @@ const unverifiedGenericName = await persistObjectExtraction({
 assert.equal(unverifiedGenericName[0].fieldKey, "name");
 assert.equal(unverifiedGenericName[0].status, "low_confidence", "unverified generic names must not be mapped into a visible representation");
 assert.equal(unverifiedGenericName[0].finalValue, undefined);
+const unverifiedClearBirthDate = await persistObjectExtraction({
+  customerTarget: true,
+  repository: { upsertCandidate: async (candidate) => candidate },
+  target: { id: "target-birth-date-unverified", tenantId: tenant.id, sourceAttachmentId: "attachment-synthetic" },
+  sourceFileHash: "synthetic-hash-birth-date-unverified",
+  fields: [{ fieldKey: "applicant.birthDate", value: "1990-04-12", confidence: 0.99, sourceText: "生年月日 1990-04-12", uncertainty: "clear", pageEvidenceVerified: false, subjectKey: "person-unverified", subjectLabel: "本人" }],
+});
+assert.equal(unverifiedClearBirthDate[0].status, "low_confidence", "clear high-confidence DOB without page proof must remain review-only");
+assert.equal(unverifiedClearBirthDate[0].finalValue, undefined, "every unverified identity field must omit model final values");
+assert.equal(unverifiedClearBirthDate[0].finalSource, undefined, "every unverified identity field must omit model final source");
+
+const attributableManualDob = {
+  fieldKey: "birthDate",
+  provenance: { subjectKey: "person-holder", subjectLabel: "本人", uncertainty: "unclear", pageEvidenceVerified: false },
+};
+assert.equal(isObjectImportManualBirthDateAttributable(attributableManualDob), true, "manual DOB requires an attributable holder subject");
+assert.equal(isObjectImportManualBirthDateAttributable({ ...attributableManualDob, provenance: { ...attributableManualDob.provenance, sourceRange: "model_attribution_blocked=ambiguous_applicants" } }), false, "ambiguous attribution must block manual DOB");
+assert.equal(isObjectImportManualBirthDateAttributable({ ...attributableManualDob, provenance: { ...attributableManualDob.provenance, subjectLabel: "代理人" } }), false, "non-holder subject must block manual DOB");
+assert.equal(isObjectImportManualBirthDateAttributable({ ...attributableManualDob, provenance: { ...attributableManualDob.provenance, alternatives: [{ subjectKey: "person-other", subjectLabel: "本人" }] } }), false, "an alternative subject must block manual DOB");
+const blockedManualDobReview = validateObjectImportReview({ targetId: reviewTarget.id, fieldId: "field-blocked-manual-dob", expectedVersion: reviewVersion, expectedCandidateValue: "1990-04-12", decision: "confirm", value: "1990-04-12", manualAttestation: true }, reviewTarget, { id: "field-blocked-manual-dob", tenantId: tenant.id, targetId: reviewTarget.id, fieldKey: "birthDate", candidateValue: "1990-04-12", confidence: 0.99, provenance: { sourceAttachmentId: reviewTarget.sourceAttachmentId, sourceFileHash: "synthetic-hash", pageEvidenceVerified: false, uncertainty: "unclear", subjectKey: "person-holder", subjectLabel: "本人", sourceRange: "model_attribution_blocked=ambiguous_applicants" }, status: "low_confidence" }, reviewRecord);
+assert.deepEqual(blockedManualDobReview, { ok: false, reason: "invalid_value" }, "manual attestation must not bypass server attribution blocking");
 
 const corporate = await data.addClient({ tenantId: tenant.id, ownerUserId: user.id, name: "Corporate QA", phone: "090-0000-0001", budgetType: "total_price", purpose: "buy", loanPreApprovalStatus: "not_applied", stage: "lead", temperature: "cold", brokerageContractType: "none", amlCheckStatus: "not_required", notes: "関係者種別: 法人/会社" });
 const corporateResolution = await resolveObjectImportTarget({ context, targetType: "party", targetId: corporate.id });

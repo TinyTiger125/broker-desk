@@ -155,6 +155,7 @@ export async function persistObjectExtraction(input: { repository?: Pick<ObjectI
     const identityNameReview = input.customerTarget === true && identityKey !== null && isCustomerNameFieldKey(identityKey)
       && (field.pageEvidenceVerified !== true || !isCustomerNameRepresentationValue(identityKey, normalizedValue) || !hasExactPrintedIdentityEvidence(normalizedValue, field.sourceText));
     const identityAddressReview = input.customerTarget === true && identityKey === "currentAddress" && Boolean(normalizedValue.trim());
+    const identityPageEvidenceReview = input.customerTarget === true && identityKey !== null && normalizedValue.length > 0 && field.pageEvidenceVerified !== true;
     const persistedField = identityKey
       ? {
         ...field,
@@ -168,7 +169,7 @@ export async function persistObjectExtraction(input: { repository?: Pick<ObjectI
     // Keeping it in final_value/model_draft made expired-document fields look
     // saved even though auto-save correctly skipped them. The candidate and
     // its original evidence remain durable, but no model final is written.
-    const requiresExplicitReview = genderConflict || identityNameReview || identityAddressReview
+    const requiresExplicitReview = genderConflict || identityNameReview || identityAddressReview || identityPageEvidenceReview
       || (typeof persistedField.uncertainty === "string" && persistedField.uncertainty !== "clear")
       || (normalizedValue.length > 0 && typeof persistedField.confidence === "number" && persistedField.confidence < 0.8);
     return {
@@ -193,7 +194,7 @@ export async function persistObjectExtraction(input: { repository?: Pick<ObjectI
       ...(persistedField.alternatives?.length ? { alternatives: persistedField.alternatives } : {}),
     },
     finalValue: requiresExplicitReview ? undefined : normalizedValue || undefined, finalSource: requiresExplicitReview ? undefined : normalizedValue ? "model_draft" : undefined,
-    status: genderConflict ? "conflict" : identityNameReview ? "low_confidence" : identityAddressReview ? "draft" : normalizedValue
+    status: genderConflict ? "conflict" : identityNameReview ? "low_confidence" : identityAddressReview ? "draft" : identityPageEvidenceReview ? "low_confidence" : normalizedValue
       ? persistedField.uncertainty === "conflict" ? "conflict" : persistedField.uncertainty === "unclear" ? "low_confidence" : persistedField.confidence < 0.8 ? "low_confidence" : "draft"
       : persistedField.uncertainty === "conflict" ? "conflict" : persistedField.uncertainty === "unclear" ? "low_confidence" : "not_found",
     };
