@@ -8,7 +8,7 @@ import { customerIdentityFieldKey, hasExactPrintedIdentityEvidence, isCorporateC
 export type ObjectImportReviewInput = {
   context: RequestContext; targetId: string; fieldId: string;
   expectedVersion: string; expectedCandidateValue: string;
-  decision: "confirm" | "reject"; value?: string; caseFieldKey?: string;
+  decision: "confirm" | "reject"; value?: string; caseFieldKey?: string; manualAttestation?: boolean;
 };
 export type ObjectImportReviewResult =
   | { ok: true; caseId?: string; targetId: string; targetVersion: string }
@@ -93,10 +93,17 @@ export function validateObjectImportReview(input: Omit<ObjectImportReviewInput, 
   if (input.decision === "confirm") {
     if (!value) return { ok: false, reason: "invalid_value" };
     if (isStandaloneCustomerTarget(target)) {
+      // A residence-card address is evidence about the document, not proof of
+      // the customer's current address. Keep it visible for comparison, but
+      // require a separate current-address workflow before any write.
+      if (key === "currentAddress") return { ok: false, reason: "invalid_value" };
       // The worker persists this server-computed consistency result with every
       // candidate. Old records without it fail closed rather than treating a
-      // quoted value as proof; the upload can be reread to create a new record.
-      if (field.provenance.pageEvidenceVerified !== true) return { ok: false, reason: "invalid_value" };
+      // quoted value as proof. Birth date is the sole stable fact that may be
+      // entered manually after an explicit human attestation against the
+      // original; the model quote remains untrusted and is never used as proof.
+      const manualBirthDate = key === "birthDate" && input.manualAttestation === true;
+      if (field.provenance.pageEvidenceVerified !== true && !manualBirthDate) return { ok: false, reason: "invalid_value" };
       if (key === "birthDate" && !isValidCustomerBirthDate(value)) return { ok: false, reason: "invalid_value" };
       if (key === "gender" && !new Set(["male", "female", "other"]).has(value)) return { ok: false, reason: "invalid_value" };
       if (isCustomerNameFieldKey(key)

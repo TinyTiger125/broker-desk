@@ -7714,7 +7714,7 @@ export async function reviewObjectImportCandidate(input: ObjectImportReviewInput
     .every((item) => item.finalSource === "human" || ["not_found", "confirmed", "rejected"].includes(item.status))
     ? "completed"
     : "needs_review";
-  db.auditLogs.unshift({ id: makeId("audit"), tenantId: context.tenantId, userId: context.userId, actorId: context.userId, action: `object_import_${input.decision}`, targetType: target.targetType === "party" ? "client" : "property", targetId: person.id, message: "Object import field reviewed", context: { importTargetId: target.id, fieldKey: validated.key, before: before ?? null, after: input.decision === "confirm" ? validated.recordValue : before ?? null }, createdAt: date });
+  db.auditLogs.unshift({ id: makeId("audit"), tenantId: context.tenantId, userId: context.userId, actorId: context.userId, action: `object_import_${input.decision}`, targetType: target.targetType === "party" ? "client" : "property", targetId: person.id, message: "Object import field reviewed", context: { importTargetId: target.id, fieldKey: validated.key, before: before ?? null, after: input.decision === "confirm" ? validated.recordValue : before ?? null, manualAttestation: input.manualAttestation === true }, createdAt: date });
   return { ok: true, ...(target.caseId ? { caseId: target.caseId } : {}), targetId: target.targetId, targetVersion: target.targetVersion };
 }
 

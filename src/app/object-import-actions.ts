@@ -101,6 +101,7 @@ export async function reviewObjectImportAction(formData: FormData) {
     fieldId: String(formData.get("fieldId") ?? ""), expectedVersion: String(formData.get("expectedVersion") ?? ""),
     expectedCandidateValue: String(formData.get("expectedCandidateValue") ?? ""), decision,
     caseFieldKey: String(formData.get("caseFieldKey") ?? "").trim() || undefined,
+    manualAttestation: formData.get("manualAttestation") === "1",
     value: formData.has("value") ? String(formData.get("value")) : undefined,
   });
   if (!result.ok) {
@@ -131,12 +132,12 @@ export async function reviewObjectImportAction(formData: FormData) {
   const reviewedField = reviewedTarget && decision === "confirm"
     ? (await listObjectImportCandidates({ tenantId: session.tenant.id, userId: session.user.id, targetId: reviewedTarget.id })).find((field) => field.id === String(formData.get("fieldId") ?? "") && field.status === "confirmed")
     : undefined;
-  const reviewQuery: Record<string, string> = { flash: "object_import_reviewed" };
+  const reviewQuery: Record<string, string> = { flash: decision === "reject" ? "object_import_rejected" : "object_import_reviewed" };
   if (reviewedField && reviewedTarget && (reviewedTarget.targetType === "party" || reviewedTarget.targetType === "property")) {
     reviewQuery.entryApplied = toObjectRecordFieldKey(reviewedTarget.targetType, reviewedField.fieldKey);
   }
   redirect(result.caseId
-    ? `/cases/${encodeURIComponent(result.caseId)}?flash=object_import_reviewed#case-review-desk`
+    ? `/cases/${encodeURIComponent(result.caseId)}?flash=${encodeURIComponent(reviewQuery.flash)}#case-review-desk`
     : appendObjectImportQuery(requestedObjectReturnPath(formData, reviewedTarget ?? { targetType: "property", targetId: result.targetId }), reviewQuery));
 }
 

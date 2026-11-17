@@ -140,10 +140,10 @@ const review = await data.reviewObjectImportCandidate({
   decision: "confirm",
   value: addressField.candidateValue,
 });
-assert.equal(review.ok, true, "human address confirmation should use the existing review path");
+assert.deepEqual(review, { ok: false, reason: "invalid_value" }, "document address must remain a pending candidate, not a current-address write");
 const reopened = await data.getClientById(client.id, tenant.id);
-assert.equal(reopened.currentAddress, "東京都テスト区1-2-3", "confirmed address must persist after reopen");
-assert.equal((await data.listObjectImportCandidates({ ...scope, targetId: targets[0].id })).find((field) => field.fieldKey === "currentAddress")?.finalSource, "human");
+assert.equal(reopened.currentAddress, undefined, "document address must not persist as current address");
+assert.equal((await data.listObjectImportCandidates({ ...scope, targetId: targets[0].id })).find((field) => field.fieldKey === "currentAddress")?.finalSource, undefined);
 
 // A mid-write failure must not leave a visible synthetic job/target with only
 // the first candidate. The archived source attachment remains intact so the

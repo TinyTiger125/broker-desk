@@ -39,6 +39,7 @@ const copy = {
     attachmentUploaded: "添付資料を追加しました。",
     importQueued: "資料を受け付けました。読み取り待ちです。主資料はまだ更新されていません。",
     importReviewed: "資料候補を確認して保存しました。現在の物件プロフィールを再確認できます。",
+    importRejected: "資料候補を棄却しました。物件プロフィールは変更されていません。",
     importConflict: "資料候補の基準が変わりました。現在の物件プロフィールを確認して再確認してください。",
     importAlreadyReviewed: "この資料候補はすでに処理済みです。保存済みの値を表示しています。",
     importInvalidValue: "入力値を確認してください。今回の変更は保存されていません。候補を修正して再確認できます。",
@@ -67,6 +68,7 @@ const copy = {
     attachmentUploaded: "附件已添加。",
     importQueued: "资料已接收，正在等待读取。主资料尚未更新。",
     importReviewed: "资料候选已确认保存，可重新核对当前物件档案。",
+    importRejected: "已拒绝资料候选，物件档案未更改。",
     importConflict: "资料候选基准已变化，请核对当前物件档案后重新确认。",
     importAlreadyReviewed: "该资料候选已处理，当前显示已保存值。",
     importInvalidValue: "请检查输入值。本次修改未保存；修正候选后可以再次确认。",
@@ -94,6 +96,7 @@ const copy = {
     created: "매물을 생성했습니다. 내용을 확인해 주세요.",
     importQueued: "자료를 접수했습니다. 읽기를 기다리는 중이며 원본 매물은 아직 변경되지 않았습니다.",
     importReviewed: "자료 후보를 확인해 저장했습니다. 현재 매물 프로필을 다시 확인할 수 있습니다.",
+    importRejected: "자료 후보를 거부했으며 매물 프로필은 변경되지 않았습니다.",
     importConflict: "자료 후보 기준이 변경되었습니다. 현재 매물 프로필을 확인한 뒤 다시 확인해 주세요.",
     importAlreadyReviewed: "이 자료 후보는 이미 처리되었습니다. 저장된 값을 표시합니다.",
     importInvalidValue: "입력값을 확인해 주세요. 이번 변경 사항은 저장되지 않았으며 후보를 수정한 뒤 다시 확인할 수 있습니다.",
@@ -220,6 +223,8 @@ export default async function EditPropertyPage({ params, searchParams }: EditPro
           ? text.importQueued
           : query.flash === "object_import_reviewed"
             ? text.importReviewed
+            : query.flash === "object_import_rejected"
+              ? text.importRejected
             : query.flash === "object_import_review_conflict"
               ? text.importConflict
               : query.flash === "object_import_review_already_reviewed"

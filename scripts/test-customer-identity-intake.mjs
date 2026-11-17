@@ -40,9 +40,23 @@ assert.match(postgresSource, /nameLatin:\s*"name_latin"/);
 assert.match(postgresSource, /nameKanji:\s*"name_kanji"/);
 assert.match(postgresSource, /nameKatakana:\s*"name_katakana"/);
 const identityImportUiSource = readFileSync(resolve(root, "src/components/client-identity-import-section.tsx"), "utf8");
+const objectImportActionsSource = readFileSync(resolve(root, "src/app/object-import-actions.ts"), "utf8");
+const clientEditPageSource = readFileSync(resolve(root, "src/app/clients/[id]/edit/page.tsx"), "utf8");
 assert.match(identityImportUiSource, /isCustomerGenderValue/);
 assert.match(identityImportUiSource, /invalidGenderCandidate/);
 assert.match(identityImportUiSource, /!invalidGenderCandidate/);
+assert.match(identityImportUiSource, /証明書記載の住所は現在住所とは限らない/);
+assert.match(identityImportUiSource, /!documentAddressCandidate/);
+assert.match(identityImportUiSource, /生年月日などの安定した印字事実/);
+assert.match(identityImportUiSource, /原本の独立証明ではありません/);
+assert.match(identityImportUiSource, /请先打开上方原始资料/);
+assert.match(identityImportUiSource, /먼저 위의 원본 자료를 열어/);
+assert.doesNotMatch(identityImportUiSource, /页面证据不足/);
+assert.doesNotMatch(identityImportUiSource, /페이지 증거가 없으므로/);
+assert.match(identityImportUiSource, /manualAttestation/);
+assert.match(identityImportUiSource, /type="date"/);
+assert.match(objectImportActionsSource, /decision === "reject" \? "object_import_rejected"/);
+assert.match(clientEditPageSource, /object_import_rejected/);
 assert.equal(isValidCustomerBirthDate("1990-04-12"), true);
 assert.equal(isValidCustomerBirthDate("1900-02-30"), false);
 assert.deepEqual(Object.keys(CUSTOMER_IDENTITY_FIELDS), ["name", "nameLatin", "nameKanji", "nameKatakana", "furigana", "birthDate", "gender", "currentPostalCode", "currentAddress", "phone", "lineId", "email"]);
@@ -227,6 +241,53 @@ assert.equal(reopened.gender, "male");
 assert.equal(reopened.currentPostalCode, "150-1500");
 assert.equal(reopened.email, "keep@example.test");
 assert.equal((await data.getObjectImportTarget({ ...scope, id: target.id })).status, "completed");
+
+// An expired document keeps its printed stable DOB as a review candidate. It
+// must not produce a model final value, but an explicit human confirmation of
+// the page-evidenced DOB is still allowed. A residence-card address remains
+// evidence only: it must never be written as the customer's current address.
+const expiredReviewClient = await data.addClient({ tenantId: tenant.id, ownerUserId: user.id, name: "Expired review baseline", phone: "090-0000-0003", budgetType: "total_price", purpose: "buy", loanPreApprovalStatus: "not_applied", stage: "lead", temperature: "cold", brokerageContractType: "none", amlCheckStatus: "not_required" });
+const expiredReviewVersion = buildObjectVersionFingerprint(expiredReviewClient);
+const expiredReviewBytes = Buffer.from("%PDF-SYNTHETIC-EXPIRED-REVIEW%");
+const expiredReviewJob = await data.addImportJob({
+  tenantId: tenant.id,
+  userId: user.id,
+  sourceType: "scan",
+  targetEntity: "parties",
+  title: "SAMPLE TEST expired review",
+  status: "queued",
+  idempotencyKey: "synthetic-expired-review-job",
+  notes: JSON.stringify({ objectImport: { targetObjectType: "party", targetObjectId: expiredReviewClient.id, targetVersion: expiredReviewVersion } }),
+});
+await data.addPrivateAttachment({ tenantId: tenant.id, userId: user.id, targetType: "import_job", targetId: expiredReviewJob.id, fileName: "SAMPLE-expired-review.pdf", content: expiredReviewBytes });
+const expiredReviewFields = [
+  { fieldKey: "applicant.name", value: "EXPIRED REVIEW HOLDER", normalizedValue: "EXPIRED REVIEW HOLDER", confidence: 0.95, method: "ai", sourcePageNumber: 1, sourceText: "氏名 EXPIRED REVIEW HOLDER", pageEvidenceVerified: true, sourceRange: "page 1; identity_document_validity=expired", uncertainty: "unclear", subjectKey: "person-expired", subjectLabel: "本人" },
+  // This mirrors the production shape: the candidate is unclear, has no
+  // confidence/page proof, and the persisted source range is absent.
+  { fieldKey: "applicant.birthDate", value: "1990-04-12", normalizedValue: "1990-04-12", method: "ai", sourcePageNumber: 1, sourceText: "生年月日 1990-04-12", pageEvidenceVerified: false, uncertainty: "unclear", subjectKey: "person-expired", subjectLabel: "本人" },
+  { fieldKey: "applicant.currentAddress", value: "東京都テスト区9-9-9", normalizedValue: "東京都テスト区9-9-9", confidence: 0.99, method: "ai", sourcePageNumber: 1, sourceText: "住居地 東京都テスト区9-9-9", pageEvidenceVerified: true, sourceRange: "page 1; identity_document_validity=expired", uncertainty: "unclear", subjectKey: "person-expired", subjectLabel: "本人" },
+];
+await persistObjectImportJobExtraction({ ...scope, job: expiredReviewJob, fields: expiredReviewFields });
+const expiredReviewTarget = await data.getObjectImportTargetByJob({ ...scope, importJobId: expiredReviewJob.id });
+assert(expiredReviewTarget);
+const expiredReviewCandidates = await data.listObjectImportCandidates({ ...scope, targetId: expiredReviewTarget.id });
+const expiredBirthDate = expiredReviewCandidates.find((item) => item.fieldKey === "birthDate");
+const expiredAddress = expiredReviewCandidates.find((item) => item.fieldKey === "currentAddress");
+assert(expiredBirthDate && expiredAddress);
+assert.equal(expiredBirthDate.finalValue, undefined, "expired DOB must not be a model final value before human review");
+assert.equal(expiredBirthDate.finalSource, undefined, "expired DOB must not be marked model-saved before human review");
+let expiredTargetNow = await data.getObjectImportTarget({ ...scope, id: expiredReviewTarget.id });
+const rejectedUnverifiedDob = await data.reviewObjectImportCandidate({ context, targetId: expiredReviewTarget.id, fieldId: expiredBirthDate.id, expectedVersion: expiredTargetNow.targetVersion, expectedCandidateValue: expiredBirthDate.candidateValue, decision: "confirm", value: expiredBirthDate.candidateValue });
+assert.deepEqual(rejectedUnverifiedDob, { ok: false, reason: "invalid_value" }, "unverified DOB must reject the model quote without manual attestation");
+const expiredDobReview = await data.reviewObjectImportCandidate({ context, targetId: expiredReviewTarget.id, fieldId: expiredBirthDate.id, expectedVersion: expiredTargetNow.targetVersion, expectedCandidateValue: expiredBirthDate.candidateValue, decision: "confirm", value: "1990-04-12", manualAttestation: true });
+assert.equal(expiredDobReview.ok, true, "an explicitly attested DOB remains confirmable without trusting the model quote");
+const expiredReopened = await data.getClientById(expiredReviewClient.id, tenant.id);
+assert.equal(expiredReopened.birthDate?.toISOString().slice(0, 10), "1990-04-12", "confirmed expired DOB must persist after reopen");
+assert.equal((await data.listAuditLogs(user.id, { tenantId: tenant.id, limit: 10 })).some((item) => item.action === "object_import_confirm" && item.context?.manualAttestation === true), true, "manual DOB attestation must be auditable");
+expiredTargetNow = await data.getObjectImportTarget({ ...scope, id: expiredReviewTarget.id });
+const expiredAddressReview = await data.reviewObjectImportCandidate({ context, targetId: expiredReviewTarget.id, fieldId: expiredAddress.id, expectedVersion: expiredTargetNow.targetVersion, expectedCandidateValue: expiredAddress.candidateValue, decision: "confirm", value: expiredAddress.candidateValue });
+assert.deepEqual(expiredAddressReview, { ok: false, reason: "invalid_value" }, "document address must remain a pending candidate, not a current-address write");
+assert.equal((await data.getClientById(expiredReviewClient.id, tenant.id)).currentAddress, undefined, "document address must not persist as current address");
 
 // A standalone applicant.name value may populate the Latin display slot only
 // when the server has both clear uncertainty and page-evidence proof. It must
@@ -504,8 +565,9 @@ const persistedLatinEvidence = await persistObjectExtraction({
   fields: [latinEvidenceField],
 });
 assert.equal(persistedLatinEvidence[0].confidence, 0.74, "Latin evidence calibration must not inflate the generic AI confidence score");
-assert.equal(persistedLatinEvidence[0].status, "draft", "exact Latin evidence may be shown as a reviewable draft instead of low-confidence");
-assert.match(persistedLatinEvidence[0].provenance.sourceRange, /identity_name_latin_exact_evidence/);
+assert.equal(persistedLatinEvidence[0].status, "low_confidence", "even exact Latin evidence below the auto-save threshold remains review-only");
+assert.doesNotMatch(persistedLatinEvidence[0].provenance.sourceRange ?? "", /identity_name_latin_exact_evidence/, "the original evidence range must not be rewritten as a synthetic proof marker");
+assert.equal(persistedLatinEvidence[0].finalValue, undefined, "low-confidence Latin evidence must not receive a model final value");
 assert.equal(isSafeModelAutoSave(persistedLatinEvidence[0]), false, "the unchanged 0.8 auto-save gate must still block the calibrated Latin draft");
 const latinCommaEvidenceDraft = await persistObjectExtraction({
   customerTarget: true,
@@ -515,8 +577,8 @@ const latinCommaEvidenceDraft = await persistObjectExtraction({
   fields: [{ fieldKey: "nameLatin", value: "YAMADA, TARO", confidence: 0.74, method: "ai", pageEvidenceVerified: true, sourceText: "Name YAMADA, TARO", uncertainty: "clear" }],
 });
 assert.equal(latinCommaEvidenceDraft[0].candidateValue, "YAMADA, TARO", "the queued Latin candidate must preserve the exact comma-separated value");
-assert.equal(latinCommaEvidenceDraft[0].status, "draft", "a supported comma-separated Latin value with exact evidence remains a reviewable draft");
-assert.equal(latinCommaEvidenceDraft[0].finalValue, "YAMADA, TARO", "normalization must not alter the supported Latin value before review");
+assert.equal(latinCommaEvidenceDraft[0].status, "low_confidence", "a supported comma-separated Latin value below the threshold remains review-only");
+assert.equal(latinCommaEvidenceDraft[0].finalValue, undefined, "normalization must not turn low-confidence Latin evidence into a model final value");
 assert.equal(isSafeModelAutoSave(latinCommaEvidenceDraft[0]), false, "the existing confidence gate must still block automatic persistence of the calibrated draft");
 const emptyPageCandidate = await extractIdentityDocumentFromBuffer({ buffer: Buffer.from("%PDF-EMPTY-PAGE"), filename: "empty-page.pdf", requireModel: true });
 assert.equal(emptyPageCandidate.fields.find((field) => field.fieldKey === "applicant.name")?.uncertainty, "unclear", "a queued candidate on an empty page must remain review-only");

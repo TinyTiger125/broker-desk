@@ -45,13 +45,15 @@ export class MemoryObjectImportRepository implements ObjectImportRepository {
       existing.provenance = structuredClone(input.provenance);
       if (existing.finalSource !== "human") {
         existing.finalValue = input.finalValue;
-        existing.finalSource = input.finalSource ?? "model_draft";
+        existing.finalSource = input.finalSource;
         existing.status = input.status;
       }
       return structuredClone(existing);
     }
     if (this.candidates.some((item) => item.id === input.id)) throw new Error("object_import_candidate_id_conflict");
-    const created = { ...structuredClone(input), ...(input.status === "not_found" ? {} : { finalSource: input.finalSource ?? "model_draft" as const }) };
+    // Preserve the postgres contract: an omitted finalSource means the
+    // candidate is review-only, not an implicit model save.
+    const created = { ...structuredClone(input), ...(input.finalSource ? { finalSource: input.finalSource } : {}) };
     this.candidates.push(created);
     return structuredClone(created);
   }

@@ -1070,6 +1070,12 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
           zh: "资料已在其他页面更新，请刷新案件页面，重新核对当前资料和候选；本次修改未保存，确认时仍会校验最新版本。",
           ko: "자료가 다른 화면에서 업데이트되었습니다. 안건 페이지를 새로 고쳐 현재 자료와 후보를 다시 확인해 주세요. 이번 변경 사항은 저장되지 않았으며 확인 시에도 최신 버전을 검증합니다.",
         })
+    : query?.flash === "object_import_rejected"
+      ? tr(locale, {
+          ja: "資料候補を棄却しました。案件資料は変更されていません。",
+          zh: "已拒绝资料候选，案件资料未更改。",
+          ko: "자료 후보를 거부했으며 안건 자료는 변경되지 않았습니다.",
+        })
     : query?.flash === "object_import_review_rebased"
       ? tr(locale, {
           ja: "最新の物件資料を読み直しました。現在値と既存の資料候補をもう一度確認してから確定してください。まだ保存していません。",

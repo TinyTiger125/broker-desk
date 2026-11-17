@@ -154,19 +154,6 @@ export async function persistObjectExtraction(input: { repository?: Pick<ObjectI
     const genderConflict = identityKey === "gender" && rawValue.trim().length > 0 && !isCustomerGenderValue(normalizedValue);
     const identityNameReview = input.customerTarget === true && identityKey !== null && isCustomerNameFieldKey(identityKey)
       && (field.pageEvidenceVerified !== true || !isCustomerNameRepresentationValue(identityKey, normalizedValue) || !hasExactPrintedIdentityEvidence(normalizedValue, field.sourceText));
-    // A clear Latin name with exact script, quote, and page evidence is a
-    // reviewable draft even though the generic AI score (0.74) is below the
-    // automatic-save threshold. Do not raise that score here: the existing
-    // >=0.8 gate and standalone identity-anchor check must continue to block
-    // model writes until the stronger conditions are independently satisfied.
-    const identityLatinEvidence = input.customerTarget === true
-      && identityKey === "nameLatin"
-      && field.method === "ai"
-      && (field.confidence ?? 0) >= 0.74
-      && field.uncertainty === "clear"
-      && field.pageEvidenceVerified === true
-      && isCustomerNameRepresentationValue(identityKey, normalizedValue)
-      && hasExactPrintedIdentityEvidence(normalizedValue, field.sourceText);
     const identityAddressReview = input.customerTarget === true && identityKey === "currentAddress" && Boolean(normalizedValue.trim());
     const persistedField = identityKey
       ? {
@@ -174,10 +161,16 @@ export async function persistObjectExtraction(input: { repository?: Pick<ObjectI
         value: normalizedValue,
         normalizedValue,
         rawValue,
-        ...(identityLatinEvidence ? { sourceRange: [field.sourceRange, "identity_name_latin_exact_evidence"].filter(Boolean).join("; ") } : {}),
         ...((genderConflict || identityNameReview) ? { uncertainty: genderConflict ? "conflict" as const : "unclear" as const } : {}),
       }
       : field;
+    // Any uncertainty or low-confidence result is evidence for review only.
+    // Keeping it in final_value/model_draft made expired-document fields look
+    // saved even though auto-save correctly skipped them. The candidate and
+    // its original evidence remain durable, but no model final is written.
+    const requiresExplicitReview = genderConflict || identityNameReview || identityAddressReview
+      || (typeof persistedField.uncertainty === "string" && persistedField.uncertainty !== "clear")
+      || (normalizedValue.length > 0 && typeof persistedField.confidence === "number" && persistedField.confidence < 0.8);
     return {
     id: `candidate_${input.target.id}_${field.fieldKey}`,
     tenantId: input.target.tenantId, targetId: input.target.id, fieldKey: field.fieldKey,
@@ -199,9 +192,9 @@ export async function persistObjectExtraction(input: { repository?: Pick<ObjectI
       ...(persistedField.subjectLabel ? { subjectLabel: persistedField.subjectLabel } : {}),
       ...(persistedField.alternatives?.length ? { alternatives: persistedField.alternatives } : {}),
     },
-    finalValue: genderConflict || identityNameReview || identityAddressReview ? undefined : normalizedValue || undefined, finalSource: genderConflict || identityNameReview || identityAddressReview ? undefined : normalizedValue ? "model_draft" : undefined,
+    finalValue: requiresExplicitReview ? undefined : normalizedValue || undefined, finalSource: requiresExplicitReview ? undefined : normalizedValue ? "model_draft" : undefined,
     status: genderConflict ? "conflict" : identityNameReview ? "low_confidence" : identityAddressReview ? "draft" : normalizedValue
-      ? persistedField.uncertainty === "conflict" ? "conflict" : persistedField.uncertainty === "unclear" ? "low_confidence" : identityLatinEvidence ? "draft" : persistedField.confidence < 0.8 ? "low_confidence" : "draft"
+      ? persistedField.uncertainty === "conflict" ? "conflict" : persistedField.uncertainty === "unclear" ? "low_confidence" : persistedField.confidence < 0.8 ? "low_confidence" : "draft"
       : persistedField.uncertainty === "conflict" ? "conflict" : persistedField.uncertainty === "unclear" ? "low_confidence" : "not_found",
     };
   });
