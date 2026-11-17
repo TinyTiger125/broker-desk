@@ -67,6 +67,12 @@ assert.match(identityImportUiSource, /原本と照合して顧客フォームへ
 assert.match(clientEditPageSource, /relatedNameRecords/);
 assert.match(clientNewPageSource, /entryUpload/);
 assert.match(clientFormSource, /existingClientLookupTitle/);
+assert.match(clientFormSource, /HelpHint id="existing-client-lookup-hint"/);
+assert.match(clientFormSource, /existingClientLookupRequestRef/);
+assert.match(clientFormSource, /requestId !== existingClientLookupRequestRef\.current/);
+assert.match(clientFormSource, /autoLookupExistingClientByName\("nameLatin"/);
+assert.match(clientFormSource, /autoLookupExistingClientByName\("nameKanji"/);
+assert.match(clientFormSource, /autoLookupExistingClientByName\("nameKatakana"/);
 assert.match(clientFormSource, /type="button" onClick=\{\(\) => void searchExistingClientsByName\(\)\}/);
 assert.match(clientFormSource, /\/api\/clients\/exact-name\?q=/);
 assert.match(exactNameLookupRouteSource, /filterExactClientNameMatches/);
@@ -88,6 +94,8 @@ assert.equal(isCustomerNameRepresentationValue("nameLatin", "YAMADA, TARO"), tru
 assert.equal(isCustomerNameRepresentationValue("nameLatin", "YAMADA，TARO"), true, "a fullwidth comma normalizes to the supported Latin separator");
 assert.equal(isCustomerNameRepresentationValue("nameLatin", "YAMADA; TARO"), false, "arbitrary punctuation must not be accepted as a Latin name");
 assert.equal(isCustomerNameRepresentationValue("nameLatin", "YAMADA, TARO, TEST"), false, "multiple comma separators must remain invalid");
+assert.equal(isCustomerNameRepresentationValue("nameKanji", "山田 太郎"), true, "Hanzi form is eligible for exact pre-upload lookup");
+assert.equal(isCustomerNameRepresentationValue("nameKatakana", "ヤマダ タロウ"), true, "Katakana form is eligible for exact pre-upload lookup");
 assert.equal(normalizeCustomerIdentityValue("nameLatin", "YAMADA， TARO"), "YAMADA, TARO", "Latin comma formatting must normalize before persistence");
 assert.equal(customerIdentityFieldKey("applicant.nameKanji"), "nameKanji");
 assert.equal(customerIdentityFieldKey("applicant.nameKatakana"), "nameKatakana");

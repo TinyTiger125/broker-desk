@@ -25,7 +25,7 @@ import {
 } from "@/lib/options";
 import { getPartyProfileTypeOptions } from "@/lib/party-profile";
 import { formatJapaneseMobilePhone } from "@/lib/japanese-mobile-phone";
-import { normalizeCustomerIdentityValue } from "@/lib/customer-identity-field-catalog";
+import { isCustomerNameRepresentationValue, normalizeCustomerIdentityValue } from "@/lib/customer-identity-field-catalog";
 import type { EntryUploadStagedFileRef } from "@/lib/entry-upload-staging";
 import { applyEntryStagedFilesToFormData } from "@/lib/entry-upload-staging-client";
 
@@ -256,6 +256,7 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
   const [existingClientLookupMatches, setExistingClientLookupMatches] = useState<ExistingClientNameMatch[]>([]);
   const [existingClientLookupStatus, setExistingClientLookupStatus] = useState<"idle" | "searching" | "empty" | "ready" | "error">("idle");
   const existingClientLookupAbortRef = useRef<AbortController | null>(null);
+  const existingClientLookupRequestRef = useRef(0);
   const [autoSaving, startAutoSaving] = useTransition();
   const formRef = useRef<HTMLFormElement>(null);
   const autoSaveStartedRef = useRef(false);
@@ -287,8 +288,10 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
   const handleEntryStagingPending = useCallback((pending: boolean) => {
     setEntryStagingPending(pending);
   }, []);
-  const searchExistingClientsByName = useCallback(async () => {
-    const query = existingClientLookupQuery.trim();
+  const lookupExistingClientsByName = useCallback(async (rawQuery: string) => {
+    const query = rawQuery.trim();
+    const requestId = existingClientLookupRequestRef.current + 1;
+    existingClientLookupRequestRef.current = requestId;
     existingClientLookupAbortRef.current?.abort();
     if (!query) {
       setExistingClientLookupMatches([]);
@@ -317,15 +320,27 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
           ...(typeof row.nameKatakana === "string" ? { nameKatakana: row.nameKatakana } : {}),
         }];
       });
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted || requestId !== existingClientLookupRequestRef.current) return;
       setExistingClientLookupMatches(matches);
       setExistingClientLookupStatus(matches.length > 0 ? "ready" : "empty");
     } catch {
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted || requestId !== existingClientLookupRequestRef.current) return;
       setExistingClientLookupMatches([]);
       setExistingClientLookupStatus("error");
     }
-  }, [existingClientLookupQuery]);
+  }, []);
+  const searchExistingClientsByName = useCallback(() => {
+    void lookupExistingClientsByName(existingClientLookupQuery);
+  }, [existingClientLookupQuery, lookupExistingClientsByName]);
+  const autoLookupExistingClientByName = useCallback((field: "nameLatin" | "nameKanji" | "nameKatakana", rawQuery: string) => {
+    if (mode !== "create" || !entryUpload || isCorporate) return;
+    const query = rawQuery.trim();
+    if (!query || !isCustomerNameRepresentationValue(field, query)) return;
+    // This is an advisory read from an explicitly typed persisted field. It
+    // never submits the form, reads an upload, changes its target, or merges records.
+    setExistingClientLookupQuery(query);
+    void lookupExistingClientsByName(query);
+  }, [entryUpload, isCorporate, lookupExistingClientsByName, mode]);
   useEffect(() => () => existingClientLookupAbortRef.current?.abort(), []);
   const confirmEntryCandidate = useCallback((candidate: EntryPreviewCandidate) => {
     setValues((current) => {
@@ -541,12 +556,16 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
       {entryUpload && !readOnly ? <>
         <input type="hidden" name="entryIntentId" value={entryIntentId} />
         {mode === "create" ? <div role="search" aria-labelledby="existing-client-lookup-title" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-950">
-          <p id="existing-client-lookup-title" className="font-bold">{text.existingClientLookupTitle}</p>
-          <p className="mt-1 text-xs leading-5">{text.existingClientLookupDescription}</p>
+          <div className="flex items-center gap-1">
+            <p id="existing-client-lookup-title" className="font-bold">{text.existingClientLookupTitle}</p>
+            <HelpHint id="existing-client-lookup-hint" label={text.existingClientLookupTitle}>{text.existingClientLookupDescription}</HelpHint>
+          </div>
           <div className="mt-2 flex flex-wrap gap-2">
             <input
               value={existingClientLookupQuery}
               onChange={(event) => {
+                existingClientLookupRequestRef.current += 1;
+                existingClientLookupAbortRef.current?.abort();
                 setExistingClientLookupQuery(event.target.value);
                 setExistingClientLookupStatus("idle");
                 setExistingClientLookupMatches([]);
@@ -587,9 +606,9 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
         <div className="space-y-1"><label htmlFor="client-partyType" className="text-sm font-semibold text-slate-700">{text.partyType} <span className="text-xs font-normal text-slate-500">({text.optional})</span></label><select {...fieldProps("partyType")} id="client-partyType" className={inputClass}><option value="">{text.partyTypeUnset}</option>{getPartyProfileTypeOptions(locale).map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select>{errorText("partyType")}</div>
         {isCorporate ? <div className="space-y-1">{label("furigana", profileFuriganaLabel)}<input {...fieldProps("furigana")} className={inputClass} />{errorText("furigana")}</div> : <input {...fieldProps("furigana")} type="hidden" aria-hidden="true" />}
         {!isCorporate ? <>
-          <div className="space-y-1">{label("nameLatin", text.nameLatin)}<input {...fieldProps("nameLatin")} className={inputClass} />{errorText("nameLatin")}</div>
-          <div className="space-y-1">{label("nameKanji", text.nameKanji)}<input {...fieldProps("nameKanji")} className={inputClass} />{errorText("nameKanji")}</div>
-          <div className="space-y-1">{label("nameKatakana", text.nameKatakana)}<input {...fieldProps("nameKatakana")} className={inputClass} />{errorText("nameKatakana")}</div>
+          <div className="space-y-1">{label("nameLatin", text.nameLatin)}<input {...fieldProps("nameLatin")} onBlur={(event) => autoLookupExistingClientByName("nameLatin", event.currentTarget.value)} className={inputClass} />{errorText("nameLatin")}</div>
+          <div className="space-y-1">{label("nameKanji", text.nameKanji)}<input {...fieldProps("nameKanji")} onBlur={(event) => autoLookupExistingClientByName("nameKanji", event.currentTarget.value)} className={inputClass} />{errorText("nameKanji")}</div>
+          <div className="space-y-1">{label("nameKatakana", text.nameKatakana)}<input {...fieldProps("nameKatakana")} onBlur={(event) => autoLookupExistingClientByName("nameKatakana", event.currentTarget.value)} className={inputClass} />{errorText("nameKatakana")}</div>
           <div className="md:col-span-2">{errorText("name")}</div>
         </> : null}
         <div className="space-y-1">{label("currentPostalCode", profilePostalCodeLabel)}<input {...fieldProps("currentPostalCode")} className={inputClass} />{errorText("currentPostalCode")}</div>
