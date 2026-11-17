@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 
 const migration = await readFile(new URL("../db/migrations/20261116_001_entry_upload_staging.sql", import.meta.url), "utf8");
 const aclFixMigration = await readFile(new URL("../db/migrations/20261116_002_entry_upload_staging_acl_fix.sql", import.meta.url), "utf8");
+const cleanupAclMigration = await readFile(new URL("../db/migrations/20261117_002_entry_upload_staging_cleanup_acl.sql", import.meta.url), "utf8");
 const stagingMigrations = `${migration}\n${aclFixMigration}`;
 const route = await readFile(new URL("../src/app/api/entry-staging/route.ts", import.meta.url), "utf8");
 const cron = await readFile(new URL("../src/app/api/internal/import-jobs/cron/route.ts", import.meta.url), "utf8");
@@ -30,6 +31,9 @@ assert.match(migration, /user_id TEXT NOT NULL REFERENCES public\.users\(id\) ON
 assert.match(migration, /chunk_size_bytes INTEGER NOT NULL CHECK \(chunk_size_bytes = 1048576\)/);
 assert.match(migration, /CREATE OR REPLACE FUNCTION brokerdesk_private\.cleanup_expired_entry_upload_staging_system/);
 assert.match(migration, /GRANT EXECUTE ON FUNCTION brokerdesk_private\.cleanup_expired_entry_upload_staging_system\(INTEGER\) TO brokerdesk_admin/);
+assert.match(cleanupAclMigration, /REVOKE ALL PRIVILEGES[\s\S]*cleanup_expired_entry_upload_staging_system\(INTEGER\)[\s\S]*FROM PUBLIC/);
+assert.match(cleanupAclMigration, /GRANT EXECUTE[\s\S]*cleanup_expired_entry_upload_staging_system\(INTEGER\)[\s\S]*TO brokerdesk_admin/);
+assert.match(cleanupAclMigration, /actual_owner <> 'brokerdesk_admin'/);
 assert.match(cron, /cleanupExpiredEntryUploadStaging\(500\)/);
 assert.match(route, /request\.arrayBuffer\(\)/);
 assert.match(route, /ENTRY_UPLOAD_CHUNK_SIZE_BYTES/);
@@ -41,6 +45,7 @@ assert.match(contract, /ENTRY_UPLOAD_STAGING_MAX_ACTIVE_BYTES = 60 \* 1024 \* 10
 assert.match(postgres, /pg_advisory_xact_lock/);
 assert.match(postgres, /ENTRY_UPLOAD_STAGING_MAX_ACTIVE_FILES/);
 assert.match(postgres, /20261116_002_entry_upload_staging_acl_fix\.sql/);
+assert.match(postgres, /20261117_002_entry_upload_staging_cleanup_acl\.sql/);
 assert.match(entryPreview, /onStagingPending/);
 assert.match(clientForm, /entryStagingPending/);
 assert.match(clientForm, /entryFiles\.length > 0/);

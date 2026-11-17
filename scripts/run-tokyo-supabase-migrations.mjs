@@ -36,6 +36,7 @@ const TOKYO_ROLE_SWITCH_MIGRATIONS = Object.freeze([
   // commit. Never let the postgres preflight silently execute them as postgres.
   "20261116_003_entry_preview_review_candidates.sql",
   "20261117_001_entry_preview_review_cleanup_guards.sql",
+  "20261117_002_entry_upload_staging_cleanup_acl.sql",
 ]);
 const MARKER_TABLE = "public.broker_desk_initialization_control";
 const INITIALIZATION_LOCK_SQL = "SELECT pg_advisory_lock(hashtext('broker-desk-initialization-control'))";

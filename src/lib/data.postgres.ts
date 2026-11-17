@@ -240,6 +240,7 @@ const REQUIRED_PRODUCTION_MIGRATIONS = [
   "20261116_002_entry_upload_staging_acl_fix.sql",
   "20261116_003_entry_preview_review_candidates.sql",
   "20261117_001_entry_preview_review_cleanup_guards.sql",
+  "20261117_002_entry_upload_staging_cleanup_acl.sql",
 ] as const;
 
 const OPEN_STAGES: ClientStage[] = ["lead", "contacted", "quoted", "viewing", "negotiating"];

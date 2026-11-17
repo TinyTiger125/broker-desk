@@ -12,6 +12,7 @@ const directory = path.resolve("db/migrations");
 const runnerSource = await readFile(path.resolve("scripts/run-tokyo-supabase-migrations.mjs"), "utf8");
 assert.match(runnerSource, /"20261116_003_entry_preview_review_candidates\.sql"/, "admin-owned review migration 003 must use the admin role switch");
 assert.match(runnerSource, /"20261117_001_entry_preview_review_cleanup_guards\.sql"/, "admin-owned review migration 001 must use the admin role switch");
+assert.match(runnerSource, /"20261117_002_entry_upload_staging_cleanup_acl\.sql"/, "admin-owned staging cleanup ACL migration must use the admin role switch");
 const names = (await readdir(directory)).filter((name) => /^\d{8}_\d{3}_.+\.sql$/.test(name)).sort();
 const firstIndex = names.indexOf("20260908_001_preimport_upload_lifecycle.sql");
 const finalIndex = names.indexOf("20260921_002_import_worker_rls_admin_policy.sql");

@@ -21,10 +21,16 @@ const requiredMigrations = [...migrationText.matchAll(/"([^\"]+)"/g)].map((match
 assert(requiredMigrations.includes("20261102_005_entry_request_claims_runtime_acl.sql"), "readiness must require migration 005 runtime ACL");
 assert(requiredMigrations.includes("20261102_006_entry_request_claims_authenticated_acl.sql"), "readiness must require migration 006 authenticated ACL");
 assert(requiredMigrations.includes("20261117_001_entry_preview_review_cleanup_guards.sql"), "readiness must require the direct-review cleanup guard migration");
+assert(requiredMigrations.includes("20261117_002_entry_upload_staging_cleanup_acl.sql"), "readiness must require the entry staging cleanup ACL migration");
 assert.equal(
   requiredMigrations.indexOf("20261117_001_entry_preview_review_cleanup_guards.sql"),
   requiredMigrations.indexOf("20261116_003_entry_preview_review_candidates.sql") + 1,
   "direct-review cleanup guard migration must follow the original review-candidate migration",
+);
+assert.equal(
+  requiredMigrations.indexOf("20261117_002_entry_upload_staging_cleanup_acl.sql"),
+  requiredMigrations.indexOf("20261117_001_entry_preview_review_cleanup_guards.sql") + 1,
+  "entry staging cleanup ACL migration must follow the direct-review cleanup migration",
 );
 assert.equal(
   requiredMigrations.indexOf("20261102_005_entry_request_claims_runtime_acl.sql"),
@@ -51,15 +57,15 @@ class FixtureReadinessError extends Error {
     this.code = code;
   }
 }
-const module = { exports: {} };
+const moduleRecord = { exports: {} };
 vm.runInNewContext(readinessOutput, {
-  module,
-  exports: module.exports,
+  module: moduleRecord,
+  exports: moduleRecord.exports,
   REQUIRED_PRODUCTION_MIGRATIONS: requiredMigrations,
   ProductionReadinessError: FixtureReadinessError,
   buildHealthFailureCause: () => ({ errorClass: "FixtureError", phase: "ledger_query" }),
 });
-const assertProductionMigrationsApplied = module.exports;
+const assertProductionMigrationsApplied = moduleRecord.exports;
 assert.equal(typeof assertProductionMigrationsApplied, "function", "readiness assertion must be callable in isolation");
 
 const stoppedAt004 = requiredMigrations.filter((name) => ![

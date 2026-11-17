@@ -14,6 +14,7 @@
     "test:postgres-migration-runner-postgres": "node scripts/test-postgres-migration-runner-postgres.mjs",
     "test:postgres-migration-runner-full": "node scripts/test-postgres-migration-runner-full.mjs",
     "test:entry-upload-staging-postgres": "node scripts/test-entry-upload-staging-postgres.mjs",
+    "test:entry-upload-staging-cleanup-acl-postgres": "node scripts/test-entry-upload-staging-cleanup-acl-postgres.mjs",
     "test:entry-preview-review-persistence": "node scripts/test-entry-preview-review-persistence.mjs",
     "test:entry-preview-review-concurrency-postgres": "node scripts/test-entry-preview-review-concurrency-postgres.mjs",
     "test:entry-preview-review-migration-postgres": "node scripts/test-entry-preview-review-migration-postgres.mjs",
