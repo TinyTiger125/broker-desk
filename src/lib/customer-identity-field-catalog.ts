@@ -68,6 +68,27 @@ export function hasPrintedIdentityPageEvidence(
   return normalize(page.lines.join(" ")).includes(normalize(sourceText));
 }
 
+/**
+ * Address evidence is stricter than generic field evidence.  A model must
+ * quote one printed line containing the complete address; joining neighboring
+ * OCR lines can otherwise make a tiny-card address look internally consistent
+ * while still hiding a digit/丁目/番/号 transcription error.  This remains
+ * review evidence only: currentAddress is never an automatic-save destination.
+ */
+export function hasStrictPrintedAddressPageEvidence(
+  value: string,
+  sourceText: string | undefined,
+  pages: readonly { pageNumber: number; lines: readonly string[] }[] | undefined,
+  pageNumber: number | undefined,
+): boolean {
+  if (!pageNumber || !sourceText?.trim() || !hasExactPrintedIdentityEvidence(value, sourceText)) return false;
+  const page = pages?.find((item) => item.pageNumber === pageNumber);
+  if (!page || page.lines.length === 0) return false;
+  const normalize = (input: string) => input.normalize("NFKC").replace(/\s+/g, "").toUpperCase();
+  const normalizedSource = normalize(sourceText);
+  return page.lines.some((line) => normalize(line).includes(normalizedSource));
+}
+
 const CUSTOMER_GENDER_TOKENS: Record<CustomerGender, Set<string>> = {
   male: new Set(["男性", "男", "male", "m", "man", "masculine"]),
   female: new Set(["女性", "女", "female", "f", "woman", "feminine"]),

@@ -19,7 +19,7 @@ import { readIdentityDocumentWithOpenAi, type IdentityReaderCustomerMode } from 
 import type { OpenAiIdentityReaderCandidate } from "@/lib/identity-reader-contract";
 import { resolveIdentityReaderCandidate } from "@/lib/identity-reader-evidence";
 import { selectPrimaryIdentityReaderCandidates, type IdentityReaderAttributionScope } from "@/lib/identity-reader-attribution";
-import { hasPrintedIdentityPageEvidence, normalizeCustomerIdentityValue } from "@/lib/customer-identity-field-catalog";
+import { hasPrintedIdentityPageEvidence, hasStrictPrintedAddressPageEvidence, normalizeCustomerIdentityValue } from "@/lib/customer-identity-field-catalog";
 import { assessIdentityDocumentValidity, markIdentityFieldsForValidityReview } from "@/lib/identity-document-validity";
 
 const execFileAsync = promisify(execFile);
@@ -579,7 +579,9 @@ function addModelCandidates(fields: FieldDraft[], candidates: OpenAiIdentityRead
     // value only as an unclear review candidate. This is an internal
     // consistency check on one model response, not proof of document truth.
     const pageEvidencePresent = candidate.uncertainty === "not_found"
-      || hasPrintedIdentityPageEvidence(candidate.value, candidate.sourceText, pages, candidate.pageNumber);
+      || (candidate.fieldKey === "applicant.currentAddress"
+        ? hasStrictPrintedAddressPageEvidence(candidate.value, candidate.sourceText, pages, candidate.pageNumber)
+        : hasPrintedIdentityPageEvidence(candidate.value, candidate.sourceText, pages, candidate.pageNumber));
     const candidateUncertainty = pageEvidencePresent ? candidate.uncertainty : "unclear" as const;
     // A residence card may explicitly say 未定 before a later back-side
     // address update. Preserve that evidence for review, but never let it

@@ -34,7 +34,7 @@ Module._load = function(request, parent, ...rest) {
 };
 
 const { parseOpenAiIdentityReaderResponse } = require(resolve(root, "src/lib/identity-reader-contract.ts"));
-const { isValidCustomerBirthDate, isCustomerGenderValue, normalizeCustomerGenderValue, normalizeCustomerIdentityValue, customerIdentityFieldKey, CUSTOMER_IDENTITY_FIELDS } = require(resolve(root, "src/lib/customer-identity-field-catalog.ts"));
+const { isValidCustomerBirthDate, isCustomerGenderValue, normalizeCustomerGenderValue, normalizeCustomerIdentityValue, customerIdentityFieldKey, CUSTOMER_IDENTITY_FIELDS, hasStrictPrintedAddressPageEvidence } = require(resolve(root, "src/lib/customer-identity-field-catalog.ts"));
 const postgresSource = readFileSync(resolve(root, "src/lib/data.postgres.ts"), "utf8");
 assert.match(postgresSource, /nameLatin:\s*"name_latin"/);
 assert.match(postgresSource, /nameKanji:\s*"name_kanji"/);
@@ -53,6 +53,24 @@ assert.equal(normalizeCustomerIdentityValue("birthDate", "12 APR 1990"), "1990-0
 assert.equal(normalizeCustomerIdentityValue("birthDate", "平成2年4月12日"), "1990-04-12");
 assert.equal(normalizeCustomerIdentityValue("gender", "M"), "male");
 assert.equal(normalizeCustomerIdentityValue("gender", "F"), "female");
+assert.equal(hasStrictPrintedAddressPageEvidence(
+  "東京都テスト区3丁目1番2号",
+  "住所 東京都テスト区3丁目1番2号",
+  [{ pageNumber: 1, lines: ["住所 東京都テスト区3丁目1番2号"] }],
+  1,
+), true);
+assert.equal(hasStrictPrintedAddressPageEvidence(
+  "東京都テスト区5丁目1番2号",
+  "住所 東京都テスト区5丁目1番2号",
+  [{ pageNumber: 1, lines: ["住所 東京都テスト区3丁目1番2号"] }],
+  1,
+), false);
+assert.equal(hasStrictPrintedAddressPageEvidence(
+  "東京都テスト区3丁目1番2号",
+  "住所 東京都テスト区3丁目1番2号",
+  [{ pageNumber: 1, lines: ["住所", "東京都テスト区3丁目1番2号"] }],
+  1,
+), false);
 for (const [raw, expected] of [["男 M", "male"], ["男/M", "male"], ["男性 (Male)", "male"], ["Ｍ／男性", "male"], ["女 F", "female"], ["女性/F", "female"], ["その他 / Other", "other"]]) {
   assert.equal(normalizeCustomerGenderValue(raw), expected, `gender expression ${raw} must normalize`);
   assert.equal(normalizeCustomerIdentityValue("gender", raw), expected);
@@ -84,6 +102,7 @@ registerTenantSessionProvenance(session);
 const client = await data.addClient({ tenantId: tenant.id, ownerUserId: user.id, name: "Original customer", phone: "090-0000-0000", email: "keep@example.test", budgetType: "total_price", purpose: "buy", loanPreApprovalStatus: "not_applied", stage: "lead", temperature: "cold", brokerageContractType: "none", amlCheckStatus: "not_required" });
 const { buildObjectImportIdempotencyKey, buildObjectVersionFingerprint } = require(resolve(root, "src/lib/object-import-contract.ts"));
 const { persistObjectExtraction, persistObjectImportJobExtraction } = require(resolve(root, "src/lib/object-import-processor-adapter.ts"));
+const { isSafeModelAutoSave } = require(resolve(root, "src/lib/object-import-review.ts"));
 const { resolveObjectImportTarget } = require(resolve(root, "src/lib/object-import-target-service.ts"));
 const { validateObjectImportReview } = require(resolve(root, "src/lib/object-import-review.ts"));
 const reviewRecord = { id: "client-synthetic-review", name: "", notes: undefined };
@@ -278,6 +297,33 @@ Module._load = function(request, parent, ...rest) {
     if (Buffer.from(buffer).toString().includes("PARTIAL-SINGLE-BIRTH")) {
       return { ...modelResponse, candidates: [{ fieldKey: "applicant.birthDate", value: "1990-04-12", pageNumber: 1, sourceText: "生年月日 1990-04-12", uncertainty: "clear", subjectKey: "person-a", subjectLabel: "本人" }] };
     }
+    if (Buffer.from(buffer).toString().includes("ADDRESS-DIGIT-MISMATCH")) {
+      return {
+        documentType: "identity_residence_card",
+        pages: [{ pageNumber: 1, lines: ["住所 東京都テスト区3丁目1番2号"] }],
+        candidates: [{ fieldKey: "applicant.currentAddress", value: "東京都テスト区5丁目1番2号", pageNumber: 1, sourceText: "住所 東京都テスト区5丁目1番2号", uncertainty: "clear", subjectKey: "person", subjectLabel: "本人" }],
+      };
+    }
+    if (Buffer.from(buffer).toString().includes("ADDRESS-DUAL-VIEW-CONFLICT")) {
+      return {
+        documentType: "identity_residence_card",
+        pages: [{ pageNumber: 1, lines: ["住所 東京都テスト区3丁目1番2号", "住所 東京都テスト区5丁目1番2号"] }],
+        candidates: [
+          { fieldKey: "applicant.currentAddress", value: "東京都テスト区3丁目1番2号", pageNumber: 1, sourceText: "住所 東京都テスト区3丁目1番2号", uncertainty: "clear", subjectKey: "person", subjectLabel: "本人" },
+          { fieldKey: "applicant.currentAddress", value: "東京都テスト区5丁目1番2号", pageNumber: 1, sourceText: "住所 東京都テスト区5丁目1番2号", uncertainty: "clear", subjectKey: "person", subjectLabel: "本人" },
+        ],
+      };
+    }
+    if (Buffer.from(buffer).toString().includes("LATIN-EVIDENCE-DRAFT")) {
+      return {
+        documentType: "identity_passport",
+        pages: [{ pageNumber: 1, lines: ["Name YAMADA SHIKEN", "生年月日 1990-04-12"] }],
+        candidates: [
+          { fieldKey: "applicant.nameLatin", value: "YAMADA SHIKEN", pageNumber: 1, sourceText: "Name YAMADA SHIKEN", uncertainty: "clear", subjectKey: "person", subjectLabel: "本人" },
+          { fieldKey: "applicant.birthDate", value: "1990-04-12", pageNumber: 1, sourceText: "生年月日 1990-04-12", uncertainty: "clear", subjectKey: "person", subjectLabel: "本人" },
+        ],
+      };
+    }
     if (Buffer.from(buffer).toString().includes("SAME-DOB-A") || Buffer.from(buffer).toString().includes("SAME-DOB-B")) {
       const personName = Buffer.from(buffer).toString().includes("SAME-DOB-A") ? "PERSON A" : "PERSON B";
       return { ...modelResponse, candidates: [
@@ -420,6 +466,47 @@ modelResponse = {
 };
 const wrongPageQuote = await extractIdentityDocumentFromBuffer({ buffer: Buffer.from("%PDF-WRONG-PAGE-QUOTE"), filename: "wrong-page-quote.pdf", requireModel: true });
 assert.equal(wrongPageQuote.fields.find((field) => field.fieldKey === "applicant.name")?.uncertainty, "unclear", "a queued candidate quote absent from page lines must remain review-only");
+const addressDigitMismatch = await extractIdentityDocumentFromBuffer({ buffer: Buffer.from("%PDF-ADDRESS-DIGIT-MISMATCH"), filename: "address-digit-mismatch.pdf", requireModel: true });
+const mismatchedAddressField = addressDigitMismatch.fields.find((field) => field.fieldKey === "applicant.currentAddress");
+assert.equal(mismatchedAddressField?.pageEvidenceVerified, false, "an address digit absent from the page line must not pass strict evidence");
+assert.equal(mismatchedAddressField?.uncertainty, "unclear", "a 5丁目 model quote against a 3丁目 page line must remain review-only");
+const persistedMismatchedAddress = await persistObjectExtraction({
+  customerTarget: true,
+  repository: { upsertCandidate: async (candidate) => candidate },
+  target: { id: "target-address-digit-mismatch", tenantId: tenant.id, sourceAttachmentId: "attachment-synthetic" },
+  sourceFileHash: "synthetic-hash-address-digit",
+  fields: [mismatchedAddressField],
+});
+assert.equal(persistedMismatchedAddress[0].finalValue, undefined, "a mismatched address must never receive a model final value");
+assert.equal(isSafeModelAutoSave(persistedMismatchedAddress[0]), false, "a mismatched address must never qualify for auto-save");
+const addressDualViewConflict = await extractIdentityDocumentFromBuffer({ buffer: Buffer.from("%PDF-ADDRESS-DUAL-VIEW-CONFLICT"), filename: "address-dual-view-conflict.pdf", requireModel: true });
+const dualViewAddressField = addressDualViewConflict.fields.find((field) => field.fieldKey === "applicant.currentAddress");
+assert.equal(dualViewAddressField?.uncertainty, "conflict", "disagreeing full/crop address views must remain conflict evidence");
+assert.equal((dualViewAddressField?.alternatives ?? []).length >= 2, true, "address conflict must retain both review alternatives");
+const latinEvidenceDraft = await extractIdentityDocumentFromBuffer({ buffer: Buffer.from("%PDF-LATIN-EVIDENCE-DRAFT"), filename: "latin-evidence-draft.pdf", requireModel: true });
+const latinEvidenceField = latinEvidenceDraft.fields.find((field) => field.fieldKey === "applicant.nameLatin");
+assert.equal(latinEvidenceField?.uncertainty, "clear", "exact Latin evidence remains clear at extraction");
+assert.equal(latinEvidenceField?.pageEvidenceVerified, true, "exact Latin evidence must retain page proof");
+const persistedLatinEvidence = await persistObjectExtraction({
+  customerTarget: true,
+  repository: { upsertCandidate: async (candidate) => candidate },
+  target: { id: "target-latin-evidence-draft", tenantId: tenant.id, sourceAttachmentId: "attachment-synthetic" },
+  sourceFileHash: "synthetic-hash-latin-evidence",
+  fields: [latinEvidenceField],
+});
+assert.equal(persistedLatinEvidence[0].confidence, 0.74, "Latin evidence calibration must not inflate the generic AI confidence score");
+assert.equal(persistedLatinEvidence[0].status, "draft", "exact Latin evidence may be shown as a reviewable draft instead of low-confidence");
+assert.match(persistedLatinEvidence[0].provenance.sourceRange, /identity_name_latin_exact_evidence/);
+assert.equal(isSafeModelAutoSave(persistedLatinEvidence[0]), false, "the unchanged 0.8 auto-save gate must still block the calibrated Latin draft");
+const latinPunctuationReview = await persistObjectExtraction({
+  customerTarget: true,
+  repository: { upsertCandidate: async (candidate) => candidate },
+  target: { id: "target-latin-punctuation-review", tenantId: tenant.id, sourceAttachmentId: "attachment-synthetic" },
+  sourceFileHash: "synthetic-hash-latin-punctuation",
+  fields: [{ fieldKey: "nameLatin", value: "YAMADA, TARO", confidence: 0.74, method: "ai", pageEvidenceVerified: true, sourceText: "Name YAMADA, TARO", uncertainty: "clear" }],
+});
+assert.equal(latinPunctuationReview[0].status, "low_confidence", "unsupported Latin punctuation must remain review-only until its evidence policy is explicitly approved");
+assert.equal(latinPunctuationReview[0].finalValue, undefined);
 const emptyPageCandidate = await extractIdentityDocumentFromBuffer({ buffer: Buffer.from("%PDF-EMPTY-PAGE"), filename: "empty-page.pdf", requireModel: true });
 assert.equal(emptyPageCandidate.fields.find((field) => field.fieldKey === "applicant.name")?.uncertainty, "unclear", "a queued candidate on an empty page must remain review-only");
 assert.equal(emptyPageCandidate.fields.find((field) => field.fieldKey === "applicant.name")?.pageEvidenceVerified, false, "a pseudo quote must not mark an empty page as verified");
@@ -461,7 +548,6 @@ modelResponse = {
 const validDocument = await extractIdentityDocumentFromBuffer({ buffer: Buffer.from("%PDF-MODEL-VALID"), filename: "valid-residence-card.pdf", requireModel: true });
 assert.equal(validDocument.fields.find((field) => field.fieldKey === "applicant.name")?.uncertainty, "clear", "future expiry remains eligible for the existing review pipeline");
 const { entryFileKey, fillAutoSavedEntryForm, safeEntryPreviewCandidates, selectableEntryPreviewCandidates } = require(resolve(root, "src/lib/entry-preview.ts"));
-const { isSafeModelAutoSave } = require(resolve(root, "src/lib/object-import-review.ts"));
 const { buildEntryPreviewFormData } = require(resolve(root, "src/components/entry-preview.tsx"));
 assert.equal(entryFileKey({ name: " e\u0301xample.pdf ", size: 42 }), entryFileKey({ name: "éxample.pdf", size: 42 }), "NFD and surrounding spaces must not bypass staging identity");
 const normalizedStageForm = buildEntryPreviewFormData([new File([Buffer.alloc(42)], " e\u0301xample.pdf ", { type: "application/pdf" })], "customer", undefined, [{ id: "entry_stage_test", fileName: "éxample.pdf", fileSizeBytes: 42, sha256: "a".repeat(64) }]);

@@ -9,7 +9,7 @@ import { readIdentityDocumentWithOpenAi } from "@/lib/openai-identity-reader";
 import { readObjectDocumentWithOpenAi } from "@/lib/openai-object-reader";
 import { selectPrimaryIdentityReaderCandidates } from "@/lib/identity-reader-attribution";
 import { selectSingleObjectReaderCandidates } from "@/lib/object-reader-attribution";
-import { customerIdentityFieldKey, customerIdentityFieldLabel, hasExactPrintedIdentityEvidence, hasPrintedIdentityPageEvidence, isCustomerNameFieldKey, isCustomerNameRepresentationValue, normalizeCustomerGenderValue, normalizeCustomerIdentityValue } from "@/lib/customer-identity-field-catalog";
+import { customerIdentityFieldKey, customerIdentityFieldLabel, hasExactPrintedIdentityEvidence, hasPrintedIdentityPageEvidence, hasStrictPrintedAddressPageEvidence, isCustomerNameFieldKey, isCustomerNameRepresentationValue, normalizeCustomerGenderValue, normalizeCustomerIdentityValue } from "@/lib/customer-identity-field-catalog";
 import { toObjectRecordFieldKey } from "@/lib/object-import-contract";
 import { normalizeObjectReaderCandidateValue } from "@/lib/object-import-processor-adapter";
 import { OBJECT_READER_FIELD_LABELS } from "@/lib/object-reader-mapping";
@@ -116,7 +116,9 @@ export async function previewEntryDocumentsAction(formData: FormData): Promise<E
         fields = result.documentType === "unknown_identity_scan" || !hasCustomerIdentityAnchor(selected, result.pages)
           ? []
           : selected.map((field) => {
-            const pageEvidenceMissing = !hasPrintedIdentityPageEvidence(field.value, field.sourceText, result.pages, field.pageNumber);
+            const pageEvidenceMissing = field.fieldKey === "applicant.currentAddress"
+              ? !hasStrictPrintedAddressPageEvidence(field.value, field.sourceText, result.pages, field.pageNumber)
+              : !hasPrintedIdentityPageEvidence(field.value, field.sourceText, result.pages, field.pageNumber);
             return {
               ...field,
               pageEvidenceVerified: !pageEvidenceMissing,
