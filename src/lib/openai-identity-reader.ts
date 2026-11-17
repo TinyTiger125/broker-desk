@@ -46,6 +46,7 @@ export const IDENTITY_CUSTOMER_FIELD_KEYS = Object.keys(CUSTOMER_IDENTITY_FIELDS
   .map((key) => `applicant.${key}`) as Array<`applicant.${keyof typeof CUSTOMER_IDENTITY_FIELDS}`>;
 
 export type IdentityReaderScope = "case" | "customer";
+export type IdentityReaderCustomerMode = "direct" | "queued";
 
 export function buildIdentityReaderSchema(fieldKeys: readonly string[]) {
   return {
@@ -102,12 +103,13 @@ function mimeTypeForFilename(filename: string) {
   throw new RemoteDocumentReaderError("invalid_response");
 }
 
-export function buildOpenAiIdentityReaderInput(buffer: Buffer, filename: string, options: { scope?: IdentityReaderScope; fileId?: string } = {}) {
+export function buildOpenAiIdentityReaderInput(buffer: Buffer, filename: string, options: { scope?: IdentityReaderScope; fileId?: string; customerMode?: IdentityReaderCustomerMode } = {}) {
   const mimeType = mimeTypeForFilename(filename);
   const dataUrl = options.fileId && mimeType === "application/pdf"
     ? undefined
     : `data:${mimeType};base64,${buffer.toString("base64")}`;
   const customerOnly = options.scope === "customer";
+  const customerMode = options.customerMode ?? "queued";
   const fieldInstruction = customerOnly
     ? `This is a standalone customer profile. Emit only ${IDENTITY_CUSTOMER_FIELD_KEYS.join(", ")}. For applicant.nameLatin, applicant.nameKanji, and applicant.nameKatakana, emit a value only when that exact script and representation is visibly printed for the single document holder. Never transliterate, translate, infer Katakana or furigana, or copy applicant.name into a representation field. Keep applicant.name as the legacy exact printed name only. Do not emit nationality, document numbers, issuer, residence status, residence period, expiry, work restrictions, driver conditions, or any other document-only fact. The document holder may be labelled 本人, 申請人, 被保険者, cardholder, or insured person; accept only the single holder subject. Reject 世帯主, 保険者, 代理人, 代表者, insurer, agent, and other non-holder roles.`
     : "This is an existing case context. Use the canonical applicant.* keys from the case schema and preserve the existing case-field destinations; do not invent new business fields.";
@@ -121,8 +123,13 @@ export function buildOpenAiIdentityReaderInput(buffer: Buffer, filename: string,
         "Use uncertainty=unclear for partially legible text and conflict when the document contains competing values.",
         "Classify the document as identity_passport, identity_residence_card, identity_driver_license, identity_health_insurance_card, or unknown_identity_scan.",
         "A Japanese My Number card (個人番号カード / マイナンバーカード) is outside the supported list; classify it as unknown_identity_scan and emit no customer candidates.",
-        "For a customer preview, an address or contact value alone is never sufficient evidence of identity. For a queued standalone customer source, the holder's printed name and birth date are independent identity anchors: if either is absent or unreadable, keep other candidates review-only and never imply that another file may complete this source. Gender is not an identity anchor. For direct preview, if the holder's name, birth date, and gender are not visibly anchored, classify the scan as unknown_identity_scan and emit no customer candidates; do not return an address-only candidate for an unsupported or uncertain card.",
+        "For a customer preview, an address or contact value alone is never sufficient evidence of identity. For a queued standalone customer source, the holder's printed name and birth date are independent identity anchors: if either is absent or unreadable, keep other candidates review-only and never imply that another file may complete this source. Gender is not an identity anchor. For a direct customer preview, a clear page-evidenced printed holder name is sufficient to create a pending customer record; birth date and gender may be absent or unreadable and must remain not_found rather than causing an otherwise supported document to become unknown_identity_scan. A direct preview still must not return an address-only candidate or accept a non-holder name.",
         fieldInstruction,
+        customerOnly && customerMode === "direct"
+          ? "This request is a direct customer preview: preserve a supported document classification when the holder name is clear even if no birth date or gender is visible."
+          : customerOnly
+            ? "This request is a queued standalone customer source: preserve the strict holder-name-plus-birth-date identity-anchor rule above."
+            : "",
         "For applicant.currentAddress, require an address explicitly belonging to the document holder. Never use a passport issuing authority, insurer address, employer address, or insurance holder address as the customer's current address. Treat a residence-card value such as 未定 as not an actual address: do not emit it as a clear address candidate; use an empty value with uncertainty=not_found or uncertainty=unclear instead, so a later dated address cannot be silently replaced. For phone, LINE and email, emit a candidate only when the contact is explicitly printed for the document holder; otherwise return not_found.",
         "subjectKey is a stable opaque person-group ID reused across pages for the same person; never reuse it for a different person. subjectLabel must identify the visible role, including 申請人, 本人, 被保険者, 代理人, 世帯主, 保険者, or another visible role; do not relabel a non-holder as the document holder.",
         "sourceText must be a short exact quote from the supplied page for a visible candidate; for not_found, an empty sourceText is allowed.",
@@ -142,6 +149,7 @@ export async function readIdentityDocumentWithOpenAi(input: {
   buffer: Buffer;
   filename: string;
   scope?: IdentityReaderScope;
+  customerMode?: IdentityReaderCustomerMode;
   signal?: AbortSignal;
 }): Promise<OpenAiIdentityReaderResponse> {
   const scope = input.scope ?? "case";
@@ -168,7 +176,7 @@ export async function readIdentityDocumentWithOpenAi(input: {
     }
     const request = (fileId?: string) => createAiResponse<OpenAiIdentityReaderResponse>({
       taskId: "identity_document_extraction_assist",
-      input: buildOpenAiIdentityReaderInput(input.buffer, input.filename, { scope, fileId }),
+      input: buildOpenAiIdentityReaderInput(input.buffer, input.filename, { scope, customerMode: input.customerMode, fileId }),
       jsonSchema: { name: "identity_document_reader", schema: scope === "customer" ? buildIdentityReaderSchema(IDENTITY_CUSTOMER_FIELD_KEYS) : IDENTITY_READER_SCHEMA, strict: true },
       maxOutputTokens: IDENTITY_READER_MAX_OUTPUT_TOKENS,
       metadata: {

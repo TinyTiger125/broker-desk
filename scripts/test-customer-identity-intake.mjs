@@ -148,6 +148,15 @@ const queuedMissingEvidence = await persistObjectExtraction({
 });
 assert.equal(queuedMissingEvidence[0].status, "low_confidence", "queued name without printed evidence must remain review-only at persistence");
 assert.equal(queuedMissingEvidence[0].finalValue, undefined, "queued name without printed evidence must not receive a model final value");
+const queuedDocumentAddress = await persistObjectExtraction({
+  customerTarget: true,
+  repository: { upsertCandidate: async (candidate) => candidate },
+  target: { id: "target-address-review", tenantId: tenant.id, sourceAttachmentId: "attachment-synthetic" },
+  sourceFileHash: "synthetic-hash",
+  fields: [{ fieldKey: "currentAddress", value: "東京都テスト区1-2-3", confidence: 0.99, pageEvidenceVerified: true, sourceText: "住所: 東京都テスト区1-2-3", uncertainty: "clear" }],
+});
+assert.equal(queuedDocumentAddress[0].status, "draft", "queued document address remains a review candidate");
+assert.equal(queuedDocumentAddress[0].finalValue, undefined, "queued document address must not receive a model final value");
 await persistObjectImportJobExtraction({ ...scope, job, fields });
 const target = await data.getObjectImportTargetByJob({ ...scope, importJobId: job.id });
 assert(target && target.targetType === "party" && !target.caseId);
@@ -190,6 +199,44 @@ assert.equal(reopened.gender, "male");
 assert.equal(reopened.currentPostalCode, "150-1500");
 assert.equal(reopened.email, "keep@example.test");
 assert.equal((await data.getObjectImportTarget({ ...scope, id: target.id })).status, "completed");
+
+// A standalone applicant.name value may populate the Latin display slot only
+// when the server has both clear uncertainty and page-evidence proof. It must
+// not be inferred from a candidate quote or from an unverified old payload.
+const latinOnlyClient = await data.addClient({ tenantId: tenant.id, ownerUserId: user.id, name: "Latin-only baseline", phone: "090-0000-0002", budgetType: "total_price", purpose: "buy", loanPreApprovalStatus: "not_applied", stage: "lead", temperature: "cold", brokerageContractType: "none", amlCheckStatus: "not_required" });
+const latinOnlyVersion = buildObjectVersionFingerprint(latinOnlyClient);
+const latinOnlyJob = await data.addImportJob({
+  tenantId: tenant.id,
+  userId: user.id,
+  sourceType: "scan",
+  targetEntity: "parties",
+  title: "SAMPLE TEST Latin-only passport",
+  status: "queued",
+  idempotencyKey: "synthetic-latin-only-job",
+  notes: JSON.stringify({ objectImport: { targetObjectType: "party", targetObjectId: latinOnlyClient.id, targetVersion: latinOnlyVersion } }),
+});
+const latinOnlyContent = Buffer.from("%PDF-LATIN-ONLY-SAMPLE%");
+await data.addPrivateAttachment({ tenantId: tenant.id, userId: user.id, targetType: "import_job", targetId: latinOnlyJob.id, fileName: "SAMPLE-LATIN-only.pdf", content: latinOnlyContent });
+await persistObjectImportJobExtraction({
+  ...scope,
+  job: latinOnlyJob,
+  fields: [{ fieldKey: "applicant.name", value: "LATIN ONLY", normalizedValue: "LATIN ONLY", confidence: 0.95, method: "ai", sourcePageNumber: 1, sourceText: "Name: LATIN ONLY", pageEvidenceVerified: true, uncertainty: "clear", subjectKey: "person-latin", subjectLabel: "本人" }],
+});
+const latinOnlyTarget = await data.getObjectImportTargetByJob({ ...scope, importJobId: latinOnlyJob.id });
+assert(latinOnlyTarget);
+const latinOnlyCandidates = await data.listObjectImportCandidates({ ...scope, targetId: latinOnlyTarget.id });
+assert.deepEqual(latinOnlyCandidates.map((item) => item.fieldKey), ["nameLatin"], "verified applicant.name must map to nameLatin");
+assert.equal(latinOnlyCandidates[0].status, "draft");
+const unverifiedGenericName = await persistObjectExtraction({
+  customerTarget: true,
+  repository: { upsertCandidate: async (candidate) => candidate },
+  target: { id: "target-generic-name-unverified", tenantId: tenant.id, sourceAttachmentId: "attachment-synthetic" },
+  sourceFileHash: "synthetic-hash",
+  fields: [{ fieldKey: "name", value: "UNVERIFIED GENERIC", confidence: 0.99, sourceText: "Name: UNVERIFIED GENERIC", uncertainty: "clear", pageEvidenceVerified: false }],
+});
+assert.equal(unverifiedGenericName[0].fieldKey, "name");
+assert.equal(unverifiedGenericName[0].status, "low_confidence", "unverified generic names must not be mapped into a visible representation");
+assert.equal(unverifiedGenericName[0].finalValue, undefined);
 
 const corporate = await data.addClient({ tenantId: tenant.id, ownerUserId: user.id, name: "Corporate QA", phone: "090-0000-0001", budgetType: "total_price", purpose: "buy", loanPreApprovalStatus: "not_applied", stage: "lead", temperature: "cold", brokerageContractType: "none", amlCheckStatus: "not_required", notes: "関係者種別: 法人/会社" });
 const corporateResolution = await resolveObjectImportTarget({ context, targetType: "party", targetId: corporate.id });
@@ -414,11 +461,16 @@ modelResponse = {
 const validDocument = await extractIdentityDocumentFromBuffer({ buffer: Buffer.from("%PDF-MODEL-VALID"), filename: "valid-residence-card.pdf", requireModel: true });
 assert.equal(validDocument.fields.find((field) => field.fieldKey === "applicant.name")?.uncertainty, "clear", "future expiry remains eligible for the existing review pipeline");
 const { entryFileKey, fillAutoSavedEntryForm, safeEntryPreviewCandidates, selectableEntryPreviewCandidates } = require(resolve(root, "src/lib/entry-preview.ts"));
+const { isSafeModelAutoSave } = require(resolve(root, "src/lib/object-import-review.ts"));
 const { buildEntryPreviewFormData } = require(resolve(root, "src/components/entry-preview.tsx"));
 assert.equal(entryFileKey({ name: " e\u0301xample.pdf ", size: 42 }), entryFileKey({ name: "éxample.pdf", size: 42 }), "NFD and surrounding spaces must not bypass staging identity");
 const normalizedStageForm = buildEntryPreviewFormData([new File([Buffer.alloc(42)], " e\u0301xample.pdf ", { type: "application/pdf" })], "customer", undefined, [{ id: "entry_stage_test", fileName: "éxample.pdf", fileSizeBytes: 42, sha256: "a".repeat(64) }]);
 assert.equal(normalizedStageForm.getAll("uploadFile").length, 0, "NFD/trim-equivalent staged refs must remove raw preview upload");
 assert.deepEqual(safeEntryPreviewCandidates([{ id: "address-placeholder", key: "currentAddress", sourceKey: "applicant.currentAddress", label: "现住址", value: "未定", fileName: "residence-card.jpg", uncertainty: "clear" }]), []);
+const documentAddressCandidate = [{ id: "address-document", key: "currentAddress", sourceKey: "applicant.currentAddress", label: "现住址", value: "東京都テスト区1-2-3", fileName: "residence-card.jpg", pageEvidenceVerified: true, uncertainty: "clear", confidence: 0.99 }];
+assert.deepEqual(safeEntryPreviewCandidates(documentAddressCandidate), [], "a non-placeholder document address must not auto-save");
+assert.deepEqual(selectableEntryPreviewCandidates(documentAddressCandidate), [], "a document address must be confirmed from the persisted client review area");
+assert.equal(isSafeModelAutoSave({ id: "field-address-document", tenantId: tenant.id, targetId: "target-address-review", fieldKey: "currentAddress", candidateValue: "東京都テスト区1-2-3", confidence: 0.99, provenance: { uncertainty: "clear" }, status: "draft" }), false, "queued model auto-save must never write a document address");
 const ambiguousGenderPreview = [{ id: "gender-ambiguous", key: "gender", sourceKey: "applicant.gender", label: "性别", value: "男/女", rawValue: "男/女", fileName: "identity.pdf", uncertainty: "clear" }];
 assert.deepEqual(safeEntryPreviewCandidates(ambiguousGenderPreview), [], "ambiguous gender must not be auto-saved from preview");
 assert.deepEqual(selectableEntryPreviewCandidates(ambiguousGenderPreview), [], "ambiguous gender must not expose a direct confirmation action");

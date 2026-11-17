@@ -430,6 +430,24 @@ export type ImportJob = {
   updatedAt: Date;
 };
 
+export type EntryPreviewReviewGraphInput = {
+  tenantId: string;
+  userId: string;
+  targetId: string;
+  targetVersion: string;
+  attachmentId: string;
+  marker: string;
+  idempotencyKey: string;
+  title: string;
+};
+
+export type EntryPreviewReviewGraphResult = {
+  job: ImportJob;
+  target: ObjectImportTargetRecord;
+  createdJob: boolean;
+  createdTarget: boolean;
+};
+
 export type PreparePropertyRowImportResult = {
   job: ImportJob | null;
   claimed: boolean;
@@ -4413,6 +4431,91 @@ export async function addImportJob(input: {
   return job;
 }
 
+/** Atomically create or replay the direct-entry review graph in memory. */
+export async function createEntryPreviewReviewGraph(input: EntryPreviewReviewGraphInput): Promise<EntryPreviewReviewGraphResult> {
+  const idempotencyKey = input.idempotencyKey.trim();
+  if (!idempotencyKey) throw new Error("entry_preview_review_idempotency_key_required");
+  const existingJob = db.importJobs.find((item) => item.tenantId === input.tenantId && item.idempotencyKey === idempotencyKey);
+  if (existingJob && existingJob.userId !== input.userId) throw new Error("entry_preview_review_job_scope_mismatch");
+  const marker = input.marker.trim();
+  const job = existingJob ?? {
+    id: makeId("import"), tenantId: input.tenantId, userId: input.userId, sourceType: "scan" as const,
+    title: input.title.trim(), targetEntity: "parties" as const, status: "completed" as const, notes: marker,
+    idempotencyKey, uploadLifecycleVersion: 1, attemptCount: 0,
+    createdAt: new Date(), updatedAt: new Date(),
+  };
+  if (job.tenantId !== input.tenantId || job.userId !== input.userId || job.status !== "completed" || job.uploadLifecycleVersion !== 1 || job.notes !== marker) {
+    throw new Error("entry_preview_review_job_scope_mismatch");
+  }
+
+  const existingTarget = db.objectImportTargets.find((item) => item.tenantId === input.tenantId && item.idempotencyKey === idempotencyKey);
+  if (existingTarget && existingTarget.userId !== input.userId) throw new Error("entry_preview_review_target_scope_mismatch");
+  if (existingTarget) {
+    if (existingTarget.importJobId !== job.id || existingTarget.targetType !== "party" || existingTarget.targetId !== input.targetId || existingTarget.sourceAttachmentId !== input.attachmentId || existingTarget.caseId != null) {
+      throw new Error("entry_preview_review_target_scope_mismatch");
+    }
+    return { job: { ...job }, target: { ...existingTarget }, createdJob: false, createdTarget: false };
+  }
+
+  const target: ObjectImportTargetRecord = {
+    id: `object_${job.id}`, tenantId: input.tenantId, userId: input.userId, importJobId: job.id,
+    targetType: "party", targetId: input.targetId, targetVersion: input.targetVersion, sourceAttachmentId: input.attachmentId,
+    status: "needs_review", idempotencyKey, attemptCount: 1,
+    createdAt: new Date(), updatedAt: new Date(),
+  };
+  if (db.objectImportTargets.some((item) => item.id === target.id || (item.tenantId === target.tenantId && item.idempotencyKey === target.idempotencyKey))) {
+    throw new Error("entry_preview_review_target_scope_mismatch");
+  }
+  // Commit both rows only after all scope/idempotency checks pass. There is no
+  // await between these mutations, so memory mode has the same all-or-nothing
+  // graph contract as the PostgreSQL transaction below.
+  if (!existingJob) db.importJobs.unshift(job);
+  db.objectImportTargets.unshift(target);
+  return { job: { ...job }, target: { ...target }, createdJob: !existingJob, createdTarget: true };
+}
+
+/** Remove only the exact synthetic direct-entry review graph after a failed
+ * persistence attempt. The archived party attachment is intentionally kept;
+ * this function removes review metadata, never source material. */
+export async function cleanupEntryPreviewReviewArtifacts(input: {
+  tenantId: string;
+  userId: string;
+  importJobId: string;
+  targetId: string;
+  partyId: string;
+  attachmentId: string;
+}): Promise<boolean> {
+  const job = db.importJobs.find((item) =>
+    item.id === input.importJobId
+    && item.tenantId === input.tenantId
+    && item.userId === input.userId
+    && item.status === "completed"
+    && item.uploadLifecycleVersion === 1,
+  );
+  if (!job) return false;
+  let marker: Record<string, unknown>;
+  try { marker = JSON.parse(job.notes ?? "") as Record<string, unknown>; } catch { return false; }
+  if (marker.kind !== "entry_preview_review" || marker.marker !== "brokerdesk:entry-preview-review"
+      || marker.targetId !== input.partyId || marker.attachmentId !== input.attachmentId) return false;
+  const target = db.objectImportTargets.find((item) =>
+    item.id === input.targetId
+    && item.tenantId === input.tenantId
+    && item.userId === input.userId
+    && item.importJobId === input.importJobId
+    && item.targetType === "party"
+    && item.targetId === input.partyId
+    && item.sourceAttachmentId === input.attachmentId
+    && item.caseId == null,
+  );
+  if (!target) return false;
+  const fields = db.objectImportCandidates.filter((item) => item.tenantId === input.tenantId && item.targetId === target.id);
+  if (fields.some((item) => item.finalSource === "human")) return false;
+  db.objectImportCandidates = db.objectImportCandidates.filter((item) => !(item.tenantId === input.tenantId && item.targetId === target.id));
+  db.objectImportTargets = db.objectImportTargets.filter((item) => !(item.tenantId === input.tenantId && item.id === target.id));
+  db.importJobs = db.importJobs.filter((item) => !(item.tenantId === input.tenantId && item.userId === input.userId && item.id === job.id));
+  return true;
+}
+
 export async function claimPropertyRowImport(input: { tenantId: string; userId: string; jobId: string }): Promise<boolean> {
   const job = db.importJobs.find((item) => item.id === input.jobId && item.tenantId === input.tenantId && item.userId === input.userId);
   const tenant = db.tenants.find((item) => item.id === input.tenantId);
@@ -7550,7 +7653,21 @@ export async function retryObjectImportTarget(input: {
 }
 
 function hasObjectImportSource(target: ObjectImportTargetRecord, field: ObjectImportCandidateRecord): boolean {
-  const attachment = db.attachments.find((item) => item.id === target.sourceAttachmentId && item.tenantId === target.tenantId && item.userId === target.userId && item.targetType === "import_job" && item.targetId === target.importJobId);
+  const isDirectEntryReviewJob = (job: ImportJob, attachmentId: string) => {
+    try {
+      const notes = JSON.parse(job.notes ?? "") as Record<string, unknown>;
+      return notes.kind === "entry_preview_review"
+        && notes.marker === "brokerdesk:entry-preview-review"
+        && notes.targetId === target.targetId
+        && notes.attachmentId === attachmentId;
+    } catch {
+      return false;
+    }
+  };
+  const attachment = db.attachments.find((item) => item.id === target.sourceAttachmentId && item.tenantId === target.tenantId && item.userId === target.userId && (
+    (item.targetType === "import_job" && item.targetId === target.importJobId)
+    || (target.caseId == null && target.targetType === "party" && item.targetType === "party" && item.targetId === target.targetId && db.importJobs.some((job) => job.id === target.importJobId && job.tenantId === target.tenantId && job.userId === target.userId && job.status === "completed" && isDirectEntryReviewJob(job, item.id)))
+  ));
   const content = attachment ? privateAttachmentContents.get(attachment.id) : undefined;
   return Boolean(attachment && content?.length && field.provenance.sourceAttachmentId === attachment.id && field.provenance.sourceFileHash === createHash("sha256").update(content).digest("hex"));
 }

@@ -39,6 +39,9 @@ assert.match(page, /objectImportUploadAction=\{canWriteCase && objectImportReadi
 assert.match(uploadAction, /const readiness = await getObjectImportFeatureReadiness\(\);/);
 assert.match(uploadAction, /object_import_feature_unavailable:\$\{readiness\.reason\}/);
 assert.match(postgres, /broker_desk_schema_migrations WHERE name=\$1/);
+assert.match(postgres, /20261117_001_entry_preview_review_cleanup_guards\.sql/);
+assert.match(postgres, /const cleanupMigration = await db\.query/);
+assert.match(postgres, /cleanup_entry_preview_review_target\(text,text,text,text,text,text\)/, "readiness must verify direct-review cleanup helper presence and execute privilege");
 assert.match(postgres, /to_regclass\('public\.object_import_targets'\)/);
 assert.match(postgres, /to_regclass\('public\.object_import_fields'\)/);
 console.log("PASS: object-import readiness distinguishes missing migration/schema from ready state; case page skips object-table reads and upload when unavailable");

@@ -432,6 +432,8 @@ export const getImportJobByIdempotencyKey: typeof memory.getImportJobByIdempoten
   repo.getImportJobByIdempotencyKey(...args);
 export const addImportJob: typeof memory.addImportJob = (...args) =>
   repo.addImportJob(...args);
+export const createEntryPreviewReviewGraph: typeof memory.createEntryPreviewReviewGraph = (...args) =>
+  repo.createEntryPreviewReviewGraph(...args);
 export const claimPropertyRowImport: typeof memory.claimPropertyRowImport = (...args) =>
   repo.claimPropertyRowImport(...args);
 export const preparePropertyRowImport: typeof memory.preparePropertyRowImport = (...args) =>
@@ -657,6 +659,7 @@ export const updateObjectImportTarget: typeof memory.updateObjectImportTarget = 
 export const upsertObjectImportCandidate: typeof memory.upsertObjectImportCandidate = (...args) => repo.upsertObjectImportCandidate(...args);
 export const listObjectImportCandidates: typeof memory.listObjectImportCandidates = (...args) => repo.listObjectImportCandidates(...args);
 export const retryObjectImportTarget: typeof memory.retryObjectImportTarget = (...args) => repo.retryObjectImportTarget(...args);
+export const cleanupEntryPreviewReviewArtifacts: typeof memory.cleanupEntryPreviewReviewArtifacts = (...args) => repo.cleanupEntryPreviewReviewArtifacts(...args);
 
 export const reviewObjectImportCandidate: typeof memory.reviewObjectImportCandidate = (...args) => repo.reviewObjectImportCandidate(...args);
 export const autoSaveObjectImportCandidates: typeof memory.autoSaveObjectImportCandidates = (...args) => repo.autoSaveObjectImportCandidates(...args);

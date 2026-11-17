@@ -80,6 +80,7 @@ export default async function EditClientPage({ params, searchParams }: EditClien
   const entryDraftKey = buildEntryDraftKey({ tenantId: session.tenant.id, userId: session.user.id, objectType: "client", objectId: client.id });
   const flashMessage = query.flash === "entry_preview_audit_failed"
     ? locale === "zh" ? "档案和已归档原件已保留，但部分候选核对记录未保存。请勿重新创建或重复上传下方已列出的原件。" : locale === "ko" ? "기록과 보관된 원본은 유지되지만 일부 후보 확인 이력을 저장하지 못했습니다. 기록을 다시 만들거나 아래 원본을 중복 업로드하지 마세요." : "記録と保管済み原本は保持されていますが、一部の候補確認履歴を保存できませんでした。記録の再作成や下に表示されている原本の再送は不要です。"
+    : query.flash === "entry_preview_review_failed" ? locale === "zh" ? "客户记录和原件已保留，但证件候选未能保存到核对区。请不要重复建档；请在同一客户的资料区重新读取。" : locale === "ko" ? "고객 기록과 원본은 보관되었지만 신분증 후보를 확인 영역에 저장하지 못했습니다. 중복 기록을 만들지 말고 같은 고객 자료에서 다시 읽어 주세요." : "顧客記録と原本は保持されていますが、本人確認候補を確認欄へ保存できませんでした。重複登録せず、同じ顧客の資料欄から再読取してください。"
     : query.flash === "entry_archive_saved_with_reading_failure" ? text.entryArchiveSavedWithReadingFailure
     : query.flash === "entry_archive_partial" ? text.entryArchivePartial
     : query.flash === "entry_archive_failed" ? text.entryArchiveFailed

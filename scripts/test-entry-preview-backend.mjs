@@ -38,9 +38,10 @@ Module._load = function(request, parent, ...rest) {
   if (request === "@/lib/identity-import-queue") return { MAX_IDENTITY_DOCUMENT_FILES: 6, getIdentityDocumentUploadLimitBytes: () => 10 * 1024 * 1024 };
   if (request === "@/lib/excel-import-queue") return { getExcelUploadLimitBytes: () => 10 * 1024 * 1024 };
   if (request === "@/lib/object-import-processor-adapter") return { normalizeObjectReaderCandidateValue: (_, value, uncertainty) => ({ value, uncertainty }) };
-  if (request === "@/lib/openai-identity-reader") return { readIdentityDocumentWithOpenAi: async ({ filename, scope }) => {
+  if (request === "@/lib/openai-identity-reader") return { readIdentityDocumentWithOpenAi: async ({ filename, scope, customerMode }) => {
     readerCalls += 1;
     assert.equal(scope, "customer");
+    assert.equal(customerMode, "direct", "normal direct preview must use the direct holder-name prompt contract");
     if (filename === "fail.pdf") throw new Error("synthetic_provider_failure");
     if (filename === "large-upload-fail.pdf") throw new RemoteDocumentReaderError("file_upload_failed", { status: 413 });
     const shared = { value: "Synthetic Person", pageNumber: 1, sourceText: "Name: Synthetic Person", uncertainty: "clear", subjectKey: "holder", subjectLabel: "document holder" };
@@ -51,6 +52,11 @@ Module._load = function(request, parent, ...rest) {
       { ...shared, fieldKey: "applicant.nameLatin", value: "YAMADA SHIKEN", sourceText: "Name: YAMADA SHIKEN" },
       { ...shared, fieldKey: "applicant.nameKanji", value: "山田 試験", sourceText: "氏名: 山田 試験" },
     ], pages: page(["Name: YAMADA SHIKEN", "氏名: 山田 試験"]) };
+    if (filename === "direct-address.pdf") return { documentType: "identity_residence_card", pages: page(["Name: ADDRESS HOLDER", "Birth: 1990-04-12", "住所: 東京都テスト区1-2-3"]), candidates: [
+      { ...shared, fieldKey: "applicant.name", value: "ADDRESS HOLDER", sourceText: "Name: ADDRESS HOLDER" },
+      { ...shared, fieldKey: "applicant.birthDate", value: "1990-04-12", sourceText: "Birth: 1990-04-12" },
+      { ...shared, fieldKey: "applicant.currentAddress", value: "東京都テスト区1-2-3", sourceText: "住所: 東京都テスト区1-2-3" },
+    ] };
     if (filename === "expired.pdf") return { documentType: "identity_passport", pages: [{ pageNumber: 1, lines: ["氏名: EXPIRED PERSON", "DATE OF EXPIRY 2020-01-01"] }], candidates: [
       { ...shared, fieldKey: "applicant.name", value: "EXPIRED PERSON", sourceText: "氏名: EXPIRED PERSON" },
     ] };
@@ -63,8 +69,8 @@ Module._load = function(request, parent, ...rest) {
     if (filename === "partial-person-a.pdf") return { documentType: "identity_passport", pages: page(["Name: PERSON A"]), candidates: [
       { ...shared, fieldKey: "applicant.name", value: "PERSON A", sourceText: "Name: PERSON A" },
     ] };
-    if (filename === "partial-person-b.pdf") return { documentType: "identity_passport", pages: page(["Birth: 1990-04-12"]), candidates: [
-      { ...shared, fieldKey: "applicant.birthDate", value: "1990-04-12", sourceText: "Birth: 1990-04-12" },
+    if (filename === "partial-person-b.pdf") return { documentType: "identity_passport", pages: page(["Name: PERSON B"]), candidates: [
+      { ...shared, fieldKey: "applicant.name", value: "PERSON B", sourceText: "Name: PERSON B" },
     ] };
     if (filename === "same-dob-a.pdf" || filename === "same-dob-b.pdf") return { documentType: "identity_passport", pages: page([`Name: ${filename === "same-dob-a.pdf" ? "PERSON A" : "PERSON B"}`, "Birth: 1990-04-12"]), candidates: [
       { ...shared, fieldKey: "applicant.nameLatin", value: filename === "same-dob-a.pdf" ? "PERSON A" : "PERSON B", sourceText: `Name: ${filename === "same-dob-a.pdf" ? "PERSON A" : "PERSON B"}` },
@@ -86,6 +92,18 @@ Module._load = function(request, parent, ...rest) {
     ] };
     if (filename === "empty-page-evidence.pdf") return { documentType: "identity_passport", pages: page([]), candidates: [
       { ...shared, fieldKey: "applicant.name", value: "EMPTY PAGE PERSON", sourceText: "氏名: EMPTY PAGE PERSON" },
+    ] };
+    if (filename === "gender-only.pdf") return { documentType: "identity_passport", pages: page(["性別: M"]), candidates: [
+      { ...shared, fieldKey: "applicant.gender", value: "M", sourceText: "性別: M" },
+    ] };
+    if (filename === "unclear-name.pdf") return { documentType: "identity_passport", pages: page(["Name: UNCLEAR PERSON"]), candidates: [
+      { ...shared, fieldKey: "applicant.name", value: "UNCLEAR PERSON", sourceText: "Name: UNCLEAR PERSON", uncertainty: "unclear" },
+    ] };
+    if (filename === "guarantor-name.pdf") return { documentType: "identity_passport", pages: page(["Name: GUARANTOR PERSON"]), candidates: [
+      { ...shared, fieldKey: "applicant.name", value: "GUARANTOR PERSON", sourceText: "Name: GUARANTOR PERSON", subjectLabel: "保証人" },
+    ] };
+    if (filename === "name-not-on-page.pdf") return { documentType: "identity_passport", pages: page(["Name: DIFFERENT PRINTED PERSON"]), candidates: [
+      { ...shared, fieldKey: "applicant.name", value: "NOT PRINTED PERSON", sourceText: "Name: NOT PRINTED PERSON" },
     ] };
     return { documentType: "identity_passport", pages: page(["Name: Synthetic Person"]), candidates: [{ ...shared, fieldKey: "applicant.name" }, { ...shared, fieldKey: "applicant.residenceCardNumber", value: "DO_NOT_MAP" }] };
   } };
@@ -112,6 +130,9 @@ assert.equal(customerResult.status, "ready");
 assert.deepEqual(customerResult.candidates.map((field) => field.key), ["name"], "customer preview must exclude document-only fields");
 assert.equal(customerResult.candidates[0].pageNumber, 1);
 assert.equal(customerResult.candidates[0].sourceText, "Name: Synthetic Person");
+const legacyLatinForm = new FormData();
+assert.equal(fillAutoSavedEntryForm(legacyLatinForm, customerResult), 1);
+assert.equal(legacyLatinForm.get("nameLatin"), "Synthetic Person", "a legacy Latin name with exact printed evidence must fill nameLatin without transliteration");
 const directNamesResult = await previewEntryDocumentsAction(request("customer", ["direct-names.pdf"]));
 assert.deepEqual(directNamesResult.candidates.map((field) => field.key), ["nameLatin", "nameKanji"], "direct name evidence must map only to the matching visible fields");
 assert.equal(directNamesResult.candidates.some((field) => field.key === "nameKatakana"), false, "Katakana must remain empty when the document does not print it");
@@ -124,6 +145,13 @@ assert.equal(fillSelectedEntryCandidateForm(selectedForm, directNamesResult, dir
 assert.equal(selectedForm.get("nameLatin"), "YAMADA SHIKEN");
 assert.match(String(selectedForm.get("entryPreviewDecisions")), /confirmed/);
 assert.equal(safeEntryPreviewCandidates(directNamesResult.candidates).length, 2);
+const directAddressResult = await previewEntryDocumentsAction(request("customer", ["direct-address.pdf"]));
+assert.equal(directAddressResult.candidates.some((candidate) => candidate.key === "currentAddress"), true, "document address remains visible as a candidate");
+assert.equal(safeEntryPreviewCandidates(directAddressResult.candidates).some((candidate) => candidate.key === "currentAddress"), false, "document address must never auto-save into a new client");
+assert.equal(selectableEntryPreviewCandidates(directAddressResult.candidates).some((candidate) => candidate.key === "currentAddress"), false, "document address is reviewed after the client is created");
+const directAddressForm = new FormData();
+assert.equal(fillAutoSavedEntryForm(directAddressForm, directAddressResult), 2, "identity anchors remain auto-saveable while address stays review-only");
+assert.equal(directAddressForm.get("currentAddress"), null);
 assert.equal(visibleClientNameFieldFromEvidence("name", "YAMADA SHIKEN"), "nameLatin");
 assert.equal(visibleClientNameFieldFromEvidence("name", "山田 試験"), "nameKanji");
 assert.equal(visibleClientNameFieldFromEvidence("name", "ヤマダ シケン"), "nameKatakana");
@@ -168,11 +196,21 @@ assert.deepEqual(safeEntryPreviewCandidates(wrongScript.candidates), []);
 assert.deepEqual(selectableEntryPreviewCandidates(wrongScript.candidates), []);
 assert.equal(fillSelectedEntryCandidateForm(new FormData(), wrongScript, wrongScript.candidates[0]), false, "invalid script must not expose a confirmation action");
 const missingNameEvidence = await previewEntryDocumentsAction(request("customer", ["missing-name-evidence.pdf"]));
-assert.equal(missingNameEvidence.candidates[0].uncertainty, "unclear", "a name without matching printed evidence must remain review-only");
-assert.deepEqual(safeEntryPreviewCandidates(missingNameEvidence.candidates), []);
+assert.deepEqual(missingNameEvidence.candidates, [], "a name without matching printed evidence must not create a direct customer");
 const emptyPageEvidence = await previewEntryDocumentsAction(request("customer", ["empty-page-evidence.pdf"]));
-assert.equal(emptyPageEvidence.candidates[0].uncertainty, "unclear", "a name whose referenced page has no lines must remain review-only");
-assert.deepEqual(safeEntryPreviewCandidates(emptyPageEvidence.candidates), []);
+assert.deepEqual(emptyPageEvidence.candidates, [], "a name whose referenced page has no lines must not create a direct customer");
+const genderOnly = await previewEntryDocumentsAction(request("customer", ["gender-only.pdf"]));
+assert.equal(genderOnly.status, "ready");
+assert.deepEqual(genderOnly.candidates, [], "gender-only evidence must never create a direct customer");
+const unclearName = await previewEntryDocumentsAction(request("customer", ["unclear-name.pdf"]));
+assert.equal(unclearName.status, "ready");
+assert.deepEqual(unclearName.candidates, [], "unclear names must not create a direct customer");
+const guarantorName = await previewEntryDocumentsAction(request("customer", ["guarantor-name.pdf"]));
+assert.equal(guarantorName.status, "ready");
+assert.deepEqual(guarantorName.candidates, [], "guarantor names must not become holder identity anchors");
+const nameNotOnPage = await previewEntryDocumentsAction(request("customer", ["name-not-on-page.pdf"]));
+assert.equal(nameNotOnPage.status, "ready");
+assert.deepEqual(nameNotOnPage.candidates, [], "name values without matching page evidence must not create a direct customer");
 const expiredResult = await previewEntryDocumentsAction(request("customer", ["expired.pdf"]));
 assert.equal(expiredResult.candidates[0].reviewOnly, true, "expired direct-entry evidence must remain review-only");
 assert.equal(safeEntryPreviewCandidates(expiredResult.candidates).length, 0);

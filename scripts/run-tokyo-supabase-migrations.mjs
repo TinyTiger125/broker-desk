@@ -30,6 +30,12 @@ const TOKYO_ROLE_SWITCH_MIGRATIONS = Object.freeze([
   "20260917_002_case_review_locks.sql",
   "20260918_001_import_job_single_claim.sql",
   "20260921_002_import_worker_rls_admin_policy.sql",
+  // These migrations replace functions owned by brokerdesk_admin. They must
+  // run under that role; the reviewed Tokyo release bundle supplies the
+  // transaction-local SET/schema CREATE capability and restores it before
+  // commit. Never let the postgres preflight silently execute them as postgres.
+  "20261116_003_entry_preview_review_candidates.sql",
+  "20261117_001_entry_preview_review_cleanup_guards.sql",
 ]);
 const MARKER_TABLE = "public.broker_desk_initialization_control";
 const INITIALIZATION_LOCK_SQL = "SELECT pg_advisory_lock(hashtext('broker-desk-initialization-control'))";

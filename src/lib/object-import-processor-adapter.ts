@@ -6,6 +6,7 @@ import { parseObjectImportNotes, normalizeObjectImportFieldKey } from "@/lib/obj
 import { selectSingleObjectReaderCandidates } from "@/lib/object-reader-attribution";
 import type { ObjectReaderResponse, ObjectReaderSourceLocation } from "@/lib/object-reader-contract";
 import { customerIdentityFieldKey, hasExactPrintedIdentityEvidence, isCustomerGenderValue, isCustomerNameFieldKey, isCustomerNameRepresentationValue, isStandaloneCustomerTarget, normalizeCustomerIdentityValue } from "@/lib/customer-identity-field-catalog";
+import { visibleClientNameFieldFromEvidence } from "@/lib/client-name-representation";
 import type { InputFieldEvidenceAlternative, InputFieldUncertainty } from "@/lib/input-file-extractor";
 
 export type ExtractedObjectField = {
@@ -153,6 +154,7 @@ export async function persistObjectExtraction(input: { repository?: Pick<ObjectI
     const genderConflict = identityKey === "gender" && rawValue.trim().length > 0 && !isCustomerGenderValue(normalizedValue);
     const identityNameReview = input.customerTarget === true && identityKey !== null && isCustomerNameFieldKey(identityKey)
       && (field.pageEvidenceVerified !== true || !isCustomerNameRepresentationValue(identityKey, normalizedValue) || !hasExactPrintedIdentityEvidence(normalizedValue, field.sourceText));
+    const identityAddressReview = input.customerTarget === true && identityKey === "currentAddress" && Boolean(normalizedValue.trim());
     const persistedField = identityKey
       ? { ...field, value: normalizedValue, normalizedValue, rawValue, ...((genderConflict || identityNameReview) ? { uncertainty: genderConflict ? "conflict" as const : "unclear" as const } : {}) }
       : field;
@@ -177,8 +179,8 @@ export async function persistObjectExtraction(input: { repository?: Pick<ObjectI
       ...(persistedField.subjectLabel ? { subjectLabel: persistedField.subjectLabel } : {}),
       ...(persistedField.alternatives?.length ? { alternatives: persistedField.alternatives } : {}),
     },
-    finalValue: genderConflict || identityNameReview ? undefined : normalizedValue || undefined, finalSource: genderConflict || identityNameReview ? undefined : normalizedValue ? "model_draft" : undefined,
-    status: genderConflict ? "conflict" : identityNameReview ? "low_confidence" : normalizedValue
+    finalValue: genderConflict || identityNameReview || identityAddressReview ? undefined : normalizedValue || undefined, finalSource: genderConflict || identityNameReview || identityAddressReview ? undefined : normalizedValue ? "model_draft" : undefined,
+    status: genderConflict ? "conflict" : identityNameReview ? "low_confidence" : identityAddressReview ? "draft" : normalizedValue
       ? persistedField.uncertainty === "conflict" ? "conflict" : persistedField.uncertainty === "unclear" ? "low_confidence" : persistedField.confidence < 0.8 ? "low_confidence" : "draft"
       : persistedField.uncertainty === "conflict" ? "conflict" : persistedField.uncertainty === "unclear" ? "low_confidence" : "not_found",
     };
@@ -203,7 +205,17 @@ export async function persistObjectImportJobExtraction(input: { job: ImportJob; 
       if (!customerKey) return [];
       const rawValue = field.rawValue ?? field.value;
       const normalizedValue = normalizeCustomerIdentityValue(customerKey, rawValue);
-      return [{ ...field, fieldKey: customerKey, value: normalizedValue, normalizedValue, rawValue }];
+      const explicitNameRepresentations = new Set(input.fields
+        .map((candidate) => customerIdentityFieldKey(candidate.fieldKey))
+        .filter((candidate): candidate is NonNullable<typeof candidate> => Boolean(candidate) && candidate !== "name"));
+      const visibleNameKey = customerKey === "name"
+        && field.uncertainty === "clear"
+        && field.pageEvidenceVerified === true
+        && hasExactPrintedIdentityEvidence(normalizedValue, field.sourceText)
+        ? visibleClientNameFieldFromEvidence(customerKey, normalizedValue)
+        : null;
+      const persistedNameKey = visibleNameKey && !explicitNameRepresentations.has(visibleNameKey) ? visibleNameKey : customerKey;
+      return [{ ...field, fieldKey: persistedNameKey, value: normalizedValue, normalizedValue, rawValue }];
     }
     // A document may contain several people. Only applicant fields belong to this identity source.
     const prefix = field.fieldKey.includes(".") ? field.fieldKey.split(".")[0] : null;

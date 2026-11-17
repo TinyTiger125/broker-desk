@@ -15,7 +15,7 @@ import { validateEntryUploads } from "@/lib/entry-upload-validation";
 import { entryFileKey } from "@/lib/entry-preview";
 import { getAttachmentStorageMode, persistAttachmentToLocalPrivate } from "@/lib/attachment-storage";
 import { inferObjectAttachmentCategory } from "@/lib/object-attachments";
-import { buildEntryRequestPayloadDigest, readEntryIntentId, validateEntryPreviewDecisions, verifyEntryPreviewProofs, persistEntryPreviewAudit, type EntryPreviewProofPayload } from "@/lib/entry-preview-proof";
+import { buildEntryRequestPayloadDigest, readEntryIntentId, validateEntryPreviewDecisions, verifyEntryPreviewProofs, persistEntryPreviewAudit, persistEntryPreviewReviewTarget, type EntryPreviewProofPayload } from "@/lib/entry-preview-proof";
 import { assertProductionAttachmentStorageReady } from "@/lib/production-readiness";
 import { consumeEntryUploadStagedFiles, discardEntryUploadStagedFiles, parseEntryUploadStagedRefs, readEntryUploadStagedFiles } from "@/lib/entry-upload-staging";
 import type { EntryUploadStagingRecord } from "@/lib/entry-upload-staging-contract";
@@ -61,6 +61,7 @@ async function finishEntry(targetType: "party" | "property", targetId: string, f
   if (creationAuditWarning) params.set("createAuditWarning", "1");
   let auditFailed = false;
   let archiveFailed = false;
+  let reviewPersistFailed = false;
   let archivedFileCount = 0;
   let recoveredOriginalCount = 0;
   if (files.length) {
@@ -136,6 +137,15 @@ async function finishEntry(targetType: "party" | "property", targetId: string, f
         await linkAttachmentToObject({ tenantId: session.tenant.id, attachmentId: attachment.id, targetType, targetId, category: inferObjectAttachmentCategory({ fileName: file.name, documentType: targetType === "party" ? "identity_document" : undefined }), createdByUserId: session.user.id });
         archivedFileCount += 1;
         await persistEntryPreviewAudit({ session, targetType, targetId, attachmentId: attachment.id, proof, formData, finalValues }).catch(() => { auditFailed = true; });
+        if (targetType === "party") {
+          await persistEntryPreviewReviewTarget({
+            session,
+            targetId,
+            attachmentId: attachment.id,
+            proof,
+            entryRequestKey,
+          }).catch(() => { reviewPersistFailed = true; });
+        }
       }
       if (unreadFiles.length) {
         const resolved = await resolveObjectImportTarget({ context: createRequestContext(session), targetType, targetId });
@@ -194,6 +204,7 @@ async function finishEntry(targetType: "party" | "property", targetId: string, f
     }
   }
   if (auditFailed && !archiveFailed) params.set("flash", "entry_preview_audit_failed");
+  if (reviewPersistFailed && !archiveFailed) params.set("flash", "entry_preview_review_failed");
   // Queue failure can still be a successful original archive through the
   // same-record fallback. Once every input has a durable attachment (including
   // recovered same-intent markers), consume the one-time staging references;

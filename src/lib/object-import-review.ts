@@ -124,6 +124,7 @@ export function isSafeModelAutoSave(field: ObjectImportCandidateRecord): boolean
   const candidateValue = field.candidateValue?.trim() ?? "";
   return field.status === "draft" && field.provenance.uncertainty === "clear"
     && (field.confidence ?? 0) >= 0.8 && Boolean(candidateValue)
+    && field.fieldKey !== "currentAddress" && field.fieldKey !== "applicant.currentAddress"
     && !(field.fieldKey === "currentAddress" && /^(?:住所|住居地)?(?:未定|未確認|不明|なし|n\/a|-)$/i.test(candidateValue.replace(/\s+/g, "")))
     && field.finalSource !== "human";
 }

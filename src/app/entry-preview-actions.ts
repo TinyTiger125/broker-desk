@@ -24,16 +24,19 @@ import { assessIdentityDocumentValidity } from "@/lib/identity-document-validity
 
 const PROPERTY_NUMERIC_PREVIEW_KEYS = new Set(["sizeSqm", "listingPrice", "listingRent", "listingCommonFee", "managementFee", "repairFee"]);
 
-function hasCustomerIdentityAnchor(fields: Array<{ fieldKey: string; value: string; uncertainty: "clear" | "unclear" | "conflict" | "not_found" }>) {
+function hasCustomerIdentityAnchor(
+  fields: Array<{ fieldKey: string; value: string; uncertainty: "clear" | "unclear" | "conflict" | "not_found"; pageNumber?: number; sourceText?: string }>,
+  pages: readonly { pageNumber: number; lines: readonly string[] }[] | undefined,
+) {
   return fields.some((field) =>
     (field.fieldKey === "applicant.name"
       || field.fieldKey === "applicant.nameLatin"
       || field.fieldKey === "applicant.nameKanji"
       || field.fieldKey === "applicant.nameKatakana"
-      || field.fieldKey === "applicant.birthDate"
-      || field.fieldKey === "applicant.gender")
+      )
     && field.value.trim()
-    && field.uncertainty !== "not_found",
+    && field.uncertainty === "clear"
+    && hasPrintedIdentityPageEvidence(field.value, field.sourceText, pages, field.pageNumber),
   );
 }
 
@@ -93,13 +96,13 @@ export async function previewEntryDocumentsAction(formData: FormData): Promise<E
   for (const file of files) {
     try {
       const buffer = Buffer.from(await file.arrayBuffer());
-      let fields: Array<{ fieldKey: string; value: string; pageNumber?: number; sourceText?: string; pageEvidenceVerified?: boolean; uncertainty: "clear" | "unclear" | "conflict" | "not_found"; reviewOnly?: boolean }>;
+      let fields: Array<{ fieldKey: string; value: string; confidence?: number; pageNumber?: number; sourceText?: string; pageEvidenceVerified?: boolean; uncertainty: "clear" | "unclear" | "conflict" | "not_found"; reviewOnly?: boolean }>;
       let validityReviewRequired = false;
       if (file.name.toLowerCase().endsWith(".xlsx")) {
         const extracted = extractInputFileFromWorkbook(await readExcelWorkbook(buffer), file.name);
         fields = extracted.fields.map((field) => ({ fieldKey: field.fieldKey, value: field.normalizedValue || field.value, pageNumber: field.sourcePageNumber, sourceText: field.sourceText || [field.sourceSheet, field.sourceCell || field.sourceRange].filter(Boolean).join(" / "), uncertainty: field.uncertainty ?? "unclear" }));
       } else if (kind === "customer") {
-        const result = await readIdentityDocumentWithOpenAi({ buffer, filename: file.name, scope: "customer" });
+        const result = await readIdentityDocumentWithOpenAi({ buffer, filename: file.name, scope: "customer", customerMode: "direct" });
         const validity = assessIdentityDocumentValidity({ documentType: result.documentType, pages: result.pages ?? [] });
         validityReviewRequired = validity.status === "expired" || validity.status === "unclear";
         // Keep the supported customer document list closed. An unclassified
@@ -110,7 +113,7 @@ export async function previewEntryDocumentsAction(formData: FormData): Promise<E
         // customer. This also fails closed when vision misses the printed
         // marker on an unsupported card: never surface a plausible address as
         // a customer field without a holder identity anchor.
-        fields = result.documentType === "unknown_identity_scan" || !hasCustomerIdentityAnchor(selected)
+        fields = result.documentType === "unknown_identity_scan" || !hasCustomerIdentityAnchor(selected, result.pages)
           ? []
           : selected.map((field) => {
             const pageEvidenceMissing = !hasPrintedIdentityPageEvidence(field.value, field.sourceText, result.pages, field.pageNumber);
@@ -174,6 +177,7 @@ export async function previewEntryDocumentsAction(formData: FormData): Promise<E
           ...(kind === "customer" && value !== field.value ? { rawValue: field.value } : {}),
           fileName: file.name,
           fileKey,
+          ...(typeof field.confidence === "number" ? { confidence: field.confidence } : {}),
           pageNumber: field.pageNumber,
           sourceText: field.sourceText,
           ...(kind === "customer" ? { pageEvidenceVerified: field.pageEvidenceVerified } : {}),

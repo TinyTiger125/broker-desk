@@ -87,6 +87,10 @@ assert.match(casePage, /const organizeType = parsed\.searchParams\.get\("type"\)
 const identity = await source("src/components/client-identity-import-section.tsx");
 assert.match(identity, /add: "读取新资料"/);
 assert.match(identity, /这里只读取身份证明资料/);
+assert.doesNotMatch(identity, /低置信候选保留在核对区域，需要时才填入空白字段，请与原件核对后保存/);
+assert.match(identity, /地址候选即使清晰也只保留在确认区域，点击“确认并保存”后才写入客户档案/);
+assert.match(identity, /reviewAction && field\.candidateValue && !invalidGenderCandidate/);
+assert.match(identity, /confirm: "确认并保存"/);
 assert.match(identity, /accept="application\/pdf,image\/png,image\/jpeg,\.pdf,\.png,\.jpg,\.jpeg"/);
 const upload = await source("src/components/object-import-upload.tsx");
 assert.match(upload, /accept = "application\/pdf,image\/png,image\/jpeg,\.pdf,\.png,\.jpg,\.jpeg,\.xlsx"/);

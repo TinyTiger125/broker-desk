@@ -1,4 +1,5 @@
 import { hasExactPrintedIdentityEvidence, isCustomerNameFieldKey, isCustomerNameRepresentationValue, normalizeCustomerGenderValue } from "@/lib/customer-identity-field-catalog";
+import { visibleClientNameFieldFromEvidence } from "@/lib/client-name-representation";
 
 export type EntryPreviewCandidate = {
   id: string;
@@ -14,6 +15,8 @@ export type EntryPreviewCandidate = {
   pageNumber?: number;
   sourceText?: string;
   uncertainty?: string;
+  /** Reader confidence is retained for the durable review candidate. */
+  confidence?: number;
   /** Server-computed internal consistency check for sourceText/page lines. */
   pageEvidenceVerified?: boolean;
   /** Candidate is evidence-only until a person reviews the batch identity. */
@@ -47,6 +50,15 @@ function isNonActualCurrentAddress(candidate: Pick<EntryPreviewCandidate, "key" 
   if (candidate.key !== "currentAddress" && candidate.key !== "applicant.currentAddress") return false;
   const normalized = candidate.value.trim().replace(/\s+/g, "");
   return /^(?:住所|住居地)?(?:未定|未確認|不明|なし|n\/a|-)$/i.test(normalized);
+}
+
+/**
+ * A document address is evidence for a human review, not a customer fact.
+ * It may be wrong, stale, or an issuer/registered address, so it must never
+ * enter the direct-entry form through either automatic or inline selection.
+ */
+function isDocumentCurrentAddress(candidate: Pick<EntryPreviewCandidate, "key">) {
+  return candidate.key === "currentAddress" || candidate.key === "applicant.currentAddress";
 }
 
 const CROSS_FILE_IDENTITY_ANCHOR_KEYS = new Set(["name", "nameLatin", "nameKanji", "nameKatakana", "birthDate"]);
@@ -100,6 +112,7 @@ export function safeEntryPreviewCandidates(candidates: readonly EntryPreviewCand
   return candidates.filter((candidate) => candidate.uncertainty === "clear"
     && !candidate.reviewOnly
     && Boolean(candidate.value.trim())
+    && !isDocumentCurrentAddress(candidate)
     && !isNonActualCurrentAddress(candidate)
     && !isUnsafeCustomerNameCandidate(candidate)
     && (candidate.key !== "gender"
@@ -113,6 +126,7 @@ export function selectableEntryPreviewCandidates(candidates: readonly EntryPrevi
   return candidates.filter((candidate) => {
     if (candidate.reviewOnly) return false;
     if (!candidate.value.trim() || isNonActualCurrentAddress(candidate)) return false;
+    if (isDocumentCurrentAddress(candidate)) return false;
     if (isUnsafeCustomerNameCandidate(candidate)) return false;
     if (candidate.key === "gender" && normalizeCustomerGenderValue(candidate.rawValue ?? candidate.value) !== candidate.value) return false;
     if (candidate.uncertainty === "clear") return true;
@@ -135,6 +149,10 @@ export function fillAutoSavedEntryForm(formData: FormData, preview: EntryPreview
   for (const candidate of selected) {
     if (String(formData.get(candidate.key) ?? "").trim()) continue;
     formData.set(candidate.key, candidate.value);
+    if (candidate.key === "name") {
+      const visibleField = visibleClientNameFieldFromEvidence(candidate.key, candidate.value);
+      if (visibleField && !String(formData.get(visibleField) ?? "").trim()) formData.set(visibleField, candidate.value);
+    }
     decisions[candidate.id] = "auto_saved";
     applied += 1;
   }

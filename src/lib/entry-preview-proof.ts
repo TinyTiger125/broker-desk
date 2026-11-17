@@ -1,7 +1,9 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { addAuditLog } from "@/lib/data";
+import { addAuditLog, cleanupEntryPreviewReviewArtifacts, createEntryPreviewReviewGraph, upsertObjectImportCandidate } from "@/lib/data";
 import { entryFileKey, safeEntryPreviewCandidates, selectableEntryPreviewCandidates, type EntryPreviewCandidate } from "@/lib/entry-preview";
 import type { TenantSession } from "@/lib/tenant-session";
+import { createRequestContext } from "@/lib/visibility-resolver";
+import { resolveObjectImportTarget } from "@/lib/object-import-target-service";
 
 type PreviewSession = Pick<TenantSession, "tenant" | "user">;
 export type EntryPreviewProofPayload = {
@@ -141,4 +143,129 @@ export async function persistEntryPreviewAudit(input: { session: PreviewSession;
       })),
     },
   });
+}
+
+function isPlaceholderAddress(value: string) {
+  return /^(?:住所|住居地)?(?:未定|未確認|不明|なし|n\/a|-)$/i.test(value.trim().replace(/\s+/g, ""));
+}
+
+/**
+ * Direct entry has already archived the original against the new client. Keep
+ * the same attachment and put the non-autosaved reader candidates into the
+ * existing object-import review tables so they survive redirect/reopen.
+ *
+ * The synthetic completed import job is metadata only: it is never queued for
+ * another model read. The migration guard permits this one marker to pair a
+ * party-owned archived attachment with the review target; all normal import
+ * targets still require an import-job attachment.
+ */
+export async function persistEntryPreviewReviewTarget(input: {
+  session: TenantSession;
+  targetId: string;
+  attachmentId: string;
+  proof: EntryPreviewProofPayload;
+  entryRequestKey?: string;
+}): Promise<{ persisted: boolean; targetId?: string; reason?: "no_review_candidates" }> {
+  const reviewCandidates = input.proof.candidates.filter((candidate) => {
+    if (!candidate.value.trim()) return false;
+    if ((candidate.key === "currentAddress" || candidate.key === "applicant.currentAddress") && isPlaceholderAddress(candidate.value)) return false;
+    const safe = safeEntryPreviewCandidates(input.proof.candidates).some((item) => item.id === candidate.id);
+    return !safe || candidate.key === "currentAddress" || candidate.key === "applicant.currentAddress";
+  });
+  if (reviewCandidates.length === 0) return { persisted: false, reason: "no_review_candidates" };
+
+  const resolved = await resolveObjectImportTarget({
+    context: createRequestContext(input.session),
+    targetType: "party",
+    targetId: input.targetId,
+  });
+  if (!resolved.ok) throw new Error("entry_preview_review_target_invalid");
+
+  // import_jobs with upload_lifecycle_version=1 are guarded by the existing
+  // pre-import trigger and must carry a JSON object. Keep the direct-review
+  // marker structured so it is auditable without weakening that guard.
+  const marker = JSON.stringify({
+    kind: "entry_preview_review",
+    marker: "brokerdesk:entry-preview-review",
+    targetId: input.targetId,
+    attachmentId: input.attachmentId,
+  });
+  const idempotencyKey = `entry-preview-review:${input.targetId}:${input.entryRequestKey?.trim() || "no-key"}:${input.proof.digest}`;
+  let jobId = "";
+  let targetId = "";
+  let createdJob = false;
+  let createdTarget = false;
+  try {
+    const graph = await createEntryPreviewReviewGraph({
+      tenantId: input.session.tenant.id,
+      userId: input.session.user.id,
+      targetId: input.targetId,
+      targetVersion: resolved.targetVersion,
+      attachmentId: input.attachmentId,
+      marker,
+      idempotencyKey,
+      title: "本人確認資料候補",
+    });
+    jobId = graph.job.id;
+    targetId = graph.target.id;
+    createdJob = graph.createdJob;
+    createdTarget = graph.createdTarget;
+    const target = graph.target;
+
+    for (const candidate of reviewCandidates) {
+      const fieldKey = candidate.key;
+      const status = candidate.uncertainty === "conflict"
+        ? "conflict"
+        : candidate.uncertainty === "clear" && candidate.pageEvidenceVerified === true
+          ? "draft"
+          : "low_confidence";
+      await upsertObjectImportCandidate({
+        id: `${target.id}:${fieldKey}`,
+        tenantId: input.session.tenant.id,
+        targetId: target.id,
+        fieldKey,
+        candidateValue: candidate.value,
+        ...(typeof candidate.confidence === "number" ? { confidence: candidate.confidence } : {}),
+        provenance: {
+          source: "unified_entry_preview",
+          sourceAttachmentId: input.attachmentId,
+          sourceFileHash: input.proof.digest,
+          pageEvidenceVerified: candidate.pageEvidenceVerified === true,
+          ...(candidate.pageNumber !== undefined ? { pageNumber: candidate.pageNumber } : {}),
+          ...(candidate.sourceText ? { sourceText: candidate.sourceText.slice(0, 1000) } : {}),
+          ...(candidate.rawValue ? { rawValue: candidate.rawValue } : {}),
+          ...(candidate.fileKey ? { sourceFileKey: candidate.fileKey } : {}),
+          ...(candidate.uncertainty ? { uncertainty: candidate.uncertainty } : {}),
+          ...(input.entryRequestKey ? { entryRequestKey: input.entryRequestKey } : {}),
+        },
+        status,
+      });
+    }
+    return { persisted: true, targetId: target.id };
+  } catch (error) {
+    // A replay may point at an already persisted graph. Never delete that
+    // graph merely because a later idempotent upsert failed; only the graph
+    // created by this attempt is eligible for cleanup. The database helper
+    // locks the target and rechecks human decisions before deleting it.
+    // A graph is owned by this attempt only when both rows were inserted by
+    // this transaction. A repaired/replayed partial graph may report only a
+    // newly inserted target; never delete its pre-existing job on failure.
+    if (createdJob && createdTarget && jobId && targetId) {
+      let cleaned = false;
+      try {
+        cleaned = await cleanupEntryPreviewReviewArtifacts({
+          tenantId: input.session.tenant.id,
+          userId: input.session.user.id,
+          importJobId: jobId,
+          targetId,
+          partyId: input.targetId,
+          attachmentId: input.attachmentId,
+        });
+      } catch {
+        cleaned = false;
+      }
+      if (!cleaned) throw new Error("entry_preview_review_cleanup_failed", { cause: error });
+    }
+    throw error;
+  }
 }

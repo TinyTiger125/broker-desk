@@ -20,6 +20,12 @@ const migrationText = migrationStatement.getText(sourceFile);
 const requiredMigrations = [...migrationText.matchAll(/"([^\"]+)"/g)].map((match) => match[1]);
 assert(requiredMigrations.includes("20261102_005_entry_request_claims_runtime_acl.sql"), "readiness must require migration 005 runtime ACL");
 assert(requiredMigrations.includes("20261102_006_entry_request_claims_authenticated_acl.sql"), "readiness must require migration 006 authenticated ACL");
+assert(requiredMigrations.includes("20261117_001_entry_preview_review_cleanup_guards.sql"), "readiness must require the direct-review cleanup guard migration");
+assert.equal(
+  requiredMigrations.indexOf("20261117_001_entry_preview_review_cleanup_guards.sql"),
+  requiredMigrations.indexOf("20261116_003_entry_preview_review_candidates.sql") + 1,
+  "direct-review cleanup guard migration must follow the original review-candidate migration",
+);
 assert.equal(
   requiredMigrations.indexOf("20261102_005_entry_request_claims_runtime_acl.sql"),
   requiredMigrations.indexOf("20261102_004_entry_request_claim_fencing.sql") + 1,

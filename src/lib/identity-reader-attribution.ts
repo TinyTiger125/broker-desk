@@ -15,7 +15,7 @@ function isApplicantLabel(label: string) {
 function isExplicitNegativeRole(label: string) {
   // The negative insurance role is deliberately bounded so 被保険者 does
   // not match the 保険者 substring.
-  return /世帯主|(?<!被)保険者|代理人|代表者|緊急連絡先|扶養者|household[ _-]?head|insurer|agent|representative|emergency[ _-]?contact|dependent|policyholder/i.test(label.trim());
+  return /世帯主|(?<!被)保険者|代理人|代表者|保証人|連帯保証人|緊急連絡先|扶養者|household[ _-]?head|insurer|agent|representative|guarantor|sponsor|emergency[ _-]?contact|dependent|policyholder/i.test(label.trim());
 }
 
 function isCustomerHolderLabel(label: string) {

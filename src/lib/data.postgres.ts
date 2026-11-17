@@ -115,6 +115,8 @@ import type {
   ClosedBetaDemoResult,
   EntryRequestTargetType,
   EntryRequestClaimResult,
+  EntryPreviewReviewGraphInput,
+  EntryPreviewReviewGraphResult,
 } from "@/lib/data.memory";
 import { normalizeInvitationDeliveryState } from "@/lib/invitation-delivery-state";
 import type { VisibleBrokerageCase, VisibleProperty } from "@/lib/data.memory";
@@ -236,6 +238,8 @@ const REQUIRED_PRODUCTION_MIGRATIONS = [
   "20261114_001_client_personal_name_fields.sql",
   "20261116_001_entry_upload_staging.sql",
   "20261116_002_entry_upload_staging_acl_fix.sql",
+  "20261116_003_entry_preview_review_candidates.sql",
+  "20261117_001_entry_preview_review_cleanup_guards.sql",
 ] as const;
 
 const OPEN_STAGES: ClientStage[] = ["lead", "contacted", "quoted", "viewing", "negotiating"];
@@ -3902,6 +3906,57 @@ export async function addImportJob(input: {
     ]
   );
   return mapImportJob(result.rows[0]);
+}
+
+/**
+ * Create or replay the direct-entry review graph in one transaction. The
+ * idempotency conflict result carries an explicit inserted marker so callers
+ * never mistake a concurrent owner's target for a row created by this call.
+ */
+export async function createEntryPreviewReviewGraph(input: EntryPreviewReviewGraphInput): Promise<EntryPreviewReviewGraphResult> {
+  await ensureSchema();
+  const scopeTenantId = resolveTenantId(input.tenantId);
+  const idempotencyKey = input.idempotencyKey.trim();
+  if (!idempotencyKey) throw new Error("entry_preview_review_idempotency_key_required");
+  return withTransaction(async (client) => {
+    const jobResult = await client.query(
+      `INSERT INTO import_jobs (
+        id, tenant_id, user_id, source_type, title, target_entity, status, notes, mapping_json, validation_message, idempotency_key, upload_lifecycle_version, created_at, updated_at
+      ) VALUES ($1,$2,$3,'scan',$4,'parties','completed',$5::jsonb,NULL,NULL,$6,1,NOW(),NOW())
+      ON CONFLICT (tenant_id, idempotency_key) WHERE idempotency_key IS NOT NULL
+      DO UPDATE SET updated_at = import_jobs.updated_at
+      RETURNING *, (xmax = 0) AS inserted_by_call,
+        (CASE WHEN pg_input_is_valid(notes, 'jsonb') THEN notes::jsonb ELSE NULL::jsonb END = $5::jsonb) AS marker_matches`,
+      [genId("import"), scopeTenantId, input.userId, input.title.trim() || "本人確認資料候補", input.marker.trim(), idempotencyKey],
+    );
+    const job = mapImportJob(jobResult.rows[0]);
+    const jobInserted = jobResult.rows[0].inserted_by_call === true;
+    if (job.tenantId !== scopeTenantId || job.userId !== input.userId || job.status !== "completed" || job.uploadLifecycleVersion !== 1 || jobResult.rows[0].marker_matches !== true) {
+      throw new Error("entry_preview_review_job_scope_mismatch");
+    }
+
+    const targetResult = await client.query(
+      `INSERT INTO object_import_targets (
+        id, tenant_id, user_id, case_id, import_job_id, target_type, target_id, target_version, document_type, processing_metadata, source_attachment_id, status, idempotency_key, attempt_count, error_code, error_summary, created_at, updated_at
+      ) VALUES ($1,$2,$3,NULL,$4,'party',$5,$6,NULL,NULL,$7,'needs_review',$8,1,NULL,NULL,NOW(),NOW())
+      ON CONFLICT (tenant_id, idempotency_key)
+      DO UPDATE SET updated_at = object_import_targets.updated_at
+      WHERE object_import_targets.user_id = EXCLUDED.user_id
+      RETURNING *, (xmax = 0) AS inserted_by_call`,
+      [`object_${job.id}`, scopeTenantId, input.userId, job.id, input.targetId, input.targetVersion, input.attachmentId, idempotencyKey],
+    );
+    if (!targetResult.rows[0]) throw new Error("entry_preview_review_target_scope_mismatch");
+    const target = mapObjectImportTarget(targetResult.rows[0]);
+    const targetInserted = targetResult.rows[0].inserted_by_call === true;
+    if (target.tenantId !== scopeTenantId || target.userId !== input.userId || target.importJobId !== job.id || target.targetType !== "party" || target.targetId !== input.targetId || target.sourceAttachmentId !== input.attachmentId || target.caseId != null) {
+      throw new Error("entry_preview_review_target_scope_mismatch");
+    }
+    // A legacy orphan job is not a valid replay graph. Fail closed rather than
+    // attaching a new target to it; the whole transaction rolls back a newly
+    // inserted job as well.
+    if (!targetInserted && jobInserted) throw new Error("entry_preview_review_target_scope_mismatch");
+    return { job, target, createdJob: jobInserted, createdTarget: targetInserted };
+  });
 }
 
 export async function claimPropertyRowImport(input: { tenantId: string; userId: string; jobId: string }): Promise<boolean> {
@@ -8174,6 +8229,10 @@ export async function getObjectImportFeatureReadiness(): Promise<ObjectImportFea
     "SELECT 1 FROM broker_desk_schema_migrations WHERE name=$1 LIMIT 1",
     ["20260917_001_object_import_targets.sql"],
   );
+  const cleanupMigration = await db.query(
+    "SELECT 1 FROM broker_desk_schema_migrations WHERE name=$1 LIMIT 1",
+    ["20261117_001_entry_preview_review_cleanup_guards.sql"],
+  );
   const tables = await db.query(
     "SELECT to_regclass('public.object_import_targets') AS targets_table, to_regclass('public.object_import_fields') AS fields_table",
   );
@@ -8181,7 +8240,7 @@ export async function getObjectImportFeatureReadiness(): Promise<ObjectImportFea
   const fieldsTablePresent = Boolean(tables.rows[0]?.fields_table);
   if (!targetsTablePresent || !fieldsTablePresent) {
     return resolveObjectImportFeatureReadiness({
-      migrationApplied: migration.rows.length > 0,
+      migrationApplied: migration.rows.length > 0 && cleanupMigration.rows.length > 0,
       targetsTablePresent,
       fieldsTablePresent,
     });
@@ -8195,18 +8254,21 @@ export async function getObjectImportFeatureReadiness(): Promise<ObjectImportFea
         AND has_table_privilege(current_user, 'public.object_import_fields', 'INSERT')
         AND has_table_privilege(current_user, 'public.object_import_fields', 'UPDATE') AS fields_table_writable,
       to_regprocedure('brokerdesk_private.lock_case_review_membership_v2(text,text,text)') AS membership_lock,
-      to_regprocedure('brokerdesk_private.lock_case_review_source(text,text,text,text)') AS source_lock
+      to_regprocedure('brokerdesk_private.lock_case_review_source(text,text,text,text)') AS source_lock,
+      to_regprocedure('brokerdesk_private.cleanup_entry_preview_review_target(text,text,text,text,text,text)') AS review_cleanup
   `);
-  if (!privileges.rows[0]?.membership_lock || !privileges.rows[0]?.source_lock) {
+  if (!privileges.rows[0]?.membership_lock || !privileges.rows[0]?.source_lock || !privileges.rows[0]?.review_cleanup) {
     return { ready: false, reason: "migration_required" };
   }
+  if (!cleanupMigration.rows.length) return { ready: false, reason: "migration_required" };
   const helperPrivileges = await db.query(`SELECT
     has_function_privilege(current_user, 'brokerdesk_private.lock_case_review_membership_v2(text,text,text)', 'EXECUTE')
-      AND has_function_privilege(current_user, 'brokerdesk_private.lock_case_review_source(text,text,text,text)', 'EXECUTE') AS allowed
+      AND has_function_privilege(current_user, 'brokerdesk_private.lock_case_review_source(text,text,text,text)', 'EXECUTE')
+      AND has_function_privilege(current_user, 'brokerdesk_private.cleanup_entry_preview_review_target(text,text,text,text,text,text)', 'EXECUTE') AS allowed
   `);
   if (!helperPrivileges.rows[0]?.allowed) return { ready: false, reason: "permissions_incomplete" };
   return resolveObjectImportFeatureReadiness({
-    migrationApplied: migration.rows.length > 0,
+    migrationApplied: migration.rows.length > 0 && cleanupMigration.rows.length > 0,
     targetsTablePresent,
     fieldsTablePresent,
     targetsTableWritable: Boolean(privileges.rows[0]?.targets_table_writable),
@@ -8231,6 +8293,28 @@ export const createObjectImportTarget = (input: Parameters<PostgresObjectImportR
 export const updateObjectImportTarget = (input: Parameters<PostgresObjectImportRepository["updateTarget"]>[0]) => new PostgresObjectImportRepository(getPool()).updateTarget(input);
 export const upsertObjectImportCandidate = (input: Parameters<PostgresObjectImportRepository["upsertCandidate"]>[0]) => new PostgresObjectImportRepository(getPool()).upsertCandidate(input);
 export const listObjectImportCandidates = (input: Parameters<PostgresObjectImportRepository["listCandidates"]>[0]) => new PostgresObjectImportRepository(getPool()).listCandidates(input);
+
+/**
+ * Remove only a failed direct-entry review graph. The SQL helper re-checks the
+ * authenticated tenant/user, the structured marker, source attachment, and
+ * human-decision absence before deleting fields/target/job. The archived
+ * party attachment is never deleted.
+ */
+export async function cleanupEntryPreviewReviewArtifacts(input: {
+  tenantId: string;
+  userId: string;
+  importJobId: string;
+  targetId: string;
+  partyId: string;
+  attachmentId: string;
+}): Promise<boolean> {
+  await ensureSchema();
+  const result = await getPool().query(
+    "SELECT brokerdesk_private.cleanup_entry_preview_review_target($1,$2,$3,$4,$5,$6) AS cleaned",
+    [input.tenantId, input.userId, input.importJobId, input.targetId, input.partyId, input.attachmentId],
+  );
+  return result.rows[0]?.cleaned === true;
+}
 
 class ObjectImportRetryRaceError extends Error {
   readonly reason = "already_queued" as const;

@@ -229,6 +229,7 @@ export async function processIdentityImportJob(input: {
       : undefined;
     const inputExtraction = objectReader ? undefined : await extractIdentityDocumentsFromFiles(readableSources, {
       requireModel: objectTarget?.targetType === "party" && !objectTarget.caseId,
+      customerMode: objectTarget?.targetType === "party" && !objectTarget.caseId ? "queued" : undefined,
     });
     const payload: IdentityImportPayload = {
       kind: "input_file_extraction",

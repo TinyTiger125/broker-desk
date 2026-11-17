@@ -15,7 +15,7 @@ import {
   parseRemoteDocumentReaderResponse,
   RemoteDocumentReaderError,
 } from "@/lib/identity-reader-contract";
-import { readIdentityDocumentWithOpenAi } from "@/lib/openai-identity-reader";
+import { readIdentityDocumentWithOpenAi, type IdentityReaderCustomerMode } from "@/lib/openai-identity-reader";
 import type { OpenAiIdentityReaderCandidate } from "@/lib/identity-reader-contract";
 import { resolveIdentityReaderCandidate } from "@/lib/identity-reader-evidence";
 import { selectPrimaryIdentityReaderCandidates, type IdentityReaderAttributionScope } from "@/lib/identity-reader-attribution";
@@ -652,7 +652,7 @@ function addModelCandidates(fields: FieldDraft[], candidates: OpenAiIdentityRead
   }
 }
 
-async function runOcr(buffer: Buffer, filename: string, requireModel = false): Promise<OcrResult> {
+async function runOcr(buffer: Buffer, filename: string, requireModel = false, customerMode?: IdentityReaderCustomerMode): Promise<OcrResult> {
   if (requireModel) {
     // Standalone customer identity intake is explicitly model-first. It must
     // not silently invoke the local Swift OCR or regex legacy path when the
@@ -663,7 +663,7 @@ async function runOcr(buffer: Buffer, filename: string, requireModel = false): P
       }
       assertProductionDocumentReaderReady();
     }
-    return readIdentityDocumentWithOpenAi({ buffer, filename, scope: "customer" });
+    return readIdentityDocumentWithOpenAi({ buffer, filename, scope: "customer", customerMode: customerMode ?? "queued" });
   }
   const provider = process.env.DOCUMENT_READING_PROVIDER?.trim().toLowerCase();
   if (provider === "openai_responses") {
@@ -697,11 +697,12 @@ export async function extractIdentityDocumentFromBuffer(input: {
   buffer: Buffer;
   filename: string;
   requireModel?: boolean;
+  customerMode?: IdentityReaderCustomerMode;
 }): Promise<InputFileExtractionResult> {
   const sourceFileHash = createHash("sha256").update(input.buffer).digest("hex");
   let ocr: OcrResult = { pages: [] };
   try {
-    ocr = await runOcr(input.buffer, input.filename, input.requireModel === true);
+    ocr = await runOcr(input.buffer, input.filename, input.requireModel === true, input.customerMode);
   } catch (error) {
     const configuredProvider = process.env.DOCUMENT_READING_PROVIDER?.trim().toLowerCase();
     if (
@@ -914,14 +915,14 @@ function mergeIdentityFields(results: InputFileExtractionResult[], documentType:
 export async function extractIdentityDocumentsFromFiles(inputs: Array<{
   buffer: Buffer;
   filename: string;
-}>, options?: { requireModel?: boolean }): Promise<InputFileExtractionResult> {
+}>, options?: { requireModel?: boolean; customerMode?: IdentityReaderCustomerMode }): Promise<InputFileExtractionResult> {
   if (inputs.length === 1) {
-    return extractIdentityDocumentFromBuffer({ ...inputs[0], requireModel: options?.requireModel });
+    return extractIdentityDocumentFromBuffer({ ...inputs[0], requireModel: options?.requireModel, customerMode: options?.customerMode });
   }
 
   const results: InputFileExtractionResult[] = [];
   for (const input of inputs) {
-    results.push(await extractIdentityDocumentFromBuffer({ ...input, requireModel: options?.requireModel }));
+    results.push(await extractIdentityDocumentFromBuffer({ ...input, requireModel: options?.requireModel, customerMode: options?.customerMode }));
   }
   const mergeReview = analyzeIdentityMerge(results);
 

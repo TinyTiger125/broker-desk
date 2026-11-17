@@ -24,6 +24,8 @@ function loadTypescript(filePath, dependencies = {}) {
 const contract = loadTypescript(path.join(root, "src/lib/identity-reader-contract.ts"));
 const readerSource = fs.readFileSync(path.join(root, "src/lib/openai-identity-reader.ts"), "utf8");
 const extractorSource = fs.readFileSync(path.join(root, "src/lib/identity-document-extractor.ts"), "utf8");
+const entryPreviewSource = fs.readFileSync(path.join(root, "src/app/entry-preview-actions.ts"), "utf8");
+const queuedProcessorSource = fs.readFileSync(path.join(root, "src/lib/identity-import-processor.ts"), "utf8");
 const readinessSource = fs.readFileSync(path.join(root, "src/lib/production-readiness.ts"), "utf8");
 const { buildOpenAiIdentityReaderInput } = loadTypescript(path.join(root, "src/lib/openai-identity-reader.ts"), {
   "@/lib/ai/responses-client": {},
@@ -43,6 +45,13 @@ assert.match(pdfInput[0].content[0].text, /Do not guess/);
 const imageInput = buildOpenAiIdentityReaderInput(Buffer.from("png"), "identity.png");
 assert.equal(imageInput[0].content[1].type, "input_image");
 assert.match(imageInput[0].content[1].image_url, /^data:image\/png;base64,/);
+const directCustomerPrompt = buildOpenAiIdentityReaderInput(Buffer.from("pdf"), "identity.pdf", { scope: "customer", customerMode: "direct" })[0].content[0].text;
+assert.match(directCustomerPrompt, /a clear page-evidenced printed holder name is sufficient to create a pending customer record/);
+assert.match(directCustomerPrompt, /birth date and gender may be absent or unreadable/);
+assert.doesNotMatch(directCustomerPrompt, /if the holder's name, birth date, and gender are not visibly anchored/);
+const queuedCustomerPrompt = buildOpenAiIdentityReaderInput(Buffer.from("pdf"), "identity.pdf", { scope: "customer", customerMode: "queued" })[0].content[0].text;
+assert.match(queuedCustomerPrompt, /the holder's printed name and birth date are independent identity anchors/);
+assert.match(queuedCustomerPrompt, /strict holder-name-plus-birth-date identity-anchor rule/);
 
 const readerModule = loadTypescript(path.join(root, "src/lib/openai-identity-reader.ts"), {
   "@/lib/ai/responses-client": { createAiResponse: async () => { throw new Error("provider should not be called"); } },
@@ -62,6 +71,8 @@ assert(!customerSchema.properties.candidates.items.properties.fieldKey.enum.incl
 assert.match(readerSource, /maxOutputTokens: IDENTITY_READER_MAX_OUTPUT_TOKENS/);
 assert.match(readerSource, /PDFDocument\.load/);
 assert.match(readerSource, /scope === "customer"/);
+assert.match(entryPreviewSource, /scope: "customer", customerMode: "direct"/);
+assert.match(queuedProcessorSource, /customerMode: .*"queued"/);
 const { PDFDocument } = await import("pdf-lib");
 const oversized = await PDFDocument.create();
 for (let index = 0; index < 21; index += 1) oversized.addPage();
