@@ -103,7 +103,9 @@ export function validateObjectImportReview(input: Omit<ObjectImportReviewInput, 
       // entered manually after an explicit human attestation against the
       // original; the model quote remains untrusted and is never used as proof.
       const manualBirthDate = key === "birthDate" && input.manualAttestation === true;
+      const birthDateNeedsManualReview = isObjectImportBirthDateManualReviewRequired(field);
       if (manualBirthDate && !isObjectImportManualBirthDateAttributable(field)) return { ok: false, reason: "invalid_value" };
+      if (birthDateNeedsManualReview && !manualBirthDate) return { ok: false, reason: "invalid_value" };
       if (field.provenance.pageEvidenceVerified !== true && !manualBirthDate) return { ok: false, reason: "invalid_value" };
       if (key === "birthDate" && !isValidCustomerBirthDate(value)) return { ok: false, reason: "invalid_value" };
       if (key === "gender" && !new Set(["male", "female", "other"]).has(value)) return { ok: false, reason: "invalid_value" };
@@ -130,6 +132,13 @@ export function validateObjectImportReview(input: Omit<ObjectImportReviewInput, 
 
 const NEGATIVE_IDENTITY_SUBJECT_LABEL = /世帯主|(?<!被)保険者|代理人|代表者|保証人|連帯保証人|緊急連絡先|扶養者|household[ _-]?head|insurer|agent|representative|guarantor|sponsor|emergency[ _-]?contact|dependent|policyholder/i;
 const HOLDER_IDENTITY_SUBJECT_LABEL = /申請人|主要申請人|本人|被保険者|カード名義人|名義人|所持者|保持者|持ち主|primary[ _-]?applicant|applicant|document[ _-]?holder|cardholder|insured[ _-]?person|insured|holder/i;
+
+export function isObjectImportBirthDateManualReviewRequired(field: Pick<ObjectImportCandidateRecord, "fieldKey" | "provenance">): boolean {
+  if (customerIdentityFieldKey(field.fieldKey) !== "birthDate") return false;
+  const sourceRange = typeof field.provenance.sourceRange === "string" ? field.provenance.sourceRange : "";
+  return field.provenance.pageEvidenceVerified !== true
+    || /identity_document_validity=(?:expired|unclear)/.test(sourceRange);
+}
 
 /**
  * Manual DOB entry is allowed only when the stored candidate is attributable

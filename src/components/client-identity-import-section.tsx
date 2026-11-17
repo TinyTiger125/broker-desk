@@ -5,8 +5,8 @@ import { ObjectImportFailureNotice, ObjectImportStatusBadge } from "@/components
 import { ObjectAttachmentList } from "@/components/object-attachment-list";
 import type { ObjectImportCandidateRecord, ObjectImportTargetRecord } from "@/lib/object-import-repository";
 import type { ObjectAttachmentItem } from "@/lib/object-attachments";
-import { customerIdentityFieldKey, customerIdentityFieldLabel, isCustomerGenderValue } from "@/lib/customer-identity-field-catalog";
-import { isObjectImportManualBirthDateAttributable } from "@/lib/object-import-review";
+import { customerIdentityFieldLabel, isCustomerGenderValue } from "@/lib/customer-identity-field-catalog";
+import { isObjectImportBirthDateManualReviewRequired, isObjectImportManualBirthDateAttributable } from "@/lib/object-import-review";
 import { HelpHint } from "@/components/help-hint";
 
 type ClientIdentityImportView = { target: ObjectImportTargetRecord; fields: ObjectImportCandidateRecord[] };
@@ -78,13 +78,10 @@ export function ClientIdentityImportSection({ locale, clientId, views = [], uplo
                 : false;
               const documentAddressCandidate = field.fieldKey === "currentAddress" || field.fieldKey === "applicant.currentAddress";
               const expiredCandidate = /identity_document_validity=expired/.test(sourceRange);
-              const birthDateCandidate = customerIdentityFieldKey(field.fieldKey) === "birthDate";
               const manualBirthDateAttributable = isObjectImportManualBirthDateAttributable(field);
-              const manualBirthDateCandidate = birthDateCandidate
-                && field.provenance.pageEvidenceVerified !== true
+              const manualBirthDateCandidate = isObjectImportBirthDateManualReviewRequired(field)
                 && manualBirthDateAttributable;
-              const manualBirthDateBlocked = birthDateCandidate
-                && field.provenance.pageEvidenceVerified !== true
+              const manualBirthDateBlocked = isObjectImportBirthDateManualReviewRequired(field)
                 && !manualBirthDateAttributable;
               const attributionBlocked = /model_attribution_blocked=([a-z_]+)/.exec(sourceRange)?.[1];
               const alternatives = Array.isArray(field.provenance.alternatives) ? field.provenance.alternatives as Array<{ value?: unknown; pageNumber?: unknown; sourceText?: unknown; uncertainty?: unknown }> : [];
