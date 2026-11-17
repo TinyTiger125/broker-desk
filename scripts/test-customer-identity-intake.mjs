@@ -35,7 +35,7 @@ Module._load = function(request, parent, ...rest) {
 
 const { parseOpenAiIdentityReaderResponse } = require(resolve(root, "src/lib/identity-reader-contract.ts"));
 const { isValidCustomerBirthDate, isCustomerGenderValue, isCustomerNameRepresentationValue, normalizeCustomerGenderValue, normalizeCustomerIdentityValue, customerIdentityFieldKey, CUSTOMER_IDENTITY_FIELDS, hasStrictPrintedAddressPageEvidence } = require(resolve(root, "src/lib/customer-identity-field-catalog.ts"));
-const { matchesClientNameSearch, sharesClientNameRepresentation } = require(resolve(root, "src/lib/client-name-search.ts"));
+const { filterExactClientNameMatches, matchesClientNameSearch, sharesClientNameRepresentation } = require(resolve(root, "src/lib/client-name-search.ts"));
 const postgresSource = readFileSync(resolve(root, "src/lib/data.postgres.ts"), "utf8");
 assert.match(postgresSource, /nameLatin:\s*"name_latin"/);
 assert.match(postgresSource, /nameKanji:\s*"name_kanji"/);
@@ -43,6 +43,9 @@ assert.match(postgresSource, /nameKatakana:\s*"name_katakana"/);
 const identityImportUiSource = readFileSync(resolve(root, "src/components/client-identity-import-section.tsx"), "utf8");
 const objectImportActionsSource = readFileSync(resolve(root, "src/app/object-import-actions.ts"), "utf8");
 const clientEditPageSource = readFileSync(resolve(root, "src/app/clients/[id]/edit/page.tsx"), "utf8");
+const clientNewPageSource = readFileSync(resolve(root, "src/app/clients/new/page.tsx"), "utf8");
+const clientFormSource = readFileSync(resolve(root, "src/components/client-form.tsx"), "utf8");
+const exactNameLookupRouteSource = readFileSync(resolve(root, "src/app/api/clients/exact-name/route.ts"), "utf8");
 const partiesPageSource = readFileSync(resolve(root, "src/app/parties/page.tsx"), "utf8");
 assert.match(identityImportUiSource, /isCustomerGenderValue/);
 assert.match(identityImportUiSource, /invalidGenderCandidate/);
@@ -62,6 +65,14 @@ assert.match(identityImportUiSource, /relatedRecords/);
 assert.match(identityImportUiSource, /同名候補があります/);
 assert.match(identityImportUiSource, /原本と照合して顧客フォームへ入力/);
 assert.match(clientEditPageSource, /relatedNameRecords/);
+assert.match(clientNewPageSource, /entryUpload/);
+assert.match(clientFormSource, /existingClientLookupTitle/);
+assert.match(clientFormSource, /type="button" onClick=\{\(\) => void searchExistingClientsByName\(\)\}/);
+assert.match(clientFormSource, /\/api\/clients\/exact-name\?q=/);
+assert.match(exactNameLookupRouteSource, /filterExactClientNameMatches/);
+assert.match(exactNameLookupRouteSource, /permission: "record\.read"/);
+assert.match(exactNameLookupRouteSource, /lifecycleStatus: "all"/);
+assert.doesNotMatch(clientFormSource, /entryTargetId/);
 assert.match(partiesPageSource, /pendingIdentityReview/);
 assert.match(partiesPageSource, /nameKatakana/);
 assert.match(identityImportUiSource, /manualBirthDateBlocked && reviewAction[\s\S]*name="decision" value="reject"/);
@@ -88,6 +99,13 @@ const persistedNameRepresentations = { name: "", nameLatin: "YAMADA, TARO", name
 assert.equal(matchesClientNameSearch(persistedNameRepresentations, "yamada"), true, "Latin name search must use persisted representation");
 assert.equal(matchesClientNameSearch(persistedNameRepresentations, "山田"), true, "Hanzi name search must use persisted representation");
 assert.equal(matchesClientNameSearch(persistedNameRepresentations, "ﾔﾏﾀﾞ"), true, "Katakana search must normalize width variants");
+const exactNameMatches = filterExactClientNameMatches([
+  persistedNameRepresentations,
+  { name: "山田 次郎", nameLatin: "", nameKanji: "山田 次郎", nameKatakana: "" },
+  { name: "山田 太郎 分店", nameLatin: "", nameKanji: "山田 太郎 分店", nameKatakana: "" },
+], "  ＹＡＭＡＤＡ，　ＴＡＲＯ ");
+assert.equal(exactNameMatches.length, 1, "new-entry duplicate lookup must return only complete normalized name matches");
+assert.equal(filterExactClientNameMatches([persistedNameRepresentations], "yamada").length, 0, "duplicate lookup must not use partial name matches");
 assert.equal(sharesClientNameRepresentation(persistedNameRepresentations, { name: "山田 太郎", nameLatin: "", nameKanji: "", nameKatakana: "" }), true, "same-name warning must match an exact persisted representation");
 assert.equal(sharesClientNameRepresentation(persistedNameRepresentations, { name: "山田 次郎", nameLatin: "", nameKanji: "", nameKatakana: "" }), false, "same-name warning must not treat similar names as identical");
 assert.equal(hasStrictPrintedAddressPageEvidence(

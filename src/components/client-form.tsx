@@ -96,6 +96,14 @@ type ClientFormProps = {
   entryAppliedFields?: readonly string[];
 };
 
+type ExistingClientNameMatch = {
+  id: string;
+  name: string;
+  nameLatin?: string;
+  nameKanji?: string;
+  nameKatakana?: string;
+};
+
 const inputClass = "w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base text-slate-900 outline-none transition focus:border-[#0046ad] focus:ring-2 focus:ring-blue-100 sm:text-sm";
 
 const copy = {
@@ -103,19 +111,19 @@ const copy = {
     basic: "基本情報", profile: "本人資料", needs: "希望条件", management: "顧客管理", legal: "契約・法定情報", notes: "備考", basicHint: "顧客名は既存の互換項目です。個人はラテン文字・漢字・カタカナを別々に保存できます。", profileHint: "本人情報。法人には個人名の項目を表示しません。", needsHint: "希望条件は未入力のまま保存できます。", managementHint: "未設定の管理項目は後から補完できます。", legalHint: "契約・法定情報は確認できた項目だけ入力します。", notesHint: "補足事項を残します。",
     name: "顧客名", nameLatin: "氏名（ラテン文字）", nameKanji: "氏名（漢字）", nameKatakana: "氏名（カタカナ）", companyName: "会社名", furigana: "氏名かな", companyFurigana: "会社名かな", phone: "電話番号", phoneMissing: "要補完：本人確認資料には電話番号がない場合があります", lineId: "LINE ID", email: "メールアドレス", partyType: "主体種別", partyTypeUnset: "未設定", birthDate: "生年月日", gender: "性別", currentPostalCode: "現住所郵便番号", currentAddress: "現住所", companyPostalCode: "会社郵便番号", companyAddress: "会社住所", employerName: "勤務先", employerAddress: "勤務先住所", employerPhone: "勤務先電話", annualIncome: "年収（参考）", annualIncomeAsOf: "年収基準日", annualIncomeSource: "年収情報の出典", yen: "円", genderUnset: "未設定", genderMale: "男性", genderFemale: "女性", genderOther: "その他", budgetMin: "予算下限", budgetMax: "予算上限", budgetType: "予算タイプ",
     preferredArea: "意向エリア", firstChoiceArea: "第1希望エリア", secondChoiceArea: "第2希望エリア", purpose: "用途", period: "入居/運用希望時期",
-    loan: "ローン事前審査", stage: "ステージ", temperature: "温度感", nextFollowUpAt: "次回フォロー日", brokerage: "媒介契約", signedAt: "媒介契約締結日", expiresAt: "媒介契約満了日", matters35: "重要事項説明日（35条）", matters37: "契約書面交付日（37条）", consent: "個人情報利用目的同意確認日", aml: "本人確認/AML", notesPlaceholder: "顧客の要望や確認事項", save: "保存", saveAndRead: "保存して読み取る", saving: "保存中…", cancel: "キャンセル", back: "戻る", choose: "選択してください", optional: "任意", error: "入力内容を確認してください。", initialState: "新規登録時は未確認の状態です。必要な確認項目を入力して保存してください。",
+    loan: "ローン事前審査", stage: "ステージ", temperature: "温度感", nextFollowUpAt: "次回フォロー日", brokerage: "媒介契約", signedAt: "媒介契約締結日", expiresAt: "媒介契約満了日", matters35: "重要事項説明日（35条）", matters37: "契約書面交付日（37条）", consent: "個人情報利用目的同意確認日", aml: "本人確認/AML", notesPlaceholder: "顧客の要望や確認事項", save: "保存", saveAndRead: "保存して読み取る", saving: "保存中…", cancel: "キャンセル", back: "戻る", choose: "選択してください", optional: "任意", error: "入力内容を確認してください。", initialState: "新規登録時は未確認の状態です。必要な確認項目を入力して保存してください。", existingClientLookupTitle: "既存顧客を確認", existingClientLookupDescription: "ファイルを選ぶ前に姓名表記を入力すると、同じ表記の既存記録だけを確認できます。別人の可能性があるため、アップロード先は自動変更・統合されません。", existingClientLookupPlaceholder: "姓名表記を入力", existingClientLookupSearch: "同名記録を確認", existingClientLookupSearching: "確認中…", existingClientLookupNone: "完全一致する既存記録はありません。", existingClientLookupFound: "同じ姓名表記の既存記録", existingClientLookupOpen: "記録を開く",
   },
   zh: {
     basic: "基本信息", profile: "个人资料", needs: "需求条件", management: "客户管理", legal: "合同与法定信息", notes: "备注", basicHint: "客户姓名保留为兼容字段。个人可分别保存拉丁字母、汉字和片假名姓名。", profileHint: "个人资料；法人不显示个人姓名字段。", needsHint: "需求条件可以留空并在之后补充。", managementHint: "未设置的管理项目可以之后补全。", legalHint: "只填写已确认的合同与法定信息。", notesHint: "记录补充说明。",
     name: "客户姓名", nameLatin: "姓名（拉丁字母）", nameKanji: "姓名（汉字）", nameKatakana: "姓名（片假名）", companyName: "公司名称", furigana: "姓名假名", companyFurigana: "公司名称假名", phone: "电话号码", phoneMissing: "待补全：证件通常不含电话号码", lineId: "LINE ID", email: "邮箱地址", partyType: "主体类型", partyTypeUnset: "未设置", birthDate: "出生日期", gender: "性别", currentPostalCode: "现住址邮编", currentAddress: "现住址", companyPostalCode: "公司邮编", companyAddress: "公司地址", employerName: "工作单位", employerAddress: "工作单位地址", employerPhone: "工作单位电话", annualIncome: "年收入（参考）", annualIncomeAsOf: "收入基准日期", annualIncomeSource: "收入信息来源", yen: "日元", genderUnset: "未设置", genderMale: "男性", genderFemale: "女性", genderOther: "其他", budgetMin: "预算下限", budgetMax: "预算上限", budgetType: "预算类型",
     preferredArea: "意向区域", firstChoiceArea: "第一意向区域", secondChoiceArea: "第二意向区域", purpose: "用途", period: "入住/运营期望时间",
-    loan: "贷款预审", stage: "阶段", temperature: "温度", nextFollowUpAt: "下次跟进日期", brokerage: "媒介合同", signedAt: "媒介合同签订日", expiresAt: "媒介合同到期日", matters35: "重要事项说明日（35条）", matters37: "合同书面交付日（37条）", consent: "个人信息使用同意确认日", aml: "实名/AML", notesPlaceholder: "客户需求和确认事项", save: "保存", saveAndRead: "保存后读取", saving: "保存中…", cancel: "取消", back: "返回", choose: "请选择", optional: "选填", error: "请检查以下输入内容。", initialState: "新建记录时默认为未核验状态。请填写需要确认的项目后保存。",
+    loan: "贷款预审", stage: "阶段", temperature: "温度", nextFollowUpAt: "下次跟进日期", brokerage: "媒介合同", signedAt: "媒介合同签订日", expiresAt: "媒介合同到期日", matters35: "重要事项说明日（35条）", matters37: "合同书面交付日（37条）", consent: "个人信息使用同意确认日", aml: "实名/AML", notesPlaceholder: "客户需求和确认事项", save: "保存", saveAndRead: "保存后读取", saving: "保存中…", cancel: "取消", back: "返回", choose: "请选择", optional: "选填", error: "请检查以下输入内容。", initialState: "新建记录时默认为未核验状态。请填写需要确认的项目后保存。", existingClientLookupTitle: "查找已有客户", existingClientLookupDescription: "选择文件前输入姓名表示，只显示完全相同的规范化姓名记录。可能是不同的人，不会自动切换或合并上传目标。", existingClientLookupPlaceholder: "输入姓名表示", existingClientLookupSearch: "查找同名记录", existingClientLookupSearching: "查找中…", existingClientLookupNone: "没有完全相同的已有客户记录。", existingClientLookupFound: "使用相同姓名表示的已有客户", existingClientLookupOpen: "打开记录",
   },
   ko: {
     basic: "기본 정보", profile: "개인 자료", needs: "희망 조건", management: "고객 관리", legal: "계약 및 법정 정보", notes: "메모", basicHint: "고객명은 호환 필드로 유지됩니다. 개인은 라틴 문자·한자·가타카나 이름을 별도로 저장할 수 있습니다.", profileHint: "개인 자료이며 법인에는 개인 이름 항목을 표시하지 않습니다.", needsHint: "희망 조건은 비워 두고 나중에 보완할 수 있습니다.", managementHint: "설정하지 않은 관리 항목은 나중에 보완할 수 있습니다.", legalHint: "확인된 계약·법정 정보만 입력합니다.", notesHint: "추가 확인 사항을 기록합니다.",
     name: "고객명", nameLatin: "이름（라틴 문자）", nameKanji: "이름（한자）", nameKatakana: "이름（가타카나）", companyName: "회사명", furigana: "후리가나", companyFurigana: "회사명 후리가나", phone: "전화번호", phoneMissing: "추가 필요: 신분증에는 전화번호가 없는 경우가 많습니다", lineId: "LINE ID", email: "이메일", partyType: "주체 유형", partyTypeUnset: "미설정", birthDate: "생년월일", gender: "성별", currentPostalCode: "현재 우편번호", currentAddress: "현재 주소", companyPostalCode: "회사 우편번호", companyAddress: "회사 주소", employerName: "근무처", employerAddress: "근무처 주소", employerPhone: "근무처 전화", annualIncome: "연소득(참고)", annualIncomeAsOf: "소득 기준일", annualIncomeSource: "소득 정보 출처", yen: "엔", genderUnset: "미설정", genderMale: "남성", genderFemale: "여성", genderOther: "기타", budgetMin: "예산 하한", budgetMax: "예산 상한", budgetType: "예산 유형",
     preferredArea: "희망 지역", firstChoiceArea: "1순위 희망 지역", secondChoiceArea: "2순위 희망 지역", purpose: "용도", period: "입주/운용 희망 시기",
-    loan: "대출 사전심사", stage: "단계", temperature: "온도", nextFollowUpAt: "다음 후속 날짜", brokerage: "중개 계약", signedAt: "중개 계약 체결일", expiresAt: "중개 계약 만료일", matters35: "중요사항 설명일(35조)", matters37: "계약서 교부일(37조)", consent: "개인정보 이용 동의 확인일", aml: "본인확인/AML", notesPlaceholder: "고객 요청과 확인 사항", save: "저장", saveAndRead: "저장 후 읽기", saving: "저장 중…", cancel: "취소", back: "돌아가기", choose: "선택해 주세요", optional: "선택", error: "다음 입력 내용을 확인해 주세요.", initialState: "새로 등록한 기록은 미확인 초기 상태입니다. 필요한 확인 항목을 입력한 후 저장해 주세요.",
+    loan: "대출 사전심사", stage: "단계", temperature: "온도", nextFollowUpAt: "다음 후속 날짜", brokerage: "중개 계약", signedAt: "중개 계약 체결일", expiresAt: "중개 계약 만료일", matters35: "중요사항 설명일(35조)", matters37: "계약서 교부일(37조)", consent: "개인정보 이용 동의 확인일", aml: "본인확인/AML", notesPlaceholder: "고객 요청과 확인 사항", save: "저장", saveAndRead: "저장 후 읽기", saving: "저장 중…", cancel: "취소", back: "돌아가기", choose: "선택해 주세요", optional: "선택", error: "다음 입력 내용을 확인해 주세요.", initialState: "새로 등록한 기록은 미확인 초기 상태입니다. 필요한 확인 항목을 입력한 후 저장해 주세요.", existingClientLookupTitle: "기존 고객 찾기", existingClientLookupDescription: "파일을 선택하기 전에 이름 표기를 입력하면 완전히 일치하는 정규화 이름 기록만 표시합니다. 다른 사람일 수 있으므로 업로드 대상은 자동 변경하거나 병합하지 않습니다.", existingClientLookupPlaceholder: "이름 표기 입력", existingClientLookupSearch: "동일 이름 기록 찾기", existingClientLookupSearching: "확인 중…", existingClientLookupNone: "완전히 일치하는 기존 고객 기록이 없습니다.", existingClientLookupFound: "같은 이름 표기를 사용하는 기존 고객", existingClientLookupOpen: "기록 열기",
   },
 } as const;
 
@@ -244,6 +252,10 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
   const [entryReadFileKeys, setEntryReadFileKeys] = useState<string[]>([]);
   const [entryStagedFiles, setEntryStagedFiles] = useState<EntryUploadStagedFileRef[]>([]);
   const [entryStagingPending, setEntryStagingPending] = useState(false);
+  const [existingClientLookupQuery, setExistingClientLookupQuery] = useState("");
+  const [existingClientLookupMatches, setExistingClientLookupMatches] = useState<ExistingClientNameMatch[]>([]);
+  const [existingClientLookupStatus, setExistingClientLookupStatus] = useState<"idle" | "searching" | "empty" | "ready" | "error">("idle");
+  const existingClientLookupAbortRef = useRef<AbortController | null>(null);
   const [autoSaving, startAutoSaving] = useTransition();
   const formRef = useRef<HTMLFormElement>(null);
   const autoSaveStartedRef = useRef(false);
@@ -275,6 +287,46 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
   const handleEntryStagingPending = useCallback((pending: boolean) => {
     setEntryStagingPending(pending);
   }, []);
+  const searchExistingClientsByName = useCallback(async () => {
+    const query = existingClientLookupQuery.trim();
+    existingClientLookupAbortRef.current?.abort();
+    if (!query) {
+      setExistingClientLookupMatches([]);
+      setExistingClientLookupStatus("idle");
+      return;
+    }
+    const controller = new AbortController();
+    existingClientLookupAbortRef.current = controller;
+    setExistingClientLookupStatus("searching");
+    try {
+      const response = await fetch(`/api/clients/exact-name?q=${encodeURIComponent(query)}`, {
+        headers: { accept: "application/json" },
+        signal: controller.signal,
+      });
+      const payload = await response.json() as { ok?: boolean; matches?: unknown };
+      if (!response.ok || payload.ok !== true || !Array.isArray(payload.matches)) throw new Error("client_name_lookup_failed");
+      const matches = payload.matches.flatMap((item): ExistingClientNameMatch[] => {
+        if (!item || typeof item !== "object") return [];
+        const row = item as Record<string, unknown>;
+        if (typeof row.id !== "string" || typeof row.name !== "string") return [];
+        return [{
+          id: row.id,
+          name: row.name,
+          ...(typeof row.nameLatin === "string" ? { nameLatin: row.nameLatin } : {}),
+          ...(typeof row.nameKanji === "string" ? { nameKanji: row.nameKanji } : {}),
+          ...(typeof row.nameKatakana === "string" ? { nameKatakana: row.nameKatakana } : {}),
+        }];
+      });
+      if (controller.signal.aborted) return;
+      setExistingClientLookupMatches(matches);
+      setExistingClientLookupStatus(matches.length > 0 ? "ready" : "empty");
+    } catch {
+      if (controller.signal.aborted) return;
+      setExistingClientLookupMatches([]);
+      setExistingClientLookupStatus("error");
+    }
+  }, [existingClientLookupQuery]);
+  useEffect(() => () => existingClientLookupAbortRef.current?.abort(), []);
   const confirmEntryCandidate = useCallback((candidate: EntryPreviewCandidate) => {
     setValues((current) => {
       if (String(current[candidate.key as keyof ClientFormValues] ?? "").trim()) return current;
@@ -488,6 +540,35 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
       {!isCorporate ? <input type="hidden" id="client-name" name="name" value={legacyNameValue} readOnly aria-hidden="true" /> : null}
       {entryUpload && !readOnly ? <>
         <input type="hidden" name="entryIntentId" value={entryIntentId} />
+        {mode === "create" ? <div role="search" aria-labelledby="existing-client-lookup-title" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-950">
+          <p id="existing-client-lookup-title" className="font-bold">{text.existingClientLookupTitle}</p>
+          <p className="mt-1 text-xs leading-5">{text.existingClientLookupDescription}</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <input
+              value={existingClientLookupQuery}
+              onChange={(event) => {
+                setExistingClientLookupQuery(event.target.value);
+                setExistingClientLookupStatus("idle");
+                setExistingClientLookupMatches([]);
+              }}
+              placeholder={text.existingClientLookupPlaceholder}
+              aria-label={text.existingClientLookupPlaceholder}
+              className="min-w-0 flex-1 rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#0046ad] focus:ring-2 focus:ring-blue-100"
+            />
+            <button type="button" onClick={() => void searchExistingClientsByName()} disabled={existingClientLookupStatus === "searching"} className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-900 disabled:cursor-wait disabled:opacity-60">
+              {existingClientLookupStatus === "searching" ? text.existingClientLookupSearching : text.existingClientLookupSearch}
+            </button>
+          </div>
+          {existingClientLookupStatus === "error" ? <p role="alert" className="mt-2 text-xs font-semibold text-rose-700">{text.error}</p> : null}
+          {existingClientLookupStatus === "empty" ? <p role="status" className="mt-2 text-xs font-semibold text-slate-700">{text.existingClientLookupNone}</p> : null}
+          {existingClientLookupMatches.length > 0 ? <div className="mt-2 space-y-1" role="list" aria-label={text.existingClientLookupFound}>
+            <p className="text-xs font-bold">{text.existingClientLookupFound}</p>
+            {existingClientLookupMatches.map((match) => <div key={match.id} role="listitem" className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-200 bg-white px-2.5 py-2">
+              <span className="min-w-0 break-words font-semibold">{match.name}</span>
+              <Link href={`/clients/${encodeURIComponent(match.id)}/edit`} className="shrink-0 font-bold text-[#0046ad] underline">{text.existingClientLookupOpen}</Link>
+            </div>)}
+          </div> : null}
+        </div> : null}
         <EntryFilePicker locale={locale} files={entryFiles} onFilesChange={updateEntryFiles} disabled={pending} />
         <EntryPreview files={entryFiles} kind="customer" locale={locale} onConfirm={confirmEntryCandidate} onApplyCandidate={applyEntryCandidate} onLocateCandidate={locateEntryCandidate} onReadFileKeys={handleEntryReadFileKeys} onStagedFiles={handleEntryStagedFiles} onStagingPending={handleEntryStagingPending} onReadComplete={autoSaveReadResult} />
         <input type="hidden" name="entryReadFileKeys" value={JSON.stringify(entryReadFileKeys)} />

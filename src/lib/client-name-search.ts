@@ -23,6 +23,16 @@ export function matchesClientNameSearch(
   return clientNameSearchValues(client).some((value) => normalizeClientNameSearch(value).includes(normalizedQuery));
 }
 
+/** Return only clients sharing one complete normalized persisted name value. */
+export function filterExactClientNameMatches<T extends Pick<Client, "name" | "nameLatin" | "nameKanji" | "nameKatakana">>(
+  clients: readonly T[],
+  query: string,
+): T[] {
+  const normalizedQuery = normalizeClientNameSearch(query);
+  if (!normalizedQuery) return [];
+  return clients.filter((client) => clientNameSearchValues(client).some((value) => normalizeClientNameSearch(value) === normalizedQuery));
+}
+
 export function sharesClientNameRepresentation(
   left: Pick<Client, "name" | "nameLatin" | "nameKanji" | "nameKatakana">,
   right: Pick<Client, "name" | "nameLatin" | "nameKanji" | "nameKatakana">,
