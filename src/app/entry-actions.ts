@@ -19,6 +19,33 @@ import { buildEntryRequestPayloadDigest, readEntryIntentId, validateEntryPreview
 import { assertProductionAttachmentStorageReady } from "@/lib/production-readiness";
 import { consumeEntryUploadStagedFiles, discardEntryUploadStagedFiles, parseEntryUploadStagedRefs, readEntryUploadStagedFiles } from "@/lib/entry-upload-staging";
 import type { EntryUploadStagingRecord } from "@/lib/entry-upload-staging-contract";
+import { normalizeImportCenterObjectReturnTo } from "@/lib/import-center-return";
+
+const ENTRY_RETURN_ORIGIN = "http://broker-desk.local";
+const CLIENT_RETURN_KEYS = new Set(["q", "stage", "purpose", "temperature", "sort", "page"]);
+const PROPERTY_RETURN_KEYS = new Set(["q", "lifecycle", "sort", "page"]);
+const ORGANIZE_RETURN_KEYS = new Set(["type", "q", "lifecycle", "page"]);
+
+function normalizeEntryReturnTo(value: unknown, targetType: "party" | "property"): string | null {
+  const raw = String(value ?? "").trim();
+  if (!raw || !raw.startsWith("/") || raw.startsWith("//") || raw.includes("\\")) return null;
+  const rawPathname = raw.split(/[?#]/, 1)[0];
+  let decodedPathname = rawPathname;
+  try { decodedPathname = decodeURIComponent(rawPathname); } catch { return null; }
+  if (decodedPathname.includes("\\") || decodedPathname.split("/").some((segment) => segment === "." || segment === "..")) return null;
+  let parsed: URL;
+  try { parsed = new URL(raw, ENTRY_RETURN_ORIGIN); } catch { return null; }
+  if (parsed.origin !== ENTRY_RETURN_ORIGIN) return null;
+  const keys = [...new Set([...parsed.searchParams.keys()])];
+  const listPath = targetType === "party" ? "/clients" : "/properties";
+  const listKeys = targetType === "party" ? CLIENT_RETURN_KEYS : PROPERTY_RETURN_KEYS;
+  if (parsed.pathname === listPath && !keys.some((key) => !listKeys.has(key))) return `${parsed.pathname}${parsed.search}`;
+  if (parsed.pathname === "/organize-center" && ["", "all", targetType === "party" ? "client" : "property"].includes(parsed.searchParams.get("type") ?? "") && !keys.some((key) => !ORGANIZE_RETURN_KEYS.has(key))) {
+    return `${parsed.pathname}${parsed.search}`;
+  }
+  if (parsed.pathname === "/import-center") return normalizeImportCenterObjectReturnTo(raw, targetType === "party" ? "person" : "property", true);
+  return null;
+}
 
 async function prepareUploads(formData: FormData, kind: "customer" | "property") {
   const rawFiles = formData.getAll("uploadFile").filter((value): value is File => value instanceof File && value.size > 0);
@@ -58,6 +85,8 @@ async function prepareUploads(formData: FormData, kind: "customer" | "property")
 async function finishEntry(targetType: "party" | "property", targetId: string, files: File[], proofs: Map<string, EntryPreviewProofPayload>, formData: FormData, finalValues: Record<string, string>, creationAuditWarning = false, reusedEntry = false, stagedRecords: EntryUploadStagingRecord[] = []): Promise<never> {
   const path = targetType === "party" ? `/clients/${encodeURIComponent(targetId)}/edit` : `/properties/${encodeURIComponent(targetId)}/edit`;
   const params = new URLSearchParams({ flash: reusedEntry ? "entry_reused" : targetType === "party" ? "client_created" : "property_created" });
+  const parentReturnTo = normalizeEntryReturnTo(formData.get("returnTo"), targetType);
+  if (parentReturnTo) params.set("returnTo", parentReturnTo);
   if (creationAuditWarning) params.set("createAuditWarning", "1");
   let auditFailed = false;
   let archiveFailed = false;

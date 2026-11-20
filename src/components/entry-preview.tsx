@@ -31,6 +31,7 @@ type EntryPreviewProps = {
   kind: EntryPreviewKind;
   context?: "entry" | "case";
   locale: Locale;
+  compact?: boolean;
   onConfirm: (candidate: EntryPreviewCandidate) => void;
   onApplyCandidate?: (candidate: EntryPreviewCandidate, preview: EntryPreviewState) => void;
   onLocateCandidate?: (candidate: EntryPreviewCandidate) => void;
@@ -162,7 +163,7 @@ export function getUnreadEntryFiles(files: readonly File[], readFileKeys: readon
   return files.filter((file) => !read.has(entryFileKey(file)));
 }
 
-export function EntryPreview({ files, kind, context, locale, onConfirm, onApplyCandidate, onLocateCandidate, onReadFileKeys, onStagedFiles, onStagingPending, onReadComplete }: EntryPreviewProps) {
+export function EntryPreview({ files, kind, context, locale, compact = false, onConfirm, onApplyCandidate, onLocateCandidate, onReadFileKeys, onStagedFiles, onStagingPending, onReadComplete }: EntryPreviewProps) {
   const text = copy[locale];
   const [preview, setPreview] = useState<{ files: File[]; kind: EntryPreviewKind; context?: "entry" | "case"; state: EntryPreviewState }>();
   const [decisions, setDecisions] = useState<{ files: File[]; kind: EntryPreviewKind; context?: "entry" | "case"; values: Record<string, "auto_saved" | "rejected"> }>();
@@ -248,11 +249,6 @@ export function EntryPreview({ files, kind, context, locale, onConfirm, onApplyC
   };
 
   const activePreview = preview?.files === files && preview.kind === kind && preview.context === context ? preview.state : undefined;
-  useEffect(() => {
-    if (files.length > 0) read();
-    // A new file selection or target kind starts one read. Retry stays an explicit button.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [files, kind, context]);
   const activeDecisions = decisions?.files === files && decisions.kind === kind && decisions.context === context ? decisions.values : {};
   const unreadFiles = getUnreadEntryFiles(files, activePreview?.readFileKeys ?? []);
   const allFilesRead = files.length > 0 && unreadFiles.length === 0 && Boolean(activePreview?.candidates.length);
@@ -264,7 +260,7 @@ export function EntryPreview({ files, kind, context, locale, onConfirm, onApplyC
   const ready = kind === "property" ? text.readyProperty : text.ready;
 
   return (
-    <section aria-labelledby="entry-preview-heading" className="space-y-3 rounded-xl border border-indigo-200 bg-indigo-50/50 p-4">
+    <section aria-labelledby="entry-preview-heading" aria-busy={pending} className={compact ? "space-y-2" : "space-y-3 rounded-xl border border-indigo-200 bg-indigo-50/50 p-4"}>
       <input type="hidden" name="entryReadProofs" value={JSON.stringify(activePreview?.readProofs ?? {})} />
       <input type="hidden" name="entryPreviewDecisions" value={JSON.stringify(activeDecisions)} />
       <div className="flex items-center gap-2">
@@ -272,7 +268,7 @@ export function EntryPreview({ files, kind, context, locale, onConfirm, onApplyC
         <HelpHint id="entry-preview-help" label={text.title} size="lg">{description}</HelpHint>
       </div>
       <button type="button" onClick={read} disabled={pending || allFilesRead} className="min-h-11 rounded-lg bg-indigo-700 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-800 disabled:cursor-wait disabled:opacity-60">
-        {pending ? text.reading : allFilesRead ? text.readComplete : activePreview?.status === "error" && activePreview.readFileKeys.length > 0 ? text.retry : text.read}
+        {pending ? <span role="status" className="inline-flex items-center gap-2"><span aria-hidden="true" className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />{text.reading}</span> : allFilesRead ? text.readComplete : activePreview?.status === "error" && activePreview.readFileKeys.length > 0 ? text.retry : text.read}
       </button>
       {activePreview?.message ? <p role={activePreview.status === "error" ? "alert" : "status"} className={`text-xs font-bold ${activePreview.status === "error" ? "text-rose-700" : "text-amber-700"}`}>{activePreview.message}</p> : null}
       {activePreview && (activePreview.status === "ready" || activePreview.candidates.length > 0) ? (

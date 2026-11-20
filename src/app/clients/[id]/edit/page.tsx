@@ -19,6 +19,7 @@ import { buildEntryDraftKey } from "@/lib/entry-draft-key";
 import { collectClientIdentityDraftSuggestions } from "@/lib/customer-identity-draft";
 import { ClientIdentityDraftApplyButton } from "@/components/client-identity-draft-apply-button";
 import { sharesClientNameRepresentation } from "@/lib/client-name-search";
+import { normalizeImportCenterObjectReturnTo } from "@/lib/import-center-return";
 
 export const dynamic = "force-dynamic";
 
@@ -41,8 +42,10 @@ function parseEntryApplied(value: string | undefined): string[] {
   return decoded.split(",").map((field) => field.trim()).filter(Boolean);
 }
 
-function normalizeReturnTo(value: string | undefined, clientId: string): string {
-  const fallback = `/clients/${encodeURIComponent(clientId)}`;
+function normalizeReturnTo(value: string | undefined, clientId: string, flash?: string): string {
+  const fallback = flash === "client_created" || flash === "entry_reused"
+    ? "/clients"
+    : `/clients/${encodeURIComponent(clientId)}`;
   const path = (value ?? "").trim();
   if (!path || !path.startsWith("/") || path.startsWith("//") || path.includes("\\")) return fallback;
   const rawPathname = path.split(/[?#]/, 1)[0];
@@ -61,7 +64,7 @@ function normalizeReturnTo(value: string | undefined, clientId: string): string 
     if (keys.some((key) => !["type", "q", "lifecycle", "page"].includes(key))) return fallback;
     return `${parsed.pathname}${parsed.search}`;
   }
-  if (parsed.pathname === "/import-center" && keys.length === 0) return parsed.pathname;
+  if (parsed.pathname === "/import-center") return normalizeImportCenterObjectReturnTo(path, "person", true) ?? fallback;
   if (parsed.pathname === `/clients/${encodeURIComponent(clientId)}` && keys.length === 0) return parsed.pathname;
   return fallback;
 }
@@ -76,7 +79,7 @@ export default async function EditClientPage({ params, searchParams }: EditClien
   const profileVersionRecord = await resolveClientVisibilityForContext({ context: createRequestContext(session), clientId: client.id });
   const clientProfileVersion = profileVersionRecord.record ? buildObjectVersionFingerprint(profileVersionRecord.record as unknown as Record<string, unknown>) : buildObjectVersionFingerprint(client);
   const query = (await searchParams) ?? {};
-  const returnTo = normalizeReturnTo(query.returnTo, client.id);
+  const returnTo = normalizeReturnTo(query.returnTo, client.id, query.flash);
   const entryAppliedFields = parseEntryApplied(query.entryApplied);
   const entryDraftKey = buildEntryDraftKey({ tenantId: session.tenant.id, userId: session.user.id, objectType: "client", objectId: client.id });
   const flashMessage = query.flash === "entry_preview_audit_failed"
@@ -131,6 +134,7 @@ export default async function EditClientPage({ params, searchParams }: EditClien
     employerName: client.employerName,
     employerAddress: client.employerAddress,
     employerPhone: client.employerPhone,
+    employerFax: client.employerFax,
     annualIncome: client.annualIncome,
     annualIncomeAsOf: client.annualIncomeAsOf,
     annualIncomeSource: client.annualIncomeSource,

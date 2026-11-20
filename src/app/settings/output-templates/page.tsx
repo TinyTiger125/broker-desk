@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { applyOutputTemplateVersionAction, updateOutputTemplateSettingsAction } from "@/app/actions";
 import { getOutputTemplateSettings, listOutputTemplateVersions } from "@/lib/data";
+import { formatJapanesePhoneForDisplay } from "@/lib/japanese-mobile-phone";
 import { getLocale, type Locale } from "@/lib/locale";
 import { type OutputTemplateSettingsInput } from "@/lib/output-doc";
 import { requireTenantSession } from "@/lib/tenant-session";
@@ -280,7 +281,7 @@ export default async function OutputTemplateSettingsPage({ searchParams }: Outpu
             </label>
             <label className="space-y-1 text-sm">
               <span className="text-slate-600">{templateFieldLabels.phone}</span>
-              <input name="phone" defaultValue={settings.phone} className="w-full rounded-lg border border-slate-300 px-3 py-2" />
+              <input name="phone" type="tel" defaultValue={formatJapanesePhoneForDisplay(settings.phone)} inputMode="tel" autoComplete="tel" placeholder="03-1234-5678 / 090-1234-5678" className="w-full rounded-lg border border-slate-300 px-3 py-2" />
             </label>
             <label className="space-y-1 text-sm">
               <span className="text-slate-600">{templateFieldLabels.email}</span>

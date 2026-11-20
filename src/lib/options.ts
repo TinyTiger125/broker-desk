@@ -5,6 +5,7 @@ import {
   CLIENT_STAGES,
   FOLLOWUP_TYPES,
   LOAN_PREAPPROVAL_STATUSES,
+  LEGACY_PURPOSES,
   PURPOSES,
   QUOTE_STATUSES,
   TEMPERATURES,
@@ -212,20 +213,41 @@ const stageLabelByLocale: Record<Locale, Record<ClientStage, string>> = {
 
 const purposeLabelByLocale: Record<Locale, Record<Purpose, string>> = {
   ja: {
-    unspecified: "未確認",
+    unspecified: "未定",
+    sale_residential: "【売買】居住用",
+    sale_investment: "【売買】投資用",
+    rent_residential: "【賃貸】住居",
+    rent_tenant: "【賃貸】テナント",
+    rent_monthly: "【賃貸】マンスリー",
     self_use: "居住用",
     investment: "投資用",
   },
   zh: {
-    unspecified: "待确认",
+    unspecified: "未定",
+    sale_residential: "【买卖】居住用",
+    sale_investment: "【买卖】投资用",
+    rent_residential: "【租赁】住宅",
+    rent_tenant: "【租赁】店铺",
+    rent_monthly: "【租赁】月租",
     self_use: "自住",
     investment: "投资",
   },
   ko: {
-    unspecified: "미확인",
+    unspecified: "미정",
+    sale_residential: "【매매】거주용",
+    sale_investment: "【매매】투자용",
+    rent_residential: "【임대】주거용",
+    rent_tenant: "【임대】점포",
+    rent_monthly: "【임대】월세",
     self_use: "실거주",
     investment: "투자",
   },
+};
+
+const legacyPurposeContextByLocale: Record<Locale, string> = {
+  ja: "（旧値・売買/賃貸未分類）",
+  zh: "（旧值・买卖/租赁未分类）",
+  ko: "（기존 값·매매/임대 미분류）",
 };
 
 const temperatureLabelByLocale: Record<Locale, Record<Temperature, string>> = {
@@ -251,16 +273,19 @@ const temperatureLabelByLocale: Record<Locale, Record<Temperature, string>> = {
 
 const budgetTypeLabelByLocale: Record<Locale, Record<BudgetType, string>> = {
   ja: {
-    total_price: "総額予算",
-    monthly_payment: "月額返済予算",
+    total_price: "【売買】購入総額",
+    monthly_payment: "【売買】月額ローン返済",
+    monthly_rent: "【賃貸】月額家賃",
   },
   zh: {
-    total_price: "总价预算",
-    monthly_payment: "月供预算",
+    total_price: "【买卖】购买总额",
+    monthly_payment: "【买卖】月供",
+    monthly_rent: "【租赁】月租",
   },
   ko: {
-    total_price: "총액 예산",
-    monthly_payment: "월 상환 예산",
+    total_price: "【매매】구매 총액",
+    monthly_payment: "【매매】월 대출 상환",
+    monthly_rent: "【임대】월 임대료",
   },
 };
 
@@ -404,8 +429,14 @@ export function getPurposeLabel(locale: Locale): Record<Purpose, string> {
   return getLocaleMap(purposeLabelByLocale, locale);
 }
 
-export function getPurposeOptions(locale: Locale): Option<Purpose>[] {
-  return createOptions(PURPOSES, getPurposeLabel(locale));
+export function getPurposeOptions(locale: Locale, currentValue?: string): Option<Purpose>[] {
+  const options = createOptions(PURPOSES, getPurposeLabel(locale));
+  if (!currentValue || !(LEGACY_PURPOSES as readonly string[]).includes(currentValue)) return options;
+  const legacyValue = currentValue as (typeof LEGACY_PURPOSES)[number];
+  return [{
+    value: legacyValue,
+    label: `${purposeLabelByLocale[locale][legacyValue]}${legacyPurposeContextByLocale[locale]}`,
+  }, ...options];
 }
 
 export function getTemperatureLabel(locale: Locale): Record<Temperature, string> {

@@ -17,6 +17,7 @@ type EntryFilePickerProps = {
   onFilesChange: (files: File[]) => void;
   name?: string;
   disabled?: boolean;
+  compact?: boolean;
 };
 
 const copy = {
@@ -79,6 +80,7 @@ export function EntryFilePicker({
   onFilesChange,
   name = ENTRY_FILE_INPUT_NAME,
   disabled = false,
+  compact = false,
 }: EntryFilePickerProps) {
   const text = copy[locale];
   const inputRef = useRef<HTMLInputElement>(null);
@@ -110,7 +112,7 @@ export function EntryFilePicker({
   };
 
   return (
-    <section aria-labelledby="entry-upload-heading" className="space-y-3 rounded-xl border border-blue-200 bg-blue-50/50 p-4">
+    <section aria-labelledby="entry-upload-heading" className={compact ? "space-y-2" : "space-y-3 rounded-xl border border-blue-200 bg-blue-50/50 p-4"}>
       <div>
         <h2 id="entry-upload-heading" className="text-sm font-black text-slate-950">{text.label}</h2>
         <p className="mt-1 text-xs leading-5 text-slate-600">{text.hint}</p>

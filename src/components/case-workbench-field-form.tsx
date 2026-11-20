@@ -7,6 +7,13 @@ import { Button } from "@/components/ui-foundation";
 import { isValidCaseDateInput } from "@/lib/case-date";
 import { isValidJapanesePostalCode } from "@/lib/japanese-postal-code-validation";
 import { getCaseContactValidationError } from "@/lib/case-contact-validation";
+import { formatJapanesePhone } from "@/lib/japanese-mobile-phone";
+
+function normalizePhoneInput(target: HTMLInputElement) {
+  if (target.dataset.caseFieldKind !== "tel") return;
+  const formatted = formatJapanesePhone(target.value);
+  if (formatted !== target.value) target.value = formatted;
+}
 
 type CaseWorkbenchFieldFormProps = {
   action: (formData: FormData) => void | Promise<void>;
@@ -155,6 +162,7 @@ export function CaseWorkbenchFieldForm({
         onDirtyChange?.(true);
         const target = event.target;
         if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) {
+          if (target instanceof HTMLInputElement) normalizePhoneInput(target);
           if (target.name === `field:${fieldKey}` && fieldValueSnapshotRef.current) fieldValueSnapshotRef.current.value = target.value;
         }
         if (target instanceof HTMLInputElement && target.dataset.caseValidation === "japanese-postal-code") {
@@ -173,6 +181,7 @@ export function CaseWorkbenchFieldForm({
         onDirtyChange?.(true);
         const target = event.target;
         if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) {
+          if (target instanceof HTMLInputElement) normalizePhoneInput(target);
           if (target.name === `field:${fieldKey}` && fieldValueSnapshotRef.current) fieldValueSnapshotRef.current.value = target.value;
         }
         if (target instanceof HTMLInputElement && target.dataset.caseValidation === "japanese-postal-code") {

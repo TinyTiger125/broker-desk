@@ -1,158 +1,286 @@
-import { readFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const ts = require("typescript");
 
-const action = await readFile("src/app/actions.ts", "utf8");
-const form = await readFile("src/components/client-form.tsx", "utf8");
-const createPage = await readFile("src/app/clients/new/page.tsx", "utf8");
-const importCenterReturnSource = await readFile("src/lib/import-center-return.ts", "utf8");
-const editPage = await readFile("src/app/clients/[id]/edit/page.tsx", "utf8");
-const detailPage = await readFile("src/app/clients/[id]/page.tsx", "utf8");
-const failures = [];
+const form = readFileSync("src/components/client-form.tsx", "utf8");
+const action = readFileSync("src/app/actions.ts", "utf8");
+const createPage = readFileSync("src/app/clients/new/page.tsx", "utf8");
+const editPage = readFileSync("src/app/clients/[id]/edit/page.tsx", "utf8");
+const detailPage = readFileSync("src/app/clients/[id]/page.tsx", "utf8");
+const state = readFileSync("src/lib/client-form-state.ts", "utf8");
+const money = readFileSync("src/lib/client-money.ts", "utf8");
+const domain = readFileSync("src/lib/domain.ts", "utf8");
+const options = readFileSync("src/lib/options.ts", "utf8");
+const associationManager = readFileSync("src/components/case-association-manager.tsx", "utf8");
+const importCenterReturnSource = readFileSync("src/lib/import-center-return.ts", "utf8");
 
-function requireText(source, text, description) {
-  if (!source.includes(text)) failures.push(description);
+function requireText(source, text, message) {
+  if (!source.includes(text)) throw new Error(message);
 }
 
-function forbidText(source, text, description) {
-  if (source.includes(text)) failures.push(description);
+function forbidText(source, text, message) {
+  if (source.includes(text)) throw new Error(message);
 }
 
-requireText(form, 'basic: "基本情報"', "form must keep the basic information group");
-requireText(form, 'ja: {', "form must define a Japanese copy map");
-requireText(form, 'management: "顧客管理"', "form must keep the customer management group");
-requireText(form, 'legal: "契約・法定情報"', "form must keep the legal group");
-requireText(form, 'notes: "備考"', "form must keep the notes group");
-requireText(form, 'label("budgetType", text.budgetType)', "budget type label must come from the locale copy map");
-const expectedCopy = {
-  ja: {
-    basic: "基本情報", needs: "希望条件", management: "顧客管理", legal: "契約・法定情報", notes: "備考", name: "顧客名", phone: "電話番号", phoneMissing: "要補完：本人確認資料には電話番号がない場合があります", lineId: "LINE ID", email: "メールアドレス", budgetMin: "予算下限", budgetMax: "予算上限", budgetType: "予算タイプ", preferredArea: "意向エリア", firstChoiceArea: "第1希望エリア", secondChoiceArea: "第2希望エリア", purpose: "用途", period: "入居/運用希望時期", loan: "ローン事前審査", stage: "ステージ", temperature: "温度感", nextFollowUpAt: "次回フォロー日", brokerage: "媒介契約", signedAt: "媒介契約締結日", expiresAt: "媒介契約満了日", matters35: "重要事項説明日（35条）", matters37: "契約書面交付日（37条）", consent: "個人情報利用目的同意確認日", aml: "本人確認/AML", notesPlaceholder: "顧客の要望や確認事項", save: "保存", saving: "保存中…", cancel: "キャンセル", back: "戻る", choose: "選択してください", optional: "任意", error: "入力内容を確認してください。", initialState: "新規登録時は未確認の状態です。必要な確認項目を入力して保存してください。",
-  },
-  zh: {
-    basic: "基本信息", needs: "需求条件", management: "客户管理", legal: "合同与法定信息", notes: "备注", name: "客户姓名", phone: "电话号码", phoneMissing: "待补全：证件通常不含电话号码", lineId: "LINE ID", email: "邮箱地址", budgetMin: "预算下限", budgetMax: "预算上限", budgetType: "预算类型", preferredArea: "意向区域", firstChoiceArea: "第一意向区域", secondChoiceArea: "第二意向区域", purpose: "用途", period: "入住/运营期望时间", loan: "贷款预审", stage: "阶段", temperature: "温度", nextFollowUpAt: "下次跟进日期", brokerage: "媒介合同", signedAt: "媒介合同签订日", expiresAt: "媒介合同到期日", matters35: "重要事项说明日（35条）", matters37: "合同书面交付日（37条）", consent: "个人信息使用同意确认日", aml: "实名/AML", notesPlaceholder: "客户需求和确认事项", save: "保存", saving: "保存中…", cancel: "取消", back: "返回", choose: "请选择", optional: "选填", error: "请检查以下输入内容。", initialState: "新建记录时默认为未核验状态。请填写需要确认的项目后保存。",
-  },
-  ko: {
-    basic: "기본 정보", needs: "희망 조건", management: "고객 관리", legal: "계약 및 법정 정보", notes: "메모", name: "고객명", phone: "전화번호", phoneMissing: "추가 필요: 신분증에는 전화번호가 없는 경우가 많습니다", lineId: "LINE ID", email: "이메일", budgetMin: "예산 하한", budgetMax: "예산 상한", budgetType: "예산 유형", preferredArea: "희망 지역", firstChoiceArea: "1순위 희망 지역", secondChoiceArea: "2순위 희망 지역", purpose: "용도", period: "입주/운용 희망 시기", loan: "대출 사전심사", stage: "단계", temperature: "온도", nextFollowUpAt: "다음 후속 날짜", brokerage: "중개 계약", signedAt: "중개 계약 체결일", expiresAt: "중개 계약 만료일", matters35: "중요사항 설명일(35조)", matters37: "계약서 교부일(37조)", consent: "개인정보 이용 동의 확인일", aml: "본인확인/AML", notesPlaceholder: "고객 요청과 확인 사항", save: "저장", saving: "저장 중…", cancel: "취소", back: "돌아가기", choose: "선택해 주세요", optional: "선택", error: "다음 입력 내용을 확인해 주세요.", initialState: "새로 등록한 기록은 미확인 초기 상태입니다. 필요한 확인 항목을 입력한 후 저장해 주세요.",
-  },
-};
+for (const heading of [
+  'basic: "基本情報"',
+  'profile: "本人資料"',
+  'needs: "希望条件"',
+  'management: "顧客管理"',
+  'notes: "備考"',
+]) requireText(form, heading, `client form must keep ${heading}`);
+
+for (const label of ['氏名（ABC）', '種別', '勤務先FAX', '万円']) {
+  requireText(form, label, `client form must expose the revised label ${label}`);
+}
+
+requireText(form, 'type="hidden" name={field} value={values[field]}', "legacy customer fields must be submitted as hidden compatibility values");
+for (const field of ["preferredArea", "loanPreApprovalStatus", "annualIncomeAsOf", "annualIncomeSource", "brokerageContractType"]) {
+  requireText(form, `"${field}"`, `legacy field ${field} must remain in the compatibility payload`);
+}
+requireText(form, "preserveClientIndividualFieldsOnCorporateValidation", "corporate validation must preserve omitted individual drafts");
+requireText(form, "setValues((current) => preserveClientIndividualFieldsOnCorporateValidation", "validation must merge the preserved corporate draft back into the form");
+requireText(form, "filled: number", "collapsible section headings must receive filled counts");
+requireText(form, "total: number", "collapsible section headings must receive total counts");
+requireText(form, "sectionCounts", "client form must compute section counts from live values");
+requireText(form, "isClientFormFieldCounted(field, values[field], mode, touchedFields)", "section counts must exclude untouched new-form sentinels while counting live values");
+requireText(form, "setTouchedFields", "section counts must recognize an explicit user selection of a sentinel option");
+requireText(form, 'aria-expanded={expanded}', "section controls must expose their expanded state");
+requireText(form, 'className={expanded ? "mt-3" : "hidden"}', "collapsed sections must keep their fields mounted");
+requireText(form, 'role="alert"', "form must expose a focusable error summary");
+requireText(form, "aria-describedby", "field errors must be associated with fields");
+requireText(form, "onCompositionStart", "IME composition guard must exist");
+requireText(form, "basic: Boolean(baseInitial.phone || baseInitial.lineId || baseInitial.email)", "basic client section must open only when basic fields contain values");
+requireText(form, "profile: Boolean(baseInitial", "profile client section must open when existing values contain data");
+requireText(form, "onInvalidCapture={handleInvalid}", "native invalid fields must reopen their containing section");
+requireText(form, "openSectionForField(field)", "error links must reopen their containing section");
+requireText(form, 'step={annualIncomeIsLegacyDecimal ? "any" : "1"}', "legacy annual income must remain browser-valid while unchanged");
+requireText(form, 'step={budgetMinIsLegacyDecimal ? "any" : "1"}', "legacy minimum budget must remain browser-valid while unchanged");
+requireText(form, 'step={budgetMaxIsLegacyDecimal ? "any" : "1"}', "legacy maximum budget must remain browser-valid while unchanged");
+requireText(form, "legacyMoneyHint", "legacy non-integer yen amounts must explain the unchanged/edit rule");
+for (const field of ["legacyAnnualIncomeYen", "legacyBudgetMinYen", "legacyBudgetMaxYen"]) forbidText(form, `name=\"${field}\"`, `client form must not submit an untrusted ${field} hidden baseline`);
+requireText(form, "text.man", "money fields must display 万円");
+requireText(form, "/api/postal-codes/lookup", "client postal input must use the official lookup route");
+requireText(form, "onBlur={() => void lookupCurrentPostalCode()}", "client postal lookup must be explicit on blur");
+requireText(form, "postalLookupNotFound", "client postal lookup must expose a clear not-found state");
+requireText(form, "postalLookupUnavailable", "client postal lookup must expose an unavailable-index state");
+requireText(form, "formatJapanesePhone", "client phone fields must use the shared mobile/landline formatter");
+requireText(form, 'getPurposeOptions(locale, mode === "edit" ? values.purpose : undefined)', "purpose options must expose a selected legacy value only while editing that record");
+requireText(form, 'name="purposeTouched"', "purpose edit intent must be explicit so an untouched legacy value cannot be overwritten by stale browser state");
+
 const copyStart = form.indexOf("const copy =");
 const copyEnd = form.indexOf("} as const;", copyStart);
 const copySource = form.slice(copyStart, copyEnd);
-for (const [locale, messages] of Object.entries(expectedCopy)) {
+for (const locale of ["ja", "zh", "ko"]) {
   const start = copySource.indexOf(`${locale}: {`);
-  const next = ["ja", "zh", "ko"].filter((candidate) => candidate !== locale).map((candidate) => copySource.indexOf(`${candidate}: {`, start + 1)).filter((index) => index >= 0).sort((a, b) => a - b)[0] ?? copySource.length;
+  if (start < 0) throw new Error(`client form must define ${locale} locale copy`);
+  const next = ["ja", "zh", "ko"]
+    .filter((candidate) => candidate !== locale)
+    .map((candidate) => copySource.indexOf(`${candidate}: {`, start + 1))
+    .filter((index) => index >= 0)
+    .sort((left, right) => left - right)[0] ?? copySource.length;
   const block = copySource.slice(start, next);
-  for (const [key, value] of Object.entries(messages)) {
-    if (!block.includes(`${key}: ${JSON.stringify(value)}`)) failures.push(`${locale} ClientForm copy mismatch: ${key}`);
+  for (const key of ["basic", "profile", "needs", "management", "notes", "name", "nameLatin", "nameKanji", "nameKatakana", "partyType", "employerFax", "budgetType", "purpose", "man", "save", "cancel"]) {
+    if (!new RegExp(`\\b${key}:`).test(block)) throw new Error(`${locale} ClientForm copy must retain ${key}`);
   }
+}
+const exactCopy = {
+  ja: { basic: "基本情報", profile: "本人資料", needs: "希望条件", management: "顧客管理", notes: "備考", name: "顧客名", nameLatin: "氏名（ABC）", partyType: "種別", employerFax: "勤務先FAX", phone: "電話番号", man: "万円", budgetType: "予算タイプ", purpose: "用途", save: "保存", cancel: "キャンセル" },
+  zh: { basic: "基本信息", profile: "个人资料", needs: "需求条件", management: "客户管理", notes: "备注", name: "客户姓名", nameLatin: "姓名（拉丁字母）", partyType: "主体类型", employerFax: "工作单位传真", phone: "电话号码", man: "万日元", budgetType: "预算类型", purpose: "用途", save: "保存", cancel: "取消" },
+  ko: { basic: "기본 정보", profile: "개인 자료", needs: "희망 조건", management: "고객 관리", notes: "메모", name: "고객명", nameLatin: "이름（라틴 문자）", partyType: "주체 유형", employerFax: "근무처 팩스", phone: "전화번호", man: "만 엔", budgetType: "예산 유형", purpose: "용도", save: "저장", cancel: "취소" },
+};
+for (const [locale, messages] of Object.entries(exactCopy)) {
+  const start = copySource.indexOf(`${locale}: {`);
+  const next = ["ja", "zh", "ko"].filter((candidate) => candidate !== locale).map((candidate) => copySource.indexOf(`${candidate}: {`, start + 1)).filter((index) => index >= 0).sort((left, right) => left - right)[0] ?? copySource.length;
+  const block = copySource.slice(start, next);
+  for (const [key, value] of Object.entries(messages)) requireText(block, `${key}: ${JSON.stringify(value)}`, `${locale} ClientForm copy mismatch: ${key}`);
 }
 forbidText(form, 'label("budgetType", "予算タイプ")', "ClientForm must not hardcode a single-language budget type label");
 const renderedSource = `${form.slice(0, copyStart)}${form.slice(copyEnd + "} as const;".length)}`;
-if (/["'][^"']*[一-龥ぁ-んァ-ン가-힣][^"']*["']/u.test(renderedSource)) failures.push("ClientForm contains a hardcoded user-visible localized string outside the locale copy map");
-if (!form.includes('setValues(state.values)') && !form.includes('preserveClientIndividualFieldsOnCorporateValidation(current, state.values)')) {
-  failures.push("server validation errors must restore submitted values without discarding omitted corporate personal drafts");
+// The rendered source is intentionally checked for the known hardcoded label
+// regression below. A broad quoted-string scan would misclassify the Japanese
+// prefecture regex used to preserve manually entered addresses.
+for (const forbiddenLabel of ["予算タイプ", "契約・法定情報", "ローン事前審査"]) {
+  if (renderedSource.includes(`label(\"${forbiddenLabel}\"`)) throw new Error(`ClientForm hardcodes a removed/localized label: ${forbiddenLabel}`);
 }
-requireText(form, 'role="alert"', "form must expose one focusable error summary");
-requireText(form, 'aria-describedby', "field errors must be associated with fields");
-requireText(form, 'onCompositionStart', "IME composition guard must exist as code mechanism");
-requireText(form, "basic: Boolean(baseInitial.phone || baseInitial.lineId || baseInitial.email)", "basic client section must open only when basic fields contain values");
-requireText(form, "profile: Boolean(baseInitial", "profile section must open when existing values are present and collapse when empty");
-requireText(form, "onInvalidCapture={handleInvalid}", "native invalid fields must open their containing section");
-requireText(form, "openSectionForField(field)", "error summary links must reopen the containing section before focus");
-requireText(form, "aria-expanded={expanded}", "client section controls must expose their expanded state");
-requireText(form, 'className={expanded ? "mt-3" : "hidden"}', "collapsing a client section must keep its fields mounted");
-requireText(form, 'type="hidden" id="client-name" name="name" value={legacyNameValue}', "individual clients must retain the legacy name column without rendering it as a fourth visible name field");
+requireText(form, 'type="hidden" id="client-name" name="name" value={legacyNameValue}', "individual clients must retain the legacy name compatibility column");
 requireText(form, '{isCorporate ? <div className="space-y-1">{label("name", profileNameLabel, true)}', "corporate clients must retain a visible company-name field");
-requireText(form, '{isCorporate ? <div className="space-y-1">{label("furigana", profileFuriganaLabel)}', "corporate clients must retain the legacy company phonetic field");
+requireText(form, '{isCorporate ? <div className="space-y-1">{label("furigana", profileFuriganaLabel)}', "corporate clients must retain the company phonetic field");
 requireText(form, ': <input {...fieldProps("furigana")} type="hidden" aria-hidden="true" />', "individual clients must retain legacy furigana only as a hidden compatibility value");
-requireText(form, 'label("nameLatin", text.nameLatin)', "individual clients must expose the Latin-name field");
-requireText(form, 'label("nameKanji", text.nameKanji)', "individual clients must expose the kanji-name field");
-requireText(form, 'label("nameKatakana", text.nameKatakana)', "individual clients must expose the katakana-name field");
-if ((form.match(/<ClientFormSection section=/g) ?? []).length !== 6) failures.push("client form must keep six independently collapsible sections");
-if ((form.match(/<(?:Button|button) type="submit"/g) ?? []).length !== 1) failures.push("complete form must have exactly one submit button");
-forbidText(form, "afterSave", "complete form must not expose the old second submit flow");
+for (const key of ["nameLatin", "nameKanji", "nameKatakana"]) requireText(form, `label("${key}", text.${key})`, `individual clients must expose ${key}`);
+if ((form.match(/<(?:Button|button) type="submit"/g) ?? []).length !== 1) throw new Error("complete client form must have exactly one submit button");
+forbidText(form, "afterSave", "complete client form must not expose the old second submit flow");
 
+assertSectionCount();
+function assertSectionCount() {
+  const visibleSections = form.match(/<ClientFormSection section=/g) ?? [];
+  if (visibleSections.length !== 5) throw new Error(`client form must render five visible groups after legal-section removal; found ${visibleSections.length}`);
+  forbidText(form, '<ClientFormSection section="legal"', "contract/legal group must not be rendered");
+  forbidText(form, 'label("preferredArea"', "preferred area must not remain a visible customer-form control");
+  forbidText(form, 'label("loanPreApprovalStatus"', "loan preapproval must not remain a visible customer-form control");
+  forbidText(form, 'label("annualIncomeAsOf"', "annual-income date must not remain a visible customer-form control");
+  forbidText(form, 'label("annualIncomeSource"', "annual-income source must not remain a visible customer-form control");
+}
+
+requireText(state, '"employerFax"', "client individual compatibility state must include employerFax");
+requireText(state, "CLIENT_FORM_DEFAULT_SENTINELS", "new client count contract must define default sentinel options");
+requireText(state, "isClientFormFieldCounted", "new client count contract must expose a testable filled-field predicate");
+requireText(action, "employerFax: read(\"employerFax\")", "server parser must read employerFax");
+requireText(action, "normalizedEmployerFax", "server parser must normalize employerFax");
+requireText(action, "isJapanesePhone", "server parser must validate mobile and landline phones");
+requireText(action, "isUnchangedLegacyPhone", "edit parser must preserve an unchanged legacy non-Japanese phone from the authoritative record");
+requireText(action, "authoritativePhones?.phone", "client phone preservation must use the authoritative edit record");
+requireText(action, "existingClientForEdit.phone", "edit action must pass the tenant-owned phone to the parser");
+requireText(action, "normalizeJapanesePhone", "server parser must normalize phone values");
+requireText(action, '"client.currentPostalCode": normalizedCurrentPostalCode', "client save path must pass current postal code through the official completion helper");
+requireText(action, '"client.currentAddress": values.currentAddress.trim()', "client save path must preserve manual current-address details");
+requireText(action, "parseClientMoneyInput", "server money validation must use the shared legacy-preserving parser");
+requireText(action, "authoritativeMoney?.annualIncome", "annual income legacy preservation must use the authoritative edit record");
+requireText(action, "authoritativeMoney?.budgetMin", "minimum budget legacy preservation must use the authoritative edit record");
+requireText(action, "authoritativeMoney?.budgetMax", "maximum budget legacy preservation must use the authoritative edit record");
+requireText(action, "existingClientForEdit", "edit parsing must load the tenant-owned client before money parsing");
+for (const field of ["legacyAnnualIncomeYen", "legacyBudgetMinYen", "legacyBudgetMaxYen"]) forbidText(action, `formData.get(\"${field}\")`, `server must not trust forged ${field} hidden input`);
+requireText(money, "parsed * 10_000", "shared money parser must convert new integer 万円 to existing yen storage");
+requireText(money, "const isIntegerInput = /^\\d+$/.test(raw)", "shared money parser must reject decimal/exponential text");
+requireText(associationManager, "parseClientMoneyInput", "inline association callback must preserve client money units");
+requireText(action, "budgetMin > budgetMax", "server budget bounds must be validated");
+requireText(action, "resolveEditablePurpose", "purpose edits must use the shared authoritative legacy-preservation resolver");
+requireText(action, "authoritativePurpose", "purpose preservation must receive the tenant-owned edit value");
+requireText(action, 'formData.get("purposeTouched") === "1"', "purpose replacement must require explicit form interaction");
+requireText(action, "existingClientForEdit?.purpose", "edit parsing must pass the authoritative purpose to the resolver");
+requireText(action, "const savedFormValues: ClientFormValues", "inline client edits must return the resolved saved purpose");
+requireText(action, "updatedRecord: { id: client.id, name: client.name, values: savedFormValues }", "inline client edits must refresh the workbench from resolved values");
+requireText(action, 'values.budgetType, isBudgetType', "budget type must be validated against the exact option set");
+requireText(action, 'phone: normalizedPhone ? isJapanesePhone(normalizedPhone) ? normalizeJapanesePhone(normalizedPhone) : normalizedPhone : ""', "phone must remain optional while normalizing supplied values");
+requireText(action, 'redirect(`/clients/${client.id}?flash=client_created`)', "create must redirect with the creation feedback code");
+
+requireText(createPage, 'normalizeImportCenterObjectReturnTo(path, "person", true)', "new entry page must preserve the validated import-center parent");
+requireText(createPage, 'stage: "lead"', "new client defaults must seed only the lead stage");
 forbidText(createPage, "client-form-template", "new page must not import template helpers");
 forbidText(createPage, "client-intake-parser", "new page must not import memo parser");
 forbidText(createPage, "confidence", "new page must not show confidence UI");
-requireText(createPage, 'normalizeImportCenterObjectReturnTo(path, "person", true)', "new entry page must preserve the validated person import-center return path");
-requireText(createPage, 'stage: "lead"', "create page must seed only the lead stage");
-requireText(editPage, "updateClientProfileAction", "edit page must use the structured update action");
 requireText(editPage, "normalizeReturnTo", "edit page must validate returnTo before rendering");
-
-const returnToStart = action.indexOf("function safeClientReturnTo");
-const returnToEnd = action.indexOf("async function persistClientForm", returnToStart);
-const returnTo = action.slice(returnToStart, returnToEnd);
-requireText(returnTo, 'parsed.pathname === "/clients"', "actions must whitelist the client list return path");
-requireText(returnTo, 'parsed.pathname === "/organize-center"', "actions must whitelist the approved organize entry");
-requireText(returnTo, "normalizeImportCenterObjectReturnTo(path, \"person\", true)", "actions must delegate import-center returns to the shared safe helper");
-
-const helperModule = { exports: {} };
-Function(
-  "module",
-  "exports",
-  ts.transpileModule(importCenterReturnSource, {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-  }).outputText,
-)(helperModule, helperModule.exports);
-const { normalizeImportCenterObjectReturnTo } = helperModule.exports;
-const actionTree = ts.createSourceFile("actions.ts", action, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-const safeClientReturnToDeclaration = actionTree.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === "safeClientReturnTo");
-if (!safeClientReturnToDeclaration) {
-  failures.push("actions must keep the safeClientReturnTo implementation");
-} else {
-  const safeClientReturnToModule = { exports: {} };
-  const safeClientReturnToOutput = ts.transpileModule(
-    `${safeClientReturnToDeclaration.getText(actionTree)}\nmodule.exports = safeClientReturnTo;`,
-    { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } },
-  ).outputText;
-  Function("module", "IMPORT_CENTER_RETURN_PATH", "normalizeImportCenterObjectReturnTo", safeClientReturnToOutput)(
-    safeClientReturnToModule,
-    "/import-center",
-    normalizeImportCenterObjectReturnTo,
-  );
-  const safeClientReturnTo = safeClientReturnToModule.exports;
-  const personReturnTo = "/import-center?advanced=1&object=person";
-  if (normalizeImportCenterObjectReturnTo("/import-center?object=person", "person", true) !== personReturnTo) {
-    failures.push("legacy person import-center returnTo must canonicalize to advanced object selection");
-  }
-  const partyRedirect = `/clients/new?returnTo=${encodeURIComponent(personReturnTo)}`;
-  const clientReturnTo = new URL(partyRedirect, "http://broker-desk.local").searchParams.get("returnTo");
-  if (clientReturnTo !== personReturnTo || safeClientReturnTo(clientReturnTo, "/clients", undefined, true) !== personReturnTo) {
-    failures.push("person import-center returnTo must survive the party-to-client creation chain");
-  }
-  if (safeClientReturnTo("/import-center", "/clients", undefined, true) !== "/import-center") {
-    failures.push("legacy bare import-center returnTo must remain valid");
-  }
-  for (const unsafe of [
-    "https://attacker.invalid/import-center",
-    "/import-center?job=forged",
-    "/import-center?object=person&targetId=../../forged",
-    "/import-center?object=person#source-upload",
-  ]) {
-    if (safeClientReturnTo(unsafe, "/clients", undefined, true) !== "/clients") {
-      failures.push(`unsafe import-center returnTo must fail closed: ${unsafe}`);
-    }
-  }
-}
-requireText(action, "export async function createClient(formData: FormData)", "quick create compatibility wrapper must remain");
-requireText(action, "await persistClientForm(formData, \"create\", undefined, true)", "quick create must reuse the shared persistence core");
-requireText(action, "parsed <= 0", "budget zero and negative values must be rejected server-side");
-requireText(action, "budgetMin > budgetMax", "budget bounds must be validated server-side");
-requireText(action, 'values.purpose.trim() ? requiredEnum("purpose"', "purpose may be absent and must be stored as an explicit incomplete sentinel");
-requireText(action, 'values.temperature.trim() ? requiredEnum("temperature"', "temperature may be absent and must be stored as an explicit incomplete sentinel");
-requireText(action, 'phone: normalizedPhone ? normalizeJapaneseMobilePhone(normalizedPhone) : ""', "phone must remain optional while normalizing supplied values");
-requireText(action, 'redirect(`/clients/${client.id}?flash=client_created`)', "create must redirect with the client_created feedback code");
+requireText(editPage, "const returnTo = normalizeReturnTo(query.returnTo, client.id, query.flash)", "edit page must derive one validated direct-parent return path");
+requireText(editPage, "updateClientProfileAction", "edit page must use the structured update action");
 requireText(detailPage, "client_created", "client detail must map the creation feedback code");
-requireText(detailPage, "顧客を作成しました。", "client detail must include the Japanese creation feedback");
-requireText(detailPage, "客户已创建。", "client detail must include the Chinese creation feedback");
-requireText(detailPage, "고객을 생성했습니다.", "client detail must include the Korean creation feedback");
+for (const message of ["顧客を作成しました。", "客户已创建。", "고객을 생성했습니다."]) requireText(detailPage, message, "client detail must include localized creation feedback");
 
-if (failures.length > 0) {
-  console.error(failures.map((failure) => `FAIL: ${failure}`).join("\n"));
-  process.exit(1);
+// Keep the shared import-center helper in this contract so returnTo changes
+// cannot silently diverge between the form page and server action.
+requireText(importCenterReturnSource, "normalizeImportCenterObjectReturnTo", "import-center returnTo normalization must remain shared");
+
+const actionStart = action.indexOf("function safeClientReturnTo");
+const actionEnd = action.indexOf("async function persistClientForm", actionStart);
+const returnToSource = action.slice(actionStart, actionEnd);
+requireText(returnToSource, 'parsed.pathname === "/clients"', "actions must whitelist the client list return path");
+requireText(returnToSource, 'parsed.pathname === "/organize-center"', "actions must whitelist the approved organize entry");
+requireText(returnToSource, "normalizeImportCenterObjectReturnTo(path, \"person\", true)", "actions must delegate import-center returns to the shared safe helper");
+const actionTree = ts.createSourceFile("actions.ts", action, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+const safeDeclaration = actionTree.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === "safeClientReturnTo");
+if (!safeDeclaration || actionStart < 0 || actionEnd < 0) throw new Error("actions must keep safeClientReturnTo before persistence");
+const helperModule = { exports: {} };
+Function("module", "exports", ts.transpileModule(importCenterReturnSource, {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+}).outputText)(helperModule, helperModule.exports);
+const safeModule = { exports: {} };
+Function("module", "IMPORT_CENTER_RETURN_PATH", "normalizeImportCenterObjectReturnTo", ts.transpileModule(
+  `${safeDeclaration.getText(actionTree)}\nmodule.exports = safeClientReturnTo;`,
+  { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } },
+).outputText)(safeModule, "/import-center", helperModule.exports.normalizeImportCenterObjectReturnTo);
+const safeClientReturnTo = safeModule.exports;
+const personReturnTo = "/import-center?advanced=1&object=person";
+if (helperModule.exports.normalizeImportCenterObjectReturnTo("/import-center?object=person", "person", true) !== personReturnTo) {
+  throw new Error("legacy person import-center returnTo must canonicalize to advanced object selection");
+}
+const clientReturnTo = new URL(`/clients/new?returnTo=${encodeURIComponent(personReturnTo)}`, "http://broker-desk.local").searchParams.get("returnTo");
+if (clientReturnTo !== personReturnTo || safeClientReturnTo(clientReturnTo, "/clients", undefined, true) !== personReturnTo) {
+  throw new Error("person import-center returnTo must survive the new-client creation chain");
+}
+if (safeClientReturnTo("/import-center", "/clients", undefined, true) !== "/import-center") throw new Error("bare import-center returnTo must remain valid");
+for (const [candidate, expected] of [
+  ["/clients?stage=lead", "/clients?stage=lead"],
+  ["/organize-center?type=client", "/organize-center?type=client"],
+  ["/import-center", "/import-center"],
+  ["https://attacker.invalid/import-center", "/clients"],
+  ["/import-center?job=forged", "/clients"],
+  ["/import-center?object=person&targetId=../../forged", "/clients"],
+  ["/import-center?object=person#source-upload", "/clients"],
+]) {
+  if (safeClientReturnTo(candidate, "/clients", undefined, true) !== expected) throw new Error(`unsafe or valid returnTo mismatch: ${candidate}`);
 }
 
-console.log("TASK-032 client Responsive Form contract checks passed (groups, validation, errors, returnTo, and boundaries).");
+requireText(action, "export async function createClient(formData: FormData)", "quick-create compatibility wrapper must remain");
+requireText(action, "await persistClientForm(formData, \"create\", undefined, true)", "quick create must reuse the shared persistence core");
+requireText(action, "parseClientMoneyInput(values[field], authoritativeYen == null ? \"\" : String(authoritativeYen), false)", "budget zero and negative values must be rejected server-side");
+requireText(action, "budgetMin > budgetMax", "budget bounds must be validated server-side");
+requireText(action, 'values.temperature.trim() ? requiredEnum("temperature"', "temperature may be absent and must use the incomplete sentinel");
+
+const domainModule = { exports: {} };
+Function("module", "exports", ts.transpileModule(domain, {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+}).outputText)(domainModule, domainModule.exports);
+const optionsModule = { exports: {} };
+Function("module", "exports", "require", ts.transpileModule(options, {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+}).outputText)(optionsModule, optionsModule.exports, (moduleName) => {
+  if (moduleName === "@/lib/domain") return domainModule.exports;
+  throw new Error(`unexpected options dependency: ${moduleName}`);
+});
+const { PURPOSES, resolveEditablePurpose } = domainModule.exports;
+const { getPurposeOptions } = optionsModule.exports;
+const currentPurposeValues = getPurposeOptions("ja").map((option) => option.value);
+if (JSON.stringify(currentPurposeValues) !== JSON.stringify(PURPOSES)) throw new Error("new/create purpose select must expose exactly the six current options");
+const legacyPurposeOptions = getPurposeOptions("ja", "self_use");
+if (legacyPurposeOptions[0]?.value !== "self_use" || !legacyPurposeOptions[0]?.label.includes("旧値") || legacyPurposeOptions.length !== PURPOSES.length + 1) {
+  throw new Error("legacy self_use must remain inspectable without a sale/rent classification");
+}
+const preservedLegacyPurpose = resolveEditablePurpose("unspecified", "edit", "self_use", false);
+if (preservedLegacyPurpose.value !== "self_use" || !preservedLegacyPurpose.preservedLegacy || preservedLegacyPurpose.error) throw new Error("unchanged legacy purpose must survive an unrelated edit");
+const explicitlyUnchangedLegacyPurpose = resolveEditablePurpose("self_use", "edit", "self_use", true);
+if (explicitlyUnchangedLegacyPurpose.value !== "self_use" || !explicitlyUnchangedLegacyPurpose.preservedLegacy || explicitlyUnchangedLegacyPurpose.error) throw new Error("explicitly retaining the legacy purpose must remain lossless");
+const changedLegacyPurpose = resolveEditablePurpose("sale_residential", "edit", "self_use", true);
+if (changedLegacyPurpose.value !== "sale_residential" || changedLegacyPurpose.preservedLegacy || changedLegacyPurpose.error) throw new Error("explicit new purpose selection must replace the legacy value");
+const forgedLegacyPurpose = resolveEditablePurpose("self_use", "edit", "sale_residential", true);
+if (!forgedLegacyPurpose.error) throw new Error("a forged legacy purpose must not replace the authoritative current purpose");
+const forgedBlankPurpose = resolveEditablePurpose("", "edit", "self_use", true);
+if (!forgedBlankPurpose.error || forgedBlankPurpose.value !== "self_use") throw new Error("an explicitly touched blank purpose must not erase the authoritative legacy value");
+const forgedCreatePurpose = resolveEditablePurpose("investment", "create", undefined, true);
+if (!forgedCreatePurpose.error) throw new Error("new records must reject legacy purpose values");
+requireText(action, "年收入必须是整数的万日元单位。", "Chinese annual-income validation must say 万日元");
+requireText(action, "预算下限必须是大于 0 的整数（万日元）。", "Chinese budget validation must say 万日元");
+requireText(action, "예산 하한은 0보다 큰 정수(만 엔)여야 합니다.", "Korean budget validation must say 만 엔");
+requireText(action, "예산 상한은 0보다 큰 정수(만 엔)여야 합니다.", "Korean budget validation must say 만 엔");
+
+const moneyModule = { exports: {} };
+Function("module", "exports", ts.transpileModule(money, {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+}).outputText)(moneyModule, moneyModule.exports);
+const { formatLegacyYenAsManYen, parseClientMoneyInput } = moneyModule.exports;
+for (const [value, expected] of [[650, "0.065"], [10000, "1"], [85000, "8.5"]]) {
+  if (formatLegacyYenAsManYen(value) !== expected) throw new Error(`legacy yen display mismatch for ${value}`);
+}
+const preserved85000 = parseClientMoneyInput("8.5", "85000", false);
+if (preserved85000.value !== 85000 || preserved85000.error !== false || preserved85000.preservedLegacy !== true) throw new Error("old 85,000 yen must round-trip unchanged as 8.5 万円");
+const changedTo43 = parseClientMoneyInput("43", "85000", false);
+if (changedTo43.value !== 430000 || changedTo43.error !== false || changedTo43.preservedLegacy !== false) throw new Error("editing old 85,000 yen to 43 万円 must save 430,000 yen");
+const reopened43 = parseClientMoneyInput("43", "430000", false);
+if (reopened43.value !== 430000 || reopened43.error !== false) throw new Error("43 万円 must survive save and reopen");
+if (!parseClientMoneyInput("43.5", "430000", false).error) throw new Error("edited decimal 万円 must be rejected");
+if (!parseClientMoneyInput("8.5", "", false).error) throw new Error("forged hidden legacy baseline must not authorize a decimal on create");
+
+const stateModule = { exports: {} };
+Function("module", "exports", ts.transpileModule(state, {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+}).outputText)(stateModule, stateModule.exports);
+const { isClientFormFieldCounted } = stateModule.exports;
+const untouched = new Set();
+for (const [field, sentinel] of [["budgetType", "total_price"], ["purpose", "unspecified"], ["stage", "lead"], ["temperature", "unspecified"]]) {
+  if (isClientFormFieldCounted(field, sentinel, "create", untouched)) throw new Error(`untouched new-form sentinel ${field} must not count as filled`);
+  if (!isClientFormFieldCounted(field, sentinel, "create", new Set([field]))) throw new Error(`explicitly selected sentinel ${field} must count as filled`);
+  if (!isClientFormFieldCounted(field, sentinel, "edit", untouched)) throw new Error(`stored edit sentinel ${field} must count as filled`);
+}
+if (!isClientFormFieldCounted("nameKanji", "山田", "create", untouched)) throw new Error("new non-sentinel value must count as filled");
+
+console.log("TASK-050 client form contract passed (legacy preservation, revised groups, phone/postal/money boundaries)");

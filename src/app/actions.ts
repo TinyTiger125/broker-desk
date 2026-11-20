@@ -7,14 +7,13 @@ import {
   BUDGET_TYPES,
   FOLLOWUP_TYPES,
   LOAN_PREAPPROVAL_STATUSES,
-  PURPOSES,
   TEMPERATURES,
   isAmlCheckStatus,
   isBrokerageContractType,
   isBudgetType,
   isClientStage,
   isLoanPreApprovalStatus,
-  isPurpose,
+  resolveEditablePurpose,
   isQuoteStatus,
   isTemperature,
   type AmlCheckStatus,
@@ -226,9 +225,9 @@ import {
   writeCaseApplicabilitySettings,
 } from "@/lib/case-field-applicability";
 import { getCaseWorkbenchProgressSnapshot } from "@/lib/case-workbench-progress";
-import { applyJapanesePostalCodeAddressCompletions, isValidJapanesePostalCode } from "@/lib/japan-postal-code";
-import { getCaseContactValidationError } from "@/lib/case-contact-validation";
-import { isJapaneseMobilePhone, normalizeJapaneseMobilePhone } from "@/lib/japanese-mobile-phone";
+import { applyJapanesePostalCodeAddressCompletions, isValidJapanesePostalCode, normalizeJapanesePostalCode } from "@/lib/japan-postal-code";
+import { getCaseContactValidationError, normalizeCasePhoneValue } from "@/lib/case-contact-validation";
+import { isJapanesePhone, isUnchangedLegacyPhone, normalizeJapanesePhone } from "@/lib/japanese-mobile-phone";
 import { isValidCaseDateInput, normalizeCaseDateValue } from "@/lib/case-date";
 import {
   buildExtractionReviewCorrectionEvents,
@@ -278,6 +277,7 @@ import { listHubContracts } from "@/lib/hub";
 import { draftAiExperiencesFromRecentCorrections } from "@/lib/ai-experience-job";
 import { getLocale, type Locale } from "@/lib/locale";
 import { CLIENT_INDIVIDUAL_FORM_FIELDS } from "@/lib/client-form-state";
+import { parseClientMoneyInput } from "@/lib/client-money";
 import { getDefaultOutputTemplateSettings } from "@/lib/output-doc";
 import { type TenantRole } from "@/lib/tenant-permissions";
 import {
@@ -489,6 +489,7 @@ export type ClientFormValues = {
   employerName: string;
   employerAddress: string;
   employerPhone: string;
+  employerFax: string;
   annualIncome: string;
   annualIncomeAsOf: string;
   annualIncomeSource: string;
@@ -596,7 +597,7 @@ function parsePropertyForm(formData: FormData, locale: Locale) {
   const fieldErrors: PropertyFormActionState["fieldErrors"] = {};
   const name = values.name.trim();
   if (!name) fieldErrors.name = propertyValidationMessage(locale, "name");
-  if (values.postalCode.trim() && !/^\d{3}-?\d{4}$/.test(values.postalCode.trim())) {
+  if (values.postalCode.trim() && !isValidJapanesePostalCode(values.postalCode.trim())) {
     fieldErrors.postalCode = propertyValidationMessage(locale, "postalCode");
   }
 
@@ -617,16 +618,21 @@ function parsePropertyForm(formData: FormData, locale: Locale) {
   const repairFee = parseOptionalNumber("repairFee", 0);
   const listingRent = parseOptionalNumber("listingRent", 0);
   const listingCommonFee = parseOptionalNumber("listingCommonFee", 0);
+  const propertyAddressData: Record<string, unknown> = {
+    "property.postalCode": values.postalCode.trim() ? normalizeJapanesePostalCode(values.postalCode) : "",
+    "property.address": values.address.trim(),
+  };
+  applyJapanesePostalCodeAddressCompletions({ confirmedData: propertyAddressData });
   return {
     values,
     fieldErrors,
     normalized: {
       name,
       area: values.area.trim() || undefined,
-      address: values.address.trim() || undefined,
+      address: String(propertyAddressData["property.address"] ?? "").trim() || undefined,
       furigana: values.furigana.trim() || undefined,
       roomNumber: values.roomNumber.trim() || undefined,
-      postalCode: values.postalCode.trim() || undefined,
+      postalCode: String(propertyAddressData["property.postalCode"] ?? "").trim() || undefined,
       usage: values.usage.trim() || undefined,
       sizeSqm,
       listingPrice: listingPrice ?? 0,
@@ -804,6 +810,7 @@ function clientFormValues(formData: FormData): ClientFormValues {
     employerName: read("employerName"),
     employerAddress: read("employerAddress"),
     employerPhone: read("employerPhone"),
+    employerFax: read("employerFax"),
     annualIncome: read("annualIncome"),
     annualIncomeAsOf: read("annualIncomeAsOf"),
     annualIncomeSource: read("annualIncomeSource"),
@@ -832,7 +839,7 @@ function clientFormValues(formData: FormData): ClientFormValues {
 
 function withoutClientIndividualFields<T extends Record<string, unknown>>(values: T) {
   const individualFields = new Set<string>(CLIENT_INDIVIDUAL_FORM_FIELDS);
-  return Object.fromEntries(Object.entries(values).filter(([key]) => !individualFields.has(key))) as Omit<T, "birthDate" | "gender" | "employerName" | "employerAddress" | "employerPhone" | "annualIncome" | "annualIncomeAsOf" | "annualIncomeSource">;
+  return Object.fromEntries(Object.entries(values).filter(([key]) => !individualFields.has(key))) as Omit<T, "birthDate" | "gender" | "employerName" | "employerAddress" | "employerPhone" | "employerFax" | "annualIncome" | "annualIncomeAsOf" | "annualIncomeSource">;
 }
 
 function clientValidationMessage(locale: Locale, field: keyof ClientFormValues): string {
@@ -842,14 +849,16 @@ function clientValidationMessage(locale: Locale, field: keyof ClientFormValues):
       nameLatin: "ローマ字氏名を確認してください。",
       nameKanji: "漢字氏名を確認してください。",
       nameKatakana: "カタカナ氏名を確認してください。",
-      phone: "電話番号は日本の携帯11桁（060/070/080/090）で入力してください。",
+      phone: "電話番号は日本の携帯または固定電話で入力してください。",
       email: "メールアドレスの形式を確認してください。",
       currentPostalCode: "郵便番号は7桁（例: 100-0005）で入力してください。",
       gender: "性別は男性・女性・その他のいずれかで入力してください。",
       employerPhone: "勤務先電話番号の形式を確認してください。",
+      employerFax: "勤務先FAX番号の形式を確認してください。",
+      annualIncome: "年収は整数の万円単位で入力してください。",
       partyType: "関係者種別を選択するか、未設定のままにしてください。",
-      budgetMin: "予算下限は0より大きい数値で入力してください。",
-      budgetMax: "予算上限は0より大きい数値で入力してください。",
+      budgetMin: "予算下限は整数の万円単位で入力してください。",
+      budgetMax: "予算上限は整数の万円単位で入力してください。",
       budgetType: "予算種別を選択してください。",
       purpose: "用途を選択してください。",
       temperature: "温度感を選択してください。",
@@ -870,14 +879,16 @@ function clientValidationMessage(locale: Locale, field: keyof ClientFormValues):
       nameLatin: "请检查拉丁字母姓名。",
       nameKanji: "请检查汉字姓名。",
       nameKatakana: "请检查片假名姓名。",
-      phone: "电话号码须为日本11位手机号码（060/070/080/090）。",
+      phone: "电话号码须为有效的日本手机或座机号码。",
       email: "请检查邮箱地址格式。",
       currentPostalCode: "邮编请输入7位数字（例如 100-0005）。",
       gender: "性别请输入男性、女性或其他。",
       employerPhone: "请检查工作单位电话号码格式。",
+      employerFax: "请检查工作单位FAX号码格式。",
+      annualIncome: "年收入必须是整数的万日元单位。",
       partyType: "请选择主体类型，或保留为未设置。",
-      budgetMin: "预算下限必须是大于 0 的数字。",
-      budgetMax: "预算上限必须是大于 0 的数字。",
+      budgetMin: "预算下限必须是大于 0 的整数（万日元）。",
+      budgetMax: "预算上限必须是大于 0 的整数（万日元）。",
       budgetType: "请选择预算类型。",
       purpose: "请选择用途。",
       temperature: "请选择温度。",
@@ -898,14 +909,16 @@ function clientValidationMessage(locale: Locale, field: keyof ClientFormValues):
       nameLatin: "라틴 문자 이름을 확인해 주세요.",
       nameKanji: "한자 이름을 확인해 주세요.",
       nameKatakana: "가타카나 이름을 확인해 주세요.",
-      phone: "전화번호는 일본 휴대전화 11자리(060/070/080/090)여야 합니다.",
+      phone: "전화번호는 유효한 일본 휴대전화 또는 유선전화여야 합니다.",
       email: "이메일 주소 형식을 확인해 주세요.",
       currentPostalCode: "우편번호는 7자리(예: 100-0005)로 입력해 주세요.",
       gender: "성별은 남성·여성·기타 중 하나로 입력해 주세요.",
       employerPhone: "근무처 전화번호 형식을 확인해 주세요.",
+      employerFax: "근무처 FAX 번호 형식을 확인해 주세요.",
+      annualIncome: "연소득은 만 엔 단위의 정수로 입력해 주세요.",
       partyType: "관계자 유형을 선택하거나 미설정으로 두세요.",
-      budgetMin: "예산 하한은 0보다 큰 숫자여야 합니다.",
-      budgetMax: "예산 상한은 0보다 큰 숫자여야 합니다.",
+      budgetMin: "예산 하한은 0보다 큰 정수(만 엔)여야 합니다.",
+      budgetMax: "예산 상한은 0보다 큰 정수(만 엔)여야 합니다.",
       budgetType: "예산 유형을 선택해 주세요.",
       purpose: "용도를 선택해 주세요.",
       temperature: "온도를 선택해 주세요.",
@@ -939,7 +952,27 @@ function parseClientDate(value: string, locale: Locale, field: keyof ClientFormV
   return invalidCalendarDate ? undefined : date;
 }
 
-function parseClientForm(formData: FormData, locale: Locale, mode: "create" | "edit", compatibilityDefaults = false) {
+type AuthoritativeClientMoney = {
+  annualIncome?: number;
+  budgetMin?: number;
+  budgetMax?: number;
+};
+
+type AuthoritativeClientPhones = {
+  phone?: string;
+  employerPhone?: string;
+  employerFax?: string;
+};
+
+function parseClientForm(
+  formData: FormData,
+  locale: Locale,
+  mode: "create" | "edit",
+  compatibilityDefaults = false,
+  authoritativeMoney?: AuthoritativeClientMoney,
+  authoritativePhones?: AuthoritativeClientPhones,
+  authoritativePurpose?: string,
+) {
   const values = clientFormValues(formData);
   const fieldErrors: ClientFormActionState["fieldErrors"] = {};
   const nameLatin = values.nameLatin.trim();
@@ -950,15 +983,17 @@ function parseClientForm(formData: FormData, locale: Locale, mode: "create" | "e
   // Identity documents generally contain no telephone number. An empty phone
   // is a genuine pending detail, not a value to invent or a reason to lose an
   // otherwise readable customer record.
-  const validateOptionalFormat = (field: "phone" | "email" | "currentPostalCode" | "employerPhone", valid: (value: string) => boolean) => {
+  const validateOptionalFormat = (field: "phone" | "email" | "currentPostalCode" | "employerPhone" | "employerFax", valid: (value: string) => boolean, authoritativeValue?: string) => {
     const value = values[field].trim();
-    if (value && !valid(value)) fieldErrors[field] = clientValidationMessage(locale, field);
-    return value;
+    const unchangedLegacy = mode === "edit" && isUnchangedLegacyPhone(value, authoritativeValue);
+    if (value && !valid(value) && !unchangedLegacy) fieldErrors[field] = clientValidationMessage(locale, field);
+    return unchangedLegacy ? authoritativeValue?.trim() ?? value : value;
   };
-  const normalizedPhone = validateOptionalFormat("phone", (value) => isJapaneseMobilePhone(value));
-  validateOptionalFormat("employerPhone", (value) => /^(?=.*\d)[0-9+()\-\s]{6,30}$/.test(value));
+  const normalizedPhone = validateOptionalFormat("phone", (value) => isJapanesePhone(value), authoritativePhones?.phone);
+  const normalizedEmployerPhone = validateOptionalFormat("employerPhone", (value) => isJapanesePhone(value), authoritativePhones?.employerPhone);
+  const normalizedEmployerFax = validateOptionalFormat("employerFax", (value) => isJapanesePhone(value), authoritativePhones?.employerFax);
   validateOptionalFormat("email", (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value));
-  validateOptionalFormat("currentPostalCode", (value) => /^\d{3}-?\d{4}$/.test(value));
+  const normalizedCurrentPostalCode = validateOptionalFormat("currentPostalCode", (value) => isValidJapanesePostalCode(value));
   const rawGender = values.gender.trim();
   const normalizedGender = rawGender ? normalizeCustomerIdentityValue("gender", rawGender) : "";
   if (rawGender && !isCustomerGenderValue(normalizedGender)) fieldErrors.gender = clientValidationMessage(locale, "gender");
@@ -969,7 +1004,14 @@ function parseClientForm(formData: FormData, locale: Locale, mode: "create" | "e
     return value;
   };
   const stage = values.stage.trim() || (mode === "create" ? "lead" : "");
-  const purpose = values.purpose.trim() ? requiredEnum("purpose", values.purpose, isPurpose, compatibilityDefaults ? PURPOSES[0] : undefined) : PURPOSES[0];
+  const purposeResolution = resolveEditablePurpose(
+    values.purpose,
+    mode,
+    authoritativePurpose,
+    formData.get("purposeTouched") === "1",
+  );
+  if (purposeResolution.error) fieldErrors.purpose = clientValidationMessage(locale, "purpose");
+  const purpose = purposeResolution.value;
   const temperature = values.temperature.trim() ? requiredEnum("temperature", values.temperature, isTemperature, compatibilityDefaults ? TEMPERATURES[1] : undefined) : TEMPERATURES[0];
   const budgetType = requiredEnum("budgetType", values.budgetType, isBudgetType, compatibilityDefaults ? BUDGET_TYPES[0] : undefined);
   const loanPreApprovalStatus = requiredEnum("loanPreApprovalStatus", values.loanPreApprovalStatus, isLoanPreApprovalStatus, compatibilityDefaults ? LOAN_PREAPPROVAL_STATUSES[0] : undefined);
@@ -977,15 +1019,13 @@ function parseClientForm(formData: FormData, locale: Locale, mode: "create" | "e
   const amlCheckStatus = requiredEnum("amlCheckStatus", values.amlCheckStatus, isAmlCheckStatus, compatibilityDefaults ? AML_CHECK_STATUSES[0] : undefined);
   if (!isClientStage(stage)) fieldErrors.stage = clientValidationMessage(locale, "stage");
 
-  const parseBudget = (field: "budgetMin" | "budgetMax") => {
-    const raw = values[field].trim();
-    if (!raw) return undefined;
-    const parsed = Number(raw);
-    if (!Number.isFinite(parsed) || parsed <= 0) fieldErrors[field] = clientValidationMessage(locale, field);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+  const parseBudget = (field: "budgetMin" | "budgetMax", authoritativeYen?: number) => {
+    const parsed = parseClientMoneyInput(values[field], authoritativeYen == null ? "" : String(authoritativeYen), false);
+    if (parsed.error) fieldErrors[field] = clientValidationMessage(locale, field);
+    return parsed.value;
   };
-  const budgetMin = parseBudget("budgetMin");
-  const budgetMax = parseBudget("budgetMax");
+  const budgetMin = parseBudget("budgetMin", authoritativeMoney?.budgetMin);
+  const budgetMax = parseBudget("budgetMax", authoritativeMoney?.budgetMax);
   if (budgetMin !== undefined && budgetMax !== undefined && budgetMin > budgetMax) {
     fieldErrors.budgetMin = clientValidationMessage(locale, "budgetMin");
     fieldErrors.budgetMax = clientValidationMessage(locale, "budgetMax");
@@ -1002,14 +1042,18 @@ function parseClientForm(formData: FormData, locale: Locale, mode: "create" | "e
     nextFollowUpAt: parseClientDate(values.nextFollowUpAt, locale, "nextFollowUpAt", fieldErrors),
   };
 
-  const parseOptionalInteger = (field: "annualIncome") => {
-    const raw = values[field].trim();
-    if (!raw) return undefined;
-    const parsed = Number(raw);
-    if (!Number.isInteger(parsed) || parsed < 0) fieldErrors[field] = clientValidationMessage(locale, field);
-    return Number.isInteger(parsed) && parsed >= 0 ? parsed : undefined;
+  const annualIncomeInput = parseClientMoneyInput(
+    values.annualIncome,
+    authoritativeMoney?.annualIncome == null ? "" : String(authoritativeMoney.annualIncome),
+    true,
+  );
+  if (annualIncomeInput.error) fieldErrors.annualIncome = clientValidationMessage(locale, "annualIncome");
+  const annualIncome = annualIncomeInput.value;
+  const clientAddressData: Record<string, unknown> = {
+    "client.currentPostalCode": normalizedCurrentPostalCode ? normalizeJapanesePostalCode(normalizedCurrentPostalCode) : "",
+    "client.currentAddress": values.currentAddress.trim(),
   };
-  const annualIncome = parseOptionalInteger("annualIncome");
+  applyJapanesePostalCodeAddressCompletions({ confirmedData: clientAddressData });
 
   return {
     values,
@@ -1019,17 +1063,18 @@ function parseClientForm(formData: FormData, locale: Locale, mode: "create" | "e
       nameLatin: nameLatin || undefined,
       nameKanji: nameKanji || undefined,
       nameKatakana: nameKatakana || undefined,
-      phone: normalizedPhone ? normalizeJapaneseMobilePhone(normalizedPhone) : "",
+      phone: normalizedPhone ? isJapanesePhone(normalizedPhone) ? normalizeJapanesePhone(normalizedPhone) : normalizedPhone : "",
       lineId: values.lineId.trim() || undefined,
       email: values.email.trim() || undefined,
       furigana: values.furigana.trim() || undefined,
       ...dates,
       gender: normalizedGender || undefined,
-      currentPostalCode: values.currentPostalCode.trim() || undefined,
-      currentAddress: values.currentAddress.trim() || undefined,
+      currentPostalCode: String(clientAddressData["client.currentPostalCode"] ?? "").trim() || undefined,
+      currentAddress: String(clientAddressData["client.currentAddress"] ?? "").trim() || undefined,
       employerName: values.employerName.trim() || undefined,
       employerAddress: values.employerAddress.trim() || undefined,
-      employerPhone: values.employerPhone.trim() || undefined,
+      employerPhone: normalizedEmployerPhone ? isJapanesePhone(normalizedEmployerPhone) ? normalizeJapanesePhone(normalizedEmployerPhone) : normalizedEmployerPhone : undefined,
+      employerFax: normalizedEmployerFax ? isJapanesePhone(normalizedEmployerFax) ? normalizeJapanesePhone(normalizedEmployerFax) : normalizedEmployerFax : undefined,
       annualIncome,
       annualIncomeSource: values.annualIncomeSource.trim() || undefined,
       budgetMin,
@@ -1158,7 +1203,22 @@ async function persistClientForm(
   const locale = await getLocale();
   const values = clientFormValues(formData);
   await rejectForbiddenRecordInput(formData, session, "client", values.clientId.trim() || undefined);
-  const parsed = parseClientForm(formData, locale, mode, compatibilityDefaults);
+  const clientId = values.clientId.trim();
+  // Legacy money preservation is only valid when the edit target was read
+  // from the current tenant scope.  Browser-submitted hidden fields are not
+  // authoritative and are deliberately not passed into parseClientForm.
+  const existingClientForEdit = mode === "edit" && clientId
+    ? await ensureClientOwnership(clientId, session)
+    : undefined;
+  const parsed = parseClientForm(formData, locale, mode, compatibilityDefaults, existingClientForEdit ? {
+    annualIncome: existingClientForEdit.annualIncome,
+    budgetMin: existingClientForEdit.budgetMin,
+    budgetMax: existingClientForEdit.budgetMax,
+  } : undefined, existingClientForEdit ? {
+    phone: existingClientForEdit.phone,
+    employerPhone: existingClientForEdit.employerPhone,
+    employerFax: existingClientForEdit.employerFax,
+  } : undefined, existingClientForEdit?.purpose);
   const partyTypeSubmitted = formData.has("partyType");
   const partyTypeRaw = values.partyType.trim();
   if (partyTypeSubmitted && partyTypeRaw && !isPartyProfileType(partyTypeRaw)) {
@@ -1169,7 +1229,6 @@ async function persistClientForm(
     throw new Error(Object.values(parsed.fieldErrors)[0] ?? "顧客データの形式が不正です。");
   }
 
-  const clientId = values.clientId.trim();
   const fallback = mode === "create" || !clientId ? "/clients" : `/clients/${encodeURIComponent(clientId)}`;
   const returnTo = safeClientReturnTo(formData.get("returnTo"), fallback, mode === "edit" ? clientId : undefined, mode === "create");
   const submitReturnTo = safeClientReturnTo(formData.get("submitReturnTo"), returnTo, mode === "edit" ? clientId : undefined, mode === "create");
@@ -1195,7 +1254,7 @@ async function persistClientForm(
       if (previousState) return clientValidationState(parsed.values, { clientId: "顧客IDは必須です。" }, locale, "顧客IDを確認してください。");
       throw new Error("顧客IDは必須です。");
     }
-    const existingClient = await ensureClientOwnership(clientId, session);
+    const existingClient = existingClientForEdit ?? await ensureClientOwnership(clientId, session);
     const existingProfile = extractPartyProfileFromNotes(existingClient.notes);
     const effectivePartyType = partyTypeSubmitted ? (partyTypeRaw || undefined) : existingProfile.type;
     const normalizedValues = effectivePartyType === "corporate" ? withoutClientIndividualFields(parsed.normalized) : parsed.normalized;
@@ -1243,12 +1302,21 @@ async function persistClientForm(
     creationAuditWarning = true;
   });
 
+  // The parser resolves an untouched edit against the tenant-owned record.
+  // Return that resolved purpose to inline callers as well; returning the raw
+  // browser value here would let a legacy purpose look like `unspecified` in
+  // the mounted workbench even though the database was preserved correctly.
+  const savedFormValues: ClientFormValues = {
+    ...parsed.values,
+    purpose: parsed.normalized.purpose,
+  };
+
   if (inline && mode === "edit") {
     return {
       status: "idle" as const,
       fieldErrors: {},
-      values: parsed.values,
-      updatedRecord: { id: client.id, name: client.name, values: parsed.values },
+      values: savedFormValues,
+      updatedRecord: { id: client.id, name: client.name, values: savedFormValues },
     } satisfies ClientFormActionState;
   }
 
@@ -2572,8 +2640,8 @@ function parsePartyProfileForm(formData: FormData, locale: Locale, options?: { f
       })
     );
   }
-  if (phone && !isJapaneseMobilePhone(phone)) {
-    throw new Error(tr(locale, { ja: "電話番号は日本の携帯11桁（060/070/080/090）で入力してください。", zh: "电话号码须为日本11位手机号码（060/070/080/090）。", ko: "전화번호는 일본 휴대전화 11자리(060/070/080/090)여야 합니다." }));
+  if (phone && !isJapanesePhone(phone)) {
+    throw new Error(tr(locale, { ja: "電話番号は日本の携帯または市外局番付きの固定電話形式で入力してください。", zh: "电话号码请输入有效的日本手机或带区号座机格式。", ko: "전화번호는 유효한 일본 휴대전화 또는 지역번호가 있는 유선전화 형식으로 입력해 주세요." }));
   }
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     throw new Error(tr(locale, { ja: "メールアドレスの形式を確認してください。", zh: "请检查邮箱地址格式。", ko: "이메일 주소 형식을 확인해 주세요." }));
@@ -2583,7 +2651,7 @@ function parsePartyProfileForm(formData: FormData, locale: Locale, options?: { f
     name,
     partyType: partyTypeRaw,
     partyRole: partyRoleRaw,
-    phone: phone ? normalizeJapaneseMobilePhone(phone) : "",
+    phone: phone ? normalizeJapanesePhone(phone) : "",
     email: email || undefined,
     lineId: lineId || undefined,
     relationHint: relationHint || undefined,
@@ -2718,7 +2786,7 @@ function parsePartyUpdateForm(formData: FormData, locale: Locale) {
   if (!name) fieldErrors.name = partyValidationMessage(locale, "name");
   // A party linked to a customer must remain editable while its contact
   // number is pending; the empty value is intentional, not a fake number.
-  if (phone && !isJapaneseMobilePhone(phone)) fieldErrors.phone = tr(locale, { ja: "電話番号は日本の携帯11桁（060/070/080/090）で入力してください。", zh: "电话号码须为日本11位手机号码（060/070/080/090）。", ko: "전화번호는 일본 휴대전화 11자리(060/070/080/090)여야 합니다." });
+  if (phone && !isJapanesePhone(phone)) fieldErrors.phone = tr(locale, { ja: "電話番号は日本の携帯または市外局番付きの固定電話形式で入力してください。", zh: "电话号码请输入有效的日本手机或带区号座机格式。", ko: "전화번호는 유효한 일본 휴대전화 또는 지역번호가 있는 유선전화 형식으로 입력해 주세요." });
   if (values.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email.trim())) fieldErrors.email = partyValidationMessage(locale, "email");
   if (metadataSubmitted && partyTypeRaw && !isPartyProfileType(partyTypeRaw)) fieldErrors.partyType = partyValidationMessage(locale, "partyType");
   if (metadataSubmitted && partyRoleRaw && !isPartyProfileRole(partyRoleRaw)) fieldErrors.partyRole = partyValidationMessage(locale, "partyRole");
@@ -2728,7 +2796,7 @@ function parsePartyUpdateForm(formData: FormData, locale: Locale) {
     fieldErrors,
     normalized: {
       name,
-      phone: phone ? normalizeJapaneseMobilePhone(phone) : "",
+      phone: phone ? normalizeJapanesePhone(phone) : "",
       email: values.email.trim() || undefined,
       lineId: values.lineId.trim() || undefined,
       partyType: partyTypeRaw ? (partyTypeRaw as PartyProfileType) : undefined,
@@ -3624,6 +3692,10 @@ export async function updateOutputTemplateSettingsAction(formData: FormData) {
     const value = String(formData.get(name) ?? "").trim();
     return value || fallback;
   };
+  const phone = shouldResetToStandard ? standard.phone : text("phone", current.phone);
+  if (phone && !isJapanesePhone(phone)) {
+    throw new Error("発行元電話番号は日本の携帯または市外局番付きの固定電話形式で入力してください。");
+  }
 
   const settings = await updateOutputTemplateSettings(user.id, {
     companyName: shouldResetToStandard ? standard.companyName : text("companyName", current.companyName),
@@ -3631,7 +3703,7 @@ export async function updateOutputTemplateSettingsAction(formData: FormData) {
     representative: shouldResetToStandard ? standard.representative : text("representative", current.representative),
     licenseNumber: shouldResetToStandard ? standard.licenseNumber : text("licenseNumber", current.licenseNumber),
     postalAddress: shouldResetToStandard ? standard.postalAddress : text("postalAddress", current.postalAddress),
-    phone: shouldResetToStandard ? standard.phone : text("phone", current.phone),
+    phone: phone ? normalizeJapanesePhone(phone) : "",
     email: shouldResetToStandard ? standard.email : text("email", current.email),
     proposalTitle: current.proposalTitle,
     estimateSheetTitle: current.estimateSheetTitle,
@@ -3902,12 +3974,18 @@ function getCaseWorkbenchSubmittedValue(formData: FormData, fieldKey: string): s
 
 function normalizeCaseWorkbenchCandidateValue(fieldKey: string, value: string): string {
   const rawValue = value.trim();
-  return getCaseFieldDefinition(fieldKey)?.valueKind === "date" ? normalizeCaseDateValue(rawValue) : rawValue;
+  const valueKind = getCaseFieldDefinition(fieldKey)?.valueKind;
+  if (valueKind === "date") return normalizeCaseDateValue(rawValue);
+  if (valueKind === "phone") return normalizeCasePhoneValue(rawValue);
+  return rawValue;
 }
 
 function getCaseWorkbenchNormalizedValue(formData: FormData, fieldKey: string): string {
   const rawValue = getCaseWorkbenchSubmittedValue(formData, fieldKey);
-  return getCaseFieldDefinition(fieldKey)?.valueKind === "date" ? normalizeCaseDateValue(rawValue) : rawValue;
+  const valueKind = getCaseFieldDefinition(fieldKey)?.valueKind;
+  if (valueKind === "date") return normalizeCaseDateValue(rawValue);
+  if (valueKind === "phone") return normalizeCasePhoneValue(rawValue);
+  return rawValue;
 }
 
 function safeHashAnchor(value: FormDataEntryValue | null): string {

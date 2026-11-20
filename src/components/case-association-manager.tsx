@@ -15,6 +15,7 @@ import { OBJECT_READER_FIELD_LABELS } from "@/lib/object-reader-mapping";
 import { ObjectAttachmentList } from "@/components/object-attachment-list";
 import type { ObjectAttachmentItem } from "@/lib/object-attachments";
 import { resolveCasePropertyAddressPresentation } from "@/lib/case-property-address-presentation";
+import { parseClientMoneyInput } from "@/lib/client-money";
 
 type Candidate = { id: string; name: string; address?: string; searchText?: string };
 type CreateAction<State> = (previousState: State, formData: FormData) => Promise<State>;
@@ -241,11 +242,11 @@ export function CaseAssociationManager({
     employerName: values.employerName,
     employerAddress: values.employerAddress,
     employerPhone: values.employerPhone,
-    annualIncome: values.annualIncome.trim() ? Number(values.annualIncome) : undefined,
+    annualIncome: parseClientMoneyInput(values.annualIncome, previous.annualIncome == null ? "" : String(previous.annualIncome), true).value,
     annualIncomeAsOf: values.annualIncomeAsOf || undefined,
     annualIncomeSource: values.annualIncomeSource,
-    budgetMin: values.budgetMin.trim() ? Number(values.budgetMin) : undefined,
-    budgetMax: values.budgetMax.trim() ? Number(values.budgetMax) : undefined,
+    budgetMin: parseClientMoneyInput(values.budgetMin, previous.budgetMin == null ? "" : String(previous.budgetMin), false).value,
+    budgetMax: parseClientMoneyInput(values.budgetMax, previous.budgetMax == null ? "" : String(previous.budgetMax), false).value,
     budgetType: values.budgetType,
     preferredArea: values.preferredArea,
     firstChoiceArea: values.firstChoiceArea,

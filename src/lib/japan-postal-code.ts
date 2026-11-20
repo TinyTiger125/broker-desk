@@ -1,10 +1,12 @@
-import { existsSync, readFileSync } from "fs";
-import { join } from "path";
 import { isValidJapanesePostalCode, normalizeJapanesePostalCode } from "@/lib/japanese-postal-code-validation";
+import { gunzipSync } from "node:zlib";
+import {
+  JAPAN_POSTAL_CODE_INDEX_GZIP_BASE64,
+  JAPAN_POSTAL_CODE_INDEX_METADATA,
+} from "@/data/japan-postal-code-index";
 
 export { isValidJapanesePostalCode, normalizeJapanesePostalCode } from "@/lib/japanese-postal-code-validation";
 
-const POSTAL_CODE_INDEX_PATH = join(process.cwd(), ".broker-desk", "japan-postal-code-index.json");
 const POSTAL_CODE_LOOKUP_STATUS_KEY = "__postalCodeLookups";
 
 export type JapanesePostalCodeAddress = {
@@ -20,15 +22,26 @@ export type JapanesePostalCodeLookup = {
   municipality: string;
   townArea: string;
   addressPrefix: string;
-  candidates: JapanesePostalCodeAddress[];
-  source: "local_index" | "fallback_seed";
+  candidates: readonly JapanesePostalCodeAddress[];
+  source: "japan_post_official";
 };
 
-type PostalCodeIndexFile = {
-  generatedAt?: string;
-  source?: string;
-  entriesByPostalCode?: Record<string, JapanesePostalCodeAddress[]>;
-};
+export type JapanesePostalCodeIndexStatus = "ready" | "unavailable";
+
+let parsedPostalCodeIndex: Record<string, JapanesePostalCodeAddress[]> | null | undefined;
+let postalCodeIndexUsable: boolean | undefined;
+
+function loadPostalCodeIndex(): Record<string, JapanesePostalCodeAddress[]> | null {
+  if (parsedPostalCodeIndex !== undefined) return parsedPostalCodeIndex;
+  try {
+    const compressed = Buffer.from(JAPAN_POSTAL_CODE_INDEX_GZIP_BASE64, "base64");
+    const parsed = JSON.parse(gunzipSync(compressed).toString("utf8")) as unknown;
+    parsedPostalCodeIndex = parsed && typeof parsed === "object" ? (parsed as Record<string, JapanesePostalCodeAddress[]>) : null;
+  } catch {
+    parsedPostalCodeIndex = null;
+  }
+  return parsedPostalCodeIndex;
+}
 
 type PostalCompletionResult = {
   completedFieldKeys: string[];
@@ -36,20 +49,8 @@ type PostalCompletionResult = {
   conflictCount: number;
 };
 
-const FALLBACK_POSTAL_CODE_INDEX: Record<string, JapanesePostalCodeAddress[]> = {
-  "1000005": [{ postalCode: "1000005", prefecture: "東京都", municipality: "千代田区", townArea: "丸の内" }],
-  "1040053": [{ postalCode: "1040053", prefecture: "東京都", municipality: "中央区", townArea: "晴海" }],
-  "1060032": [{ postalCode: "1060032", prefecture: "東京都", municipality: "港区", townArea: "六本木" }],
-  "1350061": [{ postalCode: "1350061", prefecture: "東京都", municipality: "江東区", townArea: "豊洲" }],
-  "1410032": [{ postalCode: "1410032", prefecture: "東京都", municipality: "品川区", townArea: "大崎" }],
-  "1500002": [{ postalCode: "1500002", prefecture: "東京都", municipality: "渋谷区", townArea: "渋谷" }],
-  "1540024": [{ postalCode: "1540024", prefecture: "東京都", municipality: "世田谷区", townArea: "三軒茶屋" }],
-  "1600023": [{ postalCode: "1600023", prefecture: "東京都", municipality: "新宿区", townArea: "西新宿" }],
-  "1700013": [{ postalCode: "1700013", prefecture: "東京都", municipality: "豊島区", townArea: "東池袋" }],
-  "1710022": [{ postalCode: "1710022", prefecture: "東京都", municipality: "豊島区", townArea: "南池袋" }],
-};
-
 const POSTAL_TO_ADDRESS_FIELD_PAIRS = [
+  ["client.currentPostalCode", "client.currentAddress"],
   ["property.postalCode", "property.address"],
   ["applicant.currentPostalCode", "applicant.currentAddress"],
   ["applicant.employerPostalCode", "applicant.employerAddress"],
@@ -57,23 +58,43 @@ const POSTAL_TO_ADDRESS_FIELD_PAIRS = [
   ["emergencyContact.postalCode", "emergencyContact.address"],
 ] as const;
 
-let cachedIndex: Record<string, JapanesePostalCodeAddress[]> | undefined;
+function isUsablePostalCodeIndex(): boolean {
+  if (postalCodeIndexUsable !== undefined) return postalCodeIndexUsable;
+  const index = loadPostalCodeIndex();
+  const keys = index ? Object.keys(index) : [];
+  postalCodeIndexUsable = Boolean(
+    JAPAN_POSTAL_CODE_INDEX_METADATA.source.includes("post.japanpost.jp") &&
+      JAPAN_POSTAL_CODE_INDEX_METADATA.format === "gzip+base64" &&
+      JAPAN_POSTAL_CODE_INDEX_METADATA.postalCodeCount > 0 &&
+      keys.length === JAPAN_POSTAL_CODE_INDEX_METADATA.postalCodeCount &&
+      index &&
+      typeof index === "object" &&
+      keys.every((postalCode) => {
+        if (!/^\d{7}$/.test(postalCode) || !Array.isArray(index[postalCode]) || index[postalCode].length === 0) return false;
+        return index[postalCode].every((entry) => Boolean(
+          entry &&
+          typeof entry.postalCode === "string" &&
+          typeof entry.prefecture === "string" &&
+          typeof entry.municipality === "string" &&
+          typeof entry.townArea === "string",
+        ));
+      }),
+  );
+  return postalCodeIndexUsable;
+}
 
-function loadPostalCodeIndex(): Record<string, JapanesePostalCodeAddress[]> {
-  if (cachedIndex) return cachedIndex;
-  if (existsSync(POSTAL_CODE_INDEX_PATH)) {
-    try {
-      const parsed = JSON.parse(readFileSync(POSTAL_CODE_INDEX_PATH, "utf8")) as PostalCodeIndexFile;
-      if (parsed.entriesByPostalCode && typeof parsed.entriesByPostalCode === "object") {
-        cachedIndex = parsed.entriesByPostalCode;
-        return cachedIndex;
-      }
-    } catch {
-      // Fall back to the minimal seed index; lookup must never break the workbench.
-    }
-  }
-  cachedIndex = FALLBACK_POSTAL_CODE_INDEX;
-  return cachedIndex;
+export function getJapanesePostalCodeIndexStatus(): {
+  status: JapanesePostalCodeIndexStatus;
+  source: string;
+  generatedAt: string;
+  postalCodeCount: number;
+} {
+  return {
+    status: isUsablePostalCodeIndex() ? "ready" : "unavailable",
+    source: JAPAN_POSTAL_CODE_INDEX_METADATA.source,
+    generatedAt: JAPAN_POSTAL_CODE_INDEX_METADATA.generatedAt,
+    postalCodeCount: JAPAN_POSTAL_CODE_INDEX_METADATA.postalCodeCount,
+  };
 }
 
 function uniqueValues(values: string[]): string[] {
@@ -85,6 +106,7 @@ export function lookupJapanesePostalCode(value: string): JapanesePostalCodeLooku
   if (postalCode.length !== 7) return null;
 
   const index = loadPostalCodeIndex();
+  if (!index || !isUsablePostalCodeIndex()) return null;
   const candidates = index[postalCode] ?? [];
   if (candidates.length === 0) return null;
 
@@ -101,7 +123,7 @@ export function lookupJapanesePostalCode(value: string): JapanesePostalCodeLooku
     townArea,
     addressPrefix: `${prefecture}${municipality}${townArea}`,
     candidates,
-    source: index === FALLBACK_POSTAL_CODE_INDEX ? "fallback_seed" : "local_index",
+    source: "japan_post_official",
   };
 }
 

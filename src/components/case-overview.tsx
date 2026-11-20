@@ -10,6 +10,7 @@ import type { Locale } from "@/lib/locale";
 import layoutStyles from "@/components/layout-system/layout-system.module.css";
 import { formatCaseDateForDisplay, parseCaseDateInput } from "@/lib/case-date";
 import { getCaseContactValidationError } from "@/lib/case-contact-validation";
+import { formatJapanesePhone, formatJapanesePhoneForDisplay } from "@/lib/japanese-mobile-phone";
 
 export type CaseFieldInputSpec = {
   kind: "text" | "textarea" | "tel" | "email" | "money" | "number" | "date" | "select";
@@ -467,6 +468,7 @@ export function CaseFieldInput({
   const spec = inputSpec;
   const controlClasses = `${inputClass(tone, readOnly)}${controlClassName ? ` ${controlClassName}` : ""}`;
   const placeholder = spec.placeholder?.[locale];
+  const displayValue = spec.kind === "tel" ? formatJapanesePhoneForDisplay(value) : value;
   const currentOptionExists = spec.options?.some((option) => option === value);
   const dateTextRef = useRef<HTMLInputElement>(null);
   const datePickerRef = useRef<HTMLInputElement>(null);
@@ -566,9 +568,13 @@ export function CaseFieldInput({
         data-case-field-kind={spec.kind}
         data-case-contact-validation-message={spec.kind === "email" ? getCaseContactValidationError("field.email", "invalid", locale) ?? undefined : spec.kind === "tel" ? getCaseContactValidationError("field.phone", "abc", locale) ?? undefined : undefined}
         data-validation-message={spec.validation === "japanese_postal_code" ? locale === "zh" ? "日本邮政编码必须为7位数字。" : locale === "ko" ? "일본 우편번호는 7자리로 입력해 주세요." : "日本の郵便番号は7桁で入力してください。" : undefined}
-        defaultValue={value}
+        defaultValue={displayValue}
         placeholder={placeholder}
         className={`${controlClasses} ${spec.unit ? "pr-14" : ""}`}
+        onInput={(event) => {
+          if (spec.kind !== "tel" || readOnly) return;
+          event.currentTarget.value = formatJapanesePhone(event.currentTarget.value);
+        }}
       />
       {spec.unit ? <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs font-bold text-slate-500">{spec.unit}</span> : null}
     </span>

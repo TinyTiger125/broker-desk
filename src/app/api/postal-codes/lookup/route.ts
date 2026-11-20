@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { lookupJapanesePostalCode, normalizeJapanesePostalCode } from "@/lib/japan-postal-code";
+import {
+  getJapanesePostalCodeIndexStatus,
+  lookupJapanesePostalCode,
+  normalizeJapanesePostalCode,
+} from "@/lib/japan-postal-code";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +14,20 @@ export async function GET(request: Request) {
     return NextResponse.json(
       { ok: false, error: "invalid_postal_code", postalCode },
       { status: 400 },
+    );
+  }
+
+  const indexStatus = getJapanesePostalCodeIndexStatus();
+  if (indexStatus.status !== "ready") {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "postal_code_index_unavailable",
+        postalCode,
+        source: indexStatus.source,
+        generatedAt: indexStatus.generatedAt,
+      },
+      { status: 503 },
     );
   }
 

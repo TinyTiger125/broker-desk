@@ -48,6 +48,18 @@ function normalizeImportCenterReturnTo(value: string | null, object: "person" | 
   return `${parsed.pathname}${parsed.search}${parsed.hash}`;
 }
 
+function normalizeClientEditReturnTo(value: string | null, clientId: string, flash: string | null): string | null {
+  return normalizeListReturnTo(value, "/clients", CLIENT_LIST_KEYS)
+    ?? normalizeListReturnTo(value, "/organize-center", ORGANIZE_CENTER_KEYS, new Set(["", "all", "client", "party"]))
+    ?? normalizeImportCenterReturnTo(value, "person")
+    ?? (() => {
+      const parsed = isSafeLocalPath(value ?? "");
+      return parsed?.pathname === `/clients/${encodeURIComponent(clientId)}` && parsed.searchParams.size === 0
+        ? parsed.pathname
+        : flash === "client_created" || flash === "entry_reused" ? "/clients" : null;
+    })();
+}
+
 function resolveNewEntryParent(pathname: string, searchParams: URLSearchParams): ParentRoute | null {
   if (pathname === "/clients/new") {
     const requested = searchParams.get("returnTo");
@@ -71,7 +83,6 @@ const routeMap: Array<{ matches: (segments: string[]) => boolean; resolve: (segm
   { matches: (s) => s[0] === "cases" && s.length === 3 && s[2] === "guarantee-application", resolve: (s) => ({ href: `/cases/${encodeURIComponent(s[1])}`, label: labels }) },
   { matches: (s) => s[0] === "cases" && s.length === 2 && s[1] !== "new", resolve: () => ({ href: "/organize-center?type=case", label: labels }) },
   { matches: (s) => s[0] === "cases" && s.length === 2 && s[1] === "new", resolve: () => ({ href: "/organize-center?type=case", label: labels }) },
-  { matches: (s) => s[0] === "clients" && s.length === 3 && s[2] === "edit", resolve: (s) => ({ href: `/clients/${encodeURIComponent(s[1])}`, label: labels }) },
   { matches: (s) => s[0] === "clients" && s.length === 2, resolve: () => ({ href: "/clients", label: labels }) },
   { matches: (s) => s[0] === "parties" && s.length === 3 && s[2] === "edit", resolve: () => ({ href: "/parties", label: labels }) },
   { matches: (s) => s[0] === "parties" && s.length === 2 && s[1] === "new", resolve: () => ({ href: "/parties", label: labels }) },
@@ -103,6 +114,12 @@ function resolveParent(pathname: string, searchParams: URLSearchParams): ParentR
   const newEntryParent = resolveNewEntryParent(pathname, searchParams);
   if (newEntryParent) return newEntryParent;
   const segments = pathname.split("/").filter(Boolean).map((segment) => decodeURIComponent(segment));
+  if (segments.length === 3 && segments[0] === "clients" && segments[2] === "edit") {
+    // A completed /clients/new entry has no detail-page parent. Its direct
+    // parent is the client menu; ordinary edits still return to the detail.
+    const clientId = segments[1];
+    return { href: normalizeClientEditReturnTo(searchParams.get("returnTo"), clientId, searchParams.get("flash")) ?? `/clients/${encodeURIComponent(clientId)}`, label: labels };
+  }
   return routeMap.find((entry) => entry.matches(segments))?.resolve(segments) ?? null;
 }
 

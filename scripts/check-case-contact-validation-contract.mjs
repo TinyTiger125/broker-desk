@@ -5,15 +5,21 @@ const actions = readFileSync("src/app/actions.ts", "utf8");
 const form = readFileSync("src/components/case-workbench-field-form.tsx", "utf8");
 const overview = readFileSync("src/components/case-overview.tsx", "utf8");
 
-if (!validation.includes("digits.length >= 7 && digits.length <= 15")) throw new Error("phone validation must bound digit count");
-if (!validation.includes("^[^\\s@]+@[^\\s@.]+(?:\\.[^\\s@.]+)+$")) throw new Error("email validation must require a domain");
-if (!validation.includes("＋()（）\\-\\s")) throw new Error("phone validation must allow Japanese business punctuation");
-if (!validation.includes('fieldKey.endsWith(".fax")')) throw new Error("fax fields must share phone validation");
-if (!validation.includes('if (!normalized) return null')) throw new Error("empty contact values must remain clearable");
-if (!actions.includes("getCaseContactValidationError")) throw new Error("server save action must validate contact fields");
-if (!actions.includes('flash", "case_field_invalid"')) throw new Error("invalid contact values must return the existing invalid-field flash");
-if (!actions.includes("delete existingStatusMap[fieldKey]")) throw new Error("clearing a contact value must not leave a confirmed-empty status");
-if (!form.includes('input[data-case-field-kind="tel"]')) throw new Error("client form must validate phone inputs before submit");
-if (!overview.includes("data-case-contact-validation-message")) throw new Error("contact inputs must expose localized validation copy");
+function requireText(source, text, message) {
+  if (!source.includes(text)) throw new Error(message);
+}
+
+requireText(validation, "isJapanesePhone", "case phone validation must use the shared Japanese mobile/landline validator");
+requireText(validation, "normalizeCasePhoneValue", "case contact validation must expose a shared phone formatter");
+requireText(validation, "^[^\\s@]+@[^\\s@.]+(?:\\.[^\\s@.]+)+$", "email validation must require a domain");
+requireText(validation, 'fieldKey.endsWith(".fax")', "fax fields must share phone validation");
+requireText(validation, "if (!normalized) return null", "empty contact values must remain clearable");
+requireText(actions, "getCaseContactValidationError", "server save action must validate contact fields");
+requireText(actions, 'flash", "case_field_invalid"', "invalid contact values must return the existing invalid-field flash");
+requireText(actions, "delete existingStatusMap[fieldKey]", "clearing a contact value must not leave a confirmed-empty status");
+requireText(form, 'input[data-case-field-kind="tel"], input[data-case-field-kind="email"]', "client form must validate phone and email inputs before submit");
+requireText(form, "getCaseContactValidationError(fieldKey, input.value, \"ja\")", "client validation must use the shared contact validator");
+requireText(overview, "data-case-contact-validation-message", "contact inputs must expose localized validation copy");
+requireText(overview, "formatJapanesePhone", "case overview phone inputs must format mobile and landline values");
 
 console.log("Case contact validation contract passed");

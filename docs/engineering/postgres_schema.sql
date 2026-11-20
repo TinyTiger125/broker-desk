@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS clients (
   tenant_id TEXT NOT NULL DEFAULT 'tenant_cherry',
   name TEXT NOT NULL,
   phone TEXT NOT NULL,
+  employer_fax TEXT,
   line_id TEXT,
   email TEXT,
   budget_min INTEGER,

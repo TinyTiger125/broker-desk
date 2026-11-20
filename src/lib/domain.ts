@@ -10,13 +10,14 @@ export const CLIENT_STAGES = [
 
 export type ClientStage = (typeof CLIENT_STAGES)[number];
 
-export const PURPOSES = ["unspecified", "self_use", "investment"] as const;
-export type Purpose = (typeof PURPOSES)[number];
+export const PURPOSES = ["unspecified", "sale_residential", "sale_investment", "rent_residential", "rent_tenant", "rent_monthly"] as const;
+export const LEGACY_PURPOSES = ["self_use", "investment"] as const;
+export type Purpose = (typeof PURPOSES)[number] | (typeof LEGACY_PURPOSES)[number];
 
 export const TEMPERATURES = ["unspecified", "high", "medium", "low"] as const;
 export type Temperature = (typeof TEMPERATURES)[number];
 
-export const BUDGET_TYPES = ["total_price", "monthly_payment"] as const;
+export const BUDGET_TYPES = ["total_price", "monthly_payment", "monthly_rent"] as const;
 export type BudgetType = (typeof BUDGET_TYPES)[number];
 
 export const LOAN_PREAPPROVAL_STATUSES = ["not_applied", "screening", "approved", "rejected"] as const;
@@ -42,7 +43,61 @@ export function isClientStage(value: string): value is ClientStage {
 }
 
 export function isPurpose(value: string): value is Purpose {
-  return (PURPOSES as readonly string[]).includes(value);
+  return [...PURPOSES, ...LEGACY_PURPOSES].includes(value as Purpose);
+}
+
+export type CurrentPurpose = (typeof PURPOSES)[number];
+
+export type EditablePurposeResolution = {
+  value: Purpose;
+  error: boolean;
+  preservedLegacy: boolean;
+};
+
+/**
+ * Resolve the purpose submitted by the current form without allowing a
+ * browser-provided legacy value to become a new classification. On edit, an
+ * untouched or omitted field keeps the tenant-owned value; only the current
+ * six-value set can be an explicit replacement.
+ */
+export function resolveEditablePurpose(
+  submittedValue: string,
+  mode: "create" | "edit",
+  authoritativeValue?: string,
+  explicitlyTouched = false,
+): EditablePurposeResolution {
+  const submitted = submittedValue.trim();
+  const authoritative = authoritativeValue?.trim() ?? "";
+  const authoritativePurpose = isPurpose(authoritative) ? authoritative : undefined;
+  const authoritativeIsLegacy = Boolean(authoritativePurpose && (LEGACY_PURPOSES as readonly string[]).includes(authoritativePurpose));
+
+  if (mode === "edit" && authoritativeValue && !authoritativePurpose) {
+    return { value: "unspecified", error: true, preservedLegacy: false };
+  }
+
+  if (mode === "edit" && authoritativePurpose && !explicitlyTouched) {
+    return { value: authoritativePurpose, error: false, preservedLegacy: authoritativeIsLegacy };
+  }
+
+  if (mode === "edit" && authoritativePurpose && explicitlyTouched && !submitted) {
+    return { value: authoritativePurpose, error: true, preservedLegacy: authoritativeIsLegacy };
+  }
+
+  if (mode === "edit" && authoritativePurpose && submitted === authoritativePurpose && authoritativeIsLegacy) {
+    return { value: authoritativePurpose, error: false, preservedLegacy: true };
+  }
+
+  if (!submitted) {
+    return { value: "unspecified", error: false, preservedLegacy: false };
+  }
+
+  if ((PURPOSES as readonly string[]).includes(submitted)) {
+    return { value: submitted as CurrentPurpose, error: false, preservedLegacy: false };
+  }
+
+  // Legacy values remain readable in existing records, but they cannot be
+  // forged into a new or different edit through browser payloads.
+  return { value: authoritativePurpose ?? "unspecified", error: true, preservedLegacy: false };
 }
 
 export function isTemperature(value: string): value is Temperature {

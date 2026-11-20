@@ -1183,9 +1183,9 @@ export default async function CasePage({ params, searchParams }: CasePageProps) 
               })
             : invalidFieldKey.endsWith(".phone") || invalidFieldKey.includes("Phone") || invalidFieldKey.includes("phone") || invalidFieldKey.endsWith(".fax") || invalidFieldKey.endsWith("Fax")
               ? tr(locale, {
-                  ja: "有効な電話番号（数字7～15桁）を入力してください。変更は保存されていません。",
-                  zh: "请输入有效的电话号码（至少7位数字），修改未保存。",
-                  ko: "유효한 전화번호(숫자 7~15자리)를 입력해 주세요. 변경 사항은 저장되지 않았습니다.",
+                  ja: "有効な日本の携帯電話または市外局番付きの固定電話を入力してください。変更は保存されていません。",
+                  zh: "请输入有效的日本手机或带区号座机号码，修改未保存。",
+                  ko: "유효한 일본 휴대전화 또는 지역번호가 있는 유선전화를 입력해 주세요. 변경 사항은 저장되지 않았습니다.",
                 })
               : tr(locale, {
                   ja: "郵便番号は7桁で入力してください。変更は保存されていません。",

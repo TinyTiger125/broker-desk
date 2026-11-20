@@ -114,6 +114,7 @@ export type ExternalAuthUserInput = {
   employerName?: string;
   employerAddress?: string;
   employerPhone?: string;
+  employerFax?: string;
   annualIncome?: number;
   annualIncomeAsOf?: Date;
   annualIncomeSource?: string;
@@ -227,6 +228,7 @@ export type Client = {
   employerName?: string;
   employerAddress?: string;
   employerPhone?: string;
+  employerFax?: string;
   annualIncome?: number;
   annualIncomeAsOf?: Date;
   annualIncomeSource?: string;
@@ -6853,6 +6855,7 @@ export async function addClient(input: {
   employerName?: string;
   employerAddress?: string;
   employerPhone?: string;
+  employerFax?: string;
   annualIncome?: number;
   annualIncomeAsOf?: Date;
   annualIncomeSource?: string;
@@ -6905,6 +6908,7 @@ export async function addClient(input: {
     employerName: input.employerName,
     employerAddress: input.employerAddress,
     employerPhone: input.employerPhone,
+    employerFax: input.employerFax,
     annualIncome: input.annualIncome,
     annualIncomeAsOf: input.annualIncomeAsOf,
     annualIncomeSource: input.annualIncomeSource,
@@ -6960,6 +6964,7 @@ export async function updateClient(
     employerName?: string;
     employerAddress?: string;
     employerPhone?: string;
+    employerFax?: string;
     annualIncome?: number;
     annualIncomeAsOf?: Date;
     annualIncomeSource?: string;
@@ -7005,6 +7010,7 @@ export async function updateClient(
   if (Object.prototype.hasOwnProperty.call(input, "employerName")) client.employerName = input.employerName;
   if (Object.prototype.hasOwnProperty.call(input, "employerAddress")) client.employerAddress = input.employerAddress;
   if (Object.prototype.hasOwnProperty.call(input, "employerPhone")) client.employerPhone = input.employerPhone;
+  if (Object.prototype.hasOwnProperty.call(input, "employerFax")) client.employerFax = input.employerFax;
   if (Object.prototype.hasOwnProperty.call(input, "annualIncome")) client.annualIncome = input.annualIncome;
   if (Object.prototype.hasOwnProperty.call(input, "annualIncomeAsOf")) client.annualIncomeAsOf = input.annualIncomeAsOf;
   if (Object.prototype.hasOwnProperty.call(input, "annualIncomeSource")) client.annualIncomeSource = input.annualIncomeSource;

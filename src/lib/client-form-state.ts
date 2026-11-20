@@ -7,10 +7,26 @@ export const CLIENT_INDIVIDUAL_FORM_FIELDS = [
   "employerName",
   "employerAddress",
   "employerPhone",
+  "employerFax",
   "annualIncome",
   "annualIncomeAsOf",
   "annualIncomeSource",
 ] as const;
+
+export const CLIENT_FORM_DEFAULT_SENTINELS: Readonly<Record<string, string>> = {
+  budgetType: "total_price",
+  purpose: "unspecified",
+  stage: "lead",
+  temperature: "unspecified",
+};
+
+/** Count only meaningful values on a new form; edits retain stored sentinel selections. */
+export function isClientFormFieldCounted(field: string, value: unknown, mode: "create" | "edit", touched: ReadonlySet<string>): boolean {
+  const raw = String(value ?? "").trim();
+  if (!raw) return false;
+  if (mode === "edit" || touched.has(field)) return true;
+  return CLIENT_FORM_DEFAULT_SENTINELS[field] !== raw;
+}
 
 /**
  * A corporate submission intentionally omits the hidden individual controls.

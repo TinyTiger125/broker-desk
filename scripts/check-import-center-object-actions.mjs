@@ -46,18 +46,28 @@ assert(finishEntryDeclaration, "missing normal-entry finishEntry route");
 const finishEntryOutput = ts.transpileModule(`${finishEntryDeclaration.getText(entryActionsTree)}\nmodule.exports = finishEntry;`, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText;
-const captureFinishEntryRedirect = async (targetType, targetId) => {
+const entryReturnStart = entryActions.indexOf("const ENTRY_RETURN_ORIGIN =");
+const entryReturnEnd = entryActions.indexOf("\nasync function prepareUploads", entryReturnStart);
+assert(entryReturnStart >= 0 && entryReturnEnd > entryReturnStart, "missing entry return normalizer source");
+const normalizeEntryReturnToModule = { exports: {} };
+Function("module", "normalizeImportCenterObjectReturnTo", ts.transpileModule(
+  `${entryActions.slice(entryReturnStart, entryReturnEnd)}\nmodule.exports = normalizeEntryReturnTo;`,
+  { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } },
+).outputText)(normalizeEntryReturnToModule, normalizeImportCenterObjectReturnTo);
+const normalizeEntryReturnTo = normalizeEntryReturnToModule.exports;
+const captureFinishEntryRedirect = async (targetType, targetId, returnTo = null) => {
   let observed;
   const module = { exports: {} };
-  Function("module", "revalidatePath", "redirect", finishEntryOutput)(
+  Function("module", "revalidatePath", "redirect", "normalizeEntryReturnTo", finishEntryOutput)(
     module,
     () => undefined,
     (value) => {
       observed = value;
       throw new Error("captured_redirect");
     },
+    normalizeEntryReturnTo,
   );
-  await assert.rejects(() => module.exports(targetType, targetId, [], new Map(), {}, {}, false, false), /captured_redirect/);
+  await assert.rejects(() => module.exports(targetType, targetId, [], new Map(), { get: (key) => key === "returnTo" ? returnTo : null }, {}, false, false), /captured_redirect/);
   return observed;
 };
 
@@ -99,6 +109,8 @@ assert(entryActions.includes('return finishEntry("party"'), "person normal entry
 assert(entryActions.includes('return finishEntry("property"'), "property normal entry save must use the shared finishEntry route");
 assert.equal(await captureFinishEntryRedirect("party", "client_demo"), "/clients/client_demo/edit?flash=client_created", "person normal entry save must settle on the client edit record");
 assert.equal(await captureFinishEntryRedirect("property", "property_demo"), "/properties/property_demo/edit?flash=property_created", "property normal entry save must settle on the property edit record");
+assert.equal(await captureFinishEntryRedirect("party", "client_demo", "/clients?stage=lead"), "/clients/client_demo/edit?flash=client_created&returnTo=%2Fclients%3Fstage%3Dlead", "person normal entry save must preserve the originating client menu");
+assert.equal(await captureFinishEntryRedirect("property", "property_demo", "/properties?lifecycle=active"), "/properties/property_demo/edit?flash=property_created&returnTo=%2Fproperties%3Flifecycle%3Dactive", "property normal entry save must preserve the originating property menu");
 assert.equal(buildImportCenterObjectCreateRedirect("/import-center?object=property&job=forged", "property", "property_demo", "property_created"), null, "property return policy must reject an unscoped import-center path");
 assert.equal(safeClientReturnTo("/import-center", "/clients/client-1", "client-1", false), "/clients/client-1", "edit behavior must not gain the import-center return path");
 assert.equal(safeClientReturnTo(null, "/clients", undefined, true), "/clients", "create without returnTo must keep the existing fallback");

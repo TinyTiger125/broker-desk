@@ -11,6 +11,7 @@ import { EntryFilePicker, replaceEntryFiles } from "@/components/entry-file-pick
 import { applyEntryPreviewCandidate, createEntryIntentId, EntryPreview, type EntryPreviewCandidate } from "@/components/entry-preview";
 import { useEntryDraft } from "@/components/use-entry-draft";
 import { fillAutoSavedEntryForm, type EntryPreviewState } from "@/lib/entry-preview";
+import { isValidJapanesePostalCode, normalizeJapanesePostalCode } from "@/lib/japanese-postal-code-validation";
 
 type PropertyFormAction = (
   previousState: PropertyFormActionState,
@@ -68,6 +69,11 @@ const copy = {
     cancel: "キャンセル",
     errorSummary: "入力内容を確認してください。",
     saving: "保存中…",
+    postalLookup: "郵便番号から住所を補完",
+    postalLookupLoading: "住所を確認中…",
+    postalLookupNotFound: "該当する郵便番号が見つかりません。詳細住所はそのまま入力してください。",
+    postalLookupUnavailable: "郵便番号データを利用できません。詳細住所を確認してください。",
+    postalLookupInvalid: "郵便番号は7桁で入力してください。",
   },
   zh: {
     basic: "基本信息",
@@ -98,6 +104,11 @@ const copy = {
     cancel: "取消",
     errorSummary: "请检查以下输入内容。",
     saving: "保存中…",
+    postalLookup: "从邮编补全地址",
+    postalLookupLoading: "正在确认地址…",
+    postalLookupNotFound: "未找到该邮编。请保留并补充详细地址。",
+    postalLookupUnavailable: "邮编数据暂不可用，请确认详细地址。",
+    postalLookupInvalid: "请输入7位邮编。",
   },
   ko: {
     basic: "기본 정보",
@@ -128,6 +139,11 @@ const copy = {
     cancel: "취소",
     errorSummary: "다음 입력 내용을 확인해 주세요.",
     saving: "저장 중…",
+    postalLookup: "우편번호로 주소 보완",
+    postalLookupLoading: "주소 확인 중…",
+    postalLookupNotFound: "해당 우편번호를 찾지 못했습니다. 상세 주소를 그대로 입력해 주세요.",
+    postalLookupUnavailable: "우편번호 데이터를 사용할 수 없습니다. 상세 주소를 확인해 주세요.",
+    postalLookupInvalid: "우편번호 7자리를 입력해 주세요.",
   },
 } as const;
 
@@ -159,6 +175,8 @@ function PropertyFormSection({
   hint,
   expanded,
   onToggle,
+  filled,
+  total,
   children,
 }: {
   section: PropertyFormSectionKey;
@@ -166,6 +184,8 @@ function PropertyFormSection({
   hint?: string;
   expanded: boolean;
   onToggle: () => void;
+  filled: number;
+  total: number;
   children: ReactNode;
 }) {
   const headingId = `property-${section}-heading`;
@@ -175,7 +195,7 @@ function PropertyFormSection({
       <div className="flex min-w-0 items-center gap-2">
       <button type="button" aria-expanded={expanded} aria-controls={contentId} onClick={onToggle} className="group inline-flex min-h-7 min-w-0 cursor-pointer items-center justify-start gap-2 rounded-md text-left text-sm font-bold text-slate-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">
         <span aria-hidden="true" className="material-symbols-outlined shrink-0 text-[20px] text-slate-500">{expanded ? "expand_more" : "chevron_right"}</span>
-        <span id={headingId} role="heading" aria-level={2}>{title}</span>
+        <span id={headingId} role="heading" aria-level={2}>{title} ({filled}/{total})</span>
       </button>
       {hint ? <HelpHint id={`${headingId}-hint`} label={title}>{hint}</HelpHint> : null}
       </div>
@@ -310,6 +330,45 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
   const updateValue = (field: keyof PropertyFormValues, value: string) => {
     setValues((current) => ({ ...current, [field]: value }));
   };
+  const [postalLookupStatus, setPostalLookupStatus] = useState<"idle" | "loading" | "found" | "not_found" | "unavailable" | "invalid" | "error">("idle");
+  const lookupPostalCode = useCallback(async () => {
+    const postalCode = normalizeJapanesePostalCode(values.postalCode);
+    if (!isValidJapanesePostalCode(postalCode)) {
+      setPostalLookupStatus("invalid");
+      return;
+    }
+    setPostalLookupStatus("loading");
+    try {
+      const response = await fetch(`/api/postal-codes/lookup?postalCode=${encodeURIComponent(postalCode)}`, { method: "GET", cache: "no-store" });
+      const payload = await response.json() as { ok?: boolean; error?: string; addressPrefix?: string; prefecture?: string; municipality?: string };
+      if (response.status === 503 || payload.error === "postal_code_index_unavailable") {
+        setPostalLookupStatus("unavailable");
+        return;
+      }
+      if (!response.ok || !payload.ok || !payload.addressPrefix) {
+        setPostalLookupStatus("not_found");
+        return;
+      }
+      const currentAddress = values.address.trim();
+      const administrativePrefix = `${payload.prefecture ?? ""}${payload.municipality ?? ""}`;
+      const nextAddress = !currentAddress
+        ? payload.addressPrefix
+        : currentAddress.startsWith(payload.addressPrefix) || (administrativePrefix && currentAddress.startsWith(administrativePrefix))
+          ? currentAddress
+          : /^(東京都|北海道|京都府|大阪府|.{2,3}県)/.test(currentAddress)
+            ? currentAddress
+            : `${payload.addressPrefix}${currentAddress}`;
+      setValues((current) => ({ ...current, postalCode, address: nextAddress }));
+      setPostalLookupStatus("found");
+    } catch {
+      setPostalLookupStatus("error");
+    }
+  }, [setValues, values.address, values.postalCode]);
+  const sectionCounts = {
+    basic: { filled: ["name", "area", "address", "furigana", "roomNumber", "postalCode", "usage"].filter((field) => String(values[field as keyof PropertyFormValues] ?? "").trim()).length, total: 7 },
+    money: { filled: ["listingPrice", "listingRent", "listingCommonFee", "managementFee", "repairFee", "sizeSqm"].filter((field) => String(values[field as keyof PropertyFormValues] ?? "").trim()).length, total: 6 },
+    detail: { filled: values.notes.trim() ? 1 : 0, total: 1 },
+  };
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     if (event.key === "Enter" && (composingRef.current || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229)) {
       event.preventDefault();
@@ -353,8 +412,10 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
       {propertyId ? <input type="hidden" name="propertyId" value={propertyId} /> : null}
       {entryUpload ? <>
         <input type="hidden" name="entryIntentId" value={entryIntentId} />
-        <EntryFilePicker locale={locale} files={entryFiles} onFilesChange={updateEntryFiles} disabled={pending} />
-        <EntryPreview files={entryFiles} kind="property" locale={locale} onConfirm={confirmEntryCandidate} onLocateCandidate={locateEntryCandidate} onReadFileKeys={handleEntryReadFileKeys} onReadComplete={autoSaveReadResult} />
+        <div className="grid items-start gap-3 rounded-xl border border-blue-200 bg-blue-50/50 p-3 md:grid-cols-2">
+          <EntryFilePicker locale={locale} files={entryFiles} onFilesChange={updateEntryFiles} disabled={pending} compact />
+          <EntryPreview files={entryFiles} kind="property" locale={locale} onConfirm={confirmEntryCandidate} onLocateCandidate={locateEntryCandidate} onReadFileKeys={handleEntryReadFileKeys} onReadComplete={autoSaveReadResult} compact />
+        </div>
         <input type="hidden" name="entryReadFileKeys" value={JSON.stringify(entryReadFileKeys)} />
       </> : null}
 
@@ -377,7 +438,7 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
         </div>
       ) : null}
 
-      <PropertyFormSection section="basic" title={text.basic} hint={text.basicHint} expanded={expandedSections.basic} onToggle={() => toggleSection("basic")}>
+      <PropertyFormSection section="basic" title={text.basic} hint={text.basicHint} expanded={expandedSections.basic} onToggle={() => toggleSection("basic")} {...sectionCounts.basic}>
         <div className="grid gap-3 md:grid-cols-2">
           <div className="space-y-1 md:col-span-2">
             <label htmlFor="property-name" className="text-sm font-semibold text-slate-700">{text.name}</label>
@@ -405,7 +466,8 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
           </div>
           <div className="space-y-1">
             <label htmlFor="property-postalCode" className="text-sm font-semibold text-slate-700">{text.postalCode}</label>
-            <input {...fieldProps("postalCode", "property-postalCode")} className={inputClass} />
+            <input {...fieldProps("postalCode", "property-postalCode")} onBlur={() => void lookupPostalCode()} inputMode="numeric" autoComplete="postal-code" className={inputClass} />
+            {postalLookupStatus === "loading" ? <p role="status" className="text-xs font-semibold text-slate-600">{text.postalLookupLoading}</p> : postalLookupStatus === "found" ? <p role="status" className="text-xs font-semibold text-emerald-700">{text.postalLookup}</p> : postalLookupStatus === "not_found" ? <p role="status" className="text-xs font-semibold text-amber-700">{text.postalLookupNotFound}</p> : postalLookupStatus === "unavailable" ? <p role="alert" className="text-xs font-semibold text-amber-700">{text.postalLookupUnavailable}</p> : postalLookupStatus === "invalid" ? <p role="alert" className="text-xs font-semibold text-rose-700">{text.postalLookupInvalid}</p> : null}
           </div>
           <div className="space-y-1">
             <label htmlFor="property-usage" className="text-sm font-semibold text-slate-700">{text.usage}</label>
@@ -414,7 +476,7 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
         </div>
       </PropertyFormSection>
 
-      <PropertyFormSection section="money" title={text.money} hint={text.moneyHint} expanded={expandedSections.money} onToggle={() => toggleSection("money")}>
+      <PropertyFormSection section="money" title={text.money} hint={text.moneyHint} expanded={expandedSections.money} onToggle={() => toggleSection("money")} {...sectionCounts.money}>
         <div className="grid gap-3 md:grid-cols-3">
           {([
             ["listingPrice", text.listingPrice],
@@ -439,7 +501,7 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
         </div>
       </PropertyFormSection>
 
-      <PropertyFormSection section="detail" title={text.detail} hint={text.detailHint} expanded={expandedSections.detail} onToggle={() => toggleSection("detail")}>
+      <PropertyFormSection section="detail" title={text.detail} hint={text.detailHint} expanded={expandedSections.detail} onToggle={() => toggleSection("detail")} {...sectionCounts.detail}>
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-1 md:col-span-2">
             <label htmlFor="property-notes" className="text-sm font-semibold text-slate-700">{text.notes} <span className="text-xs font-normal text-slate-500">({text.optional})</span></label>

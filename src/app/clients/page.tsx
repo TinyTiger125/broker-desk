@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/app/actions";
+import { JapanesePhoneInput } from "@/components/client-form";
 import { ClientsListReturnState } from "./clients-list-return-state";
 import styles from "./clients-list-report.module.css";
 import {
@@ -141,6 +142,7 @@ const texts = {
     phone: "電話番号",
     phonePending: "電話番号未入力・要補完",
     budgetMax: "予算上限",
+    man: "万円",
     quickSave: "保存",
     quickOpen: "登録フォームを開く",
   },
@@ -188,6 +190,7 @@ const texts = {
     phone: "电话",
     phonePending: "电话待补全",
     budgetMax: "预算上限",
+    man: "万日元",
     quickSave: "保存",
     quickOpen: "打开创建表单",
   },
@@ -235,6 +238,7 @@ const texts = {
     phone: "전화번호",
     phonePending: "전화번호 입력 필요",
     budgetMax: "예산 상한",
+    man: "만 엔",
     quickSave: "저장",
     quickOpen: "등록 양식 열기",
   },
@@ -515,9 +519,9 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
           <div className={styles.quickBody}>
             <form action={createClient} className={styles.quickForm}>
               <input name="name" required placeholder={text.name} aria-label={text.name} className={styles.control} />
-              <input name="phone" placeholder={`${text.phone} · ${text.phonePending}`} aria-label={text.phone} className={styles.control} />
+              <JapanesePhoneInput name="phone" inputMode="tel" autoComplete="tel" placeholder={`${text.phone} · 03-1234-5678 / 090-1234-5678`} aria-label={text.phone} className={styles.control} />
               <input name="preferredArea" placeholder={text.area} aria-label={text.area} className={styles.control} />
-              <input name="budgetMax" type="number" placeholder={text.budgetMax} aria-label={text.budgetMax} className={styles.control} />
+              <div className="flex min-w-0 items-center gap-2"><input name="budgetMax" type="number" min="0" step="1" inputMode="numeric" placeholder={text.budgetMax} aria-label={`${text.budgetMax}（${text.man}）`} className={`${styles.control} min-w-0 flex-1`} /><span className="shrink-0 text-xs font-semibold text-slate-500">{text.man}</span></div>
               <select name="stage" defaultValue="lead" aria-label={text.stage} className={styles.control}>
                 {stageOptions.map((item) => (
                   <option key={item.value} value={item.value}>{item.label}</option>

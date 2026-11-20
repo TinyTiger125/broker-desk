@@ -1,10 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { gzipSync } from "node:zlib";
 
 const SOURCE_URL = "https://www.post.japanpost.jp/service/search/zipcode/download/utf/zip/utf_ken_all.zip";
-const OUTPUT_PATH = join(process.cwd(), ".broker-desk", "japan-postal-code-index.json");
+const OUTPUT_PATH = join(process.cwd(), "src", "data", "japan-postal-code-index.ts");
 
 function parseCsvLine(line) {
   const values = [];
@@ -65,16 +66,35 @@ async function main() {
       if (!duplicated) entriesByPostalCode[postalCode].push(entry);
     }
 
-    mkdirSync(join(process.cwd(), ".broker-desk"), { recursive: true });
-    writeFileSync(
-      OUTPUT_PATH,
-      `${JSON.stringify({
-        generatedAt: new Date().toISOString(),
-        source: SOURCE_URL,
-        entriesByPostalCode,
-      })}\n`,
-    );
-    console.log(`[PASS] Japan postal code index synced: ${Object.keys(entriesByPostalCode).length} postal codes -> ${OUTPUT_PATH}`);
+    const generatedAt = new Date().toISOString();
+    const postalCodeCount = Object.keys(entriesByPostalCode).length;
+    const compressedIndexBase64 = gzipSync(Buffer.from(JSON.stringify(entriesByPostalCode), "utf8"), { level: 9 }).toString("base64");
+    // Keep generated source lines bounded so TypeScript/Turbopack does not
+    // parse one multi-megabyte string literal. The runtime joins these chunks
+    // before base64 decoding and gunzipping on the server.
+    const base64Chunks = compressedIndexBase64.match(/.{1,8192}/g) ?? [];
+    const moduleSource = [
+      "// GENERATED FILE. Run `npm run sync:postal-codes` to refresh from the Japan Post official UTF CSV archive.",
+      `// Source: ${SOURCE_URL}`,
+      `// Generated at: ${generatedAt}`,
+      `// Postal-code entries: ${postalCodeCount}`,
+      "// Encoding: gzip+base64 (server-side inflate)",
+      "",
+      "export const JAPAN_POSTAL_CODE_INDEX_METADATA = {",
+      `  generatedAt: ${JSON.stringify(generatedAt)},`,
+      `  source: ${JSON.stringify(SOURCE_URL)},`,
+      `  postalCodeCount: ${postalCodeCount},`,
+      `  format: "gzip+base64",`,
+      "} as const;",
+      "",
+      "export const JAPAN_POSTAL_CODE_INDEX_GZIP_BASE64 = [",
+      ...base64Chunks.map((chunk) => `  ${JSON.stringify(chunk)},`),
+      "].join(\"\");",
+      "",
+    ].join("\n");
+    mkdirSync(join(process.cwd(), "src", "data"), { recursive: true });
+    writeFileSync(OUTPUT_PATH, moduleSource);
+    console.log(`[PASS] Japan postal code index synced: ${postalCodeCount} postal codes -> ${OUTPUT_PATH}`);
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
   }

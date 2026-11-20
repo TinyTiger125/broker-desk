@@ -759,6 +759,7 @@ function mapClient(row: Record<string, unknown>): Client {
     employerName: row.employer_name ? String(row.employer_name) : undefined,
     employerAddress: row.employer_address ? String(row.employer_address) : undefined,
     employerPhone: row.employer_phone ? String(row.employer_phone) : undefined,
+    employerFax: row.employer_fax ? String(row.employer_fax) : undefined,
     annualIncome: row.annual_income != null ? Number(row.annual_income) : undefined,
     annualIncomeAsOf: toDateOnly(row.annual_income_as_of),
     annualIncomeSource: row.annual_income_source ? String(row.annual_income_source) : undefined,
@@ -1404,6 +1405,7 @@ async function ensureSchemaLegacyForUnversionedDevelopment() {
       employer_name TEXT,
       employer_address TEXT,
       employer_phone TEXT,
+      employer_fax TEXT,
       annual_income INTEGER,
       annual_income_as_of DATE,
       annual_income_source TEXT,
@@ -1866,6 +1868,7 @@ async function ensureSchemaLegacyForUnversionedDevelopment() {
     ALTER TABLE clients ADD COLUMN IF NOT EXISTS name_katakana TEXT;
     ALTER TABLE clients ADD COLUMN IF NOT EXISTS first_choice_area TEXT;
     ALTER TABLE clients ADD COLUMN IF NOT EXISTS second_choice_area TEXT;
+    ALTER TABLE clients ADD COLUMN IF NOT EXISTS employer_fax TEXT;
     ALTER TABLE clients ADD COLUMN IF NOT EXISTS loan_pre_approval_status TEXT NOT NULL DEFAULT 'not_applied';
     ALTER TABLE clients ADD COLUMN IF NOT EXISTS desired_move_in_period TEXT;
     ALTER TABLE clients ADD COLUMN IF NOT EXISTS brokerage_contract_type TEXT NOT NULL DEFAULT 'none';
@@ -7079,6 +7082,7 @@ export async function addClient(input: {
   employerName?: string;
   employerAddress?: string;
   employerPhone?: string;
+  employerFax?: string;
   annualIncome?: number;
   annualIncomeAsOf?: Date;
   annualIncomeSource?: string;
@@ -7123,14 +7127,14 @@ export async function addClient(input: {
     const result = await client.query(
     `INSERT INTO clients (
       id, tenant_id, name, name_latin, name_kanji, name_katakana, phone, line_id, email, furigana, birth_date, gender, current_postal_code, current_address,
-      employer_name, employer_address, employer_phone, annual_income, annual_income_as_of, annual_income_source,
+      employer_name, employer_address, employer_phone, employer_fax, annual_income, annual_income_as_of, annual_income_source,
       budget_min, budget_max, budget_type, preferred_area,
       first_choice_area, second_choice_area, purpose, loan_pre_approval_status, desired_move_in_period,
       stage, temperature, brokerage_contract_type, brokerage_contract_signed_at, brokerage_contract_expires_at,
       important_matters_explained_at, contract_document_delivered_at, personal_info_consent_at, aml_check_status,
       next_follow_up_at, notes, owner_user_id, created_by_user_id, current_owner_user_id,
       visibility_scope, owner_resolution_status
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44,$45)
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44,$45,$46)
     RETURNING *`,
     [
       id,
@@ -7150,6 +7154,7 @@ export async function addClient(input: {
       input.employerName ?? null,
       input.employerAddress ?? null,
       input.employerPhone ?? null,
+      input.employerFax ?? null,
       input.annualIncome ?? null,
       toSqlDateOnly(input.annualIncomeAsOf),
       input.annualIncomeSource ?? null,
@@ -7204,6 +7209,7 @@ export async function updateClient(
     employerName?: string;
     employerAddress?: string;
     employerPhone?: string;
+    employerFax?: string;
     annualIncome?: number;
     annualIncomeAsOf?: Date;
     annualIncomeSource?: string;
@@ -7232,7 +7238,7 @@ export async function updateClient(
   assertNoForbiddenRecordInput(input, { allowTenantId: true });
   await ensureSchema();
   const scopeTenantId = resolveTenantId(input.tenantId);
-  const existing = await getPool().query("SELECT name_latin, name_kanji, name_katakana, furigana, birth_date, gender, current_postal_code, current_address, employer_name, employer_address, employer_phone, annual_income, annual_income_as_of, annual_income_source FROM clients WHERE id = $1 AND tenant_id = $2 LIMIT 1", [clientId, scopeTenantId]);
+  const existing = await getPool().query("SELECT name_latin, name_kanji, name_katakana, furigana, birth_date, gender, current_postal_code, current_address, employer_name, employer_address, employer_phone, employer_fax, annual_income, annual_income_as_of, annual_income_source FROM clients WHERE id = $1 AND tenant_id = $2 LIMIT 1", [clientId, scopeTenantId]);
   if (!existing.rows[0]) return null;
   const existingClient = existing.rows[0] as Record<string, unknown>;
   const hasInput = (key: string) => Object.prototype.hasOwnProperty.call(input, key);
@@ -7248,6 +7254,7 @@ export async function updateClient(
     employerName: hasInput("employerName") ? input.employerName ?? null : existingClient.employer_name ?? null,
     employerAddress: hasInput("employerAddress") ? input.employerAddress ?? null : existingClient.employer_address ?? null,
     employerPhone: hasInput("employerPhone") ? input.employerPhone ?? null : existingClient.employer_phone ?? null,
+    employerFax: hasInput("employerFax") ? input.employerFax ?? null : existingClient.employer_fax ?? null,
     annualIncome: hasInput("annualIncome") ? input.annualIncome ?? null : existingClient.annual_income ?? null,
     annualIncomeAsOf: hasInput("annualIncomeAsOf") ? toSqlDateOnly(input.annualIncomeAsOf) : existingClient.annual_income_as_of ?? null,
     annualIncomeSource: hasInput("annualIncomeSource") ? input.annualIncomeSource ?? null : existingClient.annual_income_source ?? null,
@@ -7270,31 +7277,32 @@ export async function updateClient(
       employer_name = $14,
       employer_address = $15,
       employer_phone = $16,
-      annual_income = $17,
-      annual_income_as_of = $18,
-      annual_income_source = $19,
-      budget_min = $20,
-      budget_max = $21,
-      budget_type = $22,
-      preferred_area = $23,
-      first_choice_area = $24,
-      second_choice_area = $25,
-      purpose = $26,
-      loan_pre_approval_status = $27,
-      desired_move_in_period = $28,
-      stage = $29,
-      temperature = $30,
-      brokerage_contract_type = $31,
-      brokerage_contract_signed_at = $32,
-      brokerage_contract_expires_at = $33,
-      important_matters_explained_at = $34,
-      contract_document_delivered_at = $35,
-      personal_info_consent_at = $36,
-      aml_check_status = $37,
-      next_follow_up_at = $38,
-      notes = $39,
+      employer_fax = $17,
+      annual_income = $18,
+      annual_income_as_of = $19,
+      annual_income_source = $20,
+      budget_min = $21,
+      budget_max = $22,
+      budget_type = $23,
+      preferred_area = $24,
+      first_choice_area = $25,
+      second_choice_area = $26,
+      purpose = $27,
+      loan_pre_approval_status = $28,
+      desired_move_in_period = $29,
+      stage = $30,
+      temperature = $31,
+      brokerage_contract_type = $32,
+      brokerage_contract_signed_at = $33,
+      brokerage_contract_expires_at = $34,
+      important_matters_explained_at = $35,
+      contract_document_delivered_at = $36,
+      personal_info_consent_at = $37,
+      aml_check_status = $38,
+      next_follow_up_at = $39,
+      notes = $40,
       updated_at = NOW()
-    WHERE id = $1 AND tenant_id = $40
+    WHERE id = $1 AND tenant_id = $41
     RETURNING *`,
     [
       clientId,
@@ -7313,6 +7321,7 @@ export async function updateClient(
       profileValues.employerName,
       profileValues.employerAddress,
       profileValues.employerPhone,
+      profileValues.employerFax,
       profileValues.annualIncome,
       profileValues.annualIncomeAsOf,
       profileValues.annualIncomeSource,

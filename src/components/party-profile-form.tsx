@@ -6,7 +6,7 @@ import type { PartyProfileFormActionState, PartyProfileFormValues } from "@/app/
 import { Button } from "@/components/ui-foundation";
 import type { Locale } from "@/lib/locale";
 import { getPartyProfileRoleOptions, getPartyProfileTypeOptions } from "@/lib/party-profile";
-import { formatJapaneseMobilePhone } from "@/lib/japanese-mobile-phone";
+import { formatJapanesePhone, formatJapanesePhoneForDisplay } from "@/lib/japanese-mobile-phone";
 
 type PartyProfileFormAction = (
   previousState: PartyProfileFormActionState,
@@ -53,7 +53,7 @@ export function PartyProfileReadOnly({ defaults, locale, reason = "company_read"
   const readOnlyMessage = reason === "owner_read_only" ? text.ownerReadOnly : text.readOnly;
   const fields = [
     [text.name, defaults.name],
-    [text.phone, defaults.phone],
+    [text.phone, formatJapanesePhoneForDisplay(defaults.phone)],
     [text.email, defaults.email || text.unset],
     [text.lineId, defaults.lineId || text.unset],
     [text.type, defaults.partyType ? getPartyProfileTypeOptions(locale).find((item) => item.value === defaults.partyType)?.label ?? defaults.partyType : text.unset],
@@ -73,7 +73,7 @@ function initialValues(defaults: PartyProfileFormDefaults): PartyProfileFormValu
   return {
     partyId: defaults.partyId,
     name: defaults.name,
-    phone: defaults.phone,
+    phone: formatJapanesePhoneForDisplay(defaults.phone),
     email: defaults.email ?? "",
     lineId: defaults.lineId ?? "",
     partyType: defaults.partyType ?? "",
@@ -154,7 +154,7 @@ export function PartyProfileForm({ action, defaults, locale, returnTo, relationT
       <section aria-labelledby="party-contact-heading" className="space-y-4 border-b border-slate-200 pb-6">
         <h2 id="party-contact-heading" className="text-base font-bold text-slate-950">{text.contact}</h2>
         <div className="grid items-start gap-4 md:grid-cols-3">
-          <div className="grid content-start gap-1">{label("phone", text.phone, false)}<input {...fieldProps("phone")} onChange={(event) => setValues((current) => ({ ...current, phone: formatJapaneseMobilePhone(event.target.value) }))} inputMode="tel" className={inputClass} />{fieldError("phone")}</div>
+          <div className="grid content-start gap-1">{label("phone", text.phone, false)}<input {...fieldProps("phone")} onChange={(event) => setValues((current) => ({ ...current, phone: formatJapanesePhone(event.target.value) }))} inputMode="tel" className={inputClass} />{fieldError("phone")}</div>
           <div className="grid content-start gap-1">{label("email", text.email)}<input {...fieldProps("email")} type="email" className={inputClass} />{fieldError("email")}</div>
           <div className="grid content-start gap-1">{label("lineId", text.lineId)}<input {...fieldProps("lineId")} className={inputClass} />{fieldError("lineId")}</div>
         </div>
