@@ -630,8 +630,8 @@ export function CaseAssociationDraft({
           <input type="hidden" name="caseManualValuesJson" value={JSON.stringify(manualCaseFieldValues)} />
           <input type="hidden" name="entryReadFileKeys" value={JSON.stringify(entryReadFileKeys)} />
           <div className="grid gap-3 md:grid-cols-2">
-            <label className="space-y-1 text-sm font-semibold text-slate-700">
-              <span>{text.uploadKind}</span>
+            <label className="space-y-2 text-sm font-semibold text-slate-700">
+              <span className="flex min-h-7 items-center">{text.uploadKind}</span>
                 <select
                 name="previewKind"
                 value={previewKind}
@@ -642,10 +642,7 @@ export function CaseAssociationDraft({
                 <option value="property">{text.uploadKindProperty}</option>
               </select>
             </label>
-            <div className="space-y-1 text-sm font-semibold text-slate-700">
-              <span>{text.uploadFile}</span>
-              <EntryFilePicker locale={locale} files={entryFiles} onFilesChange={updateEntryFiles} name="caseUploadFile" disabled={pending} />
-            </div>
+            <EntryFilePicker locale={locale} files={entryFiles} onFilesChange={updateEntryFiles} name="caseUploadFile" disabled={pending} compact />
           </div>
           <EntryPreview files={entryFiles} kind={previewKind} context="case" locale={locale} onConfirm={confirmEntryCandidate} onLocateCandidate={locateEntryCandidate} onReadFileKeys={handleEntryReadFileKeys} onReadComplete={autoSaveCaseReadResult} />
           {unsupportedPreviewCount > 0 ? <p role="status" className="text-xs font-semibold text-amber-700">{locale === "zh" ? "部分候选没有对应的案件字段，未写入案件。请只确认已有字段。" : locale === "ko" ? "일부 후보에 대응하는 안건 필드가 없어 반영하지 않았습니다. 기존 필드만 확인해 주세요." : "一部の候補は案件の既存項目に対応しないため反映していません。既存項目だけ確認してください。"}</p> : null}

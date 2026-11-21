@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useId, useRef, useState, type ChangeEvent } from "react";
 import type { Locale } from "@/lib/locale";
 
 export const ENTRY_FILE_INPUT_NAME = "uploadFile";
@@ -83,6 +83,7 @@ export function EntryFilePicker({
   compact = false,
 }: EntryFilePickerProps) {
   const text = copy[locale];
+  const hintId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string>();
 
@@ -113,14 +114,12 @@ export function EntryFilePicker({
 
   return (
     <section aria-labelledby="entry-upload-heading" className={compact ? "space-y-2" : "space-y-3 rounded-xl border border-blue-200 bg-blue-50/50 p-4"}>
-      <div>
-        <h2 id="entry-upload-heading" className="text-sm font-black text-slate-950">{text.label}</h2>
-        <p className="mt-1 text-xs leading-5 text-slate-600">{text.hint}</p>
-      </div>
+      <h2 id="entry-upload-heading" className="flex min-h-7 items-center text-sm font-black text-slate-950">{text.label}</h2>
       <label className="block text-sm font-semibold text-slate-700">
         <span className="sr-only">{text.label}</span>
         <input
           ref={inputRef}
+          aria-describedby={hintId}
           name={name}
           type="file"
           multiple
@@ -130,6 +129,7 @@ export function EntryFilePicker({
           className="box-border min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-1 file:text-xs file:font-bold file:text-slate-800"
         />
       </label>
+      <p id={hintId} className="text-xs leading-5 text-slate-600">{text.hint}</p>
       {error ? <p role="alert" className="text-xs font-bold text-rose-700">{error}</p> : null}
       {files.length > 0 ? (
         <ul aria-label={text.selected} className="grid gap-2 sm:grid-cols-2">
