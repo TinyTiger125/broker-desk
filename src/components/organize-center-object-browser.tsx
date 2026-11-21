@@ -247,10 +247,10 @@ export function OrganizeCenterObjectBrowser({
                 data-list-row-anchor
                 data-list-return-trigger={`${item.type}:${item.id}`}
                 aria-label={`${item.title} · ${getTypeLabel(item.type, copy)}`}
-                className="grid min-w-0 gap-3 rounded-md focus-visible:bg-[#e8efff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3158d8] focus-visible:ring-inset focus-visible:shadow-[inset_3px_0_0_#3158d8] md:col-span-2 md:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)] xl:col-span-3 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1.45fr)]"
+                className="group/record grid min-w-0 gap-3 rounded-md focus-visible:outline-none md:col-span-2 md:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)] xl:col-span-3 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1.45fr)]"
               >
                 <div className="min-w-0">
-                <div className="flex min-w-0 flex-col rounded-md p-2 text-base font-black leading-6 text-slate-950">
+                <div className="flex min-w-0 flex-col rounded-md p-2 text-base font-black leading-6 text-slate-950 group-focus-visible/record:bg-[#e8efff] group-focus-visible/record:ring-2 group-focus-visible/record:ring-[#3158d8] group-focus-visible/record:ring-inset group-focus-visible/record:shadow-[inset_3px_0_0_#3158d8]">
                   <span className="flex min-w-0 items-start justify-between gap-3">
                     <span className="min-w-0 break-words">{item.title}</span>
                     <span className="material-symbols-outlined mt-1 shrink-0 text-[18px] text-slate-400" aria-hidden="true">arrow_forward</span>
