@@ -11,6 +11,7 @@ import layoutStyles from "@/components/layout-system/layout-system.module.css";
 import { formatCaseDateForDisplay, parseCaseDateInput } from "@/lib/case-date";
 import { getCaseContactValidationError } from "@/lib/case-contact-validation";
 import { formatJapanesePhone, formatJapanesePhoneForDisplay } from "@/lib/japanese-mobile-phone";
+import { formatJapanesePostalCode } from "@/lib/japanese-postal-code-validation";
 
 export type CaseFieldInputSpec = {
   kind: "text" | "textarea" | "tel" | "email" | "money" | "number" | "date" | "select";
@@ -468,7 +469,7 @@ export function CaseFieldInput({
   const spec = inputSpec;
   const controlClasses = `${inputClass(tone, readOnly)}${controlClassName ? ` ${controlClassName}` : ""}`;
   const placeholder = spec.placeholder?.[locale];
-  const displayValue = spec.kind === "tel" ? formatJapanesePhoneForDisplay(value) : value;
+  const displayValue = spec.kind === "tel" ? formatJapanesePhoneForDisplay(value) : spec.validation === "japanese_postal_code" ? formatJapanesePostalCode(value) : value;
   const currentOptionExists = spec.options?.some((option) => option === value);
   const dateTextRef = useRef<HTMLInputElement>(null);
   const datePickerRef = useRef<HTMLInputElement>(null);
@@ -572,8 +573,9 @@ export function CaseFieldInput({
         placeholder={placeholder}
         className={`${controlClasses} ${spec.unit ? "pr-14" : ""}`}
         onInput={(event) => {
-          if (spec.kind !== "tel" || readOnly) return;
-          event.currentTarget.value = formatJapanesePhone(event.currentTarget.value);
+          if (readOnly) return;
+          if (spec.kind === "tel") event.currentTarget.value = formatJapanesePhone(event.currentTarget.value);
+          if (spec.validation === "japanese_postal_code") event.currentTarget.value = formatJapanesePostalCode(event.currentTarget.value);
         }}
       />
       {spec.unit ? <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs font-bold text-slate-500">{spec.unit}</span> : null}
@@ -584,6 +586,14 @@ export function CaseFieldInput({
 function FieldInput({ field, locale, readOnly = false }: { field: CaseOverviewField; locale: Locale; readOnly?: boolean }) {
   return <CaseFieldInput name={`field:${field.fieldKey}`} value={field.value} label={field.label} inputSpec={field.inputSpec} locale={locale} required={field.required} readOnly={readOnly} tone={fieldIssue(field) ? "attention" : "default"} />;
 }
+
+const casePostalAddressPairs: Record<string, string> = {
+  "property.postalCode": "property.address",
+  "applicant.currentPostalCode": "applicant.currentAddress",
+  "applicant.employerPostalCode": "applicant.employerAddress",
+  "guarantor.postalCode": "guarantor.address",
+  "emergencyContact.postalCode": "emergencyContact.address",
+};
 
 function localizeOutputLabel(locale: Locale, code: string) {
   const labels: Record<string, Record<Locale, string>> = {
@@ -1043,11 +1053,16 @@ export function CaseOverview({
 
   const visibleAnchors = sections.slice(0, 4);
   const overflowAnchors = sections.slice(4);
-  const renderFieldForm = (field: CaseOverviewField, className: string) => (
+  const renderFieldForm = (field: CaseOverviewField, className: string) => {
+    const addressFieldKey = casePostalAddressPairs[field.fieldKey];
+    const addressField = addressFieldKey ? sections.flatMap((section) => section.children.flatMap((child) => child.fields)).find((candidate) => candidate.fieldKey === addressFieldKey) : undefined;
+    return (
     <CaseWorkbenchFieldForm
+      key={field.fieldKey}
       action={saveAction}
       caseId={caseId}
       fieldKey={field.fieldKey}
+      postalAddress={addressField ? { fieldKey: addressField.fieldKey, label: addressField.label, value: addressField.value, locale } : undefined}
       returnField={field.fieldKey}
       returnAnchor={editingSection?.id ?? fieldAnchor(field.fieldKey)}
       returnView={saveAndSwitchView ?? "overview"}
@@ -1089,6 +1104,7 @@ export function CaseOverview({
       savingLabel={locale === "zh" ? "保存中" : locale === "ko" ? "저장 중" : "保存中"}
       className={className}
     >
+      {(_readOnly, postalLookupButton) => <>
       {field.evidenceItems.length > 0 ? (
         <CaseEvidenceSummary
           locale={locale}
@@ -1100,10 +1116,12 @@ export function CaseOverview({
       ) : null}
       <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 sm:p-4">
         <p className="text-xs font-black text-slate-600">{locale === "zh" ? "案件信息" : locale === "ko" ? "안건 정보" : "案件情報"}</p>
-        <div className="mt-2"><FieldInput field={field} locale={locale} readOnly={savedReadOnlyFieldKey === field.fieldKey} /></div>
+        <div className={postalLookupButton ? "mt-2 grid grid-cols-[minmax(0,1fr)_auto] gap-2" : "mt-2"}><FieldInput field={field} locale={locale} readOnly={savedReadOnlyFieldKey === field.fieldKey} />{postalLookupButton}</div>
       </div>
+      </>}
     </CaseWorkbenchFieldForm>
-  );
+    );
+  };
 
   const renderEditor = () => {
     if (!editingField) return null;

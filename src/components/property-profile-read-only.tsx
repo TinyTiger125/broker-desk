@@ -1,4 +1,5 @@
 import type { Locale } from "@/lib/locale";
+import { formatJapanesePostalCode } from "@/lib/japanese-postal-code-validation";
 
 type PropertyProfileReadOnlyProps = {
   locale: Locale;
@@ -101,7 +102,7 @@ export function PropertyProfileReadOnly({ locale, reason, property }: PropertyPr
         <div><dt className="text-xs font-bold text-slate-500">{text.area}</dt><dd className="mt-1 text-sm text-slate-800">{property.area || text.unset}</dd></div>
         <div><dt className="text-xs font-bold text-slate-500">{text.address}</dt><dd className="mt-1 text-sm text-slate-800">{property.address || text.unset}</dd></div>
         <div><dt className="text-xs font-bold text-slate-500">{text.roomNumber}</dt><dd className="mt-1 text-sm text-slate-800">{property.roomNumber || text.unset}</dd></div>
-        <div><dt className="text-xs font-bold text-slate-500">{text.postalCode}</dt><dd className="mt-1 text-sm text-slate-800">{property.postalCode || text.unset}</dd></div>
+        <div><dt className="text-xs font-bold text-slate-500">{text.postalCode}</dt><dd className="mt-1 text-sm text-slate-800">{property.postalCode ? formatJapanesePostalCode(property.postalCode) : text.unset}</dd></div>
         <div><dt className="text-xs font-bold text-slate-500">{text.usage}</dt><dd className="mt-1 text-sm text-slate-800">{property.usage || text.unset}</dd></div>
         <div><dt className="text-xs font-bold text-slate-500">{text.size}</dt><dd className="mt-1 text-sm text-slate-800">{formatNumber(property.sizeSqm, text.unset)}</dd></div>
         <div><dt className="text-xs font-bold text-slate-500">{text.price}</dt><dd className="mt-1 text-sm text-slate-800">{formatNumber(property.listingPrice, text.unset)}{Number.isFinite(property.listingPrice) ? ` ${text.yen}` : ""}</dd></div>

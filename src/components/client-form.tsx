@@ -17,7 +17,7 @@ import type { Locale } from "@/lib/locale";
 import { getBudgetTypeOptions, getPurposeOptions, getStageOptions, getTemperatureOptions } from "@/lib/options";
 import { getPartyProfileTypeOptions } from "@/lib/party-profile";
 import { formatJapanesePhone, formatJapanesePhoneForDisplay } from "@/lib/japanese-mobile-phone";
-import { isValidJapanesePostalCode, normalizeJapanesePostalCode } from "@/lib/japanese-postal-code-validation";
+import { formatJapanesePostalCode, isValidJapanesePostalCode, normalizeJapanesePostalCode } from "@/lib/japanese-postal-code-validation";
 import { formatLegacyYenAsManYen, isLegacyNonIntegerManYen } from "@/lib/client-money";
 import { isCustomerNameRepresentationValue, normalizeCustomerIdentityValue } from "@/lib/customer-identity-field-catalog";
 import type { EntryUploadStagedFileRef } from "@/lib/entry-upload-staging";
@@ -601,7 +601,7 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
   const errorFor = (field: keyof ClientFormValues) => state.fieldErrors[field];
   const update = (field: keyof ClientFormValues, event: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     setTouchedFields((current) => current.has(field) ? current : new Set(current).add(field));
-    setValues((current) => ({ ...current, [field]: event.target.value }));
+    setValues((current) => ({ ...current, [field]: field === "currentPostalCode" ? formatJapanesePostalCode(event.target.value) : event.target.value }));
   };
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     if (event.key === "Enter" && (composingRef.current || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229)) event.preventDefault();
@@ -619,7 +619,7 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
     else window.requestAnimationFrame(focus);
   };
   const fieldProps = (field: keyof ClientFormValues) => ({
-    id: `client-${field}`, name: field, value: values[field], onChange: (event: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => update(field, event), onKeyDown,
+    id: `client-${field}`, name: field, value: field === "currentPostalCode" ? formatJapanesePostalCode(values[field]) : values[field], onChange: (event: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => update(field, event), onKeyDown,
     onCompositionStart: () => { composingRef.current = true; }, onCompositionEnd: () => { composingRef.current = false; },
     "aria-invalid": Boolean(errorFor(field)) || undefined, "aria-describedby": errorFor(field) ? `client-${field}-error` : undefined,
     disabled: readOnly || undefined,
@@ -631,6 +631,7 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
   const existingClientAutoLookupHasError = existingClientAutoLookupStates.some((state) => state.status === "error");
   const errorText = (field: keyof ClientFormValues) => errorFor(field) ? <p id={`client-${field}-error`} className="text-xs font-semibold text-rose-700">{errorFor(field)}</p> : null;
   const label = (field: keyof ClientFormValues, content: string, required = false, hint?: string) => <div className="flex items-center gap-1"><label htmlFor={`client-${field}`} className="text-sm font-semibold text-slate-700">{content} {required ? <span className="text-rose-700">*</span> : <span className="text-xs font-normal text-slate-500">({text.optional})</span>}</label>{hint ? <HelpHint id={`client-${field}-hint`} label={content}>{hint}</HelpHint> : null}</div>;
+  const postalSearchLabel = locale === "zh" ? "查询地址" : locale === "ko" ? "주소 검색" : "住所検索";
   const [postalLookupStatus, setPostalLookupStatus] = useState<"idle" | "loading" | "found" | "not_found" | "unavailable" | "invalid" | "error">("idle");
   const lookupCurrentPostalCode = useCallback(async () => {
     const postalCode = normalizeJapanesePostalCode(values.currentPostalCode);
@@ -650,22 +651,25 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
         setPostalLookupStatus("not_found");
         return;
       }
-      const currentAddress = values.currentAddress.trim();
       const prefix = payload.addressPrefix;
       const administrativePrefix = `${payload.prefecture ?? ""}${payload.municipality ?? ""}`;
-      const nextAddress = !currentAddress
-        ? prefix
-        : currentAddress.startsWith(prefix) || (administrativePrefix && currentAddress.startsWith(administrativePrefix))
-          ? currentAddress
-          : /^(東京都|北海道|京都府|大阪府|.{2,3}県)/.test(currentAddress)
+      setValues((current) => {
+        if (normalizeJapanesePostalCode(current.currentPostalCode) !== postalCode) return current;
+        const currentAddress = current.currentAddress.trim();
+        const nextAddress = !currentAddress
+          ? prefix
+          : currentAddress.startsWith(prefix) || (administrativePrefix && currentAddress.startsWith(administrativePrefix))
             ? currentAddress
-            : `${prefix}${currentAddress}`;
-      setValues((current) => ({ ...current, currentPostalCode: postalCode, currentAddress: nextAddress }));
+            : /^(東京都|北海道|京都府|大阪府|.{2,3}県)/.test(currentAddress)
+              ? currentAddress
+              : `${prefix}${currentAddress}`;
+        return { ...current, currentPostalCode: formatJapanesePostalCode(postalCode), currentAddress: nextAddress };
+      });
       setPostalLookupStatus("found");
     } catch {
       setPostalLookupStatus("error");
     }
-  }, [setValues, values.currentAddress, values.currentPostalCode]);
+  }, [setValues, values.currentPostalCode]);
   const select = (field: keyof ClientFormValues, options: ReadonlyArray<{ value: string; label: string }>, required = false) => (
     <select {...fieldProps(field)} required={required} aria-required={required || undefined} className={inputClass}>
       {required ? <option value="">{text.choose}</option> : null}
@@ -757,7 +761,7 @@ export function ClientForm({ action, defaults, mode, locale = "ja", returnTo, su
           <div className="space-y-1">{label("nameKatakana", text.nameKatakana)}<input {...fieldProps("nameKatakana")} onChange={(event) => { update("nameKatakana", event); invalidateExistingClientAutoLookup("nameKatakana"); }} onBlur={(event) => autoLookupExistingClientByName("nameKatakana", event.currentTarget.value)} className={inputClass} />{errorText("nameKatakana")}</div>
           <div className="md:col-span-2">{errorText("name")}</div>
         </> : null}
-        <div className="space-y-1">{label("currentPostalCode", profilePostalCodeLabel)}<input {...fieldProps("currentPostalCode")} onBlur={() => void lookupCurrentPostalCode()} inputMode="numeric" autoComplete="postal-code" className={inputClass} />{postalLookupStatus === "loading" ? <p role="status" className="text-xs font-semibold text-slate-600">{text.postalLookupLoading}</p> : postalLookupStatus === "found" ? <p role="status" className="text-xs font-semibold text-emerald-700">{text.postalLookup}</p> : postalLookupStatus === "not_found" ? <p role="status" className="text-xs font-semibold text-amber-700">{text.postalLookupNotFound}</p> : postalLookupStatus === "unavailable" ? <p role="alert" className="text-xs font-semibold text-amber-700">{text.postalLookupUnavailable}</p> : postalLookupStatus === "invalid" ? <p role="alert" className="text-xs font-semibold text-rose-700">{text.postalLookupInvalid}</p> : null}{errorText("currentPostalCode")}</div>
+        <div className="space-y-1">{label("currentPostalCode", profilePostalCodeLabel)}<div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2"><input {...fieldProps("currentPostalCode")} onChange={(event) => { update("currentPostalCode", event); setPostalLookupStatus("idle"); }} inputMode="numeric" autoComplete="postal-code" className={inputClass} /><button type="button" onClick={() => void lookupCurrentPostalCode()} disabled={readOnly || postalLookupStatus === "loading"} className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60">{postalSearchLabel}</button></div>{postalLookupStatus === "loading" ? <p role="status" className="text-xs font-semibold text-slate-600">{text.postalLookupLoading}</p> : postalLookupStatus === "found" ? <p role="status" className="text-xs font-semibold text-emerald-700">{text.postalLookup}</p> : postalLookupStatus === "not_found" ? <p role="status" className="text-xs font-semibold text-amber-700">{text.postalLookupNotFound}</p> : (postalLookupStatus === "unavailable" || postalLookupStatus === "error") ? <p role="alert" className="text-xs font-semibold text-amber-700">{text.postalLookupUnavailable}</p> : postalLookupStatus === "invalid" ? <p role="alert" className="text-xs font-semibold text-rose-700">{text.postalLookupInvalid}</p> : null}{errorText("currentPostalCode")}</div>
         <div className="space-y-1 md:col-span-2">{label("currentAddress", profileAddressLabel)}<input {...fieldProps("currentAddress")} className={inputClass} />{errorText("currentAddress")}</div>
         {isCorporate ? hiddenIndividualFields.map((field) => <input key={field} type="hidden" value={values[field]} disabled aria-hidden="true" />) : <>
           <div className="space-y-1">{label("birthDate", text.birthDate)}<input {...fieldProps("birthDate")} type="date" className={inputClass} />{errorText("birthDate")}</div>

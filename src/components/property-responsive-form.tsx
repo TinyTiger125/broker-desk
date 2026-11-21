@@ -1,17 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useCallback, useEffect, useRef, useState, useTransition, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
+import { useActionState, useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import type { Locale } from "@/lib/locale";
 import type { PropertyFormActionState, PropertyFormValues } from "@/app/actions";
 import { endSubmission, handleFormSubmit, type SubmissionLock } from "@/components/form-submission-lock";
 import { Button } from "@/components/ui-foundation";
 import { HelpHint } from "@/components/help-hint";
 import { EntryFilePicker, replaceEntryFiles } from "@/components/entry-file-picker";
-import { applyEntryPreviewCandidate, createEntryIntentId, EntryPreview, type EntryPreviewCandidate } from "@/components/entry-preview";
+import { createEntryIntentId, EntryPreview } from "@/components/entry-preview";
 import { useEntryDraft } from "@/components/use-entry-draft";
-import { fillAutoSavedEntryForm, type EntryPreviewState } from "@/lib/entry-preview";
-import { isValidJapanesePostalCode, normalizeJapanesePostalCode } from "@/lib/japanese-postal-code-validation";
+import { formatJapanesePostalCode, isValidJapanesePostalCode, normalizeJapanesePostalCode } from "@/lib/japanese-postal-code-validation";
+import { validatePropertyReviewValue } from "@/lib/property-entry-review";
 
 type PropertyFormAction = (
   previousState: PropertyFormActionState,
@@ -70,6 +70,7 @@ const copy = {
     errorSummary: "入力内容を確認してください。",
     saving: "保存中…",
     postalLookup: "郵便番号から住所を補完",
+    postalSearch: "住所検索",
     postalLookupLoading: "住所を確認中…",
     postalLookupNotFound: "該当する郵便番号が見つかりません。詳細住所はそのまま入力してください。",
     postalLookupUnavailable: "郵便番号データを利用できません。詳細住所を確認してください。",
@@ -105,6 +106,7 @@ const copy = {
     errorSummary: "请检查以下输入内容。",
     saving: "保存中…",
     postalLookup: "从邮编补全地址",
+    postalSearch: "查询地址",
     postalLookupLoading: "正在确认地址…",
     postalLookupNotFound: "未找到该邮编。请保留并补充详细地址。",
     postalLookupUnavailable: "邮编数据暂不可用，请确认详细地址。",
@@ -140,6 +142,7 @@ const copy = {
     errorSummary: "다음 입력 내용을 확인해 주세요.",
     saving: "저장 중…",
     postalLookup: "우편번호로 주소 보완",
+    postalSearch: "주소 검색",
     postalLookupLoading: "주소 확인 중…",
     postalLookupNotFound: "해당 우편번호를 찾지 못했습니다. 상세 주소를 그대로 입력해 주세요.",
     postalLookupUnavailable: "우편번호 데이터를 사용할 수 없습니다. 상세 주소를 확인해 주세요.",
@@ -229,9 +232,7 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
   const [entryFiles, setEntryFiles] = useState<File[]>([]);
   const [entryIntentId] = useState(() => createEntryIntentId());
   const [entryReadFileKeys, setEntryReadFileKeys] = useState<string[]>([]);
-  const [autoSaving, startAutoSaving] = useTransition();
   const formRef = useRef<HTMLFormElement>(null);
-  const autoSaveStartedRef = useRef(false);
   const entryFilesRef = useRef<File[]>([]);
   const entryReadFileKeysRef = useRef<string[]>([]);
   const handleEntryReadFileKeys = useCallback((keys: string[]) => {
@@ -239,14 +240,16 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
     setEntryReadFileKeys(keys);
   }, []);
   const updateEntryFiles = useCallback((files: File[]) => {
-    autoSaveStartedRef.current = false;
     entryFilesRef.current = files;
     setEntryFiles(files);
     entryReadFileKeysRef.current = [];
     setEntryReadFileKeys([]);
   }, []);
-  const confirmEntryCandidate = useCallback((candidate: EntryPreviewCandidate) => {
-    setValues((current) => String(current[candidate.key as keyof PropertyFormValues] ?? "").trim() ? current : applyEntryPreviewCandidate(current, candidate));
+  const applyPropertyReviewValue = useCallback((key: string, value: string) => {
+    if (!Object.prototype.hasOwnProperty.call(propertyFormSectionForField, key) || !validatePropertyReviewValue(key, value)) return false;
+    const field = key as keyof PropertyFormValues;
+    setValues((current) => ({ ...current, [field]: field === "postalCode" ? formatJapanesePostalCode(value) : value }));
+    return true;
   }, [setValues]);
   const [expandedSections, setExpandedSections] = useState<Record<PropertyFormSectionKey, boolean>>({ basic: Boolean(initialValues.name || initialValues.area || initialValues.address || initialValues.furigana || initialValues.roomNumber || initialValues.postalCode || initialValues.usage), money: Boolean(initialValues.listingPrice || initialValues.listingRent || initialValues.listingCommonFee || initialValues.managementFee || initialValues.repairFee || initialValues.sizeSqm), detail: Boolean(initialValues.notes) });
   const openSectionForField = useCallback((field: keyof PropertyFormValues) => {
@@ -268,18 +271,6 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
   const toggleSection = (section: PropertyFormSectionKey) => {
     setExpandedSections((current) => ({ ...current, [section]: !current[section] }));
   };
-  const locateEntryCandidate = useCallback((candidate: EntryPreviewCandidate) => {
-    const field = candidate.key as keyof PropertyFormValues;
-    if (!Object.prototype.hasOwnProperty.call(initialValues, field)) return;
-    openSectionForField(field);
-    const focus = () => {
-      const target = document.getElementById(`property-${field}`);
-      target?.focus();
-      target?.scrollIntoView({ block: "center", behavior: "smooth" });
-    };
-    if (typeof window === "undefined") focus();
-    else window.requestAnimationFrame(focus);
-  }, [initialValues, openSectionForField]);
   const entryAction = useCallback(async (previousState: PropertyFormActionState, formData: FormData) => {
     if (entryUpload) {
       replaceEntryFiles(formData, entryFilesRef.current);
@@ -288,16 +279,6 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
     return action(previousState, formData);
   }, [action, entryUpload]);
   const [state, formAction, pending] = useActionState(entryAction, { ...initialState, values: initialValues });
-  const autoSaveReadResult = useCallback((preview: EntryPreviewState) => {
-    if (!entryUpload || propertyId || autoSaveStartedRef.current || !formRef.current) return;
-    const data = new FormData(formRef.current);
-    const applied = fillAutoSavedEntryForm(data, preview);
-    if (applied === 0 || !String(data.get("name") ?? "").trim()) return;
-    entryReadFileKeysRef.current = preview.readFileKeys;
-    setValues((current) => ({ ...current, ...Object.fromEntries([...data.entries()].filter(([key, value]) => key in current && typeof value === "string")) }));
-    autoSaveStartedRef.current = true;
-    startAutoSaving(() => formAction(data));
-  }, [entryUpload, formAction, propertyId, setValues]);
   const summaryRef = useRef<HTMLDivElement>(null);
   const composingRef = useRef(false);
   const notifiedCreatedId = useRef<string | undefined>(undefined);
@@ -328,11 +309,11 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
 
   const errorEntries = Object.entries(state.fieldErrors) as Array<[keyof PropertyFormValues, string]>;
   const updateValue = (field: keyof PropertyFormValues, value: string) => {
-    setValues((current) => ({ ...current, [field]: value }));
+    setValues((current) => ({ ...current, [field]: field === "postalCode" ? formatJapanesePostalCode(value) : value }));
   };
   const [postalLookupStatus, setPostalLookupStatus] = useState<"idle" | "loading" | "found" | "not_found" | "unavailable" | "invalid" | "error">("idle");
-  const lookupPostalCode = useCallback(async () => {
-    const postalCode = normalizeJapanesePostalCode(values.postalCode);
+  const lookupPostalCode = useCallback(async (postalInput: string) => {
+    const postalCode = normalizeJapanesePostalCode(postalInput);
     if (!isValidJapanesePostalCode(postalCode)) {
       setPostalLookupStatus("invalid");
       return;
@@ -349,21 +330,24 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
         setPostalLookupStatus("not_found");
         return;
       }
-      const currentAddress = values.address.trim();
       const administrativePrefix = `${payload.prefecture ?? ""}${payload.municipality ?? ""}`;
-      const nextAddress = !currentAddress
-        ? payload.addressPrefix
-        : currentAddress.startsWith(payload.addressPrefix) || (administrativePrefix && currentAddress.startsWith(administrativePrefix))
-          ? currentAddress
-          : /^(東京都|北海道|京都府|大阪府|.{2,3}県)/.test(currentAddress)
+      setValues((current) => {
+        if (normalizeJapanesePostalCode(current.postalCode) !== postalCode) return current;
+        const currentAddress = current.address.trim();
+        const nextAddress = !currentAddress
+          ? payload.addressPrefix!
+          : currentAddress.startsWith(payload.addressPrefix!) || (administrativePrefix && currentAddress.startsWith(administrativePrefix))
             ? currentAddress
-            : `${payload.addressPrefix}${currentAddress}`;
-      setValues((current) => ({ ...current, postalCode, address: nextAddress }));
+            : /^(東京都|北海道|京都府|大阪府|.{2,3}県)/.test(currentAddress)
+              ? currentAddress
+              : `${payload.addressPrefix}${currentAddress}`;
+        return { ...current, postalCode: formatJapanesePostalCode(postalCode), address: nextAddress };
+      });
       setPostalLookupStatus("found");
     } catch {
       setPostalLookupStatus("error");
     }
-  }, [setValues, values.address, values.postalCode]);
+  }, [setValues]);
   const sectionCounts = {
     basic: { filled: ["name", "area", "address", "furigana", "roomNumber", "postalCode", "usage"].filter((field) => String(values[field as keyof PropertyFormValues] ?? "").trim()).length, total: 7 },
     money: { filled: ["listingPrice", "listingRent", "listingCommonFee", "managementFee", "repairFee", "sizeSqm"].filter((field) => String(values[field as keyof PropertyFormValues] ?? "").trim()).length, total: 6 },
@@ -389,7 +373,7 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
   const fieldProps = (field: keyof PropertyFormValues, id: string) => ({
     id,
     name: field,
-    value: values[field],
+    value: field === "postalCode" ? formatJapanesePostalCode(values[field]) : values[field],
     onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => updateValue(field, event.target.value),
     onKeyDown,
     onCompositionStart: () => { composingRef.current = true; },
@@ -414,7 +398,7 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
         <input type="hidden" name="entryIntentId" value={entryIntentId} />
         <div className="grid items-start gap-3 rounded-xl border border-blue-200 bg-blue-50/50 p-3 md:grid-cols-2">
           <EntryFilePicker locale={locale} files={entryFiles} onFilesChange={updateEntryFiles} disabled={pending} compact />
-          <EntryPreview files={entryFiles} kind="property" locale={locale} onConfirm={confirmEntryCandidate} onLocateCandidate={locateEntryCandidate} onReadFileKeys={handleEntryReadFileKeys} onReadComplete={autoSaveReadResult} compact />
+          <EntryPreview files={entryFiles} kind="property" locale={locale} onConfirm={() => {}} onApplyPropertyCandidate={applyPropertyReviewValue} onReadFileKeys={handleEntryReadFileKeys} compact />
         </div>
         <input type="hidden" name="entryReadFileKeys" value={JSON.stringify(entryReadFileKeys)} />
       </> : null}
@@ -456,6 +440,18 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
             {fieldError("area") ? <p id="property-area-error" className="text-xs font-semibold text-rose-700">{fieldError("area")}</p> : null}
           </div>
           <div className="space-y-1">
+            <label htmlFor="property-postalCode" className="text-sm font-semibold text-slate-700">{text.postalCode}</label>
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+              <input {...fieldProps("postalCode", "property-postalCode")} onChange={(event) => { updateValue("postalCode", event.target.value); setPostalLookupStatus("idle"); }} onBlur={() => { if (values.postalCode && !isValidJapanesePostalCode(values.postalCode)) setPostalLookupStatus("invalid"); }} inputMode="numeric" autoComplete="postal-code" className={inputClass} />
+              <button type="button" onClick={() => void lookupPostalCode(values.postalCode)} disabled={postalLookupStatus === "loading"} className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60">{text.postalSearch}</button>
+            </div>
+            {postalLookupStatus === "loading" ? <p role="status" className="text-xs font-semibold text-slate-600">{text.postalLookupLoading}</p> : postalLookupStatus === "found" ? <p role="status" className="text-xs font-semibold text-emerald-700">{text.postalLookup}</p> : postalLookupStatus === "not_found" ? <p role="status" className="text-xs font-semibold text-amber-700">{text.postalLookupNotFound}</p> : (postalLookupStatus === "unavailable" || postalLookupStatus === "error") ? <p role="alert" className="text-xs font-semibold text-amber-700">{text.postalLookupUnavailable}</p> : postalLookupStatus === "invalid" ? <p role="alert" className="text-xs font-semibold text-rose-700">{text.postalLookupInvalid}</p> : null}
+          </div>
+          <div className="space-y-1">
+            <label htmlFor="property-usage" className="text-sm font-semibold text-slate-700">{text.usage}</label>
+            <input {...fieldProps("usage", "property-usage")} className={inputClass} />
+          </div>
+          <div className="space-y-1">
             <label htmlFor="property-address" className="text-sm font-semibold text-slate-700">{text.address}</label>
             <input {...fieldProps("address", "property-address")} className={inputClass} />
             {fieldError("address") ? <p id="property-address-error" className="text-xs font-semibold text-rose-700">{fieldError("address")}</p> : null}
@@ -463,15 +459,6 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
           <div className="space-y-1">
             <label htmlFor="property-roomNumber" className="text-sm font-semibold text-slate-700">{text.roomNumber}</label>
             <input {...fieldProps("roomNumber", "property-roomNumber")} className={inputClass} />
-          </div>
-          <div className="space-y-1">
-            <label htmlFor="property-postalCode" className="text-sm font-semibold text-slate-700">{text.postalCode}</label>
-            <input {...fieldProps("postalCode", "property-postalCode")} onBlur={() => void lookupPostalCode()} inputMode="numeric" autoComplete="postal-code" className={inputClass} />
-            {postalLookupStatus === "loading" ? <p role="status" className="text-xs font-semibold text-slate-600">{text.postalLookupLoading}</p> : postalLookupStatus === "found" ? <p role="status" className="text-xs font-semibold text-emerald-700">{text.postalLookup}</p> : postalLookupStatus === "not_found" ? <p role="status" className="text-xs font-semibold text-amber-700">{text.postalLookupNotFound}</p> : postalLookupStatus === "unavailable" ? <p role="alert" className="text-xs font-semibold text-amber-700">{text.postalLookupUnavailable}</p> : postalLookupStatus === "invalid" ? <p role="alert" className="text-xs font-semibold text-rose-700">{text.postalLookupInvalid}</p> : null}
-          </div>
-          <div className="space-y-1">
-            <label htmlFor="property-usage" className="text-sm font-semibold text-slate-700">{text.usage}</label>
-            <input {...fieldProps("usage", "property-usage")} className={inputClass} />
           </div>
         </div>
       </PropertyFormSection>
@@ -513,8 +500,8 @@ export function PropertyResponsiveForm({ action, locale, initialValues, returnTo
 
       {hideActions ? null : <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-200 pt-5">
         {onCancel ? <button type="button" onClick={onCancel} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">{text.cancel}</button> : <Link href={returnTo} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0046ad]">{text.cancel}</Link>}
-        <Button type="submit" loading={pending || autoSaving} className="min-h-11 rounded-lg bg-slate-950 px-5 py-2.5 text-sm font-bold text-white hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60">
-          {pending || autoSaving ? text.saving : entryUpload && entryFiles.length > entryReadFileKeys.length ? text.saveAndRead : text.save}
+        <Button type="submit" loading={pending} className="min-h-11 rounded-lg bg-slate-950 px-5 py-2.5 text-sm font-bold text-white hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60">
+          {pending ? text.saving : entryUpload && entryFiles.length > entryReadFileKeys.length ? text.saveAndRead : text.save}
         </Button>
       </div>}
       <div className="sr-only" aria-live="polite">{pending ? text.saving : ""}</div>

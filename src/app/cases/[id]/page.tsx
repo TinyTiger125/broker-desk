@@ -50,6 +50,7 @@ import { getObjectImportTargetFeedbackMessage } from "@/lib/import-feedback";
 import { buildObjectVersionFingerprint } from "@/lib/object-import-contract";
 import { resolveCasePropertyAddressPresentation } from "@/lib/case-property-address-presentation";
 import { formatCaseDateForDisplay } from "@/lib/case-date";
+import { formatJapanesePostalCode } from "@/lib/japanese-postal-code-validation";
 import { CASE_PERSON_PREFILL_FIELDS, type CasePersonPrefillCandidate } from "@/lib/case-person-prefill";
 import { extractFreeformPartyNote, extractPartyProfileFromNotes } from "@/lib/party-profile";
 import { getCaseWorkflowTypeLabel } from "@/lib/options";
@@ -490,6 +491,7 @@ function getCaseWorkbenchSaveAriaLabel(locale: Locale, fieldLabel: string) {
 
 function getWorkbenchFieldDisplayValue(field: WorkbenchField) {
   if (!field.value) return "-";
+  if (field.inputSpec.validation === "japanese_postal_code") return formatJapanesePostalCode(field.value);
   return field.inputSpec.kind === "date" ? formatCaseDateForDisplay(field.value) : field.value;
 }
 

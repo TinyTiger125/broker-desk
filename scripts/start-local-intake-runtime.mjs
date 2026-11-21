@@ -229,6 +229,12 @@ const lifecycleAdminUrl = roleUrl(databaseUrl, "brokerdesk_admin", adminPassword
 const admin = new Client({ connectionString: adminUrl, connectionTimeoutMillis: 10000 });
 await admin.connect();
 try {
+  // Supabase-facing ACL migrations refer to these roles even in the isolated
+  // local runtime. They have no login and receive no blanket privileges.
+  await admin.query(`DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN CREATE ROLE authenticated NOLOGIN; END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN CREATE ROLE anon NOLOGIN; END IF;
+  END $$`);
   const existing = await admin.query("SELECT 1 FROM pg_database WHERE datname = $1", [databaseName]);
   if (existing.rowCount === 0) await admin.query(`CREATE DATABASE "${databaseName}"`);
 } finally {

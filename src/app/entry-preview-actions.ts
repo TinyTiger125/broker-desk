@@ -21,6 +21,7 @@ import { signEntryPreviewProof } from "@/lib/entry-preview-proof";
 import { RemoteDocumentReaderError } from "@/lib/identity-reader-contract";
 import { parseEntryUploadStagedRefs, readEntryUploadStagedFiles } from "@/lib/entry-upload-staging";
 import { assessIdentityDocumentValidity } from "@/lib/identity-document-validity";
+import { localPropertyReaderFixture } from "@/lib/local-property-reader-fixture";
 
 const PROPERTY_NUMERIC_PREVIEW_KEYS = new Set(["sizeSqm", "listingPrice", "listingRent", "listingCommonFee", "managementFee", "repairFee"]);
 
@@ -128,8 +129,12 @@ export async function previewEntryDocumentsAction(formData: FormData): Promise<E
             };
           });
       } else {
-        const result = await readObjectDocumentWithOpenAi({ buffer, filename: file.name });
-        fields = selectSingleObjectReaderCandidates(result.candidates).candidates;
+        const localFixture = localPropertyReaderFixture(buffer, file.name);
+        if (localFixture) fields = localFixture;
+        else {
+          const result = await readObjectDocumentWithOpenAi({ buffer, filename: file.name });
+          fields = selectSingleObjectReaderCandidates(result.candidates).candidates;
+        }
       }
       for (const [index, field] of fields.entries()) {
         if (!field.value.trim() || field.uncertainty === "not_found") continue;

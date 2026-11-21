@@ -6,6 +6,7 @@ import { HelpHint } from "@/components/help-hint";
 import { entryFileKey, safeEntryPreviewCandidates, selectableEntryPreviewCandidates, type EntryPreviewState } from "@/lib/entry-preview";
 import type { Locale } from "@/lib/locale";
 import { stageEntryUploadFiles } from "@/lib/entry-upload-staging-client";
+import { PropertyEntryCandidateReview } from "@/components/property-entry-candidate-review";
 import type { EntryUploadStagedFileRef } from "@/lib/entry-upload-staging";
 
 export type EntryPreviewKind = "customer" | "property";
@@ -34,6 +35,7 @@ type EntryPreviewProps = {
   compact?: boolean;
   onConfirm: (candidate: EntryPreviewCandidate) => void;
   onApplyCandidate?: (candidate: EntryPreviewCandidate, preview: EntryPreviewState) => void;
+  onApplyPropertyCandidate?: (key: string, value: string) => boolean;
   onLocateCandidate?: (candidate: EntryPreviewCandidate) => void;
   onReadFileKeys: (keys: string[]) => void;
   onStagedFiles?: (refs: EntryUploadStagedFileRef[]) => void;
@@ -163,10 +165,11 @@ export function getUnreadEntryFiles(files: readonly File[], readFileKeys: readon
   return files.filter((file) => !read.has(entryFileKey(file)));
 }
 
-export function EntryPreview({ files, kind, context, locale, compact = false, onConfirm, onApplyCandidate, onLocateCandidate, onReadFileKeys, onStagedFiles, onStagingPending, onReadComplete }: EntryPreviewProps) {
+export function EntryPreview({ files, kind, context, locale, compact = false, onConfirm, onApplyCandidate, onApplyPropertyCandidate, onLocateCandidate, onReadFileKeys, onStagedFiles, onStagingPending, onReadComplete }: EntryPreviewProps) {
   const text = copy[locale];
   const [preview, setPreview] = useState<{ files: File[]; kind: EntryPreviewKind; context?: "entry" | "case"; state: EntryPreviewState }>();
-  const [decisions, setDecisions] = useState<{ files: File[]; kind: EntryPreviewKind; context?: "entry" | "case"; values: Record<string, "auto_saved" | "rejected"> }>();
+  const [decisions, setDecisions] = useState<{ files: File[]; kind: EntryPreviewKind; context?: "entry" | "case"; values: Record<string, "auto_saved" | "confirmed" | "rejected"> }>();
+  const [propertyApplied, setPropertyApplied] = useState<{ files: File[]; candidateIds: string[] }>();
   const [pending, startTransition] = useTransition();
   const requestIdRef = useRef(0);
   const pendingRef = useRef(false);
@@ -225,8 +228,9 @@ export function EntryPreview({ files, kind, context, locale, compact = false, on
         if (requestId !== requestIdRef.current) return;
         const merged = mergeEntryPreviewStates(previous, result);
         setPreview({ files, kind, context, state: merged });
-        const safeCandidates = safeEntryPreviewCandidates(merged.candidates);
-        setDecisions((current) => ({ files, kind, context, values: {
+        const propertyReview = kind === "property" && context !== "case";
+        const safeCandidates = propertyReview ? [] : safeEntryPreviewCandidates(merged.candidates);
+        if (!propertyReview) setDecisions((current) => ({ files, kind, context, values: {
           ...(current?.files === files && current.kind === kind && current.context === context ? current.values : {}),
           ...Object.fromEntries(safeCandidates.map((candidate) => [candidate.id, "auto_saved" as const])),
         } }));
@@ -258,20 +262,31 @@ export function EntryPreview({ files, kind, context, locale, compact = false, on
   const hasPropertyName = kind !== "property" || hasPropertyNameCandidate(safeCandidates);
   const description = context === "case" ? text.descriptionCase : kind === "property" ? text.descriptionProperty : text.description;
   const ready = kind === "property" ? text.readyProperty : text.ready;
+  const propertyReview = kind === "property" && context !== "case" && Boolean(onApplyPropertyCandidate);
+  const appliedPropertyCandidateIds = propertyApplied?.files === files ? propertyApplied.candidateIds : [];
 
   return (
     <section aria-labelledby="entry-preview-heading" aria-busy={pending} className={compact ? "space-y-2" : "space-y-3 rounded-xl border border-indigo-200 bg-indigo-50/50 p-4"}>
       <input type="hidden" name="entryReadProofs" value={JSON.stringify(activePreview?.readProofs ?? {})} />
       <input type="hidden" name="entryPreviewDecisions" value={JSON.stringify(activeDecisions)} />
       <div className="flex items-center gap-2">
-        <h2 id="entry-preview-heading" tabIndex={-1} className="text-sm font-black text-slate-950 outline-none">{text.title}</h2>
-        <HelpHint id="entry-preview-help" label={text.title} size="lg">{description}</HelpHint>
+        <h2 id="entry-preview-heading" tabIndex={-1} className="text-sm font-black text-slate-950 outline-none">{propertyReview ? locale === "zh" ? "读取资料并确认填入" : locale === "ko" ? "자료를 읽고 확인하여 입력" : "資料を読み取り確認して入力" : text.title}</h2>
+        <HelpHint id="entry-preview-help" label={propertyReview ? locale === "zh" ? "读取资料并确认填入" : locale === "ko" ? "자료를 읽고 확인하여 입력" : "資料を読み取り確認して入力" : text.title} size="lg">{propertyReview ? locale === "zh" ? "识别后逐项选取或修改，点勾填入表单，再点击保存建立正式记录。" : locale === "ko" ? "인식 후 각 항목을 선택하거나 수정하고 체크하여 양식에 입력한 뒤 저장해 정식 기록을 만듭니다." : "読み取り後、候補を選択または修正し、チェックしてフォームに入力します。正式記録は保存ボタンで作成します。" : description}</HelpHint>
       </div>
       <button type="button" onClick={read} disabled={pending || allFilesRead} className="min-h-11 rounded-lg bg-indigo-700 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-800 disabled:cursor-wait disabled:opacity-60">
         {pending ? <span role="status" className="inline-flex items-center gap-2"><span aria-hidden="true" className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />{text.reading}</span> : allFilesRead ? text.readComplete : activePreview?.status === "error" && activePreview.readFileKeys.length > 0 ? text.retry : text.read}
       </button>
       {activePreview?.message ? <p role={activePreview.status === "error" ? "alert" : "status"} className={`text-xs font-bold ${activePreview.status === "error" ? "text-rose-700" : "text-amber-700"}`}>{activePreview.message}</p> : null}
-      {activePreview && (activePreview.status === "ready" || activePreview.candidates.length > 0) ? (
+      {propertyReview && activePreview && (activePreview.status === "ready" || activePreview.candidates.length > 0) ? (
+        <PropertyEntryCandidateReview candidates={activePreview.candidates} appliedCandidateIds={appliedPropertyCandidateIds} locale={locale} onApply={(key, value, source) => {
+          if (!onApplyPropertyCandidate?.(key, value)) return false;
+          const handledIds = activePreview.candidates.filter((candidate) => candidate.key === key).map((candidate) => candidate.id);
+          setPropertyApplied((current) => ({ files, candidateIds: [...new Set([...(current?.files === files ? current.candidateIds : []), ...handledIds])] }));
+          if (source) setDecisions((current) => ({ files, kind, context, values: { ...(current?.files === files && current.kind === kind && current.context === context ? current.values : {}), [source.id]: "confirmed" } }));
+          return true;
+        }} />
+      ) : null}
+      {!propertyReview && activePreview && (activePreview.status === "ready" || activePreview.candidates.length > 0) ? (
         <div className="space-y-2" aria-live="polite">
           {safeCandidateCount > 0 && hasPropertyName ? <p className="text-xs font-semibold text-slate-700">{ready}</p> : safeCandidateCount > 0 && kind === "property" ? <p className="text-xs font-semibold text-amber-800">{text.needsPropertyName}</p> : activePreview.candidates.length > 0 ? <p className="text-xs font-semibold text-amber-800">{text.needsReview}</p> : null}
           {activePreview.status === "ready" && activePreview.candidates.length === 0 ? <p className="text-xs text-slate-600">{text.empty}</p> : activePreview.candidates.length > 0 ? (
